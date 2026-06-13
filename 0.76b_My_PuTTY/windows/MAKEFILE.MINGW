@@ -193,6 +193,9 @@ CFLAGS_PLINK = -Wall -O2 -D_WINDOWS -DWIN32S_COMPAT \
 ################################################################################
 # END MOD_PERSO
 ################################################################################
+# Modern GCC (>=10) defaults to -fno-common; KiTTY's legacy globals require -fcommon
+CFLAGS += -fcommon
+CFLAGS_PLINK += -fcommon
 
 .SUFFIXES:
 
