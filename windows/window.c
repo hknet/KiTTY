@@ -131,6 +131,7 @@ void kitty_protect(HWND, TermWin*, Conf*);
 void kitty_print(HWND);
 void kitty_negative(HWND);
 void kitty_bw(HWND);
+extern int force_reconf;   /* kitty_bridge.c: 0 => apply conf silently (no dialog) */
 void kitty_showportfwd(HWND, Conf*);
 void kitty_shortcuts_toggle(HWND);
 void kitty_start_winscp(HWND);
@@ -2572,9 +2573,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             term_pre_reconfig(wgs->term, wgs->conf);
             prev_conf = conf_copy(wgs->conf);
 
-            reconfig_result = do_reconfig(
-                hwnd, wgs->conf,
-                wgs->backend ? backend_cfg_info(wgs->backend) : 0);
+            if (force_reconf == 0) {
+                /* KiTTY silent apply: conf was already mutated in-place
+                 * (Invert colours / Black on white etc.) — skip the dialog
+                 * and just push the new conf into the terminal/palette. */
+                force_reconf = 1;
+                reconfig_result = true;
+            } else {
+                reconfig_result = do_reconfig(
+                    hwnd, wgs->conf,
+                    wgs->backend ? backend_cfg_info(wgs->backend) : 0);
+            }
             wgs->reconfiguring = false;
             if (!reconfig_result) {
                 conf_free(prev_conf);
