@@ -822,6 +822,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_SHORTCUTSTOGGLE, "Shortcut&s");
             AppendMenu(m, MF_ENABLED, IDM_WINSCP, "Start Win&SCP");
             AppendMenu(m, MF_ENABLED, IDM_PSCP, "Send file (&pscp)");
+            AppendMenu(m, MF_ENABLED, IDM_QUIT, "E&xit");
 #endif
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             if (has_help())
@@ -2726,6 +2727,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           case IDM_PSCP:
             kitty_send_file(wgs->term_hwnd);
+            break;
+          case IDM_QUIT:
+            /* KiTTY: immediate exit without the close confirmation prompt */
+            DestroyWindow(hwnd);
             break;
 #endif
           default:

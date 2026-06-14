@@ -266,3 +266,6 @@
 #ifndef IDM_PSCP
 #define IDM_PSCP 0xA910
 #endif
+#ifndef IDM_QUIT
+#define IDM_QUIT 0xA840
+#endif
