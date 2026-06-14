@@ -18,6 +18,20 @@
  * the other shipping binaries are unaffected. */
 int GetPuttyFlag(void);
 int GetTransparencyFlag(void);
+
+/* Checkbox handler for KiTTY keys that are stored as INT (0/1) rather
+ * than BOOL (the standard conf_checkbox_handler asserts on INT keys in
+ * 0.84). Context is the CONF_ key. */
+static void kitty_checkbox_int_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                       void *data, int event)
+{
+    int key = ctrl->context.i;
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH)
+        dlg_checkbox_set(ctrl, dlg, conf_get_int(conf, key) != 0);
+    else if (event == EVENT_VALCHANGE)
+        conf_set_int(conf, key, dlg_checkbox_get(ctrl, dlg) ? 1 : 0);
+}
 #endif
 
 #define PRINTER_DISABLED_STRING "None (printing disabled)"
@@ -2335,6 +2349,22 @@ void setup_config_box(struct controlbox *b, bool midsession,
                   HELPCTX(no_help));
         ctrl_text(s, "-1 to disable completely", HELPCTX(no_help));
     }
+
+    /*
+     * The Window/Hyperlinks panel (KiTTY).
+     */
+    if (!GetPuttyFlag()) {
+        ctrl_settitle(b, "Window/Hyperlinks",
+                      "Options controlling clickable URL hyperlinks");
+        s = ctrl_getset(b, "Window/Hyperlinks", "main",
+                        "Hyperlink behaviour");
+        ctrl_checkbox(s, "Require Ctrl key to click hyperlinks", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_url_ctrl_click));
+        ctrl_checkbox(s, "Underline hyperlinks", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_url_underline));
+    }
 #endif
 
     /*
@@ -2575,6 +2605,16 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                   userlabel, I(true));
                 sfree(userlabel);
             }
+
+#ifdef MOD_PERSO
+            /* KiTTY auto-command: sent automatically after login. */
+            if (!GetPuttyFlag()) {
+                ctrl_editbox(s, "Auto-command (sent after login)", NO_SHORTCUT,
+                             74, HELPCTX(no_help),
+                             conf_editbox_handler,
+                             I(CONF_autocommand), ED_STR);
+            }
+#endif
 
             s = ctrl_getset(b, "Connection/Data", "term",
                             "Terminal details");
