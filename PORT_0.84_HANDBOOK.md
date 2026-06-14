@@ -167,6 +167,10 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
 - `conf.h` (KiTTY CONF_OPTION block), `windows/CMakeLists.txt` (kitty/kitty_portable targets),
   `windows/window.c` (MOD_PERSO hooks), `be_list.c`, `utils/version.c`, `putty.h` — touched upstream.
 - `windows/storage.c` — runtime registry-root selection (KiTTY 9bis hive + PuTTY merge); see §11.
+- `windows/dialog.c` — config-box **About** text branded for KiTTY (Cyril Dupont/9bis credit; web
+  button → 9bis) + startup config dialog brought to front (TOPMOST-toggle + SetForegroundWindow in
+  `GenericMainDlgProc` `WM_INITDIALOG`). Unconditional edits (shared lib; all shipped binaries are KiTTY).
+- `version.h` — KiTTY `TEXTVER`/`SSHVER`/`BINARY_VERSION` (was the "Unidentified build" defaults).
 - `windows/installer/` — the WiX/wixl MSI sources (`kitty-system.wxs`, `kitty-peruser.wxs`, `build.sh`).
 
 ## 9. Current state (read this first for new work)
@@ -178,8 +182,10 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
   system MSI, portable zip. Older 0.84.0.1/0.84.0.2 releases+tags were deleted.
 - **Version scheme:** display/app version `0.84.0.<sub>-beta` (set in `windows/CMakeLists.txt`
   `BUILD_VERSION`/`BUILD_TIME` for both kitty & kitty_portable targets); MSI ProductVersion numeric
-  `0.84.<sub>`. **Every new build bumps the sub-release by +1** (user rule). Bump in: CMakeLists,
-  both `windows/installer/*.wxs` (Name + Version), `windows/installer/build.sh` (MSI filenames),
+  `0.84.<sub>`. **Every new build bumps the sub-release by +1** (user rule). Bump in: **`version.h`**
+  (`TEXTVER` + `BINARY_VERSION` — this is what the config-box About + file Properties show),
+  `windows/CMakeLists.txt` (`BUILD_VERSION`, both targets), both `windows/installer/*.wxs`
+  (Name + MSI `Version` = `0.84.<sub>`), `windows/installer/build.sh` (MSI filenames),
   `README.md` (download links), `beta-084/README-BETA.md` + `KNOWN-ISSUES.md`.
 - **Open/tabled items:** About-box KiTTY-branding (config-box About still shows PuTTY's; would need a
   `kitty_dialog.c` override of shared `dialog.c`; attribution is in `LICENCE` + the system-menu
