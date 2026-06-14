@@ -44,8 +44,7 @@ int force_reconf = 1;
 /* TODO: wire the SSH version override into the SSH layer */
 void set_sshver(const char *vers) { (void)vers; }
 
-/* TODO: KiTTY session export to a .ktx file (depends on write_setting_*_forced) */
-void save_open_settings_forced(char *filename, Conf *conf) { (void)filename; (void)conf; }
+/* save_open_settings_forced now implemented in kitty_settings_forced.c */
 
 /* TODO: launch a session with the current settings */
 void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
@@ -94,3 +93,23 @@ void kitty_showportfwd(HWND hwnd, Conf *conf) { ShowPortfwd(hwnd, conf); }
 void kitty_shortcuts_toggle(HWND hwnd) { ManageShortcutsFlag(hwnd); }
 void kitty_start_winscp(HWND hwnd) { StartWinSCP(hwnd, NULL, NULL, NULL); }
 void kitty_send_file(HWND hwnd) { SendFile(hwnd); }
+
+/* Export current settings to a .ktx file (IDM_EXPORTSETTINGS).
+ * Mirrors KiTTY's SaveCurrentSetting() but takes the seat conf (no global). */
+int SaveFileName(HWND hFrame, char *filename, char *Title, char *Filter);
+void save_open_settings_forced(char *filename, Conf *conf);
+void kitty_export_settings(HWND hwnd, Conf *conf) {
+    char filename[4096], buffer[4096];
+    if (strlen(FileExtension) > 0) {
+        strcpy(buffer, "Connection files (*");
+        strcat(buffer, FileExtension); strcat(buffer, ")|*");
+        strcat(buffer, FileExtension); strcat(buffer, "|");
+    } else {
+        strcpy(buffer, "Connection files (*.ktx)|*.ktx|");
+    }
+    strcat(buffer, "All files (*.*)|*.*|");
+    if (buffer[strlen(buffer)-1] != '|') strcat(buffer, "|");
+    if (SaveFileName(hwnd, filename, "Save file...", buffer)) {
+        save_open_settings_forced(filename, conf);
+    }
+}

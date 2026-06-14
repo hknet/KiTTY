@@ -269,3 +269,6 @@
 #ifndef IDM_QUIT
 #define IDM_QUIT 0xA840
 #endif
+#ifndef IDM_EXPORTSETTINGS
+#define IDM_EXPORTSETTINGS 0xB040
+#endif

@@ -133,6 +133,7 @@ void kitty_showportfwd(HWND, Conf*);
 void kitty_shortcuts_toggle(HWND);
 void kitty_start_winscp(HWND);
 void kitty_send_file(HWND);
+void kitty_export_settings(HWND, Conf*);
 int GetAutoSendToTray(void);
 void SetAutoSendToTray(const int flag);
 #endif
@@ -822,6 +823,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_SHORTCUTSTOGGLE, "Shortcut&s");
             AppendMenu(m, MF_ENABLED, IDM_WINSCP, "Start Win&SCP");
             AppendMenu(m, MF_ENABLED, IDM_PSCP, "Send file (&pscp)");
+            AppendMenu(m, MF_ENABLED, IDM_EXPORTSETTINGS, "Export &current settings");
             AppendMenu(m, MF_ENABLED, IDM_QUIT, "E&xit");
 #endif
             AppendMenu(m, MF_SEPARATOR, 0, 0);
@@ -2727,6 +2729,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           case IDM_PSCP:
             kitty_send_file(wgs->term_hwnd);
+            break;
+          case IDM_EXPORTSETTINGS:
+            kitty_export_settings(wgs->term_hwnd, wgs->conf);
             break;
           case IDM_QUIT:
             /* KiTTY: immediate exit without the close confirmation prompt */
