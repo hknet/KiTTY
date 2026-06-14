@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  KiTTY 0.84-port  -  PER-USER (current user only) MSI, built with wixl.
+
+  Installs into "%LOCALAPPDATA%\Programs\KiTTY" for the CURRENT user only.
+  Needs NO admin rights and shows NO UAC prompt. For the all-users install
+  into Program Files see kitty-system.wxs.
+
+  NOTE ON GUIDs: fixed on purpose and committed (not secret; must stay stable
+  across releases). This product family's per-USER UpgradeCode is DISTINCT from
+  the per-machine one so the two installs are independent products and may even
+  coexist: 578952A6-AA7F-4146-918B-47803234700B
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+
+  <Product Id="*"
+           Name="KiTTY 0.84.0.1-beta (per-user install)"
+           Language="1033"
+           Version="0.84.0"
+           Manufacturer="KiTTY 0.84 port"
+           UpgradeCode="578952A6-AA7F-4146-918B-47803234700B">
+
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perUser"
+             Description="KiTTY terminal/SSH client (PuTTY 0.84 fork) - per-user install (no admin needed)" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of KiTTY is already installed." />
+    <Media Id="1" Cabinet="kitty.cab" EmbedCab="yes" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="APPDIR" Name="Programs">
+          <Directory Id="INSTALLDIR" Name="KiTTY">
+
+            <Component Id="cmp_kitty_exe" Guid="E3A4D378-012F-48F2-841B-E8F45AA9A05E" Win64="yes">
+              <File Id="kitty.exe" Source="/mnt/c/build/release-084/kitty.exe" KeyPath="yes">
+                <Shortcut Id="startmenuKiTTY" Directory="ProgramMenuDir" Name="KiTTY" WorkingDirectory="INSTALLDIR" Advertise="yes" />
+                <Shortcut Id="desktopKiTTY"   Directory="DesktopFolder"  Name="KiTTY" WorkingDirectory="INSTALLDIR" Advertise="yes" />
+              </File>
+            </Component>
+
+            <Component Id="cmp_klink"    Guid="CF3C4820-596E-4CCA-AB2D-59BB953806D9" Win64="yes">
+              <File Id="klink.exe"    Source="/mnt/c/build/release-084/klink.exe"    KeyPath="yes" />
+            </Component>
+            <Component Id="cmp_kscp"     Guid="AC4CBF06-A4E8-4047-AF75-9D2E89193EB0" Win64="yes">
+              <File Id="kscp.exe"     Source="/mnt/c/build/release-084/kscp.exe"     KeyPath="yes" />
+            </Component>
+            <Component Id="cmp_ksftp"    Guid="44607A61-D838-43A8-97E9-5391D82345CF" Win64="yes">
+              <File Id="ksftp.exe"    Source="/mnt/c/build/release-084/ksftp.exe"    KeyPath="yes" />
+            </Component>
+            <Component Id="cmp_kageant"  Guid="6B6635DB-6032-47B2-8357-F8DDDC44D3AE" Win64="yes">
+              <File Id="kageant.exe"  Source="/mnt/c/build/release-084/kageant.exe"  KeyPath="yes" />
+            </Component>
+            <Component Id="cmp_kittygen" Guid="EB92408A-E027-4CE3-ADAA-A5E35939D5BE" Win64="yes">
+              <File Id="kittygen.exe" Source="/mnt/c/build/release-084/kittygen.exe" KeyPath="yes" />
+            </Component>
+            <Component Id="cmp_kitty_pterm" Guid="386CE0BE-3B44-4E8F-B17A-11EDA089F20B" Win64="yes">
+              <File Id="kitty_pterm.exe" Source="/mnt/c/build/release-084/kitty_pterm.exe" KeyPath="yes" />
+            </Component>
+            <Component Id="cmp_kitty_tel"   Guid="7C56938C-62D2-40C3-A196-24D4B551E25F" Win64="yes">
+              <File Id="kitty_tel.exe"   Source="/mnt/c/build/release-084/kitty_tel.exe"   KeyPath="yes" />
+            </Component>
+
+            <Component Id="cmp_reg_uninstall" Guid="AF4DC75B-A895-4216-9970-CD55A964DE21" Win64="yes">
+              <RegistryValue Root="HKCU" Key="Software\KiTTY-0.84-port" Name="InstallDir"
+                             Type="string" Value="[INSTALLDIR]" KeyPath="yes" />
+            </Component>
+
+          </Directory>
+        </Directory>
+      </Directory>
+
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ProgramMenuDir" Name="KiTTY">
+          <Component Id="cmp_ProgramMenuDir" Guid="5344E3B7-7958-490C-9DA0-58B9E7A19631">
+            <RemoveFolder Id="ProgramMenuDir" On="uninstall" />
+            <RegistryValue Root="HKCU" Key="Software\KiTTY-0.84-port" Name="smdir"
+                           Type="string" Value="" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+
+      <Directory Id="DesktopFolder" Name="Desktop" />
+    </Directory>
+
+    <Feature Id="Complete" Title="KiTTY" Level="1" Display="expand" ConfigurableDirectory="INSTALLDIR">
+      <ComponentRef Id="cmp_kitty_exe" />
+      <ComponentRef Id="cmp_reg_uninstall" />
+      <ComponentRef Id="cmp_ProgramMenuDir" />
+      <Feature Id="CmdTools" Title="Command-line tools (klink/kscp/ksftp/kageant/kittygen)" Level="1">
+        <ComponentRef Id="cmp_klink" />
+        <ComponentRef Id="cmp_kscp" />
+        <ComponentRef Id="cmp_ksftp" />
+        <ComponentRef Id="cmp_kageant" />
+        <ComponentRef Id="cmp_kittygen" />
+        <ComponentRef Id="cmp_kitty_pterm" />
+        <ComponentRef Id="cmp_kitty_tel" />
+      </Feature>
+    </Feature>
+
+  </Product>
+</Wix>
