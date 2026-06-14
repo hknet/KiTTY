@@ -415,9 +415,10 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
         sfree(str);
         char *buildinfo_text = buildinfo("\r\n");
         char *text = dupprintf(
-            "%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
+            "%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
             appname, ver, buildinfo_text,
-            "\251 " SHORT_COPYRIGHT_DETAILS ". All rights reserved.");
+            "KiTTY \251 2007-2013 Cyril Dupont \x96 https://www.9bis.net/kitty/",
+            "Based on PuTTY \251 " SHORT_COPYRIGHT_DETAILS ". All rights reserved.");
         sfree(buildinfo_text);
         SetDlgItemText(hwnd, IDA_TEXT, text);
         MakeDlgItemBorderless(hwnd, IDA_TEXT);
@@ -439,9 +440,9 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
             return 0;
 
           case IDA_WEB:
-            /* Load web browser */
+            /* Load web browser (KiTTY home page) */
             ShellExecute(hwnd, "open",
-                         "https://www.chiark.greenend.org.uk/~sgtatham/putty/",
+                         "https://www.9bis.net/kitty/",
                          0, 0, SW_SHOWDEFAULT);
             return 0;
         }
@@ -533,6 +534,18 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                     (LPARAM) LoadIcon(hinst, MAKEINTRESOURCE(IDI_CFGICON)));
 
         centre_window(hwnd);
+
+        /* KiTTY: bring the startup configuration dialog to the front; it can
+         * otherwise open behind already-open windows. The TOPMOST->NOTOPMOST
+         * toggle forces it to the top of the Z-order even when Windows denies
+         * SetForegroundWindow (foreground lock); SetForegroundWindow then also
+         * activates it when the process has the foreground privilege. */
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+        SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+        SetForegroundWindow(hwnd);
+        BringWindowToTop(hwnd);
 
         /*
          * Create the tree view.
