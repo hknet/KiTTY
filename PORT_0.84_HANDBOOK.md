@@ -171,7 +171,7 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
   button → 9bis) + startup config dialog brought to front (TOPMOST-toggle + SetForegroundWindow in
   `GenericMainDlgProc` `WM_INITDIALOG`). Unconditional edits (shared lib; all shipped binaries are KiTTY).
 - `version.h` — KiTTY `TEXTVER`/`SSHVER`/`BINARY_VERSION` (was the "Unidentified build" defaults).
-- `windows/installer/` — the WiX/wixl MSI sources (`kitty-system.wxs`, `kitty-peruser.wxs`, `build.sh`).
+- `windows/installer/` — the WiX v5 MSI sources (`kitty-system.wxs`, `kitty-peruser.wxs`, `build.ps1`).
 
 ## 9. Current state (read this first for new work)
 
@@ -185,7 +185,7 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
   `0.84.<sub>`. **Every new build bumps the sub-release by +1** (user rule). Bump in: **`version.h`**
   (`TEXTVER` + `BINARY_VERSION` — this is what the config-box About + file Properties show),
   `windows/CMakeLists.txt` (`BUILD_VERSION`, both targets), both `windows/installer/*.wxs`
-  (Name + MSI `Version` = `0.84.<sub>`), `windows/installer/build.sh` (MSI filenames),
+  (Name + MSI `Version` = `0.84.<sub>`), `windows/installer/build.ps1` (`-Ver` arg = MSI filenames),
   `README.md` (download links), `beta-084/README-BETA.md` + `KNOWN-ISSUES.md`.
 - **Open/tabled items:** About-box KiTTY-branding (config-box About still shows PuTTY's; would need a
   `kitty_dialog.c` override of shared `dialog.c`; attribution is in `LICENCE` + the system-menu
@@ -202,17 +202,21 @@ Outputs land in `C:\build\release-084\`. Helper scripts in `C:\build\`. Run WSL 
 1. **Build + package:** `wsl_release.sh` (configures `build-release`, builds 8 binaries) →
    `cmake --build build-release --target kitty_portable` → `wsl_package.sh` (strip/rename to k* +
    UPX kitty.exe) → `wsl_package_portable.sh` (UPX kitty_portable.exe).
-2. **MSIs:** `windows/installer/build.sh` → both MSIs into `release-084/` via **wixl** (`apt install
-   wixl uuid-runtime`; wixl is a *separate* package from msitools). UpgradeCodes are fixed/committed
-   (per-machine `69EA2DD5-…`, per-user `578952A6-…`) — never regenerate. wixl supports `<Icon>`+
-   advertised `Shortcut Icon` (used for the shortcut icons).
+2. **MSIs:** `windows/installer/build.ps1 -Ver 0.84.0.<sub>-beta` (**Windows** — `dotnet tool install
+   -g wix --version 5.0.2`) → both MSIs into `release-084/` via **WiX v5** (`wix build -arch x64
+   -bindpath release-084`). NOT wixl/v3 anymore (migrated in 0.84.0.5). Stay on **WiX v5** — v6/v7
+   require the paid OSMF EULA. The `.wxs` use the v4 schema (`<Package>` root, `<StandardDirectory>`,
+   `<MediaTemplate>`), **non-advertised** shortcuts (`Target="[INSTALLFOLDER]x.exe"`) each with
+   `<ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.X"/>`. UpgradeCodes fixed/committed
+   (per-machine `69EA2DD5-…`, per-user `578952A6-…`); component GUIDs auto (path-derived, stable).
+   `File Source=` uses bare filenames resolved by `-bindpath`.
 3. **Code signing** (Azure Trusted Signing aka "Artifact Signing"; tooling already installed: .NET SDK
    + Azure CLI + the `sign` tool at `%USERPROFILE%\.dotnet\tools`). `az login` first (identity needs
    the *Trusted Signing Certificate Profile Signer* role). Account `REDACTED-account`, endpoint
    `https://REDACTED-endpoint/`, profile `REDACTED-profile` (PublicTrust). **Order matters:**
    (a) sign all `release-084/*.exe` *after* UPX:
    `sign code artifact-signing <exes> -act azure-cli -ase https://REDACTED-endpoint/ -asa REDACTED-account -ascp REDACTED-profile -fd sha256 -d "KiTTY (PuTTY 0.84 fork)" -u https://github.com/hknet/KiTTY`
-   (b) **rebuild the MSIs** (`windows/installer/build.sh`) so they embed the signed exes;
+   (b) **rebuild the MSIs** (`windows/installer/build.ps1`) so they embed the signed exes;
    (c) sign the two MSIs the same way. Verify with `Get-AuthenticodeSignature` (Status=Valid, signer
    `REDACTED Publisher`, timestamped).
 4. **Zip:** `wsl_beta_zip.sh` stages `release-084` + `beta-084/README-BETA.md`+`KNOWN-ISSUES.md` and
@@ -239,8 +243,10 @@ via that fallback.
 - **Always smoke-test the config box** (`kitty.exe` with no args) after editing `kitty_config.c` — its
   panels MUST be created in tree order (each new path extends the previous by one level) or
   `dialog.c:~610` asserts and the dialog crashes. `-load` feature tests don't exercise this.
-- **Advertised MSI shortcuts need an explicit `<Icon>`** or they're iconless (wixl `Advertise="no"` is
-  unimplemented, so non-advertised isn't an option).
+- **Use non-advertised shortcuts (WiX v5), not advertised (wixl)**: advertised shortcuts are iconless
+  AND key Start/taskbar **pins to the per-ProductCode descriptor**, so pins break on every upgrade.
+  Non-advertised shortcuts (stable `Target` path) show the exe's icon and carry a stable
+  `AppUserModelID` (`kappernet.*`) so pins survive. This is why 0.84.0.5 left wixl for WiX v5.
 - **Sign after UPX**, and rebuild MSIs after signing exes so they embed signed payloads.
 - KiTTY is **MIT** (its own `LICENCE.TXT`, © Cyril Dupont) — web "GPL" claims are wrong; `LICENCE`
   credits both Tatham and Dupont.
