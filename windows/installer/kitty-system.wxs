@@ -1,26 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   KiTTY 0.84-port  -  SYSTEM-WIDE (per-machine) MSI, built with wixl (msitools).
+  Installs into "Program Files\KiTTY" for ALL users (needs admin/UAC).
+  For the no-UAC current-user installer see kitty-peruser.wxs.
 
-  Installs into "Program Files\KiTTY" for ALL users. Requires admin elevation
-  (a UAC prompt). For the no-UAC, current-user-only installer see
-  kitty-peruser.wxs.
-
-  Build:  see build.sh  (wixl -a x64 ...). Sources are the packaged binaries in
-  release-084/ (k*-named, stripped, kitty.exe UPX-compressed).
-
-  NOTE ON GUIDs: the UpgradeCode and Component GUIDs below are FIXED ON PURPOSE
-  and committed to version control. They are NOT secrets (every shipped MSI
-  exposes them via msiinfo/Orca); they MUST stay stable across releases so that
-  Windows recognises upgrades of a prior install. Do not regenerate them.
-  This product family's per-machine UpgradeCode: 69EA2DD5-EF19-4811-B324-EF34CAA6942C
+  GUIDs (UpgradeCode + Components) are fixed on purpose and committed; they are
+  not secret but MUST stay stable across releases. Per-machine UpgradeCode:
+  69EA2DD5-EF19-4811-B324-EF34CAA6942C
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
 
   <Product Id="*"
-           Name="KiTTY 0.84.0.2-beta (system-wide install)"
+           Name="KiTTY 0.84.0.3-beta (system-wide install)"
            Language="1033"
-           Version="0.84.2"
+           Version="0.84.3"
            Manufacturer="KiTTY 0.84 port"
            UpgradeCode="69EA2DD5-EF19-4811-B324-EF34CAA6942C">
 
@@ -32,14 +25,23 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of KiTTY is already installed." />
     <Media Id="1" Cabinet="kitty.cab" EmbedCab="yes" />
 
+    <!-- Shortcut icons, extracted from each exe -->
+    <Icon Id="kitty.exe"       SourceFile="/mnt/c/build/release-084/kitty.exe" />
+    <Icon Id="kittygen.exe"    SourceFile="/mnt/c/build/release-084/kittygen.exe" />
+    <Icon Id="kageant.exe"     SourceFile="/mnt/c/build/release-084/kageant.exe" />
+    <Icon Id="ksftp.exe"       SourceFile="/mnt/c/build/release-084/ksftp.exe" />
+    <Icon Id="kitty_pterm.exe" SourceFile="/mnt/c/build/release-084/kitty_pterm.exe" />
+    <Icon Id="kitty_tel.exe"   SourceFile="/mnt/c/build/release-084/kitty_tel.exe" />
+    <Property Id="ARPPRODUCTICON" Value="kitty.exe" />
+
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLDIR" Name="KiTTY">
 
           <Component Id="cmp_kitty_exe" Guid="CC9E4E74-671E-4FE2-923C-6D77683BC320" Win64="yes">
             <File Id="kitty.exe" Source="/mnt/c/build/release-084/kitty.exe" KeyPath="yes">
-              <Shortcut Id="startmenuKiTTY" Directory="ProgramMenuDir" Name="KiTTY" WorkingDirectory="INSTALLDIR" Advertise="yes" />
-              <Shortcut Id="desktopKiTTY"   Directory="DesktopFolder"  Name="KiTTY" WorkingDirectory="INSTALLDIR" Advertise="yes" />
+              <Shortcut Id="startmenuKiTTY" Directory="ProgramMenuDir" Name="KiTTY" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="kitty.exe" IconIndex="0" />
+              <Shortcut Id="desktopKiTTY"   Directory="DesktopFolder"  Name="KiTTY" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="kitty.exe" IconIndex="0" />
             </File>
           </Component>
 
@@ -50,19 +52,29 @@
             <File Id="kscp.exe"     Source="/mnt/c/build/release-084/kscp.exe"     KeyPath="yes" />
           </Component>
           <Component Id="cmp_ksftp"    Guid="A6021F9F-BBA1-46AD-B8DA-D931694C7C61" Win64="yes">
-            <File Id="ksftp.exe"    Source="/mnt/c/build/release-084/ksftp.exe"    KeyPath="yes" />
+            <File Id="ksftp.exe"    Source="/mnt/c/build/release-084/ksftp.exe"    KeyPath="yes">
+              <Shortcut Id="sm_ksftp" Directory="ProgramMenuDir" Name="KSFTP (sftp)" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="ksftp.exe" IconIndex="0" />
+            </File>
           </Component>
           <Component Id="cmp_kageant"  Guid="B8374671-55B1-4E22-BC04-A223FA9977D4" Win64="yes">
-            <File Id="kageant.exe"  Source="/mnt/c/build/release-084/kageant.exe"  KeyPath="yes" />
+            <File Id="kageant.exe"  Source="/mnt/c/build/release-084/kageant.exe"  KeyPath="yes">
+              <Shortcut Id="sm_kageant" Directory="ProgramMenuDir" Name="Kageant (SSH agent)" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="kageant.exe" IconIndex="0" />
+            </File>
           </Component>
           <Component Id="cmp_kittygen" Guid="D037F935-BE93-429C-926E-26A7E7CC97FB" Win64="yes">
-            <File Id="kittygen.exe" Source="/mnt/c/build/release-084/kittygen.exe" KeyPath="yes" />
+            <File Id="kittygen.exe" Source="/mnt/c/build/release-084/kittygen.exe" KeyPath="yes">
+              <Shortcut Id="sm_kittygen" Directory="ProgramMenuDir" Name="KiTTYgen (key generator)" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="kittygen.exe" IconIndex="0" />
+            </File>
           </Component>
           <Component Id="cmp_kitty_pterm" Guid="B6FA9D38-5858-4EC1-B204-BA0C1899C981" Win64="yes">
-            <File Id="kitty_pterm.exe" Source="/mnt/c/build/release-084/kitty_pterm.exe" KeyPath="yes" />
+            <File Id="kitty_pterm.exe" Source="/mnt/c/build/release-084/kitty_pterm.exe" KeyPath="yes">
+              <Shortcut Id="sm_pterm" Directory="ProgramMenuDir" Name="KiTTY pterm" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="kitty_pterm.exe" IconIndex="0" />
+            </File>
           </Component>
           <Component Id="cmp_kitty_tel"   Guid="4E6BC9A5-7144-4A71-9608-8EEAB5AE6A14" Win64="yes">
-            <File Id="kitty_tel.exe"   Source="/mnt/c/build/release-084/kitty_tel.exe"   KeyPath="yes" />
+            <File Id="kitty_tel.exe"   Source="/mnt/c/build/release-084/kitty_tel.exe"   KeyPath="yes">
+              <Shortcut Id="sm_tel" Directory="ProgramMenuDir" Name="KiTTY Telnet" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="kitty_tel.exe" IconIndex="0" />
+            </File>
           </Component>
 
           <Component Id="cmp_reg_uninstall" Guid="70253F4A-C29F-4833-9138-2A0EB508FDD0" Win64="yes">

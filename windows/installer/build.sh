@@ -8,10 +8,10 @@ cd "$(dirname "$0")"
 OUT=/mnt/c/build/release-084
 
 echo "=== system-wide (per-machine, needs admin) ==="
-wixl -v -a x64 -o "$OUT/KiTTY-0.84.0.2-beta-x64-system.msi" kitty-system.wxs 2>&1 | tail -2
+wixl -v -a x64 -o "$OUT/KiTTY-0.84.0.3-beta-x64-system.msi" kitty-system.wxs 2>&1 | tail -2
 
 echo "=== per-user (no UAC) ==="
-wixl -v -a x64 -o "$OUT/KiTTY-0.84.0.2-beta-x64-peruser.msi" kitty-peruser.wxs 2>&1 | tail -2
+wixl -v -a x64 -o "$OUT/KiTTY-0.84.0.3-beta-x64-peruser.msi" kitty-peruser.wxs 2>&1 | tail -2
 
 echo "=== built ==="
-ls -la "$OUT"/KiTTY-0.84.0.2-beta-x64-*.msi
+ls -la "$OUT"/KiTTY-0.84.0.3-beta-x64-*.msi
