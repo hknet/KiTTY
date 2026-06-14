@@ -919,7 +919,6 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_WINSCP, "Start Win&SCP");
             AppendMenu(m, MF_ENABLED, IDM_PSCP, "Send file (&pscp)");
             AppendMenu(m, MF_ENABLED, IDM_EXPORTSETTINGS, "Export &current settings");
-            AppendMenu(m, MF_ENABLED, IDM_DUPKITTY, "Duplicate KiTTY sessio&n");
 #ifdef MOD_ZMODEM
             if (GetZModemFlag()) {
                 int xfer = kitty_zmodem_active();
@@ -2869,9 +2868,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           case IDM_EXPORTSETTINGS:
             kitty_export_settings(wgs->term_hwnd, wgs->conf);
-            break;
-          case IDM_DUPKITTY:
-            kitty_dup_session(wgs->term_hwnd, wgs->conf);
             break;
           case IDM_HYPERLINKTOGGLE: {
             /* KiTTY: enable/disable URL hyperlink detection at runtime */
