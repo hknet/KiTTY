@@ -119,6 +119,7 @@ static void setup_clipboards(Terminal *, Conf *);
 static void reset_window(WinGuiSeat *wgs, int reinit);
 #ifdef MOD_PERSO
 void kitty_set_active_seat(WinGuiSeat *wgs);
+void InitWinMain(void);
 void kitty_apply_transparency(WinGuiSeat *wgs);
 void kitty_apply_window_pos(WinGuiSeat *wgs);
 #endif
@@ -487,6 +488,13 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     init_winfuncs();
 
     setup_gui_timing();
+
+#ifdef MOD_PERSO
+    /* KiTTY core activation: initialise KiTTY (crypt, config dir, kitty.ini,
+     * shortcuts, save-mode/registry). hinst is set; PuTTY registry exists so
+     * no first-run dialog. */
+    InitWinMain();
+#endif
 
     WinGuiSeat *wgs = snew(WinGuiSeat);
     memset(wgs, 0, sizeof(*wgs));
