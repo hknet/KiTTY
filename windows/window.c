@@ -149,6 +149,10 @@ int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
 int kitty_autocommand_tick(HWND hwnd);
 extern int autocommand_delay;
 #define TIMER_AUTOCOMMAND 8702
+/* Anti-idle: periodically send a keepalive string (CONF_antiidle). */
+void kitty_antiidle_tick(HWND hwnd);
+extern char AntiIdleStr[128];
+#define TIMER_ANTIIDLE 8703
 #endif
 
 static void flash_window(WinGuiSeat *wgs, int mode);
@@ -681,6 +685,13 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         const char *ac = conf_get_str(wgs->conf, CONF_autocommand);
         if (ac && ac[0])
             SetTimer(wgs->term_hwnd, TIMER_AUTOCOMMAND, 1500, NULL);
+    }
+    /* KiTTY feature: anti-idle. Repeating 30s timer; kitty_antiidle_tick
+     * counts ticks and sends the keepalive once AntiIdleCountMax is reached. */
+    {
+        const char *ai = conf_get_str(wgs->conf, CONF_antiidle);
+        if ((ai && ai[0]) || AntiIdleStr[0])
+            SetTimer(wgs->term_hwnd, TIMER_ANTIIDLE, 30 * 1000, NULL);
     }
 #endif
     setup_clipboards(wgs->term, wgs->conf);
@@ -2304,6 +2315,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             if (kitty_autocommand_tick(hwnd))
                 SetTimer(hwnd, TIMER_AUTOCOMMAND,
                          autocommand_delay > 0 ? autocommand_delay : 5, NULL);
+            return 0;
+        }
+        if ((UINT_PTR)wParam == TIMER_ANTIIDLE) {
+            /* repeating 30s timer left armed; tick handles the counter */
+            kitty_antiidle_tick(hwnd);
             return 0;
         }
         break;
