@@ -772,7 +772,7 @@ void test_simple(void)
     test_int_translated(CONF_localedit, "LocalEdit", AUTO,
                         FORCE_ON, 0, FORCE_OFF, 1, AUTO, 2, -1);
     test_bool_simple(CONF_alwaysontop, "AlwaysOnTop", false);
-    test_bool_simple(CONF_fullscreenonaltenter, "FullScreenOnAltEnter", false);
+    test_bool_simple(CONF_fullscreenonaltenter, "FullScreenOnAltEnter", true);
     test_bool_simple(CONF_scroll_on_key, "ScrollOnKey", false);
     test_bool_simple(CONF_scroll_on_disp, "ScrollOnDisp", true);
     test_bool_simple(CONF_erase_to_scrollback, "EraseToScrollback", true);

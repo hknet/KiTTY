@@ -868,15 +868,15 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         HMENU m;
         int j;
         char *str;
+#ifdef MOD_PERSO
+        HMENU winmenu, toolmenu;
+#endif
 
         wgs->popup_menus[SYSMENU].menu = GetSystemMenu(wgs->term_hwnd, false);
         wgs->popup_menus[CTXMENU].menu = CreatePopupMenu();
 
-        for (j = 0; j < lenof(wgs->popup_menus); j++) {
-            m = wgs->popup_menus[j].menu;
-            AppendMenu(m, MF_ENABLED, IDM_COPY, "&Copy");
-            AppendMenu(m, MF_ENABLED, IDM_PASTE, "&Paste");
-        }
+        /* Copy/Paste intentionally omitted from the menu: selecting text
+         * already copies, and right-click / Shift+Ins pastes. */
 
         wgs->savedsess_menu = CreateMenu();
         get_sesslist(&sesslist, true);
@@ -885,7 +885,6 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         for (j = 0; j < lenof(wgs->popup_menus); j++) {
             m = wgs->popup_menus[j].menu;
 
-            AppendMenu(m, MF_SEPARATOR, 0, 0);
             AppendMenu(m, MF_ENABLED, IDM_SHOWLOG, "&Event Log");
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             AppendMenu(m, MF_ENABLED, IDM_NEWSESS, "Ne&w Session...");
@@ -898,39 +897,57 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_CLRSB, "C&lear Scrollback");
             AppendMenu(m, MF_ENABLED, IDM_RESET, "Rese&t Terminal");
             AppendMenu(m, MF_SEPARATOR, 0, 0);
+            /* Full Screen: when Alt+Enter toggling is enabled for this
+             * session, advertise the key in the label so the user knows
+             * how to leave full screen (no title bar / menu is visible). */
             AppendMenu(m, (conf_get_int(wgs->conf, CONF_resize_action)
                            == RESIZE_DISABLED) ? MF_GRAYED : MF_ENABLED,
-                       IDM_FULLSCREEN, "&Full Screen");
+                       IDM_FULLSCREEN,
+                       conf_get_bool(wgs->conf, CONF_fullscreenonaltenter)
+                       ? "&Full Screen (Alt+Enter)" : "&Full Screen");
 #ifdef MOD_PERSO
-            AppendMenu(m, MF_SEPARATOR, 0, 0);
-            AppendMenu(m, MF_ENABLED, IDM_TRANSPARUP,   "Transparency &+");
-            AppendMenu(m, MF_ENABLED, IDM_TRANSPARDOWN, "Transparency &-");
-            AppendMenu(m, MF_ENABLED, IDM_VISIBLE,      "Always visi&ble");
-            AppendMenu(m, MF_ENABLED, IDM_TOTRAY,       "Send to tra&y");
-            AppendMenu(m, MF_ENABLED, IDM_WINROL,       "Roll-u&p");
-            AppendMenu(m, MF_ENABLED, IDM_FONTUP,       "Font &Up");
-            AppendMenu(m, MF_ENABLED, IDM_FONTDOWN,     "Font &Down");
-            AppendMenu(m, MF_ENABLED, IDM_PROTECT,      "Prote&ct");
-            AppendMenu(m, MF_ENABLED, IDM_PRINT,        "Print clip&board");
-            AppendMenu(m, MF_ENABLED, IDM_FONTNEGATIVE,  "Invert co&lours");
-            AppendMenu(m, MF_ENABLED, IDM_FONTBLACKANDWHITE, "Black on &white");
-            AppendMenu(m, MF_ENABLED, IDM_CLEARLOGFILE, "Clear log fil&e");
-            AppendMenu(m, MF_ENABLED, IDM_SHOWPORTFWD, "Port forwar&dings");
-            AppendMenu(m, MF_ENABLED, IDM_SHORTCUTSTOGGLE, "Shortcut&s");
-            AppendMenu(m, MF_ENABLED | (GetHyperlinkFlag() ? MF_CHECKED : 0),
-                       IDM_HYPERLINKTOGGLE, "Hyper&links");
-            AppendMenu(m, MF_ENABLED, IDM_WINSCP, "Start Win&SCP");
-            AppendMenu(m, MF_ENABLED, IDM_PSCP, "Send file (&pscp)");
-            AppendMenu(m, MF_ENABLED, IDM_EXPORTSETTINGS, "Export &current settings");
+            /* ---- "Window" submenu: appearance & window state ---- */
+            winmenu = CreatePopupMenu();
+            AppendMenu(winmenu, MF_ENABLED, IDM_TRANSPARUP,   "Transparency &+");
+            AppendMenu(winmenu, MF_ENABLED, IDM_TRANSPARDOWN, "Transparency &-");
+            AppendMenu(winmenu, MF_SEPARATOR, 0, 0);
+            AppendMenu(winmenu, MF_ENABLED, IDM_FONTUP,       "Font &Up");
+            AppendMenu(winmenu, MF_ENABLED, IDM_FONTDOWN,     "Font &Down");
+            AppendMenu(winmenu, MF_SEPARATOR, 0, 0);
+            AppendMenu(winmenu, MF_ENABLED, IDM_FONTNEGATIVE, "Invert co&lours");
+            AppendMenu(winmenu, MF_ENABLED, IDM_FONTBLACKANDWHITE, "&Black on white");
+            AppendMenu(winmenu, MF_SEPARATOR, 0, 0);
+            AppendMenu(winmenu, MF_ENABLED, IDM_VISIBLE,      "Always visi&ble");
+            AppendMenu(winmenu, MF_ENABLED, IDM_WINROL,       "Roll-u&p");
+            AppendMenu(winmenu, MF_ENABLED, IDM_TOTRAY,       "Send to tra&y");
+            AppendMenu(winmenu, MF_ENABLED, IDM_PROTECT,      "Prote&ct");
+            AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)winmenu, "&Window");
+
+            /* ---- "Tools" submenu: transfer & integration ---- */
+            toolmenu = CreatePopupMenu();
+            AppendMenu(toolmenu, MF_ENABLED, IDM_SHOWPORTFWD, "Port forwar&dings");
+            AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
+            AppendMenu(toolmenu, MF_ENABLED, IDM_WINSCP, "Start Win&SCP");
+            AppendMenu(toolmenu, MF_ENABLED, IDM_PSCP, "Send file (&pscp)");
 #ifdef MOD_ZMODEM
             if (GetZModemFlag()) {
                 int xfer = kitty_zmodem_active();
-                AppendMenu(m, MF_SEPARATOR, 0, 0);
-                AppendMenu(m, xfer ? MF_GRAYED : MF_ENABLED, IDM_XYZSTART, "&ZModem Receive");
-                AppendMenu(m, xfer ? MF_GRAYED : MF_ENABLED, IDM_XYZUPLOAD, "ZModem &Upload");
-                AppendMenu(m, xfer ? MF_ENABLED : MF_GRAYED, IDM_XYZABORT, "ZModem &Abort");
+                AppendMenu(toolmenu, xfer ? MF_GRAYED : MF_ENABLED, IDM_XYZSTART, "&ZModem Receive");
+                AppendMenu(toolmenu, xfer ? MF_GRAYED : MF_ENABLED, IDM_XYZUPLOAD, "ZModem &Upload");
+                AppendMenu(toolmenu, xfer ? MF_ENABLED : MF_GRAYED, IDM_XYZABORT, "ZModem &Abort");
             }
 #endif
+            AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
+            AppendMenu(toolmenu, MF_ENABLED, IDM_PRINT,        "Print clip&board");
+            AppendMenu(toolmenu, MF_ENABLED, IDM_CLEARLOGFILE, "Clear log fil&e");
+            AppendMenu(toolmenu, MF_ENABLED, IDM_EXPORTSETTINGS, "Export &current settings");
+            AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
+            AppendMenu(toolmenu, MF_ENABLED, IDM_SHORTCUTSTOGGLE, "Shortcut&s");
+            AppendMenu(toolmenu, MF_ENABLED | (GetHyperlinkFlag() ? MF_CHECKED : 0),
+                       IDM_HYPERLINKTOGGLE, "Hyper&links");
+            AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)toolmenu, "&Tools");
+
+            AppendMenu(m, MF_SEPARATOR, 0, 0);
             AppendMenu(m, MF_ENABLED, IDM_QUIT, "E&xit");
 #endif
             AppendMenu(m, MF_SEPARATOR, 0, 0);

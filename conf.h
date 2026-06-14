@@ -665,7 +665,7 @@ CONF_OPTION(alwaysontop,
 )
 CONF_OPTION(fullscreenonaltenter,
     VALUE_TYPE(BOOL),
-    DEFAULT_BOOL(false),
+    DEFAULT_BOOL(true),    /* KiTTY: Alt+Enter toggles full screen by default */
     SAVE_KEYWORD("FullScreenOnAltEnter"),
 )
 CONF_OPTION(scroll_on_key,
