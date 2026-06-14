@@ -1324,7 +1324,7 @@ CONF_OPTION(url_browser, VALUE_TYPE(FILENAME), SAVE_KEYWORD("HyperlinkBrowser"),
 CONF_OPTION(url_defbrowser, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkBrowserUseDefault"),)
 CONF_OPTION(url_defregex, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkRegularExpressionUseDefault"),)
 CONF_OPTION(url_regex, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("HyperlinkRegularExpression"),)
-CONF_OPTION(url_underline, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("HyperlinkUnderline"),)
+CONF_OPTION(url_underline, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkUnderline"),)
 CONF_OPTION(url_ctrl_click, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkUseCtrlClick"),)
 CONF_OPTION(windowstate, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("WindowState"),)
 CONF_OPTION(winscpoptions, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("WinSCPOptions"),)

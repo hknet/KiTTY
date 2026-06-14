@@ -137,6 +137,7 @@ void kitty_export_settings(HWND, Conf*);
 void kitty_dup_session(HWND, Conf*);
 int GetAutoSendToTray(void);
 void SetAutoSendToTray(const int flag);
+int GetZModemFlag(void);
 /* URL hyperlinks (kitty_url.c + kitty.c flag) */
 int  GetHyperlinkFlag(void);
 void SetHyperlinkFlag(const int flag);
@@ -145,6 +146,7 @@ void kitty_url_config(Conf *conf);
 void kitty_url_rescan(Terminal *term);
 int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int ctrl_required);
 int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
+int kitty_url_cell_underline(Conf *conf, int col, int row);
 /* Per-session icon (CONF_icone / CONF_iconefile). */
 void kitty_apply_icon(HWND hwnd, Conf *conf);
 /* KiTTY-specific About dialog. */
@@ -3922,6 +3924,12 @@ static void do_text_internal(
     if (lattr != LATTR_NORM && x*2 >= wgs->term->cols)
         return;
 
+#ifdef MOD_PERSO
+    /* Capture character coords before the pixel conversion below, for the URL
+     * hyperlink underline span test at the end of this function. */
+    int kitty_url_col = x, kitty_url_row = y;
+#endif
+
     x *= fnt_width;
     y *= wgs->font_height;
     x += wgs->offset_width;
@@ -4289,6 +4297,30 @@ static void do_text_internal(
     if (attr & ATTR_STRIKE)
         draw_horizontal_line_on_text(wgs, wgs->font_strikethrough_y, lattr,
                                      line_box, fg);
+
+#ifdef MOD_PERSO
+    /* KiTTY URL hyperlink underline: underline the cells of this run that fall
+     * inside a detected link region (kitty_url.c decides per cell, honouring
+     * CONF_url_underline).  Coalesce contiguous link cells into spans so we
+     * issue one line per span rather than per cell. */
+    if (lattr != LATTR_TOP && GetHyperlinkFlag()) {
+        int kk, span0 = -1;
+        for (kk = 0; kk <= len; kk++) {
+            int inlink = (kk < len) &&
+                kitty_url_cell_underline(wgs->conf, kitty_url_col + kk,
+                                         kitty_url_row);
+            if (inlink) {
+                if (span0 < 0) span0 = kk;
+            } else if (span0 >= 0) {
+                RECT ul = line_box;
+                ul.left  = line_box.left + span0 * char_width;
+                ul.right = line_box.left + kk * char_width;
+                draw_horizontal_line_on_text(wgs, wgs->descent, lattr, ul, fg);
+                span0 = -1;
+            }
+        }
+    }
+#endif
 
   out:
     sfree(lpDx);
@@ -5260,6 +5292,15 @@ static bool wintw_setup_draw_ctx(TermWin *tw)
     WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
     assert(!wgs->wintw_hdc);
     wgs->wintw_hdc = make_hdc(wgs);
+#ifdef MOD_PERSO
+    /* Keep URL link regions current at paint time so the hyperlink underline
+     * (drawn per cell in do_text_internal) tracks the latest screen content
+     * without depending on a mouse move.  Only when hyperlinks + underline are
+     * enabled; one screen scan per repaint burst. */
+    if (wgs->wintw_hdc && GetHyperlinkFlag() &&
+        conf_get_int(wgs->conf, CONF_url_underline))
+        kitty_url_rescan(wgs->term);
+#endif
     return wgs->wintw_hdc != NULL;
 }
 
