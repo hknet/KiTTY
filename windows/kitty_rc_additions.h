@@ -260,3 +260,6 @@
 #ifndef IDM_SHORTCUTSTOGGLE
 #define IDM_SHORTCUTSTOGGLE 0xB120
 #endif
+#ifndef IDM_WINSCP
+#define IDM_WINSCP 0xA920
+#endif

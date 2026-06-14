@@ -131,6 +131,7 @@ void kitty_negative(HWND);
 void kitty_bw(HWND);
 void kitty_showportfwd(HWND, Conf*);
 void kitty_shortcuts_toggle(HWND);
+void kitty_start_winscp(HWND);
 int GetAutoSendToTray(void);
 void SetAutoSendToTray(const int flag);
 #endif
@@ -818,6 +819,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_CLEARLOGFILE, "Clear log fil&e");
             AppendMenu(m, MF_ENABLED, IDM_SHOWPORTFWD, "Port forwar&dings");
             AppendMenu(m, MF_ENABLED, IDM_SHORTCUTSTOGGLE, "Shortcut&s");
+            AppendMenu(m, MF_ENABLED, IDM_WINSCP, "Start Win&SCP");
 #endif
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             if (has_help())
@@ -2716,6 +2718,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           case IDM_SHORTCUTSTOGGLE:
             kitty_shortcuts_toggle(wgs->term_hwnd);
+            break;
+          case IDM_WINSCP:
+            kitty_start_winscp(wgs->term_hwnd);
             break;
 #endif
           default:
