@@ -213,6 +213,10 @@ add_executable(kitty
   window.c
   putty.c
   help.c
+  # terminal.c compiled directly into the kitty target (not via guiterminal)
+  # so it can carry MOD_FAR2L; the directly-listed object takes precedence over
+  # guiterminal's terminal.o, leaving other binaries untouched.
+  ${CMAKE_SOURCE_DIR}/terminal/terminal.c
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
   kitty.rc
   ${KITTY_DIR}/kitty.c
@@ -239,7 +243,7 @@ be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
 # per-target be-list object so other binaries' be_list.c is unaffected.
 target_compile_definitions(kitty-be-list PRIVATE MOD_ADB=1)
 add_dependencies(kitty generated_licence_h)
-target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MASTER_PASSWORD="kitty")
+target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MASTER_PASSWORD="kitty")
 target_compile_options(kitty PRIVATE -fcommon)
 target_include_directories(kitty PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5

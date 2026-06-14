@@ -3191,6 +3191,35 @@ static void toggle_mode(Terminal *term, int mode, int query, bool state)
  */
 static void do_osc(Terminal *term)
 {
+#ifdef MOD_FAR2L
+    /*
+     * KiTTY far2l terminal extensions (APC-based).  far2l announces itself with
+     * an APC sequence \x1b_far2l1\x07 (enable) / \x1b_far2l0\x07 (disable) and
+     * sends base64 payloads as \x1b_far2l:...\x07.  We recognise the handshake
+     * and reply \x1b_far2lok\x07 so far2l knows extensions are supported, and
+     * track the on/off state.  The full clipboard-sync payload protocol is not
+     * decoded here (it is large and was riddled with exit()/MessageBox paths in
+     * 0.76b); unrecognised payloads are ignored gracefully rather than crashing.
+     */
+    if (term->osc_type == OSCLIKE_APC) {
+        term->osc_string[term->osc_strlen] = '\0';
+        if (strncmp(term->osc_string, "far2l", 5) == 0) {
+            const char *arg = term->osc_string + 5;
+            if (arg[0] == '1') {
+                term->far2l_ext = 1;
+                if (term->ldisc) {
+                    static const char ok[] = "\x1b_far2lok\x07";
+                    ldisc_send(term->ldisc, ok, (int)(sizeof(ok) - 1), false);
+                }
+            } else if (arg[0] == '0') {
+                term->far2l_ext = 0;
+            }
+            /* arg[0]==':' (base64 payload) and anything else: ignore safely. */
+            return;
+        }
+        /* non-far2l APC: fall through to the normal (no-op) handling below */
+    }
+#endif
     switch (term->osc_type) {
       case OSCLIKE_OSC_W:
         while (term->osc_strlen--)
@@ -4140,10 +4169,19 @@ static void term_out(Terminal *term, bool called_from_term_data)
                      * and setting a flag indicating that it's not really an
                      * OSC. */
                     compatibility(OTHER);
-                    term->termstate = SEEN_OSC;
                     term->osc_type = (c == 'P' ? OSCLIKE_DCS :
                                       c == 'X' ? OSCLIKE_SOS :
                                       c == '^' ? OSCLIKE_PM : OSCLIKE_APC);
+#ifdef MOD_FAR2L
+                    /* far2l: the APC/DCS/SOS/PM payload is a pure string (no
+                     * leading numeric OSC args). SEEN_OSC would parse/consume
+                     * the first char as an OSC argument and drop it, mangling
+                     * "far2l..." into "ar2l...". Go straight to OSC_STRING so
+                     * the whole payload is captured intact. */
+                    term->termstate = OSC_STRING;
+#else
+                    term->termstate = SEEN_OSC;
+#endif
                     term->osc_strlen = 0;
                     term->esc_args[0] = 0;
                     term->esc_nargs = 1;

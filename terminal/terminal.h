@@ -194,6 +194,12 @@ struct terminal_tag {
     int osc_strlen;
     char osc_string[OSC_STR_MAX + 1];
 
+#ifdef MOD_FAR2L
+    /* KiTTY far2l terminal extensions: set when the far2l APC handshake has
+     * enabled extensions mode (\x1b_far2l1\x07 -> reply \x1b_far2lok\x07). */
+    int far2l_ext;
+#endif
+
     char id_string[1024];
 
     unsigned char *tabs;
