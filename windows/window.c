@@ -147,6 +147,8 @@ int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int ctrl_required
 int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
 /* Per-session icon (CONF_icone / CONF_iconefile). */
 void kitty_apply_icon(HWND hwnd, Conf *conf);
+/* KiTTY-specific About dialog. */
+void kitty_about(HWND hwnd);
 /* Auto-command: send a command automatically after login (CONF_autocommand). */
 int kitty_autocommand_tick(HWND hwnd);
 extern int autocommand_delay;
@@ -2673,7 +2675,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 ldisc_echoedit_update(wgs->ldisc);
             break;
           case IDM_ABOUT:
+#ifdef MOD_PERSO
+            /* KiTTY-specific About dialog */
+            kitty_about(hwnd);
+#else
             showabout(hwnd);
+#endif
             break;
           case IDM_HELP:
             launch_help(hwnd, NULL);

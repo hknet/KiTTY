@@ -196,6 +196,53 @@ void kitty_apply_icon(HWND hwnd, Conf *conf) {
     SetNewIcon(hwnd, buf, conf_get_int(conf, CONF_icone), SI_INIT);
 }
 
+/* KiTTY About box (IDM_ABOUT). A compact KiTTY-specific dialog showing the
+ * KiTTY build version and credits, with a clickable project link. Template
+ * IDD_KITTYABOUT lives in windows/kitty.rc. */
+extern char BuildVersionTime[256];
+/* Resource IDs for the KiTTY about dialog (kept in sync with
+ * windows/kitty_rc_additions.h, which isn't on this target's include path). */
+#ifndef IDD_KITTYABOUT
+#define IDD_KITTYABOUT 121
+#endif
+#ifndef IDA_VERSION
+#define IDA_VERSION 1006
+#endif
+#ifndef IDC_WEBPAGE
+#define IDC_WEBPAGE 401
+#endif
+static INT_PTR CALLBACK KittyAboutProc(HWND hwnd, UINT msg,
+                                       WPARAM wParam, LPARAM lParam) {
+    char buffer[1024];
+    switch (msg) {
+      case WM_INITDIALOG:
+        sprintf(buffer, "KiTTY - %s", BuildVersionTime);
+        SetDlgItemText(hwnd, IDA_VERSION, buffer);
+        return 1;
+      case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+          case IDOK:
+          case IDCANCEL:
+            EndDialog(hwnd, 0);
+            return 0;
+          case IDC_WEBPAGE:
+            ShellExecute(hwnd, "open", "https://www.9bis.net/kitty",
+                         NULL, NULL, SW_SHOWNORMAL);
+            return 0;
+        }
+        return 0;
+      case WM_CLOSE:
+        EndDialog(hwnd, 0);
+        return 0;
+    }
+    return 0;
+}
+
+void kitty_about(HWND hwnd) {
+    DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_KITTYABOUT),
+              hwnd, KittyAboutProc);
+}
+
 /* Export current settings to a .ktx file (IDM_EXPORTSETTINGS).
  * Mirrors KiTTY's SaveCurrentSetting() but takes the seat conf (no global). */
 int SaveFileName(HWND hFrame, char *filename, char *Title, char *Filter);
