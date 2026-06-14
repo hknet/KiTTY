@@ -808,6 +808,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_PRINT,        "Print clip&board");
             AppendMenu(m, MF_ENABLED, IDM_FONTNEGATIVE,  "Invert co&lours");
             AppendMenu(m, MF_ENABLED, IDM_FONTBLACKANDWHITE, "Black on &white");
+            AppendMenu(m, MF_ENABLED, IDM_CLEARLOGFILE, "Clear log fil&e");
 #endif
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             if (has_help())
@@ -2669,6 +2670,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           case IDM_FONTBLACKANDWHITE:
             kitty_bw(wgs->term_hwnd);
+            break;
+          case IDM_CLEARLOGFILE:
+            if (wgs->logctx &&
+                conf_get_int(wgs->conf, CONF_logtype) != LGTYP_NONE) {
+                logfclose(wgs->logctx);
+                logfopen(wgs->logctx);
+            }
             break;
 #endif
           default:
