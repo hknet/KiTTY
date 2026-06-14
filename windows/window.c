@@ -153,6 +153,17 @@ void kitty_about(HWND hwnd);
 /* Port-knocking: knock the configured host:port sequence before connecting. */
 void kitty_port_knock(Conf *conf);
 #endif
+#ifdef MOD_ZMODEM
+/* ZModem file transfer (kitty_zmodem.c). Menu-driven receive (rz) / send (sz);
+ * receive data is intercepted in win_seat_output, send is pumped from the
+ * message loop. No terminal.c edits. */
+int kitty_zmodem_active(void);
+int kitty_zmodem_receive(Conf *conf, Backend *backend);
+int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend);
+void kitty_zmodem_cancel(void);
+size_t kitty_zmodem_recv_data(const void *data, size_t len);
+int kitty_zmodem_process(void);
+#endif
 #ifdef MOD_BACKGROUNDIMAGE
 /* Background image: load the configured image (CONF_bg_image_filename etc.). */
 int kitty_apply_background(HWND hwnd, Conf *conf);
@@ -887,6 +898,15 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_PSCP, "Send file (&pscp)");
             AppendMenu(m, MF_ENABLED, IDM_EXPORTSETTINGS, "Export &current settings");
             AppendMenu(m, MF_ENABLED, IDM_DUPKITTY, "Duplicate KiTTY sessio&n");
+#ifdef MOD_ZMODEM
+            if (GetZModemFlag()) {
+                int xfer = kitty_zmodem_active();
+                AppendMenu(m, MF_SEPARATOR, 0, 0);
+                AppendMenu(m, xfer ? MF_GRAYED : MF_ENABLED, IDM_XYZSTART, "&ZModem Receive");
+                AppendMenu(m, xfer ? MF_GRAYED : MF_ENABLED, IDM_XYZUPLOAD, "ZModem &Upload");
+                AppendMenu(m, xfer ? MF_ENABLED : MF_GRAYED, IDM_XYZABORT, "ZModem &Abort");
+            }
+#endif
             AppendMenu(m, MF_ENABLED, IDM_QUIT, "E&xit");
 #endif
             AppendMenu(m, MF_SEPARATOR, 0, 0);
@@ -1002,6 +1022,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         }
 
         run_toplevel_callbacks();
+#ifdef MOD_ZMODEM
+        /* KiTTY ZModem: pump the helper's stdout to the backend each loop. */
+        if (kitty_zmodem_active())
+            kitty_zmodem_process();
+#endif
     }
 
   finished:
@@ -2832,6 +2857,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             /* KiTTY: immediate exit without the close confirmation prompt */
             DestroyWindow(hwnd);
             break;
+#ifdef MOD_ZMODEM
+          case IDM_XYZSTART:
+            if (GetZModemFlag())
+                kitty_zmodem_receive(wgs->conf, wgs->backend);
+            break;
+          case IDM_XYZUPLOAD:
+            if (GetZModemFlag())
+                kitty_zmodem_send(hwnd, wgs->conf, wgs->backend);
+            break;
+          case IDM_XYZABORT:
+            if (GetZModemFlag())
+                kitty_zmodem_cancel();
+            break;
+#endif
 #endif
           default:
             if (wParam >= IDM_SAVED_MIN && wParam < IDM_SAVED_MAX) {
@@ -6184,6 +6223,13 @@ static size_t win_seat_output(Seat *seat, SeatOutputType type,
                               const void *data, size_t len)
 {
     WinGuiSeat *wgs = container_of(seat, WinGuiSeat, seat);
+#ifdef MOD_ZMODEM
+    /* KiTTY ZModem: while a transfer is active, route incoming backend bytes to
+     * the helper's stdin instead of the terminal. (0.76b did this in
+     * terminal.c term_data; here we keep terminal.c untouched.) */
+    if (kitty_zmodem_active() && type == SEAT_OUTPUT_STDOUT)
+        return kitty_zmodem_recv_data(data, len);
+#endif
     return term_data(wgs->term, data, len);
 }
 

@@ -661,9 +661,9 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 #endif
 #ifdef MOD_ZMODEM
 	/* ZModem Options */
-	fprintf( fp, "rzcommand=%s\n",			conf_get_filename(conf,CONF_rzcommand)->path ) ;
+	fprintf( fp, "rzcommand=%s\n",			filename_to_str(conf_get_filename(conf,CONF_rzcommand)) ) ;
 	fprintf( fp, "rzoptions=%s\n",			conf_get_str(conf,CONF_rzoptions) ) ;
-	fprintf( fp, "szcommand=%s\n",			conf_get_filename(conf,CONF_szcommand)->path ) ;
+	fprintf( fp, "szcommand=%s\n",			filename_to_str(conf_get_filename(conf,CONF_szcommand)) ) ;
 	fprintf( fp, "szoptions=%s\n",			conf_get_str(conf,CONF_szoptions) ) ;
 	fprintf( fp, "zdownloaddir=%s\n",		conf_get_str(conf,CONF_zdownloaddir) ) ;
 #endif

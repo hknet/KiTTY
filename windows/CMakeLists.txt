@@ -229,10 +229,11 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_url.c
   ${KITTY_DIR}/kitty_bridge.c
   ${KITTY_DIR}/kitty_settings_forced.c
+  ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_config.c)
 be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
 add_dependencies(kitty generated_licence_h)
-target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MASTER_PASSWORD="kitty")
+target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MASTER_PASSWORD="kitty")
 target_compile_options(kitty PRIVATE -fcommon)
 target_include_directories(kitty PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5

@@ -668,15 +668,10 @@ char * get_param_str( const char * val ) {
 	}
 
 #ifdef MOD_ZMODEM
-void xyz_updateMenuItems(Terminal *term) {
-	if( !GetZModemFlag() ) return ;
-	HMENU m = GetSystemMenu(MainHwnd, FALSE);
-//	EnableMenuItem(m, IDM_XYZSTART, term->xyz_transfering?MF_GRAYED:MF_ENABLED);
-	EnableMenuItem(m, IDM_XYZSTART, term->xyz_transfering?MF_GRAYED:MF_DISABLED);
-	EnableMenuItem(m, IDM_XYZUPLOAD, term->xyz_transfering?MF_GRAYED:MF_ENABLED);
-	EnableMenuItem(m, IDM_XYZABORT, !term->xyz_transfering?MF_GRAYED:MF_ENABLED);
-
-}
+/* 0.84 port: the 0.76b xyz_updateMenuItems() relied on terminal-struct fields
+ * (term->xyz_transfering) that don't exist in 0.84. The new no-global ZModem
+ * (kitty_zmodem.c) drives menu greying from kitty_zmodem_active() at menu-build
+ * time in window.c, so this routine is no longer needed. */
 #endif
 
 char * kitty_current_dir() { 
@@ -5383,9 +5378,9 @@ void LoadParameters( void ) {
 	}
 #endif
 #ifdef MOD_ZMODEM
-	if( ReadParameter( INIT_SECTION, "zmodem", buffer ) ) { 
-		if( !stricmp( buffer, "NO" ) ) SetZModemFlag( 0 ) ; 
-//		if( !stricmp( buffer, "YES" ) ) SetZModemFlag( 1 ) ; // ZModem ne marche plsu: on peut réactiver pour tester en passant -zmodem
+	if( ReadParameter( INIT_SECTION, "zmodem", buffer ) ) {
+		if( !stricmp( buffer, "NO" ) ) SetZModemFlag( 0 ) ;
+		if( !stricmp( buffer, "YES" ) ) SetZModemFlag( 1 ) ; /* re-enabled: 0.84 port has a real helper spawn (kitty_zmodem.c) */
 		}
 #endif
 #ifdef MOD_RECONNECT

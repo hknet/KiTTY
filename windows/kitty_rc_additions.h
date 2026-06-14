@@ -278,3 +278,13 @@
 #ifndef IDM_HYPERLINKTOGGLE
 #define IDM_HYPERLINKTOGGLE 0xB140
 #endif
+/* ZModem menu items (multiples of 0x10 - WM_SYSCOMMAND masks wParam & ~0xF). */
+#ifndef IDM_XYZSTART
+#define IDM_XYZSTART  0xB150
+#endif
+#ifndef IDM_XYZUPLOAD
+#define IDM_XYZUPLOAD 0xB160
+#endif
+#ifndef IDM_XYZABORT
+#define IDM_XYZABORT  0xB170
+#endif
