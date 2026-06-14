@@ -812,6 +812,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     term_set_focus(wgs->term, GetForegroundWindow() == wgs->term_hwnd);
     UpdateWindow(wgs->term_hwnd);
+#ifdef MOD_PERSO
+    /* KiTTY feature: fullscreen on start (no-global; reads this seat's conf) */
+    if (conf_get_int(wgs->conf, CONF_fullscreen))
+        PostMessage(wgs->term_hwnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+#endif
 
     gui_terminal_ready(wgs->term_hwnd, &wgs->seat, wgs->backend);
 
