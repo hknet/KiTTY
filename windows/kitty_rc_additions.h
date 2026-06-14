@@ -233,3 +233,9 @@
 #ifndef IDM_FONTDOWN
 #define IDM_FONTDOWN 0xB060
 #endif
+#ifndef IDM_PROTECT
+#define IDM_PROTECT 0xA860
+#endif
+#ifndef IDM_PRINT
+#define IDM_PRINT 0xA870
+#endif
