@@ -145,6 +145,10 @@ void kitty_url_config(Conf *conf);
 void kitty_url_rescan(Terminal *term);
 int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int ctrl_required);
 int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
+/* Auto-command: send a command automatically after login (CONF_autocommand). */
+int kitty_autocommand_tick(HWND hwnd);
+extern int autocommand_delay;
+#define TIMER_AUTOCOMMAND 8702
 #endif
 
 static void flash_window(WinGuiSeat *wgs, int mode);
@@ -670,6 +674,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY feature: URL hyperlinks - init urlhack + compile regex */
     kitty_url_init();
     kitty_url_config(wgs->conf);
+    /* KiTTY feature: auto-command sent automatically after login.
+     * First fire is delayed to let the connection establish; subsequent
+     * lines re-arm at autocommand_delay (see WM_TIMER below). */
+    {
+        const char *ac = conf_get_str(wgs->conf, CONF_autocommand);
+        if (ac && ac[0])
+            SetTimer(wgs->term_hwnd, TIMER_AUTOCOMMAND, 1500, NULL);
+    }
 #endif
     setup_clipboards(wgs->term, wgs->conf);
     wgs->logctx = log_init(&wgs->logpolicy, wgs->conf);
@@ -2285,6 +2297,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
     switch (message) {
       case WM_CREATE:
         break;
+#ifdef MOD_PERSO
+      case WM_TIMER:
+        if ((UINT_PTR)wParam == TIMER_AUTOCOMMAND) {
+            KillTimer(hwnd, TIMER_AUTOCOMMAND);
+            if (kitty_autocommand_tick(hwnd))
+                SetTimer(hwnd, TIMER_AUTOCOMMAND,
+                         autocommand_delay > 0 ? autocommand_delay : 5, NULL);
+            return 0;
+        }
+        break;
+#endif
       case WM_CLOSE: {
         char *title, *msg, *additional = NULL;
         show_mouseptr(wgs, true);

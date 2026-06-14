@@ -204,3 +204,49 @@ void kitty_export_settings(HWND hwnd, Conf *conf) {
 void kitty_dup_session(HWND hwnd, Conf *conf) {
     RunSessionWithCurrentSettings(hwnd, conf, NULL, NULL, NULL, 0, NULL);
 }
+
+/* Auto-command: on each TIMER_AUTOCOMMAND fire, peel one line off the global
+ * AutoCommand buffer (lazily initialised from CONF_autocommand) and send it.
+ * Mirrors KiTTY window.c's TIMER_AUTOCOMMAND handler (line-split on \n / \\n,
+ * \\\\ literal backslash, \p / \s passthrough). Returns 1 if more lines remain
+ * (caller re-arms the timer), 0 when the command is exhausted.
+ * autocommand_delay (ms) is exposed for the caller's SetTimer interval. */
+extern Conf *conf;             /* active-seat global (window.c) */
+int del(char *ch, const int start, const int length);
+int kitty_autocommand_tick(HWND hwnd)
+{
+    char buffer[8192] = "";
+    int i = 0;
+    if (AutoCommand == NULL) {
+        const char *src = conf_get_str(conf, CONF_autocommand);
+        if (src == NULL || src[0] == '\0')
+            return 0;
+        AutoCommand = (char *)malloc(strlen(src) + 10);
+        strcpy(AutoCommand, src);
+    }
+    while (AutoCommand[i] != '\0') {
+        if (AutoCommand[i] == '\n') { i++; break; }
+        else if (AutoCommand[i] == '\\' && AutoCommand[i + 1] == '\\') {
+            strcat(buffer, "\\\\"); i += 2;
+        } else if (AutoCommand[i] == '\\' && AutoCommand[i + 1] == 'n') {
+            i += 2; break;
+        } else if (AutoCommand[i] == '\\' && AutoCommand[i + 1] == 'p') {
+            strcat(buffer, "\\p"); i += 2; break;
+        } else if (AutoCommand[i] == '\\' && AutoCommand[i + 1] == 's') {
+            strcat(buffer, "\\s"); i += 2;
+            buffer[i] = AutoCommand[i]; buffer[i + 1] = '\0'; i++;
+            buffer[i] = AutoCommand[i]; buffer[i + 1] = '\0'; i++;
+            break;
+        } else {
+            buffer[i] = AutoCommand[i]; buffer[i + 1] = '\0'; i++;
+        }
+    }
+    del(AutoCommand, 1, i);
+    if (strlen(buffer) > 0)
+        SendAutoCommand(hwnd, buffer);
+    if (AutoCommand[0] == '\0') {
+        free(AutoCommand); AutoCommand = NULL;
+        return 0;
+    }
+    return 1;
+}
