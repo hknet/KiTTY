@@ -120,6 +120,7 @@ static void reset_window(WinGuiSeat *wgs, int reinit);
 #ifdef MOD_PERSO
 void kitty_set_active_seat(WinGuiSeat *wgs);
 void kitty_apply_transparency(WinGuiSeat *wgs);
+void kitty_apply_window_pos(WinGuiSeat *wgs);
 #endif
 
 static void flash_window(WinGuiSeat *wgs, int mode);
@@ -631,6 +632,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #ifdef MOD_PERSO
     kitty_set_active_seat(wgs);
     kitty_apply_transparency(wgs);
+    kitty_apply_window_pos(wgs);
 #endif
     setup_clipboards(wgs->term, wgs->conf);
     wgs->logctx = log_init(&wgs->logpolicy, wgs->conf);
@@ -6012,5 +6014,19 @@ void kitty_apply_transparency(WinGuiSeat *wgs)
     SetWindowLongPtr(wgs->term_hwnd, GWL_EXSTYLE,
                      GetWindowLongPtr(wgs->term_hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
     SetLayeredWindowAttributes(wgs->term_hwnd, 0, (BYTE)(255 - t), LWA_ALPHA);
+}
+#endif
+
+#ifdef MOD_PERSO
+/* ===== KiTTY feature: restore window position (NO-GLOBAL) =====
+ * Moves THIS seat's window to CONF_xpos/CONF_ypos if both are set (>=0). */
+void kitty_apply_window_pos(WinGuiSeat *wgs)
+{
+    if (!wgs || !wgs->term_hwnd) return;
+    int x = conf_get_int(wgs->conf, CONF_xpos);
+    int y = conf_get_int(wgs->conf, CONF_ypos);
+    if (x >= 0 && y >= 0)
+        SetWindowPos(wgs->term_hwnd, NULL, x, y, 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 #endif
