@@ -5597,9 +5597,13 @@ void InitWinMain( void ) {
 	strcpy( KiTTYClassName, appname ) ;
 
 #if (defined MOD_PERSO) && (!defined FLJ)
-	if( ReadParameter( INIT_SECTION, "KiClassName", buffer ) ) 
+	if( ReadParameter( INIT_SECTION, "KiClassName", buffer ) )
 		{ if( (strlen(buffer)>0) && (strlen(buffer)<128) ) { buffer[127]='\0'; strcpy( KiTTYClassName, buffer ) ; } }
 	appname = KiTTYClassName ;
+	/* Select the registry hive to match KiClassName: default KiTTY's own
+	 * (Software\9bis.com\KiTTY); PuTTY's hive when KiClassName=PuTTY. */
+	{ extern void kitty_set_registry_root(int use_putty);
+	  kitty_set_registry_root( !stricmp(KiTTYClassName, "PuTTY") ) ; }
 #endif
 
 	// Initialise le tableau des menus

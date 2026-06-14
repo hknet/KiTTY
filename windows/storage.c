@@ -18,10 +18,39 @@
 #define CSIDL_LOCAL_APPDATA 0x001c
 #endif
 
-static const char *const reg_jumplist_key = PUTTY_REG_POS "\\Jumplist";
+/*
+ * KiTTY: the registry root is chosen at RUNTIME (kitty.ini KiClassName).
+ * Default to KiTTY's own hive (Software\9bis.com\KiTTY) so existing KiTTY
+ * sessions are picked up and PuTTY's settings aren't touched; kitty.c calls
+ * kitty_set_registry_root() to flip it to PuTTY's hive when KiClassName=PuTTY.
+ * For convenience we additionally READ (never write) sessions from PuTTY's hive
+ * -- see open_settings_r() and enum_settings_start().  The pointers below stay
+ * fixed at their buffers; only the buffer contents change.
+ */
+static char reg_base_buf[256]     = "Software\\9bis.com\\KiTTY";
+static char reg_sessions_buf[300] = "Software\\9bis.com\\KiTTY\\Sessions";
+static char reg_jumplist_buf[300] = "Software\\9bis.com\\KiTTY\\Jumplist";
+static char reg_hostca_buf[300]   = "Software\\9bis.com\\KiTTY\\SshHostCAs";
+static char reg_hostkeys_buf[300] = "Software\\9bis.com\\KiTTY\\SshHostKeys";
+static const char *const reg_jumplist_key = reg_jumplist_buf;
 static const char *const reg_jumplist_value = "Recent sessions";
-static const char *const puttystr = PUTTY_REG_POS "\\Sessions";
-static const char *const host_ca_key = PUTTY_REG_POS "\\SshHostCAs";
+static const char *const puttystr = reg_sessions_buf;
+static const char *const host_ca_key = reg_hostca_buf;
+#define PUTTY_HIVE_SESSIONS "Software\\SimonTatham\\PuTTY\\Sessions"
+
+void kitty_set_registry_root(int use_putty)
+{
+    const char *base = use_putty ? "Software\\SimonTatham\\PuTTY"
+                                 : "Software\\9bis.com\\KiTTY";
+    strncpy(reg_base_buf, base, sizeof(reg_base_buf)-1);
+    reg_base_buf[sizeof(reg_base_buf)-1] = '\0';
+    sprintf(reg_sessions_buf, "%s\\Sessions",    reg_base_buf);
+    sprintf(reg_jumplist_buf, "%s\\Jumplist",    reg_base_buf);
+    sprintf(reg_hostca_buf,   "%s\\SshHostCAs",  reg_base_buf);
+    sprintf(reg_hostkeys_buf, "%s\\SshHostKeys", reg_base_buf);
+}
+static int kitty_root_is_putty(void)
+{ return strstr(reg_base_buf, "SimonTatham") != NULL; }
 
 static bool tried_shgetfolderpath = false;
 static HMODULE shell32_module = NULL;
@@ -86,6 +115,10 @@ settings_r *open_settings_r(const char *sessionname)
     strbuf *sb = strbuf_new();
     escape_registry_key(sessionname, sb);
     HKEY sesskey = open_regkey_ro(HKEY_CURRENT_USER, puttystr, sb->s);
+    if (!sesskey && !kitty_root_is_putty()) {
+        /* KiTTY: fall back to PuTTY's hive so PuTTY sessions can be loaded. */
+        sesskey = open_regkey_ro(HKEY_CURRENT_USER, PUTTY_HIVE_SESSIONS, sb->s);
+    }
     strbuf_free(sb);
 
     if (!sesskey)
@@ -227,40 +260,64 @@ void del_settings(const char *sessionname)
 }
 
 struct settings_e {
-    HKEY key;
+    char **names;       /* merged, deduped, still-escaped key names */
+    int count;
     int i;
 };
 
 settings_e *enum_settings_start(void)
 {
-    HKEY key = open_regkey_ro(HKEY_CURRENT_USER, puttystr);
-    if (!key)
-        return NULL;
-
     settings_e *e = snew(settings_e);
-    if (e) {
-        e->key = key;
-        e->i = 0;
-    }
+    e->names = NULL;
+    e->count = 0;
+    e->i = 0;
 
+    /* KiTTY: enumerate the active hive first, then PuTTY's hive (deduped), so
+     * KiTTY sessions and (for convenience) PuTTY sessions both show up. */
+    const char *hives[2];
+    int nhives = 1;
+    hives[0] = puttystr;
+    if (!kitty_root_is_putty())
+        hives[nhives++] = PUTTY_HIVE_SESSIONS;
+
+    int alloc = 0;
+    for (int h = 0; h < nhives; h++) {
+        HKEY key = open_regkey_ro(HKEY_CURRENT_USER, hives[h]);
+        if (!key)
+            continue;
+        char *name;
+        int idx = 0;
+        while ((name = enum_regkey(key, idx)) != NULL) {
+            idx++;
+            bool dup = false;
+            for (int j = 0; j < e->count; j++)
+                if (!strcmp(e->names[j], name)) { dup = true; break; }
+            if (dup) { sfree(name); continue; }
+            if (e->count >= alloc) {
+                alloc = alloc ? alloc * 2 : 16;
+                e->names = sresize(e->names, alloc, char *);
+            }
+            e->names[e->count++] = name;   /* take ownership */
+        }
+        close_regkey(key);
+    }
     return e;
 }
 
 bool enum_settings_next(settings_e *e, strbuf *sb)
 {
-    char *name = enum_regkey(e->key, e->i);
-    if (!name)
+    if (e->i >= e->count)
         return false;
-
-    unescape_registry_key(name, sb);
-    sfree(name);
+    unescape_registry_key(e->names[e->i], sb);
     e->i++;
     return true;
 }
 
 void enum_settings_finish(settings_e *e)
 {
-    close_regkey(e->key);
+    for (int j = 0; j < e->count; j++)
+        sfree(e->names[j]);
+    sfree(e->names);
     sfree(e);
 }
 
@@ -281,7 +338,7 @@ int check_stored_host_key(const char *hostname, int port,
     hostkey_regname(regname, hostname, port, keytype);
 
     HKEY rkey = open_regkey_ro(HKEY_CURRENT_USER,
-                               PUTTY_REG_POS "\\SshHostKeys");
+                               reg_hostkeys_buf);
     if (!rkey) {
         strbuf_free(regname);
         return 1;                      /* key does not exist in registry */
@@ -380,7 +437,7 @@ void store_host_key(Seat *seat, const char *hostname, int port,
     hostkey_regname(regname, hostname, port, keytype);
 
     HKEY rkey = create_regkey(HKEY_CURRENT_USER,
-                              PUTTY_REG_POS "\\SshHostKeys");
+                              reg_hostkeys_buf);
     if (rkey) {
         put_reg_sz(rkey, regname->s, key);
         close_regkey(rkey);
@@ -577,7 +634,7 @@ static HANDLE access_random_seed(int action)
      * Registry, if any.
      */
     {
-        HKEY rkey = open_regkey_ro(HKEY_CURRENT_USER, PUTTY_REG_POS);
+        HKEY rkey = open_regkey_ro(HKEY_CURRENT_USER, reg_base_buf);
         if (rkey) {
             char *regpath = get_reg_sz(rkey, "RandSeedFile");
             close_regkey(rkey);
@@ -832,7 +889,7 @@ void cleanup_all(void)
     /*
      * Open the main PuTTY registry key and remove everything in it.
      */
-    HKEY key = open_regkey_rw(HKEY_CURRENT_USER, PUTTY_REG_POS);
+    HKEY key = open_regkey_rw(HKEY_CURRENT_USER, reg_base_buf);
     if (key) {
         registry_recursive_remove(key);
         close_regkey(key);
