@@ -1,0 +1,73 @@
+/*
+ * kitty.rc - resource script for the KiTTY target.
+ * Mirrors putty.rc but additionally embeds the per-session icon set
+ * (IDI_MAINICON_0..IDI_MAINICON_49 + IDI_NOCON) used by SetNewIcon().
+ */
+#include "rcstuff.h"
+#include "putty-rc.h"
+
+#define APPNAME "KiTTY"
+#define APPDESC "SSH, Telnet, Rlogin, and SUPDUP client"
+
+IDI_MAINICON ICON "putty.ico"
+IDI_CFGICON ICON "puttycfg.ico"
+
+/* KiTTY per-session icon set */
+IDI_MAINICON_0 ICON "kitty_icons/icon_0.ico"
+IDI_MAINICON_1 ICON "kitty_icons/icon_1.ico"
+IDI_MAINICON_2 ICON "kitty_icons/icon_2.ico"
+IDI_MAINICON_3 ICON "kitty_icons/icon_3.ico"
+IDI_MAINICON_4 ICON "kitty_icons/icon_4.ico"
+IDI_MAINICON_5 ICON "kitty_icons/icon_5.ico"
+IDI_MAINICON_6 ICON "kitty_icons/icon_6.ico"
+IDI_MAINICON_7 ICON "kitty_icons/icon_7.ico"
+IDI_MAINICON_8 ICON "kitty_icons/icon_8.ico"
+IDI_MAINICON_9 ICON "kitty_icons/icon_9.ico"
+IDI_MAINICON_10 ICON "kitty_icons/icon_10.ico"
+IDI_MAINICON_11 ICON "kitty_icons/icon_11.ico"
+IDI_MAINICON_12 ICON "kitty_icons/icon_12.ico"
+IDI_MAINICON_13 ICON "kitty_icons/icon_13.ico"
+IDI_MAINICON_14 ICON "kitty_icons/icon_14.ico"
+IDI_MAINICON_15 ICON "kitty_icons/icon_15.ico"
+IDI_MAINICON_16 ICON "kitty_icons/icon_16.ico"
+IDI_MAINICON_17 ICON "kitty_icons/icon_17.ico"
+IDI_MAINICON_18 ICON "kitty_icons/icon_18.ico"
+IDI_MAINICON_19 ICON "kitty_icons/icon_19.ico"
+IDI_MAINICON_20 ICON "kitty_icons/icon_20.ico"
+IDI_MAINICON_21 ICON "kitty_icons/icon_21.ico"
+IDI_MAINICON_22 ICON "kitty_icons/icon_22.ico"
+IDI_MAINICON_23 ICON "kitty_icons/icon_23.ico"
+IDI_MAINICON_24 ICON "kitty_icons/icon_24.ico"
+IDI_MAINICON_25 ICON "kitty_icons/icon_25.ico"
+IDI_MAINICON_26 ICON "kitty_icons/icon_26.ico"
+IDI_MAINICON_27 ICON "kitty_icons/icon_27.ico"
+IDI_MAINICON_28 ICON "kitty_icons/icon_28.ico"
+IDI_MAINICON_29 ICON "kitty_icons/icon_29.ico"
+IDI_MAINICON_30 ICON "kitty_icons/icon_30.ico"
+IDI_MAINICON_31 ICON "kitty_icons/icon_31.ico"
+IDI_MAINICON_32 ICON "kitty_icons/icon_32.ico"
+IDI_MAINICON_33 ICON "kitty_icons/icon_33.ico"
+IDI_MAINICON_34 ICON "kitty_icons/icon_34.ico"
+IDI_MAINICON_35 ICON "kitty_icons/icon_35.ico"
+IDI_MAINICON_36 ICON "kitty_icons/icon_36.ico"
+IDI_MAINICON_37 ICON "kitty_icons/icon_37.ico"
+IDI_MAINICON_38 ICON "kitty_icons/icon_38.ico"
+IDI_MAINICON_39 ICON "kitty_icons/icon_39.ico"
+IDI_MAINICON_40 ICON "kitty_icons/icon_40.ico"
+IDI_MAINICON_41 ICON "kitty_icons/icon_41.ico"
+IDI_MAINICON_42 ICON "kitty_icons/icon_42.ico"
+IDI_MAINICON_43 ICON "kitty_icons/icon_43.ico"
+IDI_MAINICON_44 ICON "kitty_icons/icon_44.ico"
+IDI_MAINICON_45 ICON "kitty_icons/icon_45.ico"
+IDI_MAINICON_46 ICON "kitty_icons/icon_46.ico"
+IDI_MAINICON_47 ICON "kitty_icons/icon_47.ico"
+IDI_MAINICON_48 ICON "kitty_icons/icon_48.ico"
+IDI_MAINICON_49 ICON "kitty_icons/icon_49.ico"
+IDI_NOCON ICON "kitty_icons/nocon.ico"
+
+#include "help.rc2"
+#include "putty-common.rc2"
+
+#ifndef NO_MANIFESTS
+1 RT_MANIFEST "putty.mft"
+#endif /* NO_MANIFESTS */

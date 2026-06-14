@@ -145,6 +145,8 @@ void kitty_url_config(Conf *conf);
 void kitty_url_rescan(Terminal *term);
 int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int ctrl_required);
 int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
+/* Per-session icon (CONF_icone / CONF_iconefile). */
+void kitty_apply_icon(HWND hwnd, Conf *conf);
 /* Auto-command: send a command automatically after login (CONF_autocommand). */
 int kitty_autocommand_tick(HWND hwnd);
 extern int autocommand_delay;
@@ -672,6 +674,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     kitty_set_active_seat(wgs);
     kitty_apply_transparency(wgs);
     kitty_apply_window_pos(wgs);
+    /* KiTTY feature: per-session icon (CONF_icone / CONF_iconefile) */
+    kitty_apply_icon(wgs->term_hwnd, wgs->conf);
     /* KiTTY feature: auto-minimise-to-tray when SendToTray is set */
     if (conf_get_int(wgs->conf, CONF_sendtotray))
         SetAutoSendToTray(1);

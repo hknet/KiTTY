@@ -180,6 +180,22 @@ void kitty_shortcuts_toggle(HWND hwnd) { ManageShortcutsFlag(hwnd); }
 void kitty_start_winscp(HWND hwnd) { StartWinSCP(hwnd, NULL, NULL, NULL); }
 void kitty_send_file(HWND hwnd) { SendFile(hwnd); }
 
+/* Per-session icon (IconeFlag/CONF_icone/CONF_iconefile). Mirrors KiTTY
+ * window.c: when icons are enabled (GetIconeFlag()!=-1) apply either the
+ * external icon file (CONF_iconefile) or the embedded icon set indexed by
+ * CONF_icone via SetNewIcon. */
+void kitty_apply_icon(HWND hwnd, Conf *conf) {
+    if (GetIconeFlag() == -1) return;
+    const char *iconfile = filename_to_str(conf_get_filename(conf, CONF_iconefile));
+    char buf[1024];
+    buf[0] = '\0';
+    if (iconfile && iconfile[0]) {
+        strncpy(buf, iconfile, sizeof(buf)-1);
+        buf[sizeof(buf)-1] = '\0';
+    }
+    SetNewIcon(hwnd, buf, conf_get_int(conf, CONF_icone), SI_INIT);
+}
+
 /* Export current settings to a .ktx file (IDM_EXPORTSETTINGS).
  * Mirrors KiTTY's SaveCurrentSetting() but takes the seat conf (no global). */
 int SaveFileName(HWND hFrame, char *filename, char *Title, char *Filter);

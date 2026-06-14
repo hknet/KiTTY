@@ -214,7 +214,7 @@ add_executable(kitty
   putty.c
   help.c
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
-  putty.rc
+  kitty.rc
   ${KITTY_DIR}/kitty.c
   ${KITTY_DIR}/kitty_commun.c
   ${KITTY_DIR}/kitty_crypt.c

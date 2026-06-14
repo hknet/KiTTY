@@ -5692,8 +5692,10 @@ void InitWinMain( void ) {
 		if( existfile( IconFile ) ) 
 			{ HMODULE hDll ; if( ( hDll = LoadLibrary( TEXT(IconFile) ) ) != NULL ) hInstIcons = hDll ; }
 		if( hInstIcons==NULL )
-		if( existfile( "kitty.dll" ) ) 
+		if( existfile( "kitty.dll" ) )
 			{ HMODULE hDll ; if( ( hDll = LoadLibrary( TEXT("kitty.dll") ) ) != NULL ) hInstIcons = hDll ; }
+		// No external icon DLL: fall back to icons embedded in the executable itself
+		if( hInstIcons==NULL ) hInstIcons = GetModuleHandle( NULL ) ;
 		}
 
 	// Teste la presence d'une note et l'affiche
