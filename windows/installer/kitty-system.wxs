@@ -11,9 +11,9 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
 
   <Product Id="*"
-           Name="KiTTY 0.84.0.3-beta (system-wide install)"
+           Name="KiTTY 0.84.0.4-beta (system-wide install)"
            Language="1033"
-           Version="0.84.3"
+           Version="0.84.4"
            Manufacturer="KiTTY 0.84 port"
            UpgradeCode="69EA2DD5-EF19-4811-B324-EF34CAA6942C">
 
