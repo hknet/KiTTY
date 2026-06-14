@@ -256,3 +256,50 @@ target_link_libraries(kitty
   ${KITTY_DIR}/libs/notepad_64.a
   ${platform_libraries})
 set_target_properties(kitty PROPERTIES WIN32_EXECUTABLE ON)
+
+# ===================== KiTTY PORTABLE target =====================
+# Identical to the kitty target above, but with MOD_PORTABLE also defined so
+# the binary defaults to file/dir storage (savemode=dir) instead of the
+# registry. Produces build-*/kitty_portable.exe.
+add_executable(kitty_portable
+  window.c
+  putty.c
+  help.c
+  ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-console.c
+  kitty.rc
+  ${KITTY_DIR}/kitty.c
+  ${KITTY_DIR}/kitty_commun.c
+  ${KITTY_DIR}/kitty_crypt.c
+  ${KITTY_DIR}/kitty_image.c
+  ${KITTY_DIR}/kitty_proxy.c
+  ${KITTY_DIR}/kitty_registry.c
+  ${KITTY_DIR}/kitty_ssh.c
+  ${KITTY_DIR}/kitty_store.c
+  ${KITTY_DIR}/kitty_tools.c
+  ${KITTY_DIR}/kitty_win.c
+  ${KITTY_DIR}/url/urlhack.old.c
+  ${KITTY_DIR}/url/re_lib/regexp.c
+  ${KITTY_DIR}/kitty_url.c
+  ${KITTY_DIR}/kitty_bridge.c
+  ${KITTY_DIR}/kitty_settings_forced.c
+  ${KITTY_DIR}/kitty_zmodem.c
+  ${KITTY_DIR}/kitty_adb.c
+  ${KITTY_DIR}/kitty_rutty.c
+  ${KITTY_DIR}/kitty_config.c)
+be_list(kitty_portable KiTTY SSH SERIAL OTHERBACKENDS)
+target_compile_definitions(kitty_portable-be-list PRIVATE MOD_ADB=1)
+add_dependencies(kitty_portable generated_licence_h)
+target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MASTER_PASSWORD="kitty")
+target_compile_options(kitty_portable PRIVATE -fcommon)
+target_include_directories(kitty_portable PRIVATE
+  ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
+  ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)
+target_link_libraries(kitty_portable
+  guiterminal guimisc eventloop sshclient otherbackends settings network crypto utils
+  ${KITTY_DIR}/libs/libjpeg_64.a
+  ${KITTY_DIR}/libs/base64_64.a ${KITTY_DIR}/libs/bcrypt_64.a
+  ${KITTY_DIR}/libs/MD5check_64.a ${KITTY_DIR}/libs/mini_64.a
+  ${KITTY_DIR}/libs/notepad_64.a
+  ${platform_libraries})
+set_target_properties(kitty_portable PROPERTIES WIN32_EXECUTABLE ON)
