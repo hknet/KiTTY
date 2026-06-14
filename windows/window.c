@@ -119,6 +119,7 @@ static void setup_clipboards(Terminal *, Conf *);
 static void reset_window(WinGuiSeat *wgs, int reinit);
 #ifdef MOD_PERSO
 void kitty_set_active_seat(WinGuiSeat *wgs);
+void kitty_apply_transparency(WinGuiSeat *wgs);
 #endif
 
 static void flash_window(WinGuiSeat *wgs, int mode);
@@ -629,6 +630,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     wgs->term = term_init(wgs->conf, &wgs->ucsdata, &wgs->termwin);
 #ifdef MOD_PERSO
     kitty_set_active_seat(wgs);
+    kitty_apply_transparency(wgs);
 #endif
     setup_clipboards(wgs->term, wgs->conf);
     wgs->logctx = log_init(&wgs->logpolicy, wgs->conf);
@@ -5982,5 +5984,23 @@ void ResetWindow(int reinit) {
 }
 void resize(int height, int width) {
     (void)height; (void)width; /* TODO: terminal resize bridge */
+}
+#endif
+
+#ifdef MOD_PERSO
+/* ===== KiTTY feature: window transparency (NO-GLOBAL) =====
+ * Reads CONF_transparencynumber from THIS seat's conf and applies it to
+ * THIS seat's window. No global conf/term/hwnd -- fully per-WinGuiSeat,
+ * compatible with multiple simultaneous seats (e.g. sshproxy).
+ * Value 0 = opaque (default, no effect); 1..254 = increasing translucency. */
+void kitty_apply_transparency(WinGuiSeat *wgs)
+{
+    if (!wgs || !wgs->term_hwnd) return;
+    int t = conf_get_int(wgs->conf, CONF_transparencynumber);
+    if (t <= 0) return;                 /* opaque / disabled */
+    if (t > 254) t = 254;
+    SetWindowLongPtr(wgs->term_hwnd, GWL_EXSTYLE,
+                     GetWindowLongPtr(wgs->term_hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
+    SetLayeredWindowAttributes(wgs->term_hwnd, 0, (BYTE)(255 - t), LWA_ALPHA);
 }
 #endif
