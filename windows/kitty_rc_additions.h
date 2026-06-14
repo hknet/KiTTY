@@ -212,3 +212,12 @@
 #define IDI_PUTTY_LAUNCH 9901
 #endif
 #endif /* KITTY_RC_ADDITIONS_H */
+#ifndef IDM_VISIBLE
+#define IDM_VISIBLE 0xA850
+#endif
+#ifndef IDM_TRANSPARUP
+#define IDM_TRANSPARUP 0xA880
+#endif
+#ifndef IDM_TRANSPARDOWN
+#define IDM_TRANSPARDOWN 0xA890
+#endif

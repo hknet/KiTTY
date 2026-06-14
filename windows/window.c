@@ -788,6 +788,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, (conf_get_int(wgs->conf, CONF_resize_action)
                            == RESIZE_DISABLED) ? MF_GRAYED : MF_ENABLED,
                        IDM_FULLSCREEN, "&Full Screen");
+#ifdef MOD_PERSO
+            AppendMenu(m, MF_SEPARATOR, 0, 0);
+            AppendMenu(m, MF_ENABLED, IDM_TRANSPARUP,   "Transparency &+");
+            AppendMenu(m, MF_ENABLED, IDM_TRANSPARDOWN, "Transparency &-");
+            AppendMenu(m, MF_ENABLED, IDM_VISIBLE,      "Always visi&ble");
+#endif
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             if (has_help())
                 AppendMenu(m, MF_ENABLED, IDM_HELP, "&Help");
@@ -2605,6 +2611,27 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           case IDM_FULLSCREEN:
             flip_full_screen(wgs);
             break;
+#ifdef MOD_PERSO
+          case IDM_TRANSPARUP:
+          case IDM_TRANSPARDOWN: {
+            int t = conf_get_int(wgs->conf, CONF_transparencynumber);
+            if (t < 0) t = 0;
+            t += ((wParam & ~0xF) == IDM_TRANSPARUP) ? 10 : -10;
+            if (t < 0) t = 0; if (t > 254) t = 254;
+            conf_set_int(wgs->conf, CONF_transparencynumber, t);
+            SetWindowLongPtr(wgs->term_hwnd, GWL_EXSTYLE,
+                GetWindowLongPtr(wgs->term_hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
+            SetLayeredWindowAttributes(wgs->term_hwnd, 0, (BYTE)(255 - t), LWA_ALPHA);
+            break;
+          }
+          case IDM_VISIBLE: {
+            bool on = !conf_get_bool(wgs->conf, CONF_alwaysontop);
+            conf_set_bool(wgs->conf, CONF_alwaysontop, on);
+            SetWindowPos(wgs->term_hwnd, on ? HWND_TOPMOST : HWND_NOTOPMOST,
+                         0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+            break;
+          }
+#endif
           default:
             if (wParam >= IDM_SAVED_MIN && wParam < IDM_SAVED_MAX) {
                 SendMessage(hwnd, WM_SYSCOMMAND, IDM_SAVEDSESS, wParam);
