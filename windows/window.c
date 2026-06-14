@@ -2749,12 +2749,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 ldisc_echoedit_update(wgs->ldisc);
             break;
           case IDM_ABOUT:
-#ifdef MOD_PERSO
-            /* KiTTY-specific About dialog */
-            kitty_about(hwnd);
-#else
+            /* Unified branded About box (same one as the config dialog's About
+             * button -> AboutProc); the old KiTTY-specific KittyAboutProc dialog
+             * is retired to keep the two About boxes consistent. */
             showabout(hwnd);
-#endif
             break;
           case IDM_HELP:
             launch_help(hwnd, NULL);
