@@ -137,6 +137,12 @@ void kitty_export_settings(HWND, Conf*);
 void kitty_dup_session(HWND, Conf*);
 int GetAutoSendToTray(void);
 void SetAutoSendToTray(const int flag);
+/* URL hyperlinks (kitty_url.c) */
+void kitty_url_init(void);
+void kitty_url_config(Conf *conf);
+void kitty_url_rescan(Terminal *term);
+int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int ctrl_required);
+int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
 #endif
 
 static void flash_window(WinGuiSeat *wgs, int mode);
@@ -659,6 +665,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY feature: auto-minimise-to-tray when SendToTray is set */
     if (conf_get_int(wgs->conf, CONF_sendtotray))
         SetAutoSendToTray(1);
+    /* KiTTY feature: URL hyperlinks - init urlhack + compile regex */
+    kitty_url_init();
+    kitty_url_config(wgs->conf);
 #endif
     setup_clipboards(wgs->term, wgs->conf);
     wgs->logctx = log_init(&wgs->logpolicy, wgs->conf);
@@ -2879,6 +2888,21 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                       is_alt_pressed());
                 SetCapture(hwnd);
             } else {
+#ifdef MOD_PERSO
+                /* KiTTY URL hyperlinks: on left-button release, if (ctrl+)click
+                 * lands on a detected URL region, launch it instead of
+                 * completing a selection. */
+                if (message == WM_LBUTTONUP &&
+                    kitty_url_click(wgs->term, wgs->conf,
+                                    TO_CHR_X(X_POS(lParam)),
+                                    TO_CHR_Y(Y_POS(lParam)),
+                                    (wParam & MK_CONTROL) != 0)) {
+                    term_cancel_selection_drag(wgs->term);
+                    if (!(wParam & (MK_LBUTTON | MK_MBUTTON | MK_RBUTTON)))
+                        ReleaseCapture();
+                    return 0;
+                }
+#endif
                 term_mouse(wgs->term, button, translate_button(wgs, button),
                            MA_RELEASE, TO_CHR_X(X_POS(lParam)),
                            TO_CHR_Y(Y_POS(lParam)), wParam & MK_SHIFT,
@@ -2927,6 +2951,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                        TO_CHR_Y(Y_POS(lParam)), false,
                        false, false);
         }
+#ifdef MOD_PERSO
+        /* KiTTY URL hyperlinks: rescan visible screen for links and update the
+         * hand cursor when hovering over one. */
+        kitty_url_rescan(wgs->term);
+        kitty_url_hover(wgs->term, hwnd,
+                        TO_CHR_X(X_POS(lParam)), TO_CHR_Y(Y_POS(lParam)),
+                        conf_get_int(wgs->conf, CONF_url_ctrl_click));
+#endif
         return 0;
       case WM_NCMOUSEMOVE:
         if (wgs->last_mousemove != WM_NCMOUSEMOVE ||

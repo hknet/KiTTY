@@ -226,6 +226,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_tools.c
   ${KITTY_DIR}/kitty_win.c
   ${KITTY_DIR}/url/urlhack.c
+  ${KITTY_DIR}/kitty_url.c
   ${KITTY_DIR}/kitty_bridge.c
   ${KITTY_DIR}/kitty_settings_forced.c)
 be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)

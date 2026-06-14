@@ -353,8 +353,14 @@ typedef struct re_pattern_buffer regex_t;
    defined both in `regex.c' and here.  */
 #define RE_EXACTN_VALUE 1
 
-/* Type for byte offsets within the string.  POSIX mandates this.  */
-typedef int regoff_t;
+/* Type for byte offsets within the string.  POSIX mandates this.
+ * NOTE (KiTTY 0.84 port): the prebuilt libregex_64.a was compiled with a
+ * 64-bit regoff_t, so regexec() writes 16-byte regmatch_t entries (rm_so at
+ * byte 0, rm_eo at byte 8).  The historical "int" typedef here made
+ * regmatch_t 8 bytes, so callers read rm_eo from the high word of rm_so (=0),
+ * producing a garbage match end and crashing urlhack's scan loop.  Match the
+ * library's ABI with a 64-bit offset. */
+typedef long long regoff_t;
 
 
 /* This is the structure we store register match data in.  See
