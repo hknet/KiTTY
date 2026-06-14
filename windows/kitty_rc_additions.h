@@ -221,3 +221,9 @@
 #ifndef IDM_TRANSPARDOWN
 #define IDM_TRANSPARDOWN 0xA890
 #endif
+#ifndef IDM_TOTRAY
+#define IDM_TOTRAY 0xA930
+#endif
+#ifndef IDM_WINROL
+#define IDM_WINROL 0xA900
+#endif

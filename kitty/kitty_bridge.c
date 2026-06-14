@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "putty.h"
+#include "kitty.h"
 
 /* KiTTY logging mode toggle (originally KiTTY logging.c) */
 int LogMode = 0;
@@ -41,7 +42,7 @@ int DebugAddPassword(const char *fct, const char *pwd) {
 int force_reconf = 1;
 
 /* TODO: wire the SSH version override into the SSH layer */
-void set_sshver(char *vers) { (void)vers; }
+void set_sshver(const char *vers) { (void)vers; }
 
 /* TODO: KiTTY session export to a .ktx file (depends on write_setting_*_forced) */
 void save_open_settings_forced(char *filename, Conf *conf) { (void)filename; (void)conf; }
@@ -52,4 +53,17 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
                                    const int port, const char *remotepath) {
     (void)hwnd; (void)oldconf; (void)host; (void)user;
     (void)pass; (void)port; (void)remotepath;
+}
+
+/* ===== kitty menu-action wrappers (window.c calls these; they may use KiTTY
+ * globals/APIs declared in kitty.h, which window.c does not include) ===== */
+void kitty_send_to_tray(HWND hwnd) {
+    if (GetVisibleFlag() == VISIBLE_YES) {
+        SetVisibleFlag(VISIBLE_TRAY);
+        ManageToTray(hwnd);
+    }
+}
+void kitty_rollup(HWND hwnd, int resize_action) {
+    if (GetWinrolFlag())
+        ManageWinrol(hwnd, resize_action);
 }

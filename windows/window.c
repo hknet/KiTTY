@@ -122,6 +122,8 @@ void kitty_set_active_seat(WinGuiSeat *wgs);
 void InitWinMain(void);
 void kitty_apply_transparency(WinGuiSeat *wgs);
 void kitty_apply_window_pos(WinGuiSeat *wgs);
+void kitty_send_to_tray(HWND);
+void kitty_rollup(HWND, int);
 #endif
 
 static void flash_window(WinGuiSeat *wgs, int mode);
@@ -793,6 +795,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_TRANSPARUP,   "Transparency &+");
             AppendMenu(m, MF_ENABLED, IDM_TRANSPARDOWN, "Transparency &-");
             AppendMenu(m, MF_ENABLED, IDM_VISIBLE,      "Always visi&ble");
+            AppendMenu(m, MF_ENABLED, IDM_TOTRAY,       "Send to tra&y");
+            AppendMenu(m, MF_ENABLED, IDM_WINROL,       "Roll-u&p");
 #endif
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             if (has_help())
@@ -2631,6 +2635,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                          0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
             break;
           }
+          case IDM_TOTRAY:
+            kitty_send_to_tray(wgs->term_hwnd);
+            break;
+          case IDM_WINROL:
+            kitty_rollup(wgs->term_hwnd, conf_get_int(wgs->conf, CONF_resize_action));
+            break;
 #endif
           default:
             if (wParam >= IDM_SAVED_MIN && wParam < IDM_SAVED_MAX) {
