@@ -272,3 +272,6 @@
 #ifndef IDM_EXPORTSETTINGS
 #define IDM_EXPORTSETTINGS 0xB040
 #endif
+#ifndef IDM_DUPKITTY
+#define IDM_DUPKITTY 0xB130
+#endif

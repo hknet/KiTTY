@@ -15,6 +15,7 @@
 #include <string.h>
 #include "putty.h"
 #include "kitty.h"
+#include "kitty_commun.h"  /* GetCryptSaltFlag, MASKPASS */
 
 /* KiTTY logging mode toggle (originally KiTTY logging.c) */
 int LogMode = 0;
@@ -52,12 +53,91 @@ void set_sshver(const char *vers) {
 
 /* save_open_settings_forced now implemented in kitty_settings_forced.c */
 
-/* TODO: launch a session with the current settings */
+/* Launch a NEW session process from an in-memory Conf, by serialising it into
+ * a file-mapping and spawning "<exe> &<filemap>:<size>" — exactly the native
+ * 0.84 Duplicate-Session mechanism (windows/window.c IDM_DUPSESS), which the
+ * child parses via handle_special_filemapping_cmdline(). */
+int RunSession(HWND hwnd, const char *folder_in, char *session_in);
+void del_settings(const char *sessionname);
+void RunSessionWithConfSettings(Conf *conf) {
+    char b[2048];
+    char *cl = NULL;
+    const char *argprefix;
+    STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+    HANDLE filemap = NULL;
+    SECURITY_ATTRIBUTES sa;
+    strbuf *serbuf;
+    void *p;
+    int size;
+
+    argprefix = restricted_acl() ? "&R" : "";
+
+    serbuf = strbuf_new();
+    conf_serialise(BinarySink_UPCAST(serbuf), conf);
+    size = serbuf->len;
+
+    sa.nLength = sizeof(sa);
+    sa.lpSecurityDescriptor = NULL;
+    sa.bInheritHandle = true;
+    filemap = CreateFileMapping(INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE,
+                                0, size, NULL);
+    if (filemap && filemap != INVALID_HANDLE_VALUE) {
+        p = MapViewOfFile(filemap, FILE_MAP_WRITE, 0, 0, size);
+        if (p) { memcpy(p, serbuf->s, size); UnmapViewOfFile(p); }
+    }
+    strbuf_free(serbuf);
+
+    cl = dupprintf("putty %s&%p:%u", argprefix, filemap, (unsigned)size);
+    GetModuleFileName(NULL, b, sizeof(b) - 1);
+    si.cb = sizeof(si);
+    si.lpReserved = NULL; si.lpDesktop = NULL; si.lpTitle = NULL;
+    si.dwFlags = 0; si.cbReserved2 = 0; si.lpReserved2 = NULL;
+    CreateProcess(b, cl, NULL, NULL, true /*inherit_handles*/,
+                  NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    if (filemap) CloseHandle(filemap);
+    sfree(cl);
+}
+
 void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
                                    const char *user, const char *pass,
                                    const int port, const char *remotepath) {
-    (void)hwnd; (void)oldconf; (void)host; (void)user;
-    (void)pass; (void)port; (void)remotepath;
+    Conf *newconf = conf_copy(oldconf);
+    (void)port;
+    if (host != NULL) conf_set_str(newconf, CONF_host, host);
+    if (user != NULL) conf_set_str(newconf, CONF_username, user);
+    if (pass != NULL) conf_set_str(newconf, CONF_password, pass);
+
+#ifndef MOD_NOPASSWORD
+    {
+        char pst[4096];
+        strcpy(pst, conf_get_str(newconf, CONF_password));
+        MASKPASS(GetCryptSaltFlag(), pst);
+        if (pass != NULL) strcpy(pst, pass);
+        conf_set_str(newconf, CONF_password, pst);
+        memset(pst, 0, strlen(pst));
+    }
+#else
+    conf_set_str(newconf, CONF_password, "");
+#endif
+
+    if (remotepath != NULL) {
+        char *buf = (char*)malloc(strlen(remotepath) + 5);
+        sprintf(buf, "cd %s", remotepath);
+        conf_set_str(newconf, CONF_autocommand, buf);
+        free(buf);
+    }
+
+    if (conf_launchable(newconf)) {
+        RunSessionWithConfSettings(newconf);
+    } else {
+        save_settings("__STARTUP", newconf);
+        RunSession(hwnd, conf_get_str(oldconf, CONF_folder), "__STARTUP");
+        del_settings("__STARTUP");
+    }
+    conf_free(newconf);
 }
 
 /* ===== kitty menu-action wrappers (window.c calls these; they may use KiTTY
@@ -118,4 +198,9 @@ void kitty_export_settings(HWND hwnd, Conf *conf) {
     if (SaveFileName(hwnd, filename, "Save file...", buffer)) {
         save_open_settings_forced(filename, conf);
     }
+}
+
+/* Duplicate the current session into a new process (filemap-serialised conf). */
+void kitty_dup_session(HWND hwnd, Conf *conf) {
+    RunSessionWithCurrentSettings(hwnd, conf, NULL, NULL, NULL, 0, NULL);
 }
