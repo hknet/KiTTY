@@ -243,6 +243,43 @@ void kitty_about(HWND hwnd) {
               hwnd, KittyAboutProc);
 }
 
+#ifdef MOD_BACKGROUNDIMAGE
+/* Background image: load the configured image into the module-global
+ * backgroundbm/backgrounddc (kitty_image.c). Enables the image machinery
+ * and confirms the image LOADS; the WM_PAINT blit is intentionally not
+ * wired (see note in window.c) to avoid destabilising 0.84's refactored
+ * paint path. Returns nonzero if a background bitmap was created. */
+extern HWND MainHwnd;
+extern HBITMAP backgroundbm;
+BOOL load_bg_bmp(void);
+int kitty_apply_background(HWND hwnd, Conf *conf) {
+    if (!GetBackgroundImageFlag()) return 0;
+    if (GetPuttyFlag()) return 0;
+    if (conf_get_int(conf, CONF_bg_type) == 0) return 0;  /* solid = nothing */
+    MainHwnd = hwnd;
+    load_bg_bmp();
+    int ok = (backgroundbm != NULL);
+    /* Env-gated self-test: write the load result so a harness can verify the
+     * image actually loaded without needing to observe the (unwired) render. */
+    {
+        const char *st = getenv("KITTY_BG_SELFTEST");
+        if (st && st[0]) {
+            FILE *f = fopen(st, "w");
+            if (f) {
+                BITMAP bm; memset(&bm, 0, sizeof(bm));
+                if (backgroundbm) GetObject(backgroundbm, sizeof(bm), &bm);
+                fprintf(f, "load_bg_bmp ok=%d bmp=%p w=%ld h=%ld bgtype=%d file=%s\n",
+                        ok, (void*)backgroundbm, bm.bmWidth, bm.bmHeight,
+                        conf_get_int(conf, CONF_bg_type),
+                        filename_to_str(conf_get_filename(conf, CONF_bg_image_filename)));
+                fclose(f);
+            }
+        }
+    }
+    return ok;
+}
+#endif
+
 /* Export current settings to a .ktx file (IDM_EXPORTSETTINGS).
  * Mirrors KiTTY's SaveCurrentSetting() but takes the seat conf (no global). */
 int SaveFileName(HWND hFrame, char *filename, char *Title, char *Filter);

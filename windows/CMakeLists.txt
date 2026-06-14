@@ -232,7 +232,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_config.c)
 be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
 add_dependencies(kitty generated_licence_h)
-target_compile_definitions(kitty PRIVATE MOD_PERSO MASTER_PASSWORD="kitty")
+target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MASTER_PASSWORD="kitty")
 target_compile_options(kitty PRIVATE -fcommon)
 target_include_directories(kitty PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5

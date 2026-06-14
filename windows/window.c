@@ -149,6 +149,10 @@ int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
 void kitty_apply_icon(HWND hwnd, Conf *conf);
 /* KiTTY-specific About dialog. */
 void kitty_about(HWND hwnd);
+#ifdef MOD_BACKGROUNDIMAGE
+/* Background image: load the configured image (CONF_bg_image_filename etc.). */
+int kitty_apply_background(HWND hwnd, Conf *conf);
+#endif
 /* Auto-command: send a command automatically after login (CONF_autocommand). */
 int kitty_autocommand_tick(HWND hwnd);
 extern int autocommand_delay;
@@ -678,6 +682,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     kitty_apply_window_pos(wgs);
     /* KiTTY feature: per-session icon (CONF_icone / CONF_iconefile) */
     kitty_apply_icon(wgs->term_hwnd, wgs->conf);
+#ifdef MOD_BACKGROUNDIMAGE
+    /* KiTTY feature: background image - load the configured image. NOTE: the
+     * WM_PAINT blit is NOT wired (0.84's refactored paint path); this loads
+     * the bitmap so the machinery is live and verifiable. */
+    kitty_apply_background(wgs->term_hwnd, wgs->conf);
+#endif
     /* KiTTY feature: auto-minimise-to-tray when SendToTray is set */
     if (conf_get_int(wgs->conf, CONF_sendtotray))
         SetAutoSendToTray(1);
@@ -6246,6 +6256,27 @@ void ResetWindow(int reinit) {
 void resize(int height, int width) {
     (void)height; (void)width; /* TODO: terminal resize bridge */
 }
+
+#ifdef MOD_BACKGROUNDIMAGE
+/* Geometry/colour accessors required by kitty_image.c, served from the
+ * active WinGuiSeat (KiTTY is effectively single-window). */
+int return_offset_height(void) {
+    return kitty_active_wgs ? kitty_active_wgs->offset_height : 0;
+}
+int return_offset_width(void) {
+    return kitty_active_wgs ? kitty_active_wgs->offset_width : 0;
+}
+int return_font_height(void) {
+    return kitty_active_wgs ? kitty_active_wgs->font_height : 0;
+}
+int return_font_width(void) {
+    return kitty_active_wgs ? kitty_active_wgs->font_width : 0;
+}
+COLORREF return_colours258(void) {
+    /* 258 = ATTR_DEFBG index in KiTTY's colour table = default background. */
+    return kitty_active_wgs ? kitty_active_wgs->colours[258] : RGB(0,0,0);
+}
+#endif
 #endif
 
 #ifdef MOD_PERSO

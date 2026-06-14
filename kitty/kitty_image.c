@@ -361,7 +361,7 @@ static BOOL load_file_bmp(HBITMAP* rawImage, int* style, int* x, int* y)
 
     if( *rawImage!=NULL ) { DeleteObject( *rawImage ) ; *rawImage=NULL ; }
     *rawImage = LoadImage(
-        NULL, conf_get_filename( conf, CONF_bg_image_filename )->path, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE
+        NULL, filename_to_str(conf_get_filename( conf, CONF_bg_image_filename )), IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE
     );
     if(*rawImage == 0)
         return FALSE; // TODO: Should the error be reported to the user here?
@@ -582,7 +582,7 @@ static BOOL load_file_jpeg(HBITMAP* rawImage, int* style, int* x, int* y) {
     HGLOBAL LimageBitmap = NULL ;
 
 	
-    if(  ( fp=fopen( conf_get_filename( conf,CONF_bg_image_filename)->path, "rb" ) ) == NULL ) return FALSE ;
+    if(  ( fp=fopen( filename_to_str(conf_get_filename( conf,CONF_bg_image_filename)), "rb" ) ) == NULL ) return FALSE ;
     
     if( *rawImage!=NULL ) { DeleteObject( *rawImage ) ; *rawImage=NULL ; }
 *rawImage = loadJPEGimage(fp, &LimageBitmap,&LsizeX, &LsizeY) ;
@@ -915,19 +915,21 @@ BOOL load_bg_bmp()
     case 2:
     	{
 	backgroundcolor = GetSysColor(COLOR_BACKGROUND) ;
-	if( conf_get_filename(conf,CONF_bg_image_filename)->path[0] == '#' ) {
+	const char *bgpath = filename_to_str(conf_get_filename(conf,CONF_bg_image_filename)) ;
+	int bgpathlen = (int)strlen(bgpath) ;
+	if( bgpath[0] == '#' ) {
 		int r=0,g=0,b=0;
-		sscanf( conf_get_filename(conf,CONF_bg_image_filename)->path, "#%02X%02X%02X", &r, &g, &b ) ;
+		sscanf( bgpath, "#%02X%02X%02X", &r, &g, &b ) ;
 		backgroundcolor = RGB( r, g, b ) ;
 		BYTE *pDst = NULL;
 		rawImage = CreateHBitmap(10, 10, (void**)&pDst);
 		style = 4 ;
 		}
-    	else if( !stricmp( conf_get_filename(conf,CONF_bg_image_filename)->path+strlen(conf_get_filename(conf,CONF_bg_image_filename)->path)-4, ".jpg" ) ) {
+    	else if( bgpathlen>=4 && !stricmp( bgpath+bgpathlen-4, ".jpg" ) ) {
     		if(!load_file_jpeg(&rawImage, &style, &x, &y))
         	    rawImage = NULL; // Make sure rawImage is still NULL.
     		}
-    	else if( !stricmp( conf_get_filename(conf,CONF_bg_image_filename)->path+strlen(conf_get_filename(conf,CONF_bg_image_filename)->path)-5, ".jpeg" ) ) {
+    	else if( bgpathlen>=5 && !stricmp( bgpath+bgpathlen-5, ".jpeg" ) ) {
     		if(!load_file_jpeg(&rawImage, &style, &x, &y))
         	    rawImage = NULL; // Make sure rawImage is still NULL.
     		}
