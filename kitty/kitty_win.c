@@ -1,5 +1,8 @@
 #include "kitty_win.h"
 
+/* MOD_PERSO event-log wrapper, defined in windows/window.c */
+void do_eventlog(const char *st) ;
+
 // Modifie la transparence
 void SetTransparency( HWND hwnd, int value ) {
 #ifndef MOD_NOTRANSPARENCY
@@ -483,7 +486,7 @@ HWND CreateToolTip(int toolID, HWND hDlg, PTSTR pszText)
     HWND hwndTool = GetDlgItem(hDlg, toolID);
     
     // Create the tooltip. g_hInst is the global instance handle.
-    HWND hwndTip = CreateWindowEx((DWORD)NULL, TOOLTIPS_CLASS, NULL,
+    HWND hwndTip = CreateWindowEx(0, TOOLTIPS_CLASS, NULL,
                               WS_POPUP |TTS_ALWAYSTIP | TTS_BALLOON,
                               CW_USEDEFAULT, CW_USEDEFAULT,
                               CW_USEDEFAULT, CW_USEDEFAULT,

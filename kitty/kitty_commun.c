@@ -109,7 +109,9 @@ char * ConfigDirectory = NULL ;
 
 char * GetConfigDirectory( void ) { return ConfigDirectory ; }
 
+#ifndef stricmp	/* platform.h may #define stricmp _stricmp (CRT); don't redeclare */
 int stricmp(const char *s1, const char *s2) ;
+#endif
 int readINI( const char * filename, const char * section, const char * key, char * pStr) ;
 char * SetSessPath( const char * dec ) ;
 

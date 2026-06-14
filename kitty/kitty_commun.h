@@ -75,7 +75,9 @@ extern char * ConfigDirectory ;
 
 char * GetConfigDirectory( void ) ;
 
+#ifndef stricmp	/* platform.h may #define stricmp _stricmp (CRT); don't redeclare */
 int stricmp(const char *s1, const char *s2) ;
+#endif
 char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue) ;
 int readINI( const char * filename, const char * section, const char * key, char * pStr) ;
 char * SetSessPath( const char * dec ) ;

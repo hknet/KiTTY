@@ -23,6 +23,7 @@
  */
 #ifdef MOD_ZMODEM
 
+#include <winsock2.h>	/* must precede windows.h (putty.h pulls winsock2 later) */
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>

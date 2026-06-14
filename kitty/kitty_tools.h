@@ -12,7 +12,9 @@
 #endif
 
 // Procedures de traitement de chaines
+#ifndef stricmp	/* platform.h may #define stricmp _stricmp (CRT); don't redeclare */
 int stricmp(const char *s1, const char *s2) ;
+#endif
 
 char *stristr (const char *meule_de_foin, const char *aiguille) ;
 

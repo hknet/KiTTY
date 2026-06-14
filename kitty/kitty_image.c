@@ -6,6 +6,7 @@
 #include "jpeg/jpeglib.h"
 #include <stdio.h>
 
+#include <winsock2.h>	/* must precede windows.h (putty.h pulls winsock2 later) */
 #include <windows.h>
 
 #ifdef MOD_BACKGROUNDIMAGE
@@ -33,7 +34,9 @@ extern Conf *conf ;// extern Config cfg;
 //extern COLORREF colours[NALLCOLOURS] ;
 extern HWND MainHwnd ;
 
+#ifndef stricmp	/* platform.h may #define stricmp _stricmp (CRT); don't redeclare */
 int stricmp(const char *s1, const char *s2) ;
+#endif
 int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) ;
 int get_param( const char * val ) ;
 
@@ -623,7 +626,8 @@ void init_dc_blend(void) {
     HMODULE msimg32_dll = LoadLibrary("msimg32.dll");
     
     if(msimg32_dll) 
-        pAlphaBlend = GetProcAddress(msimg32_dll, "AlphaBlend");
+        pAlphaBlend = (BOOL (WINAPI *)( HDC, int, int, int, int, HDC, int, int, int, int, BLENDFUNCTION ))
+                      GetProcAddress(msimg32_dll, "AlphaBlend");
     
     if(pAlphaBlend) {
     	HDC hdc = GetDC(MainHwnd);

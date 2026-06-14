@@ -363,6 +363,7 @@ int fileno(FILE *stream) ;
 // Sauvegarde de la cle de registre
 void SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) ;
 void ManageProtect( HWND hwnd, TermWin *tw, char * title ) ;
+void ManagePrint( HWND hwnd ) ;
 // Gere l'option always visible
 void ManageVisible( HWND hwnd, TermWin *tw, char * title ) ;
 // Sauvegarde de la cle de registre

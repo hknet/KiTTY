@@ -3070,9 +3070,9 @@ static LRESULT CALLBACK InputMultilineCallBack (HWND hwnd, UINT message, WPARAM 
 				free(buffer);
 				}
 			
-			FARPROC lpfnSubClassProc = MakeProcInstance( EditMultilineCallBack, hInst );
+			FARPROC lpfnSubClassProc = (FARPROC)MakeProcInstance( EditMultilineCallBack, hInst );
 			if( lpfnSubClassProc )
-				lpfnOldEditProc = (FARPROC)SetWindowLong( handle, GWL_WNDPROC, (DWORD)(FARPROC)lpfnSubClassProc );
+				lpfnOldEditProc = (FARPROC)SetWindowLongPtr( handle, GWLP_WNDPROC, (LONG_PTR)lpfnSubClassProc );
 			}
 			break;
 		case WM_COMMAND:
