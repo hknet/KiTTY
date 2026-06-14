@@ -1,0 +1,5 @@
+build-mingw/
+build/
+*.o
+*.obj
+*.tmp
