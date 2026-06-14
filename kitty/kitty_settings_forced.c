@@ -316,7 +316,7 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_b_forced(sesskey, "RFCEnviron", conf_get_bool(conf, CONF_rfc_environ));
     write_setting_b_forced(sesskey, "PassiveTelnet", conf_get_bool(conf, CONF_passive_telnet));
     write_setting_b_forced(sesskey, "BackspaceIsDelete", conf_get_bool(conf, CONF_bksp_is_delete));
-    /* NOTPORTED: CONF_enter_sends_crlf not in 0.84 conf.h */
+    write_setting_i_forced(sesskey, "EnterSendsCrLf", conf_get_int(conf, CONF_enter_sends_crlf));
     write_setting_b_forced(sesskey, "RXVTHomeEnd", conf_get_bool(conf, CONF_rxvt_homeend));
     write_setting_i_forced(sesskey, "LinuxFunctionKeys", conf_get_int(conf, CONF_funky_type));
     write_setting_b_forced(sesskey, "NoApplicationKeys", conf_get_bool(conf, CONF_no_applic_k));
@@ -474,7 +474,7 @@ void save_open_settings_forced(char *filename, Conf *conf) {
 #ifdef MOD_PERSO
     if (conf_get_int(conf, CONF_transparencynumber)<-1) conf_set_int(conf, CONF_transparencynumber,-1);
     if (conf_get_int(conf, CONF_transparencynumber)>255) conf_set_int(conf, CONF_transparencynumber,255);
-    /* NOTPORTED: CONF_host_alt not in 0.84 conf.h */
+    write_setting_s_forced(sesskey, "HostAlt", conf_get_str(conf, CONF_host_alt));
     write_setting_i_forced(sesskey, "TransparencyValue", conf_get_int(conf, CONF_transparencynumber));
     write_setting_i_forced(sesskey, "SendToTray", conf_get_int(conf, CONF_sendtotray));
     write_setting_i_forced(sesskey, "Maximize", conf_get_int(conf, CONF_maximize));
@@ -489,17 +489,19 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_s_forced(sesskey, "PSCPRemoteDir", conf_get_str(conf, CONF_pscpremotedir));
     write_setting_s_forced(sesskey, "WinSCPOptions", conf_get_str(conf, CONF_winscpoptions));
     write_setting_s_forced(sesskey, "WinSCPRawSettings", conf_get_str(conf, CONF_winscprawsettings));
-    /* NOTPORTED: CONF_scriptfile (Filename) not in 0.84 conf.h */
+    write_setting_filename_forced(sesskey, "Scriptfile", conf_get_filename(conf, CONF_scriptfile));
     write_setting_s_forced(sesskey, "ScriptfileContent", conf_get_str(conf, CONF_scriptfilecontent));
-    /* NOTPORTED: CONF_antiidle / CONF_logtimestamp not in 0.84 conf.h */
+    write_setting_s_forced(sesskey, "AntiIdle", conf_get_str(conf, CONF_antiidle));
+    write_setting_s_forced(sesskey, "LogTimestamp", conf_get_str(conf, CONF_logtimestamp));
     write_setting_s_forced(sesskey, "Autocommand", conf_get_str(conf, CONF_autocommand));
-    /* NOTPORTED: CONF_autocommandout not in 0.84 conf.h */
+    write_setting_s_forced(sesskey, "AutocommandOut", conf_get_str(conf, CONF_autocommandout));
     write_setting_s_forced(sesskey, "Folder", conf_get_str(conf, CONF_folder));
-    /* NOTPORTED: CONF_logtimerotation not in 0.84 conf.h */
+    write_setting_i_forced(sesskey, "LogTimeRotation", conf_get_int(conf, CONF_logtimerotation));
     write_setting_i_forced(sesskey, "TermXPos", conf_get_int(conf, CONF_xpos));
     write_setting_i_forced(sesskey, "TermYPos", conf_get_int(conf, CONF_ypos));
     write_setting_i_forced(sesskey, "WindowState", conf_get_int(conf, CONF_windowstate));
-    /* NOTPORTED: CONF_save_windowpos / CONF_foreground_on_bell not in 0.84 conf.h */
+    write_setting_b_forced(sesskey, "SaveWindowPos", conf_get_bool(conf, CONF_save_windowpos));
+    write_setting_b_forced(sesskey, "ForegroundOnBell", conf_get_bool(conf, CONF_foreground_on_bell));
 
 #ifndef MOD_NOPASSWORD
     {
@@ -511,10 +513,13 @@ void save_open_settings_forced(char *filename, Conf *conf) {
         memset(pst, 0, strlen(pst));
     }
 #endif
-    /* NOTPORTED: CONF_ctrl_tab_switch / CONF_comment not in 0.84 conf.h */
+    write_setting_i_forced(sesskey, "CtrlTabSwitch", conf_get_int(conf, CONF_ctrl_tab_switch));
+    write_setting_s_forced(sesskey, "Comment", conf_get_str(conf, CONF_comment));
     write_setting_i_forced(sesskey, "SCPAutoPwd", conf_get_int(conf, CONF_scp_auto_pwd));
-    /* NOTPORTED: CONF_no_focus_rep / CONF_scrolllines / CONF_ssh_tunnel_print_in_title
-     *            / CONF_osc52_warn_before_cliboard_sync not in 0.84 conf.h */
+    write_setting_b_forced(sesskey, "NoFocusReporting", conf_get_bool(conf, CONF_no_focus_rep));
+    write_setting_i_forced(sesskey, "LinesAtAScroll", conf_get_int(conf, CONF_scrolllines));
+    write_setting_b_forced(sesskey, "SSHTunnelInTitle", conf_get_bool(conf, CONF_ssh_tunnel_print_in_title));
+    write_setting_b_forced(sesskey, "OSC52WarnBeforeClipboardSync", conf_get_bool(conf, CONF_osc52_warn_before_cliboard_sync));
 #endif
     fclose(sesskey);
 }
