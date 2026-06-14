@@ -1,0 +1,80 @@
+# KiTTY (PuTTY 0.84 port)
+
+**KiTTY** is a feature-rich fork of [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/),
+the free Windows SSH/Telnet client. This branch is a **forward-port of the entire KiTTY feature
+set onto current PuTTY 0.84** — so you get KiTTY's extras on top of a modern, security-patched
+PuTTY core (≈1,200 upstream commits newer than KiTTY's original 0.76b base).
+
+> ⚠️ **This is a public _beta_** (`0.84.0.1-beta`). It builds clean and ~43 KiTTY features are
+> verified, but please test before relying on it and read the known issues below.
+
+---
+
+## ⬇️ Download
+
+Grab the latest build from the **[Releases page →](https://github.com/hknet/KiTTY/releases/latest)**.
+
+Current beta — **[KiTTY 0.84.0.1-beta](https://github.com/hknet/KiTTY/releases/tag/kitty-0.84.0.1-beta)**:
+
+| Download | Use it when |
+|---|---|
+| **[Installer — per-user (no admin)](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.0.1-beta/KiTTY-0.84.0.1-beta-x64-peruser.msi)** | **Recommended.** Installs for your user only, **no UAC prompt** (`%LOCALAPPDATA%\Programs\KiTTY`). |
+| **[Installer — system-wide](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.0.1-beta/KiTTY-0.84.0.1-beta-x64-system.msi)** | All users, into `Program Files` (requires admin). |
+| **[Portable ZIP](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.0.1-beta/kitty-0.84.0.1-beta.zip)** | No install — run from a folder or USB stick. Includes `kitty_portable.exe` and all command-line tools. |
+
+Both installers add Start-Menu + Desktop shortcuts and an Add/Remove-Programs entry, and uninstall
+cleanly. If your antivirus flags `kitty.exe` (UPX-compression heuristics), use the `kitty_nocompress.exe`
+included in the ZIP — it's identical, just unpacked. Every download is checksummed (`SHA256SUMS` in the ZIP).
+
+---
+
+## What's included (KiTTY features on PuTTY 0.84)
+
+~43 KiTTY features are ported and verified, including:
+
+- **Window:** transparency, maximize / fullscreen / saved position on start, always-on-top, roll-up,
+  send-to-tray (auto + on-minimize), per-session icons, background image.
+- **Hyperlinks:** clickable URLs in the terminal (Ctrl+click configurable) with **underlining**.
+- **Sessions & automation:** auto-command after login, auto-password, anti-idle keepalive,
+  port-knocking, duplicate-session, immediate-quit, session export, scripting (rutty).
+- **Transfers / backends:** ZModem send/receive, WinSCP & pscp integration, **adb** (Android) backend.
+- **Terminal:** font resize, protect, print, negative/B&W colours, clear/restart log, far2l extensions.
+- **Storage:** registry **or** portable file/dir storage (`kitty_portable.exe`), `kitty.ini` configuration.
+- Plus the standard PuTTY tools, renamed KiTTY-style: `klink`, `kscp`, `ksftp`, `kageant`, `kittygen`.
+
+Most KiTTY extras read from a `kitty.ini` (`[KiTTY]` section). For example, URL hyperlinks are enabled with:
+
+```ini
+[KiTTY]
+hyperlink=yes
+```
+
+See **[`PORT_0.84_STATUS.md`](PORT_0.84_STATUS.md)** for the full feature inventory and how each was verified,
+and **known limitations** there (notably: `far2l` reply over the raw backend, and adb/rutty validated
+against test fixtures rather than live hardware).
+
+---
+
+## Building from source
+
+Cross-compiled to Win64 with MinGW + CMake (Ninja) under WSL/Linux:
+
+```bash
+cmake -B build-mingw -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mingw.cmake
+cmake --build build-mingw                 # whole tree
+cmake --build build-mingw --target kitty  # just kitty.exe
+```
+
+The MSI installers are built from [`windows/installer/`](windows/installer/) (`wixl`/msitools).
+Full engineering details — architecture, the port strategy, and a rebase-to-next-PuTTY guide — are in
+**[`PORT_0.84_HANDBOOK.md`](PORT_0.84_HANDBOOK.md)**.
+
+---
+
+## Credits & licence
+
+- **PuTTY** © Simon Tatham and the PuTTY team — the upstream this is built on.
+- **KiTTY** © Cyril Dupont (9bis) — the feature fork this port carries forward (https://www.9bis.net/kitty/).
+- This 0.84 port keeps PuTTY's **MIT licence** — see [`LICENCE`](LICENCE).
+
+The original PuTTY source README is preserved as [`README`](README).
