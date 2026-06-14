@@ -124,6 +124,7 @@ void kitty_apply_transparency(WinGuiSeat *wgs);
 void kitty_apply_window_pos(WinGuiSeat *wgs);
 void kitty_send_to_tray(HWND);
 void kitty_rollup(HWND, int);
+void kitty_font_resize(Terminal*, Conf*, int);
 #endif
 
 static void flash_window(WinGuiSeat *wgs, int mode);
@@ -797,6 +798,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_VISIBLE,      "Always visi&ble");
             AppendMenu(m, MF_ENABLED, IDM_TOTRAY,       "Send to tra&y");
             AppendMenu(m, MF_ENABLED, IDM_WINROL,       "Roll-u&p");
+            AppendMenu(m, MF_ENABLED, IDM_FONTUP,       "Font &Up");
+            AppendMenu(m, MF_ENABLED, IDM_FONTDOWN,     "Font &Down");
 #endif
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             if (has_help())
@@ -2640,6 +2643,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           case IDM_WINROL:
             kitty_rollup(wgs->term_hwnd, conf_get_int(wgs->conf, CONF_resize_action));
+            break;
+          case IDM_FONTUP:
+            kitty_font_resize(wgs->term, wgs->conf, 1);
+            break;
+          case IDM_FONTDOWN:
+            kitty_font_resize(wgs->term, wgs->conf, -1);
             break;
 #endif
           default:

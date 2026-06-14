@@ -67,3 +67,17 @@ void kitty_rollup(HWND hwnd, int resize_action) {
     if (GetWinrolFlag())
         ManageWinrol(hwnd, resize_action);
 }
+
+/* window.c bridge fn (defined in window.c MOD_PERSO block) */
+void ResetWindow(int reinit);
+/* Safe font resize: 0.84 conf_get_fontspec returns conf's INTERNAL pointer
+ * (must NOT be freed); build a new FontSpec, let conf copy it, free our copy. */
+void kitty_font_resize(Terminal *term, Conf *conf, int dec) {
+    FontSpec *cur = conf_get_fontspec(conf, CONF_font);
+    int h = cur->height + dec;
+    if (h <= 0) h = 1;
+    FontSpec *nfs = fontspec_new(cur->name, cur->isbold, h, cur->charset);
+    conf_set_fontspec(conf, CONF_font, nfs);
+    fontspec_free(nfs);
+    ResetWindow(2);
+}

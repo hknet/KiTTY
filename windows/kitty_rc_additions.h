@@ -227,3 +227,9 @@
 #ifndef IDM_WINROL
 #define IDM_WINROL 0xA900
 #endif
+#ifndef IDM_FONTUP
+#define IDM_FONTUP 0xB050
+#endif
+#ifndef IDM_FONTDOWN
+#define IDM_FONTDOWN 0xB060
+#endif
