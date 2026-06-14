@@ -5576,13 +5576,13 @@ void InitWinMain( void ) {
 #endif
 
 	// Initialisation de la version binaire
-	sprintf( BuildVersionTime, "%s.%d @ %s", BUILD_VERSION, BUILD_SUBVERSION, BUILD_TIME ) ;
+	sprintf( BuildVersionTime, "%s @ %s", BUILD_VERSION, BUILD_TIME ) ;
 #ifdef MOD_PORTABLE
-	sprintf( BuildVersionTime, "%s.%dp @ %s", BUILD_VERSION, BUILD_SUBVERSION, BUILD_TIME ) ;
+	sprintf( BuildVersionTime, "%s-portable @ %s", BUILD_VERSION, BUILD_TIME ) ;
 #endif
 #ifdef MOD_NOTRANSPARENCY
-	sprintf( BuildVersionTime, "%s.%dn @ %s", BUILD_VERSION, BUILD_SUBVERSION, BUILD_TIME ) ;
-#endif	
+	sprintf( BuildVersionTime, "%s-nt @ %s", BUILD_VERSION, BUILD_TIME ) ;
+#endif
 
 	// Initialisation de la librairie de cryptage
 	bcrypt_init( 0 ) ;
