@@ -123,6 +123,8 @@ void InitWinMain(void);
 void kitty_apply_transparency(WinGuiSeat *wgs);
 void kitty_apply_window_pos(WinGuiSeat *wgs);
 void kitty_send_to_tray(HWND);
+int RestoreFromTray(HWND);            /* kitty.c: restore a window from the systray */
+#define MYWM_NOTIFYICON (WM_USER+3)  /* tray-icon click callback (matches kitty.c) */
 void kitty_rollup(HWND, int);
 void kitty_font_resize(Terminal*, Conf*, int);
 void kitty_protect(HWND, TermWin*, Conf*);
@@ -2380,6 +2382,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       case WM_CREATE:
         break;
 #ifdef MOD_PERSO
+      case MYWM_NOTIFYICON:
+        /* systray icon clicked -> restore the window sent to the tray */
+        if (lParam == WM_LBUTTONUP || lParam == WM_RBUTTONUP ||
+            lParam == WM_LBUTTONDBLCLK)
+            RestoreFromTray(hwnd);
+        return 0;
       case WM_TIMER:
         if ((UINT_PTR)wParam == TIMER_AUTOCOMMAND) {
             KillTimer(hwnd, TIMER_AUTOCOMMAND);

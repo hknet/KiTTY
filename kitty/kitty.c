@@ -1863,22 +1863,39 @@ int ManageToTray( HWND hwnd ) {
 	//Message MYWM_NOTIFYICON pour faire reapparaitre
 
 	int ResShell ;
-	char buffer[4096] ;
-	TrayIcone.hWnd = hwnd;
-	//TrayIcone.hIcon = LoadIcon((HINSTANCE) GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_MAINICON_0 + IconeNum));
+	char buffer[256] ;
+	/* Fully initialise the tray-icon struct here. Send-to-tray must NOT rely on
+	 * the launcher having set it up, otherwise uFlags/uCallbackMessage/hIcon are
+	 * unset -> a blank icon that ignores clicks, leaving no way to restore. */
+	memset( &TrayIcone, 0, sizeof(TrayIcone) ) ;
+	TrayIcone.cbSize = sizeof(TrayIcone) ;
+	TrayIcone.hWnd = hwnd ;
+	TrayIcone.uID = 1 ;
+	TrayIcone.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP ;
+	TrayIcone.uCallbackMessage = MYWM_NOTIFYICON ;
+	TrayIcone.hIcon = (HICON)SendMessage( hwnd, WM_GETICON, ICON_SMALL, 0 ) ;
+	if( !TrayIcone.hIcon ) TrayIcone.hIcon = (HICON)SendMessage( hwnd, WM_GETICON, ICON_BIG, 0 ) ;
+	if( !TrayIcone.hIcon ) TrayIcone.hIcon = (HICON)(LONG_PTR)GetClassLongPtr( hwnd, GCLP_HICON ) ;
+	if( !TrayIcone.hIcon ) TrayIcone.hIcon = LoadIcon( NULL, IDI_APPLICATION ) ;
+	GetWindowText( hwnd, buffer, sizeof(buffer)-1 ) ; buffer[sizeof(buffer)-1] = '\0' ;
+	strncpy( TrayIcone.szTip, buffer, sizeof(TrayIcone.szTip)-1 ) ;
 	ResShell = Shell_NotifyIcon(NIM_ADD, &TrayIcone);
-						
 	if( ResShell ) {
-		GetWindowText( hwnd, buffer, 4096 ) ;
-		//buffer[strlen(buffer)-21] = '\0' ;
-		strcpy( TrayIcone.szTip, buffer ) ;
-		ResShell = Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
 		if (IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_HIDE);
 		VisibleFlag = VISIBLE_TRAY ;
-		//SendMessage(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
 		return 1 ;
 		}
 	else return 0 ;
+	}
+
+// Restaure une fenetre envoyee dans le systray (clic sur l'icone tray)
+int RestoreFromTray( HWND hwnd ) {
+	Shell_NotifyIcon( NIM_DELETE, &TrayIcone ) ;
+	ShowWindow( hwnd, SW_SHOW ) ;
+	ShowWindow( hwnd, SW_RESTORE ) ;
+	SetForegroundWindow( hwnd ) ;
+	VisibleFlag = VISIBLE_YES ;
+	return 1 ;
 	}
 
 // Gere l'option always visible
