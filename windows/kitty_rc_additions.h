@@ -248,3 +248,9 @@
 #ifndef IDM_CLEARLOGFILE
 #define IDM_CLEARLOGFILE 0xB100
 #endif
+#ifndef IDM_RESIZE
+#define IDM_RESIZE 0xB020
+#endif
+#ifndef IDM_REPOS
+#define IDM_REPOS 0xB030
+#endif

@@ -2678,6 +2678,30 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 logfopen(wgs->logctx);
             }
             break;
+          case IDM_RESIZE: {
+            /* KiTTY: resize terminal to lParam cols(LOWORD) x rows(HIWORD) */
+            int w = LOWORD(lParam), h = HIWORD(lParam);
+            if (w < 1) w = 1;
+            if (h < 1) h = 1;
+            conf_set_int(wgs->conf, CONF_width, w);
+            conf_set_int(wgs->conf, CONF_height, h);
+            term_size(wgs->term, h, w,
+                      conf_get_int(wgs->conf, CONF_savelines));
+            reset_window(wgs, 0);
+            break;
+          }
+          case IDM_REPOS: {
+            /* KiTTY: move window to lParam x(LOWORD) y(HIWORD) */
+            int x = LOWORD(lParam), y = HIWORD(lParam);
+            if (x < 1) x = 1;
+            if (y < 1) y = 1;
+            conf_set_int(wgs->conf, CONF_xpos, x);
+            conf_set_int(wgs->conf, CONF_ypos, y);
+            SetWindowPos(wgs->term_hwnd, 0, x, y, 0, 0,
+                         SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER |
+                         SWP_NOACTIVATE);
+            break;
+          }
 #endif
           default:
             if (wParam >= IDM_SAVED_MIN && wParam < IDM_SAVED_MAX) {
