@@ -8,6 +8,11 @@ Brabandt, Jeff Smith, Pavel Kryukov, Maxim Kuznetsov, Svyatoslav
 Kuzmich, Nico Williams, Viktor Dukhovni, Josh Dersch, Lars Brinkhoff,
 and CORE SDI S.A.
 
+The KiTTY features added in this fork are copyright 2007-2013 Cyril
+Dupont <https://www.9bis.net/kitty/>. KiTTY is released under the same
+MIT licence as PuTTY (the identical text below), so the combined work is
+covered by the single licence that follows.
+
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation files
 (the "Software"), to deal in the Software without restriction,
