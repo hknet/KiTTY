@@ -228,7 +228,8 @@ add_executable(kitty
   ${KITTY_DIR}/url/urlhack.c
   ${KITTY_DIR}/kitty_url.c
   ${KITTY_DIR}/kitty_bridge.c
-  ${KITTY_DIR}/kitty_settings_forced.c)
+  ${KITTY_DIR}/kitty_settings_forced.c
+  ${KITTY_DIR}/kitty_config.c)
 be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
 add_dependencies(kitty generated_licence_h)
 target_compile_definitions(kitty PRIVATE MOD_PERSO MASTER_PASSWORD="kitty")
