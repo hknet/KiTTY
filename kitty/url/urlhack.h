@@ -5,7 +5,13 @@
 #ifndef _URLHACK_H
 #define _URLHACK_H
 
-#include <regex.h>
+/*
+ * 0.84 port: use the self-contained, source-available V8 regex backend
+ * (re_lib/regexp.c) instead of the prebuilt POSIX libregex_64.a.  The prebuilt
+ * lib mis-compiled the URL pattern (regcomp returned re_nsub==0, regexec
+ * faulted); the V8 backend is built from source so the ABI is self-consistent.
+ */
+#include "re_lib/regexp.h"
 
 typedef struct { int x0, y0, x1, y1; } text_region;
 

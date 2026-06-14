@@ -233,9 +233,15 @@ regcomp( char* exp)
 	if (r == NULL)
 		FAIL("out of space");
 
-	for( i=0 ; i<NSUBEXP ; i++ ) { if( r->startp[i] != NULL) free( r->startp[i] ) ; r->startp[i] = NULL ; }		// Ajout MOD_HYPERLINK
-	for( i=0 ; i<NSUBEXP ; i++ ) { if( r->endp[i] != NULL) free( r->endp[i] ) ; r->endp[i] = NULL ; }		// Ajout MOD_HYPERLINK
-	
+	/*
+	 * 0.84 port fix: the original KiTTY "Ajout MOD_HYPERLINK" lines here
+	 * free()'d r->startp[i]/r->endp[i] immediately after malloc() (i.e. on
+	 * UNINITIALISED memory) -> heap corruption / crash.  Those arrays hold
+	 * pointers INTO the searched string (set by regexec, never heap-owned),
+	 * so they must never be freed.  Just zero them.
+	 */
+	for( i=0 ; i<NSUBEXP ; i++ ) { r->startp[i] = NULL ; r->endp[i] = NULL ; }
+
 	/* Second pass: emit code. */
 	regparse = exp;
 	regnpar = 1;
@@ -1216,10 +1222,13 @@ strcspn( char* s1, char* s2)
 #endif
 
 void regfree( regexp* r) {
-	int i ;
 	if( r==NULL ) return ;
-	if( r->regmust != NULL ) free( r->regmust ) ;
-	for( i=0 ; i<NSUBEXP ; i++ ) { if( r->startp[i] != NULL) free( r->startp[i] ) ; r->startp[i] = NULL ; }
-	for( i=0 ; i<NSUBEXP ; i++ ) { if( r->endp[i] != NULL) free( r->endp[i] ) ; r->endp[i] = NULL ; }
+	/*
+	 * 0.84 port fix: the original KiTTY regfree free()'d r->regmust (a
+	 * pointer INTO r->program) and r->startp[]/r->endp[] (pointers INTO the
+	 * searched string) -> freeing interior/foreign pointers = heap
+	 * corruption.  The whole compiled regexp lives in the single malloc'd
+	 * block, so one free(r) releases everything correctly.
+	 */
 	free(r) ;
 }

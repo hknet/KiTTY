@@ -225,7 +225,8 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_store.c
   ${KITTY_DIR}/kitty_tools.c
   ${KITTY_DIR}/kitty_win.c
-  ${KITTY_DIR}/url/urlhack.c
+  ${KITTY_DIR}/url/urlhack.old.c
+  ${KITTY_DIR}/url/re_lib/regexp.c
   ${KITTY_DIR}/kitty_url.c
   ${KITTY_DIR}/kitty_bridge.c
   ${KITTY_DIR}/kitty_settings_forced.c
@@ -237,10 +238,10 @@ target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTK
 target_compile_options(kitty PRIVATE -fcommon)
 target_include_directories(kitty PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
-  ${KITTY_DIR}/regex ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)
+  ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)
 target_link_libraries(kitty
   guiterminal guimisc eventloop sshclient otherbackends settings network crypto utils
-  ${KITTY_DIR}/libs/libregex_64.a ${KITTY_DIR}/libs/libjpeg_64.a
+  ${KITTY_DIR}/libs/libjpeg_64.a
   ${KITTY_DIR}/libs/base64_64.a ${KITTY_DIR}/libs/bcrypt_64.a
   ${KITTY_DIR}/libs/MD5check_64.a ${KITTY_DIR}/libs/mini_64.a
   ${KITTY_DIR}/libs/notepad_64.a
