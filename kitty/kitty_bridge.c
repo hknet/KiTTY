@@ -1,0 +1,55 @@
+/*
+ * KiTTY <-> PuTTY 0.84 bridge (intermediate "global shim" approach).
+ *
+ * KiTTY's modules assume a single global Conf/Terminal; PuTTY 0.84 keeps
+ * that state per-WinGuiSeat. This file supplies the self-contained KiTTY
+ * glue symbols. The seat-context wrappers (global `conf`, do_eventlog,
+ * resize, ResetWindow, SendStrToTerminal) live in windows/window.c where
+ * the active WinGuiSeat and static helpers are visible.
+ *
+ * TODO(no-global phase): replace the stubs below with real implementations
+ * threaded through the seat, per the planned no-global integration.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "putty.h"
+
+/* KiTTY logging mode toggle (originally KiTTY logging.c) */
+int LogMode = 0;
+int SwitchLogMode(void) { LogMode = abs(LogMode - 1); return LogMode; }
+
+/* KiTTY crypt-file flag (originally kitty_settings.c) */
+int CryptFileFlag = 0;
+int SwitchCryptFlag(void) { CryptFileFlag = abs(CryptFileFlag - 1); return CryptFileFlag; }
+
+/* KiTTY password debug log (originally settings.c) */
+int DebugAddPassword(const char *fct, const char *pwd) {
+    FILE *fp;
+    if ((fp = fopen("kitty.password", "r")) != NULL) {
+        fclose(fp);
+        if ((fp = fopen("kitty.password", "a")) != NULL) {
+            fprintf(fp, "%s=%s\n", fct, pwd);
+            fclose(fp);
+        }
+        return 1;
+    }
+    return 0;
+}
+
+/* KiTTY "force reconfiguration" flag (originally a window.c global int) */
+int force_reconf = 1;
+
+/* TODO: wire the SSH version override into the SSH layer */
+void set_sshver(char *vers) { (void)vers; }
+
+/* TODO: KiTTY session export to a .ktx file (depends on write_setting_*_forced) */
+void save_open_settings_forced(char *filename, Conf *conf) { (void)filename; (void)conf; }
+
+/* TODO: launch a session with the current settings */
+void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
+                                   const char *user, const char *pass,
+                                   const int port, const char *remotepath) {
+    (void)hwnd; (void)oldconf; (void)host; (void)user;
+    (void)pass; (void)port; (void)remotepath;
+}

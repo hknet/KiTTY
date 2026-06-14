@@ -225,10 +225,12 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_store.c
   ${KITTY_DIR}/kitty_tools.c
   ${KITTY_DIR}/kitty_win.c
-  ${KITTY_DIR}/url/urlhack.c)
+  ${KITTY_DIR}/url/urlhack.c
+  ${KITTY_DIR}/kitty_bridge.c)
 be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
 add_dependencies(kitty generated_licence_h)
 target_compile_definitions(kitty PRIVATE MOD_PERSO MASTER_PASSWORD="kitty")
+target_compile_options(kitty PRIVATE -fcommon)
 target_include_directories(kitty PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
   ${KITTY_DIR}/regex ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)

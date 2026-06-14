@@ -117,6 +117,9 @@ static void setup_clipboards(Terminal *, Conf *);
 
 /* Window layout information */
 static void reset_window(WinGuiSeat *wgs, int reinit);
+#ifdef MOD_PERSO
+void kitty_set_active_seat(WinGuiSeat *wgs);
+#endif
 
 static void flash_window(WinGuiSeat *wgs, int mode);
 static void sys_cursor_update(WinGuiSeat *wgs);
@@ -624,6 +627,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * timer_change_notify() which will expect hwnd to exist.)
      */
     wgs->term = term_init(wgs->conf, &wgs->ucsdata, &wgs->termwin);
+#ifdef MOD_PERSO
+    kitty_set_active_seat(wgs);
+#endif
     setup_clipboards(wgs->term, wgs->conf);
     wgs->logctx = log_init(&wgs->logpolicy, wgs->conf);
     term_provide_logctx(wgs->term, wgs->logctx);
@@ -5948,3 +5954,33 @@ static bool win_seat_get_window_pixel_size(Seat *seat, int *x, int *y)
     *y = r.bottom - r.top;
     return true;
 }
+
+#ifdef MOD_PERSO
+/* ===== KiTTY bridge: expose the active WinGuiSeat as globals (single-window shim) =====
+ * Intermediate step toward the no-global integration. */
+Conf *conf = NULL;
+static WinGuiSeat *kitty_active_wgs = NULL;
+void kitty_set_active_seat(WinGuiSeat *wgs) {
+    kitty_active_wgs = wgs;
+    conf = wgs ? wgs->conf : NULL;
+}
+void do_eventlog(const char *st) {
+    if (kitty_active_wgs && kitty_active_wgs->logctx)
+        logevent(kitty_active_wgs->logctx, st);
+}
+void SendStrToTerminal(const char *str, const int len) {
+    int i;
+    if (len <= 0 || !kitty_active_wgs || !kitty_active_wgs->term) return;
+    for (i = 0; i < len; i++) {
+        char c = (char)(unsigned char)str[i];
+        if (kitty_active_wgs->ldisc)
+            term_keyinput(kitty_active_wgs->term, -1, &c, 1);
+    }
+}
+void ResetWindow(int reinit) {
+    if (kitty_active_wgs) reset_window(kitty_active_wgs, reinit);
+}
+void resize(int height, int width) {
+    (void)height; (void)width; /* TODO: terminal resize bridge */
+}
+#endif
