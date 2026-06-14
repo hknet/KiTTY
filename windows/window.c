@@ -802,6 +802,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /*
      * Finally show the window!
      */
+#ifdef MOD_PERSO
+    /* KiTTY feature: maximize on start (no-global; reads this seat's conf) */
+    if (conf_get_int(wgs->conf, CONF_maximize))
+        show = SW_SHOWMAXIMIZED;
+#endif
     ShowWindow(wgs->term_hwnd, show);
     SetForegroundWindow(wgs->term_hwnd);
 
