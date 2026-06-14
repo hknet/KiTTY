@@ -1978,6 +1978,13 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       "Always", I(FORCE_ON),
                       "Never", I(FORCE_OFF),
                       "Only on clean exit", I(AUTO));
+#ifdef MOD_PERSO
+    if (!GetPuttyFlag()) {
+        ctrl_checkbox(s, "Save settings automatically on exit", NO_SHORTCUT,
+                      HELPCTX(no_help), conf_checkbox_handler,
+                      I(CONF_saveonexit));
+    }
+#endif
 
     /*
      * The Session/Logging panel.
@@ -2149,6 +2156,13 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       "None (bell disabled)", I(BELL_DISABLED),
                       "Make default system alert sound", I(BELL_DEFAULT),
                       "Visual bell (flash window)", I(BELL_VISUAL));
+#ifdef MOD_PERSO
+    if (!GetPuttyFlag()) {
+        ctrl_checkbox(s, "Put window in foreground on bell", NO_SHORTCUT,
+                      HELPCTX(no_help), conf_checkbox_handler,
+                      I(CONF_foreground_on_bell));
+    }
+#endif
 
     s = ctrl_getset(b, "Terminal/Bell", "overload",
                     "Control the bell overload behaviour");
@@ -2364,6 +2378,44 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ctrl_checkbox(s, "Underline hyperlinks", NO_SHORTCUT,
                       HELPCTX(no_help), kitty_checkbox_int_handler,
                       I(CONF_url_underline));
+        ctrl_checkbox(s, "Use the default browser", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_url_defbrowser));
+        ctrl_filesel(s, "Other browser:", NO_SHORTCUT,
+                     FILTER_ALL_FILES, false, "Select browser executable",
+                     HELPCTX(no_help),
+                     conf_filesel_handler, I(CONF_url_browser));
+        ctrl_checkbox(s, "Use the default regular expression", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_url_defregex));
+        ctrl_editbox(s, "Custom regular expression:", NO_SHORTCUT, 60,
+                     HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_url_regex), ED_STR);
+    }
+
+    /*
+     * The Window/Appearance panel: window icon + remember position (KiTTY).
+     */
+    if (!GetPuttyFlag()) {
+        s = ctrl_getset(b, "Window/Appearance", "position",
+                        "Remember window position");
+        ctrl_checkbox(s, "Remember window position", NO_SHORTCUT,
+                      HELPCTX(no_help), conf_checkbox_handler,
+                      I(CONF_save_windowpos));
+        ctrl_editbox(s, "Top:", NO_SHORTCUT, 20, HELPCTX(no_help),
+                     conf_editbox_handler, I(CONF_ypos), ED_INT);
+        ctrl_editbox(s, "Left:", NO_SHORTCUT, 20, HELPCTX(no_help),
+                     conf_editbox_handler, I(CONF_xpos), ED_INT);
+
+        s = ctrl_getset(b, "Window/Appearance", "icon",
+                        "Define the window icon");
+        ctrl_editbox(s, "Icon (from internal resources)", NO_SHORTCUT, 40,
+                     HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_icone), ED_INT);
+        ctrl_filesel(s, "External icon file:", NO_SHORTCUT,
+                     FILTER_ALL_FILES, false, "Select icon file",
+                     HELPCTX(no_help),
+                     conf_filesel_handler, I(CONF_iconefile));
     }
 #endif
 
@@ -2536,6 +2588,13 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ctrl_editbox(s, "Seconds between keepalives (0 to turn off)", 'k', 20,
                      HELPCTX(connection_keepalive),
                      conf_editbox_handler, I(CONF_ping_interval), ED_INT);
+#ifdef MOD_PERSO
+        if (!GetPuttyFlag()) {
+            ctrl_editbox(s, "Anti-idle string", NO_SHORTCUT, 50,
+                         HELPCTX(no_help), conf_editbox_handler,
+                         I(CONF_antiidle), ED_STR);
+        }
+#endif
 
         if (!midsession) {
             s = ctrl_getset(b, "Connection", "tcp",
@@ -2609,10 +2668,23 @@ void setup_config_box(struct controlbox *b, bool midsession,
 #ifdef MOD_PERSO
             /* KiTTY auto-command: sent automatically after login. */
             if (!GetPuttyFlag()) {
+                dlgcontrol *cpw;
+                cpw = ctrl_editbox(s, "Auto-login password", NO_SHORTCUT, 50,
+                                   HELPCTX(no_help), conf_editbox_handler,
+                                   I(CONF_password), ED_STR);
+                cpw->editbox.password = true;
                 ctrl_editbox(s, "Auto-command (sent after login)", NO_SHORTCUT,
                              74, HELPCTX(no_help),
                              conf_editbox_handler,
                              I(CONF_autocommand), ED_STR);
+                ctrl_filesel(s, "Login script file:", NO_SHORTCUT,
+                             FILTER_ALL_FILES, false,
+                             "Select the login script file to load",
+                             HELPCTX(no_help),
+                             conf_filesel_handler, I(CONF_scriptfile));
+                ctrl_editbox(s, "Login script content:", NO_SHORTCUT, 60,
+                             HELPCTX(no_help), conf_editbox_handler,
+                             I(CONF_scriptfilecontent), ED_STR);
             }
 #endif
 
