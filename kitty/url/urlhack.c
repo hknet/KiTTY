@@ -265,9 +265,25 @@ void urlhack_set_regular_expression(int mode, const char* expression)
 		char buffer[512]="";
 		regerror(result, &urlhack_rx, buffer, sizeof buffer);
 		rtfm(buffer);
-	} else { 
-		is_regexp_compiled = 1 ; 
+	} else {
+		is_regexp_compiled = 1 ;
 		logevent(NULL, "Hyperlink patch: regex successfully compiled" ) ;
+	}
+	/*
+	 * 0.84 port safety net: in the clean MinGW build the prebuilt
+	 * libregex_64.a mis-parses the (group-rich) URL pattern - regcomp
+	 * returns success but leaves re_nsub == 0, and a subsequent regexec()
+	 * then faults and takes the whole terminal down. Detect this broken
+	 * state (a pattern that clearly contains capture groups but produced
+	 * zero subexpressions) and disable URL detection instead of crashing.
+	 * Hover/click/launch infrastructure stays intact; only live scanning is
+	 * suppressed. See PORT_0.84_STATUS.md (URL hyperlinks = PARTIAL).
+	 */
+	if( is_regexp_compiled && to_use != NULL && strchr(to_use, '(') != NULL
+	    && urlhack_rx.re_nsub == 0 ) {
+		urlhack_disabled = 1 ;
+		is_regexp_compiled = 0 ;
+		logevent(NULL, "Hyperlink patch: regex library ABI mismatch - URL detection disabled" ) ;
 	}
 #endif
 }

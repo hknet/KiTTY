@@ -5285,11 +5285,20 @@ void LoadParameters( void ) {
 	if( ReadParameter( INIT_SECTION, "ctrltab", buffer ) ) { if( !stricmp( buffer, "NO" ) ) SetCtrlTabFlag( 0 ) ; }
 #ifdef MOD_HYPERLINK
 #ifndef MOD_NOHYPERLINK
-	if( ReadParameter( INIT_SECTION, "hyperlink", buffer ) ) {  
-		if( !stricmp( buffer, "NO" ) ) HyperlinkFlag = 0 ; 
+	if( ReadParameter( INIT_SECTION, "hyperlink", buffer ) ) {
+		if( !stricmp( buffer, "NO" ) ) HyperlinkFlag = 0 ;
 		if( !stricmp( buffer, "YES" ) ) HyperlinkFlag = 1 ;
 	}
 #endif
+#else
+	/* 0.84 port: URL hyperlinks are provided by kitty_url.c (no MOD_HYPERLINK
+	 * terminal.c path), so honour the "hyperlink" ini key here too. Without
+	 * this, HyperlinkFlag (default 0) could only be flipped via the toggle
+	 * menu and the feature was effectively unreachable from config. */
+	if( ReadParameter( INIT_SECTION, "hyperlink", buffer ) ) {
+		if( !stricmp( buffer, "NO" ) ) HyperlinkFlag = 0 ;
+		if( !stricmp( buffer, "YES" ) ) HyperlinkFlag = 1 ;
+	}
 #endif
 	if( ReadParameter( INIT_SECTION, "icon", buffer ) ) { if( !stricmp( buffer, "YES" ) ) IconeFlag = 1 ; }
 	if( ReadParameter( INIT_SECTION, "iconfile", buffer ) ) {
