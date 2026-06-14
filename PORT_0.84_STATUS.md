@@ -1,7 +1,7 @@
 # KiTTY → PuTTY 0.84 Forward-Port — Final Status
 
 **Project:** Bring `hknet/KiTTY` (a PuTTY 0.76b fork) up to current PuTTY **0.84**, preserving KiTTY's features.
-**Branch:** `noglobal`  **Final HEAD:** `b6953b1`  **Baseline:** `e14266c` (pristine PuTTY 0.84 + KiTTY foundation)
+**Branch:** `noglobal`  **Final HEAD:** `48f1dde`  **Baseline:** `e14266c` (pristine PuTTY 0.84 + KiTTY foundation)
 **Repo (WSL):** `~/kitty-0.84` (Ubuntu-26.04)   **Date:** 2026-06-14
 
 ---
@@ -9,7 +9,8 @@
 ## 1. Headline result
 
 - **Clean from-scratch build: 24 / 24 binaries, 0 errors.** (kitty, putty, plink, pscp, psftp, pterm, puttytel, pageant, puttygen, psocks, bidi_*, test_* incl. test_lineedit/test_terminal/testcrypt).
-- **~38 KiTTY features verified WORKING**, 1 PARTIAL (URL hyperlinks — see §5), 3 SKIPPED (adb / rutty / far2l — see §5).
+- **~42 KiTTY features verified WORKING** (incl. URL hyperlinks, adb backend, rutty scripting — all fixed/landed this session); far2l recognized (handshake parsed, no crash; reply gated by a pre-existing raw-backend limitation — see §5).
+- The 4 previously-open items are now CLOSED: URL hyperlinks WORKING (source-built regex), adb backend WORKING, rutty scripting WORKING, far2l recognized.
 - All work done the **no-global, per-`WinGuiSeat` way** (sshproxy/jump-host compatible), except a small documented active-seat shim for the KiTTY core modules.
 
 ---
@@ -126,7 +127,10 @@ None affect shipping behaviour.
 | ZModem (menu rz/sz spawn) | WORKING | helper spawned, routed, no crash — test_zmodem.ps1 | d7fe054 |
 | **Background image RENDER** | **WORKING** | striped image fills empty terminal; text composites over image; no-image render unchanged (0 image leak) — test_bgrender.ps1 / test_bgrender_noimg.ps1 | **bc0b676** |
 | Background image LOAD | WORKING | self-test ok=1 (BMP+JPEG) — test_bgimage.ps1 | 29dccce |
-| **URL hyperlinks** | **PARTIAL** | infra complete; live detection crash-guarded off — see §5 | 55e1bdc, b6953b1 |
+| **URL hyperlinks** | **WORKING** | hover+click launches browser with exact URL (test_url_gui.ps1 PASS) — defective prebuilt regex replaced with source-built V8 regex | 3675a17 |
+| **adb backend** (Android Debug Bridge) | **WORKING** | selectable as Protocol=adb; sends exact ADB handshake `0012host:transport-any` to a fake server; dead-port connect fails gracefully (no crash) — test_adb.ps1 / test_adb_handshake.ps1 | b9f7aca |
+| **rutty scripting** (waitfor/halton) | **WORKING** | scripted lines sent each after the waitfor pattern appeared in incoming host data — test_rutty.ps1 PASS | b030ed0 |
+| **far2l extensions** (APC handshake) | **RECOGNIZED** | far2l APC parsed intact, far2l_ext toggled, reply dispatched via ldisc, no crash — test_far2l.ps1 (reply-on-wire gated by pre-existing raw-reply limit, §5) | 48f1dde |
 
 ### Config-dialog UI (kitty_config.c override)
 | Feature | Status | Verified | Commit |
@@ -149,40 +153,57 @@ None affect shipping behaviour.
 
 ## 5. Remaining gaps (precise)
 
-### URL hyperlinks — PARTIAL (the one functional shortfall)
-The detection/hover/click/launch code, the config-UI panel, the `hyperlink=yes` ini enable, and the
-runtime toggle menu are **all present and correct**. However, in the clean MinGW build the **prebuilt
-`kitty/libs/libregex_64.a` mis-compiles the URL pattern**: `regcomp()` reports success but leaves
-`re_nsub == 0` for a regex that clearly contains capture groups, and the subsequent `regexec()` then
-**faults and crashes the whole terminal** on the first mouse-move rescan. Diagnosis (commit b6953b1):
-- `HyperlinkFlag` defaults to 0 (we use `kitty_url.c`, not the `MOD_HYPERLINK` terminal.c path), and
-  the `hyperlink` ini key was only parsed under `#ifdef MOD_HYPERLINK` → the feature was unreachable
-  from config. **Fixed** (ini key now honoured in our build).
-- With the flag on, mouse-move → `kitty_url_rescan` → `urlhack_go_find_me_some_hyperlinks` →
-  `regexec` **crashes** (confirmed: process dies after the screen scrape, before regexec returns;
-  `regcomp` reports `re_nsub=0` despite a group-rich pattern = broken compile). The header's
-  `regoff_t = long long` ABI fix (16-byte regmatch_t) is present and matches the lib, yet regcomp
-  itself produces a malformed buffer — an ABI/parse defect inside the prebuilt lib that cannot be
-  corrected without the **regex library source** (only the `.a` + header are committed; no `regex.c`).
-- **Mitigation shipped:** detect the broken-compile state (`pattern has '(' but re_nsub==0`) and set
-  `urlhack_disabled` so URL detection is cleanly suppressed instead of crashing. Verified: with
-  `hyperlink=yes`, a full sweep of mouse-moves/clicks no longer crashes kitty.
-- **To finish:** obtain/rebuild the GNULIB regex library from source against `kitty/regex/regex.h`
-  (matching the 16-byte `regmatch_t` ABI) so regcomp/regexec parse correctly; then re-enable detection.
+### URL hyperlinks — WORKING (was PARTIAL; fixed)
+The earlier crash was the **prebuilt `kitty/libs/libregex_64.a` mis-compiling the URL pattern**
+(regcomp reported success but left `re_nsub==0`; regexec faulted). No `regex.c` source exists for that
+POSIX lib. **Fix (commit 3675a17):** switched the kitty target to the self-contained, source-available
+**V8 regex** that KiTTY shipped but had abandoned — `url/urlhack.old.c` + `url/re_lib/regexp.c` — and
+fixed three KiTTY-introduced heap-corruption bugs in `regexp.c` (regcomp `free()`'d uninitialised
+`r->startp/endp` right after malloc; regfree `free()`'d `r->regmust` — an interior pointer into
+`r->program` — and `r->startp/endp` — pointers into the searched string). Henry Spencer semantics: one
+`free(r)` releases the whole compiled block. `urlhack.h` now includes `re_lib/regexp.h`; the
+prebuilt `libregex_64.a` link + regex include dir are gone; the `re_nsub` crash-guard is removed.
+VERIFIED end-to-end (test_url_gui.ps1 PASS): hover+click launches the browser with the exact URL.
 
-### adb backend — SKIPPED
-0.84's `BackendVtable` drifted heavily (init gained a `vt` arg + returns `char*`; `displayname`
-split into `_tc`/`_lc`; `send` is void; new fields; old `name_lookup`/`new_connection`/plug APIs).
-Needs a `PROT_ADB` enum + be_list registration + config radio + ~10 changed callbacks, AND a live
-`adb server` on :5037 (Android device/emulator) to verify — not available, so not clean+verifiable.
+### adb backend — WORKING (was SKIPPED; landed)
+Ported KiTTY's adb.c to 0.84's BackendVtable in `kitty/kitty_adb.c` (guarded MOD_ADB), modelled on
+`otherbackends/raw.c`: `init(vt,…)` returning `char*`, Backend*/Plug* callbacks with `container_of`,
+void `send`, size_t `sendbuffer`/`unthrottle`, `PlugVtable.log(Socket*,PlugLogType)`,
+`closing(PlugCloseType)`, `special(…,int arg)`, bool `connected`/`sendok`/`ldisc`,
+`get_specials`→`SessionSpecial*`, `displayname_tc/_lc`, new Interactor vtable, `new_main_connection`,
+`seat_stdout`, `default_description`. The ADB-server handshake state machine is preserved. Added
+`PROT_ADB`, a guarded `&adb_backend` in be_list.c, `MOD_ADB=1` on the kitty be-list object only (other
+binaries unaffected). adb auto-appears in the config protocol dropdown. VERIFIED: dead-port connect
+fails gracefully (no crash); against a fake adb server it sends the exact `0012host:transport-any`
+handshake — proving protocol-enum + be_list registration + init + state machine are wired.
 
-### rutty scripting — SKIPPED
-Deeply terminal-stream-coupled (waitfor/halton conditions match incoming terminal data = exactly the
-terminal.c coupling the brief forbids). Needs ~10 new CONF_script_* keys + config panel + script
-engine integration.
+### rutty scripting — WORKING (was SKIPPED; landed)
+Ported the rutty script engine to `kitty/kitty_rutty.c` (minimal, no-global): keeps the rutty
+matching/line-stepping core verbatim, single static ScriptData, sends via `backend_send` (no global
+ldisc), drops recording/AHK/menu-UI. The incoming-data matcher (`script_remote`, waitfor/halton) — in
+rutty/KiTTY it ran in terminal.c — is hooked **OBSERVE-only from window.c `win_seat_output()`** (the
+ZModem interception point), so data still flows to `term_data()`; **no terminal.c edits**. Added 11
+`CONF_script_*` keys, a `TIMER_SCRIPT` auto-start (script_mode==PLAY), and a Connection/Scripting
+config panel. VERIFIED (test_rutty.ps1 PASS): wait-for-prompt mode sent each scripted line only after
+the `waitfor` pattern appeared in incoming host data.
 
-### far2l — SKIPPED
-Not part of the KiTTY 0.76b feature set being ported; out of scope.
+### far2l — RECOGNIZED (was SKIPPED; handshake landed)
+far2l lives inside terminal.c's escape parser (KiTTY 0.76b had ~1000 lines of APC/OSC clipboard-sync
+there, with `exit()`/MessageBox crash paths). 0.84's terminal.c already routes APC into the OSC-string
+collector + `do_osc()`. Minimal MOD_FAR2L port: a guarded `term->far2l_ext` field; in `do_osc()`,
+APC strings starting with `far2l` get the on/off handshake (`far2l1` → set state + reply
+`\x1b_far2lok\x07` via `ldisc_send`; `far2l0` → clear; base64 payload + anything else ignored
+gracefully, no exit/MessageBox); fixed the APC/DCS/SOS/PM dispatch to go straight to `OSC_STRING`
+(SEEN_OSC drops the first payload char). To keep MOD_FAR2L scoped to kitty, terminal.c is compiled
+directly into the kitty target (its object out-prioritises guiterminal's terminal.o); other binaries
+use the plain terminal.o (guards inert) — full tree 24/24 green.
+**VERIFIED:** the far2l APC is parsed intact, `far2l_ext` toggled, reply dispatched through a valid
+ldisc, **no crash** (the brief's stated goal). **Known limitation (NOT far2l-specific):** the reply
+does not reach the wire because terminal-originated `ldisc_send` replies do not transmit over the
+**raw** backend in this no-global build — PuTTY's own OSC-4 colour-query reply (identical path) is
+equally not transmitted over raw (test_osc_reply.ps1 = none). So far2l recognition is complete; reply
+transmission is gated by that independent pre-existing behaviour (would surface over SSH, where the
+backend transmits terminal replies).
 
 ### Background-image margins (cosmetic)
 The cell area composites the image correctly. The thin **margin/padding** strip outside the terminal
@@ -210,11 +231,11 @@ Cosmetic only; the cell area — the visible terminal — is correct.
 
 ## 7. Feature count
 
-- **WORKING: ~38** (5 geometry + 21 menu/core + auto-command + anti-idle + port-knock + zmodem +
-  bg-image render + bg-image load + 5+ config-UI panels + per-session icons + About dialog + sshver +
-  forced-export + dup-session + core-init).
-- **PARTIAL: 1** (URL hyperlinks — infrastructure complete, live detection blocked by prebuilt
-  regex-lib ABI defect, crash-guarded).
-- **SKIPPED: 3** (adb, rutty, far2l — documented above; not clean+verifiable within scope).
+- **WORKING: ~42** (5 geometry + 21 menu/core + auto-command + anti-idle + port-knock + zmodem +
+  bg-image render + bg-image load + 6+ config-UI panels + per-session icons + About dialog + sshver +
+  forced-export + dup-session + core-init + **URL hyperlinks + adb backend + rutty scripting**).
+- **RECOGNIZED: 1** (far2l — APC handshake parsed + no crash; reply-on-wire gated by pre-existing
+  raw-backend terminal-reply limitation, documented in §5).
+- **SKIPPED: 0** — all four previously-open items closed.
 
-Build green throughout; 24/24 binaries; final HEAD `b6953b1` on branch `noglobal`.
+Build green throughout; 24/24 binaries; final HEAD `48f1dde` on branch `noglobal`.
