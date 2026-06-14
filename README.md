@@ -10,10 +10,15 @@ PuTTY core (≈1,200 upstream commits newer than KiTTY's original 0.76b base).
 
 ## Screenshots
 
-<a href="screenshots/config.png"><img src="screenshots/config.png" width="420" alt="KiTTY configuration dialog"></a>
-<a href="screenshots/terminal.png"><img src="screenshots/terminal.png" width="600" alt="KiTTY terminal with a clickable, underlined URL"></a>
+*(click an image to enlarge)*
 
-*Left: the configuration dialog (start KiTTY with no session). Right: a terminal session with a clickable, underlined hyperlink. Click an image to enlarge.*
+The configuration dialog (start KiTTY with no session):
+
+<a href="screenshots/config.png"><img src="screenshots/config.png" width="420" alt="KiTTY configuration dialog"></a>
+
+A terminal session with a clickable, underlined hyperlink:
+
+<a href="screenshots/terminal.png"><img src="screenshots/terminal.png" width="600" alt="KiTTY terminal with a clickable, underlined URL"></a>
 
 ---
 
