@@ -91,3 +91,4 @@ void kitty_print(HWND hwnd) { ManagePrint(hwnd); }
 void kitty_negative(HWND hwnd) { NegativeColours(hwnd); }
 void kitty_bw(HWND hwnd) { BlackOnWhiteColours(hwnd); }
 void kitty_showportfwd(HWND hwnd, Conf *conf) { ShowPortfwd(hwnd, conf); }
+void kitty_shortcuts_toggle(HWND hwnd) { ManageShortcutsFlag(hwnd); }
