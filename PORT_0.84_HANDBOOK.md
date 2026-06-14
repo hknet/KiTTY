@@ -166,3 +166,75 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
 - `windows/kitty.rc`, `windows/kitty_rc_additions.h` — KiTTY resources.
 - `conf.h` (KiTTY CONF_OPTION block), `windows/CMakeLists.txt` (kitty/kitty_portable targets),
   `windows/window.c` (MOD_PERSO hooks), `be_list.c`, `utils/version.c`, `putty.h` — touched upstream.
+- `windows/storage.c` — runtime registry-root selection (KiTTY 9bis hive + PuTTY merge); see §11.
+- `windows/installer/` — the WiX/wixl MSI sources (`kitty-system.wxs`, `kitty-peruser.wxs`, `build.sh`).
+
+## 9. Current state (read this first for new work)
+
+- **Branch `kitty-0.84` is the GitHub default branch** of `hknet/KiTTY`; HEAD ≈ `82cb21f`. (`noglobal`
+  in the local `~/kitty-0.84` repo == pushed `kitty-0.84`.) The repo has **no other meaningful remote
+  history** — it's a fresh pristine-0.84 tree, history-disconnected from the old 0.76b `master`.
+- **Latest release: `kitty-0.84.0.3-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
+  system MSI, portable zip. Older 0.84.0.1/0.84.0.2 releases+tags were deleted.
+- **Version scheme:** display/app version `0.84.0.<sub>-beta` (set in `windows/CMakeLists.txt`
+  `BUILD_VERSION`/`BUILD_TIME` for both kitty & kitty_portable targets); MSI ProductVersion numeric
+  `0.84.<sub>`. **Every new build bumps the sub-release by +1** (user rule). Bump in: CMakeLists,
+  both `windows/installer/*.wxs` (Name + Version), `windows/installer/build.sh` (MSI filenames),
+  `README.md` (download links), `beta-084/README-BETA.md` + `KNOWN-ISSUES.md`.
+- **Open/tabled items:** About-box KiTTY-branding (config-box About still shows PuTTY's; would need a
+  `kitty_dialog.c` override of shared `dialog.c`; attribution is in `LICENCE` + the system-menu
+  `KittyAboutProc`); **Check-Update** button (needs an update endpoint); URL underline rendering is
+  DONE; far2l reply over `raw` is a pre-existing PuTTY limitation. SmartScreen reputation for the new
+  signing cert builds over downloads (OV, not EV).
+
+## 10. Release / packaging / MSI / signing runbook
+
+Outputs land in `C:\build\release-084\`. Helper scripts in `C:\build\`. Run WSL via
+`wsl -d Ubuntu-26.04 -- bash -c "..."` (use **absolute** `/home/user/...` paths — PowerShell mangles
+`~`). The full pipeline for a signed release:
+
+1. **Build + package:** `wsl_release.sh` (configures `build-release`, builds 8 binaries) →
+   `cmake --build build-release --target kitty_portable` → `wsl_package.sh` (strip/rename to k* +
+   UPX kitty.exe) → `wsl_package_portable.sh` (UPX kitty_portable.exe).
+2. **MSIs:** `windows/installer/build.sh` → both MSIs into `release-084/` via **wixl** (`apt install
+   wixl uuid-runtime`; wixl is a *separate* package from msitools). UpgradeCodes are fixed/committed
+   (per-machine `69EA2DD5-…`, per-user `578952A6-…`) — never regenerate. wixl supports `<Icon>`+
+   advertised `Shortcut Icon` (used for the shortcut icons).
+3. **Code signing** (Azure Trusted Signing aka "Artifact Signing"; tooling already installed: .NET SDK
+   + Azure CLI + the `sign` tool at `%USERPROFILE%\.dotnet\tools`). `az login` first (identity needs
+   the *Trusted Signing Certificate Profile Signer* role). Account `REDACTED-account`, endpoint
+   `https://REDACTED-endpoint/`, profile `REDACTED-profile` (PublicTrust). **Order matters:**
+   (a) sign all `release-084/*.exe` *after* UPX:
+   `sign code artifact-signing <exes> -act azure-cli -ase https://REDACTED-endpoint/ -asa REDACTED-account -ascp REDACTED-profile -fd sha256 -d "KiTTY (PuTTY 0.84 fork)" -u https://github.com/hknet/KiTTY`
+   (b) **rebuild the MSIs** (`windows/installer/build.sh`) so they embed the signed exes;
+   (c) sign the two MSIs the same way. Verify with `Get-AuthenticodeSignature` (Status=Valid, signer
+   `REDACTED Publisher`, timestamped).
+4. **Zip:** `wsl_beta_zip.sh` stages `release-084` + `beta-084/README-BETA.md`+`KNOWN-ISSUES.md` and
+   writes `SHA256SUMS`; then `Compress-Archive` it to `release-084/kitty-0.84.0.<sub>-beta.zip`.
+5. **Publish:** tag `kitty-0.84.0.<sub>-beta` (push via **Windows git over the `\\wsl.localhost\…` UNC
+   path** — WSL has no SSH key; Windows git has the agent), then GitHub REST API (auth = the stored
+   Windows git credential via `git credential fill`; there is **no `gh`**). Create release
+   (prerelease=true), upload assets to `https://uploads.github.com/repos/hknet/KiTTY/releases/<id>/assets?name=<n>`
+   (build the upload URL explicitly — the `upload_url` template trick fails). `/releases/latest` API
+   404s for a prerelease-only repo but the web URL works.
+
+## 11. Registry storage (KiTTY hive + PuTTY merge)
+
+`windows/storage.c` uses a **runtime** registry root (was the compile-time `PUTTY_REG_POS`). Default
+`Software\9bis.com\KiTTY` (matches stock KiTTY, so existing KiTTY sessions/host-keys are found and
+PuTTY isn't touched). `kitty.c` `InitWinMain` calls `kitty_set_registry_root(!stricmp(KiTTYClassName,
+"PuTTY"))` after parsing `kitty.ini` `KiClassName`, so `KiClassName=PuTTY` switches to
+`Software\SimonTatham\PuTTY`. For convenience, `open_settings_r` falls back to the PuTTY hive and
+`enum_settings_start` **merges+dedups** both hives; writes/deletes stay on the primary hive (PuTTY hive
+is read-only). NB: the `test_*.ps1` scripts create sessions under `SimonTatham\PuTTY` and still work
+via that fallback.
+
+## 12. Process lessons (session 12)
+- **Always smoke-test the config box** (`kitty.exe` with no args) after editing `kitty_config.c` — its
+  panels MUST be created in tree order (each new path extends the previous by one level) or
+  `dialog.c:~610` asserts and the dialog crashes. `-load` feature tests don't exercise this.
+- **Advertised MSI shortcuts need an explicit `<Icon>`** or they're iconless (wixl `Advertise="no"` is
+  unimplemented, so non-advertised isn't an option).
+- **Sign after UPX**, and rebuild MSIs after signing exes so they embed signed payloads.
+- KiTTY is **MIT** (its own `LICENCE.TXT`, © Cyril Dupont) — web "GPL" claims are wrong; `LICENCE`
+  credits both Tatham and Dupont.

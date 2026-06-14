@@ -1,8 +1,17 @@
 # KiTTY → PuTTY 0.84 Forward-Port — Final Status
 
 **Project:** Bring `hknet/KiTTY` (a PuTTY 0.76b fork) up to current PuTTY **0.84**, preserving KiTTY's features.
-**Branch:** `noglobal`  **Final HEAD:** `48f1dde`  **Baseline:** `e14266c` (pristine PuTTY 0.84 + KiTTY foundation)
+**Branch:** `kitty-0.84` (GitHub default; == local `noglobal`)  **HEAD:** ≈`82cb21f`  **Baseline:** `e14266c` (pristine PuTTY 0.84 + KiTTY foundation)
 **Repo (WSL):** `~/kitty-0.84` (Ubuntu-26.04)   **Date:** 2026-06-14
+
+> **UPDATE (current):** shipped as **`kitty-0.84.0.3-beta`** — a published, **code-signed** GitHub
+> pre-release (per-user MSI + system MSI + portable zip). Since the original write-up below, this was
+> added: URL underline rendering (done), all build warnings cleaned, **MSI installers** (signed, with
+> icons + Start-Menu shortcuts), **code signing** (Azure Trusted Signing), and **registry separation**
+> (reads KiTTY's `Software\9bis.com\KiTTY` hive + merges PuTTY sessions; `KiClassName`-configurable).
+> The config dialog crash (a `kitty_config.c` panel-ordering bug) was found & fixed.
+> **For build/release/MSI/signing/registry details and to continue the work, see
+> `PORT_0.84_HANDBOOK.md` §9–§12 (current state + runbooks).**
 
 ---
 
