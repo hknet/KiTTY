@@ -175,11 +175,23 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
 
 ## 9. Current state (read this first for new work)
 
-- **Branch `kitty-0.84` is the GitHub default branch** of `hknet/KiTTY`; HEAD ≈ `82cb21f`. (`noglobal`
+- **Branch `kitty-0.84` is the GitHub default branch** of `hknet/KiTTY`; HEAD ≈ `25f8a57`. (`noglobal`
   in the local `~/kitty-0.84` repo == pushed `kitty-0.84`.) The repo has **no other meaningful remote
   history** — it's a fresh pristine-0.84 tree, history-disconnected from the old 0.76b `master`.
-- **Latest release: `kitty-0.84.0.3-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
-  system MSI, portable zip. Older 0.84.0.1/0.84.0.2 releases+tags were deleted.
+- **Latest release: `kitty-0.84.0.6-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
+  system MSI, portable zip. Each release deletes its predecessor — only the newest tag/release remains
+  (0.84.0.1–0.84.0.5 all removed).
+- **0.84.0.6 changes (terminal menu overhaul + colour-menu fix):** the long flat system/context menu
+  was grouped into two submenus — **Window** (transparency, font ±, invert colours, black-on-white,
+  always-visible, roll-up, send-to-tray, protect) and **Tools** (port forwardings, WinSCP, pscp, ZModem,
+  print, clear log, export, shortcuts, hyperlinks); top level keeps New/Duplicate/Saved/Change-Settings,
+  Copy-All, Clear-Scrollback, Reset, Full Screen, Window▸, Tools▸, Exit, About. **Copy/Paste removed**
+  from the menu (select auto-copies; right-click/Shift+Ins pastes — handlers kept). **Full Screen** label
+  shows `(Alt+Enter)` when that session has it enabled, and `CONF_fullscreenonaltenter` now **defaults
+  true** (`conf.h`; `test_conf.c` updated to match). **"Invert colours"/"Black on white" fixed** — they
+  recolour in place instead of opening the Reconfiguration dialog (see §12). Earlier 0.84.0.6-batched
+  fixes: About unified (terminal-menu About → `showabout`), redundant "Duplicate KiTTY session" removed,
+  send-to-tray restored (tray icon + click-to-restore via `MYWM_NOTIFYICON`), taller config box.
 - **Version scheme:** display/app version `0.84.0.<sub>-beta` (set in `windows/CMakeLists.txt`
   `BUILD_VERSION`/`BUILD_TIME` for both kitty & kitty_portable targets); MSI ProductVersion numeric
   `0.84.<sub>`. **Every new build bumps the sub-release by +1** (user rule). Bump in: **`version.h`**
@@ -187,11 +199,12 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
   `windows/CMakeLists.txt` (`BUILD_VERSION`, both targets), both `windows/installer/*.wxs`
   (Name + MSI `Version` = `0.84.<sub>`), `windows/installer/build.ps1` (`-Ver` arg = MSI filenames),
   `README.md` (download links), `beta-084/README-BETA.md` + `KNOWN-ISSUES.md`.
-- **Open/tabled items:** About-box KiTTY-branding (config-box About still shows PuTTY's; would need a
-  `kitty_dialog.c` override of shared `dialog.c`; attribution is in `LICENCE` + the system-menu
-  `KittyAboutProc`); **Check-Update** button (needs an update endpoint); URL underline rendering is
-  DONE; far2l reply over `raw` is a pre-existing PuTTY limitation. SmartScreen reputation for the new
-  signing cert builds over downloads (OV, not EV).
+- **Open/tabled items:** **resizable config dialog** (currently a taller fixed 402-unit box — making it
+  truly resizable was deferred); **Check-Update** button (needs an update endpoint); far2l reply over
+  `raw` is a pre-existing PuTTY limitation. DONE: URL underline; About-box branding (config-box About
+  branded in `dialog.c` `AboutProc` in 0.84.0.4, and the terminal-menu About unified onto `showabout`
+  in 0.84.0.6 — both now consistent). SmartScreen reputation for the new signing cert builds over
+  downloads (OV, not EV).
 
 ## 10. Release / packaging / MSI / signing runbook
 
@@ -223,10 +236,18 @@ Outputs land in `C:\build\release-084\`. Helper scripts in `C:\build\`. Run WSL 
    writes `SHA256SUMS`; then `Compress-Archive` it to `release-084/kitty-0.84.0.<sub>-beta.zip`.
 5. **Publish:** tag `kitty-0.84.0.<sub>-beta` (push via **Windows git over the `\\wsl.localhost\…` UNC
    path** — WSL has no SSH key; Windows git has the agent), then GitHub REST API (auth = the stored
-   Windows git credential via `git credential fill`; there is **no `gh`**). Create release
-   (prerelease=true), upload assets to `https://uploads.github.com/repos/hknet/KiTTY/releases/<id>/assets?name=<n>`
-   (build the upload URL explicitly — the `upload_url` template trick fails). `/releases/latest` API
-   404s for a prerelease-only repo but the web URL works.
+   Windows git credential via `git credential fill` → `Authorization: Bearer`; there is **no `gh`**).
+   As of 0.84.0.6 that credential is a **fine-grained PAT** (`REDACTED_pat_…`, user `hknet`, scope repo
+   `hknet/KiTTY` **Contents: Read+Write** — sufficient; no Deployments/Packages), with GCM forced to PAT
+   mode (`git config --global credential.https://github.com.gitHubAuthModes pat`). This replaced the GCM
+   **OAuth app token**, which rotated on every fetch (regenerate/destroy/create churn in the security
+   log + repeated GitHub authorization windows). **Fetch the token once per script and reuse in-memory**
+   — do NOT call `git credential fill` per call. PAT **expires 2026-07-15**; renew via
+   `printf "protocol=https\nhost=github.com\nusername=hknet\npassword=<PAT>\n" | git credential approve`
+   (a Slack reminder is scheduled for 2026-07-13). Create release (prerelease=true), upload assets to
+   `https://uploads.github.com/repos/hknet/KiTTY/releases/<id>/assets?name=<n>` (build the upload URL
+   explicitly — the `upload_url` template trick fails). `/releases/latest` API 404s for a prerelease-only
+   repo but the web URL works.
 
 ## 11. Registry storage (KiTTY hive + PuTTY merge)
 
@@ -250,3 +271,33 @@ via that fallback.
 - **Sign after UPX**, and rebuild MSIs after signing exes so they embed signed payloads.
 - KiTTY is **MIT** (its own `LICENCE.TXT`, © Cyril Dupont) — web "GPL" claims are wrong; `LICENCE`
   credits both Tatham and Dupont.
+
+### Process lessons (session 13 — 0.84.0.6)
+- **Anything added to `window.c` that only KiTTY defines must be `#ifdef MOD_PERSO`-guarded** — `window.c`
+  is shared and also compiled into `putty`/`pterm`/`puttytel`, which do **not** link `kitty_bridge.c`.
+  The `force_reconf` silent-apply use in the `IDM_RECONF` handler broke those targets until guarded.
+  These non-KiTTY targets only build during a **full** release build, so a kitty-only rebuild won't catch
+  it — build `plink pscp psftp pageant puttygen pterm puttytel` too before publishing.
+- **KiTTY colour-menu actions (Invert / Black-on-white) apply via `force_reconf`.** `NegativeColours` /
+  `BlackOnWhiteColours` (kitty.c) mutate the active-seat `conf` colours, set the global `force_reconf=0`,
+  then `PostMessage(WM_COMMAND, IDM_RECONF)`. The `IDM_RECONF` handler must honour `force_reconf`: when 0,
+  skip `do_reconfig()` (the dialog) and fall straight through to the apply/repaint tail (`init_palette` +
+  `InvalidateRect` + `reset_window`). Stock PuTTY's handler always opens the dialog — that was the
+  "Invert opens the Reconfiguration dialog" bug. `WM_COMMAND` and `WM_SYSCOMMAND` share the same
+  `switch (wParam & ~0xF)`, so the internal `PostMessage` reaches the handler.
+- **Runtime-verify GUI changes on the actual binary** (the advisor's catch) — static checks (builds,
+  signatures, MSI extract) miss menu/handler bugs. Drive the system menu by `PostMessage(hwnd,
+  WM_SYSCOMMAND, IDM_*, 0)` (e.g. `IDM_FONTNEGATIVE`=0xB080, `IDM_RECONF`=0x0050); enumerate the menu via
+  `GetSubMenu`/`GetMenuString`; detect the config dialog by window class **`PuTTYConfigBox`**. Use
+  **`PostMessage`, not `SendMessage`**, for `IDM_RECONF` — `do_reconfig` is modal and `SendMessage`
+  blocks until the dialog closes. PuTTY paints via `WM_PAINT`, so `PrintWindow`/`WM_PRINTCLIENT` won't
+  capture the client area — screen-DC `BitBlt` over the window rect works if you must sample pixels.
+- **GUI testing on the user's own machine: isolate and never mass-kill.** The user runs a real KiTTY +
+  "KiTTY Session Manager"; its single-instance/handoff means a bare test launch can hand off to the live
+  instance (process stays alive, no window of its own). Isolate the test with a clean ini via
+  **`KITTY_INI_FILE=<clean.ini>`**. Copy the test exe to a **distinct name** (e.g. `kitty_086test.exe`)
+  and only ever `Stop-Process` by that name or your own PID — **never** `Get-Process kitty | Stop-Process`
+  (that kills the user's sessions; this rule cost real trust once).
+- **GitHub auth = static PAT, not the OAuth app** (see §10 step 5). The OAuth-app token rotated on every
+  `git credential fill`, spamming the security log and popping authorization windows; a fine-grained PAT
+  + `gitHubAuthModes pat` fixed it. Fetch the token once per script.
