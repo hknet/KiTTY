@@ -703,9 +703,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY feature: per-session icon (CONF_icone / CONF_iconefile) */
     kitty_apply_icon(wgs->term_hwnd, wgs->conf);
 #ifdef MOD_BACKGROUNDIMAGE
-    /* KiTTY feature: background image - load the configured image. NOTE: the
-     * WM_PAINT blit is NOT wired (0.84's refactored paint path); this loads
-     * the bitmap so the machinery is live and verifiable. */
+    /* KiTTY feature: background image - load the configured image into the
+     * module-global backgrounddc. The paint-time blit is wired in
+     * do_text_internal (per-cell compositing for default-bg cells), adapted
+     * to 0.84's direct-to-window paint path. */
     kitty_apply_background(wgs->term_hwnd, wgs->conf);
 #endif
     /* KiTTY feature: auto-minimise-to-tray when SendToTray is set */
@@ -4075,6 +4076,37 @@ static void do_text_internal(
     }
 
     opaque = true;                     /* start by erasing the rectangle */
+#ifdef MOD_BACKGROUNDIMAGE
+    /*
+     * KiTTY background-image compositing, adapted to 0.84's direct-to-window
+     * paint path (0.76b used a textdc back-buffer that 0.84 removed). For
+     * cells whose background is the terminal default background AND a
+     * background image is loaded, blit the matching region of the desktop-
+     * sized background DC straight into this cell's rectangle, then draw the
+     * glyphs with a TRANSPARENT background so the image shows through. Cells
+     * with a non-default background (selections, colour runs, the cursor)
+     * keep the normal opaque fill, exactly as without an image. Entirely
+     * inert when no image is loaded (backgrounddc == NULL), so normal
+     * rendering is provably unchanged.
+     */
+    {
+        extern HDC backgrounddc;       /* kitty_image.c, NULL until loaded */
+        if (backgrounddc && bg == wgs->colours[258] &&
+            line_box.right > line_box.left) {
+            POINT bgloc;
+            bgloc.x = line_box.left;
+            bgloc.y = line_box.top;
+            /* backgrounddc holds the image in screen coordinates */
+            ClientToScreen(wgs->term_hwnd, &bgloc);
+            BitBlt(wgs->wintw_hdc, line_box.left, line_box.top,
+                   line_box.right - line_box.left,
+                   line_box.bottom - line_box.top,
+                   backgrounddc, bgloc.x, bgloc.y, SRCCOPY);
+            SetBkMode(wgs->wintw_hdc, TRANSPARENT);
+            opaque = false;            /* don't ETO_OPAQUE over the image */
+        }
+    }
+#endif
     for (remaining = len; remaining > 0;
          text += len, remaining -= len, x += char_width * len2) {
         len = (maxlen < remaining ? maxlen : remaining);
