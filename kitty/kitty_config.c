@@ -2394,6 +2394,38 @@ void setup_config_box(struct controlbox *b, bool midsession,
     }
 
     /*
+     * The Connection/Scripting panel (KiTTY rutty scripting).
+     */
+    if (!GetPuttyFlag()) {
+        ctrl_settitle(b, "Connection/Scripting",
+                      "Options controlling automated scripting");
+        s = ctrl_getset(b, "Connection/Scripting", "main",
+                        "Send a script file to the host");
+        ctrl_checkbox(s, "Run the script on connect", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_script_mode));
+        ctrl_filesel(s, "Script file:", NO_SHORTCUT,
+                     FILTER_ALL_FILES, false, "Select script file",
+                     HELPCTX(no_help),
+                     conf_filesel_handler, I(CONF_scriptfile));
+        ctrl_checkbox(s, "Wait for a prompt before each line", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_script_enable));
+        ctrl_editbox(s, "Wait-for text:", NO_SHORTCUT, 60,
+                     HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_script_waitfor), ED_STR);
+        ctrl_editbox(s, "Halt-on text:", NO_SHORTCUT, 60,
+                     HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_script_halton), ED_STR);
+        ctrl_editbox(s, "Line delay (ms):", NO_SHORTCUT, 30,
+                     HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_script_line_delay), ED_INT);
+        ctrl_editbox(s, "Timeout (s):", NO_SHORTCUT, 30,
+                     HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_script_timeout), ED_INT);
+    }
+
+    /*
      * The Window/Appearance panel: window icon + remember position (KiTTY).
      */
     if (!GetPuttyFlag()) {

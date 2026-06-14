@@ -168,6 +168,16 @@ int kitty_zmodem_process(void);
 /* Background image: load the configured image (CONF_bg_image_filename etc.). */
 int kitty_apply_background(HWND hwnd, Conf *conf);
 #endif
+#ifdef MOD_PERSO
+/* KiTTY rutty scripting (kitty_rutty.c). Sends a script file line by line and,
+ * in wait-for-prompt mode, waits for a pattern in the incoming host data
+ * (waitfor) before each line / aborts on halton. Observe-hooked in
+ * win_seat_output; no terminal.c edits. */
+int  kitty_script_active(void);
+int  kitty_script_send_file(Conf *conf, Backend *backend, Filename *fn);
+void kitty_script_remote(const void *data, size_t len);
+void kitty_script_stop(void);
+#endif
 /* Auto-command: send a command automatically after login (CONF_autocommand). */
 int kitty_autocommand_tick(HWND hwnd);
 extern int autocommand_delay;
@@ -176,6 +186,7 @@ extern int autocommand_delay;
 void kitty_antiidle_tick(HWND hwnd);
 extern char AntiIdleStr[128];
 #define TIMER_ANTIIDLE 8703
+#define TIMER_SCRIPT 8704
 #endif
 
 static void flash_window(WinGuiSeat *wgs, int mode);
@@ -729,6 +740,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         const char *ai = conf_get_str(wgs->conf, CONF_antiidle);
         if ((ai && ai[0]) || AntiIdleStr[0])
             SetTimer(wgs->term_hwnd, TIMER_ANTIIDLE, 30 * 1000, NULL);
+    }
+    /* KiTTY feature: rutty scripting. If script_mode == PLAY (1) and a script
+     * file is configured, fire a one-shot timer to start sending once the
+     * backend is up (start_backend runs after this seat-setup). */
+    if (conf_get_int(wgs->conf, CONF_script_mode) == 1) {
+        Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
+        if (sf && filename_to_str(sf)[0])
+            SetTimer(wgs->term_hwnd, TIMER_SCRIPT, 1500, NULL);
     }
 #endif
     setup_clipboards(wgs->term, wgs->conf);
@@ -2371,6 +2390,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         if ((UINT_PTR)wParam == TIMER_ANTIIDLE) {
             /* repeating 30s timer left armed; tick handles the counter */
             kitty_antiidle_tick(hwnd);
+            return 0;
+        }
+        if ((UINT_PTR)wParam == TIMER_SCRIPT) {
+            KillTimer(hwnd, TIMER_SCRIPT);
+            if (wgs->backend) {
+                Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
+                kitty_script_send_file(wgs->conf, wgs->backend, sf);
+            }
             return 0;
         }
         break;
@@ -6261,6 +6288,13 @@ static size_t win_seat_output(Seat *seat, SeatOutputType type,
      * terminal.c term_data; here we keep terminal.c untouched.) */
     if (kitty_zmodem_active() && type == SEAT_OUTPUT_STDOUT)
         return kitty_zmodem_recv_data(data, len);
+#endif
+#ifdef MOD_PERSO
+    /* KiTTY rutty scripting: observe incoming host data for waitfor/halton
+     * (OBSERVE-only - the data still flows on to the terminal below). Same
+     * interception point as ZModem; no terminal.c edits. */
+    if (kitty_script_active() && type == SEAT_OUTPUT_STDOUT)
+        kitty_script_remote(data, len);
 #endif
     return term_data(wgs->term, data, len);
 }

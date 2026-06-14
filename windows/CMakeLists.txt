@@ -232,6 +232,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_settings_forced.c
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c
+  ${KITTY_DIR}/kitty_rutty.c
   ${KITTY_DIR}/kitty_config.c)
 be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
 # kitty's backend list also includes the ADB backend (MOD_ADB) - applied to the
