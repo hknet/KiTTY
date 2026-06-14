@@ -8,6 +8,13 @@ PuTTY core (≈1,200 upstream commits newer than KiTTY's original 0.76b base).
 > ⚠️ **This is a public _beta_** (`0.84.0.1-beta`). It builds clean and ~43 KiTTY features are
 > verified, but please test before relying on it and read the known issues below.
 
+## Screenshots
+
+<a href="screenshots/config.png"><img src="screenshots/config.png" width="420" alt="KiTTY configuration dialog"></a>
+<a href="screenshots/terminal.png"><img src="screenshots/terminal.png" width="600" alt="KiTTY terminal with a clickable, underlined URL"></a>
+
+*Left: the configuration dialog (start KiTTY with no session). Right: a terminal session with a clickable, underlined hyperlink. Click an image to enlarge.*
+
 ---
 
 ## ⬇️ Download
