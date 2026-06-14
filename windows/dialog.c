@@ -528,7 +528,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
       case WM_INITDIALOG:
         pds_initdialog_start(pds, hwnd);
 
-        pds_create_controls(pds, TREE_BASE, IDCX_STDBASE, 3, 3, 235, "");
+        pds_create_controls(pds, TREE_BASE, IDCX_STDBASE, 3, 3, 385, ""); /* buttons row moved down with the taller box (was 235) */
 
         SendMessage(hwnd, WM_SETICON, (WPARAM) ICON_BIG,
                     (LPARAM) LoadIcon(hinst, MAKEINTRESOURCE(IDI_CFGICON)));
@@ -572,7 +572,8 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             r.left = 3;
             r.right = r.left + 95;
             r.top = 13;
-            r.bottom = r.top + 219;
+            r.bottom = r.top + 369;   /* KiTTY: taller config box (was 219) so
+                                       * Bell/Data/Appearance panels aren't cut */
             MapDialogRect(hwnd, &r);
             treeview = CreateWindowEx(WS_EX_CLIENTEDGE, WC_TREEVIEW, "",
                                       WS_CHILD | WS_VISIBLE |
