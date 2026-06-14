@@ -1,117 +1,83 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  KiTTY 0.84-port  -  SYSTEM-WIDE (per-machine) MSI, built with wixl (msitools).
-  Installs into "Program Files\KiTTY" for ALL users (needs admin/UAC).
+  KiTTY 0.84-port  -  SYSTEM-WIDE (per-machine) MSI, built with WiX v5 (`wix build`).
+  Installs into "Program Files\KiTTY" for all users (needs admin/UAC).
   For the no-UAC current-user installer see kitty-peruser.wxs.
 
-  GUIDs (UpgradeCode + Components) are fixed on purpose and committed; they are
-  not secret but MUST stay stable across releases. Per-machine UpgradeCode:
-  69EA2DD5-EF19-4811-B324-EF34CAA6942C
+  WiX v5: NON-ADVERTISED shortcuts (stable target path -> exe's own icon shows;
+  stable AppUserModelID so Start/taskbar PINS survive upgrades).
+  Build: wix build -arch x64 -bindpath <release-084> -o <out>.msi this.
+  Per-machine UpgradeCode (fixed/committed): 69EA2DD5-EF19-4811-B324-EF34CAA6942C
 -->
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-
-  <Product Id="*"
-           Name="KiTTY 0.84.0.4-beta (system-wide install)"
-           Language="1033"
-           Version="0.84.4"
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="KiTTY 0.84.0.5-beta (system-wide install)"
            Manufacturer="KiTTY 0.84 port"
-           UpgradeCode="69EA2DD5-EF19-4811-B324-EF34CAA6942C">
-
-    <Package InstallerVersion="500"
-             Compressed="yes"
-             InstallScope="perMachine"
-             Description="KiTTY terminal/SSH client (PuTTY 0.84 fork) - system-wide install" />
+           Version="0.84.5"
+           UpgradeCode="69EA2DD5-EF19-4811-B324-EF34CAA6942C"
+           Scope="perMachine"
+           Compressed="yes">
 
     <MajorUpgrade DowngradeErrorMessage="A newer version of KiTTY is already installed." />
-    <Media Id="1" Cabinet="kitty.cab" EmbedCab="yes" />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="kitty.ico" SourceFile="kitty.exe" />
+    <Property Id="ARPPRODUCTICON" Value="kitty.ico" />
 
-    <!-- Shortcut icons, extracted from each exe -->
-    <Icon Id="kitty.exe"       SourceFile="/mnt/c/build/release-084/kitty.exe" />
-    <Icon Id="kittygen.exe"    SourceFile="/mnt/c/build/release-084/kittygen.exe" />
-    <Icon Id="kageant.exe"     SourceFile="/mnt/c/build/release-084/kageant.exe" />
-    <Icon Id="ksftp.exe"       SourceFile="/mnt/c/build/release-084/ksftp.exe" />
-    <Icon Id="kitty_pterm.exe" SourceFile="/mnt/c/build/release-084/kitty_pterm.exe" />
-    <Icon Id="kitty_tel.exe"   SourceFile="/mnt/c/build/release-084/kitty_tel.exe" />
-    <Property Id="ARPPRODUCTICON" Value="kitty.exe" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="KiTTY" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ShortcutDir" Name="KiTTY" />
+    </StandardDirectory>
 
-    <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFiles64Folder">
-        <Directory Id="INSTALLDIR" Name="KiTTY">
+    <ComponentGroup Id="Binaries" Directory="INSTALLFOLDER">
+      <Component><File Source="kitty.exe" /></Component>
+      <Component><File Source="klink.exe" /></Component>
+      <Component><File Source="kscp.exe" /></Component>
+      <Component><File Source="ksftp.exe" /></Component>
+      <Component><File Source="kageant.exe" /></Component>
+      <Component><File Source="kittygen.exe" /></Component>
+      <Component><File Source="kitty_pterm.exe" /></Component>
+      <Component><File Source="kitty_tel.exe" /></Component>
+    </ComponentGroup>
 
-          <Component Id="cmp_kitty_exe" Guid="CC9E4E74-671E-4FE2-923C-6D77683BC320" Win64="yes">
-            <File Id="kitty.exe" Source="/mnt/c/build/release-084/kitty.exe" KeyPath="yes">
-              <Shortcut Id="startmenuKiTTY" Directory="ProgramMenuDir" Name="KiTTY" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="kitty.exe" IconIndex="0" />
-              <Shortcut Id="desktopKiTTY"   Directory="DesktopFolder"  Name="KiTTY" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="kitty.exe" IconIndex="0" />
-            </File>
-          </Component>
+    <DirectoryRef Id="ShortcutDir">
+      <Component Id="c_shortcuts" Guid="B1B2C3D4-0084-4005-9002-000000000001">
+        <Shortcut Id="sc_kitty" Name="KiTTY" Target="[INSTALLFOLDER]kitty.exe" WorkingDirectory="INSTALLFOLDER">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTY" />
+        </Shortcut>
+        <Shortcut Id="sc_kittygen" Name="KiTTYgen (key generator)" Target="[INSTALLFOLDER]kittygen.exe" WorkingDirectory="INSTALLFOLDER">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYgen" />
+        </Shortcut>
+        <Shortcut Id="sc_kageant" Name="Kageant (SSH agent)" Target="[INSTALLFOLDER]kageant.exe" WorkingDirectory="INSTALLFOLDER">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.Kageant" />
+        </Shortcut>
+        <Shortcut Id="sc_ksftp" Name="KSFTP (sftp)" Target="[INSTALLFOLDER]ksftp.exe" WorkingDirectory="INSTALLFOLDER">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KSFTP" />
+        </Shortcut>
+        <Shortcut Id="sc_pterm" Name="KiTTY pterm" Target="[INSTALLFOLDER]kitty_pterm.exe" WorkingDirectory="INSTALLFOLDER">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYpterm" />
+        </Shortcut>
+        <Shortcut Id="sc_tel" Name="KiTTY Telnet" Target="[INSTALLFOLDER]kitty_tel.exe" WorkingDirectory="INSTALLFOLDER">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYTelnet" />
+        </Shortcut>
+        <RemoveFolder Id="rm_ShortcutDir" Directory="ShortcutDir" On="uninstall" />
+        <RegistryValue Root="HKLM" Key="Software\KiTTY-0.84-port" Name="smdir" Type="string" Value="" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
 
-          <Component Id="cmp_klink"    Guid="C6A67C3D-B021-4023-9B45-F950562EA776" Win64="yes">
-            <File Id="klink.exe"    Source="/mnt/c/build/release-084/klink.exe"    KeyPath="yes" />
-          </Component>
-          <Component Id="cmp_kscp"     Guid="6B95CCA6-C37B-4529-8BC6-80F9C522C018" Win64="yes">
-            <File Id="kscp.exe"     Source="/mnt/c/build/release-084/kscp.exe"     KeyPath="yes" />
-          </Component>
-          <Component Id="cmp_ksftp"    Guid="A6021F9F-BBA1-46AD-B8DA-D931694C7C61" Win64="yes">
-            <File Id="ksftp.exe"    Source="/mnt/c/build/release-084/ksftp.exe"    KeyPath="yes">
-              <Shortcut Id="sm_ksftp" Directory="ProgramMenuDir" Name="KSFTP (sftp)" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="ksftp.exe" IconIndex="0" />
-            </File>
-          </Component>
-          <Component Id="cmp_kageant"  Guid="B8374671-55B1-4E22-BC04-A223FA9977D4" Win64="yes">
-            <File Id="kageant.exe"  Source="/mnt/c/build/release-084/kageant.exe"  KeyPath="yes">
-              <Shortcut Id="sm_kageant" Directory="ProgramMenuDir" Name="Kageant (SSH agent)" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="kageant.exe" IconIndex="0" />
-            </File>
-          </Component>
-          <Component Id="cmp_kittygen" Guid="D037F935-BE93-429C-926E-26A7E7CC97FB" Win64="yes">
-            <File Id="kittygen.exe" Source="/mnt/c/build/release-084/kittygen.exe" KeyPath="yes">
-              <Shortcut Id="sm_kittygen" Directory="ProgramMenuDir" Name="KiTTYgen (key generator)" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="kittygen.exe" IconIndex="0" />
-            </File>
-          </Component>
-          <Component Id="cmp_kitty_pterm" Guid="B6FA9D38-5858-4EC1-B204-BA0C1899C981" Win64="yes">
-            <File Id="kitty_pterm.exe" Source="/mnt/c/build/release-084/kitty_pterm.exe" KeyPath="yes">
-              <Shortcut Id="sm_pterm" Directory="ProgramMenuDir" Name="KiTTY pterm" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="kitty_pterm.exe" IconIndex="0" />
-            </File>
-          </Component>
-          <Component Id="cmp_kitty_tel"   Guid="4E6BC9A5-7144-4A71-9608-8EEAB5AE6A14" Win64="yes">
-            <File Id="kitty_tel.exe"   Source="/mnt/c/build/release-084/kitty_tel.exe"   KeyPath="yes">
-              <Shortcut Id="sm_tel" Directory="ProgramMenuDir" Name="KiTTY Telnet" WorkingDirectory="INSTALLDIR" Advertise="yes" Icon="kitty_tel.exe" IconIndex="0" />
-            </File>
-          </Component>
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="c_desktop" Guid="B1B2C3D4-0084-4005-9002-000000000002">
+        <Shortcut Id="sc_desktop" Name="KiTTY" Target="[INSTALLFOLDER]kitty.exe" WorkingDirectory="INSTALLFOLDER">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTY" />
+        </Shortcut>
+        <RegistryValue Root="HKLM" Key="Software\KiTTY-0.84-port" Name="desktop" Type="string" Value="" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
 
-          <Component Id="cmp_reg_uninstall" Guid="70253F4A-C29F-4833-9138-2A0EB508FDD0" Win64="yes">
-            <RegistryValue Root="HKLM" Key="Software\KiTTY-0.84-port" Name="InstallDir"
-                           Type="string" Value="[INSTALLDIR]" KeyPath="yes" />
-          </Component>
-
-        </Directory>
-      </Directory>
-
-      <Directory Id="ProgramMenuFolder">
-        <Directory Id="ProgramMenuDir" Name="KiTTY">
-          <Component Id="cmp_ProgramMenuDir" Guid="D32177D2-1D12-4FA0-A682-39AABFE2DF1D">
-            <RemoveFolder Id="ProgramMenuDir" On="uninstall" />
-            <RegistryValue Root="HKCU" Key="Software\KiTTY-0.84-port" Name="smdir"
-                           Type="string" Value="" KeyPath="yes" />
-          </Component>
-        </Directory>
-      </Directory>
-
-      <Directory Id="DesktopFolder" Name="Desktop" />
-    </Directory>
-
-    <Feature Id="Complete" Title="KiTTY" Level="1" Display="expand" ConfigurableDirectory="INSTALLDIR">
-      <ComponentRef Id="cmp_kitty_exe" />
-      <ComponentRef Id="cmp_reg_uninstall" />
-      <ComponentRef Id="cmp_ProgramMenuDir" />
-      <Feature Id="CmdTools" Title="Command-line tools (klink/kscp/ksftp/kageant/kittygen)" Level="1">
-        <ComponentRef Id="cmp_klink" />
-        <ComponentRef Id="cmp_kscp" />
-        <ComponentRef Id="cmp_ksftp" />
-        <ComponentRef Id="cmp_kageant" />
-        <ComponentRef Id="cmp_kittygen" />
-        <ComponentRef Id="cmp_kitty_pterm" />
-        <ComponentRef Id="cmp_kitty_tel" />
-      </Feature>
+    <Feature Id="Main" Title="KiTTY" Level="1">
+      <ComponentGroupRef Id="Binaries" />
+      <ComponentRef Id="c_shortcuts" />
+      <ComponentRef Id="c_desktop" />
     </Feature>
-
-  </Product>
+  </Package>
 </Wix>
