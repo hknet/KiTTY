@@ -131,6 +131,8 @@ void kitty_negative(HWND);
 void kitty_bw(HWND);
 void kitty_showportfwd(HWND, Conf*);
 void kitty_shortcuts_toggle(HWND);
+int GetAutoSendToTray(void);
+void SetAutoSendToTray(const int flag);
 #endif
 
 static void flash_window(WinGuiSeat *wgs, int mode);
@@ -650,6 +652,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     kitty_set_active_seat(wgs);
     kitty_apply_transparency(wgs);
     kitty_apply_window_pos(wgs);
+    /* KiTTY feature: auto-minimise-to-tray when SendToTray is set */
+    if (conf_get_int(wgs->conf, CONF_sendtotray))
+        SetAutoSendToTray(1);
 #endif
     setup_clipboards(wgs->term, wgs->conf);
     wgs->logctx = log_init(&wgs->logpolicy, wgs->conf);
@@ -3157,6 +3162,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       case WM_SIZE:
         resize_action = conf_get_int(wgs->conf, CONF_resize_action);
         term_notify_minimised(wgs->term, wParam == SIZE_MINIMIZED);
+#ifdef MOD_PERSO
+        /* KiTTY feature: when minimised and SendToTray active, hide to tray */
+        if (wParam == SIZE_MINIMIZED && GetAutoSendToTray()) {
+            kitty_send_to_tray(hwnd);
+            return 0;
+        }
+#endif
         {
             /*
              * WM_SIZE's lParam tells us the size of the client area.
