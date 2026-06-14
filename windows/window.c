@@ -149,6 +149,10 @@ int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
 void kitty_apply_icon(HWND hwnd, Conf *conf);
 /* KiTTY-specific About dialog. */
 void kitty_about(HWND hwnd);
+#ifdef MOD_PORTKNOCKING
+/* Port-knocking: knock the configured host:port sequence before connecting. */
+void kitty_port_knock(Conf *conf);
+#endif
 #ifdef MOD_BACKGROUNDIMAGE
 /* Background image: load the configured image (CONF_bg_image_filename etc.). */
 int kitty_apply_background(HWND hwnd, Conf *conf);
@@ -333,6 +337,11 @@ static void start_backend(WinGuiSeat *wgs)
     wgs->cmdline_get_passwd_state = cmdline_get_passwd_input_state_new;
 
     vt = backend_vt_from_conf(wgs->conf);
+
+#ifdef MOD_PORTKNOCKING
+    /* KiTTY feature: knock the configured port sequence before connecting. */
+    kitty_port_knock(wgs->conf);
+#endif
 
     seat_set_trust_status(&wgs->seat, true);
     error = backend_init(vt, &wgs->seat, &wgs->backend, wgs->logctx, wgs->conf,
