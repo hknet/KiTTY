@@ -263,3 +263,6 @@
 #ifndef IDM_WINSCP
 #define IDM_WINSCP 0xA920
 #endif
+#ifndef IDM_PSCP
+#define IDM_PSCP 0xA910
+#endif
