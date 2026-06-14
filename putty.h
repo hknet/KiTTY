@@ -445,6 +445,8 @@ enum {
     PROT_SERIAL,
     /* PROT_SUPDUP is the historical RFC 734 protocol. */
     PROT_SUPDUP,
+    /* PROT_ADB is KiTTY's Android Debug Bridge backend (MOD_ADB). */
+    PROT_ADB,
     PROTOCOL_LIMIT, /* upper bound on number of protocols */
 };
 
@@ -2180,6 +2182,13 @@ extern const struct BackendVtable loop_backend;
  */
 
 extern const struct BackendVtable raw_backend;
+
+/*
+ * Exports from KiTTY's kitty_adb.c (MOD_ADB).
+ */
+#ifdef MOD_ADB
+extern const struct BackendVtable adb_backend;
+#endif
 
 /*
  * Exports from rlogin.c.

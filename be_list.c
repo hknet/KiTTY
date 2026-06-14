@@ -85,6 +85,13 @@ const struct BackendVtable *const backends[] = {
 #endif
 
     /*
+     * KiTTY's Android Debug Bridge backend (MOD_ADB), only in the kitty target.
+     */
+#if defined(MOD_ADB)
+    &adb_backend,
+#endif
+
+    /*
      * Bare ssh-connection / PSUSAN is a niche protocol and goes well
      * down the list.
      */

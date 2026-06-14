@@ -231,10 +231,14 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_bridge.c
   ${KITTY_DIR}/kitty_settings_forced.c
   ${KITTY_DIR}/kitty_zmodem.c
+  ${KITTY_DIR}/kitty_adb.c
   ${KITTY_DIR}/kitty_config.c)
 be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
+# kitty's backend list also includes the ADB backend (MOD_ADB) - applied to the
+# per-target be-list object so other binaries' be_list.c is unaffected.
+target_compile_definitions(kitty-be-list PRIVATE MOD_ADB=1)
 add_dependencies(kitty generated_licence_h)
-target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MASTER_PASSWORD="kitty")
+target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MASTER_PASSWORD="kitty")
 target_compile_options(kitty PRIVATE -fcommon)
 target_include_directories(kitty PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
