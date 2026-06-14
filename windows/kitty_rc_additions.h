@@ -275,3 +275,6 @@
 #ifndef IDM_DUPKITTY
 #define IDM_DUPKITTY 0xB130
 #endif
+#ifndef IDM_HYPERLINKTOGGLE
+#define IDM_HYPERLINKTOGGLE 0xB140
+#endif

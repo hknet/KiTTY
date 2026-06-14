@@ -137,7 +137,9 @@ void kitty_export_settings(HWND, Conf*);
 void kitty_dup_session(HWND, Conf*);
 int GetAutoSendToTray(void);
 void SetAutoSendToTray(const int flag);
-/* URL hyperlinks (kitty_url.c) */
+/* URL hyperlinks (kitty_url.c + kitty.c flag) */
+int  GetHyperlinkFlag(void);
+void SetHyperlinkFlag(const int flag);
 void kitty_url_init(void);
 void kitty_url_config(Conf *conf);
 void kitty_url_rescan(Terminal *term);
@@ -831,6 +833,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_CLEARLOGFILE, "Clear log fil&e");
             AppendMenu(m, MF_ENABLED, IDM_SHOWPORTFWD, "Port forwar&dings");
             AppendMenu(m, MF_ENABLED, IDM_SHORTCUTSTOGGLE, "Shortcut&s");
+            AppendMenu(m, MF_ENABLED | (GetHyperlinkFlag() ? MF_CHECKED : 0),
+                       IDM_HYPERLINKTOGGLE, "Hyper&links");
             AppendMenu(m, MF_ENABLED, IDM_WINSCP, "Start Win&SCP");
             AppendMenu(m, MF_ENABLED, IDM_PSCP, "Send file (&pscp)");
             AppendMenu(m, MF_ENABLED, IDM_EXPORTSETTINGS, "Export &current settings");
@@ -2747,6 +2751,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           case IDM_DUPKITTY:
             kitty_dup_session(wgs->term_hwnd, wgs->conf);
             break;
+          case IDM_HYPERLINKTOGGLE: {
+            /* KiTTY: enable/disable URL hyperlink detection at runtime */
+            int nf = !GetHyperlinkFlag();
+            SetHyperlinkFlag(nf);
+            CheckMenuItem(GetSystemMenu(hwnd, FALSE), IDM_HYPERLINKTOGGLE,
+                          MF_BYCOMMAND | (nf ? MF_CHECKED : MF_UNCHECKED));
+            break;
+          }
           case IDM_QUIT:
             /* KiTTY: immediate exit without the close confirmation prompt */
             DestroyWindow(hwnd);
@@ -2892,7 +2904,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 /* KiTTY URL hyperlinks: on left-button release, if (ctrl+)click
                  * lands on a detected URL region, launch it instead of
                  * completing a selection. */
-                if (message == WM_LBUTTONUP &&
+                if (message == WM_LBUTTONUP && GetHyperlinkFlag() &&
                     kitty_url_click(wgs->term, wgs->conf,
                                     TO_CHR_X(X_POS(lParam)),
                                     TO_CHR_Y(Y_POS(lParam)),
@@ -2954,10 +2966,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #ifdef MOD_PERSO
         /* KiTTY URL hyperlinks: rescan visible screen for links and update the
          * hand cursor when hovering over one. */
-        kitty_url_rescan(wgs->term);
-        kitty_url_hover(wgs->term, hwnd,
-                        TO_CHR_X(X_POS(lParam)), TO_CHR_Y(Y_POS(lParam)),
-                        conf_get_int(wgs->conf, CONF_url_ctrl_click));
+        if (GetHyperlinkFlag()) {
+            kitty_url_rescan(wgs->term);
+            kitty_url_hover(wgs->term, hwnd,
+                            TO_CHR_X(X_POS(lParam)), TO_CHR_Y(Y_POS(lParam)),
+                            conf_get_int(wgs->conf, CONF_url_ctrl_click));
+        }
 #endif
         return 0;
       case WM_NCMOUSEMOVE:
