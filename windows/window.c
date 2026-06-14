@@ -127,6 +127,8 @@ void kitty_rollup(HWND, int);
 void kitty_font_resize(Terminal*, Conf*, int);
 void kitty_protect(HWND, TermWin*, Conf*);
 void kitty_print(HWND);
+void kitty_negative(HWND);
+void kitty_bw(HWND);
 #endif
 
 static void flash_window(WinGuiSeat *wgs, int mode);
@@ -804,6 +806,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_FONTDOWN,     "Font &Down");
             AppendMenu(m, MF_ENABLED, IDM_PROTECT,      "Prote&ct");
             AppendMenu(m, MF_ENABLED, IDM_PRINT,        "Print clip&board");
+            AppendMenu(m, MF_ENABLED, IDM_FONTNEGATIVE,  "Invert co&lours");
+            AppendMenu(m, MF_ENABLED, IDM_FONTBLACKANDWHITE, "Black on &white");
 #endif
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             if (has_help())
@@ -2659,6 +2663,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           case IDM_PRINT:
             kitty_print(wgs->term_hwnd);
+            break;
+          case IDM_FONTNEGATIVE:
+            kitty_negative(wgs->term_hwnd);
+            break;
+          case IDM_FONTBLACKANDWHITE:
+            kitty_bw(wgs->term_hwnd);
             break;
 #endif
           default:

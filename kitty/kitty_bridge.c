@@ -87,3 +87,6 @@ void kitty_protect(HWND hwnd, TermWin *tw, Conf *conf) {
     ManageProtect(hwnd, tw, (char*)conf_get_str(conf, CONF_wintitle));
 }
 void kitty_print(HWND hwnd) { ManagePrint(hwnd); }
+
+void kitty_negative(HWND hwnd) { NegativeColours(hwnd); }
+void kitty_bw(HWND hwnd) { BlackOnWhiteColours(hwnd); }
