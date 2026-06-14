@@ -254,3 +254,6 @@
 #ifndef IDM_REPOS
 #define IDM_REPOS 0xB030
 #endif
+#ifndef IDM_SHOWPORTFWD
+#define IDM_SHOWPORTFWD 0xA950
+#endif

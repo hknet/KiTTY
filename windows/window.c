@@ -129,6 +129,7 @@ void kitty_protect(HWND, TermWin*, Conf*);
 void kitty_print(HWND);
 void kitty_negative(HWND);
 void kitty_bw(HWND);
+void kitty_showportfwd(HWND, Conf*);
 #endif
 
 static void flash_window(WinGuiSeat *wgs, int mode);
@@ -809,6 +810,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_FONTNEGATIVE,  "Invert co&lours");
             AppendMenu(m, MF_ENABLED, IDM_FONTBLACKANDWHITE, "Black on &white");
             AppendMenu(m, MF_ENABLED, IDM_CLEARLOGFILE, "Clear log fil&e");
+            AppendMenu(m, MF_ENABLED, IDM_SHOWPORTFWD, "Port forwar&dings");
 #endif
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             if (has_help())
@@ -2702,6 +2704,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                          SWP_NOACTIVATE);
             break;
           }
+          case IDM_SHOWPORTFWD:
+            kitty_showportfwd(wgs->term_hwnd, wgs->conf);
+            break;
 #endif
           default:
             if (wParam >= IDM_SAVED_MIN && wParam < IDM_SAVED_MAX) {
