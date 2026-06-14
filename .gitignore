@@ -1,5 +1,7 @@
 build-mingw/
 build/
+build-release/
+build-warn/
 *.o
 *.obj
 *.tmp
