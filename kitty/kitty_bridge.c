@@ -41,8 +41,14 @@ int DebugAddPassword(const char *fct, const char *pwd) {
 /* KiTTY "force reconfiguration" flag (originally a window.c global int) */
 int force_reconf = 1;
 
-/* TODO: wire the SSH version override into the SSH layer */
-void set_sshver(const char *vers) { (void)vers; }
+/* Override the SSH client version string (kitty.ini 'sshversion').
+ * sshver is a mutable char[40] in utils/version.c (see ssh.h). */
+extern char sshver[40];
+void set_sshver(const char *vers) {
+    if (!vers) return;
+    strncpy(sshver, vers, sizeof(sshver) - 1);
+    sshver[sizeof(sshver) - 1] = '\0';
+}
 
 /* save_open_settings_forced now implemented in kitty_settings_forced.c */
 

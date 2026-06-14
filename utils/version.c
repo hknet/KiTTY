@@ -14,7 +14,10 @@
 #include "version.h"
 
 const char ver[] = TEXTVER;
-const char sshver[] = SSHVER;
+/* KiTTY: sshver is mutable (set_sshver) so the SSH client version string can be
+ * overridden via kitty.ini 'sshversion'. Fixed 40-byte buffer keeps the static
+ * assert below valid (sizeof == 40). */
+char sshver[40] = SSHVER;
 
 /*
  * SSH local version string MUST be under 40 characters. Here's a
