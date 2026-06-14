@@ -2590,17 +2590,18 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             term_pre_reconfig(wgs->term, wgs->conf);
             prev_conf = conf_copy(wgs->conf);
 
+#ifdef MOD_PERSO
             if (force_reconf == 0) {
                 /* KiTTY silent apply: conf was already mutated in-place
                  * (Invert colours / Black on white etc.) — skip the dialog
                  * and just push the new conf into the terminal/palette. */
                 force_reconf = 1;
                 reconfig_result = true;
-            } else {
-                reconfig_result = do_reconfig(
-                    hwnd, wgs->conf,
-                    wgs->backend ? backend_cfg_info(wgs->backend) : 0);
-            }
+            } else
+#endif
+            reconfig_result = do_reconfig(
+                hwnd, wgs->conf,
+                wgs->backend ? backend_cfg_info(wgs->backend) : 0);
             wgs->reconfiguring = false;
             if (!reconfig_result) {
                 conf_free(prev_conf);
