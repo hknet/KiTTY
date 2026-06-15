@@ -13,6 +13,15 @@ Dupont <https://www.9bis.net/kitty/>. KiTTY is released under the same
 MIT licence as PuTTY (the identical text below), so the combined work is
 covered by the single licence that follows.
 
+The far2l terminal-extension support (including the far2l shared
+clipboard) is derived from the putty4far2l project. The far2l PuTTY
+extensions were originally written by Ivan Sorokin; the putty4far2l
+fork was created by unxed <https://github.com/unxed/putty4far2l> and
+forward-ported to PuTTY 0.78.5 by Ivan Shatsky
+<https://github.com/ivanshatsky/putty4far2l>. The far2l file manager
+itself is by elfmz and contributors <https://github.com/elfmz/far2l>.
+These contributions are likewise released under the MIT licence below.
+
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation files
 (the "Software"), to deal in the Software without restriction,

@@ -3212,13 +3212,25 @@ static void far2l_send_reply(Terminal *term, const unsigned char *reply, int rep
     sfree(out);
 }
 
+/*
+ * Decode a far2l payload and serve it. The clipboard ('c') subcommands do real
+ * get/set against the Windows clipboard, gated by term->clip_allowed (seeded
+ * from CONF_shared_clipboard: 0 deny / 1 allow / 2 ask-then-latch). Ported from
+ * putty4far2l (PuTTY 0.78.5). Win32 clipboard types/calls come from putty.h's
+ * Windows platform headers; the #else paths keep it compiling off-Windows.
+ */
 static void far2l_process_payload(Terminal *term)
 {
     base64_decodestate ds;
     char *d_out;
     int d_count;
-    unsigned char id, cmd, reply[8];
+    unsigned char id;
+    char *reply = NULL;
     int reply_size = 0;
+#ifdef _WINDOWS
+    DWORD len;
+    DWORD zero = 0;
+#endif
 
     if (term->osc_strlen <= 6) return;
     if (term->osc_strlen >= OSC_STR_MAX) return;   /* can't reply; drop (no crash) */
@@ -3228,32 +3240,209 @@ static void far2l_process_payload(Terminal *term)
                                   term->osc_strlen - 6, d_out, &ds);
     if (d_count < 2) { sfree(d_out); return; }
 
-    id  = (unsigned char)d_out[d_count - 1];   /* last byte = request id */
-    cmd = (unsigned char)d_out[d_count - 2];   /* preceding = command   */
+    id = (unsigned char)d_out[d_count - 1];   /* last byte = request id */
 
-    switch (cmd) {
-      case 'w':   /* GET_WINDOW_MAXSIZE: stub (zeros), as 0.76b */
-        reply[0] = reply[1] = reply[2] = reply[3] = 0; reply_size = 5; break;
-      case 'p':   /* capabilities: reserved=0, bits=24 */
-        reply[0] = 0; reply[1] = 24; reply_size = 3; break;
-      case 'c': { /* CLIPBOARD: denied with the original per-subcommand replies */
-        unsigned char sub;
+    switch (d_out[d_count - 2]) {              /* preceding byte = command */
+      case 'c': {                              /* CLIPBOARD */
         if (d_count < 3) { sfree(d_out); return; }
-        sub = (unsigned char)d_out[d_count - 3];
-        switch (sub) {
-          case 'o': reply[0] = (unsigned char)0xFF; reply_size = 2; break; /* OPEN: deny */
-          case 'e': case 'a': case 's': reply[0] = 0; reply_size = 2; break;
-          default:  reply[0] = reply[1] = reply[2] = reply[3] = 0; reply_size = 5; break;
+        switch (d_out[d_count - 3]) {          /* subcommand */
+          case 'r': {                          /* register format */
+#ifdef _WINDOWS
+            memcpy(&len, d_out + d_count - 3 - 4, sizeof(DWORD));
+            if (len < (DWORD)d_count) d_out[len] = 0;   /* zero-terminate name */
+            uint32_t status = RegisterClipboardFormatA(d_out);
+#endif
+            reply_size = 5; reply = snewn(reply_size, char);
+#ifdef _WINDOWS
+            memcpy(reply, &status, sizeof(uint32_t));
+#else
+            memset(reply, 0, 4);
+#endif
+            break;
+          }
+          case 'e': {                          /* empty clipboard */
+#ifdef _WINDOWS
+            char ec_status = 0;
+            if (term->clip_allowed == 1 && OpenClipboard(NULL)) {
+                ec_status = EmptyClipboard() ? 1 : 0;
+                CloseClipboard();
+            }
+#endif
+            reply_size = 2; reply = snewn(reply_size, char);
+#ifdef _WINDOWS
+            reply[0] = ec_status;
+#else
+            reply[0] = 0;
+#endif
+            break;
+          }
+          case 'a': {                          /* is-format-available */
+#ifdef _WINDOWS
+            uint32_t a_fmt;
+            memcpy(&a_fmt, d_out + d_count - 3 - 4, sizeof(uint32_t));
+            char avail = IsClipboardFormatAvailable(a_fmt) ? 1 : 0;
+#endif
+            reply_size = 2; reply = snewn(reply_size, char);
+#ifdef _WINDOWS
+            reply[0] = avail;
+#else
+            reply[0] = 0;
+#endif
+            break;
+          }
+          case 'o': {                          /* open: permission gate */
+            reply_size = 2; reply = snewn(reply_size, char);
+#ifdef _WINDOWS
+            if (term->clip_allowed == 2) {     /* ask once, then latch */
+                int status = MessageBox(NULL, "Allow far2l clipboard sync?",
+                                        "KiTTY", MB_OKCANCEL);
+                term->clip_allowed = (status == IDOK) ? 1 : 0;
+            }
+            reply[0] = (term->clip_allowed == 1) ? 1 : (char)-1;
+#else
+            reply[0] = (char)-1;
+#endif
+            break;
+          }
+          case 's': {                          /* set clipboard data */
+#ifdef _WINDOWS
+            if (term->clip_allowed == 1 && d_count >= 4 + 4 + 3) {
+                uint32_t fmt;
+                char *buffer = NULL;
+                int BufferSize = 0;
+                bool set_ok = 0;
+                memcpy(&fmt, d_out + d_count - 3 - 4, sizeof(uint32_t));
+                memcpy(&len, d_out + d_count - 3 - 4 - 4, sizeof(DWORD));
+                if (len > (DWORD)(d_count - 3 - 4 - 4)) len = d_count - 3 - 4 - 4;
+                if (fmt == CF_TEXT) {
+                    int cnt = MultiByteToWideChar(CP_UTF8, 0, (LPCCH)d_out, len, NULL, 0);
+                    if (cnt > 0) {
+                        buffer = calloc(cnt + 1, sizeof(wchar_t));
+                        MultiByteToWideChar(CP_UTF8, 0, (LPCCH)d_out, len, (PWCHAR)buffer, cnt);
+                    }
+                    fmt = CF_UNICODETEXT;
+                    BufferSize = buffer ? (wcslen((PWCHAR)buffer) + 1) * sizeof(WCHAR) : 0;
+                } else if (fmt == CF_UNICODETEXT) {
+                    buffer = calloc((len / sizeof(uint32_t)) + 1, sizeof(wchar_t));
+                    if (buffer)
+                        for (unsigned i = 0; i < len / sizeof(uint32_t); ++i)
+                            ((wchar_t *)buffer)[i] = ((uint32_t *)d_out)[i];
+                    BufferSize = buffer ? (wcslen((PWCHAR)buffer) + 1) * sizeof(WCHAR) : 0;
+                } else if (fmt >= 0xC000) {
+                    buffer = malloc(len);
+                    if (buffer) { memcpy(buffer, d_out, len); BufferSize = len; }
+                }
+                if (buffer && BufferSize > 0) {
+                    HGLOBAL hData = GlobalAlloc(GMEM_MOVEABLE, BufferSize);
+                    void *GData;
+                    if (hData && (GData = GlobalLock(hData))) {
+                        memcpy(GData, buffer, BufferSize);
+                        GlobalUnlock(hData);
+                        if (OpenClipboard(NULL)) {
+                            EmptyClipboard();
+                            if (SetClipboardData(fmt, (HANDLE)hData)) set_ok = 1;
+                            else GlobalFree(hData);
+                            CloseClipboard();
+                        } else GlobalFree(hData);
+                    } else if (hData) GlobalFree(hData);
+                }
+                free(buffer);
+                reply_size = 2; reply = snewn(reply_size, char);
+                reply[0] = set_ok;
+            } else {
+                reply_size = 2; reply = snewn(reply_size, char); reply[0] = 0;
+            }
+#else
+            reply_size = 2; reply = snewn(reply_size, char); reply[0] = 0;
+#endif
+            break;
+          }
+          case 'g': {                          /* get clipboard data */
+#ifdef _WINDOWS
+            if (term->clip_allowed == 1) {
+                uint32_t gfmt;
+                void *ClipText = NULL;
+                int ClipTextSize = 0;
+                memcpy(&gfmt, d_out + d_count - 3 - 4, sizeof(uint32_t));
+                if ((gfmt == CF_TEXT || gfmt == CF_UNICODETEXT || gfmt >= 0xC000) &&
+                    OpenClipboard(NULL)) {
+                    HANDLE hClip = GetClipboardData((gfmt == CF_TEXT) ? CF_UNICODETEXT : gfmt);
+                    void *p;
+                    if (hClip && (p = GlobalLock(hClip))) {
+                        size_t n = GlobalSize(hClip);
+                        if (gfmt == CF_TEXT) {
+                            n = wcsnlen((wchar_t *)p, n / sizeof(wchar_t));
+                            int need = WideCharToMultiByte(CP_UTF8, 0, (wchar_t *)p, n,
+                                                           NULL, 0, NULL, NULL) + 1;
+                            if (need > 0) {
+                                ClipText = calloc(need + 1, 1);
+                                if (ClipText) {
+                                    WideCharToMultiByte(CP_UTF8, 0, (wchar_t *)p, n,
+                                                        (char *)ClipText, need, NULL, NULL);
+                                    ClipTextSize = strlen((char *)ClipText) + 1;
+                                }
+                            }
+                        } else if (gfmt == CF_UNICODETEXT) {
+                            n = wcsnlen((wchar_t *)p, n / sizeof(wchar_t));
+                            ClipText = calloc(n + 1, sizeof(uint32_t));
+                            if (ClipText) {
+                                for (size_t i = 0; i < n; ++i)
+                                    ((uint32_t *)ClipText)[i] = ((uint16_t *)p)[i];
+                                ClipTextSize = (n + 1) * sizeof(uint32_t);
+                            }
+                        } else {
+                            ClipText = malloc(n);
+                            if (ClipText) { memcpy(ClipText, p, n); ClipTextSize = n; }
+                        }
+                        GlobalUnlock(hClip);
+                    }
+                    CloseClipboard();
+                }
+                if (!ClipText || ClipTextSize <= 0) {
+                    reply_size = 5; reply = snewn(reply_size, char);
+                    memset(reply, 0, reply_size);
+                } else {
+                    reply_size = ClipTextSize + 5;   /* data + 4-byte len + id */
+                    reply = snewn(reply_size, char);
+                    memset(reply, 0, reply_size);
+                    memcpy(reply, ClipText, ClipTextSize);
+                    memcpy(reply + ClipTextSize, &ClipTextSize, sizeof(ClipTextSize));
+                }
+                free(ClipText);
+            } else {
+                reply_size = 5; reply = snewn(reply_size, char);
+                memset(reply, 0, reply_size);
+            }
+#else
+            reply_size = 5; reply = snewn(reply_size, char);
+            memset(reply, 0, reply_size);
+#endif
+            break;
+          }
+          default:
+            reply_size = 5; reply = snewn(reply_size, char);
+            memset(reply, 0, reply_size);
+            break;
         }
         break;
       }
+      case 'p':   /* capabilities: reserved=0, bits=24 */
+        reply_size = 3; reply = snewn(reply_size, char);
+        reply[0] = 0; reply[1] = 24; break;
+      case 'w':   /* GET_WINDOW_MAXSIZE: stub */
       case 'f':   /* SET_FKEY_TITLES: stub */
+      case 'n':   /* DISPLAY_NOTIFICATION: stub (no tray notification) */
       default:
-        reply[0] = reply[1] = reply[2] = reply[3] = 0; reply_size = 5; break;
+        reply_size = 5; reply = snewn(reply_size, char);
+        memset(reply, 0, reply_size); break;
     }
-    reply[reply_size - 1] = id;
-    far2l_send_reply(term, reply, reply_size);
+
     sfree(d_out);
+    if (reply && reply_size > 0) {
+        reply[reply_size - 1] = id;
+        far2l_send_reply(term, (const unsigned char *)reply, reply_size);
+    }
+    sfree(reply);
 }
 #endif /* MOD_FAR2L */
 
@@ -3268,10 +3457,10 @@ static void do_osc(Terminal *term)
      * KiTTY far2l terminal extensions (APC-based).  far2l announces itself with
      * an APC sequence \x1b_far2l1\x07 (enable) / \x1b_far2l0\x07 (disable) and
      * sends base64 payloads as \x1b_far2l:...\x07.  We recognise the handshake
-     * and reply \x1b_far2lok\x07 so far2l knows extensions are supported, and
-     * track the on/off state.  The full clipboard-sync payload protocol is not
-     * decoded here (it is large and was riddled with exit()/MessageBox paths in
-     * 0.76b); unrecognised payloads are ignored gracefully rather than crashing.
+     * and reply \x1b_far2lok\x07 so far2l knows extensions are supported, then
+     * decode the base64 payloads and serve the clipboard-sync protocol (real
+     * get/set against the Windows clipboard, gated by CONF_shared_clipboard).
+     * Ported from putty4far2l (PuTTY 0.78.5 far2l branch).
      */
     if (term->osc_type == OSCLIKE_APC) {
         term->osc_string[term->osc_strlen] = '\0';
@@ -3279,12 +3468,15 @@ static void do_osc(Terminal *term)
             const char *arg = term->osc_string + 5;
             if (arg[0] == '1') {
                 term->far2l_ext = 1;
+                /* seed clipboard permission from config for this session */
+                term->clip_allowed = conf_get_int(term->conf, CONF_shared_clipboard);
                 if (term->ldisc) {
                     static const char ok[] = "\x1b_far2lok\x07";
                     ldisc_send(term->ldisc, ok, (int)(sizeof(ok) - 1), false);
                 }
             } else if (arg[0] == '0') {
                 term->far2l_ext = 0;
+                term->clip_allowed = conf_get_int(term->conf, CONF_shared_clipboard);
             } else if (arg[0] == ':') {
                 far2l_process_payload(term);
             }

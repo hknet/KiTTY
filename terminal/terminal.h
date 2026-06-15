@@ -199,6 +199,9 @@ struct terminal_tag {
     /* KiTTY far2l terminal extensions: set when the far2l APC handshake has
      * enabled extensions mode (\x1b_far2l1\x07 -> reply \x1b_far2lok\x07). */
     int far2l_ext;
+    /* far2l clipboard-sync permission, seeded from CONF_shared_clipboard at the
+     * handshake: 0=deny, 1=allow, 2=ask-then-latch (SHARED_CLIPBOARD_*). */
+    int clip_allowed;
 #endif
 
     char id_string[1024];

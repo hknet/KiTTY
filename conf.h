@@ -960,6 +960,9 @@ CONF_OPTION(bold_style,
 CONF_OPTION(bold_colour, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("BoldAsColourTest"),)
 CONF_OPTION(under_colour, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("UnderlinedAsColour"),)
 CONF_OPTION(sel_colour, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("SelectedAsColour"),)
+/* KiTTY (far2l): far2l terminal-extension clipboard sync. 0=disabled, 1=enabled,
+ * 2=ask (SHARED_CLIPBOARD_* in putty.h). Default ask, so it works but prompts. */
+CONF_OPTION(shared_clipboard, VALUE_TYPE(INT), DEFAULT_INT(2), SAVE_KEYWORD("SharedClipboard"),)
 CONF_OPTION(colours,
     /*
      * Subkeys in this setting are indexed based on the CONF_COLOUR_*

@@ -2798,6 +2798,17 @@ void setup_config_box(struct controlbox *b, bool midsession,
     clipboard_control(s, "Ctrl + Shift + {C,V}:", NO_SHORTCUT, 60,
                       HELPCTX(selection_clipactions),
                       CONF_ctrlshiftcv, CONF_ctrlshiftcv_custom);
+#ifdef MOD_FAR2L
+    /* KiTTY (far2l): let a remote far2l session read/write the local clipboard.
+     * Triples (label, NO_SHORTCUT, I(val)) — 0.84 ctrl_radiobuttons needs the
+     * per-button shortcut slot. */
+    ctrl_radiobuttons(s, "far2l shared clipboard:", NO_SHORTCUT, 3,
+                      HELPCTX(no_help), conf_radiobutton_handler,
+                      I(CONF_shared_clipboard),
+                      "Disabled", NO_SHORTCUT, I(SHARED_CLIPBOARD_DISABLED),
+                      "Enabled", NO_SHORTCUT, I(SHARED_CLIPBOARD_ENABLED),
+                      "Ask", NO_SHORTCUT, I(SHARED_CLIPBOARD_ASK));
+#endif
 
     s = ctrl_getset(b, "Window/Selection", "paste",
                     "Control pasting of text from clipboard to terminal");
