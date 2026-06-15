@@ -178,9 +178,14 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
 - **Branch `kitty-0.84` is the GitHub default branch** of `hknet/KiTTY`; HEAD ≈ `1bcea79`. (`noglobal`
   in the local `~/kitty-0.84` repo == pushed `kitty-0.84`.) The repo has **no other meaningful remote
   history** — it's a fresh pristine-0.84 tree, history-disconnected from the old 0.76b `master`.
-- **Latest release: `kitty-0.84.0.13-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
+- **Latest release: `kitty-0.84.0.14-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
   system MSI, portable zip. Each release deletes its predecessor — only the newest tag/release remains.
-  (**0.84.0.13** = four more CLI switches in putty.c, all do-and-exit / pre-window, support fns already
+  (**0.84.0.14** = `-savedump` — ported the kitty_savedump.c module (MOD_SAVEDUMP, #included into kitty.c):
+  Filename->path→filename_to_str ×10, conf-typing drift fixed (rxvt_homeend/scp_auto_pwd→bool,
+  remote_cmd/remote_cmd2→str_ambi), + GetTerminal/kitty_term_copyall/print_event_log shims in window.c's
+  seat-bridge block (GetTerminal=NULL at CLI time so the term/clipboard dump self-skips). Runtime-verified
+  (writes kitty.dmp, exits). **ALL KiTTY CLI switches now ported.**
+  **0.84.0.13** = four more CLI switches in putty.c, all do-and-exit / pre-window, support fns already
   in the kitty modules (externed locally): `-classname <name>` (sets KiTTYClassName+appname during parse
   — after InitWinMain@702 so it overrides the ini KiClassName, before window creation so it takes effect),
   `-mungestr`/`-sendcmd`/`-edit` (each does its action then `cleanup_exit(0)`). GUI-verified.
@@ -210,11 +215,10 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
   (rutty send/stop/file, New-dup, winrol dblclk) and CLI switches (-fullscreen/-xpos/-ypos/-folder in
   putty.c). New CMake defines: MOD_RECONNECT, MOD_PRINTCLIP, MOD_DISABLEALTGR, MOD_PROXY. **Engines are
   build+smoke verified; their runtime BEHAVIOUR (real reconnect, shortcut firing, proxy routing) needs
-  live testing.** STILL UNPORTED (after 0.84.0.13): far2l clipboard payload, and `-savedump` (needs the
-  whole kitty_savedump.c module compiled = MOD_SAVEDUMP: has Filename->path drift ×10 PLUS pulls in
-  un-ported GetTerminal/kitty_term_copyall/print_event_log — a separate module port). NOTE: sel-colour
-  rendering, folder New/Del/Up, -cmd/-codepage/-rcmd/-log, Close+Restart, -kload/-loadfile, -loginscript,
-  and -classname/-mungestr/-sendcmd/-edit are now DONE.
+  live testing.** STILL UNPORTED (after 0.84.0.14): far2l clipboard payload only. ALL KiTTY command-line
+  switches are now ported (-cmd/-codepage/-rcmd/-log, -kload/-loadfile, -loginscript,
+  -classname/-mungestr/-sendcmd/-edit, -savedump), plus sel-colour rendering, folder New/Del/Up,
+  Close+Restart. The savedump term/clipboard + event-log dump sections are stubbed (no live seat at CLI time).
 - **Config-tree verification harness:** `C:\build\wsl_cfgtree_unit.sh` links `kitty_config.c` +
   the control libs, calls `setup_config_box()` and dumps every panel/control — deterministic, GUI-free.
   Use it after any kitty_config.c change (caught a ctrl_radiobuttons pairs-vs-triples crash this round).
