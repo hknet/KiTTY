@@ -217,6 +217,8 @@ add_executable(kitty
   # so it can carry MOD_FAR2L; the directly-listed object takes precedence over
   # guiterminal's terminal.o, leaving other binaries untouched.
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  ${KITTY_DIR}/far2l/cdecode.c
+  ${KITTY_DIR}/far2l/cencode.c
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
   kitty.rc
   ${KITTY_DIR}/kitty.c
@@ -246,7 +248,7 @@ add_dependencies(kitty generated_licence_h)
 target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.0.7-beta" BUILD_TIME="2026-06-14")
 target_compile_options(kitty PRIVATE -fcommon)
 target_include_directories(kitty PRIVATE
-  ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
+  ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
   ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)
 target_link_libraries(kitty
   guiterminal guimisc eventloop sshclient otherbackends settings network crypto utils
@@ -266,6 +268,8 @@ add_executable(kitty_portable
   putty.c
   help.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  ${KITTY_DIR}/far2l/cdecode.c
+  ${KITTY_DIR}/far2l/cencode.c
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
   kitty.rc
   ${KITTY_DIR}/kitty.c
@@ -293,7 +297,7 @@ add_dependencies(kitty_portable generated_licence_h)
 target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.0.7-beta" BUILD_TIME="2026-06-14")
 target_compile_options(kitty_portable PRIVATE -fcommon)
 target_include_directories(kitty_portable PRIVATE
-  ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
+  ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
   ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)
 target_link_libraries(kitty_portable
   guiterminal guimisc eventloop sshclient otherbackends settings network crypto utils

@@ -12,6 +12,10 @@
 #include <assert.h>
 #include "putty.h"
 #include "terminal.h"
+#ifdef MOD_FAR2L
+#include "cdecode.h"
+#include "cencode.h"
+#endif
 
 #define VT52_PLUS
 
@@ -3185,6 +3189,72 @@ static void toggle_mode(Terminal *term, int mode, int query, bool state)
     }
 }
 
+#ifdef MOD_FAR2L
+/* Decode a far2l "\x1b_far2l:<base64>\x07" payload, dispatch, and reply with
+ * "\x1b_far2l<base64>\x07". Clipboard is DENIED but answered with the original
+ * 0.76b per-subcommand deny replies so the remote far2l never hangs. term-> and
+ * ldisc only; no Win32, no globals. Payloads >OSC_STR_MAX are dropped. */
+static void far2l_send_reply(Terminal *term, const unsigned char *reply, int reply_size)
+{
+    base64_encodestate es;
+    char *out;
+    int count;
+    if (!term->ldisc || reply_size <= 0) return;
+    base64_init_encodestate(&es);
+    out = snewn(reply_size * 2 + 8, char);
+    count = base64_encode_block((const char *)reply, reply_size, out, &es);
+    count += base64_encode_blockend(out + count, &es);
+    ldisc_send(term->ldisc, "\x1b_far2l", 7, false);
+    ldisc_send(term->ldisc, out, count, false);
+    ldisc_send(term->ldisc, "\x07", 1, false);
+    sfree(out);
+}
+
+static void far2l_process_payload(Terminal *term)
+{
+    base64_decodestate ds;
+    char *d_out;
+    int d_count;
+    unsigned char id, cmd, reply[8];
+    int reply_size = 0;
+
+    if (term->osc_strlen <= 6) return;
+    if (term->osc_strlen >= OSC_STR_MAX) return;   /* can't reply; drop (no crash) */
+    base64_init_decodestate(&ds);
+    d_out = snewn(term->osc_strlen, char);
+    d_count = base64_decode_block(term->osc_string + 6,
+                                  term->osc_strlen - 6, d_out, &ds);
+    if (d_count < 2) { sfree(d_out); return; }
+
+    id  = (unsigned char)d_out[d_count - 1];   /* last byte = request id */
+    cmd = (unsigned char)d_out[d_count - 2];   /* preceding = command   */
+
+    switch (cmd) {
+      case 'w':   /* GET_WINDOW_MAXSIZE: stub (zeros), as 0.76b */
+        reply[0] = reply[1] = reply[2] = reply[3] = 0; reply_size = 5; break;
+      case 'p':   /* capabilities: reserved=0, bits=24 */
+        reply[0] = 0; reply[1] = 24; reply_size = 3; break;
+      case 'c': { /* CLIPBOARD: denied with the original per-subcommand replies */
+        unsigned char sub;
+        if (d_count < 3) { sfree(d_out); return; }
+        sub = (unsigned char)d_out[d_count - 3];
+        switch (sub) {
+          case 'o': reply[0] = (unsigned char)0xFF; reply_size = 2; break; /* OPEN: deny */
+          case 'e': case 'a': case 's': reply[0] = 0; reply_size = 2; break;
+          default:  reply[0] = reply[1] = reply[2] = reply[3] = 0; reply_size = 5; break;
+        }
+        break;
+      }
+      case 'f':   /* SET_FKEY_TITLES: stub */
+      default:
+        reply[0] = reply[1] = reply[2] = reply[3] = 0; reply_size = 5; break;
+    }
+    reply[reply_size - 1] = id;
+    far2l_send_reply(term, reply, reply_size);
+    sfree(d_out);
+}
+#endif /* MOD_FAR2L */
+
 /*
  * Process an OSC or similar sequence, with a whole embedded string,
  * like setting the window title or icon name.
@@ -3213,8 +3283,9 @@ static void do_osc(Terminal *term)
                 }
             } else if (arg[0] == '0') {
                 term->far2l_ext = 0;
+            } else if (arg[0] == ':') {
+                far2l_process_payload(term);
             }
-            /* arg[0]==':' (base64 payload) and anything else: ignore safely. */
             return;
         }
         /* non-far2l APC: fall through to the normal (no-op) handling below */
