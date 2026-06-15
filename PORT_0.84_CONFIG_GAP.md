@@ -116,10 +116,25 @@ WIRED & OK (for the record): transparency, antiidle, autocommand, hyperlink, per
 static bg image, zmodem, rutty scripting engine, adb, port-knock (auto at connect), WinSCP/pscp
 launch. far2l = partial (announces, syncs nothing).
 
-## Deep-tail status (2026-06-15, post-0.84.0.7)
-- ✅ **far2l payload** — DONE (commit 7559990): decode + reply to every request,
-  clipboard denied byte-exactly, no more remote hang. Real clipboard sync deferred.
-- ⛔ **TuTTY 34-colour** — BLOCKED for blind integration. The 0.76→0.84 colour
+## Deep-tail status — RESOLVED (releases 0.84.0.8 / 0.84.0.9)
+- ✅ **far2l payload** (0.84.0.8) — decode + reply to every request, clipboard
+  denied byte-exactly, no more remote hang. Real clipboard sync deferred.
+- ✅ **TuTTY colours** (0.84.0.9) — done via the SAFE approach (NOT the reviewer's
+  verbatim-paste, which the 0.76→0.84 colour refactor made impossible). Appended 3
+  special slots (under_fg/sel_fg/sel_bg) at the END of CONF_COLOUR_LIST +
+  OSCP_COLOUR_LIST so existing indices never shift; bumped counts GLOBALLY (22→25,
+  262→265) so the shared settings lib and per-target terminal.c agree; settings.c
+  loops → CONF_NCOLOURS + 3 defaults; config checkboxes; window.c under_colour
+  remap. sel_colour RENDERING still deferred (needs a new attr bit + terminal.c).
+- ✅ **Session-folder filter** (0.84.0.9) — Folder droplist filters the saved-session
+  list (GetSessionFolderName); additive (Default = show all). The Phase-1 review was
+  WRONG that GetSessionFolderName was missing — it exists (kitty.c:840). Folder
+  New/Del/Up + Clear management buttons deferred (Clear needs absent proxy/host syms).
+- ⬜ Remaining minor: TuTTY sel_colour rendering, folder management buttons, far2l
+  real clipboard, CLI Tier-C, Close+Restart menu.
+
+### (historical note — TuTTY's apparent block, now solved)
+- TuTTY initially looked BLOCKED for blind integration: The 0.76→0.84 colour
   subsystem was **refactored**: 0.76b uses explicit `CONF_NCOLOURS`/`OSCP_NCOLOURS`/
   `OSC4_NCOLOURS` + `colour_indices_conf_to_oscp/_osc4` arrays; 0.84 is table-driven
   via `CONF_COLOUR_LIST(X)` macro (putty.h:100, OSC4_NCOLOURS=262). The 12 TuTTY
