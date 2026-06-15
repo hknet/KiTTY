@@ -206,6 +206,14 @@ void kitty_antiidle_tick(HWND hwnd);
 extern char AntiIdleStr[128];
 #define TIMER_ANTIIDLE 8703
 #define TIMER_SCRIPT 8704
+#ifdef MOD_RECONNECT
+#define TIMER_RECONNECT 8705
+int  GetAutoreconnectFlag(void);       /* kitty.c */
+int  GetReconnectDelay(void);          /* kitty.c, seconds, clamped >=1 */
+void SetConnBreakIcon(HWND hwnd);      /* kitty.c */
+void SetSSHConnected(int flag);        /* kitty_commun.c: sets is_backend_first_connected */
+extern int is_backend_first_connected; /* kitty_commun.c */
+#endif
 #endif
 
 static void flash_window(WinGuiSeat *wgs, int mode);
@@ -327,8 +335,23 @@ static size_t win_seat_output(
     Seat *seat, SeatOutputType type, const void *, size_t);
 static bool win_seat_eof(Seat *seat);
 static SeatPromptResult win_seat_get_userpass_input(Seat *seat, prompts_t *p);
+#ifdef MOD_RECONNECT
+/* KiTTY auto-reconnect: fired (via the seat vtable) when the main SSH channel
+ * opens post-auth. Marks this session as having connected at least once, which
+ * gates SSH reconnect. Runs in the kitty target where SetSSHConnected links;
+ * no change to the ssh/ library (keeps plink/pscp/psftp unaffected). */
+static void win_seat_notify_session_started(Seat *seat)
+{
+    (void)seat;
+    SetSSHConnected(1);
+}
+#endif
+
 static void win_seat_notify_remote_exit(Seat *seat);
 static void win_seat_connection_fatal(Seat *seat, const char *msg);
+#ifdef MOD_RECONNECT
+static void win_seat_notify_session_started(Seat *seat);
+#endif
 static void win_seat_nonfatal(Seat *seat, const char *msg);
 static void win_seat_update_specials_menu(Seat *seat);
 static void win_seat_set_busy_status(Seat *seat, BusyStatus status);
@@ -343,7 +366,11 @@ static const SeatVtable win_seat_vt = {
     .sent = nullseat_sent,
     .banner = nullseat_banner_to_stderr,
     .get_userpass_input = win_seat_get_userpass_input,
+#ifdef MOD_RECONNECT
+    .notify_session_started = win_seat_notify_session_started,
+#else
     .notify_session_started = nullseat_notify_session_started,
+#endif
     .notify_remote_exit = win_seat_notify_remote_exit,
     .notify_remote_disconnect = nullseat_notify_remote_disconnect,
     .connection_fatal = win_seat_connection_fatal,
@@ -369,6 +396,9 @@ static const SeatVtable win_seat_vt = {
     .get_cursor_position = win_seat_get_cursor_position,
 };
 
+#ifdef MOD_RECONNECT
+static void close_session(void *vctx);   /* defined below; used by reconnect path */
+#endif
 static void start_backend(WinGuiSeat *wgs)
 {
     const struct BackendVtable *vt;
@@ -408,6 +438,25 @@ static void start_backend(WinGuiSeat *wgs)
                             conf_dest(wgs->conf), error);
         }
         sfree(error);
+#ifdef MOD_RECONNECT
+        if (GetAutoreconnectFlag() && conf_get_int(wgs->conf, CONF_failure_reconnect)
+            && is_backend_first_connected) {
+            lp_eventlog(&wgs->logpolicy, msg);
+            sfree(str); sfree(msg);
+            SetSSHConnected(0);
+            SetConnBreakIcon(wgs->term_hwnd);
+            wgs->session_closed = true;
+            queue_toplevel_callback(close_session, wgs);
+            lp_eventlog(&wgs->logpolicy,
+                        "Unable to connect, trying to reconnect...");
+            if (wgs->reconnect_tries < 1000) {
+                wgs->reconnect_tries++;
+                SetTimer(wgs->term_hwnd, TIMER_RECONNECT,
+                         GetReconnectDelay()*1000, NULL);
+            }
+            return;
+        }
+#endif
         MessageBox(NULL, msg, str, MB_ICONERROR | MB_OK);
         sfree(str);
         sfree(msg);
@@ -437,6 +486,14 @@ static void start_backend(WinGuiSeat *wgs)
         DeleteMenu(wgs->popup_menus[i].menu, IDM_RESTART, MF_BYCOMMAND);
     }
 
+#ifdef MOD_RECONNECT
+    /* KiTTY auto-reconnect: mark first-connected (non-SSH here; SSH is marked
+     * from notify_session_started) and reset the backoff counter on success. */
+    if (conf_get_int(wgs->conf, CONF_protocol) != PROT_SSH)
+        is_backend_first_connected = 1;
+    wgs->last_reconnect = time(NULL);
+    wgs->reconnect_tries = 0;
+#endif
     wgs->session_closed = false;
 }
 
@@ -1401,6 +1458,25 @@ static void wintw_set_raw_mouse_mode_pointer(TermWin *tw, bool activate)
 static void win_seat_connection_fatal(Seat *seat, const char *msg)
 {
     WinGuiSeat *wgs = container_of(seat, WinGuiSeat, seat);
+#ifdef MOD_RECONNECT
+    /* KiTTY auto-reconnect: on an abnormal drop of a session that connected at
+     * least once, arm the reconnect timer instead of message-boxing. */
+    if (GetAutoreconnectFlag() && is_backend_first_connected) {
+        SetConnBreakIcon(wgs->term_hwnd);
+        SetSSHConnected(0);
+        wgs->session_closed = true;
+        queue_toplevel_callback(close_session, wgs);
+        if (conf_get_int(wgs->conf, CONF_failure_reconnect)) {
+            lp_eventlog(&wgs->logpolicy, "Lost connection, trying to reconnect...");
+            if (wgs->reconnect_tries < 1000) {
+                wgs->reconnect_tries++;
+                SetTimer(wgs->term_hwnd, TIMER_RECONNECT,
+                         GetReconnectDelay()*1000, NULL);
+            }
+        }
+        return;
+    }
+#endif
     char *title = dupprintf("%s Fatal Error", appname);
     show_mouseptr(wgs, true);
     MessageBox(wgs->term_hwnd, msg, title, MB_ICONERROR | MB_OK);
@@ -2498,6 +2574,46 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 kitty_script_send_file(wgs->conf, wgs->backend, sf);
             }
             return 0;
+        }
+#ifdef MOD_RECONNECT
+        if ((UINT_PTR)wParam == TIMER_RECONNECT) {
+            KillTimer(hwnd, TIMER_RECONNECT);
+            if (wgs && !wgs->backend) {
+                lp_eventlog(&wgs->logpolicy,
+                            "No backend connection, reconnecting...");
+                PostMessage(hwnd, WM_COMMAND, IDM_RESTART, 0);
+            }
+            return 0;
+        }
+#endif
+        break;
+#endif
+#ifdef MOD_RECONNECT
+      case WM_POWERBROADCAST:
+        if (wgs && GetAutoreconnectFlag()
+            && conf_get_int(wgs->conf, CONF_wakeup_reconnect)
+            && is_backend_first_connected) {
+            switch (wParam) {
+              case PBT_APMRESUMESUSPEND:
+              case PBT_APMRESUMEAUTOMATIC:
+              case PBT_APMRESUMECRITICAL:
+              case PBT_APMQUERYSUSPENDFAILED:
+                if (wgs->session_closed && !wgs->backend) {
+                    lp_eventlog(&wgs->logpolicy,
+                                "Woken up from suspend, trying to reconnect...");
+                    SetTimer(wgs->term_hwnd, TIMER_RECONNECT,
+                             GetReconnectDelay()*1000, NULL);
+                }
+                break;
+              case PBT_APMSUSPEND:
+                if (!wgs->session_closed && wgs->backend) {
+                    lp_eventlog(&wgs->logpolicy,
+                                "Suspend detected, disconnecting cleanly...");
+                    wgs->session_closed = true;
+                    queue_toplevel_callback(close_session, wgs);
+                }
+                break;
+            }
         }
         break;
 #endif

@@ -79,6 +79,10 @@ struct WinGuiSeat {
     struct unicode_data ucsdata;
     bool session_closed;
     bool reconfiguring;
+#ifdef MOD_RECONNECT
+    time_t last_reconnect;   /* KiTTY auto-reconnect: wakeup de-bounce, per window */
+    int    reconnect_tries;  /* KiTTY auto-reconnect: backoff/loop cap */
+#endif
 
     const SessionSpecial *specials;
     HMENU specials_menu;
