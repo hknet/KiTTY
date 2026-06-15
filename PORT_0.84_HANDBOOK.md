@@ -178,8 +178,12 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
 - **Branch `kitty-0.84` is the GitHub default branch** of `hknet/KiTTY`; HEAD ≈ `1bcea79`. (`noglobal`
   in the local `~/kitty-0.84` repo == pushed `kitty-0.84`.) The repo has **no other meaningful remote
   history** — it's a fresh pristine-0.84 tree, history-disconnected from the old 0.76b `master`.
-- **Latest release: `kitty-0.84.0.11-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
+- **Latest release: `kitty-0.84.0.12-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
   system MSI, portable zip. Each release deletes its predecessor — only the newest tag/release remains.
+  (**0.84.0.12** = `-loginscript <file>` via a POST-WINDOW-CREATE hook: putty.c stashes the path in a
+  bridge global `kitty_cli_loginscript`; window.c consumes it with `ReadInitScript()` right after
+  `kitty_set_active_seat(wgs)` — because ReadInitScript writes the global conf, NULL during the parse.
+  Scoped to the CLI via the dedicated global so saved-session behaviour is unchanged.)
   (0.84.0.8 added far2l payload handling; 0.84.0.9 added TuTTY extra colour slots + the session-folder
   filter droplist; **0.84.0.10** wired up TuTTY **selection-colour rendering**
   (new `ATTR_SELECTED 0x04000000` bit emitted in terminal.c, remapped to sel_fg/sel_bg in window.c
@@ -203,10 +207,9 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
   (rutty send/stop/file, New-dup, winrol dblclk) and CLI switches (-fullscreen/-xpos/-ypos/-folder in
   putty.c). New CMake defines: MOD_RECONNECT, MOD_PRINTCLIP, MOD_DISABLEALTGR, MOD_PROXY. **Engines are
   build+smoke verified; their runtime BEHAVIOUR (real reconnect, shortcut firing, proxy routing) needs
-  live testing.** STILL UNPORTED (after 0.84.0.11): far2l clipboard payload, CLI `-loginscript` (parse-time
-  global-conf is NULL until kitty_set_active_seat) and the window-handle CLI switches (-edit/-savedump/
-  -classname/-mungestr/-sendcmd). NOTE: sel-colour rendering, folder New/Del/Up, -cmd/-codepage/-rcmd/-log,
-  Close+Restart, and -kload/-loadfile are now DONE.
+  live testing.** STILL UNPORTED (after 0.84.0.12): far2l clipboard payload, and the window-handle CLI
+  switches (-edit/-savedump/-classname/-mungestr/-sendcmd). NOTE: sel-colour rendering, folder New/Del/Up,
+  -cmd/-codepage/-rcmd/-log, Close+Restart, -kload/-loadfile, and -loginscript are now DONE.
 - **Config-tree verification harness:** `C:\build\wsl_cfgtree_unit.sh` links `kitty_config.c` +
   the control libs, calls `setup_config_box()` and dumps every panel/control — deterministic, GUI-free.
   Use it after any kitty_config.c change (caught a ctrl_radiobuttons pairs-vs-triples crash this round).
