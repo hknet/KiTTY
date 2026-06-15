@@ -22,6 +22,9 @@ int GetZModemFlag(void);
 int GetAutoreconnectFlag(void);
 int GetBackgroundImageFlag(void);
 extern void RunConfig(Conf *conf);   /* kitty_launcher.c: launch new session, keep box open */
+extern char **FolderList;            /* kitty.c: NULL-terminated folder names */
+extern char CurrentFolder[];         /* kitty_commun.c: currently selected folder */
+void GetSessionFolderName(const char *session_in, char *folder);  /* kitty.c */
 
 /* Checkbox handler for KiTTY keys that are stored as INT (0/1) rather
  * than BOOL (the standard conf_checkbox_handler asserts on INT keys in
@@ -812,6 +815,9 @@ struct sessionsaver_data {
 #if (defined MOD_PERSO) && (!defined FLJ)
     dlgcontrol *startbutton;     /* KiTTY: open session without closing config box */
 #endif
+#ifdef MOD_PERSO
+    dlgcontrol *folderlist;      /* KiTTY: session-folder filter droplist */
+#endif
     struct sesslist sesslist;
     bool midsession;
     char *savedsession;     /* the current contents of ssd->editbox */
@@ -867,10 +873,34 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             int i;
             dlg_update_start(ctrl, dlg);
             dlg_listbox_clear(ctrl, dlg);
-            for (i = 0; i < ssd->sesslist.nsessions; i++)
+            for (i = 0; i < ssd->sesslist.nsessions; i++) {
+#ifdef MOD_PERSO
+                /* KiTTY folder filter: hide sessions not in the selected folder,
+                 * but only when a specific (non-Default) folder is chosen, and
+                 * always keep entry 0 ("Default Settings"). */
+                if (!GetPuttyFlag() && i > 0 &&
+                    strcmp(CurrentFolder, "Default") != 0) {
+                    char fld[1024];
+                    GetSessionFolderName(ssd->sesslist.sessions[i], fld);
+                    if (strcmp(fld, CurrentFolder) != 0)
+                        continue;
+                }
+#endif
                 dlg_listbox_add(ctrl, dlg, ssd->sesslist.sessions[i]);
+            }
             dlg_update_done(ctrl, dlg);
         }
+#ifdef MOD_PERSO
+        else if (ssd->folderlist && ctrl == ssd->folderlist) {
+            int i;
+            dlg_update_start(ctrl, dlg);
+            dlg_listbox_clear(ctrl, dlg);
+            for (i = 0; FolderList && FolderList[i] != NULL; i++)
+                if (FolderList[i][0])
+                    dlg_listbox_addwithid(ctrl, dlg, FolderList[i], i);
+            dlg_update_done(ctrl, dlg);
+        }
+#endif
     } else if (event == EVENT_VALCHANGE) {
         int top, bottom, halfway, i;
         if (ctrl == ssd->editbox) {
@@ -892,6 +922,19 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             }
             dlg_listbox_select(ssd->listbox, dlg, top);
         }
+#ifdef MOD_PERSO
+    } else if (event == EVENT_SELCHANGE && ssd->folderlist &&
+               ctrl == ssd->folderlist) {
+        int idx = dlg_listbox_index(ssd->folderlist, dlg);
+        if (idx >= 0) {
+            int id = dlg_listbox_getid(ssd->folderlist, dlg, idx);
+            if (FolderList && FolderList[id]) {
+                strncpy(CurrentFolder, FolderList[id], 1023);
+                CurrentFolder[1023] = '\0';
+                dlg_refresh(ssd->listbox, dlg);   /* re-filter the session list */
+            }
+        }
+#endif
     } else if (event == EVENT_ACTION) {
         bool mbl = false;
         if (!ssd->midsession &&
@@ -1964,6 +2007,17 @@ void setup_config_box(struct controlbox *b, bool midsession,
     /* Reset columns so that the buttons are alongside the list, rather
      * than alongside that edit box. */
     ctrl_columns(s, 1, 100);
+#ifdef MOD_PERSO
+    /* KiTTY: folder filter. Picking a non-Default folder filters the session
+     * list below to that folder; "Default" shows all (no regression). */
+    if (!GetPuttyFlag()) {
+        ssd->folderlist = ctrl_droplist(s, "Folder", NO_SHORTCUT, 100,
+                                        HELPCTX(session_saved),
+                                        sessionsaver_handler, P(ssd));
+    } else {
+        ssd->folderlist = NULL;
+    }
+#endif
     ctrl_columns(s, 2, 75, 25);
     ssd->listbox = ctrl_listbox(s, NULL, NO_SHORTCUT,
                                 HELPCTX(session_saved),
