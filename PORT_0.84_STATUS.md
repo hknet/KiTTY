@@ -18,8 +18,8 @@
 ## 1. Headline result
 
 - **Clean from-scratch build: 24 / 24 binaries, 0 errors.** (kitty, putty, plink, pscp, psftp, pterm, puttytel, pageant, puttygen, psocks, bidi_*, test_* incl. test_lineedit/test_terminal/testcrypt).
-- **~42 KiTTY features verified WORKING** (incl. URL hyperlinks, adb backend, rutty scripting — all fixed/landed this session); far2l recognized (handshake parsed, no crash; reply gated by a pre-existing raw-backend limitation — see §5).
-- The 4 previously-open items are now CLOSED: URL hyperlinks WORKING (source-built regex), adb backend WORKING, rutty scripting WORKING, far2l recognized.
+- **~42 KiTTY features verified WORKING** (incl. URL hyperlinks, adb backend, rutty scripting); far2l **real shared clipboard** WORKING as of 0.84.0.15 (SET verified end-to-end; GET is SSH-only — see §5). NOTE: this count predates the 0.84.0.7–0.84.0.15 feature waves; see the HANDBOOK release log for the current inventory.
+- The 4 previously-open items are now CLOSED: URL hyperlinks WORKING (source-built regex), adb backend WORKING, rutty scripting WORKING, far2l real clipboard WORKING (0.84.0.15). **No known port gaps remain.**
 - All work done the **no-global, per-`WinGuiSeat` way** (sshproxy/jump-host compatible), except a small documented active-seat shim for the KiTTY core modules.
 
 ---
@@ -196,7 +196,19 @@ ZModem interception point), so data still flows to `term_data()`; **no terminal.
 config panel. VERIFIED (test_rutty.ps1 PASS): wait-for-prompt mode sent each scripted line only after
 the `waitfor` pattern appeared in incoming host data.
 
-### far2l — RECOGNIZED (was SKIPPED; handshake landed)
+### far2l — WORKING real shared clipboard (0.84.0.15; was RECOGNIZED→handshake-only)
+**0.84.0.15 closed this gap.** The far2l real shared clipboard is ported from `~/putty4far2l`
+(ivanshatsky/putty4far2l, 0.78.5 — the clean same-architecture impl; 0.76b KiTTY never had it).
+`far2l_process_payload` decodes the base64 APC payload; the 'c' clipboard subcommands r/e/a/o/s/g do
+real Win32 (Register/Open/Empty/CloseClipboard, IsClipboardFormatAvailable, MB_OKCANCEL for "Ask",
+GlobalAlloc+SetClipboardData for SET 's', GetClipboardData+transcode for GET 'g') under `#ifdef
+_WINDOWS` else stubs; reply heap-built with `[last]=id`, sent via far2l_send_reply (ldisc). Policy:
+putty.h SHARED_CLIPBOARD_{DISABLED,ENABLED,ASK}, conf.h CONF_shared_clipboard (default Ask),
+terminal.h `clip_allowed` (set from conf on the handshake), kitty_config.c radiobuttons in
+Window/Selection, window.c WM_DESTROYCLIPBOARD guard. **SET verified end-to-end over raw; GET is
+SSH-only** (raw reply doesn't transmit — see below; a protocol limit, not a gap). Attribution (Sorokin/
+unxed/Shatsky/elfmz) in LICENCE + About box. Historical handshake notes below:
+
 far2l lives inside terminal.c's escape parser (KiTTY 0.76b had ~1000 lines of APC/OSC clipboard-sync
 there, with `exit()`/MessageBox crash paths). 0.84's terminal.c already routes APC into the OSC-string
 collector + `do_osc()`. Minimal MOD_FAR2L port: a guarded `term->far2l_ext` field; in `do_osc()`,
@@ -243,8 +255,11 @@ Cosmetic only; the cell area — the visible terminal — is correct.
 - **WORKING: ~42** (5 geometry + 21 menu/core + auto-command + anti-idle + port-knock + zmodem +
   bg-image render + bg-image load + 6+ config-UI panels + per-session icons + About dialog + sshver +
   forced-export + dup-session + core-init + **URL hyperlinks + adb backend + rutty scripting**).
-- **RECOGNIZED: 1** (far2l — APC handshake parsed + no crash; reply-on-wire gated by pre-existing
-  raw-backend terminal-reply limitation, documented in §5).
-- **SKIPPED: 0** — all four previously-open items closed.
+- **far2l real shared clipboard: WORKING** (0.84.0.15 — SET verified end-to-end; GET is SSH-only, a
+  protocol limit not a gap; see §5).
+- **SKIPPED / UNPORTED: 0** — all known port gaps are closed as of 0.84.0.15.
 
-Build green throughout; 24/24 binaries; final HEAD `48f1dde` on branch `noglobal`.
+Build green throughout. Latest release `kitty-0.84.0.15-beta`; HEAD `406ba9d` on branch `noglobal`
+(pushed to `kitty-0.84`). Note: this §7 count predates the 0.84.0.7–0.84.0.15 feature waves (savedump,
+all CLI switches, TuTTY colours/folders, far2l clipboard) — see the HANDBOOK release log for the current
+inventory.

@@ -178,9 +178,23 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
 - **Branch `kitty-0.84` is the GitHub default branch** of `hknet/KiTTY`; HEAD ≈ `1bcea79`. (`noglobal`
   in the local `~/kitty-0.84` repo == pushed `kitty-0.84`.) The repo has **no other meaningful remote
   history** — it's a fresh pristine-0.84 tree, history-disconnected from the old 0.76b `master`.
-- **Latest release: `kitty-0.84.0.14-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
+- **Latest release: `kitty-0.84.0.15-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
   system MSI, portable zip. Each release deletes its predecessor — only the newest tag/release remains.
-  (**0.84.0.14** = `-savedump` — ported the kitty_savedump.c module (MOD_SAVEDUMP, #included into kitty.c):
+  (**0.84.0.15** = **far2l real shared clipboard** — the LAST known port gap, now CLOSED. Ported from
+  `~/putty4far2l` (ivanshatsky/putty4far2l, 0.78.5). terminal.c `far2l_process_payload` decodes the
+  base64 APC payload and the 'c' clipboard subcommands r/e/a/o/s/g do real Win32 (Register/Open/Empty/
+  Close, IsClipboardFormatAvailable, MB_OKCANCEL for "Ask", GlobalAlloc+SetClipboardData for SET,
+  GetClipboardData+transcode for GET) under `#ifdef _WINDOWS` else stubs; reply heap-built, `[last]=id`,
+  far2l_send_reply via ldisc. New: putty.h SHARED_CLIPBOARD_{DISABLED,ENABLED,ASK}, conf.h
+  CONF_shared_clipboard (INT, default 2=Ask, "SharedClipboard"), terminal.h `clip_allowed`,
+  kitty_config.c "far2l shared clipboard:" radiobuttons in Window/Selection, window.c WM_DESTROYCLIPBOARD
+  guard, CMakeLists kitty/far2l/{cdecode,cencode}.c. **SET verified end-to-end over raw; GET is SSH-only**
+  (raw reply doesn't transmit — pre-existing PuTTY-over-raw issue, not a port gap). ATTRIBUTION (Ivan
+  Sorokin / unxed / Ivan Shatsky / elfmz) added to LICENCE + the About box — the About-box block is
+  UNCONDITIONAL because dialog.c compiles into a shared lib lacking the per-target MOD_FAR2L define;
+  "View Licence" reads the build-generated licence.h (regenerated from LICENCE). **ALL known port gaps
+  now closed.**
+  **0.84.0.14** = `-savedump` — ported the kitty_savedump.c module (MOD_SAVEDUMP, #included into kitty.c):
   Filename->path→filename_to_str ×10, conf-typing drift fixed (rxvt_homeend/scp_auto_pwd→bool,
   remote_cmd/remote_cmd2→str_ambi), + GetTerminal/kitty_term_copyall/print_event_log shims in window.c's
   seat-bridge block (GetTerminal=NULL at CLI time so the term/clipboard dump self-skips). Runtime-verified
@@ -215,7 +229,8 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
   (rutty send/stop/file, New-dup, winrol dblclk) and CLI switches (-fullscreen/-xpos/-ypos/-folder in
   putty.c). New CMake defines: MOD_RECONNECT, MOD_PRINTCLIP, MOD_DISABLEALTGR, MOD_PROXY. **Engines are
   build+smoke verified; their runtime BEHAVIOUR (real reconnect, shortcut firing, proxy routing) needs
-  live testing.** STILL UNPORTED (after 0.84.0.14): far2l clipboard payload only. ALL KiTTY command-line
+  live testing.** STILL UNPORTED (after 0.84.0.15): **nothing known** — far2l real clipboard landed in
+  0.84.0.15 (GET is SSH-only, a protocol limit, not a gap). ALL KiTTY command-line
   switches are now ported (-cmd/-codepage/-rcmd/-log, -kload/-loadfile, -loginscript,
   -classname/-mungestr/-sendcmd/-edit, -savedump), plus sel-colour rendering, folder New/Del/Up,
   Close+Restart. The savedump term/clipboard + event-log dump sections are stubbed (no live seat at CLI time).
