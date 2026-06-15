@@ -2090,10 +2090,10 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ctrl_radiobuttons(s, "CR/LF translation:", NO_SHORTCUT, 4,
                           HELPCTX(no_help), conf_radiobutton_handler,
                           I(CONF_script_crlf),
-                          "Off",   I(0),   /* SCRIPT_OFF  */
-                          "no LF", I(1),   /* SCRIPT_NOLF */
-                          "CR",    I(2),   /* SCRIPT_CR   */
-                          "Rec",   I(3));  /* SCRIPT_REC  */
+                          "Off",   NO_SHORTCUT, I(0),   /* SCRIPT_OFF  */
+                          "no LF", NO_SHORTCUT, I(1),   /* SCRIPT_NOLF */
+                          "CR",    NO_SHORTCUT, I(2),   /* SCRIPT_CR   */
+                          "Rec",   NO_SHORTCUT, I(3));  /* SCRIPT_REC  */
         ctrl_checkbox(s, "Except for first command", NO_SHORTCUT,
                       HELPCTX(no_help), kitty_checkbox_int_handler,
                       I(CONF_script_except));
@@ -3446,13 +3446,13 @@ void setup_config_box(struct controlbox *b, bool midsession,
                               HELPCTX(no_help),
                               conf_radiobutton_handler,
                               I(CONF_winscpprot),
-                              "scp",   I(0),
-                              "sftp",  I(1),
-                              "ftp",   I(2),
-                              "ftps",  I(3),
-                              "ftpes", I(4),
-                              "http",  I(5),
-                              "https", I(6));
+                              "scp",   NO_SHORTCUT, I(0),
+                              "sftp",  NO_SHORTCUT, I(1),
+                              "ftp",   NO_SHORTCUT, I(2),
+                              "ftps",  NO_SHORTCUT, I(3),
+                              "ftpes", NO_SHORTCUT, I(4),
+                              "http",  NO_SHORTCUT, I(5),
+                              "https", NO_SHORTCUT, I(6));
 
             s = ctrl_getset(b, "Connection/SSH/PSCP and WinSCP",
                             "pscp", "PSCP integration");
