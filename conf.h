@@ -156,6 +156,14 @@ CONF_OPTION(proxy_log_to_term,
     SAVE_KEYWORD("ProxyLogToTerm"),
     STORAGE_ENUM(on_off_auto),
 )
+/* KiTTY MOD_PROXY: name of a saved proxy definition (Proxies\ subtree / ini
+ * Proxies dir) applied over the session's own proxy at connect.
+ * "- Session defined proxy -" = no-op (matches LoadProxyInfo's short-circuit). */
+CONF_OPTION(proxyselection,
+    VALUE_TYPE(STR),
+    DEFAULT_STR("- Session defined proxy -"),
+    SAVE_KEYWORD("ProxySelection"),
+)
 
 /* SSH options */
 CONF_OPTION(remote_cmd,

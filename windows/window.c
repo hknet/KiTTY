@@ -158,6 +158,10 @@ void kitty_about(HWND hwnd);
 /* Port-knocking: knock the configured host:port sequence before connecting. */
 void kitty_port_knock(Conf *conf);
 #endif
+#ifdef MOD_PROXY
+/* Proxy selection: overlay a named saved proxy definition before connecting. */
+void kitty_proxy_select(Conf *conf);
+#endif
 #ifdef MOD_ZMODEM
 /* ZModem file transfer (kitty_zmodem.c). Menu-driven receive (rz) / send (sz);
  * receive data is intercepted in win_seat_output, send is pumped from the
@@ -368,6 +372,12 @@ static void start_backend(WinGuiSeat *wgs)
 #ifdef MOD_PORTKNOCKING
     /* KiTTY feature: knock the configured port sequence before connecting. */
     kitty_port_knock(wgs->conf);
+#endif
+#ifdef MOD_PROXY
+    /* KiTTY feature: apply the selected proxy definition before connecting.
+     * Uses this seat's conf (not a global); covers initial connect, Restart
+     * Session, and MOD_RECONNECT auto-reconnect (all via start_backend). */
+    kitty_proxy_select(wgs->conf);
 #endif
 
     seat_set_trust_status(&wgs->seat, true);

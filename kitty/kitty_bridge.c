@@ -16,6 +16,9 @@
 #include "putty.h"
 #include "kitty.h"
 #include "kitty_commun.h"  /* GetCryptSaltFlag, MASKPASS */
+#ifdef MOD_PROXY
+#include "kitty_proxy.h"   /* LoadProxyInfo, GetProxySelectionFlag */
+#endif
 
 /* KiTTY logging mode toggle (originally KiTTY logging.c) */
 int LogMode = 0;
@@ -386,5 +389,23 @@ void kitty_port_knock(Conf *conf)
     if (host == NULL || host[0] == '\0')
         return;
     ManagePortKnocking((char *)host, (char *)seq);
+}
+#endif
+
+#ifdef MOD_PROXY
+/* KiTTY feature: proxy selection. Before connecting, if the proxy-selector is
+ * enabled, overlay a named proxy definition (saved under the Proxies\ subtree)
+ * onto this seat's conf. LoadProxyInfo writes CONF_proxy_* from the named entry.
+ * "- Session defined proxy -" is a no-op. Called from start_backend() before
+ * backend_init(). No-global: takes the seat conf. */
+void kitty_proxy_select(Conf *conf)
+{
+    const char *name;
+    if (!GetProxySelectionFlag())
+        return;
+    name = conf_get_str(conf, CONF_proxyselection);
+    if (name == NULL || name[0] == '\0')
+        return;
+    LoadProxyInfo(conf, name);
 }
 #endif
