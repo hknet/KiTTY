@@ -134,6 +134,16 @@ void kitty_bw(HWND);
 extern int force_reconf;   /* kitty_bridge.c: 0 => apply conf silently (no dialog) */
 void kitty_showportfwd(HWND, Conf*);
 void kitty_shortcuts_toggle(HWND);
+/* KiTTY shortcut/ctrl-tab engine (kitty.c / kitty_commun.c) */
+int GetPuttyFlag(void);
+int GetShortcutsFlag(void);
+int GetMouseShortcutsFlag(void);
+int GetCtrlTabFlag(void);
+int GetProtectFlag(void);
+extern char KiTTYClassName[128];
+int ManageShortcuts(Terminal *term, Conf *conf, HWND hwnd,
+                    const int *clips_system, int key_num, int shift_flag,
+                    int control_flag, int alt_flag, int altgr_flag, int win_flag);
 void kitty_start_winscp(HWND);
 void kitty_send_file(HWND);
 void kitty_export_settings(HWND, Conf*);
@@ -497,7 +507,7 @@ static HINSTANCE hprev;
         wndclass.style = 0;                                             \
         wndclass.lpfnWndProc = WndProc;                                 \
         wndclass.cbClsExtra = 0;                                        \
-        wndclass.cbWndExtra = 0;                                        \
+        wndclass.cbWndExtra = 8; /* KiTTY Ctrl-Tab: 2 DWORD create-timestamp */ \
         wndclass.hInstance = hinst;                                     \
         wndclass.hIcon = LoadIcon(hinst, MAKEINTRESOURCE(IDI_MAINICON)); \
         wndclass.hCursor = LoadCursor(NULL, IDC_IBEAM);                 \
@@ -703,6 +713,16 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     }
 
     SetWindowLongPtr(wgs->term_hwnd, GWLP_USERDATA, (LONG_PTR)wgs);
+#ifdef MOD_PERSO
+    /* KiTTY Ctrl-Tab: stamp this window's creation time into the 8 class-extra
+     * bytes so CtrlTabWindowProc can order windows for next/prev switching. */
+    if (conf_get_int(wgs->conf, CONF_ctrl_tab_switch) && GetCtrlTabFlag()) {
+        int wx = GetClassLong(wgs->term_hwnd, GCL_CBWNDEXTRA);
+        FILETIME ft; GetSystemTimeAsFileTime(&ft);
+        SetWindowLong(wgs->term_hwnd, wx - 8, ft.dwHighDateTime);
+        SetWindowLong(wgs->term_hwnd, wx - 4, ft.dwLowDateTime);
+    }
+#endif
 
     /*
      * Initialise the fonts, simultaneously correcting the guesses
@@ -2399,6 +2419,48 @@ static void wm_size_resize_term(WinGuiSeat *wgs, LPARAM lParam)
     conf_set_int(wgs->conf, CONF_width, w);
 }
 
+#ifdef MOD_PERSO
+/* KiTTY Ctrl-Tab session switching: find the next/prev KiTTY window by the
+ * per-window creation timestamp stored in the 8 extra window-class bytes. */
+struct ctrl_tab_info {
+    int direction;
+    HWND  self;
+    DWORD self_hi_date_time;
+    DWORD self_lo_date_time;
+    HWND  next;
+    DWORD next_hi_date_time;
+    DWORD next_lo_date_time;
+    int   next_self;
+};
+static BOOL CALLBACK CtrlTabWindowProc(HWND hwnd, LPARAM lParam) {
+    struct ctrl_tab_info* info = (struct ctrl_tab_info*) lParam;
+    char class_name[16];
+    int wndExtra;
+    if (info->self != hwnd
+        && (wndExtra = GetClassLong(hwnd, GCL_CBWNDEXTRA)) >= 8
+        && GetClassName(hwnd, class_name, sizeof class_name) >= 5
+        && memcmp(class_name, KiTTYClassName, 5) == 0) {
+        DWORD hwnd_hi_date_time = GetWindowLong(hwnd, wndExtra - 8);
+        DWORD hwnd_lo_date_time = GetWindowLong(hwnd, wndExtra - 4);
+        int hwnd_self, hwnd_next;
+        hwnd_self = hwnd_hi_date_time - info->self_hi_date_time;
+        if (hwnd_self == 0) hwnd_self = hwnd_lo_date_time - info->self_lo_date_time;
+        hwnd_self *= info->direction;
+        hwnd_next = hwnd_hi_date_time - info->next_hi_date_time;
+        if (hwnd_next == 0) hwnd_next = hwnd_lo_date_time - info->next_lo_date_time;
+        hwnd_next *= info->direction;
+        if (((hwnd_self > 0) && (hwnd_next < 0))
+            || (((hwnd_self > 0) || (hwnd_next < 0)) && (info->next_self <= 0))) {
+            info->next = hwnd;
+            info->next_hi_date_time = hwnd_hi_date_time;
+            info->next_lo_date_time = hwnd_lo_date_time;
+            info->next_self = hwnd_self;
+        }
+    }
+    return TRUE;
+}
+#endif
+
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                 WPARAM wParam, LPARAM lParam)
 {
@@ -2974,6 +3036,22 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       case WM_LBUTTONUP:
       case WM_MBUTTONUP:
       case WM_RBUTTONUP:
+#ifdef MOD_PERSO
+        /* KiTTY mouse shortcuts: Shift+Ctrl+LClick = duplicate session,
+         * Ctrl+MClick = send to tray. Protect mode disables them. */
+        if (GetProtectFlag()) break;
+        if (!GetPuttyFlag() && GetMouseShortcutsFlag()) {
+            if (message == WM_LBUTTONUP &&
+                (wParam & MK_SHIFT) && (wParam & MK_CONTROL)) {
+                if (wgs->backend)
+                    SendMessage(hwnd, WM_COMMAND, IDM_DUPSESS, 0);
+                break;
+            } else if (message == WM_MBUTTONUP && (wParam & MK_CONTROL)) {
+                SendMessage(hwnd, WM_COMMAND, IDM_TOTRAY, 0);
+                break;
+            }
+        }
+#endif
         if (message == WM_RBUTTONDOWN &&
             ((wParam & MK_CONTROL) ||
              (conf_get_int(wgs->conf, CONF_mouse_is_xterm) == MOUSE_WINDOWS))) {
@@ -3630,6 +3708,44 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * number noise.
          */
         noise_ultralight(NOISE_SOURCE_KEY, lParam);
+
+#ifdef MOD_PERSO
+        /* KiTTY Ctrl-Tab session switching (consume VK_TAB+Ctrl first). */
+        if (wParam == VK_TAB && (GetKeyState(VK_CONTROL) & 0x8000)) {
+            if (conf_get_int(wgs->conf, CONF_ctrl_tab_switch) && GetCtrlTabFlag()) {
+                if (message == WM_KEYUP) {
+                    int wx = GetClassLong(hwnd, GCL_CBWNDEXTRA);
+                    struct ctrl_tab_info info = {
+                        (GetKeyState(VK_SHIFT) & 0x8000) ? 1 : -1, hwnd, };
+                    info.next_hi_date_time = info.self_hi_date_time =
+                        GetWindowLong(hwnd, wx - 8);
+                    info.next_lo_date_time = info.self_lo_date_time =
+                        GetWindowLong(hwnd, wx - 4);
+                    EnumWindows(CtrlTabWindowProc, (LPARAM)&info);
+                    if (info.next != NULL && info.next != hwnd)
+                        SetForegroundWindow(info.next);
+                    return 0;
+                }
+                return sw_DefWindowProc(hwnd, message, wParam, lParam);
+            }
+        }
+        /* KiTTY keyboard shortcuts dispatcher. */
+        if (GetShortcutsFlag()) {
+            if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) {
+                if (ManageShortcuts(
+                        wgs->term, wgs->conf, hwnd, clips_system, (int)wParam,
+                        GetKeyState(VK_SHIFT)   & 0x8000,
+                        GetKeyState(VK_CONTROL) & 0x8000,
+                        (GetKeyState(VK_MENU) & 0x8000) || (GetKeyState(VK_LMENU) & 0x8000),
+                        GetKeyState(VK_RMENU)   & 0x8000,
+                        (GetKeyState(VK_RWIN) & 0x8000) || (GetKeyState(VK_LWIN) & 0x8000)))
+                    return 0;
+            }
+        } else {
+            if (GetProtectFlag() == 1)
+                return 0;
+        }
+#endif
 
         /*
          * We don't do TranslateMessage since it disassociates the
