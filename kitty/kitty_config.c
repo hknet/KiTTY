@@ -18,6 +18,7 @@
  * the other shipping binaries are unaffected. */
 int GetPuttyFlag(void);
 int GetTransparencyFlag(void);
+int GetZModemFlag(void);
 
 /* Checkbox handler for KiTTY keys that are stored as INT (0/1) rather
  * than BOOL (the standard conf_checkbox_handler asserts on INT keys in
@@ -2080,6 +2081,25 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ctrl_editbox(s, "Timeout (s):", NO_SHORTCUT, 30,
                      HELPCTX(no_help), conf_editbox_handler,
                      I(CONF_script_timeout), ED_INT);
+        ctrl_editbox(s, "Character delay (ms):", NO_SHORTCUT, 30,
+                     HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_script_char_delay), ED_INT);
+        ctrl_editbox(s, "Start of condition/comment line:", NO_SHORTCUT, 30,
+                     HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_script_cond_line), ED_STR);
+        ctrl_radiobuttons(s, "CR/LF translation:", NO_SHORTCUT, 4,
+                          HELPCTX(no_help), conf_radiobutton_handler,
+                          I(CONF_script_crlf),
+                          "Off",   I(0),   /* SCRIPT_OFF  */
+                          "no LF", I(1),   /* SCRIPT_NOLF */
+                          "CR",    I(2),   /* SCRIPT_CR   */
+                          "Rec",   I(3));  /* SCRIPT_REC  */
+        ctrl_checkbox(s, "Except for first command", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_script_except));
+        ctrl_checkbox(s, "Use conditions from file", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_script_cond_use));
     }
 
     /*
@@ -2669,6 +2689,23 @@ void setup_config_box(struct controlbox *b, bool midsession,
             ctrl_editbox(s, "Command to run before connection", 'b', 100,
                          HELPCTX(connection_pre_hook),
                          conf_editbox_handler, I(CONF_pre_connect_command), ED_STR);
+
+#ifdef MOD_PORTKNOCKING
+            /* KiTTY: port-knocking sequence. Backend = kitty_port_knock() /
+             * ManagePortKnocking(), fired from start_backend() before connect. */
+            if (!GetPuttyFlag()) {
+                s = ctrl_getset(b, "Connection", "PortKnocking",
+                                "Port knocking sequence");
+                ctrl_editbox(s, "Sequence:", NO_SHORTCUT, 100,
+                             HELPCTX(no_help), conf_editbox_handler,
+                             I(CONF_portknockingoptions), ED_STR);
+                ctrl_text(s, "A comma-separated list of port:protocol knocks. "
+                          "Protocols are tcp and udp; use s for a pause between "
+                          "knocks.", HELPCTX(no_help));
+                ctrl_text(s, "Example:  2001:tcp, 1:s, 2002:udp",
+                          HELPCTX(no_help));
+            }
+#endif
         }
 
         /*
@@ -3396,6 +3433,57 @@ void setup_config_box(struct controlbox *b, bool midsession,
                           HELPCTX(ssh_bugs_rsa1),
                           sshbug_handler, I(CONF_sshbug_rsa1));
         }
+
+#ifdef MOD_PERSO
+        /* KiTTY: PSCP / WinSCP integration. Backend = StartWinSCP / SendFile. */
+        if (!GetPuttyFlag()) {
+            ctrl_settitle(b, "Connection/SSH/PSCP and WinSCP",
+                          "PSCP and WinSCP integration");
+
+            s = ctrl_getset(b, "Connection/SSH/PSCP and WinSCP",
+                            "winSCPproto", "General protocol setting");
+            ctrl_radiobuttons(s, "Prefered protocol:", NO_SHORTCUT, 4,
+                              HELPCTX(no_help),
+                              conf_radiobutton_handler,
+                              I(CONF_winscpprot),
+                              "scp",   I(0),
+                              "sftp",  I(1),
+                              "ftp",   I(2),
+                              "ftps",  I(3),
+                              "ftpes", I(4),
+                              "http",  I(5),
+                              "https", I(6));
+
+            s = ctrl_getset(b, "Connection/SSH/PSCP and WinSCP",
+                            "pscp", "PSCP integration");
+            ctrl_checkbox(s, "Send file in current directory", NO_SHORTCUT,
+                          HELPCTX(no_help),
+                          conf_checkbox_handler, I(CONF_scp_auto_pwd));
+            ctrl_editbox(s, "Remote directory (exclusive with previous setting)",
+                         NO_SHORTCUT, 100,
+                         HELPCTX(no_help),
+                         conf_editbox_handler, I(CONF_pscpremotedir), ED_STR);
+            ctrl_editbox(s, "PSCP options", NO_SHORTCUT, 100,
+                         HELPCTX(no_help),
+                         conf_editbox_handler, I(CONF_pscpoptions), ED_STR);
+
+            s = ctrl_getset(b, "Connection/SSH/PSCP and WinSCP",
+                            "WinSCP", "WinSCP integration");
+            ctrl_editbox(s, "SFTP connect ([user@]hostname[:port])",
+                         NO_SHORTCUT, 100,
+                         HELPCTX(no_help),
+                         conf_editbox_handler, I(CONF_sftpconnect), ED_STR);
+            ctrl_editbox(s, "WinSCP additional options", NO_SHORTCUT, 100,
+                         HELPCTX(no_help),
+                         conf_editbox_handler, I(CONF_winscpoptions), ED_STR);
+            ctrl_editbox(s, "WinSCP additional rawsettings", NO_SHORTCUT, 100,
+                         HELPCTX(no_help),
+                         conf_editbox_handler, I(CONF_winscprawsettings), ED_STR);
+            ctrl_editbox(s, "Shell (scp mode only)", NO_SHORTCUT, 100,
+                         HELPCTX(no_help),
+                         conf_editbox_handler, I(CONF_pscpshell), ED_STR);
+        }
+#endif
     }
 
     if (DISPLAY_RECONFIGURABLE_PROTOCOL(PROT_SERIAL)) {
@@ -3526,6 +3614,45 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       conf_checkbox_handler,
                       I(CONF_supdup_scroll));
     }
+
+#ifdef MOD_ZMODEM
+    /* The Connection/ZModem panels (KiTTY). Backend = kitty_zmodem_*. */
+    if ((!GetPuttyFlag()) && GetZModemFlag()) {
+        ctrl_settitle(b, "Connection/ZModem",
+                      "Options controlling Z Modem transfers");
+        s = ctrl_getset(b, "Connection/ZModem", "download",
+                        "Download folder");
+        ctrl_editbox(s, "Location:", NO_SHORTCUT, 100,
+                     HELPCTX(no_help),
+                     conf_editbox_handler, I(CONF_zdownloaddir), ED_STR);
+
+        ctrl_settitle(b, "Connection/ZModem/rz", "rz path and options");
+        s = ctrl_getset(b, "Connection/ZModem/rz", "receive",
+                        "Receive command");
+        ctrl_filesel(s, "Command rz:", NO_SHORTCUT,
+                     FILTER_ALL_FILES, false,
+                     "Select command to receive zmodem data",
+                     HELPCTX(no_help),
+                     conf_filesel_handler, I(CONF_rzcommand));
+        ctrl_editbox(s, "Options", NO_SHORTCUT, 50,
+                     HELPCTX(no_help),
+                     conf_editbox_handler, I(CONF_rzoptions), ED_STR);
+        ctrl_text(s, "Ctrl+X to quit rz before completing",
+                  HELPCTX(no_help));
+
+        ctrl_settitle(b, "Connection/ZModem/sz", "sz path and options");
+        s = ctrl_getset(b, "Connection/ZModem/sz", "send",
+                        "Send command");
+        ctrl_filesel(s, "Command sz:", NO_SHORTCUT,
+                     FILTER_ALL_FILES, false,
+                     "Select command to send zmodem data",
+                     HELPCTX(no_help),
+                     conf_filesel_handler, I(CONF_szcommand));
+        ctrl_editbox(s, "Options", NO_SHORTCUT, 50,
+                     HELPCTX(no_help),
+                     conf_editbox_handler, I(CONF_szoptions), ED_STR);
+    }
+#endif
 
     /*
      * The Comment panel (KiTTY): a free-text note attached to this session.

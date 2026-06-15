@@ -4247,7 +4247,7 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
 					RunCommand( hwnd, buffer ) ;
 				}
 		} else { 
-			if( conf_get_int( conf, CONF_scp_auto_pwd ) != 1 ) { SendOneFile( hwnd, "", fic, NULL ) ; }
+			if( !conf_get_bool( conf, CONF_scp_auto_pwd ) ) { SendOneFile( hwnd, "", fic, NULL ) ; }
 			else { SendOneFile( hwnd, "", fic, RemotePath  ) ; }
 		}
 		free(fic);
@@ -4261,7 +4261,7 @@ void OnDropFiles(HWND hwnd, HDROP hDropInfo) {
 		MessageBox( hwnd, "This function is only available with SSH connections.", "Error", MB_OK|MB_ICONERROR ) ;
 		return ;
 	}
-	if( conf_get_int( conf, CONF_scp_auto_pwd ) != 1 ) { 
+	if( !conf_get_bool( conf, CONF_scp_auto_pwd ) ) { 
 		recupNomFichierDragDrop(hwnd, &hDropInfo) ; 
 	} else { 
 		if( RemotePath != NULL ) { free( RemotePath ) ; RemotePath = NULL ; }
