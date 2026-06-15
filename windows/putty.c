@@ -101,6 +101,32 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 const char *fld = cmdline_arg_to_str(arglist->args[arglistpos++]);
                 conf_set_str(conf, CONF_folder, fld);
                 if (GetDirectoryBrowseFlag()) SetSessPath(fld);
+            } else if (!strcmp(p, "-cmd")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                conf_set_str(conf, CONF_autocommand,
+                             cmdline_arg_to_str(arglist->args[arglistpos++]));
+            } else if (!strcmp(p, "-codepage")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                conf_set_str(conf, CONF_line_codepage,
+                             cmdline_arg_to_str(arglist->args[arglistpos++]));
+            } else if (!strcmp(p, "-rcmd")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                /* CONF_remote_cmd is STR_AMBI; conf_set_str is safe (conf.c
+                 * asserts STR||STR_AMBI, stores utf8=false). */
+                conf_set_str(conf, CONF_remote_cmd,
+                             cmdline_arg_to_str(arglist->args[arglistpos++]));
+            } else if (!strcmp(p, "-log")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                Filename *fn = cmdline_arg_to_filename(arglist->args[arglistpos++]);
+                conf_set_filename(conf, CONF_logfilename, fn);
+                filename_free(fn);                    /* conf_set_filename copies */
+                conf_set_int(conf, CONF_logtype, 1);  /* 0.76b literal; 1 == LGTYP_ASCII */
+                conf_set_int(conf, CONF_logxfovr, 1); /* 1 == LGXF_OVR (overwrite) */
+                conf_set_bool(conf, CONF_logflush, true);
 #endif
             } else if (!strcmp(p, "-cleanup")) {
                 /*

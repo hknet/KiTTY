@@ -25,6 +25,12 @@ extern void RunConfig(Conf *conf);   /* kitty_launcher.c: launch new session, ke
 extern char **FolderList;            /* kitty.c: NULL-terminated folder names */
 extern char CurrentFolder[];         /* kitty_commun.c: currently selected folder */
 void GetSessionFolderName(const char *session_in, char *folder);  /* kitty.c */
+/* KiTTY folder-management engine (kitty_config.c does not include kitty_tools.h/kitty.h) */
+int StringList_Add(char **list, const char *name);   /* kitty_tools.c (dedupes internally) */
+void StringList_Del(char **list, const char *name);  /* kitty_tools.c */
+void StringList_Up(char **list, const char *name);   /* kitty_tools.c */
+void InitFolderList(void);                            /* kitty.c */
+void SaveFolderList(void);                            /* kitty.c */
 
 /* Checkbox handler for KiTTY keys that are stored as INT (0/1) rather
  * than BOOL (the standard conf_checkbox_handler asserts on INT keys in
@@ -817,6 +823,7 @@ struct sessionsaver_data {
 #endif
 #ifdef MOD_PERSO
     dlgcontrol *folderlist;      /* KiTTY: session-folder filter droplist */
+    dlgcontrol *createbutton, *delfolderbutton, *arrangebutton; /* KiTTY folder mgmt */
 #endif
     struct sesslist sesslist;
     bool midsession;
@@ -986,6 +993,56 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 get_sesslist(&ssd->sesslist, true);
                 dlg_refresh(ssd->listbox, dlg);
             }
+#ifdef MOD_PERSO
+        } else if (!ssd->midsession &&
+                   ssd->createbutton && ctrl == ssd->createbutton) {
+            /* New folder: name comes from the Saved Sessions edit box.
+             * StringList_Add dedupes internally, so no explicit Exist() check. */
+            if (ssd->savedsession && ssd->savedsession[0]) {
+                if (!stricmp(ssd->savedsession, "Default")) {
+                    dlg_error_msg(dlg, "You may not create a folder called Default.");
+                } else {
+                    InitFolderList();
+                    StringList_Add(FolderList, ssd->savedsession);
+                    SaveFolderList();
+                    sfree(ssd->savedsession);
+                    ssd->savedsession = dupstr("");
+                    dlg_refresh(ssd->editbox, dlg);
+                    dlg_refresh(ssd->folderlist, dlg);
+                    dlg_refresh(ssd->listbox, dlg);
+                }
+            } else {
+                dlg_beep(dlg);
+            }
+        } else if (!ssd->midsession &&
+                   ssd->delfolderbutton && ctrl == ssd->delfolderbutton) {
+            /* Delete the currently selected folder. */
+            if (!CurrentFolder[0] || !strcmp(CurrentFolder, "Default")) {
+                dlg_error_msg(dlg, "The Default folder cannot be deleted.");
+            } else {
+                StringList_Del(FolderList, CurrentFolder);
+                SaveFolderList();
+                InitFolderList();
+                strcpy(CurrentFolder, "Default");
+                sfree(ssd->savedsession);
+                ssd->savedsession = dupstr("");
+                dlg_refresh(ssd->editbox, dlg);
+                dlg_refresh(ssd->folderlist, dlg);
+                dlg_refresh(ssd->listbox, dlg);
+            }
+        } else if (!ssd->midsession &&
+                   ssd->arrangebutton && ctrl == ssd->arrangebutton) {
+            /* Move the selected folder one step up the ordering. */
+            if (CurrentFolder[0] && strcmp(CurrentFolder, "Default")) {
+                StringList_Up(FolderList, CurrentFolder);
+                SaveFolderList();
+                InitFolderList();
+                dlg_refresh(ssd->folderlist, dlg);
+                dlg_refresh(ssd->listbox, dlg);
+            } else {
+                dlg_beep(dlg);
+            }
+#endif
         } else if (ctrl == ssd->okbutton) {
             if (ssd->midsession) {
                 /* In a mid-session Change Settings, Apply is always OK. */
@@ -2050,6 +2107,30 @@ void setup_config_box(struct controlbox *b, bool midsession,
         /* Disable the Delete button mid-session too, for UI consistency. */
         ssd->delbutton = NULL;
     }
+#ifdef MOD_PERSO
+    /* KiTTY: folder management. Mutating buttons only outside PuTTY mode and
+     * never mid-session (folder edits in Change Settings make no sense). */
+    if (!midsession && !GetPuttyFlag()) {
+        ssd->createbutton = ctrl_pushbutton(s, "New folder", NO_SHORTCUT,
+                                            HELPCTX(session_saved),
+                                            sessionsaver_handler, P(ssd));
+        ssd->createbutton->column = 1;
+        ssd->delfolderbutton = ctrl_pushbutton(s, "Del folder", NO_SHORTCUT,
+                                               HELPCTX(session_saved),
+                                               sessionsaver_handler, P(ssd));
+        ssd->delfolderbutton->column = 1;
+        ssd->arrangebutton = ctrl_pushbutton(s, "Up folder", NO_SHORTCUT,
+                                             HELPCTX(no_help),
+                                             sessionsaver_handler, P(ssd));
+        ssd->arrangebutton->column = 1;
+    } else {
+        /* Defensive only: setup_config_box already memsets ssd to 0, so these
+         * are already NULL. Kept for parity with the loadbutton/delbutton init. */
+        ssd->createbutton = NULL;
+        ssd->delfolderbutton = NULL;
+        ssd->arrangebutton = NULL;
+    }
+#endif
     ctrl_columns(s, 1, 100);
 
     s = ctrl_getset(b, "Session", "otheropts", NULL);

@@ -64,6 +64,11 @@
 #define IDM_NEWDUPSESS  0xB1B0  /* new duplicated session (new window) */
 #endif
 #endif
+#ifdef MOD_RECONNECT
+#ifndef IDM_RESTARTSESSION
+#define IDM_RESTARTSESSION 0xB110  /* close current session and reconnect */
+#endif
+#endif
 #define IDM_SPECIALSEP 0x0200
 
 #define IDM_SPECIAL_MIN 0x0400
@@ -556,6 +561,28 @@ static void close_session(void *vctx)
     }
 }
 
+#ifdef MOD_RECONNECT
+/*
+ * KiTTY "Close + Restart": tear down the live session and immediately
+ * bring up a fresh backend in ONE toplevel callback, so there is no
+ * ordering race between a queued close and a posted restart. Mirrors the
+ * IDM_RESTART body with a forced close_session in front. start_backend
+ * removes the Restart menu item and clears session_closed, so the
+ * menu/state end consistent.
+ */
+static void close_and_restart(void *vctx)
+{
+    WinGuiSeat *wgs = (WinGuiSeat *)vctx;
+    SetSSHConnected(0);
+    close_session(wgs);          /* frees ldisc+backend, nulls wgs->backend, sets session_closed */
+    if (!wgs->backend) {         /* always true after close_session */
+        lp_eventlog(&wgs->logpolicy, "----- Session restarted -----");
+        term_pwron(wgs->term, false);
+        start_backend(wgs);      /* may MessageBox+exit(0) on connect fail (inherited) */
+    }
+}
+#endif
+
 /*
  * Some machinery to deal with switching the window type between ANSI
  * and Unicode. We prefer Unicode, but some PuTTY builds still try to
@@ -1013,6 +1040,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_DUPSESS, "&Duplicate Session");
 #ifdef MOD_PERSO
             AppendMenu(m, MF_ENABLED, IDM_NEWDUPSESS, "New &duplicated session...");
+#endif
+#ifdef MOD_RECONNECT
+            AppendMenu(m, MF_ENABLED, IDM_RESTARTSESSION, "Close+&Restart");
 #endif
             AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)wgs->savedsess_menu,
                        "Sa&ved Sessions");
@@ -2834,6 +2864,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             }
 
             break;
+#ifdef MOD_RECONNECT
+          case IDM_RESTARTSESSION:
+            /* If already disconnected, just reconnect (same as IDM_RESTART).
+             * If live, do the safe close+restart on a single toplevel cb so
+             * close->pwron->start cannot interleave with a posted message. */
+            if (!wgs->backend)
+                PostMessage(hwnd, WM_COMMAND, IDM_RESTART, 0);
+            else
+                queue_toplevel_callback(close_and_restart, wgs);
+            break;
+#endif
           case IDM_RECONF: {
             Conf *prev_conf;
             int init_lvl = 1;
@@ -4406,6 +4447,19 @@ static void do_text_internal(
     if ((attr & ATTR_UNDER) && !is_cursor &&
         conf_get_int(wgs->conf, CONF_under_colour))
         nfg = OSC4_COLOUR_under_fg;
+#endif
+#ifdef MOD_TUTTYCOLOR
+    /* KiTTY (TuTTY): colour the selection with the dedicated sel_fg/sel_bg
+     * slots instead of reverse-video. terminal.c only sets ATTR_SELECTED
+     * when CONF_sel_colour is on, so no extra conf check is needed here. */
+    if ((attr & ATTR_SELECTED) && !is_cursor) {
+        nfg = OSC4_COLOUR_sel_fg;
+        nbg = OSC4_COLOUR_sel_bg;
+        /* Palette slots must override any 24-bit truecolour on the cell,
+         * otherwise the truecolour.fg.enabled branch below ignores nfg/nbg. */
+        truecolour.fg.enabled = false;
+        truecolour.bg.enabled = false;
+    }
 #endif
     if (!wgs->pal && truecolour.fg.enabled)
         fg = RGB(truecolour.fg.r, truecolour.fg.g, truecolour.fg.b);

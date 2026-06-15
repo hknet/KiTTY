@@ -129,6 +129,7 @@ struct terminal_tag {
     bool cblinker;                     /* When blinking is the cursor on ? */
     bool tblinker;                     /* When the blinking text is on */
     bool blink_is_real;                /* Actually blink blinking text */
+    bool sel_colour;                   /* TuTTY: colour selection vs reverse (unconditional field for stable struct layout) */
     int sco_acs, save_sco_acs;         /* CSI 10,11,12m -> OEM charset */
     bool vt52_bold;                    /* Force bold on non-bold colours */
     bool utf;                          /* Are we in toggleable UTF-8 mode? */

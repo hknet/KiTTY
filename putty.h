@@ -274,6 +274,9 @@ extern const int colour_indices_oscp_to_osc4[OSCP_NCOLOURS];
 #define ATTR_COLOURS 0x0003FFFFU
 #define ATTR_DIM     0x01000000U
 #define ATTR_STRIKE  0x02000000U
+#ifdef MOD_TUTTYCOLOR
+#define ATTR_SELECTED 0x04000000U      /* TuTTY: draw selection with sel_fg/sel_bg */
+#endif
 #define ATTR_ACTCURS 0x40000000UL      /* active cursor (block) */
 #define ATTR_PASCURS 0x20000000UL      /* passive cursor (box) */
 #define ATTR_RIGHTCURS 0x10000000UL    /* cursor-on-RHS */

@@ -1469,6 +1469,7 @@ static void power_on(Terminal *term, bool clear)
     term->app_keypad_keys = conf_get_bool(term->conf, CONF_app_keypad);
     term->use_bce = conf_get_bool(term->conf, CONF_bce);
     term->blink_is_real = conf_get_bool(term->conf, CONF_blinktext);
+    term->sel_colour = conf_get_int(term->conf, CONF_sel_colour);
     term->erase_char = term->basic_erase_char;
     term->alt_which = 0;
     term_print_finish(term);
@@ -1815,6 +1816,7 @@ void term_reconfig(Terminal *term, Conf *conf)
         term->use_bce = conf_get_bool(term->conf, CONF_bce);
         set_erase_char(term);
     }
+    term->sel_colour = conf_get_int(term->conf, CONF_sel_colour);
     if (reset_tblink) {
         term->blink_is_real = conf_get_bool(term->conf, CONF_blinktext);
     }
@@ -6307,8 +6309,14 @@ static void do_paint(Terminal *term)
                                 posPle_left(scrpos, term->selend));
             } else
                 selected = false;
+#ifdef MOD_TUTTYCOLOR
+            tattr = (tattr ^ rv
+                     ^ (selected ? (term->sel_colour ? ATTR_SELECTED
+                                                      : ATTR_REVERSE) : 0));
+#else
             tattr = (tattr ^ rv
                      ^ (selected ? ATTR_REVERSE : 0));
+#endif
 
             /* 'Real' blinking ? */
             if (term->blink_is_real && (tattr & ATTR_BLINK)) {
