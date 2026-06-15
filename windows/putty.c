@@ -1,6 +1,12 @@
 #include "putty.h"
 #include "storage.h"
 
+#ifdef MOD_PERSO
+/* KiTTY helpers (putty.c does not include kitty.h) */
+extern char *SetSessPath(const char *);
+extern int  GetDirectoryBrowseFlag(void);
+#endif
+
 extern bool sesslist_demo_mode;
 extern Filename *dialog_box_demo_screenshot_filename;
 static strbuf *demo_terminal_data = NULL;
@@ -61,6 +67,41 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 arglistpos++;          /* skip next argument */
             } else if (ret == 1) {
                 continue;          /* nothing further needs doing */
+#ifdef MOD_PERSO
+            } else if (!strcmp(p, "-fullscreen")) {
+                conf_set_int(conf, CONF_fullscreen, 1);
+            } else if (!strcmp(p, "-xpos")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                int x = atoi(cmdline_arg_to_str(arglist->args[arglistpos++]));
+                if (x >= 0) {
+                    conf_set_int(conf, CONF_xpos, x);
+                    if (conf_get_int(conf, CONF_ypos) < 0)
+                        conf_set_int(conf, CONF_ypos, 0);
+                    conf_set_bool(conf, CONF_save_windowpos, true);
+                }
+            } else if (!strcmp(p, "-ypos")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                int y = atoi(cmdline_arg_to_str(arglist->args[arglistpos++]));
+                if (y >= 0) {
+                    conf_set_int(conf, CONF_ypos, y);
+                    if (conf_get_int(conf, CONF_xpos) < 0)
+                        conf_set_int(conf, CONF_xpos, 0);
+                    conf_set_bool(conf, CONF_save_windowpos, true);
+                }
+            } else if (!strcmp(p, "-title")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                conf_set_str(conf, CONF_wintitle,
+                             cmdline_arg_to_str(arglist->args[arglistpos++]));
+            } else if (!strcmp(p, "-folder")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                const char *fld = cmdline_arg_to_str(arglist->args[arglistpos++]);
+                conf_set_str(conf, CONF_folder, fld);
+                if (GetDirectoryBrowseFlag()) SetSessPath(fld);
+#endif
             } else if (!strcmp(p, "-cleanup")) {
                 /*
                  * `putty -cleanup'. Remove all registry

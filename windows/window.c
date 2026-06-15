@@ -50,6 +50,20 @@
 #define IDM_FULLSCREEN  0x0180
 #define IDM_COPY      0x0190
 #define IDM_PASTE     0x01A0
+#ifdef MOD_PERSO
+#ifndef IDM_SCRIPTSEND
+#define IDM_SCRIPTSEND  0xB180  /* send recorded script (rutty) */
+#endif
+#ifndef IDM_SCRIPTHALT
+#define IDM_SCRIPTHALT  0xB190  /* stop running script */
+#endif
+#ifndef IDM_SCRIPTFILE2
+#define IDM_SCRIPTFILE2 0xB1A0  /* send a script file (file picker) */
+#endif
+#ifndef IDM_NEWDUPSESS
+#define IDM_NEWDUPSESS  0xB1B0  /* new duplicated session (new window) */
+#endif
+#endif
 #define IDM_SPECIALSEP 0x0200
 
 #define IDM_SPECIAL_MIN 0x0400
@@ -186,6 +200,11 @@ int kitty_zmodem_process(void);
 #ifdef MOD_BACKGROUNDIMAGE
 /* Background image: load the configured image (CONF_bg_image_filename etc.). */
 int kitty_apply_background(HWND hwnd, Conf *conf);
+/* KiTTY background slideshow: advance to next image (kitty.c, active-seat conf). */
+int NextBgImage(HWND hwnd);
+int GetBackgroundImageFlag(void);
+extern int ImageSlideDelay;
+#define TIMER_SLIDEBG_WIN 8710   /* free across window.c + kitty.c timer ids */
 #endif
 #ifdef MOD_PERSO
 /* KiTTY rutty scripting (kitty_rutty.c). Sends a script file line by line and,
@@ -196,6 +215,12 @@ int  kitty_script_active(void);
 int  kitty_script_send_file(Conf *conf, Backend *backend, Filename *fn);
 void kitty_script_remote(const void *data, size_t len);
 void kitty_script_stop(void);
+int  OpenFileName(HWND hFrame, char *filename, char *Title, char *Filter); /* kitty_win.c */
+void OpenAndSendScriptFile(HWND hwnd);   /* kitty.c: legacy autocommand script */
+int  GetWinrolFlag(void);                /* kitty.c */
+void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
+                                   const char *user, const char *pass,
+                                   const int port, const char *remotepath); /* kitty_bridge.c */
 #endif
 /* Auto-command: send a command automatically after login (CONF_autocommand). */
 int kitty_autocommand_tick(HWND hwnd);
@@ -811,6 +836,16 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * do_text_internal (per-cell compositing for default-bg cells), adapted
      * to 0.84's direct-to-window paint path. */
     kitty_apply_background(wgs->term_hwnd, wgs->conf);
+    /* KiTTY background-image slideshow: arm a repeating timer rotating the image
+     * through the folder. Period = CONF_bg_slideshow, else ImageSlideDelay (ini
+     * "slidedelay"). Inert unless a bg image is active with a positive delay. */
+    if (GetBackgroundImageFlag() && !GetPuttyFlag()
+        && conf_get_int(wgs->conf, CONF_bg_type) != 0) {
+        int slide = conf_get_int(wgs->conf, CONF_bg_slideshow);
+        int period = slide > 0 ? slide : (ImageSlideDelay > 0 ? ImageSlideDelay : 0);
+        if (period > 0)
+            SetTimer(wgs->term_hwnd, TIMER_SLIDEBG_WIN, period * 1000, NULL);
+    }
 #endif
     /* KiTTY feature: auto-minimise-to-tray when SendToTray is set */
     if (conf_get_int(wgs->conf, CONF_sendtotray))
@@ -976,6 +1011,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             AppendMenu(m, MF_ENABLED, IDM_NEWSESS, "Ne&w Session...");
             AppendMenu(m, MF_ENABLED, IDM_DUPSESS, "&Duplicate Session");
+            AppendMenu(m, MF_ENABLED, IDM_NEWDUPSESS, "New &duplicated session...");
             AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)wgs->savedsess_menu,
                        "Sa&ved Sessions");
             AppendMenu(m, MF_ENABLED, IDM_RECONF, "Chan&ge Settings...");
@@ -1016,6 +1052,16 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
             AppendMenu(toolmenu, MF_ENABLED, IDM_WINSCP, "Start Win&SCP");
             AppendMenu(toolmenu, MF_ENABLED, IDM_PSCP, "Send file (&pscp)");
+            AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
+            {
+                int sa = kitty_script_active();
+                AppendMenu(toolmenu, sa ? MF_GRAYED : MF_ENABLED,
+                           IDM_SCRIPTSEND, "Send &recorded script");
+                AppendMenu(toolmenu, sa ? MF_ENABLED : MF_GRAYED,
+                           IDM_SCRIPTHALT, "S&top script");
+                AppendMenu(toolmenu, MF_ENABLED,
+                           IDM_SCRIPTFILE2, "Send scr&ipt file");
+            }
 #ifdef MOD_ZMODEM
             if (GetZModemFlag()) {
                 int xfer = kitty_zmodem_active();
@@ -2575,6 +2621,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             }
             return 0;
         }
+#ifdef MOD_BACKGROUNDIMAGE
+        if ((UINT_PTR)wParam == TIMER_SLIDEBG_WIN) {
+            /* periodic: advance the slideshow image and repaint (no KillTimer). */
+            if (GetBackgroundImageFlag()) {
+                NextBgImage(hwnd);
+                InvalidateRect(hwnd, NULL, TRUE);
+            }
+            return 0;
+        }
+#endif
 #ifdef MOD_RECONNECT
         if ((UINT_PTR)wParam == TIMER_RECONNECT) {
             KillTimer(hwnd, TIMER_RECONNECT);
@@ -2652,6 +2708,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             return 0;
         }
         break;
+#ifdef MOD_PERSO
+      case WM_NCLBUTTONDBLCLK:
+        /* KiTTY: double-click the title bar to roll up the window (when winrol
+         * enabled); otherwise fall through to the normal maximise toggle. */
+        if (wParam == HTCAPTION && GetWinrolFlag()) {
+            kitty_rollup(wgs->term_hwnd,
+                         conf_get_int(wgs->conf, CONF_resize_action));
+            return 0;
+        }
+        break;
+#endif
       case WM_COMMAND:
       case WM_SYSCOMMAND:
         switch (wParam & ~0xF) {       /* low 4 bits reserved to Windows */
@@ -3027,6 +3094,30 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           case IDM_WINROL:
             kitty_rollup(wgs->term_hwnd, conf_get_int(wgs->conf, CONF_resize_action));
+            break;
+          case IDM_SCRIPTSEND: {
+            char fn[4096];
+            if (wgs->backend && !kitty_script_active() &&
+                OpenFileName(wgs->term_hwnd, fn, "Send script file...",
+                    "Script files (*.ksh,*.sh)|*.ksh;*.sh|All files (*.*)|*.*|")) {
+                Filename *sf = filename_from_str(fn);
+                kitty_script_send_file(wgs->conf, wgs->backend, sf);
+                filename_free(sf);
+            }
+            break;
+          }
+          case IDM_SCRIPTHALT:
+            kitty_script_stop();
+            lp_eventlog(&wgs->logpolicy, "script stopped");
+            break;
+          case IDM_SCRIPTFILE2:
+            OpenAndSendScriptFile(wgs->term_hwnd);
+            break;
+          case IDM_NEWDUPSESS:
+            conf_set_str(wgs->conf, CONF_host_alt,
+                         conf_get_str(wgs->conf, CONF_host));
+            RunSessionWithCurrentSettings(wgs->term_hwnd, wgs->conf,
+                                          "", NULL, NULL, 0, NULL);
             break;
           case IDM_FONTUP:
             kitty_font_resize(wgs->term, wgs->conf, 1);
