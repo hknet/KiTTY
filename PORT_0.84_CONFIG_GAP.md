@@ -116,6 +116,26 @@ WIRED & OK (for the record): transparency, antiidle, autocommand, hyperlink, per
 static bg image, zmodem, rutty scripting engine, adb, port-knock (auto at connect), WinSCP/pscp
 launch. far2l = partial (announces, syncs nothing).
 
+## Deep-tail status (2026-06-15, post-0.84.0.7)
+- ✅ **far2l payload** — DONE (commit 7559990): decode + reply to every request,
+  clipboard denied byte-exactly, no more remote hang. Real clipboard sync deferred.
+- ⛔ **TuTTY 34-colour** — BLOCKED for blind integration. The 0.76→0.84 colour
+  subsystem was **refactored**: 0.76b uses explicit `CONF_NCOLOURS`/`OSCP_NCOLOURS`/
+  `OSC4_NCOLOURS` + `colour_indices_conf_to_oscp/_osc4` arrays; 0.84 is table-driven
+  via `CONF_COLOUR_LIST(X)` macro (putty.h:100, OSC4_NCOLOURS=262). The 12 TuTTY
+  underline/selection slots must be **re-expressed in 0.84's macro**, not pasted
+  from 0.76 — and the colour *rendering* can't be visually verified in this
+  harness. Needs a supervised session (eyes on the palette). Plan: extend
+  CONF_COLOUR_LIST with the 12 slots under #ifdef MOD_TUTTYCOLOR, add
+  bold/under/sel_colour conf keys (SAVE_KEYWORD), the config colour-panel
+  checkboxes, and the window.c OSC4 underline remap; gate sel_colour (new attr
+  bit + terminal.c) behind a second step.
+- ⛔ **Session-folder UI** — needs the session-list folder-FILTERING REFRESH
+  rewrite (GetSessionFolderName/filter_sessionname) + the Clear button's
+  proxy/host symbols (absent). Non-mechanical; the Start button is already done.
+- ⬜ CLI Tier-C (-kload/-cmd/-log/-edit/-classname) + Close+Restart menu — small,
+  deferred.
+
 ## Root cause (how it was missed)
 1. `kitty_config.c` was built additively from stock PuTTY 0.84 `config.c`, re-adding only a
    handful of KiTTY panels; the original config tree was never diffed against the port.
