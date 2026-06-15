@@ -19,6 +19,8 @@
 int GetPuttyFlag(void);
 int GetTransparencyFlag(void);
 int GetZModemFlag(void);
+int GetAutoreconnectFlag(void);
+int GetBackgroundImageFlag(void);
 
 /* Checkbox handler for KiTTY keys that are stored as INT (0/1) rather
  * than BOOL (the standard conf_checkbox_handler asserts on INT keys in
@@ -2036,6 +2038,16 @@ void setup_config_box(struct controlbox *b, bool midsession,
     ctrl_checkbox(s, "Include header", 'i',
                   HELPCTX(logging_header),
                   conf_checkbox_handler, I(CONF_logheader));
+#ifdef MOD_PERSO
+    if (!GetPuttyFlag()) {
+        ctrl_editbox(s, "Log rotation delay (sec, 0=off)", NO_SHORTCUT, 50,
+                     HELPCTX(no_help),
+                     conf_editbox_handler, I(CONF_logtimerotation), ED_INT);
+        ctrl_editbox(s, "Timestamp (strftime format)", NO_SHORTCUT, 100,
+                     HELPCTX(no_help),
+                     conf_editbox_handler, I(CONF_logtimestamp), ED_STR);
+    }
+#endif
 
     if ((midsession && protocol == PROT_SSH) ||
         (!midsession && backend_vt_from_proto(PROT_SSH))) {
@@ -2148,6 +2160,13 @@ void setup_config_box(struct controlbox *b, bool midsession,
     ctrl_combobox(s, "Printer to send ANSI printer output to:", 'p', 100,
                   HELPCTX(terminal_printing),
                   printerbox_handler, P(NULL), P(NULL));
+#ifdef MOD_PRINTCLIP
+    if (!GetPuttyFlag()) {
+        ctrl_checkbox(s, "Print to clipboard instead of printer", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_printclip));
+    }
+#endif
 
     /*
      * The Terminal/Keyboard panel.
@@ -2184,6 +2203,18 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       I(CONF_sharrow_type),
                       "Ctrl toggles app mode", I(SHARROW_APPLICATION),
                       "xterm-style bitmap", I(SHARROW_BITMAP));
+#ifdef MOD_PERSO
+    if (!GetPuttyFlag())
+        ctrl_checkbox(s, "Enter key sends CR LF", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_enter_sends_crlf));
+#endif
+#ifdef MOD_DISABLEALTGR
+    if (!GetPuttyFlag())
+        ctrl_checkbox(s, "Disable AltGr menu", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_disablealtgr));
+#endif
 
     s = ctrl_getset(b, "Terminal/Keyboard", "appkeypad",
                     "Application keypad settings:");
@@ -2294,6 +2325,12 @@ void setup_config_box(struct controlbox *b, bool midsession,
     ctrl_checkbox(s, "Disable bracketed paste mode",
                   'p', HELPCTX(features_bracketed_paste), conf_checkbox_handler,
                   I(CONF_no_bracketed_paste));
+#ifdef MOD_PERSO
+    if (!GetPuttyFlag())
+        ctrl_checkbox(s, "Disable focus reporting", NO_SHORTCUT,
+                      HELPCTX(no_help), conf_checkbox_handler,
+                      I(CONF_no_focus_rep));
+#endif
 
     /*
      * The Window panel.
@@ -2328,6 +2365,13 @@ void setup_config_box(struct controlbox *b, bool midsession,
     ctrl_checkbox(s, "Display scrollbar", 'd',
                   HELPCTX(window_scrollback),
                   conf_checkbox_handler, I(CONF_scrollbar));
+#ifdef MOD_PERSO
+    if (!GetPuttyFlag())
+        ctrl_editbox(s, "Lines scrolled per wheel turn"
+                     " (-1 half / -2 full screen)", NO_SHORTCUT, 50,
+                     HELPCTX(no_help),
+                     conf_editbox_handler, I(CONF_scrolllines), ED_INT);
+#endif
     ctrl_checkbox(s, "Reset scrollback on keypress", 'k',
                   HELPCTX(window_scrollback),
                   conf_checkbox_handler, I(CONF_scroll_on_key));
@@ -2470,6 +2514,60 @@ void setup_config_box(struct controlbox *b, bool midsession,
                      FILTER_ALL_FILES, false, "Select icon file",
                      HELPCTX(no_help),
                      conf_filesel_handler, I(CONF_iconefile));
+    }
+#endif
+
+#if (defined MOD_BACKGROUNDIMAGE) && (!defined FLJ)
+    /* The Window/Back.&Image panel (KiTTY). Engine: kitty_image.c. */
+    if (!GetPuttyFlag() && GetBackgroundImageFlag()) {
+        str = dupprintf("Configure the background of %s's window", appname);
+        ctrl_settitle(b, "Window/Back.&Image", str);
+        sfree(str);
+
+        s = ctrl_getset(b, "Window/Back.&Image", "bg_style",
+                        "Background settings");
+        ctrl_radiobuttons(s, "Background Style:", NO_SHORTCUT, 3,
+                          HELPCTX(no_help),
+                          conf_radiobutton_handler, I(CONF_bg_type),
+                          "Solid", NO_SHORTCUT, I(0),
+                          "Desktop", NO_SHORTCUT, I(1),
+                          "Image", NO_SHORTCUT, I(2));
+
+        s = ctrl_getset(b, "Window/Back.&Image", "bg_wp_img_settings",
+                        "Desktop and image settings");
+        ctrl_editbox(s, "Opacity: (negative with Image for gradient)",
+                     NO_SHORTCUT, 20, HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_bg_opacity), ED_INT);
+        ctrl_editbox(s, "Slideshow:", NO_SHORTCUT, 20,
+                     HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_bg_slideshow), ED_INT);
+
+        s = ctrl_getset(b, "Window/Back.&Image", "bg_img_settings",
+                        "Image settings");
+        ctrl_filesel(s, "Image file: (or #RRGGBB for gradient)", NO_SHORTCUT,
+                     FILTER_ALL_FILES, false, "Select background image file",
+                     HELPCTX(no_help),
+                     conf_filesel_handler, I(CONF_bg_image_filename));
+        ctrl_radiobuttons(s, "Image placement:", NO_SHORTCUT, 3,
+                          HELPCTX(no_help),
+                          conf_radiobutton_handler, I(CONF_bg_image_style),
+                          "Tile", NO_SHORTCUT, I(0),
+                          "Center", NO_SHORTCUT, I(1),
+                          "Stretch", NO_SHORTCUT, I(2),
+                          "Absolute (X,Y)", NO_SHORTCUT, I(3),
+                          "Blank back.", NO_SHORTCUT, I(4),
+                          "Stretch+", NO_SHORTCUT, I(5));
+        ctrl_editbox(s, "Absolute Left (X):", NO_SHORTCUT, 20,
+                     HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_bg_image_abs_x), ED_INT);
+        ctrl_editbox(s, "Absolute Top (Y):", NO_SHORTCUT, 20,
+                     HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_bg_image_abs_y), ED_INT);
+        ctrl_radiobuttons(s, "Image placement is relative to:", NO_SHORTCUT, 2,
+                          HELPCTX(no_help),
+                          conf_radiobutton_handler, I(CONF_bg_image_abs_fixed),
+                          "Desktop", NO_SHORTCUT, I(0),
+                          "Terminal Window", NO_SHORTCUT, I(1));
     }
 #endif
 
@@ -2673,6 +2771,23 @@ void setup_config_box(struct controlbox *b, bool midsession,
                               "IPv6", '6', I(ADDRTYPE_IPV6));
 #endif
 
+#ifdef MOD_RECONNECT
+            /* KiTTY auto-reconnect (INT keys -> kitty_checkbox_int_handler;
+             * engine wired separately). Gated by GetAutoreconnectFlag(). */
+            if (!GetPuttyFlag() && GetAutoreconnectFlag()) {
+                s = ctrl_getset(b, "Connection", "reconnect",
+                                "Reconnect options");
+                ctrl_checkbox(s, "Attempt to reconnect on system wakeup",
+                              NO_SHORTCUT, HELPCTX(no_help),
+                              kitty_checkbox_int_handler,
+                              I(CONF_wakeup_reconnect));
+                ctrl_checkbox(s, "Attempt to reconnect on connection failure",
+                              NO_SHORTCUT, HELPCTX(no_help),
+                              kitty_checkbox_int_handler,
+                              I(CONF_failure_reconnect));
+            }
+#endif
+
             {
                 const char *label = backend_vt_from_proto(PROT_SSH) ?
                     "Logical name of remote host (e.g. for SSH key lookup):" :
@@ -2720,6 +2835,12 @@ void setup_config_box(struct controlbox *b, bool midsession,
             ctrl_editbox(s, "Auto-login username", 'u', 50,
                          HELPCTX(connection_username),
                          conf_editbox_handler, I(CONF_username), ED_STR);
+#ifdef MOD_PERSO
+            if (!GetPuttyFlag())
+                ctrl_editbox(s, "Alternate host name (HostAlt)", NO_SHORTCUT,
+                             50, HELPCTX(no_help),
+                             conf_editbox_handler, I(CONF_host_alt), ED_STR);
+#endif
             {
                 /* We assume the local username is sufficiently stable
                  * to include on the dialog box. */
@@ -3309,6 +3430,12 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       HELPCTX(ssh_tunnels_portfwd_localhost),
                       conf_checkbox_handler,
                       I(CONF_rport_acceptall));
+#ifdef MOD_PERSO
+        if (!GetPuttyFlag())
+            ctrl_checkbox(s, "Print dynamic ports in window title", NO_SHORTCUT,
+                          HELPCTX(no_help), conf_checkbox_handler,
+                          I(CONF_ssh_tunnel_print_in_title));
+#endif
 
         ctrl_columns(s, 3, 55, 20, 25);
         c = ctrl_text(s, "Forwarded ports:", HELPCTX(ssh_tunnels_portfwd));
