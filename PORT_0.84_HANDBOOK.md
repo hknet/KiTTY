@@ -175,12 +175,30 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
 
 ## 9. Current state (read this first for new work)
 
-- **Branch `kitty-0.84` is the GitHub default branch** of `hknet/KiTTY`; HEAD ≈ `25f8a57`. (`noglobal`
+- **Branch `kitty-0.84` is the GitHub default branch** of `hknet/KiTTY`; HEAD ≈ `1bcea79`. (`noglobal`
   in the local `~/kitty-0.84` repo == pushed `kitty-0.84`.) The repo has **no other meaningful remote
   history** — it's a fresh pristine-0.84 tree, history-disconnected from the old 0.76b `master`.
-- **Latest release: `kitty-0.84.0.6-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
-  system MSI, portable zip. Each release deletes its predecessor — only the newest tag/release remains
-  (0.84.0.1–0.84.0.5 all removed).
+- **Latest release: `kitty-0.84.0.7-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
+  system MSI, portable zip. Each release deletes its predecessor — only the newest tag/release remains.
+- **0.84.0.7 = the big restoration pass** (see `PORT_0.84_CONFIG_GAP.md` for the audit that drove it):
+  restored config-dialog panels (Port knocking, ZModem, PSCP/WinSCP, Background-Image, full rutty
+  Scripting, auto-reconnect UI, Start button, ~9 toggles); **revived dead engines** —
+  **auto-reconnect** (TIMER_RECONNECT + connection-fatal/start-backend hooks + WM_POWERBROADCAST +
+  notify_session_started seat-vtable hook for the SSH first-connected gate), **shortcuts**
+  (ManageShortcuts in WndProc + mouse + Ctrl-Tab, cbWndExtra 0→8), **proxyselection**
+  (kitty_proxy_select in start_backend), **bg slideshow** (TIMER_SLIDEBG_WIN 8710); plus menu items
+  (rutty send/stop/file, New-dup, winrol dblclk) and CLI switches (-fullscreen/-xpos/-ypos/-folder in
+  putty.c). New CMake defines: MOD_RECONNECT, MOD_PRINTCLIP, MOD_DISABLEALTGR, MOD_PROXY. **Engines are
+  build+smoke verified; their runtime BEHAVIOUR (real reconnect, shortcut firing, proxy routing) needs
+  live testing.** STILL UNPORTED: TuTTY 34-colour rendering (CONF_NCOLOURS 22→34 ripple + dlg_control_enable),
+  session-folder UI, far2l clipboard payload, CLI Tier-C (-kload/-cmd/-log/-edit/-classname).
+- **Config-tree verification harness:** `C:\build\wsl_cfgtree_unit.sh` links `kitty_config.c` +
+  the control libs, calls `setup_config_box()` and dumps every panel/control — deterministic, GUI-free.
+  Use it after any kitty_config.c change (caught a ctrl_radiobuttons pairs-vs-triples crash this round).
+- **RELEASE PUBLISH BUG (avoid):** the delete-superseded-release step must match by EXACT id, one at a
+  time — `... | Where-Object {tag==X}` can return an ARRAY and `DELETE /releases/$($arr.id)` builds a
+  malformed multi-id URL that fails silently (it deleted/again-missed both releases in 0.84.0.7). Verify
+  `@(...).Count -eq 1` before deleting; re-check `/releases` afterwards.
 - **0.84.0.6 changes (terminal menu overhaul + colour-menu fix):** the long flat system/context menu
   was grouped into two submenus — **Window** (transparency, font ±, invert colours, black-on-white,
   always-visible, roll-up, send-to-tray, protect) and **Tools** (port forwardings, WinSCP, pscp, ZModem,
