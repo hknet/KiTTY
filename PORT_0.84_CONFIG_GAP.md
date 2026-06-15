@@ -71,13 +71,21 @@ kitty_portable). **Render-not-yet-verified** — see caveat below.
   `script_cond_line`, `script_crlf`, `script_except`, `script_cond_use`); engine wired.
 - Added `int GetZModemFlag(void);` forward-decl in kitty_config.c.
 
-**VERIFICATION CAVEAT:** live config-tree enumeration is currently blocked — the dev
-machine runs a real KiTTY + "KiTTY Session Manager", whose single-instance handoff absorbs
-config-box launches from the test harness (no-arg and host-less `-load` both get absorbed;
-only a launchable `-load` terminal opens, and Change-Settings on it didn't surface in
-automation). Tree order is valid **by construction** (every panel's parent precedes it), so
-the dialog.c:610 assert can't fire. Final render check should be done either by a human
-opening the dialog, or on a machine/VM with **no** running KiTTY.
+**VERIFICATION: DONE (and it caught a real bug).** Two ways: (1) GUI — with no other KiTTY
+running and **no `KITTY_INI_FILE` override** (that override triggers the launcher/exit path),
+a no-arg launch opens a fresh config box; enumerating its `SysTreeView32` cross-process showed
+**Connection/ZModem (+rz/sz)** and **Connection/SSH/PSCP and WinSCP** as categories. (2) A
+standalone harness (`wsl_cfgtree_unit.sh`) that links `kitty_config.c` + the control libs,
+calls `setup_config_box()` directly, and dumps every control label — confirmed `Connection ::
+Sequence:` (port-knock is a group under Connection, not its own node — matches the original,
+whose `ctrl_settitle` was commented out), the 8 PSCP/WinSCP controls, and the 5 rutty controls.
+
+**BUG FOUND + FIXED (a705ca0):** the ported WinSCP and rutty CR/LF radios used `label,value`
+PAIRS; 0.84 `ctrl_radiobuttons` takes `label,shortcut,value` TRIPLES per button. The missing
+per-button shortcut misaligned the varargs and **crashed `setup_config_box` on config-box open**
+(would have shipped a config dialog that crashes). Fixed by adding `NO_SHORTCUT` to each button.
+Lesson reinforced: compile-clean + idiom-match is NOT enough for varargs control APIs — open the
+actual dialog. The harness is the deterministic, environment-independent way to do it.
 
 ## Expanded audit — drift BEYOND the config dialog (found 2026-06-15)
 A wider sweep (original `…/0.76b_My_PuTTY/window.c` + kitty*.c vs port) found this is bigger
