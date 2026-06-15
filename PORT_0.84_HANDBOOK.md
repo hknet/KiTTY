@@ -178,15 +178,21 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
 - **Branch `kitty-0.84` is the GitHub default branch** of `hknet/KiTTY`; HEAD ≈ `1bcea79`. (`noglobal`
   in the local `~/kitty-0.84` repo == pushed `kitty-0.84`.) The repo has **no other meaningful remote
   history** — it's a fresh pristine-0.84 tree, history-disconnected from the old 0.76b `master`.
-- **Latest release: `kitty-0.84.0.10-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
+- **Latest release: `kitty-0.84.0.11-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
   system MSI, portable zip. Each release deletes its predecessor — only the newest tag/release remains.
   (0.84.0.8 added far2l payload handling; 0.84.0.9 added TuTTY extra colour slots + the session-folder
-  filter droplist; **0.84.0.10** wired up the rest of that tail — TuTTY **selection-colour rendering**
+  filter droplist; **0.84.0.10** wired up TuTTY **selection-colour rendering**
   (new `ATTR_SELECTED 0x04000000` bit emitted in terminal.c, remapped to sel_fg/sel_bg in window.c
   do_text_internal; the `term->sel_colour` cache field is UNCONDITIONAL to keep libguiterminal struct
   layout stable), **folder New/Del/Up buttons** in the Session panel, CLI switches **`-cmd`/`-codepage`/
   `-rcmd`/`-log`**, and **Close+Restart** (IDM_RESTARTSESSION via a single `close_and_restart` toplevel
-  callback). See `PORT_0.84_CONFIG_GAP.md` "Deep-tail status".)
+  callback); **0.84.0.11** added **`-kload`/`-loadfile <file.ktx>`** — the KiTTY session-file READ
+  subsystem ported as a new TU `kitty/kitty_settings_load.c` (load_open_settings_forced + read-side
+  helpers; read counterpart of kitty_settings_forced.c, no shared symbols; decryptstring bridged
+  3-arg via GetCryptSaltFlag(); private key2val/gprefs_from_str/name-tables). Also fixed a **latent
+  Export-Settings crash** — `SCPAutoPwd` was written with conf_get_int on a now-BOOL key → assert
+  (the 0.76→0.84 BOOL drift; rxvt_homeend/scp_auto_pwd load-side accessors fixed too). Verified by an
+  encrypted-.ktx round-trip unit test + an end-to-end GUI launch. See `PORT_0.84_CONFIG_GAP.md`.)
 - **0.84.0.7 = the big restoration pass** (see `PORT_0.84_CONFIG_GAP.md` for the audit that drove it):
   restored config-dialog panels (Port knocking, ZModem, PSCP/WinSCP, Background-Image, full rutty
   Scripting, auto-reconnect UI, Start button, ~9 toggles); **revived dead engines** —
@@ -197,10 +203,10 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
   (rutty send/stop/file, New-dup, winrol dblclk) and CLI switches (-fullscreen/-xpos/-ypos/-folder in
   putty.c). New CMake defines: MOD_RECONNECT, MOD_PRINTCLIP, MOD_DISABLEALTGR, MOD_PROXY. **Engines are
   build+smoke verified; their runtime BEHAVIOUR (real reconnect, shortcut firing, proxy routing) needs
-  live testing.** STILL UNPORTED (after 0.84.0.10): far2l clipboard payload, CLI `-loginscript` (parse-time
-  global-conf is NULL until kitty_set_active_seat) and `-kload`/`-loadfile` (needs the encrypted-settings
-  read subsystem ported as its own TU), and the window-handle CLI switches (-edit/-savedump/-classname/
-  -mungestr/-sendcmd). NOTE: sel-colour rendering, folder New/Del/Up, and -cmd/-codepage/-rcmd/-log are now DONE.
+  live testing.** STILL UNPORTED (after 0.84.0.11): far2l clipboard payload, CLI `-loginscript` (parse-time
+  global-conf is NULL until kitty_set_active_seat) and the window-handle CLI switches (-edit/-savedump/
+  -classname/-mungestr/-sendcmd). NOTE: sel-colour rendering, folder New/Del/Up, -cmd/-codepage/-rcmd/-log,
+  Close+Restart, and -kload/-loadfile are now DONE.
 - **Config-tree verification harness:** `C:\build\wsl_cfgtree_unit.sh` links `kitty_config.c` +
   the control libs, calls `setup_config_box()` and dumps every panel/control — deterministic, GUI-free.
   Use it after any kitty_config.c change (caught a ctrl_radiobuttons pairs-vs-triples crash this round).
