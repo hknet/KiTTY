@@ -7,6 +7,13 @@ extern char *SetSessPath(const char *);
 extern int  GetDirectoryBrowseFlag(void);
 extern void load_open_settings_forced(char *filename, Conf *conf); /* kitty_settings_load.c */
 extern char *kitty_cli_loginscript; /* kitty_bridge.c: -loginscript, consumed post-create */
+/* do-and-exit / pre-window utility switches (kitty modules; putty.c lacks kitty.h) */
+extern char KiTTYClassName[];                       /* kitty.c: window class name */
+extern int  SendCommandAllWindows(HWND hwnd, char *cmd); /* kitty.c */
+extern void RunPuttyEd(HWND hwnd, char *filename);  /* kitty_win.c: session-file editor */
+extern int  SetTextToClipboard(const char *buf);    /* kitty_win.c */
+extern void mungestr(const char *in, char *out);    /* kitty_commun.c */
+extern int  existfile(const char *filename);        /* kitty_tools.c */
 #endif
 
 extern bool sesslist_demo_mode;
@@ -149,6 +156,50 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 sfree(kitty_cli_loginscript);
                 kitty_cli_loginscript =
                     dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
+            } else if (!strcmp(p, "-classname")) {
+                /* Set the window class name. Runs after InitWinMain (so it
+                 * overrides the kitty.ini KiClassName default) but before the
+                 * window is created, so it takes effect on the class. */
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                const char *cn = cmdline_arg_to_str(arglist->args[arglistpos++]);
+                if (cn && *cn) {
+                    strncpy(KiTTYClassName, cn, 127);
+                    KiTTYClassName[127] = '\0';
+                    appname = KiTTYClassName;
+                }
+            } else if (!strcmp(p, "-mungestr")) {
+                /* Utility: print the munged form of a string and quit. */
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                const char *in = cmdline_arg_to_str(arglist->args[arglistpos++]);
+                char *b = snewn(4 * strlen(in) + 1, char);
+                mungestr(in, b);
+                MessageBox(NULL, b, "mungestr", MB_OK);
+                SetTextToClipboard(b);
+                sfree(b);
+                cleanup_exit(0);
+            } else if (!strcmp(p, "-sendcmd")) {
+                /* Send a command to all running KiTTY windows, then quit. */
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                char *cmd = dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
+                if (strlen(cmd) > 0)
+                    SendCommandAllWindows(NULL, cmd);
+                sfree(cmd);
+                cleanup_exit(0);
+            } else if (!strcmp(p, "-edit")) {
+                /* Open the KiTTY session-file editor on a file, then quit. */
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                char *ef = dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
+                if (existfile(ef))
+                    RunPuttyEd(NULL, ef);
+                else
+                    MessageBox(NULL, "Unable to find requested file",
+                               "Error", MB_OK | MB_ICONERROR);
+                sfree(ef);
+                cleanup_exit(0);
 #endif
             } else if (!strcmp(p, "-cleanup")) {
                 /*
