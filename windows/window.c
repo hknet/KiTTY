@@ -6833,6 +6833,22 @@ void kitty_set_active_seat(WinGuiSeat *wgs) {
     kitty_active_wgs = wgs;
     conf = wgs ? wgs->conf : NULL;
 }
+#ifdef MOD_SAVEDUMP
+/* Helpers for SaveDump (kitty_savedump.c). At command-line -savedump time no
+ * seat exists yet, so GetTerminal() returns NULL and the terminal/clipboard
+ * dump section self-skips; from a live session they act on the active seat. */
+Terminal *GetTerminal(void) {
+    return kitty_active_wgs ? kitty_active_wgs->term : NULL;
+}
+void kitty_term_copyall(Terminal *term) {
+    if (term) term_copyall(term, clips_system, lenof(clips_system));
+}
+int print_event_log(FILE *fp, int i) {
+    /* Per-window event log isn't reachable from here in the wgs model; the
+     * dump omits the event-log section rather than expose it incorrectly. */
+    (void)fp; (void)i; return 0;
+}
+#endif
 void do_eventlog(const char *st) {
     if (kitty_active_wgs && kitty_active_wgs->logctx)
         logevent(kitty_active_wgs->logctx, st);

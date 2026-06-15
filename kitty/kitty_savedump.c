@@ -328,8 +328,8 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "proxy_log_to_term=%d\n", 		conf_get_int(conf,CONF_proxy_log_to_term) ) ;
 
 	/* SSH options */
-	fprintf( fp, "remote_cmd=%s\n",			conf_get_str(conf,CONF_remote_cmd) ) ;
-	fprintf( fp, "remote_cmd2=%s\n",		conf_get_str(conf,CONF_remote_cmd2) ) ;
+	fprintf( fp, "remote_cmd=%s\n",			conf_get_str_ambi(conf,CONF_remote_cmd,NULL) ) ;
+	fprintf( fp, "remote_cmd2=%s\n",		conf_get_str_ambi(conf,CONF_remote_cmd2,NULL) ) ;
 	fprintf( fp, "nopty=%d\n",			conf_get_bool(conf,CONF_nopty) ) ;
 	fprintf( fp, "compression=%d\n",		conf_get_bool(conf,CONF_compression) ) ;
 	//fprintf( fp, "ssh_kexlist=%d\n",		conf_get_int(conf,CONF_ssh_kexlist) ) ;
@@ -341,7 +341,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "agentfwd=%d\n",			conf_get_bool(conf,CONF_agentfwd) ) ;
 	fprintf( fp, "change_username=%d\n",		conf_get_bool(conf,CONF_change_username) ) ;
 	//fprintf( fp, "ssh_cipherlist=%d\n",		conf_get_int(conf,CONF_ssh_cipherlist) ) ;
-	fprintf( fp, "keyfile=%s\n",			conf_get_filename(conf,CONF_keyfile)->path ) ;
+	fprintf( fp, "keyfile=%s\n",			filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ;
   	fprintf( fp, "sshprot=%d\n",			conf_get_int(conf,CONF_sshprot) ) ;
 	fprintf( fp, "ssh2_des_cbc=%d\n",		conf_get_bool(conf,CONF_ssh2_des_cbc) ) ;
 	fprintf( fp, "ssh_no_userauth=%d\n",		conf_get_bool(conf,CONF_ssh_no_userauth) ) ;
@@ -354,7 +354,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "gssapifwd=%d\n",			conf_get_bool(conf,CONF_gssapifwd) ) ;
 	fprintf( fp, "gssapirekey=%d\n",		conf_get_int(conf,CONF_gssapirekey) ) ;
 	//fprintf( fp, "ssh_gsslist=%d\n",		conf_get_int(conf,CONF_ssh_gsslist) ) ;
-	fprintf( fp, "ssh_gss_custom=%s\n",		conf_get_filename(conf,CONF_ssh_gss_custom)->path ) ;
+	fprintf( fp, "ssh_gss_custom=%s\n",		filename_to_str(conf_get_filename(conf,CONF_ssh_gss_custom)) ) ;
 	fprintf( fp, "ssh_subsys=%d\n",			conf_get_bool(conf,CONF_ssh_subsys) ) ;
 	//fprintf( fp, "ssh_subsys2=%d\n",		conf_get_bool(conf,CONF_ssh_subsys2) ) ; 	// N'est pas lu dans settings.c
 	fprintf( fp, "ssh_no_shell=%d\n",		conf_get_bool(conf,CONF_ssh_no_shell) ) ;
@@ -383,7 +383,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	/* Keyboard options */
 	fprintf( fp, "bksp_is_delete=%d\n", 		conf_get_bool(conf,CONF_bksp_is_delete) ) ;
 	fprintf( fp, "enter_sends_crlf=%d\n", 		conf_get_int(conf,CONF_enter_sends_crlf) ) ;
-	fprintf( fp, "rxvt_homeend=%d\n", 		conf_get_int(conf,CONF_rxvt_homeend) ) ;
+	fprintf( fp, "rxvt_homeend=%d\n", 		conf_get_bool(conf,CONF_rxvt_homeend) ) ;
 	fprintf( fp, "funky_type=%d\n", 		conf_get_int(conf,CONF_funky_type) ) ;
 	fprintf( fp, "no_applic_c=%d\n", 		conf_get_bool(conf,CONF_no_applic_c) ) ;
 	fprintf( fp, "no_applic_k=%d\n", 		conf_get_bool(conf,CONF_no_applic_k) ) ;
@@ -430,7 +430,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "bellovl_n=%d\n", 			conf_get_int(conf,CONF_bellovl_n) ) ;
 	fprintf( fp, "bellovl_t=%d\n",			conf_get_int(conf,CONF_bellovl_t) ) ;
 	fprintf( fp, "bellovl_s=%d\n",			conf_get_int(conf,CONF_bellovl_s) ) ;
-	fprintf( fp, "bell_wavefile=%s\n",		conf_get_filename(conf,CONF_bell_wavefile)->path ) ;
+	fprintf( fp, "bell_wavefile=%s\n",		filename_to_str(conf_get_filename(conf,CONF_bell_wavefile)) ) ;
 	fprintf( fp, "scrollbar=%d\n",			conf_get_bool(conf,CONF_scrollbar) ) ;
 	fprintf( fp, "scrollbar_in_fullscreen=%d\n",	conf_get_bool(conf,CONF_scrollbar_in_fullscreen) ) ;
 	fprintf( fp, "resize_action=%d\n",		conf_get_int(conf,CONF_resize_action) ) ;
@@ -440,7 +440,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "width=%d\n",			conf_get_int(conf,CONF_width) ) ;
 	fprintf( fp, "height=%d\n",			conf_get_int(conf,CONF_height) ) ;
 	fprintf( fp, "font_quality=%d\n",		conf_get_int(conf,CONF_font_quality) ) ;
-	fprintf( fp, "logfilename=%s\n",		conf_get_filename(conf,CONF_logfilename)->path ) ;
+	fprintf( fp, "logfilename=%s\n",		filename_to_str(conf_get_filename(conf,CONF_logfilename)) ) ;
 	fprintf( fp, "logtype=%d\n",			conf_get_int(conf,CONF_logtype) ) ;
 	fprintf( fp, "logxfovr=%d\n",			conf_get_int(conf,CONF_logxfovr) ) ;
 	fprintf( fp, "logflush=%d\n",			conf_get_bool(conf,CONF_logflush) ) ;
@@ -490,7 +490,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "x11_forward=%d\n",		conf_get_bool(conf,CONF_x11_forward) ) ;
 	fprintf( fp, "x11_display=%s\n",		conf_get_str(conf,CONF_x11_display) ) ;
 	fprintf( fp, "x11_auth=%d\n",			conf_get_int(conf,CONF_x11_auth) ) ;
-	fprintf( fp, "xauthfile=%s\n",			conf_get_filename(conf,CONF_xauthfile)->path ) ;
+	fprintf( fp, "xauthfile=%s\n",			filename_to_str(conf_get_filename(conf,CONF_xauthfile)) ) ;
 
 	/* port forwarding */
 	fprintf( fp, "lport_acceptall=%d\n",		conf_get_bool(conf,CONF_lport_acceptall) ) ;
@@ -553,7 +553,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "fullscreen=%d\n",			conf_get_int(conf,CONF_fullscreen) ) ;
 	fprintf( fp, "saveonexit=%d\n",			conf_get_bool(conf,CONF_saveonexit) ) ;
 	fprintf( fp, "icone=%d\n",			conf_get_int(conf,CONF_icone) ) ;
-	fprintf( fp, "iconefile=%s\n",			conf_get_filename(conf,CONF_iconefile)->path ) ;
+	fprintf( fp, "iconefile=%s\n",			filename_to_str(conf_get_filename(conf,CONF_iconefile)) ) ;
 	fprintf( fp, "winscpprot=%d\n",			conf_get_int(conf,CONF_winscpprot) ) ;
 	fprintf( fp, "sftpconnect=%s\n", 		conf_get_str(conf,CONF_sftpconnect) ) ;
 	fprintf( fp, "pscpoptions=%s\n", 		conf_get_str(conf,CONF_pscpoptions) ) ;
@@ -575,7 +575,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "sessionname=%s\n", 		conf_get_str(conf,CONF_sessionname) ) ;
 	fprintf( fp, "logtimerotation=%d\n", 		conf_get_int(conf,CONF_logtimerotation) ) ;
 	fprintf( fp, "logtimestamp=%s\n", 		conf_get_str(conf,CONF_logtimestamp) ) ;
-	fprintf( fp, "scriptfile=%s\n",			conf_get_filename(conf,CONF_scriptfile)->path ) ;
+	fprintf( fp, "scriptfile=%s\n",			filename_to_str(conf_get_filename(conf,CONF_scriptfile)) ) ;
 	fprintf( fp, "scriptfilecontent=%s",		conf_get_str(conf,CONF_scriptfilecontent) ) ;
 	/* On decrypte le script */
 	buf=(char*)malloc( strlen(conf_get_str(conf,CONF_scriptfilecontent)) + 20 ) ;
@@ -593,7 +593,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "foreground_on_bell=%d\n",		conf_get_bool(conf,CONF_foreground_on_bell) ) ;
 	fprintf( fp, "ctrl_tab_switch=%d\n", 		conf_get_int(conf, CONF_ctrl_tab_switch));
 	fprintf( fp, "comment=%s\n",			conf_get_str(conf,CONF_comment) ) ;
-	fprintf( fp, "scp_auto_pwd=%d\n", 		conf_get_int(conf, CONF_scp_auto_pwd));
+	fprintf( fp, "scp_auto_pwd=%d\n", 		conf_get_bool(conf, CONF_scp_auto_pwd));
 	fprintf( fp, "no_focus_rep=%d\n",		conf_get_bool(conf,CONF_no_focus_rep) ) ;
 	fprintf( fp, "scrolllines=%d\n",		conf_get_int(conf,CONF_scrolllines) ) ;
 	fprintf( fp, "ssh_tunnel_print_in_title=%d\n",	conf_get_bool(conf,CONF_ssh_tunnel_print_in_title) ) ;
@@ -606,7 +606,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 #endif
 #ifdef MOD_RUTTY
 	/* rutty: scripting options */
-	fprintf( fp, "ScriptFileName=%s\n",		conf_get_filename(conf,CONF_script_filename)->path ) ;
+	fprintf( fp, "ScriptFileName=%s\n",		filename_to_str(conf_get_filename(conf,CONF_script_filename)) ) ;
 	fprintf( fp, "ScriptMode=%d\n",			conf_get_int(conf,CONF_script_mode) ) ;
 	fprintf( fp, "ScriptLineDelay=%d\n",		conf_get_int(conf,CONF_script_line_delay) ) ;
 	fprintf( fp, "ScriptCharDelay=%d\n",		conf_get_int(conf,CONF_script_char_delay) ) ;
@@ -624,7 +624,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "bg_opacity=%d\n",			conf_get_int(conf,CONF_bg_opacity) ) ;
 	fprintf( fp, "bg_slideshow=%d\n",		conf_get_int(conf,CONF_bg_slideshow) ) ;
 	fprintf( fp, "bg_type=%d\n",			conf_get_int(conf,CONF_bg_type) ) ;
-	fprintf( fp, "bg_image_filename=%s\n",		conf_get_filename(conf,CONF_bg_image_filename)->path ) ;
+	fprintf( fp, "bg_image_filename=%s\n",		filename_to_str(conf_get_filename(conf,CONF_bg_image_filename)) ) ;
 	fprintf( fp, "bg_image_style=%d\n",		conf_get_int(conf,CONF_bg_image_style) ) ;
 	fprintf( fp, "bg_image_abs_x=%d\n",		conf_get_int(conf,CONF_bg_image_abs_x) ) ;
 	fprintf( fp, "bg_image_abs_y=%d\n",		conf_get_int(conf,CONF_bg_image_abs_y) ) ;
@@ -641,7 +641,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "url_underline=%d\n",		conf_get_int(conf,CONF_url_underline) ) ; 
 	fprintf( fp, "url_defbrowser=%d\n",		conf_get_int(conf,CONF_url_defbrowser) ) ; 
 	fprintf( fp, "url_defregex=%d\n",		conf_get_int(conf,CONF_url_defregex) ) ; 
-	fprintf( fp, "url_browser=%s\n",		conf_get_filename(conf,CONF_url_browser)->path ) ; 
+	fprintf( fp, "url_browser=%s\n",		filename_to_str(conf_get_filename(conf,CONF_url_browser)) ) ; 
 	fprintf( fp, "url_regex=%s\n",			conf_get_str(conf,CONF_url_regex) ) ;
 	fprintf( fp, "urlhack_default_regex=%s\n",	urlhack_default_regex ) ;
 	fprintf( fp, "urlhack_liberal_regex=%s\n",	urlhack_liberal_regex ) ;
@@ -953,14 +953,14 @@ void SaveDumpFile( char * filename ) {
 			fputs( "\n@@@ Debug log file @@@\n\n", fpout ) ;
 			SaveDebugFile( "kitty.log", fpout ) ; 
 		}
-		if( existfile( conf_get_filename(conf,CONF_keyfile)->path ) ) { 
+		if( existfile( filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ) { 
 			fputs( "\n@@@ Private key file @@@\n\n", fpout ) ;
-			SaveDebugFile( conf_get_filename(conf,CONF_keyfile)->path, fpout ) ;
+			SaveDebugFile( (char*)filename_to_str(conf_get_filename(conf,CONF_keyfile)), fpout ) ;
 		}
 #ifdef MOD_RUTTY
-		if( existfile( conf_get_filename(conf,CONF_script_filename)->path ) ) { 
+		if( existfile( filename_to_str(conf_get_filename(conf,CONF_script_filename)) ) ) { 
 			fputs( "\n@@@ RuTTY script file @@@\n\n", fpout ) ;
-			SaveDebugFile( conf_get_filename(conf,CONF_script_filename)->path, fpout ) ;
+			SaveDebugFile( filename_to_str(conf_get_filename(conf,CONF_script_filename)), fpout ) ;
 		}
 #endif
 		fputs( "\n@@@ ScreenShot @@@\n\n", fpout ) ;

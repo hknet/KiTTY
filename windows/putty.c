@@ -11,6 +11,7 @@ extern char *kitty_cli_loginscript; /* kitty_bridge.c: -loginscript, consumed po
 extern char KiTTYClassName[];                       /* kitty.c: window class name */
 extern int  SendCommandAllWindows(HWND hwnd, char *cmd); /* kitty.c */
 extern void RunPuttyEd(HWND hwnd, char *filename);  /* kitty_win.c: session-file editor */
+extern void SaveDump(void);                         /* kitty_savedump.c (MOD_SAVEDUMP) */
 extern int  SetTextToClipboard(const char *buf);    /* kitty_win.c */
 extern void mungestr(const char *in, char *out);    /* kitty_commun.c */
 extern int  existfile(const char *filename);        /* kitty_tools.c */
@@ -199,6 +200,10 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                     MessageBox(NULL, "Unable to find requested file",
                                "Error", MB_OK | MB_ICONERROR);
                 sfree(ef);
+                cleanup_exit(0);
+            } else if (!strcmp(p, "-savedump")) {
+                /* Dump the full KiTTY configuration to a file, then quit. */
+                SaveDump();
                 cleanup_exit(0);
 #endif
             } else if (!strcmp(p, "-cleanup")) {
