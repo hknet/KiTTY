@@ -91,9 +91,13 @@ typedef enum {
  * terminal.c itself.
  */
 
-#define CONF_NCOLOURS 22               /* 16 + 6 special ones */
-#define OSCP_NCOLOURS 22               /* same as CONF, but different order */
-#define OSC4_NCOLOURS 262              /* 256 + the same 6 special ones */
+/* KiTTY (TuTTY): 3 extra special colours appended (underline, selection fg/bg).
+ * Counts bumped globally so the shared settings lib and per-target terminal.c
+ * agree; the slots are appended at the END so existing colour indices never
+ * shift (existing rendering is unaffected). */
+#define CONF_NCOLOURS 25               /* 16 + 6 + 3 KiTTY (under/sel fg/sel bg) */
+#define OSCP_NCOLOURS 25               /* same as CONF, but different order */
+#define OSC4_NCOLOURS 265              /* 256 + the same 9 special ones */
 
 /* The list macro for the conf colours also gives the textual names
  * used in the GUI configurer */
@@ -120,6 +124,9 @@ typedef enum {
     X(cyan_bold, "ANSI Cyan Bold")              \
     X(white, "ANSI White")                      \
     X(white_bold, "ANSI White Bold")            \
+    X(under_fg, "Underlined Text")              \
+    X(sel_fg, "Selected Text")                  \
+    X(sel_bg, "Selected Background")            \
     /* end of list */
 
 #define OSCP_COLOUR_LIST(X)                     \
@@ -162,6 +169,9 @@ typedef enum {
     X(bg_bold)                                  \
     X(cursor_fg)                                \
     X(cursor_bg)                                \
+    X(under_fg)                                 \
+    X(sel_fg)                                   \
+    X(sel_bg)                                   \
     /* end of list */
 
 /* Enumerations of the colour lists. These are available everywhere in

@@ -4401,6 +4401,12 @@ static void do_text_internal(
         if (nbg < 16) nbg |= 8;
         else if (nbg >= 256) nbg |= 1;
     }
+#ifdef MOD_TUTTYCOLOR
+    /* KiTTY (TuTTY): colour underlined text with the dedicated under_fg slot. */
+    if ((attr & ATTR_UNDER) && !is_cursor &&
+        conf_get_int(wgs->conf, CONF_under_colour))
+        nfg = OSC4_COLOUR_under_fg;
+#endif
     if (!wgs->pal && truecolour.fg.enabled)
         fg = RGB(truecolour.fg.r, truecolour.fg.g, truecolour.fg.b);
     else

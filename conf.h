@@ -954,6 +954,12 @@ CONF_OPTION(bold_style,
     SAVE_KEYWORD("BoldAsColour"),
     STORAGE_ENUM(bold_style),
 )
+/* KiTTY (TuTTY): enable flags for the extra colour slots. bold_colour mirrors
+ * stock bold-as-colour; under_colour colours underlined text with CONF_COLOUR_under_fg;
+ * sel_colour (rendering deferred) would colour the selection. */
+CONF_OPTION(bold_colour, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("BoldAsColourTest"),)
+CONF_OPTION(under_colour, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("UnderlinedAsColour"),)
+CONF_OPTION(sel_colour, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("SelectedAsColour"),)
 CONF_OPTION(colours,
     /*
      * Subkeys in this setting are indexed based on the CONF_COLOUR_*

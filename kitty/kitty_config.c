@@ -2723,6 +2723,20 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       "The font", I(BOLD_STYLE_FONT),
                       "The colour", I(BOLD_STYLE_COLOUR),
                       "Both", I(BOLD_STYLE_FONT | BOLD_STYLE_COLOUR));
+#ifdef MOD_TUTTYCOLOR
+    /* KiTTY (TuTTY): extra colour toggles. The palette gains "Underlined Text",
+     * "Selected Text" and "Selected Background" slots (editable in the list
+     * below). under_colour colours underlined text; sel_colour rendering is
+     * deferred (slots exist + are editable). */
+    if (!GetPuttyFlag()) {
+        ctrl_checkbox(s, "Colour underlined text", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_under_colour));
+        ctrl_checkbox(s, "Colour selected text", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_sel_colour));
+    }
+#endif
 
     str = dupprintf("Adjust the precise colours %s displays", appname);
     s = ctrl_getset(b, "Window/Colours", "adjust", str);
