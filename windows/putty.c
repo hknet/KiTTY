@@ -5,6 +5,7 @@
 /* KiTTY helpers (putty.c does not include kitty.h) */
 extern char *SetSessPath(const char *);
 extern int  GetDirectoryBrowseFlag(void);
+extern void load_open_settings_forced(char *filename, Conf *conf); /* kitty_settings_load.c */
 #endif
 
 extern bool sesslist_demo_mode;
@@ -127,6 +128,17 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 conf_set_int(conf, CONF_logtype, 1);  /* 0.76b literal; 1 == LGTYP_ASCII */
                 conf_set_int(conf, CONF_logxfovr, 1); /* 1 == LGXF_OVR (overwrite) */
                 conf_set_bool(conf, CONF_logflush, true);
+            } else if (!strcmp(p, "-kload") || !strcmp(p, "-loadfile")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                /* Load a KiTTY .ktx session file into conf (read-side of the
+                 * forced settings; load_open_settings_forced takes char*). */
+                char *kf = dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
+                if (strlen(kf) > 0) {
+                    load_open_settings_forced(kf, conf);
+                    special_launchable_argument = true;
+                }
+                sfree(kf);
 #endif
             } else if (!strcmp(p, "-cleanup")) {
                 /*
