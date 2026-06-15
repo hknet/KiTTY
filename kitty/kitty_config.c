@@ -21,6 +21,7 @@ int GetTransparencyFlag(void);
 int GetZModemFlag(void);
 int GetAutoreconnectFlag(void);
 int GetBackgroundImageFlag(void);
+extern void RunConfig(Conf *conf);   /* kitty_launcher.c: launch new session, keep box open */
 
 /* Checkbox handler for KiTTY keys that are stored as INT (0/1) rather
  * than BOOL (the standard conf_checkbox_handler asserts on INT keys in
@@ -808,6 +809,9 @@ static void sshbug_handler_manual_only(dlgcontrol *ctrl, dlgparam *dlg,
 struct sessionsaver_data {
     dlgcontrol *editbox, *listbox, *loadbutton, *savebutton, *delbutton;
     dlgcontrol *okbutton, *cancelbutton;
+#if (defined MOD_PERSO) && (!defined FLJ)
+    dlgcontrol *startbutton;     /* KiTTY: open session without closing config box */
+#endif
     struct sesslist sesslist;
     bool midsession;
     char *savedsession;     /* the current contents of ssd->editbox */
@@ -983,6 +987,15 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
         } else if (ctrl == ssd->cancelbutton) {
             dlg_end(dlg, 0);
         }
+#if (defined MOD_PERSO) && (!defined FLJ)
+        else if (ssd->startbutton && ctrl == ssd->startbutton) {
+            /* Launch the current settings in a new window; keep box open. */
+            if (conf_launchable(conf))
+                RunConfig(conf);
+            else
+                dlg_beep(dlg);
+        }
+#endif
     }
 }
 
@@ -1842,6 +1855,18 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                     sessionsaver_handler, P(ssd));
     ssd->okbutton->button.isdefault = true;
     ssd->okbutton->column = 3;
+#if (defined MOD_PERSO) && (!defined FLJ)
+    /* KiTTY "Start": launch the session in a new window without closing the
+     * config box (only when launchable). col 2 is free in this 5-col row. */
+    if (!midsession && !GetPuttyFlag()) {
+        ssd->startbutton = ctrl_pushbutton(s, "Start", NO_SHORTCUT,
+                                           HELPCTX(no_help),
+                                           sessionsaver_handler, P(ssd));
+        ssd->startbutton->column = 2;
+    } else {
+        ssd->startbutton = NULL;
+    }
+#endif
     ssd->cancelbutton = ctrl_pushbutton(s, "Cancel", 'c', HELPCTX(no_help),
                                         sessionsaver_handler, P(ssd));
     ssd->cancelbutton->button.iscancel = true;
