@@ -246,7 +246,7 @@ be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
 # per-target be-list object so other binaries' be_list.c is unaffected.
 target_compile_definitions(kitty-be-list PRIVATE MOD_ADB=1)
 add_dependencies(kitty generated_licence_h)
-target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.0.14-beta" BUILD_TIME="2026-06-15")
+target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.0.15-beta" BUILD_TIME="2026-06-15")
 target_compile_options(kitty PRIVATE -fcommon)
 target_include_directories(kitty PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
@@ -296,7 +296,7 @@ add_executable(kitty_portable
 be_list(kitty_portable KiTTY SSH SERIAL OTHERBACKENDS)
 target_compile_definitions(kitty_portable-be-list PRIVATE MOD_ADB=1)
 add_dependencies(kitty_portable generated_licence_h)
-target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.0.14-beta" BUILD_TIME="2026-06-15")
+target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.0.15-beta" BUILD_TIME="2026-06-15")
 target_compile_options(kitty_portable PRIVATE -fcommon)
 target_include_directories(kitty_portable PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5

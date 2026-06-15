@@ -2580,6 +2580,15 @@ enum {
     CLIPUI_CUSTOM,   /* use a named clipboard (on systems that support it) */
 };
 
+#ifdef MOD_FAR2L
+/* KiTTY (far2l): how the far2l terminal extension may sync the system clipboard */
+enum {
+    SHARED_CLIPBOARD_DISABLED, /* deny far2l clipboard get/set */
+    SHARED_CLIPBOARD_ENABLED,  /* allow far2l clipboard get/set */
+    SHARED_CLIPBOARD_ASK,      /* ask the user once per session */
+};
+#endif
+
 /*
  * Miscellaneous exports from the platform-specific code.
  *

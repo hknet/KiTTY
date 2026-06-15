@@ -3504,8 +3504,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         wgs->ignore_clip = wParam; /* don't panic on DESTROYCLIPBOARD */
         break;
       case WM_DESTROYCLIPBOARD:
+#ifdef MOD_FAR2L
+        /* In far2l clipboard-sync mode the clipboard is owned/managed by the
+         * far2l extension, so don't treat loss of ownership as a paste-cancel. */
+        if (!(wgs->term->far2l_ext == 1 && wgs->term->clip_allowed)) {
+            if (!wgs->ignore_clip)
+                term_lost_clipboard_ownership(wgs->term, CLIP_SYSTEM);
+        }
+#else
         if (!wgs->ignore_clip)
             term_lost_clipboard_ownership(wgs->term, CLIP_SYSTEM);
+#endif
         wgs->ignore_clip = false;
         return 0;
       case WM_PAINT: {
