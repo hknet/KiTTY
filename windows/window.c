@@ -139,6 +139,8 @@ static void reset_window(WinGuiSeat *wgs, int reinit);
 #ifdef MOD_PERSO
 void kitty_set_active_seat(WinGuiSeat *wgs);
 void InitWinMain(void);
+void ReadInitScript(const char *filename);     /* kitty.c: load a login script file */
+extern char *kitty_cli_loginscript;            /* kitty_bridge.c: -loginscript path, consumed post-create */
 void kitty_apply_transparency(WinGuiSeat *wgs);
 void kitty_apply_window_pos(WinGuiSeat *wgs);
 void kitty_send_to_tray(HWND);
@@ -853,6 +855,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     wgs->term = term_init(wgs->conf, &wgs->ucsdata, &wgs->termwin);
 #ifdef MOD_PERSO
     kitty_set_active_seat(wgs);
+    /* -loginscript: deferred here because ReadInitScript writes the GLOBAL conf,
+     * which kitty_set_active_seat has only just made valid (it was NULL during
+     * the putty.c command-line parse). Consume once. */
+    if (kitty_cli_loginscript) {
+        ReadInitScript(kitty_cli_loginscript);
+        sfree(kitty_cli_loginscript);
+        kitty_cli_loginscript = NULL;
+    }
     kitty_apply_transparency(wgs);
     kitty_apply_window_pos(wgs);
     /* KiTTY feature: per-session icon (CONF_icone / CONF_iconefile) */

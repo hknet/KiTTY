@@ -28,6 +28,10 @@ int SwitchLogMode(void) { LogMode = abs(LogMode - 1); return LogMode; }
 int CryptFileFlag = 0;
 int SwitchCryptFlag(void) { CryptFileFlag = abs(CryptFileFlag - 1); return CryptFileFlag; }
 
+/* -loginscript path: set by putty.c during cmdline parse, consumed once by
+ * window.c after kitty_set_active_seat (ReadInitScript needs the global conf). */
+char *kitty_cli_loginscript = NULL;
+
 /* KiTTY password debug log (originally settings.c) */
 int DebugAddPassword(const char *fct, const char *pwd) {
     FILE *fp;

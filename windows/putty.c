@@ -6,6 +6,7 @@
 extern char *SetSessPath(const char *);
 extern int  GetDirectoryBrowseFlag(void);
 extern void load_open_settings_forced(char *filename, Conf *conf); /* kitty_settings_load.c */
+extern char *kitty_cli_loginscript; /* kitty_bridge.c: -loginscript, consumed post-create */
 #endif
 
 extern bool sesslist_demo_mode;
@@ -139,6 +140,15 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                     special_launchable_argument = true;
                 }
                 sfree(kf);
+            } else if (!strcmp(p, "-loginscript")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                /* Defer: ReadInitScript writes the GLOBAL conf, which is NULL
+                 * until kitty_set_active_seat. Stash the path; window.c runs it
+                 * from a post-window-create hook. */
+                sfree(kitty_cli_loginscript);
+                kitty_cli_loginscript =
+                    dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
 #endif
             } else if (!strcmp(p, "-cleanup")) {
                 /*
