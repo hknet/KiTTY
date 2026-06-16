@@ -16,7 +16,13 @@ struct printer_enum_tag {
 
 struct printer_job_tag {
     HANDLE hprinter;
+    bool to_clipboard;          /* KiTTY: "Windows clipboard" fake printer */
+    strbuf *clipbuf;            /* accumulated output, sent to clipboard on finish */
 };
+
+/* KiTTY: sentinel printer name that routes ANSI printer-controller output
+ * (ESC[5i ... ESC[4i) to the Windows clipboard instead of a real printer. */
+#define PRINT_TO_CLIPBOARD_STRING "Windows clipboard"
 
 DECL_WINDOWS_FUNCTION(static, BOOL, EnumPrinters,
                       (DWORD, LPTSTR, DWORD, LPBYTE, DWORD, LPDWORD, LPDWORD));
@@ -178,6 +184,17 @@ printer_job *printer_start_job(char *printer)
     init_winfuncs();
 
     pj->hprinter = NULL;
+    pj->to_clipboard = false;
+    pj->clipbuf = NULL;
+
+    /* KiTTY: the fake "Windows clipboard" printer accumulates the output and
+     * copies it to the clipboard when the print job finishes. */
+    if (printer && !strcmp(printer, PRINT_TO_CLIPBOARD_STRING)) {
+        pj->to_clipboard = true;
+        pj->clipbuf = strbuf_new();
+        return pj;
+    }
+
     if (!p_OpenPrinter(printer, &pj->hprinter, NULL))
         goto error;
 
@@ -213,6 +230,11 @@ void printer_job_data(printer_job *pj, const void *data, size_t len)
     if (!pj)
         return;
 
+    if (pj->to_clipboard) {
+        put_data(pj->clipbuf, data, len);
+        return;
+    }
+
     p_WritePrinter(pj->hprinter, (void *)data, len, &written);
 }
 
@@ -220,6 +242,26 @@ void printer_finish_job(printer_job *pj)
 {
     if (!pj)
         return;
+
+    if (pj->to_clipboard) {
+        /* Copy the accumulated remote output to the Windows clipboard. */
+        if (OpenClipboard(NULL)) {
+            size_t len = pj->clipbuf->len;
+            HGLOBAL hmem = GlobalAlloc(GMEM_MOVEABLE, len + 1);
+            if (hmem) {
+                char *p = (char *)GlobalLock(hmem);
+                memcpy(p, pj->clipbuf->s, len);
+                p[len] = '\0';
+                GlobalUnlock(hmem);
+                EmptyClipboard();
+                SetClipboardData(CF_TEXT, hmem);
+            }
+            CloseClipboard();
+        }
+        strbuf_free(pj->clipbuf);
+        sfree(pj);
+        return;
+    }
 
     p_EndPagePrinter(pj->hprinter);
     p_EndDocPrinter(pj->hprinter);
