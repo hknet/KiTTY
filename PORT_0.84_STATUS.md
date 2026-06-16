@@ -62,13 +62,11 @@ rm -rf build-mingw
 cmake -B build-mingw -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mingw.cmake
 cmake --build build-mingw                 # whole tree (24 binaries)
 cmake --build build-mingw --target kitty  # just kitty.exe
-# deploy for Windows GUI testing:
-cp -f build-mingw/kitty.exe /mnt/c/build/builds-084/kitty.exe
+# deploy the built kitty.exe to wherever the Windows GUI test launches it
 ```
 
-Helper scripts: `C:\build\wsl_*.sh` (build/deploy/commit), `C:\build\test_*.ps1`
-(GUI verification; run via `& script.ps1` or `pwsh -NoProfile -File script.ps1` — NOT
-`-ExecutionPolicy Bypass`, which the classifier blocks).
+Helper scripts (`wsl_*.sh` for build/deploy/commit, `test_*.ps1` for GUI verification)
+are kept in the maintainer's local working dir, outside the repo.
 
 **Runtime config:** KiTTY-specific flags come from `kitty.ini` (`[KiTTY]` section), located via
 `KITTY_INI_FILE` env, else `<InitialDir>\kitty.ini`, else `%APPDATA%\KiTTY\kitty.ini`. Session/feature

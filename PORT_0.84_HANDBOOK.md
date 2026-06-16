@@ -80,11 +80,11 @@ Result: a `kitty` build tree based on pristine 0.84 with ~42 KiTTY features work
 | 16 | ZModem spawn did nothing | KiTTY 0.76b's `xyz_SpawnProcess` was a **no-op stub**; no auto-detect existed | implemented a real pipe+CreateProcess spawn; intercept I/O in `win_seat_output()` + message loop (no terminal.c edits). |
 
 ### Process lessons (equally important — these cost real time)
-- **Always redeploy before a GUI test**: `cp -f ~/kitty-0.84/build-mingw/kitty.exe /mnt/c/build/builds-084/`. A stale binary made correct code look broken (~8 wasted iterations once).
+- **Always redeploy before a GUI test**: copy the freshly built `kitty.exe` to wherever the GUI test launches it. A stale binary made correct code look broken (~8 wasted iterations once).
 - **DPI**: make the test process DPI-aware (`SetProcessDpiAwarenessContext(-4)`) or `GetWindowRect` returns *virtualized* coords on HiDPI (off by the scale factor).
 - **Modal menu items** (print, export → file dialog): trigger with `PostMessage`, not `SendMessage` (SendMessage blocks on the modal loop).
 - **GUI tools have no console `-V`** (kitty/kittygen/kageant/pterm) — `--version` pops a usage dialog. Verify with `Start-Process` + process-alive; only `klink`/`kscp`/`ksftp` (console) print `-V`.
-- **PowerShell mangles inline multi-line `bash -lc "..."`** — always write a `.sh` to `C:\build\wsl_*.sh` and run `wsl -d Ubuntu-26.04 -- bash /mnt/c/...`.
+- **PowerShell mangles inline multi-line `bash -lc "..."`** — always write a `.sh` file and run it via `wsl ... -- bash <script>` instead of inlining a multi-line command.
 - **One agent at a time on this tree** — shared working tree/git/build dir; parallel agents corrupt each other. Delegate sequentially (keeps the orchestrator's context clean).
 - **Verify, don't assume**: re-test after seemingly-unrelated changes (URL hyperlinks silently regressed to a crash and wasn't re-tested for 4 sessions).
 
@@ -274,46 +274,40 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
 
 ## 10. Release / packaging / MSI / signing runbook
 
-Outputs land in `C:\build\release-084\`. Helper scripts in `C:\build\`. Run WSL via
-`wsl -d Ubuntu-26.04 -- bash -c "..."` (use **absolute** `/home/user/...` paths — PowerShell mangles
-`~`). The full pipeline for a signed release:
+> The maintainer keeps the full, environment-specific runbook (exact build paths,
+> code-signing account, publishing credentials, and backup-mirror details) in a
+> **private** operations note. Only the generic, reproducible engineering steps
+> are recorded here.
 
-1. **Build + package:** `wsl_release.sh` (configures `build-release`, builds 8 binaries) →
-   `cmake --build build-release --target kitty_portable` → `wsl_package.sh` (strip/rename to k* +
-   UPX kitty.exe) → `wsl_package_portable.sh` (UPX kitty_portable.exe).
-2. **MSIs:** `windows/installer/build.ps1 -Ver 0.84.0.<sub>-beta` (**Windows** — `dotnet tool install
-   -g wix --version 5.0.2`) → both MSIs into `release-084/` via **WiX v5** (`wix build -arch x64
-   -bindpath release-084`). NOT wixl/v3 anymore (migrated in 0.84.0.5). Stay on **WiX v5** — v6/v7
-   require the paid OSMF EULA. The `.wxs` use the v4 schema (`<Package>` root, `<StandardDirectory>`,
-   `<MediaTemplate>`), **non-advertised** shortcuts (`Target="[INSTALLFOLDER]x.exe"`) each with
-   `<ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.X"/>`. UpgradeCodes fixed/committed
-   (per-machine `69EA2DD5-…`, per-user `578952A6-…`); component GUIDs auto (path-derived, stable).
-   `File Source=` uses bare filenames resolved by `-bindpath`.
-3. **Code signing** (Azure Trusted Signing aka "Artifact Signing"; tooling already installed: .NET SDK
-   + Azure CLI + the `sign` tool at `%USERPROFILE%\.dotnet\tools`). `az login` first (identity needs
-   the *Trusted Signing Certificate Profile Signer* role). Account `REDACTED-account`, endpoint
-   `https://REDACTED-endpoint/`, profile `REDACTED-profile` (PublicTrust). **Order matters:**
-   (a) sign all `release-084/*.exe` *after* UPX:
-   `sign code artifact-signing <exes> -act azure-cli -ase https://REDACTED-endpoint/ -asa REDACTED-account -ascp REDACTED-profile -fd sha256 -d "KiTTY (PuTTY 0.84 fork)" -u https://github.com/hknet/KiTTY`
-   (b) **rebuild the MSIs** (`windows/installer/build.ps1`) so they embed the signed exes;
-   (c) sign the two MSIs the same way. Verify with `Get-AuthenticodeSignature` (Status=Valid, signer
-   `REDACTED Publisher`, timestamped).
-4. **Zip:** `wsl_beta_zip.sh` stages `release-084` + `beta-084/README-BETA.md`+`KNOWN-ISSUES.md` and
-   writes `SHA256SUMS`; then `Compress-Archive` it to `release-084/kitty-0.84.0.<sub>-beta.zip`.
-5. **Publish:** tag `kitty-0.84.0.<sub>-beta` (push via **Windows git over the `\\wsl.localhost\…` UNC
-   path** — WSL has no SSH key; Windows git has the agent), then GitHub REST API (auth = the stored
-   Windows git credential via `git credential fill` → `Authorization: Bearer`; there is **no `gh`**).
-   As of 0.84.0.6 that credential is a **fine-grained PAT** (`REDACTED_pat_…`, user `hknet`, scope repo
-   `hknet/KiTTY` **Contents: Read+Write** — sufficient; no Deployments/Packages), with GCM forced to PAT
-   mode (`git config --global credential.https://github.com.gitHubAuthModes pat`). This replaced the GCM
-   **OAuth app token**, which rotated on every fetch (regenerate/destroy/create churn in the security
-   log + repeated GitHub authorization windows). **Fetch the token once per script and reuse in-memory**
-   — do NOT call `git credential fill` per call. PAT **expires 2026-07-15**; renew via
-   `printf "protocol=https\nhost=github.com\nusername=hknet\npassword=<PAT>\n" | git credential approve`
-   (a Slack reminder is scheduled for 2026-07-13). Create release (prerelease=true), upload assets to
-   `https://uploads.github.com/repos/hknet/KiTTY/releases/<id>/assets?name=<n>` (build the upload URL
-   explicitly — the `upload_url` template trick fails). `/releases/latest` API 404s for a prerelease-only
-   repo but the web URL works.
+The pipeline for a signed release, in order:
+
+1. **Build + package:** cross-compile the shipping binaries (MinGW/CMake, Release),
+   then `strip` and `UPX`-compress `kitty.exe` / `kitty_portable.exe` (keep an
+   uncompressed `*_nocompress.exe` of each as an AV fallback). Helper scripts drive this.
+2. **MSIs:** build the per-user and system installers with **WiX v5** (`wix build
+   -arch x64 -bindpath <release-dir>`). Stay on **WiX v5** — v6/v7 need the paid OSMF
+   EULA. The `.wxs` use the v4 schema (`<Package>` root, `<StandardDirectory>`,
+   `<MediaTemplate>`), **non-advertised** shortcuts (`Target="[INSTALLFOLDER]x.exe"`)
+   each carrying a stable `System.AppUserModel.ID` so Start/taskbar pins survive
+   upgrades. UpgradeCodes are fixed/committed (per-machine + per-user); component GUIDs
+   are path-derived/stable; `File Source=` uses bare filenames resolved by `-bindpath`.
+3. **Code signing** (Authenticode, via a code-signing service). **Order matters:**
+   (a) sign all release `*.exe` **after** UPX; (b) **rebuild the MSIs** so they embed
+   the signed exes; (c) sign the two MSIs. Verify with `Get-AuthenticodeSignature`
+   (Status = Valid, timestamped).
+4. **Zip:** stage the signed binaries + the tester docs (`README-BETA.md`,
+   `KNOWN-ISSUES.md`), write `SHA256SUMS`, then `Compress-Archive` to
+   `kitty-0.84.0.<sub>-beta.zip`.
+5. **Publish:** commit + push the branch, then create a **GitHub prerelease** tagged
+   `kitty-0.84.0.<sub>-beta` and upload the two MSIs + the zip (the GitHub CLI is the
+   simplest path). The project uses a **rolling single release** — each new release
+   deletes its predecessor's release + tag, so only the newest remains. Note: the
+   GitHub `/releases/latest` API 404s for a prerelease-only repo, so the in-app
+   **Check for updates** queries `/releases?per_page=1` and takes the first entry.
+6. **Mirror to a backup git remote (do this every release).** After the GitHub push,
+   also push the branch + new tag to a second, independently-controlled git remote so
+   the code survives a GitHub revocation. A release is not complete until the mirror
+   has the new commit + tag.
 
 ## 11. Registry storage (KiTTY hive + PuTTY merge)
 
@@ -333,7 +327,7 @@ via that fallback.
 - **Use non-advertised shortcuts (WiX v5), not advertised (wixl)**: advertised shortcuts are iconless
   AND key Start/taskbar **pins to the per-ProductCode descriptor**, so pins break on every upgrade.
   Non-advertised shortcuts (stable `Target` path) show the exe's icon and carry a stable
-  `AppUserModelID` (`kappernet.*`) so pins survive. This is why 0.84.0.5 left wixl for WiX v5.
+  `AppUserModelID` so pins survive. This is why 0.84.0.5 left wixl for WiX v5.
 - **Sign after UPX**, and rebuild MSIs after signing exes so they embed signed payloads.
 - KiTTY is **MIT** (its own `LICENCE.TXT`, © Cyril Dupont) — web "GPL" claims are wrong; `LICENCE`
   credits both Tatham and Dupont.
@@ -364,6 +358,5 @@ via that fallback.
   **`KITTY_INI_FILE=<clean.ini>`**. Copy the test exe to a **distinct name** (e.g. `kitty_086test.exe`)
   and only ever `Stop-Process` by that name or your own PID — **never** `Get-Process kitty | Stop-Process`
   (that kills the user's sessions; this rule cost real trust once).
-- **GitHub auth = static PAT, not the OAuth app** (see §10 step 5). The OAuth-app token rotated on every
-  `git credential fill`, spamming the security log and popping authorization windows; a fine-grained PAT
-  + `gitHubAuthModes pat` fixed it. Fetch the token once per script.
+- **Publishing auth/credential specifics are kept in the maintainer's private runbook** (see the note at
+  the top of §10) — they are environment-specific and intentionally not recorded in this public doc.
