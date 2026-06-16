@@ -719,6 +719,26 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * shortcuts, save-mode/registry). hinst is set; PuTTY registry exists so
      * no first-run dialog. */
     InitWinMain();
+
+    /* KiTTY hidden editor (blocnote): SHIFT+F2 / CTRL+SHIFT+F2 / the kitty.ini
+     * drag-drop / -edit relaunch KiTTY as "kitty.exe -ed[b] [file]". Intercept
+     * that here and run the editor's own message loop instead of opening a
+     * terminal session. (The intercept that the original KiTTY put at the top
+     * of WinMain was dropped during the port; -ed/-edb otherwise fall through
+     * to cmdline_error "unknown option".) */
+    {
+        char *cl = cmdline ? cmdline : (char *)"";
+        while (*cl == ' ') cl++;
+        if (!strncmp(cl, "-ed ", 4) || !strcmp(cl, "-ed") ||
+            !strncmp(cl, "-edb ", 5) || !strcmp(cl, "-edb"))
+            return Notepad_WinMain(inst, prev, cl, show);
+#ifdef MOD_LAUNCHER
+        /* KiTTY session launcher: "kitty.exe -launcher" opens the launcher
+         * window (a quick-launch list of saved sessions) instead of a session. */
+        if (!strcmp(cl, "-launcher") || !strncmp(cl, "-launcher ", 10))
+            return Launcher_WinMain(inst, prev, cl, show);
+#endif
+    }
 #endif
 
     WinGuiSeat *wgs = snew(WinGuiSeat);
