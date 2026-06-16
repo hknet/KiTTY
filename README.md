@@ -62,9 +62,7 @@ Most KiTTY extras read from a `kitty.ini` (`[KiTTY]` section). For example, URL 
 hyperlink=yes
 ```
 
-See **[`PORT_0.84_STATUS.md`](PORT_0.84_STATUS.md)** for the full feature inventory and how each was verified,
-and **known limitations** there (notably: `far2l` reply over the raw backend, and adb/rutty validated
-against test fixtures rather than live hardware).
+See **[`FEATURES.md`](FEATURES.md)** for the full feature reference, including how to enable each one.
 
 ---
 
@@ -78,9 +76,10 @@ cmake --build build-mingw                 # whole tree
 cmake --build build-mingw --target kitty  # just kitty.exe
 ```
 
-The MSI installers are built from [`windows/installer/`](windows/installer/) (`wixl`/msitools).
-Full engineering details — architecture, the port strategy, and a rebase-to-next-PuTTY guide — are in
-**[`PORT_0.84_HANDBOOK.md`](PORT_0.84_HANDBOOK.md)**.
+The MSI installers are built from [`windows/installer/`](windows/installer/) with WiX v5.
+For an orientation on how this fork is structured and ported — architecture, the `MOD_*` /
+parallel-target approach, and the constraints to know before editing shared files — see
+**[`PORTING.md`](PORTING.md)**.
 
 ---
 
