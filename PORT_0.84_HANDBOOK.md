@@ -3,7 +3,6 @@
 > Definitive guide for building, maintaining, and re-basing this port. Written for humans
 > **and** future agents. Companion docs in the repo: `PORT_0.84_STATUS.md` (feature inventory),
 > `PORT_0.84_INVENTORY.md` (original delta analysis), `PORT_0.84_PHASE2_STEP1.md` (drift map).
-> Project memory: `…/REDACTED/projects/REDACTED/memory/kitty-084-port.md`.
 
 ---
 
