@@ -2119,7 +2119,8 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 		strcat( buffer, "-pw \"" ) ;
 		char bufpass[1024] ;
 		strcpy( bufpass, conf_get_str(conf,CONF_password) ) ;
-		MASKPASS(GetCryptSaltFlag(),bufpass) ; strcat( buffer, bufpass ) ; memset( bufpass, 0, strlen(bufpass) ) ;
+		/* CONF_password is plaintext at runtime; do NOT MASKPASS (would garble it). */
+		strcat( buffer, bufpass ) ; memset( bufpass, 0, strlen(bufpass) ) ;
 		strcat( buffer, "\" " ) ;
 	}
 	if( strlen( conf_get_str(conf,CONF_portknockingoptions)) > 0 ) {
@@ -2246,7 +2247,8 @@ void RunExternPlink( HWND hwnd, const char * cmd ) {
         strcat( buffer, "-pw \"" ) ;
         char bufpass[1024] ;
         strcpy( bufpass,conf_get_str(conf,CONF_password) ) ;
-        MASKPASS(GetCryptSaltFlag(),bufpass); strcat( buffer, bufpass ) ; memset(bufpass,0,strlen(bufpass));
+        /* CONF_password is plaintext at runtime; do NOT MASKPASS (would garble it). */
+        strcat( buffer, bufpass ) ; memset(bufpass,0,strlen(bufpass));
         strcat( buffer, "\" " ) ;
     }
 
@@ -2347,7 +2349,8 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
         strcat( buffer, "-pw \"" ) ;
         char bufpass[1024] ;
         strcpy( bufpass,conf_get_str(conf,CONF_password) ) ;
-        MASKPASS(GetCryptSaltFlag(),bufpass); strcat( buffer, bufpass ) ; memset(bufpass,0,strlen(bufpass));
+        /* CONF_password is plaintext at runtime; do NOT MASKPASS (would garble it). */
+        strcat( buffer, bufpass ) ; memset(bufpass,0,strlen(bufpass));
         strcat( buffer, "\" " ) ;
     }
     if( strlen( conf_get_str(conf,CONF_portknockingoptions)) > 0 ) {
@@ -2480,7 +2483,8 @@ void GetFile( HWND hwnd ) {
                         strcat( buffer, "-pw \"" ) ;
                         char bufpass[1024] ;
                         strcpy( bufpass, conf_get_str(conf,CONF_password) ) ;
-                        MASKPASS(GetCryptSaltFlag(),bufpass); strcat( buffer, bufpass ) ; memset(bufpass,0,strlen(bufpass));
+                        /* CONF_password is plaintext at runtime; do NOT MASKPASS (would garble it). */
+        strcat( buffer, bufpass ) ; memset(bufpass,0,strlen(bufpass));
                         strcat( buffer, "\" " ) ;
                     }
                     if( strlen( filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) > 0 ) {
@@ -3821,7 +3825,7 @@ int InternalCommand( HWND hwnd, char * st ) {
 		if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
 			char bufpass[4096], buffer[4096] ;
 			strcpy( bufpass, conf_get_str(conf,CONF_password) ) ;
-			MASKPASS(GetCryptSaltFlag(),bufpass);
+			/* plaintext at runtime; do NOT MASKPASS */
 			sprintf( buffer, "Your password is\n-%s-", bufpass ) ;
 			SetTextToClipboard( bufpass ) ;
 			memset(bufpass,0,strlen(bufpass));
@@ -4031,7 +4035,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 				char bufpass[1024] ;
 				strcat( cmd, ":" ); 
 				strcpy(bufpass,conf_get_str(conf,CONF_password));
-				MASKPASS(GetCryptSaltFlag(),bufpass);
+				/* plaintext at runtime; do NOT MASKPASS */
 				strcat(cmd,bufpass);
 				memset(bufpass,0,strlen(bufpass));
 			}
@@ -4061,7 +4065,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			char bufpass[1024] ;
 			strcat( cmd, ":" ); 
 			strcpy(bufpass,conf_get_str(conf,CONF_password));
-			MASKPASS(GetCryptSaltFlag(),bufpass);
+			/* plaintext at runtime; do NOT MASKPASS */
 			strcat(cmd,bufpass);
 			memset(bufpass,0,strlen(bufpass));
 		}
