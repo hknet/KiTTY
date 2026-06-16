@@ -2756,8 +2756,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
                               HELPCTX(ssh_kexlist),
                               kexlist_handler, P(NULL));
             c->listbox.height = 10;
-            ctrl_checkbox(s, "Warn if the key exchange is not post-quantum "
-                          "secure", 'q', HELPCTX(ssh_kexlist),
+            ctrl_checkbox(s, "Warn if Key Exchange is not post-quantum secure", 'q', HELPCTX(ssh_kexlist),
                           conf_checkbox_handler,
                           I(CONF_ssh_warn_pre_quantum));
 #ifndef NO_GSSAPI
