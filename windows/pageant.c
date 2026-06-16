@@ -1504,6 +1504,28 @@ BOOL sw_PeekMessage(LPMSG msg, HWND hwnd, UINT min, UINT max, UINT remove)
 #define sw_PeekMessage PeekMessageW
 #endif
 
+/* KiTTY (Patrick Cernko) private-key usage confirmation. Installed into the
+ * agent core via kageant_confirm_hook below. If the key's comment requests
+ * confirmation, ask the user before allowing the key to sign. Returns 0 to
+ * refuse, nonzero to allow. */
+extern int (*kageant_confirm_hook)(const char *comment);
+static int kageant_do_confirm(const char *comment)
+{
+    if (comment &&
+        (strstr(comment, "confirmation") ||
+         strstr(comment, "need confirm") ||
+         strstr(comment, "needs confirm"))) {
+        char *msg = dupprintf(
+            "A remote session is requesting to authenticate with the SSH key:"
+            "\n\n    %s\n\nAllow this key to be used?", comment);
+        int r = MessageBox(NULL, msg, "Confirm SSH key usage",
+                           MB_ICONQUESTION | MB_YESNO | MB_SYSTEMMODAL);
+        sfree(msg);
+        return (r == IDYES);
+    }
+    return 1;   /* this key does not require usage confirmation */
+}
+
 int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 {
     MSG msg;
@@ -1686,6 +1708,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * Initialise the cross-platform Pageant code.
          */
         pageant_init();
+
+        /* KiTTY: enable private-key usage confirmation for keys whose comment
+         * requests it (see kageant_do_confirm). */
+        kageant_confirm_hook = kageant_do_confirm;
 
         /*
          * Set up a named-pipe listener.
