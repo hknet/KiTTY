@@ -2949,6 +2949,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 
             conf_cache_data(wgs);
 
+#ifdef MOD_PERSO
+            /* KiTTY automatic saving: back up the registry hive to kitty.sav
+             * each time the configuration dialog is closed with changes
+             * applied. Self-skips in dir mode or when no sav file is set. */
+            SaveRegistryKey();
+#endif
+
             resize_action = conf_get_int(wgs->conf, CONF_resize_action);
             {
                 /* Disable full-screen if resizing forbidden */
