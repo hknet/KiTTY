@@ -175,6 +175,15 @@ extern char KiTTYClassName[128];
 int ManageShortcuts(Terminal *term, Conf *conf, HWND hwnd,
                     const int *clips_system, int key_num, int shift_flag,
                     int control_flag, int alt_flag, int altgr_flag, int win_flag);
+/* KiTTY predefined-command shortcuts (User Command menu + Ctrl+Shift+A..Z) */
+void InitSpecialMenu(HMENU m, const char *folder, const char *sessionname);
+void ManageSpecialCommand(HWND hwnd, int menunum);
+#ifndef IDM_USERCMD
+#define IDM_USERCMD 0x8000
+#endif
+#ifndef NB_MENU_MAX
+#define NB_MENU_MAX 1024
+#endif
 void kitty_start_winscp(HWND);
 void kitty_send_file(HWND);
 void kitty_export_settings(HWND, Conf*);
@@ -1131,6 +1140,15 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(toolmenu, MF_ENABLED | (GetHyperlinkFlag() ? MF_CHECKED : 0),
                        IDM_HYPERLINKTOGGLE, "Hyper&links");
             AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)toolmenu, "&Tools");
+
+            /* KiTTY "Shortcuts for predefined commands": read the registry
+             * Commands keys into SpecialMenu[] and add a "&User Command"
+             * submenu. Keyboard shortcuts (Ctrl+Shift+A..Z) dispatch via
+             * WM_COMMAND IDM_USERCMD+n -> ManageSpecialCommand (handled in the
+             * WM_COMMAND default case). Added to both the system menu and the
+             * right-click context menu; context-menu clicks fire WM_COMMAND. */
+            InitSpecialMenu(m, conf_get_str(wgs->conf, CONF_folder),
+                            conf_get_str(wgs->conf, CONF_sessionname));
 
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             AppendMenu(m, MF_ENABLED, IDM_QUIT, "E&xit");
@@ -3298,6 +3316,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                     backend_special(wgs->backend, wgs->specials[i].code,
                                     wgs->specials[i].arg);
             }
+#ifdef MOD_PERSO
+            /* KiTTY predefined-command shortcuts: Ctrl+Shift+A..Z (and User
+             * Command context-menu clicks) arrive here as WM_COMMAND
+             * IDM_USERCMD+n; run the n-th SpecialMenu[] command. */
+            {
+                int nb = (int)LOWORD(wParam) - IDM_USERCMD;
+                if (nb >= 0 && nb < NB_MENU_MAX)
+                    ManageSpecialCommand(wgs->term_hwnd, nb);
+            }
+#endif
         }
         break;
 
