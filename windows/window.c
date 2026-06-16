@@ -140,8 +140,16 @@ static void reset_window(WinGuiSeat *wgs, int reinit);
 #ifdef MOD_PERSO
 void kitty_set_active_seat(WinGuiSeat *wgs);
 void InitWinMain(void);
+int WINAPI Notepad_WinMain(HINSTANCE, HINSTANCE, LPSTR, int); /* blocnote hidden editor */
+#ifdef MOD_LAUNCHER
+int WINAPI Launcher_WinMain(HINSTANCE, HINSTANCE, LPSTR, int); /* session launcher window */
+#endif
 void ReadInitScript(const char *filename);     /* kitty.c: load a login script file */
+void SaveRegistryKey(void);                    /* kitty.c: back up the registry hive to kitty.sav */
 extern char *kitty_cli_loginscript;            /* kitty_bridge.c: -loginscript path, consumed post-create */
+void ManageInitScript(const char *input_str, const int len); /* kitty.c: scan server output, auto-reply to login prompt */
+extern char *ScriptFileContent;                /* kitty.c: loaded login-script buffer (NULL = none) */
+extern HWND MainHwnd;                          /* kitty.c/bridge: active terminal hwnd for keystroke injection */
 void CheckVersionFromWebSite(HWND hwnd);       /* kitty_win.c: query GitHub releases for an update */
 void kitty_apply_transparency(WinGuiSeat *wgs);
 void kitty_apply_window_pos(WinGuiSeat *wgs);
@@ -6789,6 +6797,13 @@ static size_t win_seat_output(Seat *seat, SeatOutputType type,
      * interception point as ZModem; no terminal.c edits. */
     if (kitty_script_active() && type == SEAT_OUTPUT_STDOUT)
         kitty_script_remote(data, len);
+    /* KiTTY automatic logon script: scan incoming server output for the
+     * challenge string and auto-send the configured reply. The driving call
+     * lived in 0.76b term_data and was dropped during the forward-port; it is
+     * re-added here at the same OBSERVE point (data still flows on to term_data
+     * below). ManageInitScript self-skips when ScriptFileContent is NULL. */
+    if (!GetPuttyFlag() && ScriptFileContent != NULL && type == SEAT_OUTPUT_STDOUT)
+        ManageInitScript(data, len);
 #endif
     return term_data(wgs->term, data, len);
 }
@@ -6851,6 +6866,11 @@ static WinGuiSeat *kitty_active_wgs = NULL;
 void kitty_set_active_seat(WinGuiSeat *wgs) {
     kitty_active_wgs = wgs;
     conf = wgs ? wgs->conf : NULL;
+    /* Track the active terminal hwnd so KiTTY keystroke-injection paths
+     * (login script, special commands, input box) have a valid target.
+     * Previously only set on the background-image / input-box paths, leaving
+     * it NULL in a plain session. */
+    if (wgs && wgs->term_hwnd) MainHwnd = wgs->term_hwnd;
 }
 #ifdef MOD_SAVEDUMP
 /* Helpers for SaveDump (kitty_savedump.c). At command-line -savedump time no
