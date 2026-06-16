@@ -1,7 +1,7 @@
 # KiTTY → PuTTY 0.84 Forward-Port — Final Status
 
 **Project:** Bring `hknet/KiTTY` (a PuTTY 0.76b fork) up to current PuTTY **0.84**, preserving KiTTY's features.
-**Branch:** `kitty-0.84` (GitHub default; == local `noglobal`)  **HEAD:** ≈`82cb21f`  **Baseline:** `e14266c` (pristine PuTTY 0.84 + KiTTY foundation)
+**Branch:** `kitty-0.84` (GitHub default; the local `~/kitty-0.84` repo is on the same branch)  **HEAD:** ≈`1000c91`  **Baseline:** `e14266c` (pristine PuTTY 0.84 + KiTTY foundation)
 **Repo (WSL):** `~/kitty-0.84` (Ubuntu-26.04)   **Date:** 2026-06-14
 
 > **UPDATE (current):** shipped as **`kitty-0.84.0.3-beta`** — a published, **code-signed** GitHub
@@ -257,7 +257,7 @@ Cosmetic only; the cell area — the visible terminal — is correct.
   protocol limit not a gap; see §5).
 - **SKIPPED / UNPORTED: 0** — all known port gaps are closed as of 0.84.0.15.
 
-Build green throughout. Latest release `kitty-0.84.0.15-beta`; HEAD `406ba9d` on branch `noglobal`
+Build green throughout. Latest release `kitty-0.84.0.15-beta`; HEAD `406ba9d` on branch `kitty-0.84`
 (pushed to `kitty-0.84`). Note: this §7 count predates the 0.84.0.7–0.84.0.15 feature waves (savedump,
 all CLI switches, TuTTY colours/folders, far2l clipboard) — see the HANDBOOK release log for the current
 inventory.

@@ -13,9 +13,12 @@ forward-ports the entire KiTTY feature set onto **PuTTY 0.84** (≈1,186 upstrea
 Result: a `kitty` build tree based on pristine 0.84 with ~42 KiTTY features working, building via
 **CMake + MinGW cross-compile** in WSL.
 
-- Working tree: `~/kitty-0.84` (WSL Ubuntu), git repo, branch **`noglobal`**.
-- Branches: `master` = pristine-0.84+foundation baseline (`e14266c`); `bridge` = intermediate
-  global-shim PoC; `noglobal` = the real port (current).
+- Working tree: `~/kitty-0.84` (WSL Ubuntu), git repo, branch **`kitty-0.84`** (the published
+  branch on `hknet/KiTTY`).
+- Branches: `master` = pristine-0.84+foundation baseline (`e14266c`); `kitty-0.84` = the real
+  port (current; the published branch). (Historically the port branch was called `noglobal` and
+  there was an intermediate `bridge` shim — both retired; older log entries may still say
+  `noglobal`.)
 - Upstream reference checkouts: `~/putty-upstream` (all PuTTY tags), `~/kitty-build` (the original
   KiTTY 0.76b repo — source of the `kitty_*` modules, prebuilt libs, icons).
 
@@ -150,10 +153,10 @@ The port is intentionally **mostly additive** (a `kitty/` dir + a parallel CMake
    likely to have drifted again: conf VALUE_TYPE/STR_AMBI of any key you touch, `Filename`/`FontSpec`
    structs, `win_set_title`/seat/backend vtables, `do_paint` internals, `BackendVtable`.
 5. **Build incrementally, feature-by-feature, keep the build green**, using the test scripts. The
-   per-feature commits on `noglobal` are your checklist of what must work.
+   per-feature commits on `kitty-0.84` are your checklist of what must work.
 
-**Tip**: keep the port as a `noglobal`-style branch on top of each pristine baseline, so the next
-rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry forward.
+**Tip**: keep the port as a feature branch (here `kitty-0.84`) on top of each pristine baseline, so
+the next rebase can `git diff master..kitty-0.84` to see exactly the KiTTY delta to carry forward.
 
 ## 8. File map (what's KiTTY-specific in the tree)
 - `kitty/kitty*.c|h` — the KiTTY feature modules (sessions, settings, image, registry, etc.).
@@ -174,8 +177,8 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
 
 ## 9. Current state (read this first for new work)
 
-- **Branch `kitty-0.84` is the GitHub default branch** of `hknet/KiTTY`; HEAD ≈ `1bcea79`. (`noglobal`
-  in the local `~/kitty-0.84` repo == pushed `kitty-0.84`.) The repo has **no other meaningful remote
+- **Branch `kitty-0.84` is the default branch** of `hknet/KiTTY`; the local `~/kitty-0.84` repo is
+  on the same `kitty-0.84` branch. HEAD ≈ `1000c91` (0.84.0.18-beta). The repo has **no other meaningful remote
   history** — it's a fresh pristine-0.84 tree, history-disconnected from the old 0.76b `master`.
 - **Latest release: `kitty-0.84.0.16-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
   system MSI, portable zip. Each release deletes its predecessor — only the newest tag/release remains.
