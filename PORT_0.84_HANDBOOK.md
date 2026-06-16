@@ -178,9 +178,11 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
 - **Branch `kitty-0.84` is the GitHub default branch** of `hknet/KiTTY`; HEAD ≈ `1bcea79`. (`noglobal`
   in the local `~/kitty-0.84` repo == pushed `kitty-0.84`.) The repo has **no other meaningful remote
   history** — it's a fresh pristine-0.84 tree, history-disconnected from the old 0.76b `master`.
-- **Latest release: `kitty-0.84.0.15-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
+- **Latest release: `kitty-0.84.0.16-beta`** (pre-release), 3 **code-signed** assets: per-user MSI,
   system MSI, portable zip. Each release deletes its predecessor — only the newest tag/release remains.
-  (**0.84.0.15** = **far2l real shared clipboard** — the LAST known port gap, now CLOSED. Ported from
+  (**0.84.0.16** = **Check for updates** system-menu item (GitHub `/releases` API via WinINet, compare +
+  browser fallback) — see the Open/tabled note below for the impl detail.
+  **0.84.0.15** = **far2l real shared clipboard** — the LAST known port gap, now CLOSED. Ported from
   `~/putty4far2l` (ivanshatsky/putty4far2l, 0.78.5). terminal.c `far2l_process_payload` decodes the
   base64 APC payload and the 'c' clipboard subcommands r/e/a/o/s/g do real Win32 (Register/Open/Empty/
   Close, IsClipboardFormatAvailable, MB_OKCANCEL for "Ask", GlobalAlloc+SetClipboardData for SET,
@@ -260,8 +262,12 @@ rebase can `git diff baseline..noglobal` to see exactly the KiTTY delta to carry
   (Name + MSI `Version` = `0.84.<sub>`), `windows/installer/build.ps1` (`-Ver` arg = MSI filenames),
   `README.md` (download links), `beta-084/README-BETA.md` + `KNOWN-ISSUES.md`.
 - **Open/tabled items:** **resizable config dialog** (currently a taller fixed 402-unit box — making it
-  truly resizable was deferred); **Check-Update** button (needs an update endpoint); far2l reply over
-  `raw` is a pre-existing PuTTY limitation. DONE: URL underline; About-box branding (config-box About
+  truly resizable was deferred); far2l reply over
+  `raw` is a pre-existing PuTTY limitation. DONE 0.84.0.16: **Check for updates** (system-menu item →
+  `CheckVersionFromWebSite` in kitty_win.c queries the GitHub `/releases` API of hknet/KiTTY via WinINet,
+  compares to BUILD_VERSION, shows up-to-date/update MessageBox, browser fallback; IDM_CHECKUPDATE 0x01B0
+  wired in window.c, `wininet` linked to kitty+kitty_portable. Uses `/releases` not `/releases/latest`
+  because all builds are `-beta` prereleases — `/latest` 404s). DONE: URL underline; About-box branding (config-box About
   branded in `dialog.c` `AboutProc` in 0.84.0.4, and the terminal-menu About unified onto `showabout`
   in 0.84.0.6 — both now consistent). SmartScreen reputation for the new signing cert builds over
   downloads (OV, not EV).

@@ -5,7 +5,7 @@ the free Windows SSH/Telnet client. This branch is a **forward-port of the entir
 set onto current PuTTY 0.84** — so you get KiTTY's extras on top of a modern, security-patched
 PuTTY core (≈1,200 upstream commits newer than KiTTY's original 0.76b base).
 
-> ⚠️ **This is a public _beta_** (`0.84.0.15-beta`). It builds clean and ~43 KiTTY features are
+> ⚠️ **This is a public _beta_** (`0.84.0.16-beta`). It builds clean and ~43 KiTTY features are
 > verified, but please test before relying on it and read the known issues below.
 
 ## Screenshots
@@ -26,13 +26,13 @@ A terminal session with a clickable, underlined hyperlink:
 
 Grab the latest build from the **[Releases page →](https://github.com/hknet/KiTTY/releases/latest)**.
 
-Current beta — **[KiTTY 0.84.0.15-beta](https://github.com/hknet/KiTTY/releases/tag/kitty-0.84.0.15-beta)**:
+Current beta — **[KiTTY 0.84.0.16-beta](https://github.com/hknet/KiTTY/releases/tag/kitty-0.84.0.16-beta)**:
 
 | Download | Use it when |
 |---|---|
-| **[Installer — per-user (no admin)](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.0.15-beta/KiTTY-0.84.0.15-beta-x64-peruser.msi)** | **Recommended.** Installs for your user only, **no UAC prompt** (`%LOCALAPPDATA%\Programs\KiTTY`). |
-| **[Installer — system-wide](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.0.15-beta/KiTTY-0.84.0.15-beta-x64-system.msi)** | All users, into `Program Files` (requires admin). |
-| **[Portable ZIP](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.0.15-beta/kitty-0.84.0.15-beta.zip)** | No install — run from a folder or USB stick. Includes `kitty_portable.exe` and all command-line tools. |
+| **[Installer — per-user (no admin)](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.0.16-beta/KiTTY-0.84.0.16-beta-x64-peruser.msi)** | **Recommended.** Installs for your user only, **no UAC prompt** (`%LOCALAPPDATA%\Programs\KiTTY`). |
+| **[Installer — system-wide](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.0.16-beta/KiTTY-0.84.0.16-beta-x64-system.msi)** | All users, into `Program Files` (requires admin). |
+| **[Portable ZIP](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.0.16-beta/kitty-0.84.0.16-beta.zip)** | No install — run from a folder or USB stick. Includes `kitty_portable.exe` and all command-line tools. |
 
 Both installers add Start-Menu + Desktop shortcuts and an Add/Remove-Programs entry, and uninstall
 cleanly. If your antivirus flags `kitty.exe` (UPX-compression heuristics), use the `kitty_nocompress.exe`
