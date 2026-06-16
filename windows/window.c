@@ -6880,6 +6880,25 @@ static SeatPromptResult win_seat_get_userpass_input(Seat *seat, prompts_t *p)
     WinGuiSeat *wgs = container_of(seat, WinGuiSeat, seat);
     SeatPromptResult spr;
     spr = cmdline_get_passwd_input(p, &wgs->cmdline_get_passwd_state, true);
+#ifdef MOD_PERSO
+    /* KiTTY auto-login password: when no -pw was supplied, answer a single
+     * password prompt to the server (plain SSH password OR keyboard-interactive)
+     * from the stored CONF_password. Login is silent by design - the user
+     * consented when they set the password in the config dialog.
+     * NOTE: at runtime CONF_password holds the PLAIN-TEXT password - the load
+     * path (kitty_settings_load.c) decrypts it and the config dialog stores it
+     * plain. So use it directly; do NOT call GetPasswordInConfig(), which applies
+     * an extra MASKPASS that would garble an already-plaintext password (that
+     * helper assumes the MASKPASS-encoded form produced by the now-stubbed
+     * RenewPassword). TODO(security): the password is recoverable from the saved
+     * session; a future hardening pass should revisit storage / prefer key auth. */
+    if (spr.kind == SPRK_INCOMPLETE && !GetPuttyFlag() &&
+        p->n_prompts == 1 && !p->prompts[0]->echo && p->to_server &&
+        strlen(conf_get_str(wgs->conf, CONF_password)) > 0) {
+        prompt_set_result(p->prompts[0], conf_get_str(wgs->conf, CONF_password));
+        spr = SPR_OK;
+    }
+#endif
     if (spr.kind == SPRK_INCOMPLETE)
         spr = term_get_userpass_input(wgs->term, p);
     return spr;

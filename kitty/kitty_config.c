@@ -10,6 +10,9 @@
 #include "dialog.h"
 #include "storage.h"
 #include "tree234.h"
+#ifdef MOD_PERSO
+#include "kitty_proxy.h"   /* proxy-choice droplist: proxies[], GetProxySelectionFlag, MAX_PROXY */
+#endif
 
 #ifdef MOD_PERSO
 /* KiTTY config-box additions. This is a kitty-owned copy of config.c
@@ -44,6 +47,66 @@ static void kitty_checkbox_int_handler(dlgcontrol *ctrl, dlgparam *dlg,
         dlg_checkbox_set(ctrl, dlg, conf_get_int(conf, key) != 0);
     else if (event == EVENT_VALCHANGE)
         conf_set_int(conf, key, dlg_checkbox_get(ctrl, dlg) ? 1 : 0);
+}
+
+/* Auto-login password editbox handler. Behaves like the stock ED_STR editbox,
+ * but the first time the field is made non-empty in a dialog session it shows
+ * a one-time security consent (the password is stored reversibly-encrypted; SSH
+ * keys are recommended). Declining clears the field. Consent happens HERE, at
+ * configuration time, so the auto-login itself stays silent at connect time. */
+int kitty_autopw_warn(void);   /* kitty_win.c */
+static void kitty_autopw_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                 void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        dlg_editbox_set(ctrl, dlg, conf_get_str(conf, CONF_password));
+    } else if (event == EVENT_VALCHANGE) {
+        char *val = dlg_editbox_get(ctrl, dlg);
+        /* Warn only when a password is being SET where conf currently has none
+         * (i.e. a genuinely new auto-login password). Editing a session that
+         * already has a stored password leaves conf non-empty, so no warning -
+         * this also covers the re-entrant VALCHANGE that dlg_editbox_set fires
+         * during EVENT_REFRESH (conf already holds the loaded password then). */
+        if (strlen(val) > 0 &&
+            strlen(conf_get_str(conf, CONF_password)) == 0) {
+            if (!kitty_autopw_warn()) {
+                /* Declined: clear the field and do not store. */
+                dlg_editbox_set(ctrl, dlg, "");
+                conf_set_str(conf, CONF_password, "");
+                sfree(val);
+                return;
+            }
+        }
+        conf_set_str(conf, CONF_password, val);
+        sfree(val);
+    }
+}
+
+/* Proxy-choice droplist (KiTTY): lists named proxy definitions (plus the two
+ * built-ins "- Session defined proxy -" / "- No proxy -") and stores the chosen
+ * name in CONF_proxyselection, which kitty_proxy_select() overlays onto the
+ * session's proxy settings at connect time. */
+static void kitty_proxy_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        const char *cur = conf_get_str(conf, CONF_proxyselection);
+        int i, sel = 0;
+        dlg_update_start(ctrl, dlg);
+        dlg_listbox_clear(ctrl, dlg);
+        for (i = 0; i < MAX_PROXY && proxies[i].name; i++) {
+            dlg_listbox_add(ctrl, dlg, proxies[i].name);
+            if (cur && !strcmp(cur, proxies[i].name)) sel = i;
+        }
+        dlg_listbox_select(ctrl, dlg, sel);
+        dlg_update_done(ctrl, dlg);
+    } else if (event == EVENT_SELCHANGE) {
+        int i = dlg_listbox_index(ctrl, dlg);
+        if (i >= 0 && i < MAX_PROXY && proxies[i].name)
+            conf_set_str(conf, CONF_proxyselection, proxies[i].name);
+    }
 }
 #endif
 
@@ -2122,6 +2185,13 @@ void setup_config_box(struct controlbox *b, bool midsession,
     } else {
         ssd->folderlist = NULL;
     }
+    /* KiTTY proxy choice: pick a named proxy definition to overlay onto this
+     * session. Hidden unless [ConfigBox] proxyselection=yes. */
+    if (!GetPuttyFlag() && GetProxySelectionFlag()) {
+        ctrl_droplist(s, "Proxy choice", NO_SHORTCUT, 100,
+                      HELPCTX(session_saved),
+                      kitty_proxy_handler, P(NULL));
+    }
 #endif
     ctrl_columns(s, 2, 75, 25);
     ssd->listbox = ctrl_listbox(s, NULL, NO_SHORTCUT,
@@ -3095,11 +3165,11 @@ void setup_config_box(struct controlbox *b, bool midsession,
             if (!GetPuttyFlag()) {
                 dlgcontrol *cpw;
                 cpw = ctrl_editbox(s, "Auto-login password", NO_SHORTCUT, 50,
-                                   HELPCTX(no_help), conf_editbox_handler,
+                                   HELPCTX(no_help), kitty_autopw_handler,
                                    I(CONF_password), ED_STR);
                 cpw->editbox.password = true;
-                ctrl_editbox(s, "Auto-command (sent after login)", NO_SHORTCUT,
-                             74, HELPCTX(no_help),
+                ctrl_editbox(s, "Auto-command after login", NO_SHORTCUT,
+                             50, HELPCTX(no_help),
                              conf_editbox_handler,
                              I(CONF_autocommand), ED_STR);
                 ctrl_filesel(s, "Login script file:", NO_SHORTCUT,

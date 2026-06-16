@@ -558,7 +558,27 @@ void PopUpSystemMenu( HWND hwnd, int npos ) {
 		free(txt);
 	}
 	}
-	
+
+}
+
+/* KiTTY auto-login password consent. Shown the first time the user sets an
+ * auto-login password in the configuration dialog (NOT at login time, so the
+ * auto-login the user configured is never interrupted). Returns nonzero if the
+ * user agrees to store the (reversibly-encrypted) password. */
+int kitty_autopw_warn( void ) {
+	int r = MessageBox( NULL,
+		"You are setting a KiTTY auto-login password.\r\n\r\n"
+		"SECURITY: this password is saved in your session settings in a "
+		"REVERSIBLY-ENCRYPTED form. Anyone with access to this machine or to "
+		"your saved configuration can recover the plain-text password.\r\n\r\n"
+		"SSH public-key authentication is significantly more secure and is the "
+		"recommended way to log in automatically. Use a stored password only for "
+		"legacy hosts (such as network devices) that genuinely cannot accept key "
+		"authentication.\r\n\r\n"
+		"Store this auto-login password?",
+		"KiTTY auto-login password",
+		MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 ) ;
+	return (r == IDYES) ;
 }
 
 // Description:
