@@ -50,6 +50,7 @@
 #define IDM_FULLSCREEN  0x0180
 #define IDM_COPY      0x0190
 #define IDM_PASTE     0x01A0
+#define IDM_CHECKUPDATE 0x01B0  /* check GitHub releases for a newer KiTTY */
 #ifdef MOD_PERSO
 #ifndef IDM_SCRIPTSEND
 #define IDM_SCRIPTSEND  0xB180  /* send recorded script (rutty) */
@@ -141,6 +142,7 @@ void kitty_set_active_seat(WinGuiSeat *wgs);
 void InitWinMain(void);
 void ReadInitScript(const char *filename);     /* kitty.c: load a login script file */
 extern char *kitty_cli_loginscript;            /* kitty_bridge.c: -loginscript path, consumed post-create */
+void CheckVersionFromWebSite(HWND hwnd);       /* kitty_win.c: query GitHub releases for an update */
 void kitty_apply_transparency(WinGuiSeat *wgs);
 void kitty_apply_window_pos(WinGuiSeat *wgs);
 void kitty_send_to_tray(HWND);
@@ -1131,6 +1133,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             str = dupprintf("&About %s", appname);
             AppendMenu(m, MF_ENABLED, IDM_ABOUT, str);
             sfree(str);
+#ifdef MOD_PERSO
+            AppendMenu(m, MF_ENABLED, IDM_CHECKUPDATE, "Check for &updates...");
+#endif
         }
     }
 
@@ -3096,6 +3101,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
              * is retired to keep the two About boxes consistent. */
             showabout(hwnd);
             break;
+#ifdef MOD_PERSO
+          case IDM_CHECKUPDATE:
+            CheckVersionFromWebSite(hwnd);
+            break;
+#endif
           case IDM_HELP:
             launch_help(hwnd, NULL);
             break;

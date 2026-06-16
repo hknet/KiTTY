@@ -1,4 +1,5 @@
 #include "kitty_win.h"
+#include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
 
 /* MOD_PERSO event-log wrapper, defined in windows/window.c */
 void do_eventlog(const char *st) ;
@@ -408,17 +409,110 @@ void RunPuttyEd( HWND hwnd, char * filename ) {
 	}
 }
 
-// Verifie si une mise a jour est disponible sur le site web
+// Verifie si une mise a jour est disponible (depot GitHub hknet/KiTTY)
 extern char BuildVersionTime[256] ;
-void CheckVersionFromWebSite( HWND hwnd ) {
-	char buffer[1024]="", vers[1024]="" ;
+
+/* Parse a dotted version "0.84.0.15" into 4 comparable integers. */
+static void kitty_parse_version( const char *s, int v[4] ) {
+	v[0]=v[1]=v[2]=v[3]=0 ;
+	sscanf( s, "%d.%d.%d.%d", &v[0], &v[1], &v[2], &v[3] ) ;
+}
+/* Return <0 if a<b, 0 if equal, >0 if a>b. */
+static int kitty_version_cmp( const int a[4], const int b[4] ) {
 	int i ;
-	strcpy( vers, BuildVersionTime ) ;
-	for( i = 0 ; i < strlen( vers ) ; i ++ ) {
-		if( !(((vers[i]>='0')&&(vers[i]<='9'))||(vers[i]=='.')) ) { vers[i] = '\0' ; break ; }
+	for( i=0 ; i<4 ; i++ ) { if( a[i]!=b[i] ) return (a[i]<b[i]) ? -1 : 1 ; }
+	return 0 ;
+}
+
+/* The page a user lands on to download a new build, and the JSON API we query.
+ * We use the /releases list (newest first) rather than /releases/latest, because
+ * /releases/latest skips pre-releases and every KiTTY build is a -beta prerelease,
+ * so /latest would 404. The first "tag_name" in the array is the newest release. */
+#define KITTY_RELEASES_URL "https://github.com/hknet/KiTTY/releases"
+#define KITTY_RELEASES_API "https://api.github.com/repos/hknet/KiTTY/releases?per_page=1"
+
+void CheckVersionFromWebSite( HWND hwnd ) {
+	char curnum[64]="" ;
+	int i ;
+
+	/* Reduce the build string ("0.84.0.15-beta @ ...") to its numeric prefix. */
+	strncpy( curnum, BuildVersionTime, sizeof(curnum)-1 ) ; curnum[sizeof(curnum)-1]='\0' ;
+	for( i=0 ; i<(int)strlen(curnum) ; i++ ) {
+		if( !(((curnum[i]>='0')&&(curnum[i]<='9'))||(curnum[i]=='.')) ) { curnum[i]='\0' ; break ; }
 		}
-	sprintf( buffer, "http://www.9bis.net/kitty/check_update.php?version=%s", vers ) ;
-	ShellExecute(hwnd, "open", buffer, 0, 0, SW_SHOWDEFAULT);
+
+	/* Fetch the latest release JSON from GitHub. GitHub requires a User-Agent
+	 * (set via InternetOpen); PRECONFIG honours the system/IE proxy settings. */
+	char *body = NULL ; DWORD bodylen = 0 ; int ok = 0 ;
+	HINTERNET hi = InternetOpenA( "KiTTY-UpdateCheck",
+	                              INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0 ) ;
+	if( hi != NULL ) {
+		/* Bound the synchronous request so a blackholed network falls back to
+		 * the browser in seconds instead of freezing the UI on the default timeout. */
+		DWORD tmo = 8000 ;
+		InternetSetOption( hi, INTERNET_OPTION_CONNECT_TIMEOUT, &tmo, sizeof(tmo) ) ;
+		InternetSetOption( hi, INTERNET_OPTION_SEND_TIMEOUT,    &tmo, sizeof(tmo) ) ;
+		InternetSetOption( hi, INTERNET_OPTION_RECEIVE_TIMEOUT, &tmo, sizeof(tmo) ) ;
+		HINTERNET hu = InternetOpenUrlA( hi, KITTY_RELEASES_API,
+		                                 "Accept: application/vnd.github+json\r\n",
+		                                 (DWORD)-1,
+		                                 INTERNET_FLAG_RELOAD|INTERNET_FLAG_NO_CACHE_WRITE|INTERNET_FLAG_SECURE,
+		                                 0 ) ;
+		if( hu != NULL ) {
+			DWORD cap = 65536 ; body = (char*)malloc( cap ) ; bodylen = 0 ;
+			if( body != NULL ) {
+				DWORD nread = 0 ;
+				for( ;; ) {
+					if( cap - bodylen < 4096 ) {
+						char *nb = (char*)realloc( body, cap*2 ) ;
+						if( nb==NULL ) break ; body = nb ; cap *= 2 ;
+						}
+					if( !InternetReadFile( hu, body+bodylen, cap-bodylen-1, &nread ) || nread==0 ) break ;
+					bodylen += nread ;
+					}
+				body[bodylen] = '\0' ;
+				ok = (bodylen>0) ;
+				}
+			InternetCloseHandle( hu ) ;
+			}
+		InternetCloseHandle( hi ) ;
+		}
+
+	/* Extract "tag_name":"kitty-0.84.0.16-beta" and compare. */
+	if( ok && (body!=NULL) ) {
+		char *p = strstr( body, "\"tag_name\"" ) ;
+		char latestnum[64]="" ;
+		if( p != NULL ) {
+			p = strchr( p, ':' ) ; if( p!=NULL ) p++ ;
+			while( (p!=NULL) && (*p==' '||*p=='\"') ) p++ ;
+			char tag[128]="" ; int j=0 ;
+			while( (p!=NULL) && *p && (*p!='\"') && (j<(int)sizeof(tag)-1) ) { tag[j++]=*p++ ; }
+			tag[j]='\0' ;
+			/* tag is e.g. "kitty-0.84.0.16-beta": skip to the first digit, keep digits/dots. */
+			char *d = tag ; while( *d && !((*d>='0')&&(*d<='9')) ) d++ ;
+			int k=0 ; while( *d && (((*d>='0')&&(*d<='9'))||(*d=='.')) && (k<(int)sizeof(latestnum)-1) ) { latestnum[k++]=*d++ ; }
+			latestnum[k]='\0' ;
+			}
+		if( latestnum[0] ) {
+			int cv[4], lv[4] ; char msg[512] ;
+			kitty_parse_version( curnum, cv ) ;
+			kitty_parse_version( latestnum, lv ) ;
+			if( kitty_version_cmp( cv, lv ) < 0 ) {
+				sprintf( msg, "An update is available.\n\nInstalled: %s\nLatest:    %s\n\nOpen the download page now?", curnum, latestnum ) ;
+				if( MessageBox( hwnd, msg, "KiTTY Update", MB_YESNO|MB_ICONINFORMATION )==IDYES )
+					ShellExecute( hwnd, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
+			} else {
+				sprintf( msg, "You are running the latest version.\n\nInstalled: %s\nLatest:    %s", curnum, latestnum ) ;
+				MessageBox( hwnd, msg, "KiTTY Update", MB_OK|MB_ICONINFORMATION ) ;
+			}
+			free( body ) ;
+			return ;
+			}
+		}
+
+	/* Fallback (offline / proxy / TLS / parse failure): open the releases page. */
+	if( body!=NULL ) free( body ) ;
+	ShellExecute( hwnd, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
 }
 
 // Affichage d'un message dans l'event log
