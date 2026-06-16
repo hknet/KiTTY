@@ -277,7 +277,7 @@ void urlhack_set_regular_expression(int mode, const char* expression)
 	 * state (a pattern that clearly contains capture groups but produced
 	 * zero subexpressions) and disable URL detection instead of crashing.
 	 * Hover/click/launch infrastructure stays intact; only live scanning is
-	 * suppressed. See PORT_0.84_STATUS.md (URL hyperlinks = PARTIAL).
+	 * suppressed.
 	 */
 	if( is_regexp_compiled && to_use != NULL && strchr(to_use, '(') != NULL
 	    && urlhack_rx.re_nsub == 0 ) {
