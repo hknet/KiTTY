@@ -36,6 +36,7 @@
       <Component><File Source="ksftp.exe" /></Component>
       <Component><File Source="kageant.exe" /></Component>
       <Component><File Source="kittygen.exe" /></Component>
+      <Component><File Source="kittygen-cli.exe" /></Component>
       <Component><File Source="kitty_pterm.exe" /></Component>
       <Component><File Source="kitty_tel.exe" /></Component>
     </ComponentGroup>

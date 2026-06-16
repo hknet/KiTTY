@@ -152,6 +152,24 @@ target_link_libraries(puttygen
 set_target_properties(puttygen PROPERTIES WIN32_EXECUTABLE ON)
 installed_program(puttygen)
 
+add_executable(kittygen_cli
+  ${CMAKE_SOURCE_DIR}/cmdgen.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
+  noise.c
+  storage.c
+  no-jump-list.c
+  nohelp.c
+  keygen-noise.c
+  ${CMAKE_SOURCE_DIR}/sshpubk.c
+  ${CMAKE_SOURCE_DIR}/sshrand.c)
+add_dependencies(kittygen_cli generated_licence_h)
+target_link_libraries(kittygen_cli
+  keygen console crypto utils
+  ${platform_libraries})
+# console subsystem - no WIN32_EXECUTABLE
+installed_program(kittygen_cli)
+
+
 if(HAVE_CONPTY)
   add_executable(pterm
     window.c
