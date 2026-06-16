@@ -295,6 +295,19 @@ static const ecdh_keyalg hybrid_selector_vt = {
 };
 
 /* ----------------------------------------------------------------------
+ * Classifier: is a given kex one of our post-quantum hybrids? All of
+ * them (and only them) use hybrid_selector_vt as their ecdh vtable, so
+ * a single pointer comparison identifies the whole family and stays
+ * correct as new hybrid algorithms are added below.
+ */
+
+bool ssh_kex_is_post_quantum(const ssh_kex *kex)
+{
+    return kex && kex->main_type == KEXTYPE_ECDH &&
+        kex->ecdh_vt == &hybrid_selector_vt;
+}
+
+/* ----------------------------------------------------------------------
  * Actual KEX methods.
  */
 

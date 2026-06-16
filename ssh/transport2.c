@@ -1758,6 +1758,29 @@ static void ssh2_transport_process_queue(PacketProtocolLayer *ppl)
     }
 
     /*
+     * Post-quantum advisory. If the negotiated key exchange is not one
+     * of our post-quantum-secure hybrids, the session is exposed to
+     * "harvest now, decrypt later" attacks: an adversary who records
+     * the traffic today could decrypt it once a large quantum computer
+     * exists. Print an informational warning at the start of the
+     * session (matching the behaviour of modern OpenSSH), unless the
+     * user has switched it off in Connection/SSH/Kex. Only on the first
+     * key exchange (got_session_id is still false here, set below once
+     * the first exchange completes), never on a rekey.
+     */
+    if (!s->got_session_id &&
+        conf_get_bool(s->conf, CONF_ssh_warn_pre_quantum) &&
+        !ssh_kex_is_post_quantum(s->kex_alg)) {
+        ppl_printf("WARNING: connection is not using a post-quantum key "
+                   "exchange algorithm. This session may be vulnerable to "
+                   "\"store now, decrypt later\" attacks. The server may "
+                   "need to be upgraded.\r\n");
+        ppl_logevent("Key exchange '%s' is not post-quantum secure; session "
+                     "may be vulnerable to 'harvest now, decrypt later' "
+                     "attacks", s->kex_alg->name);
+    }
+
+    /*
      * If the other side has sent an initial key exchange packet that
      * we must treat as a wrong guess, wait for it, and discard it.
      */

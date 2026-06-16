@@ -326,6 +326,11 @@ CONF_OPTION(ssh_no_userauth, /* bypass "ssh-userauth" (SSH-2 only) */
     DEFAULT_BOOL(false),
     SAVE_KEYWORD("SshNoAuth"),
 )
+CONF_OPTION(ssh_warn_pre_quantum, /* warn if kex is not post-quantum secure */
+    VALUE_TYPE(BOOL),
+    DEFAULT_BOOL(true),
+    SAVE_KEYWORD("SshWarnPreQuantum"),
+)
 CONF_OPTION(ssh_no_trivial_userauth, /* disable trivial types of auth */
     VALUE_TYPE(BOOL),
     DEFAULT_BOOL(false),
