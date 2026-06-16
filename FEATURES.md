@@ -22,6 +22,8 @@ one is available.
 - **SSH and network**
   - [Automatic password](#automatic-password)
   - [Private-key usage confirmation](#private-key-usage-confirmation)
+  - [Post-quantum key-exchange warning](#post-quantum-key-exchange-warning)
+  - [Command-line key generator (kittygen-cli)](#command-line-key-generator-kittygen-cli)
   - [Port knocking](#port-knocking)
   - [Proxy choice](#proxy-choice)
   - [SSH handler (URL/OS integration)](#ssh-handler-urlos-integration)
@@ -136,6 +138,39 @@ When you store private keys in KiTTY's key agent (kageant), you can require an e
 
 ![Private-key usage confirmation](docs/features/img/config_kittygen.jpg)
 ![Private-key usage confirmation](docs/features/img/ex_kageant.jpg)
+
+
+### Post-quantum key-exchange warning
+
+When you connect to an SSH server, KiTTY checks whether the negotiated key-exchange algorithm is one of the post-quantum hybrid algorithms (mlkem768x25519, mlkem768nistp256, mlkem1024nistp384, sntrup761x25519). If the server does not support any of these — which is common on older or unpatched servers — the key exchange falls back to a classical algorithm. KiTTY prints a warning to the terminal at connection time so you know the session is not protected against "harvest now, decrypt later" attacks.
+
+This mirrors the behaviour added in OpenSSH 10.1/10.2 and is enabled by default.
+
+**How to enable:** On by default. To turn it off: **Connection > SSH > Kex > Warn if Key Exchange is not post-quantum secure** (uncheck). The warning appears once per session (not on rekey).
+
+(no screenshot)
+
+### Command-line key generator (kittygen-cli)
+
+`kittygen-cli.exe` is a console-mode SSH key generator that brings the full `puttygen` CLI to Windows. The existing `kittygen.exe` is a GUI tool only; `kittygen-cli` lets you generate, convert, and inspect keys from a script, a CI pipeline, or any Windows console without opening a GUI window.
+
+Supported operations:
+
+| What | Example |
+|---|---|
+| Generate Ed25519 key | `kittygen-cli -t ed25519 --new-passphrase NUL -o mykey.ppk` |
+| Generate RSA 3072 key | `kittygen-cli -t rsa -b 3072 --new-passphrase NUL -o mykey.ppk` |
+| Export PPK → OpenSSH | `kittygen-cli mykey.ppk -O private-openssh -o mykey` |
+| Export OpenSSH → PPK | `kittygen-cli mykey -O private -o mykey.ppk` |
+| Show fingerprint | `kittygen-cli -l mykey.ppk` |
+| Show public key | `kittygen-cli -O public-openssh mykey.ppk` |
+| Change passphrase | `kittygen-cli mykey.ppk -P --new-passphrase newpass.txt -o mykey.ppk` |
+
+The full set of key types, output formats, and Argon2 KDF options from upstream PuTTY are all available. Run `kittygen-cli --help` for the complete list.
+
+`kittygen-cli.exe` is included in the installer and the release ZIP alongside `kittygen.exe`. It does not have a Start-menu shortcut (it is a command-line tool; add it to your `PATH` for convenience).
+
+(no screenshot)
 
 ### Port knocking
 

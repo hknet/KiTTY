@@ -54,6 +54,7 @@ included in the ZIP — it's identical, just unpacked. Every download is checksu
 - **Terminal:** font resize, protect, print, negative/B&W colours, clear/restart log, far2l extensions.
 - **Storage:** registry **or** portable file/dir storage (`kitty_portable.exe`), `kitty.ini` configuration.
 - Plus the standard PuTTY tools, renamed KiTTY-style: `klink`, `kscp`, `ksftp`, `kageant`, `kittygen`.
+- `kittygen-cli.exe` — a console-mode CLI key generator (generate, convert, fingerprint) for use in scripts and pipelines. Run `kittygen-cli --help` for options.
 
 Most KiTTY extras read from a `kitty.ini` (`[KiTTY]` section). For example, URL hyperlinks are enabled with:
 
