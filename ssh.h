@@ -1251,6 +1251,8 @@ extern const ssh_kexes ssh_ntru_hybrid_kex;
 extern const pq_kemalg ssh_ntru;
 extern const ssh_kexes ssh_mlkem_curve25519_hybrid_kex;
 extern const ssh_kexes ssh_mlkem_nist_hybrid_kex;
+/* True if 'kex' is a post-quantum (hybrid PQ + classical) key exchange. */
+bool ssh_kex_is_post_quantum(const ssh_kex *kex);
 extern const pq_kemalg ssh_mlkem512;
 extern const pq_kemalg ssh_mlkem768;
 extern const pq_kemalg ssh_mlkem1024;
