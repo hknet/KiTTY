@@ -187,6 +187,7 @@ static tree234 *pubkeytree;
 typedef struct PageantSignOp PageantSignOp;
 struct PageantSignOp {
     PageantPrivateKey *priv;
+    char *comment;                  /* key comment (KiTTY usage confirmation) */
     strbuf *data_to_sign;
     unsigned flags;
     int crLine;
@@ -650,6 +651,7 @@ static void signop_free(PageantAsyncOp *pao)
     PageantSignOp *so = container_of(pao, PageantSignOp, pao);
     signop_unlink(so);
     strbuf_free(so->data_to_sign);
+    sfree(so->comment);
     sfree(so);
 }
 
@@ -670,6 +672,12 @@ static bool request_passphrase(PageantClient *pc, PageantPrivateKey *priv)
 
     return true;
 }
+
+/* KiTTY key-usage confirmation hook (Patrick Cernko's patch). Default NULL
+ * means "no confirmation", so other binaries that link this agent core are
+ * unaffected; the Windows Pageant GUI installs it at startup. The hook is
+ * passed the key comment and returns 0 to REFUSE signing, nonzero to allow. */
+int (*kageant_confirm_hook)(const char *comment) = NULL;
 
 static void signop_coroutine(PageantAsyncOp *pao)
 {
@@ -719,6 +727,17 @@ static void signop_coroutine(PageantAsyncOp *pao)
         failure(so->pao.info->pc, so->pao.reqid, response, so->failure_type,
                 "key invalid: %s", invalid);
         sfree(invalid);
+        goto respond;
+    }
+
+    /* KiTTY key-usage confirmation: a key whose comment requests it must be
+     * confirmed by the user before each use (Cernko patch). The hook is NULL
+     * except in the Pageant GUI, and returns nonzero unless confirmation is
+     * required and the user refused. */
+    if (kageant_confirm_hook && !kageant_confirm_hook(so->comment)) {
+        response = strbuf_new();
+        failure(so->pao.info->pc, so->pao.reqid, response, so->failure_type,
+                "key usage not confirmed by user");
         goto respond;
     }
 
@@ -1120,6 +1139,7 @@ static PageantAsyncOp *pageant_make_op(
         so->pao.cr.prev->next = so->pao.cr.next->prev = &so->pao.cr;
         so->pao.reqid = reqid;
         so->priv = pub_to_priv(pub);
+        so->comment = pub->comment ? dupstr(pub->comment) : NULL;
         so->pkr.prev = so->pkr.next = NULL;
         so->data_to_sign = strbuf_dup(sigdata);
         so->flags = flags;
