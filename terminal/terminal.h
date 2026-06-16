@@ -195,14 +195,20 @@ struct terminal_tag {
     int osc_strlen;
     char osc_string[OSC_STR_MAX + 1];
 
-#ifdef MOD_FAR2L
-    /* KiTTY far2l terminal extensions: set when the far2l APC handshake has
-     * enabled extensions mode (\x1b_far2l1\x07 -> reply \x1b_far2lok\x07). */
+    /* KiTTY far2l terminal extensions. These fields are UNCONDITIONAL (NOT under
+     * #ifdef MOD_FAR2L): terminal.c is compiled into the kitty target WITH
+     * MOD_FAR2L while lineedit.c and the rest of libguiterminal are compiled
+     * WITHOUT it. Guarding struct fields gives those TUs a different Terminal
+     * layout (ODR violation), corrupting later fields such as term->ldisc — which
+     * broke interactive prompts ("Terminal not prepared for interactive prompts"
+     * on a key passphrase / password). Same lesson as sel_colour. The *code*
+     * using these stays guarded by MOD_FAR2L; only the storage is unconditional. */
+    /* set when the far2l APC handshake enabled extensions mode
+     * (\x1b_far2l1\x07 -> reply \x1b_far2lok\x07). */
     int far2l_ext;
     /* far2l clipboard-sync permission, seeded from CONF_shared_clipboard at the
      * handshake: 0=deny, 1=allow, 2=ask-then-latch (SHARED_CLIPBOARD_*). */
     int clip_allowed;
-#endif
 
     char id_string[1024];
 

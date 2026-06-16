@@ -445,9 +445,9 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
             return 0;
 
           case IDA_WEB:
-            /* Load web browser (KiTTY home page) */
+            /* Load web browser (this fork's GitHub home / releases) */
             ShellExecute(hwnd, "open",
-                         "https://www.9bis.net/kitty/",
+                         "https://github.com/hknet/KiTTY",
                          0, 0, SW_SHOWDEFAULT);
             return 0;
         }

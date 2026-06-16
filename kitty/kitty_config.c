@@ -1919,6 +1919,16 @@ static void host_ca_button_handler(dlgcontrol *ctrl, dlgparam *dp,
         show_ca_config_box(dp);
 }
 
+#if (defined MOD_PERSO) && (!defined FLJ)
+void CheckVersionFromWebSite(HWND hwnd);   /* kitty_win.c: query GitHub releases */
+static void checkupdate_button_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                       void *data, int event)
+{
+    if (event == EVENT_ACTION)
+        CheckVersionFromWebSite(GetActiveWindow());
+}
+#endif
+
 void setup_config_box(struct controlbox *b, bool midsession,
                       int protocol, int protcfginfo)
 {
@@ -1965,6 +1975,16 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ssd->startbutton->column = 2;
     } else {
         ssd->startbutton = NULL;
+    }
+    /* KiTTY "Check for updates": col 1 sits between About (col 0, added by
+     * win_setup_config_box) and Start (col 2). KiTTY ships no Help button
+     * (has_help() is false — no embedded CHM), so col 1 is free. */
+    if (!midsession && !GetPuttyFlag()) {
+        /* Short label: the button is only ~20% of the dialog width (one of 5
+         * columns), so "Check for updates" overflows. */
+        c = ctrl_pushbutton(s, "Updates", NO_SHORTCUT,
+                            HELPCTX(no_help), checkupdate_button_handler, P(NULL));
+        c->column = 1;
     }
 #endif
     ssd->cancelbutton = ctrl_pushbutton(s, "Cancel", 'c', HELPCTX(no_help),
