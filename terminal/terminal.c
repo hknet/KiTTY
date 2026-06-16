@@ -1653,6 +1653,13 @@ static void term_copy_stuff_from_conf(Terminal *term)
     term->conf_height = conf_get_int(term->conf, CONF_height);
     term->conf_width = conf_get_int(term->conf, CONF_width);
     term->crhaslf = conf_get_bool(term->conf, CONF_crhaslf);
+#ifdef MOD_PERSO
+    /* KiTTY "Force CR/LF on Enter" option: when set, the Return key sends CR LF.
+     * Bridges CONF_enter_sends_crlf into the cr_lf_return flag the VK_RETURN
+     * handler reads (stock PuTTY sets it only from the LNM escape, mode 20). */
+    if (conf_get_int(term->conf, CONF_enter_sends_crlf))
+        term->cr_lf_return = true;
+#endif
     term->erase_to_scrollback = conf_get_bool(term->conf, CONF_erase_to_scrollback);
     term->funky_type = conf_get_int(term->conf, CONF_funky_type);
     term->sharrow_type = conf_get_int(term->conf, CONF_sharrow_type);
