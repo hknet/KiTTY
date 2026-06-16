@@ -15,6 +15,8 @@ extern void SaveDump(void);                         /* kitty_savedump.c (MOD_SAV
 extern int  SetTextToClipboard(const char *buf);    /* kitty_win.c */
 extern void mungestr(const char *in, char *out);    /* kitty_commun.c */
 extern int  existfile(const char *filename);        /* kitty_tools.c */
+extern void CreateFileAssoc(void);                  /* kitty_registry.c: .ktx file association */
+extern void CreateSSHHandler(void);                 /* kitty_registry.c: telnet/ssh/putty URL handlers */
 #endif
 
 extern bool sesslist_demo_mode;
@@ -204,6 +206,17 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
             } else if (!strcmp(p, "-savedump")) {
                 /* Dump the full KiTTY configuration to a file, then quit. */
                 SaveDump();
+                cleanup_exit(0);
+            } else if (!strcmp(p, "-fileassoc")) {
+                /* Register the KiTTY .ktx file association, then quit.
+                 * Writes HKCR\kitty.connect.1 + the extension key (redirected
+                 * to HKCU\Software\Classes when not elevated). */
+                CreateFileAssoc();
+                cleanup_exit(0);
+            } else if (!strcmp(p, "-sshhandler")) {
+                /* Register KiTTY as the telnet/ssh/putty URL protocol handler,
+                 * then quit. */
+                CreateSSHHandler();
                 cleanup_exit(0);
 #endif
             } else if (!strcmp(p, "-cleanup")) {
