@@ -708,6 +708,11 @@ static void printerbox_handler(dlgcontrol *ctrl, dlgparam *dlg,
         if (ctrl->editbox.has_list) {
             dlg_listbox_clear(ctrl, dlg);
             dlg_listbox_add(ctrl, dlg, PRINTER_DISABLED_STRING);
+#ifdef MOD_PRINTCLIP
+            /* KiTTY fake printer that copies remote output to the clipboard. */
+            if (!GetPuttyFlag())
+                dlg_listbox_add(ctrl, dlg, "Windows clipboard");
+#endif
             pe = printer_start_enum(&nprinters);
             for (i = 0; i < nprinters; i++)
                 dlg_listbox_add(ctrl, dlg, printer_get_name(pe, i));
@@ -726,6 +731,29 @@ static void printerbox_handler(dlgcontrol *ctrl, dlgparam *dlg,
         sfree(printer);
     }
 }
+
+#ifdef MOD_PRINTCLIP
+/* KiTTY "Print to clipboard" checkbox: toggles the printer between the fake
+ * "Windows clipboard" target and "no printer", kept in sync with the printer
+ * combobox above (which also lists "Windows clipboard"). */
+static void kitty_printclip_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                    void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        dlg_checkbox_set(ctrl, dlg,
+            !strcmp(conf_get_str(conf, CONF_printer), "Windows clipboard"));
+    } else if (event == EVENT_VALCHANGE) {
+        bool on = dlg_checkbox_get(ctrl, dlg);
+        if (on)
+            conf_set_str(conf, CONF_printer, "Windows clipboard");
+        else if (!strcmp(conf_get_str(conf, CONF_printer), "Windows clipboard"))
+            conf_set_str(conf, CONF_printer, "");   /* no printer */
+        conf_set_int(conf, CONF_printclip, on ? 1 : 0);
+        dlg_refresh(NULL, dlg);   /* sync the printer combobox display */
+    }
+}
+#endif
 
 static void codepage_handler(dlgcontrol *ctrl, dlgparam *dlg,
                              void *data, int event)
@@ -2343,7 +2371,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
 #ifdef MOD_PRINTCLIP
     if (!GetPuttyFlag()) {
         ctrl_checkbox(s, "Print to clipboard instead of printer", NO_SHORTCUT,
-                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      HELPCTX(no_help), kitty_printclip_handler,
                       I(CONF_printclip));
     }
 #endif
