@@ -1,0 +1,16 @@
+/*
+ * Windows resources for kittygen-cli, the KiTTY command-line key generator.
+ * Mirrors the minimal console-tool pattern (cf. pscp.rc): the shared icon of
+ * the GUI key generator (kittygen.exe / puttygen.ico) plus the standard
+ * VERSIONINFO block, so the binary reports its description, version, product
+ * name, copyright and language like every other tool in the suite.
+ */
+
+#include "rcstuff.h"
+
+#define APPNAME "KiTTYgen-cli"
+#define APPDESC "KiTTY command-line SSH key generation utility"
+
+200 ICON "puttygen.ico"
+
+#include "version.rc2"
