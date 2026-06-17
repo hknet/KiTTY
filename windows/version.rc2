@@ -42,7 +42,7 @@ BEGIN
 	BLOCK "080904B0"
 	BEGIN
 	    VALUE "CompanyName",	"Simon Tatham"  /* required :/ */
-	    VALUE "ProductName",	"PuTTY suite"
+	    VALUE "ProductName",	"KiTTY suite"
 	    VALUE "FileDescription",	APPDESC
 	    VALUE "InternalName",	APPNAME
 	    VALUE "OriginalFilename",	APPNAME
