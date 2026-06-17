@@ -161,7 +161,8 @@ add_executable(kittygen_cli
   nohelp.c
   keygen-noise.c
   ${CMAKE_SOURCE_DIR}/sshpubk.c
-  ${CMAKE_SOURCE_DIR}/sshrand.c)
+  ${CMAKE_SOURCE_DIR}/sshrand.c
+  kittygen_cli.rc)
 add_dependencies(kittygen_cli generated_licence_h)
 target_link_libraries(kittygen_cli
   keygen console crypto utils
