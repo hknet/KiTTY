@@ -574,7 +574,13 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		case WM_COMMAND: {//Commandes du menu
 			switch( LOWORD(wParam) ) {
 				case IDM_ABOUT:
-					MessageBox(hwnd,"     TTY Launcher\nSession launcher for TTY terminal emulator\n(c), 2009-2023","About", MB_OK ) ;
+					MessageBox(hwnd,
+						"KiTTY Launcher " BUILD_VERSION "\r\n\r\n"
+						"Quick-launch for your saved KiTTY sessions, from the system tray.\r\n"
+						"Part of the KiTTY suite — a fork of PuTTY 0.84.\r\n\r\n"
+						"© KAPPER NETWORK-COMMUNICATIONS GmbH\r\n"
+						"Based on KiTTY by Cyril Dupont and PuTTY by Simon Tatham.",
+						"About KiTTY Launcher", MB_OK | MB_ICONINFORMATION ) ;
 					break ;
 				case IDM_QUIT:
 					ResShell = Shell_NotifyIcon(NIM_DELETE, &TrayIcone) ;

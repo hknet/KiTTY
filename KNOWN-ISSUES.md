@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.4 — Known issues & limitations
+# KiTTY 0.84.1.5 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,19 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.4-beta @ 2026-06-17`.
+- **Version string:** binaries report `0.84.1.5-beta @ 2026-06-17`.
+- **Session launcher (`kitty.exe -launcher`):** the tray menu shows running windows +
+  Configuration/TTY-ed, but the **saved-session quick-launch list is currently empty**
+  (the launcher's session registry isn't being populated — under investigation). To open
+  a new session from the launcher, use its **Configuration** entry for now.
+
+## New in 0.84.1.5
+
+- **Session launcher — discoverable + properly iconned.** `kitty.exe -launcher` (a
+  system-tray quick-launch) now has a **Start-menu shortcut** ("KiTTY Launcher", with a
+  distinct KiTTY-mascot icon), its previously **blank tray icon** is fixed (the launcher
+  icon resources were missing from the build), and its **About** box was expanded.
+  (Known limitation above: the saved-session list is not yet populated.)
 
 ## New in 0.84.1.4
 
