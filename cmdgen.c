@@ -190,10 +190,15 @@ void help(void)
            "  the server supports it. Avoid -t rsa / -t dsa unless an older\n"
            "  server requires them.\n"
            "\n"
+           "  Tip: include the word \"confirmation\" in the comment to make the\n"
+           "  kageant agent (KiTTY's Pageant) pop up an approval prompt on every\n"
+           "  use of the key:\n"
+           "      %s -t ed25519 -C \"me@example.com confirmation\" -o mykey.ppk\n"
+           "\n"
            "  Print the matching OpenSSH public key, to add to a server's\n"
            "  ~/.ssh/authorized_keys file:\n"
            "      %s -L mykey.ppk\n",
-           progname, progname);
+           progname, progname, progname);
 }
 
 static bool move(char *from, char *to)
