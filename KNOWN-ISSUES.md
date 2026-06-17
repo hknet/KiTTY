@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.5 — Known issues & limitations
+# KiTTY 0.84.1.6 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,11 +26,19 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.5-beta @ 2026-06-17`.
-- **Session launcher (`kitty.exe -launcher`):** the tray menu shows running windows +
-  Configuration/TTY-ed, but the **saved-session quick-launch list is currently empty**
-  (the launcher's session registry isn't being populated — under investigation). To open
-  a new session from the launcher, use its **Configuration** entry for now.
+- **Version string:** binaries report `0.84.1.6-beta @ 2026-06-18`.
+
+## New in 0.84.1.6
+
+- **Session launcher — saved sessions appear again.** `kitty.exe -launcher` now
+  lists your **saved sessions** in the tray menu for quick-launch (previously the
+  list was empty). Root cause: the launcher read its sessions from the stock PuTTY
+  registry hive (`Software\SimonTatham\PuTTY`) instead of KiTTY's own
+  (`Software\9bis.com\KiTTY`) where sessions actually live — a forward-port
+  artifact (the 0.84 storage layer moved the registry root to a runtime value, but
+  the launcher still used the compile-time PuTTY path). The launcher now reads the
+  same hive as session storage. **Verified**: all saved sessions are enumerated and
+  shown.
 
 ## New in 0.84.1.5
 
@@ -38,7 +46,6 @@ features are working and verified. Known limitations as of this release:
   system-tray quick-launch) now has a **Start-menu shortcut** ("KiTTY Launcher", with a
   distinct KiTTY-mascot icon), its previously **blank tray icon** is fixed (the launcher
   icon resources were missing from the build), and its **About** box was expanded.
-  (Known limitation above: the saved-session list is not yet populated.)
 
 ## New in 0.84.1.4
 
