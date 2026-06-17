@@ -179,6 +179,21 @@ void help(void)
            "hash function\n"
            "                             (default 1)\n"
            );
+    printf("\n"
+           "examples:\n"
+           "  Generate a new SSH key protected by a passphrase and save it as a\n"
+           "  PuTTY .ppk file. ed25519 is the recommended modern standard -\n"
+           "  strong, fast, and accepted by virtually every current SSH server:\n"
+           "      %s -t ed25519 -C \"me@example.com\" -o mykey.ppk\n"
+           "  You are prompted to enter and confirm the passphrase (the key's\n"
+           "  \"secret\"). For an even larger security margin use -t ed448, where\n"
+           "  the server supports it. Avoid -t rsa / -t dsa unless an older\n"
+           "  server requires them.\n"
+           "\n"
+           "  Print the matching OpenSSH public key, to add to a server's\n"
+           "  ~/.ssh/authorized_keys file:\n"
+           "      %s -L mykey.ppk\n",
+           progname, progname);
 }
 
 static bool move(char *from, char *to)
