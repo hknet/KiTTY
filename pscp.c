@@ -744,7 +744,7 @@ int scp_source_setup(const char *target, bool shouldbedir)
             scp_sftp_targetisdir = (attrs.permissions & 0040000) != 0;
 
         if (shouldbedir && !scp_sftp_targetisdir) {
-            bump("pscp: remote filespec %s: not a directory\n", target);
+            bump("kscp: remote filespec %s: not a directory\n", target);
         }
 
         scp_sftp_remotepath = dupstr(target);
@@ -806,7 +806,7 @@ int scp_send_filename(const char *name, uint64_t size, int permissions)
         scp_sftp_filehandle = fxp_open_recv(pktin, req);
 
         if (!scp_sftp_filehandle) {
-            tell_user(stderr, "pscp: unable to open %s: %s",
+            tell_user(stderr, "kscp: unable to open %s: %s",
                       fullname, fxp_error());
             sfree(fullname);
             errs++;
@@ -1178,7 +1178,7 @@ int scp_get_sink_action(struct scp_sink_action *act)
                 if (head->wildcard) {
                     act->action = SCP_SINK_RETRY;
                     if (!head->matched_something) {
-                        tell_user(stderr, "pscp: wildcard '%s' matched "
+                        tell_user(stderr, "kscp: wildcard '%s' matched "
                                   "no files", head->wildcard);
                         errs++;
                     }
@@ -1235,7 +1235,7 @@ int scp_get_sink_action(struct scp_sink_action *act)
              */
             if (!scp_sftp_recursive && !scp_sftp_wildcard) {
                 with_stripctrl(san, fname)
-                    tell_user(stderr, "pscp: %s: is a directory", san);
+                    tell_user(stderr, "kscp: %s: is a directory", san);
                 errs++;
                 if (must_free_fname) sfree(fname);
                 if (scp_sftp_dirstack_head) {
@@ -1265,7 +1265,7 @@ int scp_get_sink_action(struct scp_sink_action *act)
 
             if (!dirhandle) {
                 with_stripctrl(san, fname)
-                    tell_user(stderr, "pscp: unable to open directory %s: %s",
+                    tell_user(stderr, "kscp: unable to open directory %s: %s",
                               san, fxp_error());
                 if (must_free_fname) sfree(fname);
                 errs++;
@@ -1284,7 +1284,7 @@ int scp_get_sink_action(struct scp_sink_action *act)
                     if (fxp_error_type() == SSH_FX_EOF)
                         break;
                     with_stripctrl(san, fname)
-                        tell_user(stderr, "pscp: reading directory %s: %s",
+                        tell_user(stderr, "kscp: reading directory %s: %s",
                                   san, fxp_error());
 
                     req = fxp_close_send(dirhandle);
@@ -1475,7 +1475,7 @@ int scp_accept_filexfer(void)
 
         if (!scp_sftp_filehandle) {
             with_stripctrl(san, scp_sftp_currentname)
-                tell_user(stderr, "pscp: unable to open %s: %s",
+                tell_user(stderr, "kscp: unable to open %s: %s",
                           san, fxp_error());
             errs++;
             return 1;
@@ -1502,7 +1502,7 @@ int scp_recv_filedata(char *data, int len)
         pktin = sftp_recv();
         ret = xfer_download_gotpkt(scp_sftp_xfer, pktin);
         if (ret <= 0) {
-            tell_user(stderr, "pscp: error while reading: %s", fxp_error());
+            tell_user(stderr, "kscp: error while reading: %s", fxp_error());
             if (ret == INT_MIN)        /* pktin not even freed */
                 sfree(pktin);
             errs++;
@@ -1511,7 +1511,7 @@ int scp_recv_filedata(char *data, int len)
 
         if (xfer_download_data(scp_sftp_xfer, &vbuf, &actuallen)) {
             if (actuallen <= 0) {
-                tell_user(stderr, "pscp: end of file while reading");
+                tell_user(stderr, "kscp: end of file while reading");
                 errs++;
                 sfree(vbuf);
                 return -1;
@@ -1555,7 +1555,7 @@ int scp_finish_filerecv(void)
             pktin = sftp_recv();
             ret = xfer_download_gotpkt(scp_sftp_xfer, pktin);
             if (ret <= 0) {
-                tell_user(stderr, "pscp: error while reading: %s", fxp_error());
+                tell_user(stderr, "kscp: error while reading: %s", fxp_error());
                 if (ret == INT_MIN)        /* pktin not even freed */
                     sfree(pktin);
                 errs++;
@@ -1587,7 +1587,7 @@ static PRINTF_LIKE(1, 2) void run_err(const char *fmt, ...)
     va_start(ap, fmt);
     errs++;
     str = dupvprintf(fmt, ap);
-    str2 = dupcat("pscp: ", str, "\n");
+    str2 = dupcat("kscp: ", str, "\n");
     sfree(str);
     scp_send_errmsg(str2);
     abandon_stats();
@@ -2196,9 +2196,9 @@ static void usage(void)
 {
     printf("PuTTY Secure Copy client\n");
     printf("%s\n", ver);
-    printf("Usage: pscp [options] [user@]host:source target\n");
-    printf("       pscp [options] source [source...] [user@]host:target\n");
-    printf("       pscp [options] -ls [user@]host:filespec\n");
+    printf("Usage: kscp [options] [user@]host:source target\n");
+    printf("       kscp [options] source [source...] [user@]host:target\n");
+    printf("       kscp [options] -ls [user@]host:filespec\n");
     printf("Options:\n");
     printf("  -V        print version information and exit\n");
     printf("  -pgpfp    print PGP key fingerprints and exit\n");
@@ -2243,7 +2243,7 @@ static void usage(void)
 void version(void)
 {
     char *buildinfo_text = buildinfo("\n");
-    printf("pscp: %s\n%s\n", ver, buildinfo_text);
+    printf("kscp: %s\n%s\n", ver, buildinfo_text);
     sfree(buildinfo_text);
     exit(0);
 }
@@ -2251,11 +2251,11 @@ void version(void)
 void cmdline_error(const char *p, ...)
 {
     va_list ap;
-    fprintf(stderr, "pscp: ");
+    fprintf(stderr, "kscp: ");
     va_start(ap, p);
     vfprintf(stderr, p, ap);
     va_end(ap);
-    fprintf(stderr, "\n      try typing \"pscp -h\" for help\n");
+    fprintf(stderr, "\n      try typing \"kscp -h\" for help\n");
     exit(1);
 }
 

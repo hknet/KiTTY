@@ -228,7 +228,7 @@ static int bare_name_compare(const void *av, const void *bv)
 
 static void not_connected(void)
 {
-    printf("psftp: not connected to a host; use \"open host.name\"\n");
+    printf("ksftp: not connected to a host; use \"open host.name\"\n");
 }
 
 /* ----------------------------------------------------------------------
@@ -1001,7 +1001,7 @@ int sftp_cmd_null(struct sftp_command *cmd)
 
 int sftp_cmd_unknown(struct sftp_command *cmd)
 {
-    printf("psftp: unknown command \"%s\"\n", cmd->words[0]);
+    printf("ksftp: unknown command \"%s\"\n", cmd->words[0]);
     return 0;                          /* failure */
 }
 
@@ -1824,7 +1824,7 @@ static int sftp_cmd_open(struct sftp_command *cmd)
     int portnumber;
 
     if (backend) {
-        printf("psftp: already connected\n");
+        printf("ksftp: already connected\n");
         return 0;
     }
 
@@ -2219,10 +2219,10 @@ struct sftp_command *sftp_getcmd(FILE *fp, int mode, int modeflags)
 
     if (fp) {
         if (modeflags & 1)
-            printf("psftp> ");
+            printf("ksftp> ");
         line = fgetline(fp);
     } else {
-        line = ssh_sftp_get_cmdline("psftp> ", !backend);
+        line = ssh_sftp_get_cmdline("ksftp> ", !backend);
     }
 
     if (!line || !*line) {
@@ -2530,7 +2530,7 @@ static void usage(void)
 {
     printf("PuTTY Secure File Transfer (SFTP) client\n");
     printf("%s\n", ver);
-    printf("Usage: psftp [options] [user@]host\n");
+    printf("Usage: ksftp [options] [user@]host\n");
     printf("Options:\n");
     printf("  -V        print version information and exit\n");
     printf("  -pgpfp    print PGP key fingerprints and exit\n");
@@ -2572,7 +2572,7 @@ static void usage(void)
 static void version(void)
 {
     char *buildinfo_text = buildinfo("\n");
-    printf("psftp: %s\n%s\n", ver, buildinfo_text);
+    printf("ksftp: %s\n%s\n", ver, buildinfo_text);
     sfree(buildinfo_text);
     exit(0);
 }
@@ -2593,7 +2593,7 @@ static int psftp_connect(char *userhost, char *user, int portnumber)
     } else {
         *host++ = '\0';
         if (user) {
-            printf("psftp: multiple usernames specified; using \"%s\"\n",
+            printf("ksftp: multiple usernames specified; using \"%s\"\n",
                    user);
         } else
             user = userhost;
@@ -2775,11 +2775,11 @@ static int psftp_connect(char *userhost, char *user, int portnumber)
 void cmdline_error(const char *p, ...)
 {
     va_list ap;
-    fprintf(stderr, "psftp: ");
+    fprintf(stderr, "ksftp: ");
     va_start(ap, p);
     vfprintf(stderr, p, ap);
     va_end(ap);
-    fprintf(stderr, "\n       try typing \"psftp -h\" for help\n");
+    fprintf(stderr, "\n       try typing \"ksftp -h\" for help\n");
     exit(1);
 }
 
@@ -2898,7 +2898,7 @@ int psftp_main(CmdlineArgList *arglist)
         if (do_sftp_init())
             return 1;
     } else {
-        printf("psftp: no hostname specified; use \"open host.name\""
+        printf("ksftp: no hostname specified; use \"open host.name\""
                " to connect\n");
     }
 

@@ -17,7 +17,7 @@ void cmdline_error(const char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
-    console_print_error_msg_fmt_v("plink", fmt, ap);
+    console_print_error_msg_fmt_v("klink", fmt, ap);
     va_end(ap);
     exit(1);
 }
@@ -127,9 +127,9 @@ static DWORD main_thread_id;
  */
 static void usage(void)
 {
-    printf("Plink: command-line connection utility\n");
+    printf("Klink: command-line connection utility\n");
     printf("%s\n", ver);
-    printf("Usage: plink [options] [user@]host [command]\n");
+    printf("Usage: klink [options] [user@]host [command]\n");
     printf("       (\"host\" can also be a PuTTY saved session name)\n");
     printf("Options:\n");
     printf("  -V        print version information and exit\n");
@@ -196,7 +196,7 @@ static void usage(void)
 static void version(void)
 {
     char *buildinfo_text = buildinfo("\n");
-    printf("plink: %s\n%s\n", ver, buildinfo_text);
+    printf("klink: %s\n%s\n", ver, buildinfo_text);
     sfree(buildinfo_text);
     exit(0);
 }
@@ -339,7 +339,7 @@ int main(int argc, char **argv)
         int ret = cmdline_process_param(arg, nextarg, 1, conf);
         if (ret == -2) {
             fprintf(stderr,
-                    "plink: option \"%s\" requires an argument\n", p);
+                    "klink: option \"%s\" requires an argument\n", p);
             errors = true;
         } else if (ret == 2) {
             arglistpos++;
@@ -389,7 +389,7 @@ int main(int argc, char **argv)
             strbuf_free(cmdbuf);
             break;                     /* done with cmdline */
         } else {
-            fprintf(stderr, "plink: unknown option \"%s\"\n", p);
+            fprintf(stderr, "klink: unknown option \"%s\"\n", p);
             errors = true;
         }
     }
@@ -398,8 +398,8 @@ int main(int argc, char **argv)
         return 1;
 
     if (!cmdline_host_ok(conf)) {
-        fprintf(stderr, "plink: no valid host name provided\n"
-                "try \"plink --help\" for help\n");
+        fprintf(stderr, "klink: no valid host name provided\n"
+                "try \"klink --help\" for help\n");
         cmdline_arg_list_free(arglist);
         return 1;
     }
