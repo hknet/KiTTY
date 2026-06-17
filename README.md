@@ -65,6 +65,28 @@ See **[`FEATURES.md`](FEATURES.md)** for the full feature reference, including h
 
 ---
 
+## Known issues
+
+This is a **beta**: most KiTTY features are restored and verified, but a few have limitations
+or still want real-world testing. The full, per-release list is in
+**[`KNOWN-ISSUES.md`](KNOWN-ISSUES.md)** — current highlights:
+
+- **Antivirus / SmartScreen & UPX** — `kitty.exe` and `kitty_portable.exe` are UPX-compressed
+  and can trip heuristic AV. If flagged, use the identical, unpacked `*_nocompress.exe` from the ZIP.
+- **far2l shared clipboard (GET)** — remote→clipboard (**SET**) is verified end-to-end; the
+  **GET** direction (remote reads your clipboard) transmits over **SSH only**, not raw (a
+  pre-existing PuTTY behaviour).
+- **far2l clipboard "Ask" mode** (Window → Selection) — answering **OK** grants the remote
+  clipboard access for the rest of the session (no per-request reprompt). Set it to **Disabled** to deny.
+- **adb backend & rutty scripting** — verified against test fixtures, not yet against a real
+  Android device / live remote shell.
+- **SSH auto-login password** — stored reversibly in the registry; prefer SSH keys.
+- **Background image** — the thin margin outside the terminal cell grid is still solid-filled (cosmetic).
+
+Found something else? Please **[open an issue](https://github.com/hknet/KiTTY/issues)**.
+
+---
+
 ## Building from source
 
 Cross-compiled to Win64 with MinGW + CMake (Ninja) under WSL/Linux:
