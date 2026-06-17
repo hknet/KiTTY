@@ -9,6 +9,15 @@
 #endif
 
 #define KLWM_NOTIFYICON		(WM_USER+2)
+
+/* KiTTY: runtime registry base (windows/storage.c). The launcher must read
+ * KiTTY's own hive (Software\9bis.com\KiTTY) -- where sessions actually live --
+ * not the compile-time PUTTY_REG_POS macro (stock PuTTY's SimonTatham hive).
+ * In the -launcher process nothing calls kitty_set_registry_root(), so this
+ * returns the default KiTTY base; the launcher therefore does NOT follow
+ * KiClassName=PuTTY mode -- deliberate, acceptable for the launcher. */
+extern const char *kitty_registry_base( void ) ;
+
 static HMENU MenuLauncher = NULL ;
 static HMENU HideMenu ;
 static int LauncherConfReload = 1 ;
@@ -149,7 +158,7 @@ HMENU InitLauncherMenu( char * Key ) {
 	DeleteObject( bmpUnCheck ) ; bmpUnCheck = GetMyCheckBitmaps( 2 ) ;
 	
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
-		sprintf( KeyName, "%s\\%s", TEXT(PUTTY_REG_POS), Key ) ;
+		sprintf( KeyName, "%s\\%s", kitty_registry_base(), Key ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 0 ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		ReadSpecialMenu( menu, Key, &nbitem, 0 ) ;
@@ -294,34 +303,34 @@ void InitLauncherRegistry( void ) {
 	HKEY hKey ;
 	char buffer[MAX_VALUE_NAME] ;
 	int i;
-	
+
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 		TCHAR folder[MAX_VALUE_NAME], achClass[MAX_PATH] = TEXT("");
 		DWORD   cchClassName=MAX_PATH,cSubKeys=0,cbMaxSubKey,cchMaxClass;
 		DWORD	cValues,cchMaxValue,cbMaxValueData,cbSecurityDescriptor;
 		FILETIME ftLastWriteTime;
-	
-		sprintf( buffer, "%s\\Launcher", PUTTY_REG_POS ) ;
+
+		sprintf( buffer, "%s\\Launcher", kitty_registry_base() ) ;
 		RegDelTree (HKEY_CURRENT_USER, buffer ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, buffer, NULL, NULL ) ;
-		sprintf( buffer, "%s\\Sessions", PUTTY_REG_POS ) ;
+		sprintf( buffer, "%s\\Sessions", kitty_registry_base() ) ;
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
 
 		RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime);
 
 		if( cSubKeys>0 )
 			for (i=0; i<cSubKeys; i++) {
-				DWORD cchValue = MAX_VALUE_NAME; 
+				DWORD cchValue = MAX_VALUE_NAME;
 				char lpData[4096] ;
 				if( RegEnumKeyEx(hKey, i, lpData, &cchValue, NULL, NULL, NULL, &ftLastWriteTime) == ERROR_SUCCESS ) {
-					sprintf( buffer,"%s\\Sessions\\%s", TEXT(PUTTY_REG_POS), lpData ) ;
-					if( !GetValueData(HKEY_CURRENT_USER, buffer, "Folder", folder ) ) 
+					sprintf( buffer,"%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
+					if( !GetValueData(HKEY_CURRENT_USER, buffer, "Folder", folder ) )
 						{ strcpy( folder, "Default" ) ; }
 					CleanFolderName( folder ) ;
-					if( !strcmp( folder, "Default" ) || (strlen(folder)<=0) ) 
-						sprintf( buffer, "%s\\Launcher", TEXT(PUTTY_REG_POS) ) ;
-					else 
-						sprintf( buffer, "%s\\Launcher\\%s", TEXT(PUTTY_REG_POS), folder ) ;
+					if( !strcmp( folder, "Default" ) || (strlen(folder)<=0) )
+						sprintf( buffer, "%s\\Launcher", kitty_registry_base() ) ;
+					else
+						sprintf( buffer, "%s\\Launcher\\%s", kitty_registry_base(), folder ) ;
 					strcpy( folder, "" ) ;
 					unmungestr( lpData, folder, MAX_VALUE_NAME ) ;
 					if( strlen(folder) > 0 )
@@ -830,7 +839,7 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 	
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
 		mungestr(session_in, session) ;
-		sprintf( buffer, "%s\\Sessions\\%s", TEXT(PUTTY_REG_POS), session ) ;
+		sprintf( buffer, "%s\\Sessions\\%s", kitty_registry_base(), session ) ;
 		if( RegTestKey(HKEY_CURRENT_USER, buffer) ) {
 			strcpy( session, session_in ) ;
 			if( session[strlen(session)-1] == '&' ) {

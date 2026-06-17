@@ -52,6 +52,16 @@ void kitty_set_registry_root(int use_putty)
 static int kitty_root_is_putty(void)
 { return strstr(reg_base_buf, "SimonTatham") != NULL; }
 
+/*
+ * KiTTY: expose the runtime registry base (e.g. "Software\9bis.com\KiTTY")
+ * so legacy modules -- notably the tray launcher in kitty_launcher.c -- read
+ * the SAME hive that session storage uses, instead of the compile-time
+ * PUTTY_REG_POS macro (which is stock PuTTY's "Software\SimonTatham\PuTTY"
+ * and does not hold KiTTY's sessions).  Returns the base WITHOUT any
+ * "\Sessions" / "\Launcher" suffix; callers append their own.
+ */
+const char *kitty_registry_base(void) { return reg_base_buf; }
+
 static bool tried_shgetfolderpath = false;
 static HMODULE shell32_module = NULL;
 DECL_WINDOWS_FUNCTION(static, HRESULT, SHGetFolderPathA,
