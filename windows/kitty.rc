@@ -65,6 +65,13 @@ IDI_MAINICON_48 ICON "kitty_icons/icon_48.ico"
 IDI_MAINICON_49 ICON "kitty_icons/icon_49.ico"
 IDI_NOCON ICON "kitty_icons/nocon.ico"
 
+// Session-launcher icons (kitty.exe -launcher). 9901/9902 match
+// IDI_PUTTY_LAUNCH / IDI_BLACKBALL in kitty_launcher.c; without them the
+// launcher's tray + window icon are blank. 9901 uses the distinct KiTTY
+// mascot so the launcher stands apart from the main terminal icon.
+9901 ICON "kitty_icons/icon_25.ico"
+9902 ICON "kitty_icons/icon_0.ico"
+
 #include "help.rc2"
 #include "putty-common.rc2"
 

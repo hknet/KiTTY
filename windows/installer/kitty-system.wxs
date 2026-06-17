@@ -10,9 +10,9 @@
   Per-machine UpgradeCode (fixed/committed): 69EA2DD5-EF19-4811-B324-EF34CAA6942C
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="KiTTY 0.84.1.4-beta (system-wide install)"
+  <Package Name="KiTTY 0.84.1.5-beta (system-wide install)"
            Manufacturer="KiTTY 0.84 port"
-           Version="0.84.104"
+           Version="0.84.105"
            UpgradeCode="69EA2DD5-EF19-4811-B324-EF34CAA6942C"
            Scope="perMachine"
            Compressed="yes">
@@ -20,6 +20,7 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of KiTTY is already installed." />
     <MediaTemplate EmbedCab="yes" />
     <Icon Id="kitty.ico" SourceFile="kitty.exe" />
+    <Icon Id="klaunch.ico" SourceFile="kitty_icons\icon_25.ico" />
     <Property Id="ARPPRODUCTICON" Value="kitty.ico" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
@@ -60,6 +61,9 @@
         </Shortcut>
         <Shortcut Id="sc_tel" Name="KiTTY Telnet" Target="[INSTALLFOLDER]kitty_tel.exe" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYTelnet" />
+        </Shortcut>
+        <Shortcut Id="sc_launcher" Name="KiTTY Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYLauncher" />
         </Shortcut>
         <RemoveFolder Id="rm_ShortcutDir" Directory="ShortcutDir" On="uninstall" />
         <RegistryValue Root="HKLM" Key="Software\KiTTY-0.84-port" Name="smdir" Type="string" Value="" KeyPath="yes" />
