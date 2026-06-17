@@ -126,7 +126,7 @@ add_executable(puttytel
   ${CMAKE_SOURCE_DIR}/proxy/nocproxy.c
   ${CMAKE_SOURCE_DIR}/proxy/nosshproxy.c
   puttytel.rc)
-be_list(puttytel PuTTYtel SERIAL OTHERBACKENDS)
+be_list(puttytel KiTTYtel SERIAL OTHERBACKENDS)
 add_dependencies(puttytel generated_licence_h)
 target_link_libraries(puttytel
   guiterminal guimisc eventloop otherbackends settings network utils
