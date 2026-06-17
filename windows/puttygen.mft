@@ -6,9 +6,9 @@
 <assemblyIdentity
    version="0.0.0.0"
    processorArchitecture="*"
-   name="PuTTYgen"
+   name="KiTTYgen"
    type="win32" />
-   <description>SSH key generator for PuTTY</description>
+   <description>SSH key generator for KiTTY</description>
    <dependency>
    <dependentAssembly>
         <!-- Load Common Controls 6 instead of 5 to get WinXP native-

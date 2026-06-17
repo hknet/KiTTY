@@ -41,7 +41,7 @@ void modalfatalbox(const char *fmt, ...)
     va_start(ap, fmt);
     stuff = dupvprintf(fmt, ap);
     va_end(ap);
-    MessageBox(NULL, stuff, "PuTTYgen Fatal Error",
+    MessageBox(NULL, stuff, "KiTTYgen Fatal Error",
                MB_SYSTEMMODAL | MB_ICONERROR | MB_OK);
     sfree(stuff);
     exit(1);
@@ -58,7 +58,7 @@ void nonfatal(const char *fmt, ...)
     va_start(ap, fmt);
     stuff = dupvprintf(fmt, ap);
     va_end(ap);
-    MessageBox(NULL, stuff, "PuTTYgen Error",
+    MessageBox(NULL, stuff, "KiTTYgen Error",
                MB_SYSTEMMODAL | MB_ICONERROR | MB_OK);
     sfree(stuff);
 }
@@ -516,7 +516,7 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
         {
             char *buildinfo_text = buildinfo("\r\n");
             char *text = dupprintf(
-                "PuTTYgen\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
+                "KiTTYgen\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
                 ver, buildinfo_text,
                 "\251 " SHORT_COPYRIGHT_DETAILS ". All rights reserved.");
             sfree(buildinfo_text);
@@ -540,7 +540,7 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
           case 102:
             /* Load web browser */
             ShellExecute(hwnd, "open",
-                         "https://www.chiark.greenend.org.uk/~sgtatham/putty/",
+                         "https://github.com/hknet/KiTTY",
                          0, 0, SW_SHOWDEFAULT);
             return 0;
         }
@@ -671,6 +671,7 @@ enum {
     IDC_CERTSTATIC, IDC_CERTMOREINFO,
     IDC_FPSTATIC, IDC_FINGERPRINT,
     IDC_COMMENTSTATIC, IDC_COMMENTEDIT,
+    IDC_COMMENTHINT,
     IDC_PASSPHRASE1STATIC, IDC_PASSPHRASE1EDIT,
     IDC_PASSPHRASE2STATIC, IDC_PASSPHRASE2EDIT,
     IDC_BOX_ACTIONS,
@@ -750,7 +751,7 @@ void old_keyfile_warning(void)
         "so we recommend you convert your key to the new\n"
         "format.\n"
         "\n"
-        "Once the key is loaded into PuTTYgen, you can perform\n"
+        "Once the key is loaded into KiTTYgen, you can perform\n"
         "this conversion simply by saving it again.";
 
     MessageBox(NULL, message, mbtitle, MB_OK);
@@ -1110,7 +1111,7 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
         !import_possible(type)) {
         char *msg = dupprintf("Couldn't load private key (%s)",
                               key_type_to_str(type));
-        message_box(hwnd, msg, "PuTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
         return;
@@ -1173,7 +1174,7 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
         sfree(comment);
     if (ret == 0) {
         char *msg = dupprintf("Couldn't load private key (%s)", errmsg);
-        message_box(hwnd, msg, "PuTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
     } else if (ret == 1) {
@@ -1197,7 +1198,7 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
                     "use the \"Save private key\" command to\n"
                     "save it in PuTTY's own format.",
                     key_type_to_str(realtype));
-            MessageBox(NULL, msg, "PuTTYgen Notice",
+            MessageBox(NULL, msg, "KiTTYgen Notice",
                        MB_OK | MB_ICONINFORMATION);
         }
     }
@@ -1212,7 +1213,7 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
         type != SSH_KEYTYPE_SSH2_PUBLIC_OPENSSH) {
         char *msg = dupprintf("Couldn't load certificate (%s)",
                               key_type_to_str(type));
-        message_box(hwnd, msg, "PuTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
         return;
@@ -1225,7 +1226,7 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
     if (!ppk_loadpub_f(filename, &algname, BinarySink_UPCAST(pub), &comment,
                        &error)) {
         char *msg = dupprintf("Couldn't load certificate (%s)", error);
-        message_box(hwnd, msg, "PuTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
         strbuf_free(pub);
@@ -1238,7 +1239,7 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
     if (!alg) {
         char *msg = dupprintf("Couldn't load certificate (unsupported "
                               "algorithm name '%s')", algname);
-        message_box(hwnd, msg, "PuTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
         sfree(algname);
@@ -1266,7 +1267,7 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
 
     if (!match) {
         char *msg = dupprintf("Certificate is for a different public key");
-        message_box(hwnd, msg, "PuTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
         strbuf_free(pub);
@@ -1282,7 +1283,7 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
 
     if (!newkey) {
         char *msg = dupprintf("Couldn't combine certificate with key");
-        message_box(hwnd, msg, "PuTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
         return;
@@ -1616,6 +1617,9 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                                0);
             staticedit(&cp, "Key &comment:", IDC_COMMENTSTATIC,
                        IDC_COMMENTEDIT, 82);
+            statictext(&cp, "Tip: include the word \"confirmation\" in the "
+                       "comment so kageant asks before each use.", 1,
+                       IDC_COMMENTHINT);
             staticpassedit(&cp, "Key p&assphrase:", IDC_PASSPHRASE1STATIC,
                            IDC_PASSPHRASE1EDIT, 82);
             staticpassedit(&cp, "C&onfirm passphrase:",
@@ -1894,10 +1898,10 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                 if ((state->keytype == RSA || state->keytype == DSA) &&
                     state->key_bits < 256) {
                     char *message = dupprintf(
-                        "PuTTYgen will not generate a key smaller than 256"
+                        "KiTTYgen will not generate a key smaller than 256"
                         " bits.\nKey length reset to default %d. Continue?",
                         DEFAULT_KEY_BITS);
-                    int ret = MessageBox(hwnd, message, "PuTTYgen Warning",
+                    int ret = MessageBox(hwnd, message, "KiTTYgen Warning",
                                          MB_ICONWARNING | MB_OKCANCEL);
                     sfree(message);
                     if (ret != IDOK)
@@ -1909,7 +1913,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     char *message = dupprintf(
                         "Keys shorter than %d bits are not recommended. "
                         "Really generate this key?", DEFAULT_KEY_BITS);
-                    int ret = MessageBox(hwnd, message, "PuTTYgen Warning",
+                    int ret = MessageBox(hwnd, message, "KiTTYgen Warning",
                                          MB_ICONWARNING | MB_OKCANCEL);
                     sfree(message);
                     if (ret != IDOK)
@@ -2012,7 +2016,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                             " format", (state->ssh2 ? 2 : 1),
                             (state->ssh2 ? 1 : 2));
                     MessageBox(hwnd, msg,
-                               "PuTTYgen Error", MB_OK | MB_ICONERROR);
+                               "KiTTYgen Error", MB_OK | MB_ICONERROR);
                     break;
                 }
 
@@ -2021,7 +2025,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                 if (strcmp(passphrase, passphrase2)) {
                     MessageBox(hwnd,
                                "The two passphrases given do not match.",
-                               "PuTTYgen Error", MB_OK | MB_ICONERROR);
+                               "KiTTYgen Error", MB_OK | MB_ICONERROR);
                     burnstr(passphrase);
                     burnstr(passphrase2);
                     break;
@@ -2032,7 +2036,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     ret = MessageBox(hwnd,
                                      "Are you sure you want to save this key\n"
                                      "without a passphrase to protect it?",
-                                     "PuTTYgen Warning",
+                                     "KiTTYgen Warning",
                                      MB_YESNO | MB_ICONWARNING);
                     if (ret != IDYES) {
                         burnstr(passphrase);
@@ -2050,7 +2054,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         fclose(fp);
                         buffer = dupprintf("Overwrite existing file\n%s?",
                                            filename_to_str(fn));
-                        ret = MessageBox(hwnd, buffer, "PuTTYgen Warning",
+                        ret = MessageBox(hwnd, buffer, "KiTTYgen Warning",
                                          MB_YESNO | MB_ICONWARNING);
                         sfree(buffer);
                         if (ret != IDYES) {
@@ -2078,7 +2082,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     }
                     if (ret <= 0) {
                         MessageBox(hwnd, "Unable to save key file",
-                                   "PuTTYgen Error", MB_OK | MB_ICONERROR);
+                                   "KiTTYgen Error", MB_OK | MB_ICONERROR);
                     }
                     filename_free(fn);
                 }
@@ -2102,7 +2106,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         fclose(fp);
                         buffer = dupprintf("Overwrite existing file\n%s?",
                                            filename_to_str(fn));
-                        ret = MessageBox(hwnd, buffer, "PuTTYgen Warning",
+                        ret = MessageBox(hwnd, buffer, "KiTTYgen Warning",
                                          MB_YESNO | MB_ICONWARNING);
                         sfree(buffer);
                         if (ret != IDYES) {
@@ -2113,7 +2117,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     fp = f_open(fn, "w", false);
                     if (!fp) {
                         MessageBox(hwnd, "Unable to open key file",
-                                   "PuTTYgen Error", MB_OK | MB_ICONERROR);
+                                   "KiTTYgen Error", MB_OK | MB_ICONERROR);
                     } else {
                         if (state->ssh2) {
                             strbuf *blob = strbuf_new();
@@ -2128,7 +2132,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         }
                         if (fclose(fp) < 0) {
                             MessageBox(hwnd, "Unable to save key file",
-                                       "PuTTYgen Error", MB_OK | MB_ICONERROR);
+                                       "KiTTYgen Error", MB_OK | MB_ICONERROR);
                         }
                     }
                     filename_free(fn);
@@ -2359,7 +2363,7 @@ static NORETURN void opt_error(const char *fmt, ...)
     char *msg = dupvprintf(fmt, ap);
     va_end(ap);
 
-    MessageBox(NULL, msg, "PuTTYgen command line error", MB_ICONERROR | MB_OK);
+    MessageBox(NULL, msg, "KiTTYgen command line error", MB_ICONERROR | MB_OK);
 
     exit(1);
 }
@@ -2380,7 +2384,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      */
     init_help();
 
-    params->keybutton = IDC_KEYSSH2RSA;
+    params->keybutton = IDC_KEYSSH2EDDSA;
     params->primepolicybutton = IDC_PRIMEGEN_PROB;
     params->rsa_strong = false;
     params->fptype = SSH_FPTYPE_DEFAULT;
