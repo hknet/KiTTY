@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.3 — Known issues & limitations
+# KiTTY 0.84.1.4 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,21 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.3-beta @ 2026-06-17`.
+- **Version string:** binaries report `0.84.1.4-beta @ 2026-06-17`.
+
+## New in 0.84.1.4
+
+Suite-wide branding polish (cosmetic; no functional changes):
+
+- **kageant** — the key-list window is now titled **"kageant Key List"** and the
+  tray-icon tooltip reads **"kageant (KiTTY authentication agent)"** (was "Pageant").
+- **kitty_tel.exe** — rebranded to **"KiTTYtel"** (window title, About box, configuration
+  dialog, error dialogs, file properties) and now wears the KiTTY icon instead of PuTTY's.
+- **kittygen-cli.exe** — gained an application icon (matching the GUI keygen) and full
+  file version information (description, file/product version, product name, copyright,
+  company, language); it previously exposed none.
+- **Company name** — every binary now reports **KAPPER NETWORK-COMMUNICATIONS GmbH** as
+  the file "Company" (was "Simon Tatham"), matching the Authenticode signing publisher.
 
 ## New in 0.84.1.3
 
