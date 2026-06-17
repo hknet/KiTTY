@@ -4,24 +4,24 @@
 
 #include "rcstuff.h"
 
-#define APPNAME "PuTTYgen"
-#define APPDESC "PuTTY SSH key generation utility"
+#define APPNAME "KiTTYgen"
+#define APPDESC "KiTTY SSH key generation utility"
 
 #include "help.rc2"
 #include "puttygen-rc.h"
 
 200 ICON "puttygen.ico"
 
-201 DIALOG DISCARDABLE 0, 0, 400, 270
+201 DIALOG DISCARDABLE 0, 0, 400, 281
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "PuTTY Key Generator"
+CAPTION "KiTTY Key Generator"
 FONT 8, "MS Shell Dlg"
 BEGIN
 END
 
 210 DIALOG DISCARDABLE 0, 0, 140, 60
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "PuTTYgen: Enter Passphrase"
+CAPTION "KiTTYgen: Enter Passphrase"
 FONT 8, "MS Shell Dlg"
 BEGIN
     CTEXT "Enter passphrase for key", 100, 10, 6, 120, 8
@@ -34,7 +34,7 @@ END
 /* Accelerators used: cl */
 213 DIALOG DISCARDABLE 140, 40, 270, 136
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "About PuTTYgen"
+CAPTION "About KiTTYgen"
 FONT 8, "MS Shell Dlg"
 BEGIN
     DEFPUSHBUTTON "&Close", IDOK, 216, 118, 48, 14
@@ -56,7 +56,7 @@ END
 
 215 DIALOG DISCARDABLE 0, 0, 259, 98
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "PuTTYgen: Private Key File Parameters"
+CAPTION "KiTTYgen: Private Key File Parameters"
 FONT 8, "MS Shell Dlg"
 BEGIN
     LTEXT "PPK file version:", IDC_PPKVER_STATIC, 5, 6, 119, 8
@@ -85,7 +85,7 @@ END
 /* Accelerators used: clw */
 216 DIALOG DISCARDABLE 140, 40, 450, 300
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "PuTTYgen: certificate information"
+CAPTION "KiTTYgen: certificate information"
 FONT 8, "MS Shell Dlg"
 CLASS "PuTTYgenCertInfo"
 BEGIN
