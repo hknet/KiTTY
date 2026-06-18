@@ -1413,6 +1413,7 @@ extern const ssh2_macalg ssh2_aesgcm_mac_ref_poly;
 extern const ssh2_macalg ssh2_aesgcm_mac_clmul;
 extern const ssh2_macalg ssh2_aesgcm_mac_neon;
 extern const ssh_compression_alg ssh_zlib;
+extern const ssh_compression_alg ssh_comp_none;
 
 /* Special constructor: BLAKE2b can be instantiated with any hash
  * length up to 128 bytes */
