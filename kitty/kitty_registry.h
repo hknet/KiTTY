@@ -45,6 +45,8 @@ BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) ;
 
 // Copie une clé de registre vers une autre
 void kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) ;
+// Migration ponctuelle de l'ancienne ruche (9bis.com\KiTTY) vers kapper.net\KiTTY
+void MigrateOldKittyHive( void ) ;
 
 // Nettoie la clé de PuTTY pour enlever les clés et valeurs spécifique à KiTTY
 BOOL RegCleanPuTTY( void ) ;
