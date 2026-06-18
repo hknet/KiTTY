@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.8 — Known issues & limitations
+# KiTTY 0.84.1.9 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,18 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.8-beta @ 2026-06-18`.
+- **Version string:** binaries report `0.84.1.9-beta @ 2026-06-18`.
+
+## New in 0.84.1.9
+
+- **Configuration dialog — WinSCP executable path field.** *Connection → SSH → PSCP and
+  WinSCP* now has a **"WinSCP executable path"** box. It shows the stored path (or the
+  auto-detected `%ProgramFiles%\WinSCP\WinSCP.exe` as a hint) and lets you point KiTTY at a
+  WinSCP install in a non-standard location. Stored globally in `kitty.ini [KiTTY] WinSCPPath`.
+- **Session comment — multiline + live preview.** The **Comment** panel is now a multiline
+  (≈5-line) box, and the **Session** panel shows a read-only **"Comment of selected session"**
+  box below the saved-sessions list that updates as you click through your sessions. Comment
+  newlines round-trip to both registry and file/directory storage.
 
 ## New in 0.84.1.8
 
