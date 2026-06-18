@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.7 — Known issues & limitations
+# KiTTY 0.84.1.8 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,24 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.7-beta @ 2026-06-18`.
+- **Version string:** binaries report `0.84.1.8-beta @ 2026-06-18`.
+
+## New in 0.84.1.8
+
+- **Registry namespace consolidated to `Software\kapper.net\KiTTY`.** KiTTY now stores
+  its sessions and settings under our own registry namespace. **Your existing sessions
+  migrate automatically** on first run (a one-time, non-destructive copy — your old
+  `Software\9bis.com\KiTTY` data is left untouched). Sessions are still found even if the
+  copy is skipped: KiTTY reads, in order, **`kapper.net\KiTTY` → `9bis.com\KiTTY` →
+  `SimonTatham\PuTTY`** (your hive wins; PuTTY sessions remain loadable), and any edit is
+  written to the new namespace. This also fixes a class of latent bugs where launcher,
+  kageant and other features read the wrong (stock PuTTY) hive — a forward-port artifact
+  where the original KiTTY registry override had been dropped. *(Verified: migration,
+  3-hive read fallback + precedence, write-destination and idempotency tested against the
+  live registry.)*
+- **kageant — passphrase + About dialogs rebranded.** The deferred-decryption passphrase
+  prompt and the About box now read "kageant" instead of "Pageant" (IPC names that PuTTY
+  clients rely on are deliberately unchanged).
 
 ## New in 0.84.1.7
 
