@@ -187,12 +187,17 @@ void centre_window(HWND hwnd);
     (p_##name = module ?                                \
      (t_##name) GetProcAddress(module, #name) : NULL)
 
-#define PUTTY_REG_POS "Software\\SimonTatham\\PuTTY"
-#define PUTTY_REG_POS_SAVE "Software\\9bis.com\\KiTTY_save"
-#define PUTTY_REG_PARENT "Software\\SimonTatham"
-#define PUTTY_REG_PARENT_CHILD "PuTTY"
+/* KiTTY 0.84: our registry namespace is Software\kapper.net\KiTTY. Original KiTTY
+ * overrode these macros to its own hive (9bis.com\KiTTY); the 0.84 port dropped that,
+ * leaving stock PuTTY's SimonTatham values and sending ~50 legacy sites to the wrong
+ * hive. Restored + rebranded to kapper.net. The actual PuTTY hive (for import/fallback)
+ * is referenced by the explicit literal "Software\\SimonTatham\\PuTTY" where needed. */
+#define PUTTY_REG_POS "Software\\kapper.net\\KiTTY"
+#define PUTTY_REG_POS_SAVE "Software\\kapper.net\\KiTTY_save"
+#define PUTTY_REG_PARENT "Software\\kapper.net"
+#define PUTTY_REG_PARENT_CHILD "KiTTY"
 #define PUTTY_REG_GPARENT "Software"
-#define PUTTY_REG_GPARENT_CHILD "SimonTatham"
+#define PUTTY_REG_GPARENT_CHILD "kapper.net"
 
 /* Result values for the jumplist registry functions. */
 #define JUMPLISTREG_OK 0

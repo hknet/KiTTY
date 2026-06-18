@@ -20,28 +20,32 @@
 
 /*
  * KiTTY: the registry root is chosen at RUNTIME (kitty.ini KiClassName).
- * Default to KiTTY's own hive (Software\9bis.com\KiTTY) so existing KiTTY
+ * Default to KiTTY's own hive (Software\kapper.net\KiTTY) so existing KiTTY
  * sessions are picked up and PuTTY's settings aren't touched; kitty.c calls
  * kitty_set_registry_root() to flip it to PuTTY's hive when KiClassName=PuTTY.
- * For convenience we additionally READ (never write) sessions from PuTTY's hive
- * -- see open_settings_r() and enum_settings_start().  The pointers below stay
+ * For convenience we additionally READ (never write) sessions from the old KiTTY hive
+ * (9bis.com\KiTTY) and PuTTY's hive, in that precedence order -- see open_settings_r()
+ * and enum_settings_start().  The pointers below stay
  * fixed at their buffers; only the buffer contents change.
  */
-static char reg_base_buf[256]     = "Software\\9bis.com\\KiTTY";
-static char reg_sessions_buf[300] = "Software\\9bis.com\\KiTTY\\Sessions";
-static char reg_jumplist_buf[300] = "Software\\9bis.com\\KiTTY\\Jumplist";
-static char reg_hostca_buf[300]   = "Software\\9bis.com\\KiTTY\\SshHostCAs";
-static char reg_hostkeys_buf[300] = "Software\\9bis.com\\KiTTY\\SshHostKeys";
+static char reg_base_buf[256]     = "Software\\kapper.net\\KiTTY";
+static char reg_sessions_buf[300] = "Software\\kapper.net\\KiTTY\\Sessions";
+static char reg_jumplist_buf[300] = "Software\\kapper.net\\KiTTY\\Jumplist";
+static char reg_hostca_buf[300]   = "Software\\kapper.net\\KiTTY\\SshHostCAs";
+static char reg_hostkeys_buf[300] = "Software\\kapper.net\\KiTTY\\SshHostKeys";
 static const char *const reg_jumplist_key = reg_jumplist_buf;
 static const char *const reg_jumplist_value = "Recent sessions";
 static const char *const puttystr = reg_sessions_buf;
 static const char *const host_ca_key = reg_hostca_buf;
-#define PUTTY_HIVE_SESSIONS "Software\\SimonTatham\\PuTTY\\Sessions"
+/* Read-only fallback hives (precedence: our base > old KiTTY hive > stock PuTTY).
+ * Sessions present only in an older hive stay loadable; edits write to our base. */
+#define OLD_KITTY_HIVE_SESSIONS "Software\\9bis.com\\KiTTY\\Sessions"
+#define PUTTY_HIVE_SESSIONS     "Software\\SimonTatham\\PuTTY\\Sessions"
 
 void kitty_set_registry_root(int use_putty)
 {
     const char *base = use_putty ? "Software\\SimonTatham\\PuTTY"
-                                 : "Software\\9bis.com\\KiTTY";
+                                 : "Software\\kapper.net\\KiTTY";
     strncpy(reg_base_buf, base, sizeof(reg_base_buf)-1);
     reg_base_buf[sizeof(reg_base_buf)-1] = '\0';
     sprintf(reg_sessions_buf, "%s\\Sessions",    reg_base_buf);
@@ -126,8 +130,11 @@ settings_r *open_settings_r(const char *sessionname)
     escape_registry_key(sessionname, sb);
     HKEY sesskey = open_regkey_ro(HKEY_CURRENT_USER, puttystr, sb->s);
     if (!sesskey && !kitty_root_is_putty()) {
-        /* KiTTY: fall back to PuTTY's hive so PuTTY sessions can be loaded. */
-        sesskey = open_regkey_ro(HKEY_CURRENT_USER, PUTTY_HIVE_SESSIONS, sb->s);
+        /* KiTTY: fall back to the old KiTTY hive, then stock PuTTY's, so older and
+         * PuTTY sessions stay loadable (precedence: our base > old KiTTY > PuTTY). */
+        sesskey = open_regkey_ro(HKEY_CURRENT_USER, OLD_KITTY_HIVE_SESSIONS, sb->s);
+        if (!sesskey)
+            sesskey = open_regkey_ro(HKEY_CURRENT_USER, PUTTY_HIVE_SESSIONS, sb->s);
     }
     strbuf_free(sb);
 
@@ -284,11 +291,13 @@ settings_e *enum_settings_start(void)
 
     /* KiTTY: enumerate the active hive first, then PuTTY's hive (deduped), so
      * KiTTY sessions and (for convenience) PuTTY sessions both show up. */
-    const char *hives[2];
+    const char *hives[3];
     int nhives = 1;
     hives[0] = puttystr;
-    if (!kitty_root_is_putty())
+    if (!kitty_root_is_putty()) {
+        hives[nhives++] = OLD_KITTY_HIVE_SESSIONS;
         hives[nhives++] = PUTTY_HIVE_SESSIONS;
+    }
 
     int alloc = 0;
     for (int h = 0; h < nhives; h++) {

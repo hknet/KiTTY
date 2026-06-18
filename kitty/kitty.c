@@ -3320,7 +3320,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			achValue[0] = '\0';
 
 			if( RegEnumValue(hKey,i,achValue,&cchValue,NULL,&lpType,lpData,&dwDataSize) == ERROR_SUCCESS ) {
-			if( strcmp(achValue,"Default Settings") || strcmp(KeyName,"Software\\9bis.com\\KiTTY\\Launcher") ) { 
+			if( strcmp(achValue,"Default Settings") || strcmp(KeyName,TEXT(PUTTY_REG_POS) "\\Launcher") ) {
 				if( ShortcutsFlag ) {
 					if( nb < 26 ) 
 						sprintf( buffer, "%s\tCtrl+Shift+%c", achValue, ('A'+nb) ) ;
@@ -5640,6 +5640,13 @@ void InitWinMain( void ) {
 
 	// Initialisation des shortcuts
 	InitShortcuts() ;
+
+	/* KiTTY 0.84: migrate the old 9bis.com\KiTTY hive to kapper.net\KiTTY BEFORE the
+	 * PuTTY-import check below, so once our hive exists that import path stays out of the
+	 * way. Idempotent + non-destructive (see kitty_registry.c). */
+	if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
+		MigrateOldKittyHive() ;
+	}
 
 	// Chargement de la base de registre si besoin
 	if( IniFileFlag == SAVEMODE_REG ) { // Mode de sauvegarde registry

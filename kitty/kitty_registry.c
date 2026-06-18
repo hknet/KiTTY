@@ -289,8 +289,21 @@ BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) {
 	return FALSE;
 	}
 
+/* KiTTY 0.84: one-time migration of the registry hive from the old KiTTY namespace
+ * (Software\9bis.com\KiTTY) to the current one (Software\kapper.net\KiTTY). Idempotent
+ * -- copies only when the destination is absent and the source exists; non-destructive
+ * (the old hive is left intact and also serves as a read-only fallback in storage.c).
+ * Call it from every kitty.exe entry path (terminal init AND -launcher) so the launcher
+ * sees migrated sessions even on a boot where it runs before the main terminal. */
+void MigrateOldKittyHive( void ) {
+	if( !RegTestKey( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY" )
+	    && RegTestKey( HKEY_CURRENT_USER, "Software\\9bis.com\\KiTTY" ) ) {
+		kitty_RegCopyTree( HKEY_CURRENT_USER, "Software\\9bis.com\\KiTTY", "Software\\kapper.net\\KiTTY" ) ;
+	}
+}
+
 // Copie une clé de registre vers une autre
-void kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) { 
+void kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
 	HKEY hKey, hDestKey ;
     TCHAR    achKey[MAX_KEY_LENGTH];   // buffer for subkey name
     DWORD    cbName;                   // size of name string 

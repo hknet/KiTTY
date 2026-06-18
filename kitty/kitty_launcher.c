@@ -717,6 +717,9 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	if( ReadParameter( "Launcher", "reload", buffer ) ) {
 		if( !stricmp( buffer, "NO" ) ) LauncherConfReload = 0 ;
 	}
+	/* KiTTY 0.84: the launcher can run before the main terminal (e.g. the boot Startup
+	 * shortcut), so migrate the old 9bis.com\KiTTY hive here too before reading sessions. */
+	MigrateOldKittyHive() ;
 	if( LauncherConfReload ) InitLauncherRegistry() ;
 		
 	MainHwnd = CreateWindowEx(0, className, "KiTTYLauncher",
