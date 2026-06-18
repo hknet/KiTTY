@@ -257,6 +257,31 @@ dlgcontrol *ctrl_editbox(struct controlset *s, const char *label,
     c->editbox.percentwidth = percentage;
     c->editbox.password = false;
     c->editbox.has_list = false;
+    c->editbox.multiline = false;
+    c->editbox.lines = 1;
+    c->editbox.readonly = false;
+    c->context2 = context2;
+    return c;
+}
+
+/*
+ * KiTTY: multiline edit box (optionally read-only). Always full width
+ * with the label on its own line above (percentwidth = 100).
+ */
+dlgcontrol *ctrl_editbox_multiline(struct controlset *s, const char *label,
+                                   char shortcut, int lines, bool readonly,
+                                   HelpCtx helpctx, handler_fn handler,
+                                   intorptr context, intorptr context2)
+{
+    dlgcontrol *c = ctrl_new(s, CTRL_EDITBOX, helpctx, handler, context);
+    c->label = label ? dupstr(label) : NULL;
+    c->editbox.shortcut = shortcut;
+    c->editbox.percentwidth = 100;
+    c->editbox.password = false;
+    c->editbox.has_list = false;
+    c->editbox.multiline = true;
+    c->editbox.lines = (lines > 0 ? lines : 1);
+    c->editbox.readonly = readonly;
     c->context2 = context2;
     return c;
 }
@@ -272,6 +297,9 @@ dlgcontrol *ctrl_combobox(struct controlset *s, const char *label,
     c->editbox.percentwidth = percentage;
     c->editbox.password = false;
     c->editbox.has_list = true;
+    c->editbox.multiline = false;
+    c->editbox.lines = 1;
+    c->editbox.readonly = false;
     c->context2 = context2;
     return c;
 }

@@ -108,6 +108,56 @@ static void kitty_proxy_handler(dlgcontrol *ctrl, dlgparam *dlg,
             conf_set_str(conf, CONF_proxyselection, proxies[i].name);
     }
 }
+
+/* WinSCP executable path (KiTTY): this is a GLOBAL app setting in kitty.ini
+ * [KiTTY] WinSCPPath, NOT a per-session CONF_ key - so it cannot use
+ * conf_editbox_handler. On REFRESH we show the stored path, or, if none is
+ * stored yet, the auto-detected default as a display hint (we never WRITE on
+ * refresh). On VALCHANGE we persist whatever the user typed. Mirrors the
+ * resolution order in SearchWinSCP() (kitty.c). */
+int ReadParameter(const char *key, const char *name, char *value);   /* kitty.c */
+int WriteParameter(const char *key, const char *name, char *value);  /* kitty.c */
+int existfile(const char *filename);                                  /* kitty_tools.c */
+/* kitty.ini [section] name (kitty_config.c does not include kitty.h). Mirror
+ * the MOD_PERSO definition there so the two never drift. */
+#ifndef INIT_SECTION
+#define INIT_SECTION "KiTTY"
+#endif
+static void kitty_winscppath_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                     void *data, int event)
+{
+    /* dlg_editbox_set() fires a re-entrant EVENT_VALCHANGE (see the autopw
+     * handler note above); this guard stops the refresh-time hint from being
+     * written back to kitty.ini, so we only persist genuine user edits. */
+    static int refreshing = 0;
+    if (event == EVENT_REFRESH) {
+        char buffer[4096];
+        buffer[0] = '\0';
+        refreshing = 1;
+        if (ReadParameter(INIT_SECTION, "WinSCPPath", buffer) != 0 &&
+            buffer[0]) {
+            dlg_editbox_set(ctrl, dlg, buffer);
+        } else {
+            /* Nothing stored: offer the default location as a hint, but only
+             * if it actually exists (display only - do not persist here). */
+            const char *pf = getenv("ProgramFiles");
+            if (pf) {
+                sprintf(buffer, "%s\\WinSCP\\WinSCP.exe", pf);
+                dlg_editbox_set(ctrl, dlg, existfile(buffer) ? buffer : "");
+            } else {
+                dlg_editbox_set(ctrl, dlg, "");
+            }
+        }
+        refreshing = 0;
+    } else if (event == EVENT_VALCHANGE) {
+        char *val;
+        if (refreshing)
+            return;
+        val = dlg_editbox_get(ctrl, dlg);
+        WriteParameter(INIT_SECTION, "WinSCPPath", val);
+        sfree(val);
+    }
+}
 #endif
 
 #define PRINTER_DISABLED_STRING "None (printing disabled)"
@@ -915,6 +965,7 @@ struct sessionsaver_data {
 #ifdef MOD_PERSO
     dlgcontrol *folderlist;      /* KiTTY: session-folder filter droplist */
     dlgcontrol *createbutton, *delfolderbutton, *arrangebutton; /* KiTTY folder mgmt */
+    dlgcontrol *commentbox;      /* KiTTY: read-only comment of selected session */
 #endif
     struct sesslist sesslist;
     bool midsession;
@@ -957,6 +1008,31 @@ static bool load_selected_session(
     return true;
 }
 
+#ifdef MOD_PERSO
+/* KiTTY: refresh the read-only comment box from the session currently selected
+ * in the saved-sessions list. Indexing mirrors load_selected_session() so the
+ * box always shows the comment of the session that Load would open. Shows the
+ * empty string if nothing is selected or the session has no comment. */
+static void update_comment_display(struct sessionsaver_data *ssd, dlgparam *dlg)
+{
+    int i;
+    Conf *tmp;
+    const char *c;
+    if (!ssd->commentbox)
+        return;
+    i = dlg_listbox_index(ssd->listbox, dlg);
+    if (i < 0 || i >= ssd->sesslist.nsessions) {
+        dlg_editbox_set(ssd->commentbox, dlg, "");
+        return;
+    }
+    tmp = conf_new();
+    load_settings(ssd->sesslist.sessions[i], tmp);
+    c = conf_get_str(tmp, CONF_comment);
+    dlg_editbox_set(ssd->commentbox, dlg, c ? c : "");
+    conf_free(tmp);
+}
+#endif
+
 static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                  void *data, int event)
 {
@@ -998,6 +1074,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     dlg_listbox_addwithid(ctrl, dlg, FolderList[i], i);
             dlg_update_done(ctrl, dlg);
         }
+        else if (ssd->commentbox && ctrl == ssd->commentbox) {
+            update_comment_display(ssd, dlg);
+        }
 #endif
     } else if (event == EVENT_VALCHANGE) {
         int top, bottom, halfway, i;
@@ -1032,6 +1111,11 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 dlg_refresh(ssd->listbox, dlg);   /* re-filter the session list */
             }
         }
+    } else if (event == EVENT_SELCHANGE && ssd->commentbox &&
+               ctrl == ssd->listbox) {
+        /* KiTTY: clicking through the saved-sessions list updates the
+         * read-only comment display below it. */
+        update_comment_display(ssd, dlg);
 #endif
     } else if (event == EVENT_ACTION) {
         bool mbl = false;
@@ -2250,6 +2334,18 @@ void setup_config_box(struct controlbox *b, bool midsession,
     }
 #endif
     ctrl_columns(s, 1, 100);
+#ifdef MOD_PERSO
+    /* KiTTY: read-only display of the selected session's comment, in the gap
+     * below the saved-sessions list. Follows the list selection (see the
+     * EVENT_SELCHANGE handling in sessionsaver_handler). */
+    if (!GetPuttyFlag()) {
+        ssd->commentbox = ctrl_editbox_multiline(
+            s, "Comment of selected session", NO_SHORTCUT, 4, true,
+            HELPCTX(session_saved), sessionsaver_handler, P(ssd), P(NULL));
+    } else {
+        ssd->commentbox = NULL;
+    }
+#endif
 
     s = ctrl_getset(b, "Session", "otheropts", NULL);
     ctrl_radiobuttons(s, "Close window on exit:", 'x', 4,
@@ -3902,6 +3998,11 @@ void setup_config_box(struct controlbox *b, bool midsession,
 
             s = ctrl_getset(b, "Connection/SSH/PSCP and WinSCP",
                             "WinSCP", "WinSCP integration");
+            /* Global app setting (kitty.ini [KiTTY] WinSCPPath), not per-session;
+             * uses a custom handler rather than conf_editbox_handler. */
+            ctrl_editbox(s, "WinSCP executable path", NO_SHORTCUT, 100,
+                         HELPCTX(no_help),
+                         kitty_winscppath_handler, P(NULL), P(NULL));
             ctrl_editbox(s, "SFTP connect ([user@]hostname[:port])",
                          NO_SHORTCUT, 100,
                          HELPCTX(no_help),
@@ -4094,8 +4195,10 @@ void setup_config_box(struct controlbox *b, bool midsession,
     if (!GetPuttyFlag()) {
         ctrl_settitle(b, "Comment", "Comment for this session");
         s = ctrl_getset(b, "Comment", "main", NULL);
-        ctrl_editbox(s, "Session comment", NO_SHORTCUT, 100,
-                     HELPCTX(no_help), conf_editbox_handler,
-                     I(CONF_comment), ED_STR);
+        /* Multiline (~5 lines). Newlines round-trip to storage: REG_SZ holds
+         * CRLF directly, and file/dir mode mungestr()-encodes control chars. */
+        ctrl_editbox_multiline(s, "Session comment", NO_SHORTCUT, 5, false,
+                               HELPCTX(no_help), conf_editbox_handler,
+                               I(CONF_comment), ED_STR);
     }
 }

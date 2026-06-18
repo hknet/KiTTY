@@ -210,6 +210,18 @@ struct dlgcontrol {
              * combination.
              */
             bool has_list;
+            /*
+             * KiTTY: a multiline edit box (ES_MULTILINE | WS_VSCROLL,
+             * `lines` rows tall, label always on its own line above).
+             * `readonly` makes it a display-only box (ES_READONLY).
+             * These fields are UNCONDITIONAL (not under #ifdef): config.c
+             * is compiled both with and without MOD_PERSO, and dialog.c
+             * once, so guarding them would desync the dlgcontrol layout
+             * across translation units (ODR trap).
+             */
+            bool multiline;
+            int lines;
+            bool readonly;
         } editbox;
         struct { /* for CTRL_RADIO */
             /*
@@ -515,6 +527,14 @@ dlgcontrol *ctrl_combobox(struct controlset *, const char *label,
                           char shortcut, int percentage, HelpCtx helpctx,
                           handler_fn handler,
                           intorptr context, intorptr context2);
+/*
+ * KiTTY: a multiline edit box, `lines` rows tall. `readonly` makes it a
+ * display-only box. Label (if any) sits on its own line above the box.
+ */
+dlgcontrol *ctrl_editbox_multiline(struct controlset *, const char *label,
+                                   char shortcut, int lines, bool readonly,
+                                   HelpCtx helpctx, handler_fn handler,
+                                   intorptr context, intorptr context2);
 /*
  * `ncolumns' is followed by (alternately) radio button titles and
  * intorptrs, until a NULL in place of a title string is seen. Each
