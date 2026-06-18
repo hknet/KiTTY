@@ -524,7 +524,7 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 	TrayIcone.szTip[1024] = (TCHAR*)"PuTTY\0" ;			// Le tooltip par défaut, soit rien
 #else
 	//TrayIcone.szTip[1024] = "KiTTY That\'s all folks!\0" ;			// Le tooltip par défaut, soit rien
-	strcpy( TrayIcone.szTip, "KiTTY That\'s all folks!\0" ) ;			// Le tooltip par défaut, soit rien
+	strcpy( TrayIcone.szTip, "KiTTY Launcher\0" ) ;			// Le tooltip par défaut
 #endif
 	TrayIcone.hWnd = hwnd ;
 	ResShell = Shell_NotifyIcon(NIM_ADD, &TrayIcone);
@@ -532,7 +532,7 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 #ifdef FLJ
 		strcpy( TrayIcone.szTip, "PuTTY\0" ) ;
 #else
-		strcpy( TrayIcone.szTip, "KiTTY That\'s all folks!\0" ) ;
+		strcpy( TrayIcone.szTip, "KiTTY Launcher\0" ) ;
 #endif
 		ResShell = Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
 		if (IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_HIDE);
@@ -802,10 +802,13 @@ void RunConfig( Conf * conf ) {
 	si.dwFlags = 0;
 	si.cbReserved2 = 0;
 	si.lpReserved2 = NULL;
-	CreateProcess(b, cl, NULL, NULL, inherit_handles,
-		NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi);
-	CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
+	if( CreateProcess(b, cl, NULL, NULL, inherit_handles,
+		NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi) ) {
+		/* let the spawned KiTTY window come to the foreground (see RunCommand) */
+		AllowSetForegroundWindow( pi.dwProcessId ) ;
+		CloseHandle(pi.hProcess);
+		CloseHandle(pi.hThread);
+	}
 
 	if (filemap)
 		CloseHandle(filemap);

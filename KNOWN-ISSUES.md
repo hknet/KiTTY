@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.6 — Known issues & limitations
+# KiTTY 0.84.1.7 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,27 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.6-beta @ 2026-06-18`.
+- **Version string:** binaries report `0.84.1.7-beta @ 2026-06-18`.
+
+## New in 0.84.1.7
+
+- **Launcher — new sessions now take focus.** Starting a saved session from the
+  `kitty.exe -launcher` tray menu opened the terminal window *behind* the launcher,
+  so you had to click it before typing. The launcher now grants the spawned process
+  foreground rights (`AllowSetForegroundWindow`), so the new window comes to the
+  front with the keyboard focus.
+- **Launcher — icon + tooltip.** The tray/Start-menu launcher now uses the **main
+  KiTTY application icon** (matching the rest of the suite), and its tray tooltip
+  reads **"KiTTY Launcher"**.
+- **Launcher — auto-start at login (installer).** Both installers now place a
+  **"KiTTY Launcher"** shortcut in your Startup folder, so the tray launcher is
+  ready on boot.
+- **kageant — session submenu reads the right hive.** kageant's right-click
+  "session" submenu listed sessions from the stock PuTTY hive
+  (`Software\SimonTatham\PuTTY`) instead of KiTTY's (`Software\9bis.com\KiTTY`),
+  matching original KiTTY again. (Agent keys are still not persisted across restarts
+  — that's by design in every PuTTY/Pageant; use *Add Key (Encrypted)* + a Startup
+  shortcut, e.g. `kageant.exe -encrypted key.ppk`.)
 
 ## New in 0.84.1.6
 

@@ -389,8 +389,13 @@ void RunCommand( HWND hwnd, const char * cmd ) {
 
 	if( !CreateProcess(NULL,(CHAR*)cmd,NULL,NULL,FALSE,NORMAL_PRIORITY_CLASS,NULL,NULL,&StartUpInfo,&ProcessInformation) ) {
 		ShellExecute(hwnd, "open", cmd ,0 , 0, SW_SHOWDEFAULT);
-	} else { 
-		WaitForInputIdle(ProcessInformation.hProcess, INFINITE ); 
+	} else {
+		/* Grant the spawned session the right to bring its window to the
+		 * foreground. Without this, the new KiTTY window's SetForegroundWindow()
+		 * (window.c) is blocked by Windows' foreground lock when we launch from
+		 * the tray launcher, so the window opens behind and never gets focus. */
+		AllowSetForegroundWindow( ProcessInformation.dwProcessId ) ;
+		WaitForInputIdle(ProcessInformation.hProcess, INFINITE );
 		CloseHandle( &StartUpInfo );
 		CloseHandle( &ProcessInformation );
 	}

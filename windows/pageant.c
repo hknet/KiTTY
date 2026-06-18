@@ -70,7 +70,9 @@ static filereq_saved_dir *keypath = NULL;
 #define IDM_PUTTY              0x0090
 #define IDM_SESSIONS_BASE      0x1000
 #define IDM_SESSIONS_MAX       0x2000
-#define PUTTY_REGKEY      "Software\\SimonTatham\\PuTTY\\Sessions"
+/* KiTTY: kageant's session submenu reads KiTTY's own hive (where sessions
+ * actually live), matching original KiTTY -- not stock PuTTY's SimonTatham hive. */
+#define PUTTY_REGKEY      "Software\\9bis.com\\KiTTY\\Sessions"
 #define PUTTY_DEFAULT     "Default%20Settings"
 static int initial_menuitems_count;
 
