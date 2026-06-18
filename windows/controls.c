@@ -767,6 +767,40 @@ void bigeditctrl(struct ctlpos *cp, const char *stext,
 }
 
 /*
+ * KiTTY: a config-panel multiline edit box (label on its own line above,
+ * `lines` rows tall). Modelled on bigeditctrl, but adds ES_WANTRETURN so
+ * Enter inserts a newline (rather than firing the default button), and
+ * optionally ES_READONLY for a display-only box. Kept separate from
+ * bigeditctrl so its other (raw-dialog) callers are unaffected.
+ */
+static void multiline_editbox(struct ctlpos *cp, const char *stext,
+                              int sid, int eid, int lines, bool readonly)
+{
+    RECT r;
+    int style;
+
+    if (stext) {
+        r.left = GAPBETWEEN;
+        r.top = cp->ypos;
+        r.right = cp->width;
+        r.bottom = STATICHEIGHT;
+        cp->ypos += r.bottom + GAPWITHIN;
+        doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+    }
+
+    r.left = GAPBETWEEN;
+    r.top = cp->ypos;
+    r.right = cp->width;
+    r.bottom = EDITHEIGHT + (lines - 1) * STATICHEIGHT;
+    cp->ypos += r.bottom + GAPBETWEEN;
+    style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL |
+            ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL;
+    if (readonly)
+        style |= ES_READONLY;
+    doctl(cp, r, "EDIT", style, WS_EX_CLIENTEDGE, "", eid);
+}
+
+/*
  * A list box with a static labelling it.
  */
 void listbox(struct ctlpos *cp, const char *stext,
@@ -1542,7 +1576,10 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
             escaped = shortcut_escape(ctrl->label,
                                       ctrl->editbox.shortcut);
             shortcuts[nshortcuts++] = ctrl->editbox.shortcut;
-            if (ctrl->editbox.percentwidth == 100) {
+            if (ctrl->editbox.multiline) {
+                multiline_editbox(&pos, escaped, base_id, base_id+1,
+                                  ctrl->editbox.lines, ctrl->editbox.readonly);
+            } else if (ctrl->editbox.percentwidth == 100) {
                 if (ctrl->editbox.has_list)
                     combobox(&pos, escaped,
                              base_id, base_id+1);
