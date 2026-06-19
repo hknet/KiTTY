@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.9 — Known issues & limitations
+# KiTTY 0.84.1.10 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,21 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.9-beta @ 2026-06-18`.
+- **Version string:** binaries report `0.84.1.10-beta @ 2026-06-19`.
+
+## New in 0.84.1.10
+
+- **kageant — optional Windows OpenSSH integration (off by default).** A new tray
+  menu item, **"Register as Windows OpenSSH agent"**, lets kageant act as the agent
+  for the Windows `ssh.exe`. When ticked, kageant writes `%USERPROFILE%\.ssh\kageant.conf`
+  (an `IdentityAgent` line pointing at its named pipe) and adds a marker-delimited
+  managed block to `%USERPROFILE%\.ssh\config` that `Include`s it; unticking removes
+  the managed block again. It is **off by default** so kageant never alters your SSH
+  configuration unless you ask. Only kageant's own marker block is ever touched — the
+  rest of your `~/.ssh/config` is preserved byte-for-byte, written atomically, and a
+  one-time `config.kageant.bak` backup is taken before the first edit. The setting is
+  remembered (registry). *(Replaces the previous manual setup of a Startup-shortcut
+  `-openssh-config` flag plus a hand-edited `Include` line.)*
 
 ## New in 0.84.1.9
 
