@@ -5,6 +5,22 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.15-beta — 2026-06-21
+- **In-app updater:** *Check for updates* now downloads and installs the correct
+  asset for the detected install type — per-user MSI, system MSI (elevated), or
+  portable ZIP (download-only). The installer runs only after an Authenticode
+  gate confirms it is a genuine KAPPER-signed artifact (valid chain **and**
+  matching publisher CN); a file that fails verification is deleted and never run.
+- **Duplicate Session / New Session:** the new window now takes the foreground and
+  focus instead of opening behind the current window.
+- **Launcher About box:** no longer plays the Windows "asterisk" sound when opened.
+- **Transparency:** off by default (sessions start opaque) and still configurable
+  per session via *Window → Transparency*; `kitty.ini` `transparency=no` is now a
+  complete master switch (hides the config panel **and** the system-menu adjust
+  items).
+- **Saved-session comment box:** the read-only comment display no longer blanks
+  after pressing Load.
+
 ## 0.84.1.14-beta — 2026-06-20
 - **Saved-session list:** single-clicking a session now copies its name into the
   "Saved Sessions" box, so Save/Load act on it without retyping — e.g. select
