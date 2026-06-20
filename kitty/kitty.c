@@ -118,6 +118,12 @@ int GetRuttyFlag(void) { return RuttyFlag ; }
 void SetRuttyFlag( const int flag ) { RuttyFlag = flag ; }
 
 // Flag de gestion de la Transparence
+// The feature stays available (so transparency is configurable PER SESSION via the
+// Window > Transparency panel), but it is OFF by default because the per-session
+// TransparencyValue defaults to 0 = fully opaque / non-layered (see conf.h):
+// kitty_apply_transparency() applies nothing until a session sets a value > 0.
+// kitty.ini [KiTTY] transparency=no remains the master switch that removes the
+// whole feature (config panel + system-menu adjust items).
 #ifdef FLJ
 static int TransparencyFlag = 1 ;
 #else
