@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.11 — Known issues & limitations
+# KiTTY 0.84.1.12 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,14 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.11-beta @ 2026-06-20`.
+- **Version string:** binaries report `0.84.1.12-beta @ 2026-06-20`.
+
+## New in 0.84.1.12
+
+- **Taskbar icon fixed.** The terminal window's taskbar button showed a blank
+  sheet because the process declared the AppUserModelID `SimonTatham.PuTTY`,
+  which did not match the installer's pinned-shortcut id; it now declares
+  `kappernet.KiTTY`, so the taskbar button uses the proper KiTTY icon.
 
 ## New in 0.84.1.11
 
