@@ -167,6 +167,7 @@ void kitty_showportfwd(HWND, Conf*);
 void kitty_shortcuts_toggle(HWND);
 /* KiTTY shortcut/ctrl-tab engine (kitty.c / kitty_commun.c) */
 int GetPuttyFlag(void);
+int GetTransparencyFlag(void);
 int GetShortcutsFlag(void);
 int GetMouseShortcutsFlag(void);
 int GetCtrlTabFlag(void);
@@ -1121,9 +1122,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #ifdef MOD_PERSO
             /* ---- "Window" submenu: appearance & window state ---- */
             winmenu = CreatePopupMenu();
-            AppendMenu(winmenu, MF_ENABLED, IDM_TRANSPARUP,   "Transparency &+");
-            AppendMenu(winmenu, MF_ENABLED, IDM_TRANSPARDOWN, "Transparency &-");
-            AppendMenu(winmenu, MF_SEPARATOR, 0, 0);
+            /* Transparency is opt-in (off by default). The adjust items appear
+             * only when the feature is enabled (kitty.ini [KiTTY] transparency=yes),
+             * so a default install can't accidentally turn the window translucent. */
+            if (GetTransparencyFlag()) {
+                AppendMenu(winmenu, MF_ENABLED, IDM_TRANSPARUP,   "Transparency &+");
+                AppendMenu(winmenu, MF_ENABLED, IDM_TRANSPARDOWN, "Transparency &-");
+                AppendMenu(winmenu, MF_SEPARATOR, 0, 0);
+            }
             AppendMenu(winmenu, MF_ENABLED, IDM_FONTUP,       "Font &Up");
             AppendMenu(winmenu, MF_ENABLED, IDM_FONTDOWN,     "Font &Down");
             AppendMenu(winmenu, MF_SEPARATOR, 0, 0);
@@ -2916,10 +2922,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             si.dwFlags = 0;
             si.cbReserved2 = 0;
             si.lpReserved2 = NULL;
-            CreateProcess(b, cl, NULL, NULL, inherit_handles,
-                          NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi);
-            CloseHandle(pi.hProcess);
-            CloseHandle(pi.hThread);
+            if (CreateProcess(b, cl, NULL, NULL, inherit_handles,
+                          NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi)) {
+#ifdef MOD_PERSO
+                /* Hand the foreground right to the spawned window. Without this
+                 * the Windows foreground lock keeps focus on the parent window,
+                 * so a duplicated/new session opens behind and unfocused. */
+                AllowSetForegroundWindow(pi.dwProcessId);
+#endif
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+            }
 
             if (filemap)
                 CloseHandle(filemap);
