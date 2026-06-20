@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.12 — Known issues & limitations
+# KiTTY 0.84.1.13 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,21 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.12-beta @ 2026-06-20`.
+- **Version string:** binaries report `0.84.1.13-beta @ 2026-06-20`.
+
+## New in 0.84.1.13
+
+- **kageant — "Load keys on startup" (opt-in, off by default).** A new tray item.
+  When enabled, kageant remembers the file paths of the keys you have loaded
+  (auto-tracked) and re-adds them at the next login, added **encrypted/deferred**
+  (the passphrase is only requested on first use). Enabling also installs an
+  autostart entry (`HKCU\…\Run\KiTTY-kageant`), so it replaces a manual kageant
+  Startup shortcut. Only key-file *paths* are stored — never passphrases or key
+  material.
+- **Sessions can be hidden from the launcher.** A new per-session option, **"Hide
+  this session from the launcher"** (Session panel), excludes a session from the
+  `kitty -launcher` tray menu while keeping it in the normal session list.
+  *(Registry/file save modes; the directory save mode is not yet covered.)*
 
 ## New in 0.84.1.12
 
