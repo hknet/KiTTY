@@ -1005,6 +1005,13 @@ static bool load_selected_session(
     /* Restore the selection, which might have been clobbered by
      * changing the value of the edit box. */
     dlg_listbox_select(ssd->listbox, dlg, i);
+#ifdef MOD_PERSO
+    /* KiTTY: dlg_refresh(NULL) above refreshed the read-only comment box while
+     * the listbox selection was momentarily cleared (so it blanked); refresh it
+     * again now the selection is restored, so the comment stays shown after Load. */
+    if (ssd->commentbox)
+        dlg_refresh(ssd->commentbox, dlg);
+#endif
     return true;
 }
 
