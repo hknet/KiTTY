@@ -337,7 +337,15 @@ const struct BackendVtable *backend_vt_from_conf(Conf *conf)
 
 const wchar_t *get_app_user_model_id(void)
 {
+#ifdef MOD_PERSO
+    /* KiTTY: must match the AppUserModelID the installer puts on the pinned
+     * shortcuts ("kappernet.KiTTY"); otherwise the running window's taskbar
+     * button groups under an unregistered AUMID and shows a blank icon even
+     * though its window icon is valid. */
+    return L"kappernet.KiTTY";
+#else
     return L"SimonTatham.PuTTY";
+#endif
 }
 
 static void demo_terminal_screenshot(void *ctx, unsigned long now)
