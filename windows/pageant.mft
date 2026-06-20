@@ -6,9 +6,9 @@
 <assemblyIdentity
    version="0.0.0.0"
    processorArchitecture="*"
-   name="Pageant"
+   name="kageant"
    type="win32" />
-   <description>PuTTY SSH authentication agent</description>
+   <description>kageant (KiTTY SSH authentication agent)</description>
    <dependency>
    <dependentAssembly>
         <!-- Load Common Controls 6 instead of 5 to get WinXP native-
