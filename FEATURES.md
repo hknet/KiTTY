@@ -92,6 +92,8 @@ The session launcher gives you a quick way to open your saved sessions without d
 
 **How to enable:** Run **`kitty.exe -launcher`** to open a small quick-launch window listing your saved sessions.
 
+You can keep individual sessions out of the launcher menu while leaving them in the normal session list: tick **"Hide this session from the launcher"** in the session's **Session** panel.
+
 ![Session launcher](docs/features/img/ex_launcher.jpg)
 
 ### Automatic logon script
@@ -139,6 +141,22 @@ When you store private keys in KiTTY's key agent (kageant), you can require an e
 ![Private-key usage confirmation](docs/features/img/config_kittygen.jpg)
 ![Private-key usage confirmation](docs/features/img/ex_kageant.jpg)
 
+
+### kageant — Windows OpenSSH agent integration
+
+kageant (KiTTY's SSH agent) can act as the agent for the **Windows OpenSSH client** (`ssh.exe`), so the keys you load in kageant are usable by `ssh`, `git`, `scp` and any tool that uses Windows OpenSSH. When enabled, kageant writes `%USERPROFILE%\.ssh\kageant.conf` (an `IdentityAgent` line pointing at its named pipe) and adds a marker-delimited managed block to `%USERPROFILE%\.ssh\config` that includes it. It is **off by default** so kageant never alters your SSH configuration unless you ask, and only its own marker block is touched (the rest of `~/.ssh/config` is preserved byte-for-byte, written atomically, with a one-time `config.kageant.bak` backup).
+
+**How to enable:** right-click the kageant tray icon → **Register as Windows OpenSSH agent**. Untick to remove the managed block again.
+
+(no screenshot)
+
+### kageant — load keys on startup
+
+kageant can remember the keys you load and re-add them automatically at the next login, added **encrypted/deferred** (the passphrase is only requested the first time a key is actually used). It auto-tracks the file paths of the keys you load; enabling the option also installs an autostart entry so kageant starts at login — replacing the need for a hand-made Startup shortcut. Only key-file *paths* are stored, never passphrases or key material.
+
+**How to enable:** right-click the kageant tray icon → **Load keys on startup**.
+
+(no screenshot)
 
 ### Post-quantum key-exchange warning
 
@@ -349,6 +367,14 @@ KiTTY lets you send text straight from the terminal screen to a printer. Use the
 KiTTY can host a local shell right inside its terminal window, so you can run a Cygwin session, the Windows `cmd.exe` prompt, or even PowerShell without leaving KiTTY. This is handled by a small helper called `cygtermd.exe`, which you place in your Cygwin `/bin` directory (or alongside `kitty.exe` together with `cygwin1.dll` if you don't have a full Cygwin install). When launching `cmd.exe` this way, remember to pick the matching code page in the Translation settings (or via the `-codepage` option), and you can combine cygtermd with the winpty tool to run `cmd.exe` or PowerShell. With thanks to lars18th for the help.
 
 **How to enable:** Run a local shell via the cygtermd helper, e.g. `kitty.exe -localproxy "C:\cygwin64\bin\cygtermd.exe /home/%USERNAME% /bin/bash -login" localhost`.
+
+(no screenshot)
+
+### Local terminal (kitty_pterm)
+
+`kitty_pterm.exe` is KiTTY's terminal **emulator** running a **local shell** instead of a network connection. You get the exact same terminal as a KiTTY SSH window — fonts, colour schemes, mouse selection/copy-paste, scrollback, clickable URLs, transparency — but the backend is a local process (via the Windows ConPTY pseudo-console). Its value is consistency: your local shell looks and behaves just like your remote sessions. It is an interactive terminal, not a scripting tool, and has no special tie to saved sessions beyond sharing the appearance.
+
+**How to change the shell (cmd → PowerShell):** by default it runs `cmd.exe`. Launch it with `-e` to run a different shell, e.g. `kitty_pterm.exe -e powershell.exe` (Windows PowerShell) or `kitty_pterm.exe -e pwsh.exe` (PowerShell 7). For a saved session, set the same command in **Connection → Data → "Remote command"**.
 
 (no screenshot)
 

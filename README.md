@@ -61,7 +61,7 @@ Most KiTTY extras read from a `kitty.ini` (`[KiTTY]` section). For example, URL 
 hyperlink=yes
 ```
 
-See **[`FEATURES.md`](FEATURES.md)** for the full feature reference, including how to enable each one.
+See **[`FEATURES.md`](FEATURES.md)** for the full feature reference, including how to enable each one, and **[`CHANGELOG.md`](CHANGELOG.md)** for what changed in each release.
 
 ---
 
