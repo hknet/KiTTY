@@ -4,8 +4,8 @@
 
 #include "rcstuff.h"
 
-#define APPNAME "Pageant"
-#define APPDESC "PuTTY SSH authentication agent"
+#define APPNAME "kageant"
+#define APPDESC "kageant (KiTTY SSH authentication agent)"
 
 #include "pageant-rc.h"
 

@@ -1112,11 +1112,19 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 dlg_refresh(ssd->listbox, dlg);   /* re-filter the session list */
             }
         }
-    } else if (event == EVENT_SELCHANGE && ssd->commentbox &&
-               ctrl == ssd->listbox) {
-        /* KiTTY: clicking through the saved-sessions list updates the
-         * read-only comment display below it. */
-        update_comment_display(ssd, dlg);
+    } else if (event == EVENT_SELCHANGE && ctrl == ssd->listbox) {
+        /* KiTTY: single-clicking a saved session copies its name into the
+         * "Saved Sessions" edit box, so Save/Load act on it without retyping
+         * (e.g. selecting "Default Settings" lets you re-save it directly).
+         * Also refreshes the read-only comment display. */
+        int i = dlg_listbox_index(ssd->listbox, dlg);
+        if (i >= 0 && i < ssd->sesslist.nsessions) {
+            sfree(ssd->savedsession);
+            ssd->savedsession = dupstr(ssd->sesslist.sessions[i]);
+            dlg_refresh(ssd->editbox, dlg);
+        }
+        if (ssd->commentbox)
+            update_comment_display(ssd, dlg);
 #endif
     } else if (event == EVENT_ACTION) {
         bool mbl = false;
