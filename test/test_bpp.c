@@ -89,6 +89,39 @@ static bool test_bpp2_large_packet_once(
     return error_reported;
 }
 
+static bool test_bpp1_large_packet_once(
+    LogContext *logctx, uint32_t payload_len)
+{
+    bufchain wire;
+
+    error_reported = false;
+
+    bufchain_init(&wire);
+    BinaryPacketProtocol *bpp_out = ssh1_bpp_new(logctx);
+    BinaryPacketProtocol *bpp_in = ssh1_bpp_new(logctx);
+    bpp_out->out_raw = &wire;
+    bpp_in->in_raw = &wire;
+
+    testrandom_seed("bpp1");
+    const ssh_cipheralg *cipher = &ssh_blowfish_ssh1;
+    const char cipherkey[32] = "32-byte test cipher key material";
+    ssh1_bpp_new_cipher(bpp_out, cipher, cipherkey);
+    ssh1_bpp_new_cipher(bpp_in, cipher, cipherkey);
+
+    PktOut *pkt = ssh_bpp_new_pktout(bpp_out, 100);
+    put_padding(pkt, payload_len, 'x');
+    pq_push(&bpp_out->out_pq, pkt);
+    ssh_bpp_handle_output(bpp_out);
+    ssh_bpp_handle_input(bpp_in);
+
+    pq_in_clear(&bpp_in->in_pq);
+    ssh_bpp_free(bpp_out);
+    ssh_bpp_free(bpp_in);
+    bufchain_clear(&wire);
+
+    return error_reported;
+}
+
 static void test_bpp2_large_packet(
     LogContext *logctx, const ssh_cipheralg *cipher, bool etm_mode)
 {
@@ -102,6 +135,16 @@ static void test_bpp2_large_packet(
                  logctx, cipher, etm_mode, payload_len));
 }
 
+static void test_bpp1_large_packet(LogContext *logctx)
+{
+    uint32_t payload_len = 262145;     /* > SSH-1 mandated max packet size */
+    bool err = test_bpp1_large_packet_once(logctx, payload_len);
+    assert(err && "That packet should definitely be too large");
+    do {
+        payload_len--;
+    } while (test_bpp1_large_packet_once(logctx, payload_len));
+}
+
 int main(void)
 {
     testrandom_init();
@@ -113,6 +156,7 @@ int main(void)
     test_bpp2_large_packet(logctx, &ssh_aes128_sdctr, false);
     test_bpp2_large_packet(logctx, &ssh_aes128_sdctr, true);
     test_bpp2_large_packet(logctx, &ssh_aes128_cbc, false);
+    test_bpp1_large_packet(logctx);
 
     if (failed) {
         printf("Test suite FAILED!\n");
