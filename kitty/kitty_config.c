@@ -2361,6 +2361,10 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ctrl_checkbox(s, "Save settings automatically on exit", NO_SHORTCUT,
                       HELPCTX(no_help), conf_checkbox_handler,
                       I(CONF_saveonexit));
+        /* KiTTY: exclude this session from the kitty -launcher tray menu. */
+        ctrl_checkbox(s, "Hide this session from the launcher", NO_SHORTCUT,
+                      HELPCTX(no_help), conf_checkbox_handler,
+                      I(CONF_launcherhide));
     }
 #endif
 

@@ -323,6 +323,14 @@ void InitLauncherRegistry( void ) {
 				DWORD cchValue = MAX_VALUE_NAME;
 				char lpData[4096] ;
 				if( RegEnumKeyEx(hKey, i, lpData, &cchValue, NULL, NULL, NULL, &ftLastWriteTime) == ERROR_SUCCESS ) {
+					/* KiTTY: skip sessions marked LauncherHide (excluded from the launcher). */
+					{
+						DWORD hide = 0, hsz = sizeof(hide) ;
+						char skey[4096] ;
+						sprintf( skey, "%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
+						if( RegGetValueA( HKEY_CURRENT_USER, skey, "LauncherHide", RRF_RT_REG_DWORD, NULL, &hide, &hsz ) == ERROR_SUCCESS && hide )
+							continue ;
+					}
 					sprintf( buffer,"%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
 					if( !GetValueData(HKEY_CURRENT_USER, buffer, "Folder", folder ) )
 						{ strcpy( folder, "Default" ) ; }

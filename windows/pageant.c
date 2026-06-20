@@ -69,6 +69,7 @@ static filereq_saved_dir *keypath = NULL;
 #define IDM_ABOUT              0x0080
 #define IDM_PUTTY              0x0090
 #define IDM_OPENSSH_INTEGRATION 0x00A0   /* KiTTY: toggle Windows OpenSSH integration */
+#define IDM_LOAD_ON_STARTUP    0x00B0    /* KiTTY: toggle load-keys-on-startup */
 #define IDM_SESSIONS_BASE      0x1000
 #define IDM_SESSIONS_MAX       0x2000
 /* KiTTY: kageant's session submenu reads KiTTY's own hive (where sessions actually
@@ -480,6 +481,7 @@ void keylist_update(void)
     }
 }
 
+static void kageant_track_keypath(const char *path);  /* KiTTY: startup-keys */
 static void win_add_keyfile(Filename *filename, bool encrypted)
 {
     char *err;
@@ -492,6 +494,7 @@ static void win_add_keyfile(Filename *filename, bool encrypted)
      */
     ret = pageant_add_keyfile(filename, NULL, &err, encrypted);
     if (ret == PAGEANT_ACTION_OK) {
+        kageant_track_keypath(filename_to_str(filename));   /* KiTTY startup-keys */
         goto done;
     } else if (ret == PAGEANT_ACTION_FAILURE) {
         goto error;
@@ -527,6 +530,7 @@ static void win_add_keyfile(Filename *filename, bool encrypted)
         burnstr(pps.passphrase);
 
         if (ret == PAGEANT_ACTION_OK) {
+            kageant_track_keypath(filename_to_str(filename));   /* KiTTY startup-keys */
             goto done;
         } else if (ret == PAGEANT_ACTION_FAILURE) {
             goto error;
@@ -1404,6 +1408,139 @@ static void kageant_openssh_apply(int on)
     sfree(cfgpath); sfree(confpath); sfree(sshdir);
 }
 
+/* ------------------------------------------------------------------ *
+ * KiTTY: optional "load keys on startup" (added encrypted/deferred).   *
+ *                                                                      *
+ * OFF BY DEFAULT. kageant auto-tracks the file paths of keys you load  *
+ * (kageant_track_keypath, from win_add_keyfile); enabling the tray     *
+ * item snapshots them to the registry (REG_MULTI_SZ StartupKeys) and   *
+ * installs an HKCU ...\Run entry so kageant autostarts at login -      *
+ * replacing the need for a manual Startup shortcut. At startup the keys *
+ * are re-added with deferred decryption (passphrase only on first use).*
+ * Only key-file PATHS are stored (never passphrases/key material).     *
+ * ------------------------------------------------------------------ */
+#define KAGEANT_REG_STARTUP "LoadKeysOnStartup"
+#define KAGEANT_REG_KEYS    "StartupKeys"
+#define KAGEANT_RUN_KEY     "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+#define KAGEANT_RUN_NAME    "KiTTY-kageant"
+
+static char **g_loaded_keypaths = NULL;   /* key paths added this session */
+static int    g_nloaded = 0;
+static int    g_startup_loading = 0;       /* suppress re-save during startup load */
+
+static int kageant_startup_get(void)
+{
+    DWORD val = 0, sz = sizeof(val);
+    if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, KAGEANT_REG_STARTUP,
+                     RRF_RT_REG_DWORD, NULL, &val, &sz) != ERROR_SUCCESS)
+        return 0;
+    return val ? 1 : 0;
+}
+
+static void kageant_startup_set(int on)
+{
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        DWORD val = on ? 1 : 0;
+        RegSetValueExA(hk, KAGEANT_REG_STARTUP, 0, REG_DWORD,
+                       (const BYTE *)&val, sizeof(val));
+        RegCloseKey(hk);
+    }
+}
+
+/* Write the tracked key paths to the StartupKeys REG_MULTI_SZ value. */
+static void kageant_save_startup_keys(void)
+{
+    size_t total = 1;   /* trailing empty string (double-NUL) */
+    int i;
+    for (i = 0; i < g_nloaded; i++)
+        total += strlen(g_loaded_keypaths[i]) + 1;
+    char *buf = snewn(total, char), *p = buf;
+    for (i = 0; i < g_nloaded; i++) {
+        size_t L = strlen(g_loaded_keypaths[i]) + 1;
+        memcpy(p, g_loaded_keypaths[i], L);
+        p += L;
+    }
+    *p = '\0';
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        RegSetValueExA(hk, KAGEANT_REG_KEYS, 0, REG_MULTI_SZ,
+                       (const BYTE *)buf, (DWORD)total);
+        RegCloseKey(hk);
+    }
+    sfree(buf);
+}
+
+/* Auto-track a key path added this session (dedup, case-insensitive). When the
+ * feature is on, persist the updated set (unless we're mid startup load). */
+static void kageant_track_keypath(const char *path)
+{
+    int i;
+    if (!path || !*path)
+        return;
+    for (i = 0; i < g_nloaded; i++)
+        if (!stricmp(g_loaded_keypaths[i], path))
+            return;
+    g_loaded_keypaths = sresize(g_loaded_keypaths, g_nloaded + 1, char *);
+    g_loaded_keypaths[g_nloaded++] = dupstr(path);
+    if (!g_startup_loading && kageant_startup_get())
+        kageant_save_startup_keys();
+}
+
+/* Add/remove the HKCU ...\Run entry that autostarts kageant at login. */
+static void kageant_set_run_entry(int on)
+{
+    HKEY hk;
+    if (on) {
+        char exe[MAX_PATH + 3];
+        DWORD n = GetModuleFileNameA(NULL, exe + 1, MAX_PATH);
+        if (!n || n >= MAX_PATH)
+            return;
+        exe[0] = '"'; exe[n + 1] = '"'; exe[n + 2] = '\0';
+        if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0, NULL, 0,
+                            KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+            RegSetValueExA(hk, KAGEANT_RUN_NAME, 0, REG_SZ,
+                           (const BYTE *)exe, (DWORD)strlen(exe) + 1);
+            RegCloseKey(hk);
+        }
+    } else {
+        if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0,
+                          KEY_SET_VALUE, &hk) == ERROR_SUCCESS) {
+            RegDeleteValueA(hk, KAGEANT_RUN_NAME);
+            RegCloseKey(hk);
+        }
+    }
+}
+
+/* Re-add remembered startup keys, encrypted/deferred (passphrase on first use). */
+static void kageant_load_startup_keys(void)
+{
+    HKEY hk;
+    DWORD type = 0, sz = 0;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0,
+                      KEY_QUERY_VALUE, &hk) != ERROR_SUCCESS)
+        return;
+    if (RegQueryValueExA(hk, KAGEANT_REG_KEYS, NULL, &type, NULL, &sz)
+            == ERROR_SUCCESS && type == REG_MULTI_SZ && sz > 0) {
+        char *buf = snewn(sz + 1, char);
+        if (RegQueryValueExA(hk, KAGEANT_REG_KEYS, NULL, NULL,
+                             (BYTE *)buf, &sz) == ERROR_SUCCESS) {
+            buf[sz] = '\0';
+            g_startup_loading = 1;
+            for (char *p = buf; *p; p += strlen(p) + 1) {
+                Filename *fn = filename_from_str(p);
+                win_add_keyfile(fn, true);   /* encrypted / deferred */
+                filename_free(fn);
+            }
+            g_startup_loading = 0;
+        }
+        sfree(buf);
+    }
+    RegCloseKey(hk);
+}
+
 static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                                     WPARAM wParam, LPARAM lParam)
 {
@@ -1540,6 +1677,29 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                     "item to remove the block again.)", cfg ? cfg : "~/.ssh/config");
                 MessageBox(NULL, msg, "kageant", MB_ICONINFORMATION | MB_OK);
                 sfree(msg); sfree(cfg);
+            }
+            break;
+          }
+          case IDM_LOAD_ON_STARTUP: {
+            /* KiTTY: toggle load-keys-on-startup. Enabling snapshots the
+             * currently-loaded keys and installs an autostart Run entry. */
+            int on = !kageant_startup_get();
+            kageant_startup_set(on);
+            kageant_set_run_entry(on);
+            if (on)
+                kageant_save_startup_keys();   /* snapshot current key set */
+            CheckMenuItem(systray_menu, IDM_LOAD_ON_STARTUP,
+                          MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
+            if (on) {
+                char *msg = dupprintf(
+                    "kageant will load your current %d key(s) at login, added "
+                    "encrypted (passphrase asked on first use).\n\n"
+                    "An autostart entry was added (HKCU ...\\Run\\%s), so you can "
+                    "remove any manual kageant Startup shortcut. Newly added keys "
+                    "are remembered automatically while this stays enabled.",
+                    g_nloaded, KAGEANT_RUN_NAME);
+                MessageBox(NULL, msg, "kageant", MB_ICONINFORMATION | MB_OK);
+                sfree(msg);
             }
             break;
           }
@@ -2037,6 +2197,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* And forget any passphrases we stashed during that loop. */
     pageant_forget_passphrases();
 
+    /* KiTTY: if "load keys on startup" is enabled, re-add the remembered keys
+     * (encrypted/deferred). Primary instance only - a second invocation just
+     * forwards to the running agent and exits. */
+    if (!already_running && kageant_startup_get()) {
+        kageant_load_startup_keys();
+        pageant_forget_passphrases();
+    }
+
     /*
      * Now our keys are present, spawn a command, if we were asked to.
      */
@@ -2069,7 +2237,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* Set up a system tray icon */
     AddTrayIcon(traywindow);
 
-    /* Accelerators used: nsvkxao */
+    /* Accelerators used: nsvkxaol */
     systray_menu = CreatePopupMenu();
     if (putty_path) {
         session_menu = CreateMenu();
@@ -2093,6 +2261,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_openssh_get() ? MF_CHECKED : MF_UNCHECKED),
                IDM_OPENSSH_INTEGRATION, "Register as Windows &OpenSSH agent");
+    /* KiTTY: opt-in load-keys-on-startup (default off). */
+    AppendMenu(systray_menu, MF_ENABLED |
+               (kageant_startup_get() ? MF_CHECKED : MF_UNCHECKED),
+               IDM_LOAD_ON_STARTUP, "&Load keys on startup");
     AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
     if (has_help())
         AppendMenu(systray_menu, MF_ENABLED, IDM_HELP, "&Help");
