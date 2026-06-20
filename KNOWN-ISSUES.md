@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.13 — Known issues & limitations
+# KiTTY 0.84.1.14 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,22 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.13-beta @ 2026-06-20`.
+- **Version string:** binaries report `0.84.1.14-beta @ 2026-06-20`.
+
+## New in 0.84.1.14
+
+- **Saved-session list: single-click fills the name box.** Clicking a session in
+  the saved-sessions list now copies its name into the "Saved Sessions" edit box,
+  so Save/Load act on it without retyping — e.g. select **Default Settings** and
+  Save to update it directly (previously you had to type the name in by hand).
+- **Windows file-info rebranding.** Several binaries still carried PuTTY-era
+  VERSIONINFO. kageant's file description ("PuTTY SSH authentication agent" — shown
+  e.g. in Task Manager's Startup list) is now "kageant (KiTTY SSH authentication
+  agent)"; kitty_pterm's description no longer says "PuTTY-style"; and the renamed
+  CLI tools report their shipped names (klink/kscp/ksftp/kageant/kitty_pterm)
+  instead of the old Plink/PSCP/PSFTP/Pageant/pterm. *(The version string still
+  notes the "PuTTY 0.84 base" lineage, and the copyright still credits Simon
+  Tatham — both deliberate upstream attribution.)*
 
 ## New in 0.84.1.13
 
