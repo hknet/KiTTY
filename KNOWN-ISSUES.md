@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.14 — Known issues & limitations
+# KiTTY 0.84.1.15 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,27 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.14-beta @ 2026-06-20`.
+- **Version string:** binaries report `0.84.1.15-beta @ 2026-06-21`.
+
+## New in 0.84.1.15
+
+- **In-app updater.** "Check for updates" can now download **and install** the
+  right asset for how this copy was installed — the per-user MSI, the system MSI
+  (with an elevation prompt), or the portable ZIP (download-only). The downloaded
+  installer is run **only** after its Authenticode signature is verified to be a
+  genuine KAPPER-signed artifact (valid trust chain **and** matching publisher);
+  anything that fails is deleted and never executed.
+- **Duplicate Session / New Session focus.** The spawned window now comes to the
+  foreground and takes focus instead of opening behind the current window.
+- **Launcher About box is silent.** Opening the tray launcher's About box no
+  longer plays the Windows "asterisk" system sound.
+- **Transparency is a clean per-session option.** Window transparency is off by
+  default (sessions start fully opaque) and remains configurable per session via
+  *Window → Transparency*. Setting `transparency=no` in `kitty.ini` is now a
+  complete master switch that removes both the config panel **and** the
+  system-menu Transparency +/- items.
+- **Saved-session comment box keeps its text after Load.** The read-only
+  "comment of selected session" box no longer blanks once you press Load.
 
 ## New in 0.84.1.14
 
