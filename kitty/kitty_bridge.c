@@ -203,6 +203,21 @@ void kitty_apply_icon(HWND hwnd, Conf *conf) {
     SetNewIcon(hwnd, buf, conf_get_int(conf, CONF_icone), SI_INIT);
 }
 
+/* KiTTY: restore the session's normal window icon after a (re)connect, undoing
+ * SetConnBreakIcon(). Unlike kitty_apply_icon() this always runs (no
+ * GetIconeFlag()==-1 early return), so the broken-connection icon never sticks
+ * once the session is back up. */
+void kitty_restore_icon(HWND hwnd, Conf *conf) {
+    const char *iconfile = filename_to_str(conf_get_filename(conf, CONF_iconefile));
+    char buf[1024];
+    buf[0] = '\0';
+    if (iconfile && iconfile[0]) {
+        strncpy(buf, iconfile, sizeof(buf)-1);
+        buf[sizeof(buf)-1] = '\0';
+    }
+    SetNewIcon(hwnd, buf, conf_get_int(conf, CONF_icone), SI_INIT);
+}
+
 /* KiTTY About box (IDM_ABOUT). A compact KiTTY-specific dialog showing the
  * KiTTY build version and credits, with a clickable project link. Template
  * IDD_KITTYABOUT lives in windows/kitty.rc. */
