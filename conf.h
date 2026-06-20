@@ -82,7 +82,9 @@ CONF_OPTION(tcp_nodelay,
 )
 CONF_OPTION(tcp_keepalives,
     VALUE_TYPE(BOOL),
-    DEFAULT_BOOL(false),
+    DEFAULT_BOOL(true),   /* KiTTY: on by default - OS SO_KEEPALIVE refreshes NAT
+                           * and detects dead peers; no keepalive-timeout->fatal
+                           * path exists, so this never causes spurious drops. */
     SAVE_KEYWORD("TCPKeepalives"),
 )
 CONF_OPTION(loghost, /* logical host being contacted, for host key check */

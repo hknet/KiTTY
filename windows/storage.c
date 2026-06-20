@@ -66,6 +66,51 @@ static int kitty_root_is_putty(void)
  */
 const char *kitty_registry_base(void) { return reg_base_buf; }
 
+/*
+ * KiTTY: read a session's "Comment" value, scanning the read hives in
+ * precedence order (our base -> old 9bis -> stock PuTTY) and returning the
+ * FIRST NON-EMPTY value found. The config dialog's read-only comment display
+ * uses this instead of load_settings(): open_settings_r() is first-hive-wins
+ * with no per-value merge, so a session that also exists in the new hive
+ * WITHOUT a comment would otherwise mask a comment still held in the old hive.
+ * Reading the value directly also sidesteps the full load path. Caller frees.
+ */
+char *kitty_read_session_comment(const char *sessionname)
+{
+    static const char *const fallback_hives[] = {
+        OLD_KITTY_HIVE_SESSIONS, PUTTY_HIVE_SESSIONS };
+    char *result = NULL;
+    int i;
+
+    if (!sessionname || !*sessionname)
+        sessionname = "Default Settings";
+
+    strbuf *sb = strbuf_new();
+    escape_registry_key(sessionname, sb);
+
+    /* primary (runtime) hive first */
+    HKEY k = open_regkey_ro(HKEY_CURRENT_USER, puttystr, sb->s);
+    if (k) {
+        result = get_reg_sz(k, "Comment");
+        close_regkey(k);
+    }
+    /* then the read-only fallback hives, unless we're in PuTTY-root mode */
+    if ((!result || !*result) && !kitty_root_is_putty()) {
+        for (i = 0; i < (int)lenof(fallback_hives); i++) {
+            k = open_regkey_ro(HKEY_CURRENT_USER, fallback_hives[i], sb->s);
+            if (!k)
+                continue;
+            sfree(result);
+            result = get_reg_sz(k, "Comment");
+            close_regkey(k);
+            if (result && *result)
+                break;
+        }
+    }
+    strbuf_free(sb);
+    return result;
+}
+
 static bool tried_shgetfolderpath = false;
 static HMODULE shell32_module = NULL;
 DECL_WINDOWS_FUNCTION(static, HRESULT, SHGetFolderPathA,

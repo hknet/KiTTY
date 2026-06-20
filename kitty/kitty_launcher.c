@@ -586,8 +586,8 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 					MessageBox(hwnd,
 						"KiTTY Launcher " BUILD_VERSION "\r\n\r\n"
 						"Quick-launch for your saved KiTTY sessions, from the system tray.\r\n"
-						"Part of the KiTTY suite — a fork of PuTTY 0.84.\r\n\r\n"
-						"© KAPPER NETWORK-COMMUNICATIONS GmbH\r\n"
+						"Part of the KiTTY suite - a fork of PuTTY 0.84.\r\n\r\n"
+						"(c) KAPPER NETWORK-COMMUNICATIONS GmbH\r\n"
 						"Based on KiTTY by Cyril Dupont and PuTTY by Simon Tatham.",
 						"About KiTTY Launcher", MB_OK | MB_ICONINFORMATION ) ;
 					break ;

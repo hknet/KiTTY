@@ -202,6 +202,8 @@ int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
 int kitty_url_cell_underline(Conf *conf, int col, int row);
 /* Per-session icon (CONF_icone / CONF_iconefile). */
 void kitty_apply_icon(HWND hwnd, Conf *conf);
+/* Restore the normal icon after a reconnect (undo SetConnBreakIcon). */
+void kitty_restore_icon(HWND hwnd, Conf *conf);
 /* KiTTY-specific About dialog. */
 void kitty_about(HWND hwnd);
 #ifdef MOD_PORTKNOCKING
@@ -393,8 +395,11 @@ static SeatPromptResult win_seat_get_userpass_input(Seat *seat, prompts_t *p);
  * no change to the ssh/ library (keeps plink/pscp/psftp unaffected). */
 static void win_seat_notify_session_started(Seat *seat)
 {
-    (void)seat;
+    WinGuiSeat *wgs = container_of(seat, WinGuiSeat, seat);
     SetSSHConnected(1);
+    /* KiTTY: SSH session is (re)connected post-auth - restore the normal
+     * window icon so a prior SetConnBreakIcon() drop no longer shows. */
+    kitty_restore_icon(wgs->term_hwnd, wgs->conf);
 }
 #endif
 
@@ -540,8 +545,12 @@ static void start_backend(WinGuiSeat *wgs)
 #ifdef MOD_RECONNECT
     /* KiTTY auto-reconnect: mark first-connected (non-SSH here; SSH is marked
      * from notify_session_started) and reset the backoff counter on success. */
-    if (conf_get_int(wgs->conf, CONF_protocol) != PROT_SSH)
+    if (conf_get_int(wgs->conf, CONF_protocol) != PROT_SSH) {
         is_backend_first_connected = 1;
+        /* Non-SSH (re)connect: restore the normal icon (SSH does this from
+         * notify_session_started once auth completes). */
+        kitty_restore_icon(wgs->term_hwnd, wgs->conf);
+    }
     wgs->last_reconnect = time(NULL);
     wgs->reconnect_tries = 0;
 #endif

@@ -1013,11 +1013,11 @@ static bool load_selected_session(
  * in the saved-sessions list. Indexing mirrors load_selected_session() so the
  * box always shows the comment of the session that Load would open. Shows the
  * empty string if nothing is selected or the session has no comment. */
+char *kitty_read_session_comment(const char *sessionname);  /* windows/storage.c */
 static void update_comment_display(struct sessionsaver_data *ssd, dlgparam *dlg)
 {
     int i;
-    Conf *tmp;
-    const char *c;
+    char *c;
     if (!ssd->commentbox)
         return;
     i = dlg_listbox_index(ssd->listbox, dlg);
@@ -1025,11 +1025,12 @@ static void update_comment_display(struct sessionsaver_data *ssd, dlgparam *dlg)
         dlg_editbox_set(ssd->commentbox, dlg, "");
         return;
     }
-    tmp = conf_new();
-    load_settings(ssd->sesslist.sessions[i], tmp);
-    c = conf_get_str(tmp, CONF_comment);
+    /* Read "Comment" directly, scanning all hives for a non-empty value, so
+     * comments authored by an older KiTTY (held only in the 9bis hive) show
+     * even before the session is re-saved into the new hive. */
+    c = kitty_read_session_comment(ssd->sesslist.sessions[i]);
     dlg_editbox_set(ssd->commentbox, dlg, c ? c : "");
-    conf_free(tmp);
+    sfree(c);
 }
 #endif
 
