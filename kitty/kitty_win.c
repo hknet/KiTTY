@@ -1,5 +1,8 @@
 #include "kitty_win.h"
 #include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
+#include <wintrust.h>  /* in-app updater: Authenticode trust verification */
+#include <softpub.h>   /* WINTRUST_ACTION_GENERIC_VERIFY_V2 */
+/* wincrypt.h (CryptQueryObject / signer cert) comes in via windows.h */
 
 /* MOD_PERSO event-log wrapper, defined in windows/window.c */
 void do_eventlog(const char *st) ;
@@ -436,6 +439,166 @@ static int kitty_version_cmp( const int a[4], const int b[4] ) {
 #define KITTY_RELEASES_URL "https://github.com/hknet/KiTTY/releases"
 #define KITTY_RELEASES_API "https://api.github.com/repos/hknet/KiTTY/releases?per_page=1"
 
+/* ===================== In-app updater =====================
+ * When "Check for updates" finds a newer release, we can download the correct
+ * installer asset and run it - but ONLY after verifying it is a genuine,
+ * KAPPER-signed artifact. The Authenticode gate (kitty_verify_signature) is the
+ * security control here: it is fail-closed (any error rejects), it requires both
+ * a valid trust chain (WinVerifyTrust) AND an exact publisher-CN match, and the
+ * downloaded file is deleted if it does not pass. */
+
+typedef enum { KITTY_INST_PERUSER, KITTY_INST_SYSTEM, KITTY_INST_PORTABLE } kitty_install_t ;
+
+/* How was this copy installed? Decides which asset to fetch and how to run it.
+ * The portable build (MOD_PORTABLE) is download-only; for the real kitty.exe we
+ * distinguish per-user (%LOCALAPPDATA%\Programs) from system (%ProgramFiles%). */
+static kitty_install_t kitty_detect_install_type( void ) {
+#ifdef MOD_PORTABLE
+	return KITTY_INST_PORTABLE ;
+#else
+	char exe[MAX_PATH]="", env[MAX_PATH]="" ;
+	if( GetModuleFileNameA( NULL, exe, sizeof(exe)-1 ) ) {
+		if( GetEnvironmentVariableA("ProgramFiles", env, sizeof(env)-1) && env[0]
+		    && _strnicmp(exe, env, strlen(env))==0 ) return KITTY_INST_SYSTEM ;
+		if( GetEnvironmentVariableA("ProgramW6432", env, sizeof(env)-1) && env[0]
+		    && _strnicmp(exe, env, strlen(env))==0 ) return KITTY_INST_SYSTEM ;
+		if( GetEnvironmentVariableA("ProgramFiles(x86)", env, sizeof(env)-1) && env[0]
+		    && _strnicmp(exe, env, strlen(env))==0 ) return KITTY_INST_SYSTEM ;
+		if( GetEnvironmentVariableA("LOCALAPPDATA", env, sizeof(env)-1) && env[0]
+		    && _strnicmp(exe, env, strlen(env))==0 ) return KITTY_INST_PERUSER ;
+	}
+	/* Unknown location (loose exe): treat as portable -> download-only, no auto-run. */
+	return KITTY_INST_PORTABLE ;
+#endif
+}
+
+/* Scan the release JSON for a "browser_download_url" whose value ends with the
+ * given suffix (e.g. "-x64-system.msi"). Robust to the exact version string.
+ * Copies the URL into out and returns 1; returns 0 if no asset matches. */
+static int kitty_find_asset_url( const char *body, const char *suffix, char *out, size_t outsz ) {
+	const char *p = body ;
+	size_t slen = strlen(suffix) ;
+	while( (p = strstr(p, "\"browser_download_url\"")) != NULL ) {
+		p += strlen("\"browser_download_url\"") ;
+		const char *q = strchr(p, ':') ;
+		if( q==NULL ) break ;
+		q++ ;
+		while( *q==' ' || *q=='\"' ) q++ ;
+		char url[1024] ; int j=0 ;
+		while( *q && *q!='\"' && j<(int)sizeof(url)-1 ) url[j++]=*q++ ;
+		url[j]='\0' ;
+		p = q ;
+		if( (size_t)j>=slen && _stricmp(url + j - slen, suffix)==0 ) {
+			strncpy(out, url, outsz-1) ; out[outsz-1]='\0' ;
+			return 1 ;
+		}
+	}
+	return 0 ;
+}
+
+/* Download a URL to a local file. Uses generous timeouts (multi-MB installer,
+ * not the JSON probe) and follows GitHub's redirect to the CDN. Returns 1 on
+ * success; on any failure the partial file is removed. */
+static int kitty_download_to_file( const char *url, const char *path ) {
+	int ok = 0 ;
+	HINTERNET hi = InternetOpenA( "KiTTY-UpdateDownload", INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0 ) ;
+	if( hi==NULL ) return 0 ;
+	DWORD tmo = 30000 ;
+	InternetSetOption( hi, INTERNET_OPTION_CONNECT_TIMEOUT, &tmo, sizeof(tmo) ) ;
+	InternetSetOption( hi, INTERNET_OPTION_RECEIVE_TIMEOUT, &tmo, sizeof(tmo) ) ;
+	HINTERNET hu = InternetOpenUrlA( hi, url, NULL, (DWORD)-1,
+		INTERNET_FLAG_RELOAD|INTERNET_FLAG_NO_CACHE_WRITE|INTERNET_FLAG_SECURE, 0 ) ;
+	if( hu!=NULL ) {
+		HANDLE hf = CreateFileA( path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL ) ;
+		if( hf!=INVALID_HANDLE_VALUE ) {
+			char buf[16384] ; DWORD nread=0 ; ok=1 ;
+			for( ;; ) {
+				if( !InternetReadFile( hu, buf, sizeof(buf), &nread ) ) { ok=0 ; break ; }
+				if( nread==0 ) break ;
+				DWORD nwr=0 ;
+				if( !WriteFile( hf, buf, nread, &nwr, NULL ) || nwr!=nread ) { ok=0 ; break ; }
+			}
+			CloseHandle( hf ) ;
+		}
+		InternetCloseHandle( hu ) ;
+	}
+	InternetCloseHandle( hi ) ;
+	if( !ok ) DeleteFileA( path ) ;
+	return ok ;
+}
+
+/* SECURITY GATE. Verify an Authenticode signature on the downloaded installer.
+ * Returns 1 only if BOTH hold:
+ *   (1) WinVerifyTrust reports a valid trust chain (kills self-signed spoofs);
+ *   (2) the signing certificate's subject CN is EXACTLY our publisher (kills a
+ *       different-but-valid certificate).
+ * Fail-closed: every error path returns 0 (reject). */
+static int kitty_verify_signature( const char *path ) {
+	wchar_t wpath[MAX_PATH] ;
+	if( MultiByteToWideChar( CP_ACP, 0, path, -1, wpath, MAX_PATH ) == 0 ) return 0 ;
+
+	/* (1) Trust chain. */
+	WINTRUST_FILE_INFO fi ; memset(&fi,0,sizeof(fi)) ;
+	fi.cbStruct = sizeof(fi) ;
+	fi.pcwszFilePath = wpath ;
+	GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2 ;
+	WINTRUST_DATA wd ; memset(&wd,0,sizeof(wd)) ;
+	wd.cbStruct = sizeof(wd) ;
+	wd.dwUIChoice = WTD_UI_NONE ;
+	wd.fdwRevocationChecks = WTD_REVOKE_NONE ;
+	wd.dwUnionChoice = WTD_CHOICE_FILE ;
+	wd.pFile = &fi ;
+	wd.dwStateAction = WTD_STATEACTION_VERIFY ;
+	LONG st = WinVerifyTrust( (HWND)INVALID_HANDLE_VALUE, &action, &wd ) ;
+	wd.dwStateAction = WTD_STATEACTION_CLOSE ;
+	WinVerifyTrust( (HWND)INVALID_HANDLE_VALUE, &action, &wd ) ;
+	if( st != ERROR_SUCCESS ) return 0 ;
+
+	/* (2) Signer CN pin. */
+	int matched = 0 ;
+	HCERTSTORE hStore = NULL ; HCRYPTMSG hMsg = NULL ;
+	if( CryptQueryObject( CERT_QUERY_OBJECT_FILE, wpath,
+			CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED_EMBED,
+			CERT_QUERY_FORMAT_FLAG_BINARY, 0, NULL, NULL, NULL,
+			&hStore, &hMsg, NULL ) ) {
+		DWORD si_sz = 0 ;
+		if( CryptMsgGetParam( hMsg, CMSG_SIGNER_INFO_PARAM, 0, NULL, &si_sz ) && si_sz>0 ) {
+			CMSG_SIGNER_INFO *si = (CMSG_SIGNER_INFO*)malloc( si_sz ) ;
+			if( si!=NULL && CryptMsgGetParam( hMsg, CMSG_SIGNER_INFO_PARAM, 0, si, &si_sz ) ) {
+				CERT_INFO ci ; memset(&ci,0,sizeof(ci)) ;
+				ci.Issuer = si->Issuer ;
+				ci.SerialNumber = si->SerialNumber ;
+				PCCERT_CONTEXT cert = CertFindCertificateInStore( hStore,
+					X509_ASN_ENCODING|PKCS_7_ASN_ENCODING, 0,
+					CERT_FIND_SUBJECT_CERT, &ci, NULL ) ;
+				if( cert!=NULL ) {
+					char cn[256]="" ;
+					if( CertGetNameStringA( cert, CERT_NAME_ATTR_TYPE, 0,
+							szOID_COMMON_NAME, cn, sizeof(cn) ) > 1 ) {
+						if( _stricmp( cn, "KAPPER NETWORK-COMMUNICATIONS GmbH" )==0 )
+							matched = 1 ;
+					}
+					CertFreeCertificateContext( cert ) ;
+				}
+			}
+			if( si!=NULL ) free( si ) ;
+		}
+	}
+	if( hMsg!=NULL ) CryptMsgClose( hMsg ) ;
+	if( hStore!=NULL ) CertCloseStore( hStore, 0 ) ;
+	return matched ;
+}
+
+/* Launch the (already verified) MSI. System installs need elevation (runas);
+ * per-user installs run unelevated. Restart Manager inside msiexec will close
+ * the running kitty.exe to perform the in-place upgrade. */
+static void kitty_run_installer( HWND hwnd, kitty_install_t type, const char *path ) {
+	char args[MAX_PATH+32] ;
+	sprintf( args, "/i \"%s\"", path ) ;
+	ShellExecuteA( hwnd, (type==KITTY_INST_SYSTEM) ? "runas" : "open",
+		"msiexec.exe", args, NULL, SW_SHOWNORMAL ) ;
+}
+
 void CheckVersionFromWebSite( HWND hwnd ) {
 	char curnum[64]="" ;
 	int i ;
@@ -503,9 +666,64 @@ void CheckVersionFromWebSite( HWND hwnd ) {
 			kitty_parse_version( curnum, cv ) ;
 			kitty_parse_version( latestnum, lv ) ;
 			if( kitty_version_cmp( cv, lv ) < 0 ) {
-				sprintf( msg, "An update is available.\n\nInstalled: %s\nLatest:    %s\n\nOpen the download page now?", curnum, latestnum ) ;
-				if( MessageBox( hwnd, msg, "KiTTY Update", MB_YESNO|MB_ICONINFORMATION )==IDYES )
+				/* An update is available. Decide how to deliver it by install type. */
+				kitty_install_t itype = kitty_detect_install_type() ;
+				char asseturl[1024]="" ; int haveasset = 0 ;
+				if( itype != KITTY_INST_PORTABLE ) {
+					const char *suffix = (itype==KITTY_INST_SYSTEM)
+						? "-x64-system.msi" : "-x64-peruser.msi" ;
+					haveasset = kitty_find_asset_url( body, suffix, asseturl, sizeof(asseturl) ) ;
+				}
+				free( body ) ; body = NULL ;   /* done with JSON before the large download */
+
+				if( itype==KITTY_INST_PORTABLE || !haveasset ) {
+					/* Portable copy, or no matching installer asset: just offer the page. */
+					sprintf( msg, "An update is available.\n\nInstalled: %s\nLatest:    %s\n\n%s",
+						curnum, latestnum,
+						(itype==KITTY_INST_PORTABLE)
+						  ? "This is a portable copy, so auto-install is disabled. Open the download page now?"
+						  : "The matching installer could not be located automatically. Open the download page now?" ) ;
+					if( MessageBox( hwnd, msg, "KiTTY Update", MB_YESNO|MB_ICONINFORMATION )==IDYES )
+						ShellExecute( hwnd, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
+					return ;
+				}
+
+				/* MSI install: confirm, download, verify the signature, then run. */
+				sprintf( msg, "An update is available.\n\nInstalled: %s\nLatest:    %s\n\n"
+					"Download and install it now?\n\n"
+					"KiTTY will close and any active sessions will be disconnected during "
+					"the upgrade. The installer's signature is verified before it runs.",
+					curnum, latestnum ) ;
+				if( MessageBox( hwnd, msg, "KiTTY Update",
+						MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 )!=IDYES )
+					return ;
+
+				char tmpdir[MAX_PATH]="", tmpfile[MAX_PATH]="" ;
+				GetTempPathA( sizeof(tmpdir), tmpdir ) ;
+				const char *base = strrchr( asseturl, '/' ) ;
+				base = base ? base+1 : "KiTTY-update.msi" ;
+				snprintf( tmpfile, sizeof(tmpfile), "%s%s", tmpdir, base ) ;
+
+				HCURSOR oldc = SetCursor( LoadCursor(NULL, IDC_WAIT) ) ;
+				int dok = kitty_download_to_file( asseturl, tmpfile ) ;
+				SetCursor( oldc ) ;
+				if( !dok ) {
+					MessageBox( hwnd, "Download failed. Opening the download page instead.",
+						"KiTTY Update", MB_OK|MB_ICONERROR ) ;
 					ShellExecute( hwnd, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
+					return ;
+				}
+				/* SECURITY GATE: reject anything not genuinely KAPPER-signed. */
+				if( !kitty_verify_signature( tmpfile ) ) {
+					DeleteFileA( tmpfile ) ;
+					MessageBox( hwnd, "The downloaded installer FAILED signature verification "
+						"and was NOT run; it has been deleted.\n\nPlease install KiTTY only "
+						"from the official release page.",
+						"KiTTY Update - signature rejected", MB_OK|MB_ICONERROR ) ;
+					return ;
+				}
+				kitty_run_installer( hwnd, itype, tmpfile ) ;
+				return ;
 			} else {
 				sprintf( msg, "You are running the latest version.\n\nInstalled: %s\nLatest:    %s", curnum, latestnum ) ;
 				MessageBox( hwnd, msg, "KiTTY Update", MB_OK|MB_ICONINFORMATION ) ;
