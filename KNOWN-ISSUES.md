@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.10 — Known issues & limitations
+# KiTTY 0.84.1.11 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,23 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.10-beta @ 2026-06-19`.
+- **Version string:** binaries report `0.84.1.11-beta @ 2026-06-20`.
+
+## New in 0.84.1.11
+
+- **Reconnect restores the window icon.** When a session dropped, the title-bar
+  icon switched to the broken-connection icon and stayed that way after a
+  successful reconnect; it is now restored to the normal icon on (re)connect.
+- **Session comment now shows for pre-existing sessions.** The read-only
+  "Comment of selected session" box in the Session panel read the comment only
+  from the first registry hive that held the session; comments authored by an
+  older KiTTY (stored in the legacy hive) now display without re-saving — the
+  comment is read across all hives, preferring the first non-empty value.
+- **Launcher About box:** fixed character artifacts (the `(c)` and `-` were
+  shown as mojibake).
+- **TCP keepalives default to on** for newly-created sessions (helps keep
+  connections alive through NAT/firewall idle timeouts). Existing saved sessions
+  keep their stored setting.
 
 ## New in 0.84.1.10
 
