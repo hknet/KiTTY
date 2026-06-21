@@ -184,6 +184,35 @@ struct PageantPublicKey {
 };
 static tree234 *pubkeytree;
 
+/*
+ * KiTTY: user-controllable key OFFER order.
+ *
+ * pubkeytree above is the content-sorted *signing-lookup index* and must NEVER
+ * be reordered (sign requests binary-search it by blob). This parallel array
+ * holds the same PageantPublicKey* pointers in the order keys are offered to
+ * clients and shown in the key-list window. list_keys() (the protocol offer
+ * order) walks this list; the UI gets its list through the protocol, so the two
+ * can never disagree. Add appends; remove deletes; move-up/down swap neighbours.
+ */
+static PageantPublicKey **puborder = NULL;
+static size_t puborder_n = 0, puborder_size = 0;
+
+static void puborder_append(PageantPublicKey *pub)
+{
+    sgrowarray(puborder, puborder_size, puborder_n);
+    puborder[puborder_n++] = pub;
+}
+static void puborder_remove(PageantPublicKey *pub)
+{
+    for (size_t i = 0; i < puborder_n; i++)
+        if (puborder[i] == pub) {
+            memmove(&puborder[i], &puborder[i + 1],
+                    (puborder_n - i - 1) * sizeof(*puborder));
+            puborder_n--;
+            return;
+        }
+}
+
 typedef struct PageantSignOp PageantSignOp;
 struct PageantSignOp {
     PageantPrivateKey *priv;
@@ -230,6 +259,7 @@ static void pk_priv_free(PageantPrivateKey *priv)
 
 static void pk_pub_free(PageantPublicKey *pub)
 {
+    puborder_remove(pub);   /* KiTTY: keep offer-order list in sync (no-op if absent) */
     if (pub->full_pub)
         strbuf_free(pub->full_pub);
     sfree(pub->comment);
@@ -399,6 +429,7 @@ static bool pageant_add_key_common(PageantPublicKey *pub,
     PageantPublicKey *pub_in_tree = add234(pubkeytree, pub);
     if (pub_in_tree == pub) {
         /* Successfully added a new key. */
+        puborder_append(pub);    /* KiTTY: new key joins the end of the offer order */
         return true;
     } else {
         /* This public key was already there. */
@@ -525,49 +556,135 @@ static void remove_all_keys(int ssh_version)
     }
 }
 
+static void list_key_emit(BinarySink *bs, PageantPublicKey *pub,
+                          int ssh_version, bool extended)
+{
+    if (ssh_version > 1)
+        put_stringpl(bs, pub->sort.full_pub);
+    else
+        put_datapl(bs, pub->sort.full_pub); /* no header */
+
+    put_stringpl(bs, ptrlen_from_asciz(pub->comment));
+
+    if (extended) {
+        assert(ssh_version == 2);  /* extended lists not supported in v1 */
+
+        /*
+         * Append to each key entry a string containing extension
+         * data. This string begins with a flags word, and may in
+         * future contain further data if flag bits are set saying
+         * that it does. Hence, it's wrapped in a containing
+         * string, so that clients that only partially understand
+         * it can still find the parts they do understand.
+         */
+        PageantPrivateKey *priv = pub_to_priv(pub);
+
+        strbuf *sb = strbuf_new();
+
+        uint32_t flags = 0;
+        if (!priv->skey)
+            flags |= LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY;
+        if (priv->encrypted_key_file)
+            flags |= LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE;
+        put_uint32(sb, flags);
+
+        put_stringsb(bs, sb);
+    }
+}
+
 static void list_keys(BinarySink *bs, int ssh_version, bool extended)
 {
-    int i;
     PageantPublicKey *pub;
 
     put_uint32(bs, count_keys(ssh_version));
-    for (i = find_first_pubkey_for_version(ssh_version);
-         NULL != (pub = index234(pubkeytree, i)); i++) {
-        if (pub->sort.priv.ssh_version != ssh_version)
-            break;
-
-        if (ssh_version > 1)
-            put_stringpl(bs, pub->sort.full_pub);
-        else
-            put_datapl(bs, pub->sort.full_pub); /* no header */
-
-        put_stringpl(bs, ptrlen_from_asciz(pub->comment));
-
-        if (extended) {
-            assert(ssh_version == 2);  /* extended lists not supported in v1 */
-
-            /*
-             * Append to each key entry a string containing extension
-             * data. This string begins with a flags word, and may in
-             * future contain further data if flag bits are set saying
-             * that it does. Hence, it's wrapped in a containing
-             * string, so that clients that only partially understand
-             * it can still find the parts they do understand.
-             */
-            PageantPrivateKey *priv = pub_to_priv(pub);
-
-            strbuf *sb = strbuf_new();
-
-            uint32_t flags = 0;
-            if (!priv->skey)
-                flags |= LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY;
-            if (priv->encrypted_key_file)
-                flags |= LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE;
-            put_uint32(sb, flags);
-
-            put_stringsb(bs, sb);
-        }
+    /*
+     * KiTTY: emit keys in the user-defined OFFER order (puborder), filtered to
+     * this SSH version. The count above is order-independent. puborder holds
+     * every key in pubkeytree (kept in sync at add/remove), so this is complete.
+     * (Upstream walked pubkeytree in content-sorted order via index234.)
+     */
+    for (size_t oi = 0; oi < puborder_n; oi++) {
+        pub = puborder[oi];
+        if (pub->sort.priv.ssh_version == ssh_version)
+            list_key_emit(bs, pub, ssh_version, extended);
     }
+}
+
+/*
+ * KiTTY: move the key whose public blob is `pubblob` one slot earlier (dir<0)
+ * or later (dir>0) in the offer order, swapping with the nearest neighbour of
+ * the same SSH version. Returns true if a swap happened. Only puborder changes;
+ * the signing-lookup tree is untouched, so it is safe even mid-connection.
+ */
+bool pageant_reorder_key(ptrlen pubblob, int dir)
+{
+    int idx = -1;
+    for (size_t i = 0; i < puborder_n; i++)
+        if (ptrlen_eq_ptrlen(puborder[i]->sort.full_pub, pubblob)) {
+            idx = (int)i; break;
+        }
+    if (idx < 0 || dir == 0)
+        return false;
+    int ver = puborder[idx]->sort.priv.ssh_version;
+    int step = dir < 0 ? -1 : 1;
+    int j = idx + step;
+    while (j >= 0 && j < (int)puborder_n &&
+           puborder[j]->sort.priv.ssh_version != ver)
+        j += step;
+    if (j < 0 || j >= (int)puborder_n)
+        return false;
+    PageantPublicKey *t = puborder[idx];
+    puborder[idx] = puborder[j];
+    puborder[j] = t;
+    return true;
+}
+
+/*
+ * KiTTY: return the SHA256 fingerprints of all keys in current offer order
+ * (caller frees each string and the array). Used to persist the order.
+ */
+char **pageant_get_order_fps(int *n)
+{
+    char **out = snewn(puborder_n ? puborder_n : 1, char *);
+    int c = 0;
+    for (size_t i = 0; i < puborder_n; i++)
+        out[c++] = ssh2_fingerprint_blob(puborder[i]->sort.full_pub,
+                                         SSH_FPTYPE_SHA256);
+    *n = c;
+    return out;
+}
+
+/*
+ * KiTTY: reorder puborder to match a saved list of SHA256 fingerprints (stable;
+ * keys not present in the saved list keep their relative order, at the end).
+ */
+void pageant_apply_key_order(char **fps, int nfps)
+{
+    if (puborder_n < 2)
+        return;
+    int *rank = snewn(puborder_n, int);
+    for (size_t i = 0; i < puborder_n; i++) {
+        char *fp = ssh2_fingerprint_blob(puborder[i]->sort.full_pub,
+                                         SSH_FPTYPE_SHA256);
+        int r = nfps;
+        for (int k = 0; k < nfps; k++)
+            if (!strcmp(fp, fps[k])) { r = k; break; }
+        sfree(fp);
+        rank[i] = r;
+    }
+    for (size_t i = 1; i < puborder_n; i++) {   /* stable insertion sort by rank */
+        PageantPublicKey *kv = puborder[i];
+        int kr = rank[i];
+        size_t j = i;
+        while (j > 0 && rank[j - 1] > kr) {
+            puborder[j] = puborder[j - 1];
+            rank[j] = rank[j - 1];
+            j--;
+        }
+        puborder[j] = kv;
+        rank[j] = kr;
+    }
+    sfree(rank);
 }
 
 void pageant_make_keylist1(BinarySink *bs) { list_keys(bs, 1, false); }
