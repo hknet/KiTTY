@@ -691,8 +691,8 @@ return NULL ;  /* Ce code est tres specifique et ne marche pas partout */
 		if( strlen(dir) > 1 ) {
 			dir = dir + 1 ;
 			if(*dir == '~') {
-				if(strlen(conf_get_str(conf,CONF_username))>0) { 
-					snprintf(cdir, 1024, "\"/home/%s/%s\"", conf_get_str(conf,CONF_username), dir + 1); 
+				if(strlen(conf_get_str_ambi(conf,CONF_username,NULL))>0) { 
+					snprintf(cdir, 1024, "\"/home/%s/%s\"", conf_get_str_ambi(conf,CONF_username,NULL), dir + 1); 
 					return cdir; 
 				}
 			} else if(*dir == '/') { 
@@ -2181,7 +2181,7 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 		if( (p=poss(":",b1)) > 0 ) { b1[p-1]='\0'; }
 		strcat( buffer, b1 ) ;
 	} else {
-		strcat( buffer, conf_get_str(conf,CONF_username) ) ; strcat( buffer, "@" ) ;
+		strcat( buffer, conf_get_str_ambi(conf,CONF_username,NULL) ) ; strcat( buffer, "@" ) ;
 		if( poss( ":", conf_get_str(conf,CONF_host))>0 ) { strcat( buffer, "[" ) ; strcat( buffer, conf_get_str(conf,CONF_host ) ) ; strcat( buffer, "]" ) ; }
 		else { strcat( buffer, conf_get_str(conf,CONF_host) ) ; }
 	}
@@ -2294,7 +2294,7 @@ void RunExternPlink( HWND hwnd, const char * cmd ) {
     if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
         strcat( buffer, conf_get_str(conf, CONF_sftpconnect) ) ;
     } else {
-        strcat( buffer, conf_get_str(conf,CONF_username) ) ; strcat( buffer, "@" ) ;
+        strcat( buffer, conf_get_str_ambi(conf,CONF_username,NULL) ) ; strcat( buffer, "@" ) ;
         if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) { strcat( buffer, "[" ) ; strcat( buffer, conf_get_str(conf,CONF_host) ) ; strcat( buffer, "]" ) ; }
         else { strcat( buffer, conf_get_str(conf,CONF_host) ) ; }
     }
@@ -2397,7 +2397,7 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
         if( (p=poss(":",b1)) > 0 ) { b1[p-1]='\0'; }
         strcat( buffer, b1 ) ;
     } else {
-        strcat( buffer, conf_get_str(conf,CONF_username) ) ; strcat( buffer, "@" ) ;
+        strcat( buffer, conf_get_str_ambi(conf,CONF_username,NULL) ) ; strcat( buffer, "@" ) ;
         if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) {
             strcat( buffer, "[" ) ;
             strcat( buffer, conf_get_str(conf,CONF_host) ) ;
@@ -2524,7 +2524,7 @@ void GetFile( HWND hwnd ) {
                         if( (p=poss(":",b1)) > 0 ) { b1[p-1]='\0'; }
                         strcat( buffer, b1 ) ;
                     } else {
-                        strcat( buffer, conf_get_str(conf,CONF_username) ) ; strcat( buffer, "@" ) ;
+                        strcat( buffer, conf_get_str_ambi(conf,CONF_username,NULL) ) ; strcat( buffer, "@" ) ;
                         if( poss( ":", conf_get_str(conf,CONF_host))>0 ) { 
                             strcat( buffer, "[" ) ; strcat( buffer, conf_get_str(conf,CONF_host) ) ; strcat( buffer, "]" ) ; 
                         } else { 
@@ -4056,7 +4056,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			if( user!=NULL ) {
 				strcat( cmd, user ) ; 
 			} else { 
-				strcat( cmd, conf_get_str(conf,CONF_username) ) ; 
+				strcat( cmd, conf_get_str_ambi(conf,CONF_username,NULL) ) ; 
 			}
 			if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) { 
 				char bufpass[1024] ;
@@ -4087,7 +4087,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			}
 		}
 	} else {
-		sprintf( cmd, "\"%s\" %s://%s", shortpath, proto, conf_get_str(conf,CONF_username) ) ;
+		sprintf( cmd, "\"%s\" %s://%s", shortpath, proto, conf_get_str_ambi(conf,CONF_username,NULL) ) ;
 		if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
 			char bufpass[1024] ;
 			strcat( cmd, ":" ); 

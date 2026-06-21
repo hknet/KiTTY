@@ -366,7 +366,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "termspeed=%s\n",			conf_get_str(conf,CONF_termspeed ) ) ;
 	//fprintf( fp, "ttymodes=%s\n",			conf_get_str(conf,CONF_ttymodes ) ) ;
 	//fprintf( fp, "environmt=%s\n",			conf_get_str(conf,CONF_environmt ) ) ;
-	fprintf( fp, "username=%s\n",			conf_get_str(conf,CONF_username ) ) ;
+	fprintf( fp, "username=%s\n",			conf_get_str_ambi(conf,CONF_username,NULL ) ) ;
 	fprintf( fp, "username_from_env=%d\n",		conf_get_bool(conf,CONF_username_from_env) ) ;
 	fprintf( fp, "localusername=%s\n",		conf_get_str(conf,CONF_localusername ) ) ;
 	fprintf( fp, "rfc_environ=%d\n",		conf_get_bool(conf,CONF_rfc_environ) ) ;

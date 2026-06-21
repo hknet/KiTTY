@@ -113,7 +113,7 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_s_forced(sesskey, "ProxyTelnetCommand", conf_get_str(conf, CONF_proxy_telnet_command));
     write_setting_i_forced(sesskey, "ProxyLogToTerm", conf_get_int(conf, CONF_proxy_log_to_term));
     wmap_forced(sesskey, "Environment", conf, CONF_environmt, true);
-    write_setting_s_forced(sesskey, "UserName", conf_get_str(conf, CONF_username));
+    write_setting_s_forced(sesskey, "UserName", conf_get_str_ambi(conf, CONF_username, NULL));
     write_setting_b_forced(sesskey, "UserNameFromEnvironment", conf_get_bool(conf, CONF_username_from_env));
     write_setting_s_forced(sesskey, "LocalUserName", conf_get_str(conf, CONF_localusername));
     write_setting_b_forced(sesskey, "NoPTY", conf_get_bool(conf, CONF_nopty));
@@ -149,7 +149,7 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_s_forced(sesskey, "LogHost", conf_get_str(conf, CONF_loghost));
     write_setting_b_forced(sesskey, "SSH2DES", conf_get_bool(conf, CONF_ssh2_des_cbc));
     write_setting_filename_forced(sesskey, "PublicKeyFile", conf_get_filename(conf, CONF_keyfile));
-    write_setting_s_forced(sesskey, "RemoteCommand", conf_get_str(conf, CONF_remote_cmd));
+    write_setting_s_forced(sesskey, "RemoteCommand", conf_get_str_ambi(conf, CONF_remote_cmd, NULL));
     write_setting_b_forced(sesskey, "RFCEnviron", conf_get_bool(conf, CONF_rfc_environ));
     write_setting_b_forced(sesskey, "PassiveTelnet", conf_get_bool(conf, CONF_passive_telnet));
     write_setting_b_forced(sesskey, "BackspaceIsDelete", conf_get_bool(conf, CONF_bksp_is_delete));
