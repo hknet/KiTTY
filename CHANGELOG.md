@@ -5,6 +5,14 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.19-beta — 2026-06-21
+- **Security hardening (cont.):** external file-transfer (pscp) and plink commands
+  are now launched directly via CreateProcess instead of through the Windows
+  command shell (`system()`), so characters in session fields (password, host,
+  username, remote command, etc.) can no longer be interpreted as shell commands.
+  Each transfer/command opens in its own console window. (A follow-up will add
+  buffer-length bounding and argument quoting.)
+
 ## 0.84.1.18-beta — 2026-06-21
 - **Security hardening (from an internal review):**
   - In-app updater: the downloaded installer is now locked against modification
