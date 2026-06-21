@@ -5,6 +5,14 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.18-beta — 2026-06-21
+- **Security hardening (from an internal review):**
+  - In-app updater: the downloaded installer is now locked against modification
+    (deny-write) from signature verification through launch, closing a
+    time-of-check/time-of-use window, and the installer is only fetched over HTTPS.
+  - Fixed a buffer-size mismatch when reading a stored password from the registry,
+    and made the registry string reader NUL-terminate and bounds-check its results.
+
 ## 0.84.1.17-beta — 2026-06-21
 - **In-app updater — fix install-type detection.** A system (or per-user) install
   could be misreported as "portable" (so auto-install was refused). Detection now
