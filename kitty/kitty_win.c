@@ -693,6 +693,10 @@ void CheckVersionFromWebSite( HWND hwnd ) {
 				}
 				free( body ) ; body = NULL ;   /* done with JSON before the large download */
 
+				/* Refuse a non-HTTPS asset URL (defence-in-depth: the JSON is already
+				 * fetched over TLS, but never auto-download+run over plain http). */
+				if( haveasset && strncmp( asseturl, "https://", 8 )!=0 ) haveasset = 0 ;
+
 				if( itype==KITTY_INST_PORTABLE || !haveasset ) {
 					/* Portable copy, or no matching installer asset: just offer the page. */
 					sprintf( msg, "An update is available.\n\nInstalled: %s\nLatest:    %s\n\n%s",
@@ -730,8 +734,25 @@ void CheckVersionFromWebSite( HWND hwnd ) {
 					ShellExecute( hwnd, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
 					return ;
 				}
+				/* TOCTOU guard: hold the downloaded file open denying write/delete
+				 * (FILE_SHARE_READ only) for the rest of the flow, so it cannot be
+				 * swapped between signature verification and the (possibly elevated)
+				 * launch. WinVerifyTrust and msiexec can still READ it. Kept open
+				 * across the launch on purpose (released when KiTTY exits / the
+				 * upgrade restarts it) so the verified bytes stay immutable while
+				 * msiexec opens them. A swap in the tiny download->lock gap is caught
+				 * by the verify below, which runs on the now-locked file. */
+				HANDLE updguard = CreateFileA( tmpfile, GENERIC_READ, FILE_SHARE_READ,
+					NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ;
+				if( updguard == INVALID_HANDLE_VALUE ) {
+					DeleteFileA( tmpfile ) ;
+					MessageBox( hwnd, "Could not secure the downloaded installer; aborting the update.",
+						"KiTTY Update", MB_OK|MB_ICONERROR ) ;
+					return ;
+				}
 				/* SECURITY GATE: reject anything not genuinely KAPPER-signed. */
 				if( !kitty_verify_signature( tmpfile ) ) {
+					CloseHandle( updguard ) ;
 					DeleteFileA( tmpfile ) ;
 					MessageBox( hwnd, "The downloaded installer FAILED signature verification "
 						"and was NOT run; it has been deleted.\n\nPlease install KiTTY only "
@@ -740,6 +761,8 @@ void CheckVersionFromWebSite( HWND hwnd ) {
 					return ;
 				}
 				kitty_run_installer( hwnd, itype, tmpfile ) ;
+				/* deliberately do NOT CloseHandle(updguard) here: keep the verified
+				 * bytes locked against modification while msiexec reads them. */
 				return ;
 			} else {
 				sprintf( msg, "You are running the latest version.\n\nInstalled: %s\nLatest:    %s", curnum, latestnum ) ;

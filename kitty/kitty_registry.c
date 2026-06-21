@@ -10,7 +10,8 @@ char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, ch
   
   //Receptionne la valeur de réception lecture clé registre
     //unsigned char * lpData = new unsigned char[cstMaxRegLength];
-	unsigned char * lpData = (unsigned char*) malloc( cstMaxRegLength );
+	unsigned char * lpData = (unsigned char*) malloc( cstMaxRegLength + 1 ); // +1 for forced NUL
+	if( lpData == NULL ) { return NULL ; }
     
   //Receptionne la valeur de réception lecture clé registre
     //char * rValue = (char*) malloc( cstMaxRegLength );
@@ -19,10 +20,16 @@ char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, ch
     if (RegOpenKeyEx(hkTopKey,lpSubKey,0,KEY_READ,&hkKey) == ERROR_SUCCESS){
   
       if (RegQueryValueEx(hkKey,lpValueName,NULL,&lpType,lpData,&dwDataSize) == ERROR_SUCCESS){
+      // RegQueryValueEx does NOT guarantee NUL-termination for the *_SZ types and a
+      // value can fill the whole buffer; force a terminator so the strcpy()s below
+      // cannot over-read past the data.
+        if( dwDataSize > cstMaxRegLength ) dwDataSize = cstMaxRegLength ;
+        lpData[dwDataSize] = '\0' ;
       //déchiffrage des différents type de clé dans registry
         switch ((int)lpType){
-  
+
           case REG_BINARY:
+               if( dwDataSize >= 4 ) {   // a.b.c.d needs 4 bytes; don't over-read short values
                itoa((u_int)(lpData[0]),rValue, 10);
                strcat(rValue,".");
                itoa((u_int)(lpData[1]),(char*)(rValue+strlen(rValue)),10);
@@ -30,6 +37,7 @@ char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, ch
                itoa((u_int)(lpData[2]),(char*)(rValue+strlen(rValue)),10);
                strcat(rValue,".");
                itoa((u_int)(lpData[3]),(char*)(rValue+strlen(rValue)),10);
+               }
                break;
   
           case REG_DWORD:
