@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.15 — Known issues & limitations
+# KiTTY 0.84.1.16 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,22 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.15-beta @ 2026-06-21`.
+- **Version string:** binaries report `0.84.1.16-beta @ 2026-06-21`.
+
+## New in 0.84.1.16
+
+- **kageant — reorder loaded keys.** The key-list window gained **Move Up** and
+  **Move Down** buttons (select a single key, then move it). The list order is
+  the order keys are *offered* to servers, so you can control which key is tried
+  first. The chosen order is saved per key (by fingerprint) and restored on the
+  next start, including when **Load keys on startup** is enabled. The agent's
+  internal signing-key lookup is unaffected — only the offer/display order
+  changes.
+- **kageant — passphrase prompt takes focus.** When a terminal asks kageant to
+  use an encrypted key, the on-demand passphrase prompt now comes to the
+  foreground with keyboard focus, instead of opening unfocused behind the
+  terminal window (kageant is a background process, so Windows' foreground lock
+  previously kept focus on the terminal).
 
 ## New in 0.84.1.15
 

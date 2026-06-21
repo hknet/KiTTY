@@ -5,6 +5,15 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.16-beta — 2026-06-21
+- **kageant — reorder loaded keys:** the key-list window has **Move Up** / **Move
+  Down** buttons. The list order is the order keys are *offered* to servers, so
+  you can put your most-used key first. The order is saved (by key fingerprint)
+  and restored on the next start, including when "Load keys on startup" is on.
+- **kageant — passphrase prompt focus:** when a terminal asks kageant to use an
+  encrypted key, the passphrase prompt now comes to the foreground with focus
+  instead of opening behind the terminal window.
+
 ## 0.84.1.15-beta — 2026-06-21
 - **In-app updater:** *Check for updates* now downloads and installs the correct
   asset for the detected install type — per-user MSI, system MSI (elevated), or
