@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.17 — Known issues & limitations
+# KiTTY 0.84.1.18 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,19 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.17-beta @ 2026-06-21`.
+- **Version string:** binaries report `0.84.1.18-beta @ 2026-06-21`.
+
+## New in 0.84.1.18
+
+- **Security hardening** (from an internal code review):
+  - The in-app updater locks the downloaded installer against modification from
+    signature verification through launch (closing a time-of-check/time-of-use
+    gap), and only downloads the installer over HTTPS.
+  - Fixed a buffer-size mismatch when reading a stored password from the registry;
+    the registry string reader now NUL-terminates and bounds-checks its output.
+- Note: a broader security pass is still planned — see the project notes
+  (auto-login password storage remains reversible obfuscation; prefer SSH keys /
+  kageant).
 
 ## New in 0.84.1.17
 
