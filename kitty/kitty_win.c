@@ -2,6 +2,7 @@
 #include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
 #include <wintrust.h>  /* in-app updater: Authenticode trust verification */
 #include <softpub.h>   /* WINTRUST_ACTION_GENERIC_VERIFY_V2 */
+#include <msi.h>       /* in-app updater: install-type detection by UpgradeCode */
 /* wincrypt.h (CryptQueryObject / signer cert) comes in via windows.h */
 
 /* MOD_PERSO event-log wrapper, defined in windows/window.c */
@@ -449,13 +450,29 @@ static int kitty_version_cmp( const int a[4], const int b[4] ) {
 
 typedef enum { KITTY_INST_PERUSER, KITTY_INST_SYSTEM, KITTY_INST_PORTABLE } kitty_install_t ;
 
+/* Our MSI UpgradeCodes (stable across versions; see the .wxs / BUILD_PRIVATE.md).
+ * MsiEnumRelatedProducts takes the braced GUID form. */
+#define KITTY_UPGRADE_SYSTEM  "{69EA2DD5-EF19-4811-B324-EF34CAA6942C}"
+#define KITTY_UPGRADE_PERUSER "{578952A6-AA7F-4146-918B-47803234700B}"
+
+static int kitty_msi_installed( const char *upgradecode ) {
+	char prodbuf[40] = "" ;   /* a ProductCode GUID is 38 chars + NUL */
+	return MsiEnumRelatedProductsA( upgradecode, 0, 0, prodbuf ) == ERROR_SUCCESS ;
+}
+
 /* How was this copy installed? Decides which asset to fetch and how to run it.
- * The portable build (MOD_PORTABLE) is download-only; for the real kitty.exe we
- * distinguish per-user (%LOCALAPPDATA%\Programs) from system (%ProgramFiles%). */
+ * Primary, robust signal: ask Windows Installer whether OUR product (by its
+ * stable UpgradeCode) is installed, and which kind — this is independent of the
+ * install path, locale, or whether the exe was copied elsewhere. The path sniff
+ * is only a fallback. The portable build (MOD_PORTABLE) is always download-only. */
 static kitty_install_t kitty_detect_install_type( void ) {
 #ifdef MOD_PORTABLE
 	return KITTY_INST_PORTABLE ;
 #else
+	if( kitty_msi_installed( KITTY_UPGRADE_SYSTEM ) )  return KITTY_INST_SYSTEM ;
+	if( kitty_msi_installed( KITTY_UPGRADE_PERUSER ) ) return KITTY_INST_PERUSER ;
+
+	/* Fallback: path sniff (older installs / unusual setups). */
 	char exe[MAX_PATH]="", env[MAX_PATH]="" ;
 	if( GetModuleFileNameA( NULL, exe, sizeof(exe)-1 ) ) {
 		if( GetEnvironmentVariableA("ProgramFiles", env, sizeof(env)-1) && env[0]
