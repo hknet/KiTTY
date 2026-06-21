@@ -167,6 +167,7 @@ void kitty_showportfwd(HWND, Conf*);
 void kitty_shortcuts_toggle(HWND);
 /* KiTTY shortcut/ctrl-tab engine (kitty.c / kitty_commun.c) */
 int GetPuttyFlag(void);
+void OnDropFiles(HWND hwnd, HDROP hDropInfo);   /* KiTTY drag-drop pscp upload (kitty.c) */
 int GetTransparencyFlag(void);
 int GetShortcutsFlag(void);
 int GetMouseShortcutsFlag(void);
@@ -882,6 +883,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         SetWindowLong(wgs->term_hwnd, wx - 8, ft.dwHighDateTime);
         SetWindowLong(wgs->term_hwnd, wx - 4, ft.dwLowDateTime);
     }
+    /* KiTTY: accept files dropped on the terminal window (pscp upload). The 0.84
+     * port had OnDropFiles() defined but never registered the window for drops,
+     * so the cursor showed "forbidden". Re-enable it + the WM_DROPFILES handler. */
+    DragAcceptFiles(wgs->term_hwnd, TRUE);
 #endif
 
     /*
@@ -2702,6 +2707,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       case WM_CREATE:
         break;
 #ifdef MOD_PERSO
+      case WM_DROPFILES:
+        /* KiTTY: a file was dropped on the terminal -> pscp upload. */
+        OnDropFiles(hwnd, (HDROP)wParam);
+        return 0;
       case MYWM_NOTIFYICON:
         /* systray icon clicked -> restore the window sent to the tray */
         if (lParam == WM_LBUTTONUP || lParam == WM_RBUTTONUP ||
