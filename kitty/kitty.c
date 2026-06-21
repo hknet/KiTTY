@@ -4267,9 +4267,9 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
         nb=DragQueryFile( hDropInfo, 0xFFFFFFFF, NULL, 0 ) ;
         char *fic ;
 	if( nb>0 ) for( i = 0; i < nb; i++ ) {
-                taille = DragQueryFile(hDropInfo, i, NULL, 0 )+1;
-		fic = (char*)malloc(taille+1) ;
-                DragQueryFile( hDropInfo, i, fic, taille ) ;
+                taille = DragQueryFile(hDropInfo, i, NULL, 0 ) ;   /* length, excluding NUL */
+		fic = (char*)malloc(taille+2) ;
+                { UINT _g = DragQueryFile( hDropInfo, i, fic, taille+1 ) ; fic[_g] = '\0' ; }  /* force-terminate: DragQueryFile doesn't always NUL-terminate -> a stray byte was reaching pscp ("...pdf\0") */
 		if( !strcmp( fic+strlen(fic)-10,"\\kitty.ini" ) ) { // On charge le fichier de config dans l'editeur interne
 			char buffer[1024]="", shortname[1024]="" ;
 			if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) ) 
