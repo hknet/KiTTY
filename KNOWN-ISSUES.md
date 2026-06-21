@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.18 — Known issues & limitations
+# KiTTY 0.84.1.19 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,17 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.18-beta @ 2026-06-21`.
+- **Version string:** binaries report `0.84.1.19-beta @ 2026-06-21`.
+
+## New in 0.84.1.19
+
+- **Security hardening (cont.):** the external **pscp** file-transfer and **plink**
+  command builders now launch the tool **directly (CreateProcess)** instead of via
+  the Windows command shell (`system()`). Characters in session fields (password,
+  host, username, remote command, …) are therefore taken literally and can no
+  longer be interpreted as shell commands. Each transfer/command opens in its own
+  console window. A follow-up will add command-buffer length bounding and argument
+  quoting (so a quote in a field can't inject extra switches).
 
 ## New in 0.84.1.18
 
