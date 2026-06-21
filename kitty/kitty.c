@@ -2060,6 +2060,30 @@ void OpenAndSendScriptFile( HWND hwnd ) {
 // Envoi d'un fichier par SCP vers la racine du compte
 int SearchPSCP( void ) ;
 static int nb_pscp_run = 0 ;
+/* KiTTY security: launch a console command line WITHOUT a shell. Replaces
+ * system()/"start" for the pscp/plink command builders below, so session fields
+ * spliced into the command line cannot inject shell commands - CreateProcess does
+ * NOT run cmd.exe, so & | > ` and friends are taken literally (kills the shell
+ * command-injection class). A new console is created (pscp/plink are console
+ * tools); `wait` blocks until exit (the old inline system() behaviour) or returns
+ * immediately (the old "start" new-window behaviour). Returns 0 on success.
+ * NOTE (staged follow-up): the callers still build the command line by unbounded
+ * strcat of session fields and only wrap them in "..."; a field containing a
+ * double-quote can still inject extra *arguments* (not shell commands), and an
+ * over-long field can still overflow buffer[4096]. Bounding (strbuf) + argv
+ * quoting is the next step; this change removes the shell/RCE exposure. */
+static int kitty_run_noshell( char *cmdline, int wait ) {
+	STARTUPINFOA si ; PROCESS_INFORMATION pi ;
+	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;
+	memset( &pi, 0, sizeof(pi) ) ;
+	if( !CreateProcessA( NULL, cmdline, NULL, NULL, FALSE,
+	                     CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi ) )
+		return -1 ;
+	if( wait ) WaitForSingleObject( pi.hProcess, INFINITE ) ;
+	CloseHandle( pi.hThread ) ; CloseHandle( pi.hProcess ) ;
+	return 0 ;
+}
+
 void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) {
 	char buffer[4096], pscppath[4096]="", pscpport[4096]="22", remotedir[4096]=".",dir[4096], b1[256] ;
 	int p ;
@@ -2092,8 +2116,9 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 
 	strcpy( buffer, "" ) ;
 	
-	if( nb_pscp_run<4 ) { sprintf( buffer, "start %s ", pscppath ) ; nb_pscp_run++ ; }
-	else { sprintf( buffer, "%s ", pscppath ) ; nb_pscp_run = 0 ; }
+	int pscp_newwin = (nb_pscp_run<4) ;   /* was: "start" (new window) for the first 4 */
+	if( pscp_newwin ) { nb_pscp_run++ ; } else { nb_pscp_run = 0 ; }
+	sprintf( buffer, "%s ", pscppath ) ;
 	
 	if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {
 		strcat( buffer, conf_get_str(conf, CONF_pscpoptions) ) ; strcat( buffer, " " ) ;
@@ -2165,8 +2190,8 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	
 	chdir( InitialDirectory ) ;
 	if( debug_flag ) { debug_logevent( "Run: %s", buffer ) ; }
-	if( system( buffer ) ) MessageBox( NULL, buffer, "Transfer problem", MB_OK|MB_ICONERROR  ) ;
-	
+	if( kitty_run_noshell( buffer, !pscp_newwin ) ) MessageBox( NULL, buffer, "Transfer problem", MB_OK|MB_ICONERROR  ) ;
+
 	//debug_log("%s\n",buffer);MessageBox( NULL, buffer, "Info",MB_OK );
 	
 	memset(buffer,0,strlen(buffer));
@@ -2279,7 +2304,7 @@ void RunExternPlink( HWND hwnd, const char * cmd ) {
 
     chdir( InitialDirectory ) ;
     if( debug_flag ) { debug_logevent( "Run: %s", buffer) ; }
-    if( system( buffer ) ) { MessageBox( NULL, buffer, "Execute problem", MB_OK|MB_ICONERROR  ) ; }
+    if( kitty_run_noshell( buffer, 1 ) ) { MessageBox( NULL, buffer, "Execute problem", MB_OK|MB_ICONERROR  ) ; }
 }
 
 // Get a remote file throught scp
@@ -2313,13 +2338,9 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
 
     strcpy( buffer, "" ) ;
 
-    if( nb_pscp_run<4 ) {
-        sprintf( buffer, "start %s ", pscppath ) ;
-        nb_pscp_run++ ; 
-    } else {
-        sprintf( buffer, "%s ", pscppath ) ;
-        nb_pscp_run = 0 ; 
-    }
+    int pscp_newwin = (nb_pscp_run<4) ;   /* was: "start" (new window) for the first 4 */
+    if( pscp_newwin ) { nb_pscp_run++ ; } else { nb_pscp_run = 0 ; }
+    sprintf( buffer, "%s ", pscppath ) ;
 
     if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {
         strcat( buffer, conf_get_str(conf, CONF_pscpoptions) ) ;
@@ -2404,7 +2425,7 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
     chdir( InitialDirectory ) ;
 
     if( debug_flag ) { debug_logevent( "Get on file: %s", buffer) ; }
-    if( system( buffer ) ) { MessageBox( NULL, buffer, "Transfer problem", MB_OK|MB_ICONERROR  ) ; }
+    if( kitty_run_noshell( buffer, !pscp_newwin ) ) { MessageBox( NULL, buffer, "Transfer problem", MB_OK|MB_ICONERROR  ) ; }
 
     //debug_log("%s\n",buffer);//MessageBox( NULL, buffer, "Info",MB_OK );
 
@@ -2458,7 +2479,7 @@ void GetFile( HWND hwnd ) {
                     }
                     //else { strcpy( dir, InitialDirectory ) ; }
 
-                    sprintf( buffer, "start %s ", pscppath ) ;
+                    sprintf( buffer, "%s ", pscppath ) ;   /* was "start %s" (new window) */
                     if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {
                         strcat( buffer, conf_get_str(conf, CONF_pscpoptions) ) ;
                         strcat( buffer, " " ) ;
@@ -2522,7 +2543,7 @@ void GetFile( HWND hwnd ) {
     if( strlen( buffer ) > 0 ) {
         chdir( InitialDirectory ) ;
         if( debug_flag ) { debug_logevent("Get file: %s", buffer) ; }
-        if( system( buffer ) ) { MessageBox( NULL, buffer, "Transfer problem", MB_OK|MB_ICONERROR  ) ; }
+        if( kitty_run_noshell( buffer, 0 ) ) { MessageBox( NULL, buffer, "Transfer problem", MB_OK|MB_ICONERROR  ) ; }
         //if( !system( buffer ) ) unlink( "kitty.log" ) ;
     }
 }
