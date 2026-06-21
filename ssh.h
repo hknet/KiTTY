@@ -1259,9 +1259,9 @@ struct ssh2_userkey {
 
 /* Argon2 password hashing function */
 typedef enum { Argon2d = 0, Argon2i = 1, Argon2id = 2 } Argon2Flavour;
-bool argon2_params_valid(uint32_t mem, uint32_t passes,
-                         uint32_t parallel, uint32_t taglen,
-                         size_t Plen, size_t Slen, size_t Klen, size_t Xlen);
+char *argon2_params_bad(uint32_t mem, uint32_t passes,
+                        uint32_t parallel, uint32_t taglen,
+                        size_t Plen, size_t Slen, size_t Klen, size_t Xlen);
 void argon2(Argon2Flavour, uint32_t mem, uint32_t passes,
             uint32_t parallel, uint32_t taglen,
             ptrlen P, ptrlen S, ptrlen K, ptrlen X, strbuf *out);
@@ -1658,6 +1658,8 @@ typedef struct ppk_save_parameters {
 } ppk_save_parameters;
 extern const ppk_save_parameters ppk_save_default_parameters;
 
+char *ppk_params_bad(const ppk_save_parameters *params, bool encrypted,
+                     size_t passphrase_len);
 strbuf *ppk_save_sb(ssh2_userkey *key, const char *passphrase,
                     const ppk_save_parameters *params);
 bool ppk_save_f(const Filename *filename, ssh2_userkey *key,
