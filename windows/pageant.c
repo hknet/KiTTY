@@ -179,6 +179,32 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
 static HWND modal_passphrase_hwnd = NULL;
 static HWND nonmodal_passphrase_hwnd = NULL;
 
+/*
+ * KiTTY: force a window to the foreground from a background process. When a
+ * client (e.g. a KiTTY terminal) triggers an on-demand passphrase prompt,
+ * kageant is NOT the foreground app, so a bare SetForegroundWindow is blocked
+ * by the Windows foreground lock and the prompt opens unfocused behind the
+ * terminal. Briefly attaching our input thread to the current foreground
+ * thread bypasses that lock so the prompt comes up focused and ready to type.
+ */
+static void pageant_force_foreground(HWND hwnd)
+{
+    HWND fgwin = GetForegroundWindow();
+    DWORD fgthread = fgwin ? GetWindowThreadProcessId(fgwin, NULL) : 0;
+    DWORD mythread = GetCurrentThreadId();
+    bool attached = (fgthread && fgthread != mythread &&
+                     AttachThreadInput(mythread, fgthread, TRUE));
+    SetForegroundWindow(hwnd);
+    BringWindowToTop(hwnd);
+    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    SetForegroundWindow(hwnd);
+    SetActiveWindow(hwnd);
+    SetFocus(hwnd);
+    if (attached)
+        AttachThreadInput(mythread, fgthread, FALSE);
+}
+
 static void end_passphrase_dialog(HWND hwnd, INT_PTR result)
 {
     struct PassphraseProcStruct *p = (struct PassphraseProcStruct *)
@@ -248,11 +274,10 @@ static INT_PTR CALLBACK PassphraseProc(HWND hwnd, UINT msg,
                        (rs.bottom + rs.top + rd.top - rd.bottom) / 2,
                        rd.right - rd.left, rd.bottom - rd.top, true);
 
-        SetForegroundWindow(hwnd);
         SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-        if (!p->modal)
-            SetActiveWindow(hwnd); /* this won't have happened automatically */
+        pageant_force_foreground(hwnd);   /* KiTTY: beat the foreground lock so
+                                           * the prompt is focused and typable */
         if (p->comment)
             SetDlgItemText(hwnd, IDC_PASSPHRASE_FINGERPRINT, p->comment);
         burnstr(p->passphrase);
@@ -325,6 +350,7 @@ struct keylist_update_ctx {
 
 struct keylist_display_data {
     strbuf *alg, *bits, *hash, *comment, *info;
+    strbuf *blob;     /* KiTTY: public blob, to identify this row for reordering */
 };
 
 static void keylist_update_callback(
@@ -341,6 +367,7 @@ static void keylist_update_callback(
     disp->hash = strbuf_new();
     disp->comment = strbuf_new();
     disp->info = strbuf_new();
+    disp->blob = strbuf_dup(ptrlen_from_strbuf(key->blob));  /* KiTTY: for reordering */
 
     /* There is at least one key, so the controls for removing keys
      * should be enabled */
@@ -442,6 +469,7 @@ void keylist_update(void)
                 strbuf_free(disp->hash);
                 strbuf_free(disp->comment);
                 strbuf_free(disp->info);
+                strbuf_free(disp->blob);
                 sfree(disp);
             }
         }
@@ -482,6 +510,7 @@ void keylist_update(void)
 }
 
 static void kageant_track_keypath(const char *path);  /* KiTTY: startup-keys */
+static void kageant_save_key_order(void);             /* KiTTY: key reordering */
 static void win_add_keyfile(Filename *filename, bool encrypted)
 {
     char *err;
@@ -730,6 +759,54 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                     break;
                 }
                 prompt_add_keyfile(LOWORD(wParam) == IDC_KEYLIST_ADDKEY_ENC);
+            }
+            return 0;
+          case IDC_KEYLIST_MOVEUP:
+          case IDC_KEYLIST_MOVEDOWN:
+            /* KiTTY: reorder the offer order. Acts on a single selected key;
+             * persists the new order and re-selects the moved key. */
+            if (HIWORD(wParam) == BN_CLICKED ||
+                HIWORD(wParam) == BN_DOUBLECLICKED) {
+                int numSelected = SendDlgItemMessage(
+                    hwnd, IDC_KEYLIST_LISTBOX, LB_GETSELCOUNT, 0, 0);
+                if (numSelected != 1) {       /* one key at a time */
+                    MessageBeep(0);
+                    break;
+                }
+                int sel = -1;
+                SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX, LB_GETSELITEMS,
+                                   1, (WPARAM)&sel);
+                if (sel < 0)
+                    break;
+                struct keylist_display_data *disp =
+                    (struct keylist_display_data *)SendDlgItemMessage(
+                        hwnd, IDC_KEYLIST_LISTBOX, LB_GETITEMDATA, sel, 0);
+                if (!disp)
+                    break;
+                /* Copy the blob: keylist_update() below frees the disp structs. */
+                strbuf *want = strbuf_dup(ptrlen_from_strbuf(disp->blob));
+                int dir = (LOWORD(wParam) == IDC_KEYLIST_MOVEUP) ? -1 : 1;
+                if (pageant_reorder_key(ptrlen_from_strbuf(want), dir)) {
+                    kageant_save_key_order();
+                    keylist_update();
+                    /* Re-select the moved key at its new row. */
+                    SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX,
+                                       LB_SETSEL, false, (LPARAM)-1);
+                    int nitems = SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX,
+                                                    LB_GETCOUNT, 0, 0);
+                    for (int i = 0; i < nitems; i++) {
+                        struct keylist_display_data *d =
+                            (struct keylist_display_data *)SendDlgItemMessage(
+                                hwnd, IDC_KEYLIST_LISTBOX, LB_GETITEMDATA, i, 0);
+                        if (d && ptrlen_eq_ptrlen(ptrlen_from_strbuf(d->blob),
+                                                  ptrlen_from_strbuf(want))) {
+                            SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX,
+                                               LB_SETSEL, true, i);
+                            break;
+                        }
+                    }
+                }
+                strbuf_free(want);
             }
             return 0;
           case IDC_KEYLIST_REMOVE:
@@ -1059,7 +1136,7 @@ static bool ask_passphrase_common(PageantClientDialogId *dlgid,
      * anything I _should_ do about it if I could. If anyone thinks
      * they can improve on all this, patches are welcome.
      */
-    SetForegroundWindow(nonmodal_passphrase_hwnd);
+    pageant_force_foreground(nonmodal_passphrase_hwnd);  /* KiTTY: beat fg lock */
 
     return true;
 }
@@ -1421,6 +1498,7 @@ static void kageant_openssh_apply(int on)
  * ------------------------------------------------------------------ */
 #define KAGEANT_REG_STARTUP "LoadKeysOnStartup"
 #define KAGEANT_REG_KEYS    "StartupKeys"
+#define KAGEANT_REG_ORDER   "KeyOrder"   /* SHA256 fingerprints in offer order */
 #define KAGEANT_RUN_KEY     "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
 #define KAGEANT_RUN_NAME    "KiTTY-kageant"
 
@@ -1535,6 +1613,64 @@ static void kageant_load_startup_keys(void)
                 filename_free(fn);
             }
             g_startup_loading = 0;
+        }
+        sfree(buf);
+    }
+    RegCloseKey(hk);
+}
+
+/* KiTTY: persist the current key offer order (SHA256 fingerprints, REG_MULTI_SZ).
+ * Called after the user moves a key up/down in the list window. */
+static void kageant_save_key_order(void)
+{
+    int n = 0;
+    char **fps = pageant_get_order_fps(&n);
+    size_t total = 1;                       /* trailing double-NUL */
+    for (int i = 0; i < n; i++)
+        total += strlen(fps[i]) + 1;
+    char *buf = snewn(total, char), *p = buf;
+    for (int i = 0; i < n; i++) {
+        size_t L = strlen(fps[i]) + 1;
+        memcpy(p, fps[i], L);
+        p += L;
+        sfree(fps[i]);
+    }
+    sfree(fps);
+    *p = '\0';
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        RegSetValueExA(hk, KAGEANT_REG_ORDER, 0, REG_MULTI_SZ,
+                       (const BYTE *)buf, (DWORD)total);
+        RegCloseKey(hk);
+    }
+    sfree(buf);
+}
+
+/* KiTTY: apply the saved offer order to the currently loaded keys. Called at
+ * startup once StartupKeys have been re-added. */
+static void kageant_apply_saved_order(void)
+{
+    HKEY hk;
+    DWORD type = 0, sz = 0;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0,
+                      KEY_QUERY_VALUE, &hk) != ERROR_SUCCESS)
+        return;
+    if (RegQueryValueExA(hk, KAGEANT_REG_ORDER, NULL, &type, NULL, &sz)
+            == ERROR_SUCCESS && type == REG_MULTI_SZ && sz > 0) {
+        char *buf = snewn(sz + 1, char);
+        if (RegQueryValueExA(hk, KAGEANT_REG_ORDER, NULL, NULL,
+                             (BYTE *)buf, &sz) == ERROR_SUCCESS) {
+            buf[sz] = '\0';
+            int n = 0;
+            for (char *p = buf; *p; p += strlen(p) + 1)
+                n++;
+            char **fps = snewn(n ? n : 1, char *);
+            int i = 0;
+            for (char *p = buf; *p; p += strlen(p) + 1)
+                fps[i++] = p;
+            pageant_apply_key_order(fps, n);
+            sfree(fps);
         }
         sfree(buf);
     }
@@ -2203,6 +2339,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     if (!already_running && kageant_startup_get()) {
         kageant_load_startup_keys();
         pageant_forget_passphrases();
+        kageant_apply_saved_order();   /* restore the user's offer order */
     }
 
     /*
