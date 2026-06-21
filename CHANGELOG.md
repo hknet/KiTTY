@@ -5,6 +5,14 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.17-beta — 2026-06-21
+- **In-app updater — fix install-type detection.** A system (or per-user) install
+  could be misreported as "portable" (so auto-install was refused). Detection now
+  asks Windows Installer whether KiTTY is installed, by its stable product
+  UpgradeCode, instead of guessing from the executable's path — robust to
+  non-default install locations and localized systems. Path-sniffing remains only
+  as a fallback.
+
 ## 0.84.1.16-beta — 2026-06-21
 - **kageant — reorder loaded keys:** the key-list window has **Move Up** / **Move
   Down** buttons. The list order is the order keys are *offered* to servers, so

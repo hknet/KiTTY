@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.16 — Known issues & limitations
+# KiTTY 0.84.1.17 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,17 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.16-beta @ 2026-06-21`.
+- **Version string:** binaries report `0.84.1.17-beta @ 2026-06-21`.
+
+## New in 0.84.1.17
+
+- **In-app updater — install type detected correctly.** A real system or per-user
+  install was sometimes misreported as a *portable* copy, so the updater refused
+  to auto-install. It now determines the install type by querying Windows
+  Installer for KiTTY's stable product **UpgradeCode** (per-machine vs per-user),
+  rather than inferring it from the executable's path — which is robust to
+  non-default install folders and localized Windows. The path heuristic is kept
+  only as a last-resort fallback.
 
 ## New in 0.84.1.16
 
