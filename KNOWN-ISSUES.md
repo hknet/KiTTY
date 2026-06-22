@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.21 — Known issues & limitations
+# KiTTY 0.84.1.22 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,17 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.21-beta @ 2026-06-22`.
+- **Version string:** binaries report `0.84.1.22-beta @ 2026-06-22`.
+
+## New in 0.84.1.22
+
+- **Upgrades relaunch the tray apps.** When an in-place MSI upgrade closes apps to
+  replace their files, Windows' Restart Manager only restarts apps that registered
+  for it. KiTTY now registers: **kageant** and the **tray launcher** are brought
+  back after the upgrade, and a terminal opened from a **saved session**
+  (`-load NAME` / `@NAME`) is relaunched with that session so it reconnects.
+  Ad-hoc/host-typed terminals are intentionally not relaunched (a blank window
+  would be noise, and a live SSH session can't be restored).
 
 ## New in 0.84.1.21
 

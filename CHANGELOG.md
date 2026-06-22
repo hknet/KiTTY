@@ -5,6 +5,16 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.22-beta — 2026-06-22
+- **MSI upgrade now relaunches the tray apps it closes.** During an in-place
+  upgrade, Windows' Restart Manager closes apps that lock the files being
+  replaced; it only restarts ones that asked to be restarted. KiTTY now asks:
+  **kageant** and the **tray launcher** are relaunched after the upgrade, and a
+  **terminal opened from a saved session** (`-load NAME` / `@NAME`) is relaunched
+  with the same session so it reconnects. (Ad-hoc/host-typed terminals are left
+  closed on purpose — a blank reopen would be noise and the live session can't be
+  restored regardless.)
+
 ## 0.84.1.21-beta — 2026-06-22
 - **Security hardening — transfer command builders quote + bound their inputs.**
   The pscp/plink command builders (upload, download, plink, clipboard-get) now
