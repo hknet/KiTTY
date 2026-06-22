@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.19 — Known issues & limitations
+# KiTTY 0.84.1.20 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,21 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.19-beta @ 2026-06-21`.
+- **Version string:** binaries report `0.84.1.20-beta @ 2026-06-22`.
+
+## New in 0.84.1.20
+
+- **File upload (pscp) works again.** Dropping a file on the terminal, or the
+  Send-file menu, had been broken across the whole 0.84 series. Three faults were
+  fixed: (1) an assertion crash — `username`/`remote command` became `STR_AMBI`
+  string types in PuTTY 0.84 and KiTTY still used the plain string accessor;
+  (2) a stray byte appended to a dropped file's path so pscp couldn't find it;
+  (3) the terminal window no longer accepted dropped files (the "forbidden"
+  cursor) because the drop registration was lost in the port. Together with the
+  0.84.1.19 no-shell change, uploads run again and without shell exposure.
+- Follow-up still planned: argument quoting + length bounding in the transfer
+  command builders (so an unusual character in a session field can't inject an
+  extra command-line switch); and DPAPI for stored passwords.
 
 ## New in 0.84.1.19
 
