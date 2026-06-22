@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.20 — Known issues & limitations
+# KiTTY 0.84.1.21 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,19 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.20-beta @ 2026-06-22`.
+- **Version string:** binaries report `0.84.1.21-beta @ 2026-06-22`.
+
+## New in 0.84.1.21
+
+- **Security hardening: transfer command builders quote and bound their inputs.**
+  The pscp/plink builders (upload, download, plink, clipboard-get) now treat each
+  session-derived value (password, key path, source/target paths, remote command)
+  as a single, properly **argv-quoted** argument and append it with **length
+  bounds**. So a quote (or other unusual character) in a session field can no
+  longer inject an extra command-line switch, and over-long fields truncate rather
+  than overflow a fixed buffer. Raw "extra options" fields stay unquoted by design.
+  This completes the command-builder hardening started in 0.84.1.19 (no shell).
+  *(The WinSCP launcher uses WinSCP's own URL format and is hardened separately.)*
 
 ## New in 0.84.1.20
 

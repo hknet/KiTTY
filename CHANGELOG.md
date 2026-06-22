@@ -5,6 +5,16 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.21-beta — 2026-06-22
+- **Security hardening — transfer command builders quote + bound their inputs.**
+  The pscp/plink command builders (upload, download, plink, clipboard-get) now
+  wrap each session-derived value (password, key path, source/target paths,
+  remote command) as a single, properly **argv-quoted** argument and append with
+  **length bounds**. An unusual character (e.g. a quote) in a session field can no
+  longer inject an extra command-line switch, and over-long fields truncate
+  instead of overflowing a fixed buffer. (Raw user "extra options" fields stay
+  unquoted by design.) Completes the command-builder hardening begun in 0.84.1.19.
+
 ## 0.84.1.20-beta — 2026-06-22
 - **Fixed file upload (pscp), which was broken across the 0.84 series.** Dropping a
   file on the terminal — or the Send-file menu — now works again. Three distinct
