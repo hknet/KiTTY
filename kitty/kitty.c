@@ -4028,31 +4028,20 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
 			strcat( cmd, conf_get_str(conf, CONF_sftpconnect) ) ;
 		} else {
-			if( user!=NULL ) {
-				strcat( cmd, user ) ; 
-			} else { 
-				strcat( cmd, conf_get_str_ambi(conf,CONF_username,NULL) ) ; 
+			bcat( cmd, sizeof(cmd), user!=NULL ? user : conf_get_str_ambi(conf,CONF_username,NULL) ) ;
+			if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
+				/* plaintext at runtime; do NOT MASKPASS. (Goes into the WinSCP URL.) */
+				bcat( cmd, sizeof(cmd), ":" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_password) ) ;
 			}
-			if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) { 
-				char bufpass[1024] ;
-				strcat( cmd, ":" ); 
-				strcpy(bufpass,conf_get_str(conf,CONF_password));
-				/* plaintext at runtime; do NOT MASKPASS */
-				strcat(cmd,bufpass);
-				memset(bufpass,0,strlen(bufpass));
-			}
-			strcat( cmd, "@" ) ; 
-			if( host!=NULL ) {
-				strcat( cmd, host ) ; 
-			} else {
-				strcat( cmd, conf_get_str(conf,CONF_host) ) ; 
-			}
-			strcat( cmd, ":" ) ; sprintf( buffer, "%d", conf_get_int(conf,CONF_port) ); strcat( cmd, buffer ) ;
+			bcat( cmd, sizeof(cmd), "@" ) ;
+			if( poss( ":", host!=NULL ? host : conf_get_str(conf,CONF_host) )>0 ) { bcat(cmd,sizeof(cmd),"[") ; bcat(cmd,sizeof(cmd), host!=NULL ? host : conf_get_str(conf,CONF_host)) ; bcat(cmd,sizeof(cmd),"]") ; }
+			else { bcat( cmd, sizeof(cmd), host!=NULL ? host : conf_get_str(conf,CONF_host) ) ; }
+			bcat( cmd, sizeof(cmd), ":" ) ; sprintf( buffer, "%d", conf_get_int(conf,CONF_port) ) ; bcat( cmd, sizeof(cmd), buffer ) ;
 		}
-		
+
 		if( directory!=NULL ) if( strlen(directory)>0 ) {
-			strcat( cmd, directory ) ;
-			if( directory[strlen(directory)-1]!='/' ) strcat( cmd, "/" ) ;
+			bcat( cmd, sizeof(cmd), directory ) ;
+			if( directory[strlen(directory)-1]!='/' ) bcat( cmd, sizeof(cmd), "/" ) ;
 		}
 		if( strlen( filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) > 0 ) {
 			if( GetShortPathName( filename_to_str(conf_get_filename(conf,CONF_keyfile)), shortpath, 4095 ) ) {
@@ -4066,7 +4055,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
 			char bufpass[1024] ;
 			strcat( cmd, ":" ); 
-			strcpy(bufpass,conf_get_str(conf,CONF_password));
+			snprintf(bufpass,sizeof(bufpass),"%s",conf_get_str(conf,CONF_password)); /* bounded */
 			/* plaintext at runtime; do NOT MASKPASS */
 			strcat(cmd,bufpass);
 			memset(bufpass,0,strlen(bufpass));
