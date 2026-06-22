@@ -5,6 +5,18 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.20-beta — 2026-06-22
+- **Fixed file upload (pscp), which was broken across the 0.84 series.** Dropping a
+  file on the terminal — or the Send-file menu — now works again. Three distinct
+  faults were fixed: a crash (assertion) because `username`/`remote command`
+  became "ambiguous" string types in PuTTY 0.84 and KiTTY used the old accessor;
+  a stray byte appended to a dropped file's path (so pscp couldn't find it); and
+  the terminal window no longer registering for dropped files (the "forbidden"
+  cursor). Combined with the 0.84.1.19 no-shell change, uploads run safely again.
+- Note: a follow-up will add argument quoting + length bounding to the transfer
+  command builders (so an unusual character in a session field can't inject an
+  extra command-line switch).
+
 ## 0.84.1.19-beta — 2026-06-21
 - **Security hardening (cont.):** external file-transfer (pscp) and plink commands
   are now launched directly via CreateProcess instead of through the Windows
