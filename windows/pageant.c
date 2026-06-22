@@ -101,6 +101,8 @@ struct PassphraseProcStruct {
     PageantClientDialogId *dlgid;
     char *passphrase;
     const char *comment;
+    HWND over;   /* KiTTY: window to centre the prompt over (the requesting
+                  * terminal, captured as the foreground window); NULL = desktop */
 };
 
 /*
@@ -265,9 +267,9 @@ static INT_PTR CALLBACK PassphraseProc(HWND hwnd, UINT msg,
          * Centre the window.
          */
         RECT rs, rd;
-        HWND hw;
-
-        hw = GetDesktopWindow();
+        /* KiTTY: centre over the requesting terminal window if we captured it
+         * (p->over = the foreground window at request time); else the desktop. */
+        HWND hw = (p->over && IsWindow(p->over)) ? p->over : GetDesktopWindow();
         if (GetWindowRect(hw, &rs) && GetWindowRect(hwnd, &rd))
             MoveWindow(hwnd,
                        (rs.right + rs.left + rd.left - rd.right) / 2,
@@ -541,6 +543,7 @@ static void win_add_keyfile(Filename *filename, bool encrypted)
         pps.dlgid = NULL;
         pps.passphrase = NULL;
         pps.comment = err;
+        pps.over = GetForegroundWindow();   /* KiTTY: centre over the active window */
         dlgret = DialogBoxParam(
             hinst, MAKEINTRESOURCE(IDD_LOAD_PASSPHRASE),
             NULL, PassphraseProc, (LPARAM) &pps);
@@ -1096,6 +1099,9 @@ static bool ask_passphrase_common(PageantClientDialogId *dlgid,
     pps->dlgid = dlgid;
     pps->passphrase = NULL;
     pps->comment = comment;
+    /* KiTTY: capture the foreground window NOW (the terminal that just requested
+     * the key) so the on-demand passphrase prompt opens centred over it. */
+    pps->over = GetForegroundWindow();
 
     nonmodal_passphrase_hwnd = CreateDialogParam(
         hinst, MAKEINTRESOURCE(IDD_ONDEMAND_PASSPHRASE),
