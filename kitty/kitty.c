@@ -2291,47 +2291,34 @@ void RunExternPlink( HWND hwnd, const char * cmd ) {
 
     if( !GetShortPathName( PlinkPath, plinkpath, 4095 ) ) return ;
 
-    strcpy( buffer, "" ) ;
-    sprintf( buffer, "%s ", plinkpath ) ;
-
-    //if( GetAutoStoreSSHKeyFlag() ) strcat( buffer, "-auto-store-sshkey " ) ;
+    buffer[0]='\0' ;
+    const size_t BC = sizeof(buffer) ;
+    bcat( buffer, BC, plinkpath ) ; bcat( buffer, BC, " " ) ;
 
     if( strlen( conf_get_str(conf, CONF_sftpconnect) ) == 0 ) {
-        sprintf( b1, "-P %d ", conf_get_int(conf, CONF_port)) ;
-        strcat( buffer, b1 ) ;
+        sprintf( b1, "-P %d ", conf_get_int(conf, CONF_port)) ; bcat( buffer, BC, b1 ) ;
     }
-
-    if( conf_get_int(conf,CONF_sshprot) == 3 ) { // SSH-2 Only (voir putty.h)
-        strcat( buffer, "-2 " ) ;
-    }
+    if( conf_get_int(conf,CONF_sshprot) == 3 ) { bcat( buffer, BC, "-2 " ) ; }   // SSH-2 Only
 
     if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
-        strcat( buffer, "-pw \"" ) ;
-        char bufpass[1024] ;
-        strcpy( bufpass,conf_get_str(conf,CONF_password) ) ;
-        /* CONF_password is plaintext at runtime; do NOT MASKPASS (would garble it). */
-        strcat( buffer, bufpass ) ; memset(bufpass,0,strlen(bufpass));
-        strcat( buffer, "\" " ) ;
+        bcat( buffer, BC, "-pw " ) ; qcat( buffer, BC, conf_get_str(conf,CONF_password) ) ; bcat( buffer, BC, " " ) ;
     }
-
     if( strlen( filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) > 0 ) {
-        strcat( buffer, "-i \"" ) ;
-        strcat( buffer, filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ;
-        strcat( buffer, "\" " ) ;
+        bcat( buffer, BC, "-i " ) ; qcat( buffer, BC, filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ; bcat( buffer, BC, " " ) ;
     }
-
-    strcat( buffer, "\"" ) ;
-
-    if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
-        strcat( buffer, conf_get_str(conf, CONF_sftpconnect) ) ;
-    } else {
-        strcat( buffer, conf_get_str_ambi(conf,CONF_username,NULL) ) ; strcat( buffer, "@" ) ;
-        if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) { strcat( buffer, "[" ) ; strcat( buffer, conf_get_str(conf,CONF_host) ) ; strcat( buffer, "]" ) ; }
-        else { strcat( buffer, conf_get_str(conf,CONF_host) ) ; }
+    /* target (single quoted argument) */
+    {
+        char tgt[4096] ; tgt[0]='\0' ;
+        if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
+            bcat( tgt, sizeof(tgt), conf_get_str(conf, CONF_sftpconnect) ) ;
+        } else {
+            bcat( tgt, sizeof(tgt), conf_get_str_ambi(conf,CONF_username,NULL) ) ; bcat( tgt, sizeof(tgt), "@" ) ;
+            if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) { bcat(tgt,sizeof(tgt),"[") ; bcat(tgt,sizeof(tgt),conf_get_str(conf,CONF_host)) ; bcat(tgt,sizeof(tgt),"]") ; }
+            else { bcat( tgt, sizeof(tgt), conf_get_str(conf,CONF_host) ) ; }
+        }
+        qcat( buffer, BC, tgt ) ; bcat( buffer, BC, " " ) ;
     }
-    strcat( buffer, "\" " );
-
-    strcat( buffer, "\"" ) ; strcat( buffer, cmd ) ; strcat(buffer,"\"") ;
+    qcat( buffer, BC, cmd ) ;   /* remote command (single quoted argument) */
 
     chdir( InitialDirectory ) ;
     if( debug_flag ) { debug_logevent( "Run: %s", buffer) ; }
@@ -2367,90 +2354,64 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
 
     if(strlen( dir ) == 0) { strcpy( dir, InitialDirectory ) ; }
 
-    strcpy( buffer, "" ) ;
+    buffer[0]='\0' ;
+    const size_t BC = sizeof(buffer) ;
 
     int pscp_newwin = (nb_pscp_run<4) ;   /* was: "start" (new window) for the first 4 */
     if( pscp_newwin ) { nb_pscp_run++ ; } else { nb_pscp_run = 0 ; }
-    sprintf( buffer, "%s ", pscppath ) ;
+    bcat( buffer, BC, pscppath ) ; bcat( buffer, BC, " " ) ;
 
-    if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {
-        strcat( buffer, conf_get_str(conf, CONF_pscpoptions) ) ;
-        strcat( buffer, " " ) ;
+    if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {     /* raw user options - unquoted */
+        bcat( buffer, BC, conf_get_str(conf, CONF_pscpoptions) ) ; bcat( buffer, BC, " " ) ;
     }
-    if( conf_get_int(conf, CONF_winscpprot)==0 ) {
-        strcat( buffer, "-scp " ) ; 
-    } else {
-        strcat( buffer, "-sftp " ) ;
-    }
-
-    //if( GetAutoStoreSSHKeyFlag() ) strcat( buffer, "-auto-store-sshkey " ) ;
+    bcat( buffer, BC, conf_get_int(conf, CONF_winscpprot)==0 ? "-scp " : "-sftp " ) ;
 
     if( ReadParameter( INIT_SECTION, "pscpport", pscpport ) ) {
         pscpport[17]='\0';
         if( !strcmp( pscpport,"*" ) ) sprintf( pscpport, "%d", conf_get_int(conf,CONF_port) ) ;
-        strcat( buffer, "-P " ) ;
-        strcat( buffer, pscpport ) ;
-        strcat( buffer, " " ) ;
+        bcat( buffer, BC, "-P " ) ; bcat( buffer, BC, pscpport ) ; bcat( buffer, BC, " " ) ;
     } else {
-        if( (p=poss(":",conf_get_str(conf, CONF_sftpconnect) )) > 0 ) {
-            sprintf( b1, "-P %d ", atoi(conf_get_str(conf, CONF_sftpconnect)+p) ) ;
-        } else {
-            sprintf( b1, "-P %d ", conf_get_int(conf, CONF_port) ) ;
-        }
-        strcat( buffer, b1 ) ;
+        if( (p=poss(":",conf_get_str(conf, CONF_sftpconnect) )) > 0 ) sprintf( b1, "-P %d ", atoi(conf_get_str(conf, CONF_sftpconnect)+p) ) ;
+        else sprintf( b1, "-P %d ", conf_get_int(conf, CONF_port) ) ;
+        bcat( buffer, BC, b1 ) ;
     }
+    if( conf_get_int(conf,CONF_sshprot) == 3 ) { bcat( buffer, BC, "-2 " ) ; }   // SSH-2 Only
 
-    if( conf_get_int(conf,CONF_sshprot) == 3 ) { // SSH-2 Only (voir putty.h)
-        strcat( buffer, "-2 " ) ;
-        }
     if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
-        strcat( buffer, "-pw \"" ) ;
-        char bufpass[1024] ;
-        strcpy( bufpass,conf_get_str(conf,CONF_password) ) ;
-        /* CONF_password is plaintext at runtime; do NOT MASKPASS (would garble it). */
-        strcat( buffer, bufpass ) ; memset(bufpass,0,strlen(bufpass));
-        strcat( buffer, "\" " ) ;
+        bcat( buffer, BC, "-pw " ) ; qcat( buffer, BC, conf_get_str(conf,CONF_password) ) ; bcat( buffer, BC, " " ) ;
     }
     if( strlen( conf_get_str(conf,CONF_portknockingoptions)) > 0 ) {
-        strcat( buffer, "-knock \"" ) ;
-        strcat( buffer, conf_get_str(conf,CONF_portknockingoptions) ) ;
-        strcat( buffer, "\" " ) ;
+        bcat( buffer, BC, "-knock " ) ; qcat( buffer, BC, conf_get_str(conf,CONF_portknockingoptions) ) ; bcat( buffer, BC, " " ) ;
     }
     if( strlen( filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) > 0 ) {
-        strcat( buffer, "-i \"" ) ;
-        strcat( buffer, filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ;
-        strcat( buffer, "\" " ) ;
+        bcat( buffer, BC, "-i " ) ; qcat( buffer, BC, filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ; bcat( buffer, BC, " " ) ;
     }
 
-    strcat( buffer, "\"" ) ; 
-    if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
-        strcpy( b1, conf_get_str(conf, CONF_sftpconnect) ) ;
-        if( (p=poss(":",b1)) > 0 ) { b1[p-1]='\0'; }
-        strcat( buffer, b1 ) ;
-    } else {
-        strcat( buffer, conf_get_str_ambi(conf,CONF_username,NULL) ) ; strcat( buffer, "@" ) ;
-        if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) {
-            strcat( buffer, "[" ) ;
-            strcat( buffer, conf_get_str(conf,CONF_host) ) ;
-            strcat( buffer, "]" ) ; 
-        } else { 
-            strcat( buffer, conf_get_str(conf,CONF_host) ) ; 
+    /* remote source user@host:path (single quoted argument) */
+    {
+        char src[4096] ; src[0]='\0' ;
+        if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
+            snprintf( b1, sizeof(b1), "%s", conf_get_str(conf, CONF_sftpconnect) ) ;
+            if( (p=poss(":",b1)) > 0 ) { b1[p-1]='\0'; }
+            bcat( src, sizeof(src), b1 ) ;
+        } else {
+            bcat( src, sizeof(src), conf_get_str_ambi(conf,CONF_username,NULL) ) ; bcat( src, sizeof(src), "@" ) ;
+            if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) { bcat(src,sizeof(src),"[") ; bcat(src,sizeof(src),conf_get_str(conf,CONF_host)) ; bcat(src,sizeof(src),"]") ; }
+            else { bcat( src, sizeof(src), conf_get_str(conf,CONF_host) ) ; }
         }
-    }
-    strcat( buffer, ":" ) ; 
-
-    if( filename[0]=='/' ) {
-        strcat(buffer, filename ) ;
-    } else {
-        if( (directory!=NULL) && (strlen(directory)>0) && (strlen(filename)>0) ) {
-            strcat( buffer, directory ) ; strcat( buffer, "/" ) ; strcat( buffer, filename ) ;
+        bcat( src, sizeof(src), ":" ) ;
+        if( filename[0]=='/' ) {
+            bcat( src, sizeof(src), filename ) ;
+        } else if( (directory!=NULL) && (strlen(directory)>0) && (strlen(filename)>0) ) {
+            bcat(src,sizeof(src),directory) ; bcat(src,sizeof(src),"/") ; bcat(src,sizeof(src),filename) ;
         } else if( (directory!=NULL) && (strlen(directory)>0) ) {
-            strcat(buffer, directory ) ; strcat( buffer, "/*") ; 
-        } else { 
-            strcat(buffer, filename ) ; 
+            bcat(src,sizeof(src),directory) ; bcat(src,sizeof(src),"/*") ;
+        } else {
+            bcat(src,sizeof(src),filename) ;
         }
+        qcat( buffer, BC, src ) ; bcat( buffer, BC, " " ) ;
     }
-    strcat( buffer, "\" \"" ) ; strcat( buffer, dir ) ; strcat( buffer, "\"" ) ;
+    qcat( buffer, BC, dir ) ;   /* local destination dir (single quoted argument) */
     //strcat( buffer, " > kitty.log 2>&1" ) ; //if( !system( buffer ) ) unlink( "kitty.log" ) ;
 
     chdir( InitialDirectory ) ;
@@ -2510,61 +2471,44 @@ void GetFile( HWND hwnd ) {
                     }
                     //else { strcpy( dir, InitialDirectory ) ; }
 
-                    sprintf( buffer, "%s ", pscppath ) ;   /* was "start %s" (new window) */
-                    if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {
-                        strcat( buffer, conf_get_str(conf, CONF_pscpoptions) ) ;
-                        strcat( buffer, " " ) ;
+                    buffer[0]='\0' ;
+                    bcat( buffer, sizeof(buffer), pscppath ) ; bcat( buffer, sizeof(buffer), " " ) ;
+                    if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {   /* raw user options */
+                        bcat( buffer, sizeof(buffer), conf_get_str(conf, CONF_pscpoptions) ) ; bcat( buffer, sizeof(buffer), " " ) ;
                     }
-                    if( conf_get_int(conf, CONF_winscpprot)==0 ) {
-                        strcat( buffer, "-scp " ) ; 
-                    } else {
-                        strcat( buffer, "-sftp " ) ; 
-                    }
-                    if( conf_get_int(conf,CONF_sshprot) == 3 ) { // SSH-2 Only (voir putty.h)
-                        strcat( buffer, "-2 " ) ;
-                    }
+                    bcat( buffer, sizeof(buffer), conf_get_int(conf, CONF_winscpprot)==0 ? "-scp " : "-sftp " ) ;
+                    if( conf_get_int(conf,CONF_sshprot) == 3 ) { bcat( buffer, sizeof(buffer), "-2 " ) ; }   // SSH-2 Only
                     if( ReadParameter( INIT_SECTION, "pscpport", pscpport ) ) {
                         pscpport[17]='\0';
                         if( !strcmp( pscpport,"*" ) ) { sprintf( pscpport, "%d", conf_get_int(conf,CONF_port) ) ; }
-                        strcat( buffer, "-P " ) ;
-                        strcat( buffer, pscpport ) ;
-                        strcat( buffer, " " ) ;
+                        bcat( buffer, sizeof(buffer), "-P " ) ; bcat( buffer, sizeof(buffer), pscpport ) ; bcat( buffer, sizeof(buffer), " " ) ;
                     } else {
-                        if( (p=poss(":",conf_get_str(conf, CONF_sftpconnect) )) > 0 ) {
-                            sprintf( b1, "-P %d ", atoi(conf_get_str(conf, CONF_sftpconnect)+p) ) ;
-                        } else {
-                            sprintf( b1, "-P %d ", conf_get_int(conf, CONF_port) ) ;
-                        }
-                        strcat( buffer, b1 ) ;
+                        if( (p=poss(":",conf_get_str(conf, CONF_sftpconnect) )) > 0 ) sprintf( b1, "-P %d ", atoi(conf_get_str(conf, CONF_sftpconnect)+p) ) ;
+                        else sprintf( b1, "-P %d ", conf_get_int(conf, CONF_port) ) ;
+                        bcat( buffer, sizeof(buffer), b1 ) ;
                     }
                     if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
-                        strcat( buffer, "-pw \"" ) ;
-                        char bufpass[1024] ;
-                        strcpy( bufpass, conf_get_str(conf,CONF_password) ) ;
-                        /* CONF_password is plaintext at runtime; do NOT MASKPASS (would garble it). */
-        strcat( buffer, bufpass ) ; memset(bufpass,0,strlen(bufpass));
-                        strcat( buffer, "\" " ) ;
+                        bcat( buffer, sizeof(buffer), "-pw " ) ; qcat( buffer, sizeof(buffer), conf_get_str(conf,CONF_password) ) ; bcat( buffer, sizeof(buffer), " " ) ;
                     }
                     if( strlen( filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) > 0 ) {
-                        strcat( buffer, "-i \"" ) ;
-                        strcat( buffer, filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ;
-                        strcat( buffer, "\" " ) ;
+                        bcat( buffer, sizeof(buffer), "-i " ) ; qcat( buffer, sizeof(buffer), filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ; bcat( buffer, sizeof(buffer), " " ) ;
                     }
-                    if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
-                        strcpy( b1, conf_get_str(conf, CONF_sftpconnect) ) ;
-                        if( (p=poss(":",b1)) > 0 ) { b1[p-1]='\0'; }
-                        strcat( buffer, b1 ) ;
-                    } else {
-                        strcat( buffer, conf_get_str_ambi(conf,CONF_username,NULL) ) ; strcat( buffer, "@" ) ;
-                        if( poss( ":", conf_get_str(conf,CONF_host))>0 ) { 
-                            strcat( buffer, "[" ) ; strcat( buffer, conf_get_str(conf,CONF_host) ) ; strcat( buffer, "]" ) ; 
-                        } else { 
-                            strcat( buffer, conf_get_str(conf,CONF_host) ) ; 
+                    /* remote source user@host:path (single quoted argument) */
+                    {
+                        char src[4096] ; src[0]='\0' ;
+                        if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
+                            snprintf( b1, sizeof(b1), "%s", conf_get_str(conf, CONF_sftpconnect) ) ;
+                            if( (p=poss(":",b1)) > 0 ) { b1[p-1]='\0'; }
+                            bcat( src, sizeof(src), b1 ) ;
+                        } else {
+                            bcat( src, sizeof(src), conf_get_str_ambi(conf,CONF_username,NULL) ) ; bcat( src, sizeof(src), "@" ) ;
+                            if( poss( ":", conf_get_str(conf,CONF_host))>0 ) { bcat(src,sizeof(src),"[") ; bcat(src,sizeof(src),conf_get_str(conf,CONF_host)) ; bcat(src,sizeof(src),"]") ; }
+                            else { bcat( src, sizeof(src), conf_get_str(conf,CONF_host) ) ; }
                         }
+                        bcat( src, sizeof(src), ":" ) ; bcat( src, sizeof(src), pst ) ;
+                        qcat( buffer, sizeof(buffer), src ) ; bcat( buffer, sizeof(buffer), " " ) ;
                     }
-                    strcat( buffer, ":" ) ;
-                    strcat( buffer, pst ) ; strcat( buffer, " \"" ) ;
-                    strcat( buffer, dir ) ; strcat( buffer, "\"" ) ;
+                    qcat( buffer, sizeof(buffer), dir ) ;   /* local destination (single quoted argument) */
                 }
                 GlobalUnlock( hglb ) ;
             }
