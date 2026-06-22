@@ -4026,7 +4026,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		sprintf( cmd, "\"%s\" %s://", shortpath, proto ) ;
 			
 		if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
-			strcat( cmd, conf_get_str(conf, CONF_sftpconnect) ) ;
+			bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_sftpconnect) ) ;
 		} else {
 			bcat( cmd, sizeof(cmd), user!=NULL ? user : conf_get_str_ambi(conf,CONF_username,NULL) ) ;
 			if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
@@ -4045,69 +4045,69 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		}
 		if( strlen( filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) > 0 ) {
 			if( GetShortPathName( filename_to_str(conf_get_filename(conf,CONF_keyfile)), shortpath, 4095 ) ) {
-				strcat( cmd, " \"/privatekey=" ) ;
-				strcat( cmd, shortpath ) ;
-				strcat( cmd, "\"" ) ;
+				bcat( cmd, sizeof(cmd), " \"/privatekey=" ) ;
+				bcat( cmd, sizeof(cmd), shortpath ) ;
+				bcat( cmd, sizeof(cmd), "\"" ) ;
 			}
 		}
 	} else {
-		sprintf( cmd, "\"%s\" %s://%s", shortpath, proto, conf_get_str_ambi(conf,CONF_username,NULL) ) ;
+		snprintf( cmd, sizeof(cmd), "\"%s\" %s://%s", shortpath, proto, conf_get_str_ambi(conf,CONF_username,NULL) ) ;
 		if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
 			char bufpass[1024] ;
-			strcat( cmd, ":" ); 
+			bcat( cmd, sizeof(cmd), ":" ) ;
 			snprintf(bufpass,sizeof(bufpass),"%s",conf_get_str(conf,CONF_password)); /* bounded */
 			/* plaintext at runtime; do NOT MASKPASS */
-			strcat(cmd,bufpass);
+			bcat( cmd, sizeof(cmd), bufpass ) ;
 			memset(bufpass,0,strlen(bufpass));
 		}
-		strcat( cmd, "@" ) ; 
-		if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) { strcat( cmd, "[" ) ; strcat( cmd, conf_get_str(conf,CONF_host) ) ; strcat( cmd, "]" ) ; }
-		else { strcat( cmd, conf_get_str(conf,CONF_host) ) ; }
-		strcat( cmd, ":21" ) ;
+		bcat( cmd, sizeof(cmd), "@" ) ;
+		if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) { bcat( cmd, sizeof(cmd), "[" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_host) ) ; bcat( cmd, sizeof(cmd), "]" ) ; }
+		else { bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_host) ) ; }
+		bcat( cmd, sizeof(cmd), ":21" ) ;
 		if( directory!=NULL ) if( strlen(directory)>0 ) {
-			strcat( cmd, directory ) ;
-			if( directory[strlen(directory)-1]!='/' ) strcat( cmd, "/" ) ;
+			bcat( cmd, sizeof(cmd), directory ) ;
+			if( directory[strlen(directory)-1]!='/' ) bcat( cmd, sizeof(cmd), "/" ) ;
 		}
 	}
 	
 	if( strlen(conf_get_str(conf, CONF_winscpoptions))>0 ) {
-		strcat( cmd, " " ) ; strcat( cmd, conf_get_str(conf, CONF_winscpoptions) ) ;
+		bcat( cmd, sizeof(cmd), " " ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_winscpoptions) ) ;
 	}
-	
+
 	if( (conf_get_int(conf,CONF_proxy_type) != PROXY_NONE) && (strlen( conf_get_str(conf, CONF_sftpconnect) )==0) ) {
-		if( raw == 0 ) { strcat( cmd, " /rawsettings" ) ; raw++ ; }
+		if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
 		switch( conf_get_int(conf,CONF_proxy_type) ) {
-			case 2: strcat( cmd, " ProxyMethod=2" ) ; break ;
-			case 3: strcat( cmd, " ProxyMethod=3" ) ; break ;
-			case 4: strcat( cmd, " ProxyMethod=4" ) ; break ;
-			case 5: strcat( cmd, " ProxyMethod=5" ) ; break ;
-			default: strcat( cmd, " ProxyMethod=1" ) ; break ;
+			case 2: bcat( cmd, sizeof(cmd), " ProxyMethod=2" ) ; break ;
+			case 3: bcat( cmd, sizeof(cmd), " ProxyMethod=3" ) ; break ;
+			case 4: bcat( cmd, sizeof(cmd), " ProxyMethod=4" ) ; break ;
+			case 5: bcat( cmd, sizeof(cmd), " ProxyMethod=5" ) ; break ;
+			default: bcat( cmd, sizeof(cmd), " ProxyMethod=1" ) ; break ;
 		}
-		if( strlen(conf_get_str(conf,CONF_proxy_host))>0 ) { strcat( cmd, " ProxyHost=" ) ; strcat( cmd, conf_get_str(conf,CONF_proxy_host) ) ; }
-		sprintf( buffer, " ProxyPort=%d", conf_get_int(conf,CONF_proxy_port)) ; strcat( cmd, buffer ) ;
-		if( strlen(conf_get_str(conf,CONF_proxy_username))>0 ) { strcat( cmd, " ProxyUsername=" ) ; strcat( cmd, conf_get_str(conf,CONF_proxy_username) ) ; }
-		if( strlen(conf_get_str(conf,CONF_proxy_password))>0 ) { strcat( cmd, " ProxyPassword=" ) ; strcat( cmd, conf_get_str(conf,CONF_proxy_password) ) ; }
-		if( strlen(conf_get_str(conf,CONF_proxy_telnet_command))>0 ) { strcat( cmd, " ProxyTelnetCommand=\"" ) ; strcat( cmd, conf_get_str(conf,CONF_proxy_telnet_command) ) ; strcat( cmd, "\"") ; }
+		if( strlen(conf_get_str(conf,CONF_proxy_host))>0 ) { bcat( cmd, sizeof(cmd), " ProxyHost=" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_proxy_host) ) ; }
+		snprintf( buffer, sizeof(buffer), " ProxyPort=%d", conf_get_int(conf,CONF_proxy_port)) ; bcat( cmd, sizeof(cmd), buffer ) ;
+		if( strlen(conf_get_str(conf,CONF_proxy_username))>0 ) { bcat( cmd, sizeof(cmd), " ProxyUsername=" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_proxy_username) ) ; }
+		if( strlen(conf_get_str(conf,CONF_proxy_password))>0 ) { bcat( cmd, sizeof(cmd), " ProxyPassword=" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_proxy_password) ) ; }
+		if( strlen(conf_get_str(conf,CONF_proxy_telnet_command))>0 ) { bcat( cmd, sizeof(cmd), " ProxyTelnetCommand=\"" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_proxy_telnet_command) ) ; bcat( cmd, sizeof(cmd), "\"") ; }
 	}
-	
+
 	if( conf_get_bool(conf,CONF_compression) ) {
-		if( raw == 0 ) { strcat( cmd, " /rawsettings" ) ; raw++ ; }
-		strcat( cmd, " Compression=1" ) ;
+		if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
+		bcat( cmd, sizeof(cmd), " Compression=1" ) ;
 	}
-	
+
 	if( conf_get_bool(conf, CONF_agentfwd) ) {
-		if( raw == 0 ) { strcat( cmd, " /rawsettings" ) ; raw++ ; }
-		strcat( cmd, " AgentFwd=1" ) ;
+		if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
+		bcat( cmd, sizeof(cmd), " AgentFwd=1" ) ;
 	}
-	
+
 	if( strlen(conf_get_str(conf, CONF_winscprawsettings))>0 ) {
-		if( raw == 0 ) { strcat( cmd, " /rawsettings" ) ; raw++ ; }
-		strcat( cmd, " " ) ; strcat( cmd, conf_get_str(conf, CONF_winscprawsettings) ) ;
+		if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
+		bcat( cmd, sizeof(cmd), " " ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_winscprawsettings) ) ;
 	}
-	
+
 	if( !strcmp(proto,"scp") && (strlen(conf_get_str(conf, CONF_pscpshell))>0) ) {
-		if( raw == 0 ) { strcat( cmd, " /rawsettings" ) ; raw++ ; }
-		strcat( cmd, " " ) ; strcat( cmd, "Shell=\"" ) ; strcat( cmd, conf_get_str(conf, CONF_pscpshell) ) ; strcat( cmd, "\"" ) ;
+		if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
+		bcat( cmd, sizeof(cmd), " " ) ; bcat( cmd, sizeof(cmd), "Shell=\"" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_pscpshell) ) ; bcat( cmd, sizeof(cmd), "\"" ) ;
 	}
 	
 	if( debug_flag ) { debug_logevent( "Start WinSCP: %s", cmd ) ; }
