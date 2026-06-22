@@ -838,6 +838,32 @@ static void win_gui_eventlog(LogPolicy *lp, const char *string)
     tm=ltime();
     strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M:%S\t", &tm);
 
+#ifdef MOD_NETDEBUG
+    /* KiTTY network-debug build: tee every event-log line - which carries the
+     * whole connection lifecycle AND the disconnect REASON ("Network error: ...",
+     * "Server unexpectedly closed...", keepalives, reconnect attempts) - to
+     * %USERPROFILE%\kitty_netdebug.log with millisecond timestamps, so an
+     * intermittent disconnect can be captured and analysed offline later. */
+    {
+        static FILE *ndf = NULL;
+        SYSTEMTIME s; GetLocalTime(&s);
+        if (!ndf) {
+            char p[MAX_PATH]; const char *h = getenv("USERPROFILE");
+            snprintf(p, sizeof(p), "%s\\kitty_netdebug.log", h ? h : "C:");
+            ndf = fopen(p, "a");
+            if (ndf)
+                fprintf(ndf, "\n===== kitty_NETDEBUG start %04d-%02d-%02d %02d:%02d:%02d =====\n",
+                        s.wYear, s.wMonth, s.wDay, s.wHour, s.wMinute, s.wSecond);
+        }
+        if (ndf) {
+            fprintf(ndf, "%04d-%02d-%02d %02d:%02d:%02d.%03d  %s\n",
+                    s.wYear, s.wMonth, s.wDay, s.wHour, s.wMinute, s.wSecond,
+                    s.wMilliseconds, string);
+            fflush(ndf);
+        }
+    }
+#endif
+
     if (ninitial < LOGEVENT_INITIAL_MAX)
         location = &events_initial[ninitial];
     else
