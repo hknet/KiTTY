@@ -746,9 +746,26 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #ifdef MOD_LAUNCHER
         /* KiTTY session launcher: "kitty.exe -launcher" opens the launcher
          * window (a quick-launch list of saved sessions) instead of a session. */
-        if (!strcmp(cl, "-launcher") || !strncmp(cl, "-launcher ", 10))
+        if (!strcmp(cl, "-launcher") || !strncmp(cl, "-launcher ", 10)) {
+            /* Let the MSI Restart Manager relaunch the tray launcher after an
+             * in-place upgrade closes it. */
+            RegisterApplicationRestart(L"-launcher", 0);
             return Launcher_WinMain(inst, prev, cl, show);
+        }
 #endif
+        /* KiTTY: if this terminal was opened from a saved session (-load NAME or
+         * the @NAME shortcut), ask the Restart Manager to relaunch it with the
+         * SAME command line after an upgrade, so the session reconnects. We
+         * deliberately do NOT register ad-hoc/host-typed/duplicate-session
+         * terminals (a blank reopen is noise, and a live SSH session can't be
+         * restored anyway). */
+        if (cl[0] == '@' || cl == strstr(cl, "-load ") ||
+            strstr(cl, " -load ") != NULL) {
+            wchar_t wcl[2048];
+            if (MultiByteToWideChar(CP_ACP, 0, cl, -1, wcl,
+                                    sizeof(wcl)/sizeof(wcl[0])) > 0)
+                RegisterApplicationRestart(wcl, 0);
+        }
     }
 #endif
 

@@ -2176,6 +2176,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * running, so set up all the machinery to answer requests.
      */
     if (!already_running) {
+        /* KiTTY: ask the MSI Restart Manager to relaunch us (kageant.exe, no
+         * args) after an in-place upgrade closes us; we reload startup keys on
+         * our own. Without this, RM closes the tray agent and never brings it
+         * back. (Only the primary instance registers.) */
+        RegisterApplicationRestart(L"", 0);
         /*
          * Set up the window class for the hidden window that receives
          * all the messages to do with our presence in the system tray.
