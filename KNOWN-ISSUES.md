@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.22 — Known issues & limitations
+# KiTTY 0.84.1.23 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,19 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.22-beta @ 2026-06-22`.
+- **Version string:** binaries report `0.84.1.23-beta @ 2026-06-23`.
+
+## New in 0.84.1.23
+
+- **kageant passphrase prompt opens over the requesting terminal.** When a
+  terminal asks kageant to unlock an encrypted key, the "enter passphrase" dialog
+  now appears centred over that terminal window (the foreground window at the time
+  of the request) rather than at the centre of the screen. Falls back to centre if
+  the window can't be determined.
+- **Security hardening (cont.): the WinSCP launcher command is length-bounded** (no
+  fixed-buffer overflow). WinSCP's `scp://…` URL format is unchanged, so launches
+  behave exactly as before. This completes the transfer/launch command-builder
+  hardening across pscp, plink and WinSCP.
 
 ## New in 0.84.1.22
 

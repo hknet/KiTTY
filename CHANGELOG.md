@@ -5,6 +5,15 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.23-beta — 2026-06-23
+- **kageant: the passphrase prompt opens over the requesting terminal.** When a
+  terminal asks kageant to use an encrypted key, the "enter passphrase" dialog now
+  appears centred over that terminal window (the active window at request time)
+  instead of the middle of the screen.
+- **Security hardening (cont.): WinSCP launcher command bounded.** The WinSCP
+  launch command builder now appends with length bounds (no fixed-buffer
+  overflow); its scp:// URL format is unchanged, so launches behave identically.
+
 ## 0.84.1.22-beta — 2026-06-22
 - **MSI upgrade now relaunches the tray apps it closes.** During an in-place
   upgrade, Windows' Restart Manager closes apps that lock the files being
