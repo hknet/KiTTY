@@ -425,15 +425,25 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
         /* far2l attribution is unconditional: dialog.c compiles into a shared
          * lib that does not carry the per-target MOD_FAR2L define, and KiTTY
          * always ships the far2l extensions, so the credit is always accurate. */
+        /* UTF-8 source: real (c) (\xc2\xa9) and em-dash (\xe2\x80\x94) rather than
+         * CP1252 bytes, set as Unicode below so they render on any system codepage. */
         char *text = dupprintf(
             "%s\r\n\r\n%s%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
             appname, ver, netdbg, buildinfo_text,
-            "KiTTY \251 2007-2013 Cyril Dupont \x96 https://www.9bis.net/kitty/",
-            "Based on PuTTY \251 " SHORT_COPYRIGHT_DETAILS ". All rights reserved.",
+            "KiTTY \xc2\xa9 2007-2013 Cyril Dupont \xe2\x80\x94 https://www.9bis.net/kitty/",
+            "Based on PuTTY \xc2\xa9 " SHORT_COPYRIGHT_DETAILS ". All rights reserved.",
             "far2l terminal extensions from putty4far2l "
-            "(Ivan Sorokin, unxed, Ivan Shatsky); far2l \x96 elfmz.");
+            "(Ivan Sorokin, unxed, Ivan Shatsky); far2l \xe2\x80\x94 elfmz.");
         sfree(buildinfo_text);
-        SetDlgItemText(hwnd, IDA_TEXT, text);
+        {
+            int wn = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
+            wchar_t *wtext = snewn(wn > 0 ? wn : 1, wchar_t);
+            if (wn > 0 && MultiByteToWideChar(CP_UTF8, 0, text, -1, wtext, wn) > 0)
+                SetDlgItemTextW(hwnd, IDA_TEXT, wtext);
+            else
+                SetDlgItemText(hwnd, IDA_TEXT, text);  /* fallback */
+            sfree(wtext);
+        }
         MakeDlgItemBorderless(hwnd, IDA_TEXT);
         sfree(text);
         return 1;

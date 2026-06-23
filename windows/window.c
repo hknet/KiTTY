@@ -417,7 +417,14 @@ static void win_seat_notify_session_started(Seat *seat)
             char nb[512];
             if (kitty_update_notice(nb, sizeof(nb))) {
                 update_notice_shown = 1;
-                term_data(wgs->term, nb, strlen(nb));
+                /* nb is UTF-8; render as Unicode via term_data_wide so it is
+                 * encoded into the terminal's current charset (no mojibake). */
+                WCHAR wnb[512];
+                int wn = MultiByteToWideChar(CP_UTF8, 0, nb, -1, wnb, lenof(wnb));
+                if (wn > 1)
+                    term_data_wide(wgs->term, wnb, (size_t)(wn - 1)); /* drop NUL */
+                else
+                    term_data(wgs->term, nb, strlen(nb));             /* fallback */
             }
         }
     }

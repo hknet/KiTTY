@@ -3808,6 +3808,21 @@ static strbuf *term_input_data_from_unicode(
     return buf;
 }
 
+/*
+ * KiTTY: write a wide (Unicode) string to the terminal DISPLAY, encoded in the
+ * terminal's current charset (UTF-8, or its configured line codepage) exactly
+ * as term_data() will decode it. Lets locally-injected messages use Unicode
+ * without risking mojibake on a non-UTF-8 session (a non-representable
+ * character degrades to the codepage's default rather than corrupting bytes).
+ */
+size_t term_data_wide(Terminal *term, const wchar_t *widebuf, size_t len)
+{
+    strbuf *buf = term_input_data_from_unicode(term, widebuf, len);
+    size_t ret = term_data(term, buf->s, buf->len);
+    strbuf_free(buf);
+    return ret;
+}
+
 static strbuf *term_input_data_from_charset(
     Terminal *term, int codepage, const char *str, size_t len)
 {

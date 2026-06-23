@@ -590,17 +590,22 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 			break ;
 		case WM_COMMAND: {//Commandes du menu
 			switch( LOWORD(wParam) ) {
-				case IDM_ABOUT:
-					MessageBox(hwnd,
+				case IDM_ABOUT: {
+					/* UTF-8 source (real "(c)" and em-dash); MessageBoxW renders it
+					 * as Unicode regardless of the system ANSI codepage, so the
+					 * earlier mojibake (Â© / "a\200\224") cannot recur. */
+					const char *ab =
 						"KiTTY Launcher " BUILD_VERSION "\r\n\r\n"
 						"Quick-launch for your saved KiTTY sessions, from the system tray.\r\n"
-						"Part of the KiTTY suite - a fork of PuTTY 0.84.\r\n\r\n"
-						"(c) KAPPER NETWORK-COMMUNICATIONS GmbH\r\n"
-						"Based on KiTTY by Cyril Dupont and PuTTY by Simon Tatham.",
-						/* Plain MB_OK (no MB_ICON* style) so Windows does not play the
-						 * "asterisk" system sound when the About box opens. */
-						"About KiTTY Launcher", MB_OK ) ;
-					break ;
+						"Part of the KiTTY suite \xe2\x80\x94 a fork of PuTTY 0.84.\r\n\r\n"
+						"\xc2\xa9 KAPPER NETWORK-COMMUNICATIONS GmbH\r\n"
+						"Based on KiTTY by Cyril Dupont and PuTTY by Simon Tatham." ;
+					WCHAR wab[512] ;
+					MultiByteToWideChar( CP_UTF8, 0, ab, -1, wab, 512 ) ;
+					/* Plain MB_OK (no MB_ICON* style) so Windows does not play the
+					 * "asterisk" system sound when the About box opens. */
+					MessageBoxW( hwnd, wab, L"About KiTTY Launcher", MB_OK ) ;
+					break ; }
 				case IDM_QUIT:
 					ResShell = Shell_NotifyIcon(NIM_DELETE, &TrayIcone) ;
 					ManageUnHideAll( hwnd ) ;

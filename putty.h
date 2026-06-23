@@ -2061,6 +2061,7 @@ void term_request_copy(Terminal *, const int *clipboards, int n_clipboards);
 void term_request_paste(Terminal *, int clipboard);
 void term_seen_key_event(Terminal *);
 size_t term_data(Terminal *, const void *data, size_t len);
+size_t term_data_wide(Terminal *, const wchar_t *widebuf, size_t len);
 void term_provide_backend(Terminal *term, Backend *backend);
 void term_provide_logctx(Terminal *term, LogContext *logctx);
 void term_set_focus(Terminal *term, bool has_focus);
