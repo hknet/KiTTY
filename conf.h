@@ -569,6 +569,12 @@ CONF_OPTION(sharrow_type,
     SAVE_KEYWORD("ShiftedArrowKeys"),
     STORAGE_ENUM(sharrow_type),
 )
+CONF_OPTION(word_nav_modifier,
+    VALUE_TYPE(INT),
+    DEFAULT_INT(WORDNAV_ALT),
+    SAVE_KEYWORD("WordNavModifier"),
+    STORAGE_ENUM(word_nav_modifier),
+)
 CONF_OPTION(no_applic_c, /* totally disable app cursor keys */
     VALUE_TYPE(BOOL),
     DEFAULT_BOOL(false),

@@ -2597,6 +2597,13 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       I(CONF_sharrow_type),
                       "Ctrl toggles app mode", I(SHARROW_APPLICATION),
                       "xterm-style bitmap", I(SHARROW_BITMAP));
+    ctrl_radiobuttons(s, "Word navigation (Left/Right arrows)", NO_SHORTCUT, 3,
+                      HELPCTX(no_help),
+                      conf_radiobutton_handler,
+                      I(CONF_word_nav_modifier),
+                      "Alt", I(WORDNAV_ALT),
+                      "Ctrl", I(WORDNAV_CTRL),
+                      "Both", I(WORDNAV_BOTH));
 #ifdef MOD_PERSO
     if (!GetPuttyFlag())
         ctrl_checkbox(s, "Enter key sends CR LF", NO_SHORTCUT,

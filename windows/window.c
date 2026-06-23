@@ -2713,6 +2713,28 @@ static BOOL CALLBACK CtrlTabWindowProc(HWND hwnd, LPARAM lParam) {
 }
 #endif
 
+/*
+ * KiTTY: change the terminal font size at runtime (Ctrl + mouse wheel zoom).
+ * Ported from old KiTTY's ChangeFontSize, adapted to the 0.84 wgs/reset_window
+ * API. Adjusts CONF_font's height by `delta` (clamped) and re-lays-out the
+ * window, exactly like a font change made via Change Settings.
+ */
+static void kitty_change_font_size(WinGuiSeat *wgs, int delta)
+{
+    FontSpec *cur = conf_get_fontspec(wgs->conf, CONF_font);
+    int h = cur->height + delta;
+    if (h < 1)  h = 1;
+    if (h > 72) h = 72;
+    if (h == cur->height)
+        return;
+    /* Build a fresh FontSpec (conf_set_fontspec copies it; freeing the
+     * conf-owned `cur` would double-free), then re-init fonts + resize. */
+    FontSpec *nf = fontspec_new(cur->name, cur->isbold, h, cur->charset);
+    conf_set_fontspec(wgs->conf, CONF_font, nf);
+    fontspec_free(nf);
+    reset_window(wgs, 2);
+}
+
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                 WPARAM wParam, LPARAM lParam)
 {
@@ -4338,6 +4360,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                    TO_CHR_Y(p.y), shift_pressed,
                                    control_pressed, is_alt_pressed());
                     } /* else: not sure when this can fail */
+                } else if (control_pressed && message != WM_MOUSEHWHEEL) {
+                    /* KiTTY: Ctrl + mouse wheel = zoom the terminal font */
+                    kitty_change_font_size(wgs, b == MBT_WHEEL_UP ? 1 : -1);
                 } else if (message != WM_MOUSEHWHEEL) {
                     /* trigger a scroll */
                     term_scroll(wgs->term, 0,
@@ -5628,12 +5653,43 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
           case VK_CLEAR: xkey = 'G'; goto arrow_key; /* close enough */
           arrow_key:
             consumed_alt = false;
-            p += format_arrow_key((char *)p, wgs->term, xkey, shift_state & 1,
-                                  shift_state & 2, left_alt, &consumed_alt);
-            if (consumed_alt) {
-                /* supersedes the usual prefixing of Esc */
-                p -= 1;
-                memmove(output, output + 1, p - output);
+            {
+                bool a_shift = (shift_state & 1) != 0;
+                bool a_ctrl  = (shift_state & 2) != 0;
+                bool a_alt   = left_alt;
+                /*
+                 * KiTTY: optionally route the Alt-style "word navigation"
+                 * sequence (ESC[1;3 D/C, which shells bind to back/forward-word)
+                 * onto Ctrl and/or Alt for the Left/Right arrows. Only meaningful
+                 * in xterm-bitmap arrow mode and not in VT52 (where the modifier
+                 * isn't encoded), so those are left untouched.
+                 */
+                if ((xkey == 'C' || xkey == 'D') && !wgs->term->vt52_mode &&
+                    wgs->term->sharrow_type == SHARROW_BITMAP) {
+                    switch (conf_get_int(wgs->conf, CONF_word_nav_modifier)) {
+                      case WORDNAV_CTRL:        /* swap Ctrl <-> Alt */
+                        { bool t = a_ctrl; a_ctrl = a_alt; a_alt = t; }
+                        break;
+                      case WORDNAV_BOTH:        /* either modifier -> word-nav */
+                        if (a_ctrl || a_alt) { a_ctrl = false; a_alt = true; }
+                        break;
+                      /* WORDNAV_ALT: default PuTTY behaviour, no change */
+                    }
+                }
+                p += format_arrow_key((char *)p, wgs->term, xkey,
+                                      a_shift, a_ctrl, a_alt, &consumed_alt);
+                /*
+                 * The leading ESC at output[0] exists iff REAL Alt was down (see
+                 * `if (left_alt) *p++='\033'` earlier). Strip it only when Alt was
+                 * consumed into the bitmap AND really down, so a faked Alt (e.g.
+                 * Ctrl-as-word-nav with real Alt up) never strips a byte that was
+                 * never prefixed.
+                 */
+                if (consumed_alt && left_alt) {
+                    /* supersedes the usual prefixing of Esc */
+                    p -= 1;
+                    memmove(output, output + 1, p - output);
+                }
             }
             return p - output;
 

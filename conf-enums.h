@@ -116,6 +116,12 @@ CONF_ENUM(sharrow_type,
     VALUE(SHARROW_BITMAP, 1),
 )
 
+CONF_ENUM(word_nav_modifier,
+    VALUE(WORDNAV_ALT, 0),
+    VALUE(WORDNAV_CTRL, 1),
+    VALUE(WORDNAV_BOTH, 2),
+)
+
 CONF_ENUM(remote_qtitle_action,
     VALUE(TITLE_NONE, 0),
     VALUE(TITLE_EMPTY, 1),
