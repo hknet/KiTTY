@@ -40,6 +40,7 @@ one is available.
   - [Roll-up](#roll-up)
   - [Always visible](#always-visible)
   - [Font management](#font-management)
+  - [Word navigation modifier](#word-navigation-modifier)
   - [Quick start of a duplicate session](#quick-start-of-a-duplicate-session)
   - [Background image](#background-image)
 - **Other features**
@@ -309,6 +310,21 @@ KiTTY adds a **Font settings** option to the main menu that lets you adjust the 
 **How to enable:** System menu **Font Up / Font Down** to resize the terminal font on the fly.
 
 ![Font management](docs/features/img/ex_fonts.jpg)
+
+### Word navigation modifier
+
+In a terminal, jumping the cursor a whole word left/right is driven by an xterm
+escape sequence that the remote shell binds to *backward-word* / *forward-word*.
+PuTTY emits it on **Alt + ←/→**. KiTTY adds a setting to choose which modifier
+sends it — **Alt** (the default, unchanged), **Ctrl**, or **Both** — so you can do
+word navigation with **Ctrl + ←/→** if that matches your shell bindings or muscle
+memory.
+
+**How to enable:** Configuration box → **Terminal → Keyboard → "Word navigation
+(Left/Right arrows)"**, pick Alt / Ctrl / Both. Applies in the default
+xterm-bitmap arrow-key mode.
+
+(no screenshot)
 
 ### Quick start of a duplicate session
 
