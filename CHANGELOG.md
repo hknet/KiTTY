@@ -5,6 +5,14 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.26-beta — 2026-06-23
+- **Faster failover on a dead address (capped connect timeout).** A pending
+  connect that gets no response now fails over to the next candidate address after
+  ~5 s instead of hanging ~21 s on Windows' SYN timeout — removing the long freeze
+  on auto-reconnect / first connect to a multi-address host. Only ever triggers on
+  a silently-dropped connection; normal connects are unaffected. Groundwork toward
+  a fuller Happy-Eyeballs parallel connect (planned).
+
 ## 0.84.1.25-beta — 2026-06-23
 - **Fix: config dialog crash (regression in 0.84.1.24).** The new Word-navigation
   radio-button control was built with a malformed argument list (`NO_SHORTCUT`
