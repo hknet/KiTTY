@@ -83,8 +83,12 @@ add_executable(pageant
   pageant.rc)
 add_dependencies(pageant generated_licence_h)
 target_link_libraries(pageant
-  guimisc eventloop agent network crypto utils
-  ${platform_libraries})
+  guimisc agent network crypto eventloop utils
+  ${platform_libraries})  # order matters (single-pass static link): network ->
+                          # eventloop (network.c's new schedule_timer pulls
+                          # timing.c) -> utils (timing.c's timer_change_notify +
+                          # gui-timing.c's run_timers resolve). pageant itself uses
+                          # no timers, so timing.c isn't pulled earlier.
 set_target_properties(pageant PROPERTIES WIN32_EXECUTABLE ON)
 installed_program(pageant)
 
