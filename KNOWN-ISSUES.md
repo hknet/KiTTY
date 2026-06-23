@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.25 — Known issues & limitations
+# KiTTY 0.84.1.26 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,19 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.25-beta @ 2026-06-23`.
+- **Version string:** binaries report `0.84.1.26-beta @ 2026-06-23`.
+
+## New in 0.84.1.26
+
+- **Faster failover on a dead/unreachable address (capped connect timeout).** A
+  connection attempt that gets no response — e.g. an IPv6 address that has gone
+  unreachable on a flaky path — now fails over to the next candidate address after
+  **~5 seconds** instead of hanging on Windows' default ~21 s SYN timeout. This
+  removes the long freeze on auto-reconnect and on first connect to a multi-address
+  host. The cap only ever triggers on a silently-dropped connection (a working
+  connect completes in well under a second), so normal connections are unaffected.
+  *(Groundwork toward a fuller Happy-Eyeballs parallel IPv6/IPv4 connect, planned.
+  Note: this speeds up recovery; it does not change why a link drops.)*
 
 ## New in 0.84.1.25
 
