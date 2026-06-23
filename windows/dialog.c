@@ -414,12 +414,20 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
         SetWindowText(hwnd, str);
         sfree(str);
         char *buildinfo_text = buildinfo("\r\n");
+#ifdef MOD_NETDEBUG
+        /* Debug build marker so this exe is distinguishable from a normal build. */
+        const char *netdbg =
+            "\r\n*** NETDEBUG BUILD - event log is teed to "
+            "%USERPROFILE%\\kitty_netdebug.log ***";
+#else
+        const char *netdbg = "";
+#endif
         /* far2l attribution is unconditional: dialog.c compiles into a shared
          * lib that does not carry the per-target MOD_FAR2L define, and KiTTY
          * always ships the far2l extensions, so the credit is always accurate. */
         char *text = dupprintf(
-            "%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
-            appname, ver, buildinfo_text,
+            "%s\r\n\r\n%s%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
+            appname, ver, netdbg, buildinfo_text,
             "KiTTY \251 2007-2013 Cyril Dupont \x96 https://www.9bis.net/kitty/",
             "Based on PuTTY \251 " SHORT_COPYRIGHT_DETAILS ". All rights reserved.",
             "far2l terminal extensions from putty4far2l "

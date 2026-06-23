@@ -626,6 +626,10 @@ void CheckVersionFromWebSite( HWND hwnd ) {
 		if( !(((curnum[i]>='0')&&(curnum[i]<='9'))||(curnum[i]=='.')) ) { curnum[i]='\0' ; break ; }
 		}
 
+	/* KiTTY: is THIS build a beta? (stable builds don't silently take betas) */
+	int cur_is_beta = ( strstr(BuildVersionTime,"beta")!=NULL
+	                 || strstr(BuildVersionTime,"BETA")!=NULL ) ;
+
 	/* Fetch the latest release JSON from GitHub. GitHub requires a User-Agent
 	 * (set via InternetOpen); PRECONFIG honours the system/IE proxy settings. */
 	char *body = NULL ; DWORD bodylen = 0 ; int ok = 0 ;
@@ -667,12 +671,14 @@ void CheckVersionFromWebSite( HWND hwnd ) {
 	if( ok && (body!=NULL) ) {
 		char *p = strstr( body, "\"tag_name\"" ) ;
 		char latestnum[64]="" ;
+		int latest_is_beta = 0 ;
 		if( p != NULL ) {
 			p = strchr( p, ':' ) ; if( p!=NULL ) p++ ;
 			while( (p!=NULL) && (*p==' '||*p=='\"') ) p++ ;
 			char tag[128]="" ; int j=0 ;
 			while( (p!=NULL) && *p && (*p!='\"') && (j<(int)sizeof(tag)-1) ) { tag[j++]=*p++ ; }
 			tag[j]='\0' ;
+			latest_is_beta = ( strstr(tag,"beta")!=NULL || strstr(tag,"BETA")!=NULL ) ;
 			/* tag is e.g. "kitty-0.84.0.16-beta": skip to the first digit, keep digits/dots. */
 			char *d = tag ; while( *d && !((*d>='0')&&(*d<='9')) ) d++ ;
 			int k=0 ; while( *d && (((*d>='0')&&(*d<='9'))||(*d=='.')) && (k<(int)sizeof(latestnum)-1) ) { latestnum[k++]=*d++ ; }
@@ -683,6 +689,22 @@ void CheckVersionFromWebSite( HWND hwnd ) {
 			kitty_parse_version( curnum, cv ) ;
 			kitty_parse_version( latestnum, lv ) ;
 			if( kitty_version_cmp( cv, lv ) < 0 ) {
+				/* KiTTY: a stable build must not silently take a beta update. If we
+				 * are on a stable release and the newest build is a beta, warn and
+				 * require explicit opt-in (default No). Beta builds proceed as usual. */
+				if( !cur_is_beta && latest_is_beta ) {
+					char wmsg[512] ;
+					sprintf( wmsg, "You are running a stable release.\n\n"
+						"Installed: %s\nLatest:    %s  (BETA)\n\n"
+						"The newest available build is a BETA, which may be less "
+						"tested than a stable release. Install this beta anyway? "
+						"(Proceed with caution.)", curnum, latestnum ) ;
+					if( MessageBox( hwnd, wmsg, "KiTTY Update - beta available",
+							MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2 )!=IDYES ) {
+						free( body ) ; body = NULL ;
+						return ;
+					}
+				}
 				/* An update is available. Decide how to deliver it by install type. */
 				kitty_install_t itype = kitty_detect_install_type() ;
 				char asseturl[1024]="" ; int haveasset = 0 ;
