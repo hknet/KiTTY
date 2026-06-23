@@ -4338,12 +4338,18 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                    TO_CHR_Y(p.y), shift_pressed,
                                    control_pressed, is_alt_pressed());
                     } /* else: not sure when this can fail */
-                } else if (control_pressed && message != WM_MOUSEHWHEEL) {
+                }
+#ifdef MOD_PERSO
+                else if (control_pressed && message != WM_MOUSEHWHEEL) {
                     /* KiTTY: Ctrl + mouse wheel = zoom the terminal font, via the
-                     * same path as the Font Up/Down menu items */
+                     * same path as the Font Up/Down menu items. MOD_PERSO only:
+                     * kitty_font_resize() lives in kitty_bridge.c, which the stock
+                     * pterm/puttytel builds (which also compile this file) don't link. */
                     kitty_font_resize(wgs->term, wgs->conf,
                                       b == MBT_WHEEL_UP ? 1 : -1);
-                } else if (message != WM_MOUSEHWHEEL) {
+                }
+#endif
+                else if (message != WM_MOUSEHWHEEL) {
                     /* trigger a scroll */
                     term_scroll(wgs->term, 0,
                                 b == MBT_WHEEL_UP ?
