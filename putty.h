@@ -503,6 +503,15 @@ enum {
 };
 
 enum {
+    /* Which modifier drives word-navigation on Left/Right (CONF_word_nav_modifier).
+     * "Word-nav" = the Alt-style xterm bitmap sequence (ESC[1;3 D/C) that shells
+     * bind to backward/forward-word. Only affects xterm-bitmap arrow mode. */
+    WORDNAV_ALT,   /* default/PuTTY: Alt = word-nav, Ctrl = its own ctrl sequence */
+    WORDNAV_CTRL,  /* swap: Ctrl = word-nav, Alt = the ctrl sequence */
+    WORDNAV_BOTH   /* either Ctrl or Alt sends word-nav */
+};
+
+enum {
     FQ_DEFAULT, FQ_ANTIALIASED, FQ_NONANTIALIASED, FQ_CLEARTYPE
 };
 
