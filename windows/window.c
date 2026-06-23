@@ -2713,28 +2713,6 @@ static BOOL CALLBACK CtrlTabWindowProc(HWND hwnd, LPARAM lParam) {
 }
 #endif
 
-/*
- * KiTTY: change the terminal font size at runtime (Ctrl + mouse wheel zoom).
- * Ported from old KiTTY's ChangeFontSize, adapted to the 0.84 wgs/reset_window
- * API. Adjusts CONF_font's height by `delta` (clamped) and re-lays-out the
- * window, exactly like a font change made via Change Settings.
- */
-static void kitty_change_font_size(WinGuiSeat *wgs, int delta)
-{
-    FontSpec *cur = conf_get_fontspec(wgs->conf, CONF_font);
-    int h = cur->height + delta;
-    if (h < 1)  h = 1;
-    if (h > 72) h = 72;
-    if (h == cur->height)
-        return;
-    /* Build a fresh FontSpec (conf_set_fontspec copies it; freeing the
-     * conf-owned `cur` would double-free), then re-init fonts + resize. */
-    FontSpec *nf = fontspec_new(cur->name, cur->isbold, h, cur->charset);
-    conf_set_fontspec(wgs->conf, CONF_font, nf);
-    fontspec_free(nf);
-    reset_window(wgs, 2);
-}
-
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                 WPARAM wParam, LPARAM lParam)
 {
@@ -4361,8 +4339,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                    control_pressed, is_alt_pressed());
                     } /* else: not sure when this can fail */
                 } else if (control_pressed && message != WM_MOUSEHWHEEL) {
-                    /* KiTTY: Ctrl + mouse wheel = zoom the terminal font */
-                    kitty_change_font_size(wgs, b == MBT_WHEEL_UP ? 1 : -1);
+                    /* KiTTY: Ctrl + mouse wheel = zoom the terminal font, via the
+                     * same path as the Font Up/Down menu items */
+                    kitty_font_resize(wgs->term, wgs->conf,
+                                      b == MBT_WHEEL_UP ? 1 : -1);
                 } else if (message != WM_MOUSEHWHEEL) {
                     /* trigger a scroll */
                     term_scroll(wgs->term, 0,
