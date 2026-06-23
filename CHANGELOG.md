@@ -5,6 +5,16 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.24-beta — 2026-06-23
+- **Ctrl + mouse wheel zooms the terminal font.** Hold Ctrl and scroll the wheel
+  up/down to grow/shrink the font on the fly (clamped).
+- **Configurable word-navigation modifier.** New Terminal → Keyboard option
+  "Word navigation (Left/Right arrows)": **Alt** (default), **Ctrl**, or **Both** —
+  picks which modifier sends the xterm word-nav sequence (`ESC[1;3 D/C`) that shells
+  bind to back/forward-word. Bitmap arrow mode only.
+- **Security hardening (cont.): WinSCP command builder fully bounded.** The remaining
+  FTP/options/proxy append paths now use bounded appends; no change for SSH launches.
+
 ## 0.84.1.23-beta — 2026-06-23
 - **kageant: the passphrase prompt opens over the requesting terminal.** When a
   terminal asks kageant to use an encrypted key, the "enter passphrase" dialog now

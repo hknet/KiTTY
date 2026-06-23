@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.23 — Known issues & limitations
+# KiTTY 0.84.1.24 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,23 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.23-beta @ 2026-06-23`.
+- **Version string:** binaries report `0.84.1.24-beta @ 2026-06-23`.
+
+## New in 0.84.1.24
+
+- **Ctrl + mouse wheel zooms the terminal font.** Hold **Ctrl** and scroll the
+  wheel up/down over the terminal to grow/shrink the font on the fly (clamped to a
+  sane range). A KiTTY classic, restored on the 0.84 core.
+- **Configurable word-navigation modifier (Terminal → Keyboard).** A new
+  *"Word navigation (Left/Right arrows)"* option — **Alt** (default, = PuTTY),
+  **Ctrl**, or **Both** — chooses which modifier emits the xterm word-navigation
+  sequence (`ESC[1;3 D/C`) that shells bind to back/forward-word. Applies in
+  xterm-bitmap arrow mode (the default); it is a no-op in VT52/application-cursor
+  modes, where the modifier isn't encoded.
+- **Security hardening (cont.): the WinSCP command builder is now fully
+  length-bounded.** The remaining FTP / options / proxy append paths were converted
+  to bounded appends, so the whole builder is overflow-safe. No behaviour change for
+  normal SSH-session WinSCP launches.
 
 ## New in 0.84.1.23
 
