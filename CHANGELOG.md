@@ -5,6 +5,17 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.28-beta — 2026-06-24
+- **"Update available" notice at session start (opt-in, on by default).** A worker
+  thread refreshes a cached latest-version; at the clean top of a session KiTTY
+  prints a one-line notice if a newer version is available (channel rule applies —
+  stable builds ignore betas). Display is synchronous at session top, so a
+  full-screen TUI is never corrupted; the trade-off is the notice can be one launch
+  behind for a brand-new release. Toggle: **Session → "Check for updates on
+  startup."**
+- **Updater channel detection** now uses GitHub's `prerelease` flag instead of the
+  tag text.
+
 ## 0.84.1.27-beta — 2026-06-24
 - **In-app updater respects your release channel.** A stable build no longer
   silently installs a beta via *Check for updates*: if the newest available build

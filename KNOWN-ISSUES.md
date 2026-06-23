@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.27 — Known issues & limitations
+# KiTTY 0.84.1.28 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,22 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.27-beta @ 2026-06-24`.
+- **Version string:** binaries report `0.84.1.28-beta @ 2026-06-24`.
+
+## New in 0.84.1.28
+
+- **"Update available" notice at session start (opt-in, on by default).** A small
+  background check refreshes the latest-known release version; when you open a
+  session, KiTTY prints a one-line notice at the top of the terminal if a newer
+  version is available (then use *Check for updates* to install). It honours the
+  same channel rule — a stable build is not nudged toward betas. The check runs on
+  a worker thread and only updates a cached version; the notice itself is rendered
+  synchronously at the *clean top of a session*, so it never corrupts a full-screen
+  program (vim/htop/tmux/…). One consequence: a brand-new release is flagged on the
+  *next* start (the notice is at most one launch behind). Turn it off in
+  **Session → "Check for updates on startup"**.
+- **Updater channel detection** now reads GitHub's own `prerelease` flag rather
+  than matching "beta" in the tag text (more robust).
 
 ## New in 0.84.1.27
 
