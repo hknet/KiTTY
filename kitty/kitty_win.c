@@ -719,9 +719,11 @@ int kitty_update_notice( char *buf, int n ) {
 	if( kitty_version_cmp( cv, lv ) >= 0 ) return 0 ;   /* not newer */
 	if( !cur_is_beta && beta ) return 0 ;               /* stable build ignores betas */
 
+	/* UTF-8 source text (incl. a real "->" arrow); window.c renders it via
+	 * term_data_wide(), which encodes to the terminal's charset (no mojibake). */
 	snprintf( buf, n,
 		"\r\n[KiTTY] An update is available: %s (you have %s)%s.\r\n"
-		"        System menu -> Check for updates to install it.\r\n\r\n",
+		"        System menu \xe2\x86\x92 Check for updates to install it.\r\n\r\n",
 		latest, curnum, beta ? " (beta)" : "" ) ;
 	return 1 ;
 }
