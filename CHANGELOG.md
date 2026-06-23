@@ -5,6 +5,14 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.27-beta — 2026-06-24
+- **In-app updater respects your release channel.** A stable build no longer
+  silently installs a beta via *Check for updates*: if the newest available build
+  is a beta, KiTTY warns and asks first (proceed with caution). Beta builds track
+  the newest beta as before.
+- **Docs:** FEATURES.md now documents the in-app updater and kageant key reorder
+  (and lists the kageant sections in its contents).
+
 ## 0.84.1.26-beta — 2026-06-23
 - **Faster failover on a dead address (capped connect timeout).** A pending
   connect that gets no response now fails over to the next candidate address after
