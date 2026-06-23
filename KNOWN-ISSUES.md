@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.26 — Known issues & limitations
+# KiTTY 0.84.1.27 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,17 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.26-beta @ 2026-06-23`.
+- **Version string:** binaries report `0.84.1.27-beta @ 2026-06-24`.
+
+## New in 0.84.1.27
+
+- **In-app updater respects your release channel.** If you are on a **stable**
+  release, *Check for updates* no longer silently installs a **beta** — it tells
+  you the newest available build is a beta and asks first (proceed with caution).
+  Beta builds continue to track the newest beta as before. *(Current limitation:
+  the check looks at the single newest release, so a stable user is offered/warned
+  about the newest beta rather than the newest stable; once stable releases resume,
+  full stable-only channel filtering will be added.)*
 
 ## New in 0.84.1.26
 
