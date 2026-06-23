@@ -151,6 +151,8 @@ void ManageInitScript(const char *input_str, const int len); /* kitty.c: scan se
 extern char *ScriptFileContent;                /* kitty.c: loaded login-script buffer (NULL = none) */
 extern HWND MainHwnd;                          /* kitty.c/bridge: active terminal hwnd for keystroke injection */
 void CheckVersionFromWebSite(HWND hwnd);       /* kitty_win.c: query GitHub releases for an update */
+void kitty_start_update_check(void);           /* kitty_win.c: async refresh of cached latest version */
+int kitty_update_notice(char *buf, int n);     /* kitty_win.c: notice text if a newer version is cached */
 void kitty_apply_transparency(WinGuiSeat *wgs);
 void kitty_apply_window_pos(WinGuiSeat *wgs);
 void kitty_send_to_tray(HWND);
@@ -402,6 +404,24 @@ static void win_seat_notify_session_started(Seat *seat)
     /* KiTTY: SSH session is (re)connected post-auth - restore the normal
      * window icon so a prior SetConnBreakIcon() drop no longer shows. */
     kitty_restore_icon(wgs->term_hwnd, wgs->conf);
+#ifdef MOD_PERSO
+    /* KiTTY: kick off the async update check once per process, and (once) show a
+     * cached "update available" notice here at the clean top of the session.
+     * The fetch is async (worker thread refreshing a registry cache); only this
+     * synchronous, top-of-session render touches the terminal, so a full-screen
+     * TUI is never corrupted by a mid-session injection. */
+    if (conf_get_bool(wgs->conf, CONF_check_update_startup)) {
+        kitty_start_update_check();
+        static int update_notice_shown = 0;
+        if (!update_notice_shown) {
+            char nb[512];
+            if (kitty_update_notice(nb, sizeof(nb))) {
+                update_notice_shown = 1;
+                term_data(wgs->term, nb, strlen(nb));
+            }
+        }
+    }
+#endif
 }
 #endif
 

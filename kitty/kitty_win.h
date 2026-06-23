@@ -34,6 +34,11 @@ void RunPuttyEd( HWND hwnd, char * filename ) ;
 // Verifie si une mise a jour est disponible sur le site web
 void CheckVersionFromWebSite( HWND hwnd ) ;
 
+// KiTTY: background (async) update check that caches the latest version, and a
+// session-start notice rendered from that cache (see window.c).
+void kitty_start_update_check( void ) ;
+int kitty_update_notice( char *buf, int n ) ;
+
 // Affichage d'un message dans l'event log
 void debug_logevent( const char *fmt, ... ) ;
 

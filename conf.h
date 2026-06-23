@@ -575,6 +575,11 @@ CONF_OPTION(word_nav_modifier,
     SAVE_KEYWORD("WordNavModifier"),
     STORAGE_ENUM(word_nav_modifier),
 )
+CONF_OPTION(check_update_startup,
+    VALUE_TYPE(BOOL),
+    DEFAULT_BOOL(true),
+    SAVE_KEYWORD("CheckUpdateStartup"),
+)
 CONF_OPTION(no_applic_c, /* totally disable app cursor keys */
     VALUE_TYPE(BOOL),
     DEFAULT_BOOL(false),
