@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.24 — Known issues & limitations
+# KiTTY 0.84.1.25 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,16 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.24-beta @ 2026-06-23`.
+- **Version string:** binaries report `0.84.1.25-beta @ 2026-06-23`.
+
+## New in 0.84.1.25
+
+- **Fix: opening Settings no longer crashes (regression in 0.84.1.24-beta).**
+  A malformed control in the new *Word navigation* option corrupted the dialog's
+  argument list, so KiTTY crashed whenever the configuration box was built —
+  i.e. on **Change Settings** (and on the initial Settings dialog). Fixed. The
+  **Ctrl + mouse-wheel font zoom** and **Word navigation (Alt/Ctrl/Both)** options
+  introduced in 0.84.1.24 are now usable.
 
 ## New in 0.84.1.24
 

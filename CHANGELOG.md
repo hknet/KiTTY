@@ -5,6 +5,13 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.25-beta — 2026-06-23
+- **Fix: config dialog crash (regression in 0.84.1.24).** The new Word-navigation
+  radio-button control was built with a malformed argument list (`NO_SHORTCUT`
+  without per-button shortcuts), corrupting the dialog varargs and crashing KiTTY
+  whenever the configuration box was built (Change Settings / opening Settings).
+  Fixed; the 0.84.1.24 font-zoom and word-navigation options are now usable.
+
 ## 0.84.1.24-beta — 2026-06-23
 - **Ctrl + mouse wheel zooms the terminal font.** Hold Ctrl and scroll the wheel
   up/down to grow/shrink the font on the fly (clamped).
