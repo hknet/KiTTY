@@ -24,6 +24,9 @@ one is available.
   - [Private-key usage confirmation](#private-key-usage-confirmation)
   - [Post-quantum key-exchange warning](#post-quantum-key-exchange-warning)
   - [Command-line key generator (kittygen-cli)](#command-line-key-generator-kittygen-cli)
+  - [kageant — Windows OpenSSH agent integration](#kageant--windows-openssh-agent-integration)
+  - [kageant — load keys on startup](#kageant--load-keys-on-startup)
+  - [kageant — reorder loaded keys](#kageant--reorder-loaded-keys)
   - [Port knocking](#port-knocking)
   - [Proxy choice](#proxy-choice)
   - [SSH handler (URL/OS integration)](#ssh-handler-urlos-integration)
@@ -54,6 +57,7 @@ one is available.
   - [Savedump (diagnostic dump)](#savedump-diagnostic-dump)
   - [Menu key shortcuts definition](#menu-key-shortcuts-definition)
   - [New command-line options](#new-command-line-options)
+  - [In-app updater (Check for updates)](#in-app-updater-check-for-updates)
 - **Bonus**
   - [Hidden text editor](#hidden-text-editor)
 
@@ -156,6 +160,14 @@ kageant (KiTTY's SSH agent) can act as the agent for the **Windows OpenSSH clien
 kageant can remember the keys you load and re-add them automatically at the next login, added **encrypted/deferred** (the passphrase is only requested the first time a key is actually used). It auto-tracks the file paths of the keys you load; enabling the option also installs an autostart entry so kageant starts at login — replacing the need for a hand-made Startup shortcut. Only key-file *paths* are stored, never passphrases or key material.
 
 **How to enable:** right-click the kageant tray icon → **Load keys on startup**.
+
+(no screenshot)
+
+### kageant — reorder loaded keys
+
+kageant offers its loaded keys to a server in list order, and the server tries them in turn — so the order matters when you hold several keys (offering the wrong ones first can even hit a server's "too many authentication failures" limit before the right key is reached). The key-list window has **Move Up** / **Move Down** buttons to set that offer order, e.g. to put your most-used key first. The chosen order is saved by key fingerprint and restored on the next start, including when *Load keys on startup* is enabled.
+
+**How to enable:** in the kageant key-list window, select a key and use the **Move Up** / **Move Down** buttons.
 
 (no screenshot)
 
@@ -351,6 +363,14 @@ KiTTY can display a picture behind your terminal text, giving each session windo
 KiTTY stores all of its configuration (sessions, host keys, and parameters) in the Windows registry. To keep that configuration safe, KiTTY automatically saves a backup copy every time you change settings and close the configuration dialog. The backup is written to **kitty.sav**, kept alongside kitty.ini. The first time you run KiTTY, it also picks up any existing sessions defined for PuTTY so you don't have to recreate them.
 
 **How to enable:** Automatic in registry mode: each time you apply the configuration dialog, KiTTY exports its registry hive to **kitty.sav** (in %APPDATA%\KiTTY, or the `[KiTTY] sav=` path) as a safety backup.
+
+(no screenshot)
+
+### In-app updater (Check for updates)
+
+KiTTY can check whether a newer release is available and install it for you. *Check for updates* queries the official release list and, if a newer build exists, fetches the right asset for **how KiTTY was installed**: the per-user MSI, the system MSI (with an elevation prompt), or — for a **portable** copy — it just opens the download page. The downloaded installer runs only after it passes an **Authenticode check** (valid signature chain *and* the expected KAPPER publisher), and it is held locked against modification from verification through launch; anything that fails verification is deleted and never run. A **stable** build will not silently install a **beta**: if the newest available build is a beta, KiTTY tells you and asks first (proceed with caution).
+
+**How to enable:** system menu → **Check for updates**. Requires network access and honours your system/IE proxy settings; if the check can't complete it falls back to opening the releases page.
 
 (no screenshot)
 
