@@ -2380,6 +2380,11 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ctrl_checkbox(s, "Hide this session from the launcher", NO_SHORTCUT,
                       HELPCTX(no_help), conf_checkbox_handler,
                       I(CONF_launcherhide));
+        /* KiTTY: on startup, check GitHub for a newer release and show a one-line
+         * notice in the terminal when a session opens. */
+        ctrl_checkbox(s, "Check for updates on startup", NO_SHORTCUT,
+                      HELPCTX(no_help), conf_checkbox_handler,
+                      I(CONF_check_update_startup));
     }
 #endif
 

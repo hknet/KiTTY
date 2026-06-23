@@ -616,6 +616,116 @@ static void kitty_run_installer( HWND hwnd, kitty_install_t type, const char *pa
 		"msiexec.exe", args, NULL, SW_SHOWNORMAL ) ;
 }
 
+/* ---- KiTTY: background "update available" check (cached; shown at session start) ----
+ * The blocking GitHub query runs on a worker thread and ONLY refreshes a cached
+ * "latest version" in the registry. The in-terminal notice is rendered later,
+ * synchronously, at the clean top of a session (window.c) -- never injected
+ * mid-session, which would corrupt a full-screen TUI. So the notice can be at
+ * most one launch behind for a brand-new release, which is fine for a nudge. */
+extern const char *kitty_registry_base( void ) ;
+
+/* Fetch the newest release's numeric version + prerelease flag from GitHub.
+ * Returns 1 on success. Leaner sibling of CheckVersionFromWebSite's fetch
+ * (no asset URLs needed). */
+static int kitty_fetch_latest_version( char *ver, int verlen, int *is_beta ) {
+	char *body = NULL ; DWORD bodylen = 0 ; int ok = 0 ;
+	HINTERNET hi = InternetOpenA( "KiTTY-UpdateCheck",
+	                              INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0 ) ;
+	if( hi == NULL ) return 0 ;
+	DWORD tmo = 8000 ;
+	InternetSetOption( hi, INTERNET_OPTION_CONNECT_TIMEOUT, &tmo, sizeof(tmo) ) ;
+	InternetSetOption( hi, INTERNET_OPTION_SEND_TIMEOUT,    &tmo, sizeof(tmo) ) ;
+	InternetSetOption( hi, INTERNET_OPTION_RECEIVE_TIMEOUT, &tmo, sizeof(tmo) ) ;
+	HINTERNET hu = InternetOpenUrlA( hi, KITTY_RELEASES_API,
+	                                 "Accept: application/vnd.github+json\r\n", (DWORD)-1,
+	                                 INTERNET_FLAG_RELOAD|INTERNET_FLAG_NO_CACHE_WRITE|INTERNET_FLAG_SECURE, 0 ) ;
+	if( hu != NULL ) {
+		DWORD cap = 65536 ; body = (char*)malloc( cap ) ; bodylen = 0 ;
+		if( body != NULL ) {
+			DWORD nread = 0 ;
+			for( ;; ) {
+				if( cap - bodylen < 4096 ) { char *nb=(char*)realloc(body,cap*2); if(nb==NULL) break; body=nb; cap*=2; }
+				if( !InternetReadFile( hu, body+bodylen, cap-bodylen-1, &nread ) || nread==0 ) break ;
+				bodylen += nread ;
+				}
+			body[bodylen] = '\0' ; ok = (bodylen>0) ;
+			}
+		InternetCloseHandle( hu ) ;
+		}
+	InternetCloseHandle( hi ) ;
+
+	int got = 0 ;
+	if( ok && body!=NULL ) {
+		if( is_beta != NULL ) {
+			char *pr = strstr( body, "\"prerelease\"" ) ; *is_beta = 0 ;
+			if( pr!=NULL ) { pr=strchr(pr,':'); if(pr!=NULL) pr++; while(pr!=NULL&&(*pr==' '||*pr=='\t'))pr++;
+				*is_beta = ( pr!=NULL && strncmp(pr,"true",4)==0 ) ; }
+			}
+		char *p = strstr( body, "\"tag_name\"" ) ;
+		if( p!=NULL ) {
+			p=strchr(p,':'); if(p!=NULL)p++; while(p!=NULL&&(*p==' '||*p=='\"'))p++;
+			char tag[128]=""; int j=0; while(p!=NULL&&*p&&(*p!='\"')&&(j<(int)sizeof(tag)-1)){tag[j++]=*p++;} tag[j]='\0';
+			char *d=tag; while(*d&&!((*d>='0')&&(*d<='9')))d++;
+			int k=0; while(*d&&(((*d>='0')&&(*d<='9'))||(*d=='.'))&&(k<verlen-1)){ver[k++]=*d++;} ver[k]='\0';
+			got = (ver[0]!='\0') ;
+			}
+		}
+	if( body!=NULL ) free( body ) ;
+	return got ;
+}
+
+static DWORD WINAPI kitty_update_worker( LPVOID unused ) {
+	(void)unused ;
+	char ver[64]="" ; int is_beta=0 ;
+	if( kitty_fetch_latest_version( ver, sizeof(ver), &is_beta ) ) {
+		HKEY hk ; char base[512] ;
+		snprintf( base, sizeof(base), "%s", kitty_registry_base() ) ;
+		if( RegCreateKeyExA( HKEY_CURRENT_USER, base, 0, NULL, 0, KEY_SET_VALUE, NULL, &hk, NULL ) == ERROR_SUCCESS ) {
+			DWORD b = is_beta ? 1 : 0 ;
+			RegSetValueExA( hk, "UpdateLatest", 0, REG_SZ, (const BYTE*)ver, (DWORD)strlen(ver)+1 ) ;
+			RegSetValueExA( hk, "UpdateLatestBeta", 0, REG_DWORD, (const BYTE*)&b, sizeof(b) ) ;
+			RegCloseKey( hk ) ;
+			}
+		}
+	return 0 ;
+}
+
+/* Launch the background update check once per process (fire-and-forget). */
+void kitty_start_update_check( void ) {
+	static int started = 0 ;
+	if( started ) return ; started = 1 ;
+	HANDLE th = CreateThread( NULL, 0, kitty_update_worker, NULL, 0, NULL ) ;
+	if( th != NULL ) CloseHandle( th ) ;
+}
+
+/* If the cached latest version is newer than this build and the channel rule
+ * allows surfacing it, fill buf with a one-line ASCII notice and return 1. */
+int kitty_update_notice( char *buf, int n ) {
+	char curnum[64]="" ; int i ;
+	strncpy( curnum, BuildVersionTime, sizeof(curnum)-1 ) ; curnum[sizeof(curnum)-1]='\0' ;
+	for( i=0 ; i<(int)strlen(curnum) ; i++ )
+		if( !(((curnum[i]>='0')&&(curnum[i]<='9'))||(curnum[i]=='.')) ) { curnum[i]='\0'; break; }
+	int cur_is_beta = ( strstr(BuildVersionTime,"beta")!=NULL || strstr(BuildVersionTime,"BETA")!=NULL ) ;
+
+	char base[512], latest[64]="" ; DWORD sz=sizeof(latest), beta=0, bsz=sizeof(beta) ;
+	snprintf( base, sizeof(base), "%s", kitty_registry_base() ) ;
+	if( RegGetValueA( HKEY_CURRENT_USER, base, "UpdateLatest", RRF_RT_REG_SZ, NULL, latest, &sz ) != ERROR_SUCCESS ) return 0 ;
+	RegGetValueA( HKEY_CURRENT_USER, base, "UpdateLatestBeta", RRF_RT_REG_DWORD, NULL, &beta, &bsz ) ;
+	if( latest[0]=='\0' ) return 0 ;
+
+	int cv[4], lv[4] ;
+	kitty_parse_version( curnum, cv ) ;
+	kitty_parse_version( latest, lv ) ;
+	if( kitty_version_cmp( cv, lv ) >= 0 ) return 0 ;   /* not newer */
+	if( !cur_is_beta && beta ) return 0 ;               /* stable build ignores betas */
+
+	snprintf( buf, n,
+		"\r\n[KiTTY] An update is available: %s (you have %s)%s.\r\n"
+		"        System menu -> Check for updates to install it.\r\n\r\n",
+		latest, curnum, beta ? " (beta)" : "" ) ;
+	return 1 ;
+}
+
 void CheckVersionFromWebSite( HWND hwnd ) {
 	char curnum[64]="" ;
 	int i ;
@@ -672,13 +782,23 @@ void CheckVersionFromWebSite( HWND hwnd ) {
 		char *p = strstr( body, "\"tag_name\"" ) ;
 		char latestnum[64]="" ;
 		int latest_is_beta = 0 ;
+		/* Channel of the newest release from GitHub's own "prerelease" flag
+		 * (betas are published with "prerelease":true) rather than the tag text;
+		 * per_page=1 so the first occurrence is this newest release. */
+		{
+			char *pr = strstr( body, "\"prerelease\"" ) ;
+			if( pr != NULL ) {
+				pr = strchr( pr, ':' ) ; if( pr!=NULL ) pr++ ;
+				while( (pr!=NULL) && (*pr==' '||*pr=='\t') ) pr++ ;
+				latest_is_beta = ( (pr!=NULL) && (strncmp(pr,"true",4)==0) ) ;
+				}
+			}
 		if( p != NULL ) {
 			p = strchr( p, ':' ) ; if( p!=NULL ) p++ ;
 			while( (p!=NULL) && (*p==' '||*p=='\"') ) p++ ;
 			char tag[128]="" ; int j=0 ;
 			while( (p!=NULL) && *p && (*p!='\"') && (j<(int)sizeof(tag)-1) ) { tag[j++]=*p++ ; }
 			tag[j]='\0' ;
-			latest_is_beta = ( strstr(tag,"beta")!=NULL || strstr(tag,"BETA")!=NULL ) ;
 			/* tag is e.g. "kitty-0.84.0.16-beta": skip to the first digit, keep digits/dots. */
 			char *d = tag ; while( *d && !((*d>='0')&&(*d<='9')) ) d++ ;
 			int k=0 ; while( *d && (((*d>='0')&&(*d<='9'))||(*d=='.')) && (k<(int)sizeof(latestnum)-1) ) { latestnum[k++]=*d++ ; }
