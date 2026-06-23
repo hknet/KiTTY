@@ -890,6 +890,17 @@ static Socket *sk_net_accept(accept_ctx_t ctx, Plug *plug)
     return &s->sock;
 }
 
+/*
+ * KiTTY: cap how long a single async connect() may hang before we give up on
+ * it and fall through to the next candidate address. Windows' default is ~21s
+ * (SYN retransmits), which froze reconnects when an address (e.g. a now-
+ * unreachable IPv6) silently blackholes our SYNs. This timeout only ever fires
+ * on a dropped SYN -- a real connect completes in well under a second -- so it
+ * is safe to apply unconditionally to every outgoing TCP attempt.
+ */
+#define KITTY_CONNECT_TIMEOUT_MS (5 * TICKSPERSEC)
+static void net_connect_timeout(void *ctx, unsigned long now);
+
 static DWORD try_connect(NetSocket *sock)
 {
     SOCKET s;
@@ -906,6 +917,9 @@ static DWORD try_connect(NetSocket *sock)
         do_select(sock->s, false);
         closesocket_wrap(sock->s);
     }
+
+    /* KiTTY: starting a fresh attempt -- drop the previous attempt's cap timer */
+    expire_timer_context(sock);
 
     {
         SockAddr thisaddr = sk_extractaddr_tmp(
@@ -1064,6 +1078,13 @@ static DWORD try_connect(NetSocket *sock)
             sock->error = winsock_error_string(err);
             goto ret;
         }
+        /*
+         * KiTTY: the connect is now pending asynchronously. Arm a cap so a
+         * blackholed address fails over fast instead of hanging ~21s on the
+         * OS SYN timeout. Cleared on the first network event (FD_CONNECT or
+         * error) for this socket, on the next attempt, and on close.
+         */
+        schedule_timer(KITTY_CONNECT_TIMEOUT_MS, net_connect_timeout, sock);
     } else {
         /*
          * If we _don't_ get EWOULDBLOCK, the connect has completed
@@ -1091,6 +1112,38 @@ static DWORD try_connect(NetSocket *sock)
                  &thisaddr, sock->port, sock->error, err);
     }
     return err;
+}
+
+/*
+ * KiTTY: a pending connect() exceeded KITTY_CONNECT_TIMEOUT_MS. Treat it just
+ * like an asynchronous connect failure (see select_result's error path): report
+ * it and fall through to the next candidate address; if none remain, close the
+ * connection so the caller's reconnect logic can spin again -- instead of the
+ * whole UI freezing on the OS SYN timeout.
+ */
+static void net_connect_timeout(void *ctx, unsigned long now)
+{
+    NetSocket *s = (NetSocket *)ctx;
+    DWORD err;
+
+    (void)now;
+
+    /* Only relevant while still mid-connect on a live socket. */
+    if (s->connected || !s->addr || s->s == INVALID_SOCKET)
+        return;
+
+    {
+        SockAddr thisaddr = sk_extractaddr_tmp(s->addr, &s->step);
+        plug_log(s->plug, &s->sock, PLUGLOG_CONNECT_FAILED, &thisaddr,
+                 s->port, "Connection attempt timed out", 0);
+    }
+
+    err = 1;
+    while (err && s->addr && sk_nextaddr(s->addr, &s->step))
+        err = try_connect(s);
+
+    if (err != 0)
+        plug_closing_error(s->plug, "Connection attempt timed out");
 }
 
 Socket *sk_new(SockAddr *addr, int port, bool privport, bool oobinline,
@@ -1383,6 +1436,7 @@ static void sk_net_close(Socket *sock)
     if (s->addr)
         sk_addr_free(s->addr);
     delete_callbacks_for_context(s);
+    expire_timer_context(s);   /* KiTTY: drop any pending connect-timeout cap */
     sfree(s);
 }
 
@@ -1575,6 +1629,11 @@ void select_result(WPARAM wParam, LPARAM lParam)
     s = find234(sktree, (void *) wParam, cmpforsearch);
     if (!s)
         return;                /* boggle */
+
+    /* KiTTY: a network event means this attempt resolved (connected or errored),
+     * so the connect-timeout cap no longer applies. (No-op for established
+     * sockets, which never have a cap timer pending.) */
+    expire_timer_context(s);
 
     if ((err = WSAGETSELECTERROR(lParam)) != 0) {
         /*
