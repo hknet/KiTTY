@@ -5,6 +5,22 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.35-beta — 2026-06-25
+- **Embed KiTTY in connection managers (mRemoteNG, Remote4Support).** KiTTY's
+  terminal now hosts correctly inside their connection tabs. Embedding is
+  auto-detected (the host reparents our window), the font DPI is corrected for the
+  host's monitor (no more oversized startup font), the terminal fills the pane and
+  **reflows** on resize (a font-size change reflows rows/cols instead of resizing
+  the pane). Also adds an explicit `-hwndparent <handle>` switch for hosts that
+  pass it. Addresses upstream
+  [cyd01/KiTTY #554](https://github.com/cyd01/KiTTY/issues/554).
+  *Known limitation:* a minor window wobble can occur while dragging the pane's
+  height in mRemoteNG (host-side caption-offset behaviour); cosmetic.
+- **Verified (no change needed): upstream cyd01/KiTTY #549 does not affect this
+  port.** A `savemode=dir` `configdir` path containing **spaces** loads saved
+  sessions correctly here (the ini parser preserves spaces in the value; paths are
+  built/opened space-safely). Live-tested.
+
 ## 0.84.1.34-beta — 2026-06-24
 - **Fix: window position now saved when a session ends by Ctrl+D / remote logout.**
   The position memory (0.84.1.32/.33) only saved on WM_DESTROY (the X button /

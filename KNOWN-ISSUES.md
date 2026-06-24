@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.34 — Known issues & limitations
+# KiTTY 0.84.1.35 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,24 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.34-beta @ 2026-06-24`.
+- **Version string:** binaries report `0.84.1.35-beta @ 2026-06-25`.
+- **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
+  connection manager, dragging the pane's **height** can make the terminal wobble
+  a few pixels while you drag. It's the host's own caption-offset compensation;
+  it settles when you release. Cosmetic.
+
+## New in 0.84.1.35
+
+- **Run KiTTY inside mRemoteNG / Remote4Support.** KiTTY now embeds correctly in
+  connection-manager tabs: it auto-detects when the host docks its window, fixes
+  the font size for the host's monitor (no more huge startup font), fills the
+  pane, and reflows the terminal on resize (changing the font size no longer
+  resizes the pane). A `-hwndparent <handle>` switch is also available for hosts
+  that pass one. (Addresses upstream cyd01/KiTTY #554.) See the known-issues note
+  above about a minor wobble while dragging the pane height in mRemoteNG.
+- **Verified — upstream cyd01/KiTTY #549 does not affect this port.** A
+  `savemode=dir` configuration directory whose path contains **spaces** loads
+  saved sessions correctly here (live-tested). No change needed.
 
 ## New in 0.84.1.34
 
