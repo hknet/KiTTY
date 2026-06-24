@@ -711,12 +711,20 @@ char *terminal_window_class_a(void)
 
 HINSTANCE hinst;
 
+#ifdef MOD_NETDEBUG
+extern void kitty_netdbg_ts(const char *msg);   /* kitty.c: startup checkpoint logger */
+#define NETDBG_TS(m) kitty_netdbg_ts(m)
+#else
+#define NETDBG_TS(m) ((void)0)
+#endif
+
 int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 {
     MSG msg;
     HRESULT hr;
     int guess_width, guess_height;
 
+    NETDBG_TS("WinMain: enter");
     dll_hijacking_protection();
     enable_dit();
 
@@ -724,6 +732,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     hprev = prev;
 
     sk_init();
+    NETDBG_TS("after sk_init (winsock)");
 
     init_common_controls();
 
@@ -750,6 +759,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     init_help();
 
     init_winfuncs();
+    NETDBG_TS("after init_winfuncs");
 
     setup_gui_timing();
 
@@ -757,7 +767,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY core activation: initialise KiTTY (crypt, config dir, kitty.ini,
      * shortcuts, save-mode/registry). hinst is set; PuTTY registry exists so
      * no first-run dialog. */
+    NETDBG_TS("before InitWinMain");
     InitWinMain();
+    NETDBG_TS("after InitWinMain");
 
     /* KiTTY hidden editor (blocnote): SHIFT+F2 / CTRL+SHIFT+F2 / the kitty.ini
      * drag-drop / -edit relaunch KiTTY as "kitty.exe -ed[b] [file]". Intercept
@@ -827,7 +839,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * (If the command line doesn't provide enough info to start a
      * session, this will detour via the config box.)
      */
+    NETDBG_TS("before gui_term_process_cmdline");
     gui_term_process_cmdline(wgs->conf, cmdline);
+    NETDBG_TS("after gui_term_process_cmdline (config box / connect decided)");
 
     memset(&wgs->ucsdata, 0, sizeof(wgs->ucsdata));
 
@@ -938,7 +952,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * Initialise the fonts, simultaneously correcting the guesses
      * for font_{width,height}.
      */
+    NETDBG_TS("win: before init_fonts");
     init_fonts(wgs, 0, 0);
+    NETDBG_TS("win: after init_fonts");
 
     /*
      * Prepare a logical palette.
@@ -1265,7 +1281,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     }
 
     winselgui_set_hwnd(wgs->term_hwnd);
+    NETDBG_TS("win: before start_backend");
     start_backend(wgs);
+    NETDBG_TS("win: after start_backend");
 
     /*
      * Set up the initial input locale.

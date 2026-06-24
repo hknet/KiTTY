@@ -683,6 +683,41 @@ void clear_jumplist(void)
 
 }
 
+/*
+ * KiTTY: the COM jump-list rebuild (update_jumplist_from_registry / clear_jumplist)
+ * can block for many SECONDS on some systems (slow shell, network entries in the
+ * recent-items store, security software hooking the shell). It used to run
+ * synchronously, and because do_defaults() -> load_settings() updates the list at
+ * the very top of every launch, that delay was paid before EVERY new window
+ * appeared. Run the COM work on a short-lived worker thread (its own COM
+ * apartment) so startup never waits on it. The registry list is always updated
+ * synchronously first (fast, local), so the persisted "Recent Sessions" list is
+ * still correct; only the live taskbar refresh is deferred a few ms.
+ */
+static DWORD WINAPI jumplist_com_worker(LPVOID want_update)
+{
+    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    if (want_update)
+        update_jumplist_from_registry();
+    else
+        clear_jumplist();
+    if (SUCCEEDED(hr))
+        CoUninitialize();
+    return 0;
+}
+static void jumplist_com_async(bool want_update)
+{
+    HANDLE th = CreateThread(NULL, 0, jumplist_com_worker,
+                             (LPVOID)(want_update ? (uintptr_t)1 : (uintptr_t)0),
+                             0, NULL);
+    if (th)
+        CloseHandle(th);
+    else {
+        /* Thread creation failed: fall back to doing it synchronously. */
+        if (want_update) update_jumplist_from_registry(); else clear_jumplist();
+    }
+}
+
 /* Adds a saved session to the Windows 7 jumplist. */
 void add_session_to_jumplist(const char * const sessionname)
 {
@@ -690,10 +725,10 @@ void add_session_to_jumplist(const char * const sessionname)
         return;                        /* do nothing on pre-Win7 systems */
 
     if (add_to_jumplist_registry(sessionname) == JUMPLISTREG_OK) {
-        update_jumplist_from_registry();
+        jumplist_com_async(true);
     } else {
         /* Make sure we don't leave the jumplist dangling. */
-        clear_jumplist();
+        jumplist_com_async(false);
     }
 }
 
@@ -704,10 +739,10 @@ void remove_session_from_jumplist(const char * const sessionname)
         return;                        /* do nothing on pre-Win7 systems */
 
     if (remove_from_jumplist_registry(sessionname) == JUMPLISTREG_OK) {
-        update_jumplist_from_registry();
+        jumplist_com_async(true);
     } else {
         /* Make sure we don't leave the jumplist dangling. */
-        clear_jumplist();
+        jumplist_com_async(false);
     }
 }
 

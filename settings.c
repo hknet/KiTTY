@@ -690,17 +690,36 @@ void save_open_settings(settings_w *sesskey, Conf *conf)
     wmap(sesskey, "SSHManualHostKeys", conf, CONF_ssh_manual_hostkeys, false);
 }
 
+#ifdef MOD_NETDEBUG
+extern void kitty_netdbg_ts(const char *msg);
+#define NETDBG_TS(m) kitty_netdbg_ts(m)
+#else
+#define NETDBG_TS(m) ((void)0)
+#endif
+
 bool load_settings(const char *section, Conf *conf)
 {
     settings_r *sesskey;
 
+    NETDBG_TS("load_settings: before open_settings_r");
     sesskey = open_settings_r(section);
+    NETDBG_TS("load_settings: after open_settings_r");
     bool exists = (sesskey != NULL);
     load_open_settings(sesskey, conf);
+    NETDBG_TS("load_settings: after load_open_settings");
     close_settings_r(sesskey);
 
-    if (exists && conf_launchable(conf))
+    /* KiTTY: do_defaults() loads "Default Settings" with section==NULL at the top
+     * of EVERY launch; never push that to the jump list (it isn't a real recent
+     * session, and doing so ran the slow Jump List COM rebuild on the startup
+     * path -- the cause of a multi-second delay before each new window). Real
+     * named-session loads still update the list (now asynchronously). */
+    if (exists && section && strcmp(section, "Default Settings") != 0
+        && conf_launchable(conf)) {
+        NETDBG_TS("load_settings: before add_session_to_jumplist");
         add_session_to_jumplist(section);
+        NETDBG_TS("load_settings: after add_session_to_jumplist");
+    }
 
     return exists;
 }
