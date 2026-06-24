@@ -4026,7 +4026,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * never move or resize the pane. (Parent-driven resizes don't reach the
          * child, so TIMER_EMBEDFILL still covers those.) */
         {
-          HWND host = KITTY_EMBED_HOST(hwnd);
+          /* Only clamp for the explicit -hwndparent SELF-embed (we manage the
+           * window and fill the host). When a host like mRemoteNG reparents us
+           * itself, IT positions/sizes the window (deliberately offsetting the
+           * frame off-screen); clamping there just fights it and makes the window
+           * wobble. reset_window already stops a font change from resizing the
+           * window, so no clamp is needed for the host-managed case. */
+          HWND host = kitty_hwnd_parent;
           if (host && IsWindow(host)) {
             RECT prc;
             if (GetClientRect(host, &prc) &&
