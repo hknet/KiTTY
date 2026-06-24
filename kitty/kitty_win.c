@@ -700,7 +700,13 @@ void kitty_start_update_check( void ) {
 
 /* If the cached latest version is newer than this build and the channel rule
  * allows surfacing it, fill buf with a one-line ASCII notice and return 1. */
-int kitty_update_notice( char *buf, int n ) {
+/* Shared "is a newer build available?" check, used by the terminal notice and
+ * the launcher tray balloon. Reads the cached latest version (refreshed async by
+ * the worker), applies the channel rule (a stable build ignores betas), and on a
+ * positive result fills the caller's buffers. Returns 1 if an update should be
+ * surfaced, else 0. Any out pointer may be NULL. */
+int kitty_update_available( char *latest_out, int latest_n,
+                            char *cur_out, int cur_n, int *beta_out ) {
 	char curnum[64]="" ; int i ;
 	strncpy( curnum, BuildVersionTime, sizeof(curnum)-1 ) ; curnum[sizeof(curnum)-1]='\0' ;
 	for( i=0 ; i<(int)strlen(curnum) ; i++ )
@@ -725,6 +731,15 @@ int kitty_update_notice( char *buf, int n ) {
 	if( kitty_version_cmp( cv, lv ) >= 0 ) return 0 ;   /* not newer */
 	if( !cur_is_beta && beta ) return 0 ;               /* stable build ignores betas */
 
+	if( latest_out && latest_n>0 ) { strncpy( latest_out, latest, latest_n-1 ) ; latest_out[latest_n-1]='\0' ; }
+	if( cur_out && cur_n>0 ) { strncpy( cur_out, curnum, cur_n-1 ) ; cur_out[cur_n-1]='\0' ; }
+	if( beta_out ) *beta_out = (int)beta ;
+	return 1 ;
+}
+
+int kitty_update_notice( char *buf, int n ) {
+	char latest[64]="", curnum[64]="" ; int beta=0 ;
+	if( !kitty_update_available( latest, sizeof(latest), curnum, sizeof(curnum), &beta ) ) return 0 ;
 	/* UTF-8 source text (incl. a real "->" arrow); window.c renders it via
 	 * term_data_wide(), which encodes to the terminal's charset (no mojibake). */
 	snprintf( buf, n,

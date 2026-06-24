@@ -543,6 +543,30 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		strcpy( TrayIcone.szTip, "KiTTY Launcher\0" ) ;
 #endif
 		ResShell = Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
+		/* KiTTY: refresh the cached latest version (async) and, if a newer build
+		 * is already known, nudge with a non-blocking tray balloon. Backstop to
+		 * the terminal-start notice; the launcher has no terminal of its own. */
+		{
+			extern void kitty_start_update_check(void) ;
+			extern int kitty_update_available(char*,int,char*,int,int*) ;
+			char ulatest[64]="" ; int ubeta=0 ;
+			kitty_start_update_check() ;
+			if( kitty_update_available( ulatest, sizeof(ulatest), NULL, 0, &ubeta ) ) {
+				char umsg[256] ;
+				snprintf( umsg, sizeof(umsg),
+					"KiTTY %s is available%s.\nUse \"Check for updates\" in a terminal to install it.",
+					ulatest, ubeta ? " (beta)" : "" ) ;
+				TrayIcone.uFlags = NIF_INFO ;
+				TrayIcone.dwInfoFlags = NIIF_INFO ;
+				TrayIcone.uTimeout = 10000 ;
+				strncpy( TrayIcone.szInfoTitle, "KiTTY update available", sizeof(TrayIcone.szInfoTitle) ) ;
+				TrayIcone.szInfoTitle[sizeof(TrayIcone.szInfoTitle)-1] = '\0' ;
+				strncpy( TrayIcone.szInfo, umsg, sizeof(TrayIcone.szInfo) ) ;
+				TrayIcone.szInfo[sizeof(TrayIcone.szInfo)-1] = '\0' ;
+				Shell_NotifyIcon( NIM_MODIFY, &TrayIcone ) ;
+				TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE ; /* restore */
+			}
+		}
 		if (IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_HIDE);
 		//SendMessage(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
 		return 1 ;
