@@ -963,7 +963,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kitty_cli_loginscript = NULL;
     }
     kitty_apply_transparency(wgs);
-    kitty_apply_window_pos(wgs);
+    /* kitty_apply_window_pos is deferred until AFTER the startup sizing/clamp
+     * block below, so the single-monitor working-area clamp can't undo a
+     * cross-monitor restore (see kitty_apply_window_pos). */
     /* KiTTY feature: per-session icon (CONF_icone / CONF_iconefile) */
     kitty_apply_icon(wgs->term_hwnd, wgs->conf);
 #ifdef MOD_BACKGROUNDIMAGE
@@ -1081,6 +1083,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         SetWindowPos(wgs->term_hwnd, NULL, x, y, guess_width, guess_height,
                     SWP_NOREDRAW | SWP_NOZORDER);
     }
+
+#ifdef MOD_PERSO
+    /* KiTTY: apply remembered/pinned window position AFTER the sizing+clamp
+     * block above, so the single-monitor working-area clamp can't undo a
+     * restore onto another (possibly different-DPI) monitor. Done before
+     * ShowWindow, so there's no visible jump. */
+    kitty_apply_window_pos(wgs);
+#endif
 
     /*
      * Set up a caret bitmap, with no content.
@@ -7149,71 +7159,91 @@ void kitty_apply_transparency(WinGuiSeat *wgs)
 /* ===== KiTTY: window position memory =====
  * Remembers the last window position GLOBALLY, keyed by the current monitor
  * TOPOLOGY (so a docked dual-monitor layout and an undocked single screen each
- * remember their own spot, Word-style). Restores via SetWindowPlacement, which
- * auto-clamps an off-screen rect onto a visible monitor, so a changed layout
- * never strands a window. Position only: the session's own size is kept. A
- * session that pins CONF_xpos/ypos still wins. */
+ * remember their own spot, Word-style). Uses PHYSICAL screen coordinates
+ * (GetWindowRect on save / SetWindowPos on restore) rather than
+ * GetWindowPlacement/SetWindowPlacement: under Per-Monitor-V2 DPI awareness
+ * (see windows/putty.mft) WINDOWPLACEMENT.rcNormalPosition is NOT reinterpreted
+ * for the target monitor's DPI, so a placement captured on a secondary monitor
+ * at a different scale is misapplied on restore (the window ends up at a default
+ * position) -- the exact failure seen on mixed-DPI multi-monitor setups.
+ * GetWindowRect/SetWindowPos work in the unified virtual-desktop pixel space and
+ * round-trip correctly across mixed-DPI monitors. Position only: the session's
+ * own size is kept. A session that pins CONF_xpos/ypos still wins. The restore
+ * is applied AFTER the startup sizing/clamp block (see the call site), so the
+ * single-monitor working-area clamp can't undo it. */
 extern const char *kitty_registry_base(void);
 
-/* FNV-1a hash of the monitor layout (each monitor's rect) -> registry value name. */
+/* Order-INDEPENDENT hash of the monitor layout: each monitor contributes its own
+ * FNV-1a(rcMonitor), and the per-monitor hashes are SUMMED. EnumDisplayMonitors'
+ * enumeration order is not guaranteed identical between the saving and restoring
+ * processes, so an order-dependent fold could yield different keys for the same
+ * physical layout (-> key not found -> no restore). Summation is commutative. */
 static BOOL CALLBACK kitty_topo_enum(HMONITOR hm, HDC dc, LPRECT rc, LPARAM lp)
 {
-    unsigned long *h = (unsigned long *)lp;
+    unsigned long *acc = (unsigned long *)lp;
     MONITORINFO mi; mi.cbSize = sizeof(mi);
     if (GetMonitorInfo(hm, &mi)) {
+        unsigned long h = 2166136261UL;
         const unsigned char *p = (const unsigned char *)&mi.rcMonitor;
         size_t i;
-        for (i = 0; i < sizeof(mi.rcMonitor); i++) { *h ^= p[i]; *h *= 16777619UL; }
+        for (i = 0; i < sizeof(mi.rcMonitor); i++) { h ^= p[i]; h *= 16777619UL; }
+        *acc += h;
     }
     (void)dc; (void)rc;
     return TRUE;
 }
 static void kitty_winpos_key(char *buf, int n)
 {
-    unsigned long h = 2166136261UL;
+    unsigned long h = 0;
     EnumDisplayMonitors(NULL, NULL, kitty_topo_enum, (LPARAM)&h);
     _snprintf(buf, n, "WinPos_%08lx", h);
 }
 
-/* Save THIS window's placement under the current-topology key (on close). */
+/* Save THIS window's physical rect under the current-topology key (on close).
+ * Minimised/maximised states are not remembered (we only persist a normal
+ * restored position). */
 void kitty_save_window_placement(HWND hwnd)
 {
     if (!hwnd) return;
-    WINDOWPLACEMENT wp; wp.length = sizeof(wp);
-    if (!GetWindowPlacement(hwnd, &wp)) return;
+    if (IsIconic(hwnd) || IsZoomed(hwnd)) return;
+    RECT r;
+    if (!GetWindowRect(hwnd, &r)) return;
     char keyname[64]; kitty_winpos_key(keyname, sizeof(keyname));
     char base[600]; _snprintf(base, sizeof(base), "%s\\WindowPos", kitty_registry_base());
     HKEY hk;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, base, 0, NULL, 0,
                         KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        RegSetValueExA(hk, keyname, 0, REG_BINARY, (const BYTE *)&wp, sizeof(wp));
+        RegSetValueExA(hk, keyname, 0, REG_BINARY, (const BYTE *)&r, sizeof(r));
         RegCloseKey(hk);
     }
 }
 
+/* True if the screen point (x,y) lies on some visible monitor, so we never
+ * strand a window off-screen when the layout has changed since the save. */
+static BOOL kitty_point_on_monitor(int x, int y)
+{
+    POINT pt; pt.x = x; pt.y = y;
+    if (!p_MonitorFromPoint) return TRUE;   /* can't check -> allow */
+    return p_MonitorFromPoint(pt, MONITOR_DEFAULTTONULL) != NULL;
+}
+
 /* Restore the saved top-left for the current topology, keeping THIS window's
- * current size. SetWindowPlacement clamps onto a visible monitor. Returns 1 if
- * a placement was applied. */
+ * current size. Returns 1 if a placement was applied. */
 static int kitty_restore_window_placement(HWND hwnd)
 {
     if (!hwnd) return 0;
     char keyname[64]; kitty_winpos_key(keyname, sizeof(keyname));
     char base[600]; _snprintf(base, sizeof(base), "%s\\WindowPos", kitty_registry_base());
-    WINDOWPLACEMENT saved; DWORD sz = sizeof(saved);
+    RECT saved; DWORD sz = sizeof(saved);
     if (RegGetValueA(HKEY_CURRENT_USER, base, keyname, RRF_RT_REG_BINARY,
                      NULL, &saved, &sz) != ERROR_SUCCESS) return 0;
     if (sz != sizeof(saved)) return 0;
-    WINDOWPLACEMENT cur; cur.length = sizeof(cur);
-    if (!GetWindowPlacement(hwnd, &cur)) return 0;
-    LONG w = cur.rcNormalPosition.right - cur.rcNormalPosition.left;
-    LONG h = cur.rcNormalPosition.bottom - cur.rcNormalPosition.top;
-    WINDOWPLACEMENT np = cur;
-    np.rcNormalPosition.left   = saved.rcNormalPosition.left;
-    np.rcNormalPosition.top    = saved.rcNormalPosition.top;
-    np.rcNormalPosition.right  = np.rcNormalPosition.left + w;
-    np.rcNormalPosition.bottom = np.rcNormalPosition.top + h;
-    np.showCmd = SW_SHOWNORMAL;
-    return SetWindowPlacement(hwnd, &np) ? 1 : 0;
+    /* Only restore if the saved title-bar area is still on a visible monitor
+     * (probe a point a little inside the top-left corner). */
+    if (!kitty_point_on_monitor(saved.left + 8, saved.top + 8))
+        return 0;
+    return SetWindowPos(hwnd, NULL, saved.left, saved.top, 0, 0,
+                        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) ? 1 : 0;
 }
 
 /* Move THIS seat's window. A session that pins CONF_xpos/ypos (>=0) wins; else,
