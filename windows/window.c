@@ -307,8 +307,50 @@ static UINT wm_mousewheel = WM_MOUSEWHEEL;
 HWND kitty_hwnd_parent = NULL;
 static HWND kitty_hwnd_parent_main = NULL;
 #define KITTY_EMBEDDED() (kitty_hwnd_parent != NULL)
+/* #554: the host may embed us WITHOUT -hwndparent by reparenting our window
+ * itself (this is what mRemoteNG actually does). So detect embedding at runtime:
+ * the effective host is the explicit -hwndparent, else our actual parent window.
+ * A normal top-level KiTTY has no parent, so this is NULL and behaviour is
+ * unchanged. */
+static HWND kitty_embed_host(HWND h)
+{
+    if (kitty_hwnd_parent) return kitty_hwnd_parent;
+    return GetParent(h);
+}
+#define KITTY_EMBED_HOST(h)  kitty_embed_host(h)
+#define KITTY_IS_EMBEDDED(h) (kitty_embed_host(h) != NULL)
 #else
 #define KITTY_EMBEDDED() 0
+#define KITTY_EMBED_HOST(h)  (NULL)
+#define KITTY_IS_EMBEDDED(h) 0
+#endif
+
+#ifdef MOD_EMBEDDBG
+/* #554 diagnostic build: trace embed sizing to %TEMP%\kitty_embed.log via
+ * GetTempPath (works regardless of how the host launched us). Compiled only with
+ * -DMOD_EMBEDDBG; a no-op otherwise. */
+#include <stdarg.h>
+static UINT kitty_dpi_of(HWND h)
+{
+    UINT (WINAPI *p)(HWND) = (UINT (WINAPI *)(HWND))
+        GetProcAddress(GetModuleHandleA("user32.dll"), "GetDpiForWindow");
+    return (p && h) ? p(h) : 0;
+}
+static void embdbg(const char *fmt, ...)
+{
+    char dir[MAX_PATH], path[MAX_PATH];
+    if (!GetTempPathA(sizeof(dir), dir)) return;
+    _snprintf(path, sizeof(path), "%skitty_embed.log", dir);
+    FILE *f = fopen(path, "a");
+    if (!f) return;
+    SYSTEMTIME s; GetLocalTime(&s);
+    fprintf(f, "%02d:%02d:%02d.%03d ", s.wHour, s.wMinute, s.wSecond, s.wMilliseconds);
+    va_list ap; va_start(ap, fmt); vfprintf(f, fmt, ap); va_end(ap);
+    fputc('\n', f); fclose(f);
+}
+#define EMBDBG(...) embdbg(__VA_ARGS__)
+#else
+#define EMBDBG(...) ((void)0)
 #endif
 
 struct WinGuiSeatListNode wgslisthead = {
@@ -969,6 +1011,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 SetParent(wgs->term_hwnd, kitty_hwnd_parent);
                 kitty_hwnd_parent_main =
                     GetAncestor(kitty_hwnd_parent, GA_ROOTOWNER);
+#ifdef MOD_EMBEDDBG
+                { RECT pc; GetClientRect(kitty_hwnd_parent, &pc);
+                  embdbg("EMBED parent=%p parentClient=%ldx%ld selfDPI=%u parentDPI=%u",
+                         (void*)kitty_hwnd_parent, pc.right, pc.bottom,
+                         kitty_dpi_of(wgs->term_hwnd), kitty_dpi_of(kitty_hwnd_parent)); }
+#endif
                 SetWindowPos(wgs->term_hwnd, NULL, 0, 0, 0, 0,
                              SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                              SWP_FRAMECHANGED);
@@ -2355,7 +2403,7 @@ static void wintw_request_resize(TermWin *tw, int w, int h)
     }
 
     if (resize_action != RESIZE_FONT && !IsZoomed(wgs->term_hwnd)
-        && !KITTY_EMBEDDED()) {
+        && !KITTY_IS_EMBEDDED(wgs->term_hwnd)) {
         width = wgs->extra_width + wgs->font_width * w;
         height = wgs->extra_height + wgs->font_height * h;
 
@@ -2435,7 +2483,12 @@ static void reset_window(WinGuiSeat *wgs, int reinit)
         recompute_window_offset(wgs);
     }
 
-    if (IsZoomed(wgs->term_hwnd) || KITTY_EMBEDDED()) {
+    EMBDBG("reset_window reinit=%d embedded=%d host=%p zoomed=%d client=%dx%d font=%dx%d term=%dx%d ra=%d",
+           reinit, KITTY_IS_EMBEDDED(wgs->term_hwnd), (void*)KITTY_EMBED_HOST(wgs->term_hwnd),
+           IsZoomed(wgs->term_hwnd),
+           win_width, win_height, wgs->font_width, wgs->font_height,
+           wgs->term->cols, wgs->term->rows, resize_action);
+    if (IsZoomed(wgs->term_hwnd) || KITTY_IS_EMBEDDED(wgs->term_hwnd)) {
         /* We're fullscreen (or embedded as a child via -hwndparent, #554): we
          * must not change the size of the window, so absorb the change into the
          * font size or the terminal itself. When embedded we always reflow the
@@ -2447,7 +2500,7 @@ static void reset_window(WinGuiSeat *wgs, int reinit)
         wgs->extra_width = wr.right - wr.left - cr.right + cr.left;
         wgs->extra_height = wr.bottom - wr.top - cr.bottom + cr.top;
 
-        if (resize_action != RESIZE_TERM && !KITTY_EMBEDDED()) {
+        if (resize_action != RESIZE_TERM && !KITTY_IS_EMBEDDED(wgs->term_hwnd)) {
             if (wgs->font_width != win_width/wgs->term->cols ||
                 wgs->font_height != win_height/wgs->term->rows) {
                 int fw = (win_width - 2*window_border) / wgs->term->cols;
@@ -2896,8 +2949,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                     GetWindowRect(hwnd, &wr)) {
                     /* our current size (child origin is 0,0 in the parent) */
                     int cw = wr.right - wr.left, ch = wr.bottom - wr.top;
-                    if (cw != prc.right || ch != prc.bottom)
+                    if (cw != prc.right || ch != prc.bottom) {
+                        EMBDBG("TIMER fill: own=%dx%d parentClient=%ldx%ld -> MoveWindow",
+                               cw, ch, prc.right, prc.bottom);
                         MoveWindow(hwnd, 0, 0, prc.right, prc.bottom, TRUE);
+                    }
                 }
             } else {
                 KillTimer(hwnd, TIMER_EMBEDFILL);
@@ -3956,15 +4012,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * fill the parent. The terminal can then only reflow rows/cols -- it can
          * never move or resize the pane. (Parent-driven resizes don't reach the
          * child, so TIMER_EMBEDFILL still covers those.) */
-        if (KITTY_EMBEDDED() && IsWindow(kitty_hwnd_parent)) {
+        {
+          HWND host = KITTY_EMBED_HOST(hwnd);
+          if (host && IsWindow(host)) {
             RECT prc;
-            if (GetClientRect(kitty_hwnd_parent, &prc) &&
+            if (GetClientRect(host, &prc) &&
                 prc.right > 0 && prc.bottom > 0) {
                 WINDOWPOS *wp = (WINDOWPOS *)lParam;
+                EMBDBG("WPCHANGING in: x=%d y=%d cx=%d cy=%d flags=0x%x  host=%p hostClient=%ldx%ld -> clamp",
+                       wp->x, wp->y, wp->cx, wp->cy, wp->flags, (void*)host, prc.right, prc.bottom);
                 wp->x = 0; wp->y = 0;
                 wp->cx = prc.right; wp->cy = prc.bottom;
                 wp->flags &= ~(SWP_NOSIZE | SWP_NOMOVE);
             }
+          }
         }
         break;   /* let DefWindowProc apply the (adjusted) WINDOWPOS */
 #endif
@@ -4072,6 +4133,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         break;
       case WM_SIZE:
         resize_action = conf_get_int(wgs->conf, CONF_resize_action);
+        EMBDBG("WM_SIZE wParam=%llu client=%dx%d resize_action=%d embedded=%d host=%p",
+               (unsigned long long)wParam, LOWORD(lParam), HIWORD(lParam),
+               resize_action, KITTY_IS_EMBEDDED(hwnd), (void*)KITTY_EMBED_HOST(hwnd));
         term_notify_minimised(wgs->term, wParam == SIZE_MINIMIZED);
 #ifdef MOD_PERSO
         /* KiTTY feature: when minimised and SendToTray active, hide to tray */
@@ -7357,7 +7421,7 @@ static void kitty_winpos_key(char *buf, int n)
 void kitty_save_window_placement(HWND hwnd)
 {
     if (!hwnd) return;
-    if (KITTY_EMBEDDED()) return;   /* #554: a child's rect is inside the host */
+    if (KITTY_IS_EMBEDDED(hwnd)) return;   /* #554: a child's rect is inside the host */
     if (IsIconic(hwnd) || IsZoomed(hwnd)) return;
     RECT r;
     if (!GetWindowRect(hwnd, &r)) return;
