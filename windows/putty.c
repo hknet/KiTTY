@@ -111,6 +111,20 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                         conf_set_int(conf, CONF_xpos, 0);
                     conf_set_bool(conf, CONF_save_windowpos, true);
                 }
+            } else if (!strcmp(p, "-hwndparent")) {
+                /* KiTTY #554: embed the terminal as a child of the given host
+                 * window (mRemoteNG / Remote4Support). The value is the parent
+                 * window handle as a DECIMAL integer, matching the PuTTYNG /
+                 * Remote4Support forks. The reparent itself happens in window.c
+                 * right after the window is created. */
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                {
+                    extern HWND kitty_hwnd_parent;
+                    const char *hv = cmdline_arg_to_str(arglist->args[arglistpos++]);
+                    kitty_hwnd_parent =
+                        (HWND)(intptr_t)_strtoi64(hv, NULL, 10);
+                }
             } else if (!strcmp(p, "-title")) {
                 if (!arglist->args[arglistpos])
                     cmdline_error("option \"%s\" requires an argument", p);

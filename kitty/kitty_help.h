@@ -41,6 +41,7 @@ In KiTTY some new command-line options are available:\r\n\
 * -xpos: to set the initial X position\r\n\
 * -ypos: to set the initial Y position\r\n\
 * -noconfirm: close the terminal window without the close-confirmation prompt\r\n\
+* -hwndparent: embed the terminal as a child of the given host window handle (decimal), for mRemoteNG / Remote4Support\r\n\
 \r\n\
 In Klink there is one of the KiTTY option:\r\n\
 \r\n\

@@ -293,6 +293,19 @@ DECL_WINDOWS_FUNCTION(static, HRESULT, AdjustWindowRectExForDpi, (LPRECT lpRect,
 
 static UINT wm_mousewheel = WM_MOUSEWHEEL;
 
+#ifdef MOD_PERSO
+/* KiTTY #554: -hwndparent <decimal HWND> embeds the terminal window as a child of
+ * a host application's window (mRemoteNG / Remote4Support). Set from the command
+ * line (windows/putty.c). When non-NULL the terminal is reparented just AFTER
+ * creation (passing the parent to CreateWindow breaks keyboard focus -- per the
+ * Remote4Support fork this is modelled on) and top-level-only behaviours are
+ * suppressed: saved window-position memory, maximise/fullscreen-on-start,
+ * always-on-top and send-to-tray. The host app owns sizing and lifecycle. */
+HWND kitty_hwnd_parent = NULL;
+static HWND kitty_hwnd_parent_main = NULL;
+#define KITTY_EMBEDDED() (kitty_hwnd_parent != NULL)
+#endif
+
 struct WinGuiSeatListNode wgslisthead = {
     .next = &wgslisthead, .prev = &wgslisthead,
 };
@@ -927,6 +940,36 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             modalfatalbox("Unable to create terminal window: %s",
                           win_strerror(GetLastError()));
         }
+#ifdef MOD_PERSO
+        /* KiTTY #554: embed into the host window. SetParent is done HERE (after
+         * creation), not via CreateWindow's hWndParent, because the latter breaks
+         * keyboard focus for the embedded terminal (Remote4Support fork note).
+         * We also switch to WS_CHILD: a plain SetParent on an overlapped window
+         * leaves it an owned pop-up (GetParent==0, drawn at its own screen
+         * coordinates, invisible inside the host) -- WS_CHILD makes it a real
+         * clipped child and wires up the parent focus chain. Then fill the host's
+         * client area; the host may resize us afterwards via WM_SIZE. */
+        if (KITTY_EMBEDDED()) {
+            if (IsWindow(kitty_hwnd_parent)) {
+                LONG_PTR st = GetWindowLongPtr(wgs->term_hwnd, GWL_STYLE);
+                st &= ~(WS_OVERLAPPEDWINDOW | WS_POPUP);
+                st |= WS_CHILD;
+                SetWindowLongPtr(wgs->term_hwnd, GWL_STYLE, st);
+                SetParent(wgs->term_hwnd, kitty_hwnd_parent);
+                kitty_hwnd_parent_main =
+                    GetAncestor(kitty_hwnd_parent, GA_ROOTOWNER);
+                SetWindowPos(wgs->term_hwnd, NULL, 0, 0, 0, 0,
+                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                             SWP_FRAMECHANGED);
+                RECT prc;
+                if (GetClientRect(kitty_hwnd_parent, &prc))
+                    MoveWindow(wgs->term_hwnd, 0, 0, prc.right - prc.left,
+                               prc.bottom - prc.top, TRUE);
+            } else {
+                kitty_hwnd_parent = NULL;   /* stale handle: behave normally */
+            }
+        }
+#endif
         memset(&wgs->dpi_info, 0, sizeof(struct _dpi_info));
         init_dpi_info(wgs);
         sfree(uappname);
@@ -1001,8 +1044,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             SetTimer(wgs->term_hwnd, TIMER_SLIDEBG_WIN, period * 1000, NULL);
     }
 #endif
-    /* KiTTY feature: auto-minimise-to-tray when SendToTray is set */
-    if (conf_get_int(wgs->conf, CONF_sendtotray))
+    /* KiTTY feature: auto-minimise-to-tray when SendToTray is set.
+     * Skipped when embedded (#554): a child window in the tray is nonsense. */
+    if (conf_get_int(wgs->conf, CONF_sendtotray) && !KITTY_EMBEDDED())
         SetAutoSendToTray(1);
     /* KiTTY feature: URL hyperlinks - init urlhack + compile regex */
     kitty_url_init();
@@ -1095,7 +1139,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 y = war.top;
         }
 
-        /* And set the window to the final size and position we've chosen */
+        /* And set the window to the final size and position we've chosen.
+         * Skipped when embedded (#554): the window is sized to the host's client
+         * area and must not be repositioned to monitor coordinates. */
+#ifdef MOD_PERSO
+        if (!KITTY_EMBEDDED())
+#endif
         SetWindowPos(wgs->term_hwnd, NULL, x, y, guess_width, guess_height,
                     SWP_NOREDRAW | SWP_NOZORDER);
     }
@@ -1294,18 +1343,28 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * Finally show the window!
      */
 #ifdef MOD_PERSO
-    /* KiTTY feature: maximize on start (no-global; reads this seat's conf) */
-    if (conf_get_int(wgs->conf, CONF_maximize))
+    /* KiTTY feature: maximize on start (no-global; reads this seat's conf).
+     * Skipped when embedded (#554): the host window owns sizing. */
+    if (conf_get_int(wgs->conf, CONF_maximize) && !KITTY_EMBEDDED())
         show = SW_SHOWMAXIMIZED;
 #endif
     ShowWindow(wgs->term_hwnd, show);
     SetForegroundWindow(wgs->term_hwnd);
 
     term_set_focus(wgs->term, GetForegroundWindow() == wgs->term_hwnd);
+#ifdef MOD_PERSO
+    /* #554: a WS_CHILD doesn't take focus from SetForegroundWindow; focus it
+     * directly so keystrokes go to the embedded terminal. */
+    if (KITTY_EMBEDDED()) {
+        SetFocus(wgs->term_hwnd);
+        term_set_focus(wgs->term, true);
+    }
+#endif
     UpdateWindow(wgs->term_hwnd);
 #ifdef MOD_PERSO
-    /* KiTTY feature: fullscreen on start (no-global; reads this seat's conf) */
-    if (conf_get_int(wgs->conf, CONF_fullscreen))
+    /* KiTTY feature: fullscreen on start (no-global; reads this seat's conf).
+     * Skipped when embedded (#554). */
+    if (conf_get_int(wgs->conf, CONF_fullscreen) && !KITTY_EMBEDDED())
         PostMessage(wgs->term_hwnd, WM_COMMAND, IDM_FULLSCREEN, 0);
 #endif
 
@@ -7237,6 +7296,7 @@ static void kitty_winpos_key(char *buf, int n)
 void kitty_save_window_placement(HWND hwnd)
 {
     if (!hwnd) return;
+    if (KITTY_EMBEDDED()) return;   /* #554: a child's rect is inside the host */
     if (IsIconic(hwnd) || IsZoomed(hwnd)) return;
     RECT r;
     if (!GetWindowRect(hwnd, &r)) return;
@@ -7283,6 +7343,7 @@ static int kitty_restore_window_placement(HWND hwnd)
 void kitty_apply_window_pos(WinGuiSeat *wgs)
 {
     if (!wgs || !wgs->term_hwnd) return;
+    if (KITTY_EMBEDDED()) return;   /* #554: host owns the embedded window's position */
     int x = conf_get_int(wgs->conf, CONF_xpos);
     int y = conf_get_int(wgs->conf, CONF_ypos);
     if (x >= 0 && y >= 0) {
