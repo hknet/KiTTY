@@ -155,6 +155,7 @@ void kitty_start_update_check(void);           /* kitty_win.c: async refresh of 
 int kitty_update_notice(char *buf, int n);     /* kitty_win.c: notice text if a newer version is cached */
 void kitty_apply_transparency(WinGuiSeat *wgs);
 void kitty_apply_window_pos(WinGuiSeat *wgs);
+void kitty_save_window_placement(HWND hwnd);
 void kitty_send_to_tray(HWND);
 int RestoreFromTray(HWND);            /* kitty.c: restore a window from the systray */
 #define MYWM_NOTIFYICON (WM_USER+3)  /* tray-icon click callback (matches kitty.c) */
@@ -2856,6 +2857,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         return 0;
       }
       case WM_DESTROY:
+#ifdef MOD_PERSO
+        /* KiTTY: remember this window's position (topology-keyed) for next time. */
+        if (conf_get_bool(wgs->conf, CONF_remember_winpos))
+            kitty_save_window_placement(hwnd);
+#endif
         show_mouseptr(wgs, true);
         PostQuitMessage(0);
         return 0;
@@ -7140,15 +7146,89 @@ void kitty_apply_transparency(WinGuiSeat *wgs)
 #endif
 
 #ifdef MOD_PERSO
-/* ===== KiTTY feature: restore window position (NO-GLOBAL) =====
- * Moves THIS seat's window to CONF_xpos/CONF_ypos if both are set (>=0). */
+/* ===== KiTTY: window position memory =====
+ * Remembers the last window position GLOBALLY, keyed by the current monitor
+ * TOPOLOGY (so a docked dual-monitor layout and an undocked single screen each
+ * remember their own spot, Word-style). Restores via SetWindowPlacement, which
+ * auto-clamps an off-screen rect onto a visible monitor, so a changed layout
+ * never strands a window. Position only: the session's own size is kept. A
+ * session that pins CONF_xpos/ypos still wins. */
+extern const char *kitty_registry_base(void);
+
+/* FNV-1a hash of the monitor layout (each monitor's rect) -> registry value name. */
+static BOOL CALLBACK kitty_topo_enum(HMONITOR hm, HDC dc, LPRECT rc, LPARAM lp)
+{
+    unsigned long *h = (unsigned long *)lp;
+    MONITORINFO mi; mi.cbSize = sizeof(mi);
+    if (GetMonitorInfo(hm, &mi)) {
+        const unsigned char *p = (const unsigned char *)&mi.rcMonitor;
+        size_t i;
+        for (i = 0; i < sizeof(mi.rcMonitor); i++) { *h ^= p[i]; *h *= 16777619UL; }
+    }
+    (void)dc; (void)rc;
+    return TRUE;
+}
+static void kitty_winpos_key(char *buf, int n)
+{
+    unsigned long h = 2166136261UL;
+    EnumDisplayMonitors(NULL, NULL, kitty_topo_enum, (LPARAM)&h);
+    _snprintf(buf, n, "WinPos_%08lx", h);
+}
+
+/* Save THIS window's placement under the current-topology key (on close). */
+void kitty_save_window_placement(HWND hwnd)
+{
+    if (!hwnd) return;
+    WINDOWPLACEMENT wp; wp.length = sizeof(wp);
+    if (!GetWindowPlacement(hwnd, &wp)) return;
+    char keyname[64]; kitty_winpos_key(keyname, sizeof(keyname));
+    char base[600]; _snprintf(base, sizeof(base), "%s\\WindowPos", kitty_registry_base());
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, base, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        RegSetValueExA(hk, keyname, 0, REG_BINARY, (const BYTE *)&wp, sizeof(wp));
+        RegCloseKey(hk);
+    }
+}
+
+/* Restore the saved top-left for the current topology, keeping THIS window's
+ * current size. SetWindowPlacement clamps onto a visible monitor. Returns 1 if
+ * a placement was applied. */
+static int kitty_restore_window_placement(HWND hwnd)
+{
+    if (!hwnd) return 0;
+    char keyname[64]; kitty_winpos_key(keyname, sizeof(keyname));
+    char base[600]; _snprintf(base, sizeof(base), "%s\\WindowPos", kitty_registry_base());
+    WINDOWPLACEMENT saved; DWORD sz = sizeof(saved);
+    if (RegGetValueA(HKEY_CURRENT_USER, base, keyname, RRF_RT_REG_BINARY,
+                     NULL, &saved, &sz) != ERROR_SUCCESS) return 0;
+    if (sz != sizeof(saved)) return 0;
+    WINDOWPLACEMENT cur; cur.length = sizeof(cur);
+    if (!GetWindowPlacement(hwnd, &cur)) return 0;
+    LONG w = cur.rcNormalPosition.right - cur.rcNormalPosition.left;
+    LONG h = cur.rcNormalPosition.bottom - cur.rcNormalPosition.top;
+    WINDOWPLACEMENT np = cur;
+    np.rcNormalPosition.left   = saved.rcNormalPosition.left;
+    np.rcNormalPosition.top    = saved.rcNormalPosition.top;
+    np.rcNormalPosition.right  = np.rcNormalPosition.left + w;
+    np.rcNormalPosition.bottom = np.rcNormalPosition.top + h;
+    np.showCmd = SW_SHOWNORMAL;
+    return SetWindowPlacement(hwnd, &np) ? 1 : 0;
+}
+
+/* Move THIS seat's window. A session that pins CONF_xpos/ypos (>=0) wins; else,
+ * if "remember window position" is on, restore the topology-keyed global. */
 void kitty_apply_window_pos(WinGuiSeat *wgs)
 {
     if (!wgs || !wgs->term_hwnd) return;
     int x = conf_get_int(wgs->conf, CONF_xpos);
     int y = conf_get_int(wgs->conf, CONF_ypos);
-    if (x >= 0 && y >= 0)
+    if (x >= 0 && y >= 0) {
         SetWindowPos(wgs->term_hwnd, NULL, x, y, 0, 0,
                      SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        return;
+    }
+    if (conf_get_bool(wgs->conf, CONF_remember_winpos))
+        kitty_restore_window_placement(wgs->term_hwnd);
 }
 #endif
