@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.28 — Known issues & limitations
+# KiTTY 0.84.1.29 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,18 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.28-beta @ 2026-06-24`.
+- **Version string:** binaries report `0.84.1.29-beta @ 2026-06-24`.
+
+## New in 0.84.1.29
+
+- **About boxes now render proper Unicode.** Both the launcher and the main
+  Help → About box previously used ASCII/CP1252 work-arounds to dodge mojibake;
+  they now display real Unicode (©, em-dash, the update-notice arrow) correctly on
+  any system codepage, via the wide Windows APIs.
+- **Main About box credits the port author.** The central Help → About box now
+  carries the **KAPPER NETWORK-COMMUNICATIONS GmbH** copyright for the PuTTY 0.84
+  port, alongside the existing KiTTY (Cyril Dupont) and PuTTY (Simon Tatham)
+  attributions. (The launcher About box already had it.)
 
 ## New in 0.84.1.28
 
