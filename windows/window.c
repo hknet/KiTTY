@@ -4170,6 +4170,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * isn't rendered 2x too big (or small) for the host. */
         if (!wgs->embed_dpi_synced && KITTY_IS_EMBEDDED(hwnd)) {
             wgs->embed_dpi_synced = true;
+            /* Strip the top-level frame (title bar + resize border). The host
+             * otherwise has to hide our caption by offsetting the window
+             * off-screen by ~31px vertically, and that asymmetric offset makes
+             * the window wobble on height drags. Frameless = the host can size us
+             * 1:1 to the pane. Keep the scrollbar (WS_VSCROLL). */
+            LONG_PTR fst = GetWindowLongPtr(hwnd, GWL_STYLE);
+            fst &= ~(WS_CAPTION | WS_THICKFRAME | WS_BORDER | WS_DLGFRAME);
+            SetWindowLongPtr(hwnd, GWL_STYLE, fst);
+            LONG_PTR fex = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+            fex &= ~(WS_EX_CLIENTEDGE | WS_EX_WINDOWEDGE |
+                     WS_EX_DLGMODALFRAME | WS_EX_STATICEDGE);
+            SetWindowLongPtr(hwnd, GWL_EXSTYLE, fex);
+            SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
             int olddpi = wgs->dpi_info.cur_dpi.y;
             wgs->dpi_info.cur_dpi.x = wgs->dpi_info.cur_dpi.y = 0;
             init_dpi_info(wgs);
