@@ -332,34 +332,6 @@ static HWND kitty_embed_host(HWND h)
 #define KITTY_IS_EMBEDDED(h) 0
 #endif
 
-#ifdef MOD_EMBEDDBG
-/* #554 diagnostic build: trace embed sizing to %TEMP%\kitty_embed.log via
- * GetTempPath (works regardless of how the host launched us). Compiled only with
- * -DMOD_EMBEDDBG; a no-op otherwise. */
-#include <stdarg.h>
-static UINT kitty_dpi_of(HWND h)
-{
-    UINT (WINAPI *p)(HWND) = (UINT (WINAPI *)(HWND))
-        GetProcAddress(GetModuleHandleA("user32.dll"), "GetDpiForWindow");
-    return (p && h) ? p(h) : 0;
-}
-static void embdbg(const char *fmt, ...)
-{
-    char dir[MAX_PATH], path[MAX_PATH];
-    if (!GetTempPathA(sizeof(dir), dir)) return;
-    _snprintf(path, sizeof(path), "%skitty_embed.log", dir);
-    FILE *f = fopen(path, "a");
-    if (!f) return;
-    SYSTEMTIME s; GetLocalTime(&s);
-    fprintf(f, "%02d:%02d:%02d.%03d ", s.wHour, s.wMinute, s.wSecond, s.wMilliseconds);
-    va_list ap; va_start(ap, fmt); vfprintf(f, fmt, ap); va_end(ap);
-    fputc('\n', f); fclose(f);
-}
-#define EMBDBG(...) embdbg(__VA_ARGS__)
-#else
-#define EMBDBG(...) ((void)0)
-#endif
-
 struct WinGuiSeatListNode wgslisthead = {
     .next = &wgslisthead, .prev = &wgslisthead,
 };
@@ -1018,12 +990,6 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 SetParent(wgs->term_hwnd, kitty_hwnd_parent);
                 kitty_hwnd_parent_main =
                     GetAncestor(kitty_hwnd_parent, GA_ROOTOWNER);
-#ifdef MOD_EMBEDDBG
-                { RECT pc; GetClientRect(kitty_hwnd_parent, &pc);
-                  embdbg("EMBED parent=%p parentClient=%ldx%ld selfDPI=%u parentDPI=%u",
-                         (void*)kitty_hwnd_parent, pc.right, pc.bottom,
-                         kitty_dpi_of(wgs->term_hwnd), kitty_dpi_of(kitty_hwnd_parent)); }
-#endif
                 SetWindowPos(wgs->term_hwnd, NULL, 0, 0, 0, 0,
                              SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                              SWP_FRAMECHANGED);
@@ -1431,12 +1397,6 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * rather than at creation, where SetTimer didn't take. */
         SetTimer(wgs->term_hwnd, TIMER_EMBEDFILL, 200, NULL);
     }
-#ifdef MOD_EMBEDDBG
-    embdbg("STARTUP cmdline: %s", GetCommandLineA());
-    embdbg("STARTUP term_hwnd=%p GetParent=%p GW_OWNER=%p kitty_hwnd_parent=%p",
-           (void*)wgs->term_hwnd, (void*)GetParent(wgs->term_hwnd),
-           (void*)GetWindow(wgs->term_hwnd, GW_OWNER), (void*)kitty_hwnd_parent);
-#endif
 #endif
     UpdateWindow(wgs->term_hwnd);
 #ifdef MOD_PERSO
@@ -2496,11 +2456,6 @@ static void reset_window(WinGuiSeat *wgs, int reinit)
         recompute_window_offset(wgs);
     }
 
-    EMBDBG("reset_window reinit=%d embedded=%d host=%p zoomed=%d client=%dx%d font=%dx%d term=%dx%d ra=%d",
-           reinit, KITTY_IS_EMBEDDED(wgs->term_hwnd), (void*)KITTY_EMBED_HOST(wgs->term_hwnd),
-           IsZoomed(wgs->term_hwnd),
-           win_width, win_height, wgs->font_width, wgs->font_height,
-           wgs->term->cols, wgs->term->rows, resize_action);
     if (IsZoomed(wgs->term_hwnd) || KITTY_IS_EMBEDDED(wgs->term_hwnd)) {
         /* We're fullscreen (or embedded as a child via -hwndparent, #554): we
          * must not change the size of the window, so absorb the change into the
@@ -2962,11 +2917,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                     GetWindowRect(hwnd, &wr)) {
                     /* our current size (child origin is 0,0 in the parent) */
                     int cw = wr.right - wr.left, ch = wr.bottom - wr.top;
-                    if (cw != prc.right || ch != prc.bottom) {
-                        EMBDBG("TIMER fill: own=%dx%d parentClient=%ldx%ld -> MoveWindow",
-                               cw, ch, prc.right, prc.bottom);
+                    if (cw != prc.right || ch != prc.bottom)
                         MoveWindow(hwnd, 0, 0, prc.right, prc.bottom, TRUE);
-                    }
                 }
             } else {
                 KillTimer(hwnd, TIMER_EMBEDFILL);
@@ -4038,8 +3990,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             if (GetClientRect(host, &prc) &&
                 prc.right > 0 && prc.bottom > 0) {
                 WINDOWPOS *wp = (WINDOWPOS *)lParam;
-                EMBDBG("WPCHANGING in: x=%d y=%d cx=%d cy=%d flags=0x%x  host=%p hostClient=%ldx%ld -> clamp",
-                       wp->x, wp->y, wp->cx, wp->cy, wp->flags, (void*)host, prc.right, prc.bottom);
                 wp->x = 0; wp->y = 0;
                 wp->cx = prc.right; wp->cy = prc.bottom;
                 wp->flags &= ~(SWP_NOSIZE | SWP_NOMOVE);
@@ -4152,15 +4102,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         break;
       case WM_SIZE:
         resize_action = conf_get_int(wgs->conf, CONF_resize_action);
-#ifdef MOD_EMBEDDBG
-        { char cls[64]=""; GetClassNameA(hwnd, cls, sizeof(cls));
-          LONG_PTR st = GetWindowLongPtr(hwnd, GWL_STYLE);
-          embdbg("WM_SIZE wParam=%llu client=%dx%d ra=%d | GetParent=%p GW_OWNER=%p GA_PARENT=%p GA_ROOT=%p WS_CHILD=%d class=%s",
-               (unsigned long long)wParam, LOWORD(lParam), HIWORD(lParam), resize_action,
-               (void*)GetParent(hwnd), (void*)GetWindow(hwnd, GW_OWNER),
-               (void*)GetAncestor(hwnd, GA_PARENT), (void*)GetAncestor(hwnd, GA_ROOT),
-               (int)((st & WS_CHILD)!=0), cls); }
-#endif
 #ifdef MOD_PERSO
         /* #554: once a host (mRemoteNG) has reparented us, our font DPI may be
          * stale -- the window was created on whatever monitor Windows first
@@ -4170,24 +4111,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * isn't rendered 2x too big (or small) for the host. */
         if (!wgs->embed_dpi_synced && KITTY_IS_EMBEDDED(hwnd)) {
             wgs->embed_dpi_synced = true;
-            /* Strip the top-level frame (title bar + resize border). The host
-             * otherwise has to hide our caption by offsetting the window
-             * off-screen by ~31px vertically, and that asymmetric offset makes
-             * the window wobble on height drags. Frameless = the host can size us
-             * 1:1 to the pane. Keep the scrollbar (WS_VSCROLL). */
-            LONG_PTR fst = GetWindowLongPtr(hwnd, GWL_STYLE);
-            fst &= ~(WS_CAPTION | WS_THICKFRAME | WS_BORDER | WS_DLGFRAME);
-            SetWindowLongPtr(hwnd, GWL_STYLE, fst);
-            LONG_PTR fex = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
-            fex &= ~(WS_EX_CLIENTEDGE | WS_EX_WINDOWEDGE |
-                     WS_EX_DLGMODALFRAME | WS_EX_STATICEDGE);
-            SetWindowLongPtr(hwnd, GWL_EXSTYLE, fex);
-            SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
-                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+            /* NB: do NOT strip the window frame here. The host (mRemoteNG) sizes
+             * and positions us assuming our normal frame (it offsets the caption
+             * off-screen); removing the frame desynchronises that and makes the
+             * window wobble on BOTH axes during a resize drag. Leave the frame
+             * intact and only correct the font DPI below. */
             int olddpi = wgs->dpi_info.cur_dpi.y;
             wgs->dpi_info.cur_dpi.x = wgs->dpi_info.cur_dpi.y = 0;
             init_dpi_info(wgs);
-            EMBDBG("EMBED DPI resync old=%d new=%d", olddpi, wgs->dpi_info.cur_dpi.y);
             if (wgs->dpi_info.cur_dpi.y != olddpi)
                 reset_window(wgs, 2);   /* re-init fonts at the corrected DPI */
         }
