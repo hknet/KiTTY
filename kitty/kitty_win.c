@@ -705,7 +705,13 @@ int kitty_update_notice( char *buf, int n ) {
 	strncpy( curnum, BuildVersionTime, sizeof(curnum)-1 ) ; curnum[sizeof(curnum)-1]='\0' ;
 	for( i=0 ; i<(int)strlen(curnum) ; i++ )
 		if( !(((curnum[i]>='0')&&(curnum[i]<='9'))||(curnum[i]=='.')) ) { curnum[i]='\0'; break; }
-	int cur_is_beta = ( strstr(BuildVersionTime,"beta")!=NULL || strstr(BuildVersionTime,"BETA")!=NULL ) ;
+	/* This build's channel: BUILD_VERSION carries no "-beta" suffix, so detect
+	 * from the version scheme (KiTTY stable = x.y.M.0, beta = x.y.M.P, P>0); also
+	 * honour an explicit "beta" in the build string if one is ever added. */
+	int cur_is_beta ;
+	{ int cvb[4] ; kitty_parse_version( curnum, cvb ) ;
+	  cur_is_beta = ( cvb[3] != 0 ) || ( strstr(BuildVersionTime,"beta")!=NULL )
+	                                || ( strstr(BuildVersionTime,"BETA")!=NULL ) ; }
 
 	char base[512], latest[64]="" ; DWORD sz=sizeof(latest), beta=0, bsz=sizeof(beta) ;
 	snprintf( base, sizeof(base), "%s", kitty_registry_base() ) ;
@@ -739,8 +745,11 @@ void CheckVersionFromWebSite( HWND hwnd ) {
 		}
 
 	/* KiTTY: is THIS build a beta? (stable builds don't silently take betas) */
-	int cur_is_beta = ( strstr(BuildVersionTime,"beta")!=NULL
-	                 || strstr(BuildVersionTime,"BETA")!=NULL ) ;
+	/* Channel of THIS build (see kitty_update_notice): version scheme + string. */
+	int cur_is_beta ;
+	{ int cvb[4] ; kitty_parse_version( curnum, cvb ) ;
+	  cur_is_beta = ( cvb[3] != 0 ) || ( strstr(BuildVersionTime,"beta")!=NULL )
+	                                || ( strstr(BuildVersionTime,"BETA")!=NULL ) ; }
 
 	/* Fetch the latest release JSON from GitHub. GitHub requires a User-Agent
 	 * (set via InternetOpen); PRECONFIG honours the system/IE proxy settings. */
