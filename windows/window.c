@@ -3948,6 +3948,26 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
         recompute_window_offset(wgs);
         break;
+#ifdef MOD_PERSO
+      case WM_WINDOWPOSCHANGING:
+        /* #554: hard-lock the embedded child to the host's client area. Every
+         * SetWindowPos/MoveWindow funnels through here, so whatever tries to move
+         * or resize the window (a font-size change in particular) is overridden to
+         * fill the parent. The terminal can then only reflow rows/cols -- it can
+         * never move or resize the pane. (Parent-driven resizes don't reach the
+         * child, so TIMER_EMBEDFILL still covers those.) */
+        if (KITTY_EMBEDDED() && IsWindow(kitty_hwnd_parent)) {
+            RECT prc;
+            if (GetClientRect(kitty_hwnd_parent, &prc) &&
+                prc.right > 0 && prc.bottom > 0) {
+                WINDOWPOS *wp = (WINDOWPOS *)lParam;
+                wp->x = 0; wp->y = 0;
+                wp->cx = prc.right; wp->cy = prc.bottom;
+                wp->flags &= ~(SWP_NOSIZE | SWP_NOMOVE);
+            }
+        }
+        break;   /* let DefWindowProc apply the (adjusted) WINDOWPOS */
+#endif
       case WM_SIZING:
         /*
          * This does two jobs:
