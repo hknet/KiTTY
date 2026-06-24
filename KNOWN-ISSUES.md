@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.31 — Known issues & limitations
+# KiTTY 0.84.1.32 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,20 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.31-beta @ 2026-06-24`.
+- **Version string:** binaries report `0.84.1.32-beta @ 2026-06-24`.
+
+## New in 0.84.1.32
+
+- **Remember window position (per monitor layout).** New terminal windows — and
+  **Duplicate Session** — now reopen where you last closed a window, instead of
+  always at the same spot. The position is remembered **per monitor setup** (a
+  signature of your connected monitors), so a docked multi-monitor layout and an
+  undocked single screen each keep their own position (Word-style). It's
+  restored via Windows' placement API, which **clamps a now-off-screen position
+  back onto a visible monitor**, so changing/unplugging a display can't strand a
+  window. Only the position is remembered; the session keeps its own size. A
+  session that pins an explicit X/Y position still wins. On by default —
+  **Session → "Remember window position (per monitor layout)"** to turn off.
 
 ## New in 0.84.1.31
 
