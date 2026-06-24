@@ -145,6 +145,7 @@ struct WinGuiSeat {
     bool ignore_clip;
     bool fullscr_on_max;
     bool processed_resize;
+    bool embed_dpi_synced;   /* #554: font DPI re-detected after host reparent */
     bool in_scrollbar_loop;
     UINT last_mousemove;
     WPARAM last_wm_mousemove_wParam, last_wm_ncmousemove_wParam;

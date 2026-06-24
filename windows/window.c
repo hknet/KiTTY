@@ -4161,6 +4161,23 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                (void*)GetAncestor(hwnd, GA_PARENT), (void*)GetAncestor(hwnd, GA_ROOT),
                (int)((st & WS_CHILD)!=0), cls); }
 #endif
+#ifdef MOD_PERSO
+        /* #554: once a host (mRemoteNG) has reparented us, our font DPI may be
+         * stale -- the window was created on whatever monitor Windows first
+         * placed it (often a different scaling than the host's pane), and a
+         * reparent doesn't send WM_DPICHANGED. Re-detect the DPI of the monitor
+         * we're actually shown on now and re-init the fonts once, so the text
+         * isn't rendered 2x too big (or small) for the host. */
+        if (!wgs->embed_dpi_synced && KITTY_IS_EMBEDDED(hwnd)) {
+            wgs->embed_dpi_synced = true;
+            int olddpi = wgs->dpi_info.cur_dpi.y;
+            wgs->dpi_info.cur_dpi.x = wgs->dpi_info.cur_dpi.y = 0;
+            init_dpi_info(wgs);
+            EMBDBG("EMBED DPI resync old=%d new=%d", olddpi, wgs->dpi_info.cur_dpi.y);
+            if (wgs->dpi_info.cur_dpi.y != olddpi)
+                reset_window(wgs, 2);   /* re-init fonts at the corrected DPI */
+        }
+#endif
         term_notify_minimised(wgs->term, wParam == SIZE_MINIMIZED);
 #ifdef MOD_PERSO
         /* KiTTY feature: when minimised and SendToTray active, hide to tray */
