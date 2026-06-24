@@ -315,7 +315,14 @@ static HWND kitty_hwnd_parent_main = NULL;
 static HWND kitty_embed_host(HWND h)
 {
     if (kitty_hwnd_parent) return kitty_hwnd_parent;
-    return GetParent(h);
+    /* mRemoteNG (and the Remote4Support fork) embed by calling SetParent WITHOUT
+     * setting WS_CHILD. For such a window GetParent() returns the OWNER (NULL),
+     * not the parent -- so it misses the embed. GetAncestor(GA_PARENT) returns
+     * the true parent; if that's not the desktop, we're embedded in a host. */
+    HWND p = GetAncestor(h, GA_PARENT);
+    if (p && p != GetDesktopWindow())
+        return p;
+    return NULL;
 }
 #define KITTY_EMBED_HOST(h)  kitty_embed_host(h)
 #define KITTY_IS_EMBEDDED(h) (kitty_embed_host(h) != NULL)
@@ -1424,6 +1431,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * rather than at creation, where SetTimer didn't take. */
         SetTimer(wgs->term_hwnd, TIMER_EMBEDFILL, 200, NULL);
     }
+#ifdef MOD_EMBEDDBG
+    embdbg("STARTUP cmdline: %s", GetCommandLineA());
+    embdbg("STARTUP term_hwnd=%p GetParent=%p GW_OWNER=%p kitty_hwnd_parent=%p",
+           (void*)wgs->term_hwnd, (void*)GetParent(wgs->term_hwnd),
+           (void*)GetWindow(wgs->term_hwnd, GW_OWNER), (void*)kitty_hwnd_parent);
+#endif
 #endif
     UpdateWindow(wgs->term_hwnd);
 #ifdef MOD_PERSO
@@ -4133,9 +4146,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         break;
       case WM_SIZE:
         resize_action = conf_get_int(wgs->conf, CONF_resize_action);
-        EMBDBG("WM_SIZE wParam=%llu client=%dx%d resize_action=%d embedded=%d host=%p",
-               (unsigned long long)wParam, LOWORD(lParam), HIWORD(lParam),
-               resize_action, KITTY_IS_EMBEDDED(hwnd), (void*)KITTY_EMBED_HOST(hwnd));
+#ifdef MOD_EMBEDDBG
+        { char cls[64]=""; GetClassNameA(hwnd, cls, sizeof(cls));
+          LONG_PTR st = GetWindowLongPtr(hwnd, GWL_STYLE);
+          embdbg("WM_SIZE wParam=%llu client=%dx%d ra=%d | GetParent=%p GW_OWNER=%p GA_PARENT=%p GA_ROOT=%p WS_CHILD=%d class=%s",
+               (unsigned long long)wParam, LOWORD(lParam), HIWORD(lParam), resize_action,
+               (void*)GetParent(hwnd), (void*)GetWindow(hwnd, GW_OWNER),
+               (void*)GetAncestor(hwnd, GA_PARENT), (void*)GetAncestor(hwnd, GA_ROOT),
+               (int)((st & WS_CHILD)!=0), cls); }
+#endif
         term_notify_minimised(wgs->term, wParam == SIZE_MINIMIZED);
 #ifdef MOD_PERSO
         /* KiTTY feature: when minimised and SendToTray active, hide to tray */
