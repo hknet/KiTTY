@@ -5,6 +5,13 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.32-beta — 2026-06-24
+- **Remember window position (per monitor layout).** New windows and Duplicate
+  Session reopen at the last-closed window position, remembered per monitor-setup
+  signature and restored via SetWindowPlacement (clamps off-screen back onto a
+  visible monitor). Position only; size stays per-session. On by default (Session
+  panel toggle). An explicit per-session X/Y still wins.
+
 ## 0.84.1.31-beta — 2026-06-24
 - **Launcher update balloon.** The tray launcher shows a balloon on startup when a
   newer build is known (backstop to the terminal-start notice).
