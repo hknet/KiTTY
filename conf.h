@@ -580,6 +580,11 @@ CONF_OPTION(check_update_startup,
     DEFAULT_BOOL(true),
     SAVE_KEYWORD("CheckUpdateStartup"),
 )
+CONF_OPTION(remember_winpos,
+    VALUE_TYPE(BOOL),
+    DEFAULT_BOOL(true),
+    SAVE_KEYWORD("RememberWindowPos"),
+)
 CONF_OPTION(no_applic_c, /* totally disable app cursor keys */
     VALUE_TYPE(BOOL),
     DEFAULT_BOOL(false),

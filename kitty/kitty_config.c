@@ -2385,6 +2385,11 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ctrl_checkbox(s, "Check for updates on startup", NO_SHORTCUT,
                       HELPCTX(no_help), conf_checkbox_handler,
                       I(CONF_check_update_startup));
+        /* KiTTY: remember the last window position (per monitor layout) and apply
+         * it to new windows and Duplicate Session. */
+        ctrl_checkbox(s, "Remember window position (per monitor layout)", NO_SHORTCUT,
+                      HELPCTX(no_help), conf_checkbox_handler,
+                      I(CONF_remember_winpos));
     }
 #endif
 

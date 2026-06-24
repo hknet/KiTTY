@@ -753,6 +753,7 @@ void test_simple(void)
                         WORDNAV_ALT,
                         WORDNAV_ALT, 0, WORDNAV_CTRL, 1, WORDNAV_BOTH, 2, -1);
     test_bool_simple(CONF_check_update_startup, "CheckUpdateStartup", true);
+    test_bool_simple(CONF_remember_winpos, "RememberWindowPos", true);
     test_bool_simple(CONF_no_applic_c, "NoApplicationCursors", false);
     test_bool_simple(CONF_no_applic_k, "NoApplicationKeys", false);
     test_bool_simple(CONF_no_mouse_rep, "NoMouseReporting", false);
