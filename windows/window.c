@@ -1714,9 +1714,15 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
     MessageBox(wgs->term_hwnd, msg, title, MB_ICONERROR | MB_OK);
     sfree(title);
 
-    if (conf_get_int(wgs->conf, CONF_close_on_exit) == FORCE_ON)
+    if (conf_get_int(wgs->conf, CONF_close_on_exit) == FORCE_ON) {
+#ifdef MOD_PERSO
+        /* Same as exit_callback: this fatal-error close uses PostQuitMessage
+         * (no WM_DESTROY), so save the remembered position here too. */
+        if (conf_get_bool(wgs->conf, CONF_remember_winpos))
+            kitty_save_window_placement(wgs->term_hwnd);
+#endif
         PostQuitMessage(1);
-    else {
+    } else {
         queue_toplevel_callback(close_session, wgs);
     }
 }
@@ -2643,6 +2649,14 @@ static void exit_callback(void *vctx)
          * appropriate action. */
         if (close_on_exit == FORCE_ON ||
             (close_on_exit == AUTO && exitcode != INT_MAX)) {
+#ifdef MOD_PERSO
+            /* KiTTY: the session ended (e.g. Ctrl+D / remote logout) and we're
+             * about to close. This path uses PostQuitMessage, which does NOT
+             * generate WM_DESTROY, so the position must be saved here too -- else
+             * "remember window position" never records a window closed this way. */
+            if (conf_get_bool(wgs->conf, CONF_remember_winpos))
+                kitty_save_window_placement(wgs->term_hwnd);
+#endif
             PostQuitMessage(0);
         } else {
             queue_toplevel_callback(close_session, wgs);
