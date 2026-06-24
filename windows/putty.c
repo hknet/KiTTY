@@ -29,12 +29,20 @@ const unsigned cmdline_tooltype =
     TOOLTYPE_PORT_ARG |
     TOOLTYPE_NO_VERBOSE_OPTION;
 
+#ifdef MOD_NETDEBUG
+extern void kitty_netdbg_ts(const char *msg);   /* kitty.c: startup checkpoint logger */
+#define NETDBG_TS(m) kitty_netdbg_ts(m)
+#else
+#define NETDBG_TS(m) ((void)0)
+#endif
+
 void gui_term_process_cmdline(Conf *conf, char *cmdline)
 {
     char *p;
     bool special_launchable_argument = false;
     bool demo_config_box = false;
 
+    NETDBG_TS("cmdline: enter");
     settings_set_default_protocol(be_default_protocol);
     /* Find the appropriate default port. */
     {
@@ -47,6 +55,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
     conf_set_int(conf, CONF_logtype, LGTYP_NONE);
 
     do_defaults(NULL, conf);
+    NETDBG_TS("cmdline: after do_defaults");
 
     p = handle_restrict_acl_cmdline_prefix(cmdline);
 
@@ -286,7 +295,9 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         }
     }
 
+    NETDBG_TS("cmdline: before cmdline_run_saved");
     cmdline_run_saved(conf);
+    NETDBG_TS("cmdline: after cmdline_run_saved");
 
     if (demo_config_box) {
         sesslist_demo_mode = true;
@@ -305,12 +316,16 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
          * (explicitly) specified a launchable configuration.
          */
         if (!(special_launchable_argument || cmdline_host_ok(conf))) {
+            NETDBG_TS("cmdline: before do_config (config box)");
             if (!do_config(conf))
                 cleanup_exit(0);
+            NETDBG_TS("cmdline: after do_config (user closed config box)");
         }
     }
 
+    NETDBG_TS("cmdline: before prepare_session");
     prepare_session(conf);
+    NETDBG_TS("cmdline: after prepare_session / return");
 }
 
 const struct BackendVtable *backend_vt_from_conf(Conf *conf)

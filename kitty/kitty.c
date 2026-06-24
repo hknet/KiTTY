@@ -5571,10 +5571,29 @@ void WriteCountUpAndPath( void ) {
 void appendPath(const char *append) ;
 extern char sesspath[];
 int loadPath() ;
+#ifdef MOD_NETDEBUG
+/* KiTTY netdebug: append a millisecond-timestamped startup checkpoint to the
+ * same %USERPROFILE%\kitty_netdebug.log used by the event-log tee, so a slow
+ * once-per-process startup can be pinpointed offline. Compiled only in the
+ * MOD_NETDEBUG build; a no-op (absent) otherwise. */
+void kitty_netdbg_ts( const char *msg ) {
+	static FILE *f = NULL ;
+	SYSTEMTIME s ; GetLocalTime( &s ) ;
+	if( !f ) { char p[MAX_PATH] ; const char *h=getenv("USERPROFILE") ;
+		snprintf( p, sizeof(p), "%s\\kitty_netdebug.log", h?h:"C:" ) ; f=fopen( p, "a" ) ; }
+	if( f ) { fprintf( f, "%02d:%02d:%02d.%03d  [STARTUP] %s\n",
+		s.wHour, s.wMinute, s.wSecond, s.wMilliseconds, msg ) ; fflush( f ) ; }
+}
+#define NETDBG_TS(m) kitty_netdbg_ts(m)
+#else
+#define NETDBG_TS(m) ((void)0)
+#endif
+
 void InitWinMain( void ) {
 	char buffer[4096];
 	int i ;
-	
+
+	NETDBG_TS("InitWinMain: enter");
 	srand(time(NULL));
 	
 	if( existfile("kitty.log") ) { unlink( "kitty.log" ) ; }
@@ -5597,11 +5616,14 @@ void InitWinMain( void ) {
 #endif
 
 	// Initialisation de la librairie de cryptage
+	NETDBG_TS("before bcrypt_init");
 	bcrypt_init( 0 ) ;
-	
+	NETDBG_TS("after bcrypt_init");
+
 	// Recupere le repertoire de depart et le repertoire de la configuration pour savemode=dir
 	GetInitialDirectory( InitialDirectory ) ;
-	
+	NETDBG_TS("after GetInitialDirectory");
+
 	// Initialise les noms des fichier de configuration kitty.ini et kitty.sav
 	InitNameConfigFile() ;
 
@@ -5623,20 +5645,25 @@ void InitWinMain( void ) {
 	
 	// Test le mode de fonctionnement de la sauvegarde des sessions
 	GetSaveMode() ;
+	NETDBG_TS("after GetSaveMode");
 
 	// Initialisation des parametres à partir du fichier kitty.ini
 	LoadParameters() ;
+	NETDBG_TS("after LoadParameters (kitty.ini read)");
 
 	// Ajoute les répertoires InitialDirectory et ConfigDirectory au PATH
 
 	// Initialisation des shortcuts
 	InitShortcuts() ;
+	NETDBG_TS("after InitShortcuts");
 
 	/* KiTTY 0.84: migrate the old 9bis.com\KiTTY hive to kapper.net\KiTTY BEFORE the
 	 * PuTTY-import check below, so once our hive exists that import path stays out of the
 	 * way. Idempotent + non-destructive (see kitty_registry.c). */
 	if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
+		NETDBG_TS("before MigrateOldKittyHive");
 		MigrateOldKittyHive() ;
+		NETDBG_TS("after MigrateOldKittyHive");
 	}
 
 	// Chargement de la base de registre si besoin
@@ -5705,8 +5732,10 @@ void InitWinMain( void ) {
 	if( (IniFileFlag == SAVEMODE_REG)||( IniFileFlag == SAVEMODE_FILE) )  
 		if( !RegTestKey( HKEY_CURRENT_USER, buffer ) ) { InitLauncherRegistry() ; }
 #endif
+	NETDBG_TS("after registry/savemode block");
 	// Initiate folders list
 	InitFolderList() ;
+	NETDBG_TS("after InitFolderList");
 
 	// Incremente et ecrit les compteurs
 	if( IniFileFlag == SAVEMODE_REG ) {
@@ -5725,8 +5754,9 @@ void InitWinMain( void ) {
 		if( hInstIcons==NULL ) hInstIcons = GetModuleHandle( NULL ) ;
 		}
 
+	NETDBG_TS("after icon-dll init");
 	// Teste la presence d'une note et l'affiche
-	if( GetValueData( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "Notes", buffer ) ) 
+	if( GetValueData( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "Notes", buffer ) )
 		{ if( strlen( buffer ) > 0 ) MessageBox( NULL, buffer, "Notes", MB_OK ) ; }
 		
 	// Genere un fichier (4096ko max) d'initialisation de toute les Sessions
@@ -5739,11 +5769,14 @@ void InitWinMain( void ) {
 	
 	// Initialise les logs
 	char hostname[4096], username[4096] ;
+	NETDBG_TS("before GetUserName/GetComputerName");
 	GetUserName( username, (void*)&i ) ;
 	i = 4095 ;
 	GetComputerName( hostname, (void*)&i ) ;
+	NETDBG_TS("after GetUserName/GetComputerName");
 	sprintf( buffer, "Starting %ld from %s@%s", GetCurrentProcessId(), username, hostname ) ;
 	debug_logevent(buffer) ;
+	NETDBG_TS("InitWinMain: return");
 }
 
 
