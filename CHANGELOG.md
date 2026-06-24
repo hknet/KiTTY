@@ -5,6 +5,24 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.34-beta — 2026-06-24
+- **Fix: window position now saved when a session ends by Ctrl+D / remote logout.**
+  The position memory (0.84.1.32/.33) only saved on WM_DESTROY (the X button /
+  close prompt). A session closed by the remote side exits via PostQuitMessage,
+  which never sends WM_DESTROY, so a window closed with Ctrl+D wasn't remembered —
+  it reopened at the default spot. Now saved on the remote-exit and fatal-error
+  close paths too.
+- **Launcher: "Refresh" reopens the menu.** Clicking Refresh reloaded the session
+  list but dismissed the popup, forcing a second trip to the tray icon. The menu
+  now reopens after a refresh so a just-reloaded session can be picked immediately.
+- **Verified (no change needed): upstream cyd01/KiTTY #545 and #546 do not affect
+  this port.** #545 (reconnect fails with a password > 126 chars) was an upstream
+  keyboard-injection / fixed-buffer bug; this port re-authenticates on reconnect
+  through the standard SSH userpass path with the full password, so the limit
+  doesn't exist. #546 (klink always exits 0) does not reproduce: klink returns a
+  non-zero exit code on authentication failure in batch mode (and the remote
+  command's real exit code on success).
+
 ## 0.84.1.33-beta — 2026-06-24
 - **Fix: multi-second delay before every new window.** Each new KiTTY process
   paused for seconds (≈10s on some machines) before its window appeared — a fresh

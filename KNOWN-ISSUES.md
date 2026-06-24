@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.33 — Known issues & limitations
+# KiTTY 0.84.1.34 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,25 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.33-beta @ 2026-06-24`.
+- **Version string:** binaries report `0.84.1.34-beta @ 2026-06-24`.
+
+## New in 0.84.1.34
+
+- **Fix: window position is now remembered when you close with Ctrl+D / remote
+  logout.** Previously the position was only saved when you closed via the window
+  X / close prompt; a session ended by the remote side (the common case) exited by
+  a path that skipped the save, so the window reopened at the default spot. Now
+  saved on that path too. *(Note: the first launch after upgrading still won't
+  restore — the saved format changed in 0.84.1.33; it self-heals after one move →
+  close → reopen.)*
+- **Launcher: "Refresh" reopens the menu** so you can immediately pick a
+  just-reloaded session instead of going back to the tray icon.
+- **Verified — upstream cyd01/KiTTY #545 and #546 do not affect this port.**
+  #545 (reconnect fails with a password over 126 characters) and #546 (klink
+  always returns exit code 0) were KiTTY-specific bugs; on this PuTTY-0.84 base,
+  reconnect re-authenticates through the normal SSH path with the full password
+  (no fixed buffer), and klink returns a proper non-zero exit code on auth failure
+  in batch mode. No change needed.
 
 ## New in 0.84.1.33
 
