@@ -5,6 +5,26 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.33-beta — 2026-06-24
+- **Fix: multi-second delay before every new window.** Each new KiTTY process
+  paused for seconds (≈10s on some machines) before its window appeared — a fresh
+  config window, a connecting session, or Duplicate Session — because the Windows
+  taskbar Jump List was rebuilt **synchronously** on the startup path (via the
+  per-launch `do_defaults` load). The Jump List COM rebuild now runs on a
+  background thread, and the "Default Settings" load no longer touches it, so
+  windows open immediately. Recent-sessions Jump List still works.
+- **Fix: window position not restored on multi-monitor / mixed-DPI setups.** The
+  per-monitor position memory (0.84.1.32) used `WINDOWPLACEMENT`, whose
+  coordinates are not reinterpreted for a target monitor's DPI under
+  Per-Monitor-V2, so on mixed-DPI multi-monitor layouts the window opened at a
+  default position. It now saves/restores physical screen coordinates
+  (`GetWindowRect`/`SetWindowPos`), uses an order-independent monitor-layout key,
+  and applies the restore after the startup sizing pass.
+- **`-noconfirm` command-line flag.** Closes the terminal window without the
+  "Are you sure?" prompt (forces CONF_warn_on_close off for that launch); for
+  scripts/automation/testing. Does not affect SSH host-key / weak-crypto
+  security confirmations. (Addresses part of upstream cyd01/KiTTY #548.)
+
 ## 0.84.1.32-beta — 2026-06-24
 - **Remember window position (per monitor layout).** New windows and Duplicate
   Session reopen at the last-closed window position, remembered per monitor-setup
