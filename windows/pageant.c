@@ -70,6 +70,7 @@ static filereq_saved_dir *keypath = NULL;
 #define IDM_PUTTY              0x0090
 #define IDM_OPENSSH_INTEGRATION 0x00A0   /* KiTTY: toggle Windows OpenSSH integration */
 #define IDM_LOAD_ON_STARTUP    0x00B0    /* KiTTY: toggle load-keys-on-startup */
+#define IDM_NOTIFY_KEYUSE      0x00C0    /* KiTTY: toggle "notify on key use" balloon */
 #define IDM_SESSIONS_BASE      0x1000
 #define IDM_SESSIONS_MAX       0x2000
 /* KiTTY: kageant's session submenu reads KiTTY's own hive (where sessions actually
@@ -1533,6 +1534,29 @@ static void kageant_startup_set(int on)
     }
 }
 
+#define KAGEANT_REG_NOTIFY "NotifyOnKeyUse"
+/* KiTTY: "notify on key use" tray-balloon toggle. Default ON (absent => on). */
+static int kageant_notify_get(void)
+{
+    DWORD val = 1, sz = sizeof(val);
+    if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, KAGEANT_REG_NOTIFY,
+                     RRF_RT_REG_DWORD, NULL, &val, &sz) != ERROR_SUCCESS)
+        return 1;
+    return val ? 1 : 0;
+}
+
+static void kageant_notify_set(int on)
+{
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        DWORD val = on ? 1 : 0;
+        RegSetValueExA(hk, KAGEANT_REG_NOTIFY, 0, REG_DWORD,
+                       (const BYTE *)&val, sizeof(val));
+        RegCloseKey(hk);
+    }
+}
+
 /* Write the tracked key paths to the StartupKeys REG_MULTI_SZ value. */
 static void kageant_save_startup_keys(void)
 {
@@ -1845,6 +1869,14 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             }
             break;
           }
+          case IDM_NOTIFY_KEYUSE: {
+            /* KiTTY: toggle the "a key was used to authenticate" tray balloon. */
+            int on = !kageant_notify_get();
+            kageant_notify_set(on);
+            CheckMenuItem(systray_menu, IDM_NOTIFY_KEYUSE,
+                          MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
+            break;
+          }
           default: {
             if (wParam >= IDM_SESSIONS_BASE && wParam <= IDM_SESSIONS_MAX) {
                 MENUITEMINFO mii;
@@ -2027,6 +2059,29 @@ static int kageant_do_confirm(const char *comment)
         return (r == IDYES);
     }
     return 1;   /* this key does not require usage confirmation */
+}
+
+/* KiTTY: show a short tray balloon when a key is used to authenticate. Installed
+ * into the agent core via kageant_notify_hook; gated by the "Notify when a key
+ * is used" toggle (default on). Non-blocking (no Sleep). */
+extern void (*kageant_notify_hook)(const char *comment);
+static void kageant_do_notify(const char *comment)
+{
+    if (!kageant_notify_get() || !traywindow)
+        return;
+    NOTIFYICONDATA nid;
+    memset(&nid, 0, sizeof(nid));
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = traywindow;
+    nid.uID = 1;                       /* same icon AddTrayIcon registered */
+    nid.uFlags = NIF_INFO;
+    nid.dwInfoFlags = NIIF_INFO;
+    nid.uTimeout = 5000;
+    snprintf(nid.szInfoTitle, sizeof(nid.szInfoTitle), "kageant: SSH key used");
+    snprintf(nid.szInfo, sizeof(nid.szInfo),
+             "A key was used to authenticate:\n%s",
+             (comment && *comment) ? comment : "(unnamed key)");
+    Shell_NotifyIcon(NIM_MODIFY, &nid);
 }
 
 int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
@@ -2220,6 +2275,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         /* KiTTY: enable private-key usage confirmation for keys whose comment
          * requests it (see kageant_do_confirm). */
         kageant_confirm_hook = kageant_do_confirm;
+        kageant_notify_hook = kageant_do_notify;
 
         /*
          * Set up a named-pipe listener.
@@ -2413,6 +2469,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_startup_get() ? MF_CHECKED : MF_UNCHECKED),
                IDM_LOAD_ON_STARTUP, "&Load keys on startup");
+    /* KiTTY: opt-in (default on) tray balloon when a key is used to sign. */
+    AppendMenu(systray_menu, MF_ENABLED |
+               (kageant_notify_get() ? MF_CHECKED : MF_UNCHECKED),
+               IDM_NOTIFY_KEYUSE, "&Notify when a key is used");
     AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
     if (has_help())
         AppendMenu(systray_menu, MF_ENABLED, IDM_HELP, "&Help");

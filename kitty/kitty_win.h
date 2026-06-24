@@ -38,6 +38,7 @@ void CheckVersionFromWebSite( HWND hwnd ) ;
 // session-start notice rendered from that cache (see window.c).
 void kitty_start_update_check( void ) ;
 int kitty_update_notice( char *buf, int n ) ;
+int kitty_update_available( char *latest_out, int latest_n, char *cur_out, int cur_n, int *beta_out ) ;
 
 // Affichage d'un message dans l'event log
 void debug_logevent( const char *fmt, ... ) ;

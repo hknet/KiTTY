@@ -795,6 +795,9 @@ static bool request_passphrase(PageantClient *pc, PageantPrivateKey *priv)
  * unaffected; the Windows Pageant GUI installs it at startup. The hook is
  * passed the key comment and returns 0 to REFUSE signing, nonzero to allow. */
 int (*kageant_confirm_hook)(const char *comment) = NULL;
+/* KiTTY: optional "a key was just used" notification hook, set by kageant to show
+ * a tray balloon. Fired after a successful signature. NULL outside the GUI agent. */
+void (*kageant_notify_hook)(const char *comment) = NULL;
 
 static void signop_coroutine(PageantAsyncOp *pao)
 {
@@ -861,6 +864,10 @@ static void signop_coroutine(PageantAsyncOp *pao)
     strbuf *signature = strbuf_new();
     ssh_key_sign(so->priv->skey, ptrlen_from_strbuf(so->data_to_sign),
                  so->flags, BinarySink_UPCAST(signature));
+
+    /* KiTTY: a key was just used to authenticate -- let the GUI agent nudge. */
+    if (kageant_notify_hook)
+        kageant_notify_hook(so->comment);
 
     response = strbuf_new();
     put_byte(response, SSH2_AGENT_SIGN_RESPONSE);
