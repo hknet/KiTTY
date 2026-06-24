@@ -5,6 +5,14 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.30-beta — 2026-06-24
+- **Fix: beta-channel self-detection in the updater.** The binary's version string
+  has no `-beta` marker, so every build was treated as stable — causing a spurious
+  "you are installing a beta" warning in *Check for updates* and suppressing the
+  startup update notice for beta users. The channel is now derived from the version
+  scheme (stable `x.y.M.0` vs beta `x.y.M.P`). Beta users get the notice and no
+  bogus warning.
+
 ## 0.84.1.29-beta — 2026-06-24
 - **About boxes render proper Unicode.** Launcher + main Help->About now use the
   wide Windows APIs (MessageBoxW / SetDlgItemTextW / term_data_wide) so ©, em-dash
