@@ -672,6 +672,14 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         SAVEABLE(0);
         conf_set_bool(conf, CONF_tryagent, false);
     }
+    if (!strcmp(p, "-noconfirm")) {
+        /* KiTTY: skip the "Are you sure you want to close this session?" prompt
+         * for this launch (forces the Warn-before-closing option off). Does not
+         * affect the SSH host-key / weak-crypto security confirmations. */
+        RETURN(1);
+        SAVEABLE(0);
+        conf_set_bool(conf, CONF_warn_on_close, false);
+    }
 
     if (!strcmp(p, "-no-trivial-auth")) {
         RETURN(1);
