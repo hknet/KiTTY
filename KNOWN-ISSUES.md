@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.30 — Known issues & limitations
+# KiTTY 0.84.1.31 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,17 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.30-beta @ 2026-06-24`.
+- **Version string:** binaries report `0.84.1.31-beta @ 2026-06-24`.
+
+## New in 0.84.1.31
+
+- **Launcher: tray balloon when an update is available.** On startup the
+  `kitty -launcher` tray app now shows a balloon if a newer build is known — a
+  backstop to the terminal-start notice, since the launcher itself has no terminal.
+- **kageant: tray balloon when an SSH key is used.** When a key signs an
+  authentication request, kageant pops a short balloon naming the key. Toggle it
+  from the kageant tray menu — **"Notify when a key is used"** (on by default,
+  remembered). Non-blocking.
 
 ## New in 0.84.1.30
 

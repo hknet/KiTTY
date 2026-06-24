@@ -5,6 +5,13 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.31-beta — 2026-06-24
+- **Launcher update balloon.** The tray launcher shows a balloon on startup when a
+  newer build is known (backstop to the terminal-start notice).
+- **kageant "key used" balloon.** kageant pops a short tray balloon naming the key
+  when it signs an authentication request; tray-menu toggle "Notify when a key is
+  used" (default on, persisted).
+
 ## 0.84.1.30-beta — 2026-06-24
 - **Fix: beta-channel self-detection in the updater.** The binary's version string
   has no `-beta` marker, so every build was treated as stable — causing a spurious
