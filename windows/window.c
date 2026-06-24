@@ -304,6 +304,8 @@ static UINT wm_mousewheel = WM_MOUSEWHEEL;
 HWND kitty_hwnd_parent = NULL;
 static HWND kitty_hwnd_parent_main = NULL;
 #define KITTY_EMBEDDED() (kitty_hwnd_parent != NULL)
+#else
+#define KITTY_EMBEDDED() 0
 #endif
 
 struct WinGuiSeatListNode wgslisthead = {
@@ -2337,7 +2339,8 @@ static void wintw_request_resize(TermWin *tw, int w, int h)
         }
     }
 
-    if (resize_action != RESIZE_FONT && !IsZoomed(wgs->term_hwnd)) {
+    if (resize_action != RESIZE_FONT && !IsZoomed(wgs->term_hwnd)
+        && !KITTY_EMBEDDED()) {
         width = wgs->extra_width + wgs->font_width * w;
         height = wgs->extra_height + wgs->font_height * h;
 
@@ -2417,15 +2420,19 @@ static void reset_window(WinGuiSeat *wgs, int reinit)
         recompute_window_offset(wgs);
     }
 
-    if (IsZoomed(wgs->term_hwnd)) {
-        /* We're fullscreen, this means we must not change the size of
-         * the window so it's the font size or the terminal itself.
+    if (IsZoomed(wgs->term_hwnd) || KITTY_EMBEDDED()) {
+        /* We're fullscreen (or embedded as a child via -hwndparent, #554): we
+         * must not change the size of the window, so absorb the change into the
+         * font size or the terminal itself. When embedded we always reflow the
+         * TERMINAL (rows/cols) to the host-fixed window, so a font-size change
+         * keeps the chosen font and just changes how much fits -- it never
+         * resizes the embedded window (which would break the host's layout).
          */
 
         wgs->extra_width = wr.right - wr.left - cr.right + cr.left;
         wgs->extra_height = wr.bottom - wr.top - cr.bottom + cr.top;
 
-        if (resize_action != RESIZE_TERM) {
+        if (resize_action != RESIZE_TERM && !KITTY_EMBEDDED()) {
             if (wgs->font_width != win_width/wgs->term->cols ||
                 wgs->font_height != win_height/wgs->term->rows) {
                 int fw = (win_width - 2*window_border) / wgs->term->cols;
