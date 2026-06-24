@@ -5,6 +5,15 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.29-beta — 2026-06-24
+- **About boxes render proper Unicode.** Launcher + main Help->About now use the
+  wide Windows APIs (MessageBoxW / SetDlgItemTextW / term_data_wide) so ©, em-dash
+  and the update-notice arrow display correctly on any system codepage, replacing
+  the earlier ASCII/CP1252 mojibake work-arounds.
+- **Main About box credits the port author** — KAPPER NETWORK-COMMUNICATIONS GmbH
+  for the PuTTY 0.84 port, next to the KiTTY (Cyril Dupont) and PuTTY (Simon
+  Tatham) attributions.
+
 ## 0.84.1.28-beta — 2026-06-24
 - **"Update available" notice at session start (opt-in, on by default).** A worker
   thread refreshes a cached latest-version; at the clean top of a session KiTTY
