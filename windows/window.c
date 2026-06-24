@@ -264,6 +264,9 @@ void kitty_antiidle_tick(HWND hwnd);
 extern char AntiIdleStr[128];
 #define TIMER_ANTIIDLE 8703
 #define TIMER_SCRIPT 8704
+#ifdef MOD_PERSO
+#define TIMER_EMBEDFILL 8706   /* #554: poll host client rect, keep embedded child filling it */
+#endif
 #ifdef MOD_RECONNECT
 #define TIMER_RECONNECT 8705
 int  GetAutoreconnectFlag(void);       /* kitty.c */
@@ -957,6 +960,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 st &= ~(WS_OVERLAPPEDWINDOW | WS_POPUP);
                 st |= WS_CHILD;
                 SetWindowLongPtr(wgs->term_hwnd, GWL_STYLE, st);
+                /* Drop the sunken/raised frame so the terminal sits flush in the
+                 * host pane (no sub-window border). */
+                LONG_PTR ex = GetWindowLongPtr(wgs->term_hwnd, GWL_EXSTYLE);
+                ex &= ~(WS_EX_CLIENTEDGE | WS_EX_WINDOWEDGE |
+                        WS_EX_DLGMODALFRAME | WS_EX_STATICEDGE);
+                SetWindowLongPtr(wgs->term_hwnd, GWL_EXSTYLE, ex);
                 SetParent(wgs->term_hwnd, kitty_hwnd_parent);
                 kitty_hwnd_parent_main =
                     GetAncestor(kitty_hwnd_parent, GA_ROOTOWNER);
@@ -964,9 +973,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                              SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                              SWP_FRAMECHANGED);
                 RECT prc;
-                if (GetClientRect(kitty_hwnd_parent, &prc))
+                if (GetClientRect(kitty_hwnd_parent, &prc) &&
+                    prc.right > 0 && prc.bottom > 0)
                     MoveWindow(wgs->term_hwnd, 0, 0, prc.right - prc.left,
                                prc.bottom - prc.top, TRUE);
+                /* fill-tracking timer is armed after ShowWindow (below). */
             } else {
                 kitty_hwnd_parent = NULL;   /* stale handle: behave normally */
             }
@@ -1360,6 +1371,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     if (KITTY_EMBEDDED()) {
         SetFocus(wgs->term_hwnd);
         term_set_focus(wgs->term, true);
+        /* The host (mRemoteNG) does not reliably resize a self-parented child,
+         * so poll its client rect and keep filling it. Armed here (post-show)
+         * rather than at creation, where SetTimer didn't take. */
+        SetTimer(wgs->term_hwnd, TIMER_EMBEDFILL, 200, NULL);
     }
 #endif
     UpdateWindow(wgs->term_hwnd);
@@ -2871,6 +2886,25 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             RestoreFromTray(hwnd);
         return 0;
       case WM_TIMER:
+#ifdef MOD_PERSO
+        if ((UINT_PTR)wParam == TIMER_EMBEDFILL) {
+            /* #554: keep the embedded child filling the host's client area. */
+            if (KITTY_EMBEDDED() && IsWindow(kitty_hwnd_parent)) {
+                RECT prc, wr;
+                if (GetClientRect(kitty_hwnd_parent, &prc) &&
+                    prc.right > 0 && prc.bottom > 0 &&
+                    GetWindowRect(hwnd, &wr)) {
+                    /* our current size (child origin is 0,0 in the parent) */
+                    int cw = wr.right - wr.left, ch = wr.bottom - wr.top;
+                    if (cw != prc.right || ch != prc.bottom)
+                        MoveWindow(hwnd, 0, 0, prc.right, prc.bottom, TRUE);
+                }
+            } else {
+                KillTimer(hwnd, TIMER_EMBEDFILL);
+            }
+            return 0;
+        }
+#endif
         if ((UINT_PTR)wParam == TIMER_AUTOCOMMAND) {
             KillTimer(hwnd, TIMER_AUTOCOMMAND);
             if (kitty_autocommand_tick(hwnd))
