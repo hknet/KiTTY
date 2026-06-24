@@ -5,3 +5,4 @@ build-warn/
 *.o
 *.obj
 *.tmp
+build-netdebug/

@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.32 — Known issues & limitations
+# KiTTY 0.84.1.33 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,7 +26,30 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.32-beta @ 2026-06-24`.
+- **Version string:** binaries report `0.84.1.33-beta @ 2026-06-24`.
+
+## New in 0.84.1.33
+
+- **Fix: slow startup — windows now open instantly.** New windows (a fresh config
+  window, a connecting session, or **Duplicate Session**) could take several
+  seconds — up to ~10s on some machines — before appearing. The cause was the
+  Windows taskbar **Jump List** being rebuilt synchronously during startup; it now
+  runs in the background and is skipped for the "Default Settings" load. Opening
+  windows is immediate again.
+- **Fix: window position on multi-monitor / mixed-DPI setups.** The per-monitor
+  position memory added in 0.84.1.32 didn't restore correctly when monitors use
+  **different display-scaling** (it relied on `WINDOWPLACEMENT`, which isn't
+  DPI-corrected across monitors), so the window opened at a default spot. It now
+  uses physical screen coordinates and an order-independent monitor-layout key.
+  *Note:* the first launch after upgrading won't restore (the saved format
+  changed); it self-heals after one move → close → reopen.
+- **New `-noconfirm` command-line flag.** Launch `kitty -noconfirm …` to close the
+  terminal window **without** the "Are you sure you want to close this session?"
+  prompt — handy for scripts, automation, and quick testing. It only suppresses
+  the close prompt; the SSH host-key and weak-crypto **security** confirmations
+  are unaffected. (The permanent equivalent is Window → Behaviour → uncheck "Warn
+  before closing window".) Addresses part of upstream
+  [cyd01/KiTTY #548](https://github.com/cyd01/KiTTY/issues/548).
 
 ## New in 0.84.1.32
 
