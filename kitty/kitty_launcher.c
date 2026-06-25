@@ -387,13 +387,47 @@ void InitLauncherRegistry( void ) {
 	}
 }
 
+/* KiTTY #544: the launcher menu shows "Ctrl+Shift+<letter>" accelerators for the
+ * predefined-command/session items, but a Win32 popup menu only displays that
+ * text -- it never acts on it (so the keystroke just dings). While the menu is
+ * open we install a WH_MSGFILTER hook: on Ctrl+Shift+<letter>, if a command is
+ * defined at that index, dismiss the menu and fire its WM_COMMAND (the same path
+ * a mouse click takes). Scoped to the open menu only (no global hotkey grab). */
+static HHOOK g_launcher_menu_hook = NULL ;
+static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM lParam )
+{
+	if( code == MSGF_MENU ) {
+		MSG *m = (MSG *)lParam ;
+		if( m && m->message == WM_KEYDOWN ) {
+			int vk = (int)m->wParam ;
+			if( vk >= 'A' && vk <= 'Z'
+			    && (GetKeyState(VK_CONTROL) & 0x8000)
+			    && (GetKeyState(VK_SHIFT) & 0x8000) ) {
+				int nb = vk - 'A' ;
+				if( nb >= 0 && nb < NB_MENU_MAX && SpecialMenu[nb] != NULL ) {
+					EndMenu() ;   /* close the popup */
+					PostMessage( MainHwnd, WM_COMMAND, IDM_USERCMD + nb, 0 ) ;
+					return 1 ;    /* consume -> no ding */
+				}
+			}
+		}
+	}
+	return CallNextHookEx( g_launcher_menu_hook, code, wParam, lParam ) ;
+}
+
 void DisplayContextMenu( HWND hwnd, HMENU menu ) {
 	HMENU hMenuPopup = menu ;
 	POINT pt;
-	
+
 	SetForegroundWindow( hwnd ) ;
 	GetCursorPos (&pt);
+	g_launcher_menu_hook = SetWindowsHookEx( WH_MSGFILTER, LauncherMenuMsgFilter,
+	                                         NULL, GetCurrentThreadId() ) ;
 	TrackPopupMenu (hMenuPopup, TPM_LEFTALIGN, pt.x, pt.y, 0, hwnd, NULL);
+	if( g_launcher_menu_hook ) {
+		UnhookWindowsHookEx( g_launcher_menu_hook ) ;
+		g_launcher_menu_hook = NULL ;
+	}
 }
 	
 // Gestion Hide/UnHide all
