@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.35 — Known issues & limitations
+# KiTTY 0.84.1.36 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -26,11 +26,24 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.35-beta @ 2026-06-25`.
+- **Version string:** binaries report `0.84.1.36-beta @ 2026-06-25`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.36
+
+- **Security fix (CVE-2024-25003 / CVE-2024-25004).** A malicious or compromised
+  SSH server could crash KiTTY (or potentially run code) by sending a crafted
+  duplicate-session/WinSCP escape sequence with an over-long host or user field
+  (a stack buffer overflow). Fixed with bounded parsing. **Update recommended if
+  you connect to hosts you don't fully trust.** (Upstream cyd01/KiTTY #525.)
+- **Launcher Ctrl+Shift+letter shortcuts work now** — previously they were shown
+  in the tray menu but only beeped; they now launch the session while the menu is
+  open. (Upstream cyd01/KiTTY #544.)
+- **Verified — not affected:** upstream #526 (file-get command injection) and #523
+  (UTF-8 window titles) do not affect this port.
 
 ## New in 0.84.1.35
 

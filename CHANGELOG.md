@@ -5,6 +5,24 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.36-beta — 2026-06-25
+- **Security fix (CVE-2024-25003 / CVE-2024-25004): stack buffer overflow via a
+  malicious server.** The `__dt` (duplicate-session) and `__wt` (WinSCP)
+  metacommands — triggered by an ANSI escape sequence carrying a `host:user:path`
+  payload — copied that remote-controlled data into fixed-size stack buffers
+  without bounds checking, so a hostile or compromised SSH host could crash KiTTY
+  or potentially execute code. The payload is now parsed with length-capped
+  copies. **Recommended update for anyone connecting to untrusted hosts.**
+  (Addresses upstream cyd01/KiTTY #525.)
+- **Launcher: Ctrl+Shift+letter session shortcuts now work.** They were shown in
+  the tray menu but only produced a beep (a Win32 popup menu displays accelerator
+  text but never acts on it). While the launcher menu is open, the shortcut now
+  launches the matching session/command. (Addresses upstream cyd01/KiTTY #544.)
+- **Verified (no change needed):** upstream cyd01/KiTTY **#526** (command
+  injection via the file-get escape command) does not affect this port — the
+  pscp/scp builders run without a shell and with bounded, quoted arguments; and
+  **#523** (UTF-8 window titles) already renders correctly here.
+
 ## 0.84.1.35-beta — 2026-06-25
 - **Embed KiTTY in connection managers (mRemoteNG, Remote4Support).** KiTTY's
   terminal now hosts correctly inside their connection tabs. Embedding is
