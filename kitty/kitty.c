@@ -2601,6 +2601,31 @@ dt() { printf "\033]0;__dt:"$(hostname)":"${USER}":"`pwd`"\007" ; }
 */
 static int LocalCmdFlag = 1 ;
 static int LocalUnsecureCmdFlag = 0 ;
+
+/* #525 (CVE-2024-25003 / CVE-2024-25004): the __dt and __wt metacommands carry a
+ * "host:user:path" payload straight from a remote-controlled ANSI escape
+ * sequence. The original code strcpy()'d that into fixed host[1024]/user[256]
+ * buffers with no bounds check, so a long host or user overflowed the stack.
+ * Split it safely instead: copies into host/user are length-capped, the field
+ * separators are validated, and the path is returned in a freshly-sized
+ * allocation. Returns 1 on success (caller owns *path), 0 on malformed input. */
+static int kitty_split_host_user_path( const char *s,
+                                       char *host, size_t hostsz,
+                                       char *user, size_t usersz, char **path ) {
+    size_t n ; int i ;
+    *path = NULL ;
+    if( s == NULL ) return 0 ;
+    n = strlen( s ) ; if( n >= hostsz ) n = hostsz - 1 ; memcpy( host, s, n ) ; host[n] = '\0' ;
+    i = poss( ":", host ) ; if( i <= 0 ) return 0 ;             /* need a user field */
+    n = strlen( host + i ) ; if( n >= usersz ) n = usersz - 1 ; memcpy( user, host + i, n ) ; user[n] = '\0' ;
+    host[i-1] = '\0' ;
+    i = poss( ":", user ) ; if( i <= 0 ) return 0 ;            /* need a path field */
+    *path = (char*) malloc( strlen( user + i ) + 1 ) ; if( *path == NULL ) return 0 ;
+    strcpy( *path, user + i ) ;
+    user[i-1] = '\0' ;
+    return 1 ;
+}
+
 int ManageLocalCmd( HWND hwnd, const char * cmd ) {
 
     if( !LocalCmdFlag ) { return 0 ; } // Disable all __xy commands
@@ -2612,16 +2637,10 @@ int ManageLocalCmd( HWND hwnd, const char * cmd ) {
     if( (cmd[2] == ':')&&( strlen( cmd ) <= 3 ) ) return 0 ;
     
     if( (cmd[0]=='d')&&(cmd[1]=='t')&&(cmd[2]==':') ) { // __dt: start a duplicated session in same directory, same host and same user : dt() { printf "\033]0;__dt:"$(hostname)":"${USER}":"`pwd`"\007" ; }
-        char host[1024]="";char user[256]="";
-        int i;
-        if( RemotePath!= NULL ) free( RemotePath ) ;
-        RemotePath = (char*) malloc( strlen( cmd ) - 2 ) ;
-        strcpy(host,cmd+3);i=poss(":",host);
-        strcpy(user,host+i);
-        host[i-1]='\0';
-        i=poss(":",user);
-        strcpy( RemotePath, user+i ) ;
-        user[i-1]='\0';
+        char host[1024]="";char user[256]="";char *path=NULL;
+        if( RemotePath!= NULL ) { free( RemotePath ) ; RemotePath = NULL ; }
+        if( !kitty_split_host_user_path( cmd+3, host, sizeof(host), user, sizeof(user), &path ) ) return 1 ;
+        RemotePath = path ;
         RunSessionWithCurrentSettings( hwnd, conf, host, user, NULL, 0, RemotePath ) ;
         return 1 ;
     } else if( (cmd[0]=='i')&&(cmd[1]=='n')&&(cmd[2]==':') ) { // __in: print informations in log
@@ -2650,16 +2669,10 @@ int ManageLocalCmd( HWND hwnd, const char * cmd ) {
         StartWinSCP( hwnd, RemotePath, NULL, NULL ) ;
         return 1 ;
     } else if( (cmd[0]=='w')&&(cmd[1]=='t')&&(cmd[2]==':') ) { // __wt: start WinSCP on a provided host, with a specific user and in a directory
-        char host[1024]="";char user[256]="";
-        int i;
-        if( RemotePath!= NULL ) free( RemotePath ) ;
-        RemotePath = (char*) malloc( strlen( cmd ) - 2 ) ;
-        strcpy(host,cmd+3);i=poss(":",host);
-        strcpy(user,host+i);
-        host[i-1]='\0';
-        i=poss(":",user);
-        strcpy( RemotePath, user+i ) ;
-        user[i-1]='\0';
+        char host[1024]="";char user[256]="";char *path=NULL;
+        if( RemotePath!= NULL ) { free( RemotePath ) ; RemotePath = NULL ; }
+        if( !kitty_split_host_user_path( cmd+3, host, sizeof(host), user, sizeof(user), &path ) ) return 1 ;
+        RemotePath = path ;
         StartWinSCP( hwnd, RemotePath, host, user ) ;
         // free( RemotePath ) ; RemotePath = NULL ;
         return 1 ;
