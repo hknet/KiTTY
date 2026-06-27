@@ -88,6 +88,23 @@ BEGIN
     DEFPUSHBUTTON   "OK", IDOK, 90, 96, 50, 16
 END
 
+/* Master-password prompt (DPAPI Phase 2). Handled by gui_master_pw_prompt()
+ * in kitty/kitty_mpw_gui.c. The confirm row is hidden at runtime when merely
+ * unlocking (it is only shown on first-time setup). */
+IDD_MASTERPW DIALOG DISCARDABLE 0, 0, 230, 106
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "KiTTY master password"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "", IDC_MPW_PROMPT, 7, 7, 216, 25
+    LTEXT           "Master password:", -1, 7, 35, 216, 8
+    EDITTEXT        IDC_MPW_EDIT, 7, 45, 216, 12, ES_PASSWORD | ES_AUTOHSCROLL
+    LTEXT           "Confirm master password:", IDC_MPW_CONFIRM_LBL, 7, 60, 216, 8
+    EDITTEXT        IDC_MPW_CONFIRM, 7, 70, 216, 12, ES_PASSWORD | ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK", IDOK, 116, 87, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 173, 87, 50, 14
+END
+
 #ifndef NO_MANIFESTS
 1 RT_MANIFEST "putty.mft"
 #endif /* NO_MANIFESTS */

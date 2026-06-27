@@ -43,6 +43,22 @@
 #ifndef IDD_KITTYABOUT
 #define IDD_KITTYABOUT 121
 #endif
+/* Master-password (DPAPI Phase 2) prompt dialog + its controls. */
+#ifndef IDD_MASTERPW
+#define IDD_MASTERPW 131
+#endif
+#ifndef IDC_MPW_PROMPT
+#define IDC_MPW_PROMPT 1100
+#endif
+#ifndef IDC_MPW_EDIT
+#define IDC_MPW_EDIT 1101
+#endif
+#ifndef IDC_MPW_CONFIRM_LBL
+#define IDC_MPW_CONFIRM_LBL 1102
+#endif
+#ifndef IDC_MPW_CONFIRM
+#define IDC_MPW_CONFIRM 1103
+#endif
 #ifndef IDI_BLACKBALL
 #define IDI_BLACKBALL 9902
 #endif
