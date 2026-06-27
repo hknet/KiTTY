@@ -50,6 +50,9 @@ add_sources_from_current_dir(console
   select-cli.c nohelp.c console.c)
 add_sources_from_current_dir(settings
   storage.c)
+# KiTTY: storage.c encrypts stored passwords at rest via DPAPI (CryptProtectData/
+# CryptUnprotectData in crypt32). PUBLIC so every consumer (CLI tools incl.) links it.
+target_link_libraries(settings PUBLIC crypt32)
 add_sources_from_current_dir(network
   network.c handle-socket.c named-pipe-client.c named-pipe-server.c local-proxy.c x11.c)
 add_sources_from_current_dir(sshcommon
