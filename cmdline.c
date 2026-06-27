@@ -658,6 +658,34 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         }
     }
 
+    /* KiTTY: -masterpwfile <path> unlocks the master-password at-rest secret
+     * store (windows/storage.c). File form only (a literal master password on
+     * argv is readable by other same-user processes). NOT SSH-gated - it unlocks
+     * a local store regardless of protocol - and distinct from -pwfile, which
+     * sets the SSH login password. Non-interactive, so -batch-safe. */
+    if (!strcmp(p, "-masterpwfile")) {
+        extern void kitty_set_master_passphrase(const char *);
+        RETURN(2);
+        SAVEABLE(0);
+        Filename *fn = cmdline_arg_to_filename(nextarg);
+        FILE *fp = f_open(fn, "r", false);
+        if (!fp) {
+            cmdline_error("unable to open master-password file '%s'", value);
+        } else {
+            char *mpw = chomp(fgetline(fp));
+            fclose(fp);
+            if (!mpw)
+                cmdline_error("unable to read a master password from file '%s'",
+                              value);
+            else {
+                kitty_set_master_passphrase(mpw);
+                smemclr(mpw, strlen(mpw));
+                sfree(mpw);
+            }
+        }
+        filename_free(fn);
+    }
+
     if (!strcmp(p, "-agent") || !strcmp(p, "-pagent") ||
         !strcmp(p, "-pageant")) {
         RETURN(1);
