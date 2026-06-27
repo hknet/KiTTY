@@ -456,8 +456,12 @@ void close_settings_w(settings_w *handle)
     sfree(handle);
 }
 
+#define KSEC_HIVE_PRIMARY  0   /* our own kapper.net hive (or PuTTY base if KiClassName=PuTTY) */
+#define KSEC_HIVE_OLDKITTY 1   /* read-only fallback: old 9bis KiTTY (legacy-encrypted passwords) */
+#define KSEC_HIVE_PUTTY    2   /* read-only fallback: stock PuTTY (only our own cleartext can live here) */
 struct settings_r {
     HKEY sesskey;
+    int src_hive;
 };
 
 settings_r *open_settings_r(const char *sessionname)
@@ -467,13 +471,18 @@ settings_r *open_settings_r(const char *sessionname)
 
     strbuf *sb = strbuf_new();
     escape_registry_key(sessionname, sb);
+    int src = KSEC_HIVE_PRIMARY;
     HKEY sesskey = open_regkey_ro(HKEY_CURRENT_USER, puttystr, sb->s);
     if (!sesskey && !kitty_root_is_putty()) {
         /* KiTTY: fall back to the old KiTTY hive, then stock PuTTY's, so older and
          * PuTTY sessions stay loadable (precedence: our base > old KiTTY > PuTTY). */
         sesskey = open_regkey_ro(HKEY_CURRENT_USER, OLD_KITTY_HIVE_SESSIONS, sb->s);
-        if (!sesskey)
+        if (sesskey) {
+            src = KSEC_HIVE_OLDKITTY;
+        } else {
             sesskey = open_regkey_ro(HKEY_CURRENT_USER, PUTTY_HIVE_SESSIONS, sb->s);
+            if (sesskey) src = KSEC_HIVE_PUTTY;
+        }
     }
     strbuf_free(sb);
 
@@ -482,7 +491,60 @@ settings_r *open_settings_r(const char *sessionname)
 
     settings_r *handle = snew(settings_r);
     handle->sesskey = sesskey;
+    handle->src_hive = src;
     return handle;
+}
+
+/* ---- legacy (<=0.76 old-KiTTY) password decrypt, applied ONLY to the old 9bis
+ * hive (see read_setting_s). Old-KiTTY stored "Password" as
+ * bcrypt_base64(MASKPASS(plaintext)) keyed on host+termtype+"KiTTY". We never
+ * wrote to that hive, so a value there is always this format; bcrypt is
+ * unauthenticated so we must NOT apply this anywhere we might have written
+ * cleartext (our own hive, or the PuTTY hive via KiClassName=PuTTY). ---- */
+#include "../kitty/bcrypt/nbcrypt.h"   /* buncrypt_string_base64, bcrypt_init (relative: storage.c is built standalone in some targets) */
+/* exact bytes of kitty_crypt.c's MASKKEY ("\xc2\xa4..\xc2\xbe", UTF-8, 16 bytes) */
+static const unsigned char ksec_maskkey[16] = {
+    0xC2,0xA4,0xC2,0xA5,0xC2,0xA9,0xC2,0xAA,
+    0xC2,0xB3,0xC2,0xBC,0xC2,0xBD,0xC2,0xBE
+};
+static void ksec_maskpass(char *s)   /* exact replica of kitty_crypt.c MASKPASS */
+{
+    int i, j = 0, len = (int)strlen(s);
+    char *buf = malloc(len + 1), c;
+    if (!buf) return;
+    buf[0] = '\0';
+    for (i = 0; i < len; i++) {
+        c = s[i] ^ (char)ksec_maskkey[j];
+        if (c == 0) { free(buf); return; }     /* original aborts (leaves s unchanged) */
+        buf[i] = c; buf[i+1] = '\0';
+        j++; if (j >= 16) j = 0;
+    }
+    strcpy(s, buf);
+    memset(buf, 0, strlen(s));
+    free(buf);
+}
+/* returns malloc'd plaintext, or NULL if the value did not decode. */
+static char *ksec_legacy_decrypt(const char *stored, HKEY sesskey)
+{
+    static int inited = 0;
+    char passkey[1100], *host, *term, *out;
+    int r;
+    if (!stored || !stored[0]) return NULL;
+    if (!inited) { bcrypt_init(0); inited = 1; }
+    host = get_reg_sz(sesskey, "HostName");
+    term = get_reg_sz(sesskey, "TerminalType");
+    /* dopasskey() mode 0: host + termtype + "KiTTY" (termtype default "xterm"). */
+    snprintf(passkey, sizeof(passkey), "%s%sKiTTY",
+             host ? host : "", (term && term[0]) ? term : "xterm");
+    sfree(host); sfree(term);
+    out = malloc(strlen(stored) + 16);
+    if (!out) return NULL;
+    strcpy(out, stored);
+    r = buncrypt_string_base64(stored, out, (unsigned)strlen(stored), passkey);
+    if (r <= 0) { free(out); return NULL; }
+    out[r] = '\0';            /* buncrypt returns the decoded length */
+    ksec_maskpass(out);       /* undo the MASKPASS layer */
+    return out;
 }
 
 char *read_setting_s(settings_r *handle, const char *key)
@@ -492,6 +554,21 @@ char *read_setting_s(settings_r *handle, const char *key)
     char *raw = get_reg_sz(handle->sesskey, key);
     int slot = kitty_secret_slot(key);
     if (slot >= 0 && raw) {
+        /* Old-KiTTY hive "Password" (slot 0): always legacy-encrypted there (we
+         * never wrote to that hive). Decrypt it; the next Save re-stores it
+         * DPAPI-encrypted in our own hive. ProxyPassword was never encrypted, and
+         * the PuTTY/primary hives only hold our cleartext or DPAPI blobs. */
+        if (handle->src_hive == KSEC_HIVE_OLDKITTY && slot == 0 &&
+            strncmp(raw, KITTY_SECRET_DPAPI_MARK, strlen(KITTY_SECRET_DPAPI_MARK)) != 0) {
+            char *leg = ksec_legacy_decrypt(raw, handle->sesskey);
+            if (leg) {
+                sfree(raw);
+                char *ret = dupstr(leg);
+                memset(leg, 0, strlen(leg)); free(leg);
+                return ret;
+            }
+            /* couldn't decode -> fall through to normal handling */
+        }
         /* Decrypt a DPAPI blob to plaintext for conf; an unmarked legacy value
          * passes through unchanged. Record an undecryptable-here blob for the
          * never-wipe guard on the next save. Return an sfree-able string. */
