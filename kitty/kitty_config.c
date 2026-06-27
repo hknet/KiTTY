@@ -89,6 +89,30 @@ static void kitty_autopw_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
 }
 
+/* At-rest scheme selector for stored passwords (DPAPI Phase 2/3). This is a
+ * global (per-install) setting stored in the registry hive root by the storage
+ * layer, NOT a per-session CONF item - so it uses its own accessors and takes
+ * effect on the next save. */
+int  kitty_get_password_scheme(void);    /* windows/storage.c */
+void kitty_set_password_scheme(int);     /* windows/storage.c */
+static void kitty_pwscheme_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                   void *data, int event)
+{
+    if (event == EVENT_REFRESH) {
+        dlg_update_start(ctrl, dlg);
+        dlg_listbox_clear(ctrl, dlg);
+        dlg_listbox_add(ctrl, dlg, "This Windows account only (DPAPI, default)");
+        dlg_listbox_add(ctrl, dlg, "Master password (portable to other PCs)");
+        dlg_listbox_add(ctrl, dlg, "Plain text (compatibility - insecure)");
+        dlg_listbox_select(ctrl, dlg, kitty_get_password_scheme());
+        dlg_update_done(ctrl, dlg);
+    } else if (event == EVENT_SELCHANGE) {
+        int i = dlg_listbox_index(ctrl, dlg);
+        if (i >= 0 && i <= 2)
+            kitty_set_password_scheme(i);
+    }
+}
+
 /* Proxy-choice droplist (KiTTY): lists named proxy definitions (plus the two
  * built-ins "- Session defined proxy -" / "- No proxy -") and stores the chosen
  * name in CONF_proxyselection, which kitty_proxy_select() overlays onto the
@@ -3389,6 +3413,8 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                    HELPCTX(no_help), kitty_autopw_handler,
                                    I(CONF_password), ED_STR);
                 cpw->editbox.password = true;
+                ctrl_droplist(s, "Store saved passwords as:", NO_SHORTCUT, 60,
+                              HELPCTX(no_help), kitty_pwscheme_handler, P(NULL));
                 ctrl_editbox(s, "Auto-command after login", NO_SHORTCUT,
                              50, HELPCTX(no_help),
                              conf_editbox_handler,

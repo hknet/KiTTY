@@ -348,18 +348,36 @@ static unsigned char *ksec_b64_decode(const char *in, int *outlen)
 #define KSEC_SCHEME_DPAPI  0
 #define KSEC_SCHEME_LEGACY 1
 #define KSEC_SCHEME_MPW    2
+static int g_scheme_cache = -1;
 static int ksec_scheme(void)
 {
-    static int cached = -1;
-    if (cached < 0) {
+    if (g_scheme_cache < 0) {
         DWORD v = 0, sz = sizeof(v);
         if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "PasswordScheme",
                          RRF_RT_REG_DWORD, NULL, &v, &sz) == ERROR_SUCCESS)
-            cached = (v == 1) ? 1 : (v == 2) ? 2 : 0;
+            g_scheme_cache = (v == 1) ? 1 : (v == 2) ? 2 : 0;
         else
-            cached = 0;
+            g_scheme_cache = 0;
     }
-    return cached;
+    return g_scheme_cache;
+}
+
+/* Config-dialog accessors (kitty/kitty_config.c). The setter writes the DWORD to
+ * the SAME hive root ksec_scheme reads, and invalidates the cache so a save made
+ * later in this same process uses the newly-chosen scheme. */
+int kitty_get_password_scheme(void) { return ksec_scheme(); }
+void kitty_set_password_scheme(int scheme)
+{
+    HKEY hk;
+    if (scheme < 0 || scheme > 2) scheme = 0;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        DWORD v = (DWORD)scheme;
+        RegSetValueExA(hk, "PasswordScheme", 0, REG_DWORD,
+                       (const BYTE *)&v, sizeof(v));
+        RegCloseKey(hk);
+    }
+    g_scheme_cache = -1;
 }
 
 /* ---- master-password (MPW1) glue ----------------------------------------
@@ -388,14 +406,16 @@ void kitty_register_mpw_crypto(
 
 static unsigned char g_mpw_key[KSEC_MPW_KEYLEN];
 static int   g_mpw_unlocked = 0;
+static int   g_mpw_declined = 0;                 /* user cancelled -> stop prompting */
 static char *g_mpw_passphrase = NULL;            /* from -masterpwfile / API */
-static char *(*g_mpw_prompt)(int creating) = NULL; /* GUI/console prompt (Phase 3) */
+static char *(*g_mpw_prompt)(int creating) = NULL; /* GUI/console prompt */
 
 void kitty_set_master_passphrase(const char *pass)
 {
     if (g_mpw_passphrase) { memset(g_mpw_passphrase, 0, strlen(g_mpw_passphrase)); free(g_mpw_passphrase); }
     g_mpw_passphrase = (pass && pass[0]) ? ksec_dup(pass) : NULL;
     g_mpw_unlocked = 0;                           /* re-derive with the new passphrase */
+    g_mpw_declined = 0;                           /* fresh passphrase -> allow another try */
 }
 void kitty_set_master_pw_prompt(char *(*fn)(int creating)) { g_mpw_prompt = fn; }
 
@@ -430,39 +450,57 @@ static char *mpw_reg_get_sz(const char *name)   /* malloc'd or NULL */
 static int mpw_ensure_unlocked(int creating)
 {
     if (g_mpw_unlocked) return 1;
+    if (g_mpw_declined)  return 0;               /* user cancelled earlier this run */
     if (!g_mpw_derive || !g_mpw_protect || !g_mpw_unprotect || !g_mpw_randsalt)
         return 0;                                /* MPW crypto not linked in this tool */
 
     unsigned char salt[KSEC_MPW_SALTLEN];
-    if (!mpw_load_salt(salt)) {
-        if (!creating) return 0;
+    int have_salt = mpw_load_salt(salt);
+    char *ver = mpw_reg_get_sz("MasterPwVerifier");   /* malloc'd (ksec_dup) or NULL */
+    int first_time = (!have_salt || !ver);
+
+    /* A load (creating==0) needs an existing store; nothing to unlock otherwise. */
+    if (!creating && first_time) { if (ver) free(ver); return 0; }
+
+    if (!have_salt) {                            /* first-time setup: mint a salt */
         g_mpw_randsalt(salt, KSEC_MPW_SALTLEN);
         char *sb = ksec_b64_encode(salt, KSEC_MPW_SALTLEN);
         if (sb) { mpw_reg_set_sz("MasterPwSalt", sb); free(sb); }
     }
 
-    char *pass = NULL;
-    if (g_mpw_passphrase) pass = ksec_dup(g_mpw_passphrase);
-    else if (g_mpw_prompt) pass = g_mpw_prompt(creating);
-    if (!pass || !pass[0]) { if (pass) { memset(pass, 0, strlen(pass)); free(pass); } return 0; }
-    g_mpw_derive(pass, salt, KSEC_MPW_SALTLEN, g_mpw_key);
-    memset(pass, 0, strlen(pass)); free(pass);
+    /* A non-interactive passphrase (-masterpwfile/API) gets a single try; an
+     * interactive prompt gets a few, re-prompting on a wrong master password. */
+    int from_supplied = (g_mpw_passphrase != NULL);
+    int tries = from_supplied ? 1 : 3;
+    int ok = 0;
 
-    char *ver = mpw_reg_get_sz("MasterPwVerifier");   /* malloc'd (ksec_dup) */
-    if (ver) {
-        char *vpt = NULL; int rv = g_mpw_unprotect(ver, g_mpw_key, &vpt);
-        int okv = (rv == 1 && vpt && !strcmp(vpt, KSEC_MPW_VERIFY));
-        if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); }  /* snew'd by kitty_mpw */
-        free(ver);
-        if (!okv) { SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key)); return 0; } /* wrong passphrase */
-    } else if (creating) {
-        char *vb = g_mpw_protect(KSEC_MPW_VERIFY, g_mpw_key);  /* snew'd by kitty_mpw */
-        if (vb) { mpw_reg_set_sz("MasterPwVerifier", vb); sfree(vb); }
-    } else {
-        SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key)); return 0;  /* no verifier to check against */
+    while (tries-- > 0 && !ok) {
+        char *pass = from_supplied ? ksec_dup(g_mpw_passphrase)
+                   : (g_mpw_prompt ? g_mpw_prompt(first_time) : NULL);
+        if (!pass || !pass[0]) {                 /* cancelled / no prompt available */
+            if (pass) { memset(pass, 0, strlen(pass)); free(pass); }
+            if (!from_supplied && g_mpw_prompt) g_mpw_declined = 1;
+            break;
+        }
+        g_mpw_derive(pass, salt, KSEC_MPW_SALTLEN, g_mpw_key);
+        memset(pass, 0, strlen(pass)); free(pass);
+
+        if (ver) {                               /* verify against the stored token */
+            char *vpt = NULL; int rv = g_mpw_unprotect(ver, g_mpw_key, &vpt);
+            ok = (rv == 1 && vpt && !strcmp(vpt, KSEC_MPW_VERIFY));
+            if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); } /* snew'd by kitty_mpw */
+            if (!ok) SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key)); /* wrong: re-prompt */
+        } else {                                 /* first time: write the token */
+            char *vb = g_mpw_protect(KSEC_MPW_VERIFY, g_mpw_key); /* snew'd by kitty_mpw */
+            if (vb) { mpw_reg_set_sz("MasterPwVerifier", vb); sfree(vb); }
+            ok = 1;
+        }
     }
-    g_mpw_unlocked = 1;
-    return 1;
+
+    if (ver) free(ver);
+    if (ok) { g_mpw_unlocked = 1; return 1; }
+    SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key));
+    return 0;
 }
 
 /* plaintext -> stored form (malloc'd). Empty -> "". DPAPI by default; legacy
