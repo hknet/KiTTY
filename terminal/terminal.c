@@ -3255,9 +3255,17 @@ static void far2l_process_payload(Terminal *term)
         switch (d_out[d_count - 3]) {          /* subcommand */
           case 'r': {                          /* register format */
 #ifdef _WINDOWS
-            memcpy(&len, d_out + d_count - 3 - 4, sizeof(DWORD));
-            if (len < (DWORD)d_count) d_out[len] = 0;   /* zero-terminate name */
-            uint32_t status = RegisterClipboardFormatA(d_out);
+            /* SECURITY: the length DWORD sits at d_out+d_count-7, so we need at
+             * least 7 decoded bytes or the read underflows the heap buffer.
+             * Gate behind clip_allowed so a malicious server can't register
+             * clipboard formats with zero user consent. */
+            uint32_t status = 0;
+            if (term->clip_allowed == 1 && d_count >= 7) {
+                memcpy(&len, d_out + d_count - 3 - 4, sizeof(DWORD));
+                if (len > (DWORD)(d_count - 7)) len = (DWORD)(d_count - 7);
+                d_out[len] = 0;                 /* always terminate the name */
+                status = RegisterClipboardFormatA(d_out);
+            }
 #endif
             reply_size = 5; reply = snewn(reply_size, char);
 #ifdef _WINDOWS
@@ -3285,9 +3293,14 @@ static void far2l_process_payload(Terminal *term)
           }
           case 'a': {                          /* is-format-available */
 #ifdef _WINDOWS
-            uint32_t a_fmt;
-            memcpy(&a_fmt, d_out + d_count - 3 - 4, sizeof(uint32_t));
-            char avail = IsClipboardFormatAvailable(a_fmt) ? 1 : 0;
+            /* SECURITY: 4-byte format id at d_out+d_count-7 -> need d_count>=7,
+             * and gate behind clip_allowed (no zero-consent clipboard probing). */
+            char avail = 0;
+            if (term->clip_allowed == 1 && d_count >= 7) {
+                uint32_t a_fmt;
+                memcpy(&a_fmt, d_out + d_count - 3 - 4, sizeof(uint32_t));
+                avail = IsClipboardFormatAvailable(a_fmt) ? 1 : 0;
+            }
 #endif
             reply_size = 2; reply = snewn(reply_size, char);
 #ifdef _WINDOWS
@@ -3366,7 +3379,8 @@ static void far2l_process_payload(Terminal *term)
           }
           case 'g': {                          /* get clipboard data */
 #ifdef _WINDOWS
-            if (term->clip_allowed == 1) {
+            /* SECURITY: 4-byte format id at d_out+d_count-7 -> need d_count>=7. */
+            if (term->clip_allowed == 1 && d_count >= 7) {
                 uint32_t gfmt;
                 void *ClipText = NULL;
                 int ClipTextSize = 0;

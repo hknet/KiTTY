@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.36 — Known issues & limitations
+# KiTTY 0.84.1.37 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -21,16 +21,87 @@ features are working and verified. Known limitations as of this release:
 - **Background image:** renders correctly inside the terminal cell grid; the thin
   margin strip outside the grid is still solid-filled (cosmetic).
 
+## Connectivity tips
+
+- **Slow first connect (~2–5 s) on non-Kerberos networks.** PuTTY (and thus KiTTY)
+  attempts **GSSAPI** authentication by default — useful for Kerberos/Active-Directory
+  single sign-on, but on a machine with no Kerberos realm it does DNS/KDC lookups that
+  **time out** before falling back to your key/password, adding a few seconds before
+  the session connects (you'll see a pause before *"No GSSAPI security context
+  available"* in the Event Log). If you don't use Kerberos SSO, turn it off:
+  **Connection → SSH → Auth → GSSAPI → untick "Attempt GSSAPI authentication"**
+  (and "Attempt GSSAPI key exchange"), then save — set it in **Default Settings** to
+  apply to new sessions. Connect time drops to ~1 s.
+
+## Security
+
+- **Stored passwords are reversible at rest (DPAPI planned).** KiTTY can *optionally*
+  save a session password (PuTTY itself never stores one). When you choose to save
+  one, it is currently kept in a **reversible** form — encrypted only with a key
+  derived from non-secret data (the hostname/terminal type plus a fixed constant), not
+  with Windows DPAPI — so it can be recovered offline by anyone with access to your
+  registry/`.ini`. The in-memory copy is likewise only lightly obfuscated, and kageant
+  holds loaded SSH **private keys decrypted in process memory** (the same as stock
+  PuTTY Pageant — no added in-memory protection). **If security matters, use public-key
+  authentication (kageant) and avoid saving passwords.** Real at-rest encryption
+  (Windows DPAPI / an opt-in master password) is the next planned milestone. This
+  affects only passwords you explicitly chose to save; KiTTY stores nothing by default.
+
 ## Packaging / cosmetic
 
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.36-beta @ 2026-06-25`.
+- **Version string:** binaries report `0.84.1.37-beta @ 2026-06-27`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.37
+
+- **Saved session passwords work again for auto-login and WinSCP.** The launcher
+  passed the stored password to the connecting process in a masked form that was
+  then sent verbatim, so every saved password failed (looked like a wrong
+  password). Fixed the hand-off; a stored password now authenticates as typed.
+- **Event Log "Copy" copies the whole log when nothing is selected** (was: beep).
+- **No more credential-hammering that gets your IP banned.** A stored password is now
+  auto-answered only **once per connection** (a rejected password is no longer resent
+  on every re-prompt; KiTTY falls through to the interactive prompt instead), and
+  **auto-reconnect no longer retries on authentication failures** (only network drops
+  of a session that actually authenticated). Both previously could exhaust the server's
+  `MaxAuthTries` ("Too many authentication failures") and trip fail2ban.
+- **Security fix (remote): far2l clipboard parser out-of-bounds read.** A malicious
+  SSH server could crash KiTTY with a short, crafted `far2l` clipboard sequence (a heap
+  under-read), and register-format / is-available ran with no consent. Now bounds-checked
+  and behind the clipboard-consent prompt. Crash/DoS only (no code execution/disclosure),
+  but network-reachable — recommended for anyone connecting to untrusted hosts.
+- **Whole-codebase + PuTTY-base security sweep.** Every KiTTY-added file, the upstream
+  files KiTTY modifies, the remote SSH/terminal parsers and the diagnostic dumps were
+  audited and findings adversarially re-verified. Besides far2l, this bounds a batch of
+  local-input overflows (session/`.ini`/registry values, autocommand lines, port-knock
+  sequences, the proxy list, rutty scripts, exported passwords) and guards config-line
+  parsers against malformed/blank lines.
+- **Removed the dead `__xy` remote-command dispatcher** (`ManageLocalCmd`) — unreachable
+  in the 0.84 base but a latent RCE surface; deleted.
+- **Config dialog: position memory, Save keeps selection, delete imported sessions,
+  remember last session.** The window remembers its position (re-centres if its monitor
+  was removed); **Save** keeps the saved session selected; a new *"show / edit / delete
+  old sessions"* checkbox lets you see and remove sessions imported from older
+  PuTTY/KiTTY hives (tagged `(old KiTTY)` / `(PuTTY)`; auto-on when your own hive is
+  empty); and the last-loaded session is auto-selected and auto-loaded on reopen.
+- **WinSCP launch: credentials URL-encoded.** A `@`/`/`/`:` in the username or
+  password no longer breaks the WinSCP connection URL or risks redirecting the
+  transfer to the wrong host. (Upstream cyd01/KiTTY #535.)
+- **`.ini` load: out-of-bounds read/write fixed** on a blank/CR-LF-only line.
+  (Upstream cyd01/KiTTY #541.)
+- **`/savedump` no longer leaks secrets.** Session/proxy passwords, the SSH key
+  passphrase, the private key file, the password-store protection password, clipboard
+  contents and login/rutty script content are all redacted — dumps are safe to share.
+- **`__ti` title handler hardened** against a long-title overflow. (Upstream #405.)
+- **kageant About box shows the KiTTY/kapper.net copyright.**
+- **Verified — not affected:** upstream #531 (CVE-2024-31497 P-521 nonce) and #520
+  (Terrapin) are already fixed by the PuTTY 0.84 base.
 
 ## New in 0.84.1.36
 

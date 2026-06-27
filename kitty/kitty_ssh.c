@@ -6,8 +6,8 @@ void vprint(char *fmt, ...)
 {	char buf[1024];
 	va_list args;
 	va_start(args, fmt);
-	vsprintf(buf,fmt, args);
-	if( buf[strlen(buf)-1]=='\n' ) buf[strlen(buf)-1]='\0';
+	vsnprintf(buf,sizeof(buf),fmt, args);
+	{ size_t _l=strlen(buf); if( _l>0 && buf[_l-1]=='\n' ) buf[_l-1]='\0'; }
 	printf(buf) ;
 	va_end(args);
 }
@@ -65,7 +65,7 @@ int ManagePortKnocking( char* host, char *portknockseqorig ) {
 	for(i=0;i<strlen(portknockseq);i++) 
 		{ if( (portknockseq[i]==' ')||(portknockseq[i]=='	')||(portknockseq[i]==';')||(portknockseq[i]=='-') ) portknockseq[i]=','; }
 	while( portknockseq[0]==',' ) del(portknockseq,1,1);
-	while( portknockseq[strlen(portknockseq)-1]==',' ) portknockseq[strlen(portknockseq)-1]='\0';
+	{ size_t _l; while( (_l=strlen(portknockseq))>0 && portknockseq[_l-1]==',' ) portknockseq[_l-1]='\0'; }
 	while( (i=poss(",:",portknockseq)) ) { del(portknockseq,i,1); }
 	while( (i=poss(":,",portknockseq)) ) { del(portknockseq,i+1,1); }
 	while( (i=poss(",,",portknockseq)) ) { del(portknockseq,i,1); }
@@ -75,15 +75,18 @@ int ManagePortKnocking( char* host, char *portknockseqorig ) {
 		if( strlen(portknockseq)>0 ) {
 			i=poss(":",portknockseq) ; if(i==0) i=strlen(portknockseq)+1;
 			j=poss(",",portknockseq) ; if(j==0) j=strlen(portknockseq)+1; if(j<i) i=j;
-			strcpy(portstr,portknockseq); 
-			if( portstr[i-1]!=':' ) { 
+			if( i > (int)sizeof(portstr) ) i = (int)sizeof(portstr); /* SECURITY: bound token */
+			{ size_t _n=strlen(portknockseq); if(_n>=sizeof(portstr)) _n=sizeof(portstr)-1; memcpy(portstr,portknockseq,_n); portstr[_n]='\0'; }
+			if( portstr[i-1]!=':' ) {
 				portstr[i-1]='\0'; del(portknockseq,1,i);
 				strcpy(protostr,"tcp");
 				}
 			else {
 				portstr[i-1]='\0'; del(portknockseq,1,i);
 				i=poss(",",portknockseq) ; if(i==0) i=strlen(portknockseq)+1;
-				strcpy(protostr,portknockseq); protostr[i-1]='\0'; del(portknockseq,1,i);
+				if( i > (int)sizeof(protostr) ) i = (int)sizeof(protostr); /* SECURITY: bound token */
+				{ size_t _n=strlen(portknockseq); if(_n>=sizeof(protostr)) _n=sizeof(protostr)-1; memcpy(protostr,portknockseq,_n); protostr[_n]='\0'; }
+				protostr[i-1]='\0'; del(portknockseq,1,i);
 				}
 			port=atoi(portstr);
 			if( !stricmp(protostr,"udp") ) proto=PROTO_UDP ; else proto=PROTO_TCP ;

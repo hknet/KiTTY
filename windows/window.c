@@ -441,6 +441,12 @@ static void win_seat_notify_session_started(Seat *seat)
 {
     WinGuiSeat *wgs = container_of(seat, WinGuiSeat, seat);
     SetSSHConnected(1);
+#ifdef MOD_RECONNECT
+    /* This SSH session has now completed authentication at least once, so a
+     * later network drop is a genuine reconnect candidate (an auth failure,
+     * which never reaches here, is not). */
+    wgs->ever_authenticated = true;
+#endif
     /* KiTTY: SSH session is (re)connected post-auth - restore the normal
      * window icon so a prior SetConnBreakIcon() drop no longer shows. */
     kitty_restore_icon(wgs->term_hwnd, wgs->conf);
@@ -565,7 +571,7 @@ static void start_backend(WinGuiSeat *wgs)
         sfree(error);
 #ifdef MOD_RECONNECT
         if (GetAutoreconnectFlag() && conf_get_int(wgs->conf, CONF_failure_reconnect)
-            && is_backend_first_connected) {
+            && wgs->ever_authenticated) {
             lp_eventlog(&wgs->logpolicy, msg);
             sfree(str); sfree(msg);
             SetSSHConnected(0);
@@ -616,6 +622,7 @@ static void start_backend(WinGuiSeat *wgs)
      * from notify_session_started) and reset the backoff counter on success. */
     if (conf_get_int(wgs->conf, CONF_protocol) != PROT_SSH) {
         is_backend_first_connected = 1;
+        wgs->ever_authenticated = true; /* non-SSH has no auth phase; a connect counts */
         /* Non-SSH (re)connect: restore the normal icon (SSH does this from
          * notify_session_started once auth completes). */
         kitty_restore_icon(wgs->term_hwnd, wgs->conf);
@@ -623,6 +630,7 @@ static void start_backend(WinGuiSeat *wgs)
     wgs->last_reconnect = time(NULL);
     wgs->reconnect_tries = 0;
 #endif
+    wgs->autopw_tried = false;   /* new connection: allow one auto-password answer */
     wgs->session_closed = false;
 }
 
@@ -1781,6 +1789,30 @@ static void wintw_set_raw_mouse_mode_pointer(TermWin *tw, bool activate)
     update_mouse_pointer(wgs);
 }
 
+#ifdef MOD_RECONNECT
+/* A fatal disconnect whose reason is authentication-related must NOT trigger
+ * auto-reconnect: re-dialing with the same rejected credentials just burns the
+ * server's MaxAuthTries and gets the client IP banned. PuTTY's fatal messages
+ * for these cases all contain the word "authentication" (e.g. "Too many
+ * authentication failures", "No supported authentication methods available").
+ * Case-insensitive substring scan, no platform-specific helpers. */
+static bool kitty_is_auth_failure_msg(const char *msg)
+{
+    static const char needle[] = "authentication";
+    if (!msg)
+        return false;
+    for (const char *p = msg; *p; p++) {
+        size_t k = 0;
+        while (needle[k] && p[k] &&
+               tolower((unsigned char)p[k]) == needle[k])
+            k++;
+        if (!needle[k])
+            return true;
+    }
+    return false;
+}
+#endif
+
 /*
  * Print a message box and close the connection.
  */
@@ -1788,9 +1820,14 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
 {
     WinGuiSeat *wgs = container_of(seat, WinGuiSeat, seat);
 #ifdef MOD_RECONNECT
-    /* KiTTY auto-reconnect: on an abnormal drop of a session that connected at
-     * least once, arm the reconnect timer instead of message-boxing. */
-    if (GetAutoreconnectFlag() && is_backend_first_connected) {
+    /* KiTTY auto-reconnect: on an abnormal drop of a session that had FULLY
+     * authenticated at least once, arm the reconnect timer instead of
+     * message-boxing -- but never on an authentication failure (would burn the
+     * server's auth-try budget and risk an IP ban), and never on a session that
+     * never authenticated (gated per-session, not on the stale process-global
+     * is_backend_first_connected). */
+    if (GetAutoreconnectFlag() && wgs->ever_authenticated
+        && !kitty_is_auth_failure_msg(msg)) {
         SetConnBreakIcon(wgs->term_hwnd);
         SetSSHConnected(0);
         wgs->session_closed = true;
@@ -1803,6 +1840,42 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
                          GetReconnectDelay()*1000, NULL);
             }
         }
+        return;
+    }
+#endif
+#ifdef MOD_PERSO
+    /* KiTTY: instead of a modal "Fatal Error" box that blocks the terminal,
+     * print the error INLINE (red label, default-coloured detail) and let the
+     * session go inactive, so the user can read it and choose Restart / next
+     * steps without an OK-click (cf. upstream #548). Auto-reconnect has already
+     * been ruled out above for this disconnect. The modal box is kept only when
+     * "close window on exit" is forced ON (the window is about to vanish, so
+     * inline text wouldn't be seen) or in PuTTY-compat mode. */
+    if (!GetPuttyFlag() && conf_get_int(wgs->conf, CONF_close_on_exit) != FORCE_ON) {
+        /* Build the detail, normalising newlines to CRLF so it doesn't
+         * "staircase" down the terminal, and trimming a trailing empty quoted
+         * description (servers often send '...: ""'). */
+        size_t mlen = msg ? strlen(msg) : 0;
+        char *body = snewn(mlen * 2 + 1, char);
+        size_t bl = 0;
+        for (const char *p = msg ? msg : ""; *p; p++) {
+            if (*p == '\r') continue;
+            else if (*p == '\n') { body[bl++] = '\r'; body[bl++] = '\n'; }
+            else body[bl++] = *p;
+        }
+        body[bl] = 0;
+        if (bl >= 2 && body[bl-1] == '"' && body[bl-2] == '"') {
+            bl -= 2;
+            while (bl > 0 && (body[bl-1] == ' ' || body[bl-1] == ':' ||
+                              body[bl-1] == '\r' || body[bl-1] == '\n')) bl--;
+            body[bl] = 0;
+        }
+        char *line = dupprintf("\r\n\x1b[1;31m%s Fatal Error:\x1b[0m %s\r\n",
+                               appname, body);
+        term_data(wgs->term, line, strlen(line));
+        sfree(line); sfree(body);
+        show_mouseptr(wgs, true);
+        queue_toplevel_callback(close_session, wgs);
         return;
     }
 #endif
@@ -2973,7 +3046,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       case WM_POWERBROADCAST:
         if (wgs && GetAutoreconnectFlag()
             && conf_get_int(wgs->conf, CONF_wakeup_reconnect)
-            && is_backend_first_connected) {
+            && wgs->ever_authenticated) {
             switch (wParam) {
               case PBT_APMRESUMESUSPEND:
               case PBT_APMRESUMEAUTOMATIC:
@@ -4346,6 +4419,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         noise_ultralight(NOISE_SOURCE_KEY, lParam);
 
 #ifdef MOD_PERSO
+        /* When the session is inactive (ended/disconnected, no backend), let
+         * Ctrl+D close the window from the keyboard -- otherwise only Alt+F4 or
+         * the mouse can dismiss it. Goes through WM_CLOSE, which closes without
+         * a prompt once session_closed and saves the remembered position. */
+        if (message == WM_KEYDOWN && !wgs->backend && wgs->session_closed &&
+            (wParam == 'D' || wParam == 'd') &&
+            (GetKeyState(VK_CONTROL) & 0x8000)) {
+            PostMessage(hwnd, WM_CLOSE, 0, 0);
+            return 0;
+        }
         /* KiTTY Ctrl-Tab session switching (consume VK_TAB+Ctrl first). */
         if (wParam == VK_TAB && (GetKeyState(VK_CONTROL) & 0x8000)) {
             if (conf_get_int(wgs->conf, CONF_ctrl_tab_switch) && GetCtrlTabFlag()) {
@@ -7228,9 +7311,14 @@ static SeatPromptResult win_seat_get_userpass_input(Seat *seat, prompts_t *p)
      * helper assumes the MASKPASS-encoded form produced by the now-stubbed
      * RenewPassword). TODO(security): the password is recoverable from the saved
      * session; a future hardening pass should revisit storage / prefer key auth. */
-    if (spr.kind == SPRK_INCOMPLETE && !GetPuttyFlag() &&
+    if (spr.kind == SPRK_INCOMPLETE && !GetPuttyFlag() && !wgs->autopw_tried &&
         p->n_prompts == 1 && !p->prompts[0]->echo && p->to_server &&
         strlen(conf_get_str(wgs->conf, CONF_password)) > 0) {
+        /* Answer the stored password ONCE per connection. If the server rejects
+         * it and re-prompts, do NOT auto-resend (that would burn the server's
+         * MaxAuthTries and risk an IP ban); fall through to the interactive
+         * prompt so the user can correct it or cancel. */
+        wgs->autopw_tried = true;
         prompt_set_result(p->prompts[0], conf_get_str(wgs->conf, CONF_password));
         spr = SPR_OK;
     }
@@ -7402,23 +7490,75 @@ static void kitty_winpos_key(char *buf, int n)
     _snprintf(buf, n, "WinPos_%08lx", h);
 }
 
+/* ---- window-position diagnostics ---------------------------------------------
+ * Inert unless the environment variable KITTY_WINPOS_DEBUG is set; then it
+ * appends a trace (monitor topology, topology key, save/restore rects, results)
+ * to %TEMP%\kitty_winpos.log. Used to diagnose "remember window position" on
+ * multi-monitor / mixed-DPI layouts. */
+static int kitty_winpos_dbg_enabled(void)
+{
+    /* Off by default; set KITTY_WINPOS_DEBUG=1 to trace to
+     * %TEMP%\kitty_winpos.log (works in any build, no separate debug exe). */
+    static int cached = -1;
+    if (cached < 0)
+        cached = GetEnvironmentVariableA("KITTY_WINPOS_DEBUG", NULL, 0) ? 1 : 0;
+    return cached;
+}
+static void kitty_winpos_dbg(const char *fmt, ...)
+{
+    if (!kitty_winpos_dbg_enabled()) return;
+    char path[MAX_PATH];
+    DWORD n = GetTempPathA(sizeof(path), path);
+    if (!n || n >= sizeof(path) - 20) return;
+    strcat(path, "kitty_winpos.log");
+    FILE *fp = fopen(path, "a");
+    if (!fp) return;
+    SYSTEMTIME st; GetLocalTime(&st);
+    fprintf(fp, "%02d:%02d:%02d.%03d ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+    va_list ap; va_start(ap, fmt); vfprintf(fp, fmt, ap); va_end(ap);
+    fputc('\n', fp);
+    fclose(fp);
+}
+static BOOL CALLBACK kitty_topo_logenum(HMONITOR hm, HDC dc, LPRECT rc, LPARAM lp)
+{
+    MONITORINFO mi; mi.cbSize = sizeof(mi);
+    if (GetMonitorInfo(hm, &mi))
+        kitty_winpos_dbg("  monitor rcMonitor=(%ld,%ld,%ld,%ld) rcWork=(%ld,%ld,%ld,%ld) primary=%d",
+            mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right, mi.rcMonitor.bottom,
+            mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom,
+            (mi.dwFlags & MONITORINFOF_PRIMARY) ? 1 : 0);
+    (void)dc; (void)rc; (void)lp;
+    return TRUE;
+}
+static void kitty_winpos_dump_topo(const char *when)
+{
+    if (!kitty_winpos_dbg_enabled()) return;
+    kitty_winpos_dbg("%s: monitor topology:", when);
+    EnumDisplayMonitors(NULL, NULL, kitty_topo_logenum, 0);
+}
+
 /* Save THIS window's physical rect under the current-topology key (on close).
  * Minimised/maximised states are not remembered (we only persist a normal
  * restored position). */
 void kitty_save_window_placement(HWND hwnd)
 {
     if (!hwnd) return;
-    if (KITTY_IS_EMBEDDED(hwnd)) return;   /* #554: a child's rect is inside the host */
-    if (IsIconic(hwnd) || IsZoomed(hwnd)) return;
+    if (KITTY_IS_EMBEDDED(hwnd)) { kitty_winpos_dbg("SAVE skipped: embedded"); return; }   /* #554 */
+    if (IsIconic(hwnd) || IsZoomed(hwnd)) { kitty_winpos_dbg("SAVE skipped: iconic/zoomed"); return; }
     RECT r;
-    if (!GetWindowRect(hwnd, &r)) return;
+    if (!GetWindowRect(hwnd, &r)) { kitty_winpos_dbg("SAVE skipped: GetWindowRect failed"); return; }
     char keyname[64]; kitty_winpos_key(keyname, sizeof(keyname));
+    kitty_winpos_dump_topo("SAVE");
+    kitty_winpos_dbg("SAVE key=%s rect=(%ld,%ld,%ld,%ld)", keyname, r.left, r.top, r.right, r.bottom);
     char base[600]; _snprintf(base, sizeof(base), "%s\\WindowPos", kitty_registry_base());
     HKEY hk;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, base, 0, NULL, 0,
                         KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
         RegSetValueExA(hk, keyname, 0, REG_BINARY, (const BYTE *)&r, sizeof(r));
         RegCloseKey(hk);
+        kitty_winpos_dbg("SAVE ok -> HKCU\\%s [%s]", base, keyname);
+    } else {
+        kitty_winpos_dbg("SAVE FAILED: RegCreateKeyEx HKCU\\%s", base);
     }
 }
 
@@ -7438,16 +7578,24 @@ static int kitty_restore_window_placement(HWND hwnd)
     if (!hwnd) return 0;
     char keyname[64]; kitty_winpos_key(keyname, sizeof(keyname));
     char base[600]; _snprintf(base, sizeof(base), "%s\\WindowPos", kitty_registry_base());
+    kitty_winpos_dump_topo("RESTORE");
     RECT saved; DWORD sz = sizeof(saved);
     if (RegGetValueA(HKEY_CURRENT_USER, base, keyname, RRF_RT_REG_BINARY,
-                     NULL, &saved, &sz) != ERROR_SUCCESS) return 0;
-    if (sz != sizeof(saved)) return 0;
+                     NULL, &saved, &sz) != ERROR_SUCCESS) {
+        kitty_winpos_dbg("RESTORE key=%s: no saved value in HKCU\\%s", keyname, base);
+        return 0;
+    }
+    if (sz != sizeof(saved)) { kitty_winpos_dbg("RESTORE key=%s: bad value size %lu", keyname, (unsigned long)sz); return 0; }
     /* Only restore if the saved title-bar area is still on a visible monitor
      * (probe a point a little inside the top-left corner). */
-    if (!kitty_point_on_monitor(saved.left + 8, saved.top + 8))
-        return 0;
-    return SetWindowPos(hwnd, NULL, saved.left, saved.top, 0, 0,
-                        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) ? 1 : 0;
+    int onmon = kitty_point_on_monitor(saved.left + 8, saved.top + 8);
+    kitty_winpos_dbg("RESTORE key=%s saved=(%ld,%ld,%ld,%ld) onmonitor=%d",
+                     keyname, saved.left, saved.top, saved.right, saved.bottom, onmon);
+    if (!onmon) { kitty_winpos_dbg("RESTORE skipped: saved top-left off-screen"); return 0; }
+    int ok = SetWindowPos(hwnd, NULL, saved.left, saved.top, 0, 0,
+                          SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) ? 1 : 0;
+    kitty_winpos_dbg("RESTORE SetWindowPos(%ld,%ld) -> %d", saved.left, saved.top, ok);
+    return ok;
 }
 
 /* Move THIS seat's window. A session that pins CONF_xpos/ypos (>=0) wins; else,
@@ -7455,15 +7603,24 @@ static int kitty_restore_window_placement(HWND hwnd)
 void kitty_apply_window_pos(WinGuiSeat *wgs)
 {
     if (!wgs || !wgs->term_hwnd) return;
-    if (KITTY_EMBEDDED()) return;   /* #554: host owns the embedded window's position */
+    if (KITTY_EMBEDDED()) { kitty_winpos_dbg("APPLY skipped: embedded"); return; }   /* #554 */
     int x = conf_get_int(wgs->conf, CONF_xpos);
     int y = conf_get_int(wgs->conf, CONF_ypos);
+    int remember = conf_get_bool(wgs->conf, CONF_remember_winpos);
+    kitty_winpos_dbg("APPLY xpos=%d ypos=%d remember=%d", x, y, remember);
+    /* "Remember window position" takes precedence over a saved CONF_xpos/ypos
+     * pin: a session whose stored TermXPos/TermYPos are (0,0) was otherwise
+     * mis-read as an explicit pin and forced to the screen corner, defeating the
+     * remember feature (the saved topology-keyed position was never restored). */
+    if (remember && kitty_restore_window_placement(wgs->term_hwnd)) {
+        kitty_winpos_dbg("APPLY restored remembered position");
+        return;
+    }
     if (x >= 0 && y >= 0) {
         SetWindowPos(wgs->term_hwnd, NULL, x, y, 0, 0,
                      SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        kitty_winpos_dbg("APPLY pinned CONF pos (%d,%d) set", x, y);
         return;
     }
-    if (conf_get_bool(wgs->conf, CONF_remember_winpos))
-        kitty_restore_window_placement(wgs->term_hwnd);
 }
 #endif

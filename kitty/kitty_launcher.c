@@ -830,11 +830,16 @@ void RunConfig( Conf * conf ) {
 	PROCESS_INFORMATION pi;
 	HANDLE filemap = NULL;
 	
-	char bufpass[1024] ;
-	strcpy( bufpass, conf_get_str(conf,CONF_password)) ;
-	MASKPASS(GetCryptSaltFlag(),bufpass) ;
-	conf_set_str(conf,CONF_password,bufpass) ;
-	
+	/* Pass the session conf (incl. the auto-login password) to the child putty
+	 * process PLAINTEXT through the anonymous, inherit-only file-mapping below -
+	 * exactly as the Duplicate-Session handoff (window.c IDM_DUPSESS) already does.
+	 * The old code MASKPASS-obfuscated the password here on the assumption the
+	 * child would un-mask it, but the 0.84 child reads CONF_password raw
+	 * (window.c get_userpass_input) -> it sent the masked bytes -> auto-login and
+	 * WinSCP launches failed for every stored password. The mapping is anonymous
+	 * and only shared by handle-inheritance with our own child, so plaintext here
+	 * is no weaker than the password already being plaintext in process memory. */
+
 	if (restricted_acl) {
 		argprefix = "&R";
 	} else {
@@ -871,11 +876,7 @@ void RunConfig( Conf * conf ) {
 	inherit_handles = true;
 	cl = dupprintf("putty %s&%p:%u", argprefix,
 		filemap, (unsigned)size);
-		    
-	MASKPASS(GetCryptSaltFlag(),bufpass);
-	conf_set_str(conf,CONF_password,bufpass);
-	memset(bufpass,0,strlen(bufpass));
-		    
+
 	GetModuleFileName(NULL, b, sizeof(b) - 1);
 	si.cb = sizeof(si);
 	si.lpReserved = NULL;
@@ -927,9 +928,9 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 		sprintf( buffer, "%s\\Sessions\\%s", kitty_registry_base(), session ) ;
 		if( RegTestKey(HKEY_CURRENT_USER, buffer) ) {
 			strcpy( session, session_in ) ;
-			if( session[strlen(session)-1] == '&' ) {
+			if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {
 				session[strlen(session)-1]='\0' ;
-				while( (session[strlen(session)-1]==' ')||(session[strlen(session)-1]=='\t') ) session[strlen(session)-1]='\0' ;
+				{ size_t _l; while( (_l=strlen(session))>0 && (session[_l-1]==' '||session[_l-1]=='\t') ) session[_l-1]='\0' ; }
 				if( GetPuttyFlag() )	sprintf( buffer, "%s -putty -load \"%s\" -send-to-tray", shortname, session ) ;
 				else sprintf( buffer, "%s -load \"%s\" -send-to-tray", shortname, session ) ;
 			} else {
@@ -944,15 +945,13 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 	} else if( IniFileFlag==SAVEMODE_DIR ) {
 		if( DirectoryBrowseFlag ) {
 			if( (folder_in!=NULL)&&strcmp(folder_in,"")&&strcmp(folder_in,"Default") ) {
-				strcat( shortname, " -folder \"" ) ;
-				strcat( shortname, folder_in ) ;
-				strcat( shortname, "\"" ) ;
+				{ size_t _sl=strlen(shortname); snprintf( shortname+_sl, sizeof(shortname)-_sl, " -folder \"%s\"", folder_in ) ; }
 			}
 		}
 		strcpy( session, session_in ) ;
-		if( session[strlen(session)-1] == '&' ) {
+		if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {
 			session[strlen(session)-1]='\0' ;
-			while( (session[strlen(session)-1]==' ')||(session[strlen(session)-1]=='\t') ) session[strlen(session)-1]='\0' ;
+			{ size_t _l; while( (_l=strlen(session))>0 && (session[_l-1]==' '||session[_l-1]=='\t') ) session[_l-1]='\0' ; }
 			if( GetPuttyFlag() )	sprintf( buffer, "%s -putty -load \"%s\" -send-to-tray", shortname, session ) ;
 			else sprintf( buffer, "%s -load \"%s\" -send-to-tray", shortname, session ) ;
 		} else {

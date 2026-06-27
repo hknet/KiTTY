@@ -75,9 +75,9 @@ void SetHostKeyExtension( const char* ext ) {
 	buffer = (char*)malloc(strlen(ext)+2);
 	if( ext[0]!='.' ) { strcpy( buffer, "." ) ; } else { strcpy( buffer, "" ) ; }
 	strcat( buffer, ext ) ;
-	while( buffer[strlen(buffer)-1]==' ' ) { buffer[strlen(buffer)-1] = '\0' ; }
+	{ size_t _l; while( (_l=strlen(buffer))>0 && buffer[_l-1]==' ' ) buffer[_l-1] = '\0' ; }
 	if( strlen(buffer)>15 ) { buffer[15]='\0' ; }
-	strcpy( keysuffix, buffer ) ;
+	snprintf( keysuffix, sizeof(keysuffix), "%s", buffer ) ;
 	free( buffer ) ;
 }
 
@@ -87,7 +87,7 @@ DWORD errorShow(const char* pcErrText, const char* pcErrParam) {
 	HWND hwRodic;
 	DWORD erChyba;
 	char pcBuf[16];
-	char* pcHlaska = snewn((pcErrParam?strlen(pcErrParam):0) + strlen(pcErrText) + 256, char);
+	char* pcHlaska = snewn((pcErrParam?strlen(pcErrParam):0) + strlen(pcErrText) + 256 + 2*MAX_PATH, char);
 	
 	erChyba = GetLastError();		
 	ltoa(erChyba, pcBuf, 10);
@@ -278,26 +278,18 @@ int loadPath() {
 
 	/* JK: set default values - if there is a config file, it will be overwitten */
 	if( GetConfigDirectory() != NULL ) { // Cas ou defini un autre repertoire de configuration
-		strcpy(sesspath, GetConfigDirectory());
-		strcat(sesspath, "\\Sessions");
-		strcpy(initialsesspath,sesspath);
-		strcpy(sshkpath, GetConfigDirectory());
-		strcat(sshkpath, "\\SshHostKeys");
-		strcpy(jumplistpath, GetConfigDirectory());
-		strcat(jumplistpath, "\\Jumplist");
-		strcpy(seedpath, GetConfigDirectory());
-		strcat(seedpath, "\\putty.rnd");
+		snprintf(sesspath, sizeof(sesspath), "%s\\Sessions", GetConfigDirectory());
+		snprintf(initialsesspath, sizeof(initialsesspath), "%s", sesspath);
+		snprintf(sshkpath, sizeof(sshkpath), "%s\\SshHostKeys", GetConfigDirectory());
+		snprintf(jumplistpath, sizeof(jumplistpath), "%s\\Jumplist", GetConfigDirectory());
+		snprintf(seedpath, sizeof(seedpath), "%s\\putty.rnd", GetConfigDirectory());
 		}
 	else {
-		strcpy(sesspath, puttypath);
-		strcat(sesspath, "\\Sessions");
-		strcpy(initialsesspath,sesspath);
-		strcpy(sshkpath, puttypath);
-		strcat(sshkpath, "\\SshHostKeys");
-		strcpy(jumplistpath, puttypath);
-		strcat(jumplistpath, "\\Jumplist");
-		strcpy(seedpath, puttypath);
-		strcat(seedpath, "\\putty.rnd");
+		snprintf(sesspath, sizeof(sesspath), "%s\\Sessions", puttypath);
+		snprintf(initialsesspath, sizeof(initialsesspath), "%s", sesspath);
+		snprintf(sshkpath, sizeof(sshkpath), "%s\\SshHostKeys", puttypath);
+		snprintf(jumplistpath, sizeof(jumplistpath), "%s\\Jumplist", puttypath);
+		snprintf(seedpath, sizeof(seedpath), "%s\\putty.rnd", puttypath);
 		}
 
 	hFile = CreateFile("putty.conf",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
@@ -374,18 +366,14 @@ EMERGENCY_BREAK
 				else if (!strcmp(p, "sessionsuffix")) {
 					p = strchr(p2, '\n');
 					*p = '\0';
-					strcpy(sessionsuffix, p2);
-					p2 = sessionsuffix+strlen(sessionsuffix)-1;
-					while ((*p2 == ' ')||(*p2 == '\n')||(*p2 == '\r')||(*p2 == '\t')) --p2;
-					*(p2+1) = '\0';
+					snprintf(sessionsuffix, sizeof(sessionsuffix), "%s", p2);
+					{ size_t _l; while( (_l=strlen(sessionsuffix))>0 && (sessionsuffix[_l-1]==' '||sessionsuffix[_l-1]=='\n'||sessionsuffix[_l-1]=='\r'||sessionsuffix[_l-1]=='\t') ) sessionsuffix[_l-1]='\0'; }
 				}
 				else if (!strcmp(p, "keysuffix")) {
 					p = strchr(p2, '\n');
 					*p = '\0';
-					strcpy(keysuffix, p2);
-					p2 = keysuffix+strlen(keysuffix)-1;
-					while ((*p2 == ' ')||(*p2 == '\n')||(*p2 == '\r')||(*p2 == '\t')) --p2;
-					*(p2+1) = '\0';
+					snprintf(keysuffix, sizeof(keysuffix), "%s", p2);
+					{ size_t _l; while( (_l=strlen(keysuffix))>0 && (keysuffix[_l-1]==' '||keysuffix[_l-1]=='\n'||keysuffix[_l-1]=='\r'||keysuffix[_l-1]=='\t') ) keysuffix[_l-1]='\0'; }
 				}
 				++p;
 			}
@@ -446,9 +434,9 @@ bool IsThereDefaultSessionFile( void ) {
 }
 
 int CreateFolderInPath( const char * d ) {
-	char buf[MAX_PATH] ;
+	char buf[2 * MAX_PATH] ;
 	int res = 0 ;
-	sprintf( buf, "%s\\%s", sesspath, d ) ;
+	snprintf( buf, sizeof(buf), "%s\\%s", sesspath, d ) ;
 	res = createPath( buf ) ;
 	if( !res ) { MessageBox(NULL,"Unable to create directory", "Error", MB_OK|MB_ICONERROR); }
 	return res ;
@@ -620,27 +608,27 @@ void SettingsLoad( HSettingsList list, const char * filename ) {
 		buffer = (char*)malloc(4096*sizeof(char)) ;
 		while( fgets(buffer,4096,fp) != NULL ) {
 //debug_log("\nline %05d[%d]: %s|\n",++i,strlen(buffer),buffer);
-			while( buffer[strlen(buffer)-1]!='\n' ) {
+			while( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='\n' ) {
 				buffer = realloc( buffer, strlen(buffer) + 4096 ) ;
 				if( fgets( buffer+strlen(buffer), 4096, fp ) == NULL ) { break ; }
 //debug_log("\nline %05d[%d]: %s|\n",++i,strlen(buffer),buffer);
 			}
 
 			char *name, *value, *value2 ;
-			while( (buffer[strlen(buffer)-1]=='\n') || (buffer[strlen(buffer)-1]=='\r') ) buffer[strlen(buffer)-1] = '\0' ;
+			{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n' || buffer[_l-1]=='\r') ) buffer[_l-1] = '\0' ; }
 //debug_log("line %05d[%d]: %s|\n",i,strlen(buffer),buffer);
 //debug_log("\t-2=%c -3=%c\n",buffer[strlen(buffer)-2],buffer[strlen(buffer)-3]);
-			while( buffer[strlen(buffer)-1]!='\\' ) {
+			while( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='\\' ) {
 //debug_log("ici\n");
-				while( buffer[strlen(buffer)-1]=='\r' ) { buffer[strlen(buffer)+1]='\0' ; buffer[strlen(buffer)-1]='\\' ; buffer[strlen(buffer)] = 'r' ; }
-				while( buffer[strlen(buffer)-1]=='\n' ) { buffer[strlen(buffer)+1]='\0' ; buffer[strlen(buffer)-1]='\\' ; buffer[strlen(buffer)] = 'n' ; }
+				while( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\r' ) { buffer[strlen(buffer)+1]='\0' ; buffer[strlen(buffer)-1]='\\' ; buffer[strlen(buffer)] = 'r' ; }
+				while( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\n' ) { buffer[strlen(buffer)+1]='\0' ; buffer[strlen(buffer)-1]='\\' ; buffer[strlen(buffer)] = 'n' ; }
 				if( fgets( buffer+strlen(buffer), 4096, fp ) == NULL ) { break ; }
-				while( (buffer[strlen(buffer)-1]=='\n') || (buffer[strlen(buffer)-1]=='\r') ) buffer[strlen(buffer)-1] = '\0' ;
+				{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n' || buffer[_l-1]=='\r') ) buffer[_l-1] = '\0' ; }
 			}
 //debug_log("line %05d[%d]: %s|\n",i,strlen(buffer),buffer);
-			while( (buffer[strlen(buffer)-1]=='\n') || (buffer[strlen(buffer)-1]=='\r') ) buffer[strlen(buffer)-1] = '\0' ;
+			{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n' || buffer[_l-1]=='\r') ) buffer[_l-1] = '\0' ; }
 //debug_log("line %05d[%d]: %s|\n",i,strlen(buffer),buffer);
-			if( buffer[strlen(buffer)-1] != '\\' ) { strcat( buffer, "\\" ) ; }
+			if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { strcat( buffer, "\\" ) ; }
 //debug_log("line %05d[%d]: %s|\n",i,strlen(buffer),buffer);
 			p = poss( "\\", buffer ) ;
 			if( p>1 ) {
@@ -648,7 +636,7 @@ void SettingsLoad( HSettingsList list, const char * filename ) {
 				memcpy( name, buffer, p-1 ) ; name[p-1]='\0' ;
 				value = (char*) malloc( strlen(buffer)-p+1 ) ;
 				strcpy( value, buffer+p ) ;
-				value[strlen(value)-1]='\0' ;
+				{ size_t _vl=strlen(value); if(_vl>0) value[_vl-1]='\0'; }
 //debug_log("line %05d: %s|%s|\n",i,name,value);
 				value2 = (char*) malloc( strlen(value)+1 ) ;
 				unmungestr( value, value2, strlen(value)+1 ) ;

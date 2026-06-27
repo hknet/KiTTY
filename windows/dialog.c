@@ -330,10 +330,26 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
                 HIWORD(wParam) == BN_DOUBLECLICKED) {
                 int selcount;
                 int *selitems;
+                static const unsigned char sel_nl[] = SEL_NL;
+                int total = ninitial + ncircular;
                 selcount = SendDlgItemMessage(hwnd, IDN_LIST,
                                               LB_GETSELCOUNT, 0, 0);
-                if (selcount == 0) {   /* don't even try to copy zero items */
-                    MessageBeep(0);
+                if (selcount <= 0) {
+                    /* KiTTY: nothing selected -> copy the WHOLE Event Log instead
+                     * of just beeping, so the common "grab the entire log" case
+                     * needs no manual select-all. (Selecting lines still copies
+                     * only those.) */
+                    if (total <= 0) { MessageBeep(0); break; }
+                    strbuf *sb = strbuf_new();
+                    for (i = 0; i < total; i++) {
+                        char *q = getevent(i);
+                        if (!q) continue;
+                        put_datapl(sb, ptrlen_from_asciz(q));
+                        put_data(sb, sel_nl, sizeof(sel_nl));
+                    }
+                    if (sb->len > 0)
+                        write_aclip(hwnd, CLIP_SYSTEM, sb->s, sb->len);
+                    strbuf_free(sb);
                     break;
                 }
 
@@ -343,10 +359,10 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
                                                    LB_GETSELITEMS,
                                                    selcount,
                                                    (LPARAM) selitems);
-                    static const unsigned char sel_nl[] = SEL_NL;
 
                     if (count == 0) {  /* can't copy zero stuff */
                         MessageBeep(0);
+                        sfree(selitems);
                         break;
                     }
 
@@ -360,7 +376,7 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
                     strbuf_free(sb);
                     sfree(selitems);
 
-                    for (i = 0; i < (ninitial + ncircular); i++)
+                    for (i = 0; i < total; i++)
                         SendDlgItemMessage(hwnd, IDN_LIST, LB_SETSEL,
                                            false, i);
                 }
@@ -541,6 +557,77 @@ enum {
  * (Being a dialog procedure, in general it returns 0 if the default
  * dialog processing should be performed, and 1 if it should not.)
  */
+/* KiTTY: remember the configuration dialog's own window position. Stored as a
+ * top-left point under HKCU\<reg base>\WindowPos\ConfigBox; restored on open if
+ * it's still on a visible monitor, otherwise the box is centred as before.
+ * NOT guarded by MOD_PERSO: dialog.c compiles into the shared guiterminal lib,
+ * which is built WITHOUT MOD_PERSO (kitty_registry_base is still linked in). */
+extern const char *kitty_registry_base(void);   /* windows/storage.c */
+/* Off by default; set KITTY_WINPOS_DEBUG=1 to trace config-box positioning to
+ * %TEMP%\kitty_winpos.log (shared with the main-window winpos trace). */
+static int kitty_cfgpos_dbg_enabled(void)
+{
+    static int cached = -1;
+    if (cached < 0)
+        cached = GetEnvironmentVariableA("KITTY_WINPOS_DEBUG", NULL, 0) ? 1 : 0;
+    return cached;
+}
+static void kitty_cfgpos_dbg(const char *fmt, ...)
+{
+    if (!kitty_cfgpos_dbg_enabled()) return;
+    char path[MAX_PATH];
+    DWORD n = GetTempPathA(sizeof(path), path);
+    if (!n || n >= sizeof(path) - 20) return;
+    strcat(path, "kitty_winpos.log");
+    FILE *fp = fopen(path, "a");
+    if (!fp) return;
+    SYSTEMTIME st; GetLocalTime(&st);
+    fprintf(fp, "%02d:%02d:%02d.%03d [cfgbox] ",
+            st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+    va_list ap; va_start(ap, fmt); vfprintf(fp, fmt, ap); va_end(ap);
+    fputc('\n', fp);
+    fclose(fp);
+}
+static void kitty_cfgbox_save_pos(HWND hwnd)
+{
+    RECT r;
+    if (!hwnd || IsIconic(hwnd) || IsZoomed(hwnd) || !GetWindowRect(hwnd, &r)) {
+        kitty_cfgpos_dbg("SAVE skipped (iconic/zoomed/no-rect)");
+        return;
+    }
+    char base[600];
+    _snprintf(base, sizeof(base), "%s\\WindowPos", kitty_registry_base());
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, base, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        LONG xy[2]; xy[0] = r.left; xy[1] = r.top;
+        RegSetValueExA(hk, "ConfigBox", 0, REG_BINARY, (const BYTE *)xy, sizeof(xy));
+        RegCloseKey(hk);
+        kitty_cfgpos_dbg("SAVE ok (%ld,%ld) -> HKCU\\%s [ConfigBox]", r.left, r.top, base);
+    } else {
+        kitty_cfgpos_dbg("SAVE FAILED RegCreateKeyEx HKCU\\%s", base);
+    }
+}
+static int kitty_cfgbox_restore_pos(HWND hwnd)
+{
+    char base[600];
+    _snprintf(base, sizeof(base), "%s\\WindowPos", kitty_registry_base());
+    LONG xy[2]; DWORD sz = sizeof(xy);
+    LONG rc = RegGetValueA(HKEY_CURRENT_USER, base, "ConfigBox", RRF_RT_REG_BINARY,
+                           NULL, xy, &sz);
+    if (rc != ERROR_SUCCESS || sz != sizeof(xy)) {
+        kitty_cfgpos_dbg("RESTORE no value (rc=%ld sz=%lu) HKCU\\%s", (long)rc, (unsigned long)sz, base);
+        return 0;
+    }
+    POINT pt; pt.x = xy[0] + 8; pt.y = xy[1] + 8;
+    int onmon = (MonitorFromPoint(pt, MONITOR_DEFAULTTONULL) != NULL);
+    if (!onmon) { kitty_cfgpos_dbg("RESTORE off-screen (%ld,%ld)", xy[0], xy[1]); return 0; }
+    int ok = SetWindowPos(hwnd, NULL, xy[0], xy[1], 0, 0,
+                          SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) ? 1 : 0;
+    kitty_cfgpos_dbg("RESTORE setpos (%ld,%ld) -> %d", xy[0], xy[1], ok);
+    return ok;
+}
+
 static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                                   LPARAM lParam, void *ctx)
 {
@@ -550,6 +637,14 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
     struct treeview_faff tvfaff;
 
     switch (msg) {
+      case WM_EXITSIZEMOVE:
+        kitty_cfgbox_save_pos(hwnd);   /* remember where the user dragged it */
+        return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
+      case WM_DESTROY:
+        /* Robust backstop: capture the final position at close, regardless of
+         * how the box was moved (WM_EXITSIZEMOVE only fires on interactive drag). */
+        kitty_cfgbox_save_pos(hwnd);
+        return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
       case WM_INITDIALOG:
         pds_initdialog_start(pds, hwnd);
 
@@ -558,7 +653,9 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         SendMessage(hwnd, WM_SETICON, (WPARAM) ICON_BIG,
                     (LPARAM) LoadIcon(hinst, MAKEINTRESOURCE(IDI_CFGICON)));
 
-        centre_window(hwnd);
+        /* KiTTY: restore the remembered config-box position; centre if none/off-screen. */
+        if (!kitty_cfgbox_restore_pos(hwnd))
+            centre_window(hwnd);
 
         /* KiTTY: bring the startup configuration dialog to the front; it can
          * otherwise open behind already-open windows. The TOPMOST->NOTOPMOST

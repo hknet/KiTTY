@@ -229,7 +229,7 @@ int MakeDir( const char * directory ) {
 	fullpath[j+1]='\0' ;
 		
 	// On supprime les espaces, les / et les \\ à la fin
-	while( (fullpath[strlen(fullpath)-1]==' ')||(fullpath[strlen(fullpath)-1]=='	')||(fullpath[strlen(fullpath)-1]=='/')||(fullpath[strlen(fullpath)-1]=='\\') ) fullpath[strlen(fullpath)-1]='\0';
+	{ size_t _l; while( (_l=strlen(fullpath))>0 && (fullpath[_l-1]==' '||fullpath[_l-1]=='	'||fullpath[_l-1]=='/'||fullpath[_l-1]=='\\') ) fullpath[_l-1]='\0'; }
 
 	for( i=strlen(fullpath), j=strlen(fullpath) ; i>=0 ; i--, j-- ) { // On supprime les espaces avant un '\'
 		if( fullpath[i] == '\\' ) {
