@@ -261,10 +261,187 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
     return handle;
 }
 
+/* ===================================================================== *
+ * KiTTY 0.84.1.38+: encrypt credential fields at rest (Windows DPAPI).
+ *
+ * write_setting_s/read_setting_s is the generic registry/ini session save+load
+ * chokepoint (the conf SAVE_KEYWORD path used by GUI Save/Load AND the CLI tools
+ * klink/kscp/ksftp), so hooking here protects "Password"/"ProxyPassword"
+ * everywhere while leaving the portable .ktx forced-file export on its own
+ * legacy format. Runtime conf stays PLAINTEXT; only the stored form changes.
+ *
+ * Self-contained (DPAPI + base64, no bcrypt) so it links into every tool that
+ * uses libsettings. The "legacy"/unmarked stored value is returned VERBATIM:
+ * a registry session password was always stored plaintext (the generic save
+ * wrote conf verbatim), so existing sessions behave exactly as before and only
+ * new saves convert to DPAPI1:. See TASK_dpapi_passwords.md.
+ * ===================================================================== */
+#include <wincrypt.h>
+
+#define KITTY_SECRET_DPAPI_MARK "DPAPI1:"
+
+static int kitty_secret_slot(const char *key)
+{
+    if (!key) return -1;
+    if (!strcmp(key, "Password")) return 0;
+    if (!strcmp(key, "ProxyPassword")) return 1;
+    return -1;
+}
+
+static char *ksec_dup(const char *s) { size_t n = strlen(s) + 1; char *d = malloc(n); if (d) memcpy(d, s, n); return d; }
+
+static const char ksec_b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static char *ksec_b64_encode(const unsigned char *in, int len)
+{
+    int olen = ((len + 2) / 3) * 4, i, o = 0;
+    char *out = malloc(olen + 1);
+    if (!out) return NULL;
+    for (i = 0; i < len; i += 3) {
+        int n = len - i;
+        unsigned a = in[i], b = n > 1 ? in[i+1] : 0, c = n > 2 ? in[i+2] : 0;
+        out[o++] = ksec_b64[a >> 2];
+        out[o++] = ksec_b64[((a & 3) << 4) | (b >> 4)];
+        out[o++] = n > 1 ? ksec_b64[((b & 15) << 2) | (c >> 6)] : '=';
+        out[o++] = n > 2 ? ksec_b64[c & 63] : '=';
+    }
+    out[o] = '\0';
+    return out;
+}
+static int ksec_b64_val(int c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+static unsigned char *ksec_b64_decode(const char *in, int *outlen)
+{
+    int len = (int)strlen(in), pad = 0, i, o = 0, olen;
+    unsigned char *out;
+    if (len < 4 || (len % 4) != 0) return NULL;
+    if (in[len-1] == '=') pad++;
+    if (in[len-2] == '=') pad++;
+    olen = (len / 4) * 3 - pad;
+    out = malloc(olen > 0 ? olen : 1);
+    if (!out) return NULL;
+    for (i = 0; i < len; i += 4) {
+        int v0 = ksec_b64_val(in[i]), v1 = ksec_b64_val(in[i+1]);
+        int c2 = in[i+2], c3 = in[i+3];
+        int v2 = (c2 == '=') ? 0 : ksec_b64_val(c2);
+        int v3 = (c3 == '=') ? 0 : ksec_b64_val(c3);
+        unsigned trip;
+        if (v0 < 0 || v1 < 0 || (c2 != '=' && v2 < 0) || (c3 != '=' && v3 < 0)) { free(out); return NULL; }
+        trip = ((unsigned)v0 << 18) | ((unsigned)v1 << 12) | ((unsigned)v2 << 6) | (unsigned)v3;
+        if (o < olen) out[o++] = (trip >> 16) & 0xff;
+        if (o < olen) out[o++] = (trip >>  8) & 0xff;
+        if (o < olen) out[o++] =  trip        & 0xff;
+    }
+    *outlen = olen;
+    return out;
+}
+
+/* force-legacy escape hatch for automation: "PasswordScheme" DWORD (0=DPAPI default,
+ * 1=legacy plaintext) under the active hive. */
+static int ksec_scheme(void)
+{
+    static int cached = -1;
+    if (cached < 0) {
+        DWORD v = 0, sz = sizeof(v);
+        if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "PasswordScheme",
+                         RRF_RT_REG_DWORD, NULL, &v, &sz) == ERROR_SUCCESS)
+            cached = (v == 1) ? 1 : 0;
+        else
+            cached = 0;
+    }
+    return cached;
+}
+
+/* plaintext -> stored form (malloc'd). Empty -> "". DPAPI by default; legacy
+ * scheme (or DPAPI failure) -> plaintext verbatim (registry legacy == plaintext). */
+static char *ksec_protect(const char *plaintext)
+{
+    if (!plaintext || !plaintext[0]) return ksec_dup("");
+    if (ksec_scheme() == 0) {
+        DATA_BLOB in, out;
+        in.pbData = (BYTE *)plaintext; in.cbData = (DWORD)strlen(plaintext);
+        out.pbData = NULL; out.cbData = 0;
+        if (CryptProtectData(&in, L"KiTTY stored credential", NULL, NULL, NULL,
+                             CRYPTPROTECT_UI_FORBIDDEN, &out)) {
+            char *b64 = ksec_b64_encode(out.pbData, (int)out.cbData);
+            if (out.pbData) LocalFree(out.pbData);
+            if (b64) {
+                size_t n = sizeof(KITTY_SECRET_DPAPI_MARK) + strlen(b64);
+                char *res = malloc(n);
+                if (res) { strcpy(res, KITTY_SECRET_DPAPI_MARK); strcat(res, b64); }
+                free(b64);
+                if (res) return res;
+            }
+        }
+        /* fall through: never lose the secret if DPAPI is unavailable */
+    }
+    return ksec_dup(plaintext);
+}
+
+/* stored -> plaintext in *out (malloc'd). 1=ok, 0=absent, -1=undecryptable DPAPI blob. */
+static int ksec_unprotect(const char *stored, char **out)
+{
+    size_t marklen = strlen(KITTY_SECRET_DPAPI_MARK);
+    *out = NULL;
+    if (!stored || !stored[0]) { *out = ksec_dup(""); return 0; }
+    if (!strncmp(stored, KITTY_SECRET_DPAPI_MARK, marklen)) {
+        int blen = 0;
+        unsigned char *blob = ksec_b64_decode(stored + marklen, &blen);
+        if (blob) {
+            DATA_BLOB in, dec;
+            in.pbData = blob; in.cbData = (DWORD)blen;
+            dec.pbData = NULL; dec.cbData = 0;
+            if (CryptUnprotectData(&in, NULL, NULL, NULL, NULL,
+                                   CRYPTPROTECT_UI_FORBIDDEN, &dec)) {
+                char *pt = malloc(dec.cbData + 1);
+                if (pt) { memcpy(pt, dec.pbData, dec.cbData); pt[dec.cbData] = '\0'; }
+                if (dec.pbData) { SecureZeroMemory(dec.pbData, dec.cbData); LocalFree(dec.pbData); }
+                free(blob);
+                if (pt) { *out = pt; return 1; }
+                *out = ksec_dup(""); return -1;
+            }
+            free(blob);
+        }
+        *out = ksec_dup(""); return -1;   /* present blob, could not decrypt */
+    }
+    *out = ksec_dup(stored); return 1;     /* unmarked legacy == plaintext */
+}
+
+/* never-wipe guard: keep an undecryptable-here blob so the next save re-persists it. */
+static char *g_ksec_orig[2] = { NULL, NULL };
+static void ksec_after_load(int slot, const char *stored, int rv)
+{
+    if (slot < 0 || slot > 1) return;
+    if (g_ksec_orig[slot]) { free(g_ksec_orig[slot]); g_ksec_orig[slot] = NULL; }
+    if (rv < 0 && stored && stored[0]) g_ksec_orig[slot] = ksec_dup(stored);
+}
+
 void write_setting_s(settings_w *handle, const char *key, const char *value)
 {
-    if (handle)
-        put_reg_sz(handle->sesskey, key, value);
+    if (!handle)
+        return;
+    int slot = kitty_secret_slot(key);
+    if (slot >= 0) {
+        /* Never-wipe: a blob that failed to decrypt this session leaves the
+         * in-memory value ""; re-persist the original verbatim instead of
+         * clobbering it. Otherwise encrypt the plaintext at rest. */
+        const char *keep = (value && value[0]) ? NULL : g_ksec_orig[slot];
+        if (keep) {
+            put_reg_sz(handle->sesskey, key, keep);
+        } else {
+            char *blob = ksec_protect(value ? value : "");
+            put_reg_sz(handle->sesskey, key, blob ? blob : "");
+            if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
+        }
+        return;
+    }
+    put_reg_sz(handle->sesskey, key, value);
 }
 
 void write_setting_i(settings_w *handle, const char *key, int value)
@@ -312,7 +489,21 @@ char *read_setting_s(settings_r *handle, const char *key)
 {
     if (!handle)
         return NULL;
-    return get_reg_sz(handle->sesskey, key);
+    char *raw = get_reg_sz(handle->sesskey, key);
+    int slot = kitty_secret_slot(key);
+    if (slot >= 0 && raw) {
+        /* Decrypt a DPAPI blob to plaintext for conf; an unmarked legacy value
+         * passes through unchanged. Record an undecryptable-here blob for the
+         * never-wipe guard on the next save. Return an sfree-able string. */
+        char *pt = NULL;
+        int rv = ksec_unprotect(raw, &pt);
+        ksec_after_load(slot, raw, rv);
+        sfree(raw);
+        char *ret = dupstr(pt ? pt : "");
+        if (pt) { memset(pt, 0, strlen(pt)); free(pt); }
+        return ret;
+    }
+    return raw;
 }
 
 int read_setting_i(settings_r *handle, const char *key, int defvalue)
