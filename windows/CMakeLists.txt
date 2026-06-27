@@ -51,8 +51,10 @@ add_sources_from_current_dir(console
 add_sources_from_current_dir(settings
   storage.c)
 # KiTTY: storage.c encrypts stored passwords at rest via DPAPI (CryptProtectData/
-# CryptUnprotectData in crypt32). PUBLIC so every consumer (CLI tools incl.) links it.
-target_link_libraries(settings PUBLIC crypt32)
+# CryptUnprotectData in crypt32) and decrypts legacy old-KiTTY passwords via the
+# bcrypt archive. PUBLIC so every consumer (CLI tools incl.) links them; the
+# bcrypt include dir lets storage.c see nbcrypt.h.
+target_link_libraries(settings PUBLIC crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_64.a)
 add_sources_from_current_dir(network
   network.c handle-socket.c named-pipe-client.c named-pipe-server.c local-proxy.c x11.c)
 add_sources_from_current_dir(sshcommon
@@ -155,7 +157,7 @@ add_executable(puttygen
 add_dependencies(puttygen generated_licence_h)
 target_link_libraries(puttygen
   keygen guimisc crypto utils
-  ${platform_libraries})
+  ${platform_libraries} crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_64.a)  # storage.c password crypto (DPAPI + legacy bcrypt)
 set_target_properties(puttygen PROPERTIES WIN32_EXECUTABLE ON)
 installed_program(puttygen)
 
@@ -173,7 +175,7 @@ add_executable(kittygen_cli
 add_dependencies(kittygen_cli generated_licence_h)
 target_link_libraries(kittygen_cli
   keygen console crypto utils
-  ${platform_libraries})
+  ${platform_libraries} crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_64.a)  # storage.c password crypto (DPAPI + legacy bcrypt)
 # console subsystem - no WIN32_EXECUTABLE
 installed_program(kittygen_cli)
 
