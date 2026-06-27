@@ -28,6 +28,9 @@ extern void RunConfig(Conf *conf);   /* kitty_launcher.c: launch new session, ke
 extern char **FolderList;            /* kitty.c: NULL-terminated folder names */
 extern char CurrentFolder[];         /* kitty_commun.c: currently selected folder */
 void GetSessionFolderName(const char *session_in, char *folder);  /* kitty.c */
+int kitty_session_origin(const char *sessionname);   /* windows/storage.c: 0=ours,1=old KiTTY,2=PuTTY */
+void kitty_set_last_session(const char *sessionname); /* windows/storage.c */
+int  kitty_get_last_session(char *buf, int buflen);   /* windows/storage.c */
 /* KiTTY folder-management engine (kitty_config.c does not include kitty_tools.h/kitty.h) */
 int StringList_Add(char **list, const char *name);   /* kitty_tools.c (dedupes internally) */
 void StringList_Del(char **list, const char *name);  /* kitty_tools.c */
@@ -997,6 +1000,12 @@ static bool load_selected_session(
     }
     isdef = !strcmp(ssd->sesslist.sessions[i], "Default Settings");
     load_settings(ssd->sesslist.sessions[i], conf);
+#ifdef MOD_PERSO
+    /* KiTTY: remember this as the last-loaded session (skip the default), so the
+     * config box re-selects/auto-loads it next time it opens. */
+    if (!isdef)
+        kitty_set_last_session(ssd->sesslist.sessions[i]);
+#endif
     sfree(ssd->savedsession);
     ssd->savedsession = dupstr(isdef ? "" : ssd->sesslist.sessions[i]);
     if (maybe_launch)
@@ -1055,6 +1064,11 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             int i;
             dlg_update_start(ctrl, dlg);
             dlg_listbox_clear(ctrl, dlg);
+#ifdef MOD_PERSO
+            char lastsess[512];
+            int havelast = kitty_get_last_session(lastsess, sizeof(lastsess));
+            int selpos = -1, lbpos = 0;
+#endif
             for (i = 0; i < ssd->sesslist.nsessions; i++) {
 #ifdef MOD_PERSO
                 /* KiTTY folder filter: hide sessions not in the selected folder,
@@ -1067,10 +1081,35 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     if (strcmp(fld, CurrentFolder) != 0)
                         continue;
                 }
-#endif
+                {
+                    /* KiTTY: tag sessions that live in a foreign hive (only the
+                     * displayed text is tagged; sesslist keeps the real name so
+                     * Load/Save/Delete still operate on the correct session). */
+                    int og = kitty_session_origin(ssd->sesslist.sessions[i]);
+                    if (og == 0) {
+                        dlg_listbox_add(ctrl, dlg, ssd->sesslist.sessions[i]);
+                    } else {
+                        char disp[600];
+                        snprintf(disp, sizeof(disp), "%s   (%s)",
+                                 ssd->sesslist.sessions[i],
+                                 og == 2 ? "PuTTY" : "old KiTTY");
+                        dlg_listbox_add(ctrl, dlg, disp);
+                    }
+                }
+                if (havelast && !strcmp(ssd->sesslist.sessions[i], lastsess))
+                    selpos = lbpos;
+                lbpos++;
+#else
                 dlg_listbox_add(ctrl, dlg, ssd->sesslist.sessions[i]);
+#endif
             }
             dlg_update_done(ctrl, dlg);
+#ifdef MOD_PERSO
+            /* KiTTY: auto-select the last-loaded session (its settings are
+             * auto-loaded into conf at startup; see windows/putty.c). */
+            if (selpos >= 0)
+                dlg_listbox_select(ctrl, dlg, selpos);
+#endif
         }
 #ifdef MOD_PERSO
         else if (ssd->folderlist && ctrl == ssd->folderlist) {
@@ -1173,6 +1212,18 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             get_sesslist(&ssd->sesslist, true);
             dlg_refresh(ssd->editbox, dlg);
             dlg_refresh(ssd->listbox, dlg);
+            /* KiTTY: keep the just-saved session selected (the refresh above
+             * otherwise leaves the list with nothing highlighted). */
+            {
+                const char *want = (ssd->savedsession && ssd->savedsession[0])
+                                   ? ssd->savedsession : "Default Settings";
+                int j;
+                for (j = 0; j < ssd->sesslist.nsessions; j++)
+                    if (!strcmp(ssd->sesslist.sessions[j], want)) {
+                        dlg_listbox_select(ssd->listbox, dlg, j);
+                        break;
+                    }
+            }
         } else if (!ssd->midsession &&
                    ssd->delbutton && ctrl == ssd->delbutton) {
             int i = dlg_listbox_index(ssd->listbox, dlg);
@@ -2120,6 +2171,31 @@ static void checkupdate_button_handler(dlgcontrol *ctrl, dlgparam *dp,
 }
 #endif
 
+#ifdef MOD_PERSO
+/* KiTTY: checkbox to also show (and thus allow deleting) sessions stored in the
+ * read-only fallback hives (old 9bis KiTTY + stock PuTTY). Off by default so the
+ * list shows only KiTTY's own sessions and a stock-PuTTY session is never
+ * deleted unless the user deliberately reveals it. Toggling re-enumerates the
+ * list immediately. The flag lives in the registry (windows/storage.c). */
+int  kitty_get_show_foreign_sessions(void);   /* windows/storage.c */
+void kitty_set_show_foreign_sessions(int on); /* windows/storage.c */
+static void kitty_showforeign_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                      void *data, int event)
+{
+    struct sessionsaver_data *ssd =
+        (struct sessionsaver_data *)ctrl->context.p;
+    if (event == EVENT_REFRESH) {
+        dlg_checkbox_set(ctrl, dlg, kitty_get_show_foreign_sessions());
+    } else if (event == EVENT_VALCHANGE) {
+        kitty_set_show_foreign_sessions(dlg_checkbox_get(ctrl, dlg));
+        /* re-enumerate so the list shows/hides the foreign sessions at once */
+        get_sesslist(&ssd->sesslist, false);
+        get_sesslist(&ssd->sesslist, true);
+        dlg_refresh(ssd->listbox, dlg);
+    }
+}
+#endif
+
 void setup_config_box(struct controlbox *b, bool midsession,
                       int protocol, int protcfginfo)
 {
@@ -2348,15 +2424,24 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ssd->delfolderbutton = NULL;
         ssd->arrangebutton = NULL;
     }
+    /* KiTTY: put the foreign-sessions checkbox in COLUMN 0 (still inside the
+     * list/buttons 2-column block) so it sits directly under the session list,
+     * filling the gap beside the lower buttons -- not a full row below the taller
+     * button column. Off by default; reveals (and lets you edit/delete) sessions
+     * from the read-only PuTTY / old-KiTTY hives. */
+    if (!GetPuttyFlag()) {
+        dlgcontrol *fc = ctrl_checkbox(s,
+            "show / edit / delete old sessions",
+            NO_SHORTCUT, HELPCTX(no_help), kitty_showforeign_handler, P(ssd));
+        fc->column = 0;
+    }
 #endif
     ctrl_columns(s, 1, 100);
 #ifdef MOD_PERSO
-    /* KiTTY: read-only display of the selected session's comment, in the gap
-     * below the saved-sessions list. Follows the list selection (see the
-     * EVENT_SELCHANGE handling in sessionsaver_handler). */
+    /* KiTTY: read-only display of the selected session's comment, below the list. */
     if (!GetPuttyFlag()) {
         ssd->commentbox = ctrl_editbox_multiline(
-            s, "Comment of selected session", NO_SHORTCUT, 4, true,
+            s, "Comment of selected session", NO_SHORTCUT, 3, true,
             HELPCTX(session_saved), sessionsaver_handler, P(ssd), P(NULL));
     } else {
         ssd->commentbox = NULL;

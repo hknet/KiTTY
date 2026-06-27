@@ -387,7 +387,6 @@ void DisplaySystemTrayMenu( HWND hwnd ) ;
 void SetPasteCommand( HWND hwnd ) ;
 // Recupere les coordonnees de la fenetre
 void GetWindowCoord( HWND hwnd ) ;
-int ManageLocalCmd( HWND hwnd, const char * cmd ) ;
 // Gestion du script au lancement
 void ManageInitScript( const char * input_str, const int len ) ;
 void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) ;

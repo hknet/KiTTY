@@ -372,7 +372,9 @@ int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile)
     fsize = ftell(fp);
     fseek(fp, 0L, SEEK_SET);
     if (fsize <= 0) { fclose(fp); script_stop_internal(s); return false; }
-    s->nextnextline = s->filebuffer = snewn(fsize, char);
+    /* SECURITY: +1 so SCRIPT_CR mode can append '\r' at [fsize] when the last
+     * line lacks a trailing newline, without a 1-byte heap overflow. */
+    s->nextnextline = s->filebuffer = snewn(fsize + 1, char);
     s->filebuffer_end = &s->filebuffer[fsize];
     if (fread(s->filebuffer, sizeof(char), fsize, fp) != (size_t)fsize) {
         logevent(NULL, "script file read failed");

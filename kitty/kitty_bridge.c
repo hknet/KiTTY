@@ -346,7 +346,10 @@ int kitty_autocommand_tick(HWND hwnd)
         AutoCommand = (char *)malloc(strlen(src) + 10);
         strcpy(AutoCommand, src);
     }
-    while (AutoCommand[i] != '\0') {
+    /* SECURITY: dest is written by the source index i, so bound i to the
+     * buffer (leaving room for the 2-char appends + NUL) to stop a single
+     * >8KB autocommand line from smashing the stack. */
+    while (AutoCommand[i] != '\0' && i < (int)sizeof(buffer) - 4) {
         if (AutoCommand[i] == '\n') { i++; break; }
         else if (AutoCommand[i] == '\\' && AutoCommand[i + 1] == '\\') {
             strcat(buffer, "\\\\"); i += 2;

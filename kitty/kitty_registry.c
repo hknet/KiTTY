@@ -143,7 +143,7 @@ void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTST
 			if (retCode == ERROR_SUCCESS) {
 				char buffer[MAX_KEY_LENGTH] ;
 				char previousvalue[1024] ;
-				sprintf( buffer, "%s\\%s", lpSubKey, achKey ) ;
+				snprintf( buffer, sizeof(buffer), "%s\\%s", lpSubKey, achKey ) ;
 				GetValueData( hMainKey, buffer, name, previousvalue ) ;
 				if( (oldvalue==NULL) || ( !strcmp(previousvalue,oldvalue)) )
 					MessageBox(NULL,achKey,"Info",MB_OK);
@@ -213,7 +213,7 @@ void InitRegistryAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName
 	char buf[1024] = "" ;
 	if( (fp=fopen( filename, "wb" )) != NULL ) {
 		fprintf( fp, "Windows Registry Editor Version 5.00\r\n" ) ;
-		sprintf( buf, "%s\\%s", lpSubKey, SubKeyName ); 
+		snprintf( buf, sizeof(buf), "%s\\%s", lpSubKey, SubKeyName );
 		QuerySubKey( hMainKey, (LPCTSTR)buf, fp, text ) ;
 		fclose( fp ) ;
 		}
@@ -227,8 +227,8 @@ void InitAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char *
 		len = fread( text, 1, 4096, fp ) ;
 		fclose( fp ) ;
 		text[4095]='\0'; text[len] = '\0' ;
-		while( (text[strlen(text)-1]=='\n')||(text[strlen(text)-1]=='\r') ) text[strlen(text)-1]='\0' ;
-		sprintf( f, "%s.reg", filename ) ;
+		{ size_t _l; while( (_l=strlen(text))>0 && (text[_l-1]=='\n'||text[_l-1]=='\r') ) text[_l-1]='\0'; }
+		snprintf( f, sizeof(f), "%s.reg", filename ) ;
 		InitRegistryAllSessions( hMainKey, lpSubKey, SubKeyName, f, text ) ;
 		unlink(filename);
 		}
@@ -279,7 +279,7 @@ BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) {
     {
         do {
             //StringCchCopy (lpEnd, MAX_PATH*2, szName);
-            sprintf(lpEnd, "%s\\%s", lpSubKey, szName);
+            snprintf(lpEnd, sizeof(lpEnd), "%s\\%s", lpSubKey, szName);
 
             //if( !RegDelTree( hKeyRoot, lpSubKey ) ) { break ; }
             if( !RegDelTree( hKeyRoot, lpEnd ) ) { break ; }
@@ -375,13 +375,15 @@ void kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
             { 
 				unsigned char lpData[1024] ;
 				dwDataSize = 1024 ;
-				RegQueryValueEx( hKey, TEXT( achValue ), 0, &lpType, lpData, &dwDataSize ) ;
-				
-				if( RegOpenKeyEx( hMainKey, TEXT(lpDestKey), 0, KEY_WRITE, &hDestKey) != ERROR_SUCCESS ) return ;
-				
-				RegSetValueEx( hDestKey, TEXT( achValue ), 0, lpType, lpData, dwDataSize );
-					
-				RegCloseKey( hDestKey ) ;
+				/* SECURITY: a value >1024 bytes returns ERROR_MORE_DATA and sets
+				 * dwDataSize to the full length while lpData holds only 1024 bytes;
+				 * copying dwDataSize bytes then reads off the end of the stack
+				 * buffer. Only propagate values that fit. */
+				if( RegQueryValueEx( hKey, TEXT( achValue ), 0, &lpType, lpData, &dwDataSize ) == ERROR_SUCCESS ) {
+					if( RegOpenKeyEx( hMainKey, TEXT(lpDestKey), 0, KEY_WRITE, &hDestKey) != ERROR_SUCCESS ) return ;
+					RegSetValueEx( hDestKey, TEXT( achValue ), 0, lpType, lpData, dwDataSize );
+					RegCloseKey( hDestKey ) ;
+				}
             } 
         }
     }
@@ -645,7 +647,7 @@ void CreateSSHHandler() {
 void CreateFileAssoc() {
 	char path[1024], buffer[1024] ;
 	char ext[15] ;
-	if( strlen( FileExtension ) > 0 ) { strcpy( ext, FileExtension ) ; } else { strcpy( ext, ".ktx") ; }
+	if( strlen( FileExtension ) > 0 ) { snprintf( ext, sizeof(ext), "%s", FileExtension ) ; } else { snprintf( ext, sizeof(ext), "%s", ".ktx") ; }
 
 	GetModuleFileName( NULL, (LPTSTR)path, 1024 ) ;
 

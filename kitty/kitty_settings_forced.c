@@ -505,8 +505,11 @@ void save_open_settings_forced(char *filename, Conf *conf) {
 
 #ifndef MOD_NOPASSWORD
     {
-        char pst[4096];
-        strcpy(pst, conf_get_str(conf, CONF_password));
+        /* SECURITY: cryptpassword encrypts+base64s in place, expanding the
+         * input ~4/3 plus IV/padding. Cap the input at 4096 but give pst room
+         * for the expanded result so a long password can't overflow it. */
+        char pst[8192];
+        snprintf(pst, 4096, "%s", conf_get_str(conf, CONF_password));
         MASKPASS(GetCryptSaltFlag(), pst);
         cryptpassword(GetCryptSaltFlag(), pst, conf_get_str(conf, CONF_host), conf_get_str(conf, CONF_termtype));
         write_setting_s_forced(sesskey, "Password", pst);

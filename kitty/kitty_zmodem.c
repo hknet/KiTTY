@@ -228,17 +228,29 @@ int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend)
         return 0;   /* user cancelled */
 
     cur = params;
-    cur += sprintf(cur, "%s", opts ? opts : "");
-    if (*(filenames + strlen(filenames) + 1) == 0) {
-        /* single selection: filenames holds the full path */
-        sprintf(cur, " \"%s\"", filenames);
-    } else {
-        /* multi: first field is the dir, then each file name */
-        p = filenames;
-        for (;;) {
-            p = p + strlen(p) + 1;
-            if (*p == 0) break;
-            cur += sprintf(cur, " \"%s\\%s\"", filenames, p);
+    {
+        size_t off = 0, room;
+        int n;
+        room = sizeof(params) - off;
+        n = snprintf(cur, room, "%s", opts ? opts : "");
+        if (n > 0) { if ((size_t)n >= room) n = (int)room - 1; off += n; cur += n; }
+        if (*(filenames + strlen(filenames) + 1) == 0) {
+            /* single selection: filenames holds the full path */
+            room = sizeof(params) - off;
+            snprintf(cur, room, " \"%s\"", filenames);
+        } else {
+            /* multi: first field is the dir, then each file name */
+            p = filenames;
+            for (;;) {
+                p = p + strlen(p) + 1;
+                if (*p == 0) break;
+                room = sizeof(params) - off;
+                if (room <= 1) break;   /* no space left */
+                n = snprintf(cur, room, " \"%s\\%s\"", filenames, p);
+                if (n <= 0) break;
+                if ((size_t)n >= room) { off = sizeof(params) - 1; cur = params + off; break; }
+                off += n; cur += n;
+            }
         }
     }
 

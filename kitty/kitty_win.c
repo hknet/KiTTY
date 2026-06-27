@@ -89,7 +89,7 @@ BOOL IsWow64() {
 
 int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 	char * szTitle = Title ;
-	char szFilter[256] ; strcpy( szFilter, Filter ) ;
+	char szFilter[4096] ; snprintf( szFilter, sizeof(szFilter), "%s", Filter ) ;
 	// on remplace les caractères '|' par des caractères NULL.
 	int i = 0;
 	while(i < sizeof(szFilter) && szFilter[i] != '\0')
@@ -125,7 +125,7 @@ int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 
 int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 	char * szTitle = Title ;
-	char szFilter[256] ; strcpy( szFilter, Filter ) ;
+	char szFilter[4096] ; snprintf( szFilter, sizeof(szFilter), "%s", Filter ) ;
 	// on remplace les caractères '|' par des caractères NULL.
 	int i = 0;
 	while(i < sizeof(szFilter) && szFilter[i] != '\0')
@@ -168,7 +168,7 @@ int OpenDirName( HWND hFrame, char * dirname ) {
 	char Buffer[4096],Result[4096]="" ;
 	dirname[0]='\0' ;
 
-	strcpy( Buffer, getenv("ProgramFiles") ) ;
+	{ const char * _pf = getenv("ProgramFiles") ; snprintf( Buffer, sizeof(Buffer), "%s", _pf?_pf:"" ) ; }
 	
 	//SHGetSpecialFolderLocation( hFrame, CSIDL_MYDOCUMENTS, &ol );
 	

@@ -183,9 +183,7 @@ int LoadParametersLight( void ) {
 		strcpy( IniFile,getenv("KITTY_INI_FILE") ) ;
 		strcpy(INIT_SECTION,"KiTTY");
 		if( readINI( IniFile, "KiTTY", "savemode", buffer ) ) {
-			while( (buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r')
-				||(buffer[strlen(buffer)-1]==' ')
-				||(buffer[strlen(buffer)-1]=='\t') ) buffer[strlen(buffer)-1]='\0';
+			{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r'||buffer[_l-1]==' '||buffer[_l-1]=='\t') ) buffer[_l-1]='\0'; }
 			if( !stricmp( buffer, "registry" ) ) IniFileFlag = SAVEMODE_REG ;
 			else if( !stricmp( buffer, "file" ) ) IniFileFlag = SAVEMODE_FILE ;
 			else if( !stricmp( buffer, "dir" ) ) { IniFileFlag = SAVEMODE_DIR ; ret = 1 ; }
@@ -207,9 +205,7 @@ int LoadParametersLight( void ) {
 		strcpy(INIT_SECTION,"KiTTY");
 		fclose(fp ) ;
 		if( readINI( "kitty.ini", "KiTTY", "savemode", buffer ) ) {
-			while( (buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r')
-				||(buffer[strlen(buffer)-1]==' ')
-				||(buffer[strlen(buffer)-1]=='\t') ) buffer[strlen(buffer)-1]='\0';
+			{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r'||buffer[_l-1]==' '||buffer[_l-1]=='\t') ) buffer[_l-1]='\0'; }
 			if( !stricmp( buffer, "registry" ) ) IniFileFlag = SAVEMODE_REG ;
 			else if( !stricmp( buffer, "file" ) ) IniFileFlag = SAVEMODE_FILE ;
 			else if( !stricmp( buffer, "dir" ) ) { IniFileFlag = SAVEMODE_DIR ; ret = 1 ; }
@@ -233,9 +229,7 @@ int LoadParametersLight( void ) {
 		strcpy(INIT_SECTION,"PuTTY");
 		fclose(fp ) ;
 		if( readINI( "putty.ini", "PuTTY", "savemode", buffer ) ) {
-			while( (buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r')
-				||(buffer[strlen(buffer)-1]==' ')
-				||(buffer[strlen(buffer)-1]=='\t') ) buffer[strlen(buffer)-1]='\0';
+			{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r'||buffer[_l-1]==' '||buffer[_l-1]=='\t') ) buffer[_l-1]='\0'; }
 			if( !stricmp( buffer, "registry" ) ) IniFileFlag = SAVEMODE_REG ;
 			else if( !stricmp( buffer, "file" ) ) IniFileFlag = SAVEMODE_FILE ;
 			else if( !stricmp( buffer, "dir" ) ) { IniFileFlag = SAVEMODE_DIR ; DirectoryBrowseFlag = 1 ; ret = 1 ; }
@@ -275,9 +269,8 @@ int LoadParametersLight( void ) {
 	}
 	if( ReadParameterLight( INIT_SECTION, "fileextension", buffer ) ) {
 		if( strlen(buffer) > 0 ) {
-			if( buffer[0] != '.' ) { strcpy( FileExtension, "." ) ; } else { strcpy( FileExtension, "" ) ; }
-			strcat( FileExtension, buffer ) ;
-			while( FileExtension[strlen(FileExtension)-1]==' ' ) { FileExtension[strlen(FileExtension)-1] = '\0' ; }
+			snprintf( FileExtension, sizeof(FileExtension), "%s%s", (buffer[0]!='.')?".":"", buffer ) ;
+			{ size_t _l; while( (_l=strlen(FileExtension))>0 && FileExtension[_l-1]==' ' ) FileExtension[_l-1]='\0'; }
 		}				
 	}
 	if( ReadParameterLight( INIT_SECTION, "autostoresshkey", buffer ) ) { if( !stricmp( buffer, "YES" ) ) SetAutoStoreSSHKeyFlag( 1 ) ; }
