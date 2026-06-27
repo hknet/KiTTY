@@ -184,7 +184,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	FILE *sesskey ;
 	if( (sesskey=fopen(filename,"r")) == NULL ) { 
 		char buffer[1024] ;
-		sprintf(buffer,"File %s not found !",filename);
+		snprintf(buffer,sizeof(buffer),"File %s not found !",filename);
 		MessageBox(NULL, buffer, "Error", MB_OK|MB_ICONERROR) ; return ; 
 		}
 	Conf * confDef ;
@@ -841,16 +841,30 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 }
 
 /* ---- read-side helpers (kitty_settings.c:1317-1552) ---- */
+
+/* #541: the original trailing-strip loops indexed buffer[strlen(buffer)-1]
+   without a length guard. On a blank or CRLF-only .ini line fgets returns "\n",
+   the first strip empties the buffer, and the next strlen()-1 wraps (size_t 0-1
+   = SIZE_MAX) -> wild out-of-bounds read/write. These helpers strip safely. */
+static void rstrip_eol_forced( char *s ) {
+	size_t l = strlen( s ) ;
+	while( l > 0 && ( s[l-1]=='\n' || s[l-1]=='\r' ) ) { s[--l] = '\0' ; }
+}
+static void rstrip_cont_forced( char *s ) {
+	size_t l = strlen( s ) ;
+	while( l > 0 && ( s[l-1]=='\\' || s[l-1]=='\n' || s[l-1]=='\r' ) ) { s[--l] = '\0' ; }
+}
+
 int read_setting_i_forced(void *handle, const char *key, int defvalue) {
 	int n = defvalue ;
 	char buffer[2048], name[256] ;
 	rewind(handle);
 	sprintf( name, "%s\\", key ) ;
 	while( fgets(buffer,2047,handle)!=NULL ) {
-		while( (buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r') ) buffer[strlen(buffer)-1]='\0' ;
-		if( buffer[strlen(buffer)-1] != '\\' ) { decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }
+		rstrip_eol_forced( buffer ) ;
+		if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }
 		if( strstr( buffer, name ) == buffer ) {
-			while( (buffer[strlen(buffer)-1]=='\\')||(buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r') ) buffer[strlen(buffer)-1]='\0' ;
+			rstrip_cont_forced( buffer ) ;
 			n = atoi( buffer+strlen(name) ) ;
 			break ;
 		}
@@ -865,10 +879,10 @@ char *read_setting_s_forced(void *handle, const char *key) {
 	sprintf( name, "%s\\", key ) ;
 	
 	while( fgets(buffer,2047,handle)!=NULL ) {
-		while( (buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r') ) buffer[strlen(buffer)-1]='\0' ;
-		if( buffer[strlen(buffer)-1] != '\\' ) { decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }
+		rstrip_eol_forced( buffer ) ;
+		if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }
 		if( strstr( buffer, name ) == buffer ) {
-			while( (buffer[strlen(buffer)-1]=='\\')||(buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r') ) buffer[strlen(buffer)-1]='\0' ;
+			rstrip_cont_forced( buffer ) ;
 			loadResult = (char*) malloc( strlen( buffer+strlen(name) ) + 1 ) ;
 			unmungestr( buffer+strlen(name), loadResult, strlen( buffer+strlen(name) ) + 1 ) ;
 			break ;
@@ -883,10 +897,10 @@ Filename *read_setting_filename_forced(void *handle, const char *key) {
 	rewind(handle);
 	sprintf( name, "%s\\", key ) ;
 	while( fgets(buffer,2047,handle)!=NULL ) {
-		while( (buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r') ) buffer[strlen(buffer)-1]='\0' ;
-		if( buffer[strlen(buffer)-1] != '\\' ) { decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }
+		rstrip_eol_forced( buffer ) ;
+		if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }
 		if( strstr( buffer, name ) == buffer ) {
-			while( (buffer[strlen(buffer)-1]=='\\')||(buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r') ) buffer[strlen(buffer)-1]='\0' ;
+			rstrip_cont_forced( buffer ) ;
 			unmungestr( buffer+strlen(name), buffer, 2047 ) ;
 			Result = filename_from_str( buffer ) ;
 			break ;

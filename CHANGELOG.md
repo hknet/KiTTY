@@ -5,6 +5,87 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.37-beta — 2026-06-27
+- **Saved session passwords now work for auto-login and WinSCP.** When a session
+  was launched, KiTTY passed the stored password from the launcher to the terminal
+  (and to WinSCP) in an internal **obfuscated (masked)** form, but the connecting
+  process sent it **verbatim** — so SSH auto-login and WinSCP launches failed for
+  *every* saved password (regardless of its characters; it just looked like a
+  "wrong password"). The hand-off now passes the password correctly, so a stored
+  password authenticates as typed. (This also makes the auto-login try the stored
+  password **once** and then fall back to an interactive prompt, rather than
+  retrying it — see below.)
+- **Event Log: "Copy" with nothing selected now copies the whole log** instead of
+  just beeping (selecting specific lines still copies only those).
+- **No more credential-hammering that gets your IP banned.** Two related fixes:
+  - **Auto-login sends a stored password only once per connection.** Previously KiTTY
+    re-answered the server's password prompt from the saved password on *every*
+    re-prompt, so a wrong/rejected password was resent until the server's
+    `MaxAuthTries` tripped ("Too many authentication failures") — exactly what gets an
+    IP banned (fail2ban etc.). Now the stored password is offered once; if rejected,
+    KiTTY falls through to the interactive prompt instead of resending. (This also
+    stops the password being mis-sent into a second prompt such as a 2FA/OTP round.)
+  - **Auto-reconnect no longer retries on an authentication failure.** Reconnect is now
+    gated **per session** (only a session that actually authenticated is eligible) and
+    **never** fires when the disconnect reason is an authentication failure.
+    Network-drop reconnect of an established session is unchanged.
+- **Security fix (remote): far2l clipboard parser out-of-bounds read.** A malicious
+  SSH server could send a short, crafted `far2l` clipboard APC sequence that made the
+  parser read a 4-byte length **before** its decode buffer (a heap under-read), and the
+  *register-format* / *is-available* sub-commands ran with **no user consent**. The
+  parser now requires the full header before reading, and register-format / is-available
+  now also require the same per-session clipboard consent as get/set. Impact is a
+  crash/denial-of-service (no code execution, no data disclosure), but it is reachable
+  from the network, so **recommended for anyone connecting to untrusted hosts.**
+  *Behaviour change:* far2l clipboard register/availability now wait for the one-time
+  clipboard-consent prompt — if you use a far2l server, answer **OK** (Window → Selection)
+  once per session.
+- **Security hardening pass over the whole codebase + the PuTTY base.** A full security
+  sweep audited every KiTTY-added source file, the upstream files KiTTY modifies, the
+  remote SSH/terminal parsers, and the diagnostic dumps, then adversarially re-verified
+  each finding. Besides the far2l fix above, this release closes a batch of confirmed
+  **local-input** overflows — every place a session/`.ini`/registry value, an
+  autocommand line, a port-knock sequence, a proxy list, a rutty script, or an exported
+  password was copied into a fixed-size buffer is now length-bounded, and config-line
+  parsers are guarded against malformed/blank lines. Defence-in-depth for crafted or
+  shared config files.
+- **Removed dead remote-command dispatcher.** The old `__xy` escape-metacommand handler
+  (`ManageLocalCmd`: `__cm` run-command, `__pl` plink, etc.) was unreachable in the 0.84
+  base but carried a latent remote-code-execution surface if ever re-wired; it has been
+  deleted outright.
+- **Config dialog fixes.** The configuration window now **remembers its position**
+  (and re-centres if it was on a monitor that has since been removed); **Save** keeps the
+  saved session selected; you can **delete sessions imported from older PuTTY/KiTTY
+  hives** (a new *"show / edit / delete old sessions"* checkbox under the session list
+  governs whether those foreign sessions are shown — and, when shown, are tagged
+  `(old KiTTY)` / `(PuTTY)` so you always know which hive you're acting on); and the
+  **last-loaded session is remembered**, auto-selected and auto-loaded when the dialog
+  re-opens. When your own hive has no sessions of its own, the old-sessions view turns
+  on automatically so your existing sessions still appear.
+- **WinSCP launch: credentials are now URL-encoded.** A `@`, `/` or `:` in the
+  username/password is percent-encoded in the WinSCP connection URL; previously such
+  a character could break the URL and, worst case, point the transfer at the wrong
+  host. (Addresses upstream cyd01/KiTTY #535.)
+- **`.ini` settings load: out-of-bounds read/write fixed.** A blank or CR/LF-only
+  line in a hand-edited `.ini` could trigger a wild memory access while the line was
+  trimmed. (Addresses upstream cyd01/KiTTY #541.)
+- **Diagnostic dumps no longer leak secrets.** `/savedump` is a support diagnostic that
+  writes a plaintext dump; it previously included the session password, proxy password,
+  **SSH key passphrase**, the **private key file** itself, the password-store protection
+  password, the current **clipboard** contents, and login/rutty **script content**
+  (both encrypted and decrypted). All of these are now redacted, so a dump is safe to
+  share for support.
+- **`__ti` title handler hardened** against an overflow on a near-maximum-length
+  window title. (Addresses upstream cyd01/KiTTY #405.)
+- **kageant: About box now shows the KiTTY/kapper.net copyright** instead of only
+  the upstream PuTTY notice.
+- **Verified (no change needed):** upstream **#531** (CVE-2024-31497, P-521 ECDSA
+  nonce) and **#520** (Terrapin, CVE-2023-48795) are already fixed by the PuTTY 0.84
+  base (RFC 6979 deterministic nonces; strict key-exchange).
+- *Note:* from this release KiTTY is a **public beta** — older beta builds are kept
+  available on GitHub. *Known limitation:* an optionally-saved session password is
+  still stored reversibly (DPAPI protection planned) — prefer key auth (kageant).
+
 ## 0.84.1.36-beta — 2026-06-25
 - **Security fix (CVE-2024-25003 / CVE-2024-25004): stack buffer overflow via a
   malicious server.** The `__dt` (duplicate-session) and `__wt` (WinSCP)

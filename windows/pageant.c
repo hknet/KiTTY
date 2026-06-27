@@ -140,12 +140,27 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
     switch (msg) {
       case WM_INITDIALOG: {
         char *buildinfo_text = buildinfo("\r\n");
+        /* Branded to match the main KiTTY About box (windows/dialog.c): show the
+         * kapper.net port holder, not just the upstream PuTTY copyright. UTF-8
+         * source for (c) (\xc2\xa9) and em-dash (\xe2\x80\x94), rendered wide so
+         * they display on any system codepage. */
         char *text = dupprintf(
-            "kageant\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
+            "kageant\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
             ver, buildinfo_text,
-            "\251 " SHORT_COPYRIGHT_DETAILS ". All rights reserved.");
+            "This PuTTY 0.84 port \xc2\xa9 KAPPER NETWORK-COMMUNICATIONS GmbH "
+            "\xe2\x80\x94 https://github.com/hknet/KiTTY",
+            "KiTTY \xc2\xa9 2007-2013 Cyril Dupont \xe2\x80\x94 https://www.9bis.net/kitty/",
+            "Based on PuTTY \xc2\xa9 " SHORT_COPYRIGHT_DETAILS ". All rights reserved.");
         sfree(buildinfo_text);
-        SetDlgItemText(hwnd, IDC_ABOUT_TEXTBOX, text);
+        {
+            int wn = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
+            wchar_t *wtext = snewn(wn > 0 ? wn : 1, wchar_t);
+            if (wn > 0 && MultiByteToWideChar(CP_UTF8, 0, text, -1, wtext, wn) > 0)
+                SetDlgItemTextW(hwnd, IDC_ABOUT_TEXTBOX, wtext);
+            else
+                SetDlgItemText(hwnd, IDC_ABOUT_TEXTBOX, text);  /* fallback */
+            sfree(wtext);
+        }
         MakeDlgItemBorderless(hwnd, IDC_ABOUT_TEXTBOX);
         sfree(text);
         return 1;

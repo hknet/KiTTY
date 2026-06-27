@@ -6,3 +6,4 @@ build-warn/
 *.obj
 *.tmp
 build-netdebug/
+build-embeddbg/

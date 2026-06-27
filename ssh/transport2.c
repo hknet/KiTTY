@@ -1771,10 +1771,11 @@ static void ssh2_transport_process_queue(PacketProtocolLayer *ppl)
     if (!s->got_session_id &&
         conf_get_bool(s->conf, CONF_ssh_warn_pre_quantum) &&
         !ssh_kex_is_post_quantum(s->kex_alg)) {
-        ppl_printf("WARNING: connection is not using a post-quantum key "
-                   "exchange algorithm. This session may be vulnerable to "
-                   "\"store now, decrypt later\" attacks. The server may "
-                   "need to be upgraded.\r\n");
+        /* KiTTY: red "WARNING:" prefix, default-coloured body. */
+        ppl_printf("\x1b[1;31mWARNING:\x1b[0m connection is not using a "
+                   "post-quantum key exchange algorithm. This session may be "
+                   "vulnerable to \"store now, decrypt later\" attacks. The "
+                   "server may need to be upgraded.\r\n");
         ppl_logevent("Key exchange '%s' is not post-quantum secure; session "
                      "may be vulnerable to 'harvest now, decrypt later' "
                      "attacks", s->kex_alg->name);

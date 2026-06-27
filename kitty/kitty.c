@@ -863,6 +863,10 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 			unsigned char lpData[1024] ;
 			DWORD dwDataSize = 1024 ;
 			if( RegQueryValueEx( hKey, "Folder", 0, &lpType, lpData, &dwDataSize ) == ERROR_SUCCESS ) {
+				/* SECURITY: RegQueryValueEx may not NUL-terminate; bound + terminate
+				 * before strcpy into the caller's char[1024]. */
+				if( dwDataSize >= sizeof(lpData) ) dwDataSize = sizeof(lpData)-1 ;
+				lpData[dwDataSize] = '\0' ;
 				strcpy( folder, (char*)lpData ) ;
 			}
 			RegCloseKey( hKey ) ;
@@ -875,12 +879,11 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 			sprintf(buffer,"%s\\Sessions\\%s", ConfigDirectory, session );
 			if( (fp=fopen(buffer,"r"))!=NULL ) {
 				while( fgets(buffer,1024,fp)!=NULL ) {
-					while( (buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r') ) 
-						buffer[strlen(buffer)-1]='\0' ;
-					if( buffer[strlen(buffer)-1]=='\\' )
+					{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r') ) buffer[_l-1]='\0' ; }
+					if( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\\' )
 						if( strstr( buffer, "Folder" ) == buffer ) {
 							if( buffer[6]=='\\' ) strcpy( folder, buffer+7 ) ;
-							folder[strlen(folder)-1] = '\0' ;
+							{ size_t _fl=strlen(folder); if(_fl>0) folder[_fl-1] = '\0' ; }
 							unmungestr(folder, buffer, MAX_PATH) ;
 							strcpy( folder, buffer) ;
 							break  ;
@@ -934,11 +937,11 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 		if( debug_flag ) { debug_logevent( "GetSessionField(%s,%s,%s,%s)=%s", ConfigDirectory, session, folder, field, buffer ) ; }
 		if( (fp=fopen(buffer,"r"))!=NULL ) {
 			while( fgets(buffer,1024,fp)!=NULL ) {
-				while( (buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r') ) buffer[strlen(buffer)-1]='\0' ;
-				if( buffer[strlen(buffer)-1]=='\\' )
+				{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r') ) buffer[_l-1]='\0' ; }
+				if( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\\' )
 					if( (strstr( buffer, field )==buffer) && ((buffer+strlen(field))[0]=='\\') ) {
 						if( buffer[strlen(field)]=='\\' ) strcpy( result, buffer+strlen(field)+1 ) ;
-						result[strlen(result)-1] = '\0' ;
+						{ size_t _rl=strlen(result); if(_rl>0) result[_rl-1] = '\0' ; }
 						unmungestr(result, buffer,MAX_PATH) ;
 						strcpy( result, buffer) ;
 						if( debug_flag ) debug_logevent( "Result=%s", result );
@@ -978,11 +981,8 @@ void SetPasswordInConfig( const char * password ) {
 		if( len>0 ) {
 			memcpy( bufpass, password, len+1 ) ;
 			bufpass[len]='\0' ;
-			while( ((bufpass[strlen(bufpass)-1]=='n')&&(bufpass[strlen(bufpass)-2]=='\\')) || ((bufpass[strlen(bufpass)-1]=='r')&&(bufpass[strlen(bufpass)-2]=='\\')) ) { 
-				bufpass[strlen(bufpass)-2]='\0'; 
-				bufpass[strlen(bufpass)-1]='\0'; 
-			}
-			while( (bufpass[strlen(bufpass)-1]=='\n') || (bufpass[strlen(bufpass)-1]=='\r') || (bufpass[strlen(bufpass)-1]=='\t') || (bufpass[strlen(bufpass)-1]==' ') ) { bufpass[strlen(bufpass)-1]='\0' ; }
+			{ size_t _l; while( (_l=strlen(bufpass))>=2 && ( ((bufpass[_l-1]=='n')&&(bufpass[_l-2]=='\\')) || ((bufpass[_l-1]=='r')&&(bufpass[_l-2]=='\\')) ) ) { bufpass[_l-2]='\0'; bufpass[_l-1]='\0'; } }
+			{ size_t _l; while( (_l=strlen(bufpass))>0 && (bufpass[_l-1]=='\n' || bufpass[_l-1]=='\r' || bufpass[_l-1]=='\t' || bufpass[_l-1]==' ') ) bufpass[_l-1]='\0' ; }
 			DebugAddPassword( "SetPasswordInConfig(before mask)", bufpass ) ;
 			MASKPASS(GetCryptSaltFlag(),bufpass) ;
 			DebugAddPassword( "SetPasswordInConfig(after mask)", bufpass ) ;
@@ -1175,7 +1175,7 @@ return ;
 #endif
 	if( IniFileFlag == SAVEMODE_REG )
 	if( readINI( KittyIniFile, "PuTTY", "keys", buffer ) ) {
-		while( (buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r')||(buffer[strlen(buffer)-1]==' ')||(buffer[strlen(buffer)-1]=='\t') ) buffer[strlen(buffer)-1]='\0';
+		{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r'||buffer[_l-1]==' '||buffer[_l-1]=='\t') ) buffer[_l-1]='\0'; }
 		if( !stricmp( buffer, "load" ) ) {
 			sprintf( buffer, "%s\\Sessions", Key ) ;
 			RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Sessions" ) ;
@@ -1440,7 +1440,7 @@ int DelParameter( const char * key, const char * name ) {
 void GetSaveMode( void ) {
 	char buffer[256] ;
 	if( readINI( KittyIniFile, INIT_SECTION, "savemode", buffer ) ) {
-		while( (buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r')||(buffer[strlen(buffer)-1]==' ')||(buffer[strlen(buffer)-1]=='\t') ) buffer[strlen(buffer)-1]='\0';
+		{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r'||buffer[_l-1]==' '||buffer[_l-1]=='\t') ) buffer[_l-1]='\0'; }
 		if( !stricmp( buffer, "registry" ) ) IniFileFlag = SAVEMODE_REG ;
 		else if( !stricmp( buffer, "file" ) ) IniFileFlag = SAVEMODE_FILE ;
 		else if( !stricmp( buffer, "dir" ) ) { IniFileFlag = SAVEMODE_DIR ; DirectoryBrowseFlag = 1 ; }
@@ -1496,7 +1496,7 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 	
 	if( ( fp = fopen( KittySavFile,"rb" ) ) == NULL ) return ;
 	while( fgets( buffer, 4096, fp ) != NULL ) {
-		while( (buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r')||(buffer[strlen(buffer)-1]==' ')||(buffer[strlen(buffer)-1]=='\t') ) buffer[strlen(buffer)-1]='\0' ;
+		{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r'||buffer[_l-1]==' '||buffer[_l-1]=='\t') ) buffer[_l-1]='\0' ; }
 		
 		// Test si on a un fichier crypte
 		if( nb == 0 ) {
@@ -1521,8 +1521,8 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 			
 		if( strlen( buffer ) == 0 ) ;
 		if( (buffer[0]=='[') && (buffer[strlen(buffer)-1]==']') ) {
-			strcpy( KeyName, buffer+19 ) ; // +19 pour supprimer [HKEY_CURRENT_USER
-			KeyName[strlen(KeyName)-1] = '\0' ;
+			snprintf( KeyName, sizeof(KeyName), "%s", buffer+19 ) ; // +19 pour supprimer [HKEY_CURRENT_USER
+			{ size_t _kl=strlen(KeyName); if(_kl>0) KeyName[_kl-1] = '\0' ; }
 			if( hKey != NULL ) { RegCloseKey( hKey ) ; hKey = NULL ; }
 			if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(KeyName), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) 
 				{
@@ -1535,12 +1535,12 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 			}
 		else {
 			if( ( Value = strstr( buffer, "=" ) ) != NULL ) {
-				strcpy( ValueName, buffer+1 ) ;
-				ValueName[ (int)(Value-buffer-2) ] = '\0' ;
+				snprintf( ValueName, sizeof(ValueName), "%s", buffer+1 ) ;
+				{ int _vni = (int)(Value-buffer-2); if( _vni >= 0 && _vni < (int)sizeof(ValueName) ) ValueName[ _vni ] = '\0' ; }
 				Value++;
 			if( Value[0] == '\"' ) { // REG_SZ
 			  	Value++;
-			  	Value[strlen(Value)-1] = '\0' ;
+			  	{ size_t _vl=strlen(Value); if(_vl>0) Value[_vl-1] = '\0' ; }
 				DelDoubleBackSlash( Value ) ;
 			  	RegSetValueEx( hKey, TEXT( ValueName ), 0, REG_SZ, (LPBYTE)Value, strlen(Value)+1 ) ;
 			  	}
@@ -2051,7 +2051,7 @@ void OpenAndSendScriptFile( HWND hwnd ) {
     } else { 
         strcpy( buffer, "Script files (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|" ) ;
     }
-    if( buffer[strlen(buffer)-1]!='|' ) strcat( buffer, "|" ) ;
+    if( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='|' ) strcat( buffer, "|" ) ;
     if( OpenFileName( hwnd, filename, "Open file...", buffer ) ) {
         RunScriptFile( hwnd, filename ) ;
     }
@@ -2059,7 +2059,6 @@ void OpenAndSendScriptFile( HWND hwnd ) {
 
 // Envoi d'un fichier par SCP vers la racine du compte
 int SearchPSCP( void ) ;
-static int nb_pscp_run = 0 ;
 /* KiTTY security: launch a console command line WITHOUT a shell. Replaces
  * system()/"start" for the pscp/plink command builders below, so session fields
  * spliced into the command line cannot inject shell commands - CreateProcess does
@@ -2081,6 +2080,292 @@ static int kitty_run_noshell( char *cmdline, int wait ) {
 		return -1 ;
 	if( wait ) WaitForSingleObject( pi.hProcess, INFINITE ) ;
 	CloseHandle( pi.hThread ) ; CloseHandle( pi.hProcess ) ;
+	return 0 ;
+}
+
+/* Watch a launched transfer process (pscp/plink) on a background thread: wait
+ * for it, and on a NON-zero exit pop a dialog with the exit code + a hint. Runs
+ * off the GUI thread so a long transfer never freezes KiTTY, and the visible
+ * console (CREATE_NEW_CONSOLE below) still shows live progress. Never shows the
+ * command line (it carries -pw). */
+/* Transient system-tray balloon (non-modal, auto-dismiss): add a short-lived
+ * notify icon on `hwnd`, fire the balloon, keep it alive briefly, then remove
+ * it. Used for the file-transfer SUCCESS notice. Safe if hwnd is gone (the
+ * Shell_NotifyIcon calls just fail). Runs on the watcher thread (the Sleep is
+ * off the GUI thread). */
+static void kitty_tray_balloon( HWND hwnd, const char *title, const char *msg ) {
+	static volatile LONG s_uid = 0xC000 ;
+	NOTIFYICONDATA nid ;
+	memset( &nid, 0, sizeof(nid) ) ;
+	nid.cbSize = sizeof(nid) ;
+	nid.hWnd = hwnd ;
+	nid.uID = (UINT)InterlockedIncrement( &s_uid ) ;
+	nid.uFlags = NIF_ICON | NIF_INFO ;
+	nid.hIcon = LoadIcon( NULL, IDI_INFORMATION ) ;
+	nid.dwInfoFlags = NIIF_INFO ;
+	strncpy( nid.szInfoTitle, title, sizeof(nid.szInfoTitle)-1 ) ;
+	strncpy( nid.szInfo,      msg,   sizeof(nid.szInfo)-1 ) ;
+	if( Shell_NotifyIcon( NIM_ADD, &nid ) ) {
+		Sleep( 8000 ) ;   /* keep the icon present while the balloon is shown */
+		Shell_NotifyIcon( NIM_DELETE, &nid ) ;
+	}
+}
+
+/* Fire the success tray balloon on its own short-lived thread (kitty_tray_balloon
+ * Sleeps to keep the icon alive, so it must NOT run on the GUI thread). */
+struct ktx_balloon { HWND hwnd ; char *title ; char *msg ; } ;
+static DWORD WINAPI ktx_balloon_thread( LPVOID p ) {
+	struct ktx_balloon *b = (struct ktx_balloon *)p ;
+	kitty_tray_balloon( b->hwnd, b->title, b->msg ) ;
+	sfree( b->title ) ; sfree( b->msg ) ; free( b ) ;
+	return 0 ;
+}
+static void kitty_tray_balloon_async( HWND hwnd, const char *title, const char *msg ) {
+	struct ktx_balloon *b = (struct ktx_balloon *)malloc( sizeof(*b) ) ;
+	if( !b ) return ;
+	b->hwnd = hwnd ; b->title = dupstr(title) ; b->msg = dupstr(msg) ;
+	HANDLE t = CreateThread( NULL, 0, ktx_balloon_thread, b, 0, NULL ) ;
+	if( t ) CloseHandle( t ) ; else { sfree(b->title) ; sfree(b->msg) ; free(b) ; }
+}
+
+/* ---- KiTTY file-transfer window -----------------------------------------
+ * Runs pscp with its output captured to a pipe (no shell -> injection
+ * hardening preserved) and streams it LIVE into a scrollable window. On
+ * SUCCESS the window auto-closes and a tray balloon pops; on FAILURE the
+ * window STAYS OPEN showing the full error context (so the user can read /
+ * copy it), with a Close button. Never displays the command line (it carries
+ * -pw). The window runs on the GUI thread; a reader thread pumps output to it
+ * via posted messages, so KiTTY never blocks during a transfer. */
+#define KTX_WM_APPEND (WM_APP+11)
+#define KTX_WM_DONE   (WM_APP+12)
+#define KTX_ID_EDIT   2001
+#define KTX_ID_CLOSE  2002
+struct ktx_win {
+	HWND hwnd, edit, closebtn, parent ;
+	HANDLE proc, rd, thread ;
+	char *what ;
+	int done ;
+	int cancelled ;
+	/* mini line-discipline so pscp's \r progress meter overwrites the current
+	 * line in place (terminal-style) instead of stacking new lines: */
+	char curline[2048] ;   /* current uncommitted line */
+	int  curcol ;          /* write cursor within curline (\r resets to 0) */
+	int  curlen ;          /* length of curline */
+	int  committed ;       /* edit-control char index where curline begins */
+} ;
+
+/* Make the edit-control tail (from w->committed to end) equal curline[0..curlen]. */
+static void ktx_set_curline( struct ktx_win *w ) {
+	char save = w->curline[w->curlen] ; w->curline[w->curlen] = 0 ;
+	SendMessageA( w->edit, EM_SETSEL, w->committed, -1 ) ;
+	SendMessageA( w->edit, EM_REPLACESEL, FALSE, (LPARAM)w->curline ) ;
+	w->curline[w->curlen] = save ;
+}
+
+/* Feed captured pscp bytes through a tiny line-discipline: '\r' returns the
+ * cursor to column 0 (so the progress meter overwrites its line in place),
+ * '\n' commits the line and starts a new one, tabs expand, other control
+ * chars are dropped. Keeps the live transfer readable as one updating line. */
+static void ktx_feed( struct ktx_win *w, const char *s, int len ) {
+	int i ;
+	for( i=0 ; i<len ; i++ ) {
+		char c = s[i] ;
+		if( c=='\r' ) {
+			w->curcol = 0 ;
+		} else if( c=='\n' ) {
+			ktx_set_curline( w ) ;
+			int n = GetWindowTextLength( w->edit ) ;
+			SendMessageA( w->edit, EM_SETSEL, n, n ) ;
+			SendMessageA( w->edit, EM_REPLACESEL, FALSE, (LPARAM)"\r\n" ) ;
+			w->committed = n + 2 ;
+			w->curcol = 0 ; w->curlen = 0 ; w->curline[0] = 0 ;
+		} else if( c=='\b' ) {
+			if( w->curcol>0 ) w->curcol-- ;
+		} else if( c=='\t' ) {
+			do {
+				if( w->curcol < (int)sizeof(w->curline)-1 ) {
+					w->curline[w->curcol++] = ' ' ;
+					if( w->curcol > w->curlen ) w->curlen = w->curcol ;
+				}
+			} while( (w->curcol % 8) && w->curcol < (int)sizeof(w->curline)-1 ) ;
+		} else if( (unsigned char)c >= 0x20 ) {
+			if( w->curcol < (int)sizeof(w->curline)-1 ) {
+				w->curline[w->curcol++] = c ;
+				if( w->curcol > w->curlen ) w->curlen = w->curcol ;
+			}
+		}
+	}
+	ktx_set_curline( w ) ;
+	SendMessageA( w->edit, EM_SCROLLCARET, 0, 0 ) ;
+}
+
+static DWORD WINAPI ktx_reader_thread( LPVOID param ) {
+	struct ktx_win *w = (struct ktx_win *)param ;
+	char buf[4096] ; DWORD nrd ; DWORD code = (DWORD)-1 ;
+	while( ReadFile( w->rd, buf, sizeof(buf), &nrd, NULL ) && nrd>0 ) {
+		char *chunk = (char *)malloc( nrd ) ;
+		if( chunk ) { memcpy( chunk, buf, nrd ) ;
+			PostMessage( w->hwnd, KTX_WM_APPEND, (WPARAM)nrd, (LPARAM)chunk ) ; }
+	}
+	CloseHandle( w->rd ) ; w->rd = NULL ;
+	WaitForSingleObject( w->proc, INFINITE ) ;
+	GetExitCodeProcess( w->proc, &code ) ;
+	/* leave w->proc open: the GUI thread owns it (for Cancel/TerminateProcess)
+	 * and closes it in WM_DESTROY. We don't touch it again after this. */
+	PostMessage( w->hwnd, KTX_WM_DONE, (WPARAM)code, 0 ) ;
+	return 0 ;
+}
+
+static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ) {
+	struct ktx_win *w = (struct ktx_win *)GetWindowLongPtr( hwnd, GWLP_USERDATA ) ;
+	switch( msg ) {
+	  case WM_CREATE: {
+		CREATESTRUCT *cs = (CREATESTRUCT *)lp ;
+		w = (struct ktx_win *)cs->lpCreateParams ;
+		SetWindowLongPtr( hwnd, GWLP_USERDATA, (LONG_PTR)w ) ;
+		w->hwnd = hwnd ;
+		w->edit = CreateWindowEx( WS_EX_CLIENTEDGE, "EDIT", "",
+			WS_CHILD|WS_VISIBLE|WS_VSCROLL|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL,
+			0,0,0,0, hwnd, (HMENU)(UINT_PTR)KTX_ID_EDIT, GetModuleHandle(NULL), NULL ) ;
+		SendMessage( w->edit, WM_SETFONT, (WPARAM)GetStockObject(ANSI_FIXED_FONT), TRUE ) ;
+		SendMessage( w->edit, EM_LIMITTEXT, (WPARAM)0x200000, 0 ) ;
+		w->closebtn = CreateWindow( "BUTTON", "&Cancel",
+			WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON,
+			0,0,0,0, hwnd, (HMENU)(UINT_PTR)KTX_ID_CLOSE, GetModuleHandle(NULL), NULL ) ;
+		return 0 ;
+	  }
+	  case WM_SIZE: {
+		RECT rc ; GetClientRect( hwnd, &rc ) ;
+		int pad=8, bh=26, bw=90 ;
+		MoveWindow( w->edit, pad, pad, rc.right-2*pad, rc.bottom-bh-3*pad, TRUE ) ;
+		MoveWindow( w->closebtn, rc.right-bw-pad, rc.bottom-bh-pad, bw, bh, TRUE ) ;
+		return 0 ;
+	  }
+	  case KTX_WM_APPEND: {
+		char *chunk = (char *)lp ;
+		if( w && chunk ) ktx_feed( w, chunk, (int)wp ) ;
+		if( chunk ) free( chunk ) ;
+		return 0 ;
+	  }
+	  case KTX_WM_DONE: {
+		DWORD code = (DWORD)wp ;
+		if( !w ) return 0 ;
+		w->done = 1 ;
+		const char *what = w->what ? w->what : "Transfer" ;
+		if( code == 0 && !w->cancelled ) {
+			char *m = dupprintf( "%s complete.", what ) ;
+			kitty_tray_balloon_async( w->parent, "KiTTY transfer", m ) ;
+			sfree( m ) ;
+			DestroyWindow( hwnd ) ;   /* success: auto-close, balloon confirms */
+		} else {
+			char *m ;
+			if( w->cancelled ) {
+				m = dupprintf( "\r\n==== %s cancelled ====\r\n", what ) ;
+				SetWindowTextA( hwnd, "KiTTY transfer - cancelled" ) ;
+			} else {
+				const char *hint = ( code==127 )
+					? "\r\n\r\nExit 127 = the server could not start the SCP/SFTP "
+					  "subsystem (command not found). Try switching the transfer "
+					  "protocol (Connection -> SSH -> PSCP and WinSCP) between SCP "
+					  "and SFTP, or check the server's sftp-server/scp."
+					: "" ;
+				m = dupprintf( "\r\n==== %s FAILED  (pscp exit code %lu) ====%s\r\n",
+				               what, (unsigned long)code, hint ) ;
+				char *t = dupprintf( "KiTTY transfer - FAILED (exit %lu)", (unsigned long)code ) ;
+				SetWindowTextA( hwnd, t ) ; sfree( t ) ;
+			}
+			ktx_feed( w, m, (int)strlen(m) ) ; sfree( m ) ;
+			SetWindowTextA( w->closebtn, "&Close" ) ;
+			EnableWindow( w->closebtn, TRUE ) ;
+			SetForegroundWindow( hwnd ) ;
+			SetFocus( w->closebtn ) ;
+		}
+		return 0 ;
+	  }
+	  case WM_COMMAND:
+		if( LOWORD(wp)==KTX_ID_CLOSE && w ) {
+			if( w->done ) {
+				DestroyWindow( hwnd ) ;          /* finished -> button is "Close" */
+			} else if( !w->cancelled ) {
+				w->cancelled = 1 ;               /* running -> button is "Cancel": kill pscp */
+				if( w->proc ) TerminateProcess( w->proc, 2 ) ;
+				SetWindowTextA( w->closebtn, "Stopping..." ) ;
+				EnableWindow( w->closebtn, FALSE ) ;
+			}
+			return 0 ;
+		}
+		break ;
+	  case WM_CLOSE:
+		if( w && !w->done ) {                     /* X mid-transfer: cancel, wait for DONE */
+			if( !w->cancelled ) {
+				w->cancelled = 1 ;
+				if( w->proc ) TerminateProcess( w->proc, 2 ) ;
+				SetWindowTextA( w->closebtn, "Stopping..." ) ;
+				EnableWindow( w->closebtn, FALSE ) ;
+			}
+			return 0 ;
+		}
+		DestroyWindow( hwnd ) ;
+		return 0 ;
+	  case WM_DESTROY:
+		if( w ) {
+			if( w->proc ) CloseHandle( w->proc ) ;
+			if( w->thread ) CloseHandle( w->thread ) ;
+			if( w->what ) sfree( w->what ) ;
+			free( w ) ;
+			SetWindowLongPtr( hwnd, GWLP_USERDATA, 0 ) ;
+		}
+		return 0 ;
+	}
+	return DefWindowProc( hwnd, msg, wp, lp ) ;
+}
+
+/* Launch pscp into a transfer window (above). No shell. Returns 0 if launched. */
+static int kitty_run_xfer( HWND parent, char *cmdline, const char *what ) {
+	static int registered = 0 ;
+	HINSTANCE hi = GetModuleHandle( NULL ) ;
+	if( !registered ) {
+		WNDCLASS wc ; memset( &wc, 0, sizeof(wc) ) ;
+		wc.lpfnWndProc = ktx_wndproc ;
+		wc.hInstance = hi ;
+		wc.hCursor = LoadCursor( NULL, IDC_ARROW ) ;
+		wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE+1) ;
+		wc.hIcon = LoadIcon( NULL, IDI_APPLICATION ) ;
+		wc.lpszClassName = "KiTTYxferwin" ;
+		RegisterClass( &wc ) ;
+		registered = 1 ;
+	}
+	SECURITY_ATTRIBUTES sa ; HANDLE rd=NULL, wr=NULL ;
+	memset( &sa, 0, sizeof(sa) ) ; sa.nLength = sizeof(sa) ; sa.bInheritHandle = TRUE ;
+	if( !CreatePipe( &rd, &wr, &sa, 0 ) ) return -1 ;
+	SetHandleInformation( rd, HANDLE_FLAG_INHERIT, 0 ) ;
+	STARTUPINFOA si ; PROCESS_INFORMATION pi ;
+	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;
+	si.dwFlags = STARTF_USESTDHANDLES ;
+	si.hStdOutput = wr ; si.hStdError = wr ; si.hStdInput = GetStdHandle( STD_INPUT_HANDLE ) ;
+	memset( &pi, 0, sizeof(pi) ) ;
+	if( !CreateProcessA( NULL, cmdline, NULL, NULL, TRUE,
+	                     CREATE_NO_WINDOW, NULL, NULL, &si, &pi ) ) {
+		CloseHandle( rd ) ; CloseHandle( wr ) ;
+		MessageBox( NULL, "Could not launch the transfer client (pscp).",
+		            "KiTTY transfer", MB_OK|MB_ICONERROR ) ;
+		return -1 ;
+	}
+	CloseHandle( wr ) ; CloseHandle( pi.hThread ) ;
+	struct ktx_win *w = (struct ktx_win *)malloc( sizeof(*w) ) ;
+	if( !w ) { CloseHandle( pi.hProcess ) ; CloseHandle( rd ) ; return -1 ; }
+	memset( w, 0, sizeof(*w) ) ;
+	w->parent = parent ; w->proc = pi.hProcess ; w->rd = rd ;
+	w->what = dupstr( what ? what : "Transfer" ) ;
+	char *title = dupprintf( "KiTTY transfer - %s", w->what ) ;
+	HWND hwnd = CreateWindow( "KiTTYxferwin", title,
+		WS_OVERLAPPEDWINDOW|WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 680, 420,
+		parent, NULL, hi, w ) ;
+	sfree( title ) ;
+	if( !hwnd ) { CloseHandle( pi.hProcess ) ; CloseHandle( rd ) ; sfree( w->what ) ; free( w ) ; return -1 ; }
+	SetForegroundWindow( hwnd ) ;          /* bring the transfer window to the front */
+	BringWindowToTop( hwnd ) ;
+	w->thread = CreateThread( NULL, 0, ktx_reader_thread, w, 0, NULL ) ;
 	return 0 ;
 }
 
@@ -2121,6 +2406,29 @@ static void qcat( char *dst, size_t cap, const char *s ) {
 	bcat( dst, cap, "\"" ) ;
 }
 
+/* #535: percent-encode and append, for the userinfo (user/password) of a
+ * WinSCP "proto://user:pass@host:port/dir" URL. Without this, an '@' '/' ':' or
+ * '?' in the password or username is parsed as URL grammar by WinSCP -- e.g. a
+ * password "x@evil.host/" redirects the connection to an attacker-chosen host.
+ * Everything outside the RFC 3986 "unreserved" set is escaped as %XX. Bounded
+ * via bcat. (qcat is Win32 argv quoting -- a different layer -- so it does NOT
+ * cover this URL-grammar injection.) */
+static void urlcat( char *dst, size_t cap, const char *s ) {
+	static const char hexd[] = "0123456789ABCDEF" ;
+	char esc[4] = {0,0,0,0} ;
+	if( !s ) return ;
+	for( const unsigned char *p = (const unsigned char *)s ; *p ; p++ ) {
+		unsigned char c = *p ;
+		if( (c>='A'&&c<='Z') || (c>='a'&&c<='z') || (c>='0'&&c<='9')
+		    || c=='-' || c=='.' || c=='_' || c=='~' ) {
+			esc[0]=(char)c ; esc[1]='\0' ; bcat( dst, cap, esc ) ;
+		} else {
+			esc[0]='%' ; esc[1]=hexd[(c>>4)&0xF] ; esc[2]=hexd[c&0xF] ; esc[3]='\0' ;
+			bcat( dst, cap, esc ) ;
+		}
+	}
+}
+
 void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) {
 	char buffer[4096], pscppath[4096]="", pscpport[4096]="22", remotedir[4096]=".",dir[4096], b1[256] ;
 	int p ;
@@ -2154,8 +2462,6 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	buffer[0] = '\0' ;
 	const size_t BC = sizeof(buffer) ;
 
-	int pscp_newwin = (nb_pscp_run<4) ;   /* was: "start" (new window) for the first 4 */
-	if( pscp_newwin ) { nb_pscp_run++ ; } else { nb_pscp_run = 0 ; }
 	bcat( buffer, BC, pscppath ) ; bcat( buffer, BC, " " ) ;   /* exe: 8.3 path, no spaces/quotes */
 
 	if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {     /* raw user options - intentionally unquoted */
@@ -2221,7 +2527,10 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 
 	chdir( InitialDirectory ) ;
 	if( debug_flag ) { debug_logevent( "Run: %s", buffer ) ; }
-	if( kitty_run_noshell( buffer, !pscp_newwin ) ) MessageBox( NULL, buffer, "Transfer problem", MB_OK|MB_ICONERROR  ) ;
+	/* Capture output + show it on failure, instead of flashing a console shut
+	 * (so e.g. a server's exit-127 "Cannot initialize SFTP" is readable). */
+	{ char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), "Upload of \"%s\"", filename ? filename : "file" ) ;
+	  kitty_run_xfer( hwnd, buffer, whatbuf ) ; }
 
 	//debug_log("%s\n",buffer);MessageBox( NULL, buffer, "Info",MB_OK );
 	
@@ -2242,7 +2551,7 @@ void SendFileList( HWND hwnd, char * filelist ) {
 			if( (filelist[i]=='/')||(filelist[i]=='\\') ) { filelist[i]='\0' ; break ; }
 			}
 		}
-	strcpy( dir, filelist ) ;
+	snprintf( dir, sizeof(dir), "%s", filelist ) ;
 
 	pname=filelist+strlen(filelist)+1;
 	
@@ -2357,8 +2666,6 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
     buffer[0]='\0' ;
     const size_t BC = sizeof(buffer) ;
 
-    int pscp_newwin = (nb_pscp_run<4) ;   /* was: "start" (new window) for the first 4 */
-    if( pscp_newwin ) { nb_pscp_run++ ; } else { nb_pscp_run = 0 ; }
     bcat( buffer, BC, pscppath ) ; bcat( buffer, BC, " " ) ;
 
     if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {     /* raw user options - unquoted */
@@ -2417,7 +2724,9 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
     chdir( InitialDirectory ) ;
 
     if( debug_flag ) { debug_logevent( "Get on file: %s", buffer) ; }
-    if( kitty_run_noshell( buffer, !pscp_newwin ) ) { MessageBox( NULL, buffer, "Transfer problem", MB_OK|MB_ICONERROR  ) ; }
+    /* Capture output + show on failure (no vanishing console). */
+    { char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), "Download of \"%s\"", filename ? filename : "file" ) ;
+      kitty_run_xfer( hwnd, buffer, whatbuf ) ; }
 
     //debug_log("%s\n",buffer);//MessageBox( NULL, buffer, "Info",MB_OK );
 
@@ -2455,7 +2764,7 @@ void GetFile( HWND hwnd ) {
         if( (hglb = GetClipboardData( CF_TEXT ) ) != NULL ) {
             if( ( pst = GlobalLock( hglb ) ) != NULL ) {
 //sprintf(buffer,"#%s#%d",pst,strlen(pst));MessageBox(hwnd,buffer,"Info",MB_OK);
-                while( (pst[strlen(pst)-1]=='\n')||(pst[strlen(pst)-1]=='\r')||(pst[strlen(pst)-1]==' ')||(pst[strlen(pst)-1]=='\t') ) { pst[strlen(pst)-1]='\0' ; }
+                { size_t _l; while( (_l=strlen(pst))>0 && (pst[_l-1]=='\n'||pst[_l-1]=='\r'||pst[_l-1]==' '||pst[_l-1]=='\t') ) pst[_l-1]='\0' ; }
 //sprintf(buffer,"#%s#%d",pst,strlen(pst));MessageBox(hwnd,buffer,"Info",MB_OK);
                 strcpy( buffer, "" ) ;
                 if( strlen( pst ) > 0 ) {
@@ -2532,7 +2841,7 @@ void RunCmd( HWND hwnd ) {
 
         if( (hglb = GetClipboardData( CF_TEXT ) ) != NULL ) {
             if( ( pst = GlobalLock( hglb ) ) != NULL ) {
-                sprintf( buffer, "%s", pst ) ;
+                snprintf( buffer, sizeof(buffer), "%s", pst ) ;
                 GlobalUnlock( hglb ) ;
             }
         }
@@ -2626,81 +2935,12 @@ static int kitty_split_host_user_path( const char *s,
     return 1 ;
 }
 
-int ManageLocalCmd( HWND hwnd, const char * cmd ) {
-
-    if( !LocalCmdFlag ) { return 0 ; } // Disable all __xy commands
-    
-    char buffer[1024] = "", title[1024] = "" ;
-    if( debug_flag ) { debug_logevent( "Local command: %s", cmd ) ; }
-    if( cmd == NULL ) return 0 ;
-    if( (cmd[2] != ':')&&(cmd[2] != '\0') ) return 0 ;
-    if( (cmd[2] == ':')&&( strlen( cmd ) <= 3 ) ) return 0 ;
-    
-    if( (cmd[0]=='d')&&(cmd[1]=='t')&&(cmd[2]==':') ) { // __dt: start a duplicated session in same directory, same host and same user : dt() { printf "\033]0;__dt:"$(hostname)":"${USER}":"`pwd`"\007" ; }
-        char host[1024]="";char user[256]="";char *path=NULL;
-        if( RemotePath!= NULL ) { free( RemotePath ) ; RemotePath = NULL ; }
-        if( !kitty_split_host_user_path( cmd+3, host, sizeof(host), user, sizeof(user), &path ) ) return 1 ;
-        RemotePath = path ;
-        RunSessionWithCurrentSettings( hwnd, conf, host, user, NULL, 0, RemotePath ) ;
-        return 1 ;
-    } else if( (cmd[0]=='i')&&(cmd[1]=='n')&&(cmd[2]==':') ) { // __in: print informations in log
-        debug_logevent(cmd+3) ;
-        return 1 ;
-    } else if( (cmd[0]=='l')&&(cmd[1]=='s')&&(cmd[2]==':') ) { // __ls: start a local script in remote session
-        RunScriptFile( hwnd, cmd+3 ) ;
-        return 1 ;
-    } else if( (cmd[0]=='p')&&(cmd[1]=='w')&&(cmd[2]==':') ) { // __pw: new remote directory
-        if( RemotePath!= NULL ) free( RemotePath ) ;
-        RemotePath = (char*) malloc( strlen( cmd ) - 2 ) ;
-        strcpy( RemotePath, cmd+3 ) ;
-        return 1 ;
-    } else if( (cmd[0]=='r')&&(cmd[1]=='v')&&(cmd[2]==':') ) { // __rv: getting one file
-        GetOneFile( hwnd, RemotePath, cmd+3 ) ;
-        return 1 ;
-    } else if( (cmd[0]=='t')&&(cmd[1]=='i')&&(cmd[2]=='\0') ) { // __ti: getting remote window title
-        GetWindowText( hwnd, buffer, 1024 ) ;
-        sprintf( title, "printf \"\\033]0;%s\\007\"\n", buffer ) ;
-        SendStrToTerminal( title, strlen(title) ) ;
-        return 1 ;
-    } else if( (cmd[0]=='w')&&(cmd[1]=='s')&&(cmd[2]==':') ) { // __ws: start WinSCP into provided directory
-        if( RemotePath!= NULL ) free( RemotePath ) ;
-        RemotePath = (char*) malloc( strlen( cmd ) - 2 ) ;
-        strcpy( RemotePath, cmd+3 ) ;
-        StartWinSCP( hwnd, RemotePath, NULL, NULL ) ;
-        return 1 ;
-    } else if( (cmd[0]=='w')&&(cmd[1]=='t')&&(cmd[2]==':') ) { // __wt: start WinSCP on a provided host, with a specific user and in a directory
-        char host[1024]="";char user[256]="";char *path=NULL;
-        if( RemotePath!= NULL ) { free( RemotePath ) ; RemotePath = NULL ; }
-        if( !kitty_split_host_user_path( cmd+3, host, sizeof(host), user, sizeof(user), &path ) ) return 1 ;
-        RemotePath = path ;
-        StartWinSCP( hwnd, RemotePath, host, user ) ;
-        // free( RemotePath ) ; RemotePath = NULL ;
-        return 1 ;
-    }
-    
-    if( !LocalUnsecureCmdFlag ) { return 0 ; } // Disable only unsecure __xy commands
-    if( (cmd[0]=='c')&&(cmd[1]=='m')&&(cmd[2]==':') ) { // __cm: run an external command locally
-        RunCommand( hwnd, cmd+3 ) ;
-        return 1 ;
-    } else if( (cmd[0]=='d')&&(cmd[1]=='s')&&(cmd[2]==':') ) { // __ds: start a duplicated session un same directory : ds() { printf "\033]0;__ds:`pwd`\007" ; }
-        if( RemotePath!= NULL ) free( RemotePath ) ;
-        RemotePath = (char*) malloc( strlen( cmd ) - 2 ) ;
-        strcpy( RemotePath, cmd+3 ) ;
-        if( debug_flag ) { debug_logevent( "Start the same session in remote path: %s", RemotePath ) ; }
-        RunSessionWithCurrentSettings( hwnd, conf, NULL, NULL, NULL, 0, RemotePath ) ;
-        return 1 ;
-    } else if( (cmd[0]=='i')&&(cmd[1]=='e')&&(cmd[2]==':') ) { // __ie: start default browser on provided URL
-        if( strlen(cmd+3)>0 ) {
-            urlhack_launch_url(!conf_get_int(conf,CONF_url_defbrowser)?filename_to_str(conf_get_filename(conf,CONF_url_browser)):NULL, (const char *)(cmd+3));
-            return 1;
-        }
-    } else if( (cmd[0]=='p')&&(cmd[1]=='l')&&(cmd[2]==':') ) { // __pl: start a plink command
-        RunExternPlink( hwnd, cmd+3 ) ;
-        return 1 ;
-    }
-    
-    return 0 ;
-}
+/* SECURITY (0.84.1.37): the ManageLocalCmd "__xy" remote-escape metacommand
+ * dispatcher has been REMOVED. It was dead code in 0.84 (the OSC hook that fed
+ * it was never forward-ported, so it had no caller) and carried a latent
+ * command-injection / RCE surface (__cm/__pl/__ie/__ds, cf. CVE-2024-23749) if
+ * ever re-wired. If a future feature needs remote metacommands, re-introduce a
+ * hardened, opt-in implementation rather than restoring this. */
 
 // Get window coodinates
 void GetWindowCoord( HWND hwnd ) {
@@ -2798,13 +3038,13 @@ void RefreshBackground( HWND hwnd ) {
 
 #if (defined MOD_BACKGROUNDIMAGE) && (!defined FLJ)
 /* Changement du fond d'ecran */
-int GetExt( const char * filename, char * ext) {
+int GetExt( const char * filename, char * ext, size_t extsz) {
 	int i;
-	strcpy( ext, "" ) ;
+	if( extsz>0 ) ext[0]='\0';
 	if( filename==NULL ) return 0;
 	if( strlen(filename)<=0 ) return 0;
-	for( i=(strlen(filename)-1) ; i>=0 ; i-- ) 
-		if( filename[i]=='.' ) strcpy( ext, filename+i+1 ) ;
+	for( i=(strlen(filename)-1) ; i>=0 ; i-- )
+		if( filename[i]=='.' ) snprintf( ext, extsz, "%s", filename+i+1 ) ;
 	if( i<0 ) return 0;
 	return 1;
 	}
@@ -2825,14 +3065,14 @@ int PreviousBgImage( HWND hwnd ) {
 	
 	while( ( de = readdir(dir) ) != NULL ) {
 		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
-			sprintf( buffer,"%s\\%s", basename, de->d_name ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\%s", basename, de->d_name ) ;
 			if( !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) ) {
 				if( !strcmp(buffer, filename_to_str(conf_get_filename(conf,CONF_bg_image_filename)) ) )
 					if( strcmp( previous, "" ) ) break ;
 		
-				GetExt( de->d_name, ext ) ;
+				GetExt( de->d_name, ext, sizeof(ext) ) ;
 				if( (!stricmp(ext,"BMP"))||(!stricmp(ext,"JPG"))||(!stricmp(ext,"JPEG"))) 
-					{ sprintf( previous,"%s\\%s", basename, de->d_name ) ; }
+					{ snprintf( previous, sizeof(previous), "%s\\%s", basename, de->d_name ) ; }
 				}
 			}
 		}
@@ -2860,22 +3100,22 @@ int NextBgImage( HWND hwnd ) {
 	if( ( dir = opendir( basename ) ) == NULL ) { return 0 ; }
 	
 	while( ( de = readdir(dir) ) != NULL ) {
-		GetExt( de->d_name, ext ) ;
+		GetExt( de->d_name, ext, sizeof(ext) ) ;
 
 		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") 
 			&& ( (!stricmp(ext,"BMP"))||(!stricmp(ext,"JPG"))||(!stricmp(ext,"JPEG"))) 
 			) {
-			sprintf( buffer,"%s\\%s", basename, de->d_name ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\%s", basename, de->d_name ) ;
 			if( !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) ) {
 				if( !stricmp( buffer, filename_to_str(conf_get_filename(conf,CONF_bg_image_filename)) ) ) {
 					if( ( de = readdir(dir) ) != NULL ) 
-						GetExt( de->d_name, ext ) ; 
+						GetExt( de->d_name, ext, sizeof(ext) ) ; 
 					else 
 						strcpy( ext, "" ) ;
 						
 					while( (de!=NULL)&&stricmp(ext,"BMP")&&stricmp(ext,"JPG")&&stricmp(ext,"JPEG") ) {
 						if( ( de = readdir(dir) ) != NULL ) 
-							GetExt( de->d_name, ext ) ; 
+							GetExt( de->d_name, ext, sizeof(ext) ) ; 
 						else 
 							strcpy( ext, "" ) ;
 						}
@@ -2885,13 +3125,13 @@ int NextBgImage( HWND hwnd ) {
 			}
 		}
 	if( de==NULL ) { rewinddir( dir ) ; do { de = readdir(dir) ; } while( (!strcmp(de->d_name,".")) || (!strcmp(de->d_name,"..")) ) ; }
-	if( de!=NULL ) GetExt( de->d_name, ext ) ; else strcpy( ext, "" ) ;
+	if( de!=NULL ) GetExt( de->d_name, ext, sizeof(ext) ) ; else strcpy( ext, "" ) ;
 	if( de!=NULL )
 	while( (de!=NULL)&&stricmp(ext,"BMP")&&stricmp(ext,"JPG")&&stricmp(ext,"JPEG") ) {
-		if( ( de = readdir(dir) ) != NULL ) GetExt( de->d_name, ext ) ; else { strcpy( ext, "" ) ; break ; }
+		if( ( de = readdir(dir) ) != NULL ) GetExt( de->d_name, ext, sizeof(ext) ) ; else { strcpy( ext, "" ) ; break ; }
 		}
 	if( de != NULL  ) {
-		sprintf( buffer,"%s\\%s", basename, de->d_name ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\%s", basename, de->d_name ) ;
 		Filename * fn = filename_from_str( buffer ) ;
 		conf_set_filename( conf,CONF_bg_image_filename,fn);
 		filename_free(fn);
@@ -3129,7 +3369,7 @@ static LRESULT CALLBACK InputMultilineCallBack (HWND hwnd, UINT message, WPARAM 
 						for( i=0 ; i<=(HIWORD(result)-LOWORD(result)) ; i++ )
 						InputBoxResult[i]=InputBoxResult[i+LOWORD(result)];
 					}
-				if( InputBoxResult[strlen(InputBoxResult)-1] != '\n' ) 
+				if( strlen(InputBoxResult)==0 || InputBoxResult[strlen(InputBoxResult)-1] != '\n' )
 					strcat( InputBoxResult, "\n" ) ;
 
 				SendKeyboard( MainHwnd, InputBoxResult ) ;
@@ -3396,9 +3636,8 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 					if( !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) ) {
 						if( ( fp=fopen(buffer,"rb")) != NULL ) {
 							while( fgets( buffer, 4096, fp )!=NULL ){
-								while( (buffer[strlen(buffer)-1]=='\n')
-									||(buffer[strlen(buffer)-1]=='\r') ) buffer[strlen(buffer)-1]='\0';
-								if( buffer[strlen(buffer)-1]=='\\' ) {
+								{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r') ) buffer[_l-1]='\0'; }
+								if( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\\' ) {
 									buffer[strlen(buffer)-1]='\0' ;
 									
 									if( (p=strstr(buffer,"\\"))!=NULL ){
@@ -3673,7 +3912,7 @@ void SaveCurrentSetting( HWND hwnd ) {
 		strcpy( buffer, "Connection files (*.ktx)|*.ktx|" ) ;
 	}
 	strcat( buffer, "All files (*.*)|*.*|" ) ;
-	if( buffer[strlen(buffer)-1]!='|' ) strcat( buffer, "|" ) ;
+	if( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='|' ) strcat( buffer, "|" ) ;
 	if( SaveFileName( hwnd, filename, "Save file...", buffer ) ) {
 		save_open_settings_forced( filename, conf ) ;
 		}
@@ -3713,7 +3952,7 @@ int InternalCommand( HWND hwnd, char * st ) {
 		return 1 ;
 	} else if( !strcmp( st, "/urlregex" ) ) { 
 		char b[1024] ;
-		sprintf(b,"%d: %s",conf_get_int(conf,CONF_url_defregex),conf_get_str(conf,CONF_url_regex));
+		snprintf(b,sizeof(b),"%d: %s",conf_get_int(conf,CONF_url_defregex),conf_get_str(conf,CONF_url_regex));
 		MessageBox( NULL, b, "URL regex", MB_OK ) ; return 1 ; 
 #endif
 	} else if( !strcmp( st, "/save" ) ) { 
@@ -4002,7 +4241,7 @@ winscp()
 echo "\033]0;__ws:"`pwd`"\007"
 }
 Il faut ensuite simplement taper: winscp
-C'est traite dans KiTTY par la fonction ManageLocalCmd
+(historique: jadis traite par ManageLocalCmd, supprime en 0.84.1.37 - voir la note securite plus haut)
 
 Le chemin vers l'exécutable WinSCP est défini dans la variable WInSCPPath. Elle peut pointer sur un fichier .BAT pour passer des options supplémentaires.
 @ECHO OFF
@@ -4041,10 +4280,10 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
 			bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_sftpconnect) ) ;
 		} else {
-			bcat( cmd, sizeof(cmd), user!=NULL ? user : conf_get_str_ambi(conf,CONF_username,NULL) ) ;
+			urlcat( cmd, sizeof(cmd), user!=NULL ? user : conf_get_str_ambi(conf,CONF_username,NULL) ) ;
 			if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
-				/* plaintext at runtime; do NOT MASKPASS. (Goes into the WinSCP URL.) */
-				bcat( cmd, sizeof(cmd), ":" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_password) ) ;
+				/* plaintext at runtime; do NOT MASKPASS. (Goes into the WinSCP URL -- #535: percent-encode so '@' '/' etc. can't redirect the host.) */
+				bcat( cmd, sizeof(cmd), ":" ) ; urlcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_password) ) ;
 			}
 			bcat( cmd, sizeof(cmd), "@" ) ;
 			if( poss( ":", host!=NULL ? host : conf_get_str(conf,CONF_host) )>0 ) { bcat(cmd,sizeof(cmd),"[") ; bcat(cmd,sizeof(cmd), host!=NULL ? host : conf_get_str(conf,CONF_host)) ; bcat(cmd,sizeof(cmd),"]") ; }
@@ -4064,13 +4303,14 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			}
 		}
 	} else {
-		snprintf( cmd, sizeof(cmd), "\"%s\" %s://%s", shortpath, proto, conf_get_str_ambi(conf,CONF_username,NULL) ) ;
+		snprintf( cmd, sizeof(cmd), "\"%s\" %s://", shortpath, proto ) ;
+		urlcat( cmd, sizeof(cmd), conf_get_str_ambi(conf,CONF_username,NULL) ) ; /* #535: percent-encode userinfo */
 		if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
 			char bufpass[1024] ;
 			bcat( cmd, sizeof(cmd), ":" ) ;
 			snprintf(bufpass,sizeof(bufpass),"%s",conf_get_str(conf,CONF_password)); /* bounded */
 			/* plaintext at runtime; do NOT MASKPASS */
-			bcat( cmd, sizeof(cmd), bufpass ) ;
+			urlcat( cmd, sizeof(cmd), bufpass ) ;
 			memset(bufpass,0,strlen(bufpass));
 		}
 		bcat( cmd, sizeof(cmd), "@" ) ;
@@ -4371,7 +4611,8 @@ void ReadAutoCommandFromFile( const char * filename ) {
 	char *pst, * buffer = NULL ;
 	if( existfile( filename ) ) {
 		l=filesize(filename) ;
-		buffer=(char*)malloc(5*l);
+		buffer=(char*)malloc(5*l+1);
+		buffer[0]='\0' ;
 		pst = buffer ;
 		if( ( fp = fopen( filename,"rb") ) != NULL ) {
 			while( fgets( pst, 1024, fp ) != NULL ) {
@@ -4380,8 +4621,9 @@ void ReadAutoCommandFromFile( const char * filename ) {
 			fclose( fp ) ;
 		}
 	}
-	while( (n=poss("\r",buffer))>0 ) { del(buffer,n,1) ; }	
-	while( buffer[strlen(buffer)-1]=='\n' ) { buffer[strlen(buffer)-1]='\0' ; }
+	if( buffer == NULL ) return ;
+	while( (n=poss("\r",buffer))>0 ) { del(buffer,n,1) ; }
+	{ size_t _l; while( (_l=strlen(buffer))>0 && buffer[_l-1]=='\n' ) buffer[_l-1]='\0' ; }
 	while( (n=poss("\n",buffer))>0 ) { buffer[n-1]='n' ; insert(buffer,"\\",n) ; }
 	conf_set_str(conf, CONF_autocommand, buffer );
 	free(buffer);
@@ -4406,7 +4648,8 @@ void ReadInitScript( const char * filename ) {
 	if( name != NULL ) {
 		if( existfile( name ) ) {
 			l=filesize(name) ;
-			buffer=(char*)malloc(5*l);
+			buffer=(char*)malloc(5*l+1);
+			buffer[0]='\0' ;
 			if( ( fp = fopen( name,"rb") ) != NULL ) {
 				if( ScriptFileContent!= NULL ) free( ScriptFileContent ) ;
 				l = 0 ;
@@ -4415,7 +4658,7 @@ void ReadInitScript( const char * filename ) {
 				ScriptFileContent[0] = '\0' ;
 				pst=ScriptFileContent ;
 				while( fgets( buffer, 1024, fp ) != NULL ) {
-					while( (buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r') ) buffer[strlen(buffer)-1]='\0' ;
+					{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r') ) buffer[_l-1]='\0' ; }
 					if( strlen( buffer ) > 0 ) {
 						strcpy( pst, buffer ) ;
 						pst = pst + strlen( pst ) + 1 ;
@@ -5344,9 +5587,8 @@ void LoadParameters( void ) {
 	}
 	if( ReadParameter( INIT_SECTION, "fileextension", buffer ) ) {
 		if( strlen(buffer) > 0 ) {
-			if( buffer[0] != '.' ) { strcpy( FileExtension, "." ) ; } else { strcpy( FileExtension, "" ) ; }
-			strcat( FileExtension, buffer ) ;
-			while( FileExtension[strlen(FileExtension)-1]==' ' ) { FileExtension[strlen(FileExtension)-1] = '\0' ; }
+			snprintf( FileExtension, sizeof(FileExtension), "%s%s", (buffer[0]!='.')?".":"", buffer ) ;
+			{ size_t _l; while( (_l=strlen(FileExtension))>0 && FileExtension[_l-1]==' ' ) FileExtension[_l-1]='\0'; }
 		}				
 	}
 	if( ReadParameter( INIT_SECTION, "hostkeyextension", buffer ) ) {
@@ -5783,6 +6025,7 @@ void InitWinMain( void ) {
 	// Initialise les logs
 	char hostname[4096], username[4096] ;
 	NETDBG_TS("before GetUserName/GetComputerName");
+	i = sizeof(username) ;
 	GetUserName( username, (void*)&i ) ;
 	i = 4095 ;
 	GetComputerName( hostname, (void*)&i ) ;
@@ -5827,8 +6070,6 @@ void InitWinMain( void ) ;
 void InitShortcuts( void ) ;
 int DefineShortcuts( char * buf ) ;
 
-// Gestion de commandes a distance
-int ManageLocalCmd( HWND hwnd, const char * cmd ) ;
 
 // Gestion des raccourcis
 int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) ;

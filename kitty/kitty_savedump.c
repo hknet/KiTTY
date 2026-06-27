@@ -230,9 +230,9 @@ void SaveDumpListFile( FILE * fp, const char * directory ) {
 	if( ( dir=opendir( directory ) ) != NULL ) {
 		while( ( de=readdir( dir ) ) != NULL ) {
 			if( strcmp(de->d_name,".")&&strcmp(de->d_name,"..") ) {
-				sprintf( buffer, "%s\\%s", directory, de->d_name ) ;
-				if( GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY ) {  
-					strcat( buffer, "\\" ) ; 
+				snprintf( buffer, sizeof(buffer), "%s\\%s", directory, de->d_name ) ;
+				if( GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY ) {
+					{ size_t _bl=strlen(buffer); snprintf( buffer+_bl, sizeof(buffer)-_bl, "\\" ) ; }
 					fprintf( fp, "%s\n", buffer ) ;
 					SaveDumpListFile( fp, buffer ) ;
 				}
@@ -251,7 +251,7 @@ void SaveDumpListConf( FILE *fp, const char *directory ) {
 	if( ( dir=opendir( directory ) ) != NULL ) {
 		while( ( de=readdir( dir ) ) != NULL ) {
 			if( strcmp(de->d_name,".")&&strcmp(de->d_name,"..") ) {
-				sprintf( fullpath, "%s\\%s", directory, de->d_name ) ;
+				snprintf( fullpath, sizeof(fullpath), "%s\\%s", directory, de->d_name ) ;
 				if( GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY )
 					SaveDumpListConf( fp, fullpath ) ;
 				else {
@@ -271,20 +271,9 @@ void SaveDumpListConf( FILE *fp, const char *directory ) {
 Terminal* GetTerminal() ;
 void kitty_term_copyall(Terminal *term) ;
 void SaveDumpClipBoard( FILE *fp ) {
-	char *pst = NULL ;
-	if( GetTerminal()==NULL ) return ;
-	kitty_term_copyall(GetTerminal()) ;
-	if( OpenClipboard(NULL) ) {
-		HGLOBAL hglb ;
-		if( (hglb = GetClipboardData( CF_TEXT ) ) != NULL ) {
-			if( ( pst = GlobalLock( hglb ) ) != NULL ) {
-				//fputs( pst, fp ) ;
-				fwrite( pst, 1, strlen(pst), fp ) ;
-				GlobalUnlock( hglb ) ;
-				}
-			}
-		CloseClipboard();
-		}
+	/* SECURITY: the clipboard may hold a password or other secret the user just
+	 * copied; do not dump its contents into the diagnostic file. */
+	if( fp != NULL ) fputs( "<redacted: clipboard contents not included>\n", fp ) ;
 	}
 
 //#include <unistd.h>
@@ -299,7 +288,7 @@ void SaveDumpEnvironment( FILE *fp ) {
 void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	char *buf=NULL ;
 	CountUp();
-	fprintf( fp, "MASTER_PASSWORD=%s\n", MASTER_PASSWORD ) ;
+	fprintf( fp, "MASTER_PASSWORD=<redacted>\n" ) ;
 	fprintf( fp, "[[PuTTY structure configuration]]\n" ) ;
 
 	/* Basic options */
@@ -323,7 +312,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "proxy_host=%s\n", 		conf_get_str(conf,CONF_proxy_host) ) ;
 	fprintf( fp, "proxy_port=%d\n", 		conf_get_int(conf,CONF_proxy_port) ) ;
 	fprintf( fp, "proxy_username=%s\n", 		conf_get_str(conf,CONF_proxy_username) ) ;
-	fprintf( fp, "proxy_password=%s\n", 		conf_get_str(conf,CONF_proxy_password) ) ;
+	fprintf( fp, "proxy_password=<redacted>\n" ) ;
 	fprintf( fp, "proxy_telnet_command=%s\n", 	conf_get_str(conf,CONF_proxy_telnet_command) ) ;
 	fprintf( fp, "proxy_log_to_term=%d\n", 		conf_get_int(conf,CONF_proxy_log_to_term) ) ;
 
@@ -562,12 +551,8 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "winscpoptions=%s\n", 		conf_get_str(conf,CONF_winscpoptions) ) ;
 	fprintf( fp, "winscprawsettings=%s\n", 		conf_get_str(conf,CONF_winscprawsettings) ) ;
 	fprintf( fp, "folder=%s\n", 			conf_get_str(conf,CONF_folder) ) ;
-	/* On decrypte le password */
-	char bufpass[4096] ;
-	memcpy( bufpass, conf_get_str(conf,CONF_password), 4095 ) ; bufpass[4095]='\0';
-	MASKPASS(GetCryptSaltFlag(),bufpass);
-	fprintf( fp, "password=%s\n",			bufpass ) ;
-	memset(bufpass,0,strlen(bufpass));
+	/* Password redacted from dumps for security (do not write the masked value) */
+	fprintf( fp, "password=<redacted>\n" ) ;
 
 	fprintf( fp, "autocommand=%s\n",		conf_get_str(conf,CONF_autocommand) ) ;
 	fprintf( fp, "autocommandout=%s\n",		conf_get_str(conf,CONF_autocommandout) ) ;
@@ -576,16 +561,10 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "logtimerotation=%d\n", 		conf_get_int(conf,CONF_logtimerotation) ) ;
 	fprintf( fp, "logtimestamp=%s\n", 		conf_get_str(conf,CONF_logtimestamp) ) ;
 	fprintf( fp, "scriptfile=%s\n",			filename_to_str(conf_get_filename(conf,CONF_scriptfile)) ) ;
-	fprintf( fp, "scriptfilecontent=%s",		conf_get_str(conf,CONF_scriptfilecontent) ) ;
-	/* On decrypte le script */
-	buf=(char*)malloc( strlen(conf_get_str(conf,CONF_scriptfilecontent)) + 20 ) ;
-	strcpy( buf, conf_get_str(conf,CONF_scriptfilecontent) ) ;
-	long l=decryptstring( GetCryptSaltFlag(), buf, MASTER_PASSWORD ) ;
-	int i;
-	for( i=0; i<l ; i++ ) { if( buf[i]=='\0' ) buf[i]='\n' ; }
-	fprintf( fp, " (%s)\n", buf ) ;
-	free(buf);
-	buf=NULL;
+	/* SECURITY: login/automation script content may hold inline secrets; redact.
+	 * (Previously dumped both the encrypted blob AND the MASTER_PASSWORD-decrypted
+	 * plaintext.) */
+	fprintf( fp, "scriptfilecontent=<redacted>\n" ) ;
 	fprintf( fp, "save_windowpos=%d\n",		conf_get_bool(conf,CONF_save_windowpos) ) ;
 	fprintf( fp, "xpos=%d\n",			conf_get_int(conf,CONF_xpos) ) ;
 	fprintf( fp, "ypos=%d\n",			conf_get_int(conf,CONF_ypos) ) ;
@@ -718,7 +697,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 #ifdef MOD_PROXY
 	fprintf( fp,"ProxySelectionFlag=%d\n",GetProxySelectionFlag() );
 #endif
-	if( PasswordConf!= NULL ) fprintf( fp, "PasswordConf=%s\n", PasswordConf ) ;
+	if( PasswordConf!= NULL ) fprintf( fp, "PasswordConf=<redacted>\n" ) ; /* SECURITY: protection password for the password store */
 	fprintf( fp, "SessionFilterFlag=%d\nSessionsInDefaultFlag=%d\nDefaultSettingsFlag=%d\nDblClickFlag=%d\nImageViewerFlag=%d\nImageSlideDelay=%d\nMaxBlinkingTime=%d\nPrintCharSize=%d\nPrintMaxLinePerPage=%d\nPrintMaxCharPerLine=%d\nReadOnlyFlag=%d\nScrumbleKeyFlag=%d\n"
 	,SessionFilterFlag,SessionsInDefaultFlag,DefaultSettingsFlag,DblClickFlag,ImageViewerFlag,ImageSlideDelay,MaxBlinkingTime,PrintCharSize,PrintMaxLinePerPage,PrintMaxCharPerLine,GetReadOnlyFlag(),GetScrumbleKeyFlag());
 	fprintf( fp, "AntiIdleCount=%d\nAntiIdleCountMax=%d\nIconeNum=%d\n"
@@ -731,7 +710,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	if( KittySavFile!= NULL ) fprintf( fp, "KittySavFile=%s\n", KittySavFile ) ;
 	if( KiTTYClassName != NULL ) fprintf( fp, "KiTTYClassName=%s\n", KiTTYClassName ) ;
 	if( CtHelperPath!= NULL ) fprintf( fp, "CtHelperPath=%s\n", CtHelperPath ) ;
-	if( strlen(ManagePassPhrase(NULL))>0 ) fprintf( fp, "PassPhrase=%s\n", ManagePassPhrase(NULL)) ;
+	if( strlen(ManagePassPhrase(NULL))>0 ) fprintf( fp, "PassPhrase=<redacted>\n") ; /* SECURITY: was clear-text; match password redaction */
 	fprintf( fp, "is_backend_connected=%d\n", is_backend_connected ) ;
 	fprintf( fp, "is_backend_first_connected=%d\n", is_backend_first_connected ) ;
 }
@@ -851,7 +830,7 @@ void SaveDumpFile( char * filename ) {
 	if( IniFileFlag != SAVEMODE_REG ) { WriteCountUpAndPath() ; }
 	
 	if( strlen(InitialDirectory)==0 ) { GetInitialDirectory( InitialDirectory ) ; }
-	sprintf( buffer, "%s\\%s", InitialDirectory, filename ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, filename ) ;
 
 	if( ( fpout = fopen( buffer, "w" ) ) != NULL ) {
 		
@@ -889,12 +868,12 @@ void SaveDumpFile( char * filename ) {
 				}
 			}
 		else if( IniFileFlag == SAVEMODE_DIR ) {
-			sprintf( buffer, "%s\\Commands", ConfigDirectory ) ; SaveDumpListConf( fpout, buffer ) ;
-			sprintf( buffer, "%s\\Folders", ConfigDirectory ) ; SaveDumpListConf( fpout, buffer ) ;
-			sprintf( buffer, "%s\\Launcher", ConfigDirectory ) ; SaveDumpListConf( fpout, buffer ) ;
-			sprintf( buffer, "%s\\Sessions", ConfigDirectory ) ; SaveDumpListConf( fpout, buffer ) ;
-			sprintf( buffer, "%s\\Sessions_Commands", ConfigDirectory ) ; SaveDumpListConf( fpout, buffer ) ;
-			sprintf( buffer, "%s\\SshHostKeys", ConfigDirectory ) ; SaveDumpListConf( fpout, buffer ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\Commands", ConfigDirectory ) ; SaveDumpListConf( fpout, buffer ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\Folders", ConfigDirectory ) ; SaveDumpListConf( fpout, buffer ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\Launcher", ConfigDirectory ) ; SaveDumpListConf( fpout, buffer ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\Sessions", ConfigDirectory ) ; SaveDumpListConf( fpout, buffer ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\Sessions_Commands", ConfigDirectory ) ; SaveDumpListConf( fpout, buffer ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\SshHostKeys", ConfigDirectory ) ; SaveDumpListConf( fpout, buffer ) ;
 			}
 		fflush( fpout ) ;
 			
@@ -953,14 +932,16 @@ void SaveDumpFile( char * filename ) {
 			fputs( "\n@@@ Debug log file @@@\n\n", fpout ) ;
 			SaveDebugFile( "kitty.log", fpout ) ; 
 		}
-		if( existfile( filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ) { 
+		if( existfile( filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ) {
 			fputs( "\n@@@ Private key file @@@\n\n", fpout ) ;
-			SaveDebugFile( (char*)filename_to_str(conf_get_filename(conf,CONF_keyfile)), fpout ) ;
+			/* SECURITY: do NOT dump the private key material; note its presence only. */
+			fputs( "<redacted: private key file not included>\n", fpout ) ;
 		}
 #ifdef MOD_RUTTY
-		if( existfile( filename_to_str(conf_get_filename(conf,CONF_script_filename)) ) ) { 
+		if( existfile( filename_to_str(conf_get_filename(conf,CONF_script_filename)) ) ) {
 			fputs( "\n@@@ RuTTY script file @@@\n\n", fpout ) ;
-			SaveDebugFile( filename_to_str(conf_get_filename(conf,CONF_script_filename)), fpout ) ;
+			/* SECURITY: script may hold inline secrets; note presence only. */
+			fputs( "<redacted: rutty script file not included>\n", fpout ) ;
 		}
 #endif
 		fputs( "\n@@@ ScreenShot @@@\n\n", fpout ) ;
@@ -968,8 +949,8 @@ void SaveDumpFile( char * filename ) {
 			
 		fclose( fpout ) ;
 
-		sprintf( buffer, "%s\\%s", InitialDirectory, filename ) ;
-		sprintf( buffer2, "%s\\%s", InitialDirectory, "kitty.dmp.bcr" ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, filename ) ;
+		snprintf( buffer2, sizeof(buffer2), "%s\\%s", InitialDirectory, "kitty.dmp.bcr" ) ;
 		bcrypt_file_base64( buffer, buffer2, MASTER_PASSWORD, 80 ) ; unlink( buffer ) ; rename( buffer2, buffer ) ;
 		}
 	}

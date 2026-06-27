@@ -17,6 +17,7 @@ extern void mungestr(const char *in, char *out);    /* kitty_commun.c */
 extern int  existfile(const char *filename);        /* kitty_tools.c */
 extern void CreateFileAssoc(void);                  /* kitty_registry.c: .ktx file association */
 extern void CreateSSHHandler(void);                 /* kitty_registry.c: telnet/ssh/putty URL handlers */
+extern int  kitty_get_last_session(char *buf, int buflen); /* storage.c: remember-last-session */
 #endif
 
 extern bool sesslist_demo_mode;
@@ -330,6 +331,25 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
          * (explicitly) specified a launchable configuration.
          */
         if (!(special_launchable_argument || cmdline_host_ok(conf))) {
+#ifdef MOD_PERSO
+            /* KiTTY: auto-load the last-used session into the config box so it
+             * opens pre-filled (and the saved-session list auto-selects it).
+             * Only if it still exists. */
+            {
+                char lastsess[512];
+                if (kitty_get_last_session(lastsess, sizeof(lastsess)) &&
+                    *lastsess && strcmp(lastsess, "Default Settings") != 0) {
+                    struct sesslist sl;
+                    int i, found = 0;
+                    get_sesslist(&sl, true);
+                    for (i = 0; i < sl.nsessions; i++)
+                        if (!strcmp(sl.sessions[i], lastsess)) { found = 1; break; }
+                    get_sesslist(&sl, false);
+                    if (found)
+                        load_settings(lastsess, conf);
+                }
+            }
+#endif
             NETDBG_TS("cmdline: before do_config (config box)");
             if (!do_config(conf))
                 cleanup_exit(0);

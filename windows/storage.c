@@ -56,6 +56,98 @@ void kitty_set_registry_root(int use_putty)
 static int kitty_root_is_putty(void)
 { return strstr(reg_base_buf, "SimonTatham") != NULL; }
 
+/* KiTTY: whether the saved-session list also shows (and lets you delete)
+ * sessions from the read-only fallback hives (old 9bis KiTTY + stock PuTTY).
+ * Default OFF, so by default KiTTY only shows/deletes its own hive and can never
+ * touch a stock-PuTTY session without the user opting in. Persisted as a DWORD
+ * under the base hive; toggled by a checkbox in the config dialog. */
+static int kitty_show_foreign = -1;   /* -1 = not yet read */
+
+/* Count real sessions in the primary hive (excluding "Default Settings"), so we
+ * can decide the adaptive default for ShowForeignSessions. */
+static int kitty_primary_session_count(void)
+{
+    int n = 0;
+    HKEY key = open_regkey_ro(HKEY_CURRENT_USER, puttystr);
+    if (key) {
+        char *name;
+        int idx = 0;
+        while ((name = enum_regkey(key, idx)) != NULL) {
+            idx++;
+            strbuf *sb = strbuf_new();
+            unescape_registry_key(name, sb);
+            if (strcmp(sb->s, "Default Settings") != 0)
+                n++;
+            strbuf_free(sb);
+            sfree(name);
+        }
+        close_regkey(key);
+    }
+    return n;
+}
+
+int kitty_get_show_foreign_sessions(void)
+{
+    if (kitty_show_foreign < 0) {
+        DWORD v = 0, sz = sizeof(v);
+        if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "ShowForeignSessions",
+                         RRF_RT_REG_DWORD, NULL, &v, &sz) == ERROR_SUCCESS) {
+            /* User has made an explicit choice: honour it. */
+            kitty_show_foreign = v ? 1 : 0;
+        } else {
+            /* No explicit choice yet: adaptive default.  If the primary hive
+             * has no real sessions of its own, the user almost certainly still
+             * keeps everything in the old 9bis / PuTTY hive, so show those
+             * (otherwise the session list would appear empty).  Once the
+             * primary hive holds real sessions, default to a clean own-hive
+             * view.  Not persisted, so it keeps adapting until the user
+             * toggles the checkbox explicitly. */
+            kitty_show_foreign =
+                (!kitty_root_is_putty() && kitty_primary_session_count() == 0)
+                ? 1 : 0;
+        }
+    }
+    return kitty_show_foreign;
+}
+void kitty_set_show_foreign_sessions(int on)
+{
+    kitty_show_foreign = on ? 1 : 0;
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        DWORD v = (DWORD)kitty_show_foreign;
+        RegSetValueExA(hk, "ShowForeignSessions", 0, REG_DWORD,
+                       (const BYTE *)&v, sizeof(v));
+        RegCloseKey(hk);
+    }
+}
+
+/* KiTTY: remember the last session loaded in the config box, so it can be
+ * re-selected and re-loaded the next time the box opens. Stored as a string
+ * value "LastSession" under the base hive. */
+void kitty_set_last_session(const char *sessionname)
+{
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        const char *v = sessionname ? sessionname : "";
+        RegSetValueExA(hk, "LastSession", 0, REG_SZ,
+                       (const BYTE *)v, (DWORD)strlen(v) + 1);
+        RegCloseKey(hk);
+    }
+}
+int kitty_get_last_session(char *buf, int buflen)
+{
+    DWORD sz = (DWORD)buflen;
+    if (!buf || buflen <= 0) return 0;
+    buf[0] = '\0';
+    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "LastSession",
+                     RRF_RT_REG_SZ, NULL, buf, &sz) != ERROR_SUCCESS)
+        return 0;
+    buf[buflen-1] = '\0';
+    return buf[0] ? 1 : 0;
+}
+
 /*
  * KiTTY: expose the runtime registry base (e.g. "Software\9bis.com\KiTTY")
  * so legacy modules -- notably the tray launcher in kitty_launcher.c -- read
@@ -109,6 +201,31 @@ char *kitty_read_session_comment(const char *sessionname)
     }
     strbuf_free(sb);
     return result;
+}
+
+/* KiTTY: which hive does a session live in? 0 = our (primary kapper.net) hive,
+ * 1 = old 9bis KiTTY hive, 2 = stock PuTTY hive. Used to tag foreign sessions in
+ * the saved-sessions list. */
+int kitty_session_origin(const char *sessionname)
+{
+    if (!sessionname || !*sessionname) return 0;
+    if (!strcmp(sessionname, "Default Settings")) return 0;   /* never tag the default */
+    strbuf *sb = strbuf_new();
+    escape_registry_key(sessionname, sb);
+    int origin = 0;
+    HKEY k = open_regkey_ro(HKEY_CURRENT_USER, puttystr, sb->s);
+    if (k) {
+        close_regkey(k);                       /* present in primary -> native */
+    } else if (!kitty_root_is_putty()) {
+        k = open_regkey_ro(HKEY_CURRENT_USER, OLD_KITTY_HIVE_SESSIONS, sb->s);
+        if (k) { close_regkey(k); origin = 1; }
+        else {
+            k = open_regkey_ro(HKEY_CURRENT_USER, PUTTY_HIVE_SESSIONS, sb->s);
+            if (k) { close_regkey(k); origin = 2; }
+        }
+    }
+    strbuf_free(sb);
+    return origin;
 }
 
 static bool tried_shgetfolderpath = false;
@@ -307,16 +424,25 @@ void close_settings_r(settings_r *handle)
 
 void del_settings(const char *sessionname)
 {
-    HKEY rkey = open_regkey_rw(HKEY_CURRENT_USER, puttystr);
-    if (!rkey)
-        return;
-
     strbuf *sb = strbuf_new();
     escape_registry_key(sessionname, sb);
-    del_regkey(rkey, sb->s);
-    strbuf_free(sb);
 
-    close_regkey(rkey);
+    /* Delete from the primary hive AND (KiTTY) the read-only fallback hives that
+     * enum_settings_start lists from, so a session that only exists in an
+     * imported/older hive can actually be removed instead of reappearing in the
+     * list after a "delete". Mirrors the enumeration's hive set. */
+    HKEY rkey = open_regkey_rw(HKEY_CURRENT_USER, puttystr);
+    if (rkey) { del_regkey(rkey, sb->s); close_regkey(rkey); }
+    /* Only reach the fallback hives when the user has opted to show them (so a
+     * stock-PuTTY session is never deleted unless it's deliberately visible). */
+    if (!kitty_root_is_putty() && kitty_get_show_foreign_sessions()) {
+        HKEY ok = open_regkey_rw(HKEY_CURRENT_USER, OLD_KITTY_HIVE_SESSIONS);
+        if (ok) { del_regkey(ok, sb->s); close_regkey(ok); }
+        HKEY pk = open_regkey_rw(HKEY_CURRENT_USER, PUTTY_HIVE_SESSIONS);
+        if (pk) { del_regkey(pk, sb->s); close_regkey(pk); }
+    }
+
+    strbuf_free(sb);
 
     remove_session_from_jumplist(sessionname);
 }
@@ -339,7 +465,7 @@ settings_e *enum_settings_start(void)
     const char *hives[3];
     int nhives = 1;
     hives[0] = puttystr;
-    if (!kitty_root_is_putty()) {
+    if (!kitty_root_is_putty() && kitty_get_show_foreign_sessions()) {
         hives[nhives++] = OLD_KITTY_HIVE_SESSIONS;
         hives[nhives++] = PUTTY_HIVE_SESSIONS;
     }

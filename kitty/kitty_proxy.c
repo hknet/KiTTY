@@ -42,8 +42,9 @@ void InitProxyList(void) {
 		RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime);
 		if( cSubKeys>0 )
 			for (i=0; i<cSubKeys; i++) {
-				DWORD cchValue = MAX_VALUE_NAME; 
+				DWORD cchValue = MAX_VALUE_NAME;
 				char lpData[4096] ;
+				if( j>=MAX_PROXY ) break; /* SECURITY: bound proxies[] */
 				if( RegEnumKeyEx(hKey, i, lpData, &cchValue, NULL, NULL, NULL, &ftLastWriteTime) == ERROR_SUCCESS ) {
 					if( strcmp(lpData,"None") && strcmp(lpData,"Default") ) {
 						proxies[j].name=(char*)malloc(strlen(lpData)+1);
@@ -61,7 +62,8 @@ void InitProxyList(void) {
 		if(!MakeDir( fullpath ) ) { MessageBox(NULL,"Unable to create the proxy definitions directory","Error",MB_OK|MB_ICONERROR); }
 		if( (dir=opendir(fullpath)) != NULL ) {
 			while( (de=readdir(dir)) != NULL )
-			if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") )	{
+			if( j>=MAX_PROXY ) break; /* SECURITY: bound proxies[] */
+			else if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") )	{
 				sprintf( fullpath, "%s\\Proxies\\%s", ConfigDirectory, de->d_name ) ;
 				if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_NORMAL) ) {
 					if( strcmp(de->d_name,"None") && strcmp(de->d_name,"Default") ) {
@@ -87,10 +89,10 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 	debug_logevent( "Load proxy \"%s\" definition", name ) ;
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 		HKEY hKey ;
-		sprintf( buffer, "%s\\Proxies\\", PUTTY_REG_POS ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Proxies\\", PUTTY_REG_POS ) ;
 		char *b = (char*)malloc(4*strlen(name)+1);
 		mungestr(name,b);
-		strcat(buffer,b);
+		{ size_t _bl=strlen(buffer); snprintf( buffer+_bl, sizeof(buffer)-_bl, "%s", b ) ; }
 		free(b);
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) {
 			debug_logevent( "Unable to load proxy definition" ) ;

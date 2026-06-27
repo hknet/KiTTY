@@ -79,9 +79,19 @@ struct WinGuiSeat {
     struct unicode_data ucsdata;
     bool session_closed;
     bool reconfiguring;
+    bool autopw_tried;       /* KiTTY auto-login: the stored CONF_password has been
+                              * auto-answered once on THIS connection. Prevents
+                              * re-sending a rejected password on every server
+                              * re-prompt (which burns MaxAuthTries -> IP ban).
+                              * Reset per connection in start_backend. */
 #ifdef MOD_RECONNECT
     time_t last_reconnect;   /* KiTTY auto-reconnect: wakeup de-bounce, per window */
     int    reconnect_tries;  /* KiTTY auto-reconnect: backoff/loop cap */
+    bool   ever_authenticated; /* KiTTY: THIS session reached post-auth at least once.
+                                * Gates auto-reconnect so an authentication failure is
+                                * never re-dialed (which would burn auth attempts and get
+                                * the client IP banned). Per-session, unlike the process-
+                                * global is_backend_first_connected. */
 #endif
 
     const SessionSpecial *specials;
