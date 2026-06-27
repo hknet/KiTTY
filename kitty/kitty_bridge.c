@@ -117,16 +117,14 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
     if (user != NULL) conf_set_str(newconf, CONF_username, user);
     if (pass != NULL) conf_set_str(newconf, CONF_password, pass);
 
-#ifndef MOD_NOPASSWORD
-    {
-        char pst[4096];
-        strcpy(pst, conf_get_str(newconf, CONF_password));
-        MASKPASS(GetCryptSaltFlag(), pst);
-        if (pass != NULL) strcpy(pst, pass);
-        conf_set_str(newconf, CONF_password, pst);
-        memset(pst, 0, strlen(pst));
-    }
-#else
+    /* Keep CONF_password PLAINTEXT here. newconf is serialised straight to the
+     * child via the inherit-only file-mapping (RunSessionWithConfSettings) or
+     * saved to __STARTUP, and the child reads CONF_password raw at connect time.
+     * The old MASKPASS here turned the (plaintext) password into high-byte
+     * garbage -> Duplicate-Session / open-new-with-current auto-login sent a
+     * corrupted password (even for ASCII). Runtime conf is plaintext (see
+     * window.c get_userpass_input), so just pass it through. */
+#ifdef MOD_NOPASSWORD
     conf_set_str(newconf, CONF_password, "");
 #endif
 
