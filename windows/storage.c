@@ -233,8 +233,152 @@ static HMODULE shell32_module = NULL;
 DECL_WINDOWS_FUNCTION(static, HRESULT, SHGetFolderPathA,
                       (HWND, int, HANDLE, DWORD, LPSTR));
 
+/* ===================================================================== *
+ * KiTTY portable storage backend (fork-native flat .ini/dir format).
+ *
+ * When portable mode is active, each saved session is ONE file
+ *   <session-dir>\<munged-sessionname>
+ * holding lines  Key=munged-value  (value %HH-escaped so newlines/specials
+ * round-trip). Folders are just a normal "Folder" value inside the file,
+ * exactly as the registry treats them (no folder-nested subdirectories).
+ *
+ * Self-contained (no kitty_store.c / kitty_commun.c dependency) so libsettings
+ * still links into plink/pscp/puttygen, which never call the setters below and
+ * therefore stay registry-only (g_store_mode == 0). The dispatch sits BELOW the
+ * credential-crypto hooks in read/write_setting_s, so portable passwords are
+ * encrypted at rest exactly like registry ones.
+ * ===================================================================== */
+static int  g_store_mode = 0;        /* 0 = registry; nonzero = portable file mode */
+static char g_sess_dir[1024] = "";   /* directory holding per-session files */
+void kitty_set_storage_mode(int mode) { g_store_mode = mode; }
+void kitty_set_session_dir(const char *dir)
+{
+    if (dir && dir[0]) {
+        strncpy(g_sess_dir, dir, sizeof(g_sess_dir) - 1);
+        g_sess_dir[sizeof(g_sess_dir) - 1] = '\0';
+    } else {
+        g_sess_dir[0] = '\0';
+    }
+}
+static int store_is_file(void) { return g_store_mode != 0 && g_sess_dir[0] != '\0'; }
+
+static const char ksf_hex[] = "0123456789ABCDEF";
+static int ksf_special(unsigned char c)
+{
+    return c < 0x20 || c == 0x7f || c == '%' || c == '\\' || c == '/' ||
+           c == ':' || c == '*' || c == '?' || c == '"' || c == '<' ||
+           c == '>' || c == '|';
+}
+static char *ksf_munge(const char *in)            /* snewn'd */
+{
+    char *out = snewn(strlen(in) * 3 + 1, char), *o = out;
+    for (; *in; in++) {
+        unsigned char c = (unsigned char)*in;
+        if (ksf_special(c)) { *o++ = '%'; *o++ = ksf_hex[c >> 4]; *o++ = ksf_hex[c & 15]; }
+        else *o++ = (char)c;
+    }
+    *o = '\0';
+    return out;
+}
+static int ksf_hexv(char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+}
+static char *ksf_unmunge(const char *in)          /* snewn'd */
+{
+    char *out = snewn(strlen(in) + 1, char), *o = out;
+    while (*in) {
+        if (*in == '%' && in[1] && in[2]) {
+            int hi = ksf_hexv(in[1]), lo = ksf_hexv(in[2]);
+            if (hi >= 0 && lo >= 0) { *o++ = (char)((hi << 4) | lo); in += 3; continue; }
+        }
+        *o++ = *in++;
+    }
+    *o = '\0';
+    return out;
+}
+
+struct ksf_item { char *key; char *val; struct ksf_item *next; };
+static char *ksf_list_get(struct ksf_item *h, const char *key)   /* borrowed or NULL */
+{
+    for (; h; h = h->next) if (!strcmp(h->key, key)) return h->val;
+    return NULL;
+}
+static void ksf_list_set(struct ksf_item **h, const char *key, const char *val)
+{
+    struct ksf_item *it;
+    for (it = *h; it; it = it->next)
+        if (!strcmp(it->key, key)) {
+            char *nv = dupstr(val ? val : "");
+            if (it->val) { memset(it->val, 0, strlen(it->val)); sfree(it->val); }
+            it->val = nv;
+            return;
+        }
+    it = snew(struct ksf_item);
+    it->key = dupstr(key);
+    it->val = dupstr(val ? val : "");
+    it->next = *h;
+    *h = it;
+}
+static void ksf_list_free(struct ksf_item *h)
+{
+    while (h) {
+        struct ksf_item *n = h->next;
+        sfree(h->key);
+        if (h->val) { memset(h->val, 0, strlen(h->val)); sfree(h->val); }
+        sfree(h);
+        h = n;
+    }
+}
+static char *ksf_session_path(const char *sessionname)   /* snewn'd or NULL */
+{
+    char *m = ksf_munge(sessionname);
+    char *p = dupprintf("%s\\%s", g_sess_dir, m);
+    sfree(m);
+    return p;
+}
+static struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) */
+{
+    FILE *fp = fopen(path, "rb");
+    struct ksf_item *head = NULL;
+    char line[8192];
+    if (!fp) return NULL;
+    while (fgets(line, sizeof(line), fp)) {
+        size_t l = strlen(line);
+        char *eq, *val;
+        while (l && (line[l-1] == '\n' || line[l-1] == '\r')) line[--l] = '\0';
+        eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        val = ksf_unmunge(eq + 1);
+        ksf_list_set(&head, line, val ? val : "");
+        if (val) sfree(val);
+    }
+    fclose(fp);
+    return head;
+}
+static void ksf_save(const char *path, struct ksf_item *h)
+{
+    FILE *fp;
+    CreateDirectoryA(g_sess_dir, NULL);   /* harmless if it already exists */
+    fp = fopen(path, "wb");
+    if (!fp) return;
+    for (; h; h = h->next) {
+        char *mv = ksf_munge(h->val ? h->val : "");
+        fprintf(fp, "%s=%s\n", h->key, mv ? mv : "");
+        if (mv) sfree(mv);
+    }
+    fclose(fp);
+}
+
 struct settings_w {
     HKEY sesskey;
+    int is_file;
+    char *fpath;
+    struct ksf_item *items;
 };
 
 settings_w *open_settings_w(const char *sessionname, char **errmsg)
@@ -243,6 +387,24 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
 
     if (!sessionname || !*sessionname)
         sessionname = "Default Settings";
+
+    if (store_is_file()) {
+        settings_w *handle = snew(settings_w);
+        handle->sesskey = NULL;
+        handle->is_file = 1;
+        handle->items = NULL;
+        handle->fpath = ksf_session_path(sessionname);
+        if (!handle->fpath) {
+            sfree(handle);
+            *errmsg = dupstr("Unable to build portable session path");
+            return NULL;
+        }
+        /* Pre-load any existing file so a save overwrites/adds in place and never
+         * drops keys it didn't rewrite (matches the registry open-then-overwrite
+         * semantics; the full conf is normally rewritten on each save anyway). */
+        handle->items = ksf_load(handle->fpath);
+        return handle;
+    }
 
     strbuf *sb = strbuf_new();
     escape_registry_key(sessionname, sb);
@@ -258,6 +420,9 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
 
     settings_w *handle = snew(settings_w);
     handle->sesskey = sesskey;
+    handle->is_file = 0;
+    handle->fpath = NULL;
+    handle->items = NULL;
     return handle;
 }
 
@@ -581,6 +746,17 @@ static void ksec_after_load(int slot, const char *stored, int rv)
     if (rv < 0 && stored && stored[0]) g_ksec_orig[slot] = ksec_dup(stored);
 }
 
+/* Backend dispatch: store a string value either in the file-mode item list or
+ * the registry. Sits below the credential-crypto hooks, so both backends get
+ * the same at-rest encryption. */
+static void ksf_or_reg_put(settings_w *handle, const char *key, const char *value)
+{
+    if (handle->is_file)
+        ksf_list_set(&handle->items, key, value ? value : "");
+    else
+        put_reg_sz(handle->sesskey, key, value);
+}
+
 void write_setting_s(settings_w *handle, const char *key, const char *value)
 {
     if (!handle)
@@ -592,26 +768,40 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
          * clobbering it. Otherwise encrypt the plaintext at rest. */
         const char *keep = (value && value[0]) ? NULL : g_ksec_orig[slot];
         if (keep) {
-            put_reg_sz(handle->sesskey, key, keep);
+            ksf_or_reg_put(handle, key, keep);
         } else {
             char *blob = ksec_protect(value ? value : "");
-            put_reg_sz(handle->sesskey, key, blob ? blob : "");
+            ksf_or_reg_put(handle, key, blob ? blob : "");
             if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
         }
         return;
     }
-    put_reg_sz(handle->sesskey, key, value);
+    ksf_or_reg_put(handle, key, value);
 }
 
 void write_setting_i(settings_w *handle, const char *key, int value)
 {
-    if (handle)
+    if (!handle)
+        return;
+    if (handle->is_file) {
+        char buf[32];
+        sprintf(buf, "%d", value);
+        ksf_list_set(&handle->items, key, buf);
+    } else {
         put_reg_dword(handle->sesskey, key, value);
+    }
 }
 
 void close_settings_w(settings_w *handle)
 {
-    close_regkey(handle->sesskey);
+    if (!handle)
+        return;
+    if (handle->is_file) {
+        if (handle->fpath) { ksf_save(handle->fpath, handle->items); sfree(handle->fpath); }
+        ksf_list_free(handle->items);
+    } else {
+        close_regkey(handle->sesskey);
+    }
     sfree(handle);
 }
 
@@ -621,12 +811,27 @@ void close_settings_w(settings_w *handle)
 struct settings_r {
     HKEY sesskey;
     int src_hive;
+    int is_file;
+    struct ksf_item *items;
 };
 
 settings_r *open_settings_r(const char *sessionname)
 {
     if (!sessionname || !*sessionname)
         sessionname = "Default Settings";
+
+    if (store_is_file()) {
+        char *path = ksf_session_path(sessionname);
+        if (!path) return NULL;
+        if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) { sfree(path); return NULL; }
+        settings_r *handle = snew(settings_r);
+        handle->sesskey = NULL;
+        handle->src_hive = KSEC_HIVE_PRIMARY;
+        handle->is_file = 1;
+        handle->items = ksf_load(path);
+        sfree(path);
+        return handle;
+    }
 
     strbuf *sb = strbuf_new();
     escape_registry_key(sessionname, sb);
@@ -651,6 +856,8 @@ settings_r *open_settings_r(const char *sessionname)
     settings_r *handle = snew(settings_r);
     handle->sesskey = sesskey;
     handle->src_hive = src;
+    handle->is_file = 0;
+    handle->items = NULL;
     return handle;
 }
 
@@ -734,7 +941,13 @@ char *read_setting_s(settings_r *handle, const char *key)
 {
     if (!handle)
         return NULL;
-    char *raw = get_reg_sz(handle->sesskey, key);
+    char *raw;
+    if (handle->is_file) {
+        const char *v = ksf_list_get(handle->items, key);
+        raw = v ? dupstr(v) : NULL;
+    } else {
+        raw = get_reg_sz(handle->sesskey, key);
+    }
     int slot = kitty_secret_slot(key);
     if (slot >= 0 && raw) {
         char *pt = NULL;
@@ -764,8 +977,14 @@ char *read_setting_s(settings_r *handle, const char *key)
 
 int read_setting_i(settings_r *handle, const char *key, int defvalue)
 {
+    if (!handle)
+        return defvalue;
+    if (handle->is_file) {
+        const char *v = ksf_list_get(handle->items, key);
+        return v ? atoi(v) : defvalue;
+    }
     DWORD val;
-    if (!handle || !get_reg_dword(handle->sesskey, key, &val))
+    if (!get_reg_dword(handle->sesskey, key, &val))
         return defvalue;
     else
         return val;
@@ -864,13 +1083,23 @@ void write_setting_filename(settings_w *handle,
 void close_settings_r(settings_r *handle)
 {
     if (handle) {
-        close_regkey(handle->sesskey);
+        if (handle->is_file)
+            ksf_list_free(handle->items);
+        else
+            close_regkey(handle->sesskey);
         sfree(handle);
     }
 }
 
 void del_settings(const char *sessionname)
 {
+    if (store_is_file()) {
+        char *path = ksf_session_path(sessionname);
+        if (path) { DeleteFileA(path); sfree(path); }
+        remove_session_from_jumplist(sessionname);
+        return;
+    }
+
     strbuf *sb = strbuf_new();
     escape_registry_key(sessionname, sb);
 
@@ -898,6 +1127,7 @@ struct settings_e {
     char **names;       /* merged, deduped, still-escaped key names */
     int count;
     int i;
+    int is_file;        /* names are plain (already-unmunged) session names */
 };
 
 settings_e *enum_settings_start(void)
@@ -906,6 +1136,31 @@ settings_e *enum_settings_start(void)
     e->names = NULL;
     e->count = 0;
     e->i = 0;
+    e->is_file = 0;
+
+    if (store_is_file()) {
+        e->is_file = 1;
+        int alloc = 0;
+        char pat[1100];
+        WIN32_FIND_DATAA fd;
+        HANDLE hf;
+        snprintf(pat, sizeof(pat), "%s\\*", g_sess_dir);
+        hf = FindFirstFileA(pat, &fd);
+        if (hf != INVALID_HANDLE_VALUE) {
+            do {
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+                char *nm = ksf_unmunge(fd.cFileName);   /* file name -> session name */
+                if (!nm) continue;
+                if (e->count >= alloc) {
+                    alloc = alloc ? alloc * 2 : 16;
+                    e->names = sresize(e->names, alloc, char *);
+                }
+                e->names[e->count++] = nm;
+            } while (FindNextFileA(hf, &fd));
+            FindClose(hf);
+        }
+        return e;
+    }
 
     /* KiTTY: enumerate the active hive first, then PuTTY's hive (deduped), so
      * KiTTY sessions and (for convenience) PuTTY sessions both show up. */
@@ -945,7 +1200,10 @@ bool enum_settings_next(settings_e *e, strbuf *sb)
 {
     if (e->i >= e->count)
         return false;
-    unescape_registry_key(e->names[e->i], sb);
+    if (e->is_file)
+        put_dataz(sb, e->names[e->i]);       /* already a plain session name */
+    else
+        unescape_registry_key(e->names[e->i], sb);
     e->i++;
     return true;
 }
