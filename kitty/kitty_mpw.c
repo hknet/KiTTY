@@ -129,3 +129,17 @@ int kitty_mpw_unprotect(const char *stored,
     *out = pt;
     return 1;
 }
+
+/* Self-register with the storage layer (windows/storage.c) at startup, so any
+ * tool that LINKS this file gets master-password support without touching its
+ * main(); tools that don't link it leave MPW unavailable (-> DPAPI fallback). */
+extern void kitty_register_mpw_crypto(
+    void (*)(const char *, const unsigned char *, int, unsigned char *),
+    char *(*)(const char *, const unsigned char *),
+    int  (*)(const char *, const unsigned char *, char **),
+    void (*)(unsigned char *, int));
+static void __attribute__((constructor)) kitty_mpw_autoreg(void)
+{
+    kitty_register_mpw_crypto(kitty_mpw_derive, kitty_mpw_protect,
+                              kitty_mpw_unprotect, kitty_mpw_random_salt);
+}
