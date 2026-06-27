@@ -63,9 +63,12 @@ static void kitty_autopw_handler(dlgcontrol *ctrl, dlgparam *dlg,
 {
     Conf *conf = (Conf *)data;
     if (event == EVENT_REFRESH) {
-        dlg_editbox_set(ctrl, dlg, conf_get_str(conf, CONF_password));
+        /* CONF_password is kept UTF-8 (the SSH password prompt is UTF-8, and the
+         * storage layer normalises legacy values to UTF-8 on load), so display
+         * and read the field as UTF-8 rather than the system codepage. */
+        dlg_editbox_set_utf8(ctrl, dlg, conf_get_str(conf, CONF_password));
     } else if (event == EVENT_VALCHANGE) {
-        char *val = dlg_editbox_get(ctrl, dlg);
+        char *val = dlg_editbox_get_utf8(ctrl, dlg);
         /* Warn only when a password is being SET where conf currently has none
          * (i.e. a genuinely new auto-login password). Editing a session that
          * already has a stored password leaves conf non-empty, so no warning -

@@ -547,6 +547,30 @@ static char *ksec_legacy_decrypt(const char *stored, HKEY sesskey)
     return out;
 }
 
+/* Normalise the auto-login password to UTF-8 (the SSH password prompt is UTF-8).
+ * A value that's already valid UTF-8 (ASCII included) is left untouched; a legacy
+ * value in the system codepage (older KiTTY stored it via GetWindowTextA) is
+ * converted CP_ACP -> UTF-8 so it matches what typing it would send. Takes
+ * ownership of s (malloc'd); returns a malloc'd result. Idempotent. */
+static char *ksec_to_utf8(char *s)
+{
+    if (!s || !s[0]) return s;
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, NULL, 0) > 0)
+        return s;                                  /* already valid UTF-8 */
+    int wn = MultiByteToWideChar(CP_ACP, 0, s, -1, NULL, 0);
+    if (wn <= 0) return s;
+    wchar_t *w = (wchar_t *)malloc(wn * sizeof(wchar_t));
+    if (!w) return s;
+    MultiByteToWideChar(CP_ACP, 0, s, -1, w, wn);
+    int un = WideCharToMultiByte(CP_UTF8, 0, w, -1, NULL, 0, NULL, NULL);
+    char *u = (char *)malloc(un > 0 ? un : 1);
+    if (u) WideCharToMultiByte(CP_UTF8, 0, w, -1, u, un, NULL, NULL);
+    free(w);
+    if (!u) return s;
+    memset(s, 0, strlen(s)); free(s);
+    return u;
+}
+
 char *read_setting_s(settings_r *handle, const char *key)
 {
     if (!handle)
@@ -554,28 +578,24 @@ char *read_setting_s(settings_r *handle, const char *key)
     char *raw = get_reg_sz(handle->sesskey, key);
     int slot = kitty_secret_slot(key);
     if (slot >= 0 && raw) {
+        char *pt = NULL;
         /* Old-KiTTY hive "Password" (slot 0): always legacy-encrypted there (we
          * never wrote to that hive). Decrypt it; the next Save re-stores it
          * DPAPI-encrypted in our own hive. ProxyPassword was never encrypted, and
          * the PuTTY/primary hives only hold our cleartext or DPAPI blobs. */
         if (handle->src_hive == KSEC_HIVE_OLDKITTY && slot == 0 &&
-            strncmp(raw, KITTY_SECRET_DPAPI_MARK, strlen(KITTY_SECRET_DPAPI_MARK)) != 0) {
-            char *leg = ksec_legacy_decrypt(raw, handle->sesskey);
-            if (leg) {
-                sfree(raw);
-                char *ret = dupstr(leg);
-                memset(leg, 0, strlen(leg)); free(leg);
-                return ret;
-            }
-            /* couldn't decode -> fall through to normal handling */
+            strncmp(raw, KITTY_SECRET_DPAPI_MARK, strlen(KITTY_SECRET_DPAPI_MARK)) != 0)
+            pt = ksec_legacy_decrypt(raw, handle->sesskey);   /* malloc or NULL */
+        if (!pt) {
+            /* DPAPI blob -> plaintext; unmarked value passes through. Record an
+             * undecryptable-here blob for the never-wipe guard on next save. */
+            int rv = ksec_unprotect(raw, &pt);
+            ksec_after_load(slot, raw, rv);
         }
-        /* Decrypt a DPAPI blob to plaintext for conf; an unmarked legacy value
-         * passes through unchanged. Record an undecryptable-here blob for the
-         * never-wipe guard on the next save. Return an sfree-able string. */
-        char *pt = NULL;
-        int rv = ksec_unprotect(raw, &pt);
-        ksec_after_load(slot, raw, rv);
         sfree(raw);
+        /* Migrate the auto-login password to UTF-8 (slot 0) so a legacy ANSI value
+         * works at the UTF-8 prompt without re-entry; re-saved UTF-8 thereafter. */
+        if (slot == 0) pt = ksec_to_utf8(pt);
         char *ret = dupstr(pt ? pt : "");
         if (pt) { memset(pt, 0, strlen(pt)); free(pt); }
         return ret;
