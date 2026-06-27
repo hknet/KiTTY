@@ -5961,6 +5961,16 @@ void InitWinMain( void ) {
 		}
 	else if( IniFileFlag == SAVEMODE_DIR ){ // Mode de sauvegarde directory
 		if( strlen(sesspath) == 0 ) { loadPath() ; }
+		/* KiTTY 0.84: activate the portable file storage backend (windows/storage.c)
+		 * now that sesspath is known. Sessions are then read/written as one file per
+		 * session under sesspath, instead of the registry. Decoupled setters so
+		 * libsettings stays registry-only in tools that never call them. */
+		{
+			extern void kitty_set_storage_mode( int ) ;
+			extern void kitty_set_session_dir( const char * ) ;
+			kitty_set_storage_mode( SAVEMODE_DIR ) ;
+			kitty_set_session_dir( sesspath ) ;
+		}
 		/* Test Default Settings */
 		/*
 		char * defaultfile = (char*)malloc( strlen(sesspath)+20 ) ;
