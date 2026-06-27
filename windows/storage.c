@@ -342,8 +342,12 @@ static unsigned char *ksec_b64_decode(const char *in, int *outlen)
     return out;
 }
 
-/* force-legacy escape hatch for automation: "PasswordScheme" DWORD (0=DPAPI default,
- * 1=legacy plaintext) under the active hive. */
+/* at-rest scheme: "PasswordScheme" DWORD under the active hive.
+ * 0 = DPAPI (default), 1 = legacy plaintext (automation escape hatch),
+ * 2 = master-password (MPW1, machine-independent). */
+#define KSEC_SCHEME_DPAPI  0
+#define KSEC_SCHEME_LEGACY 1
+#define KSEC_SCHEME_MPW    2
 static int ksec_scheme(void)
 {
     static int cached = -1;
@@ -351,11 +355,114 @@ static int ksec_scheme(void)
         DWORD v = 0, sz = sizeof(v);
         if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "PasswordScheme",
                          RRF_RT_REG_DWORD, NULL, &v, &sz) == ERROR_SUCCESS)
-            cached = (v == 1) ? 1 : 0;
+            cached = (v == 1) ? 1 : (v == 2) ? 2 : 0;
         else
             cached = 0;
     }
     return cached;
+}
+
+/* ---- master-password (MPW1) glue ----------------------------------------
+ * The crypto lives in kitty/kitty_mpw.c (Argon2id + AES-CBC/HMAC), which needs
+ * the crypto lib + CSPRNG and is linked only into tools that have them; it
+ * self-registers these ops via a constructor. Tools without it (puttytel/pterm)
+ * leave the pointers NULL, so MPW is unavailable and we fall back to DPAPI.
+ * The unlock state, per-store salt and verifier (registry) live here. */
+#define KSEC_MPW_KEYLEN  64    /* must match KITTY_MPW_DERIVED_LEN */
+#define KSEC_MPW_SALTLEN 16    /* must match KITTY_MPW_SALT_LEN */
+#define KSEC_MPW_MARK    "MPW1:"
+#define KSEC_MPW_VERIFY  "KiTTY-MPW-verify"
+static void (*g_mpw_derive)(const char *, const unsigned char *, int, unsigned char *) = NULL;
+static char *(*g_mpw_protect)(const char *, const unsigned char *) = NULL;
+static int  (*g_mpw_unprotect)(const char *, const unsigned char *, char **) = NULL;
+static void (*g_mpw_randsalt)(unsigned char *, int) = NULL;
+void kitty_register_mpw_crypto(
+    void (*derive)(const char *, const unsigned char *, int, unsigned char *),
+    char *(*protect)(const char *, const unsigned char *),
+    int  (*unprotect)(const char *, const unsigned char *, char **),
+    void (*randsalt)(unsigned char *, int))
+{
+    g_mpw_derive = derive; g_mpw_protect = protect;
+    g_mpw_unprotect = unprotect; g_mpw_randsalt = randsalt;
+}
+
+static unsigned char g_mpw_key[KSEC_MPW_KEYLEN];
+static int   g_mpw_unlocked = 0;
+static char *g_mpw_passphrase = NULL;            /* from -masterpwfile / API */
+static char *(*g_mpw_prompt)(int creating) = NULL; /* GUI/console prompt (Phase 3) */
+
+void kitty_set_master_passphrase(const char *pass)
+{
+    if (g_mpw_passphrase) { memset(g_mpw_passphrase, 0, strlen(g_mpw_passphrase)); free(g_mpw_passphrase); }
+    g_mpw_passphrase = (pass && pass[0]) ? ksec_dup(pass) : NULL;
+    g_mpw_unlocked = 0;                           /* re-derive with the new passphrase */
+}
+void kitty_set_master_pw_prompt(char *(*fn)(int creating)) { g_mpw_prompt = fn; }
+
+static int mpw_load_salt(unsigned char salt[KSEC_MPW_SALTLEN])
+{
+    char b[256]; DWORD sz = sizeof(b);
+    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "MasterPwSalt",
+                     RRF_RT_REG_SZ, NULL, b, &sz) != ERROR_SUCCESS) return 0;
+    int n = 0; unsigned char *d = ksec_b64_decode(b, &n);
+    if (!d || n != KSEC_MPW_SALTLEN) { if (d) free(d); return 0; }
+    memcpy(salt, d, KSEC_MPW_SALTLEN); free(d); return 1;
+}
+static void mpw_reg_set_sz(const char *name, const char *val)
+{
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        RegSetValueExA(hk, name, 0, REG_SZ, (const BYTE *)val, (DWORD)strlen(val) + 1);
+        RegCloseKey(hk);
+    }
+}
+static char *mpw_reg_get_sz(const char *name)   /* malloc'd or NULL */
+{
+    char b[2048]; DWORD sz = sizeof(b);
+    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, name, RRF_RT_REG_SZ, NULL, b, &sz)
+        != ERROR_SUCCESS) return NULL;
+    return ksec_dup(b);
+}
+
+/* Derive (and cache) the master key. creating=1 (a save) may generate the salt +
+ * verifier; creating=0 (a load) requires an existing store. Returns 1 if unlocked. */
+static int mpw_ensure_unlocked(int creating)
+{
+    if (g_mpw_unlocked) return 1;
+    if (!g_mpw_derive || !g_mpw_protect || !g_mpw_unprotect || !g_mpw_randsalt)
+        return 0;                                /* MPW crypto not linked in this tool */
+
+    unsigned char salt[KSEC_MPW_SALTLEN];
+    if (!mpw_load_salt(salt)) {
+        if (!creating) return 0;
+        g_mpw_randsalt(salt, KSEC_MPW_SALTLEN);
+        char *sb = ksec_b64_encode(salt, KSEC_MPW_SALTLEN);
+        if (sb) { mpw_reg_set_sz("MasterPwSalt", sb); free(sb); }
+    }
+
+    char *pass = NULL;
+    if (g_mpw_passphrase) pass = ksec_dup(g_mpw_passphrase);
+    else if (g_mpw_prompt) pass = g_mpw_prompt(creating);
+    if (!pass || !pass[0]) { if (pass) { memset(pass, 0, strlen(pass)); free(pass); } return 0; }
+    g_mpw_derive(pass, salt, KSEC_MPW_SALTLEN, g_mpw_key);
+    memset(pass, 0, strlen(pass)); free(pass);
+
+    char *ver = mpw_reg_get_sz("MasterPwVerifier");   /* malloc'd (ksec_dup) */
+    if (ver) {
+        char *vpt = NULL; int rv = g_mpw_unprotect(ver, g_mpw_key, &vpt);
+        int okv = (rv == 1 && vpt && !strcmp(vpt, KSEC_MPW_VERIFY));
+        if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); }  /* snew'd by kitty_mpw */
+        free(ver);
+        if (!okv) { SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key)); return 0; } /* wrong passphrase */
+    } else if (creating) {
+        char *vb = g_mpw_protect(KSEC_MPW_VERIFY, g_mpw_key);  /* snew'd by kitty_mpw */
+        if (vb) { mpw_reg_set_sz("MasterPwVerifier", vb); sfree(vb); }
+    } else {
+        SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key)); return 0;  /* no verifier to check against */
+    }
+    g_mpw_unlocked = 1;
+    return 1;
 }
 
 /* plaintext -> stored form (malloc'd). Empty -> "". DPAPI by default; legacy
@@ -363,7 +470,13 @@ static int ksec_scheme(void)
 static char *ksec_protect(const char *plaintext)
 {
     if (!plaintext || !plaintext[0]) return ksec_dup("");
-    if (ksec_scheme() == 0) {
+    int scheme = ksec_scheme();
+    if (scheme == KSEC_SCHEME_MPW && mpw_ensure_unlocked(1)) {
+        char *mb = g_mpw_protect(plaintext, g_mpw_key);   /* "MPW1:..." (snew'd) */
+        if (mb) { char *res = ksec_dup(mb); sfree(mb); return res; }
+        /* else fall through to DPAPI so the secret is never lost */
+    }
+    if (scheme != KSEC_SCHEME_LEGACY) {   /* DPAPI (default), or MPW-unavailable fallback */
         DATA_BLOB in, out;
         in.pbData = (BYTE *)plaintext; in.cbData = (DWORD)strlen(plaintext);
         out.pbData = NULL; out.cbData = 0;
@@ -390,6 +503,14 @@ static int ksec_unprotect(const char *stored, char **out)
     size_t marklen = strlen(KITTY_SECRET_DPAPI_MARK);
     *out = NULL;
     if (!stored || !stored[0]) { *out = ksec_dup(""); return 0; }
+    if (!strncmp(stored, KSEC_MPW_MARK, strlen(KSEC_MPW_MARK))) {
+        if (mpw_ensure_unlocked(0)) {
+            char *pt = NULL; int rv = g_mpw_unprotect(stored, g_mpw_key, &pt); /* snew'd */
+            if (rv == 1 && pt) { char *res = ksec_dup(pt); sfree(pt); *out = res; return 1; }
+            if (pt) sfree(pt);
+        }
+        *out = ksec_dup(""); return -1;   /* MPW locked/wrong -> undecryptable (never-wipe) */
+    }
     if (!strncmp(stored, KITTY_SECRET_DPAPI_MARK, marklen)) {
         int blen = 0;
         unsigned char *blob = ksec_b64_decode(stored + marklen, &blen);
