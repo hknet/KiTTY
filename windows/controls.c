@@ -2221,6 +2221,22 @@ void dlg_checkbox_set(dlgcontrol *ctrl, dlgparam *dp, bool checked)
     CheckDlgButton(dp->hwnd, c->base_id, checked);
 }
 
+/* KiTTY: toggle the masking of a password editbox at runtime (for a
+ * "show password" checkbox). visible=true clears the password char so the
+ * text is shown; false restores the bullet mask. */
+void dlg_editbox_set_masked(dlgcontrol *ctrl, dlgparam *dp, bool visible)
+{
+    struct winctrl *c = dlg_findbyctrl(dp, ctrl);
+    if (!c || c->ctrl->type != CTRL_EDITBOX)
+        return;
+    HWND ed = GetDlgItem(dp->hwnd, c->base_id + 1);
+    if (!ed)
+        return;
+    /* 0x2022 (bullet) is the default Windows password char; 0 = show text. */
+    SendMessage(ed, EM_SETPASSWORDCHAR, visible ? 0 : 0x2022, 0);
+    InvalidateRect(ed, NULL, TRUE);
+}
+
 bool dlg_checkbox_get(dlgcontrol *ctrl, dlgparam *dp)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
