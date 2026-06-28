@@ -7601,9 +7601,18 @@ static int kitty_restore_window_placement(HWND hwnd)
     kitty_winpos_dbg("RESTORE key=%s saved=(%ld,%ld,%ld,%ld) onmonitor=%d",
                      keyname, saved.left, saved.top, saved.right, saved.bottom, onmon);
     if (!onmon) { kitty_winpos_dbg("RESTORE skipped: saved top-left off-screen"); return 0; }
-    int ok = SetWindowPos(hwnd, NULL, saved.left, saved.top, 0, 0,
-                          SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) ? 1 : 0;
-    kitty_winpos_dbg("RESTORE SetWindowPos(%ld,%ld) -> %d", saved.left, saved.top, ok);
+    /* Restore position AND size. The saved rect (GetWindowRect on close) holds
+     * both; the topology key guarantees the same monitor/DPI, so the physical
+     * size maps back to the same terminal cols/rows. Applying the size triggers
+     * WM_SIZE, which snaps the terminal grid to the client area. A degenerate
+     * saved size falls back to position-only. */
+    int w = saved.right - saved.left;
+    int h = saved.bottom - saved.top;
+    UINT flags = SWP_NOZORDER | SWP_NOACTIVATE;
+    if (w < 64 || h < 64) { w = 0; h = 0; flags |= SWP_NOSIZE; }
+    int ok = SetWindowPos(hwnd, NULL, saved.left, saved.top, w, h, flags) ? 1 : 0;
+    kitty_winpos_dbg("RESTORE SetWindowPos(%ld,%ld,%dx%d) -> %d",
+                     saved.left, saved.top, w, h, ok);
     return ok;
 }
 

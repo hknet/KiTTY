@@ -274,7 +274,10 @@ static unsigned ksec_cksum(const char *s)
 }
 void kitty_pwdebug(const char *fmt, ...)
 {
-    /* Debug build: always log, next to the running exe (no env var needed). */
+    /* Off by default (release): set env KITTY_PWDEBUG=1 to trace the password
+     * flow to kitty_pwdebug.log next to the running exe. Logs only lengths +
+     * a weak checksum + storage mode, never plaintext. */
+    if (!GetEnvironmentVariableA("KITTY_PWDEBUG", NULL, 0)) return;
     char path[1024], *bs;
     DWORD n = GetModuleFileNameA(NULL, path, sizeof(path) - 24);
     if (n == 0 || n >= sizeof(path) - 24) { strcpy(path, "kitty_pwdebug.log"); }

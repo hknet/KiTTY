@@ -701,12 +701,11 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 				case IDM_LAUNCHER+7:
 					if( LauncherConfReload ) InitLauncherRegistry() ;
 					RefreshMenuLauncher() ;
-					/* KiTTY: re-open the launcher menu after a manual Refresh so the
-					 * user can immediately pick a just-(re)loaded session, instead of
-					 * having to go back to the tray icon. Posted (not called inline) so
-					 * the current popup fully closes first -- re-entering TrackPopupMenu
-					 * from within its own WM_COMMAND would not display reliably. */
-					PostMessage( hwnd, KLWM_NOTIFYICON, IDI_PUTTY_LAUNCH, (LPARAM)WM_LBUTTONUP ) ;
+					/* KiTTY: just refresh the cached list and let the popup close
+					 * normally. (Previously it re-opened the menu at the current
+					 * cursor position, so the menu appeared to "move" to the mouse
+					 * and never dismissed - the rebuilt list is used on the next
+					 * open instead.) */
 					break ;
 				case IDM_GONEXT:
 					ManageGoNext( hwnd ) ;
