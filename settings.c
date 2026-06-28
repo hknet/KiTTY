@@ -709,6 +709,14 @@ bool load_settings(const char *section, Conf *conf)
     NETDBG_TS("load_settings: after load_open_settings");
     close_settings_r(sesskey);
 
+    /* KiTTY: remember the real saved session name so placeholders like %%s
+     * can be expanded in the window title. Skip the default settings pseudo
+     * session and non-existent sessions. (This is compiled into the shared
+     * settings library, so it is intentionally not guarded by MOD_PERSO.) */
+    if (exists && section && *section &&
+        strcmp(section, "Default Settings") != 0)
+        conf_set_str(conf, CONF_sessionname, section);
+
     /* KiTTY: do_defaults() loads "Default Settings" with section==NULL at the top
      * of EVERY launch; never push that to the jump list (it isn't a real recent
      * session, and doing so ran the slow Jump List COM rebuild on the startup

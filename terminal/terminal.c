@@ -12,6 +12,9 @@
 #include <assert.h>
 #include "putty.h"
 #include "terminal.h"
+#ifdef MOD_PERSO
+char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf);
+#endif
 #ifdef MOD_FAR2L
 #include "cdecode.h"
 #include "cencode.h"
@@ -1777,7 +1780,11 @@ void term_reconfig(Terminal *term, Conf *conf)
         const char *new_title = conf_get_str(conf, CONF_wintitle);
         if (strcmp(old_title, new_title)) {
             sfree(term->window_title);
+#ifdef MOD_PERSO
+            term->window_title = kitty_expand_wintitle(new_title, NULL, conf);
+#else
             term->window_title = dupstr(new_title);
+#endif
             term->wintitle_codepage = DEFAULT_CODEPAGE;
             term->win_title_pending = true;
             term_schedule_update(term);
@@ -1913,8 +1920,13 @@ void term_setup_window_titles(Terminal *term, const char *title_hostname)
     sfree(term->window_title);
     sfree(term->icon_title);
     if (*conf_title) {
+#ifdef MOD_PERSO
+        term->window_title = kitty_expand_wintitle(conf_title, title_hostname,
+                                                   term->conf);
+#else
         term->window_title = dupstr(conf_title);
-        term->icon_title = dupstr(conf_title);
+#endif
+        term->icon_title = dupstr(term->window_title);
     } else {
         if (title_hostname && *title_hostname)
             term->window_title = dupcat(title_hostname, " - ", appname);
