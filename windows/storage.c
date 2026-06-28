@@ -167,6 +167,7 @@ const char *kitty_registry_base(void) { return reg_base_buf; }
  * WITHOUT a comment would otherwise mask a comment still held in the old hive.
  * Reading the value directly also sidesteps the full load path. Caller frees.
  */
+static int store_is_file(void);   /* portable file-mode backend, defined below */
 char *kitty_read_session_comment(const char *sessionname)
 {
     static const char *const fallback_hives[] = {
@@ -176,6 +177,16 @@ char *kitty_read_session_comment(const char *sessionname)
 
     if (!sessionname || !*sessionname)
         sessionname = "Default Settings";
+
+    /* Portable (file) mode: the session lives in a file, not the registry, so
+     * read the Comment from there instead of scanning the (now-irrelevant)
+     * hives - otherwise the dialog shows a leftover registry comment. */
+    if (store_is_file()) {
+        settings_r *r = open_settings_r(sessionname);
+        char *c = r ? read_setting_s(r, "Comment") : NULL;
+        if (r) close_settings_r(r);
+        return c;
+    }
 
     strbuf *sb = strbuf_new();
     escape_registry_key(sessionname, sb);
