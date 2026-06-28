@@ -5,6 +5,14 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.38-beta — Unreleased
+
+- **Terminal/Keyboard shortcut collision fixed.** The "Word navigation" and
+  "Initial state of numeric keypad" radio-button groups both used the same
+  shortcut (`n`), causing an assertion failure when opening the
+  **Terminal/Keyboard** panel for a loaded session. Word navigation now uses
+  `l` (Left/Right), so the panel opens without a duplicate-shortcut error.
+
 ## 0.84.1.37-beta — 2026-06-27
 - **Saved session passwords now work for auto-login and WinSCP.** When a session
   was launched, KiTTY passed the stored password from the launcher to the terminal
