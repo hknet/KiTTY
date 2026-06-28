@@ -5,6 +5,12 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.38-beta — Unreleased
+
+- **Saved-session listbox selection fixed.** Typing a saved-session name that sorts
+  before "Default Settings" no longer highlights the default entry, and saving a
+  session keeps the correct selection after the list refreshes.
+
 ## 0.84.1.37-beta — 2026-06-27
 - **Saved session passwords now work for auto-login and WinSCP.** When a session
   was launched, KiTTY passed the stored password from the launcher to the terminal
