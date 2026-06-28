@@ -697,6 +697,13 @@ extern void kitty_netdbg_ts(const char *msg);
 #define NETDBG_TS(m) ((void)0)
 #endif
 
+static settings_load_hook_fn settings_load_hook = NULL;
+
+void settings_set_load_hook(settings_load_hook_fn hook)
+{
+    settings_load_hook = hook;
+}
+
 bool load_settings(const char *section, Conf *conf)
 {
     settings_r *sesskey;
@@ -708,6 +715,9 @@ bool load_settings(const char *section, Conf *conf)
     load_open_settings(sesskey, conf);
     NETDBG_TS("load_settings: after load_open_settings");
     close_settings_r(sesskey);
+
+    if (settings_load_hook)
+        settings_load_hook(section, conf, exists);
 
     /* KiTTY: do_defaults() loads "Default Settings" with section==NULL at the top
      * of EVERY launch; never push that to the jump list (it isn't a real recent

@@ -1829,6 +1829,113 @@ int ResizeWinList( HWND hwnd, int width, int height ) {
 	return NbWindows ;
 }
 
+#ifdef MOD_PERSO
+/* KiTTY: expand window-title placeholders.
+ *   %%h - hostname (falls back to the configured host)
+ *   %%s - saved session name
+ *   %%u - username
+ *   %%p - port number
+ *   %%P - protocol display name (title case)
+ *   %%f - folder name
+ *   %%l - forwarded local ports list
+ *   %%d - forwarded dynamic ports list
+ *   %%X (unknown) - collapse to a single '%', preserving the literal text
+ */
+char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf)
+{
+    strbuf *sb = strbuf_new();
+    const char *p = title;
+    while (*p) {
+        if (p[0] == '%' && p[1] == '%') {
+            const char *val = NULL;
+            char portbuf[32];
+            strbuf *list = NULL;
+            char code = p[2];
+
+            switch (code) {
+              case 'h':
+                val = hostname;
+                if (!val || !*val)
+                    val = conf_get_str(conf, CONF_host);
+                if (!val)
+                    val = "";
+                break;
+              case 's':
+                val = conf_get_str(conf, CONF_sessionname);
+                if (!val)
+                    val = "";
+                break;
+              case 'u':
+                val = conf_get_str_ambi(conf, CONF_username, NULL);
+                if (!val)
+                    val = "";
+                break;
+              case 'f':
+                val = conf_get_str(conf, CONF_folder);
+                if (!val)
+                    val = "";
+                break;
+              case 'p':
+                sprintf(portbuf, "%d", conf_get_int(conf, CONF_port));
+                val = portbuf;
+                break;
+              case 'P': {
+                const struct BackendVtable *vt =
+                    backend_vt_from_proto(conf_get_int(conf, CONF_protocol));
+                val = vt ? vt->displayname_tc : "";
+                break;
+              }
+              case 'l':
+              case 'd': {
+                char *key, *valfwd;
+                list = strbuf_new();
+                for (valfwd = conf_get_str_strs(conf, CONF_portfwd, NULL, &key);
+                     valfwd != NULL;
+                     valfwd = conf_get_str_strs(conf, CONF_portfwd, key, &key)) {
+                    const char *k = key;
+                    if (k[0] == ' ')
+                        k++;
+                    if ((code == 'l' && k[0] == 'L' &&
+                         strcmp(valfwd, "D") != 0) ||
+                        (code == 'd' && k[0] == 'L' &&
+                         !strcmp(valfwd, "D"))) {
+                        const char *port = k + 1;
+                        if (list->len > 0)
+                            put_fmt(list, ", %s", port);
+                        else
+                            put_fmt(list, "%s", port);
+                    }
+                }
+                val = list->s;
+                break;
+              }
+              default:
+                val = NULL;
+                break;
+            }
+
+            if (val) {
+                put_data(sb, val, strlen(val));
+                p += 3;
+                if (list)
+                    strbuf_free(list);
+            } else {
+                put_byte(sb, '%');
+                p += 2;
+            }
+        } else {
+            put_byte(sb, *p);
+            p++;
+        }
+    }
+    {
+        char *result = dupstr(sb->s);
+        strbuf_free(sb);
+        return result;
+    }
+}
+#endif
+
 void set_title( TermWin *tw, const char *title ) { return win_set_title(tw,title,CP_ACP) ; } // Disparue avec la version 0.71
 void ManageProtect( HWND hwnd, TermWin *tw, char * title ) {
 	HMENU m ;

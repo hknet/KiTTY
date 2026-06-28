@@ -18,6 +18,17 @@ extern int  existfile(const char *filename);        /* kitty_tools.c */
 extern void CreateFileAssoc(void);                  /* kitty_registry.c: .ktx file association */
 extern void CreateSSHHandler(void);                 /* kitty_registry.c: telnet/ssh/putty URL handlers */
 extern int  kitty_get_last_session(char *buf, int buflen); /* storage.c: remember-last-session */
+
+static void kitty_settings_load_hook(const char *section, Conf *conf, bool exists)
+{
+    /* KiTTY: remember the real saved session name so placeholders like %%s
+     * can be expanded in the window title. Keep shared settings.c free of
+     * KiTTY policy: it only calls this hook when the KiTTY GUI target registers
+     * it. */
+    if (exists && section && *section &&
+        strcmp(section, "Default Settings") != 0)
+        conf_set_str(conf, CONF_sessionname, section);
+}
 #endif
 
 extern bool sesslist_demo_mode;
@@ -55,6 +66,9 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
     }
     conf_set_int(conf, CONF_logtype, LGTYP_NONE);
 
+#ifdef MOD_PERSO
+    settings_set_load_hook(kitty_settings_load_hook);
+#endif
     do_defaults(NULL, conf);
     NETDBG_TS("cmdline: after do_defaults");
 

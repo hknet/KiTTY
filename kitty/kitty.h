@@ -68,6 +68,9 @@ void SetCapsLockFlag( const int flag ) ;
 int GetTitleBarFlag(void) ;
 void SetTitleBarFlag( const int flag ) ;
 
+// KiTTY: expand window-title placeholders (%%h, %%s, %%u, %%p, %%P, %%f, %%l, %%d)
+char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf) ;
+
 // Flag pour passer en mode visualiseur d'images
 // extern int ImageViewerFlag ;
 int GetImageViewerFlag(void) ;

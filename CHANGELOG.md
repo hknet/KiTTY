@@ -5,6 +5,15 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## Unreleased
+
+- **Window title placeholders.** The **Window Title** setting now expands dynamic
+  placeholders so the title can reflect the active connection: `%%h` (hostname),
+  `%%s` (saved session name), `%%u` (username), `%%p` (port), `%%P` (protocol),
+  `%%f` (folder), `%%l` (local forwarded ports), and `%%d` (dynamic/SOCKS
+  forwarded ports). See [`docs/window-title-placeholders.md`](docs/window-title-placeholders.md).
+  Contributed by m-hume.
+
 ## 0.84.1.39-beta — 2026-06-30
 
 - **Data-integrity fix: legacy (old-KiTTY) passwords now decrypt correctly.**

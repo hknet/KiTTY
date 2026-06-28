@@ -2004,6 +2004,8 @@ char *get_remote_username(Conf *conf); /* dynamically allocated */
 char *save_settings(const char *section, Conf *conf);
 void save_open_settings(settings_w *sesskey, Conf *conf);
 bool load_settings(const char *section, Conf *conf);
+typedef void (*settings_load_hook_fn)(const char *section, Conf *conf, bool exists);
+void settings_set_load_hook(settings_load_hook_fn hook);
 void load_open_settings(settings_r *sesskey, Conf *conf);
 void get_sesslist(struct sesslist *, bool allocate);
 bool do_defaults(const char *, Conf *);

@@ -174,7 +174,10 @@ void kitty_font_resize(Terminal *term, Conf *conf, int dec) {
 
 void kitty_protect(HWND hwnd, TermWin *tw, Conf *conf) {
     /* ManageProtect only reads title (passes to set_title); cast is safe */
-    ManageProtect(hwnd, tw, (char*)conf_get_str(conf, CONF_wintitle));
+    char *title = kitty_expand_wintitle(conf_get_str(conf, CONF_wintitle),
+                                        conf_get_str(conf, CONF_host), conf);
+    ManageProtect(hwnd, tw, title);
+    sfree(title);
 }
 void kitty_print(HWND hwnd) { ManagePrint(hwnd); }
 

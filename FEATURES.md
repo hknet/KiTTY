@@ -45,6 +45,7 @@ one is available.
   - [Font management](#font-management)
   - [Word navigation modifier](#word-navigation-modifier)
   - [Quick start of a duplicate session](#quick-start-of-a-duplicate-session)
+  - [Window title placeholders](#window-title-placeholders)
   - [Background image](#background-image)
 - **Other features**
   - [Automatic saving](#automatic-saving)
@@ -345,6 +346,27 @@ xterm-bitmap arrow-key mode.
 KiTTY lets you instantly open a second window that inherits all of the current session's settings, so you can run another connection to the same host without reopening the launcher or re-entering details. For an even faster shortcut, hold **CTRL + SHIFT** and click the middle of the active window with the **left mouse button** to launch the duplicate.
 
 **How to enable:** System menu **Duplicate Session** — opens a new window with the current session's settings.
+
+(no screenshot)
+
+### Window title placeholders
+
+KiTTY can expand dynamic placeholders in the **Window Title** setting so the title reflects the active connection.
+
+**How to use:** Enter a title string such as `%%h - %%s` in the session's **Window Title** field. The available placeholders are:
+
+| Placeholder | Value shown in the window title |
+|---|---|
+| `%%h` | Hostname (falls back to the configured host) |
+| `%%s` | Saved session name |
+| `%%u` | Username |
+| `%%p` | Port number |
+| `%%P` | Protocol display name (e.g. `SSH`) |
+| `%%f` | Folder name the session belongs to |
+| `%%l` | Local forwarded ports (blank if none configured) |
+| `%%d` | Dynamic/SOCKS forwarded ports (blank if none configured) |
+
+For full details and examples, see [`docs/window-title-placeholders.md`](docs/window-title-placeholders.md). If a remote shell later replaces the title, enable **Terminal → Features → Disable remote-controlled window title changing** (`NoRemoteWinTitle=1`) to keep the placeholder-expanded title.
 
 (no screenshot)
 
