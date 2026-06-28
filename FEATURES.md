@@ -46,6 +46,7 @@ one is available.
   - [Word navigation modifier](#word-navigation-modifier)
   - [Quick start of a duplicate session](#quick-start-of-a-duplicate-session)
   - [Background image](#background-image)
+  - [Window title placeholders](#window-title-placeholders)
 - **Other features**
   - [Automatic saving](#automatic-saving)
   - [pscp.exe and WinSCP integration](#pscpexe-and-winscp-integration)
@@ -349,6 +350,26 @@ KiTTY lets you instantly open a second window that inherits all of the current s
 (no screenshot)
 
 ### Background image
+
+
+### Window title placeholders
+
+KiTTY can expand dynamic placeholders in the **Window Title** setting so the title reflects the active connection.
+
+**How to use:** Enter a title string such as `%%h - %%s` in the session's **Window Title** field. The available placeholders are:
+
+| Placeholder | Value shown in the window title |
+|---|---|
+| `%%h` | Hostname (falls back to the configured host) |
+| `%%s` | Saved session name |
+| `%%u` | Username |
+| `%%p` | Port number |
+| `%%P` | Protocol display name (e.g. `SSH`) |
+| `%%f` | Folder name the session belongs to |
+| `%%l` | Forwarded local ports (blank if none configured) |
+| `%%d` | Forwarded dynamic (SOCKS) ports (blank if none configured) |
+
+For full details and examples, see [`docs/window-title-placeholders.md`](docs/window-title-placeholders.md).
 
 KiTTY can display a picture behind your terminal text, giving each session window a custom backdrop. It supports BMP and JPEG images, and you can adjust how strongly the image shows through with an opacity setting or rotate through several pictures as a slideshow. This feature grows out of the covidimus patch integrated into KiTTY.
 

@@ -7,6 +7,11 @@ see [FEATURES.md](FEATURES.md).
 
 ## 0.84.1.39-beta — 2026-06-30
 
+- **Window title placeholders.** The **Window Title** setting now expands dynamic
+  placeholders so the title reflects the active connection: `%%h` (hostname),
+  `%%s` (saved session name), `%%u` (username), `%%p` (port), `%%P` (protocol),
+  `%%f` (folder), `%%l` (forwarded local ports), and `%%d` (forwarded dynamic
+  ports). See [`docs/window-title-placeholders.md`](docs/window-title-placeholders.md).
 - **Data-integrity fix: legacy (old-KiTTY) passwords now decrypt correctly.**
   0.84.1.38's "auto-decrypt old 9bis-hive passwords on load" applied an extra
   MASKPASS step that **corrupted** them — a migrated session got a wrong password,
