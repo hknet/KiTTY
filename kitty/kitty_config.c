@@ -2695,7 +2695,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       I(CONF_sharrow_type),
                       "Ctrl toggles app mode", I(SHARROW_APPLICATION),
                       "xterm-style bitmap", I(SHARROW_BITMAP));
-    ctrl_radiobuttons(s, "Word navigation (Left/Right arrows)", 'n', 3,
+    ctrl_radiobuttons(s, "Word navigation (Left/Right arrows)", 'v', 3,
                       HELPCTX(no_help),
                       conf_radiobutton_handler,
                       I(CONF_word_nav_modifier),
