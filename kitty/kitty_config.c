@@ -2449,11 +2449,17 @@ void setup_config_box(struct controlbox *b, bool midsession,
      * filling the gap beside the lower buttons -- not a full row below the taller
      * button column. Off by default; reveals (and lets you edit/delete) sessions
      * from the read-only PuTTY / old-KiTTY hives. */
-    if (!GetPuttyFlag()) {
-        dlgcontrol *fc = ctrl_checkbox(s,
-            "show / edit / delete old sessions",
-            NO_SHORTCUT, HELPCTX(no_help), kitty_showforeign_handler, P(ssd));
-        fc->column = 0;
+    /* Only meaningful in registry mode: it reveals sessions from the read-only
+     * PuTTY / old-KiTTY *registry* hives. In portable (file/dir) mode there are
+     * no such hives, so the control would do nothing - hide it. */
+    {
+        extern int GetIniFileFlag(void);   /* kitty_commun.c (SAVEMODE_REG/FILE/DIR) */
+        if (!GetPuttyFlag() && GetIniFileFlag() == 0 /* SAVEMODE_REG */) {
+            dlgcontrol *fc = ctrl_checkbox(s,
+                "show / edit / delete old sessions",
+                NO_SHORTCUT, HELPCTX(no_help), kitty_showforeign_handler, P(ssd));
+            fc->column = 0;
+        }
     }
 #endif
     ctrl_columns(s, 1, 100);
