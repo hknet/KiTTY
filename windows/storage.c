@@ -274,10 +274,11 @@ static unsigned ksec_cksum(const char *s)
 }
 void kitty_pwdebug(const char *fmt, ...)
 {
-    const char *p = getenv("KITTY_PWDEBUG");
-    if (!p || !*p) return;
-    char path[1024]; const char *tmp = getenv("TEMP");
-    snprintf(path, sizeof(path), "%s\\kitty_pwdebug.log", tmp ? tmp : ".");
+    /* Debug build: always log, next to the running exe (no env var needed). */
+    char path[1024], *bs;
+    DWORD n = GetModuleFileNameA(NULL, path, sizeof(path) - 24);
+    if (n == 0 || n >= sizeof(path) - 24) { strcpy(path, "kitty_pwdebug.log"); }
+    else { bs = strrchr(path, '\\'); strcpy(bs ? bs + 1 : path, "kitty_pwdebug.log"); }
     FILE *f = fopen(path, "a");
     if (!f) return;
     va_list ap; va_start(ap, fmt);
