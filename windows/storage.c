@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <limits.h>
 #include <assert.h>
 #include "putty.h"
@@ -261,6 +262,30 @@ DECL_WINDOWS_FUNCTION(static, HRESULT, SHGetFolderPathA,
  * ===================================================================== */
 static int  g_store_mode = 0;        /* 0 = registry; nonzero = portable file mode */
 static char g_sess_dir[1024] = "";   /* directory holding per-session files */
+
+/* Lightweight diagnostic log (no plaintext: lengths + a weak checksum only).
+ * Writes to %TEMP%\kitty_pwdebug.log when env KITTY_PWDEBUG is set. Shared with
+ * window.c (auth-send) via the exported kitty_pwdebug(). */
+static unsigned ksec_cksum(const char *s)
+{
+    unsigned h = 0;
+    if (s) for (; *s; s++) h = h * 131 + (unsigned char)*s;
+    return h & 0xffff;
+}
+void kitty_pwdebug(const char *fmt, ...)
+{
+    const char *p = getenv("KITTY_PWDEBUG");
+    if (!p || !*p) return;
+    char path[1024]; const char *tmp = getenv("TEMP");
+    snprintf(path, sizeof(path), "%s\\kitty_pwdebug.log", tmp ? tmp : ".");
+    FILE *f = fopen(path, "a");
+    if (!f) return;
+    va_list ap; va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+    fputc('\n', f);
+    fclose(f);
+}
 void kitty_set_storage_mode(int mode) { g_store_mode = mode; }
 void kitty_set_session_dir(const char *dir)
 {
@@ -975,10 +1000,14 @@ char *read_setting_s(settings_r *handle, const char *key)
             int rv = ksec_unprotect(raw, &pt);
             ksec_after_load(slot, raw, rv);
         }
-        sfree(raw);
         /* Migrate the auto-login password to UTF-8 (slot 0) so a legacy ANSI value
          * works at the UTF-8 prompt without re-entry; re-saved UTF-8 thereafter. */
         if (slot == 0) pt = ksec_to_utf8(pt);
+        if (slot == 0)
+            kitty_pwdebug("LOAD pw: mode=%d filemode=%d rawmark=%.7s declen=%d cksum=%04x",
+                          g_store_mode, handle->is_file, raw ? raw : "(null)",
+                          pt ? (int)strlen(pt) : -1, ksec_cksum(pt));
+        sfree(raw);
         char *ret = dupstr(pt ? pt : "");
         if (pt) { memset(pt, 0, strlen(pt)); free(pt); }
         return ret;

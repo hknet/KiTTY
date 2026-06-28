@@ -7319,6 +7319,15 @@ static SeatPromptResult win_seat_get_userpass_input(Seat *seat, prompts_t *p)
          * MaxAuthTries and risk an IP ban); fall through to the interactive
          * prompt so the user can correct it or cancel. */
         wgs->autopw_tried = true;
+        {
+            extern void kitty_pwdebug(const char *fmt, ...);
+            const char *pwv = conf_get_str(wgs->conf, CONF_password);
+            unsigned h = 0; const char *q;
+            for (q = pwv; q && *q; q++) h = h * 131 + (unsigned char)*q;
+            kitty_pwdebug("AUTH send pw: len=%d cksum=%04x prompt=[%s]",
+                          pwv ? (int)strlen(pwv) : -1, h & 0xffff,
+                          p->prompts[0]->prompt ? p->prompts[0]->prompt : "");
+        }
         prompt_set_result(p->prompts[0], conf_get_str(wgs->conf, CONF_password));
         spr = SPR_OK;
     }

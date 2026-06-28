@@ -89,6 +89,23 @@ static void kitty_autopw_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
 }
 
+/* "Show password" checkbox: unmasks the auto-login password editbox so the user
+ * can verify the stored value. g_autopw_ctrl is the password editbox, captured
+ * when the Connection/Data panel is built. */
+static dlgcontrol *g_autopw_ctrl = NULL;
+static void kitty_showpw_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                 void *data, int event)
+{
+    if (event == EVENT_REFRESH) {
+        dlg_checkbox_set(ctrl, dlg, false);     /* default masked on (re)open */
+        if (g_autopw_ctrl)
+            dlg_editbox_set_masked(g_autopw_ctrl, dlg, false);
+    } else if (event == EVENT_VALCHANGE) {
+        if (g_autopw_ctrl)
+            dlg_editbox_set_masked(g_autopw_ctrl, dlg, dlg_checkbox_get(ctrl, dlg));
+    }
+}
+
 /* Proxy-choice droplist (KiTTY): lists named proxy definitions (plus the two
  * built-ins "- Session defined proxy -" / "- No proxy -") and stores the chosen
  * name in CONF_proxyselection, which kitty_proxy_select() overlays onto the
@@ -3389,6 +3406,9 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                    HELPCTX(no_help), kitty_autopw_handler,
                                    I(CONF_password), ED_STR);
                 cpw->editbox.password = true;
+                g_autopw_ctrl = cpw;
+                ctrl_checkbox(s, "Show password", NO_SHORTCUT,
+                              HELPCTX(no_help), kitty_showpw_handler, P(NULL));
                 ctrl_editbox(s, "Auto-command after login", NO_SHORTCUT,
                              50, HELPCTX(no_help),
                              conf_editbox_handler,
