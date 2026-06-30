@@ -1,3 +1,8 @@
+/* =============================================================================
+ * NOT BUILT - dead code, kept for reference only.
+ * POSIX-regex strgrep() helper that is not wired into the 0.84 build. Not in any
+ * CMakeLists and not #included anywhere.
+ * ============================================================================= */
 #include "kitty_regex.h"
 
 int strgrep( const char * pattern, const char * str ) {
