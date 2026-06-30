@@ -1,3 +1,14 @@
+/* =============================================================================
+ * NOT BUILT - dead code, kept for reference only.
+ *
+ * Original KiTTY 0.76b monolith for the "forced" .ktx settings export/import.
+ * It is intentionally NOT listed in windows/CMakeLists.txt: its functions were
+ * forward-ported and split into the two files that ARE compiled -
+ *   kitty/kitty_settings_forced.c  (save_open_settings_forced + write_*_forced)
+ *   kitty/kitty_settings_load.c    (load_open_settings_forced + read_*_forced)
+ * Compiling this too would duplicate-define all of those symbols. Retained only
+ * as the reference source the split was derived from; do not add it to the build.
+ * ============================================================================= */
 
 /****
 A partir du fichier SETTINGS.C
