@@ -5,6 +5,30 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.38-beta — 2026-06-28
+- **Stored session passwords are now encrypted at rest with Windows DPAPI**
+  (`CryptProtectData`, tied to the Windows account; stored as a `DPAPI1:` blob).
+  Existing plaintext/legacy values still load (old ≤0.76 KiTTY passwords are
+  auto-decrypted) and re-store encrypted on the next save. DPAPI is machine-bound
+  (defeats offline/cross-user theft, not same-user malware; does not move PCs).
+- **Auto-login password reliable on every launch path** (normal / Duplicate /
+  open-new-with-current); an internal masking step could garble it on the
+  serialise-launch paths even for ASCII. Passwords are stored/sent as UTF-8 now,
+  matching the SSH prompt, so non-ASCII passwords work without re-entry.
+- **Portable mode now stores sessions as files** under `Sessions\` next to the
+  exe (`kitty_portable.exe` / `savemode=dir`) instead of falling back to the
+  registry; passwords in those files are DPAPI-encrypted too.
+- **"Show password" checkbox** in Connection → Data to reveal the stored
+  auto-login password.
+- **Window size is remembered** alongside position (same monitor layout restores
+  the previous terminal dimensions).
+- **Fixed a crash** opening Terminal → Keyboard (duplicate Alt-shortcut assertion).
+- **Launcher tray menu:** Refresh no longer re-opens the menu at the cursor; it
+  refreshes the list and dismisses.
+- **Portable polish:** the read-only Comment box no longer shows a stale registry
+  comment, and the registry-only "show / edit / delete old sessions" control is
+  hidden in file mode.
+
 ## 0.84.1.37-beta — 2026-06-27
 - **Saved session passwords now work for auto-login and WinSCP.** When a session
   was launched, KiTTY passed the stored password from the launcher to the terminal
