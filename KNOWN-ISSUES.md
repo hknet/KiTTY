@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.37 — Known issues & limitations
+# KiTTY 0.84.1.38 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
