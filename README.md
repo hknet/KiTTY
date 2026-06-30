@@ -80,7 +80,7 @@ or still want real-world testing. The full, per-release list is in
   clipboard access for the rest of the session (no per-request reprompt). Set it to **Disabled** to deny.
 - **adb backend & rutty scripting** — verified against test fixtures, not yet against a real
   Android device / live remote shell.
-- **SSH auto-login password** — stored reversibly in the registry; prefer SSH keys.
+- **SSH auto-login password** — encrypted at rest with Windows DPAPI (machine-bound; defeats offline/cross-user theft, not same-user malware, and does not move to another PC). A portable master-password option is planned; for the strongest security prefer SSH keys.
 - **Background image** — the thin margin outside the terminal cell grid is still solid-filled (cosmetic).
 
 Found something else? Please **[open an issue](https://github.com/hknet/KiTTY/issues)**.

@@ -77,9 +77,11 @@ If you manage a large number of saved sessions, KiTTY lets you organize them int
 
 ### Portability
 
-By default KiTTY stores its configuration (sessions, host keys, and settings) in the Windows registry, but it can instead keep everything in a tree of folders so it leaves nothing behind in the registry. This lets you carry KiTTY and all its sessions around on a USB stick or run it on a machine without touching the system configuration. The first time you switch over, you can import your existing registry sessions by running `kitty.exe -convert-dir`, which creates folders for your Commands, Folders, Launcher, Sessions, Sessions_Commands, and SshHostKeys. In folder mode you can even have several sessions sharing the same name in different folders, loading one with `kitty.exe -folder SomeFolder -load SessionName`.
+By default KiTTY stores its configuration in the Windows registry. In **portable mode** it instead keeps each **saved session as a file** in a `Sessions\` folder next to the executable, so you can carry KiTTY and its sessions on a USB stick. As of 0.84.1.38 each session is one file (`Sessions\<name>`), and any auto-login password inside it is DPAPI-encrypted just like the registry path.
 
-**How to enable:** Use the dedicated **kitty_portable.exe** (stores everything in a folder tree beside the exe, nothing in the registry), or place a kitty.ini next to kitty.exe containing `[KiTTY]` then `savemode=dir`.
+**Current scope (this port):** only **saved sessions** are file-based so far. **SSH host keys and the random seed still use the registry**, so portable mode is not yet 100% registry-free, and a DPAPI-encrypted password is machine-bound (it will not decrypt if you copy the folder to another PC — a portable master-password option is planned).
+
+**How to enable:** Use the dedicated **kitty_portable.exe** (defaults to file mode), or place a `kitty.ini` next to `kitty.exe` containing `[KiTTY]` then `savemode=dir`.
 
 (no screenshot)
 
@@ -133,7 +135,7 @@ KiTTY can detect URLs in the terminal output and turn them into clickable hyperl
 
 KiTTY can log you in automatically to telnet, SSH-1 and SSH-2 servers by storing a password alongside the session. For SSH connections the password is supplied during authentication; for telnet it is sent once the connection comes up, just as if you typed it, and you can even send several lines (for example a login name, a password, and a command) by separating them with `\n`. Because the stored value is tied to the host, a password cannot be saved in a session that has an empty hostname.
 
-**How to enable:** Configuration > **Connection > Data > Auto-login password**. It is stored with the session and sent automatically at SSH login. NOTE: a one-time security warning appears when you set it (the password is stored reversibly — SSH public-key auth is preferred).
+**How to enable:** Configuration > **Connection > Data > Auto-login password**. It is stored with the session and sent automatically at SSH login. Tick **Show password** beside the field to reveal the stored value. As of 0.84.1.38 the password is **encrypted at rest with Windows DPAPI** (tied to your Windows account), rather than stored reversibly; existing/legacy passwords still load and are re-encrypted on the next save. NOTE: a one-time security warning still appears when you set one. DPAPI is machine-bound (it defeats offline/cross-user theft, not same-user malware, and does not move to another PC) — for the strongest security, prefer SSH public-key auth (kageant).
 
 ![Automatic password](docs/features/img/config_password.jpg)
 
