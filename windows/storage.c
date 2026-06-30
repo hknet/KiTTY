@@ -389,12 +389,31 @@ static struct ksf_item *ksf_load(const char *path)       /* parsed list (may be 
     if (!fp) return NULL;
     while (fgets(line, sizeof(line), fp)) {
         size_t l = strlen(line);
-        char *eq, *val;
+        char *eq, *bs, *val;
         while (l && (line[l-1] == '\n' || line[l-1] == '\r')) line[--l] = '\0';
+        /* Two on-disk line formats are accepted:
+         *   key=munged-value     - our fork-native format (written by ksf_save)
+         *   key\munged-value\    - legacy cyd01-KiTTY portable format
+         * Discriminate by whichever delimiter follows the key first: a setting
+         * key never contains '=' or '\\', and in our format values escape '\\'
+         * (so a real '\\' only appears as the cyd01 delimiter), while values may
+         * legitimately contain '='. Both formats use the same %HH value munging,
+         * so reading cyd01 files lets existing portable sessions load; the next
+         * Save rewrites them in our format. */
         eq = strchr(line, '=');
-        if (!eq) continue;
-        *eq = '\0';
-        val = ksf_unmunge(eq + 1);
+        bs = strchr(line, '\\');
+        if (eq && (!bs || eq < bs)) {
+            *eq = '\0';
+            val = ksf_unmunge(eq + 1);
+        } else if (bs) {
+            *bs = '\0';
+            char *raw = bs + 1;
+            size_t rl = strlen(raw);
+            if (rl && raw[rl - 1] == '\\') raw[rl - 1] = '\0';  /* drop trailing delim */
+            val = ksf_unmunge(raw);
+        } else {
+            continue;   /* no delimiter -> not a setting line */
+        }
         ksf_list_set(&head, line, val ? val : "");
         if (val) sfree(val);
     }
