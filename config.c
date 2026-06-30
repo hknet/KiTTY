@@ -860,6 +860,13 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             if (top == ssd->sesslist.nsessions) {
                 top -= 1;
             }
+            /* KiTTY: "Default Settings" is forced to index 0, so a real
+             * session name that sorts before it lands the binary search on 0.
+             * Move the highlight to the first real stored session instead. */
+            if (top == 0 && ssd->sesslist.nsessions > 1 &&
+                ssd->savedsession[0] &&
+                strcmp(ssd->savedsession, "Default Settings") != 0)
+                top = 1;
             dlg_listbox_select(ssd->listbox, dlg, top);
         }
     } else if (event == EVENT_ACTION) {

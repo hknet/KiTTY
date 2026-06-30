@@ -1164,6 +1164,13 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             if (top == ssd->sesslist.nsessions) {
                 top -= 1;
             }
+            /* KiTTY: "Default Settings" is forced to index 0, so a real
+             * session name that sorts before it lands the binary search on 0.
+             * Move the highlight to the first real stored session instead. */
+            if (top == 0 && ssd->sesslist.nsessions > 1 &&
+                ssd->savedsession[0] &&
+                strcmp(ssd->savedsession, "Default Settings") != 0)
+                top = 1;
             dlg_listbox_select(ssd->listbox, dlg, top);
         }
 #ifdef MOD_PERSO
@@ -1231,19 +1238,13 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             get_sesslist(&ssd->sesslist, false);
             get_sesslist(&ssd->sesslist, true);
             dlg_refresh(ssd->editbox, dlg);
+            /* KiTTY: remember the just-saved session so the listbox refresh
+             * auto-selects it (with the correct visible index, even when a
+             * folder filter is active). Skip the default settings pseudo-session. */
+            if (ssd->savedsession && ssd->savedsession[0] &&
+                strcmp(ssd->savedsession, "Default Settings") != 0)
+                kitty_set_last_session(ssd->savedsession);
             dlg_refresh(ssd->listbox, dlg);
-            /* KiTTY: keep the just-saved session selected (the refresh above
-             * otherwise leaves the list with nothing highlighted). */
-            {
-                const char *want = (ssd->savedsession && ssd->savedsession[0])
-                                   ? ssd->savedsession : "Default Settings";
-                int j;
-                for (j = 0; j < ssd->sesslist.nsessions; j++)
-                    if (!strcmp(ssd->sesslist.sessions[j], want)) {
-                        dlg_listbox_select(ssd->listbox, dlg, j);
-                        break;
-                    }
-            }
         } else if (!ssd->midsession &&
                    ssd->delbutton && ctrl == ssd->delbutton) {
             int i = dlg_listbox_index(ssd->listbox, dlg);
