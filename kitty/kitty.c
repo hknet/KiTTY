@@ -25,6 +25,7 @@
 
 // Includes de KiTTY
 #include "kitty.h"
+#include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
 #include "kitty_commun.h"
 #include "kitty_image.h"
 #include "kitty_crypt.h"
@@ -3575,7 +3576,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			achValue[0] = '\0';
 
 			if( RegEnumValue(hKey,i,achValue,&cchValue,NULL,&lpType,lpData,&dwDataSize) == ERROR_SUCCESS ) {
-			if( strcmp(achValue,"Default Settings") || strcmp(KeyName,TEXT(PUTTY_REG_POS) "\\Launcher") ) {
+			if( strcmp(achValue,KITTY_DEFAULT_SESSION) || strcmp(KeyName,TEXT(PUTTY_REG_POS) "\\Launcher") ) {
 				if( ShortcutsFlag ) {
 					if( nb < 26 ) 
 						sprintf( buffer, "%s\tCtrl+Shift+%c", achValue, ('A'+nb) ) ;
@@ -5976,7 +5977,7 @@ void InitWinMain( void ) {
 		char * defaultfile = (char*)malloc( strlen(sesspath)+20 ) ;
 		sprintf( defaultfile, "%s\\Default Settings", sesspath ) ;
 		if( !existfile(defaultfile) && GetDefaultSettingsFlag() ) {
-			create_settings("Default Settings") ;
+			create_settings(KITTY_DEFAULT_SESSION) ;
 		}
 		free( defaultfile ) ;
 		*/
