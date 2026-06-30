@@ -5,8 +5,16 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
-## 0.84.1.39-beta — Unreleased
+## 0.84.1.39-beta — 2026-06-30
 
+- **Data-integrity fix: legacy (old-KiTTY) passwords now decrypt correctly.**
+  0.84.1.38's "auto-decrypt old 9bis-hive passwords on load" applied an extra
+  MASKPASS step that **corrupted** them — a migrated session got a wrong password,
+  and re-saving it persisted the mangled value. The decrypt now matches the real
+  cyd01 format (`bcrypt(plaintext)`, verified against genuine cyd01 0.76 registry
+  *and* portable session files); the MASKPASS layer is applied only when a session
+  actually used it. **Update before opening old-KiTTY sessions** so their passwords
+  migrate intact.
 - **Saved-session list selection fixed** (PR #3, thanks @m-hume). Type-ahead in
   the saved-session list no longer jumps the highlight to "Default Settings" when
   you type a name that sorts before it, and **Save** now keeps the just-saved

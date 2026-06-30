@@ -950,6 +950,18 @@ static void ksec_maskpass(char *s)   /* exact replica of kitty_crypt.c MASKPASS 
     free(buf);
 }
 /* returns malloc'd plaintext, or NULL if the value did not decode. */
+/* True only if every byte is printable ASCII (0x20..0x7e). Used to tell a clean
+ * plaintext password from MASKPASS XOR output, which leaves high-bit/control
+ * bytes. */
+static int ksec_all_printable(const char *s)
+{
+    if (!s || !*s) return 0;
+    for (; *s; s++) {
+        unsigned char c = (unsigned char)*s;
+        if (c < 0x20 || c > 0x7e) return 0;
+    }
+    return 1;
+}
 static char *ksec_legacy_decrypt(const char *stored, HKEY sesskey)
 {
     static int inited = 0;
@@ -969,7 +981,22 @@ static char *ksec_legacy_decrypt(const char *stored, HKEY sesskey)
     r = buncrypt_string_base64(stored, out, (unsigned)strlen(stored), passkey);
     if (r <= 0) { free(out); return NULL; }
     out[r] = '\0';            /* buncrypt returns the decoded length */
-    ksec_maskpass(out);       /* undo the MASKPASS layer */
+    /* cyd01 saved-session passwords are bcrypt(plaintext): buncrypt ALONE yields
+     * the plaintext (verified against real cyd01 0.76 registry AND portable session
+     * files). Only the rarer cyd01 'cryptsalt' configuration adds the MASKPASS XOR
+     * layer, which leaves high-bit/non-printable bytes. So apply MASKPASS ONLY when
+     * it actually turns the result printable; otherwise keep the buncrypt output.
+     * (The previous code MASKPASSed unconditionally, corrupting every legacy
+     * password it touched -> shipped 0.84.1.38 old-hive auto-decrypt was broken.) */
+    if (!ksec_all_printable(out)) {
+        char *u = malloc(strlen(out) + 1);
+        if (u) {
+            strcpy(u, out);
+            ksec_maskpass(u);
+            if (ksec_all_printable(u)) { free(out); return u; }
+            free(u);
+        }
+    }
     return out;
 }
 
