@@ -1,3 +1,18 @@
+/* =============================================================================
+ * NOT BUILT - dead code, kept for reference only.
+ *
+ * Vendored PuTTY-Tray storage backend (registry + file). It is intentionally
+ * NOT listed in windows/CMakeLists.txt and is never compiled, because:
+ *   - it defines the same storage API as windows/storage.c (open_settings_w,
+ *     write_setting_s, read_setting_s, close_settings_w, ...) -> the two would
+ *     collide at link time; and
+ *   - it uses the OLD pre-0.84 storage signatures (e.g.
+ *     read_setting_s(handle, key, buffer, buflen)) that no longer match 0.84's
+ *     storage.h.
+ * The live, single storage backend is windows/storage.c (registry + the
+ * portable file/dir mode). Retained only as reference for the storage
+ * forward-port; do not add it to the build.
+ * ============================================================================= */
 // Saved sessions enumeration.
 struct enumsettings {
     HKEY key;
