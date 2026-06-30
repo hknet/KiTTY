@@ -864,6 +864,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * session name that sorts before it lands the binary search on 0.
              * Move the highlight to the first real stored session instead. */
             if (top == 0 && ssd->sesslist.nsessions > 1 &&
+                !strcmp(ssd->sesslist.sessions[0], "Default Settings") &&
                 ssd->savedsession[0] &&
                 strcmp(ssd->savedsession, "Default Settings") != 0)
                 top = 1;

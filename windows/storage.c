@@ -10,6 +10,7 @@
 #include <assert.h>
 #include "putty.h"
 #include "storage.h"
+#include "../kitty/kitty_defs.h"   /* KITTY_DEFAULT_SESSION (dependency-free) */
 
 #include <shlobj.h>
 #ifndef CSIDL_APPDATA
@@ -77,7 +78,7 @@ static int kitty_primary_session_count(void)
             idx++;
             strbuf *sb = strbuf_new();
             unescape_registry_key(name, sb);
-            if (strcmp(sb->s, "Default Settings") != 0)
+            if (strcmp(sb->s, KITTY_DEFAULT_SESSION) != 0)
                 n++;
             strbuf_free(sb);
             sfree(name);
@@ -177,7 +178,7 @@ char *kitty_read_session_comment(const char *sessionname)
     int i;
 
     if (!sessionname || !*sessionname)
-        sessionname = "Default Settings";
+        sessionname = KITTY_DEFAULT_SESSION;
 
     /* Portable (file) mode: the session lives in a file, not the registry, so
      * read the Comment from there instead of scanning the (now-irrelevant)
@@ -221,7 +222,7 @@ char *kitty_read_session_comment(const char *sessionname)
 int kitty_session_origin(const char *sessionname)
 {
     if (!sessionname || !*sessionname) return 0;
-    if (!strcmp(sessionname, "Default Settings")) return 0;   /* never tag the default */
+    if (!strcmp(sessionname, KITTY_DEFAULT_SESSION)) return 0;   /* never tag the default */
     strbuf *sb = strbuf_new();
     escape_registry_key(sessionname, sb);
     int origin = 0;
@@ -426,7 +427,7 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
     *errmsg = NULL;
 
     if (!sessionname || !*sessionname)
-        sessionname = "Default Settings";
+        sessionname = KITTY_DEFAULT_SESSION;
 
     if (store_is_file()) {
         settings_w *handle = snew(settings_w);
@@ -858,7 +859,7 @@ struct settings_r {
 settings_r *open_settings_r(const char *sessionname)
 {
     if (!sessionname || !*sessionname)
-        sessionname = "Default Settings";
+        sessionname = KITTY_DEFAULT_SESSION;
 
     if (store_is_file()) {
         char *path = ksf_session_path(sessionname);

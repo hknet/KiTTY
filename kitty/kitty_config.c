@@ -12,6 +12,7 @@
 #include "tree234.h"
 #ifdef MOD_PERSO
 #include "kitty_proxy.h"   /* proxy-choice droplist: proxies[], GetProxySelectionFlag, MAX_PROXY */
+#include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION */
 #endif
 
 #ifdef MOD_PERSO
@@ -1018,7 +1019,7 @@ static bool load_selected_session(
         dlg_beep(dlg);
         return false;
     }
-    isdef = !strcmp(ssd->sesslist.sessions[i], "Default Settings");
+    isdef = !strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION);
     load_settings(ssd->sesslist.sessions[i], conf);
 #ifdef MOD_PERSO
     /* KiTTY: remember this as the last-loaded session (skip the default), so the
@@ -1168,8 +1169,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * session name that sorts before it lands the binary search on 0.
              * Move the highlight to the first real stored session instead. */
             if (top == 0 && ssd->sesslist.nsessions > 1 &&
+                !strcmp(ssd->sesslist.sessions[0], KITTY_DEFAULT_SESSION) &&
                 ssd->savedsession[0] &&
-                strcmp(ssd->savedsession, "Default Settings") != 0)
+                strcmp(ssd->savedsession, KITTY_DEFAULT_SESSION) != 0)
                 top = 1;
             dlg_listbox_select(ssd->listbox, dlg, top);
         }
@@ -1216,14 +1218,14 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 dlg_end(dlg, 1);       /* it's all over, and succeeded */
             }
         } else if (ctrl == ssd->savebutton) {
-            bool isdef = !strcmp(ssd->savedsession, "Default Settings");
+            bool isdef = !strcmp(ssd->savedsession, KITTY_DEFAULT_SESSION);
             if (!ssd->savedsession[0]) {
                 int i = dlg_listbox_index(ssd->listbox, dlg);
                 if (i < 0) {
                     dlg_beep(dlg);
                     return;
                 }
-                isdef = !strcmp(ssd->sesslist.sessions[i], "Default Settings");
+                isdef = !strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION);
                 sfree(ssd->savedsession);
                 ssd->savedsession = dupstr(isdef ? "" :
                                            ssd->sesslist.sessions[i]);
@@ -1242,7 +1244,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * auto-selects it (with the correct visible index, even when a
              * folder filter is active). Skip the default settings pseudo-session. */
             if (ssd->savedsession && ssd->savedsession[0] &&
-                strcmp(ssd->savedsession, "Default Settings") != 0)
+                strcmp(ssd->savedsession, KITTY_DEFAULT_SESSION) != 0)
                 kitty_set_last_session(ssd->savedsession);
             dlg_refresh(ssd->listbox, dlg);
         } else if (!ssd->midsession &&

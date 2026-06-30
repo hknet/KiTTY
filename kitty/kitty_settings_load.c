@@ -29,6 +29,7 @@
 #include <assert.h>
 #include <limits.h>
 #include "kitty.h"
+#include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
 #include "kitty_commun.h"  /* GetCryptSaltFlag */
 #include "kitty_crypt.h"   /* decryptstring */
 
@@ -189,7 +190,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 		}
 	Conf * confDef ;
 	confDef = conf_new() ;
-	do_defaults( "Default Settings" , confDef);
+	do_defaults( KITTY_DEFAULT_SESSION , confDef);
 		
 // BEGIN COPY/PASTE
     int i;
