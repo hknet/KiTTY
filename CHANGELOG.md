@@ -11,6 +11,12 @@ see [FEATURES.md](FEATURES.md).
   the saved-session list no longer jumps the highlight to "Default Settings" when
   you type a name that sorts before it, and **Save** now keeps the just-saved
   session selected even when a folder filter is active.
+- **Portable mode now reads existing cyd01-KiTTY session files.** A portable
+  (`savemode=dir`) session saved by an older cyd01 KiTTY used a `key\value\` line
+  format that 0.84.1.38 couldn't parse, so sessions loaded with an **empty host**
+  (the list showed names, but loading gave a blank IP). The reader now accepts
+  both that legacy format and our `key=value` format; on the next Save the session
+  is rewritten in our format. (Reported on issue #1 by Kyogre.)
 
 ## 0.84.1.38-beta — 2026-06-28
 - **Stored session passwords are now encrypted at rest with Windows DPAPI**
