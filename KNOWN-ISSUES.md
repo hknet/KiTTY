@@ -35,24 +35,26 @@ features are working and verified. Known limitations as of this release:
 
 ## Security
 
-- **Stored passwords are reversible at rest (DPAPI planned).** KiTTY can *optionally*
-  save a session password (PuTTY itself never stores one). When you choose to save
-  one, it is currently kept in a **reversible** form — encrypted only with a key
-  derived from non-secret data (the hostname/terminal type plus a fixed constant), not
-  with Windows DPAPI — so it can be recovered offline by anyone with access to your
-  registry/`.ini`. The in-memory copy is likewise only lightly obfuscated, and kageant
-  holds loaded SSH **private keys decrypted in process memory** (the same as stock
-  PuTTY Pageant — no added in-memory protection). **If security matters, use public-key
-  authentication (kageant) and avoid saving passwords.** Real at-rest encryption
-  (Windows DPAPI / an opt-in master password) is the next planned milestone. This
-  affects only passwords you explicitly chose to save; KiTTY stores nothing by default.
+- **Stored passwords are DPAPI-encrypted at rest.** KiTTY can *optionally*
+  save a session password (PuTTY itself never stores one). As of **0.84.1.38**,
+  new and re-saved passwords are protected with **Windows DPAPI** and stored as
+  `DPAPI1:` blobs, tied to your Windows account/machine. This defeats offline
+  and cross-user theft of the registry/session files, but **not** malware already
+  running as the same Windows user, and DPAPI blobs do **not** move to another
+  PC. Existing legacy/old-KiTTY passwords still load and are re-encrypted on the
+  next save. Portable config files currently use the same DPAPI protection for
+  saved passwords; a portable, opt-in **master password** for cross-machine
+  password portability is still planned. kageant holds loaded SSH **private keys
+  decrypted in process memory** (the same as stock PuTTY Pageant). **If security
+  matters, prefer public-key authentication (kageant) and avoid saving passwords
+  unless you understand these limits.**
 
 ## Packaging / cosmetic
 
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.37-beta @ 2026-06-27`.
+- **Version string:** binaries report `0.84.1.39-beta @ 2026-06-27`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
@@ -321,9 +323,9 @@ features are working and verified. Known limitations as of this release:
   (3) the terminal window no longer accepted dropped files (the "forbidden"
   cursor) because the drop registration was lost in the port. Together with the
   0.84.1.19 no-shell change, uploads run again and without shell exposure.
-- Follow-up still planned: argument quoting + length bounding in the transfer
-  command builders (so an unusual character in a session field can't inject an
-  extra command-line switch); and DPAPI for stored passwords.
+- Follow-up status: argument quoting + length bounding in the transfer
+  command builders shipped in 0.84.1.21, and DPAPI at-rest password
+  encryption shipped in 0.84.1.38.
 
 ## New in 0.84.1.19
 
@@ -343,9 +345,9 @@ features are working and verified. Known limitations as of this release:
     gap), and only downloads the installer over HTTPS.
   - Fixed a buffer-size mismatch when reading a stored password from the registry;
     the registry string reader now NUL-terminates and bounds-checks its output.
-- Note: a broader security pass is still planned — see the project notes
-  (auto-login password storage remains reversible obfuscation; prefer SSH keys /
-  kageant).
+- Note: later security passes closed the reversible at-rest password issue with
+  DPAPI in 0.84.1.38. Same-user malware remains out of scope; prefer SSH keys /
+  kageant for strongest security.
 
 ## New in 0.84.1.17
 
