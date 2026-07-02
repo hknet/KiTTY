@@ -685,7 +685,10 @@ void test_simple(void)
                         ADDRTYPE_IPV6, 2, -1);
     test_bool_simple(CONF_warn_on_close, "WarnOnClose", true);
     test_bool_simple(CONF_tcp_nodelay, "TCPNoDelay", true);
-    test_bool_simple(CONF_tcp_keepalives, "TCPKeepalives", false);
+    /* KiTTY intentionally defaults TCP keepalives on for interactive
+     * session robustness (PuTTY upstream default is off). Keep the
+     * product default and make this regression test KiTTY-aware. */
+    test_bool_simple(CONF_tcp_keepalives, "TCPKeepalives", true);
     test_str_simple(CONF_loghost, "LogHost", "");
     test_str_simple(CONF_proxy_exclude_list, "ProxyExcludeList", "");
     test_bool_simple(CONF_even_proxy_localhost, "ProxyLocalhost", false);
