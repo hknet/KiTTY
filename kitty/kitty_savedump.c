@@ -9,6 +9,8 @@ int GetCryptSaltFlag() ;
 
 extern int is_backend_connected ;
 extern int is_backend_first_connected ;
+extern const char *urlhack_default_regex ;
+extern const char *urlhack_liberal_regex ;
 
 // String contenant la ligne de commande
 static char * CmdLine = NULL ;
@@ -583,9 +585,8 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 #ifdef MOD_PROXY
 	fprintf( fp, "proxyselection=%s\n",		conf_get_str(conf,CONF_proxyselection) ) ;
 #endif
-#ifdef MOD_RUTTY
-	/* rutty: scripting options */
-	fprintf( fp, "ScriptFileName=%s\n",		filename_to_str(conf_get_filename(conf,CONF_script_filename)) ) ;
+	/* rutty: scripting options (feature is active without MOD_RUTTY in 0.84) */
+	fprintf( fp, "Scriptfile=%s\n",			filename_to_str(conf_get_filename(conf,CONF_scriptfile)) ) ;
 	fprintf( fp, "ScriptMode=%d\n",			conf_get_int(conf,CONF_script_mode) ) ;
 	fprintf( fp, "ScriptLineDelay=%d\n",		conf_get_int(conf,CONF_script_line_delay) ) ;
 	fprintf( fp, "ScriptCharDelay=%d\n",		conf_get_int(conf,CONF_script_char_delay) ) ;
@@ -597,7 +598,6 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "ScriptTimeout=%d\n",		conf_get_int(conf,CONF_script_timeout) ) ;
 	fprintf( fp, "ScriptWait=%s\n",			conf_get_str(conf,CONF_script_waitfor) ) ;
 	fprintf( fp, "ScriptHalt=%s\n",			conf_get_str(conf,CONF_script_halton) ) ;
-#endif
 #if (defined MOD_BACKGROUNDIMAGE) && (!defined FLJ)
 	/* Image Options */
 	fprintf( fp, "bg_opacity=%d\n",			conf_get_int(conf,CONF_bg_opacity) ) ;
@@ -614,8 +614,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "wakeup_reconnect=%d\n",		conf_get_int(conf,CONF_wakeup_reconnect) ) ;
 	fprintf( fp, "failure_reconnect=%d\n",		conf_get_int(conf,CONF_failure_reconnect) ) ;
 #endif
-#ifdef MOD_HYPERLINK
-	/* Hyperlink Options */
+	/* Hyperlink Options (active via kitty_url.c/window.c) */
 	fprintf( fp, "url_ctrl_click=%d\n",		conf_get_int(conf,CONF_url_ctrl_click) ) ; 
 	fprintf( fp, "url_underline=%d\n",		conf_get_int(conf,CONF_url_underline) ) ; 
 	fprintf( fp, "url_defbrowser=%d\n",		conf_get_int(conf,CONF_url_defbrowser) ) ; 
@@ -624,15 +623,6 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "url_regex=%s\n",			conf_get_str(conf,CONF_url_regex) ) ;
 	fprintf( fp, "urlhack_default_regex=%s\n",	urlhack_default_regex ) ;
 	fprintf( fp, "urlhack_liberal_regex=%s\n",	urlhack_liberal_regex ) ;
-#endif
-#ifdef MOD_TUTTY
-	/* TuTTY port Options */
-	fprintf( fp, "window_closable=%d\n",		conf_get_int(conf,CONF_window_closable) ) ; 
-	fprintf( fp, "window_minimizable=%d\n",		conf_get_int(conf,CONF_window_minimizable) ) ; 
-	fprintf( fp, "window_maximizable=%d\n",		conf_get_int(conf,CONF_window_maximizable) ) ; 
-	fprintf( fp, "window_has_sysmenu=%d\n",		conf_get_int(conf,CONF_window_has_sysmenu) ) ; 
-	fprintf( fp, "bottom_buttons=%d\n",		conf_get_int(conf,CONF_bottom_buttons) ) ; 
-#endif
 #ifdef MOD_TUTTYCOLOR
 	fprintf( fp, "bold_colour=%d\n",		conf_get_int(conf,CONF_bold_colour) ) ; 
 	fprintf( fp, "under_colour=%d\n",		conf_get_int(conf,CONF_under_colour) ) ; 
@@ -937,13 +927,11 @@ void SaveDumpFile( char * filename ) {
 			/* SECURITY: do NOT dump the private key material; note its presence only. */
 			fputs( "<redacted: private key file not included>\n", fpout ) ;
 		}
-#ifdef MOD_RUTTY
-		if( existfile( filename_to_str(conf_get_filename(conf,CONF_script_filename)) ) ) {
+		if( existfile( filename_to_str(conf_get_filename(conf,CONF_scriptfile)) ) ) {
 			fputs( "\n@@@ RuTTY script file @@@\n\n", fpout ) ;
 			/* SECURITY: script may hold inline secrets; note presence only. */
 			fputs( "<redacted: rutty script file not included>\n", fpout ) ;
 		}
-#endif
 		fputs( "\n@@@ ScreenShot @@@\n\n", fpout ) ;
 		SaveScreenShot( fpout ) ; fflush( fpout ) ;
 			

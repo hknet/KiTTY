@@ -1079,6 +1079,24 @@ void load_open_settings(settings_r *sesskey, Conf *conf)
         }
     }
     gppmap(sesskey, "SSHManualHostKeys", conf, CONF_ssh_manual_hostkeys);
+
+    /* KiTTY 0.84 betas briefly saved these RuTTY scripting fields under
+     * ScriptWaitfor/ScriptHalton. The historical/current names are
+     * ScriptWait/ScriptHalt; keep one-way load compatibility. */
+    if (conf_get_str(conf, CONF_script_waitfor)[0] == '\0') {
+        char *legacy = gpps_raw(sesskey, "ScriptWaitfor", NULL);
+        if (legacy) {
+            conf_set_str(conf, CONF_script_waitfor, legacy);
+            sfree(legacy);
+        }
+    }
+    if (conf_get_str(conf, CONF_script_halton)[0] == '\0') {
+        char *legacy = gpps_raw(sesskey, "ScriptHalton", NULL);
+        if (legacy) {
+            conf_set_str(conf, CONF_script_halton, legacy);
+            sfree(legacy);
+        }
+    }
 }
 
 bool do_defaults(const char *session, Conf *conf)

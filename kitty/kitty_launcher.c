@@ -22,6 +22,8 @@ static HMENU MenuLauncher = NULL ;
 static HMENU HideMenu ;
 static int LauncherConfReload = 1 ;
 static HBITMAP bmpCheck, bmpUnCheck ;
+static POINT LauncherMenuPoint ;
+static int LauncherMenuPointValid = 0 ;
 
 // Gestion Hide/UnHide all
 static struct THWin { HWND hwnd ; char name[128] ; } TabWin[100] ;
@@ -415,12 +417,10 @@ static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM l
 	return CallNextHookEx( g_launcher_menu_hook, code, wParam, lParam ) ;
 }
 
-void DisplayContextMenu( HWND hwnd, HMENU menu ) {
+static void DisplayContextMenuAt( HWND hwnd, HMENU menu, POINT pt ) {
 	HMENU hMenuPopup = menu ;
-	POINT pt;
 
 	SetForegroundWindow( hwnd ) ;
-	GetCursorPos (&pt);
 	g_launcher_menu_hook = SetWindowsHookEx( WH_MSGFILTER, LauncherMenuMsgFilter,
 	                                         NULL, GetCurrentThreadId() ) ;
 	TrackPopupMenu (hMenuPopup, TPM_LEFTALIGN, pt.x, pt.y, 0, hwnd, NULL);
@@ -428,6 +428,12 @@ void DisplayContextMenu( HWND hwnd, HMENU menu ) {
 		UnhookWindowsHookEx( g_launcher_menu_hook ) ;
 		g_launcher_menu_hook = NULL ;
 	}
+}
+
+void DisplayContextMenu( HWND hwnd, HMENU menu ) {
+	GetCursorPos (&LauncherMenuPoint);
+	LauncherMenuPointValid = 1 ;
+	DisplayContextMenuAt( hwnd, menu, LauncherMenuPoint ) ;
 }
 	
 // Gestion Hide/UnHide all
@@ -701,11 +707,14 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 				case IDM_LAUNCHER+7:
 					if( LauncherConfReload ) InitLauncherRegistry() ;
 					RefreshMenuLauncher() ;
-					/* KiTTY: just refresh the cached list and let the popup close
-					 * normally. (Previously it re-opened the menu at the current
-					 * cursor position, so the menu appeared to "move" to the mouse
-					 * and never dismissed - the rebuilt list is used on the next
-					 * open instead.) */
+					/* Keep the launcher visible after an explicit Refresh: users expect
+					 * to continue choosing from the freshly rebuilt session tree rather
+					 * than having the tray menu vanish. TrackPopupMenu has already
+					 * returned before WM_COMMAND is delivered, so re-open the rebuilt
+					 * menu at the same anchor point as the pre-refresh menu, not at the
+					 * current cursor position over the Refresh item. */
+					if( LauncherMenuPointValid ) DisplayContextMenuAt( hwnd, MenuLauncher, LauncherMenuPoint ) ;
+					else DisplayContextMenu( hwnd, MenuLauncher ) ;
 					break ;
 				case IDM_GONEXT:
 					ManageGoNext( hwnd ) ;

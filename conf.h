@@ -1407,5 +1407,5 @@ CONF_OPTION(script_crlf, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("ScriptCR
 CONF_OPTION(script_enable, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("ScriptEnable"),)
 CONF_OPTION(script_except, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("ScriptExcept"),)
 CONF_OPTION(script_timeout, VALUE_TYPE(INT), DEFAULT_INT(15), SAVE_KEYWORD("ScriptTimeout"),)
-CONF_OPTION(script_waitfor, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("ScriptWaitfor"),)
-CONF_OPTION(script_halton, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("ScriptHalton"),)
+CONF_OPTION(script_waitfor, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("ScriptWait"),)
+CONF_OPTION(script_halton, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("ScriptHalt"),)

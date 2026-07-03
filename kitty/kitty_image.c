@@ -1328,33 +1328,6 @@ void RedrawBackground( HWND hwnd ) {
 	
 	}
 
-
-#ifdef MOD_STARTBUTTON
-/*
- * Patch permettant de gerer le probleme de chargement de l'image de fond arrive avec putty 0.61
- */
-void BackgroundImagePatch( int num ) {
-	int key=0x47 ;  
-
-	if( num == 1 ) { // Double-clic sur une session, on fait ALT-G + Down + ALT-O
-		key = 0x47 ; /* VK_G 71 */
-		keybd_event(VK_LMENU , 0, 0, 0) ;
-		keybd_event( key, 0, 0, 0); 
-		keybd_event( key, 0, KEYEVENTF_KEYUP, 0) ;
-		keybd_event(VK_LMENU, 0, KEYEVENTF_KEYUP, 0) ;
-	
-		keybd_event(VK_DOWN, 0, 0, 0) ;
-		keybd_event(VK_DOWN, 0, KEYEVENTF_KEYUP, 0) ;
-
-		key=0x4F ;  /* VK_O */
-		keybd_event(VK_LMENU , 0, 0, 0) ;
-		keybd_event( key, 0, 0, 0); 
-		keybd_event( key, 0, KEYEVENTF_KEYUP, 0) ;
-		keybd_event(VK_LMENU, 0, KEYEVENTF_KEYUP, 0) ;
-		}
-	}
-#endif
-
 #endif
 
 HBITMAP HWND_to_HBITMAP(HWND hWnd)

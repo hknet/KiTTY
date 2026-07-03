@@ -10,8 +10,9 @@
  *  - cryptstring is 3-arg (mode, st, key) here; bridged through GetCryptSaltFlag().
  *  - A handful of MOD_PERSO conf keys are not yet ported into 0.84 conf.h;
  *    those individual writes are commented out (marked NOTPORTED) so the rest
- *    of the export remains faithful. Compiled with MOD_PERSO only, so the
- *    MOD_RUTTY/HYPERLINK/ZMODEM/etc. blocks compile out.
+ *    of the export remains faithful. Current 0.84 scripting is compiled and
+ *    exposed without the old MOD_RUTTY define, so its KTX fields are written
+ *    unconditionally.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -471,6 +472,30 @@ void save_open_settings_forced(char *filename, Conf *conf) {
 #ifdef MOD_PROXY
     write_setting_s_forced(sesskey, "ProxySelection", conf_get_str(conf, CONF_proxyselection));
 #endif
+    /* URL hyperlinks are compiled and exposed through the 0.84 no-global
+     * kitty_url.c/window.c path, not the historical terminal.c hyperlink
+     * patch. Keep KTX export in sync with the visible Window/Hyperlinks UI. */
+    write_setting_i_forced(sesskey, "HyperlinkUnderline", conf_get_int(conf, CONF_url_underline));
+    write_setting_i_forced(sesskey, "HyperlinkUseCtrlClick", conf_get_int(conf, CONF_url_ctrl_click));
+    write_setting_i_forced(sesskey, "HyperlinkBrowserUseDefault", conf_get_int(conf, CONF_url_defbrowser));
+    write_setting_filename_forced(sesskey, "HyperlinkBrowser", conf_get_filename(conf, CONF_url_browser));
+    write_setting_i_forced(sesskey, "HyperlinkRegularExpressionUseDefault", conf_get_int(conf, CONF_url_defregex));
+    write_setting_s_forced(sesskey, "HyperlinkRegularExpression", conf_get_str(conf, CONF_url_regex));
+    /* RuTTY scripting is compiled and exposed in current KiTTY builds, so the
+     * KTX export must persist it without depending on the historical MOD_RUTTY
+     * define. Do not save record mode as active; match old KiTTY behaviour. */
+    write_setting_filename_forced(sesskey, "Scriptfile", conf_get_filename(conf, CONF_scriptfile));
+    write_setting_i_forced(sesskey, "ScriptMode", conf_get_int(conf, CONF_script_mode) == 1 ? 1 : 0);
+    write_setting_i_forced(sesskey, "ScriptLineDelay", conf_get_int(conf, CONF_script_line_delay));
+    write_setting_i_forced(sesskey, "ScriptCharDelay", conf_get_int(conf, CONF_script_char_delay));
+    write_setting_s_forced(sesskey, "ScriptCondLine", conf_get_str(conf, CONF_script_cond_line));
+    write_setting_i_forced(sesskey, "ScriptCondUse", conf_get_int(conf, CONF_script_cond_use));
+    write_setting_i_forced(sesskey, "ScriptCRLF", conf_get_int(conf, CONF_script_crlf));
+    write_setting_i_forced(sesskey, "ScriptEnable", conf_get_int(conf, CONF_script_enable));
+    write_setting_i_forced(sesskey, "ScriptExcept", conf_get_int(conf, CONF_script_except));
+    write_setting_i_forced(sesskey, "ScriptTimeout", conf_get_int(conf, CONF_script_timeout));
+    write_setting_s_forced(sesskey, "ScriptWait", conf_get_str(conf, CONF_script_waitfor));
+    write_setting_s_forced(sesskey, "ScriptHalt", conf_get_str(conf, CONF_script_halton));
 #ifdef MOD_PERSO
     if (conf_get_int(conf, CONF_transparencynumber)<-1) conf_set_int(conf, CONF_transparencynumber,-1);
     if (conf_get_int(conf, CONF_transparencynumber)>255) conf_set_int(conf, CONF_transparencynumber,255);

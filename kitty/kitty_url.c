@@ -1,9 +1,10 @@
 /*
  * KiTTY URL hyperlinks integration for PuTTY 0.84 (no-global, window.c-side).
  *
- * Original feature: PuttyTray / Nutty hyperlink hack, carried by KiTTY as
- * MOD_HYPERLINK.  In KiTTY 0.76b the screen-scan + region detection + launch
- * lived inside terminal.c's do_paint / term_mouse.  PuTTY 0.84's terminal.c is
+ * Original feature: PuttyTray / Nutty hyperlink hack, carried by KiTTY as an
+ * old MOD-gated terminal patch. In KiTTY 0.76b the screen-scan + region
+ * detection + launch lived inside terminal.c's do_paint / term_mouse.
+ * PuTTY 0.84's terminal.c is
  * heavily refactored, but terminal.h now exposes the full Terminal struct plus
  * the public term_get_line()/term_release_line() accessors, so the whole thing
  * can be driven from windows/window.c instead, with NO terminal.c edits.

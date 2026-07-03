@@ -512,11 +512,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 		 / 1000
 #endif
 		 );
-#ifdef MOD_HYPERLINK
-    gppi_forced(sesskey, "ScrollbackLines", 10000, conf, CONF_savelines);
-#else
     gppi_forced(sesskey, "ScrollbackLines", 2000, conf, CONF_savelines);
-#endif
     gppb_forced(sesskey, "DECOriginMode", false, conf, CONF_dec_om);
     gppb_forced(sesskey, "AutoWrapMode", true, conf, CONF_wrap_mode);
     gppb_forced(sesskey, "LFImpliesCR", false, conf, CONF_lfhascr);
@@ -549,14 +545,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppb_forced(sesskey, "TrueColour", true, conf, CONF_true_colour);
     i = gppi_raw_forced(sesskey, "BoldAsColour", 1); conf_set_int(conf, CONF_bold_style, i+1);
 
-#ifdef MOD_TUTTY
-    gppi_forced(sesskey, "WindowClosable", 1, conf, CONF_window_closable);
-    gppi_forced(sesskey, "WindowMinimizable", 1, conf, CONF_window_minimizable);
-    gppi_forced(sesskey, "WindowMaximizable", 1, conf, CONF_window_maximizable);
-    gppi_forced(sesskey, "WindowHasSysMenu", 1, conf, CONF_window_has_sysmenu);
-    gppi_forced(sesskey, "DisableBottomButtons", 1, conf, CONF_bottom_buttons);
-#endif
-#ifdef MOD_TUTTY
+#ifdef MOD_TUTTYCOLOR
     gppi_forced(sesskey, "BoldAsColourTest", 1, conf, CONF_bold_colour);
     gppi_forced(sesskey, "UnderlinedAsColour", 0, conf, CONF_under_colour);
     gppi_forced(sesskey, "SelectedAsColour", 0, conf, CONF_sel_colour);
@@ -715,21 +704,29 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppb_forced(sesskey, "SUPDUPScrolling", false, conf, CONF_supdup_scroll);
      */
 
-/* rutty: */
-#ifdef MOD_RUTTY
-	gppfile_forced(sesskey, "ScriptFileName", conf, CONF_script_filename);
+/* rutty: scripting is compiled and exposed in current KiTTY builds, so KTX
+ * imports must restore it without depending on the historical MOD_RUTTY
+ * define. Current 0.84 UI stores the selected script path in CONF_scriptfile
+ * (old trees used ScriptFileName/CONF_script_filename). */
+	gppfile_forced(sesskey, "Scriptfile", conf, CONF_scriptfile);
+	if (filename_to_str(conf_get_filename(conf, CONF_scriptfile))[0] == '\0') {
+		Filename *legacy_scriptfile = read_setting_filename_forced(sesskey, "ScriptFileName");
+		if (legacy_scriptfile) {
+			conf_set_filename(conf, CONF_scriptfile, legacy_scriptfile);
+			filename_free(legacy_scriptfile);
+		}
+	}
 	gppi_forced(sesskey, "ScriptMode", 0, conf, CONF_script_mode);
-	gppi_forced(sesskey, "ScriptLineDelay", 0, conf, CONF_script_line_delay);
+	gppi_forced(sesskey, "ScriptLineDelay", 5, conf, CONF_script_line_delay);
 	gppi_forced(sesskey, "ScriptCharDelay", 0, conf, CONF_script_char_delay);
 	gpps_forced(sesskey, "ScriptCondLine", ":", conf, CONF_script_cond_line);
 	gppi_forced(sesskey, "ScriptCondUse", 0, conf, CONF_script_cond_use);
-	gppi_forced(sesskey, "ScriptCRLF", SCRIPT_NOLF, conf, CONF_script_crlf);
+	gppi_forced(sesskey, "ScriptCRLF", 0, conf, CONF_script_crlf);
 	gppi_forced(sesskey, "ScriptEnable", 0, conf, CONF_script_enable);
 	gppi_forced(sesskey, "ScriptExcept", 0, conf, CONF_script_except);
-	gppi_forced(sesskey, "ScriptTimeout", 30, conf, CONF_script_timeout);
+	gppi_forced(sesskey, "ScriptTimeout", 15, conf, CONF_script_timeout);
 	gpps_forced(sesskey, "ScriptWait", "", conf, CONF_script_waitfor);
 	gpps_forced(sesskey, "ScriptHalt", "", conf, CONF_script_halton);
-#endif  /* rutty */
 #ifdef MOD_RECONNECT
     gppi_forced(sesskey, "WakeupReconnect", 0, conf, CONF_wakeup_reconnect );
     gppi_forced(sesskey, "FailureReconnect", 0, conf, CONF_failure_reconnect );
@@ -744,21 +741,18 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "BgImageAbsoluteY", 0, conf, CONF_bg_image_abs_y );
     gppi_forced(sesskey, "BgImagePlacement", 0, conf, CONF_bg_image_abs_fixed );
 #endif
-#ifdef MOD_HYPERLINK
 	/*
 	 * HACK: PuttyTray / Nutty
-	 * Hyperlink stuff: Load hyperlink settings
+	 * Hyperlink stuff: Load hyperlink settings. In 0.84 the feature is active via
+	 * kitty_url.c/window.c without the historical terminal.c hyperlink define,
+	 * so KTX import must not depend on that guard.
 	 */
-	gppi_forced(sesskey, "HyperlinkUnderline", 0, conf, CONF_url_underline);
+	gppi_forced(sesskey, "HyperlinkUnderline", 1, conf, CONF_url_underline);
 	gppi_forced(sesskey, "HyperlinkUseCtrlClick", 1, conf, CONF_url_ctrl_click);
 	gppi_forced(sesskey, "HyperlinkBrowserUseDefault", 1, conf, CONF_url_defbrowser);
 	gppfile_forced(sesskey, "HyperlinkBrowser", conf, CONF_url_browser);
 	gppi_forced(sesskey, "HyperlinkRegularExpressionUseDefault", 1, conf, CONF_url_defregex);
-
-#ifndef MOD_NOHYPERLINK
-	gpps_forced(sesskey, "HyperlinkRegularExpression", urlhack_default_regex, conf, CONF_url_regex);
-#endif
-#endif
+	gpps_forced(sesskey, "HyperlinkRegularExpression", "", conf, CONF_url_regex);
 #ifdef MOD_ZMODEM
     gppfile_forced(sesskey, "rzCommand", conf, CONF_rzcommand );
     gpps_forced(sesskey, "rzOptions", "-e -v", conf, CONF_rzoptions );

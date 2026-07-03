@@ -210,7 +210,7 @@ regcomp( char* exp)
 	register char *longest;
 	register int len;
 	int flags;
-	int i;														// Ajout MOD_HYPERLINK
+	int i; /* KiTTY hyperlink patch */
 
 	if (exp == NULL)
 		FAIL("NULL argument");
@@ -234,7 +234,7 @@ regcomp( char* exp)
 		FAIL("out of space");
 
 	/*
-	 * 0.84 port fix: the original KiTTY "Ajout MOD_HYPERLINK" lines here
+	 * 0.84 port fix: the original KiTTY hyperlink patch lines here
 	 * free()'d r->startp[i]/r->endp[i] immediately after malloc() (i.e. on
 	 * UNINITIALISED memory) -> heap corruption / crash.  Those arrays hold
 	 * pointers INTO the searched string (set by regexec, never heap-owned),

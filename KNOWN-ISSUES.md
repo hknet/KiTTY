@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.39 — Known issues & limitations
+# KiTTY 0.84.1.40 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -54,11 +54,26 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.39-beta @ 2026-06-27`.
+- **Version string:** binaries report `0.84.1.40-beta @ 2026-07-03`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.40
+
+- **Window title placeholders.** The **Window Title** setting supports dynamic
+  placeholders such as `%%h` (host), `%%s` (session), `%%u` (user), `%%p` (port),
+  `%%P` (protocol), `%%f` (folder), and forwarded-port summaries. Contributed by
+  m-hume.
+- **WinSCP polish:** KiTTY now detects common 32-bit/per-user/PATH WinSCP installs,
+  re-probes stale paths, and the config dialog uses a file picker for the WinSCP
+  executable.
+- **Launcher Refresh keeps you in context:** the tray menu is rebuilt and reopened
+  at the original menu position after Refresh.
+- **Cleanup / migration hardening:** stale historical `MOD_*` guards no longer hide
+  active RuTTY scripting, hyperlink, KTX import/export, or savedump paths; the
+  hyperlink backend source layout was normalized.
 
 ## New in 0.84.1.37
 

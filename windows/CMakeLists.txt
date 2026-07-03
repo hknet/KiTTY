@@ -261,7 +261,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_store.c
   ${KITTY_DIR}/kitty_tools.c
   ${KITTY_DIR}/kitty_win.c
-  ${KITTY_DIR}/url/urlhack.old.c
+  ${KITTY_DIR}/url/urlhack.c
   ${KITTY_DIR}/url/re_lib/regexp.c
   ${KITTY_DIR}/kitty_url.c
   ${KITTY_DIR}/kitty_bridge.c
@@ -276,7 +276,7 @@ be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
 # per-target be-list object so other binaries' be_list.c is unaffected.
 target_compile_definitions(kitty-be-list PRIVATE MOD_ADB=1)
 add_dependencies(kitty generated_licence_h)
-target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.1.39" BUILD_TIME="2026-06-30")
+target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.1.40" BUILD_TIME="2026-07-03")
 target_compile_options(kitty PRIVATE -fcommon)
 target_include_directories(kitty PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
@@ -315,7 +315,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_store.c
   ${KITTY_DIR}/kitty_tools.c
   ${KITTY_DIR}/kitty_win.c
-  ${KITTY_DIR}/url/urlhack.old.c
+  ${KITTY_DIR}/url/urlhack.c
   ${KITTY_DIR}/url/re_lib/regexp.c
   ${KITTY_DIR}/kitty_url.c
   ${KITTY_DIR}/kitty_bridge.c
@@ -328,7 +328,7 @@ add_executable(kitty_portable
 be_list(kitty_portable KiTTY SSH SERIAL OTHERBACKENDS)
 target_compile_definitions(kitty_portable-be-list PRIVATE MOD_ADB=1)
 add_dependencies(kitty_portable generated_licence_h)
-target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.1.39" BUILD_TIME="2026-06-30")
+target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.1.40" BUILD_TIME="2026-07-03")
 target_compile_options(kitty_portable PRIVATE -fcommon)
 target_include_directories(kitty_portable PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5

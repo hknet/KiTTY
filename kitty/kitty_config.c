@@ -135,10 +135,10 @@ static void kitty_proxy_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
 /* WinSCP executable path (KiTTY): this is a GLOBAL app setting in kitty.ini
  * [KiTTY] WinSCPPath, NOT a per-session CONF_ key - so it cannot use
- * conf_editbox_handler. On REFRESH we show the stored path, or, if none is
+ * conf_filesel_handler. On REFRESH we show the stored path, or, if none is
  * stored yet, the auto-detected default as a display hint (we never WRITE on
- * refresh). On VALCHANGE we persist whatever the user typed. Mirrors the
- * resolution order in SearchWinSCP() (kitty.c). */
+ * refresh). On VALCHANGE we persist whatever the user selected/typed. Mirrors
+ * the resolution order in SearchWinSCP() (kitty.c). */
 int ReadParameter(const char *key, const char *name, char *value);   /* kitty.c */
 int WriteParameter(const char *key, const char *name, char *value);  /* kitty.c */
 int existfile(const char *filename);                                  /* kitty_tools.c */
@@ -158,28 +158,45 @@ static void kitty_winscppath_handler(dlgcontrol *ctrl, dlgparam *dlg,
         char buffer[4096];
         buffer[0] = '\0';
         refreshing = 1;
-        if (ReadParameter(INIT_SECTION, "WinSCPPath", buffer) != 0 &&
-            buffer[0]) {
-            dlg_editbox_set(ctrl, dlg, buffer);
-        } else {
+        if (ReadParameter(INIT_SECTION, "WinSCPPath", buffer) == 0 ||
+            !buffer[0]) {
             /* Nothing stored: offer the default location as a hint, but only
              * if it actually exists (display only - do not persist here). */
             const char *pf = getenv("ProgramFiles");
+            const char *pf86 = getenv("ProgramFiles(x86)");
+            const char *local = getenv("LOCALAPPDATA");
+            buffer[0] = '\0';
             if (pf) {
                 sprintf(buffer, "%s\\WinSCP\\WinSCP.exe", pf);
-                dlg_editbox_set(ctrl, dlg, existfile(buffer) ? buffer : "");
-            } else {
-                dlg_editbox_set(ctrl, dlg, "");
+                if (!existfile(buffer))
+                    buffer[0] = '\0';
             }
+            if (!buffer[0] && pf86) {
+                sprintf(buffer, "%s\\WinSCP\\WinSCP.exe", pf86);
+                if (!existfile(buffer))
+                    buffer[0] = '\0';
+            }
+            if (!buffer[0] && local) {
+                sprintf(buffer, "%s\\Programs\\WinSCP\\WinSCP.exe", local);
+                if (!existfile(buffer))
+                    buffer[0] = '\0';
+            }
+        }
+        {
+            Filename *fn = filename_from_str(buffer);
+            dlg_filesel_set(ctrl, dlg, fn);
+            filename_free(fn);
         }
         refreshing = 0;
     } else if (event == EVENT_VALCHANGE) {
-        char *val;
+        Filename *fn;
+        char val[4096];
         if (refreshing)
             return;
-        val = dlg_editbox_get(ctrl, dlg);
+        fn = dlg_filesel_get(ctrl, dlg);
+        snprintf(val, sizeof(val), "%s", filename_to_str(fn));
         WriteParameter(INIT_SECTION, "WinSCPPath", val);
-        sfree(val);
+        filename_free(fn);
     }
 }
 #endif
@@ -4153,10 +4170,11 @@ void setup_config_box(struct controlbox *b, bool midsession,
             s = ctrl_getset(b, "Connection/SSH/PSCP and WinSCP",
                             "WinSCP", "WinSCP integration");
             /* Global app setting (kitty.ini [KiTTY] WinSCPPath), not per-session;
-             * uses a custom handler rather than conf_editbox_handler. */
-            ctrl_editbox(s, "WinSCP executable path", NO_SHORTCUT, 100,
+             * uses a custom handler rather than conf_filesel_handler. */
+            ctrl_filesel(s, "WinSCP executable:", NO_SHORTCUT,
+                         FILTER_ALL_FILES, false, "Select WinSCP executable",
                          HELPCTX(no_help),
-                         kitty_winscppath_handler, P(NULL), P(NULL));
+                         kitty_winscppath_handler, P(NULL));
             ctrl_editbox(s, "SFTP connect ([user@]hostname[:port])",
                          NO_SHORTCUT, 100,
                          HELPCTX(no_help),

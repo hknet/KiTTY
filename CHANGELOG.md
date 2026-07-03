@@ -7,12 +7,25 @@ see [FEATURES.md](FEATURES.md).
 
 ## Unreleased
 
+## 0.84.1.40-beta — 2026-07-03
+
 - **Window title placeholders.** The **Window Title** setting now expands dynamic
   placeholders so the title can reflect the active connection: `%%h` (hostname),
   `%%s` (saved session name), `%%u` (username), `%%p` (port), `%%P` (protocol),
   `%%f` (folder), `%%l` (local forwarded ports), and `%%d` (dynamic/SOCKS
   forwarded ports). See [`docs/window-title-placeholders.md`](docs/window-title-placeholders.md).
   Contributed by m-hume.
+- **WinSCP launch detection improved.** KiTTY now finds 32-bit WinSCP installs under
+  `Program Files (x86)`, per-user installs under `%LOCALAPPDATA%\Programs`, and
+  `WinSCP.exe` on `PATH`; stale configured paths are re-probed. The config dialog
+  now uses a file picker for the WinSCP executable instead of a plain text field.
+- **Launcher tray Refresh is easier to use.** Refresh rebuilds and reopens the tray
+  menu at the original menu position, so you can keep navigating from the same spot
+  after reloading sessions.
+- **Cleanup / migration hardening.** RuTTY scripting, hyperlink settings, savedump,
+  and KTX import/export no longer depend on stale historical `MOD_*` guards. The
+  hyperlink backend source is normalized to `kitty/url/urlhack.c`, and dead old
+  `MOD_STARTBUTTON` / `MOD_TUTTY` fragments were retired.
 
 ## 0.84.1.39-beta — 2026-06-30
 

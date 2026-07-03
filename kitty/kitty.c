@@ -100,16 +100,10 @@ static int PasteSize = 0 ;
 int GetPasteSize(void) { return PasteSize ; }
 void SetPasteSize( const int size ) { PasteSize = size ; }
 
-// Flag de gestion de la fonction hyperlink
-#ifdef FLJ
+// Flag de gestion de la fonction hyperlink. In 0.84 hyperlinks are provided by
+// kitty_url.c/window.c, not the historical terminal.c hyperlink patch, so keep
+// the feature available by default and let kitty.ini "hyperlink" disable it.
 int HyperlinkFlag = 1 ;
-#else
-#ifdef MOD_HYPERLINK
-int HyperlinkFlag = 1 ;
-#else
-int HyperlinkFlag = 0 ;
-#endif
-#endif
 int GetHyperlinkFlag(void) { return HyperlinkFlag ; }
 void SetHyperlinkFlag( const int flag ) { HyperlinkFlag = flag ; }
 
@@ -1314,13 +1308,7 @@ void CreateDefaultIniFile_old( void ) {
 			writeINI( KittyIniFile, INIT_SECTION, "#CtHelperPath", "" ) ;
 //			writeINI( KittyIniFile, INIT_SECTION, "debug", "#no" ) ;
 			writeINI( KittyIniFile, INIT_SECTION, "#downloaddir", "" ) ;
-#ifdef MOD_HYPERLINK
-#ifdef FLJ
 			writeINI( KittyIniFile, INIT_SECTION, "hyperlink", "yes" ) ;
-#else
-			writeINI( KittyIniFile, INIT_SECTION, "hyperlink", "no" ) ;
-#endif
-#endif
 			writeINI( KittyIniFile, INIT_SECTION, "icon", "no" ) ;
 			writeINI( KittyIniFile, INIT_SECTION, "#iconfile", DEFAULT_EXE_FILE ) ;
 			writeINI( KittyIniFile, INIT_SECTION, "mouseshortcuts", "yes" ) ;
@@ -1370,9 +1358,7 @@ void CreateDefaultIniFile_old( void ) {
 			writeINI( KittyIniFile, INIT_SECTION, "#autoreconnect", "yes" ) ;
 			writeINI( KittyIniFile, INIT_SECTION, "#ReconnectDelay", "5" ) ;
 #endif
-#ifdef MOD_RUTTY
 			writeINI( KittyIniFile, INIT_SECTION, "#scriptmode", "yes" ) ;
-#endif
 
 			writeINI( KittyIniFile, INIT_SECTION, "#commanddelay", "0.05" ) ;
 			writeINI( KittyIniFile, INIT_SECTION, "#initdelay", "2.0" ) ;
@@ -4054,7 +4040,6 @@ int InternalCommand( HWND hwnd, char * st ) {
 	} else if( !strcmp( st, "/debug" ) ) { 
 		debug_flag = abs( debug_flag - 1 ) ; 
 		return 1 ;
-#ifdef MOD_HYPERLINK
 	} else if( !strcmp( st, "/hyperlink" ) ) { 
 		HyperlinkFlag = abs( HyperlinkFlag - 1 ) ; 
 		return 1 ;
@@ -4062,7 +4047,6 @@ int InternalCommand( HWND hwnd, char * st ) {
 		char b[1024] ;
 		snprintf(b,sizeof(b),"%d: %s",conf_get_int(conf,CONF_url_defregex),conf_get_str(conf,CONF_url_regex));
 		MessageBox( NULL, b, "URL regex", MB_OK ) ; return 1 ; 
-#endif
 	} else if( !strcmp( st, "/save" ) ) { 
 		SaveCurrentSetting(hwnd);
 		return 1 ; 
@@ -4298,6 +4282,25 @@ int SearchCtHelper( void ) {
 	return 0 ;
 }
 	
+static int set_winscp_path_if_exists(const char *path)
+{
+	if( path != NULL && path[0] && existfile(path) ) {
+		WinSCPPath = (char*) malloc( strlen(path) + 1 ) ;
+		strcpy( WinSCPPath, path ) ;
+		WriteParameter( INIT_SECTION, "WinSCPPath", WinSCPPath ) ;
+		return 1 ;
+	}
+	return 0 ;
+}
+
+static int probe_winscp_env_dir(const char *envname, const char *subpath, char *buffer, size_t buflen)
+{
+	const char *base = getenv(envname) ;
+	if( base == NULL || base[0] == '\0' ) return 0 ;
+	snprintf( buffer, buflen, "%s\\%s", base, subpath ) ;
+	return set_winscp_path_if_exists(buffer) ;
+}
+
 // Recherche le chemin vers le programme WinSCP
 int SearchWinSCP( void ) {
 	char buffer[4096] ;
@@ -4310,34 +4313,20 @@ int SearchWinSCP( void ) {
 			DelParameter( INIT_SECTION, "WinSCPPath" ) ; 
 		}
 	}
-	//strcpy( buffer, "C:\\Program Files\\WinSCP\\WinSCP.exe" ) ;
-	sprintf( buffer, "%s\\WinSCP\\WinSCP.exe", getenv("ProgramFiles") ) ;
-	if( existfile( buffer ) ) { 
-		WinSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( WinSCPPath, buffer ) ; 
-		WriteParameter( INIT_SECTION, "WinSCPPath", WinSCPPath ) ;
-		return 1 ;
-	}
-	//strcpy( buffer, "C:\\Program Files\\WinSCP3\\WinSCP3.exe" ) ;
-	sprintf( buffer, "%s\\WinSCP3\\WinSCP3.exe", getenv("ProgramFiles") ) ;
-	if( existfile( buffer ) ) { 
-		WinSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( WinSCPPath, buffer ) ; 
-		WriteParameter( INIT_SECTION, "WinSCPPath", WinSCPPath ) ;
-		return 1 ;
-	}
-	sprintf( buffer, "%s\\WinSCP.exe", InitialDirectory ) ;
-	if( existfile( buffer ) ) { 
-		WinSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( WinSCPPath, buffer ) ; 
-		WriteParameter( INIT_SECTION, "WinSCPPath", WinSCPPath ) ;
-		return 1 ;
-	}
+	if( probe_winscp_env_dir("ProgramFiles", "WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
+	if( probe_winscp_env_dir("ProgramFiles(x86)", "WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
+	if( probe_winscp_env_dir("LOCALAPPDATA", "Programs\\WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
+	if( probe_winscp_env_dir("ProgramFiles", "WinSCP3\\WinSCP3.exe", buffer, sizeof(buffer)) ) return 1 ;
+	if( probe_winscp_env_dir("ProgramFiles(x86)", "WinSCP3\\WinSCP3.exe", buffer, sizeof(buffer)) ) return 1 ;
+	snprintf( buffer, sizeof(buffer), "%s\\WinSCP.exe", InitialDirectory ) ;
+	if( set_winscp_path_if_exists(buffer) ) return 1 ;
 	if( ReadParameter( INIT_SECTION, "winscpdir", buffer ) ) {
 		buffer[4076]='\0';
 		strcat( buffer, "\\" ) ; strcat( buffer, "WinSCP.exe" ) ;
-		if( existfile( buffer ) ) { 
-			WinSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( WinSCPPath, buffer ) ; 
-			WriteParameter( INIT_SECTION, "WinSCPPath", WinSCPPath ) ;
-			return 1 ;
-		}
+		if( set_winscp_path_if_exists(buffer) ) return 1 ;
+	}
+	if( SearchPathA(NULL, "WinSCP.exe", NULL, sizeof(buffer), buffer, NULL) > 0 ) {
+		if( set_winscp_path_if_exists(buffer) ) return 1 ;
 	}
 	return 0 ;
 }
@@ -4362,12 +4351,10 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	
 	if( directory == NULL ) { directory = kitty_current_dir(); } 
 	if( WinSCPPath==NULL ) {
-		if( IniFileFlag == SAVEMODE_REG ) return ;
-		else if( !SearchWinSCP() ) return ;
+		if( !SearchWinSCP() ) return ;
 	}
 	if( !existfile( WinSCPPath ) ) {
-		if( IniFileFlag == SAVEMODE_REG ) return ;
-		else if( !SearchWinSCP() ) return ;
+		if( !SearchWinSCP() ) return ;
 	}
 		
 	if( !GetShortPathName( WinSCPPath, shortpath, 4095 ) ) return ;
@@ -5659,23 +5646,10 @@ void LoadParameters( void ) {
 	}
 	if( ReadParameter( INIT_SECTION, "cryptsalt", buffer ) ) { SetCryptSaltFlag( atoi(buffer) ) ; }
 	if( ReadParameter( INIT_SECTION, "ctrltab", buffer ) ) { if( !stricmp( buffer, "NO" ) ) SetCtrlTabFlag( 0 ) ; }
-#ifdef MOD_HYPERLINK
-#ifndef MOD_NOHYPERLINK
 	if( ReadParameter( INIT_SECTION, "hyperlink", buffer ) ) {
 		if( !stricmp( buffer, "NO" ) ) HyperlinkFlag = 0 ;
 		if( !stricmp( buffer, "YES" ) ) HyperlinkFlag = 1 ;
 	}
-#endif
-#else
-	/* 0.84 port: URL hyperlinks are provided by kitty_url.c (no MOD_HYPERLINK
-	 * terminal.c path), so honour the "hyperlink" ini key here too. Without
-	 * this, HyperlinkFlag (default 0) could only be flipped via the toggle
-	 * menu and the feature was effectively unreachable from config. */
-	if( ReadParameter( INIT_SECTION, "hyperlink", buffer ) ) {
-		if( !stricmp( buffer, "NO" ) ) HyperlinkFlag = 0 ;
-		if( !stricmp( buffer, "YES" ) ) HyperlinkFlag = 1 ;
-	}
-#endif
 	if( ReadParameter( INIT_SECTION, "icon", buffer ) ) { if( !stricmp( buffer, "YES" ) ) IconeFlag = 1 ; }
 	if( ReadParameter( INIT_SECTION, "iconfile", buffer ) ) {
 		if( existfile( buffer ) ) {
@@ -5774,12 +5748,10 @@ void LoadParameters( void ) {
 		if( ReconnectDelay < 1 ) ReconnectDelay = 1 ;
 	}
 #endif
-#ifdef MOD_RUTTY
 	if( ReadParameter( INIT_SECTION, "scriptmode", buffer ) ) { 
 		if( !stricmp( buffer, "YES" ) ) RuttyFlag = 1 ;
 		if( !stricmp( buffer, "NO" ) ) RuttyFlag = 0 ;
 	}
-#endif
 #ifndef MOD_NOTRANSPARENCY
 	if( ReadParameter( INIT_SECTION, "transparency", buffer ) ) {
 		if( !stricmp( buffer, "YES" ) ) { TransparencyFlag = 1 ; }
