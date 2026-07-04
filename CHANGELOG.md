@@ -7,7 +7,10 @@ see [FEATURES.md](FEATURES.md).
 
 ## Unreleased
 
-- Nothing yet.
+- **Savedump crash fixed.** `kitty.exe -savedump` now has a valid configuration
+  context during command-line processing, so it produces encrypted `kitty.dmp`
+  output in both registry and portable directory modes instead of crashing before
+  any terminal window exists.
 
 ## 0.84.1.41-beta — 2026-07-04
 

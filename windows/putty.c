@@ -12,6 +12,7 @@ extern char KiTTYClassName[];                       /* kitty.c: window class nam
 extern int  SendCommandAllWindows(HWND hwnd, char *cmd); /* kitty.c */
 extern void RunPuttyEd(HWND hwnd, char *filename);  /* kitty_win.c: session-file editor */
 extern void SaveDump(void);                         /* kitty_savedump.c (MOD_SAVEDUMP) */
+extern Conf *kitty_set_cli_conf(Conf *newconf);     /* window.c active/global bridge; for -savedump */
 extern int  SetTextToClipboard(const char *buf);    /* kitty_win.c */
 extern void mungestr(const char *in, char *out);    /* kitty_commun.c */
 extern int  existfile(const char *filename);        /* kitty_tools.c */
@@ -242,8 +243,15 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 sfree(ef);
                 cleanup_exit(0);
             } else if (!strcmp(p, "-savedump")) {
-                /* Dump the full KiTTY configuration to a file, then quit. */
+                /* Dump the full KiTTY configuration to a file, then quit.
+                 * At command-line parse time no WinGuiSeat exists yet, so the
+                 * usual active-seat global is still NULL. SaveDumpConfig reads
+                 * that global; point it at this already-loaded Conf before
+                 * dumping. Terminal/window-specific sections self-skip when no
+                 * active terminal exists. */
+                Conf *oldconf = kitty_set_cli_conf(conf);
                 SaveDump();
+                kitty_set_cli_conf(oldconf);
                 cleanup_exit(0);
             } else if (!strcmp(p, "-fileassoc")) {
                 /* Register the KiTTY .ktx file association, then quit.

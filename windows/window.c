@@ -7402,6 +7402,12 @@ void kitty_set_active_seat(WinGuiSeat *wgs) {
      * it NULL in a plain session. */
     if (wgs && wgs->term_hwnd) MainHwnd = wgs->term_hwnd;
 }
+
+Conf *kitty_set_cli_conf(Conf *newconf) {
+    Conf *oldconf = conf;
+    conf = newconf;
+    return oldconf;
+}
 #ifdef MOD_SAVEDUMP
 /* Helpers for SaveDump (kitty_savedump.c). At command-line -savedump time no
  * seat exists yet, so GetTerminal() returns NULL and the terminal/clipboard
