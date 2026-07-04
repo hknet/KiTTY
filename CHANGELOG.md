@@ -11,6 +11,10 @@ see [FEATURES.md](FEATURES.md).
   context during command-line processing, so it produces encrypted `kitty.dmp`
   output in both registry and portable directory modes instead of crashing before
   any terminal window exists.
+- **Updater hardening.** The in-app MSI updater already verified KAPPER-signed
+  installers and held a read-only lock across launch; it now also downloads to a
+  unique temporary `.msi` path with `CREATE_NEW` and deletes the verified download
+  if launching `msiexec` fails or is cancelled.
 
 ## 0.84.1.41-beta — 2026-07-04
 

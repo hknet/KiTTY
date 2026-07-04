@@ -529,7 +529,10 @@ static int kitty_download_to_file( const char *url, const char *path ) {
 	HINTERNET hu = InternetOpenUrlA( hi, url, NULL, (DWORD)-1,
 		INTERNET_FLAG_RELOAD|INTERNET_FLAG_NO_CACHE_WRITE|INTERNET_FLAG_SECURE, 0 ) ;
 	if( hu!=NULL ) {
-		HANDLE hf = CreateFileA( path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL ) ;
+		/* CREATE_NEW avoids clobbering or following an attacker-precreated file in
+		 * %TEMP%. The caller supplies a fresh random-ish path and failure deletes
+		 * partial output. */
+		HANDLE hf = CreateFileA( path, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL ) ;
 		if( hf!=INVALID_HANDLE_VALUE ) {
 			char buf[16384] ; DWORD nread=0 ; ok=1 ;
 			for( ;; ) {
@@ -612,11 +615,12 @@ static int kitty_verify_signature( const char *path ) {
 /* Launch the (already verified) MSI. System installs need elevation (runas);
  * per-user installs run unelevated. Restart Manager inside msiexec will close
  * the running kitty.exe to perform the in-place upgrade. */
-static void kitty_run_installer( HWND hwnd, kitty_install_t type, const char *path ) {
+static int kitty_run_installer( HWND hwnd, kitty_install_t type, const char *path ) {
 	char args[MAX_PATH+32] ;
 	sprintf( args, "/i \"%s\"", path ) ;
-	ShellExecuteA( hwnd, (type==KITTY_INST_SYSTEM) ? "runas" : "open",
+	HINSTANCE r = ShellExecuteA( hwnd, (type==KITTY_INST_SYSTEM) ? "runas" : "open",
 		"msiexec.exe", args, NULL, SW_SHOWNORMAL ) ;
+	return ((INT_PTR)r > 32) ;
 }
 
 /* ---- KiTTY: background "update available" check (cached; shown at session start) ----
@@ -916,11 +920,15 @@ void CheckVersionFromWebSite( HWND hwnd ) {
 						MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 )!=IDYES )
 					return ;
 
-				char tmpdir[MAX_PATH]="", tmpfile[MAX_PATH]="" ;
-				GetTempPathA( sizeof(tmpdir), tmpdir ) ;
-				const char *base = strrchr( asseturl, '/' ) ;
-				base = base ? base+1 : "KiTTY-update.msi" ;
-				snprintf( tmpfile, sizeof(tmpfile), "%s%s", tmpdir, base ) ;
+				char tmpdir[MAX_PATH]="", tmpbase[MAX_PATH]="", tmpfile[MAX_PATH]="" ;
+				if( !GetTempPathA( sizeof(tmpdir), tmpdir ) ||
+				    !GetTempFileNameA( tmpdir, "kty", 0, tmpbase ) ) {
+					MessageBox( hwnd, "Could not create a temporary installer path; aborting the update.",
+						"KiTTY Update", MB_OK|MB_ICONERROR ) ;
+					return ;
+				}
+				DeleteFileA( tmpbase ) ;
+				snprintf( tmpfile, sizeof(tmpfile), "%s.msi", tmpbase ) ;
 
 				HCURSOR oldc = SetCursor( LoadCursor(NULL, IDC_WAIT) ) ;
 				int dok = kitty_download_to_file( asseturl, tmpfile ) ;
@@ -957,7 +965,13 @@ void CheckVersionFromWebSite( HWND hwnd ) {
 						"KiTTY Update - signature rejected", MB_OK|MB_ICONERROR ) ;
 					return ;
 				}
-				kitty_run_installer( hwnd, itype, tmpfile ) ;
+				if( !kitty_run_installer( hwnd, itype, tmpfile ) ) {
+					CloseHandle( updguard ) ;
+					DeleteFileA( tmpfile ) ;
+					MessageBox( hwnd, "Could not start the verified installer. The downloaded file has been deleted.",
+						"KiTTY Update", MB_OK|MB_ICONERROR ) ;
+					return ;
+				}
 				/* deliberately do NOT CloseHandle(updguard) here: keep the verified
 				 * bytes locked against modification while msiexec reads them. */
 				return ;
