@@ -19,6 +19,9 @@ see [FEATURES.md](FEATURES.md).
   SSH host keys, SSH host CAs, the random seed, recent-session state, last-session
   state, and the update-check cache now live in the portable config directory
   instead of normal HKCU registry/profile locations.
+- **Session folder UI fixed.** The config dialog now uses an explicit **New folder
+  name** field, labels the root/all-sessions view clearly, maps filtered session
+  selections correctly, and saves sessions into the currently selected folder.
 
 ## 0.84.1.41-beta — 2026-07-04
 
