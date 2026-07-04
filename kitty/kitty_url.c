@@ -35,6 +35,7 @@ enum {
 
 static int kitty_url_inited = 0;
 static int kitty_url_cursor_is_hand = 0;
+static unsigned long kitty_url_last_screen_hash = 0;
 
 void kitty_url_init(void)
 {
@@ -64,11 +65,13 @@ void kitty_url_config(Conf *conf)
  * Mirrors the term->url_update branch in 0.76b terminal.c do_paint, using the
  * 0.84 public term_get_line()/term_release_line() accessors.
  */
-void kitty_url_rescan(Terminal *term)
+int kitty_url_rescan(Terminal *term)
 {
     int i, j;
+    unsigned long hash = 2166136261UL;
+    int changed;
     if (!kitty_url_inited || term == NULL)
-        return;
+        return 0;
     urlhack_reset();
     for (i = 0; i < term->rows; i++) {
         termline *lp = term_get_line(term, term->disptop + i);
@@ -79,26 +82,36 @@ void kitty_url_rescan(Terminal *term)
             /* UCSWIDE / control chars -> treat as blank for URL scanning */
             if (c < 0x20 || c == 0x7F)
                 c = ' ';
+            hash ^= (unsigned char)c;
+            hash *= 16777619UL;
             urlhack_putchar((char)c);
         }
         term_release_line(lp);
+        hash ^= '\n';
+        hash *= 16777619UL;
     }
+    hash ^= (unsigned long)term->cols;
+    hash *= 16777619UL;
+    hash ^= (unsigned long)term->rows;
+    hash *= 16777619UL;
+    changed = (hash != kitty_url_last_screen_hash);
+    kitty_url_last_screen_hash = hash;
     urlhack_go_find_me_some_hyperlinks(term->cols);
+    return changed;
 }
 
 /*
  * Update the mouse-hover state: show a hand cursor when over a link region.
  * cx/cy are character coordinates.  Returns 1 if currently over a link.
  */
-int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int ctrl_required)
+int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor)
 {
     int over;
     if (!kitty_url_inited)
         return 0;
     urlhack_mouse_old_x = cx;
     urlhack_mouse_old_y = cy;
-    over = (!ctrl_required || urlhack_is_ctrl_pressed()) &&
-           urlhack_is_in_link_region(cx, cy);
+    over = hover_cursor && urlhack_is_in_link_region(cx, cy);
     if (over) {
         if (!kitty_url_cursor_is_hand) {
             SetClassLongPtr(hwnd, GCLP_HCURSOR,

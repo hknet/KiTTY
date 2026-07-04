@@ -64,6 +64,12 @@
 #ifndef IDM_NEWDUPSESS
 #define IDM_NEWDUPSESS  0xB1B0  /* new duplicated session (new window) */
 #endif
+#ifndef IDM_MNOTEPAD
+#define IDM_MNOTEPAD    0xB1C0  /* open KiTTY's embedded mNotepad editor */
+#endif
+#ifndef IDM_MNOTEPAD_CLIP
+#define IDM_MNOTEPAD_CLIP 0xB1D0  /* open mNotepad with clipboard contents */
+#endif
 #endif
 #ifdef MOD_RECONNECT
 #ifndef IDM_RESTARTSESSION
@@ -151,6 +157,7 @@ void ManageInitScript(const char *input_str, const int len); /* kitty.c: scan se
 extern char *ScriptFileContent;                /* kitty.c: loaded login-script buffer (NULL = none) */
 extern HWND MainHwnd;                          /* kitty.c/bridge: active terminal hwnd for keystroke injection */
 void CheckVersionFromWebSite(HWND hwnd);       /* kitty_win.c: query GitHub releases for an update */
+void RunPuttyEd(HWND hwnd, char *filename);     /* kitty_win.c: open embedded mNotepad editor */
 void kitty_start_update_check(void);           /* kitty_win.c: async refresh of cached latest version */
 int kitty_update_notice(char *buf, int n);     /* kitty_win.c: notice text if a newer version is cached */
 void kitty_apply_transparency(WinGuiSeat *wgs);
@@ -201,8 +208,8 @@ int  GetHyperlinkFlag(void);
 void SetHyperlinkFlag(const int flag);
 void kitty_url_init(void);
 void kitty_url_config(Conf *conf);
-void kitty_url_rescan(Terminal *term);
-int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int ctrl_required);
+int kitty_url_rescan(Terminal *term);
+int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor);
 int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
 int kitty_url_cell_underline(Conf *conf, int col, int row);
 /* Per-session icon (CONF_icone / CONF_iconefile). */
@@ -1250,8 +1257,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         wgs->popup_menus[SYSMENU].menu = GetSystemMenu(wgs->term_hwnd, false);
         wgs->popup_menus[CTXMENU].menu = CreatePopupMenu();
 
-        /* Copy/Paste intentionally omitted from the menu: selecting text
-         * already copies, and right-click / Shift+Ins pastes. */
+        /* KiTTY: keep an explicit Paste command in both the system menu and
+         * right-click context menu. In Windows mouse mode, right-click opens the
+         * context menu instead of pasting, so the menu item is the discoverable
+         * paste path (matching classic KiTTY/PuTTY behaviour). */
 
         wgs->savedsess_menu = CreateMenu();
         get_sesslist(&sesslist, true);
@@ -1274,6 +1283,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                        "Sa&ved Sessions");
             AppendMenu(m, MF_ENABLED, IDM_RECONF, "Chan&ge Settings...");
             AppendMenu(m, MF_SEPARATOR, 0, 0);
+            AppendMenu(m, MF_ENABLED, IDM_PASTE, "&Paste");
             AppendMenu(m, MF_ENABLED, IDM_COPYALL, "C&opy All to Clipboard");
             AppendMenu(m, MF_ENABLED, IDM_CLRSB, "C&lear Scrollback");
             AppendMenu(m, MF_ENABLED, IDM_RESET, "Rese&t Terminal");
@@ -1315,6 +1325,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
             AppendMenu(toolmenu, MF_ENABLED, IDM_WINSCP, "Start Win&SCP");
             AppendMenu(toolmenu, MF_ENABLED, IDM_PSCP, "Send file (&pscp)");
+            AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
+            AppendMenu(toolmenu, MF_ENABLED, IDM_MNOTEPAD, "Open &mNotepad");
+            AppendMenu(toolmenu, MF_ENABLED, IDM_MNOTEPAD_CLIP, "Open mNotepad with clip&board");
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
             {
                 int sa = kitty_script_active();
@@ -3472,6 +3485,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             showabout(hwnd);
             break;
 #ifdef MOD_PERSO
+          case IDM_MNOTEPAD:
+            RunPuttyEd(hwnd, NULL);
+            break;
+          case IDM_MNOTEPAD_CLIP:
+            RunPuttyEd(hwnd, "1");
+            break;
           case IDM_CHECKUPDATE:
             CheckVersionFromWebSite(hwnd);
             break;
@@ -3872,10 +3891,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         /* KiTTY URL hyperlinks: rescan visible screen for links and update the
          * hand cursor when hovering over one. */
         if (GetHyperlinkFlag()) {
-            kitty_url_rescan(wgs->term);
+            if (kitty_url_rescan(wgs->term) &&
+                conf_get_int(wgs->conf, CONF_url_underline))
+                InvalidateRect(hwnd, NULL, FALSE);
             kitty_url_hover(wgs->term, hwnd,
                             TO_CHR_X(X_POS(lParam)), TO_CHR_Y(Y_POS(lParam)),
-                            conf_get_int(wgs->conf, CONF_url_ctrl_click));
+                            conf_get_int(wgs->conf, CONF_url_hover_cursor));
         }
 #endif
         return 0;
@@ -6233,8 +6254,10 @@ static bool wintw_setup_draw_ctx(TermWin *tw)
      * without depending on a mouse move.  Only when hyperlinks + underline are
      * enabled; one screen scan per repaint burst. */
     if (wgs->wintw_hdc && GetHyperlinkFlag() &&
-        conf_get_int(wgs->conf, CONF_url_underline))
-        kitty_url_rescan(wgs->term);
+        conf_get_int(wgs->conf, CONF_url_underline)) {
+        if (kitty_url_rescan(wgs->term))
+            InvalidateRect(wgs->term_hwnd, NULL, FALSE);
+    }
 #endif
     return wgs->wintw_hdc != NULL;
 }

@@ -82,7 +82,7 @@ By default KiTTY stores its configuration in the Windows registry. In **portable
 
 **Current scope (this port):** only **saved sessions** are file-based so far. **SSH host keys and the random seed still use the registry**, so portable mode is not yet 100% registry-free, and a DPAPI-encrypted password is machine-bound (it will not decrypt if you copy the folder to another PC — a portable master-password option is planned).
 
-**How to enable:** Use the dedicated **kitty_portable.exe** (defaults to file mode), or place a `kitty.ini` next to `kitty.exe` containing `[KiTTY]` then `savemode=dir`.
+**How to enable:** Use the dedicated **kitty_portable.exe** (defaults to file mode), or place a `kitty.ini` next to `kitty.exe` containing `[KiTTY]` then `savemode=dir`. The release includes `kitty.ini.example` as a commented, inert starting point; copy/rename it only when you want an active config file.
 
 (no screenshot)
 
@@ -101,6 +101,8 @@ The session launcher gives you a quick way to open your saved sessions without d
 **How to enable:** Run **`kitty.exe -launcher`** to open a small quick-launch window listing your saved sessions.
 
 You can keep individual sessions out of the launcher menu while leaving them in the normal session list: tick **"Hide this session from the launcher"** in the session's **Session** panel.
+
+For favourite sessions, you can assign a **global hotkey** in the session's **Window → Behaviour** panel. The hotkey is registered only while `kitty.exe -launcher` is running; when you save a session, a running launcher is notified and refreshes its registered hotkeys automatically. The same panel includes a check button that tells you whether the combination is currently available or already reserved by Windows/another application.
 
 ![Session launcher](docs/features/img/ex_launcher.jpg)
 
@@ -124,7 +126,7 @@ Based on the RuTTY patch, this lets you automate actions on a session by running
 
 KiTTY can detect URLs in the terminal output and turn them into clickable hyperlinks, so you can jump straight to a web address without copying and pasting it. You decide how links behave, including whether they are underlined, which modifier key activates them, and which browser opens them. This makes it quick to follow links that appear in logs, command output, or chat sessions.
 
-**How to enable:** Configuration > **Window > Hyperlinks**: enable, choose underline/modifier/browser. Ctrl+click a URL in the terminal to open it.
+**How to enable:** Configuration > **Window > Hyperlinks**: choose underline, whether Ctrl is required to activate links, browser, and optional hand cursor on hover. Ctrl+click a URL in the terminal to open it by default.
 
 ![URL hyperlinks](docs/features/img/config_hyperlinks.jpg)
 
@@ -384,9 +386,11 @@ KiTTY can display a picture behind your terminal text, giving each session windo
 
 ### Automatic saving
 
-KiTTY stores all of its configuration (sessions, host keys, and parameters) in the Windows registry. To keep that configuration safe, KiTTY automatically saves a backup copy every time you change settings and close the configuration dialog. The backup is written to **kitty.sav**, kept alongside kitty.ini. The first time you run KiTTY, it also picks up any existing sessions defined for PuTTY so you don't have to recreate them.
+KiTTY can keep a registry-mode backup of its settings, sessions, and host keys in **kitty.sav**. In registry mode, the backup is refreshed when settings are saved from the configuration dialog. By default it lives under `%APPDATA%\KiTTY` next to `kitty.ini`; advanced users can override the location with `[KiTTY] sav=`.
 
-**How to enable:** Automatic in registry mode: each time you apply the configuration dialog, KiTTY exports its registry hive to **kitty.sav** (in %APPDATA%\KiTTY, or the `[KiTTY] sav=` path) as a safety backup.
+**Backup/restore:** `kitty.sav` is a Windows Registry export of KiTTY's configuration hive. To restore it, close KiTTY/kageant/launcher first, then import the file with Registry Editor or `reg import kitty.sav`, and start KiTTY again. If the backup was protected with KiTTY's legacy config-password mechanism, KiTTY prompts for that password while loading it. Portable directory mode (`kitty_portable.exe` / `savemode=dir`) stores sessions as files instead; when settings are applied, KiTTY refreshes `Backups\kitty-portable-latest` and keeps timestamped backups such as `Backups\kitty-portable-YYYYMMDD-HHMMSS` under the portable config directory. By default it keeps 5 timestamped backups; set `[KiTTY] portablebackupcount=0` to disable or another number to change retention. The backup contains `kitty.ini`, `Sessions`, `SshHostKeys`, and related portable config folders. To restore, close KiTTY/kageant/launcher and copy the backup contents back into the portable config directory.
+
+**How to enable:** Automatic in registry mode: each time you apply the configuration dialog, KiTTY exports its registry hive to **kitty.sav** (in `%APPDATA%\KiTTY`, or the `[KiTTY] sav=` path) as a safety backup.
 
 (no screenshot)
 
@@ -486,7 +490,7 @@ KiTTY extends PuTTY's command line with a long list of extra switches, letting y
 
 KiTTY includes a small built-in text editor that is tied to your terminal window. It gives you a simple scratch area where you can compose or paste text before sending it to the running session, which is handy for preparing multi-line commands or notes without typing them straight into the terminal. Anything you write in the editor can be sent directly to the active session.
 
-**How to enable:** Press **Shift+F2** to open the built-in editor (Ctrl+Shift+F2 opens it pre-filled with the clipboard). Text typed there can be sent straight to the session.
+**How to enable:** Use terminal **Tools > Open mNotepad**, or press **Shift+F2** to open the built-in editor (**Ctrl+Shift+F2** opens it pre-filled with the clipboard). Use **Send (F12)**, **Ctrl+Enter**, or the editor's **Send** menu item to send text to the parent KiTTY session. If text is selected, the selection is sent; otherwise mNotepad sends the current line/block according to the delimiter selected in its **Delimiter** menu. The editor font is DPI-scaled on high-DPI displays.
 
 (no screenshot)
 

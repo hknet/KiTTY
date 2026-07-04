@@ -10,6 +10,9 @@
 #include "dialog.h"
 #include "storage.h"
 #include "tree234.h"
+#ifndef MOD_NOREPEAT
+#define MOD_NOREPEAT 0x4000
+#endif
 #ifdef MOD_PERSO
 #include "kitty_proxy.h"   /* proxy-choice droplist: proxies[], GetProxySelectionFlag, MAX_PROXY */
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION */
@@ -38,6 +41,15 @@ void StringList_Del(char **list, const char *name);  /* kitty_tools.c */
 void StringList_Up(char **list, const char *name);   /* kitty_tools.c */
 void InitFolderList(void);                            /* kitty.c */
 void SaveFolderList(void);                            /* kitty.c */
+
+#define KITTY_LAUNCHER_REFRESH_MESSAGE "KiTTYLauncherRefreshSessionsAndHotkeys"
+
+static void kitty_notify_launcher_sessions_changed(void)
+{
+    UINT msg = RegisterWindowMessageA(KITTY_LAUNCHER_REFRESH_MESSAGE);
+    if (msg)
+        PostMessageA(HWND_BROADCAST, msg, 0, 0);
+}
 
 /* Checkbox handler for KiTTY keys that are stored as INT (0/1) rather
  * than BOOL (the standard conf_checkbox_handler asserts on INT keys in
@@ -106,6 +118,69 @@ static void kitty_showpw_handler(dlgcontrol *ctrl, dlgparam *dlg,
             dlg_editbox_set_masked(g_autopw_ctrl, dlg, dlg_checkbox_get(ctrl, dlg));
     }
 }
+
+#ifdef MOD_LAUNCHER
+static char *kitty_cfg_trim(char *s)
+{
+    char *e;
+    while (*s == ' ' || *s == '\t') s++;
+    e = s + strlen(s);
+    while (e > s && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r' || e[-1] == '\n'))
+        *--e = '\0';
+    return s;
+}
+
+static bool kitty_cfg_parse_hotkey(char *spec, UINT *mods, UINT *vk)
+{
+    char *tok, *keytok = NULL;
+    *mods = 0; *vk = 0;
+    spec = kitty_cfg_trim(spec);
+    if (!*spec) return false;
+    for (tok = strtok(spec, "+"); tok != NULL; tok = strtok(NULL, "+")) {
+        tok = kitty_cfg_trim(tok);
+        if (!stricmp(tok, "Ctrl") || !stricmp(tok, "Control")) *mods |= MOD_CONTROL;
+        else if (!stricmp(tok, "Shift")) *mods |= MOD_SHIFT;
+        else if (!stricmp(tok, "Alt")) *mods |= MOD_ALT;
+        else if (!stricmp(tok, "Win") || !stricmp(tok, "Windows")) *mods |= MOD_WIN;
+        else keytok = tok;
+    }
+    if (keytok == NULL) return false;
+    if (strlen(keytok) == 1) {
+        char c = keytok[0];
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) *vk = (UINT)c;
+    } else if ((keytok[0] == 'F' || keytok[0] == 'f') && keytok[1] >= '1' && keytok[1] <= '9') {
+        int n = atoi(keytok + 1);
+        if (n >= 1 && n <= 24) *vk = VK_F1 + n - 1;
+    }
+    return (*mods != 0 && *vk != 0);
+}
+
+static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                                void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    char work[256];
+    UINT mods, vk;
+    (void)ctrl; (void)dlg;
+    if (event != EVENT_ACTION) return;
+    strncpy(work, conf_get_str(conf, CONF_launcher_global_hotkey), sizeof(work)-1);
+    work[sizeof(work)-1] = '\0';
+    if (!kitty_cfg_parse_hotkey(work, &mods, &vk)) {
+        MessageBox(NULL, "Enter a hotkey such as Ctrl+Alt+K or Ctrl+Shift+F12.",
+                   "KiTTY Launcher hotkey", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    if (RegisterHotKey(NULL, 0x4B7A, mods | MOD_NOREPEAT, vk)) {
+        UnregisterHotKey(NULL, 0x4B7A);
+        MessageBox(NULL, "This hotkey is currently available.\n\nNote: it is only registered while KiTTY Launcher is running.",
+                   "KiTTY Launcher hotkey", MB_OK | MB_ICONINFORMATION);
+    } else {
+        MessageBox(NULL, "This hotkey is already in use or reserved by Windows/another app.\n\nWindows does not expose which application owns a global hotkey.",
+                   "KiTTY Launcher hotkey", MB_OK | MB_ICONWARNING);
+    }
+}
+#endif
 
 /* Proxy-choice droplist (KiTTY): lists named proxy definitions (plus the two
  * built-ins "- Session defined proxy -" / "- No proxy -") and stores the chosen
@@ -1252,6 +1327,12 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 if (errmsg) {
                     dlg_error_msg(dlg, errmsg);
                     sfree(errmsg);
+                } else {
+                    /* Tell a running KiTTY Launcher to refresh its saved-session
+                     * list and re-register per-session global hotkeys. This is a
+                     * best-effort broadcast; if no launcher is running, nothing
+                     * happens and the next launcher start reads the new settings. */
+                    kitty_notify_launcher_sessions_changed();
                 }
             }
             get_sesslist(&ssd->sesslist, false);
@@ -2986,6 +3067,24 @@ void setup_config_box(struct controlbox *b, bool midsession,
                   HELPCTX(behaviour_closewarn),
                   conf_checkbox_handler, I(CONF_warn_on_close));
 
+#ifdef MOD_LAUNCHER
+    if (!GetPuttyFlag()) {
+        s = ctrl_getset(b, "Window/Behaviour", "launcher_hotkey",
+                        "KiTTY Launcher global hotkey");
+        ctrl_checkbox(s, "Enable global hotkey for this session", NO_SHORTCUT,
+                      HELPCTX(no_help), conf_checkbox_handler,
+                      I(CONF_launcher_global_hotkey_enabled));
+        ctrl_editbox(s, "Hotkey:", NO_SHORTCUT, 40,
+                     HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_launcher_global_hotkey), ED_STR);
+        ctrl_pushbutton(s, "Check hotkey availability", NO_SHORTCUT,
+                        HELPCTX(no_help), kitty_launcher_hotkey_check_handler,
+                        I(0));
+        ctrl_text(s, "Example: Ctrl+Alt+K or Ctrl+Shift+F12. Registered only while KiTTY Launcher is running.",
+                  HELPCTX(no_help));
+    }
+#endif
+
 #ifdef MOD_PERSO
     /*
      * The Window/Transparency panel (KiTTY).
@@ -3018,6 +3117,9 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ctrl_checkbox(s, "Underline hyperlinks", NO_SHORTCUT,
                       HELPCTX(no_help), kitty_checkbox_int_handler,
                       I(CONF_url_underline));
+        ctrl_checkbox(s, "Show hand cursor when hovering over hyperlinks", NO_SHORTCUT,
+                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      I(CONF_url_hover_cursor));
         ctrl_checkbox(s, "Use the default browser", NO_SHORTCUT,
                       HELPCTX(no_help), kitty_checkbox_int_handler,
                       I(CONF_url_defbrowser));

@@ -260,6 +260,8 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_ssh.c
   ${KITTY_DIR}/kitty_store.c
   ${KITTY_DIR}/kitty_tools.c
+  ${KITTY_DIR}/blocnote/notepad.c
+  ${KITTY_DIR}/blocnote/notepad.rc
   ${KITTY_DIR}/kitty_win.c
   ${KITTY_DIR}/url/urlhack.c
   ${KITTY_DIR}/url/re_lib/regexp.c
@@ -275,8 +277,10 @@ be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
 # kitty's backend list also includes the ADB backend (MOD_ADB) - applied to the
 # per-target be-list object so other binaries' be_list.c is unaffected.
 target_compile_definitions(kitty-be-list PRIVATE MOD_ADB=1)
+set_source_files_properties(${KITTY_DIR}/blocnote/notepad.c PROPERTIES COMPILE_DEFINITIONS NOMAIN)
+set_source_files_properties(${KITTY_DIR}/blocnote/notepad.rc PROPERTIES COMPILE_DEFINITIONS NOTEPAD_EMBEDDED)
 add_dependencies(kitty generated_licence_h)
-target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.1.40" BUILD_TIME="2026-07-03")
+target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.1.41" BUILD_TIME="2026-07-04")
 target_compile_options(kitty PRIVATE -fcommon)
 target_include_directories(kitty PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
@@ -286,7 +290,6 @@ target_link_libraries(kitty
   ${KITTY_DIR}/libs/libjpeg_64.a
   ${KITTY_DIR}/libs/base64_64.a ${KITTY_DIR}/libs/bcrypt_64.a
   ${KITTY_DIR}/libs/MD5check_64.a ${KITTY_DIR}/libs/mini_64.a
-  ${KITTY_DIR}/libs/notepad_64.a
   ${platform_libraries} wininet wintrust crypt32 msi)
 set_target_properties(kitty PROPERTIES WIN32_EXECUTABLE ON)
 
@@ -314,6 +317,8 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_ssh.c
   ${KITTY_DIR}/kitty_store.c
   ${KITTY_DIR}/kitty_tools.c
+  ${KITTY_DIR}/blocnote/notepad.c
+  ${KITTY_DIR}/blocnote/notepad.rc
   ${KITTY_DIR}/kitty_win.c
   ${KITTY_DIR}/url/urlhack.c
   ${KITTY_DIR}/url/re_lib/regexp.c
@@ -328,8 +333,18 @@ add_executable(kitty_portable
 be_list(kitty_portable KiTTY SSH SERIAL OTHERBACKENDS)
 target_compile_definitions(kitty_portable-be-list PRIVATE MOD_ADB=1)
 add_dependencies(kitty_portable generated_licence_h)
-target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.1.40" BUILD_TIME="2026-07-03")
+target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.1.41" BUILD_TIME="2026-07-04")
 target_compile_options(kitty_portable PRIVATE -fcommon)
+
+set(KITTY_TEST_BUILD_LABEL "" CACHE STRING "Visible label for ad-hoc KiTTY test/debug builds (shown in About boxes); leave empty for releases")
+if(KITTY_TEST_BUILD_LABEL)
+  target_compile_definitions(kitty PRIVATE KITTY_TEST_BUILD_LABEL="${KITTY_TEST_BUILD_LABEL}")
+  target_compile_definitions(kitty_portable PRIVATE KITTY_TEST_BUILD_LABEL="${KITTY_TEST_BUILD_LABEL}")
+  target_compile_definitions(guiterminal PRIVATE KITTY_TEST_BUILD_LABEL="${KITTY_TEST_BUILD_LABEL}")
+  target_compile_definitions(pageant PRIVATE KITTY_TEST_BUILD_LABEL="${KITTY_TEST_BUILD_LABEL}")
+  target_compile_definitions(puttygen PRIVATE KITTY_TEST_BUILD_LABEL="${KITTY_TEST_BUILD_LABEL}")
+endif()
+
 target_include_directories(kitty_portable PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
   ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)
@@ -338,6 +353,5 @@ target_link_libraries(kitty_portable
   ${KITTY_DIR}/libs/libjpeg_64.a
   ${KITTY_DIR}/libs/base64_64.a ${KITTY_DIR}/libs/bcrypt_64.a
   ${KITTY_DIR}/libs/MD5check_64.a ${KITTY_DIR}/libs/mini_64.a
-  ${KITTY_DIR}/libs/notepad_64.a
   ${platform_libraries} wininet wintrust crypt32 msi)
 set_target_properties(kitty_portable PROPERTIES WIN32_EXECUTABLE ON)

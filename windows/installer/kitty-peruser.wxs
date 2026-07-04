@@ -12,9 +12,9 @@
   stable across versions). AppUserModelIDs are version-independent on purpose.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="KiTTY 0.84.1.40-beta (per-user install)"
+  <Package Name="KiTTY 0.84.1.41-beta (per-user install)"
            Manufacturer="KiTTY 0.84 port"
-           Version="0.84.140"
+           Version="0.84.141"
            UpgradeCode="578952A6-AA7F-4146-918B-47803234700B"
            Scope="perUser"
            Compressed="yes">
@@ -45,6 +45,7 @@
       <Component><File Source="kittygen-cli.exe" /></Component>
       <Component><File Source="kitty_pterm.exe" /></Component>
       <Component><File Source="kitty_tel.exe" /></Component>
+      <Component><File Source="kitty.ini.example" /></Component>
     </ComponentGroup>
 
     <!-- Start-Menu shortcuts (non-advertised; icon = target exe; stable AUMID) -->

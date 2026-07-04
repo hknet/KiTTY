@@ -520,6 +520,8 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppb_forced(sesskey, "DisableArabicShaping", false, conf, CONF_no_arabicshaping);
     gppb_forced(sesskey, "DisableBidi", false, conf, CONF_no_bidi);
     gppb_forced(sesskey, "WinNameAlways", true, conf, CONF_win_name_always);
+    gppb_forced(sesskey, "LauncherGlobalHotkeyEnabled", false, conf, CONF_launcher_global_hotkey_enabled);
+    gpps_forced(sesskey, "LauncherGlobalHotkey", "", conf, CONF_launcher_global_hotkey);
     gpps_forced(sesskey, "WinTitle", "", conf, CONF_wintitle);
     gppi_forced(sesskey, "TermWidth", 80, conf, CONF_width);
     gppi_forced(sesskey, "TermHeight", 24, conf, CONF_height);
@@ -748,6 +750,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	 * so KTX import must not depend on that guard.
 	 */
 	gppi_forced(sesskey, "HyperlinkUnderline", 1, conf, CONF_url_underline);
+	gppi_forced(sesskey, "HyperlinkHoverCursor", 0, conf, CONF_url_hover_cursor);
 	gppi_forced(sesskey, "HyperlinkUseCtrlClick", 1, conf, CONF_url_ctrl_click);
 	gppi_forced(sesskey, "HyperlinkBrowserUseDefault", 1, conf, CONF_url_defbrowser);
 	gppfile_forced(sesskey, "HyperlinkBrowser", conf, CONF_url_browser);

@@ -9,6 +9,14 @@
 #endif
 
 #define KLWM_NOTIFYICON		(WM_USER+2)
+#define KLWM_UPDATECHECKDONE	(WM_USER+12)
+#define LAUNCHER_HOTKEY_BASE	0x4B00
+#define LAUNCHER_HOTKEY_MAX	32
+#define KITTY_LAUNCHER_REFRESH_MESSAGE "KiTTYLauncherRefreshSessionsAndHotkeys"
+#ifndef MOD_NOREPEAT
+#define MOD_NOREPEAT 0x4000
+#endif
+int RunSession( HWND hwnd, const char * folder_in, char * session_in ) ;
 
 /* KiTTY: runtime registry base (windows/storage.c). The launcher must read
  * KiTTY's own hive (Software\9bis.com\KiTTY) -- where sessions actually live --
@@ -24,6 +32,17 @@ static int LauncherConfReload = 1 ;
 static HBITMAP bmpCheck, bmpUnCheck ;
 static POINT LauncherMenuPoint ;
 static int LauncherMenuPointValid = 0 ;
+
+struct LauncherHotkey {
+	int id ;
+	UINT modifiers ;
+	UINT vk ;
+	char folder[1024] ;
+	char session[1024] ;
+} ;
+static struct LauncherHotkey LauncherHotkeys[LAUNCHER_HOTKEY_MAX] ;
+static int LauncherHotkeyCount = 0 ;
+static UINT LauncherRefreshMessage = 0 ;
 
 // Gestion Hide/UnHide all
 static struct THWin { HWND hwnd ; char name[128] ; } TabWin[100] ;
@@ -545,11 +564,113 @@ void ManageSwitch( const int n ) {
 	SetForegroundWindow( TabWin[n].hwnd ) ;
 	SetFocus( TabWin[n].hwnd ) ;
 }
+
+static void ShowLauncherUpdateBalloon( void ) {
+	extern int kitty_update_available(char*,int,char*,int,int*) ;
+	char ulatest[64]="" ; int ubeta=0 ;
+	if( kitty_update_available( ulatest, sizeof(ulatest), NULL, 0, &ubeta ) ) {
+		char umsg[256] ;
+		snprintf( umsg, sizeof(umsg),
+			"KiTTY %s is available%s.\nUse \"Check for updates\" in a terminal to install it.",
+			ulatest, ubeta ? " (beta)" : "" ) ;
+		TrayIcone.uFlags = NIF_INFO ;
+		TrayIcone.dwInfoFlags = NIIF_INFO ;
+		TrayIcone.uTimeout = 10000 ;
+		strncpy( TrayIcone.szInfoTitle, "KiTTY update available", sizeof(TrayIcone.szInfoTitle) ) ;
+		TrayIcone.szInfoTitle[sizeof(TrayIcone.szInfoTitle)-1] = '\0' ;
+		strncpy( TrayIcone.szInfo, umsg, sizeof(TrayIcone.szInfo) ) ;
+		TrayIcone.szInfo[sizeof(TrayIcone.szInfo)-1] = '\0' ;
+		Shell_NotifyIcon( NIM_MODIFY, &TrayIcone ) ;
+		TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE ;
+	}
+}
+
+static char *launcher_trim( char *s ) {
+	char *e ;
+	while( *s==' ' || *s=='\t' ) s++ ;
+	e = s + strlen(s) ;
+	while( e>s && (e[-1]==' ' || e[-1]=='\t' || e[-1]=='\r' || e[-1]=='\n') ) *--e='\0' ;
+	return s ;
+}
+
+static int launcher_parse_hotkey( char *spec, UINT *mods, UINT *vk ) {
+	char *hotkey, *tok, *keytok = NULL ;
+	*mods = 0 ; *vk = 0 ;
+	hotkey = launcher_trim( spec ) ;
+	if( hotkey[0]=='\0' ) return 0 ;
+	for( tok = strtok( hotkey, "+" ) ; tok != NULL ; tok = strtok( NULL, "+" ) ) {
+		tok = launcher_trim( tok ) ;
+		if( !stricmp(tok,"Ctrl") || !stricmp(tok,"Control") ) *mods |= MOD_CONTROL ;
+		else if( !stricmp(tok,"Shift") ) *mods |= MOD_SHIFT ;
+		else if( !stricmp(tok,"Alt") ) *mods |= MOD_ALT ;
+		else if( !stricmp(tok,"Win") || !stricmp(tok,"Windows") ) *mods |= MOD_WIN ;
+		else keytok = tok ;
+	}
+	if( keytok == NULL ) return 0 ;
+	if( strlen(keytok)==1 ) {
+		char c = keytok[0] ;
+		if( c>='a' && c<='z' ) c = (char)(c-'a'+'A') ;
+		if( (c>='A'&&c<='Z') || (c>='0'&&c<='9') ) *vk = (UINT)c ;
+	} else if( (keytok[0]=='F' || keytok[0]=='f') && keytok[1]>='1' && keytok[1]<='9' ) {
+		int n = atoi( keytok+1 ) ;
+		if( n>=1 && n<=24 ) *vk = VK_F1 + n - 1 ;
+	}
+	return (*mods != 0 && *vk != 0) ;
+}
+
+static void LauncherUnregisterHotkeys( HWND hwnd ) {
+	int i ;
+	for( i=0 ; i<LauncherHotkeyCount ; i++ )
+		UnregisterHotKey( hwnd, LauncherHotkeys[i].id ) ;
+	LauncherHotkeyCount = 0 ;
+}
+
+static void LauncherRegisterHotkeys( HWND hwnd ) {
+	char work[256] ;
+	int i ; UINT mods, vk ;
+	LauncherUnregisterHotkeys( hwnd ) ;
+	for( i=0 ; i<NB_MENU_MAX && LauncherHotkeyCount<LAUNCHER_HOTKEY_MAX ; i++ ) {
+		Conf *c ;
+		const char *hotkey ;
+		if( SpecialMenu[i] == NULL || SpecialMenu[i][0] == '\0' ) continue ;
+		c = conf_new() ;
+		if( c == NULL ) continue ;
+		if( do_defaults( SpecialMenu[i], c ) &&
+		    conf_get_bool( c, CONF_launcher_global_hotkey_enabled ) ) {
+			hotkey = conf_get_str( c, CONF_launcher_global_hotkey ) ;
+			strncpy( work, hotkey, sizeof(work)-1 ) ; work[sizeof(work)-1]='\0' ;
+			if( launcher_parse_hotkey( work, &mods, &vk ) ) {
+				LauncherHotkeys[LauncherHotkeyCount].id = LAUNCHER_HOTKEY_BASE + LauncherHotkeyCount ;
+				LauncherHotkeys[LauncherHotkeyCount].modifiers = mods | MOD_NOREPEAT ;
+				LauncherHotkeys[LauncherHotkeyCount].vk = vk ;
+				strncpy( LauncherHotkeys[LauncherHotkeyCount].folder, SpecialMenu[i], sizeof(LauncherHotkeys[LauncherHotkeyCount].folder)-1 ) ;
+				LauncherHotkeys[LauncherHotkeyCount].folder[sizeof(LauncherHotkeys[LauncherHotkeyCount].folder)-1] = '\0' ;
+				strncpy( LauncherHotkeys[LauncherHotkeyCount].session, SpecialMenu[i], sizeof(LauncherHotkeys[LauncherHotkeyCount].session)-1 ) ;
+				LauncherHotkeys[LauncherHotkeyCount].session[sizeof(LauncherHotkeys[LauncherHotkeyCount].session)-1] = '\0' ;
+				if( RegisterHotKey( hwnd, LauncherHotkeys[LauncherHotkeyCount].id,
+					LauncherHotkeys[LauncherHotkeyCount].modifiers, LauncherHotkeys[LauncherHotkeyCount].vk ) )
+					LauncherHotkeyCount++ ;
+			}
+		}
+		conf_free( c ) ;
+	}
+}
+
+static void LauncherRefreshSessionsAndHotkeys( HWND hwnd ) {
+	if( LauncherConfReload ) InitLauncherRegistry() ;
+	RefreshMenuLauncher() ;
+	LauncherRegisterHotkeys( hwnd ) ;
+}
 	
 // Procedures principales du launcher
 LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	int ResShell ;
 	static UINT s_uTaskbarRestart;
+
+	if( LauncherRefreshMessage != 0 && uMsg == LauncherRefreshMessage ) {
+		LauncherRefreshSessionsAndHotkeys( hwnd ) ;
+		return 0 ;
+	}
 	
 	switch( uMsg ) {
 		case WM_CREATE:
@@ -569,7 +690,7 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 	// On lui dit qu'il devra "écouter" son environement (clique de souris, etc)
 	TrayIcone.uCallbackMessage = KLWM_NOTIFYICON;
 #ifdef FLJ
-	TrayIcone.szTip[1024] = (TCHAR*)"PuTTY\0" ;			// Le tooltip par défaut, soit rien
+	strcpy( TrayIcone.szTip, "PuTTY\0" ) ;			// Le tooltip par défaut, soit rien
 #else
 	//TrayIcone.szTip[1024] = "KiTTY That\'s all folks!\0" ;			// Le tooltip par défaut, soit rien
 	strcpy( TrayIcone.szTip, "KiTTY Launcher\0" ) ;			// Le tooltip par défaut
@@ -583,30 +704,16 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		strcpy( TrayIcone.szTip, "KiTTY Launcher\0" ) ;
 #endif
 		ResShell = Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
-		/* KiTTY: refresh the cached latest version (async) and, if a newer build
-		 * is already known, nudge with a non-blocking tray balloon. Backstop to
-		 * the terminal-start notice; the launcher has no terminal of its own. */
+		/* KiTTY: refresh the cached latest version async. The notify variant posts
+		 * back when the fetch finishes, so the launcher balloon can appear on the
+		 * first run after a new release instead of only after a previous process has
+		 * populated the cache. Also check the existing cache immediately. */
 		{
-			extern void kitty_start_update_check(void) ;
-			extern int kitty_update_available(char*,int,char*,int,int*) ;
-			char ulatest[64]="" ; int ubeta=0 ;
-			kitty_start_update_check() ;
-			if( kitty_update_available( ulatest, sizeof(ulatest), NULL, 0, &ubeta ) ) {
-				char umsg[256] ;
-				snprintf( umsg, sizeof(umsg),
-					"KiTTY %s is available%s.\nUse \"Check for updates\" in a terminal to install it.",
-					ulatest, ubeta ? " (beta)" : "" ) ;
-				TrayIcone.uFlags = NIF_INFO ;
-				TrayIcone.dwInfoFlags = NIIF_INFO ;
-				TrayIcone.uTimeout = 10000 ;
-				strncpy( TrayIcone.szInfoTitle, "KiTTY update available", sizeof(TrayIcone.szInfoTitle) ) ;
-				TrayIcone.szInfoTitle[sizeof(TrayIcone.szInfoTitle)-1] = '\0' ;
-				strncpy( TrayIcone.szInfo, umsg, sizeof(TrayIcone.szInfo) ) ;
-				TrayIcone.szInfo[sizeof(TrayIcone.szInfo)-1] = '\0' ;
-				Shell_NotifyIcon( NIM_MODIFY, &TrayIcone ) ;
-				TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE ; /* restore */
-			}
+			extern void kitty_start_update_check_notify(HWND,UINT) ;
+			kitty_start_update_check_notify( hwnd, KLWM_UPDATECHECKDONE ) ;
+			ShowLauncherUpdateBalloon() ;
 		}
+		LauncherRegisterHotkeys( hwnd ) ;
 		if (IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_HIDE);
 		//SendMessage(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
 		return 1 ;
@@ -645,7 +752,21 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 				}
 			break ;
 	
+		case KLWM_UPDATECHECKDONE:
+			ShowLauncherUpdateBalloon() ;
+			break ;
+		case WM_HOTKEY:
+			{
+				int i ;
+				for( i=0 ; i<LauncherHotkeyCount ; i++ )
+					if( (int)wParam == LauncherHotkeys[i].id ) {
+						RunSession( hwnd, LauncherHotkeys[i].folder, LauncherHotkeys[i].session ) ;
+						break ;
+					}
+			}
+			break ;
 		case WM_DESTROY: 
+			LauncherUnregisterHotkeys( hwnd ) ;
 			ManageUnHideAll( hwnd ) ;
 			PostQuitMessage( 0 ) ;
 			break ;
@@ -659,8 +780,11 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 					 * as Unicode regardless of the system ANSI codepage, so the
 					 * earlier mojibake (Â© / "a\200\224") cannot recur. */
 					const char *ab =
-						"KiTTY Launcher " BUILD_VERSION "\r\n\r\n"
-						"Quick-launch for your saved KiTTY sessions, from the system tray.\r\n"
+						"KiTTY Launcher " BUILD_VERSION "\r\n"
+#ifdef KITTY_TEST_BUILD_LABEL
+						"TEST BUILD: " KITTY_TEST_BUILD_LABEL "\r\n"
+#endif
+						"\r\nQuick-launch for your saved KiTTY sessions, from the system tray.\r\n"
 						"Part of the KiTTY suite \xe2\x80\x94 a fork of PuTTY 0.84.\r\n\r\n"
 						"\xc2\xa9 KAPPER NETWORK-COMMUNICATIONS GmbH\r\n"
 						"Based on KiTTY by Cyril Dupont and PuTTY by Simon Tatham." ;
@@ -707,6 +831,7 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 				case IDM_LAUNCHER+7:
 					if( LauncherConfReload ) InitLauncherRegistry() ;
 					RefreshMenuLauncher() ;
+					LauncherRegisterHotkeys( hwnd ) ;
 					/* Keep the launcher visible after an explicit Refresh: users expect
 					 * to continue choosing from the freshly rebuilt session tree rather
 					 * than having the tray menu vanish. TrackPopupMenu has already
@@ -785,6 +910,8 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	}
 
 	if( strstr( cmdline, "-putty" ) != NULL ) SetPuttyFlag(1) ;
+
+	LauncherRefreshMessage = RegisterWindowMessageA(KITTY_LAUNCHER_REFRESH_MESSAGE) ;
 
 	wndclass.style = 0;
 	wndclass.lpfnWndProc = Launcher_WndProc;

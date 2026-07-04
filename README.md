@@ -5,7 +5,7 @@ the free Windows SSH/Telnet client. This branch is a **forward-port of the entir
 set onto current PuTTY 0.84** — so you get KiTTY's extras on top of a modern, security-patched
 PuTTY core (≈1,200 upstream commits newer than KiTTY's original 0.76b base).
 
-> ⚠️ **Beta release** (`0.84.1.40-beta`). The full KiTTY feature set on a modern, security-patched PuTTY 0.84 core — including a post-quantum key-exchange warning and a console CLI key generator (`kittygen-cli.exe`). Please still read the known issues below.
+> ⚠️ **Beta release** (`0.84.1.41-beta`). The full KiTTY feature set on a modern, security-patched PuTTY 0.84 core — including a post-quantum key-exchange warning and a console CLI key generator (`kittygen-cli.exe`). Please still read the known issues below.
 
 ## Screenshots
 
@@ -25,13 +25,13 @@ A terminal session with a clickable, underlined hyperlink:
 
 Grab the latest build from the **[Releases page →](https://github.com/hknet/KiTTY/releases/latest)**.
 
-Current release — **[KiTTY 0.84.1.40-beta](https://github.com/hknet/KiTTY/releases/tag/kitty-0.84.1.40-beta)**:
+Current release — **[KiTTY 0.84.1.41-beta](https://github.com/hknet/KiTTY/releases/tag/kitty-0.84.1.41-beta)**:
 
 | Download | Use it when |
 |---|---|
-| **[Installer — per-user (no admin)](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.1.40-beta/KiTTY-0.84.1.40-beta-x64-peruser.msi)** | **Recommended.** Installs for your user only, **no UAC prompt** (`%LOCALAPPDATA%\Programs\KiTTY`). |
-| **[Installer — system-wide](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.1.40-beta/KiTTY-0.84.1.40-beta-x64-system.msi)** | All users, into `Program Files` (requires admin). |
-| **[Portable ZIP](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.1.40-beta/kitty-0.84.1.40-beta.zip)** | No install — run from a folder or USB stick. Includes `kitty_portable.exe` and all command-line tools. |
+| **[Installer — per-user (no admin)](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.1.41-beta/KiTTY-0.84.1.41-beta-x64-peruser.msi)** | **Recommended.** Installs for your user only, **no UAC prompt** (`%LOCALAPPDATA%\Programs\KiTTY`). |
+| **[Installer — system-wide](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.1.41-beta/KiTTY-0.84.1.41-beta-x64-system.msi)** | All users, into `Program Files` (requires admin). |
+| **[Portable ZIP](https://github.com/hknet/KiTTY/releases/download/kitty-0.84.1.41-beta/kitty-0.84.1.41-beta.zip)** | No install — run from a folder or USB stick. Includes `kitty_portable.exe` and all command-line tools. |
 
 Both installers add Start-Menu + Desktop shortcuts and an Add/Remove-Programs entry, and uninstall
 cleanly. If your antivirus flags `kitty.exe` (UPX-compression heuristics), use the `kitty_nocompress.exe`
@@ -54,7 +54,7 @@ included in the ZIP — it's identical, just unpacked. Every download is checksu
 - Plus the standard PuTTY tools, renamed KiTTY-style: `klink`, `kscp`, `ksftp`, `kageant`, `kittygen`.
 - `kittygen-cli.exe` — a console-mode CLI key generator (generate, convert, fingerprint) for use in scripts and pipelines. Run `kittygen-cli --help` for options.
 
-Most KiTTY extras read from a `kitty.ini` (`[KiTTY]` section). For example, URL hyperlinks are enabled with:
+Most KiTTY extras read from a `kitty.ini` (`[KiTTY]` section). The release includes an inert `kitty.ini.example` with commented options; copy/rename it to `kitty.ini` only when you want an active config file. For example, URL hyperlinks are enabled with:
 
 ```ini
 [KiTTY]

@@ -617,6 +617,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	/* Hyperlink Options (active via kitty_url.c/window.c) */
 	fprintf( fp, "url_ctrl_click=%d\n",		conf_get_int(conf,CONF_url_ctrl_click) ) ; 
 	fprintf( fp, "url_underline=%d\n",		conf_get_int(conf,CONF_url_underline) ) ; 
+	fprintf( fp, "url_hover_cursor=%d\n",		conf_get_int(conf,CONF_url_hover_cursor) ) ; 
 	fprintf( fp, "url_defbrowser=%d\n",		conf_get_int(conf,CONF_url_defbrowser) ) ; 
 	fprintf( fp, "url_defregex=%d\n",		conf_get_int(conf,CONF_url_defregex) ) ; 
 	fprintf( fp, "url_browser=%s\n",		filename_to_str(conf_get_filename(conf,CONF_url_browser)) ) ; 

@@ -406,15 +406,18 @@ void RunCommand( HWND hwnd, const char * cmd ) {
 }
 
 void RunPuttyEd( HWND hwnd, char * filename ) {
-	char buffer[1024]="", shortname[1024]="" ;
-	if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) ) if( GetShortPathName( buffer, shortname, 1023 ) ) {
-		strcat( shortname, " -ed" );
-		if( filename!=NULL ) if( strlen(filename)>0 ) { 
-			strcat( shortname, "b " ) ; 
-			strcat( shortname, filename ) ; 
+	char module[MAX_PATH+1]="", cmd[4096]="" ;
+	/* Do not rely on GetShortPathName(): 8.3 short names can be disabled on
+	 * modern Windows volumes, which made Shift+F2/Ctrl+Shift+F2 silently do
+	 * nothing. Quote the real module path instead. */
+	if( GetModuleFileName( NULL, (LPTSTR)module, MAX_PATH ) ) {
+		snprintf( cmd, sizeof(cmd), "\"%s\" -ed", module );
+		if( filename!=NULL ) if( strlen(filename)>0 ) {
+			strncat( cmd, "b ", sizeof(cmd)-strlen(cmd)-1 ) ;
+			strncat( cmd, filename, sizeof(cmd)-strlen(cmd)-1 ) ;
 		}
-		debug_logevent( shortname ) ;
-		RunCommand( hwnd, shortname ) ; 
+		debug_logevent( cmd ) ;
+		RunCommand( hwnd, cmd ) ;
 	}
 }
 
@@ -674,8 +677,13 @@ static int kitty_fetch_latest_version( char *ver, int verlen, int *is_beta ) {
 	return got ;
 }
 
-static DWORD WINAPI kitty_update_worker( LPVOID unused ) {
-	(void)unused ;
+struct kitty_update_notify {
+	HWND hwnd ;
+	UINT msg ;
+} ;
+
+static DWORD WINAPI kitty_update_worker( LPVOID param ) {
+	struct kitty_update_notify *notify = (struct kitty_update_notify *)param ;
 	char ver[64]="" ; int is_beta=0 ;
 	if( kitty_fetch_latest_version( ver, sizeof(ver), &is_beta ) ) {
 		HKEY hk ; char base[512] ;
@@ -687,6 +695,11 @@ static DWORD WINAPI kitty_update_worker( LPVOID unused ) {
 			RegCloseKey( hk ) ;
 			}
 		}
+	if( notify != NULL ) {
+		if( notify->hwnd != NULL && notify->msg != 0 )
+			PostMessage( notify->hwnd, notify->msg, 0, 0 ) ;
+		free( notify ) ;
+		}
 	return 0 ;
 }
 
@@ -696,6 +709,22 @@ void kitty_start_update_check( void ) {
 	if( started ) return ; started = 1 ;
 	HANDLE th = CreateThread( NULL, 0, kitty_update_worker, NULL, 0, NULL ) ;
 	if( th != NULL ) CloseHandle( th ) ;
+}
+
+/* Launcher variant: notify a window after the async cache refresh, so the tray
+ * balloon can appear on the first launcher run after a new release instead of
+ * only after a previous process has already populated the cache. */
+void kitty_start_update_check_notify( HWND hwnd, UINT msg ) {
+	static int started = 0 ;
+	struct kitty_update_notify *notify ;
+	if( started ) return ; started = 1 ;
+	notify = (struct kitty_update_notify *)malloc( sizeof(*notify) ) ;
+	if( notify == NULL ) return ;
+	notify->hwnd = hwnd ;
+	notify->msg = msg ;
+	HANDLE th = CreateThread( NULL, 0, kitty_update_worker, notify, 0, NULL ) ;
+	if( th != NULL ) CloseHandle( th ) ;
+	else free( notify ) ;
 }
 
 /* If the cached latest version is newer than this build and the channel rule

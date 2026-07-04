@@ -515,10 +515,17 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
 
         {
             char *buildinfo_text = buildinfo("\r\n");
+#ifdef KITTY_TEST_BUILD_LABEL
+            const char *testbuild = "\r\n*** TEST BUILD: " KITTY_TEST_BUILD_LABEL " ***";
+#else
+            const char *testbuild = "";
+#endif
             char *text = dupprintf(
-                "KiTTYgen\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
-                ver, buildinfo_text,
-                "\251 " SHORT_COPYRIGHT_DETAILS ". All rights reserved.");
+                "KiTTYgen\r\n\r\n%s%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
+                ver, testbuild, buildinfo_text,
+                "This PuTTY 0.84 port (c) KAPPER NETWORK-COMMUNICATIONS GmbH - https://github.com/hknet/KiTTY",
+                "KiTTY (c) 2007-2013 Cyril Dupont - https://www.9bis.net/kitty/",
+                "Based on PuTTY (c) " SHORT_COPYRIGHT_DETAILS ". All rights reserved.");
             sfree(buildinfo_text);
             SetDlgItemText(hwnd, 1000, text);
             MakeDlgItemBorderless(hwnd, 1000);

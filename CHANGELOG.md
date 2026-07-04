@@ -7,6 +7,45 @@ see [FEATURES.md](FEATURES.md).
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.84.1.41-beta — 2026-07-04
+
+- **Launcher global hotkeys.** Individual saved sessions can now have a global
+  launcher hotkey under **Window → Behaviour**. The hotkey is registered only while
+  `kitty.exe -launcher` is running; saving a session notifies a running launcher to
+  refresh its session list and re-register hotkeys automatically. The config dialog
+  can probe whether the combination is currently available or already reserved by
+  Windows/another app.
+- **Launcher update balloon is no longer one launch behind.** The launcher now
+  re-checks after the async GitHub update query finishes, so a newly available
+  update can show a tray balloon on the first launcher run.
+- **mNotepad high-DPI polish.** The built-in editor now scales its default font for
+  the current display DPI, and the feature docs explain how Send/F12/Ctrl+Enter
+  sends text to the parent KiTTY session.
+- **Hyperlink polish.** URL underline repainting is improved for freshly typed
+  links, and the hand cursor on hyperlink hover is now a separate opt-in setting
+  under **Window → Hyperlinks**.
+- **Test-build labels.** Ad-hoc builds can define `KITTY_TEST_BUILD_LABEL` so About
+  boxes visibly distinguish test/debug EXEs from normal beta releases without
+  source edits.
+- **`kitty.ini.example`.** Releases now include a commented, inert sample
+  configuration file plus a drift-check helper so source-level `kitty.ini` option
+  changes are less likely to go undocumented.
+- **Portable backup.** In portable directory mode, applying settings refreshes
+  `Backups\kitty-portable-latest` and keeps timestamped backups with `kitty.ini`
+  and the portable config folders (`Sessions`, `SshHostKeys`, commands/folders/
+  proxies) for simple manual restore. `[KiTTY] portablebackupcount=` controls
+  retention; default 5, 0 disables.
+- **Paste menu restored.** The terminal system menu and right-click context menu
+  again include **Paste**, so users using Windows mouse-button mode can paste from
+  the menu instead of relying on right-click paste.
+- **Branding polish.** kageant error dialogs now use kageant naming instead of
+  upstream Pageant titles, KiTTYgen About includes the kapper.net port branding,
+  and terminal Tools menus expose mNotepad directly. mNotepad shortcuts are also
+  fixed: Shift+F2 opens the editor and Ctrl+Shift+F2 opens it with clipboard
+  contents.
+
 ## 0.84.1.40-beta — 2026-07-03
 
 - **Window title placeholders.** The **Window Title** setting now expands dynamic

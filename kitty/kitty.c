@@ -10,6 +10,7 @@
 #include <sys/locking.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 
 // Includes de PuTTY
 #include "putty.h"
@@ -1455,8 +1456,107 @@ void SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename )
 	fclose( fp_out ) ;
 	}
 
+static int portable_backup_copy_tree( const char *src, const char *dst ) {
+	char pattern[4096], s[4096], d[4096] ;
+	WIN32_FIND_DATAA fd ;
+	HANDLE h ;
+	DWORD attr = GetFileAttributesA( src ) ;
+	if( attr == INVALID_FILE_ATTRIBUTES ) return 1 ;
+	if( !(attr & FILE_ATTRIBUTE_DIRECTORY) ) return CopyFileA( src, dst, FALSE ) ? 1 : 0 ;
+	CreateDirectoryA( dst, NULL ) ;
+	snprintf( pattern, sizeof(pattern), "%s\\*", src ) ;
+	h = FindFirstFileA( pattern, &fd ) ;
+	if( h == INVALID_HANDLE_VALUE ) return 1 ;
+	do {
+		if( !strcmp(fd.cFileName,".") || !strcmp(fd.cFileName,"..") ) continue ;
+		snprintf( s, sizeof(s), "%s\\%s", src, fd.cFileName ) ;
+		snprintf( d, sizeof(d), "%s\\%s", dst, fd.cFileName ) ;
+		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
+			if( !portable_backup_copy_tree( s, d ) ) { FindClose(h) ; return 0 ; }
+		} else if( !CopyFileA( s, d, FALSE ) ) { FindClose(h) ; return 0 ; }
+	} while( FindNextFileA( h, &fd ) ) ;
+	FindClose( h ) ;
+	return 1 ;
+}
+
+struct portable_backup_name { char name[MAX_PATH] ; } ;
+
+static int portable_backup_name_cmp_desc( const void *a, const void *b ) {
+	const struct portable_backup_name *aa = (const struct portable_backup_name *)a ;
+	const struct portable_backup_name *bb = (const struct portable_backup_name *)b ;
+	return strcmp( bb->name, aa->name ) ;
+}
+
+static void portable_backup_prune( const char *root, int keep ) {
+	char pattern[4096], path[4096] ;
+	WIN32_FIND_DATAA fd ;
+	HANDLE h ;
+	struct portable_backup_name backups[128] ;
+	int n = 0, i ;
+	if( keep < 1 ) keep = 1 ;
+	snprintf( pattern, sizeof(pattern), "%s\\kitty-portable-[0-9]*", root ) ;
+	h = FindFirstFileA( pattern, &fd ) ;
+	if( h == INVALID_HANDLE_VALUE ) return ;
+	do {
+		if( !(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ) continue ;
+		if( !strcmp(fd.cFileName,"kitty-portable-latest") ) continue ;
+		if( n < (int)(sizeof(backups)/sizeof(backups[0])) ) {
+			snprintf( backups[n].name, sizeof(backups[n].name), "%s", fd.cFileName ) ;
+			n++ ;
+		}
+	} while( FindNextFileA( h, &fd ) ) ;
+	FindClose( h ) ;
+	qsort( backups, n, sizeof(backups[0]), portable_backup_name_cmp_desc ) ;
+	for( i = keep ; i < n ; i++ ) {
+		snprintf( path, sizeof(path), "%s\\%s", root, backups[i].name ) ;
+		DelDir( path ) ;
+	}
+}
+
+static void portable_backup_write_one( const char *dst ) {
+	char src[4096], d[4096] ;
+	const char *items[] = { "Sessions", "SshHostKeys", "Commands", "Folders", "Sessions_Commands", "Proxies", NULL } ;
+	int i ;
+	DelDir( dst ) ;
+	CreateDirectoryA( dst, NULL ) ;
+	if( KittyIniFile != NULL && strlen(KittyIniFile)>0 && existfile(KittyIniFile) ) {
+		snprintf( d, sizeof(d), "%s\\kitty.ini", dst ) ;
+		CopyFileA( KittyIniFile, d, FALSE ) ;
+	}
+	for( i=0 ; items[i]!=NULL ; i++ ) {
+		snprintf( src, sizeof(src), "%s\\%s", ConfigDirectory, items[i] ) ;
+		snprintf( d, sizeof(d), "%s\\%s", dst, items[i] ) ;
+		portable_backup_copy_tree( src, d ) ;
+	}
+}
+
+static void SavePortableDirBackup( void ) {
+	char root[4096], latest[4096], stampdir[4096], buffer[64] ;
+	int keep = 5 ;
+	time_t now ;
+	struct tm *tmnow ;
+	if( NoKittyFileFlag || ConfigDirectory == NULL || strlen(ConfigDirectory)==0 ) return ;
+	if( ReadParameter( INIT_SECTION, "portablebackupcount", buffer ) ) keep = atoi( buffer ) ;
+	if( keep <= 0 ) return ;
+	if( keep > 50 ) keep = 50 ;
+	snprintf( root, sizeof(root), "%s\\Backups", ConfigDirectory ) ;
+	CreateDirectoryA( root, NULL ) ;
+	now = time(NULL) ;
+	tmnow = localtime( &now ) ;
+	if( tmnow != NULL )
+		snprintf( buffer, sizeof(buffer), "%04d%02d%02d-%02d%02d%02d",
+			1900+tmnow->tm_year, 1+tmnow->tm_mon, tmnow->tm_mday,
+			tmnow->tm_hour, tmnow->tm_min, tmnow->tm_sec ) ;
+	else snprintf( buffer, sizeof(buffer), "%ld", (long)now ) ;
+	snprintf( stampdir, sizeof(stampdir), "%s\\kitty-portable-%s", root, buffer ) ;
+	snprintf( latest, sizeof(latest), "%s\\kitty-portable-latest", root ) ;
+	portable_backup_write_one( stampdir ) ;
+	portable_backup_write_one( latest ) ;
+	portable_backup_prune( root, keep ) ;
+}
+
 void SaveRegistryKey( void ) {
-	if( IniFileFlag == SAVEMODE_DIR ) return ;
+	if( IniFileFlag == SAVEMODE_DIR ) { SavePortableDirBackup() ; return ; }
 	if( NoKittyFileFlag || (KittySavFile==NULL) ) return ;
 	if( strlen(KittySavFile)==0 ) return ;
 

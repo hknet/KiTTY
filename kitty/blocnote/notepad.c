@@ -18,6 +18,20 @@ static const char Notepad_szFilenameFilter[] = "Text files, (*.txt, *.log, *.ini
 
 static int FontSize = 18 ;
 
+static int Notepad_DpiScaledFontHeight(HWND hwnd)
+{
+	int dpi = 96;
+	HDC hdc = GetDC(hwnd);
+	if (hdc) {
+		dpi = GetDeviceCaps(hdc, LOGPIXELSY);
+		ReleaseDC(hwnd, hdc);
+	}
+	/* FontSize was historically used as a raw pixel height at 96 DPI.
+	 * Scale it for high-DPI displays and use a negative lfHeight so GDI treats
+	 * it as character height rather than cell height. */
+	return -MulDiv(FontSize, dpi, 96);
+}
+
 #ifdef NOMAIN
 #include "notepad_putty.c"
 static char * IniFile = NULL ;
@@ -69,6 +83,15 @@ int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR l
 #ifdef NOMAIN	
 	if( lpCmdLine!=NULL ) {
 		if( strlen(lpCmdLine) > 0 ) {	
+			/* Embedded KiTTY launch modes:
+			 *   -ed [file]   open empty editor or load file after window creation
+			 *   -edb 1       preload clipboard contents (legacy Ctrl+Shift+F2)
+			 * The old pipe-delimited path below is kept for legacy ini/sav launches.
+			 */
+			if( strstr( lpCmdLine, "-edb " ) == lpCmdLine && strlen(lpCmdLine)>5 ) {
+				LoadFile=(char*)malloc(strlen(lpCmdLine+5)+1);
+				strcpy( LoadFile, lpCmdLine+5 ) ;
+			}
 			char *st = strstr( lpCmdLine, "|" ) ;
 			if( st!=NULL ) {
 				SavFile=(char*)malloc(strlen(st)+1);
@@ -133,13 +156,15 @@ int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR l
 		AppendMenu(hSMFichier, MF_STRING|MF_GRAYED|MF_DISABLED, NOTEPAD_IDM_SAVE, Notepad_LoadString(NOTEPAD_STR_SAVE));
 		AppendMenu(hSMFichier, MF_STRING, NOTEPAD_IDM_SAVEAS, Notepad_LoadString(NOTEPAD_STR_SAVEAS));
 #ifdef NOMAIN
-		AppendMenu(hSMFichier, MF_SEPARATOR, 0, NULL );
-		AppendMenu(hSMFichier, MF_STRING, NOTEPAD_IDM_LOAD_INI, TEXT("ini file"));
-		AppendMenu(hSMFichier, MF_STRING, NOTEPAD_IDM_LOAD_SAV, TEXT("sav file"));
-		if( ParentWindow!=NULL ) {
+		if( IniFile!=NULL || SavFile!=NULL || ParentWindow!=NULL ) {
 			AppendMenu(hSMFichier, MF_SEPARATOR, 0, NULL );
-			AppendMenu(hSMFichier, MF_STRING, NOTEPAD_IDM_RESIZE, TEXT("&Resize"));
-			}
+			if( IniFile!=NULL )
+				AppendMenu(hSMFichier, MF_STRING, NOTEPAD_IDM_LOAD_INI, TEXT("Open &kitty.ini"));
+			if( SavFile!=NULL )
+				AppendMenu(hSMFichier, MF_STRING, NOTEPAD_IDM_LOAD_SAV, TEXT("Open &save file"));
+			if( ParentWindow!=NULL )
+				AppendMenu(hSMFichier, MF_STRING, NOTEPAD_IDM_RESIZE, TEXT("&Resize with session"));
+		}
 #endif
 		AppendMenu(hSMFichier, MF_SEPARATOR, 0, NULL );
 	}
@@ -162,7 +187,7 @@ int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR l
 	AppendMenu(hWindows, MF_STRING, NOTEPAD_IDM_CASCADE_ALL, "&Cascade");
 	if( !readonly ) { AppendMenu(hMenu,MF_POPUP,(UINT_PTR)hWindows,"&Windows"); }
 	
-	if( !readonly ) { AppendMenu(hMenu,MF_STRING, NOTEPAD_IDM_SEND, Notepad_LoadString(NOTEPAD_STR_SEND)) ; }
+	if( !readonly && ParentWindow!=NULL ) { AppendMenu(hMenu,MF_STRING, NOTEPAD_IDM_SEND, Notepad_LoadString(NOTEPAD_STR_SEND)) ; }
 	//AppendMenu(hMenu,MF_STRING, NOTEPAD_IDM_SEND_ALL, Notepad_LoadString(NOTEPAD_STR_SEND_ALL));
 #endif
 	if( !readonly ) { AppendMenu(hMenu,MF_POPUP,(UINT_PTR)hSMApropos,Notepad_LoadString(NOTEPAD_STR_HELP)); }
@@ -219,8 +244,8 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			}
 
 			ZeroMemory(&lf, sizeof(LOGFONT));
-			lstrcpy(lf.lfFaceName,"Courier");
-			lf.lfHeight = FontSize ;
+			lstrcpy(lf.lfFaceName,"Courier New");
+			lf.lfHeight = Notepad_DpiScaledFontHeight(hwnd) ;
 			lf.lfWeight = FW_DONTCARE ;
 			hFont = CreateFontIndirect(&lf);
 
@@ -332,7 +357,17 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 
 				//Fonction COPYRIGHT
 				case NOTEPAD_IDM_ABOUT:
+#ifdef KITTY_TEST_BUILD_LABEL
+				{
+					char about[4096];
+					snprintf(about, sizeof(about), "TEST BUILD: %s\r\n\r\n%s",
+						KITTY_TEST_BUILD_LABEL, Notepad_LoadString(NOTEPAD_STR_LICENCE));
+					about[sizeof(about) - 1] = '\0';
+					MessageBox(hwnd, about, "About", MB_ICONINFORMATION);
+				}
+#else
 					MessageBox(hwnd,Notepad_LoadString(NOTEPAD_STR_LICENCE),"About",MB_ICONINFORMATION);
+#endif
 					break ;
 
 				//Fonction CUT

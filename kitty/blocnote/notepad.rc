@@ -1,6 +1,8 @@
 #include "notepad.h"
 
+#ifndef NOTEPAD_EMBEDDED
 NOTEPAD_IDI_MAINICON ICON "res/bille.ico"
+#endif
 
 NOTEPAD_IDR_ACCEL ACCELERATORS MOVEABLE PURE
 BEGIN

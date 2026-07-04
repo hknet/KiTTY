@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.40 — Known issues & limitations
+# KiTTY 0.84.1.41 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -54,11 +54,20 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.40-beta @ 2026-07-03`.
+- **Version string:** binaries report `0.84.1.41-beta @ 2026-07-04`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.41
+
+- **Launcher global hotkeys:** saved sessions can define launcher-only global hotkeys under **Window → Behaviour**; saving a session notifies a running launcher to refresh and re-register them.
+- **Hyperlink polish:** improved URL underline repainting, optional hand cursor on hover, and more reliable browser foregrounding.
+- **mNotepad polish:** high-DPI font, restored menus/resources, direct terminal Tools menu entries, and fixed Shift+F2 / Ctrl+Shift+F2 clipboard launch.
+- **Portable backups:** portable directory mode keeps `Backups\kitty-portable-latest` plus timestamped backups with configurable retention.
+- **Paste menu restored:** terminal system and right-click menus include **Paste** again for Windows mouse-button mode.
+- **Packaging/docs:** releases include an inert `kitty.ini.example`; kageant/KiTTYgen branding and test-build About labels were polished.
 
 ## New in 0.84.1.40
 

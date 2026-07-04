@@ -369,6 +369,8 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_b_forced(sesskey, "DisableArabicShaping", conf_get_bool(conf, CONF_no_arabicshaping));
     write_setting_b_forced(sesskey, "DisableBidi", conf_get_bool(conf, CONF_no_bidi));
     write_setting_b_forced(sesskey, "WinNameAlways", conf_get_bool(conf, CONF_win_name_always));
+    write_setting_b_forced(sesskey, "LauncherGlobalHotkeyEnabled", conf_get_bool(conf, CONF_launcher_global_hotkey_enabled));
+    write_setting_s_forced(sesskey, "LauncherGlobalHotkey", conf_get_str(conf, CONF_launcher_global_hotkey));
     write_setting_s_forced(sesskey, "WinTitle", conf_get_str(conf, CONF_wintitle));
     write_setting_i_forced(sesskey, "TermWidth", conf_get_int(conf, CONF_width));
     write_setting_i_forced(sesskey, "TermHeight", conf_get_int(conf, CONF_height));
@@ -476,6 +478,7 @@ void save_open_settings_forced(char *filename, Conf *conf) {
      * kitty_url.c/window.c path, not the historical terminal.c hyperlink
      * patch. Keep KTX export in sync with the visible Window/Hyperlinks UI. */
     write_setting_i_forced(sesskey, "HyperlinkUnderline", conf_get_int(conf, CONF_url_underline));
+    write_setting_i_forced(sesskey, "HyperlinkHoverCursor", conf_get_int(conf, CONF_url_hover_cursor));
     write_setting_i_forced(sesskey, "HyperlinkUseCtrlClick", conf_get_int(conf, CONF_url_ctrl_click));
     write_setting_i_forced(sesskey, "HyperlinkBrowserUseDefault", conf_get_int(conf, CONF_url_defbrowser));
     write_setting_filename_forced(sesskey, "HyperlinkBrowser", conf_get_filename(conf, CONF_url_browser));

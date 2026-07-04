@@ -110,12 +110,73 @@ void urlhack_add_link_region(int x0, int y0, int x1, int y1)
     link_regions_current_pos++;
 }
 
+struct urlhack_focus_ctx {
+    DWORD pid;
+    HWND hwnd;
+};
+
+static BOOL CALLBACK urlhack_find_window_for_pid(HWND hwnd, LPARAM lParam)
+{
+    struct urlhack_focus_ctx *ctx = (struct urlhack_focus_ctx *)lParam;
+    DWORD pid = 0;
+
+    if (!IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER) != NULL)
+        return TRUE;
+
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == ctx->pid) {
+        ctx->hwnd = hwnd;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static void urlhack_foreground_launched_process(HANDLE hProcess)
+{
+    struct urlhack_focus_ctx ctx;
+
+    if (hProcess == NULL)
+        return;
+
+    ctx.pid = GetProcessId(hProcess);
+    ctx.hwnd = NULL;
+    if (ctx.pid == 0)
+        return;
+
+    AllowSetForegroundWindow(ctx.pid);
+    WaitForInputIdle(hProcess, 2000);
+    EnumWindows(urlhack_find_window_for_pid, (LPARAM)&ctx);
+    if (ctx.hwnd != NULL) {
+        if (IsIconic(ctx.hwnd))
+            ShowWindow(ctx.hwnd, SW_RESTORE);
+        else
+            ShowWindow(ctx.hwnd, SW_SHOW);
+        SetForegroundWindow(ctx.hwnd);
+        BringWindowToTop(ctx.hwnd);
+    }
+}
+
 void urlhack_launch_url(const char* app, const char *url)
 {
+    SHELLEXECUTEINFO sei;
+
+    ZeroMemory(&sei, sizeof(sei));
+    sei.cbSize = sizeof(sei);
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
+    sei.nShow = SW_SHOWNORMAL;
+
     if (app) {
-        ShellExecute(NULL, NULL, app, url, NULL, SW_SHOWNORMAL);
+        sei.lpFile = app;
+        sei.lpParameters = url;
     } else {
-        ShellExecute(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL);
+        sei.lpVerb = "open";
+        sei.lpFile = url;
+    }
+
+    if (ShellExecuteEx(&sei)) {
+        urlhack_foreground_launched_process(sei.hProcess);
+        if (sei.hProcess != NULL)
+            CloseHandle(sei.hProcess);
     }
 }
 

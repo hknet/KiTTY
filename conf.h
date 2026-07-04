@@ -848,6 +848,16 @@ CONF_OPTION(win_name_always,
     DEFAULT_BOOL(true),
     SAVE_KEYWORD("WinNameAlways"),
 )
+CONF_OPTION(launcher_global_hotkey_enabled,
+    VALUE_TYPE(BOOL),
+    DEFAULT_BOOL(false),
+    SAVE_KEYWORD("LauncherGlobalHotkeyEnabled"),
+)
+CONF_OPTION(launcher_global_hotkey,
+    VALUE_TYPE(STR),
+    DEFAULT_STR(""),
+    SAVE_KEYWORD("LauncherGlobalHotkey"),
+)
 CONF_OPTION(width,
     VALUE_TYPE(INT),
     DEFAULT_INT(80),
@@ -1366,6 +1376,7 @@ CONF_OPTION(url_defbrowser, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("Hyper
 CONF_OPTION(url_defregex, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkRegularExpressionUseDefault"),)
 CONF_OPTION(url_regex, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("HyperlinkRegularExpression"),)
 CONF_OPTION(url_underline, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkUnderline"),)
+CONF_OPTION(url_hover_cursor, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("HyperlinkHoverCursor"),)
 CONF_OPTION(url_ctrl_click, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkUseCtrlClick"),)
 CONF_OPTION(windowstate, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("WindowState"),)
 CONF_OPTION(winscpoptions, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("WinSCPOptions"),)
