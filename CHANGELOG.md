@@ -15,6 +15,10 @@ see [FEATURES.md](FEATURES.md).
   installers and held a read-only lock across launch; it now also downloads to a
   unique temporary `.msi` path with `CREATE_NEW` and deletes the verified download
   if launching `msiexec` fails or is cancelled.
+- **Portable mode is more registry-free.** In `kitty_portable.exe` / `savemode=dir`,
+  SSH host keys, SSH host CAs, the random seed, recent-session state, last-session
+  state, and the update-check cache now live in the portable config directory
+  instead of normal HKCU registry/profile locations.
 
 ## 0.84.1.41-beta — 2026-07-04
 

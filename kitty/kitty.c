@@ -1515,7 +1515,8 @@ static void portable_backup_prune( const char *root, int keep ) {
 
 static void portable_backup_write_one( const char *dst ) {
 	char src[4096], d[4096] ;
-	const char *items[] = { "Sessions", "SshHostKeys", "Commands", "Folders", "Sessions_Commands", "Proxies", NULL } ;
+	const char *items[] = { "Sessions", "SshHostKeys", "SshHostCAs", "Commands", "Folders", "Sessions_Commands", "Proxies", NULL } ;
+	const char *files[] = { "PUTTY.RND", "KiTTYState", "Jumplist", NULL } ;
 	int i ;
 	DelDir( dst ) ;
 	CreateDirectoryA( dst, NULL ) ;
@@ -1527,6 +1528,11 @@ static void portable_backup_write_one( const char *dst ) {
 		snprintf( src, sizeof(src), "%s\\%s", ConfigDirectory, items[i] ) ;
 		snprintf( d, sizeof(d), "%s\\%s", dst, items[i] ) ;
 		portable_backup_copy_tree( src, d ) ;
+	}
+	for( i=0 ; files[i]!=NULL ; i++ ) {
+		snprintf( src, sizeof(src), "%s\\%s", ConfigDirectory, files[i] ) ;
+		snprintf( d, sizeof(d), "%s\\%s", dst, files[i] ) ;
+		if( existfile(src) ) CopyFileA( src, d, FALSE ) ;
 	}
 }
 

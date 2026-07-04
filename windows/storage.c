@@ -64,6 +64,11 @@ static int kitty_root_is_putty(void)
  * touch a stock-PuTTY session without the user opting in. Persisted as a DWORD
  * under the base hive; toggled by a checkbox in the config dialog. */
 static int kitty_show_foreign = -1;   /* -1 = not yet read */
+static int store_is_file(void);   /* portable file-mode backend, defined below */
+int kitty_portable_store_state_string(const char *key, const char *value);
+int kitty_portable_load_state_string(const char *key, char *buf, int buflen);
+int kitty_portable_store_state_dword(const char *key, DWORD value);
+int kitty_portable_load_state_dword(const char *key, DWORD *value);
 
 /* Count real sessions in the primary hive (excluding "Default Settings"), so we
  * can decide the adaptive default for ShowForeignSessions. */
@@ -92,7 +97,9 @@ int kitty_get_show_foreign_sessions(void)
 {
     if (kitty_show_foreign < 0) {
         DWORD v = 0, sz = sizeof(v);
-        if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "ShowForeignSessions",
+        if (store_is_file() && kitty_portable_load_state_dword("ShowForeignSessions", &v)) {
+            kitty_show_foreign = v ? 1 : 0;
+        } else if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "ShowForeignSessions",
                          RRF_RT_REG_DWORD, NULL, &v, &sz) == ERROR_SUCCESS) {
             /* User has made an explicit choice: honour it. */
             kitty_show_foreign = v ? 1 : 0;
@@ -114,6 +121,10 @@ int kitty_get_show_foreign_sessions(void)
 void kitty_set_show_foreign_sessions(int on)
 {
     kitty_show_foreign = on ? 1 : 0;
+    if (store_is_file()) {
+        kitty_portable_store_state_dword("ShowForeignSessions", (DWORD)kitty_show_foreign);
+        return;
+    }
     HKEY hk;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
                         KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
@@ -129,6 +140,10 @@ void kitty_set_show_foreign_sessions(int on)
  * value "LastSession" under the base hive. */
 void kitty_set_last_session(const char *sessionname)
 {
+    if (store_is_file()) {
+        kitty_portable_store_state_string("LastSession", sessionname ? sessionname : "");
+        return;
+    }
     HKEY hk;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
                         KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
@@ -143,6 +158,8 @@ int kitty_get_last_session(char *buf, int buflen)
     DWORD sz = (DWORD)buflen;
     if (!buf || buflen <= 0) return 0;
     buf[0] = '\0';
+    if (store_is_file())
+        return kitty_portable_load_state_string("LastSession", buf, buflen);
     if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "LastSession",
                      RRF_RT_REG_SZ, NULL, buf, &sz) != ERROR_SUCCESS)
         return 0;
@@ -169,7 +186,6 @@ const char *kitty_registry_base(void) { return reg_base_buf; }
  * WITHOUT a comment would otherwise mask a comment still held in the old hive.
  * Reading the value directly also sidesteps the full load path. Caller frees.
  */
-static int store_is_file(void);   /* portable file-mode backend, defined below */
 char *kitty_read_session_comment(const char *sessionname)
 {
     static const char *const fallback_hives[] = {
@@ -432,6 +448,142 @@ static void ksf_save(const char *path, struct ksf_item *h)
         if (mv) sfree(mv);
     }
     fclose(fp);
+}
+
+static char *portable_root_dir(void)           /* snewn'd or NULL */
+{
+    char *root, *bs;
+    if (!store_is_file()) return NULL;
+    root = dupstr(g_sess_dir);
+    bs = strrchr(root, '\\');
+    if (bs && !_stricmp(bs + 1, "Sessions"))
+        *bs = '\0';
+    return root;
+}
+
+static char *portable_subdir_path(const char *subdir)     /* snewn'd */
+{
+    char *root = portable_root_dir();
+    char *path = root ? dupprintf("%s\\%s", root, subdir) : NULL;
+    sfree(root);
+    return path;
+}
+
+static char *portable_item_path(const char *subdir, const char *name)
+{
+    char *dir = portable_subdir_path(subdir);
+    char *m = ksf_munge(name ? name : "");
+    char *path = (dir && m) ? dupprintf("%s\\%s", dir, m) : NULL;
+    sfree(dir);
+    sfree(m);
+    return path;
+}
+
+static int portable_write_text_file(const char *subdir, const char *name,
+                                    const char *value)
+{
+    char *dir = portable_subdir_path(subdir);
+    char *path = portable_item_path(subdir, name);
+    FILE *fp;
+    int ok = 0;
+    if (!dir || !path) goto out;
+    CreateDirectoryA(dir, NULL);
+    fp = fopen(path, "wb");
+    if (!fp) goto out;
+    fputs(value ? value : "", fp);
+    fputc('\n', fp);
+    ok = (fclose(fp) == 0);
+    fp = NULL;
+out:
+    sfree(dir);
+    sfree(path);
+    return ok;
+}
+
+static char *portable_read_text_file(const char *subdir, const char *name)
+{
+    char *path = portable_item_path(subdir, name);
+    FILE *fp;
+    long len;
+    char *buf = NULL;
+    if (!path) return NULL;
+    fp = fopen(path, "rb");
+    sfree(path);
+    if (!fp) return NULL;
+    if (fseek(fp, 0, SEEK_END) || (len = ftell(fp)) < 0 || fseek(fp, 0, SEEK_SET)) {
+        fclose(fp); return NULL;
+    }
+    buf = snewn(len + 1, char);
+    if (fread(buf, 1, len, fp) != (size_t)len) { sfree(buf); buf = NULL; }
+    else {
+        while (len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r')) len--;
+        buf[len] = '\0';
+    }
+    fclose(fp);
+    return buf;
+}
+
+static char *portable_state_path(void)          /* snewn'd or NULL */
+{
+    char *root = portable_root_dir();
+    char *path = root ? dupprintf("%s\\KiTTYState", root) : NULL;
+    sfree(root);
+    return path;
+}
+
+int kitty_portable_store_state_string(const char *key, const char *value)
+{
+    char *path;
+    struct ksf_item *items;
+    if (!store_is_file()) return 0;
+    path = portable_state_path();
+    if (!path) return 0;
+    items = ksf_load(path);
+    ksf_list_set(&items, key, value ? value : "");
+    ksf_save(path, items);
+    ksf_list_free(items);
+    sfree(path);
+    return 1;
+}
+
+int kitty_portable_load_state_string(const char *key, char *buf, int buflen)
+{
+    char *path, *v;
+    struct ksf_item *items;
+    int ok = 0;
+    if (!store_is_file() || !buf || buflen <= 0) return 0;
+    buf[0] = '\0';
+    path = portable_state_path();
+    if (!path) return 0;
+    items = ksf_load(path);
+    v = ksf_list_get(items, key);
+    if (v) {
+        strncpy(buf, v, buflen - 1);
+        buf[buflen - 1] = '\0';
+        ok = buf[0] ? 1 : 0;
+    }
+    ksf_list_free(items);
+    sfree(path);
+    return ok;
+}
+
+int kitty_portable_store_state_dword(const char *key, DWORD value)
+{
+    char tmp[32];
+    sprintf(tmp, "%lu", (unsigned long)value);
+    return kitty_portable_store_state_string(key, tmp);
+}
+
+int kitty_portable_load_state_dword(const char *key, DWORD *value)
+{
+    char tmp[32];
+    char *end;
+    unsigned long v;
+    if (!value || !kitty_portable_load_state_string(key, tmp, sizeof(tmp))) return 0;
+    v = strtoul(tmp, &end, 10);
+    if (end == tmp) return 0;
+    *value = (DWORD)v;
+    return 1;
 }
 
 struct settings_w {
@@ -1323,6 +1475,20 @@ int check_stored_host_key(const char *hostname, int port,
     strbuf *regname = strbuf_new();
     hostkey_regname(regname, hostname, port, keytype);
 
+    if (store_is_file()) {
+        char *otherstr = portable_read_text_file("SshHostKeys", regname->s);
+        int exists = (otherstr != NULL);
+        int compare = exists ? strcmp(otherstr, key) : -1;
+        sfree(otherstr);
+        strbuf_free(regname);
+        if (!exists)
+            return 1;                  /* key does not exist in portable store */
+        else if (compare)
+            return 2;                  /* key is different in portable store */
+        else
+            return 0;                  /* key matched OK in portable store */
+    }
+
     HKEY rkey = open_regkey_ro(HKEY_CURRENT_USER,
                                reg_hostkeys_buf);
     if (!rkey) {
@@ -1393,12 +1559,13 @@ int check_stored_host_key(const char *hostname, int port,
 
     close_regkey(rkey);
 
-    int compare = otherstr ? strcmp(otherstr, key) : -1;
+    int exists = (otherstr != NULL);
+    int compare = exists ? strcmp(otherstr, key) : -1;
 
     sfree(otherstr);
     strbuf_free(regname);
 
-    if (!otherstr)
+    if (!exists)
         return 1;                      /* key does not exist in registry */
     else if (compare)
         return 2;                      /* key is different in registry */
@@ -1422,6 +1589,12 @@ void store_host_key(Seat *seat, const char *hostname, int port,
     strbuf *regname = strbuf_new();
     hostkey_regname(regname, hostname, port, keytype);
 
+    if (store_is_file()) {
+        portable_write_text_file("SshHostKeys", regname->s, key);
+        strbuf_free(regname);
+        return;
+    }
+
     HKEY rkey = create_regkey(HKEY_CURRENT_USER,
                               reg_hostkeys_buf);
     if (rkey) {
@@ -1435,6 +1608,9 @@ void store_host_key(Seat *seat, const char *hostname, int port,
 struct host_ca_enum {
     HKEY key;
     int i;
+    int is_file;
+    char **names;
+    int count;
 };
 
 host_ca_enum *enum_host_ca_start(void)
@@ -1442,18 +1618,52 @@ host_ca_enum *enum_host_ca_start(void)
     host_ca_enum *e;
     HKEY key;
 
+    if (store_is_file()) {
+        char *dir = portable_subdir_path("SshHostCAs");
+        char pattern[MAX_PATH];
+        WIN32_FIND_DATAA fd;
+        HANDLE h;
+        e = snew(host_ca_enum);
+        e->key = NULL; e->i = 0; e->is_file = 1; e->names = NULL; e->count = 0;
+        if (!dir) return e;
+        snprintf(pattern, sizeof(pattern), "%s\\*", dir);
+        h = FindFirstFileA(pattern, &fd);
+        if (h != INVALID_HANDLE_VALUE) {
+            do {
+                if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                    char *u = ksf_unmunge(fd.cFileName);
+                    e->names = sresize(e->names, e->count + 1, char *);
+                    e->names[e->count++] = u;
+                }
+            } while (FindNextFileA(h, &fd));
+            FindClose(h);
+        }
+        sfree(dir);
+        return e;
+    }
+
     if (!(key = open_regkey_ro(HKEY_CURRENT_USER, host_ca_key)))
         return NULL;
 
     e = snew(host_ca_enum);
     e->key = key;
     e->i = 0;
+    e->is_file = 0;
+    e->names = NULL;
+    e->count = 0;
 
     return e;
 }
 
 bool enum_host_ca_next(host_ca_enum *e, strbuf *sb)
 {
+    if (e->is_file) {
+        if (e->i >= e->count)
+            return false;
+        put_dataz(sb, e->names[e->i++]);
+        return true;
+    }
+
     char *regbuf = enum_regkey(e->key, e->i);
     if (!regbuf)
         return false;
@@ -1466,7 +1676,14 @@ bool enum_host_ca_next(host_ca_enum *e, strbuf *sb)
 
 void enum_host_ca_finish(host_ca_enum *e)
 {
-    close_regkey(e->key);
+    if (e->is_file) {
+        int i;
+        for (i = 0; i < e->count; i++)
+            sfree(e->names[i]);
+        sfree(e->names);
+    } else {
+        close_regkey(e->key);
+    }
     sfree(e);
 }
 
@@ -1474,27 +1691,38 @@ host_ca *host_ca_load(const char *name)
 {
     strbuf *sb;
     const char *s;
+    HKEY rkey = NULL;
+    struct ksf_item *items = NULL;
+    char *fpath = NULL;
 
-    sb = strbuf_new();
-    escape_registry_key(name, sb);
-    HKEY rkey = open_regkey_ro(HKEY_CURRENT_USER, host_ca_key, sb->s);
-    strbuf_free(sb);
+    if (store_is_file()) {
+        fpath = portable_item_path("SshHostCAs", name);
+        if (!fpath) return NULL;
+        items = ksf_load(fpath);
+        sfree(fpath);
+        if (!items) return NULL;
+    } else {
+        sb = strbuf_new();
+        escape_registry_key(name, sb);
+        rkey = open_regkey_ro(HKEY_CURRENT_USER, host_ca_key, sb->s);
+        strbuf_free(sb);
 
-    if (!rkey)
-        return NULL;
+        if (!rkey)
+            return NULL;
+    }
 
     host_ca *hca = host_ca_new();
     hca->name = dupstr(name);
 
     DWORD val;
 
-    if ((s = get_reg_sz(rkey, "PublicKey")) != NULL)
+    if ((s = store_is_file() ? ksf_list_get(items, "PublicKey") : get_reg_sz(rkey, "PublicKey")) != NULL)
         hca->ca_public_key = base64_decode_sb(ptrlen_from_asciz(s));
 
-    if ((s = get_reg_sz(rkey, "Validity")) != NULL) {
+    if ((s = store_is_file() ? ksf_list_get(items, "Validity") : get_reg_sz(rkey, "Validity")) != NULL) {
         hca->validity_expression = strbuf_to_str(
             percent_decode_sb(ptrlen_from_asciz(s)));
-    } else if ((sb = get_reg_multi_sz(rkey, "MatchHosts")) != NULL) {
+    } else if (!store_is_file() && (sb = get_reg_multi_sz(rkey, "MatchHosts")) != NULL) {
         BinarySource src[1];
         BinarySource_BARE_INIT_PL(src, ptrlen_from_strbuf(sb));
         CertExprBuilder *eb = cert_expr_builder_new();
@@ -1507,14 +1735,21 @@ host_ca *host_ca_load(const char *name)
         cert_expr_builder_free(eb);
     }
 
-    if (get_reg_dword(rkey, "PermitRSASHA1", &val))
-        hca->opts.permit_rsa_sha1 = val;
-    if (get_reg_dword(rkey, "PermitRSASHA256", &val))
-        hca->opts.permit_rsa_sha256 = val;
-    if (get_reg_dword(rkey, "PermitRSASHA512", &val))
-        hca->opts.permit_rsa_sha512 = val;
+    if (store_is_file()) {
+        s = ksf_list_get(items, "PermitRSASHA1"); if (s) hca->opts.permit_rsa_sha1 = atoi(s);
+        s = ksf_list_get(items, "PermitRSASHA256"); if (s) hca->opts.permit_rsa_sha256 = atoi(s);
+        s = ksf_list_get(items, "PermitRSASHA512"); if (s) hca->opts.permit_rsa_sha512 = atoi(s);
+        ksf_list_free(items);
+    } else {
+        if (get_reg_dword(rkey, "PermitRSASHA1", &val))
+            hca->opts.permit_rsa_sha1 = val;
+        if (get_reg_dword(rkey, "PermitRSASHA256", &val))
+            hca->opts.permit_rsa_sha256 = val;
+        if (get_reg_dword(rkey, "PermitRSASHA512", &val))
+            hca->opts.permit_rsa_sha512 = val;
 
-    close_regkey(rkey);
+        close_regkey(rkey);
+    }
     return hca;
 }
 
@@ -1522,6 +1757,28 @@ char *host_ca_save(host_ca *hca)
 {
     if (!*hca->name)
         return dupstr("CA record must have a name");
+
+    if (store_is_file()) {
+        char *dir = portable_subdir_path("SshHostCAs");
+        char *path = portable_item_path("SshHostCAs", hca->name);
+        struct ksf_item *items = NULL;
+        char tmp[32];
+        if (!dir || !path) { sfree(dir); sfree(path); return dupstr("Unable to build portable host CA path"); }
+        CreateDirectoryA(dir, NULL);
+        strbuf *base64_pubkey = base64_encode_sb(ptrlen_from_strbuf(hca->ca_public_key), 0);
+        ksf_list_set(&items, "PublicKey", base64_pubkey->s);
+        strbuf_free(base64_pubkey);
+        strbuf *validity = percent_encode_sb(ptrlen_from_asciz(hca->validity_expression), NULL);
+        ksf_list_set(&items, "Validity", validity->s);
+        strbuf_free(validity);
+        sprintf(tmp, "%u", (unsigned)hca->opts.permit_rsa_sha1); ksf_list_set(&items, "PermitRSASHA1", tmp);
+        sprintf(tmp, "%u", (unsigned)hca->opts.permit_rsa_sha256); ksf_list_set(&items, "PermitRSASHA256", tmp);
+        sprintf(tmp, "%u", (unsigned)hca->opts.permit_rsa_sha512); ksf_list_set(&items, "PermitRSASHA512", tmp);
+        ksf_save(path, items);
+        ksf_list_free(items);
+        sfree(dir); sfree(path);
+        return NULL;
+    }
 
     strbuf *sb = strbuf_new();
     escape_registry_key(hca->name, sb);
@@ -1554,6 +1811,12 @@ char *host_ca_save(host_ca *hca)
 
 char *host_ca_delete(const char *name)
 {
+    if (store_is_file()) {
+        char *path = portable_item_path("SshHostCAs", name);
+        if (path) { DeleteFileA(path); sfree(path); }
+        return NULL;
+    }
+
     HKEY rkey = open_regkey_rw(HKEY_CURRENT_USER, host_ca_key);
     if (!rkey)
         return NULL;
@@ -1603,6 +1866,19 @@ static bool try_random_seed_and_free(char *path, int action, HANDLE *hout)
 static HANDLE access_random_seed(int action)
 {
     HANDLE rethandle;
+
+    if (store_is_file()) {
+        char *root = portable_root_dir();
+        if (root) {
+            char *path = dupprintf("%s\\PUTTY.RND", root);
+            CreateDirectoryA(root, NULL);
+            sfree(root);
+            if (try_random_seed_and_free(path, action, &rethandle))
+                return rethandle;
+            if (action != DEL)
+                return INVALID_HANDLE_VALUE;
+        }
+    }
 
     /*
      * Iterate over a selection of possible random seed paths until
@@ -1747,6 +2023,70 @@ void write_random_seed(void *data, int len)
 static int transform_jumplist_registry(
     const char *add, const char *rem, char **out)
 {
+    if (store_is_file()) {
+        char *root = portable_root_dir();
+        char *path = root ? dupprintf("%s\\Jumplist", root) : NULL;
+        strbuf *oldlist = strbuf_new();
+        FILE *fp;
+        put_data(oldlist, "\0\0", 2);
+        if (path && (fp = fopen(path, "rb")) != NULL) {
+            char line[1024];
+            oldlist->len = 0;
+            while (fgets(line, sizeof(line), fp)) {
+                size_t l = strlen(line);
+                char *u;
+                while (l && (line[l-1] == '\n' || line[l-1] == '\r')) line[--l] = '\0';
+                u = ksf_unmunge(line);
+                put_asciz(oldlist, u);
+                sfree(u);
+            }
+            put_byte(oldlist, '\0');
+            fclose(fp);
+        }
+        bool write_failure = false;
+        if (add || rem) {
+            BinarySource src[1];
+            BinarySource_BARE_INIT_PL(src, ptrlen_from_strbuf(oldlist));
+            strbuf *newlist = strbuf_new();
+            if (add) put_asciz(newlist, add);
+            while (true) {
+                const char *olditem = get_asciz(src);
+                if (get_err(src)) break;
+                if (!rem || strcmp(olditem, rem) != 0) {
+                    settings_r *psettings_tmp = open_settings_r(olditem);
+                    if (psettings_tmp != NULL) {
+                        close_settings_r(psettings_tmp);
+                        put_asciz(newlist, olditem);
+                    }
+                }
+            }
+            if (path && root) {
+                CreateDirectoryA(root, NULL);
+                fp = fopen(path, "wb");
+                if (fp) {
+                    BinarySource outsrc[1];
+                    BinarySource_BARE_INIT_PL(outsrc, ptrlen_from_strbuf(newlist));
+                    while (true) {
+                        const char *item = get_asciz(outsrc);
+                        if (get_err(outsrc)) break;
+                        char *m = ksf_munge(item);
+                        fprintf(fp, "%s\n", m);
+                        sfree(m);
+                    }
+                    write_failure = (fclose(fp) != 0);
+                } else write_failure = true;
+            } else write_failure = true;
+            strbuf_free(oldlist);
+            oldlist = newlist;
+        }
+        sfree(path); sfree(root);
+        if (out && !write_failure)
+            *out = strbuf_to_str(oldlist);
+        else
+            strbuf_free(oldlist);
+        return write_failure ? JUMPLISTREG_ERROR_VALUEWRITE_FAILURE : JUMPLISTREG_OK;
+    }
+
     HKEY rkey = create_regkey(HKEY_CURRENT_USER, reg_jumplist_key);
     if (!rkey)
         return JUMPLISTREG_ERROR_KEYOPENCREATE_FAILURE;

@@ -630,6 +630,10 @@ static int kitty_run_installer( HWND hwnd, kitty_install_t type, const char *pat
  * mid-session, which would corrupt a full-screen TUI. So the notice can be at
  * most one launch behind for a brand-new release, which is fine for a nudge. */
 extern const char *kitty_registry_base( void ) ;
+extern int kitty_portable_store_state_string(const char *key, const char *value);
+extern int kitty_portable_load_state_string(const char *key, char *buf, int buflen);
+extern int kitty_portable_store_state_dword(const char *key, DWORD value);
+extern int kitty_portable_load_state_dword(const char *key, DWORD *value);
 
 /* Fetch the newest release's numeric version + prerelease flag from GitHub.
  * Returns 1 on success. Leaner sibling of CheckVersionFromWebSite's fetch
@@ -690,13 +694,16 @@ static DWORD WINAPI kitty_update_worker( LPVOID param ) {
 	struct kitty_update_notify *notify = (struct kitty_update_notify *)param ;
 	char ver[64]="" ; int is_beta=0 ;
 	if( kitty_fetch_latest_version( ver, sizeof(ver), &is_beta ) ) {
-		HKEY hk ; char base[512] ;
-		snprintf( base, sizeof(base), "%s", kitty_registry_base() ) ;
-		if( RegCreateKeyExA( HKEY_CURRENT_USER, base, 0, NULL, 0, KEY_SET_VALUE, NULL, &hk, NULL ) == ERROR_SUCCESS ) {
-			DWORD b = is_beta ? 1 : 0 ;
-			RegSetValueExA( hk, "UpdateLatest", 0, REG_SZ, (const BYTE*)ver, (DWORD)strlen(ver)+1 ) ;
-			RegSetValueExA( hk, "UpdateLatestBeta", 0, REG_DWORD, (const BYTE*)&b, sizeof(b) ) ;
-			RegCloseKey( hk ) ;
+		DWORD b = is_beta ? 1 : 0 ;
+		if( !kitty_portable_store_state_string( "UpdateLatest", ver ) ||
+		    !kitty_portable_store_state_dword( "UpdateLatestBeta", b ) ) {
+			HKEY hk ; char base[512] ;
+			snprintf( base, sizeof(base), "%s", kitty_registry_base() ) ;
+			if( RegCreateKeyExA( HKEY_CURRENT_USER, base, 0, NULL, 0, KEY_SET_VALUE, NULL, &hk, NULL ) == ERROR_SUCCESS ) {
+				RegSetValueExA( hk, "UpdateLatest", 0, REG_SZ, (const BYTE*)ver, (DWORD)strlen(ver)+1 ) ;
+				RegSetValueExA( hk, "UpdateLatestBeta", 0, REG_DWORD, (const BYTE*)&b, sizeof(b) ) ;
+				RegCloseKey( hk ) ;
+				}
 			}
 		}
 	if( notify != NULL ) {
@@ -753,9 +760,13 @@ int kitty_update_available( char *latest_out, int latest_n,
 	                                || ( strstr(BuildVersionTime,"BETA")!=NULL ) ; }
 
 	char base[512], latest[64]="" ; DWORD sz=sizeof(latest), beta=0, bsz=sizeof(beta) ;
-	snprintf( base, sizeof(base), "%s", kitty_registry_base() ) ;
-	if( RegGetValueA( HKEY_CURRENT_USER, base, "UpdateLatest", RRF_RT_REG_SZ, NULL, latest, &sz ) != ERROR_SUCCESS ) return 0 ;
-	RegGetValueA( HKEY_CURRENT_USER, base, "UpdateLatestBeta", RRF_RT_REG_DWORD, NULL, &beta, &bsz ) ;
+	if( !kitty_portable_load_state_string( "UpdateLatest", latest, sizeof(latest) ) ) {
+		snprintf( base, sizeof(base), "%s", kitty_registry_base() ) ;
+		if( RegGetValueA( HKEY_CURRENT_USER, base, "UpdateLatest", RRF_RT_REG_SZ, NULL, latest, &sz ) != ERROR_SUCCESS ) return 0 ;
+		RegGetValueA( HKEY_CURRENT_USER, base, "UpdateLatestBeta", RRF_RT_REG_DWORD, NULL, &beta, &bsz ) ;
+	} else {
+		kitty_portable_load_state_dword( "UpdateLatestBeta", &beta ) ;
+	}
 	if( latest[0]=='\0' ) return 0 ;
 
 	int cv[4], lv[4] ;
