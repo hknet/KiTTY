@@ -876,6 +876,10 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 			if( (fp=fopen(buffer,"r"))!=NULL ) {
 				while( fgets(buffer,1024,fp)!=NULL ) {
 					{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r') ) buffer[_l-1]='\0' ; }
+					if( strstr( buffer, "Folder=" ) == buffer ) {
+						unmungestr(buffer+7, folder, MAX_PATH) ;
+						break ;
+					}
 					if( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\\' )
 						if( strstr( buffer, "Folder" ) == buffer ) {
 							if( buffer[6]=='\\' ) strcpy( folder, buffer+7 ) ;
@@ -1405,7 +1409,12 @@ int WriteParameter( const char * key, const char * name, char * value ) {
 int ReadParameter( const char * key, const char * name, char * value ) {
 	char buffer[4096] ;
 	strcpy( buffer, "" ) ;
-	if( GetValueData( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), name, buffer ) == NULL ) {
+	if( IniFileFlag == SAVEMODE_DIR ) {
+		/* Portable directory mode must be registry-independent: global KiTTY
+		 * parameters such as Folders are read from kitty.ini, not from a stale
+		 * HKCU value left by an installed/registry-mode copy. */
+		if( !readINI( KittyIniFile, key, name, buffer ) ) strcpy( buffer, "" ) ;
+	} else if( GetValueData( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), name, buffer ) == NULL ) {
 		if( !readINI( KittyIniFile, key, name, buffer ) ) {
 			strcpy( buffer, "" ) ;
 			}

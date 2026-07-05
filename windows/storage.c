@@ -167,6 +167,35 @@ int kitty_get_last_session(char *buf, int buflen)
     return buf[0] ? 1 : 0;
 }
 
+void kitty_set_last_folder(const char *folder)
+{
+    if (!folder || !*folder) folder = "Default";
+    if (store_is_file()) {
+        kitty_portable_store_state_string("LastFolder", folder);
+        return;
+    }
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        RegSetValueExA(hk, "LastFolder", 0, REG_SZ,
+                       (const BYTE *)folder, (DWORD)strlen(folder) + 1);
+        RegCloseKey(hk);
+    }
+}
+int kitty_get_last_folder(char *buf, int buflen)
+{
+    DWORD sz = (DWORD)buflen;
+    if (!buf || buflen <= 0) return 0;
+    buf[0] = '\0';
+    if (store_is_file())
+        return kitty_portable_load_state_string("LastFolder", buf, buflen);
+    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "LastFolder",
+                     RRF_RT_REG_SZ, NULL, buf, &sz) != ERROR_SUCCESS)
+        return 0;
+    buf[buflen-1] = '\0';
+    return buf[0] ? 1 : 0;
+}
+
 /*
  * KiTTY: expose the runtime registry base (e.g. "Software\9bis.com\KiTTY")
  * so legacy modules -- notably the tray launcher in kitty_launcher.c -- read

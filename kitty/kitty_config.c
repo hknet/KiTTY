@@ -35,6 +35,8 @@ void GetSessionFolderName(const char *session_in, char *folder);  /* kitty.c */
 int kitty_session_origin(const char *sessionname);   /* windows/storage.c: 0=ours,1=old KiTTY,2=PuTTY */
 void kitty_set_last_session(const char *sessionname); /* windows/storage.c */
 int  kitty_get_last_session(char *buf, int buflen);   /* windows/storage.c */
+void kitty_set_last_folder(const char *folder);       /* windows/storage.c */
+int  kitty_get_last_folder(char *buf, int buflen);    /* windows/storage.c */
 /* KiTTY folder-management engine (kitty_config.c does not include kitty_tools.h/kitty.h) */
 int StringList_Add(char **list, const char *name);   /* kitty_tools.c (dedupes internally) */
 void StringList_Del(char **list, const char *name);  /* kitty_tools.c */
@@ -1175,14 +1177,14 @@ static void update_comment_display(struct sessionsaver_data *ssd, dlgparam *dlg)
         return;
     i = sessionsaver_selected_session_index(ssd, dlg);
     if (i < 0 || i >= ssd->sesslist.nsessions) {
-        dlg_editbox_set(ssd->commentbox, dlg, "");
+        dlg_editbox_set(ssd->commentbox, dlg, "comment regarding the selected session");
         return;
     }
     /* Read "Comment" directly, scanning all hives for a non-empty value, so
      * comments authored by an older KiTTY (held only in the 9bis hive) show
      * even before the session is re-saved into the new hive. */
     c = kitty_read_session_comment(ssd->sesslist.sessions[i]);
-    dlg_editbox_set(ssd->commentbox, dlg, c ? c : "");
+    dlg_editbox_set(ssd->commentbox, dlg, (c && *c) ? c : "comment regarding the selected session");
     sfree(c);
 }
 #endif
@@ -1312,6 +1314,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             if (FolderList && FolderList[id]) {
                 strncpy(CurrentFolder, FolderList[id], 1023);
                 CurrentFolder[1023] = '\0';
+                kitty_set_last_folder(CurrentFolder);
                 dlg_refresh(ssd->listbox, dlg);   /* re-filter the session list */
             }
         }
@@ -1419,6 +1422,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     SaveFolderList();
                     strncpy(CurrentFolder, folder, 1023);
                     CurrentFolder[1023] = '\0';
+                    kitty_set_last_folder(CurrentFolder);
                     sfree(ssd->newfolder);
                     ssd->newfolder = dupstr("");
                     dlg_refresh(ssd->folderedit, dlg);
@@ -1438,6 +1442,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 SaveFolderList();
                 InitFolderList();
                 strcpy(CurrentFolder, "Default");
+                kitty_set_last_folder(CurrentFolder);
                 sfree(ssd->savedsession);
                 ssd->savedsession = dupstr("");
                 dlg_refresh(ssd->editbox, dlg);
@@ -2391,6 +2396,13 @@ void setup_config_box(struct controlbox *b, bool midsession,
     ssd->savedsession = dupstr("");
 #ifdef MOD_PERSO
     ssd->newfolder = dupstr("");
+    if (!GetPuttyFlag()) {
+        char lastfolder[1024];
+        if (kitty_get_last_folder(lastfolder, sizeof(lastfolder))) {
+            strncpy(CurrentFolder, lastfolder, 1023);
+            CurrentFolder[1023] = '\0';
+        }
+    }
 #endif
     ssd->midsession = midsession;
 
@@ -2519,12 +2531,15 @@ void setup_config_box(struct controlbox *b, bool midsession,
                     "Load, save or delete a stored session");
     ctrl_columns(s, 2, 75, 25);
     get_sesslist(&ssd->sesslist, true);
-    ssd->editbox = ctrl_editbox(s, "Saved Sessions", 'e', 100,
+    ssd->editbox = ctrl_editbox(s, NULL, 'e', 100,
                                 HELPCTX(session_saved),
                                 sessionsaver_handler, P(ssd), P(NULL));
     ssd->editbox->column = 0;
-    /* Reset columns so that the buttons are alongside the list, rather
-     * than alongside that edit box. */
+    ssd->savebutton = ctrl_pushbutton(s, "Save", 'v',
+                                      HELPCTX(session_saved),
+                                      sessionsaver_handler, P(ssd));
+    ssd->savebutton->column = 1;
+    /* Reset columns so that the controls below use their own layout. */
     ctrl_columns(s, 1, 100);
 #ifdef MOD_PERSO
     /* KiTTY: folder filter. The internal legacy folder name "Default" is the
@@ -2562,11 +2577,6 @@ void setup_config_box(struct controlbox *b, bool midsession,
          * shouldn't be a problem, but.) */
         ssd->loadbutton = NULL;
     }
-    /* "Save" button is permitted mid-session. */
-    ssd->savebutton = ctrl_pushbutton(s, "Save", 'v',
-                                      HELPCTX(session_saved),
-                                      sessionsaver_handler, P(ssd));
-    ssd->savebutton->column = 1;
     if (!midsession) {
         ssd->delbutton = ctrl_pushbutton(s, "Delete", 'd',
                                          HELPCTX(session_saved),
@@ -2604,30 +2614,14 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ssd->delfolderbutton = NULL;
         ssd->arrangebutton = NULL;
     }
-    /* KiTTY: put the foreign-sessions checkbox in COLUMN 0 (still inside the
-     * list/buttons 2-column block) so it sits directly under the session list,
-     * filling the gap beside the lower buttons -- not a full row below the taller
-     * button column. Off by default; reveals (and lets you edit/delete) sessions
-     * from the read-only PuTTY / old-KiTTY hives. */
-    /* Only meaningful in registry mode: it reveals sessions from the read-only
-     * PuTTY / old-KiTTY *registry* hives. In portable (file/dir) mode there are
-     * no such hives, so the control would do nothing - hide it. */
-    {
-        extern int GetIniFileFlag(void);   /* kitty_commun.c (SAVEMODE_REG/FILE/DIR) */
-        if (!GetPuttyFlag() && GetIniFileFlag() == 0 /* SAVEMODE_REG */) {
-            dlgcontrol *fc = ctrl_checkbox(s,
-                "show / edit / delete old sessions",
-                NO_SHORTCUT, HELPCTX(no_help), kitty_showforeign_handler, P(ssd));
-            fc->column = 0;
-        }
-    }
 #endif
     ctrl_columns(s, 1, 100);
 #ifdef MOD_PERSO
-    /* KiTTY: read-only display of the selected session's comment, below the list. */
+    /* KiTTY: read-only display of the selected session's comment, below the list.
+     * Empty comments show a placeholder directly inside the field. */
     if (!GetPuttyFlag()) {
         ssd->commentbox = ctrl_editbox_multiline(
-            s, "Comment of selected session", NO_SHORTCUT, 3, true,
+            s, NULL, NO_SHORTCUT, 3, true,
             HELPCTX(session_saved), sessionsaver_handler, P(ssd), P(NULL));
     } else {
         ssd->commentbox = NULL;
@@ -2635,6 +2629,18 @@ void setup_config_box(struct controlbox *b, bool midsession,
 #endif
 
     s = ctrl_getset(b, "Session", "otheropts", NULL);
+#ifdef MOD_PERSO
+    /* Only meaningful in registry mode: reveals sessions from the read-only
+     * PuTTY / old-KiTTY registry hives. In portable mode it would do nothing. */
+    {
+        extern int GetIniFileFlag(void);   /* kitty_commun.c (SAVEMODE_REG/FILE/DIR) */
+        if (!GetPuttyFlag() && GetIniFileFlag() == 0 /* SAVEMODE_REG */) {
+            ctrl_checkbox(s, "show / edit / delete old sessions",
+                          NO_SHORTCUT, HELPCTX(no_help),
+                          kitty_showforeign_handler, P(ssd));
+        }
+    }
+#endif
     ctrl_radiobuttons(s, "Close window on exit:", 'x', 4,
                       HELPCTX(session_coe),
                       conf_radiobutton_handler,
