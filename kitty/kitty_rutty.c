@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #include "putty.h"
 
@@ -330,6 +331,7 @@ int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile)
     FILE *fp;
     long fsize;
     const char *cc;
+    int script_timeout_seconds;
 
     if (script_inited && s->runs)
         return false;                      /* a script is already running */
@@ -343,12 +345,17 @@ int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile)
     if (s->line_delay < 5) s->line_delay = 5;
     s->line_delay = s->line_delay * TICKSPERSEC / 1000;
     s->char_delay = conf_get_int(conf, CONF_script_char_delay) * TICKSPERSEC / 1000;
+    script_timeout_seconds = conf_get_int(conf, CONF_script_timeout);
+    if (script_timeout_seconds < 0)
+        script_timeout_seconds = 15;
+    if (script_timeout_seconds > INT_MAX / TICKSPERSEC)
+        script_timeout_seconds = INT_MAX / TICKSPERSEC;
     cc = conf_get_str(conf, CONF_script_cond_line);
     s->cond_char = cc[0] ? cc[0] : ':';
     s->enable = conf_get_int(conf, CONF_script_enable);
     s->cond_use = s->enable ? conf_get_int(conf, CONF_script_cond_use) : false;
     s->except = conf_get_int(conf, CONF_script_except);
-    s->timeout = conf_get_int(conf, CONF_script_timeout) * TICKSPERSEC;
+    s->timeout = script_timeout_seconds * TICKSPERSEC;
     {
         const char *w = conf_get_str(conf, CONF_script_waitfor);
         const char *h = conf_get_str(conf, CONF_script_halton);
