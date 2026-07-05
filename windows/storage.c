@@ -215,7 +215,9 @@ const char *kitty_registry_base(void) { return reg_base_buf; }
  * WITHOUT a comment would otherwise mask a comment still held in the old hive.
  * Reading the value directly also sidesteps the full load path. Caller frees.
  */
-char *kitty_read_session_comment(const char *sessionname)
+static char *kitty_read_session_value_direct(const char *sessionname,
+                                             const char *valuename,
+                                             int fallback_nonempty)
 {
     static const char *const fallback_hives[] = {
         OLD_KITTY_HIVE_SESSIONS, PUTTY_HIVE_SESSIONS };
@@ -225,12 +227,10 @@ char *kitty_read_session_comment(const char *sessionname)
     if (!sessionname || !*sessionname)
         sessionname = KITTY_DEFAULT_SESSION;
 
-    /* Portable (file) mode: the session lives in a file, not the registry, so
-     * read the Comment from there instead of scanning the (now-irrelevant)
-     * hives - otherwise the dialog shows a leftover registry comment. */
+    /* Portable/file mode: read through the active storage backend. */
     if (store_is_file()) {
         settings_r *r = open_settings_r(sessionname);
-        char *c = r ? read_setting_s(r, "Comment") : NULL;
+        char *c = r ? read_setting_s(r, valuename) : NULL;
         if (r) close_settings_r(r);
         return c;
     }
@@ -241,17 +241,17 @@ char *kitty_read_session_comment(const char *sessionname)
     /* primary (runtime) hive first */
     HKEY k = open_regkey_ro(HKEY_CURRENT_USER, puttystr, sb->s);
     if (k) {
-        result = get_reg_sz(k, "Comment");
+        result = get_reg_sz(k, valuename);
         close_regkey(k);
     }
     /* then the read-only fallback hives, unless we're in PuTTY-root mode */
-    if ((!result || !*result) && !kitty_root_is_putty()) {
+    if (fallback_nonempty && (!result || !*result) && !kitty_root_is_putty()) {
         for (i = 0; i < (int)lenof(fallback_hives); i++) {
             k = open_regkey_ro(HKEY_CURRENT_USER, fallback_hives[i], sb->s);
             if (!k)
                 continue;
             sfree(result);
-            result = get_reg_sz(k, "Comment");
+            result = get_reg_sz(k, valuename);
             close_regkey(k);
             if (result && *result)
                 break;
@@ -259,6 +259,16 @@ char *kitty_read_session_comment(const char *sessionname)
     }
     strbuf_free(sb);
     return result;
+}
+
+char *kitty_read_session_comment(const char *sessionname)
+{
+    return kitty_read_session_value_direct(sessionname, "Comment", 1);
+}
+
+char *kitty_read_session_folder(const char *sessionname)
+{
+    return kitty_read_session_value_direct(sessionname, "Folder", 0);
 }
 
 /* KiTTY: which hive does a session live in? 0 = our (primary kapper.net) hive,

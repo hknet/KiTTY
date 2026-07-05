@@ -1162,6 +1162,7 @@ static bool load_selected_session(
  * box always shows the comment of the session that Load would open. Shows the
  * empty string if nothing is selected or the session has no comment. */
 char *kitty_read_session_comment(const char *sessionname);  /* windows/storage.c */
+char *kitty_read_session_folder(const char *sessionname);   /* windows/storage.c */
 static int sessionsaver_selected_session_index(struct sessionsaver_data *ssd, dlgparam *dlg)
 {
     int i = dlg_listbox_index(ssd->listbox, dlg);
@@ -1215,9 +1216,10 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * always keep entry 0 ("Default Settings"). */
                 if (!GetPuttyFlag() && i > 0 &&
                     strcmp(CurrentFolder, "Default") != 0) {
-                    char fld[1024];
-                    GetSessionFolderName(ssd->sesslist.sessions[i], fld);
-                    if (strcmp(fld, CurrentFolder) != 0)
+                    char *fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
+                    int match = (fld && !strcmp(fld, CurrentFolder));
+                    sfree(fld);
+                    if (!match)
                         continue;
                 }
                 {
@@ -2545,7 +2547,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
     /* KiTTY: folder filter. The internal legacy folder name "Default" is the
      * root/all-sessions view, shown with a non-misleading label. */
     if (!GetPuttyFlag()) {
-        ssd->folderlist = ctrl_droplist(s, "Session folder", NO_SHORTCUT, 100,
+        ssd->folderlist = ctrl_droplist(s, NULL, NO_SHORTCUT, 100,
                                         HELPCTX(session_saved),
                                         sessionsaver_handler, P(ssd));
     } else {
