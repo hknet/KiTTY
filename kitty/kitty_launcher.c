@@ -32,6 +32,9 @@ static int LauncherConfReload = 1 ;
 static HBITMAP bmpCheck, bmpUnCheck ;
 static POINT LauncherMenuPoint ;
 static int LauncherMenuPointValid = 0 ;
+static int LauncherUpdateKnown = 0 ;
+static char LauncherUpdateLatest[64] = "" ;
+static int LauncherUpdateBeta = 0 ;
 
 struct LauncherHotkey {
 	int id ;
@@ -187,6 +190,14 @@ HMENU InitLauncherMenu( char * Key ) {
 
 	if( GetMenuItemCount( menu ) > 0 )
 		AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
+
+	if( LauncherUpdateKnown && LauncherUpdateLatest[0] ) {
+		char upmsg[160] ;
+		snprintf( upmsg, sizeof(upmsg), "Update available: KiTTY %s%s",
+		          LauncherUpdateLatest, LauncherUpdateBeta ? " (beta)" : "" ) ;
+		AppendMenu( menu, MF_DISABLED | MF_GRAYED, 0, upmsg ) ;
+		AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
+	}
 
 	// Creation du menu bouton gauche
 	DestroyMenu( HideMenu ) ;
@@ -570,12 +581,19 @@ static void ShowLauncherUpdateBalloon( void ) {
 	char ulatest[64]="" ; int ubeta=0 ;
 	if( kitty_update_available( ulatest, sizeof(ulatest), NULL, 0, &ubeta ) ) {
 		char umsg[256] ;
+		LauncherUpdateKnown = 1 ;
+		LauncherUpdateBeta = ubeta ;
+		strncpy( LauncherUpdateLatest, ulatest, sizeof(LauncherUpdateLatest)-1 ) ;
+		LauncherUpdateLatest[sizeof(LauncherUpdateLatest)-1] = '\0' ;
 		snprintf( umsg, sizeof(umsg),
 			"KiTTY %s is available%s.\nUse \"Check for updates\" in a terminal to install it.",
 			ulatest, ubeta ? " (beta)" : "" ) ;
-		TrayIcone.uFlags = NIF_INFO ;
+		TrayIcone.uFlags = NIF_INFO | NIF_TIP ;
 		TrayIcone.dwInfoFlags = NIIF_INFO ;
 		TrayIcone.uTimeout = 10000 ;
+		snprintf( TrayIcone.szTip, sizeof(TrayIcone.szTip),
+		          "KiTTY Launcher - update %s%s available",
+		          ulatest, ubeta ? " beta" : "" ) ;
 		strncpy( TrayIcone.szInfoTitle, "KiTTY update available", sizeof(TrayIcone.szInfoTitle) ) ;
 		TrayIcone.szInfoTitle[sizeof(TrayIcone.szInfoTitle)-1] = '\0' ;
 		strncpy( TrayIcone.szInfo, umsg, sizeof(TrayIcone.szInfo) ) ;
