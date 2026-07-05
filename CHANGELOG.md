@@ -5,7 +5,7 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
-## Unreleased
+## 0.84.1.42-beta — 2026-07-05
 
 - **Savedump crash fixed.** `kitty.exe -savedump` now has a valid configuration
   context during command-line processing, so it produces encrypted `kitty.dmp`
@@ -19,9 +19,11 @@ see [FEATURES.md](FEATURES.md).
   SSH host keys, SSH host CAs, the random seed, recent-session state, last-session
   state, and the update-check cache now live in the portable config directory
   instead of normal HKCU registry/profile locations.
-- **Session folder UI fixed.** The config dialog now uses an explicit **New folder
-  name** field, labels the root/all-sessions view clearly, maps filtered session
-  selections correctly, and saves sessions into the currently selected folder.
+- **Session folder UI fixed.** The config dialog now uses an editable folder
+  selector with a New folder action, labels the root/all-sessions view clearly,
+  maps filtered session selections correctly, saves sessions into the currently
+  selected folder, refreshes folder filters reliably, and gives the session list
+  more vertical room with aligned action buttons.
 
 ## 0.84.1.41-beta — 2026-07-04
 

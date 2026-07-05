@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.41 — Known issues & limitations
+# KiTTY 0.84.1.42 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -54,11 +54,19 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.41-beta @ 2026-07-04`.
+- **Version string:** binaries report `0.84.1.42-beta @ 2026-07-05`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.42
+
+- **Savedump crash fixed:** `kitty.exe -savedump` now has a valid configuration context and works in registry and portable directory modes.
+- **Updater hardening:** MSI update downloads use unique temporary files, avoid clobbering pre-existing paths, and are deleted if launch fails or is cancelled.
+- **Portable mode is more registry-free:** SSH host keys/CAs, random seed, jump-list state, last-session state, and small KiTTY state/cache files now live under the portable config directory in `kitty_portable.exe` / `savemode=dir`.
+- **Session folders polished:** editable folder selector, clearer root label, reliable folder filtering, remembered folder/session, a larger saved-session list, and aligned action buttons.
+- **Folder UI assertions fixed:** editable combo boxes now work with the list APIs used by the configuration dialog.
 
 ## New in 0.84.1.41
 
