@@ -49,10 +49,14 @@ features are working and verified. Known limitations as of this release:
   PC. Existing legacy/old-KiTTY passwords still load and are re-encrypted on the
   next save. Portable config files currently use the same DPAPI protection for
   saved passwords; a portable, opt-in **master password** for cross-machine
-  password portability is still planned. kageant holds loaded SSH **private keys
-  decrypted in process memory** (the same as stock PuTTY Pageant). **If security
-  matters, prefer public-key authentication (kageant) and avoid saving passwords
-  unless you understand these limits.**
+  password portability is still planned. kageant can keep SSH-2 keys in an
+  **encrypted/deferred** state when they are added with **Add key (encrypted)**,
+  loaded at startup, or added with `-encrypted`/`-nodecrypt`; the passphrase is
+  requested on first use. After such a key is used it remains decrypted in the
+  agent until you re-encrypt it, remove it, or exit kageant; keys added normally
+  are loaded decrypted immediately. **If security matters, prefer public-key
+  authentication (kageant) and avoid saving passwords unless you understand
+  these limits.**
 
 ## Packaging / cosmetic
 
