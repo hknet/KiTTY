@@ -5,6 +5,17 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## Unreleased
+
+- **PuTTY upstream fix:** cherry-picked PuTTY `ac7919db`, fixing a small memory
+  leak when PuTTY inserts CBC-mode `SSH_MSG_IGNORE` packets to randomise the IV.
+- **PuTTY upstream cleanup:** cherry-picked PuTTY `aaa5fc51`, removing a
+  misleading timer-scheduling guard that no longer worked as intended with the
+  unsigned tick type.
+- **RuTTY script timeout hardening:** negative imported/configured
+  `ScriptTimeout` values are clamped to the default instead of wrapping into a
+  huge timer interval; overly large values are capped before tick conversion.
+
 ## 0.84.1.43-beta — 2026-07-06
 
 - **Launcher update visibility improved.** When `kitty.exe -launcher` detects a

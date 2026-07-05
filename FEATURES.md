@@ -68,9 +68,9 @@ one is available.
 
 ### Sessions filter (folders)
 
-If you manage a large number of saved sessions, KiTTY lets you organize them into folders, for example one folder per machine, per environment, or per type of application. A dropdown in the Session panel lets you pick a folder so the saved-session list shows only the sessions it contains, making a long list far easier to navigate. You can also filter the list as you type, matching sessions by name or hostname, and clear any active filter to see everything again.
+If you manage a large number of saved sessions, KiTTY lets you organize them into folders, for example one folder per machine, per environment, or per type of application. A dropdown in the Session panel lets you pick a folder so the saved-session list shows only the sessions it contains, making a long list far easier to navigate. You can also filter the visible list as you type in the Saved Sessions field; prefix and token matches are ranked before substring matches, and folder names are shown in brackets while searching.
 
-**How to enable:** Automatic in KiTTY mode: the Session panel shows a **Folder** dropdown that filters the saved-session list to one folder, plus New/Del/Up folder buttons. Create a folder by typing its name and clicking *New folder*.
+**How to enable:** Automatic in KiTTY mode: the Session panel shows a **Folder** dropdown that filters the saved-session list to one folder, plus New folder / Delete folder controls. Create a folder by typing its name and clicking *New folder*. To search within the active folder filter, type in the Saved Sessions field; Up/Down moves into the filtered list and Enter loads or starts the highlighted visible session.
 
 ![Sessions filter (folders)](docs/features/img/config_folder.jpg)
 
@@ -96,9 +96,9 @@ KiTTY lets you define your own list of pre-defined commands that appear in a ded
 
 ### Session launcher
 
-The session launcher gives you a quick way to open your saved sessions without digging through menus. It lives in the system tray and lists your sessions organized into menus and sub-menus that mirror your session folders, using the backslash (\) as the separator. By default it rebuilds its menu from your saved sessions each time it starts, but you can also arrange the menu yourself and keep it fixed. It also includes an **Opened sessions** menu that lets you hide and unhide running sessions, removing them from the desktop and taskbar when you have too many open at once.
+The session launcher gives you a quick way to open your saved sessions without digging through menus. It lives in the system tray and lists your sessions organized into menus and sub-menus that mirror your session folders, using the backslash (\) as the separator. By default it rebuilds its menu from your saved sessions each time it starts, but you can also arrange the menu yourself and keep it fixed. It also includes an **Opened sessions** menu that lets you hide and unhide running sessions, removing them from the desktop and taskbar when you have too many open at once. When the launcher detects that a newer KiTTY release is available, the tray tooltip mentions the available version and the launcher menu shows a disabled **Update available: KiTTY ...** line, so the notice is not lost if a Windows tray balloon is suppressed.
 
-**How to enable:** Run **`kitty.exe -launcher`** to open a small quick-launch window listing your saved sessions.
+**How to enable:** Run **`kitty.exe -launcher`** to open the tray launcher listing your saved sessions.
 
 You can keep individual sessions out of the launcher menu while leaving them in the normal session list: tick **"Hide this session from the launcher"** in the session's **Session** panel.
 
@@ -396,7 +396,7 @@ KiTTY can keep a registry-mode backup of its settings, sessions, and host keys i
 
 ### In-app updater (Check for updates)
 
-KiTTY can check whether a newer release is available and install it for you. *Check for updates* queries the official release list and, if a newer build exists, fetches the right asset for **how KiTTY was installed**: the per-user MSI, the system MSI (with an elevation prompt), or — for a **portable** copy — it just opens the download page. The downloaded installer runs only after it passes an **Authenticode check** (valid signature chain *and* the expected KAPPER publisher), and it is held locked against modification from verification through launch; anything that fails verification is deleted and never run. A **stable** build will not silently install a **beta**: if the newest available build is a beta, KiTTY tells you and asks first (proceed with caution).
+KiTTY can check whether a newer release is available and install it for you. *Check for updates* queries the official release list and, if a newer build exists, fetches the right asset for **how KiTTY was installed**: the per-user MSI, the system MSI (with an elevation prompt), or — for a **portable** copy — it just opens the download page. The downloaded installer runs only after it passes an **Authenticode check** (valid signature chain *and* the expected KAPPER publisher), is downloaded to a unique temporary `.msi` path, and is held locked against modification from verification through launch; anything that fails verification, fails to launch, or is cancelled is deleted and never run. A **stable** build will not silently install a **beta**: if the newest available build is a beta, KiTTY tells you and asks first (proceed with caution). The launcher also surfaces update availability in its tray tooltip and menu.
 
 **How to enable:** system menu → **Check for updates**. Requires network access and honours your system/IE proxy settings; if the check can't complete it falls back to opening the releases page.
 
@@ -460,9 +460,11 @@ KiTTY integrates ZModem support (originally from LePuTTY) so you can transfer fi
 
 ### Savedump (diagnostic dump)
 
-When you run into a problem and want help diagnosing it, KiTTY can capture a diagnostic dump of its current state. Reproduce the issue in your session, then trigger a dump to write a kitty.dmp file alongside the program. You can share that file to help track down the cause of the problem.
+When you run into a problem and want help diagnosing it, KiTTY can capture a diagnostic dump of its current state. Reproduce the issue in your session, then trigger a dump to write a `kitty.dmp` file alongside the program. The dump path redacts stored passwords, proxy passwords, key passphrases, private-key filenames, clipboard contents, and other known secret fields, and the command-line `kitty.exe -savedump` path works in both registry and portable directory modes.
 
-**How to enable:** Press **Ctrl+F8**, type **`/savedump`** and Enter (or launch **`kitty.exe -savedump`**) to write an encrypted diagnostic dump (kitty.dmp) of the configuration next to the exe.
+**Caution:** diagnostic dumps can still contain operational context and are under ongoing review for script-content edge cases. Review a dump before sharing it publicly.
+
+**How to enable:** Press **Ctrl+F8**, type **`/savedump`** and Enter (or launch **`kitty.exe -savedump`**) to write an encrypted diagnostic dump (`kitty.dmp`) of the configuration next to the exe.
 
 (no screenshot)
 

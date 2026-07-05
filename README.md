@@ -81,6 +81,7 @@ or still want real-world testing. The full, per-release list is in
 - **adb backend & rutty scripting** — verified against test fixtures, not yet against a real
   Android device / live remote shell.
 - **SSH auto-login password** — encrypted at rest with Windows DPAPI (machine-bound; defeats offline/cross-user theft, not same-user malware, and does not move to another PC). A portable master-password option is planned; for the strongest security prefer SSH keys.
+- **Diagnostic dumps** — `/savedump` redacts the known high-risk secret fields, but a legacy script-content path is still under review; inspect dumps before public sharing if you use login/RuTTY scripting.
 - **Background image** — the thin margin outside the terminal cell grid is still solid-filled (cosmetic).
 
 Found something else? Please **[open an issue](https://github.com/hknet/KiTTY/issues)**.
