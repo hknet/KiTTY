@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.42 — Known issues & limitations
+# KiTTY 0.84.1.43 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -54,11 +54,30 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.42-beta @ 2026-07-05`.
+- **Version string:** binaries report `0.84.1.43-beta @ 2026-07-06`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.43
+
+- **Launcher update visibility improved:** when `kitty.exe -launcher` detects a
+  newer KiTTY release, the update is no longer only a transient Windows tray
+  balloon; the tray tooltip also mentions the available version and the launcher
+  menu shows a disabled `Update available: KiTTY ...` line until you upgrade.
+- **Saved-session search/filter polish:** typing in the Saved Sessions field
+  narrows the visible list within the active folder filter, ranks prefix/token
+  matches before substring matches, and shows folder names in brackets while
+  searching. Focus starts in that field; Up/Down moves into the filtered list;
+  Enter loads or starts the highlighted visible session instead of a hidden
+  previous selection.
+- **Session comment display fixed:** empty comments in the primary KiTTY hive no
+  longer get overwritten in the config dialog by stale comments from older
+  fallback registry hives with the same session name.
+- **Normal logout no longer auto-reconnects:** a clean remote logout/`exit` that
+  has already closed the session is no longer treated as a reconnect-worthy
+  connection failure.
 
 ## New in 0.84.1.42
 
