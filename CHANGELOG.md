@@ -5,6 +5,27 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## Unreleased
+
+- **Launcher update visibility improved.** When `kitty.exe -launcher` detects a
+  newer KiTTY release, the update is no longer only a transient Windows tray
+  balloon: the launcher tray tooltip also mentions the available version, and
+  the launcher menu shows a disabled `Update available: KiTTY ...` line until
+  the user upgrades.
+- **Saved-session search/filter polish.** Typing in the Saved Sessions field now
+  narrows the visible saved-session list within the active folder filter, ranking
+  prefix/token matches before substring matches and showing folder names in
+  brackets while searching. Focus starts in that field; Up/Down moves into the
+  filtered list; Enter loads or starts the highlighted visible session instead of
+  a hidden previous selection. The root-folder delete message is clearer and
+  auto-dismisses.
+- **Session comment display fixed.** Empty comments in the primary KiTTY hive no
+  longer get overwritten in the config dialog by stale comments from older
+  fallback registry hives with the same session name.
+- **Normal logout no longer auto-reconnects.** A clean remote logout/`exit` that
+  has already closed the session is no longer treated as a reconnect-worthy
+  connection failure.
+
 ## 0.84.1.42-beta — 2026-07-05
 
 - **Savedump crash fixed.** `kitty.exe -savedump` now has a valid configuration

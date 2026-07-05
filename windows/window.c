@@ -1836,11 +1836,12 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
     /* KiTTY auto-reconnect: on an abnormal drop of a session that had FULLY
      * authenticated at least once, arm the reconnect timer instead of
      * message-boxing -- but never on an authentication failure (would burn the
-     * server's auth-try budget and risk an IP ban), and never on a session that
+     * server's auth-try budget and risk an IP ban), never after the normal exit
+     * path has already marked the session closed, and never on a session that
      * never authenticated (gated per-session, not on the stale process-global
      * is_backend_first_connected). */
-    if (GetAutoreconnectFlag() && wgs->ever_authenticated
-        && !kitty_is_auth_failure_msg(msg)) {
+    if (GetAutoreconnectFlag() && !wgs->session_closed &&
+        wgs->ever_authenticated && !kitty_is_auth_failure_msg(msg)) {
         SetConnBreakIcon(wgs->term_hwnd);
         SetSSHConnected(0);
         wgs->session_closed = true;
