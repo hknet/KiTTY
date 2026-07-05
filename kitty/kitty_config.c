@@ -1082,16 +1082,15 @@ struct sessionsaver_data {
     dlgcontrol *startbutton;     /* KiTTY: open session without closing config box */
 #endif
 #ifdef MOD_PERSO
-    dlgcontrol *folderlist;      /* KiTTY: session-folder filter droplist */
-    dlgcontrol *folderedit;      /* KiTTY: explicit new-folder name */
-    dlgcontrol *createbutton, *delfolderbutton, *arrangebutton; /* KiTTY folder mgmt */
+    dlgcontrol *folderlist;      /* KiTTY: editable session-folder combo */
+    dlgcontrol *createbutton, *delfolderbutton; /* KiTTY folder mgmt */
     dlgcontrol *commentbox;      /* KiTTY: read-only comment of selected session */
 #endif
     struct sesslist sesslist;
     bool midsession;
     char *savedsession;     /* the current contents of ssd->editbox */
 #ifdef MOD_PERSO
-    char *newfolder;        /* the current contents of ssd->folderedit */
+    char *newfolder;        /* typed folder name in ssd->folderlist combo */
 #endif
 };
 
@@ -1266,9 +1265,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 }
             dlg_update_done(ctrl, dlg);
             if (sel >= 0) dlg_listbox_select(ctrl, dlg, sel);
-        }
-        else if (ssd->folderedit && ctrl == ssd->folderedit) {
-            dlg_editbox_set(ctrl, dlg, ssd->newfolder ? ssd->newfolder : "");
+            dlg_editbox_set(ctrl, dlg, !strcmp(CurrentFolder, "Default") ? "All sessions (root)" : CurrentFolder);
         }
         else if (ssd->commentbox && ctrl == ssd->commentbox) {
             update_comment_display(ssd, dlg);
@@ -1304,7 +1301,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             dlg_listbox_select(ssd->listbox, dlg, top);
         }
 #ifdef MOD_PERSO
-        else if (ssd->folderedit && ctrl == ssd->folderedit) {
+        else if (ssd->folderlist && ctrl == ssd->folderlist) {
             sfree(ssd->newfolder);
             ssd->newfolder = dlg_editbox_get(ctrl, dlg);
         }
@@ -1416,7 +1413,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 strncpy(folder, ssd->newfolder, sizeof(folder)-1);
                 folder[sizeof(folder)-1] = '\0';
                 CleanFolderName(folder);
-                if (!stricmp(folder, "Default") || !stricmp(folder, "All sessions") || !stricmp(folder, "root")) {
+                if (!stricmp(folder, "Default") || !stricmp(folder, "All sessions") || !stricmp(folder, "All sessions (root)") || !stricmp(folder, "root")) {
                     dlg_error_msg(dlg, "That name is reserved for the root session list.");
                 } else {
                     InitFolderList();
@@ -1426,8 +1423,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     CurrentFolder[1023] = '\0';
                     kitty_set_last_folder(CurrentFolder);
                     sfree(ssd->newfolder);
-                    ssd->newfolder = dupstr("");
-                    dlg_refresh(ssd->folderedit, dlg);
+                    ssd->newfolder = dupstr(folder);
                     dlg_refresh(ssd->folderlist, dlg);
                     dlg_refresh(ssd->listbox, dlg);
                 }
@@ -1450,18 +1446,6 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 dlg_refresh(ssd->editbox, dlg);
                 dlg_refresh(ssd->folderlist, dlg);
                 dlg_refresh(ssd->listbox, dlg);
-            }
-        } else if (!ssd->midsession &&
-                   ssd->arrangebutton && ctrl == ssd->arrangebutton) {
-            /* Move the selected folder one step up the ordering. */
-            if (CurrentFolder[0] && strcmp(CurrentFolder, "Default")) {
-                StringList_Up(FolderList, CurrentFolder);
-                SaveFolderList();
-                InitFolderList();
-                dlg_refresh(ssd->folderlist, dlg);
-                dlg_refresh(ssd->listbox, dlg);
-            } else {
-                dlg_beep(dlg);
             }
 #endif
         } else if (ctrl == ssd->okbutton) {
@@ -2454,16 +2438,15 @@ void setup_config_box(struct controlbox *b, bool midsession,
      * The Session panel.
      */
     str = dupprintf("Basic options for your %s session", appname);
-    ctrl_settitle(b, "Session", str);
-    sfree(str);
 
     if (!midsession) {
         struct hostport *hp = (struct hostport *)
             ctrl_alloc(b, sizeof(struct hostport));
         memset(hp, 0, sizeof(*hp));
 
-        s = ctrl_getset(b, "Session", "hostport",
-                        "Specify the destination you want to connect to");
+        s = ctrl_getset(b, "Session", "hostport", str);
+        ctrl_text(s, "Specify the destination you want to connect to",
+                  HELPCTX(session_hostname));
         ctrl_columns(s, 2, 75, 25);
         c = ctrl_editbox(s, HOST_BOX_TITLE, 'n', 100,
                          HELPCTX(session_hostname),
@@ -2524,6 +2507,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
 
         ctrl_columns(s, 1, 100);
     }
+    sfree(str);
 
     /*
      * The Load/Save panel is available even in mid-session.
@@ -2541,15 +2525,22 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                       HELPCTX(session_saved),
                                       sessionsaver_handler, P(ssd));
     ssd->savebutton->column = 1;
-    /* Reset columns so that the controls below use their own layout. */
-    ctrl_columns(s, 1, 100);
+    /* Folder selector + create button share a row. */
+    ctrl_columns(s, 2, 75, 25);
 #ifdef MOD_PERSO
-    /* KiTTY: folder filter. The internal legacy folder name "Default" is the
-     * root/all-sessions view, shown with a non-misleading label. */
+    /* KiTTY: editable folder selector. Selecting filters the list; typing a new
+     * name and pressing New folder creates/selects it. */
     if (!GetPuttyFlag()) {
-        ssd->folderlist = ctrl_droplist(s, NULL, NO_SHORTCUT, 100,
+        ssd->folderlist = ctrl_combobox(s, NULL, NO_SHORTCUT, 100,
                                         HELPCTX(session_saved),
-                                        sessionsaver_handler, P(ssd));
+                                        sessionsaver_handler, P(ssd), P(NULL));
+        ssd->folderlist->column = 0;
+        if (!midsession) {
+            ssd->createbutton = ctrl_pushbutton(s, "New folder", NO_SHORTCUT,
+                                                HELPCTX(session_saved),
+                                                sessionsaver_handler, P(ssd));
+            ssd->createbutton->column = 1;
+        }
     } else {
         ssd->folderlist = NULL;
     }
@@ -2566,7 +2557,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                 HELPCTX(session_saved),
                                 sessionsaver_handler, P(ssd));
     ssd->listbox->column = 0;
-    ssd->listbox->listbox.height = 7;
+    ssd->listbox->listbox.height = 9;
     if (!midsession) {
         ssd->loadbutton = ctrl_pushbutton(s, "Load", 'l',
                                           HELPCTX(session_saved),
@@ -2589,32 +2580,17 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ssd->delbutton = NULL;
     }
 #ifdef MOD_PERSO
-    /* KiTTY: folder management. Mutating buttons only outside PuTTY mode and
-     * never mid-session (folder edits in Change Settings make no sense). */
+    /* KiTTY: destructive folder button lives with the other destructive action
+     * beside the session list. */
     if (!midsession && !GetPuttyFlag()) {
-        ssd->folderedit = ctrl_editbox(s, "New folder name", NO_SHORTCUT, 100,
-                                       HELPCTX(session_saved),
-                                       sessionsaver_handler, P(ssd), P(NULL));
-        ssd->folderedit->column = 0;
-        ssd->createbutton = ctrl_pushbutton(s, "New folder", NO_SHORTCUT,
-                                            HELPCTX(session_saved),
-                                            sessionsaver_handler, P(ssd));
-        ssd->createbutton->column = 1;
         ssd->delfolderbutton = ctrl_pushbutton(s, "Del folder", NO_SHORTCUT,
                                                HELPCTX(session_saved),
                                                sessionsaver_handler, P(ssd));
         ssd->delfolderbutton->column = 1;
-        ssd->arrangebutton = ctrl_pushbutton(s, "Up folder", NO_SHORTCUT,
-                                             HELPCTX(no_help),
-                                             sessionsaver_handler, P(ssd));
-        ssd->arrangebutton->column = 1;
     } else {
-        /* Defensive only: setup_config_box already memsets ssd to 0, so these
-         * are already NULL. Kept for parity with the loadbutton/delbutton init. */
-        ssd->folderedit = NULL;
+        /* Defensive only: setup_config_box already memsets ssd to 0. */
         ssd->createbutton = NULL;
         ssd->delfolderbutton = NULL;
-        ssd->arrangebutton = NULL;
     }
 #endif
     ctrl_columns(s, 1, 100);
@@ -2643,13 +2619,6 @@ void setup_config_box(struct controlbox *b, bool midsession,
         }
     }
 #endif
-    ctrl_radiobuttons(s, "Close window on exit:", 'x', 4,
-                      HELPCTX(session_coe),
-                      conf_radiobutton_handler,
-                      I(CONF_close_on_exit),
-                      "Always", I(FORCE_ON),
-                      "Never", I(FORCE_OFF),
-                      "Only on clean exit", I(AUTO));
 #ifdef MOD_PERSO
     if (!GetPuttyFlag()) {
         ctrl_checkbox(s, "Save settings automatically on exit", NO_SHORTCUT,
@@ -2671,6 +2640,13 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       I(CONF_remember_winpos));
     }
 #endif
+    ctrl_radiobuttons(s, "Close window on exit:", 'x', 4,
+                      HELPCTX(session_coe),
+                      conf_radiobutton_handler,
+                      I(CONF_close_on_exit),
+                      "Always", I(FORCE_ON),
+                      "Never", I(FORCE_OFF),
+                      "Only on clean exit", I(AUTO));
 
     /*
      * The Session/Logging panel.
