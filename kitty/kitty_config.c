@@ -1187,6 +1187,38 @@ static void update_comment_display(struct sessionsaver_data *ssd, dlgparam *dlg)
     dlg_editbox_set(ssd->commentbox, dlg, (c && *c) ? c : "comment regarding the selected session");
     sfree(c);
 }
+
+static bool sessionsaver_select_folder_text(struct sessionsaver_data *ssd,
+                                            dlgparam *dlg, const char *text)
+{
+    int i;
+    if (!text || !*text)
+        return false;
+    for (i = 0; FolderList && FolderList[i] != NULL; i++) {
+        const char *disp;
+        if (!FolderList[i][0])
+            continue;
+        disp = !strcmp(FolderList[i], "Default") ?
+            "All sessions (root)" : FolderList[i];
+        if (!stricmp(text, FolderList[i]) || !stricmp(text, disp) ||
+            (!stricmp(FolderList[i], "Default") &&
+             (!stricmp(text, "root") || !stricmp(text, "All sessions")))) {
+            if (strcmp(CurrentFolder, FolderList[i])) {
+                strncpy(CurrentFolder, FolderList[i], 1023);
+                CurrentFolder[1023] = '\0';
+                kitty_set_last_folder(CurrentFolder);
+                sfree(ssd->savedsession);
+                ssd->savedsession = dupstr("");
+                dlg_refresh(ssd->editbox, dlg);
+                dlg_refresh(ssd->listbox, dlg);
+                if (ssd->commentbox)
+                    dlg_refresh(ssd->commentbox, dlg);
+            }
+            return true;
+        }
+    }
+    return false;
+}
 #endif
 
 static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
@@ -1265,7 +1297,6 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 }
             dlg_update_done(ctrl, dlg);
             if (sel >= 0) dlg_listbox_select(ctrl, dlg, sel);
-            dlg_editbox_set(ctrl, dlg, !strcmp(CurrentFolder, "Default") ? "All sessions (root)" : CurrentFolder);
         }
         else if (ssd->commentbox && ctrl == ssd->commentbox) {
             update_comment_display(ssd, dlg);
@@ -1302,20 +1333,12 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
         }
 #ifdef MOD_PERSO
         else if (ssd->folderlist && ctrl == ssd->folderlist) {
-            sfree(ssd->newfolder);
-            ssd->newfolder = dlg_editbox_get(ctrl, dlg);
-        }
-    } else if (event == EVENT_SELCHANGE && ssd->folderlist &&
-               ctrl == ssd->folderlist) {
-        int idx = dlg_listbox_index(ssd->folderlist, dlg);
-        if (idx >= 0) {
-            int id = dlg_listbox_getid(ssd->folderlist, dlg, idx);
-            if (FolderList && FolderList[id]) {
-                strncpy(CurrentFolder, FolderList[id], 1023);
-                CurrentFolder[1023] = '\0';
-                kitty_set_last_folder(CurrentFolder);
-                dlg_refresh(ssd->listbox, dlg);   /* re-filter the session list */
+            char *text = dlg_editbox_get(ctrl, dlg);
+            if (!sessionsaver_select_folder_text(ssd, dlg, text)) {
+                sfree(ssd->newfolder);
+                ssd->newfolder = dupstr(text);
             }
+            sfree(text);
         }
     } else if (event == EVENT_SELCHANGE && ctrl == ssd->listbox) {
         /* KiTTY: single-clicking a saved session copies its name into the
@@ -2555,25 +2578,26 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                 HELPCTX(session_saved),
                                 sessionsaver_handler, P(ssd));
     ssd->listbox->column = 0;
-    ssd->listbox->listbox.height = 9;
+    ssd->listbox->listbox.height = 12;
     if (!midsession) {
         ssd->loadbutton = ctrl_pushbutton(s, "Load", 'l',
                                           HELPCTX(session_saved),
                                           sessionsaver_handler, P(ssd));
         ssd->loadbutton->column = 1;
+        ctrl_text(s, "", HELPCTX(no_help))->column = 1;
+        ctrl_text(s, "", HELPCTX(no_help))->column = 1;
+        ctrl_text(s, "", HELPCTX(no_help))->column = 1;
+        ctrl_text(s, "", HELPCTX(no_help))->column = 1;
+        ssd->delbutton = ctrl_pushbutton(s, "Delete", 'd',
+                                         HELPCTX(session_saved),
+                                         sessionsaver_handler, P(ssd));
+        ssd->delbutton->column = 1;
     } else {
         /* We can't offer the Load button mid-session, as it would allow the
          * user to load and subsequently save settings they can't see. (And
          * also change otherwise immutable settings underfoot; that probably
          * shouldn't be a problem, but.) */
         ssd->loadbutton = NULL;
-    }
-    if (!midsession) {
-        ssd->delbutton = ctrl_pushbutton(s, "Delete", 'd',
-                                         HELPCTX(session_saved),
-                                         sessionsaver_handler, P(ssd));
-        ssd->delbutton->column = 1;
-    } else {
         /* Disable the Delete button mid-session too, for UI consistency. */
         ssd->delbutton = NULL;
     }
