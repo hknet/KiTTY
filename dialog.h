@@ -622,6 +622,9 @@ void dlg_update_done(dlgcontrol *ctrl, dlgparam *dp);
  * Set input focus into a particular control.
  */
 void dlg_set_focus(dlgcontrol *ctrl, dlgparam *dp);
+void dlg_set_focus_later(dlgcontrol *ctrl, dlgparam *dp);
+void dlg_editbox_set_updown_target(dlgcontrol *editctrl, dlgcontrol *target,
+                                   dlgparam *dp);
 /*
  * Change the label text on a control.
  */

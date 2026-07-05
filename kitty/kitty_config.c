@@ -1091,6 +1091,10 @@ struct sessionsaver_data {
     char *savedsession;     /* the current contents of ssd->editbox */
 #ifdef MOD_PERSO
     char *newfolder;        /* typed folder name in ssd->folderlist combo */
+    char *searchfilter;     /* live type-to-search filter from saved-session edit */
+    int suppress_edit_valchange; /* set while programmatically updating editbox */
+    int suppress_list_selchange; /* set while programmatically selecting list rows */
+    int initial_focus_set;
 #endif
 };
 
@@ -1101,9 +1105,34 @@ static void sessionsaver_data_free(void *ssdv)
     sfree(ssd->savedsession);
 #ifdef MOD_PERSO
     sfree(ssd->newfolder);
+    sfree(ssd->searchfilter);
 #endif
     sfree(ssd);
 }
+
+#ifdef MOD_PERSO
+char *kitty_read_session_folder(const char *sessionname);   /* windows/storage.c */
+static int sessionsaver_folder_visible_position(struct sessionsaver_data *ssd,
+                                                int sessindex)
+{
+    int pos = 0;
+    if (sessindex < 0 || sessindex >= ssd->sesslist.nsessions)
+        return -1;
+    for (int i = 0; i < ssd->sesslist.nsessions; i++) {
+        if (!GetPuttyFlag() && i > 0 && strcmp(CurrentFolder, "Default") != 0) {
+            char *fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
+            int match = (fld && !strcmp(fld, CurrentFolder));
+            sfree(fld);
+            if (!match)
+                continue;
+        }
+        if (i == sessindex)
+            return pos;
+        pos++;
+    }
+    return -1;
+}
+#endif
 
 /*
  * Helper function to load the session selected in the list box, if
@@ -1139,12 +1168,25 @@ static bool load_selected_session(
 #endif
     sfree(ssd->savedsession);
     ssd->savedsession = dupstr(isdef ? "" : ssd->sesslist.sessions[i]);
+#ifdef MOD_PERSO
+    sfree(ssd->searchfilter);
+    ssd->searchfilter = dupstr("");
+#endif
     if (maybe_launch)
         *maybe_launch = !isdef;
     dlg_refresh(NULL, dlg);
     /* Restore the selection, which might have been clobbered by
-     * changing the value of the edit box. */
+     * changing the value of the edit box. The listbox API wants a visible row
+     * position, not the stable session id used in filtered/search lists. */
+#ifdef MOD_PERSO
+    {
+        int row = sessionsaver_folder_visible_position(ssd, i);
+        if (row >= 0)
+            dlg_listbox_select(ssd->listbox, dlg, row);
+    }
+#else
     dlg_listbox_select(ssd->listbox, dlg, i);
+#endif
 #ifdef MOD_PERSO
     /* KiTTY: dlg_refresh(NULL) above refreshed the read-only comment box while
      * the listbox selection was momentarily cleared (so it blanked); refresh it
@@ -1177,15 +1219,85 @@ static void update_comment_display(struct sessionsaver_data *ssd, dlgparam *dlg)
         return;
     i = sessionsaver_selected_session_index(ssd, dlg);
     if (i < 0 || i >= ssd->sesslist.nsessions) {
-        dlg_editbox_set(ssd->commentbox, dlg, "comment regarding the selected session");
+        dlg_editbox_set(ssd->commentbox, dlg, "Select a session to see its comment");
         return;
     }
     /* Read "Comment" directly, scanning all hives for a non-empty value, so
      * comments authored by an older KiTTY (held only in the 9bis hive) show
      * even before the session is re-saved into the new hive. */
     c = kitty_read_session_comment(ssd->sesslist.sessions[i]);
-    dlg_editbox_set(ssd->commentbox, dlg, (c && *c) ? c : "comment regarding the selected session");
+    dlg_editbox_set(ssd->commentbox, dlg, (c && *c) ? c : "(no comment stored for this session)");
     sfree(c);
+}
+
+static int sessionsaver_filter_match(const char *sessionname, const char *filter)
+{
+    char *work, *tok;
+    int first = 1, prefix = 0;
+    if (!filter || !*filter)
+        return 1;
+    if (!sessionname)
+        return 0;
+    work = dupstr(filter);
+    for (tok = strtok(work, " \t"); tok; tok = strtok(NULL, " \t")) {
+        const char *p;
+        size_t n = strlen(tok);
+        int found = 0;
+        if (first && !strnicmp(sessionname, tok, n))
+            prefix = 1;
+        for (p = sessionname; *p; p++)
+            if (!strnicmp(p, tok, n)) {
+                found = 1;
+                break;
+            }
+        if (!found) {
+            sfree(work);
+            return 0;
+        }
+        first = 0;
+    }
+    sfree(work);
+    return prefix ? 2 : 1;              /* prefix-token matches before substrings */
+}
+
+static void sessionsaver_add_session_row(dlgcontrol *ctrl, dlgparam *dlg,
+                                          struct sessionsaver_data *ssd,
+                                          int session_index, bool searching)
+{
+    char disp[700];
+    const char *sessionname = ssd->sesslist.sessions[session_index];
+    int og = kitty_session_origin(sessionname);
+    if (searching) {
+        char *fld = kitty_read_session_folder(sessionname);
+        const char *folder = (fld && *fld && strcmp(fld, "Default")) ? fld : "root";
+        if (og == 0)
+            snprintf(disp, sizeof(disp), "%s [%s]", sessionname, folder);
+        else
+            snprintf(disp, sizeof(disp), "%s [%s]   (%s)", sessionname,
+                     folder, og == 2 ? "PuTTY" : "old KiTTY");
+        sfree(fld);
+        dlg_listbox_addwithid(ctrl, dlg, disp, session_index);
+    } else if (og == 0) {
+        dlg_listbox_addwithid(ctrl, dlg, sessionname, session_index);
+    } else {
+        snprintf(disp, sizeof(disp), "%s   (%s)", sessionname,
+                 og == 2 ? "PuTTY" : "old KiTTY");
+        dlg_listbox_addwithid(ctrl, dlg, disp, session_index);
+    }
+}
+
+static void kitty_root_folder_cannot_delete(dlgparam *dlg)
+{
+    typedef int (WINAPI *MessageBoxTimeoutA_t)(HWND,LPCSTR,LPCSTR,UINT,WORD,DWORD);
+    HMODULE user32 = GetModuleHandleA("user32.dll");
+    MessageBoxTimeoutA_t msgbox_timeout = user32 ?
+        (MessageBoxTimeoutA_t)GetProcAddress(user32, "MessageBoxTimeoutA") : NULL;
+    if (msgbox_timeout)
+        msgbox_timeout(dlg->hwnd, "root folder can't be deleted", "KiTTY",
+                       MB_OK | MB_ICONINFORMATION, 0, 5000);
+    else
+        MessageBoxA(dlg->hwnd, "root folder can't be deleted", "KiTTY",
+                    MB_OK | MB_ICONINFORMATION);
 }
 
 static bool sessionsaver_select_folder_text(struct sessionsaver_data *ssd,
@@ -1207,9 +1319,8 @@ static bool sessionsaver_select_folder_text(struct sessionsaver_data *ssd,
                 strncpy(CurrentFolder, FolderList[i], 1023);
                 CurrentFolder[1023] = '\0';
                 kitty_set_last_folder(CurrentFolder);
-                sfree(ssd->savedsession);
-                ssd->savedsession = dupstr("");
-                dlg_refresh(ssd->editbox, dlg);
+                sfree(ssd->searchfilter);
+                ssd->searchfilter = dupstr("");
                 dlg_refresh(ssd->listbox, dlg);
                 if (ssd->commentbox)
                     dlg_refresh(ssd->commentbox, dlg);
@@ -1230,18 +1341,38 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
     if (event == EVENT_REFRESH) {
         if (ctrl == ssd->editbox) {
+#ifdef MOD_PERSO
+            ssd->suppress_edit_valchange++;
+#endif
             dlg_editbox_set(ctrl, dlg, ssd->savedsession);
+#ifdef MOD_PERSO
+            if (ssd->listbox && !ssd->midsession)
+                dlg_editbox_set_updown_target(ctrl, ssd->listbox, dlg);
+            ssd->suppress_edit_valchange--;
+            if (!ssd->initial_focus_set && !ssd->midsession) {
+                ssd->initial_focus_set = 1;
+                dlg_set_focus_later(ctrl, dlg);
+            }
+#endif
         } else if (ctrl == ssd->listbox) {
             int i;
+#ifdef MOD_PERSO
+            if (ssd->editbox && !ssd->midsession)
+                dlg_editbox_set_updown_target(ssd->editbox, ctrl, dlg);
+#endif
             dlg_update_start(ctrl, dlg);
             dlg_listbox_clear(ctrl, dlg);
 #ifdef MOD_PERSO
             char lastsess[512];
+            const char *filter = ssd->searchfilter ? ssd->searchfilter : "";
+            bool searching = (!GetPuttyFlag() && filter[0]);
             int havelast = kitty_get_last_session(lastsess, sizeof(lastsess));
             int selpos = -1, lbpos = 0;
+            for (int pass = 2; pass >= 1; pass--) {
 #endif
             for (i = 0; i < ssd->sesslist.nsessions; i++) {
 #ifdef MOD_PERSO
+                int smatch;
                 /* KiTTY folder filter: hide sessions not in the selected folder,
                  * but only when a specific (non-Default) folder is chosen, and
                  * always keep entry 0 ("Default Settings"). */
@@ -1253,34 +1384,35 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     if (!match)
                         continue;
                 }
-                {
-                    /* KiTTY: tag sessions that live in a foreign hive (only the
-                     * displayed text is tagged; sesslist keeps the real name so
-                     * Load/Save/Delete still operate on the correct session). */
-                    int og = kitty_session_origin(ssd->sesslist.sessions[i]);
-                    if (og == 0) {
-                        dlg_listbox_addwithid(ctrl, dlg, ssd->sesslist.sessions[i], i);
-                    } else {
-                        char disp[600];
-                        snprintf(disp, sizeof(disp), "%s   (%s)",
-                                 ssd->sesslist.sessions[i],
-                                 og == 2 ? "PuTTY" : "old KiTTY");
-                        dlg_listbox_addwithid(ctrl, dlg, disp, i);
-                    }
-                }
-                if (havelast && !strcmp(ssd->sesslist.sessions[i], lastsess))
+                smatch = sessionsaver_filter_match(ssd->sesslist.sessions[i], filter);
+                if (searching && smatch != pass)
+                    continue;
+                sessionsaver_add_session_row(ctrl, dlg, ssd, i, searching);
+                if ((searching ? !strcmp(ssd->sesslist.sessions[i], ssd->savedsession) :
+                                 (havelast && !strcmp(ssd->sesslist.sessions[i], lastsess))) &&
+                    selpos < 0)
                     selpos = lbpos;
                 lbpos++;
 #else
                 dlg_listbox_add(ctrl, dlg, ssd->sesslist.sessions[i]);
 #endif
             }
+#ifdef MOD_PERSO
+            if (!searching)
+                break;
+            }
+#endif
             dlg_update_done(ctrl, dlg);
 #ifdef MOD_PERSO
-            /* KiTTY: auto-select the last-loaded session (its settings are
-             * auto-loaded into conf at startup; see windows/putty.c). */
-            if (selpos >= 0)
+            /* KiTTY: auto-select the best visible match: the exact typed/selected
+             * session while searching, otherwise the last-loaded session. */
+            if (selpos < 0 && lbpos > 0)
+                selpos = 0;
+            if (selpos >= 0) {
+                ssd->suppress_list_selchange++;
                 dlg_listbox_select(ctrl, dlg, selpos);
+                ssd->suppress_list_selchange--;
+            }
 #endif
         }
 #ifdef MOD_PERSO
@@ -1307,6 +1439,16 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
         if (ctrl == ssd->editbox) {
             sfree(ssd->savedsession);
             ssd->savedsession = dlg_editbox_get(ctrl, dlg);
+#ifdef MOD_PERSO
+            if (!ssd->suppress_edit_valchange) {
+                sfree(ssd->searchfilter);
+                ssd->searchfilter = dupstr(ssd->savedsession);
+                dlg_refresh(ssd->listbox, dlg);
+                if (ssd->commentbox)
+                    dlg_refresh(ssd->commentbox, dlg);
+                return;
+            }
+#endif
             top = ssd->sesslist.nsessions;
             bottom = -1;
             while (top-bottom > 1) {
@@ -1346,10 +1488,19 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
          * (e.g. selecting "Default Settings" lets you re-save it directly).
          * Also refreshes the read-only comment display. */
         int i = sessionsaver_selected_session_index(ssd, dlg);
-        if (i >= 0 && i < ssd->sesslist.nsessions) {
-            sfree(ssd->savedsession);
-            ssd->savedsession = dupstr(ssd->sesslist.sessions[i]);
-            dlg_refresh(ssd->editbox, dlg);
+        if (!ssd->suppress_list_selchange && i >= 0 && i < ssd->sesslist.nsessions) {
+            if (ssd->searchfilter && ssd->searchfilter[0]) {
+                /* In live-search mode, arrowing through the filtered list must
+                 * not overwrite the user's search text or collapse the filter.
+                 * Load/Enter makes the highlighted result the saved-session
+                 * edit value explicitly. */
+            } else {
+                sfree(ssd->savedsession);
+                ssd->savedsession = dupstr(ssd->sesslist.sessions[i]);
+                sfree(ssd->searchfilter);
+                ssd->searchfilter = dupstr("");
+                dlg_refresh(ssd->editbox, dlg);
+            }
         }
         if (ssd->commentbox)
             update_comment_display(ssd, dlg);
@@ -1457,7 +1608,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                    ssd->delfolderbutton && ctrl == ssd->delfolderbutton) {
             /* Delete the currently selected folder. */
             if (!CurrentFolder[0] || !strcmp(CurrentFolder, "Default")) {
-                dlg_error_msg(dlg, "The Default folder cannot be deleted.");
+                kitty_root_folder_cannot_delete(dlg);
             } else {
                 StringList_Del(FolderList, CurrentFolder);
                 SaveFolderList();
@@ -1472,6 +1623,33 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             }
 #endif
         } else if (ctrl == ssd->okbutton) {
+#ifdef MOD_PERSO
+            if (!ssd->midsession &&
+                (dlg_last_focused(ctrl, dlg) == ssd->editbox ||
+                 dlg_last_focused(ctrl, dlg) == ssd->listbox)) {
+                bool from_list = (dlg_last_focused(ctrl, dlg) == ssd->listbox);
+                if (ssd->searchfilter && ssd->searchfilter[0]) {
+                    bool loaded = load_selected_session(ssd, dlg, conf, NULL);
+                    if (loaded)
+                        dlg_set_focus(ssd->editbox, dlg);
+                    else
+                        dlg_beep(dlg);
+                    return;
+                }
+                if (from_list) {
+                    bool loaded = load_selected_session(ssd, dlg, conf, NULL);
+                    if (!loaded) {
+                        dlg_beep(dlg);
+                        return;
+                    }
+                }
+                if (conf_launchable(conf))
+                    RunConfig(conf);
+                else
+                    dlg_beep(dlg);
+                return;
+            }
+#endif
             if (ssd->midsession) {
                 /* In a mid-session Change Settings, Apply is always OK. */
                 dlg_end(dlg, 1);
@@ -2623,7 +2801,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
     ctrl_columns(s, 1, 100);
 #ifdef MOD_PERSO
     /* KiTTY: read-only display of the selected session's comment, below the list.
-     * Empty comments show a placeholder directly inside the field. */
+     * Empty comments show a clear placeholder directly inside the field. */
     if (!GetPuttyFlag()) {
         ssd->commentbox = ctrl_editbox_multiline(
             s, NULL, NO_SHORTCUT, 3, true,

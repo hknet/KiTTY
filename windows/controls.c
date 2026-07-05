@@ -2540,13 +2540,12 @@ void dlg_update_done(dlgcontrol *ctrl, dlgparam *dp)
     }
 }
 
-void dlg_set_focus(dlgcontrol *ctrl, dlgparam *dp)
+static HWND dlg_control_focus_hwnd(dlgcontrol *ctrl, dlgparam *dp)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     int id;
-    HWND ctl;
     if (!c)
-        return;
+        return NULL;
     switch (ctrl->type) {
       case CTRL_EDITBOX: id = c->base_id + 1; break;
       case CTRL_RADIO:
@@ -2566,8 +2565,64 @@ void dlg_set_focus(dlgcontrol *ctrl, dlgparam *dp)
       case CTRL_FONTSELECT: id = c->base_id + 2; break;
       default: id = c->base_id; break;
     }
-    ctl = GetDlgItem(dp->hwnd, id);
-    SetFocus(ctl);
+    return GetDlgItem(dp->hwnd, id);
+}
+
+void dlg_set_focus(dlgcontrol *ctrl, dlgparam *dp)
+{
+    HWND ctl = dlg_control_focus_hwnd(ctrl, dp);
+    if (ctl)
+        SetFocus(ctl);
+}
+
+void dlg_set_focus_later(dlgcontrol *ctrl, dlgparam *dp)
+{
+    HWND ctl = dlg_control_focus_hwnd(ctrl, dp);
+    if (!ctl)
+        return;
+    if (ctrl->type == CTRL_EDITBOX)
+        SendMessage(ctl, EM_SETSEL, 0, (LPARAM)-1);
+    PostMessage(dp->hwnd, WM_NEXTDLGCTL, (WPARAM)ctl, TRUE);
+}
+
+static LRESULT CALLBACK editbox_updown_wndproc(HWND hwnd, UINT msg,
+                                               WPARAM wParam, LPARAM lParam)
+{
+    WNDPROC oldproc = (WNDPROC)GetProp(hwnd, "PuTTYOldEditProc");
+    HWND target = (HWND)GetProp(hwnd, "PuTTYUpDownTarget");
+
+    if (msg == WM_KEYDOWN && target &&
+        (wParam == VK_UP || wParam == VK_DOWN)) {
+        SetFocus(target);
+        SendMessage(target, WM_KEYDOWN, wParam, lParam);
+        return 0;
+    }
+
+    if (oldproc)
+        return CallWindowProc(oldproc, hwnd, msg, wParam, lParam);
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+void dlg_editbox_set_updown_target(dlgcontrol *editctrl, dlgcontrol *target,
+                                   dlgparam *dp)
+{
+    HWND edit, targethwnd;
+
+    if (!editctrl || editctrl->type != CTRL_EDITBOX ||
+        !target || target->type != CTRL_LISTBOX)
+        return;
+
+    edit = dlg_control_focus_hwnd(editctrl, dp);
+    targethwnd = dlg_control_focus_hwnd(target, dp);
+    if (!edit || !targethwnd)
+        return;
+
+    SetProp(edit, "PuTTYUpDownTarget", targethwnd);
+    if (!GetProp(edit, "PuTTYOldEditProc")) {
+        WNDPROC oldproc = (WNDPROC)SetWindowLongPtr(
+            edit, GWLP_WNDPROC, (LONG_PTR)editbox_updown_wndproc);
+        SetProp(edit, "PuTTYOldEditProc", oldproc);
+    }
 }
 
 /*

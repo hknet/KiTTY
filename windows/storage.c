@@ -263,7 +263,11 @@ static char *kitty_read_session_value_direct(const char *sessionname,
 
 char *kitty_read_session_comment(const char *sessionname)
 {
-    return kitty_read_session_value_direct(sessionname, "Comment", 1);
+    /* If a session exists in the primary hive with an intentionally empty
+     * Comment, keep it empty. Falling back to old hives here made the config
+     * dialog show stale comments from migrated/legacy sessions with the same
+     * name (e.g. an old 9bis entry overwriting an empty kapper.net comment). */
+    return kitty_read_session_value_direct(sessionname, "Comment", 0);
 }
 
 char *kitty_read_session_folder(const char *sessionname)
