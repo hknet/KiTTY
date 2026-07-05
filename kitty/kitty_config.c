@@ -2548,7 +2548,9 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                       HELPCTX(session_saved),
                                       sessionsaver_handler, P(ssd));
     ssd->savebutton->column = 1;
-    /* Folder selector + create button share a row using the same 2-column layout. */
+    ctrl_columns(s, 1, 100);
+    ctrl_columns(s, 2, 75, 25);
+    /* Folder selector + create button share their own synchronized row. */
 #ifdef MOD_PERSO
     /* KiTTY: editable folder selector. Selecting filters the list; typing a new
      * name and pressing New folder creates/selects it. */
@@ -2574,16 +2576,19 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       kitty_proxy_handler, P(NULL));
     }
 #endif
+    ctrl_columns(s, 1, 100);
+    ctrl_columns(s, 2, 75, 25);
     ssd->listbox = ctrl_listbox(s, NULL, NO_SHORTCUT,
                                 HELPCTX(session_saved),
                                 sessionsaver_handler, P(ssd));
     ssd->listbox->column = 0;
-    ssd->listbox->listbox.height = 12;
+    ssd->listbox->listbox.height = 15;
     if (!midsession) {
         ssd->loadbutton = ctrl_pushbutton(s, "Load", 'l',
                                           HELPCTX(session_saved),
                                           sessionsaver_handler, P(ssd));
         ssd->loadbutton->column = 1;
+        ctrl_text(s, "", HELPCTX(no_help))->column = 1;
         ctrl_text(s, "", HELPCTX(no_help))->column = 1;
         ctrl_text(s, "", HELPCTX(no_help))->column = 1;
         ctrl_text(s, "", HELPCTX(no_help))->column = 1;
