@@ -5,7 +5,7 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
-## Unreleased
+## 0.84.1.43-beta — 2026-07-06
 
 - **Launcher update visibility improved.** When `kitty.exe -launcher` detects a
   newer KiTTY release, the update is no longer only a transient Windows tray
