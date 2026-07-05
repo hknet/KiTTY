@@ -10,9 +10,9 @@
   Per-machine UpgradeCode (fixed/committed): 69EA2DD5-EF19-4811-B324-EF34CAA6942C
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="KiTTY 0.84.1.41-beta (system-wide install)"
+  <Package Name="KiTTY 0.84.1.42-beta (system-wide install)"
            Manufacturer="KiTTY 0.84 port"
-           Version="0.84.141"
+           Version="0.84.142"
            UpgradeCode="69EA2DD5-EF19-4811-B324-EF34CAA6942C"
            Scope="perMachine"
            Compressed="yes">
