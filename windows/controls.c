@@ -2353,8 +2353,12 @@ int dlg_listbox_getid(dlgcontrol *ctrl, dlgparam *dp, int index)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     int msg;
-    assert(c && c->ctrl->type == CTRL_LISTBOX);
-    msg = (c->ctrl->listbox.height != 0 ? LB_GETITEMDATA : CB_GETITEMDATA);
+    assert(c &&
+           (c->ctrl->type == CTRL_LISTBOX ||
+            (c->ctrl->type == CTRL_EDITBOX &&
+             c->ctrl->editbox.has_list)));
+    msg = (c->ctrl->type == CTRL_LISTBOX && c->ctrl->listbox.height != 0 ?
+           LB_GETITEMDATA : CB_GETITEMDATA);
     return
         SendDlgItemMessage(dp->hwnd, c->base_id+1, msg, index, 0);
 }
@@ -2364,14 +2368,18 @@ int dlg_listbox_index(dlgcontrol *ctrl, dlgparam *dp)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     int msg, ret;
-    assert(c && c->ctrl->type == CTRL_LISTBOX);
-    if (c->ctrl->listbox.multisel) {
+    assert(c &&
+           (c->ctrl->type == CTRL_LISTBOX ||
+            (c->ctrl->type == CTRL_EDITBOX &&
+             c->ctrl->editbox.has_list)));
+    if (c->ctrl->type == CTRL_LISTBOX && c->ctrl->listbox.multisel) {
         assert(c->ctrl->listbox.height != 0); /* not combo box */
         ret = SendDlgItemMessage(dp->hwnd, c->base_id+1, LB_GETSELCOUNT, 0, 0);
         if (ret == LB_ERR || ret > 1)
             return -1;
     }
-    msg = (c->ctrl->listbox.height != 0 ? LB_GETCURSEL : CB_GETCURSEL);
+    msg = (c->ctrl->type == CTRL_LISTBOX && c->ctrl->listbox.height != 0 ?
+           LB_GETCURSEL : CB_GETCURSEL);
     ret = SendDlgItemMessage(dp->hwnd, c->base_id+1, msg, 0, 0);
     if (ret == LB_ERR)
         return -1;
@@ -2393,9 +2401,11 @@ void dlg_listbox_select(dlgcontrol *ctrl, dlgparam *dp, int index)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     int msg;
-    assert(c && c->ctrl->type == CTRL_LISTBOX &&
-           !c->ctrl->listbox.multisel);
-    msg = (c->ctrl->listbox.height != 0 ? LB_SETCURSEL : CB_SETCURSEL);
+    assert(c &&
+           ((c->ctrl->type == CTRL_LISTBOX && !c->ctrl->listbox.multisel) ||
+            (c->ctrl->type == CTRL_EDITBOX && c->ctrl->editbox.has_list)));
+    msg = (c->ctrl->type == CTRL_LISTBOX && c->ctrl->listbox.height != 0 ?
+           LB_SETCURSEL : CB_SETCURSEL);
     SendDlgItemMessage(dp->hwnd, c->base_id+1, msg, index, 0);
 }
 
