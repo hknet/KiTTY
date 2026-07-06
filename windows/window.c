@@ -1839,12 +1839,49 @@ static bool kitty_is_auth_failure_msg(const char *msg)
 }
 #endif
 
+/* Some network devices (switches/routers) emit a channel-referencing packet
+ * (e.g. SSH2_MSG_CHANNEL_REQUEST) for a channel they just tore down, right after
+ * sending a clean "exit status 0" on logout. PuTTY makes any message for a
+ * nonexistent channel a FATAL protocol error, so without special handling an
+ * ordinary logout would either spuriously auto-reconnect or pop a scary fatal
+ * box. Recognise that post-logout artifact so connection_fatal can close
+ * cleanly. (Diagnosed via netdebug on a Cisco switch: exit status 0 ->
+ * SSH2_MSG_CHANNEL_REQUEST for nonexistent channel.)
+ *
+ * NOTE: this is belt-and-braces with the ssh_proto_error() exit_code_known
+ * guard in ssh/ssh.c, which handles the same late-channel-message case at the
+ * protocol layer. Kept for now; can probably be retired if upstream PuTTY
+ * accepts that ssh.c change (see the upstream tracking notes). */
+static bool kitty_is_benign_channel_close_msg(const char *msg)
+{
+    return msg && strstr(msg, "nonexistent channel") != NULL;
+}
+
 /*
  * Print a message box and close the connection.
  */
 static void win_seat_connection_fatal(Seat *seat, const char *msg)
 {
     WinGuiSeat *wgs = container_of(seat, WinGuiSeat, seat);
+#ifdef MOD_PERSO
+    /* KiTTY: a benign post-logout channel artifact (see helper) is not a real
+     * disconnect -- the remote already sent a clean exit status. Treat it as a
+     * normal session end: no auto-reconnect, no fatal box, honour close-on-exit
+     * (the exit was clean, so AUTO closes the window). */
+    if (!GetPuttyFlag() && kitty_is_benign_channel_close_msg(msg)) {
+        int coe = conf_get_int(wgs->conf, CONF_close_on_exit);
+        show_mouseptr(wgs, true);
+        wgs->session_closed = true;
+        if (coe == FORCE_ON || coe == AUTO) {
+            if (conf_get_bool(wgs->conf, CONF_remember_winpos))
+                kitty_save_window_placement(wgs->term_hwnd);
+            PostQuitMessage(0);
+        } else {
+            queue_toplevel_callback(close_session, wgs);
+        }
+        return;
+    }
+#endif
 #ifdef MOD_RECONNECT
     /* KiTTY auto-reconnect: on an abnormal drop of a session that had FULLY
      * authenticated at least once, arm the reconnect timer instead of
