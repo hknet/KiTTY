@@ -3548,6 +3548,15 @@ void setup_config_box(struct controlbox *b, bool midsession,
                   NO_SHORTCUT, HELPCTX(selection_pastectrl),
                   conf_checkbox_handler, I(CONF_paste_controls));
 
+    s = ctrl_getset(b, "Window/Selection", "runclipcmd",
+                    "Running the clipboard as a local command (Ctrl+F5)");
+    ctrl_checkbox(s, "Confirm before running the clipboard as a command",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  conf_checkbox_handler, I(CONF_runcmdconfirm));
+    ctrl_checkbox(s, "Show a tray notification after running a clipboard command",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  conf_checkbox_handler, I(CONF_runcmdnotify));
+
     /*
      * The Window/Selection/Copy panel.
      */

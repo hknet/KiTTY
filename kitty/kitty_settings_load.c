@@ -817,6 +817,8 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "CtrlTabSwitch", 0, conf, CONF_ctrl_tab_switch);
     gpps_forced(sesskey, "Comment", "", conf, CONF_comment );
     gppb_forced(sesskey, "SCPAutoPwd", false, conf, CONF_scp_auto_pwd); /* 0.84: BOOL */
+    gppb_forced(sesskey, "RunCmdConfirm", true, conf, CONF_runcmdconfirm);
+    gppb_forced(sesskey, "RunCmdNotify", true, conf, CONF_runcmdnotify);
     gppb_forced(sesskey, "NoFocusReporting", true, conf, CONF_no_focus_rep);
     gppi_forced(sesskey, "LinesAtAScroll", 5, conf, CONF_scrolllines);
     gppb_forced(sesskey, "SSHTunnelInTitle", false, conf, CONF_ssh_tunnel_print_in_title);

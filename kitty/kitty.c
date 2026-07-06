@@ -3042,6 +3042,12 @@ void GetFile( HWND hwnd ) {
 }
 
 // Start a locale commande (Internet Explorer for example)
+/* #9 hardening: RunCmd() runs text taken straight from the Windows clipboard as
+ * a local command (default Ctrl+F5), so attacker-planted clipboard content could
+ * execute on a single keypress. Two independent, PER-SESSION safeguards, both ON
+ * by default and each toggled in the config dialog (Window/Selection): a
+ * confirmation prompt (CONF_runcmdconfirm) and a post-launch tray balloon
+ * (CONF_runcmdnotify, mirroring kageant's key-use balloon). */
 void RunCmd( HWND hwnd ) {
     char buffer[4096]="", * pst = NULL ;
     if (!IsClipboardFormatAvailable(CF_TEXT)) return ;
@@ -3057,6 +3063,13 @@ void RunCmd( HWND hwnd ) {
         CloseClipboard();
     }
     if( strlen( buffer ) > 0 ) {
+        if( conf_get_bool( conf, CONF_runcmdconfirm ) ) {
+            char prompt[4096+160] ;
+            snprintf( prompt, sizeof(prompt),
+                "Run this command from the clipboard?\n\n%s", buffer ) ;
+            if( MessageBox( hwnd, prompt, "KiTTY - run clipboard command",
+                    MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2 ) != IDYES ) return ;
+        }
         chdir( InitialDirectory ) ;
         //system( buffer ) ;
         STARTUPINFO si ;
@@ -3066,6 +3079,11 @@ void RunCmd( HWND hwnd ) {
         ZeroMemory( &pi, sizeof(pi) );
         if( !CreateProcess(NULL, buffer, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi) ) {
             ShellExecute(hwnd, "open", buffer,0, 0, SW_SHOWDEFAULT);
+        }
+        if( conf_get_bool( conf, CONF_runcmdnotify ) ) {
+            char note[4096+64] ;
+            snprintf( note, sizeof(note), "Ran clipboard command:\n%s", buffer ) ;
+            kitty_tray_balloon_async( hwnd, "KiTTY", note ) ;
         }
     }
 }

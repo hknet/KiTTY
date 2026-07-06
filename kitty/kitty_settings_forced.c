@@ -547,6 +547,8 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_i_forced(sesskey, "CtrlTabSwitch", conf_get_int(conf, CONF_ctrl_tab_switch));
     write_setting_s_forced(sesskey, "Comment", conf_get_str(conf, CONF_comment));
     write_setting_b_forced(sesskey, "SCPAutoPwd", conf_get_bool(conf, CONF_scp_auto_pwd)); /* 0.84: BOOL (was conf_get_int -> assert) */
+    write_setting_b_forced(sesskey, "RunCmdConfirm", conf_get_bool(conf, CONF_runcmdconfirm));
+    write_setting_b_forced(sesskey, "RunCmdNotify", conf_get_bool(conf, CONF_runcmdnotify));
     write_setting_b_forced(sesskey, "NoFocusReporting", conf_get_bool(conf, CONF_no_focus_rep));
     write_setting_i_forced(sesskey, "LinesAtAScroll", conf_get_int(conf, CONF_scrolllines));
     write_setting_b_forced(sesskey, "SSHTunnelInTitle", conf_get_bool(conf, CONF_ssh_tunnel_print_in_title));
