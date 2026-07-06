@@ -568,7 +568,7 @@ static int kitty_verify_signature( const char *path ) {
 	WINTRUST_DATA wd ; memset(&wd,0,sizeof(wd)) ;
 	wd.cbStruct = sizeof(wd) ;
 	wd.dwUIChoice = WTD_UI_NONE ;
-	wd.fdwRevocationChecks = WTD_REVOKE_NONE ;
+	wd.fdwRevocationChecks = WTD_REVOKE_WHOLECHAIN ;
 	wd.dwUnionChoice = WTD_CHOICE_FILE ;
 	wd.pFile = &fi ;
 	wd.dwStateAction = WTD_STATEACTION_VERIFY ;
