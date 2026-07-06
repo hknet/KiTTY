@@ -556,7 +556,9 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	/* Password redacted from dumps for security (do not write the masked value) */
 	fprintf( fp, "password=<redacted>\n" ) ;
 
-	fprintf( fp, "autocommand=%s\n",		conf_get_str(conf,CONF_autocommand) ) ;
+	/* SECURITY (#5): autocommand is login automation that frequently embeds
+	 * credentials (send-password-after-prompt); redact from the shareable dump. */
+	fprintf( fp, "autocommand=<redacted>\n" ) ;
 	fprintf( fp, "autocommandout=%s\n",		conf_get_str(conf,CONF_autocommandout) ) ;
 	fprintf( fp, "antiidle=%s\n",			conf_get_str(conf,CONF_antiidle) ) ;
 	fprintf( fp, "sessionname=%s\n", 		conf_get_str(conf,CONF_sessionname) ) ;
@@ -789,7 +791,24 @@ void SaveScreenShot( FILE *fp ) {
 void SaveCurrentConfig( FILE *fp, Conf * conf ) {
 	char buf[1028] ;
 	FILE *fp2 ;
-	save_open_settings_forced( "current.ktx", conf ) ;
+	/* SECURITY (#4): current.ktx is wrapped only with the public compile-time
+	 * MASTER_PASSWORD, so any secret written here is recoverable by anyone who
+	 * obtains the shared dump. Replace the secret fields with an explicit
+	 * "<redacted>" marker for this export (a blank would decrypt to "" and read
+	 * as "no password set"), then restore the live conf — mirrors the visible
+	 * "password=<redacted>" that this embedded-.ktx path used to bypass. */
+	{
+		const char *cur_pw = conf_get_str( conf, CONF_password ) ;
+		const char *cur_proxypw = conf_get_str( conf, CONF_proxy_password ) ;
+		char *saved_pw = (char*) malloc( strlen(cur_pw)+1 ) ; strcpy( saved_pw, cur_pw ) ;
+		char *saved_proxypw = (char*) malloc( strlen(cur_proxypw)+1 ) ; strcpy( saved_proxypw, cur_proxypw ) ;
+		conf_set_str( conf, CONF_password, "<redacted>" ) ;
+		conf_set_str( conf, CONF_proxy_password, "<redacted>" ) ;
+		save_open_settings_forced( "current.ktx", conf ) ;
+		conf_set_str( conf, CONF_password, saved_pw ) ;
+		conf_set_str( conf, CONF_proxy_password, saved_proxypw ) ;
+		free( saved_pw ) ; free( saved_proxypw ) ;
+	}
 	bcrypt_file_base64( "current.ktx", "current.ktx.bcr", MASTER_PASSWORD, 80 ) ;
 	unlink( "current.ktx" ) ;
 	if( (fp2=fopen("current.ktx.bcr","r"))!=NULL ) {
