@@ -62,6 +62,7 @@ struct Ssh {
 
     bool fallback_cmd;
     int exitcode;
+    bool exit_code_known;              /* set once a channel reports exit-status/-signal */
 
     int version;
     int conn_throttle_count;
@@ -477,6 +478,27 @@ void ssh_remote_error(Ssh *ssh, const char *fmt, ...)
         if (ssh->base_layer)
             ssh_ppl_final_output(ssh->base_layer);
 
+        if (ssh->exit_code_known) {
+            /*
+             * The connection layer has already reported this session's
+             * exit status (an SSH_MSG_CHANNEL_REQUEST "exit-status" or
+             * "exit-signal" for the main channel). Some server
+             * implementations then close the network connection
+             * immediately, in the same batch of incoming data, before we
+             * have finished our own half of the channel-close handshake
+             * and marked the connection as expecting to close. That is
+             * not an error: the session has ended cleanly and we already
+             * know its result. Treat it as a normal remote exit rather
+             * than a fatal connection error, and keep the exit code we
+             * were given instead of overwriting it.
+             */
+            ssh_shutdown(ssh);
+            logevent(ssh->logctx, msg);
+            sfree(msg);
+            seat_notify_remote_exit(ssh->seat);
+            return;
+        }
+
         /* Error messages sent by the remote don't count as clean exits */
         ssh->exitcode = 128;
 
@@ -523,6 +545,23 @@ void ssh_proto_error(Ssh *ssh, const char *fmt, ...)
 
         if (ssh->base_layer)
             ssh_ppl_final_output(ssh->base_layer);
+
+        if (ssh->exit_code_known) {
+            /*
+             * As in ssh_remote_error(): the session has already ended
+             * cleanly and we know its exit code. A protocol violation
+             * arriving afterwards -- for instance a message referring to
+             * a channel we have already closed, which some servers send
+             * as they tear the session down -- is not worth reporting as
+             * a fatal error. Close quietly and report the exit we already
+             * have.
+             */
+            ssh_shutdown(ssh);
+            logevent(ssh->logctx, msg);
+            sfree(msg);
+            seat_notify_remote_exit(ssh->seat);
+            return;
+        }
 
         ssh->exitcode = 128;
 
@@ -1240,6 +1279,7 @@ static void ssh_provide_ldisc(Backend *be, Ldisc *ldisc)
 void ssh_got_exitcode(Ssh *ssh, int exitcode)
 {
     ssh->exitcode = exitcode;
+    ssh->exit_code_known = true;
 }
 
 static int ssh_return_exitcode(Backend *be)
