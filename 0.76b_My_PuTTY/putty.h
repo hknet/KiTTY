@@ -1,6 +1,10 @@
 #ifndef PUTTY_PUTTY_H
 #define PUTTY_PUTTY_H
 
+#ifndef MOD_KEYMAPPING
+#define MOD_KEYMAPPING
+#endif
+
 #include <stddef.h>		       /* for wchar_t */
 #include <limits.h>                    /* for INT_MAX */
 

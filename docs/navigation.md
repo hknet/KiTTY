@@ -46,6 +46,7 @@
   * [Start Cygwin or cmd.exe into KiTTY](pages/cygtermd.md)
   * [File association](pages/FileAssociation.md)
   * [Other settings](pages/OtherSettings.md)
+  * [Enhanced key mapping](pages/KeyMapping.md)
   ----
   * [Menu key shortcuts definition](pages/MenuShortcuts.md)
   * [New command-line options](pages/CommandLine.md)
