@@ -36,8 +36,10 @@ features are working and verified. Known limitations as of this release:
 ## Security
 
 - **Diagnostic dumps:** `/savedump` redacts stored passwords, proxy passwords,
-  key passphrases, private-key filenames, clipboard contents and other known
-  secret fields, and `kitty.exe -savedump` works in registry and portable modes.
+  key passphrases, private-key filenames, clipboard contents, login-automation
+  (`autocommand`) strings and other known secret fields — including inside the
+  bundled `current.ktx` — so a dump can be shared for troubleshooting without
+  leaking credentials. `kitty.exe -savedump` works in registry and portable modes.
   One legacy script-content dump path is still under review, so inspect
   `kitty.dmp` before sharing it publicly if you use login/RuTTY scripting.
 - **Stored passwords are DPAPI-encrypted at rest.** KiTTY can *optionally*

@@ -58,6 +58,8 @@ one is available.
   - [Savedump (diagnostic dump)](#savedump-diagnostic-dump)
   - [Menu key shortcuts definition](#menu-key-shortcuts-definition)
   - [New command-line options](#new-command-line-options)
+  - [Non-blocking connection errors](#non-blocking-connection-errors)
+  - [Run the clipboard as a command](#run-the-clipboard-as-a-command)
   - [In-app updater (Check for updates)](#in-app-updater-check-for-updates)
 - **Bonus**
   - [Hidden text editor](#hidden-text-editor)
@@ -391,6 +393,22 @@ KiTTY can keep a registry-mode backup of its settings, sessions, and host keys i
 **Backup/restore:** `kitty.sav` is a Windows Registry export of KiTTY's configuration hive. To restore it, close KiTTY/kageant/launcher first, then import the file with Registry Editor or `reg import kitty.sav`, and start KiTTY again. If the backup was protected with KiTTY's legacy config-password mechanism, KiTTY prompts for that password while loading it. Portable directory mode (`kitty_portable.exe` / `savemode=dir`) stores sessions as files instead; when settings are applied, KiTTY refreshes `Backups\kitty-portable-latest` and keeps timestamped backups such as `Backups\kitty-portable-YYYYMMDD-HHMMSS` under the portable config directory. By default it keeps 5 timestamped backups; set `[KiTTY] portablebackupcount=0` to disable or another number to change retention. The backup contains `kitty.ini`, `Sessions`, `SshHostKeys`, `SshHostCAs`, `PUTTY.RND`, `KiTTYState`, `Jumplist`, and related portable config folders. To restore, close KiTTY/kageant/launcher and copy the backup contents back into the portable config directory.
 
 **How to enable:** Automatic in registry mode: each time you apply the configuration dialog, KiTTY exports its registry hive to **kitty.sav** (in `%APPDATA%\KiTTY`, or the `[KiTTY] sav=` path) as a safety backup.
+
+(no screenshot)
+
+### Non-blocking connection errors
+
+When a connection drops, is closed by the remote host, or the server reports a non-fatal error, KiTTY prints the message **inline in the terminal** rather than popping a modal dialog that blocks the window until you click **OK**. The window stays usable and closable, and the text remains in the scrollback so you can read or copy it. A **fatal** disconnect also badges the window title with a **⚠ (disconnected)** marker, so a minimised or background window shows at a glance that its session died; the marker clears automatically the next time the session connects. Host-key and weak-crypto confirmations still use a normal prompt.
+
+**How to enable:** on by default. To restore the classic modal error boxes, set `[KiTTY] modalerrors=yes` in `kitty.ini`.
+
+(no screenshot)
+
+### Run the clipboard as a command
+
+KiTTY can run the current Windows clipboard contents as a local command with the **Ctrl+F5** shortcut — handy for sending a prepared command line straight into execution. Because that runs whatever happens to be on the clipboard, KiTTY shows a **confirmation prompt** (displaying the command) before running it and a **tray notification** after launch, so nothing runs unexpectedly.
+
+**How to enable:** the shortcut is built in; the two safeguards are on by default and toggled per session in **Window → Selection** ("Running the clipboard as a local command").
 
 (no screenshot)
 

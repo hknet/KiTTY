@@ -7,6 +7,28 @@ see [FEATURES.md](FEATURES.md).
 
 ## Unreleased
 
+- **Non-blocking connection errors.** A dropped or remotely-closed connection,
+  and non-fatal server errors, are now shown **inline in the terminal** instead of
+  a modal pop-up that trapped the window until dismissed — the window stays usable
+  and closable, and the message stays in the scrollback. A **fatal** disconnect
+  also badges the window title with a `⚠ … (disconnected)` marker that clears on
+  the next connect. Host-key / weak-crypto confirmation prompts are unchanged.
+  Prefer the classic modal error boxes? Set `modalerrors=yes` under `[KiTTY]` in
+  `kitty.ini`. (upstream cyd01/KiTTY #548)
+- **"Run clipboard as a command" safeguards.** The Ctrl+F5 shortcut that runs the
+  clipboard contents as a local command now, by default, shows a confirmation
+  prompt (with the command) and a tray notification after launch. Both are
+  per-session and can be toggled in **Window → Selection**.
+- **Security hardening.**
+  - `/savedump` no longer embeds a recoverable auto-login / proxy password (in the
+    bundled `current.ktx`) nor the `autocommand` login string — both are redacted
+    like the visible dump.
+  - *Check for updates* now enforces whole-chain certificate-revocation checking
+    before running a downloaded installer.
+  - Hardened the `kitty.ini` reader against a startup buffer overflow from an
+    over-long value and a 1-byte over-read on malformed lines, and fixed a benign
+    1-byte over-read in the far2l base64 decoder.
+
 ## 0.84.1.44-beta — 2026-07-06
 
 - **kageant private-key memory protection.** SSH-2 private keys now settle into a
