@@ -162,7 +162,7 @@ kageant (KiTTY's SSH agent) can act as the agent for the **Windows OpenSSH clien
 
 ### kageant — load keys on startup
 
-kageant can remember the keys you load and re-add them automatically at the next login, added **encrypted/deferred** (the passphrase is only requested the first time a key is actually used). It auto-tracks the file paths of the keys you load; enabling the option also installs an autostart entry so kageant starts at login — replacing the need for a hand-made Startup shortcut. Only key-file *paths* are stored, never passphrases or key material.
+kageant can remember the keys you load and re-add them automatically at the next login, added **encrypted/deferred** (the passphrase is only requested the first time a key is actually used). After a passphrase-protected SSH-2 key is first used, kageant returns the long-lived in-memory key state to a Windows `CryptProtectMemory`-protected private blob and only unprotects/deserializes it temporarily for signing. Normally added SSH-2 keys use the same protected steady state. It auto-tracks the file paths of the keys you load; enabling the option also installs an autostart entry so kageant starts at login — replacing the need for a hand-made Startup shortcut. Only key-file *paths* are stored, never passphrases or key material.
 
 **How to enable:** right-click the kageant tray icon → **Load keys on startup**.
 
@@ -170,7 +170,7 @@ kageant can remember the keys you load and re-add them automatically at the next
 
 ### kageant — reorder loaded keys
 
-kageant offers its loaded keys to a server in list order, and the server tries them in turn — so the order matters when you hold several keys (offering the wrong ones first can even hit a server's "too many authentication failures" limit before the right key is reached). The key-list window has **Move Up** / **Move Down** buttons to set that offer order, e.g. to put your most-used key first. The chosen order is saved by key fingerprint and restored on the next start, including when *Load keys on startup* is enabled.
+kageant offers its loaded keys to a server in list order, and the server tries them in turn — so the order matters when you hold several keys (offering the wrong ones first can even hit a server's "too many authentication failures" limit before the right key is reached). The key-list window has **Move Up** / **Move Down** buttons to set that offer order, e.g. to put your most-used key first. The chosen order is saved by key fingerprint and restored on the next start, including when *Load keys on startup* is enabled. Reordering works independently of whether a key is still encrypted/deferred, already protected in memory, or temporarily unprotected for a signing operation.
 
 **How to enable:** in the kageant key-list window, select a key and use the **Move Up** / **Move Down** buttons.
 

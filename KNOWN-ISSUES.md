@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.43 — Known issues & limitations
+# KiTTY 0.84.1.44 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -52,9 +52,10 @@ features are working and verified. Known limitations as of this release:
   password portability is still planned. kageant can keep SSH-2 keys in an
   **encrypted/deferred** state when they are added with **Add key (encrypted)**,
   loaded at startup, or added with `-encrypted`/`-nodecrypt`; the passphrase is
-  requested on first use. After such a key is used it remains decrypted in the
-  agent until you re-encrypt it, remove it, or exit kageant; keys added normally
-  are loaded decrypted immediately. **If security matters, prefer public-key
+  requested on first use. After first use, and also for normally added SSH-2
+  keys, kageant stores the long-lived private key material as a Windows
+  `CryptProtectMemory`-protected blob and only unprotects/deserializes it
+  temporarily while signing. **If security matters, prefer public-key
   authentication (kageant) and avoid saving passwords unless you understand
   these limits.**
 
@@ -63,11 +64,20 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.43-beta @ 2026-07-06`.
+- **Version string:** binaries report `0.84.1.44-beta @ 2026-07-06`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.44
+
+- **kageant private-key memory protection:** SSH-2 private keys no longer remain
+  as long-lived decrypted `ssh_key` objects after loading or first use. kageant
+  stores them as Windows `CryptProtectMemory`-protected private blobs, temporarily
+  unprotects/deserializes only for signing, then frees the temporary key again.
+  Encrypted/deferred startup keys, normal key loading, key order, re-encrypt, and
+  Windows/OpenSSH agent client use were smoke-tested with multiple keys.
 
 ## New in 0.84.1.43
 

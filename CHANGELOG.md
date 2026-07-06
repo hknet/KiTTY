@@ -7,6 +7,19 @@ see [FEATURES.md](FEATURES.md).
 
 ## Unreleased
 
+## 0.84.1.44-beta — 2026-07-06
+
+- **kageant private-key memory protection.** SSH-2 private keys now settle into a
+  Windows `CryptProtectMemory`-protected private blob instead of remaining as
+  long-lived decrypted `ssh_key` objects. kageant temporarily unprotects and
+  deserializes the key for signing, then frees the temporary key and re-protects
+  the blob. The add-key receive path also wipes clear private-key request bytes
+  as they are consumed.
+- **kageant encrypted/deferred flow preserved.** `Add key (encrypted)`, startup
+  keys, `-encrypted`/`-nodecrypt`, key ordering, Windows/OpenSSH agent clients,
+  and explicit **Re-encrypt** continue to work; re-encrypt returns eligible keys
+  to encrypted-PPK-only state so the next use prompts again.
+
 - **PuTTY upstream fix:** cherry-picked PuTTY `ac7919db`, fixing a small memory
   leak when PuTTY inserts CBC-mode `SSH_MSG_IGNORE` packets to randomise the IV.
 - **PuTTY upstream cleanup:** cherry-picked PuTTY `aaa5fc51`, removing a
