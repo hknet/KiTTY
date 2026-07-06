@@ -78,6 +78,9 @@ struct WinGuiSeat {
 
     struct unicode_data ucsdata;
     bool session_closed;
+    bool error_close;        /* KiTTY (cyd01/KiTTY #548): the session closed due to
+                              * a FATAL error; close_session shows a warning-glyph
+                              * titlebar marker. Reset per connection in start_backend. */
     bool reconfiguring;
     bool autopw_tried;       /* KiTTY auto-login: the stored CONF_password has been
                               * auto-answered once on THIS connection. Prevents

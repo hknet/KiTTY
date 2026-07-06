@@ -5826,6 +5826,11 @@ void LoadParameters( void ) {
 		if( !stricmp( buffer, "YES" ) ) MouseShortcutsFlag = 1 ;
 	}
 	if( ReadParameter( INIT_SECTION, "paste", buffer ) ) { if( !stricmp( buffer, "YES" ) ) PasteCommandFlag = 1 ; }
+	/* cyd01/KiTTY #548: force classic modal error boxes instead of inline terminal errors */
+	if( ReadParameter( INIT_SECTION, "modalerrors", buffer ) ) {
+		if( !stricmp( buffer, "YES" ) ) SetModalErrorsFlag( 1 ) ;
+		if( !stricmp( buffer, "NO" ) ) SetModalErrorsFlag( 0 ) ;
+	}
 	if( ReadParameter( INIT_SECTION, "pastesize", buffer ) ) { if( atoi(buffer)>0 ) SetPasteSize( atoi(buffer) ) ; }
 	if( ReadParameter( INIT_SECTION, "PSCPPath", buffer ) ) {
 		if( existfile( buffer ) ) { 

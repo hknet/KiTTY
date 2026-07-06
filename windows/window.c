@@ -639,6 +639,7 @@ static void start_backend(WinGuiSeat *wgs)
 #endif
     wgs->autopw_tried = false;   /* new connection: allow one auto-password answer */
     wgs->session_closed = false;
+    wgs->error_close = false;    /* #548: new connection clears the error titlebar marker */
 }
 
 static void close_session(void *vctx)
@@ -648,9 +649,21 @@ static void close_session(void *vctx)
     int i;
 
     wgs->session_closed = true;
-    newtitle = dupprintf("%s (inactive)", appname);
-    win_set_icon_title(&wgs->termwin, newtitle, DEFAULT_CODEPAGE);
-    win_set_title(&wgs->termwin, newtitle, DEFAULT_CODEPAGE);
+    int title_cp = DEFAULT_CODEPAGE;
+#ifdef MOD_PERSO
+    /* KiTTY (upstream cyd01/KiTTY #548): a FATAL-error close gets a warning-glyph
+     * titlebar marker (U+26A0, passed as UTF-8 so it survives the conversion) so a
+     * backgrounded/minimised window shows the session died; a normal close keeps
+     * the plain "(inactive)". The marker clears automatically when the next
+     * session sets its title (reconnect / Restart). */
+    if (wgs->error_close) {
+        newtitle = dupprintf("\xe2\x9a\xa0 %s (disconnected)", appname);
+        title_cp = CP_UTF8;
+    } else
+#endif
+        newtitle = dupprintf("%s (inactive)", appname);
+    win_set_icon_title(&wgs->termwin, newtitle, title_cp);
+    win_set_title(&wgs->termwin, newtitle, title_cp);
     sfree(newtitle);
 
     if (wgs->ldisc) {
@@ -1865,7 +1878,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
      * been ruled out above for this disconnect. The modal box is kept only when
      * "close window on exit" is forced ON (the window is about to vanish, so
      * inline text wouldn't be seen) or in PuTTY-compat mode. */
-    if (!GetPuttyFlag() && conf_get_int(wgs->conf, CONF_close_on_exit) != FORCE_ON) {
+    if (!GetPuttyFlag() && !GetModalErrorsFlag() && conf_get_int(wgs->conf, CONF_close_on_exit) != FORCE_ON) {
         /* Build the detail, normalising newlines to CRLF so it doesn't
          * "staircase" down the terminal, and trimming a trailing empty quoted
          * description (servers often send '...: ""'). */
@@ -1889,6 +1902,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
         term_data(wgs->term, line, strlen(line));
         sfree(line); sfree(body);
         show_mouseptr(wgs, true);
+        wgs->error_close = true;   /* #548: warning titlebar marker via close_session */
         queue_toplevel_callback(close_session, wgs);
         return;
     }
@@ -1923,7 +1937,7 @@ static void win_seat_nonfatal(Seat *seat, const char *msg)
      * up, so we only print -- no session close. PuTTY-compat mode (GetPuttyFlag)
      * keeps the classic modal box. Mirrors win_seat_connection_fatal's inline
      * path (newlines normalised to CRLF so the message doesn't staircase). */
-    if (!GetPuttyFlag() && wgs->term) {
+    if (!GetPuttyFlag() && !GetModalErrorsFlag() && wgs->term) {
         size_t mlen = msg ? strlen(msg) : 0;
         char *body = snewn(mlen * 2 + 1, char);
         size_t bl = 0;
@@ -2883,7 +2897,7 @@ static void exit_callback(void *vctx)
                 /* KiTTY (upstream cyd01/KiTTY #548): print the informational close INLINE instead of a
                  * modal box that traps the window (which stays open in this
                  * branch). PuTTY-compat mode keeps the classic box. */
-                if (!GetPuttyFlag() && wgs->term) {
+                if (!GetPuttyFlag() && !GetModalErrorsFlag() && wgs->term) {
                     char *line = dupprintf(
                         "\r\n\x1b[1;33m%s:\x1b[0m Connection closed by remote host\r\n",
                         appname);

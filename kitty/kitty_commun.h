@@ -15,6 +15,10 @@ extern int debug_flag ;
 int GetPuttyFlag(void) ;
 void SetPuttyFlag( const int flag ) ;
 
+// Flag: show connection errors as modal boxes instead of inline in the terminal (cyd01/KiTTY #548)
+int GetModalErrorsFlag(void) ;
+void SetModalErrorsFlag( const int flag ) ;
+
 // Flag pour le fonctionnement en mode "portable" (gestion par fichiers)
 int GetIniFileFlag(void) ;
 void SetIniFileFlag( const int flag ) ;

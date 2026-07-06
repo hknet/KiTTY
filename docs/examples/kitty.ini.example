@@ -135,6 +135,9 @@
 ; maxblinkingtime: maximum blinks (in system tray) where receiving bell signal
 ;maxblinkingtime=5
 
+; modalerrors: show connection errors as modal pop-up boxes instead of inline in the terminal (upstream cyd01/KiTTY #548). Default no (inline, non-trapping).
+;modalerrors=no
+
 ; mouseshortcuts: enable/disable mouse shortcuts
 ;mouseshortcuts=yes
 

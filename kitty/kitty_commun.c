@@ -42,6 +42,10 @@ int PuttyFlag = 0 ;
 int GetPuttyFlag(void) { return PuttyFlag ; }
 void SetPuttyFlag( const int flag ) { PuttyFlag = flag ; }
 
+int ModalErrorsFlag = 0 ;
+int GetModalErrorsFlag(void) { return ModalErrorsFlag ; }
+void SetModalErrorsFlag( const int flag ) { ModalErrorsFlag = flag ; }
+
 // Flag permettant de sauvegarder automatique les cles SSH des serveurs
 static int AutoStoreSSHKeyFlag = 0 ;
 int GetAutoStoreSSHKeyFlag(void) { return AutoStoreSSHKeyFlag ; }
