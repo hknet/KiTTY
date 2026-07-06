@@ -79,7 +79,7 @@ char * GetConfigDirectory( void ) ;
 int stricmp(const char *s1, const char *s2) ;
 #endif
 char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue) ;
-int readINI( const char * filename, const char * section, const char * key, char * pStr) ;
+int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) ;
 char * SetSessPath( const char * dec ) ;
 
 // Nettoie les noms de folder en remplaçant les "/" par des "\" et les " \ " par des " \"

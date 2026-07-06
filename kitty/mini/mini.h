@@ -78,7 +78,7 @@ void printINI( SINI * Ini ) ;
 
 int loadINI( SINI * Ini, const char * fileName ) ;
 
-int readINI( const char * filename, const char * section, const char * key, char * pStr) ;
+int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) ;
 
 int storeKEY( SKEY * Key, FILE * fp ) ;
 

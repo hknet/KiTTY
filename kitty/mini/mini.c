@@ -279,12 +279,12 @@ int loadINI( SINI * Ini, const char * filename ) {
 	if( ( fp = fopen( filename, "r" ) ) == NULL ) { return 0 ; }
 	while( fgets( buffer, SINI_MAX_SIZE, fp ) != NULL ) {
 		buffer[SINI_MAX_SIZE-1]='\0';
-		while( (buffer[strlen(buffer)-1]=='\n')||(buffer[strlen(buffer)-1]=='\r') ) buffer[strlen(buffer)-1]='\0' ;
+		{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r') ) buffer[_l-1]='\0' ; }
 		while( (buffer[0]==' ')||(buffer[0]=='\t') ) 
 			for( i=0; i<strlen(buffer); i++ )
 				buffer[i] = buffer[i+1] ;
 		if( buffer[0] == '[' ) { // Nouvelle section
-			while( (buffer[strlen(buffer)-1]==' ')||(buffer[strlen(buffer)-1]=='\t') ) buffer[strlen(buffer)-1]='\0' ; 
+			{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]==' '||buffer[_l-1]=='\t') ) buffer[_l-1]='\0' ; } 
 			if( buffer[strlen(buffer)-1]==']' ) {
 				buffer[strlen(buffer)-1]='\0' ;
 				if( (Section = getSECTION( Ini->first, buffer+1 )) == NULL ) { //On recherche si la section existe deja
@@ -302,14 +302,14 @@ int loadINI( SINI * Ini, const char * filename ) {
 			if( (p>0) && (p<(strlen(buffer)-1) ) ) {
 				for( i=0; i<p; i++ ) { name[i] = buffer[i] ; } name[p]='\0' ;
 				for( i=p+1; i<strlen(buffer); i++ ) { value[i-p-1]=buffer[i] ; value[i-p]='\0' ; }
-				while( (name[strlen(name)-1]==' ')||(name[strlen(name)-1]=='\t') ) name[strlen(name)-1]='\0' ;
+				{ size_t _l; while( (_l=strlen(name))>0 && (name[_l-1]==' '||name[_l-1]=='\t') ) name[_l-1]='\0' ; }
 				Key = newKEY( name, value ) ;
 				addKEY( Last, Key ) ;
 				}
 			else if( p==(strlen(buffer)-1) ) {
 				buffer[strlen(buffer)-1] = '\0' ;
 				strcpy( name, buffer ) ;
-				while( (name[strlen(name)-1]==' ')||(name[strlen(name)-1]=='\t') ) name[strlen(name)-1]='\0' ;
+				{ size_t _l; while( (_l=strlen(name))>0 && (name[_l-1]==' '||name[_l-1]=='\t') ) name[_l-1]='\0' ; }
 				strcpy( value, "" ) ;
 				Key = newKEY( name, value ) ;
 				addKEY( Last, Key ) ;
@@ -358,7 +358,7 @@ static char * mini_filename = NULL ;
 static time_t mini_mtime = 0 ;
 static SINI * mini_Ini = NULL ;
 	
-int readINI( const char * filename, const char * section, const char * key, char * pStr) {
+int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) {
 	int return_code = 0 ;
 	struct stat buf ;
 
@@ -382,7 +382,7 @@ int readINI( const char * filename, const char * section, const char * key, char
 	if( (mini_filename!=NULL)&&(!strcmp( filename, mini_filename )) ) {
 		if( ( Section = getSECTION( getINI( mini_Ini ), section ) ) != NULL ) {
 			if( ( Key = getKEY( Section, key ) ) != NULL ) {
-				strcpy( pStr, getvalueKEY( Key ) ) ;
+				{ const char *_v = getvalueKEY( Key ); size_t _n = strlen(_v); if( pStrSize>0 && _n >= pStrSize ) _n = pStrSize-1; if( pStrSize>0 ) { memcpy( pStr, _v, _n ); pStr[_n] = '\0'; } }
 				return_code = 1 ;
 				}
 			}
@@ -398,7 +398,7 @@ int readINI( const char * filename, const char * section, const char * key, char
 		}
 		if( ( Section = getSECTION( getINI( mini_Ini ), section ) ) != NULL ) {
 			if( ( Key = getKEY( Section, key ) ) != NULL ) {
-				strcpy( pStr, getvalueKEY( Key ) ) ;
+				{ const char *_v = getvalueKEY( Key ); size_t _n = strlen(_v); if( pStrSize>0 && _n >= pStrSize ) _n = pStrSize-1; if( pStrSize>0 ) { memcpy( pStr, _v, _n ); pStr[_n] = '\0'; } }
 				return_code = 1 ;
 				}
 			}
@@ -521,15 +521,15 @@ int ini_main( int argc, char *argv[], char *arge[] ) {
 	delINI( "test.ini", "Section2", "Name1" );
 	system( "cat test.ini" ) ; system( "echo." ) ;
 	
-	readINI( "test.ini", "Section1", "Name1", buf); printf("Name1=%s\n",buf);
-	readINI( "test.ini", "Section1", "Name2", buf); printf("Name2=%s\n",buf);
+	readINI( "test.ini", "Section1", "Name1", buf, sizeof(buf)); printf("Name1=%s\n",buf);
+	readINI( "test.ini", "Section1", "Name2", buf, sizeof(buf)); printf("Name2=%s\n",buf);
 	
 	char b[10];
 	fscanf( stdin, "%s", b) ;
-	readINI( "test.ini", "Section1", "Name1", buf); printf("Name1=%s\n",buf);
+	readINI( "test.ini", "Section1", "Name1", buf, sizeof(buf)); printf("Name1=%s\n",buf);
 	
 	fscanf( stdin, "%s", b) ;
-	readINI( "test.ini", "Section1", "Name1", buf); printf("Name1=%s\n",buf);
+	readINI( "test.ini", "Section1", "Name1", buf, sizeof(buf)); printf("Name1=%s\n",buf);
 	
 	destroyINI();
 
