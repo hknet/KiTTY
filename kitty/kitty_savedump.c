@@ -798,16 +798,23 @@ void SaveCurrentConfig( FILE *fp, Conf * conf ) {
 	 * as "no password set"), then restore the live conf — mirrors the visible
 	 * "password=<redacted>" that this embedded-.ktx path used to bypass. */
 	{
-		const char *cur_pw = conf_get_str( conf, CONF_password ) ;
-		const char *cur_proxypw = conf_get_str( conf, CONF_proxy_password ) ;
-		char *saved_pw = (char*) malloc( strlen(cur_pw)+1 ) ; strcpy( saved_pw, cur_pw ) ;
-		char *saved_proxypw = (char*) malloc( strlen(cur_proxypw)+1 ) ; strcpy( saved_proxypw, cur_proxypw ) ;
-		conf_set_str( conf, CONF_password, "<redacted>" ) ;
-		conf_set_str( conf, CONF_proxy_password, "<redacted>" ) ;
+		/* Blank each secret field for the export, then restore. autocommand is
+		 * login automation that frequently embeds credentials (it is <redacted> in
+		 * the visible dump too, kitty_savedump.c ~561); autocommandout is only a
+		 * wait-for prompt pattern and is deliberately kept, matching the visible
+		 * dump. Order-independent, so a simple key list. */
+		static const int redact[] = { CONF_password, CONF_proxy_password, CONF_autocommand } ;
+		char *saved[ sizeof(redact)/sizeof(redact[0]) ] ;
+		unsigned ri ;
+		for( ri = 0 ; ri < sizeof(redact)/sizeof(redact[0]) ; ri++ ) {
+			const char *v = conf_get_str( conf, redact[ri] ) ;
+			saved[ri] = (char*) malloc( strlen(v)+1 ) ; strcpy( saved[ri], v ) ;
+			conf_set_str( conf, redact[ri], "<redacted>" ) ;
+		}
 		save_open_settings_forced( "current.ktx", conf ) ;
-		conf_set_str( conf, CONF_password, saved_pw ) ;
-		conf_set_str( conf, CONF_proxy_password, saved_proxypw ) ;
-		free( saved_pw ) ; free( saved_proxypw ) ;
+		for( ri = 0 ; ri < sizeof(redact)/sizeof(redact[0]) ; ri++ ) {
+			conf_set_str( conf, redact[ri], saved[ri] ) ; free( saved[ri] ) ;
+		}
 	}
 	bcrypt_file_base64( "current.ktx", "current.ktx.bcr", MASTER_PASSWORD, 80 ) ;
 	unlink( "current.ktx" ) ;

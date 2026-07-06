@@ -455,10 +455,8 @@ void save_open_settings_forced(char *filename, Conf *conf) {
 #endif
     write_setting_i_forced(sesskey, "CtrlTabSwitch", conf_get_int(conf, CONF_ctrl_tab_switch));
     write_setting_s_forced(sesskey, "Comment", conf_get_str(conf, CONF_comment) );
-    write_setting_b_forced(sesskey, "SCPAutoPwd", conf_get_bool(conf, CONF_scp_auto_pwd)); /* BOOL: was conf_get_int -> type-mismatch */
+    write_setting_i_forced(sesskey, "SCPAutoPwd", conf_get_int(conf, CONF_scp_auto_pwd));
     write_setting_b_forced(sesskey, "NoFocusReporting", conf_get_bool(conf, CONF_no_focus_rep));
-    write_setting_b_forced(sesskey, "RunCmdConfirm", conf_get_bool(conf, CONF_runcmdconfirm));
-    write_setting_b_forced(sesskey, "RunCmdNotify", conf_get_bool(conf, CONF_runcmdnotify));
     write_setting_i_forced(sesskey, "LinesAtAScroll", conf_get_int(conf, CONF_scrolllines));
     write_setting_b_forced(sesskey, "SSHTunnelInTitle", conf_get_bool(conf, CONF_ssh_tunnel_print_in_title));
     write_setting_b_forced(sesskey, "OSC52WarnBeforeClipboardSync", conf_get_bool(conf, CONF_osc52_warn_before_cliboard_sync));
@@ -1112,10 +1110,8 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 #endif
     gppi_forced(sesskey, "CtrlTabSwitch", 0, conf, CONF_ctrl_tab_switch);
     gpps_forced(sesskey, "Comment", "", conf, CONF_comment );
-    gppb_forced(sesskey, "SCPAutoPwd", false, conf, CONF_scp_auto_pwd); /* BOOL: was gppi -> type-mismatch */
+    gppi_forced(sesskey, "SCPAutoPwd", 0, conf, CONF_scp_auto_pwd);
     gppb_forced(sesskey, "NoFocusReporting", true, conf, CONF_no_focus_rep);
-    gppb_forced(sesskey, "RunCmdConfirm", true, conf, CONF_runcmdconfirm);
-    gppb_forced(sesskey, "RunCmdNotify", true, conf, CONF_runcmdnotify);
     gppi_forced(sesskey, "LinesAtAScroll", 5, conf, CONF_scrolllines);
     gppb_forced(sesskey, "SSHTunnelInTitle", false, conf, CONF_ssh_tunnel_print_in_title);
     gppb_forced(sesskey, "OSC52WarnBeforeClipboardSync", false, conf, CONF_osc52_warn_before_cliboard_sync);
