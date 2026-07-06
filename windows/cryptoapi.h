@@ -6,6 +6,7 @@
  */
 
 DECL_WINDOWS_FUNCTION(extern, BOOL, CryptProtectMemory, (LPVOID,DWORD,DWORD));
+DECL_WINDOWS_FUNCTION(extern, BOOL, CryptUnprotectMemory, (LPVOID,DWORD,DWORD));
 
 bool got_crypt(void);
 

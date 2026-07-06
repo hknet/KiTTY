@@ -12,6 +12,16 @@
 #include "sshcr.h"
 #include "pageant.h"
 
+#ifdef _WINDOWS
+#include "cryptoapi.h"
+#endif
+#ifndef CRYPTPROTECTMEMORY_BLOCK_SIZE
+#define CRYPTPROTECTMEMORY_BLOCK_SIZE 16
+#endif
+#ifndef CRYPTPROTECTMEMORY_SAME_PROCESS
+#define CRYPTPROTECTMEMORY_SAME_PROCESS 0x00
+#endif
+
 /*
  * We need this to link with the RSA code, because rsa_ssh1_encrypt()
  * pads its data with random bytes. Since we only use rsa_ssh1_decrypt()
@@ -37,6 +47,7 @@ typedef struct PageantPrivateKeySort PageantPrivateKeySort;
 typedef struct PageantPublicKeySort PageantPublicKeySort;
 typedef struct PageantPrivateKey PageantPrivateKey;
 typedef struct PageantPublicKey PageantPublicKey;
+typedef struct PageantProtectedKeyBlob PageantProtectedKeyBlob;
 typedef struct PageantAsyncOp PageantAsyncOp;
 typedef struct PageantAsyncOpVtable PageantAsyncOpVtable;
 typedef struct PageantClientRequestNode PageantClientRequestNode;
@@ -155,6 +166,12 @@ static int pubkey_cmpfn(void *av, void *bv)
         return ptrlen_strcmp(a->full_pub, b->full_pub);
 }
 
+struct PageantProtectedKeyBlob {
+    unsigned char *data;
+    size_t blob_len, protected_len;
+    const ssh_keyalg *alg;
+};
+
 struct PageantPrivateKey {
     PageantPrivateKeySort sort;
     strbuf *base_pub;              /* the true owner of sort.base_pub */
@@ -162,6 +179,7 @@ struct PageantPrivateKey {
         RSAKey *rkey;              /* if sort.priv.ssh_version == 1 */
         ssh_key *skey;             /* if sort.priv.ssh_version == 2 */
     };
+    PageantProtectedKeyBlob *protected_skey;
     strbuf *encrypted_key_file;
     /* encrypted_key_comment stores the comment belonging to the
      * encrypted key file. This is used when presenting deferred
@@ -237,6 +255,107 @@ static void failure(PageantClient *pc, PageantClientRequestId *reqid,
 static void fail_requests_for_key(PageantPrivateKey *priv, const char *reason);
 static PageantPublicKey *pageant_nth_pubkey(int ssh_version, int i);
 
+static bool pageant_protect_memory(void *data, size_t len)
+{
+#ifdef _WINDOWS
+    return got_crypt() && p_CryptProtectMemory(
+        data, (DWORD)len, CRYPTPROTECTMEMORY_SAME_PROCESS);
+#else
+    return false;
+#endif
+}
+
+static bool pageant_unprotect_memory(void *data, size_t len)
+{
+#ifdef _WINDOWS
+    return got_crypt() && p_CryptUnprotectMemory(
+        data, (DWORD)len, CRYPTPROTECTMEMORY_SAME_PROCESS);
+#else
+    return false;
+#endif
+}
+
+static void protected_skey_free(PageantProtectedKeyBlob *psk)
+{
+    if (!psk)
+        return;
+    if (psk->data) {
+        /* The buffer is normally encrypted here; clearing it still avoids
+         * leaving the protected blob itself behind after key removal. */
+        smemclr(psk->data, psk->protected_len);
+        sfree(psk->data);
+    }
+    smemclr(psk, sizeof(*psk));
+    sfree(psk);
+}
+
+static PageantProtectedKeyBlob *protected_skey_from_key(ssh_key *key)
+{
+    strbuf *plain = strbuf_new_nm();
+    ssh_key_openssh_blob(key, BinarySink_UPCAST(plain));
+
+    size_t blob_len = plain->len;
+    size_t protected_len = ((blob_len + CRYPTPROTECTMEMORY_BLOCK_SIZE - 1) /
+                            CRYPTPROTECTMEMORY_BLOCK_SIZE) *
+                           CRYPTPROTECTMEMORY_BLOCK_SIZE;
+    unsigned char *data = snewn(protected_len, unsigned char);
+    memset(data, 0, protected_len);
+    memcpy(data, plain->u, blob_len);
+
+    bool ok = pageant_protect_memory(data, protected_len);
+    smemclr(plain->u, blob_len);
+    strbuf_free(plain);
+
+    if (!ok) {
+        smemclr(data, protected_len);
+        sfree(data);
+        return NULL;
+    }
+
+    PageantProtectedKeyBlob *psk = snew(PageantProtectedKeyBlob);
+    psk->data = data;
+    psk->blob_len = blob_len;
+    psk->protected_len = protected_len;
+    psk->alg = ssh_key_alg(key);
+    return psk;
+}
+
+static ssh_key *protected_skey_to_temp_key(PageantProtectedKeyBlob *psk)
+{
+    if (!psk)
+        return NULL;
+
+    if (!pageant_unprotect_memory(psk->data, psk->protected_len))
+        return NULL;
+
+    BinarySource src[1];
+    BinarySource_BARE_INIT_PL(src, make_ptrlen(psk->data, psk->blob_len));
+    ssh_key *key = ssh_key_new_priv_openssh(psk->alg, src);
+
+    if (!pageant_protect_memory(psk->data, psk->protected_len)) {
+        smemclr(psk->data, psk->protected_len);
+        if (key)
+            ssh_key_free(key);
+        return NULL;
+    }
+
+    return key;
+}
+
+static void protect_priv_skey_if_possible(PageantPrivateKey *priv)
+{
+    if (priv->sort.ssh_version != 2 || !priv->skey || priv->protected_skey)
+        return;
+
+    PageantProtectedKeyBlob *psk = protected_skey_from_key(priv->skey);
+    if (!psk)
+        return;                    /* leave legacy cleartext key usable */
+
+    ssh_key_free(priv->skey);
+    priv->skey = NULL;
+    priv->protected_skey = psk;
+}
+
 static void pk_priv_free(PageantPrivateKey *priv)
 {
     if (priv->base_pub)
@@ -248,12 +367,14 @@ static void pk_priv_free(PageantPrivateKey *priv)
     if (priv->sort.ssh_version == 2 && priv->skey) {
         ssh_key_free(priv->skey);
     }
+    protected_skey_free(priv->protected_skey);
     if (priv->encrypted_key_file)
         strbuf_free(priv->encrypted_key_file);
     if (priv->encrypted_key_comment)
         sfree(priv->encrypted_key_comment);
     fail_requests_for_key(priv, "key deleted from Pageant while signing "
                           "request was pending");
+    smemclr(priv, sizeof(*priv));
     sfree(priv);
 }
 
@@ -393,6 +514,8 @@ static bool pageant_add_key_common(PageantPublicKey *pub,
     priv->blocked_requests.next = priv->blocked_requests.prev =
         &priv->blocked_requests;
 
+    protect_priv_skey_if_possible(priv);
+
     /*
      * Try to add the private key to privkeytree, or combine new parts
      * of it with what's already there.
@@ -403,11 +526,21 @@ static bool pageant_add_key_common(PageantPublicKey *pub,
     } else {
         /* The key was already in the tree, so we'll be freeing priv. */
 
-        if (ssh_version == 2 && priv->skey && !priv_in_tree->skey) {
+        if (ssh_version == 2 && priv->skey && !priv_in_tree->skey &&
+            !priv_in_tree->protected_skey) {
             /* The key was only stored encrypted, and now we have an
              * unencrypted version to add to the existing record. */
             priv_in_tree->skey = priv->skey;
             priv->skey = NULL;       /* so pk_priv_free won't free it */
+            protect_priv_skey_if_possible(priv_in_tree);
+        }
+
+        if (ssh_version == 2 && priv->protected_skey &&
+            !priv_in_tree->skey && !priv_in_tree->protected_skey) {
+            /* The key was only stored encrypted, and now we have a
+             * protected unencrypted version to add to the existing record. */
+            priv_in_tree->protected_skey = priv->protected_skey;
+            priv->protected_skey = NULL;
         }
 
         if (ssh_version == 2 && priv->encrypted_key_file &&
@@ -582,7 +715,7 @@ static void list_key_emit(BinarySink *bs, PageantPublicKey *pub,
         strbuf *sb = strbuf_new();
 
         uint32_t flags = 0;
-        if (!priv->skey)
+        if (!priv->skey && !priv->protected_skey)
             flags |= LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY;
         if (priv->encrypted_key_file)
             flags |= LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE;
@@ -803,16 +936,18 @@ static void signop_coroutine(PageantAsyncOp *pao)
 {
     PageantSignOp *so = container_of(pao, PageantSignOp, pao);
     strbuf *response;
+    ssh_key *temp_skey = NULL;
 
     crBegin(so->crLine);
 
-    while (!so->priv->skey && gui_request_in_progress) {
+    while (!so->priv->skey && !so->priv->protected_skey &&
+           gui_request_in_progress) {
         signop_link_to_pending_gui_request(so);
         crReturnV;
         signop_unlink(so);
     }
 
-    if (!so->priv->skey) {
+    if (!so->priv->skey && !so->priv->protected_skey) {
         assert(so->priv->encrypted_key_file);
 
         if (!request_passphrase(so->pao.info->pc, so->priv)) {
@@ -828,7 +963,19 @@ static void signop_coroutine(PageantAsyncOp *pao)
         signop_unlink(so);
     }
 
-    uint32_t supported_flags = ssh_key_supported_flags(so->priv->skey);
+    ssh_key *sign_key = so->priv->skey;
+    if (!sign_key && so->priv->protected_skey) {
+        temp_skey = protected_skey_to_temp_key(so->priv->protected_skey);
+        sign_key = temp_skey;
+        if (!sign_key) {
+            response = strbuf_new();
+            failure(so->pao.info->pc, so->pao.reqid, response,
+                    so->failure_type, "protected key could not be unlocked");
+            goto respond;
+        }
+    }
+
+    uint32_t supported_flags = ssh_key_supported_flags(sign_key);
     if (so->flags & ~supported_flags) {
         /*
          * We MUST reject any message containing flags we don't
@@ -841,7 +988,7 @@ static void signop_coroutine(PageantAsyncOp *pao)
         goto respond;
     }
 
-    char *invalid = ssh_key_invalid(so->priv->skey, so->flags);
+    char *invalid = ssh_key_invalid(sign_key, so->flags);
     if (invalid) {
         response = strbuf_new();
         failure(so->pao.info->pc, so->pao.reqid, response, so->failure_type,
@@ -862,7 +1009,7 @@ static void signop_coroutine(PageantAsyncOp *pao)
     }
 
     strbuf *signature = strbuf_new();
-    ssh_key_sign(so->priv->skey, ptrlen_from_strbuf(so->data_to_sign),
+    ssh_key_sign(sign_key, ptrlen_from_strbuf(so->data_to_sign),
                  so->flags, BinarySink_UPCAST(signature));
 
     /* KiTTY: a key was just used to authenticate -- let the GUI agent nudge. */
@@ -874,6 +1021,8 @@ static void signop_coroutine(PageantAsyncOp *pao)
     put_stringsb(response, signature);
 
   respond:
+    if (temp_skey)
+        ssh_key_free(temp_skey);
     pageant_client_got_response(so->pao.info->pc, so->pao.reqid,
                                 ptrlen_from_strbuf(response));
     strbuf_free(response);
@@ -930,7 +1079,7 @@ void pageant_passphrase_request_success(PageantClientDialogId *dlgid,
     gui_request_in_progress = false;
     priv->decryption_prompt_active = false;
 
-    if (!priv->skey) {
+    if (!priv->skey && !priv->protected_skey) {
         const char *error;
 
         BinarySource src[1];
@@ -970,6 +1119,7 @@ void pageant_passphrase_request_success(PageantClientDialogId *dlgid,
             return;
         } else {
             priv->skey = skey->key;
+            protect_priv_skey_if_possible(priv);
             sfree(skey->comment);
             sfree(skey);
             keylist_update();
@@ -1050,13 +1200,15 @@ static bool reencrypt_key(PageantPublicKey *pub)
         return false;
     }
 
-    /* Only actually free priv->skey if it exists. But we return success
-     * regardless, so that 'please ensure this key isn't stored
-     * decrypted' is idempotent. */
+    /* Only actually free usable decrypted/protected material if it exists.
+     * But we return success regardless, so that 'please ensure this key
+     * isn't stored decrypted' is idempotent. */
     if (priv->skey) {
         ssh_key_free(priv->skey);
         priv->skey = NULL;
     }
+    protected_skey_free(priv->protected_skey);
+    priv->protected_skey = NULL;
 
     return true;
 }
@@ -1353,6 +1505,11 @@ static PageantAsyncOp *pageant_make_op(
             goto add2_cleanup;
         }
 
+        /* This packet contains a clear SSH-2 private key. Once decoded into
+         * owned key objects, wipe the transport/request copy immediately; do
+         * not wait for connection teardown or allocator reuse. */
+        smemclr((void *)msgpl.ptr, msgpl.len);
+
         if (!pc->suppress_logging) {
             char *fingerprint = ssh2_fingerprint(key->key, SSH_FPTYPE_DEFAULT);
             pageant_client_log(pc, reqid, "submitted key: %s %s",
@@ -1365,8 +1522,6 @@ static PageantAsyncOp *pageant_make_op(
             put_byte(sb, SSH_AGENT_SUCCESS);
 
             pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS");
-
-            key = NULL;            /* don't clean it up */
         } else {
             fail("key already present");
         }
@@ -1375,8 +1530,11 @@ static PageantAsyncOp *pageant_make_op(
         if (key) {
             if (key->key)
                 ssh_key_free(key->key);
-            if (key->comment)
+            if (key->comment) {
+                smemclr(key->comment, strlen(key->comment));
                 sfree(key->comment);
+            }
+            smemclr(key, sizeof(*key));
             sfree(key);
         }
         break;
@@ -1578,14 +1736,16 @@ static PageantAsyncOp *pageant_make_op(
                 ssh2_userkey *skey = ppk_load_s(src, NULL, &error);
                 if (!skey) {
                     fail("failed to decode private key: %s", error);
-                } else if (pageant_add_ssh2_key(skey)) {
-                    keylist_update();
-                    put_byte(sb, SSH_AGENT_SUCCESS);
-
-                    pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS"
-                                       " (loaded unencrypted PPK)");
                 } else {
-                    fail("key already present");
+                    if (pageant_add_ssh2_key(skey)) {
+                        keylist_update();
+                        put_byte(sb, SSH_AGENT_SUCCESS);
+
+                        pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS"
+                                           " (loaded unencrypted PPK)");
+                    } else {
+                        fail("key already present");
+                    }
                     if (skey->key)
                         ssh_key_free(skey->key);
                     if (skey->comment)
@@ -1831,7 +1991,9 @@ void pageant_reencrypt_all(void)
             *crLine = __LINE__; return; case __LINE__:;         \
         }                                                       \
         len--;                                                  \
-        (c) = (unsigned char)*data++;                           \
+        char *consumed = (char *)data++;                        \
+        (c) = (unsigned char)*consumed;                          \
+        smemclr(consumed, 1);                                   \
     } while (0)
 
 struct pageant_conn_queued_response {
@@ -1870,6 +2032,7 @@ static void pageant_conn_closing(Plug *plug, PlugCloseType type,
                                     pc->conn_index);
     sk_close(pc->connsock);
     pageant_unregister_client(&pc->pc);
+    smemclr(pc, sizeof(*pc));
     sfree(pc);
 }
 
@@ -1988,9 +2151,11 @@ static void pageant_conn_receive(
             pc->got++;
         }
 
-        if (pc->real_packet)
+        if (pc->real_packet) {
             pageant_handle_msg(&pc->pc, &pc->response_queue.prev->reqid,
                                make_ptrlen(pc->pktbuf, pc->len));
+            smemclr(pc->pktbuf, pc->len);
+        }
     }
 
     crFinishV;

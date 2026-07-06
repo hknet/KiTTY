@@ -10,6 +10,7 @@
 #include "cryptoapi.h"
 
 DEF_WINDOWS_FUNCTION(CryptProtectMemory);
+DEF_WINDOWS_FUNCTION(CryptUnprotectMemory);
 
 bool got_crypt(void)
 {
@@ -21,7 +22,8 @@ bool got_crypt(void)
         attempted = true;
         crypt = load_system32_dll("crypt32.dll");
         successful = crypt &&
-            GET_WINDOWS_FUNCTION(crypt, CryptProtectMemory);
+            GET_WINDOWS_FUNCTION(crypt, CryptProtectMemory) &&
+            GET_WINDOWS_FUNCTION(crypt, CryptUnprotectMemory);
     }
     return successful;
 }
