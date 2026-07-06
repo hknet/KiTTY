@@ -1917,6 +1917,30 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
 static void win_seat_nonfatal(Seat *seat, const char *msg)
 {
     WinGuiSeat *wgs = container_of(seat, WinGuiSeat, seat);
+#ifdef MOD_PERSO
+    /* KiTTY (upstream cyd01/KiTTY #548): surface non-fatal errors INLINE in the terminal (yellow
+     * label) instead of a modal box that traps the window. The connection stays
+     * up, so we only print -- no session close. PuTTY-compat mode (GetPuttyFlag)
+     * keeps the classic modal box. Mirrors win_seat_connection_fatal's inline
+     * path (newlines normalised to CRLF so the message doesn't staircase). */
+    if (!GetPuttyFlag() && wgs->term) {
+        size_t mlen = msg ? strlen(msg) : 0;
+        char *body = snewn(mlen * 2 + 1, char);
+        size_t bl = 0;
+        for (const char *p = msg ? msg : ""; *p; p++) {
+            if (*p == '\r') continue;
+            else if (*p == '\n') { body[bl++] = '\r'; body[bl++] = '\n'; }
+            else body[bl++] = *p;
+        }
+        body[bl] = 0;
+        char *line = dupprintf("\r\n\x1b[1;33m%s Error:\x1b[0m %s\r\n",
+                               appname, body);
+        term_data(wgs->term, line, strlen(line));
+        sfree(line); sfree(body);
+        show_mouseptr(wgs, true);
+        return;
+    }
+#endif
     char *title = dupprintf("%s Error", appname);
     show_mouseptr(wgs, true);
     MessageBox(wgs->term_hwnd, msg, title, MB_ICONERROR | MB_OK);
@@ -2855,6 +2879,18 @@ static void exit_callback(void *vctx)
              * we should not generate this informational one. */
             if (exitcode != INT_MAX) {
                 show_mouseptr(wgs, true);
+#ifdef MOD_PERSO
+                /* KiTTY (upstream cyd01/KiTTY #548): print the informational close INLINE instead of a
+                 * modal box that traps the window (which stays open in this
+                 * branch). PuTTY-compat mode keeps the classic box. */
+                if (!GetPuttyFlag() && wgs->term) {
+                    char *line = dupprintf(
+                        "\r\n\x1b[1;33m%s:\x1b[0m Connection closed by remote host\r\n",
+                        appname);
+                    term_data(wgs->term, line, strlen(line));
+                    sfree(line);
+                } else
+#endif
                 MessageBox(wgs->term_hwnd, "Connection closed by remote host",
                            appname, MB_OK | MB_ICONINFORMATION);
             }
