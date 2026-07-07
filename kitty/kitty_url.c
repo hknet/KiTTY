@@ -35,7 +35,15 @@ enum {
 
 static int kitty_url_inited = 0;
 static int kitty_url_cursor_is_hand = 0;
-static unsigned long kitty_url_last_screen_hash = 0;
+
+/* Per-cell link membership from the last two scans, so a rescan can report
+ * exactly which rows changed underline state; the window layer then repaints
+ * only those rows instead of the whole window (which flickered on live output,
+ * because the coarse "any screen content changed" signal fired every frame). */
+static unsigned char *kitty_url_mask = NULL;
+static unsigned char *kitty_url_prevmask = NULL;
+static unsigned char *kitty_url_dirtyrow = NULL;
+static int kitty_url_mask_rows = 0, kitty_url_mask_cols = 0;
 
 void kitty_url_init(void)
 {
@@ -67,9 +75,7 @@ void kitty_url_config(Conf *conf)
  */
 int kitty_url_rescan(Terminal *term)
 {
-    int i, j;
-    unsigned long hash = 2166136261UL;
-    int changed;
+    int i, j, any = 0;
     if (!kitty_url_inited || term == NULL)
         return 0;
     urlhack_reset();
@@ -82,22 +88,60 @@ int kitty_url_rescan(Terminal *term)
             /* UCSWIDE / control chars -> treat as blank for URL scanning */
             if (c < 0x20 || c == 0x7F)
                 c = ' ';
-            hash ^= (unsigned char)c;
-            hash *= 16777619UL;
             urlhack_putchar((char)c);
         }
         term_release_line(lp);
-        hash ^= '\n';
-        hash *= 16777619UL;
     }
-    hash ^= (unsigned long)term->cols;
-    hash *= 16777619UL;
-    hash ^= (unsigned long)term->rows;
-    hash *= 16777619UL;
-    changed = (hash != kitty_url_last_screen_hash);
-    kitty_url_last_screen_hash = hash;
     urlhack_go_find_me_some_hyperlinks(term->cols);
-    return changed;
+
+    /*
+     * Diff per-cell link membership against the previous scan so the caller can
+     * repaint only the rows whose underline state actually changed, rather than
+     * invalidating the whole window on every content change.  urlhack_is_in_
+     * link_region() uses the same 0-based visible frame as kitty_url_cell_
+     * underline(), so the mask lines up with what gets drawn.
+     */
+    if (kitty_url_mask_rows != term->rows || kitty_url_mask_cols != term->cols) {
+        sfree(kitty_url_mask);
+        sfree(kitty_url_prevmask);
+        sfree(kitty_url_dirtyrow);
+        kitty_url_mask_rows = term->rows;
+        kitty_url_mask_cols = term->cols;
+        kitty_url_mask     = snewn(term->rows * term->cols, unsigned char);
+        kitty_url_prevmask = snewn(term->rows * term->cols, unsigned char);
+        kitty_url_dirtyrow = snewn(term->rows, unsigned char);
+        memset(kitty_url_prevmask, 0, term->rows * term->cols);
+    }
+    for (i = 0; i < term->rows; i++) {
+        int rowchanged = 0;
+        for (j = 0; j < term->cols; j++) {
+            unsigned char m = urlhack_is_in_link_region(j, i) ? 1 : 0;
+            kitty_url_mask[i * term->cols + j] = m;
+            if (m != kitty_url_prevmask[i * term->cols + j])
+                rowchanged = 1;
+        }
+        kitty_url_dirtyrow[i] = (unsigned char)rowchanged;
+        if (rowchanged)
+            any = 1;
+    }
+    {   /* current scan becomes the baseline for the next diff */
+        unsigned char *t = kitty_url_prevmask;
+        kitty_url_prevmask = kitty_url_mask;
+        kitty_url_mask = t;
+    }
+    return any;
+}
+
+/*
+ * Did row `row` (0-based, top visible line) change hyperlink-underline
+ * membership in the most recent kitty_url_rescan()?  Lets the window layer
+ * repaint only the affected rows.
+ */
+int kitty_url_row_dirty(int row)
+{
+    if (!kitty_url_dirtyrow || row < 0 || row >= kitty_url_mask_rows)
+        return 0;
+    return kitty_url_dirtyrow[row];
 }
 
 /*

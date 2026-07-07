@@ -212,6 +212,7 @@ int kitty_url_rescan(Terminal *term);
 int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor);
 int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
 int kitty_url_cell_underline(Conf *conf, int col, int row);
+int kitty_url_row_dirty(int row);
 /* Per-session icon (CONF_icone / CONF_iconefile). */
 void kitty_apply_icon(HWND hwnd, Conf *conf);
 /* Restore the normal icon after a reconnect (undo SetConnBreakIcon). */
@@ -1855,6 +1856,28 @@ static bool kitty_is_auth_failure_msg(const char *msg)
 static bool kitty_is_benign_channel_close_msg(const char *msg)
 {
     return msg && strstr(msg, "nonexistent channel") != NULL;
+}
+
+/* KiTTY hyperlink underline: repaint only the rows whose link membership
+ * changed in the last kitty_url_rescan(), instead of InvalidateRect(whole
+ * window) which forced a full repaint on every screen update and flickered on
+ * live output.  Rows being drawn anyway just repaint once more (same content,
+ * no visible flicker); untouched rows are left alone. */
+static void kitty_url_invalidate_dirty_rows(WinGuiSeat *wgs)
+{
+    int r;
+    RECT rc;
+    if (!wgs->term || !wgs->term_hwnd)
+        return;
+    for (r = 0; r < wgs->term->rows; r++) {
+        if (!kitty_url_row_dirty(r))
+            continue;
+        rc.left   = wgs->offset_width;
+        rc.top    = wgs->offset_height + r * wgs->font_height;
+        rc.right  = wgs->offset_width + wgs->term->cols * wgs->font_width;
+        rc.bottom = rc.top + wgs->font_height;
+        InvalidateRect(wgs->term_hwnd, &rc, FALSE);
+    }
 }
 
 /*
@@ -3981,7 +4004,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         if (GetHyperlinkFlag()) {
             if (kitty_url_rescan(wgs->term) &&
                 conf_get_int(wgs->conf, CONF_url_underline))
-                InvalidateRect(hwnd, NULL, FALSE);
+                kitty_url_invalidate_dirty_rows(wgs);
             kitty_url_hover(wgs->term, hwnd,
                             TO_CHR_X(X_POS(lParam)), TO_CHR_Y(Y_POS(lParam)),
                             conf_get_int(wgs->conf, CONF_url_hover_cursor));
@@ -6344,7 +6367,7 @@ static bool wintw_setup_draw_ctx(TermWin *tw)
     if (wgs->wintw_hdc && GetHyperlinkFlag() &&
         conf_get_int(wgs->conf, CONF_url_underline)) {
         if (kitty_url_rescan(wgs->term))
-            InvalidateRect(wgs->term_hwnd, NULL, FALSE);
+            kitty_url_invalidate_dirty_rows(wgs);
     }
 #endif
     return wgs->wintw_hdc != NULL;
