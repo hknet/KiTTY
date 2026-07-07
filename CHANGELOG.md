@@ -5,8 +5,25 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
-## Unreleased
+## 0.84.1.45-beta — 2026-07-07
 
+- **Spurious auto-reconnect on clean logout fixed (Cisco and similar).** When a
+  device sent its command exit status and closed the channel, then tore down the
+  network connection in the same burst — before KiTTY had finished its own half of
+  the close handshake — the session was misreported as an *unexpected* drop and
+  auto-reconnect re-dialled it, so an ordinary `exit`/logout could bounce straight
+  back into a new session. KiTTY now treats a socket close, or a late
+  channel-referencing message, that arrives **after** the session's exit status is
+  already known as the clean end it is (consistent with RFC 4254 §6.10, where the
+  exit-status message is unacknowledged and may be ignored). Genuine mid-session
+  network drops still auto-reconnect as before. Observed with Cisco IOS SSH; the
+  root-cause fix is in the SSH layer and has also been submitted upstream to PuTTY.
+- **Hyperlink-underline flicker on live output fixed.** With the URL-hyperlink
+  underline enabled, a continuously-updating screen (e.g. a switch's `show` output,
+  full of IP/hostname strings the URL detector matches) flickered, because every
+  frame forced a full-window repaint just to refresh the underlines. KiTTY now
+  repaints only the rows whose underline state actually changed, so busy sessions
+  no longer flicker while underlined hyperlinks keep working and updating.
 - **Non-blocking connection errors.** A dropped or remotely-closed connection,
   and non-fatal server errors, are now shown **inline in the terminal** instead of
   a modal pop-up that trapped the window until dismissed — the window stays usable

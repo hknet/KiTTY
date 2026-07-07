@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.44 — Known issues & limitations
+# KiTTY 0.84.1.45 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -66,11 +66,26 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.44-beta @ 2026-07-06`.
+- **Version string:** binaries report `0.84.1.45-beta @ 2026-07-07`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.45
+
+- **Spurious auto-reconnect on clean logout fixed.** A device that sends its exit
+  status and closes the channel, then drops the TCP connection in the same burst
+  (e.g. Cisco IOS SSH), is no longer misread as an *unexpected* drop that triggers
+  auto-reconnect — a clean `exit`/logout now stays closed. Root-cause fix in the
+  SSH layer (also submitted upstream to PuTTY); it hardens and completes the
+  0.84.1.43 logout-reconnect fix for the abrupt-close case. Genuine mid-session
+  network drops still reconnect as before.
+- **Hyperlink-underline flicker fixed.** With URL-hyperlink underline enabled,
+  busy/continuously-updating output (e.g. a switch's `show` output) no longer
+  flickers: only the rows whose underline state changed are repainted, instead of
+  the whole window on every frame. Underlines still render, update, and stay
+  clickable.
 
 ## New in 0.84.1.44
 
