@@ -302,12 +302,72 @@ BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) {
  * -- copies only when the destination is absent and the source exists; non-destructive
  * (the old hive is left intact and also serves as a read-only fallback in storage.c).
  * Call it from every kitty.exe entry path (terminal init AND -launcher) so the launcher
- * sees migrated sessions even on a boot where it runs before the main terminal. */
+ * sees migrated sessions even on a boot where it runs before the main terminal.
+ *
+ * Hive paths are spelled out as string literals on purpose (not PUTTY_REG_POS): this is
+ * a one-off migration between two FIXED endpoints -- the legacy 9bis hive and the current
+ * kapper.net hive -- so we specifically do NOT want the runtime-flippable base; and the
+ * 9bis side has no global macro anyway. Literals also keep this helper's include surface
+ * minimal (kitty_registry.h only, not platform.h/putty.h). */
 void MigrateOldKittyHive( void ) {
 	if( !RegTestKey( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY" )
 	    && RegTestKey( HKEY_CURRENT_USER, "Software\\9bis.com\\KiTTY" ) ) {
 		kitty_RegCopyTree( HKEY_CURRENT_USER, "Software\\9bis.com\\KiTTY", "Software\\kapper.net\\KiTTY" ) ;
 	}
+}
+
+/* KiTTY 0.84: one-time repair of the ShiftedArrowKeys default regression.
+ * The 0.84 port inherited PuTTY's SHARROW_APPLICATION(0) compiled default instead
+ * of KiTTY's historical SHARROW_BITMAP(1). A session migrated from the old 9bis
+ * hive that relied on that old default, once loaded and *re-saved* under the buggy
+ * build, had ShiftedArrowKeys=0 persisted into the kapper.net hive -- silently
+ * losing Ctrl+Left/Right word navigation. conf.h now restores BITMAP as the
+ * default, which auto-heals every session that has NO explicit value; this repair
+ * mops up the ones that persisted an explicit 0.
+ *
+ * We reset ONLY where we can prove the 0 was written by us and not chosen by the
+ * user: the corresponding session must still exist in the untouched old 9bis hive
+ * AND have no explicit ShiftedArrowKeys there. Deleting the kapper.net value then
+ * lets the session fall back to the new BITMAP default. Any deliberate choice
+ * (an explicit value already in 9bis, or a session absent from 9bis so we cannot
+ * tell) is left untouched. Idempotent via a marker value -- runs at most once.
+ *
+ * Registry paths are string literals, not PUTTY_REG_POS -- same rationale as
+ * MigrateOldKittyHive above: fixed 9bis<->kapper.net migration endpoints (not the
+ * runtime-flippable base), and this file intentionally includes only kitty_registry.h. */
+void RepairSharrowDefaults( void ) {
+	HKEY hSess ;
+	char cur[cstMaxRegLength+2], old[cstMaxRegLength+2] ;
+	char name[MAX_KEY_LENGTH+1], kpath[512], oldsess[512] ;
+	DWORD idx, len ;
+
+	/* one-time guard: skip if we've already run */
+	if( GetValueData( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", "SharrowRepairDone", cur ) != NULL )
+		return ;
+
+	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY\\Sessions", 0, KEY_READ, &hSess ) == ERROR_SUCCESS ) {
+		for( idx = 0 ; ; idx++ ) {
+			len = sizeof(name) ;
+			if( RegEnumKeyEx( hSess, idx, name, &len, NULL, NULL, NULL, NULL ) != ERROR_SUCCESS ) break ;
+			snprintf( kpath, sizeof(kpath), "Software\\kapper.net\\KiTTY\\Sessions\\%s", name ) ;
+			/* only sessions with an explicit APPLICATION(0) are candidates */
+			if( GetValueData( HKEY_CURRENT_USER, kpath, "ShiftedArrowKeys", cur ) == NULL ) continue ;
+			if( strcmp( cur, "0" ) != 0 ) continue ;
+			snprintf( oldsess, sizeof(oldsess), "Software\\9bis.com\\KiTTY\\Sessions\\%s", name ) ;
+			/* repair only if the 9bis original exists and had NO explicit value:
+			 * that proves the 0 is our persisted default, not the user's choice. */
+			if( RegTestKey( HKEY_CURRENT_USER, oldsess )
+			    && GetValueData( HKEY_CURRENT_USER, oldsess, "ShiftedArrowKeys", old ) == NULL ) {
+				RegDelValue( HKEY_CURRENT_USER, kpath, "ShiftedArrowKeys" ) ;
+			}
+		}
+		RegCloseKey( hSess ) ;
+	}
+
+	/* set the marker regardless, so we don't rescan every boot (even if the old
+	 * 9bis hive is gone and nothing could be repaired). RegTestOrCreateDWORD hides
+	 * the RegSetValueEx byte-buffer boilerplate and creates the base key if needed. */
+	RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", "SharrowRepairDone", 1 ) ;
 }
 
 // Copie une clé de registre vers une autre

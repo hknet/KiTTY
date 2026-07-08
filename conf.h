@@ -565,7 +565,12 @@ CONF_OPTION(funky_type,
 )
 CONF_OPTION(sharrow_type,
     VALUE_TYPE(INT),
-    DEFAULT_INT(SHARROW_APPLICATION),
+    /* KiTTY default: SHARROW_BITMAP (Ctrl+arrow word navigation), matching KiTTY
+     * 0.76 - not PuTTY's SHARROW_APPLICATION. Restores Ctrl+Left/Right for
+     * sessions that relied on the old default (e.g. migrated from the 9bis hive).
+     * NB: this is a deliberate KiTTY-vs-PuTTY default divergence, so upstream
+     * test_conf (which encodes PuTTY's default) is expected red on this option. */
+    DEFAULT_INT(SHARROW_BITMAP),
     SAVE_KEYWORD("ShiftedArrowKeys"),
     STORAGE_ENUM(sharrow_type),
 )

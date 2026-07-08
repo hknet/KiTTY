@@ -340,8 +340,12 @@ word navigation with **Ctrl + ←/→** if that matches your shell bindings or m
 memory.
 
 **How to enable:** Configuration box → **Terminal → Keyboard → "Word navigation
-(Left/Right arrows)"**, pick Alt / Ctrl / Both. Applies in the default
-xterm-bitmap arrow-key mode.
+(Left/Right arrows)"**, pick Alt / Ctrl / Both.
+
+This option only takes effect when **Shift/Ctrl/Alt with the arrow keys** is set to
+**xterm-style bitmap** — KiTTY's default. In the *"Ctrl toggles application mode"*
+setting the arrow-key modifiers aren't encoded, so no word-navigation remapping is
+possible.
 
 (no screenshot)
 

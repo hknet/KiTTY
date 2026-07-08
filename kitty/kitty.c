@@ -6137,6 +6137,14 @@ void InitWinMain( void ) {
 		NETDBG_TS("before MigrateOldKittyHive");
 		MigrateOldKittyHive() ;
 		NETDBG_TS("after MigrateOldKittyHive");
+		/* One-time repair of registry sessions that persisted the buggy
+		 * SHARROW_APPLICATION default; must run after the hive exists. Registry-only:
+		 * it reads/writes the kapper.net hive and its marker, so it must NOT run in
+		 * portable (SAVEMODE_FILE) mode -- portable sessions are files, healed instead
+		 * by the conf.h SHARROW_BITMAP default; letting portable flip the marker would
+		 * also consume the one-shot before an installed KiTTY could run it. Idempotent
+		 * (marker-guarded). */
+		if( IniFileFlag == SAVEMODE_REG ) { RepairSharrowDefaults() ; }
 	}
 
 	// Chargement de la base de registre si besoin

@@ -48,6 +48,9 @@ void kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) ;
 // Migration ponctuelle de l'ancienne ruche (9bis.com\KiTTY) vers kapper.net\KiTTY
 void MigrateOldKittyHive( void ) ;
 
+// Réparation ponctuelle du défaut ShiftedArrowKeys (SHARROW_APPLICATION persisté par erreur)
+void RepairSharrowDefaults( void ) ;
+
 // Nettoie la clé de PuTTY pour enlever les clés et valeurs spécifique à KiTTY
 BOOL RegCleanPuTTY( void ) ;
 

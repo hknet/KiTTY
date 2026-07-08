@@ -5,6 +5,23 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.46-beta — 2026-07-08
+
+- **Ctrl + ←/→ word navigation restored as the default.** KiTTY's historical
+  default for *Shift/Ctrl/Alt with the arrow keys* is the **xterm-style bitmap**
+  encoding, which sends a distinguishable modifier sequence (e.g. `ESC [ 1 ; 5 C`
+  for Ctrl + →) that shells bind to *backward-word* / *forward-word*. The PuTTY 0.84
+  port had silently inherited PuTTY's *"Ctrl toggles application mode"* default
+  instead, which encodes no modifier — so on a freshly-created or hive-migrated
+  session, **Ctrl + ←/→ stopped performing word navigation**, and the *Word
+  navigation (Alt/Ctrl/Both)* option (which only acts in bitmap mode) was itself
+  inert. The default is once again the xterm-style bitmap. Sessions that had already
+  persisted the wrong value through a save are corrected automatically on first run
+  — but only where KiTTY can prove the value was the erroneous default and not a
+  deliberate choice (it cross-checks the untouched legacy hive as reference); any
+  setting you chose yourself is left untouched. Reported by **m-hume**, with thanks
+  for a clear and concise bug report.
+
 ## 0.84.1.45-beta — 2026-07-07
 
 - **Spurious auto-reconnect on clean logout fixed (Cisco and similar).** When a
