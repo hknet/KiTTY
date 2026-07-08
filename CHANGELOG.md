@@ -21,6 +21,19 @@ see [FEATURES.md](FEATURES.md).
   deliberate choice (it cross-checks the untouched legacy hive as reference); any
   setting you chose yourself is left untouched. Reported by **m-hume**, with thanks
   for a clear and concise bug report.
+- **Quieter, non-modal "Check for updates".** The result no longer opens a modal
+  box that grabs focus and plays a sound. When you are already up to date it is
+  unobtrusive: a brief title-bar notice in a terminal window (no box at all), or a
+  small self-dismissing box from the configuration dialog. When an update *is*
+  available the popup appears over the active window and also dismisses itself after
+  a few seconds. Only genuine errors stay modal and keep the alert sound, so a real
+  failure cannot be missed. The pop-up now renders correctly on high-DPI displays.
+- **About boxes are non-modal and DPI / multi-monitor aware.** Across KiTTY, kageant
+  and kittygen the About window opens in a sensible place — centred over the window
+  it was launched from, or beside the notification area for the tray tools — no
+  longer blocks the window behind it, and remembers where you last moved it (per
+  monitor layout, and only when that spot is still on a connected screen). Portable
+  mode places these windows correctly but stores nothing in the registry.
 
 ## 0.84.1.45-beta — 2026-07-07
 

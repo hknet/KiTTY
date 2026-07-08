@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.45 — Known issues & limitations
+# KiTTY 0.84.1.46 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -66,11 +66,30 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.45-beta @ 2026-07-07`.
+- **Version string:** binaries report `0.84.1.46-beta @ 2026-07-08`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.46
+
+- **Ctrl + ←/→ word navigation restored as the default.** The arrow-key modifier
+  encoding again defaults to the xterm-style bitmap (KiTTY's historical default),
+  so Ctrl+Left/Right jump words on fresh and hive-migrated sessions. A session that
+  had persisted the wrong value is corrected automatically on first run, but only
+  where it can be proven to be the erroneous default and never a setting you chose
+  yourself — no registry or PowerShell script is needed.
+- **"Check for updates" is non-modal and quiet.** The result no longer opens a
+  focus-stealing, sound-playing modal box: already-current shows a brief title-bar
+  notice (terminal) or a self-dismissing box (config dialog), and an available
+  update shows an auto-dismissing popup over the active window. Only genuine errors
+  stay modal and keep the alert sound. Renders correctly on high-DPI displays.
+- **About boxes are non-modal and DPI / multi-monitor aware.** In KiTTY, kageant
+  and kittygen the About window opens by the window it was launched from (or the
+  notification area for the tray tools), no longer blocks what is behind it, and
+  remembers its position per monitor layout. Portable mode places these windows
+  correctly but stores nothing in the registry.
 
 ## New in 0.84.1.45
 
