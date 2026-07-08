@@ -2526,12 +2526,12 @@ static void host_ca_button_handler(dlgcontrol *ctrl, dlgparam *dp,
 }
 
 #if (defined MOD_PERSO) && (!defined FLJ)
-void CheckVersionFromWebSite(HWND hwnd);   /* kitty_win.c: query GitHub releases */
+void CheckVersionFromWebSite(HWND hwnd, int is_terminal);   /* kitty_win.c: query GitHub releases */
 static void checkupdate_button_handler(dlgcontrol *ctrl, dlgparam *dp,
                                        void *data, int event)
 {
     if (event == EVENT_ACTION)
-        CheckVersionFromWebSite(GetActiveWindow());
+        CheckVersionFromWebSite(GetActiveWindow(), 0);   /* config box: no live terminal */
 }
 #endif
 

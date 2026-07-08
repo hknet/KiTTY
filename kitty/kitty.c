@@ -6120,6 +6120,12 @@ void InitWinMain( void ) {
 	GetSaveMode() ;
 	NETDBG_TS("after GetSaveMode");
 
+	/* Aux-window position memory (About boxes, etc.) is registry-backed. In portable
+	 * modes (anything but SAVEMODE_REG) place windows correctly but do NOT persist, so
+	 * we leave no registry footprint -- consistent with the rest of portable KiTTY. */
+	{ void kitty_auxpos_set_persist( int on ) ;
+	  if( IniFileFlag != SAVEMODE_REG ) kitty_auxpos_set_persist( 0 ) ; }
+
 	// Initialisation des parametres à partir du fichier kitty.ini
 	LoadParameters() ;
 	NETDBG_TS("after LoadParameters (kitty.ini read)");

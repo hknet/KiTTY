@@ -681,6 +681,7 @@ static void LauncherRefreshSessionsAndHotkeys( HWND hwnd ) {
 }
 	
 // Procedures principales du launcher
+
 LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	int ResShell ;
 	static UINT s_uTaskbarRestart;
@@ -808,8 +809,8 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 						"Based on KiTTY by Cyril Dupont and PuTTY by Simon Tatham." ;
 					WCHAR wab[512] ;
 					MultiByteToWideChar( CP_UTF8, 0, ab, -1, wab, 512 ) ;
-					/* Plain MB_OK (no MB_ICON* style) so Windows does not play the
-					 * "asterisk" system sound when the About box opens. */
+					/* Modal, no sound (plain MB_OK, no MB_ICON* asterisk). MessageBoxW
+					 * renders the title and Unicode text correctly at any DPI. */
 					MessageBoxW( hwnd, wab, L"About KiTTY Launcher", MB_OK ) ;
 					break ; }
 				case IDM_QUIT:

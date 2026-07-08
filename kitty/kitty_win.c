@@ -793,7 +793,202 @@ int kitty_update_notice( char *buf, int n ) {
 	return 1 ;
 }
 
-void CheckVersionFromWebSite( HWND hwnd ) {
+/* ============================================================================
+ * KiTTY: non-modal, self-dismissing "update" popup + a transient title notice.
+ * Replaces the modal, sound-playing MessageBox result boxes for the
+ * update-available / no-update cases. Error boxes (download/signature failures)
+ * stay modal WITH their sound on purpose - a failed install must not slip by.
+ * ==========================================================================*/
+#define KUP_ACT_NONE       0
+#define KUP_ACT_OPENPAGE   1
+#define KUP_ACT_MSI        2
+#define KUP_ID_UPDATE   1201
+#define KUP_ID_LATER    1202
+#define KUP_TIMER_ID       1
+#define KUP_AUTODISMISS_MS 5000
+
+/* kitty_auxpos.c: DPI-scaled font for hand-built pop-up windows (no dialog manager). */
+HFONT kitty_auxpos_gui_font( HWND ref ) ;
+
+typedef struct {
+	HWND  owner ;
+	int   action ;
+	kitty_install_t itype ;
+	char  asseturl[1024] ;
+	HFONT font ;   /* DPI-scaled GUI font; DeleteObject'd on destroy */
+} kitty_upd_ctx ;
+
+/* Download+verify+install the MSI (unchanged flow, just factored out so the
+ * non-modal popup's "Update" button can call it). Keeps its modal MB_ICONERROR
+ * boxes (with the system sound) so failures are impossible to miss. */
+static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install_t itype ) {
+	char tmpdir[MAX_PATH]="", tmpbase[MAX_PATH]="", tmpfile[MAX_PATH]="" ;
+	if( !GetTempPathA( sizeof(tmpdir), tmpdir ) ||
+	    !GetTempFileNameA( tmpdir, "kty", 0, tmpbase ) ) {
+		MessageBox( owner, "Could not create a temporary installer path; aborting the update.",
+			"KiTTY Update", MB_OK|MB_ICONERROR ) ;
+		return ;
+	}
+	DeleteFileA( tmpbase ) ;
+	snprintf( tmpfile, sizeof(tmpfile), "%s.msi", tmpbase ) ;
+
+	HCURSOR oldc = SetCursor( LoadCursor(NULL, IDC_WAIT) ) ;
+	int dok = kitty_download_to_file( asseturl, tmpfile ) ;
+	SetCursor( oldc ) ;
+	if( !dok ) {
+		MessageBox( owner, "Download failed. Opening the download page instead.",
+			"KiTTY Update", MB_OK|MB_ICONERROR ) ;
+		ShellExecute( owner, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
+		return ;
+	}
+	/* TOCTOU guard: hold the downloaded file open denying write/delete for the
+	 * rest of the flow so it cannot be swapped between verify and launch. */
+	HANDLE updguard = CreateFileA( tmpfile, GENERIC_READ, FILE_SHARE_READ,
+		NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ;
+	if( updguard == INVALID_HANDLE_VALUE ) {
+		DeleteFileA( tmpfile ) ;
+		MessageBox( owner, "Could not secure the downloaded installer; aborting the update.",
+			"KiTTY Update", MB_OK|MB_ICONERROR ) ;
+		return ;
+	}
+	/* SECURITY GATE: reject anything not genuinely KAPPER-signed. */
+	if( !kitty_verify_signature( tmpfile ) ) {
+		CloseHandle( updguard ) ;
+		DeleteFileA( tmpfile ) ;
+		MessageBox( owner, "The downloaded installer FAILED signature verification "
+			"and was NOT run; it has been deleted.\n\nPlease install KiTTY only "
+			"from the official release page.",
+			"KiTTY Update - signature rejected", MB_OK|MB_ICONERROR ) ;
+		return ;
+	}
+	if( !kitty_run_installer( owner, itype, tmpfile ) ) {
+		CloseHandle( updguard ) ;
+		DeleteFileA( tmpfile ) ;
+		MessageBox( owner, "Could not start the verified installer. The downloaded file has been deleted.",
+			"KiTTY Update", MB_OK|MB_ICONERROR ) ;
+		return ;
+	}
+	/* keep the verified bytes locked while msiexec reads them (released on exit). */
+}
+
+static LRESULT CALLBACK kitty_upd_wndproc( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
+	kitty_upd_ctx *c = (kitty_upd_ctx*)GetWindowLongPtr( h, GWLP_USERDATA ) ;
+	switch( msg ) {
+	  case WM_TIMER:
+		if( wp==KUP_TIMER_ID ) DestroyWindow( h ) ;   /* auto-dismiss */
+		return 0 ;
+	  case WM_COMMAND:
+		if( LOWORD(wp)==KUP_ID_UPDATE ) {
+			KillTimer( h, KUP_TIMER_ID ) ;   /* user chose the update path */
+			HWND owner = c ? c->owner : NULL ;
+			int  action = c ? c->action : KUP_ACT_NONE ;
+			kitty_install_t itype = c ? c->itype : KITTY_INST_PORTABLE ;
+			char url[1024] ; url[0]='\0' ;
+			if( c ) { strncpy(url, c->asseturl, sizeof(url)-1) ; url[sizeof(url)-1]='\0' ; }
+			DestroyWindow( h ) ;   /* close the popup, then act */
+			if( action==KUP_ACT_OPENPAGE ) ShellExecute( owner, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
+			else if( action==KUP_ACT_MSI ) kitty_do_msi_update( owner, url, itype ) ;
+			return 0 ;
+		}
+		if( LOWORD(wp)==KUP_ID_LATER || LOWORD(wp)==IDCANCEL ) { DestroyWindow( h ) ; return 0 ; }
+		return 0 ;
+	  case WM_CLOSE: DestroyWindow( h ) ; return 0 ;
+	  case WM_NCDESTROY:
+		if( c ) { if( c->font ) DeleteObject( c->font ) ; free(c) ; SetWindowLongPtr( h, GWLP_USERDATA, 0 ) ; }
+		return 0 ;
+	}
+	return DefWindowProc( h, msg, wp, lp ) ;
+}
+
+/* Show the non-modal popup over `owner`, in front, no sound, auto-dismiss in 5s.
+ * action==KUP_ACT_NONE => info only (single "OK" that just closes);
+ * otherwise an "Update" button runs the action and a "Later" button dismisses. */
+static void kitty_show_update_popup( HWND owner, const char *text, int action,
+                                     const char *asseturl, kitty_install_t itype ) {
+	static int registered = 0 ;
+	HINSTANCE hinst = GetModuleHandle( NULL ) ;
+	if( !registered ) {
+		WNDCLASS wc ; memset( &wc, 0, sizeof(wc) ) ;
+		wc.lpfnWndProc   = kitty_upd_wndproc ;
+		wc.hInstance     = hinst ;
+		wc.hCursor       = LoadCursor( NULL, IDC_ARROW ) ;
+		wc.hbrBackground = (HBRUSH)( COLOR_BTNFACE + 1 ) ;
+		wc.lpszClassName = "KiTTYUpdatePopup" ;
+		RegisterClass( &wc ) ;
+		registered = 1 ;
+	}
+	/* DPI-scale a base 96-dpi layout by the owner's DPI (dynamically resolved). */
+	int dpi = 96 ;
+	{ HMODULE u32 = GetModuleHandleA("user32.dll") ;
+	  if( u32 ) { UINT (WINAPI *pGDFW)(HWND) = (UINT(WINAPI*)(HWND))GetProcAddress(u32,"GetDpiForWindow") ;
+	              if( pGDFW && owner ) { UINT d = pGDFW(owner) ; if( d ) dpi = (int)d ; } } }
+	#define KUP_S(px) ( ((px)*dpi) / 96 )
+	int W = KUP_S(430), H = KUP_S(178), M = KUP_S(14) ;
+	int btnW = KUP_S(92), btnH = KUP_S(26), gap = KUP_S(8) ;
+	int has_update = ( action != KUP_ACT_NONE ) ;
+
+	HWND h = CreateWindowEx( WS_EX_TOOLWINDOW, "KiTTYUpdatePopup", "KiTTY Update",
+		WS_POPUP|WS_CAPTION|WS_SYSMENU, 0, 0, W, H, owner, NULL, hinst, NULL ) ;
+	if( !h ) return ;
+	kitty_upd_ctx *c = (kitty_upd_ctx*)calloc( 1, sizeof(kitty_upd_ctx) ) ;
+	if( c ) { c->owner=owner ; c->action=action ; c->itype=itype ;
+	          if( asseturl ) { strncpy(c->asseturl, asseturl, sizeof(c->asseturl)-1) ; } }
+	SetWindowLongPtr( h, GWLP_USERDATA, (LONG_PTR)c ) ;
+
+	HFONT gf = kitty_auxpos_gui_font( owner ) ;   /* DPI-scaled, not the tiny 96-dpi stock */
+	if( c ) c->font = gf ;
+	RECT cr ; GetClientRect( h, &cr ) ;
+	int cw = cr.right - cr.left, ch = cr.bottom - cr.top ;
+	HWND st = CreateWindow( "STATIC", text, WS_CHILD|WS_VISIBLE|SS_LEFT,
+		M, M, cw - 2*M, ch - 3*M - btnH, h, NULL, hinst, NULL ) ;
+	SendMessage( st, WM_SETFONT, (WPARAM)gf, TRUE ) ;
+	int bx = cw - M - btnW, by = ch - M - btnH ;
+	if( has_update ) {
+		HWND bl = CreateWindow( "BUTTON", "Later", WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,
+			bx, by, btnW, btnH, h, (HMENU)(INT_PTR)KUP_ID_LATER, hinst, NULL ) ;
+		SendMessage( bl, WM_SETFONT, (WPARAM)gf, TRUE ) ;
+		HWND bu = CreateWindow( "BUTTON", "Update now", WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON,
+			bx - gap - btnW, by, btnW, btnH, h, (HMENU)(INT_PTR)KUP_ID_UPDATE, hinst, NULL ) ;
+		SendMessage( bu, WM_SETFONT, (WPARAM)gf, TRUE ) ;
+	} else {
+		HWND bo = CreateWindow( "BUTTON", "OK", WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON,
+			bx, by, btnW, btnH, h, (HMENU)(INT_PTR)KUP_ID_LATER, hinst, NULL ) ;
+		SendMessage( bo, WM_SETFONT, (WPARAM)gf, TRUE ) ;
+	}
+
+	/* Position over the owner window (reuse CenterDlgInParent's logic via the
+	 * owner as parent), bring to front, no sound. */
+	CenterDlgInParent( h ) ;
+	ShowWindow( h, SW_SHOWNA ) ;
+	SetWindowPos( h, HWND_TOP, 0,0,0,0, SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW ) ;
+	SetForegroundWindow( h ) ;
+	SetTimer( h, KUP_TIMER_ID, KUP_AUTODISMISS_MS, NULL ) ;
+	#undef KUP_S
+}
+
+/* Transient terminal-title notice: show `text` for `ms`, then restore the title.
+ * Runs on a short detached thread so it never blocks; guarded by IsWindow. */
+typedef struct { HWND hwnd ; int ms ; char text[512] ; char saved[512] ; } kitty_titlenotice_t ;
+static DWORD WINAPI kitty_titlenotice_thread( LPVOID p ) {
+	kitty_titlenotice_t *t = (kitty_titlenotice_t*)p ;
+	if( IsWindow(t->hwnd) ) SetWindowTextA( t->hwnd, t->text ) ;
+	Sleep( t->ms ) ;
+	if( IsWindow(t->hwnd) ) SetWindowTextA( t->hwnd, t->saved ) ;
+	free( t ) ;
+	return 0 ;
+}
+static void kitty_title_notice( HWND hwnd, const char *text, int ms ) {
+	if( !hwnd || !IsWindow(hwnd) ) return ;
+	kitty_titlenotice_t *t = (kitty_titlenotice_t*)calloc( 1, sizeof(*t) ) ;
+	if( !t ) return ;
+	t->hwnd = hwnd ; t->ms = ms ;
+	GetWindowTextA( hwnd, t->saved, sizeof(t->saved)-1 ) ;
+	strncpy( t->text, text, sizeof(t->text)-1 ) ;
+	HANDLE th = CreateThread( NULL, 0, kitty_titlenotice_thread, t, 0, NULL ) ;
+	if( th ) CloseHandle( th ) ; else free( t ) ;
+}
+
+void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 	char curnum[64]="" ;
 	int i ;
 
@@ -879,23 +1074,11 @@ void CheckVersionFromWebSite( HWND hwnd ) {
 			kitty_parse_version( curnum, cv ) ;
 			kitty_parse_version( latestnum, lv ) ;
 			if( kitty_version_cmp( cv, lv ) < 0 ) {
-				/* KiTTY: a stable build must not silently take a beta update. If we
-				 * are on a stable release and the newest build is a beta, warn and
-				 * require explicit opt-in (default No). Beta builds proceed as usual. */
-				if( !cur_is_beta && latest_is_beta ) {
-					char wmsg[512] ;
-					sprintf( wmsg, "You are running a stable release.\n\n"
-						"Installed: %s\nLatest:    %s  (BETA)\n\n"
-						"The newest available build is a BETA, which may be less "
-						"tested than a stable release. Install this beta anyway? "
-						"(Proceed with caution.)", curnum, latestnum ) ;
-					if( MessageBox( hwnd, wmsg, "KiTTY Update - beta available",
-							MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2 )!=IDYES ) {
-						free( body ) ; body = NULL ;
-						return ;
-					}
-				}
-				/* An update is available. Decide how to deliver it by install type. */
+				/* An update is available. Compose the message + pick the action,
+				 * then show the NON-modal, no-sound, self-dismissing popup over the
+				 * caller window. The download/verify/install runs from its "Update"
+				 * button (kitty_do_msi_update), which keeps modal error boxes. */
+				int stable_taking_beta = ( !cur_is_beta && latest_is_beta ) ;
 				kitty_install_t itype = kitty_detect_install_type() ;
 				char asseturl[1024]="" ; int haveasset = 0 ;
 				if( itype != KITTY_INST_PORTABLE ) {
@@ -903,96 +1086,52 @@ void CheckVersionFromWebSite( HWND hwnd ) {
 						? "-x64-system.msi" : "-x64-peruser.msi" ;
 					haveasset = kitty_find_asset_url( body, suffix, asseturl, sizeof(asseturl) ) ;
 				}
-				free( body ) ; body = NULL ;   /* done with JSON before the large download */
-
-				/* Refuse a non-HTTPS asset URL (defence-in-depth: the JSON is already
-				 * fetched over TLS, but never auto-download+run over plain http). */
+				free( body ) ; body = NULL ;
+				/* Refuse a non-HTTPS asset URL (never auto-download+run over plain http). */
 				if( haveasset && strncmp( asseturl, "https://", 8 )!=0 ) haveasset = 0 ;
 
 				if( itype==KITTY_INST_PORTABLE || !haveasset ) {
-					/* Portable copy, or no matching installer asset: just offer the page. */
-					sprintf( msg, "An update is available.\n\nInstalled: %s\nLatest:    %s\n\n%s",
-						curnum, latestnum,
+					/* Portable copy or no matching asset: offer the download page. */
+					snprintf( msg, sizeof(msg),
+						"An update is available.\r\n\r\nInstalled: %s\r\nLatest:    %s%s\r\n\r\n%s",
+						curnum, latestnum, stable_taking_beta ? "  (BETA)" : "",
 						(itype==KITTY_INST_PORTABLE)
-						  ? "This is a portable copy, so auto-install is disabled. Open the download page now?"
-						  : "The matching installer could not be located automatically. Open the download page now?" ) ;
-					if( MessageBox( hwnd, msg, "KiTTY Update", MB_YESNO|MB_ICONINFORMATION )==IDYES )
-						ShellExecute( hwnd, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
+						  ? "Portable copy - auto-install is disabled. Open the download page?"
+						  : "The matching installer wasn't found. Open the download page?" ) ;
+					kitty_show_update_popup( hwnd, msg, KUP_ACT_OPENPAGE, KITTY_RELEASES_URL, itype ) ;
 					return ;
 				}
-
-				/* MSI install: confirm, download, verify the signature, then run. */
-				sprintf( msg, "An update is available.\n\nInstalled: %s\nLatest:    %s\n\n"
-					"Download and install it now?\n\n"
-					"KiTTY will close and any active sessions will be disconnected during "
-					"the upgrade. The installer's signature is verified before it runs.",
-					curnum, latestnum ) ;
-				if( MessageBox( hwnd, msg, "KiTTY Update",
-						MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 )!=IDYES )
-					return ;
-
-				char tmpdir[MAX_PATH]="", tmpbase[MAX_PATH]="", tmpfile[MAX_PATH]="" ;
-				if( !GetTempPathA( sizeof(tmpdir), tmpdir ) ||
-				    !GetTempFileNameA( tmpdir, "kty", 0, tmpbase ) ) {
-					MessageBox( hwnd, "Could not create a temporary installer path; aborting the update.",
-						"KiTTY Update", MB_OK|MB_ICONERROR ) ;
-					return ;
-				}
-				DeleteFileA( tmpbase ) ;
-				snprintf( tmpfile, sizeof(tmpfile), "%s.msi", tmpbase ) ;
-
-				HCURSOR oldc = SetCursor( LoadCursor(NULL, IDC_WAIT) ) ;
-				int dok = kitty_download_to_file( asseturl, tmpfile ) ;
-				SetCursor( oldc ) ;
-				if( !dok ) {
-					MessageBox( hwnd, "Download failed. Opening the download page instead.",
-						"KiTTY Update", MB_OK|MB_ICONERROR ) ;
-					ShellExecute( hwnd, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
-					return ;
-				}
-				/* TOCTOU guard: hold the downloaded file open denying write/delete
-				 * (FILE_SHARE_READ only) for the rest of the flow, so it cannot be
-				 * swapped between signature verification and the (possibly elevated)
-				 * launch. WinVerifyTrust and msiexec can still READ it. Kept open
-				 * across the launch on purpose (released when KiTTY exits / the
-				 * upgrade restarts it) so the verified bytes stay immutable while
-				 * msiexec opens them. A swap in the tiny download->lock gap is caught
-				 * by the verify below, which runs on the now-locked file. */
-				HANDLE updguard = CreateFileA( tmpfile, GENERIC_READ, FILE_SHARE_READ,
-					NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ;
-				if( updguard == INVALID_HANDLE_VALUE ) {
-					DeleteFileA( tmpfile ) ;
-					MessageBox( hwnd, "Could not secure the downloaded installer; aborting the update.",
-						"KiTTY Update", MB_OK|MB_ICONERROR ) ;
-					return ;
-				}
-				/* SECURITY GATE: reject anything not genuinely KAPPER-signed. */
-				if( !kitty_verify_signature( tmpfile ) ) {
-					CloseHandle( updguard ) ;
-					DeleteFileA( tmpfile ) ;
-					MessageBox( hwnd, "The downloaded installer FAILED signature verification "
-						"and was NOT run; it has been deleted.\n\nPlease install KiTTY only "
-						"from the official release page.",
-						"KiTTY Update - signature rejected", MB_OK|MB_ICONERROR ) ;
-					return ;
-				}
-				if( !kitty_run_installer( hwnd, itype, tmpfile ) ) {
-					CloseHandle( updguard ) ;
-					DeleteFileA( tmpfile ) ;
-					MessageBox( hwnd, "Could not start the verified installer. The downloaded file has been deleted.",
-						"KiTTY Update", MB_OK|MB_ICONERROR ) ;
-					return ;
-				}
-				/* deliberately do NOT CloseHandle(updguard) here: keep the verified
-				 * bytes locked against modification while msiexec reads them. */
+				/* MSI install path. If a stable build is offered a beta, say so in
+				 * the text (the "Update now" button is the explicit opt-in). */
+				snprintf( msg, sizeof(msg),
+					"An update is available.\r\n\r\nInstalled: %s\r\nLatest:    %s%s\r\n\r\n%s"
+					"KiTTY will close and reconnect during the upgrade; the installer's "
+					"signature is verified before it runs.",
+					curnum, latestnum, stable_taking_beta ? "  (BETA)" : "",
+					stable_taking_beta
+					  ? "You are on a STABLE release and the newest build is a BETA (less tested). "
+					  : "" ) ;
+				kitty_show_update_popup( hwnd, msg, KUP_ACT_MSI, asseturl, itype ) ;
 				return ;
 			} else {
-				sprintf( msg, "You are running the latest version.\n\nInstalled: %s\nLatest:    %s", curnum, latestnum ) ;
-				MessageBox( hwnd, msg, "KiTTY Update", MB_OK|MB_ICONINFORMATION ) ;
+				/* No update. In a live terminal, state it in the title for 3s (no
+				 * box at all). Elsewhere (config box), a non-modal auto-dismiss box. */
+				if( is_terminal ) {
+					char note[256] ;
+					snprintf( note, sizeof(note), "KiTTY - up to date (%s%s is the latest)",
+						curnum, cur_is_beta ? "-beta" : "" ) ;
+					kitty_title_notice( hwnd, note, 3000 ) ;
+				} else {
+					snprintf( msg, sizeof(msg),
+						"You are running the latest version.\r\n\r\nInstalled: %s\r\nLatest:    %s",
+						curnum, latestnum ) ;
+					kitty_show_update_popup( hwnd, msg, KUP_ACT_NONE, NULL, 0 ) ;
+				}
+				free( body ) ;
+				return ;
 			}
-			free( body ) ;
-			return ;
-			}
+		}
+
 		}
 
 	/* Fallback (offline / proxy / TLS / parse failure): open the releases page. */

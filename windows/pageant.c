@@ -131,6 +131,10 @@ static INT_PTR CALLBACK LicenceProc(HWND hwnd, UINT msg,
     return 0;
 }
 
+/* kitty_auxpos.c: DPI/monitor-safe aux-window placement + position memory. */
+void kitty_auxpos_apply(HWND dlg, const char *key, HWND anchor, int near_tray);
+void kitty_auxpos_save(HWND dlg, const char *key);
+
 /*
  * Dialog-box function for the About box.
  */
@@ -168,12 +172,16 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
         }
         MakeDlgItemBorderless(hwnd, IDC_ABOUT_TEXTBOX);
         sfree(text);
+        /* KiTTY: tray app - place the About near the notification area (or a
+         * remembered spot), DPI/multi-monitor-safe, instead of screen-centre. */
+        kitty_auxpos_apply(hwnd, "kageantAbout", GetWindow(hwnd, GW_OWNER), 1);
         return 1;
       }
       case WM_COMMAND:
         switch (LOWORD(wParam)) {
           case IDOK:
           case IDCANCEL:
+            kitty_auxpos_save(hwnd, "kageantAbout");
             aboutbox = NULL;
             DestroyWindow(hwnd);
             return 0;

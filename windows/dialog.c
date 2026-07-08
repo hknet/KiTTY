@@ -419,6 +419,14 @@ static INT_PTR CALLBACK LicenceProc(HWND hwnd, UINT msg,
     return 0;
 }
 
+/* kitty_auxpos.c: DPI/monitor-safe aux-window placement + position memory. */
+void kitty_auxpos_apply(HWND dlg, const char *key, HWND anchor, int near_tray);
+void kitty_auxpos_save(HWND dlg, const char *key);
+
+/* KiTTY: the About box is now a single NON-modal (modeless) window. */
+static HWND kitty_about_dlg = NULL;
+static void kitty_show_about_modeless(HWND owner);
+
 static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
                                   WPARAM wParam, LPARAM lParam)
 {
@@ -469,13 +477,16 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
         }
         MakeDlgItemBorderless(hwnd, IDA_TEXT);
         sfree(text);
+        /* KiTTY: place over the calling window (or a remembered spot), DPI/multi-
+         * monitor-safe, instead of the template's screen-centre default. */
+        kitty_auxpos_apply(hwnd, "About", GetWindow(hwnd, GW_OWNER), 0);
         return 1;
       }
       case WM_COMMAND:
         switch (LOWORD(wParam)) {
           case IDOK:
           case IDCANCEL:
-            EndDialog(hwnd, true);
+            DestroyWindow(hwnd);
             return 0;
           case IDA_LICENCE:
             EnableWindow(hwnd, 0);
@@ -494,7 +505,11 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
         }
         return 0;
       case WM_CLOSE:
-        EndDialog(hwnd, true);
+        DestroyWindow(hwnd);
+        return 0;
+      case WM_DESTROY:
+        kitty_auxpos_save(hwnd, "About");
+        kitty_about_dlg = NULL;
         return 0;
     }
     return 0;
@@ -866,10 +881,8 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
 
 void modal_about_box(HWND hwnd)
 {
-    EnableWindow(hwnd, 0);
-    DialogBox(hinst, MAKEINTRESOURCE(IDD_ABOUTBOX), hwnd, AboutProc);
-    EnableWindow(hwnd, 1);
-    SetActiveWindow(hwnd);
+    /* KiTTY: no longer modal - a non-blocking About placed over the caller. */
+    kitty_show_about_modeless(hwnd);
 }
 
 void show_help(HWND hwnd)
@@ -1034,9 +1047,23 @@ void showeventlog(HWND hwnd)
     SetActiveWindow(logbox);
 }
 
+/* KiTTY: one non-modal About window, placed over the owner (kitty_auxpos) and
+ * reused if already open. Mouse-driven, so no dialog-message pump is needed. */
+static void kitty_show_about_modeless(HWND owner)
+{
+    if (kitty_about_dlg && IsWindow(kitty_about_dlg)) {
+        SetForegroundWindow(kitty_about_dlg);
+        return;
+    }
+    kitty_about_dlg = CreateDialog(hinst, MAKEINTRESOURCE(IDD_ABOUTBOX), owner, AboutProc);
+    if (kitty_about_dlg) {
+        ShowWindow(kitty_about_dlg, SW_SHOW);
+        SetForegroundWindow(kitty_about_dlg);
+    }
+}
 void showabout(HWND hwnd)
 {
-    DialogBox(hinst, MAKEINTRESOURCE(IDD_ABOUTBOX), hwnd, AboutProc);
+    kitty_show_about_modeless(hwnd);
 }
 
 struct hostkey_dialog_ctx {

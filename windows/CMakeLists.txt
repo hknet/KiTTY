@@ -70,6 +70,9 @@ add_sources_from_current_dir(agent
 add_sources_from_current_dir(guiterminal
   dialog.c controls.c config.c printing.c jump-list.c sizetip.c)
 add_dependencies(guiterminal generated_licence_h) # dialog.c uses licence.h
+# KiTTY: self-contained aux-window placement/position-memory helper, called from
+# dialog.c's AboutProc (and reusable by the other suite exes).
+target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c)
 
 # This object awkwardly needs to live in the network library as well
 # as the eventloop library, in case it didn't get pulled in from the
@@ -85,6 +88,7 @@ add_library(guimisc STATIC
 add_executable(pageant
   pageant.c
   help.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
   pageant.rc)
 add_dependencies(pageant generated_licence_h)
 target_link_libraries(pageant
@@ -145,6 +149,7 @@ installed_program(puttytel)
 
 add_executable(puttygen
   puttygen.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
   ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
   noise.c
   no-jump-list.c

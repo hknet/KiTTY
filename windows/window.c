@@ -156,7 +156,7 @@ extern char *kitty_cli_loginscript;            /* kitty_bridge.c: -loginscript p
 void ManageInitScript(const char *input_str, const int len); /* kitty.c: scan server output, auto-reply to login prompt */
 extern char *ScriptFileContent;                /* kitty.c: loaded login-script buffer (NULL = none) */
 extern HWND MainHwnd;                          /* kitty.c/bridge: active terminal hwnd for keystroke injection */
-void CheckVersionFromWebSite(HWND hwnd);       /* kitty_win.c: query GitHub releases for an update */
+void CheckVersionFromWebSite(HWND hwnd, int is_terminal);   /* kitty_win.c: query GitHub releases for an update */
 void RunPuttyEd(HWND hwnd, char *filename);     /* kitty_win.c: open embedded mNotepad editor */
 void kitty_start_update_check(void);           /* kitty_win.c: async refresh of cached latest version */
 int kitty_update_notice(char *buf, int n);     /* kitty_win.c: notice text if a newer version is cached */
@@ -3603,7 +3603,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             RunPuttyEd(hwnd, "1");
             break;
           case IDM_CHECKUPDATE:
-            CheckVersionFromWebSite(hwnd);
+            CheckVersionFromWebSite(hwnd, 1);   /* live terminal: no-update -> title notice */
             break;
 #endif
           case IDM_HELP:

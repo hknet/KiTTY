@@ -32,7 +32,7 @@ void RunCommand( HWND hwnd, const char * cmd ) ;
 void RunPuttyEd( HWND hwnd, char * filename ) ;
 
 // Verifie si une mise a jour est disponible sur le site web
-void CheckVersionFromWebSite( HWND hwnd ) ;
+void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) ;
 
 // KiTTY: background (async) update check that caches the latest version, and a
 // session-start notice rendered from that cache (see window.c).
