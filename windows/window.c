@@ -1849,10 +1849,14 @@ static bool kitty_is_auth_failure_msg(const char *msg)
  * cleanly. (Diagnosed via netdebug on a Cisco switch: exit status 0 ->
  * SSH2_MSG_CHANNEL_REQUEST for nonexistent channel.)
  *
- * NOTE: this is belt-and-braces with the ssh_proto_error() exit_code_known
- * guard in ssh/ssh.c, which handles the same late-channel-message case at the
- * protocol layer. Kept for now; can probably be retired if upstream PuTTY
- * accepts that ssh.c change (see the upstream tracking notes). */
+ * NOTE: this is belt-and-braces with ssh_post_exit_teardown_error() in
+ * ssh/ssh.c, which suppresses the fatal at the protocol layer -- but (since
+ * v2 of the upstream patch) only when the exit code is known AND the
+ * connection has nothing else live (no forwarding/X11/agent channels, no
+ * sharing downstreams). This helper additionally catches the same device
+ * artifact if it arrives without an exit status, or while another channel
+ * is still open. Kept for now; revisit if upstream PuTTY accepts the ssh.c
+ * change (see the upstream tracking notes). */
 static bool kitty_is_benign_channel_close_msg(const char *msg)
 {
     return msg && strstr(msg, "nonexistent channel") != NULL;

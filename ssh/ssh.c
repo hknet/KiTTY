@@ -470,6 +470,46 @@ static void ssh_initiate_connection_close(Ssh *ssh)
     va_end(ap);                                 \
     ((void)0) /* eat trailing semicolon */
 
+/*
+ * Common check for ssh_remote_error and ssh_proto_error: if the main
+ * session channel has already ended with a known exit status
+ * (SSH_MSG_CHANNEL_REQUEST "exit-status" or "exit-signal", or
+ * SSH1_SMSG_EXIT_STATUS), and the connection layer has nothing else
+ * left to do -- no other channels open, no connection-sharing
+ * downstreams -- then we were already committed to terminating the
+ * connection from our own end. Some server implementations close the
+ * network connection immediately after reporting the exit status, in
+ * the same batch of incoming data, before we have finished our half
+ * of the close handshake and marked the connection as expecting to
+ * close. Anything that goes wrong on the wire in that state can only
+ * affect the teardown itself, which was about to happen anyway: the
+ * session has ended cleanly and we already know its result. So we
+ * treat it as a normal remote exit, keeping the exit code we were
+ * given, instead of alarming the user with a fatal error box.
+ *
+ * If anything else _is_ still using the connection -- a live
+ * port-forwarding, X11 or agent channel, or a sharing downstream --
+ * this doesn't apply: trouble on the wire can then still damage
+ * something the user cares about (and might even indicate external
+ * interference with the connection), so it's reported as a fatal
+ * error in the usual way.
+ *
+ * Returns true if it handled the error (and took ownership of msg);
+ * false if the caller should report a fatal error as usual.
+ */
+static bool ssh_post_exit_teardown_error(Ssh *ssh, char *msg)
+{
+    if (!(ssh->exit_code_known && ssh->cl &&
+          ssh_termination_pending(ssh->cl)))
+        return false;
+
+    ssh_shutdown(ssh);
+    logevent(ssh->logctx, msg);
+    sfree(msg);
+    seat_notify_remote_exit(ssh->seat);
+    return true;
+}
+
 void ssh_remote_error(Ssh *ssh, const char *fmt, ...)
 {
     if (ssh->base_layer || !ssh->session_started) {
@@ -478,26 +518,8 @@ void ssh_remote_error(Ssh *ssh, const char *fmt, ...)
         if (ssh->base_layer)
             ssh_ppl_final_output(ssh->base_layer);
 
-        if (ssh->exit_code_known) {
-            /*
-             * The connection layer has already reported this session's
-             * exit status (an SSH_MSG_CHANNEL_REQUEST "exit-status" or
-             * "exit-signal" for the main channel). Some server
-             * implementations then close the network connection
-             * immediately, in the same batch of incoming data, before we
-             * have finished our own half of the channel-close handshake
-             * and marked the connection as expecting to close. That is
-             * not an error: the session has ended cleanly and we already
-             * know its result. Treat it as a normal remote exit rather
-             * than a fatal connection error, and keep the exit code we
-             * were given instead of overwriting it.
-             */
-            ssh_shutdown(ssh);
-            logevent(ssh->logctx, msg);
-            sfree(msg);
-            seat_notify_remote_exit(ssh->seat);
+        if (ssh_post_exit_teardown_error(ssh, msg))
             return;
-        }
 
         /* Error messages sent by the remote don't count as clean exits */
         ssh->exitcode = 128;
@@ -546,22 +568,8 @@ void ssh_proto_error(Ssh *ssh, const char *fmt, ...)
         if (ssh->base_layer)
             ssh_ppl_final_output(ssh->base_layer);
 
-        if (ssh->exit_code_known) {
-            /*
-             * As in ssh_remote_error(): the session has already ended
-             * cleanly and we know its exit code. A protocol violation
-             * arriving afterwards -- for instance a message referring to
-             * a channel we have already closed, which some servers send
-             * as they tear the session down -- is not worth reporting as
-             * a fatal error. Close quietly and report the exit we already
-             * have.
-             */
-            ssh_shutdown(ssh);
-            logevent(ssh->logctx, msg);
-            sfree(msg);
-            seat_notify_remote_exit(ssh->seat);
+        if (ssh_post_exit_teardown_error(ssh, msg))
             return;
-        }
 
         ssh->exitcode = 128;
 

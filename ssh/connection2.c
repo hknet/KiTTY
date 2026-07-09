@@ -62,6 +62,7 @@ static void ssh2_enable_x_fwd(ConnectionLayer *cl);
 static void ssh2_set_wants_user_input(ConnectionLayer *cl, bool wanted);
 static bool ssh2_get_wants_user_input(ConnectionLayer *cl);
 static void ssh2_got_user_input(ConnectionLayer *cl);
+static bool ssh2_termination_pending(ConnectionLayer *cl);
 
 static const ConnectionLayerVtable ssh2_connlayer_vtable = {
     .rportfwd_alloc = ssh2_rportfwd_alloc,
@@ -89,6 +90,7 @@ static const ConnectionLayerVtable ssh2_connlayer_vtable = {
     .set_wants_user_input = ssh2_set_wants_user_input,
     .get_wants_user_input = ssh2_get_wants_user_input,
     .got_user_input = ssh2_got_user_input,
+    .termination_pending = ssh2_termination_pending,
 };
 
 static char *ssh2_channel_open_failure_error_text(PktIn *pktin)
@@ -1238,6 +1240,27 @@ static void ssh2_channel_destroy(struct ssh2_channel *c)
     queue_toplevel_callback(ssh2_check_termination_callback, s);
 }
 
+static bool ssh2_termination_pending(ConnectionLayer *cl)
+{
+    struct ssh2_connection_state *s =
+        container_of(cl, struct ssh2_connection_state, cl);
+
+    if (s->persistent)
+        return false;   /* persistent mode: never proactively terminate */
+
+    if (!s->started) {
+        /* At startup, we don't have any channels open because we
+         * haven't got round to opening the main one yet. In that
+         * situation, we don't want to terminate, even if a sharing
+         * connection opens and closes and causes a call to this
+         * function. */
+        return false;
+    }
+
+    return (count234(s->channels) == 0 &&
+            !(s->connshare && share_ndownstreams(s->connshare) > 0));
+}
+
 static void ssh2_check_termination(struct ssh2_connection_state *s)
 {
     /*
@@ -1246,20 +1269,7 @@ static void ssh2_check_termination(struct ssh2_connection_state *s)
      * policy is that we terminate when none of either is left.
      */
 
-    if (s->persistent)
-        return;     /* persistent mode: never proactively terminate */
-
-    if (!s->started) {
-        /* At startup, we don't have any channels open because we
-         * haven't got round to opening the main one yet. In that
-         * situation, we don't want to terminate, even if a sharing
-         * connection opens and closes and causes a call to this
-         * function. */
-        return;
-    }
-
-    if (count234(s->channels) == 0 &&
-        !(s->connshare && share_ndownstreams(s->connshare) > 0)) {
+    if (ssh2_termination_pending(&s->cl)) {
         /*
          * We used to send SSH_MSG_DISCONNECT here, because I'd
          * believed that _every_ conforming SSH-2 connection had to

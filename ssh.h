@@ -309,6 +309,18 @@ struct ConnectionLayerVtable {
     /* Notify the connection layer that more data has been added to
      * the user input queue. */
     void (*got_user_input)(ConnectionLayer *cl);
+
+    /* Query whether the connection layer has nothing left to do but
+     * close the connection: no channels remain open (in particular,
+     * no port-forwarding, X11 or agent-forwarding channels), no
+     * connection-sharing downstreams are attached, and the layer is
+     * not deliberately staying open with no channels (e.g. because
+     * of -N). In that state the client is already committed to
+     * terminating the connection of its own accord, so anything that
+     * subsequently goes wrong on the wire can no longer cost the
+     * user any data. A NULL method is equivalent to returning
+     * false. */
+    bool (*termination_pending)(ConnectionLayer *cl);
 };
 
 struct ConnectionLayer {
@@ -382,6 +394,8 @@ static inline bool ssh_get_wants_user_input(ConnectionLayer *cl)
 { return cl->vt->get_wants_user_input(cl); }
 static inline void ssh_got_user_input(ConnectionLayer *cl)
 { cl->vt->got_user_input(cl); }
+static inline bool ssh_termination_pending(ConnectionLayer *cl)
+{ return cl->vt->termination_pending && cl->vt->termination_pending(cl); }
 
 /* Exports from portfwd.c */
 PortFwdManager *portfwdmgr_new(ConnectionLayer *cl);

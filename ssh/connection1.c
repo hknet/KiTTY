@@ -62,6 +62,7 @@ static void ssh1_enable_x_fwd(ConnectionLayer *cl);
 static void ssh1_set_wants_user_input(ConnectionLayer *cl, bool wanted);
 static bool ssh1_get_wants_user_input(ConnectionLayer *cl);
 static void ssh1_got_user_input(ConnectionLayer *cl);
+static bool ssh1_termination_pending(ConnectionLayer *cl);
 
 static const ConnectionLayerVtable ssh1_connlayer_vtable = {
     .rportfwd_alloc = ssh1_rportfwd_alloc,
@@ -82,6 +83,7 @@ static const ConnectionLayerVtable ssh1_connlayer_vtable = {
     .set_wants_user_input = ssh1_set_wants_user_input,
     .get_wants_user_input = ssh1_get_wants_user_input,
     .got_user_input = ssh1_got_user_input,
+    .termination_pending = ssh1_termination_pending,
     /* other methods are NULL */
 };
 
@@ -528,6 +530,14 @@ static void ssh1_channel_destroy(struct ssh1_channel *c)
     queue_toplevel_callback(ssh1_check_termination_callback, s);
 }
 
+static bool ssh1_termination_pending(ConnectionLayer *cl)
+{
+    struct ssh1_connection_state *s =
+        container_of(cl, struct ssh1_connection_state, cl);
+
+    return s->session_terminated && count234(s->channels) == 0;
+}
+
 bool ssh1_check_termination(struct ssh1_connection_state *s)
 {
     /*
@@ -536,7 +546,7 @@ bool ssh1_check_termination(struct ssh1_connection_state *s)
      * returns SSH1_SMSG_EXIT_STATUS; we terminate when none of either
      * is left.
      */
-    if (s->session_terminated && count234(s->channels) == 0) {
+    if (ssh1_termination_pending(&s->cl)) {
         PktOut *pktout = ssh_bpp_new_pktout(
             s->ppl.bpp, SSH1_CMSG_EXIT_CONFIRMATION);
         pq_push(s->ppl.out_pq, pktout);

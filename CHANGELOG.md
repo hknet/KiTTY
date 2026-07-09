@@ -5,6 +5,21 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.47-beta — 2026-07-09
+
+- **Clean-logout error suppression narrowed (hardening).** The 0.84.1.45 clean-logout
+  fix suppressed *any* connection error arriving after the session's exit status was
+  known — for the entire remaining life of the connection. That was broader than
+  intended: with a port forwarding, X11/agent channel or connection-sharing
+  downstream still active, a genuine network failure (or even evidence of tampering
+  with the connection) would have been reported as a quiet clean exit. The
+  suppression now applies only when nothing else is using the connection — that is,
+  when KiTTY was already about to close it of its own accord and the server merely
+  got there first. Ordinary logouts (including the Cisco case) behave exactly as in
+  0.84.1.45; a connection error while forwardings are live is once again a visible
+  error. The same narrowing has been applied to the version of this change
+  submitted upstream to PuTTY.
+
 ## 0.84.1.46-beta — 2026-07-08
 
 - **Ctrl + ←/→ word navigation restored as the default.** KiTTY's historical
