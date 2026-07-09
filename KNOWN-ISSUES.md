@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.46 — Known issues & limitations
+# KiTTY 0.84.1.47 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -66,11 +66,29 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.46-beta @ 2026-07-08`.
+- **Version string:** binaries report `0.84.1.47-beta @ 2026-07-09`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.47
+
+- **Clean-logout error suppression narrowed (hardening).** 0.84.1.45 taught KiTTY
+  to treat a connection error arriving after the session's exit status as a clean
+  end — but it did so for the entire remaining life of the connection. The quiet
+  path now applies only when nothing else is using the connection (no
+  port-forwarding, X11 or agent channels, no connection-sharing downstreams):
+  exactly the state in which KiTTY was already about to close the connection of
+  its own accord. A network failure while forwardings are live is a visible error
+  again, as it was before 0.84.1.45. Ordinary logouts, including the Cisco case
+  the original fix targeted, are unchanged. The same narrowing has been applied
+  to the version of this change submitted upstream to PuTTY.
+- **Config dialog keeps "Default Settings" selected.** Loading Default Settings
+  no longer clears the session-name box, and the saved-sessions list no longer
+  jumps back to the previously loaded session after a visit to another settings
+  panel — the highlight follows the session actually loaded. The dialog still
+  pre-selects your last-used session when it opens.
 
 ## New in 0.84.1.46
 

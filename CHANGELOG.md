@@ -19,6 +19,14 @@ see [FEATURES.md](FEATURES.md).
   0.84.1.45; a connection error while forwardings are live is once again a visible
   error. The same narrowing has been applied to the version of this change
   submitted upstream to PuTTY.
+- **Config dialog: "Default Settings" no longer loses its selection.** Loading
+  Default Settings cleared the session-name box, and any later refresh of the
+  saved-sessions list (typically switching to another settings panel and back)
+  yanked the highlight back to the previously loaded session — irritating when
+  you were editing the defaults. The name box now keeps showing "Default
+  Settings" after Load, and the list keeps the session you actually have loaded
+  selected across panel switches. The remembered last session is still used to
+  pre-select the list when the dialog opens.
 
 ## 0.84.1.46-beta — 2026-07-08
 

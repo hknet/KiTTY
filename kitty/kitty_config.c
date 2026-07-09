@@ -1167,10 +1167,18 @@ static bool load_selected_session(
         kitty_set_last_session(ssd->sesslist.sessions[i]);
 #endif
     sfree(ssd->savedsession);
-    ssd->savedsession = dupstr(isdef ? "" : ssd->sesslist.sessions[i]);
 #ifdef MOD_PERSO
+    /* KiTTY: keep "Default Settings" visible in the session-name box after
+     * loading the defaults, instead of stock PuTTY's clearing it. The literal
+     * name is already a normal value for savedsession (single-clicking the
+     * list entry puts it there too) and the Save path maps it to the defaults
+     * key. PuTTY-compat mode keeps the stock behaviour. */
+    ssd->savedsession = dupstr(isdef ? (GetPuttyFlag() ? "" : KITTY_DEFAULT_SESSION)
+                                     : ssd->sesslist.sessions[i]);
     sfree(ssd->searchfilter);
     ssd->searchfilter = dupstr("");
+#else
+    ssd->savedsession = dupstr(isdef ? "" : ssd->sesslist.sessions[i]);
 #endif
     if (maybe_launch)
         *maybe_launch = !isdef;
@@ -1388,8 +1396,19 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 if (searching && smatch != pass)
                     continue;
                 sessionsaver_add_session_row(ctrl, dlg, ssd, i, searching);
+                /* Which row to auto-select: while searching, the exact typed
+                 * name; otherwise the session currently in the name box (what
+                 * the user last loaded/selected THIS dialog), falling back to
+                 * the registry-remembered last session only while the box is
+                 * still empty (i.e. at dialog open, matching the startup
+                 * auto-load). Previously this always chose the remembered
+                 * session, so a listbox refresh (e.g. returning from another
+                 * panel) yanked the highlight off "Default Settings" back to
+                 * the previously loaded session. */
                 if ((searching ? !strcmp(ssd->sesslist.sessions[i], ssd->savedsession) :
-                                 (havelast && !strcmp(ssd->sesslist.sessions[i], lastsess))) &&
+                     (ssd->savedsession[0] ?
+                      !strcmp(ssd->sesslist.sessions[i], ssd->savedsession) :
+                      (havelast && !strcmp(ssd->sesslist.sessions[i], lastsess)))) &&
                     selpos < 0)
                     selpos = lbpos;
                 lbpos++;
@@ -1404,8 +1423,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
 #endif
             dlg_update_done(ctrl, dlg);
 #ifdef MOD_PERSO
-            /* KiTTY: auto-select the best visible match: the exact typed/selected
-             * session while searching, otherwise the last-loaded session. */
+            /* KiTTY: auto-select the best visible match (chosen above):
+             * typed match while searching, else the current name-box session,
+             * else the remembered last session; default to row 0. */
             if (selpos < 0 && lbpos > 0)
                 selpos = 0;
             if (selpos >= 0) {
