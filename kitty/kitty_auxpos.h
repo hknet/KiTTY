@@ -26,9 +26,4 @@ void kitty_auxpos_apply(HWND dlg, const char *key, HWND anchor, int near_tray);
 void kitty_auxpos_save(HWND dlg, const char *key);
 void kitty_auxpos_set_persist(int on);   /* default on; 0 => place only, no registry */
 
-/* A DPI-scaled GUI font for hand-built pop-up windows (no dialog manager to scale
- * their font). Pass the OWNER window (whose DPI drives the layout). Caller owns the
- * result and must DeleteObject() it on WM_DESTROY (a no-op for the stock fallback). */
-HFONT kitty_auxpos_gui_font(HWND ref);
-
 #endif

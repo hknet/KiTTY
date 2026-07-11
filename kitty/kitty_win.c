@@ -1,4 +1,5 @@
 #include "kitty_win.h"
+#include "kitty_rc_additions.h"   /* IDD_UPDATEBOX, IDC_UPD_TEXT, IDC_UPD_UPDATE */
 #include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
 #include <wintrust.h>  /* in-app updater: Authenticode trust verification */
 #include <softpub.h>   /* WINTRUST_ACTION_GENERIC_VERIFY_V2 */
@@ -802,20 +803,18 @@ int kitty_update_notice( char *buf, int n ) {
 #define KUP_ACT_NONE       0
 #define KUP_ACT_OPENPAGE   1
 #define KUP_ACT_MSI        2
-#define KUP_ID_UPDATE   1201
-#define KUP_ID_LATER    1202
+/* Button IDs come from the IDD_UPDATEBOX template: IDC_UPD_UPDATE ("Update
+ * now"), IDCANCEL ("Later"), IDOK ("OK"). */
 #define KUP_TIMER_ID       1
 #define KUP_AUTODISMISS_MS 5000
-
-/* kitty_auxpos.c: DPI-scaled font for hand-built pop-up windows (no dialog manager). */
-HFONT kitty_auxpos_gui_font( HWND ref ) ;
 
 typedef struct {
 	HWND  owner ;
 	int   action ;
 	kitty_install_t itype ;
 	char  asseturl[1024] ;
-	HFONT font ;   /* DPI-scaled GUI font; DeleteObject'd on destroy */
+	char  text[2048] ;    /* message; the dialog is grown to fit it */
+	int   has_update ;    /* update available (Update now/Later) vs info (OK) */
 } kitty_upd_ctx ;
 
 /* Download+verify+install the MSI (unchanged flow, just factored out so the
@@ -871,15 +870,61 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 	/* keep the verified bytes locked while msiexec reads them (released on exit). */
 }
 
-static LRESULT CALLBACK kitty_upd_wndproc( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
-	kitty_upd_ctx *c = (kitty_upd_ctx*)GetWindowLongPtr( h, GWLP_USERDATA ) ;
+/* Grow the message control + the whole dialog to fit `text` at the dialog's
+ * (DPI-correct) font, and slide the buttons down by the same amount. Keeps the
+ * "sized to the text" look now that the dialog manager owns the font. */
+static void kitty_upd_fit_to_text( HWND h, const char *text ) {
+	HWND txt = GetDlgItem( h, IDC_UPD_TEXT ) ;
+	HFONT f = (HFONT)SendMessage( h, WM_GETFONT, 0, 0 ) ;
+	if( !txt ) return ;
+	RECT tr ; GetWindowRect( txt, &tr ) ; MapWindowPoints( NULL, h, (POINT*)&tr, 2 ) ;
+	int tw = tr.right - tr.left, cur_th = tr.bottom - tr.top ;
+	HDC dc = GetDC( txt ) ; HFONT of = (HFONT)SelectObject( dc, f ) ;
+	RECT mr = { 0, 0, tw, 0 } ;
+	DrawText( dc, text, -1, &mr, DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX ) ;
+	int new_th = mr.bottom ;
+	SelectObject( dc, of ) ; ReleaseDC( txt, dc ) ;
+	int dh = new_th - cur_th ;
+	if( dh == 0 ) return ;
+	MoveWindow( txt, tr.left, tr.top, tw, new_th, TRUE ) ;
+	int ids[] = { IDOK, IDCANCEL, IDC_UPD_UPDATE } ;
+	for( int i=0 ; i<3 ; i++ ) {
+		HWND b = GetDlgItem( h, ids[i] ) ; if( !b ) continue ;
+		RECT br ; GetWindowRect( b, &br ) ; MapWindowPoints( NULL, h, (POINT*)&br, 2 ) ;
+		MoveWindow( b, br.left, br.top + dh, br.right-br.left, br.bottom-br.top, TRUE ) ;
+	}
+	RECT wr ; GetWindowRect( h, &wr ) ;
+	SetWindowPos( h, NULL, 0, 0, wr.right-wr.left, (wr.bottom-wr.top)+dh, SWP_NOMOVE|SWP_NOZORDER ) ;
+}
+
+static INT_PTR CALLBACK kitty_upd_dlgproc( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
+	kitty_upd_ctx *c = (kitty_upd_ctx*)GetWindowLongPtr( h, DWLP_USER ) ;
 	switch( msg ) {
+	  case WM_INITDIALOG:
+		c = (kitty_upd_ctx*)lp ;
+		SetWindowLongPtr( h, DWLP_USER, (LONG_PTR)c ) ;
+		SetDlgItemTextA( h, IDC_UPD_TEXT, c ? c->text : "" ) ;
+		if( c && c->has_update ) {
+			ShowWindow( GetDlgItem( h, IDOK ), SW_HIDE ) ;   /* Update now + Later */
+		} else {
+			ShowWindow( GetDlgItem( h, IDC_UPD_UPDATE ), SW_HIDE ) ;   /* just OK */
+			ShowWindow( GetDlgItem( h, IDCANCEL ), SW_HIDE ) ;
+		}
+		if( c ) kitty_upd_fit_to_text( h, c->text ) ;
+		CenterDlgInParent( h ) ;
+		SetWindowPos( h, HWND_TOP, 0,0,0,0, SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW ) ;
+		SetForegroundWindow( h ) ;
+		SetFocus( GetDlgItem( h, (c && c->has_update) ? IDC_UPD_UPDATE : IDOK ) ) ;
+		/* Only the info box may dismiss itself; an available update stays until
+		 * the user picks Update/Later so the offer can't silently vanish. */
+		if( !(c && c->has_update) ) SetTimer( h, KUP_TIMER_ID, KUP_AUTODISMISS_MS, NULL ) ;
+		return FALSE ;   /* focus set ourselves */
 	  case WM_TIMER:
 		if( wp==KUP_TIMER_ID ) DestroyWindow( h ) ;   /* auto-dismiss */
-		return 0 ;
+		return TRUE ;
 	  case WM_COMMAND:
-		if( LOWORD(wp)==KUP_ID_UPDATE ) {
-			KillTimer( h, KUP_TIMER_ID ) ;   /* user chose the update path */
+		if( LOWORD(wp)==IDC_UPD_UPDATE ) {
+			KillTimer( h, KUP_TIMER_ID ) ;
 			HWND owner = c ? c->owner : NULL ;
 			int  action = c ? c->action : KUP_ACT_NONE ;
 			kitty_install_t itype = c ? c->itype : KITTY_INST_PORTABLE ;
@@ -888,82 +933,37 @@ static LRESULT CALLBACK kitty_upd_wndproc( HWND h, UINT msg, WPARAM wp, LPARAM l
 			DestroyWindow( h ) ;   /* close the popup, then act */
 			if( action==KUP_ACT_OPENPAGE ) ShellExecute( owner, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
 			else if( action==KUP_ACT_MSI ) kitty_do_msi_update( owner, url, itype ) ;
-			return 0 ;
+			return TRUE ;
 		}
-		if( LOWORD(wp)==KUP_ID_LATER || LOWORD(wp)==IDCANCEL ) { DestroyWindow( h ) ; return 0 ; }
-		return 0 ;
-	  case WM_CLOSE: DestroyWindow( h ) ; return 0 ;
+		if( LOWORD(wp)==IDOK || LOWORD(wp)==IDCANCEL ) { DestroyWindow( h ) ; return TRUE ; }
+		return FALSE ;
+	  case WM_CLOSE: DestroyWindow( h ) ; return TRUE ;
 	  case WM_NCDESTROY:
-		if( c ) { if( c->font ) DeleteObject( c->font ) ; free(c) ; SetWindowLongPtr( h, GWLP_USERDATA, 0 ) ; }
-		return 0 ;
+		if( c ) { free(c) ; SetWindowLongPtr( h, DWLP_USER, 0 ) ; }
+		return FALSE ;
 	}
-	return DefWindowProc( h, msg, wp, lp ) ;
+	return FALSE ;
 }
 
-/* Show the non-modal popup over `owner`, in front, no sound, auto-dismiss in 5s.
- * action==KUP_ACT_NONE => info only (single "OK" that just closes);
- * otherwise an "Update" button runs the action and a "Later" button dismisses. */
+/* Show the modeless "update available / up to date" popup over `owner`. It is a
+ * real dialog (IDD_UPDATEBOX) so the dialog manager gives it the shell font at
+ * the correct DPI, exactly like every other KiTTY window - no hand-rolled DPI
+ * scaling. action==KUP_ACT_NONE => info only (single "OK", auto-dismisses in
+ * 5s); otherwise "Update now" runs the action and "Later" dismisses, and it
+ * stays up until the user decides so the offer can't silently vanish. */
 static void kitty_show_update_popup( HWND owner, const char *text, int action,
                                      const char *asseturl, kitty_install_t itype ) {
-	static int registered = 0 ;
-	HINSTANCE hinst = GetModuleHandle( NULL ) ;
-	if( !registered ) {
-		WNDCLASS wc ; memset( &wc, 0, sizeof(wc) ) ;
-		wc.lpfnWndProc   = kitty_upd_wndproc ;
-		wc.hInstance     = hinst ;
-		wc.hCursor       = LoadCursor( NULL, IDC_ARROW ) ;
-		wc.hbrBackground = (HBRUSH)( COLOR_BTNFACE + 1 ) ;
-		wc.lpszClassName = "KiTTYUpdatePopup" ;
-		RegisterClass( &wc ) ;
-		registered = 1 ;
-	}
-	/* DPI-scale a base 96-dpi layout by the owner's DPI (dynamically resolved). */
-	int dpi = 96 ;
-	{ HMODULE u32 = GetModuleHandleA("user32.dll") ;
-	  if( u32 ) { UINT (WINAPI *pGDFW)(HWND) = (UINT(WINAPI*)(HWND))GetProcAddress(u32,"GetDpiForWindow") ;
-	              if( pGDFW && owner ) { UINT d = pGDFW(owner) ; if( d ) dpi = (int)d ; } } }
-	#define KUP_S(px) ( ((px)*dpi) / 96 )
-	int W = KUP_S(430), H = KUP_S(178), M = KUP_S(14) ;
-	int btnW = KUP_S(92), btnH = KUP_S(26), gap = KUP_S(8) ;
-	int has_update = ( action != KUP_ACT_NONE ) ;
-
-	HWND h = CreateWindowEx( WS_EX_TOOLWINDOW, "KiTTYUpdatePopup", "KiTTY Update",
-		WS_POPUP|WS_CAPTION|WS_SYSMENU, 0, 0, W, H, owner, NULL, hinst, NULL ) ;
-	if( !h ) return ;
 	kitty_upd_ctx *c = (kitty_upd_ctx*)calloc( 1, sizeof(kitty_upd_ctx) ) ;
-	if( c ) { c->owner=owner ; c->action=action ; c->itype=itype ;
-	          if( asseturl ) { strncpy(c->asseturl, asseturl, sizeof(c->asseturl)-1) ; } }
-	SetWindowLongPtr( h, GWLP_USERDATA, (LONG_PTR)c ) ;
-
-	HFONT gf = kitty_auxpos_gui_font( owner ) ;   /* DPI-scaled, not the tiny 96-dpi stock */
-	if( c ) c->font = gf ;
-	RECT cr ; GetClientRect( h, &cr ) ;
-	int cw = cr.right - cr.left, ch = cr.bottom - cr.top ;
-	HWND st = CreateWindow( "STATIC", text, WS_CHILD|WS_VISIBLE|SS_LEFT,
-		M, M, cw - 2*M, ch - 3*M - btnH, h, NULL, hinst, NULL ) ;
-	SendMessage( st, WM_SETFONT, (WPARAM)gf, TRUE ) ;
-	int bx = cw - M - btnW, by = ch - M - btnH ;
-	if( has_update ) {
-		HWND bl = CreateWindow( "BUTTON", "Later", WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,
-			bx, by, btnW, btnH, h, (HMENU)(INT_PTR)KUP_ID_LATER, hinst, NULL ) ;
-		SendMessage( bl, WM_SETFONT, (WPARAM)gf, TRUE ) ;
-		HWND bu = CreateWindow( "BUTTON", "Update now", WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON,
-			bx - gap - btnW, by, btnW, btnH, h, (HMENU)(INT_PTR)KUP_ID_UPDATE, hinst, NULL ) ;
-		SendMessage( bu, WM_SETFONT, (WPARAM)gf, TRUE ) ;
-	} else {
-		HWND bo = CreateWindow( "BUTTON", "OK", WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON,
-			bx, by, btnW, btnH, h, (HMENU)(INT_PTR)KUP_ID_LATER, hinst, NULL ) ;
-		SendMessage( bo, WM_SETFONT, (WPARAM)gf, TRUE ) ;
-	}
-
-	/* Position over the owner window (reuse CenterDlgInParent's logic via the
-	 * owner as parent), bring to front, no sound. */
-	CenterDlgInParent( h ) ;
-	ShowWindow( h, SW_SHOWNA ) ;
-	SetWindowPos( h, HWND_TOP, 0,0,0,0, SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW ) ;
-	SetForegroundWindow( h ) ;
-	SetTimer( h, KUP_TIMER_ID, KUP_AUTODISMISS_MS, NULL ) ;
-	#undef KUP_S
+	if( !c ) return ;
+	c->owner = owner ; c->action = action ; c->itype = itype ;
+	c->has_update = ( action != KUP_ACT_NONE ) ;
+	if( text ) { strncpy( c->text, text, sizeof(c->text)-1 ) ; }
+	if( asseturl ) { strncpy( c->asseturl, asseturl, sizeof(c->asseturl)-1 ) ; }
+	/* Modeless: don't block the session that's starting up. The dialog frees c
+	 * on WM_NCDESTROY. */
+	HWND h = CreateDialogParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_UPDATEBOX),
+		owner, kitty_upd_dlgproc, (LPARAM)c ) ;
+	if( !h ) free( c ) ;
 }
 
 /* Transient terminal-title notice: show `text` for `ms`, then restore the title.
@@ -1075,9 +1075,10 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 			kitty_parse_version( latestnum, lv ) ;
 			if( kitty_version_cmp( cv, lv ) < 0 ) {
 				/* An update is available. Compose the message + pick the action,
-				 * then show the NON-modal, no-sound, self-dismissing popup over the
-				 * caller window. The download/verify/install runs from its "Update"
-				 * button (kitty_do_msi_update), which keeps modal error boxes. */
+				 * then show the NON-modal, no-sound popup over the caller window
+				 * (it stays up until the user picks Update/Later). The download/
+				 * verify/install runs from its "Update" button
+				 * (kitty_do_msi_update), which keeps modal error boxes. */
 				int stable_taking_beta = ( !cur_is_beta && latest_is_beta ) ;
 				kitty_install_t itype = kitty_detect_install_type() ;
 				char asseturl[1024]="" ; int haveasset = 0 ;

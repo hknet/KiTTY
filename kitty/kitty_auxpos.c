@@ -119,33 +119,6 @@ void kitty_auxpos_apply(HWND dlg, const char *key, HWND anchor, int near_tray)
     kitty_auxpos_place(dlg, x, y);
 }
 
-/* A GUI font scaled to `ref`'s monitor DPI, for hand-built pop-up windows (update
- * popup, launcher About) that -- unlike dialog-resource boxes -- get no automatic
- * font scaling from the dialog manager. Without this the window is DPI-sized but the
- * text stays at 96-dpi (tiny). Pass the OWNER window (the same one whose DPI drives
- * the layout), not the freshly-created pop-up (which may still sit at 0,0 on another
- * monitor). The caller owns the result: DeleteObject() it on WM_DESTROY (harmless if
- * it's the stock fallback). */
-HFONT kitty_auxpos_gui_font(HWND ref)
-{
-    int dpi = 96;
-    LOGFONT lf;
-    HFONT stock = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
-    HMODULE u = GetModuleHandleA("user32.dll");
-    if (u) {
-        UINT (WINAPI *pf)(HWND) = (UINT(WINAPI*)(HWND))GetProcAddress(u, "GetDpiForWindow");
-        if (pf && ref) { UINT d = pf(ref); if (d) dpi = (int)d; }
-    }
-    if (dpi != 96 && GetObject(stock, sizeof(lf), &lf)) {
-        HFONT f;
-        lf.lfHeight = MulDiv(lf.lfHeight, dpi, 96);
-        lf.lfWidth  = 0;   /* derive width from the scaled height */
-        f = CreateFontIndirect(&lf);
-        if (f) return f;
-    }
-    return stock;   /* 96 dpi or failure: stock GUI font (DeleteObject is a safe no-op) */
-}
-
 void kitty_auxpos_save(HWND dlg, const char *key)
 {
     char vn[160]; RECT rc; POINT pt; HKEY hk;
