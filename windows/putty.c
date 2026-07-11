@@ -7,6 +7,13 @@ extern char *SetSessPath(const char *);
 extern int  GetDirectoryBrowseFlag(void);
 extern void load_open_settings_forced(char *filename, Conf *conf); /* kitty_settings_load.c */
 extern char *kitty_cli_loginscript; /* kitty_bridge.c: -loginscript, consumed post-create */
+/* -exportall <dir> / -importdir <dir>: whole-store move; stashed here and run
+ * just before the config box (storage backend is initialised by then), then
+ * exit. kitty_export_all_to_dir/kitty_import_dir are the no-UI cores. */
+int  kitty_export_all_to_dir(const char *dir, int *failOut);
+int  kitty_import_dir(const char *dir, int *failOut);
+static char *kitty_cli_exportdir = NULL;
+static char *kitty_cli_importdir = NULL;
 /* do-and-exit / pre-window utility switches (kitty modules; putty.c lacks kitty.h) */
 extern char KiTTYClassName[];                       /* kitty.c: window class name */
 extern int  SendCommandAllWindows(HWND hwnd, char *cmd); /* kitty.c */
@@ -74,6 +81,12 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
     NETDBG_TS("cmdline: after do_defaults");
 
     p = handle_restrict_acl_cmdline_prefix(cmdline);
+#ifdef MOD_PERSO
+    /* KiTTY: consume a "&K<handle>:<size>" master-key token from a parent KiTTY
+     * (launcher-mpw-sharing) BEFORE the session is loaded, so the child unlocks
+     * from the inherited key instead of re-prompting. No token -> p unchanged. */
+    { extern char *kitty_mpw_import_inherit_blob(char *); p = kitty_mpw_import_inherit_blob(p); }
+#endif
 
     if (handle_special_sessionname_cmdline(p, conf)) {
         if (!conf_launchable(conf) && !do_config(conf)) {
@@ -105,6 +118,15 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
             } else if (ret == 1) {
                 continue;          /* nothing further needs doing */
 #ifdef MOD_PERSO
+            } else if (!strcmp(p, "-mpwkey")) {
+                /* KiTTY: inherited master-key handle from a parent KiTTY
+                 * (launcher-mpw-sharing). Consume it BEFORE any later -load so the
+                 * session's stored password decrypts without a prompt. */
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                { extern void kitty_mpw_consume_handle_str(const char *);
+                  kitty_mpw_consume_handle_str(
+                      cmdline_arg_to_str(arglist->args[arglistpos++])); }
             } else if (!strcmp(p, "-fullscreen")) {
                 conf_set_int(conf, CONF_fullscreen, 1);
             } else if (!strcmp(p, "-xpos")) {
@@ -189,6 +211,18 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                     special_launchable_argument = true;
                 }
                 sfree(kf);
+            } else if (!strcmp(p, "-exportall")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires a directory argument", p);
+                sfree(kitty_cli_exportdir);
+                kitty_cli_exportdir =
+                    dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
+            } else if (!strcmp(p, "-importdir")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires a directory argument", p);
+                sfree(kitty_cli_importdir);
+                kitty_cli_importdir =
+                    dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
             } else if (!strcmp(p, "-loginscript")) {
                 if (!arglist->args[arglistpos])
                     cmdline_error("option \"%s\" requires an argument", p);
@@ -336,6 +370,31 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
     cmdline_run_saved(conf);
     NETDBG_TS("cmdline: after cmdline_run_saved");
 
+#ifdef MOD_PERSO
+    /* Whole-store export/import (do-and-exit). Runs here, after the storage
+     * backend is initialised, so it targets the active store (registry or
+     * portable). A protected password uses the master password: interactive
+     * prompt, or -masterpwfile for headless/scripted new-PC setup. */
+    if (kitty_cli_exportdir) {
+        int fail = 0, n = kitty_export_all_to_dir(kitty_cli_exportdir, &fail);
+        char msg[600];
+        snprintf(msg, sizeof(msg), "Exported %d session(s), %d failed, to:\n%s",
+                 n, fail, kitty_cli_exportdir);
+        MessageBoxA(NULL, msg, "KiTTY session export",
+                    MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+        cleanup_exit(fail ? 1 : 0);
+    }
+    if (kitty_cli_importdir) {
+        int fail = 0, n = kitty_import_dir(kitty_cli_importdir, &fail);
+        char msg[600];
+        snprintf(msg, sizeof(msg), "Imported %d session(s), %d failed, from:\n%s",
+                 n, fail, kitty_cli_importdir);
+        MessageBoxA(NULL, msg, "KiTTY session import",
+                    MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+        cleanup_exit(fail ? 1 : 0);
+    }
+#endif
+
     if (demo_config_box) {
         sesslist_demo_mode = true;
         load_open_settings(NULL, conf);
@@ -354,6 +413,14 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
          */
         if (!(special_launchable_argument || cmdline_host_ok(conf))) {
 #ifdef MOD_PERSO
+            /* KiTTY: prompt once, up front, to unlock the portable master
+             * password (launcher-mpw-sharing "unlock at startup") BEFORE the
+             * last-session pre-fill below, so the pre-fill decrypts the stored
+             * password into conf - an unlocked store bypasses the defer, so the
+             * pre-filled session can be Opened directly without retyping it.
+             * No-op in registry mode / already unlocked (e.g. a key inherited
+             * from a parent KiTTY) / when no master password is set. */
+            { extern int kitty_mpw_startup_unlock(void); kitty_mpw_startup_unlock(); }
             /* KiTTY: auto-load the last-used session into the config box so it
              * opens pre-filled (and the saved-session list auto-selects it).
              * Only if it still exists. */
@@ -367,14 +434,31 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                     for (i = 0; i < sl.nsessions; i++)
                         if (!strcmp(sl.sessions[i], lastsess)) { found = 1; break; }
                     get_sesslist(&sl, false);
-                    if (found)
+                    if (found) {
+                        /* Defer any master-password prompt: the startup pre-fill
+                         * must not force an unlock before the config box even
+                         * appears. A protected password loads locked (empty);
+                         * an explicit Load / "show password" / connect prompts
+                         * at the real point of use. */
+                        extern void kitty_set_defer_mpw_prompt(int);
+                        kitty_set_defer_mpw_prompt(1);
                         load_settings(lastsess, conf);
+                        kitty_set_defer_mpw_prompt(0);
+                    }
                 }
             }
 #endif
             NETDBG_TS("cmdline: before do_config (config box)");
             if (!do_config(conf))
                 cleanup_exit(0);
+#ifdef MOD_PERSO
+            /* KiTTY: back up the config store when the startup config box is
+             * committed (Open) - portable: a dated Backups\ folder; registry:
+             * kitty084.sav. Previously only a mid-session "Change Settings" apply
+             * did this, so a portable user who never reconfigures mid-session
+             * got no backup. Self-skips when disabled / no sav target. */
+            { extern void SaveRegistryKey(void); SaveRegistryKey(); }
+#endif
             NETDBG_TS("cmdline: after do_config (user closed config box)");
         }
     }

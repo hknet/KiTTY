@@ -533,15 +533,16 @@ void save_open_settings_forced(char *filename, Conf *conf) {
 
 #ifndef MOD_NOPASSWORD
     {
-        /* SECURITY: cryptpassword encrypts+base64s in place, expanding the
-         * input ~4/3 plus IV/padding. Cap the input at 4096 but give pst room
-         * for the expanded result so a long password can't overflow it. */
-        char pst[8192];
-        snprintf(pst, 4096, "%s", conf_get_str(conf, CONF_password));
-        MASKPASS(GetCryptSaltFlag(), pst);
-        cryptpassword(GetCryptSaltFlag(), pst, conf_get_str(conf, CONF_host), conf_get_str(conf, CONF_termtype));
-        write_setting_s_forced(sesskey, "Password", pst);
-        memset(pst, 0, strlen(pst));
+        /* Backend-scoped protection (TASK_dpapi_mpw_backend_policy §2b): a
+         * .ktx export is a portable file, so the password gets the same
+         * envelope as portable session files — MPW1 master-password (the
+         * first wrap may prompt to create/unlock), DPAPI1 fallback, plain
+         * only in explicit legacy mode. The old MASKPASS+bcrypt form is
+         * read-compatibility only and is never written anymore. */
+        extern char *kitty_secret_wrap_portable(const char *);
+        char *blob = kitty_secret_wrap_portable(conf_get_str(conf, CONF_password));
+        write_setting_s_forced(sesskey, "Password", blob ? blob : "");
+        if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
     }
 #endif
     write_setting_i_forced(sesskey, "CtrlTabSwitch", conf_get_int(conf, CONF_ctrl_tab_switch));

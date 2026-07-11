@@ -47,9 +47,23 @@ void kitty_mpw_derive(const char *passphrase,
     strbuf_free(sb);
 }
 
+/* random_read() asserts random_active > 0. The GUI only references the global
+ * PRNG when a connection starts, but MPW salt/IV generation happens earlier, at
+ * config-box Save time (creating a master password), so the PRNG may be idle
+ * and random_read would assert (sshrand.c:135). Reference it around the read:
+ * random_ref() lazily creates+seeds it (noise + seed file) on first use, and
+ * the matching unref restores the prior state (saving a fresh seed if we were
+ * the only holder). Safe whether or not a connection already holds a ref. */
+static void mpw_random_read(void *buf, size_t len)
+{
+    random_ref();
+    random_read(buf, len);
+    random_unref();
+}
+
 void kitty_mpw_random_salt(unsigned char *salt, int len)
 {
-    random_read(salt, len);
+    mpw_random_read(salt, len);
 }
 
 char *kitty_mpw_protect(const char *plaintext,
@@ -62,7 +76,7 @@ char *kitty_mpw_protect(const char *plaintext,
     int blen = MPW_IV_LEN + ctlen + MPW_MAC_LEN;
     unsigned char *buf = snewn(blen, unsigned char);
 
-    random_read(buf, MPW_IV_LEN);                  /* fresh IV */
+    mpw_random_read(buf, MPW_IV_LEN);              /* fresh IV */
     unsigned char *ct = buf + MPW_IV_LEN;
     memcpy(ct, plaintext, ptlen);
     memset(ct + ptlen, pad, pad);                  /* PKCS#7 pad bytes */

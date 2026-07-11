@@ -801,6 +801,20 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 #ifndef MOD_NOPASSWORD
     gpps_forced(sesskey, "Password", "", conf, CONF_password ) ;
     if( strlen(conf_get_str(conf, CONF_password))>0 ) {
+	extern int kitty_secret_is_marked(const char *) ;
+	extern int kitty_secret_unwrap(const char *, char **) ;
+	if( kitty_secret_is_marked(conf_get_str(conf, CONF_password)) ) {
+		/* New-format protected value (DPAPI1:/MPW1: marker dispatch; an
+		 * MPW1 value prompts to unlock). Undecryptable here -> empty
+		 * runtime password; the .ktx itself is not rewritten on load,
+		 * so nothing is lost. */
+		char *pt = NULL ;
+		kitty_secret_unwrap( conf_get_str(conf, CONF_password), &pt ) ;
+		conf_set_str( conf, CONF_password, pt ? pt : "" ) ;
+		if( pt ) { memset(pt,0,strlen(pt)) ; free(pt) ; }
+	} else {
+	/* Legacy (<=0.84.1.48) .ktx form: bcrypt+conditional MASKPASS. Kept
+	 * read-compatible forever; never written anymore. */
 	char pst[4096] ;
 	if( strlen(conf_get_str(conf, CONF_password))<=4095 ) { strcpy( pst, conf_get_str(conf, CONF_password) ) ; }
 	else { memcpy( pst, conf_get_str( conf, CONF_password ), 4095 ) ; pst[4095] = '\0' ; }
@@ -810,6 +824,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	MASKPASS(GetCryptSaltFlag(),pst);
 	conf_set_str( conf, CONF_password, pst ) ;
 	memset(pst,0,strlen(pst));
+	}
     }
 #else
 	conf_set_str( conf, CONF_password, "" ) ;

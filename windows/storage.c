@@ -93,6 +93,34 @@ static int kitty_primary_session_count(void)
     return n;
 }
 
+/* True if the old 9bis-KiTTY or stock-PuTTY hive holds at least one real session
+ * (excluding "Default Settings"). Lets the config box hide the "show old
+ * putty/kitty sessions" option entirely when there is nothing to reveal. */
+int kitty_has_foreign_sessions(void)
+{
+    static const char *hives[2] = { OLD_KITTY_HIVE_SESSIONS, PUTTY_HIVE_SESSIONS };
+    for (int h = 0; h < 2; h++) {
+        HKEY key = open_regkey_ro(HKEY_CURRENT_USER, hives[h]);
+        if (!key)
+            continue;
+        char *name;
+        int idx = 0, found = 0;
+        while (!found && (name = enum_regkey(key, idx)) != NULL) {
+            idx++;
+            strbuf *sb = strbuf_new();
+            unescape_registry_key(name, sb);
+            if (strcmp(sb->s, KITTY_DEFAULT_SESSION) != 0)
+                found = 1;
+            strbuf_free(sb);
+            sfree(name);
+        }
+        close_regkey(key);
+        if (found)
+            return 1;
+    }
+    return 0;
+}
+
 int kitty_get_show_foreign_sessions(void)
 {
     if (kitty_show_foreign < 0) {
@@ -361,6 +389,8 @@ void kitty_set_session_dir(const char *dir)
     }
 }
 static int store_is_file(void) { return g_store_mode != 0 && g_sess_dir[0] != '\0'; }
+/* Public query for UI surfaces (e.g. the config-box "(portable)" title tag). */
+int kitty_storage_is_portable(void) { return store_is_file(); }
 
 static const char ksf_hex[] = "0123456789ABCDEF";
 static int ksf_special(unsigned char c)
@@ -440,11 +470,35 @@ static char *ksf_session_path(const char *sessionname)   /* snewn'd or NULL */
     sfree(m);
     return p;
 }
+/* A cyd01-syntax file was written by old (<=0.76) KiTTY, whose portable saves
+ * stored "Password" bcrypt-encrypted, same scheme as its old registry hive
+ * (old KiTTY never encrypted ProxyPassword). Decode it as part of the format
+ * conversion, so everything downstream — reads, the migration-consent gate,
+ * the next save — sees the plaintext-unmarked semantics of our own format. If
+ * it does not decode, the stored bytes stay untouched (never-lose); crucially,
+ * decoding must happen HERE because once the file is rewritten in our syntax
+ * the "this value is legacy-encrypted" context is gone for good. */
+static char *ksec_legacy_decrypt_hostterm(const char *stored, const char *host,
+                                          const char *term);
+static void ksf_convert_legacy_password(struct ksf_item **head)
+{
+    const char *pw = ksf_list_get(*head, "Password");
+    if (!pw || !pw[0]) return;
+    char *pt = ksec_legacy_decrypt_hostterm(pw,
+        ksf_list_get(*head, "HostName"), ksf_list_get(*head, "TerminalType"));
+    if (pt) {
+        ksf_list_set(head, "Password", pt);
+        memset(pt, 0, strlen(pt));
+        free(pt);
+    }
+}
+
 static struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) */
 {
     FILE *fp = fopen(path, "rb");
     struct ksf_item *head = NULL;
     char line[8192];
+    int cyd01 = 0;
     if (!fp) return NULL;
     while (fgets(line, sizeof(line), fp)) {
         size_t l = strlen(line);
@@ -470,6 +524,7 @@ static struct ksf_item *ksf_load(const char *path)       /* parsed list (may be 
             size_t rl = strlen(raw);
             if (rl && raw[rl - 1] == '\\') raw[rl - 1] = '\0';  /* drop trailing delim */
             val = ksf_unmunge(raw);
+            cyd01 = 1;
         } else {
             continue;   /* no delimiter -> not a setting line */
         }
@@ -477,6 +532,8 @@ static struct ksf_item *ksf_load(const char *path)       /* parsed list (may be 
         if (val) sfree(val);
     }
     fclose(fp);
+    if (cyd01)
+        ksf_convert_legacy_password(&head);
     return head;
 }
 static void ksf_save(const char *path, struct ksf_item *h)
@@ -634,6 +691,7 @@ struct settings_w {
     int is_file;
     char *fpath;
     struct ksf_item *items;
+    int mig_answer;   /* legacy->protected consent for THIS save: -1 unasked */
 };
 
 settings_w *open_settings_w(const char *sessionname, char **errmsg)
@@ -648,6 +706,7 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
         handle->sesskey = NULL;
         handle->is_file = 1;
         handle->items = NULL;
+        handle->mig_answer = -1;
         handle->fpath = ksf_session_path(sessionname);
         if (!handle->fpath) {
             sfree(handle);
@@ -678,6 +737,7 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
     handle->is_file = 0;
     handle->fpath = NULL;
     handle->items = NULL;
+    handle->mig_answer = -1;
     return handle;
 }
 
@@ -689,6 +749,10 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
  * klink/kscp/ksftp), so hooking here protects "Password"/"ProxyPassword"
  * everywhere while leaving the portable .ktx forced-file export on its own
  * legacy format. Runtime conf stays PLAINTEXT; only the stored form changes.
+ * Write protection is BACKEND-scoped (TASK_dpapi_mpw_backend_policy.md):
+ * registry hive -> DPAPI1 always; portable session files -> MPW1 (master
+ * password) or the explicit-compat escape hatch. Reads dispatch on the stored
+ * marker regardless of backend.
  *
  * Self-contained (DPAPI + base64, no bcrypt) so it links into every tool that
  * uses libsettings. The "legacy"/unmarked stored value is returned VERBATIM:
@@ -762,42 +826,18 @@ static unsigned char *ksec_b64_decode(const char *in, int *outlen)
     return out;
 }
 
-/* at-rest scheme: "PasswordScheme" DWORD under the active hive.
- * 0 = DPAPI (default), 1 = legacy plaintext (automation escape hatch),
- * 2 = master-password (MPW1, machine-independent). */
-#define KSEC_SCHEME_DPAPI  0
-#define KSEC_SCHEME_LEGACY 1
-#define KSEC_SCHEME_MPW    2
-static int g_scheme_cache = -1;
-static int ksec_scheme(void)
+/* Portable-context write policy (kitty.ini [KiTTY] PortablePasswordProtection):
+ * "master" (default) -> portable secrets are written MPW1; "legacy" -> unmarked
+ * plaintext, the explicit compatibility escape hatch for automation/audit
+ * setups. Set from kitty.c when the portable (savemode=dir) backend is
+ * activated; registry-backed stores never consult it. This replaces the
+ * retired registry-global "PasswordScheme" DWORD, which is no longer read at
+ * all — a leftover value of any kind is ignored, so it can no longer make the
+ * hive plaintext or master-password (TASK_dpapi_mpw_backend_policy.md). */
+static int g_portable_pw_legacy = 0;
+void kitty_set_portable_password_protection(const char *mode)
 {
-    if (g_scheme_cache < 0) {
-        DWORD v = 0, sz = sizeof(v);
-        if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "PasswordScheme",
-                         RRF_RT_REG_DWORD, NULL, &v, &sz) == ERROR_SUCCESS)
-            g_scheme_cache = (v == 1) ? 1 : (v == 2) ? 2 : 0;
-        else
-            g_scheme_cache = 0;
-    }
-    return g_scheme_cache;
-}
-
-/* Config-dialog accessors (kitty/kitty_config.c). The setter writes the DWORD to
- * the SAME hive root ksec_scheme reads, and invalidates the cache so a save made
- * later in this same process uses the newly-chosen scheme. */
-int kitty_get_password_scheme(void) { return ksec_scheme(); }
-void kitty_set_password_scheme(int scheme)
-{
-    HKEY hk;
-    if (scheme < 0 || scheme > 2) scheme = 0;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        DWORD v = (DWORD)scheme;
-        RegSetValueExA(hk, "PasswordScheme", 0, REG_DWORD,
-                       (const BYTE *)&v, sizeof(v));
-        RegCloseKey(hk);
-    }
-    g_scheme_cache = -1;
+    g_portable_pw_legacy = (mode && !_stricmp(mode, "legacy"));
 }
 
 /* ---- master-password (MPW1) glue ----------------------------------------
@@ -809,6 +849,12 @@ void kitty_set_password_scheme(int scheme)
 #define KSEC_MPW_KEYLEN  64    /* must match KITTY_MPW_DERIVED_LEN */
 #define KSEC_MPW_SALTLEN 16    /* must match KITTY_MPW_SALT_LEN */
 #define KSEC_MPW_MARK    "MPW1:"
+/* MPW2 = the same AES-256-CBC+HMAC envelope with the Argon2id salt embedded:
+ * "MPW2:<b64 salt>.<MPW1 payload>". Self-contained, so a value can be
+ * unlocked on another machine from the master password alone — required for
+ * exported .ktx files, which carry no Security\ salt store. MPW1 (store-salt
+ * only) stays read-compatible; all new writes are MPW2. */
+#define KSEC_MPW2_MARK   "MPW2:"
 #define KSEC_MPW_VERIFY  "KiTTY-MPW-verify"
 static void (*g_mpw_derive)(const char *, const unsigned char *, int, unsigned char *) = NULL;
 static char *(*g_mpw_protect)(const char *, const unsigned char *) = NULL;
@@ -829,6 +875,21 @@ static int   g_mpw_unlocked = 0;
 static int   g_mpw_declined = 0;                 /* user cancelled -> stop prompting */
 static char *g_mpw_passphrase = NULL;            /* from -masterpwfile / API */
 static char *(*g_mpw_prompt)(int creating) = NULL; /* GUI/console prompt */
+/* Defer the interactive master-password prompt: when set, a locked MPW value
+ * reads back empty (blob preserved by never-wipe) instead of popping the unlock
+ * dialog. Used around the startup auto-load of the last session so the config
+ * box opens WITHOUT a premature prompt; an explicit Load / "show password" /
+ * connect clears it and prompts at the real point of use. A supplied
+ * passphrase (-masterpwfile) or an already-unlocked store still works. */
+static int   g_mpw_defer = 0;
+void kitty_set_defer_mpw_prompt(int on) { g_mpw_defer = on; }
+static unsigned char g_mpw_salt[KSEC_MPW_SALTLEN]; /* store salt, cached at unlock */
+static int   g_mpw_salt_valid = 0;
+/* one-slot cache for a FOREIGN salt (imported MPW2 from another store), so a
+ * bulk import derives/prompts once, not per session */
+static unsigned char g_mpw_fkey[KSEC_MPW_KEYLEN];
+static unsigned char g_mpw_fsalt[KSEC_MPW_SALTLEN];
+static int   g_mpw_f_valid = 0;
 
 void kitty_set_master_passphrase(const char *pass)
 {
@@ -839,17 +900,32 @@ void kitty_set_master_passphrase(const char *pass)
 }
 void kitty_set_master_pw_prompt(char *(*fn)(int creating)) { g_mpw_prompt = fn; }
 
-static int mpw_load_salt(unsigned char salt[KSEC_MPW_SALTLEN])
+/* Backend-scoped MPW store state (salt + verifier). The registry hive is only
+ * right for registry-backed stores; in portable mode these MUST live next to
+ * the session files (Security\ subdir at the portable root) so that "copy the
+ * files + know the master password" actually unlocks on another machine, and
+ * portable mode stays registry-free. Portable reads fall back to the registry
+ * read-only, so a dev-era store (salt minted in the hive) keeps unlocking on
+ * the same machine; the next state write lands in the portable store. */
+#define KSEC_MPW_SUBDIR "Security"
+static char *mpw_state_get(const char *name)    /* malloc'd (ksec_dup) or NULL */
 {
-    char b[256]; DWORD sz = sizeof(b);
-    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "MasterPwSalt",
-                     RRF_RT_REG_SZ, NULL, b, &sz) != ERROR_SUCCESS) return 0;
-    int n = 0; unsigned char *d = ksec_b64_decode(b, &n);
-    if (!d || n != KSEC_MPW_SALTLEN) { if (d) free(d); return 0; }
-    memcpy(salt, d, KSEC_MPW_SALTLEN); free(d); return 1;
+    if (store_is_file()) {
+        char *v = portable_read_text_file(KSEC_MPW_SUBDIR, name);   /* snewn'd */
+        if (v) { char *res = ksec_dup(v); sfree(v); return res; }
+        /* fall through: dev-era same-machine migration */
+    }
+    char b[2048]; DWORD sz = sizeof(b);
+    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, name, RRF_RT_REG_SZ, NULL, b, &sz)
+        != ERROR_SUCCESS) return NULL;
+    return ksec_dup(b);
 }
-static void mpw_reg_set_sz(const char *name, const char *val)
+static void mpw_state_set(const char *name, const char *val)
 {
+    if (store_is_file()) {
+        portable_write_text_file(KSEC_MPW_SUBDIR, name, val);
+        return;
+    }
     HKEY hk;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
                         KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
@@ -857,12 +933,14 @@ static void mpw_reg_set_sz(const char *name, const char *val)
         RegCloseKey(hk);
     }
 }
-static char *mpw_reg_get_sz(const char *name)   /* malloc'd or NULL */
+static int mpw_load_salt(unsigned char salt[KSEC_MPW_SALTLEN])
 {
-    char b[2048]; DWORD sz = sizeof(b);
-    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, name, RRF_RT_REG_SZ, NULL, b, &sz)
-        != ERROR_SUCCESS) return NULL;
-    return ksec_dup(b);
+    char *b = mpw_state_get("MasterPwSalt");
+    if (!b) return 0;
+    int n = 0; unsigned char *d = ksec_b64_decode(b, &n);
+    free(b);
+    if (!d || n != KSEC_MPW_SALTLEN) { if (d) free(d); return 0; }
+    memcpy(salt, d, KSEC_MPW_SALTLEN); free(d); return 1;
 }
 
 /* Derive (and cache) the master key. creating=1 (a save) may generate the salt +
@@ -871,22 +949,46 @@ static int mpw_ensure_unlocked(int creating)
 {
     if (g_mpw_unlocked) return 1;
     if (g_mpw_declined)  return 0;               /* user cancelled earlier this run */
+    /* Deferred (startup auto-load): don't prompt now unless a passphrase was
+     * supplied non-interactively. Leaves the value locked; the next explicit
+     * load/show/connect runs with defer cleared and prompts then. */
+    if (g_mpw_defer && !g_mpw_passphrase) return 0;
     if (!g_mpw_derive || !g_mpw_protect || !g_mpw_unprotect || !g_mpw_randsalt)
         return 0;                                /* MPW crypto not linked in this tool */
 
     unsigned char salt[KSEC_MPW_SALTLEN];
     int have_salt = mpw_load_salt(salt);
-    char *ver = mpw_reg_get_sz("MasterPwVerifier");   /* malloc'd (ksec_dup) or NULL */
+    char *ver = mpw_state_get("MasterPwVerifier");    /* malloc'd (ksec_dup) or NULL */
     int first_time = (!have_salt || !ver);
 
     /* A load (creating==0) needs an existing store; nothing to unlock otherwise. */
     if (!creating && first_time) { if (ver) free(ver); return 0; }
 
-    if (!have_salt) {                            /* first-time setup: mint a salt */
-        g_mpw_randsalt(salt, KSEC_MPW_SALTLEN);
-        char *sb = ksec_b64_encode(salt, KSEC_MPW_SALTLEN);
-        if (sb) { mpw_reg_set_sz("MasterPwSalt", sb); free(sb); }
+    /* Ask at most ONCE per process: if a preceding decrypt already derived the
+     * key for THIS store's salt (foreign-salt cache), and it validates against
+     * the stored verifier, promote it to the unlocked key instead of prompting
+     * again. This is what makes open-proxy -> save -> connect (all MPW2 in the
+     * same store) prompt only on the first step. Salt-matched + verifier-checked,
+     * so a genuinely foreign (imported, different-password) key can't slip in. */
+    if (ver && have_salt && g_mpw_f_valid &&
+        !memcmp(g_mpw_fsalt, salt, KSEC_MPW_SALTLEN)) {
+        char *vpt = NULL; int rv = g_mpw_unprotect(ver, g_mpw_fkey, &vpt);
+        int good = (rv == 1 && vpt && !strcmp(vpt, KSEC_MPW_VERIFY));
+        if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); }
+        if (good) {
+            memcpy(g_mpw_key, g_mpw_fkey, sizeof(g_mpw_key));
+            memcpy(g_mpw_salt, salt, KSEC_MPW_SALTLEN);
+            g_mpw_salt_valid = 1; g_mpw_unlocked = 1;
+            free(ver); return 1;
+        }
     }
+
+    if (!have_salt)                              /* first-time setup: mint a salt */
+        g_mpw_randsalt(salt, KSEC_MPW_SALTLEN);
+    /* NOTE: the minted salt is NOT persisted here. It is written together
+     * with the verifier below, only once the user has actually set a master
+     * password — cancelling the setup prompt must leave no state behind
+     * (no Security\ dir in a portable tree the user said no to). */
 
     /* A non-interactive passphrase (-masterpwfile/API) gets a single try; an
      * interactive prompt gets a few, re-prompting on a wrong master password. */
@@ -910,49 +1012,276 @@ static int mpw_ensure_unlocked(int creating)
             ok = (rv == 1 && vpt && !strcmp(vpt, KSEC_MPW_VERIFY));
             if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); } /* snew'd by kitty_mpw */
             if (!ok) SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key)); /* wrong: re-prompt */
-        } else {                                 /* first time: write the token */
+        } else {                                 /* first time: persist salt + verifier */
+            if (!have_salt) {
+                char *sb = ksec_b64_encode(salt, KSEC_MPW_SALTLEN);
+                if (sb) { mpw_state_set("MasterPwSalt", sb); free(sb); }
+                have_salt = 1;
+            }
             char *vb = g_mpw_protect(KSEC_MPW_VERIFY, g_mpw_key); /* snew'd by kitty_mpw */
-            if (vb) { mpw_reg_set_sz("MasterPwVerifier", vb); sfree(vb); }
+            if (vb) { mpw_state_set("MasterPwVerifier", vb); sfree(vb); }
             ok = 1;
         }
     }
 
     if (ver) free(ver);
-    if (ok) { g_mpw_unlocked = 1; return 1; }
+    if (ok) {
+        memcpy(g_mpw_salt, salt, KSEC_MPW_SALTLEN);
+        g_mpw_salt_valid = 1;
+        g_mpw_unlocked = 1;
+        return 1;
+    }
     SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key));
     return 0;
 }
 
-/* plaintext -> stored form (malloc'd). Empty -> "". DPAPI by default; legacy
- * scheme (or DPAPI failure) -> plaintext verbatim (registry legacy == plaintext). */
-static char *ksec_protect(const char *plaintext)
+/* Unprotect an "MPW1:..." payload whose Argon2id salt is KNOWN (embedded in an
+ * MPW2 value). The derived key is salt-specific, so this works for values from
+ * ANY store — the unlocked store key and one foreign key are cached; otherwise
+ * the passphrase (from -masterpwfile/API, else a bounded prompt) is derived
+ * against the given salt and validated by the envelope's own HMAC.
+ * Returns 1 + snew'd plaintext in *outp, else 0. */
+static int mpw_unprotect_with_salt(const char *m1blob,
+                                   const unsigned char salt[KSEC_MPW_SALTLEN],
+                                   char **outp)
 {
-    if (!plaintext || !plaintext[0]) return ksec_dup("");
-    int scheme = ksec_scheme();
-    if (scheme == KSEC_SCHEME_MPW && mpw_ensure_unlocked(1)) {
-        char *mb = g_mpw_protect(plaintext, g_mpw_key);   /* "MPW1:..." (snew'd) */
-        if (mb) { char *res = ksec_dup(mb); sfree(mb); return res; }
-        /* else fall through to DPAPI so the secret is never lost */
+    *outp = NULL;
+    if (!g_mpw_derive || !g_mpw_unprotect) return 0;
+    if (g_mpw_unlocked && g_mpw_salt_valid &&
+        !memcmp(salt, g_mpw_salt, KSEC_MPW_SALTLEN)) {
+        if (g_mpw_unprotect(m1blob, g_mpw_key, outp) == 1 && *outp) return 1;
+        if (*outp) { sfree(*outp); *outp = NULL; }
     }
-    if (scheme != KSEC_SCHEME_LEGACY) {   /* DPAPI (default), or MPW-unavailable fallback */
-        DATA_BLOB in, out;
-        in.pbData = (BYTE *)plaintext; in.cbData = (DWORD)strlen(plaintext);
-        out.pbData = NULL; out.cbData = 0;
-        if (CryptProtectData(&in, L"KiTTY stored credential", NULL, NULL, NULL,
-                             CRYPTPROTECT_UI_FORBIDDEN, &out)) {
-            char *b64 = ksec_b64_encode(out.pbData, (int)out.cbData);
-            if (out.pbData) LocalFree(out.pbData);
-            if (b64) {
-                size_t n = sizeof(KITTY_SECRET_DPAPI_MARK) + strlen(b64);
-                char *res = malloc(n);
-                if (res) { strcpy(res, KITTY_SECRET_DPAPI_MARK); strcat(res, b64); }
-                free(b64);
-                if (res) return res;
+    if (g_mpw_f_valid && !memcmp(salt, g_mpw_fsalt, KSEC_MPW_SALTLEN)) {
+        if (g_mpw_unprotect(m1blob, g_mpw_fkey, outp) == 1 && *outp) return 1;
+        if (*outp) { sfree(*outp); *outp = NULL; }
+    }
+    int from_supplied = (g_mpw_passphrase != NULL);
+    int tries = from_supplied ? 1 : 3;
+    /* Deferred startup load or no interactive prompt available -> stay locked
+     * (the cached-key fast paths above already ran). */
+    if (!from_supplied && (g_mpw_declined || !g_mpw_prompt || g_mpw_defer)) return 0;
+    while (tries-- > 0) {
+        char *pass = from_supplied ? ksec_dup(g_mpw_passphrase)
+                                   : g_mpw_prompt(0);
+        if (!pass || !pass[0]) {
+            if (pass) { memset(pass, 0, strlen(pass)); free(pass); }
+            if (!from_supplied) g_mpw_declined = 1;
+            return 0;
+        }
+        unsigned char key[KSEC_MPW_KEYLEN];
+        g_mpw_derive(pass, salt, KSEC_MPW_SALTLEN, key);
+        memset(pass, 0, strlen(pass)); free(pass);
+        if (g_mpw_unprotect(m1blob, key, outp) == 1 && *outp) {
+            memcpy(g_mpw_fkey, key, KSEC_MPW_KEYLEN);
+            memcpy(g_mpw_fsalt, salt, KSEC_MPW_SALTLEN);
+            g_mpw_f_valid = 1;
+            SecureZeroMemory(key, sizeof(key));
+            return 1;
+        }
+        if (*outp) { sfree(*outp); *outp = NULL; }
+        SecureZeroMemory(key, sizeof(key));
+    }
+    return 0;
+}
+
+/* DPAPI1 wrap: malloc'd "DPAPI1:<b64>" or NULL on failure. */
+static char *ksec_dpapi_protect(const char *plaintext)
+{
+    DATA_BLOB in, out;
+    in.pbData = (BYTE *)plaintext; in.cbData = (DWORD)strlen(plaintext);
+    out.pbData = NULL; out.cbData = 0;
+    if (CryptProtectData(&in, L"KiTTY stored credential", NULL, NULL, NULL,
+                         CRYPTPROTECT_UI_FORBIDDEN, &out)) {
+        char *b64 = ksec_b64_encode(out.pbData, (int)out.cbData);
+        if (out.pbData) LocalFree(out.pbData);
+        if (b64) {
+            size_t n = sizeof(KITTY_SECRET_DPAPI_MARK) + strlen(b64);
+            char *res = malloc(n);
+            if (res) { strcpy(res, KITTY_SECRET_DPAPI_MARK); strcat(res, b64); }
+            free(b64);
+            if (res) return res;
+        }
+    }
+    return NULL;
+}
+
+/* ---- Cross-process master-password sharing (launcher-mpw-sharing) ----------
+ * Hand the unlocked master key to a spawned child KiTTY through an INHERITABLE
+ * file mapping - child-only, mirroring the existing Duplicate-Session conf
+ * hand-off - with the key wrapped by CryptProtectMemory(SAME_LOGON) so the
+ * shared section never holds it in the clear and only this logon can unwrap it.
+ * Fail-safe throughout: any failure just leaves the child to prompt as before. */
+#ifndef CRYPTPROTECTMEMORY_BLOCK_SIZE
+#define CRYPTPROTECTMEMORY_BLOCK_SIZE 16
+#endif
+#ifndef CRYPTPROTECTMEMORY_SAME_LOGON
+#define CRYPTPROTECTMEMORY_SAME_LOGON 0x02
+#endif
+#define KMPW_INHERIT_MAGIC 0x57504D4Bu   /* 'KMPW' */
+
+struct kmpw_inherit_blob {
+    unsigned magic ;
+    unsigned version ;
+    unsigned wrapped ;                       /* 1 = key is CryptProtectMemory'd */
+    unsigned char salt[KSEC_MPW_SALTLEN] ;
+    unsigned char key[KSEC_MPW_KEYLEN] ;     /* KEYLEN is a multiple of the 16-byte block */
+} ;
+
+static int kmpw_mem(const char *fn, void *p, DWORD n) {
+    HMODULE c = GetModuleHandleA("crypt32.dll") ; if(!c) c = LoadLibraryA("crypt32.dll") ;
+    if(!c) return 0 ;
+    BOOL (WINAPI *pf)(LPVOID,DWORD,DWORD) = (BOOL(WINAPI*)(LPVOID,DWORD,DWORD))GetProcAddress(c,fn) ;
+    return pf ? (pf(p,n,CRYPTPROTECTMEMORY_SAME_LOGON) ? 1 : 0) : 0 ;
+}
+
+/* Core: map the inherited mapping `fm` (sz bytes), validate + unlock, close it.
+ * Verifies the key against this store's verifier when the store is readable;
+ * otherwise trusts the inherited-handle authenticity (only our parent could have
+ * created it, and CryptUnprotectMemory only unwraps in this logon). */
+static void kmpw_consume(HANDLE fm, unsigned sz) {
+    if (!fm || sz != sizeof(struct kmpw_inherit_blob)) { if(fm) CloseHandle(fm) ; return ; }
+    struct kmpw_inherit_blob *b = (struct kmpw_inherit_blob*)MapViewOfFile(fm, FILE_MAP_READ, 0, 0, sz) ;
+    if (b) {
+        struct kmpw_inherit_blob loc ; memcpy(&loc, b, sizeof(loc)) ; UnmapViewOfFile(b) ;
+        int ok = (loc.magic==KMPW_INHERIT_MAGIC && loc.version==1) ;
+        if (ok && loc.wrapped) ok = kmpw_mem("CryptUnprotectMemory", loc.key, KSEC_MPW_KEYLEN) ;
+        if (ok) {
+            unsigned char salt[KSEC_MPW_SALTLEN] ;
+            char *ver = mpw_state_get("MasterPwVerifier") ;
+            int trust = 1 ;
+            if (mpw_load_salt(salt) && ver && g_mpw_unprotect) {   /* store readable -> verify */
+                trust = 0 ;
+                if (!memcmp(salt, loc.salt, KSEC_MPW_SALTLEN)) {
+                    char *vpt=NULL ;
+                    if (g_mpw_unprotect(ver, loc.key, &vpt)==1 && vpt && !strcmp(vpt,KSEC_MPW_VERIFY)) trust = 1 ;
+                    if (vpt) { memset(vpt,0,strlen(vpt)) ; sfree(vpt) ; }
+                }
+            }
+            if (ver) free(ver) ;
+            if (trust) {
+                memcpy(g_mpw_key, loc.key, KSEC_MPW_KEYLEN) ;
+                memcpy(g_mpw_salt, loc.salt, KSEC_MPW_SALTLEN) ;
+                g_mpw_salt_valid = 1 ; g_mpw_unlocked = 1 ;
             }
         }
-        /* fall through: never lose the secret if DPAPI is unavailable */
+        SecureZeroMemory(&loc, sizeof(loc)) ;
     }
-    return ksec_dup(plaintext);
+    CloseHandle(fm) ;
+}
+
+/* Parent: if the portable master password is unlocked, publish the key into a
+ * fresh inheritable mapping and write "<prefix><hex>:<size>" into tok for the
+ * child command line (prefix e.g. "&K" for the @/& dispatch, " -mpwkey " for the
+ * argument parser). Returns the mapping HANDLE (close it AFTER CreateProcess), or
+ * NULL (and tok emptied) when there is nothing to share. */
+HANDLE kitty_mpw_export_inherit_blob(const char *prefix, char *tok, size_t toklen) {
+    if (tok && toklen) tok[0] = '\0' ;
+    if (!store_is_file() || !g_mpw_unlocked || !g_mpw_salt_valid) return NULL ;
+    struct kmpw_inherit_blob blob ; memset(&blob, 0, sizeof(blob)) ;
+    blob.magic = KMPW_INHERIT_MAGIC ; blob.version = 1 ;
+    memcpy(blob.salt, g_mpw_salt, KSEC_MPW_SALTLEN) ;
+    memcpy(blob.key, g_mpw_key, KSEC_MPW_KEYLEN) ;
+    blob.wrapped = kmpw_mem("CryptProtectMemory", blob.key, KSEC_MPW_KEYLEN) ;
+    SECURITY_ATTRIBUTES sa ; memset(&sa,0,sizeof(sa)) ; sa.nLength=sizeof(sa) ; sa.bInheritHandle=TRUE ;
+    HANDLE fm = CreateFileMappingA(INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE, 0, sizeof(blob), NULL) ;
+    if (!fm || fm==INVALID_HANDLE_VALUE) { SecureZeroMemory(&blob,sizeof(blob)) ; return NULL ; }
+    void *p = MapViewOfFile(fm, FILE_MAP_WRITE, 0, 0, sizeof(blob)) ;
+    if (!p) { CloseHandle(fm) ; SecureZeroMemory(&blob,sizeof(blob)) ; return NULL ; }
+    memcpy(p, &blob, sizeof(blob)) ; UnmapViewOfFile(p) ;
+    SecureZeroMemory(&blob, sizeof(blob)) ;
+    if (tok && toklen) snprintf(tok, toklen, "%s%p:%u", prefix?prefix:"", fm, (unsigned)sizeof(blob)) ;
+    return fm ;
+}
+
+/* Child (@/& dispatch): consume a leading "&K<hex>:<size>" token from `p` and
+ * return `p` advanced past it (or unchanged if no token). */
+char *kitty_mpw_import_inherit_blob(char *p) {
+    while (*p && isspace((unsigned char)*p)) p++ ;
+    if (!(p[0]=='&' && p[1]=='K')) return p ;
+    HANDLE fm=NULL ; unsigned sz=0 ; int n=0 ;
+    if (sscanf(p+2, "%p:%u%n", &fm, &sz, &n) < 2 || n<=0) return p ;
+    kmpw_consume(fm, sz) ;
+    return p + 2 + n ;
+}
+
+/* Child (argument parser, launcher -load path): consume a "<hex>:<size>" string
+ * from the -mpwkey option value. */
+void kitty_mpw_consume_handle_str(const char *s) {
+    HANDLE fm=NULL ; unsigned sz=0 ;
+    if (s && sscanf(s, "%p:%u", &fm, &sz) == 2) kmpw_consume(fm, sz) ;
+}
+
+/* Root process: prompt once at startup to unlock the portable master password so
+ * the whole run - and every child it spawns - is silent afterwards. No-op in
+ * registry mode, when already unlocked, or when no master password is set. */
+int kitty_mpw_startup_unlock(void) {
+    if (g_mpw_unlocked) return 1 ;
+    if (!store_is_file()) return 0 ;
+    char *ver = mpw_state_get("MasterPwVerifier") ;
+    if (!ver) return 0 ;
+    free(ver) ;
+    return mpw_ensure_unlocked(0) ;
+}
+
+/* plaintext -> stored form (malloc'd), backend-scoped policy
+ * (TASK_dpapi_mpw_backend_policy.md): the protection is chosen by WHERE the
+ * value is stored, not by a global user scheme.
+ *
+ * Registry backend: always DPAPI1. A leftover PasswordScheme=1/2 DWORD must
+ * not make the hive plaintext or master-password, and a master-password
+ * prompt must never appear for a registry save (this helper never calls
+ * mpw_ensure_unlocked). DPAPI failure -> plaintext verbatim, kept only as the
+ * exceptional never-lose fallback. */
+static char *ksec_protect_registry(const char *plaintext)
+{
+    if (!plaintext || !plaintext[0]) return ksec_dup("");
+    char *res = ksec_dpapi_protect(plaintext);
+    return res ? res : ksec_dup(plaintext);
+}
+
+/* Portable-file backend: MPW1 when the master password is set/unlockable (the
+ * first non-empty secret save may prompt to create it; a cancel stops further
+ * prompts this run). kitty.ini PortablePasswordProtection=legacy selects the
+ * explicit-compat plaintext escape hatch instead. MPW declined/unavailable ->
+ * DPAPI1, so the secret never lands plaintext unintentionally: still readable
+ * on this machine, and rewritten as MPW1 on a later protected save (read
+ * policy). */
+static char *ksec_protect_portable(const char *plaintext)
+{
+    if (!plaintext || !plaintext[0]) return ksec_dup("");
+    if (g_portable_pw_legacy)
+        return ksec_dup(plaintext);
+    if (mpw_ensure_unlocked(1)) {
+        char *mb = g_mpw_protect(plaintext, g_mpw_key);   /* "MPW1:..." (snew'd) */
+        if (mb) {
+            /* Wrap as self-contained MPW2 (salt embedded) so the value stays
+             * unlockable away from this store's Security\/registry salt. */
+            char *res = NULL;
+            char *sb = g_mpw_salt_valid
+                ? ksec_b64_encode(g_mpw_salt, KSEC_MPW_SALTLEN) : NULL;
+            if (sb) {
+                const char *payload = mb + strlen(KSEC_MPW_MARK);
+                size_t n = strlen(KSEC_MPW2_MARK) + strlen(sb) + 1 +
+                           strlen(payload) + 1;
+                res = malloc(n);
+                if (res)
+                    snprintf(res, n, "%s%s.%s", KSEC_MPW2_MARK, sb, payload);
+                free(sb);
+            }
+            sfree(mb);
+            if (res) return res;
+            /* MPW2 build failed (salt b64 OOM) -> do NOT persist bare MPW1: it
+             * is the least portable form and would make MPW1 a live write format
+             * again. Fall through to DPAPI below instead -- still encrypted at
+             * rest, needs no store salt, and a later protected save re-wraps as
+             * MPW2 (read policy). */
+            kitty_pwdebug("MPW2 wrap failed (salt b64 OOM) -> DPAPI fallback");
+        }
+        /* else fall through to DPAPI so the secret is never lost */
+    }
+    char *res = ksec_dpapi_protect(plaintext);
+    return res ? res : ksec_dup(plaintext);
 }
 
 /* stored -> plaintext in *out (malloc'd). 1=ok, 0=absent, -1=undecryptable DPAPI blob. */
@@ -961,6 +1290,41 @@ static int ksec_unprotect(const char *stored, char **out)
     size_t marklen = strlen(KITTY_SECRET_DPAPI_MARK);
     *out = NULL;
     if (!stored || !stored[0]) { *out = ksec_dup(""); return 0; }
+    if (!strncmp(stored, KSEC_MPW2_MARK, strlen(KSEC_MPW2_MARK))) {
+        /* Self-contained: split "<b64 salt>.<payload>", derive with the
+         * embedded salt (works for values from ANY store, e.g. imported .ktx). */
+        const char *p = stored + strlen(KSEC_MPW2_MARK);
+        const char *dot = strchr(p, '.');
+        if (dot && dot > p) {
+            char *sb = malloc((size_t)(dot - p) + 1);
+            unsigned char *salt = NULL;
+            int sn = 0;
+            if (sb) {
+                memcpy(sb, p, dot - p); sb[dot - p] = '\0';
+                salt = ksec_b64_decode(sb, &sn);
+                free(sb);
+            }
+            if (salt && sn == KSEC_MPW_SALTLEN) {
+                size_t mn = strlen(KSEC_MPW_MARK) + strlen(dot + 1) + 1;
+                char *m1 = malloc(mn);
+                if (m1) {
+                    snprintf(m1, mn, "%s%s", KSEC_MPW_MARK, dot + 1);
+                    char *pt = NULL;
+                    int rv = mpw_unprotect_with_salt(m1, salt, &pt); /* snew'd */
+                    free(m1);
+                    if (rv == 1 && pt) {
+                        char *res = ksec_dup(pt);
+                        memset(pt, 0, strlen(pt)); sfree(pt);
+                        free(salt);
+                        *out = res; return 1;
+                    }
+                    if (pt) sfree(pt);
+                }
+            }
+            if (salt) free(salt);
+        }
+        *out = ksec_dup(""); return -1;   /* locked/wrong/malformed -> never-wipe */
+    }
     if (!strncmp(stored, KSEC_MPW_MARK, strlen(KSEC_MPW_MARK))) {
         if (mpw_ensure_unlocked(0)) {
             char *pt = NULL; int rv = g_mpw_unprotect(stored, g_mpw_key, &pt); /* snew'd */
@@ -992,6 +1356,51 @@ static int ksec_unprotect(const char *stored, char **out)
     *out = ksec_dup(stored); return 1;     /* unmarked legacy == plaintext */
 }
 
+/* ---- .ktx forced-export glue (kitty_settings_forced.c / kitty_settings_load.c
+ * and the bulk export/import in kitty_bridge.c). The forced serializer is a
+ * SECOND portable-file write path that bypasses the write_setting_s chokepoint,
+ * so it must apply the same backend password policy: wrap = portable policy
+ * (MPW1 / DPAPI1 fallback / explicit-legacy plain), unwrap = stored-marker
+ * dispatch. Session-name <-> filename munging is exposed alongside so bulk
+ * export/import can round-trip arbitrary session names. Wrap/unwrap results
+ * are malloc'd (free()); the munge results are snewn'd (sfree()). */
+static int ksec_stored_is_legacy(const char *stored);
+char *kitty_secret_wrap_portable(const char *plaintext)
+{
+    return ksec_protect_portable(plaintext ? plaintext : "");
+}
+/* Wrap for whatever backend is active now (registry -> DPAPI1, portable ->
+ * MPW/legacy), for stores that live outside the write_setting_s chokepoint
+ * (e.g. named proxies). Malloc'd; free() the result. */
+char *kitty_secret_wrap_current_backend(const char *plaintext)
+{
+    return store_is_file() ? ksec_protect_portable(plaintext ? plaintext : "")
+                           : ksec_protect_registry(plaintext ? plaintext : "");
+}
+/* True when portable at-rest protection is the explicit legacy/plaintext hatch
+ * (kitty.ini PortablePasswordProtection=legacy): callers then keep passwords
+ * plaintext deliberately and must NOT nag about it. */
+int kitty_portable_password_legacy(void)
+{
+    return g_portable_pw_legacy;
+}
+int kitty_secret_is_marked(const char *stored)
+{
+    return stored && !ksec_stored_is_legacy(stored) && stored[0];
+}
+int kitty_secret_unwrap(const char *stored, char **out)
+{
+    return ksec_unprotect(stored, out);
+}
+char *kitty_session_fname_munge(const char *name)
+{
+    return ksf_munge(name ? name : "");
+}
+char *kitty_session_fname_unmunge(const char *name)
+{
+    return ksf_unmunge(name ? name : "");
+}
+
 /* never-wipe guard: keep an undecryptable-here blob so the next save re-persists it. */
 static char *g_ksec_orig[2] = { NULL, NULL };
 static void ksec_after_load(int slot, const char *stored, int rv)
@@ -999,6 +1408,22 @@ static void ksec_after_load(int slot, const char *stored, int rv)
     if (slot < 0 || slot > 1) return;
     if (g_ksec_orig[slot]) { free(g_ksec_orig[slot]); g_ksec_orig[slot] = NULL; }
     if (rv < 0 && stored && stored[0]) g_ksec_orig[slot] = ksec_dup(stored);
+}
+
+/* Legacy->protected migration consent (portable files only; user decision
+ * 2026-07). Before a portable save rewrites a password stored in the old
+ * unprotected (unmarked) form into a protected one, ask once per save via the
+ * GUI-registered warner: 1 = re-encrypt, 0 = keep the stored value verbatim.
+ * CLI tools never register a warner, so batch saves keep the old form. */
+static int (*g_ksec_migrate_warn)(void) = NULL;
+void kitty_set_legacy_migrate_warn(int (*fn)(void)) { g_ksec_migrate_warn = fn; }
+static int ksec_stored_is_legacy(const char *stored)
+{
+    return stored && stored[0] &&
+        strncmp(stored, KITTY_SECRET_DPAPI_MARK,
+                strlen(KITTY_SECRET_DPAPI_MARK)) != 0 &&
+        strncmp(stored, KSEC_MPW_MARK, strlen(KSEC_MPW_MARK)) != 0 &&
+        strncmp(stored, KSEC_MPW2_MARK, strlen(KSEC_MPW2_MARK)) != 0;
 }
 
 /* Backend dispatch: store a string value either in the file-mode item list or
@@ -1025,7 +1450,20 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
         if (keep) {
             ksf_or_reg_put(handle, key, keep);
         } else {
-            char *blob = ksec_protect(value ? value : "");
+            /* Portable saves need consent before converting an old-format
+             * (unmarked) stored password to a protected one; declining keeps
+             * the pre-loaded stored value in handle->items untouched. */
+            if (handle->is_file && value && value[0] && !g_portable_pw_legacy &&
+                ksec_stored_is_legacy(ksf_list_get(handle->items, key))) {
+                if (handle->mig_answer < 0)
+                    handle->mig_answer =
+                        g_ksec_migrate_warn ? g_ksec_migrate_warn() : 0;
+                if (handle->mig_answer == 0)
+                    return;
+            }
+            char *blob = handle->is_file
+                ? ksec_protect_portable(value ? value : "")
+                : ksec_protect_registry(value ? value : "");
             ksf_or_reg_put(handle, key, blob ? blob : "");
             if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
         }
@@ -1116,12 +1554,14 @@ settings_r *open_settings_r(const char *sessionname)
     return handle;
 }
 
-/* ---- legacy (<=0.76 old-KiTTY) password decrypt, applied ONLY to the old 9bis
- * hive (see read_setting_s). Old-KiTTY stored "Password" as
- * bcrypt_base64(MASKPASS(plaintext)) keyed on host+termtype+"KiTTY". We never
- * wrote to that hive, so a value there is always this format; bcrypt is
- * unauthenticated so we must NOT apply this anywhere we might have written
- * cleartext (our own hive, or the PuTTY hive via KiClassName=PuTTY). ---- */
+/* ---- legacy (<=0.76 old-KiTTY) password decrypt. Applied ONLY where a value
+ * is guaranteed to be old-KiTTY-written: the old 9bis hive (read_setting_s)
+ * and cyd01-syntax portable session files (ksf_load format conversion). Old
+ * KiTTY stored "Password" as bcrypt_base64(plaintext) — plus a MASKPASS XOR
+ * layer in some configurations — keyed on host+termtype+"KiTTY" (dopasskey
+ * mode 0) or the fixed key "KiTTY" (mode >0). bcrypt is unauthenticated so we
+ * must NOT apply this anywhere we might have written cleartext (our own hive,
+ * our own ksf files, or the PuTTY hive via KiClassName=PuTTY). ---- */
 #include "../kitty/bcrypt/nbcrypt.h"   /* buncrypt_string_base64, bcrypt_init (relative: storage.c is built standalone in some targets) */
 /* exact bytes of kitty_crypt.c's MASKKEY ("\xc2\xa4..\xc2\xbe", UTF-8, 16 bytes) */
 static const unsigned char ksec_maskkey[16] = {
@@ -1144,7 +1584,6 @@ static void ksec_maskpass(char *s)   /* exact replica of kitty_crypt.c MASKPASS 
     memset(buf, 0, strlen(s));
     free(buf);
 }
-/* returns malloc'd plaintext, or NULL if the value did not decode. */
 /* True only if every byte is printable ASCII (0x20..0x7e). Used to tell a clean
  * plaintext password from MASKPASS XOR output, which leaves high-bit/control
  * bytes. */
@@ -1157,42 +1596,88 @@ static int ksec_all_printable(const char *s)
     }
     return 1;
 }
-static char *ksec_legacy_decrypt(const char *stored, HKEY sesskey)
+/* Weaker sanity check for the last-resort path: no control bytes, but high-bit
+ * (ANSI/UTF-8) bytes allowed — a legacy NON-ASCII password decodes to these. */
+static int ksec_no_ctrl(const char *s)
 {
-    static int inited = 0;
-    char passkey[1100], *host, *term, *out;
+    if (!s || !*s) return 0;
+    for (; *s; s++)
+        if ((unsigned char)*s < 0x20) return 0;
+    return 1;
+}
+/* One buncrypt attempt with one key. cyd01 saved-session passwords are
+ * bcrypt(plaintext): buncrypt ALONE yields the plaintext (verified against
+ * real cyd01 0.76 registry AND portable session files). Only the rarer cyd01
+ * 'cryptsalt' configuration adds the MASKPASS XOR layer, which leaves
+ * high-bit/non-printable bytes. So apply MASKPASS ONLY when it actually turns
+ * the result printable. (The pre-0.84.1.44 code MASKPASSed unconditionally,
+ * corrupting every legacy password it touched.) Returns a malloc'd result
+ * that passed the printable test, or NULL; the raw buncrypt output is handed
+ * to *raw0 (once) so the caller can fall back to it. */
+static char *ksec_try_legacy_key(const char *stored, const char *passkey,
+                                 char **raw0)
+{
+    char *out = malloc(strlen(stored) + 16);
     int r;
-    if (!stored || !stored[0]) return NULL;
-    if (!inited) { bcrypt_init(0); inited = 1; }
-    host = get_reg_sz(sesskey, "HostName");
-    term = get_reg_sz(sesskey, "TerminalType");
-    /* dopasskey() mode 0: host + termtype + "KiTTY" (termtype default "xterm"). */
-    snprintf(passkey, sizeof(passkey), "%s%sKiTTY",
-             host ? host : "", (term && term[0]) ? term : "xterm");
-    sfree(host); sfree(term);
-    out = malloc(strlen(stored) + 16);
     if (!out) return NULL;
-    strcpy(out, stored);
     r = buncrypt_string_base64(stored, out, (unsigned)strlen(stored), passkey);
     if (r <= 0) { free(out); return NULL; }
     out[r] = '\0';            /* buncrypt returns the decoded length */
-    /* cyd01 saved-session passwords are bcrypt(plaintext): buncrypt ALONE yields
-     * the plaintext (verified against real cyd01 0.76 registry AND portable session
-     * files). Only the rarer cyd01 'cryptsalt' configuration adds the MASKPASS XOR
-     * layer, which leaves high-bit/non-printable bytes. So apply MASKPASS ONLY when
-     * it actually turns the result printable; otherwise keep the buncrypt output.
-     * (The previous code MASKPASSed unconditionally, corrupting every legacy
-     * password it touched -> shipped 0.84.1.38 old-hive auto-decrypt was broken.) */
-    if (!ksec_all_printable(out)) {
-        char *u = malloc(strlen(out) + 1);
-        if (u) {
-            strcpy(u, out);
-            ksec_maskpass(u);
-            if (ksec_all_printable(u)) { free(out); return u; }
-            free(u);
+    if (ksec_all_printable(out)) return out;
+    char *u = malloc(strlen(out) + 1);
+    if (u) {
+        strcpy(u, out);
+        ksec_maskpass(u);
+        if (ksec_all_printable(u)) {
+            memset(out, 0, strlen(out)); free(out);
+            return u;
         }
+        free(u);
     }
-    return out;
+    if (raw0 && !*raw0)
+        *raw0 = out;          /* keep for the caller's last-resort fallback */
+    else {
+        memset(out, 0, strlen(out)); free(out);
+    }
+    return NULL;
+}
+/* Backend-neutral decoder core (host/term supplied by the caller: registry
+ * wrapper below, cyd01 file conversion in ksf_load). Key order = most-specific
+ * first; returns malloc'd plaintext or NULL (caller preserves stored bytes). */
+static char *ksec_legacy_decrypt_hostterm(const char *stored, const char *host,
+                                          const char *term)
+{
+    static int inited = 0;
+    char passkey[1100];
+    char *pt, *raw0 = NULL;
+    if (!stored || !stored[0]) return NULL;
+    if (!inited) { bcrypt_init(0); inited = 1; }
+    /* dopasskey() mode 0: host + termtype + "KiTTY" (termtype default "xterm"). */
+    snprintf(passkey, sizeof(passkey), "%s%sKiTTY",
+             host ? host : "", (term && term[0]) ? term : "xterm");
+    pt = ksec_try_legacy_key(stored, passkey, &raw0);
+    /* dopasskey() mode >0 fallback: the fixed key "KiTTY" (alternate old
+     * configurations; TASK_dpapi_passwords.md legacy-import fallback). */
+    if (!pt)
+        pt = ksec_try_legacy_key(stored, "KiTTY", NULL);
+    /* Last resort: a legacy non-ASCII password fails the strict printable
+     * test; accept the host-keyed output if it at least has no control bytes,
+     * else give up so the caller preserves the stored value verbatim. */
+    if (!pt && raw0 && ksec_no_ctrl(raw0)) {
+        pt = raw0;
+        raw0 = NULL;
+    }
+    if (raw0) { memset(raw0, 0, strlen(raw0)); free(raw0); }
+    return pt;
+}
+static char *ksec_legacy_decrypt(const char *stored, HKEY sesskey)
+{
+    char *host = get_reg_sz(sesskey, "HostName");
+    char *term = get_reg_sz(sesskey, "TerminalType");
+    char *pt = ksec_legacy_decrypt_hostterm(stored, host, term);
+    sfree(host);
+    sfree(term);
+    return pt;
 }
 
 /* Normalise the auto-login password to UTF-8 (the SSH password prompt is UTF-8).

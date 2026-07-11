@@ -177,6 +177,7 @@ void kitty_showportfwd(HWND, Conf*);
 void kitty_shortcuts_toggle(HWND);
 /* KiTTY shortcut/ctrl-tab engine (kitty.c / kitty_commun.c) */
 int GetPuttyFlag(void);
+int GetModalErrorsFlag(void);   /* kitty_commun.c: modal vs inline error surfacing */
 void OnDropFiles(HWND hwnd, HDROP hDropInfo);   /* KiTTY drag-drop pscp upload (kitty.c) */
 int GetTransparencyFlag(void);
 int GetShortcutsFlag(void);
@@ -1363,6 +1364,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
             AppendMenu(toolmenu, MF_ENABLED, IDM_PRINT,        "Print clip&board");
             AppendMenu(toolmenu, MF_ENABLED, IDM_CLEARLOGFILE, "Clear log fil&e");
+            /* "Export current settings" exports the RUNNING session, a per-
+             * connection action, so it belongs on the terminal menu. Whole-store
+             * "Export all" / "Import" live in the config box (Session panel),
+             * reachable at launch without a connection. */
             AppendMenu(toolmenu, MF_ENABLED, IDM_EXPORTSETTINGS, "Export &current settings");
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
             AppendMenu(toolmenu, MF_ENABLED, IDM_SHORTCUTSTOGGLE, "Shortcut&s");
@@ -1867,6 +1872,8 @@ static bool kitty_is_benign_channel_close_msg(const char *msg)
  * window) which forced a full repaint on every screen update and flickered on
  * live output.  Rows being drawn anyway just repaint once more (same content,
  * no visible flicker); untouched rows are left alone. */
+#ifdef MOD_PERSO   /* KiTTY-only; both call sites are MOD_PERSO-guarded too, so
+                    * this is inert (and uncompiled) in the stock GUI variants. */
 static void kitty_url_invalidate_dirty_rows(WinGuiSeat *wgs)
 {
     int r;
@@ -1883,6 +1890,7 @@ static void kitty_url_invalidate_dirty_rows(WinGuiSeat *wgs)
         InvalidateRect(wgs->term_hwnd, &rc, FALSE);
     }
 }
+#endif
 
 /*
  * Print a message box and close the connection.
@@ -3282,6 +3290,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             STARTUPINFO si;
             PROCESS_INFORMATION pi;
             HANDLE filemap = NULL;
+            /* KiTTY: share the unlocked master password with the spawned child so
+             * it doesn't re-prompt (launcher-mpw-sharing). mpwtok is prepended to
+             * the child command line; mpwmap is inheritable and closed after the
+             * spawn. Empty/NULL when nothing is unlocked or not in portable mode.
+             * Declared unconditionally so the dupprintf below compiles in the
+             * stock (non-MOD_PERSO) variants too. */
+            HANDLE mpwmap = NULL; char mpwtok[64] = "";
+#ifdef MOD_PERSO
+            { extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
+              mpwmap = kitty_mpw_export_inherit_blob("&K", mpwtok, sizeof(mpwtok)); }
+#endif
 
             if (restricted_acl())
                 argprefix = "&R";
@@ -3319,22 +3338,22 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 
                 strbuf_free(serbuf);
                 inherit_handles = true;
-                cl = dupprintf("putty %s&%p:%u", argprefix,
+                cl = dupprintf("putty %s%s&%p:%u", argprefix, mpwtok,
                                filemap, (unsigned)size);
             } else if (wParam == IDM_SAVEDSESS) {
                 unsigned int sessno = ((lParam - IDM_SAVED_MIN)
                                        / MENU_SAVED_STEP) + 1;
                 if (sessno < (unsigned)sesslist.nsessions) {
                     const char *session = sesslist.sessions[sessno];
-                    cl = dupprintf("putty %s@%s", argprefix, session);
-                    inherit_handles = false;
+                    cl = dupprintf("putty %s%s@%s", argprefix, mpwtok, session);
+                    inherit_handles = (mpwtok[0] != '\0');
                 } else
                     break;
             } else /* IDM_NEWSESS */ {
-                cl = dupprintf("putty%s%s",
-                               *argprefix ? " " : "",
-                               argprefix);
-                inherit_handles = false;
+                cl = dupprintf("putty%s%s%s",
+                               (*argprefix || *mpwtok) ? " " : "",
+                               argprefix, mpwtok);
+                inherit_handles = (mpwtok[0] != '\0');
             }
 
             GetModuleFileName(NULL, b, sizeof(b) - 1);
@@ -3359,6 +3378,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 
             if (filemap)
                 CloseHandle(filemap);
+            if (mpwmap)
+                CloseHandle(mpwmap);
             sfree(cl);
             break;
           }

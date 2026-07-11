@@ -1028,7 +1028,15 @@ void RunConfig( Conf * conf ) {
 	}
 	strbuf_free(serbuf);
 	inherit_handles = true;
-	cl = dupprintf("putty %s&%p:%u", argprefix,
+	/* KiTTY: unlock the portable master password once for this launcher run and
+	 * pass it to the spawned session so it doesn't re-prompt (launcher-mpw-
+	 * sharing). The first launch prompts; later ones reuse the unlock. */
+	HANDLE mpwmap = NULL; char mpwtok[64] = "";
+	{ extern int kitty_mpw_startup_unlock(void);
+	  extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
+	  kitty_mpw_startup_unlock();
+	  mpwmap = kitty_mpw_export_inherit_blob("&K", mpwtok, sizeof(mpwtok)); }
+	cl = dupprintf("putty %s%s&%p:%u", argprefix, mpwtok,
 		filemap, (unsigned)size);
 
 	GetModuleFileName(NULL, b, sizeof(b) - 1);
@@ -1049,31 +1057,77 @@ void RunConfig( Conf * conf ) {
 
 	if (filemap)
 		CloseHandle(filemap);
+	if (mpwmap)
+		CloseHandle(mpwmap);
 	sfree(cl);
 }
 
+static void launcher_run_session_cmd( HWND hwnd, char * cmd, HANDLE inheritmap ) ;
+
 void RunPuTTY( HWND hwnd, char * param ) {
 	char buffer[4096]="",shortname[1024]="" ; ;
-	if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) ) 
+	if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) )
 		if( GetShortPathName( buffer, shortname, 1023 ) ) {
-			if( strlen(param) > 0 ) 
+			if( strlen(param) > 0 ) {
+				/* A prefix-dispatched mode (e.g. "-ed" editor): don't inject
+				 * "-mpwkey" - it would break the "-ed" cmdline detection. */
 				sprintf( buffer, "%s %s", shortname, param ) ;
-			else 
-				strcpy( buffer, shortname ) ;
-			RunCommand( hwnd, buffer ) ;
+				RunCommand( hwnd, buffer ) ;
+			} else {
+				/* New configuration box: share the master-password unlock so the
+				 * config box - and the session it opens - doesn't re-prompt
+				 * (launcher-mpw-sharing). Unlocks once if not already unlocked. */
+				HANDLE mpwmap = NULL ; char mpwtok[80] = "" ;
+				{ extern int kitty_mpw_startup_unlock(void);
+				  extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
+				  kitty_mpw_startup_unlock();
+				  mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
+				snprintf( buffer, sizeof(buffer), "%s%s", shortname, mpwtok ) ;
+				launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
+				if( mpwmap ) CloseHandle( mpwmap ) ;
+			}
 		}
+}
+
+/* Spawn a launcher session command line. When `inheritmap` is non-NULL the child
+ * must inherit it (the shared master-key mapping, launcher-mpw-sharing), so spawn
+ * with handle inheritance; otherwise use the plain RunCommand path. */
+static void launcher_run_session_cmd( HWND hwnd, char * cmd, HANDLE inheritmap ) {
+	if( inheritmap == NULL ) { RunCommand( hwnd, cmd ) ; return ; }
+	STARTUPINFO si ; PROCESS_INFORMATION pi ;
+	ZeroMemory( &si, sizeof(si) ) ; si.cb = sizeof(si) ;
+	ZeroMemory( &pi, sizeof(pi) ) ;
+	if( CreateProcess( NULL, cmd, NULL, NULL, TRUE, NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi ) ) {
+		AllowSetForegroundWindow( pi.dwProcessId ) ;
+		WaitForInputIdle( pi.hProcess, INFINITE ) ;
+		CloseHandle( pi.hProcess ) ; CloseHandle( pi.hThread ) ;
+	} else {
+		RunCommand( hwnd, cmd ) ;   /* fallback: still launch (child will prompt) */
+	}
 }
 
 int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 	char buffer[4096]="", shortname[1024]="" ;
 	char *session=NULL ;
 	int return_code=0 ;
-	
+	HANDLE mpwmap = NULL ; char mpwtok[80] = "" ;
+
 	if( session_in==NULL ) return 0 ;
 	if( strlen(session_in) <= 0 ) return 0 ;
-		
+
 	if( !GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) ) return 0 ;
 	if( !GetShortPathName( buffer, shortname, 1023 ) ) return 0 ;
+
+	/* KiTTY: unlock the portable master password once for this launcher run and
+	 * hand it to the spawned session (inherited handle + "-mpwkey" argument,
+	 * launcher-mpw-sharing) so the session doesn't re-prompt. Only prompts when a
+	 * master password is actually configured; "-mpwkey" is placed before "-load"
+	 * so the stored password decrypts as the session loads. */
+	{ extern int kitty_mpw_startup_unlock(void);
+	  extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
+	  kitty_mpw_startup_unlock();
+	  mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
+	if( mpwtok[0] ) { size_t _sl=strlen(shortname); snprintf( shortname+_sl, sizeof(shortname)-_sl, "%s", mpwtok ) ; }
 
 	session = (char*)malloc(strlen(session_in)+100) ;
 	
@@ -1091,10 +1145,10 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 				if( GetPuttyFlag() )	sprintf( buffer, "%s -putty -load \"%s\"", shortname, session ) ;
 				else sprintf( buffer, "%s -load \"%s\"", shortname, session ) ;
 			}
-			RunCommand( hwnd, buffer ) ;
+			launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
 			return_code = 1 ;
-		} else { 
-			RunCommand( hwnd, session_in ) ; 
+		} else {
+			RunCommand( hwnd, session_in ) ;
 		}
 	} else if( IniFileFlag==SAVEMODE_DIR ) {
 		if( DirectoryBrowseFlag ) {
@@ -1121,10 +1175,11 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 				}
 			}*/
 //MessageBox( hwnd, buffer, "Info", MB_OK ) ;
-		RunCommand( hwnd, buffer ) ;
+		launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
 		return_code = 1 ;
 	}
 
+	if( mpwmap ) CloseHandle( mpwmap ) ;
 	free( session ) ;
 	return return_code ;
 }
