@@ -156,7 +156,10 @@ void SetProtectFlag( const int flag ) { ProtectFlag = flag ; }
 #define DEFAULT_INIT_FILE "kitty.ini"
 #endif
 #ifndef DEFAULT_SAV_FILE
-#define DEFAULT_SAV_FILE "kitty.sav"
+/* KiTTY 0.84: kittynew.sav (timestamped copies: kittynew-YYYYMMDD-HHMMSS.sav),
+ * NOT kitty.sav, so we never overwrite the registry backup of an old (0.76)
+ * KiTTY installed side by side. */
+#define DEFAULT_SAV_FILE "kittynew.sav"
 #endif
 #ifndef DEFAULT_EXE_FILE
 #define DEFAULT_EXE_FILE "kitty.exe"
@@ -269,8 +272,8 @@ static int NoKittyFileFlag = 0 ;
 int GetNoKittyFileFlag(void) { return NoKittyFileFlag ; }
 void SetNoKittyFileFlag( const int flag ) { NoKittyFileFlag = flag ; }
 
-// Hauteur de la boite de configuration
-static int ConfigBoxHeight = 21 ;
+// Hauteur de la boite de configuration (visible saved-session rows; 16 = stock fit)
+static int ConfigBoxHeight = 16 ;
 int GetConfigBoxHeight(void) { return ConfigBoxHeight ; }
 void SetConfigBoxHeight( const int num ) { ConfigBoxHeight = num ; }
 
@@ -1293,7 +1296,7 @@ void CreateDefaultIniFile_old( void ) {
 			writeINI( KittyIniFile, "ConfigBox", "#default", "yes" ) ;
 			writeINI( KittyIniFile, "ConfigBox", "#defaultsettings", "yes" ) ;
 			writeINI( KittyIniFile, "ConfigBox", "filter", "yes" ) ;
-			writeINI( KittyIniFile, "ConfigBox", "height", "21" ) ;
+			writeINI( KittyIniFile, "ConfigBox", "height", "16" ) ;
 			writeINI( KittyIniFile, "ConfigBox", "#noexit", "no" ) ;
 			writeINI( KittyIniFile, "ConfigBox", "#windowheight", "600" ) ;
 
@@ -1325,8 +1328,11 @@ void CreateDefaultIniFile_old( void ) {
 #ifdef MOD_PORTABLE
 			writeINI( KittyIniFile, INIT_SECTION, "savemode", "dir" ) ;
 #else
+			/* Write a COMMENTED sav= (not active), so the built-in default
+			 * (kittynew.sav) always applies and a later default change is not
+			 * locked out by a stale value in the ini. Uncomment to force a path. */
 			sprintf( buffer, "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_SAV_FILE );
-			writeINI( KittyIniFile, INIT_SECTION, "sav", buffer ) ;
+			writeINI( KittyIniFile, INIT_SECTION, "#sav", buffer ) ;
 			writeINI( KittyIniFile, INIT_SECTION, "savemode", "registry" ) ;
 #endif
 			writeINI( KittyIniFile, INIT_SECTION, "#scriptfilefilter", "All files (*.*)|*.*" ) ;
@@ -1524,7 +1530,7 @@ static void portable_backup_prune( const char *root, int keep ) {
 
 static void portable_backup_write_one( const char *dst ) {
 	char src[4096], d[4096] ;
-	const char *items[] = { "Sessions", "SshHostKeys", "SshHostCAs", "Commands", "Folders", "Sessions_Commands", "Proxies", NULL } ;
+	const char *items[] = { "Sessions", "SshHostKeys", "SshHostCAs", "Commands", "Folders", "Sessions_Commands", "Proxies", "Security", NULL } ;
 	const char *files[] = { "PUTTY.RND", "KiTTYState", "Jumplist", NULL } ;
 	int i ;
 	DelDir( dst ) ;
@@ -1570,18 +1576,92 @@ static void SavePortableDirBackup( void ) {
 	portable_backup_prune( root, keep ) ;
 }
 
+/* Split a sav path into dir / base / ext (e.g. "C:\x\kittynew.sav" ->
+ * "C:\x", "kittynew", ".sav"). */
+static void sav_split( const char *savfile, char *dir, size_t dl, char *base, size_t bl, char *ext, size_t el ) {
+	const char *slash = strrchr( savfile, '\\' ) ;
+	const char *fname = slash ? slash + 1 : savfile ;
+	const char *dot = strrchr( fname, '.' ) ;
+	snprintf( dir, dl, "%.*s", slash ? (int)(slash - savfile) : 1, slash ? savfile : "." ) ;
+	if( dot ) { snprintf( base, bl, "%.*s", (int)(dot - fname), fname ) ; snprintf( ext, el, "%s", dot ) ; }
+	else { snprintf( base, bl, "%s", fname ) ; if( el ) ext[0] = '\0' ; }
+}
+
+/* Build a fresh timestamped backup path (<dir>\<base>-YYYYMMDD-HHMMSS<ext>), so
+ * each backup's FILENAME reflects when it was actually written. */
+static void sav_timestamped_path( const char *savfile, char *out, size_t outlen ) {
+	char dir[4096], base[256], ext[64], stamp[64] ;
+	time_t now ; struct tm *tmnow ;
+	sav_split( savfile, dir, sizeof(dir), base, sizeof(base), ext, sizeof(ext) ) ;
+	now = time(NULL) ; tmnow = localtime( &now ) ;
+	if( tmnow != NULL )
+		snprintf( stamp, sizeof(stamp), "%04d%02d%02d-%02d%02d%02d",
+			1900+tmnow->tm_year, 1+tmnow->tm_mon, tmnow->tm_mday, tmnow->tm_hour, tmnow->tm_min, tmnow->tm_sec ) ;
+	else snprintf( stamp, sizeof(stamp), "%ld", (long)now ) ;
+	snprintf( out, outlen, "%s\\%s-%s%s", dir, base, stamp, ext ) ;
+}
+
+/* Keep only the `keep` newest <base>-*<ext> timestamped backups next to savfile. */
+static void sav_prune( const char *savfile, int keep ) {
+	char dir[4096], base[256], ext[64], pattern[4096], path[4096] ;
+	struct portable_backup_name backups[256] ;
+	WIN32_FIND_DATAA fd ; HANDLE h ; int n = 0, i ;
+	if( keep < 0 ) keep = 0 ;
+	sav_split( savfile, dir, sizeof(dir), base, sizeof(base), ext, sizeof(ext) ) ;
+	snprintf( pattern, sizeof(pattern), "%s\\%s-*%s", dir, base, ext ) ;
+	h = FindFirstFileA( pattern, &fd ) ;
+	if( h == INVALID_HANDLE_VALUE ) return ;
+	do {
+		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) continue ;
+		if( n < (int)(sizeof(backups)/sizeof(backups[0])) ) { snprintf( backups[n].name, sizeof(backups[n].name), "%s", fd.cFileName ) ; n++ ; }
+	} while( FindNextFileA( h, &fd ) ) ;
+	FindClose( h ) ;
+	qsort( backups, n, sizeof(backups[0]), portable_backup_name_cmp_desc ) ;   /* newest name first */
+	for( i = keep ; i < n ; i++ ) { snprintf( path, sizeof(path), "%s\\%s", dir, backups[i].name ) ; unlink( path ) ; }
+}
+
+/* Newest <base>-*<ext> backup next to savfile (for the first-run restore).
+ * Returns 1 + path in out, else 0. */
+static int sav_find_newest( const char *savfile, char *out, size_t outlen ) {
+	char dir[4096], base[256], ext[64], pattern[4096], best[MAX_PATH] = "" ;
+	WIN32_FIND_DATAA fd ; HANDLE h ;
+	sav_split( savfile, dir, sizeof(dir), base, sizeof(base), ext, sizeof(ext) ) ;
+	snprintf( pattern, sizeof(pattern), "%s\\%s-*%s", dir, base, ext ) ;
+	h = FindFirstFileA( pattern, &fd ) ;
+	if( h == INVALID_HANDLE_VALUE ) return 0 ;
+	do {
+		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) continue ;
+		if( best[0] == '\0' || strcmp( fd.cFileName, best ) > 0 ) snprintf( best, sizeof(best), "%s", fd.cFileName ) ;
+	} while( FindNextFileA( h, &fd ) ) ;
+	FindClose( h ) ;
+	if( best[0] == '\0' ) return 0 ;
+	snprintf( out, outlen, "%s\\%s", dir, best ) ;
+	return 1 ;
+}
+
 void SaveRegistryKey( void ) {
+	int keep = 5 ; char kb[64] ;
 	if( IniFileFlag == SAVEMODE_DIR ) { SavePortableDirBackup() ; return ; }
 	if( NoKittyFileFlag || (KittySavFile==NULL) ) return ;
 	if( strlen(KittySavFile)==0 ) return ;
 
-	if( GetValueData( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "password", PasswordConf ) == NULL ) 
+	if( GetValueData( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "password", PasswordConf ) == NULL )
 		{ strcpy( PasswordConf, "" ) ; }
 
-	if( strlen( PasswordConf ) > 0 ) 
+	if( strlen( PasswordConf ) > 0 )
 		{ WriteParameter( INIT_SECTION, "password", PasswordConf ) ; }
 
-	SaveRegistryKeyEx( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), KittySavFile ) ;
+	if( ReadParameter( INIT_SECTION, "savbackupcount", kb ) ) keep = atoi( kb ) ;
+	if( keep <= 0 ) return ;              /* savbackupcount=0 disables the backup */
+	if( keep > 50 ) keep = 50 ;
+	/* Write a FRESH timestamped file now (kittynew-YYYYMMDD-HHMMSS.sav) so its
+	 * name matches its content's save time, then keep only the newest `keep`.
+	 * (The old scheme wrote a fixed kittynew.sav and renamed the PREVIOUS one to
+	 * a now-stamped name - the timestamp then lied about the content's age.) */
+	{ char dated[4096] ;
+	  sav_timestamped_path( KittySavFile, dated, sizeof(dated) ) ;
+	  SaveRegistryKeyEx( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), dated ) ;
+	  sav_prune( KittySavFile, keep ) ; }
 	}
 
 void routine_SaveRegistryKey( void * st ) { SaveRegistryKey() ; }
@@ -5839,11 +5919,18 @@ void LoadParameters( void ) {
 		}
 	}
 	if( ReadParameter( INIT_SECTION, "readonly", buffer ) ) { if( !stricmp( buffer, "YES" ) ) SetReadOnlyFlag(1) ; }
-	if( ReadParameter( INIT_SECTION, "sav", buffer ) ) { 
+	if( ReadParameter( INIT_SECTION, "sav", buffer ) ) {
 		if( strlen( buffer ) > 0 ) {
-			if( KittySavFile!=NULL ) free( KittySavFile ) ;
-			KittySavFile=(char*)malloc( strlen(buffer)+1 ) ;
-			strcpy( KittySavFile, buffer) ;
+			/* Ignore an inherited legacy default (kitty.sav / kitty084.sav) written
+			 * by an older KiTTY, so the current default (kittynew.sav) takes over
+			 * without the user having to edit kitty.ini. A genuinely custom path is
+			 * still honoured. */
+			const char *bn = strrchr( buffer, '\\' ) ; bn = bn ? bn+1 : buffer ;
+			if( stricmp( bn, "kitty.sav" ) && stricmp( bn, "kitty084.sav" ) ) {
+				if( KittySavFile!=NULL ) free( KittySavFile ) ;
+				KittySavFile=(char*)malloc( strlen(buffer)+1 ) ;
+				strcpy( KittySavFile, buffer) ;
+			}
 		}
 	}
 	if( ReadParameter( INIT_SECTION, "shortcuts", buffer ) ) { 
@@ -5870,7 +5957,10 @@ void LoadParameters( void ) {
 	if( ReadParameter( INIT_SECTION, "wintitle", buffer ) ) { if( !stricmp( buffer, "NO" ) ) TitleBarFlag = 0 ; }
 #ifdef MOD_PROXY
 	if( ReadParameter( "ConfigBox", "proxyselection", buffer ) ) {
+		/* yes = always, no = never, auto (or anything else) = when defined */
 		if( !stricmp( buffer, "YES" ) ) { SetProxySelectionFlag(1) ; }
+		else if( !stricmp( buffer, "NO" ) ) { SetProxySelectionFlag(-1) ; }
+		else { SetProxySelectionFlag(0) ; }
 	}
 #endif
 #ifdef MOD_ZMODEM
@@ -5907,9 +5997,9 @@ void LoadParameters( void ) {
 	}
 	if( readINI( KittyIniFile, "ConfigBox", "height", buffer, sizeof(buffer) ) ) {
 		ConfigBoxHeight = atoi( buffer ) ;
-#ifdef MOD_PROXY
-		if( GetProxySelectionFlag() ) { ConfigBoxHeight-=1 ; }
-#endif
+		/* NB: the extra row taken by the Proxy-choice droplist (when shown) is
+		 * now accounted for in the config-box window sizing (windows/dialog.c),
+		 * not by shrinking the list here. */
 	}
 	if( readINI( KittyIniFile, "ConfigBox", "windowheight", buffer, sizeof(buffer) ) ) {
 		ConfigBoxWindowHeight = atoi( buffer ) ;
@@ -6151,6 +6241,11 @@ void InitWinMain( void ) {
 		 * also consume the one-shot before an installed KiTTY could run it. Idempotent
 		 * (marker-guarded). */
 		if( IniFileFlag == SAVEMODE_REG ) { RepairSharrowDefaults() ; }
+		/* One-time migration of legacy 9bis named proxies into our hive, with its
+		 * own marker so it fires even when sessions were migrated in an earlier
+		 * build. Registry-mode only (REG||FILE); DPAPI-protects passwords on copy
+		 * and in place (hknet/KiTTY#11, TASK_named_proxies.md Piece 5). */
+		kitty_migrate_old_proxies() ;
 	}
 
 	// Chargement de la base de registre si besoin
@@ -6158,11 +6253,19 @@ void InitWinMain( void ) {
 		// Si la cle n'existe pas ...
 		if( !RegTestKey( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS) ) ) { 
 			HWND hdlg = InfoBox( hinst, NULL ) ;
-			if( existfile( KittySavFile ) ) {// ... et que le fichier kitty.sav existe on le charge ...
+			// ... on charge le backup le plus recent (kittynew-<timestamp>.sav),
+			// ou l'ancien fichier a nom fixe s'il existe encore.
+			char newestsav[4096] = "" ;
+			int havesav = sav_find_newest( KittySavFile, newestsav, sizeof(newestsav) ) ;
+			if( !havesav && existfile( KittySavFile ) ) { snprintf( newestsav, sizeof(newestsav), "%s", KittySavFile ) ; havesav = 1 ; }
+			if( havesav ) {
+				char *savedptr = KittySavFile ;
+				KittySavFile = newestsav ;   /* LoadRegistryKey reads the global */
 				InfoBoxSetText( hdlg, "Initializing registry." ) ;
 				InfoBoxSetText( hdlg, "Loading saved sessions from file." ) ;
-				LoadRegistryKey( hdlg ) ; 
+				LoadRegistryKey( hdlg ) ;
 				InfoBoxClose( hdlg ) ;
+				KittySavFile = savedptr ;
 			} else { // Sinon on regarde si il y a la cle de PuTTY et on la recupere
 				InfoBoxSetText( hdlg, "Initializing registry." ) ;
 				InfoBoxSetText( hdlg, "First time running. Loading saved sessions from PuTTY registry." ) ;
@@ -6200,8 +6303,14 @@ void InitWinMain( void ) {
 		{
 			extern void kitty_set_storage_mode( int ) ;
 			extern void kitty_set_session_dir( const char * ) ;
+			extern void kitty_set_portable_password_protection( const char * ) ;
+			char ppmode[32] = "" ;
 			kitty_set_storage_mode( SAVEMODE_DIR ) ;
 			kitty_set_session_dir( sesspath ) ;
+			/* Portable at-rest password policy: master (default) or the
+			 * explicit legacy/plaintext compatibility escape hatch. */
+			if( readINI( KittyIniFile, INIT_SECTION, "PortablePasswordProtection", ppmode, sizeof(ppmode) ) )
+				kitty_set_portable_password_protection( ppmode ) ;
 		}
 		/* Test Default Settings */
 		/*
