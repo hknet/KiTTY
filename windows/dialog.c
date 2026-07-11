@@ -537,6 +537,12 @@ struct treeview_faff {
     HTREEITEM lastat[4];
 };
 
+/* KiTTY: how many category-tree levels to auto-expand ([ConfigBox]
+ * categoryexpand). Default 99 = full expansion; kitty.c overrides it from
+ * kitty.ini. Defined here (guiterminal lib) so the stock variants, which do not
+ * link kitty.c, still resolve it and simply keep the full-expansion default. */
+int kitty_category_expand_depth = 99;
+
 static HTREEITEM treeview_insert(struct treeview_faff *faff,
                                  int level, char *text, char *path)
 {
@@ -556,8 +562,12 @@ static HTREEITEM treeview_insert(struct treeview_faff *faff,
     ins.INSITEM.lParam = (LPARAM)path;
     newitem = TreeView_InsertItem(faff->treeview, &ins);
     if (level > 0)
+        /* KiTTY: expand the category tree to a configurable depth. `level` is the
+         * inserted child's depth, so the node we expand (its parent) is at
+         * user-level `level`; expand it while that is within categoryexpand
+         * (default 99 = full). Stock PuTTY collapsed everything below level 1. */
         TreeView_Expand(faff->treeview, faff->lastat[level - 1],
-                        (level > 1 ? TVE_COLLAPSE : TVE_EXPAND));
+                        (level <= kitty_category_expand_depth ? TVE_EXPAND : TVE_COLLAPSE));
     faff->lastat[level] = newitem;
     for (i = level + 1; i < 4; i++)
         faff->lastat[i] = NULL;

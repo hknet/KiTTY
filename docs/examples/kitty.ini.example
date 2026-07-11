@@ -24,6 +24,12 @@
 ;    listed. Default yes (create it and show it, like stock PuTTY).
 ;defaultsettings=yes
 
+; categoryexpand: how many levels of the config-box Category tree are expanded
+;    on open. Default (unset, or all/full) = fully expanded; a number expands only
+;    that deep - 1 = top categories only (stock PuTTY), 2 = one level of subtrees,
+;    and so on.
+;categoryexpand=all
+
 ; filter: enable/disable filter in saved sessions selection box
 ;filter=yes
 

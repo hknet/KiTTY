@@ -6016,6 +6016,15 @@ void LoadParameters( void ) {
 	if( readINI( KittyIniFile, "ConfigBox", "defaultsettings", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "NO" ) ) DefaultSettingsFlag = 0 ;
 	}
+	/* How many levels of the config-box Category tree to auto-expand. Default
+	 * (unset / all / full) = fully expanded; a number 1..N expands only that
+	 * deep (1 = top categories only, like stock PuTTY). */
+	if( readINI( KittyIniFile, "ConfigBox", "categoryexpand", buffer, sizeof(buffer) ) ) {
+		extern int kitty_category_expand_depth ;
+		if( strlen(buffer)==0 || !stricmp(buffer,"all") || !stricmp(buffer,"full") || !stricmp(buffer,"max") || !stricmp(buffer,"yes") )
+			kitty_category_expand_depth = 99 ;
+		else { int d = atoi(buffer) ; kitty_category_expand_depth = (d >= 1) ? d : 99 ; }
+	}
 	if( readINI( KittyIniFile, "ConfigBox", "left", buffer, sizeof(buffer) ) ) {
 		SetConfigBoxLeft( atoi(buffer) ) ;
 	}

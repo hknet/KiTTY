@@ -162,35 +162,54 @@ int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 	}
 
 #include <shlobj.h>
+#include <shobjidl.h>   /* IFileOpenDialog (Common Item Dialog folder picker) */
 int OpenDirName( HWND hFrame, char * dirname ) {
-	BROWSEINFO bi ;
-	ITEMIDLIST *il ;
-	LPITEMIDLIST ol = NULL ;
-	char Buffer[4096],Result[4096]="" ;
-	dirname[0]='\0' ;
-
-	{ const char * _pf = getenv("ProgramFiles") ; snprintf( Buffer, sizeof(Buffer), "%s", _pf?_pf:"" ) ; }
-	
-	//SHGetSpecialFolderLocation( hFrame, CSIDL_MYDOCUMENTS, &ol );
-	
-	memset(&bi,0,sizeof(BROWSEINFO));
-	bi.hwndOwner = hFrame ;
-	//bi.pidlRoot=NULL ; //
-	bi.pidlRoot=ol ;
-	bi.pszDisplayName=&Buffer[0];
-	bi.lpszTitle="Select a folder...";
-	bi.ulFlags=0;
-	bi.lpfn=NULL;
-	if ((il=SHBrowseForFolder(&bi))!=NULL) {
-		SHGetPathFromIDList(il,&Result[0]) ;
-		//ILFree( il ) ; ILFree( ol ) ;
-		GlobalFree(il);GlobalFree(ol);
-		if( strlen( Result ) == 0 ) return 0 ;
-		strcpy( dirname, Result ) ;
-		return 1 ;
+	dirname[0] = '\0' ;
+	/* Modern Common Item Dialog folder picker (Vista+): the full Explorer window
+	 * with an address bar you can paste a path into, type-ahead and favourites -
+	 * not the old tree-only SHBrowseForFolder. Falls back to the tree picker (with
+	 * a New Folder button) if COM or the dialog is unavailable. */
+	static const GUID clsid_fod = {0xDC1C5A9C,0xE88A,0x4dde,{0xA5,0xA1,0x60,0xF8,0x2A,0x20,0xAE,0xF7}} ;
+	static const GUID iid_fod   = {0xd57c7288,0xd4ad,0x4768,{0xbe,0x02,0x9d,0x96,0x95,0x32,0xd9,0x60}} ;
+	IFileOpenDialog *pfd = NULL ;
+	HRESULT hrInit = CoInitializeEx( NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE ) ;
+	if( SUCCEEDED( CoCreateInstance( &clsid_fod, NULL, CLSCTX_INPROC_SERVER,
+	                                 &iid_fod, (void**)&pfd ) ) && pfd ) {
+		DWORD opts = 0 ;
+		pfd->lpVtbl->GetOptions( pfd, &opts ) ;
+		pfd->lpVtbl->SetOptions( pfd, opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST ) ;
+		pfd->lpVtbl->SetTitle( pfd, L"Select a folder..." ) ;
+		if( SUCCEEDED( pfd->lpVtbl->Show( pfd, hFrame ) ) ) {
+			IShellItem *psi = NULL ;
+			if( SUCCEEDED( pfd->lpVtbl->GetResult( pfd, &psi ) ) && psi ) {
+				PWSTR wpath = NULL ;
+				if( SUCCEEDED( psi->lpVtbl->GetDisplayName( psi, SIGDN_FILESYSPATH, &wpath ) ) && wpath ) {
+					WideCharToMultiByte( CP_ACP, 0, wpath, -1, dirname, 4096, NULL, NULL ) ;
+					CoTaskMemFree( wpath ) ;
+				}
+				psi->lpVtbl->Release( psi ) ;
+			}
 		}
-	//ILFree( ol ) ;
-	GlobalFree(ol);
+		pfd->lpVtbl->Release( pfd ) ;
+		if( SUCCEEDED( hrInit ) ) CoUninitialize() ;
+		return dirname[0] ? 1 : 0 ;
+	}
+	if( SUCCEEDED( hrInit ) ) CoUninitialize() ;
+
+	/* Fallback: classic tree picker (with the New Folder button). */
+	{
+		BROWSEINFO bi ; LPITEMIDLIST il ; char Buffer[4096], Result[4096] = "" ;
+		memset( &bi, 0, sizeof(bi) ) ;
+		bi.hwndOwner = hFrame ;
+		bi.pszDisplayName = Buffer ;
+		bi.lpszTitle = "Select a folder..." ;
+		bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE ;
+		if( (il = SHBrowseForFolder( &bi )) != NULL ) {
+			SHGetPathFromIDList( il, Result ) ;
+			GlobalFree( il ) ;
+			if( Result[0] ) { strcpy( dirname, Result ) ; return 1 ; }
+		}
+	}
 	return 0 ;
 	}
 
