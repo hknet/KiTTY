@@ -1146,6 +1146,15 @@ static int sessionsaver_folder_visible_position(struct sessionsaver_data *ssd,
     if (sessindex < 0 || sessindex >= ssd->sesslist.nsessions)
         return -1;
     for (int i = 0; i < ssd->sesslist.nsessions; i++) {
+        /* Must mirror the listbox population loop exactly, or index->row mapping
+         * drifts. defaultsettings=no hides "Default Settings", so it occupies no
+         * row (without this the whole selection was off by one). */
+        { extern int GetDefaultSettingsFlag(void);
+          if (!GetDefaultSettingsFlag() &&
+              !strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION)) {
+              if (i == sessindex) return -1;   /* the hidden row has no position */
+              continue;
+          } }
         if (!GetPuttyFlag() && i > 0 && strcmp(CurrentFolder, "Default") != 0) {
             char *fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
             int match = (fld && !strcmp(fld, CurrentFolder));
@@ -1527,7 +1536,12 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 ssd->savedsession[0] &&
                 strcmp(ssd->savedsession, KITTY_DEFAULT_SESSION) != 0)
                 top = 1;
-            dlg_listbox_select(ssd->listbox, dlg, top);
+            /* `top` is a session INDEX from the binary search; the listbox wants a
+             * VISIBLE ROW, which differs once a folder filter or defaultsettings=no
+             * hides rows. Convert it (was the off-by-one that jumped the highlight
+             * one row down per click when Default Settings is hidden). */
+            { int row = sessionsaver_folder_visible_position(ssd, top);
+              dlg_listbox_select(ssd->listbox, dlg, row >= 0 ? row : top); }
         }
 #ifdef MOD_PERSO
         else if (ssd->folderlist && ctrl == ssd->folderlist) {
@@ -2901,7 +2915,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                             HELPCTX(session_saved),
                                             sessionsaver_handler, P(ssd));
         ssd->exportbutton->column = 1;         /* bottom */
-        ssd->importbutton = ctrl_pushbutton(s, "Import...", NO_SHORTCUT,
+        ssd->importbutton = ctrl_pushbutton(s, "Import all...", NO_SHORTCUT,
                                             HELPCTX(session_saved),
                                             sessionsaver_handler, P(ssd));
         ssd->importbutton->column = 1;         /* bottom */
