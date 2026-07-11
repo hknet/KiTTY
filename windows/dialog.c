@@ -665,13 +665,58 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
          * how the box was moved (WM_EXITSIZEMOVE only fires on interactive drag). */
         kitty_cfgbox_save_pos(hwnd);
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
-      case WM_INITDIALOG:
+      case WM_INITDIALOG: {
         pds_initdialog_start(pds, hwnd);
 
-        pds_create_controls(pds, TREE_BASE, IDCX_STDBASE, 3, 3, 385, ""); /* buttons row moved down with the taller box (was 235) */
+        /* KiTTY: the saved-session list height is configurable via kitty.ini
+         * [ConfigBox] height (GetConfigBoxHeight(), default 16 = stock fit), and the whole
+         * box via [ConfigBox] windowheight. A taller list needs the button row,
+         * the treeview and the window itself to grow to match; cb_extra_du is
+         * that growth in dialog units (0 at/below the stock-fit height). */
+        int cb_extra_du = 0;
+        {
+            extern int GetConfigBoxHeight(void);
+            extern int kitty_proxy_choice_shown(void);
+            int extra_rows = GetConfigBoxHeight() - 16;  /* 16 = stock-fit rows */
+            if (extra_rows > 0) cb_extra_du = extra_rows * 8;  /* ~8 du / list row */
+            /* The Proxy-choice droplist, when shown, adds a row to the Session
+             * panel that the list-height estimate above doesn't cover. */
+            if (kitty_proxy_choice_shown()) cb_extra_du += 9;
+            /* Safety margin so the bottom checkbox frame never rides under the
+             * button row (the per-row estimate can fall a little short, esp. at
+             * higher DPI). */
+            if (cb_extra_du > 0) cb_extra_du += 9;
+        }
+
+        pds_create_controls(pds, TREE_BASE, IDCX_STDBASE, 3, 3,
+                            385 + cb_extra_du, ""); /* buttons row (grows w/ height) */
 
         SendMessage(hwnd, WM_SETICON, (WPARAM) ICON_BIG,
                     (LPARAM) LoadIcon(hinst, MAKEINTRESOURCE(IDI_CFGICON)));
+
+        /* KiTTY: grow the window to fit a taller list, or to an explicit
+         * windowheight (px, DPI-scaled). Done before centring so the box is
+         * placed at its final size. */
+        {
+            extern int GetConfigBoxWindowHeight(void);
+            RECT wr;
+            GetWindowRect(hwnd, &wr);
+            int cur_h = wr.bottom - wr.top, want_h = cur_h;
+            int wh = GetConfigBoxWindowHeight();
+            if (wh > 0) {
+                HDC hdc = GetDC(hwnd);
+                double sy = GetDeviceCaps(hdc, LOGPIXELSY) / 96.0;
+                ReleaseDC(hwnd, hdc);
+                want_h = (int)(wh * sy);
+            } else if (cb_extra_du > 0) {
+                RECT er = { 0, 0, 0, cb_extra_du };
+                MapDialogRect(hwnd, &er);
+                want_h = cur_h + er.bottom;
+            }
+            if (want_h != cur_h)
+                SetWindowPos(hwnd, NULL, 0, 0, wr.right - wr.left, want_h,
+                             SWP_NOMOVE | SWP_NOZORDER);
+        }
 
         /* KiTTY: restore the remembered config-box position; centre if none/off-screen. */
         if (!kitty_cfgbox_restore_pos(hwnd))
@@ -714,7 +759,8 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             r.left = 3;
             r.right = r.left + 95;
             r.top = 13;
-            r.bottom = r.top + 369;   /* KiTTY: taller config box (was 219) so
+            r.bottom = r.top + 369 + cb_extra_du; /* KiTTY: taller config box (was
+                                       * 219); grows with [ConfigBox] height so
                                        * Bell/Data/Appearance panels aren't cut */
             MapDialogRect(hwnd, &r);
             treeview = CreateWindowEx(WS_EX_CLIENTEDGE, WC_TREEVIEW, "",
@@ -801,6 +847,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
 
         pds_initdialog_finish(pds);
         return 0;
+      }
 
       case WM_TIMER:
         if (dialog_box_demo_screenshot_filename &&
@@ -915,7 +962,18 @@ bool do_config(Conf *conf)
     setup_config_box(pds->ctrlbox, false, 0, 0);
     win_setup_config_box(pds->ctrlbox, &pds->dp->hwnd, has_help(), false, 0);
 
-    pds->dp->wintitle = dupprintf("%s Configuration", appname);
+    /* Tag the title in portable (file-storage) mode so the user can tell a
+     * portable KiTTY from an installed one at a glance. */
+    {
+        extern int kitty_storage_is_portable(void);
+        pds->dp->wintitle = dupprintf("%s Configuration%s", appname,
+            kitty_storage_is_portable() ? " (portable)" : "");
+#ifdef KITTY_TEST_BUILD_LABEL
+        { char *t = dupprintf("%s  *** TEST BUILD: %s ***", pds->dp->wintitle,
+                              KITTY_TEST_BUILD_LABEL);
+          sfree(pds->dp->wintitle); pds->dp->wintitle = t; }
+#endif
+    }
     pds->dp->data = conf;
 
     dlg_auto_set_fixed_pitch_flag(pds->dp);
@@ -944,7 +1002,16 @@ bool do_reconfig(HWND hwnd, Conf *conf, int protcfginfo)
     win_setup_config_box(pds->ctrlbox, &pds->dp->hwnd, has_help(),
                          true, protocol);
 
-    pds->dp->wintitle = dupprintf("%s Reconfiguration", appname);
+    {
+        extern int kitty_storage_is_portable(void);
+        pds->dp->wintitle = dupprintf("%s Reconfiguration%s", appname,
+            kitty_storage_is_portable() ? " (portable)" : "");
+#ifdef KITTY_TEST_BUILD_LABEL
+        { char *t = dupprintf("%s  *** TEST BUILD: %s ***", pds->dp->wintitle,
+                              KITTY_TEST_BUILD_LABEL);
+          sfree(pds->dp->wintitle); pds->dp->wintitle = t; }
+#endif
+    }
     pds->dp->data = conf;
 
     dlg_auto_set_fixed_pitch_flag(pds->dp);

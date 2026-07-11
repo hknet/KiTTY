@@ -194,6 +194,7 @@ static void kitty_proxy_handler(dlgcontrol *ctrl, dlgparam *dlg,
 {
     Conf *conf = (Conf *)data;
     if (event == EVENT_REFRESH) {
+        kitty_proxy_resolve_selection(conf);   /* drop a deleted proxy ref, etc. */
         const char *cur = conf_get_str(conf, CONF_proxyselection);
         int i, sel = 0;
         dlg_update_start(ctrl, dlg);
@@ -208,6 +209,30 @@ static void kitty_proxy_handler(dlgcontrol *ctrl, dlgparam *dlg,
         int i = dlg_listbox_index(ctrl, dlg);
         if (i >= 0 && i < MAX_PROXY && proxies[i].name)
             conf_set_str(conf, CONF_proxyselection, proxies[i].name);
+    }
+}
+
+/* "Edit" button beside the Proxy-choice droplist (and at the foot of the
+ * Connection/Proxy panel): open the named-proxy editor, then refresh so the
+ * droplist re-lists the current set. Note: whether the Session-panel droplist
+ * *exists* is fixed when the config box is built (kitty_proxy_choice_shown() in
+ * auto mode), so crossing 0<->1 proxies only takes effect on the next config-box
+ * open; the editor shows a one-time "reopen the configuration" note in that
+ * case (kitty_proxy_gui.c). Making it live is a scoped follow-up (would require
+ * rebuilding the whole ctrlbox). */
+static void kitty_proxyedit_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                    void *data, int event)
+{
+    if (event == EVENT_ACTION) {
+        extern int kitty_proxy_edit_dialog(HWND);
+        if (kitty_proxy_edit_dialog(GetActiveWindow())) {
+            dlg_refresh(NULL, dlg);
+            /* A proxy was added / edited / deleted. Back up the config store now
+             * (registry: kitty084.sav + rotation; portable: dated Backups\
+             * folder) - a proxy change on its own may never be followed by
+             * opening a session, which is the other backup trigger. */
+            { extern void SaveRegistryKey(void); SaveRegistryKey(); }
+        }
     }
 }
 
@@ -1085,6 +1110,8 @@ struct sessionsaver_data {
     dlgcontrol *folderlist;      /* KiTTY: editable session-folder combo */
     dlgcontrol *createbutton, *delfolderbutton; /* KiTTY folder mgmt */
     dlgcontrol *commentbox;      /* KiTTY: read-only comment of selected session */
+    dlgcontrol *exportbutton, *importbutton; /* KiTTY: whole-store export/import */
+    int cb_top_spacers, cb_bot_spacers; /* height-scaled button distribution */
 #endif
     struct sesslist sesslist;
     bool midsession;
@@ -1381,6 +1408,15 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             for (i = 0; i < ssd->sesslist.nsessions; i++) {
 #ifdef MOD_PERSO
                 int smatch;
+                /* KiTTY [ConfigBox] defaultsettings=no: hide "Default Settings"
+                 * from the saved-session list. It still exists as the new-session
+                 * template (loaded by name). Row IDs are session indices, not
+                 * positions, so skipping it here keeps the selection mapping
+                 * correct. */
+                { extern int GetDefaultSettingsFlag(void);
+                  if (!GetDefaultSettingsFlag() &&
+                      !strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION))
+                      continue; }
                 /* KiTTY folder filter: hide sessions not in the selected folder,
                  * but only when a specific (non-Default) folder is chosen, and
                  * always keep entry 0 ("Default Settings"). */
@@ -1641,6 +1677,24 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 dlg_refresh(ssd->folderlist, dlg);
                 dlg_refresh(ssd->listbox, dlg);
             }
+        } else if (!ssd->midsession &&
+                   ssd->exportbutton && ctrl == ssd->exportbutton) {
+            /* Whole-store export: pick a folder, write each saved session as a
+             * protected .ktx (see kitty_bridge.c). GetActiveWindow() is the
+             * config box, the owner for the folder picker + result dialog. */
+            extern void kitty_export_all_sessions(HWND);
+            kitty_export_all_sessions(GetActiveWindow());
+        } else if (!ssd->midsession &&
+                   ssd->importbutton && ctrl == ssd->importbutton) {
+            /* Whole-store import: pick .ktx files, load+save each as a session
+             * (re-protected for this backend), then refresh the list so the
+             * imported sessions show up immediately. */
+            extern void kitty_import_sessions(HWND);
+            kitty_import_sessions(GetActiveWindow());
+            get_sesslist(&ssd->sesslist, false);
+            get_sesslist(&ssd->sesslist, true);
+            dlg_refresh(ssd->listbox, dlg);
+            kitty_notify_launcher_sessions_changed();
 #endif
         } else if (ctrl == ssd->okbutton) {
 #ifdef MOD_PERSO
@@ -2666,8 +2720,6 @@ void setup_config_box(struct controlbox *b, bool midsession,
         memset(hp, 0, sizeof(*hp));
 
         s = ctrl_getset(b, "Session", "hostport", str);
-        ctrl_text(s, "Specify the destination you want to connect to",
-                  HELPCTX(session_hostname));
         ctrl_columns(s, 2, 75, 25);
         c = ctrl_editbox(s, HOST_BOX_TITLE, 'n', 100,
                          HELPCTX(session_hostname),
@@ -2681,7 +2733,6 @@ void setup_config_box(struct controlbox *b, bool midsession,
         hp->port = c;
 
         ctrl_columns(s, 1, 100);
-        c = ctrl_text(s, "Connection type:", HELPCTX(session_hostname));
         ctrl_columns(s, 2, 62, 38);
         c = ctrl_radiobuttons(s, NULL, NO_SHORTCUT, 3,
                               HELPCTX(session_hostname),
@@ -2746,6 +2797,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                       HELPCTX(session_saved),
                                       sessionsaver_handler, P(ssd));
     ssd->savebutton->column = 1;
+    ssd->savebutton->align_next_to = ssd->editbox;   /* centre on the name field */
     ctrl_columns(s, 1, 100);
     ctrl_columns(s, 2, 75, 25);
     /* Folder selector + create button share their own synchronized row. */
@@ -2762,16 +2814,32 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                                 HELPCTX(session_saved),
                                                 sessionsaver_handler, P(ssd));
             ssd->createbutton->column = 1;
+            ssd->createbutton->align_next_to = ssd->folderlist; /* centre on combo */
         }
     } else {
         ssd->folderlist = NULL;
     }
     /* KiTTY proxy choice: pick a named proxy definition to overlay onto this
-     * session. Hidden unless [ConfigBox] proxyselection=yes. */
-    if (!GetPuttyFlag() && GetProxySelectionFlag()) {
-        ctrl_droplist(s, "Proxy choice", NO_SHORTCUT, 100,
-                      HELPCTX(session_saved),
-                      kitty_proxy_handler, P(NULL));
+     * session. Shown per [ConfigBox] proxyselection (yes/no/auto): auto shows it
+     * when the user has proxy definitions (hknet/KiTTY#11). The droplist shares a
+     * 75/25 row with an Edit button (create/edit/delete definitions), like the
+     * folder combo + New folder. */
+    if (!GetPuttyFlag() && kitty_proxy_choice_shown()) {
+        ctrl_columns(s, 1, 100);
+        ctrl_columns(s, 2, 75, 25);
+        dlgcontrol *pc = ctrl_droplist(s, "Proxy choice", NO_SHORTCUT, 100,
+                                       HELPCTX(session_saved),
+                                       kitty_proxy_handler, P(NULL));
+        pc->column = 0;
+        if (!midsession) {
+            dlgcontrol *pe = ctrl_pushbutton(s, "Edit", NO_SHORTCUT,
+                                             HELPCTX(session_saved),
+                                             kitty_proxyedit_handler, P(NULL));
+            pe->column = 1;
+            pe->align_next_to = pc;   /* centre the button on the droplist */
+        }
+        /* leave the row at 2 columns; the ctrl_columns(1) after #endif merges it,
+         * matching the no-proxy path (a 1->1 transition would assert). */
     }
 #endif
     ctrl_columns(s, 1, 100);
@@ -2780,18 +2848,29 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                 HELPCTX(session_saved),
                                 sessionsaver_handler, P(ssd));
     ssd->listbox->column = 0;
-    ssd->listbox->listbox.height = 15;
+    /* KiTTY: the saved-session list height is user-configurable via kitty.ini
+     * [ConfigBox] height (GetConfigBoxHeight(), default 21). The column-1
+     * buttons are distributed down that height — Load at the top, Delete +
+     * Del folder in the upper-centre, Export/Import at the bottom — using blank
+     * ctrl_text spacer rows whose COUNT scales with the height so the layout
+     * holds at any configured size. Calibrated at height 16 (2 spacers each
+     * side); each extra list row adds ~1 spacer, split between the two gaps. */
+    {
+        extern int GetConfigBoxHeight(void);   /* kitty.c: [ConfigBox] height */
+        int cbh = GetConfigBoxHeight();
+        if (cbh < 7) cbh = 7;                  /* keep a usable minimum */
+        ssd->listbox->listbox.height = cbh;
+        ssd->cb_top_spacers = (cbh - 12) > 0 ? (cbh - 12) / 2 : 0;
+        ssd->cb_bot_spacers = (cbh - 12) > 0 ? (cbh - 12) - ssd->cb_top_spacers : 0;
+    }
     if (!midsession) {
-        ssd->loadbutton = ctrl_pushbutton(s, "Load", 'l',
+        ssd->loadbutton = ctrl_pushbutton(s, "Load", 'l',       /* top */
                                           HELPCTX(session_saved),
                                           sessionsaver_handler, P(ssd));
         ssd->loadbutton->column = 1;
-        ctrl_text(s, "", HELPCTX(no_help))->column = 1;
-        ctrl_text(s, "", HELPCTX(no_help))->column = 1;
-        ctrl_text(s, "", HELPCTX(no_help))->column = 1;
-        ctrl_text(s, "", HELPCTX(no_help))->column = 1;
-        ctrl_text(s, "", HELPCTX(no_help))->column = 1;
-        ssd->delbutton = ctrl_pushbutton(s, "Delete", 'd',
+        for (int k = 0; k < ssd->cb_top_spacers; k++)
+            ctrl_text(s, "", HELPCTX(no_help))->column = 1;
+        ssd->delbutton = ctrl_pushbutton(s, "Delete", 'd',      /* upper-centre */
                                          HELPCTX(session_saved),
                                          sessionsaver_handler, P(ssd));
         ssd->delbutton->column = 1;
@@ -2811,11 +2890,27 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ssd->delfolderbutton = ctrl_pushbutton(s, "Del folder", NO_SHORTCUT,
                                                HELPCTX(session_saved),
                                                sessionsaver_handler, P(ssd));
-        ssd->delfolderbutton->column = 1;
+        ssd->delfolderbutton->column = 1;      /* upper-centre, just under Delete */
+        for (int k = 0; k < ssd->cb_bot_spacers; k++)
+            ctrl_text(s, "", HELPCTX(no_help))->column = 1;   /* anchor bottom group */
+        /* Whole-store move (portable/new-PC): export every saved session to a
+         * folder as protected .ktx files, or import .ktx files back. Bottom of
+         * the column so Import's foot lines up with the listbox bottom. Store
+         * management, not a per-connection action (cf. "Export current"). */
+        ssd->exportbutton = ctrl_pushbutton(s, "Export all...", NO_SHORTCUT,
+                                            HELPCTX(session_saved),
+                                            sessionsaver_handler, P(ssd));
+        ssd->exportbutton->column = 1;         /* bottom */
+        ssd->importbutton = ctrl_pushbutton(s, "Import...", NO_SHORTCUT,
+                                            HELPCTX(session_saved),
+                                            sessionsaver_handler, P(ssd));
+        ssd->importbutton->column = 1;         /* bottom */
     } else {
         /* Defensive only: setup_config_box already memsets ssd to 0. */
         ssd->createbutton = NULL;
         ssd->delfolderbutton = NULL;
+        ssd->exportbutton = NULL;
+        ssd->importbutton = NULL;
     }
 #endif
     ctrl_columns(s, 1, 100);
@@ -2832,18 +2927,16 @@ void setup_config_box(struct controlbox *b, bool midsession,
 #endif
 
     s = ctrl_getset(b, "Session", "otheropts", NULL);
-#ifdef MOD_PERSO
-    /* Only meaningful in registry mode: reveals sessions from the read-only
-     * PuTTY / old-KiTTY registry hives. In portable mode it would do nothing. */
-    {
-        extern int GetIniFileFlag(void);   /* kitty_commun.c (SAVEMODE_REG/FILE/DIR) */
-        if (!GetPuttyFlag() && GetIniFileFlag() == 0 /* SAVEMODE_REG */) {
-            ctrl_checkbox(s, "show / edit / delete old sessions",
-                          NO_SHORTCUT, HELPCTX(no_help),
-                          kitty_showforeign_handler, P(ssd));
-        }
-    }
-#endif
+    /* Stock PuTTY's "Close window on exit" comes FIRST so users coming from
+     * PuTTY find the familiar control where they expect it; all KiTTY-added
+     * per-session options are grouped below it (hknet/KiTTY#11). */
+    ctrl_radiobuttons(s, "Close window on exit:", 'x', 4,
+                      HELPCTX(session_coe),
+                      conf_radiobutton_handler,
+                      I(CONF_close_on_exit),
+                      "Always", I(FORCE_ON),
+                      "Never", I(FORCE_OFF),
+                      "Only on clean exit", I(AUTO));
 #ifdef MOD_PERSO
     if (!GetPuttyFlag()) {
         ctrl_checkbox(s, "Save settings automatically on exit", NO_SHORTCUT,
@@ -2853,25 +2946,33 @@ void setup_config_box(struct controlbox *b, bool midsession,
         ctrl_checkbox(s, "Hide this session from the launcher", NO_SHORTCUT,
                       HELPCTX(no_help), conf_checkbox_handler,
                       I(CONF_launcherhide));
-        /* KiTTY: on startup, check GitHub for a newer release and show a one-line
-         * notice in the terminal when a session opens. */
-        ctrl_checkbox(s, "Check for updates on startup", NO_SHORTCUT,
-                      HELPCTX(no_help), conf_checkbox_handler,
-                      I(CONF_check_update_startup));
         /* KiTTY: remember the last window position (per monitor layout) and apply
          * it to new windows and Duplicate Session. */
         ctrl_checkbox(s, "Remember window position (per monitor layout)", NO_SHORTCUT,
                       HELPCTX(no_help), conf_checkbox_handler,
                       I(CONF_remember_winpos));
+        /* KiTTY: on startup, check GitHub for a newer release and show a one-line
+         * notice in the terminal when a session opens. */
+        ctrl_checkbox(s, "Check for updates", NO_SHORTCUT,
+                      HELPCTX(no_help), conf_checkbox_handler,
+                      I(CONF_check_update_startup));
+    }
+    {
+        extern int GetIniFileFlag(void);       /* kitty_commun.c (SAVEMODE_REG/FILE/DIR) */
+        extern int kitty_has_foreign_sessions(void); /* windows/storage.c */
+        /* Registry-only, and only when there is actually an old 9bis-KiTTY /
+         * stock-PuTTY hive with sessions to reveal (a no-op portable, pointless
+         * on a machine that never had old KiTTY or PuTTY). Placed LAST so
+         * portable mode / a clean machine, where it is hidden, ends cleanly on
+         * the checkbox above with no gap. */
+        if (!GetPuttyFlag() && GetIniFileFlag() == 0 /* SAVEMODE_REG */ &&
+            kitty_has_foreign_sessions()) {
+            ctrl_checkbox(s, "show / edit / delete old putty/kitty sessions",
+                          NO_SHORTCUT, HELPCTX(no_help),
+                          kitty_showforeign_handler, P(ssd));
+        }
     }
 #endif
-    ctrl_radiobuttons(s, "Close window on exit:", 'x', 4,
-                      HELPCTX(session_coe),
-                      conf_radiobutton_handler,
-                      I(CONF_close_on_exit),
-                      "Always", I(FORCE_ON),
-                      "Never", I(FORCE_OFF),
-                      "Only on clean exit", I(AUTO));
 
     /*
      * The Session/Logging panel.
@@ -3932,6 +4033,20 @@ void setup_config_box(struct controlbox *b, bool midsession,
                           "No", I(FORCE_OFF),
                           "Yes", I(FORCE_ON),
                           "Only until session starts", I(AUTO));
+#ifdef MOD_PERSO
+        /* KiTTY: reusable named proxy definitions (hknet/KiTTY#11), managed
+         * independently of this session's own proxy above. The chosen one is
+         * applied via the Session panel's "Proxy choice". Shown unless
+         * proxyselection=no, so it is the entry point to create the first
+         * proxy even before the Session-panel droplist appears. */
+        if (!GetPuttyFlag() && kitty_proxy_editor_available()) {
+            ctrl_text(s, "Named proxies are reusable proxy definitions; pick one "
+                      "for a session with \"Proxy choice\" in the Session panel.",
+                      HELPCTX(no_help));
+            ctrl_pushbutton(s, "Edit named proxies...", NO_SHORTCUT,
+                            HELPCTX(no_help), kitty_proxyedit_handler, P(NULL));
+        }
+#endif
     }
 
     /*
