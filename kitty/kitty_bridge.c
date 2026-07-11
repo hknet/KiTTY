@@ -328,6 +328,171 @@ void kitty_export_settings(HWND hwnd, Conf *conf) {
     }
 }
 
+/* ---- Bulk session export/import (TASK_dpapi_mpw_backend_policy Step E) ----
+ * Export: every saved session is decrypted through the normal read path
+ * (DPAPI/MPW/legacy) and written as a .ktx bundle file with the password
+ * wrapped by the portable protection policy — the first wrap prompts to
+ * create/unlock the master password, making the bundle machine-independent.
+ * Import: each chosen .ktx loads through the forced reader (which unlocks
+ * MPW1 / decodes legacy forms) and is saved as a normal session, so the
+ * storage chokepoint rewraps the password for the DESTINATION backend
+ * (registry -> DPAPI1, portable -> MPW1). "Default Settings" is included in
+ * the export: this is a whole-store move, and importing it restores the
+ * defaults too. */
+#include <commdlg.h>
+int OpenDirName(HWND hFrame, char *dirname);
+void load_open_settings_forced(char *filename, Conf *conf);
+char *kitty_session_fname_munge(const char *);
+char *kitty_session_fname_unmunge(const char *);
+
+static const char *ktx_ext(void) {
+    return FileExtension[0] ? FileExtension : ".ktx";
+}
+
+/* Core export: write every saved session as a protected .ktx into dir. Returns
+ * the count written; *failOut (optional) gets the failure count. No UI, so it
+ * serves both the config-box button and the -exportall CLI flag. */
+int kitty_export_all_to_dir(const char *dir, int *failOut) {
+    struct sesslist sl;
+    int i, n = 0, fail = 0;
+    get_sesslist(&sl, true);
+    for (i = 0; i < sl.nsessions; i++) {
+        Conf *conf = conf_new();
+        if (load_settings(sl.sessions[i], conf)) {
+            char *m = kitty_session_fname_munge(sl.sessions[i]);
+            char *path = dupprintf("%s\\%s%s", dir, m, ktx_ext());
+            save_open_settings_forced(path, conf);
+            if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) n++;
+            else fail++;
+            sfree(m);
+            sfree(path);
+        } else {
+            fail++;
+        }
+        conf_free(conf);
+    }
+    get_sesslist(&sl, false);
+    /* Carry the named-proxy definitions alongside the sessions (Piece 7): the
+     * whole-store move should bring proxies too, passwords wrapped MPW2 so they
+     * work on the destination machine. */
+    kitty_export_proxies_to_dir(dir);
+    if (failOut) *failOut = fail;
+    return n;
+}
+
+void kitty_export_all_sessions(HWND hwnd) {
+    char dir[4096];
+    int n, fail = 0;
+    char msg[4400];
+    if (!OpenDirName(hwnd, dir)) return;
+    n = kitty_export_all_to_dir(dir, &fail);
+    snprintf(msg, sizeof(msg),
+             "Exported %d session%s (%d failed) to:\n%s\n\n"
+             "Saved passwords were wrapped by the portable protection policy: "
+             "master password if set (usable on another machine), otherwise "
+             "Windows DPAPI (usable only by this account on this machine).",
+             n, n == 1 ? "" : "s", fail, dir);
+    MessageBoxA(hwnd, msg, "KiTTY session export",
+                MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+}
+
+static int kitty_import_one_ktx(const char *path) {
+    Conf *conf = conf_new();
+    char *stem, *name, *err;
+    const char *base, *ext = ktx_ext();
+    size_t sl, el = strlen(ext);
+    int ok = 0;
+    load_open_settings_forced((char *)path, conf);
+    base = strrchr(path, '\\');
+    base = base ? base + 1 : path;
+    stem = dupstr(base);
+    sl = strlen(stem);
+    if (sl > el && !_stricmp(stem + sl - el, ext))
+        stem[sl - el] = '\0';
+    name = kitty_session_fname_unmunge(stem);
+    if (name && name[0]) {
+        err = save_settings(name, conf);
+        ok = (err == NULL);
+        if (err) sfree(err);
+    }
+    sfree(stem);
+    sfree(name);
+    conf_free(conf);
+    return ok;
+}
+
+void kitty_import_sessions(HWND hwnd) {
+    char *buf = snewn(65536, char);
+    OPENFILENAMEA ofn;
+    int n = 0, fail = 0;
+    char msg[512];
+    buf[0] = '\0';
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFilter = "Connection files (*.ktx)\0*.ktx\0All files (*.*)\0*.*\0\0";
+    ofn.lpstrFile = buf;
+    ofn.nMaxFile = 65536;
+    ofn.lpstrTitle = "Import sessions...";
+    ofn.Flags = OFN_ALLOWMULTISELECT | OFN_EXPLORER | OFN_FILEMUSTEXIST |
+                OFN_HIDEREADONLY;
+    if (!GetOpenFileNameA(&ofn)) { sfree(buf); return; }
+    /* OFN_EXPLORER multiselect returns "dir\0file1\0file2\0\0"; a single
+     * selection is just "fullpath\0". */
+    {
+        char *p = buf + strlen(buf) + 1;
+        if (*p == '\0') {
+            if (kitty_import_one_ktx(buf)) n++; else fail++;
+        } else {
+            for (; *p; p += strlen(p) + 1) {
+                char *path = dupprintf("%s\\%s", buf, p);
+                if (kitty_import_one_ktx(path)) n++; else fail++;
+                sfree(path);
+            }
+        }
+    }
+    /* Also restore named proxies from the bundle's Proxies\ subfolder (Piece 7).
+     * OFN_EXPLORER multiselect makes buf the directory; a single selection makes
+     * buf a full path, so derive the directory from it. */
+    {
+        char dir[4096];
+        char *pp = buf + strlen(buf) + 1;
+        strncpy(dir, buf, sizeof(dir) - 1); dir[sizeof(dir) - 1] = '\0';
+        if (*pp == '\0') { char *slash = strrchr(dir, '\\'); if (slash) *slash = '\0'; }
+        kitty_import_proxies_from_dir(dir);
+    }
+    sfree(buf);
+    snprintf(msg, sizeof(msg),
+             "Imported %d session%s (%d failed).\n\n"
+             "Saved passwords were re-protected for this storage backend "
+             "(registry: Windows DPAPI; portable files: master password).",
+             n, n == 1 ? "" : "s", fail);
+    MessageBoxA(hwnd, msg, "KiTTY session import",
+                MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+}
+
+/* Core import: load every .ktx in dir as a session (no UI). Returns the count
+ * imported; *failOut (optional) gets the failure count. Used by -importdir. */
+int kitty_import_dir(const char *dir, int *failOut) {
+    char *pat = dupprintf("%s\\*%s", dir, ktx_ext());
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pat, &fd);
+    int n = 0, fail = 0;
+    sfree(pat);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            char *path = dupprintf("%s\\%s", dir, fd.cFileName);
+            if (kitty_import_one_ktx(path)) n++; else fail++;
+            sfree(path);
+        } while (FindNextFileA(h, &fd));
+        FindClose(h);
+    }
+    kitty_import_proxies_from_dir(dir);   /* restore named proxies too (Piece 7) */
+    if (failOut) *failOut = fail;
+    return n;
+}
+
 /* Duplicate the current session into a new process (filemap-serialised conf). */
 void kitty_dup_session(HWND hwnd, Conf *conf) {
     RunSessionWithCurrentSettings(hwnd, conf, NULL, NULL, NULL, 0, NULL);
@@ -429,8 +594,18 @@ void kitty_port_knock(Conf *conf)
 void kitty_proxy_select(Conf *conf)
 {
     const char *name;
-    if (!GetProxySelectionFlag())
+    /* Refresh proxies[] from the store first: this runs at connect time, which
+     * may be a different context than the startup InitProxyList() (spawned
+     * session, -load, auto-reconnect), and both the "shown" gate below and the
+     * resolve/lookup need the current set — otherwise a chosen named proxy is
+     * silently dropped. */
+    InitProxyList();
+    /* Apply only when the selector is shown (yes, or auto with proxies defined)
+     * — matches the config box, so a proxy chosen in the droplist takes effect
+     * and proxyselection=no fully disables it (hknet/KiTTY#11). */
+    if (!kitty_proxy_choice_shown())
         return;
+    kitty_proxy_resolve_selection(conf);   /* a deleted named proxy -> fallback */
     name = conf_get_str(conf, CONF_proxyselection);
     if (name == NULL || name[0] == '\0')
         return;
