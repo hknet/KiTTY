@@ -432,9 +432,10 @@ extern char *kitty_secret_wrap_portable( const char *plaintext ) ;
 
 int kitty_export_proxies_to_dir( const char *dir ) {
 	char pdir[2048] ; int count = 0 ;
+	InitProxyList() ;
+	if( !proxies[2].name ) return 0 ;   /* no named proxies -> don't create an empty Proxies\ folder */
 	snprintf( pdir, sizeof(pdir), "%s\\Proxies", dir ) ;
 	MakeDir( pdir ) ;
-	InitProxyList() ;
 	for( int i = 2 ; i < MAX_PROXY && proxies[i].name ; i++ ) {
 		Conf *conf = conf_new() ; do_defaults( NULL, conf ) ;
 		LoadProxyInfo( conf, proxies[i].name ) ;         /* decrypts pw into CONF_proxy_password */
@@ -468,8 +469,37 @@ int kitty_export_proxies_to_dir( const char *dir ) {
 	return count ;
 }
 
-int kitty_import_proxies_from_dir( const char *dir ) {
-	char pdir[2048], pat[2048] ; int count = 0 ;
+/* Is a named proxy of this name already defined in the active store? */
+int kitty_proxy_name_exists( const char *name ) {
+	InitProxyList() ;
+	for( int i = 2 ; i < MAX_PROXY && proxies[i].name ; i++ )
+		if( !strcmp( proxies[i].name, name ) ) return 1 ;
+	return 0 ;
+}
+
+/* How many proxy definitions in dir\Proxies already exist in the active store
+ * (used to warn about overwrites before an import). */
+int kitty_proxies_dir_collisions( const char *dir ) {
+	char pdir[2048], pat[2048] ; int c = 0 ;
+	snprintf( pdir, sizeof(pdir), "%s\\Proxies", dir ) ;
+	snprintf( pat, sizeof(pat), "%s\\*", pdir ) ;
+	WIN32_FIND_DATAA fd ; HANDLE h = FindFirstFileA( pat, &fd ) ;
+	if( h == INVALID_HANDLE_VALUE ) return 0 ;
+	do {
+		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) continue ;
+		char *name = (char*)malloc( strlen(fd.cFileName)*4 + 1 ) ;
+		unmungestr( fd.cFileName, name, MAX_VALUE_NAME ) ;
+		if( name[0] && kitty_proxy_name_exists( name ) ) c++ ;
+		free( name ) ;
+	} while( FindNextFileA( h, &fd ) ) ;
+	FindClose( h ) ;
+	return c ;
+}
+
+/* overwrite==0: keep existing proxies of the same name, import only new ones.
+ * Returns the number imported; *skippedOut (optional) gets the number kept. */
+int kitty_import_proxies_from_dir( const char *dir, int overwrite, int *skippedOut ) {
+	char pdir[2048], pat[2048] ; int count = 0, skipped = 0 ;
 	snprintf( pdir, sizeof(pdir), "%s\\Proxies", dir ) ;
 	snprintf( pat, sizeof(pat), "%s\\*", pdir ) ;
 	WIN32_FIND_DATAA fd ; HANDLE h = FindFirstFileA( pat, &fd ) ;
@@ -515,11 +545,16 @@ int kitty_import_proxies_from_dir( const char *dir ) {
 		fclose( fp ) ;
 		char *name = (char*)malloc( strlen(fd.cFileName)*4 + 1 ) ;
 		unmungestr( fd.cFileName, name, MAX_VALUE_NAME ) ;
-		if( name[0] ) { SaveProxyInfo( conf, name ) ; count++ ; }  /* re-wraps per dest backend */
+		if( name[0] ) {
+			if( overwrite || !kitty_proxy_name_exists(name) ) {
+				SaveProxyInfo( conf, name ) ; count++ ;   /* re-wraps per dest backend */
+			} else skipped++ ;                            /* keep the existing proxy */
+		}
 		free( name ) ;
 		conf_free( conf ) ;
 	} while( FindNextFileA( h, &fd ) ) ;
 	FindClose( h ) ;
+	if( skippedOut ) *skippedOut = skipped ;
 	return count ;
 }
 

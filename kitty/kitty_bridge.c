@@ -357,6 +357,10 @@ int kitty_export_all_to_dir(const char *dir, int *failOut) {
     int i, n = 0, fail = 0;
     get_sesslist(&sl, true);
     for (i = 0; i < sl.nsessions; i++) {
+        /* Skip the "Default Settings" pseudo-session: it is the new-session
+         * template, not a saved session, and get_sesslist always forces it in at
+         * index 0 (it was the "1 failed" on export). */
+        if (!strcmp(sl.sessions[i], "Default Settings")) continue;
         Conf *conf = conf_new();
         if (load_settings(sl.sessions[i], conf)) {
             char *m = kitty_session_fname_munge(sl.sessions[i]);
@@ -385,6 +389,24 @@ void kitty_export_all_sessions(HWND hwnd) {
     int n, fail = 0;
     char msg[4400];
     if (!OpenDirName(hwnd, dir)) return;
+    /* Export writes one file per session (plus a Proxies\ subfolder). Warn when
+     * the chosen folder already holds exported files, so old and new sessions
+     * don't get mixed - the picker's "New Folder" button makes a clean one. */
+    {
+        char pat[4200]; WIN32_FIND_DATAA fd; HANDLE h;
+        snprintf(pat, sizeof(pat), "%s\\*%s", dir, ktx_ext());
+        h = FindFirstFileA(pat, &fd);
+        if (h != INVALID_HANDLE_VALUE) {
+            FindClose(h);
+            if (MessageBoxA(hwnd,
+                    "This folder already contains exported session files.\n\n"
+                    "Export into an empty or new folder so old and new sessions "
+                    "are not mixed (use the \"New Folder\" button in the picker).\n\n"
+                    "Export here anyway?",
+                    "KiTTY session export", MB_YESNO | MB_ICONWARNING) != IDYES)
+                return;
+        }
+    }
     n = kitty_export_all_to_dir(dir, &fail);
     snprintf(msg, sizeof(msg),
              "Exported %d session%s (%d failed) to:\n%s\n\n"
@@ -396,100 +418,142 @@ void kitty_export_all_sessions(HWND hwnd) {
                 MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
 }
 
-static int kitty_import_one_ktx(const char *path) {
+/* Does a saved session with this exact name already exist in the active store? */
+static int kitty_session_exists(const char *name) {
+    struct sesslist sl; int i, found = 0;
+    get_sesslist(&sl, true);
+    for (i = 0; i < sl.nsessions; i++)
+        if (!strcmp(sl.sessions[i], name)) { found = 1; break; }
+    get_sesslist(&sl, false);
+    return found;
+}
+
+/* Session name a .ktx filename maps to (caller frees), or NULL. */
+static char *kitty_ktx_session_name(const char *filename) {
+    const char *ext = ktx_ext();
+    size_t el = strlen(ext), sl;
+    char *stem = dupstr(filename);
+    sl = strlen(stem);
+    if (sl > el && !_stricmp(stem + sl - el, ext)) stem[sl - el] = '\0';
+    char *name = kitty_session_fname_unmunge(stem);
+    sfree(stem);
+    return name;
+}
+
+/* Import one .ktx. Returns 1 imported, 0 failed, 2 skipped (already exists and
+ * overwrite==0). */
+static int kitty_import_one_ktx(const char *path, int overwrite) {
     Conf *conf = conf_new();
-    char *stem, *name, *err;
-    const char *base, *ext = ktx_ext();
-    size_t sl, el = strlen(ext);
-    int ok = 0;
+    char *name, *err;
+    const char *base;
+    int ret = 0;
+    /* Populate every setting with its default first: a .ktx only carries the
+     * fields it was written with, and load_open_settings_forced() (unlike the
+     * normal load path) does NOT seed defaults - so any key the file omits would
+     * stay unset and later conf_get_*() would assert (utils/conf.c "entry"). */
+    do_defaults(NULL, conf);
     load_open_settings_forced((char *)path, conf);
     base = strrchr(path, '\\');
     base = base ? base + 1 : path;
-    stem = dupstr(base);
-    sl = strlen(stem);
-    if (sl > el && !_stricmp(stem + sl - el, ext))
-        stem[sl - el] = '\0';
-    name = kitty_session_fname_unmunge(stem);
+    name = kitty_ktx_session_name(base);
     if (name && name[0]) {
-        err = save_settings(name, conf);
-        ok = (err == NULL);
-        if (err) sfree(err);
-    }
-    sfree(stem);
-    sfree(name);
-    conf_free(conf);
-    return ok;
-}
-
-void kitty_import_sessions(HWND hwnd) {
-    char *buf = snewn(65536, char);
-    OPENFILENAMEA ofn;
-    int n = 0, fail = 0;
-    char msg[512];
-    buf[0] = '\0';
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = hwnd;
-    ofn.lpstrFilter = "Connection files (*.ktx)\0*.ktx\0All files (*.*)\0*.*\0\0";
-    ofn.lpstrFile = buf;
-    ofn.nMaxFile = 65536;
-    ofn.lpstrTitle = "Import sessions...";
-    ofn.Flags = OFN_ALLOWMULTISELECT | OFN_EXPLORER | OFN_FILEMUSTEXIST |
-                OFN_HIDEREADONLY;
-    if (!GetOpenFileNameA(&ofn)) { sfree(buf); return; }
-    /* OFN_EXPLORER multiselect returns "dir\0file1\0file2\0\0"; a single
-     * selection is just "fullpath\0". */
-    {
-        char *p = buf + strlen(buf) + 1;
-        if (*p == '\0') {
-            if (kitty_import_one_ktx(buf)) n++; else fail++;
+        if (!overwrite && kitty_session_exists(name)) {
+            ret = 2;                       /* keep the existing session */
         } else {
-            for (; *p; p += strlen(p) + 1) {
-                char *path = dupprintf("%s\\%s", buf, p);
-                if (kitty_import_one_ktx(path)) n++; else fail++;
-                sfree(path);
-            }
+            err = save_settings(name, conf);
+            ret = (err == NULL) ? 1 : 0;
+            if (err) sfree(err);
         }
     }
-    /* Also restore named proxies from the bundle's Proxies\ subfolder (Piece 7).
-     * OFN_EXPLORER multiselect makes buf the directory; a single selection makes
-     * buf a full path, so derive the directory from it. */
+    sfree(name);
+    conf_free(conf);
+    return ret;
+}
+
+int kitty_import_dir(const char *dir, int *failOut, int *proxyOut,
+                     int *skippedOut, int overwrite);   /* defined below */
+
+void kitty_import_sessions(HWND hwnd) {
+    char dir[4096];
+    int n, fail = 0, prox = 0, skipped = 0, overwrite = 1;
+    char msg[700], counts[320];
+    /* Folder-based, to match Export all (both pick a folder): imports every .ktx
+     * in the chosen folder plus its Proxies\ subfolder. */
+    if (!OpenDirName(hwnd, dir)) return;
+    /* Import overwrites a saved session/proxy of the same name. Count the
+     * collisions across BOTH and let the user choose once: overwrite all, import
+     * only new, or cancel. */
     {
-        char dir[4096];
-        char *pp = buf + strlen(buf) + 1;
-        strncpy(dir, buf, sizeof(dir) - 1); dir[sizeof(dir) - 1] = '\0';
-        if (*pp == '\0') { char *slash = strrchr(dir, '\\'); if (slash) *slash = '\0'; }
-        kitty_import_proxies_from_dir(dir);
+        int collide = 0;
+        char pat[4200]; WIN32_FIND_DATAA fd; HANDLE h;
+        snprintf(pat, sizeof(pat), "%s\\*%s", dir, ktx_ext());
+        h = FindFirstFileA(pat, &fd);
+        if (h != INVALID_HANDLE_VALUE) {
+            do {
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+                char *nm = kitty_ktx_session_name(fd.cFileName);
+                if (nm && nm[0] && kitty_session_exists(nm)) collide++;
+                sfree(nm);
+            } while (FindNextFileA(h, &fd));
+            FindClose(h);
+        }
+        collide += kitty_proxies_dir_collisions(dir);
+        if (collide > 0) {
+            char q[440];
+            snprintf(q, sizeof(q),
+                "Some sessions or proxy definitions in this folder already exist "
+                "here (%d in total).\n\n"
+                "Yes  -  overwrite all matching sessions and proxies\n"
+                "No  -  import only new sessions and proxies\n"
+                "Cancel  -  do nothing",
+                collide);
+            int r = MessageBoxA(hwnd, q, "KiTTY session import",
+                                MB_YESNOCANCEL | MB_ICONQUESTION);
+            if (r == IDCANCEL) return;
+            overwrite = (r == IDYES) ? 1 : 0;
+        }
     }
-    sfree(buf);
+    n = kitty_import_dir(dir, &fail, &prox, &skipped, overwrite);
+    snprintf(counts, sizeof(counts), "Imported %d session%s and %d prox%s",
+             n, n == 1 ? "" : "s", prox, prox == 1 ? "y" : "ies");
+    if (skipped > 0) { char t[80]; snprintf(t, sizeof(t), ", %d kept (already existed)", skipped); strncat(counts, t, sizeof(counts)-strlen(counts)-1); }
+    if (fail > 0)    { char t[48]; snprintf(t, sizeof(t), ", %d failed", fail); strncat(counts, t, sizeof(counts)-strlen(counts)-1); }
     snprintf(msg, sizeof(msg),
-             "Imported %d session%s (%d failed).\n\n"
+             "%s from:\n%s\n\n"
              "Saved passwords were re-protected for this storage backend "
              "(registry: Windows DPAPI; portable files: master password).",
-             n, n == 1 ? "" : "s", fail);
+             counts, dir);
     MessageBoxA(hwnd, msg, "KiTTY session import",
                 MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
 }
 
 /* Core import: load every .ktx in dir as a session (no UI). Returns the count
- * imported; *failOut (optional) gets the failure count. Used by -importdir. */
-int kitty_import_dir(const char *dir, int *failOut) {
+ * imported; optional outs: *failOut, *proxyOut (named proxies restored),
+ * *skippedOut (existing sessions kept because overwrite==0). Used by -importdir
+ * (which always overwrites). */
+int kitty_import_dir(const char *dir, int *failOut, int *proxyOut,
+                     int *skippedOut, int overwrite) {
     char *pat = dupprintf("%s\\*%s", dir, ktx_ext());
     WIN32_FIND_DATAA fd;
     HANDLE h = FindFirstFileA(pat, &fd);
-    int n = 0, fail = 0;
+    int n = 0, fail = 0, skipped = 0;
     sfree(pat);
     if (h != INVALID_HANDLE_VALUE) {
         do {
             if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
             char *path = dupprintf("%s\\%s", dir, fd.cFileName);
-            if (kitty_import_one_ktx(path)) n++; else fail++;
+            int r = kitty_import_one_ktx(path, overwrite);
+            if (r == 1) n++; else if (r == 2) skipped++; else fail++;
             sfree(path);
         } while (FindNextFileA(h, &fd));
         FindClose(h);
     }
-    kitty_import_proxies_from_dir(dir);   /* restore named proxies too (Piece 7) */
+    { int psk = 0;
+      int pc = kitty_import_proxies_from_dir(dir, overwrite, &psk);   /* honor overwrite too */
+      if (proxyOut) *proxyOut = pc;
+      skipped += psk; }                                              /* proxies kept count too */
     if (failOut) *failOut = fail;
+    if (skippedOut) *skippedOut = skipped;
     return n;
 }
 

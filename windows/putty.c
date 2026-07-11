@@ -11,7 +11,8 @@ extern char *kitty_cli_loginscript; /* kitty_bridge.c: -loginscript, consumed po
  * just before the config box (storage backend is initialised by then), then
  * exit. kitty_export_all_to_dir/kitty_import_dir are the no-UI cores. */
 int  kitty_export_all_to_dir(const char *dir, int *failOut);
-int  kitty_import_dir(const char *dir, int *failOut);
+int  kitty_import_dir(const char *dir, int *failOut, int *proxyOut,
+                      int *skippedOut, int overwrite);
 static char *kitty_cli_exportdir = NULL;
 static char *kitty_cli_importdir = NULL;
 /* do-and-exit / pre-window utility switches (kitty modules; putty.c lacks kitty.h) */
@@ -385,10 +386,11 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         cleanup_exit(fail ? 1 : 0);
     }
     if (kitty_cli_importdir) {
-        int fail = 0, n = kitty_import_dir(kitty_cli_importdir, &fail);
+        int fail = 0, prox = 0;
+        int n = kitty_import_dir(kitty_cli_importdir, &fail, &prox, NULL, 1);
         char msg[600];
-        snprintf(msg, sizeof(msg), "Imported %d session(s), %d failed, from:\n%s",
-                 n, fail, kitty_cli_importdir);
+        snprintf(msg, sizeof(msg), "Imported %d session(s), %d prox(ies), %d failed, from:\n%s",
+                 n, prox, fail, kitty_cli_importdir);
         MessageBoxA(NULL, msg, "KiTTY session import",
                     MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
         cleanup_exit(fail ? 1 : 0);
