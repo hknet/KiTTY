@@ -59,6 +59,77 @@
 #ifndef IDC_MPW_CONFIRM
 #define IDC_MPW_CONFIRM 1103
 #endif
+#ifndef IDC_MPW_EDIT_LBL
+#define IDC_MPW_EDIT_LBL 1105
+#endif
+/* Legacy->protected password migration consent dialog (portable saves). */
+#ifndef IDD_MIGRATEWARN
+#define IDD_MIGRATEWARN 132
+#endif
+#ifndef IDC_MIG_NOASK
+#define IDC_MIG_NOASK 1104
+#endif
+/* Named-proxy editor dialog (cyd01/KiTTY#11) + its controls. */
+#ifndef IDD_PROXYEDIT
+#define IDD_PROXYEDIT 133
+#endif
+#ifndef IDC_PXE_NAME
+#define IDC_PXE_NAME 1200
+#endif
+#ifndef IDC_PXE_TYPE
+#define IDC_PXE_TYPE 1201
+#endif
+#ifndef IDC_PXE_HOST
+#define IDC_PXE_HOST 1202
+#endif
+#ifndef IDC_PXE_PORT
+#define IDC_PXE_PORT 1203
+#endif
+#ifndef IDC_PXE_USER
+#define IDC_PXE_USER 1204
+#endif
+#ifndef IDC_PXE_PASS
+#define IDC_PXE_PASS 1205
+#endif
+#ifndef IDC_PXE_SHOWPW
+#define IDC_PXE_SHOWPW 1206
+#endif
+#ifndef IDC_PXE_EXCLUDE
+#define IDC_PXE_EXCLUDE 1207
+#endif
+#ifndef IDC_PXE_SAVE
+#define IDC_PXE_SAVE 1208
+#endif
+#ifndef IDC_PXE_DELETE
+#define IDC_PXE_DELETE 1209
+#endif
+#ifndef IDC_PXE_BANNER
+#define IDC_PXE_BANNER 1210
+#endif
+#ifndef IDC_PXE_COMMAND
+#define IDC_PXE_COMMAND 1211
+#endif
+#ifndef IDC_PXE_LOCALHOST
+#define IDC_PXE_LOCALHOST 1212
+#endif
+#ifndef IDC_PXE_DNS
+#define IDC_PXE_DNS 1213
+#endif
+#ifndef IDC_PXE_LOGTOTERM
+#define IDC_PXE_LOGTOTERM 1214
+#endif
+/* "Update available / up to date" popup (kitty/kitty_win.c). A real dialog so
+ * the dialog manager gives it the shell font at the right DPI, like every other
+ * KiTTY dialog. */
+#ifndef IDD_UPDATEBOX
+#define IDD_UPDATEBOX 134
+#endif
+#ifndef IDC_UPD_TEXT
+#define IDC_UPD_TEXT 1220
+#endif
+#ifndef IDC_UPD_UPDATE
+#define IDC_UPD_UPDATE 1221
+#endif
 #ifndef IDI_BLACKBALL
 #define IDI_BLACKBALL 9902
 #endif
@@ -303,4 +374,12 @@
 #endif
 #ifndef IDM_XYZABORT
 #define IDM_XYZABORT  0xB170
+#endif
+/* Bulk session export/import (multiples of 0x10 - WM_SYSCOMMAND masks wParam;
+ * 0xB180..0xB1D0 are taken by window.c-local script/mNotepad items). */
+#ifndef IDM_EXPORTALLSETTINGS
+#define IDM_EXPORTALLSETTINGS 0xB1E0
+#endif
+#ifndef IDM_IMPORTSETTINGS
+#define IDM_IMPORTSETTINGS 0xB1F0
 #endif

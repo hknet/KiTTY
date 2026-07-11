@@ -89,20 +89,89 @@ BEGIN
 END
 
 /* Master-password prompt (DPAPI Phase 2). Handled by gui_master_pw_prompt()
- * in kitty/kitty_mpw_gui.c. The confirm row is hidden at runtime when merely
- * unlocking (it is only shown on first-time setup). */
-IDD_MASTERPW DIALOG DISCARDABLE 0, 0, 230, 106
+ * in kitty/kitty_mpw_gui.c. The template is laid out for the wordy first-time
+ * setup; when merely unlocking, the prompt area is shrunk and the confirm row
+ * hidden at runtime. */
+IDD_MASTERPW DIALOG DISCARDABLE 0, 0, 230, 184
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY master password"
 FONT 8, "MS Shell Dlg"
 BEGIN
-    LTEXT           "", IDC_MPW_PROMPT, 7, 7, 216, 25
-    LTEXT           "Master password:", -1, 7, 35, 216, 8
-    EDITTEXT        IDC_MPW_EDIT, 7, 45, 216, 12, ES_PASSWORD | ES_AUTOHSCROLL
-    LTEXT           "Confirm master password:", IDC_MPW_CONFIRM_LBL, 7, 60, 216, 8
-    EDITTEXT        IDC_MPW_CONFIRM, 7, 70, 216, 12, ES_PASSWORD | ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "OK", IDOK, 116, 87, 50, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 173, 87, 50, 14
+    LTEXT           "", IDC_MPW_PROMPT, 7, 7, 216, 104
+    LTEXT           "Master password:", IDC_MPW_EDIT_LBL, 7, 113, 216, 8
+    EDITTEXT        IDC_MPW_EDIT, 7, 123, 216, 12, ES_PASSWORD | ES_AUTOHSCROLL
+    LTEXT           "Confirm master password:", IDC_MPW_CONFIRM_LBL, 7, 138, 216, 8
+    EDITTEXT        IDC_MPW_CONFIRM, 7, 148, 216, 12, ES_PASSWORD | ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK", IDOK, 116, 165, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 173, 165, 50, 14
+END
+
+/* Legacy->protected password migration consent (portable saves; user decision
+ * 2026-07: default-on warning, opt-out via kitty.ini WarnLegacyPasswordUpgrade).
+ * Handled by gui_legacy_migrate_warn() in kitty/kitty_mpw_gui.c. */
+IDD_MIGRATEWARN DIALOG DISCARDABLE 0, 0, 260, 102
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "KiTTY password protection"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "This session file contains a password stored in the old unprotected format. Saving will re-encrypt it in the new protected format, which old KiTTY releases (0.76 and earlier) cannot read. Do not copy the file back to an old release afterwards.", -1, 7, 7, 246, 34
+    LTEXT           "Re-encrypt the stored password now? (No keeps it in the old form.)", -1, 7, 45, 246, 10
+    AUTOCHECKBOX    "Don't show this warning again", IDC_MIG_NOASK, 7, 61, 246, 10
+    DEFPUSHBUTTON   "&Yes", IDOK, 146, 81, 50, 14
+    PUSHBUTTON      "&No", IDCANCEL, 203, 81, 50, 14
+END
+
+/* Named-proxy editor (cyd01/KiTTY#11). Handled by kitty/kitty_proxy_gui.c.
+ * Pick a definition from the combo to edit it, or type a new name; Save writes
+ * it, Delete removes it (after a confirm). The banner LTEXT warns when a stored
+ * password is still plaintext (Phase B). */
+IDD_PROXYEDIT DIALOG DISCARDABLE 0, 0, 284, 268
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "KiTTY named proxy definitions"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "Definition (pick one to edit, or type a new name):", -1, 7, 7, 270, 8
+    COMBOBOX        IDC_PXE_NAME, 7, 17, 270, 120, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Type:", -1, 7, 39, 40, 8
+    COMBOBOX        IDC_PXE_TYPE, 52, 37, 95, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Host:", -1, 7, 57, 40, 8
+    EDITTEXT        IDC_PXE_HOST, 52, 55, 160, 12, ES_AUTOHSCROLL
+    LTEXT           "Port:", -1, 217, 57, 18, 8
+    EDITTEXT        IDC_PXE_PORT, 238, 55, 39, 12, ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "Username:", -1, 7, 75, 42, 8
+    EDITTEXT        IDC_PXE_USER, 52, 73, 225, 12, ES_AUTOHSCROLL
+    LTEXT           "Password:", -1, 7, 93, 42, 8
+    EDITTEXT        IDC_PXE_PASS, 52, 91, 160, 12, ES_PASSWORD | ES_AUTOHSCROLL
+    AUTOCHECKBOX    "Show", IDC_PXE_SHOWPW, 217, 93, 45, 10
+    LTEXT           "Command to send to proxy (Telnet/Local types):", -1, 7, 111, 270, 8
+    EDITTEXT        IDC_PXE_COMMAND, 7, 121, 270, 12, ES_AUTOHSCROLL
+    LTEXT           "Exclude Hosts/IPs (separate with commas or spaces):", -1, 7, 139, 270, 8
+    EDITTEXT        IDC_PXE_EXCLUDE, 7, 149, 270, 12, ES_AUTOHSCROLL
+    AUTOCHECKBOX    "Consider proxying local host connections", IDC_PXE_LOCALHOST, 7, 167, 270, 10
+    LTEXT           "DNS lookup at proxy end:", -1, 7, 183, 90, 8
+    COMBOBOX        IDC_PXE_DNS, 100, 181, 80, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Print proxy diagnostics:", -1, 7, 201, 90, 8
+    COMBOBOX        IDC_PXE_LOGTOTERM, 100, 199, 177, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "", IDC_PXE_BANNER, 7, 219, 270, 18
+    DEFPUSHBUTTON   "&Save", IDC_PXE_SAVE, 64, 245, 55, 15
+    PUSHBUTTON      "&Delete", IDC_PXE_DELETE, 124, 245, 55, 15
+    PUSHBUTTON      "Close", IDCANCEL, 222, 245, 55, 15
+END
+
+/* "Update available / up to date" popup (kitty/kitty_win.c). A real (modeless)
+ * dialog so the dialog manager applies the shell font at the correct DPI, like
+ * every other KiTTY window. The message area + window are grown to fit the text
+ * at runtime; buttons: OK (info case) OR Update now + Later (update case), the
+ * unused ones hidden. OK and Later share the same slot (only one is ever shown). */
+IDD_UPDATEBOX DIALOG DISCARDABLE 0, 0, 244, 86
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "KiTTY Update"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "", IDC_UPD_TEXT, 10, 9, 224, 44
+    DEFPUSHBUTTON   "OK", IDOK, 190, 66, 44, 14
+    PUSHBUTTON      "&Update now", IDC_UPD_UPDATE, 128, 66, 58, 14
+    PUSHBUTTON      "&Later", IDCANCEL, 190, 66, 44, 14
 END
 
 #ifndef NO_MANIFESTS

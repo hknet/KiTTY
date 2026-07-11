@@ -154,7 +154,10 @@ CONF_OPTION(proxy_telnet_command,
 )
 CONF_OPTION(proxy_log_to_term,
     VALUE_TYPE(INT),
-    DEFAULT_INT(FORCE_OFF),
+    /* KiTTY: default AUTO ("only until session starts") instead of PuTTY's
+     * FORCE_OFF, so proxy connections surface their handshake/diagnostics in the
+     * terminal during setup (then go quiet once the session is up). */
+    DEFAULT_INT(AUTO),
     SAVE_KEYWORD("ProxyLogToTerm"),
     STORAGE_ENUM(on_off_auto),
 )
