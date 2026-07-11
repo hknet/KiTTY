@@ -128,6 +128,16 @@ features are working and verified. Known limitations as of this release:
   older KiTTY's file, and each save now writes a fresh
   `kittynew-YYYYMMDD-HHMMSS.sav` whose filename reflects when it was written,
   keeping the newest `[KiTTY] savbackupcount` copies.
+- **Whole-store import is more robust and interactive.** Importing a session bundle
+  no longer crashes on a partial `.ktx`. *Export all* and *Import all* now use a
+  modern folder chooser with an address bar (paste a path), *Import all* lets you
+  overwrite existing sessions and proxies or import only the new ones (and reports
+  the counts), and Export no longer includes "Default Settings" or an empty proxies
+  folder.
+- **Config box: Category tree fully expanded, plus a selection fix.** The Category
+  tree opens fully expanded (`[ConfigBox] categoryexpand` sets the depth), and
+  selecting a saved session with "Default Settings" hidden no longer jumps the
+  highlight to the next row.
 
 ## New in 0.84.1.47
 

@@ -69,6 +69,18 @@ see [FEATURES.md](FEATURES.md).
   is renamed from `kitty.sav` to `kittynew.sav` so it never clashes with an older
   KiTTY's file, and each save now writes a fresh `kittynew-YYYYMMDD-HHMMSS.sav` whose
   filename matches when it was written, keeping the newest `savbackupcount` copies.
+- **Whole-store import is more robust and interactive.** Importing a session bundle
+  no longer crashes on a partial `.ktx` file. Both *Export all* and *Import all* now
+  use a modern folder chooser with an address bar you can paste a path into (instead
+  of the tree-only picker), and *Import all* — when the folder contains sessions or
+  proxies that already exist — lets you choose once to overwrite them or import only
+  the new ones (applied to both sessions and proxies), then reports how many sessions
+  and proxies were imported, kept, or failed. Export no longer includes the "Default
+  Settings" template or creates an empty proxies folder.
+- **Config box: fully expanded Category tree, and a selection fix.** The Category tree
+  now opens fully expanded by default (`[ConfigBox] categoryexpand` sets the depth: 1 =
+  top categories only, N = N levels), and clicking a saved session with "Default
+  Settings" hidden no longer jumps the highlight to the next row.
 
 ## 0.84.1.47-beta — 2026-07-09
 
