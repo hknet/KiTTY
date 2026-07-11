@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.47 — Known issues & limitations
+# KiTTY 0.84.1.48 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -20,6 +20,12 @@ features are working and verified. Known limitations as of this release:
   against a real Android device or a live remote shell.
 - **Background image:** renders correctly inside the terminal cell grid; the thin
   margin strip outside the grid is still solid-filled (cosmetic).
+- **Command-line tools use the registry session store.** `klink`/`kscp`/`ksftp`
+  (plink/pscp/psftp) read saved sessions from the Windows **registry**, not from a
+  portable (`savemode=dir`) store — so a portable install's sessions, and any
+  passwords a **master password** protects there, are usable from the KiTTY
+  **GUI** but not from the command-line tools. Registry-mode sessions (with their
+  DPAPI-protected passwords) work from the CLI tools as before.
 
 ## Connectivity tips
 
@@ -49,9 +55,14 @@ features are working and verified. Known limitations as of this release:
   and cross-user theft of the registry/session files, but **not** malware already
   running as the same Windows user, and DPAPI blobs do **not** move to another
   PC. Existing legacy/old-KiTTY passwords still load and are re-encrypted on the
-  next save. Portable config files currently use the same DPAPI protection for
-  saved passwords; a portable, opt-in **master password** for cross-machine
-  password portability is still planned. kageant can keep SSH-2 keys in an
+  next save. In **portable mode** you can now protect saved session *and* proxy
+  passwords with an opt-in **master password** (you are prompted on first save;
+  `-masterpwfile` supplies it non-interactively). Unlike DPAPI, a master-password
+  store **moves between machines**. **The master password is never stored and
+  cannot be recovered: if you forget it, the passwords it protected are
+  unrecoverable** — you would clear and re-enter them. Declining the prompt falls
+  back to DPAPI, and `[KiTTY] PortablePasswordProtection=legacy` keeps the classic
+  plaintext form for automation/audit. kageant can keep SSH-2 keys in an
   **encrypted/deferred** state when they are added with **Add key (encrypted)**,
   loaded at startup, or added with `-encrypted`/`-nodecrypt`; the passphrase is
   requested on first use. After first use, and also for normally added SSH-2
@@ -66,11 +77,57 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.47-beta @ 2026-07-09`.
+- **Version string:** binaries report `0.84.1.48-beta @ 2026-07-09`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.48
+
+- **Named proxies are back, with a built-in editor and encrypted passwords.**
+  KiTTY's classic *Proxy choice* is restored: define reusable named proxies, pick
+  one per session from the Session panel, and create/edit/delete them (with the
+  full set of proxy settings) from a built-in editor. Each proxy password is
+  encrypted at rest like a session password, and proxies from a classic-KiTTY
+  (9bis) registry hive migrate across automatically. See FEATURES.md.
+- **Master password for saved passwords in portable mode.** A portable install can
+  protect its session and proxy passwords with an opt-in master password, so the
+  store is safe to carry between machines (the registry continues to use Windows
+  DPAPI). See the Security note above — it is unrecoverable if lost.
+- **Enter the master password once per running KiTTY.** In portable mode, once you
+  unlock the master password it is shared with the session windows KiTTY opens next
+  — from the config box, *New Session*, *Duplicate Session*, or the tray launcher —
+  so you are not asked again for each window. The key is handed only to KiTTY's own
+  child processes through an inherited handle, wrapped in memory with Windows
+  CryptProtectMemory (same-logon); saved files stay master-password-encrypted at
+  rest. It is only ever requested when a master password is actually configured.
+- **Export and import your whole set of sessions.** New *Export all sessions…* /
+  *Import sessions…* menu entries, and the `-exportall` / `-importdir` flags, move
+  every saved session — each password re-wrapped for the destination machine — as
+  a bundle of files.
+- **Proxy connections show their handshake by default,** printing proxy
+  diagnostics in the terminal until the session starts, so a failed proxied
+  connection is diagnosable instead of a bare error.
+- **Config box: a resizable session list and export/import buttons.** The Session
+  panel gained *Export all* / *Import* buttons, and the saved-session list and the
+  window can be resized via `[ConfigBox] height` / `windowheight`.
+- **Update-available popup rebuilt as a standard dialog.** The non-modal update
+  popup (new in 0.84.1.46) is now a real dialog, so it uses the system font at the
+  correct DPI — a hugely oversized font on high-DPI displays is fixed — sizes
+  itself to its wrapped text, and when an update is available it stays open until
+  you pick *Update now* or *Later*. The "you're up to date" notice still
+  self-dismisses.
+- **Config box: `defaultsettings = no` hides "Default Settings".** The
+  `[ConfigBox] defaultsettings = no` flag previously only skipped auto-creating the
+  pseudo-session; it now also removes it from the saved-session list (it still
+  works as the new-session template, loaded by name). The saved-session list also
+  defaults to 16 rows.
+- **Registry backups are timestamped and renamed `kittynew.sav`.** The registry
+  backup is renamed from `kitty.sav` to `kittynew.sav`, so it never clashes with an
+  older KiTTY's file, and each save now writes a fresh
+  `kittynew-YYYYMMDD-HHMMSS.sav` whose filename reflects when it was written,
+  keeping the newest `[KiTTY] savbackupcount` copies.
 
 ## New in 0.84.1.47
 

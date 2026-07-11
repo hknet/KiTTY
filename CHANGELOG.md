@@ -5,6 +5,71 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.48-beta — 2026-07-11
+
+- **Named proxies are back — with a built-in editor and encrypted passwords.**
+  KiTTY's classic *Proxy choice* is restored and modernised: define a set of
+  reusable named proxies once, then pick one from a dropdown in the Session panel,
+  and the choice is remembered per session. A built-in editor — reachable from an
+  *Edit* button beside the dropdown and on the Connection/Proxy panel — creates,
+  edits and deletes definitions with the full set of proxy settings (type, host,
+  port, credentials, the command for Telnet/Local types, excluded hosts,
+  DNS-at-proxy and diagnostics). Each proxy password is now **encrypted at rest**
+  exactly like a session password — Windows DPAPI in the registry, or your master
+  password in a portable install — and is decrypted only when a session that uses
+  the proxy actually connects. Proxies from a classic-KiTTY (9bis) registry hive
+  are migrated across automatically and encrypted on the way, and they travel with
+  the whole-store export/import. The dropdown appears automatically once any proxy
+  is defined; `[ConfigBox] proxyselection = auto|no|yes` forces it on or off.
+- **Master-password protection for saved passwords in portable mode.** Which
+  protection guards a stored password is now chosen by *where* it is stored: the
+  registry always uses Windows DPAPI (bound to your account, no prompt), while a
+  portable install can protect its session and proxy passwords with a **master
+  password**, so a portable tree is safe to carry on a USB stick or sync between
+  machines. Reading classic-KiTTY password formats still works — one-way: KiTTY
+  reads the old form but never writes it back — and re-encrypting an old portable
+  file to the new form only happens after an explicit confirmation. For automation,
+  `-masterpwfile` supplies the master password non-interactively and
+  `[KiTTY] PortablePasswordProtection=legacy` keeps the classic plaintext form.
+- **Export and import your whole set of sessions.** New *Export all sessions…* and
+  *Import sessions…* menu entries (and the `-exportall` / `-importdir` command-line
+  flags) move every saved session — each password re-wrapped so it works on the
+  destination machine — as a bundle of files, so setting KiTTY up on a new PC is a
+  copy-and-import away.
+- **Proxy connections show their handshake by default.** Proxy diagnostics now
+  default to *"only until session starts"* instead of off, so when a proxied
+  connection fails you see the proxy's response in the terminal rather than a bare
+  error; it goes quiet once the session is up.
+- **Config box: a resizable session list and export/import buttons.** The Session
+  panel gained *Export all* / *Import* buttons, and the saved-session list and the
+  whole window can be resized via `[ConfigBox] height` and `windowheight`. The
+  KiTTY-added exit options are grouped below the stock "Close window on exit", and
+  the "show old putty/kitty sessions" checkbox is hidden when there is no old hive.
+- **Enter the master password once per running KiTTY (portable).** After you unlock
+  the master password, it is shared with every session window KiTTY opens — a session
+  from the config box, *New Session*, *Duplicate Session*, or the tray launcher — so
+  you are no longer prompted again for each window. The key travels only to KiTTY's
+  own child processes through an inherited handle, wrapped in memory with Windows
+  CryptProtectMemory (same-logon); the saved files stay master-password-encrypted at
+  rest. It is only ever requested when a master password is actually configured.
+- **"Update available" popup reimplemented as a standard dialog.** The non-modal
+  update popup is now a real dialog, so it uses the system font at the correct DPI (a
+  hugely oversized font on high-DPI displays is fixed), sizes itself to its wrapped
+  text, and — when an update is available — stays open until you choose *Update now*
+  or *Later* instead of auto-dismissing. Only the "you're already up to date" box
+  still closes itself.
+- **Named-proxy fixes.** A selected named proxy is now reliably applied when the
+  session actually connects, and the proxy editor opens with blank fields for a new
+  proxy instead of pre-filling the Default Settings proxy.
+- **Config box: `defaultsettings = no` now hides "Default Settings".** The flag
+  previously only stopped auto-creating the pseudo-session; it now also removes it
+  from the saved-session list (it still works as the new-session template, loaded by
+  name). The saved-session list also defaults to 16 rows.
+- **Registry backup: timestamped copies named `kittynew.sav`.** The registry backup
+  is renamed from `kitty.sav` to `kittynew.sav` so it never clashes with an older
+  KiTTY's file, and each save now writes a fresh `kittynew-YYYYMMDD-HHMMSS.sav` whose
+  filename matches when it was written, keeping the newest `savbackupcount` copies.
+
 ## 0.84.1.47-beta — 2026-07-09
 
 - **Clean-logout error suppression narrowed (hardening).** The 0.84.1.45 clean-logout

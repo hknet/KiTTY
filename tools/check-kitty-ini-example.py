@@ -60,6 +60,9 @@ def source_options() -> set[tuple[str, str]]:
         # kitty_config.c mirrors INIT_SECTION without including kitty.h.
         for m in re.finditer(r'readINI\s*\([^;\n]*?KITTY_INI_SECTION\s*,\s*"([^"]+)"', text):
             opts.add(("KiTTY", m.group(1)))
+        # readINI with the INIT_SECTION macro (kitty.h) also targets [KiTTY].
+        for m in re.finditer(r'readINI\s*\([^;\n]*?\bINIT_SECTION\s*,\s*"([^"]+)"', text):
+            opts.add(("KiTTY", m.group(1)))
     return opts
 
 

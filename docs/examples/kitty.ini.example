@@ -18,20 +18,24 @@
 ; default: if yes all the sessions belong to their own folder and the default folder too
 ;default=yes
 
-; defaultsettings: enable/disable the automatic creation of the 'Default Settings' session
+; defaultsettings: when no, KiTTY does not auto-create a 'Default Settings'
+;    session AND hides it from the saved-session list in the config box. It still
+;    works as the template for a new session (loaded by name), it just isn't
+;    listed. Default yes (create it and show it, like stock PuTTY).
 ;defaultsettings=yes
 
 ; filter: enable/disable filter in saved sessions selection box
 ;filter=yes
 
-; height: the number of visible lines into the saved sessions selection box (in main window)
-;height=21
+; height: the number of visible lines in the saved-sessions list (default 16 = stock fit)
+;height=16
 
 ; left: X position of the confuguration box (-1 means center)
 ;left=-1
 
-; proxyselection: add a proxy selection feature in the main configuration box
-;proxyselection=no
+; proxyselection: show the named-proxy chooser in the Session panel.
+;   auto (default) = show once any named proxy is defined; yes = always; no = never
+;proxyselection=auto
 
 ; noexit: if set to yes, return to the configuration box at main program exit
 ;noexit=no
@@ -39,8 +43,12 @@
 ; top: Y position of the confuguration box (-1 means center)
 ;top=-1
 
-; windowheight: the size of the configuration box
-;windowheight=800
+; windowheight: force the configuration window to an explicit height, in pixels
+;    (scaled for your display DPI). Default 0 = off, so the window is sized from
+;    [ConfigBox] height instead. This is a blunt override - it resizes only the
+;    outer window, not the inner controls - so [ConfigBox] height is usually what
+;    you want. The 800 below is only an example value.
+;windowheight=0
 
 
 
@@ -49,8 +57,10 @@
 ; adb: enable/disable adb support
 ;adb=yes
 
-; antiidle: character string regularly sent to maintain the connection alive
-;antiidle== \k08\
+; antiidle: string sent to the server periodically to keep the connection alive.
+;    Default (unset/empty) = disabled. \k08 sends a backspace; pick a sequence the
+;    remote ignores. Interval is set by antiidledelay (seconds).
+;antiidle=\k08\
 
 ; antiidledelay: time delay between two sending
 ;antiidledelay=60
@@ -123,7 +133,12 @@
 ; initdelay: initial delay in seconds before automatic sending of password, or auto command
 ;initdelay=2.0
 
-; KiClassName: change the internal software name to be the same as PuTTY
+; KiClassName: the Windows window-class name KiTTY registers, which also selects
+;    which registry hive it reads/writes sessions in. Default (unset): KiTTY's own
+;    class and hive (Software\kapper.net\KiTTY). Set to PuTTY to use stock PuTTY's
+;    window class AND PuTTY's hive (Software\SimonTatham\PuTTY) - handy to share
+;    sessions with an installed PuTTY, or for host tools that key off the "PuTTY"
+;    window class. This is NOT the default; leave it unset for normal use.
 ;KiClassName=PuTTY
 
 ; localcmd: manage local commands (starting with __)
@@ -171,8 +186,18 @@
 ; readonly: open KiTTY in read-only configuration mode
 ;readonly=no
 
-; sav: path to the save file of the KiTTY registry. In most cases it is located here %APPDATA%/KiTTY/kitty.sav
+; sav: base path for the registry backup (a full export of KiTTY's hive). Each
+;    save writes a FRESH timestamped file next to it, <base>-YYYYMMDD-HHMMSS<ext>,
+;    so the filename always reflects when that copy was written. Default base is
+;    %APPDATA%\KiTTY\kittynew.sav (i.e. the files are kittynew-YYYYMMDD-HHMMSS.sav)
+;    - NOT kitty.sav, so an old 0.76 KiTTY's backup is never touched. A legacy
+;    value ending in kitty.sav or kitty084.sav is ignored so this default takes
+;    over; uncomment with a real path to force one.
 ;sav=
+
+; savbackupcount: in registry mode, how many timestamped backups to keep - the
+;    newest N are kept, older ones deleted. Default 5, max 50; 0 disables backups.
+;savbackupcount=5
 
 ; savemode: specify the save mode for sessions settings
 ;    Allowed values are:
@@ -185,8 +210,28 @@
 ;    under Backups\kitty-portable-YYYYMMDD-HHMMSS. 0 disables portable backups.
 ;portablebackupcount=5
 
-; scriptfilefilter: specify the local script files extension
-;    Default value is (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|
+; PortablePasswordProtection: at-rest protection for passwords saved in portable
+;    (savemode=dir) session files. Only applies in portable mode; in registry
+;    mode saved passwords are always protected with Windows DPAPI.
+;    Allowed values are:
+;    - master : protect saved passwords with a master password (default). Only
+;               the password fields are encrypted, the rest of the session file
+;               stays readable. Copy the files and know the master password to
+;               use them on another machine.
+;    - legacy : store saved passwords unprotected (plain text) for explicit
+;               compatibility/automation/audit setups. INSECURE - anyone who can
+;               read the files gets the passwords.
+;PortablePasswordProtection=master
+
+; WarnLegacyPasswordUpgrade: in portable mode, warn before a save re-encrypts a
+;    password stored in the old unprotected format into the new protected format
+;    (old KiTTY releases cannot read the new format). Set to no to skip the
+;    warning and re-encrypt silently; the warning dialog can also set this.
+;WarnLegacyPasswordUpgrade=yes
+
+; scriptfilefilter: file-dialog filter for local script files.
+;    Default: (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|
+;    The example line below narrows it to all files only:
 ;scriptfilefilter=All files (*.*)|*.*|
 
 ; scriptmode: enable/disable RuTTY scripting mode
@@ -205,11 +250,11 @@
 ; shrinkbitmap: shrink large background images to fit the terminal area
 ;shrinkbitmap=no
 
-; sshversion: Force the SSH version title. 
-;    Default value: PuTTY-KiTTY
-;    KiTTY claims it is PuTTY-KiTTY. But sometimes there are servers that do not allow non standard values.
-;    So it is possible to redefine it
-;sshversion=OpenSSH_5.5
+; sshversion: the client version string KiTTY announces to the SSH server.
+;    Default (unset): PuTTY-KiTTY - KiTTY's own identifier. Some servers reject a
+;    non-standard client-version string; set this to a common OpenSSH banner so
+;    KiTTY looks like a stock client. Use a current OpenSSH version, e.g.:
+;sshversion=OpenSSH_10.0
 
 ; transparency: enable/disable the transparency feature
 ;transparency=yes

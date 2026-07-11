@@ -116,6 +116,7 @@ add_executable(putty
   window.c
   putty.c
   help.c
+  kitty_config_stubs.c
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
   putty.rc)
 be_list(putty PuTTY SSH SERIAL OTHERBACKENDS)
@@ -131,6 +132,7 @@ add_executable(puttytel
   window.c
   putty.c
   help.c
+  kitty_config_stubs.c
   ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
   ${CMAKE_SOURCE_DIR}/stubs/no-ca-config.c
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
@@ -191,6 +193,7 @@ if(HAVE_CONPTY)
     pterm.c
     help.c
     conpty.c
+    kitty_config_stubs.c
     ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
     ${CMAKE_SOURCE_DIR}/stubs/no-ca-config.c
     ${CMAKE_SOURCE_DIR}/stubs/no-console.c
@@ -261,6 +264,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_mpw_gui.c
   ${KITTY_DIR}/kitty_image.c
   ${KITTY_DIR}/kitty_proxy.c
+  ${KITTY_DIR}/kitty_proxy_gui.c
   ${KITTY_DIR}/kitty_registry.c
   ${KITTY_DIR}/kitty_ssh.c
   ${KITTY_DIR}/kitty_store.c
@@ -286,7 +290,7 @@ target_compile_definitions(kitty-be-list PRIVATE MOD_ADB=1)
 set_source_files_properties(${KITTY_DIR}/blocnote/notepad.c PROPERTIES COMPILE_DEFINITIONS NOMAIN)
 set_source_files_properties(${KITTY_DIR}/blocnote/notepad.rc PROPERTIES COMPILE_DEFINITIONS NOTEPAD_EMBEDDED)
 add_dependencies(kitty generated_licence_h)
-target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.1.47" BUILD_TIME="2026-07-09")
+target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.1.48" BUILD_TIME="2026-07-11")
 target_compile_options(kitty PRIVATE -fcommon)
 target_include_directories(kitty PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
@@ -319,6 +323,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_mpw_gui.c
   ${KITTY_DIR}/kitty_image.c
   ${KITTY_DIR}/kitty_proxy.c
+  ${KITTY_DIR}/kitty_proxy_gui.c
   ${KITTY_DIR}/kitty_registry.c
   ${KITTY_DIR}/kitty_ssh.c
   ${KITTY_DIR}/kitty_store.c
@@ -340,7 +345,7 @@ add_executable(kitty_portable
 be_list(kitty_portable KiTTY SSH SERIAL OTHERBACKENDS)
 target_compile_definitions(kitty_portable-be-list PRIVATE MOD_ADB=1)
 add_dependencies(kitty_portable generated_licence_h)
-target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.1.47" BUILD_TIME="2026-07-09")
+target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_SAVEDUMP MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.1.48" BUILD_TIME="2026-07-11")
 target_compile_options(kitty_portable PRIVATE -fcommon)
 
 set(KITTY_TEST_BUILD_LABEL "" CACHE STRING "Visible label for ad-hoc KiTTY test/debug builds (shown in About boxes); leave empty for releases")
