@@ -174,6 +174,52 @@ BEGIN
     PUSHBUTTON      "&Later", IDCANCEL, 190, 66, 44, 14
 END
 
+/* KiTTY send-text input boxes: [Shortcuts] input (single line, default
+ * Ctrl+F8), inputm (multiline, default Shift+F8) and the masked password
+ * variant, plus the InfoBox progress banner. Handled by InputCallBack /
+ * InputMultilineCallBack / InputCallBackPassword / InfoCallBack in
+ * kitty/kitty.c. The 0.76 originals were ordinals 117-120; 117 collides
+ * with PuTTY 0.84's IDD_CA_CONFIG, so they were renumbered (see
+ * kitty_rc_additions.h). */
+IDD_INPUTBOX DIALOG DISCARDABLE 0, 0, 248, 50
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "KiTTY text input"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "Text to send to the terminal:", -1, 7, 7, 184, 13
+    EDITTEXT        IDC_RESULT, 7, 20, 184, 14, ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK", IDOK, 198, 20, 42, 14
+END
+
+IDD_INPUTBOXMULTI DIALOG DISCARDABLE 0, 0, 248, 100
+STYLE DS_CENTER | WS_SYSMENU | WS_CAPTION | WS_BORDER | WS_SIZEBOX
+CAPTION "KiTTY text input"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "Text to send (Shift+Return):", -1, 7, 6, 104, 8
+    EDITTEXT        IDC_RESULT, 7, 20, 232, 74, ES_AUTOHSCROLL | ES_AUTOVSCROLL | ES_MULTILINE | ES_WANTRETURN | WS_HSCROLL | WS_VSCROLL
+    PUSHBUTTON      "OK", IDB_OK, 115, 3, 42, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 165, 3, 42, 14
+END
+
+IDD_INPUTBOXPW DIALOG DISCARDABLE 0, 0, 248, 50
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "KiTTY text input"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "Password to send to the terminal:", -1, 7, 7, 184, 13
+    EDITTEXT        IDC_RESULT, 7, 20, 184, 14, ES_AUTOHSCROLL | ES_PASSWORD
+    DEFPUSHBUTTON   "OK", IDOK, 198, 20, 42, 14
+END
+
+IDD_INFOBOX DIALOG DISCARDABLE 0, 0, 350, 28
+STYLE WS_DLGFRAME | DS_CENTER | WS_POPUP | WS_VISIBLE
+CAPTION "KiTTY"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "", IDC_RESULT, 7, 10, 336, 14
+END
+
 #ifndef NO_MANIFESTS
 1 RT_MANIFEST "putty.mft"
 #endif /* NO_MANIFESTS */

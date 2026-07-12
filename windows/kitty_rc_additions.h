@@ -383,3 +383,23 @@
 #ifndef IDM_IMPORTSETTINGS
 #define IDM_IMPORTSETTINGS 0xB1F0
 #endif
+
+/* KiTTY send-text input boxes ([Shortcuts] input / inputm and the password
+ * variant) and the InfoBox banner. The 0.76 originals were ordinals 117-120,
+ * but 117 now collides with PuTTY 0.84's IDD_CA_CONFIG, so they live at
+ * fresh ids; kitty.c loads them via these names. */
+#ifndef IDB_OK
+#define IDB_OK 1098
+#endif
+#ifndef IDD_INPUTBOX
+#define IDD_INPUTBOX 135
+#endif
+#ifndef IDD_INPUTBOXMULTI
+#define IDD_INPUTBOXMULTI 136
+#endif
+#ifndef IDD_INPUTBOXPW
+#define IDD_INPUTBOXPW 137
+#endif
+#ifndef IDD_INFOBOX
+#define IDD_INFOBOX 138
+#endif
