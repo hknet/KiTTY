@@ -17,11 +17,16 @@
 #include "kitty_proxy.h"
 #include "kitty_rc_additions.h"
 
-/* Type combo order -> CONF_proxy_type. */
+/* Type combo order -> CONF_proxy_type. The SSH types make a named proxy a
+ * reusable jump host (the command field is the remote command/subsystem for
+ * the exec/subsystem variants, as on the Proxy panel). */
 static const int   pxe_types[] =
-    { PROXY_NONE, PROXY_SOCKS4, PROXY_SOCKS5, PROXY_HTTP, PROXY_TELNET, PROXY_CMD };
+    { PROXY_NONE, PROXY_SOCKS4, PROXY_SOCKS5, PROXY_HTTP, PROXY_TELNET, PROXY_CMD,
+      PROXY_SSH_TCPIP, PROXY_SSH_EXEC, PROXY_SSH_SUBSYSTEM };
 static const char *pxe_type_names[] =
-    { "None", "SOCKS 4", "SOCKS 5", "HTTP", "Telnet", "Local (command)" };
+    { "None", "SOCKS 4", "SOCKS 5", "HTTP", "Telnet", "Local (command)",
+      "SSH jump host (port forwarding)", "SSH jump host (execute a command)",
+      "SSH jump host (invoke a subsystem)" };
 #define PXE_NTYPES ((int)(sizeof(pxe_types)/sizeof(pxe_types[0])))
 
 /* DNS-at-proxy combo -> CONF_proxy_dns (No/Auto/Yes, mirroring the Proxy panel). */

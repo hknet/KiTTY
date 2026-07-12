@@ -173,7 +173,10 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 			else if (i == 3) conf_set_int(conf, CONF_proxy_type, PROXY_HTTP) ;
 			else if (i == 4) conf_set_int(conf, CONF_proxy_type, PROXY_TELNET) ;
 			else if (i == 5) conf_set_int(conf, CONF_proxy_type, PROXY_CMD) ;
-			else conf_set_int(conf, CONF_proxy_type, PROXY_NONE) ; 
+			else if (i == 6) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_TCPIP) ;
+			else if (i == 7) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_EXEC) ;
+			else if (i == 8) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_SUBSYSTEM) ;
+			else conf_set_int(conf, CONF_proxy_type, PROXY_NONE) ;
 		}
 		if( GetValueData(HKEY_CURRENT_USER, buffer, "ProxyHost", lpData ) ) { conf_set_str( conf, CONF_proxy_host, lpData ) ; }
 		if( GetValueData(HKEY_CURRENT_USER, buffer, "ProxyPort", lpData ) ) { conf_set_int( conf, CONF_proxy_port, atoi(lpData) ) ; }
@@ -213,7 +216,10 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 						else if (i == 3) conf_set_int(conf, CONF_proxy_type, PROXY_HTTP) ;
 						else if (i == 4) conf_set_int(conf, CONF_proxy_type, PROXY_TELNET) ;
 						else if (i == 5) conf_set_int(conf, CONF_proxy_type, PROXY_CMD) ;
-						else conf_set_int(conf, CONF_proxy_type, PROXY_NONE) ; 
+						else if (i == 6) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_TCPIP) ;
+						else if (i == 7) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_EXEC) ;
+						else if (i == 8) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_SUBSYSTEM) ;
+						else conf_set_int(conf, CONF_proxy_type, PROXY_NONE) ;
 					} else if( ReadPortableValue(buffer, "ProxyHost", buf2, MAX_VALUE_NAME) ) { 
 						conf_set_str( conf, CONF_proxy_host, buf2 ) ; 
 					} else if( ReadPortableValue(buffer, "ProxyPort", buf2, MAX_VALUE_NAME) ) { 
@@ -247,6 +253,11 @@ static int proxy_method_from_conf( Conf *conf ) {
 		case PROXY_HTTP:   return 3 ;
 		case PROXY_TELNET: return 4 ;
 		case PROXY_CMD:    return 5 ;
+		/* 6-8 are a KiTTY-0.84 extension (classic 9bis had no SSH proxy);
+		 * an old KiTTY reading such a definition falls back to None. */
+		case PROXY_SSH_TCPIP:     return 6 ;
+		case PROXY_SSH_EXEC:      return 7 ;
+		case PROXY_SSH_SUBSYSTEM: return 8 ;
 		default:           return 0 ;   /* PROXY_NONE */
 	}
 }
@@ -525,6 +536,9 @@ int kitty_import_proxies_from_dir( const char *dir, int overwrite, int *skippedO
 				else if (i == 3) conf_set_int(conf, CONF_proxy_type, PROXY_HTTP) ;
 				else if (i == 4) conf_set_int(conf, CONF_proxy_type, PROXY_TELNET) ;
 				else if (i == 5) conf_set_int(conf, CONF_proxy_type, PROXY_CMD) ;
+				else if (i == 6) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_TCPIP) ;
+				else if (i == 7) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_EXEC) ;
+				else if (i == 8) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_SUBSYSTEM) ;
 				else conf_set_int(conf, CONF_proxy_type, PROXY_NONE) ;
 			} else if( ReadPortableValue(buffer, "ProxyHost", buf2, MAX_VALUE_NAME) ) {
 				conf_set_str( conf, CONF_proxy_host, buf2 ) ;

@@ -226,6 +226,8 @@ When you regularly reach hosts through a bastion, jump server, or a corporate HT
 
 Named proxies are managed from a built-in editor — an **Edit** button sits next to the dropdown, and on the Connection/Proxy panel — where you create, edit, and delete definitions with the full set of proxy settings: type, host, port, username/password, the command for Telnet/Local types, excluded hosts, DNS-at-proxy, and diagnostics. Each proxy's password is **encrypted at rest** exactly like a session password (Windows DPAPI in the registry, or your master password in portable mode), and is decrypted only when a session that uses the proxy actually connects.
 
+A named proxy can also be an **SSH jump host**: pick one of the *SSH jump host* types in the editor and KiTTY opens a real SSH connection to that host and tunnels the session through it (the equivalent of OpenSSH's `ProxyJump`). If you leave the password empty, the jump connection authenticates like any SSH session — keys loaded in **kageant** are tried automatically, and if the proxy host field names one of your **saved sessions**, the jump uses that session's full configuration including its private-key file. The jump host's host key is checked and cached like any other host's.
+
 ![Named proxy editor](docs/features/img/config_proxyeditor.png)
 
 **How to enable:** The dropdown appears automatically once you have any named proxy defined — click **Edit** beside it (or the button on the Connection/Proxy panel) to add one, then pick it from the **Proxy choice** dropdown in the Session panel and save the session. To force the dropdown always on or off, set `[ConfigBox]` `proxyselection=yes` (or `no`) in kitty.ini; the default is `auto`.
