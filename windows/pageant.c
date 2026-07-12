@@ -71,6 +71,7 @@ static filereq_saved_dir *keypath = NULL;
 #define IDM_OPENSSH_INTEGRATION 0x00A0   /* KiTTY: toggle Windows OpenSSH integration */
 #define IDM_LOAD_ON_STARTUP    0x00B0    /* KiTTY: toggle load-keys-on-startup */
 #define IDM_NOTIFY_KEYUSE      0x00C0    /* KiTTY: toggle "notify on key use" balloon */
+#define IDM_CONFIRM_KEYUSE     0x00D0    /* KiTTY: toggle "confirm every key use" prompt */
 #define IDM_SESSIONS_BASE      0x1000
 #define IDM_SESSIONS_MAX       0x2000
 /* KiTTY: kageant's session submenu reads KiTTY's own hive (where sessions actually
@@ -1585,6 +1586,30 @@ static void kageant_notify_set(int on)
     }
 }
 
+#define KAGEANT_REG_CONFIRM "ConfirmKeyUse"
+/* KiTTY: "ask confirmation before any key use" toggle (classic [Agent]
+ * askconfirmation, promoted to a tray-menu setting). Default OFF. */
+static int kageant_confirm_get(void)
+{
+    DWORD val = 0, sz = sizeof(val);
+    if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, KAGEANT_REG_CONFIRM,
+                     RRF_RT_REG_DWORD, NULL, &val, &sz) != ERROR_SUCCESS)
+        return 0;
+    return val ? 1 : 0;
+}
+
+static void kageant_confirm_set(int on)
+{
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        DWORD val = on ? 1 : 0;
+        RegSetValueExA(hk, KAGEANT_REG_CONFIRM, 0, REG_DWORD,
+                       (const BYTE *)&val, sizeof(val));
+        RegCloseKey(hk);
+    }
+}
+
 /* Write the tracked key paths to the StartupKeys REG_MULTI_SZ value. */
 static void kageant_save_startup_keys(void)
 {
@@ -1905,6 +1930,14 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                           MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
             break;
           }
+          case IDM_CONFIRM_KEYUSE: {
+            /* KiTTY: toggle the confirm-before-every-key-use prompt. */
+            int on = !kageant_confirm_get();
+            kageant_confirm_set(on);
+            CheckMenuItem(systray_menu, IDM_CONFIRM_KEYUSE,
+                          MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
+            break;
+          }
           default: {
             if (wParam >= IDM_SESSIONS_BASE && wParam <= IDM_SESSIONS_MAX) {
                 MENUITEMINFO mii;
@@ -2068,16 +2101,18 @@ BOOL sw_PeekMessage(LPMSG msg, HWND hwnd, UINT min, UINT max, UINT remove)
 #endif
 
 /* KiTTY (Patrick Cernko) private-key usage confirmation. Installed into the
- * agent core via kageant_confirm_hook below. If the key's comment requests
- * confirmation, ask the user before allowing the key to sign. Returns 0 to
+ * agent core via kageant_confirm_hook below. Ask the user before allowing the
+ * key to sign when the global "Confirm every key use" toggle is on, or when
+ * the key's comment requests confirmation for just that key. Returns 0 to
  * refuse, nonzero to allow. */
 extern int (*kageant_confirm_hook)(const char *comment);
 static int kageant_do_confirm(const char *comment)
 {
-    if (comment &&
-        (strstr(comment, "confirmation") ||
-         strstr(comment, "need confirm") ||
-         strstr(comment, "needs confirm"))) {
+    if (kageant_confirm_get() ||
+        (comment &&
+         (strstr(comment, "confirmation") ||
+          strstr(comment, "need confirm") ||
+          strstr(comment, "needs confirm")))) {
         char *msg = dupprintf(
             "A remote session is requesting to authenticate with the SSH key:"
             "\n\n    %s\n\nAllow this key to be used?", comment);
@@ -2501,6 +2536,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_notify_get() ? MF_CHECKED : MF_UNCHECKED),
                IDM_NOTIFY_KEYUSE, "&Notify when a key is used");
+    /* KiTTY: opt-in (default off) yes/no prompt before any key may sign
+     * (classic [Agent] askconfirmation; per-key comment opt-in still works). */
+    AppendMenu(systray_menu, MF_ENABLED |
+               (kageant_confirm_get() ? MF_CHECKED : MF_UNCHECKED),
+               IDM_CONFIRM_KEYUSE, "As&k confirmation before key use");
     AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
     if (has_help())
         AppendMenu(systray_menu, MF_ENABLED, IDM_HELP, "&Help");
