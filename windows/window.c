@@ -270,6 +270,10 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
 /* Auto-command: send a command automatically after login (CONF_autocommand). */
 int kitty_autocommand_tick(HWND hwnd);
 extern int autocommand_delay;
+extern int init_delay;      /* kitty.c: [KiTTY] initdelay, ms before the first
+                             * auto-command/auto-password send (default 2000) */
+int GetPasteSize(void);     /* kitty.c: [KiTTY] pastesize, confirm before
+                             * pasting more than N chars (0 = unlimited) */
 #define TIMER_AUTOCOMMAND 8702
 /* Anti-idle: periodically send a keepalive string (CONF_antiidle). */
 void kitty_antiidle_tick(HWND hwnd);
@@ -1119,12 +1123,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     kitty_url_init();
     kitty_url_config(wgs->conf);
     /* KiTTY feature: auto-command sent automatically after login.
-     * First fire is delayed to let the connection establish; subsequent
-     * lines re-arm at autocommand_delay (see WM_TIMER below). */
+     * First fire is delayed to let the connection establish ([KiTTY]
+     * initdelay, seconds); subsequent lines re-arm at autocommand_delay
+     * (see WM_TIMER below). */
     {
         const char *ac = conf_get_str(wgs->conf, CONF_autocommand);
         if (ac && ac[0])
-            SetTimer(wgs->term_hwnd, TIMER_AUTOCOMMAND, 1500, NULL);
+            SetTimer(wgs->term_hwnd, TIMER_AUTOCOMMAND,
+                     init_delay > 0 ? init_delay : 1500, NULL);
     }
     /* KiTTY feature: anti-idle. Repeating 30s timer; kitty_antiidle_tick
      * counts ticks and sends the keepalive once AntiIdleCountMax is reached. */
@@ -7000,7 +7006,6 @@ static void process_clipdata(WinGuiSeat *wgs, HGLOBAL clipdata, bool unicode)
             clipboard_contents = snewn(clipboard_length + 1, wchar_t);
             memcpy(clipboard_contents, p, clipboard_length * sizeof(wchar_t));
             clipboard_contents[clipboard_length] = L'\0';
-            term_do_paste(wgs->term, clipboard_contents, clipboard_length);
         }
     } else {
         char *s = GlobalLock(clipdata);
@@ -7013,8 +7018,30 @@ static void process_clipdata(WinGuiSeat *wgs, HGLOBAL clipdata, bool unicode)
                                 clipboard_contents, i);
             clipboard_length = i - 1;
             clipboard_contents[clipboard_length] = L'\0';
-            term_do_paste(wgs->term, clipboard_contents, clipboard_length);
         }
+    }
+
+    if (clipboard_contents) {
+#ifdef MOD_PERSO
+        /* [KiTTY] pastesize: ask before pasting more than N characters
+         * (0 = unlimited), so a mis-aimed paste of a huge clipboard
+         * cannot flood the shell unconfirmed. */
+        int limit = GetPasteSize();
+        if (limit > 0 && clipboard_length > (size_t)limit) {
+            char msg[160];
+            sprintf(msg, "The clipboard holds %lu characters, more than"
+                    " the configured pastesize limit of %d.\n\n"
+                    "Paste it anyway?",
+                    (unsigned long)clipboard_length, limit);
+            if (MessageBox(wgs->term_hwnd, msg, "KiTTY paste",
+                           MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2)
+                    != IDYES) {
+                sfree(clipboard_contents);
+                return;
+            }
+        }
+#endif
+        term_do_paste(wgs->term, clipboard_contents, clipboard_length);
     }
 
     sfree(clipboard_contents);
