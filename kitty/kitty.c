@@ -3475,7 +3475,7 @@ static LRESULT CALLBACK InfoCallBack( HWND hwnd, UINT message, WPARAM wParam, LP
 	}
 	
 HWND InfoBox( HINSTANCE hInstance, HWND hwnd ) {
-	HWND hdlg = CreateDialog( hInstance, (LPCTSTR)120, hwnd, (DLGPROC)InfoCallBack ) ;
+	HWND hdlg = CreateDialog( hInstance, MAKEINTRESOURCE(IDD_INFOBOX), hwnd, (DLGPROC)InfoCallBack ) ;
 	return hdlg ;
 	}
 	
@@ -3634,7 +3634,12 @@ static LRESULT CALLBACK InputMultilineCallBack (HWND hwnd, UINT message, WPARAM 
 		case WM_INITDIALOG: {
 			char * buffer ;
 			buffer=(char*)malloc(1024);
-			sprintf( buffer, "%s - Text input", conf_get_str(conf,CONF_wintitle) ) ;
+			/* Caption from the live window title, not CONF_wintitle: the
+			 * conf value can hold an unexpanded %%-placeholder template. */
+			buffer[0] = '\0' ;
+			if( (MainHwnd==NULL) || (GetWindowText( MainHwnd, buffer, 900 )<=0) || (buffer[0]=='\0') )
+				strcpy( buffer, "KiTTY" ) ;
+			strcat( buffer, " - Text input" ) ;
 			SetWindowText( hwnd, buffer ) ;
 			free(buffer);
 			handle = GetDlgItem(hwnd,IDC_RESULT) ;
@@ -3700,10 +3705,21 @@ static LRESULT CALLBACK InputMultilineCallBack (HWND hwnd, UINT message, WPARAM 
 			break ;
 		case WM_SIZE: {
 			int h = HIWORD(lParam),w = LOWORD(lParam) ;
+			int top = 35 ;
+			RECT br ;
 			handle = GetDlgItem( hwnd, IDC_RESULT ) ;
-			SetWindowPos( handle, HWND_TOP, 7, 35, w-15, h-43, 0 ) ;
+			/* The classic 35/43 constants are 96-dpi pixels and make the
+			 * edit overlap the label/button row on high-DPI displays:
+			 * derive the row height from the OK button's real bottom. */
+			if( GetWindowRect( GetDlgItem( hwnd, IDB_OK ), &br ) ) {
+				POINT pt ;
+				pt.x = br.left ; pt.y = br.bottom ;
+				ScreenToClient( hwnd, &pt ) ;
+				top = pt.y + 4 ;
+			}
+			SetWindowPos( handle, HWND_TOP, 7, top, w-15, h-top-8, 0 ) ;
 			DefWindowProc (hwnd, message, wParam, lParam) ;
-			} 
+			}
 			break ;
 		case WM_CLOSE:
 			EditReadOnly = 0 ;
@@ -3717,7 +3733,7 @@ static LRESULT CALLBACK InputMultilineCallBack (HWND hwnd, UINT message, WPARAM 
 
 char * InputBox( HINSTANCE hInstance, HWND hwnd ) {
 	if( InputBoxResult != NULL ) { free( InputBoxResult ) ; InputBoxResult = NULL ; }
-	DialogBox(hInstance, (LPCTSTR)117, hwnd, (DLGPROC)InputCallBack) ;
+	DialogBox(hInstance, MAKEINTRESOURCE(IDD_INPUTBOX), hwnd, (DLGPROC)InputCallBack) ;
 	return InputBoxResult ;
 	}
 
@@ -3739,13 +3755,13 @@ char * InputBoxMultiline( HINSTANCE hInstance, HWND hwnd ) {
 			}
 		}
 
-	DialogBox(hInstance, (LPCTSTR)118, NULL, (DLGPROC)InputMultilineCallBack) ;
+	DialogBox(hInstance, MAKEINTRESOURCE(IDD_INPUTBOXMULTI), NULL, (DLGPROC)InputMultilineCallBack) ;
 	return InputBoxResult ;
 	}
 	
 char * InputBoxPassword( HINSTANCE hInstance, HWND hwnd ) {
 	if( InputBoxResult != NULL ) { free( InputBoxResult ) ; InputBoxResult = NULL ; }
-	DialogBox(hInstance, (LPCTSTR)119, hwnd, (DLGPROC)InputCallBackPassword) ;
+	DialogBox(hInstance, MAKEINTRESOURCE(IDD_INPUTBOXPW), hwnd, (DLGPROC)InputCallBackPassword) ;
 	return InputBoxResult ;
 	}
 
@@ -5751,7 +5767,7 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 	else if( key == shortcuts_tab.fontblackandwhite )	// Font black and white
 		{ SendMessage( hwnd, WM_COMMAND, IDM_FONTBLACKANDWHITE, 0 ) ; return 1 ; }
 	else if( key == shortcuts_tab.keyexchange )		// Repeat key exchange
-		{ SendMessage( hwnd, WM_COMMAND, 1328, 0 ) ; return 1 ; }
+		{ SendMessage( hwnd, WM_COMMAND, IDM_REKEY, 0 ) ; return 1 ; }
 		
 #ifndef FLJ
 	else if( key == shortcuts_tab.input ) 			// Fenetre de controle

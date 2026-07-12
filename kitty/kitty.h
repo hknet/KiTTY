@@ -624,6 +624,13 @@ void xyz_updateMenuItems(Terminal *term) ;
 #define IDM_SHORTCUTSTOGGLE 0xB120
 #endif
 
+/* [Shortcuts] keyexchange: window.c resolves this to the SSH "Repeat key
+ * exchange" special by its SS_REKEY code (the specials menu is built
+ * dynamically in 0.84, so a fixed menu index cannot be used). */
+#ifndef IDM_REKEY
+#define IDM_REKEY 0xB200
+#endif
+
 // Doit etre le dernier
 #ifndef IDM_LAUNCHER
 #define IDM_LAUNCHER	0xB130

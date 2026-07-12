@@ -76,6 +76,9 @@
 #define IDM_RESTARTSESSION 0xB110  /* close current session and reconnect */
 #endif
 #endif
+#ifndef IDM_REKEY
+#define IDM_REKEY 0xB200  /* [Shortcuts] keyexchange -> SS_REKEY special */
+#endif
 #define IDM_SPECIALSEP 0x0200
 
 #define IDM_SPECIAL_MIN 0x0400
@@ -3402,6 +3405,25 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 queue_toplevel_callback(close_and_restart, wgs);
             break;
 #endif
+          case IDM_REKEY:
+            /* [Shortcuts] keyexchange: fire the SSH "Repeat key exchange"
+             * special by looking up its SS_REKEY code. The classic-KiTTY
+             * shortcut sent the command id of a fixed specials-menu index
+             * (19), but 0.84 builds the specials list dynamically per
+             * session, so a fixed index can land on a different special
+             * (e.g. a signal) or past the end of the menu. No-op when the
+             * backend has no rekey special (non-SSH, or session dead). */
+            if (wgs->backend && wgs->specials) {
+                int si;
+                for (si = 0; si < wgs->n_specials; si++) {
+                    if (wgs->specials[si].code == SS_REKEY) {
+                        backend_special(wgs->backend, SS_REKEY,
+                                        wgs->specials[si].arg);
+                        break;
+                    }
+                }
+            }
+            break;
           case IDM_RECONF: {
             Conf *prev_conf;
             int init_lvl = 1;
