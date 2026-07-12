@@ -508,7 +508,9 @@ When you run into a problem and want help diagnosing it, KiTTY can capture a dia
 
 KiTTY lets you assign a keyboard shortcut to almost any item in its main menu, so you can trigger actions like opening the connected text editor, printing the screen, running a local command, sending or receiving files, or toggling full screen without reaching for the mouse. Each action has a sensible default shortcut (for example, the editor opens with SHIFT+F2 and the local command box with CONTROL+F5), and you can override any of them to fit your own habits. This is handy for keeping frequently used commands a single keystroke away.
 
-**How to enable:** Define key shortcuts in the kitty.ini `[Shortcuts]` section (e.g. `editor=`, `print=`, `inputbox=` ...).
+**How to enable:** Define key shortcuts in the kitty.ini `[Shortcuts]` section (e.g. `editor=`, `print=`, `input=`, `inputm=` ...).
+
+Two of these open KiTTY's *send-text* boxes: `input` (default CTRL+F8) pops up a one-line box and `inputm` (default SHIFT+F8) a resizable multiline box pre-filled from the clipboard. Text is composed locally and sent to the terminal only when you confirm (OK, or SHIFT+RETURN in the multiline box; if you select part of the text, only the selection is sent) — handy on slow links, and for sending a multi-line snippet as one block.
 
 ![Menu key shortcuts definition](docs/features/img/menu_shortcuts.jpg)
 
