@@ -24,6 +24,8 @@
  * shared guiterminal config.o (which is built without MOD_PERSO) so
  * the other shipping binaries are unaffected. */
 int GetPuttyFlag(void);
+int GetSessionFilterFlag(void);  /* kitty.c: [ConfigBox] filter, gates the
+                                  * live type-to-search session filter */
 int GetTransparencyFlag(void);
 int GetZModemFlag(void);
 int GetAutoreconnectFlag(void);
@@ -1505,7 +1507,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             sfree(ssd->savedsession);
             ssd->savedsession = dlg_editbox_get(ctrl, dlg);
 #ifdef MOD_PERSO
-            if (!ssd->suppress_edit_valchange) {
+            if (!ssd->suppress_edit_valchange && GetSessionFilterFlag()) {
+                /* [ConfigBox] filter=no keeps searchfilter empty, so typing
+                 * a name never narrows the saved-sessions list. */
                 sfree(ssd->searchfilter);
                 ssd->searchfilter = dupstr(ssd->savedsession);
                 dlg_refresh(ssd->listbox, dlg);
