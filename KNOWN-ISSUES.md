@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.49 — Known issues & limitations
+# KiTTY 0.84.1.50 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -82,6 +82,22 @@ features are working and verified. Known limitations as of this release:
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.50
+
+- **Send-text input boxes restored.** Ctrl+F8 opens a one-line box, Shift+F8 a
+  resizable multiline box pre-filled from the clipboard; text is composed
+  locally and sent only when you confirm (OK / Shift+Return; a selection sends
+  only the selected part). Their dialog resources were missing from this port,
+  so the shortcuts previously did nothing.
+- **kageant: "Ask confirmation before key use"** tray toggle (default off) —
+  every signing request pops an allow/deny prompt naming the key. The per-key
+  variant (key comment containing `confirmation`) works as before.
+- **Paste size guard:** `pastesize=<N>` in `[KiTTY]` asks before pasting more
+  than N characters (0 = unlimited, the default).
+- **`initdelay` honored** for the first auto-command/auto-password send;
+  **`[ConfigBox] filter=no`** disables the live session-list search; the
+  **`keyexchange`** shortcut reliably triggers an SSH rekey.
 
 ## New in 0.84.1.49
 

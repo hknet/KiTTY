@@ -5,6 +5,44 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.50-beta — 2026-07-12
+
+- **The send-text input boxes are back.** The classic Ctrl+F8 (single line) and
+  Shift+F8 (multiline, pre-filled from the clipboard) pop-up boxes — compose
+  text locally, then send it to the terminal in one go with OK or Shift+Return —
+  did nothing in this port: their dialog resources were never forward-ported,
+  and the old dialog id is nowadays taken by PuTTY's certificate-authority
+  panel. The dialogs are restored under fresh ids, with two age-old bugs fixed
+  on the way: the multiline box's caption no longer shows the raw window-title
+  template (`%%h|%%s|…`), and its layout no longer overlaps on high-DPI
+  displays. The masked password variant and the small progress banner some
+  registry operations show were revived by the same fix.
+- **The `keyexchange` shortcut really repeats the key exchange now.** The
+  configurable `[Shortcuts] keyexchange` binding fired a fixed menu position
+  that no longer holds "Repeat key exchange" in PuTTY 0.84's dynamically built
+  specials menu — so it could do nothing or hit a different special. It now
+  looks the rekey command up by its type, and is a clean no-op for non-SSH
+  sessions.
+- **kageant can ask before any key is used.** A new tray-menu toggle, *Ask
+  confirmation before key use* (persisted, default off), pops an allow/deny
+  prompt naming the key on every signing request — an agent-side guard against
+  a compromised or careless client silently using your loaded keys. The classic
+  per-key opt-in (key comment containing `confirmation`) still works on its own.
+- **Paste size guard.** `pastesize=<N>` in the kitty.ini `[KiTTY]` section now
+  works: pasting a clipboard larger than N characters asks for confirmation
+  first, so a mis-aimed paste cannot flood the shell (default 0 = unlimited).
+- **`initdelay` is honored again.** The delay before the auto-command /
+  auto-password is first sent after connecting follows `initdelay` (seconds,
+  default 2.0) instead of a hard-coded 1.5 s — raise it for hosts that are slow
+  to present their prompt.
+- **`[ConfigBox] filter=no` disables the live session search.** Typing in the
+  Saved Sessions box narrows the list as you type by default; the classic
+  switch to turn that off is honored again for those who prefer typing a name
+  without the list moving underneath.
+- FEATURES.md documents the send-text boxes and their `[Shortcuts]` key names
+  (`input`, `inputm` — an earlier revision showed a key name that never
+  existed), the paste size guard, and the new kageant toggle.
+
 ## 0.84.1.49-beta — 2026-07-12
 
 - **Press a key to reconnect a finished session.** When the window outlives its

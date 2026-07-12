@@ -72,7 +72,7 @@ one is available.
 
 If you manage a large number of saved sessions, KiTTY lets you organize them into folders, for example one folder per machine, per environment, or per type of application. A dropdown in the Session panel lets you pick a folder so the saved-session list shows only the sessions it contains, making a long list far easier to navigate. You can also filter the visible list as you type in the Saved Sessions field; prefix and token matches are ranked before substring matches, and folder names are shown in brackets while searching.
 
-**How to enable:** Automatic in KiTTY mode: the Session panel shows a **Folder** dropdown that filters the saved-session list to one folder, plus New folder / Delete folder controls. Create a folder by typing its name and clicking *New folder*. To search within the active folder filter, type in the Saved Sessions field; Up/Down moves into the filtered list and Enter loads or starts the highlighted visible session.
+**How to enable:** Automatic in KiTTY mode: the Session panel shows a **Folder** dropdown that filters the saved-session list to one folder, plus New folder / Delete folder controls. Create a folder by typing its name and clicking *New folder*. To search within the active folder filter, type in the Saved Sessions field; Up/Down moves into the filtered list and Enter loads or starts the highlighted visible session. If you prefer the classic behaviour where typing never narrows the list, set `filter=no` in the kitty.ini `[ConfigBox]` section.
 
 ![Sessions filter (folders)](docs/features/img/config_folder.jpg)
 
@@ -150,7 +150,7 @@ KiTTY can log you in automatically to telnet, SSH-1 and SSH-2 servers by storing
 
 When you store private keys in KiTTY's key agent (kageant), you can require an explicit confirmation each time a key is used. With this enabled, every session that needs the key triggers a pop-up asking you to approve its use before authentication proceeds, giving you a clear chance to spot and refuse unexpected sign-in attempts. This adds a helpful safeguard against a loaded key being used without your knowledge. Thanks to [Patrick Cernko](https://people.mpi-klsb.mpg.de/~pcernko/pageant.html) for this patch.
 
-**How to enable:** Generate a key whose **comment contains the word `confirmation`** (in kittygen), then load it into **kageant.exe**. Each time a session uses that key, kageant asks you to confirm.
+**How to enable:** For all keys at once, tick **"Ask confirmation before key use"** in the kageant tray menu (persisted, default off): every signing request then pops an allow/deny prompt naming the key. Or per key: generate a key whose **comment contains the word `confirmation`** (in kittygen), then load it into **kageant.exe** — only that key asks for confirmation.
 
 ![Private-key usage confirmation](docs/features/img/config_kittygen.jpg)
 ![Private-key usage confirmation](docs/features/img/ex_kageant.jpg)
@@ -248,7 +248,7 @@ KiTTY can register itself with Windows as the program that opens **putty://**, *
 
 KiTTY can send a command to the server automatically as soon as a Telnet or SSH connection is established, saving you from typing the same startup command every time you log in. You can send several commands at once by separating them with the two characters `\n`. A few special sequences let you pace the input: `\p` waits one second (repeat it for longer pauses), `\s05` pauses for five seconds (use any value), and `\\` sends a literal backslash. The delays involved can be fine-tuned through the autocommand settings if you need finer control over timing.
 
-**How to enable:** Configuration > **Connection > Data > Auto-command**: a command sent to the server automatically right after login.
+**How to enable:** Configuration > **Connection > Data > Auto-command**: a command sent to the server automatically right after login. The delay before the first send is `initdelay` (seconds, default 2.0) in the kitty.ini `[KiTTY]` section — raise it for hosts that are slow to present their prompt; the delay between subsequent lines is `commanddelay`.
 
 ![Automatic command](docs/features/img/config_autocommand.jpg)
 
@@ -419,6 +419,14 @@ When a connection drops, is closed by the remote host, or the server reports a n
 KiTTY can run the current Windows clipboard contents as a local command with the **Ctrl+F5** shortcut — handy for sending a prepared command line straight into execution. Because that runs whatever happens to be on the clipboard, KiTTY shows a **confirmation prompt** (displaying the command) before running it and a **tray notification** after launch, so nothing runs unexpectedly.
 
 **How to enable:** the shortcut is built in; the two safeguards are on by default and toggled per session in **Window → Selection** ("Running the clipboard as a local command").
+
+(no screenshot)
+
+### Paste size guard
+
+Pasting into a terminal executes whatever the clipboard contains, line by line — so an accidental paste of the wrong (or huge) clipboard can flood the shell with unintended commands. KiTTY can ask for confirmation before pasting more than a configurable number of characters, telling you how large the clipboard is so you can abort a mis-aimed paste.
+
+**How to enable:** set `pastesize=<N>` in the kitty.ini `[KiTTY]` section (number of characters above which the confirmation appears; `0`, the default, pastes without asking).
 
 (no screenshot)
 
