@@ -4321,7 +4321,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
 
             s = ctrl_getset(b, "Connection/SSH/Auth", "methods",
                             "Authentication methods");
-            ctrl_checkbox(s, "Attempt authentication using Pageant", 'p',
+            ctrl_checkbox(s, "Attempt authentication using kageant (Pageant)", 'p',
                           HELPCTX(ssh_auth_pageant),
                           conf_checkbox_handler,
                           I(CONF_tryagent));
