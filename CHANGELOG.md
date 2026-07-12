@@ -5,6 +5,20 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.49-beta — 2026-07-12
+
+- **Press a key to reconnect a finished session.** When the window outlives its
+  session — *Close window on exit* set to *Never*, or a dropped connection — an
+  ordinary keypress (Enter, or any other typing key) in the dead terminal now
+  restarts the session in the same window, as classic KiTTY did (reported in
+  hknet/KiTTY#12). Chords with Ctrl or Alt held, Tab, the arrow keys and F-keys
+  are ignored, so Ctrl+D (close the dead window), Ctrl+Tab and the configurable
+  keyboard shortcuts keep working; a session that never got past login is not
+  re-dialed (no hammering a host that rejected the password), and
+  `autoreconnect=no` in kitty.ini turns the whole behaviour off. Classic KiTTY
+  also reconnected on a mouse click; that is deliberately not revived, so you
+  can still select and copy scrollback text from a finished session.
+
 ## 0.84.1.48-beta — 2026-07-11
 
 - **Named proxies are back — with a built-in editor and encrypted passwords.**
