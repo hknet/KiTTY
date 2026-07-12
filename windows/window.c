@@ -4586,6 +4586,29 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             PostMessage(hwnd, WM_CLOSE, 0, 0);
             return 0;
         }
+#ifdef MOD_RECONNECT
+        /* Classic KiTTY: an ordinary keypress (e.g. Enter) in a window whose
+         * session has ended restarts the session (hknet/KiTTY#12). Only plain
+         * typing keys qualify: modifier keys themselves, Tab, arrows and
+         * F-keys are ignored, as is any chord with Ctrl/Alt held, so Ctrl+D
+         * close, Ctrl-Tab switching and the shortcuts dispatcher keep working
+         * on a dead window. Gated like the other MOD_RECONNECT paths:
+         * autoreconnect enabled and the session authenticated at least once
+         * (never re-dial on a failed login). */
+        if (message == WM_KEYDOWN && !wgs->backend && wgs->session_closed &&
+            GetAutoreconnectFlag() && wgs->ever_authenticated &&
+            !(GetKeyState(VK_CONTROL) & 0x8000) &&
+            !(GetKeyState(VK_MENU) & 0x8000) &&
+            wParam != VK_CONTROL && wParam != VK_SHIFT && wParam != VK_MENU &&
+            wParam != VK_TAB && wParam != VK_LEFT && wParam != VK_UP &&
+            wParam != VK_RIGHT && wParam != VK_DOWN &&
+            !(wParam >= VK_F1 && wParam <= VK_F16)) {
+            lp_eventlog(&wgs->logpolicy,
+                        "No connection on key pressed, trying to reconnect...");
+            PostMessage(hwnd, WM_COMMAND, IDM_RESTART, 0);
+            return 0;
+        }
+#endif
         /* KiTTY Ctrl-Tab session switching (consume VK_TAB+Ctrl first). */
         if (wParam == VK_TAB && (GetKeyState(VK_CONTROL) & 0x8000)) {
             if (conf_get_int(wgs->conf, CONF_ctrl_tab_switch) && GetCtrlTabFlag()) {
