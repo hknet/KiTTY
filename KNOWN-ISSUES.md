@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.50 — Known issues & limitations
+# KiTTY 0.84.1.51 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -82,6 +82,21 @@ features are working and verified. Known limitations as of this release:
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.51
+
+- **SSH jump hosts via named proxies.** A named proxy can be an SSH jump host
+  (port forwarding, execute-a-command, or invoke-a-subsystem); define a bastion
+  once and pick it per session. Empty password ⇒ the jump authenticates with
+  your kageant keys. See FEATURES.md for the config-source and multi-hop notes.
+- The named-proxy editor is grouped into Definition / Proxy-jump host / Options.
+- The *Connection → SSH → Auth* agent checkbox now reads "…using kageant
+  (Pageant)".
+
+**Known limitation (to be reworked):** a named proxy stores no authentication
+settings of its own — the jump hop's key/agent choice comes from your Default
+Settings, or from a saved session if the proxy Host field is named like one. A
+future release will let the proxy editor own its auth settings directly.
 
 ## New in 0.84.1.50
 

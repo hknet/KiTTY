@@ -5,6 +5,24 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.51-beta — 2026-07-12
+
+- **A named proxy can now be an SSH jump host.** The named-proxy editor gains three
+  SSH types, so a bastion/jump host can be defined once and picked per session from
+  the Proxy choice dropdown instead of being set up by hand each time: *SSH jump host
+  (port forwarding)* opens a standard forwarded connection through the jump host (the
+  equivalent of OpenSSH's `ProxyJump` / `ssh -J`, and the usual choice); *(execute a
+  command)* and *(invoke a subsystem)* cover jump hosts where forwarding is disabled
+  but you can run a program or start an SSH subsystem. With no password stored the
+  jump connection authenticates like any SSH session, so keys in kageant are used
+  automatically. FEATURES.md documents each type, where the jump host's settings come
+  from, and how to chain multiple hops.
+- **The named-proxy editor is easier to read**, with its fields grouped into
+  Definition / Proxy-jump host / Options sections.
+- **The SSH-auth agent checkbox now names kageant.** *Connection → SSH → Auth* reads
+  "Attempt authentication using kageant (Pageant)" to match the tray agent KiTTY
+  actually ships.
+
 ## 0.84.1.50-beta — 2026-07-12
 
 - **The send-text input boxes are back.** The classic Ctrl+F8 (single line) and
