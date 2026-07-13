@@ -600,7 +600,7 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "ScriptTimeout=%d\n",		conf_get_int(conf,CONF_script_timeout) ) ;
 	fprintf( fp, "ScriptWait=%s\n",			conf_get_str(conf,CONF_script_waitfor) ) ;
 	fprintf( fp, "ScriptHalt=%s\n",			conf_get_str(conf,CONF_script_halton) ) ;
-#if (defined MOD_BACKGROUNDIMAGE) && (!defined FLJ)
+#ifdef MOD_BACKGROUNDIMAGE
 	/* Image Options */
 	fprintf( fp, "bg_opacity=%d\n",			conf_get_int(conf,CONF_bg_opacity) ) ;
 	fprintf( fp, "bg_slideshow=%d\n",		conf_get_int(conf,CONF_bg_slideshow) ) ;

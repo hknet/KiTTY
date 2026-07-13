@@ -497,9 +497,6 @@ BOOL RegCleanPuTTY( void ) {
 	DWORD    cbSecurityDescriptor; // size of security descriptor 
 	FILETIME ftLastWriteTime;      // last write time 
 	char *buffer = NULL ;
-#ifdef FLJ
-return 1 ;
-#endif
 	if( (retCode = RegOpenKeyEx ( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY", 0, KEY_WRITE, &hSubKey)) == ERROR_SUCCESS ) {
 		RegDeleteValue( hSubKey, "Build" ) ;
 		RegDeleteValue( hSubKey, "Folders" ) ;
@@ -733,9 +730,7 @@ void TestRegKeyOrCopyFromPuTTY( HKEY hMainKey, char * KeyName ) {
 	} else {
 		RegCreateKey( hMainKey, TEXT(KeyName), &hKey ) ;
 		RegCloseKey( hKey ) ;
-#ifndef FLJ
 		kitty_RegCopyTree( hMainKey, "Software\\SimonTatham\\PuTTY", TEXT(KeyName) ) ;
-#endif
 	}
 }
 

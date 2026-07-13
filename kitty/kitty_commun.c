@@ -87,7 +87,7 @@ void SetZModemFlag( const int flag ) { ZModemFlag = flag ; }
 #endif
 
 // Flag pour afficher l'image de fond
-#if (defined MOD_BACKGROUNDIMAGE) && (!defined FLJ)
+#ifdef MOD_BACKGROUNDIMAGE
 // Suite à PuTTY 0.61, le patch covidimus ne fonctionne plus tres bien
 // Il impose de demarrer les sessions avec -load meme depuis la config box (voir CONFIG.C)
 // Le patch est desactive par defaut
@@ -189,7 +189,6 @@ int LoadParametersLight( void ) {
 	int ret = 0 ;
 	char buffer[4096] ;
 
-#ifndef FLJ
 	if( (getenv("KITTY_INI_FILE")!=NULL) && ((fp = fopen( getenv("KITTY_INI_FILE"), "r" )) != NULL) ) {
 		fclose(fp ) ;
 		IniFile = (char*)malloc(strlen(getenv("KITTY_INI_FILE"))+1) ; 
@@ -236,7 +235,6 @@ int LoadParametersLight( void ) {
 			}
 		} else  DirectoryBrowseFlag = 0 ;
 	} else 
-#endif
 	if( (fp = fopen( "putty.ini", "r" )) != NULL ) {
 		IniFile = (char*)malloc(11) ; strcpy(IniFile,"putty.ini");
 		strcpy(INIT_SECTION,"PuTTY");
@@ -260,7 +258,6 @@ int LoadParametersLight( void ) {
 			}
 		} else  DirectoryBrowseFlag = 0 ;
 	} else {
-#ifndef FLJ
 		sprintf( buffer, "%s/KiTTY/kitty.ini", getenv("APPDATA") );
 		if( (fp = fopen( buffer, "r" )) != NULL ) {
 			IniFile = (char*)malloc(strlen(buffer)+1) ; 
@@ -268,7 +265,6 @@ int LoadParametersLight( void ) {
 			strcpy(INIT_SECTION,"KiTTY");
 			fclose(fp);
 		} else {
-#endif
 			sprintf( buffer, "%s/PuTTY/putty.ini", getenv("APPDATA") );
 			if( (fp = fopen( buffer, "r" )) != NULL ) {
 				IniFile = (char*)malloc(strlen(buffer)+1) ; 
@@ -276,9 +272,7 @@ int LoadParametersLight( void ) {
 				strcpy(INIT_SECTION,"PuTTY");
 				fclose(fp);
 			} 
-#ifndef FLJ
 		}
-#endif
 	}
 	if( ReadParameterLightN( INIT_SECTION, "fileextension", buffer, sizeof(buffer) ) ) {
 		if( strlen(buffer) > 0 ) {

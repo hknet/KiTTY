@@ -1106,7 +1106,7 @@ static void sshbug_handler_manual_only(dlgcontrol *ctrl, dlgparam *dlg,
 struct sessionsaver_data {
     dlgcontrol *editbox, *listbox, *loadbutton, *savebutton, *delbutton;
     dlgcontrol *okbutton, *cancelbutton;
-#if (defined MOD_PERSO) && (!defined FLJ)
+#ifdef MOD_PERSO
     dlgcontrol *startbutton;     /* KiTTY: open session without closing config box */
 #endif
 #ifdef MOD_PERSO
@@ -1786,7 +1786,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
         } else if (ctrl == ssd->cancelbutton) {
             dlg_end(dlg, 0);
         }
-#if (defined MOD_PERSO) && (!defined FLJ)
+#ifdef MOD_PERSO
         else if (ssd->startbutton && ctrl == ssd->startbutton) {
             /* Launch the current settings in a new window; keep box open. */
             if (conf_launchable(conf))
@@ -2618,7 +2618,7 @@ static void host_ca_button_handler(dlgcontrol *ctrl, dlgparam *dp,
         show_ca_config_box(dp);
 }
 
-#if (defined MOD_PERSO) && (!defined FLJ)
+#ifdef MOD_PERSO
 void CheckVersionFromWebSite(HWND hwnd, int is_terminal);   /* kitty_win.c: query GitHub releases */
 static void checkupdate_button_handler(dlgcontrol *ctrl, dlgparam *dp,
                                        void *data, int event)
@@ -2699,7 +2699,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                     sessionsaver_handler, P(ssd));
     ssd->okbutton->button.isdefault = true;
     ssd->okbutton->column = 3;
-#if (defined MOD_PERSO) && (!defined FLJ)
+#ifdef MOD_PERSO
     /* KiTTY "Start": launch the session in a new window without closing the
      * config box (only when launchable). col 2 is free in this 5-col row. */
     if (!midsession && !GetPuttyFlag()) {
@@ -3549,7 +3549,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
     }
 #endif
 
-#if (defined MOD_BACKGROUNDIMAGE) && (!defined FLJ)
+#ifdef MOD_BACKGROUNDIMAGE
     /* The Window/Back.&Image panel (KiTTY). Engine: kitty_image.c. */
     if (!GetPuttyFlag() && GetBackgroundImageFlag()) {
         str = dupprintf("Configure the background of %s's window", appname);

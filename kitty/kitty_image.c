@@ -1,6 +1,3 @@
-#ifdef FLJ
-#undef MOD_BACKGROUNDIMAGE
-#endif
 
 #include <setjmp.h>
 #include "jpeg/jpeglib.h"

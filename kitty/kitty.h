@@ -426,7 +426,7 @@ void InitLauncherRegistry( void ) ;
 int getpid(void) ;
 
 // Definition de la section du fichier de configuration
-#if (defined MOD_PERSO) && (!defined FLJ)
+#ifdef MOD_PERSO
 
 #ifndef INIT_SECTION
 #define INIT_SECTION "KiTTY"
@@ -478,7 +478,7 @@ int getpid(void) ;
 #endif
 
 #ifndef TIMER_SLIDEBG
-#if (defined MOD_BACKGROUNDIMAGE) && (!defined FLJ)
+#ifdef MOD_BACKGROUNDIMAGE
 #define TIMER_SLIDEBG 8703
 #endif
 #endif

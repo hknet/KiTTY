@@ -708,20 +708,12 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 	TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;	// On lui indique les champs valables
 	// On lui dit qu'il devra "écouter" son environement (clique de souris, etc)
 	TrayIcone.uCallbackMessage = KLWM_NOTIFYICON;
-#ifdef FLJ
-	strcpy( TrayIcone.szTip, "PuTTY\0" ) ;			// Le tooltip par défaut, soit rien
-#else
 	//TrayIcone.szTip[1024] = "KiTTY That\'s all folks!\0" ;			// Le tooltip par défaut, soit rien
 	strcpy( TrayIcone.szTip, "KiTTY Launcher\0" ) ;			// Le tooltip par défaut
-#endif
 	TrayIcone.hWnd = hwnd ;
 	ResShell = Shell_NotifyIcon(NIM_ADD, &TrayIcone);
 	if( ResShell ) {
-#ifdef FLJ
-		strcpy( TrayIcone.szTip, "PuTTY\0" ) ;
-#else
 		strcpy( TrayIcone.szTip, "KiTTY Launcher\0" ) ;
-#endif
 		ResShell = Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
 		/* KiTTY: refresh the cached latest version async. The notify variant posts
 		 * back when the fetch finishes, so the launcher balloon can appear on the
