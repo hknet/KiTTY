@@ -1138,7 +1138,7 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 			strcpy( session, session_in ) ;
 			if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {
 				session[strlen(session)-1]='\0' ;
-				{ size_t _l; while( (_l=strlen(session))>0 && (session[_l-1]==' '||session[_l-1]=='\t') ) session[_l-1]='\0' ; }
+				str_rtrim( session, " \t" ) ;
 				if( GetPuttyFlag() )	sprintf( buffer, "%s -putty -load \"%s\" -send-to-tray", shortname, session ) ;
 				else sprintf( buffer, "%s -load \"%s\" -send-to-tray", shortname, session ) ;
 			} else {
@@ -1159,7 +1159,7 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 		strcpy( session, session_in ) ;
 		if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {
 			session[strlen(session)-1]='\0' ;
-			{ size_t _l; while( (_l=strlen(session))>0 && (session[_l-1]==' '||session[_l-1]=='\t') ) session[_l-1]='\0' ; }
+			str_rtrim( session, " \t" ) ;
 			if( GetPuttyFlag() )	sprintf( buffer, "%s -putty -load \"%s\" -send-to-tray", shortname, session ) ;
 			else sprintf( buffer, "%s -load \"%s\" -send-to-tray", shortname, session ) ;
 		} else {

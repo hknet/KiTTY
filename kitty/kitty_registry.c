@@ -1,6 +1,9 @@
 #include "kitty_registry.h"
 
 char * itoa (int __val, char *__s, int __radix) ;
+/* kitty_tools.c; declared locally because this file deliberately includes
+ * only kitty_registry.h (see the MigrateOldKittyHive rationale below). */
+char * str_rtrim( char * s, const char * set ) ;
 char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue){
     HKEY hkKey;
     DWORD lpType, dwDataSize = cstMaxRegLength;
@@ -224,7 +227,7 @@ void InitAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char *
 		len = fread( text, 1, 4096, fp ) ;
 		fclose( fp ) ;
 		text[4095]='\0'; text[len] = '\0' ;
-		{ size_t _l; while( (_l=strlen(text))>0 && (text[_l-1]=='\n'||text[_l-1]=='\r') ) text[_l-1]='\0'; }
+		str_rtrim( text, "\n\r" ) ;
 		snprintf( f, sizeof(f), "%s.reg", filename ) ;
 		InitRegistryAllSessions( hMainKey, lpSubKey, SubKeyName, f, text ) ;
 		unlink(filename);

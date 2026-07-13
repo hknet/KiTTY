@@ -65,7 +65,7 @@ int ManagePortKnocking( char* host, char *portknockseqorig ) {
 	for(i=0;i<strlen(portknockseq);i++) 
 		{ if( (portknockseq[i]==' ')||(portknockseq[i]=='	')||(portknockseq[i]==';')||(portknockseq[i]=='-') ) portknockseq[i]=','; }
 	while( portknockseq[0]==',' ) del(portknockseq,1,1);
-	{ size_t _l; while( (_l=strlen(portknockseq))>0 && portknockseq[_l-1]==',' ) portknockseq[_l-1]='\0'; }
+	str_rtrim( portknockseq, "," ) ;
 	while( (i=poss(",:",portknockseq)) ) { del(portknockseq,i,1); }
 	while( (i=poss(":,",portknockseq)) ) { del(portknockseq,i+1,1); }
 	while( (i=poss(",,",portknockseq)) ) { del(portknockseq,i,1); }

@@ -13,6 +13,17 @@ char *stristr (const char *meule_de_foin, const char *aiguille) {
 	return res ;
 }
 
+/* Supprime en place les caracteres de fin appartenant a `set` (right-trim).
+   Remplace les boucles while(strlen...) recopiees partout; sans danger sur
+   une chaine vide (n'indexe jamais s[-1]). Retourne s. */
+char *str_rtrim( char *s, const char *set ) {
+	size_t l ;
+	if( s == NULL ) return NULL ;
+	l = strlen( s ) ;
+	while( l > 0 && strchr( set, s[l-1] ) != NULL ) s[--l] = '\0' ;
+	return s ;
+}
+
 /* Fonction permettant d'inserer une chaine dans une autre */
 int insert( char * ch, const char * c, const int ipos ) {
 	int i = ipos, len = strlen( c ), k ;
@@ -229,7 +240,7 @@ int MakeDir( const char * directory ) {
 	fullpath[j+1]='\0' ;
 		
 	// On supprime les espaces, les / et les \\ à la fin
-	{ size_t _l; while( (_l=strlen(fullpath))>0 && (fullpath[_l-1]==' '||fullpath[_l-1]=='	'||fullpath[_l-1]=='/'||fullpath[_l-1]=='\\') ) fullpath[_l-1]='\0'; }
+	str_rtrim( fullpath, " \t/\\" ) ;
 
 	for( i=strlen(fullpath), j=strlen(fullpath) ; i>=0 ; i--, j-- ) { // On supprime les espaces avant un '\'
 		if( fullpath[i] == '\\' ) {

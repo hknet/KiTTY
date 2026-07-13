@@ -18,6 +18,11 @@ int stricmp(const char *s1, const char *s2) ;
 
 char *stristr (const char *meule_de_foin, const char *aiguille) ;
 
+/* Supprime en place les caracteres de fin appartenant a `set` (right-trim).
+   Remplace les boucles while(strlen...) recopiees partout; sans danger sur
+   une chaine vide (n'indexe jamais s[-1]). Retourne s. */
+char *str_rtrim( char *s, const char *set ) ;
+
 /* Fonction permettant d'inserer une chaine dans une autre */
 int insert( char * ch, const char * c, const int ipos ) ;
 

@@ -763,7 +763,7 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 			sprintf(buffer,"%s\\Sessions\\%s", ConfigDirectory, session );
 			if( (fp=fopen(buffer,"r"))!=NULL ) {
 				while( fgets(buffer,1024,fp)!=NULL ) {
-					{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r') ) buffer[_l-1]='\0' ; }
+					str_rtrim( buffer, "\n\r" ) ;
 					if( strstr( buffer, "Folder=" ) == buffer ) {
 						unmungestr(buffer+7, folder, MAX_PATH) ;
 						break ;
@@ -825,7 +825,7 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 		if( debug_flag ) { debug_logevent( "GetSessionField(%s,%s,%s,%s)=%s", ConfigDirectory, session, folder, field, buffer ) ; }
 		if( (fp=fopen(buffer,"r"))!=NULL ) {
 			while( fgets(buffer,1024,fp)!=NULL ) {
-				{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r') ) buffer[_l-1]='\0' ; }
+				str_rtrim( buffer, "\n\r" ) ;
 				if( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\\' )
 					if( (strstr( buffer, field )==buffer) && ((buffer+strlen(field))[0]=='\\') ) {
 						if( buffer[strlen(field)]=='\\' ) strcpy( result, buffer+strlen(field)+1 ) ;
@@ -870,7 +870,7 @@ void SetPasswordInConfig( const char * password ) {
 			memcpy( bufpass, password, len+1 ) ;
 			bufpass[len]='\0' ;
 			{ size_t _l; while( (_l=strlen(bufpass))>=2 && ( ((bufpass[_l-1]=='n')&&(bufpass[_l-2]=='\\')) || ((bufpass[_l-1]=='r')&&(bufpass[_l-2]=='\\')) ) ) { bufpass[_l-2]='\0'; bufpass[_l-1]='\0'; } }
-			{ size_t _l; while( (_l=strlen(bufpass))>0 && (bufpass[_l-1]=='\n' || bufpass[_l-1]=='\r' || bufpass[_l-1]=='\t' || bufpass[_l-1]==' ') ) bufpass[_l-1]='\0' ; }
+			str_rtrim( bufpass, "\n\r\t " ) ;
 			DebugAddPassword( "SetPasswordInConfig(before mask)", bufpass ) ;
 			MASKPASS(GetCryptSaltFlag(),bufpass) ;
 			DebugAddPassword( "SetPasswordInConfig(after mask)", bufpass ) ;
@@ -1063,7 +1063,7 @@ return ;
 #endif
 	if( IniFileFlag == SAVEMODE_REG )
 	if( readINI( KittyIniFile, "PuTTY", "keys", buffer, sizeof(buffer) ) ) {
-		{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r'||buffer[_l-1]==' '||buffer[_l-1]=='\t') ) buffer[_l-1]='\0'; }
+		str_rtrim( buffer, "\n\r \t" ) ;
 		if( !stricmp( buffer, "load" ) ) {
 			sprintf( buffer, "%s\\Sessions", Key ) ;
 			RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Sessions" ) ;
@@ -1215,7 +1215,7 @@ int DelParameter( const char * key, const char * name ) {
 void GetSaveMode( void ) {
 	char buffer[256] ;
 	if( readINI( KittyIniFile, INIT_SECTION, "savemode", buffer, sizeof(buffer) ) ) {
-		{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r'||buffer[_l-1]==' '||buffer[_l-1]=='\t') ) buffer[_l-1]='\0'; }
+		str_rtrim( buffer, "\n\r \t" ) ;
 		if( !stricmp( buffer, "registry" ) ) IniFileFlag = SAVEMODE_REG ;
 		else if( !stricmp( buffer, "file" ) ) IniFileFlag = SAVEMODE_FILE ;
 		else if( !stricmp( buffer, "dir" ) ) { IniFileFlag = SAVEMODE_DIR ; DirectoryBrowseFlag = 1 ; }
@@ -1450,7 +1450,7 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 	
 	if( ( fp = fopen( KittySavFile,"rb" ) ) == NULL ) return ;
 	while( fgets( buffer, 4096, fp ) != NULL ) {
-		{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r'||buffer[_l-1]==' '||buffer[_l-1]=='\t') ) buffer[_l-1]='\0' ; }
+		str_rtrim( buffer, "\n\r \t" ) ;
 		
 		// Test si on a un fichier crypte
 		if( nb == 0 ) {
@@ -2825,7 +2825,7 @@ void GetFile( HWND hwnd ) {
         if( (hglb = GetClipboardData( CF_TEXT ) ) != NULL ) {
             if( ( pst = GlobalLock( hglb ) ) != NULL ) {
 //sprintf(buffer,"#%s#%d",pst,strlen(pst));MessageBox(hwnd,buffer,"Info",MB_OK);
-                { size_t _l; while( (_l=strlen(pst))>0 && (pst[_l-1]=='\n'||pst[_l-1]=='\r'||pst[_l-1]==' '||pst[_l-1]=='\t') ) pst[_l-1]='\0' ; }
+                str_rtrim( pst, "\n\r \t" ) ;
 //sprintf(buffer,"#%s#%d",pst,strlen(pst));MessageBox(hwnd,buffer,"Info",MB_OK);
                 strcpy( buffer, "" ) ;
                 if( strlen( pst ) > 0 ) {
@@ -3731,7 +3731,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 					if( !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) ) {
 						if( ( fp=fopen(buffer,"rb")) != NULL ) {
 							while( fgets( buffer, 4096, fp )!=NULL ){
-								{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r') ) buffer[_l-1]='\0'; }
+								str_rtrim( buffer, "\n\r" ) ;
 								if( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\\' ) {
 									buffer[strlen(buffer)-1]='\0' ;
 									
@@ -4719,7 +4719,7 @@ void ReadAutoCommandFromFile( const char * filename ) {
 	}
 	if( buffer == NULL ) return ;
 	while( (n=poss("\r",buffer))>0 ) { del(buffer,n,1) ; }
-	{ size_t _l; while( (_l=strlen(buffer))>0 && buffer[_l-1]=='\n' ) buffer[_l-1]='\0' ; }
+	str_rtrim( buffer, "\n" ) ;
 	while( (n=poss("\n",buffer))>0 ) { buffer[n-1]='n' ; insert(buffer,"\\",n) ; }
 	conf_set_str(conf, CONF_autocommand, buffer );
 	free(buffer);
@@ -4754,7 +4754,7 @@ void ReadInitScript( const char * filename ) {
 				ScriptFileContent[0] = '\0' ;
 				pst=ScriptFileContent ;
 				while( fgets( buffer, 1024, fp ) != NULL ) {
-					{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r') ) buffer[_l-1]='\0' ; }
+					str_rtrim( buffer, "\n\r" ) ;
 					if( strlen( buffer ) > 0 ) {
 						strcpy( pst, buffer ) ;
 						pst = pst + strlen( pst ) + 1 ;
@@ -5671,7 +5671,7 @@ void LoadParameters( void ) {
 	if( ReadParameter( INIT_SECTION, "fileextension", buffer ) ) {
 		if( strlen(buffer) > 0 ) {
 			snprintf( FileExtension, sizeof(FileExtension), "%s%s", (buffer[0]!='.')?".":"", buffer ) ;
-			{ size_t _l; while( (_l=strlen(FileExtension))>0 && FileExtension[_l-1]==' ' ) FileExtension[_l-1]='\0'; }
+			str_rtrim( FileExtension, " " ) ;
 		}				
 	}
 	if( ReadParameter( INIT_SECTION, "hostkeyextension", buffer ) ) {

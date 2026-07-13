@@ -75,7 +75,7 @@ void SetHostKeyExtension( const char* ext ) {
 	buffer = (char*)malloc(strlen(ext)+2);
 	if( ext[0]!='.' ) { strcpy( buffer, "." ) ; } else { strcpy( buffer, "" ) ; }
 	strcat( buffer, ext ) ;
-	{ size_t _l; while( (_l=strlen(buffer))>0 && buffer[_l-1]==' ' ) buffer[_l-1] = '\0' ; }
+	str_rtrim( buffer, " " ) ;
 	if( strlen(buffer)>15 ) { buffer[15]='\0' ; }
 	snprintf( keysuffix, sizeof(keysuffix), "%s", buffer ) ;
 	free( buffer ) ;
@@ -367,13 +367,13 @@ EMERGENCY_BREAK
 					p = strchr(p2, '\n');
 					*p = '\0';
 					snprintf(sessionsuffix, sizeof(sessionsuffix), "%s", p2);
-					{ size_t _l; while( (_l=strlen(sessionsuffix))>0 && (sessionsuffix[_l-1]==' '||sessionsuffix[_l-1]=='\n'||sessionsuffix[_l-1]=='\r'||sessionsuffix[_l-1]=='\t') ) sessionsuffix[_l-1]='\0'; }
+					str_rtrim( sessionsuffix, " \n\r\t" ) ;
 				}
 				else if (!strcmp(p, "keysuffix")) {
 					p = strchr(p2, '\n');
 					*p = '\0';
 					snprintf(keysuffix, sizeof(keysuffix), "%s", p2);
-					{ size_t _l; while( (_l=strlen(keysuffix))>0 && (keysuffix[_l-1]==' '||keysuffix[_l-1]=='\n'||keysuffix[_l-1]=='\r'||keysuffix[_l-1]=='\t') ) keysuffix[_l-1]='\0'; }
+					str_rtrim( keysuffix, " \n\r\t" ) ;
 				}
 				++p;
 			}
@@ -615,7 +615,7 @@ void SettingsLoad( HSettingsList list, const char * filename ) {
 			}
 
 			char *name, *value, *value2 ;
-			{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n' || buffer[_l-1]=='\r') ) buffer[_l-1] = '\0' ; }
+			str_rtrim( buffer, "\n\r" ) ;
 //debug_log("line %05d[%d]: %s|\n",i,strlen(buffer),buffer);
 //debug_log("\t-2=%c -3=%c\n",buffer[strlen(buffer)-2],buffer[strlen(buffer)-3]);
 			while( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='\\' ) {
@@ -623,10 +623,10 @@ void SettingsLoad( HSettingsList list, const char * filename ) {
 				while( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\r' ) { buffer[strlen(buffer)+1]='\0' ; buffer[strlen(buffer)-1]='\\' ; buffer[strlen(buffer)] = 'r' ; }
 				while( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\n' ) { buffer[strlen(buffer)+1]='\0' ; buffer[strlen(buffer)-1]='\\' ; buffer[strlen(buffer)] = 'n' ; }
 				if( fgets( buffer+strlen(buffer), 4096, fp ) == NULL ) { break ; }
-				{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n' || buffer[_l-1]=='\r') ) buffer[_l-1] = '\0' ; }
+				str_rtrim( buffer, "\n\r" ) ;
 			}
 //debug_log("line %05d[%d]: %s|\n",i,strlen(buffer),buffer);
-			{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n' || buffer[_l-1]=='\r') ) buffer[_l-1] = '\0' ; }
+			str_rtrim( buffer, "\n\r" ) ;
 //debug_log("line %05d[%d]: %s|\n",i,strlen(buffer),buffer);
 			if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { strcat( buffer, "\\" ) ; }
 //debug_log("line %05d[%d]: %s|\n",i,strlen(buffer),buffer);
