@@ -17,7 +17,8 @@
  * at least cstMaxRegLength+2 bytes -- a bare [cstMaxRegLength] is one short. */
 #define cstMaxRegLength 1024
 
-char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue) ;
+char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize) ;
+char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue) ; /* compat: rValue >= cstMaxRegLength+2 octets; preferer GetValueDataN */
 
 // Extention pour les fichiers de session en mode portable (peut être ktx)
 extern char FileExtension[15] ;

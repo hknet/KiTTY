@@ -161,7 +161,8 @@ void DelDir( const char * directory ) {
 // Lit un parametre soit dans le fichier de configuration, soit dans le registre
 char  * IniFile = NULL ;
 char INIT_SECTION[10];
-int ReadParameterLight( const char * key, const char * name, char * value ) {
+// Variante bornee: n'ecrit jamais plus de `size` octets (NUL final compris) dans `value`.
+int ReadParameterLightN( const char * key, const char * name, char * value, size_t size ) {
 	char buffer[4096] ;
 	strcpy( buffer, "" ) ;
 
@@ -170,8 +171,16 @@ int ReadParameterLight( const char * key, const char * name, char * value ) {
 			strcpy( buffer, "" ) ;
 			}
 		}
+	if( size == 0 ) return 0 ;
+	if( strlen(buffer) >= size ) buffer[size-1] = '\0' ;
 	strcpy( value, buffer ) ;
 	return strcmp( buffer, "" ) ;
+	}
+
+// Compat: ancienne signature non bornee -- le buffer destinataire DOIT faire
+// au moins 4096 octets. Preferer ReadParameterLightN( ..., sizeof(buf) ).
+int ReadParameterLight( const char * key, const char * name, char * value ) {
+	return ReadParameterLightN( key, name, value, 4096 ) ;
 	}
 
 /* test if we are in portable mode by looking for putty.ini or kitty.ini in running directory */
@@ -271,20 +280,20 @@ int LoadParametersLight( void ) {
 		}
 #endif
 	}
-	if( ReadParameterLight( INIT_SECTION, "fileextension", buffer ) ) {
+	if( ReadParameterLightN( INIT_SECTION, "fileextension", buffer, sizeof(buffer) ) ) {
 		if( strlen(buffer) > 0 ) {
 			snprintf( FileExtension, sizeof(FileExtension), "%s%s", (buffer[0]!='.')?".":"", buffer ) ;
 			str_rtrim( FileExtension, " " ) ;
 		}				
 	}
-	if( ReadParameterLight( INIT_SECTION, "autostoresshkey", buffer ) ) { if( !stricmp( buffer, "YES" ) ) SetAutoStoreSSHKeyFlag( 1 ) ; }
-	if( ReadParameterLight( "Agent", "messageonkeyusage", buffer ) ) { if( !stricmp( buffer, "YES" ) ) SetShowBalloonOnKeyUsage() ; }
-	if( ReadParameterLight( "Agent", "askconfirmation", buffer ) ) { 
+	if( ReadParameterLightN( INIT_SECTION, "autostoresshkey", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetAutoStoreSSHKeyFlag( 1 ) ; }
+	if( ReadParameterLightN( "Agent", "messageonkeyusage", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetShowBalloonOnKeyUsage() ; }
+	if( ReadParameterLightN( "Agent", "askconfirmation", buffer, sizeof(buffer) ) ) { 
 		if( !stricmp( buffer, "YES" ) ) SetAskConfirmationFlag(1) ; 
 		if( !stricmp( buffer, "NO" ) ) SetAskConfirmationFlag(0) ;
 		if( !stricmp( buffer, "AUTO" ) ) SetAskConfirmationFlag(2) ;
 	}
-	if( ReadParameterLight( "Agent", "scrumble", buffer ) ) { if( !stricmp( buffer, "YES" ) ) SetScrumbleKeyFlag(1) ; }
+	if( ReadParameterLightN( "Agent", "scrumble", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetScrumbleKeyFlag(1) ; }
 
 	return ret ;
 }

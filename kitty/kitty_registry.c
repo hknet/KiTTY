@@ -4,24 +4,25 @@ char * itoa (int __val, char *__s, int __radix) ;
 /* kitty_tools.c; declared locally because this file deliberately includes
  * only kitty_registry.h (see the MigrateOldKittyHive rationale below). */
 char * str_rtrim( char * s, const char * set ) ;
-char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue){
+// Variante bornee: n'ecrit jamais plus de `rsize` octets (NUL final compris)
+// dans rValue; une valeur trop longue est tronquee au lieu de deborder.
+char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize){
     HKEY hkKey;
     DWORD lpType, dwDataSize = cstMaxRegLength;
-  
+
   //Receptionne la valeur de réception lecture clé registre
-    //unsigned char * lpData = new unsigned char[cstMaxRegLength];
-	unsigned char * lpData = (unsigned char*) malloc( cstMaxRegLength + 1 ); // +1 for forced NUL
+	unsigned char * lpData ;
+	if( rValue == NULL || rsize == 0 ) { return NULL ; }
+	lpData = (unsigned char*) malloc( cstMaxRegLength + 1 ); // +1 for forced NUL
 	if( lpData == NULL ) { return NULL ; }
-    
-  //Receptionne la valeur de réception lecture clé registre
-    //char * rValue = (char*) malloc( cstMaxRegLength );
+
     rValue[0] = '\0';
   //Lecture de la clé registre si ok passe à la suite...
     if (RegOpenKeyEx(hkTopKey,lpSubKey,0,KEY_READ,&hkKey) == ERROR_SUCCESS){
-  
+
       if (RegQueryValueEx(hkKey,lpValueName,NULL,&lpType,lpData,&dwDataSize) == ERROR_SUCCESS){
       // RegQueryValueEx does NOT guarantee NUL-termination for the *_SZ types and a
-      // value can fill the whole buffer; force a terminator so the strcpy()s below
+      // value can fill the whole buffer; force a terminator so the copies below
       // cannot over-read past the data.
         if( dwDataSize > cstMaxRegLength ) dwDataSize = cstMaxRegLength ;
         lpData[dwDataSize] = '\0' ;
@@ -30,44 +31,41 @@ char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, ch
 
           case REG_BINARY:
                if( dwDataSize >= 4 ) {   // a.b.c.d needs 4 bytes; don't over-read short values
-               itoa((u_int)(lpData[0]),rValue, 10);
-               strcat(rValue,".");
-               itoa((u_int)(lpData[1]),(char*)(rValue+strlen(rValue)),10);
-               strcat(rValue,".");
-               itoa((u_int)(lpData[2]),(char*)(rValue+strlen(rValue)),10);
-               strcat(rValue,".");
-               itoa((u_int)(lpData[3]),(char*)(rValue+strlen(rValue)),10);
+               snprintf( rValue, rsize, "%u.%u.%u.%u",
+                         (unsigned)lpData[0], (unsigned)lpData[1],
+                         (unsigned)lpData[2], (unsigned)lpData[3] ) ;
                }
                break;
-  
+
           case REG_DWORD:
-               itoa(*(int*)(lpData),rValue,10);
+               snprintf( rValue, rsize, "%d", *(int*)(lpData) ) ;
                break;
-  
+
           case REG_EXPAND_SZ:
-               //rValue=(char *)lpData;
-               strcpy( rValue, (char*)lpData ) ;
-               break;
-  
           case REG_MULTI_SZ:
-               //rValue=(char *)lpData;
-               strcpy( rValue, (char*)lpData ) ;
+          case REG_SZ: {
+               size_t n = strlen( (char*)lpData ) ;
+               if( n >= rsize ) n = rsize - 1 ;
+               memcpy( rValue, lpData, n ) ;
+               rValue[n] = '\0' ;
                break;
-  
-          case REG_SZ:
-               //rValue=(char *)lpData;
-               strcpy( rValue, (char*)lpData ) ;
-               break;
+          }
         }//end switch
       }//end if
       else { RegCloseKey(hkKey); free(lpData); return NULL ; }
        free(lpData); // libère la mémoire
-       RegCloseKey(hkKey); 
-      
+       RegCloseKey(hkKey);
+
     }//end if
-    else { return NULL ; }
+    else { free(lpData); return NULL ; }
     return rValue;
   }//end function
+
+/* Compat: ancienne signature non bornee -- le buffer destinataire DOIT faire
+ * au moins cstMaxRegLength+2 octets. Preferer GetValueDataN( ..., sizeof(buf) ). */
+char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue){
+    return GetValueDataN( hkTopKey, lpSubKey, lpValueName, rValue, cstMaxRegLength+2 ) ;
+}
 
 // Teste l'existance d'une clé
 int RegTestKey( HKEY hMainKey, LPCTSTR lpSubKey ) {
@@ -144,7 +142,7 @@ void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTST
 				char buffer[MAX_KEY_LENGTH] ;
 				char previousvalue[cstMaxRegLength+2] ;
 				snprintf( buffer, sizeof(buffer), "%s\\%s", lpSubKey, achKey ) ;
-				GetValueData( hMainKey, buffer, name, previousvalue ) ;
+				GetValueDataN( hMainKey, buffer, name, previousvalue, sizeof(previousvalue) ) ;
 				if( (oldvalue==NULL) || ( !strcmp(previousvalue,oldvalue)) )
 					MessageBox(NULL,achKey,"Info",MB_OK);
 					//RegTestOrCreate( hMainKey, buffer, name, value ) ;
@@ -342,7 +340,7 @@ void RepairSharrowDefaults( void ) {
 	DWORD idx, len ;
 
 	/* one-time guard: skip if we've already run */
-	if( GetValueData( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", "SharrowRepairDone", cur ) != NULL )
+	if( GetValueDataN( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", "SharrowRepairDone", cur, sizeof(cur) ) != NULL )
 		return ;
 
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY\\Sessions", 0, KEY_READ, &hSess ) == ERROR_SUCCESS ) {
@@ -351,13 +349,13 @@ void RepairSharrowDefaults( void ) {
 			if( RegEnumKeyEx( hSess, idx, name, &len, NULL, NULL, NULL, NULL ) != ERROR_SUCCESS ) break ;
 			snprintf( kpath, sizeof(kpath), "Software\\kapper.net\\KiTTY\\Sessions\\%s", name ) ;
 			/* only sessions with an explicit APPLICATION(0) are candidates */
-			if( GetValueData( HKEY_CURRENT_USER, kpath, "ShiftedArrowKeys", cur ) == NULL ) continue ;
+			if( GetValueDataN( HKEY_CURRENT_USER, kpath, "ShiftedArrowKeys", cur, sizeof(cur) ) == NULL ) continue ;
 			if( strcmp( cur, "0" ) != 0 ) continue ;
 			snprintf( oldsess, sizeof(oldsess), "Software\\9bis.com\\KiTTY\\Sessions\\%s", name ) ;
 			/* repair only if the 9bis original exists and had NO explicit value:
 			 * that proves the 0 is our persisted default, not the user's choice. */
 			if( RegTestKey( HKEY_CURRENT_USER, oldsess )
-			    && GetValueData( HKEY_CURRENT_USER, oldsess, "ShiftedArrowKeys", old ) == NULL ) {
+			    && GetValueDataN( HKEY_CURRENT_USER, oldsess, "ShiftedArrowKeys", old, sizeof(old) ) == NULL ) {
 				RegDelValue( HKEY_CURRENT_USER, kpath, "ShiftedArrowKeys" ) ;
 			}
 		}

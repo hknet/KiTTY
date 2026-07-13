@@ -245,6 +245,7 @@ static void kitty_proxyedit_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * refresh). On VALCHANGE we persist whatever the user selected/typed. Mirrors
  * the resolution order in SearchWinSCP() (kitty.c). */
 int ReadParameter(const char *key, const char *name, char *value);   /* kitty.c */
+int ReadParameterN(const char *key, const char *name, char *value, size_t size); /* kitty.c */
 int WriteParameter(const char *key, const char *name, char *value);  /* kitty.c */
 int existfile(const char *filename);                                  /* kitty_tools.c */
 /* kitty.ini [section] name (kitty_config.c does not include kitty.h). Mirror
@@ -263,7 +264,7 @@ static void kitty_winscppath_handler(dlgcontrol *ctrl, dlgparam *dlg,
         char buffer[4096];
         buffer[0] = '\0';
         refreshing = 1;
-        if (ReadParameter(INIT_SECTION, "WinSCPPath", buffer) == 0 ||
+        if (ReadParameterN(INIT_SECTION, "WinSCPPath", buffer, sizeof(buffer)) == 0 ||
             !buffer[0]) {
             /* Nothing stored: offer the default location as a hint, but only
              * if it actually exists (display only - do not persist here). */

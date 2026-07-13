@@ -1086,12 +1086,12 @@ void CountUp( void ) {
 	long int n ;
 	int len = 1024 ;
 	
-	if( ReadParameter( INIT_SECTION, "KiCount", buffer ) == 0 ) { strcpy( buffer, "0" ) ; }
+	if( ReadParameterN( INIT_SECTION, "KiCount", buffer, sizeof(buffer) ) == 0 ) { strcpy( buffer, "0" ) ; }
 	n = atol( buffer ) + 1 ;
 	sprintf( buffer, "%ld", n ) ;
 	WriteParameter( INIT_SECTION, "KiCount", buffer) ;
 	
-	if( ReadParameter( INIT_SECTION, "KiLastUp", buffer ) == 0 ) { sprintf( buffer, "%ld/", time(0) ) ; }
+	if( ReadParameterN( INIT_SECTION, "KiLastUp", buffer, sizeof(buffer) ) == 0 ) { sprintf( buffer, "%ld/", time(0) ) ; }
 	buffer[2048]='\0';
 	if( (pst=strstr(buffer,"/"))==NULL ) { strcat(buffer,"/") ; pst=buffer+strlen(buffer)-1 ; }
 	sprintf( pst+1, "%ld", time(0) ) ;
@@ -1124,7 +1124,7 @@ void CountUp( void ) {
 		if( strlen( buffer ) > 0 ) 
 			{ WriteParameter( INIT_SECTION, "KiPath", buffer) ; }
 			
-	if( ReadParameter( INIT_SECTION, "KiLic", buffer ) == 0 ) { 
+	if( ReadParameterN( INIT_SECTION, "KiLic", buffer, sizeof(buffer) ) == 0 ) { 
 		strcpy( buffer, "KI67" ) ;
 		license_make_with_first( buffer, 25, 97, 0 )  ;
 		license_form( buffer, '-', 5 ) ;
@@ -1183,8 +1183,10 @@ int WriteParameter( const char * key, const char * name, char * value ) {
 	return ret ;
 }
 
-// Lit un parametre soit dans le fichier de configuration, soit dans le registre
-int ReadParameter( const char * key, const char * name, char * value ) {
+// Lit un parametre soit dans le fichier de configuration, soit dans le registre.
+// Variante bornee: n'ecrit jamais plus de `size` octets (NUL final compris)
+// dans `value`; une valeur trop longue est tronquee au lieu de deborder.
+int ReadParameterN( const char * key, const char * name, char * value, size_t size ) {
 	char buffer[4096] ;
 	strcpy( buffer, "" ) ;
 	if( IniFileFlag == SAVEMODE_DIR ) {
@@ -1198,8 +1200,16 @@ int ReadParameter( const char * key, const char * name, char * value ) {
 			}
 		}
 	buffer[4095] = '\0' ;
+	if( size == 0 ) return 0 ;
+	if( strlen(buffer) >= size ) buffer[size-1] = '\0' ;
 	strcpy( value, buffer ) ;
 	return strcmp( buffer, "" ) ;
+	}
+
+// Compat: ancienne signature non bornee -- le buffer destinataire DOIT faire
+// au moins 4096 octets. Preferer ReadParameterN( ..., sizeof(buf) ).
+int ReadParameter( const char * key, const char * name, char * value ) {
+	return ReadParameterN( key, name, value, 4096 ) ;
 	}
 	
 // Supprime un parametre
@@ -1329,7 +1339,7 @@ static void SavePortableDirBackup( void ) {
 	time_t now ;
 	struct tm *tmnow ;
 	if( NoKittyFileFlag || ConfigDirectory == NULL || strlen(ConfigDirectory)==0 ) return ;
-	if( ReadParameter( INIT_SECTION, "portablebackupcount", buffer ) ) keep = atoi( buffer ) ;
+	if( ReadParameterN( INIT_SECTION, "portablebackupcount", buffer, sizeof(buffer) ) ) keep = atoi( buffer ) ;
 	if( keep <= 0 ) return ;
 	if( keep > 50 ) keep = 50 ;
 	snprintf( root, sizeof(root), "%s\\Backups", ConfigDirectory ) ;
@@ -1423,7 +1433,7 @@ void SaveRegistryKey( void ) {
 	if( strlen( PasswordConf ) > 0 )
 		{ WriteParameter( INIT_SECTION, "password", PasswordConf ) ; }
 
-	if( ReadParameter( INIT_SECTION, "savbackupcount", kb ) ) keep = atoi( kb ) ;
+	if( ReadParameterN( INIT_SECTION, "savbackupcount", kb, sizeof(kb) ) ) keep = atoi( kb ) ;
 	if( keep <= 0 ) return ;              /* savbackupcount=0 disables the backup */
 	if( keep > 50 ) keep = 50 ;
 	/* Write a FRESH timestamped file now (kittynew-YYYYMMDD-HHMMSS.sav) so its
@@ -2107,7 +2117,7 @@ void RunScriptFile( HWND hwnd, const char * filename ) {
 
 void OpenAndSendScriptFile( HWND hwnd ) {
     char filename[4096], buffer[4096] ;
-    if( ReadParameter( INIT_SECTION, "scriptfilefilter", buffer ) ) {
+    if( ReadParameterN( INIT_SECTION, "scriptfilefilter", buffer, sizeof(buffer) ) ) {
         buffer[4090]='\0';
     } else { 
         strcpy( buffer, "Script files (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|" ) ;
@@ -2506,7 +2516,7 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 		
 	if( !GetShortPathName( PSCPPath, pscppath, 4095 ) ) return ;
 	
-	if( ReadParameter( INIT_SECTION, "uploaddir", dir ) ) {
+	if( ReadParameterN( INIT_SECTION, "uploaddir", dir, sizeof(dir) ) ) {
 		if( !existdirectory( dir ) ) 
 			strcpy( dir, InitialDirectory ) ;
 	}
@@ -2530,7 +2540,7 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	}
 	bcat( buffer, BC, conf_get_int(conf, CONF_winscpprot)==0 ? "-scp " : "-sftp " ) ;
 
-	if( ReadParameter( INIT_SECTION, "pscpport", pscpport ) ) {
+	if( ReadParameterN( INIT_SECTION, "pscpport", pscpport, sizeof(pscpport) ) ) {
 		pscpport[17]='\0';
 		if( !strcmp( pscpport,"*" ) ) sprintf( pscpport, "%d", conf_get_int(conf, CONF_port) ) ;
 		bcat( buffer, BC, "-P " ) ; bcat( buffer, BC, pscpport ) ; bcat( buffer, BC, " " ) ;
@@ -2718,7 +2728,7 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
 
     if( !GetShortPathName( PSCPPath, pscppath, 4095 ) ) return ;
 
-    if( ReadParameter( INIT_SECTION, "downloaddir", dir ) ) {
+    if( ReadParameterN( INIT_SECTION, "downloaddir", dir, sizeof(dir) ) ) {
         if( !existdirectory( dir ) ) { strcpy( dir, InitialDirectory ) ; }
     }
 
@@ -2734,7 +2744,7 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
     }
     bcat( buffer, BC, conf_get_int(conf, CONF_winscpprot)==0 ? "-scp " : "-sftp " ) ;
 
-    if( ReadParameter( INIT_SECTION, "pscpport", pscpport ) ) {
+    if( ReadParameterN( INIT_SECTION, "pscpport", pscpport, sizeof(pscpport) ) ) {
         pscpport[17]='\0';
         if( !strcmp( pscpport,"*" ) ) sprintf( pscpport, "%d", conf_get_int(conf,CONF_port) ) ;
         bcat( buffer, BC, "-P " ) ; bcat( buffer, BC, pscpport ) ; bcat( buffer, BC, " " ) ;
@@ -2829,7 +2839,7 @@ void GetFile( HWND hwnd ) {
 //sprintf(buffer,"#%s#%d",pst,strlen(pst));MessageBox(hwnd,buffer,"Info",MB_OK);
                 strcpy( buffer, "" ) ;
                 if( strlen( pst ) > 0 ) {
-                    if( ReadParameter( INIT_SECTION, "downloaddir", dir ) ) {
+                    if( ReadParameterN( INIT_SECTION, "downloaddir", dir, sizeof(dir) ) ) {
                         if( !existdirectory( dir ) ) {
                             strcpy( dir, InitialDirectory ) ;
                         }
@@ -2848,7 +2858,7 @@ void GetFile( HWND hwnd ) {
                     }
                     bcat( buffer, sizeof(buffer), conf_get_int(conf, CONF_winscpprot)==0 ? "-scp " : "-sftp " ) ;
                     if( conf_get_int(conf,CONF_sshprot) == 3 ) { bcat( buffer, sizeof(buffer), "-2 " ) ; }   // SSH-2 Only
-                    if( ReadParameter( INIT_SECTION, "pscpport", pscpport ) ) {
+                    if( ReadParameterN( INIT_SECTION, "pscpport", pscpport, sizeof(pscpport) ) ) {
                         pscpport[17]='\0';
                         if( !strcmp( pscpport,"*" ) ) { sprintf( pscpport, "%d", conf_get_int(conf,CONF_port) ) ; }
                         bcat( buffer, sizeof(buffer), "-P " ) ; bcat( buffer, sizeof(buffer), pscpport ) ; bcat( buffer, sizeof(buffer), " " ) ;
@@ -3369,7 +3379,7 @@ BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 				return 0;
 			else if( (wParam==VK_F2) && (GetKeyState( VK_SHIFT )& 0x8000) ) { // Charge une Notes
 				sprintf( key_name, "%s\\Sessions\\%s", TEXT(PUTTY_REG_POS), conf_get_str(conf,CONF_sessionname) ) ;
-				if( GetValueData(HKEY_CURRENT_USER, key_name, "Notes", buffer) != NULL ) {
+				if( GetValueDataN(HKEY_CURRENT_USER, key_name, "Notes", buffer, sizeof(buffer)) != NULL ) {
 					if( GetWindowTextLength(hwnd) > 0 ) 
 						if( MessageBox(hwnd, "Are you sure you want to load Notes\nand erase this edit box ?","Load Warning", MB_YESNO|MB_ICONWARNING ) != IDYES ) break ;
 					SetWindowText( hwnd, buffer ) ;
@@ -4202,7 +4212,7 @@ int InternalCommand( HWND hwnd, char * st ) {
 		}
 		return 1 ;
 	} else if( !strcmp( st, "/-configpassword" ) ) {
-		if( ReadParameter( INIT_SECTION, "password", buffer ) ) {
+		if( ReadParameterN( INIT_SECTION, "password", buffer, sizeof(buffer) ) ) {
 			if( decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD ) ) {
 				MessageBox( hwnd, buffer, "Your password is ...", MB_OK|MB_ICONWARNING ) ;
 			}
@@ -4262,7 +4272,7 @@ int SearchCtHelper( void ) {
 		free(CtHelperPath) ; 
 		CtHelperPath=NULL ; 
 	}
-	if( ReadParameter( INIT_SECTION, "CtHelperPath", buffer ) != 0 ) {
+	if( ReadParameterN( INIT_SECTION, "CtHelperPath", buffer, sizeof(buffer) ) != 0 ) {
 		if( existfile( buffer ) ) { 
 			CtHelperPath = (char*) malloc( strlen(buffer) + 1 ) ; 
 			strcpy( CtHelperPath, buffer ) ; 
@@ -4306,7 +4316,7 @@ static int probe_winscp_env_dir(const char *envname, const char *subpath, char *
 int SearchWinSCP( void ) {
 	char buffer[4096] ;
 	if( WinSCPPath!=NULL) { free(WinSCPPath) ; WinSCPPath = NULL ; }
-	if( ReadParameter( INIT_SECTION, "WinSCPPath", buffer ) != 0 ) {
+	if( ReadParameterN( INIT_SECTION, "WinSCPPath", buffer, sizeof(buffer) ) != 0 ) {
 		if( existfile( buffer ) ) { 
 			WinSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( WinSCPPath, buffer ) ; 
 			return 1 ;
@@ -4321,7 +4331,7 @@ int SearchWinSCP( void ) {
 	if( probe_winscp_env_dir("ProgramFiles(x86)", "WinSCP3\\WinSCP3.exe", buffer, sizeof(buffer)) ) return 1 ;
 	snprintf( buffer, sizeof(buffer), "%s\\WinSCP.exe", InitialDirectory ) ;
 	if( set_winscp_path_if_exists(buffer) ) return 1 ;
-	if( ReadParameter( INIT_SECTION, "winscpdir", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "winscpdir", buffer, sizeof(buffer) ) ) {
 		buffer[4076]='\0';
 		strcat( buffer, "\\" ) ; strcat( buffer, "WinSCP.exe" ) ;
 		if( set_winscp_path_if_exists(buffer) ) return 1 ;
@@ -4471,7 +4481,7 @@ int SearchPSCP( void ) {
 
 	if( PSCPPath!=NULL ) { free(PSCPPath) ; PSCPPath = NULL ; }
 	// Dans la base de registre
-	if( ReadParameter( INIT_SECTION, "PSCPPath", buffer ) != 0 ) {
+	if( ReadParameterN( INIT_SECTION, "PSCPPath", buffer, sizeof(buffer) ) != 0 ) {
 		if( existfile( buffer ) ) { 
 			PSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PSCPPath, buffer ) ; return 1 ;
 		} else { 
@@ -4480,7 +4490,7 @@ int SearchPSCP( void ) {
 	}
 
 	// Dans le fichier ini
-	if( ReadParameter( INIT_SECTION, "pscpdir", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "pscpdir", buffer, sizeof(buffer) ) ) {
 		buffer[4076]='\0';
 		strcat( buffer, "\\" ) ; strcat( buffer, ki ) ;
 		if( existfile( buffer ) ) { 
@@ -4488,7 +4498,7 @@ int SearchPSCP( void ) {
 			WriteParameter( INIT_SECTION, "PSCPPath", PSCPPath ) ;
 			return 1 ;
 		} else {
-			ReadParameter( INIT_SECTION, "pscpdir", buffer ) ;
+			ReadParameterN( INIT_SECTION, "pscpdir", buffer, sizeof(buffer) ) ;
 			buffer[4076]='\0';
 			strcat( buffer, "\\" ) ; strcat( buffer, pu ) ;
 			if( existfile( buffer ) ) { 
@@ -4532,7 +4542,7 @@ int SearchPlink( void ) {
 
 	if( PlinkPath!=NULL ) { free(PlinkPath) ; PlinkPath = NULL ; }
 	// Dans la base de registre
-	if( ReadParameter( INIT_SECTION, "PlinkPath", buffer ) != 0 ) {
+	if( ReadParameterN( INIT_SECTION, "PlinkPath", buffer, sizeof(buffer) ) != 0 ) {
 		buffer[4076]='\0';
 		if( existfile( buffer ) ) { 
 			PlinkPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PlinkPath, buffer ) ; return 1 ;
@@ -5383,14 +5393,14 @@ void InitShortcuts( void ) {
 	
 	if( NbShortCuts>0 ) for( i=0 ; i<NbShortCuts ; i++ ) { if( shortcuts_tab2[i].st!=NULL ) { free(shortcuts_tab2[i].st) ; } }
 	NbShortCuts=0 ;
-	if( ReadParameter( "Shortcuts", "list", list ) ) {
+	if( ReadParameterN( "Shortcuts", "list", list, sizeof(list) ) ) {
 		pl=list ;
 		while( strlen(pl) > 0 ) {
 			i=0;
 			while( (i<strlen(pl))&&(pl[i]!=' ') ) { i++ ; }
 			if( pl[i]==' ' ) { pl[i]='\0' ; t=1 ; }
 			if( strlen(pl)>0 )
-			if( ReadParameter( "Shortcuts", pl, buffer ) ) {
+			if( ReadParameterN( "Shortcuts", pl, buffer, sizeof(buffer) ) ) {
 				if( (pl[0]<'0')||(pl[0]>'9') ) {
 					shortcuts_tab2[NbShortCuts].num = DefineShortcuts( pl );
 				} else {
@@ -5610,104 +5620,104 @@ void LoadParameters( void ) {
 	char buffer[4096] ;
 
 	/* A lire en premier */
-	if( ReadParameter( INIT_SECTION, "debug", buffer ) ) { if( !stricmp( buffer, "YES" ) ) debug_flag = 1 ; }
+	if( ReadParameterN( INIT_SECTION, "debug", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) debug_flag = 1 ; }
 	
-	if( ReadParameter( "Agent", "scrumble", buffer ) ) { if( !stricmp( buffer, "YES" ) ) SetScrumbleKeyFlag(1) ; }
+	if( ReadParameterN( "Agent", "scrumble", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetScrumbleKeyFlag(1) ; }
 
 #ifdef MOD_ADB
-	if( ReadParameter( INIT_SECTION, "adb", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "adb", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "YES" ) ) SetADBFlag( 1 ) ; 
 		if( !stricmp( buffer, "NO" ) ) SetADBFlag( 0 ) ; 
 	}
 #endif
-	if( ReadParameter( INIT_SECTION, "antiidle", buffer ) ) { buffer[127]='\0'; strcpy( AntiIdleStr, buffer ) ; }
-	if( ReadParameter( INIT_SECTION, "antiidledelay", buffer ) ) 
+	if( ReadParameterN( INIT_SECTION, "antiidle", buffer, sizeof(buffer) ) ) { buffer[127]='\0'; strcpy( AntiIdleStr, buffer ) ; }
+	if( ReadParameterN( INIT_SECTION, "antiidledelay", buffer, sizeof(buffer) ) ) 
 		{ AntiIdleCountMax = (int)floor(atoi(buffer)/10.0) ; if( AntiIdleCountMax<=0 ) AntiIdleCountMax =1 ; }
-	if( ReadParameter( INIT_SECTION, "autostoresshkey", buffer ) ) { if( !stricmp( buffer, "YES" ) ) SetAutoStoreSSHKeyFlag( 1 ) ; }
+	if( ReadParameterN( INIT_SECTION, "autostoresshkey", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetAutoStoreSSHKeyFlag( 1 ) ; }
 #if (defined MOD_BACKGROUNDIMAGE) && (!defined FLJ)
 	//if( debug_flag )
-	if( ReadParameter( INIT_SECTION, "bgimage", buffer ) ) {	
+	if( ReadParameterN( INIT_SECTION, "bgimage", buffer, sizeof(buffer) ) ) {	
 		if( !stricmp( buffer, "NO" ) ) SetBackgroundImageFlag( 0 ) ; 
 		if( !stricmp( buffer, "YES" ) ) SetBackgroundImageFlag( 1 ) ;  // Broken en 0.71 ==> on desactive
 	}
 #endif
-	if( ReadParameter( INIT_SECTION, "bcdelay", buffer ) ) { between_char_delay = atoi( buffer ) ; }
-	if( ReadParameter( INIT_SECTION, "browsedirectory", buffer ) ) { 
+	if( ReadParameterN( INIT_SECTION, "bcdelay", buffer, sizeof(buffer) ) ) { between_char_delay = atoi( buffer ) ; }
+	if( ReadParameterN( INIT_SECTION, "browsedirectory", buffer, sizeof(buffer) ) ) { 
 		if( !stricmp( buffer, "NO" ) ) { DirectoryBrowseFlag = 0 ; }
 		else if( (!stricmp( buffer, "YES" )) && (IniFileFlag==SAVEMODE_DIR) ) DirectoryBrowseFlag = 1 ;
 	}
-	if( ReadParameter( INIT_SECTION, "capslock", buffer ) ) { if( !stricmp( buffer, "YES" ) ) CapsLockFlag = 1 ; }
-	if( ReadParameter( INIT_SECTION, "commanddelay", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "capslock", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) CapsLockFlag = 1 ; }
+	if( ReadParameterN( INIT_SECTION, "commanddelay", buffer, sizeof(buffer) ) ) {
 		autocommand_delay = (int)(1000*atof( buffer )) ;
 		if(autocommand_delay<5) autocommand_delay = 5 ; 
 	}
-	if( ReadParameter( INIT_SECTION, "conf", buffer ) ) { if( !stricmp( buffer, "NO" ) ) NoKittyFileFlag = 1 ; }
-	if( ReadParameter( INIT_SECTION, "configdir", buffer ) ) { 
+	if( ReadParameterN( INIT_SECTION, "conf", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "NO" ) ) NoKittyFileFlag = 1 ; }
+	if( ReadParameterN( INIT_SECTION, "configdir", buffer, sizeof(buffer) ) ) { 
 		if( strlen( buffer ) > 0 ) { if( existdirectory(buffer) ) SetConfigDirectory( buffer ) ; }
 	}
-	if( ReadParameter( INIT_SECTION, "cryptsalt", buffer ) ) { SetCryptSaltFlag( atoi(buffer) ) ; }
-	if( ReadParameter( INIT_SECTION, "ctrltab", buffer ) ) { if( !stricmp( buffer, "NO" ) ) SetCtrlTabFlag( 0 ) ; }
-	if( ReadParameter( INIT_SECTION, "hyperlink", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "cryptsalt", buffer, sizeof(buffer) ) ) { SetCryptSaltFlag( atoi(buffer) ) ; }
+	if( ReadParameterN( INIT_SECTION, "ctrltab", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "NO" ) ) SetCtrlTabFlag( 0 ) ; }
+	if( ReadParameterN( INIT_SECTION, "hyperlink", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "NO" ) ) HyperlinkFlag = 0 ;
 		if( !stricmp( buffer, "YES" ) ) HyperlinkFlag = 1 ;
 	}
-	if( ReadParameter( INIT_SECTION, "icon", buffer ) ) { if( !stricmp( buffer, "YES" ) ) IconeFlag = 1 ; }
-	if( ReadParameter( INIT_SECTION, "iconfile", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "icon", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) IconeFlag = 1 ; }
+	if( ReadParameterN( INIT_SECTION, "iconfile", buffer, sizeof(buffer) ) ) {
 		if( existfile( buffer ) ) {
 			if( IconFile != NULL ) free( IconFile ) ;
 			IconFile = (char*) malloc( strlen(buffer)+1 ) ;
 			strcpy( IconFile, buffer ) ;
-			if( ReadParameter( INIT_SECTION, "numberoficons", buffer ) ) { NumberOfIcons = atof( buffer ) ; }
+			if( ReadParameterN( INIT_SECTION, "numberoficons", buffer, sizeof(buffer) ) ) { NumberOfIcons = atof( buffer ) ; }
 		}
 	}
-	if( ReadParameter( INIT_SECTION, "initdelay", buffer ) ) { 
+	if( ReadParameterN( INIT_SECTION, "initdelay", buffer, sizeof(buffer) ) ) { 
 		init_delay = (int)(1000*atof( buffer )) ;
 		if( init_delay < 0 ) init_delay = 2000 ; 
 	}
-	if( ReadParameter( INIT_SECTION, "internaldelay", buffer ) ) { 
+	if( ReadParameterN( INIT_SECTION, "internaldelay", buffer, sizeof(buffer) ) ) { 
 		internal_delay = atoi( buffer ) ; 
 		if( internal_delay < 1 ) internal_delay = 1 ;
 	}
-	if( ReadParameter( INIT_SECTION, "fileextension", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "fileextension", buffer, sizeof(buffer) ) ) {
 		if( strlen(buffer) > 0 ) {
 			snprintf( FileExtension, sizeof(FileExtension), "%s%s", (buffer[0]!='.')?".":"", buffer ) ;
 			str_rtrim( FileExtension, " " ) ;
 		}				
 	}
-	if( ReadParameter( INIT_SECTION, "hostkeyextension", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "hostkeyextension", buffer, sizeof(buffer) ) ) {
 		if( strlen(buffer) > 0 ) { SetHostKeyExtension(buffer) ; }
 	}
-	if( ReadParameter( INIT_SECTION, "KiPP", buffer ) != 0 ) {
+	if( ReadParameterN( INIT_SECTION, "KiPP", buffer, sizeof(buffer) ) != 0 ) {
 		if( decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD ) ) ManagePassPhrase( buffer ) ;
 	}
-	if( ReadParameter( INIT_SECTION, "localcmd", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "localcmd", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "NO" ) ) LocalCmdFlag = 0 ;
 		if( !stricmp( buffer, "YES" ) ) LocalCmdFlag = 1 ;
 	}
-	if( ReadParameter( INIT_SECTION, "localunsecurecmd", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "localunsecurecmd", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "NO" ) ) LocalUnsecureCmdFlag = 0 ;
 		if( !stricmp( buffer, "YES" ) ) LocalUnsecureCmdFlag = 1 ;
 	}
-	if( ReadParameter( INIT_SECTION, "maxblinkingtime", buffer ) ) { MaxBlinkingTime=2*atoi(buffer);if(MaxBlinkingTime<0) MaxBlinkingTime=0; }
-	if( ReadParameter( INIT_SECTION, "mouseshortcuts", buffer ) ) { 
+	if( ReadParameterN( INIT_SECTION, "maxblinkingtime", buffer, sizeof(buffer) ) ) { MaxBlinkingTime=2*atoi(buffer);if(MaxBlinkingTime<0) MaxBlinkingTime=0; }
+	if( ReadParameterN( INIT_SECTION, "mouseshortcuts", buffer, sizeof(buffer) ) ) { 
 		if( !stricmp( buffer, "NO" ) ) MouseShortcutsFlag = 0 ;
 		if( !stricmp( buffer, "YES" ) ) MouseShortcutsFlag = 1 ;
 	}
-	if( ReadParameter( INIT_SECTION, "paste", buffer ) ) { if( !stricmp( buffer, "YES" ) ) PasteCommandFlag = 1 ; }
+	if( ReadParameterN( INIT_SECTION, "paste", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) PasteCommandFlag = 1 ; }
 	/* cyd01/KiTTY #548: force classic modal error boxes instead of inline terminal errors */
-	if( ReadParameter( INIT_SECTION, "modalerrors", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "modalerrors", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "YES" ) ) SetModalErrorsFlag( 1 ) ;
 		if( !stricmp( buffer, "NO" ) ) SetModalErrorsFlag( 0 ) ;
 	}
-	if( ReadParameter( INIT_SECTION, "pastesize", buffer ) ) { if( atoi(buffer)>0 ) SetPasteSize( atoi(buffer) ) ; }
-	if( ReadParameter( INIT_SECTION, "PSCPPath", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "pastesize", buffer, sizeof(buffer) ) ) { if( atoi(buffer)>0 ) SetPasteSize( atoi(buffer) ) ; }
+	if( ReadParameterN( INIT_SECTION, "PSCPPath", buffer, sizeof(buffer) ) ) {
 		if( existfile( buffer ) ) { 
 			if( PSCPPath!=NULL) { free(PSCPPath) ; PSCPPath = NULL ; }
 			PSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PSCPPath, buffer ) ;
 		}
 	}
-	if( ReadParameter( INIT_SECTION, "readonly", buffer ) ) { if( !stricmp( buffer, "YES" ) ) SetReadOnlyFlag(1) ; }
-	if( ReadParameter( INIT_SECTION, "sav", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "readonly", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetReadOnlyFlag(1) ; }
+	if( ReadParameterN( INIT_SECTION, "sav", buffer, sizeof(buffer) ) ) {
 		if( strlen( buffer ) > 0 ) {
 			/* Ignore an inherited legacy default (kitty.sav / kitty084.sav) written
 			 * by an older KiTTY, so the current default (kittynew.sav) takes over
@@ -5721,30 +5731,30 @@ void LoadParameters( void ) {
 			}
 		}
 	}
-	if( ReadParameter( INIT_SECTION, "shortcuts", buffer ) ) { 
+	if( ReadParameterN( INIT_SECTION, "shortcuts", buffer, sizeof(buffer) ) ) { 
 		if( !stricmp( buffer, "NO" ) ) ShortcutsFlag = 0 ; 
 		if( !stricmp( buffer, "YES" ) ) ShortcutsFlag = 1 ; 
 	}
-	if( ReadParameter( INIT_SECTION, "size", buffer ) ) { if( !stricmp( buffer, "YES" ) ) SizeFlag = 1 ; }
-	if( ReadParameter( INIT_SECTION, "slidedelay", buffer ) ) { ImageSlideDelay = atoi( buffer ) ; }
-	if( ReadParameter( INIT_SECTION, "sshversion", buffer ) ) { set_sshver( buffer ) ; }
-	if( ReadParameter( INIT_SECTION, "userpasssshnosave", buffer ) ) { 
+	if( ReadParameterN( INIT_SECTION, "size", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SizeFlag = 1 ; }
+	if( ReadParameterN( INIT_SECTION, "slidedelay", buffer, sizeof(buffer) ) ) { ImageSlideDelay = atoi( buffer ) ; }
+	if( ReadParameterN( INIT_SECTION, "sshversion", buffer, sizeof(buffer) ) ) { set_sshver( buffer ) ; }
+	if( ReadParameterN( INIT_SECTION, "userpasssshnosave", buffer, sizeof(buffer) ) ) { 
 		if( !stricmp( buffer, "no" ) ) SetUserPassSSHNoSave(0) ;
 		if( !stricmp( buffer, "yes" ) ) SetUserPassSSHNoSave(1) ;
 	}
-	if( ReadParameter( INIT_SECTION, "winroll", buffer ) ) { 
+	if( ReadParameterN( INIT_SECTION, "winroll", buffer, sizeof(buffer) ) ) { 
 		if( !stricmp( buffer, "no" ) ) WinrolFlag = 0 ;
 		if( !stricmp( buffer, "yes" ) ) WinrolFlag = 1 ;
 	}
-	if( ReadParameter( INIT_SECTION, "WinSCPPath", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "WinSCPPath", buffer, sizeof(buffer) ) ) {
 		if( existfile( buffer ) ) { 
 			if( WinSCPPath!=NULL) { free(WinSCPPath) ; WinSCPPath = NULL ; }
 			WinSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( WinSCPPath, buffer ) ;
 		}
 	}
-	if( ReadParameter( INIT_SECTION, "wintitle", buffer ) ) { if( !stricmp( buffer, "NO" ) ) TitleBarFlag = 0 ; }
+	if( ReadParameterN( INIT_SECTION, "wintitle", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "NO" ) ) TitleBarFlag = 0 ; }
 #ifdef MOD_PROXY
-	if( ReadParameter( "ConfigBox", "proxyselection", buffer ) ) {
+	if( ReadParameterN( "ConfigBox", "proxyselection", buffer, sizeof(buffer) ) ) {
 		/* yes = always, no = never, auto (or anything else) = when defined */
 		if( !stricmp( buffer, "YES" ) ) { SetProxySelectionFlag(1) ; }
 		else if( !stricmp( buffer, "NO" ) ) { SetProxySelectionFlag(-1) ; }
@@ -5752,31 +5762,31 @@ void LoadParameters( void ) {
 	}
 #endif
 #ifdef MOD_ZMODEM
-	if( ReadParameter( INIT_SECTION, "zmodem", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "zmodem", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "NO" ) ) SetZModemFlag( 0 ) ;
 		if( !stricmp( buffer, "YES" ) ) SetZModemFlag( 1 ) ; /* re-enabled: 0.84 port has a real helper spawn (kitty_zmodem.c) */
 		}
 #endif
 #ifdef MOD_RECONNECT
-	if( ReadParameter( INIT_SECTION, "autoreconnect", buffer ) ) { if( !stricmp( buffer, "NO" ) ) AutoreconnectFlag = 0 ; }
-	if( ReadParameter( INIT_SECTION, "ReconnectDelay", buffer ) ) { 
+	if( ReadParameterN( INIT_SECTION, "autoreconnect", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "NO" ) ) AutoreconnectFlag = 0 ; }
+	if( ReadParameterN( INIT_SECTION, "ReconnectDelay", buffer, sizeof(buffer) ) ) { 
 		ReconnectDelay = atoi( buffer ) ;
 		if( ReconnectDelay < 1 ) ReconnectDelay = 1 ;
 	}
 #endif
-	if( ReadParameter( INIT_SECTION, "scriptmode", buffer ) ) { 
+	if( ReadParameterN( INIT_SECTION, "scriptmode", buffer, sizeof(buffer) ) ) { 
 		if( !stricmp( buffer, "YES" ) ) RuttyFlag = 1 ;
 		if( !stricmp( buffer, "NO" ) ) RuttyFlag = 0 ;
 	}
 #ifndef MOD_NOTRANSPARENCY
-	if( ReadParameter( INIT_SECTION, "transparency", buffer ) ) {
+	if( ReadParameterN( INIT_SECTION, "transparency", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "YES" ) ) { TransparencyFlag = 1 ; }
 		else { TransparencyFlag = 0 ; } 
 	}
 #endif
 
 #if (defined MOD_BACKGROUNDIMAGE) && (!defined FLJ)
-	if( ReadParameter( INIT_SECTION, "shrinkbitmap", buffer ) ) { if( !stricmp( buffer, "YES" ) ) SetShrinkBitmapEnable(1) ; else SetShrinkBitmapEnable(0) ; }
+	if( ReadParameterN( INIT_SECTION, "shrinkbitmap", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetShrinkBitmapEnable(1) ; else SetShrinkBitmapEnable(0) ; }
 #endif
 
 	if( readINI( KittyIniFile, "ConfigBox", "dblclick", buffer, sizeof(buffer) ) ) {
@@ -5991,7 +6001,7 @@ void InitWinMain( void ) {
 	strcpy( KiTTYClassName, appname ) ;
 
 #if (defined MOD_PERSO) && (!defined FLJ)
-	if( ReadParameter( INIT_SECTION, "KiClassName", buffer ) )
+	if( ReadParameterN( INIT_SECTION, "KiClassName", buffer, sizeof(buffer) ) )
 		{ if( (strlen(buffer)>0) && (strlen(buffer)<128) ) { buffer[127]='\0'; strcpy( KiTTYClassName, buffer ) ; } }
 	appname = KiTTYClassName ;
 	/* Select the registry hive to match KiClassName: default KiTTY's own

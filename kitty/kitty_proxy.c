@@ -153,19 +153,19 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 			return 0;
 		}
 		char lpData[4096] ;
-		if( GetValueData(HKEY_CURRENT_USER, buffer, "ProxyExcludeList", lpData ) ) { 
+		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyExcludeList", lpData, sizeof(lpData) ) ) { 
 			conf_set_str( conf, CONF_proxy_exclude_list, lpData ) ; 
 		}
-		if( GetValueData(HKEY_CURRENT_USER, buffer, "ProxyDNS", lpData ) ) {
+		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyDNS", lpData, sizeof(lpData) ) ) {
 			int i=atoi(lpData);
 			conf_set_int(conf, CONF_proxy_dns, (i+1)%3);
 		}
-		if( GetValueData(HKEY_CURRENT_USER, buffer, "ProxyLocalhost", lpData ) ) { 
+		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyLocalhost", lpData, sizeof(lpData) ) ) { 
 			if( atoi(lpData) == 0 ) { conf_set_bool( conf, CONF_even_proxy_localhost, false ) ; 
 			} else { conf_set_bool( conf, CONF_even_proxy_localhost, true ) ;
 			}			
 		}
-		if( GetValueData(HKEY_CURRENT_USER, buffer, "ProxyMethod", lpData ) ) {
+		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyMethod", lpData, sizeof(lpData) ) ) {
 			int i = atoi(lpData) ;
 			if (i == 0) conf_set_int(conf, CONF_proxy_type, PROXY_NONE);
 			else if (i == 1) conf_set_int(conf, CONF_proxy_type, PROXY_SOCKS4) ;
@@ -178,16 +178,16 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 			else if (i == 8) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_SUBSYSTEM) ;
 			else conf_set_int(conf, CONF_proxy_type, PROXY_NONE) ;
 		}
-		if( GetValueData(HKEY_CURRENT_USER, buffer, "ProxyHost", lpData ) ) { conf_set_str( conf, CONF_proxy_host, lpData ) ; }
-		if( GetValueData(HKEY_CURRENT_USER, buffer, "ProxyPort", lpData ) ) { conf_set_int( conf, CONF_proxy_port, atoi(lpData) ) ; }
-		if( GetValueData(HKEY_CURRENT_USER, buffer, "ProxyUsername", lpData ) ) { conf_set_str( conf, CONF_proxy_username, lpData ) ; }
-		if( GetValueData(HKEY_CURRENT_USER, buffer, "ProxyPassword", lpData ) ) {
+		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyHost", lpData, sizeof(lpData) ) ) { conf_set_str( conf, CONF_proxy_host, lpData ) ; }
+		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyPort", lpData, sizeof(lpData) ) ) { conf_set_int( conf, CONF_proxy_port, atoi(lpData) ) ; }
+		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyUsername", lpData, sizeof(lpData) ) ) { conf_set_str( conf, CONF_proxy_username, lpData ) ; }
+		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyPassword", lpData, sizeof(lpData) ) ) {
 			char *pt = NULL ; kitty_secret_unwrap( lpData, &pt ) ;   /* DPAPI/MPW/plain */
 			conf_set_str( conf, CONF_proxy_password, pt ? pt : "" ) ;
 			if( pt ) { memset( pt, 0, strlen(pt) ) ; free( pt ) ; }
 		}
-		if( GetValueData(HKEY_CURRENT_USER, buffer, "ProxyTelnetCommand", lpData ) ) { conf_set_str( conf, CONF_proxy_telnet_command, lpData ) ; }
-		if( GetValueData(HKEY_CURRENT_USER, buffer, "ProxyLogToTerm", lpData ) ) { conf_set_int( conf, CONF_proxy_log_to_term, atoi(lpData) ) ; }
+		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyTelnetCommand", lpData, sizeof(lpData) ) ) { conf_set_str( conf, CONF_proxy_telnet_command, lpData ) ; }
+		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyLogToTerm", lpData, sizeof(lpData) ) ) { conf_set_int( conf, CONF_proxy_log_to_term, atoi(lpData) ) ; }
 		RegCloseKey( hKey ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		char fullpath[MAX_VALUE_NAME] ;
@@ -413,7 +413,7 @@ int kitty_proxy_any_plaintext_password( void ) {
 		if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
 			char sub[2048] ; char *m = (char*)malloc(4*strlen(proxies[i].name)+1) ; mungestr( proxies[i].name, m ) ;
 			snprintf( sub, sizeof(sub), "%s\\Proxies\\%s", PUTTY_REG_POS, m ) ; free( m ) ;
-			got = ( GetValueData( HKEY_CURRENT_USER, sub, "ProxyPassword", raw ) != NULL ) ;
+			got = ( GetValueDataN( HKEY_CURRENT_USER, sub, "ProxyPassword", raw, sizeof(raw) ) != NULL ) ;
 		} else if( IniFileFlag == SAVEMODE_DIR ) {
 			char fullpath[2048] ; char *fn = (char*)malloc(4*strlen(proxies[i].name)+1) ; mungestr( proxies[i].name, fn ) ;
 			snprintf( fullpath, sizeof(fullpath), "%s\\Proxies\\%s", ConfigDirectory, fn ) ; free( fn ) ;

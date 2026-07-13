@@ -82,7 +82,8 @@ char * GetConfigDirectory( void ) ;
 #ifndef stricmp	/* platform.h may #define stricmp _stricmp (CRT); don't redeclare */
 int stricmp(const char *s1, const char *s2) ;
 #endif
-char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue) ;
+char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize) ;
+char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue) ; /* compat: rValue >= cstMaxRegLength+2 octets; preferer GetValueDataN */
 int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) ;
 char * SetSessPath( const char * dec ) ;
 
@@ -93,7 +94,8 @@ void CleanFolderName( char * folder ) ;
 void DelDir( const char * directory ) ;
 
 // Lit un parametre soit dans le fichier de configuration, soit dans le registre
-int ReadParameterLight( const char * key, const char * name, char * value ) ;
+int ReadParameterLightN( const char * key, const char * name, char * value, size_t size ) ;
+int ReadParameterLight( const char * key, const char * name, char * value ) ; /* compat: value >= 4096 octets; preferer ReadParameterLightN */
 
 /* test if we are in portable mode by looking for putty.ini or kitty.ini in running directory */
 int LoadParametersLight( void ) ;

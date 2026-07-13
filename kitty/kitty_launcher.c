@@ -364,7 +364,7 @@ void InitLauncherRegistry( void ) {
 							continue ;
 					}
 					sprintf( buffer,"%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
-					if( !GetValueData(HKEY_CURRENT_USER, buffer, "Folder", folder ) )
+					if( !GetValueDataN(HKEY_CURRENT_USER, buffer, "Folder", folder, sizeof(folder) ) )
 						{ strcpy( folder, "Default" ) ; }
 					CleanFolderName( folder ) ;
 					if( !strcmp( folder, "Default" ) || (strlen(folder)<=0) )
@@ -915,13 +915,13 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	
 	if( strcmp(KiTTYClassName,appname) ) { strcpy(className,KiTTYClassName) ; }
 	else if( strcmp(KiTTYClassName,"KiTTY") ) { strcpy(className,KiTTYClassName) ; }
-	if( ReadParameter( "Launcher", "classname", buffer ) ) {
+	if( ReadParameterN( "Launcher", "classname", buffer, sizeof(buffer) ) ) {
 		buffer[1023]='\0' ;
 		if( strlen(buffer)>0 ) { strcpy(className,buffer) ; }
 	}
 	
 	if( FindWindow(className,className) ) {
-		if( ReadParameter( "Launcher", "alreadyRunCheck", buffer ) ) {
+		if( ReadParameterN( "Launcher", "alreadyRunCheck", buffer, sizeof(buffer) ) ) {
 			if( !stricmp( buffer, "yes" ) ) return 0 ;
 		} else { 
 			return 0 ; 
@@ -947,7 +947,7 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 
 	if( !RegisterClass(&wndclass) ) return 1 ;
 
-	if( ReadParameter( "Launcher", "reload", buffer ) ) {
+	if( ReadParameterN( "Launcher", "reload", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "NO" ) ) LauncherConfReload = 0 ;
 	}
 	/* KiTTY 0.84: the launcher can run before the main terminal (e.g. the boot Startup

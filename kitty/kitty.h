@@ -313,7 +313,8 @@ int unlink(const char *pathname);
 void RunScriptFile( HWND hwnd, const char * filename ) ;
 void InfoBoxSetText( HWND hwnd, char * st ) ;
 void ReadInitScript( const char * filename ) ;
-int ReadParameter( const char * key, const char * name, char * value ) ;
+int ReadParameterN( const char * key, const char * name, char * value, size_t size ) ;
+int ReadParameter( const char * key, const char * name, char * value ) ; /* compat: value >= 4096 octets; preferer ReadParameterN */
 int WriteParameter( const char * key, const char * name, char * value ) ;
 int DelParameter( const char * key, const char * name ) ;
 void GetSessionFolderName( const char * session_in, char * folder ) ;
