@@ -31,7 +31,7 @@ int cryptstring(const int mode, char *st, const char *key);
 
 void write_setting_i_forced(void *handle, const char *key, int value) {
     char buf[1024];
-    sprintf(buf, "%s\\%i\\", key, value);
+    snprintf( buf, sizeof(buf), "%s\\%i\\", key, value);
     if (CryptFileFlag) { cryptstring(GetCryptSaltFlag(), buf, MASTER_PASSWORD); }
     fprintf((FILE*)handle, "%s\n", buf);
     fflush(handle);
@@ -386,8 +386,8 @@ void save_open_settings_forced(char *filename, Conf *conf) {
 
     for (i = 0; i < 22; i++) {
         char buf[20], buf2[30];
-        sprintf(buf, "Colour%d", i);
-        sprintf(buf2, "%d,%d,%d",
+        snprintf( buf, sizeof(buf), "Colour%d", i);
+        snprintf( buf2, sizeof(buf2), "%d,%d,%d",
                 conf_get_int_int(conf, CONF_colours, i*3+0),
                 conf_get_int_int(conf, CONF_colours, i*3+1),
                 conf_get_int_int(conf, CONF_colours, i*3+2));
@@ -404,7 +404,7 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     for (i = 0; i < 256; i += 32) {
         char buf[20], buf2[256];
         int j;
-        sprintf(buf, "Wordness%d", i);
+        snprintf( buf, sizeof(buf), "Wordness%d", i);
         *buf2 = '\0';
         for (j = i; j < i + 32; j++) {
             sprintf(buf2 + strlen(buf2), "%s%d",

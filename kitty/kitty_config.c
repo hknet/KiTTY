@@ -273,17 +273,17 @@ static void kitty_winscppath_handler(dlgcontrol *ctrl, dlgparam *dlg,
             const char *local = getenv("LOCALAPPDATA");
             buffer[0] = '\0';
             if (pf) {
-                sprintf(buffer, "%s\\WinSCP\\WinSCP.exe", pf);
+                snprintf( buffer, sizeof(buffer), "%s\\WinSCP\\WinSCP.exe", pf);
                 if (!existfile(buffer))
                     buffer[0] = '\0';
             }
             if (!buffer[0] && pf86) {
-                sprintf(buffer, "%s\\WinSCP\\WinSCP.exe", pf86);
+                snprintf( buffer, sizeof(buffer), "%s\\WinSCP\\WinSCP.exe", pf86);
                 if (!existfile(buffer))
                     buffer[0] = '\0';
             }
             if (!buffer[0] && local) {
-                sprintf(buffer, "%s\\Programs\\WinSCP\\WinSCP.exe", local);
+                snprintf( buffer, sizeof(buffer), "%s\\Programs\\WinSCP\\WinSCP.exe", local);
                 if (!existfile(buffer))
                     buffer[0] = '\0';
             }
@@ -438,9 +438,9 @@ void conf_editbox_handler(dlgcontrol *ctrl, dlgparam *dlg,
             char str[80];
             int value = conf_get_int(conf, key);
             if (type->type == EDIT_INT)
-                sprintf(str, "%d", value);
+                snprintf( str, sizeof(str), "%d", value);
             else
-                sprintf(str, "%g", (double)value / type->denominator);
+                snprintf( str, sizeof(str), "%g", (double)value / type->denominator);
             dlg_editbox_set(ctrl, dlg, str);
         } else if (event == EVENT_VALCHANGE) {
             char *str = dlg_editbox_get(ctrl, dlg);
@@ -535,11 +535,11 @@ static void config_port_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * since that's the shortcut for the port control.
              */
             dlg_label_change(ctrl, dlg, "Speed");
-            sprintf(buf, "%d", conf_get_int(conf, CONF_serspeed));
+            snprintf( buf, sizeof(buf), "%d", conf_get_int(conf, CONF_serspeed));
         } else {
             dlg_label_change(ctrl, dlg, PORT_BOX_TITLE);
             if (conf_get_int(conf, CONF_port) != 0)
-                sprintf(buf, "%d", conf_get_int(conf, CONF_port));
+                snprintf( buf, sizeof(buf), "%d", conf_get_int(conf, CONF_port));
             else
                 /* Display an (invalid) port of 0 as blank */
                 buf[0] = '\0';
@@ -1816,7 +1816,7 @@ static void charclass_handler(dlgcontrol *ctrl, dlgparam *dlg,
             dlg_listbox_clear(ctrl, dlg);
             for (i = 0; i < 128; i++) {
                 char str[100];
-                sprintf(str, "%d\t(0x%02X)\t%c\t%d", i, i,
+                snprintf( str, sizeof(str), "%d\t(0x%02X)\t%c\t%d", i, i,
                         (i >= 0x21 && i != 0x7F) ? i : ' ',
                         conf_get_int_int(conf, CONF_wordness, i));
                 dlg_listbox_add(ctrl, dlg, str);
@@ -1949,9 +1949,9 @@ static void colour_handler(dlgcontrol *ctrl, dlgparam *dlg,
             dlg_editbox_set(cd->bedit, dlg, "");
         } else {
             char buf[40];
-            sprintf(buf, "%d", r); dlg_editbox_set(cd->redit, dlg, buf);
-            sprintf(buf, "%d", g); dlg_editbox_set(cd->gedit, dlg, buf);
-            sprintf(buf, "%d", b); dlg_editbox_set(cd->bedit, dlg, buf);
+            snprintf( buf, sizeof(buf), "%d", r); dlg_editbox_set(cd->redit, dlg, buf);
+            snprintf( buf, sizeof(buf), "%d", g); dlg_editbox_set(cd->gedit, dlg, buf);
+            snprintf( buf, sizeof(buf), "%d", b); dlg_editbox_set(cd->bedit, dlg, buf);
         }
     }
 }

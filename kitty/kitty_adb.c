@@ -277,7 +277,7 @@ static char *adb_init(const BackendVtable *vt, Seat *seat,
 #define ADB_SHELL_HOST_MAX_LEN (sizeof(sendbuf)-4-ADB_SHELL_SERIAL_PREFIX_LEN)
             if (len > ADB_SHELL_HOST_MAX_LEN)
                 len = ADB_SHELL_HOST_MAX_LEN;
-            sprintf(sendbuf, "%04lx" ADB_SHELL_SERIAL_PREFIX,
+            snprintf( sendbuf, sizeof(sendbuf), "%04lx" ADB_SHELL_SERIAL_PREFIX,
                     (unsigned long)(len + ADB_SHELL_SERIAL_PREFIX_LEN));
             memcpy(sendbuf + 4 + ADB_SHELL_SERIAL_PREFIX_LEN, host, len);
             write_hello(sendbuf, len + 4 + ADB_SHELL_SERIAL_PREFIX_LEN);

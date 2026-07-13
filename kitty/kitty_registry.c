@@ -662,11 +662,11 @@ void CreateSSHHandler() {
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "telnet", "URL Protocol", "") ;
 	RegTestOrCreateDWORD( HKEY_CLASSES_ROOT, "telnet", "BrowserFlags", 8) ;
 
-	sprintf(buffer, "%s,0", path ) ;
+	snprintf( buffer, sizeof(buffer), "%s,0", path ) ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "telnet\\DefaultIcon", "", buffer ) ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "telnet\\shell", "", "") ;
 
-	sprintf(buffer, "\"%s\" %%1", path ) ;
+	snprintf( buffer, sizeof(buffer), "\"%s\" %%1", path ) ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "telnet\\shell\\open\\command", "", buffer ) ;
 
 	// SSH
@@ -676,11 +676,11 @@ void CreateSSHHandler() {
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "ssh", "URL Protocol", "") ;
 	RegTestOrCreateDWORD( HKEY_CLASSES_ROOT, "ssh", "BrowserFlags", 8) ;
 
-	sprintf(buffer, "%s,0", path ) ;
+	snprintf( buffer, sizeof(buffer), "%s,0", path ) ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "ssh\\DefaultIcon", "", buffer ) ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "ssh\\shell", "", "") ;
 
-	sprintf(buffer, "\"%s\" %%1", path ) ;
+	snprintf( buffer, sizeof(buffer), "\"%s\" %%1", path ) ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "ssh\\shell\\open\\command", "", buffer ) ;
 
 	// PuTTY
@@ -690,11 +690,11 @@ void CreateSSHHandler() {
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "putty", "URL Protocol", "") ;
 	RegTestOrCreateDWORD( HKEY_CLASSES_ROOT, "putty", "BrowserFlags", 8) ;
 
-	sprintf(buffer, "%s,0", path ) ;
+	snprintf( buffer, sizeof(buffer), "%s,0", path ) ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "putty\\DefaultIcon", "", buffer ) ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "putty\\shell", "", "") ;
 
-	sprintf(buffer, "\"%s\" -load \"%%1\"", path ) ;
+	snprintf( buffer, sizeof(buffer), "\"%s\" -load \"%%1\"", path ) ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "putty\\shell\\open\\command", "", buffer ) ;
 }
 
@@ -711,9 +711,9 @@ void CreateFileAssoc() {
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1", "", "KiTTY connection manager") ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1", "FriendlyTypeName", "@KiTTY, -120") ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1\\CurVer", "", "kitty.connect.1") ;
-	sprintf(buffer, "%s", path ) ;
+	snprintf( buffer, sizeof(buffer), "%s", path ) ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1\\DefaultIcon", "", buffer);
-	sprintf(buffer, "\"%s\" -kload \"%%1\"", path ) ;
+	snprintf( buffer, sizeof(buffer), "\"%s\" -kload \"%%1\"", path ) ;
 	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1\\shell\\open\\command", "", buffer) ;
 	// Création de l'association de fichiers
 	RegTestOrCreate( HKEY_CLASSES_ROOT, ext, "", "kitty.connect.1") ;

@@ -665,11 +665,11 @@ void SettingsSave( HSettingsList list, const char * filename ) {
 			while( current != NULL ) {
 				if( current->name != NULL ) {
 					if( current->value == NULL ) {
-						sprintf( buffer, "%s\\\\\n", current->value ) ;
+						snprintf( buffer, sizeof(buffer), "%s\\\\\n", current->value ) ;
 					} else {
 						char * p = (char*) malloc( 3*strlen(current->value)+1 ) ;
 						mungestr( current->value, p ) ;
-						sprintf( buffer, "%s\\%s\\\n", current->name, p ) ;
+						snprintf( buffer, sizeof(buffer), "%s\\%s\\\n", current->name, p ) ;
 						free( p ) ;
 					}
 					fputs( buffer, fp ) ;

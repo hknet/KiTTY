@@ -240,10 +240,10 @@ static INT_PTR CALLBACK KittyAboutProc(HWND hwnd, UINT msg,
     switch (msg) {
       case WM_INITDIALOG:
 #ifdef KITTY_TEST_BUILD_LABEL
-        sprintf(buffer, "KiTTY - %s\r\nTEST BUILD: %s", BuildVersionTime,
+        snprintf( buffer, sizeof(buffer), "KiTTY - %s\r\nTEST BUILD: %s", BuildVersionTime,
                 KITTY_TEST_BUILD_LABEL);
 #else
-        sprintf(buffer, "KiTTY - %s", BuildVersionTime);
+        snprintf( buffer, sizeof(buffer), "KiTTY - %s", BuildVersionTime);
 #endif
         SetDlgItemText(hwnd, IDA_VERSION, buffer);
         return 1;

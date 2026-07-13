@@ -46,15 +46,15 @@ void addkeypressed( UINT message, WPARAM wParam, LPARAM lParam, int shift_flag, 
 	if( win_flag ) win_flag = 1 ;
 	
 	if( wParam=='\r' ) 
-		sprintf( buffer, "%d%d%d%d%d %d%c %03d(%02X)/%d (\\r)\n",shift_flag,control_flag,alt_flag,altgr_flag,win_flag, message,c, wParam, wParam, 0 ) ;
+		snprintf( buffer, sizeof(buffer), "%d%d%d%d%d %d%c %03d(%02X)/%d (\\r)\n",shift_flag,control_flag,alt_flag,altgr_flag,win_flag, message,c, wParam, wParam, 0 ) ;
 	else if( wParam=='\n' )
- 		sprintf( buffer, "%d%d%d%d%d %d%c %03d(%02X)/%d (\\n)\n",shift_flag,control_flag,alt_flag,altgr_flag,win_flag, message,c, wParam, wParam, 0 ) ;
+ 		snprintf( buffer, sizeof(buffer), "%d%d%d%d%d %d%c %03d(%02X)/%d (\\n)\n",shift_flag,control_flag,alt_flag,altgr_flag,win_flag, message,c, wParam, wParam, 0 ) ;
 	else if( (wParam>=32) && (wParam<=111 ) ) 
-		sprintf( buffer, "%d%d%d%d%d %d%c %03d(%02X)/%d (%c)\n",shift_flag,control_flag,alt_flag,altgr_flag,win_flag, message,c, wParam, wParam, 0, wParam ) ;
+		snprintf( buffer, sizeof(buffer), "%d%d%d%d%d %d%c %03d(%02X)/%d (%c)\n",shift_flag,control_flag,alt_flag,altgr_flag,win_flag, message,c, wParam, wParam, 0, wParam ) ;
 	else if( (wParam>=VK_F1 /*70 112*/) && (wParam<=VK_F24 /*87 135*/) )
-		sprintf( buffer, "%d%d%d%d%d %d%c %03d(%02X)/%d (F%d)\n",shift_flag,control_flag,alt_flag,altgr_flag,win_flag, message,c, wParam, wParam, 0, wParam-VK_F1+1 ) ;
+		snprintf( buffer, sizeof(buffer), "%d%d%d%d%d %d%c %03d(%02X)/%d (F%d)\n",shift_flag,control_flag,alt_flag,altgr_flag,win_flag, message,c, wParam, wParam, 0, wParam-VK_F1+1 ) ;
 	else
-		sprintf( buffer, "%d%d%d%d%d %d%c %03d(%02X)/%d\n",shift_flag,control_flag,alt_flag,altgr_flag,win_flag, message,c, wParam, wParam, 0 ) ;
+		snprintf( buffer, sizeof(buffer), "%d%d%d%d%d %d%c %03d(%02X)/%d\n",shift_flag,control_flag,alt_flag,altgr_flag,win_flag, message,c, wParam, wParam, 0 ) ;
 	
 	if( strlen(SaveKeyPressed) > 4000 ) {
 		if( (p=poss("\n",SaveKeyPressed)) > 0 ) {

@@ -573,7 +573,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 #endif
 	char buf[20], *buf2;
 	int c0, c1, c2;
-	sprintf(buf, "Colour%d", i);
+	snprintf( buf, sizeof(buf), "Colour%d", i);
 	buf2 = gpps_raw_forced(sesskey, buf, defaults[i]);
 	if (sscanf(buf2, "%d,%d,%d", &c0, &c1, &c2) == 3) {
 	    conf_set_int_int(conf, CONF_colours, i*3+0, c0);
@@ -602,7 +602,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	};
 	char buf[20], *buf2, *p;
 	int j;
-	sprintf(buf, "Wordness%d", i);
+	snprintf( buf, sizeof(buf), "Wordness%d", i);
 	buf2 = gpps_raw_forced(sesskey, buf, defaults[i / 32]);
 	p = buf2;
 	for (j = i; j < i + 32; j++) {
@@ -874,7 +874,7 @@ int read_setting_i_forced(void *handle, const char *key, int defvalue) {
 	int n = defvalue ;
 	char buffer[2048], name[256] ;
 	rewind(handle);
-	sprintf( name, "%s\\", key ) ;
+	snprintf( name, sizeof(name), "%s\\", key ) ;
 	while( fgets(buffer,2047,handle)!=NULL ) {
 		rstrip_eol_forced( buffer ) ;
 		if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }
@@ -891,7 +891,7 @@ char *read_setting_s_forced(void *handle, const char *key) {
 	char * loadResult = NULL ;
 	char buffer[2048], name[256] ;
 	rewind(handle);
-	sprintf( name, "%s\\", key ) ;
+	snprintf( name, sizeof(name), "%s\\", key ) ;
 	
 	while( fgets(buffer,2047,handle)!=NULL ) {
 		rstrip_eol_forced( buffer ) ;
@@ -910,7 +910,7 @@ Filename *read_setting_filename_forced(void *handle, const char *key) {
 	Filename * Result = NULL ;
 	char buffer[2048], name[256] ;
 	rewind(handle);
-	sprintf( name, "%s\\", key ) ;
+	snprintf( name, sizeof(name), "%s\\", key ) ;
 	while( fgets(buffer,2047,handle)!=NULL ) {
 		rstrip_eol_forced( buffer ) ;
 		if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }

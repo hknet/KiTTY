@@ -90,7 +90,7 @@ void InitProxyList(void) {
 		DWORD   cchClassName=MAX_PATH,cSubKeys=0,cbMaxSubKey,cchMaxClass;
 		DWORD	cValues,cchMaxValue,cbMaxValueData,cbSecurityDescriptor;
 		FILETIME ftLastWriteTime;
-		sprintf( buffer, "%s\\Proxies", PUTTY_REG_POS ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Proxies", PUTTY_REG_POS ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, buffer, NULL, NULL ) ;
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
 		RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime);
@@ -112,13 +112,13 @@ void InitProxyList(void) {
 		char fullpath[MAX_VALUE_NAME];
 		DIR * dir ;
 		struct dirent * de ;
-		sprintf( fullpath, "%s\\Proxies", ConfigDirectory ) ;
+		snprintf( fullpath, sizeof(fullpath), "%s\\Proxies", ConfigDirectory ) ;
 		if(!MakeDir( fullpath ) ) { MessageBox(NULL,"Unable to create the proxy definitions directory","Error",MB_OK|MB_ICONERROR); }
 		if( (dir=opendir(fullpath)) != NULL ) {
 			while( (de=readdir(dir)) != NULL )
 			if( j>=MAX_PROXY ) break; /* SECURITY: bound proxies[] */
 			else if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") )	{
-				sprintf( fullpath, "%s\\Proxies\\%s", ConfigDirectory, de->d_name ) ;
+				snprintf( fullpath, sizeof(fullpath), "%s\\Proxies\\%s", ConfigDirectory, de->d_name ) ;
 				if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_NORMAL) ) {
 					if( strcmp(de->d_name,"None") && strcmp(de->d_name,"Default") ) {
 						proxies[j].name=(char*)malloc(strlen(de->d_name)+1);
@@ -193,7 +193,7 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 		char fullpath[MAX_VALUE_NAME] ;
 		char *filename = (char*) malloc( 4*strlen(name)+1 ) ;
 		mungestr( name, filename ) ;
-		sprintf( fullpath, "%s\\Proxies\\%s", ConfigDirectory, filename ) ;
+		snprintf( fullpath, sizeof(fullpath), "%s\\Proxies\\%s", ConfigDirectory, filename ) ;
 		if( existfile(fullpath) ) {
 			FILE *fp;
 			if( (fp=fopen(fullpath,"r")) != NULL ) {

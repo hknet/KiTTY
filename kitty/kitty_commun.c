@@ -149,7 +149,7 @@ void DelDir( const char * directory ) {
 	if( (dir=opendir(directory)) != NULL ) {
 		while( (de=readdir( dir ) ) != NULL ) 
 		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
-			sprintf( fullpath, "%s\\%s", directory, de->d_name ) ;
+			snprintf( fullpath, sizeof(fullpath), "%s\\%s", directory, de->d_name ) ;
 			if( GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY ) { DelDir( fullpath ) ; }
 			else if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) { unlink( fullpath ) ; }
 			}
@@ -258,14 +258,14 @@ int LoadParametersLight( void ) {
 			}
 		} else  DirectoryBrowseFlag = 0 ;
 	} else {
-		sprintf( buffer, "%s/KiTTY/kitty.ini", getenv("APPDATA") );
+		snprintf( buffer, sizeof(buffer), "%s/KiTTY/kitty.ini", getenv("APPDATA") );
 		if( (fp = fopen( buffer, "r" )) != NULL ) {
 			IniFile = (char*)malloc(strlen(buffer)+1) ; 
 			strcpy(IniFile,buffer);
 			strcpy(INIT_SECTION,"KiTTY");
 			fclose(fp);
 		} else {
-			sprintf( buffer, "%s/PuTTY/putty.ini", getenv("APPDATA") );
+			snprintf( buffer, sizeof(buffer), "%s/PuTTY/putty.ini", getenv("APPDATA") );
 			if( (fp = fopen( buffer, "r" )) != NULL ) {
 				IniFile = (char*)malloc(strlen(buffer)+1) ; 
 				strcpy(IniFile,buffer);

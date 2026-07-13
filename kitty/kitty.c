@@ -484,7 +484,7 @@ void debug_log( const char *fmt, ... ) {
 	FILE *fp ;
 
 	if( (InitialDirectory!=NULL) && (strlen(InitialDirectory)>0) )
-		sprintf(filename,"%s\\kitty.log",InitialDirectory);
+		snprintf( filename, sizeof(filename),"%s\\kitty.log",InitialDirectory);
 	else strcpy(filename,"kitty.log");
 
 	va_start( ap, fmt ) ;
@@ -629,7 +629,7 @@ void InitFolderList( void ) {
 		FILETIME ftLastWriteTime;      // last write time 
 		DWORD retCode; 
 
-		sprintf( buffer, "%s\\\\Sessions", PUTTY_REG_POS );
+		snprintf( buffer, sizeof(buffer), "%s\\\\Sessions", PUTTY_REG_POS );
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
 	
 		retCode = RegQueryInfoKey(
@@ -652,7 +652,7 @@ void InitFolderList( void ) {
 				retCode = RegEnumKeyEx(hKey, i, achKey, &cbName, NULL, NULL, NULL, &ftLastWriteTime); 
 				if (retCode == ERROR_SUCCESS) {
 					char nValue[1024] ;
-					sprintf( nValue, "%s\\%s", buffer, achKey ) ;
+					snprintf( nValue, sizeof(nValue), "%s\\%s", buffer, achKey ) ;
 					if( GetValueData(HKEY_CURRENT_USER, nValue, "Folder", fList ) != NULL ) {
 						if( strlen( fList ) > 0 ) 
 							StringList_Add( FolderList, fList ) ;
@@ -667,7 +667,7 @@ void InitFolderList( void ) {
 	else if( (IniFileFlag == SAVEMODE_DIR)&&(!DirectoryBrowseFlag) ) {
 		DIR * dir ;
 		struct dirent * de ;
-		sprintf( buffer, "%s\\Sessions", ConfigDirectory ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Sessions", ConfigDirectory ) ;
 		if( (dir=opendir(buffer)) != NULL ) {
 			while( (de=readdir(dir)) != NULL ) 
 			if( strcmp(de->d_name, ".")&&strcmp(de->d_name, "..") ) {
@@ -694,15 +694,15 @@ int GetSessionFolderNameInSubDir( const char * session, const char * subdir, cha
 	char buffer[2048], buf[2048] ;
 	DIR * dir ;
 	struct dirent * de ;
-	if( !strcmp(subdir,"") ) sprintf( buffer, "%s\\Sessions", ConfigDirectory ) ;
+	if( !strcmp(subdir,"") ) snprintf( buffer, sizeof(buffer), "%s\\Sessions", ConfigDirectory ) ;
 	else sprintf(buffer,"%s\\Sessions\\%s",ConfigDirectory, subdir ) ;
 	if( (dir=opendir(buffer))!=NULL ) {
 		while( (de=readdir(dir)) != NULL ) 
 			if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") )	{
-				if( !strcmp(subdir,"") ) sprintf(buf,"%s\\Sessions\\%s",ConfigDirectory,de->d_name ) ;
+				if( !strcmp(subdir,"") ) snprintf( buf, sizeof(buf),"%s\\Sessions\\%s",ConfigDirectory,de->d_name ) ;
 				else sprintf(buf,"%s\\Sessions\\%s\\%s",ConfigDirectory, subdir,de->d_name ) ;
 				if( existdirectory( buf ) ) {
-					if( !strcmp(subdir,"") ) sprintf( buf, "%s", de->d_name ) ;
+					if( !strcmp(subdir,"") ) snprintf( buf, sizeof(buf), "%s", de->d_name ) ;
 					else sprintf( buf, "%s\\%s", subdir, de->d_name ) ;
 					return_code = GetSessionFolderNameInSubDir( session, buf, folder ) ;
 					if( return_code ) break ;
@@ -733,7 +733,7 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
 		mungestr(buffer, session) ;
-		sprintf( buffer, "%s\\Sessions\\%s", PUTTY_REG_POS, session ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Sessions\\%s", PUTTY_REG_POS, session ) ;
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
 			DWORD lpType ;
 			unsigned char lpData[1024] ;
@@ -752,7 +752,7 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 		if( DirectoryBrowseFlag ) {
 			GetSessionFolderNameInSubDir( session, "", folder ) ;
 		} else {
-			sprintf(buffer,"%s\\Sessions\\%s", ConfigDirectory, session );
+			snprintf( buffer, sizeof(buffer),"%s\\Sessions\\%s", ConfigDirectory, session );
 			if( (fp=fopen(buffer,"r"))!=NULL ) {
 				while( fgets(buffer,1024,fp)!=NULL ) {
 					str_rtrim( buffer, "\n\r" ) ;
@@ -789,7 +789,7 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 	strcpy( buffer, session_in ) ;
 	if( (p = strrchr(buffer, '[')) != NULL ) *(p-1) = '\0' ;
 	mungestr(buffer, session) ;
-	sprintf( buffer, "%s\\Sessions\\%s", PUTTY_REG_POS, session ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\Sessions\\%s", PUTTY_REG_POS, session ) ;
 	strcpy( folder, folder_in );
 	CleanFolderName( folder );
 
@@ -807,11 +807,11 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 		}
 	else if( IniFileFlag==SAVEMODE_DIR ) {
 		if( DirectoryBrowseFlag ) {
-			if( !strcmp(folder,"Default") || !strcmp(folder,"") ) sprintf(buffer,"%s\\Sessions\\%s", ConfigDirectory, session ) ;
+			if( !strcmp(folder,"Default") || !strcmp(folder,"") ) snprintf( buffer, sizeof(buffer),"%s\\Sessions\\%s", ConfigDirectory, session ) ;
 			else sprintf(buffer,"%s\\Sessions\\%s\\%s", ConfigDirectory, folder, session ) ;
 			}
 		else {
-			sprintf(buffer,"%s\\Sessions\\%s", ConfigDirectory, session ) ;
+			snprintf( buffer, sizeof(buffer),"%s\\Sessions\\%s", ConfigDirectory, session ) ;
 			}
 
 		if( debug_flag ) { debug_logevent( "GetSessionField(%s,%s,%s,%s)=%s", ConfigDirectory, session, folder, field, buffer ) ; }
@@ -949,7 +949,7 @@ void QueryKey( HKEY hMainKey, LPCTSTR lpSubKey, FILE * fp_out ) {
         &ftLastWriteTime);       // last write time 
  
 	//fprintf( fp_out, "\r\n[HKEY_CURRENT_USER\\%s]\r\n" TEXT(lpSubKey) ) ;
-	sprintf( str, "[HKEY_CURRENT_USER\\%s]", TEXT(lpSubKey) ) ;
+	snprintf( str, sizeof(str), "[HKEY_CURRENT_USER\\%s]", TEXT(lpSubKey) ) ;
 	if( strlen( PasswordConf ) > 0 ) { cryptstring( GetCryptSaltFlag(), str, PasswordConf ) ; }
 	fprintf( fp_out, "\r\n%s\r\n", str ) ;
 
@@ -982,13 +982,13 @@ void QueryKey( HKEY hMainKey, LPCTSTR lpSubKey, FILE * fp_out ) {
 						break ;
 					case REG_DWORD:
 						//sprintf( str, "\"%s\"=dword:%08x", achValue, (unsigned int)*lpData ) ;
-						sprintf( str, "\"%s\"=dword:%08x", achValue, (unsigned int) *((DWORD*)lpData) ) ; // Ca ca marchait bien mais avec une erreur de compilation
+						snprintf( str, sizeof(str), "\"%s\"=dword:%08x", achValue, (unsigned int) *((DWORD*)lpData) ) ; // Ca ca marchait bien mais avec une erreur de compilation
 						break;
 					case REG_EXPAND_SZ:
 					case REG_MULTI_SZ:
 					case REG_SZ:
 						//fprintf( fp_out, "\"" ) ;
-						sprintf( str, "\"%s\"=\"", achValue ) ;
+						snprintf( str, sizeof(str), "\"%s\"=\"", achValue ) ;
 						for( j=0; j<strlen((char*)lpData) ; j++ ) {
 							//fprintf( fp_out, "%c", lpData[j] ) ;
 							b[0]=lpData[j] ;
@@ -1054,10 +1054,10 @@ void RepliqueToPuTTY( LPCTSTR Key ) {
 	if( readINI( KittyIniFile, "PuTTY", "keys", buffer, sizeof(buffer) ) ) {
 		str_rtrim( buffer, "\n\r \t" ) ;
 		if( !stricmp( buffer, "load" ) ) {
-			sprintf( buffer, "%s\\Sessions", Key ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\Sessions", Key ) ;
 			RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Sessions" ) ;
 			kitty_RegCopyTree( HKEY_CURRENT_USER, buffer, "Software\\SimonTatham\\PuTTY\\Sessions" ) ;
-			sprintf( buffer, "%s\\SshHostKeys", Key ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\SshHostKeys", Key ) ;
 			kitty_RegCopyTree( HKEY_CURRENT_USER, buffer, "Software\\SimonTatham\\PuTTY\\SshHostKeys" ) ;
 			}
 		//delINI( KittyIniFile, "PuTTY", "keys" ) ;
@@ -1077,10 +1077,10 @@ void CountUp( void ) {
 	
 	if( ReadParameterN( INIT_SECTION, "KiCount", buffer, sizeof(buffer) ) == 0 ) { strcpy( buffer, "0" ) ; }
 	n = atol( buffer ) + 1 ;
-	sprintf( buffer, "%ld", n ) ;
+	snprintf( buffer, sizeof(buffer), "%ld", n ) ;
 	WriteParameter( INIT_SECTION, "KiCount", buffer) ;
 	
-	if( ReadParameterN( INIT_SECTION, "KiLastUp", buffer, sizeof(buffer) ) == 0 ) { sprintf( buffer, "%ld/", time(0) ) ; }
+	if( ReadParameterN( INIT_SECTION, "KiLastUp", buffer, sizeof(buffer) ) == 0 ) { snprintf( buffer, sizeof(buffer), "%ld/", time(0) ) ; }
 	buffer[2048]='\0';
 	if( (pst=strstr(buffer,"/"))==NULL ) { strcat(buffer,"/") ; pst=buffer+strlen(buffer)-1 ; }
 	sprintf( pst+1, "%ld", time(0) ) ;
@@ -1096,12 +1096,12 @@ void CountUp( void ) {
 		}
 		
 	if( IniFileFlag != SAVEMODE_DIR ) {
-		sprintf( buffer, "%s\\Sessions", PUTTY_REG_POS ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Sessions", PUTTY_REG_POS ) ;
 		n = (long int) RegCountKey( HKEY_CURRENT_USER, buffer ) ;
-		sprintf( buffer, "%ld", n ) ;
+		snprintf( buffer, sizeof(buffer), "%ld", n ) ;
 		WriteParameter( INIT_SECTION, "KiSess", buffer) ;
 	} else {
-		sprintf( buffer, "0 (Not in registry mode)" ) ;
+		snprintf( buffer, sizeof(buffer), "0 (Not in registry mode)" ) ;
 		WriteParameter( INIT_SECTION, ";KiSess", buffer) ;
 	}
 			
@@ -1166,7 +1166,7 @@ int WriteParameter( const char * key, const char * name, char * value ) {
 			ret = writeINI( KittyIniFile, key, name, value ) ; 
 		}
 	} else { 
-		sprintf( buffer, "%s\\%s", TEXT(PUTTY_REG_PARENT), key ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\%s", TEXT(PUTTY_REG_PARENT), key ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, buffer, name, value ) ; 
 	}
 	return ret ;
@@ -1205,7 +1205,7 @@ int ReadParameter( const char * key, const char * name, char * value ) {
 int DelParameter( const char * key, const char * name ) {
 	char buffer[4096] ;
 	if( !GetReadOnlyFlag() ) { delINI( KittyIniFile, key, name ) ; }
-	sprintf( buffer, "%s\\%s", TEXT(PUTTY_REG_PARENT), key ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s", TEXT(PUTTY_REG_PARENT), key ) ;
 	RegDelValue( HKEY_CURRENT_USER, buffer, (char*)name ) ;
 	return 1 ;
 	}
@@ -1480,7 +1480,7 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 			if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(KeyName), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) 
 				{
 					if( hdlg != NULL ) {
-						sprintf( buffer, "Loading %s", KeyName ) ;
+						snprintf( buffer, sizeof(buffer), "Loading %s", KeyName ) ;
 						InfoBoxSetText( hdlg, buffer ) ;
 						}
 					RegCreateKey( HKEY_CURRENT_USER, TEXT(KeyName), &hKey ) ; 
@@ -1529,7 +1529,7 @@ void routine_server( void * st ) {
 	HMODULE lphDLL ;               // Handle to DLL
 	LPFNDLLFUNC1 lpfnDllFunc1 ;    // Function pointer
 	
-	char buffer[MAX_PATH] ; sprintf( buffer, "%s\\kchat.dll", InitialDirectory ) ;
+	char buffer[MAX_PATH] ; snprintf( buffer, sizeof(buffer), "%s\\kchat.dll", InitialDirectory ) ;
 	lphDLL = LoadLibrary( TEXT( buffer ) ) ;
 	//lphDLL = LoadLibrary( TEXT("kchat.dll") ) ;
 	if( lphDLL == NULL ) {
@@ -1623,7 +1623,7 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) {
 				i++ ; 
 			} else if( st[i+1] == 'k' ) {
 				SendKeyboard( hwnd, buffer ) ;
-				sprintf( stb, "0x%c%c", st[i+2],st[i+3] ) ;
+				snprintf( stb, sizeof(stb), "0x%c%c", st[i+2],st[i+3] ) ;
 				sscanf( stb, "%x", &j ) ;
 				//SendMessage(hwnd, WM_KEYDOWN, j, 0) ;
 				if( j==VK_CONTROL ) keyb_control_flag = abs( keyb_control_flag - 1 ) ;
@@ -1653,7 +1653,7 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) {
 						keybd_event( j ,0, KEYEVENTF_EXTENDEDKEY, 0 ) ;
 						keybd_event( j, 0, KEYEVENTF_EXTENDEDKEY|KEYEVENTF_KEYUP, 0 ) ; 
 					} else {
-						sprintf( stb, "%c", j ) ;
+						snprintf( stb, sizeof(stb), "%c", j ) ;
 						SendStrToTerminal( stb, 1 ) ;
 						//SendMessage(hwnd, WM_CHAR, j, 0) ;
 					}
@@ -1663,7 +1663,7 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) {
 				i++ ; i++ ; i++ ;
 			} else if( st[i+1] == 'x' ) {
 				SendKeyboard( hwnd, buffer ) ;
-				sprintf( stb, "0x%c%c", st[i+2],st[i+3] ) ;
+				snprintf( stb, sizeof(stb), "0x%c%c", st[i+2],st[i+3] ) ;
 				sscanf( stb, "%X", &j ) ;
 				stb[0]=j ; stb[1] = '\0' ;
 				SendStrToTerminal( stb, 1 ) ;
@@ -1828,7 +1828,7 @@ char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf)
                     val = "";
                 break;
               case 'p':
-                sprintf(portbuf, "%d", conf_get_int(conf, CONF_port));
+                snprintf( portbuf, sizeof(portbuf), "%d", conf_get_int(conf, CONF_port));
                 val = portbuf;
                 break;
               case 'P': {
@@ -2531,13 +2531,13 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 
 	if( ReadParameterN( INIT_SECTION, "pscpport", pscpport, sizeof(pscpport) ) ) {
 		pscpport[17]='\0';
-		if( !strcmp( pscpport,"*" ) ) sprintf( pscpport, "%d", conf_get_int(conf, CONF_port) ) ;
+		if( !strcmp( pscpport,"*" ) ) snprintf( pscpport, sizeof(pscpport), "%d", conf_get_int(conf, CONF_port) ) ;
 		bcat( buffer, BC, "-P " ) ; bcat( buffer, BC, pscpport ) ; bcat( buffer, BC, " " ) ;
 	} else {
 		if( (p=poss(":",conf_get_str(conf, CONF_sftpconnect) )) > 0 ) {
-			sprintf( b1, "-P %d ", atoi(conf_get_str(conf, CONF_sftpconnect)+p) ) ;
+			snprintf( b1, sizeof(b1), "-P %d ", atoi(conf_get_str(conf, CONF_sftpconnect)+p) ) ;
 		} else {
-			sprintf( b1, "-P %d ", conf_get_int(conf, CONF_port) ) ;
+			snprintf( b1, sizeof(b1), "-P %d ", conf_get_int(conf, CONF_port) ) ;
 		}
 		bcat( buffer, BC, b1 ) ;
 	}
@@ -2665,7 +2665,7 @@ void RunExternPlink( HWND hwnd, const char * cmd ) {
     bcat( buffer, BC, plinkpath ) ; bcat( buffer, BC, " " ) ;
 
     if( strlen( conf_get_str(conf, CONF_sftpconnect) ) == 0 ) {
-        sprintf( b1, "-P %d ", conf_get_int(conf, CONF_port)) ; bcat( buffer, BC, b1 ) ;
+        snprintf( b1, sizeof(b1), "-P %d ", conf_get_int(conf, CONF_port)) ; bcat( buffer, BC, b1 ) ;
     }
     if( conf_get_int(conf,CONF_sshprot) == 3 ) { bcat( buffer, BC, "-2 " ) ; }   // SSH-2 Only
 
@@ -2735,10 +2735,10 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
 
     if( ReadParameterN( INIT_SECTION, "pscpport", pscpport, sizeof(pscpport) ) ) {
         pscpport[17]='\0';
-        if( !strcmp( pscpport,"*" ) ) sprintf( pscpport, "%d", conf_get_int(conf,CONF_port) ) ;
+        if( !strcmp( pscpport,"*" ) ) snprintf( pscpport, sizeof(pscpport), "%d", conf_get_int(conf,CONF_port) ) ;
         bcat( buffer, BC, "-P " ) ; bcat( buffer, BC, pscpport ) ; bcat( buffer, BC, " " ) ;
     } else {
-        if( (p=poss(":",conf_get_str(conf, CONF_sftpconnect) )) > 0 ) sprintf( b1, "-P %d ", atoi(conf_get_str(conf, CONF_sftpconnect)+p) ) ;
+        if( (p=poss(":",conf_get_str(conf, CONF_sftpconnect) )) > 0 ) snprintf( b1, sizeof(b1), "-P %d ", atoi(conf_get_str(conf, CONF_sftpconnect)+p) ) ;
         else sprintf( b1, "-P %d ", conf_get_int(conf, CONF_port) ) ;
         bcat( buffer, BC, b1 ) ;
     }
@@ -2849,10 +2849,10 @@ void GetFile( HWND hwnd ) {
                     if( conf_get_int(conf,CONF_sshprot) == 3 ) { bcat( buffer, sizeof(buffer), "-2 " ) ; }   // SSH-2 Only
                     if( ReadParameterN( INIT_SECTION, "pscpport", pscpport, sizeof(pscpport) ) ) {
                         pscpport[17]='\0';
-                        if( !strcmp( pscpport,"*" ) ) { sprintf( pscpport, "%d", conf_get_int(conf,CONF_port) ) ; }
+                        if( !strcmp( pscpport,"*" ) ) { snprintf( pscpport, sizeof(pscpport), "%d", conf_get_int(conf,CONF_port) ) ; }
                         bcat( buffer, sizeof(buffer), "-P " ) ; bcat( buffer, sizeof(buffer), pscpport ) ; bcat( buffer, sizeof(buffer), " " ) ;
                     } else {
-                        if( (p=poss(":",conf_get_str(conf, CONF_sftpconnect) )) > 0 ) sprintf( b1, "-P %d ", atoi(conf_get_str(conf, CONF_sftpconnect)+p) ) ;
+                        if( (p=poss(":",conf_get_str(conf, CONF_sftpconnect) )) > 0 ) snprintf( b1, sizeof(b1), "-P %d ", atoi(conf_get_str(conf, CONF_sftpconnect)+p) ) ;
                         else sprintf( b1, "-P %d ", conf_get_int(conf, CONF_port) ) ;
                         bcat( buffer, sizeof(buffer), b1 ) ;
                     }
@@ -3039,7 +3039,7 @@ void SaveWindowCoord( Conf * conf ) {
     if( strlen( conf_get_str(conf,CONF_sessionname) ) > 0 ) {
         if( IniFileFlag == SAVEMODE_REG ) {
             mungestr( conf_get_str(conf,CONF_sessionname), session ) ;
-            sprintf( key, "%s\\Sessions\\%s", TEXT(PUTTY_REG_POS), session ) ;
+            snprintf( key, sizeof(key), "%s\\Sessions\\%s", TEXT(PUTTY_REG_POS), session ) ;
             RegTestOrCreateDWORD( HKEY_CURRENT_USER, key, "TermXPos", conf_get_int(conf,CONF_xpos) ) ;
             RegTestOrCreateDWORD( HKEY_CURRENT_USER, key, "TermYPos", conf_get_int(conf,CONF_ypos) ) ;
             RegTestOrCreateDWORD( HKEY_CURRENT_USER, key, "TermWidth", conf_get_int(conf,CONF_width) ) ;
@@ -3367,7 +3367,7 @@ BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 			if( (wParam==VK_RETURN) && (GetKeyState( VK_SHIFT )& 0x8000) )
 				return 0;
 			else if( (wParam==VK_F2) && (GetKeyState( VK_SHIFT )& 0x8000) ) { // Charge une Notes
-				sprintf( key_name, "%s\\Sessions\\%s", TEXT(PUTTY_REG_POS), conf_get_str(conf,CONF_sessionname) ) ;
+				snprintf( key_name, sizeof(key_name), "%s\\Sessions\\%s", TEXT(PUTTY_REG_POS), conf_get_str(conf,CONF_sessionname) ) ;
 				if( GetValueDataN(HKEY_CURRENT_USER, key_name, "Notes", buffer, sizeof(buffer)) != NULL ) {
 					if( GetWindowTextLength(hwnd) > 0 ) 
 						if( MessageBox(hwnd, "Are you sure you want to load Notes\nand erase this edit box ?","Load Warning", MB_YESNO|MB_ICONWARNING ) != IDYES ) break ;
@@ -3379,7 +3379,7 @@ BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 				if( strlen( buffer ) > 0 ) 
 					if( MessageBox(hwnd, "Are you sure you want to save Edit box\ninto Notes registry ?","Save Warning", MB_YESNO|MB_ICONWARNING ) != IDYES ) break ;
 				GetWindowText( hwnd, buffer, 4096 ) ;
-				sprintf( key_name, "%s\\Sessions\\%s", TEXT(PUTTY_REG_POS), conf_get_str(conf,CONF_sessionname) ) ;
+				snprintf( key_name, sizeof(key_name), "%s\\Sessions\\%s", TEXT(PUTTY_REG_POS), conf_get_str(conf,CONF_sessionname) ) ;
 				RegTestOrCreate( HKEY_CURRENT_USER, key_name, "Notes", buffer ) ;
 				}
 			else 
@@ -3647,7 +3647,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 
 			if( RegEnumKeyEx(hKey, i, lpData, &cchValue, NULL, NULL, NULL, &ftLastWriteTime) == ERROR_SUCCESS ) {
 				SubMenu = CreateMenu() ;
-				sprintf( buffer, "%s\\%s", KeyName, lpData ) ;
+				snprintf( buffer, sizeof(buffer), "%s\\%s", KeyName, lpData ) ;
 				ReadSpecialMenu( SubMenu, buffer, nbitem, 0 ) ;
 				unmungestr( lpData, buffer, MAX_PATH ) ;
 				AppendMenu( menu, MF_POPUP, (UINT_PTR)SubMenu, buffer ) ;
@@ -3672,12 +3672,12 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			if( strcmp(achValue,KITTY_DEFAULT_SESSION) || strcmp(KeyName,TEXT(PUTTY_REG_POS) "\\Launcher") ) {
 				if( ShortcutsFlag ) {
 					if( nb < 26 ) 
-						sprintf( buffer, "%s\tCtrl+Shift+%c", achValue, ('A'+nb) ) ;
+						snprintf( buffer, sizeof(buffer), "%s\tCtrl+Shift+%c", achValue, ('A'+nb) ) ;
 					else 
-						sprintf( buffer, "%s", achValue ) ;
+						snprintf( buffer, sizeof(buffer), "%s", achValue ) ;
 					}
 				else
-					sprintf( buffer, "%s", achValue ) ;
+					snprintf( buffer, sizeof(buffer), "%s", achValue ) ;
 				AppendMenu(menu, MF_ENABLED, IDM_USERCMD+nb, buffer ) ;
 				SpecialMenu[nb]=(char*)malloc( strlen( (char*)lpData ) + 1 ) ;
 				strcpy( SpecialMenu[nb], (char*)lpData ) ;
@@ -3694,7 +3694,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		}
 		}
 	else if( IniFileFlag == SAVEMODE_DIR ) {
-		sprintf( fullpath, "%s\\%s", ConfigDirectory, KeyName ) ;
+		snprintf( fullpath, sizeof(fullpath), "%s\\%s", ConfigDirectory, KeyName ) ;
 		DIR * dir ;
 		struct dirent * de ;
 		FILE *fp ;
@@ -3703,17 +3703,17 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			nb = (*nbitem) ;
 			while( ( de = readdir(dir) ) != NULL ) { // Recherche de sous-cle (repertoire)
 				if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
-					sprintf( buffer, "%s\\%s", fullpath, de->d_name ) ;
+					snprintf( buffer, sizeof(buffer), "%s\\%s", fullpath, de->d_name ) ;
 					if( GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY ) {
 						SubMenu = CreateMenu() ;
-						sprintf( buffer, "%s\\%s", KeyName, de->d_name ) ;
+						snprintf( buffer, sizeof(buffer), "%s\\%s", KeyName, de->d_name ) ;
 						ReadSpecialMenu( SubMenu, buffer, nbitem, 0 ) ;
 						unmungestr( de->d_name, buffer, MAX_PATH ) ;
 						AppendMenu( menu, MF_POPUP, (UINT_PTR)SubMenu, buffer ) ;
 						}
 					/*if( stat( buffer, &statBuf ) != -1 ) {
 						if( ( statBuf.st_mode & S_IFMT) == S_IFDIR ) {
-							sprintf( buffer, "%s\\%s", KeyName, de->d_name ) ;
+							snprintf( buffer, sizeof(buffer), "%s\\%s", KeyName, de->d_name ) ;
 							ReadSpecialMenu( menu, buffer, nbitem, separator ) ;
 							}
 						}*/
@@ -3726,7 +3726,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 				if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
 				if( strcmp(de->d_name,"Default%20Settings") || strcmp(KeyName,"Launcher") ) { // Default Settings ne doit pas apparaitre dans le Launcher
 					
-					sprintf( buffer, "%s\\%s", fullpath, de->d_name ) ;
+					snprintf( buffer, sizeof(buffer), "%s\\%s", fullpath, de->d_name ) ;
 					if( !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) ) {
 						if( ( fp=fopen(buffer,"rb")) != NULL ) {
 							while( fgets( buffer, 4096, fp )!=NULL ){
@@ -3775,24 +3775,24 @@ void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) {
 		ReadSpecialMenu( menu, KeyName, &nbitem, 0 ) ;
 		
 		mungestr( folder, buffer ) ;
-		sprintf( KeyName, "Folders\\%s\\Commands", buffer ) ;
+		snprintf( KeyName, sizeof(KeyName), "Folders\\%s\\Commands", buffer ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 1 ) ;
 		
 		mungestr( sessionname, buffer ) ;
-		sprintf( KeyName, "Sessions_Commands\\%s", buffer ) ;
+		snprintf( KeyName, sizeof(KeyName), "Sessions_Commands\\%s", buffer ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 1 ) ;
 
 		}
 	else {
-		sprintf( KeyName, "%s\\Commands", TEXT(PUTTY_REG_POS) ) ;
+		snprintf( KeyName, sizeof(KeyName), "%s\\Commands", TEXT(PUTTY_REG_POS) ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 0 ) ;
 		
 		mungestr( folder, buffer ) ;
-		sprintf( KeyName, "%s\\Folders\\%s\\Commands", TEXT(PUTTY_REG_POS), buffer ) ;
+		snprintf( KeyName, sizeof(KeyName), "%s\\Folders\\%s\\Commands", TEXT(PUTTY_REG_POS), buffer ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 1 ) ;
 
 		mungestr( sessionname, buffer ) ;
-		sprintf( KeyName, "%s\\Sessions\\%s\\Commands", TEXT(PUTTY_REG_POS), buffer ) ;
+		snprintf( KeyName, sizeof(KeyName), "%s\\Sessions\\%s\\Commands", TEXT(PUTTY_REG_POS), buffer ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 1 ) ;
 		}
 
@@ -4025,9 +4025,9 @@ int InternalCommand( HWND hwnd, char * st ) {
 		return 1 ; 
 	} else if( !strcmp( st, "/copytoputty" ) ) {
 		RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Sessions" ) ;
-		sprintf( buffer, "%s\\Sessions", PUTTY_REG_POS ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Sessions", PUTTY_REG_POS ) ;
 		kitty_RegCopyTree( HKEY_CURRENT_USER, buffer, "Software\\SimonTatham\\PuTTY\\Sessions" ) ;
-		sprintf( buffer, "%s\\SshHostKeys", PUTTY_REG_POS ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\SshHostKeys", PUTTY_REG_POS ) ;
 		kitty_RegCopyTree( HKEY_CURRENT_USER, buffer, "Software\\SimonTatham\\PuTTY\\SshHostKeys" ) ;
 		RegCleanPuTTY() ;
 		return 1 ;
@@ -4055,7 +4055,7 @@ int InternalCommand( HWND hwnd, char * st ) {
 #endif
 	} else if( !strcmp( st, "/screenshot" ) ) { 
 		char screenShotFile[1024] ;
-		sprintf( screenShotFile, "%s\\screenshot-%d-%ld.jpg", InitialDirectory, getpid(), time(0) );
+		snprintf( screenShotFile, sizeof(screenShotFile), "%s\\screenshot-%d-%ld.jpg", InitialDirectory, getpid(), time(0) );
 		screenCaptureClientRect( GetParent(hwnd), screenShotFile, 100 ) ;
 		//screenCaptureWinRect( GetParent(hwnd), screenShotFile, 100 ) ;
 		//screenCaptureAll( screenShotFile, 100 ) ;
@@ -4070,7 +4070,7 @@ int InternalCommand( HWND hwnd, char * st ) {
 		return 1 ; 
 	} else if( !strcmp( st, "/savesessions" ) ) { 
 		chdir( InitialDirectory ) ; 
-		sprintf( buffer, "%s\\Sessions", PUTTY_REG_POS ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Sessions", PUTTY_REG_POS ) ;
 		SaveRegistryKeyEx( HKEY_CURRENT_USER, buffer, "kitty.ses" ) ; 
 		return 1 ; 
 	} else if( !strcmp( st, "/loadinitscript" ) ) { 
@@ -4118,7 +4118,7 @@ int InternalCommand( HWND hwnd, char * st ) {
 		return 1 ; 
 	} else if( !strcmp( st, "/init" ) ) { 
 		char buffer[4096] ;
-		sprintf( buffer,"ConfigDirectory=%s\nIniFileFlag=%d\nDirectoryBrowseFlag=%d\nInitialDirectory=%s\nKittyIniFile=%s\nKittySavFile=%s\nKiTTYClassName=%s\n"
+		snprintf( buffer, sizeof(buffer),"ConfigDirectory=%s\nIniFileFlag=%d\nDirectoryBrowseFlag=%d\nInitialDirectory=%s\nKittyIniFile=%s\nKittySavFile=%s\nKiTTYClassName=%s\n"
 			,ConfigDirectory,IniFileFlag,DirectoryBrowseFlag,InitialDirectory,KittyIniFile,KittySavFile,KiTTYClassName ) ;
 		MessageBox(hwnd,buffer,"Configuration infomations",MB_OK);
 		return 1 ; 
@@ -4162,7 +4162,7 @@ int InternalCommand( HWND hwnd, char * st ) {
 	} else if( !strcmp( st, "/session" ) ) {
 		if( strlen( conf_get_str(conf,CONF_sessionname) ) > 0 ) {
 			char buffer[1024] ;
-			sprintf( buffer, "Your session name is\n-%s-", conf_get_str(conf,CONF_sessionname) ) ;
+			snprintf( buffer, sizeof(buffer), "Your session name is\n-%s-", conf_get_str(conf,CONF_sessionname) ) ;
 			MessageBox( hwnd, buffer, "Session name", MB_OK|MB_ICONWARNING ) ;
 		} else
 			MessageBox( hwnd, "No session name.", "Session name", MB_OK|MB_ICONWARNING ) ;
@@ -4172,7 +4172,7 @@ int InternalCommand( HWND hwnd, char * st ) {
 			char bufpass[4096], buffer[4096] ;
 			strcpy( bufpass, conf_get_str(conf,CONF_password) ) ;
 			/* plaintext at runtime; do NOT MASKPASS */
-			sprintf( buffer, "Your password is\n-%s-", bufpass ) ;
+			snprintf( buffer, sizeof(buffer), "Your password is\n-%s-", bufpass ) ;
 			SetTextToClipboard( bufpass ) ;
 			memset(bufpass,0,strlen(bufpass));
 			MessageBox( hwnd, buffer, "Password", MB_OK|MB_ICONWARNING ) ;
@@ -4283,7 +4283,7 @@ int SearchCtHelper( void ) {
 		if( adopt_tool_path_if_exists( &CtHelperPath, buffer, NULL, "CTHELPER_PATH" ) ) return 1 ;
 		else { DelParameter( INIT_SECTION, "CtHelperPath" ) ; }
 	}
-	sprintf( buffer, "%s\\cthelper.exe", InitialDirectory ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\cthelper.exe", InitialDirectory ) ;
 	if( adopt_tool_path_if_exists( &CtHelperPath, buffer, "CtHelperPath", "CTHELPER_PATH" ) ) return 1 ;
 	return 0 ;
 }
@@ -4372,7 +4372,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	}
 	
 	if( conf_get_int(conf,CONF_protocol) == PROT_SSH ) {
-		sprintf( cmd, "\"%s\" %s://", shortpath, proto ) ;
+		snprintf( cmd, sizeof(cmd), "\"%s\" %s://", shortpath, proto ) ;
 			
 		if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
 			bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_sftpconnect) ) ;
@@ -4385,7 +4385,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			bcat( cmd, sizeof(cmd), "@" ) ;
 			if( poss( ":", host!=NULL ? host : conf_get_str(conf,CONF_host) )>0 ) { bcat(cmd,sizeof(cmd),"[") ; bcat(cmd,sizeof(cmd), host!=NULL ? host : conf_get_str(conf,CONF_host)) ; bcat(cmd,sizeof(cmd),"]") ; }
 			else { bcat( cmd, sizeof(cmd), host!=NULL ? host : conf_get_str(conf,CONF_host) ) ; }
-			bcat( cmd, sizeof(cmd), ":" ) ; sprintf( buffer, "%d", conf_get_int(conf,CONF_port) ) ; bcat( cmd, sizeof(cmd), buffer ) ;
+			bcat( cmd, sizeof(cmd), ":" ) ; snprintf( buffer, sizeof(buffer), "%d", conf_get_int(conf,CONF_port) ) ; bcat( cmd, sizeof(cmd), buffer ) ;
 		}
 
 		if( directory!=NULL ) if( strlen(directory)>0 ) {
@@ -4490,14 +4490,14 @@ int SearchPSCP( void ) {
 		}
 	}
 	// kscp dans le meme repertoire
-	sprintf( buffer, "%s\\%s", InitialDirectory, ki ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, ki ) ;
 	if( adopt_tool_path_if_exists( &PSCPPath, buffer, "PSCPPath", NULL ) ) return 1 ;
 	// pscp dans le repertoire normal de PuTTY
-	sprintf( buffer, "%s\\PuTTY\\%s", getenv("ProgramFiles"), pu ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\PuTTY\\%s", getenv("ProgramFiles"), pu ) ;
 	if( adopt_tool_path_if_exists( &PSCPPath, buffer, "PSCPPath", NULL ) ) return 1 ;
 
 	// pscp dans le meme repertoire
-	sprintf( buffer, "%s\\%s", InitialDirectory, pu ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, pu ) ;
 	if( adopt_tool_path_if_exists( &PSCPPath, buffer, "PSCPPath", NULL ) ) return 1 ;
 
 	return 0 ;
@@ -4516,15 +4516,15 @@ int SearchPlink( void ) {
 	}
 
 	// klink dans le meme repertoire
-	sprintf( buffer, "%s\\%s", InitialDirectory, ki ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, ki ) ;
 	if( adopt_tool_path_if_exists( &PlinkPath, buffer, "PlinkPath", NULL ) ) return 1 ;
 
 	// plink dans le repertoire normal de PuTTY
-	sprintf( buffer, "%s\\PuTTY\\%s", getenv("ProgramFiles"), pu ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\PuTTY\\%s", getenv("ProgramFiles"), pu ) ;
 	if( adopt_tool_path_if_exists( &PlinkPath, buffer, "PlinkPath", NULL ) ) return 1 ;
 
 	// plink dans le meme repertoire
-	sprintf( buffer, "%s\\%s", InitialDirectory, pu ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, pu ) ;
 	if( adopt_tool_path_if_exists( &PlinkPath, buffer, "PlinkPath", NULL ) ) return 1 ;
 
 	return 0 ;
@@ -4547,7 +4547,7 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
 			char buffer[1024]="", shortname[1024]="" ;
 			if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) ) 
 				if( GetShortPathName( buffer, shortname, 1023 ) ) {
-					sprintf( buffer, "\"%s\" -ed %s", shortname, fic ) ;
+					snprintf( buffer, sizeof(buffer), "\"%s\" -ed %s", shortname, fic ) ;
 					RunCommand( hwnd, buffer ) ;
 				}
 		} else { 
@@ -4593,14 +4593,14 @@ int calldll( HWND hwnd, char * filename, char * functionname ) {
 	lphDLL = LoadLibrary( TEXT(filename) ) ;
 	if( lphDLL == NULL ) {
 		//print_error( "Unable to load library %s\n", filename ) ;
-		sprintf( buffer, "Unable to load library %s\n", filename ) ;
+		snprintf( buffer, sizeof(buffer), "Unable to load library %s\n", filename ) ;
 		MessageBox( hwnd, buffer, "Error" , MB_OK|MB_ICONERROR ) ;
 		return -1 ;
 		}
 		
 	if( !( lpfnDllFunc1 = (LPFNDLLFUNC1) GetProcAddress( lphDLL, TEXT(functionname) ) ) ) {
 		//print_error( "Unable to load function %s from library %s (%d)\n", functionname, filename, GetLastError() );
-		sprintf(buffer,"Unable to load function %s from library %s (%d)\n", functionname, filename, (int)GetLastError() ) ;
+		snprintf( buffer, sizeof(buffer),"Unable to load function %s from library %s (%d)\n", functionname, filename, (int)GetLastError() ) ;
 		MessageBox( hwnd, buffer, "Error" , MB_OK|MB_ICONERROR ) ;
 		FreeLibrary( lphDLL ) ;
 		return -1 ;
@@ -4760,14 +4760,14 @@ int MakeDirTree( const char * Directory, const char * s, const char * sd ) {
 	DWORD cchClassName = MAX_PATH, cSubKeys=0, cbMaxSubKey, cchMaxClass, cValues, cchMaxValue, cbMaxValueData, cbSecurityDescriptor, cbName;
 	FILETIME ftLastWriteTime; 
 	
-	sprintf( fullpath, "%s\\%s", Directory, sd ) ; 
+	snprintf( fullpath, sizeof(fullpath), "%s\\%s", Directory, sd ) ; 
 	if( !MakeDir( fullpath ) ) {
-		sprintf( fullpath,"Unable to create directory: %s\\%s !",Directory, sd);
+		snprintf( fullpath, sizeof(fullpath),"Unable to create directory: %s\\%s !",Directory, sd);
 		MessageBox(NULL,fullpath,"Error",MB_OK|MB_ICONERROR); 
 		return 0 ;
 	}
 	
-	sprintf( buffer, "%s\\%s", TEXT(PUTTY_REG_POS), s ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s", TEXT(PUTTY_REG_POS), s ) ;
 
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(buffer), 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
 		if( RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey
@@ -4775,8 +4775,8 @@ int MakeDirTree( const char * Directory, const char * s, const char * sd ) {
 			if (cSubKeys) for (i=0; i<cSubKeys; i++) {
 				cbName = MAX_KEY_LENGTH;
 				retCode = RegEnumKeyEx(hKey, i, achKey, &cbName, NULL, NULL, NULL, &ftLastWriteTime) ;
-				sprintf( buffer, "%s\\%s", s, achKey ) ;
-				sprintf( fullpath, "%s\\%s", sd, achKey ) ;
+				snprintf( buffer, sizeof(buffer), "%s\\%s", s, achKey ) ;
+				snprintf( fullpath, sizeof(fullpath), "%s\\%s", sd, achKey ) ;
 				MakeDirTree( Directory, buffer, fullpath ) ;
 				}
 			retCode = ERROR_SUCCESS ;
@@ -4788,7 +4788,7 @@ int MakeDirTree( const char * Directory, const char * s, const char * sd ) {
 					RegQueryValueEx( hKey, TEXT( achValue ), 0, &lpType, lpData, &dwDataSize ) ;
 					if( (int)lpType == REG_SZ ) {
 						mungestr( achValue, buffer ) ;
-						sprintf( fullpath, "%s\\%s\\%s", Directory, sd, buffer ) ;
+						snprintf( fullpath, sizeof(fullpath), "%s\\%s\\%s", Directory, sd, buffer ) ;
 						if( ( fp=fopen( fullpath, "wb") ) != NULL ) {
 							fprintf( fp, "%s\\%s\\",achValue,lpData );
 							fclose(fp);
@@ -4817,17 +4817,17 @@ int Convert2Dir( const char * Directory ) {
 	if( !RegTestKey( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS) ) ) // Si la cle de KiTTY n'existe pas on recupere celle de PuTTY
 		{ TestRegKeyOrCopyFromPuTTY( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS) ) ; delkeyflag = 1 ; }
 	
-	sprintf( buffer, "%s\\Commands", Directory ) ; DelDir( buffer) ; MakeDirTree( Directory, "Commands", "Commands" ) ;
-	sprintf( buffer, "%s\\Launcher", Directory ) ; DelDir( buffer) ; MakeDirTree( Directory, "Launcher", "Launcher" ) ;
-	sprintf( buffer, "%s\\Folders", Directory ) ; DelDir( buffer) ; MakeDirTree( Directory, "Folders", "Folders" ) ;
-	sprintf( buffer, "%s\\Commands", Directory ) ; DelDir( buffer) ; MakeDirTree( Directory, "Commands", "Commands" ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\Commands", Directory ) ; DelDir( buffer) ; MakeDirTree( Directory, "Commands", "Commands" ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\Launcher", Directory ) ; DelDir( buffer) ; MakeDirTree( Directory, "Launcher", "Launcher" ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\Folders", Directory ) ; DelDir( buffer) ; MakeDirTree( Directory, "Folders", "Folders" ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\Commands", Directory ) ; DelDir( buffer) ; MakeDirTree( Directory, "Commands", "Commands" ) ;
 	
-	sprintf( buffer, "%s\\Sessions", Directory ) ; DelDir( buffer) ; { 
+	snprintf( buffer, sizeof(buffer), "%s\\Sessions", Directory ) ; DelDir( buffer) ; { 
 		if(!MakeDir( buffer )) MessageBox(NULL,"Unable to create directory for storing sessions","Error",MB_OK|MB_ICONERROR); 
 	}
-	sprintf( buffer, "%s\\Sessions", TEXT(PUTTY_REG_POS) ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\Sessions", TEXT(PUTTY_REG_POS) ) ;
 		
-	sprintf( fullpath, "%s\\Sessions_Commands", Directory ) ; DelDir( fullpath ) ; 
+	snprintf( fullpath, sizeof(fullpath), "%s\\Sessions_Commands", Directory ) ; DelDir( fullpath ) ; 
 	if(!MakeDir( fullpath )) { 
 		MessageBox(NULL,"Unable to create directory for storing session commands","Error",MB_OK|MB_ICONERROR); 
 	}
@@ -4846,17 +4846,17 @@ int Convert2Dir( const char * Directory ) {
 				SetCurrentDirectory( Directory ) ;
 				
 				if( DirectoryBrowseFlag ) if( strcmp(conf_get_str(conf,CONF_folder), "Default")&&strcmp(conf_get_str(conf,CONF_folder), "") ) {
-					sprintf( fullpath, "%s\\Sessions\\%s", Directory, conf_get_str(conf,CONF_folder)) ;
+					snprintf( fullpath, sizeof(fullpath), "%s\\Sessions\\%s", Directory, conf_get_str(conf,CONF_folder)) ;
 					if( !MakeDir( fullpath ) ) { MessageBox(NULL,"Unable to create directory for storing session informations","Error",MB_OK|MB_ICONERROR); }
 					SetSessPath( conf_get_str(conf,CONF_folder) ) ; 
 				}
 				
 				save_settings( buffer, conf) ;
 
-				sprintf( buffer, "%s\\Sessions\\%s\\Commands", TEXT(PUTTY_REG_POS), achKey ) ;
+				snprintf( buffer, sizeof(buffer), "%s\\Sessions\\%s\\Commands", TEXT(PUTTY_REG_POS), achKey ) ;
 				if( RegTestKey( HKEY_CURRENT_USER, buffer ) ) {
-					sprintf( buffer, "Sessions\\%s\\Commands", achKey ) ;
-					sprintf( fullpath, "Sessions_Commands\\%s", achKey ) ;
+					snprintf( buffer, sizeof(buffer), "Sessions\\%s\\Commands", achKey ) ;
+					snprintf( fullpath, sizeof(fullpath), "Sessions_Commands\\%s", achKey ) ;
 					MakeDirTree( Directory, buffer, fullpath ) ;
 				}
 			}
@@ -4864,10 +4864,10 @@ int Convert2Dir( const char * Directory ) {
 		RegCloseKey( hKey ) ;
 	}
 	
-	sprintf( buffer, "%s\\SshHostKeys", Directory ) ; DelDir( buffer) ; if( !MakeDir( buffer ) ) { 
+	snprintf( buffer, sizeof(buffer), "%s\\SshHostKeys", Directory ) ; DelDir( buffer) ; if( !MakeDir( buffer ) ) { 
 		MessageBox(NULL,"Unable to create directory for storing ssh host keys","Error",MB_OK|MB_ICONERROR) ; 
 	}
-	sprintf( buffer, "%s\\SshHostKeys", TEXT(PUTTY_REG_POS) ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\SshHostKeys", TEXT(PUTTY_REG_POS) ) ;
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(buffer), 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
 		if( RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey
 			,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime) == ERROR_SUCCESS ) {
@@ -4880,7 +4880,7 @@ int Convert2Dir( const char * Directory ) {
 					RegQueryValueEx( hKey, TEXT( achValue ), 0, &lpType, lpData, &dwDataSize ) ;
 					if( (int)lpType == REG_SZ ) {
 						mungestr( achValue, buffer ) ;
-						sprintf( fullpath, "%s\\SshHostKeys\\%s", Directory, buffer ) ;
+						snprintf( fullpath, sizeof(fullpath), "%s\\SshHostKeys\\%s", Directory, buffer ) ;
 						if( ( fp=fopen( fullpath, "wb") ) != NULL ) {
 							fprintf( fp, "%s",lpData ) ;
 							fclose(fp);
@@ -4893,10 +4893,10 @@ int Convert2Dir( const char * Directory ) {
 		RegCloseKey( hKey ) ;
 	}
 #ifdef MOD_PROXY
-	sprintf( buffer, "%s\\Proxies", Directory ) ; DelDir( buffer) ; if( !MakeDir( buffer ) ) { 
+	snprintf( buffer, sizeof(buffer), "%s\\Proxies", Directory ) ; DelDir( buffer) ; if( !MakeDir( buffer ) ) { 
 		MessageBox(NULL,"Unable to create directory for storing proxies definition","Error",MB_OK|MB_ICONERROR) ; 
 	}
-	sprintf( buffer, "%s\\Proxies", TEXT(PUTTY_REG_POS) ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\Proxies", TEXT(PUTTY_REG_POS) ) ;
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(buffer), 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
 		if( RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey
 			,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime) == ERROR_SUCCESS ) {
@@ -4924,16 +4924,16 @@ void ConvertDir2Reg( const char * Directory, HKEY hKey, char * path )  {
 	DIR * dir ;
 	struct dirent * de ;
 	if( strlen(path)>0 ) {
-		sprintf( directory, "%s\\Sessions\\%s", Directory, path ) ;
+		snprintf( directory, sizeof(directory), "%s\\Sessions\\%s", Directory, path ) ;
 	} else {
-		sprintf( directory, "%s\\Sessions", Directory ) ;
+		snprintf( directory, sizeof(directory), "%s\\Sessions", Directory ) ;
 	}
 	if( ( dir = opendir( directory ) ) != NULL ) {
 		while( (de=readdir(dir)) != NULL ) 
 		if( strcmp(de->d_name,".")&&strcmp(de->d_name,"..")  ) {
-			sprintf( buffer, "%s\\%s", directory, de->d_name ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\%s", directory, de->d_name ) ;
 			if( GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY ) {
-				if( strlen(path)>0 ) sprintf( buffer, "%s\\%s", path, de->d_name ) ;
+				if( strlen(path)>0 ) snprintf( buffer, sizeof(buffer), "%s\\%s", path, de->d_name ) ;
 				else strcpy( buffer, de->d_name ) ;
 				
 //debug_log("Directory=%s|\n",buffer);
@@ -4964,12 +4964,12 @@ int Convert2Reg( const char * Directory ) {
 	char buffer[MAX_VALUE_NAME] ;
 	HKEY hKey;
  
-	sprintf( buffer, "%s\\Sessions", TEXT(PUTTY_REG_POS) ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\Sessions", TEXT(PUTTY_REG_POS) ) ;
 	if( RegTestKey( HKEY_CURRENT_USER, buffer ) ) 
 		{ RegDelTree (HKEY_CURRENT_USER, buffer ) ; }
  
 	SetCurrentDirectory( Directory ) ;
-	sprintf( buffer, "%s\\Sessions", TEXT(PUTTY_REG_POS) ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\Sessions", TEXT(PUTTY_REG_POS) ) ;
 	RegTestOrCreate( HKEY_CURRENT_USER, buffer, NULL, NULL ) ;
  
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(buffer), 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
@@ -4987,7 +4987,7 @@ int Convert1Reg( const char * filename ) {
 	HKEY hKey;
 	int i;
 	if( (filename==NULL)||(strlen(filename)==0) ) { return 1 ; }
-	sprintf( buffer, "%s\\Sessions", TEXT(PUTTY_REG_POS) ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\Sessions", TEXT(PUTTY_REG_POS) ) ;
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(buffer), 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
 		strcpy(buffer,filename);
 		bname = buffer ;
@@ -5381,7 +5381,7 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 	if( control_flag ) key = key + CONTROLKEY ;
 	if( win_flag ) key = key + WINKEY ;
 
-//if( (key_num!=VK_SHIFT)&&(key_num!=VK_CONTROL) ) {char b[256] ; sprintf( b, "alt=%d altgr=%d shift=%d control=%d key_num=%d key=%d action=%d", alt_flag, altgr_flag, shift_flag, control_flag, key_num, key, shortcuts_tab.duplicate ); MessageBox(hwnd, b, "Info", MB_OK);}
+//if( (key_num!=VK_SHIFT)&&(key_num!=VK_CONTROL) ) {char b[256] ; snprintf( b, sizeof(b), "alt=%d altgr=%d shift=%d control=%d key_num=%d key=%d action=%d", alt_flag, altgr_flag, shift_flag, control_flag, key_num, key, shortcuts_tab.duplicate ); MessageBox(hwnd, b, "Info", MB_OK);}
 
 	if( key == shortcuts_tab.protect )				// Protection
 		{ SendMessage( hwnd, WM_COMMAND, IDM_PROTECT, 0 ) ; InvalidateRect( hwnd, NULL, TRUE ) ; return 1 ; }
@@ -5819,19 +5819,19 @@ void InitNameConfigFile( void ) {
 
 	if( getenv("KITTY_INI_FILE") != NULL ) { strcpy( buffer, getenv("KITTY_INI_FILE") ) ; }
 	if( !existfile( buffer ) ) {
-		sprintf( buffer, "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
 		if( !existfile( buffer ) ) {
-			sprintf( buffer, "%s\\putty.ini", InitialDirectory ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\putty.ini", InitialDirectory ) ;
 			if( !existfile( buffer ) ) {
 				if( IniFileFlag != SAVEMODE_DIR ) {
-					sprintf( buffer, "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_INIT_FILE ) ;
+					snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_INIT_FILE ) ;
 					if( !existfile( buffer ) ) {
-						sprintf( buffer, "%s\\%s", getenv("APPDATA"), INIT_SECTION ) ;
+						snprintf( buffer, sizeof(buffer), "%s\\%s", getenv("APPDATA"), INIT_SECTION ) ;
 						CreateDirectory( buffer, NULL ) ;
-						sprintf( buffer, "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_INIT_FILE ) ;
+						snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_INIT_FILE ) ;
 					}
 				} else {
-					sprintf( buffer, "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
+					snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
 				}
 			}
 		}
@@ -5840,20 +5840,20 @@ void InitNameConfigFile( void ) {
 
 	if( KittySavFile != NULL ) { free( KittySavFile ) ; } 
 	KittySavFile=NULL ;
-	sprintf( buffer, "%s\\%s", InitialDirectory, DEFAULT_SAV_FILE ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, DEFAULT_SAV_FILE ) ;
 	if( !existfile( buffer ) ) {
 		if( IniFileFlag != SAVEMODE_DIR ) {
-			sprintf( buffer, "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_SAV_FILE ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_SAV_FILE ) ;
 			if( !existfile( buffer ) ) {
-				sprintf( buffer, "%s\\%s", getenv("APPDATA"), INIT_SECTION ) ;
+				snprintf( buffer, sizeof(buffer), "%s\\%s", getenv("APPDATA"), INIT_SECTION ) ;
 				CreateDirectory( buffer, NULL ) ;
-				sprintf( buffer, "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_SAV_FILE ) ;
+				snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_SAV_FILE ) ;
 			}
 		}
 	}
 	KittySavFile=(char*)malloc( strlen( buffer)+2 ) ; strcpy( KittySavFile, buffer) ;
 	
-	sprintf( buffer, "%s\\kitty.dft", InitialDirectory ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\kitty.dft", InitialDirectory ) ;
 	if( existfile( KittyIniFile ) && existfile( buffer ) )  unlink( buffer ) ;
 	if( !existfile( KittyIniFile ) )
 		if( existfile( buffer ) ) rename( buffer, KittyIniFile ) ;
@@ -6071,7 +6071,7 @@ void InitWinMain( void ) {
 	}
 
 	// Make mandatory registry keys
-	sprintf( buffer, "%s\\%s", TEXT(PUTTY_REG_POS), "Commands" ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s", TEXT(PUTTY_REG_POS), "Commands" ) ;
 	if( (IniFileFlag == SAVEMODE_REG)||( IniFileFlag == SAVEMODE_FILE) ) 
 		RegTestOrCreate( HKEY_CURRENT_USER, buffer, NULL, NULL ) ;
 
@@ -6081,7 +6081,7 @@ void InitWinMain( void ) {
 #endif
 #ifdef MOD_LAUNCHER
 	// Initiate launcher
-	sprintf( buffer, "%s\\%s", TEXT(PUTTY_REG_POS), "Launcher" ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s", TEXT(PUTTY_REG_POS), "Launcher" ) ;
 	if( (IniFileFlag == SAVEMODE_REG)||( IniFileFlag == SAVEMODE_FILE) )  
 		if( !RegTestKey( HKEY_CURRENT_USER, buffer ) ) { InitLauncherRegistry() ; }
 #endif
@@ -6113,7 +6113,7 @@ void InitWinMain( void ) {
 		{ if( strlen( buffer ) > 0 ) MessageBox( NULL, buffer, "Notes", MB_OK ) ; }
 		
 	// Genere un fichier (4096ko max) d'initialisation de toute les Sessions
-	sprintf( buffer, "%s\\%s.ses.updt", InitialDirectory, appname ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s.ses.updt", InitialDirectory, appname ) ;
 	if( existfile( buffer ) ) { InitAllSessions( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "Sessions", buffer ) ; }
 	/* Format: registry like => UTF-8 encoded !!!
 	"ProxyUsername"="mylogin"
@@ -6128,7 +6128,7 @@ void InitWinMain( void ) {
 	i = 4095 ;
 	GetComputerName( hostname, (void*)&i ) ;
 	NETDBG_TS("after GetUserName/GetComputerName");
-	sprintf( buffer, "Starting %ld from %s@%s", GetCurrentProcessId(), username, hostname ) ;
+	snprintf( buffer, sizeof(buffer), "Starting %ld from %s@%s", GetCurrentProcessId(), username, hostname ) ;
 	debug_logevent(buffer) ;
 	NETDBG_TS("InitWinMain: return");
 }

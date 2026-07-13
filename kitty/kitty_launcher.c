@@ -182,7 +182,7 @@ HMENU InitLauncherMenu( char * Key ) {
 	DeleteObject( bmpUnCheck ) ; bmpUnCheck = GetMyCheckBitmaps( 2 ) ;
 	
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
-		sprintf( KeyName, "%s\\%s", kitty_registry_base(), Key ) ;
+		snprintf( KeyName, sizeof(KeyName), "%s\\%s", kitty_registry_base(), Key ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 0 ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		ReadSpecialMenu( menu, Key, &nbitem, 0 ) ;
@@ -279,7 +279,7 @@ void DelDir( const char * directory ) {
 	if( (dir=opendir(directory)) != NULL ) {
 		while( (de=readdir( dir ) ) != NULL ) 
 		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
-			sprintf( fullpath, "%s\\%s", directory, de->d_name ) ;
+			snprintf( fullpath, sizeof(fullpath), "%s\\%s", directory, de->d_name ) ;
 			if( GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY ) { DelDir( fullpath ) ; }
 			else if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) { unlink( fullpath ) ; }
 			}
@@ -297,11 +297,11 @@ void InitLauncherDir( const char * directory ) {
 	FILE * fp ;
 	
 	if( strlen(directory)>0 ) {
-		sprintf( fullpath, "%s\\Sessions\\%s", ConfigDirectory, directory ) ;
-		sprintf( buffer, "%s\\Launcher\\%s", ConfigDirectory, directory ) ;
+		snprintf( fullpath, sizeof(fullpath), "%s\\Sessions\\%s", ConfigDirectory, directory ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s", ConfigDirectory, directory ) ;
 	} else {
-		sprintf( fullpath, "%s\\Sessions", ConfigDirectory ) ;
-		sprintf( buffer, "%s\\Launcher", ConfigDirectory ) ;
+		snprintf( fullpath, sizeof(fullpath), "%s\\Sessions", ConfigDirectory ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Launcher", ConfigDirectory ) ;
 	}
 	if( !MakeDir( buffer ) ) { 
 		//MessageBox(NULL,buffer,"Error",MB_OK|MB_ICONERROR); 
@@ -310,9 +310,9 @@ void InitLauncherDir( const char * directory ) {
 	if( (dir=opendir(fullpath)) != NULL ) {
 		while( (de=readdir(dir)) != NULL ) 
 		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") )	{
-			sprintf( fullpath, "%s\\Sessions\\%s\\%s", ConfigDirectory, directory, de->d_name ) ;
+			snprintf( fullpath, sizeof(fullpath), "%s\\Sessions\\%s\\%s", ConfigDirectory, directory, de->d_name ) ;
 			if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) {
-				sprintf( buffer, "%s\\Launcher\\%s\\%s", ConfigDirectory, directory, de->d_name ) ;
+				snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s\\%s", ConfigDirectory, directory, de->d_name ) ;
 				if( (fp=fopen(buffer,"wb")) != NULL ) {
 					unmungestr( de->d_name, buffer, MAX_VALUE_NAME) ;
 					fprintf( fp, "%s\\%s\\", buffer, directory ) ;
@@ -320,7 +320,7 @@ void InitLauncherDir( const char * directory ) {
 					}
 				}
 			else if( (GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) {
-				sprintf( buffer, "%s\\%s", directory, de->d_name ) ;
+				snprintf( buffer, sizeof(buffer), "%s\\%s", directory, de->d_name ) ;
 				if( buffer[0]=='\\' ) InitLauncherDir( buffer+1 ) ;
 				else InitLauncherDir( buffer ) ;
 				}
@@ -342,10 +342,10 @@ void InitLauncherRegistry( void ) {
 		DWORD	cValues,cchMaxValue,cbMaxValueData,cbSecurityDescriptor;
 		FILETIME ftLastWriteTime;
 
-		sprintf( buffer, "%s\\Launcher", kitty_registry_base() ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Launcher", kitty_registry_base() ) ;
 		RegDelTree (HKEY_CURRENT_USER, buffer ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, buffer, NULL, NULL ) ;
-		sprintf( buffer, "%s\\Sessions", kitty_registry_base() ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Sessions", kitty_registry_base() ) ;
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
 
 		RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime);
@@ -359,18 +359,18 @@ void InitLauncherRegistry( void ) {
 					{
 						DWORD hide = 0, hsz = sizeof(hide) ;
 						char skey[4096] ;
-						sprintf( skey, "%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
+						snprintf( skey, sizeof(skey), "%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
 						if( RegGetValueA( HKEY_CURRENT_USER, skey, "LauncherHide", RRF_RT_REG_DWORD, NULL, &hide, &hsz ) == ERROR_SUCCESS && hide )
 							continue ;
 					}
-					sprintf( buffer,"%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
+					snprintf( buffer, sizeof(buffer),"%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
 					if( !GetValueDataN(HKEY_CURRENT_USER, buffer, "Folder", folder, sizeof(folder) ) )
 						{ strcpy( folder, "Default" ) ; }
 					CleanFolderName( folder ) ;
 					if( !strcmp( folder, "Default" ) || (strlen(folder)<=0) )
-						sprintf( buffer, "%s\\Launcher", kitty_registry_base() ) ;
+						snprintf( buffer, sizeof(buffer), "%s\\Launcher", kitty_registry_base() ) ;
 					else
-						sprintf( buffer, "%s\\Launcher\\%s", kitty_registry_base(), folder ) ;
+						snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s", kitty_registry_base(), folder ) ;
 					strcpy( folder, "" ) ;
 					unmungestr( lpData, folder, MAX_VALUE_NAME ) ;
 					if( strlen(folder) > 0 )
@@ -383,23 +383,23 @@ void InitLauncherRegistry( void ) {
 		DIR * dir ;
 		struct dirent * de ;
 		FILE * fp ;
-		sprintf( fullpath, "%s\\Launcher", ConfigDirectory ) ;
+		snprintf( fullpath, sizeof(fullpath), "%s\\Launcher", ConfigDirectory ) ;
 		DelDir( fullpath ) ;
 		if(!MakeDir( fullpath ) ) { MessageBox(NULL,"Unable to create the menu launcher directory","Error",MB_OK|MB_ICONERROR); }
-		sprintf( fullpath, "%s\\Sessions", ConfigDirectory ) ;
+		snprintf( fullpath, sizeof(fullpath), "%s\\Sessions", ConfigDirectory ) ;
 		if( (dir=opendir(fullpath)) != NULL ) {
 			while( (de=readdir(dir)) != NULL ) 
 			if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") )	{
-				sprintf( fullpath, "%s\\Sessions\\%s", ConfigDirectory, de->d_name ) ;
+				snprintf( fullpath, sizeof(fullpath), "%s\\Sessions\\%s", ConfigDirectory, de->d_name ) ;
 				if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) {
 					strcpy( folder, "" ) ;
 					unmungestr( de->d_name, buffer, MAX_VALUE_NAME) ;
 					GetSessionFolderName( buffer, folder ) ;
 					CleanFolderName( folder ) ;
-					sprintf( buffer, "%s\\Launcher\\%s", ConfigDirectory, folder ) ;
+					snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s", ConfigDirectory, folder ) ;
 					if( strcmp(folder,"Default") ) {
 						MakeDir( buffer ) ;
-						sprintf( buffer, "%s\\Launcher\\%s\\%s", ConfigDirectory, folder, de->d_name ) ;
+						snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s\\%s", ConfigDirectory, folder, de->d_name ) ;
 					} else sprintf( buffer, "%s\\Launcher\\%s", ConfigDirectory, de->d_name ) ;
 					if( (fp=fopen(buffer,"wb")) != NULL ) {
 						unmungestr( de->d_name, buffer, MAX_VALUE_NAME) ;
@@ -412,7 +412,7 @@ void InitLauncherRegistry( void ) {
 		}
 	} else if( (IniFileFlag == SAVEMODE_DIR)&&DirectoryBrowseFlag ) {
 		char fullpath[MAX_VALUE_NAME] ;
-		sprintf( fullpath, "%s\\Launcher", ConfigDirectory ) ;
+		snprintf( fullpath, sizeof(fullpath), "%s\\Launcher", ConfigDirectory ) ;
 		DelDir( fullpath ) ;
 		if( !MakeDir( fullpath ) ) { MessageBox(NULL,"Unable to create the menu launcher directory","Error",MB_OK|MB_ICONERROR); }
 		InitLauncherDir( "" ) ;
@@ -1063,7 +1063,7 @@ void RunPuTTY( HWND hwnd, char * param ) {
 			if( strlen(param) > 0 ) {
 				/* A prefix-dispatched mode (e.g. "-ed" editor): don't inject
 				 * "-mpwkey" - it would break the "-ed" cmdline detection. */
-				sprintf( buffer, "%s %s", shortname, param ) ;
+				snprintf( buffer, sizeof(buffer), "%s %s", shortname, param ) ;
 				RunCommand( hwnd, buffer ) ;
 			} else {
 				/* New configuration box: share the master-password unlock so the
@@ -1125,16 +1125,16 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 	
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
 		mungestr(session_in, session) ;
-		sprintf( buffer, "%s\\Sessions\\%s", kitty_registry_base(), session ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Sessions\\%s", kitty_registry_base(), session ) ;
 		if( RegTestKey(HKEY_CURRENT_USER, buffer) ) {
 			strcpy( session, session_in ) ;
 			if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {
 				session[strlen(session)-1]='\0' ;
 				str_rtrim( session, " \t" ) ;
-				if( GetPuttyFlag() )	sprintf( buffer, "%s -putty -load \"%s\" -send-to-tray", shortname, session ) ;
+				if( GetPuttyFlag() )	snprintf( buffer, sizeof(buffer), "%s -putty -load \"%s\" -send-to-tray", shortname, session ) ;
 				else sprintf( buffer, "%s -load \"%s\" -send-to-tray", shortname, session ) ;
 			} else {
-				if( GetPuttyFlag() )	sprintf( buffer, "%s -putty -load \"%s\"", shortname, session ) ;
+				if( GetPuttyFlag() )	snprintf( buffer, sizeof(buffer), "%s -putty -load \"%s\"", shortname, session ) ;
 				else sprintf( buffer, "%s -load \"%s\"", shortname, session ) ;
 			}
 			launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
@@ -1152,10 +1152,10 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 		if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {
 			session[strlen(session)-1]='\0' ;
 			str_rtrim( session, " \t" ) ;
-			if( GetPuttyFlag() )	sprintf( buffer, "%s -putty -load \"%s\" -send-to-tray", shortname, session ) ;
+			if( GetPuttyFlag() )	snprintf( buffer, sizeof(buffer), "%s -putty -load \"%s\" -send-to-tray", shortname, session ) ;
 			else sprintf( buffer, "%s -load \"%s\" -send-to-tray", shortname, session ) ;
 		} else {
-			if( GetPuttyFlag() )	sprintf( buffer, "%s -putty -load \"%s\"", shortname, session ) ;
+			if( GetPuttyFlag() )	snprintf( buffer, sizeof(buffer), "%s -putty -load \"%s\"", shortname, session ) ;
 			else sprintf( buffer, "%s -load \"%s\"", shortname, session ) ;
 			//else sprintf( buffer, "%s @%s", shortname, session ) ;
 		}

@@ -637,7 +637,7 @@ static int kitty_verify_signature( const char *path ) {
  * the running kitty.exe to perform the in-place upgrade. */
 static int kitty_run_installer( HWND hwnd, kitty_install_t type, const char *path ) {
 	char args[MAX_PATH+32] ;
-	sprintf( args, "/i \"%s\"", path ) ;
+	snprintf( args, sizeof(args), "/i \"%s\"", path ) ;
 	HINSTANCE r = ShellExecuteA( hwnd, (type==KITTY_INST_SYSTEM) ? "runas" : "open",
 		"msiexec.exe", args, NULL, SW_SHOWNORMAL ) ;
 	return ((INT_PTR)r > 32) ;
