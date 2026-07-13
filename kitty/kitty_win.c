@@ -1330,3 +1330,55 @@ void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal)
     sfree(line);
     sfree(body);
 }
+
+
+/* ---- System-menu command handlers (KiTTY) --------------------------------
+ * Bodies of a few WM_COMMAND cases in windows/window.c that manipulate only
+ * the Win32 window and the session Conf (no window.c statics), lifted here so
+ * the WndProc dispatch stays a thin one-line call per case and the upstream
+ * file keeps a smaller diff. Cases that touch window.c internals (e.g. the
+ * terminal resize path via reset_window) deliberately stay inline there. */
+
+/* IDM_TRANSPARUP / IDM_TRANSPARDOWN: step the layered-window transparency. */
+void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up)
+{
+    int t = conf_get_int(conf, CONF_transparencynumber);
+    if (t < 0) t = 0;
+    t += up ? 10 : -10;
+    if (t < 0) t = 0; if (t > 254) t = 254;
+    conf_set_int(conf, CONF_transparencynumber, t);
+    SetWindowLongPtr(term_hwnd, GWL_EXSTYLE,
+        GetWindowLongPtr(term_hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
+    SetLayeredWindowAttributes(term_hwnd, 0, (BYTE)(255 - t), LWA_ALPHA);
+}
+
+/* IDM_VISIBLE: toggle always-on-top. */
+void kitty_menu_toggle_alwaysontop(HWND term_hwnd, Conf *conf)
+{
+    bool on = !conf_get_bool(conf, CONF_alwaysontop);
+    conf_set_bool(conf, CONF_alwaysontop, on);
+    SetWindowPos(term_hwnd, on ? HWND_TOPMOST : HWND_NOTOPMOST,
+                 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+}
+
+/* IDM_REPOS: move the window to x,y (clamped to >=1), remembering it in conf. */
+void kitty_menu_reposition(HWND term_hwnd, Conf *conf, int x, int y)
+{
+    if (x < 1) x = 1;
+    if (y < 1) y = 1;
+    conf_set_int(conf, CONF_xpos, x);
+    conf_set_int(conf, CONF_ypos, y);
+    SetWindowPos(term_hwnd, 0, x, y, 0, 0,
+                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+}
+
+/* IDM_HYPERLINKTOGGLE: flip runtime URL detection and sync the menu check. */
+void kitty_menu_toggle_hyperlink(HWND hwnd)
+{
+    int GetHyperlinkFlag(void);
+    void SetHyperlinkFlag(int flag);
+    int nf = !GetHyperlinkFlag();
+    SetHyperlinkFlag(nf);
+    CheckMenuItem(GetSystemMenu(hwnd, FALSE), IDM_HYPERLINKTOGGLE,
+                  MF_BYCOMMAND | (nf ? MF_CHECKED : MF_UNCHECKED));
+}

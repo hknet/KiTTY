@@ -215,6 +215,10 @@ void kitty_url_config(Conf *conf);
 int kitty_url_rescan(Terminal *term);
 int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor);
 void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal);
+void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up);
+void kitty_menu_toggle_alwaysontop(HWND term_hwnd, Conf *conf);
+void kitty_menu_reposition(HWND term_hwnd, Conf *conf, int x, int y);
+void kitty_menu_toggle_hyperlink(HWND hwnd);
 int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
 int kitty_url_cell_in_link(int col, int row);
 int kitty_url_row_dirty(int row);
@@ -3654,24 +3658,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
 #ifdef MOD_PERSO
           case IDM_TRANSPARUP:
-          case IDM_TRANSPARDOWN: {
-            int t = conf_get_int(wgs->conf, CONF_transparencynumber);
-            if (t < 0) t = 0;
-            t += ((wParam & ~0xF) == IDM_TRANSPARUP) ? 10 : -10;
-            if (t < 0) t = 0; if (t > 254) t = 254;
-            conf_set_int(wgs->conf, CONF_transparencynumber, t);
-            SetWindowLongPtr(wgs->term_hwnd, GWL_EXSTYLE,
-                GetWindowLongPtr(wgs->term_hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
-            SetLayeredWindowAttributes(wgs->term_hwnd, 0, (BYTE)(255 - t), LWA_ALPHA);
+          case IDM_TRANSPARDOWN:
+            kitty_menu_adjust_transparency(wgs->term_hwnd, wgs->conf,
+                                           (wParam & ~0xF) == IDM_TRANSPARUP);
             break;
-          }
-          case IDM_VISIBLE: {
-            bool on = !conf_get_bool(wgs->conf, CONF_alwaysontop);
-            conf_set_bool(wgs->conf, CONF_alwaysontop, on);
-            SetWindowPos(wgs->term_hwnd, on ? HWND_TOPMOST : HWND_NOTOPMOST,
-                         0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+          case IDM_VISIBLE:
+            kitty_menu_toggle_alwaysontop(wgs->term_hwnd, wgs->conf);
             break;
-          }
           case IDM_TOTRAY:
             kitty_send_to_tray(wgs->term_hwnd);
             break;
@@ -3739,18 +3732,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             reset_window(wgs, 0);
             break;
           }
-          case IDM_REPOS: {
+          case IDM_REPOS:
             /* KiTTY: move window to lParam x(LOWORD) y(HIWORD) */
-            int x = LOWORD(lParam), y = HIWORD(lParam);
-            if (x < 1) x = 1;
-            if (y < 1) y = 1;
-            conf_set_int(wgs->conf, CONF_xpos, x);
-            conf_set_int(wgs->conf, CONF_ypos, y);
-            SetWindowPos(wgs->term_hwnd, 0, x, y, 0, 0,
-                         SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER |
-                         SWP_NOACTIVATE);
+            kitty_menu_reposition(wgs->term_hwnd, wgs->conf,
+                                  LOWORD(lParam), HIWORD(lParam));
             break;
-          }
           case IDM_SHOWPORTFWD:
             kitty_showportfwd(wgs->term_hwnd, wgs->conf);
             break;
@@ -3766,14 +3752,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           case IDM_EXPORTSETTINGS:
             kitty_export_settings(wgs->term_hwnd, wgs->conf);
             break;
-          case IDM_HYPERLINKTOGGLE: {
+          case IDM_HYPERLINKTOGGLE:
             /* KiTTY: enable/disable URL hyperlink detection at runtime */
-            int nf = !GetHyperlinkFlag();
-            SetHyperlinkFlag(nf);
-            CheckMenuItem(GetSystemMenu(hwnd, FALSE), IDM_HYPERLINKTOGGLE,
-                          MF_BYCOMMAND | (nf ? MF_CHECKED : MF_UNCHECKED));
+            kitty_menu_toggle_hyperlink(hwnd);
             break;
-          }
           case IDM_QUIT:
             /* KiTTY: immediate exit without the close confirmation prompt */
             DestroyWindow(hwnd);

@@ -11,6 +11,12 @@ void GetOSInfo( char * version ) ;
 
 // Rendu inline (non modal) des erreurs de connexion dans le terminal (upstream cyd01/KiTTY #548)
 void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal) ;
+
+// Corps des commandes du menu systeme (window.c WM_COMMAND) sans dependance aux statics de window.c
+void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up) ;
+void kitty_menu_toggle_alwaysontop(HWND term_hwnd, Conf *conf) ;
+void kitty_menu_reposition(HWND term_hwnd, Conf *conf, int x, int y) ;
+void kitty_menu_toggle_hyperlink(HWND hwnd) ;
 BOOL IsWow64() ; // Test si on est en Windows 64 bits
 int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
 int OpenDirName( HWND hFrame, char * dirname ) ;
