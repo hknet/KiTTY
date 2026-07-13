@@ -8,6 +8,9 @@
 
 void SetTransparency( HWND hwnd, int value ) ;
 void GetOSInfo( char * version ) ;
+
+// Rendu inline (non modal) des erreurs de connexion dans le terminal (upstream cyd01/KiTTY #548)
+void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal) ;
 BOOL IsWow64() ; // Test si on est en Windows 64 bits
 int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
 int OpenDirName( HWND hFrame, char * dirname ) ;

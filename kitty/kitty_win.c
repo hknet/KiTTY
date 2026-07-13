@@ -1291,3 +1291,42 @@ HWND CreateToolTip2(int toolID, HWND hDlg, PTSTR pszText) {
 return hwndToolTips ;
 }
 */
+
+
+/*
+ * Shared renderer for the non-modal connection-error paths in
+ * windows/window.c win_seat_connection_fatal / win_seat_nonfatal (cf.
+ * upstream cyd01/KiTTY #548): print the error INLINE in the terminal --
+ * red "Fatal Error" or yellow "Error" label, default-coloured detail --
+ * instead of a modal box that traps the window.  Newlines are normalised
+ * to CRLF so the message doesn't staircase down the terminal; for fatal
+ * errors a trailing empty quoted description (servers often send
+ * '...: ""') is trimmed.  The caller keeps the seat-side consequences
+ * (mouse pointer, session close / titlebar marker).
+ */
+void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal)
+{
+    size_t mlen = msg ? strlen(msg) : 0;
+    char *body = snewn(mlen * 2 + 1, char);
+    size_t bl = 0;
+    const char *p;
+    char *line;
+    for (p = msg ? msg : ""; *p; p++) {
+        if (*p == '\r') continue;
+        else if (*p == '\n') { body[bl++] = '\r'; body[bl++] = '\n'; }
+        else body[bl++] = *p;
+    }
+    body[bl] = 0;
+    if (fatal && bl >= 2 && body[bl-1] == '"' && body[bl-2] == '"') {
+        bl -= 2;
+        while (bl > 0 && (body[bl-1] == ' ' || body[bl-1] == ':' ||
+                          body[bl-1] == '\r' || body[bl-1] == '\n')) bl--;
+        body[bl] = 0;
+    }
+    line = dupprintf("\r\n\x1b[1;3%cm%s %s:\x1b[0m %s\r\n",
+                     fatal ? '1' : '3', appname,
+                     fatal ? "Fatal Error" : "Error", body);
+    term_data(term, line, strlen(line));
+    sfree(line);
+    sfree(body);
+}

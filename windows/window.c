@@ -214,6 +214,7 @@ void kitty_url_init(void);
 void kitty_url_config(Conf *conf);
 int kitty_url_rescan(Terminal *term);
 int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor);
+void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal);
 int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
 int kitty_url_cell_in_link(int col, int row);
 int kitty_url_row_dirty(int row);
@@ -1960,28 +1961,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
      * "close window on exit" is forced ON (the window is about to vanish, so
      * inline text wouldn't be seen) or in PuTTY-compat mode. */
     if (!GetPuttyFlag() && !GetModalErrorsFlag() && conf_get_int(wgs->conf, CONF_close_on_exit) != FORCE_ON) {
-        /* Build the detail, normalising newlines to CRLF so it doesn't
-         * "staircase" down the terminal, and trimming a trailing empty quoted
-         * description (servers often send '...: ""'). */
-        size_t mlen = msg ? strlen(msg) : 0;
-        char *body = snewn(mlen * 2 + 1, char);
-        size_t bl = 0;
-        for (const char *p = msg ? msg : ""; *p; p++) {
-            if (*p == '\r') continue;
-            else if (*p == '\n') { body[bl++] = '\r'; body[bl++] = '\n'; }
-            else body[bl++] = *p;
-        }
-        body[bl] = 0;
-        if (bl >= 2 && body[bl-1] == '"' && body[bl-2] == '"') {
-            bl -= 2;
-            while (bl > 0 && (body[bl-1] == ' ' || body[bl-1] == ':' ||
-                              body[bl-1] == '\r' || body[bl-1] == '\n')) bl--;
-            body[bl] = 0;
-        }
-        char *line = dupprintf("\r\n\x1b[1;31m%s Fatal Error:\x1b[0m %s\r\n",
-                               appname, body);
-        term_data(wgs->term, line, strlen(line));
-        sfree(line); sfree(body);
+        kitty_term_print_inline_error(wgs->term, msg, true);
         show_mouseptr(wgs, true);
         wgs->error_close = true;   /* #548: warning titlebar marker via close_session */
         queue_toplevel_callback(close_session, wgs);
@@ -2016,22 +1996,9 @@ static void win_seat_nonfatal(Seat *seat, const char *msg)
     /* KiTTY (upstream cyd01/KiTTY #548): surface non-fatal errors INLINE in the terminal (yellow
      * label) instead of a modal box that traps the window. The connection stays
      * up, so we only print -- no session close. PuTTY-compat mode (GetPuttyFlag)
-     * keeps the classic modal box. Mirrors win_seat_connection_fatal's inline
-     * path (newlines normalised to CRLF so the message doesn't staircase). */
+     * keeps the classic modal box. */
     if (!GetPuttyFlag() && !GetModalErrorsFlag() && wgs->term) {
-        size_t mlen = msg ? strlen(msg) : 0;
-        char *body = snewn(mlen * 2 + 1, char);
-        size_t bl = 0;
-        for (const char *p = msg ? msg : ""; *p; p++) {
-            if (*p == '\r') continue;
-            else if (*p == '\n') { body[bl++] = '\r'; body[bl++] = '\n'; }
-            else body[bl++] = *p;
-        }
-        body[bl] = 0;
-        char *line = dupprintf("\r\n\x1b[1;33m%s Error:\x1b[0m %s\r\n",
-                               appname, body);
-        term_data(wgs->term, line, strlen(line));
-        sfree(line); sfree(body);
+        kitty_term_print_inline_error(wgs->term, msg, false);
         show_mouseptr(wgs, true);
         return;
     }
