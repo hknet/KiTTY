@@ -1,8 +1,5 @@
 #include "kitty_registry.h"
 
-//static const int cstMaxRegLength = 1024;
-#define cstMaxRegLength 1024
-
 char * itoa (int __val, char *__s, int __radix) ;
 char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue){
     HKEY hkKey;
@@ -142,7 +139,7 @@ void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTST
 			retCode = RegEnumKeyEx(hKey, i, achKey, &cbName, NULL, NULL, NULL, &ftLastWriteTime); 
 			if (retCode == ERROR_SUCCESS) {
 				char buffer[MAX_KEY_LENGTH] ;
-				char previousvalue[1024] ;
+				char previousvalue[cstMaxRegLength+2] ;
 				snprintf( buffer, sizeof(buffer), "%s\\%s", lpSubKey, achKey ) ;
 				GetValueData( hMainKey, buffer, name, previousvalue ) ;
 				if( (oldvalue==NULL) || ( !strcmp(previousvalue,oldvalue)) )

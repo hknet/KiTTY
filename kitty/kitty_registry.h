@@ -12,7 +12,10 @@
 #define MAX_VALUE_NAME 16383
 #endif
 
-
+/* Longest registry value GetValueData reads. It can write cstMaxRegLength
+ * data bytes plus a forced NUL into rValue, so destination buffers must be
+ * at least cstMaxRegLength+2 bytes -- a bare [cstMaxRegLength] is one short. */
+#define cstMaxRegLength 1024
 
 char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue) ;
 

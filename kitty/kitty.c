@@ -260,7 +260,7 @@ int GetWinrolFlag(void) { return WinrolFlag ; }
 void SetWinrolFlag( const int num ) { WinrolFlag  = num ; }
 
 // Password de protection de la configuration (registry)
-static char PasswordConf[1024] = "" ; /* must be >= GetValueData's cstMaxRegLength (1024): it is filled from the registry "password" value, which can be up to that size */
+static char PasswordConf[cstMaxRegLength+2] = "" ; /* filled from the registry "password" value via GetValueData, which writes up to cstMaxRegLength data bytes + NUL */
 
 // Renvoi automatiquement dans le tray (pour les tunnel), fonctionne avec le l'option -send-to-tray
 static int AutoSendToTray = 0 ;
