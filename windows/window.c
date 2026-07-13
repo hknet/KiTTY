@@ -215,7 +215,7 @@ void kitty_url_config(Conf *conf);
 int kitty_url_rescan(Terminal *term);
 int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor);
 int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
-int kitty_url_cell_underline(Conf *conf, int col, int row);
+int kitty_url_cell_in_link(int col, int row);
 int kitty_url_row_dirty(int row);
 /* Per-session icon (CONF_icone / CONF_iconefile). */
 void kitty_apply_icon(HWND hwnd, Conf *conf);
@@ -4052,12 +4052,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                        false, false);
         }
 #ifdef MOD_PERSO
-        /* KiTTY URL hyperlinks: rescan visible screen for links and update the
-         * hand cursor when hovering over one. */
+        /* KiTTY URL hyperlinks: update the hand cursor when hovering over a
+         * link.  Link regions are kept current by the rescan in
+         * wintw_setup_draw_ctx() whenever screen content changes; re-scanning
+         * here would re-run the URL regex over the whole visible screen at
+         * pointer speed for no new information. */
         if (GetHyperlinkFlag()) {
-            if (kitty_url_rescan(wgs->term) &&
-                conf_get_int(wgs->conf, CONF_url_underline))
-                kitty_url_invalidate_dirty_rows(wgs);
             kitty_url_hover(wgs->term, hwnd,
                             TO_CHR_X(X_POS(lParam)), TO_CHR_Y(Y_POS(lParam)),
                             conf_get_int(wgs->conf, CONF_url_hover_cursor));
@@ -5412,15 +5412,16 @@ static void do_text_internal(
 
 #ifdef MOD_PERSO
     /* KiTTY URL hyperlink underline: underline the cells of this run that fall
-     * inside a detected link region (kitty_url.c decides per cell, honouring
-     * CONF_url_underline).  Coalesce contiguous link cells into spans so we
-     * issue one line per span rather than per cell. */
-    if (lattr != LATTR_TOP && GetHyperlinkFlag()) {
+     * inside a detected link region.  The underline-enabled conf lookup is
+     * hoisted out here, once per text run, rather than paid per cell.
+     * Coalesce contiguous link cells into spans so we issue one line per span
+     * rather than per cell. */
+    if (lattr != LATTR_TOP && GetHyperlinkFlag() &&
+        conf_get_int(wgs->conf, CONF_url_underline)) {
         int kk, span0 = -1;
         for (kk = 0; kk <= len; kk++) {
             int inlink = (kk < len) &&
-                kitty_url_cell_underline(wgs->conf, kitty_url_col + kk,
-                                         kitty_url_row);
+                kitty_url_cell_in_link(kitty_url_col + kk, kitty_url_row);
             if (inlink) {
                 if (span0 < 0) span0 = kk;
             } else if (span0 >= 0) {
@@ -6436,13 +6437,15 @@ static bool wintw_setup_draw_ctx(TermWin *tw)
     assert(!wgs->wintw_hdc);
     wgs->wintw_hdc = make_hdc(wgs);
 #ifdef MOD_PERSO
-    /* Keep URL link regions current at paint time so the hyperlink underline
-     * (drawn per cell in do_text_internal) tracks the latest screen content
-     * without depending on a mouse move.  Only when hyperlinks + underline are
-     * enabled; one screen scan per repaint burst. */
-    if (wgs->wintw_hdc && GetHyperlinkFlag() &&
-        conf_get_int(wgs->conf, CONF_url_underline)) {
-        if (kitty_url_rescan(wgs->term))
+    /* Keep URL link regions current at paint time: content changes always
+     * repaint, so one scan per repaint burst keeps hover/click hit-tests and
+     * the hyperlink underline current.  This is the only rescan driver (the
+     * mouse-move path only hit-tests), so it must run even with underlining
+     * off; repainting the changed rows only matters when underlines are
+     * drawn. */
+    if (wgs->wintw_hdc && GetHyperlinkFlag()) {
+        if (kitty_url_rescan(wgs->term) &&
+            conf_get_int(wgs->conf, CONF_url_underline))
             kitty_url_invalidate_dirty_rows(wgs);
     }
 #endif

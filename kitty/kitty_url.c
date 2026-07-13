@@ -16,7 +16,7 @@
  *   - kitty_url_hover(Terminal*,hwnd,x,y) hand cursor when over a link region
  *   - kitty_url_click(Terminal*,Conf*,x,y,ctrl)  ctrl+click -> launch browser
  *
- * Underline RENDERING is provided by kitty_url_cell_underline() below, called
+ * Underline RENDERING is provided by kitty_url_cell_in_link() below, called
  * per-cell from windows/window.c do_text_internal(); regions are kept current
  * by a rescan in wintw_setup_draw_ctx().  Detection + hover-cursor +
  * click-to-open + underline are all functional.
@@ -237,19 +237,16 @@ int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down)
 }
 
 /*
- * Paint-time per-cell underline test, called from window.c do_text_internal().
- * Boolean semantics, matching the "Underline hyperlinks" checkbox
- * (CONF_url_underline is written as 0/1 by the config dialog): when enabled,
- * underline every cell that lies inside a detected link region.  col/row are
- * screen-relative character coordinates (row 0 = top visible line), the same
- * frame kitty_url_rescan() scans, so region lookups line up.  Returns 1 if the
- * cell should be underlined.
+ * Paint-time per-cell link test, called from window.c do_text_internal().
+ * col/row are screen-relative character coordinates (row 0 = top visible
+ * line), the same frame kitty_url_rescan() scans, so region lookups line up.
+ * Returns 1 if the cell lies inside a detected link region.  Whether
+ * underlining is enabled (CONF_url_underline) is the caller's check, made
+ * once per text run instead of once per cell here.
  */
-int kitty_url_cell_underline(Conf *conf, int col, int row)
+int kitty_url_cell_in_link(int col, int row)
 {
     if (!kitty_url_inited)
-        return 0;
-    if (!conf_get_int(conf, CONF_url_underline))
         return 0;
     return urlhack_is_in_link_region(col, row);
 }
