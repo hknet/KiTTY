@@ -50,6 +50,10 @@ add_sources_from_current_dir(console
   select-cli.c nohelp.c console.c)
 add_sources_from_current_dir(settings
   storage.c)
+# KiTTY: base64 codec used by storage.c's at-rest secret handling, split out to
+# shrink storage.c's divergence from upstream. Added by absolute path since it
+# lives in the kitty/ dir, not windows/.
+target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c)
 # KiTTY: storage.c encrypts stored passwords at rest via DPAPI (CryptProtectData/
 # CryptUnprotectData in crypt32) and decrypts legacy old-KiTTY passwords via the
 # bcrypt archive. PUBLIC so every consumer (CLI tools incl.) links them; the
@@ -156,6 +160,7 @@ add_executable(puttygen
   noise.c
   no-jump-list.c
   storage.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c   # base64 codec used by storage.c (split out of it)
   help.c
   ${CMAKE_SOURCE_DIR}/sshpubk.c
   ${CMAKE_SOURCE_DIR}/sshrand.c
@@ -173,6 +178,7 @@ add_executable(kittygen_cli
   ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
   noise.c
   storage.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c   # base64 codec used by storage.c (split out of it)
   no-jump-list.c
   nohelp.c
   keygen-noise.c
