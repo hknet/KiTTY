@@ -534,6 +534,14 @@ Two of these open KiTTY's *send-text* boxes: `input` (default CTRL+F8) pops up a
 
 ![Menu key shortcuts definition](docs/features/img/menu_shortcuts.jpg)
 
+### PuTTY masquerade mode (KiClassName)
+
+KiTTY can impersonate PuTTY for the benefit of external tools that only know PuTTY. With `KiClassName=PuTTY` set, the Win32 window class and the window/dialog titles become **PuTTY**, and sessions, host keys, and the jumplist are read from **and written to** PuTTY's registry hive (`Software\SimonTatham\PuTTY`) instead of KiTTY's own. That makes KiTTY a drop-in replacement wherever tooling is hard-wired to PuTTY: window/connection managers that find or embed windows by the `PuTTY` class name, automation that matches "PuTTY" window titles, and tools that provision sessions into PuTTY's registry before launching the terminal — all work unmodified while you keep KiTTY's features. Note you do **not** need this just to *see* an existing PuTTY installation's sessions: KiTTY already lists sessions from PuTTY's hive alongside its own (read-only) by default.
+
+**How to enable:** set `KiClassName=PuTTY` in the kitty.ini `[KiTTY]` section (takes effect at startup, for all windows). For a one-off or per-shortcut override, the `-classname <name>` command-line switch sets the window class of a single window instead.
+
+(no screenshot)
+
 ### New command-line options
 
 KiTTY extends PuTTY's command line with a long list of extra switches, letting you control nearly every feature when launching from a shortcut, script, or the Run dialog. You can open a session straight in full screen or in the system tray, edit a session's settings, load a portable `.ktx` configuration, set a title, icon, password, or window class name, generate SSH keys, or disable individual features on the fly. All of PuTTY's original command-line options keep working alongside these additions.

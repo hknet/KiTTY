@@ -122,7 +122,13 @@ icon=yes\n\
 ; initdelay: initial delay in seconds before automatic sending of password, or auto command\n\
 ;initdelay=2.0\n\
 \n\
-; KiClassName: change the internal software name to be the same as PuTTY\n\
+; KiClassName: make KiTTY impersonate PuTTY for external tools that only know\n\
+;   PuTTY: the Win32 window class and the window/dialog titles become \"PuTTY\",\n\
+;   and sessions/host keys are read from AND written to PuTTY's registry hive\n\
+;   (Software\\SimonTatham\\PuTTY) instead of KiTTY's own. Use it so PuTTY-only\n\
+;   window managers, automation scripts, or tools that provision sessions into\n\
+;   PuTTY's registry work with KiTTY unmodified. Not needed just to SEE existing\n\
+;   PuTTY sessions - KiTTY already lists those alongside its own.\n\
 ;KiClassName=PuTTY\n\
 \n\
 ; localcmd: manage local commands (starting with __)\n\
