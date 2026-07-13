@@ -155,6 +155,28 @@
  * wrong; if anyone cares, patches to change the cutoff version in
  * this #if are welcome.
  */
+
+/*
+ * KiTTY note (MinGW build): this selector keys off _MSC_VER, which is
+ * defined only by MSVC. KiTTY is built with MinGW/GCC, where _MSC_VER is
+ * undefined and therefore evaluates to 0 in the preprocessor, so 0 < 1400
+ * is TRUE and we compile the OLD mod-3 algorithm below. That is almost
+ * certainly not what a modern MinGW CRT actually does when it splits argv
+ * for the console tools, but it only diverges on the pathological case of
+ * backslashes immediately followed by two-or-more double quotes, so no
+ * real command line is affected in practice.
+ *
+ * This also explains a confusing test result: windows/test/test_split_into_argv.c
+ * carries both expected-value tables under its own "#if MOD3", but MOD3 is
+ * #defined only in THIS file, so in the test's translation unit it is
+ * undefined (= 0) and the test compiles the mod-2 table. Under MinGW the
+ * code runs mod-3 while the test checks mod-2, so roughly half of
+ * test_split_into_argv's cases "fail". This is a pre-existing upstream
+ * harness quirk under a non-MSVC compiler, not a KiTTY change and not a
+ * runtime bug; do not chase it. A proper fix belongs upstream: derive the
+ * test's MOD3 the same way this file does (e.g. gate its tables on
+ * _MSC_VER) so code and expectations always match.
+ */
 #if _MSC_VER < 1400
 #define MOD3 1
 #else
