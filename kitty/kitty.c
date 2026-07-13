@@ -4266,30 +4266,36 @@ int InternalCommand( HWND hwnd, char * st ) {
 
 
 // Recherche le chemin vers le programme cthelper.exe
+/* If `candidate` names an existing file, adopt it as the tool path *out
+ * (freeing any previous value), optionally export it to environment `envname`,
+ * optionally persist it under kitty.ini/registry key `param`, and return 1;
+ * otherwise leave *out untouched and return 0. Pass param=NULL when the value
+ * came from `param` itself (no need to write it back) and envname=NULL when the
+ * tool has no associated environment variable. Generalises the former
+ * per-tool malloc+strcpy+WriteParameter tails in the Search* helpers. */
+static int adopt_tool_path_if_exists( char **out, const char *candidate,
+                                      const char *param, const char *envname ) {
+	if( candidate == NULL || !existfile( candidate ) ) return 0 ;
+	if( *out != NULL ) free( *out ) ;
+	*out = (char*) malloc( strlen(candidate) + 1 ) ;
+	strcpy( *out, candidate ) ;
+	if( envname != NULL ) set_env( (char*)envname, *out ) ;
+	if( param != NULL ) WriteParameter( INIT_SECTION, (char*)param, *out ) ;
+	return 1 ;
+}
+
 int SearchCtHelper( void ) {
 	char buffer[4096] ;
-	if( CtHelperPath!=NULL ) { 
-		free(CtHelperPath) ; 
-		CtHelperPath=NULL ; 
+	if( CtHelperPath!=NULL ) {
+		free(CtHelperPath) ;
+		CtHelperPath=NULL ;
 	}
 	if( ReadParameterN( INIT_SECTION, "CtHelperPath", buffer, sizeof(buffer) ) != 0 ) {
-		if( existfile( buffer ) ) { 
-			CtHelperPath = (char*) malloc( strlen(buffer) + 1 ) ; 
-			strcpy( CtHelperPath, buffer ) ; 
-			set_env( "CTHELPER_PATH", CtHelperPath ) ;
-			return 1 ;
-		} else { 
-			DelParameter( INIT_SECTION, "CtHelperPath" ) ; 
-		}
+		if( adopt_tool_path_if_exists( &CtHelperPath, buffer, NULL, "CTHELPER_PATH" ) ) return 1 ;
+		else { DelParameter( INIT_SECTION, "CtHelperPath" ) ; }
 	}
 	sprintf( buffer, "%s\\cthelper.exe", InitialDirectory ) ;
-	if( existfile( buffer ) ) { 
-		CtHelperPath = (char*) malloc( strlen(buffer) + 1 ) ; 
-		strcpy( CtHelperPath, buffer ) ; 
-		set_env( "CTHELPER_PATH", CtHelperPath) ;
-		WriteParameter( INIT_SECTION, "CtHelperPath", CtHelperPath ) ;
-		return 1 ;
-	}
+	if( adopt_tool_path_if_exists( &CtHelperPath, buffer, "CtHelperPath", "CTHELPER_PATH" ) ) return 1 ;
 	return 0 ;
 }
 	
@@ -4317,12 +4323,8 @@ int SearchWinSCP( void ) {
 	char buffer[4096] ;
 	if( WinSCPPath!=NULL) { free(WinSCPPath) ; WinSCPPath = NULL ; }
 	if( ReadParameterN( INIT_SECTION, "WinSCPPath", buffer, sizeof(buffer) ) != 0 ) {
-		if( existfile( buffer ) ) { 
-			WinSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( WinSCPPath, buffer ) ; 
-			return 1 ;
-		} else { 
-			DelParameter( INIT_SECTION, "WinSCPPath" ) ; 
-		}
+		if( adopt_tool_path_if_exists( &WinSCPPath, buffer, NULL, NULL ) ) return 1 ;
+		else { DelParameter( INIT_SECTION, "WinSCPPath" ) ; }
 	}
 	if( probe_winscp_env_dir("ProgramFiles", "WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
 	if( probe_winscp_env_dir("ProgramFiles(x86)", "WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
@@ -4482,56 +4484,34 @@ int SearchPSCP( void ) {
 	if( PSCPPath!=NULL ) { free(PSCPPath) ; PSCPPath = NULL ; }
 	// Dans la base de registre
 	if( ReadParameterN( INIT_SECTION, "PSCPPath", buffer, sizeof(buffer) ) != 0 ) {
-		if( existfile( buffer ) ) { 
-			PSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PSCPPath, buffer ) ; return 1 ;
-		} else { 
-			DelParameter( INIT_SECTION, "PSCPPath" ) ; 
-		}
+		if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
+		else { DelParameter( INIT_SECTION, "PSCPPath" ) ; }
 	}
 
 	// Dans le fichier ini
 	if( ReadParameterN( INIT_SECTION, "pscpdir", buffer, sizeof(buffer) ) ) {
 		buffer[4076]='\0';
 		strcat( buffer, "\\" ) ; strcat( buffer, ki ) ;
-		if( existfile( buffer ) ) { 
-			PSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PSCPPath, buffer ) ; 
-			WriteParameter( INIT_SECTION, "PSCPPath", PSCPPath ) ;
-			return 1 ;
-		} else {
+		if( adopt_tool_path_if_exists( &PSCPPath, buffer, "PSCPPath", NULL ) ) return 1 ;
+		else {
 			ReadParameterN( INIT_SECTION, "pscpdir", buffer, sizeof(buffer) ) ;
 			buffer[4076]='\0';
 			strcat( buffer, "\\" ) ; strcat( buffer, pu ) ;
-			if( existfile( buffer ) ) { 
-				PSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PSCPPath, buffer ) ; 
-				WriteParameter( INIT_SECTION, "PSCPPath", PSCPPath ) ;
-				return 1 ;
-			}
+			if( adopt_tool_path_if_exists( &PSCPPath, buffer, "PSCPPath", NULL ) ) return 1 ;
 		}
 	}
 #ifndef FLJ
 	// kscp dans le meme repertoire
 	sprintf( buffer, "%s\\%s", InitialDirectory, ki ) ;
-	if( existfile( buffer ) ) { 
-		PSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PSCPPath, buffer ) ; 
-		WriteParameter( INIT_SECTION, "PSCPPath", PSCPPath ) ;
-		return 1 ;
-	}
+	if( adopt_tool_path_if_exists( &PSCPPath, buffer, "PSCPPath", NULL ) ) return 1 ;
 #endif
 	// pscp dans le repertoire normal de PuTTY
 	sprintf( buffer, "%s\\PuTTY\\%s", getenv("ProgramFiles"), pu ) ;
-	if( existfile( buffer ) ) { 
-		PSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PSCPPath, buffer ) ; 
-		WriteParameter( INIT_SECTION, "PSCPPath", PSCPPath ) ;
-		return 1 ;
-	}
+	if( adopt_tool_path_if_exists( &PSCPPath, buffer, "PSCPPath", NULL ) ) return 1 ;
 
 	// pscp dans le meme repertoire
 	sprintf( buffer, "%s\\%s", InitialDirectory, pu ) ;
-	if( existfile( buffer ) ) { 
-		PSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PSCPPath, buffer ) ; 
-		WriteParameter( INIT_SECTION, "PSCPPath", PSCPPath ) ;
-		return 1 ;
-	}
+	if( adopt_tool_path_if_exists( &PSCPPath, buffer, "PSCPPath", NULL ) ) return 1 ;
 
 	return 0 ;
 }
@@ -4544,39 +4524,24 @@ int SearchPlink( void ) {
 	// Dans la base de registre
 	if( ReadParameterN( INIT_SECTION, "PlinkPath", buffer, sizeof(buffer) ) != 0 ) {
 		buffer[4076]='\0';
-		if( existfile( buffer ) ) { 
-			PlinkPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PlinkPath, buffer ) ; return 1 ;
-		} else { 
-			DelParameter( INIT_SECTION, "PlinkPath" ) ; 
-		}
+		if( adopt_tool_path_if_exists( &PlinkPath, buffer, NULL, NULL ) ) return 1 ;
+		else { DelParameter( INIT_SECTION, "PlinkPath" ) ; }
 	}
 
 #ifndef FLJ
 	// klink dans le meme repertoire
 	sprintf( buffer, "%s\\%s", InitialDirectory, ki ) ;
-	if( existfile( buffer ) ) { 
-		PlinkPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PlinkPath, buffer ) ; 
-		WriteParameter( INIT_SECTION, "PlinkPath", PlinkPath ) ;
-		return 1 ;
-	}
+	if( adopt_tool_path_if_exists( &PlinkPath, buffer, "PlinkPath", NULL ) ) return 1 ;
 #endif
 
 	// plink dans le repertoire normal de PuTTY
 	sprintf( buffer, "%s\\PuTTY\\%s", getenv("ProgramFiles"), pu ) ;
-	if( existfile( buffer ) ) { 
-		PlinkPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PlinkPath, buffer ) ; 
-		WriteParameter( INIT_SECTION, "PlinkPath", PlinkPath ) ;
-		return 1 ;
-	}
+	if( adopt_tool_path_if_exists( &PlinkPath, buffer, "PlinkPath", NULL ) ) return 1 ;
 
 	// plink dans le meme repertoire
 	sprintf( buffer, "%s\\%s", InitialDirectory, pu ) ;
-	if( existfile( buffer ) ) { 
-		PlinkPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PlinkPath, buffer ) ; 
-		WriteParameter( INIT_SECTION, "PlinkPath", PlinkPath ) ;
-		return 1 ;
-	}
-	
+	if( adopt_tool_path_if_exists( &PlinkPath, buffer, "PlinkPath", NULL ) ) return 1 ;
+
 	return 0 ;
 }
 	
