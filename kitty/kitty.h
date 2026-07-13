@@ -409,6 +409,8 @@ void unmungestr( const char *in, char *out, int outlen ) ;
 void NegativeColours(HWND hwnd) ;
 void BlackOnWhiteColours(HWND hwnd) ;
 void ChangeFontSize(Terminal *term, Conf *conf,HWND hwnd, int dec) ;
+void ChangeSettings(HWND hwnd) ;
+int ManageViewer( HWND hwnd, WORD wParam ) ;
 
 void create_settings( const char * name ) ;
 void SetHostKeyExtension( const char* ext ) ;
