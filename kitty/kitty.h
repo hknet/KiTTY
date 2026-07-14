@@ -180,6 +180,11 @@ void SetSessionFilterFlag( const int flag ) ;
 int GetDefaultSettingsFlag(void) ;
 void SetDefaultSettingsFlag( const int flag ) ;
 
+// Double-click action on a saved session: 0 = open here, 1 = start in a new window
+// [ConfigBox] dblclick=open|start
+int GetDblClickFlag(void) ;
+void SetDblClickFlag( const int flag ) ;
+
 // Chemin vers le programme cthelper.exe
 extern char * CtHelperPath ;
 

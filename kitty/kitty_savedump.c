@@ -682,8 +682,8 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp,"ProxySelectionFlag=%d\n",GetProxySelectionFlag() );
 #endif
 	if( PasswordConf!= NULL ) fprintf( fp, "PasswordConf=<redacted>\n" ) ; /* SECURITY: protection password for the password store */
-	fprintf( fp, "SessionFilterFlag=%d\nDefaultSettingsFlag=%d\nImageViewerFlag=%d\nImageSlideDelay=%d\nPrintCharSize=%d\nPrintMaxLinePerPage=%d\nPrintMaxCharPerLine=%d\nReadOnlyFlag=%d\n"
-	,SessionFilterFlag,DefaultSettingsFlag,ImageViewerFlag,ImageSlideDelay,PrintCharSize,PrintMaxLinePerPage,PrintMaxCharPerLine,GetReadOnlyFlag());
+	fprintf( fp, "SessionFilterFlag=%d\nDefaultSettingsFlag=%d\nDblClickFlag=%d\nImageViewerFlag=%d\nImageSlideDelay=%d\nPrintCharSize=%d\nPrintMaxLinePerPage=%d\nPrintMaxCharPerLine=%d\nReadOnlyFlag=%d\n"
+	,SessionFilterFlag,DefaultSettingsFlag,DblClickFlag,ImageViewerFlag,ImageSlideDelay,PrintCharSize,PrintMaxLinePerPage,PrintMaxCharPerLine,GetReadOnlyFlag());
 	fprintf( fp, "AntiIdleCount=%d\nAntiIdleCountMax=%d\nIconeNum=%d\n"
 	,AntiIdleCount,AntiIdleCountMax,IconeNum);
 	fprintf( fp, "AntiIdleStr=%s\nInitialDirectory=%s\nFileExtension=%s\nConfigDirectory=%s\nBuildVersionTime=%s\n",AntiIdleStr,InitialDirectory,FileExtension,ConfigDirectory,BuildVersionTime);

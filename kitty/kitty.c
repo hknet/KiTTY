@@ -269,6 +269,14 @@ static int DefaultSettingsFlag = 1 ;
 int GetDefaultSettingsFlag(void) { return DefaultSettingsFlag ; }
 void SetDefaultSettingsFlag( const int flag ) { DefaultSettingsFlag = flag ; }
 
+// [ConfigBox] dblclick: what a double-click on a saved session does.
+// 0 = open (load it and open in this window, like the Open button; default);
+// 1 = start (launch it in a NEW window and keep the config box open, like the
+// Start button). Consumed by sessionsaver_handler in kitty_config.c.
+static int DblClickFlag = 0 ;
+int GetDblClickFlag(void) { return DblClickFlag ; }
+void SetDblClickFlag( const int flag ) { DblClickFlag = flag ; }
+
 // Flag pour inhiber le filtre sur la liste des sessions de la boite de configuration
 static int SessionFilterFlag = 1 ;
 int GetSessionFilterFlag(void) { return SessionFilterFlag ; }
@@ -3246,6 +3254,10 @@ void LoadParameters( void ) {
 	if( ReadParameterN( INIT_SECTION, "shrinkbitmap", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetShrinkBitmapEnable(1) ; else SetShrinkBitmapEnable(0) ; }
 #endif
 
+	if( readINI( KittyIniFile, "ConfigBox", "dblclick", buffer, sizeof(buffer) ) ) {
+		if( !strcmp(buffer,"open") ) { SetDblClickFlag(0) ; }
+		if( !strcmp(buffer,"start") ) { SetDblClickFlag(1) ; }
+	}
 	if( readINI( KittyIniFile, "ConfigBox", "height", buffer, sizeof(buffer) ) ) {
 		ConfigBoxHeight = atoi( buffer ) ;
 		/* NB: the extra row taken by the Proxy-choice droplist (when shown) is

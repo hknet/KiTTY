@@ -582,8 +582,11 @@ now simply ignored if present in an old kitty.ini:
 - `[KiTTY] autostoresshkey` — deliberately not supported: silently accepting
   SSH host keys defeats the host-key check, so the port keeps the confirmation
   prompt unconditionally.
-- `[ConfigBox] dblclick`, `noexit`, `default`, `left`, `top` — dead getters;
+- `[ConfigBox] noexit`, `default`, `left`, `top` — dead getters;
   `left`/`top` are superseded by the automatic config-box position memory.
+  (`dblclick` was dead too, but has been restored AND actually wired up:
+  `dblclick=start` makes a double-click launch the session in a new window
+  and keep the config box open, like the Start button.)
 - `[Agent] askconfirmation`, `messageonkeyusage`, `scrumble` — kageant (the
   agent) never reads kitty.ini; per-key confirmation and key-use notification
   are tray-menu toggles now (`Ask confirmation before key use`, stored in the

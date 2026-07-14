@@ -31,6 +31,7 @@ int GetZModemFlag(void);
 int GetAutoreconnectFlag(void);
 int GetBackgroundImageFlag(void);
 extern void RunConfig(Conf *conf);   /* kitty_launcher.c: launch new session, keep box open */
+extern int GetDblClickFlag(void);    /* kitty.c: [ConfigBox] dblclick - 0 open here, 1 start in new window */
 extern char **FolderList;            /* kitty.c: NULL-terminated folder names */
 extern char CurrentFolder[];         /* kitty_commun.c: currently selected folder */
 void GetSessionFolderName(const char *session_in, char *folder);  /* kitty.c */
@@ -1594,6 +1595,15 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              */
             if (load_selected_session(ssd, dlg, conf, &mbl) &&
                 (mbl && ctrl == ssd->listbox && conf_launchable(conf))) {
+#ifdef MOD_PERSO
+                /* [ConfigBox] dblclick=start: double-click acts like the Start
+                 * button - launch in a new window, keep the config box open.
+                 * Default (open) falls through to stock behaviour. */
+                if (GetDblClickFlag() == 1) {
+                    RunConfig(conf);
+                    return;
+                }
+#endif
                 dlg_end(dlg, 1);       /* it's all over, and succeeded */
             }
         } else if (ctrl == ssd->savebutton) {

@@ -9,6 +9,11 @@
 
 [ConfigBox]
 
+; dblclick: what a double-click on a saved session does
+;    - open: load it and open it in this window (like the Open button)
+;    - start: launch it in a new window and keep the configuration box open (like the Start button)
+;dblclick=open
+
 ; defaultsettings: when no, KiTTY does not auto-create a 'Default Settings'
 ;    session AND hides it from the saved-session list in the config box. It still
 ;    works as the template for a new session (loaded by name), it just isn't

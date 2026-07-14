@@ -1,5 +1,10 @@
 char default_init_file_content[] = "[ConfigBox]\n\
 \n\
+; dblclick: what a double-click on a saved session does\n\
+;    - open: load it and open it in this window (like the Open button)\n\
+;    - start: launch it in a new window and keep the configuration box open (like the Start button)\n\
+;dblclick=open\n\
+\n\
 ; defaultsettings: enable/disable the automatic creation of the 'Default Settings' session\n\
 ;defaultsettings=yes\n\
 \n\
