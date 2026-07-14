@@ -54,6 +54,11 @@ add_sources_from_current_dir(settings
 # shrink storage.c's divergence from upstream. Added by absolute path since it
 # lives in the kitty/ dir, not windows/.
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c)
+# KiTTY: the fork half of storage.c (runtime registry root, portable file
+# backend, at-rest credential crypto) — split out of storage.c likewise.
+# NOTE: like storage.c itself, this must ALSO be listed in the puttygen and
+# kittygen_cli source lists below, or those targets fail to link.
+target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c)
 # KiTTY: storage.c encrypts stored passwords at rest via DPAPI (CryptProtectData/
 # CryptUnprotectData in crypt32) and decrypts legacy old-KiTTY passwords via the
 # bcrypt archive. PUBLIC so every consumer (CLI tools incl.) links them; the
@@ -161,6 +166,7 @@ add_executable(puttygen
   no-jump-list.c
   storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c   # base64 codec used by storage.c (split out of it)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c   # fork half of storage.c (split out of it)
   help.c
   ${CMAKE_SOURCE_DIR}/sshpubk.c
   ${CMAKE_SOURCE_DIR}/sshrand.c
@@ -179,6 +185,7 @@ add_executable(kittygen_cli
   noise.c
   storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c   # base64 codec used by storage.c (split out of it)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c   # fork half of storage.c (split out of it)
   no-jump-list.c
   nohelp.c
   keygen-noise.c
@@ -237,6 +244,7 @@ add_executable(test_storage_roundtrip
   noise.c
   storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_mpw.c
   no-jump-list.c
   ${CMAKE_SOURCE_DIR}/sshrand.c)
