@@ -61,10 +61,15 @@
 ; backgroundimage: enable/disable the background image feature
 ;bgimage=no
 
-; bcdelay: time delay between each character in automatic features (autocommand, login script, user function ...)
+; bcdelay: delay in MILLISECONDS between each character in every automatic
+;    keyboard send (autocommand, login script, user commands, send-text boxes).
+;    Default 0 = off. Set a few ms (e.g. 3) for hosts that drop characters
+;    when input arrives too fast.
 ;bcdelay=0
 
-; commanddelay: delay in milliseconds between two lines of the automatic start command script (Connection/Data/Command setting)
+; commanddelay: delay in SECONDS between two lines of the automatic start
+;    command script (Connection/Data/Command setting). 0.05 = 50 ms; minimum
+;    enforced 0.005.
 ;commanddelay=0.05
 
 ; conf: enable/disable the automatic creation of the default configuration file

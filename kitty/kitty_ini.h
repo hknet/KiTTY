@@ -36,10 +36,10 @@ autoreconnect=yes\n\
 ; backgroundimage: enable/disable the background image feature\n\
 bgimage=no\n\
 \n\
-; bcdelay: time delay between each character in automatic features (autocommand, login script, user function ...)\n\
+; bcdelay: delay in milliseconds between each character in automatic sends (autocommand, login script, user commands, send-text boxes); 0=off\n\
 ;bcdelay=0\n\
 \n\
-; commanddelay: delay in milliseconds between two lines of the automatic start command script (Connection/Data/Command setting)\n\
+; commanddelay: delay in seconds between two lines of the automatic start command script (0.05 = 50 ms)\n\
 ;commanddelay=0.05\n\
 \n\
 ; conf: enable/disable the automatic creation of the default configuration file\n\

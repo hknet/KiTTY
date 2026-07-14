@@ -258,7 +258,9 @@ KiTTY can register itself with Windows as the program that opens **putty://**, *
 
 ### Automatic command
 
-KiTTY can send a command to the server automatically as soon as a Telnet or SSH connection is established, saving you from typing the same startup command every time you log in. You can send several commands at once by separating them with the two characters `\n`. A few special sequences let you pace the input: `\p` waits one second (repeat it for longer pauses), `\s05` pauses for five seconds (use any value), and `\\` sends a literal backslash. The delays involved can be fine-tuned through the autocommand settings if you need finer control over timing.
+KiTTY can send a command to the server automatically as soon as a Telnet or SSH connection is established, saving you from typing the same startup command every time you log in. You can send several commands at once by separating them with the two characters `\n`. A few special sequences let you pace the input: `\p` waits one second (repeat it for longer pauses), `\s05` pauses for five seconds (use any value), and `\\` sends a literal backslash.
+
+Three `kitty.ini` `[KiTTY]` settings fine-tune the timing: **initdelay** — seconds before the first automatic send after the connection opens (default 2.0); **commanddelay** — seconds between two lines of the command script (default 0.05 = 50 ms); and **bcdelay** — milliseconds between each *character*, default 0 = off. `bcdelay` is the one to reach for when a host drops characters that arrive too fast (serial consoles, slow embedded devices): set e.g. `bcdelay=3` and it paces every automatic keyboard send — autocommand, login scripts, user commands, and the send-text boxes.
 
 **How to enable:** Configuration > **Connection > Data > Auto-command**: a command sent to the server automatically right after login. The delay before the first send is `initdelay` (seconds, default 2.0) in the kitty.ini `[KiTTY]` section — raise it for hosts that are slow to present their prompt; the delay between subsequent lines is `commanddelay`.
 
