@@ -1,0 +1,51 @@
+/*
+ * kitty_pageant.h: interface between windows/pageant.c (upstream PuTTY's
+ * Windows Pageant, kept textually close to upstream) and kitty_pageant.c
+ * (the fork's kageant additions: Windows OpenSSH client integration,
+ * load-keys-on-startup, key-use notify/confirm prompts, persistent key
+ * offer order).
+ *
+ * Windows-only (HWND/FILE/Filename in prototypes); include after putty.h.
+ */
+#ifndef KITTY_PAGEANT_H
+#define KITTY_PAGEANT_H
+
+/* HKCU ...\Run autostart value name (also shown in the tray info box). */
+#define KAGEANT_RUN_NAME    "KiTTY-kageant"
+
+/* ---- registry-backed tray toggles (HKCU, consolidated KiTTY hive) ---- */
+int kageant_openssh_get(void);
+void kageant_openssh_set(int on);
+int kageant_startup_get(void);
+void kageant_startup_set(int on);
+int kageant_notify_get(void);          /* default on */
+void kageant_notify_set(int on);
+int kageant_confirm_get(void);         /* default off */
+void kageant_confirm_set(int on);
+
+/* ---- Windows OpenSSH client integration ---- */
+void kageant_openssh_apply(int on);    /* add/remove the managed ~/.ssh block */
+char *kageant_ssh_path(const char *leaf);  /* malloc'd %USERPROFILE%\.ssh\<leaf>, or NULL */
+void kageant_write_identityagent(FILE *fp, const char *pipename);
+
+/* ---- load-keys-on-startup + persistent key offer order ---- */
+void kageant_track_keypath(const char *path);
+void kageant_save_startup_keys(void);
+void kageant_load_startup_keys(void);
+void kageant_set_run_entry(int on);    /* HKCU ...\Run autostart entry */
+void kageant_save_key_order(void);
+void kageant_apply_saved_order(void);
+int kageant_nloaded(void);             /* key paths tracked this session */
+
+/* ---- key-use confirm/notify (installed as agent-core hook pointers) ---- */
+int kageant_do_confirm(const char *comment);
+void kageant_do_notify(const char *comment);
+/* the hook pointers themselves live in the agent core (../pageant.c) */
+extern int (*kageant_confirm_hook)(const char *comment);
+extern void (*kageant_notify_hook)(const char *comment);
+
+/* ---- provided by windows/pageant.c for kitty_pageant.c ---- */
+HWND kageant_traywindow(void);         /* tray window, for balloon popups */
+void win_add_keyfile(Filename *filename, bool encrypted);
+
+#endif /* KITTY_PAGEANT_H */

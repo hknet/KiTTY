@@ -98,6 +98,7 @@ add_executable(pageant
   pageant.c
   help.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_pageant.c   # KiTTY: kageant additions (split out of pageant.c)
   pageant.rc)
 add_dependencies(pageant generated_licence_h)
 target_link_libraries(pageant
