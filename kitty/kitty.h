@@ -49,6 +49,9 @@ extern int init_delay ;
 // Delai entre chaque ligne de la commande automatique (en milliseconde)
 extern int autocommand_delay ;
 
+// Delai avant l envoi de la commande automatique sur drag-and-drop (en millisecondes)
+extern int dnd_delay ;
+
 // Delai entre chaque caracteres d'une commande (en millisecondes)
 extern int between_char_delay ;
 
@@ -240,6 +243,9 @@ extern char * WinSCPPath ;
 
 // Chemin vers le programme pscp.exe
 extern char * PSCPPath  ;
+
+// Chemin vers le programme plink.exe
+extern char * PlinkPath ;
 
 // Repertoire de lancement
 extern char InitialDirectory[4096] ;
@@ -441,6 +447,16 @@ void OpenAndSendScriptFile( HWND hwnd ) ;
 void SaveCurrentSetting( HWND hwnd ) ;
 void SendFile( HWND hwnd ) ;
 void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) ;
+void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) ;
+void SendFileList( HWND hwnd, char * filelist ) ;
+void GetOneFile( HWND hwnd, char * directory, const char * filename ) ;
+void GetFile( HWND hwnd ) ;
+void RunCmd( HWND hwnd ) ;
+void RunExternPlink( HWND hwnd, const char * cmd ) ;
+int SearchCtHelper( void ) ;
+int SearchWinSCP( void ) ;
+int SearchPSCP( void ) ;
+int SearchPlink( void ) ;
 void StartNewSession( HWND hwnd, char * directory, char * host, char * user ) ;
 void urlhack_launch_url(const char* app, const char *url) ;
 int GetPortFwdState( const int port, const DWORD pid ) ;

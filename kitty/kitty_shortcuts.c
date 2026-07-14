@@ -28,10 +28,10 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
 int SendCommandAllWindows( HWND hwnd, char * cmd ) ;    /* kitty.c */
 void set_title( TermWin *tw, const char *title ) ;      /* kitty.c */
 void ManageProtect( HWND hwnd, TermWin *tw, char * title ) ;  /* kitty.c */
-void SendFile( HWND hwnd ) ;                            /* kitty.c */
-void GetFile( HWND hwnd ) ;                             /* kitty.c */
-void RunCmd( HWND hwnd ) ;                              /* kitty.c */
-void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) ;  /* kitty.c */
+void SendFile( HWND hwnd ) ;                            /* kitty_xfer.c */
+void GetFile( HWND hwnd ) ;                             /* kitty_xfer.c */
+void RunCmd( HWND hwnd ) ;                              /* kitty_xfer.c */
+void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) ;  /* kitty_xfer.c */
 void RunSessionWithCurrentSettings( HWND hwnd, Conf *conf, const char * host, const char * user, const char * pass, const int port, const char * remotepath ) ;  /* kitty.c */
 void RunPuttyEd( HWND hwnd, char * filename ) ;         /* kitty_win.c */
 void debug_logevent( const char *fmt, ... ) ;           /* kitty_win.c */

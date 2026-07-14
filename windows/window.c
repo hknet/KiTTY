@@ -181,7 +181,7 @@ void kitty_shortcuts_toggle(HWND);
 /* KiTTY shortcut/ctrl-tab engine (kitty.c / kitty_commun.c) */
 int GetPuttyFlag(void);
 int GetModalErrorsFlag(void);   /* kitty_commun.c: modal vs inline error surfacing */
-void OnDropFiles(HWND hwnd, HDROP hDropInfo);   /* KiTTY drag-drop pscp upload (kitty.c) */
+void OnDropFiles(HWND hwnd, HDROP hDropInfo);   /* KiTTY drag-drop pscp upload (kitty_xfer.c) */
 int GetTransparencyFlag(void);
 int GetShortcutsFlag(void);
 int GetMouseShortcutsFlag(void);

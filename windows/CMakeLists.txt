@@ -318,6 +318,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_inputbox.c
   ${KITTY_DIR}/kitty_specialmenu.c
   ${KITTY_DIR}/kitty_shortcuts.c
+  ${KITTY_DIR}/kitty_xfer.c
   ${KITTY_DIR}/mini/mini.c)
 be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
 # kitty's backend list also includes the ADB backend (MOD_ADB) - applied to the
@@ -381,6 +382,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_inputbox.c
   ${KITTY_DIR}/kitty_specialmenu.c
   ${KITTY_DIR}/kitty_shortcuts.c
+  ${KITTY_DIR}/kitty_xfer.c
   ${KITTY_DIR}/mini/mini.c)
 be_list(kitty_portable KiTTY SSH SERIAL OTHERBACKENDS)
 target_compile_definitions(kitty_portable-be-list PRIVATE MOD_ADB=1)
