@@ -564,6 +564,37 @@ KiTTY includes a small built-in text editor that is tied to your terminal window
 
 ---
 
+## Differences vs classic KiTTY: retired kitty.ini settings
+
+A settings audit of this 0.84-based port found a number of classic kitty.ini keys
+that were still parsed but had lost their effect (their consumer was never
+forward-ported, was superseded, or never worked upstream either). To stop them
+silently pretending to work, they have been removed entirely — the keys below are
+now simply ignored if present in an old kitty.ini:
+
+- `[KiTTY] adb`, `capslock`, `maxblinkingtime`, `paste`, `scriptmode`, `size`,
+  `wintitle`, `hostkeyextension`, `PlinkPath`, `KiPP` — read-but-dead in all
+  0.84.x builds; the features they once toggled either no longer exist or no
+  longer consult them (ADB support is simply always available).
+- `[KiTTY] localcmd`, `localunsecurecmd` — the `__xy` remote metacommand
+  dispatcher they gated was removed for security (remote command-injection
+  surface, cf. CVE-2024-23749); the switches were a booby trap without it.
+- `[KiTTY] autostoresshkey` — deliberately not supported: silently accepting
+  SSH host keys defeats the host-key check, so the port keeps the confirmation
+  prompt unconditionally.
+- `[ConfigBox] dblclick`, `noexit`, `default`, `left`, `top` — dead getters;
+  `left`/`top` are superseded by the automatic config-box position memory.
+- `[Agent] askconfirmation`, `messageonkeyusage`, `scrumble` — kageant (the
+  agent) never reads kitty.ini; per-key confirmation and key-use notification
+  are tray-menu toggles now (`Ask confirmation before key use`, stored in the
+  registry), and the classic key shuffle never actually ran upstream either.
+- `[PuTTY] keys` — the KiTTY→PuTTY registry replication it triggered had no
+  remaining caller.
+
+Everything else in `docs/examples/kitty.ini.example` is verified honored.
+
+---
+
 ## Credits
 
 KiTTY is developed by **Cyril Dupont** ([cyd01/KiTTY](https://github.com/cyd01/KiTTY/)),

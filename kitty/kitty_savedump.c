@@ -3,7 +3,6 @@ static char SaveKeyPressed[4096] = "" ;
 
 void WriteCountUpAndPath(void) ;
 void SaveDumpPortableConfig( FILE * fp ) ;
-int GetAutoStoreSSHKeyFlag(void) ;
 int GetUserPassSSHNoSave(void) ;
 int GetCryptSaltFlag() ;
 
@@ -661,8 +660,6 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "HyperlinkFlag=%d\n", HyperlinkFlag );
 	if( AutoCommand!= NULL ) fprintf( fp, "AutoCommand=%s\n", AutoCommand ) ;
 	if( ScriptCommand!= NULL ) fprintf( fp, "ScriptCommand=%s\n", ScriptCommand ) ;
-	if( PasteCommand!= NULL ) fprintf( fp, "PasteCommand=%s\n", PasteCommand ) ;
-	fprintf( fp, "PasteCommandFlag=%d\n", PasteCommandFlag ) ;
 	fprintf( fp, "PasteSize=%d\n", GetPasteSize() ) ;
 	if( ScriptFileContent!= NULL ) {
 		char * pst = ScriptFileContent ;
@@ -671,39 +668,31 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 		fprintf( fp, "\n" )  ;
 		}
 	if( IconFile!= NULL ) fprintf( fp, "IconFile=%s\n", IconFile ) ;
-	fprintf( fp, "AutoStoreSSHKeyFlag=%d\nDirectoryBrowseFlag=%d\nVisibleFlag=%d\nShortcutsFlag=%d\nMouseShortcutsFlag=%d\nIconeFlag=%d\nNumberOfIcons=%d\nSizeFlag=%d\nCapsLockFlag=%d\nTitleBarFlag=%d\nCtrlTabFlag=%d\nRuTTYFlag=%d\n"
-	,GetAutoStoreSSHKeyFlag(),DirectoryBrowseFlag,VisibleFlag,ShortcutsFlag,MouseShortcutsFlag,IconeFlag,NumberOfIcons,SizeFlag,CapsLockFlag,TitleBarFlag,CtrlTabFlag,RuttyFlag);
+	fprintf( fp, "DirectoryBrowseFlag=%d\nVisibleFlag=%d\nShortcutsFlag=%d\nMouseShortcutsFlag=%d\nIconeFlag=%d\nNumberOfIcons=%d\nCtrlTabFlag=%d\n"
+	,DirectoryBrowseFlag,VisibleFlag,ShortcutsFlag,MouseShortcutsFlag,IconeFlag,NumberOfIcons,CtrlTabFlag);
 	//static HINSTANCE hInstIcons =  NULL ;
-	fprintf( fp, "WinHeight=%d\nWinrolFlag=%d\nAutoSendToTray=%d\nNoKittyFileFlag=%d\nConfigBoxHeight=%d\nConfigBoxWindowHeight=%d\nConfigBoxNoExitFlag=%d\nUserPassSSHNoSave=%d\nPuttyFlag=%d\n",WinHeight,WinrolFlag,AutoSendToTray,NoKittyFileFlag,ConfigBoxHeight,ConfigBoxWindowHeight,ConfigBoxNoExitFlag,GetUserPassSSHNoSave(),GetPuttyFlag());
+	fprintf( fp, "WinHeight=%d\nWinrolFlag=%d\nAutoSendToTray=%d\nNoKittyFileFlag=%d\nConfigBoxHeight=%d\nConfigBoxWindowHeight=%d\nUserPassSSHNoSave=%d\nPuttyFlag=%d\n",WinHeight,WinrolFlag,AutoSendToTray,NoKittyFileFlag,ConfigBoxHeight,ConfigBoxWindowHeight,GetUserPassSSHNoSave(),GetPuttyFlag());
 
 	fprintf( fp,"BackgroundImageFlag=%d\n",GetBackgroundImageFlag() );
-	fprintf( fp,"RandomActiveFlag=%d\n",GetRandomActiveFlag() );
 	fprintf( fp,"CryptSaltFlag=%d\n",GetCryptSaltFlag() );
-	fprintf( fp, "ConfigBoxLeft=%d\n",GetConfigBoxLeft());
-	fprintf( fp, "ConfigBoxTop=%d\n",GetConfigBoxTop());
 #ifdef MOD_RECONNECT
 	fprintf( fp,"AutoreconnectFlag=%d\nReconnectDelay=%d\n",AutoreconnectFlag,ReconnectDelay );
-#endif
-#ifdef MOD_ADB
-	fprintf( fp,"ADBFlag=%d\n",GetADBFlag() );
 #endif
 #ifdef MOD_PROXY
 	fprintf( fp,"ProxySelectionFlag=%d\n",GetProxySelectionFlag() );
 #endif
 	if( PasswordConf!= NULL ) fprintf( fp, "PasswordConf=<redacted>\n" ) ; /* SECURITY: protection password for the password store */
-	fprintf( fp, "SessionFilterFlag=%d\nSessionsInDefaultFlag=%d\nDefaultSettingsFlag=%d\nDblClickFlag=%d\nImageViewerFlag=%d\nImageSlideDelay=%d\nMaxBlinkingTime=%d\nPrintCharSize=%d\nPrintMaxLinePerPage=%d\nPrintMaxCharPerLine=%d\nReadOnlyFlag=%d\nScrumbleKeyFlag=%d\n"
-	,SessionFilterFlag,SessionsInDefaultFlag,DefaultSettingsFlag,DblClickFlag,ImageViewerFlag,ImageSlideDelay,MaxBlinkingTime,PrintCharSize,PrintMaxLinePerPage,PrintMaxCharPerLine,GetReadOnlyFlag(),GetScrumbleKeyFlag());
+	fprintf( fp, "SessionFilterFlag=%d\nDefaultSettingsFlag=%d\nImageViewerFlag=%d\nImageSlideDelay=%d\nPrintCharSize=%d\nPrintMaxLinePerPage=%d\nPrintMaxCharPerLine=%d\nReadOnlyFlag=%d\n"
+	,SessionFilterFlag,DefaultSettingsFlag,ImageViewerFlag,ImageSlideDelay,PrintCharSize,PrintMaxLinePerPage,PrintMaxCharPerLine,GetReadOnlyFlag());
 	fprintf( fp, "AntiIdleCount=%d\nAntiIdleCountMax=%d\nIconeNum=%d\n"
 	,AntiIdleCount,AntiIdleCountMax,IconeNum);
 	fprintf( fp, "AntiIdleStr=%s\nInitialDirectory=%s\nFileExtension=%s\nConfigDirectory=%s\nBuildVersionTime=%s\n",AntiIdleStr,InitialDirectory,FileExtension,ConfigDirectory,BuildVersionTime);
 	if( WinSCPPath!= NULL ) fprintf( fp, "WinSCPPath=%s\n", WinSCPPath ) ;
 	if( PSCPPath!= NULL ) fprintf( fp, "PSCPPath=%s\n", PSCPPath ) ;
-	if( PlinkPath!= NULL ) fprintf( fp, "PlinkPath=%s\n", PlinkPath ) ;
 	if( KittyIniFile!= NULL ) fprintf( fp, "KittyIniFile=%s\n", KittyIniFile ) ;
 	if( KittySavFile!= NULL ) fprintf( fp, "KittySavFile=%s\n", KittySavFile ) ;
 	if( KiTTYClassName != NULL ) fprintf( fp, "KiTTYClassName=%s\n", KiTTYClassName ) ;
 	if( CtHelperPath!= NULL ) fprintf( fp, "CtHelperPath=%s\n", CtHelperPath ) ;
-	if( strlen(ManagePassPhrase(NULL))>0 ) fprintf( fp, "PassPhrase=<redacted>\n") ; /* SECURITY: was clear-text; match password redaction */
 	fprintf( fp, "is_backend_connected=%d\n", is_backend_connected ) ;
 	fprintf( fp, "is_backend_first_connected=%d\n", is_backend_first_connected ) ;
 }

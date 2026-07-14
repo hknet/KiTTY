@@ -9,15 +9,6 @@
 
 [ConfigBox]
 
-; dblclick: define the default action when double click on a session in session list
-;    Allowed values are:
-;    - open: press open button
-;    - start: press start button
-;dblclick=open
-
-; default: if yes all the sessions belong to their own folder and the default folder too
-;default=yes
-
 ; defaultsettings: when no, KiTTY does not auto-create a 'Default Settings'
 ;    session AND hides it from the saved-session list in the config box. It still
 ;    works as the template for a new session (loaded by name), it just isn't
@@ -36,18 +27,9 @@
 ; height: the number of visible lines in the saved-sessions list (default 16 = stock fit)
 ;height=16
 
-; left: X position of the confuguration box (-1 means center)
-;left=-1
-
 ; proxyselection: show the named-proxy chooser in the Session panel.
 ;   auto (default) = show once any named proxy is defined; yes = always; no = never
 ;proxyselection=auto
-
-; noexit: if set to yes, return to the configuration box at main program exit
-;noexit=no
-
-; top: Y position of the confuguration box (-1 means center)
-;top=-1
 
 ; windowheight: force the configuration window to an explicit height, in pixels
 ;    (scaled for your display DPI). Default 0 = off, so the window is sized from
@@ -60,9 +42,6 @@
 
 [KiTTY]
 
-; adb: enable/disable adb support
-;adb=yes
-
 ; antiidle: string sent to the server periodically to keep the connection alive.
 ;    Default (unset/empty) = disabled. \k08 sends a backspace; pick a sequence the
 ;    remote ignores. Interval is set by antiidledelay (seconds).
@@ -74,17 +53,11 @@
 ; autoreconnect: enable/disable the automatic reconnection feature
 ;autoreconnect=yes
 
-; autostoresshkey: enable/disable the automatic ssh key store feature (no confirmation window)
-;autostoresshkey=no
-
 ; backgroundimage: enable/disable the background image feature
 ;bgimage=no
 
 ; bcdelay: time delay between each character in automatic features (autocommand, login script, user function ...)
 ;bcdelay=0
-
-; capslock: force upper case
-;capslock=no
 
 ; commanddelay: delay in milliseconds between two lines of the automatic start command script (Connection/Data/Command setting)
 ;commanddelay=0.05
@@ -124,9 +97,6 @@
 ; fileextension: the extension for session settings files in portable mode
 ;fileextension=.ktx
 
-; hostkeyextension: the extension for server host key files
-;hostkeyextension=.khk
-
 ; hyperlink: enable/disable the hyperlink feature
 ;hyperlink=yes
 
@@ -147,15 +117,6 @@
 ;    window class. This is NOT the default; leave it unset for normal use.
 ;KiClassName=PuTTY
 
-; localcmd: manage local commands (starting with __)
-;localcmd=yes
-
-; localunsecurecmd: manage local unsecure commands ( ___pl, __ds, __cm, __ie )
-;localunsecurecmd=no
-
-; maxblinkingtime: maximum blinks (in system tray) where receiving bell signal
-;maxblinkingtime=5
-
 ; modalerrors: show connection errors as modal pop-up boxes instead of inline in the terminal (upstream cyd01/KiTTY #548). Default no (inline, non-trapping).
 ;modalerrors=no
 
@@ -165,17 +126,11 @@
 ; numberoficons: total number of internal icons
 ;numberoficons=45
 
-; paste: enable/disable one line at a time feature in paste action (useful on slow servers only)
-;paste=no
-
 ; internaldelay: legacy internal delay in milliseconds for some automated actions
 ;internaldelay=10
 
 ; pastesize: paste size limit (number of characters). Above the limit a confirmation is requested. (0 means unlimited)
 ;pastesize=0
-
-; PlinkPath: the full path to the plink.exe (or klink.exe) binary
-;PlinkPath=
 
 ; PSCPPath: the full path to the pscp.exe (or kscp.exe) binary
 ;PSCPPath=
@@ -240,14 +195,8 @@
 ;    The example line below narrows it to all files only:
 ;scriptfilefilter=All files (*.*)|*.*|
 
-; scriptmode: enable/disable RuTTY scripting mode
-;scriptmode=yes
-
 ; shortcuts: enable/disable keyboard shortcuts
 ;shortcuts=yes
-
-; size: enable/disable window size in the window title
-;size=no
 
 ; slidedelay: delay in seconds before automatic image switching in slideshow mode
 ;    0 means no automatic slide, waiting for keyboard event
@@ -276,9 +225,6 @@
 
 ; winscpdir: legacy fallback directory containing WinSCP.exe (prefer WinSCPPath)
 ;winscpdir=
-
-; wintitle: enable/disable the enhanced title feature (for protected mode and window size)
-;wintitle=yes
 
 ; zmodem: enable/disable zmodem feature (to send/receive files with sz/rz commands)
 ;zmodem=yes

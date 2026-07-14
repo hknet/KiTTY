@@ -74,21 +74,7 @@ void MASKPASS( const int mode, char * password ) {
 	free(buffer) ;
 }
 
-// Passphrase (entree registry KiPP)
-static char PassPhrase[256] = "" ;
-	
-// Procedure de management de la passphrase
-char * ManagePassPhrase( const char * st ) {
-	if( !GetUserPassSSHNoSave() && (st != NULL) ) {
-		snprintf( PassPhrase, sizeof(PassPhrase), "%s", st ) ;
-	}
-	if( GetUserPassSSHNoSave() ) { return "" ; }
-	return PassPhrase ;
-}
-
-
-
-/* ISO-8859-1 to UTF-8 mapper 
+/* ISO-8859-1 to UTF-8 mapper
  * return 0 for success, and need buffer size otherwise
  */
 size_t iso8859_1_to_utf8(char *content, size_t max_size) {

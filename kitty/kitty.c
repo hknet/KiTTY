@@ -89,13 +89,6 @@ char * AutoCommand = NULL ;
 // Contenu d'un script a envoyer à l'ecran
 char * ScriptCommand = NULL ;
 
-// Pointeur sur la commande a passer ligne a ligne
-char * PasteCommand = NULL ;
-
-// Flag pour utiliser la commande paste ligne a ligne (shift+bouton droit au lieu de bouton droit seul) dans le cas de serveur lent
-static int PasteCommandFlag = 0 ;
-int GetPasteCommandFlag(void) { return PasteCommandFlag ; }
-
 // paste size limit (number of characters). Above the limit a confirmation is requested. (0 means unlimited)
 static int PasteSize = 0 ;
 int GetPasteSize(void) { return PasteSize ; }
@@ -107,11 +100,6 @@ void SetPasteSize( const int size ) { PasteSize = size ; }
 int HyperlinkFlag = 1 ;
 int GetHyperlinkFlag(void) { return HyperlinkFlag ; }
 void SetHyperlinkFlag( const int flag ) { HyperlinkFlag = flag ; }
-
-// Flag de gestion de la fonction "rutty" (script automatique)
-static int RuttyFlag = 1 ;
-int GetRuttyFlag(void) { return RuttyFlag ; } 
-void SetRuttyFlag( const int flag ) { RuttyFlag = flag ; }
 
 // Flag de gestion de la Transparence
 // The feature stays available (so transparency is configurable PER SESSION via the
@@ -227,21 +215,6 @@ void SethInstIcons( const HINSTANCE h ) { hInstIcons = h ; }
 // Fichier contenant les icones à charger
 static char * IconFile = NULL ;
 
-// Flag pour l'affichage de la taille de la fenetre
-static int SizeFlag = 0 ;
-int GetSizeFlag(void) { return SizeFlag ; }
-void SetSizeFlag( const int flag ) { SizeFlag = flag ; }
-
-// Flag pour imposer le passage en majuscule
-static int CapsLockFlag = 0 ;
-int GetCapsLockFlag(void) { return CapsLockFlag ; }
-void SetCapsLockFlag( const int flag ) { CapsLockFlag = flag ; }
-
-// Flag pour gerer la presence de la barre de titre
-static int TitleBarFlag = 1 ;
-int GetTitleBarFlag(void) { return TitleBarFlag ; }
-void SetTitleBarFlag( const int flag ) { TitleBarFlag = flag ; }
-
 // Hauteur de la fenetre pour la fonction WinHeight
 static int WinHeight = -1 ;
 int GetWinHeight(void) { return WinHeight ; }
@@ -274,21 +247,6 @@ static int ConfigBoxWindowHeight = 0 ;
 int GetConfigBoxWindowHeight(void) { return ConfigBoxWindowHeight ; }
 void SetConfigBoxWindowHeight( const int num ) { ConfigBoxWindowHeight = num ; }
 
-// Flag pour retourner à la Config Box en fin d'execution
-static int ConfigBoxNoExitFlag = 0 ;
-int GetConfigBoxNoExitFlag(void) { return ConfigBoxNoExitFlag ; }
-void SetConfigBoxNoExitFlag( const int flag ) { ConfigBoxNoExitFlag = flag ; }
-
-// ConfigBox X-position
-static int ConfigBoxLeft = -1 ;
-int GetConfigBoxLeft() { return ConfigBoxLeft ; }
-void SetConfigBoxLeft( const int val ) { ConfigBoxLeft = val ; }
-
-// ConfigBox Y-position
-static int ConfigBoxTop = -1 ;
-int GetConfigBoxTop() { return ConfigBoxTop ; }
-void SetConfigBoxTop( const int val ) { ConfigBoxTop= val ; }
-
 // Flag pour inhiber la gestion du CTRL+TAB
 static int CtrlTabFlag = 1 ;
 int GetCtrlTabFlag(void) { return CtrlTabFlag  ; }
@@ -305,22 +263,11 @@ int GetReconnectDelay(void) { return ReconnectDelay ; }
 void SetReconnectDelay( const int flag ) { ReconnectDelay = flag ; }
 #endif
 
-// Flag pour inhiber le comportement ou toutes les sessions appartiennent au folder defaut
-static int SessionsInDefaultFlag = 1 ;
-int GetSessionsInDefaultFlag(void) { return SessionsInDefaultFlag ; }
-void SetSessionsInDefaultFlag( const int flag ) { SessionsInDefaultFlag = flag ; }
-
 // Flag pour inhiber la creation automatique de la session Default Settings
 // [ConfigBox] defaultsettings=yes
 static int DefaultSettingsFlag = 1 ;
 int GetDefaultSettingsFlag(void) { return DefaultSettingsFlag ; }
 void SetDefaultSettingsFlag( const int flag ) { DefaultSettingsFlag = flag ; }
-
-// Flag pour définir l'action a executer sur un double clic sur une session de la liste des sessions
-// [ConfigBox] dblclick=open
-static int DblClickFlag = 0 ;
-int GetDblClickFlag(void) { return DblClickFlag ; }
-void SetDblClickFlag( const int flag ) { DblClickFlag = flag ; }
 
 // Flag pour inhiber le filtre sur la liste des sessions de la boite de configuration
 static int SessionFilterFlag = 1 ;
@@ -335,9 +282,6 @@ void SetImageViewerFlag( const int flag ) { ImageViewerFlag = flag ; }
 // Duree (en secondes) pour switcher l'image de fond d'ecran (<=0 pas de slide)
 int ImageSlideDelay = - 1 ;
 
-// Nombre de clignotements max de l'icone dans le systeme tray lors de la reception d'un BELL
-int MaxBlinkingTime = 0 ;
-
 // Compteur pour l'envoi de anti-idle
 int AntiIdleCount = 0 ;
 int AntiIdleCountMax = 6 ;
@@ -351,9 +295,6 @@ char * WinSCPPath = NULL ;
 
 // Chemin vers le programme pscp.exe
 char * PSCPPath = NULL ;
-
-// Chemin vers le programme plink.exe
-char * PlinkPath = NULL ;
 
 // Repertoire de lancement
 char InitialDirectory[4096]="" ;
@@ -393,23 +334,9 @@ NOTIFYICONDATA TrayIcone ;
 #define TIMER_SLIDEBG 8703
 #endif
 #define TIMER_REDRAW 8704
-#define TIMER_AUTOPASTE 8705
 #define TIMER_BLINKTRAYICON 8706
 #define TIMER_LOGROTATION 8707
 #define TIMER_ANTIIDLE 8708
-
-/*
-#define TIMER_INIT 12341
-#define TIMER_AUTOCOMMAND 12342
-#ifdef MOD_BACKGROUNDIMAGE
-#define TIMER_SLIDEBG 12343
-#endif
-#define TIMER_REDRAW 12344
-#define TIMER_AUTOPASTE 12345
-#define TIMER_BLINKTRAYICON 12346
-#define TIMER_LOGROTATION 12347
-*/
-
 
 #ifndef BUILD_TIME
 #define BUILD_TIME "Undefined"
@@ -472,7 +399,6 @@ int get_param( const char * val ) {
 	else if( !stricmp( val, "BACKGROUNDIMAGE" ) ) return GetBackgroundImageFlag() ;
 #endif
 	// else if( !stricmp( val, "CONFIGBOXHEIGHT" ) ) return ConfigBoxHeight ;
-	// else if( !stricmp( val, "AUTOSTORESSHKEY" ) ) return AutoStoreSSHKeyFlag ;
 	// else if( !stricmp( val, "CONFIGBOXWINDOWHEIGHT" ) ) return ConfigBoxWindowHeight ;
 	// else if( !stricmp( val, "NUMBEROFICONS" ) ) return NumberOfIcons ;	// ==> Remplace par GetNumberOfIcons()
 	// else if( !stricmp( val, "ICON" ) ) return IconeFlag ; // ==> Remplace par GetIconeFlag()
@@ -994,24 +920,6 @@ void RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKe
 	kitty_RegCopyTree( hMainKey, lpSubKey, lpDestKey ) ;
 	if( hdlg != NULL ) InfoBoxSetText( hdlg, "Preparing local registry" ) ;
 	RegDelTree( hMainKey, lpSubKey ) ;
-	}
-
-// Permet de recuperer les sessions KiTTY dans PuTTY  (PUTTY_REG_POS)
-void RepliqueToPuTTY( LPCTSTR Key ) { 
-	char buffer[1024] ;
-	if( IniFileFlag == SAVEMODE_REG )
-	if( readINI( KittyIniFile, "PuTTY", "keys", buffer, sizeof(buffer) ) ) {
-		str_rtrim( buffer, "\n\r \t" ) ;
-		if( !stricmp( buffer, "load" ) ) {
-			snprintf( buffer, sizeof(buffer), "%s\\Sessions", Key ) ;
-			RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Sessions" ) ;
-			kitty_RegCopyTree( HKEY_CURRENT_USER, buffer, "Software\\SimonTatham\\PuTTY\\Sessions" ) ;
-			snprintf( buffer, sizeof(buffer), "%s\\SshHostKeys", Key ) ;
-			kitty_RegCopyTree( HKEY_CURRENT_USER, buffer, "Software\\SimonTatham\\PuTTY\\SshHostKeys" ) ;
-			}
-		//delINI( KittyIniFile, "PuTTY", "keys" ) ;
-		RegCleanPuTTY() ;
-		}
 	}
 
 int license_make_with_first( char * license, int length, int modulo, int result ) ;
@@ -2066,12 +1974,6 @@ void OpenAndSendScriptFile( HWND hwnd ) {
     }
 }
 
-/* Set from kitty.ini [KiTTY] localcmd / localunsecurecmd in LoadParameters below;
- * currently nothing reads them: the __xy local-command dispatcher that consumed
- * them was removed (see the notice in kitty_xfer.c). */
-static int LocalCmdFlag = 1 ;
-static int LocalUnsecureCmdFlag = 0 ;
-
 // Get window coodinates
 void GetWindowCoord( HWND hwnd ) {
     RECT rc ;
@@ -2626,24 +2528,12 @@ int InternalCommand( HWND hwnd, char * st ) {
 			MessageBox( NULL, "Savemode is \"dir\"", "Info", MB_OK ) ;
 		}
 		return 1 ;
-	} else if( !strcmp( st, "/capslock" ) ) { 
-		CapsLockFlag = abs( CapsLockFlag - 1 ) ; 
-		return 1 ; 
-	} else if( !strcmp( st, "/init" ) ) { 
+	} else if( !strcmp( st, "/init" ) ) {
 		char buffer[4096] ;
 		snprintf( buffer, sizeof(buffer),"ConfigDirectory=%s\nIniFileFlag=%d\nDirectoryBrowseFlag=%d\nInitialDirectory=%s\nKittyIniFile=%s\nKittySavFile=%s\nKiTTYClassName=%s\n"
 			,ConfigDirectory,IniFileFlag,DirectoryBrowseFlag,InitialDirectory,KittyIniFile,KittySavFile,KiTTYClassName ) ;
 		MessageBox(hwnd,buffer,"Configuration infomations",MB_OK);
 		return 1 ; 
-	} else if( !strcmp( st, "/capslock" ) ) { 
-		conf_set_int( conf, CONF_xpos, 10 ) ;
-		conf_set_int( conf, CONF_ypos, 10 ) ;
-		SetWindowPos( hwnd, 0, 10, 10, 0, 0, SWP_NOSIZE|SWP_NOZORDER|SWP_NOOWNERZORDER|SWP_NOACTIVATE ) ;
-		return 1 ; 
-	} else if( !strcmp( st, "/size" ) ) { 
-		SizeFlag = abs( SizeFlag - 1 ) ; 
-		set_title( NULL, conf_get_str(conf,CONF_wintitle) ) ;
-		return 1 ;
 	} else if( !strcmp( st, "/transparency" ) ) {
 #ifndef MOD_NOTRANSPARENCY
 		if( (conf_get_int(conf,CONF_transparencynumber) == -1) || (TransparencyFlag == 0 ) ) {
@@ -2748,9 +2638,6 @@ int InternalCommand( HWND hwnd, char * st ) {
 #endif
 	} else if( !strcmp( st, "/winroll" ) ) { 
 		WinrolFlag = abs(WinrolFlag-1) ;
-		return 1 ;
-	} else if( !strcmp( st, "/wintitle" ) ) { 
-		TitleBarFlag = abs(TitleBarFlag-1) ; 
 		return 1 ;
 	} else if( strstr( st, "/command " ) == st ) {
 		SendCommandAllWindows( hwnd, st+9 ) ;
@@ -3213,27 +3100,6 @@ void ResetWindow(int reinit) ;
  * InitShortcuts / ManageShortcuts + the shortcut tables) lives in
  * kitty_shortcuts.c; the tables are declared in kitty.h. */
 
-// shift+bouton droit => paste ameliore pour serveur "lent"
-// Le paste utilise la methode "autocommand"
-void SetPasteCommand( HWND hwnd ) {
-	if( !PasteCommandFlag ) return ;
-	if( PasteCommand != NULL ) { free( PasteCommand ) ; PasteCommand = NULL ; }
-	char *pst = NULL ;
-	if( OpenClipboard(NULL) ) {
-		HGLOBAL hglb ;
-		if( (hglb = GetClipboardData( CF_TEXT ) ) != NULL ) {
-			if( ( pst = GlobalLock( hglb ) ) != NULL ) {
-				PasteCommand = (char*) malloc( strlen(pst)+1 ) ;
-				strcpy( PasteCommand, pst ) ;
-				SetTimer(hwnd, TIMER_AUTOPASTE, autocommand_delay, NULL) ;
-				debug_logevent( "Sent paste command" ) ;
-				GlobalUnlock( hglb ) ;
-				}
-			}
-		CloseClipboard();
-		}
-	}
-	
 // Initialisation des parametres a partir du fichier kitty.ini
 #ifdef MOD_BACKGROUNDIMAGE
 void SetShrinkBitmapEnable(int) ;
@@ -3244,19 +3110,10 @@ void LoadParameters( void ) {
 
 	/* A lire en premier */
 	if( ReadParameterN( INIT_SECTION, "debug", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) debug_flag = 1 ; }
-	
-	if( ReadParameterN( "Agent", "scrumble", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetScrumbleKeyFlag(1) ; }
 
-#ifdef MOD_ADB
-	if( ReadParameterN( INIT_SECTION, "adb", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "YES" ) ) SetADBFlag( 1 ) ; 
-		if( !stricmp( buffer, "NO" ) ) SetADBFlag( 0 ) ; 
-	}
-#endif
 	if( ReadParameterN( INIT_SECTION, "antiidle", buffer, sizeof(buffer) ) ) { buffer[127]='\0'; strcpy( AntiIdleStr, buffer ) ; }
 	if( ReadParameterN( INIT_SECTION, "antiidledelay", buffer, sizeof(buffer) ) ) 
 		{ AntiIdleCountMax = (int)floor(atoi(buffer)/10.0) ; if( AntiIdleCountMax<=0 ) AntiIdleCountMax =1 ; }
-	if( ReadParameterN( INIT_SECTION, "autostoresshkey", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetAutoStoreSSHKeyFlag( 1 ) ; }
 #ifdef MOD_BACKGROUNDIMAGE
 	//if( debug_flag )
 	if( ReadParameterN( INIT_SECTION, "bgimage", buffer, sizeof(buffer) ) ) {	
@@ -3269,7 +3126,6 @@ void LoadParameters( void ) {
 		if( !stricmp( buffer, "NO" ) ) { DirectoryBrowseFlag = 0 ; }
 		else if( (!stricmp( buffer, "YES" )) && (IniFileFlag==SAVEMODE_DIR) ) DirectoryBrowseFlag = 1 ;
 	}
-	if( ReadParameterN( INIT_SECTION, "capslock", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) CapsLockFlag = 1 ; }
 	if( ReadParameterN( INIT_SECTION, "commanddelay", buffer, sizeof(buffer) ) ) {
 		autocommand_delay = (int)(1000*atof( buffer )) ;
 		if(autocommand_delay<5) autocommand_delay = 5 ; 
@@ -3307,26 +3163,10 @@ void LoadParameters( void ) {
 			str_rtrim( FileExtension, " " ) ;
 		}				
 	}
-	if( ReadParameterN( INIT_SECTION, "hostkeyextension", buffer, sizeof(buffer) ) ) {
-		if( strlen(buffer) > 0 ) { SetHostKeyExtension(buffer) ; }
-	}
-	if( ReadParameterN( INIT_SECTION, "KiPP", buffer, sizeof(buffer) ) != 0 ) {
-		if( decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD ) ) ManagePassPhrase( buffer ) ;
-	}
-	if( ReadParameterN( INIT_SECTION, "localcmd", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "NO" ) ) LocalCmdFlag = 0 ;
-		if( !stricmp( buffer, "YES" ) ) LocalCmdFlag = 1 ;
-	}
-	if( ReadParameterN( INIT_SECTION, "localunsecurecmd", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "NO" ) ) LocalUnsecureCmdFlag = 0 ;
-		if( !stricmp( buffer, "YES" ) ) LocalUnsecureCmdFlag = 1 ;
-	}
-	if( ReadParameterN( INIT_SECTION, "maxblinkingtime", buffer, sizeof(buffer) ) ) { MaxBlinkingTime=2*atoi(buffer);if(MaxBlinkingTime<0) MaxBlinkingTime=0; }
-	if( ReadParameterN( INIT_SECTION, "mouseshortcuts", buffer, sizeof(buffer) ) ) { 
+	if( ReadParameterN( INIT_SECTION, "mouseshortcuts", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "NO" ) ) MouseShortcutsFlag = 0 ;
 		if( !stricmp( buffer, "YES" ) ) MouseShortcutsFlag = 1 ;
 	}
-	if( ReadParameterN( INIT_SECTION, "paste", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) PasteCommandFlag = 1 ; }
 	/* cyd01/KiTTY #548: force classic modal error boxes instead of inline terminal errors */
 	if( ReadParameterN( INIT_SECTION, "modalerrors", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "YES" ) ) SetModalErrorsFlag( 1 ) ;
@@ -3358,7 +3198,6 @@ void LoadParameters( void ) {
 		if( !stricmp( buffer, "NO" ) ) ShortcutsFlag = 0 ; 
 		if( !stricmp( buffer, "YES" ) ) ShortcutsFlag = 1 ; 
 	}
-	if( ReadParameterN( INIT_SECTION, "size", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SizeFlag = 1 ; }
 	if( ReadParameterN( INIT_SECTION, "slidedelay", buffer, sizeof(buffer) ) ) { ImageSlideDelay = atoi( buffer ) ; }
 	if( ReadParameterN( INIT_SECTION, "sshversion", buffer, sizeof(buffer) ) ) { set_sshver( buffer ) ; }
 	if( ReadParameterN( INIT_SECTION, "userpasssshnosave", buffer, sizeof(buffer) ) ) { 
@@ -3375,7 +3214,6 @@ void LoadParameters( void ) {
 			WinSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( WinSCPPath, buffer ) ;
 		}
 	}
-	if( ReadParameterN( INIT_SECTION, "wintitle", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "NO" ) ) TitleBarFlag = 0 ; }
 #ifdef MOD_PROXY
 	if( ReadParameterN( "ConfigBox", "proxyselection", buffer, sizeof(buffer) ) ) {
 		/* yes = always, no = never, auto (or anything else) = when defined */
@@ -3397,10 +3235,6 @@ void LoadParameters( void ) {
 		if( ReconnectDelay < 1 ) ReconnectDelay = 1 ;
 	}
 #endif
-	if( ReadParameterN( INIT_SECTION, "scriptmode", buffer, sizeof(buffer) ) ) { 
-		if( !stricmp( buffer, "YES" ) ) RuttyFlag = 1 ;
-		if( !stricmp( buffer, "NO" ) ) RuttyFlag = 0 ;
-	}
 #ifndef MOD_NOTRANSPARENCY
 	if( ReadParameterN( INIT_SECTION, "transparency", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "YES" ) ) { TransparencyFlag = 1 ; }
@@ -3412,10 +3246,6 @@ void LoadParameters( void ) {
 	if( ReadParameterN( INIT_SECTION, "shrinkbitmap", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetShrinkBitmapEnable(1) ; else SetShrinkBitmapEnable(0) ; }
 #endif
 
-	if( readINI( KittyIniFile, "ConfigBox", "dblclick", buffer, sizeof(buffer) ) ) {
-		if( !strcmp(buffer,"open") ) { SetDblClickFlag(0) ; }
-		if( !strcmp(buffer,"start") ) { SetDblClickFlag(1) ; }
-	}
 	if( readINI( KittyIniFile, "ConfigBox", "height", buffer, sizeof(buffer) ) ) {
 		ConfigBoxHeight = atoi( buffer ) ;
 		/* NB: the extra row taken by the Proxy-choice droplist (when shown) is
@@ -3425,14 +3255,8 @@ void LoadParameters( void ) {
 	if( readINI( KittyIniFile, "ConfigBox", "windowheight", buffer, sizeof(buffer) ) ) {
 		ConfigBoxWindowHeight = atoi( buffer ) ;
 	}
-	if( readINI( KittyIniFile, "ConfigBox", "noexit", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "YES" ) ) ConfigBoxNoExitFlag = 1 ;
-	}
 	if( readINI( KittyIniFile, "ConfigBox", "filter", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "NO" ) ) SessionFilterFlag = 0 ;
-	}
-	if( readINI( KittyIniFile, "ConfigBox", "default", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "NO" ) ) SessionsInDefaultFlag = 0 ;
 	}
 	if( readINI( KittyIniFile, "ConfigBox", "defaultsettings", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "NO" ) ) DefaultSettingsFlag = 0 ;
@@ -3446,20 +3270,6 @@ void LoadParameters( void ) {
 			kitty_category_expand_depth = 99 ;
 		else { int d = atoi(buffer) ; kitty_category_expand_depth = (d >= 1) ? d : 99 ; }
 	}
-	if( readINI( KittyIniFile, "ConfigBox", "left", buffer, sizeof(buffer) ) ) {
-		SetConfigBoxLeft( atoi(buffer) ) ;
-	}
-	if( readINI( KittyIniFile, "ConfigBox", "top", buffer, sizeof(buffer) ) ) {
-		SetConfigBoxTop( atoi(buffer) ) ;
-	}
-	
-	// Param RandomActiveFlag défini dans kitty_commun.c
-	// Pour gérer le bug sur certaines machines:  https://github.com/cyd01/KiTTY/issues/113
-	if( readINI( KittyIniFile, "Debug", "randomactive", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "NO" ) ) SetRandomActiveFlag( 0 ) ;
-		if( !stricmp( buffer, "YES" ) ) SetRandomActiveFlag( 1 ) ;
-	}
-
 	if( readINI( KittyIniFile, "Print", "height", buffer, sizeof(buffer) ) ) {
 		PrintCharSize = atoi( buffer ) ;
 	}
@@ -3553,9 +3363,6 @@ void WriteCountUpAndPath( void ) {
 	// Recherche pscp s'il existe
 	SearchPSCP() ;
 	
-	// Recherche plink s'il existe
-	SearchPlink() ;
-
 	// Recherche WinSCP s'il existe
 	SearchWinSCP() ;
 	}

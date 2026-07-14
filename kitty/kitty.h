@@ -14,18 +14,6 @@ HWND GetMainHwnd(void) ;
 ** DEFINITION DES VARIABLES STATIQUE DE kitty.c
 ** ET DE LEUR FONCTIONS D'ACCES ET DE MODIFICATION
 *****************************************************/
-// Flag pour retourner à la Config Box en fin d'execution
-// extern int ConfigBoxNoExitFlag ;
-int GetConfigBoxNoExitFlag(void) ;
-
-// ConfigBox X-position
-int GetConfigBoxLeft() ;
-void SetConfigBoxLeft( const int val ) ;
-
-// ConfigBox Y-position
-int GetConfigBoxTop();
-void SetConfigBoxTop( const int val ) ;
-
 // Flag pour inhiber la gestion du CTRL+TAB
 int GetCtrlTabFlag(void) ;
 void SetCtrlTabFlag( const int flag ) ;
@@ -61,16 +49,6 @@ extern int internal_delay ;
 // Nom de la classe de l'application
 extern char KiTTYClassName[128] ;
 
-// Flag pour imposer le passage en majuscule
-// extern int CapsLockFlag ;
-int GetCapsLockFlag(void) ;
-void SetCapsLockFlag( const int flag ) ;
-
-// Flag pour gerer la presence de la barre de titre
-// extern int TitleBarFlag ;
-int GetTitleBarFlag(void) ;
-void SetTitleBarFlag( const int flag ) ;
-
 // KiTTY: expand window-title placeholders (%%h, %%s, %%u, %%p, %%P, %%f, %%l, %%d)
 char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf) ;
 
@@ -88,14 +66,6 @@ void SetProxySelectionFlag( const int flag ) ;
 
 // Duree (en secondes) pour switcher l'image de fond d'ecran (<=0 pas de slide)
 extern int ImageSlideDelay ;
-
-// Nombre de clignotements max de l'icone dans le systeme tray lors de la reception d'un BELL
-extern int MaxBlinkingTime ;
-
-// Flag pour l'affichage de la taille de la fenetre
-// extern int SizeFlag ;
-int GetSizeFlag(void) ;
-void SetSizeFlag( const int flag ) ;
 
 // Flag pour la protection contre les saisies malheureuses
 // extern int ProtectFlag ; 
@@ -133,10 +103,6 @@ extern char * AutoCommand ;
 // Contenu d'un script a envoyer à l'ecran
 extern char * ScriptCommand ;
 
-// Pointeur sur la commande a passer ligne a ligne
-extern char * PasteCommand ;
-int GetPasteCommandFlag(void) ;
-
 // paste size limit (number of characters). Above the limit a confirmation is requested. (0 means unlimited)
 int GetPasteSize(void) ;
 void SetPasteSize( const int size ) ;
@@ -145,11 +111,6 @@ void SetPasteSize( const int size ) ;
 extern int HyperlinkFlag ;
 int GetHyperlinkFlag(void) ;
 void SetHyperlinkFlag( const int flag ) ;
-
-// Flag de gestion de la fonction "rutty" (script automatique)
-//extern int RuttyFlag ;
-int GetRuttyFlag(void) ;
-void SetRuttyFlag( const int flag ) ;
 
 // Flag pour le fonctionnement en mode "portable" (gestion par fichiers), defini dans kitty_commun.c
 extern int IniFileFlag ;
@@ -214,26 +175,10 @@ void SetUserPassSSHNoSave( const int flag ) ;
 int GetSessionFilterFlag(void) ;
 void SetSessionFilterFlag( const int flag ) ;
 
-// Flag pour inhiber le comportement ou toutes les sessions appartiennent au folder defaut
-// [ConfigBox] default=yes
-int GetSessionsInDefaultFlag(void) ;
-void SetSessionsInDefaultFlag( const int flag ) ;
-
 // Flag pour inhiber la création automatique de la session Default Settings
 // [ConfigBox] defaultsettings=yes
 int GetDefaultSettingsFlag(void) ;
 void SetDefaultSettingsFlag( const int flag ) ;
-
-// Flag pour définir l'action a executer sur un double clic sur une session de la liste des sessions
-// [ConfigBox] dblclick=open
-int GetDblClickFlag(void) ;
-void SetDblClickFlag( const int flag ) ;
-
-#ifdef MOD_ADB
-// Flag pour inhiber le support d'ADB
-int GetADBFlag(void) ;
-void SetADBFlag( const int flag ) ;
-#endif
 
 // Chemin vers le programme cthelper.exe
 extern char * CtHelperPath ;
@@ -243,9 +188,6 @@ extern char * WinSCPPath ;
 
 // Chemin vers le programme pscp.exe
 extern char * PSCPPath  ;
-
-// Chemin vers le programme plink.exe
-extern char * PlinkPath ;
 
 // Repertoire de lancement
 extern char InitialDirectory[4096] ;
@@ -415,8 +357,6 @@ char * GetKittyIniFile(void) ;
 int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) ;
 // Sauve les coordonnees de la fenetre
 void SaveWindowCoord( Conf * conf ) ;
-// Permet de recuperer les sessions KiTTY dans PuTTY  (PUTTY_REG_POS)
-void RepliqueToPuTTY( LPCTSTR Key ) ;
 // Decompte le nombre de fenetre de la meme classe que KiTTY
 int WindowsCount( HWND hwnd ) ;
 HWND InfoBox( HINSTANCE hInstance, HWND hwnd ) ;
@@ -452,11 +392,9 @@ void SendFileList( HWND hwnd, char * filelist ) ;
 void GetOneFile( HWND hwnd, char * directory, const char * filename ) ;
 void GetFile( HWND hwnd ) ;
 void RunCmd( HWND hwnd ) ;
-void RunExternPlink( HWND hwnd, const char * cmd ) ;
 int SearchCtHelper( void ) ;
 int SearchWinSCP( void ) ;
 int SearchPSCP( void ) ;
-int SearchPlink( void ) ;
 void StartNewSession( HWND hwnd, char * directory, char * host, char * user ) ;
 void urlhack_launch_url(const char* app, const char *url) ;
 int GetPortFwdState( const int port, const DWORD pid ) ;
@@ -464,9 +402,6 @@ int ShowPortfwd( HWND hwnd, Conf * conf ) ;
 void OnDropFiles(HWND hwnd, HDROP hDropInfo) ;
 // Affiche un menu dans le systeme Tray
 void DisplaySystemTrayMenu( HWND hwnd ) ;
-// shift+bouton droit => paste ameliore pour serveur "lent"
-// Le paste utilise la methode "autocommand"
-void SetPasteCommand( HWND hwnd ) ;
 // Recupere les coordonnees de la fenetre
 void GetWindowCoord( HWND hwnd ) ;
 // Gestion du script au lancement
@@ -491,12 +426,10 @@ void ChangeSettings(HWND hwnd) ;
 int ManageViewer( HWND hwnd, WORD wParam ) ;
 
 void create_settings( const char * name ) ;
-void SetHostKeyExtension( const char* ext ) ;
 
 char * GetHelpMessage(void) ;
 void CreateIniFile( const char * filename ) ;
 void SendKeyboard( HWND hwnd, const char * buffer ) ;
-char * GetRemotePath() ;
 void ManageShortcutsFlag( HWND hwnd ) ;
 
 #ifdef MOD_LAUNCHER
@@ -564,9 +497,6 @@ int getpid(void) ;
 #endif
 #ifndef TIMER_REDRAW
 #define TIMER_REDRAW 8704
-#endif
-#ifndef TIMER_AUTOPASTE
-#define TIMER_AUTOPASTE 8705
 #endif
 #ifndef TIMER_BLINKTRAYICON
 #define TIMER_BLINKTRAYICON 8706

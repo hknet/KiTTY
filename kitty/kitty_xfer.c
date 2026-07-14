@@ -2,9 +2,9 @@
  * KiTTY file-transfer and external-tool integration, moved verbatim out of
  * kitty.c to shrink that monolith: the pscp transfer window (live output
  * capture, cancel button, success tray balloon), the injection-hardened
- * pscp/plink command builders (SendOneFile/SendFileList/SendFile,
- * GetOneFile/GetFile, RunExternPlink, RunCmd), external-tool path discovery
- * (SearchCtHelper/SearchWinSCP/SearchPSCP/SearchPlink), StartWinSCP, and the
+ * pscp command builders (SendOneFile/SendFileList/SendFile,
+ * GetOneFile/GetFile, RunCmd), external-tool path discovery
+ * (SearchCtHelper/SearchWinSCP/SearchPSCP), StartWinSCP, and the
  * pscp-upload drag-and-drop handlers. Compiled into the same targets as
  * kitty.c (kitty + kitty_portable), so behaviour is unchanged.
  */
@@ -551,59 +551,6 @@ void SendFile( HWND hwnd ) {
 	}
 
 
-// Start a plink command
-/*
-run() { printf "\033]0;__pl:$*\007" ; }
-*/
-int SearchPlink( void ) ;
-void RunExternPlink( HWND hwnd, const char * cmd ) {
-    char buffer[4096], plinkpath[4096]="", b1[256] ;
-
-    if( PlinkPath==NULL ) {
-        if( IniFileFlag == SAVEMODE_REG ) return ;
-        else if( !SearchPlink() ) return ;
-    }
-    if( !existfile( PlinkPath ) ) {
-        if( IniFileFlag == SAVEMODE_REG ) return ;
-        else if( !SearchPlink() ) return ;
-    }
-
-    if( !GetShortPathName( PlinkPath, plinkpath, 4095 ) ) return ;
-
-    buffer[0]='\0' ;
-    const size_t BC = sizeof(buffer) ;
-    bcat( buffer, BC, plinkpath ) ; bcat( buffer, BC, " " ) ;
-
-    if( strlen( conf_get_str(conf, CONF_sftpconnect) ) == 0 ) {
-        snprintf( b1, sizeof(b1), "-P %d ", conf_get_int(conf, CONF_port)) ; bcat( buffer, BC, b1 ) ;
-    }
-    if( conf_get_int(conf,CONF_sshprot) == 3 ) { bcat( buffer, BC, "-2 " ) ; }   // SSH-2 Only
-
-    if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
-        bcat( buffer, BC, "-pw " ) ; qcat( buffer, BC, conf_get_str(conf,CONF_password) ) ; bcat( buffer, BC, " " ) ;
-    }
-    if( strlen( filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) > 0 ) {
-        bcat( buffer, BC, "-i " ) ; qcat( buffer, BC, filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ; bcat( buffer, BC, " " ) ;
-    }
-    /* target (single quoted argument) */
-    {
-        char tgt[4096] ; tgt[0]='\0' ;
-        if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
-            bcat( tgt, sizeof(tgt), conf_get_str(conf, CONF_sftpconnect) ) ;
-        } else {
-            bcat( tgt, sizeof(tgt), conf_get_str_ambi(conf,CONF_username,NULL) ) ; bcat( tgt, sizeof(tgt), "@" ) ;
-            if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) { bcat(tgt,sizeof(tgt),"[") ; bcat(tgt,sizeof(tgt),conf_get_str(conf,CONF_host)) ; bcat(tgt,sizeof(tgt),"]") ; }
-            else { bcat( tgt, sizeof(tgt), conf_get_str(conf,CONF_host) ) ; }
-        }
-        qcat( buffer, BC, tgt ) ; bcat( buffer, BC, " " ) ;
-    }
-    qcat( buffer, BC, cmd ) ;   /* remote command (single quoted argument) */
-
-    chdir( InitialDirectory ) ;
-    if( debug_flag ) { debug_logevent( "Run: %s", buffer) ; }
-    if( kitty_run_noshell( buffer, 1 ) ) { MessageBox( NULL, buffer, "Execute problem", MB_OK|MB_ICONERROR  ) ; }
-}
-
 // Get a remote file throught scp
 /*
 get()
@@ -849,12 +796,6 @@ void RunCmd( HWND hwnd ) {
     }
 }
 
-// Manage local commands
-static char * RemotePath = NULL ;
-char * GetRemotePath() { return RemotePath ; }
-/* Save remote path in RemotePath variable
-pw() { printf "\033]0;__pw:`pwd`\007" ; }
-*/
 /* Execute a local command
 cmd()
 {
@@ -897,36 +838,15 @@ ds() { printf "\033]0;__ds:`pwd`\007" ; }
 dt() { printf "\033]0;__dt:"$(hostname)":"${USER}":"`pwd`"\007" ; }
 */
 
-/* #525 (CVE-2024-25003 / CVE-2024-25004): the __dt and __wt metacommands carry a
- * "host:user:path" payload straight from a remote-controlled ANSI escape
- * sequence. The original code strcpy()'d that into fixed host[1024]/user[256]
- * buffers with no bounds check, so a long host or user overflowed the stack.
- * Split it safely instead: copies into host/user are length-capped, the field
- * separators are validated, and the path is returned in a freshly-sized
- * allocation. Returns 1 on success (caller owns *path), 0 on malformed input. */
-static int kitty_split_host_user_path( const char *s,
-                                       char *host, size_t hostsz,
-                                       char *user, size_t usersz, char **path ) {
-    size_t n ; int i ;
-    *path = NULL ;
-    if( s == NULL ) return 0 ;
-    n = strlen( s ) ; if( n >= hostsz ) n = hostsz - 1 ; memcpy( host, s, n ) ; host[n] = '\0' ;
-    i = poss( ":", host ) ; if( i <= 0 ) return 0 ;             /* need a user field */
-    n = strlen( host + i ) ; if( n >= usersz ) n = usersz - 1 ; memcpy( user, host + i, n ) ; user[n] = '\0' ;
-    host[i-1] = '\0' ;
-    i = poss( ":", user ) ; if( i <= 0 ) return 0 ;            /* need a path field */
-    *path = (char*) malloc( strlen( user + i ) + 1 ) ; if( *path == NULL ) return 0 ;
-    strcpy( *path, user + i ) ;
-    user[i-1] = '\0' ;
-    return 1 ;
-}
-
 /* SECURITY (0.84.1.37): the ManageLocalCmd "__xy" remote-escape metacommand
  * dispatcher has been REMOVED. It was dead code in 0.84 (the OSC hook that fed
  * it was never forward-ported, so it had no caller) and carried a latent
  * command-injection / RCE surface (__cm/__pl/__ie/__ds, cf. CVE-2024-23749) if
  * ever re-wired. If a future feature needs remote metacommands, re-introduce a
- * hardened, opt-in implementation rather than restoring this. */
+ * hardened, opt-in implementation rather than restoring this. Its last
+ * remnants (the RemotePath store fed by __pw, and the #525/CVE-2024-25003-
+ * hardened host:user:path splitter for __dt/__wt) went in the ini hygiene
+ * sweep: nothing set or consumed them anymore. */
 
 // Recherche le chemin vers le programme cthelper.exe
 /* If `candidate` names an existing file, adopt it as the tool path *out
@@ -1176,34 +1096,7 @@ int SearchPSCP( void ) {
 
 	return 0 ;
 }
-	
-// Recherche le chemin vers le programme Plink.exe
-int SearchPlink( void ) {
-	char buffer[4096], ki[10]="klink.exe", pu[10]="plink.exe" ;
 
-	if( PlinkPath!=NULL ) { free(PlinkPath) ; PlinkPath = NULL ; }
-	// Dans la base de registre
-	if( ReadParameterN( INIT_SECTION, "PlinkPath", buffer, sizeof(buffer) ) != 0 ) {
-		buffer[4076]='\0';
-		if( adopt_tool_path_if_exists( &PlinkPath, buffer, NULL, NULL ) ) return 1 ;
-		else { DelParameter( INIT_SECTION, "PlinkPath" ) ; }
-	}
-
-	// klink dans le meme repertoire
-	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, ki ) ;
-	if( adopt_tool_path_if_exists( &PlinkPath, buffer, "PlinkPath", NULL ) ) return 1 ;
-
-	// plink dans le repertoire normal de PuTTY
-	snprintf( buffer, sizeof(buffer), "%s\\PuTTY\\%s", getenv("ProgramFiles"), pu ) ;
-	if( adopt_tool_path_if_exists( &PlinkPath, buffer, "PlinkPath", NULL ) ) return 1 ;
-
-	// plink dans le meme repertoire
-	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, pu ) ;
-	if( adopt_tool_path_if_exists( &PlinkPath, buffer, "PlinkPath", NULL ) ) return 1 ;
-
-	return 0 ;
-}
-	
 // Gestion du drap and drop
 void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
         HDROP hDropInfo = *leDrop ;
@@ -1224,9 +1117,11 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
 					snprintf( buffer, sizeof(buffer), "\"%s\" -ed %s", shortname, fic ) ;
 					RunCommand( hwnd, buffer ) ;
 				}
-		} else { 
-			if( !conf_get_bool( conf, CONF_scp_auto_pwd ) ) { SendOneFile( hwnd, "", fic, NULL ) ; }
-			else { SendOneFile( hwnd, "", fic, RemotePath  ) ; }
+		} else {
+			/* NULL target dir either way: the RemotePath store the auto-pwd
+			 * branch used to pass was never written on the 0.84 core (the
+			 * __pw title-scan was not forward-ported), so it was always NULL. */
+			SendOneFile( hwnd, "", fic, NULL ) ;
 		}
 		free(fic);
 	}
@@ -1241,8 +1136,7 @@ void OnDropFiles(HWND hwnd, HDROP hDropInfo) {
 	}
 	if( !conf_get_bool( conf, CONF_scp_auto_pwd ) ) { 
 		recupNomFichierDragDrop(hwnd, &hDropInfo) ; 
-	} else { 
-		if( RemotePath != NULL ) { free( RemotePath ) ; RemotePath = NULL ; }
+	} else {
 		if( hDropInf != NULL ) { free(hDropInf) ; hDropInf = NULL ; }
 		char cmd[1024] = "printf \"\\033]0;__pw:%s\\007\" `pwd`\\n" ;
 		if( AutoCommand != NULL ) { free(AutoCommand) ; AutoCommand = NULL ; }

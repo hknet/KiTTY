@@ -46,38 +46,16 @@ int ModalErrorsFlag = 0 ;
 int GetModalErrorsFlag(void) { return ModalErrorsFlag ; }
 void SetModalErrorsFlag( const int flag ) { ModalErrorsFlag = flag ; }
 
-// Flag permettant de sauvegarder automatique les cles SSH des serveurs
-static int AutoStoreSSHKeyFlag = 0 ;
-int GetAutoStoreSSHKeyFlag(void) { return AutoStoreSSHKeyFlag ; }
-void SetAutoStoreSSHKeyFlag( const int flag ) { AutoStoreSSHKeyFlag = flag ; }
-
 // Flag permettant de desactiver la sauvegarde automatique des informations de connexion (user/password) Ã  la connexion SSH
 static int UserPassSSHNoSave = 0 ;
 int GetUserPassSSHNoSave(void) { return UserPassSSHNoSave ; }
 void SetUserPassSSHNoSave( const int flag ) { UserPassSSHNoSave = flag ; }
-
-// Flag permettant de gérer la demande confirmation à l'usage d'une clé privée (1=always; 0=never; 2=based on "comment")
-static int AskConfirmationFlag=2 ;
-int GetAskConfirmationFlag(void) { return AskConfirmationFlag ; }
-void SetAskConfirmationFlag( const int flag ) { AskConfirmationFlag = flag ; }
 
 // Flag pour empêcher l'écriture des fichiers (default settings, jump file list ...)
 // [KiTTY] readonly=no
 static int ReadOnlyFlag = 0 ;
 int GetReadOnlyFlag(void) { return ReadOnlyFlag ; }
 void SetReadOnlyFlag( const int flag ) { ReadOnlyFlag = flag ; }
-
-// Flag pour gérer le "mélange" des clés dans pageant
-static int ScrumbleKeyFlag = 0 ;
-int GetScrumbleKeyFlag(void) { return ScrumbleKeyFlag ; }
-void SetScrumbleKeyFlag( const int flag ) { ScrumbleKeyFlag = flag ; }
-
-#ifdef MOD_ADB
-// Flag pour inhiber le support d'ADB
-static int ADBFlag = 1 ;
-int GetADBFlag(void) { return ADBFlag ; }
-void SetADBFlag( const int flag ) { ADBFlag = flag ; }
-#endif
 
 #ifdef MOD_ZMODEM
 // Flag pour inhiber les fonctions ZMODEM
@@ -97,11 +75,6 @@ int BackgroundImageFlag = 0 ;
 #endif
 int GetBackgroundImageFlag(void) { return BackgroundImageFlag ; }
 void SetBackgroundImageFlag( const int flag ) { BackgroundImageFlag = flag ; }
-
-// Pour supprimer le salt dans la cryptography: issue: https://github.com/cyd01/KiTTY/issues/113
-int RandomActiveFlag = 1 ;
-int GetRandomActiveFlag() { return RandomActiveFlag ; }
-void SetRandomActiveFlag( const int flag ) { RandomActiveFlag = flag ; }
 
 // Pour supprimer le sel dans le cryptage du mot de passe
 int CryptSaltFlag = 0 ;
@@ -280,15 +253,6 @@ int LoadParametersLight( void ) {
 			str_rtrim( FileExtension, " " ) ;
 		}				
 	}
-	if( ReadParameterLightN( INIT_SECTION, "autostoresshkey", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetAutoStoreSSHKeyFlag( 1 ) ; }
-	if( ReadParameterLightN( "Agent", "messageonkeyusage", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetShowBalloonOnKeyUsage() ; }
-	if( ReadParameterLightN( "Agent", "askconfirmation", buffer, sizeof(buffer) ) ) { 
-		if( !stricmp( buffer, "YES" ) ) SetAskConfirmationFlag(1) ; 
-		if( !stricmp( buffer, "NO" ) ) SetAskConfirmationFlag(0) ;
-		if( !stricmp( buffer, "AUTO" ) ) SetAskConfirmationFlag(2) ;
-	}
-	if( ReadParameterLightN( "Agent", "scrumble", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetScrumbleKeyFlag(1) ; }
-
 	return ret ;
 }
 
@@ -309,43 +273,7 @@ void SetSSHConnected( int flag ) {
 
 //PVOID SecureZeroMemory( PVOID ptr, SIZE_T cnt) { return memset( ptr, 0, cnt ) ; }
 
-// Fonction permettant de changer le statut du stockage automatique des ssh host keys
-void SetAutoStoreSSHKey( void ) {
-	AutoStoreSSHKeyFlag = 1 ;
-	}
-	
-/* Fonction permettant de changer le statut de la generation d'un affichage de balloon dans le system tray lorsqu'une clé privée est utilisée */
-static int PrintBalloonOnKeyUsageFlag = 0 ;
-void SetShowBalloonOnKeyUsage( void ) {
-	PrintBalloonOnKeyUsageFlag = 1 ;
-}
-int GetShowBalloonOnKeyUsage( void ) { return PrintBalloonOnKeyUsageFlag ; } 
-	
-/* Fonction permettant d'affiche un message sur l'icone dans le tray */
-char *strncpy(  
-   char *strDest,  
-   const char * strSource,  
-   size_t count   
-);   
-int ShowBalloonTip( NOTIFYICONDATA tnid, TCHAR  title[], TCHAR msg[] ) {
-	if( PrintBalloonOnKeyUsageFlag==0 ) return 0 ;
-	BOOL res;
-	//NOTIFYICONDATA tnid;
-	//tnid.cbSize = sizeof(NOTIFYICONDATA) ;
-	//tnid.hWnd = hwnd ;
-	tnid.uFlags = NIF_INFO ;
-	tnid.dwInfoFlags = NIIF_INFO ;
-	tnid.uTimeout = 3000 ; /*timeout*/
-	strncpy( tnid.szInfo, msg, sizeof( tnid.szInfo ) );
-	strncpy( tnid.szInfoTitle, title, sizeof( tnid.szInfoTitle ) );
-	res = Shell_NotifyIcon(NIM_MODIFY, &tnid);
-	Sleep(3000); 
-	tnid.szInfo[0] = 0 ;
-	res = Shell_NotifyIcon(NIM_MODIFY, &tnid);
-	return res ;	
-}
-
-// Fonctions permettant de formatter les chaînes de caractères avec %XY	
+// Fonctions permettant de formatter les chaînes de caractères avec %XY
 void mungestr( const char *in, char *out ) {
 	char hex[16] = "0123456789ABCDEF";
 	int candot = 0 ;
