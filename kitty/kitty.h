@@ -14,6 +14,10 @@ HWND GetMainHwnd(void) ;
 ** DEFINITION DES VARIABLES STATIQUE DE kitty.c
 ** ET DE LEUR FONCTIONS D'ACCES ET DE MODIFICATION
 *****************************************************/
+// [ConfigBox] noexit: respawn the config box when a session window closes
+int GetConfigBoxNoExitFlag(void) ;
+void SetConfigBoxNoExitFlag( const int flag ) ;
+
 // Flag pour inhiber la gestion du CTRL+TAB
 int GetCtrlTabFlag(void) ;
 void SetCtrlTabFlag( const int flag ) ;
@@ -48,6 +52,17 @@ extern int internal_delay ;
 
 // Nom de la classe de l'application
 extern char KiTTYClassName[128] ;
+
+// [KiTTY] size: append the live [rows x cols] to the window title
+int GetSizeFlag(void) ;
+void SetSizeFlag( const int flag ) ;
+
+// [KiTTY] wintitle: enable the title decorations (size suffix, PROTECTED/ONTOP markers)
+int GetTitleBarFlag(void) ;
+void SetTitleBarFlag( const int flag ) ;
+
+// Reapplique les decorations de titre apres un changement d'etat (windows/window.c)
+void kitty_refresh_title(void) ;
 
 // KiTTY: expand window-title placeholders (%%h, %%s, %%u, %%p, %%P, %%f, %%l, %%d)
 char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf) ;
@@ -111,6 +126,10 @@ void SetPasteSize( const int size ) ;
 extern int HyperlinkFlag ;
 int GetHyperlinkFlag(void) ;
 void SetHyperlinkFlag( const int flag ) ;
+
+// RuTTY script engine master switch: [KiTTY] scriptmode=yes|no (kitty_rutty.c)
+int kitty_script_enabled(void) ;
+void kitty_script_set_enabled( int on ) ;
 
 // Flag pour le fonctionnement en mode "portable" (gestion par fichiers), defini dans kitty_commun.c
 extern int IniFileFlag ;

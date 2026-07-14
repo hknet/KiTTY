@@ -1359,6 +1359,29 @@ void kitty_menu_toggle_alwaysontop(HWND term_hwnd, Conf *conf)
     conf_set_bool(conf, CONF_alwaysontop, on);
     SetWindowPos(term_hwnd, on ? HWND_TOPMOST : HWND_NOTOPMOST,
                  0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    kitty_refresh_title();   /* keep the (ONTOP) title marker in sync */
+}
+
+/* [ConfigBox] noexit=yes: launch a fresh instance of ourselves with no
+ * arguments, i.e. the configuration box, so closing a session lands the user
+ * back in the session picker. Called from WinMain's exit path. */
+void kitty_respawn_config_box(void)
+{
+    char module[MAX_PATH + 1] = "", cmd[MAX_PATH + 3] = "";
+    STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+    if (!GetModuleFileName(NULL, module, MAX_PATH)) return;
+    snprintf(cmd, sizeof(cmd), "\"%s\"", module);
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    ZeroMemory(&pi, sizeof(pi));
+    if (CreateProcess(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        /* let the new config box take the foreground despite us being the
+         * dying foreground process (same dance as RunCommand) */
+        AllowSetForegroundWindow(pi.dwProcessId);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    }
 }
 
 /* IDM_REPOS: move the window to x,y (clamped to >=1), remembering it in conf. */

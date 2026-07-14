@@ -187,6 +187,9 @@ int GetShortcutsFlag(void);
 int GetMouseShortcutsFlag(void);
 int GetCtrlTabFlag(void);
 int GetProtectFlag(void);
+int GetSizeFlag(void);      /* kitty.c: [KiTTY] size - live [rows x cols] title suffix */
+int GetTitleBarFlag(void);  /* kitty.c: [KiTTY] wintitle - title decorations on/off */
+void kitty_refresh_title(void);  /* below: re-apply the title decorations */
 extern char KiTTYClassName[128];
 int ManageShortcuts(Terminal *term, Conf *conf, HWND hwnd,
                     const int *clips_system, int key_num, int shift_flag,
@@ -262,6 +265,7 @@ extern int ImageSlideDelay;
  * (waitfor) before each line / aborts on halton. Observe-hooked in
  * win_seat_output; no terminal.c edits. */
 int  kitty_script_active(void);
+int  kitty_script_enabled(void);         /* [KiTTY] scriptmode master switch */
 int  kitty_script_send_file(Conf *conf, Backend *backend, Filename *fn);
 void kitty_script_remote(const void *data, size_t len);
 void kitty_script_stop(void);
@@ -295,6 +299,10 @@ int  GetReconnectDelay(void);          /* kitty.c, seconds, clamped >=1 */
 void SetConnBreakIcon(HWND hwnd);      /* kitty.c */
 void SetSSHConnected(int flag);        /* kitty_commun.c: sets is_backend_first_connected */
 extern int is_backend_first_connected; /* kitty_commun.c */
+#endif
+#ifdef MOD_PERSO
+int  GetConfigBoxNoExitFlag(void);     /* kitty.c: [ConfigBox] noexit */
+void kitty_respawn_config_box(void);   /* kitty_win.c */
 #endif
 #endif
 
@@ -1541,6 +1549,16 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     }
 
   finished:
+#if defined(MOD_PERSO) && defined(MOD_RECONNECT)
+    /* KiTTY [ConfigBox] noexit=yes: when a window that actually ran a
+     * connected session closes, spawn a fresh instance (which starts at the
+     * config box) so the user lands back in the session picker. Gating on
+     * is_backend_first_connected fixes classic KiTTY's bug of respawning on
+     * config-box exit too; skipped during system shutdown/logoff. */
+    if (GetConfigBoxNoExitFlag() && is_backend_first_connected &&
+        !GetSystemMetrics(SM_SHUTTINGDOWN))
+        kitty_respawn_config_box();
+#endif
     cleanup_exit(msg.wParam);          /* this doesn't return... */
     return msg.wParam;                 /* ... but optimiser doesn't know */
 }
@@ -3129,7 +3147,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
         if ((UINT_PTR)wParam == TIMER_SCRIPT) {
             KillTimer(hwnd, TIMER_SCRIPT);
-            if (wgs->backend) {
+            if (wgs->backend && kitty_script_enabled()) {
                 Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
                 kitty_script_send_file(wgs->conf, wgs->backend, sf);
             }
@@ -3673,6 +3691,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           case IDM_SCRIPTSEND: {
             char fn[4096];
+            if (!kitty_script_enabled()) {
+                MessageBox(wgs->term_hwnd, "RuTTY scripting is disabled"
+                           " ([KiTTY] scriptmode=no in kitty.ini).",
+                           "KiTTY", MB_OK | MB_ICONINFORMATION);
+                break;
+            }
             if (wgs->backend && !kitty_script_active() &&
                 OpenFileName(wgs->term_hwnd, fn, "Send script file...",
                     "Script files (*.ksh,*.sh)|*.ksh;*.sh|All files (*.*)|*.*|")) {
@@ -4432,6 +4456,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             }
         }
         sys_cursor_update(wgs);
+#ifdef MOD_PERSO
+        /* [KiTTY] size=yes: keep the [rows x cols] title suffix live while
+         * resizing (the set-title path dedupes, so this is a no-op unless the
+         * decorated title actually changed). */
+        if (GetTitleBarFlag() && GetSizeFlag())
+            kitty_refresh_title();
+#endif
         return 0;
       case WM_DPICHANGED:
         wgs->dpi_info.cur_dpi.x = LOWORD(wParam);
@@ -6331,10 +6362,64 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
     return -1;
 }
 
+#ifdef MOD_PERSO
+/* KiTTY [KiTTY] wintitle=yes: decorate every window title with live status
+ * markers - the [rows x cols] size suffix ([KiTTY] size=yes, skipped while
+ * maximized) and (PROTECTED)/(ONTOP). The raw title is remembered so
+ * kitty_refresh_title() can re-decorate when a state changes (resize, protect
+ * or always-on-top toggle). SECURITY: unlike classic KiTTY the title text is
+ * never PARSED here - the old __xy title-scan dispatcher stays dead and
+ * decoration is strictly one-way output. */
+static char *kitty_raw_title = NULL;
+static int kitty_raw_title_cp = DEFAULT_CODEPAGE;
+
+static char *kitty_decorate_title(WinGuiSeat *wgs, const char *title)
+{
+    strbuf *sb;
+    if (!GetTitleBarFlag())
+        return dupstr(title);
+    sb = strbuf_new();
+    put_dataz(sb, title);
+    if (GetSizeFlag() && wgs->term && !IsZoomed(wgs->term_hwnd))
+        put_fmt(sb, " [%dx%d]", wgs->term->rows, wgs->term->cols);
+    if (GetProtectFlag())
+        put_dataz(sb, " (PROTECTED)");
+    if (conf_get_bool(wgs->conf, CONF_alwaysontop))
+        put_dataz(sb, " (ONTOP)");
+    return strbuf_to_str(sb);
+}
+
+/* Re-apply the decorations to the last raw title (called after a state
+ * change). The set-title path dedupes, so this is cheap when nothing moved. */
+void kitty_refresh_title(void)
+{
+    WinGuiSeat *wgs;
+    if (!MainHwnd || !kitty_raw_title) return;
+    wgs = (WinGuiSeat *)GetWindowLongPtr(MainHwnd, GWLP_USERDATA);
+    if (!wgs) return;
+    win_set_title(&wgs->termwin, kitty_raw_title, kitty_raw_title_cp);
+}
+#endif
+
 static void wintw_set_title(TermWin *tw, const char *title, int codepage)
 {
     WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
+#ifdef MOD_PERSO
+    wchar_t *new_window_name;
+    {
+        char *decorated;
+        if (kitty_raw_title != title) {   /* self-alias via kitty_refresh_title */
+            sfree(kitty_raw_title);
+            kitty_raw_title = dupstr(title);
+            kitty_raw_title_cp = codepage;
+        }
+        decorated = kitty_decorate_title(wgs, kitty_raw_title);
+        new_window_name = dup_mb_to_wc(codepage, decorated);
+        sfree(decorated);
+    }
+#else
     wchar_t *new_window_name = dup_mb_to_wc(codepage, title);
+#endif
     if (!wcscmp(new_window_name, wgs->window_name)) {
         sfree(new_window_name);
         return;

@@ -215,6 +215,22 @@ void SethInstIcons( const HINSTANCE h ) { hInstIcons = h ; }
 // Fichier contenant les icones à charger
 static char * IconFile = NULL ;
 
+// [KiTTY] size=yes: append the live terminal size [rows x cols] to the window
+// title (not while maximized). Applied by the title decorator in
+// windows/window.c; needs wintitle=yes (TitleBarFlag) like classic KiTTY.
+static int SizeFlag = 0 ;
+int GetSizeFlag(void) { return SizeFlag ; }
+void SetSizeFlag( const int flag ) { SizeFlag = flag ; }
+
+// [KiTTY] wintitle=yes (default): enable KiTTY's title decorations - the size
+// suffix (size=yes) and the (PROTECTED)/(ONTOP) status markers. wintitle=no =
+// plain stock titles. SECURITY: unlike classic KiTTY the title text is never
+// PARSED (the __xy title-scan dispatcher stays dead) - decoration is strictly
+// one-way output in windows/window.c wintw_set_title.
+static int TitleBarFlag = 1 ;
+int GetTitleBarFlag(void) { return TitleBarFlag ; }
+void SetTitleBarFlag( const int flag ) { TitleBarFlag = flag ; }
+
 // Hauteur de la fenetre pour la fonction WinHeight
 static int WinHeight = -1 ;
 int GetWinHeight(void) { return WinHeight ; }
@@ -246,6 +262,15 @@ void SetConfigBoxHeight( const int num ) { ConfigBoxHeight = num ; }
 static int ConfigBoxWindowHeight = 0 ;
 int GetConfigBoxWindowHeight(void) { return ConfigBoxWindowHeight ; }
 void SetConfigBoxWindowHeight( const int num ) { ConfigBoxWindowHeight = num ; }
+
+// [ConfigBox] noexit=yes: when a window that ran a connected session closes,
+// spawn a fresh instance (= the config box) so you land back in the session
+// picker. Gated on is_backend_first_connected at exit (windows/window.c), so a
+// config-box-only process never respawns - classic KiTTY's version fired on
+// config-box exit too, which is the bug that kept it broken there.
+static int ConfigBoxNoExitFlag = 0 ;
+int GetConfigBoxNoExitFlag(void) { return ConfigBoxNoExitFlag ; }
+void SetConfigBoxNoExitFlag( const int flag ) { ConfigBoxNoExitFlag = flag ; }
 
 // Flag pour inhiber la gestion du CTRL+TAB
 static int CtrlTabFlag = 1 ;
@@ -1757,16 +1782,17 @@ void set_title( TermWin *tw, const char *title ) { return win_set_title(tw,title
 void ManageProtect( HWND hwnd, TermWin *tw, char * title ) {
 	HMENU m ;
 	if( ( m = GetSystemMenu (hwnd, FALSE) ) != NULL ) {
-		DWORD fdwMenu = GetMenuState( m, (UINT) IDM_PROTECT, MF_BYCOMMAND); 
+		DWORD fdwMenu = GetMenuState( m, (UINT) IDM_PROTECT, MF_BYCOMMAND);
 		if (!(fdwMenu & MF_CHECKED)) {
 			CheckMenuItem( m, (UINT)IDM_PROTECT, MF_BYCOMMAND|MF_CHECKED ) ;
 			ProtectFlag = 1 ;
-			set_title(tw, title) ;
 		} else {
 			CheckMenuItem( m, (UINT)IDM_PROTECT, MF_BYCOMMAND|MF_UNCHECKED ) ;
 			ProtectFlag = 0 ;
-			set_title(tw, title);
 		}
+		/* re-decorate the CURRENT title (keeps a remote OSC-set title intact;
+		 * the old set_title(tw,title) reset it to the config template) */
+		kitty_refresh_title() ;
 	}
 }
 
@@ -2542,6 +2568,14 @@ int InternalCommand( HWND hwnd, char * st ) {
 			,ConfigDirectory,IniFileFlag,DirectoryBrowseFlag,InitialDirectory,KittyIniFile,KittySavFile,KiTTYClassName ) ;
 		MessageBox(hwnd,buffer,"Configuration infomations",MB_OK);
 		return 1 ; 
+	} else if( !strcmp( st, "/size" ) ) {
+		SizeFlag = abs( SizeFlag - 1 ) ;
+		kitty_refresh_title() ;
+		return 1 ;
+	} else if( !strcmp( st, "/wintitle" ) ) {
+		TitleBarFlag = abs( TitleBarFlag - 1 ) ;
+		kitty_refresh_title() ;
+		return 1 ;
 	} else if( !strcmp( st, "/transparency" ) ) {
 #ifndef MOD_NOTRANSPARENCY
 		if( (conf_get_int(conf,CONF_transparencynumber) == -1) || (TransparencyFlag == 0 ) ) {
@@ -3206,6 +3240,7 @@ void LoadParameters( void ) {
 		if( !stricmp( buffer, "NO" ) ) ShortcutsFlag = 0 ; 
 		if( !stricmp( buffer, "YES" ) ) ShortcutsFlag = 1 ; 
 	}
+	if( ReadParameterN( INIT_SECTION, "size", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SizeFlag = 1 ; }
 	if( ReadParameterN( INIT_SECTION, "slidedelay", buffer, sizeof(buffer) ) ) { ImageSlideDelay = atoi( buffer ) ; }
 	if( ReadParameterN( INIT_SECTION, "sshversion", buffer, sizeof(buffer) ) ) { set_sshver( buffer ) ; }
 	if( ReadParameterN( INIT_SECTION, "userpasssshnosave", buffer, sizeof(buffer) ) ) { 
@@ -3222,6 +3257,7 @@ void LoadParameters( void ) {
 			WinSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( WinSCPPath, buffer ) ;
 		}
 	}
+	if( ReadParameterN( INIT_SECTION, "wintitle", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "NO" ) ) TitleBarFlag = 0 ; }
 #ifdef MOD_PROXY
 	if( ReadParameterN( "ConfigBox", "proxyselection", buffer, sizeof(buffer) ) ) {
 		/* yes = always, no = never, auto (or anything else) = when defined */
@@ -3243,6 +3279,10 @@ void LoadParameters( void ) {
 		if( ReconnectDelay < 1 ) ReconnectDelay = 1 ;
 	}
 #endif
+	if( ReadParameterN( INIT_SECTION, "scriptmode", buffer, sizeof(buffer) ) ) {
+		if( !stricmp( buffer, "YES" ) ) kitty_script_set_enabled( 1 ) ;
+		if( !stricmp( buffer, "NO" ) ) kitty_script_set_enabled( 0 ) ;
+	}
 #ifndef MOD_NOTRANSPARENCY
 	if( ReadParameterN( INIT_SECTION, "transparency", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "YES" ) ) { TransparencyFlag = 1 ; }
@@ -3266,6 +3306,9 @@ void LoadParameters( void ) {
 	}
 	if( readINI( KittyIniFile, "ConfigBox", "windowheight", buffer, sizeof(buffer) ) ) {
 		ConfigBoxWindowHeight = atoi( buffer ) ;
+	}
+	if( readINI( KittyIniFile, "ConfigBox", "noexit", buffer, sizeof(buffer) ) ) {
+		if( !stricmp( buffer, "YES" ) ) ConfigBoxNoExitFlag = 1 ;
 	}
 	if( readINI( KittyIniFile, "ConfigBox", "filter", buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "NO" ) ) SessionFilterFlag = 0 ;

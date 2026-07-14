@@ -16,6 +16,12 @@ void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal) ;
 void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up) ;
 void kitty_menu_toggle_alwaysontop(HWND term_hwnd, Conf *conf) ;
 void kitty_menu_reposition(HWND term_hwnd, Conf *conf, int x, int y) ;
+
+// [ConfigBox] noexit: relance une instance (= la config box) a la fermeture d'une session
+void kitty_respawn_config_box(void) ;
+
+// Reapplique les decorations de titre ([KiTTY] wintitle/size, PROTECTED/ONTOP) - windows/window.c
+void kitty_refresh_title(void) ;
 void kitty_menu_toggle_hyperlink(HWND hwnd) ;
 BOOL IsWow64() ; // Test si on est en Windows 64 bits
 int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;

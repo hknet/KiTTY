@@ -14,6 +14,9 @@ filter=yes\n\
 ; height: the number of visible lines into the saved sessions selection box (in main window)\n\
 height=21\n\
 \n\
+; noexit: if yes, closing a window that ran a connected session reopens the configuration box\n\
+;noexit=no\n\
+\n\
 ; proxyselection: add a proxy selection feature in the main configuration box\n\
 ;proxyselection=no\n\
 \n\
@@ -121,8 +124,14 @@ ReconnectDelay=5\n\
 ;    Default value is (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|\n\
 ;scriptfilefilter=All files (*.*)|*.*|\n\
 \n\
+; scriptmode: master switch for the RuTTY script engine (send a script file line by line, wait-for-prompt mode)\n\
+;scriptmode=yes\n\
+\n\
 ; shortcuts: enable/disable keyboard shortcuts\n\
 shortcuts=yes\n\
+\n\
+; size: append the live terminal size [rows x cols] to the window title (not while maximized; needs wintitle=yes)\n\
+;size=no\n\
 \n\
 ; slidedelay: delay in seconds before automatic image switching in slideshow mode\n\
 ;    0 means no automatic slide, waiting for keyboard event\n\
@@ -142,6 +151,9 @@ userpasssshnosave=no\n\
 \n\
 ; winrol: enable/disable the rolling feature (rolling into the title bar)\n\
 winrol=yes\n\
+\n\
+; wintitle: enable the KiTTY title decorations: the size suffix (size=yes) and the (PROTECTED)/(ONTOP) markers; no = plain titles\n\
+;wintitle=yes\n\
 \n\
 ; WinSCPPath: the full path to the winscp.exe binary: \n\
 ;WinSCPPath=\n\

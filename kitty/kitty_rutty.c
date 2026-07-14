@@ -325,6 +325,12 @@ int kitty_script_active(void)
     return script_inited && the_script.runs;
 }
 
+/* [KiTTY] scriptmode=no: master off-switch for the rutty engine (classic
+ * KiTTY gated its ldisc/output hooks on the same key). */
+static int script_enabled = 1;
+int kitty_script_enabled(void) { return script_enabled; }
+void kitty_script_set_enabled(int on) { script_enabled = on; }
+
 int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile)
 {
     ScriptData *s = &the_script;
@@ -333,6 +339,8 @@ int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile)
     const char *cc;
     int script_timeout_seconds;
 
+    if (!script_enabled)
+        return false;                      /* scriptmode=no in kitty.ini */
     if (script_inited && s->runs)
         return false;                      /* a script is already running */
 

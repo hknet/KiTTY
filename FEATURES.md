@@ -566,29 +566,49 @@ KiTTY includes a small built-in text editor that is tied to your terminal window
 
 ---
 
-## Differences vs classic KiTTY: retired kitty.ini settings
+## Differences vs classic KiTTY: retired and revived kitty.ini settings
 
 A settings audit of this 0.84-based port found a number of classic kitty.ini keys
 that were still parsed but had lost their effect (their consumer was never
-forward-ported, was superseded, or never worked upstream either). To stop them
-silently pretending to work, they have been removed entirely — the keys below are
-now simply ignored if present in an old kitty.ini:
+forward-ported, was superseded, or never worked upstream either). Rather than let
+them silently pretend to work, each was either removed entirely or brought back
+as a working feature.
 
-- `[KiTTY] adb`, `capslock`, `maxblinkingtime`, `paste`, `scriptmode`, `size`,
-  `wintitle`, `hostkeyextension`, `PlinkPath`, `KiPP` — read-but-dead in all
-  0.84.x builds; the features they once toggled either no longer exist or no
-  longer consult them (ADB support is simply always available).
+**Revived — these keys work again, properly wired (some for the first time in
+the port):**
+
+- `[ConfigBox] dblclick=start` — a double-click on a saved session acts like the
+  Start button: the session launches in a new window and the config box stays
+  open (`open`, the default, keeps stock behaviour).
+- `[ConfigBox] noexit=yes` — closing a window that ran a connected session
+  reopens the configuration box, so you land back in the session picker. Fixed
+  vs classic: a window that never connected (e.g. a cancelled config box) exits
+  normally, and nothing respawns during system shutdown.
+- `[KiTTY] scriptmode=no` — master off-switch for the RuTTY script engine (the
+  session auto-script and the "Send a script file" menu entry).
+- `[KiTTY] size=yes` — appends the live terminal size `[rows x cols]` to the
+  window title, updated as you resize (hidden while maximized).
+- `[KiTTY] wintitle` — KiTTY's title decorations, reimplemented safely: the
+  size suffix plus `(PROTECTED)` and `(ONTOP)` status markers, refreshed live
+  when the state changes. `wintitle=no` gives plain stock titles. **Security
+  note:** in classic KiTTY this same title machinery also *parsed* titles for
+  `__xy` remote commands — that channel stays removed; decoration here is
+  strictly one-way output.
+
+**Removed — ignored if present in an old kitty.ini:**
+
+- `[KiTTY] adb`, `capslock`, `maxblinkingtime`, `paste`, `hostkeyextension`,
+  `PlinkPath`, `KiPP` — read-but-dead in all 0.84.x builds; the features they
+  once toggled either no longer exist or no longer consult them (ADB support is
+  simply always available).
 - `[KiTTY] localcmd`, `localunsecurecmd` — the `__xy` remote metacommand
   dispatcher they gated was removed for security (remote command-injection
   surface, cf. CVE-2024-23749); the switches were a booby trap without it.
 - `[KiTTY] autostoresshkey` — deliberately not supported: silently accepting
   SSH host keys defeats the host-key check, so the port keeps the confirmation
   prompt unconditionally.
-- `[ConfigBox] noexit`, `default`, `left`, `top` — dead getters;
-  `left`/`top` are superseded by the automatic config-box position memory.
-  (`dblclick` was dead too, but has been restored AND actually wired up:
-  `dblclick=start` makes a double-click launch the session in a new window
-  and keep the config box open, like the Start button.)
+- `[ConfigBox] default`, `left`, `top` — dead getters; `left`/`top` are
+  superseded by the automatic config-box position memory.
 - `[Agent] askconfirmation`, `messageonkeyusage`, `scrumble` — kageant (the
   agent) never reads kitty.ini; per-key confirmation and key-use notification
   are tray-menu toggles now (`Ask confirmation before key use`, stored in the

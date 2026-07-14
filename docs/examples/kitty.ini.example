@@ -32,6 +32,12 @@
 ; height: the number of visible lines in the saved-sessions list (default 16 = stock fit)
 ;height=16
 
+; noexit: if yes, closing a window that ran a connected session starts a fresh
+;    instance showing the configuration box, so you land back in the session
+;    picker. A window that never connected (e.g. the config box itself was
+;    cancelled) exits normally, and nothing respawns during system shutdown.
+;noexit=no
+
 ; proxyselection: show the named-proxy chooser in the Session panel.
 ;   auto (default) = show once any named proxy is defined; yes = always; no = never
 ;proxyselection=auto
@@ -205,8 +211,19 @@
 ;    The example line below narrows it to all files only:
 ;scriptfilefilter=All files (*.*)|*.*|
 
+; scriptmode: master switch for the RuTTY script engine (send a script file
+;    line by line, with wait-for-prompt/halt-on patterns). no = disable the
+;    engine entirely: the session auto-script does not run and the
+;    "Send a script file" menu entry refuses with a notice.
+;scriptmode=yes
+
 ; shortcuts: enable/disable keyboard shortcuts
 ;shortcuts=yes
+
+; size: append the live terminal size, e.g. [24x80] (rows x columns), to the
+;    window title. Updates as you resize; hidden while maximized. Needs
+;    wintitle=yes (the default).
+;size=no
 
 ; slidedelay: delay in seconds before automatic image switching in slideshow mode
 ;    0 means no automatic slide, waiting for keyboard event
@@ -235,6 +252,12 @@
 
 ; winscpdir: legacy fallback directory containing WinSCP.exe (prefer WinSCPPath)
 ;winscpdir=
+
+; wintitle: enable KiTTY's window-title decorations: the live size suffix
+;    (size=yes) and the (PROTECTED) / (ONTOP) status markers. no = plain stock
+;    titles. Unlike classic KiTTY the title text is never parsed, only
+;    decorated - the old remote title-command channel stays removed.
+;wintitle=yes
 
 ; zmodem: enable/disable zmodem feature (to send/receive files with sz/rz commands)
 ;zmodem=yes
