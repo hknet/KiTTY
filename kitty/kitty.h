@@ -355,6 +355,56 @@ void InitSpecialMenuTab( void ) ;
 #define NB_MENU_MAX 1024
 extern char *SpecialMenu[NB_MENU_MAX] ;   /* User-Command / launcher entry payloads (kitty_specialmenu.c) */
 int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) ;
+
+/* keyboard-shortcut tables + entry points (kitty_shortcuts.c); the types
+ * live here because kitty_savedump.c dumps the tables directly. */
+struct TShortcuts {
+	int autocommand ;
+	int command ;
+	int editor ;
+	int editorclipboard ;
+	int getfile ;
+	int imagechange ;
+	int input ;
+	int inputm ;
+	int print ;
+	int printall ;
+	int protect ;
+	int script ;
+	int sendfile ;
+	int rollup ;
+	int tray ;
+	int viewer ;
+	int visible ;
+	int winscp ;
+	int switchlogmode ;
+	int showportforward ;
+	int resetterminal ;
+	int duplicate ;
+	int opennew ;
+	int opennewcurrent ;
+	int changesettings ;
+	int clearscrollback ;
+	int clearlogfile ;
+	int closerestart ;
+	int eventlog ;
+	int fullscreen ;
+	int fontup ;
+	int fontdown ;
+	int copyall ;
+	int fontnegative ;
+	int fontblackandwhite ;
+	int keyexchange ;
+	} ;
+extern struct TShortcuts shortcuts_tab ;
+struct TShortcuts2 { int num ; char * st ; } ;
+extern struct TShortcuts2 shortcuts_tab2[512] ;
+extern int NbShortCuts ;
+int DefineShortcuts( char * buf ) ;
+void TranslateShortcuts( char * st ) ;
+void InitShortcuts( void ) ;
+int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) ;
+char * GetKittyIniFile(void) ;
 // Recupere une entree d'une session ( retourne 1 si existe )
 int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) ;
 // Sauve les coordonnees de la fenetre
