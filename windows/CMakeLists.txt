@@ -227,6 +227,23 @@ add_executable(test_screenshot
   test/test_screenshot.c)
 target_link_libraries(test_screenshot utils ${platform_libraries})
 
+# KiTTY: storage at-rest crypto round-trip regression test (registry DPAPI +
+# portable master-password paths through the real settings API). Compiles
+# storage.c directly, like the keygen tools. Run on Windows; writes only a
+# zz-* scratch session in the hive (deleted) and a %TEMP% tree (deleted).
+add_executable(test_storage_roundtrip
+  test/test_storage_roundtrip.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
+  noise.c
+  storage.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_mpw.c
+  no-jump-list.c
+  ${CMAKE_SOURCE_DIR}/sshrand.c)
+target_link_libraries(test_storage_roundtrip
+  crypto utils ${platform_libraries}
+  crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_64.a)
+
 add_executable(test_lineedit
   ${CMAKE_SOURCE_DIR}/test/test_lineedit.c
   ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
