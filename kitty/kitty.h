@@ -351,6 +351,10 @@ void save_open_settings_forced(char *filename, Conf *conf) ;
 int SwitchCryptFlag( void ) ;
 void CreateDefaultIniFile( void ) ;
 void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) ;
+void InitSpecialMenuTab( void ) ;
+#define NB_MENU_MAX 1024
+extern char *SpecialMenu[NB_MENU_MAX] ;   /* User-Command / launcher entry payloads (kitty_specialmenu.c) */
+int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) ;
 // Recupere une entree d'une session ( retourne 1 si existe )
 int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) ;
 // Sauve les coordonnees de la fenetre
