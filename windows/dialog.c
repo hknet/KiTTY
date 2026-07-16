@@ -292,6 +292,30 @@ static void update_logbox_horizontal_extent(HWND logbox)
     SendMessage(listbox, LB_SETHORIZONTALEXTENT, maxwidth, 0);
 }
 
+/* KiTTY: the Event Log is resizable (WS_THICKFRAME in the template); fit the
+ * listbox to the dialog with the buttons centred underneath. Sizes derive
+ * from the buttons' current (template+DPI-scaled) metrics, so this stays
+ * correct at any DPI. */
+static void logbox_layout(HWND hwnd)
+{
+    RECT rc, rb;
+    HWND list = GetDlgItem(hwnd, IDN_LIST);
+    HWND btnok = GetDlgItem(hwnd, IDOK);
+    HWND btncopy = GetDlgItem(hwnd, IDN_COPY);
+    int bw, bh, m, btop, gap, left;
+    if (!list || !btnok || !btncopy) return;
+    GetClientRect(hwnd, &rc);
+    GetWindowRect(btnok, &rb);
+    bw = rb.right - rb.left; bh = rb.bottom - rb.top;
+    m = bh / 3;
+    btop = rc.bottom - bh - m;
+    MoveWindow(list, m, m, rc.right - 2*m, btop - 2*m, true);
+    gap = bw / 4;
+    left = (rc.right - (2*bw + gap)) / 2;
+    MoveWindow(btncopy, left, btop, bw, bh, true);
+    MoveWindow(btnok, left + bw + gap, btop, bw, bh, true);
+}
+
 static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
                                 WPARAM wParam, LPARAM lParam)
 {
@@ -315,7 +339,19 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
                                0, (LPARAM) events_circular[(circular_first + i) % LOGEVENT_CIRCULAR_MAX]);
         update_logbox_horizontal_extent(hwnd);
 
+        logbox_layout(hwnd);
         return 1;
+      }
+      case WM_SIZE:
+        if (wParam != SIZE_MINIMIZED)
+            logbox_layout(hwnd);
+        return 0;
+      case WM_GETMINMAXINFO: {
+        /* Don't let it shrink below a readable minimum. */
+        MINMAXINFO *mmi = (MINMAXINFO *)lParam;
+        mmi->ptMinTrackSize.x = 320;
+        mmi->ptMinTrackSize.y = 200;
+        return 0;
       }
       case WM_COMMAND:
         switch (LOWORD(wParam)) {
