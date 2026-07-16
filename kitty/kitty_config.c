@@ -2663,20 +2663,39 @@ static void kitty_showforeign_handler(dlgcontrol *ctrl, dlgparam *dlg,
 }
 #endif
 
-void setup_config_box(struct controlbox *b, bool midsession,
-                      int protocol, int protcfginfo)
+
+/*
+ * setup_config_box, split into one static helper per panel group. The
+ * helper bodies are the exact former contents of the single big function
+ * (moved verbatim, in the same order - panel creation order defines the
+ * treeview); only the signatures and per-helper local declarations are
+ * new. setup_config_box itself is now just the dispatcher at the bottom.
+ */
+
+/*
+ * Each per-protocol configuration GUI panel is conditionally
+ * displayed. We don't display it if this binary doesn't contain a
+ * backend for its protocol at all; we don't display it if we're
+ * already in mid-session with a different protocol selected; and
+ * even if we _do_ have this protocol selected, we don't display
+ * the panel if the protocol doesn't permit any mid-session
+ * reconfiguration anyway. (Used by the SSH and serial/telnet/
+ * rlogin/SUPDUP helpers below; midsession/protocol are their
+ * parameters.)
+ */
+
+#define DISPLAY_RECONFIGURABLE_PROTOCOL(which_proto) \
+    (backend_vt_from_proto(which_proto) && \
+     (!midsession || protocol == (which_proto)))
+#define DISPLAY_NON_RECONFIGURABLE_PROTOCOL(which_proto) \
+    (backend_vt_from_proto(which_proto) && !midsession)
+
+/* The bottom button bar (Open/Start/Updates/Cancel) and the Session panel. */
+static void scb_panel_session(struct controlbox *b, bool midsession)
 {
-    const struct BackendVtable *backvt;
-    struct controlset *s;
     struct sessionsaver_data *ssd;
-    struct charclass_data *ccd;
-    struct colour_data *cd;
-    struct ttymodes_data *td;
-    struct environ_data *ed;
-    struct portfwd_data *pfd;
-    struct manual_hostkey_data *mh;
+    struct controlset *s;
     dlgcontrol *c;
-    bool resize_forbidden = false;
     char *str;
 
     ssd = (struct sessionsaver_data *)
@@ -3002,6 +3021,12 @@ void setup_config_box(struct controlbox *b, bool midsession,
         }
     }
 #endif
+}
+
+/* The Session/Logging panel. */
+static void scb_panel_logging(struct controlbox *b, bool midsession, int protocol)
+{
+    struct controlset *s;
 
     /*
      * The Session/Logging panel.
@@ -3074,6 +3099,12 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       HELPCTX(logging_ssh_omit_data),
                       conf_checkbox_handler, I(CONF_logomitdata));
     }
+}
+
+/* The Session/Scripting panel (KiTTY rutty scripting). */
+static void scb_panel_scripting(struct controlbox *b)
+{
+    struct controlset *s;
 
     /*
      * The Session/Scripting panel (KiTTY rutty scripting). Placed under Session
@@ -3127,6 +3158,12 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       HELPCTX(no_help), kitty_checkbox_int_handler,
                       I(CONF_script_cond_use));
     }
+}
+
+/* The Terminal panel and its Keyboard/Bell/Features sub-panels. */
+static void scb_panel_terminal(struct controlbox *b)
+{
+    struct controlset *s;
 
     /*
      * The Terminal panel.
@@ -3352,6 +3389,17 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       HELPCTX(no_help), conf_checkbox_handler,
                       I(CONF_no_focus_rep));
 #endif
+}
+
+/* The Window panel and its Appearance/Behaviour sub-panels, plus the
+ * KiTTY Transparency/Hyperlinks/position+icon/Background-image panels. */
+static void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
+{
+    const struct BackendVtable *backvt;
+    struct controlset *s;
+    dlgcontrol *c;
+    bool resize_forbidden = false;
+    char *str;
 
     /*
      * The Window panel.
@@ -3612,6 +3660,16 @@ void setup_config_box(struct controlbox *b, bool midsession,
                           "Terminal Window", NO_SHORTCUT, I(1));
     }
 #endif
+}
+
+/* The Window/Translation, Window/Selection(+Copy) and Window/Colours panels. */
+static void scb_panel_selection(struct controlbox *b)
+{
+    struct charclass_data *ccd;
+    struct colour_data *cd;
+    struct controlset *s;
+    dlgcontrol *c;
+    char *str;
 
     /*
      * The Window/Translation panel.
@@ -3802,6 +3860,14 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                  colour_handler, P(cd));
     cd->button->column = 1;
     ctrl_columns(s, 1, 100);
+}
+
+/* The Connection panel and Connection/Data sub-panel (network utilities
+ * only: the whole body is guarded by protocol >= 0). */
+static void scb_panel_connection(struct controlbox *b, bool midsession, int protocol)
+{
+    struct environ_data *ed;
+    struct controlset *s;
 
     /*
      * The Connection panel. This doesn't show up if we're in a
@@ -4001,6 +4067,13 @@ void setup_config_box(struct controlbox *b, bool midsession,
         }
 
     }
+}
+
+/* The Connection/Proxy panel (not available mid-session). */
+static void scb_panel_proxy(struct controlbox *b, bool midsession)
+{
+    struct controlset *s;
+    dlgcontrol *c;
 
     if (!midsession) {
         /*
@@ -4077,22 +4150,19 @@ void setup_config_box(struct controlbox *b, bool midsession,
         }
 #endif
     }
+}
 
-    /*
-     * Each per-protocol configuration GUI panel is conditionally
-     * displayed. We don't display it if this binary doesn't contain a
-     * backend for its protocol at all; we don't display it if we're
-     * already in mid-session with a different protocol selected; and
-     * even if we _do_ have this protocol selected, we don't display
-     * the panel if the protocol doesn't permit any mid-session
-     * reconfiguration anyway.
-     */
-
-#define DISPLAY_RECONFIGURABLE_PROTOCOL(which_proto) \
-    (backend_vt_from_proto(which_proto) && \
-     (!midsession || protocol == (which_proto)))
-#define DISPLAY_NON_RECONFIGURABLE_PROTOCOL(which_proto) \
-    (backend_vt_from_proto(which_proto) && !midsession)
+/* The Connection/SSH panel tree: SSH core, Kex, Host keys, Cipher, Auth
+ * (+Credentials/GSSAPI), TTY, X11, Tunnels, Bugs, More bugs, and the
+ * KiTTY PSCP/WinSCP panel. Kept as one helper so the shared protocol/
+ * midsession guard structure stays verbatim. */
+static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int protcfginfo)
+{
+    struct ttymodes_data *td;
+    struct portfwd_data *pfd;
+    struct manual_hostkey_data *mh;
+    struct controlset *s;
+    dlgcontrol *c;
 
     if (DISPLAY_RECONFIGURABLE_PROTOCOL(PROT_SSH) ||
         DISPLAY_RECONFIGURABLE_PROTOCOL(PROT_SSHCONN)) {
@@ -4714,6 +4784,12 @@ void setup_config_box(struct controlbox *b, bool midsession,
         }
 #endif
     }
+}
+
+/* The Connection/Serial, Telnet, Rlogin and SUPDUP panels. */
+static void scb_panel_other_protocols(struct controlbox *b, bool midsession, int protocol)
+{
+    struct controlset *s;
 
     if (DISPLAY_RECONFIGURABLE_PROTOCOL(PROT_SERIAL)) {
         const BackendVtable *ser_vt = backend_vt_from_proto(PROT_SERIAL);
@@ -4843,8 +4919,14 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       conf_checkbox_handler,
                       I(CONF_supdup_scroll));
     }
+}
 
+/* The Connection/ZModem panels (KiTTY). */
+static void scb_panel_zmodem(struct controlbox *b)
+{
 #ifdef MOD_ZMODEM
+    struct controlset *s;
+
     /* The Connection/ZModem panels (KiTTY). Backend = kitty_zmodem_*. */
     if ((!GetPuttyFlag()) && GetZModemFlag()) {
         ctrl_settitle(b, "Connection/ZModem",
@@ -4881,7 +4963,15 @@ void setup_config_box(struct controlbox *b, bool midsession,
                      HELPCTX(no_help),
                      conf_editbox_handler, I(CONF_szoptions), ED_STR);
     }
+#else
+    (void)b;
 #endif
+}
+
+/* The Comment panel (KiTTY): a free-text note attached to this session. */
+static void scb_panel_comment(struct controlbox *b)
+{
+    struct controlset *s;
 
     /*
      * The Comment panel (KiTTY): a free-text note attached to this session.
@@ -4896,4 +4986,21 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                HELPCTX(no_help), conf_editbox_handler,
                                I(CONF_comment), ED_STR);
     }
+}
+
+void setup_config_box(struct controlbox *b, bool midsession,
+                      int protocol, int protcfginfo)
+{
+    scb_panel_session(b, midsession);
+    scb_panel_logging(b, midsession, protocol);
+    scb_panel_scripting(b);
+    scb_panel_terminal(b);
+    scb_panel_window(b, midsession, protocol);
+    scb_panel_selection(b);
+    scb_panel_connection(b, midsession, protocol);
+    scb_panel_proxy(b, midsession);
+    scb_panel_ssh(b, midsession, protocol, protcfginfo);
+    scb_panel_other_protocols(b, midsession, protocol);
+    scb_panel_zmodem(b);
+    scb_panel_comment(b);
 }
