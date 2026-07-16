@@ -1355,7 +1355,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(winmenu, MF_ENABLED, IDM_FONTNEGATIVE, "Invert co&lours");
             AppendMenu(winmenu, MF_ENABLED, IDM_FONTBLACKANDWHITE, "&Black on white");
             AppendMenu(winmenu, MF_SEPARATOR, 0, 0);
-            AppendMenu(winmenu, MF_ENABLED, IDM_VISIBLE,      "Always visi&ble");
+            AppendMenu(winmenu, MF_ENABLED, IDM_VISIBLE,      "Always On &Top");
             AppendMenu(winmenu, MF_ENABLED, IDM_WINROL,       "Roll-u&p");
             AppendMenu(winmenu, MF_ENABLED, IDM_TOTRAY,       "Send to tra&y");
             AppendMenu(winmenu, MF_ENABLED, IDM_PROTECT,      "Prote&ct");

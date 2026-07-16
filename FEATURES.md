@@ -41,7 +41,7 @@ one is available.
   - [Transparency](#transparency)
   - [Protection against keyboard input](#protection-against-keyboard-input)
   - [Roll-up](#roll-up)
-  - [Always visible](#always-visible)
+  - [Always on top](#always-on-top)
   - [Font management](#font-management)
   - [Word navigation modifier](#word-navigation-modifier)
   - [Quick start of a duplicate session](#quick-start-of-a-duplicate-session)
@@ -352,11 +352,11 @@ Roll-up makes the window collapse "into" its title bar, hiding the terminal area
 
 (no screenshot)
 
-### Always visible
+### Always on top
 
-Always visible keeps a KiTTY window in the foreground, on top of all your other windows, so you can keep an eye on it while you work elsewhere. This is handy for monitoring a session, a log, or a long-running command without it slipping behind other applications. You can toggle it from the system menu, or with the **CTRL+F7** keyboard shortcut.
+Always on top (formerly "Always visible") keeps a KiTTY window in the foreground, on top of all your other windows, so you can keep an eye on it while you work elsewhere. This is handy for monitoring a session, a log, or a long-running command without it slipping behind other applications. You can toggle it from the system menu, or with the **CTRL+F7** keyboard shortcut. While active, the window title carries an **(ONTOP)** marker.
 
-**How to enable:** System menu **Always visible** — keeps the window on top of other windows (always-on-top).
+**How to enable:** System menu **Window > Always On Top**.
 
 (no screenshot)
 
