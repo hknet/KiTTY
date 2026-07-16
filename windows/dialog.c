@@ -353,6 +353,21 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
         mmi->ptMinTrackSize.y = 200;
         return 0;
       }
+      case WM_VKEYTOITEM:
+        /* KiTTY: the listbox has LBS_WANTKEYBOARDINPUT so Ctrl+A can select
+         * every line and Ctrl+C can trigger Copy (which, with nothing
+         * selected, copies the whole log). -2 = fully handled, -1 = default. */
+        if (LOWORD(wParam) == 'A' && (GetKeyState(VK_CONTROL) & 0x8000)) {
+            SendDlgItemMessage(hwnd, IDN_LIST, LB_SETSEL, true, (LPARAM)-1);
+            return -2;
+        }
+        if (LOWORD(wParam) == 'C' && (GetKeyState(VK_CONTROL) & 0x8000)) {
+            SendMessage(hwnd, WM_COMMAND,
+                        MAKEWPARAM(IDN_COPY, BN_CLICKED),
+                        (LPARAM)GetDlgItem(hwnd, IDN_COPY));
+            return -2;
+        }
+        return -1;
       case WM_COMMAND:
         switch (LOWORD(wParam)) {
           case IDOK:
