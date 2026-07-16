@@ -25,9 +25,12 @@ void NegativeColours(HWND hwnd) {
     /* Classic KiTTY had 34 (TuTTY) / 22 colours; this port's Conf holds
      * exactly CONF_NCOLOURS (25) - reading past that asserts in conf.c. */
     for (i = 0; i < CONF_NCOLOURS; i++) {
-	conf_set_int_int(conf, CONF_colours, i*3+0, 256-conf_get_int_int(conf, CONF_colours, i*3+0));
-	conf_set_int_int(conf, CONF_colours, i*3+1, 256-conf_get_int_int(conf, CONF_colours, i*3+1));
-	conf_set_int_int(conf, CONF_colours, i*3+2, 256-conf_get_int_int(conf, CONF_colours, i*3+2));
+	/* 255-x, not classic's 256-x: components are uint8_t, so 256-0 = 256
+	 * truncated to 0 - black stayed black and the scheme merely darkened
+	 * instead of inverting. 255-x is a true negative and self-inverse. */
+	conf_set_int_int(conf, CONF_colours, i*3+0, 255-conf_get_int_int(conf, CONF_colours, i*3+0));
+	conf_set_int_int(conf, CONF_colours, i*3+1, 255-conf_get_int_int(conf, CONF_colours, i*3+1));
+	conf_set_int_int(conf, CONF_colours, i*3+2, 255-conf_get_int_int(conf, CONF_colours, i*3+2));
     }
     force_reconf = 0 ;
     PostMessage( hwnd, WM_COMMAND, IDM_RECONF, 0 ) ;
