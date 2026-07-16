@@ -1308,10 +1308,15 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
             AppendMenu(m, MF_ENABLED, IDM_SHOWLOG, "&Event Log");
             AppendMenu(m, MF_SEPARATOR, 0, 0);
-            AppendMenu(m, MF_ENABLED, IDM_NEWSESS, "Ne&w Session...");
+            /* KiTTY: "New Session..." (config box with DEFAULT settings) is
+             * hidden - "Inherit New Session" covers the case with this
+             * window's settings pre-loaded, and a fresh default box is one
+             * kitty.exe start away. Restore the line if users miss it (the
+             * IDM_NEWSESS handler is still in place). */
+            /* AppendMenu(m, MF_ENABLED, IDM_NEWSESS, "Ne&w Session..."); */
             AppendMenu(m, MF_ENABLED, IDM_DUPSESS, "&Duplicate Session");
 #ifdef MOD_PERSO
-            AppendMenu(m, MF_ENABLED, IDM_NEWDUPSESS, "New &duplicated session...");
+            AppendMenu(m, MF_ENABLED, IDM_NEWDUPSESS, "&Inherit New Session...");
 #endif
 #ifdef MOD_RECONNECT
             AppendMenu(m, MF_ENABLED, IDM_RESTARTSESSION, "Close+&Restart");
