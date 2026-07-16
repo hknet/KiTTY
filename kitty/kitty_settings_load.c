@@ -551,26 +551,18 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "BoldAsColourTest", 1, conf, CONF_bold_colour);
     gppi_forced(sesskey, "UnderlinedAsColour", 0, conf, CONF_under_colour);
     gppi_forced(sesskey, "SelectedAsColour", 0, conf, CONF_sel_colour);
-    for (i = 0; i < 34; i++) {
-	static const char *const defaults[34] = {
-	    "187,187,187", "255,255,255", "0,0,0", "85,85,85", "0,0,0",
-	    "0,255,0", "0,0,0", "85,85,85", "187,0,0", "255,85,85",
-	    "0,187,0", "85,255,85", "187,187,0", "255,255,85", "0,0,187",
-	    "85,85,255", "187,0,187", "255,85,255", "0,187,187",
-	    "85,255,255", "187,187,187", "255,255,255", "187,187,187",
-	    "0,0,0", "0,0,0", "187,0,0", "0,187,0", "187,187,0", "0,0,187",
-	    "187,0,187", "0,187,187", "187,187,187", "0,0,0", "187,187,187"
-	};
-#else
-    for (i = 0; i < 22; i++) {
+#endif
+    /* Conf holds exactly CONF_NCOLOURS (25) colours in this port; the classic
+     * 34-colour TuTTY layout is gone. Defaults match settings.c. */
+    for (i = 0; i < CONF_NCOLOURS; i++) {
 	static const char *const defaults[] = {
 	    "187,187,187", "255,255,255", "0,0,0", "85,85,85", "0,0,0",
 	    "0,255,0", "0,0,0", "85,85,85", "187,0,0", "255,85,85",
 	    "0,187,0", "85,255,85", "187,187,0", "255,255,85", "0,0,187",
 	    "85,85,255", "187,0,187", "255,85,255", "0,187,187",
-	    "85,255,255", "187,187,187", "255,255,255"
+	    "85,255,255", "187,187,187", "255,255,255",
+	    "187,187,187", "0,0,0", "187,187,187"   /* KiTTY: under_fg, sel_fg, sel_bg */
 	};
-#endif
 	char buf[20], *buf2;
 	int c0, c1, c2;
 	snprintf( buf, sizeof(buf), "Colour%d", i);

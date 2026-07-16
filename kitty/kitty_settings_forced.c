@@ -384,7 +384,9 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_b_forced(sesskey, "TrueColour", conf_get_bool(conf, CONF_true_colour));
     write_setting_i_forced(sesskey, "BoldAsColour", conf_get_int(conf, CONF_bold_style)-1);
 
-    for (i = 0; i < 22; i++) {
+    /* All CONF_NCOLOURS (25) colours, incl. KiTTY's under_fg/sel_fg/sel_bg;
+     * saving only the stock 22 silently dropped those three. */
+    for (i = 0; i < CONF_NCOLOURS; i++) {
         char buf[20], buf2[30];
         snprintf( buf, sizeof(buf), "Colour%d", i);
         snprintf( buf2, sizeof(buf2), "%d,%d,%d",

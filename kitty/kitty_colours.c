@@ -22,11 +22,9 @@ void set_title(TermWin *tw, const char *title);  /* kitty.c */
 
 void NegativeColours(HWND hwnd) {
 	int i ;
-#ifdef MOD_TUTTYCOLOR
-    for (i = 0; i < 34; i++) {
-#else
-    for (i = 0; i < 22; i++) {
-#endif
+    /* Classic KiTTY had 34 (TuTTY) / 22 colours; this port's Conf holds
+     * exactly CONF_NCOLOURS (25) - reading past that asserts in conf.c. */
+    for (i = 0; i < CONF_NCOLOURS; i++) {
 	conf_set_int_int(conf, CONF_colours, i*3+0, 256-conf_get_int_int(conf, CONF_colours, i*3+0));
 	conf_set_int_int(conf, CONF_colours, i*3+1, 256-conf_get_int_int(conf, CONF_colours, i*3+1));
 	conf_set_int_int(conf, CONF_colours, i*3+2, 256-conf_get_int_int(conf, CONF_colours, i*3+2));
