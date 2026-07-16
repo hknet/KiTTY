@@ -90,8 +90,13 @@ int ShinyDialogBox(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
     MSG msg;
     int gm;
     while ((gm = GetMessage(&msg, NULL, 0, 0)) > 0) {
-        if (!state->ended && !IsDialogMessage(hwnd, &msg))
-            DispatchMessage(&msg);
+        if (!state->ended && !IsDialogMessage(hwnd, &msg)) {
+            /* KiTTY: keep dialog keyboard handling (Esc/Tab) working for the
+             * modeless About box while this loop owns the thread's messages. */
+            HWND aux = ShinyGetAuxDialog();
+            if (!(aux && IsWindow(aux) && IsDialogMessage(aux, &msg)))
+                DispatchMessage(&msg);
+        }
         if (state->ended)
             break;
     }
@@ -109,3 +114,10 @@ void ShinyEndDialog(HWND hwnd, int ret)
     state->result = ret;
     state->ended = true;
 }
+
+/* KiTTY: the one modeless aux dialog (the About box). Message loops route
+ * messages through IsDialogMessage() for it so Esc/Tab keep working; lives
+ * here (bottom-most lib) so both window.c's pump and the loop above see it. */
+static HWND shiny_aux_dialog = NULL;
+void ShinySetAuxDialog(HWND hwnd) { shiny_aux_dialog = hwnd; }
+HWND ShinyGetAuxDialog(void) { return shiny_aux_dialog; }

@@ -137,6 +137,10 @@ typedef INT_PTR (*ShinyDlgProc)(HWND hwnd, UINT msg, WPARAM wParam,
 int ShinyDialogBox(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
                    HWND hwndparent, ShinyDlgProc proc, void *ctx);
 void ShinyEndDialog(HWND hwnd, int ret);
+/* KiTTY: register the modeless About box so message loops can keep its
+ * dialog keyboard handling (Esc/Tab) working via IsDialogMessage(). */
+void ShinySetAuxDialog(HWND hwnd);
+HWND ShinyGetAuxDialog(void);
 
 void centre_window(HWND hwnd);
 

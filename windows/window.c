@@ -1514,7 +1514,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 goto finished;         /* two-level break */
 
             HWND logbox = event_log_window();
-            if (!(IsWindow(logbox) && IsDialogMessage(logbox, &msg)))
+            HWND aboutbox = ShinyGetAuxDialog(); /* KiTTY modeless About */
+            if (!(IsWindow(logbox) && IsDialogMessage(logbox, &msg)) &&
+                !(aboutbox && IsWindow(aboutbox) &&
+                  IsDialogMessage(aboutbox, &msg)))
                 sw_DispatchMessage(&msg);
 
             /*
