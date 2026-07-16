@@ -122,7 +122,25 @@ KiTTY can automatically respond to a server's login prompts using a simple chall
 
 Based on the RuTTY patch, this lets you automate actions on a session by running a small script as soon as you connect. The script uses simple waitfor/halton commands to watch for text from the server and send responses, so common logon sequences and repetitive steps happen for you automatically. It is a handy way to script logins and routine interactions without typing them each time.
 
-**How to enable:** Configuration > **Connection > Scripting**: set a RuTTY script (waitfor/halton style). It plays automatically once connected.
+**How to enable:** Configuration > **Connection > Scripting**: set a RuTTY script (waitfor/halton style). It plays automatically once connected. You can also run a script on demand in a live session: system menu > **Tools > Send recorded script**. The whole engine can be disabled with `[KiTTY] scriptmode=no` in `kitty.ini`.
+
+**Script file format** (see [docs/examples/logon-script.ksh](docs/examples/logon-script.ksh)):
+a script is a plain text file sent line by line. With **Wait for a prompt before
+each line** enabled, KiTTY waits until the server's output ends with the
+**Wait-for text** (e.g. `$`) before sending the next line, aborts when the
+**Halt-on text** appears, and gives up after the configured **Timeout**. Lines
+starting with the condition character twice (`::` by default) are comments.
+With **Use conditions from file** enabled, a line starting with a single `:`
+overrides the wait pattern for the following line only:
+
+```
+:: minimal logon script: run two commands, each after a "$" prompt
+uname -a
+df -h
+:password:
+secret123
+:: the line above is sent only after the server printed "password:"
+```
 
 ![Automatic logon script (RuTTY patch)](docs/features/img/config_rutty.jpg)
 
