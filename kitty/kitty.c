@@ -3147,23 +3147,127 @@ void ResetWindow(int reinit) ;
 void SetShrinkBitmapEnable(int) ;
 #endif
 
+/*
+ * Most kitty.ini keys are plain "keyword sets a flag" or "number sets an
+ * int": those are described by ini_params[] below and applied in one pass
+ * by load_ini_params(). yes/no/other give the value stored when the key
+ * holds that keyword (matched case-insensitively; INIP_IGNORE = leave the
+ * current value untouched, i.e. that keyword has no effect - several keys
+ * deliberately work only one way, e.g. size=yes can enable but never
+ * disable). Integer keys store atoi(), clamped up to intmin when that is
+ * not INIP_IGNORE. The value lands in *var or setter(v). Keys with richer
+ * semantics (path existence checks, string copies, scaled floats, nested
+ * or conditional reads, non-yes/no keywords) stay hand-written in
+ * LoadParameters.
+ */
+#define INIP_IGNORE (-999999)
+typedef struct {
+	const char * section ;
+	const char * key ;
+	int use_readini ;	/* 1 = readINI(KittyIniFile,..) - plain ini-file key;
+				 * 0 = ReadParameterN (ini with registry fallback) */
+	int is_int ;		/* 1 = atoi() value; 0 = yes/no keyword */
+	int yes, no, other ;	/* keyword -> stored value (INIP_IGNORE = skip) */
+	int intmin ;		/* int keys: clamp up to this (INIP_IGNORE = none) */
+	int * var ;		/* exactly one of var / setter is set */
+	void (*setter)(int) ;
+} IniParam ;
+
+#define IGN INIP_IGNORE
+/* keyword key: values for yes / no / anything-else */
+#define INIP_KW(sec,rdini,k,y,n,o,v,fn)		{ sec, k, rdini, 0, y, n, o, IGN, v, fn }
+/* integer key: atoi, clamped up to min */
+#define INIP_NUM(sec,rdini,k,min,v,fn)		{ sec, k, rdini, 1, 0, 0, 0, min, v, fn }
+
+static const IniParam ini_params[] = {
+	/* "debug" stays first (historical "A lire en premier"). */
+	INIP_KW( INIT_SECTION, 0, "debug",		1, IGN, IGN,	&debug_flag, NULL ),
+#ifdef MOD_BACKGROUNDIMAGE
+	INIP_KW( INIT_SECTION, 0, "bgimage",		1, 0, IGN,	NULL, SetBackgroundImageFlag ),
+#endif
+	INIP_NUM( INIT_SECTION, 0, "bcdelay",		IGN,		&between_char_delay, NULL ),
+	/* conf=no: do NOT auto-create kitty.ini/kitty.sav */
+	INIP_KW( INIT_SECTION, 0, "conf",		IGN, 1, IGN,	&NoKittyFileFlag, NULL ),
+	INIP_NUM( INIT_SECTION, 0, "cryptsalt",		IGN,		NULL, SetCryptSaltFlag ),
+	INIP_KW( INIT_SECTION, 0, "ctrltab",		IGN, 0, IGN,	NULL, SetCtrlTabFlag ),
+	INIP_KW( INIT_SECTION, 0, "hyperlink",		1, 0, IGN,	&HyperlinkFlag, NULL ),
+	INIP_KW( INIT_SECTION, 0, "icon",		1, IGN, IGN,	&IconeFlag, NULL ),
+	INIP_NUM( INIT_SECTION, 0, "internaldelay",	1,		&internal_delay, NULL ),
+	INIP_KW( INIT_SECTION, 0, "mouseshortcuts",	1, 0, IGN,	&MouseShortcutsFlag, NULL ),
+	/* cyd01/KiTTY #548: force classic modal error boxes instead of inline terminal errors */
+	INIP_KW( INIT_SECTION, 0, "modalerrors",	1, 0, IGN,	NULL, SetModalErrorsFlag ),
+	INIP_KW( INIT_SECTION, 0, "readonly",		1, IGN, IGN,	NULL, SetReadOnlyFlag ),
+	INIP_KW( INIT_SECTION, 0, "shortcuts",		1, 0, IGN,	&ShortcutsFlag, NULL ),
+	INIP_KW( INIT_SECTION, 0, "size",		1, IGN, IGN,	&SizeFlag, NULL ),
+	INIP_NUM( INIT_SECTION, 0, "slidedelay",	IGN,		&ImageSlideDelay, NULL ),
+	INIP_KW( INIT_SECTION, 0, "userpasssshnosave",	1, 0, IGN,	NULL, SetUserPassSSHNoSave ),
+	INIP_KW( INIT_SECTION, 0, "winroll",		1, 0, IGN,	&WinrolFlag, NULL ),
+	/* wintitle=no disables the title decorations; there is no way back on */
+	INIP_KW( INIT_SECTION, 0, "wintitle",		IGN, 0, IGN,	&TitleBarFlag, NULL ),
+#ifdef MOD_PROXY
+	/* proxyselection: yes = always, no = never, auto (or anything else) = when defined */
+	INIP_KW( "ConfigBox", 0, "proxyselection",	1, -1, 0,	NULL, SetProxySelectionFlag ),
+#endif
+#ifdef MOD_ZMODEM
+	INIP_KW( INIT_SECTION, 0, "zmodem",		1, 0, IGN,	NULL, SetZModemFlag ),
+#endif
+#ifdef MOD_RECONNECT
+	INIP_KW( INIT_SECTION, 0, "autoreconnect",	IGN, 0, IGN,	&AutoreconnectFlag, NULL ),
+	INIP_NUM( INIT_SECTION, 0, "ReconnectDelay",	1,		&ReconnectDelay, NULL ),
+#endif
+	INIP_KW( INIT_SECTION, 0, "scriptmode",		1, 0, IGN,	NULL, kitty_script_set_enabled ),
+#ifndef MOD_NOTRANSPARENCY
+	/* transparency: anything but an explicit yes disables */
+	INIP_KW( INIT_SECTION, 0, "transparency",	1, 0, 0,	&TransparencyFlag, NULL ),
+#endif
+#ifdef MOD_BACKGROUNDIMAGE
+	INIP_KW( INIT_SECTION, 0, "shrinkbitmap",	1, 0, 0,	NULL, SetShrinkBitmapEnable ),
+#endif
+	INIP_KW( "ConfigBox", 1, "noexit",		1, IGN, IGN,	&ConfigBoxNoExitFlag, NULL ),
+	INIP_KW( "ConfigBox", 1, "filter",		IGN, 0, IGN,	&SessionFilterFlag, NULL ),
+	INIP_KW( "ConfigBox", 1, "defaultsettings",	IGN, 0, IGN,	&DefaultSettingsFlag, NULL ),
+	INIP_NUM( "ConfigBox", 1, "height",		IGN,		&ConfigBoxHeight, NULL ),
+	INIP_NUM( "ConfigBox", 1, "windowheight",	IGN,		&ConfigBoxWindowHeight, NULL ),
+	INIP_NUM( "Print", 1, "height",			IGN,		&PrintCharSize, NULL ),
+	INIP_NUM( "Print", 1, "maxline",		IGN,		&PrintMaxLinePerPage, NULL ),
+	INIP_NUM( "Print", 1, "maxchar",		IGN,		&PrintMaxCharPerLine, NULL ),
+} ;
+#undef IGN
+
+static void load_ini_params( void ) {
+	char buffer[4096] ;
+	size_t i ;
+	for( i = 0 ; i < lenof(ini_params) ; i++ ) {
+		const IniParam *p = &ini_params[i] ;
+		int v ;
+		int found = p->use_readini
+			? readINI( KittyIniFile, p->section, p->key, buffer, sizeof(buffer) )
+			: ReadParameterN( p->section, p->key, buffer, sizeof(buffer) ) ;
+		if( !found ) continue ;
+		if( p->is_int ) {
+			v = atoi( buffer ) ;
+			if( (p->intmin != INIP_IGNORE) && (v < p->intmin) ) v = p->intmin ;
+		} else {
+			if( !stricmp( buffer, "YES" ) ) v = p->yes ;
+			else if( !stricmp( buffer, "NO" ) ) v = p->no ;
+			else v = p->other ;
+			if( v == INIP_IGNORE ) continue ;
+		}
+		if( p->var != NULL ) *(p->var) = v ;
+		else p->setter( v ) ;
+	}
+}
+
 void LoadParameters( void ) {
 	char buffer[4096] ;
 
-	/* A lire en premier */
-	if( ReadParameterN( INIT_SECTION, "debug", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) debug_flag = 1 ; }
+	/* All the plain keyword/int keys, in table order ("debug" first). */
+	load_ini_params() ;
 
+	/* The remaining keys have richer semantics and stay hand-written. */
 	if( ReadParameterN( INIT_SECTION, "antiidle", buffer, sizeof(buffer) ) ) { buffer[127]='\0'; strcpy( AntiIdleStr, buffer ) ; }
 	if( ReadParameterN( INIT_SECTION, "antiidledelay", buffer, sizeof(buffer) ) ) 
 		{ AntiIdleCountMax = (int)floor(atoi(buffer)/10.0) ; if( AntiIdleCountMax<=0 ) AntiIdleCountMax =1 ; }
-#ifdef MOD_BACKGROUNDIMAGE
-	//if( debug_flag )
-	if( ReadParameterN( INIT_SECTION, "bgimage", buffer, sizeof(buffer) ) ) {	
-		if( !stricmp( buffer, "NO" ) ) SetBackgroundImageFlag( 0 ) ; 
-		if( !stricmp( buffer, "YES" ) ) SetBackgroundImageFlag( 1 ) ;  // Broken en 0.71 ==> on desactive
-	}
-#endif
-	if( ReadParameterN( INIT_SECTION, "bcdelay", buffer, sizeof(buffer) ) ) { between_char_delay = atoi( buffer ) ; }
 	if( ReadParameterN( INIT_SECTION, "browsedirectory", buffer, sizeof(buffer) ) ) { 
 		if( !stricmp( buffer, "NO" ) ) { DirectoryBrowseFlag = 0 ; }
 		else if( (!stricmp( buffer, "YES" )) && (IniFileFlag==SAVEMODE_DIR) ) DirectoryBrowseFlag = 1 ;
@@ -3172,17 +3276,9 @@ void LoadParameters( void ) {
 		autocommand_delay = (int)(1000*atof( buffer )) ;
 		if(autocommand_delay<5) autocommand_delay = 5 ; 
 	}
-	if( ReadParameterN( INIT_SECTION, "conf", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "NO" ) ) NoKittyFileFlag = 1 ; }
 	if( ReadParameterN( INIT_SECTION, "configdir", buffer, sizeof(buffer) ) ) { 
 		if( strlen( buffer ) > 0 ) { if( existdirectory(buffer) ) SetConfigDirectory( buffer ) ; }
 	}
-	if( ReadParameterN( INIT_SECTION, "cryptsalt", buffer, sizeof(buffer) ) ) { SetCryptSaltFlag( atoi(buffer) ) ; }
-	if( ReadParameterN( INIT_SECTION, "ctrltab", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "NO" ) ) SetCtrlTabFlag( 0 ) ; }
-	if( ReadParameterN( INIT_SECTION, "hyperlink", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "NO" ) ) HyperlinkFlag = 0 ;
-		if( !stricmp( buffer, "YES" ) ) HyperlinkFlag = 1 ;
-	}
-	if( ReadParameterN( INIT_SECTION, "icon", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) IconeFlag = 1 ; }
 	if( ReadParameterN( INIT_SECTION, "iconfile", buffer, sizeof(buffer) ) ) {
 		if( existfile( buffer ) ) {
 			if( IconFile != NULL ) free( IconFile ) ;
@@ -3195,24 +3291,11 @@ void LoadParameters( void ) {
 		init_delay = (int)(1000*atof( buffer )) ;
 		if( init_delay < 0 ) init_delay = 2000 ; 
 	}
-	if( ReadParameterN( INIT_SECTION, "internaldelay", buffer, sizeof(buffer) ) ) { 
-		internal_delay = atoi( buffer ) ; 
-		if( internal_delay < 1 ) internal_delay = 1 ;
-	}
 	if( ReadParameterN( INIT_SECTION, "fileextension", buffer, sizeof(buffer) ) ) {
 		if( strlen(buffer) > 0 ) {
 			snprintf( FileExtension, sizeof(FileExtension), "%s%s", (buffer[0]!='.')?".":"", buffer ) ;
 			str_rtrim( FileExtension, " " ) ;
 		}				
-	}
-	if( ReadParameterN( INIT_SECTION, "mouseshortcuts", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "NO" ) ) MouseShortcutsFlag = 0 ;
-		if( !stricmp( buffer, "YES" ) ) MouseShortcutsFlag = 1 ;
-	}
-	/* cyd01/KiTTY #548: force classic modal error boxes instead of inline terminal errors */
-	if( ReadParameterN( INIT_SECTION, "modalerrors", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "YES" ) ) SetModalErrorsFlag( 1 ) ;
-		if( !stricmp( buffer, "NO" ) ) SetModalErrorsFlag( 0 ) ;
 	}
 	if( ReadParameterN( INIT_SECTION, "pastesize", buffer, sizeof(buffer) ) ) { if( atoi(buffer)>0 ) SetPasteSize( atoi(buffer) ) ; }
 	if( ReadParameterN( INIT_SECTION, "PSCPPath", buffer, sizeof(buffer) ) ) {
@@ -3221,7 +3304,6 @@ void LoadParameters( void ) {
 			PSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PSCPPath, buffer ) ;
 		}
 	}
-	if( ReadParameterN( INIT_SECTION, "readonly", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetReadOnlyFlag(1) ; }
 	if( ReadParameterN( INIT_SECTION, "sav", buffer, sizeof(buffer) ) ) {
 		if( strlen( buffer ) > 0 ) {
 			/* Ignore an inherited legacy default (kitty.sav / kitty084.sav) written
@@ -3236,85 +3318,16 @@ void LoadParameters( void ) {
 			}
 		}
 	}
-	if( ReadParameterN( INIT_SECTION, "shortcuts", buffer, sizeof(buffer) ) ) { 
-		if( !stricmp( buffer, "NO" ) ) ShortcutsFlag = 0 ; 
-		if( !stricmp( buffer, "YES" ) ) ShortcutsFlag = 1 ; 
-	}
-	if( ReadParameterN( INIT_SECTION, "size", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SizeFlag = 1 ; }
-	if( ReadParameterN( INIT_SECTION, "slidedelay", buffer, sizeof(buffer) ) ) { ImageSlideDelay = atoi( buffer ) ; }
 	if( ReadParameterN( INIT_SECTION, "sshversion", buffer, sizeof(buffer) ) ) { set_sshver( buffer ) ; }
-	if( ReadParameterN( INIT_SECTION, "userpasssshnosave", buffer, sizeof(buffer) ) ) { 
-		if( !stricmp( buffer, "no" ) ) SetUserPassSSHNoSave(0) ;
-		if( !stricmp( buffer, "yes" ) ) SetUserPassSSHNoSave(1) ;
-	}
-	if( ReadParameterN( INIT_SECTION, "winroll", buffer, sizeof(buffer) ) ) { 
-		if( !stricmp( buffer, "no" ) ) WinrolFlag = 0 ;
-		if( !stricmp( buffer, "yes" ) ) WinrolFlag = 1 ;
-	}
 	if( ReadParameterN( INIT_SECTION, "WinSCPPath", buffer, sizeof(buffer) ) ) {
 		if( existfile( buffer ) ) { 
 			if( WinSCPPath!=NULL) { free(WinSCPPath) ; WinSCPPath = NULL ; }
 			WinSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( WinSCPPath, buffer ) ;
 		}
 	}
-	if( ReadParameterN( INIT_SECTION, "wintitle", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "NO" ) ) TitleBarFlag = 0 ; }
-#ifdef MOD_PROXY
-	if( ReadParameterN( "ConfigBox", "proxyselection", buffer, sizeof(buffer) ) ) {
-		/* yes = always, no = never, auto (or anything else) = when defined */
-		if( !stricmp( buffer, "YES" ) ) { SetProxySelectionFlag(1) ; }
-		else if( !stricmp( buffer, "NO" ) ) { SetProxySelectionFlag(-1) ; }
-		else { SetProxySelectionFlag(0) ; }
-	}
-#endif
-#ifdef MOD_ZMODEM
-	if( ReadParameterN( INIT_SECTION, "zmodem", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "NO" ) ) SetZModemFlag( 0 ) ;
-		if( !stricmp( buffer, "YES" ) ) SetZModemFlag( 1 ) ; /* re-enabled: 0.84 port has a real helper spawn (kitty_zmodem.c) */
-		}
-#endif
-#ifdef MOD_RECONNECT
-	if( ReadParameterN( INIT_SECTION, "autoreconnect", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "NO" ) ) AutoreconnectFlag = 0 ; }
-	if( ReadParameterN( INIT_SECTION, "ReconnectDelay", buffer, sizeof(buffer) ) ) { 
-		ReconnectDelay = atoi( buffer ) ;
-		if( ReconnectDelay < 1 ) ReconnectDelay = 1 ;
-	}
-#endif
-	if( ReadParameterN( INIT_SECTION, "scriptmode", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "YES" ) ) kitty_script_set_enabled( 1 ) ;
-		if( !stricmp( buffer, "NO" ) ) kitty_script_set_enabled( 0 ) ;
-	}
-#ifndef MOD_NOTRANSPARENCY
-	if( ReadParameterN( INIT_SECTION, "transparency", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "YES" ) ) { TransparencyFlag = 1 ; }
-		else { TransparencyFlag = 0 ; } 
-	}
-#endif
-
-#ifdef MOD_BACKGROUNDIMAGE
-	if( ReadParameterN( INIT_SECTION, "shrinkbitmap", buffer, sizeof(buffer) ) ) { if( !stricmp( buffer, "YES" ) ) SetShrinkBitmapEnable(1) ; else SetShrinkBitmapEnable(0) ; }
-#endif
-
 	if( readINI( KittyIniFile, "ConfigBox", "dblclick", buffer, sizeof(buffer) ) ) {
 		if( !strcmp(buffer,"open") ) { SetDblClickFlag(0) ; }
 		if( !strcmp(buffer,"start") ) { SetDblClickFlag(1) ; }
-	}
-	if( readINI( KittyIniFile, "ConfigBox", "height", buffer, sizeof(buffer) ) ) {
-		ConfigBoxHeight = atoi( buffer ) ;
-		/* NB: the extra row taken by the Proxy-choice droplist (when shown) is
-		 * now accounted for in the config-box window sizing (windows/dialog.c),
-		 * not by shrinking the list here. */
-	}
-	if( readINI( KittyIniFile, "ConfigBox", "windowheight", buffer, sizeof(buffer) ) ) {
-		ConfigBoxWindowHeight = atoi( buffer ) ;
-	}
-	if( readINI( KittyIniFile, "ConfigBox", "noexit", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "YES" ) ) ConfigBoxNoExitFlag = 1 ;
-	}
-	if( readINI( KittyIniFile, "ConfigBox", "filter", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "NO" ) ) SessionFilterFlag = 0 ;
-	}
-	if( readINI( KittyIniFile, "ConfigBox", "defaultsettings", buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "NO" ) ) DefaultSettingsFlag = 0 ;
 	}
 	/* How many levels of the config-box Category tree to auto-expand. Default
 	 * (unset / all / full) = fully expanded; a number 1..N expands only that
@@ -3324,15 +3337,6 @@ void LoadParameters( void ) {
 		if( strlen(buffer)==0 || !stricmp(buffer,"all") || !stricmp(buffer,"full") || !stricmp(buffer,"max") || !stricmp(buffer,"yes") )
 			kitty_category_expand_depth = 99 ;
 		else { int d = atoi(buffer) ; kitty_category_expand_depth = (d >= 1) ? d : 99 ; }
-	}
-	if( readINI( KittyIniFile, "Print", "height", buffer, sizeof(buffer) ) ) {
-		PrintCharSize = atoi( buffer ) ;
-	}
-	if( readINI( KittyIniFile, "Print", "maxline", buffer, sizeof(buffer) ) ) {
-		PrintMaxLinePerPage = atoi( buffer ) ;
-	}
-	if( readINI( KittyIniFile, "Print", "maxchar", buffer, sizeof(buffer) ) ) {
-		PrintMaxCharPerLine = atoi( buffer ) ;
 	}
 	if( readINI( KittyIniFile, "Folder", "del", buffer, sizeof(buffer) ) ) {
 		StringList_Del( FolderList, buffer ) ;
