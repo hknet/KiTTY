@@ -988,11 +988,33 @@ static void kitty_show_update_popup( HWND owner, const char *text, int action,
 /* Transient terminal-title notice: show `text` for `ms`, then restore the title.
  * Runs on a short detached thread so it never blocks; guarded by IsWindow. */
 typedef struct { HWND hwnd ; int ms ; char text[512] ; char saved[512] ; } kitty_titlenotice_t ;
+
+/* Tint the title bar green while the notice shows so it is actually noticed
+ * (Windows 11 DWMWA_CAPTION_COLOR/DWMWA_TEXT_COLOR; silent no-op on older
+ * Windows). dwmapi.dll is loaded on demand so nothing new is linked. */
+static void kitty_caption_tint( HWND hwnd, int on ) {
+	typedef HRESULT (WINAPI *dwmswa_t)( HWND, DWORD, LPCVOID, DWORD ) ;
+	static dwmswa_t dwmswa = NULL ;
+	static int inited = 0 ;
+	if( !inited ) {
+		HMODULE dwm = LoadLibraryA( "dwmapi.dll" ) ;
+		if( dwm ) dwmswa = (dwmswa_t)GetProcAddress( dwm, "DwmSetWindowAttribute" ) ;
+		inited = 1 ;
+	}
+	if( dwmswa ) {
+		/* 35/36 = DWMWA_CAPTION_COLOR/DWMWA_TEXT_COLOR (absent from older
+		 * MinGW headers); 0xFFFFFFFF = DWMWA_COLOR_DEFAULT. */
+		DWORD caption = on ? (DWORD)RGB(16,124,16)    : 0xFFFFFFFFu ;
+		DWORD text    = on ? (DWORD)RGB(255,255,255)  : 0xFFFFFFFFu ;
+		dwmswa( hwnd, 35, &caption, sizeof(caption) ) ;
+		dwmswa( hwnd, 36, &text, sizeof(text) ) ;
+	}
+}
 static DWORD WINAPI kitty_titlenotice_thread( LPVOID p ) {
 	kitty_titlenotice_t *t = (kitty_titlenotice_t*)p ;
-	if( IsWindow(t->hwnd) ) SetWindowTextA( t->hwnd, t->text ) ;
+	if( IsWindow(t->hwnd) ) { kitty_caption_tint( t->hwnd, 1 ) ; SetWindowTextA( t->hwnd, t->text ) ; }
 	Sleep( t->ms ) ;
-	if( IsWindow(t->hwnd) ) SetWindowTextA( t->hwnd, t->saved ) ;
+	if( IsWindow(t->hwnd) ) { kitty_caption_tint( t->hwnd, 0 ) ; SetWindowTextA( t->hwnd, t->saved ) ; }
 	free( t ) ;
 	return 0 ;
 }
@@ -1140,7 +1162,7 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 					char note[256] ;
 					snprintf( note, sizeof(note), "KiTTY - up to date (%s%s is the latest)",
 						curnum, cur_is_beta ? "-beta" : "" ) ;
-					kitty_title_notice( hwnd, note, 3000 ) ;
+					kitty_title_notice( hwnd, note, 5000 ) ;
 				} else {
 					snprintf( msg, sizeof(msg),
 						"You are running the latest version.\r\n\r\nInstalled: %s\r\nLatest:    %s",
