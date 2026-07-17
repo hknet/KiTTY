@@ -2462,6 +2462,36 @@ void SaveCurrentSetting( HWND hwnd ) {
 		}
 	}
 
+/* /save + /savenew <name>: write the LIVE settings to a saved session. With a
+ * name, the window's session identity switches to it first (save-as), so later
+ * /save calls and save-on-exit land there. Mirrors the config-box Save button
+ * (folder default + launcher refresh broadcast, cf. kitty_config.c). The
+ * classic /save (.ktx file exporter, SaveCurrentSetting) lives on as /savektx. */
+void kitty_set_last_session(const char *sessionname);   /* kitty_storage.c */
+static void kitty_save_current_session( HWND hwnd, const char * newname ) {
+	char buffer[1024] ;
+	char * errmsg ;
+	if( newname != NULL ) {
+		while( newname[0]==' ' ) newname++ ;
+		if( newname[0]=='\0' ) return ;
+		conf_set_str( conf, CONF_sessionname, newname ) ;
+	}
+	if( strlen( conf_get_str(conf,CONF_folder) ) == 0 ) conf_set_str( conf, CONF_folder, "Default" ) ;
+	errmsg = save_settings( conf_get_str(conf,CONF_sessionname), conf ) ;
+	if( errmsg != NULL ) {
+		MessageBox( hwnd, errmsg, "Save session", MB_OK|MB_ICONERROR ) ;
+		sfree( errmsg ) ;
+		return ;
+	}
+	if( newname != NULL ) kitty_set_last_session( conf_get_str(conf,CONF_sessionname) ) ;
+	{	/* same best-effort refresh broadcast as the config-box Save button */
+		UINT msg = RegisterWindowMessageA( "KiTTYLauncherRefreshSessionsAndHotkeys" ) ;
+		if( msg ) PostMessageA( HWND_BROADCAST, msg, 0, 0 ) ;
+	}
+	snprintf( buffer, sizeof(buffer), "Settings saved to session\n-%s-", conf_get_str(conf,CONF_sessionname) ) ;
+	MessageBox( hwnd, buffer, "Save session", MB_OK|MB_ICONINFORMATION ) ;
+}
+
 // Procedures de generation du dump "memoire" (/savedump)
 #ifdef MOD_SAVEDUMP
 #include "kitty_savedump.c"
@@ -2469,7 +2499,50 @@ void SaveCurrentSetting( HWND hwnd ) {
 
 int InternalCommand( HWND hwnd, char * st ) {
 	char buffer[4096] ;
-	if( strstr( st, "/message " ) == st ) { 
+	if( !strcmp( st, "/help" ) ) {
+		MessageBox( hwnd,
+			"Window & title (runtime toggles - persist via kitty.ini [KiTTY] size= / wintitle=):\n"
+			"  /size - toggle the [rows x cols] title suffix\n"
+			"  /wintitle - toggle the title decorations\n"
+			"  /title <text> - set the window title\n"
+			"  /transparency - toggle window transparency\n"
+			"  /backgroundimage - toggle the background image feature\n"
+			"  /icon - toggle per-session window icons\n"
+			"  /hyperlink - toggle clickable URLs\n"
+			"  /redraw, /refresh - repaint window / refresh background\n"
+			"\n"
+			"Info:\n"
+			"  /init - show configuration paths\n"
+			"  /session - show the session name\n"
+			"  /urlregex - show the URL detection regex\n"
+			"  /message <text> - show a message box\n"
+			"\n"
+			"Settings & storage:\n"
+			"  /save - save the live settings to this window's saved session\n"
+			"  /savenew <name> - save as a NEW session and switch this window to it\n"
+			"  /savektx - export the settings to a .ktx connection file\n"
+			"  /savemode - cycle the save mode (registry / file / dir)\n"
+			"  /savereg, /loadreg, /delreg - export / import / DELETE the KiTTY registry\n"
+			"  /savesessions - export the saved sessions to kitty.ses\n"
+			"  /copytoputty, /copytokitty - copy sessions to / from stock PuTTY\n"
+			"  /configpassword [pw], /-configpassword - set / show the config password\n"
+			"  /switchcrypt - switch the crypt mode\n"
+			"  /delfolder <name> - delete a session folder\n"
+			"  /loadinitscript [file] - (re)load the init script\n"
+			"\n"
+			"Behaviour & diagnostics:\n"
+			"  /shortcuts - reload the [Shortcuts] key bindings\n"
+			"  /noshortcuts, /nomouseshortcuts - disable shortcut layers\n"
+			"  /bcdelay [ms] - between-character send delay\n"
+			"  /PrintCharSize <n> - printing font size\n"
+			"  /fileassoc - register the .ktx file association\n"
+			"  /debug - toggle debug mode\n"
+			"  /passwd - show + copy the session password (debug mode only)\n"
+			"  /savedump - write the kitty.dmp diagnostic dump\n"
+			"  /screenshot - save a screenshot of the terminal\n",
+			"KiTTY internal commands", MB_OK ) ;
+		return 1 ;
+	} else if( strstr( st, "/message " ) == st ) {
 		MessageBox( hwnd, st+9, "Info", MB_OK ) ; 
 		return 1 ; 
 	} else if( !strcmp( st, "/copytoputty" ) ) {
@@ -2496,9 +2569,21 @@ int InternalCommand( HWND hwnd, char * st ) {
 		char b[1024] ;
 		snprintf(b,sizeof(b),"%d: %s",conf_get_int(conf,CONF_url_defregex),conf_get_str(conf,CONF_url_regex));
 		MessageBox( NULL, b, "URL regex", MB_OK ) ; return 1 ; 
-	} else if( !strcmp( st, "/save" ) ) { 
+	} else if( !strcmp( st, "/save" ) ) {
+		if( strlen( conf_get_str(conf,CONF_sessionname) ) > 0 ) {
+			kitty_save_current_session( hwnd, NULL ) ;
+		} else {
+			MessageBox( hwnd, "No saved session is associated with this window.\n"
+			            "Use  /savenew <name>  to create one.",
+			            "Save session", MB_OK|MB_ICONINFORMATION ) ;
+		}
+		return 1 ;
+	} else if( strstr( st, "/savenew " ) == st ) {
+		kitty_save_current_session( hwnd, st+9 ) ;
+		return 1 ;
+	} else if( !strcmp( st, "/savektx" ) ) {
 		SaveCurrentSetting(hwnd);
-		return 1 ; 
+		return 1 ;
 #ifdef MOD_SAVEDUMP
 	} else if( !strcmp( st, "/savedump" ) ) { SaveDump() ; return 1 ; 
 #endif
@@ -2569,7 +2654,16 @@ int InternalCommand( HWND hwnd, char * st ) {
 		MessageBox(hwnd,buffer,"Configuration infomations",MB_OK);
 		return 1 ; 
 	} else if( !strcmp( st, "/size" ) ) {
-		SizeFlag = abs( SizeFlag - 1 ) ;
+		if( !TitleBarFlag ) {
+			/* Decorations off (the wintitle master switch): the suffix is
+			 * invisible regardless of SizeFlag, and blind toggling made
+			 * /size look dead every other time. Typing /size here can only
+			 * mean "show the size" - enable both. */
+			TitleBarFlag = 1 ;
+			SizeFlag = 1 ;
+		} else {
+			SizeFlag = abs( SizeFlag - 1 ) ;
+		}
 		kitty_refresh_title() ;
 		return 1 ;
 	} else if( !strcmp( st, "/wintitle" ) ) {

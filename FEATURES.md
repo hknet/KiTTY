@@ -548,9 +548,18 @@ When you run into a problem and want help diagnosing it, KiTTY can capture a dia
 
 KiTTY lets you assign a keyboard shortcut to almost any item in its main menu, so you can trigger actions like opening the connected text editor, printing the screen, running a local command, sending or receiving files, or toggling full screen without reaching for the mouse. Each action has a sensible default shortcut (for example, the editor opens with SHIFT+F2 and the local command box with CONTROL+F5), and you can override any of them to fit your own habits. This is handy for keeping frequently used commands a single keystroke away.
 
-**How to enable:** Define key shortcuts in the kitty.ini `[Shortcuts]` section (e.g. `editor=`, `print=`, `input=`, `inputm=` ...).
+**How to enable:** Define key shortcuts in the kitty.ini `[Shortcuts]` section (e.g. `editor=`, `print=`, `input=`, `inputm=` ...; the full commented list is in `kitty.ini.example`).
 
-Two of these open KiTTY's *send-text* boxes: `input` (default CTRL+F8) pops up a one-line box and `inputm` (default SHIFT+F8) a resizable multiline box pre-filled from the clipboard. Text is composed locally and sent to the terminal only when you confirm (OK, or SHIFT+RETURN in the multiline box; if you select part of the text, only the selection is sent) — handy on slow links, and for sending a multi-line snippet as one block.
+**Syntax:** modifiers in braces, then the key — `{CONTROL}`, `{SHIFT}`, `{ALT}`, `{ALTGR}`, `{WIN}` combined freely, followed by a single letter/digit or a named key (`{F1}`…`{F12}`, `{RETURN}`, `{SPACE}`, `{TAB}`, `{HOME}`, `{END}`, `{DEL}`, …). For example, to make **Ctrl+N duplicate the current session**:
+
+```ini
+[Shortcuts]
+duplicate={CONTROL}N
+```
+
+Other popular targets: `opennew=` (new session), `changesettings=`, `fullscreen=`, `visible=` (always on top), `protect=`, `rollup=`, `eventlog=`. Setting `shortcuts=no` in `[KiTTY]` disables the whole shortcut layer.
+
+Two of these open KiTTY's *send-text* boxes: `input` (default CTRL+F8) pops up a one-line box and `inputm` (default SHIFT+F8, with CTRL+SHIFT+F8 as a fixed alias) a resizable multiline box pre-filled from the clipboard. Text is composed locally and sent to the terminal only when you confirm (OK, or SHIFT+RETURN in the multiline box; if you select part of the text, only the selection is sent) — handy on slow links, and for sending a multi-line snippet as one block. In the one-line box, a line starting with `/` is a KiTTY *internal command* executed locally instead of being sent — type **`/help`** for the full list; e.g. `/size` and `/wintitle` toggle the title-bar decorations at runtime, `/save` writes the live settings back to this window's saved session, `/savenew <name>` saves them as a new session and switches the window to it, `/savedump` writes the diagnostic dump.
 
 ![Menu key shortcuts definition](docs/features/img/menu_shortcuts.jpg)
 
@@ -591,6 +600,11 @@ that were still parsed but had lost their effect (their consumer was never
 forward-ported, was superseded, or never worked upstream either). Rather than let
 them silently pretend to work, each was either removed entirely or brought back
 as a working feature.
+
+**Missing a retired setting?** If a key listed below mattered to your workflow,
+please [open an issue](https://github.com/hknet/KiTTY/issues) — several keys were
+revived on request exactly that way, and where feasible we will restore the
+wiring of a requested feature too.
 
 **Revived — these keys work again, properly wired (some for the first time in
 the port):**

@@ -68,8 +68,11 @@ static LRESULT CALLBACK InputCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 	HWND handle;
 	switch (message) {
 		case WM_INITDIALOG:
+			/* Advertise the internal-command console this box doubles as. */
 			if( IniFileFlag == SAVEMODE_DIR ) {
-				SetWindowText(hwnd,"Text input (portable mode)");
+				SetWindowText(hwnd,"Text input (portable mode) - /help = KiTTY commands");
+			} else {
+				SetWindowText(hwnd,"Text input - /help = KiTTY commands");
 			}
 			handle = GetDlgItem(hwnd,IDC_RESULT);
 			if( InputBoxResult == NULL ) SetWindowText(handle,"") ;

@@ -367,7 +367,10 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 		SendMessage( hwnd, WM_COMMAND, IDM_PRINT, 0 ) ; 
 		return 1 ; 
 	}
-	if( key == shortcuts_tab.inputm )	 		// Fenetre de controle
+	/* Ctrl+Shift+F8 is a fixed alias for the multiline box: users expect it
+	 * right next to Ctrl+F8 (one-line box) / Shift+F8 (the default binding). */
+	if( (key == shortcuts_tab.inputm) ||
+	    (key == SHIFTKEY+CONTROLKEY+VK_F8) )	 	// Fenetre de controle
 		{
 		MainHwnd = hwnd ; _beginthread( routine_inputbox_multiline, 0, (void*)&hwnd ) ;
 		return 1 ;
