@@ -14,10 +14,12 @@
  *   5. %APPDATA%\PuTTY\putty.ini
  *
  * The resolved file is the authoritative settings store when its main
- * section says savemode=file or savemode=dir; otherwise (savemode=registry
- * or absent, matching kitty.exe's default) the registry stays authoritative
- * and ini keys serve as first-run defaults only (see
- * kitty_inilight_registry_authoritative()).
+ * section says savemode=file or savemode=dir, or - with no savemode key at
+ * all - when a portable layout sits beside it (a Sessions\ store or a
+ * KiTTYState file; portable builds force dir mode without writing the key).
+ * Otherwise (savemode=registry, or absent with no such layout, matching
+ * kitty.exe's default) the registry stays authoritative and ini keys serve
+ * as first-run defaults only (see kitty_inilight_registry_authoritative()).
  */
 
 #include <windows.h>
@@ -100,11 +102,41 @@ const char *kitty_inilight_file(void)
     return (inilight_state == 1) ? inilight_path : NULL;
 }
 
+/* An unambiguous file/dir-backed layout beside the resolved ini: the
+ * dir-mode Sessions\ store or the portable build's KiTTYState file.
+ * kitty.sav is deliberately NOT a signal - /savereg drops one next to the
+ * exe as a backup while staying in registry mode. */
+static int inilight_portable_layout(void)
+{
+    char dir[MAX_PATH + 1], cand[MAX_PATH + 32];
+    char *slash, *s2;
+    DWORD a;
+    strcpy(dir, inilight_path);
+    slash = strrchr(dir, '\\');
+    s2 = strrchr(dir, '/');
+    if (s2 > slash)
+        slash = s2;
+    if (!slash)
+        return 0;
+    *slash = '\0';
+    snprintf(cand, sizeof(cand), "%s\\Sessions", dir);
+    a = GetFileAttributesA(cand);
+    if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY))
+        return 1;
+    snprintf(cand, sizeof(cand), "%s\\KiTTYState", dir);
+    a = GetFileAttributesA(cand);
+    if (a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY))
+        return 1;
+    return 0;
+}
+
 /* 1 when the registry must stay the authoritative settings store: no ini
- * was found, or the resolved ini does not explicitly say savemode=file or
- * savemode=dir. An absent savemode key means registry mode, exactly as in
- * kitty.exe - registry-mode installs routinely carry an auto-created
- * kitty.ini whose savemode key was deleted when the mode was selected. */
+ * was found, or the resolved ini neither says savemode=file/dir nor sits
+ * in a recognisable portable layout. An absent savemode key means registry
+ * mode, exactly as in kitty.exe - registry-mode installs routinely carry an
+ * auto-created kitty.ini whose savemode key was deleted when the mode was
+ * selected - except that portable builds force dir mode without ever
+ * writing a savemode key, so their on-disk layout counts as evidence. */
 int kitty_inilight_registry_authoritative(void)
 {
     char buf[32];
@@ -112,7 +144,11 @@ int kitty_inilight_registry_authoritative(void)
         return 1;
     GetPrivateProfileStringA(inilight_mainsection, "savemode", "",
                              buf, sizeof(buf), inilight_path);
-    return stricmp(buf, "file") && stricmp(buf, "dir");
+    if (!stricmp(buf, "file") || !stricmp(buf, "dir"))
+        return 0;
+    if (!stricmp(buf, "registry"))
+        return 1;
+    return !inilight_portable_layout();
 }
 
 /* Read [section] key. Returns 1 with the value copied when the key is

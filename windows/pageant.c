@@ -682,6 +682,14 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                            CB_SETCURSEL, 0, selection);
 
         keylist_update();
+
+        /* KiTTY: show when the settings live in the suite ini. */
+        if (kageant_ini_status()) {
+            char *inimsg = dupprintf("Settings file (kitty.ini mode): %s",
+                                     kageant_ini_status());
+            SetDlgItemText(hwnd, IDC_KEYLIST_INISTATUS, inimsg);
+            sfree(inimsg);
+        }
         return 0;
       }
       case WM_MEASUREITEM: {
@@ -974,7 +982,10 @@ static BOOL AddTrayIcon(HWND hwnd)
     tnid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     tnid.uCallbackMessage = WM_SYSTRAY;
     tnid.hIcon = hicon = LoadIcon(hinst, MAKEINTRESOURCE(201));
-    strcpy(tnid.szTip, "kageant (KiTTY authentication agent)");
+    /* KiTTY: second tooltip line when the suite ini is the settings store */
+    strcpy(tnid.szTip, kageant_ini_status()
+           ? "kageant (KiTTY authentication agent)\r\n(kitty.ini mode)"
+           : "kageant (KiTTY authentication agent)");
 
     res = Shell_NotifyIcon(NIM_ADD, &tnid);
 

@@ -404,8 +404,11 @@
 ; %APPDATA%\KiTTY\kitty.ini / %APPDATA%\PuTTY\putty.ini. When the file
 ; says [KiTTY] savemode=file or savemode=dir, the ini is the authoritative
 ; store: the tray toggles write back here and the registry is never touched
-; (portable mode). Otherwise (savemode=registry or absent) the registry
-; stays authoritative and these keys act as first-run defaults only.
+; (portable mode). A portable folder counts even without the savemode
+; line: with savemode absent, a Sessions folder or KiTTYState file next
+; to the ini also makes it authoritative. Otherwise (savemode=registry,
+; or absent with no such layout) the registry stays authoritative and
+; these keys act as first-run defaults only.
 
 ; askconfirmation: prompt before a loaded key may sign:
 ;   yes  = every key use

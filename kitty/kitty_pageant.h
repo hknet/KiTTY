@@ -27,6 +27,7 @@ void kageant_confirm_set(int on);
 #define KAGEANT_CONFIRM_YES   1        /* prompt for every key use */
 #define KAGEANT_CONFIRM_AUTO  2        /* only keys whose comment asks for it */
 int kageant_confirm_mode(void);
+const char *kageant_ini_status(void);  /* ini path when authoritative, else NULL */
 
 /* ---- Windows OpenSSH client integration ---- */
 void kageant_openssh_apply(int on);    /* add/remove the managed ~/.ssh block */

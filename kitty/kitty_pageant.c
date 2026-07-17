@@ -334,6 +334,15 @@ void kageant_confirm_set(int on)
     kageant_reg_write(KAGEANT_REG_CONFIRM, on);
 }
 
+/* KiTTY: "kitty.ini mode" indicator for the key-list window and the tray
+ * tooltip: the resolved ini path when it is the authoritative settings
+ * store, NULL when the registry is. */
+const char *kageant_ini_status(void)
+{
+    return kitty_inilight_registry_authoritative() ? NULL
+                                                   : kitty_inilight_file();
+}
+
 /* Write the tracked key paths to the StartupKeys REG_MULTI_SZ value. */
 void kageant_save_startup_keys(void)
 {
