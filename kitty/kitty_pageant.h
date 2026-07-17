@@ -22,6 +22,11 @@ int kageant_notify_get(void);          /* default on */
 void kageant_notify_set(int on);
 int kageant_confirm_get(void);         /* default off */
 void kageant_confirm_set(int on);
+/* [Agent] askconfirmation modes (classic three-state) */
+#define KAGEANT_CONFIRM_NO    0        /* never, even per-key comment opt-ins */
+#define KAGEANT_CONFIRM_YES   1        /* prompt for every key use */
+#define KAGEANT_CONFIRM_AUTO  2        /* only keys whose comment asks for it */
+int kageant_confirm_mode(void);
 
 /* ---- Windows OpenSSH client integration ---- */
 void kageant_openssh_apply(int on);    /* add/remove the managed ~/.ssh block */

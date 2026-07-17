@@ -22,9 +22,6 @@ ALLOW_UNDOCUMENTED = {
     ("KiTTY", "KiLic"),
     ("KiTTY", "KiPP"),
     ("KiTTY", "password"),
-    ("Agent", "askconfirmation"),    # legacy/unused; current kageant confirms keys by comment text
-    ("Agent", "messageonkeyusage"),  # legacy/unused; current kageant setting is tray-menu registry state
-    ("Agent", "scrumble"),           # legacy/unused old key-obfuscation flag
 }
 
 
@@ -60,6 +57,11 @@ def source_options() -> set[tuple[str, str]]:
         # kitty_config.c mirrors INIT_SECTION without including kitty.h.
         for m in re.finditer(r'readINI\s*\([^;\n]*?KITTY_INI_SECTION\s*,\s*"([^"]+)"', text):
             opts.add(("KiTTY", m.group(1)))
+        # satellite binaries read the ini through kitty_inilight.
+        for m in re.finditer(r'kitty_inilight_(?:read|write)\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"', text):
+            section, key = m.groups()
+            if section in SECTIONS:
+                opts.add((section, key))
         # readINI with the INIT_SECTION macro (kitty.h) also targets [KiTTY].
         for m in re.finditer(r'readINI\s*\([^;\n]*?\bINIT_SECTION\s*,\s*"([^"]+)"', text):
             opts.add(("KiTTY", m.group(1)))

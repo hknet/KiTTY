@@ -15,6 +15,7 @@
 #include <shellapi.h>
 
 #include "kitty_pageant.h"
+#include "kitty_inilight.h"
 
 /* Shim so the moved kageant_do_notify body below stays textually identical
  * to its pageant.c original: reach pageant.c's static tray-window handle
@@ -236,50 +237,101 @@ void kageant_startup_set(int on)
 }
 
 #define KAGEANT_REG_NOTIFY "NotifyOnKeyUse"
-/* KiTTY: "notify on key use" tray-balloon toggle. Default ON (absent => on). */
+#define KAGEANT_REG_CONFIRM "ConfirmKeyUse"
+
+/*
+ * KiTTY: the notify/confirm settings live in the registry by default, but
+ * honour the classic kitty.ini [Agent] keys (hknet/KiTTY#14). When the ini
+ * resolved by kitty_inilight is authoritative (found, with an explicit
+ * savemode=file/dir), a present [Agent] key wins and the tray toggles write
+ * back to the ini, so a portable install never touches the registry. When
+ * the registry is authoritative, ini keys act as first-run defaults only.
+ */
+
+static int kageant_reg_read(const char *name, int *val_out)
+{
+    DWORD val, sz = sizeof(val);
+    if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, name,
+                     RRF_RT_REG_DWORD, NULL, &val, &sz) != ERROR_SUCCESS)
+        return 0;
+    *val_out = val ? 1 : 0;
+    return 1;
+}
+
+static void kageant_reg_write(const char *name, int on)
+{
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        DWORD val = on ? 1 : 0;
+        RegSetValueExA(hk, name, 0, REG_DWORD,
+                       (const BYTE *)&val, sizeof(val));
+        RegCloseKey(hk);
+    }
+}
+
+/* KiTTY: "notify on key use" tray-balloon toggle ([Agent] messageonkeyusage).
+ * Default ON (absent everywhere => on). */
 int kageant_notify_get(void)
 {
-    DWORD val = 1, sz = sizeof(val);
-    if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, KAGEANT_REG_NOTIFY,
-                     RRF_RT_REG_DWORD, NULL, &val, &sz) != ERROR_SUCCESS)
-        return 1;
-    return val ? 1 : 0;
+    char buf[32];
+    int ini_val = -1, reg_val;
+    if (kitty_inilight_read("Agent", "messageonkeyusage", buf, sizeof(buf))) {
+        if (!stricmp(buf, "yes")) ini_val = 1;
+        else if (!stricmp(buf, "no")) ini_val = 0;
+    }
+    if (kitty_inilight_registry_authoritative())
+        return kageant_reg_read(KAGEANT_REG_NOTIFY, &reg_val) ? reg_val :
+               (ini_val >= 0 ? ini_val : 1);
+    if (ini_val >= 0)
+        return ini_val;
+    return kageant_reg_read(KAGEANT_REG_NOTIFY, &reg_val) ? reg_val : 1;
 }
 
 void kageant_notify_set(int on)
 {
-    HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        DWORD val = on ? 1 : 0;
-        RegSetValueExA(hk, KAGEANT_REG_NOTIFY, 0, REG_DWORD,
-                       (const BYTE *)&val, sizeof(val));
-        RegCloseKey(hk);
-    }
+    if (!kitty_inilight_registry_authoritative() &&
+        kitty_inilight_write("Agent", "messageonkeyusage", on ? "yes" : "no"))
+        return;
+    kageant_reg_write(KAGEANT_REG_NOTIFY, on);
 }
 
-#define KAGEANT_REG_CONFIRM "ConfirmKeyUse"
-/* KiTTY: "ask confirmation before any key use" toggle (classic [Agent]
- * askconfirmation, promoted to a tray-menu setting). Default OFF. */
+/* KiTTY: key-use confirmation mode (classic [Agent] askconfirmation).
+ * KAGEANT_CONFIRM_NO silences even the per-key comment prompts (automation)
+ * and is expressible only in the ini; the registry DWORD and the two-state
+ * tray toggle keep their historical 0=auto / 1=yes meaning. Default AUTO. */
+int kageant_confirm_mode(void)
+{
+    char buf[32];
+    int ini_mode = -1, reg_val;
+    if (kitty_inilight_read("Agent", "askconfirmation", buf, sizeof(buf))) {
+        if (!stricmp(buf, "yes")) ini_mode = KAGEANT_CONFIRM_YES;
+        else if (!stricmp(buf, "no")) ini_mode = KAGEANT_CONFIRM_NO;
+        else if (!stricmp(buf, "auto")) ini_mode = KAGEANT_CONFIRM_AUTO;
+    }
+    if (kitty_inilight_registry_authoritative())
+        return kageant_reg_read(KAGEANT_REG_CONFIRM, &reg_val) ?
+               (reg_val ? KAGEANT_CONFIRM_YES : KAGEANT_CONFIRM_AUTO) :
+               (ini_mode >= 0 ? ini_mode : KAGEANT_CONFIRM_AUTO);
+    if (ini_mode >= 0)
+        return ini_mode;
+    return kageant_reg_read(KAGEANT_REG_CONFIRM, &reg_val) ?
+           (reg_val ? KAGEANT_CONFIRM_YES : KAGEANT_CONFIRM_AUTO) :
+           KAGEANT_CONFIRM_AUTO;
+}
+
+/* The tray checkbox is two-state: checked = YES, unchecked = AUTO (or NO). */
 int kageant_confirm_get(void)
 {
-    DWORD val = 0, sz = sizeof(val);
-    if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, KAGEANT_REG_CONFIRM,
-                     RRF_RT_REG_DWORD, NULL, &val, &sz) != ERROR_SUCCESS)
-        return 0;
-    return val ? 1 : 0;
+    return kageant_confirm_mode() == KAGEANT_CONFIRM_YES;
 }
 
 void kageant_confirm_set(int on)
 {
-    HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        DWORD val = on ? 1 : 0;
-        RegSetValueExA(hk, KAGEANT_REG_CONFIRM, 0, REG_DWORD,
-                       (const BYTE *)&val, sizeof(val));
-        RegCloseKey(hk);
-    }
+    if (!kitty_inilight_registry_authoritative() &&
+        kitty_inilight_write("Agent", "askconfirmation", on ? "yes" : "auto"))
+        return;
+    kageant_reg_write(KAGEANT_REG_CONFIRM, on);
 }
 
 /* Write the tracked key paths to the StartupKeys REG_MULTI_SZ value. */
@@ -440,8 +492,9 @@ void kageant_apply_saved_order(void)
 extern int (*kageant_confirm_hook)(const char *comment);
 int kageant_do_confirm(const char *comment)
 {
-    if (kageant_confirm_get() ||
-        (comment &&
+    int mode = kageant_confirm_mode();
+    if (mode == KAGEANT_CONFIRM_YES ||
+        (mode == KAGEANT_CONFIRM_AUTO && comment &&
          (strstr(comment, "confirmation") ||
           strstr(comment, "need confirm") ||
           strstr(comment, "needs confirm")))) {

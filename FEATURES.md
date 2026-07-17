@@ -168,7 +168,7 @@ KiTTY can log you in automatically to telnet, SSH-1 and SSH-2 servers by storing
 
 When you store private keys in KiTTY's key agent (kageant), you can require an explicit confirmation each time a key is used. With this enabled, every session that needs the key triggers a pop-up asking you to approve its use before authentication proceeds, giving you a clear chance to spot and refuse unexpected sign-in attempts. This adds a helpful safeguard against a loaded key being used without your knowledge. Thanks to [Patrick Cernko](https://people.mpi-klsb.mpg.de/~pcernko/pageant.html) for this patch.
 
-**How to enable:** For all keys at once, tick **"Ask confirmation before key use"** in the kageant tray menu (persisted, default off): every signing request then pops an allow/deny prompt naming the key. Or per key: generate a key whose **comment contains the word `confirmation`** (in kittygen), then load it into **kageant.exe** — only that key asks for confirmation.
+**How to enable:** For all keys at once, tick **"Ask confirmation before key use"** in the kageant tray menu (persisted, default off): every signing request then pops an allow/deny prompt naming the key. Or per key: generate a key whose **comment contains the word `confirmation`** (in kittygen), then load it into **kageant.exe** — only that key asks for confirmation. Or from **kitty.ini**: `[Agent] askconfirmation=` with the classic three states — `yes` (every use), `auto` (per-key comments only; the default), `no` (never — also silences the per-key prompts, for automation). kageant finds the ini on its own (`KITTY_INI_FILE`, else next to the exe, else `%APPDATA%`); when that file says `[KiTTY] savemode=file` or `dir`, the ini is the authoritative store and the tray toggle writes back to it, so a **portable** kageant never touches the registry. The related **“Notify when a key is used”** tray balloon (default on) is controllable the same way with `[Agent] messageonkeyusage=yes/no`.
 
 ![Private-key usage confirmation](docs/features/img/config_kittygen.jpg)
 ![Private-key usage confirmation](docs/features/img/ex_kageant.jpg)
@@ -641,10 +641,11 @@ the port):**
   prompt unconditionally.
 - `[ConfigBox] default`, `left`, `top` — dead getters; `left`/`top` are
   superseded by the automatic config-box position memory.
-- `[Agent] askconfirmation`, `messageonkeyusage`, `scrumble` — kageant (the
-  agent) never reads kitty.ini; per-key confirmation and key-use notification
-  are tray-menu toggles now (`Ask confirmation before key use`, stored in the
-  registry), and the classic key shuffle never actually ran upstream either.
+- `[Agent] scrumble` — the classic key shuffle was never functional in any
+  KiTTY release (its shuffle table was never built at runtime), so there is
+  nothing to restore. `askconfirmation` and `messageonkeyusage` were revived
+  with full — and portable — wiring on request (hknet/KiTTY#14); see the
+  *Private-key usage confirmation* section.
 - `[PuTTY] keys` — the KiTTY→PuTTY registry replication it triggered had no
   remaining caller.
 
