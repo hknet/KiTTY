@@ -16,6 +16,7 @@
 
 #include "kitty_pageant.h"
 #include "kitty_inilight.h"
+#include "ssh.h"
 
 /* Shim so the moved kageant_do_notify body below stays textually identical
  * to its pageant.c original: reach pageant.c's static tray-window handle
@@ -212,28 +213,38 @@ void kageant_openssh_apply(int on)
 #define KAGEANT_RUN_NAME    "KiTTY-kageant"
 
 static char **g_loaded_keypaths = NULL;   /* key paths added this session */
+static int   *g_loaded_encrypted = NULL;   /* per key: added encrypted/deferred */
 static int    g_nloaded = 0;
 static int    g_startup_loading = 0;       /* suppress re-save during startup load */
+static int    g_startup_missing = 0;       /* startup keys not found at last load */
+
+/* defined in the notify/confirm block below; used by the ini-aware
+ * startup getters/setters here. */
+static int kageant_reg_read(const char *name, int *val_out);
+static void kageant_reg_write(const char *name, int on);
 
 int kageant_startup_get(void)
 {
-    DWORD val = 0, sz = sizeof(val);
-    if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, KAGEANT_REG_STARTUP,
-                     RRF_RT_REG_DWORD, NULL, &val, &sz) != ERROR_SUCCESS)
-        return 0;
-    return val ? 1 : 0;
+    char buf[8];
+    int ini_val = -1, reg_val;
+    if (kitty_inilight_read("Agent", "loadonstartup", buf, sizeof(buf))) {
+        if (!stricmp(buf, "yes")) ini_val = 1;
+        else if (!stricmp(buf, "no")) ini_val = 0;
+    }
+    if (kitty_inilight_registry_authoritative())
+        return kageant_reg_read(KAGEANT_REG_STARTUP, &reg_val) ? reg_val :
+               (ini_val >= 0 ? ini_val : 0);
+    if (ini_val >= 0)
+        return ini_val;
+    return kageant_reg_read(KAGEANT_REG_STARTUP, &reg_val) ? reg_val : 0;
 }
 
 void kageant_startup_set(int on)
 {
-    HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        DWORD val = on ? 1 : 0;
-        RegSetValueExA(hk, KAGEANT_REG_STARTUP, 0, REG_DWORD,
-                       (const BYTE *)&val, sizeof(val));
-        RegCloseKey(hk);
-    }
+    if (!kitty_inilight_registry_authoritative() &&
+        kitty_inilight_write("Agent", "loadonstartup", on ? "yes" : "no"))
+        return;
+    kageant_reg_write(KAGEANT_REG_STARTUP, on);
 }
 
 #define KAGEANT_REG_NOTIFY "NotifyOnKeyUse"
@@ -343,42 +354,198 @@ const char *kageant_ini_status(void)
                                                    : kitty_inilight_file();
 }
 
-/* Write the tracked key paths to the StartupKeys REG_MULTI_SZ value. */
-void kageant_save_startup_keys(void)
+/* Directory holding the resolved authoritative ini (no trailing separator);
+ * 0 when there is none. */
+static int kageant_inidir(char *out, size_t outlen)
 {
-    size_t total = 1;   /* trailing empty string (double-NUL) */
-    int i;
-    for (i = 0; i < g_nloaded; i++)
-        total += strlen(g_loaded_keypaths[i]) + 1;
-    char *buf = snewn(total, char), *p = buf;
-    for (i = 0; i < g_nloaded; i++) {
-        size_t L = strlen(g_loaded_keypaths[i]) + 1;
-        memcpy(p, g_loaded_keypaths[i], L);
-        p += L;
-    }
-    *p = '\0';
-    HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        RegSetValueExA(hk, KAGEANT_REG_KEYS, 0, REG_MULTI_SZ,
-                       (const BYTE *)buf, (DWORD)total);
-        RegCloseKey(hk);
-    }
-    sfree(buf);
+    const char *f = kitty_inilight_file();
+    char *slash, *s2;
+    if (!f || strlen(f) >= outlen)
+        return 0;
+    strcpy(out, f);
+    slash = strrchr(out, '\\');
+    s2 = strrchr(out, '/');
+    if (s2 > slash) slash = s2;
+    if (!slash)
+        return 0;
+    *slash = '\0';
+    return 1;
 }
 
-/* Auto-track a key path added this session (dedup, case-insensitive). When the
- * feature is on, persist the updated set (unless we're mid startup load). */
-void kageant_track_keypath(const char *path)
+static int kageant_path_under(const char *dir, const char *path)
 {
+    size_t dl = strlen(dir);
+    if (_strnicmp(path, dir, dl) != 0)
+        return 0;
+    return path[dl] == '\\' || path[dl] == '/';
+}
+
+/* On-disk form: relative to the ini folder when the key sits under it,
+ * else the absolute path unchanged. */
+static void kageant_store_form(const char *abspath, char *out, size_t outlen)
+{
+    char dir[MAX_PATH + 1];
+    if (kageant_inidir(dir, sizeof(dir)) && kageant_path_under(dir, abspath)) {
+        const char *rel = abspath + strlen(dir);
+        while (*rel == '\\' || *rel == '/') rel++;
+        snprintf(out, outlen, "%s", rel);
+    } else {
+        snprintf(out, outlen, "%s", abspath);
+    }
+}
+
+/* Resolve a stored path (relative -> against the ini folder) to absolute. */
+static void kageant_resolve_form(const char *stored, char *out, size_t outlen)
+{
+    char dir[MAX_PATH + 1];
+    int isabs = stored[0] &&
+                (stored[1] == ':' || stored[0] == '\\' || stored[0] == '/');
+    if (!isabs && kageant_inidir(dir, sizeof(dir)))
+        snprintf(out, outlen, "%s\\%s", dir, stored);
+    else
+        snprintf(out, outlen, "%s", stored);
+}
+
+/* Persist the tracked key set. Portable (ini authoritative): numbered
+ * [Agent] startupkeyN entries, relative where possible, with a trailing
+ * ,encrypted marker. Otherwise: the StartupKeys REG_MULTI_SZ value, each
+ * entry "path,encrypted" or "path,plain". */
+void kageant_save_startup_keys(void)
+{
+    const char *f;
+    int i;
+
+    if (!kitty_inilight_registry_authoritative() &&
+        (f = kitty_inilight_file()) != NULL) {
+        char key[32], val[MAX_PATH + 32], store[MAX_PATH + 1], probe[MAX_PATH + 32];
+        int gap;
+        for (i = 1, gap = 0; gap < 8; i++) {          /* clear the old list */
+            snprintf(key, sizeof(key), "startupkey%d", i);
+            GetPrivateProfileStringA("Agent", key, "", probe, sizeof(probe), f);
+            if (probe[0]) { WritePrivateProfileStringA("Agent", key, NULL, f); gap = 0; }
+            else gap++;
+        }
+        for (i = 0; i < g_nloaded; i++) {
+            kageant_store_form(g_loaded_keypaths[i], store, sizeof(store));
+            snprintf(key, sizeof(key), "startupkey%d", i + 1);
+            snprintf(val, sizeof(val), "%s%s", store,
+                     g_loaded_encrypted[i] ? ",encrypted" : "");
+            WritePrivateProfileStringA("Agent", key, val, f);
+        }
+        return;
+    }
+
+    {
+        size_t total = 1;
+        char **entries = (g_nloaded ? snewn(g_nloaded, char *) : NULL);
+        char *buf, *p;
+        HKEY hk;
+        for (i = 0; i < g_nloaded; i++) {
+            entries[i] = dupprintf("%s,%s", g_loaded_keypaths[i],
+                                   g_loaded_encrypted[i] ? "encrypted" : "plain");
+            total += strlen(entries[i]) + 1;
+        }
+        buf = snewn(total, char); p = buf;
+        for (i = 0; i < g_nloaded; i++) {
+            size_t L = strlen(entries[i]) + 1;
+            memcpy(p, entries[i], L); p += L; sfree(entries[i]);
+        }
+        *p = '\0';
+        sfree(entries);
+        if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                            KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+            RegSetValueExA(hk, KAGEANT_REG_KEYS, 0, REG_MULTI_SZ,
+                           (const BYTE *)buf, (DWORD)total);
+            RegCloseKey(hk);
+        }
+        sfree(buf);
+    }
+}
+
+/* Best-effort "does this key need a passphrase" for the copy warning. */
+static int kageant_key_needs_pass(const char *abspath)
+{
+    Filename *pf = filename_from_str(abspath);
+    char *cmt = NULL;
+    int kt = key_type(pf), needs = 1;
+    if (kt == SSH_KEYTYPE_SSH2) needs = ppk_encrypted_f(pf, &cmt);
+    else if (kt == SSH_KEYTYPE_SSH1) needs = rsa1_encrypted_f(pf, &cmt);
+    sfree(cmt);
+    filename_free(pf);
+    return needs;
+}
+
+/* Auto-track a key path added this session (dedup, case-insensitive). In a
+ * portable install with startup-load on, a key from outside the install
+ * folder prompts to be copied in (so it travels) or referenced in place.
+ * When the feature is on, persist the updated set (unless mid startup load). */
+void kageant_track_keypath(const char *path, int encrypted)
+{
+    char abspath[MAX_PATH + 1];
     int i;
     if (!path || !*path)
         return;
+    if (!_fullpath(abspath, path, sizeof(abspath)))
+        snprintf(abspath, sizeof(abspath), "%s", path);
     for (i = 0; i < g_nloaded; i++)
-        if (!stricmp(g_loaded_keypaths[i], path))
+        if (!stricmp(g_loaded_keypaths[i], abspath))
             return;
+
+    if (!g_startup_loading && kageant_startup_get() &&
+        !kitty_inilight_registry_authoritative()) {
+        char dir[MAX_PATH + 1];
+        if (kageant_inidir(dir, sizeof(dir)) &&
+            !kageant_path_under(dir, abspath)) {
+            int needs_pass = kageant_key_needs_pass(abspath);
+            char *prompt = dupprintf(
+                "This key is outside the portable install folder:\n\n"
+                "    %s\n\n"
+                "Copy it into the portable keys folder so it travels with this "
+                "install, or reference it where it is (it will then load only on "
+                "this machine)?%s\n\n"
+                "Yes = Copy into %s\\keys\n"
+                "No = Reference where it is\n"
+                "Cancel = Do not add it to the startup list",
+                abspath,
+                needs_pass ? "" :
+                "\n\nWARNING: this key has no passphrase - copying it onto "
+                "portable media lets anyone holding the media use it.",
+                dir);
+            int choice = MessageBox(NULL, prompt,
+                "kageant - add key to startup",
+                MB_ICONQUESTION | MB_YESNOCANCEL | MB_DEFBUTTON1);
+            sfree(prompt);
+            if (choice == IDCANCEL)
+                return;               /* loaded this session, not persisted */
+            if (choice == IDYES) {
+                char keysdir[MAX_PATH + 8], dest[MAX_PATH + 72];
+                const char *base = abspath, *q;
+                for (q = abspath; *q; q++)
+                    if (*q == '\\' || *q == '/') base = q + 1;
+                snprintf(keysdir, sizeof(keysdir), "%s\\keys", dir);
+                CreateDirectoryA(keysdir, NULL);
+                snprintf(dest, sizeof(dest), "%s\\%s", keysdir, base);
+                if (strlen(dest) <= MAX_PATH &&
+                    (CopyFileA(abspath, dest, TRUE) ||
+                     GetLastError() == ERROR_FILE_EXISTS)) {
+                    snprintf(abspath, sizeof(abspath), "%s", dest);
+                    for (i = 0; i < g_nloaded; i++)   /* re-dedup on the copy */
+                        if (!stricmp(g_loaded_keypaths[i], abspath))
+                            return;
+                } else {
+                    MessageBox(NULL, "Could not copy the key into the portable "
+                        "folder; it will be referenced at its current location "
+                        "instead.", "kageant", MB_ICONWARNING | MB_OK);
+                }
+            }
+        }
+    }
+
     g_loaded_keypaths = sresize(g_loaded_keypaths, g_nloaded + 1, char *);
-    g_loaded_keypaths[g_nloaded++] = dupstr(path);
+    g_loaded_encrypted = sresize(g_loaded_encrypted, g_nloaded + 1, int);
+    g_loaded_keypaths[g_nloaded] = dupstr(abspath);
+    g_loaded_encrypted[g_nloaded] = encrypted ? 1 : 0;
+    g_nloaded++;
     if (!g_startup_loading && kageant_startup_get())
         kageant_save_startup_keys();
 }
@@ -408,31 +575,94 @@ void kageant_set_run_entry(int on)
     }
 }
 
-/* Re-add remembered startup keys, encrypted/deferred (passphrase on first use). */
+/* Re-add remembered startup keys. A ,encrypted entry loads deferred
+ * (passphrase on first use); ,plain loads immediately. Missing files are
+ * counted (kageant_startup_missing) and skipped, not purged. */
 void kageant_load_startup_keys(void)
 {
-    HKEY hk;
-    DWORD type = 0, sz = 0;
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0,
-                      KEY_QUERY_VALUE, &hk) != ERROR_SUCCESS)
-        return;
-    if (RegQueryValueExA(hk, KAGEANT_REG_KEYS, NULL, &type, NULL, &sz)
-            == ERROR_SUCCESS && type == REG_MULTI_SZ && sz > 0) {
-        char *buf = snewn(sz + 1, char);
-        if (RegQueryValueExA(hk, KAGEANT_REG_KEYS, NULL, NULL,
-                             (BYTE *)buf, &sz) == ERROR_SUCCESS) {
-            buf[sz] = '\0';
-            g_startup_loading = 1;
-            for (char *p = buf; *p; p += strlen(p) + 1) {
-                Filename *fn = filename_from_str(p);
-                win_add_keyfile(fn, true);   /* encrypted / deferred */
-                filename_free(fn);
+    const char *f;
+    g_startup_missing = 0;
+
+    if (!kitty_inilight_registry_authoritative() &&
+        (f = kitty_inilight_file()) != NULL) {
+        char key[32], val[MAX_PATH + 32], abspath[MAX_PATH + 1];
+        int i;
+        g_startup_loading = 1;
+        for (i = 1; ; i++) {
+            int enc = 0;
+            char *c;
+            snprintf(key, sizeof(key), "startupkey%d", i);
+            GetPrivateProfileStringA("Agent", key, "", val, sizeof(val), f);
+            if (!val[0])
+                break;
+            c = strrchr(val, ',');
+            if (c && !stricmp(c + 1, "encrypted")) { *c = '\0'; enc = 1; }
+            else if (c && !stricmp(c + 1, "plain")) { *c = '\0'; enc = 0; }
+            kageant_resolve_form(val, abspath, sizeof(abspath));
+            if (GetFileAttributesA(abspath) == INVALID_FILE_ATTRIBUTES) {
+                g_startup_missing++; continue;
             }
-            g_startup_loading = 0;
+            Filename *fn = filename_from_str(abspath);
+            win_add_keyfile(fn, enc ? true : false);
+            filename_free(fn);
         }
-        sfree(buf);
+        g_startup_loading = 0;
+        return;
     }
-    RegCloseKey(hk);
+
+    {
+        HKEY hk;
+        DWORD type = 0, sz = 0;
+        if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0,
+                          KEY_QUERY_VALUE, &hk) != ERROR_SUCCESS)
+            return;
+        if (RegQueryValueExA(hk, KAGEANT_REG_KEYS, NULL, &type, NULL, &sz)
+                == ERROR_SUCCESS && type == REG_MULTI_SZ && sz > 0) {
+            char *buf = snewn(sz + 1, char);
+            if (RegQueryValueExA(hk, KAGEANT_REG_KEYS, NULL, NULL,
+                                 (BYTE *)buf, &sz) == ERROR_SUCCESS) {
+                buf[sz] = '\0';
+                g_startup_loading = 1;
+                for (char *p = buf; *p; p += strlen(p) + 1) {
+                    int enc = 1;   /* legacy entries had no marker: deferred */
+                    char *c = strrchr(p, ',');
+                    if (c && !stricmp(c + 1, "encrypted")) { *c = '\0'; enc = 1; }
+                    else if (c && !stricmp(c + 1, "plain")) { *c = '\0'; enc = 0; }
+                    if (GetFileAttributesA(p) == INVALID_FILE_ATTRIBUTES) {
+                        g_startup_missing++; continue;
+                    }
+                    Filename *fn = filename_from_str(p);
+                    win_add_keyfile(fn, enc ? true : false);
+                    filename_free(fn);
+                }
+                g_startup_loading = 0;
+            }
+            sfree(buf);
+        }
+        RegCloseKey(hk);
+    }
+}
+
+/* Tray balloon for startup keys that could not be found (called once the
+ * tray icon exists). Silent when none were missing. */
+void kageant_notify_startup_missing(void)
+{
+    NOTIFYICONDATA nid;
+    if (g_startup_missing <= 0 || !traywindow)
+        return;
+    memset(&nid, 0, sizeof(nid));
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = traywindow;
+    nid.uID = 1;
+    nid.uFlags = NIF_INFO;
+    nid.dwInfoFlags = NIIF_WARNING;
+    nid.uTimeout = 5000;
+    snprintf(nid.szInfoTitle, sizeof(nid.szInfoTitle), "kageant: startup keys");
+    snprintf(nid.szInfo, sizeof(nid.szInfo),
+             "%d startup key%s could not be found and %s skipped.",
+             g_startup_missing, g_startup_missing == 1 ? "" : "s",
+             g_startup_missing == 1 ? "was" : "were");
+    Shell_NotifyIcon(NIM_MODIFY, &nid);
 }
 
 /* KiTTY: persist the current key offer order (SHA256 fingerprints, REG_MULTI_SZ).

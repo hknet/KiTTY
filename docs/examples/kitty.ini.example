@@ -418,3 +418,14 @@
 
 ; messageonkeyusage: tray balloon naming the key after each signature
 ;messageonkeyusage=yes
+
+; loadonstartup: re-add the remembered keys when kageant starts, added
+; encrypted (passphrase asked on first use). Toggle it from the kageant
+; tray menu ("Load keys on startup"); the key list below is managed for you.
+;loadonstartup=no
+
+; startupkey1, startupkey2, ...: the remembered key files, in order. Paths
+; under this install folder are stored relative to it (so they travel); a
+; trailing ",encrypted" loads that key deferred. kageant writes these when
+; you load keys with loadonstartup on - you normally do not edit them by hand.
+;startupkey1=keys\id_ed25519.ppk,encrypted

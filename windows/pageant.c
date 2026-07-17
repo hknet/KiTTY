@@ -554,7 +554,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
      */
     ret = pageant_add_keyfile(filename, NULL, &err, encrypted);
     if (ret == PAGEANT_ACTION_OK) {
-        kageant_track_keypath(filename_to_str(filename));   /* KiTTY startup-keys */
+        kageant_track_keypath(filename_to_str(filename), encrypted);   /* KiTTY startup-keys */
         goto done;
     } else if (ret == PAGEANT_ACTION_FAILURE) {
         goto error;
@@ -591,7 +591,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
         burnstr(pps.passphrase);
 
         if (ret == PAGEANT_ACTION_OK) {
-            kageant_track_keypath(filename_to_str(filename));   /* KiTTY startup-keys */
+            kageant_track_keypath(filename_to_str(filename), encrypted);   /* KiTTY startup-keys */
             goto done;
         } else if (ret == PAGEANT_ACTION_FAILURE) {
             goto error;
@@ -1521,14 +1521,27 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             /* KiTTY: toggle load-keys-on-startup. Enabling snapshots the
              * currently-loaded keys and installs an autostart Run entry. */
             int on = !kageant_startup_get();
+            int portable = !kitty_inilight_registry_authoritative();
             kageant_startup_set(on);
-            kageant_set_run_entry(on);
+            /* A HKCU ...\Run entry stores an absolute exe path in the
+             * registry, which defeats portability - only in registry mode. */
+            if (!portable)
+                kageant_set_run_entry(on);
             if (on)
                 kageant_save_startup_keys();   /* snapshot current key set */
             CheckMenuItem(systray_menu, IDM_LOAD_ON_STARTUP,
                           MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
             if (on) {
-                char *msg = dupprintf(
+                char *msg = portable ? dupprintf(
+                    "kageant will load your current %d key(s) at startup, added "
+                    "encrypted (passphrase asked on first use).\n\n"
+                    "The list is saved to kitty.ini so it travels with this "
+                    "portable install. Keys inside the install folder are stored "
+                    "relative to it; a key added from elsewhere prompts to be "
+                    "copied in or referenced. No machine autostart entry is "
+                    "created in portable mode.",
+                    kageant_nloaded())
+                  : dupprintf(
                     "kageant will load your current %d key(s) at login, added "
                     "encrypted (passphrase asked on first use).\n\n"
                     "An autostart entry was added (HKCU ...\\Run\\%s), so you can "
@@ -2074,6 +2087,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     /* Set up a system tray icon */
     AddTrayIcon(traywindow);
+    kageant_notify_startup_missing();
 
     /* Accelerators used: nsvkxaol */
     systray_menu = CreatePopupMenu();
