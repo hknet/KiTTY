@@ -586,15 +586,18 @@ void kageant_load_startup_keys(void)
     if (!kitty_inilight_registry_authoritative() &&
         (f = kitty_inilight_file()) != NULL) {
         char key[32], val[MAX_PATH + 32], abspath[MAX_PATH + 1];
-        int i;
+        int i, gap;
         g_startup_loading = 1;
-        for (i = 1; ; i++) {
+        /* Tolerate gaps in the numbering: a hand-edit that deletes one
+         * startupkeyN line must not truncate the rest of the list. Stop only
+         * after a run of empty slots (matching the save-side clear scan). */
+        for (i = 1, gap = 0; gap < 8; i++) {
             int enc = 0;
             char *c;
             snprintf(key, sizeof(key), "startupkey%d", i);
             GetPrivateProfileStringA("Agent", key, "", val, sizeof(val), f);
-            if (!val[0])
-                break;
+            if (!val[0]) { gap++; continue; }
+            gap = 0;
             c = strrchr(val, ',');
             if (c && !stricmp(c + 1, "encrypted")) { *c = '\0'; enc = 1; }
             else if (c && !stricmp(c + 1, "plain")) { *c = '\0'; enc = 0; }
