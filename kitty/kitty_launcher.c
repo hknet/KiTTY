@@ -227,7 +227,7 @@ HMENU InitLauncherMenu( char * Key ) {
 	}
 	AppendMenu( HideMenu, MF_SEPARATOR, 0, 0 ) ;
 	AppendMenu( HideMenu, MF_ENABLED, IDM_ABOUT, "&About" ) ;
-	AppendMenu( HideMenu, MF_ENABLED, IDM_QUIT, "&Quit" ) ;
+	AppendMenu( HideMenu, MF_ENABLED, IDM_QUIT, "E&xit" ) ;
 
 	
 	AppendMenu( menu, MF_POPUP, (UINT_PTR)HideMenu, "&Opened sessions" ) ;
@@ -238,7 +238,7 @@ HMENU InitLauncherMenu( char * Key ) {
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+2, "&TTY-ed" ) ;
 	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_ABOUT, "&About" ) ;
-	AppendMenu( menu, MF_ENABLED, IDM_QUIT, "&Quit" ) ;
+	AppendMenu( menu, MF_ENABLED, IDM_QUIT, "E&xit" ) ;
 
 	return menu ;
 }
