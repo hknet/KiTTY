@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.51 — Known issues & limitations
+# KiTTY 0.84.1.52 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -77,11 +77,34 @@ features are working and verified. Known limitations as of this release:
 - **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
   which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
   provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.48-beta @ 2026-07-09`.
+- **Version string:** binaries report `0.84.1.52-beta @ 2026-07-17`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.52
+
+- **Invert colours fixed:** no longer crashes (a classic-KiTTY 34-colour count
+  vs. this port's 25), and is a true negative now — black actually flips to
+  white. The `.ktx` colour handling got the same count fix (saving no longer
+  drops the underline/selection colours).
+- **Event Log:** resizable + maximizable, opens larger, Ctrl+A selects all,
+  Ctrl+C copies; Copy with nothing selected still copies the whole log.
+- **Esc closes the About box** again; Tab cycles its buttons.
+- **Check for updates:** the "up to date" notice tints the title bar green for
+  5 s (Windows 11).
+- **System menu:** *New Session* removed, *Inherit New Session* (config box
+  pre-loaded with this window's settings, empty hostname) replaces *New
+  duplicated session*, *Always On Top* replaces *Always visible*.
+- **kitty.ini:** 16+ dead keys retired (list in FEATURES.md); `noexit`,
+  `scriptmode`, `size`, `wintitle` revived as working; new
+  `[ConfigBox] dblclick=start`. RuTTY script-file format documented with a
+  shipped example (`docs/examples/logon-script.ksh`).
+- **Internals:** major source restructuring (verified byte-identical moves +
+  panel-by-panel config-box check); no intended behaviour change — if you use
+  an exotic kitty.ini and something stopped reacting, check the retired-keys
+  list first and report.
 
 ## New in 0.84.1.51
 

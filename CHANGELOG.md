@@ -5,6 +5,51 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.52-beta — 2026-07-17
+
+- **Invert colours actually inverts now — and no longer crashes.** *Window →
+  Invert colours* could abort the whole session with an assertion failure (a
+  colour-count left over from classic KiTTY's 34-colour palette; this port has
+  25), and even when it ran, pure black stayed black so a dark scheme merely got
+  darker. It is now a true photographic negative across all colours and returns
+  to the original scheme when used twice. The same colour-count fix applies to
+  `.ktx` session files: loading no longer plants stray colour entries, and
+  saving no longer silently drops the underline/selection colours.
+- **The Event Log is resizable.** Drag any edge or maximize it; it also opens
+  noticeably larger, the log list grows with the window, **Ctrl+A** selects
+  every line and **Ctrl+C** copies (with nothing selected, Copy still grabs the
+  whole log).
+- **Esc closes the About box again** (lost when the box became non-modal), and
+  Tab cycles its buttons — from a terminal window or from the configuration box.
+- **The "up to date" reply of *Check for updates* is visible now:** the title
+  bar turns green for five seconds with the notice text (Windows 11; older
+  Windows just shows the text as before).
+- **System menu cleanup:** *New Session* is removed (starting kitty.exe gives
+  the same box); *New duplicated session* is renamed **Inherit New Session** —
+  it opens a configuration box pre-loaded with the current window's settings and
+  an empty hostname, for "connect somewhere else with exactly this setup";
+  *Always visible* is renamed **Always On Top**.
+- **kitty.ini spring-clean.** Sixteen-plus documented-but-dead kitty.ini keys
+  were retired (the list is in FEATURES.md under *retired kitty.ini settings*),
+  and four wanted ones were revived as working features: `noexit` (closing a
+  window that ran a connected session reopens the configuration box),
+  `scriptmode` (master off-switch for RuTTY scripting), `size` (live
+  `[rows x cols]` window-title suffix) and `wintitle` (title decorations,
+  including the `(PROTECTED)`/`(ONTOP)` markers — strictly display-only; the
+  old title-parsing remote-command channel stays removed). New:
+  `[ConfigBox] dblclick=start` makes double-clicking a saved session act like
+  the Start button (new window, box stays open).
+- **RuTTY scripting is documented:** FEATURES.md explains the script-file
+  format (line-by-line send, `::` comments, wait-for/halt-on, per-line `:`
+  conditions) and `docs/examples/logon-script.ksh` ships as a commented starter.
+- **Large internal restructuring, no intended behaviour change:** the KiTTY
+  additions were carved out of the biggest source files into focused modules
+  (kitty.c shrank from ~6100 to ~3900 lines; storage.c and pageant.c were
+  split; the configuration dialog is built one panel per function; kitty.ini
+  parsing is table-driven). Every code move was verified byte-identical, the
+  configuration box was verified panel-by-panel, and a new storage round-trip
+  regression test covers the settings/crypto layer.
+
 ## 0.84.1.51-beta — 2026-07-12
 
 - **A named proxy can now be an SSH jump host.** The named-proxy editor gains three
