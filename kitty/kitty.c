@@ -1805,7 +1805,7 @@ void DisplaySystemTrayMenu( HWND hwnd ) {
 	AppendMenu( menu, MF_ENABLED, IDM_FROMTRAY, "&Restore" ) ;
 	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_ABOUT, "&About" ) ;
-	AppendMenu( menu, MF_ENABLED, IDM_QUIT, "&Quit" ) ;
+	AppendMenu( menu, MF_ENABLED, IDM_QUIT, "E&xit" ) ;
 		
 	SetForegroundWindow( hwnd ) ;
 	GetCursorPos (&pt);

@@ -225,9 +225,6 @@ HMENU InitLauncherMenu( char * Key ) {
 				CheckMenuItem( HideMenu, IDM_GOHIDE+i, MF_BYCOMMAND | MF_UNCHECKED) ;
 		}
 	}
-	AppendMenu( HideMenu, MF_SEPARATOR, 0, 0 ) ;
-	AppendMenu( HideMenu, MF_ENABLED, IDM_ABOUT, "&About" ) ;
-	AppendMenu( HideMenu, MF_ENABLED, IDM_QUIT, "E&xit" ) ;
 
 	
 	AppendMenu( menu, MF_POPUP, (UINT_PTR)HideMenu, "&Opened sessions" ) ;
