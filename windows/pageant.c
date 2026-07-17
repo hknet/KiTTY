@@ -1406,6 +1406,14 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
         if (!menuinprogress) {
             menuinprogress = true;
             update_sessions();
+            /* KiTTY: the menu is built once at startup, but the ini-backed
+             * settings can change behind our back (kitty.ini edits, store
+             * switches between registry and ini mode) - re-sync the
+             * checkmarks with the live store every time the menu opens. */
+            CheckMenuItem(systray_menu, IDM_NOTIFY_KEYUSE, MF_BYCOMMAND |
+                          (kageant_notify_get() ? MF_CHECKED : MF_UNCHECKED));
+            CheckMenuItem(systray_menu, IDM_CONFIRM_KEYUSE, MF_BYCOMMAND |
+                          (kageant_confirm_get() ? MF_CHECKED : MF_UNCHECKED));
             SetForegroundWindow(hwnd);
             TrackPopupMenu(systray_menu,
                            TPM_RIGHTALIGN | TPM_BOTTOMALIGN |
