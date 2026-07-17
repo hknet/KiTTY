@@ -29,7 +29,7 @@ see [FEATURES.md](FEATURES.md).
   it opens a configuration box pre-loaded with the current window's settings and
   an empty hostname, for "connect somewhere else with exactly this setup";
   *Always visible* is renamed **Always On Top**.
-- **kitty.ini spring-clean.** Sixteen-plus documented-but-dead kitty.ini keys
+- **kitty.ini housekeeping.** Sixteen-plus documented-but-dead kitty.ini keys
   were retired (the list is in FEATURES.md under *retired kitty.ini settings*),
   and four wanted ones were revived as working features: `noexit` (closing a
   window that ran a connected session reopens the configuration box),
@@ -42,6 +42,27 @@ see [FEATURES.md](FEATURES.md).
 - **RuTTY scripting is documented:** FEATURES.md explains the script-file
   format (line-by-line send, `::` comments, wait-for/halt-on, per-line `:`
   conditions) and `docs/examples/logon-script.ksh` ships as a commented starter.
+- **The send-text box got discoverable:** typing **`/help`** in the one-line box
+  (Ctrl+F8) lists all KiTTY internal commands, and the box title says so.
+  `/size` now re-enables the title decorations when they were switched off with
+  `/wintitle` (it looked dead before). Note that `/size` and `/wintitle` are
+  app-global *runtime* toggles: they are not part of the per-session settings
+  `/save` stores — make them permanent with `size=yes` / `wintitle=no` in the
+  kitty.ini `[KiTTY]` section. **Ctrl+Shift+F8** always opens the multiline box
+  as an alias next to Shift+F8.
+- **Save your runtime tweaks as a session:** `/save` now writes the window's
+  live settings back to its saved session, and the new **`/savenew <name>`**
+  saves them as a new session and switches the window's identity to it (so
+  later `/save` calls and save-on-exit land there). The classic `/save`
+  behaviour — exporting a `.ktx` connection file — moved to `/savektx`.
+- **Two ZIP flavours instead of one mixed archive (hknet/KiTTY#13).** Some antivirus
+  engines block any download containing UPX-packed executables, which made the
+  old ZIP (UPX-packed `kitty.exe` next to `_nocompress` twins) undownloadable
+  for affected users. `kitty-<version>.zip` now contains only plain,
+  uncompressed signed executables (recommended), and the new
+  `kitty-<version>-upx.zip` carries the UPX-packed `kitty.exe` /
+  `kitty_portable.exe` for the smallest download. The `_nocompress` duplicates
+  inside the archive are gone.
 - **Large internal restructuring, no intended behaviour change:** the KiTTY
   additions were carved out of the biggest source files into focused modules
   (kitty.c shrank from ~6100 to ~3900 lines; storage.c and pageant.c were

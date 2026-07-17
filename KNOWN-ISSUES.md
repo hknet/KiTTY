@@ -101,10 +101,25 @@ features are working and verified. Known limitations as of this release:
   `scriptmode`, `size`, `wintitle` revived as working; new
   `[ConfigBox] dblclick=start`. RuTTY script-file format documented with a
   shipped example (`docs/examples/logon-script.ksh`).
+- **Send-text box:** `/help` (in the Ctrl+F8 box) lists the internal commands;
+  `/size` re-enables title decorations after `/wintitle`-off; Ctrl+Shift+F8 is
+  a fixed alias for the multiline box. `/save` saves the live settings to this
+  window's session, `/savenew <name>` saves them as a new session and switches
+  to it; the old `.ktx` exporter is now `/savektx`. Limitation: `/size` and
+  `/wintitle` are app-global runtime toggles, not per-session settings, so
+  `/save` does not store them — persist them via kitty.ini (`[KiTTY] size=yes`
+  / `wintitle=no`). Making the title decorations per-session is on the list
+  for a future release.
+- **Two ZIP flavours (hknet/KiTTY#13):** `kitty-<version>.zip` = uncompressed signed
+  executables only (recommended; antivirus-friendly); `kitty-<version>-upx.zip`
+  = UPX-packed kitty.exe/kitty_portable.exe for the smallest download. No more
+  `_nocompress` duplicates inside the archive.
 - **Internals:** major source restructuring (verified byte-identical moves +
   panel-by-panel config-box check); no intended behaviour change — if you use
   an exotic kitty.ini and something stopped reacting, check the retired-keys
-  list first and report.
+  list in FEATURES.md first. **If a retired key mattered to you, open an
+  issue** — where feasible we will restore the wiring, as already done for
+  `noexit`, `scriptmode`, `size`, `wintitle` and `dblclick`.
 
 ## New in 0.84.1.51
 
