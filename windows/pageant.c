@@ -1523,10 +1523,12 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             int on = !kageant_startup_get();
             int portable = !kitty_inilight_registry_authoritative();
             kageant_startup_set(on);
-            /* A HKCU ...\Run entry stores an absolute exe path in the
-             * registry, which defeats portability - only in registry mode. */
-            if (!portable)
-                kageant_set_run_entry(on);
+            /* Install the HKCU ...\Run autostart entry in both modes: it is
+             * inherently machine-local (an absolute exe path) so it does not
+             * travel, but autostart is exactly what unattended/fixed installs
+             * want. A roaming stick's stale entry simply fails to launch and
+             * is removed by disabling this here. */
+            kageant_set_run_entry(on);
             if (on)
                 kageant_save_startup_keys();   /* snapshot current key set */
             CheckMenuItem(systray_menu, IDM_LOAD_ON_STARTUP,
@@ -1535,12 +1537,15 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                 char *msg = portable ? dupprintf(
                     "kageant will load your current %d key(s) at startup, added "
                     "encrypted (passphrase asked on first use).\n\n"
-                    "The list is saved to kitty.ini so it travels with this "
-                    "portable install. Keys inside the install folder are stored "
+                    "The key list is saved to kitty.ini so it travels with this "
+                    "portable install (keys inside the install folder are stored "
                     "relative to it; a key added from elsewhere prompts to be "
-                    "copied in or referenced. No machine autostart entry is "
-                    "created in portable mode.",
-                    kageant_nloaded())
+                    "copied in or referenced).\n\n"
+                    "An autostart entry was also added (HKCU ...\\Run\\%s). Unlike "
+                    "the key list this is machine-local and pinned to the current "
+                    "path, so it does not follow the stick to another machine or "
+                    "drive letter - disable this here to remove it.",
+                    kageant_nloaded(), KAGEANT_RUN_NAME)
                   : dupprintf(
                     "kageant will load your current %d key(s) at login, added "
                     "encrypted (passphrase asked on first use).\n\n"
