@@ -1523,12 +1523,11 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             int on = !kageant_startup_get();
             int portable = !kitty_inilight_registry_authoritative();
             kageant_startup_set(on);
-            /* Install the HKCU ...\Run autostart entry in both modes: it is
-             * inherently machine-local (an absolute exe path) so it does not
-             * travel, but autostart is exactly what unattended/fixed installs
-             * want. A roaming stick's stale entry simply fails to launch and
-             * is removed by disabling this here. */
-            kageant_set_run_entry(on);
+            /* Autostart at login: a registry-free Startup-folder shortcut in
+             * portable mode, the HKCU ...\Run entry otherwise. Either way it is
+             * machine-local (an absolute path) and does not travel, but that is
+             * what unattended/fixed installs want; disabling removes it. */
+            kageant_set_autostart(on);
             if (on)
                 kageant_save_startup_keys();   /* snapshot current key set */
             CheckMenuItem(systray_menu, IDM_LOAD_ON_STARTUP,
@@ -1541,11 +1540,12 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                     "portable install (keys inside the install folder are stored "
                     "relative to it; a key added from elsewhere prompts to be "
                     "copied in or referenced).\n\n"
-                    "An autostart entry was also added (HKCU ...\\Run\\%s). Unlike "
-                    "the key list this is machine-local and pinned to the current "
-                    "path, so it does not follow the stick to another machine or "
-                    "drive letter - disable this here to remove it.",
-                    kageant_nloaded(), KAGEANT_RUN_NAME)
+                    "A login shortcut to this kageant was placed in your Startup "
+                    "folder (no registry entry). It is machine-local and pinned "
+                    "to the current path, so it does not follow the stick to "
+                    "another machine or drive letter - disable this here to "
+                    "remove it.",
+                    kageant_nloaded())
                   : dupprintf(
                     "kageant will load your current %d key(s) at login, added "
                     "encrypted (passphrase asked on first use).\n\n"
@@ -1555,6 +1555,24 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                     kageant_nloaded(), KAGEANT_RUN_NAME);
                 MessageBox(NULL, msg, "kageant", MB_ICONINFORMATION | MB_OK);
                 sfree(msg);
+
+                /* Warn (do not touch) if another agent is also set to
+                 * autostart: the single-instance agent means one would block
+                 * the other, silently loading the wrong key set. */
+                char cdesc[512];
+                if (kageant_autostart_conflict(cdesc, sizeof(cdesc))) {
+                    char *w = dupprintf(
+                        "Another SSH agent is already set to start at login:\n\n"
+                        "    %s\n\n"
+                        "Only one agent runs at a time - whichever starts first "
+                        "wins and the other exits without loading its keys. To be "
+                        "sure THIS kageant and its keys load, remove the other "
+                        "autostart entry (Settings > Apps > Startup, or the "
+                        "location shown above).", cdesc);
+                    MessageBox(NULL, w, "kageant - autostart conflict",
+                               MB_ICONWARNING | MB_OK);
+                    sfree(w);
+                }
             }
             break;
           }

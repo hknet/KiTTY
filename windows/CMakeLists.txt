@@ -100,10 +100,12 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
   ${CMAKE_SOURCE_DIR}/kitty/kitty_pageant.c   # KiTTY: kageant additions (split out of pageant.c)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inilight.c  # KiTTY: light kitty.ini resolver for satellite binaries
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_startup_shortcut.c  # KiTTY: Startup-folder shortcut (portable autostart)
   pageant.rc)
 add_dependencies(pageant generated_licence_h)
 target_link_libraries(pageant
   guimisc agent network crypto eventloop utils
+  uuid.lib   # KiTTY: CLSID_ShellLink / IID_IShellLink GUIDs (kitty_startup_shortcut.c)
   ${platform_libraries})  # order matters (single-pass static link): network ->
                           # eventloop (network.c's new schedule_timer pulls
                           # timing.c) -> utils (timing.c's timer_change_notify +
@@ -320,6 +322,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_specialmenu.c
   ${KITTY_DIR}/kitty_shortcuts.c
   ${KITTY_DIR}/kitty_xfer.c
+  ${KITTY_DIR}/kitty_startup_shortcut.c
   ${KITTY_DIR}/mini/mini.c)
 be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
 # kitty's backend list also includes the ADB backend (MOD_ADB) - applied to the
@@ -338,7 +341,8 @@ target_link_libraries(kitty
   ${KITTY_DIR}/libs/libjpeg_64.a
   ${KITTY_DIR}/libs/base64_64.a ${KITTY_DIR}/libs/bcrypt_64.a
   ${KITTY_DIR}/libs/MD5check_64.a
-  ${platform_libraries} wininet wintrust crypt32 msi)
+  ${platform_libraries} wininet wintrust crypt32 msi
+  uuid.lib)   # KiTTY: CLSID_ShellLink GUIDs (kitty_startup_shortcut.c, launcher autostart)
 set_target_properties(kitty PROPERTIES WIN32_EXECUTABLE ON)
 
 # ===================== KiTTY PORTABLE target =====================
@@ -384,6 +388,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_specialmenu.c
   ${KITTY_DIR}/kitty_shortcuts.c
   ${KITTY_DIR}/kitty_xfer.c
+  ${KITTY_DIR}/kitty_startup_shortcut.c
   ${KITTY_DIR}/mini/mini.c)
 be_list(kitty_portable KiTTY SSH SERIAL OTHERBACKENDS)
 target_compile_definitions(kitty_portable-be-list PRIVATE MOD_ADB=1)
@@ -408,5 +413,6 @@ target_link_libraries(kitty_portable
   ${KITTY_DIR}/libs/libjpeg_64.a
   ${KITTY_DIR}/libs/base64_64.a ${KITTY_DIR}/libs/bcrypt_64.a
   ${KITTY_DIR}/libs/MD5check_64.a
-  ${platform_libraries} wininet wintrust crypt32 msi)
+  ${platform_libraries} wininet wintrust crypt32 msi
+  uuid.lib)   # KiTTY: CLSID_ShellLink GUIDs (kitty_startup_shortcut.c, launcher autostart)
 set_target_properties(kitty_portable PROPERTIES WIN32_EXECUTABLE ON)

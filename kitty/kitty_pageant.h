@@ -41,6 +41,8 @@ void kageant_notify_startup_missing(void);
 void kageant_save_startup_keys(void);
 void kageant_load_startup_keys(void);
 void kageant_set_run_entry(int on);    /* HKCU ...\Run autostart entry */
+void kageant_set_autostart(int on);    /* Startup shortcut (portable) or Run key */
+int kageant_autostart_conflict(char *desc, size_t len);  /* another agent registered? */
 void kageant_save_key_order(void);
 void kageant_apply_saved_order(void);
 int kageant_nloaded(void);             /* key paths tracked this session */

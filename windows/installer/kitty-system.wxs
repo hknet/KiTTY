@@ -71,9 +71,11 @@
       </Component>
     </DirectoryRef>
 
-    <!-- Startup-folder shortcut: auto-run the tray launcher at login. Targets the
-         installing user's Startup (per-user folder => HKCU keypath); we deliberately
-         do NOT auto-start for every account on a shared machine. -->
+    <!-- Startup-folder shortcut: auto-run the tray launcher at login. NOTE: this
+         is a per-machine (ALLUSERS) MSI, so MSI redirects StartupFolder to the
+         ALL-USERS Startup (%ProgramData%\...\Startup) - the launcher therefore
+         autostarts for every account on the machine. The per-user MSI installs
+         the same shortcut into just the installing user's Startup. -->
     <StandardDirectory Id="StartupFolder">
       <Component Id="c_startup_launcher" Guid="B1B2C3D4-0084-4005-9002-000000000003">
         <Shortcut Id="sc_startup_launcher" Name="KiTTY Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">

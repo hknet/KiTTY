@@ -16,6 +16,7 @@
 
 #include "kitty_pageant.h"
 #include "kitty_inilight.h"
+#include "kitty_startup_shortcut.h"
 #include "ssh.h"
 
 /* Shim so the moved kageant_do_notify body below stays textually identical
@@ -573,6 +574,137 @@ void kageant_set_run_entry(int on)
             RegCloseKey(hk);
         }
     }
+}
+
+/* ---- autostart: registry-free Startup shortcut (portable) + a warn-only
+ * conflict scan so two agents don't silently block each other ---- */
+#define KAGEANT_SHORTCUT_NAME "KiTTY kageant"
+
+static const char *kageant_basename(const char *p)
+{
+    const char *b = p, *q;
+    for (q = p; *q; q++)
+        if (*q == '\\' || *q == '/') b = q + 1;
+    return b;
+}
+
+static int kageant_is_agent_exe(const char *path)
+{
+    const char *b = kageant_basename(path);
+    return !stricmp(b, "kageant.exe") || !stricmp(b, "pageant.exe");
+}
+
+/* Extract the exe from a Run command line (strip a leading quote/args). */
+static void kageant_cmd_to_exe(const char *cmd, char *out, size_t len)
+{
+    const char *s = cmd, *e;
+    size_t n;
+    while (*s == ' ') s++;
+    if (*s == '"') { s++; e = strchr(s, '"'); }
+    else e = strchr(s, ' ');
+    n = e ? (size_t)(e - s) : strlen(s);
+    if (n >= len) n = len - 1;
+    memcpy(out, s, n);
+    out[n] = '\0';
+}
+
+static int kageant_scan_run(HKEY root, const char *myexe, char *desc, size_t len)
+{
+    HKEY hk;
+    char name[256], data[MAX_PATH + 8], exe[MAX_PATH];
+    DWORD idx = 0, nlen, dlen, type;
+    int found = 0;
+    if (RegOpenKeyExA(root, KAGEANT_RUN_KEY, 0, KEY_READ, &hk) != ERROR_SUCCESS)
+        return 0;
+    for (;;) {
+        LONG r;
+        nlen = sizeof(name); dlen = sizeof(data);
+        r = RegEnumValueA(hk, idx++, name, &nlen, NULL, &type,
+                          (BYTE *)data, &dlen);
+        if (r == ERROR_NO_MORE_ITEMS) break;
+        if (r != ERROR_SUCCESS) continue;
+        if (type != REG_SZ && type != REG_EXPAND_SZ) continue;
+        /* our own HKCU entry is not a conflict (and we clear it anyway) */
+        if (root == HKEY_CURRENT_USER && !stricmp(name, KAGEANT_RUN_NAME))
+            continue;
+        kageant_cmd_to_exe(data, exe, sizeof(exe));
+        if (kageant_is_agent_exe(exe) && stricmp(exe, myexe) != 0) {
+            snprintf(desc, len, "%s  ->  %s\n(%s\\...\\CurrentVersion\\Run)",
+                     name, exe, root == HKEY_CURRENT_USER ? "HKCU" : "HKLM");
+            found = 1;
+            break;
+        }
+    }
+    RegCloseKey(hk);
+    return found;
+}
+
+static int kageant_scan_startup(int common, const char *myexe,
+                                char *desc, size_t len)
+{
+    char dir[MAX_PATH], glob[MAX_PATH + 8], lnk[MAX_PATH], target[MAX_PATH];
+    WIN32_FIND_DATAA fd;
+    HANDLE h;
+    int found = 0;
+    if (!kitty_startup_dir(dir, sizeof(dir), common))
+        return 0;
+    snprintf(glob, sizeof(glob), "%s\\*.lnk", dir);
+    h = FindFirstFileA(glob, &fd);
+    if (h == INVALID_HANDLE_VALUE)
+        return 0;
+    do {
+        snprintf(lnk, sizeof(lnk), "%s\\%s", dir, fd.cFileName);
+        if (kitty_startup_shortcut_target(lnk, target, sizeof(target)) &&
+            kageant_is_agent_exe(target) && stricmp(target, myexe) != 0) {
+            snprintf(desc, len, "%s  ->  %s\n(%s Startup folder)",
+                     fd.cFileName, target, common ? "all-users" : "your");
+            found = 1;
+            break;
+        }
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+    return found;
+}
+
+/* 1 + a description when another kageant/pageant is set to autostart from a
+ * different exe (so the single-instance agent would block one of them). */
+int kageant_autostart_conflict(char *desc, size_t len)
+{
+    char myexe[MAX_PATH];
+    if (!GetModuleFileNameA(NULL, myexe, sizeof(myexe)))
+        return 0;
+    return kageant_scan_run(HKEY_CURRENT_USER, myexe, desc, len)
+        || kageant_scan_run(HKEY_LOCAL_MACHINE, myexe, desc, len)
+        || kageant_scan_startup(0, myexe, desc, len)
+        || kageant_scan_startup(1, myexe, desc, len);
+}
+
+/* Install/remove kageant's login autostart: a Startup-folder shortcut in
+ * portable mode (registry-free), the HKCU Run entry otherwise. */
+void kageant_set_autostart(int on)
+{
+    if (!kitty_inilight_registry_authoritative()) {
+        char exe[MAX_PATH], dir[MAX_PATH];
+        char *slash;
+        DWORD n;
+        /* No Run entry belongs in portable mode; clear any left from a prior
+         * registry-mode enable so we do not double-register ourselves. */
+        kageant_set_run_entry(0);
+        if (!on) {
+            kitty_startup_shortcut_set(KAGEANT_SHORTCUT_NAME, NULL, NULL,
+                                       NULL, NULL, 0);
+            return;
+        }
+        n = GetModuleFileNameA(NULL, exe, sizeof(exe));
+        if (!n || n >= sizeof(exe))
+            return;
+        snprintf(dir, sizeof(dir), "%s", exe);
+        slash = strrchr(dir, '\\');
+        if (slash) *slash = '\0';
+        kitty_startup_shortcut_set(KAGEANT_SHORTCUT_NAME, exe, "", dir, exe, 1);
+        return;
+    }
+    kageant_set_run_entry(on);
 }
 
 /* Re-add remembered startup keys. A ,encrypted entry loads deferred

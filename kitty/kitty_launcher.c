@@ -26,6 +26,8 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) ;
  * KiClassName=PuTTY mode -- deliberate, acceptable for the launcher. */
 extern const char *kitty_registry_base( void ) ;
 
+#include "kitty_startup_shortcut.h"   /* KiTTY: on-request Startup-folder shortcut */
+
 static HMENU MenuLauncher = NULL ;
 static HMENU HideMenu ;
 static int LauncherConfReload = 1 ;
@@ -233,6 +235,9 @@ HMENU InitLauncherMenu( char * Key ) {
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+7, "&Refresh" ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+1, "&Configuration" ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+2, "&TTY-ed" ) ;
+	/* KiTTY: user-Startup-folder shortcut for the launcher, on request. */
+	AppendMenu( menu, MF_ENABLED | (kitty_startup_shortcut_exists("KiTTY Launcher")?MF_CHECKED:MF_UNCHECKED),
+	            IDM_LAUNCHER+8, "Start &at login" ) ;
 	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_ABOUT, "&About" ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_QUIT, "E&xit" ) ;
@@ -836,6 +841,23 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 					IsUnique = abs( IsUnique -1 ) ;
 					RefreshMenuLauncher() ;
 					break ;
+				case IDM_LAUNCHER+8: {
+					/* KiTTY: toggle a "KiTTY Launcher" shortcut in the user's
+					 * Startup folder (kitty*.exe -launcher). Registry-free;
+					 * removing it if already present. */
+					char exe[MAX_PATH], dir[MAX_PATH], *slash ;
+					DWORD n = GetModuleFileNameA( NULL, exe, sizeof(exe) ) ;
+					if( n && n < sizeof(exe) ) {
+						if( kitty_startup_shortcut_exists("KiTTY Launcher") ) {
+							kitty_startup_shortcut_set("KiTTY Launcher", NULL, NULL, NULL, NULL, 0) ;
+						} else {
+							snprintf( dir, sizeof(dir), "%s", exe ) ;
+							slash = strrchr( dir, '\\' ) ; if( slash ) *slash = '\0' ;
+							kitty_startup_shortcut_set("KiTTY Launcher", exe, "-launcher", dir, exe, 1) ;
+						}
+					}
+					RefreshMenuLauncher() ;
+					break ; }
 				case IDM_LAUNCHER+7:
 					if( LauncherConfReload ) InitLauncherRegistry() ;
 					RefreshMenuLauncher() ;
