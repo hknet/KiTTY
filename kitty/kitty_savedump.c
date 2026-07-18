@@ -789,10 +789,12 @@ void SaveCurrentConfig( FILE *fp, Conf * conf ) {
 	{
 		/* Blank each secret field for the export, then restore. autocommand is
 		 * login automation that frequently embeds credentials (it is <redacted> in
-		 * the visible dump too, kitty_savedump.c ~561); autocommandout is only a
+		 * the visible dump too, kitty_savedump.c ~561); scriptfilecontent is the
+		 * inline login/RuTTY script stored in the session, the same inline-secret
+		 * risk (also <redacted> in the visible dump); autocommandout is only a
 		 * wait-for prompt pattern and is deliberately kept, matching the visible
 		 * dump. Order-independent, so a simple key list. */
-		static const int redact[] = { CONF_password, CONF_proxy_password, CONF_autocommand } ;
+		static const int redact[] = { CONF_password, CONF_proxy_password, CONF_autocommand, CONF_scriptfilecontent } ;
 		char *saved[ sizeof(redact)/sizeof(redact[0]) ] ;
 		unsigned ri ;
 		for( ri = 0 ; ri < sizeof(redact)/sizeof(redact[0]) ; ri++ ) {
