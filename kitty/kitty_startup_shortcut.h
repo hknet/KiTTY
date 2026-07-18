@@ -33,4 +33,10 @@ int kitty_startup_shortcut_exists_common(const char *name);
  * kageant autostart-conflict scan). Returns 1 when a target was read. */
 int kitty_startup_shortcut_target(const char *lnkpath, char *out, size_t len);
 
+/* 1 when "<Startup>\<name>.lnk" (common != 0 = all-users) exists AND its
+ * target resolves to target_exe. Lets a caller tell "I am set to autostart"
+ * from "some other install of the same name is". */
+int kitty_startup_shortcut_points_to(const char *name, int common,
+                                     const char *target_exe);
+
 #endif

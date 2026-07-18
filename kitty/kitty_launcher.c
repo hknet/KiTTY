@@ -236,13 +236,16 @@ HMENU InitLauncherMenu( char * Key ) {
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+1, "&Configuration" ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+2, "&TTY-ed" ) ;
 	/* KiTTY: user-Startup-folder shortcut for the launcher, on request.
-	 * Checked when a "KiTTY Launcher" shortcut exists in EITHER the user or
-	 * the all-users Startup (the latter typically installed by the MSI). */
-	AppendMenu( menu, MF_ENABLED |
-	            ((kitty_startup_shortcut_exists("KiTTY Launcher")
-	              || kitty_startup_shortcut_exists_common("KiTTY Launcher"))
-	             ? MF_CHECKED : MF_UNCHECKED),
-	            IDM_LAUNCHER+8, "Start &at login" ) ;
+	 * Checked only when a "KiTTY Launcher" shortcut pointing at THIS exe
+	 * exists (user or all-users) - a same-named shortcut for a different
+	 * KiTTY (e.g. the installer's, targeting the installed kitty.exe) is not
+	 * this launcher's autostart. */
+	{ char mx[MAX_PATH] ; DWORD mn = GetModuleFileNameA( NULL, mx, sizeof(mx) ) ;
+	  int on = mn && mn < sizeof(mx) &&
+	           ( kitty_startup_shortcut_points_to("KiTTY Launcher", 0, mx)
+	             || kitty_startup_shortcut_points_to("KiTTY Launcher", 1, mx) ) ;
+	  AppendMenu( menu, MF_ENABLED | (on ? MF_CHECKED : MF_UNCHECKED),
+	              IDM_LAUNCHER+8, "Start &at login" ) ; }
 	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_ABOUT, "&About" ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_QUIT, "E&xit" ) ;
@@ -847,52 +850,39 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 					RefreshMenuLauncher() ;
 					break ;
 				case IDM_LAUNCHER+8: {
-					/* KiTTY: toggle a "KiTTY Launcher" shortcut in the USER
-					 * Startup folder (kitty*.exe -launcher). Registry-free. If
-					 * an all-users shortcut already autostarts the launcher
-					 * (typically the MSI's), do not add a redundant per-user
-					 * copy - we cannot remove the all-users one without
-					 * elevation, so point the user at the Windows setting. */
-					if( kitty_startup_shortcut_exists_common("KiTTY Launcher")
-					    && !kitty_startup_shortcut_exists("KiTTY Launcher") ) {
-						MessageBox( hwnd,
-						    "The launcher already starts at login for all users "
-						    "(a shortcut in the all-users Startup folder, usually "
-						    "placed by the KiTTY installer). A per-user entry would "
-						    "be redundant, so none was added.\n\n"
-						    "To change the all-users setting, use Settings > Apps "
-						    "> Startup.",
-						    "KiTTY Launcher", MB_ICONINFORMATION | MB_OK ) ;
-					} else {
-						char exe[MAX_PATH], dir[MAX_PATH], *slash ;
-						DWORD n = GetModuleFileNameA( NULL, exe, sizeof(exe) ) ;
-						if( n && n < sizeof(exe) ) {
-							if( kitty_startup_shortcut_exists("KiTTY Launcher") ) {
-								/* The "KiTTY Launcher" name is generic, so the
-								 * existing user-Startup shortcut may belong to a
-								 * different KiTTY install. Only remove it when it
-								 * points at THIS exe; otherwise leave it alone. */
-								char sdir[MAX_PATH], slnk[MAX_PATH], starget[MAX_PATH] ;
-								int mine = 0 ;
-								if( kitty_startup_dir( sdir, sizeof(sdir), 0 ) ) {
-									snprintf( slnk, sizeof(slnk), "%s\\KiTTY Launcher.lnk", sdir ) ;
-									if( kitty_startup_shortcut_target( slnk, starget, sizeof(starget) ) )
-										mine = !stricmp( starget, exe ) ;
-								}
-								if( mine )
-									kitty_startup_shortcut_set("KiTTY Launcher", NULL, NULL, NULL, NULL, 0) ;
-								else
-									MessageBox( hwnd,
-									    "The \"KiTTY Launcher\" startup shortcut points at a "
-									    "different KiTTY, so it was left unchanged.\n\n"
-									    "Remove it from Settings > Apps > Startup if you want "
-									    "to change it.",
-									    "KiTTY Launcher", MB_ICONINFORMATION | MB_OK ) ;
-							} else {
-								snprintf( dir, sizeof(dir), "%s", exe ) ;
-								slash = strrchr( dir, '\\' ) ; if( slash ) *slash = '\0' ;
-								kitty_startup_shortcut_set("KiTTY Launcher", exe, "-launcher", dir, exe, 1) ;
-							}
+					/* KiTTY: toggle a "KiTTY Launcher" shortcut (kitty*.exe
+					 * -launcher) in the USER Startup folder. Everything keys off
+					 * whether a shortcut targeting THIS exe exists, so the
+					 * generic name never makes us act on another KiTTY's entry:
+					 *  - our own per-user shortcut     -> remove it (turn off);
+					 *  - an all-users shortcut for us  -> installer-managed,
+					 *    cannot remove without elevation, so just explain;
+					 *  - none for us, but a per-user shortcut for a DIFFERENT
+					 *    KiTTY exists                  -> leave it, explain;
+					 *  - nothing                       -> create ours. */
+					char exe[MAX_PATH], dir[MAX_PATH], *slash ;
+					DWORD n = GetModuleFileNameA( NULL, exe, sizeof(exe) ) ;
+					if( n && n < sizeof(exe) ) {
+						if( kitty_startup_shortcut_points_to("KiTTY Launcher", 0, exe) ) {
+							kitty_startup_shortcut_set("KiTTY Launcher", NULL, NULL, NULL, NULL, 0) ;
+						} else if( kitty_startup_shortcut_points_to("KiTTY Launcher", 1, exe) ) {
+							MessageBox( hwnd,
+							    "This KiTTY already starts at login for all users "
+							    "(an all-users Startup shortcut, usually placed by "
+							    "the installer). Change it in Settings > Apps > "
+							    "Startup.",
+							    "KiTTY Launcher", MB_ICONINFORMATION | MB_OK ) ;
+						} else if( kitty_startup_shortcut_exists("KiTTY Launcher") ) {
+							MessageBox( hwnd,
+							    "A \"KiTTY Launcher\" startup shortcut for a different "
+							    "KiTTY already exists in your Startup folder, so none "
+							    "was added.\n\nRemove it from Settings > Apps > Startup "
+							    "first if you want THIS KiTTY to start at login.",
+							    "KiTTY Launcher", MB_ICONINFORMATION | MB_OK ) ;
+						} else {
+							snprintf( dir, sizeof(dir), "%s", exe ) ;
+							slash = strrchr( dir, '\\' ) ; if( slash ) *slash = '\0' ;
+							kitty_startup_shortcut_set("KiTTY Launcher", exe, "-launcher", dir, exe, 1) ;
 						}
 					}
 					RefreshMenuLauncher() ;

@@ -64,6 +64,27 @@ int kitty_startup_shortcut_exists_common(const char *name)
     return shortcut_exists_in(name, 1);
 }
 
+/* Compare two exe paths, normalising 8.3/long form first (an MSI target may
+ * be stored short while GetModuleFileName returns the long path). */
+static int same_exe_path(const char *a, const char *b)
+{
+    char la[MAX_PATH], lb[MAX_PATH];
+    if (!GetLongPathNameA(a, la, sizeof(la))) snprintf(la, sizeof(la), "%s", a);
+    if (!GetLongPathNameA(b, lb, sizeof(lb))) snprintf(lb, sizeof(lb), "%s", b);
+    return !stricmp(la, lb);
+}
+
+int kitty_startup_shortcut_points_to(const char *name, int common,
+                                     const char *target_exe)
+{
+    char lnk[MAX_PATH], got[MAX_PATH];
+    if (!shortcut_path_in(name, common, lnk, sizeof(lnk)))
+        return 0;
+    if (!kitty_startup_shortcut_target(lnk, got, sizeof(got)))
+        return 0;
+    return same_exe_path(got, target_exe);
+}
+
 int kitty_startup_shortcut_target(const char *lnkpath, char *out, size_t len)
 {
     IShellLinkA *psl = NULL;
