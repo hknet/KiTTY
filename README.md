@@ -42,27 +42,37 @@ Authenticode-signed.
 
 ## What's included (KiTTY features on PuTTY 0.84)
 
-~43 KiTTY features are ported and verified, including:
+~46 KiTTY features are ported and verified, including:
 
 - **Window:** transparency, maximize / fullscreen / saved position on start, always-on-top, roll-up,
   send-to-tray (auto + on-minimize), per-session icons, background image.
 - **Hyperlinks:** clickable URLs in the terminal (Ctrl+click configurable) with **underlining**.
 - **Sessions & automation:** auto-command after login, auto-password, anti-idle keepalive,
-  port-knocking, duplicate-session, immediate-quit, session export, scripting (rutty).
+  port-knocking, duplicate-session, immediate-quit, session export/import, scripting (rutty),
+  and an in-terminal command console (Ctrl+F8, type `/help`; see [`docs/COMMANDS.md`](docs/COMMANDS.md)).
+- **Proxies & jump hosts:** reusable **named proxy** definitions (including SSH jump hosts),
+  selectable per session.
+- **Security:** saved passwords encrypted at rest — Windows **DPAPI** in registry mode, an opt-in
+  **master password** for the portable store (travels between machines); a **post-quantum
+  key-exchange warning**; a built-in **update checker** that verifies the download's
+  Authenticode signature chain.
+- **SSH agent (kageant):** per-key or global use-confirmation, key-use notifications, a
+  remembered startup-key list, a Windows-OpenSSH-agent bridge, `kitty.ini` configuration and
+  registry-free autostart for portable installs.
 - **Transfers / backends:** ZModem send/receive, WinSCP & pscp integration, **adb** (Android) backend.
 - **Terminal:** font resize, protect, print, negative/B&W colours, clear/restart log, far2l extensions.
 - **Storage:** registry **or** portable file/dir storage (`kitty_portable.exe`), `kitty.ini` configuration.
 - Plus the standard PuTTY tools, renamed KiTTY-style: `klink`, `kscp`, `ksftp`, `kageant`, `kittygen`.
 - `kittygen-cli.exe` — a console-mode CLI key generator (generate, convert, fingerprint) for use in scripts and pipelines. Run `kittygen-cli --help` for options.
 
-Most KiTTY extras read from a `kitty.ini` (`[KiTTY]` section). The release includes an inert `kitty.ini.example` with commented options; copy/rename it to `kitty.ini` only when you want an active config file. For example, URL hyperlinks are enabled with:
+Most KiTTY extras read from a `kitty.ini` (`[KiTTY]` section). The release includes an inert `kitty.ini.example` with every supported key commented out; copy/rename it to `kitty.ini` only when you want an active config file. For example, URL hyperlinks are enabled with:
 
 ```ini
 [KiTTY]
 hyperlink=yes
 ```
 
-See **[`FEATURES.md`](FEATURES.md)** for the full feature reference, including how to enable each one, and **[`CHANGELOG.md`](CHANGELOG.md)** for what changed in each release.
+**[`docs/KITTY-INI.md`](docs/KITTY-INI.md)** explains the settings file — how KiTTY finds it, the `savemode`/portable rules, and all its sections — and links the fully annotated [`kitty.ini.example`](docs/examples/kitty.ini.example). See **[`FEATURES.md`](FEATURES.md)** for the full feature reference, including how to enable each one, and **[`CHANGELOG.md`](CHANGELOG.md)** for what changed in each release.
 
 ---
 
@@ -72,8 +82,10 @@ This is a **beta**: most KiTTY features are restored and verified, but a few hav
 or still want real-world testing. The full, per-release list is in
 **[`KNOWN-ISSUES.md`](KNOWN-ISSUES.md)** — current highlights:
 
-- **Antivirus / SmartScreen & UPX** — `kitty.exe` and `kitty_portable.exe` are UPX-compressed
-  and can trip heuristic AV. If flagged, use the identical, unpacked `*_nocompress.exe` from the ZIP.
+- **Antivirus / SmartScreen & UPX** — the standard ZIP ships only plain, uncompressed signed
+  executables. The `-upx.zip` flavour and the installers carry UPX-packed
+  `kitty.exe`/`kitty_portable.exe` (smallest download), which can trip heuristic AV — if
+  flagged, use the standard ZIP.
 - **far2l shared clipboard (GET)** — remote→clipboard (**SET**) is verified end-to-end; the
   **GET** direction (remote reads your clipboard) transmits over **SSH only**, not raw (a
   pre-existing PuTTY behaviour).
@@ -81,7 +93,14 @@ or still want real-world testing. The full, per-release list is in
   clipboard access for the rest of the session (no per-request reprompt). Set it to **Disabled** to deny.
 - **adb backend & rutty scripting** — verified against test fixtures, not yet against a real
   Android device / live remote shell.
-- **SSH auto-login password** — encrypted at rest with Windows DPAPI (machine-bound; defeats offline/cross-user theft, not same-user malware, and does not move to another PC). A portable master-password option is planned; for the strongest security prefer SSH keys.
+- **Stored passwords** — saving passwords is optional; saved ones are encrypted at rest:
+  Windows **DPAPI** in registry mode (bound to your account/machine), an opt-in **master
+  password** in portable mode (travels between machines; it is never stored — if you forget
+  it, the passwords it protected are unrecoverable). Neither defends against malware already
+  running as your user; for the strongest security prefer SSH keys (kageant).
+- **Command-line tools use the registry session store** — `klink`/`kscp`/`ksftp` do not read
+  a portable (`savemode=dir`) store, so portable sessions and their master-password-protected
+  passwords are usable from the GUI only.
 - **Diagnostic dumps** — `/savedump` redacts the known high-risk secret fields, but a legacy script-content path is still under review; inspect dumps before public sharing if you use login/RuTTY scripting.
 - **Background image** — the thin margin outside the terminal cell grid is still solid-filled (cosmetic).
 
@@ -108,7 +127,8 @@ parallel-target approach, and the constraints to know before editing shared file
 
 ## Credits & licence
 
-- **PuTTY** © Simon Tatham and the PuTTY team — the upstream this is built on.
+- **PuTTY** © [Simon Tatham](https://github.com/sgtatham) and the PuTTY team — the upstream
+  this is built on ([putty homepage](https://www.chiark.greenend.org.uk/~sgtatham/putty/)).
 - **KiTTY** © Cyril Dupont (9bis) — the feature fork this port carries forward (https://www.9bis.net/kitty/).
 - **far2l terminal extensions** (the far2l shared clipboard) — derived from the
   [**putty4far2l**](https://github.com/ivanshatsky/putty4far2l) project: far2l's PuTTY
