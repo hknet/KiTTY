@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.52 — Known issues & limitations
+# KiTTY 0.84.1.53 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -74,14 +74,43 @@ features are working and verified. Known limitations as of this release:
 
 ## Packaging / cosmetic
 
-- **Antivirus & UPX:** `kitty.exe` and `kitty_portable.exe` are UPX-compressed,
-  which can trip heuristic AV/SmartScreen. The `*_nocompress.exe` variants are
-  provided as an identical, unpacked fallback.
-- **Version string:** binaries report `0.84.1.52-beta @ 2026-07-17`.
+- **Antivirus & UPX:** the standard `kitty-<version>.zip` contains only plain,
+  uncompressed signed executables (antivirus-friendly). The `-upx.zip` flavour
+  and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
+  the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
+  antivirus objects, take the standard ZIP.
+- **Version string:** binaries report `0.84.1.53-beta @ 2026-07-18`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.53
+
+- **kageant honours kitty.ini `[Agent]` (hknet/KiTTY#14):** `askconfirmation`
+  (`yes` / `auto` / `no`) and `messageonkeyusage`, with matching three-state
+  *Confirm key use* radios in the key-list window. With `savemode=file`/`dir`
+  — or a portable layout detected beside the ini — kitty.ini is the
+  authoritative store and a portable kageant never touches the registry; the
+  UI shows *kitty.ini mode*.
+- **Portable startup-key list:** remembered keys live in kitty.ini
+  (`startupkey1=…`, paths relative to the install folder, `,encrypted`
+  marker); keys added from outside offer copy-or-reference; a key missing at
+  login is skipped with a tray notice, not dropped; numbering gaps are
+  tolerated.
+- **Registry-free autostart:** portable kageant and the tray launcher use a
+  Startup-folder shortcut instead of `HKCU\…\Run`; the conflict check runs
+  *before* an entry is created (and asks), and entries are identified by
+  target path so one install can no longer remove another install's entry.
+- **Tray polish:** *Quit* → *Exit*, no duplicated About/Exit in the
+  Opened-sessions submenu, checkmarks re-sync when the menu opens, and the
+  portable launcher tooltip adds a "(portable)" line.
+- **Send-text commands:** table-driven dispatch with `/help` generated from
+  the table (seven live commands were missing from the old text); `/zmodem`
+  no longer also sends its literal text to the host; all 46 commands are
+  documented in `docs/COMMANDS.md`.
+- **Upstream fix:** memory leak in the console tools' weak-hostkey
+  confirmation prompt.
 
 ## New in 0.84.1.52
 

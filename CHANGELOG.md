@@ -5,6 +5,55 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.53-beta — 2026-07-18
+
+- **kageant honours kitty.ini (hknet/KiTTY#14).** The SSH agent now reads an
+  `[Agent]` section from kitty.ini: `askconfirmation` with the classic three
+  states — `yes` (confirm every key use), `auto` (only keys whose comment
+  contains the word `confirmation`; the default) and `no` (never ask, for
+  automation) — and `messageonkeyusage=yes/no` for the key-used tray balloon.
+  When kitty.ini says `savemode=file` or `dir` — or, with no savemode line,
+  when a portable layout (a `Sessions` folder or `KiTTYState` file) sits
+  beside the ini — the ini is the **authoritative store**: the tray toggles
+  write back to it and a portable kageant never touches the registry. The
+  key-list window shows a *kitty.ini mode* status line and new three-state
+  *Confirm key use* radio buttons (they collapse in registry mode, where
+  behaviour is unchanged).
+- **The startup-key list travels.** With kitty.ini authoritative, the
+  remembered keys live in the ini (`startupkey1=…`, with an `,encrypted`
+  marker) instead of the registry: keys inside the install folder are stored
+  as relative paths (surviving a drive-letter change), a key added from
+  elsewhere asks whether to copy it into the portable folder or reference it
+  in place, a key missing at login produces one tray notice and is skipped —
+  not dropped from the list — and gaps in the numbering are tolerated.
+- **Registry-free autostart.** A portable kageant installs its start-at-login
+  entry as a **Startup-folder shortcut** (no registry write); an
+  installed/registry-mode kageant keeps the classic `HKCU\…\Run` entry, and
+  the tray launcher has the same one-click *Start at login* toggle. Enabling
+  autostart now checks for conflicts *before* creating anything — another
+  agent already autostarting from elsewhere, or a same-named entry from
+  another install — and asks first. Both programs identify their own entries
+  strictly by target path, so toggling autostart in one install can no longer
+  remove another install's entry. (Prompt wording corrected along the way:
+  Windows *Settings → Apps → Startup* disables an autostart entry, it does
+  not delete it.)
+- **Tray-menu polish:** the launcher's *Quit* entries are named **Exit**
+  everywhere, the Opened-sessions submenu no longer duplicates About/Exit,
+  kageant's tray checkmarks re-sync from the live settings each time the menu
+  opens, and the portable launcher's tooltip identifies itself with a second
+  line "(portable)".
+- **Send-text commands: a real reference, and /help that cannot drift.** The
+  internal command dispatch is table-driven now and `/help` is generated from
+  the same table, so the in-app list can no longer miss a command (the old
+  hand-written text had drifted: seven live commands were absent). A
+  long-standing `/zmodem` quirk is fixed — it toggled its flag but also sent
+  the literal text `/zmodem` on to the host. All 46 commands are documented
+  in [docs/COMMANDS.md](docs/COMMANDS.md), linked from FEATURES.md, and the
+  release pipeline cross-checks the command table against that document so
+  future commands arrive documented.
+- **Upstream fix:** plugged a memory leak in the console tools' weak-hostkey
+  confirmation prompt (cherry-picked from PuTTY upstream).
+
 ## 0.84.1.52-beta — 2026-07-17
 
 - **Invert colours actually inverts now — and no longer crashes.** *Window →
