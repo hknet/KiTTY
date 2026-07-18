@@ -624,9 +624,10 @@ static int kageant_scan_run(HKEY root, const char *myexe, char *desc, size_t len
         if (r == ERROR_NO_MORE_ITEMS) break;
         if (r != ERROR_SUCCESS) continue;
         if (type != REG_SZ && type != REG_EXPAND_SZ) continue;
-        /* our own HKCU entry is not a conflict (and we clear it anyway) */
-        if (root == HKEY_CURRENT_USER && !stricmp(name, KAGEANT_RUN_NAME))
-            continue;
+        /* Exclude our own entry by EXE PATH, not by value name: the
+         * KAGEANT_RUN_NAME name is shared by every kageant/pageant install,
+         * so a same-named entry pointing at a different exe is a real
+         * conflict (e.g. a system-installed kageant vs this portable one). */
         kageant_cmd_to_exe(data, exe, sizeof(exe));
         if (kageant_is_agent_exe(exe) && stricmp(exe, myexe) != 0) {
             snprintf(desc, len, "%s  ->  %s\n(%s\\...\\CurrentVersion\\Run)",

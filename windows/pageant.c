@@ -1526,6 +1526,31 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
              * saved flag, so a hand-deleted shortcut re-syncs correctly. */
             int on = !kageant_autostart_active();
             int portable = !kitty_inilight_registry_authoritative();
+
+            /* Pre-flight: when enabling, if another agent is already set to
+             * start at login, ASK before adding ours - do not silently create
+             * a second autostart and the race that comes with it. Default No. */
+            if (on) {
+                char cdesc[512];
+                if (kageant_autostart_conflict(cdesc, sizeof(cdesc))) {
+                    char *w = dupprintf(
+                        "Another SSH agent is already set to start at login:\n\n"
+                        "    %s\n\n"
+                        "If you add this kageant too, BOTH start at login and "
+                        "only one wins (single-instance) - the other exits "
+                        "without loading its keys, and which wins is a race.\n\n"
+                        "Add this kageant to autostart anyway?\n\n"
+                        "Choose No to leave autostart unchanged; remove the other "
+                        "entry first (Settings > Apps > Startup) if you want THIS "
+                        "kageant to be your login agent.", cdesc);
+                    int r = MessageBox(NULL, w, "kageant - autostart conflict",
+                                       MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
+                    sfree(w);
+                    if (r != IDYES)
+                        break;              /* aborted: nothing changed */
+                }
+            }
+
             kageant_startup_set(on);
             /* Autostart at login: a registry-free Startup-folder shortcut in
              * portable mode, the HKCU ...\Run entry otherwise. Either way it is
@@ -1559,24 +1584,6 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                     kageant_nloaded(), KAGEANT_RUN_NAME);
                 MessageBox(NULL, msg, "kageant", MB_ICONINFORMATION | MB_OK);
                 sfree(msg);
-
-                /* Warn (do not touch) if another agent is also set to
-                 * autostart: the single-instance agent means one would block
-                 * the other, silently loading the wrong key set. */
-                char cdesc[512];
-                if (kageant_autostart_conflict(cdesc, sizeof(cdesc))) {
-                    char *w = dupprintf(
-                        "Another SSH agent is already set to start at login:\n\n"
-                        "    %s\n\n"
-                        "Only one agent runs at a time - whichever starts first "
-                        "wins and the other exits without loading its keys. To be "
-                        "sure THIS kageant and its keys load, remove the other "
-                        "autostart entry (Settings > Apps > Startup, or the "
-                        "location shown above).", cdesc);
-                    MessageBox(NULL, w, "kageant - autostart conflict",
-                               MB_ICONWARNING | MB_OK);
-                    sfree(w);
-                }
             }
             break;
           }
