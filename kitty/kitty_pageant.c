@@ -679,6 +679,57 @@ int kageant_autostart_conflict(char *desc, size_t len)
         || kageant_scan_startup(1, myexe, desc, len);
 }
 
+/* Remove our HKCU Run entry ONLY when it points at this very exe. The value
+ * name is shared by every kageant/pageant install, so deleting it blindly
+ * would clobber another (e.g. system-installed) kageant's autostart. */
+static void kageant_clear_own_run_entry(void)
+{
+    char myexe[MAX_PATH], data[MAX_PATH + 8], exe[MAX_PATH];
+    HKEY hk;
+    DWORD type = 0, sz = sizeof(data);
+    if (!GetModuleFileNameA(NULL, myexe, sizeof(myexe)))
+        return;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0,
+                      KEY_QUERY_VALUE | KEY_SET_VALUE, &hk) != ERROR_SUCCESS)
+        return;
+    if (RegQueryValueExA(hk, KAGEANT_RUN_NAME, NULL, &type,
+                         (BYTE *)data, &sz) == ERROR_SUCCESS &&
+        (type == REG_SZ || type == REG_EXPAND_SZ)) {
+        kageant_cmd_to_exe(data, exe, sizeof(exe));
+        if (!stricmp(exe, myexe))
+            RegDeleteValueA(hk, KAGEANT_RUN_NAME);
+    }
+    RegCloseKey(hk);
+}
+
+/* 1 when kageant's own autostart is actually in place (so the tray checkmark
+ * reflects reality, e.g. after the user deletes the shortcut by hand): the
+ * Startup shortcut in portable mode, our own Run entry in registry mode. */
+int kageant_autostart_active(void)
+{
+    if (!kitty_inilight_registry_authoritative())
+        return kitty_startup_shortcut_exists(KAGEANT_SHORTCUT_NAME);
+    {
+        char myexe[MAX_PATH], data[MAX_PATH + 8], exe[MAX_PATH];
+        HKEY hk;
+        DWORD type = 0, sz = sizeof(data);
+        int active = 0;
+        if (!GetModuleFileNameA(NULL, myexe, sizeof(myexe)))
+            return 0;
+        if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0,
+                          KEY_QUERY_VALUE, &hk) != ERROR_SUCCESS)
+            return 0;
+        if (RegQueryValueExA(hk, KAGEANT_RUN_NAME, NULL, &type,
+                             (BYTE *)data, &sz) == ERROR_SUCCESS &&
+            (type == REG_SZ || type == REG_EXPAND_SZ)) {
+            kageant_cmd_to_exe(data, exe, sizeof(exe));
+            active = !stricmp(exe, myexe);
+        }
+        RegCloseKey(hk);
+        return active;
+    }
+}
+
 /* Install/remove kageant's login autostart: a Startup-folder shortcut in
  * portable mode (registry-free), the HKCU Run entry otherwise. */
 void kageant_set_autostart(int on)
@@ -687,9 +738,9 @@ void kageant_set_autostart(int on)
         char exe[MAX_PATH], dir[MAX_PATH];
         char *slash;
         DWORD n;
-        /* No Run entry belongs in portable mode; clear any left from a prior
-         * registry-mode enable so we do not double-register ourselves. */
-        kageant_set_run_entry(0);
+        /* Clear only OUR OWN leftover Run entry (from a prior registry-mode
+         * enable); never touch another kageant's same-named entry. */
+        kageant_clear_own_run_entry();
         if (!on) {
             kitty_startup_shortcut_set(KAGEANT_SHORTCUT_NAME, NULL, NULL,
                                        NULL, NULL, 0);

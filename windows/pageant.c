@@ -1414,6 +1414,8 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                           (kageant_notify_get() ? MF_CHECKED : MF_UNCHECKED));
             CheckMenuItem(systray_menu, IDM_CONFIRM_KEYUSE, MF_BYCOMMAND |
                           (kageant_confirm_get() ? MF_CHECKED : MF_UNCHECKED));
+            CheckMenuItem(systray_menu, IDM_LOAD_ON_STARTUP, MF_BYCOMMAND |
+                          (kageant_autostart_active() ? MF_CHECKED : MF_UNCHECKED));
             SetForegroundWindow(hwnd);
             TrackPopupMenu(systray_menu,
                            TPM_RIGHTALIGN | TPM_BOTTOMALIGN |
@@ -1520,7 +1522,9 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
           case IDM_LOAD_ON_STARTUP: {
             /* KiTTY: toggle load-keys-on-startup. Enabling snapshots the
              * currently-loaded keys and installs an autostart Run entry. */
-            int on = !kageant_startup_get();
+            /* Base the toggle on the real autostart artifact, not just the
+             * saved flag, so a hand-deleted shortcut re-syncs correctly. */
+            int on = !kageant_autostart_active();
             int portable = !kitty_inilight_registry_authoritative();
             kageant_startup_set(on);
             /* Autostart at login: a registry-free Startup-folder shortcut in
@@ -2138,7 +2142,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                IDM_OPENSSH_INTEGRATION, "Register as Windows &OpenSSH agent");
     /* KiTTY: opt-in load-keys-on-startup (default off). */
     AppendMenu(systray_menu, MF_ENABLED |
-               (kageant_startup_get() ? MF_CHECKED : MF_UNCHECKED),
+               (kageant_autostart_active() ? MF_CHECKED : MF_UNCHECKED),
                IDM_LOAD_ON_STARTUP, "&Load keys on startup");
     /* KiTTY: opt-in (default on) tray balloon when a key is used to sign. */
     AppendMenu(systray_menu, MF_ENABLED |

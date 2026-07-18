@@ -42,6 +42,7 @@ void kageant_save_startup_keys(void);
 void kageant_load_startup_keys(void);
 void kageant_set_run_entry(int on);    /* HKCU ...\Run autostart entry */
 void kageant_set_autostart(int on);    /* Startup shortcut (portable) or Run key */
+int kageant_autostart_active(void);    /* is our autostart artifact actually present? */
 int kageant_autostart_conflict(char *desc, size_t len);  /* another agent registered? */
 void kageant_save_key_order(void);
 void kageant_apply_saved_order(void);
