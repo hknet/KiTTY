@@ -646,6 +646,37 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
 
     switch (msg) {
       case WM_INITDIALOG: {
+        /* KiTTY: the kitty.ini status line + three-state confirm radios are
+         * shown only in kitty.ini mode. In registry mode, hide them and
+         * reclaim their height BEFORE centring so the shorter dialog centres. */
+        if (!kageant_ini_status()) {
+            static const int inirows[] = {
+                IDC_KEYLIST_INISTATUS, IDC_KEYLIST_CONFIRM_LABEL,
+                IDC_KEYLIST_CONFIRM_YES, IDC_KEYLIST_CONFIRM_AUTO,
+                IDC_KEYLIST_CONFIRM_NO };
+            RECT dr; int dy, k; size_t i;
+            dr.left = dr.top = dr.right = 0; dr.bottom = 32;
+            MapDialogRect(hwnd, &dr); dy = dr.bottom;
+            for (i = 0; i < lenof(inirows); i++) {
+                HWND c = GetDlgItem(hwnd, inirows[i]);
+                if (c) ShowWindow(c, SW_HIDE);
+            }
+            for (k = 0; k < 2; k++) {
+                HWND c = GetDlgItem(hwnd, k ? IDOK : IDC_KEYLIST_HELP);
+                if (c) {
+                    RECT r; POINT p;
+                    GetWindowRect(c, &r); p.x = r.left; p.y = r.top;
+                    ScreenToClient(hwnd, &p);
+                    SetWindowPos(c, NULL, p.x, p.y - dy, 0, 0,
+                                 SWP_NOSIZE | SWP_NOZORDER);
+                }
+            }
+            {
+                RECT wr; GetWindowRect(hwnd, &wr);
+                SetWindowPos(hwnd, NULL, 0, 0, wr.right - wr.left,
+                             (wr.bottom - wr.top) - dy, SWP_NOMOVE | SWP_NOZORDER);
+            }
+        }
         /*
          * Centre the window.
          */
@@ -683,12 +714,18 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
 
         keylist_update();
 
-        /* KiTTY: show when the settings live in the suite ini. */
+        /* KiTTY: show when the settings live in the suite ini, and preselect
+         * the confirm-mode radio matching the current askconfirmation value. */
         if (kageant_ini_status()) {
             char *inimsg = dupprintf("Settings file (kitty.ini mode): %s",
                                      kageant_ini_status());
+            int m = kageant_confirm_mode();
             SetDlgItemText(hwnd, IDC_KEYLIST_INISTATUS, inimsg);
             sfree(inimsg);
+            CheckRadioButton(hwnd, IDC_KEYLIST_CONFIRM_YES, IDC_KEYLIST_CONFIRM_NO,
+                m == KAGEANT_CONFIRM_YES ? IDC_KEYLIST_CONFIRM_YES :
+                m == KAGEANT_CONFIRM_NO  ? IDC_KEYLIST_CONFIRM_NO  :
+                                           IDC_KEYLIST_CONFIRM_AUTO);
         }
         return 0;
       }
@@ -800,6 +837,15 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 }
                 prompt_add_keyfile(LOWORD(wParam) == IDC_KEYLIST_ADDKEY_ENC);
             }
+            return 0;
+          case IDC_KEYLIST_CONFIRM_YES:
+            kageant_confirm_set_mode(KAGEANT_CONFIRM_YES);
+            return 0;
+          case IDC_KEYLIST_CONFIRM_AUTO:
+            kageant_confirm_set_mode(KAGEANT_CONFIRM_AUTO);
+            return 0;
+          case IDC_KEYLIST_CONFIRM_NO:
+            kageant_confirm_set_mode(KAGEANT_CONFIRM_NO);
             return 0;
           case IDC_KEYLIST_MOVEUP:
           case IDC_KEYLIST_MOVEDOWN:

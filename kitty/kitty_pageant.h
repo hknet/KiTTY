@@ -27,6 +27,7 @@ void kageant_confirm_set(int on);
 #define KAGEANT_CONFIRM_YES   1        /* prompt for every key use */
 #define KAGEANT_CONFIRM_AUTO  2        /* only keys whose comment asks for it */
 int kageant_confirm_mode(void);
+void kageant_confirm_set_mode(int mode);   /* key-list radios: yes/auto/no */
 const char *kageant_ini_status(void);  /* ini path when authoritative, else NULL */
 int kitty_inilight_registry_authoritative(void);  /* kitty_inilight.c */
 

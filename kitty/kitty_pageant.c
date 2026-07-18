@@ -346,6 +346,19 @@ void kageant_confirm_set(int on)
     kageant_reg_write(KAGEANT_REG_CONFIRM, on);
 }
 
+/* Set the full three-state mode (the key-list radio buttons). The ini can
+ * store all three; the registry DWORD only yes/auto, so "no" folds to auto
+ * there - but the radios are only offered in ini mode anyway. */
+void kageant_confirm_set_mode(int mode)
+{
+    const char *s = (mode == KAGEANT_CONFIRM_YES) ? "yes" :
+                    (mode == KAGEANT_CONFIRM_NO)  ? "no"  : "auto";
+    if (!kitty_inilight_registry_authoritative() &&
+        kitty_inilight_write("Agent", "askconfirmation", s))
+        return;
+    kageant_reg_write(KAGEANT_REG_CONFIRM, mode == KAGEANT_CONFIRM_YES ? 1 : 0);
+}
+
 /* KiTTY: "kitty.ini mode" indicator for the key-list window and the tray
  * tooltip: the resolved ini path when it is the authoritative settings
  * store, NULL when the registry is. */
