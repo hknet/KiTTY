@@ -868,7 +868,26 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 						DWORD n = GetModuleFileNameA( NULL, exe, sizeof(exe) ) ;
 						if( n && n < sizeof(exe) ) {
 							if( kitty_startup_shortcut_exists("KiTTY Launcher") ) {
-								kitty_startup_shortcut_set("KiTTY Launcher", NULL, NULL, NULL, NULL, 0) ;
+								/* The "KiTTY Launcher" name is generic, so the
+								 * existing user-Startup shortcut may belong to a
+								 * different KiTTY install. Only remove it when it
+								 * points at THIS exe; otherwise leave it alone. */
+								char sdir[MAX_PATH], slnk[MAX_PATH], starget[MAX_PATH] ;
+								int mine = 0 ;
+								if( kitty_startup_dir( sdir, sizeof(sdir), 0 ) ) {
+									snprintf( slnk, sizeof(slnk), "%s\\KiTTY Launcher.lnk", sdir ) ;
+									if( kitty_startup_shortcut_target( slnk, starget, sizeof(starget) ) )
+										mine = !stricmp( starget, exe ) ;
+								}
+								if( mine )
+									kitty_startup_shortcut_set("KiTTY Launcher", NULL, NULL, NULL, NULL, 0) ;
+								else
+									MessageBox( hwnd,
+									    "The \"KiTTY Launcher\" startup shortcut points at a "
+									    "different KiTTY, so it was left unchanged.\n\n"
+									    "Remove it from Settings > Apps > Startup if you want "
+									    "to change it.",
+									    "KiTTY Launcher", MB_ICONINFORMATION | MB_OK ) ;
 							} else {
 								snprintf( dir, sizeof(dir), "%s", exe ) ;
 								slash = strrchr( dir, '\\' ) ; if( slash ) *slash = '\0' ;
