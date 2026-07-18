@@ -26,11 +26,11 @@ int kitty_startup_dir(char *out, size_t len, int common)
     return 1;
 }
 
-/* Build "<per-user Startup>\<name>.lnk". Returns 1 on success. */
-static int shortcut_path(const char *name, char *out, size_t len)
+/* Build "<Startup>\<name>.lnk" (common != 0 = all-users). Returns 1 on ok. */
+static int shortcut_path_in(const char *name, int common, char *out, size_t len)
 {
     char dir[MAX_PATH];
-    if (!kitty_startup_dir(dir, sizeof(dir), 0))
+    if (!kitty_startup_dir(dir, sizeof(dir), common))
         return 0;
     if (strlen(dir) + strlen(name) + 6 >= len)
         return 0;
@@ -38,14 +38,30 @@ static int shortcut_path(const char *name, char *out, size_t len)
     return 1;
 }
 
-int kitty_startup_shortcut_exists(const char *name)
+/* The per-user path; used for everything this module creates/removes. */
+static int shortcut_path(const char *name, char *out, size_t len)
+{
+    return shortcut_path_in(name, 0, out, len);
+}
+
+static int shortcut_exists_in(const char *name, int common)
 {
     char lnk[MAX_PATH];
     DWORD a;
-    if (!shortcut_path(name, lnk, sizeof(lnk)))
+    if (!shortcut_path_in(name, common, lnk, sizeof(lnk)))
         return 0;
     a = GetFileAttributesA(lnk);
     return (a != INVALID_FILE_ATTRIBUTES) && !(a & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+int kitty_startup_shortcut_exists(const char *name)
+{
+    return shortcut_exists_in(name, 0);
+}
+
+int kitty_startup_shortcut_exists_common(const char *name)
+{
+    return shortcut_exists_in(name, 1);
 }
 
 int kitty_startup_shortcut_target(const char *lnkpath, char *out, size_t len)

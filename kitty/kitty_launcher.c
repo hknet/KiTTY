@@ -235,8 +235,13 @@ HMENU InitLauncherMenu( char * Key ) {
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+7, "&Refresh" ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+1, "&Configuration" ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+2, "&TTY-ed" ) ;
-	/* KiTTY: user-Startup-folder shortcut for the launcher, on request. */
-	AppendMenu( menu, MF_ENABLED | (kitty_startup_shortcut_exists("KiTTY Launcher")?MF_CHECKED:MF_UNCHECKED),
+	/* KiTTY: user-Startup-folder shortcut for the launcher, on request.
+	 * Checked when a "KiTTY Launcher" shortcut exists in EITHER the user or
+	 * the all-users Startup (the latter typically installed by the MSI). */
+	AppendMenu( menu, MF_ENABLED |
+	            ((kitty_startup_shortcut_exists("KiTTY Launcher")
+	              || kitty_startup_shortcut_exists_common("KiTTY Launcher"))
+	             ? MF_CHECKED : MF_UNCHECKED),
 	            IDM_LAUNCHER+8, "Start &at login" ) ;
 	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_ABOUT, "&About" ) ;
@@ -842,18 +847,33 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 					RefreshMenuLauncher() ;
 					break ;
 				case IDM_LAUNCHER+8: {
-					/* KiTTY: toggle a "KiTTY Launcher" shortcut in the user's
-					 * Startup folder (kitty*.exe -launcher). Registry-free;
-					 * removing it if already present. */
-					char exe[MAX_PATH], dir[MAX_PATH], *slash ;
-					DWORD n = GetModuleFileNameA( NULL, exe, sizeof(exe) ) ;
-					if( n && n < sizeof(exe) ) {
-						if( kitty_startup_shortcut_exists("KiTTY Launcher") ) {
-							kitty_startup_shortcut_set("KiTTY Launcher", NULL, NULL, NULL, NULL, 0) ;
-						} else {
-							snprintf( dir, sizeof(dir), "%s", exe ) ;
-							slash = strrchr( dir, '\\' ) ; if( slash ) *slash = '\0' ;
-							kitty_startup_shortcut_set("KiTTY Launcher", exe, "-launcher", dir, exe, 1) ;
+					/* KiTTY: toggle a "KiTTY Launcher" shortcut in the USER
+					 * Startup folder (kitty*.exe -launcher). Registry-free. If
+					 * an all-users shortcut already autostarts the launcher
+					 * (typically the MSI's), do not add a redundant per-user
+					 * copy - we cannot remove the all-users one without
+					 * elevation, so point the user at the Windows setting. */
+					if( kitty_startup_shortcut_exists_common("KiTTY Launcher")
+					    && !kitty_startup_shortcut_exists("KiTTY Launcher") ) {
+						MessageBox( hwnd,
+						    "The launcher already starts at login for all users "
+						    "(a shortcut in the all-users Startup folder, usually "
+						    "placed by the KiTTY installer). A per-user entry would "
+						    "be redundant, so none was added.\n\n"
+						    "To change the all-users setting, use Settings > Apps "
+						    "> Startup.",
+						    "KiTTY Launcher", MB_ICONINFORMATION | MB_OK ) ;
+					} else {
+						char exe[MAX_PATH], dir[MAX_PATH], *slash ;
+						DWORD n = GetModuleFileNameA( NULL, exe, sizeof(exe) ) ;
+						if( n && n < sizeof(exe) ) {
+							if( kitty_startup_shortcut_exists("KiTTY Launcher") ) {
+								kitty_startup_shortcut_set("KiTTY Launcher", NULL, NULL, NULL, NULL, 0) ;
+							} else {
+								snprintf( dir, sizeof(dir), "%s", exe ) ;
+								slash = strrchr( dir, '\\' ) ; if( slash ) *slash = '\0' ;
+								kitty_startup_shortcut_set("KiTTY Launcher", exe, "-launcher", dir, exe, 1) ;
+							}
 						}
 					}
 					RefreshMenuLauncher() ;
