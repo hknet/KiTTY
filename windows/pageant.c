@@ -1540,9 +1540,11 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                         "only one wins (single-instance) - the other exits "
                         "without loading its keys, and which wins is a race.\n\n"
                         "Add this kageant to autostart anyway?\n\n"
-                        "Choose No to leave autostart unchanged; remove the other "
-                        "entry first (Settings > Apps > Startup) if you want THIS "
-                        "kageant to be your login agent.", cdesc);
+                        "Choose No to leave autostart unchanged. To make THIS "
+                        "kageant your login agent, disable the other one in "
+                        "Settings > Apps > Startup (that stops it starting, for "
+                        "both Run entries and Startup shortcuts) or delete its "
+                        "Run-registry value / Startup shortcut.", cdesc);
                     int r = MessageBox(NULL, w, "kageant - autostart conflict",
                                        MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
                     sfree(w);

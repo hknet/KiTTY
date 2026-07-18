@@ -869,15 +869,20 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 							MessageBox( hwnd,
 							    "This KiTTY already starts at login for all users "
 							    "(an all-users Startup shortcut, usually placed by "
-							    "the installer). Change it in Settings > Apps > "
-							    "Startup.",
+							    "the installer). To stop it, disable it in Settings "
+									    "> Apps > Startup (that leaves the shortcut in place "
+									    "but prevents it running); deleting the shortcut "
+									    "itself needs administrator access to the all-users "
+									    "Startup folder.",
 							    "KiTTY Launcher", MB_ICONINFORMATION | MB_OK ) ;
 						} else if( kitty_startup_shortcut_exists("KiTTY Launcher") ) {
 							MessageBox( hwnd,
 							    "A \"KiTTY Launcher\" startup shortcut for a different "
 							    "KiTTY already exists in your Startup folder, so none "
-							    "was added.\n\nRemove it from Settings > Apps > Startup "
-							    "first if you want THIS KiTTY to start at login.",
+							    "was added.\n\nDelete it from your Startup folder "
+									    "(open shell:startup) first if you want THIS KiTTY to "
+									    "start at login - disabling it in Settings does not "
+									    "remove the file, and its name would still clash.",
 							    "KiTTY Launcher", MB_ICONINFORMATION | MB_OK ) ;
 						} else {
 							snprintf( dir, sizeof(dir), "%s", exe ) ;
