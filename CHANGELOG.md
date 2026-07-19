@@ -5,6 +5,33 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.54-beta — 2026-07-19
+
+- **Ctrl-Tab and Ctrl-Shift-Tab reach the host again (hknet/KiTTY#15).** Tab
+  with Ctrl held produces no character message on Windows, so the keystroke
+  was silently swallowed — classic KiTTY mapped the pair to the xterm
+  sequences `ESC[27;5;9~` / `ESC[27;6;9~`, and that mapping had not been
+  carried over into the 0.84 port. It is restored with exactly the classic
+  sequences, so tmux/vim bindings that worked with 0.76 work unchanged. The
+  mapping is skipped in putty-compatibility mode, and KiTTY's own Ctrl-Tab
+  window-switching option, when enabled, still takes precedence.
+- **Diagnostic dumps: inline script content is now redacted everywhere.**
+  The visible `/savedump` text has redacted the stored inline login/RuTTY
+  script since 0.84.1.37, but the embedded `current.ktx` copy of the session
+  still carried it. The embedded copy now redacts it like the other secret
+  fields, and the long-standing "script-content path under review" caveat is
+  retired from KNOWN-ISSUES.
+- **A settings-file guide: [docs/KITTY-INI.md](docs/KITTY-INI.md).** One page
+  explaining kitty.ini — how KiTTY finds the file, the `savemode` values and
+  the portable-layout rule, and what each section configures — with the fully
+  annotated `kitty.ini.example` as the complete key reference. The release
+  pipeline cross-checks the guide against the example, so it cannot drift.
+- **README refresh:** the download notes describe the two ZIP flavours
+  correctly, the stored-passwords summary reflects the portable master
+  password (shipped in 0.84.1.48), the feature digest gained the command
+  console, named proxies/jump hosts, the security set and the kageant
+  capabilities, and the credits link the original PuTTY author's GitHub page.
+
 ## 0.84.1.53-beta — 2026-07-18
 
 - **kageant honours kitty.ini (hknet/KiTTY#14).** The SSH agent now reads an

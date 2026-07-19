@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.53 — Known issues & limitations
+# KiTTY 0.84.1.54 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -79,11 +79,25 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.53-beta @ 2026-07-18`.
+- **Version string:** binaries report `0.84.1.54-beta @ 2026-07-19`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.54
+
+- **Ctrl-Tab / Ctrl-Shift-Tab are sent to the host** as the classic xterm
+  sequences `ESC[27;5;9~` / `ESC[27;6;9~` (hknet/KiTTY#15) — tmux/vim
+  bindings from classic KiTTY work again. Skipped in putty-compatibility
+  mode; the Ctrl-Tab window-switching option takes precedence when enabled.
+- **`/savedump`: the stored inline login/RuTTY script is now redacted inside
+  the embedded `current.ktx` too** — the last known script-content gap; the
+  "under review" caveat above is gone.
+- **New [docs/KITTY-INI.md](docs/KITTY-INI.md)** settings-file guide
+  (resolution order, `savemode`/portable rules, section overview), plus a
+  README refresh (two ZIP flavours, portable master password, feature
+  digest, credits).
 
 ## New in 0.84.1.53
 
