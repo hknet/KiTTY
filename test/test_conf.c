@@ -697,7 +697,10 @@ void test_simple(void)
     test_str_simple(CONF_proxy_username, "ProxyUsername", "");
     test_str_simple(CONF_proxy_password, "ProxyPassword", "");
     test_str_simple(CONF_proxy_telnet_command, "ProxyTelnetCommand", "connect %host %port\\n");
-    test_int_translated(CONF_proxy_log_to_term, "ProxyLogToTerm", FORCE_OFF,
+    /* KiTTY intentionally defaults to AUTO (proxy diagnostics visible until
+     * the session starts) instead of PuTTY's FORCE_OFF. Keep the product
+     * default and make this regression test KiTTY-aware. */
+    test_int_translated(CONF_proxy_log_to_term, "ProxyLogToTerm", AUTO,
                         FORCE_ON, 0, FORCE_OFF, 1, AUTO, 2, -1);
     test_str_ambi_simple(CONF_remote_cmd, "RemoteCommand", "", false);
     test_bool_simple(CONF_nopty, "NoPTY", false);
@@ -749,8 +752,12 @@ void test_simple(void)
                         FUNKY_TILDE, 0, FUNKY_LINUX, 1, FUNKY_XTERM, 2,
                         FUNKY_VT400, 3, FUNKY_VT100P, 4, FUNKY_SCO, 5,
                         FUNKY_XTERM_216, 6, -1);
+    /* KiTTY intentionally defaults to SHARROW_BITMAP (Ctrl+arrow word
+     * navigation, the KiTTY 0.76 behaviour) instead of PuTTY's
+     * SHARROW_APPLICATION. Keep the product default and make this
+     * regression test KiTTY-aware. */
     test_int_translated(CONF_sharrow_type, "ShiftedArrowKeys",
-                        SHARROW_APPLICATION,
+                        SHARROW_BITMAP,
                         SHARROW_APPLICATION, 0, SHARROW_BITMAP, 1, -1);
     test_int_translated(CONF_word_nav_modifier, "WordNavModifier",
                         WORDNAV_ALT,
