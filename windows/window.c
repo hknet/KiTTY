@@ -275,6 +275,10 @@ int  GetWinrolFlag(void);                /* kitty.c */
 void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
                                    const char *user, const char *pass,
                                    const int port, const char *remotepath); /* kitty_bridge.c */
+/* KiTTY font fallback (kitty/winfont_fallback.c, ported from upstream PR
+ * cyd01/KiTTY#555): characters the primary font lacks are drawn from a
+ * configurable list of fallback fonts. kitty.ini [FontFallback]. */
+#include "../kitty/winfont_fallback.h"
 #endif
 /* Auto-command: send a command automatically after login (CONF_autocommand). */
 int kitty_autocommand_tick(HWND hwnd);
@@ -1702,6 +1706,9 @@ void cleanup_exit(int code)
     }
     sk_cleanup();
 
+#ifdef MOD_PERSO
+    winfb_log_close();                 /* KiTTY font fallback */
+#endif
     random_save_seed();
     shutdown_help();
 
@@ -2434,6 +2441,14 @@ static void init_fonts(WinGuiSeat *wgs, int pick_width, int pick_height)
             fontsize[i] = -i;
     }
 
+#ifdef MOD_PERSO
+    /* KiTTY font fallback: (re)build the fallback state against the freshly
+     * created primary font (also runs on font/DPI changes via reset_window's
+     * deinit_fonts + init_fonts cycle). No-op when [FontFallback] active=no. */
+    winfb_reinit_from_config(hdc, &wgs->lfont, wgs->font_width,
+                             wgs->font_height);
+#endif
+
     ReleaseDC(wgs->term_hwnd, hdc);
 
     if (trust_icon != INVALID_HANDLE_VALUE) {
@@ -2530,6 +2545,9 @@ static void deinit_fonts(WinGuiSeat *wgs)
         DestroyIcon(trust_icon);
     }
     trust_icon = INVALID_HANDLE_VALUE;
+#ifdef MOD_PERSO
+    winfb_cleanup();                   /* KiTTY font fallback */
+#endif
 }
 
 static void wintw_request_resize(TermWin *tw, int w, int h)
@@ -5363,6 +5381,26 @@ static void do_text_internal(
             for (int i = 0; i < len; i++)
                 wbuf[i] = text[i];
 
+#ifdef MOD_PERSO
+            /* KiTTY font fallback (cyd01/KiTTY#555): when a character here
+             * is missing from the primary font but present in a configured
+             * fallback font, draw per-font runs instead. The all-primary
+             * case (the overwhelmingly common one) stays on general_textout
+             * below, keeping RTL handling and Windows' built-in font
+             * linking exactly as before. */
+            WinFB_Run fb_runs[WINFB_MAX_RUNS];
+            int fb_nruns = winfb_split(wbuf, len, fb_runs, WINFB_MAX_RUNS);
+            if (fb_nruns > 1 || (fb_nruns == 1 && fb_runs[0].slot >= 0)) {
+                winfb_draw_runs(
+                    wgs->wintw_hdc, x + xoffset,
+                    y - wgs->font_height * (lattr==LATTR_BOT) + text_adjust,
+                    &line_box, wbuf, len, (use_lpDx ? lpDx : NULL),
+                    fb_runs, fb_nruns,
+                    opaque && !(attr & TATTR_COMBINING),
+                    (nfont & FONT_BOLD) != 0, false,
+                    (nfont & FONT_UNDERLINE) != 0);
+            } else
+#endif
             /* print Glyphs as they are, without Windows' Shaping*/
             general_textout(
                 wgs, wgs->wintw_hdc, x + xoffset,

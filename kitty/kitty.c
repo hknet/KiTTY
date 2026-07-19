@@ -34,6 +34,7 @@
 #include "kitty_tools.h"
 #include "kitty_win.h"
 #include "kitty_launcher.h"
+#include "winfont_fallback.h"
 #include "MD5check.h"
 /*************************************************
 ** FIN DE LA DEFINITION DES INCLUDES
@@ -3035,6 +3036,7 @@ static const IniParam ini_params[] = {
 	INIP_NUM( "Print", 1, "height",			IGN,		&PrintCharSize, NULL ),
 	INIP_NUM( "Print", 1, "maxline",		IGN,		&PrintMaxLinePerPage, NULL ),
 	INIP_NUM( "Print", 1, "maxchar",		IGN,		&PrintMaxCharPerLine, NULL ),
+	INIP_KW( "FontFallback", 1, "active",		1, 0, IGN,	NULL, SetFontFallbackFlag ),
 } ;
 #undef IGN
 
@@ -3145,6 +3147,18 @@ void LoadParameters( void ) {
 	if( readINI( KittyIniFile, "Folder", "del", buffer, sizeof(buffer) ) ) {
 		StringList_Del( FolderList, buffer ) ;
 		delINI( KittyIniFile, "Folder", "del" ) ;
+	}
+	/* [FontFallback] string settings (kitty/winfont_fallback.c). The
+	 * "active" master switch is handled by the ini_params table above;
+	 * the free-form keys are read here and handed over in one shot.
+	 * NB the mini ini parser matches section/key names case-SENSITIVELY. */
+	{
+	char fbList[1024]="", fbOvr[2048]="", fbLog[64]="", fbLogFile[MAX_PATH]="" ;
+	readINI( KittyIniFile, "FontFallback", "fallback", fbList, sizeof(fbList) ) ;
+	readINI( KittyIniFile, "FontFallback", "override", fbOvr, sizeof(fbOvr) ) ;
+	readINI( KittyIniFile, "FontFallback", "log", fbLog, sizeof(fbLog) ) ;
+	readINI( KittyIniFile, "FontFallback", "logfile", fbLogFile, sizeof(fbLogFile) ) ;
+	winfb_config_set( fbList, fbOvr, fbLog, fbLogFile ) ;
 	}
 }
 

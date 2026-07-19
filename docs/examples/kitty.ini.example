@@ -429,3 +429,36 @@
 ; trailing ",encrypted" loads that key deferred. kageant writes these when
 ; you load keys with loadonstartup on - you normally do not edit them by hand.
 ;startupkey1=keys\id_ed25519.ppk,encrypted
+
+
+[FontFallback]
+
+; Font fallback: when the terminal font is missing a character (box drawing,
+; Nerd Font icons, CJK, symbols...), KiTTY probes a list of fallback fonts
+; and draws that character from the first font that has it. Cell widths are
+; unchanged; only the glyph's source font differs. Rendering is plain GDI,
+; so emoji come out monochrome. NB: section and key names in this file are
+; case-sensitive.
+
+; active: master switch for the whole feature
+;active=yes
+
+; fallback: comma-separated list of font names to try, in order, before the
+; built-in defaults (Cascadia Mono, Cascadia Code, Segoe UI Symbol, Segoe UI
+; Emoji, Segoe UI Historic, Microsoft YaHei UI, Microsoft JhengHei UI,
+; Yu Gothic UI, Malgun Gothic). Naming a built-in just promotes it. Fonts
+; that are not installed are skipped. Start the list with ! to REPLACE the
+; built-in defaults instead.
+;fallback=Symbols Nerd Font Mono,JetBrains Mono
+;fallback=!MyOnlyFont1,MyOnlyFont2
+
+; override: force a Unicode range (or single codepoint, hex) to a specific
+; font regardless of probe results; multiple entries separated by ;
+;override=E000-F8FF:Symbols Nerd Font Mono;1F600-1F64F:Segoe UI Emoji
+
+; log: off|error|warn|info|debug|trace - troubleshooting log, written to
+; fontfallback.log next to kitty.exe (debug/trace are high volume)
+;log=off
+
+; logfile: alternative path for the log file
+;logfile=

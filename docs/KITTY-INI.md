@@ -69,6 +69,7 @@ the GUI only (see [KNOWN-ISSUES.md](../KNOWN-ISSUES.md)).
 | `[Shortcuts]` | Keyboard shortcuts for KiTTY menu actions, e.g. `duplicate={CONTROL}N`. |
 | `[Print]` | Text printing: character size, lines per page, characters per line. |
 | `[Launcher]` | The tray launcher, e.g. session-list `reload` on each menu open. |
+| `[FontFallback]` | Missing-glyph font fallback: `active` master switch (default yes), `fallback` font list, `override` Unicode-range pinning, `log`/`logfile` troubleshooting. |
 
 ## A minimal example
 

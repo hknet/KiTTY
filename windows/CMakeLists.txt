@@ -307,6 +307,7 @@ add_executable(kitty
   ${KITTY_DIR}/blocnote/notepad.c
   ${KITTY_DIR}/blocnote/notepad.rc
   ${KITTY_DIR}/kitty_win.c
+  ${KITTY_DIR}/winfont_fallback.c
   ${KITTY_DIR}/url/urlhack.c
   ${KITTY_DIR}/url/re_lib/regexp.c
   ${KITTY_DIR}/kitty_url.c
@@ -373,6 +374,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/blocnote/notepad.c
   ${KITTY_DIR}/blocnote/notepad.rc
   ${KITTY_DIR}/kitty_win.c
+  ${KITTY_DIR}/winfont_fallback.c
   ${KITTY_DIR}/url/urlhack.c
   ${KITTY_DIR}/url/re_lib/regexp.c
   ${KITTY_DIR}/kitty_url.c
