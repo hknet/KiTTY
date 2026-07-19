@@ -226,6 +226,19 @@ BEGIN
     LTEXT           "", IDC_RESULT, 7, 10, 336, 14
 END
 
+/* /help command list: a modeless, resizable window, so the reference stays
+ * readable while commands are typed into the send-text box (the old modal
+ * MessageBox blocked exactly that box). Text is filled in at runtime from the
+ * internal_commands[] table; handled by HelpBoxProc in kitty/kitty_commands.c. */
+IDD_HELPBOX DIALOG DISCARDABLE 0, 0, 330, 240
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX | WS_MAXIMIZEBOX
+CAPTION "KiTTY internal commands"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    EDITTEXT        IDC_HELPTEXT, 3, 3, 324, 214, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL
+    DEFPUSHBUTTON   "Close", IDCANCEL, 274, 222, 52, 14
+END
+
 #ifndef NO_MANIFESTS
 1 RT_MANIFEST "putty.mft"
 #endif /* NO_MANIFESTS */

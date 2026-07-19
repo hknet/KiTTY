@@ -137,10 +137,13 @@ typedef INT_PTR (*ShinyDlgProc)(HWND hwnd, UINT msg, WPARAM wParam,
 int ShinyDialogBox(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
                    HWND hwndparent, ShinyDlgProc proc, void *ctx);
 void ShinyEndDialog(HWND hwnd, int ret);
-/* KiTTY: register the modeless About box so message loops can keep its
- * dialog keyboard handling (Esc/Tab) working via IsDialogMessage(). */
-void ShinySetAuxDialog(HWND hwnd);
-HWND ShinyGetAuxDialog(void);
+/* KiTTY: register a modeless aux dialog (About box, /help command list) so
+ * message loops can keep its dialog keyboard handling (Esc/Tab) working via
+ * IsDialogMessage(). ShinyAuxDialogMessage() is the loop-side half: it offers
+ * the message to every registered dialog and says whether one consumed it. */
+void ShinyAddAuxDialog(HWND hwnd);
+void ShinyRemoveAuxDialog(HWND hwnd);
+bool ShinyAuxDialogMessage(MSG *msg);
 
 void centre_window(HWND hwnd);
 

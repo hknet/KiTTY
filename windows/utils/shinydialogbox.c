@@ -92,9 +92,8 @@ int ShinyDialogBox(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
     while ((gm = GetMessage(&msg, NULL, 0, 0)) > 0) {
         if (!state->ended && !IsDialogMessage(hwnd, &msg)) {
             /* KiTTY: keep dialog keyboard handling (Esc/Tab) working for the
-             * modeless About box while this loop owns the thread's messages. */
-            HWND aux = ShinyGetAuxDialog();
-            if (!(aux && IsWindow(aux) && IsDialogMessage(aux, &msg)))
+             * modeless aux dialogs while this loop owns the thread's messages. */
+            if (!ShinyAuxDialogMessage(&msg))
                 DispatchMessage(&msg);
         }
         if (state->ended)
@@ -115,9 +114,43 @@ void ShinyEndDialog(HWND hwnd, int ret)
     state->ended = true;
 }
 
-/* KiTTY: the one modeless aux dialog (the About box). Message loops route
- * messages through IsDialogMessage() for it so Esc/Tab keep working; lives
- * here (bottom-most lib) so both window.c's pump and the loop above see it. */
-static HWND shiny_aux_dialog = NULL;
-void ShinySetAuxDialog(HWND hwnd) { shiny_aux_dialog = hwnd; }
-HWND ShinyGetAuxDialog(void) { return shiny_aux_dialog; }
+/* KiTTY: the modeless aux dialogs (the About box, the /help command list).
+ * Message loops route messages through IsDialogMessage() for each so Esc/Tab
+ * keep working; lives here (bottom-most lib) so both window.c's pump and the
+ * loop above see them. A dialog unregisters itself on WM_DESTROY; the
+ * IsWindow() checks are only a safety net against a missed removal. */
+#define SHINY_MAX_AUX_DIALOGS 4
+static HWND shiny_aux_dialogs[SHINY_MAX_AUX_DIALOGS];
+
+void ShinyAddAuxDialog(HWND hwnd)
+{
+    int i;
+    for (i = 0; i < SHINY_MAX_AUX_DIALOGS; i++)
+        if (shiny_aux_dialogs[i] == hwnd)
+            return;
+    for (i = 0; i < SHINY_MAX_AUX_DIALOGS; i++) {
+        if (!shiny_aux_dialogs[i] || !IsWindow(shiny_aux_dialogs[i])) {
+            shiny_aux_dialogs[i] = hwnd;
+            return;
+        }
+    }
+}
+
+void ShinyRemoveAuxDialog(HWND hwnd)
+{
+    int i;
+    for (i = 0; i < SHINY_MAX_AUX_DIALOGS; i++)
+        if (shiny_aux_dialogs[i] == hwnd)
+            shiny_aux_dialogs[i] = NULL;
+}
+
+bool ShinyAuxDialogMessage(MSG *msg)
+{
+    int i;
+    for (i = 0; i < SHINY_MAX_AUX_DIALOGS; i++) {
+        HWND aux = shiny_aux_dialogs[i];
+        if (aux && IsWindow(aux) && IsDialogMessage(aux, msg))
+            return true;
+    }
+    return false;
+}

@@ -482,20 +482,106 @@ static const struct InternalCmdDef {
 	{ "/screenshot",	IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "save a screenshot of the terminal",			cmd_screenshot },
 } ;
 
-/* /help: generated from the table, grouped by category. */
+/* /help: generated from the table, grouped by category. Shown in a modeless,
+ * resizable window (IDD_HELPBOX) owned by the terminal window, so the list
+ * stays readable while commands are typed into the send-text box - the old
+ * modal MessageBox blocked exactly that box. One instance per process; /help
+ * with the window already open just brings it to the front. */
+
+#include "kitty_auxpos.h"
+
+static HWND kitty_help_dlg = NULL ;
+static WNDPROC kitty_help_edit_proc = NULL ;
+
+/* The classic EDIT control has no native Ctrl+A; give the read-only text
+ * select-all so Ctrl+A, Ctrl+C grabs the whole list (Event Log parity).
+ * Also drop DLGC_WANTALLKEYS from the multiline edit's dialog code: with it,
+ * IsDialogMessage() would feed Esc and Tab to the edit (which ignores them)
+ * instead of closing the window / cycling focus like every other dialog. */
+static LRESULT CALLBACK HelpEditProc( HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam ) {
+	if( (msg == WM_KEYDOWN) && (wParam == 'A') && (GetKeyState(VK_CONTROL) & 0x8000) ) {
+		SendMessage( hwnd, EM_SETSEL, 0, -1 ) ;
+		return 0 ;
+	}
+	if( msg == WM_GETDLGCODE ) {
+		LRESULT code = CallWindowProc( kitty_help_edit_proc, hwnd, msg, wParam, lParam ) ;
+		return code & ~(LRESULT)(DLGC_WANTALLKEYS | DLGC_WANTTAB) ;
+	}
+	return CallWindowProc( kitty_help_edit_proc, hwnd, msg, wParam, lParam ) ;
+}
+
+/* Fill the client area with the text, Close button pinned bottom-right.
+ * Sizes derive from the button's current (template+DPI-scaled) metrics, so
+ * this stays correct at any DPI. */
+static void help_box_layout( HWND hwnd ) {
+	RECT rc, rb ;
+	HWND edit = GetDlgItem( hwnd, IDC_HELPTEXT ) ;
+	HWND btn = GetDlgItem( hwnd, IDCANCEL ) ;
+	int bw, bh, m, btop ;
+	if( !edit || !btn ) return ;
+	GetClientRect( hwnd, &rc ) ;
+	GetWindowRect( btn, &rb ) ;
+	bw = rb.right - rb.left ; bh = rb.bottom - rb.top ;
+	m = bh / 3 ;
+	btop = rc.bottom - bh - m ;
+	MoveWindow( edit, m, m, rc.right - 2*m, btop - 2*m, TRUE ) ;
+	MoveWindow( btn, rc.right - bw - m, btop, bw, bh, TRUE ) ;
+}
+
+static INT_PTR CALLBACK HelpBoxProc( HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam ) {
+	switch( msg ) {
+		case WM_INITDIALOG: {
+			HWND edit = GetDlgItem( hwnd, IDC_HELPTEXT ) ;
+			kitty_help_edit_proc = (WNDPROC)SetWindowLongPtr( edit, GWLP_WNDPROC, (LONG_PTR)HelpEditProc ) ;
+			kitty_auxpos_apply( hwnd, "CmdHelp", GetWindow(hwnd, GW_OWNER), 0 ) ;
+			help_box_layout( hwnd ) ;
+			return 1 ;
+		}
+		case WM_SIZE:
+			if( wParam != SIZE_MINIMIZED ) help_box_layout( hwnd ) ;
+			return 0 ;
+		case WM_GETMINMAXINFO: {
+			/* Don't let it shrink below a readable minimum. */
+			MINMAXINFO *mmi = (MINMAXINFO *)lParam ;
+			mmi->ptMinTrackSize.x = 300 ;
+			mmi->ptMinTrackSize.y = 200 ;
+			return 0 ;
+		}
+		case WM_COMMAND:
+			if( (LOWORD(wParam) == IDOK) || (LOWORD(wParam) == IDCANCEL) ) {
+				DestroyWindow( hwnd ) ;
+				return 1 ;
+			}
+			return 0 ;
+		case WM_CLOSE:
+			DestroyWindow( hwnd ) ;
+			return 1 ;
+		case WM_DESTROY:
+			kitty_auxpos_save( hwnd, "CmdHelp" ) ;
+			ShinyRemoveAuxDialog( hwnd ) ;
+			kitty_help_dlg = NULL ;
+			return 0 ;
+	}
+	return 0 ;
+}
+
 static int cmd_help( HWND hwnd, char * arg ) {
 	char buffer[8192] ;
 	const char * cat = NULL ;
 	size_t i ;
-	(void)arg ;
+	(void)hwnd ; (void)arg ;
+	if( kitty_help_dlg && IsWindow( kitty_help_dlg ) ) {
+		SetForegroundWindow( kitty_help_dlg ) ;
+		return 1 ;
+	}
 	buffer[0] = '\0' ;
 #define HCAT(s) strncat( buffer, s, sizeof(buffer)-strlen(buffer)-1 )
 	for( i = 0 ; i < lenof(internal_commands) ; i++ ) {
 		const struct InternalCmdDef * c = &internal_commands[i] ;
 		if( (cat == NULL) || strcmp( cat, c->category ) ) {
-			if( cat != NULL ) HCAT( "\n" ) ;
+			if( cat != NULL ) HCAT( "\r\n" ) ;
 			HCAT( c->category ) ;
-			HCAT( ":\n" ) ;
+			HCAT( ":\r\n" ) ;
 			cat = c->category ;
 		}
 		HCAT( "  " ) ;
@@ -503,10 +589,16 @@ static int cmd_help( HWND hwnd, char * arg ) {
 		if( c->argname != NULL ) { HCAT( " " ) ; HCAT( c->argname ) ; }
 		HCAT( " - " ) ;
 		HCAT( c->help ) ;
-		HCAT( "\n" ) ;
+		HCAT( "\r\n" ) ;
 	}
 #undef HCAT
-	MessageBox( hwnd, buffer, "KiTTY internal commands", MB_OK ) ;
+	kitty_help_dlg = CreateDialog( hinst, MAKEINTRESOURCE(IDD_HELPBOX), MainHwnd, HelpBoxProc ) ;
+	if( kitty_help_dlg ) {
+		SetDlgItemText( kitty_help_dlg, IDC_HELPTEXT, buffer ) ;
+		ShinyAddAuxDialog( kitty_help_dlg ) ;
+		ShowWindow( kitty_help_dlg, SW_SHOW ) ;
+		SetForegroundWindow( kitty_help_dlg ) ;
+	}
 	return 1 ;
 }
 

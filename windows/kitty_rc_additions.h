@@ -403,3 +403,11 @@
 #ifndef IDD_INFOBOX
 #define IDD_INFOBOX 138
 #endif
+/* /help command list: modeless, resizable window (HelpBoxProc in
+ * kitty/kitty_commands.c). */
+#ifndef IDD_HELPBOX
+#define IDD_HELPBOX 139
+#endif
+#ifndef IDC_HELPTEXT
+#define IDC_HELPTEXT 1230
+#endif

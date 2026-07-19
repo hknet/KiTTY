@@ -127,9 +127,13 @@ Show `<text>` in a message box. Mainly useful from scripts and from
 ### /help
 
 Show the compact list of all internal commands (the one-line summaries in this
-document, grouped the same way).
+document, grouped the same way) in a separate resizable window that stays open
+while you keep typing commands into the send-text box. `/help` with the window
+already open brings it to the front; Esc or Close dismisses it, and the text
+can be selected and copied (Ctrl+A, Ctrl+C).
 
-**Persists:** informational, nothing stored.
+**Persists:** informational, nothing stored (the window position is remembered
+like the other pop-up windows).
 
 ## Settings & storage
 

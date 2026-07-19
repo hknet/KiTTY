@@ -561,7 +561,7 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
       case WM_DESTROY:
         kitty_auxpos_save(hwnd, "About");
         kitty_about_dlg = NULL;
-        ShinySetAuxDialog(NULL);
+        ShinyRemoveAuxDialog(hwnd);
         return 0;
     }
     return 0;
@@ -1177,7 +1177,7 @@ void showeventlog(HWND hwnd)
 }
 
 /* KiTTY: one non-modal About window, placed over the owner (kitty_auxpos) and
- * reused if already open. Registered as the aux dialog so the active message
+ * reused if already open. Registered as an aux dialog so the active message
  * loop keeps its keyboard handling (Esc closes, Tab cycles) working. */
 static void kitty_show_about_modeless(HWND owner)
 {
@@ -1187,7 +1187,7 @@ static void kitty_show_about_modeless(HWND owner)
     }
     kitty_about_dlg = CreateDialog(hinst, MAKEINTRESOURCE(IDD_ABOUTBOX), owner, AboutProc);
     if (kitty_about_dlg) {
-        ShinySetAuxDialog(kitty_about_dlg);
+        ShinyAddAuxDialog(kitty_about_dlg);
         ShowWindow(kitty_about_dlg, SW_SHOW);
         SetForegroundWindow(kitty_about_dlg);
     }
