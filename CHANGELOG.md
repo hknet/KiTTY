@@ -5,6 +5,30 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.55-beta — 2026-07-19
+
+- **Missing-glyph font fallback (ported from upstream PR cyd01/KiTTY#555, by
+  blreay — thanks!).** When the terminal font is missing a character — Nerd
+  Font / Powerline icons, box drawing, CJK, symbols — KiTTY now probes a list
+  of fallback fonts and draws that character from the first font that has it.
+  Cell widths are unchanged; only the glyph's source font differs. This covers
+  what Windows' own font linking cannot, notably private-use-area icons.
+  Configured in a new kitty.ini **`[FontFallback]`** section (see
+  [docs/KITTY-INI.md](docs/KITTY-INI.md)): `active` master switch (default
+  yes), `fallback=` comma-separated font list tried before the built-in
+  defaults (leading `!` replaces them), `override=U+range:Font` pinning, and
+  `log`/`logfile` for troubleshooting. The built-in fallback list leads with
+  Cascadia Mono/Code and the Segoe UI symbol fonts, then the major CJK UI
+  fonts. Rendering is plain GDI, so emoji drawn via fallback come out
+  monochrome; with a raster primary font (Terminal/Fixedsys) the feature
+  disables itself. The port also fixes two issues in the original module: a
+  raster primary font no longer sends *all* text to the first fallback font,
+  and very long mixed-font lines are no longer truncated at 64 runs.
+- **Internals:** the configuration self-test (`test_conf`) now expects
+  KiTTY's own defaults for `ProxyLogToTerm` and `ShiftedArrowKeys` — the two
+  remaining failures dating from the 0.84 baseline import — so the suite runs
+  green and serves as a regression gate for future upstream rebases.
+
 ## 0.84.1.54-beta — 2026-07-19
 
 - **Ctrl-Tab and Ctrl-Shift-Tab reach the host again (hknet/KiTTY#15).** Tab

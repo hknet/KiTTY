@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.54 — Known issues & limitations
+# KiTTY 0.84.1.55 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -20,6 +20,12 @@ features are working and verified. Known limitations as of this release:
   against a real Android device or a live remote shell.
 - **Background image:** renders correctly inside the terminal cell grid; the thin
   margin strip outside the grid is still solid-filled (cosmetic).
+- **Font fallback renders monochrome.** Missing-glyph fallback draws with plain
+  GDI, so emoji and other colour glyphs taken from a fallback font come out as
+  monochrome outlines. Supplementary-plane emoji may additionally need an
+  explicit `override=` range in `[FontFallback]`. With a raster (non-TrueType)
+  primary font such as Terminal or Fixedsys, the fallback feature disables
+  itself for that session. `active=no` turns it off entirely.
 - **Command-line tools use the registry session store.** `klink`/`kscp`/`ksftp`
   (plink/pscp/psftp) read saved sessions from the Windows **registry**, not from a
   portable (`savemode=dir`) store — so a portable install's sessions, and any
@@ -79,11 +85,23 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.54-beta @ 2026-07-19`.
+- **Version string:** binaries report `0.84.1.55-beta @ 2026-07-19`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.55
+
+- **Missing-glyph font fallback** (ported from upstream PR cyd01/KiTTY#555 by
+  blreay): characters your terminal font lacks — Nerd Font icons, CJK, box
+  drawing, symbols — are drawn from the first fallback font that has them.
+  New kitty.ini `[FontFallback]` section: `active` (default yes), `fallback=`
+  font list, `override=` Unicode-range pinning, `log`/`logfile`. See the
+  monochrome-rendering limitation above.
+- **`test_conf` runs green:** the configuration self-test now expects KiTTY's
+  defaults for `ProxyLogToTerm` and `ShiftedArrowKeys` (failures dating from
+  the 0.84 baseline import).
 
 ## New in 0.84.1.54
 
