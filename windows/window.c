@@ -6002,6 +6002,7 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
             *p++ = 'Z';
             return p - output;
         }
+#ifdef MOD_PERSO
         /* Tab with Ctrl held produces no WM_CHAR, so without an explicit
          * mapping the keystroke is swallowed; send the xterm modifyOtherKeys
          * encoding like classic KiTTY (hknet/KiTTY#15). Only reached when
@@ -6014,6 +6015,7 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
             p += sprintf((char *)p, "\x1b[27;6;9~");   /* Ctrl-Shift-Tab */
             return p - output;
         }
+#endif
         if (wParam == VK_SPACE && shift_state == 2) {   /* Ctrl-Space */
             *p++ = 0;
             return p - output;
