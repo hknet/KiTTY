@@ -425,8 +425,11 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 		{ SendMessage( hwnd, WM_COMMAND, IDM_REKEY, 0 ) ; return 1 ; }
 		
 	else if( key == shortcuts_tab.input ) 			// Fenetre de controle
-		{ 
-			MainHwnd = hwnd ; _beginthread( routine_inputbox, 0, (void*)&hwnd ) ;
+		{
+			/* Modeless box: open it directly on the main (UI) thread whose
+			 * message pump routes the aux dialogs - NOT on a worker thread,
+			 * which would exit immediately and leave the window unpumped. */
+			MainHwnd = hwnd ; GetAndSendLine( hwnd ) ;
 			InvalidateRect( hwnd, NULL, TRUE ) ; return 1 ;
 		}
 

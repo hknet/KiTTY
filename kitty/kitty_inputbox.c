@@ -64,6 +64,12 @@ void InfoBoxClose( HWND hwnd ) { EndDialog(hwnd, LOWORD(0)) ; DestroyWindow( hwn
 //CallBack du dialog InputBox
 static int InputBox_Flag = 0 ;
 
+/* The single-line send-text box is modeless (unlike the multiline and password
+ * boxes, which stay modal): it doubles as the /command console, and /help opens
+ * its own modeless window, so both must coexist with working Esc/Tab keyboard
+ * handling routed by the main message pump. One instance per process. */
+static HWND InputBoxHwnd = NULL ;
+
 static LRESULT CALLBACK InputCallBack(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam ) {
 	HWND handle;
 	switch (message) {
@@ -86,22 +92,31 @@ static LRESULT CALLBACK InputCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 				size_t length = GetWindowTextLength( handle ) ;
 				InputBoxResult = (char*) malloc( length + 10 ) ;
 				GetWindowText(handle,InputBoxResult,length+1);
-				//EndDialog(hwnd, LOWORD(1));
+				/* Modeless: OK sends the line and keeps the box open (clear
+				 * it and re-focus the edit) so several lines can be sent in a
+				 * row, exactly as the old modal box did (it never EndDialog'd
+				 * on OK either). */
 				if( !InternalCommand( hwnd, InputBoxResult ) )
 					SendKeyboardPlus( MainHwnd, InputBoxResult );
 				SetWindowText(handle,"") ;
-				
+				SetFocus(handle) ;
+
 			}
 			if (LOWORD(wParam) == IDCANCEL)
 			{
 				if( InputBoxResult != NULL ) { free( InputBoxResult ) ; InputBoxResult = NULL ; }
-				EndDialog(hwnd, LOWORD(0));
+				DestroyWindow(hwnd);
 			}
-			
+
 			break;
 
 		case WM_CLOSE:
-			EndDialog(hwnd, LOWORD(0));
+			DestroyWindow(hwnd);
+			break;
+
+		case WM_DESTROY:
+			ShinyRemoveAuxDialog(hwnd) ;
+			InputBoxHwnd = NULL ;
 			break;
 
 		return DefWindowProc (hwnd, message, wParam, lParam);
@@ -312,10 +327,19 @@ static LRESULT CALLBACK InputMultilineCallBack (HWND hwnd, UINT message, WPARAM 
 	return 0;
 }
 
-char * InputBox( HINSTANCE hInstance, HWND hwnd ) {
+/* Open (or raise) the modeless single-line send-text / command box. Created on
+ * the main thread and owned by the terminal window, registered as an aux dialog
+ * so window.c's message pump keeps its Esc/Tab handling working - and so it and
+ * the /help window can be open at once. */
+void ShowInputBox( HINSTANCE hInstance, HWND hwnd ) {
+	if( InputBoxHwnd && IsWindow(InputBoxHwnd) ) { SetForegroundWindow(InputBoxHwnd) ; return ; }
 	if( InputBoxResult != NULL ) { free( InputBoxResult ) ; InputBoxResult = NULL ; }
-	DialogBox(hInstance, MAKEINTRESOURCE(IDD_INPUTBOX), hwnd, (DLGPROC)InputCallBack) ;
-	return InputBoxResult ;
+	InputBoxHwnd = CreateDialog(hInstance, MAKEINTRESOURCE(IDD_INPUTBOX), hwnd, (DLGPROC)InputCallBack) ;
+	if( InputBoxHwnd ) {
+		ShinyAddAuxDialog( InputBoxHwnd ) ;
+		ShowWindow( InputBoxHwnd, SW_SHOW ) ;
+		SetForegroundWindow( InputBoxHwnd ) ;
+		}
 	}
 
 char * InputBoxMultiline( HINSTANCE hInstance, HWND hwnd ) {
@@ -347,10 +371,10 @@ char * InputBoxPassword( HINSTANCE hInstance, HWND hwnd ) {
 	}
 
 void GetAndSendLine( HWND hwnd ) {
-	if( InputBox_Flag == 1 ) return ;
-	InputBox_Flag = 1 ;
-	InputBox( hinst, hwnd ) ; // Essayer avec GetModuleHandle(NULL)
-	InputBox_Flag = 0 ;
+	/* Modeless now: no InputBox_Flag re-entrancy dance (ShowInputBox raises
+	 * the existing window instead of opening a second one) and no worker
+	 * thread - it must run on the main thread whose pump routes aux dialogs. */
+	ShowInputBox( hinst, hwnd ) ;
 	}
 	
 void GetAndSendMultiLine( HWND hwnd ) {

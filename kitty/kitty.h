@@ -278,7 +278,7 @@ int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance,LPSTR lp
 void InitWinMain( void ) ;
 char * getcwd (char * buf, int size);
 int chdir(const char *path); 
-char * InputBox( HINSTANCE hInstance, HWND hwnd ) ;
+void ShowInputBox( HINSTANCE hInstance, HWND hwnd ) ;   /* modeless single-line box */
 char * InputBoxMultiline( HINSTANCE hInstance, HWND hwnd ) ;
 char * InputBoxPassword( HINSTANCE hInstance, HWND hwnd ) ;
 char * GetInputBoxResult( void ) ;
