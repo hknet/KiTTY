@@ -5,6 +5,23 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.56-beta — 2026-07-20
+
+- **`/help` no longer blocks the box you type commands into.** The internal-
+  command list (`/help` in the Ctrl+F8 send-text box) used to be a modal
+  message box that had to be dismissed before you could type anything — so you
+  could not read a command and use it at the same time. It now opens in a
+  separate resizable window that stays open while you keep issuing commands:
+  a second `/help` brings it to the front, Esc or Close dismisses it, the text
+  can be selected and copied (Ctrl+A, Ctrl+C), and its position is remembered
+  like the other pop-up windows.
+- **The Ctrl+F8 send-text box is now modeless.** It no longer freezes the
+  terminal window while open, so you can scroll or click the terminal with the
+  box up, and it coexists with the `/help` window (Esc works in either).
+  Sending a line still clears the box and keeps it open for the next one, as
+  before; Esc, Close or the X dismiss it. The Shift+F8 multiline box and the
+  password prompt are unchanged.
+
 ## 0.84.1.55-beta — 2026-07-19
 
 - **Missing-glyph font fallback (ported from upstream PR cyd01/KiTTY#555, by

@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.55 — Known issues & limitations
+# KiTTY 0.84.1.56 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -85,11 +85,21 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.55-beta @ 2026-07-19`.
+- **Version string:** binaries report `0.84.1.56-beta @ 2026-07-20`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.56
+
+- **`/help` is a separate resizable window**, not a modal box — it stays open
+  while you keep typing commands into the Ctrl+F8 send-text box; Esc/Close
+  dismiss it, Ctrl+A/Ctrl+C copy the list, position remembered.
+- **The Ctrl+F8 send-text box is modeless** — it no longer freezes the
+  terminal while open and coexists with the `/help` window. Sending still
+  keeps the box open for the next line. The Shift+F8 multiline box and the
+  password prompt stay modal.
 
 ## New in 0.84.1.55
 
