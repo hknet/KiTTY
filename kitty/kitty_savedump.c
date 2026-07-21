@@ -322,15 +322,12 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "remote_cmd2=%s\n",		conf_get_str_ambi(conf,CONF_remote_cmd2,NULL) ) ;
 	fprintf( fp, "nopty=%d\n",			conf_get_bool(conf,CONF_nopty) ) ;
 	fprintf( fp, "compression=%d\n",		conf_get_bool(conf,CONF_compression) ) ;
-	//fprintf( fp, "ssh_kexlist=%d\n",		conf_get_int(conf,CONF_ssh_kexlist) ) ;
-	//fprintf( fp, "ssh_hklist=%d\n",			conf_get_int(conf,CONF_ssh_hklist) ) ;
 	fprintf( fp, "ssh_prefer_known_hostkeys=%d\n", 			conf_get_bool(conf,CONF_ssh_prefer_known_hostkeys) ) ;
     	fprintf( fp, "ssh_rekey_time=%d\n",		conf_get_int(conf,CONF_ssh_rekey_time) ) ;
 	fprintf( fp, "ssh_rekey_data=%s\n",		conf_get_str(conf,CONF_ssh_rekey_data) ) ;
 	fprintf( fp, "tryagent=%d\n",			conf_get_bool(conf,CONF_tryagent) ) ;
 	fprintf( fp, "agentfwd=%d\n",			conf_get_bool(conf,CONF_agentfwd) ) ;
 	fprintf( fp, "change_username=%d\n",		conf_get_bool(conf,CONF_change_username) ) ;
-	//fprintf( fp, "ssh_cipherlist=%d\n",		conf_get_int(conf,CONF_ssh_cipherlist) ) ;
 	fprintf( fp, "keyfile=%s\n",			filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ;
   	fprintf( fp, "sshprot=%d\n",			conf_get_int(conf,CONF_sshprot) ) ;
 	fprintf( fp, "ssh2_des_cbc=%d\n",		conf_get_bool(conf,CONF_ssh2_des_cbc) ) ;
@@ -343,7 +340,6 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "try_gssapi_kex=%d\n",		conf_get_bool(conf,CONF_try_gssapi_kex) ) ;
 	fprintf( fp, "gssapifwd=%d\n",			conf_get_bool(conf,CONF_gssapifwd) ) ;
 	fprintf( fp, "gssapirekey=%d\n",		conf_get_int(conf,CONF_gssapirekey) ) ;
-	//fprintf( fp, "ssh_gsslist=%d\n",		conf_get_int(conf,CONF_ssh_gsslist) ) ;
 	fprintf( fp, "ssh_gss_custom=%s\n",		filename_to_str(conf_get_filename(conf,CONF_ssh_gss_custom)) ) ;
 	fprintf( fp, "ssh_subsys=%d\n",			conf_get_bool(conf,CONF_ssh_subsys) ) ;
 	//fprintf( fp, "ssh_subsys2=%d\n",		conf_get_bool(conf,CONF_ssh_subsys2) ) ; 	// N'est pas lu dans settings.c
@@ -354,8 +350,6 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	/* Telnet options */
 	fprintf( fp, "termtype=%s\n",			conf_get_str(conf,CONF_termtype ) ) ;
 	fprintf( fp, "termspeed=%s\n",			conf_get_str(conf,CONF_termspeed ) ) ;
-	//fprintf( fp, "ttymodes=%s\n",			conf_get_str(conf,CONF_ttymodes ) ) ;
-	//fprintf( fp, "environmt=%s\n",			conf_get_str(conf,CONF_environmt ) ) ;
 	fprintf( fp, "username=%s\n",			conf_get_str_ambi(conf,CONF_username,NULL ) ) ;
 	fprintf( fp, "username_from_env=%d\n",		conf_get_bool(conf,CONF_username_from_env) ) ;
 	fprintf( fp, "localusername=%s\n",		conf_get_str(conf,CONF_localusername ) ) ;
@@ -460,7 +454,6 @@ void SaveDumpConfig( FILE *fp, Conf * conf ) {
 	fprintf( fp, "utf8linedraw=%d\n",		conf_get_bool(conf,CONF_utf8linedraw) ) ;
 	fprintf( fp, "rtf_paste=%d\n",			conf_get_bool(conf,CONF_rtf_paste) ) ;
 	fprintf( fp, "mouse_override=%d\n",		conf_get_bool(conf,CONF_mouse_override) ) ;
-	//fprintf( fp, "wordness=%d\n",			conf_get_int(conf,CONF_wordness) ) ;
 	fprintf( fp, "mouseautocopy=%d\n",		conf_get_bool(conf,CONF_mouseautocopy) ) ;
 	fprintf( fp, "mousepaste=%d\n",			conf_get_int(conf,CONF_mousepaste) ) ;
 	fprintf( fp, "ctrlshiftins=%d\n",		conf_get_int(conf,CONF_ctrlshiftins) ) ;
