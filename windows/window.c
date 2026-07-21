@@ -886,19 +886,15 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             return Launcher_WinMain(inst, prev, cl, show);
         }
 #endif
-        /* KiTTY: if this terminal was opened from a saved session (-load NAME or
-         * the @NAME shortcut), ask the Restart Manager to relaunch it with the
-         * SAME command line after an upgrade, so the session reconnects. We
-         * deliberately do NOT register ad-hoc/host-typed/duplicate-session
-         * terminals (a blank reopen is noise, and a live SSH session can't be
-         * restored anyway). */
-        if (cl[0] == '@' || cl == strstr(cl, "-load ") ||
-            strstr(cl, " -load ") != NULL) {
-            wchar_t wcl[2048];
-            if (MultiByteToWideChar(CP_ACP, 0, cl, -1, wcl,
-                                    sizeof(wcl)/sizeof(wcl[0])) > 0)
-                RegisterApplicationRestart(wcl, 0);
-        }
+        /* KiTTY: terminal-session Restart Manager registration used to live here,
+         * keyed off the raw command line. It moved to gui_term_process_cmdline()
+         * in putty.c (just before prepare_session), where conf is fully populated
+         * so we can (a) also cover a saved session Opened from the config box -
+         * which reaches WinMain with NO -load/@ on the command line and was
+         * therefore never registered - and (b) rebuild a CLEAN "-load NAME"
+         * instead of replaying "-mpwkey <handle>"/"-send-to-tray", which broke
+         * the relaunch. Only "-launcher" (tray) and "-ed" (editor) are handled
+         * from the raw command line, above, because they never load a session. */
     }
 #endif
 
@@ -3228,6 +3224,26 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             }
         }
         break;
+#endif
+#ifdef MOD_PERSO
+      case WM_QUERYENDSESSION:
+        /* KiTTY: consent to a Windows logoff/shutdown or an MSI Restart
+         * Manager shutdown. (DefWindowProc already returns TRUE here, but be
+         * explicit - the real teardown happens in WM_ENDSESSION.) */
+        return true;
+      case WM_ENDSESSION:
+        if (wParam) {
+            /* The session really is ending (logoff / shutdown / an in-place
+             * MSI upgrade driven by the Restart Manager). Tear THIS window
+             * down promptly and unconditionally - deliberately NOT through the
+             * WM_CLOSE "Are you sure you want to close this session?" prompt,
+             * which would block the end-session until Windows/RM times out and
+             * FORCE-terminates us. Exiting cleanly here (WM_DESTROY saves the
+             * window placement, then PostQuitMessage) is what lets the Restart
+             * Manager bring a registered session back after the upgrade. */
+            DestroyWindow(hwnd);
+        }
+        return 0;
 #endif
       case WM_CLOSE: {
         char *title, *msg, *additional = NULL;

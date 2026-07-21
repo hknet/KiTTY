@@ -450,6 +450,19 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 }
             }
 #endif
+#ifdef MOD_PERSO
+            /* KiTTY: register a BARE relaunch (no arguments -> reopens the
+             * configuration box) BEFORE we show it, so that if an in-place MSI
+             * upgrade closes this window while the config box is open - the
+             * user-reported case of "the update was started from the config
+             * window and it never came back" - the Restart Manager brings the
+             * config box back, like it does the tray apps. If the user then Opens
+             * a saved session, the registration just before prepare_session below
+             * upgrades this to -load "NAME"; an ad-hoc/host-typed Open leaves the
+             * bare config-box relaunch in place (we can't restore a live ad-hoc
+             * connection, but a reappearing window beats a silent vanish). */
+            RegisterApplicationRestart(L"", 0);
+#endif
             NETDBG_TS("cmdline: before do_config (config box)");
             if (!do_config(conf))
                 cleanup_exit(0);
@@ -464,6 +477,37 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
             NETDBG_TS("cmdline: after do_config (user closed config box)");
         }
     }
+
+#ifdef MOD_PERSO
+    /* KiTTY: register this terminal with the MSI Restart Manager so an in-place
+     * upgrade relaunches it afterwards, reconnecting the session. We do it HERE
+     * rather than from the raw command line in WinMain so that EVERY launch path
+     * is covered uniformly: command-line "-load NAME", the "@NAME" shortcut, and
+     * - the case the old WinMain check missed - a saved session Opened from the
+     * config box (no launchable argument on the command line). conf is fully
+     * populated at this point, so CONF_sessionname reliably holds the saved
+     * session's name, or is empty for an ad-hoc/host-typed terminal.
+     *
+     * We rebuild a CLEAN `-load "NAME"` from that name instead of replaying the
+     * original command line: launcher-spawned sessions carry a "-mpwkey <handle>"
+     * token whose inherited handle is DEAD in the relaunched process (so the
+     * replayed relaunch failed to start), plus "-send-to-tray". Only named saved
+     * sessions register; ad-hoc/host-typed terminals (empty CONF_sessionname) are
+     * left unregistered - a blank reopen is noise and a live connection can't be
+     * restored anyway. Quoting matches the other KiTTY `-load "NAME"` builders
+     * (plain double quotes, no escaping). */
+    {
+        const char *sessname = conf_get_str(conf, CONF_sessionname);
+        if (sessname && *sessname) {
+            char rcl[2048];
+            wchar_t wcl[2048];
+            snprintf(rcl, sizeof(rcl), "-load \"%s\"", sessname);
+            if (MultiByteToWideChar(CP_ACP, 0, rcl, -1, wcl,
+                                    sizeof(wcl)/sizeof(wcl[0])) > 0)
+                RegisterApplicationRestart(wcl, 0);
+        }
+    }
+#endif
 
     NETDBG_TS("cmdline: before prepare_session");
     prepare_session(conf);
