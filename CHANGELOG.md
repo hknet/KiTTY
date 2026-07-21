@@ -5,6 +5,41 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.57-beta — 2026-07-21
+
+- **Directory-aware file uploads (OSC 7 shell integration).** Turn on **Track
+  remote directory (OSC 7 shell integration)** in **Connection → SSH → KSCP and
+  WinSCP**, and drag-and-drop uploads — and *Start WinSCP* — land in your remote
+  shell's **current working directory** instead of always in your home
+  directory. KiTTY learns the directory from the standard **OSC 7** sequence
+  (`ESC ] 7 ; file://host/path BEL`) that shells emit on every prompt; the path
+  is validated as data only (absolute, strict character whitelist, %-decoded —
+  anything with a space or a shell metacharacter is rejected and the upload
+  falls back to your home directory) and is **never executed**. It is opt-in per
+  session (off by default) and honoured live. Two lines in your `.bashrc` /
+  `.zshrc` set it up — see
+  [docs/examples/osc7-shell-integration.md](docs/examples/osc7-shell-integration.md).
+  This replaces KiTTY's old **"Send file in current directory"** option, which
+  drove uploads off the removed `__pw` title-scan mechanism (retired as the
+  remote-code-execution hole CVE-2024-23749) and no longer captured anything: it
+  is removed from the UI and the code, and sessions that had it enabled are
+  migrated to OSC 7 tracking automatically. A **Fixed remote upload directory**
+  field (mutually exclusive with tracking) covers the "always upload here" case.
+- **The transfer window is high-DPI aware and easier to live with.** The
+  progress/output window shown during a drag-drop or WinSCP transfer now scales
+  its font and layout to the display DPI (it used to render tiny on high-DPI
+  screens), shows the exact upload target (`user@host:directory`) at the top,
+  closes with **Esc**, and has a per-session option to **stay open after a
+  successful transfer** instead of auto-closing. The configuration panel is now
+  titled **KSCP and WinSCP** (KiTTY ships pscp as `kscp`), with inline help.
+- **Terminal and configuration windows come back after an in-place MSI upgrade.**
+  Previously an in-place upgrade relaunched only the tray apps (kageant, the
+  launcher) while the terminal and the configuration window silently vanished.
+  KiTTY now registers the running window with the Windows Restart Manager from
+  the loaded session, so a saved session reconnects and the configuration window
+  reopens after the upgrade, and it shuts down cleanly on the upgrade/logoff
+  rather than being force-terminated.
+
 ## 0.84.1.56-beta — 2026-07-20
 
 - **`/help` no longer blocks the box you type commands into.** The internal-
