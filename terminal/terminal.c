@@ -7968,10 +7968,20 @@ int format_arrow_key(char *buf, Terminal *term, int xkey,
             break;
         }
 
-        if (app_flg)
-            p += sprintf(p, "\x1BO%c", xkey);
-        else if (bitmap)
+        /*
+         * KiTTY: a modifier bitmap takes precedence over application-cursor
+         * mode. xterm emits the CSI "1;mod" form for modified cursor keys
+         * regardless of DECCKM; the ESC O / ESC [ (app vs normal) distinction
+         * only applies to *unmodified* cursor keys. Checking app_flg first
+         * (upstream PuTTY's order) silently dropped the modifier inside apps
+         * that enable application-cursor mode via smkx (e.g. mc/mcedit), so
+         * Ctrl+Left/Right stopped jumping words. Old KiTTY (0.76, MOD_KEYMAPPING)
+         * checked the modifier first; this restores that. See hknet/KiTTY#16.
+         */
+        if (bitmap)
             p += sprintf(p, "\x1B[1;%d%c", bitmap, xkey);
+        else if (app_flg)
+            p += sprintf(p, "\x1BO%c", xkey);
         else
             p += sprintf(p, "\x1B[%c", xkey);
     }
