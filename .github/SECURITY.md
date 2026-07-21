@@ -15,9 +15,9 @@ beta supersedes the previous one); see the
 Please report security issues **privately** — do not open a public issue for
 anything exploitable.
 
-- Preferred: GitHub **Security Advisories** → *Report a vulnerability* on this repo.
-- Or email **harald.kapper@gmail.com** with details and, if possible, a proof of
-  concept and the affected version (from *Help → About*, e.g. `0.84.1.x-beta`).
+- Use GitHub **Security Advisories** → *Report a vulnerability* on this repo, with
+  details and, if possible, a proof of concept and the affected version (from
+  *Help → About*, e.g. `0.84.1.x-beta`).
 
 We aim to acknowledge reports within a few days. Coordinated disclosure is
 appreciated; we will credit reporters who wish to be named.
