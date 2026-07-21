@@ -104,6 +104,11 @@ add_executable(test_wildcard
 target_compile_definitions(test_wildcard PRIVATE TEST)
 target_link_libraries(test_wildcard utils ${platform_libraries})
 
+# KiTTY: unit test for the OSC 7 remote-cwd path validator (self-contained;
+# the validators live in kitty/kitty_osc7_parse.h, shared with kitty.c).
+add_executable(test_osc7
+  test/test_osc7.c)
+
 add_executable(test_cert_expr
   utils/cert-expr.c)
 target_compile_definitions(test_cert_expr PRIVATE TEST)

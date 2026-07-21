@@ -476,48 +476,10 @@ char * get_param_str( const char * val ) {
 static char RemoteCwd[2048] = "" ;     /* validated path portion; "" = none  */
 static char RemoteCwdHost[256] = "" ;  /* host portion (future nested-SSH use) */
 
-static int osc7_ishex( char c ) {
-	return (c>='0'&&c<='9') || (c>='a'&&c<='f') || (c>='A'&&c<='F') ;
-}
-static int osc7_hexval( char c ) {
-	if( c>='0'&&c<='9' ) return c-'0' ;
-	if( c>='a'&&c<='f' ) return c-'a'+10 ;
-	return c-'A'+10 ;
-}
-/* Percent-decode in place (OSC 7 paths are %-encoded UTF-8).  Malformed %XX is
- * left literal.  Returns 0 if a %00 was decoded: an embedded NUL would
- * terminate the C string before osc7_path_ok() could judge the rest, silently
- * truncating the path, so the caller must reject such a payload outright.
- * (Every other control char survives as a byte and is caught by the whitelist.) */
-static int osc7_urldecode( char * s ) {
-	char * r = s, * w = s ;
-	int ok = 1 ;
-	while( *r ) {
-		if( r[0]=='%' && osc7_ishex(r[1]) && osc7_ishex(r[2]) ) {
-			char v = (char)( (osc7_hexval(r[1])<<4) | osc7_hexval(r[2]) ) ;
-			if( v == 0 ) ok = 0 ;
-			*w++ = v ; r += 3 ;
-		} else { *w++ = *r++ ; }
-	}
-	*w = '\0' ;
-	return ok ;
-}
-/* Whitelist: a path we are willing to splice into the pscp/WinSCP command
- * lines.  Must be absolute; ASCII limited to alphanumerics and /._-~ ; raw
- * UTF-8 bytes (>=0x80, never a shell metacharacter) allowed.  Anything else -
- * space, quotes, ;|&$`<>*?()[]{} , controls - rejects the whole path, so we
- * simply fall back to today's behaviour (upload to the remote HOME). */
-static int osc7_path_ok( const char * p ) {
-	if( p[0] != '/' ) return 0 ;
-	for( ; *p ; p++ ) {
-		unsigned char c = (unsigned char)*p ;
-		if( c >= 0x80 ) continue ;
-		if( (c>='0'&&c<='9') || (c>='a'&&c<='z') || (c>='A'&&c<='Z') ) continue ;
-		if( c=='/' || c=='.' || c=='-' || c=='_' || c=='~' ) continue ;
-		return 0 ;
-	}
-	return 1 ;
-}
+/* The OSC 7 path validators (osc7_urldecode / osc7_path_ok and their helpers)
+ * live in a dependency-free header shared verbatim with the regression test
+ * test/test_osc7.c, so this security-critical parsing is unit-tested. */
+#include "kitty_osc7_parse.h"
 
 void kitty_set_remote_cwd( const char * osc7 ) {
 	if( conf == NULL || !conf_get_bool( conf, CONF_osc7_cwd_tracking ) ) return ;
