@@ -59,11 +59,21 @@ Authenticode-signed.
 - **SSH agent (kageant):** per-key or global use-confirmation, key-use notifications, a
   remembered startup-key list, a Windows-OpenSSH-agent bridge, `kitty.ini` configuration and
   registry-free autostart for portable installs.
-- **Transfers / backends:** ZModem send/receive, WinSCP & pscp integration, **adb** (Android) backend.
+- **Transfers / backends:** ZModem send/receive, WinSCP & **kscp** file transfer with
+  **directory-aware uploads** (OSC 7 — see the callout below), **adb** (Android) backend.
 - **Terminal:** font resize, protect, print, negative/B&W colours, clear/restart log, far2l extensions.
 - **Storage:** registry **or** portable file/dir storage (`kitty_portable.exe`), `kitty.ini` configuration.
 - Plus the standard PuTTY tools, renamed KiTTY-style: `klink`, `kscp`, `ksftp`, `kageant`, `kittygen`.
 - `kittygen-cli.exe` — a console-mode CLI key generator (generate, convert, fingerprint) for use in scripts and pipelines. Run `kittygen-cli --help` for options.
+
+> 📂 **Put your files where your `cwd` is.** Turn on **OSC 7 directory tracking** and
+> drag-and-drop uploads — and *Start WinSCP* — land in your shell's **current remote
+> directory** instead of always dropping into `$HOME`. It's the safe, **data-only**
+> rework of KiTTY's old "send file to the current directory" trick, which was retired
+> after that mechanism turned out to be a remote-code-execution hole
+> (**CVE-2024-23749**): the new one only ever *reads* a strictly-validated path and
+> never runs anything the remote sends. Two lines in your shell startup do it —
+> **[OSC 7 how-to →](docs/examples/osc7-shell-integration.md)**.
 
 Most KiTTY extras read from a `kitty.ini` (`[KiTTY]` section). The release includes an inert `kitty.ini.example` with every supported key commented out; copy/rename it to `kitty.ini` only when you want an active config file. For example, URL hyperlinks are enabled with:
 
