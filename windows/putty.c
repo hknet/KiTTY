@@ -491,10 +491,22 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
      * We rebuild a CLEAN `-load "NAME"` from that name instead of replaying the
      * original command line: launcher-spawned sessions carry a "-mpwkey <handle>"
      * token whose inherited handle is DEAD in the relaunched process (so the
-     * replayed relaunch failed to start), plus "-send-to-tray". Only named saved
-     * sessions register; ad-hoc/host-typed terminals (empty CONF_sessionname) are
-     * left unregistered - a blank reopen is noise and a live connection can't be
-     * restored anyway. Quoting matches the other KiTTY `-load "NAME"` builders
+     * replayed relaunch failed to start), plus "-send-to-tray".
+     *
+     * A named saved session registers as `-load "NAME"`. Any OTHER launchable
+     * session - Start/Open from the config box, Duplicate Session, "open new with
+     * current settings", and every password-auth session - instead reaches us via
+     * the &filemap conf-passing path (kitty_bridge.c RunSessionWithConfSettings),
+     * whose deserialised conf has an EMPTY CONF_sessionname (it is NOT_SAVED, so
+     * conf_serialise never carries it). Such a process MUST still register: if it
+     * does not, the MSI Restart Manager tags it restartable=False and, on an
+     * in-place upgrade, aborts with "a critical application holds files in use -
+     * reboot necessary" and rolls the WHOLE upgrade back. (That is the reported
+     * bug: two dist02 password terminals opened from the config box blocked the
+     * .58 upgrade; key-auth sessions, which come via -load, were fine.) So for any
+     * launchable-but-unnamed session register a BARE relaunch (reopens the config
+     * box): a live SSH session can't be restored anyway, and a blank reopen beats
+     * a broken upgrade. Quoting matches the other KiTTY `-load "NAME"` builders
      * (plain double quotes, no escaping). */
     {
         const char *sessname = conf_get_str(conf, CONF_sessionname);
@@ -505,6 +517,8 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
             if (MultiByteToWideChar(CP_ACP, 0, rcl, -1, wcl,
                                     sizeof(wcl)/sizeof(wcl[0])) > 0)
                 RegisterApplicationRestart(wcl, 0);
+        } else if (conf_launchable(conf)) {
+            RegisterApplicationRestart(L"", 0);
         }
     }
 #endif
