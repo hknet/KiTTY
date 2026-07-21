@@ -9,10 +9,11 @@
   Build: wix build -arch x64 -bindpath <release-084> -o <out>.msi this.
   Per-machine UpgradeCode (fixed/committed): 69EA2DD5-EF19-4811-B324-EF34CAA6942C
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="KiTTY 0.84.1.58-beta (system-wide install)"
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="KiTTY 0.84.1.59-beta (system-wide install)"
            Manufacturer="KiTTY 0.84 port"
-           Version="0.84.158"
+           Version="0.84.159"
            UpgradeCode="69EA2DD5-EF19-4811-B324-EF34CAA6942C"
            Scope="perMachine"
            Compressed="yes">
@@ -22,6 +23,21 @@
     <Icon Id="kitty.ico" SourceFile="kitty.exe" />
     <Icon Id="klaunch.ico" SourceFile="putty.ico" />
     <Property Id="ARPPRODUCTICON" Value="kitty.ico" />
+
+    <!-- KiTTY: close any running KiTTY BEFORE the file phase so an in-place
+         upgrade never blocks on an in-use kitty.exe. This is the reliable escape
+         path for users already on 0.84.1.57/.58: their password sessions (opened
+         from the config box via the &filemap conf-passing path) did NOT register
+         with the Restart Manager, so RM aborted the upgrade with "critical
+         application - reboot necessary" and rolled it back. This runs regardless
+         of the running version or session type. EndSessionMessage lets a modern
+         KiTTY exit cleanly (WM_ENDSESSION handler saves window placement);
+         TerminateProcess is the guaranteed fallback. RebootPrompt=no: never ask
+         for a reboot. -->
+    <util:CloseApplication Id="CloseKitty"   Target="kitty.exe"       CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
+    <util:CloseApplication Id="CloseKageant" Target="kageant.exe"     CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
+    <util:CloseApplication Id="ClosePterm"   Target="kitty_pterm.exe" CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
+    <util:CloseApplication Id="CloseTel"     Target="kitty_tel.exe"   CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="KiTTY" />

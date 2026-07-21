@@ -15,7 +15,7 @@ foreach ($scope in "peruser","system") {
   Remove-Item $out -ErrorAction SilentlyContinue
   # second bindpath = the windows/ source dir, so the launcher shortcut's
   # <Icon SourceFile="kitty_icons\icon_25.ico"> resolves (it's not in $Rel).
-  wix build -arch x64 -bindpath $Rel -bindpath (Split-Path $here -Parent) -o $out (Join-Path $here "kitty-$scope.wxs")
+  wix build -arch x64 -ext WixToolset.Util.wixext -bindpath $Rel -bindpath (Split-Path $here -Parent) -o $out (Join-Path $here "kitty-$scope.wxs")
   if (-not (Test-Path $out)) { throw "build failed: $scope" }
   Write-Host ("built {0} ({1:N2} MB)" -f $out, ((Get-Item $out).Length/1MB))
 }

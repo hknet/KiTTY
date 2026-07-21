@@ -11,10 +11,11 @@
   (distinct from the per-machine one). Component GUIDs are auto (path-derived,
   stable across versions). AppUserModelIDs are version-independent on purpose.
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="KiTTY 0.84.1.58-beta (per-user install)"
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="KiTTY 0.84.1.59-beta (per-user install)"
            Manufacturer="KiTTY 0.84 port"
-           Version="0.84.158"
+           Version="0.84.159"
            UpgradeCode="578952A6-AA7F-4146-918B-47803234700B"
            Scope="perUser"
            Compressed="yes">
@@ -24,6 +25,15 @@
     <Icon Id="kitty.ico" SourceFile="kitty.exe" />
     <Icon Id="klaunch.ico" SourceFile="putty.ico" />
     <Property Id="ARPPRODUCTICON" Value="kitty.ico" />
+
+    <!-- KiTTY: close any running KiTTY before the file phase so an in-place
+         upgrade never blocks on an in-use kitty.exe (the reliable escape path for
+         users on 0.84.1.57/.58 whose config-box password sessions did not register
+         with the Restart Manager). See kitty-system.wxs for the full rationale. -->
+    <util:CloseApplication Id="CloseKitty"   Target="kitty.exe"       CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
+    <util:CloseApplication Id="CloseKageant" Target="kageant.exe"     CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
+    <util:CloseApplication Id="ClosePterm"   Target="kitty_pterm.exe" CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
+    <util:CloseApplication Id="CloseTel"     Target="kitty_tel.exe"   CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="APPDIR" Name="Programs">
