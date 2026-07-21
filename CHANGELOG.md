@@ -5,8 +5,26 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
-## 0.84.1.58-beta — 2026-07-21
+## 0.84.1.59-beta — 2026-07-22
 
+- **In-place upgrades are reliable again — they no longer stall or roll back when
+  KiTTY windows are open.** Installing a newer version over a running KiTTY could
+  silently fail and leave the old one in place: the Windows Restart Manager
+  reported *"a critical application holds files in use — a reboot will be
+  necessary"* and rolled the whole upgrade back. It struck when a session started
+  from the configuration box's **Start/Open** was running — which includes **every
+  password-authenticated session**, plus *Duplicate Session* and *open new with
+  current settings* — because those sessions were launched by an internal path
+  that never registered with the Restart Manager, so it refused to shut them down.
+  Two changes fix it: the installer now **closes any running KiTTY before it
+  upgrades**, so an in-place upgrade always completes no matter what is open; and
+  those config-box / password sessions now register with the Restart Manager like
+  every other window. This also gives a clean way off the affected 0.84.1.57 and
+  0.84.1.58 — install 0.84.1.59 once and updates work normally from then on. Note
+  that the installer now closes your open sessions during an upgrade; reconnect
+  afterwards. **0.84.1.58-beta was withdrawn shortly after release because of this
+  upgrade bug; 0.84.1.59 supersedes it** (it also carries 0.84.1.58's Ctrl+arrow
+  fix, below).
 - **Ctrl+arrow word navigation (and other modified arrow keys) work again inside
   full-screen terminal apps such as Midnight Commander.** In the default
   *xterm-style bitmap* arrow mode, a modified cursor key — Ctrl+Left/Right for

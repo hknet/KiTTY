@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.57 — Known issues & limitations
+# KiTTY 0.84.1.59 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -85,14 +85,23 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.56-beta @ 2026-07-20`.
+- **Version string:** binaries report `0.84.1.59-beta @ 2026-07-22`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
 
-## New in 0.84.1.58
+## New in 0.84.1.59
 
+- **In-place upgrades no longer stall or roll back with KiTTY windows open.** An
+  upgrade over a running KiTTY could fail silently ("a critical application holds
+  files in use — a reboot will be necessary") and leave the old version, when a
+  session opened from the config box's Start/Open — including any
+  password-authenticated session — was running. The installer now closes any
+  running KiTTY before upgrading, and those sessions register with the Restart
+  Manager, so upgrades always complete. Installing 0.84.1.59 once is the clean way
+  off an affected 0.84.1.57. (The installer closes your open sessions during an
+  upgrade; reconnect afterwards.)
 - **Modified arrow keys work inside application-cursor apps.** Ctrl+arrow word
   navigation, Shift+arrow selection and Alt+arrow now keep their modifier inside
   full-screen programs such as Midnight Commander (`mc`/`mcedit`) that switch the
