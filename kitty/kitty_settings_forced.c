@@ -549,7 +549,11 @@ void save_open_settings_forced(char *filename, Conf *conf) {
 #endif
     write_setting_i_forced(sesskey, "CtrlTabSwitch", conf_get_int(conf, CONF_ctrl_tab_switch));
     write_setting_s_forced(sesskey, "Comment", conf_get_str(conf, CONF_comment));
-    write_setting_b_forced(sesskey, "SCPAutoPwd", conf_get_bool(conf, CONF_scp_auto_pwd)); /* 0.84: BOOL (was conf_get_int -> assert) */
+    /* SCPAutoPwd retired 2026-07-21: the old "Send file in current directory"
+     * option relied on the removed __pw title-scan (CVE-2024-23749) and is
+     * replaced by opt-in OSC 7 cwd tracking. No longer persisted; a one-time
+     * migration converts SCPAutoPwd=1 sessions to OSC7CwdTracking and deletes
+     * the stored key. CONF_scp_auto_pwd is kept as an inert load-only stub. */
     write_setting_b_forced(sesskey, "RunCmdConfirm", conf_get_bool(conf, CONF_runcmdconfirm));
     write_setting_b_forced(sesskey, "RunCmdNotify", conf_get_bool(conf, CONF_runcmdnotify));
     write_setting_b_forced(sesskey, "NoFocusReporting", conf_get_bool(conf, CONF_no_focus_rep));

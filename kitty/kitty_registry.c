@@ -368,6 +368,44 @@ void RepairSharrowDefaults( void ) {
 	RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", "SharrowRepairDone", 1 ) ;
 }
 
+/* One-time migration (2026-07-21): the per-session "Send file in current
+ * directory" option (SCPAutoPwd) was retired -- it drove uploads off the removed
+ * __pw title-scan (CVE-2024-23749) and is superseded by opt-in OSC 7 cwd
+ * tracking. For every registry session that had SCPAutoPwd=1, enable
+ * OSC7CwdTracking (the safe way to get the "upload into the current remote dir"
+ * behaviour the user had asked for); then delete the retired SCPAutoPwd value
+ * from every session so it does not linger. Idempotent via the ScpAutoPwdMigrated
+ * marker -- runs at most once. Registry mode only (like RepairSharrowDefaults);
+ * portable sessions simply stop persisting the key once it is no longer saved. */
+void MigrateScpAutoPwd( void ) {
+	HKEY hSess ;
+	char cur[cstMaxRegLength+2] ;
+	char name[MAX_KEY_LENGTH+1], kpath[512] ;
+	DWORD idx, len ;
+
+	/* one-time guard: skip if we've already run */
+	if( GetValueDataN( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", "ScpAutoPwdMigrated", cur, sizeof(cur) ) != NULL )
+		return ;
+
+	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY\\Sessions", 0, KEY_READ, &hSess ) == ERROR_SUCCESS ) {
+		for( idx = 0 ; ; idx++ ) {
+			len = sizeof(name) ;
+			if( RegEnumKeyEx( hSess, idx, name, &len, NULL, NULL, NULL, NULL ) != ERROR_SUCCESS ) break ;
+			snprintf( kpath, sizeof(kpath), "Software\\kapper.net\\KiTTY\\Sessions\\%s", name ) ;
+			if( GetValueDataN( HKEY_CURRENT_USER, kpath, "SCPAutoPwd", cur, sizeof(cur) ) == NULL ) continue ;
+			/* the old option was on -> turn on its safe replacement */
+			if( strcmp( cur, "1" ) == 0 )
+				RegTestOrCreateDWORD( HKEY_CURRENT_USER, kpath, "OSC7CwdTracking", 1 ) ;
+			/* drop the retired key regardless of its value */
+			RegDelValue( HKEY_CURRENT_USER, kpath, "SCPAutoPwd" ) ;
+		}
+		RegCloseKey( hSess ) ;
+	}
+
+	/* set the marker regardless, so we don't rescan every boot */
+	RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", "ScpAutoPwdMigrated", 1 ) ;
+}
+
 // Copie une clé de registre vers une autre
 void kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
 	HKEY hKey, hDestKey ;

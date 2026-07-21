@@ -14,6 +14,7 @@
 #include "terminal.h"
 #ifdef MOD_PERSO
 char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf);
+void kitty_set_remote_cwd(const char *osc7);   /* OSC 7 cwd tracking (kitty.c) */
 #endif
 #ifdef MOD_FAR2L
 #include "cdecode.h"
@@ -3575,6 +3576,18 @@ static void do_osc(Terminal *term)
                 }
             }
             break;
+#ifdef MOD_PERSO
+          case 7:
+            /* OSC 7: shell reports its working directory as
+             * file://hostname/path.  Data-plane only -- the kitty layer
+             * validates and stores it (opt-in, CONF_osc7_cwd_tracking,
+             * default off) for use as the default remote target of
+             * pscp/WinSCP transfers.  Nothing is ever executed; this is
+             * the safe replacement for the removed __pw/__ws title-scan
+             * dispatcher (CVE-2024-23749), which stays dead. */
+            kitty_set_remote_cwd(term->osc_string);
+            break;
+#endif
         }
         break;
       default:

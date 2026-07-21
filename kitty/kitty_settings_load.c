@@ -841,6 +841,14 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	gpps_forced(sesskey, "ProxySelection", "- Session defined proxy -", conf, CONF_proxyselection);
 #endif
 // END COPY/PASTE
+	/* Retired-option migration for the file/portable sessions the user loads:
+	 * a session that had "Send file in current directory" (SCPAutoPwd) on gets
+	 * its safe replacement, OSC 7 cwd tracking, turned on. Registry sessions are
+	 * migrated + purged proactively at startup by MigrateScpAutoPwd(); portable
+	 * has no such scan, so we convert here on load. SCPAutoPwd is no longer
+	 * written, so it drops off on the next save. */
+	if( conf_get_bool( conf, CONF_scp_auto_pwd ) )
+		conf_set_bool( conf, CONF_osc7_cwd_tracking, true ) ;
 	conf_set_str( conf, CONF_folder, "Default") ;
 	fclose(sesskey) ;
 		

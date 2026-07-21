@@ -113,6 +113,7 @@ static void kitty_tray_balloon_async( HWND hwnd, const char *title, const char *
 struct ktx_win {
 	HWND hwnd, edit, closebtn, parent ;
 	HANDLE proc, rd, thread ;
+	HFONT font, uifont ;   /* DPI-scaled: monospace output + UI-font button */
 	char *what ;
 	int done ;
 	int cancelled ;
@@ -186,6 +187,51 @@ static DWORD WINAPI ktx_reader_thread( LPVOID param ) {
 	return 0 ;
 }
 
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
+
+/* (Re)create the transfer window's DPI-scaled fonts and apply them: a scalable
+ * monospace font for the pscp output - the old ANSI_FIXED_FONT stock font was a
+ * fixed 96-dpi bitmap font that rendered tiny on high-DPI displays - and a
+ * scalable UI font for the Close/Cancel button. Any previous fonts are freed. */
+static void ktx_apply_fonts( struct ktx_win *w, int dpi ) {
+	HFONT of = w->font, ou = w->uifont ;
+	w->font = CreateFont( -MulDiv(10, dpi, 72), 0,0,0, FW_NORMAL, 0,0,0,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY, FIXED_PITCH|FF_MODERN, "Consolas" ) ;
+	w->uifont = CreateFont( -MulDiv(9, dpi, 72), 0,0,0, FW_NORMAL, 0,0,0,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY, DEFAULT_PITCH|FF_SWISS, "Segoe UI" ) ;
+	SendMessage( w->edit, WM_SETFONT,
+		(WPARAM)( w->font ? w->font : GetStockObject(ANSI_FIXED_FONT) ), TRUE ) ;
+	if( w->uifont ) SendMessage( w->closebtn, WM_SETFONT, (WPARAM)w->uifont, TRUE ) ;
+	if( of ) DeleteObject( of ) ;
+	if( ou ) DeleteObject( ou ) ;
+}
+
+/* Esc closes (or cancels) the transfer window. Key events go to the focused
+ * child control - the read-only edit or the Close button - whose default procs
+ * ignore Esc, so we subclass both to forward Esc as a WM_CLOSE to the parent
+ * (which then either closes a finished transfer or cancels a running one). */
+static LRESULT CALLBACK ktx_child_subclass( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
+	WNDPROC old = (WNDPROC)GetProp( h, "ktxoldproc" ) ;
+	if( msg == WM_KEYDOWN && wp == VK_ESCAPE ) {
+		SendMessage( GetParent(h), WM_CLOSE, 0, 0 ) ;
+		return 0 ;
+	}
+	if( msg == WM_NCDESTROY ) {
+		LRESULT r = old ? CallWindowProc( old, h, msg, wp, lp ) : DefWindowProc( h, msg, wp, lp ) ;
+		RemoveProp( h, "ktxoldproc" ) ;
+		return r ;
+	}
+	return old ? CallWindowProc( old, h, msg, wp, lp ) : DefWindowProc( h, msg, wp, lp ) ;
+}
+static void ktx_subclass_child( HWND h ) {
+	WNDPROC old = (WNDPROC)(LONG_PTR)SetWindowLongPtr( h, GWLP_WNDPROC, (LONG_PTR)ktx_child_subclass ) ;
+	SetProp( h, "ktxoldproc", (HANDLE)old ) ;
+}
+
 static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ) {
 	struct ktx_win *w = (struct ktx_win *)GetWindowLongPtr( hwnd, GWLP_USERDATA ) ;
 	switch( msg ) {
@@ -197,21 +243,36 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		w->edit = CreateWindowEx( WS_EX_CLIENTEDGE, "EDIT", "",
 			WS_CHILD|WS_VISIBLE|WS_VSCROLL|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL,
 			0,0,0,0, hwnd, (HMENU)(UINT_PTR)KTX_ID_EDIT, GetModuleHandle(NULL), NULL ) ;
-		SendMessage( w->edit, WM_SETFONT, (WPARAM)GetStockObject(ANSI_FIXED_FONT), TRUE ) ;
+		/* DPI-aware fonts are applied below, once both controls exist. */
 		SendMessage( w->edit, EM_LIMITTEXT, (WPARAM)0x200000, 0 ) ;
 		w->closebtn = CreateWindow( "BUTTON", "&Cancel",
 			WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON,
 			0,0,0,0, hwnd, (HMENU)(UINT_PTR)KTX_ID_CLOSE, GetModuleHandle(NULL), NULL ) ;
+			{ HDC hdc = GetDC( hwnd ) ; int dpi = GetDeviceCaps( hdc, LOGPIXELSX ) ;
+			  ReleaseDC( hwnd, hdc ) ; ktx_apply_fonts( w, dpi ) ; }
+			ktx_subclass_child( w->edit ) ; ktx_subclass_child( w->closebtn ) ;
 		return 0 ;
 	  }
 	  case WM_SIZE: {
 		RECT rc ; GetClientRect( hwnd, &rc ) ;
-		int pad=8, bh=26, bw=90 ;
+		int pad, bh, bw ;
+			{ HDC hdc = GetDC( hwnd ) ; int dpi = GetDeviceCaps( hdc, LOGPIXELSX ) ; ReleaseDC( hwnd, hdc ) ;
+			  pad=MulDiv(8,dpi,96) ; bh=MulDiv(26,dpi,96) ; bw=MulDiv(90,dpi,96) ; }
 		MoveWindow( w->edit, pad, pad, rc.right-2*pad, rc.bottom-bh-3*pad, TRUE ) ;
 		MoveWindow( w->closebtn, rc.right-bw-pad, rc.bottom-bh-pad, bw, bh, TRUE ) ;
 		return 0 ;
 	  }
-	  case KTX_WM_APPEND: {
+	  case WM_DPICHANGED: {
+			if( w ) {
+				ktx_apply_fonts( w, HIWORD(wp) ) ;
+				RECT *r = (RECT *)lp ;
+				SetWindowPos( hwnd, NULL, r->left, r->top,
+					r->right-r->left, r->bottom-r->top,
+					SWP_NOZORDER|SWP_NOACTIVATE ) ;   /* re-lays out via WM_SIZE */
+			}
+			return 0 ;
+		  }
+		  case KTX_WM_APPEND: {
 		char *chunk = (char *)lp ;
 		if( w && chunk ) ktx_feed( w, chunk, (int)wp ) ;
 		if( chunk ) free( chunk ) ;
@@ -226,7 +287,15 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			char *m = dupprintf( "%s complete.", what ) ;
 			kitty_tray_balloon_async( w->parent, "KiTTY transfer", m ) ;
 			sfree( m ) ;
-			DestroyWindow( hwnd ) ;   /* success: auto-close, balloon confirms */
+			if( conf && conf_get_bool( conf, CONF_pscp_keep_window ) ) {
+				char *t = dupprintf( "\r\n==== %s complete ====\r\n", what ) ;
+				ktx_feed( w, t, (int)strlen(t) ) ; sfree( t ) ;
+				SetWindowTextA( w->closebtn, "&Close" ) ;
+				EnableWindow( w->closebtn, TRUE ) ;
+				SetForegroundWindow( hwnd ) ; SetFocus( w->closebtn ) ;
+			} else {
+				DestroyWindow( hwnd ) ;   /* default: auto-close, balloon confirms */
+			}
 		} else {
 			char *m ;
 			if( w->cancelled ) {
@@ -236,7 +305,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				const char *hint = ( code==127 )
 					? "\r\n\r\nExit 127 = the server could not start the SCP/SFTP "
 					  "subsystem (command not found). Try switching the transfer "
-					  "protocol (Connection -> SSH -> PSCP and WinSCP) between SCP "
+					  "protocol (Connection -> SSH -> KSCP and WinSCP) between SCP "
 					  "and SFTP, or check the server's sftp-server/scp."
 					: "" ;
 				m = dupprintf( "\r\n==== %s FAILED  (pscp exit code %lu) ====%s\r\n",
@@ -279,6 +348,8 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		return 0 ;
 	  case WM_DESTROY:
 		if( w ) {
+			if( w->font ) DeleteObject( w->font ) ;
+			if( w->uifont ) DeleteObject( w->uifont ) ;
 			if( w->proc ) CloseHandle( w->proc ) ;
 			if( w->thread ) CloseHandle( w->thread ) ;
 			if( w->what ) sfree( w->what ) ;
@@ -291,7 +362,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 }
 
 /* Launch pscp into a transfer window (above). No shell. Returns 0 if launched. */
-static int kitty_run_xfer( HWND parent, char *cmdline, const char *what ) {
+static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const char *intro ) {
 	static int registered = 0 ;
 	HINSTANCE hi = GetModuleHandle( NULL ) ;
 	if( !registered ) {
@@ -328,13 +399,22 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what ) {
 	w->parent = parent ; w->proc = pi.hProcess ; w->rd = rd ;
 	w->what = dupstr( what ? what : "Transfer" ) ;
 	char *title = dupprintf( "KiTTY transfer - %s", w->what ) ;
+	int dpi0 = 96 ;
+	{ HDC pdc = GetDC( parent ) ; if( pdc ) { dpi0 = GetDeviceCaps( pdc, LOGPIXELSX ) ; ReleaseDC( parent, pdc ) ; } }
 	HWND hwnd = CreateWindow( "KiTTYxferwin", title,
-		WS_OVERLAPPEDWINDOW|WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 680, 420,
+		WS_OVERLAPPEDWINDOW|WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
+		MulDiv(680,dpi0,96), MulDiv(420,dpi0,96),
 		parent, NULL, hi, w ) ;
 	sfree( title ) ;
 	if( !hwnd ) { CloseHandle( pi.hProcess ) ; CloseHandle( rd ) ; sfree( w->what ) ; free( w ) ; return -1 ; }
 	SetForegroundWindow( hwnd ) ;          /* bring the transfer window to the front */
 	BringWindowToTop( hwnd ) ;
+	if( intro && *intro ) {          /* show the target (user@host:dir) up top */
+		int n = GetWindowTextLength( w->edit ) ;
+		SendMessageA( w->edit, EM_SETSEL, n, n ) ;
+		SendMessageA( w->edit, EM_REPLACESEL, FALSE, (LPARAM)intro ) ;
+		w->committed = GetWindowTextLength( w->edit ) ;
+	}
 	w->thread = CreateThread( NULL, 0, ktx_reader_thread, w, 0, NULL ) ;
 	return 0 ;
 }
@@ -400,7 +480,7 @@ static void urlcat( char *dst, size_t cap, const char *s ) {
 }
 
 void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) {
-	char buffer[4096], pscppath[4096]="", pscpport[4096]="22", remotedir[4096]=".",dir[4096], b1[256] ;
+	char buffer[4096], pscppath[4096]="", pscpport[4096]="22", remotedir[4096]=".",dir[4096], b1[256], tgt[4096] ;
 	int p ;
 	
 	if( distantdir == NULL ) { distantdir = kitty_current_dir() ; } 
@@ -424,8 +504,14 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	if( (distantdir != NULL ) && ( strlen(distantdir)>0 ) ) {
 		strcpy( remotedir, distantdir ) ;
 	} else if( strlen(conf_get_str(conf,CONF_pscpremotedir))>0 ) {
-		strcpy( remotedir, conf_get_str(conf,CONF_pscpremotedir) ) ;
-	} else { strcpy( remotedir, "." ) ; 
+		/* fixed remote dir sanity check: qcat below already quotes/escapes the
+		 * whole user@host:dir argument (and pscp runs via CreateProcess, no
+		 * shell), so injection is handled - but reject control characters that a
+		 * quoted argument can't sensibly carry, falling back to the remote home. */
+		const char * rd = conf_get_str(conf,CONF_pscpremotedir) ; const char * q ; int ok = 1 ;
+		for( q = rd ; *q ; q++ ) if( (unsigned char)*q < 0x20 ) { ok = 0 ; break ; }
+		strcpy( remotedir, ok ? rd : "." ) ;
+	} else { strcpy( remotedir, "." ) ;
 	}
 	if( strlen( remotedir ) == 0 ) strcpy( remotedir, "." ) ;
 
@@ -481,7 +567,7 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 
 	/* destination user@host:remotedir (single quoted argument) */
 	{
-		char tgt[4096] ; tgt[0]='\0' ;
+		tgt[0]='\0' ;
 		if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
 			snprintf( b1, sizeof(b1), "%s", conf_get_str(conf, CONF_sftpconnect) ) ;
 			if( (p=poss(":",b1)) > 0 ) { b1[p-1]='\0'; }
@@ -500,7 +586,8 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	/* Capture output + show it on failure, instead of flashing a console shut
 	 * (so e.g. a server's exit-127 "Cannot initialize SFTP" is readable). */
 	{ char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), "Upload of \"%s\"", filename ? filename : "file" ) ;
-	  kitty_run_xfer( hwnd, buffer, whatbuf ) ; }
+	  char *intro = dupprintf( "Uploading  %s  ->  %s\r\n\r\n", filename ? filename : "file", tgt ) ;
+	  kitty_run_xfer( hwnd, buffer, whatbuf, intro ) ; sfree( intro ) ; }
 
 	//debug_log("%s\n",buffer);MessageBox( NULL, buffer, "Info",MB_OK );
 	
@@ -643,7 +730,7 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
     if( debug_flag ) { debug_logevent( "Get on file: %s", buffer) ; }
     /* Capture output + show on failure (no vanishing console). */
     { char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), "Download of \"%s\"", filename ? filename : "file" ) ;
-      kitty_run_xfer( hwnd, buffer, whatbuf ) ; }
+      kitty_run_xfer( hwnd, buffer, whatbuf, NULL ) ; }   /* download: no target intro line */
 
     //debug_log("%s\n",buffer);//MessageBox( NULL, buffer, "Info",MB_OK );
 
@@ -1134,16 +1221,11 @@ void OnDropFiles(HWND hwnd, HDROP hDropInfo) {
 		MessageBox( hwnd, "This function is only available with SSH connections.", "Error", MB_OK|MB_ICONERROR ) ;
 		return ;
 	}
-	if( !conf_get_bool( conf, CONF_scp_auto_pwd ) ) { 
-		recupNomFichierDragDrop(hwnd, &hDropInfo) ; 
-	} else {
-		if( hDropInf != NULL ) { free(hDropInf) ; hDropInf = NULL ; }
-		char cmd[1024] = "printf \"\\033]0;__pw:%s\\007\" `pwd`\\n" ;
-		if( AutoCommand != NULL ) { free(AutoCommand) ; AutoCommand = NULL ; }
-		AutoCommand = (char*) malloc( strlen(cmd) + 10 ) ;
-		strcpy( AutoCommand, cmd );
-		SetTimer(hwnd, TIMER_AUTOCOMMAND, autocommand_delay, NULL) ;
-		hDropInf = hDropInfo ;
-		SetTimer(hwnd, TIMER_DND, dnd_delay, NULL) ;
-	}
+	/* Drag-drop always uses the normal path now. The former "Send file in
+	 * current directory" (CONF_scp_auto_pwd) option injected a
+	 * `printf "...__pw:$(pwd)..."` probe into the shell and scraped the reply via
+	 * the __pw OSC-title dispatcher - removed in 0.84 as the CVE-2024-23749 RCE -
+	 * so it no longer captured anything. Its safe, opt-in replacement is OSC 7
+	 * cwd tracking, which SendOneFile already consults via kitty_current_dir(). */
+	recupNomFichierDragDrop(hwnd, &hDropInfo) ;
 }

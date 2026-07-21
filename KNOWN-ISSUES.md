@@ -1076,7 +1076,7 @@ A broad audit found that many KiTTY features had their *config UI* and/or
 **Configuration dialog — restored panels/options:**
 - **Connection → Port knocking** (knock sequence)
 - **Connection → ZModem** (rz/sz commands, options, download folder)
-- **Connection → SSH → PSCP and WinSCP** (protocol, options, remote dir, shell)
+- **Connection → SSH → KSCP and WinSCP** (protocol, options, remote dir, shell)
 - **Window → Back.&Image** (style, opacity, slideshow, image file, placement)
 - **Session → Scripting** — the missing rutty options (char delay, conditions,
   CR/LF, …)

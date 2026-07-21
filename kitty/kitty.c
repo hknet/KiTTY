@@ -465,30 +465,89 @@ char * get_param_str( const char * val ) {
  * time in window.c, so this routine is no longer needed. */
 #endif
 
-char * kitty_current_dir() { 
-	
+/* --- OSC 7 remote working-directory tracking (data-plane only) -------------
+ * A shell with directory reporting emits ESC ] 7 ; file://host/path BEL on
+ * every prompt.  do_osc() (terminal.c) hands us the payload; we validate and
+ * store the path so kitty_current_dir() can offer it as the default remote
+ * target for drag-drop pscp uploads and StartWinSCP.  Opt-in per session
+ * (CONF_osc7_cwd_tracking, default off).  NOTHING is ever executed - this is
+ * the safe replacement for the removed __pw/__ws title-scan dispatcher
+ * (CVE-2024-23749 RCE), which stays dead. */
+static char RemoteCwd[2048] = "" ;     /* validated path portion; "" = none  */
+static char RemoteCwdHost[256] = "" ;  /* host portion (future nested-SSH use) */
 
-return NULL ;  /* Ce code est tres specifique et ne marche pas partout */
-	/*
-	static char cdir[1024]; 
-	char * dir = strstr(term->osc_string, ":") ; 
-	if(dir) { 
-		if( strlen(dir) > 1 ) {
-			dir = dir + 1 ;
-			if(*dir == '~') {
-				if(strlen(conf_get_str_ambi(conf,CONF_username,NULL))>0) { 
-					snprintf(cdir, 1024, "\"/home/%s/%s\"", conf_get_str_ambi(conf,CONF_username,NULL), dir + 1); 
-					return cdir; 
-				}
-			} else if(*dir == '/') { 
-				snprintf(cdir, 1024, "\"%s\"", dir); 
-				return cdir; 
-			} 
-		} 
+static int osc7_ishex( char c ) {
+	return (c>='0'&&c<='9') || (c>='a'&&c<='f') || (c>='A'&&c<='F') ;
+}
+static int osc7_hexval( char c ) {
+	if( c>='0'&&c<='9' ) return c-'0' ;
+	if( c>='a'&&c<='f' ) return c-'a'+10 ;
+	return c-'A'+10 ;
+}
+/* Percent-decode in place (OSC 7 paths are %-encoded UTF-8).  Malformed %XX is
+ * left literal.  Returns 0 if a %00 was decoded: an embedded NUL would
+ * terminate the C string before osc7_path_ok() could judge the rest, silently
+ * truncating the path, so the caller must reject such a payload outright.
+ * (Every other control char survives as a byte and is caught by the whitelist.) */
+static int osc7_urldecode( char * s ) {
+	char * r = s, * w = s ;
+	int ok = 1 ;
+	while( *r ) {
+		if( r[0]=='%' && osc7_ishex(r[1]) && osc7_ishex(r[2]) ) {
+			char v = (char)( (osc7_hexval(r[1])<<4) | osc7_hexval(r[2]) ) ;
+			if( v == 0 ) ok = 0 ;
+			*w++ = v ; r += 3 ;
+		} else { *w++ = *r++ ; }
 	}
-	return NULL; 
-	*/
-} 
+	*w = '\0' ;
+	return ok ;
+}
+/* Whitelist: a path we are willing to splice into the pscp/WinSCP command
+ * lines.  Must be absolute; ASCII limited to alphanumerics and /._-~ ; raw
+ * UTF-8 bytes (>=0x80, never a shell metacharacter) allowed.  Anything else -
+ * space, quotes, ;|&$`<>*?()[]{} , controls - rejects the whole path, so we
+ * simply fall back to today's behaviour (upload to the remote HOME). */
+static int osc7_path_ok( const char * p ) {
+	if( p[0] != '/' ) return 0 ;
+	for( ; *p ; p++ ) {
+		unsigned char c = (unsigned char)*p ;
+		if( c >= 0x80 ) continue ;
+		if( (c>='0'&&c<='9') || (c>='a'&&c<='z') || (c>='A'&&c<='Z') ) continue ;
+		if( c=='/' || c=='.' || c=='-' || c=='_' || c=='~' ) continue ;
+		return 0 ;
+	}
+	return 1 ;
+}
+
+void kitty_set_remote_cwd( const char * osc7 ) {
+	if( conf == NULL || !conf_get_bool( conf, CONF_osc7_cwd_tracking ) ) return ;
+	if( osc7 == NULL ) return ;
+	if( strncmp( osc7, "file://", 7 ) != 0 ) return ;
+	const char * host = osc7 + 7 ;
+	const char * slash = strchr( host, '/' ) ;   /* first '/' ends the host */
+	if( slash == NULL ) return ;
+	size_t hostlen = (size_t)( slash - host ) ;
+	if( hostlen >= sizeof(RemoteCwdHost) ) return ;
+	if( strlen(slash) >= sizeof(RemoteCwd) ) return ;   /* too long: drop, no truncation */
+	char path[ sizeof(RemoteCwd) ] ;
+	strcpy( path, slash ) ;
+	if( !osc7_urldecode( path ) ) return ;    /* embedded NUL -> reject */
+	if( !osc7_path_ok( path ) ) return ;
+	/* commit only once fully validated */
+	memcpy( RemoteCwdHost, host, hostlen ) ; RemoteCwdHost[hostlen] = '\0' ;
+	osc7_urldecode( RemoteCwdHost ) ;         /* host unused in phase 1; NUL harmless */
+	strcpy( RemoteCwd, path ) ;
+}
+
+char * kitty_current_dir() {
+	/* Respect the CURRENT setting, not just what it was when the cwd was stored:
+	 * if the user turns OSC 7 tracking off at runtime (Change Settings), stop
+	 * offering the tracked directory immediately so uploads fall back to the
+	 * fixed remote dir / home, matching a fresh start with it disabled. */
+	if( conf == NULL || !conf_get_bool( conf, CONF_osc7_cwd_tracking ) ) return NULL ;
+	if( RemoteCwd[0] == '\0' ) return NULL ;
+	return RemoteCwd ;
+}
 
 // Liste des folder
 char **FolderList=NULL ;
@@ -3348,7 +3407,7 @@ void InitWinMain( void ) {
 		 * by the conf.h SHARROW_BITMAP default; letting portable flip the marker would
 		 * also consume the one-shot before an installed KiTTY could run it. Idempotent
 		 * (marker-guarded). */
-		if( IniFileFlag == SAVEMODE_REG ) { RepairSharrowDefaults() ; }
+		if( IniFileFlag == SAVEMODE_REG ) { RepairSharrowDefaults() ; MigrateScpAutoPwd() ; }
 		/* One-time migration of legacy 9bis named proxies into our hive, with its
 		 * own marker so it fires even when sessions were migrated in an earlier
 		 * build. Registry-mode only (REG||FILE); DPAPI-protects passwords on copy

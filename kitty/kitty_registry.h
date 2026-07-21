@@ -55,6 +55,9 @@ void MigrateOldKittyHive( void ) ;
 // Réparation ponctuelle du défaut ShiftedArrowKeys (SHARROW_APPLICATION persisté par erreur)
 void RepairSharrowDefaults( void ) ;
 
+// Migration ponctuelle: SCPAutoPwd (retiré) -> OSC7CwdTracking, puis suppression de la clé
+void MigrateScpAutoPwd( void ) ;
+
 // Nettoie la clé de PuTTY pour enlever les clés et valeurs spécifique à KiTTY
 BOOL RegCleanPuTTY( void ) ;
 

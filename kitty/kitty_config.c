@@ -125,6 +125,49 @@ static void kitty_showpw_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
 }
 
+/* KSCP panel: OSC 7 cwd tracking and a fixed remote upload directory are two
+ * mutually exclusive ways to choose the drag-drop / WinSCP target. PuTTY's
+ * dialog API has no primitive to grey a control, so exclusivity is enforced by
+ * auto-toggling: ticking OSC 7 clears the fixed dir, and typing a fixed dir
+ * unticks OSC 7. The sibling controls are captured when the panel is built. */
+static dlgcontrol *g_osc7_track_ctrl = NULL;
+static dlgcontrol *g_pscp_remotedir_ctrl = NULL;
+
+static void kitty_osc7_track_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                     void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        dlg_checkbox_set(ctrl, dlg, conf_get_bool(conf, CONF_osc7_cwd_tracking));
+    } else if (event == EVENT_VALCHANGE) {
+        bool on = dlg_checkbox_get(ctrl, dlg);
+        conf_set_bool(conf, CONF_osc7_cwd_tracking, on);
+        if (on && g_pscp_remotedir_ctrl) {
+            /* switching to auto-tracking retires any fixed directory */
+            conf_set_str(conf, CONF_pscpremotedir, "");
+            dlg_editbox_set(g_pscp_remotedir_ctrl, dlg, "");
+        }
+    }
+}
+
+static void kitty_pscp_remotedir_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                         void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        dlg_editbox_set(ctrl, dlg, conf_get_str(conf, CONF_pscpremotedir));
+    } else if (event == EVENT_VALCHANGE) {
+        char *s = dlg_editbox_get(ctrl, dlg);
+        conf_set_str(conf, CONF_pscpremotedir, s);
+        if (*s && g_osc7_track_ctrl) {
+            /* a fixed directory and OSC 7 tracking are mutually exclusive */
+            conf_set_bool(conf, CONF_osc7_cwd_tracking, false);
+            dlg_checkbox_set(g_osc7_track_ctrl, dlg, false);
+        }
+        sfree(s);
+    }
+}
+
 #ifdef MOD_LAUNCHER
 static char *kitty_cfg_trim(char *s)
 {
@@ -4730,10 +4773,10 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
 #ifdef MOD_PERSO
         /* KiTTY: PSCP / WinSCP integration. Backend = StartWinSCP / SendFile. */
         if (!GetPuttyFlag()) {
-            ctrl_settitle(b, "Connection/SSH/PSCP and WinSCP",
-                          "PSCP and WinSCP integration");
+            ctrl_settitle(b, "Connection/SSH/KSCP and WinSCP",
+                          "KSCP and WinSCP integration");
 
-            s = ctrl_getset(b, "Connection/SSH/PSCP and WinSCP",
+            s = ctrl_getset(b, "Connection/SSH/KSCP and WinSCP",
                             "winSCPproto", "General protocol setting");
             ctrl_radiobuttons(s, "Prefered protocol:", NO_SHORTCUT, 4,
                               HELPCTX(no_help),
@@ -4747,20 +4790,32 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                               "http",  NO_SHORTCUT, I(5),
                               "https", NO_SHORTCUT, I(6));
 
-            s = ctrl_getset(b, "Connection/SSH/PSCP and WinSCP",
-                            "pscp", "PSCP integration");
-            ctrl_checkbox(s, "Send file in current directory", NO_SHORTCUT,
-                          HELPCTX(no_help),
-                          conf_checkbox_handler, I(CONF_scp_auto_pwd));
-            ctrl_editbox(s, "Remote directory (exclusive with previous setting)",
-                         NO_SHORTCUT, 100,
+            s = ctrl_getset(b, "Connection/SSH/KSCP and WinSCP",
+                            "pscp", "KSCP integration");
+            g_osc7_track_ctrl = ctrl_checkbox(s,
+                          "Track remote directory (OSC 7 shell integration)",
+                          NO_SHORTCUT, HELPCTX(no_help),
+                          kitty_osc7_track_handler, P(NULL));
+            ctrl_text(s, "Drag-drop uploads and WinSCP open in the shell's "
+                         "current remote directory (via OSC 7) instead of your "
+                         "home. Passive - nothing runs remotely.",
+                      HELPCTX(no_help));
+            g_pscp_remotedir_ctrl = ctrl_editbox(s,
+                         "Fixed remote upload directory", NO_SHORTCUT, 100,
                          HELPCTX(no_help),
-                         conf_editbox_handler, I(CONF_pscpremotedir), ED_STR);
-            ctrl_editbox(s, "PSCP options", NO_SHORTCUT, 100,
+                         kitty_pscp_remotedir_handler, P(NULL), P(NULL));
+            ctrl_text(s, "Always upload here instead - mutually exclusive with "
+                         "OSC 7 tracking above.", HELPCTX(no_help));
+            ctrl_editbox(s, "KSCP options", NO_SHORTCUT, 100,
                          HELPCTX(no_help),
                          conf_editbox_handler, I(CONF_pscpoptions), ED_STR);
+            ctrl_text(s, "Flags passed to kscp; default -r uploads dropped "
+                         "folders recursively.", HELPCTX(no_help));
+            ctrl_checkbox(s, "Keep the transfer window open after success",
+                          NO_SHORTCUT, HELPCTX(no_help),
+                          conf_checkbox_handler, I(CONF_pscp_keep_window));
 
-            s = ctrl_getset(b, "Connection/SSH/PSCP and WinSCP",
+            s = ctrl_getset(b, "Connection/SSH/KSCP and WinSCP",
                             "WinSCP", "WinSCP integration");
             /* Global app setting (kitty.ini [KiTTY] WinSCPPath), not per-session;
              * uses a custom handler rather than conf_filesel_handler. */
