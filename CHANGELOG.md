@@ -5,6 +5,24 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.58-beta — 2026-07-21
+
+- **Ctrl+arrow word navigation (and other modified arrow keys) work again inside
+  full-screen terminal apps such as Midnight Commander.** In the default
+  *xterm-style bitmap* arrow mode, a modified cursor key — Ctrl+Left/Right for
+  word jumping, Shift+arrow for selection, Alt+arrow — lost its modifier whenever
+  the running program had switched the terminal into *application cursor keys*
+  mode, which `mc`/`mcedit` and most ncurses apps do on startup. KiTTY sent a
+  bare `ESC O x`, indistinguishable from an unmodified arrow, so `mcedit` never
+  saw the Ctrl and word-jump did nothing — while the same keys kept working at
+  the shell prompt, which does not enable application cursor mode. KiTTY now
+  always sends the `CSI 1;<mod> x` form for a *modified* cursor key regardless of
+  application-cursor mode — matching xterm and pre-0.84 KiTTY — while unmodified
+  arrows still honour the application/normal distinction. If Ctrl+arrow still does
+  not jump words, check that **Terminal → Keyboard → "Shift/Ctrl/Alt with the
+  arrow keys"** is set to **xterm-style bitmap** (the default), not "Ctrl toggles
+  app mode." (hknet/KiTTY#16)
+
 ## 0.84.1.57-beta — 2026-07-21
 
 - **Directory-aware file uploads (OSC 7 shell integration).** Turn on **Track

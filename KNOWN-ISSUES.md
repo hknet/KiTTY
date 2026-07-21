@@ -91,6 +91,15 @@ features are working and verified. Known limitations as of this release:
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
 
+## New in 0.84.1.58
+
+- **Modified arrow keys work inside application-cursor apps.** Ctrl+arrow word
+  navigation, Shift+arrow selection and Alt+arrow now keep their modifier inside
+  full-screen programs such as Midnight Commander (`mc`/`mcedit`) that switch the
+  terminal into application cursor-keys mode; previously the modifier was dropped
+  there in the default *xterm-style bitmap* arrow mode, so e.g. Ctrl+Left/Right
+  stopped jumping words. (hknet/KiTTY#16)
+
 ## New in 0.84.1.56
 
 - **`/help` is a separate resizable window**, not a modal box — it stays open
