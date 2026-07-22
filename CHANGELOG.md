@@ -5,6 +5,25 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.61-beta — 2026-07-23
+
+- **Sessions started from the configuration box no longer run with an
+  unintended restricted process ACL.** Since the 0.84 port began, every session
+  window spawned from the configuration box (Start, Enter, Duplicate Session,
+  "open new with current settings" — including every password-authenticated
+  session) was unintentionally launched in the `-restrict-acl` hardening mode,
+  regardless of how KiTTY was started. That mode locks the process down so
+  tightly that the Windows **Restart Manager cannot inspect it**: during an
+  in-place upgrade it reports *"a critical application holds files in use — a
+  reboot will be necessary"*, shows no files-in-use dialog, and closes nothing
+  gracefully — which is why windows never restarted after an upgrade, and the
+  root cause behind the 0.84.1.58 upgrade rollbacks. It can also interfere with
+  accessibility and automation tools. The restricted ACL now applies only when
+  explicitly requested via `-restrict-acl`. The improved upgrade behaviour
+  takes effect for upgrades **from** this version to a future one: the
+  installer's files-in-use handling can then offer to close and restart the
+  open KiTTY windows.
+
 ## 0.84.1.60-beta — 2026-07-22
 
 - **Session picking in the configuration box is predictable now — the buttons act

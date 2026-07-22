@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.59 — Known issues & limitations
+# KiTTY 0.84.1.61 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -90,6 +90,15 @@ features are working and verified. Known limitations as of this release:
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.61
+
+- **Config-box-spawned sessions no longer run with an unintended restricted
+  process ACL** (`-restrict-acl` hardening was always on for them since the
+  port). This unblocks the Windows Restart Manager during in-place upgrades —
+  effective for upgrades **from** this version onward; the upgrade **to** this
+  version still behaves like before (windows are closed by the installer and
+  do not restart).
 
 ## New in 0.84.1.60
 
