@@ -1074,7 +1074,11 @@ void RunConfig( Conf * conf ) {
 	 * and only shared by handle-inheritance with our own child, so plaintext here
 	 * is no weaker than the password already being plaintext in process memory. */
 
-	if (restricted_acl) {
+	/* restricted_acl is a FUNCTION in the 0.84 core (it was a variable in the
+	 * 0.76-era tree this file came from) - testing the bare identifier was
+	 * always true, so every session spawned here ran with the restricted
+	 * process ACL ("&R") regardless of how this process was started. */
+	if (restricted_acl()) {
 		argprefix = "&R";
 	} else {
 		argprefix = "";
