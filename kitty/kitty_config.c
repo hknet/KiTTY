@@ -1841,7 +1841,21 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
         }
 #ifdef MOD_PERSO
         else if (ssd->startbutton && ctrl == ssd->startbutton) {
-            /* Launch the current settings in a new window; keep box open. */
+            /* Launch in a new window; keep box open. Same list-focus rule as
+             * the Open button above: if the user's last action was selecting
+             * a row in the session list, that selection is what they mean to
+             * start, so load it first. Without this, the startup-autoloaded
+             * conf is always launchable and a single-click selection would be
+             * silently ignored (hknet/KiTTY#18). Otherwise start the current
+             * settings, preserving the load-tweak-test workflow. */
+            if (!ssd->midsession &&
+                dlg_last_focused(ctrl, dlg) == ssd->listbox &&
+                dlg_is_visible(ssd->listbox, dlg)) {
+                if (!load_selected_session(ssd, dlg, conf, NULL)) {
+                    dlg_beep(dlg);
+                    return;
+                }
+            }
             if (conf_launchable(conf))
                 RunConfig(conf);
             else
