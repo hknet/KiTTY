@@ -637,6 +637,14 @@ void dlg_label_change(dlgcontrol *ctrl, dlgparam *dp, char const *text);
  */
 dlgcontrol *dlg_last_focused(dlgcontrol *ctrl, dlgparam *dp);
 /*
+ * Find out whether a particular control currently has the input
+ * focus. Subject to the same platform caveat as dlg_last_focused;
+ * a button that was clicked with the mouse reports focused, while
+ * activating it as the default button via Return from elsewhere in
+ * the dialog does not.
+ */
+bool dlg_is_focused(dlgcontrol *ctrl, dlgparam *dp);
+/*
  * Find out whether a particular control is currently visible.
  */
 bool dlg_is_visible(dlgcontrol *ctrl, dlgparam *dp);

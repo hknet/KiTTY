@@ -1303,15 +1303,26 @@ static bool load_selected_session(
 
 #ifdef MOD_PERSO
 /* KiTTY: the launch-intent rule shared by the Open and Start buttons
- * (hknet/KiTTY#18). If the user's last action was selecting a row in the
- * session list, that selection is what they mean to act on, so load it into
- * conf first; any other last focus means "use the current (possibly tweaked)
- * settings as they are". Returns false when the selection was meant but could
- * not be loaded (already beeped): the caller should give up. Keep this the
- * ONLY place the rule lives, so Open and Start can never drift apart. */
-static bool sessionsaver_maybe_load_list_selection(
+ * (hknet/KiTTY#18). What does the user mean to act on?
+ *  - while the live search is filtering: the highlighted visible match;
+ *  - else, if their last action was selecting a row in the session list:
+ *    that selection;
+ *  - anything else: the current (possibly tweaked) settings as they are.
+ * The first two load into conf; returns false (already beeped) when that
+ * load failed and the caller should give up. Keep this the ONLY place the
+ * rule lives, so Open and Start can never drift apart. (The Enter-while-
+ * searching case handles the filter itself before calling this - first
+ * Enter selects, second starts.) */
+static bool sessionsaver_resolve_launch_target(
     struct sessionsaver_data *ssd, dlgparam *dlg, Conf *conf, dlgcontrol *ctrl)
 {
+    if (ssd->searchfilter && ssd->searchfilter[0]) {
+        if (!load_selected_session(ssd, dlg, conf, NULL)) {
+            dlg_beep(dlg);
+            return false;
+        }
+        return true;
+    }
     if (!ssd->midsession &&
         dlg_last_focused(ctrl, dlg) == ssd->listbox &&
         dlg_is_visible(ssd->listbox, dlg)) {
@@ -1809,6 +1820,21 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             if (!ssd->midsession &&
                 (dlg_last_focused(ctrl, dlg) == ssd->editbox ||
                  dlg_last_focused(ctrl, dlg) == ssd->listbox)) {
+                if (dlg_is_focused(ctrl, dlg)) {
+                    /* The user went to the Open button itself (mouse click,
+                     * or Tab + activate): classic Open - the resolved target
+                     * opens in THIS window and the config box closes. */
+                    if (!sessionsaver_resolve_launch_target(ssd, dlg, conf,
+                                                            ctrl))
+                        return;
+                    if (conf_launchable(conf))
+                        dlg_end(dlg, 1);
+                    else
+                        dlg_beep(dlg);
+                    return;
+                }
+                /* Enter from the name box or the list: the keyboard hub
+                 * flow - sessions start in a new window, the box stays. */
                 if (ssd->searchfilter && ssd->searchfilter[0]) {
                     /* Enter while searching selects (loads), it does not
                      * launch; a second Enter starts the loaded session. */
@@ -1819,8 +1845,8 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                         dlg_beep(dlg);
                     return;
                 }
-                if (!sessionsaver_maybe_load_list_selection(ssd, dlg, conf,
-                                                            ctrl))
+                if (!sessionsaver_resolve_launch_target(ssd, dlg, conf,
+                                                        ctrl))
                     return;
                 if (conf_launchable(conf))
                     RunConfig(conf);
@@ -1875,9 +1901,10 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
 #ifdef MOD_PERSO
         else if (ssd->startbutton && ctrl == ssd->startbutton) {
             /* Launch in a new window; keep box open. Shares the launch-intent
-             * rule with the Open button: a just-selected list row is loaded
-             * first, anything else starts the current settings as they are. */
-            if (!sessionsaver_maybe_load_list_selection(ssd, dlg, conf, ctrl))
+             * rule with the Open button: a highlighted search match or a
+             * just-selected list row is loaded first, anything else starts
+             * the current settings as they are. */
+            if (!sessionsaver_resolve_launch_target(ssd, dlg, conf, ctrl))
                 return;
             if (conf_launchable(conf))
                 RunConfig(conf);

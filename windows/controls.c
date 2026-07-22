@@ -1836,6 +1836,11 @@ dlgcontrol *dlg_last_focused(dlgcontrol *ctrl, dlgparam *dp)
     return dp->focused == ctrl ? dp->lastfocused : dp->focused;
 }
 
+bool dlg_is_focused(dlgcontrol *ctrl, dlgparam *dp)
+{
+    return dp->focused == ctrl;
+}
+
 /*
  * The dialog-box procedure calls this function to handle Windows
  * messages on a control we manage.
