@@ -10,6 +10,9 @@
 
 #define KLWM_NOTIFYICON		(WM_USER+2)
 #define KLWM_UPDATECHECKDONE	(WM_USER+12)
+/* KiTTY: timer id for the delayed single-left-click tray menu (so a double
+ * click - new default window - doesn't pop the menu up first) */
+#define LAUNCHER_TRAYCLICK_TIMER	100
 #define LAUNCHER_HOTKEY_BASE	0x4B00
 #define LAUNCHER_HOTKEY_MAX	32
 #define KITTY_LAUNCHER_REFRESH_MESSAGE "KiTTYLauncherRefreshSessionsAndHotkeys"
@@ -34,6 +37,12 @@ static int LauncherConfReload = 1 ;
 static HBITMAP bmpCheck, bmpUnCheck ;
 static POINT LauncherMenuPoint ;
 static int LauncherMenuPointValid = 0 ;
+/* KiTTY: cursor position of the single left click, used when the delayed
+ * tray-menu timer fires */
+static POINT LauncherClickPoint ;
+/* KiTTY: a double click arrives as down/up/dblclk/up - swallow the trailing
+ * button-up so it doesn't re-arm the single-click timer */
+static int LauncherIgnoreUp = 0 ;
 static int LauncherUpdateKnown = 0 ;
 static char LauncherUpdateLatest[64] = "" ;
 static int LauncherUpdateBeta = 0 ;
@@ -752,16 +761,16 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 	
 		case KLWM_NOTIFYICON :
 			switch (lParam)	{
-				/*
-				case WM_LBUTTONDBLCLK : 
-					ShowWindow(hwnd, SW_SHOWNORMAL);
-					SetForegroundWindow( hwnd ) ;
-					int ResShell;
-					ResShell = Shell_NotifyIcon(NIM_DELETE, &TrayIcone);
-					if( ResShell ) return 1 ;
-					else return 0 ;
+				case WM_LBUTTONDBLCLK :
+					/* KiTTY: double click opens a new default KiTTY window
+					 * (the configuration box); cancel the pending
+					 * single-click menu first */
+					if ( (wParam == IDI_PUTTY_LAUNCH) || (wParam == IDI_BLACKBALL) ) {
+						KillTimer( hwnd, LAUNCHER_TRAYCLICK_TIMER ) ;
+						LauncherIgnoreUp = 1 ;
+						RunPuTTY( hwnd, "" ) ;
+						}
 				break ;
-				*/
 				case WM_RBUTTONUP:
 					{
 					if ( (wParam == IDI_PUTTY_LAUNCH) || (wParam == IDI_BLACKBALL) ) {
@@ -770,17 +779,35 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 						}
 					}
 				break ;
-				case WM_LBUTTONUP: 
+				case WM_LBUTTONUP:
 					{
+					/* KiTTY: delay the menu by the double-click time so the
+					 * first click of a double click doesn't pop it up under
+					 * the second click; remember where the click happened */
 					if ( (wParam == IDI_PUTTY_LAUNCH) || (wParam == IDI_BLACKBALL) ) {
-						RefreshMenuLauncher() ;
-						DisplayContextMenu( hwnd, MenuLauncher ) ;
+						if( LauncherIgnoreUp ) {
+							LauncherIgnoreUp = 0 ;
+						} else {
+							GetCursorPos( &LauncherClickPoint ) ;
+							SetTimer( hwnd, LAUNCHER_TRAYCLICK_TIMER, GetDoubleClickTime(), NULL ) ;
+						}
 						}
 					}
 				break ;
 				}
 			break ;
 	
+		case WM_TIMER:
+			/* KiTTY: no double click arrived - deliver the left-click menu
+			 * at the position of the original click */
+			if( wParam == LAUNCHER_TRAYCLICK_TIMER ) {
+				KillTimer( hwnd, LAUNCHER_TRAYCLICK_TIMER ) ;
+				RefreshMenuLauncher() ;
+				LauncherMenuPoint = LauncherClickPoint ;
+				LauncherMenuPointValid = 1 ;
+				DisplayContextMenuAt( hwnd, MenuLauncher, LauncherMenuPoint ) ;
+			}
+			break ;
 		case KLWM_UPDATECHECKDONE:
 			ShowLauncherUpdateBalloon() ;
 			break ;

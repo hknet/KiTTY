@@ -30,6 +30,8 @@
 
 #define WM_SYSTRAY   (WM_APP + 6)
 #define WM_SYSTRAY2  (WM_APP + 7)
+/* KiTTY: timer id for the delayed single-left-click tray menu */
+#define TID_TRAYCLICK 1
 
 #define APPNAME "kageant"
 
@@ -1421,6 +1423,12 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
 {
     static bool menuinprogress;
     static UINT msgTaskbarCreated = 0;
+    /* KiTTY: cursor position captured at the single left click, used
+     * when the delayed menu timer fires */
+    static POINT trayclickpos;
+    /* KiTTY: a double click arrives as down/up/dblclk/up - swallow the
+     * trailing button-up so it doesn't re-arm the single-click timer */
+    static bool trayignoreup;
 
     switch (message) {
       case WM_CREATE:
@@ -1441,11 +1449,34 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             POINT cursorpos;
             GetCursorPos(&cursorpos);
             PostMessage(hwnd, WM_SYSTRAY2, cursorpos.x, cursorpos.y);
+        } else if (lParam == WM_LBUTTONUP) {
+            /* KiTTY: a plain left click opens the tray menu too, but
+             * delayed by the double-click time: the menu pops up
+             * bottom-right-aligned at the cursor, so opening it on the
+             * first click of a double click would put the second click
+             * on the bottom menu item. */
+            if (trayignoreup) {
+                trayignoreup = false;
+            } else {
+                GetCursorPos(&trayclickpos);
+                SetTimer(hwnd, TID_TRAYCLICK, GetDoubleClickTime(), NULL);
+            }
         } else if (lParam == WM_LBUTTONDBLCLK) {
             /* Run the default menu item. */
             UINT menuitem = GetMenuDefaultItem(systray_menu, false, 0);
+            /* KiTTY: cancel the pending single-click menu and swallow
+             * the button-up that follows the double click */
+            KillTimer(hwnd, TID_TRAYCLICK);
+            trayignoreup = true;
             if (menuitem != -1)
                 PostMessage(hwnd, WM_COMMAND, menuitem, 0);
+        }
+        break;
+      case WM_TIMER:
+        /* KiTTY: no double click arrived - deliver the left-click menu */
+        if (wParam == TID_TRAYCLICK) {
+            KillTimer(hwnd, TID_TRAYCLICK);
+            PostMessage(hwnd, WM_SYSTRAY2, trayclickpos.x, trayclickpos.y);
         }
         break;
       case WM_SYSTRAY2:
