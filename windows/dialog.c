@@ -710,6 +710,45 @@ static int kitty_cfgbox_restore_pos(HWND hwnd)
     return ok;
 }
 
+/* KiTTY: Ctrl+F anywhere in the config box jumps to the Session panel and
+ * focuses the saved-sessions name box with its content fully selected, so
+ * typing immediately starts a new list search (keyboard-first flow — without
+ * this, getting back to the search from another panel takes a tree click plus
+ * several Tabs). Keystrokes go to whichever child control has focus, so this
+ * is a thread-scoped WH_KEYBOARD hook that lives only while a config box with
+ * a session box exists; the stock GUI variants' stub accessor returns NULL,
+ * so they never install it. */
+dlgcontrol *kitty_config_session_filter_ctrl(void); /* kitty_config.c / stub */
+static HHOOK kitty_cfg_kbdhook = NULL;
+static HWND kitty_cfg_hwnd = NULL;
+static HWND kitty_cfg_treeview = NULL;
+static HTREEITEM kitty_cfg_sessionitem = NULL;
+static dlgparam *kitty_cfg_dp = NULL;
+
+static LRESULT CALLBACK kitty_cfg_kbd_hookproc(int code, WPARAM wParam,
+                                               LPARAM lParam)
+{
+    if (code == HC_ACTION && wParam == 'F' &&
+        !(lParam & 0x80000000) &&               /* key-down only */
+        (GetKeyState(VK_CONTROL) & 0x8000) &&
+        !(GetKeyState(VK_MENU) & 0x8000) &&
+        kitty_cfg_hwnd && kitty_cfg_dp) {
+        HWND focus = GetFocus();
+        if (focus &&
+            (focus == kitty_cfg_hwnd || IsChild(kitty_cfg_hwnd, focus))) {
+            dlgcontrol *ctrl = kitty_config_session_filter_ctrl();
+            if (ctrl) {
+                if (kitty_cfg_treeview && kitty_cfg_sessionitem)
+                    TreeView_SelectItem(kitty_cfg_treeview,
+                                        kitty_cfg_sessionitem);
+                dlg_set_focus_later(ctrl, kitty_cfg_dp);
+                return 1;               /* handled: swallow the keystroke */
+            }
+        }
+    }
+    return CallNextHookEx(kitty_cfg_kbdhook, code, wParam, lParam);
+}
+
 static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                                   LPARAM lParam, void *ctx)
 {
@@ -726,6 +765,17 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         /* Robust backstop: capture the final position at close, regardless of
          * how the box was moved (WM_EXITSIZEMOVE only fires on interactive drag). */
         kitty_cfgbox_save_pos(hwnd);
+        /* KiTTY: tear down the Ctrl+F session-search jump with its dialog. */
+        if (kitty_cfg_hwnd == hwnd) {
+            if (kitty_cfg_kbdhook) {
+                UnhookWindowsHookEx(kitty_cfg_kbdhook);
+                kitty_cfg_kbdhook = NULL;
+            }
+            kitty_cfg_hwnd = NULL;
+            kitty_cfg_treeview = NULL;
+            kitty_cfg_sessionitem = NULL;
+            kitty_cfg_dp = NULL;
+        }
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
       case WM_INITDIALOG: {
         pds_initdialog_start(pds, hwnd);
@@ -893,6 +943,19 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
              * ctrlbox.
              */
             TreeView_SelectItem(treeview, hfirst);
+
+            /* KiTTY: arm the Ctrl+F session-search jump (first tree item ==
+             * the Session panel). Only when this dialog's ctrlbox actually
+             * registered a session box — stock variants return NULL. */
+            if (kitty_config_session_filter_ctrl()) {
+                kitty_cfg_hwnd = hwnd;
+                kitty_cfg_dp = pds->dp;
+                kitty_cfg_treeview = treeview;
+                kitty_cfg_sessionitem = hfirst;
+                kitty_cfg_kbdhook = SetWindowsHookEx(
+                    WH_KEYBOARD, kitty_cfg_kbd_hookproc,
+                    NULL, GetCurrentThreadId());
+            }
 
             /*
              * And create the actual control set for that panel, to

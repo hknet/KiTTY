@@ -1172,9 +1172,22 @@ struct sessionsaver_data {
 #endif
 };
 
+/* KiTTY: the Session panel's name/search box of the current config dialog.
+ * windows/dialog.c's Ctrl+F jump focuses it (and selects its content) from
+ * any panel; registered when the panel is built, cleared with the dialog so
+ * the pointer can never dangle. Stock variants get a NULL stub instead
+ * (windows/kitty_config_stubs.c). */
+static dlgcontrol *session_filter_ctrl = NULL;
+dlgcontrol *kitty_config_session_filter_ctrl(void)
+{
+    return session_filter_ctrl;
+}
+
 static void sessionsaver_data_free(void *ssdv)
 {
     struct sessionsaver_data *ssd = (struct sessionsaver_data *)ssdv;
+    if (session_filter_ctrl == ssd->editbox)
+        session_filter_ctrl = NULL;
     get_sesslist(&ssd->sesslist, false);
     sfree(ssd->savedsession);
 #ifdef MOD_PERSO
@@ -2898,6 +2911,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
                                 HELPCTX(session_saved),
                                 sessionsaver_handler, P(ssd), P(NULL));
     ssd->editbox->column = 0;
+    session_filter_ctrl = ssd->editbox;   /* Ctrl+F jump target, see above */
     ssd->savebutton = ctrl_pushbutton(s, "Save", 'v',
                                       HELPCTX(session_saved),
                                       sessionsaver_handler, P(ssd));

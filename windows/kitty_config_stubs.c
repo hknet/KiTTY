@@ -17,3 +17,6 @@
 int GetConfigBoxHeight(void)       { return 16; } /* == stock-fit rows -> extra_rows 0 */
 int GetConfigBoxWindowHeight(void) { return 0; }  /* no explicit window-height override */
 int kitty_proxy_choice_shown(void) { return 0; }  /* no Proxy-choice droplist row */
+
+struct dlgcontrol;
+struct dlgcontrol *kitty_config_session_filter_ctrl(void) { return 0; } /* no Ctrl+F jump */
