@@ -5,6 +5,29 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.60-beta — 2026-07-22
+
+- **Session picking in the configuration box is predictable now — the buttons act
+  on what you see.** The **Start** button starts the session you just selected in
+  the list with a single click; previously it silently started the configuration
+  loaded earlier (usually the auto-loaded last session) while the name box
+  already showed your selection (hknet/KiTTY#18). While the live search is
+  filtering, **Open** and **Start** both act on the highlighted match. The two
+  buttons also differ in where the session opens now: **clicking Open** opens it
+  in the current window — classic behaviour, the configuration box closes —
+  while **Start**, like pressing **Enter**, starts it in a new window and keeps
+  the box open for launching the next one. Loading a session, tweaking its
+  settings and test-driving them with Start works unchanged.
+- **Ctrl+F jumps to the session search from anywhere in the configuration
+  window.** From any settings panel — or right after starting a session with
+  Enter — Ctrl+F returns to the Session panel with the search field focused and
+  its content selected, so just typing starts a new search. No more clicking
+  back to the Session panel and tabbing to the field.
+- **Tray icons are easier to hit.** kageant's tray icon now opens its menu on a
+  plain left click too (previously right-click or double-click only), and
+  double-clicking the launcher's tray icon opens a new KiTTY configuration
+  window.
+
 ## 0.84.1.59-beta — 2026-07-22
 
 - **In-place upgrades are reliable again — they no longer stall or roll back when

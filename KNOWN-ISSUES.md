@@ -91,6 +91,18 @@ features are working and verified. Known limitations as of this release:
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
 
+## New in 0.84.1.60
+
+- **Config-box buttons act on the visible selection.** Start launches the session
+  you just single-click selected (hknet/KiTTY#18); while the search filter is
+  active, Open and Start act on the highlighted match. Clicking **Open** opens
+  the session in the current window (the box closes); **Start** and **Enter**
+  start it in a new window and keep the box open.
+- **Ctrl+F** from anywhere in the configuration window jumps to the Session
+  panel with the saved-session search field focused and selected.
+- **Tray usability:** kageant's menu opens on a plain left click too;
+  double-clicking the launcher tray icon opens a new configuration window.
+
 ## New in 0.84.1.59
 
 - **In-place upgrades no longer stall or roll back with KiTTY windows open.** An
