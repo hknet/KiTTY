@@ -1302,6 +1302,29 @@ static bool load_selected_session(
 }
 
 #ifdef MOD_PERSO
+/* KiTTY: the launch-intent rule shared by the Open and Start buttons
+ * (hknet/KiTTY#18). If the user's last action was selecting a row in the
+ * session list, that selection is what they mean to act on, so load it into
+ * conf first; any other last focus means "use the current (possibly tweaked)
+ * settings as they are". Returns false when the selection was meant but could
+ * not be loaded (already beeped): the caller should give up. Keep this the
+ * ONLY place the rule lives, so Open and Start can never drift apart. */
+static bool sessionsaver_maybe_load_list_selection(
+    struct sessionsaver_data *ssd, dlgparam *dlg, Conf *conf, dlgcontrol *ctrl)
+{
+    if (!ssd->midsession &&
+        dlg_last_focused(ctrl, dlg) == ssd->listbox &&
+        dlg_is_visible(ssd->listbox, dlg)) {
+        if (!load_selected_session(ssd, dlg, conf, NULL)) {
+            dlg_beep(dlg);
+            return false;
+        }
+    }
+    return true;
+}
+#endif
+
+#ifdef MOD_PERSO
 /* KiTTY: refresh the read-only comment box from the session currently selected
  * in the saved-sessions list. Indexing mirrors load_selected_session() so the
  * box always shows the comment of the session that Load would open. Shows the
@@ -1786,8 +1809,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             if (!ssd->midsession &&
                 (dlg_last_focused(ctrl, dlg) == ssd->editbox ||
                  dlg_last_focused(ctrl, dlg) == ssd->listbox)) {
-                bool from_list = (dlg_last_focused(ctrl, dlg) == ssd->listbox);
                 if (ssd->searchfilter && ssd->searchfilter[0]) {
+                    /* Enter while searching selects (loads), it does not
+                     * launch; a second Enter starts the loaded session. */
                     bool loaded = load_selected_session(ssd, dlg, conf, NULL);
                     if (loaded)
                         dlg_set_focus(ssd->editbox, dlg);
@@ -1795,13 +1819,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                         dlg_beep(dlg);
                     return;
                 }
-                if (from_list) {
-                    bool loaded = load_selected_session(ssd, dlg, conf, NULL);
-                    if (!loaded) {
-                        dlg_beep(dlg);
-                        return;
-                    }
-                }
+                if (!sessionsaver_maybe_load_list_selection(ssd, dlg, conf,
+                                                            ctrl))
+                    return;
                 if (conf_launchable(conf))
                     RunConfig(conf);
                 else
@@ -1854,21 +1874,11 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
         }
 #ifdef MOD_PERSO
         else if (ssd->startbutton && ctrl == ssd->startbutton) {
-            /* Launch in a new window; keep box open. Same list-focus rule as
-             * the Open button above: if the user's last action was selecting
-             * a row in the session list, that selection is what they mean to
-             * start, so load it first. Without this, the startup-autoloaded
-             * conf is always launchable and a single-click selection would be
-             * silently ignored (hknet/KiTTY#18). Otherwise start the current
-             * settings, preserving the load-tweak-test workflow. */
-            if (!ssd->midsession &&
-                dlg_last_focused(ctrl, dlg) == ssd->listbox &&
-                dlg_is_visible(ssd->listbox, dlg)) {
-                if (!load_selected_session(ssd, dlg, conf, NULL)) {
-                    dlg_beep(dlg);
-                    return;
-                }
-            }
+            /* Launch in a new window; keep box open. Shares the launch-intent
+             * rule with the Open button: a just-selected list row is loaded
+             * first, anything else starts the current settings as they are. */
+            if (!sessionsaver_maybe_load_list_selection(ssd, dlg, conf, ctrl))
+                return;
             if (conf_launchable(conf))
                 RunConfig(conf);
             else
