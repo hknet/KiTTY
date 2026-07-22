@@ -493,21 +493,26 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
      * token whose inherited handle is DEAD in the relaunched process (so the
      * replayed relaunch failed to start), plus "-send-to-tray".
      *
-     * A named saved session registers as `-load "NAME"`. Any OTHER launchable
-     * session - Start/Open from the config box, Duplicate Session, "open new with
-     * current settings", and every password-auth session - instead reaches us via
-     * the &filemap conf-passing path (kitty_bridge.c RunSessionWithConfSettings),
-     * whose deserialised conf has an EMPTY CONF_sessionname (it is NOT_SAVED, so
-     * conf_serialise never carries it). Such a process MUST still register: if it
-     * does not, the MSI Restart Manager tags it restartable=False and, on an
-     * in-place upgrade, aborts with "a critical application holds files in use -
-     * reboot necessary" and rolls the WHOLE upgrade back. (That is the reported
-     * bug: two dist02 password terminals opened from the config box blocked the
-     * .58 upgrade; key-auth sessions, which come via -load, were fine.) So for any
-     * launchable-but-unnamed session register a BARE relaunch (reopens the config
-     * box): a live SSH session can't be restored anyway, and a blank reopen beats
-     * a broken upgrade. Quoting matches the other KiTTY `-load "NAME"` builders
-     * (plain double quotes, no escaping). */
+     * A session that knows its saved-session name registers as `-load "NAME"`.
+     * That includes sessions arriving via the &filemap conf-passing path
+     * (kitty_bridge.c / RunConfig: config-box Start, Duplicate Session, "open
+     * new with current settings", password-auth sessions): conf_serialise
+     * carries every set key, NOT_SAVED ones like CONF_sessionname included, so
+     * the child knows its name (measured 2026-07-22: a Start-spawned child
+     * registers -load). Only a genuinely unnamed launchable session (ad-hoc
+     * host typed into the box) registers a BARE relaunch, which reopens the
+     * config box - a blank reopen beats a silent vanish.
+     *
+     * History, so nobody re-breaks this: the .58 upgrade rollback ("a critical
+     * application holds files in use - reboot necessary") was NOT caused by a
+     * missing name here - it was the always-on restricted-ACL bug in
+     * RunConfig (kitty_launcher.c, fixed alongside this comment): the Restart
+     * Manager cannot inspect an ACL-restricted process, classifies it
+     * RmCritical, and then neither shows its files-in-use dialog nor closes/
+     * restarts ANY window; the installer's CloseApplication step rescues the
+     * upgrade but nothing reopens. Registration here only helps once the
+     * process is inspectable. Quoting matches the other KiTTY `-load "NAME"`
+     * builders (plain double quotes, no escaping). */
     {
         const char *sessname = conf_get_str(conf, CONF_sessionname);
         if (sessname && *sessname) {
