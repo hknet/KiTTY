@@ -136,6 +136,30 @@
 ; modalerrors: show connection errors as modal pop-up boxes instead of inline in the terminal (upstream cyd01/KiTTY #548). Default no (inline, non-trapping).
 ;modalerrors=no
 
+; modalnewhostkeyconfirmation: how to confirm an UNKNOWN (first-seen) host key.
+;    Default yes = classic modal dialog box. no = OpenSSH-style prompt in the
+;    terminal; type "yes" to accept and cache the key, "once" to connect without
+;    caching it, anything else cancels.
+;modalnewhostkeyconfirmation=yes
+
+; modalchangedhostkeyconfirmation: how to handle a CHANGED host key (differs from
+;    the cached one). Default yes = classic modal dialog box (you can Accept to
+;    update the cache). no = in-terminal "double opt-in": first type "yes" to
+;    accept the new key for this connection, then - because KiTTY cannot verify a
+;    plain SSH key's authenticity - you are asked separately whether to REPLACE
+;    the stored key for future connections, which requires typing the exact word
+;    "confirmed" (a plain "yes" is re-asked, not accepted). Decline the replace
+;    and you connect this once with the old key kept (asked again next time).
+;modalchangedhostkeyconfirmation=yes
+
+; modalweakkeyconfirmation: how to confirm a weak crypto algorithm / weak cached
+;    host key (below the warning threshold). Default yes = classic modal dialog
+;    box. no = OpenSSH-style prompt in the terminal; type "yes" to accept.
+;    Note: all three of these prompts fall back to an in-terminal error + abort
+;    if they occur during an already-authenticated session (a rekey), where no
+;    inline prompt is possible.
+;modalweakkeyconfirmation=yes
+
 ; mouseshortcuts: enable/disable mouse shortcuts
 ;mouseshortcuts=yes
 

@@ -3022,6 +3022,11 @@ static const IniParam ini_params[] = {
 	INIP_KW( INIT_SECTION, 0, "mouseshortcuts",	1, 0, IGN,	&MouseShortcutsFlag, NULL ),
 	/* cyd01/KiTTY #548: force classic modal error boxes instead of inline terminal errors */
 	INIP_KW( INIT_SECTION, 0, "modalerrors",	1, 0, IGN,	NULL, SetModalErrorsFlag ),
+	/* Inline-first security prompts (#548 successor): default yes = classic modal
+	 * box; no = OpenSSH-style in-terminal prompt (typed "yes"). */
+	INIP_KW( INIT_SECTION, 0, "modalnewhostkeyconfirmation",	1, 0, IGN,	NULL, SetModalNewHostKeyConfirmationFlag ),
+	INIP_KW( INIT_SECTION, 0, "modalchangedhostkeyconfirmation",	1, 0, IGN,	NULL, SetModalChangedHostKeyConfirmationFlag ),
+	INIP_KW( INIT_SECTION, 0, "modalweakkeyconfirmation",	1, 0, IGN,	NULL, SetModalWeakKeyConfirmationFlag ),
 	INIP_KW( INIT_SECTION, 0, "readonly",		1, IGN, IGN,	NULL, SetReadOnlyFlag ),
 	INIP_KW( INIT_SECTION, 0, "shortcuts",		1, 0, IGN,	&ShortcutsFlag, NULL ),
 	INIP_KW( INIT_SECTION, 0, "size",		1, IGN, IGN,	&SizeFlag, NULL ),

@@ -1576,6 +1576,533 @@ const SeatDialogPromptDescriptions *win_seat_prompt_descriptions(Seat *seat)
     return &descs;
 }
 
+/* ----------------------------------------------------------------------
+ * KiTTY: inline-first security prompts (successor to cyd01/KiTTY #548).
+ *
+ * By default the host-key and weak-crypto confirmations use the classic modal
+ * dialog boxes below. When the matching kitty.ini [KiTTY] flag is set to no,
+ * we surface the confirmation OpenSSH-style instead: the factual details
+ * (host, fingerprint, warning) are written into the terminal and the user
+ * types "yes" to accept. A changed host key in inline mode is a hard abort
+ * (like OpenSSH: the cached key must be cleared explicitly first). During a
+ * rekey - i.e. the session has already authenticated, so the running program
+ * owns the input line - inline prompting is impossible, so inline mode aborts
+ * with an in-terminal error (OpenSSH does the same).
+ */
+
+extern int GetModalNewHostKeyConfirmationFlag(void);
+extern int GetModalChangedHostKeyConfirmationFlag(void);
+extern int GetModalWeakKeyConfirmationFlag(void);
+
+/*
+ * Master gate for the inline (in-terminal, OpenSSH-style) security prompts
+ * (item 4). Previously forced to 0 because the inline path crashed: writing to
+ * the terminal during the initial-connect host-key confirmation faulted. That
+ * was NOT a terminal-lifecycle problem - it was a WinGuiSeat struct-layout
+ * mismatch. dialog.c (built into the guiterminal static lib, no MOD_RECONNECT)
+ * and window.c (built into the kitty exe target, MOD_RECONNECT defined) saw
+ * `term` at different offsets, so dialog.c read wgs->term from the wrong offset
+ * and wrote to a bogus terminal. Fixed by making the MOD_RECONNECT-guarded
+ * WinGuiSeat fields unconditional (see win-gui-seat.h), so the layout is
+ * identical in every TU. Now safe to enable.
+ * (Deliberately non-const so the code stays referenced under all build configs.)
+ */
+static int kitty_inline_prompts_enabled = 1;
+
+static void kitty_term_puts(Terminal *term, const char *s)
+{
+    if (s && *s)
+        term_data(term, s, strlen(s));
+}
+
+/* Wrap KiTTY's inline security text to a fixed, comfortable column width so it
+ * reads the same regardless of the (possibly very wide or narrow) terminal. */
+#define KITTY_WRAP_COLS 76
+
+/* Visible width of the first n bytes of s, ignoring ANSI CSI escape sequences
+ * (e.g. the bold-red highlight) so they do not count toward the column. */
+static size_t kitty_visible_width(const char *s, size_t n)
+{
+    size_t w = 0, i = 0;
+    while (i < n) {
+        if (s[i] == '\033' && i + 1 < n && s[i+1] == '[') {
+            i += 2;
+            while (i < n && !(s[i] >= '@' && s[i] <= '~'))
+                i++;
+            if (i < n)
+                i++;               /* consume the final byte of the sequence */
+        } else {
+            w++;
+            i++;
+        }
+    }
+    return w;
+}
+
+/* Word-wrap s to KITTY_WRAP_COLS visible columns, honouring explicit newlines
+ * (hard breaks) and collapsing runs of whitespace. ANSI colour escapes are
+ * copied through but not counted. A single trailing space is preserved (so a
+ * prompt keeps its gap before the typed answer). Returns a fresh CRLF-delimited
+ * string owned by the caller. */
+static char *kitty_wrap_dup(const char *s)
+{
+    strbuf *sb = strbuf_new();
+    size_t col = 0;
+    const char *p = s;
+    while (*p) {
+        if (*p == '\n') {
+            put_data(sb, "\r\n", 2);
+            col = 0;
+            p++;
+            continue;
+        }
+        if (*p == '\r' || *p == ' ' || *p == '\t') {
+            p++;
+            continue;
+        }
+        const char *w = p;
+        while (*w && *w != ' ' && *w != '\t' && *w != '\n' && *w != '\r')
+            w++;
+        size_t vw = kitty_visible_width(p, (size_t)(w - p));
+        if (col > 0 && col + 1 + vw > KITTY_WRAP_COLS) {
+            put_data(sb, "\r\n", 2);
+            col = 0;
+        }
+        if (col > 0) {
+            put_byte(sb, ' ');
+            col++;
+        }
+        put_data(sb, p, (size_t)(w - p));
+        col += vw;
+        p = w;
+    }
+    size_t len = strlen(s);
+    if (len > 0 && (s[len-1] == ' ' || s[len-1] == '\t'))
+        put_byte(sb, ' ');
+    return strbuf_to_str(sb);
+}
+
+/* Wrap s and write it straight to the terminal (intro / warning prose). */
+static void kitty_term_wrapped(Terminal *term, const char *s)
+{
+    char *w = kitty_wrap_dup(s);
+    kitty_term_puts(term, w);
+    sfree(w);
+}
+
+/*
+ * Append the factual portion of a SeatDialogText to a strbuf: the scary
+ * heading (if any), the descriptive paragraphs and the displayed values (host,
+ * fingerprint), stopping at the SDT_BATCH_ABORT divider. Everything after that
+ * divider is PuTTY-button-specific guidance ("press Accept"), which does not
+ * apply to a typed prompt, so we supply our own wording instead. We capture
+ * into a strbuf rather than writing straight to the terminal because this runs
+ * synchronously inside the SSH kex coroutine, where touching the terminal
+ * (term_data -> term_out) faults; the text is emitted later from a top-level
+ * callback (kitty_inline_dispatch).
+ */
+static void kitty_facts_to_strbuf(strbuf *sb, SeatDialogText *text)
+{
+    for (SeatDialogTextItem *item = text->items,
+             *end = item + text->nitems; item < end; item++) {
+        switch (item->type) {
+          case SDT_SCARY_HEADING:
+          case SDT_PARA:
+            if (item->text) {
+                char *w = kitty_wrap_dup(item->text);
+                put_fmt(sb, "%s\r\n", w);
+                sfree(w);
+            }
+            break;
+          case SDT_DISPLAY:
+            put_fmt(sb, "  %s\r\n", item->text ? item->text : "");
+            break;
+          case SDT_BATCH_ABORT:
+            /* Divider: the remaining items are button-specific guidance. */
+            return;
+          default:
+            break;
+        }
+    }
+}
+
+/* Does the user's typed response equal `want` (case-insensitive, surrounding
+ * whitespace ignored)? `want` must be given in lower case. */
+static bool kitty_response_is_word(const char *s, const char *want)
+{
+    if (!s)
+        return false;
+    while (*s == ' ' || *s == '\t')
+        s++;
+    for (; *want; want++, s++)
+        if (tolower((unsigned char)*s) != *want)
+            return false;
+    while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n')
+        s++;
+    return *s == '\0';
+}
+
+/* Is the user's typed response an affirmative "yes" (OpenSSH style)? */
+static bool kitty_response_is_yes(const char *s)
+{
+    return kitty_response_is_word(s, "yes");
+}
+
+struct kitty_inline_confirm_ctx {
+    Seat *seat;
+    Terminal *term;
+    strbuf *facts;                     /* captured factual text to emit */
+    char *promptline;                  /* dup'd; non-NULL => prompt for "yes" */
+    char *abortmsg;                    /* dup'd; used when promptline == NULL */
+    prompts_t *prompts;                /* built by the deferred setup (prompt mode) */
+    bool store_on_yes;                 /* accept => store_host_key (new key only) */
+    char *host, *keytype, *keystr;     /* dup'd; for store_host_key on accept */
+    int port;
+    void (*ssh_callback)(void *ctx, SeatPromptResult result);
+    void *ssh_cbctx;
+    int changed_step;                  /* changed-key double opt-in: 0=n/a, 1..3 */
+};
+
+static void kitty_inline_confirm_free(struct kitty_inline_confirm_ctx *c)
+{
+    if (c->prompts)
+        free_prompts(c->prompts);
+    if (c->facts)
+        strbuf_free(c->facts);
+    sfree(c->promptline);
+    sfree(c->abortmsg);
+    sfree(c->host);
+    sfree(c->keytype);
+    sfree(c->keystr);
+    sfree(c);
+}
+
+/*
+ * Toplevel callback fired when the inline "yes/no" line has been entered (or
+ * the prompt aborted, e.g. via ^C or a missing ldisc). Interprets the response
+ * and delivers the result to the SSH layer's confirmation callback.
+ */
+static void kitty_inline_confirm_done(void *vctx)
+{
+    struct kitty_inline_confirm_ctx *c = (struct kitty_inline_confirm_ctx *)vctx;
+    prompts_t *p = c->prompts;
+    SeatPromptResult spr;
+
+    const char *resp = (p->spr.kind == SPRK_OK) ?
+        prompt_get_result_ref(p->prompts[0]) : NULL;
+
+    if (resp && kitty_response_is_yes(resp)) {
+        if (c->store_on_yes)
+            store_host_key(c->seat, c->host, c->port, c->keytype, c->keystr);
+        spr = SPR_OK;
+    } else if (resp && c->store_on_yes && kitty_response_is_word(resp, "once")) {
+        /* New host key only: connect this once without caching it (parity with
+         * the modal "Connect Once"). */
+        kitty_term_puts(c->term, "Connecting once; the key was not cached.\r\n");
+        spr = SPR_OK;
+    } else {
+        kitty_term_puts(c->term, "Connection abandoned.\r\n");
+        spr = SPR_USER_ABORT;
+    }
+
+    void (*cb)(void *, SeatPromptResult) = c->ssh_callback;
+    void *cbctx = c->ssh_cbctx;
+    kitty_inline_confirm_free(c);
+    cb(cbctx, spr);
+}
+
+/*
+ * Top-level callback that actually touches the terminal. It is scheduled by
+ * kitty_inline_confirm so that all terminal output happens OUTSIDE the SSH kex
+ * coroutine's call stack (writing to the terminal from inside that stack, via
+ * term_data -> term_out, faults). It prints the captured factual text, then
+ * either aborts with a message or arms the inline "type yes" prompt.
+ */
+static void kitty_inline_dispatch(void *vctx)
+{
+    struct kitty_inline_confirm_ctx *c = (struct kitty_inline_confirm_ctx *)vctx;
+
+    if (c->facts && c->facts->len)
+        term_data(c->term, c->facts->s, c->facts->len);
+    strbuf_free(c->facts);
+    c->facts = NULL;
+
+    if (!c->promptline) {
+        /* Abort-only path (rekey / changed-key hard abort). */
+        kitty_term_wrapped(c->term, c->abortmsg);
+        void (*cb)(void *, SeatPromptResult) = c->ssh_callback;
+        void *cbctx = c->ssh_cbctx;
+        kitty_inline_confirm_free(c);
+        cb(cbctx, SPR_USER_ABORT);
+        return;
+    }
+
+    /* Prompt path: arm the terminal line editor for a typed "yes". Once armed,
+     * the ldisc drives input to completion and queues kitty_inline_confirm_done
+     * (even on the no-ldisc error path), so we always resolve there. */
+    prompts_t *p = new_prompts();
+    p->to_server = false;
+    p->from_server = false;
+    p->name = dupstr("SSH security confirmation");
+    p->name_reqd = false;
+    p->callback = kitty_inline_confirm_done;
+    p->callback_ctx = c;
+    p->utf8 = true;
+    add_prompt(p, kitty_wrap_dup(c->promptline), true /* echo the typed answer */);
+    c->prompts = p;
+
+    term_get_userpass_input(c->term, p);
+}
+
+/*
+ * Entry point for every inline (non-modal) security confirmation. Called
+ * synchronously from inside the SSH coroutine, so it must NOT touch the
+ * terminal: it captures the factual text into a strbuf and defers all terminal
+ * work to kitty_inline_dispatch via a top-level callback. Always returns
+ * SPR_INCOMPLETE; the result is delivered later through the SSH callback.
+ *
+ *   promptline != NULL -> prompt for a typed "yes" (accept) vs anything else.
+ *   promptline == NULL -> abort-only: print abortmsg, then SPR_USER_ABORT.
+ */
+static SeatPromptResult kitty_inline_confirm(
+    WinGuiSeat *wgs, SeatDialogText *text, const char *promptline,
+    const char *abortmsg, bool store_on_yes, const char *host, int port,
+    const char *keytype, const char *keystr,
+    void (*callback)(void *ctx, SeatPromptResult result), void *cbctx)
+{
+    struct kitty_inline_confirm_ctx *c = snew(struct kitty_inline_confirm_ctx);
+    c->seat = &wgs->seat;
+    c->term = wgs->term;
+    c->facts = strbuf_new();
+    kitty_facts_to_strbuf(c->facts, text);   /* string build only - no term I/O */
+    c->promptline = promptline ? dupstr(promptline) : NULL;
+    c->abortmsg = abortmsg ? dupstr(abortmsg) : NULL;
+    c->prompts = NULL;
+    c->store_on_yes = store_on_yes;
+    c->host = host ? dupstr(host) : NULL;
+    c->keytype = keytype ? dupstr(keytype) : NULL;
+    c->keystr = keystr ? dupstr(keystr) : NULL;
+    c->port = port;
+    c->ssh_callback = callback;
+    c->ssh_cbctx = cbctx;
+    c->changed_step = 0;
+
+    queue_toplevel_callback(kitty_inline_dispatch, c);
+    return SPR_INCOMPLETE;
+}
+
+/* True if the session has already authenticated, so a host-key/weak-crypto
+ * confirmation now is a rekey and the terminal is owned by the running
+ * program: we cannot present an inline prompt. */
+static bool kitty_session_is_live(WinGuiSeat *wgs)
+{
+    /* ever_authenticated is now an unconditional WinGuiSeat field (see
+     * win-gui-seat.h). dialog.c is built without MOD_RECONNECT (guiterminal lib),
+     * so the old #ifdef here always returned false; read the field directly. */
+    return wgs->ever_authenticated;
+}
+
+/* ----------------------------------------------------------------------
+ * Changed host key: inline "double opt-in" (branch A).
+ *
+ * A *changed* key (one different from the one cached) is more suspicious than a
+ * brand-new key, so it is confirmed in two conscious steps:
+ *   1. Accept the new key for THIS connection ("yes"), or abandon.
+ *   2. Optionally REPLACE the stored key for future connections. This second
+ *      step demands the exact word "confirmed"; a reflexive "yes" is caught and
+ *      re-asked (step 3) rather than accepted or silently cancelled. Declining
+ *      leaves the old key cached and connects once.
+ * The step machine reuses the terminal userpass prompt, re-arming the next
+ * prompt from a fresh top-level callback so we never re-enter
+ * term_get_userpass_input from inside its own completion callback.
+ * ---------------------------------------------------------------------- */
+
+/* ANSI SGR: bold red for the security-critical words, reset afterwards, so the
+ * eye is drawn to CHANGED / SECURITY WARNING even in a wall of prompt text. */
+#define KCH_HL  "\033[1;31m"
+#define KCH_RST "\033[0m"
+
+static const char KCH_ACK_INTRO[] =
+    "\nThe host key for this server has " KCH_HL "CHANGED" KCH_RST " since it was "
+    "last cached. This can mean the server was legitimately rebuilt - or that the "
+    "connection is being intercepted (a man-in-the-middle attack).\n";
+static const char KCH_ACK_PROMPT[] =
+    "Type \"yes\" to accept the new key for THIS connection, or anything else "
+    "to abandon: ";
+static const char KCH_REPLACE_INTRO[] =
+    "\nReplace the stored host key with this new one for future connections?\n"
+    KCH_HL "SECURITY WARNING" KCH_RST ": KiTTY cannot confirm that this new key "
+    "genuinely belongs to the server. A plain SSH host key is trusted on first "
+    "use, with no authority to verify it against. Replace the stored key ONLY if "
+    "you are certain, by some independent means (e.g. a fingerprint obtained "
+    "out-of-band), that the new key is genuine.\n";
+static const char KCH_REPLACE_PROMPT[] =
+    "Type \"confirmed\" to replace the stored key, \"no\" or Enter to keep the "
+    "old key, or Ctrl-C to abandon: ";
+static const char KCH_RETRY_INTRO[] =
+    "\nPlease answer with a whole word: \"confirmed\" to replace the stored key, "
+    "or \"no\" (or Enter) to keep the old key and connect once. A plain \"yes\" "
+    "is intentionally not enough to replace a changed key.\n";
+
+static void kitty_inline_changed_done(void *vctx);   /* fwd */
+
+/* Deliver the SSH result and tear down the context. */
+static void kitty_inline_finish(struct kitty_inline_confirm_ctx *c,
+                                SeatPromptResult spr)
+{
+    void (*cb)(void *, SeatPromptResult) = c->ssh_callback;
+    void *cbctx = c->ssh_cbctx;
+    kitty_inline_confirm_free(c);
+    cb(cbctx, spr);
+}
+
+/* Arm one inline prompt line (its explanatory text is written separately). */
+static void kitty_changed_arm_prompt(struct kitty_inline_confirm_ctx *c,
+                                     const char *promptline)
+{
+    prompts_t *p = new_prompts();
+    p->to_server = false;
+    p->from_server = false;
+    p->name = dupstr("SSH host key changed");
+    p->name_reqd = false;
+    p->callback = kitty_inline_changed_done;
+    p->callback_ctx = c;
+    p->utf8 = true;
+    add_prompt(p, kitty_wrap_dup(promptline), true /* echo the typed answer */);
+    c->prompts = p;
+    term_get_userpass_input(c->term, p);
+}
+
+/* Top-level callback: emit the current step's text and arm its prompt. */
+static void kitty_inline_changed_arm(void *vctx)
+{
+    struct kitty_inline_confirm_ctx *c = (struct kitty_inline_confirm_ctx *)vctx;
+    switch (c->changed_step) {
+      case 1:
+        kitty_term_wrapped(c->term, KCH_ACK_INTRO);
+        kitty_changed_arm_prompt(c, KCH_ACK_PROMPT);
+        break;
+      case 2:
+        kitty_term_wrapped(c->term, KCH_REPLACE_INTRO);
+        kitty_changed_arm_prompt(c, KCH_REPLACE_PROMPT);
+        break;
+      case 3:
+        kitty_term_wrapped(c->term, KCH_RETRY_INTRO);
+        kitty_changed_arm_prompt(c, KCH_REPLACE_PROMPT);
+        break;
+    }
+}
+
+/* First top-level callback: emit the factual details, then start step 1. */
+static void kitty_inline_changed_dispatch(void *vctx)
+{
+    struct kitty_inline_confirm_ctx *c = (struct kitty_inline_confirm_ctx *)vctx;
+    if (c->facts && c->facts->len)
+        term_data(c->term, c->facts->s, c->facts->len);
+    strbuf_free(c->facts);
+    c->facts = NULL;
+    c->changed_step = 1;
+    kitty_inline_changed_arm(c);
+}
+
+static void kitty_changed_store_and_connect(struct kitty_inline_confirm_ctx *c)
+{
+    store_host_key(c->seat, c->host, c->port, c->keytype, c->keystr);
+    kitty_term_puts(c->term, "\r\nStored host key replaced. Continuing.\r\n");
+    kitty_inline_finish(c, SPR_OK);
+}
+
+static void kitty_changed_connect_once(struct kitty_inline_confirm_ctx *c)
+{
+    kitty_term_wrapped(c->term,
+                    "\nKeeping the previously stored key; continuing this once "
+                    "(you will be asked again next time).\n");
+    kitty_inline_finish(c, SPR_OK);
+}
+
+/* Prompt-completion callback for every step of the changed-key flow. */
+static void kitty_inline_changed_done(void *vctx)
+{
+    struct kitty_inline_confirm_ctx *c = (struct kitty_inline_confirm_ctx *)vctx;
+    prompts_t *p = c->prompts;
+    bool ok = (p->spr.kind == SPRK_OK);
+    const char *resp = ok ? prompt_get_result_ref(p->prompts[0]) : NULL;
+    bool is_yes = ok && kitty_response_is_yes(resp);
+    bool is_confirmed = ok && kitty_response_is_word(resp, "confirmed");
+    bool is_no = ok && kitty_response_is_word(resp, "no");
+    bool is_empty = ok && kitty_response_is_word(resp, "");  /* bare Enter */
+
+    switch (c->changed_step) {
+      case 1:
+        /* Acknowledge the change (gate to connect at all). A non-"yes" answer
+         * (including Ctrl-C/Ctrl-D, which make ok false) abandons. */
+        if (!is_yes) {
+            kitty_term_puts(c->term, "\r\nConnection abandoned.\r\n");
+            kitty_inline_finish(c, SPR_USER_ABORT);
+            return;
+        }
+        c->changed_step = 2;
+        free_prompts(c->prompts);
+        c->prompts = NULL;
+        queue_toplevel_callback(kitty_inline_changed_arm, c);
+        return;
+      default:
+        /* Replace-the-stored-key loop (steps 2 and 3):
+         *   "confirmed"        -> replace the stored key and connect
+         *   "no" or bare Enter -> connect once, keep the old key
+         *   Ctrl-C / Ctrl-D    -> abandon the whole connection (ok == false)
+         *   anything else      -> re-ask, so a reflexive "yes" or a typo cannot
+         *                         accidentally skip the decision
+         * Abandon and decline both terminate, so the loop can never spin. */
+        if (!ok) {
+            kitty_term_puts(c->term, "\r\nConnection abandoned.\r\n");
+            kitty_inline_finish(c, SPR_USER_ABORT);
+            return;
+        }
+        if (is_confirmed) {
+            kitty_changed_store_and_connect(c);
+            return;
+        }
+        if (is_no || is_empty) {
+            kitty_changed_connect_once(c);
+            return;
+        }
+        c->changed_step = 3;
+        free_prompts(c->prompts);
+        c->prompts = NULL;
+        queue_toplevel_callback(kitty_inline_changed_arm, c);
+        return;
+    }
+}
+
+/* Entry point for the changed-key inline double opt-in. Captures the factual
+ * details and defers all terminal work to the step machine above; returns
+ * SPR_INCOMPLETE, resolving later through the SSH callback. */
+static SeatPromptResult kitty_inline_confirm_changed(
+    WinGuiSeat *wgs, SeatDialogText *text, const char *host, int port,
+    const char *keytype, const char *keystr,
+    void (*callback)(void *ctx, SeatPromptResult result), void *cbctx)
+{
+    struct kitty_inline_confirm_ctx *c = snew(struct kitty_inline_confirm_ctx);
+    c->seat = &wgs->seat;
+    c->term = wgs->term;
+    c->facts = strbuf_new();
+    kitty_facts_to_strbuf(c->facts, text);
+    c->promptline = NULL;
+    c->abortmsg = NULL;
+    c->prompts = NULL;
+    c->store_on_yes = false;
+    c->host = host ? dupstr(host) : NULL;
+    c->keytype = keytype ? dupstr(keytype) : NULL;
+    c->keystr = keystr ? dupstr(keystr) : NULL;
+    c->port = port;
+    c->ssh_callback = callback;
+    c->ssh_cbctx = cbctx;
+    c->changed_step = 0;
+    queue_toplevel_callback(kitty_inline_changed_dispatch, c);
+    return SPR_INCOMPLETE;
+}
+
 SeatPromptResult win_seat_confirm_ssh_host_key(
     Seat *seat, const char *host, int port, const char *keytype,
     char *keystr, SeatDialogText *text, HelpCtx helpctx,
@@ -1583,6 +2110,47 @@ SeatPromptResult win_seat_confirm_ssh_host_key(
 {
     WinGuiSeat *wgs = container_of(seat, WinGuiSeat, seat);
 
+    /* Decide modal vs inline. We only need to know whether this is a new or a
+     * changed key when at least one of the two host-key flags asks for inline
+     * mode; that keeps the common all-modal default path free of a redundant
+     * host-key-cache lookup. check_stored_host_key returns 2 when a different
+     * key is already cached (changed host); we recompute it locally rather than
+     * plumbing a new parameter through the cross-platform seat API. */
+    bool new_inline = !GetModalNewHostKeyConfirmationFlag();
+    bool changed_inline = !GetModalChangedHostKeyConfirmationFlag();
+    if ((new_inline || changed_inline) && kitty_inline_prompts_enabled) {
+        bool changed =
+            (check_stored_host_key(host, port, keytype, keystr) == 2);
+        if (changed ? changed_inline : new_inline) {
+            if (kitty_session_is_live(wgs)) {
+                /* Rekey: cannot prompt inline (the running program owns the
+                 * terminal). Surface the details and abort. */
+                return kitty_inline_confirm(
+                    wgs, text, NULL,
+                    "Host key confirmation cannot be shown during an active "
+                    "session. Connection abandoned.\r\n",
+                    false, NULL, 0, NULL, NULL, callback, cbctx);
+            }
+            if (changed) {
+                /* Changed key: inline "double opt-in" (branch A). Accept for
+                 * this connection, then optionally REPLACE the stored key by
+                 * typing "confirmed". See kitty_inline_confirm_changed. */
+                return kitty_inline_confirm_changed(
+                    wgs, text, host, port, keytype, keystr, callback, cbctx);
+            }
+            /* New host key: OpenSSH-style typed confirmation. "once" connects
+             * without caching the key (parity with the modal Connect Once). */
+            return kitty_inline_confirm(
+                wgs, text,
+                "Are you sure you want to continue connecting "
+                "(type \"yes\" to accept and cache the key, \"once\" to connect "
+                "without caching, anything else to cancel)? ",
+                NULL, true /* store on yes */, host, port, keytype, keystr,
+                callback, cbctx);
+        }
+    }
+
+    /* Classic modal dialog (default). */
     struct hostkey_dialog_ctx ctx[1];
     ctx->text = text;
     ctx->helpctx = helpctx;
@@ -1609,6 +2177,24 @@ SeatPromptResult win_seat_confirm_weak_crypto_primitive(
     Seat *seat, SeatDialogText *text,
     void (*callback)(void *ctx, SeatPromptResult result), void *ctx)
 {
+    WinGuiSeat *wgs = container_of(seat, WinGuiSeat, seat);
+
+    if (!GetModalWeakKeyConfirmationFlag() && kitty_inline_prompts_enabled) {
+        if (kitty_session_is_live(wgs)) {
+            return kitty_inline_confirm(
+                wgs, text, NULL,
+                "Weak-algorithm confirmation cannot be shown during an active "
+                "session. Connection abandoned.\r\n",
+                false, NULL, 0, NULL, NULL, callback, ctx);
+        }
+        return kitty_inline_confirm(
+            wgs, text,
+            "To accept the risk and continue, type \"yes\" "
+            "(anything else cancels): ",
+            NULL, false /* nothing to store */, NULL, 0, NULL, NULL,
+            callback, ctx);
+    }
+
     strbuf *dlg_text = strbuf_new();
     const char *dlg_title = process_seatdialogtext(dlg_text, NULL, text);
 
@@ -1627,6 +2213,24 @@ SeatPromptResult win_seat_confirm_weak_cached_hostkey(
     Seat *seat, SeatDialogText *text,
     void (*callback)(void *ctx, SeatPromptResult result), void *ctx)
 {
+    WinGuiSeat *wgs = container_of(seat, WinGuiSeat, seat);
+
+    if (!GetModalWeakKeyConfirmationFlag() && kitty_inline_prompts_enabled) {
+        if (kitty_session_is_live(wgs)) {
+            return kitty_inline_confirm(
+                wgs, text, NULL,
+                "Weak-key confirmation cannot be shown during an active "
+                "session. Connection abandoned.\r\n",
+                false, NULL, 0, NULL, NULL, callback, ctx);
+        }
+        return kitty_inline_confirm(
+            wgs, text,
+            "To accept the risk and continue, type \"yes\" "
+            "(anything else cancels): ",
+            NULL, false /* nothing to store */, NULL, 0, NULL, NULL,
+            callback, ctx);
+    }
+
     strbuf *dlg_text = strbuf_new();
     const char *dlg_title = process_seatdialogtext(dlg_text, NULL, text);
 

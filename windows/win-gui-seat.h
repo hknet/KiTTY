@@ -87,7 +87,14 @@ struct WinGuiSeat {
                               * re-sending a rejected password on every server
                               * re-prompt (which burns MaxAuthTries -> IP ban).
                               * Reset per connection in start_backend. */
-#ifdef MOD_RECONNECT
+    /* These fields MUST stay unconditional (do NOT wrap in #ifdef MOD_RECONNECT).
+     * WinGuiSeat is shared between window.c (compiled into the kitty executable
+     * target, where MOD_RECONNECT is a PRIVATE compile-def) and dialog.c (compiled
+     * into the guiterminal static library, which does NOT get that def). Guarding
+     * these on MOD_RECONNECT put `term` and every later field at different offsets
+     * in the two TUs, so dialog.c read wgs->term from the wrong offset and crashed
+     * writing to a bogus terminal during the inline host-key prompt. Keeping them
+     * always present makes the layout identical in every TU. */
     time_t last_reconnect;   /* KiTTY auto-reconnect: wakeup de-bounce, per window */
     int    reconnect_tries;  /* KiTTY auto-reconnect: backoff/loop cap */
     bool   ever_authenticated; /* KiTTY: THIS session reached post-auth at least once.
@@ -95,7 +102,6 @@ struct WinGuiSeat {
                                 * never re-dialed (which would burn auth attempts and get
                                 * the client IP banned). Per-session, unlike the process-
                                 * global is_backend_first_connected. */
-#endif
 
     const SessionSpecial *specials;
     HMENU specials_menu;

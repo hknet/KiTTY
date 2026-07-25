@@ -156,6 +156,18 @@ KiTTY can detect URLs in the terminal output and turn them into clickable hyperl
 
 ## SSH and network
 
+### In-terminal (inline) security confirmations
+
+KiTTY's SSH security confirmations — an unknown (first-seen) host key, a changed host key, or a weak/legacy algorithm (including key exchange) — are shown as modal dialog boxes by default. Each can optionally be shown **inline in the terminal instead**, OpenSSH-style: the details are printed in the session window and you answer by typing, so the prompt never steals window focus. Every choice the dialog offers is available inline too, so nothing is lost by going inline.
+
+- **Unknown host key** — type `yes` to accept and cache the key, or `once` to connect this time without caching it (anything else cancels).
+- **Changed host key** — a deliberate two-step confirmation. Type `yes` to accept the new key for *this* connection; then, because KiTTY cannot verify the authenticity of a plain SSH host key (it is trusted on first use), type the exact word `confirmed` to *replace* the stored key for future connections. A reflexive `yes` is re-asked rather than accepted; `no` or Enter keeps the old key and connects once; `Ctrl-C`/`Ctrl-D` abandons. The heading and security warning are highlighted.
+- **Weak algorithm / key exchange** — type `yes` to accept the risk and continue.
+
+During an already-authenticated session (a rekey) the running program owns the terminal, so these cannot be prompted inline — KiTTY prints the details and abandons the connection instead (reconnect to review). Connection error messages can likewise be shown in the terminal rather than a box (see `modalerrors`).
+
+**How to enable:** in `kitty.ini [KiTTY]`, set `modalnewhostkeyconfirmation`, `modalchangedhostkeyconfirmation` and/or `modalweakkeyconfirmation` to `no` (default `yes` = classic modal dialog). Each is independent, so you can keep some prompts modal and make others inline.
+
 ### Automatic password
 
 KiTTY can log you in automatically to telnet, SSH-1 and SSH-2 servers by storing a password alongside the session. For SSH connections the password is supplied during authentication; for telnet it is sent once the connection comes up, just as if you typed it, and you can even send several lines (for example a login name, a password, and a command) by separating them with `\n`. Because the stored value is tied to the host, a password cannot be saved in a session that has an empty hostname.

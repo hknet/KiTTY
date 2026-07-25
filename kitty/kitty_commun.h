@@ -19,6 +19,15 @@ void SetPuttyFlag( const int flag ) ;
 int GetModalErrorsFlag(void) ;
 void SetModalErrorsFlag( const int flag ) ;
 
+// Inline-first security prompts (successor to cyd01/KiTTY #548): each defaults to
+// 1 = classic modal box; set the [KiTTY] key to no for an OpenSSH-style in-terminal prompt.
+int GetModalNewHostKeyConfirmationFlag(void) ;
+void SetModalNewHostKeyConfirmationFlag( const int flag ) ;
+int GetModalChangedHostKeyConfirmationFlag(void) ;
+void SetModalChangedHostKeyConfirmationFlag( const int flag ) ;
+int GetModalWeakKeyConfirmationFlag(void) ;
+void SetModalWeakKeyConfirmationFlag( const int flag ) ;
+
 // Flag pour le fonctionnement en mode "portable" (gestion par fichiers)
 int GetIniFileFlag(void) ;
 void SetIniFileFlag( const int flag ) ;

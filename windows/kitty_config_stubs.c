@@ -18,5 +18,12 @@ int GetConfigBoxHeight(void)       { return 16; } /* == stock-fit rows -> extra_
 int GetConfigBoxWindowHeight(void) { return 0; }  /* no explicit window-height override */
 int kitty_proxy_choice_shown(void) { return 0; }  /* no Proxy-choice droplist row */
 
+/* Inline-first security prompts: 1 = keep the confirmation MODAL, i.e. the
+ * stock PuTTY message box. The real flags (kitty/kitty_commun.c) are driven by
+ * the [KiTTY] modal*confirmation settings, which these targets do not read. */
+int GetModalNewHostKeyConfirmationFlag(void)     { return 1; }
+int GetModalChangedHostKeyConfirmationFlag(void) { return 1; }
+int GetModalWeakKeyConfirmationFlag(void)        { return 1; }
+
 struct dlgcontrol;
 struct dlgcontrol *kitty_config_session_filter_ctrl(void) { return 0; } /* no Ctrl+F jump */

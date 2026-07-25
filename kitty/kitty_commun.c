@@ -46,6 +46,22 @@ int ModalErrorsFlag = 0 ;
 int GetModalErrorsFlag(void) { return ModalErrorsFlag ; }
 void SetModalErrorsFlag( const int flag ) { ModalErrorsFlag = flag ; }
 
+/* Inline-first security prompts (successor to cyd01/KiTTY #548). Each flag
+ * defaults to 1 = classic modal box (today's behaviour). Set the matching
+ * kitty.ini [KiTTY] key to no to get an OpenSSH-style in-terminal prompt
+ * instead. See windows/dialog.c for the surfacing logic. */
+int ModalNewHostKeyConfirmationFlag = 1 ;
+int GetModalNewHostKeyConfirmationFlag(void) { return ModalNewHostKeyConfirmationFlag ; }
+void SetModalNewHostKeyConfirmationFlag( const int flag ) { ModalNewHostKeyConfirmationFlag = flag ; }
+
+int ModalChangedHostKeyConfirmationFlag = 1 ;
+int GetModalChangedHostKeyConfirmationFlag(void) { return ModalChangedHostKeyConfirmationFlag ; }
+void SetModalChangedHostKeyConfirmationFlag( const int flag ) { ModalChangedHostKeyConfirmationFlag = flag ; }
+
+int ModalWeakKeyConfirmationFlag = 1 ;
+int GetModalWeakKeyConfirmationFlag(void) { return ModalWeakKeyConfirmationFlag ; }
+void SetModalWeakKeyConfirmationFlag( const int flag ) { ModalWeakKeyConfirmationFlag = flag ; }
+
 // Flag permettant de desactiver la sauvegarde automatique des informations de connexion (user/password) Ã  la connexion SSH
 static int UserPassSSHNoSave = 0 ;
 int GetUserPassSSHNoSave(void) { return UserPassSSHNoSave ; }
