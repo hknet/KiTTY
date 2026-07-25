@@ -431,13 +431,115 @@ void ssh_conn_processed_data(Ssh *ssh);
 void ssh_sendbuffer_changed(Ssh *ssh);
 void ssh_check_frozen(Ssh *ssh);
 
-/* Functions to abort the connection, for various reasons. */
-void ssh_remote_error(Ssh *ssh, const char *fmt, ...) PRINTF_LIKE(2, 3);
+/* ----------------------------------------------------------------------
+ * Functions to terminate the connection, for various reasons. They
+ * all have similar API, but different semantics on the questions of
+ *  - do we send a DISCONNECT message to the server, complaining about
+ *    something it did that we didn't like?
+ *  - do we print an error message to the user, telling _them_ about
+ *    something we didn't like?
+ *  - do we consider the connection unsuccessful, and return a nonzero
+ *    exit status from Plink?
+ */
+
+/*
+ * ssh_remote_eof() terminates the connection with no error, because
+ * the other side closed the network connection (i.e. we received EOF
+ * when reading from the socket) under circumstances where we've set
+ * the expect_close flag to indicate that we think that's perfectly
+ * sensible. No error messages are sent anywhere (but we do log the
+ * closure in the Event Log).
+ *
+ * The main use of this termination function is in Uppity, because
+ * normally it's the client's decision to close the SSH connection.
+ * Uppity sets expect_close as soon as we're through initial
+ * connection setup.
+ *
+ * In client role, we expect that in normal situations we're the one
+ * closing the connection. But after we shutdown the socket to send
+ * outgoing EOF, we set expect_close to indicate that an incoming EOF
+ * in response is not an error.
+ */
 void ssh_remote_eof(Ssh *ssh, const char *fmt, ...) PRINTF_LIKE(2, 3);
-void ssh_proto_error(Ssh *ssh, const char *fmt, ...) PRINTF_LIKE(2, 3);
-void ssh_sw_abort(Ssh *ssh, const char *fmt, ...) PRINTF_LIKE(2, 3);
-void ssh_sw_abort_deferred(Ssh *ssh, const char *fmt, ...) PRINTF_LIKE(2, 3);
+
+/*
+ * ssh_user_close() is used to terminate the connection without error,
+ * on instructions _from the user_, or when we expect the user doesn't
+ * need to be told about it.
+ *
+ * For example, if the user aborts authentication by pressing ^C at a
+ * GUI password prompt, or refuses to accept the host key. In that
+ * situation we don't need to print an error message warning the user:
+ * the user already knows.
+ *
+ * This function is also used when _we_ close the network connection
+ * proactively, after our main login session is finished and there are
+ * no outstanding port forwardings or sharing downstreams. We expect
+ * that this is usually due to user action too (e.g. typing a logout
+ * command into the remote shell session), even if the user action was
+ * directed at the server rather than our own UI. In this situation
+ * the connection is 'without error' from the SSH point of view,
+ * though the exit status of Plink will typically pass on the exit
+ * code sent by the main session channel.
+ */
 void ssh_user_close(Ssh *ssh, const char *fmt, ...) PRINTF_LIKE(2, 3);
+
+/*
+ * ssh_proto_error() indicates that the server did something we didn't
+ * believe was correct. We notify the user, and also send an
+ * SSH_MSG_DISCONNECT to the server complaining about it. This is for
+ * errors that we believe came from the real server (decrypted and
+ * MACed successfully) but the server is confused in some way, like
+ * referring to a channel ID we don't believe exists.
+ */
+void ssh_proto_error(Ssh *ssh, const char *fmt, ...) PRINTF_LIKE(2, 3);
+
+/*
+ * ssh_sw_abort() is a connection abort in which we _don't_ send a
+ * DISCONNECT message to the server, but still present an error to the
+ * user. This can happen for multiple reasons.
+ *
+ * One reason is that we received something incorrect from the server,
+ * but unlike ssh_proto_error(), we think it doesn't make sense to
+ * send a polite DISCONNECT complaint. For example, a MAC fails to
+ * validate, suggesting that either someone hostile is attacking the
+ * connection or a key exchange has completed with the two sides
+ * disagreeing on the keys.
+ *
+ * Another is that something went wrong locally, preventing us from
+ * continuing the connection, but it's not anything that can be blamed
+ * on the server. For example, we tried to present an interactive
+ * authentication prompt to the user, but got an OS error while
+ * interacting with the terminal device.
+ */
+void ssh_sw_abort(Ssh *ssh, const char *fmt, ...) PRINTF_LIKE(2, 3);
+
+/*
+ * Finally, ssh_remote_error() terminates the connection because the
+ * server _sent_ us an error message - e.g. a DISCONNECT, or an
+ * unexpected EOF on the socket. In that situation there's no point
+ * sending an error message back _to_ the server - it already knows.
+ *
+ * This function is also used when the connection with the server was
+ * lost for unknown reasons, like an ECONNTIMEDOUT, in which case
+ * there's also no point telling the server, because we can't talk to
+ * it any more anyway.
+ */
+void ssh_remote_error(Ssh *ssh, const char *fmt, ...) PRINTF_LIKE(2, 3);
+
+/* ----------------------------------------------------------------------
+ * Wrappers on the above termination functions.
+ *
+ * ssh_sw_abort_deferred is a wrapper on ssh_sw_abort that schedules a
+ * toplevel callback to do the actual aborting, so that immediately
+ * after it returns the caller hasn't had anything freed out from
+ * under it.
+ *
+ * ssh_spr_close is called after an interactive prompt, and need to
+ * decide based on the SeatPromptResult which one of the above abort
+ * functions to call.
+ */
+void ssh_sw_abort_deferred(Ssh *ssh, const char *fmt, ...) PRINTF_LIKE(2, 3);
 void ssh_spr_close(Ssh *ssh, SeatPromptResult spr, const char *context);
 
 /* Bit positions in the SSH-1 cipher protocol word */
