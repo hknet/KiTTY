@@ -247,7 +247,7 @@ static bool ssh1_connection_filter_queue(struct ssh1_connection_state *s)
                 pktin->type == SSH1_MSG_CHANNEL_OPEN_FAILURE);
 
             if (!c || c->halfopen != expect_halfopen) {
-                ssh_remote_error(
+                ssh_proto_error(
                     s->ppl.ssh, "Received %s for %s channel %u",
                     ssh1_pkt_type(pktin->type),
                     !c ? "nonexistent" : c->halfopen ? "half-open" : "open",
@@ -319,7 +319,7 @@ static bool ssh1_connection_filter_queue(struct ssh1_connection_state *s)
               case SSH1_MSG_CHANNEL_CLOSE_CONFIRMATION:
                 if (!(c->closes & CLOSES_RCVD_CLOSECONF)) {
                     if (!(c->closes & CLOSES_SENT_CLOSE)) {
-                        ssh_remote_error(
+                        ssh_proto_error(
                             s->ppl.ssh,
                             "Received CHANNEL_CLOSE_CONFIRMATION for channel"
                             " %u for which we never sent CHANNEL_CLOSE\n",

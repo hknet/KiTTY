@@ -104,9 +104,9 @@ bool ssh1_handle_direction_specific_packet(
       case SSH1_SMSG_SUCCESS:
       case SSH1_SMSG_FAILURE:
         if (!s->succfail_head) {
-            ssh_remote_error(s->ppl.ssh,
-                             "Received %s with no outstanding request",
-                             ssh1_pkt_type(pktin->type));
+            ssh_proto_error(s->ppl.ssh,
+                            "Received %s with no outstanding request",
+                            ssh1_pkt_type(pktin->type));
             return true;
         }
 
