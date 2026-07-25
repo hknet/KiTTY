@@ -47,6 +47,10 @@ void StringList_Up(char **list, const char *name);   /* kitty_tools.c */
 void InitFolderList(void);                            /* kitty.c */
 void SaveFolderList(void);                            /* kitty.c */
 void CleanFolderName(char *folder);                   /* kitty_commun.c */
+/* Selects an editable combo's whole text so the next keystroke replaces it;
+ * see the implementation comment in windows/controls.c for why the field is
+ * not simply emptied instead. */
+void kitty_dlg_combobox_select_all(dlgcontrol *ctrl, dlgparam *dp);
 
 #define KITTY_LAUNCHER_REFRESH_MESSAGE "KiTTYLauncherRefreshSessionsAndHotkeys"
 
@@ -1168,6 +1172,12 @@ struct sessionsaver_data {
     char *searchfilter;     /* live type-to-search filter from saved-session edit */
     int suppress_edit_valchange; /* set while programmatically updating editbox */
     int suppress_list_selchange; /* set while programmatically selecting list rows */
+    int suppress_folder_valchange; /* set while programmatically updating folderlist */
+    int folder_new_selected;     /* the synthetic "<new folder...>" row is picked */
+    char *folder_at_load;        /* folder the loaded session came from, or NULL:
+                                  * Save only re-files when this changed */
+    int folder_action;           /* what ssd->createbutton currently does */
+    const char *folder_button_label; /* its current label, to avoid redundant sets */
     int initial_focus_set;
 #endif
 };
@@ -1193,6 +1203,7 @@ static void sessionsaver_data_free(void *ssdv)
 #ifdef MOD_PERSO
     sfree(ssd->newfolder);
     sfree(ssd->searchfilter);
+    sfree(ssd->folder_at_load);
 #endif
     sfree(ssd);
 }
@@ -1235,6 +1246,11 @@ static int sessionsaver_folder_visible_position(struct sessionsaver_data *ssd,
  * any, as this is done in more than one place below. Returns 0 for
  * failure.
  */
+#ifdef MOD_PERSO
+static void sessionsaver_switch_folder(struct sessionsaver_data *ssd,
+                                       dlgparam *dlg, const char *folder);
+#endif
+
 static bool load_selected_session(
     struct sessionsaver_data *ssd,
     dlgparam *dlg, Conf *conf, bool *maybe_launch)
@@ -1256,6 +1272,30 @@ static bool load_selected_session(
     i = selid;
     isdef = !strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION);
     load_settings(ssd->sesslist.sessions[i], conf);
+#ifdef MOD_PERSO
+    /* KiTTY: follow the loaded session into its folder, and remember which
+     * folder it arrived in. The folder combo is the list filter, but Save also
+     * uses it to file the session (it is the only way to move a session
+     * between folders), so the two must agree: without this, loading a session
+     * from a folder while viewing another one and pressing Save silently moved
+     * it. The remembered value is the guard - Save only rewrites the session's
+     * folder when the selection actually CHANGED after the load.
+     *
+     * "Default Settings" is exempt: the filter shows it under every folder, so
+     * it belongs to none, and following its (meaningless, but real) stored
+     * value would drag the view somewhere the user never chose. */
+    if (!GetPuttyFlag() && ssd->folderlist && !isdef) {
+        const char *fld = conf_get_str(conf, CONF_folder);
+        if (!fld || !*fld)
+            fld = "Default";
+        sessionsaver_switch_folder(ssd, dlg, fld);
+        sfree(ssd->folder_at_load);
+        ssd->folder_at_load = dupstr(fld);
+        ssd->folder_new_selected = 0;
+        sfree(ssd->newfolder);
+        ssd->newfolder = dupstr("");
+    }
+#endif
 #ifdef MOD_PERSO
     /* KiTTY: remember this as the last-loaded session (skip the default), so the
      * config box re-selects/auto-loads it next time it opens. */
@@ -1405,9 +1445,19 @@ static void sessionsaver_add_session_row(dlgcontrol *ctrl, dlgparam *dlg,
     char disp[700];
     const char *sessionname = ssd->sesslist.sessions[session_index];
     int og = kitty_session_origin(sessionname);
-    if (searching) {
-        char *fld = kitty_read_session_folder(sessionname);
-        const char *folder = (fld && *fld && strcmp(fld, "Default")) ? fld : "root";
+    /* Show which folder a session is in when the list is not already narrowed
+     * to one - inside a folder the bracket would just repeat the selection on
+     * every row. That means while searching (results come from everywhere),
+     * and in the root list, which shows EVERY session rather than only the
+     * unfiled ones. Searching keeps tagging unfiled sessions "[root]" so every
+     * result is accounted for; browsing the root leaves them bare, where the
+     * bracket is meant to point out the ones that live somewhere else. */
+    bool root_view = (!CurrentFolder[0] || !strcmp(CurrentFolder, "Default"));
+    char *fld = (searching || root_view) ?
+        kitty_read_session_folder(sessionname) : NULL;
+    bool filed = (fld && *fld && strcmp(fld, "Default"));
+    if (searching || filed) {
+        const char *folder = filed ? fld : "root";
         if (og == 0)
             snprintf(disp, sizeof(disp), "%s [%s]", sessionname, folder);
         else
@@ -1415,7 +1465,10 @@ static void sessionsaver_add_session_row(dlgcontrol *ctrl, dlgparam *dlg,
                      folder, og == 2 ? "PuTTY" : "old KiTTY");
         sfree(fld);
         dlg_listbox_addwithid(ctrl, dlg, disp, session_index);
-    } else if (og == 0) {
+        return;
+    }
+    sfree(fld);
+    if (og == 0) {
         dlg_listbox_addwithid(ctrl, dlg, sessionname, session_index);
     } else {
         snprintf(disp, sizeof(disp), "%s   (%s)", sessionname,
@@ -1438,35 +1491,238 @@ static void kitty_root_folder_cannot_delete(dlgparam *dlg)
                     MB_OK | MB_ICONINFORMATION);
 }
 
-static bool sessionsaver_select_folder_text(struct sessionsaver_data *ssd,
-                                            dlgparam *dlg, const char *text)
+/* KiTTY folder combo, three shared pieces:
+ *
+ * - "Default" is not a folder but the ROOT session list, and the filter paths
+ *   all key off strcmp(CurrentFolder, "Default"). Its LABEL is nevertheless
+ *   user-settable ([KiTTY] RootFolderLabel in kitty.ini) - display only, the
+ *   stored key stays "Default", so no comparison anywhere else changes.
+ * - a synthetic "<new folder...>" row makes creating a folder an explicit
+ *   choice instead of "type a name while something else is selected".
+ * - ssd->createbutton relabels itself to match what it will actually do.
+ */
+#define KITTY_ROOT_FOLDER_LABEL_DEFAULT "All sessions (root)"
+#define KITTY_NEW_FOLDER_ITEM           "<new folder...>"
+
+/* What ssd->createbutton does with the text currently in the combo. Creating
+ * has its own row, so a name typed over a SELECTION means "rename that", and
+ * only the synthetic row means "create". */
+#define KITTY_FOLDER_ACTION_NEW     0   /* create the typed folder */
+#define KITTY_FOLDER_ACTION_RELABEL 1   /* set the root list's display label */
+#define KITTY_FOLDER_ACTION_RENAME  2   /* rename the selected folder */
+
+static void kitty_get_root_folder_label(char *buf, size_t len)
+{
+    buf[0] = '\0';
+    if (ReadParameterN(INIT_SECTION, "RootFolderLabel", buf, len) == 0 ||
+        !buf[0]) {
+        strncpy(buf, KITTY_ROOT_FOLDER_LABEL_DEFAULT, len - 1);
+        buf[len - 1] = '\0';
+    }
+}
+
+/* Names that may not become a folder, nor the root label: they either ARE the
+ * root list under one of its spellings, or they are the synthetic create row. */
+static bool kitty_folder_name_reserved(const char *name)
+{
+    char rootlabel[256];
+    kitty_get_root_folder_label(rootlabel, sizeof(rootlabel));
+    return !stricmp(name, "Default") || !stricmp(name, "All sessions") ||
+        !stricmp(name, KITTY_ROOT_FOLDER_LABEL_DEFAULT) ||
+        !stricmp(name, "root") || !stricmp(name, rootlabel) ||
+        !stricmp(name, KITTY_NEW_FOLDER_ITEM);
+}
+
+/* How many saved sessions sit in a folder. Entry 0, the "Default Settings"
+ * pseudo-session, is not one of them: the filter shows it under every folder,
+ * so it belongs to none, and counting it would tell the user a folder holds
+ * one more session than it does. It is still CLEARED by the move below, since
+ * a stored folder on it feeds the folder-list rebuild.
+ *
+ * Membership is read with kitty_read_session_folder(), which looks in the
+ * PRIMARY hive only - so sessions living solely in a legacy hive are never
+ * members of anything, and the rewrite below never has to touch a hive we
+ * treat as read-only. See design/TASK_folder_rename.md. */
+static int sessionsaver_folder_member_count_of(struct sessionsaver_data *ssd,
+                                               const char *folder)
+{
+    int i, n = 0;
+    if (!folder || !folder[0] || !strcmp(folder, "Default"))
+        return 0;
+    for (i = 0; i < ssd->sesslist.nsessions; i++) {
+        char *fld;
+        if (!strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION))
+            continue;                      /* belongs to no folder; see above */
+        fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
+        if (fld && !strcmp(fld, folder))
+            n++;
+        sfree(fld);
+    }
+    return n;
+}
+
+static int sessionsaver_folder_member_count(struct sessionsaver_data *ssd)
+{
+    return sessionsaver_folder_member_count_of(ssd, CurrentFolder);
+}
+
+/* Move every session in `from` to `to` ("Default" = the root list), by
+ * rewriting just their "Folder" value. open_settings_w() updates in place in
+ * both backends - the registry key keeps every value we do not write, and the
+ * portable backend preloads the session file first - so this is a surgical
+ * edit, not a load/save round trip: no password re-wrap, no conf
+ * normalisation, nothing else touched.
+ *
+ * Returns the number moved, or -1 on failure (with dlg_error_msg already
+ * shown). A partial failure leaves the sessions already moved in `to`; the
+ * caller must NOT then drop `from` from the folder list, or the stragglers
+ * would resurrect it anyway on the next rebuild. */
+static int sessionsaver_move_folder_sessions(struct sessionsaver_data *ssd,
+                                             dlgparam *dlg,
+                                             const char *from, const char *to)
+{
+    int i, moved = 0;
+    for (i = 0; i < ssd->sesslist.nsessions; i++) {
+        const char *sess = ssd->sesslist.sessions[i];
+        bool isdef = !strcmp(sess, KITTY_DEFAULT_SESSION);
+        const char *dest = isdef ? "Default" : to;
+        char *fld = kitty_read_session_folder(sess);
+        int match = (fld && !strcmp(fld, from));
+        char *errmsg = NULL;
+        settings_w *w;
+        sfree(fld);
+        if (!match)
+            continue;
+        /* "Default Settings" is never carried into the new folder - it belongs
+         * to none. Clearing it here is also what removes folder ghosts left by
+         * earlier versions, which silently kept renamed/deleted folders alive. */
+        w = open_settings_w(sess, &errmsg);
+        if (!w) {
+            char msg[512];
+            snprintf(msg, sizeof(msg),
+                     "Could not update session \"%s\":\n%s", sess,
+                     errmsg ? errmsg : "unknown error");
+            sfree(errmsg);
+            dlg_error_msg(dlg, msg);
+            return -1;
+        }
+        write_setting_s(w, "Folder", dest);
+        close_settings_w(w);
+        if (!isdef)
+            moved++;
+    }
+    return moved;
+}
+
+static bool sessionsaver_folder_exists(const char *name)
 {
     int i;
-    if (!text || !*text)
+    for (i = 0; FolderList && FolderList[i] != NULL; i++)
+        if (FolderList[i][0] && !stricmp(FolderList[i], name))
+            return true;
+    return false;
+}
+
+/* A name typed over the current selection renames it - the root list's label
+ * if that is what is selected, otherwise the folder itself. Only the synthetic
+ * row creates. Recomputed wherever the button is refreshed, so it can never
+ * advertise an action that no longer applies. */
+static void sessionsaver_recompute_folder_action(struct sessionsaver_data *ssd)
+{
+    bool pending = ssd->newfolder && ssd->newfolder[0];
+    bool root_sel = (!CurrentFolder[0] || !strcmp(CurrentFolder, "Default"));
+    if (ssd->folder_new_selected || !pending)
+        ssd->folder_action = KITTY_FOLDER_ACTION_NEW;
+    else
+        ssd->folder_action = root_sel ? KITTY_FOLDER_ACTION_RELABEL :
+            KITTY_FOLDER_ACTION_RENAME;
+}
+
+/* Deleting a folder that still holds sessions: ask, then empty it by moving
+ * them to the root list. Returns true if the folder is now empty and the
+ * caller may drop it. */
+static bool sessionsaver_confirm_empty_folder(struct sessionsaver_data *ssd,
+                                              dlgparam *dlg)
+{
+    int n = sessionsaver_folder_member_count(ssd);
+    char msg[512];
+    if (n == 1)
+        snprintf(msg, sizeof(msg),
+                 "\"%s\" contains one session.\n\n"
+                 "Delete the folder and move the session to the root list?\n"
+                 "The session itself is kept.", CurrentFolder);
+    else
+        snprintf(msg, sizeof(msg),
+                 "\"%s\" contains %d sessions.\n\n"
+                 "Delete the folder and move the sessions to the root list?\n"
+                 "The sessions themselves are kept.", CurrentFolder, n);
+    if (MessageBoxA(dlg->hwnd, msg, "KiTTY",
+                    MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES)
         return false;
+    return sessionsaver_move_folder_sessions(ssd, dlg, CurrentFolder,
+                                             "Default") >= 0;
+}
+
+static void sessionsaver_update_folder_button(struct sessionsaver_data *ssd,
+                                              dlgparam *dlg)
+{
+    const char *label;
+    sessionsaver_recompute_folder_action(ssd);
+    if (!ssd->createbutton)          /* midsession / stock variants */
+        return;
+    /* Keep these SHORT: the button shares a 75/25 row with the combo, and
+     * anything longer than "New folder" overflows its width. */
+    label = (ssd->folder_action == KITTY_FOLDER_ACTION_NEW) ?
+        "New folder" : "Rename";
+    if (ssd->folder_button_label == label)
+        return;                      /* both are literals; no repaint needed */
+    dlg_label_change(ssd->createbutton, dlg, label);
+    ssd->folder_button_label = label;
+}
+
+/* Which FolderList entry does this text name, or -1? Matching is loose (case
+ * insensitive) because it exists to let people SELECT a folder by typing.
+ *
+ * root_alias says whether the root list's built-in spellings ("root", "All
+ * sessions", "All sessions (root)") count as naming it. They must NOT when the
+ * root list is already selected: there, typing one of them is how you rename
+ * its label back to the default, and treating it as "you selected the root
+ * again" made the default the one name you could never type. */
+static int sessionsaver_folder_index_for_text(const char *text, bool root_alias)
+{
+    int i;
+    char rootlabel[256];
+    if (!text || !*text)
+        return -1;
+    kitty_get_root_folder_label(rootlabel, sizeof(rootlabel));
     for (i = 0; FolderList && FolderList[i] != NULL; i++) {
-        const char *disp;
+        bool is_root;
         if (!FolderList[i][0])
             continue;
-        disp = !strcmp(FolderList[i], "Default") ?
-            "All sessions (root)" : FolderList[i];
-        if (!stricmp(text, FolderList[i]) || !stricmp(text, disp) ||
-            (!stricmp(FolderList[i], "Default") &&
-             (!stricmp(text, "root") || !stricmp(text, "All sessions")))) {
-            if (strcmp(CurrentFolder, FolderList[i])) {
-                strncpy(CurrentFolder, FolderList[i], 1023);
-                CurrentFolder[1023] = '\0';
-                kitty_set_last_folder(CurrentFolder);
-                sfree(ssd->searchfilter);
-                ssd->searchfilter = dupstr("");
-                dlg_refresh(ssd->listbox, dlg);
-                if (ssd->commentbox)
-                    dlg_refresh(ssd->commentbox, dlg);
-            }
-            return true;
-        }
+        is_root = !strcmp(FolderList[i], "Default");
+        if (!stricmp(text, FolderList[i]) ||
+            (is_root && root_alias && !stricmp(text, rootlabel)) ||
+            (is_root && root_alias &&
+             (!stricmp(text, KITTY_ROOT_FOLDER_LABEL_DEFAULT) ||
+              !stricmp(text, "root") || !stricmp(text, "All sessions"))))
+            return i;
     }
-    return false;
+    return -1;
+}
+
+static void sessionsaver_switch_folder(struct sessionsaver_data *ssd,
+                                       dlgparam *dlg, const char *folder)
+{
+    if (!strcmp(CurrentFolder, folder))
+        return;
+    strncpy(CurrentFolder, folder, 1023);
+    CurrentFolder[1023] = '\0';
+    kitty_set_last_folder(CurrentFolder);
+    sfree(ssd->searchfilter);
+    ssd->searchfilter = dupstr("");
+    dlg_refresh(ssd->listbox, dlg);
+    if (ssd->commentbox)
+        dlg_refresh(ssd->commentbox, dlg);
 }
 #endif
 
@@ -1576,18 +1832,45 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
         }
 #ifdef MOD_PERSO
         else if (ssd->folderlist && ctrl == ssd->folderlist) {
-            int i, sel = -1, pos = 0;
+            /* Row 0 is the synthetic create row (id -1, never looked up); the
+             * real folders follow, so a folder's row is its position + 1. */
+            int i, sel = -1, pos = 1;
+            char rootlabel[256];
+            kitty_get_root_folder_label(rootlabel, sizeof(rootlabel));
             dlg_update_start(ctrl, dlg);
             dlg_listbox_clear(ctrl, dlg);
+            if (ssd->createbutton)      /* creating needs the button to exist */
+                dlg_listbox_addwithid(ctrl, dlg, KITTY_NEW_FOLDER_ITEM, -1);
+            else
+                pos = 0;
             for (i = 0; FolderList && FolderList[i] != NULL; i++)
                 if (FolderList[i][0]) {
-                    const char *disp = !strcmp(FolderList[i], "Default") ? "All sessions (root)" : FolderList[i];
+                    const char *disp = !strcmp(FolderList[i], "Default") ?
+                        rootlabel : FolderList[i];
                     dlg_listbox_addwithid(ctrl, dlg, disp, i);
                     if (!strcmp(FolderList[i], CurrentFolder)) sel = pos;
                     pos++;
                 }
             dlg_update_done(ctrl, dlg);
-            if (sel >= 0) dlg_listbox_select(ctrl, dlg, sel);
+            /* Selecting a row writes it into the edit half, which fires a
+             * re-entrant VALCHANGE; suppress it so a refresh never looks like
+             * the user typing.
+             *
+             * A typed-but-not-yet-applied name SURVIVES the refresh. Losing
+             * focus fires CBN_KILLFOCUS -> EVENT_REFRESH (windows/controls.c),
+             * so re-selecting the row here would wipe what the user typed while
+             * ssd->newfolder still held it - the button would then act on a
+             * name no longer visible anywhere, which is exactly the confusion
+             * this rework removes. Keep text and pending state in agreement. */
+            ssd->suppress_folder_valchange++;
+            if (ssd->newfolder && ssd->newfolder[0])
+                dlg_editbox_set(ctrl, dlg, ssd->newfolder);
+            else if (ssd->folder_new_selected && ssd->createbutton)
+                dlg_listbox_select(ctrl, dlg, 0);   /* stay on the create row */
+            else if (sel >= 0)
+                dlg_listbox_select(ctrl, dlg, sel);
+            ssd->suppress_folder_valchange--;
+            sessionsaver_update_folder_button(ssd, dlg);
         }
         else if (ssd->commentbox && ctrl == ssd->commentbox) {
             update_comment_display(ssd, dlg);
@@ -1641,11 +1924,57 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
         }
 #ifdef MOD_PERSO
         else if (ssd->folderlist && ctrl == ssd->folderlist) {
-            char *text = dlg_editbox_get(ctrl, dlg);
-            if (!sessionsaver_select_folder_text(ssd, dlg, text)) {
+            char *text;
+            if (ssd->suppress_folder_valchange)
+                return;              /* our own dlg_listbox_select/editbox_set */
+            text = dlg_editbox_get(ctrl, dlg);
+            if (ssd->createbutton && !strcmp(text, KITTY_NEW_FOLDER_ITEM)) {
+                /* The synthetic create row: select its label so the first
+                 * keystroke replaces it. Nothing pending until then - the
+                 * label itself is never treated as a folder name. */
+                ssd->folder_new_selected = 1;
                 sfree(ssd->newfolder);
-                ssd->newfolder = dupstr(text);
+                ssd->newfolder = dupstr("");
+                ssd->suppress_folder_valchange++;
+                kitty_dlg_combobox_select_all(ctrl, dlg);
+                ssd->suppress_folder_valchange--;
+            } else {
+                /* Compare against what the combo currently DISPLAYS, exactly:
+                 * anything else - including a change of case only - is a name
+                 * the user wants to act on, not the selection they already had.
+                 */
+                bool root_sel = (!CurrentFolder[0] ||
+                                 !strcmp(CurrentFolder, "Default"));
+                char rootlabel[256];
+                const char *curdisp;
+                int idx;
+                kitty_get_root_folder_label(rootlabel, sizeof(rootlabel));
+                curdisp = root_sel ? rootlabel : CurrentFolder;
+                idx = strcmp(text, curdisp) ?
+                    sessionsaver_folder_index_for_text(text, !root_sel) : -2;
+                if (idx >= 0 && !strcmp(FolderList[idx], CurrentFolder))
+                    idx = -1;    /* a different spelling of what is selected is
+                                  * a rename of it, not a re-selection of it */
+                if (idx == -2) {
+                    /* Unchanged. Clear any pending name: this used to be left
+                     * set, so text that was typed and then reverted (e.g. the
+                     * combo restoring the selection on focus change) was still
+                     * acted on by the button, under a name no longer visible
+                     * anywhere. */
+                    ssd->folder_new_selected = 0;
+                    sfree(ssd->newfolder);
+                    ssd->newfolder = dupstr("");
+                } else if (idx >= 0) {
+                    sessionsaver_switch_folder(ssd, dlg, FolderList[idx]);
+                    ssd->folder_new_selected = 0;
+                    sfree(ssd->newfolder);
+                    ssd->newfolder = dupstr("");
+                } else {
+                    sfree(ssd->newfolder);
+                    ssd->newfolder = dupstr(text);
+                }
             }
+            sessionsaver_update_folder_button(ssd, dlg);   /* recomputes first */
             sfree(text);
         }
     } else if (event == EVENT_SELCHANGE && ctrl == ssd->listbox) {
@@ -1711,9 +2040,29 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             }
             {
 #ifdef MOD_PERSO
-                if (!GetPuttyFlag() && ssd->folderlist)
-                    conf_set_str(conf, CONF_folder,
-                                 (!CurrentFolder[0] ? "Default" : CurrentFolder));
+                /* Which folder does this save file the session under?
+                 *
+                 * The folder combo is the list filter, so it must NOT quietly
+                 * re-file a session just because of what was being viewed:
+                 * loading a session from one folder while looking at another
+                 * and pressing Save used to move it. It is however the only
+                 * way to move a session between folders, so a selection the
+                 * user CHANGED after loading still counts as "put it there".
+                 *
+                 * "Default Settings" is never filed anywhere: the filter shows
+                 * it under every folder, so a stored folder on it is invisible
+                 * yet still feeds the folder-list rebuild, which resurrects
+                 * deleted and renamed folders. Normalising it here also clears
+                 * any such value left by earlier versions. */
+                if (!GetPuttyFlag() && ssd->folderlist) {
+                    const char *cur = !CurrentFolder[0] ? "Default" : CurrentFolder;
+                    if (isdef)
+                        conf_set_str(conf, CONF_folder, "Default");
+                    else if (!ssd->folder_at_load ||
+                             strcmp(cur, ssd->folder_at_load))
+                        conf_set_str(conf, CONF_folder, cur);
+                    /* else: keep the folder the session was loaded with */
+                }
 #endif
                 char *errmsg = save_settings(ssd->savedsession, conf);
                 if (errmsg) {
@@ -1754,15 +2103,95 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
 #ifdef MOD_PERSO
         } else if (!ssd->midsession &&
                    ssd->createbutton && ctrl == ssd->createbutton) {
-            /* New folder: name comes from the explicit Folder name edit box,
-             * not from the Saved Sessions field (which normally contains the
-             * session name). StringList_Add dedupes internally. */
-            if (ssd->newfolder && ssd->newfolder[0]) {
+            /* Dual-purpose button - its label always says which one applies
+             * (sessionsaver_update_folder_button). The name comes from the
+             * folder combo's edit half, never from the Saved Sessions field
+             * (which holds the session name). */
+            if (!ssd->newfolder || !ssd->newfolder[0]) {
+                dlg_beep(dlg);
+            } else if (ssd->folder_action == KITTY_FOLDER_ACTION_RELABEL) {
+                /* Rename the ROOT LIST'S LABEL only. Display-only: the stored
+                 * folder key stays "Default", so nothing that filters on it
+                 * changes. Not run through CleanFolderName - it is never used
+                 * as a folder name, let alone a directory name. */
+                char label[256];
+                strncpy(label, ssd->newfolder, sizeof(label)-1);
+                label[sizeof(label)-1] = '\0';
+                if (!stricmp(label, KITTY_ROOT_FOLDER_LABEL_DEFAULT) ||
+                    !stricmp(label, "All sessions") ||
+                    !stricmp(label, "root")) {
+                    /* Typing the built-in name back RESTORES the default label.
+                     * Without this the reserved-name check below would make the
+                     * default the one name you could never return to once you
+                     * had renamed it. Stored empty = "use the default". */
+                    char reset[1] = "";
+                    WriteParameter(INIT_SECTION, "RootFolderLabel", reset);
+                    sfree(ssd->newfolder);
+                    ssd->newfolder = dupstr("");
+                    dlg_refresh(ssd->folderlist, dlg);
+                } else if (!stricmp(label, "Default") ||
+                           !stricmp(label, KITTY_NEW_FOLDER_ITEM)) {
+                    /* NOT the full reserved-name check: that one also refuses
+                     * the current label, which would block re-casing it
+                     * ("Alle Sessions" -> "alle sessions"). */
+                    dlg_error_msg(dlg, "That name is reserved.");
+                } else if (sessionsaver_folder_exists(label)) {
+                    dlg_error_msg(dlg, "A folder of that name already exists.");
+                } else {
+                    WriteParameter(INIT_SECTION, "RootFolderLabel", label);
+                    sfree(ssd->newfolder);
+                    ssd->newfolder = dupstr("");
+                    dlg_refresh(ssd->folderlist, dlg);
+                }
+            } else if (ssd->folder_action == KITTY_FOLDER_ACTION_RENAME) {
+                /* Rename the selected folder. A folder is not a container:
+                 * membership is the "Folder" value of each session, and
+                 * InitFolderList() rebuilds the folder set from the Folders
+                 * value PLUS a scan of those values. So the members must be
+                 * rewritten FIRST - renaming only the list entry would be
+                 * undone by the very next rebuild. */
+                char folder[1024], old[1024];
+                strncpy(folder, ssd->newfolder, sizeof(folder)-1);
+                folder[sizeof(folder)-1] = '\0';
+                CleanFolderName(folder);
+                strncpy(old, CurrentFolder, sizeof(old)-1);
+                old[sizeof(old)-1] = '\0';
+                if (!folder[0]) {
+                    dlg_beep(dlg);
+                } else if (kitty_folder_name_reserved(folder)) {
+                    dlg_error_msg(dlg, "That name is reserved for the root session list.");
+                } else if (stricmp(folder, old) && sessionsaver_folder_exists(folder)) {
+                    dlg_error_msg(dlg, "A folder of that name already exists.");
+                } else if (sessionsaver_move_folder_sessions(ssd, dlg, old,
+                                                             folder) >= 0) {
+                    InitFolderList();
+                    StringList_Del(FolderList, old);
+                    StringList_Add(FolderList, folder);
+                    SaveFolderList();
+                    strncpy(CurrentFolder, folder, 1023);
+                    CurrentFolder[1023] = '\0';
+                    kitty_set_last_folder(CurrentFolder);
+                    /* The loaded session, if it was in the renamed folder,
+                     * must follow it or the next Save would put it back under
+                     * the old name. */
+                    if (!strcmp(conf_get_str(conf, CONF_folder), old))
+                        conf_set_str(conf, CONF_folder, folder);
+                    sfree(ssd->newfolder);
+                    ssd->newfolder = dupstr("");
+                    ssd->folder_new_selected = 0;
+                    dlg_refresh(ssd->folderlist, dlg);
+                    dlg_refresh(ssd->listbox, dlg);
+                    kitty_notify_launcher_sessions_changed();
+                }
+            } else {
+                /* Create. StringList_Add dedupes internally. */
                 char folder[1024];
                 strncpy(folder, ssd->newfolder, sizeof(folder)-1);
                 folder[sizeof(folder)-1] = '\0';
                 CleanFolderName(folder);
-                if (!stricmp(folder, "Default") || !stricmp(folder, "All sessions") || !stricmp(folder, "All sessions (root)") || !stricmp(folder, "root")) {
+                if (!folder[0]) {
+                    dlg_beep(dlg);
+                } else if (kitty_folder_name_reserved(folder)) {
                     dlg_error_msg(dlg, "That name is reserved for the root session list.");
                 } else {
                     InitFolderList();
@@ -1771,19 +2200,36 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     strncpy(CurrentFolder, folder, 1023);
                     CurrentFolder[1023] = '\0';
                     kitty_set_last_folder(CurrentFolder);
+                    /* The new folder is now the SELECTION, not a pending
+                     * create: clear the pending name so the refresh below
+                     * selects its row instead of restoring typed text, and so
+                     * a second click can't act on it again. */
                     sfree(ssd->newfolder);
-                    ssd->newfolder = dupstr(folder);
+                    ssd->newfolder = dupstr("");
+                    ssd->folder_new_selected = 0;
+                    ssd->folder_action = KITTY_FOLDER_ACTION_NEW;
                     dlg_refresh(ssd->folderlist, dlg);
                     dlg_refresh(ssd->listbox, dlg);
                 }
-            } else {
-                dlg_beep(dlg);
             }
         } else if (!ssd->midsession &&
                    ssd->delfolderbutton && ctrl == ssd->delfolderbutton) {
             /* Delete the currently selected folder. */
             if (!CurrentFolder[0] || !strcmp(CurrentFolder, "Default")) {
                 kitty_root_folder_cannot_delete(dlg);
+            } else if (sessionsaver_folder_member_count(ssd) > 0 ?
+                       !sessionsaver_confirm_empty_folder(ssd, dlg) :
+                       /* No members, but "Default Settings" may still carry
+                        * this folder - invisible in the UI, yet enough to
+                        * rebuild the folder straight back. Clear it. */
+                       sessionsaver_move_folder_sessions(ssd, dlg,
+                                                         CurrentFolder,
+                                                         "Default") < 0) {
+                /* Declined, or the rewrite failed - either way the folder
+                 * keeps something pointing at it and must NOT be dropped from
+                 * the list: a folder is not a container, so InitFolderList()
+                 * would rebuild it from those "Folder" values and the delete
+                 * would only look like it worked. */
             } else {
                 StringList_Del(FolderList, CurrentFolder);
                 SaveFolderList();
@@ -2958,8 +3404,10 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
     ctrl_columns(s, 2, 75, 25);
     /* Folder selector + create button share their own synchronized row. */
 #ifdef MOD_PERSO
-    /* KiTTY: editable folder selector. Selecting filters the list; typing a new
-     * name and pressing New folder creates/selects it. */
+    /* KiTTY: editable folder selector. Selecting a folder filters the list.
+     * Creating one is an explicit choice - pick the synthetic "<new folder...>"
+     * row, type the name, press New folder. With the root list selected instead,
+     * a typed name renames its LABEL (display only) and the button says so. */
     if (!GetPuttyFlag()) {
         ssd->folderlist = ctrl_combobox(s, NULL, NO_SHORTCUT, 100,
                                         HELPCTX(session_saved),
@@ -3107,25 +3555,42 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
         ctrl_checkbox(s, "Remember window position (per monitor layout)", NO_SHORTCUT,
                       HELPCTX(no_help), conf_checkbox_handler,
                       I(CONF_remember_winpos));
-        /* KiTTY: on startup, check GitHub for a newer release and show a one-line
-         * notice in the terminal when a session opens. */
+    }
+
+    /* KiTTY: settings about the APPLICATION rather than this connection, in
+     * their own box so they stop reading as session options. They ended up on
+     * the Session panel because there is nowhere else for app-wide settings
+     * yet; the planned kitty-settings page is their proper home.
+     *
+     * NOTE the two are not alike underneath: the foreign-session toggle is
+     * genuinely global (straight to storage, immediate effect), while
+     * "Check for updates" is still CONF_check_update_startup - saved into each
+     * session and read from the session's conf when its window opens. Hence the
+     * neutral "Application" title rather than a claim about how they are
+     * stored. Making update-check truly global is a compat change (every saved
+     * session already carries CheckUpdateStartup) and is parked for the
+     * kitty-settings page. */
+    if (!GetPuttyFlag()) {
+        s = ctrl_getset(b, "Session", "kittyapp", "Application");
+        /* On startup, check for a newer release and show a one-line notice in
+         * the terminal when a session opens. */
         ctrl_checkbox(s, "Check for updates", NO_SHORTCUT,
                       HELPCTX(no_help), conf_checkbox_handler,
                       I(CONF_check_update_startup));
-    }
-    {
-        extern int GetIniFileFlag(void);       /* kitty_commun.c (SAVEMODE_REG/FILE/DIR) */
-        extern int kitty_has_foreign_sessions(void); /* windows/storage.c */
-        /* Registry-only, and only when there is actually an old 9bis-KiTTY /
-         * stock-PuTTY hive with sessions to reveal (a no-op portable, pointless
-         * on a machine that never had old KiTTY or PuTTY). Placed LAST so
-         * portable mode / a clean machine, where it is hidden, ends cleanly on
-         * the checkbox above with no gap. */
-        if (!GetPuttyFlag() && GetIniFileFlag() == 0 /* SAVEMODE_REG */ &&
-            kitty_has_foreign_sessions()) {
-            ctrl_checkbox(s, "show / edit / delete old putty/kitty sessions",
-                          NO_SHORTCUT, HELPCTX(no_help),
-                          kitty_showforeign_handler, P(ssd));
+        {
+            extern int GetIniFileFlag(void);   /* kitty_commun.c (SAVEMODE_REG/FILE/DIR) */
+            extern int kitty_has_foreign_sessions(void); /* windows/storage.c */
+            /* Registry-only, and only when there is actually an old 9bis-KiTTY /
+             * stock-PuTTY hive with sessions to reveal (a no-op portable,
+             * pointless on a machine that never had old KiTTY or PuTTY). Last
+             * in the box so that when it is hidden the box still ends cleanly
+             * on the checkbox above, with no gap. */
+            if (GetIniFileFlag() == 0 /* SAVEMODE_REG */ &&
+                kitty_has_foreign_sessions()) {
+                ctrl_checkbox(s, "show / edit / delete old putty/kitty sessions",
+                              NO_SHORTCUT, HELPCTX(no_help),
+                              kitty_showforeign_handler, P(ssd));
+            }
         }
     }
 #endif

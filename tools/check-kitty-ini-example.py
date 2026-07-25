@@ -48,7 +48,8 @@ def source_options() -> set[tuple[str, str]]:
     files = list((ROOT / "kitty").glob("*.c")) + list((ROOT / "windows").glob("*.c"))
     for path in files:
         text = read_text(path)
-        for key in re.findall(r'ReadParameter\s*\(\s*INIT_SECTION\s*,\s*"([^"]+)"', text):
+        # ReadParameterN is the size-checked variant of the same call.
+        for key in re.findall(r'ReadParameterN?\s*\(\s*INIT_SECTION\s*,\s*"([^"]+)"', text):
             opts.add(("KiTTY", key))
         for m in re.finditer(r'readINI\s*\([^;\n]*?"([^"]+)"\s*,\s*"([^"]+)"', text):
             section, key = m.groups()

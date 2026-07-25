@@ -92,6 +92,16 @@
 ; Folders: legacy session-folder cache, managed by KiTTY; edit only for recovery/debugging
 ;Folders=
 
+; RootFolderLabel: what the configuration box's folder selector calls the root
+;    session list (the sessions that are in no folder). Display only - that
+;    folder is always stored as "Default", so renaming the label changes no
+;    session and no saved setting. Normally set from the config box itself:
+;    select the root list, type a new name over its label, press Rename; typing
+;    the built-in name back restores it. Like Folders, this is stored in
+;    whichever backend your save mode uses - the registry in registry mode,
+;    this file in file/dir mode.
+;RootFolderLabel=All sessions (root)
+
 ; cryptsalt: set salt mode for password encryption 
 ;cryptsalt=1
 

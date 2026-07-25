@@ -35,6 +35,7 @@ one is available.
   - [Force CR/LF on the Enter key](#force-crlf-on-the-enter-key)
   - [Run a locally saved script on a remote session](#run-a-locally-saved-script-on-a-remote-session)
   - [Standard output to the clipboard](#standard-output-to-the-clipboard)
+  - [Restricted process ACL (-restrict-acl)](#restricted-process-acl--restrict-acl)
 - **Graphical features**
   - [An icon for each session](#an-icon-for-each-session)
   - [Send to tray](#send-to-tray)
@@ -70,9 +71,9 @@ one is available.
 
 ### Sessions filter (folders)
 
-If you manage a large number of saved sessions, KiTTY lets you organize them into folders, for example one folder per machine, per environment, or per type of application. A dropdown in the Session panel lets you pick a folder so the saved-session list shows only the sessions it contains, making a long list far easier to navigate. You can also filter the visible list as you type in the Saved Sessions field; prefix and token matches are ranked before substring matches, and folder names are shown in brackets while searching.
+If you manage a large number of saved sessions, KiTTY lets you organize them into folders, for example one folder per machine, per environment, or per type of application. A dropdown in the Session panel lets you pick a folder so the saved-session list shows only the sessions it contains, making a long list far easier to navigate. You can also filter the visible list as you type in the Saved Sessions field; prefix and token matches are ranked before substring matches, and folder names are shown in brackets while searching. The root list shows every session, so there each one that lives in a folder is marked with it in brackets; sessions in no folder are left unmarked.
 
-**How to enable:** Automatic in KiTTY mode: the Session panel shows a **Folder** dropdown that filters the saved-session list to one folder, plus New folder / Delete folder controls. Create a folder by typing its name and clicking *New folder*. To search within the active folder filter, type in the Saved Sessions field; Up/Down moves into the filtered list and Enter loads or starts the highlighted visible session. Press **Ctrl+F** anywhere in the config window — from any settings panel, or right after starting a session with Enter — to jump back to the Session panel with the search field focused and its content selected, so just typing starts a new search. The two buttons differ in where the session opens: clicking **Open** opens the chosen session in the current window (the config box closes), while **Start** — like pressing Enter — starts it in a new window and keeps the config box open for launching the next one. If you prefer the classic behaviour where typing never narrows the list, set `filter=no` in the kitty.ini `[ConfigBox]` section.
+**How to enable:** Automatic in KiTTY mode: the Session panel shows a **Folder** dropdown that filters the saved-session list to one folder, plus New folder / Delete folder controls. To create a folder, pick the **`<new folder...>`** entry at the top of the dropdown, type the name, and click *New folder*. To rename a folder, select it, type the new name over it, and click *Rename* — the button renames itself to say so. The sessions in it move with it. Deleting a folder that still contains sessions asks first, and moves them to the root list rather than deleting them. Sessions that are in no folder live in the root list, shown as **All sessions (root)** — that is not a folder and cannot be deleted, but you can rename what it is called: select it, type your own name over the label, and the button changes to *Rename* to confirm what will happen. Typing the built-in name back restores it. The new name is cosmetic, so no session or setting is moved or changed by it (it is stored as `RootFolderLabel`, in the registry or in kitty.ini's `[KiTTY]` section depending on your save mode). To search within the active folder filter, type in the Saved Sessions field; Up/Down moves into the filtered list and Enter loads or starts the highlighted visible session. Press **Ctrl+F** anywhere in the config window — from any settings panel, or right after starting a session with Enter — to jump back to the Session panel with the search field focused and its content selected, so just typing starts a new search. The two buttons differ in where the session opens: clicking **Open** opens the chosen session in the current window (the config box closes), while **Start** — like pressing Enter — starts it in a new window and keeps the config box open for launching the next one. If you prefer the classic behaviour where typing never narrows the list, set `filter=no` in the kitty.ini `[ConfigBox]` section.
 
 ![Sessions filter (folders)](docs/features/img/config_folder.jpg)
 
@@ -321,6 +322,14 @@ KiTTY can route a session's terminal output straight into the Windows clipboard.
 **How to enable:** Pick **'Windows clipboard'** as the printer in **Terminal > printing** (or tick *Print to clipboard*). Then send terminal output to the clipboard with the ANSI printer-controller sequence: `printf '\e[5i'; cat file; printf '\e[4i'`.
 
 ![Standard output to the clipboard](docs/features/img/StdoutToClipboard.png)
+
+### Restricted process ACL (-restrict-acl)
+
+Inherited from PuTTY: starting KiTTY with the `-restrict-acl` command-line option locks down the Windows process ACL, so other programs running under the same user account cannot open the KiTTY process (for example to read its memory, which holds session passwords while connected). Every window KiTTY spawns from such a process — sessions started from the configuration box, duplicates, "open new with current settings" — inherits the restriction. `kageant` and `kittygen` accept the option too. Be aware of the trade-offs before enabling it: the lockdown also blocks legitimate same-user tooling such as screen readers and other accessibility or automation software, and during an in-place MSI upgrade the Windows Restart Manager cannot inspect restricted windows, so the installer reports *"a critical application holds files in use"*, offers no close-and-restart handling and simply closes the windows. Up to and including 0.84.1.60, sessions spawned from the configuration box ran with this restriction unintentionally — always, regardless of options; since 0.84.1.61 it applies only when requested.
+
+**How to enable:** off by default. Add `-restrict-acl` to the command line, typically in your shortcut target: `"C:\Program Files\KiTTY\kitty.exe" -restrict-acl` (with the launcher: `kitty.exe -restrict-acl -launcher`).
+
+(no screenshot)
 
 ---
 

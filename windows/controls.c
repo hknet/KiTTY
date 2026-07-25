@@ -2421,6 +2421,27 @@ void dlg_text_set(dlgcontrol *ctrl, dlgparam *dp, char const *text)
     SetDlgItemText(dp->hwnd, c->base_id, text);
 }
 
+/*
+ * KiTTY: select the whole of an editable combo box's text, so the next
+ * keystroke replaces it.
+ *
+ * Used for the folder selector's synthetic "<new folder...>" row: landing on
+ * it must leave the field ready to type a new name over. Emptying the field
+ * instead is not an option - the text can only be kept empty by also dropping
+ * the list selection (CB_SETCURSEL -1), because while an item stays selected
+ * the combo re-syncs its edit field from that item and restores the label
+ * (measured: the handler saw an empty field, the user saw the label). And a
+ * combo with no selection cannot be navigated with the arrow keys at all,
+ * which strands keyboard users in "new folder" mode with no way back.
+ */
+void kitty_dlg_combobox_select_all(dlgcontrol *ctrl, dlgparam *dp)
+{
+    struct winctrl *c = dlg_findbyctrl(dp, ctrl);
+    assert(c && c->ctrl->type == CTRL_EDITBOX && c->ctrl->editbox.has_list);
+    SendDlgItemMessage(dp->hwnd, c->base_id+1, CB_SETEDITSEL, 0,
+                       MAKELPARAM(0, -1));
+}
+
 void dlg_label_change(dlgcontrol *ctrl, dlgparam *dp, char const *text)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
