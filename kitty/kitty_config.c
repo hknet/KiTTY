@@ -4823,7 +4823,7 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
             c = ctrl_draglist(s, "Algorithm selection policy:", 's',
                               HELPCTX(ssh_kexlist),
                               kexlist_handler, P(NULL));
-            c->listbox.height = 10;
+            c->listbox.height = KEX_MAX;   /* tall enough to show every algorithm */
             ctrl_checkbox(s, "Warn if Key Exchange is not post-quantum secure", 'q', HELPCTX(ssh_kexlist),
                           conf_checkbox_handler,
                           I(CONF_ssh_warn_pre_quantum));
@@ -4870,7 +4870,7 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
             c = ctrl_draglist(s, "Algorithm selection policy:", 's',
                               HELPCTX(ssh_hklist),
                               hklist_handler, P(NULL));
-            c->listbox.height = 5;
+            c->listbox.height = HK_MAX;    /* tall enough to show every algorithm */
 
             ctrl_checkbox(s, "Prefer algorithms for which a host key is known",
                           'p', HELPCTX(ssh_hk_known), conf_checkbox_handler,
@@ -4943,7 +4943,7 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
             c = ctrl_draglist(s, "Encryption cipher selection policy:", 's',
                               HELPCTX(ssh_ciphers),
                               cipherlist_handler, P(NULL));
-            c->listbox.height = 6;
+            c->listbox.height = CIPHER_MAX;  /* tall enough to show every cipher */
 
             ctrl_checkbox(s, "Enable legacy use of single-DES in SSH-2", 'i',
                           HELPCTX(ssh_ciphers),
