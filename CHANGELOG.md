@@ -5,6 +5,62 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.62-beta — 2026-07-25
+
+- **SSH security confirmations can now appear inline in the terminal.** The
+  confirmations for an unknown host key, a changed host key, or a weak/legacy
+  algorithm can be shown OpenSSH-style in the session window — the details are
+  printed and you answer by typing — instead of a modal dialog box that grabs
+  focus. Turn them on per prompt in `kitty.ini` under `[KiTTY]` (default `yes` =
+  classic dialog, `no` = inline); every choice the dialog offers is available
+  inline, so nothing is lost by going inline:
+  - `modalnewhostkeyconfirmation` — unknown (first-seen) host key: `yes` accepts
+    and caches it, `once` connects without caching.
+  - `modalchangedhostkeyconfirmation` — changed host key: a deliberate two-step
+    confirmation — `yes` accepts the new key for this connection, then
+    `confirmed` replaces the stored key. A bare `yes` is re-asked, `no` or Enter
+    keeps the old key and connects once, Ctrl-C abandons.
+  - `modalweakkeyconfirmation` — weak or legacy algorithm, including the key
+    exchange used by older servers.
+
+  Each setting is independent, so some prompts can stay dialogs while others go
+  inline. During an already-authenticated session (a rekey) the running program
+  owns the terminal, so these abort the connection rather than prompting.
+
+- **Session folders can be renamed, and deleted without losing sessions.**
+  Renaming a folder was previously impossible, and deleting one that still held
+  sessions quietly did nothing at all — the folder was back the next time KiTTY
+  started. Both now work properly, in the registry and in portable mode:
+  - **Rename** by selecting the folder, typing the new name over it and pressing
+    the button, which relabels itself to *Rename* so the action is visible. The
+    sessions in the folder move with it.
+  - **Deleting** a folder that still contains sessions asks first, and moves
+    those sessions to the root list rather than deleting them.
+  - **Creating** a folder is now an explicit choice — pick `<new folder...>` at
+    the top of the folder list, type the name, press *New folder*. Previously a
+    name typed while something else was selected could create a folder nobody
+    asked for, including one whose name was no longer visible anywhere.
+  - The **root list** shows every session, so each one that lives in a folder is
+    marked with it in brackets. The root's own label can be renamed too — it is
+    only a label, no session is moved or changed by it, and typing the built-in
+    name back restores it.
+  - Fixed: saving a session no longer re-files it based on which folder happened
+    to be **viewed**. Loading a session now follows it into its folder, and only
+    a folder that is deliberately changed is applied — so moving a session
+    between folders still works, but can no longer happen by accident.
+
+- **Application-wide settings are now grouped** in the configuration window:
+  *Check for updates* and *show / edit / delete old putty/kitty sessions* sit in
+  their own **Application** box instead of among the settings of the session
+  being edited.
+
+- **Documented:** the `-restrict-acl` command-line switch, which starts KiTTY
+  with a restricted process access control list so that other programs running
+  as the same user cannot open or tamper with the process, is now described in
+  the feature documentation. The switch itself is long-standing; 0.84.1.61-beta
+  fixed it being applied unconditionally to sessions started from the
+  configuration window.
+
 ## 0.84.1.61-beta — 2026-07-23
 
 - **Sessions started from the configuration box no longer run with an

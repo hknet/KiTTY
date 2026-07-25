@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.61 — Known issues & limitations
+# KiTTY 0.84.1.62 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -85,11 +85,29 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.59-beta @ 2026-07-22`.
+- **Version string:** binaries report `0.84.1.62-beta @ 2026-07-25`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.62
+
+- **Inline (in-terminal) SSH security confirmations**, opt-in per prompt in
+  `kitty.ini` (`modalnewhostkeyconfirmation`, `modalchangedhostkeyconfirmation`,
+  `modalweakkeyconfirmation`; default `yes` keeps the classic dialog). A changed
+  host key takes a deliberate two-step confirmation (`yes`, then `confirmed` to
+  replace the stored key). **Limitation:** inline prompts are not available
+  during a rekey of an already-authenticated session — the running program owns
+  the terminal, so those confirmations abort the connection instead of asking.
+- **Folder rename and safe delete** in the configuration box, both in the
+  registry and in portable mode: deleting a folder that still holds sessions
+  asks first and moves them to the root list, folder creation is an explicit
+  `<new folder...>` choice, and saving a session no longer re-files it by
+  whichever folder was being viewed.
+- **Application box** groups *Check for updates* and the old putty/kitty session
+  controls. Note that *Check for updates* is still stored **per session**, as
+  before; the neutral box title does not imply it became a global setting.
 
 ## New in 0.84.1.61
 
