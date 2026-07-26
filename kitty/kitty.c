@@ -140,12 +140,8 @@ void SetProtectFlag( const int flag ) { ProtectFlag = flag ; }
 #ifndef DEFAULT_INIT_FILE
 #define DEFAULT_INIT_FILE "kitty.ini"
 #endif
-#ifndef DEFAULT_SAV_FILE
-/* KiTTY 0.84: kittynew.sav (timestamped copies: kittynew-YYYYMMDD-HHMMSS.sav),
- * NOT kitty.sav, so we never overwrite the registry backup of an old (0.76)
- * KiTTY installed side by side. */
-#define DEFAULT_SAV_FILE "kittynew.sav"
-#endif
+/* DEFAULT_SAV_FILE is defined in kitty.h (included above) - do NOT add a
+ * second #ifndef definition here, it would be dead code. */
 #ifndef DEFAULT_EXE_FILE
 #define DEFAULT_EXE_FILE "kitty.exe"
 #endif
@@ -1322,6 +1318,34 @@ static int sav_find_newest( const char *savfile, char *out, size_t outlen ) {
 	return 1 ;
 }
 
+/* Backups written before the DEFAULT_SAV_FILE shadowing was fixed (2026-07-26)
+ * are named kitty-YYYYMMDD-HHMMSS.sav, because the intended kittynew.sav default
+ * never took effect. Once it does, sav_find_newest() no longer sees them, so a
+ * machine upgrading from such a build would silently skip its first-run restore.
+ * Resolve the legacy name too - for READING ONLY; nothing is ever written back
+ * under it, and only when the sav path is still the default (a user-configured
+ * sav= is taken literally). Returns 1 + path in out. */
+#define LEGACY_SAV_FILE "kitty.sav"
+static int sav_find_newest_legacy( const char *savfile, char *out, size_t outlen ) {
+	char dir[4096], base[256], ext[64], legacy[4096] ;
+	char ddir[16], dbase[256], dext[64] ;
+	sav_split( savfile, dir, sizeof(dir), base, sizeof(base), ext, sizeof(ext) ) ;
+	sav_split( DEFAULT_SAV_FILE, ddir, sizeof(ddir), dbase, sizeof(dbase), dext, sizeof(dext) ) ;
+	if( strcmp( base, dbase ) ) return 0 ;              /* custom sav=: no fallback */
+	snprintf( legacy, sizeof(legacy), "%s\\%s", dir, LEGACY_SAV_FILE ) ;
+	if( sav_find_newest( legacy, out, outlen ) ) return 1 ;
+	if( existfile( legacy ) ) { snprintf( out, outlen, "%s", legacy ) ; return 1 ; }
+	return 0 ;
+}
+
+/* The one place that decides WHICH backup to restore from: newest timestamped,
+ * else the fixed-name file, else the legacy name above. */
+static int sav_find_for_restore( const char *savfile, char *out, size_t outlen ) {
+	if( sav_find_newest( savfile, out, outlen ) ) return 1 ;
+	if( existfile( savfile ) ) { snprintf( out, outlen, "%s", savfile ) ; return 1 ; }
+	return sav_find_newest_legacy( savfile, out, outlen ) ;
+}
+
 void SaveRegistryKey( void ) {
 	int keep = 5 ; char kb[64] ;
 	if( IniFileFlag == SAVEMODE_DIR ) { SavePortableDirBackup() ; return ; }
@@ -1359,7 +1383,14 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 	if( KittySavFile==NULL ) return ;
 	if( strlen(KittySavFile)==0 ) return ;
 	
-	if( ( fp = fopen( KittySavFile,"rb" ) ) == NULL ) return ;
+	if( ( fp = fopen( KittySavFile,"rb" ) ) == NULL ) {
+		/* Nothing under the current name: a store written by a pre-fix build is
+		 * still called kitty*.sav. Read it rather than come up empty - this path
+		 * matters most in savemode=file, where the .sav IS the session store. */
+		char legacysav[4096] ;
+		if( !sav_find_newest_legacy( KittySavFile, legacysav, sizeof(legacysav) ) ) return ;
+		if( ( fp = fopen( legacysav, "rb" ) ) == NULL ) return ;
+		}
 	while( fgets( buffer, 4096, fp ) != NULL ) {
 		str_rtrim( buffer, "\n\r \t" ) ;
 		
@@ -3390,8 +3421,7 @@ void InitWinMain( void ) {
 			// ... on charge le backup le plus recent (kittynew-<timestamp>.sav),
 			// ou l'ancien fichier a nom fixe s'il existe encore.
 			char newestsav[4096] = "" ;
-			int havesav = sav_find_newest( KittySavFile, newestsav, sizeof(newestsav) ) ;
-			if( !havesav && existfile( KittySavFile ) ) { snprintf( newestsav, sizeof(newestsav), "%s", KittySavFile ) ; havesav = 1 ; }
+			int havesav = sav_find_for_restore( KittySavFile, newestsav, sizeof(newestsav) ) ;
 			if( havesav ) {
 				char *savedptr = KittySavFile ;
 				KittySavFile = newestsav ;   /* LoadRegistryKey reads the global */

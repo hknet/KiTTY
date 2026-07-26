@@ -203,7 +203,9 @@
 ;    %APPDATA%\KiTTY\kittynew.sav (i.e. the files are kittynew-YYYYMMDD-HHMMSS.sav)
 ;    - NOT kitty.sav, so an old 0.76 KiTTY's backup is never touched. A legacy
 ;    value ending in kitty.sav or kitty084.sav is ignored so this default takes
-;    over; uncomment with a real path to force one.
+;    over; uncomment with a real path to force one.;    Backups left by earlier 0.84 builds (kitty-YYYYMMDD-HHMMSS.sav, from a
+;    defect that made the default kitty.sav after all) are still READ for a
+;    first-run restore; new ones are only ever written under the name above.
 ;sav=
 
 ; savbackupcount: in registry mode, how many timestamped backups to keep - the

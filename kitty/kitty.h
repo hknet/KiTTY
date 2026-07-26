@@ -472,7 +472,13 @@ int getpid(void) ;
 #define DEFAULT_INIT_FILE "kitty.ini"
 #endif
 #ifndef DEFAULT_SAV_FILE
-#define DEFAULT_SAV_FILE "kitty.sav"
+/* kittynew.sav (timestamped copies: kittynew-YYYYMMDD-HHMMSS.sav), NOT
+ * kitty.sav, so we never overwrite the registry backup of an old (0.76)
+ * KiTTY installed side by side. THIS is the definition that takes effect:
+ * kitty.c includes this header before its own #ifndef block, so a second
+ * definition there is dead code - which is exactly how this default was
+ * silently kitty.sav until 2026-07-26. Keep it here, and only here. */
+#define DEFAULT_SAV_FILE "kittynew.sav"
 #endif
 #ifndef DEFAULT_EXE_FILE
 #define DEFAULT_EXE_FILE "kitty.exe"
