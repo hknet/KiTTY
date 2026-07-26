@@ -202,7 +202,10 @@
 ;    processes running as you the access rights used to read or write another
 ;    process's memory - the same hardening as the -restrict-acl switch - and it
 ;    propagates to the windows KiTTY spawns for you (config-box Start/Open,
-;    duplicate session, the launcher). Off by default, because it also blocks
+;    duplicate session, the launcher). kageant reads it too, so the process
+;    holding your loaded private keys is covered by the same setting.
+;    kittygen is not: pass it -restrict-acl if you want it hardened.
+;    Off by default, because it also blocks
 ;    legitimate uses, notably screen readers and other accessibility tools.
 ;    yes is the only value that does anything: a process cannot un-restrict
 ;    itself, so restrictacl=no does not lift a restriction already applied by

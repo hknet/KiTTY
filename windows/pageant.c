@@ -1865,6 +1865,33 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     hinst = inst;
 
+    /*
+     * KiTTY: [KiTTY] restrictacl=yes in kitty.ini hardens kageant too.
+     *
+     * This is the process that actually holds private key material, so a user
+     * who turns the setting on expects the agent covered - not just the
+     * terminal windows. Done here, at the top of WinMain, so the ACL is in
+     * place before any key is loaded.
+     *
+     * Read through kitty_inilight (the satellite-binary resolver, keyed off
+     * OUR exe's folder) and deliberately WITHOUT consulting
+     * kitty_inilight_registry_authoritative(): that rule decides whether the
+     * ini or the registry owns a *setting*, and for this one the ini is the
+     * only place it is ever honoured - in kitty.exe too, where the key is
+     * read with readINI rather than the registry-first ReadParameterN. See
+     * SetRestrictAclFlag in kitty/kitty.c for why registry-first would fail
+     * open here.
+     *
+     * -restrict-acl on the command line (below) remains independent; applying
+     * both is harmless.
+     */
+    {
+        char b[16];
+        if (kitty_inilight_read("KiTTY", "restrictacl", b, sizeof(b)) &&
+            !stricmp(b, "yes"))
+            restrict_process_acl();
+    }
+
     if (should_have_security()) {
         /*
          * Attempt to get the security API we need.

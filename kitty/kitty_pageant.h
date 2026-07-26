@@ -30,6 +30,8 @@ int kageant_confirm_mode(void);
 void kageant_confirm_set_mode(int mode);   /* key-list radios: yes/auto/no */
 const char *kageant_ini_status(void);  /* ini path when authoritative, else NULL */
 int kitty_inilight_registry_authoritative(void);  /* kitty_inilight.c */
+int kitty_inilight_read(const char *section, const char *key,
+                        char *value, int len);        /* kitty_inilight.c */
 
 /* ---- Windows OpenSSH client integration ---- */
 void kageant_openssh_apply(int on);    /* add/remove the managed ~/.ssh block */
