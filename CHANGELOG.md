@@ -5,6 +5,34 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.64-beta — 2026-07-26
+
+- **`restrictacl=yes` hardens every KiTTY process from one setting.** KiTTY
+  inherits PuTTY's `-restrict-acl` option, which locks the Windows process down
+  so other programs running as you cannot read its memory — where a session
+  password sits while you are connected. It previously had to be added to each
+  shortcut target one by one, and anything you overlooked stayed unprotected.
+  `restrictacl=yes` in the `[KiTTY]` section of `kitty.ini` now applies it to
+  the terminal windows, to sessions opened for you from the configuration box,
+  to the tray launcher, and to **kageant**, the process that actually holds
+  your loaded private keys. Off by default. `kittygen` does not read it and
+  still takes `-restrict-acl` on its command line.
+
+- **…and that setting is read from `kitty.ini` only, never the registry.**
+  Global settings are normally looked up in the registry first and in
+  `kitty.ini` only as a fallback. For a hardening switch that order fails in
+  the dangerous direction: a leftover registry value would silently discard the
+  `restrictacl=yes` written in the file, with nothing to say the hardening had
+  been skipped.
+
+- **Silent installs have defined behaviour for open windows.** A silent (`/qn`)
+  upgrade — also how package managers drive the installer — closes open KiTTY
+  windows and reopens them afterwards with their sessions reconnected, as the
+  interactive upgrade does. An unattended installation run by a management
+  system under the machine account closes them without reopening, because
+  there is no desktop to reopen onto; `MSIDISABLERMRESTART=1` selects that
+  behaviour explicitly.
+
 ## 0.84.1.63-beta — 2026-07-26
 
 - **The configuration backup is now taken *before* something is overwritten or

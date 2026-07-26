@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.63 — Known issues & limitations
+# KiTTY 0.84.1.64 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -85,11 +85,34 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.62-beta @ 2026-07-25`.
+- **Version string:** binaries report `0.84.1.64-beta @ 2026-07-26`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.64
+
+- **`[KiTTY] restrictacl=yes` applies the restricted process ACL everywhere**,
+  including kageant, without editing shortcut targets. Three limitations are
+  inherent to the hardening rather than to this setting, and all three apply
+  equally to the older `-restrict-acl` switch:
+  - **It blocks accessibility software.** A restricted process cannot be
+    inspected by other programs running as you, and screen readers and similar
+    tools rely on exactly that. If you use one, do not enable this.
+  - **In-place upgrades will no longer reopen your sessions.** Windows' Restart
+    Manager cannot inspect a restricted process, so the installer closes your
+    windows and does not restore them afterwards.
+  - **There is no way back within a running process.** `restrictacl=no` does
+    not lift a restriction — a process cannot un-restrict itself — so the
+    setting only ever turns the hardening on. Remove it and restart to get
+    unrestricted processes again.
+  **kittygen does not read the setting**; pass it `-restrict-acl` if wanted.
+- **Silent (`/qn`) installs close and reopen your windows**, like the
+  interactive upgrade. An installation started by a management system under
+  the machine account closes them **without** reopening, since there is no
+  desktop to reopen onto; `MSIDISABLERMRESTART=1` forces that behaviour in
+  any silent install.
 
 ## New in 0.84.1.63
 
