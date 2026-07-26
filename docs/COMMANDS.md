@@ -215,25 +215,6 @@ registry location. Existing KiTTY entries with the same names are overwritten.
 
 **Persists:** registry (KiTTY's).
 
-### /configpassword `[pw]`
-
-With an argument: set the configuration password to `pw`, switch the save mode
-to *file* and store the password (encrypted) in kitty.ini. With no argument:
-clear the configuration password. Check your save mode after clearing — KiTTY
-reminds you at the next launch.
-
-**Persists:** kitty.ini / registry.
-
-### /-configpassword
-
-Show the currently stored configuration password in a message box, or report
-that none is set. The password is read from whichever store actually holds it —
-the registry in registry/file save mode, `kitty.ini` in portable mode — because
-the two keep it in different forms; a stored value that cannot be decoded is
-reported as such rather than displayed as garbage.
-
-**Persists:** informational, nothing stored.
-
 ### /switchcrypt
 
 Switch the variant of the settings-encryption used for stored secrets (the

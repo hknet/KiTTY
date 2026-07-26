@@ -236,79 +236,6 @@ static int cmd_copytokitty( HWND hwnd, char * arg ) {
 	return 1 ;
 }
 
-static int cmd_configpassword( HWND hwnd, char * arg ) {
-	(void)hwnd ;
-	if( arg == NULL ) {
-		strcpy( PasswordConf, "" ) ;
-		RegDelValue( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "password" ) ;
-		delINI( KittyIniFile, INIT_SECTION, "password" ) ;
-		SaveRegistryKey() ;
-		MessageBox( NULL, "At next launch,\ndon't forget to check your configuration save mode\n(file or registry ?)", "Info", MB_OK );
-	} else {
-		char buffer[4096] ;
-		strcpy( PasswordConf, arg ) ;
-		if( strlen(PasswordConf) > 0 ) {
-			strcpy( buffer, PasswordConf ) ;
-			WriteParameter( INIT_SECTION, "password", PasswordConf ) ;
-			SaveRegistryKey() ;
-			cryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD ) ;
-			// On passe automatiquement en mode de sauvegarde par fichier
-			if(!NoKittyFileFlag) writeINI( KittyIniFile, INIT_SECTION, "savemode", "file" ) ;
-			IniFileFlag = SAVEMODE_FILE ;
-			if(!NoKittyFileFlag) writeINI( KittyIniFile, INIT_SECTION, "password", buffer ) ;
-		}
-	}
-	return 1 ;
-}
-
-/* The two stores keep the configuration password in DIFFERENT forms:
- * cmd_configpassword writes it CLEARTEXT to the registry (via WriteParameter)
- * but MASKKEY-encrypted to kitty.ini. ReadParameterN is registry-first and
- * cannot tell the caller which store answered, so decrypting whatever it
- * returned turned the cleartext registry copy into garbage - and the old code
- * printed THAT as the user's password (confirmed live 2026-07-26: a stored
- * "ZZprobe123" was displayed as "!<box>9%&"). Trusting it can cost the user
- * access to their own encrypted .sav backups. So: read each store explicitly,
- * in the precedence the rest of the code uses, and never print a value we
- * could not recover. */
-static int cmd_showconfigpassword( HWND hwnd, char * arg ) {
-	char buffer[4096] = "" ;
-	int have = 0 ;
-	(void)arg ;
-
-	if( strlen( PasswordConf ) > 0 ) {
-		/* Live value of THIS process - what .sav exports are encrypted with. */
-		snprintf( buffer, sizeof(buffer), "%s", PasswordConf ) ;
-		have = 1 ;
-	} else if( (IniFileFlag != SAVEMODE_DIR)
-		   && (GetValueDataN( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "password", buffer, sizeof(buffer) ) != NULL)
-		   && (strlen( buffer ) > 0) ) {
-		have = 1 ;	/* the registry copy is stored cleartext */
-	} else if( (KittyIniFile != NULL)
-		   && readINI( KittyIniFile, INIT_SECTION, "password", buffer, sizeof(buffer) )
-		   && (strlen( buffer ) > 0) ) {
-		/* the kitty.ini copy is the encrypted one */
-		have = decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD )
-		       && (strlen( buffer ) > 0) ;
-		if( !have ) {
-			MessageBox( hwnd, "A configuration password is stored in kitty.ini, but it "
-					  "could not be decoded, so it cannot be shown.",
-				    "Configuration password", MB_OK|MB_ICONWARNING ) ;
-			memset( buffer, 0, sizeof(buffer) ) ;
-			return 1 ;
-		}
-	}
-
-	if( have ) {
-		MessageBox( hwnd, buffer, "Your password is ...", MB_OK|MB_ICONWARNING ) ;
-	} else {
-		MessageBox( hwnd, "No configuration password is set.",
-			    "Configuration password", MB_OK|MB_ICONINFORMATION ) ;
-	}
-	memset( buffer, 0, sizeof(buffer) ) ;
-	return 1 ;
-}
-
 static int cmd_switchcrypt( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	SwitchCryptFlag() ;
@@ -488,8 +415,6 @@ static const struct InternalCmdDef {
 	{ "/savesessions",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "export the saved sessions to kitty.ses",		cmd_savesessions },
 	{ "/copytoputty",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "copy the sessions to stock PuTTY (replaces its sessions)", cmd_copytoputty },
 	{ "/copytokitty",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "copy stock PuTTY's sessions into KiTTY",		cmd_copytokitty },
-	{ "/configpassword",	IC_ARG_OPTIONAL, "[pw]",   CAT_STORE,  "set (no argument: clear) the config password",		cmd_configpassword },
-	{ "/-configpassword",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "show the config password",				cmd_showconfigpassword },
 	{ "/switchcrypt",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "switch the crypt mode",					cmd_switchcrypt },
 	{ "/delfolder",		IC_ARG_REQUIRED, "<name>", CAT_STORE,  "delete a session folder",				cmd_delfolder },
 	{ "/loadinitscript",	IC_ARG_OPTIONAL, "[file]", CAT_STORE,  "(re)load the init script",				cmd_loadinitscript },

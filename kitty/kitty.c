@@ -831,135 +831,6 @@ void SaveFolderList( void ) {
 	}
 
 // Sauvegarde une cle de registre dans un fichier
-void QueryKey( HKEY hMainKey, LPCTSTR lpSubKey, FILE * fp_out ) { 
-	HKEY hKey ;
-    TCHAR    achKey[MAX_KEY_LENGTH];   // buffer for subkey name
-    DWORD    cbName;                   // size of name string 
-    TCHAR    achClass[MAX_PATH] = TEXT("");  // buffer for class name 
-    DWORD    cchClassName = MAX_PATH;  // size of class string 
-    DWORD    cSubKeys=0;               // number of subkeys 
-    DWORD    cbMaxSubKey;              // longest subkey size 
-    DWORD    cchMaxClass;              // longest class string 
-    DWORD    cValues;              // number of values for key 
-    DWORD    cchMaxValue;          // longest value name 
-    DWORD    cbMaxValueData;       // longest value data 
-    DWORD    cbSecurityDescriptor; // size of security descriptor 
-    FILETIME ftLastWriteTime;      // last write time 
- 
-    DWORD i,j, retCode; 
- 
-    TCHAR  achValue[MAX_VALUE_NAME]; 
-    DWORD cchValue = MAX_VALUE_NAME; 
-	
-    char str[4096], b[2] =" " ;
-	
-	DWORD lpType, dwDataSize = 1024 ;
-	char * buffer = NULL ;
-	
-	// On ouvre la cle
-	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
- 
-    // Get the class name and the value count. 
-    retCode = RegQueryInfoKey(
-        hKey,                    // key handle 
-        achClass,                // buffer for class name 
-        &cchClassName,           // size of class string 
-        NULL,                    // reserved 
-        &cSubKeys,               // number of subkeys 
-        &cbMaxSubKey,            // longest subkey size 
-        &cchMaxClass,            // longest class string 
-        &cValues,                // number of values for this key 
-        &cchMaxValue,            // longest value name 
-        &cbMaxValueData,         // longest value data 
-        &cbSecurityDescriptor,   // security descriptor 
-        &ftLastWriteTime);       // last write time 
- 
-	//fprintf( fp_out, "\r\n[HKEY_CURRENT_USER\\%s]\r\n" TEXT(lpSubKey) ) ;
-	snprintf( str, sizeof(str), "[HKEY_CURRENT_USER\\%s]", TEXT(lpSubKey) ) ;
-	if( strlen( PasswordConf ) > 0 ) { cryptstring( GetCryptSaltFlag(), str, PasswordConf ) ; }
-	fprintf( fp_out, "\r\n%s\r\n", str ) ;
-
-    // Enumerate the key values. 
-    if (cValues) 
-    {
-        //printf( "\nNumber of values: %d\n", cValues);
-
-        for (i=0, retCode=ERROR_SUCCESS; i<cValues; i++) 
-        { 
-            cchValue = MAX_VALUE_NAME; 
-            achValue[0] = '\0'; 
-            retCode = RegEnumValue(hKey, i, 
-                achValue, 
-                &cchValue, 
-                NULL, 
-                NULL,
-                NULL,
-                NULL);
- 
-            if (retCode == ERROR_SUCCESS ) 
-            { 
-                //fprintf( fp_out, "\"%s\"=",  achValue ) ;
-				unsigned char lpData[1024] ;
-				dwDataSize = 1024 ;
-				RegQueryValueEx( hKey, TEXT( achValue ), 0, &lpType, lpData, &dwDataSize ) ;
-				switch ((int)lpType){
-					case REG_BINARY:
-							// A FAIRE
-						break ;
-					case REG_DWORD:
-						//sprintf( str, "\"%s\"=dword:%08x", achValue, (unsigned int)*lpData ) ;
-						snprintf( str, sizeof(str), "\"%s\"=dword:%08x", achValue, (unsigned int) *((DWORD*)lpData) ) ; // Ca ca marchait bien mais avec une erreur de compilation
-						break;
-					case REG_EXPAND_SZ:
-					case REG_MULTI_SZ:
-					case REG_SZ:
-						//fprintf( fp_out, "\"" ) ;
-						snprintf( str, sizeof(str), "\"%s\"=\"", achValue ) ;
-						for( j=0; j<strlen((char*)lpData) ; j++ ) {
-							//fprintf( fp_out, "%c", lpData[j] ) ;
-							b[0]=lpData[j] ;
-							strcat( str, b ) ;
-							//if( lpData[j]=='\\' ) fprintf( fp_out, "\\" ) ;
-							if( lpData[j]=='\\' ) strcat( str,"\\" ) ;
-							}
-						//fprintf( fp_out, "\"" ) ;
-						strcat( str, "\"" ) ;
-						break;
-					}
-				//fprintf( fp_out, "\r\n");
-				if( strlen( PasswordConf ) > 0 ) { cryptstring( GetCryptSaltFlag(), str, PasswordConf ) ; }
-				fprintf( fp_out, "%s\r\n", str ) ;
-            } 
-        }
-    }
-	
-    // Enumerate the subkeys, until RegEnumKeyEx fails.
-    if (cSubKeys)
-    {
-        //printf( "\nNumber of subkeys: %d\n", cSubKeys);
-
-        for (i=0; i<cSubKeys; i++) 
-        { 
-            cbName = MAX_KEY_LENGTH;
-            retCode = RegEnumKeyEx(hKey, i,
-                     achKey, 
-                     &cbName, 
-                     NULL, 
-                     NULL, 
-                     NULL, 
-                     &ftLastWriteTime); 
-            if (retCode == ERROR_SUCCESS) 
-            {
-				buffer = (char*) malloc( strlen( TEXT(lpSubKey) ) + strlen( achKey ) + 3 ) ;
-                sprintf( buffer, "%s\\%s", TEXT(lpSubKey), achKey ) ;
-				QueryKey( hMainKey, buffer, fp_out ) ;
-				free( buffer );				
-            }
-        }
-    } 
- 
-	RegCloseKey( hKey ) ;
-}
 
 // Renomme une Cle de registre
 void RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) { // hdlg boite d'information
@@ -1130,24 +1001,48 @@ void GetSaveMode( void ) {
 	if( IniFileFlag!=SAVEMODE_DIR ) DirectoryBrowseFlag = 0 ;
 }
 
+/* Run Windows' own registry tool, hidden, and report whether it succeeded.
+ * `hive` is NULL for verbs that take only a file (import). */
+static int kitty_reg_tool( const char *verb, const char *hive, const char *path ) {
+	char sysdir[MAX_PATH], cmd[8192] ;
+	STARTUPINFOA si ; PROCESS_INFORMATION pi ; DWORD rc = 1 ;
+	if( GetSystemDirectoryA( sysdir, sizeof(sysdir) ) == 0 ) return 0 ;
+	if( hive != NULL )
+		snprintf( cmd, sizeof(cmd), "\"%s\\reg.exe\" %s \"%s\" \"%s\" /y", sysdir, verb, hive, path ) ;
+	else
+		snprintf( cmd, sizeof(cmd), "\"%s\\reg.exe\" %s \"%s\"", sysdir, verb, path ) ;
+	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;
+	si.dwFlags = STARTF_USESHOWWINDOW ; si.wShowWindow = SW_HIDE ;
+	if( !CreateProcessA( NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi ) ) return 0 ;
+	WaitForSingleObject( pi.hProcess, 60000 ) ;
+	if( !GetExitCodeProcess( pi.hProcess, &rc ) ) rc = 1 ;
+	CloseHandle( pi.hThread ) ; CloseHandle( pi.hProcess ) ;
+	return ( rc == 0 ) ;
+	}
+
+/* Import a .reg file produced by SaveRegistryKeyEx(). */
+static int kitty_reg_import( const char *filename ) {
+	return kitty_reg_tool( "import", NULL, filename ) ;
+	}
+
 // Sauvegarde de la cle de registre
+/* The backup is produced by Windows' own exporter rather than a hand-rolled
+ * serialiser. The QueryKey() this replaces did not write REG_BINARY values at
+ * all (and, reusing its line buffer, emitted the previous line again in their
+ * place), wrote REG_MULTI_SZ and REG_EXPAND_SZ as plain strings so they came
+ * back with the wrong type, dropped anything past a fixed 1 KB, and could
+ * overflow that buffer on a long value name. reg.exe gets all of it right and
+ * produces a genuine .reg the user can read or import by hand. */
 void SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) {
-	FILE * fp_out ;
-	//FILE * fp_out1 ;
-	char buffer[4096] ;
-
-	if( ( fp_out=fopen( filename, "wb" ) ) == NULL ) return ;
-	if( _locking( fileno(fp_out) , LK_LOCK, 10000000L ) == -1 ) { fclose(fp_out); return ; }
-	
-	strcpy( buffer, "Windows Registry Editor Version 5.00" ) ;
-
-	if( strlen( PasswordConf ) > 0 ) cryptstring( GetCryptSaltFlag(), buffer, PasswordConf ) ;
-	fprintf( fp_out, "%s\r\n", buffer ); 
-
-	QueryKey( hMainKey, lpSubKey, fp_out ) ;
-	
-	_locking( fileno(fp_out) , LK_UNLCK, 10000000L );
-	fclose( fp_out ) ;
+	char hive[4096] ;
+	const char * root ;
+	if( hMainKey == HKEY_CURRENT_USER ) root = "HKCU" ;
+	else if( hMainKey == HKEY_LOCAL_MACHINE ) root = "HKLM" ;
+	else return ;
+	snprintf( hive, sizeof(hive), "%s\\%s", root, TEXT(lpSubKey) ) ;
+	/* reg.exe /y overwrites, but a stale file must not survive a failed export. */
+	unlink( filename ) ;
+	kitty_reg_tool( "export", hive, filename ) ;
 	}
 
 static int portable_backup_copy_tree( const char *src, const char *dst ) {
@@ -1346,17 +1241,26 @@ static int sav_find_for_restore( const char *savfile, char *out, size_t outlen )
 	return sav_find_newest_legacy( savfile, out, outlen ) ;
 }
 
+/* The configuration password (/configpassword) is retired: it encrypted the
+ * .sav while storing its own key in the CLEAR in the hive, and the kitty.ini
+ * copy was only obfuscated with a constant compiled into every build. Nothing
+ * reads either value any more, so remove them rather than leave a plaintext
+ * secret lying about. Self-limiting: both deletes are skipped when absent. */
+void RetireConfigPasswordLeftovers( void ) {
+	char buf[4096] ;
+	if( GetValueDataN( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "password", buf, sizeof(buf) ) != NULL )
+		RegDelValue( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "password" ) ;
+	if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag()
+	    && readINI( KittyIniFile, INIT_SECTION, "password", buf, sizeof(buf) ) )
+		delINI( KittyIniFile, INIT_SECTION, "password" ) ;
+	memset( buf, 0, sizeof(buf) ) ;
+	}
+
 void SaveRegistryKey( void ) {
 	int keep = 5 ; char kb[64] ;
 	if( IniFileFlag == SAVEMODE_DIR ) { SavePortableDirBackup() ; return ; }
 	if( NoKittyFileFlag || (KittySavFile==NULL) ) return ;
 	if( strlen(KittySavFile)==0 ) return ;
-
-	if( GetValueData( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "password", PasswordConf ) == NULL )
-		{ strcpy( PasswordConf, "" ) ; }
-
-	if( strlen( PasswordConf ) > 0 )
-		{ WriteParameter( INIT_SECTION, "password", PasswordConf ) ; }
 
 	if( ReadParameterN( INIT_SECTION, "savbackupcount", kb, sizeof(kb) ) ) keep = atoi( kb ) ;
 	if( keep <= 0 ) return ;              /* savbackupcount=0 disables the backup */
@@ -1378,18 +1282,33 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 	FILE *fp ;
 	HKEY hKey = NULL ;
 	char buffer[4096], KeyName[1024] = "", ValueName[1024], *Value ;
+	char savpath[4096] ;
 	int nb=0 ;
 	
 	if( KittySavFile==NULL ) return ;
 	if( strlen(KittySavFile)==0 ) return ;
-	
-	if( ( fp = fopen( KittySavFile,"rb" ) ) == NULL ) {
+	snprintf( savpath, sizeof(savpath), "%s", KittySavFile ) ;
+
+	if( ( fp = fopen( savpath, "rb" ) ) == NULL ) {
 		/* Nothing under the current name: a store written by a pre-fix build is
 		 * still called kitty*.sav. Read it rather than come up empty - this path
 		 * matters most in savemode=file, where the .sav IS the session store. */
-		char legacysav[4096] ;
-		if( !sav_find_newest_legacy( KittySavFile, legacysav, sizeof(legacysav) ) ) return ;
-		if( ( fp = fopen( legacysav, "rb" ) ) == NULL ) return ;
+		if( !sav_find_newest_legacy( KittySavFile, savpath, sizeof(savpath) ) ) return ;
+		if( ( fp = fopen( savpath, "rb" ) ) == NULL ) return ;
+		}
+
+	/* Current backups are what reg.exe writes: UTF-16LE with a BOM. Let Windows
+	 * import those, so every value type is restored exactly as exported. Older
+	 * backups are our own ASCII format (optionally encrypted with the retired
+	 * configuration password) and are still parsed below. */
+	{	unsigned char bom[2] ;
+		if( ( fread( bom, 1, 2, fp ) == 2 ) && ( bom[0] == 0xFF ) && ( bom[1] == 0xFE ) ) {
+			fclose( fp ) ;
+			if( hdlg != NULL ) InfoBoxSetText( hdlg, "Loading saved sessions." ) ;
+			kitty_reg_import( savpath ) ;
+			return ;
+			}
+		rewind( fp ) ;
 		}
 	while( fgets( buffer, 4096, fp ) != NULL ) {
 		str_rtrim( buffer, "\n\r \t" ) ;
@@ -1406,8 +1325,8 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 					MessageBox( NULL, "Wrong password", "Error", MB_OK|MB_ICONERROR ) ;
 					exit(1) ;
 					}
-				if( strlen(PasswordConf) > 0 )
-					WriteParameter( INIT_SECTION, "password", PasswordConf ) ;
+				/* Decrypt-only: the configuration password is retired, so the
+				 * value is never written back to the hive or kitty.ini. */
 				}
 			}
 		nb++ ;
@@ -3412,6 +3331,9 @@ void InitWinMain( void ) {
 		 * and in place (hknet/KiTTY#11, TASK_named_proxies.md Piece 5). */
 		kitty_migrate_old_proxies() ;
 	}
+	/* Not gated on the save mode: the obsolete kitty.ini copy exists in
+	 * portable installs too. */
+	RetireConfigPasswordLeftovers() ;
 
 	// Chargement de la base de registre si besoin
 	if( IniFileFlag == SAVEMODE_REG ) { // Mode de sauvegarde registry
