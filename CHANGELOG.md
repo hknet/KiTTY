@@ -5,6 +5,75 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.63-beta — 2026-07-26
+
+- **The configuration backup is now taken *before* something is overwritten or
+  deleted.** KiTTY keeps timestamped copies of its configuration, but it only
+  ever wrote one *after* a change — the wrong moment for the case a backup
+  exists for. A copy is now written immediately before a saved session is
+  overwritten, a session is deleted, or a folder is deleted, so the newest
+  backup still contains whatever just disappeared. Saving a session under a
+  name that does not exist yet writes none: there is nothing to preserve yet.
+
+- **…and no longer on every session you open.** Opening a session went through
+  the same path and wrote a copy each time, so a handful of opens pushed every
+  earlier backup out of the retention window. A copy is now written only when
+  something has actually been changed, and the export runs in the background
+  instead of holding up the configuration window.
+
+- **The backup file no longer loses part of what it stores.** The registry
+  backup is produced by Windows' own registry exporter rather than written by
+  KiTTY. The previous writer stored no binary values at all and turned
+  multi-value entries into plain text, so window positions and sizes, and
+  kageant's startup key list, came back missing or unusable after a restore.
+  Everything is now preserved exactly, and the file is a genuine `.reg` that
+  can be inspected or imported by hand. Backups written by earlier versions are
+  still restored as before.
+
+- **The configuration password has been retired.** `/configpassword` and
+  `/-configpassword` are gone and backups are no longer encrypted. The
+  mechanism protected a copy of data the registry already protects — saved
+  passwords are held there with Windows DPAPI — while keeping its own key in
+  plain text in that same registry, and the copy in `kitty.ini` was scrambled
+  only with a value built into every KiTTY. Existing encrypted backups remain
+  readable: KiTTY asks for the password when loading one.
+
+- **Portable installs: backups were incomplete and were never tidied up.** The
+  launcher configuration was never included in a portable backup although the
+  documentation described the backup as a complete copy, so restoring one
+  silently lost the launcher entries; and the clean-up meant to keep the newest
+  `portablebackupcount` folders never ran at all, whatever that setting said. A
+  portable backup now contains everything in the configuration folder except
+  the programs, the `Backups` folder and log or dump files, so future additions
+  are included automatically. **On upgrading, the first backup written will trim
+  accumulated folders to `portablebackupcount` (5 by default)** — raise it, or
+  copy them aside, to keep more.
+
+- **New registry backups are named `kittynew-*.sav`.** The intended name never
+  took effect, so they were written as `kitty-*.sav` — the same name an older
+  KiTTY installed alongside uses for its own backup, which was exactly what the
+  name change was meant to avoid. Existing `kitty-*.sav` files are left alone
+  and are still read if a restore is needed.
+
+- **The Kex, Host keys and Cipher lists show every algorithm.** The lists were
+  shorter than their contents, so the last entries — and the
+  `-- warn below here --` marker that separates the algorithms KiTTY considers
+  weak — could only be reached by scrolling. They now show everything at once
+  and grow by themselves if an algorithm is added.
+
+- **Two configuration-window fixes.** *Delete* on "Default Settings" used to
+  beep, which reads as a broken button; it now explains that this is the
+  template new sessions start from and offers what is actually available —
+  hiding it from the list. And **Ctrl+G** jumps to the session search after
+  clearing the folder filter, so it searches every folder, where Ctrl+F
+  searches only the one being viewed.
+
+- **Documented:** what a restored backup does and does not bring back. Restoring
+  a **registry** backup on another computer or user account returns the sessions
+  but not their saved passwords, because Windows ties those to the account that
+  saved them. Portable stores are unaffected — there passwords are protected
+  with the master password and are made to travel with the store.
+
 ## 0.84.1.62-beta — 2026-07-25
 
 - **SSH security confirmations can now appear inline in the terminal.** The
