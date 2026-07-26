@@ -1090,7 +1090,12 @@ static void portable_backup_prune( const char *root, int keep ) {
 	struct portable_backup_name backups[128] ;
 	int n = 0, i ;
 	if( keep < 1 ) keep = 1 ;
-	snprintf( pattern, sizeof(pattern), "%s\\kitty-portable-[0-9]*", root ) ;
+	/* FindFirstFile understands * and ? only - it has no character classes, so
+	 * the "[0-9]" this used to carry was matched LITERALLY, nothing was ever
+	 * found, and pruning silently never happened (portablebackupcount was
+	 * therefore ignored and the backup folders grew without bound). The
+	 * "-latest" directory is filtered out by name just below. */
+	snprintf( pattern, sizeof(pattern), "%s\\kitty-portable-*", root ) ;
 	h = FindFirstFileA( pattern, &fd ) ;
 	if( h == INVALID_HANDLE_VALUE ) return ;
 	do {
@@ -1111,7 +1116,10 @@ static void portable_backup_prune( const char *root, int keep ) {
 
 static void portable_backup_write_one( const char *dst ) {
 	char src[4096], d[4096] ;
-	const char *items[] = { "Sessions", "SshHostKeys", "SshHostCAs", "Commands", "Folders", "Sessions_Commands", "Proxies", "Security", NULL } ;
+	/* Allowlist, so the exes and the Backups folder itself are not copied into
+	 * the backup. Anything the portable store keeps MUST be listed here -
+	 * "Launcher" was missing and was silently absent from every backup. */
+	const char *items[] = { "Sessions", "SshHostKeys", "SshHostCAs", "Commands", "Folders", "Sessions_Commands", "Proxies", "Security", "Launcher", NULL } ;
 	const char *files[] = { "PUTTY.RND", "KiTTYState", "Jumplist", NULL } ;
 	int i ;
 	DelDir( dst ) ;
