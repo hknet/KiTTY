@@ -1114,30 +1114,60 @@ static void portable_backup_prune( const char *root, int keep ) {
 	}
 }
 
-static void portable_backup_write_one( const char *dst ) {
-	char src[4096], d[4096] ;
-	/* Allowlist, so the exes and the Backups folder itself are not copied into
-	 * the backup. Anything the portable store keeps MUST be listed here -
-	 * "Launcher" was missing and was silently absent from every backup. */
-	const char *items[] = { "Sessions", "SshHostKeys", "SshHostCAs", "Commands", "Folders", "Sessions_Commands", "Proxies", "Security", "Launcher", NULL } ;
-	const char *files[] = { "PUTTY.RND", "KiTTYState", "Jumplist", NULL } ;
+/* What must NOT go into a backup. Everything else in the portable directory is
+ * treated as configuration and copied, so a store that gains a new folder or
+ * file is covered without anyone having to remember a list - the allowlist this
+ * replaces had silently omitted "Launcher" ever since the feature shipped.
+ *
+ * Left out: the Backups tree itself (it holds the older copies, and the
+ * destination lives inside it, so copying it would nest backups inside
+ * backups); the programs; and the bulky by-products that are not configuration
+ * - session logs, and -savedump output, which is large and holds secrets. */
+static int portable_backup_skip( const WIN32_FIND_DATAA *fd ) {
+	static const char *skipdirs[] = { "Backups", NULL } ;
+	static const char *skipexts[] = { ".exe", ".dll", ".log", ".dmp", NULL } ;
+	const char *dot ;
 	int i ;
+	if( !strcmp(fd->cFileName,".") || !strcmp(fd->cFileName,"..") ) return 1 ;
+	if( fd->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
+		for( i=0 ; skipdirs[i]!=NULL ; i++ )
+			if( !stricmp( fd->cFileName, skipdirs[i] ) ) return 1 ;
+		return 0 ;
+	}
+	dot = strrchr( fd->cFileName, '.' ) ;
+	if( dot != NULL )
+		for( i=0 ; skipexts[i]!=NULL ; i++ )
+			if( !stricmp( dot, skipexts[i] ) ) return 1 ;
+	return 0 ;
+}
+
+static void portable_backup_write_one( const char *dst ) {
+	char pattern[4096], s[4096], d[4096] ;
+	WIN32_FIND_DATAA fd ;
+	HANDLE h ;
 	DelDir( dst ) ;
 	CreateDirectoryA( dst, NULL ) ;
+	/* kitty.ini can be resolved from outside the portable directory, so it is
+	 * copied by its resolved path and under its canonical name. When it does
+	 * live here, the sweep below simply copies it again over the same file. */
 	if( KittyIniFile != NULL && strlen(KittyIniFile)>0 && existfile(KittyIniFile) ) {
 		snprintf( d, sizeof(d), "%s\\kitty.ini", dst ) ;
 		CopyFileA( KittyIniFile, d, FALSE ) ;
 	}
-	for( i=0 ; items[i]!=NULL ; i++ ) {
-		snprintf( src, sizeof(src), "%s\\%s", ConfigDirectory, items[i] ) ;
-		snprintf( d, sizeof(d), "%s\\%s", dst, items[i] ) ;
-		portable_backup_copy_tree( src, d ) ;
-	}
-	for( i=0 ; files[i]!=NULL ; i++ ) {
-		snprintf( src, sizeof(src), "%s\\%s", ConfigDirectory, files[i] ) ;
-		snprintf( d, sizeof(d), "%s\\%s", dst, files[i] ) ;
-		if( existfile(src) ) CopyFileA( src, d, FALSE ) ;
-	}
+	if( ConfigDirectory == NULL || strlen(ConfigDirectory) == 0 ) return ;
+	snprintf( pattern, sizeof(pattern), "%s\\*", ConfigDirectory ) ;
+	h = FindFirstFileA( pattern, &fd ) ;
+	if( h == INVALID_HANDLE_VALUE ) return ;
+	do {
+		if( portable_backup_skip( &fd ) ) continue ;
+		snprintf( s, sizeof(s), "%s\\%s", ConfigDirectory, fd.cFileName ) ;
+		snprintf( d, sizeof(d), "%s\\%s", dst, fd.cFileName ) ;
+		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY )
+			portable_backup_copy_tree( s, d ) ;
+		else
+			CopyFileA( s, d, FALSE ) ;
+	} while( FindNextFileA( h, &fd ) ) ;
+	FindClose( h ) ;
 }
 
 static void SavePortableDirBackup( void ) {
