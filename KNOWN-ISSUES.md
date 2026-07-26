@@ -97,11 +97,14 @@ features are working and verified. Known limitations as of this release:
   KiTTY, so it no longer drops binary values (window positions and sizes) or
   turns multi-value entries such as kageant's startup key list into plain text —
   both came back missing or unusable after a restore before. **Limitation:** the
-  file is now a standard UTF-16 `.reg`, which **older KiTTY versions cannot
-  read** — an older build treats it as unreadable rather than restoring from it.
-  That only matters if you downgrade and then try to restore a backup made by
-  this version; backups written by earlier versions are still restored normally
-  by this one.
+  file is now a standard UTF-16 `.reg`, which an **older KiTTY version cannot
+  load itself** — it treats the file as unreadable. This only arises if you
+  downgrade and then want a backup made by this version, and Windows restores it
+  perfectly well without KiTTY's help: `reg import kittynew-YYYYMMDD-HHMMSS.sav`
+  (no administrator rights needed), or open it in Registry Editor. That is the
+  same standard format the file's new writer produces, which is precisely what
+  makes importing it by hand possible. Backups written by earlier versions are
+  still restored normally by this one.
 - **Backups are taken *before* a destructive change** — overwriting a saved
   session, deleting a session, deleting a folder — instead of only after a
   change, so the newest copy still holds what was just lost. They are also **no
