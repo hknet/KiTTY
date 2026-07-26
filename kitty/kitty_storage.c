@@ -233,6 +233,12 @@ int kitty_get_last_folder(char *buf, int buflen)
  */
 const char *kitty_registry_base(void) { return reg_base_buf; }
 
+/* See kitty_storage.h. Interlocked because the backup that consumes it runs on
+ * a worker thread. */
+static LONG kitty_store_dirty = 0;
+void kitty_store_mark_dirty(void) { InterlockedExchange(&kitty_store_dirty, 1); }
+int kitty_store_take_dirty(void) { return InterlockedExchange(&kitty_store_dirty, 0) != 0; }
+
 /*
  * KiTTY: read a session's "Comment" value, scanning the read hives in
  * precedence order (our base -> old 9bis -> stock PuTTY) and returning the

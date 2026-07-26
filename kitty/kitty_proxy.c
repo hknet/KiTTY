@@ -268,7 +268,9 @@ static int proxy_method_from_conf( Conf *conf ) {
  * line per field (the format ReadPortableValue expects). ProxyPassword is
  * protected at rest via the shared backend policy (DPAPI registry / MPW
  * portable / explicit legacy), the same chokepoint as session passwords. */
+void kitty_store_mark_dirty(void) ;   /* kitty_storage.c */
 int SaveProxyInfo( Conf *conf, const char *name ) {
+	kitty_store_mark_dirty() ;   /* named proxies live in the store too */
 	if( name == NULL || name[0] == '\0' ) return 0 ;
 	if( !strcmp(name,"- Session defined proxy -") || !strcmp(name,"- No proxy -") ) return 0 ;
 	int method = proxy_method_from_conf( conf ) ;

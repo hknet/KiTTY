@@ -238,6 +238,12 @@ int GetWinrolFlag(void) { return WinrolFlag ; }
 void SetWinrolFlag( const int num ) { WinrolFlag  = num ; }
 
 // Password de protection de la configuration (registry)
+/* "the configuration store changed" flag - implemented in kitty_storage.c so
+ * that windows/storage.c can set it too. Declared up here because SaveFolderList
+ * below is the first user. */
+void kitty_store_mark_dirty( void ) ;
+int kitty_store_take_dirty( void ) ;
+
 static char PasswordConf[cstMaxRegLength+2] = "" ; /* filled from the registry "password" value via GetValueData, which writes up to cstMaxRegLength data bytes + NUL */
 
 // Renvoi automatiquement dans le tray (pour les tunnel), fonctionne avec le l'option -send-to-tray
@@ -816,6 +822,7 @@ void SetUsernameInConfig( const char * username ) {
 // Sauvegarde la liste des folders
 void SaveFolderList( void ) {
 	int i = 0 ;
+	kitty_store_mark_dirty() ;
 	char buffer[4096] = "" ;
 	while( FolderList[i] != NULL ) {
 		if( strlen( FolderList[i] ) > 0 )
@@ -1281,6 +1288,14 @@ static DWORD WINAPI sav_worker( LPVOID param ) {
  * spawning a process, and its backup has the same ordering requirement. */
 static void sav_backup( int async ) {
 	int keep = 5 ; char kb[64] ;
+	/* Routine snapshots happen only when the store actually changed since the
+	 * last one. The path that triggers them is also what plain Enter in the
+	 * session list goes through, so without this a handful of opens would push
+	 * every interesting backup out of the retention window. The blocking variant
+	 * deliberately ignores the flag: it runs BEFORE a destructive edit, where
+	 * capturing the prior state is the whole point whether or not anything was
+	 * edited first. */
+	if( async && !kitty_store_take_dirty() ) return ;
 	if( IniFileFlag == SAVEMODE_DIR ) { SavePortableDirBackup() ; return ; }
 	if( NoKittyFileFlag || (KittySavFile==NULL) ) return ;
 	if( strlen(KittySavFile)==0 ) return ;

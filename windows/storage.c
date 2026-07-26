@@ -162,6 +162,8 @@ void close_settings_w(settings_w *handle)
 {
     if (!handle)
         return;
+    /* A session was written - the store differs from the last backup. */
+    kitty_store_mark_dirty();
     if (handle->is_file) {
         if (handle->fpath) { ksf_save(handle->fpath, handle->items); sfree(handle->fpath); }
         ksf_list_free(handle->items);
@@ -388,6 +390,7 @@ void close_settings_r(settings_r *handle)
 
 void del_settings(const char *sessionname)
 {
+    kitty_store_mark_dirty();
     if (store_is_file()) {
         char *path = ksf_session_path(sessionname);
         if (path) { DeleteFileA(path); sfree(path); }
@@ -638,6 +641,8 @@ bool have_ssh_host_key(const char *hostname, int port,
 void store_host_key(Seat *seat, const char *hostname, int port,
                     const char *keytype, const char *key)
 {
+    /* The trust store changed - worth a backup. */
+    kitty_store_mark_dirty();
     strbuf *regname = strbuf_new();
     hostkey_regname(regname, hostname, port, keytype);
 

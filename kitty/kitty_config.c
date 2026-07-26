@@ -2178,10 +2178,20 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     /* else: keep the folder the session was loaded with */
                 }
 #endif
-                /* Back up the store before overwriting a saved session, so the
-                 * previous contents of it remain recoverable. Blocking on
-                 * purpose - an async snapshot could land after the write. */
-                SaveRegistryKeyNow();
+                /* Back up the store before OVERWRITING a saved session, so its
+                 * previous contents stay recoverable. Blocking on purpose - an
+                 * async snapshot could land after the write. Skipped when the
+                 * name does not exist yet: a new session overwrites nothing, so
+                 * there is nothing to preserve, and the routine snapshot after
+                 * the save records the addition anyway. An empty name means
+                 * Default Settings, which does exist and is worth preserving. */
+                {
+                    settings_r *existing = open_settings_r(ssd->savedsession);
+                    if (existing) {
+                        close_settings_r(existing);
+                        SaveRegistryKeyNow();
+                    }
+                }
                 char *errmsg = save_settings(ssd->savedsession, conf);
                 if (errmsg) {
                     dlg_error_msg(dlg, errmsg);

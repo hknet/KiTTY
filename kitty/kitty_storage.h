@@ -67,4 +67,12 @@ void kitty_pwdebug(const char *fmt, ...);
 char *ksec_legacy_decrypt(const char *stored, HKEY sesskey);  /* malloc/NULL */
 char *ksec_to_utf8(char *s);
 
+/* ---- "the configuration store changed" flag ----
+ * Set by every path that writes the store (session save/delete, host keys,
+ * folders, proxies); consumed by the routine .sav backup so that merely OPENING
+ * a session does not write one. Lives here because windows/storage.c is
+ * compiled into every variant and already includes this header. */
+void kitty_store_mark_dirty(void);
+int  kitty_store_take_dirty(void);   /* 1 if dirty; clears the flag */
+
 #endif /* KITTY_STORAGE_H */
