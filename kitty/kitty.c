@@ -3044,6 +3044,45 @@ typedef struct {
 	void (*setter)(int) ;
 } IniParam ;
 
+/*
+ * [KiTTY] restrictacl=yes - apply the restricted process ACL to every KiTTY
+ * process, without having to add -restrict-acl to each shortcut target.
+ *
+ * This setter keeps NO state of its own: the single source of truth is
+ * security.c's acl_restricted, read back through restricted_acl(). That
+ * matters because the &R propagation to spawned windows (kitty_bridge.c,
+ * kitty_launcher.c) keys off restricted_acl(), so it picks this up for free.
+ *
+ * We run EARLIER than the command-line switch, not later: LoadParameters() is
+ * called from InitWinMain() near the top of WinMain, while -restrict-acl and
+ * the &R prefix are handled further down in gui_term_process_cmdline().
+ *
+ * There is deliberately no way back off: restrictacl=no leaves the current
+ * state alone (INIP_IGNORE below) rather than pretending it can un-restrict a
+ * process that was started with -restrict-acl or &R. The restricted_acl()
+ * guard only avoids a redundant second SetSecurityInfo when a child that was
+ * already restricted via &R also reads restrictacl=yes.
+ *
+ * Note this inherits restrict_process_acl()'s fail-closed behaviour: if the
+ * ACL cannot be applied it bombs out via modalfatalbox rather than run
+ * unprotected. That is upstream's deliberate choice for the switch, and it is
+ * the right one for an opt-in hardening key too.
+ *
+ * The table row below uses use_readini=1 - kitty.ini ONLY - which every other
+ * [KiTTY] key does not. Those go through ReadParameterN, which on an installed
+ * copy reads HKCU FIRST and falls back to kitty.ini only when the registry has
+ * no such value (see ReadParameterN above, and the precedence hazard written
+ * up in design/SETTINGS_STORAGE_MODEL.md). For a security switch that ordering
+ * fails OPEN: restrictacl=yes in kitty.ini would be silently ignored whenever
+ * a stale registry value exists - including one left by another install, since
+ * the hive is shared by name. Nothing ever writes this key to the registry, so
+ * reading it from there could only ever surprise. kitty.ini is the only place
+ * it is honoured, in every save mode.
+ */
+static void SetRestrictAclFlag( const int flag ) {
+	if( flag && !restricted_acl() ) { restrict_process_acl() ; }
+}
+
 #define IGN INIP_IGNORE
 /* keyword key: values for yes / no / anything-else */
 #define INIP_KW(sec,rdini,k,y,n,o,v,fn)		{ sec, k, rdini, 0, y, n, o, IGN, v, fn }
@@ -3073,6 +3112,10 @@ static const IniParam ini_params[] = {
 	INIP_KW( INIT_SECTION, 0, "modalchangedhostkeyconfirmation",	1, 0, IGN,	NULL, SetModalChangedHostKeyConfirmationFlag ),
 	INIP_KW( INIT_SECTION, 0, "modalweakkeyconfirmation",	1, 0, IGN,	NULL, SetModalWeakKeyConfirmationFlag ),
 	INIP_KW( INIT_SECTION, 0, "readonly",		1, IGN, IGN,	NULL, SetReadOnlyFlag ),
+	/* restrictacl=yes: -restrict-acl for every process; no way back off.
+	 * use_readini=1 (kitty.ini ONLY) is deliberate and unlike its [KiTTY]
+	 * neighbours - see the comment on SetRestrictAclFlag. */
+	INIP_KW( INIT_SECTION, 1, "restrictacl",	1, IGN, IGN,	NULL, SetRestrictAclFlag ),
 	INIP_KW( INIT_SECTION, 0, "shortcuts",		1, 0, IGN,	&ShortcutsFlag, NULL ),
 	INIP_KW( INIT_SECTION, 0, "size",		1, IGN, IGN,	&SizeFlag, NULL ),
 	INIP_NUM( INIT_SECTION, 0, "slidedelay",	IGN,		&ImageSlideDelay, NULL ),

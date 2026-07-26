@@ -327,7 +327,15 @@ KiTTY can route a session's terminal output straight into the Windows clipboard.
 
 Inherited from PuTTY: starting KiTTY with the `-restrict-acl` command-line option locks down the Windows process ACL, so other programs running under the same user account cannot open the KiTTY process (for example to read its memory, which holds session passwords while connected). Every window KiTTY spawns from such a process — sessions started from the configuration box, duplicates, "open new with current settings" — inherits the restriction. `kageant` and `kittygen` accept the option too. Be aware of the trade-offs before enabling it: the lockdown also blocks legitimate same-user tooling such as screen readers and other accessibility or automation software, and during an in-place MSI upgrade the Windows Restart Manager cannot inspect restricted windows, so the installer reports *"a critical application holds files in use"*, offers no close-and-restart handling and simply closes the windows. Up to and including 0.84.1.60, sessions spawned from the configuration box ran with this restriction unintentionally — always, regardless of options; since 0.84.1.61 it applies only when requested.
 
-**How to enable:** off by default. Add `-restrict-acl` to the command line, typically in your shortcut target: `"C:\Program Files\KiTTY\kitty.exe" -restrict-acl` (with the launcher: `kitty.exe -restrict-acl -launcher`).
+**How to enable:** off by default, and there are two ways to turn it on.
+
+Per shortcut, add `-restrict-acl` to the command line, typically in your shortcut target: `"C:\Program Files\KiTTY\kitty.exe" -restrict-acl` (with the launcher: `kitty.exe -restrict-acl -launcher`).
+
+Globally, put `restrictacl=yes` in the `[KiTTY]` section of your `kitty.ini`. That applies the restriction to every KiTTY process that reads the file, so you do not have to edit each shortcut target, and it is applied early in startup — before the command-line switch would be. `yes` is the only value that does anything: a process cannot un-restrict itself, so `restrictacl=no` does not lift a restriction that `-restrict-acl` or a parent window already applied. If the ACL cannot be applied, KiTTY reports the error and exits rather than run unprotected — the same fail-closed behaviour as the switch.
+
+Unlike most `[KiTTY]` settings, `restrictacl` is read from `kitty.ini` only and never from the registry. Global settings are normally looked up in the registry first and in `kitty.ini` only as a fallback; for a hardening switch that order fails open, because a leftover registry value would silently cancel the `restrictacl=yes` you wrote in the file.
+
+Note that enabling it globally also applies the upgrade trade-off above to every window: an in-place MSI upgrade will close your sessions without reopening them, because the Restart Manager cannot inspect a restricted process.
 
 (no screenshot)
 

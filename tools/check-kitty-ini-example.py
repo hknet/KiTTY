@@ -66,6 +66,19 @@ def source_options() -> set[tuple[str, str]]:
         # readINI with the INIT_SECTION macro (kitty.h) also targets [KiTTY].
         for m in re.finditer(r'readINI\s*\([^;\n]*?\bINIT_SECTION\s*,\s*"([^"]+)"', text):
             opts.add(("KiTTY", m.group(1)))
+        # Most plain keyword/number keys no longer have a literal ReadParameter
+        # call site: they are rows in kitty.c's declarative ini_params[] table,
+        # applied in one pass by load_ini_params(). Without this the whole table
+        # was invisible to the check.
+        #   INIP_KW (sec, use_readini, "key", yes, no, other, &var, setter)
+        #   INIP_NUM(sec, use_readini, "key", intmin,          &var, setter)
+        for m in re.finditer(
+            r'INIP_(?:KW|NUM)\s*\(\s*(INIT_SECTION|"[^"]+")\s*,\s*\d+\s*,\s*"([^"]+)"', text
+        ):
+            section, key = m.groups()
+            section = "KiTTY" if section == "INIT_SECTION" else section.strip('"')
+            if section in SECTIONS:
+                opts.add((section, key))
     return opts
 
 

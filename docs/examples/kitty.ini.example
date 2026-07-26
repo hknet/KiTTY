@@ -197,6 +197,22 @@
 ; readonly: open KiTTY in read-only configuration mode
 ;readonly=no
 
+; restrictacl: apply the restricted process ACL to every KiTTY process, so you
+;    do not have to add -restrict-acl to each shortcut target. It denies other
+;    processes running as you the access rights used to read or write another
+;    process's memory - the same hardening as the -restrict-acl switch - and it
+;    propagates to the windows KiTTY spawns for you (config-box Start/Open,
+;    duplicate session, the launcher). Off by default, because it also blocks
+;    legitimate uses, notably screen readers and other accessibility tools.
+;    yes is the only value that does anything: a process cannot un-restrict
+;    itself, so restrictacl=no does not lift a restriction already applied by
+;    -restrict-acl. If the ACL cannot be applied, KiTTY reports the error and
+;    exits rather than run unprotected.
+;    Unlike most keys here, this one is read from kitty.ini ONLY, never from
+;    the registry: the usual order consults the registry first, which would
+;    let a stale registry value silently cancel a restrictacl=yes written here.
+;restrictacl=no
+
 ; sav: base path for the registry backup (a full export of KiTTY's hive). Each
 ;    save writes a FRESH timestamped file next to it, <base>-YYYYMMDD-HHMMSS<ext>,
 ;    so the filename always reflects when that copy was written. Default base is
