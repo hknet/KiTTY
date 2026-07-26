@@ -14,6 +14,8 @@
  * kitty / kitty_portable targets instead of this file.
  */
 
+#include <stdbool.h>   /* kitty_config_select_root_folder returns bool */
+
 int GetConfigBoxHeight(void)       { return 16; } /* == stock-fit rows -> extra_rows 0 */
 int GetConfigBoxWindowHeight(void) { return 0; }  /* no explicit window-height override */
 int kitty_proxy_choice_shown(void) { return 0; }  /* no Proxy-choice droplist row */
@@ -27,3 +29,10 @@ int GetModalWeakKeyConfirmationFlag(void)        { return 1; }
 
 struct dlgcontrol;
 struct dlgcontrol *kitty_config_session_filter_ctrl(void) { return 0; } /* no Ctrl+F jump */
+
+/* Ctrl+G resets the session-folder filter to the root list; the stock variants
+ * have no folders, so there is nothing to reset. dialog.c only reaches this
+ * after the accessor above returned non-NULL, which the stub never does — it
+ * exists purely to satisfy the link. */
+struct dlgparam;
+bool kitty_config_select_root_folder(struct dlgparam *dp) { (void)dp; return false; }

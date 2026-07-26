@@ -1193,11 +1193,44 @@ dlgcontrol *kitty_config_session_filter_ctrl(void)
     return session_filter_ctrl;
 }
 
+/* KiTTY: the same dialog's session-saver data, for the Ctrl+G "search
+ * everywhere" jump (windows/dialog.c). Registered and cleared together with
+ * session_filter_ctrl above, so it can never outlive the dialog. */
+static struct sessionsaver_data *session_filter_ssd = NULL;
+
+/*
+ * Ctrl+G: drop the folder filter back to the root list, then let the caller
+ * run the ordinary Ctrl+F jump. Ctrl+F alone searches within whatever folder
+ * is currently selected, so finding a session in another folder otherwise
+ * means changing the folder combo by hand first.
+ *
+ * Only the filter moves: no session is loaded, re-filed or saved. Returns
+ * true if the folder actually changed, so the caller can tell "went global"
+ * from "was already global".
+ */
+bool kitty_config_select_root_folder(dlgparam *dp)
+{
+    struct sessionsaver_data *ssd = session_filter_ssd;
+    if (!ssd || GetPuttyFlag() || !ssd->folderlist || !ssd->listbox)
+        return false;
+    if (!strcmp(CurrentFolder, "Default"))
+        return false;                    /* already showing everything */
+    strcpy(CurrentFolder, "Default");
+    kitty_set_last_folder(CurrentFolder);
+    /* dlg_refresh rebuilds the combo and re-selects the row matching
+     * CurrentFolder, suppressing the re-entrant VALCHANGE itself. */
+    dlg_refresh(ssd->folderlist, dp);
+    dlg_refresh(ssd->listbox, dp);
+    return true;
+}
+
 static void sessionsaver_data_free(void *ssdv)
 {
     struct sessionsaver_data *ssd = (struct sessionsaver_data *)ssdv;
     if (session_filter_ctrl == ssd->editbox)
         session_filter_ctrl = NULL;
+    if (session_filter_ssd == ssd)
+        session_filter_ssd = NULL;
     get_sesslist(&ssd->sesslist, false);
     sfree(ssd->savedsession);
 #ifdef MOD_PERSO
@@ -1663,6 +1696,86 @@ static bool sessionsaver_confirm_empty_folder(struct sessionsaver_data *ssd,
                                              "Default") >= 0;
 }
 
+/*
+ * KiTTY: Delete pressed on "Default Settings".
+ *
+ * It is the template every new session starts from, so it genuinely cannot be
+ * deleted; the old behaviour was a bare beep, which reads as a broken button.
+ * Explain that, and offer the one outcome the user can actually have - hiding
+ * it from the list via [ConfigBox] defaultsettings=no.
+ *
+ * Written with writeINI() straight to kitty.ini, NOT WriteParameter(): this key
+ * is declared use_readini=1 in kitty.c's ini_params[], i.e. it is always READ
+ * with readINI(KittyIniFile,...) whatever the save mode. WriteParameter would
+ * put it in the registry outside SAVEMODE_DIR, where nothing would ever read it
+ * back and the setting would silently not stick.
+ *
+ * There is deliberately no UI to unhide: the entry is gone from the list, so a
+ * checkbox for it would have nowhere to live. Hence the message states the file
+ * path and the exact key needed to undo it.
+ */
+static void sessionsaver_offer_hide_default(struct sessionsaver_data *ssd,
+                                            dlgparam *dlg)
+{
+    extern int GetDefaultSettingsFlag(void);
+    extern void SetDefaultSettingsFlag(const int flag);
+    extern char *GetKittyIniFile(void);
+    extern void CreateDefaultIniFile(void);
+    extern int GetNoKittyFileFlag(void);
+    extern int GetReadOnlyFlag(void);
+    extern int writeINI(const char *filename, const char *section,
+                        const char *key, const char *value);
+    const char *ini = GetKittyIniFile();
+    char msg[1400];
+
+    /* conf=no (no configuration file at all) or readonly=yes: the setting
+     * cannot be persisted, so do not offer a choice we can't honour. */
+    if (GetNoKittyFileFlag() || !ini || !ini[0] || GetReadOnlyFlag()) {
+        snprintf(msg, sizeof(msg),
+                 "\"%s\" cannot be deleted - it is the template every new "
+                 "session starts from.\n\n"
+                 "It can normally be hidden from this list, but %s, so that "
+                 "setting cannot be saved right now.",
+                 KITTY_DEFAULT_SESSION,
+                 GetReadOnlyFlag() ? "KiTTY is running read-only"
+                                   : "this KiTTY is running without a "
+                                     "configuration file");
+        MessageBoxA(dlg->hwnd, msg, "KiTTY", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+
+    snprintf(msg, sizeof(msg),
+             "\"%s\" cannot be deleted - it is the template every new session "
+             "starts from.\n\n"
+             "It can be hidden from this list instead. The template itself "
+             "keeps working; it simply stops taking up a row.\n\n"
+             "Hide it?\n\n"
+             "To show it again later you have to edit the configuration file "
+             "by hand and set:\n"
+             "    [ConfigBox]\n"
+             "    defaultsettings=yes\n\n"
+             "Configuration file:\n%s",
+             KITTY_DEFAULT_SESSION, ini);
+
+    if (MessageBoxA(dlg->hwnd, msg, "KiTTY",
+                    MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES)
+        return;                          /* No = keep showing it */
+
+    CreateDefaultIniFile();              /* no-op when it already exists */
+    if (!writeINI(ini, "ConfigBox", "defaultsettings", "no")) {
+        snprintf(msg, sizeof(msg),
+                 "Could not write to the configuration file:\n%s\n\n"
+                 "\"%s\" is still shown.", ini, KITTY_DEFAULT_SESSION);
+        MessageBoxA(dlg->hwnd, msg, "KiTTY", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    SetDefaultSettingsFlag(0);           /* take effect without a restart */
+    get_sesslist(&ssd->sesslist, false);
+    get_sesslist(&ssd->sesslist, true);
+    dlg_refresh(ssd->listbox, dlg);
+}
+
 static void sessionsaver_update_folder_button(struct sessionsaver_data *ssd,
                                               dlgparam *dlg)
 {
@@ -2092,8 +2205,14 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
 #ifdef MOD_PERSO
             if (i >= 0) i = dlg_listbox_getid(ssd->listbox, dlg, i);
 #endif
-            if (i <= 0) {
-                dlg_beep(dlg);
+            if (i == 0) {
+                /* KiTTY: "Default Settings" is the template every new session
+                 * starts from, so it cannot be deleted - but silently beeping
+                 * looks like a broken button. Explain, and offer the one thing
+                 * the user can actually have: hide it from the list. */
+                sessionsaver_offer_hide_default(ssd, dlg);
+            } else if (i < 0) {
+                dlg_beep(dlg);          /* nothing selected */
             } else {
                 del_settings(ssd->sesslist.sessions[i]);
                 get_sesslist(&ssd->sesslist, false);
@@ -3395,6 +3514,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
                                 sessionsaver_handler, P(ssd), P(NULL));
     ssd->editbox->column = 0;
     session_filter_ctrl = ssd->editbox;   /* Ctrl+F jump target, see above */
+    session_filter_ssd = ssd;             /* Ctrl+G root-folder jump */
     ssd->savebutton = ctrl_pushbutton(s, "Save", 'v',
                                       HELPCTX(session_saved),
                                       sessionsaver_handler, P(ssd));

@@ -719,6 +719,7 @@ static int kitty_cfgbox_restore_pos(HWND hwnd)
  * a session box exists; the stock GUI variants' stub accessor returns NULL,
  * so they never install it. */
 dlgcontrol *kitty_config_session_filter_ctrl(void); /* kitty_config.c / stub */
+bool kitty_config_select_root_folder(dlgparam *dp); /* kitty_config.c / stub */
 static HHOOK kitty_cfg_kbdhook = NULL;
 static HWND kitty_cfg_hwnd = NULL;
 static HWND kitty_cfg_treeview = NULL;
@@ -728,7 +729,7 @@ static dlgparam *kitty_cfg_dp = NULL;
 static LRESULT CALLBACK kitty_cfg_kbd_hookproc(int code, WPARAM wParam,
                                                LPARAM lParam)
 {
-    if (code == HC_ACTION && wParam == 'F' &&
+    if (code == HC_ACTION && (wParam == 'F' || wParam == 'G') &&
         !(lParam & 0x80000000) &&               /* key-down only */
         (GetKeyState(VK_CONTROL) & 0x8000) &&
         !(GetKeyState(VK_MENU) & 0x8000) &&
@@ -738,6 +739,11 @@ static LRESULT CALLBACK kitty_cfg_kbd_hookproc(int code, WPARAM wParam,
             (focus == kitty_cfg_hwnd || IsChild(kitty_cfg_hwnd, focus))) {
             dlgcontrol *ctrl = kitty_config_session_filter_ctrl();
             if (ctrl) {
+                /* Ctrl+G = "search everywhere": clear the folder filter back
+                 * to the root list first, then do exactly what Ctrl+F does.
+                 * Ctrl+F on its own only searches the selected folder. */
+                if (wParam == 'G')
+                    kitty_config_select_root_folder(kitty_cfg_dp);
                 if (kitty_cfg_treeview && kitty_cfg_sessionitem)
                     TreeView_SelectItem(kitty_cfg_treeview,
                                         kitty_cfg_sessionitem);
