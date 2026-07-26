@@ -91,6 +91,48 @@ features are working and verified. Known limitations as of this release:
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
 
+## New in 0.84.1.63
+
+- **The registry backup is written by Windows' own registry exporter**, not by
+  KiTTY, so it no longer drops binary values (window positions and sizes) or
+  turns multi-value entries such as kageant's startup key list into plain text —
+  both came back missing or unusable after a restore before. **Limitation:** the
+  file is now a standard UTF-16 `.reg`, which **older KiTTY versions cannot
+  read** — an older build treats it as unreadable rather than restoring from it.
+  That only matters if you downgrade and then try to restore a backup made by
+  this version; backups written by earlier versions are still restored normally
+  by this one.
+- **Backups are taken *before* a destructive change** — overwriting a saved
+  session, deleting a session, deleting a folder — instead of only after a
+  change, so the newest copy still holds what was just lost. They are also **no
+  longer written when you merely open a session**: a copy is written only when
+  something was actually changed. Saving a session under a name that does not
+  exist yet writes none, because nothing exists to preserve. `/savereg` still
+  writes one on demand.
+- **The configuration password is retired.** `/configpassword` and
+  `/-configpassword` are gone and backups are no longer encrypted: the registry
+  already protects saved passwords with DPAPI, while this mechanism kept its own
+  key in plain text beside them and the `kitty.ini` copy was scrambled only with
+  a value built into every KiTTY. **Limitation:** there is no longer any way to
+  encrypt a backup file. Existing encrypted backups stay readable — KiTTY asks
+  for the password when loading one.
+- **Portable backups are complete, and are finally pruned.** The launcher
+  configuration was missing from every portable backup although the
+  documentation called it a complete copy, and the clean-up meant to keep the
+  newest `portablebackupcount` folders never ran at all. **On the first backup
+  after upgrading, accumulated folders are trimmed to that setting (5 by
+  default)** — raise it, or copy them aside, if you want to keep more.
+- **New registry backups are named `kittynew-*.sav`.** The intended name never
+  actually took effect, so they were written as `kitty-*.sav` — the same name an
+  older KiTTY installed alongside uses, which the name change existed to avoid.
+  Existing `kitty-*.sav` files are left alone and are still read if a restore is
+  needed.
+- **Restoring a registry backup on another computer or user account** returns
+  your sessions but not their saved passwords: DPAPI ties those to the account
+  that saved them. This is long-standing, not new — it is simply documented now.
+  Portable stores are unaffected: passwords there are protected with your master
+  password and are made to travel with the store.
+
 ## New in 0.84.1.62
 
 - **Inline (in-terminal) SSH security confirmations**, opt-in per prompt in
