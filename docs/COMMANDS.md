@@ -15,7 +15,7 @@ Each entry below notes whether the effect **persists**:
 - *session* — stored in the saved session (survives via `/save` / `/savenew`).
 
 See [FEATURES.md](../FEATURES.md) for the surrounding features (send-text boxes,
-`[Shortcuts]`, save modes, the configuration password).
+`[Shortcuts]` and save modes).
 
 ## Window & title
 
@@ -97,7 +97,7 @@ Refresh (re-render) the background image.
 ### /init
 
 Show the configuration environment of this KiTTY instance: configuration
-directory, save mode, initial directory, the kitty.ini and kitty.sav paths, and
+directory, save mode, initial directory, the kitty.ini and backup-file paths, and
 the window class name. Useful to see *which* configuration a running KiTTY is
 actually using.
 
@@ -174,13 +174,17 @@ remove the `savemode=` key.
 ### /savereg
 
 Export the complete KiTTY registry configuration (sessions, host keys,
-settings) to `kitty.sav` next to the exe.
+settings) immediately, without waiting for one of the events that normally
+triggers a backup. The file is a timestamped `kittynew-YYYYMMDD-HHMMSS.sav`
+written beside `kitty.ini` in `%APPDATA%\KiTTY`, or at the `[KiTTY] sav=`
+path if one is set, and the oldest are pruned to `[KiTTY] savbackupcount`.
 
 **Persists:** the exported file.
 
 ### /loadreg
 
-Import `kitty.sav` (see `/savereg`) back into the registry.
+Import the backup file (see `/savereg`) back into the registry. Backups
+written by older KiTTY versions are recognised and read as well.
 
 **Persists:** registry.
 
