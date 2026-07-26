@@ -226,7 +226,11 @@ reminds you at the next launch.
 
 ### /-configpassword
 
-Show the currently stored configuration password in a message box.
+Show the currently stored configuration password in a message box, or report
+that none is set. The password is read from whichever store actually holds it —
+the registry in registry/file save mode, `kitty.ini` in portable mode — because
+the two keep it in different forms; a stored value that cannot be decoded is
+reported as such rather than displayed as garbage.
 
 **Persists:** informational, nothing stored.
 

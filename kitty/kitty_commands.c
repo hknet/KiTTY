@@ -261,14 +261,51 @@ static int cmd_configpassword( HWND hwnd, char * arg ) {
 	return 1 ;
 }
 
+/* The two stores keep the configuration password in DIFFERENT forms:
+ * cmd_configpassword writes it CLEARTEXT to the registry (via WriteParameter)
+ * but MASKKEY-encrypted to kitty.ini. ReadParameterN is registry-first and
+ * cannot tell the caller which store answered, so decrypting whatever it
+ * returned turned the cleartext registry copy into garbage - and the old code
+ * printed THAT as the user's password (confirmed live 2026-07-26: a stored
+ * "ZZprobe123" was displayed as "!<box>9%&"). Trusting it can cost the user
+ * access to their own encrypted .sav backups. So: read each store explicitly,
+ * in the precedence the rest of the code uses, and never print a value we
+ * could not recover. */
 static int cmd_showconfigpassword( HWND hwnd, char * arg ) {
-	char buffer[4096] ;
+	char buffer[4096] = "" ;
+	int have = 0 ;
 	(void)arg ;
-	if( ReadParameterN( INIT_SECTION, "password", buffer, sizeof(buffer) ) ) {
-		if( decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD ) ) {
-			MessageBox( hwnd, buffer, "Your password is ...", MB_OK|MB_ICONWARNING ) ;
+
+	if( strlen( PasswordConf ) > 0 ) {
+		/* Live value of THIS process - what .sav exports are encrypted with. */
+		snprintf( buffer, sizeof(buffer), "%s", PasswordConf ) ;
+		have = 1 ;
+	} else if( (IniFileFlag != SAVEMODE_DIR)
+		   && (GetValueDataN( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "password", buffer, sizeof(buffer) ) != NULL)
+		   && (strlen( buffer ) > 0) ) {
+		have = 1 ;	/* the registry copy is stored cleartext */
+	} else if( (KittyIniFile != NULL)
+		   && readINI( KittyIniFile, INIT_SECTION, "password", buffer, sizeof(buffer) )
+		   && (strlen( buffer ) > 0) ) {
+		/* the kitty.ini copy is the encrypted one */
+		have = decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD )
+		       && (strlen( buffer ) > 0) ;
+		if( !have ) {
+			MessageBox( hwnd, "A configuration password is stored in kitty.ini, but it "
+					  "could not be decoded, so it cannot be shown.",
+				    "Configuration password", MB_OK|MB_ICONWARNING ) ;
+			memset( buffer, 0, sizeof(buffer) ) ;
+			return 1 ;
 		}
 	}
+
+	if( have ) {
+		MessageBox( hwnd, buffer, "Your password is ...", MB_OK|MB_ICONWARNING ) ;
+	} else {
+		MessageBox( hwnd, "No configuration password is set.",
+			    "Configuration password", MB_OK|MB_ICONINFORMATION ) ;
+	}
+	memset( buffer, 0, sizeof(buffer) ) ;
 	return 1 ;
 }
 
