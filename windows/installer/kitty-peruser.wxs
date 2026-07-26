@@ -35,6 +35,17 @@
     <util:CloseApplication Id="ClosePterm"   Target="kitty_pterm.exe" CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
     <util:CloseApplication Id="CloseTel"     Target="kitty_tel.exe"   CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
 
+    <!-- KiTTY: silent (/qn) upgrades keep the Windows default - Restart Manager
+         closes the running windows and reopens them - except in a SYSTEM-context
+         deployment, where there is no desktop to relaunch into. See
+         kitty-system.wxs for the full rationale and the measurement. Kept here
+         for symmetry: a per-user product installed by a SYSTEM task would land
+         in the SYSTEM profile, but if someone does that, it should not try to
+         paint windows either. -->
+    <SetProperty Id="MSIDISABLERMRESTART" Value="1"
+                 Before="InstallValidate" Sequence="execute"
+                 Condition="UserSID = &quot;S-1-5-18&quot;" />
+
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="APPDIR" Name="Programs">
         <Directory Id="INSTALLFOLDER" Name="KiTTY" />

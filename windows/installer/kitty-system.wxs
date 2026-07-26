@@ -39,6 +39,35 @@
     <util:CloseApplication Id="ClosePterm"   Target="kitty_pterm.exe" CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
     <util:CloseApplication Id="CloseTel"     Target="kitty_tel.exe"   CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
 
+    <!-- KiTTY: silent (/qn) upgrades - do not relaunch into a desktop that is
+         not there.
+
+         Windows runs the Restart Manager unconditionally at silent UI level
+         ("Silent UI level installations always shut down applications and
+         services, and ... always use Restart Manager"), with no Files-in-Use
+         dialog to default. Because every KiTTY window registers itself via
+         RegisterApplicationRestart, and MSIDISABLERMRESTART defaults to 0, RM
+         also RESTARTS them afterwards: a quiet upgrade closes and reopens the
+         user's sessions. Measured 2026-07-26 on a /qn run - RM shut down all
+         six processes and restarted them 0.6 s later, and the config-box
+         (&filemap) children came back on their registered -load "NAME".
+         That is the behaviour we want for winget and for a scripted upgrade
+         the user is sitting in front of, so it is deliberately left alone.
+
+         It is the wrong behaviour for a SYSTEM-context deployment (SCCM,
+         Intune, a SYSTEM scheduled task): there is no interactive desktop to
+         relaunch into. Suppress only the restart leg there - the shutdown
+         still happens, so the upgrade itself is unaffected.
+
+         UserSID is the CLIENT's SID, not the server's: an elevated
+         user-initiated install still reports the real user (measured -
+         S-1-5-21-... with MsiRunningElevated=1), so this fires only for a
+         genuine SYSTEM-initiated install. Deployers can equally pass
+         MSIDISABLERMRESTART=1 on the command line themselves. -->
+    <SetProperty Id="MSIDISABLERMRESTART" Value="1"
+                 Before="InstallValidate" Sequence="execute"
+                 Condition="UserSID = &quot;S-1-5-18&quot;" />
+
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="KiTTY" />
     </StandardDirectory>
