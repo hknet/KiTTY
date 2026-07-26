@@ -292,6 +292,7 @@ static void kitty_proxyedit_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * stored yet, the auto-detected default as a display hint (we never WRITE on
  * refresh). On VALCHANGE we persist whatever the user selected/typed. Mirrors
  * the resolution order in SearchWinSCP() (kitty.c). */
+void SaveRegistryKeyNow(void);   /* kitty.c - blocking config backup */
 int ReadParameter(const char *key, const char *name, char *value);   /* kitty.c */
 int ReadParameterN(const char *key, const char *name, char *value, size_t size); /* kitty.c */
 int WriteParameter(const char *key, const char *name, char *value);  /* kitty.c */
@@ -2177,6 +2178,10 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     /* else: keep the folder the session was loaded with */
                 }
 #endif
+                /* Back up the store before overwriting a saved session, so the
+                 * previous contents of it remain recoverable. Blocking on
+                 * purpose - an async snapshot could land after the write. */
+                SaveRegistryKeyNow();
                 char *errmsg = save_settings(ssd->savedsession, conf);
                 if (errmsg) {
                     dlg_error_msg(dlg, errmsg);
@@ -2214,6 +2219,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             } else if (i < 0) {
                 dlg_beep(dlg);          /* nothing selected */
             } else {
+                /* Deleting a session is the case a backup exists for. Must be
+                 * on disk BEFORE the delete, hence the blocking variant. */
+                SaveRegistryKeyNow();
                 del_settings(ssd->sesslist.sessions[i]);
                 get_sesslist(&ssd->sesslist, false);
                 get_sesslist(&ssd->sesslist, true);
@@ -2334,6 +2342,12 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
         } else if (!ssd->midsession &&
                    ssd->delfolderbutton && ctrl == ssd->delfolderbutton) {
             /* Delete the currently selected folder. */
+            /* Back up before the chain below is even evaluated: its condition
+             * has side effects - the member-count branch already rewrites the
+             * sessions' Folder values - so a backup taken later would miss
+             * exactly the state worth keeping. It therefore also runs when the
+             * delete is refused or declined, which is a cheap price. */
+            SaveRegistryKeyNow();
             if (!CurrentFolder[0] || !strcmp(CurrentFolder, "Default")) {
                 kitty_root_folder_cannot_delete(dlg);
             } else if (sessionsaver_folder_member_count(ssd) > 0 ?

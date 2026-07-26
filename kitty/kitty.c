@@ -1256,7 +1256,30 @@ void RetireConfigPasswordLeftovers( void ) {
 	memset( buf, 0, sizeof(buf) ) ;
 	}
 
-void SaveRegistryKey( void ) {
+/* The export spawns reg.exe, so it runs on a worker thread rather than making
+ * the config box wait for it - upstream did the same with _beginthread. One at
+ * a time: a request arriving while one is in flight is dropped, since it would
+ * only write a near-identical snapshot a moment later. */
+static LONG sav_worker_busy = 0 ;
+
+struct sav_job { char dated[4096] ; char base[4096] ; int keep ; } ;
+
+static DWORD WINAPI sav_worker( LPVOID param ) {
+	struct sav_job * j = (struct sav_job *)param ;
+	SaveRegistryKeyEx( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), j->dated ) ;
+	sav_prune( j->base, j->keep ) ;
+	free( j ) ;
+	InterlockedExchange( &sav_worker_busy, 0 ) ;
+	return 0 ;
+	}
+
+/* async=0 blocks until the backup is on disk. Callers that are about to DESTROY
+ * something - delete a session or a folder, overwrite a saved session - must use
+ * that: the whole point of those backups is to capture the store as it was
+ * BEFORE the change, and a worker thread could just as easily snapshot it after.
+ * Portable (dir) mode is always synchronous; it copies files rather than
+ * spawning a process, and its backup has the same ordering requirement. */
+static void sav_backup( int async ) {
 	int keep = 5 ; char kb[64] ;
 	if( IniFileFlag == SAVEMODE_DIR ) { SavePortableDirBackup() ; return ; }
 	if( NoKittyFileFlag || (KittySavFile==NULL) ) return ;
@@ -1271,11 +1294,30 @@ void SaveRegistryKey( void ) {
 	 * a now-stamped name - the timestamp then lied about the content's age.) */
 	{ char dated[4096] ;
 	  sav_timestamped_path( KittySavFile, dated, sizeof(dated) ) ;
-	  SaveRegistryKeyEx( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), dated ) ;
-	  sav_prune( KittySavFile, keep ) ; }
+	  if( !async ) {
+		SaveRegistryKeyEx( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), dated ) ;
+		sav_prune( KittySavFile, keep ) ;
+		return ;
+		}
+	  if( InterlockedCompareExchange( &sav_worker_busy, 1, 0 ) != 0 ) return ;
+	  { struct sav_job * j = (struct sav_job *)malloc( sizeof(*j) ) ;
+	    HANDLE th ;
+	    if( j == NULL ) { InterlockedExchange( &sav_worker_busy, 0 ) ; return ; }
+	    snprintf( j->dated, sizeof(j->dated), "%s", dated ) ;
+	    snprintf( j->base, sizeof(j->base), "%s", KittySavFile ) ;
+	    j->keep = keep ;
+	    th = CreateThread( NULL, 0, sav_worker, j, 0, NULL ) ;
+	    if( th == NULL ) { free( j ) ; InterlockedExchange( &sav_worker_busy, 0 ) ; return ; }
+	    CloseHandle( th ) ;
+	  }
+	}
 	}
 
-void routine_SaveRegistryKey( void * st ) { SaveRegistryKey() ; }
+/* Routine snapshot after a deliberate config change - never blocks the UI. */
+void SaveRegistryKey( void ) { sav_backup( 1 ) ; }
+
+/* Snapshot that must be on disk before the caller changes anything. */
+void SaveRegistryKeyNow( void ) { sav_backup( 0 ) ; }
 
 // Charge la cle de registre
 void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'information de l'avancement (si null pas d'info)

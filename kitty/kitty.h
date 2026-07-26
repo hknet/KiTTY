@@ -272,7 +272,6 @@ void SaveFolderList( void ) ;
 void InfoBoxSetText( HWND hwnd, char * st ) ;
 void InfoBoxClose( HWND hwnd ); 
 void routine_server( void * st ) ;
-void routine_SaveRegistryKey( void * st ) ;
 void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) ;
 int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance,LPSTR lpCmdLine, int nCmdShow) ;
 void InitWinMain( void ) ;
@@ -405,6 +404,7 @@ void ManageVisible( HWND hwnd, TermWin *tw, char * title ) ;
 // Sauvegarde de la cle de registre
 void SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) ;
 void SaveRegistryKey( void ) ;
+void SaveRegistryKeyNow( void ) ;
 void ManageWinrol( HWND hwnd, int resize_action ) ;
 void resize( int height, int width ) ;
 void OpenAndSendScriptFile( HWND hwnd ) ;
