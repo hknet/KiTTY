@@ -7,6 +7,23 @@ see [FEATURES.md](FEATURES.md).
 
 ## 0.84.1.65-beta — 2026-07-27
 
+- **Exporting sessions no longer creates a master password.** "Export all" now
+  asks how the exported files should be protected: with a password of your
+  choosing, which lets them be imported on any PC, or for this Windows account
+  on this PC only. The password belongs to the exported files alone — it is
+  shown once when the export finishes, with a Copy button, and nothing about
+  the sessions saved on your machine is changed. Previously exporting quietly
+  set up (and permanently stored) a master password for your own session store
+  as a side effect, one you may never have been told about.
+
+- **Importing asks for the import password.** If the files were exported with a
+  password, KiTTY asks for it once for the whole import; a wrong password can
+  be retyped three times and then leaves your sessions untouched rather than
+  half-imported. Files exported for one PC and account import with no prompt at
+  all, and say so plainly if they are opened on a different PC or account
+  instead of importing sessions with blank passwords. Imported passwords are
+  always re-protected by the store they land in.
+
 - **Session files can now carry a password in the clear, on purpose.** If you
   roll sessions out with a script, write the password as
   `Password\PLAIN:yourpassword\` and KiTTY will take it exactly as given, then
