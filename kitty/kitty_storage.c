@@ -808,6 +808,14 @@ static int   g_bundle_dpapi = 0;
  * kitty_secret_wrap_portable): such a bundle imports only on this PC/account,
  * which the export summary must state rather than claim a password protects it. */
 static int   g_bundle_wrap_failed = 0;
+/* The bundle context is direction-aware. On IMPORT the passphrase must open the
+ * bundle's values but must NOT be used to re-protect them: what gets saved
+ * belongs to the destination store and has to carry the destination's
+ * protection (registry -> DPAPI, portable -> master password). Without this
+ * flag an import would rewrite every imported password under the transport
+ * password, which nothing on that machine would know to ask for. */
+static int   g_bundle_import = 0;
+void kitty_set_bundle_import(int on) { g_bundle_import = (on != 0); }
 void kitty_set_bundle_passphrase(const char *pass)
 {
     if (g_bundle_pass) {
@@ -823,6 +831,7 @@ void kitty_clear_bundle_context(void)
     kitty_set_bundle_passphrase(NULL);
     g_bundle_dpapi = 0;
     g_bundle_wrap_failed = 0;
+    g_bundle_import = 0;
 }
 int kitty_bundle_passphrase_active(void) { return g_bundle_pass != NULL; }
 int kitty_bundle_wrap_failed(void) { return g_bundle_wrap_failed; }
@@ -1433,7 +1442,7 @@ char *kitty_secret_wrap_portable(const char *plaintext)
      * encrypted and is never lost, and crucially we still do not prompt for a
      * master password. Such a bundle is then this-PC-only, so the caller must
      * say so - kitty_bundle_wrap_failed() reports it. */
-    if (g_bundle_pass || g_bundle_dpapi) {
+    if (!g_bundle_import && (g_bundle_pass || g_bundle_dpapi)) {
         char *res;
         if (!plaintext[0]) return ksec_dup("");
         if (g_bundle_pass) {

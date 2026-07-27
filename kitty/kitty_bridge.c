@@ -708,13 +708,255 @@ static int kitty_import_one_ktx(const char *path, int overwrite) {
 int kitty_import_dir(const char *dir, int *failOut, int *proxyOut,
                      int *skippedOut, int overwrite);   /* defined below */
 
+/* ---- import: is the bundle protected, and with what? (design/TASK_export_
+ * password.md SS5) -----------------------------------------------------------
+ * Whether to ask for a password is decided from the FILES, never guessed: scan
+ * the bundle for a value carrying a protection marker. MPW2: means an export
+ * password is needed and works on any PC; DPAPI1: means the bundle is tied to
+ * one Windows account on one PC and must never raise a password dialog.
+ *
+ * The sampled value is also the test. The candidate password is checked against
+ * it BEFORE a single session is written, so a wrong password abandons the
+ * import with nothing half-imported.
+ *
+ * Reading the raw text (rather than loading each session) is what makes that
+ * possible, and it is safe: both writers munge their values, so a marker only
+ * ever appears at the start of a value and the value ends at the next literal
+ * backslash.
+ */
+extern int  ksec_unwrap_with_passphrase(const char *stored,
+                                        const char *passphrase, char **out);
+extern int  ksec_unprotect(const char *stored, char **out);
+extern void kitty_set_bundle_import(int on);
+
+#define KITTY_IMPORT_PW_TRIES 3
+
+/* Value starting at p (a munged token), unmunged. snewn'd. */
+static char *bundle_take_value(const char *p)
+{
+    const char *e = p;
+    char *munged, *out;
+    size_t n;
+    while (*e && *e != '\\' && *e != '\r' && *e != '\n') e++;
+    n = (size_t)(e - p);
+    munged = snewn(n + 1, char);
+    memcpy(munged, p, n);
+    munged[n] = '\0';
+    out = snewn(n + 1, char);               /* unmunging never grows a string */
+    unmungestr(munged, out, (int)n + 1);
+    sfree(munged);
+    return out;
+}
+
+static void bundle_scan_text(const char *txt, char **mpw2Out, char **dpapiOut)
+{
+    /* Both spellings: the .ktx and proxy writers munge (':' -> "%3A"), but a
+     * hand-written or externally generated file may not have. */
+    static const char *const marks[] = {
+        "MPW2%3A", "MPW2:", "DPAPI1%3A", "DPAPI1:"
+    };
+    unsigned i;
+    for (i = 0; i < lenof(marks); i++) {
+        const char *hit = strstr(txt, marks[i]);
+        char **slot = (i < 2) ? mpw2Out : dpapiOut;
+        if (hit && !*slot) *slot = bundle_take_value(hit);
+    }
+}
+
+static char *bundle_read_file(const char *path)
+{
+    FILE *fp = fopen(path, "rb");
+    long len;
+    size_t got;
+    char *buf;
+    if (!fp) return NULL;
+    if (fseek(fp, 0, SEEK_END) != 0) { fclose(fp); return NULL; }
+    len = ftell(fp);
+    /* A session file is a few kB; the cap just stops a stray huge file in the
+     * chosen folder from being slurped whole. */
+    if (len < 0 || len > 4L * 1024 * 1024) { fclose(fp); return NULL; }
+    rewind(fp);
+    buf = snewn((size_t)len + 1, char);
+    got = fread(buf, 1, (size_t)len, fp);
+    buf[got] = '\0';
+    fclose(fp);
+    return buf;
+}
+
+/* Scan every file matching dir\pattern; stops early once an MPW2 sample is in
+ * hand, since that already decides the question. */
+static void bundle_scan_dir(const char *dir, const char *pattern,
+                            char **mpw2Out, char **dpapiOut)
+{
+    char *pat = dupprintf("%s\\%s", dir, pattern);
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pat, &fd);
+    sfree(pat);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        char *path, *txt;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        if (*mpw2Out) break;
+        path = dupprintf("%s\\%s", dir, fd.cFileName);
+        txt = bundle_read_file(path);
+        if (txt) {
+            bundle_scan_text(txt, mpw2Out, dpapiOut);
+            smemclr(txt, strlen(txt));
+            sfree(txt);
+        }
+        sfree(path);
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+}
+
+/* ---- import password prompt ---- */
+static char *g_imp_result;          /* collected UTF-8 password (malloc'd) */
+static const char *g_imp_prompt;
+
+static INT_PTR CALLBACK importpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
+{
+    switch (msg) {
+      case WM_INITDIALOG:
+        SetDlgItemTextA(hdlg, IDC_IMP_PROMPT, g_imp_prompt ? g_imp_prompt : "");
+        SendMessage(GetDlgItem(hdlg, IDC_IMP_PASS), EM_SETPASSWORDCHAR,
+                    (WPARAM)'*', 0);
+        SetForegroundWindow(hdlg);
+        SetFocus(GetDlgItem(hdlg, IDC_IMP_PASS));
+        return FALSE;                          /* we set focus ourselves */
+
+      case WM_COMMAND:
+        switch (LOWORD(wp)) {
+          case IDC_IMP_SHOWPW: {
+            BOOL show = (IsDlgButtonChecked(hdlg, IDC_IMP_SHOWPW) == BST_CHECKED);
+            HWND pw = GetDlgItem(hdlg, IDC_IMP_PASS);
+            SendMessage(pw, EM_SETPASSWORDCHAR, show ? 0 : (WPARAM)'*', 0);
+            InvalidateRect(pw, NULL, TRUE);
+            return TRUE;
+          }
+          case IDOK:
+            g_imp_result = exp_utf8_from_edit(hdlg, IDC_IMP_PASS);
+            EndDialog(hdlg, IDOK);
+            return TRUE;
+          case IDCANCEL:
+            EndDialog(hdlg, IDCANCEL);
+            return TRUE;
+        }
+        break;
+
+      case WM_CLOSE:
+        EndDialog(hdlg, IDCANCEL);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void imp_wipe(char **p)
+{
+    if (*p) { SecureZeroMemory(*p, strlen(*p)); free(*p); *p = NULL; }
+}
+
+/* Ask for the bundle password and verify it against `sample` before returning.
+ * 1 with *pwOut set (malloc'd) on success; 0 on cancel or after 3 wrong tries -
+ * in which case nothing must be imported. */
+static int kitty_ask_import_password(HWND hwnd, const char *sample, char **pwOut)
+{
+    int tries;
+    for (tries = 0; tries < KITTY_IMPORT_PW_TRIES; tries++) {
+        char *plain = NULL;
+        INT_PTR r;
+        int left = KITTY_IMPORT_PW_TRIES - tries;
+        char again[200];
+        if (tries == 0) {
+            g_imp_prompt =
+                "These sessions are password-protected.\n\nEnter the import "
+                "password - the one that was shown when they were exported. "
+                "It is not your master password.";
+        } else {
+            snprintf(again, sizeof(again),
+                     "That password did not open these files.%s",
+                     left == 1 ? " This is the last try."
+                               : " Two tries left.");
+            g_imp_prompt = again;
+        }
+        g_imp_result = NULL;
+        r = DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_IMPORTPW),
+                       hwnd, importpw_dlgproc);
+        if (r != IDOK) { imp_wipe(&g_imp_result); return 0; }
+        if (g_imp_result && g_imp_result[0] &&
+            ksec_unwrap_with_passphrase(sample, g_imp_result, &plain) == 1) {
+            imp_wipe(&plain);                  /* only ever needed as a check */
+            *pwOut = g_imp_result;
+            g_imp_result = NULL;
+            return 1;
+        }
+        imp_wipe(&plain);
+        imp_wipe(&g_imp_result);
+    }
+    MessageBoxA(hwnd,
+        "That password does not open these sessions, so nothing was "
+        "imported.\n\n"
+        "The import password is the one that was shown when the files were "
+        "exported - not your master password.",
+        "KiTTY session import", MB_OK | MB_ICONWARNING);
+    return 0;
+}
+
+/* Work out how this bundle is protected and obtain what is needed to open it.
+ * 1 = go ahead (*pwOut is the bundle password, or NULL when none is needed),
+ * 0 = abandon the import without touching anything. */
+static int kitty_unlock_import_bundle(HWND hwnd, const char *dir, char **pwOut)
+{
+    char *mpw2 = NULL, *dpapi = NULL, *pat, *sub;
+    int ok = 1;
+    *pwOut = NULL;
+    pat = dupprintf("*%s", ktx_ext());
+    bundle_scan_dir(dir, pat, &mpw2, &dpapi);
+    sfree(pat);
+    /* Named proxies are exported alongside, under Proxies\, with no extension -
+     * and one password covers both (point 17), so they count as evidence too. */
+    sub = dupprintf("%s\\Proxies", dir);
+    bundle_scan_dir(sub, "*", &mpw2, &dpapi);
+    sfree(sub);
+
+    if (mpw2) {
+        ok = kitty_ask_import_password(hwnd, mpw2, pwOut);
+    } else if (dpapi) {
+        /* No prompt: a DPAPI bundle either opens silently on this account and
+         * PC, or cannot be opened at all. Say which, rather than importing
+         * sessions with silently blank passwords. */
+        char *plain = NULL;
+        int rv = ksec_unprotect(dpapi, &plain);
+        imp_wipe(&plain);
+        if (rv != 1) {
+            MessageBoxA(hwnd,
+                "These sessions were exported with \"this PC only\" "
+                "protection, and this is not the Windows account or the PC "
+                "they were exported from, so their saved passwords cannot be "
+                "read.\n\n"
+                "Nothing was imported. Export them again with a password to "
+                "move them to another PC.",
+                "KiTTY session import", MB_OK | MB_ICONWARNING);
+            ok = 0;
+        }
+    }
+    sfree(mpw2);
+    sfree(dpapi);
+    return ok;
+}
+
+
 void kitty_import_sessions(HWND hwnd) {
     char dir[4096];
     int n, fail = 0, prox = 0, skipped = 0, overwrite = 1;
     char msg[700], counts[320];
+    char *bundlepw = NULL;
     /* Folder-based, to match Export all (both pick a folder): imports every .ktx
      * in the chosen folder plus its Proxies\ subfolder. */
     if (!OpenDirName(hwnd, dir)) return;
+    /* Settle the bundle's protection first: a wrong password, or a "this PC
+     * only" bundle from elsewhere, must abandon the import before anything is
+     * written or any other question is asked. */
+    if (!kitty_unlock_import_bundle(hwnd, dir, &bundlepw)) return;
     /* Import overwrites a saved session/proxy of the same name. Count the
      * collisions across BOTH and let the user choose once: overwrite all, import
      * only new, or cancel. */
@@ -744,11 +986,19 @@ void kitty_import_sessions(HWND hwnd) {
                 collide);
             int r = MessageBoxA(hwnd, q, "KiTTY session import",
                                 MB_YESNOCANCEL | MB_ICONQUESTION);
-            if (r == IDCANCEL) return;
+            if (r == IDCANCEL) { imp_wipe(&bundlepw); return; }
             overwrite = (r == IDYES) ? 1 : 0;
         }
     }
+    /* Import direction: the bundle password OPENS the files; what gets saved
+     * is re-protected by the destination store, not by the transport password. */
+    if (bundlepw) {
+        kitty_set_bundle_import(1);
+        kitty_set_bundle_passphrase(bundlepw);
+    }
     n = kitty_import_dir(dir, &fail, &prox, &skipped, overwrite);
+    kitty_clear_bundle_context();
+    imp_wipe(&bundlepw);
     snprintf(counts, sizeof(counts), "Imported %d session%s and %d prox%s",
              n, n == 1 ? "" : "s", prox, prox == 1 ? "y" : "ies");
     if (skipped > 0) { char t[80]; snprintf(t, sizeof(t), ", %d kept (already existed)", skipped); strncat(counts, t, sizeof(counts)-strlen(counts)-1); }

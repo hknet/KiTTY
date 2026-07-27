@@ -78,6 +78,9 @@ const char *kitty_secret_strip_plain(const char *stored);  /* borrowed */
  * persisted by any of this. */
 void kitty_set_bundle_passphrase(const char *pass);
 void kitty_set_bundle_dpapi_only(int on);  /* "this PC + this account only" */
+/* Import direction: the passphrase opens the bundle but never re-protects what
+ * is saved - imported secrets take the DESTINATION store's protection. */
+void kitty_set_bundle_import(int on);
 void kitty_clear_bundle_context(void);     /* always call when the run ends */
 int  kitty_bundle_passphrase_active(void);
 int  kitty_bundle_wrap_failed(void);   /* a wrap fell back to DPAPI: this-PC-only */

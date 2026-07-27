@@ -160,6 +160,23 @@ BEGIN
     DEFPUSHBUTTON   "OK", IDOK, 211, 107, 50, 14
 END
 
+/* Import password prompt. Raised only when the bundle really carries
+ * password-protected values (a DPAPI bundle must never see this dialog), and
+ * asked once per import, not per file. IDC_IMP_PROMPT is filled in at runtime
+ * so a wrong password can re-ask in place. Handled by kitty/kitty_bridge.c. */
+IDD_IMPORTPW DIALOG DISCARDABLE 0, 0, 268, 96
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Import sessions"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "", IDC_IMP_PROMPT, 7, 7, 254, 26
+    LTEXT           "Import password:", -1, 7, 38, 254, 8
+    EDITTEXT        IDC_IMP_PASS, 7, 48, 254, 12, ES_PASSWORD | ES_AUTOHSCROLL
+    AUTOCHECKBOX    "&Show password", IDC_IMP_SHOWPW, 7, 64, 254, 10
+    DEFPUSHBUTTON   "&Import", IDOK, 154, 75, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 211, 75, 50, 14
+END
+
 /* Named-proxy editor (cyd01/KiTTY#11). Handled by kitty/kitty_proxy_gui.c.
  * Pick a definition from the combo to edit it, or type a new name; Save writes
  * it, Delete removes it (after a confirm). The banner LTEXT warns when a stored

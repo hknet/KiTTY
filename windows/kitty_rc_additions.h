@@ -451,3 +451,19 @@
 #ifndef IDC_EXPD_COPY
 #define IDC_EXPD_COPY 1249
 #endif
+/* Import password prompt (design/TASK_export_password.md §5). Shown only when
+ * the bundle actually carries password-protected values; a DPAPI bundle never
+ * raises it. The prompt text is set at runtime so a wrong password can re-ask
+ * in place with the number of tries left. */
+#ifndef IDD_IMPORTPW
+#define IDD_IMPORTPW 142
+#endif
+#ifndef IDC_IMP_PROMPT
+#define IDC_IMP_PROMPT 1250
+#endif
+#ifndef IDC_IMP_PASS
+#define IDC_IMP_PASS 1251
+#endif
+#ifndef IDC_IMP_SHOWPW
+#define IDC_IMP_SHOWPW 1252
+#endif
