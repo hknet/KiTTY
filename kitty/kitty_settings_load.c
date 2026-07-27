@@ -327,6 +327,17 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "ProxyPort", 80, conf, CONF_proxy_port);
     gpps_forced(sesskey, "ProxyUsername", "", conf, CONF_proxy_username);
     gpps_forced(sesskey, "ProxyPassword", "", conf, CONF_proxy_password);
+    if (conf_get_str(conf, CONF_proxy_password)[0]) {
+        extern char *kitty_secret_decode_imported(const char *, const char *, const char *, int);
+        /* Same marker handling as Password (PLAIN: and our own envelopes), but
+         * try_legacy=0: old KiTTY stored ProxyPassword in the clear, so there
+         * is no legacy form to find here and a guess could only corrupt a
+         * perfectly good value. */
+        char *pt = kitty_secret_decode_imported(
+            conf_get_str(conf, CONF_proxy_password), NULL, NULL, 0);
+        conf_set_str(conf, CONF_proxy_password, pt ? pt : "");
+        if (pt) { memset(pt, 0, strlen(pt)); free(pt); }
+    }
     gpps_forced(sesskey, "ProxyTelnetCommand", "connect %host %port\\n",
 	 conf, CONF_proxy_telnet_command);
     gppi_forced(sesskey, "ProxyLogToTerm", FORCE_OFF, conf, CONF_proxy_log_to_term);
@@ -793,30 +804,25 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 #ifndef MOD_NOPASSWORD
     gpps_forced(sesskey, "Password", "", conf, CONF_password ) ;
     if( strlen(conf_get_str(conf, CONF_password))>0 ) {
-	extern int kitty_secret_is_marked(const char *) ;
-	extern int kitty_secret_unwrap(const char *, char **) ;
-	if( kitty_secret_is_marked(conf_get_str(conf, CONF_password)) ) {
-		/* New-format protected value (DPAPI1:/MPW1: marker dispatch; an
-		 * MPW1 value prompts to unlock). Undecryptable here -> empty
-		 * runtime password; the .ktx itself is not rewritten on load,
-		 * so nothing is lost. */
-		char *pt = NULL ;
-		kitty_secret_unwrap( conf_get_str(conf, CONF_password), &pt ) ;
-		conf_set_str( conf, CONF_password, pt ? pt : "" ) ;
-		if( pt ) { memset(pt,0,strlen(pt)) ; free(pt) ; }
-	} else {
-	/* Legacy (<=0.84.1.48) .ktx form: bcrypt+conditional MASKPASS. Kept
-	 * read-compatible forever; never written anymore. */
-	char pst[4096] ;
-	if( strlen(conf_get_str(conf, CONF_password))<=4095 ) { strcpy( pst, conf_get_str(conf, CONF_password) ) ; }
-	else { memcpy( pst, conf_get_str( conf, CONF_password ), 4095 ) ; pst[4095] = '\0' ; }
-	decryptpassword( GetCryptSaltFlag(), pst, conf_get_str(conf, CONF_host), conf_get_str(conf, CONF_termtype) ) ;
-	/* (original called DebugGetPassword here: a debug-only dump to a
-	 * "kitty.password" file, no effect on conf; dropped in the port.) */
-	MASKPASS(GetCryptSaltFlag(),pst);
-	conf_set_str( conf, CONF_password, pst ) ;
-	memset(pst,0,strlen(pst));
-	}
+	extern char *kitty_secret_decode_imported(const char *, const char *, const char *, int) ;
+	/* An imported .ktx password has one of four provenances: our own
+	 * protection markers, the PLAIN: provisioning marker, old-KiTTY
+	 * bcrypt+base64, or plain cleartext. kitty_secret_decode_imported()
+	 * sorts them out - markers first, and the unmarked legacy decode only
+	 * as a guess that falls back to the literal value.
+	 *
+	 * This replaces an unconditional decryptpassword + MASKPASS, which
+	 * mangled every unmarked value it touched: a password written in the
+	 * clear by a provisioning script became garbage, silently. The
+	 * decode/MASKPASS logic itself now lives in one place (kitty_storage.c),
+	 * shared with the portable cyd01-file conversion.
+	 * (The original also called DebugGetPassword here: a debug-only dump to
+	 * a "kitty.password" file, no effect on conf; dropped in the port.) */
+	char *pt = kitty_secret_decode_imported( conf_get_str(conf, CONF_password),
+			conf_get_str(conf, CONF_host),
+			conf_get_str(conf, CONF_termtype), 1 ) ;
+	conf_set_str( conf, CONF_password, pt ? pt : "" ) ;
+	if( pt ) { memset(pt,0,strlen(pt)) ; free(pt) ; }
     }
 #else
 	conf_set_str( conf, CONF_password, "" ) ;

@@ -19,6 +19,14 @@
 /* Marker prefix of a DPAPI-wrapped stored secret (see ksec_protect_*). */
 #define KITTY_SECRET_DPAPI_MARK "DPAPI1:"
 
+/* Marker prefix of a password deliberately supplied in the CLEAR by an external
+ * provisioning script, e.g. Password\PLAIN:hunter2\ in a rolled-out .ktx. It is
+ * an input format only: KiTTY recognises it on import and never writes it, and
+ * the value is re-protected by the destination backend on the next save. It
+ * exists because an unmarked value cannot be told apart from an old-KiTTY
+ * encrypted one with certainty (see kitty_secret_decode_imported). */
+#define KITTY_SECRET_PLAIN_MARK "PLAIN:"
+
 /* portable-store key=value list node (definition private to kitty_storage.c) */
 struct ksf_item;
 
@@ -60,11 +68,16 @@ const char *ksec_orig_get(int slot);     /* never-wipe original blob or NULL */
 int ksec_stored_is_legacy(const char *stored);
 int ksec_migrate_warn_ask(void);         /* legacy->protected save consent */
 int kitty_portable_password_legacy(void);
+const char *kitty_secret_strip_plain(const char *stored);  /* borrowed */
 unsigned ksec_cksum(const char *s);
 void kitty_pwdebug(const char *fmt, ...);
 
 /* ---- legacy (<=0.76 old-KiTTY) password decrypt ---- */
 char *ksec_legacy_decrypt(const char *stored, HKEY sesskey);  /* malloc/NULL */
+/* Decode a password read from an imported .ktx (unknown provenance). malloc'd
+ * or NULL for empty input; try_legacy=0 for fields old KiTTY never encrypted. */
+char *kitty_secret_decode_imported(const char *stored, const char *host,
+                                   const char *term, int try_legacy);
 char *ksec_to_utf8(char *s);
 
 /* ---- "the configuration store changed" flag ----

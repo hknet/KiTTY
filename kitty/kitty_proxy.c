@@ -31,6 +31,7 @@ extern char *kitty_secret_wrap_current_backend( const char *plaintext ) ;
 extern int   kitty_secret_unwrap( const char *stored, char **out ) ;
 extern int   kitty_secret_is_marked( const char *stored ) ;
 extern int   kitty_portable_password_legacy( void ) ;
+extern const char *kitty_secret_strip_plain( const char *stored ) ;
 
 struct Proxies proxies[MAX_PROXY] ;
 
@@ -373,7 +374,9 @@ static void kitty_proxy_encrypt_in_place( const char *dstpath ) {
 	char raw[4096] = "" ;
 	if( GetValueData( HKEY_CURRENT_USER, (char*)dstpath, "ProxyPassword", raw )
 	    && raw[0] && !kitty_secret_is_marked( raw ) ) {
-		char *enc = kitty_secret_wrap_current_backend( raw ) ;   /* registry -> DPAPI1 */
+		/* strip_plain: a PLAIN:-marked value is cleartext with a marker, so
+		 * protect the password and not the marker along with it. */
+		char *enc = kitty_secret_wrap_current_backend( kitty_secret_strip_plain( raw ) ) ;   /* registry -> DPAPI1 */
 		if( enc ) {
 			RegTestOrCreate( HKEY_CURRENT_USER, dstpath, "ProxyPassword", enc ) ;
 			memset( enc, 0, strlen(enc) ) ; free( enc ) ;
