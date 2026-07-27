@@ -4,8 +4,7 @@
  * value into a key code), TranslateShortcuts, InitShortcuts (loads the
  * [Shortcuts] / [KiTTY] user-defined-shortcut config), and ManageShortcuts
  * (the WM_KEYDOWN dispatcher for all fork key bindings, called from
- * window.c). The shortcut tables are exported via kitty.h because
- * kitty_savedump.c (part of kitty.c's translation unit) dumps them.
+ * window.c). The shortcut types are declared in kitty.h.
  * Compiled into the same targets as kitty.c (kitty + kitty_portable).
  */
 #include <stdio.h>
@@ -45,7 +44,7 @@ int readINI( const char * filename, const char * section, const char * key, char
 #define WinHeight (GetWinHeight())
 #define ImageViewerFlag (GetImageViewerFlag())
 
-/* The tables themselves (types in kitty.h; savedump reads them directly). */
+/* The tables themselves (types in kitty.h). */
 struct TShortcuts shortcuts_tab ;
 int NbShortCuts = 0 ;
 struct TShortcuts2 shortcuts_tab2[512] ;

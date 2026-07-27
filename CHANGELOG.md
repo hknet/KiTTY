@@ -5,6 +5,21 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.65-beta — 2026-07-27
+
+- **The diagnostic dump has been removed.** `/savedump` and the `kitty.exe
+  -savedump` command-line switch are gone, along with the `kitty.dmp` file they
+  produced. The dump was meant to be sent in with a bug report, but it was
+  written encrypted under a key compiled into the program and KiTTY shipped no
+  way to read one back — so neither you nor anyone helping you could open the
+  file the instructions told you to send. Alongside that it carried a standing
+  risk of leaking configuration secrets into a file people were encouraged to
+  share, and it could hang partway through writing. For troubleshooting, use
+  the **Event Log** (right-click the title bar → *Event Log*) and session
+  logging (**Session → Logging**) and attach those instead. A `kitty.dmp` left
+  over from an earlier version is not read or updated by KiTTY and can be
+  deleted.
+
 ## 0.84.1.64-beta — 2026-07-26
 
 - **`restrictacl=yes` hardens every KiTTY process from one setting.** KiTTY

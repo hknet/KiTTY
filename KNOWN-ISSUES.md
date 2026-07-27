@@ -47,13 +47,14 @@ features are working and verified. Known limitations as of this release:
 
 ## Security
 
-- **Diagnostic dumps:** `/savedump` redacts stored passwords, proxy passwords,
-  key passphrases, private-key filenames, clipboard contents, login-automation
-  (`autocommand`) strings, stored inline login/RuTTY script content and other
-  known secret fields — including inside the bundled `current.ktx` — so a dump
-  can be shared for troubleshooting without leaking credentials.
-  `kitty.exe -savedump` works in registry and portable modes. As with any
-  diagnostic file, skim `kitty.dmp` before posting it publicly.
+- **Diagnostic dumps have been removed.** `/savedump` and `kitty.exe -savedump`
+  are gone as of **0.84.1.65**. The dump was written encrypted under a key
+  compiled into the program, and KiTTY shipped no way to read one back, so a
+  dump could not actually be used for support by you or by us. Any `kitty.dmp`
+  left over from an earlier version is still readable only with that build's
+  key; it is safe to delete. For troubleshooting use the **Event Log**
+  (right-click the title bar → *Event Log*) and session logging
+  (**Session → Logging**), and attach those to an issue instead.
 - **Stored passwords are DPAPI-encrypted at rest.** KiTTY can *optionally*
   save a session password (PuTTY itself never stores one). As of **0.84.1.38**,
   new and re-saved passwords are protected with **Windows DPAPI** and stored as

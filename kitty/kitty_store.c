@@ -430,18 +430,6 @@ int CreateFolderInPath( const char * d ) {
 	return res ;
 }
 
-void SaveDumpPortableConfig( FILE * fp ) {
-	fprintf( fp, "seedpath=%s\n", seedpath ) ;
-	fprintf( fp, "sesspath=%s\n", sesspath ) ;
-	fprintf( fp, "initialsesspath=%s\n", initialsesspath ) ;
-	fprintf( fp, "sshkpath=%s\n", sshkpath ) ;
-	fprintf( fp, "jumplistpath=%s\n", jumplistpath ) ;
-	fprintf( fp, "oldpath=%s\n", oldpath ) ;
-	fprintf( fp, "sessionsuffix=%s\n", sessionsuffix ) ;
-	fprintf( fp, "keysuffix=%s\n", keysuffix ) ;
-}
-
-
 HSettingsItem SettingsNewItem( const char * name, const char * value ) {
 	if( name==NULL ) return NULL ; 
 	HSettingsItem NewItem = malloc( sizeof( SettingsItem ) ) ;

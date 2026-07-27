@@ -304,7 +304,6 @@ char * SetInitialSessPath( void ) ;
 char * SetSessPath( const char * dec ) ;
 void CleanFolderName( char * folder ) ;
 void SetInitCurrentFolder( const char * name ) ;
-int print_event_log( FILE * fp, int i ) ;
 void set_sshver( const char * vers ) ;
 int ResizeWinList( HWND hwnd, int width, int height ) ;
 int SendCommandAllWindows( HWND hwnd, char * cmd ) ;
@@ -327,8 +326,8 @@ void InitSpecialMenuTab( void ) ;
 extern char *SpecialMenu[NB_MENU_MAX] ;   /* User-Command / launcher entry payloads (kitty_specialmenu.c) */
 int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) ;
 
-/* keyboard-shortcut tables + entry points (kitty_shortcuts.c); the types
- * live here because kitty_savedump.c dumps the tables directly. */
+/* keyboard-shortcut types, tables + entry points; all defined in
+ * kitty_shortcuts.c. */
 struct TShortcuts {
 	int autocommand ;
 	int command ;
@@ -433,9 +432,6 @@ void ManageInitScript( const char * input_str, const int len ) ;
 void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) ;
 void GotoInitialDirectory( void ) ;
 void GotoConfigDirectory( void ) ;
-
-// Prototype de function de kitty_savedump.c
-void addkeypressed( UINT message, WPARAM wParam, LPARAM lParam, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) ;
 
 char * get_param_str( const char * val ) ;
 

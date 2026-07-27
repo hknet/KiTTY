@@ -339,14 +339,6 @@ it to the clipboard** — remember the clipboard keeps it until overwritten.
 
 **Persists:** informational, nothing stored.
 
-### /savedump
-
-Write `kitty.dmp` next to the exe: an encrypted diagnostic dump of the
-configuration and runtime state, for support purposes. Same as launching
-`kitty.exe -savedump`.
-
-**Persists:** the dump file.
-
 ### /screenshot
 
 Save a screenshot of the terminal window as `screenshot-<pid>-<time>.jpg`

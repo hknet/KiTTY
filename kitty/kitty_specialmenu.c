@@ -30,7 +30,7 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
 #define ShortcutsFlag (GetShortcutsFlag())
 
 #define NB_MENU_MAX 1024
-char *SpecialMenu[NB_MENU_MAX] ;   /* shared: kitty_launcher.c + kitty_savedump.c (kitty.c TU) use it directly */
+char *SpecialMenu[NB_MENU_MAX] ;   /* shared: kitty_launcher.c uses it directly */
 int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 	HKEY hKey ;
 	HMENU SubMenu ;

@@ -56,7 +56,6 @@ one is available.
   - [Start Cygwin or cmd.exe inside KiTTY](#start-cygwin-or-cmdexe-inside-kitty)
   - [File association](#file-association)
   - [ZModem file transfer](#zmodem-file-transfer)
-  - [Savedump (diagnostic dump)](#savedump-diagnostic-dump)
   - [Menu key shortcuts definition](#menu-key-shortcuts-definition)
   - [New command-line options](#new-command-line-options)
   - [Non-blocking connection errors](#non-blocking-connection-errors)
@@ -467,7 +466,7 @@ KiTTY can keep a registry-mode backup of its settings, sessions, and host keys a
 
 **What a restore brings back — and what it does not.** The file is written by Windows' own registry exporter, so every value returns with its original type and content: sessions, host keys, host CAs, named proxies, folders, window placement, kageant's startup keys, settings. The one thing that does not travel is **saved passwords on a different machine or user account**: in registry mode KiTTY protects them with Windows DPAPI, which is tied to the account that saved them. Restored on the same machine and account, everything comes back as it was; restored anywhere else, you get your sessions but their stored passwords have to be entered again. This applies to registry mode only — a **portable** store protects passwords with your master password, and is deliberately built so they can be unlocked on another machine, which is the whole point of carrying one around.
 
-**Portable directory mode** (`kitty_portable.exe` / `savemode=dir`) is not affected by any of the above — it stores sessions as files and its backups are plain file copies. When settings are applied, KiTTY refreshes `Backups\kitty-portable-latest` and keeps timestamped backups such as `Backups\kitty-portable-YYYYMMDD-HHMMSS` under the portable config directory. By default it keeps 5 timestamped backups; set `[KiTTY] portablebackupcount=0` to disable or another number to change retention. The backup contains **everything in your portable configuration directory** — `kitty.ini`, `Sessions`, `Proxies` (named proxy definitions), `Security` (master-password salt/verifier), `SshHostKeys`, `SshHostCAs`, `Launcher` and the rest — so a restored backup keeps its sessions, proxies, launcher entries and master-password protection intact, and anything the store gains in future is included automatically. Only four things are left out: the programs themselves, the `Backups` folder, session logs (`*.log`) and `-savedump` output (`*.dmp`). To restore, close KiTTY/kageant/launcher and copy the backup contents back into the portable config directory.
+**Portable directory mode** (`kitty_portable.exe` / `savemode=dir`) is not affected by any of the above — it stores sessions as files and its backups are plain file copies. When settings are applied, KiTTY refreshes `Backups\kitty-portable-latest` and keeps timestamped backups such as `Backups\kitty-portable-YYYYMMDD-HHMMSS` under the portable config directory. By default it keeps 5 timestamped backups; set `[KiTTY] portablebackupcount=0` to disable or another number to change retention. The backup contains **everything in your portable configuration directory** — `kitty.ini`, `Sessions`, `Proxies` (named proxy definitions), `Security` (master-password salt/verifier), `SshHostKeys`, `SshHostCAs`, `Launcher` and the rest — so a restored backup keeps its sessions, proxies, launcher entries and master-password protection intact, and anything the store gains in future is included automatically. Only four things are left out: the programs themselves, the `Backups` folder, session logs (`*.log`) and any leftover diagnostic dumps (`*.dmp`) from versions before 0.84.1.65. To restore, close KiTTY/kageant/launcher and copy the backup contents back into the portable config directory.
 
 **How to enable:** Automatic in registry mode: on each of the events above, KiTTY exports its registry hive to a timestamped **kittynew-*.sav** (in `%APPDATA%\KiTTY`, or the `[KiTTY] sav=` path) as a safety backup, keeping the newest `savbackupcount`.
 
@@ -571,16 +570,6 @@ KiTTY integrates ZModem support (originally from LePuTTY) so you can transfer fi
 
 ![ZModem file transfer](docs/features/img/config_zmodem.jpg)
 
-### Savedump (diagnostic dump)
-
-When you run into a problem and want help diagnosing it, KiTTY can capture a diagnostic dump of its current state. Reproduce the issue in your session, then trigger a dump to write a `kitty.dmp` file alongside the program. The dump path redacts stored passwords, proxy passwords, key passphrases, private-key filenames, clipboard contents, and other known secret fields, and the command-line `kitty.exe -savedump` path works in both registry and portable directory modes.
-
-**Caution:** diagnostic dumps can still contain operational context and are under ongoing review for script-content edge cases. Review a dump before sharing it publicly.
-
-**How to enable:** Press **Ctrl+F8**, type **`/savedump`** and Enter (or launch **`kitty.exe -savedump`**) to write an encrypted diagnostic dump (`kitty.dmp`) of the configuration next to the exe.
-
-(no screenshot)
-
 ### Menu key shortcuts definition
 
 KiTTY lets you assign a keyboard shortcut to almost any item in its main menu, so you can trigger actions like opening the connected text editor, printing the screen, running a local command, sending or receiving files, or toggling full screen without reaching for the mouse. Each action has a sensible default shortcut (for example, the editor opens with SHIFT+F2 and the local command box with CONTROL+F5), and you can override any of them to fit your own habits. This is handy for keeping frequently used commands a single keystroke away.
@@ -596,7 +585,7 @@ duplicate={CONTROL}N
 
 Other popular targets: `opennew=` (new session), `changesettings=`, `fullscreen=`, `visible=` (always on top), `protect=`, `rollup=`, `eventlog=`. Setting `shortcuts=no` in `[KiTTY]` disables the whole shortcut layer.
 
-Two of these open KiTTY's *send-text* boxes: `input` (default CTRL+F8) pops up a one-line box and `inputm` (default SHIFT+F8, with CTRL+SHIFT+F8 as a fixed alias) a resizable multiline box pre-filled from the clipboard. Text is composed locally and sent to the terminal only when you confirm (OK, or SHIFT+RETURN in the multiline box; if you select part of the text, only the selection is sent) — handy on slow links, and for sending a multi-line snippet as one block. In the one-line box, a line starting with `/` is a KiTTY *internal command* executed locally instead of being sent — type **`/help`** for the full list; e.g. `/size` and `/wintitle` toggle the title-bar decorations at runtime, `/save` writes the live settings back to this window's saved session, `/savenew <name>` saves them as a new session and switches the window to it, `/savedump` writes the diagnostic dump. The complete reference for every internal command — arguments, persistence, sharp edges — is in [docs/COMMANDS.md](docs/COMMANDS.md).
+Two of these open KiTTY's *send-text* boxes: `input` (default CTRL+F8) pops up a one-line box and `inputm` (default SHIFT+F8, with CTRL+SHIFT+F8 as a fixed alias) a resizable multiline box pre-filled from the clipboard. Text is composed locally and sent to the terminal only when you confirm (OK, or SHIFT+RETURN in the multiline box; if you select part of the text, only the selection is sent) — handy on slow links, and for sending a multi-line snippet as one block. In the one-line box, a line starting with `/` is a KiTTY *internal command* executed locally instead of being sent — type **`/help`** for the full list; e.g. `/size` and `/wintitle` toggle the title-bar decorations at runtime, `/save` writes the live settings back to this window's saved session, `/savenew <name>` saves them as a new session and switches the window to it. The complete reference for every internal command — arguments, persistence, sharp edges — is in [docs/COMMANDS.md](docs/COMMANDS.md).
 
 ![Menu key shortcuts definition](docs/features/img/menu_shortcuts.jpg)
 
@@ -612,7 +601,7 @@ KiTTY can impersonate PuTTY for the benefit of external tools that only know PuT
 
 KiTTY extends PuTTY's command line with a long list of extra switches, letting you control nearly every feature when launching from a shortcut, script, or the Run dialog. You can open a session straight in full screen or in the system tray, edit a session's settings, load a portable `.ktx` configuration, set a title, icon, password, or window class name, generate SSH keys, or disable individual features on the fly. All of PuTTY's original command-line options keep working alongside these additions.
 
-**How to enable:** KiTTY adds many switches on top of PuTTY's, e.g. `-loginscript`, `-fileassoc`, `-sshhandler`, `-launcher`, `-ed`, `-savedump`, `-kload`, `-classname`, `-noconfirm` (close the window without the "Are you sure?" prompt — handy for scripted/automated launches; it does not affect the SSH host-key or weak-crypto security confirmations), and `-hwndparent <handle>` (embed the terminal as a child of another application's window, so connection managers such as **mRemoteNG** and **Remote4Support** can host KiTTY inside their own tabs — pass the host window handle as a decimal number). See the list.
+**How to enable:** KiTTY adds many switches on top of PuTTY's, e.g. `-loginscript`, `-fileassoc`, `-sshhandler`, `-launcher`, `-ed`, `-kload`, `-classname`, `-noconfirm` (close the window without the "Are you sure?" prompt — handy for scripted/automated launches; it does not affect the SSH host-key or weak-crypto security confirmations), and `-hwndparent <handle>` (embed the terminal as a child of another application's window, so connection managers such as **mRemoteNG** and **Remote4Support** can host KiTTY inside their own tabs — pass the host window handle as a decimal number). See the list.
 
 (no screenshot)
 

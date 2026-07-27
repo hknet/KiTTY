@@ -1122,7 +1122,8 @@ static void portable_backup_prune( const char *root, int keep ) {
  * Left out: the Backups tree itself (it holds the older copies, and the
  * destination lives inside it, so copying it would nest backups inside
  * backups); the programs; and the bulky by-products that are not configuration
- * - session logs, and -savedump output, which is large and holds secrets. */
+ * - session logs, and any leftover .dmp diagnostic dumps from the removed
+ * savedump feature, which are large and hold secrets. */
 static int portable_backup_skip( const WIN32_FIND_DATAA *fd ) {
 	static const char *skipdirs[] = { "Backups", NULL } ;
 	static const char *skipexts[] = { ".exe", ".dll", ".log", ".dmp", NULL } ;
@@ -2558,11 +2559,6 @@ static void kitty_save_current_session( HWND hwnd, const char * newname ) {
 	snprintf( buffer, sizeof(buffer), "Settings saved to session\n-%s-", conf_get_str(conf,CONF_sessionname) ) ;
 	MessageBox( hwnd, buffer, "Save session", MB_OK|MB_ICONINFORMATION ) ;
 }
-
-// Procedures de generation du dump "memoire" (/savedump)
-#ifdef MOD_SAVEDUMP
-#include "kitty_savedump.c"
-#endif
 
 #include "kitty_commands.c"
 

@@ -356,14 +356,6 @@ static int cmd_passwd( HWND hwnd, char * arg ) {
 	return 1 ;
 }
 
-#ifdef MOD_SAVEDUMP
-static int cmd_savedump( HWND hwnd, char * arg ) {
-	(void)hwnd ; (void)arg ;
-	SaveDump() ;
-	return 1 ;
-}
-#endif
-
 static int cmd_screenshot( HWND hwnd, char * arg ) {
 	char screenShotFile[1024] ;
 	(void)arg ;
@@ -438,9 +430,6 @@ static const struct InternalCmdDef {
 #endif
 	{ "/debug",		IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "toggle debug mode",					cmd_debug },
 	{ "/passwd",		IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "show + copy the session password (debug mode only)",	cmd_passwd },
-#ifdef MOD_SAVEDUMP
-	{ "/savedump",		IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "write the kitty.dmp diagnostic dump",			cmd_savedump },
-#endif
 	{ "/screenshot",	IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "save a screenshot of the terminal",			cmd_screenshot },
 } ;
 

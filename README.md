@@ -111,9 +111,6 @@ or still want real-world testing. The full, per-release list is in
 - **Command-line tools use the registry session store** — `klink`/`kscp`/`ksftp` do not read
   a portable (`savemode=dir`) store, so portable sessions and their master-password-protected
   passwords are usable from the GUI only.
-- **Diagnostic dumps** — `/savedump` redacts the known high-risk secret fields (passwords,
-  passphrases, key files, clipboard, login-automation strings and inline script content —
-  including inside the bundled `current.ktx`).
 - **Background image** — the thin margin outside the terminal cell grid is still solid-filled (cosmetic).
 
 Found something else? Please **[open an issue](https://github.com/hknet/KiTTY/issues)**.
