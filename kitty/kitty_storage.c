@@ -784,6 +784,36 @@ static unsigned char g_mpw_fkey[KSEC_MPW_KEYLEN];
 static unsigned char g_mpw_fsalt[KSEC_MPW_SALTLEN];
 static int   g_mpw_f_valid = 0;
 
+/* ---- export-bundle passphrase (TASK_export_password.md) -------------------
+ * An export bundle is a TRANSPORT artifact and carries its own password, which
+ * is a different concept from the store's master password. While this context
+ * is set, secrets written by the export path are wrapped with THIS passphrase
+ * and the master password is neither read, created, prompted for nor written;
+ * reads of a self-contained MPW2 value try it before falling back to the normal
+ * master-password route.
+ *
+ * Process-scoped, following the established decoupling pattern
+ * (kitty_set_storage_mode / kitty_set_session_dir / kitty_set_defer_mpw_prompt)
+ * so libsettings stays standalone: the export/import loop sets it, runs, and
+ * clears it. Nothing here is ever persisted - no salt, no verifier, no writes
+ * to the g_mpw_* store state. */
+static char *g_bundle_pass = NULL;
+/* Set if any wrap during this bundle fell back to DPAPI (see
+ * kitty_secret_wrap_portable): such a bundle imports only on this PC/account,
+ * which the export summary must state rather than claim a password protects it. */
+static int   g_bundle_wrap_failed = 0;
+void kitty_set_bundle_passphrase(const char *pass)
+{
+    if (g_bundle_pass) {
+        SecureZeroMemory(g_bundle_pass, strlen(g_bundle_pass));
+        free(g_bundle_pass);
+    }
+    g_bundle_pass = (pass && pass[0]) ? ksec_dup(pass) : NULL;
+    g_bundle_wrap_failed = 0;
+}
+int kitty_bundle_passphrase_active(void) { return g_bundle_pass != NULL; }
+int kitty_bundle_wrap_failed(void) { return g_bundle_wrap_failed; }
+
 void kitty_set_master_passphrase(const char *pass)
 {
     if (g_mpw_passphrase) { memset(g_mpw_passphrase, 0, strlen(g_mpw_passphrase)); free(g_mpw_passphrase); }
@@ -846,8 +876,12 @@ static int mpw_ensure_unlocked(int creating)
      * supplied non-interactively. Leaves the value locked; the next explicit
      * load/show/connect runs with defer cleared and prompts then. */
     if (g_mpw_defer && !g_mpw_passphrase) return 0;
-    if (!g_mpw_derive || !g_mpw_protect || !g_mpw_unprotect || !g_mpw_randsalt)
+    if (!g_mpw_derive || !g_mpw_protect || !g_mpw_unprotect || !g_mpw_randsalt) {
+        kitty_pwdebug("mpw unlock: crypto not linked (d=%d p=%d u=%d r=%d)",
+                      g_mpw_derive != NULL, g_mpw_protect != NULL,
+                      g_mpw_unprotect != NULL, g_mpw_randsalt != NULL);
         return 0;                                /* MPW crypto not linked in this tool */
+    }
 
     unsigned char salt[KSEC_MPW_SALTLEN];
     int have_salt = mpw_load_salt(salt);
@@ -924,6 +958,8 @@ static int mpw_ensure_unlocked(int creating)
         g_mpw_unlocked = 1;
         return 1;
     }
+    kitty_pwdebug("mpw unlock FAILED: first_time=%d supplied=%d prompt=%d declined=%d",
+                  first_time, from_supplied, g_mpw_prompt != NULL, g_mpw_declined);
     SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key));
     return 0;
 }
@@ -940,6 +976,19 @@ static int mpw_unprotect_with_salt(const char *m1blob,
 {
     *outp = NULL;
     if (!g_mpw_derive || !g_mpw_unprotect) return 0;
+    /* Import of an export bundle in progress: the bundle's own passphrase is
+     * the right key, and it must be tried BEFORE anything that could prompt for
+     * the master password - importing must never raise a master-password
+     * dialog. The envelope's HMAC authenticates the attempt, so a wrong guess
+     * simply fails through to the normal route. */
+    if (g_bundle_pass) {
+        unsigned char bkey[KSEC_MPW_KEYLEN];
+        g_mpw_derive(g_bundle_pass, salt, KSEC_MPW_SALTLEN, bkey);
+        int bok = (g_mpw_unprotect(m1blob, bkey, outp) == 1 && *outp);
+        SecureZeroMemory(bkey, sizeof(bkey));
+        if (bok) return 1;
+        if (*outp) { sfree(*outp); *outp = NULL; }
+    }
     if (g_mpw_unlocked && g_mpw_salt_valid &&
         !memcmp(salt, g_mpw_salt, KSEC_MPW_SALTLEN)) {
         if (g_mpw_unprotect(m1blob, g_mpw_key, outp) == 1 && *outp) return 1;
@@ -976,6 +1025,94 @@ static int mpw_unprotect_with_salt(const char *m1blob,
         SecureZeroMemory(key, sizeof(key));
     }
     return 0;
+}
+
+/* Compose a self-contained "MPW2:<b64 salt>.<payload>" from an "MPW1:..." blob
+ * and the salt it was derived with. malloc'd, or NULL. */
+static char *mpw2_compose(const char *m1blob, const unsigned char salt[KSEC_MPW_SALTLEN])
+{
+    char *sb = ksec_b64_encode(salt, KSEC_MPW_SALTLEN);
+    char *res = NULL;
+    if (sb) {
+        const char *payload = m1blob + strlen(KSEC_MPW_MARK);
+        size_t n = strlen(KSEC_MPW2_MARK) + strlen(sb) + 1 + strlen(payload) + 1;
+        res = malloc(n);
+        if (res) snprintf(res, n, "%s%s.%s", KSEC_MPW2_MARK, sb, payload);
+        free(sb);
+    }
+    return res;
+}
+
+/* Wrap `plaintext` under an EXPLICIT passphrase, as a self-contained MPW2 value
+ * (fresh salt minted per call and embedded in the result), so it unlocks
+ * anywhere from that passphrase alone. This is what an export bundle needs.
+ *
+ * Persists NOTHING: no MasterPwSalt, no MasterPwVerifier, no writes to the
+ * g_mpw_* store state and no touching of the key caches. That is the entire
+ * point - exporting must not create a master password as a side effect.
+ *
+ * malloc'd result, or NULL if the MPW crypto is not linked into this tool or
+ * the wrap fails. */
+char *ksec_wrap_with_passphrase(const char *plaintext, const char *passphrase)
+{
+    unsigned char salt[KSEC_MPW_SALTLEN], key[KSEC_MPW_KEYLEN];
+    char *m1, *res = NULL;
+    if (!plaintext || !passphrase || !passphrase[0]) return NULL;
+    if (!g_mpw_derive || !g_mpw_protect || !g_mpw_randsalt) return NULL;
+    g_mpw_randsalt(salt, KSEC_MPW_SALTLEN);
+    g_mpw_derive(passphrase, salt, KSEC_MPW_SALTLEN, key);
+    m1 = g_mpw_protect(plaintext, key);          /* "MPW1:..." (snew'd) */
+    if (m1) {
+        res = mpw2_compose(m1, salt);
+        memset(m1, 0, strlen(m1));
+        sfree(m1);
+    }
+    SecureZeroMemory(key, sizeof(key));
+    SecureZeroMemory(salt, sizeof(salt));
+    return res;
+}
+
+/* Unwrap a self-contained MPW2 value with an EXPLICIT passphrase. Touches no
+ * cached key and no store state, so a wrong passphrase costs nothing but the
+ * derivation. Returns 1 and a malloc'd plaintext in *out, else 0. */
+int ksec_unwrap_with_passphrase(const char *stored, const char *passphrase,
+                                char **out)
+{
+    if (out) *out = NULL;
+    if (!stored || !out || !passphrase || !passphrase[0]) return 0;
+    if (!g_mpw_derive || !g_mpw_unprotect) return 0;
+    if (strncmp(stored, KSEC_MPW2_MARK, strlen(KSEC_MPW2_MARK)) != 0) return 0;
+
+    const char *p = stored + strlen(KSEC_MPW2_MARK);
+    const char *dot = strchr(p, '.');
+    if (!dot || dot <= p) return 0;
+
+    char *sb = malloc((size_t)(dot - p) + 1);
+    if (!sb) return 0;
+    memcpy(sb, p, dot - p); sb[dot - p] = '\0';
+    int sn = 0;
+    unsigned char *salt = ksec_b64_decode(sb, &sn);
+    free(sb);
+    if (!salt || sn != KSEC_MPW_SALTLEN) { if (salt) free(salt); return 0; }
+
+    size_t mn = strlen(KSEC_MPW_MARK) + strlen(dot + 1) + 1;
+    char *m1 = malloc(mn);
+    int ok = 0;
+    if (m1) {
+        unsigned char key[KSEC_MPW_KEYLEN];
+        char *pt = NULL;
+        snprintf(m1, mn, "%s%s", KSEC_MPW_MARK, dot + 1);
+        g_mpw_derive(passphrase, salt, KSEC_MPW_SALTLEN, key);
+        if (g_mpw_unprotect(m1, key, &pt) == 1 && pt) {   /* HMAC authenticates it */
+            *out = ksec_dup(pt);
+            ok = (*out != NULL);
+        }
+        if (pt) { memset(pt, 0, strlen(pt)); sfree(pt); }
+        SecureZeroMemory(key, sizeof(key));
+        free(m1);
+    }
+    free(salt);
+    return ok;
 }
 
 /* DPAPI1 wrap: malloc'd "DPAPI1:<b64>" or NULL on failure. */
@@ -1143,6 +1280,13 @@ char *ksec_protect_registry(const char *plaintext)
 char *ksec_protect_portable(const char *plaintext)
 {
     if (!plaintext || !plaintext[0]) return ksec_dup("");
+    /* Which branch this takes is otherwise invisible, and "why did I get DPAPI
+     * when I expected MPW2?" is the question that actually gets asked. No
+     * plaintext, just the decision inputs. */
+    kitty_pwdebug("protect portable: legacy=%d crypto=%d supplied=%d unlocked=%d declined=%d defer=%d",
+                  g_portable_pw_legacy, g_mpw_derive != NULL,
+                  g_mpw_passphrase != NULL, g_mpw_unlocked, g_mpw_declined,
+                  g_mpw_defer);
     if (g_portable_pw_legacy)
         return ksec_dup(plaintext);
     if (mpw_ensure_unlocked(1)) {
@@ -1150,18 +1294,7 @@ char *ksec_protect_portable(const char *plaintext)
         if (mb) {
             /* Wrap as self-contained MPW2 (salt embedded) so the value stays
              * unlockable away from this store's Security\/registry salt. */
-            char *res = NULL;
-            char *sb = g_mpw_salt_valid
-                ? ksec_b64_encode(g_mpw_salt, KSEC_MPW_SALTLEN) : NULL;
-            if (sb) {
-                const char *payload = mb + strlen(KSEC_MPW_MARK);
-                size_t n = strlen(KSEC_MPW2_MARK) + strlen(sb) + 1 +
-                           strlen(payload) + 1;
-                res = malloc(n);
-                if (res)
-                    snprintf(res, n, "%s%s.%s", KSEC_MPW2_MARK, sb, payload);
-                free(sb);
-            }
+            char *res = g_mpw_salt_valid ? mpw2_compose(mb, g_mpw_salt) : NULL;
             sfree(mb);
             if (res) return res;
             /* MPW2 build failed (salt b64 OOM) -> do NOT persist bare MPW1: it
@@ -1272,7 +1405,32 @@ int ksec_unprotect(const char *stored, char **out)
 int ksec_stored_is_legacy(const char *stored);
 char *kitty_secret_wrap_portable(const char *plaintext)
 {
-    return ksec_protect_portable(plaintext ? plaintext : "");
+    if (!plaintext) plaintext = "";
+    /* Export bundle in progress: protect with the bundle's OWN passphrase and
+     * leave the master password alone entirely - no setup dialog, no
+     * MasterPwSalt/MasterPwVerifier written, no Security\ folder created in a
+     * portable tree. This is the whole point of TASK_export_password.md, and it
+     * is why the hook sits here: both the session export
+     * (save_open_settings_forced) and the named-proxy export
+     * (kitty_export_proxies_to_dir) come through this one function, so a single
+     * bundle password covers both.
+     *
+     * If the wrap itself fails (MPW crypto absent, or a CSPRNG/OOM failure) we
+     * fall back to DPAPI rather than to ksec_protect_portable: the secret stays
+     * encrypted and is never lost, and crucially we still do not prompt for a
+     * master password. Such a bundle is then this-PC-only, so the caller must
+     * say so - kitty_bundle_wrap_failed() reports it. */
+    if (g_bundle_pass) {
+        char *res;
+        if (!plaintext[0]) return ksec_dup("");
+        res = ksec_wrap_with_passphrase(plaintext, g_bundle_pass);
+        if (res) return res;
+        g_bundle_wrap_failed = 1;
+        kitty_pwdebug("bundle wrap failed -> DPAPI fallback (bundle is this-PC-only)");
+        res = ksec_dpapi_protect(plaintext);
+        return res ? res : ksec_dup(plaintext);
+    }
+    return ksec_protect_portable(plaintext);
 }
 /* Wrap for whatever backend is active now (registry -> DPAPI1, portable ->
  * MPW/legacy), for stores that live outside the write_setting_s chokepoint

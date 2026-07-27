@@ -69,6 +69,21 @@ int ksec_stored_is_legacy(const char *stored);
 int ksec_migrate_warn_ask(void);         /* legacy->protected save consent */
 int kitty_portable_password_legacy(void);
 const char *kitty_secret_strip_plain(const char *stored);  /* borrowed */
+
+/* ---- export-bundle passphrase (transport protection) ----
+ * An export bundle carries its OWN password, unrelated to the store's master
+ * password. Set the context around an export/import run and clear it after
+ * (kitty_set_bundle_passphrase(NULL) also wipes the copy); while it is set, the
+ * master password is never created, read, prompted for or written. Nothing is
+ * persisted by any of this. */
+void kitty_set_bundle_passphrase(const char *pass);
+int  kitty_bundle_passphrase_active(void);
+int  kitty_bundle_wrap_failed(void);   /* a wrap fell back to DPAPI: this-PC-only */
+/* Wrap/unwrap under an explicit passphrase as a self-contained MPW2 value
+ * (fresh salt per wrap, embedded), touching no store state. */
+char *ksec_wrap_with_passphrase(const char *plaintext, const char *passphrase);
+int   ksec_unwrap_with_passphrase(const char *stored, const char *passphrase,
+                                  char **out);
 unsigned ksec_cksum(const char *s);
 void kitty_pwdebug(const char *fmt, ...);
 
