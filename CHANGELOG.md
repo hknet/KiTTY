@@ -7,6 +7,19 @@ see [FEATURES.md](FEATURES.md).
 
 ## 0.84.1.65-beta — 2026-07-27
 
+- **Session files can now carry a password in the clear, on purpose.** If you
+  roll sessions out with a script, write the password as
+  `Password\PLAIN:yourpassword\` and KiTTY will take it exactly as given, then
+  protect it properly the first time that session is saved. Previously any
+  password without one of KiTTY's own protection markers was assumed to be
+  encrypted by a very old KiTTY and was decoded on that assumption — so a
+  password written in the clear was silently turned into garbage, and you only
+  found out when the login failed. Unmarked passwords are now decoded only when
+  the value really carries the old format's signature, and are otherwise taken
+  literally. Genuine old session files still import exactly as before. Note
+  that a file containing `PLAIN:` is a cleartext secret until it is imported —
+  treat it accordingly and delete it afterwards.
+
 - **The diagnostic dump has been removed.** `/savedump` and the `kitty.exe
   -savedump` command-line switch are gone, along with the `kitty.dmp` file they
   produced. The dump was meant to be sent in with a bug report, but it was
