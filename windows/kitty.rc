@@ -138,7 +138,10 @@ BEGIN
     EDITTEXT        IDC_EXP_PASS, 18, 64, 243, 12, ES_PASSWORD | ES_AUTOHSCROLL
     AUTOCHECKBOX    "&Show password", IDC_EXP_SHOWPW, 18, 80, 243, 10
     AUTORADIOBUTTON "Protect for &this PC only (no password)", IDC_EXP_MODEDPAPI, 7, 96, 254, 10
-    LTEXT           "The exported files can then only be imported with THIS Windows account on THIS PC. Copying them to another PC will not work.", IDC_EXP_DPAPIWARN, 18, 108, 243, 18
+    /* WS_GROUP closes the radio group that starts at IDC_EXP_MODEPW; the
+     * selection itself is driven explicitly in the dialog proc, because the
+     * password controls sit between the two radios. */
+    LTEXT           "The exported files can then only be imported with THIS Windows account on THIS PC. Copying them to another PC will not work.", IDC_EXP_DPAPIWARN, 18, 108, 243, 18, WS_GROUP
     DEFPUSHBUTTON   "&Export", IDOK, 154, 129, 50, 14
     PUSHBUTTON      "Cancel", IDCANCEL, 211, 129, 50, 14
 END

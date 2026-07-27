@@ -451,6 +451,14 @@ static INT_PTR CALLBACK exportpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM 
         switch (LOWORD(wp)) {
           case IDC_EXP_MODEPW:
           case IDC_EXP_MODEDPAPI:
+            /* Set the selection explicitly rather than relying on the automatic
+             * radio grouping: the password field, its label and the Show
+             * checkbox sit BETWEEN the two radios, and those intervening
+             * controls stop the auto-uncheck walk - so clicking the second
+             * radio left the first one checked too, and everything keyed off
+             * "which mode is selected" then read the wrong answer. */
+            CheckRadioButton(hdlg, IDC_EXP_MODEPW, IDC_EXP_MODEDPAPI,
+                             (int)LOWORD(wp));
             exp_sync_mode(hdlg);
             return TRUE;
 
