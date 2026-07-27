@@ -798,6 +798,12 @@ static int   g_mpw_f_valid = 0;
  * clears it. Nothing here is ever persisted - no salt, no verifier, no writes
  * to the g_mpw_* store state. */
 static char *g_bundle_pass = NULL;
+/* "This PC and this account only": wrap the bundle with DPAPI deliberately.
+ * A distinct flag rather than merely "no passphrase", because the no-context
+ * default must keep behaving exactly as it always has - and because in this
+ * mode a master-password prompt must never appear either, which is precisely
+ * what the ordinary portable policy would do. */
+static int   g_bundle_dpapi = 0;
 /* Set if any wrap during this bundle fell back to DPAPI (see
  * kitty_secret_wrap_portable): such a bundle imports only on this PC/account,
  * which the export summary must state rather than claim a password protects it. */
@@ -809,6 +815,13 @@ void kitty_set_bundle_passphrase(const char *pass)
         free(g_bundle_pass);
     }
     g_bundle_pass = (pass && pass[0]) ? ksec_dup(pass) : NULL;
+    g_bundle_wrap_failed = 0;
+}
+void kitty_set_bundle_dpapi_only(int on) { g_bundle_dpapi = (on != 0); }
+void kitty_clear_bundle_context(void)
+{
+    kitty_set_bundle_passphrase(NULL);
+    g_bundle_dpapi = 0;
     g_bundle_wrap_failed = 0;
 }
 int kitty_bundle_passphrase_active(void) { return g_bundle_pass != NULL; }
@@ -1420,13 +1433,18 @@ char *kitty_secret_wrap_portable(const char *plaintext)
      * encrypted and is never lost, and crucially we still do not prompt for a
      * master password. Such a bundle is then this-PC-only, so the caller must
      * say so - kitty_bundle_wrap_failed() reports it. */
-    if (g_bundle_pass) {
+    if (g_bundle_pass || g_bundle_dpapi) {
         char *res;
         if (!plaintext[0]) return ksec_dup("");
-        res = ksec_wrap_with_passphrase(plaintext, g_bundle_pass);
-        if (res) return res;
-        g_bundle_wrap_failed = 1;
-        kitty_pwdebug("bundle wrap failed -> DPAPI fallback (bundle is this-PC-only)");
+        if (g_bundle_pass) {
+            res = ksec_wrap_with_passphrase(plaintext, g_bundle_pass);
+            if (res) return res;
+            g_bundle_wrap_failed = 1;
+            kitty_pwdebug("bundle wrap failed -> DPAPI fallback (bundle is this-PC-only)");
+        }
+        /* Deliberate "this PC only", or the never-lose fallback above. Either
+         * way: DPAPI directly, never the portable policy, so no
+         * master-password prompt can appear on an export. */
         res = ksec_dpapi_protect(plaintext);
         return res ? res : ksec_dup(plaintext);
     }

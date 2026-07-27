@@ -384,10 +384,211 @@ int kitty_export_all_to_dir(const char *dir, int *failOut) {
     return n;
 }
 
+/* ---- export bundle password (design/TASK_export_password.md) --------------
+ * An export bundle is a TRANSPORT artifact, so it gets its own password rather
+ * than hijacking the store's master password (which exporting used to CREATE as
+ * a side effect, persisting MasterPwSalt/MasterPwVerifier into the user's
+ * store). Two choices: a password that works on any PC, or DPAPI "this PC and
+ * this account only". Cancel exports nothing - there is deliberately no silent
+ * fallback to weaker protection.
+ *
+ * The password is readable while typing, so there is no confirm field: the user
+ * has to be able to read what they must retype on the other machine.
+ */
+#include "kitty_rc_additions.h"   /* IDD_EXPORTPW, IDD_EXPORTDONE, IDC_EXP_* */
+
+extern void kitty_set_bundle_passphrase(const char *pass);
+extern void kitty_set_bundle_dpapi_only(int on);
+extern void kitty_clear_bundle_context(void);
+extern int  kitty_bundle_wrap_failed(void);
+
+#define KITTY_EXPORT_PW_MIN 5
+
+static char *g_exp_result;      /* collected UTF-8 password (malloc'd) or NULL */
+static int   g_exp_dpapi;       /* user chose "this PC only" */
+
+/* Read an edit control as a malloc'd UTF-8 string; the wide buffer is scrubbed
+ * before release. (Same approach as the master-password prompt: the password
+ * store is UTF-8.) */
+static char *exp_utf8_from_edit(HWND hdlg, int id)
+{
+    HWND h = GetDlgItem(hdlg, id);
+    int wlen = GetWindowTextLengthW(h);
+    WCHAR *w = (WCHAR *)malloc((size_t)(wlen + 1) * sizeof(WCHAR));
+    char *s;
+    int n;
+    if (!w) return NULL;
+    GetWindowTextW(h, w, wlen + 1);
+    n = WideCharToMultiByte(CP_UTF8, 0, w, -1, NULL, 0, NULL, NULL);
+    s = (char *)malloc(n > 0 ? (size_t)n : 1);
+    if (s) WideCharToMultiByte(CP_UTF8, 0, w, -1, s, n, NULL, NULL);
+    SecureZeroMemory(w, (size_t)(wlen + 1) * sizeof(WCHAR));
+    free(w);
+    return s;
+}
+
+static void exp_sync_mode(HWND hdlg)
+{
+    BOOL pw = (IsDlgButtonChecked(hdlg, IDC_EXP_MODEPW) == BST_CHECKED);
+    EnableWindow(GetDlgItem(hdlg, IDC_EXP_PASS), pw);
+    EnableWindow(GetDlgItem(hdlg, IDC_EXP_PASS_LBL), pw);
+    EnableWindow(GetDlgItem(hdlg, IDC_EXP_SHOWPW), pw);
+    EnableWindow(GetDlgItem(hdlg, IDC_EXP_DPAPIWARN), !pw);
+}
+
+static INT_PTR CALLBACK exportpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
+{
+    switch (msg) {
+      case WM_INITDIALOG:
+        CheckRadioButton(hdlg, IDC_EXP_MODEPW, IDC_EXP_MODEDPAPI, IDC_EXP_MODEPW);
+        SendMessage(GetDlgItem(hdlg, IDC_EXP_PASS), EM_SETPASSWORDCHAR, (WPARAM)'*', 0);
+        exp_sync_mode(hdlg);
+        SetForegroundWindow(hdlg);
+        SetFocus(GetDlgItem(hdlg, IDC_EXP_PASS));
+        return FALSE;                          /* we set focus ourselves */
+
+      case WM_COMMAND:
+        switch (LOWORD(wp)) {
+          case IDC_EXP_MODEPW:
+          case IDC_EXP_MODEDPAPI:
+            exp_sync_mode(hdlg);
+            return TRUE;
+
+          case IDC_EXP_SHOWPW: {
+            BOOL show = (IsDlgButtonChecked(hdlg, IDC_EXP_SHOWPW) == BST_CHECKED);
+            HWND pw = GetDlgItem(hdlg, IDC_EXP_PASS);
+            SendMessage(pw, EM_SETPASSWORDCHAR, show ? 0 : (WPARAM)'*', 0);
+            InvalidateRect(pw, NULL, TRUE);
+            return TRUE;
+          }
+
+          case IDOK: {
+            char *p;
+            if (IsDlgButtonChecked(hdlg, IDC_EXP_MODEDPAPI) == BST_CHECKED) {
+                g_exp_dpapi = 1;
+                EndDialog(hdlg, IDOK);
+                return TRUE;
+            }
+            p = exp_utf8_from_edit(hdlg, IDC_EXP_PASS);
+            if (!p || (int)strlen(p) < KITTY_EXPORT_PW_MIN) {
+                MessageBoxA(hdlg,
+                    "Please enter an export password of at least "
+                    "5 characters.\n\n"
+                    "If you do not want a password, choose \"Protect for this "
+                    "PC only\" instead - those files can then only be imported "
+                    "with this Windows account on this PC.",
+                    "KiTTY session export", MB_OK | MB_ICONINFORMATION);
+                if (p) { SecureZeroMemory(p, strlen(p)); free(p); }
+                SetFocus(GetDlgItem(hdlg, IDC_EXP_PASS));
+                return TRUE;
+            }
+            g_exp_result = p;
+            EndDialog(hdlg, IDOK);
+            return TRUE;
+          }
+
+          case IDCANCEL:
+            EndDialog(hdlg, IDCANCEL);
+            return TRUE;
+        }
+        break;
+
+      case WM_CLOSE:
+        EndDialog(hdlg, IDCANCEL);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/* Ask how to protect the bundle. Returns 1 to go ahead (*pwOut = malloc'd
+ * password, or NULL when "this PC only" was chosen), 0 if cancelled. */
+static int kitty_ask_export_password(HWND hwnd, char **pwOut, int *dpapiOut)
+{
+    INT_PTR r;
+    g_exp_result = NULL;
+    g_exp_dpapi = 0;
+    r = DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_EXPORTPW),
+                   hwnd, exportpw_dlgproc);
+    if (r != IDOK) {
+        if (g_exp_result) {
+            SecureZeroMemory(g_exp_result, strlen(g_exp_result));
+            free(g_exp_result);
+            g_exp_result = NULL;
+        }
+        return 0;
+    }
+    *pwOut = g_exp_result;
+    *dpapiOut = g_exp_dpapi;
+    g_exp_result = NULL;
+    return 1;
+}
+
+/* ---- export summary (shows the password once, with Copy) ---- */
+static const char *g_expd_text;
+static const char *g_expd_pw;      /* NULL in "this PC only" mode */
+
+static INT_PTR CALLBACK exportdone_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
+{
+    switch (msg) {
+      case WM_INITDIALOG:
+        SetDlgItemTextA(hdlg, IDC_EXPD_TEXT, g_expd_text ? g_expd_text : "");
+        if (g_expd_pw) {
+            SetDlgItemTextA(hdlg, IDC_EXPD_PW, g_expd_pw);
+        } else {
+            /* No password to show: hide the whole readout row. */
+            ShowWindow(GetDlgItem(hdlg, IDC_EXPD_PWLBL), SW_HIDE);
+            ShowWindow(GetDlgItem(hdlg, IDC_EXPD_PW), SW_HIDE);
+            ShowWindow(GetDlgItem(hdlg, IDC_EXPD_COPY), SW_HIDE);
+            EnableWindow(GetDlgItem(hdlg, IDC_EXPD_PW), FALSE);
+            EnableWindow(GetDlgItem(hdlg, IDC_EXPD_COPY), FALSE);
+        }
+        SetForegroundWindow(hdlg);
+        return TRUE;
+
+      case WM_COMMAND:
+        switch (LOWORD(wp)) {
+          case IDC_EXPD_COPY: {
+            /* Put the password on the clipboard - this is the moment the user
+             * wants to stash it. It stays there until something overwrites it. */
+            size_t n;
+            HGLOBAL h;
+            if (!g_expd_pw || !OpenClipboard(hdlg)) return TRUE;
+            n = strlen(g_expd_pw) + 1;
+            h = GlobalAlloc(GMEM_MOVEABLE, n);
+            if (h) {
+                void *p = GlobalLock(h);
+                if (p) {
+                    memcpy(p, g_expd_pw, n);
+                    GlobalUnlock(h);
+                    EmptyClipboard();
+                    if (!SetClipboardData(CF_TEXT, h)) GlobalFree(h);
+                } else {
+                    GlobalFree(h);
+                }
+            }
+            CloseClipboard();
+            return TRUE;
+          }
+          case IDOK:
+          case IDCANCEL:
+            EndDialog(hdlg, IDOK);
+            return TRUE;
+        }
+        break;
+
+      case WM_CLOSE:
+        EndDialog(hdlg, IDOK);
+        return TRUE;
+    }
+    return FALSE;
+}
+
 void kitty_export_all_sessions(HWND hwnd) {
     char dir[4096];
     int n, fail = 0;
     char msg[4400];
+    char *bundlepw = NULL;
+    int dpapi = 0, wrapfailed;
     if (!OpenDirName(hwnd, dir)) return;
     /* Export writes one file per session (plus a Proxies\ subfolder). Warn when
      * the chosen folder already holds exported files, so old and new sessions
@@ -407,15 +608,41 @@ void kitty_export_all_sessions(HWND hwnd) {
                 return;
         }
     }
+    /* Ask BEFORE exporting: cancel here must leave nothing behind. */
+    if (!kitty_ask_export_password(hwnd, &bundlepw, &dpapi)) return;
+
+    if (dpapi) kitty_set_bundle_dpapi_only(1);
+    else       kitty_set_bundle_passphrase(bundlepw);
     n = kitty_export_all_to_dir(dir, &fail);
+    wrapfailed = kitty_bundle_wrap_failed();
+    kitty_clear_bundle_context();
+
+    /* A password wrap that fell back to DPAPI produces a bundle that only works
+     * on this PC. Say so instead of showing a password that does not open it. */
+    if (wrapfailed && bundlepw) {
+        SecureZeroMemory(bundlepw, strlen(bundlepw));
+        free(bundlepw);
+        bundlepw = NULL;
+        dpapi = 1;
+    }
+
     snprintf(msg, sizeof(msg),
-             "Exported %d session%s (%d failed) to:\n%s\n\n"
-             "Saved passwords were wrapped by the portable protection policy: "
-             "master password if set (usable on another machine), otherwise "
-             "Windows DPAPI (usable only by this account on this machine).",
-             n, n == 1 ? "" : "s", fail, dir);
-    MessageBoxA(hwnd, msg, "KiTTY session export",
-                MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+             "Exported %d session%s (%d failed) to:\n%s\n\n%s",
+             n, n == 1 ? "" : "s", fail, dir,
+             dpapi
+               ? "These sessions can only be imported with THIS Windows "
+                 "account on THIS PC."
+               : "This password is required to import these sessions - on ANY "
+                 "PC, including this one. It is not your master password, and "
+                 "nothing here was changed.");
+    g_expd_text = msg;
+    g_expd_pw = bundlepw;
+    DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_EXPORTDONE),
+               hwnd, exportdone_dlgproc);
+    g_expd_text = NULL;
+    g_expd_pw = NULL;
+
+    if (bundlepw) { SecureZeroMemory(bundlepw, strlen(bundlepw)); free(bundlepw); }
 }
 
 /* Does a saved session with this exact name already exist in the active store? */

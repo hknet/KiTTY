@@ -411,3 +411,43 @@
 #ifndef IDC_HELPTEXT
 #define IDC_HELPTEXT 1230
 #endif
+/* Session-export password dialogs (design/TASK_export_password.md). An export
+ * bundle is a transport artifact: it gets its OWN password, and the store's
+ * master password is left alone. IDD_EXPORTPW collects the choice up front;
+ * IDD_EXPORTDONE is the summary that shows the password once, with Copy. */
+#ifndef IDD_EXPORTPW
+#define IDD_EXPORTPW 140
+#endif
+#ifndef IDC_EXP_MODEPW
+#define IDC_EXP_MODEPW 1240
+#endif
+#ifndef IDC_EXP_PASS_LBL
+#define IDC_EXP_PASS_LBL 1241
+#endif
+#ifndef IDC_EXP_PASS
+#define IDC_EXP_PASS 1242
+#endif
+#ifndef IDC_EXP_SHOWPW
+#define IDC_EXP_SHOWPW 1243
+#endif
+#ifndef IDC_EXP_MODEDPAPI
+#define IDC_EXP_MODEDPAPI 1244
+#endif
+#ifndef IDC_EXP_DPAPIWARN
+#define IDC_EXP_DPAPIWARN 1245
+#endif
+#ifndef IDD_EXPORTDONE
+#define IDD_EXPORTDONE 141
+#endif
+#ifndef IDC_EXPD_TEXT
+#define IDC_EXPD_TEXT 1246
+#endif
+#ifndef IDC_EXPD_PWLBL
+#define IDC_EXPD_PWLBL 1247
+#endif
+#ifndef IDC_EXPD_PW
+#define IDC_EXPD_PW 1248
+#endif
+#ifndef IDC_EXPD_COPY
+#define IDC_EXPD_COPY 1249
+#endif

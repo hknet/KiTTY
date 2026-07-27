@@ -77,6 +77,8 @@ const char *kitty_secret_strip_plain(const char *stored);  /* borrowed */
  * master password is never created, read, prompted for or written. Nothing is
  * persisted by any of this. */
 void kitty_set_bundle_passphrase(const char *pass);
+void kitty_set_bundle_dpapi_only(int on);  /* "this PC + this account only" */
+void kitty_clear_bundle_context(void);     /* always call when the run ends */
 int  kitty_bundle_passphrase_active(void);
 int  kitty_bundle_wrap_failed(void);   /* a wrap fell back to DPAPI: this-PC-only */
 /* Wrap/unwrap under an explicit passphrase as a self-contained MPW2 value
