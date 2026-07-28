@@ -301,13 +301,47 @@ static INT_PTR CALLBACK PassphraseProc(HWND hwnd, UINT msg,
          */
         RECT rs, rd;
         /* KiTTY: centre over the requesting terminal window if we captured it
-         * (p->over = the foreground window at request time); else the desktop. */
-        HWND hw = (p->over && IsWindow(p->over)) ? p->over : GetDesktopWindow();
-        if (GetWindowRect(hw, &rs) && GetWindowRect(hwnd, &rd))
-            MoveWindow(hwnd,
-                       (rs.right + rs.left + rd.left - rd.right) / 2,
-                       (rs.bottom + rs.top + rd.top - rd.bottom) / 2,
-                       rd.right - rd.left, rd.bottom - rd.top, true);
+         * (p->over = the foreground window at request time); else the desktop.
+         *
+         * A MINIMISED anchor is unusable: GetWindowRect reports a minimised
+         * window at roughly (-32000,-32000), so centring on it parked the
+         * prompt far off-screen - listed in the taskbar but impossible to
+         * bring into view. That is what a session started minimised (a
+         * shortcut set to "Run: minimized") hit. Ignore an iconic anchor, and
+         * clamp the final position to the work area of the monitor we land on
+         * so no anchor rectangle can push the prompt off-screen again. */
+        HWND hw = (p->over && IsWindow(p->over) && !IsIconic(p->over)) ?
+            p->over : GetDesktopWindow();
+        if (GetWindowRect(hw, &rs) && GetWindowRect(hwnd, &rd)) {
+            int w = rd.right - rd.left, h = rd.bottom - rd.top;
+            int x = (rs.right + rs.left - w) / 2;
+            int y = (rs.bottom + rs.top - h) / 2;
+            RECT work;
+            POINT centre;
+            HMONITOR mon;
+            MONITORINFO mi;
+
+            centre.x = x + w / 2;
+            centre.y = y + h / 2;
+            mon = MonitorFromPoint(centre, MONITOR_DEFAULTTONEAREST);
+            mi.cbSize = sizeof(mi);
+            if (mon && GetMonitorInfo(mon, &mi))
+                work = mi.rcWork;
+            else
+                SetRect(&work, 0, 0, GetSystemMetrics(SM_CXSCREEN),
+                        GetSystemMetrics(SM_CYSCREEN));
+
+            if (x + w > work.right)
+                x = work.right - w;
+            if (y + h > work.bottom)
+                y = work.bottom - h;
+            if (x < work.left)
+                x = work.left;
+            if (y < work.top)
+                y = work.top;
+
+            MoveWindow(hwnd, x, y, w, h, true);
+        }
 
         SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
