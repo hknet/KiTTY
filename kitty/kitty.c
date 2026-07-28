@@ -243,6 +243,11 @@ void SetWinrolFlag( const int num ) { WinrolFlag  = num ; }
  * below is the first user. */
 void kitty_store_mark_dirty( void ) ;
 int kitty_store_take_dirty( void ) ;
+/* Startup cleanup of the master password the old export behaviour created as a
+ * side effect - implemented in kitty_storage.c, which owns the store scan. */
+void kitty_retire_orphan_master_password( void ) ;
+int kitty_migrate_portable_mpw_state( void ) ;
+void kitty_show_mpw_moved( HWND hwnd ) ;
 
 static char PasswordConf[cstMaxRegLength+2] = "" ; /* filled from the registry "password" value via GetValueData, which writes up to cstMaxRegLength data bytes + NUL */
 
@@ -3542,6 +3547,21 @@ void InitWinMain( void ) {
 		free( defaultfile ) ;
 		*/
 	}
+
+	/* Both of these ask the storage layer which backend is active, so they must
+	 * run AFTER kitty_set_storage_mode() above - not next to the other one-time
+	 * startup repairs further up, where a portable run still looks like a
+	 * registry one and the registry branch fires by mistake.
+	 *
+	 * Portable stores used to read their master-password salt out of the
+	 * registry on every unlock. That is gone, so a store that relied on it gets
+	 * the state copied in once here - before anything tries to unlock. */
+	if( kitty_migrate_portable_mpw_state() ) { kitty_show_mpw_moved( NULL ) ; }
+	/* Same idea for the master password the OLD export behaviour created as a
+	 * side effect: drop it when nothing in the store is wrapped with it
+	 * (design/TASK_export_password.md SS7b). Portable stores only - see the
+	 * function's comment for why the registry hive is left alone. */
+	kitty_retire_orphan_master_password() ;
 
 	// Make mandatory registry keys
 	snprintf( buffer, sizeof(buffer), "%s\\%s", TEXT(PUTTY_REG_POS), "Commands" ) ;

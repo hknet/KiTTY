@@ -708,6 +708,87 @@ static int kitty_import_one_ktx(const char *path, int overwrite) {
 int kitty_import_dir(const char *dir, int *failOut, int *proxyOut,
                      int *skippedOut, int overwrite);   /* defined below */
 
+/* ---- "your master password moved" notice ---------------------------------
+ * Shown once, after a portable store has had the master-password state copied
+ * out of the registry into its own Security\ folder. The folder is the point of
+ * the message - the user has to carry it to any other portable copy of KiTTY
+ * that shares the same master password - so it is spelled out, selectable, and
+ * one click from Explorer rather than described in prose.
+ */
+extern char *portable_subdir_path(const char *subdir);   /* snewn'd */
+
+static const char *g_mpwm_path;
+
+static INT_PTR CALLBACK mpwmoved_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
+{
+    switch (msg) {
+      case WM_INITDIALOG:
+        SetDlgItemTextA(hdlg, IDC_MPWM_TEXT,
+            "This portable KiTTY kept its master password in the Windows "
+            "registry of this PC. It has now been moved into a Security folder "
+            "next to your sessions, so this copy works the same way on any PC.\r\n"
+            "\r\n"
+            "If you use other portable copies of KiTTY that share this master "
+            "password, copy this Security folder into each of them as well - "
+            "without it they cannot open their saved passwords on another PC.\r\n"
+            "\r\n"
+            "If you never knowingly set a master password: earlier versions "
+            "quietly turned the password you typed when exporting sessions into "
+            "one. That is most likely what this is.");
+        SetDlgItemTextA(hdlg, IDC_MPWM_PATH, g_mpwm_path ? g_mpwm_path : "");
+        SetForegroundWindow(hdlg);
+        return TRUE;
+
+      case WM_COMMAND:
+        switch (LOWORD(wp)) {
+          case IDC_MPWM_COPY: {
+            size_t n;
+            HGLOBAL h;
+            if (!g_mpwm_path || !OpenClipboard(hdlg)) return TRUE;
+            n = strlen(g_mpwm_path) + 1;
+            h = GlobalAlloc(GMEM_MOVEABLE, n);
+            if (h) {
+                void *p = GlobalLock(h);
+                if (p) {
+                    memcpy(p, g_mpwm_path, n);
+                    GlobalUnlock(h);
+                    EmptyClipboard();
+                    if (!SetClipboardData(CF_TEXT, h)) GlobalFree(h);
+                } else {
+                    GlobalFree(h);
+                }
+            }
+            CloseClipboard();
+            return TRUE;
+          }
+          case IDC_MPWM_OPEN:
+            if (g_mpwm_path)
+                ShellExecuteA(hdlg, "open", g_mpwm_path, NULL, NULL, SW_SHOWDEFAULT);
+            return TRUE;
+          case IDOK:
+          case IDCANCEL:
+            EndDialog(hdlg, IDOK);
+            return TRUE;
+        }
+        break;
+
+      case WM_CLOSE:
+        EndDialog(hdlg, IDOK);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+void kitty_show_mpw_moved(HWND hwnd)
+{
+    char *dir = portable_subdir_path("Security");
+    g_mpwm_path = dir;
+    DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_MPWMOVED),
+               hwnd, mpwmoved_dlgproc);
+    g_mpwm_path = NULL;
+    if (dir) sfree(dir);
+}
+
 /* ---- import: is the bundle protected, and with what? (design/TASK_export_
  * password.md SS5) -----------------------------------------------------------
  * Whether to ask for a password is decided from the FILES, never guessed: scan

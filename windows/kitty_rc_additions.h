@@ -467,3 +467,22 @@
 #ifndef IDC_IMP_SHOWPW
 #define IDC_IMP_SHOWPW 1252
 #endif
+/* "Your master password moved into this folder" notice, shown once after the
+ * portable master-password migration. Names the folder and offers to copy the
+ * path or open it, because the user has to carry that folder to their other
+ * portable copies of KiTTY. */
+#ifndef IDD_MPWMOVED
+#define IDD_MPWMOVED 143
+#endif
+#ifndef IDC_MPWM_TEXT
+#define IDC_MPWM_TEXT 1253
+#endif
+#ifndef IDC_MPWM_PATH
+#define IDC_MPWM_PATH 1254
+#endif
+#ifndef IDC_MPWM_COPY
+#define IDC_MPWM_COPY 1255
+#endif
+#ifndef IDC_MPWM_OPEN
+#define IDC_MPWM_OPEN 1256
+#endif

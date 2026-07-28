@@ -856,9 +856,18 @@ void kitty_set_master_pw_prompt(char *(*fn)(int creating)) { g_mpw_prompt = fn; 
 static char *mpw_state_get(const char *name)    /* malloc'd (ksec_dup) or NULL */
 {
     if (store_is_file()) {
+        /* Portable stores answer from their OWN Security\ folder and nowhere
+         * else. There used to be a read-through to the registry here, so that a
+         * store whose salt had been minted in the hive kept unlocking on the
+         * same machine - but a standing fallback made every FRESH portable store
+         * inherit the hive's state, conclude a master password already existed,
+         * and therefore never mint its own (its saves then silently degraded to
+         * machine-bound DPAPI). The rescue is now a one-shot copy at startup
+         * instead: kitty_migrate_portable_mpw_state(). */
         char *v = portable_read_text_file(KSEC_MPW_SUBDIR, name);   /* snewn'd */
-        if (v) { char *res = ksec_dup(v); sfree(v); return res; }
-        /* fall through: dev-era same-machine migration */
+        char *res = v ? ksec_dup(v) : NULL;
+        if (v) sfree(v);
+        return res;
     }
     char b[2048]; DWORD sz = sizeof(b);
     if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, name, RRF_RT_REG_SZ, NULL, b, &sz)
@@ -1414,6 +1423,356 @@ int ksec_unprotect(const char *stored, char **out)
         *out = ksec_dup(""); return -1;   /* present blob, could not decrypt */
     }
     *out = ksec_dup(stored); return 1;     /* unmarked legacy == plaintext */
+}
+
+/* ---- retiring a master password nothing is wrapped with (TASK_export_
+ * password.md SS7b) ---------------------------------------------------------
+ * Exporting used to CREATE a master password as a side effect, so anyone who
+ * exported on 0.84.1.48-0.84.1.65 has MasterPwSalt + MasterPwVerifier sitting
+ * in their store - possibly a random one they were never told about. Stopping
+ * that (the rest of this task) does not clean up what is already there.
+ *
+ * The rule is deliberately conservative: the state is removed ONLY when a scan
+ * of the store finds no value wrapped with it. A master password that really
+ * protects something is untouchable - MPW2 embeds its own salt, so deleting the
+ * verifier would not unlock anything, it would just remove the check that tells
+ * the user their password was wrong.
+ *
+ * Silent by design (user decision 2026-07-27): we are removing something the
+ * user never asked for, and explaining a master password they did not know they
+ * had would confuse more than it helps. The debug log records what happened.
+ *
+ * Cost when there is nothing to do - the overwhelmingly common case - is one
+ * state read that finds nothing, so the store scan never runs at all.
+ */
+static int ksec_value_is_mpw(const char *v)
+{
+    return v && (!strncmp(v, KSEC_MPW_MARK,  strlen(KSEC_MPW_MARK)) ||
+                 !strncmp(v, KSEC_MPW2_MARK, strlen(KSEC_MPW2_MARK)));
+}
+
+/* Registry: every session (and named proxy) is a subkey holding at most two
+ * secret values. */
+static int reg_subtree_has_mpw(const char *subpath)
+{
+    static const char *const secrets[] = { "Password", "ProxyPassword" };
+    char path[2048];
+    HKEY h;
+    DWORD i;
+    int found = 0;
+    snprintf(path, sizeof(path), "%s%s", reg_base_buf, subpath);
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, path, 0, KEY_READ, &h) != ERROR_SUCCESS)
+        return 0;
+    for (i = 0; !found; i++) {
+        char name[512], full[2600];
+        DWORD nl = sizeof(name);
+        unsigned k;
+        if (RegEnumKeyExA(h, i, name, &nl, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
+            break;
+        snprintf(full, sizeof(full), "%s\\%s", path, name);
+        for (k = 0; k < lenof(secrets); k++) {
+            char v[4096];
+            DWORD sz = sizeof(v);
+            if (RegGetValueA(HKEY_CURRENT_USER, full, secrets[k], RRF_RT_REG_SZ,
+                             NULL, v, &sz) == ERROR_SUCCESS &&
+                ksec_value_is_mpw(v)) {
+                found = 1;
+                break;
+            }
+        }
+    }
+    RegCloseKey(h);
+    return found;
+}
+
+/* Portable: session and proxy files are small key/value text. Values are munged
+ * on the way out, so look for both spellings of the marker. */
+static int ksf_text_has_mpw(const char *path)
+{
+    static const char *const marks[] = {
+        "MPW1:", "MPW1%3A", "MPW2:", "MPW2%3A"
+    };
+    FILE *fp = fopen(path, "rb");
+    long len;
+    size_t got;
+    char *buf;
+    unsigned i;
+    int found = 0;
+    if (!fp) return 0;
+    if (fseek(fp, 0, SEEK_END) != 0) { fclose(fp); return 0; }
+    len = ftell(fp);
+    if (len < 0 || len > 4L * 1024 * 1024) { fclose(fp); return 0; }
+    rewind(fp);
+    buf = snewn((size_t)len + 1, char);
+    got = fread(buf, 1, (size_t)len, fp);
+    buf[got] = '\0';
+    fclose(fp);
+    for (i = 0; i < lenof(marks) && !found; i++)
+        if (strstr(buf, marks[i])) found = 1;
+    smemclr(buf, (size_t)len + 1);
+    sfree(buf);
+    return found;
+}
+
+static int ksf_dir_has_mpw(const char *dir)
+{
+    char *pat;
+    WIN32_FIND_DATAA fd;
+    HANDLE h;
+    int found = 0;
+    if (!dir) return 0;
+    pat = dupprintf("%s\\*", dir);
+    h = FindFirstFileA(pat, &fd);
+    sfree(pat);
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    do {
+        char *path;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        path = dupprintf("%s\\%s", dir, fd.cFileName);
+        found = ksf_text_has_mpw(path);
+        sfree(path);
+    } while (!found && FindNextFileA(h, &fd));
+    FindClose(h);
+    return found;
+}
+
+static int store_has_mpw_wrapped_secret(void)
+{
+    if (store_is_file()) {
+        char *prox;
+        int found = ksf_dir_has_mpw(kitty_session_dir());
+        if (found) return 1;
+        prox = portable_subdir_path("Proxies");
+        found = ksf_dir_has_mpw(prox);
+        sfree(prox);
+        return found;
+    }
+    return reg_subtree_has_mpw("\\Sessions") || reg_subtree_has_mpw("\\Proxies");
+}
+
+/* Master-password state that has been retired from the live names. Salt and
+ * verifier are check material, not the secret: the salt is a public random input
+ * to Argon2id and the verifier only proves a typed password is the right one.
+ * Keeping a copy costs no confidentiality, and it is the only way a portable
+ * store that still needs the salt can be repaired later - deleting the salt
+ * would make MPW1 values permanently unopenable. */
+/* Records that this hive really did hold MPW-wrapped values at some point.
+ * 0.84.1.38-0.84.1.40 wrote MPW into the registry when PasswordScheme was 2;
+ * every build since is DPAPI-only there, and a saved session converts itself on
+ * the next save. The flag is what lets a later run tell "the master password
+ * was in use and no longer is" apart from "it never protected anything here". */
+#define KSEC_MPW_USED_FLAG    "MasterPwUsedInRegistry"
+#define KSEC_MPW_RETIRED_SALT "RetiredMasterPwSalt"
+#define KSEC_MPW_RETIRED_VER  "RetiredMasterPwVerifier"
+
+/* Read a value from our registry base. 1 + filled buf, or 0. */
+static int reg_base_read(const char *name, char *buf, DWORD bufsz)
+{
+    DWORD sz = bufsz;
+    return RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, name, RRF_RT_REG_SZ,
+                        NULL, buf, &sz) == ERROR_SUCCESS;
+}
+
+static void mpw_state_delete(const char *name)
+{
+    char *p = portable_item_path(KSEC_MPW_SUBDIR, name);
+    if (p) { DeleteFileA(p); sfree(p); }
+}
+
+/* Move a registry value to its archive name: KiTTY stops seeing a master
+ * password, but the material survives for a portable store that still needs it
+ * (see kitty_migrate_portable_mpw_state). Never a plain delete. */
+static void mpw_state_archive(const char *name, const char *retired)
+{
+    char buf[2048];
+    HKEY hk;
+    if (!reg_base_read(name, buf, sizeof(buf))) return;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) != ERROR_SUCCESS) return;
+    if (RegSetValueExA(hk, retired, 0, REG_SZ, (const BYTE *)buf,
+                       (DWORD)strlen(buf) + 1) == ERROR_SUCCESS)
+        RegDeleteValueA(hk, name);       /* only once the copy is safely there */
+    RegCloseKey(hk);
+}
+
+/* Prove that an archived salt+verifier really is this store's master-password
+ * state, by asking for the password and checking it, before writing anything.
+ * On success the derived key is kept as the unlocked key, so the user is asked
+ * once here and not again by the first unlock that follows.
+ * salt_b64/ver are the archived values; returns 1 if they were adopted. */
+static int mpw_adopt_retired_state(const char *salt_b64, const char *ver)
+{
+    unsigned char salt[KSEC_MPW_SALTLEN];
+    unsigned char *d;
+    int n = 0, tries, ok = 0;
+
+    if (!g_mpw_derive || !g_mpw_unprotect) return 0;
+    d = ksec_b64_decode(salt_b64, &n);
+    if (!d || n != KSEC_MPW_SALTLEN) { if (d) free(d); return 0; }
+    memcpy(salt, d, KSEC_MPW_SALTLEN);
+    free(d);
+
+    /* Same retry policy as a normal unlock: one shot for a supplied passphrase,
+     * three for an interactive prompt. */
+    tries = g_mpw_passphrase ? 1 : 3;
+    while (tries-- > 0 && !ok) {
+        char *vpt = NULL;
+        char *pass = g_mpw_passphrase ? ksec_dup(g_mpw_passphrase)
+                   : (g_mpw_prompt ? g_mpw_prompt(0) : NULL);
+        if (!pass || !pass[0]) {                   /* cancelled, or no prompt */
+            if (pass) { memset(pass, 0, strlen(pass)); free(pass); }
+            break;
+        }
+        g_mpw_derive(pass, salt, KSEC_MPW_SALTLEN, g_mpw_key);
+        memset(pass, 0, strlen(pass)); free(pass);
+        ok = (g_mpw_unprotect(ver, g_mpw_key, &vpt) == 1 && vpt &&
+              !strcmp(vpt, KSEC_MPW_VERIFY));
+        if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); }
+        if (!ok) SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key));
+    }
+    if (!ok) {
+        kitty_pwdebug("portable MPW migrate: archived state did not verify, not adopted");
+        return 0;
+    }
+    if (!portable_write_text_file(KSEC_MPW_SUBDIR, "MasterPwSalt", salt_b64)) {
+        kitty_pwdebug("portable MPW migrate: verified, but Security\\ is not writable");
+        SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key));
+        return 0;
+    }
+    portable_write_text_file(KSEC_MPW_SUBDIR, "MasterPwVerifier", ver);
+    memcpy(g_mpw_salt, salt, KSEC_MPW_SALTLEN);
+    g_mpw_salt_valid = 1;
+    g_mpw_unlocked = 1;                 /* asked once, here - do not ask again */
+    kitty_pwdebug("portable MPW migrate: adopted archived master-password state");
+    return 1;
+}
+
+/* ---- one-shot: give a portable store its own master-password state --------
+ * A portable store whose passwords were wrapped before this build may have no
+ * Security\ folder of its own, because the salt was read through to the registry
+ * on every unlock. That read-through is gone (see mpw_state_get), so the state
+ * has to be COPIED once, or those passwords would stop opening.
+ *
+ * Copy only when this store actually has something wrapped with it. A store with
+ * no MPW values needs no salt at all, and must be left free to mint its own.
+ *
+ * Returns 1 when state was copied - the caller tells the user, because the copy
+ * only fixes THIS store: another portable KiTTY on the same machine, wrapped
+ * with the same hive salt, needs the Security\ folder copied across too, and
+ * only the user knows where those live.
+ */
+int kitty_migrate_portable_mpw_state(void)
+{
+    char salt[2048], ver[2048];
+    const DWORD ssz = sizeof(salt), vsz = sizeof(ver);
+    char *own;
+
+    if (!store_is_file()) return 0;
+
+    /* Already self-contained? */
+    own = portable_read_text_file(KSEC_MPW_SUBDIR, "MasterPwSalt");
+    if (own) { sfree(own); return 0; }
+
+    /* Nothing wrapped here -> no salt is needed, and copying one in would
+     * recreate exactly the inheritance this change removes. */
+    if (!store_has_mpw_wrapped_secret()) {
+        kitty_pwdebug("portable MPW migrate: nothing wrapped, store mints its own");
+        return 0;
+    }
+
+    /* Live names are the store's own former state, read through the fallback
+     * that used to exist: copying those back in is exactly the status quo, so
+     * they are taken as-is. The RETIRED names are different - they were archived
+     * because some store stopped using them, and there is no guarantee they
+     * belong to THIS one. Writing an unverified salt+verifier into Security\
+     * would hand the user a store that looks protected and cannot be opened, so
+     * the retired path is proved with the master password before it is kept. */
+    if (reg_base_read("MasterPwSalt", salt, ssz)) {
+        if (!portable_write_text_file(KSEC_MPW_SUBDIR, "MasterPwSalt", salt)) {
+            /* Read-only media, or no permission. Nothing is lost by not
+             * copying: the store keeps working until something needs the salt. */
+            kitty_pwdebug("portable MPW migrate: could not write Security\\MasterPwSalt");
+            return 0;
+        }
+        if (reg_base_read("MasterPwVerifier", ver, vsz))
+            portable_write_text_file(KSEC_MPW_SUBDIR, "MasterPwVerifier", ver);
+        kitty_pwdebug("portable MPW migrate: copied master-password state into the store");
+        return 1;
+    }
+    if (!reg_base_read(KSEC_MPW_RETIRED_SALT, salt, ssz) ||
+        !reg_base_read(KSEC_MPW_RETIRED_VER, ver, vsz)) {
+        /* Wrapped values but no salt anywhere we can see. Do not guess and do
+         * not delete anything - say so in the log and leave it alone. */
+        kitty_pwdebug("portable MPW migrate: wrapped values but no salt in the hive");
+        return 0;
+    }
+    if (!mpw_adopt_retired_state(salt, ver)) return 0;
+    return 1;
+}
+
+/* Registry stores ARCHIVE rather than delete. A portable tree that has not yet
+ * been opened under this build may still depend on the hive's salt (MPW1 carries
+ * no salt of its own), and stores we have never seen cannot be enumerated, so
+ * deleting hive state can never be proven safe - but renaming it out of the way
+ * is, and kitty_migrate_portable_mpw_state() knows to look under the archive
+ * names. Decided with the user 2026-07-28. */
+void kitty_retire_orphan_master_password(void)
+{
+    char *ver;
+    if (!store_is_file()) {
+        char b[2048];
+        DWORD used = 0, usz = sizeof(used);
+        int was_used = (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf,
+                                     KSEC_MPW_USED_FLAG, RRF_RT_REG_DWORD,
+                                     NULL, &used, &usz) == ERROR_SUCCESS && used);
+        if (!reg_base_read("MasterPwVerifier", b, sizeof(b))) return;
+        if (store_has_mpw_wrapped_secret()) {
+            /* Still in use: keep everything, and remember that it was, so the
+             * run that finds the last value gone knows what it is looking at. */
+            if (!was_used) {
+                HKEY hk;
+                DWORD one = 1;
+                if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
+                                    KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+                    RegSetValueExA(hk, KSEC_MPW_USED_FLAG, 0, REG_DWORD,
+                                   (const BYTE *)&one, sizeof(one));
+                    RegCloseKey(hk);
+                }
+            }
+            kitty_pwdebug("orphan MPW check: master password is in use in the hive, kept");
+            return;
+        }
+        /* Nothing wrapped. Two ways to get here, and both archive: the hive
+         * once used MPW and every value has since been re-saved as DPAPI
+         * (was_used), or the state was never protecting anything at all - the
+         * leftover of the old export behaviour, which is what SS7b is about. */
+        mpw_state_archive("MasterPwSalt", KSEC_MPW_RETIRED_SALT);
+        mpw_state_archive("MasterPwVerifier", KSEC_MPW_RETIRED_VER);
+        kitty_pwdebug("orphan MPW archived: hive holds nothing wrapped (was_used=%d)",
+                      was_used);
+        return;
+    }
+    {
+        char *v = portable_read_text_file(KSEC_MPW_SUBDIR, "MasterPwVerifier");
+        ver = v ? ksec_dup(v) : NULL;
+        if (v) sfree(v);
+    }
+    if (!ver) return;                    /* nothing set up: no scan, no cost */
+    free(ver);
+
+    if (store_has_mpw_wrapped_secret()) {
+        kitty_pwdebug("orphan MPW check: master password is in use, kept");
+        return;
+    }
+    mpw_state_delete("MasterPwSalt");
+    mpw_state_delete("MasterPwVerifier");
+    {
+        /* Only succeeds once the folder is empty, so a Security\ dir holding
+         * anything else is left alone. */
+        char *dir = portable_subdir_path(KSEC_MPW_SUBDIR);
+        if (dir) { RemoveDirectoryA(dir); sfree(dir); }
+    }
+    kitty_pwdebug("orphan MPW retired: nothing in the store was wrapped with it");
 }
 
 /* ---- .ktx forced-export glue (kitty_settings_forced.c / kitty_settings_load.c
