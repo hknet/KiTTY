@@ -65,7 +65,14 @@ features are working and verified. Known limitations as of this release:
   next save. In **portable mode** you can now protect saved session *and* proxy
   passwords with an opt-in **master password** (you are prompted on first save;
   `-masterpwfile` supplies it non-interactively). Unlike DPAPI, a master-password
-  store **moves between machines**. **The master password is never stored and
+  store **moves between machines**: from 0.84.1.65 it is kept in a `Security`
+  folder inside the portable store itself, so carrying the folder carries the
+  protection — earlier versions kept it in the registry of the PC it was set up
+  on, and such an install is moved over automatically on the next start (several
+  portable copies sharing one master password need that folder copied into
+  each). Exporting sessions no longer creates a master password as a side
+  effect: an exported bundle carries its own password, see FEATURES.md.
+  **The master password is never stored and
   cannot be recovered: if you forget it, the passwords it protected are
   unrecoverable** — you would clear and re-enter them. Declining the prompt falls
   back to DPAPI, and `[KiTTY] PortablePasswordProtection=legacy` keeps the classic

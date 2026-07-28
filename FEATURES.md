@@ -84,6 +84,8 @@ By default KiTTY stores its configuration in the Windows registry. In **portable
 
 **Protecting passwords in portable mode:** by default, auto-login and proxy passwords are DPAPI-encrypted — which protects them at rest on the current Windows account, but means they will *not* decrypt if you copy the portable folder to another PC. You can instead set an opt-in **master password**, which encrypts them so the store *does* move between machines. **The master password is never stored and cannot be recovered — if you forget it, the passwords it protected are lost** (you clear and re-enter them). To supply it non-interactively use `-masterpwfile`; to keep the classic plaintext form set `[KiTTY] PortablePasswordProtection=legacy`.
 
+**Where the master password lives:** in a `Security` folder inside your portable store, next to the sessions — so the whole folder moves to another PC and still works. Before 0.84.1.65 a portable install kept this in the Windows registry of the machine it was set up on, which meant the copied folder could not open its passwords elsewhere; an install in that state is moved over automatically the next time it starts, and KiTTY shows you where the folder is. If you run several portable copies that share one master password, copy that `Security` folder into each of them.
+
 **Command-line tools use the registry:** `klink`/`kscp`/`ksftp` (plink/pscp/psftp) read saved sessions from the Windows registry, not from a portable store — so a portable install's sessions, and any passwords a master password protects there, are usable from the KiTTY GUI but not from the command-line tools.
 
 **How to enable:** Use the dedicated **kitty_portable.exe** (defaults to file mode), or place a `kitty.ini` next to `kitty.exe` containing `[KiTTY]` then `savemode=dir`. The release includes `kitty.ini.example` as a commented, inert starting point; copy/rename it only when you want an active config file.
@@ -556,9 +558,33 @@ KiTTY can export the settings of your running session to a plain-text file with 
 
 ### Export all / Import all sessions
 
-Beyond exporting a single session, KiTTY can move your **whole set of saved sessions** — and your named proxy definitions — between installs or machines. **Export all…** writes every saved session as a protected `.ktx` file into a folder you choose (plus a `Proxies\` folder for named proxies); **Import all…** reads them back from a folder. Passwords are re-wrapped for the destination: in a portable install they travel under your master password (so they work on another machine that has the same master password), and in the registry they are re-protected with Windows DPAPI. When you import into a store that already contains sessions or proxies of the same name, KiTTY asks once whether to overwrite them or import only the new ones, and then reports how many sessions and proxies were imported, kept, or failed. Both pickers are the modern folder dialog with an address bar you can paste a path into.
+Beyond exporting a single session, KiTTY can move your **whole set of saved sessions** — and your named proxy definitions — between installs or machines. **Export all…** writes every saved session as a `.ktx` file into a folder you choose (plus a `Proxies\` folder for named proxies); **Import all…** reads them back from a folder. When you import into a store that already contains sessions or proxies of the same name, KiTTY asks once whether to overwrite them or import only the new ones, and then reports how many sessions and proxies were imported, kept, or failed. Both pickers are the modern folder dialog with an address bar you can paste a path into.
 
-**How to enable:** Use the **Export all…** / **Import all…** buttons in the Session panel of the configuration box, or the `-exportall <dir>` / `-importdir <dir>` command-line options for scripted or new-PC setups (`-masterpwfile` supplies a portable master password non-interactively).
+**The exported files get their own password.** Exporting asks how the bundle should be protected, and the choice covers the sessions and the proxy definitions together:
+
+- **a password you choose** — the files can then be imported on any PC. It is shown once when the export finishes, with a **Copy** button, because it is the only thing that opens them again. Importing asks for it, calling it the *import password*; three wrong tries and nothing is imported at all.
+- **this PC only** — no password. The files are encrypted with Windows DPAPI and can only be imported with the same Windows account on the same PC. Importing such a bundle asks nothing; opened on the wrong PC or account it says so plainly, rather than importing sessions with blank passwords.
+
+This password belongs to the exported files alone. It is **not** your master password, and exporting changes nothing about the sessions saved on your machine — before 0.84.1.65 exporting quietly turned the password you typed into a master password for your own store, which is no longer the case. Imported passwords are always re-protected by the store they arrive in: Windows DPAPI in the registry, your master password in a portable install.
+
+**Rolling sessions out from a script.** If you generate `.ktx` files yourself rather than exporting them, you can put a password in the clear and have KiTTY take it exactly as written:
+
+```
+Password\PLAIN:hunter2\
+```
+
+The `PLAIN:` marker says "this is the password, do not try to decode it". Without it, an unmarked value has to be guessed at — KiTTY still reads the encrypted form used by old KiTTY versions, and a cleartext password that happens to look like one would be mangled. KiTTY never writes `PLAIN:` itself, and the value is re-protected by the destination store the first time that session is saved. A file containing one is a cleartext password until it is imported: treat it like any other secret and delete it afterwards. It works for `ProxyPassword` too.
+
+**How to enable:** Use the **Export all…** / **Import all…** buttons in the Session panel of the configuration box, or the command-line options for scripted or new-PC setups:
+
+| option | meaning |
+| --- | --- |
+| `-exportall <dir>` | export every saved session and named proxy into `<dir>` |
+| `-importdir <dir>` | import everything from `<dir>` |
+| `-bundlepwfile <file>` | the bundle password, read from the **first line** of `<file>` |
+| `-bundlethispc` | export without a password, for this PC and account only |
+
+Exporting needs one of the last two — without them it refuses rather than protecting the files more weakly, and importing a password-protected bundle without `-bundlepwfile` refuses instead of stopping to ask. The password is never taken from the command line itself, where it would be visible in the process list, in Task Manager and in shell history; a password file is readable by anything running as you, so put it somewhere sensible and delete it afterwards.
 
 (no screenshot)
 
