@@ -890,6 +890,24 @@ static void bundle_scan_dir(const char *dir, const char *pattern,
     FindClose(h);
 }
 
+/* Does this bundle need a password to import? 1 = yes (an MPW2 value is in
+ * there), 0 = no. For the CLI, which has no one to ask. */
+int kitty_bundle_needs_password(const char *dir)
+{
+    char *mpw2 = NULL, *dpapi = NULL, *pat, *sub;
+    int need;
+    pat = dupprintf("*%s", ktx_ext());
+    bundle_scan_dir(dir, pat, &mpw2, &dpapi);
+    sfree(pat);
+    sub = dupprintf("%s\\Proxies", dir);
+    bundle_scan_dir(sub, "*", &mpw2, &dpapi);
+    sfree(sub);
+    need = (mpw2 != NULL);
+    sfree(mpw2);
+    sfree(dpapi);
+    return need;
+}
+
 /* ---- import password prompt ---- */
 static char *g_imp_result;          /* collected UTF-8 password (malloc'd) */
 static const char *g_imp_prompt;

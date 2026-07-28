@@ -15,6 +15,14 @@ int  kitty_import_dir(const char *dir, int *failOut, int *proxyOut,
                       int *skippedOut, int overwrite);
 static char *kitty_cli_exportdir = NULL;
 static char *kitty_cli_importdir = NULL;
+/* Bundle transport protection for the do-and-exit paths above. The password is
+ * taken from a FILE, never from argv: a command-line password is visible in the
+ * process list, in Task Manager and in shell history. (A password sitting in a
+ * file readable by the same account is its own compromise - it is the caller's
+ * job to place and remove it.) The DPAPI switch is for a scripted local backup,
+ * which needs no password at all because the bundle never leaves the machine. */
+static char *kitty_cli_bundlepw = NULL;
+static bool kitty_cli_bundle_thispc = false;
 /* do-and-exit / pre-window utility switches (kitty modules; putty.c lacks kitty.h) */
 extern char KiTTYClassName[];                       /* kitty.c: window class name */
 extern int  SendCommandAllWindows(HWND hwnd, char *cmd); /* kitty.c */
@@ -222,6 +230,29 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 sfree(kitty_cli_importdir);
                 kitty_cli_importdir =
                     dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
+            } else if (!strcmp(p, "-bundlepwfile")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires a file argument", p);
+                {
+                    const char *path = cmdline_arg_to_str(arglist->args[arglistpos++]);
+                    FILE *fp = fopen(path, "r");
+                    if (!fp)
+                        cmdline_error("unable to open bundle-password file '%s'", path);
+                    else {
+                        char *pw = chomp(fgetline(fp));
+                        fclose(fp);
+                        if (!pw || !pw[0])
+                            cmdline_error("unable to read a password from file '%s'", path);
+                        else {
+                            sfree(kitty_cli_bundlepw);
+                            kitty_cli_bundlepw = pw;
+                            pw = NULL;
+                        }
+                        if (pw) sfree(pw);
+                    }
+                }
+            } else if (!strcmp(p, "-bundlethispc")) {
+                kitty_cli_bundle_thispc = true;
             } else if (!strcmp(p, "-loginscript")) {
                 if (!arglist->args[arglistpos])
                     cmdline_error("option \"%s\" requires an argument", p);
@@ -361,21 +392,68 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
 #ifdef MOD_PERSO
     /* Whole-store export/import (do-and-exit). Runs here, after the storage
      * backend is initialised, so it targets the active store (registry or
-     * portable). A protected password uses the master password: interactive
-     * prompt, or -masterpwfile for headless/scripted new-PC setup. */
+     * portable). The bundle carries its OWN protection - a password from
+     * -bundlepwfile, or -bundlethispc for a local-only backup - so neither path
+     * touches the store's master password. */
+    extern void kitty_set_bundle_passphrase(const char *pass);
+    extern void kitty_set_bundle_dpapi_only(int on);
+    extern void kitty_set_bundle_import(int on);
+    extern void kitty_clear_bundle_context(void);
+    extern int  kitty_bundle_wrap_failed(void);
+    extern int  kitty_bundle_needs_password(const char *dir);
     if (kitty_cli_exportdir) {
-        int fail = 0, n = kitty_export_all_to_dir(kitty_cli_exportdir, &fail);
-        char msg[600];
-        snprintf(msg, sizeof(msg), "Exported %d session(s), %d failed, to:\n%s",
-                 n, fail, kitty_cli_exportdir);
+        int fail = 0, n, wrapfailed;
+        char msg[700];
+        /* No silent fallback, exactly as in the GUI: without one of the two
+         * switches this used to CREATE a master password for the user's own
+         * store as a side effect. Say what to pass instead of doing that. */
+        if (!kitty_cli_bundlepw && !kitty_cli_bundle_thispc) {
+            MessageBoxA(NULL,
+                "Say how the exported sessions should be protected:\n\n"
+                "  -bundlepwfile <file>   password (first line of the file);\n"
+                "                         the bundle then imports on any PC\n"
+                "  -bundlethispc          no password; the bundle imports only\n"
+                "                         with this Windows account on this PC\n\n"
+                "Nothing was exported.",
+                "KiTTY session export", MB_OK | MB_ICONWARNING);
+            cleanup_exit(1);
+        }
+        if (kitty_cli_bundle_thispc) kitty_set_bundle_dpapi_only(1);
+        else                         kitty_set_bundle_passphrase(kitty_cli_bundlepw);
+        n = kitty_export_all_to_dir(kitty_cli_exportdir, &fail);
+        wrapfailed = kitty_bundle_wrap_failed();
+        kitty_clear_bundle_context();
+        snprintf(msg, sizeof(msg), "Exported %d session(s), %d failed, to:\n%s%s",
+                 n, fail, kitty_cli_exportdir,
+                 (kitty_cli_bundle_thispc || wrapfailed)
+                   ? "\n\nThese sessions can only be imported with this Windows "
+                     "account on this PC."
+                   : "");
         MessageBoxA(NULL, msg, "KiTTY session export",
-                    MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+                    MB_OK | ((fail || wrapfailed) ? MB_ICONWARNING : MB_ICONINFORMATION));
         cleanup_exit(fail ? 1 : 0);
     }
     if (kitty_cli_importdir) {
-        int fail = 0, prox = 0;
-        int n = kitty_import_dir(kitty_cli_importdir, &fail, &prox, NULL, 1);
-        char msg[600];
+        int fail = 0, prox = 0, n;
+        char msg[700];
+        /* A password-protected bundle with no password given would fall through
+         * to the master-password prompt - which is interactive, and this path
+         * exists for scripts. Refuse with the switch name instead. */
+        if (kitty_bundle_needs_password(kitty_cli_importdir) && !kitty_cli_bundlepw) {
+            MessageBoxA(NULL,
+                "These exported sessions are password-protected. Supply the "
+                "import password with:\n\n"
+                "  -bundlepwfile <file>   (the password on the first line)\n\n"
+                "Nothing was imported.",
+                "KiTTY session import", MB_OK | MB_ICONWARNING);
+            cleanup_exit(1);
+        }
+        if (kitty_cli_bundlepw) {
+            kitty_set_bundle_import(1);
+            kitty_set_bundle_passphrase(kitty_cli_bundlepw);
+        }
+        n = kitty_import_dir(kitty_cli_importdir, &fail, &prox, NULL, 1);
+        kitty_clear_bundle_context();
         snprintf(msg, sizeof(msg), "Imported %d session(s), %d prox(ies), %d failed, from:\n%s",
                  n, prox, fail, kitty_cli_importdir);
         MessageBoxA(NULL, msg, "KiTTY session import",
