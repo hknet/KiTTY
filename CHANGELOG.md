@@ -7,6 +7,23 @@ see [FEATURES.md](FEATURES.md).
 
 ## 0.84.1.65-beta — 2026-07-27
 
+- **Portable KiTTY no longer depends on the PC it was set up on.** A portable
+  install used to keep its master password in the Windows registry of that one
+  machine, so the same folder copied to another PC could not open its saved
+  passwords — and a newly created portable install inherited that leftover,
+  could never set up a master password of its own, and silently protected its
+  passwords in a way that only worked on the machine that wrote them. Portable
+  installs now keep this next to their sessions, in a `Security` folder. If
+  yours relied on the registry, it is moved there once, at startup, and KiTTY
+  tells you where the folder is — copy it into your other portable installs if
+  they share the same master password.
+
+- **A master password that protects nothing is now cleaned up.** Exporting
+  sessions on 0.84.1.48–0.84.1.65 quietly turned the password you typed into a
+  master password for your own sessions. Where nothing is actually protected
+  with it, it is now removed at startup, silently. Anything still protected with
+  it is left exactly as it is.
+
 - **Exporting sessions no longer creates a master password.** "Export all" now
   asks how the exported files should be protected: with a password of your
   choosing, which lets them be imported on any PC, or for this Windows account
