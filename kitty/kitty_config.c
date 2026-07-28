@@ -4229,6 +4229,27 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
     ctrl_checkbox(s, "Warn before closing window", 'w',
                   HELPCTX(behaviour_closewarn),
                   conf_checkbox_handler, I(CONF_warn_on_close));
+#ifdef MOD_PERSO
+    /* KiTTY startup window state. All three are honoured in window.c (maximize
+     * and fullscreen at the ShowWindow, send-to-tray once the session is up),
+     * and all three are saved with the session - but the config-box controls
+     * were lost in the 0.84 port, leaving the settings unreachable and existing
+     * sessions looking as if they had forgotten them. NO_SHORTCUT: this panel
+     * has run out of free accelerator letters. */
+    if (!GetPuttyFlag()) {
+        /* All three are INT keys, so they need kitty_checkbox_int_handler:
+         * conf_checkbox_handler asserts in conf_get_bool on a non-BOOL key. */
+        ctrl_checkbox(s, "Send to tray on startup", NO_SHORTCUT,
+                      HELPCTX(no_help),
+                      kitty_checkbox_int_handler, I(CONF_sendtotray));
+        ctrl_checkbox(s, "Maximize on startup", NO_SHORTCUT,
+                      HELPCTX(no_help),
+                      kitty_checkbox_int_handler, I(CONF_maximize));
+        ctrl_checkbox(s, "Full screen on startup", NO_SHORTCUT,
+                      HELPCTX(no_help),
+                      kitty_checkbox_int_handler, I(CONF_fullscreen));
+    }
+#endif
 
 #ifdef MOD_LAUNCHER
     if (!GetPuttyFlag()) {

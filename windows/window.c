@@ -295,6 +295,7 @@ extern char AntiIdleStr[128];
 #define TIMER_SCRIPT 8704
 #ifdef MOD_PERSO
 #define TIMER_EMBEDFILL 8706   /* #554: poll host client rect, keep embedded child filling it */
+#define TIMER_SENDTOTRAY 8711  /* free across window.c + kitty.c timer ids */
 #endif
 #ifdef MOD_RECONNECT
 #define TIMER_RECONNECT 8705
@@ -1471,6 +1472,17 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * Skipped when embedded (#554). */
     if (conf_get_int(wgs->conf, CONF_fullscreen) && !KITTY_EMBEDDED())
         PostMessage(wgs->term_hwnd, WM_COMMAND, IDM_FULLSCREEN, 0);
+    /* KiTTY feature: send to tray on start - the session setting "Send to tray"
+     * (CONF_sendtotray, armed in SetAutoSendToTray above) or "-send-to-tray" on
+     * the command line. Deferred rather than done right here: hiding the window
+     * the instant it appears would also hide the host-key prompt, the password
+     * prompt and any connection error, so we poll and only drop to the tray once
+     * the session is really up (see TIMER_SENDTOTRAY below). A session that
+     * never connects therefore stays visible, which is what you want.
+     * Skipped when embedded (#554): a child window in the tray is nonsense. */
+    if (GetAutoSendToTray() && !KITTY_EMBEDDED())
+        SetTimer(wgs->term_hwnd, TIMER_SENDTOTRAY,
+                 init_delay > 0 ? init_delay : 2000, NULL);
 #endif
 
     gui_terminal_ready(wgs->term_hwnd, &wgs->seat, wgs->backend);
@@ -3149,6 +3161,21 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 }
             } else {
                 KillTimer(hwnd, TIMER_EMBEDFILL);
+            }
+            return 0;
+        }
+        if ((UINT_PTR)wParam == TIMER_SENDTOTRAY) {
+            /* Repeating tick: hide to the tray as soon as the session is up.
+             * ever_authenticated is set post-auth for SSH and on connect for
+             * every other backend, so we never hide a window that is still
+             * showing a host-key/password prompt or an error. If the session
+             * never gets there, the timer just keeps ticking and the window
+             * stays where the user can see it. AutoSendToTray is deliberately
+             * left set: from now on a manual minimise goes to the tray too,
+             * which is the rest of what this option means. */
+            if (wgs && wgs->backend && wgs->ever_authenticated) {
+                KillTimer(hwnd, TIMER_SENDTOTRAY);
+                kitty_send_to_tray(hwnd);
             }
             return 0;
         }

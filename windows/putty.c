@@ -136,6 +136,14 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                       cmdline_arg_to_str(arglist->args[arglistpos++])); }
             } else if (!strcmp(p, "-fullscreen")) {
                 conf_set_int(conf, CONF_fullscreen, 1);
+            } else if (!strcmp(p, "-send-to-tray")) {
+                /* KiTTY: start the session straight in the systray (tunnels).
+                 * Sets the process-global rather than CONF_sendtotray so it
+                 * cannot be undone by a "-load" appearing later on the command
+                 * line - which is exactly the order the launcher writes into
+                 * the shortcuts it creates ("-load NAME -send-to-tray"). */
+                { extern void SetAutoSendToTray(const int flag);
+                  SetAutoSendToTray(1); }
             } else if (!strcmp(p, "-xpos")) {
                 if (!arglist->args[arglistpos])
                     cmdline_error("option \"%s\" requires an argument", p);
