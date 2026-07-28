@@ -41,6 +41,18 @@ see [FEATURES.md](FEATURES.md).
   instead of importing sessions with blank passwords. Imported passwords are
   always re-protected by the store they land in.
 
+- **A portable install can now be told to protect passwords with Windows,
+  permanently.** `[KiTTY] PortablePasswordProtection` accepts a new value,
+  `dpapi`: saved passwords are protected for this Windows account on this PC,
+  no master password is created, and KiTTY never asks you to set one. This was
+  previously reachable only by cancelling the master-password dialog by hand,
+  so an unattended install or import that wanted it had no way to say so and
+  the only scriptable alternative was storing passwords in the clear.
+  Passwords protected this way do not travel: copied to another PC or Windows
+  account they cannot be decrypted. `-masterpwfile` is refused in this mode
+  rather than one of the two quietly winning. The default (`master`) is
+  unchanged.
+
 - **Session files can now carry a password in the clear, on purpose.** If you
   roll sessions out with a script, write the password as
   `Password\PLAIN:yourpassword\` and KiTTY will take it exactly as given, then

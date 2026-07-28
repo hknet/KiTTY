@@ -70,9 +70,10 @@ static INT_PTR CALLBACK mpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
             "instead: only this Windows account on this machine can read them "
             "(a roaming domain profile may also work on other machines).\r\n\r\n"
             "For unattended/automation setups: -masterpwfile <file> supplies "
-            "the master password without a prompt, and kitty.ini can select "
-            "unprotected legacy storage (PortablePasswordProtection, see "
-            "kitty.ini.example)." :
+            "the master password without a prompt, and kitty.ini "
+            "PortablePasswordProtection can settle the choice permanently - "
+            "'dpapi' to always use DPAPI and never ask again, 'legacy' for "
+            "unprotected storage (see kitty.ini.example)." :
             "Enter your master password to unlock the saved session password.");
         if (!g_first_time) {
             /* Unlock mode: the prompt is one line, so reclaim most of the

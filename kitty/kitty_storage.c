@@ -720,17 +720,38 @@ static char *ksec_dup(const char *s) { size_t n = strlen(s) + 1; char *d = mallo
  * kitty/kitty_b64.c to shrink this file's divergence from upstream. */
 
 /* Portable-context write policy (kitty.ini [KiTTY] PortablePasswordProtection):
- * "master" (default) -> portable secrets are written MPW1; "legacy" -> unmarked
- * plaintext, the explicit compatibility escape hatch for automation/audit
- * setups. Set from kitty.c when the portable (savemode=dir) backend is
- * activated; registry-backed stores never consult it. This replaces the
- * retired registry-global "PasswordScheme" DWORD, which is no longer read at
- * all — a leftover value of any kind is ignored, so it can no longer make the
- * hive plaintext or master-password (TASK_dpapi_mpw_backend_policy.md). */
-static int g_portable_pw_legacy = 0;
+ * "master" (default) -> portable secrets are written MPW2; "dpapi" -> Windows
+ * DPAPI, i.e. this Windows account on this PC, and NO master password is ever
+ * created or asked for; "legacy" -> unmarked plaintext, the explicit
+ * compatibility escape hatch for automation/audit setups. Set from kitty.c when
+ * the portable (savemode=dir) backend is activated; registry-backed stores never
+ * consult it. This replaces the retired registry-global "PasswordScheme" DWORD,
+ * which is no longer read at all — a leftover value of any kind is ignored, so
+ * it can no longer make the hive plaintext or master-password
+ * (TASK_dpapi_mpw_backend_policy.md).
+ *
+ * Why "dpapi" exists: it is the only at-rest choice a portable store could not
+ * make without a human. Master password is scriptable (-masterpwfile) and so is
+ * plaintext (legacy), but DPAPI was reachable ONLY by cancelling the setup
+ * dialog — so an unattended import/save that wanted machine-bound protection had
+ * to settle for plaintext. This is a WRITE policy only: reads are unchanged, and
+ * a store that already holds MPW values still unlocks them normally. */
+#define KITTY_PORTABLE_PW_MASTER 0
+#define KITTY_PORTABLE_PW_DPAPI  1
+#define KITTY_PORTABLE_PW_LEGACY 2
+static int g_portable_pw_mode = KITTY_PORTABLE_PW_MASTER;
 void kitty_set_portable_password_protection(const char *mode)
 {
-    g_portable_pw_legacy = (mode && !_stricmp(mode, "legacy"));
+    if (mode && !_stricmp(mode, "legacy"))     g_portable_pw_mode = KITTY_PORTABLE_PW_LEGACY;
+    else if (mode && !_stricmp(mode, "dpapi")) g_portable_pw_mode = KITTY_PORTABLE_PW_DPAPI;
+    else                                       g_portable_pw_mode = KITTY_PORTABLE_PW_MASTER;
+}
+/* True when the portable store is configured to protect secrets with DPAPI
+ * instead of a master password. Public so the command line can refuse
+ * -masterpwfile rather than quietly honour one of the two (see cmdline.c). */
+int kitty_portable_password_dpapi(void)
+{
+    return g_portable_pw_mode == KITTY_PORTABLE_PW_DPAPI;
 }
 
 /* ---- master-password (MPW1) glue ----------------------------------------
@@ -1301,26 +1322,29 @@ char *ksec_protect_registry(const char *plaintext)
     return res ? res : ksec_dup(plaintext);
 }
 
-/* Portable-file backend: MPW1 when the master password is set/unlockable (the
+/* Portable-file backend: MPW2 when the master password is set/unlockable (the
  * first non-empty secret save may prompt to create it; a cancel stops further
- * prompts this run). kitty.ini PortablePasswordProtection=legacy selects the
- * explicit-compat plaintext escape hatch instead. MPW declined/unavailable ->
- * DPAPI1, so the secret never lands plaintext unintentionally: still readable
- * on this machine, and rewritten as MPW1 on a later protected save (read
- * policy). */
+ * prompts this run). kitty.ini PortablePasswordProtection selects DPAPI ("this
+ * PC and account", never a prompt) or the explicit-compat plaintext escape
+ * hatch ("legacy") instead. MPW declined/unavailable -> DPAPI1, so the secret
+ * never lands plaintext unintentionally: still readable on this machine, and
+ * rewritten as MPW2 on a later protected save (read policy). */
 char *ksec_protect_portable(const char *plaintext)
 {
     if (!plaintext || !plaintext[0]) return ksec_dup("");
     /* Which branch this takes is otherwise invisible, and "why did I get DPAPI
      * when I expected MPW2?" is the question that actually gets asked. No
      * plaintext, just the decision inputs. */
-    kitty_pwdebug("protect portable: legacy=%d crypto=%d supplied=%d unlocked=%d declined=%d defer=%d",
-                  g_portable_pw_legacy, g_mpw_derive != NULL,
+    kitty_pwdebug("protect portable: mode=%d crypto=%d supplied=%d unlocked=%d declined=%d defer=%d",
+                  g_portable_pw_mode, g_mpw_derive != NULL,
                   g_mpw_passphrase != NULL, g_mpw_unlocked, g_mpw_declined,
                   g_mpw_defer);
-    if (g_portable_pw_legacy)
+    if (g_portable_pw_mode == KITTY_PORTABLE_PW_LEGACY)
         return ksec_dup(plaintext);
-    if (mpw_ensure_unlocked(1)) {
+    /* DPAPI policy: fall straight through to the DPAPI wrap below, without
+     * touching the master-password machinery -- no unlock, no setup dialog, no
+     * Security\ state written. */
+    if (g_portable_pw_mode == KITTY_PORTABLE_PW_MASTER && mpw_ensure_unlocked(1)) {
         char *mb = g_mpw_protect(plaintext, g_mpw_key);   /* "MPW1:..." (snew'd) */
         if (mb) {
             /* Wrap as self-contained MPW2 (salt embedded) so the value stays
@@ -1831,7 +1855,7 @@ char *kitty_secret_wrap_current_backend(const char *plaintext)
  * plaintext deliberately and must NOT nag about it. */
 int kitty_portable_password_legacy(void)
 {
-    return g_portable_pw_legacy;
+    return g_portable_pw_mode == KITTY_PORTABLE_PW_LEGACY;
 }
 /* Past the PLAIN: provisioning marker if the value carries one, else the value
  * itself. Borrowed pointer, never NULL for a non-NULL argument. For the few

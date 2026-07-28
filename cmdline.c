@@ -665,8 +665,20 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
      * sets the SSH login password. Non-interactive, so -batch-safe. */
     if (!strcmp(p, "-masterpwfile")) {
         extern void kitty_set_master_passphrase(const char *);
+        extern int kitty_portable_password_dpapi(void);
         RETURN(2);
         SAVEABLE(0);
+        /* The two non-interactive ways to protect a portable store are mutually
+         * exclusive, and honouring either one silently would misreport where the
+         * protection came from: kitty.ini has already said "protect with DPAPI,
+         * never a master password", and this switch says the opposite. Refuse
+         * rather than pick a winner. kitty.ini is read at startup (InitWinMain),
+         * before the command line, so the mode is already known here. */
+        if (kitty_portable_password_dpapi()) {
+            cmdline_error("-masterpwfile conflicts with PortablePasswordProtection=dpapi"
+                          " in kitty.ini: that store protects passwords with Windows"
+                          " DPAPI and has no master password. Remove one of the two.");
+        }
         Filename *fn = cmdline_arg_to_filename(nextarg);
         FILE *fp = f_open(fn, "r", false);
         if (!fp) {

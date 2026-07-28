@@ -68,6 +68,10 @@ const char *ksec_orig_get(int slot);     /* never-wipe original blob or NULL */
 int ksec_stored_is_legacy(const char *stored);
 int ksec_migrate_warn_ask(void);         /* legacy->protected save consent */
 int kitty_portable_password_legacy(void);
+/* kitty.ini PortablePasswordProtection=dpapi: portable secrets are protected
+ * with DPAPI and no master password is created or asked for. Mutually exclusive
+ * with -masterpwfile, which cmdline.c refuses in this mode. */
+int kitty_portable_password_dpapi(void);
 /* One-shot at startup, portable stores only: copy the master-password state out
  * of the registry into the store's own Security\ folder, but only when this
  * store really has values wrapped with it. Returns 1 if it copied, so the caller

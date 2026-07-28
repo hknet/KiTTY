@@ -249,7 +249,14 @@
 ;    - master : protect saved passwords with a master password (default). Only
 ;               the password fields are encrypted, the rest of the session file
 ;               stays readable. Copy the files and know the master password to
-;               use them on another machine.
+;               use them on another machine. KiTTY asks you to set the master
+;               password the first time it saves a password; -masterpwfile
+;               supplies it without a prompt.
+;    - dpapi  : protect saved passwords with Windows DPAPI, i.e. this Windows
+;               account on this PC. No master password is created and KiTTY
+;               never asks for one - so unattended runs need no switch at all -
+;               but the passwords do NOT travel: copied to another PC or account
+;               they cannot be decrypted. Cannot be combined with -masterpwfile.
 ;    - legacy : store saved passwords unprotected (plain text) for explicit
 ;               compatibility/automation/audit setups. INSECURE - anyone who can
 ;               read the files gets the passwords.
