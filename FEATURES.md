@@ -356,7 +356,7 @@ KiTTY lets you assign a distinct window icon to each saved session, so you can t
 
 When you run long background batches or just keep KiTTY open to maintain SSH tunnels, you can tuck the window away into the Windows system tray (the notification area in the bottom-right corner of the screen) so it stays out of your way. You can send an open session to the tray on demand, have a session start there automatically, or launch one straight into the tray from the command line. Clicking the tray icon brings the window back when you need it.
 
-**How to enable:** System menu **Send to tray** (or enable auto-minimise-to-tray). The window hides to the notification area; click the tray icon to restore it.
+**How to enable:** System menu **Send to tray** for a window that is already open. To have a session start there, tick **Send to tray on startup** in Configuration > **Window > Behaviour**; on the command line, `-send-to-tray` does the same for one launch. A session starting in the tray stays visible until it is actually connected, so host-key and password prompts are never hidden behind the tray icon. With the option on, minimising the window also sends it to the tray. Click the tray icon to restore it.
 
 ![Send to tray](docs/features/img/config_sendtotray.jpg)
 

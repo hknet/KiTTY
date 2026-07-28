@@ -7,6 +7,28 @@ see [FEATURES.md](FEATURES.md).
 
 ## 0.84.1.65-beta — 2026-07-27
 
+- **"Send to tray on startup" is back, and works again.** The setting was still
+  saved with every session, but there was no way left to see or change it, no
+  way to switch it on for a single launch, and a session that had it set simply
+  opened as a normal window — so sessions kept for SSH tunnels no longer tucked
+  themselves away. The checkbox is back in **Window > Behaviour**, together with
+  **Maximize on startup** and **Full screen on startup**, which had disappeared
+  the same way; `-send-to-tray` works on the command line again (this is what
+  the launcher writes into the shortcuts it creates); and a session set to start
+  in the tray now goes there once it is connected, so a host-key or password
+  prompt is never hidden behind the tray icon. Sessions that had the option set
+  all along need no change — they simply behave as configured again.
+  Refs hknet/KiTTY#20
+
+- **The kageant passphrase prompt no longer opens off-screen.** When the
+  terminal asking for the key was minimised — a shortcut set to "Run:
+  minimized", for instance — the prompt was positioned relative to that
+  minimised window and ended up far outside the visible desktop: listed in the
+  taskbar, impossible to bring into view, with the session waiting for a
+  passphrase that could not be typed. The prompt now ignores a minimised window
+  and always opens inside the visible area of a monitor.
+  Refs hknet/KiTTY#21
+
 - **Portable KiTTY no longer depends on the PC it was set up on.** A portable
   install used to keep its master password in the Windows registry of that one
   machine, so the same folder copied to another PC could not open its saved
