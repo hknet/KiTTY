@@ -3292,11 +3292,16 @@ void LoadParameters( void ) {
 // - sinon putty.ini dans le repertoire de lancement de kitty.exe s'il existe
 // 
 void InitNameConfigFile( void ) {
-	char buffer[4096] ;
+	char buffer[4096] = "" ;   /* the KITTY_INI_FILE test below reads this even
+	                            * when the variable is unset - it used to be
+	                            * uninitialised stack, so the first existfile()
+	                            * ran on whatever happened to be there */
 	if( KittyIniFile != NULL ) { free( KittyIniFile ) ; }
 	KittyIniFile=NULL ;
 
-	if( getenv("KITTY_INI_FILE") != NULL ) { strcpy( buffer, getenv("KITTY_INI_FILE") ) ; }
+	/* snprintf, not strcpy: the value comes from the environment and is not
+	 * length-bounded. */
+	if( getenv("KITTY_INI_FILE") != NULL ) { snprintf( buffer, sizeof(buffer), "%s", getenv("KITTY_INI_FILE") ) ; }
 	if( !existfile( buffer ) ) {
 		snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
 		if( !existfile( buffer ) ) {
