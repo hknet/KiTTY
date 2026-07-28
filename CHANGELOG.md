@@ -5,7 +5,7 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
-## 0.84.1.65-beta — 2026-07-27
+## 0.84.1.65-beta — 2026-07-28
 
 - **"Send to tray on startup" is back, and works again.** The setting was still
   saved with every session, but there was no way left to see or change it, no

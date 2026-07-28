@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.64 — Known issues & limitations
+# KiTTY 0.84.1.65 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -93,11 +93,50 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.64-beta @ 2026-07-26`.
+- **Version string:** binaries report `0.84.1.65-beta @ 2026-07-28`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.65
+
+- **The diagnostic dump is gone.** `/savedump` and `kitty.exe -savedump` no
+  longer exist. They wrote `kitty.dmp` encrypted under a key compiled into the
+  program, and KiTTY shipped no way to read one back — so the file bug reports
+  asked for could not be opened by you or by us. Use the **Event Log**
+  (right-click the title bar) and session logging (**Session → Logging**)
+  instead. An old `kitty.dmp` is neither read nor updated any more; delete it.
+- **Exports now carry their own password, and it is shown only once.** "Export
+  all" asks whether the files should be protected by a password you choose
+  (importable on any PC) or for this Windows account on this PC only. The
+  password is displayed once when the export finishes, with a Copy button —
+  there is no way to recover it afterwards, and without it the export cannot be
+  imported. Previously exporting silently created a **master password for your
+  own session store** as a side effect; it no longer touches your store at all.
+- **A master password that protects nothing is retired at startup**, silently.
+  If it still protects something, it is left alone. On a registry install the
+  old values are archived rather than deleted, so a portable store that has not
+  yet been opened under this version can still be migrated.
+- **Portable installs keep master-password state in their own `Security`
+  folder.** A portable install that relied on the registry is migrated once, at
+  startup, and tells you which folder to copy if you keep several portable
+  installs sharing one master password. Copies of that folder are what makes the
+  same passwords work on another PC.
+- **`Password\PLAIN:…` in a session file is a cleartext secret.** The new
+  provisioning form is taken literally and re-protected on first save, but until
+  it is imported the file holds the password in the clear — treat it like one
+  and delete it afterwards.
+- **`[KiTTY] PortablePasswordProtection=dpapi`** protects a portable install's
+  passwords for this Windows account on this PC and never asks for a master
+  password. Those passwords **do not travel**: copied to another PC or account
+  they cannot be decrypted. `-masterpwfile` is refused in this mode.
+- **"Send to tray on startup" waits until the session is connected.** The window
+  stays visible for a host-key or password prompt and drops to the tray a moment
+  after login, so a session that never connects never disappears. The checkbox
+  is in **Window → Behaviour** (with **Maximize** and **Full screen on
+  startup**, which had also gone missing); `-send-to-tray` works again on the
+  command line.
 
 ## New in 0.84.1.64
 
