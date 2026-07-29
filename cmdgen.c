@@ -1392,7 +1392,8 @@ int main(int argc, char **argv)
             fp = f_open(outfilename, "w", false);
             if (!fp) {
                 fprintf(stderr, "unable to open output file\n");
-                exit(1);
+                RETURN(1);   /* KiTTY: not exit() - go via out:, which wipes
+                              * the key and the passphrases */
             }
         } else {
             fp = stdout;
@@ -1441,7 +1442,8 @@ int main(int argc, char **argv)
             fp = f_open(outfilename, "w", false);
             if (!fp) {
                 fprintf(stderr, "unable to open output file\n");
-                exit(1);
+                RETURN(1);   /* KiTTY: not exit() - go via out:, which wipes
+                              * the key and the passphrases */
             }
         } else {
             fp = stdout;
@@ -1521,7 +1523,8 @@ int main(int argc, char **argv)
             fp = f_open(outfilename, "w", false);
             if (!fp) {
                 fprintf(stderr, "unable to open output file\n");
-                exit(1);
+                RETURN(1);   /* KiTTY: not exit() - go via out:, which wipes
+                              * the key and the passphrases */
             }
         } else {
             fp = stdout;
@@ -1629,7 +1632,7 @@ int main(int argc, char **argv)
                 fp = f_open(outfilename, "w", false);
                 if (!fp) {
                     fprintf(stderr, "unable to open output file\n");
-                    exit(1);
+                    RETURN(1);   /* see above */
                 }
             } else {
                 fp = stdout;
