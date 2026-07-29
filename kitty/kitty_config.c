@@ -1219,9 +1219,19 @@ bool kitty_config_select_root_folder(dlgparam *dp)
     strcpy(CurrentFolder, "Default");
     kitty_set_last_folder(CurrentFolder);
     /* dlg_refresh rebuilds the combo and re-selects the row matching
-     * CurrentFolder, suppressing the re-entrant VALCHANGE itself. */
-    dlg_refresh(ssd->folderlist, dp);
-    dlg_refresh(ssd->listbox, dp);
+     * CurrentFolder, suppressing the re-entrant VALCHANGE itself.
+     *
+     * Only when those controls are on screen, though. Ctrl+G comes from a
+     * keyboard hook that is live on every panel, and the config box destroys
+     * the controls of every panel but the visible one: dlg_refresh() itself
+     * tolerates that (it calls the handler directly), but the handler goes on
+     * to dlg_update_start()/dlg_listbox_clear(), which assert on a control
+     * they cannot find. Skipping the refresh loses nothing - the panel
+     * rebuilds from CurrentFolder when it is next shown. */
+    if (dlg_is_visible(ssd->folderlist, dp))
+        dlg_refresh(ssd->folderlist, dp);
+    if (dlg_is_visible(ssd->listbox, dp))
+        dlg_refresh(ssd->listbox, dp);
     return true;
 }
 
@@ -1390,6 +1400,25 @@ static bool load_selected_session(
 static bool sessionsaver_resolve_launch_target(
     struct sessionsaver_data *ssd, dlgparam *dlg, Conf *conf, dlgcontrol *ctrl)
 {
+    /*
+     * Both ways of resolving the target read the saved-sessions list, and
+     * NEITHER is meaningful unless that list is on screen: the config box
+     * physically destroys the controls of every panel except the visible one
+     * (see the comment on dlg_is_visible()), so ssd->listbox does not exist
+     * while the user is on any other panel - and dlg_listbox_index() asserts
+     * on a control it cannot find.
+     *
+     * Start and Open live in the always-present action area, so they can be
+     * pressed from anywhere. Typing a session name arms the search filter, and
+     * the filter branch below used to load unconditionally: name a session,
+     * switch to any other panel, press Start, and KiTTY died on the assertion
+     * at windows/controls.c:2376 instead of launching. With the list not
+     * displayed there is nothing highlighted to prefer, so the right answer is
+     * to launch the current settings as they stand.
+     */
+    if (ssd->midsession || !ssd->listbox || !dlg_is_visible(ssd->listbox, dlg))
+        return true;
+
     if (ssd->searchfilter && ssd->searchfilter[0]) {
         if (!load_selected_session(ssd, dlg, conf, NULL)) {
             dlg_beep(dlg);
@@ -1397,9 +1426,7 @@ static bool sessionsaver_resolve_launch_target(
         }
         return true;
     }
-    if (!ssd->midsession &&
-        dlg_last_focused(ctrl, dlg) == ssd->listbox &&
-        dlg_is_visible(ssd->listbox, dlg)) {
+    if (dlg_last_focused(ctrl, dlg) == ssd->listbox) {
         if (!load_selected_session(ssd, dlg, conf, NULL)) {
             dlg_beep(dlg);
             return false;
