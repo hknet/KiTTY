@@ -678,8 +678,70 @@ struct MainDlgState {
  * ssh_key_free(). The two are told apart by asking whether ssh2key.key points
  * into our own union.
  *
- * Safe to call at any time: with no key (or while the generation thread is
- * still running, which is exactly when key_exists is false) it does nothing.
+ * The same distinction is what the certificate paths need: they free the
+ * current key only to install a replacement, and used to call ssh_key_free()
+ * unconditionally - which killed the process outright on a generated key.
+ */
+
+/*
+ * Release state->ssh2key.key, whichever of the two kinds it is, and NULL it.
+ * Touches nothing else - not the comment, not key_exists - so it also serves
+ * the certificate paths, which free the current key only to install a
+ * replacement.
+ */
+static void free_current_ssh2_key(struct MainDlgState *state)
+{
+    ssh_key *k = state->ssh2key.key;
+    if (!k)
+        return;
+
+    bool in_place = (k == &state->key.sshk   || k == &state->dsakey.sshk ||
+                     k == &state->eckey.sshk || k == &state->edkey.sshk);
+
+    if (!in_place) {
+        ssh_key_free(k);
+    } else switch (state->keytype) {
+      case DSA:
+        /* the bodies of dsa_freekey / ec*_freekey, minus their final sfree()
+         * of the container, which here is not an allocation */
+        if (state->dsakey.p) { mp_free(state->dsakey.p); state->dsakey.p = NULL; }
+        if (state->dsakey.q) { mp_free(state->dsakey.q); state->dsakey.q = NULL; }
+        if (state->dsakey.g) { mp_free(state->dsakey.g); state->dsakey.g = NULL; }
+        if (state->dsakey.y) { mp_free(state->dsakey.y); state->dsakey.y = NULL; }
+        if (state->dsakey.x) { mp_free(state->dsakey.x); state->dsakey.x = NULL; }
+        break;
+      case ECDSA:
+        if (state->eckey.publicKey) {
+            ecc_weierstrass_point_free(state->eckey.publicKey);
+            state->eckey.publicKey = NULL;
+        }
+        if (state->eckey.privateKey) {
+            mp_free(state->eckey.privateKey);
+            state->eckey.privateKey = NULL;
+        }
+        break;
+      case EDDSA:
+        if (state->edkey.publicKey) {
+            ecc_edwards_point_free(state->edkey.publicKey);
+            state->edkey.publicKey = NULL;
+        }
+        if (state->edkey.privateKey) {
+            mp_free(state->edkey.privateKey);
+            state->edkey.privateKey = NULL;
+        }
+        break;
+      case RSA:
+        freersakey(&state->key);
+        break;
+    }
+
+    state->ssh2key.key = NULL;
+}
+
+/*
+ * Wipe everything the dialog holds. Safe to call at any time: with no key - or
+ * while the generation thread is still running, which is exactly when
+ * key_exists is false - it does nothing.
  */
 static void burn_key_state(struct MainDlgState *state)
 {
@@ -687,48 +749,7 @@ static void burn_key_state(struct MainDlgState *state)
         return;
 
     if (state->ssh2) {
-        ssh_key *k = state->ssh2key.key;
-        bool in_place = (k == &state->key.sshk   || k == &state->dsakey.sshk ||
-                         k == &state->eckey.sshk || k == &state->edkey.sshk);
-
-        if (!in_place) {
-            ssh_key_free(k);
-        } else switch (state->keytype) {
-          case DSA:
-            /* the bodies of dsa_freekey / ec*_freekey, minus their final
-             * sfree() of the container, which here is not an allocation */
-            if (state->dsakey.p) { mp_free(state->dsakey.p); state->dsakey.p = NULL; }
-            if (state->dsakey.q) { mp_free(state->dsakey.q); state->dsakey.q = NULL; }
-            if (state->dsakey.g) { mp_free(state->dsakey.g); state->dsakey.g = NULL; }
-            if (state->dsakey.y) { mp_free(state->dsakey.y); state->dsakey.y = NULL; }
-            if (state->dsakey.x) { mp_free(state->dsakey.x); state->dsakey.x = NULL; }
-            break;
-          case ECDSA:
-            if (state->eckey.publicKey) {
-                ecc_weierstrass_point_free(state->eckey.publicKey);
-                state->eckey.publicKey = NULL;
-            }
-            if (state->eckey.privateKey) {
-                mp_free(state->eckey.privateKey);
-                state->eckey.privateKey = NULL;
-            }
-            break;
-          case EDDSA:
-            if (state->edkey.publicKey) {
-                ecc_edwards_point_free(state->edkey.publicKey);
-                state->edkey.publicKey = NULL;
-            }
-            if (state->edkey.privateKey) {
-                mp_free(state->edkey.privateKey);
-                state->edkey.privateKey = NULL;
-            }
-            break;
-          case RSA:
-            freersakey(&state->key);
-            break;
-        }
-
-        state->ssh2key.key = NULL;
+        free_current_ssh2_key(state);
         sfree(state->ssh2key.comment);
         state->ssh2key.comment = NULL;
     } else {
@@ -1397,7 +1418,10 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
         return;
     }
 
-    ssh_key_free(state->ssh2key.key);
+    /* KiTTY: NOT ssh_key_free() - a generated key is interior to state, and
+     * freeing it that way killed kittygen on the spot (reproduced 2026-07-29
+     * with a CA-signed certificate for a just-generated Ed25519 key). */
+    free_current_ssh2_key(state);
     state->ssh2key.key = newkey;
 
     update_ui_after_ssh2_pubkey_change(hwnd, state);
@@ -1407,7 +1431,7 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
 void remove_certificate(HWND hwnd, struct MainDlgState *state)
 {
     ssh_key *newkey = ssh_key_clone(ssh_key_base_key(state->ssh2key.key));
-    ssh_key_free(state->ssh2key.key);
+    free_current_ssh2_key(state);          /* see add_certificate */
     state->ssh2key.key = newkey;
     update_ui_after_ssh2_pubkey_change(hwnd, state);
     ui_set_state(hwnd, state, 2);
