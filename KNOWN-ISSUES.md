@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.65 — Known issues & limitations
+# KiTTY 0.84.1.66 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -93,11 +93,29 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.65-beta @ 2026-07-28`.
+- **Version string:** binaries report `0.84.1.66-beta @ 2026-07-29`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.66
+
+- **Two configuration-box crashes are fixed.** Changing a session name and then
+  starting the session from a page other than *Session* ended KiTTY with an
+  assertion failure; **Ctrl+G** from another page could do the same. Both gone.
+- **The saved-session highlight no longer jumps to the first entry.** It hit
+  session names that sort before "Default Settings" — anything starting with a
+  digit, so IP addresses above all — when clicking *and* when typing
+  (hknet/KiTTY#19).
+- **kittygen: adding a certificate to a freshly generated key no longer ends the
+  program**, and a generated key no longer stays in memory in the clear after
+  the window is closed or another key is generated.
+- **SSH certificates are documented** in
+  [docs/SSH-CERTIFICATES.md](docs/SSH-CERTIFICATES.md) — attaching one to your
+  key, the OpenSSH server side, host certificates, and a local lab to try it on.
+- **Binaries no longer embed the build machine's directory names** in assertion
+  messages.
 
 ## New in 0.84.1.65
 

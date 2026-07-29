@@ -5,6 +5,58 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.66-beta — 2026-07-29
+
+- **The configuration box no longer crashes when you start a session from
+  another page.** Changing a session name, switching to any other page of the
+  dialog — *Connection > SSH > Bugs*, say — and pressing **Start** ended KiTTY
+  with an assertion failure instead of opening the session. The saved-session
+  list exists only while the *Session* page is on screen, while **Start** and
+  **Open** sit at the bottom of the window and can be pressed from anywhere;
+  with the list not displayed there is nothing highlighted to prefer, so those
+  buttons now simply launch the settings in front of you. The same fault could
+  be triggered with **Ctrl+G** from another page, and is fixed too.
+
+- **Clicking a saved session no longer jumps the highlight to the first one.**
+  With session names that sort before "Default Settings" — anything starting
+  with a digit, so IP addresses in particular — clicking a session moved the
+  highlight to the first stored session while the name box showed the one you
+  clicked; typing such a name did the same. The list is found with a binary
+  search, which needs a sorted list, and "Default Settings" is pinned to the top
+  without sorting with the rest, so the search always ran off the near end; it
+  is now confined to the sorted part. Picking a session with the mouse also no
+  longer re-runs the type-ahead search at all. Reported as hknet/KiTTY#19.
+
+- **kittygen no longer crashes when a certificate is added to a key you have
+  just generated.** *Key > Add certificate to key* (and *Remove certificate from
+  key*) ended the program outright if the key had been generated in that session
+  rather than loaded from a file. The fault is inherited from upstream PuTTY,
+  and it survived because the natural way to try the feature is on a key you
+  loaded, which was never affected.
+
+- **kittygen clears a generated private key out of memory.** A key you generated
+  stayed in the program's memory in the clear until the process ended — not
+  wiped when the window closed, and a second **Generate** left the first key
+  behind as well. Keys are now cleared when they are replaced and when the
+  window closes, along with the mouse-movement entropy collected to make them.
+  Passphrases were already handled correctly. `kittygen-cli` gets the same
+  treatment on one error path: failing to open the output file skipped the
+  cleanup that wipes the key and both passphrases.
+
+- **How to use SSH certificates is now documented.** KiTTY has long been able to
+  attach a certificate to your key, take one on the command line, and trust a
+  certification authority that signs host keys — none of which was written down
+  anywhere. **[docs/SSH-CERTIFICATES.md](docs/SSH-CERTIFICATES.md)** covers both
+  halves end to end, including the OpenSSH server side (`TrustedUserCAKeys`,
+  `AuthorizedPrincipalsFile`, host certificates) and a throwaway local lab for
+  trying it out without touching a production server.
+
+- **Binaries no longer carry the build machine's directory names.** Assertion
+  messages embedded the full path of the source tree as built; they now read
+  `/kitty/...`, which also makes builds reproducible across machines. From
+  upstream PuTTY, together with a fix to three SSH-1 error paths that blamed the
+  server for a protocol violation it had not been told about.
+
 ## 0.84.1.65-beta — 2026-07-28
 
 - **"Send to tray on startup" is back, and works again.** The setting was still
