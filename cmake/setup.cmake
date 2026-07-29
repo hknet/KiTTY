@@ -145,7 +145,7 @@ function(map_pathname src dst)
       PARENT_SCOPE)
   endif()
 endfunction()
-map_pathname(${CMAKE_SOURCE_DIR} /putty)
+map_pathname(${CMAKE_SOURCE_DIR} /kitty)
 map_pathname(${CMAKE_BINARY_DIR} /build)
 
 if(PUTTY_DEBUG)
