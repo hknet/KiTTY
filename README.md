@@ -82,7 +82,7 @@ Most KiTTY extras read from a `kitty.ini` (`[KiTTY]` section). The release inclu
 hyperlink=yes
 ```
 
-**[`docs/KITTY-INI.md`](docs/KITTY-INI.md)** explains the settings file — how KiTTY finds it, the `savemode`/portable rules, and all its sections — and links the fully annotated [`kitty.ini.example`](docs/examples/kitty.ini.example). See **[`FEATURES.md`](FEATURES.md)** for the full feature reference, including how to enable each one, and **[`CHANGELOG.md`](CHANGELOG.md)** for what changed in each release.
+**[`docs/KITTY-INI.md`](docs/KITTY-INI.md)** explains the settings file — how KiTTY finds it, the `savemode`/portable rules, and all its sections — and links the fully annotated [`kitty.ini.example`](docs/examples/kitty.ini.example). See **[`FEATURES.md`](FEATURES.md)** for the full feature reference, including how to enable each one, and **[`CHANGELOG.md`](CHANGELOG.md)** for what changed in each release. Using SSH certificates instead of per-server `authorized_keys` entries? **[`docs/SSH-CERTIFICATES.md`](docs/SSH-CERTIFICATES.md)** covers the KiTTY side and the OpenSSH server side end to end.
 
 ---
 

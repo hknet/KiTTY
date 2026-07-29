@@ -24,6 +24,7 @@ one is available.
   - [Private-key usage confirmation](#private-key-usage-confirmation)
   - [Post-quantum key-exchange warning](#post-quantum-key-exchange-warning)
   - [Command-line key generator (kittygen-cli)](#command-line-key-generator-kittygen-cli)
+  - [SSH certificates (user and host)](#ssh-certificates-user-and-host)
   - [kageant — Windows OpenSSH agent integration](#kageant--windows-openssh-agent-integration)
   - [kageant — load keys on startup](#kageant--load-keys-on-startup)
   - [kageant — reorder loaded keys](#kageant--reorder-loaded-keys)
@@ -243,6 +244,16 @@ Supported operations:
 The full set of key types, output formats, and Argon2 KDF options from upstream PuTTY are all available. Run `kittygen-cli --help` for the complete list.
 
 `kittygen-cli.exe` is included in the installer and the release ZIP alongside `kittygen.exe`. It does not have a Start-menu shortcut (it is a command-line tool; add it to your `PATH` for convenience).
+
+(no screenshot)
+
+### SSH certificates (user and host)
+
+Instead of copying every public key into `authorized_keys` on every server, a **certification authority** signs your key once and each server is told to trust that CA — with an expiry date and a list of principals attached. The same idea works in the other direction: a server whose host key carries a certificate is trusted from the first connection, so "the host key is not cached" stops happening on every new or rebuilt machine. KiTTY supports both halves.
+
+**How to enable:** for your own key, **kittygen** > `Key` > **Add certificate to key** (the certificate is then carried inside the `.ppk`), or keep it as a separate file and point Configuration > **Connection > SSH > Auth > Credentials** > *"Certificate to use with the private key (optional)"* at it — the second is easier when certificates are short-lived, since renewing one is then a file drop with no key handling. From a script, `kittygen-cli --certificate <file>` does the same, and `kittygen-cli -O cert-info` prints what a certificate asserts. To trust a CA that signs **host** keys, use Configuration > **Connection > SSH > Host keys** > *Configure host CAs* (stored per user, and portable-mode friendly). On the command line, `-i <key.ppk> -cert <certificate>` works for `kitty.exe`, `klink.exe`, `kscp.exe` and `ksftp.exe`.
+
+**[Full how-to, including the OpenSSH server side →](docs/SSH-CERTIFICATES.md)** — certifying a key step by step, `TrustedUserCAKeys` / `AuthorizedPrincipalsFile`, host certificates, a throwaway local lab to try it all safely, and what the common failures mean.
 
 (no screenshot)
 
