@@ -10,6 +10,8 @@
 #include "putty.h"
 #include "ssh.h"
 #include "sshkeygen.h"
+#include "mpint.h"                     /* mp_free, for burn_key_state */
+#include "crypto/ecc.h"                /* ecc_*_point_free, ditto */
 #include "licence.h"
 #include "security-api.h"
 #include "puttygen-rc.h"
@@ -659,6 +661,85 @@ struct MainDlgState {
 };
 
 /*
+ * KiTTY: destroy the private key material this dialog is holding.
+ *
+ * A GENERATED key lives in the anonymous union above, inside this
+ * heap-allocated state struct, and WM_DONEKEY points state->ssh2key.key at
+ * that interior member. ssh_key_free() must therefore NOT be used on it - it
+ * would sfree() a pointer that was never separately allocated. Nothing freed
+ * it any other way either, so every generated key's bignums stayed in the heap
+ * unwiped until the process died, and a second Generate in the same session
+ * stranded the first key as well. mp_free() zeroes what it frees, so releasing
+ * the components IS the wipe; afterwards the union holds only NULL pointers,
+ * an algorithm vtable and a curve pointer - nothing secret.
+ *
+ * A LOADED key is the other case: update_ui_after_load() structure-copies an
+ * ssh2_userkey whose ->key IS a normal heap allocation, and that one does want
+ * ssh_key_free(). The two are told apart by asking whether ssh2key.key points
+ * into our own union.
+ *
+ * Safe to call at any time: with no key (or while the generation thread is
+ * still running, which is exactly when key_exists is false) it does nothing.
+ */
+static void burn_key_state(struct MainDlgState *state)
+{
+    if (!state->key_exists)
+        return;
+
+    if (state->ssh2) {
+        ssh_key *k = state->ssh2key.key;
+        bool in_place = (k == &state->key.sshk   || k == &state->dsakey.sshk ||
+                         k == &state->eckey.sshk || k == &state->edkey.sshk);
+
+        if (!in_place) {
+            ssh_key_free(k);
+        } else switch (state->keytype) {
+          case DSA:
+            /* the bodies of dsa_freekey / ec*_freekey, minus their final
+             * sfree() of the container, which here is not an allocation */
+            if (state->dsakey.p) { mp_free(state->dsakey.p); state->dsakey.p = NULL; }
+            if (state->dsakey.q) { mp_free(state->dsakey.q); state->dsakey.q = NULL; }
+            if (state->dsakey.g) { mp_free(state->dsakey.g); state->dsakey.g = NULL; }
+            if (state->dsakey.y) { mp_free(state->dsakey.y); state->dsakey.y = NULL; }
+            if (state->dsakey.x) { mp_free(state->dsakey.x); state->dsakey.x = NULL; }
+            break;
+          case ECDSA:
+            if (state->eckey.publicKey) {
+                ecc_weierstrass_point_free(state->eckey.publicKey);
+                state->eckey.publicKey = NULL;
+            }
+            if (state->eckey.privateKey) {
+                mp_free(state->eckey.privateKey);
+                state->eckey.privateKey = NULL;
+            }
+            break;
+          case EDDSA:
+            if (state->edkey.publicKey) {
+                ecc_edwards_point_free(state->edkey.publicKey);
+                state->edkey.publicKey = NULL;
+            }
+            if (state->edkey.privateKey) {
+                mp_free(state->edkey.privateKey);
+                state->edkey.privateKey = NULL;
+            }
+            break;
+          case RSA:
+            freersakey(&state->key);
+            break;
+        }
+
+        state->ssh2key.key = NULL;
+        sfree(state->ssh2key.comment);
+        state->ssh2key.comment = NULL;
+    } else {
+        freersakey(&state->key);       /* frees and NULLs the comment too */
+    }
+
+    state->commentptr = NULL;
+    state->key_exists = false;
+}
+
+/*
  * Rate limit for incrementing the entropy_got counter.
  *
  * Some pointing devices (e.g. gaming mice) can be set to send
@@ -1076,6 +1157,10 @@ static void update_ui_after_load(HWND hwnd, struct MainDlgState *state,
     SetDlgItemText(hwnd, IDC_PASSPHRASE1EDIT, passphrase);
     SetDlgItemText(hwnd, IDC_PASSPHRASE2EDIT, passphrase);
 
+    /* KiTTY: the structure copies below overwrite whatever key we were
+     * already holding - wipe it first instead of stranding it in the heap. */
+    burn_key_state(state);
+
     if (type == SSH_KEYTYPE_SSH1) {
         char *fingerprint, *savecomment;
 
@@ -1335,6 +1420,10 @@ static void start_generating_key(HWND hwnd, struct MainDlgState *state)
 
     struct rsa_key_thread_params *params;
     DWORD threadid;
+
+    /* KiTTY: the generation thread writes straight into state's key union, so
+     * anything still in there has to be wiped BEFORE it starts. */
+    burn_key_state(state);
 
     SetDlgItemText(hwnd, IDC_GENERATING, generating_msg);
     SendDlgItemMessage(hwnd, IDC_PROGRESS, PBM_SETRANGE, 0,
@@ -2361,6 +2450,17 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
       }
       case WM_CLOSE:
         state = (struct MainDlgState *) GetWindowLongPtr(hwnd, GWLP_USERDATA);
+        /* KiTTY: don't hand the key back to the allocator intact. burn_key_state
+         * releases the bignums (mp_free zeroes them); the smemclr then clears
+         * the struct itself, including the key union. Closing the window part
+         * way through entropy collection also used to leak the half-filled
+         * buffer - it is a _nm strbuf, so freeing it wipes it. */
+        if (state->entropy) {
+            strbuf_free(state->entropy);
+            state->entropy = NULL;
+        }
+        burn_key_state(state);
+        smemclr(state, sizeof(*state));
         sfree(state);
         quit_help(hwnd);
         EndDialog(hwnd, 1);
