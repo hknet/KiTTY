@@ -2034,8 +2034,31 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 return;
             }
 #endif
+#ifdef MOD_PERSO
+            /* We put this text in the box ourselves (a click on the list, or a
+             * refresh) - the user did not type it, so the type-ahead search
+             * below must not move their selection. Without this, clicking a
+             * row fired EN_CHANGE synchronously and the search dragged the
+             * highlight straight off the row that was just clicked. */
+            if (ssd->suppress_edit_valchange)
+                return;
+            /* The search below is a binary chop, so it needs a SORTED list -
+             * but "Default Settings" is forced to index 0 and does not sort
+             * with the rest ('D' comes after every digit). Any name starting
+             * with a digit therefore steered the chop left every time, landing
+             * on 0, and the guard further down turned that into 1: with
+             * IP-address session names, every click selected the FIRST stored
+             * session. Chop over the sorted part only. */
+            bottom = -1;
+            if (ssd->sesslist.nsessions > 1 &&
+                !strcmp(ssd->sesslist.sessions[0], KITTY_DEFAULT_SESSION) &&
+                strcmp(ssd->savedsession, KITTY_DEFAULT_SESSION) != 0)
+                bottom = 0;
+            top = ssd->sesslist.nsessions;
+#else
             top = ssd->sesslist.nsessions;
             bottom = -1;
+#endif
             while (top-bottom > 1) {
                 halfway = (top+bottom)/2;
                 i = strcmp(ssd->savedsession, ssd->sesslist.sessions[halfway]);
