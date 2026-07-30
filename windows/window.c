@@ -812,6 +812,36 @@ extern void kitty_netdbg_ts(const char *msg);   /* kitty.c: startup checkpoint l
 #define NETDBG_TS(m) ((void)0)
 #endif
 
+#ifdef MOD_PERSO
+/* KiTTY: is the user looking at the Event Log right now?
+ *
+ * "Close window on exit" ends the whole process with PostQuitMessage(), and the
+ * Event Log is a modeless dialog of that process - so closing the session takes
+ * the log down with it, usually just as the user has opened it to find out what
+ * the session did. An open Event Log is taken to mean "I am reading this", and
+ * defers the AUTOMATIC close only; closing the window yourself still closes
+ * everything immediately.
+ *
+ * Defined up here because the main message loop below is the first user. */
+static bool kitty_eventlog_is_open(void)
+{
+    HWND log = event_log_window();
+    return log != NULL && IsWindow(log);
+}
+
+/* >= 0 while an automatic close is waiting for the user to finish with the
+ * Event Log; the value is the exit code that close would have used (0 for a
+ * clean session end, 1 for a fatal error). The message loop carries it out as
+ * soon as the log window is gone, so "close window on exit" is still honoured -
+ * just deferred until the user has read what they opened the log for.
+ *
+ * Deliberately a file static rather than a field on WinGuiSeat: that struct is
+ * shared with translation units compiled WITHOUT this executable's private
+ * MOD_* defines, and a conditionally-compiled field in it once produced a
+ * silent layout mismatch and a crash. */
+static int kitty_coe_pending_exit = -1;
+#endif
+
 int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 {
     MSG msg;
@@ -1564,6 +1594,20 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         if (kitty_zmodem_active())
             kitty_zmodem_process();
 #endif
+#ifdef MOD_PERSO
+        /* KiTTY: an automatic close was held back while the user read the Event
+         * Log (see kitty_coe_pending_exit). They have now closed it, so do what
+         * "close window on exit" asked for in the first place. */
+        if (kitty_coe_pending_exit >= 0 && !kitty_eventlog_is_open()) {
+            int code = kitty_coe_pending_exit;
+            kitty_coe_pending_exit = -1;
+            /* PostQuitMessage gives no WM_DESTROY, so save the position here,
+             * exactly as the immediate close paths do. */
+            if (conf_get_bool(wgs->conf, CONF_remember_winpos))
+                kitty_save_window_placement(wgs->term_hwnd);
+            PostQuitMessage(code);
+        }
+#endif
     }
 
   finished:
@@ -2016,7 +2060,18 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
     MessageBox(wgs->term_hwnd, msg, title, MB_ICONERROR | MB_OK);
     sfree(title);
 
-    if (conf_get_int(wgs->conf, CONF_close_on_exit) == FORCE_ON) {
+    bool coe_force = (conf_get_int(wgs->conf, CONF_close_on_exit) == FORCE_ON);
+#ifdef MOD_PERSO
+    /* KiTTY: as in exit_callback - an open Event Log is the user reading why
+     * this went wrong, and a fatal error is exactly when that matters. */
+    if (coe_force && kitty_eventlog_is_open()) {
+        coe_force = false;
+        kitty_coe_pending_exit = 1;   /* close once the log is dismissed */
+        logevent(wgs->logctx, "Connection closed; window kept open while the "
+                 "Event Log is open (it closes when you close the log)");
+    }
+#endif
+    if (coe_force) {
 #ifdef MOD_PERSO
         /* Same as exit_callback: this fatal-error close uses PostQuitMessage
          * (no WM_DESTROY), so save the remembered position here too. */
@@ -2976,8 +3031,19 @@ static void exit_callback(void *vctx)
         close_on_exit = conf_get_int(wgs->conf, CONF_close_on_exit);
         /* Abnormal exits will already have set session_closed and taken
          * appropriate action. */
-        if (close_on_exit == FORCE_ON ||
-            (close_on_exit == AUTO && exitcode != INT_MAX)) {
+        bool coe_close = (close_on_exit == FORCE_ON ||
+                          (close_on_exit == AUTO && exitcode != INT_MAX));
+#ifdef MOD_PERSO
+        /* KiTTY: not while the Event Log is open - see kitty_eventlog_is_open().
+         * Say so in the log itself, which is the window the user is reading. */
+        if (coe_close && kitty_eventlog_is_open()) {
+            coe_close = false;
+            kitty_coe_pending_exit = 0;   /* close once the log is dismissed */
+            logevent(wgs->logctx, "Session ended; window kept open while the "
+                     "Event Log is open (it closes when you close the log)");
+        }
+#endif
+        if (coe_close) {
 #ifdef MOD_PERSO
             /* KiTTY: the session ended (e.g. Ctrl+D / remote logout) and we're
              * about to close. This path uses PostQuitMessage, which does NOT
