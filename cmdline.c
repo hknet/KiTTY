@@ -291,12 +291,24 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
                 sfree(buf);
                 seen_hostname_argument = true;
 
+                /*
+                 * A port, if the URL gives one; SSH's own default if it
+                 * does not. Not the -1 that the telnet: case above uses
+                 * for "unspecified": nothing ever resolves that back to
+                 * a protocol default, so it reaches the network layer
+                 * as a literal port -1 (an upstream bug, visible with
+                 * telnet://host). set_port() also updates the default
+                 * used by any session loaded afterwards, as -ssh does.
+                 */
                 if (*p == ':') {
                     p++;
-                    conf_set_int(conf, CONF_port, atoi(p));
+                    set_port(conf, atoi(p));
                     seen_port_argument = true;
                 } else {
-                    conf_set_int(conf, CONF_port, -1);
+                    const struct BackendVtable *vt =
+                        backend_vt_from_proto(PROT_SSH);
+                    set_port(conf, vt && vt->default_port ?
+                             vt->default_port : 22);
                 }
             } else
 #endif
@@ -344,7 +356,20 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
                      */
                     seen_port_argument = true;
                 } else {
+#ifdef MOD_PERSO
+                    /* KiTTY: the same fix as in the ssh: case above. The -1
+                     * kept for stock builds means "unspecified", but nothing
+                     * downstream turns it back into a protocol default, so
+                     * "telnet://host" with no port reaches the network layer
+                     * asking for port -1 and cannot connect. Reported
+                     * upstream; the stock behaviour is left untouched here. */
+                    const struct BackendVtable *vt =
+                        backend_vt_from_proto(PROT_TELNET);
+                    set_port(conf, vt && vt->default_port ?
+                             vt->default_port : 23);
+#else
                     conf_set_int(conf, CONF_port, -1);
+#endif
                 }
             } else {
                 char *user = NULL, *hostname = NULL;
