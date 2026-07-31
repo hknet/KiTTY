@@ -527,6 +527,15 @@ void ssh_sw_abort(Ssh *ssh, const char *fmt, ...) PRINTF_LIKE(2, 3);
  */
 void ssh_remote_error(Ssh *ssh, const char *fmt, ...) PRINTF_LIKE(2, 3);
 
+/*
+ * ssh_remote_eof_unexpected() is the special case of ssh_remote_error() where
+ * the server simply closed the connection on us, with no message of its own.
+ * It is the only remote error whose report may be suppressed when the session
+ * had already finished and nothing else was using the connection; anything the
+ * server actually said is reported even then. See the comment in ssh.c.
+ */
+void ssh_remote_eof_unexpected(Ssh *ssh);
+
 /* ----------------------------------------------------------------------
  * Wrappers on the above termination functions.
  *

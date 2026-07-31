@@ -274,8 +274,7 @@ static void ssh1_bpp_handle_input(BinaryPacketProtocol *bpp)
 
   eof:
     if (!s->bpp.expect_close) {
-        ssh_remote_error(s->bpp.ssh,
-                         "Remote side unexpectedly closed network connection");
+        ssh_remote_eof_unexpected(s->bpp.ssh);
     } else {
         ssh_remote_eof(s->bpp.ssh, "Remote side closed network connection");
     }

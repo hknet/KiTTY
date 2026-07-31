@@ -510,6 +510,39 @@ static bool ssh_post_exit_teardown_error(Ssh *ssh, char *msg)
     return true;
 }
 
+/*
+ * The unexpected-EOF case, split out of ssh_remote_error(): the server closed
+ * the network connection without our having asked it to.
+ *
+ * This is now the ONLY remote error the post-exit teardown check may suppress.
+ * ssh_remote_error() must not, because it also reports things the server
+ * deliberately told us - an SSH_MSG_DISCONNECT carrying a specific complaint,
+ * say - and a message the server took the trouble to send is worth showing
+ * even when we were closing down anyway. Before this split the check sat in
+ * ssh_remote_error() and swallowed those too, in the window where the exit
+ * status was already known and nothing else was still using the connection.
+ */
+void ssh_remote_eof_unexpected(Ssh *ssh)
+{
+    if (ssh->base_layer || !ssh->session_started) {
+        char *msg = dupstr("Remote side unexpectedly closed network "
+                           "connection");
+
+        if (ssh->base_layer)
+            ssh_ppl_final_output(ssh->base_layer);
+
+        if (ssh_post_exit_teardown_error(ssh, msg))
+            return;
+
+        ssh->exitcode = 128;
+        ssh_shutdown(ssh);
+
+        logevent(ssh->logctx, msg);
+        seat_connection_fatal(ssh->seat, "%s", msg);
+        sfree(msg);
+    }
+}
+
 void ssh_remote_error(Ssh *ssh, const char *fmt, ...)
 {
     if (ssh->base_layer || !ssh->session_started) {
@@ -517,9 +550,6 @@ void ssh_remote_error(Ssh *ssh, const char *fmt, ...)
 
         if (ssh->base_layer)
             ssh_ppl_final_output(ssh->base_layer);
-
-        if (ssh_post_exit_teardown_error(ssh, msg))
-            return;
 
         /* Error messages sent by the remote don't count as clean exits */
         ssh->exitcode = 128;
