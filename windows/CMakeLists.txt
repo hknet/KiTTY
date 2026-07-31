@@ -288,6 +288,10 @@ add_executable(kitty
   # so it can carry MOD_FAR2L; the directly-listed object takes precedence over
   # guiterminal's terminal.o, leaving other binaries untouched.
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  # cmdline.c likewise, so its MOD_PERSO section (the "ssh:" URL form) is
+  # actually compiled: the settings library is built without MOD_PERSO, where
+  # such a block would be silently dead.
+  ${CMAKE_SOURCE_DIR}/cmdline.c
   ${KITTY_DIR}/far2l/cdecode.c
   ${KITTY_DIR}/far2l/cencode.c
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
@@ -355,6 +359,8 @@ add_executable(kitty_portable
   putty.c
   help.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  # cmdline.c: see the comment on the kitty target above
+  ${CMAKE_SOURCE_DIR}/cmdline.c
   ${KITTY_DIR}/far2l/cdecode.c
   ${KITTY_DIR}/far2l/cencode.c
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c

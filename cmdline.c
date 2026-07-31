@@ -232,6 +232,74 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
              * the default session and never be able to do anything
              * else).
              */
+#ifdef MOD_PERSO
+            if (!strncmp(p, "ssh:", 4)) {
+                /*
+                 * KiTTY (hknet/KiTTY#23): the same treatment for an
+                 * "ssh:" / "ssh://" URL, which is what a browser or a
+                 * mail client hands us - and what our own -sshhandler
+                 * registers KiTTY for, so without this the URL handler
+                 * fed us an address we then failed to parse.
+                 *
+                 * Accepts ssh://[user[:password]@]host[:port][/...].
+                 * A trailing path is not meaningful for a terminal
+                 * session and is ignored rather than refused, since
+                 * URLs are routinely copied around with one attached.
+                 * A password in the URL is parsed only so that it
+                 * cannot be mistaken for part of the host or the port,
+                 * and is then discarded: classic KiTTY accepted one
+                 * here, which put the password in the command line of
+                 * a process any other user of the machine can read.
+                 */
+                const char *start, *authend, *host, *q, *at = NULL;
+                char *buf;
+
+                p += 4;
+                if (p[0] == '/' && p[1] == '/')
+                    p += 2;
+                conf_set_int(conf, CONF_protocol, PROT_SSH);
+
+                /* The authority runs to the first '/', so an '@' or a
+                 * ':' anywhere in it belongs to the user info, not to
+                 * whatever path follows. */
+                start = p;
+                authend = start + strcspn(start, "/");
+
+                /* The LAST '@' separates user info from host: an '@' is
+                 * legal in a user name, but not in a host. */
+                for (q = start; q < authend; q++)
+                    if (*q == '@')
+                        at = q;
+                if (at) {
+                    size_t userlen = at - start;
+                    const char *colon = memchr(start, ':', userlen);
+                    if (colon)
+                        userlen = colon - start;   /* drop the password */
+                    if (userlen) {
+                        buf = dupprintf("%.*s", (int)userlen, start);
+                        conf_set_str(conf, CONF_username, buf);
+                        sfree(buf);
+                    }
+                    host = at + 1;
+                } else {
+                    host = start;
+                }
+
+                p = host + host_strcspn(host, ":/");
+                buf = dupprintf("%.*s", (int)(p - host), host);
+                conf_set_str(conf, CONF_host, buf);
+                sfree(buf);
+                seen_hostname_argument = true;
+
+                if (*p == ':') {
+                    p++;
+                    conf_set_int(conf, CONF_port, atoi(p));
+                    seen_port_argument = true;
+                } else {
+                    conf_set_int(conf, CONF_port, -1);
+                }
+            } else
+#endif
             if (!strncmp(p, "telnet:", 7)) {
                 /*
                  * If the argument starts with "telnet:", set the
