@@ -199,6 +199,15 @@ void SetSessionFilterFlag( const int flag ) ;
 int GetDefaultSettingsFlag(void) ;
 void SetDefaultSettingsFlag( const int flag ) ;
 
+// Quick connect: no = start from Default Settings with the caret in Host Name
+// [ConfigBox] loadlastsession=yes
+int GetLoadLastSessionFlag(void) ;
+void SetLoadLastSessionFlag( const int flag ) ;
+
+// Quick connect armed for this run (loadlastsession=no, or last session = the defaults)
+int GetQuickConnectMode(void) ;
+void SetQuickConnectMode( const int flag ) ;
+
 // Double-click action on a saved session: 0 = open here, 1 = start in a new window
 // [ConfigBox] dblclick=open|start
 int GetDblClickFlag(void) ;

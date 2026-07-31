@@ -302,6 +302,25 @@ static int DefaultSettingsFlag = 1 ;
 int GetDefaultSettingsFlag(void) { return DefaultSettingsFlag ; }
 void SetDefaultSettingsFlag( const int flag ) { DefaultSettingsFlag = flag ; }
 
+/* KiTTY (hknet/KiTTY#23) [ConfigBox] loadlastsession=no: open the
+ * configuration box on Default Settings instead of pre-filling it with the
+ * session used last, and put the caret straight into "Host Name (or IP
+ * address)" -- the quick-connect way of working, where a host is typed rather
+ * than picked, and every connection is expected to start from the same
+ * defaults. Default yes = the behaviour of this port so far. */
+static int LoadLastSessionFlag = 1 ;
+int GetLoadLastSessionFlag(void) { return LoadLastSessionFlag ; }
+void SetLoadLastSessionFlag( const int flag ) { LoadLastSessionFlag = flag ; }
+
+/* KiTTY (hknet/KiTTY#23): quick connect for THIS run of the configuration box.
+ * Set at startup either by loadlastsession=no, or because the session used
+ * last was "Default Settings" - loading the defaults arms quick connect and it
+ * stays armed until some other session is loaded, so the two ways of working
+ * need no switch flipped between them. Runtime state, not a kitty.ini key. */
+static int QuickConnectMode = 0 ;
+int GetQuickConnectMode(void) { return QuickConnectMode ; }
+void SetQuickConnectMode( const int flag ) { QuickConnectMode = flag ; }
+
 // [ConfigBox] dblclick: what a double-click on a saved session does.
 // 0 = open (load it and open in this window, like the Open button; default);
 // 1 = start (launch it in a NEW window and keep the config box open, like the
@@ -3146,6 +3165,7 @@ static const IniParam ini_params[] = {
 	INIP_KW( "ConfigBox", 1, "noexit",		1, IGN, IGN,	&ConfigBoxNoExitFlag, NULL ),
 	INIP_KW( "ConfigBox", 1, "filter",		IGN, 0, IGN,	&SessionFilterFlag, NULL ),
 	INIP_KW( "ConfigBox", 1, "defaultsettings",	IGN, 0, IGN,	&DefaultSettingsFlag, NULL ),
+	INIP_KW( "ConfigBox", 1, "loadlastsession",	1, 0, IGN,	&LoadLastSessionFlag, NULL ),
 	INIP_NUM( "ConfigBox", 1, "height",		IGN,		&ConfigBoxHeight, NULL ),
 	INIP_NUM( "ConfigBox", 1, "windowheight",	IGN,		&ConfigBoxWindowHeight, NULL ),
 	INIP_NUM( "Print", 1, "height",			IGN,		&PrintCharSize, NULL ),

@@ -65,7 +65,7 @@ the GUI only (see [KNOWN-ISSUES.md](../KNOWN-ISSUES.md)).
 |---|---|
 | `[KiTTY]` | The main section: feature switches (hyperlinks, transparency, icons, background image, …), `savemode`, security options (`PortablePasswordProtection`, `readonly`, `restrictacl`), window/title behaviour, scripting. |
 | `[Agent]` | kageant (the SSH agent): `askconfirmation` (`yes`/`auto`/`no`), `messageonkeyusage`, `loadonstartup` + the `startupkeyN` list. |
-| `[ConfigBox]` | Configuration-box behaviour: `dblclick` (double-click on a saved session = Open or Start), `defaultsettings` visibility, box height. |
+| `[ConfigBox]` | Configuration-box behaviour: `dblclick` (double-click on a saved session = Open or Start), `defaultsettings` visibility, `loadlastsession` (off = quick connect: open on Default Settings with the caret in Host Name), box height. |
 | `[Shortcuts]` | Keyboard shortcuts for KiTTY menu actions, e.g. `duplicate={CONTROL}N`. |
 | `[Print]` | Text printing: character size, lines per page, characters per line. |
 | `[Launcher]` | The tray launcher, e.g. session-list `reload` on each menu open. |

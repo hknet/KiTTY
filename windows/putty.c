@@ -33,6 +33,8 @@ extern int  existfile(const char *filename);        /* kitty_tools.c */
 extern void CreateFileAssoc(void);                  /* kitty_registry.c: .ktx file association */
 extern void CreateSSHHandler(void);                 /* kitty_registry.c: telnet/ssh/putty URL handlers */
 extern int  kitty_get_last_session(char *buf, int buflen); /* storage.c: remember-last-session */
+extern int  GetLoadLastSessionFlag(void);           /* kitty.c: [ConfigBox] loadlastsession */
+extern void SetQuickConnectMode(const int flag);    /* kitty.c: #23 quick connect */
 
 static void kitty_settings_load_hook(const char *section, Conf *conf, bool exists)
 {
@@ -498,11 +500,25 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
             { extern int kitty_mpw_startup_unlock(void); kitty_mpw_startup_unlock(); }
             /* KiTTY: auto-load the last-used session into the config box so it
              * opens pre-filled (and the saved-session list auto-selects it).
-             * Only if it still exists. */
+             * Only if it still exists.
+             *
+             * Two ways out of it, both quick connect (hknet/KiTTY#23): the box
+             * comes up on Default Settings with the caret in Host Name, so a
+             * typed host always starts from the same known configuration. Set
+             * [ConfigBox] loadlastsession=no to work that way permanently; or
+             * simply load "Default Settings" once, which is remembered like any
+             * other session and arms the mode until another session is loaded.
+             * The second needs no setting and no switching back and forth. */
             {
                 char lastsess[512];
-                if (kitty_get_last_session(lastsess, sizeof(lastsess)) &&
-                    *lastsess && strcmp(lastsess, "Default Settings") != 0) {
+                bool havelast = kitty_get_last_session(lastsess,
+                                                       sizeof(lastsess)) &&
+                                *lastsess;
+
+                if (!GetLoadLastSessionFlag() ||
+                    (havelast && !strcmp(lastsess, "Default Settings"))) {
+                    SetQuickConnectMode(1);
+                } else if (havelast) {
                     struct sesslist sl;
                     int i, found = 0;
                     get_sesslist(&sl, true);

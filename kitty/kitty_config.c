@@ -1194,6 +1194,15 @@ dlgcontrol *kitty_config_session_filter_ctrl(void)
     return session_filter_ctrl;
 }
 
+/* KiTTY (hknet/KiTTY#23): the same dialog's "Host Name (or IP address)" box.
+ * With [ConfigBox] loadlastsession=no the caret starts here rather than in the
+ * saved-session name box, so a host can be typed and opened without touching
+ * the mouse. Registered when the Session panel is built; the panel is rebuilt
+ * on every treeview switch, so the pointer is only ever used while that panel
+ * is the live one. */
+static dlgcontrol *quickconnect_host_ctrl = NULL;
+int GetQuickConnectMode(void);   /* kitty.c */
+
 /* KiTTY: the same dialog's session-saver data, for the Ctrl+G "search
  * everywhere" jump (windows/dialog.c). Registered and cleared together with
  * session_filter_ctrl above, so it can never outlive the dialog. */
@@ -1341,10 +1350,12 @@ static bool load_selected_session(
     }
 #endif
 #ifdef MOD_PERSO
-    /* KiTTY: remember this as the last-loaded session (skip the default), so the
-     * config box re-selects/auto-loads it next time it opens. */
-    if (!isdef)
-        kitty_set_last_session(ssd->sesslist.sessions[i]);
+    /* KiTTY: remember this as the last-loaded session, so the config box
+     * re-selects/auto-loads it next time it opens. "Default Settings" is
+     * remembered too (hknet/KiTTY#23): next start recognises it and comes up in
+     * quick connect instead of pre-filling anything, so loading the defaults is
+     * how that mode is armed - and loading any other session disarms it. */
+    kitty_set_last_session(ssd->sesslist.sessions[i]);
 #endif
     sfree(ssd->savedsession);
 #ifdef MOD_PERSO
@@ -1886,7 +1897,14 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             ssd->suppress_edit_valchange--;
             if (!ssd->initial_focus_set && !ssd->midsession) {
                 ssd->initial_focus_set = 1;
-                dlg_set_focus_later(ctrl, dlg);
+                /* Quick connect (hknet/KiTTY#23): the box has come up on
+                 * Default Settings and the first thing wanted is a host, not a
+                 * session name. dlg_set_focus_later() selects the box's
+                 * contents, so a host left over from last time is replaced by
+                 * typing and kept by pressing Enter. */
+                dlg_set_focus_later((GetQuickConnectMode() &&
+                                     quickconnect_host_ctrl) ?
+                                    quickconnect_host_ctrl : ctrl, dlg);
             }
 #endif
         } else if (ctrl == ssd->listbox) {
@@ -3520,6 +3538,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
                          config_host_handler, I(0), I(0));
         c->column = 0;
         hp->host = c;
+        quickconnect_host_ctrl = c;   /* [ConfigBox] loadlastsession=no target */
         c = ctrl_editbox(s, PORT_BOX_TITLE, 'p', 100,
                          HELPCTX(session_hostname),
                          config_port_handler, I(0), I(0));

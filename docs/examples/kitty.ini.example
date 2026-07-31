@@ -32,6 +32,13 @@
 ; height: the number of visible lines in the saved-sessions list (default 16 = stock fit)
 ;height=16
 
+; loadlastsession: when yes (default), the configuration box opens pre-filled with
+;    the session used last. When no, it opens on 'Default Settings' with the caret
+;    already in 'Host Name (or IP address)' - quick connect: type a host, press
+;    Enter, and every connection starts from the same known configuration instead
+;    of inheriting whatever was used before.
+;loadlastsession=yes
+
 ; noexit: if yes, closing a window that ran a connected session starts a fresh
 ;    instance showing the configuration box, so you land back in the session
 ;    picker. A window that never connected (e.g. the config box itself was
