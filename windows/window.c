@@ -669,11 +669,34 @@ static void start_backend(WinGuiSeat *wgs)
     wgs->error_close = false;    /* #548: new connection clears the error titlebar marker */
 }
 
+#ifdef MOD_PERSO
+/* hknet/KiTTY#22: the session's own title in UTF-8, or NULL if it never set
+ * one. Taken from the Terminal rather than from the window, because the window
+ * title is what we are about to overwrite - the Terminal's copy still holds the
+ * connection's name and is never touched by a close, so no amount of closing
+ * and reconnecting can nest markers. UTF-8 because the title may have arrived
+ * in any codepage and has to be concatenated with the UTF-8 warning glyph. */
+static char *kitty_session_title_utf8(Terminal *term)
+{
+    wchar_t *wide;
+    char *utf8;
+    if (!term || !term->window_title || !*term->window_title)
+        return NULL;
+    wide = dup_mb_to_wc(term->wintitle_codepage, term->window_title);
+    utf8 = dup_wc_to_mb(CP_UTF8, wide, "?");
+    sfree(wide);
+    return utf8;
+}
+#endif
+
 static void close_session(void *vctx)
 {
     WinGuiSeat *wgs = (WinGuiSeat *)vctx;
     char *newtitle;
     int i;
+#ifdef MOD_PERSO
+    char *base = kitty_session_title_utf8(wgs->term);
+#endif
 
     wgs->session_closed = true;
     int title_cp = DEFAULT_CODEPAGE;
@@ -682,9 +705,18 @@ static void close_session(void *vctx)
      * titlebar marker (U+26A0, passed as UTF-8 so it survives the conversion) so a
      * backgrounded/minimised window shows the session died; a normal close keeps
      * the plain "(inactive)". The marker clears automatically when the next
-     * session sets its title (reconnect / Restart). */
+     * session sets its title (reconnect / Restart).
+     *
+     * KiTTY (hknet/KiTTY#22): keep the session's OWN title rather than replacing
+     * it with the bare appname - with ten dead windows, "KiTTY (inactive)" says
+     * nothing about which connection died. The marker goes in front and the
+     * state suffix at the end, so the connection name stays in the first few
+     * characters and survives taskbar truncation. */
     if (wgs->error_close) {
-        newtitle = dupprintf("\xe2\x9a\xa0 %s (disconnected)", appname);
+        newtitle = dupprintf("\xe2\x9a\xa0 %s (disconnected)", base ? base : appname);
+        title_cp = CP_UTF8;
+    } else if (base) {
+        newtitle = dupprintf("%s (inactive)", base);
         title_cp = CP_UTF8;
     } else
 #endif
@@ -692,6 +724,9 @@ static void close_session(void *vctx)
     win_set_icon_title(&wgs->termwin, newtitle, title_cp);
     win_set_title(&wgs->termwin, newtitle, title_cp);
     sfree(newtitle);
+#ifdef MOD_PERSO
+    sfree(base);
+#endif
 
     if (wgs->ldisc) {
         ldisc_free(wgs->ldisc);
@@ -2021,20 +2056,35 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
      * server's auth-try budget and risk an IP ban), never after the normal exit
      * path has already marked the session closed, and never on a session that
      * never authenticated (gated per-session, not on the stale process-global
-     * is_backend_first_connected). */
-    if (GetAutoreconnectFlag() && !wgs->session_closed &&
+     * is_backend_first_connected).
+     *
+     * The per-session FailureReconnect option is part of the CONDITION, not
+     * just of the timer below: inherited from classic KiTTY, this branch was
+     * entered on the global flag alone (which defaults to ON), so a session
+     * with reconnect-on-failure switched OFF still had its fatal error
+     * swallowed here - no retry AND no error shown, the window just went
+     * quiet. A session that is not going to retry now falls through to the
+     * normal inline-error path, like the other three call sites of this flag
+     * pair (start_backend, the wakeup handler, the keypress handler). */
+    if (GetAutoreconnectFlag() && conf_get_int(wgs->conf, CONF_failure_reconnect) &&
+        !wgs->session_closed &&
         wgs->ever_authenticated && !kitty_is_auth_failure_msg(msg)) {
         SetConnBreakIcon(wgs->term_hwnd);
         SetSSHConnected(0);
         wgs->session_closed = true;
+        /* KiTTY (hknet/KiTTY#22): the link was lost, so the titlebar gets the
+         * warning marker here too. Without this the marker was unreachable
+         * whenever auto-reconnect is enabled - i.e. in exactly the case that
+         * leaves a screenful of dead windows - because this branch returns
+         * before the one below that sets the flag. start_backend() clears it
+         * again once the session is back. */
+        wgs->error_close = true;
         queue_toplevel_callback(close_session, wgs);
-        if (conf_get_int(wgs->conf, CONF_failure_reconnect)) {
-            lp_eventlog(&wgs->logpolicy, "Lost connection, trying to reconnect...");
-            if (wgs->reconnect_tries < 1000) {
-                wgs->reconnect_tries++;
-                SetTimer(wgs->term_hwnd, TIMER_RECONNECT,
-                         GetReconnectDelay()*1000, NULL);
-            }
+        lp_eventlog(&wgs->logpolicy, "Lost connection, trying to reconnect...");
+        if (wgs->reconnect_tries < 1000) {
+            wgs->reconnect_tries++;
+            SetTimer(wgs->term_hwnd, TIMER_RECONNECT,
+                     GetReconnectDelay()*1000, NULL);
         }
         return;
     }
