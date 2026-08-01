@@ -269,12 +269,105 @@ static void test_portable(void)
     RemoveDirectoryA(root);
 }
 
+/* ---------- long settings values (cyd01/KiTTY#541) ----------
+ *
+ * That report is a session whose Tunnels list covers a whole network - ssh,
+ * rdp and vnc per host - which KiTTY then loses: the list comes back blank.
+ * PortForwardings is stored as ONE value holding the entire map, so a /24
+ * times three protocols is about 19 KB in a single setting. Anything on the
+ * path that assumes a "reasonable" line or value length silently truncates
+ * it, and a truncated map reads back as no forwardings at all.
+ *
+ * Both backends are checked with exactly that shape. */
+#define LSESS "zz-kitty-selftest-longvalue"
+
+static char *build_big_portfwd(int hosts, int *entries_out)
+{
+    strbuf *sb = strbuf_new();
+    int n = 0;
+    for (int h = 1; h <= hosts; h++) {
+        put_fmt(sb, "%sL%d=192.168.7.%d:22", n ? "," : "", 10000 + n, h); n++;
+        put_fmt(sb, ",L%d=192.168.7.%d:3389", 10000 + n, h); n++;
+        put_fmt(sb, ",L%d=192.168.7.%d:5900", 10000 + n, h); n++;
+    }
+    if (entries_out) *entries_out = n;
+    return strbuf_to_str(sb);
+}
+
+static void test_long_values(void)
+{
+    int entries = 0;
+    char *big = build_big_portfwd(254, &entries);
+    char *err = NULL;
+    char what[160];
+
+    snprintf(what, sizeof(what),
+             "long value is %d entries / %d bytes (a /24 of ssh+rdp+vnc)",
+             entries, (int)strlen(big));
+    check(strlen(big) > 8192, what);
+
+    /* registry backend */
+    settings_w *w = open_settings_w(LSESS, &err);
+    check(w != NULL, "registry: open_settings_w (long value)");
+    if (w) {
+        write_setting_s(w, "PortForwardings", big);
+        close_settings_w(w);
+        settings_r *r = open_settings_r(LSESS);
+        char *got = r ? read_setting_s(r, "PortForwardings") : NULL;
+        check(got && !strcmp(got, big),
+              "registry: full PortForwardings map round-trips");
+        if (got && strcmp(got, big))
+            printf("      (wrote %d bytes, read back %d)\n",
+                   (int)strlen(big), (int)strlen(got));
+        if (got) sfree(got);
+        if (r) close_settings_r(r);
+        del_settings(LSESS);
+    }
+
+    /* portable file backend, in its own temp tree */
+    {
+        char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH], fpath[MAX_PATH];
+        GetTempPathA(sizeof(tmp), tmp);
+        snprintf(root, sizeof(root), "%skitty-selftest-long-%lu",
+                 tmp, (unsigned long)GetCurrentProcessId());
+        snprintf(sess, sizeof(sess), "%s\\Sessions", root);
+        CreateDirectoryA(root, NULL);
+        CreateDirectoryA(sess, NULL);
+        kitty_set_session_dir(sess);
+        kitty_set_storage_mode(1);
+
+        settings_w *pw = open_settings_w(LSESS, &err);
+        check(pw != NULL, "portable: open_settings_w (long value)");
+        if (pw) {
+            write_setting_s(pw, "PortForwardings", big);
+            close_settings_w(pw);
+            settings_r *pr = open_settings_r(LSESS);
+            char *got = pr ? read_setting_s(pr, "PortForwardings") : NULL;
+            check(got && !strcmp(got, big),
+                  "portable: full PortForwardings map round-trips");
+            if (got && strcmp(got, big))
+                printf("      (wrote %d bytes, read back %d - TRUNCATED)\n",
+                       (int)strlen(big), (int)strlen(got));
+            if (got) sfree(got);
+            if (pr) close_settings_r(pr);
+        }
+        kitty_set_storage_mode(0);
+        snprintf(fpath, sizeof(fpath), "%s\\%s", sess, LSESS);
+        DeleteFileA(fpath);
+        RemoveDirectoryA(sess);
+        RemoveDirectoryA(root);
+    }
+    sfree(big);
+}
+
 int main(void)
 {
     printf("== registry backend (DPAPI) ==\n");
     test_registry();
     printf("== portable backend (master password) ==\n");
     test_portable();
+    printf("== long settings values (cyd01/KiTTY#541) ==\n");
+    test_long_values();
     printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",
            failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;

@@ -492,17 +492,45 @@ static void ksf_convert_legacy_password(struct ksf_item **head)
     }
 }
 
+/* Read one line of any length, newline stripped; NULL at end of file. Caller
+ * frees. This used to be a fixed 8 KB buffer, and a setting longer than it was
+ * silently cut: the head parsed as a truncated value and the tail, having no
+ * delimiter, was dropped. PortForwardings is a single value holding the WHOLE
+ * tunnel list - a /24 of ssh+rdp+vnc is ~19 KB - so a large Tunnels list came
+ * back partial from a portable store, which to the user is the list being
+ * empty (cf. cyd01/KiTTY#541). Nothing else caps a setting's length; the
+ * registry backend stores and returns the same value whole. */
+static char *ksf_read_line(FILE *fp)
+{
+    size_t cap = 512, len = 0;
+    char *buf = snewn(cap, char);
+    int c = EOF;
+    while ((c = fgetc(fp)) != EOF && c != '\n') {
+        if (len + 2 > cap) {
+            cap *= 2;
+            buf = sresize(buf, cap, char);
+        }
+        buf[len++] = (char)c;
+    }
+    if (c == EOF && len == 0) {
+        sfree(buf);
+        return NULL;
+    }
+    while (len && (buf[len-1] == '\r' || buf[len-1] == '\n'))
+        len--;
+    buf[len] = '\0';
+    return buf;
+}
+
 struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) */
 {
     FILE *fp = fopen(path, "rb");
     struct ksf_item *head = NULL;
-    char line[8192];
+    char *line;
     int cyd01 = 0;
     if (!fp) return NULL;
-    while (fgets(line, sizeof(line), fp)) {
-        size_t l = strlen(line);
+    while ((line = ksf_read_line(fp)) != NULL) {
         char *eq, *bs, *val;
-        while (l && (line[l-1] == '\n' || line[l-1] == '\r')) line[--l] = '\0';
         /* Two on-disk line formats are accepted:
          *   key=munged-value     - our fork-native format (written by ksf_save)
          *   key\munged-value\    - legacy cyd01-KiTTY portable format
@@ -525,10 +553,12 @@ struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) *
             val = ksf_unmunge(raw);
             cyd01 = 1;
         } else {
+            sfree(line);
             continue;   /* no delimiter -> not a setting line */
         }
         ksf_list_set(&head, line, val ? val : "");
         if (val) sfree(val);
+        sfree(line);
     }
     fclose(fp);
     if (cyd01)

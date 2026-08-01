@@ -581,11 +581,30 @@ void SettingsLoad( HSettingsList list, const char * filename ) {
 	
 	if( (fp=fopen(filename,"rb")) != NULL ) {
 		list->filename = (char*) malloc( strlen(filename)+1 ) ; strcpy( list->filename, filename ) ;
-		buffer = (char*)malloc(4096*sizeof(char)) ;
+		/* KiTTY: the buffer is grown explicitly now, through KTX_ENSURE. The
+		 * continuation loop below - which joins a value spanning several lines
+		 * until one ends with the "\\" delimiter - appended up to 4096 bytes per
+		 * pass WITHOUT reallocating, so any .ktx whose lines do not all end in
+		 * "\\" (a hand-edited file, a stray line at the end) overran the heap
+		 * from the second pass on. The first loop did realloc, but to exactly
+		 * strlen+4096, leaving nothing for the escaping writes that follow it.
+		 * This also removes any practical ceiling on one setting's length, which
+		 * matters because PortForwardings carries the entire tunnel list and is
+		 * easily 19 KB for a network (cf. cyd01/KiTTY#541). */
+		size_t cap = 4096 ;
+		buffer = (char*)malloc(cap*sizeof(char)) ;
+		if( buffer == NULL ) { fclose(fp) ; return ; }
+#define KTX_ENSURE(need) do { \
+		size_t _n = (need) ; \
+		if( _n > cap ) { char *_b ; \
+			while( _n > cap ) cap *= 2 ; \
+			_b = (char*)realloc( buffer, cap ) ; \
+			if( _b == NULL ) { free(buffer) ; fclose(fp) ; return ; } \
+			buffer = _b ; } } while(0)
 		while( fgets(buffer,4096,fp) != NULL ) {
 //debug_log("\nline %05d[%d]: %s|\n",++i,strlen(buffer),buffer);
 			while( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='\n' ) {
-				buffer = realloc( buffer, strlen(buffer) + 4096 ) ;
+				KTX_ENSURE( strlen(buffer) + 4096 + 4 ) ;
 				if( fgets( buffer+strlen(buffer), 4096, fp ) == NULL ) { break ; }
 //debug_log("\nline %05d[%d]: %s|\n",++i,strlen(buffer),buffer);
 			}
@@ -596,14 +615,17 @@ void SettingsLoad( HSettingsList list, const char * filename ) {
 //debug_log("\t-2=%c -3=%c\n",buffer[strlen(buffer)-2],buffer[strlen(buffer)-3]);
 			while( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='\\' ) {
 //debug_log("ici\n");
+				KTX_ENSURE( strlen(buffer) + 4 ) ;   /* room for the escaping writes */
 				while( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\r' ) { buffer[strlen(buffer)+1]='\0' ; buffer[strlen(buffer)-1]='\\' ; buffer[strlen(buffer)] = 'r' ; }
 				while( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\n' ) { buffer[strlen(buffer)+1]='\0' ; buffer[strlen(buffer)-1]='\\' ; buffer[strlen(buffer)] = 'n' ; }
+				KTX_ENSURE( strlen(buffer) + 4096 + 4 ) ;
 				if( fgets( buffer+strlen(buffer), 4096, fp ) == NULL ) { break ; }
 				str_rtrim( buffer, "\n\r" ) ;
 			}
 //debug_log("line %05d[%d]: %s|\n",i,strlen(buffer),buffer);
 			str_rtrim( buffer, "\n\r" ) ;
 //debug_log("line %05d[%d]: %s|\n",i,strlen(buffer),buffer);
+			KTX_ENSURE( strlen(buffer) + 2 ) ;
 			if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { strcat( buffer, "\\" ) ; }
 //debug_log("line %05d[%d]: %s|\n",i,strlen(buffer),buffer);
 			p = poss( "\\", buffer ) ;
@@ -625,6 +647,7 @@ void SettingsLoad( HSettingsList list, const char * filename ) {
 		}
 		free(buffer) ;
 		fclose(fp );
+#undef KTX_ENSURE
 	} else {
 		//if( strcmp(filename,"Default%20Settings") ) MessageBox(NULL,"Unable to open session file", "Error", MB_OK);
 		errorShow( "Unable to read session file", filename ) ;
