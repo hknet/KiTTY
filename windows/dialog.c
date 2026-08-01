@@ -523,14 +523,24 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
 #else
         const char *testbuild = "";
 #endif
+        /* KiTTY: say when this process runs with the restricted ACL. Failing to
+         * APPLY it is loud (fail-closed), but the setting never being read is
+         * silent - kitty.ini has four candidate locations - so a user can
+         * believe they are hardened when they are not. Reports the STATE
+         * (restricted_acl()), so -restrict-acl on a shortcut shows here too and
+         * this cannot drift from what is actually in force. It means "this
+         * process's ACL is locked down", nothing broader. */
+        const char *aclnote = restricted_acl() ?
+            "\r\n\r\nRunning with a restricted process ACL: other programs "
+            "under your account cannot open this process." : "";
         /* far2l attribution is unconditional: dialog.c compiles into a shared
          * lib that does not carry the per-target MOD_FAR2L define, and KiTTY
          * always ships the far2l extensions, so the credit is always accurate. */
         /* UTF-8 source: real (c) (\xc2\xa9) and em-dash (\xe2\x80\x94) rather than
          * CP1252 bytes, set as Unicode below so they render on any system codepage. */
         char *text = dupprintf(
-            "%s\r\n\r\n%s%s%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
-            appname, ver, netdbg, testbuild, buildinfo_text,
+            "%s\r\n\r\n%s%s%s%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
+            appname, ver, netdbg, testbuild, aclnote, buildinfo_text,
             "This PuTTY 0.84 port \xc2\xa9 KAPPER NETWORK-COMMUNICATIONS GmbH "
             "\xe2\x80\x94 https://github.com/hknet/KiTTY",
             "KiTTY \xc2\xa9 2007-2013 Cyril Dupont \xe2\x80\x94 https://www.9bis.net/kitty/",
@@ -1118,8 +1128,12 @@ bool do_config(Conf *conf)
      * portable KiTTY from an installed one at a glance. */
     {
         extern int kitty_storage_is_portable(void);
-        pds->dp->wintitle = dupprintf("%s Configuration%s", appname,
-            kitty_storage_is_portable() ? " (portable)" : "");
+        /* ...and with the restricted process ACL, since this window is what a
+         * "kitty.exe -restrict-acl" with no session shows: the terminal title
+         * carries the same marker, but there is no terminal yet here. */
+        pds->dp->wintitle = dupprintf("%s Configuration%s%s", appname,
+            kitty_storage_is_portable() ? " (portable)" : "",
+            restricted_acl() ? " (RESTRICTED)" : "");
 #ifdef KITTY_TEST_BUILD_LABEL
         { char *t = dupprintf("%s  *** TEST BUILD: %s ***", pds->dp->wintitle,
                               KITTY_TEST_BUILD_LABEL);

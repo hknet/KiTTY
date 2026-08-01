@@ -733,6 +733,9 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 #else
 		strcpy( TrayIcone.szTip, "KiTTY Launcher" ) ;
 #endif
+		/* KiTTY: and say so when this launcher - and so every session it
+		 * starts, via the "&R" prefix below - runs with the restricted ACL. */
+		if( restricted_acl() ) strcat( TrayIcone.szTip, "\r\n(RESTRICTED)" ) ;
 	TrayIcone.hWnd = hwnd ;
 	ResShell = Shell_NotifyIcon(NIM_ADD, &TrayIcone);
 	if( ResShell ) {
@@ -741,6 +744,9 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 #else
 		strcpy( TrayIcone.szTip, "KiTTY Launcher" ) ;
 #endif
+		/* KiTTY: and say so when this launcher - and so every session it
+		 * starts, via the "&R" prefix below - runs with the restricted ACL. */
+		if( restricted_acl() ) strcat( TrayIcone.szTip, "\r\n(RESTRICTED)" ) ;
 		ResShell = Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
 		/* KiTTY: refresh the cached latest version async. The notify variant posts
 		 * back when the fetch finishes, so the launcher balloon can appear on the
@@ -1162,11 +1168,23 @@ void RunPuTTY( HWND hwnd, char * param ) {
 				 * config box - and the session it opens - doesn't re-prompt
 				 * (launcher-mpw-sharing). Unlocks once if not already unlocked. */
 				HANDLE mpwmap = NULL ; char mpwtok[80] = "" ;
+				/* KiTTY: and pass on the restricted ACL, exactly as RunSession()
+				 * does. Without this, double-clicking the tray icon of a
+				 * RESTRICTED launcher opened an UNrestricted configuration box -
+				 * and every session started from it was unrestricted too, with
+				 * nothing to say so.
+				 * NOT the "&R" prefix RunSession() uses: that form is only
+				 * recognised when it is followed by end-of-line, "@" or "&"
+				 * (handle_restrict_acl_cmdline_prefix), and this command line
+				 * continues with " -mpwkey ...". The ordinary switch is
+				 * whitespace-safe and the child's parser applies it before the
+				 * window exists. */
+				const char * aclprefix = restricted_acl() ? " -restrict-acl" : "" ;
 				{ extern int kitty_mpw_startup_unlock(void);
 				  extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
 				  kitty_mpw_startup_unlock();
 				  mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
-				snprintf( buffer, sizeof(buffer), "%s%s", shortname, mpwtok ) ;
+				snprintf( buffer, sizeof(buffer), "%s%s%s", shortname, aclprefix, mpwtok ) ;
 				launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
 				if( mpwmap ) CloseHandle( mpwmap ) ;
 			}
@@ -1211,6 +1229,15 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 	  extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
 	  kitty_mpw_startup_unlock();
 	  mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
+	/* KiTTY: a session started from a RESTRICTED launcher must be restricted
+	 * too. This path builds a plain "-load <session>" command line and passed
+	 * nothing on, so every session opened from the launcher menu ran without
+	 * the ACL while the launcher itself had it - silently, which is the whole
+	 * problem this marker work exists to solve. The switch rather than the "&R"
+	 * prefix, because what follows here is " -mpwkey ..." / " -load ..." and &R
+	 * is only recognised before end-of-line, "@" or "&". Appended to shortname,
+	 * so both the registry/file and the savemode=dir branches below inherit it. */
+	if( restricted_acl() ) { size_t _sl=strlen(shortname); snprintf( shortname+_sl, sizeof(shortname)-_sl, " -restrict-acl" ) ; }
 	if( mpwtok[0] ) { size_t _sl=strlen(shortname); snprintf( shortname+_sl, sizeof(shortname)-_sl, "%s", mpwtok ) ; }
 
 	session = (char*)malloc(strlen(session_in)+100) ;

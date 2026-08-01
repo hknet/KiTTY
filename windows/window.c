@@ -877,6 +877,12 @@ static bool kitty_eventlog_is_open(void)
 static int kitty_coe_pending_exit = -1;
 #endif
 
+#ifdef MOD_LAUNCHER
+/* Defined with the other command-line helpers below; WinMain's launcher
+ * dispatch is its first user. */
+static bool kitty_cmdline_has_token(const char *cl, const char *tok);
+#endif
+
 int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 {
     MSG msg;
@@ -944,12 +950,34 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             return Notepad_WinMain(inst, prev, cl, show);
 #ifdef MOD_LAUNCHER
         /* KiTTY session launcher: "kitty.exe -launcher" opens the launcher
-         * window (a quick-launch list of saved sessions) instead of a session. */
-        if (!strcmp(cl, "-launcher") || !strncmp(cl, "-launcher ", 10)) {
-            /* Let the MSI Restart Manager relaunch the tray launcher after an
-             * in-place upgrade closes it. */
-            RegisterApplicationRestart(L"-launcher", 0);
-            return Launcher_WinMain(inst, prev, cl, show);
+         * window (a quick-launch list of saved sessions) instead of a session.
+         *
+         * The option is looked for ANYWHERE on the command line, not only at
+         * its start. It used to be matched as a prefix, so
+         * "kitty.exe -restrict-acl -launcher" - the form FEATURES.md
+         * recommends for hardening the process that holds the session list -
+         * fell through to the ordinary parser and died with "unknown option".
+         *
+         * And because the launcher is dispatched from here, BEFORE the command
+         * line is parsed, -restrict-acl has to be honoured here too: otherwise
+         * that command would have started an unrestricted launcher, which is
+         * the exact failure this marker work is about - believing you are
+         * hardened when you are not. "&R" from a parent KiTTY is handled the
+         * same way, by the shared prefix helper. */
+        {
+            char *lcl = handle_restrict_acl_cmdline_prefix(cl);
+            if (kitty_cmdline_has_token(lcl, "-launcher")) {
+                if (kitty_cmdline_has_token(lcl, "-restrict-acl") ||
+                    kitty_cmdline_has_token(lcl, "-restrict_acl") ||
+                    kitty_cmdline_has_token(lcl, "-restrictacl"))
+                    restrict_process_acl();
+                /* Let the MSI Restart Manager relaunch the tray launcher after
+                 * an in-place upgrade closes it - restricted if we are. */
+                RegisterApplicationRestart(restricted_acl() ?
+                                           L"-restrict-acl -launcher" :
+                                           L"-launcher", 0);
+                return Launcher_WinMain(inst, prev, lcl, show);
+            }
         }
 #endif
         /* KiTTY: terminal-session Restart Manager registration used to live here,
@@ -1669,6 +1697,30 @@ static void wgs_cleanup(WinGuiSeat *wgs)
     wgs_unlink(wgs);
     sfree(wgs);
 }
+
+#ifdef MOD_LAUNCHER
+/* KiTTY: is `tok` present on `cl` as a whole whitespace-separated word? Used by
+ * the launcher dispatch in WinMain, which runs before the real command-line
+ * parser and so has to recognise its own options by hand. Whole-word matching
+ * keeps "-launcher" from being found inside a path or a session name. */
+static bool kitty_cmdline_has_token(const char *cl, const char *tok)
+{
+    size_t n = strlen(tok);
+    while (*cl) {
+        const char *start;
+        while (*cl == ' ' || *cl == '\t')
+            cl++;
+        if (!*cl)
+            break;
+        start = cl;
+        while (*cl && *cl != ' ' && *cl != '\t')
+            cl++;
+        if ((size_t)(cl - start) == n && !strncmp(start, tok, n))
+            return true;
+    }
+    return false;
+}
+#endif
 
 char *handle_restrict_acl_cmdline_prefix(char *p)
 {
@@ -6617,6 +6669,13 @@ static char *kitty_decorate_title(WinGuiSeat *wgs, const char *title)
         put_dataz(sb, " (PROTECTED)");
     if (conf_get_bool(wgs->conf, CONF_alwaysontop))
         put_dataz(sb, " (ONTOP)");
+    /* KiTTY: this process runs with the restricted ACL (-restrict-acl, "&R"
+     * from a parent, or [KiTTY] restrictacl=yes). Unlike its neighbours the
+     * state cannot change after startup, so it needs no kitty_refresh_title()
+     * plumbing - but it is worth showing, because a restrictacl= line in the
+     * wrong kitty.ini leaves the user believing they are hardened in silence. */
+    if (restricted_acl())
+        put_dataz(sb, " (RESTRICTED)");
     return strbuf_to_str(sb);
 }
 

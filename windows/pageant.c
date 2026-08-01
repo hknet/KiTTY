@@ -157,9 +157,15 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
          * kapper.net port holder, not just the upstream PuTTY copyright. UTF-8
          * source for (c) (\xc2\xa9) and em-dash (\xe2\x80\x94), rendered wide so
          * they display on any system codepage. */
+        /* KiTTY: the same restricted-ACL note as the main About box - and this
+         * is the process that actually holds the private keys, so it is the one
+         * worth being certain about. Reports the STATE, not the ini key. */
+        const char *aclnote = restricted_acl() ?
+            "\r\n\r\nRunning with a restricted process ACL: other programs "
+            "under your account cannot open this process." : "";
         char *text = dupprintf(
-            "kageant\r\n\r\n%s%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
-            ver, testbuild, buildinfo_text,
+            "kageant\r\n\r\n%s%s%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
+            ver, testbuild, aclnote, buildinfo_text,
             "This PuTTY 0.84 port \xc2\xa9 KAPPER NETWORK-COMMUNICATIONS GmbH "
             "\xe2\x80\x94 https://github.com/hknet/KiTTY",
             "KiTTY \xc2\xa9 2007-2013 Cyril Dupont \xe2\x80\x94 https://www.9bis.net/kitty/",
@@ -682,6 +688,12 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
 
     switch (msg) {
       case WM_INITDIALOG: {
+        /* KiTTY: mark the key list itself when this agent runs with the
+         * restricted ACL. The tray tooltip says so too, but this window is the
+         * one you open to look at your keys - and it is the process holding
+         * them, so it is where the question gets asked. */
+        if (restricted_acl())
+            SetWindowText(hwnd, "kageant Key List (RESTRICTED)");
         /* KiTTY: the kitty.ini status line + three-state confirm radios are
          * shown only in kitty.ini mode. In registry mode, hide them and
          * reclaim their height BEFORE centring so the shorter dialog centres. */
@@ -1064,10 +1076,15 @@ static BOOL AddTrayIcon(HWND hwnd)
     tnid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     tnid.uCallbackMessage = WM_SYSTRAY;
     tnid.hIcon = hicon = LoadIcon(hinst, MAKEINTRESOURCE(201));
-    /* KiTTY: second tooltip line when the suite ini is the settings store */
+    /* KiTTY: second tooltip line when the suite ini is the settings store, and
+     * a third when this process runs with the restricted ACL - the agent holds
+     * the keys, so "is the lockdown actually on?" is worth answering without
+     * opening anything. szTip is 128 chars; both lines together fit. */
     strcpy(tnid.szTip, kageant_ini_status()
            ? "kageant (KiTTY authentication agent)\r\n(kitty.ini mode)"
            : "kageant (KiTTY authentication agent)");
+    if (restricted_acl())
+        strcat(tnid.szTip, "\r\n(RESTRICTED)");
 
     res = Shell_NotifyIcon(NIM_ADD, &tnid);
 

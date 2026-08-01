@@ -366,6 +366,15 @@ Inherited from PuTTY: starting KiTTY with the `-restrict-acl` command-line optio
 
 Per shortcut, add `-restrict-acl` to the command line, typically in your shortcut target: `"C:\Program Files\KiTTY\kitty.exe" -restrict-acl` (with the launcher: `kitty.exe -restrict-acl -launcher`).
 
+**How to tell it is actually on.** Failing to *apply* the ACL is loud — KiTTY reports it and exits rather than run unprotected — but a setting that is never read is silent, and `kitty.ini` has several candidate locations, so it used to be possible to believe you were hardened when you were not. A restricted process now says so, in the places you already look:
+
+- the **window title** carries `(RESTRICTED)`, beside `(PROTECTED)` and `(ONTOP)` (needs `wintitle=yes`, the default);
+- the **configuration box** title carries it too, which is what you see when you start KiTTY without a session;
+- the **About box** of both KiTTY and `kageant` says so in words;
+- the **tray tooltips** of `kageant` and of the launcher show `(RESTRICTED)`.
+
+All of them report the process's real state, not the setting, so a `-restrict-acl` shortcut, an inherited restriction and `restrictacl=yes` all show identically. It means "this process's ACL is locked down" — nothing wider. `kittygen` never shows it, because it does not read the `kitty.ini` key.
+
 Globally, put `restrictacl=yes` in the `[KiTTY]` section of your `kitty.ini`. That applies the restriction to every KiTTY process that reads the file, so you do not have to edit each shortcut target, and it is applied early in startup — before the command-line switch would be. **`kageant` honours the same key**, so the process that actually holds your loaded private keys is covered by the one setting; it applies the ACL at the top of its startup, before any key is loaded. `kittygen` does not read it — pass it `-restrict-acl` if you want it hardened. `yes` is the only value that does anything: a process cannot un-restrict itself, so `restrictacl=no` does not lift a restriction that `-restrict-acl` or a parent window already applied. If the ACL cannot be applied, KiTTY reports the error and exits rather than run unprotected — the same fail-closed behaviour as the switch.
 
 Unlike most `[KiTTY]` settings, `restrictacl` is read from `kitty.ini` only and never from the registry. Global settings are normally looked up in the registry first and in `kitty.ini` only as a fallback; for a hardening switch that order fails open, because a leftover registry value would silently cancel the `restrictacl=yes` you wrote in the file.
