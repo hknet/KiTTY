@@ -158,12 +158,37 @@ void write_setting_i(settings_w *handle, const char *key, int value)
     }
 }
 
+/* KiTTY: settings that have been RENAMED. The new name is written by the
+ * ordinary save; the old one is removed here, so a session stops carrying both.
+ * Reading still accepts the old name (kitty_settings_load.c), which is what
+ * makes this safe: a session written by an older KiTTY - or by classic KiTTY -
+ * keeps working until it happens to be saved, and migrates at that moment.
+ *
+ * Deliberately NOT done while LOADING a session: a read path that writes fails
+ * on read-only media or a locked-down hive, and would fire for "Default
+ * Settings" and for plink/pscp merely loading a session in passing. */
+static const char *const kitty_retired_keys[] = {
+    "SaveWindowPos",   /* -> SetWindowPos: it pins a position, it saves nothing */
+};
+
+static void kitty_retire_renamed_keys(settings_w *handle)
+{
+    size_t i;
+    for (i = 0; i < lenof(kitty_retired_keys); i++) {
+        if (handle->is_file)
+            ksf_list_del(&handle->items, kitty_retired_keys[i]);
+        else if (handle->sesskey)
+            RegDeleteValueA(handle->sesskey, kitty_retired_keys[i]);
+    }
+}
+
 void close_settings_w(settings_w *handle)
 {
     if (!handle)
         return;
     /* A session was written - the store differs from the last backup. */
     kitty_store_mark_dirty();
+    kitty_retire_renamed_keys(handle);
     if (handle->is_file) {
         if (handle->fpath) { ksf_save(handle->fpath, handle->items); sfree(handle->fpath); }
         ksf_list_free(handle->items);

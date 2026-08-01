@@ -1409,7 +1409,11 @@ CONF_OPTION(failure_reconnect, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("Fa
 CONF_OPTION(logtimestamp, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("LogTimestamp"),)
 CONF_OPTION(autocommandout, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("AutocommandOut"),)
 CONF_OPTION(logtimerotation, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("LogTimeRotation"),)
-CONF_OPTION(set_windowpos, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("SaveWindowPos"),)
+/* KiTTY: pins the window to CONF_xpos/ypos - it sets a position, it saves
+ * none. Stored as "SaveWindowPos" up to 0.84.1.67; the old name is still READ
+ * (kitty_settings_load.c) and is dropped from a session the next time that
+ * session is saved (windows/storage.c, kitty_retired_keys). */
+CONF_OPTION(set_windowpos, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("SetWindowPos"),)
 CONF_OPTION(foreground_on_bell, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("ForegroundOnBell"),)
 CONF_OPTION(ctrl_tab_switch, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("CtrlTabSwitch"),)
 CONF_OPTION(comment, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Comment"),)

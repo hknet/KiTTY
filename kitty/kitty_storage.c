@@ -452,6 +452,24 @@ void ksf_list_set(struct ksf_item **h, const char *key, const char *val)
     it->next = *h;
     *h = it;
 }
+/* KiTTY: drop a key from a loaded session list. Used to retire a renamed
+ * setting when the session is next saved - open_settings_w pre-loads the file,
+ * so a key nobody writes any more would otherwise be carried forever. */
+void ksf_list_del(struct ksf_item **h, const char *key)
+{
+    struct ksf_item **pp = h;
+    while (*pp) {
+        struct ksf_item *it = *pp;
+        if (!strcmp(it->key, key)) {
+            *pp = it->next;
+            sfree(it->key);
+            if (it->val) { memset(it->val, 0, strlen(it->val)); sfree(it->val); }
+            sfree(it);
+            return;
+        }
+        pp = &it->next;
+    }
+}
 void ksf_list_free(struct ksf_item *h)
 {
     while (h) {

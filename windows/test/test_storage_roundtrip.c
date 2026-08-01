@@ -360,6 +360,61 @@ static void test_long_values(void)
     sfree(big);
 }
 
+/* ---------- renamed-setting migration (SaveWindowPos -> SetWindowPos) ----
+ *
+ * The old name must still be READ, and must be GONE once the session is saved
+ * again - migrating on save, never on load. Checked on the registry backend,
+ * which is the one that keeps values nobody rewrote. */
+#define MSESS "zz-kitty-selftest-rename"
+
+static void test_renamed_key(void)
+{
+    char path[600];
+    char *err = NULL;
+    HKEY hk;
+    DWORD v = 1, sz = sizeof(v), type = 0;
+
+    snprintf(path, sizeof(path), "%s\\Sessions\\%s", kitty_registry_base(), MSESS);
+
+    /* a session as an older KiTTY left it: only the legacy name */
+    settings_w *w = open_settings_w(MSESS, &err);
+    check(w != NULL, "rename: open_settings_w");
+    if (!w) return;
+    write_setting_s(w, "HostName", "rename.example");
+    close_settings_w(w);
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, path, 0, NULL, 0, KEY_SET_VALUE,
+                        NULL, &hk, NULL) == ERROR_SUCCESS) {
+        RegSetValueExA(hk, "SaveWindowPos", 0, REG_DWORD, (const BYTE *)&v, sizeof(v));
+        RegCloseKey(hk);
+    }
+    check(RegGetValueA(HKEY_CURRENT_USER, path, "SaveWindowPos", RRF_RT_REG_DWORD,
+                       &type, &v, &sz) == ERROR_SUCCESS,
+          "rename: legacy SaveWindowPos seeded");
+
+    /* Any later save of that session retires the legacy key. (This drives the
+     * storage layer directly - the settings layer that maps CONF_set_windowpos
+     * onto the new keyword lives in settings.c, which this test does not
+     * link; the read-fallback half is exercised by loading a session in the
+     * application.) */
+    w = open_settings_w(MSESS, &err);
+    check(w != NULL, "rename: reopen for save");
+    if (w) {
+        write_setting_s(w, "HostName", "rename.example");
+        write_setting_i(w, "SetWindowPos", 1);
+        close_settings_w(w);
+    }
+    sz = sizeof(v);
+    check(RegGetValueA(HKEY_CURRENT_USER, path, "SetWindowPos", RRF_RT_REG_DWORD,
+                       &type, &v, &sz) == ERROR_SUCCESS && v == 1,
+          "rename: new SetWindowPos present after save");
+    sz = sizeof(v);
+    check(RegGetValueA(HKEY_CURRENT_USER, path, "SaveWindowPos", RRF_RT_REG_DWORD,
+                       &type, &v, &sz) != ERROR_SUCCESS,
+          "rename: legacy SaveWindowPos removed on save");
+
+    del_settings(MSESS);
+}
+
 int main(void)
 {
     printf("== registry backend (DPAPI) ==\n");
@@ -368,6 +423,8 @@ int main(void)
     test_portable();
     printf("== long settings values (cyd01/KiTTY#541) ==\n");
     test_long_values();
+    printf("== renamed setting migrates on save ==\n");
+    test_renamed_key();
     printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",
            failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;

@@ -47,6 +47,7 @@ char *ksf_munge(const char *in);                  /* snewn'd */
 char *ksf_unmunge(const char *in);                /* snewn'd */
 char *ksf_list_get(struct ksf_item *h, const char *key);  /* borrowed/NULL */
 void ksf_list_set(struct ksf_item **h, const char *key, const char *val);
+void ksf_list_del(struct ksf_item **h, const char *key);  /* retire a renamed key */
 void ksf_list_free(struct ksf_item *h);
 char *ksf_session_path(const char *sessionname);  /* snewn'd or NULL */
 struct ksf_item *ksf_load(const char *path);      /* parsed list (may be NULL) */

@@ -799,7 +799,15 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "TermXPos", -1, conf, CONF_xpos );
     gppi_forced(sesskey, "TermYPos", -1, conf, CONF_ypos );
     gppi_forced(sesskey, "WindowState", 0, conf, CONF_windowstate );
-    gppb_forced(sesskey, "SaveWindowPos", false, conf, CONF_set_windowpos ); /* BKG */
+    /* KiTTY: stored as "SetWindowPos" from 0.84.1.68 - the setting pins a
+     * position, it saves none. The OLD name is read first and used as the
+     * default for the new one, so a session written by an earlier KiTTY (or by
+     * classic KiTTY) still opens where it should; the stale key is dropped the
+     * next time that session is saved (windows/storage.c, kitty_retired_keys).
+     * Reading both costs one extra lookup per session load. */
+    gppb_forced(sesskey, "SetWindowPos",
+                gppb_raw_forced(sesskey, "SaveWindowPos", false),
+                conf, CONF_set_windowpos ); /* BKG */
     gppb_forced(sesskey, "ForegroundOnBell", false, conf, CONF_foreground_on_bell );
 #ifndef MOD_NOPASSWORD
     gpps_forced(sesskey, "Password", "", conf, CONF_password ) ;

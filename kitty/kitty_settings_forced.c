@@ -530,7 +530,10 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_i_forced(sesskey, "TermXPos", conf_get_int(conf, CONF_xpos));
     write_setting_i_forced(sesskey, "TermYPos", conf_get_int(conf, CONF_ypos));
     write_setting_i_forced(sesskey, "WindowState", conf_get_int(conf, CONF_windowstate));
-    write_setting_b_forced(sesskey, "SaveWindowPos", conf_get_bool(conf, CONF_set_windowpos));
+    /* KiTTY: "SetWindowPos" from 0.84.1.68 - it pins a position, it saves none.
+     * A .ktx is written from scratch every time, so nothing stale is left here
+     * to retire; only the reader has to keep accepting the old name. */
+    write_setting_b_forced(sesskey, "SetWindowPos", conf_get_bool(conf, CONF_set_windowpos));
     write_setting_b_forced(sesskey, "ForegroundOnBell", conf_get_bool(conf, CONF_foreground_on_bell));
 
 #ifndef MOD_NOPASSWORD
