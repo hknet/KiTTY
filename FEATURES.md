@@ -13,6 +13,7 @@ one is available.
 
 - **Most requested features**
   - [Sessions filter (folders)](#sessions-filter-folders)
+  - [Quick connect (type a host instead of picking a session)](#quick-connect-type-a-host-instead-of-picking-a-session)
   - [Portability](#portability)
   - [Shortcuts for pre-defined commands](#shortcuts-for-pre-defined-commands)
   - [Session launcher](#session-launcher)
@@ -78,6 +79,16 @@ If you manage a large number of saved sessions, KiTTY lets you organize them int
 ![Sessions filter (folders)](docs/features/img/config_folder.jpg)
 
 *See also: [How session folders work (PDF)](docs/features/kitty-folders_list_feature.pdf)*
+
+### Quick connect (type a host instead of picking a session)
+
+The configuration box opens with the session you used last, which is what you want if you work from a list of saved sessions. If you connect by typing an address — a room full of switches, a lab, anything not worth saving — that is the wrong starting point every time: the settings that arrive belong to whichever host you happened to visit last, and the only way back to a known state is to load *Default Settings* by hand before each connection.
+
+Quick connect starts from **Default Settings** instead, with the cursor already in *Host Name (or IP address)* and its contents selected, so an address can be typed over whatever is there and opened with Enter.
+
+**How to enable:** load **Default Settings** once. KiTTY remembers it like any other session, recognises it at the next start, and stays in quick connect until you load a different session — so it is a mode you leave by loading something, not one you have to switch back and forth. Typing an address into an unsaved session records nothing, so the mode survives connecting. To work that way permanently, put `loadlastsession=no` in the `[ConfigBox]` section of your `kitty.ini`; see [docs/KITTY-INI.md](docs/KITTY-INI.md).
+
+(no screenshot)
 
 ### Portability
 
@@ -291,9 +302,21 @@ If you leave the password empty, the jump connection authenticates like any SSH 
 
 ### SSH handler (URL/OS integration)
 
-KiTTY can register itself with Windows as the program that opens **putty://**, **telnet://**, and **ssh://** links. Once registered, clicking such a link in your browser (Internet Explorer, Firefox, or any other) or in another application launches KiTTY and connects to the target host automatically. This makes it easy to publish clickable connection links on intranet pages or in documentation, so colleagues can start a session with a single click.
+KiTTY can register itself with Windows as the program that opens **ssh://**, **telnet://** and **kitty://** links. Once registered, clicking such a link in a browser, a mail client or any other application launches KiTTY and connects. That makes it easy to publish clickable connection links on intranet pages or in documentation, so colleagues can start a session with a single click.
 
-**How to enable:** Run **`kitty.exe -sshhandler`** as administrator to register KiTTY as the telnet:// ssh:// putty:// URL protocol handler.
+`ssh://[user@]host[:port]` connects to a host — a trailing path is ignored, so a link copied from anywhere still works — and `kitty://<session name>` opens one of your saved sessions. Both forms work on the command line too, registered or not: `kitty.exe ssh://server.example.com` is a valid way to start KiTTY. A password given inside a URL is deliberately **discarded**: it would otherwise sit in a command line that any other user of the machine can read.
+
+**How to enable:** run **`kitty.exe -sshhandler`**. As administrator it registers for everyone on the machine; run normally it registers for your account, and the machine-wide installation asks for the rights itself. A protocol another program already opens is **reported and left alone** — add `-force` to take it over, and the report then names the `reg` command that puts the old setting back, having exported it first.
+
+| Option | Effect |
+|---|---|
+| `-force` | also take over protocols another program opens (the previous setting is exported first) |
+| `-user` | register for your account, without asking for administrator rights |
+| `-yes` | skip the question a portable KiTTY asks before writing to the registry |
+| `-puttyurl` | also register **putty://**, classic KiTTY's name for `kitty://` (read either way) |
+| `-uninstall` | remove the handlers again — only ones that point at a KiTTY |
+
+A **portable** KiTTY asks before writing anything: a registration outlives the copy that made it, and then points at a program that is no longer there.
 
 (no screenshot)
 
@@ -563,7 +586,7 @@ KiTTY can host a local shell right inside its terminal window, so you can run a 
 
 KiTTY can export the settings of your running session to a plain-text file with the **.ktx** extension, using the **Export current settings** item in the main menu. Once the **.ktx** file type is associated with KiTTY, you can launch any saved session simply by double-clicking its file. This makes it easy to share ready-to-run sessions or keep handy shortcuts to the connections you use most.
 
-**How to enable:** Run **`kitty.exe -fileassoc`** as administrator to associate KiTTY session files (.ktx) with KiTTY.
+**How to enable:** run **`kitty.exe -fileassoc`**. As administrator it associates `.ktx` for everyone on the machine; run normally it does so for your account, and the machine-wide installation asks for the rights itself. If another program already opens `.ktx`, that is reported and left alone — the same `-force`, `-user`, `-yes` and `-uninstall` options as [`-sshhandler`](#ssh-handler-urlos-integration) apply, including the exported `.reg` backup and the command that undoes the change.
 
 (no screenshot)
 
@@ -638,7 +661,7 @@ KiTTY can impersonate PuTTY for the benefit of external tools that only know PuT
 
 KiTTY extends PuTTY's command line with a long list of extra switches, letting you control nearly every feature when launching from a shortcut, script, or the Run dialog. You can open a session straight in full screen or in the system tray, edit a session's settings, load a portable `.ktx` configuration, set a title, icon, password, or window class name, generate SSH keys, or disable individual features on the fly. All of PuTTY's original command-line options keep working alongside these additions.
 
-**How to enable:** KiTTY adds many switches on top of PuTTY's, e.g. `-loginscript`, `-fileassoc`, `-sshhandler`, `-launcher`, `-ed`, `-kload`, `-classname`, `-noconfirm` (close the window without the "Are you sure?" prompt — handy for scripted/automated launches; it does not affect the SSH host-key or weak-crypto security confirmations), and `-hwndparent <handle>` (embed the terminal as a child of another application's window, so connection managers such as **mRemoteNG** and **Remote4Support** can host KiTTY inside their own tabs — pass the host window handle as a decimal number). See the list.
+**How to enable:** run **`kitty.exe -help`** (also `--help`, `-h`, `-?`) for the current list, printed at the prompt you typed it in. Frequently used ones: `-loginscript`, `-fileassoc`, `-sshhandler`, `-launcher`, `-edit`, `-kload`, `-classname`, `-title`, `-send-to-tray`, `-fullscreen`, `-noconfirm` (close the window without the "Are you sure?" prompt — handy for scripted launches; it does not affect the SSH host-key or weak-crypto security confirmations) and `-hwndparent <handle>` (embed the terminal as a child of another application's window, so connection managers such as **mRemoteNG** and **Remote4Support** can host KiTTY in their own tabs — pass the host window handle as a decimal number). A host can also be given as a URL: `kitty.exe ssh://[user@]host[:port]`, or `kitty.exe kitty://<saved session>`.
 
 (no screenshot)
 

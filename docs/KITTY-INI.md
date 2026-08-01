@@ -71,6 +71,27 @@ the GUI only (see [KNOWN-ISSUES.md](../KNOWN-ISSUES.md)).
 | `[Launcher]` | The tray launcher, e.g. session-list `reload` on each menu open. |
 | `[FontFallback]` | Missing-glyph font fallback: `active` master switch (default yes), `fallback` font list, `override` Unicode-range pinning, `log`/`logfile` troubleshooting. |
 
+## Quick connect — `[ConfigBox] loadlastsession`
+
+By default the configuration box opens pre-filled with the session you used
+last. If you mostly connect by **typing an address**, that is the wrong starting
+point: the settings that arrive belong to whichever host you visited last.
+
+```ini
+[ConfigBox]
+loadlastsession=no
+```
+
+With this, every start opens on **Default Settings** with the cursor already in
+*Host Name (or IP address)* and its contents selected — type, press Enter, and
+the connection uses the same known configuration every time.
+
+You do not have to set anything to get this occasionally: **load "Default
+Settings" once**. KiTTY remembers it like any other session and comes up in
+quick connect from then on, until you load a different session. Typing an
+address into an unsaved session records nothing, so the mode survives
+connecting — it is left by loading a session, not by switching a setting back.
+
 ## A minimal example
 
 ```ini
