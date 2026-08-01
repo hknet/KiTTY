@@ -302,8 +302,9 @@ static void logbox_layout(HWND hwnd)
     HWND list = GetDlgItem(hwnd, IDN_LIST);
     HWND btnok = GetDlgItem(hwnd, IDOK);
     HWND btncopy = GetDlgItem(hwnd, IDN_COPY);
+    HWND btnclear = GetDlgItem(hwnd, IDN_CLEAR);
     int bw, bh, m, btop, gap, left;
-    if (!list || !btnok || !btncopy) return;
+    if (!list || !btnok || !btncopy || !btnclear) return;
     GetClientRect(hwnd, &rc);
     GetWindowRect(btnok, &rb);
     bw = rb.right - rb.left; bh = rb.bottom - rb.top;
@@ -311,9 +312,10 @@ static void logbox_layout(HWND hwnd)
     btop = rc.bottom - bh - m;
     MoveWindow(list, m, m, rc.right - 2*m, btop - 2*m, true);
     gap = bw / 4;
-    left = (rc.right - (2*bw + gap)) / 2;
-    MoveWindow(btncopy, left, btop, bw, bh, true);
-    MoveWindow(btnok, left + bw + gap, btop, bw, bh, true);
+    left = (rc.right - (3*bw + 2*gap)) / 2;
+    MoveWindow(btnclear, left, btop, bw, bh, true);
+    MoveWindow(btncopy, left + bw + gap, btop, bw, bh, true);
+    MoveWindow(btnok, left + 2*(bw + gap), btop, bw, bh, true);
 }
 
 static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
@@ -375,6 +377,25 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
             logbox = NULL;
             SetActiveWindow(GetParent(hwnd));
             DestroyWindow(hwnd);
+            return 0;
+          case IDN_CLEAR:
+            /* KiTTY: empty the log. Useful before reproducing something, so
+             * what follows is only what the reproduction produced. The stored
+             * strings are freed here; the log then fills from scratch. */
+            if (HIWORD(wParam) == BN_CLICKED ||
+                HIWORD(wParam) == BN_DOUBLECLICKED) {
+                for (i = 0; i < ninitial; i++) {
+                    sfree(events_initial[i]);
+                    events_initial[i] = NULL;
+                }
+                for (i = 0; i < LOGEVENT_CIRCULAR_MAX; i++) {
+                    sfree(events_circular[i]);
+                    events_circular[i] = NULL;
+                }
+                ninitial = ncircular = circular_first = 0;
+                SendDlgItemMessage(hwnd, IDN_LIST, LB_RESETCONTENT, 0, 0);
+                update_logbox_horizontal_extent(hwnd);
+            }
             return 0;
           case IDN_COPY:
             if (HIWORD(wParam) == BN_CLICKED ||

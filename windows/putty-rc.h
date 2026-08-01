@@ -19,6 +19,7 @@
 
 #define IDN_LIST        1001
 #define IDN_COPY        1002
+#define IDN_CLEAR       1003    /* KiTTY: empty the Event Log */
 
 #define IDA_ICON        1001
 #define IDA_TEXT        1002
