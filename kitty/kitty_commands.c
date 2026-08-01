@@ -321,7 +321,11 @@ static int cmd_zmodem( HWND hwnd, char * arg ) {
 
 static int cmd_fileassoc( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
-	CreateFileAssoc() ;
+	/* KiTTY: from the /commands console there is no command line to add
+	 * options to, so this is the plain form - never take the extension away
+	 * from another program (say so with -fileassoc -force instead), and treat
+	 * typing /fileassoc as the confirmation a portable copy would ask for. */
+	CreateFileAssoc( 0, 0, 1 ) ;
 	return 1 ;
 }
 

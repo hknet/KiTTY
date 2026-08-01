@@ -30,10 +30,11 @@ extern void RunPuttyEd(HWND hwnd, char *filename);  /* kitty_win.c: session-file
 extern int  SetTextToClipboard(const char *buf);    /* kitty_win.c */
 extern void mungestr(const char *in, char *out);    /* kitty_commun.c */
 extern int  existfile(const char *filename);        /* kitty_tools.c */
-extern void CreateFileAssoc(void);                  /* kitty_registry.c: .ktx file association */
+extern void CreateFileAssoc(int force, int peruser, int assume_yes); /* kitty_registry.c: .ktx */
 extern void CreateSSHHandler(int force, int peruser, int assume_yes,
                              int withputty);         /* kitty_registry.c: URL handlers */
 extern void RemoveSSHHandler(void);                 /* kitty_registry.c: -sshhandler -uninstall */
+extern void RemoveFileAssoc(void);                  /* kitty_registry.c: -fileassoc -uninstall */
 extern void KittyCliReport(const char *title, const char *text, int warn); /* kitty_registry.c */
 extern char *GetHelpMessage(void);                  /* kitty.c: the -help text */
 extern int  kitty_get_last_session(char *buf, int buflen); /* storage.c: remember-last-session */
@@ -321,10 +322,27 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 sfree(ef);
                 cleanup_exit(0);
             } else if (!strcmp(p, "-fileassoc")) {
-                /* Register the KiTTY .ktx file association, then quit.
-                 * Writes HKCR\kitty.connect.1 + the extension key (redirected
-                 * to HKCU\Software\Classes when not elevated). */
-                CreateFileAssoc();
+                /* Register the KiTTY .ktx file association, then quit. Same
+                 * options and the same manners as -sshhandler below: machine
+                 * -wide when it can be, this user otherwise, an extension
+                 * someone else opens left alone unless -force. */
+                bool force = false, peruser = false, assume_yes = false;
+                bool uninstall = false;
+                for (size_t a = 0; a < arglist->nargs; a++) {
+                    const char *ap = cmdline_arg_to_str(arglist->args[a]);
+                    if (ap && !strcmp(ap, "-force"))
+                        force = true;
+                    else if (ap && !strcmp(ap, "-user"))
+                        peruser = true;
+                    else if (ap && !strcmp(ap, "-yes"))
+                        assume_yes = true;
+                    else if (ap && !strcmp(ap, "-uninstall"))
+                        uninstall = true;
+                }
+                if (uninstall)
+                    RemoveFileAssoc();
+                else
+                    CreateFileAssoc(force, peruser, assume_yes);
                 cleanup_exit(0);
             } else if (!strcmp(p, "-help") || !strcmp(p, "--help") ||
                        !strcmp(p, "-h") || !strcmp(p, "-?")) {

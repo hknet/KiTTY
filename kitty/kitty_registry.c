@@ -721,6 +721,12 @@ void KittyCliReport( const char *title, const char *text, int warn ) {
 	h = CreateFileA( "CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
 			 NULL, OPEN_EXISTING, 0, NULL ) ;
 	if( h != INVALID_HANDLE_VALUE ) {
+		/* Start on a line of our own. A GUI-subsystem program returns to the
+		 * shell the moment it starts, so the prompt has already been drawn by
+		 * the time this text arrives - without the leading break it lands on
+		 * top of it. Same reason for the trailing one: leave the cursor at the
+		 * start of a clean line for the prompt that follows. */
+		WriteFile( h, "\r\n", 2, &written, NULL ) ;
 		WriteFile( h, text, (DWORD)strlen(text), &written, NULL ) ;
 		WriteFile( h, "\r\n", 2, &written, NULL ) ;
 		CloseHandle( h ) ;
@@ -748,6 +754,7 @@ static int CliConfirm( const char *title, const char *text ) {
 	hin  = CreateFileA( "CONIN$", GENERIC_READ|GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE,
 			    NULL, OPEN_EXISTING, 0, NULL ) ;
 	if( hout != INVALID_HANDLE_VALUE && hin != INVALID_HANDLE_VALUE ) {
+		WriteFile( hout, "\r\n", 2, &written, NULL ) ;   /* clear of the prompt */
 		WriteFile( hout, text, (DWORD)strlen(text), &written, NULL ) ;
 		WriteFile( hout, "\r\nWrite these registry entries? [y/N] ", 38, &written, NULL ) ;
 		if( ReadFile( hin, answer, sizeof(answer)-1, &nread, NULL ) && nread > 0 ) {
@@ -814,13 +821,29 @@ static void UrlHandlerProgram( const char *command, char *out, size_t outlen ) {
 	out[n] = '\0' ;
 }
 
-/* KiTTY: save a protocol's current registration to a .reg file before we
- * replace it, so "put it back the way it was" is a command the user can run
- * rather than a registry key they have to reconstruct by hand. Returns 1 and
- * fills `file` on success. Uses Windows' own reg.exe: it exports the whole
- * subtree, values we never touched included. */
-static int UrlHandlerBackup( const char *proto, char *file, size_t filelen ) {
+/* KiTTY: does this exact key exist in this exact hive? Not the same question
+ * as "does HKEY_CLASSES_ROOT have one": HKCR is a merged view of HKLM and
+ * HKCU, so a handler can be visible there while the hive we are about to write
+ * holds nothing at all. That difference decides what "undo" means. */
+static int ClassKeyExists( HKEY root, const char *subkey ) {
+	HKEY hk ;
+	if( RegOpenKeyExA( root, subkey, 0, KEY_READ, &hk ) != ERROR_SUCCESS )
+		return 0 ;
+	RegCloseKey( hk ) ;
+	return 1 ;
+}
+
+/* KiTTY: save one key, in one hive, to a .reg file before we change it, so
+ * "put it back the way it was" is a command the user can run rather than a
+ * registry key to reconstruct by hand. Returns 1 and fills `file` on success.
+ * Uses Windows' own reg.exe, which exports the whole subtree - values we never
+ * touched included. The hive has to be named explicitly: an HKCR export is an
+ * HKLM export, and importing one of those needs elevation the user may not
+ * have (and would not restore anything, if what shadowed it was in HKCU). */
+static int ClassKeyBackup( HKEY root, const char *subkey, const char *tag,
+			   char *file, size_t filelen ) {
 	char dir[MAX_PATH], sysdir[MAX_PATH], cmd[2048] ;
+	const char *hive = ( root == HKEY_LOCAL_MACHINE ) ? "HKLM" : "HKCU" ;
 	SYSTEMTIME st ;
 	STARTUPINFOA si ;
 	PROCESS_INFORMATION pi ;
@@ -832,13 +855,13 @@ static int UrlHandlerBackup( const char *proto, char *file, size_t filelen ) {
 	CreateDirectoryA( dir, NULL ) ;   /* fine if it is already there */
 
 	GetLocalTime( &st ) ;
-	snprintf( file, filelen, "%s\\urlhandler-%s-%04d%02d%02d-%02d%02d%02d.reg",
-		  dir, proto, st.wYear, st.wMonth, st.wDay,
+	snprintf( file, filelen, "%s\\%s-%s-%04d%02d%02d-%02d%02d%02d.reg",
+		  dir, hive, tag, st.wYear, st.wMonth, st.wDay,
 		  st.wHour, st.wMinute, st.wSecond ) ;
 
 	if( GetSystemDirectoryA( sysdir, sizeof(sysdir) ) == 0 ) return 0 ;
-	snprintf( cmd, sizeof(cmd), "\"%s\\reg.exe\" export \"HKCR\\%s\" \"%s\" /y",
-		  sysdir, proto, file ) ;
+	snprintf( cmd, sizeof(cmd), "\"%s\\reg.exe\" export \"%s\\%s\" \"%s\" /y",
+		  sysdir, hive, subkey, file ) ;
 	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;
 	si.dwFlags = STARTF_USESHOWWINDOW ; si.wShowWindow = SW_HIDE ;
 	if( !CreateProcessA( NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW,
@@ -847,6 +870,85 @@ static int UrlHandlerBackup( const char *proto, char *file, size_t filelen ) {
 	if( !GetExitCodeProcess( pi.hProcess, &rc ) ) rc = 1 ;
 	CloseHandle( pi.hThread ) ; CloseHandle( pi.hProcess ) ;
 	return rc == 0 ;
+}
+
+/* KiTTY: where should a class registration (URL handler, file association) be
+ * written, and may we write it at all? Shared by -sshhandler and -fileassoc so
+ * that the two behave the same.
+ *
+ * HKLM when this process can write there. Otherwise, if this is the
+ * machine-wide installation, ask Windows for the rights and let the elevated
+ * copy do the whole job (`relaunch` + `relaunch_extra` is the command line it
+ * gets); -user (peruser) says "my account is what I meant". A portable copy is
+ * asked for permission first, since what it writes outlives it.
+ *
+ * Returns 1 with *root set when the caller should proceed, 0 when it should
+ * return quietly - the user has been told why. */
+static int ClassRegTarget( const char *path, const char *relaunch,
+			   const char *relaunch_extra,
+			   int peruser, int assume_yes,
+			   const char *what, const char *title, HKEY *root ) {
+	HKEY classes ;
+
+#ifdef MOD_PORTABLE
+	/* A portable KiTTY is expected to leave the machine as it found it, and
+	 * registering is the opposite of that: the entry outlives the USB stick
+	 * and then points at a path that has gone. Still the user's call - so ask,
+	 * plainly, with the path in front of them. savemode=registry already means
+	 * "this copy uses the registry"; -yes answers for scripts. */
+	if( !assume_yes && GetIniFileFlag() != SAVEMODE_REG ) {
+		char question[2048] ;
+		snprintf( question, sizeof(question),
+			"This is a portable KiTTY. Registering %s writes to this "
+			"machine's registry, pointing at:\r\n\r\n    %s\r\n\r\n"
+			"Those entries stay behind when this copy is removed, and then "
+			"point at nothing.", what, path ) ;
+		if( !CliConfirm( title, question ) ) {
+			KittyCliReport( title, "Nothing was registered.", 0 ) ;
+			return 0 ;
+		}
+	}
+#else
+	(void)assume_yes ; (void)what ;
+#endif
+
+	/* Opening the parent for KEY_CREATE_SUB_KEY answers "may we write to
+	 * HKLM?" without creating anything. */
+	if( RegOpenKeyExA( HKEY_LOCAL_MACHINE, "Software\\Classes", 0,
+			   KEY_WRITE|KEY_CREATE_SUB_KEY, &classes ) == ERROR_SUCCESS ) {
+		RegCloseKey( classes ) ;
+		*root = HKEY_LOCAL_MACHINE ;
+		return 1 ;
+	}
+
+	if( RunningFromProgramFiles( path ) && !peruser ) {
+		SHELLEXECUTEINFOA sei ;
+		char params[128] ;
+		snprintf( params, sizeof(params), "%s%s", relaunch,
+			  relaunch_extra ? relaunch_extra : "" ) ;
+		memset( &sei, 0, sizeof(sei) ) ;
+		sei.cbSize = sizeof(sei) ;
+		sei.fMask = SEE_MASK_NOCLOSEPROCESS ;
+		sei.lpVerb = "runas" ;
+		sei.lpFile = path ;
+		sei.lpParameters = params ;
+		sei.nShow = SW_SHOWNORMAL ;
+		if( ShellExecuteExA( &sei ) ) {
+			if( sei.hProcess ) {
+				WaitForSingleObject( sei.hProcess, INFINITE ) ;
+				CloseHandle( sei.hProcess ) ;
+			}
+			return 0 ;   /* the elevated copy did the work and reported */
+		}
+		KittyCliReport( title,
+			"This is the machine-wide installation of KiTTY, so this belongs "
+			"to the whole machine - and that was refused or cancelled.\r\n"
+			"Re-run from an administrator prompt, or add -user to register "
+			"for your account only.", 1 ) ;
+		return 0 ;
+	}
+	*root = HKEY_CURRENT_USER ;
+	return 1 ;
 }
 
 /* KiTTY: write one URL protocol registration below `root`\`prefix`. Returns 1
@@ -896,11 +998,12 @@ static int UrlHandlerWrite( HKEY root, const char *prefix, const char *proto,
  */
 void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 	char path[1024], report[4096], cmd[1200], prev[1024], backup[MAX_PATH] ;
+	char key[512] ;
 	const char *prefix ;
-	HKEY root, classes ;
+	HKEY root ;
 	int n = 0, written = 0, kept = 0, replaced = 0 ;
 	size_t len ;
-	int i ;
+	int i, mine ;
 	/* session = the URL names a saved session, so the command is -load;
 	 * optional = registered only when explicitly asked for. */
 	static const struct { const char *proto, *friendly ; int session, optional ; } protos[] = {
@@ -912,70 +1015,11 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 
 	GetModuleFileName( NULL, (LPTSTR)path, 1024 ) ;
 
-#ifdef MOD_PORTABLE
-	/* A portable KiTTY is expected to leave the machine as it found it, and
-	 * registering a URL handler is the opposite of that: the entry outlives
-	 * the USB stick and then points at a path that has gone. It is still the
-	 * user's call - so ask, plainly, naming the path being registered.
-	 * savemode=registry already means "this copy uses the registry", and -yes
-	 * answers the question in advance for anyone scripting it. */
-	if( !assume_yes && GetIniFileFlag() != SAVEMODE_REG ) {
-		char question[2048] ;
-		snprintf( question, sizeof(question),
-			"This is a portable KiTTY. Registering the telnet://, ssh:// and "
-			"putty:// handlers writes to this machine's registry, pointing at:"
-			"\r\n\r\n    %s\r\n\r\n"
-			"Those entries stay behind when this copy is removed, and then "
-			"point at nothing.", path ) ;
-		if( !CliConfirm( "KiTTY URL handlers", question ) ) {
-			KittyCliReport( "KiTTY URL handlers", "Nothing was registered.", 0 ) ;
-			return ;
-		}
-	}
-#endif
-
-	/* Machine-wide if we may, this user otherwise. Opening the parent for
-	 * KEY_CREATE_SUB_KEY answers the question without creating anything. */
-	if( RegOpenKeyExA( HKEY_LOCAL_MACHINE, "Software\\Classes", 0,
-			   KEY_WRITE|KEY_CREATE_SUB_KEY, &classes ) == ERROR_SUCCESS ) {
-		RegCloseKey( classes ) ;
-		root = HKEY_LOCAL_MACHINE ;
-	} else {
-		/* Not elevated. If this is the installation every user of the machine
-		 * shares, registering it for one account is the wrong answer: ask
-		 * Windows for the rights and do the job properly. UAC does the asking,
-		 * so nothing of ours interrupts a command line. Declining leaves
-		 * nothing registered - deliberate, since the alternative writes a
-		 * per-user handler nobody asked for; -user is there to say otherwise. */
-		if( RunningFromProgramFiles( path ) && !peruser ) {
-			SHELLEXECUTEINFOA sei ;
-			char params[64] ;
-			snprintf( params, sizeof(params), "-sshhandler%s",
-				  force ? " -force" : "" ) ;
-			memset( &sei, 0, sizeof(sei) ) ;
-			sei.cbSize = sizeof(sei) ;
-			sei.fMask = SEE_MASK_NOCLOSEPROCESS ;
-			sei.lpVerb = "runas" ;
-			sei.lpFile = path ;
-			sei.lpParameters = params ;
-			sei.nShow = SW_SHOWNORMAL ;
-			if( ShellExecuteExA( &sei ) ) {
-				if( sei.hProcess ) {
-					WaitForSingleObject( sei.hProcess, INFINITE ) ;
-					CloseHandle( sei.hProcess ) ;
-				}
-				return ;   /* the elevated copy did the work and reported */
-			}
-			KittyCliReport( "KiTTY URL handlers",
-				"This is the machine-wide installation of KiTTY, so its URL "
-				"handlers belong to the whole machine - and that was refused "
-				"or cancelled.\r\n"
-				"Re-run from an administrator prompt, or add -user to "
-				"register for your account only.", 1 ) ;
-			return ;
-		}
-		root = HKEY_CURRENT_USER ;
-	}
+	if( !ClassRegTarget( path, "-sshhandler", force ? " -force" : "",
+			     peruser, assume_yes,
+			     "the telnet://, ssh:// and kitty:// handlers",
+			     "KiTTY URL handlers", &root ) )
+		return ;
 	prefix = "Software\\Classes\\" ;
 
 	len = snprintf( report, sizeof(report), "%s\r\nRegistering: %s\r\n\r\n",
@@ -1012,12 +1056,17 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 			kept++ ;
 			continue ;
 		}
-		/* About to replace someone else's registration: save it first, so the
-		 * report can hand back a command that undoes this, rather than a
-		 * registry value the user would have to rebuild by hand. */
+		/* About to take a protocol over. What "undo" means depends on where
+		 * the handler being displaced actually lives: if the hive we write to
+		 * already holds this key, we are overwriting it and the way back is to
+		 * import the copy taken here; if it does not, we are shadowing a
+		 * registration in the other hive, and the way back is to delete what
+		 * we are about to create - Windows then falls through to it again. */
+		snprintf( key, sizeof(key), "%s%s", prefix, protos[i].proto ) ;
+		mine = ClassKeyExists( root, key ) ;
 		backup[0] = '\0' ;
-		if( had )
-			UrlHandlerBackup( protos[i].proto, backup, sizeof(backup) ) ;
+		if( mine )
+			ClassKeyBackup( root, key, protos[i].proto, backup, sizeof(backup) ) ;
 		if( !UrlHandlerWrite( root, prefix, protos[i].proto,
 				      protos[i].friendly, path, cmd ) ) {
 			len += snprintf( report+len, sizeof(report)-len,
@@ -1032,12 +1081,19 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 			len += snprintf( report+len, sizeof(report)-len,
 					 "%s://  taken over from %s\r\n           %s\r\n",
 					 protos[i].proto, prog[0] ? prog : "another program", prev ) ;
-			if( backup[0] )
+			if( mine && backup[0] )
 				len += snprintf( report+len, sizeof(report)-len,
 					 "           to undo:  reg import \"%s\"\r\n", backup ) ;
-			else
+			else if( mine )
 				len += snprintf( report+len, sizeof(report)-len,
 					 "           (the old setting could NOT be backed up)\r\n" ) ;
+			else
+				len += snprintf( report+len, sizeof(report)-len,
+					 "           to undo:  reg delete \"%s\\%s%s\" /f\r\n"
+					 "           (that handler is registered in the other hive "
+					 "and takes over again)\r\n",
+					 root == HKEY_LOCAL_MACHINE ? "HKLM" : "HKCU",
+					 prefix, protos[i].proto ) ;
 		} else {
 			len += snprintf( report+len, sizeof(report)-len,
 					 "%s://  registered\r\n", protos[i].proto ) ;
@@ -1108,8 +1164,8 @@ void RemoveSSHHandler( void ) {
 			}
 
 			backup[0] = '\0' ;
-			UrlHandlerBackup( protos[i], backup, sizeof(backup) ) ;
 			snprintf( key, sizeof(key), "Software\\Classes\\%s", protos[i] ) ;
+			ClassKeyBackup( hives[h].root, key, protos[i], backup, sizeof(backup) ) ;
 			if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS ) {
 				removed++ ;
 				len += snprintf( report+len, sizeof(report)-len,
@@ -1137,27 +1193,165 @@ void RemoveSSHHandler( void ) {
 }
 
 // Creation de l'association de fichiers *.ktx
-void CreateFileAssoc() {
-	char path[1024], buffer[1024] ;
-	char ext[15] ;
+/* KiTTY, rewritten 2026-08-01 alongside CreateSSHHandler(), which had the same
+ * three faults: it wrote to HKEY_CLASSES_ROOT (= HKLM) and so did nothing at
+ * all from an unelevated prompt while reporting nothing either; it claimed the
+ * extension even when another program owned it; and it never said what it had
+ * done. Same treatment - HKLM if we may, elevation for the machine-wide
+ * install, HKCU otherwise, the existing owner left alone unless `force` (and
+ * then exported first), a portable copy asked, and the outcome reported to the
+ * console that asked for it. */
+void CreateFileAssoc( int force, int peruser, int assume_yes ) {
+	char path[1024], buffer[1024], report[2048], cur[512], backup[MAX_PATH] ;
+	char ext[15], key[256] ;
+	HKEY root ;
+	DWORD sz ;
+	size_t len ;
+	int had = 0, mine = 0 ;
+
 	if( strlen( FileExtension ) > 0 ) { snprintf( ext, sizeof(ext), "%s", FileExtension ) ; } else { snprintf( ext, sizeof(ext), "%s", ".ktx") ; }
 
 	GetModuleFileName( NULL, (LPTSTR)path, 1024 ) ;
 
+	snprintf( buffer, sizeof(buffer), "the %s file association", ext ) ;
+	if( !ClassRegTarget( path, "-fileassoc", force ? " -force" : "",
+			     peruser, assume_yes, buffer,
+			     "KiTTY file association", &root ) )
+		return ;
+
+	/* Who owns the extension today? Its default value is the ProgID that
+	 * opens it - ours is kitty.connect.1. */
+	sz = sizeof(cur) ; cur[0] = '\0' ;
+	if( RegGetValueA( HKEY_CLASSES_ROOT, ext, NULL, RRF_RT_REG_SZ, NULL,
+			  cur, &sz ) == ERROR_SUCCESS && cur[0] )
+		had = 1 ;
+
+	len = snprintf( report, sizeof(report), "%s\r\nAssociating %s with: %s\r\n\r\n",
+			root == HKEY_LOCAL_MACHINE ?
+			"For all users of this machine (HKEY_LOCAL_MACHINE)." :
+			"For your account only (HKEY_CURRENT_USER).", ext, path ) ;
+
+	if( had && strcmp( cur, "kitty.connect.1" ) != 0 && !force ) {
+		snprintf( report+len, sizeof(report)-len,
+			  "%s  LEFT ALONE, currently opened by \"%s\"\r\n\r\n"
+			  "Add -force to take it over; the current setting is exported to "
+			  "a .reg file first and this report then names the command that "
+			  "restores it.", ext, cur ) ;
+		KittyCliReport( "KiTTY file association", report, 1 ) ;
+		return ;
+	}
+
+	/* Same question as for a URL handler: are we overwriting this hive's own
+	 * key, or shadowing one in the other hive? The undo differs. */
+	snprintf( key, sizeof(key), "Software\\Classes\\%s", ext ) ;
+	mine = ClassKeyExists( root, key ) ;
+	backup[0] = '\0' ;
+	if( mine )
+		ClassKeyBackup( root, key, ext[0] == '.' ? ext+1 : ext,
+				backup, sizeof(backup) ) ;
+
 	// Association des fichers .ktx avec l'application KiTTY
 	// Création d l'application
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1", "", "KiTTY connection manager") ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1", "FriendlyTypeName", "@KiTTY, -120") ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1\\CurVer", "", "kitty.connect.1") ;
+	snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1" ) ;
+	RegTestOrCreate( root, key, "", "KiTTY connection manager") ;
+	RegTestOrCreate( root, key, "FriendlyTypeName", "@KiTTY, -120") ;
+	snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1\\CurVer" ) ;
+	RegTestOrCreate( root, key, "", "kitty.connect.1") ;
 	snprintf( buffer, sizeof(buffer), "%s", path ) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1\\DefaultIcon", "", buffer);
+	snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1\\DefaultIcon" ) ;
+	RegTestOrCreate( root, key, "", buffer);
 	snprintf( buffer, sizeof(buffer), "\"%s\" -kload \"%%1\"", path ) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "kitty.connect.1\\shell\\open\\command", "", buffer) ;
+	snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1\\shell\\open\\command" ) ;
+	if( !RegTestOrCreate( root, key, "", buffer) ) {
+		snprintf( report+len, sizeof(report)-len,
+			  "The registration could NOT be written." ) ;
+		KittyCliReport( "KiTTY file association", report, 1 ) ;
+		return ;
+	}
 	// Création de l'association de fichiers
-	RegTestOrCreate( HKEY_CLASSES_ROOT, ext, "", "kitty.connect.1") ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, ext, "PerceivedType", "Connection") ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, ext, "Content Type", "connection/ssh") ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, ext, "OpenWithProgids", "kitty.connect.1") ;
+	snprintf( key, sizeof(key), "Software\\Classes\\%s", ext ) ;
+	RegTestOrCreate( root, key, "", "kitty.connect.1") ;
+	RegTestOrCreate( root, key, "PerceivedType", "Connection") ;
+	RegTestOrCreate( root, key, "Content Type", "connection/ssh") ;
+	RegTestOrCreate( root, key, "OpenWithProgids", "kitty.connect.1") ;
+
+	if( had && strcmp( cur, "kitty.connect.1" ) != 0 ) {
+		len += snprintf( report+len, sizeof(report)-len,
+				 "%s  taken over from \"%s\"\r\n", ext, cur ) ;
+		if( mine && backup[0] )
+			snprintf( report+len, sizeof(report)-len,
+				  "     to undo:  reg import \"%s\"\r\n", backup ) ;
+		else if( mine )
+			snprintf( report+len, sizeof(report)-len,
+				  "     (the old setting could NOT be backed up)\r\n" ) ;
+		else
+			snprintf( report+len, sizeof(report)-len,
+				  "     to undo:  reg delete \"%s\\Software\\Classes\\%s\" /f\r\n"
+				  "     (the association in the other hive takes over again)\r\n",
+				  root == HKEY_LOCAL_MACHINE ? "HKLM" : "HKCU", ext ) ;
+	} else {
+		snprintf( report+len, sizeof(report)-len, "%s  associated\r\n", ext ) ;
+	}
+	KittyCliReport( "KiTTY file association", report, 0 ) ;
+}
+
+/* KiTTY (-fileassoc -uninstall): give the extension back. Only removed when it
+ * is still ours; the ProgID goes with it. Exported first, like everything else
+ * here, so the removal can be undone. */
+void RemoveFileAssoc( void ) {
+	static const struct { HKEY root ; const char *label ; } hives[] = {
+		{ HKEY_CURRENT_USER,  "your account" },
+		{ HKEY_LOCAL_MACHINE, "all users" },
+	} ;
+	char ext[15], key[256], cur[512], backup[MAX_PATH], report[2048] ;
+	size_t len ;
+	int h, removed = 0 ;
+	DWORD sz ;
+
+	if( strlen( FileExtension ) > 0 ) { snprintf( ext, sizeof(ext), "%s", FileExtension ) ; } else { snprintf( ext, sizeof(ext), "%s", ".ktx") ; }
+
+	len = snprintf( report, sizeof(report),
+			"Removing KiTTY's %s file association.\r\n\r\n", ext ) ;
+
+	for( h = 0 ; h < (int)(sizeof(hives)/sizeof(hives[0])) ; h++ ) {
+		snprintf( key, sizeof(key), "Software\\Classes\\%s", ext ) ;
+		sz = sizeof(cur) ; cur[0] = '\0' ;
+		if( RegGetValueA( hives[h].root, key, NULL, RRF_RT_REG_SZ, NULL,
+				  cur, &sz ) == ERROR_SUCCESS && cur[0] ) {
+			if( strcmp( cur, "kitty.connect.1" ) != 0 ) {
+				len += snprintf( report+len, sizeof(report)-len,
+					 "%s (%s)  LEFT ALONE, opened by \"%s\"\r\n",
+					 ext, hives[h].label, cur ) ;
+				continue ;
+			}
+			backup[0] = '\0' ;
+			ClassKeyBackup( hives[h].root, key, ext[0] == '.' ? ext+1 : ext,
+					backup, sizeof(backup) ) ;
+			if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS ) {
+				removed++ ;
+				len += snprintf( report+len, sizeof(report)-len,
+					 "%s (%s)  removed\r\n", ext, hives[h].label ) ;
+				if( backup[0] )
+					len += snprintf( report+len, sizeof(report)-len,
+						 "     to undo:  reg import \"%s\"\r\n", backup ) ;
+			} else {
+				len += snprintf( report+len, sizeof(report)-len,
+					 "%s (%s)  could not be removed%s\r\n", ext, hives[h].label,
+					 hives[h].root == HKEY_LOCAL_MACHINE ?
+					 " - needs administrator rights" : "" ) ;
+			}
+		}
+		snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1" ) ;
+		if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS && len < sizeof(report) )
+			len += snprintf( report+len, sizeof(report)-len,
+				 "kitty.connect.1 (%s)  removed\r\n", hives[h].label ) ;
+	}
+
+	if( !removed && len < sizeof(report) )
+		snprintf( report+len, sizeof(report)-len,
+			  "Nothing of KiTTY's was associated." ) ;
+
+	KittyCliReport( "KiTTY file association", report, removed ? 0 : 1 ) ;
 }
 	
 // Check for KiTTY registry key. If not, copy from PuTTY one

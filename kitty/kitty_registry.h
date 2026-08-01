@@ -78,7 +78,13 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) ;
 void RemoveSSHHandler( void ) ;
 
 // Creation de l'association de fichiers *.ktx
-void CreateFileAssoc() ;
+// KiTTY: same options as CreateSSHHandler - force = take the extension over
+// from whatever opens it now (exported first), peruser = HKCU without asking
+// for administrator rights, assume_yes = skip the portable copy's question
+void CreateFileAssoc( int force, int peruser, int assume_yes ) ;
+
+// KiTTY: -fileassoc -uninstall. Removes the association only while it is ours
+void RemoveFileAssoc( void ) ;
 
 // Vérifie l'existance de la clé de KiTTY sinon la copie depuis PuTTY
 void TestRegKeyOrCopyFromPuTTY( HKEY hMainKey, char * KeyName ) ;

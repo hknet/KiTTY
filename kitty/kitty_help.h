@@ -9,7 +9,7 @@ In KiTTY some new command-line options are available:\r\n\
 * -convert-dir: convert registry settings to [savemode=dir mode](Portability.md)\r\n\
 * -defini: create a default configuration kitty.template.ini\r\n\
 * -edit: edit the settings of a session\r\n\
-* -fileassoc: associate .ktx files with KiTTY. See [Portability feature](Portability.md) to define file extention\r\n\
+* -fileassoc: open .ktx session files with KiTTY (see [Portability feature](Portability.md) for the file extension). Machine-wide when run as administrator, for your account otherwise; an extension another program opens is reported and left alone. Takes the same options as -sshhandler: -force, -user, -yes, -uninstall\r\n\
 * -folder: directly open a specific folder (for [savemode=dir mode](Portability.md) only). It must precede -load option\r\n\
 * -fullscreen: start directly in full screen mode\r\n\
 * -help: print this help message\r\n\
