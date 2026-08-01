@@ -5,6 +5,76 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.67-beta — 2026-08-01
+
+- **A disconnected window still says which connection it was.** When a session
+  ended, the title was replaced with `KiTTY (inactive)` — so a screenful of dead
+  windows all read the same thing and none could be told apart. The window now
+  keeps the title the session gave it and adds the state at the end:
+  `user@host: ~ (inactive)`, or `⚠ user@host: ~ (disconnected)` when the
+  connection was lost. The name stays in the first few characters, where it
+  survives the taskbar cutting the title short. Fixes hknet/KiTTY#22.
+
+- **A lost connection is marked as lost.** The warning marker in the title was
+  unreachable whenever auto-reconnect was enabled — which is the default, and
+  precisely the case that leaves a screenful of dead windows. It is now set when
+  the link drops, and cleared when the session comes back.
+
+- **A session set not to reconnect reports its errors again.** With the global
+  auto-reconnect switch on and *Attempt to reconnect on connection failure* off
+  for a session, a dropped connection produced neither a retry nor a message:
+  the error was swallowed and the window simply went quiet. The per-session
+  setting is now part of the decision, so such a session falls through to the
+  normal error report. Inherited from classic KiTTY.
+
+- **Quick connect: start from Default Settings and type a host.** The
+  configuration box opens with the session used last, which is the wrong
+  starting point if you connect by typing an address — the settings that arrive
+  belong to whichever host you visited last. Load **Default Settings** once and
+  KiTTY remembers that, opening on the defaults with the cursor already in
+  *Host Name (or IP address)* and its contents selected, until you load another
+  session. Typing an address into an unsaved session does not change that, so
+  the mode survives connecting. `loadlastsession=no` in the `[ConfigBox]`
+  section of `kitty.ini` makes it permanent. Fixes hknet/KiTTY#23.
+
+- **`ssh://` links work on the command line and from the browser.** KiTTY
+  registers itself as the handler for `ssh://` URLs but could not read one:
+  every link its own handler delivered arrived as a hostname that could not be
+  resolved. `ssh://[user@]host[:port]` is understood again, as is
+  `kitty://session-name` for a saved session. A password in the URL is parsed
+  only so that it cannot be taken for part of the address, and is then
+  discarded.
+
+- **A URL without a port connects to the right port.** `ssh://host` and
+  `telnet://host` set the port to "unspecified", and nothing turned that back
+  into 22 or 23, so the connection attempt read `port -1` and failed. Both now
+  take the protocol's own default.
+
+- **Registering KiTTY for URLs and for `.ktx` files works without administrator
+  rights, and stops taking over other programs' settings.** `-sshhandler` and
+  `-fileassoc` wrote to a machine-wide part of the registry, so from an ordinary
+  prompt they registered nothing at all — while reporting success. They now
+  register for the machine when run as administrator (the machine-wide
+  installation asks for the rights itself) and for your account otherwise; a
+  protocol or extension another program opens is reported and left alone unless
+  `-force` is given, in which case the previous setting is exported to a `.reg`
+  file and the report names the command that restores it. `-uninstall` removes
+  what KiTTY registered, and a portable KiTTY asks before writing to the
+  registry at all. The URL scheme for opening a saved session is now `kitty://`;
+  `putty://` is registered only with `-puttyurl`, and read either way.
+
+- **`-help` prints the command-line options.** KiTTY had no way to ask: the list
+  existed in the program but nothing ever displayed it, and it had gone stale —
+  it documented seventeen options this port does not have. It has been checked
+  against the real command line and now covers the current ones, including quick
+  connect and the registration switches above.
+
+- **The Event Log has a Clear button**, and no longer disappears from under you.
+  A device that sends a channel message for a channel that has just closed — a
+  Cisco does this on every logout — could make the window and its Event Log
+  vanish at the moment you clicked something, because that path quit the program
+  without honouring the rule that an open Event Log defers the close.
+
 ## 0.84.1.66-beta — 2026-07-29
 
 - **The configuration box no longer crashes when you start a session from

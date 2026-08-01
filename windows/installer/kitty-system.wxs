@@ -11,9 +11,9 @@
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
-  <Package Name="KiTTY 0.84.1.66-beta (system-wide install)"
+  <Package Name="KiTTY 0.84.1.67-beta (system-wide install)"
            Manufacturer="KiTTY 0.84 port"
-           Version="0.84.166"
+           Version="0.84.167"
            UpgradeCode="69EA2DD5-EF19-4811-B324-EF34CAA6942C"
            Scope="perMachine"
            Compressed="yes">

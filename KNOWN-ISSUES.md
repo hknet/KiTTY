@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.66 — Known issues & limitations
+# KiTTY 0.84.1.67 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -93,11 +93,33 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.66-beta @ 2026-07-29`.
+- **Version string:** binaries report `0.84.1.67-beta @ 2026-08-01`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.67
+
+- **A window whose session has ended keeps that session's title**, with the
+  state added at the end — `user@host: ~ (inactive)`, or
+  `⚠ user@host: ~ (disconnected)` when the connection was lost. Ten dead windows
+  can be told apart again (hknet/KiTTY#22).
+- **Quick connect**: load "Default Settings" once and the configuration box
+  opens on the defaults with the cursor in *Host Name*, until another session is
+  loaded; `loadlastsession=no` in `[ConfigBox]` makes it permanent
+  (hknet/KiTTY#23).
+- **`ssh://` and `kitty://` links** are understood on the command line and from
+  a browser, and a URL with no port now connects to the protocol's default port
+  instead of failing.
+- **`-sshhandler` / `-fileassoc` register without administrator rights** (for
+  your account), never take a protocol or extension from another program without
+  `-force`, can be undone with `-uninstall`, and ask first when run from a
+  portable KiTTY.
+- **`-help`** prints the command-line options, which have been audited against
+  the real command line for the first time.
+- **The Event Log** has a **Clear** button and no longer vanishes with its window
+  when a device sends a late channel message on logout.
 
 ## New in 0.84.1.66
 
