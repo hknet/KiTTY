@@ -1090,10 +1090,14 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 			else
 				len += snprintf( report+len, sizeof(report)-len,
 					 "           to undo:  reg delete \"%s\\%s%s\" /f\r\n"
-					 "           (that handler is registered in the other hive "
-					 "and takes over again)\r\n",
+					 "           (%s was not changed - deleting the entry above "
+					 "lets %s open %s:// links again)\r\n",
 					 root == HKEY_LOCAL_MACHINE ? "HKLM" : "HKCU",
-					 prefix, protos[i].proto ) ;
+					 prefix, protos[i].proto,
+					 root == HKEY_LOCAL_MACHINE ?
+						"the registration for your account" :
+						"the registration for all users of this machine",
+					 prog[0] ? prog : "the previous program", protos[i].proto ) ;
 		} else {
 			len += snprintf( report+len, sizeof(report)-len,
 					 "%s://  registered\r\n", protos[i].proto ) ;
@@ -1287,8 +1291,13 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 		else
 			snprintf( report+len, sizeof(report)-len,
 				  "     to undo:  reg delete \"%s\\Software\\Classes\\%s\" /f\r\n"
-				  "     (the association in the other hive takes over again)\r\n",
-				  root == HKEY_LOCAL_MACHINE ? "HKLM" : "HKCU", ext ) ;
+				  "     (%s was not changed - deleting the entry above lets "
+				  "\"%s\" open %s files again)\r\n",
+				  root == HKEY_LOCAL_MACHINE ? "HKLM" : "HKCU", ext,
+				  root == HKEY_LOCAL_MACHINE ?
+					"the association for your account" :
+					"the association for all users of this machine",
+				  cur, ext ) ;
 	} else {
 		snprintf( report+len, sizeof(report)-len, "%s  associated\r\n", ext ) ;
 	}
