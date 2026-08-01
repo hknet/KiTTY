@@ -3756,18 +3756,24 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
                       "Only on clean exit", I(AUTO));
 #ifdef MOD_PERSO
     if (!GetPuttyFlag()) {
-        ctrl_checkbox(s, "Save settings automatically on exit", NO_SHORTCUT,
+        /* KiTTY: writes this session back when its window closes - the settings
+         * as they stand at that moment, so a font or colour changed mid-session
+         * survives, plus the window's size, position and maximised state.
+         *
+         * It stays on the SESSION panel: it saves the whole session, which is a
+         * session concern, not window behaviour (only "Remember window
+         * position" moved to Window > Behaviour). Its implementation had been
+         * lost in the port - the box did nothing at all - and classic KiTTY's
+         * version rewrote the session through load_settings()+save_settings()
+         * merely to keep the coordinates. An unnamed session and "Default
+         * Settings" are deliberately never written. */
+        ctrl_checkbox(s, "Save settings on exit", NO_SHORTCUT,
                       HELPCTX(no_help), conf_checkbox_handler,
                       I(CONF_saveonexit));
         /* KiTTY: exclude this session from the kitty -launcher tray menu. */
         ctrl_checkbox(s, "Hide this session from the launcher", NO_SHORTCUT,
                       HELPCTX(no_help), conf_checkbox_handler,
                       I(CONF_launcherhide));
-        /* KiTTY: remember the last window position (per monitor layout) and apply
-         * it to new windows and Duplicate Session. */
-        ctrl_checkbox(s, "Remember window position (per monitor layout)", NO_SHORTCUT,
-                      HELPCTX(no_help), conf_checkbox_handler,
-                      I(CONF_remember_winpos));
     }
 
     /* KiTTY: settings about the APPLICATION rather than this connection, in
@@ -4054,10 +4060,26 @@ static void scb_panel_terminal(struct controlbox *b)
                       I(CONF_enter_sends_crlf));
 #endif
 #ifdef MOD_DISABLEALTGR
-    if (!GetPuttyFlag())
-        ctrl_checkbox(s, "Disable AltGr menu", NO_SHORTCUT,
-                      HELPCTX(no_help), kitty_checkbox_int_handler,
+    /* KiTTY: this TURNS AltGr OFF - measured, after the label first shipped
+     * claiming the opposite. PuTTY already composes AltGr correctly: the key
+     * handler treats a keystroke as Alt only when right-Alt is NOT down
+     * (window.c, both the KF_ALTDOWN and the key_down tests), which is what
+     * lets AltGr+Q produce "@" out of the box. Clearing the right-Alt state -
+     * classic KiTTY's one-line implementation - removes that exemption, so
+     * right Alt behaves like left Alt and composition stops.
+     *
+     * Worth having for anyone who wants Alt shortcuts from EITHER Alt key and
+     * never composes; it is not a fix for AltGr, it is the off switch. */
+    if (!GetPuttyFlag()) {
+        ctrl_checkbox(s, "Disable AltGr: right Alt acts as Alt, not as a character key",
+                      NO_SHORTCUT, HELPCTX(no_help), kitty_checkbox_int_handler,
                       I(CONF_disablealtgr));
+        ctrl_text(s, "Off (default): AltGr composes characters on international "
+                     "layouts (AltGr+Q = @). On: AltGr+key sends Alt+key instead. "
+                     "Unrelated to \"AltGr acts as Compose key\" above, which is "
+                     "PuTTY's two-keystroke Compose feature.",
+                  HELPCTX(no_help));
+    }
 #endif
 
     s = ctrl_getset(b, "Terminal/Keyboard", "appkeypad",
@@ -4317,6 +4339,16 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
         ctrl_checkbox(s, "Full screen on startup", NO_SHORTCUT,
                       HELPCTX(no_help),
                       kitty_checkbox_int_handler, I(CONF_fullscreen));
+        /* KiTTY: where a window OPENS is window behaviour, not a property of
+         * the connection - this used to sit on the Session panel, among the
+         * host and port. Classic KiTTY's equivalent ("Save position and size on
+         * exit") lived in this panel too. Ours remembers the position per
+         * monitor LAYOUT, so docking or unplugging a screen restores the window
+         * where it belonged on that layout instead of stranding it off-screen;
+         * it deliberately does not restore a maximised or minimised state. */
+        ctrl_checkbox(s, "Remember window position (per monitor layout)", NO_SHORTCUT,
+                      HELPCTX(no_help), conf_checkbox_handler,
+                      I(CONF_remember_winpos));
     }
 #endif
 

@@ -883,6 +883,12 @@ static int kitty_coe_pending_exit = -1;
 static bool kitty_cmdline_has_token(const char *cl, const char *tok);
 #endif
 
+#ifdef MOD_PERSO
+/* Defined with the window-placement code below; the message loop's deferred
+ * close is its first user. */
+static void kitty_on_window_closing(WinGuiSeat *wgs, HWND hwnd);
+#endif
+
 int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 {
     MSG msg;
@@ -1666,8 +1672,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             kitty_coe_pending_exit = -1;
             /* PostQuitMessage gives no WM_DESTROY, so save the position here,
              * exactly as the immediate close paths do. */
-            if (conf_get_bool(wgs->conf, CONF_remember_winpos))
-                kitty_save_window_placement(wgs->term_hwnd);
+            kitty_on_window_closing(wgs, wgs->term_hwnd);
             PostQuitMessage(code);
         }
 #endif
@@ -2106,8 +2111,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
                          "log)");
                 return;
             }
-            if (conf_get_bool(wgs->conf, CONF_remember_winpos))
-                kitty_save_window_placement(wgs->term_hwnd);
+            kitty_on_window_closing(wgs, wgs->term_hwnd);
             PostQuitMessage(0);
         } else {
             queue_toplevel_callback(close_session, wgs);
@@ -2191,8 +2195,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
 #ifdef MOD_PERSO
         /* Same as exit_callback: this fatal-error close uses PostQuitMessage
          * (no WM_DESTROY), so save the remembered position here too. */
-        if (conf_get_bool(wgs->conf, CONF_remember_winpos))
-            kitty_save_window_placement(wgs->term_hwnd);
+        kitty_on_window_closing(wgs, wgs->term_hwnd);
 #endif
         PostQuitMessage(1);
     } else {
@@ -3165,8 +3168,7 @@ static void exit_callback(void *vctx)
              * about to close. This path uses PostQuitMessage, which does NOT
              * generate WM_DESTROY, so the position must be saved here too -- else
              * "remember window position" never records a window closed this way. */
-            if (conf_get_bool(wgs->conf, CONF_remember_winpos))
-                kitty_save_window_placement(wgs->term_hwnd);
+            kitty_on_window_closing(wgs, wgs->term_hwnd);
 #endif
             PostQuitMessage(0);
         } else {
@@ -3478,8 +3480,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       case WM_DESTROY:
 #ifdef MOD_PERSO
         /* KiTTY: remember this window's position (topology-keyed) for next time. */
-        if (conf_get_bool(wgs->conf, CONF_remember_winpos))
-            kitty_save_window_placement(hwnd);
+        kitty_on_window_closing(wgs, hwnd);
 #endif
         show_mouseptr(wgs, true);
         PostQuitMessage(0);
@@ -6018,6 +6019,23 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
             keystate[VK_RMENU] = keystate[VK_MENU];
         }
 
+#ifdef MOD_DISABLEALTGR
+        /* KiTTY "Disable AltGr": make the RIGHT Alt key behave like the left
+         * one. The tests below (KF_ALTDOWN, and the key_down branch) treat a
+         * keystroke as Alt only while right-Alt is NOT down, which is exactly
+         * what lets an international layout compose AltGr+Q into "@". Clearing
+         * the state here removes that exemption, so AltGr stops composing and
+         * sends Alt+key instead - for people who want Alt shortcuts from either
+         * Alt key. It is the off switch for AltGr, not a fix for it.
+         *
+         * The setting existed in this port - saved, loaded, with a checkbox -
+         * but this line, its entire implementation, was never carried over, so
+         * the box did nothing at all. */
+        if (!GetPuttyFlag() && conf_get_int(wgs->conf, CONF_disablealtgr)) {
+            keystate[VK_RMENU] = 0;
+        }
+#endif
+
 
         /* Nastiness with NUMLock - Shift-NUMLock is left alone though */
         if ((funky_type == FUNKY_VT400 ||
@@ -8087,6 +8105,49 @@ static void kitty_winpos_dump_topo(const char *when)
     if (!kitty_winpos_dbg_enabled()) return;
     kitty_winpos_dbg("%s: monitor topology:", when);
     EnumDisplayMonitors(NULL, NULL, kitty_topo_logenum, 0);
+}
+
+/* KiTTY: everything a closing window has to persist, in ONE place - there are
+ * five exit routes (four PostQuitMessage paths that never see WM_DESTROY, plus
+ * WM_DESTROY itself), and each used to carry its own copy of the placement
+ * save. A sixth route would have silently skipped it.
+ *
+ * Two independent per-session options:
+ *   "Remember window position"  -> topology-keyed placement, app-wide.
+ *   "Save settings on exit"     -> write this session back, including the
+ *                                  window's current size and position.
+ *
+ * The settings save deliberately skips an unnamed session (an ad-hoc "type a
+ * host and go" window has nothing to be saved into) and "Default Settings"
+ * (rewriting the template from one window's final state is how every later
+ * session inherits a stray change). CONF_width/height already track the live
+ * terminal size - they are updated on every resize - so only the position and
+ * the maximised state need filling in here. */
+static void kitty_on_window_closing(WinGuiSeat *wgs, HWND hwnd)
+{
+    if (!wgs) return;
+    if (!hwnd) hwnd = wgs->term_hwnd;
+
+    if (conf_get_bool(wgs->conf, CONF_remember_winpos))
+        kitty_save_window_placement(hwnd);
+
+    if (conf_get_bool(wgs->conf, CONF_saveonexit)) {
+        const char *name = conf_get_str(wgs->conf, CONF_sessionname);
+        if (name && *name && strcmp(name, "Default Settings") != 0) {
+            char *err;
+            if (hwnd && !IsIconic(hwnd) && !IsZoomed(hwnd)) {
+                RECT r;
+                if (GetWindowRect(hwnd, &r)) {
+                    conf_set_int(wgs->conf, CONF_xpos, (int)r.left);
+                    conf_set_int(wgs->conf, CONF_ypos, (int)r.top);
+                }
+            }
+            conf_set_int(wgs->conf, CONF_windowstate,
+                         (hwnd && IsZoomed(hwnd)) ? 1 : 0);
+            err = save_settings(name, wgs->conf);
+            if (err) sfree(err);   /* closing: nowhere left to show it */
+        }
+    }
 }
 
 /* Save THIS window's physical rect under the current-topology key (on close).
