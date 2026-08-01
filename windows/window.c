@@ -8220,8 +8220,53 @@ static int kitty_restore_window_placement(HWND hwnd)
     return ok;
 }
 
-/* Move THIS seat's window. A session that pins CONF_xpos/ypos (>=0) wins; else,
- * if "remember window position" is on, restore the topology-keyed global. */
+/* Drag a pinned top-left back onto a visible monitor. A fixed position is typed
+ * by hand (or comes from -xpos/-ypos, or from a session saved on a machine with
+ * other screens), so it can easily name a spot that no longer exists - and a
+ * window placed there is gone as far as the user is concerned. Nudged onto the
+ * nearest monitor's work area instead, keeping the window fully on screen where
+ * its size allows. */
+static void kitty_clamp_pin_to_visible(HWND hwnd, int *x, int *y)
+{
+    POINT pt;
+    HMONITOR mon;
+    MONITORINFO mi;
+    RECT wr;
+    int w = 0, h = 0;
+
+    if (kitty_point_on_monitor(*x + 8, *y + 8)) return;   /* already visible */
+    if (!p_MonitorFromPoint || !p_GetMonitorInfoA) return;
+
+    pt.x = *x; pt.y = *y;
+    mon = p_MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+    if (!mon) return;
+    mi.cbSize = sizeof(mi);
+    if (!p_GetMonitorInfoA(mon, &mi)) return;
+
+    if (hwnd && GetWindowRect(hwnd, &wr)) {
+        w = (int)(wr.right - wr.left);
+        h = (int)(wr.bottom - wr.top);
+    }
+    if (w > 0 && *x + w > mi.rcWork.right)  *x = (int)mi.rcWork.right - w;
+    if (h > 0 && *y + h > mi.rcWork.bottom) *y = (int)mi.rcWork.bottom - h;
+    if (*x < mi.rcWork.left) *x = (int)mi.rcWork.left;
+    if (*y < mi.rcWork.top)  *y = (int)mi.rcWork.top;
+    kitty_winpos_dbg("APPLY pin was off-screen, clamped to (%d,%d)", *x, *y);
+}
+
+/* Move THIS seat's window.
+ *
+ * A FIXED position (Window > Appearance: "Open the window at a fixed position"
+ * + Top/Left) wins, because it is an explicit instruction - the user typed
+ * coordinates, or passed -xpos/-ypos - while "remember window position" is a
+ * convenience that follows the window around. If the pinned spot is not on any
+ * current monitor it is clamped onto the nearest one rather than obeyed.
+ *
+ * The precedence used to be the other way round, and had to be: nothing
+ * consulted the enabling checkbox, so a session whose stored TermXPos/TermYPos
+ * happened to be (0,0) looked like an explicit pin and was forced to the screen
+ * corner. Now that CONF_set_windowpos actually gates the pin, "no pin" and
+ * "pinned at the corner" are distinguishable and the natural order works. */
 void kitty_apply_window_pos(WinGuiSeat *wgs)
 {
     if (!wgs || !wgs->term_hwnd) return;
@@ -8229,19 +8274,19 @@ void kitty_apply_window_pos(WinGuiSeat *wgs)
     int x = conf_get_int(wgs->conf, CONF_xpos);
     int y = conf_get_int(wgs->conf, CONF_ypos);
     int remember = conf_get_bool(wgs->conf, CONF_remember_winpos);
-    kitty_winpos_dbg("APPLY xpos=%d ypos=%d remember=%d", x, y, remember);
-    /* "Remember window position" takes precedence over a saved CONF_xpos/ypos
-     * pin: a session whose stored TermXPos/TermYPos are (0,0) was otherwise
-     * mis-read as an explicit pin and forced to the screen corner, defeating the
-     * remember feature (the saved topology-keyed position was never restored). */
-    if (remember && kitty_restore_window_placement(wgs->term_hwnd)) {
-        kitty_winpos_dbg("APPLY restored remembered position");
-        return;
-    }
-    if (x >= 0 && y >= 0) {
+    int pinned = conf_get_bool(wgs->conf, CONF_set_windowpos);
+    kitty_winpos_dbg("APPLY xpos=%d ypos=%d pinned=%d remember=%d",
+                     x, y, pinned, remember);
+
+    if (pinned && x >= 0 && y >= 0) {
+        kitty_clamp_pin_to_visible(wgs->term_hwnd, &x, &y);
         SetWindowPos(wgs->term_hwnd, NULL, x, y, 0, 0,
                      SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
         kitty_winpos_dbg("APPLY pinned CONF pos (%d,%d) set", x, y);
+        return;
+    }
+    if (remember && kitty_restore_window_placement(wgs->term_hwnd)) {
+        kitty_winpos_dbg("APPLY restored remembered position");
         return;
     }
 }

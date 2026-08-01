@@ -486,3 +486,16 @@
 #ifndef IDC_MPWM_OPEN
 #define IDC_MPWM_OPEN 1256
 #endif
+/* Window-title placeholder reference: a modeless list opened from the config
+ * box's Window title field, so the codes stay on screen WHILE the title is
+ * being typed. Select one and Copy (or double-click) puts it on the clipboard.
+ * Classic KiTTY printed the same list as eight static lines in the panel. */
+#ifndef IDD_TITLEVARS
+#define IDD_TITLEVARS 144
+#endif
+#ifndef IDC_TITLEVARS_LIST
+#define IDC_TITLEVARS_LIST 1257
+#endif
+#ifndef IDC_TITLEVARS_COPY
+#define IDC_TITLEVARS_COPY 1258
+#endif

@@ -1409,7 +1409,7 @@ CONF_OPTION(failure_reconnect, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("Fa
 CONF_OPTION(logtimestamp, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("LogTimestamp"),)
 CONF_OPTION(autocommandout, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("AutocommandOut"),)
 CONF_OPTION(logtimerotation, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("LogTimeRotation"),)
-CONF_OPTION(save_windowpos, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("SaveWindowPos"),)
+CONF_OPTION(set_windowpos, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("SaveWindowPos"),)
 CONF_OPTION(foreground_on_bell, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("ForegroundOnBell"),)
 CONF_OPTION(ctrl_tab_switch, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("CtrlTabSwitch"),)
 CONF_OPTION(comment, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Comment"),)

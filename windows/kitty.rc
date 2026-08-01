@@ -287,6 +287,21 @@ BEGIN
     DEFPUSHBUTTON   "OK", IDOK, 198, 20, 42, 14
 END
 
+/* Window-title placeholders: a modeless reference opened from the Window title
+ * field (Window > Behaviour). Modeless on purpose - the list stays on screen
+ * while the title is being typed, which a message box cannot do. Filled at
+ * runtime by kitty_show_title_placeholders() in kitty/kitty_win.c. */
+IDD_TITLEVARS DIALOG DISCARDABLE 0, 0, 300, 168
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX
+CAPTION "Window title placeholders"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "Double-click a placeholder (or select one and press Copy) to put it on the clipboard, then paste it into the Window title field.", -1, 7, 5, 286, 18
+    LISTBOX         IDC_TITLEVARS_LIST, 7, 26, 286, 112, LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT | LBS_NOTIFY | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "&Copy", IDC_TITLEVARS_COPY, 186, 146, 50, 14
+    DEFPUSHBUTTON   "Close", IDCANCEL, 243, 146, 50, 14
+END
+
 IDD_INFOBOX DIALOG DISCARDABLE 0, 0, 350, 28
 STYLE WS_DLGFRAME | DS_CENTER | WS_POPUP | WS_VISIBLE
 CAPTION "KiTTY"

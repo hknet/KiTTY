@@ -1417,6 +1417,121 @@ void kitty_menu_reposition(HWND term_hwnd, Conf *conf, int x, int y)
                  SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
 }
 
+/* ---- Window-title placeholder reference (config box, Window > Behaviour) ----
+ *
+ * The placeholders KiTTY expands in a window title. Classic KiTTY listed them
+ * as eight static lines squeezed into the panel; this is a modeless window, so
+ * the list stays readable WHILE the title is being typed, and each entry can be
+ * copied instead of retyped from memory. Keep in step with
+ * kitty_expand_wintitle() and docs/window-title-placeholders.md.
+ *
+ * The codes carry two '%' because that is what goes into the field: a title is
+ * run through a printf-style expansion first, so the clipboard has to hand over
+ * exactly what must be pasted. */
+static const struct { const char *code, *desc; } kitty_title_vars[] = {
+    { "%%h", "Hostname (the configured host if none is known yet)" },
+    { "%%s", "Saved session name" },
+    { "%%u", "Username configured for the session" },
+    { "%%p", "Port number" },
+    { "%%P", "Protocol name, e.g. SSH" },
+    { "%%f", "Folder the saved session lives in" },
+    { "%%l", "Local forwarded ports (blank if none)" },
+    { "%%d", "Dynamic/SOCKS forwarded ports (blank if none)" },
+};
+
+static HWND kitty_titlevars_dlg = NULL;
+
+/* kitty_auxpos.c - shared aux-window placement/memory, as used by the About
+ * boxes and the /help window. */
+void kitty_auxpos_apply(HWND hwnd, const char *name, HWND owner, int centre);
+void kitty_auxpos_save(HWND hwnd, const char *name);
+
+/* Put the selected placeholder - the code alone, not its description - on the
+ * clipboard. */
+static void kitty_titlevars_copy(HWND hwnd)
+{
+    int sel = (int)SendDlgItemMessage(hwnd, IDC_TITLEVARS_LIST, LB_GETCURSEL, 0, 0);
+    HGLOBAL h;
+    char *p;
+    size_t n;
+    if (sel < 0 || sel >= (int)lenof(kitty_title_vars)) { MessageBeep(0); return; }
+    n = strlen(kitty_title_vars[sel].code) + 1;
+    h = GlobalAlloc(GMEM_MOVEABLE, n);
+    if (!h) return;
+    p = (char *)GlobalLock(h);
+    if (!p) { GlobalFree(h); return; }
+    memcpy(p, kitty_title_vars[sel].code, n);
+    GlobalUnlock(h);
+    if (OpenClipboard(hwnd)) {
+        EmptyClipboard();
+        SetClipboardData(CF_TEXT, h);   /* the clipboard owns it now */
+        CloseClipboard();
+    } else {
+        GlobalFree(h);
+    }
+}
+
+static INT_PTR CALLBACK TitleVarsProc(HWND hwnd, UINT msg,
+                                      WPARAM wParam, LPARAM lParam)
+{
+    (void)lParam;
+    switch (msg) {
+      case WM_INITDIALOG: {
+        size_t i;
+        char line[160];
+        for (i = 0; i < lenof(kitty_title_vars); i++) {
+            snprintf(line, sizeof(line), "%-6s %s",
+                     kitty_title_vars[i].code, kitty_title_vars[i].desc);
+            SendDlgItemMessage(hwnd, IDC_TITLEVARS_LIST, LB_ADDSTRING,
+                               0, (LPARAM)line);
+        }
+        SendDlgItemMessage(hwnd, IDC_TITLEVARS_LIST, LB_SETCURSEL, 0, 0);
+        kitty_auxpos_apply(hwnd, "TitleVars", GetWindow(hwnd, GW_OWNER), 1);
+        return 1;
+      }
+      case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+          case IDC_TITLEVARS_COPY:
+            kitty_titlevars_copy(hwnd);
+            return 1;
+          case IDC_TITLEVARS_LIST:
+            if (HIWORD(wParam) == LBN_DBLCLK) { kitty_titlevars_copy(hwnd); return 1; }
+            return 0;
+          case IDOK: case IDCANCEL:
+            DestroyWindow(hwnd);
+            return 1;
+        }
+        return 0;
+      case WM_CLOSE:
+        DestroyWindow(hwnd);
+        return 1;
+      case WM_DESTROY:
+        kitty_auxpos_save(hwnd, "TitleVars");
+        ShinyRemoveAuxDialog(hwnd);
+        kitty_titlevars_dlg = NULL;
+        return 0;
+    }
+    return 0;
+}
+
+/* Open (or re-focus) the placeholder list. Modeless, and registered as an aux
+ * dialog so it keeps its keyboard handling while the modal configuration box is
+ * up - the whole point being that it can sit beside the field being edited. */
+void kitty_show_title_placeholders(HWND owner)
+{
+    if (kitty_titlevars_dlg && IsWindow(kitty_titlevars_dlg)) {
+        SetForegroundWindow(kitty_titlevars_dlg);
+        return;
+    }
+    kitty_titlevars_dlg = CreateDialog(hinst, MAKEINTRESOURCE(IDD_TITLEVARS),
+                                       owner, TitleVarsProc);
+    if (kitty_titlevars_dlg) {
+        ShinyAddAuxDialog(kitty_titlevars_dlg);
+        ShowWindow(kitty_titlevars_dlg, SW_SHOW);
+        SetForegroundWindow(kitty_titlevars_dlg);
+    }
+}
+
 /* IDM_HYPERLINKTOGGLE: flip runtime URL detection and sync the menu check. */
 void kitty_menu_toggle_hyperlink(HWND hwnd)
 {

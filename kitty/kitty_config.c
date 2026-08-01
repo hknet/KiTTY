@@ -209,6 +209,18 @@ static bool kitty_cfg_parse_hotkey(char *spec, UINT *mods, UINT *vk)
     return (*mods != 0 && *vk != 0);
 }
 
+/* KiTTY: open the modeless window-title placeholder reference (kitty_win.c).
+ * Owned by the active window - the configuration box - so it stacks with it
+ * rather than getting lost behind it. */
+static void kitty_title_placeholders_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                             void *data, int event)
+{
+    extern void kitty_show_title_placeholders(HWND owner);
+    (void)ctrl; (void)dlg; (void)data;
+    if (event != EVENT_ACTION) return;
+    kitty_show_title_placeholders(GetActiveWindow());
+}
+
 static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                                 void *data, int event)
 {
@@ -4311,6 +4323,16 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
     ctrl_editbox(s, "Window title:", 't', 100,
                  HELPCTX(appearance_title),
                  conf_editbox_handler, I(CONF_wintitle), ED_STR);
+#ifdef MOD_PERSO
+    /* KiTTY: the title understands placeholders (%%h, %%s, ...). Classic KiTTY
+     * printed all eight as static lines here, which is a lot of panel for a
+     * reference you need once; this opens a modeless list you can copy from and
+     * leave open while typing the title. */
+    if (!GetPuttyFlag())
+        ctrl_pushbutton(s, "Placeholders (%h, %s, ...)", NO_SHORTCUT,
+                        HELPCTX(appearance_title),
+                        kitty_title_placeholders_handler, I(0));
+#endif
     ctrl_checkbox(s, "Separate window and icon titles", 'i',
                   HELPCTX(appearance_title),
                   conf_checkbox_handler,
@@ -4424,15 +4446,25 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
      * The Window/Appearance panel: window icon + remember position (KiTTY).
      */
     if (!GetPuttyFlag()) {
+        /* KiTTY: this PINS the window to typed coordinates - it remembers
+         * nothing. It was labelled "Remember window position", the same words
+         * as the genuinely-remembering option in Window > Behaviour, in a
+         * different panel, doing the opposite thing. The checkbox now also
+         * gates the pin: it was ignored entirely, so coordinates >= 0 pinned
+         * the window whether or not the box was ticked (window.c). */
         s = ctrl_getset(b, "Window/Appearance", "position",
-                        "Remember window position");
-        ctrl_checkbox(s, "Remember window position", NO_SHORTCUT,
+                        "Where the window opens");
+        ctrl_checkbox(s, "Open the window at a fixed position", NO_SHORTCUT,
                       HELPCTX(no_help), conf_checkbox_handler,
-                      I(CONF_save_windowpos));
+                      I(CONF_set_windowpos));
         ctrl_editbox(s, "Top:", NO_SHORTCUT, 20, HELPCTX(no_help),
                      conf_editbox_handler, I(CONF_ypos), ED_INT);
         ctrl_editbox(s, "Left:", NO_SHORTCUT, 20, HELPCTX(no_help),
                      conf_editbox_handler, I(CONF_xpos), ED_INT);
+        ctrl_text(s, "A fixed position wins over \"Remember window position\" "
+                     "(Window > Behaviour). If it lands off-screen - a screen "
+                     "that is no longer there - the window is moved onto the "
+                     "nearest monitor.", HELPCTX(no_help));
 
         s = ctrl_getset(b, "Window/Appearance", "icon",
                         "Define the window icon");

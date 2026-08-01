@@ -159,7 +159,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                     conf_set_int(conf, CONF_xpos, x);
                     if (conf_get_int(conf, CONF_ypos) < 0)
                         conf_set_int(conf, CONF_ypos, 0);
-                    conf_set_bool(conf, CONF_save_windowpos, true);
+                    conf_set_bool(conf, CONF_set_windowpos, true);
                 }
             } else if (!strcmp(p, "-ypos")) {
                 if (!arglist->args[arglistpos])
@@ -169,7 +169,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                     conf_set_int(conf, CONF_ypos, y);
                     if (conf_get_int(conf, CONF_xpos) < 0)
                         conf_set_int(conf, CONF_xpos, 0);
-                    conf_set_bool(conf, CONF_save_windowpos, true);
+                    conf_set_bool(conf, CONF_set_windowpos, true);
                 }
             } else if (!strcmp(p, "-hwndparent")) {
                 /* KiTTY #554: embed the terminal as a child of the given host

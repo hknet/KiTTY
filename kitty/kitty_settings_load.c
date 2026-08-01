@@ -799,7 +799,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "TermXPos", -1, conf, CONF_xpos );
     gppi_forced(sesskey, "TermYPos", -1, conf, CONF_ypos );
     gppi_forced(sesskey, "WindowState", 0, conf, CONF_windowstate );
-    gppb_forced(sesskey, "SaveWindowPos", false, conf, CONF_save_windowpos ); /* BKG */
+    gppb_forced(sesskey, "SaveWindowPos", false, conf, CONF_set_windowpos ); /* BKG */
     gppb_forced(sesskey, "ForegroundOnBell", false, conf, CONF_foreground_on_bell );
 #ifndef MOD_NOPASSWORD
     gpps_forced(sesskey, "Password", "", conf, CONF_password ) ;
