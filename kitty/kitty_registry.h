@@ -30,10 +30,11 @@ int RegTestKey( HKEY hMainKey, LPCTSTR lpSubKey ) ;
 int RegCountKey( HKEY hMainKey, LPCTSTR lpSubKey ) ;
 
 // Teste l'existance d'une clé ou bien d'une valeur et la crée sinon
-void RegTestOrCreate( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR value ) ;
-	
+// KiTTY: 1 = written, 0 = key/value could not be written (HKCR needs elevation)
+int RegTestOrCreate( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR value ) ;
+
 // Test l'existance d'une clé ou bien d'une valeur DWORD et la crée sinon
-void RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD value ) ;
+int RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD value ) ;
 
 // Initialise toutes les sessions avec une valeur (si oldvalue==NULL) ou uniquement celles qui ont la valeur oldvalue
 void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR oldvalue, LPCTSTR value  ) ;
@@ -61,8 +62,20 @@ void MigrateScpAutoPwd( void ) ;
 // Nettoie la clé de PuTTY pour enlever les clés et valeurs spécifique à KiTTY
 BOOL RegCleanPuTTY( void ) ;
 
+// KiTTY: answer a command-line switch at the prompt that issued it (attaching
+// to the parent console); a message box only when there is no console at all
+void KittyCliReport( const char *title, const char *text, int warn ) ;
+
 // Creation du SSH Handler
-void CreateSSHHandler() ;
+// KiTTY: force = also take over protocols another program already handles;
+// peruser = register under HKCU even when this is the machine-wide install;
+// assume_yes = skip the portable build's "write to the registry?" question;
+// withputty = also register putty://, which is another project's name
+void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) ;
+
+// KiTTY: -sshhandler -uninstall. Removes only handlers pointing at a KiTTY,
+// exporting each key first so the removal can be undone
+void RemoveSSHHandler( void ) ;
 
 // Creation de l'association de fichiers *.ktx
 void CreateFileAssoc() ;

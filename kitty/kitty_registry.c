@@ -4,6 +4,12 @@ char * itoa (int __val, char *__s, int __radix) ;
 /* kitty_tools.c; declared locally because this file deliberately includes
  * only kitty_registry.h (see the MigrateOldKittyHive rationale below). */
 char * str_rtrim( char * s, const char * set ) ;
+/* kitty.c, same reason: CreateSSHHandler() needs to know whether a portable
+ * copy was configured to use the registry (kitty_store.h's SAVEMODE_REG). */
+int GetIniFileFlag( void ) ;
+#ifndef SAVEMODE_REG
+#define SAVEMODE_REG 0
+#endif
 // Variante bornee: n'ecrit jamais plus de `rsize` octets (NUL final compris)
 // dans rValue; une valeur trop longue est tronquee au lieu de deborder.
 char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize){
@@ -95,31 +101,45 @@ int RegCountKey( HKEY hMainKey, LPCTSTR lpSubKey ) {
 	}
 
 	// Teste l'existance d'une clé ou bien d'une valeur et la crée sinon
-void RegTestOrCreate( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR value ) {
-	HKEY hKey ;
-	if( lpSubKey == NULL ) return ;
-	if( strlen( lpSubKey ) == 0 ) return ;
+	// KiTTY: returns 1 on success, 0 if the key could not be opened or created
+	// or the value not written. Writing under HKEY_CLASSES_ROOT lands in
+	// HKEY_LOCAL_MACHINE and needs elevation, so failure here is ordinary and
+	// callers that register file/URL associations must be able to say so.
+	// (Both functions also used to carry on with an UNINITIALISED handle when
+	// the create failed, which is what made the failure silent.)
+int RegTestOrCreate( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR value ) {
+	HKEY hKey = NULL ;
+	int ok ;
+	if( lpSubKey == NULL ) return 0 ;
+	if( strlen( lpSubKey ) == 0 ) return 0 ;
 	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) {
-		RegCreateKey( hMainKey, lpSubKey, &hKey ) ;
+		if( RegCreateKey( hMainKey, lpSubKey, &hKey ) != ERROR_SUCCESS ) return 0 ;
 		}
+	ok = 1 ;
 	if( name != NULL ) {
-		RegSetValueEx( hKey, TEXT( name ), 0, REG_SZ, (const BYTE *)value, strlen(value)+1 ) ;
+		if( RegSetValueEx( hKey, TEXT( name ), 0, REG_SZ, (const BYTE *)value, strlen(value)+1 ) != ERROR_SUCCESS )
+			ok = 0 ;
 		}
 	RegCloseKey( hKey ) ;
+	return ok ;
 	}
-	
+
 // Test l'existance d'une clé ou bien d'une valeur DWORD et la crée sinon
-void RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD value ) {
-	HKEY hKey ;
-	if( lpSubKey == NULL ) return ;
-	if( strlen( lpSubKey ) == 0 ) return ;
+int RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD value ) {
+	HKEY hKey = NULL ;
+	int ok ;
+	if( lpSubKey == NULL ) return 0 ;
+	if( strlen( lpSubKey ) == 0 ) return 0 ;
 	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) {
-		RegCreateKey( hMainKey, lpSubKey, &hKey ) ;
+		if( RegCreateKey( hMainKey, lpSubKey, &hKey ) != ERROR_SUCCESS ) return 0 ;
 		}
+	ok = 1 ;
 	if( name != NULL ) {
-		RegSetValueEx( hKey, TEXT( name ), 0, REG_DWORD, (LPBYTE)&value, sizeof(DWORD) ) ;
+		if( RegSetValueEx( hKey, TEXT( name ), 0, REG_DWORD, (LPBYTE)&value, sizeof(DWORD) ) != ERROR_SUCCESS )
+			ok = 0 ;
 		}
 	RegCloseKey( hKey ) ;
+	return ok ;
 	}
 	
 
@@ -687,53 +707,433 @@ BOOL RegCleanPuTTY( void ) {
 	return 1;
 	}
 
+/* KiTTY: say something back from a command-line switch. kitty.exe is a
+ * GUI-subsystem program and so starts with no console of its own; attaching to
+ * the console of the shell that launched it puts the text where the user is
+ * actually looking. A message box is the fallback for when there is no console
+ * at all - started from Explorer, a shortcut or the installer - and not the
+ * normal path: a switch typed at a prompt should answer at that prompt. */
+void KittyCliReport( const char *title, const char *text, int warn ) {
+	HANDLE h ;
+	DWORD written ;
+	int attached = AttachConsole( ATTACH_PARENT_PROCESS ) ? 1 : 0 ;
+
+	h = CreateFileA( "CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
+			 NULL, OPEN_EXISTING, 0, NULL ) ;
+	if( h != INVALID_HANDLE_VALUE ) {
+		WriteFile( h, text, (DWORD)strlen(text), &written, NULL ) ;
+		WriteFile( h, "\r\n", 2, &written, NULL ) ;
+		CloseHandle( h ) ;
+		if( attached ) FreeConsole() ;
+		return ;
+	}
+	if( attached ) FreeConsole() ;
+	MessageBoxA( NULL, text, title,
+		     MB_OK | (warn ? MB_ICONWARNING : MB_ICONINFORMATION) ) ;
+}
+
+/* KiTTY: ask a yes/no question the same way KittyCliReport() answers one - at the
+ * prompt when there is one, in a box when there is not. Returns 1 only for an
+ * explicit yes; anything else, including a closed console or an unreadable
+ * input, is a no, because the caller is about to write to the registry. */
+static int CliConfirm( const char *title, const char *text ) {
+	HANDLE hout, hin ;
+	DWORD written, nread = 0 ;
+	char answer[16] ;
+	int attached = AttachConsole( ATTACH_PARENT_PROCESS ) ? 1 : 0 ;
+	int yes = 0 ;
+
+	hout = CreateFileA( "CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
+			    NULL, OPEN_EXISTING, 0, NULL ) ;
+	hin  = CreateFileA( "CONIN$", GENERIC_READ|GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE,
+			    NULL, OPEN_EXISTING, 0, NULL ) ;
+	if( hout != INVALID_HANDLE_VALUE && hin != INVALID_HANDLE_VALUE ) {
+		WriteFile( hout, text, (DWORD)strlen(text), &written, NULL ) ;
+		WriteFile( hout, "\r\nWrite these registry entries? [y/N] ", 38, &written, NULL ) ;
+		if( ReadFile( hin, answer, sizeof(answer)-1, &nread, NULL ) && nread > 0 ) {
+			answer[nread] = '\0' ;
+			yes = ( answer[0] == 'y' || answer[0] == 'Y' ) ;
+		}
+		WriteFile( hout, "\r\n", 2, &written, NULL ) ;
+	} else {
+		yes = ( MessageBoxA( NULL, text, title,
+				     MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 ) == IDYES ) ;
+	}
+	if( hout != INVALID_HANDLE_VALUE ) CloseHandle( hout ) ;
+	if( hin != INVALID_HANDLE_VALUE ) CloseHandle( hin ) ;
+	if( attached ) FreeConsole() ;
+	return yes ;
+}
+
+/* KiTTY: is this exe the machine-wide installation? The system MSI installs
+ * into %ProgramFiles%\KiTTY (kitty-system.wxs uses ProgramFiles64Folder); the
+ * per-user MSI and every portable copy live elsewhere. Used to decide whether
+ * registering URL handlers should ask for administrator rights: a program
+ * installed for everyone should register for everyone. */
+static int RunningFromProgramFiles( const char *path ) {
+	static const char *vars[] = { "ProgramW6432", "ProgramFiles", "ProgramFiles(x86)" } ;
+	char pf[MAX_PATH] ;
+	int i ;
+	for( i = 0 ; i < (int)(sizeof(vars)/sizeof(vars[0])) ; i++ ) {
+		DWORD n = GetEnvironmentVariableA( vars[i], pf, sizeof(pf) ) ;
+		if( n == 0 || n >= sizeof(pf) ) continue ;
+		if( !strnicmp( path, pf, strlen(pf) ) ) return 1 ;
+	}
+	return 0 ;
+}
+
+/* KiTTY: the command the shell currently runs for <proto>://, read from the
+ * merged HKEY_CLASSES_ROOT view - that is what actually handles a link today,
+ * wherever it was registered. Returns 1 if there is one. */
+static int UrlHandlerCurrentCommand( const char *proto, char *out, DWORD outlen ) {
+	char key[256] ;
+	DWORD len = outlen ;
+	snprintf( key, sizeof(key), "%s\\shell\\open\\command", proto ) ;
+	out[0] = '\0' ;
+	if( RegGetValueA( HKEY_CLASSES_ROOT, key, NULL, RRF_RT_REG_SZ, NULL,
+			  out, &len ) != ERROR_SUCCESS ) return 0 ;
+	return out[0] != '\0' ;
+}
+
+/* KiTTY: the program behind a registered command line, for a report a person
+ * can act on - "rundll32.exe" says more at a glance than the full command with
+ * its DLL entry point. Writes the bare file name into `out`. */
+static void UrlHandlerProgram( const char *command, char *out, size_t outlen ) {
+	const char *p = command, *end, *slash ;
+	size_t n ;
+	out[0] = '\0' ;
+	while( *p == ' ' ) p++ ;
+	if( *p == '"' ) { p++ ; end = strchr( p, '"' ) ; }
+	else            { end = strchr( p, ' ' ) ; }
+	if( !end ) end = p + strlen(p) ;
+	for( slash = end ; slash > p ; slash-- )
+		if( slash[-1] == '\\' || slash[-1] == '/' ) break ;
+	n = (size_t)(end - slash) ;
+	if( n == 0 || n >= outlen ) return ;
+	memcpy( out, slash, n ) ;
+	out[n] = '\0' ;
+}
+
+/* KiTTY: save a protocol's current registration to a .reg file before we
+ * replace it, so "put it back the way it was" is a command the user can run
+ * rather than a registry key they have to reconstruct by hand. Returns 1 and
+ * fills `file` on success. Uses Windows' own reg.exe: it exports the whole
+ * subtree, values we never touched included. */
+static int UrlHandlerBackup( const char *proto, char *file, size_t filelen ) {
+	char dir[MAX_PATH], sysdir[MAX_PATH], cmd[2048] ;
+	SYSTEMTIME st ;
+	STARTUPINFOA si ;
+	PROCESS_INFORMATION pi ;
+	DWORD rc = 1, n ;
+
+	n = GetEnvironmentVariableA( "LOCALAPPDATA", dir, sizeof(dir) ) ;
+	if( n == 0 || n >= sizeof(dir) ) return 0 ;
+	strncat( dir, "\\KiTTY", sizeof(dir)-strlen(dir)-1 ) ;
+	CreateDirectoryA( dir, NULL ) ;   /* fine if it is already there */
+
+	GetLocalTime( &st ) ;
+	snprintf( file, filelen, "%s\\urlhandler-%s-%04d%02d%02d-%02d%02d%02d.reg",
+		  dir, proto, st.wYear, st.wMonth, st.wDay,
+		  st.wHour, st.wMinute, st.wSecond ) ;
+
+	if( GetSystemDirectoryA( sysdir, sizeof(sysdir) ) == 0 ) return 0 ;
+	snprintf( cmd, sizeof(cmd), "\"%s\\reg.exe\" export \"HKCR\\%s\" \"%s\" /y",
+		  sysdir, proto, file ) ;
+	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;
+	si.dwFlags = STARTF_USESHOWWINDOW ; si.wShowWindow = SW_HIDE ;
+	if( !CreateProcessA( NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW,
+			     NULL, NULL, &si, &pi ) ) return 0 ;
+	WaitForSingleObject( pi.hProcess, 30000 ) ;
+	if( !GetExitCodeProcess( pi.hProcess, &rc ) ) rc = 1 ;
+	CloseHandle( pi.hThread ) ; CloseHandle( pi.hProcess ) ;
+	return rc == 0 ;
+}
+
+/* KiTTY: write one URL protocol registration below `root`\`prefix`. Returns 1
+ * only if the shell\open\command value - the one that matters - was written. */
+static int UrlHandlerWrite( HKEY root, const char *prefix, const char *proto,
+			    const char *friendly, const char *path,
+			    const char *command ) {
+	char key[512], buffer[1024] ;
+
+	snprintf( key, sizeof(key), "%s%s", prefix, proto ) ;
+	if( !RegTestOrCreate( root, key, "", friendly ) ) return 0 ;
+	RegTestOrCreateDWORD( root, key, "EditFlags", 2 ) ;
+	RegTestOrCreate( root, key, "FriendlyTypeName", "@ieframe.dll,-907" ) ;
+	RegTestOrCreate( root, key, "URL Protocol", "" ) ;
+	RegTestOrCreateDWORD( root, key, "BrowserFlags", 8 ) ;
+
+	snprintf( buffer, sizeof(buffer), "%s,0", path ) ;
+	snprintf( key, sizeof(key), "%s%s\\DefaultIcon", prefix, proto ) ;
+	RegTestOrCreate( root, key, "", buffer ) ;
+	snprintf( key, sizeof(key), "%s%s\\shell", prefix, proto ) ;
+	RegTestOrCreate( root, key, "", "" ) ;
+
+	snprintf( key, sizeof(key), "%s%s\\shell\\open\\command", prefix, proto ) ;
+	return RegTestOrCreate( root, key, "", command ) ;
+}
+
 // Creation du SSH Handler
-void CreateSSHHandler() {
-	char path[1024], buffer[1024] ;
+/* KiTTY, rewritten 2026-07-31. What it used to do: write telnet/ssh/putty
+ * straight into HKEY_CLASSES_ROOT - i.e. HKEY_LOCAL_MACHINE - overwriting
+ * whatever handled those links before, and reporting success even when every
+ * write had been refused for lack of elevation (RegTestOrCreate ignored its
+ * return codes, and Windows' own telnet handler survived only by accident).
+ *
+ * Now:
+ *  - per-user when it has to be. HKLM if this process may write there,
+ *    otherwise HKCU\Software\Classes, which needs no elevation and takes
+ *    precedence for this user anyway. Registering for yourself is the normal
+ *    case; needing the whole machine is the exception.
+ *  - non-destructive by default. A protocol already pointing somewhere else is
+ *    left alone and reported; `force` is what replaces it, and then the report
+ *    says what was replaced, so it can be put back.
+ *  - a portable KiTTY asks before writing anything, naming the path that would
+ *    be left behind in the registry once the stick is gone.
+ *  - our own session-URL scheme is kitty://. putty:// is another project's
+ *    name and is registered only when asked for (`withputty`); both forms are
+ *    understood on the command line either way.
+ */
+void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
+	char path[1024], report[4096], cmd[1200], prev[1024], backup[MAX_PATH] ;
+	const char *prefix ;
+	HKEY root, classes ;
+	int n = 0, written = 0, kept = 0, replaced = 0 ;
+	size_t len ;
+	int i ;
+	/* session = the URL names a saved session, so the command is -load;
+	 * optional = registered only when explicitly asked for. */
+	static const struct { const char *proto, *friendly ; int session, optional ; } protos[] = {
+		{ "telnet", "URL:Telnet Protocol",  0, 0 },
+		{ "ssh",    "URL:SSH Protocol",     0, 0 },
+		{ "kitty",  "URL:KiTTY Session",    1, 0 },
+		{ "putty",  "URL:PuTTY Session",    1, 1 },
+	} ;
 
 	GetModuleFileName( NULL, (LPTSTR)path, 1024 ) ;
 
-	// Telnet
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "telnet", "", "URL:Telnet Protocol") ;
-	RegTestOrCreateDWORD( HKEY_CLASSES_ROOT, "telnet", "EditFlags", 2) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "telnet", "FriendlyTypeName", "@ieframe.dll,-907") ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "telnet", "URL Protocol", "") ;
-	RegTestOrCreateDWORD( HKEY_CLASSES_ROOT, "telnet", "BrowserFlags", 8) ;
+#ifdef MOD_PORTABLE
+	/* A portable KiTTY is expected to leave the machine as it found it, and
+	 * registering a URL handler is the opposite of that: the entry outlives
+	 * the USB stick and then points at a path that has gone. It is still the
+	 * user's call - so ask, plainly, naming the path being registered.
+	 * savemode=registry already means "this copy uses the registry", and -yes
+	 * answers the question in advance for anyone scripting it. */
+	if( !assume_yes && GetIniFileFlag() != SAVEMODE_REG ) {
+		char question[2048] ;
+		snprintf( question, sizeof(question),
+			"This is a portable KiTTY. Registering the telnet://, ssh:// and "
+			"putty:// handlers writes to this machine's registry, pointing at:"
+			"\r\n\r\n    %s\r\n\r\n"
+			"Those entries stay behind when this copy is removed, and then "
+			"point at nothing.", path ) ;
+		if( !CliConfirm( "KiTTY URL handlers", question ) ) {
+			KittyCliReport( "KiTTY URL handlers", "Nothing was registered.", 0 ) ;
+			return ;
+		}
+	}
+#endif
 
-	snprintf( buffer, sizeof(buffer), "%s,0", path ) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "telnet\\DefaultIcon", "", buffer ) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "telnet\\shell", "", "") ;
+	/* Machine-wide if we may, this user otherwise. Opening the parent for
+	 * KEY_CREATE_SUB_KEY answers the question without creating anything. */
+	if( RegOpenKeyExA( HKEY_LOCAL_MACHINE, "Software\\Classes", 0,
+			   KEY_WRITE|KEY_CREATE_SUB_KEY, &classes ) == ERROR_SUCCESS ) {
+		RegCloseKey( classes ) ;
+		root = HKEY_LOCAL_MACHINE ;
+	} else {
+		/* Not elevated. If this is the installation every user of the machine
+		 * shares, registering it for one account is the wrong answer: ask
+		 * Windows for the rights and do the job properly. UAC does the asking,
+		 * so nothing of ours interrupts a command line. Declining leaves
+		 * nothing registered - deliberate, since the alternative writes a
+		 * per-user handler nobody asked for; -user is there to say otherwise. */
+		if( RunningFromProgramFiles( path ) && !peruser ) {
+			SHELLEXECUTEINFOA sei ;
+			char params[64] ;
+			snprintf( params, sizeof(params), "-sshhandler%s",
+				  force ? " -force" : "" ) ;
+			memset( &sei, 0, sizeof(sei) ) ;
+			sei.cbSize = sizeof(sei) ;
+			sei.fMask = SEE_MASK_NOCLOSEPROCESS ;
+			sei.lpVerb = "runas" ;
+			sei.lpFile = path ;
+			sei.lpParameters = params ;
+			sei.nShow = SW_SHOWNORMAL ;
+			if( ShellExecuteExA( &sei ) ) {
+				if( sei.hProcess ) {
+					WaitForSingleObject( sei.hProcess, INFINITE ) ;
+					CloseHandle( sei.hProcess ) ;
+				}
+				return ;   /* the elevated copy did the work and reported */
+			}
+			KittyCliReport( "KiTTY URL handlers",
+				"This is the machine-wide installation of KiTTY, so its URL "
+				"handlers belong to the whole machine - and that was refused "
+				"or cancelled.\r\n"
+				"Re-run from an administrator prompt, or add -user to "
+				"register for your account only.", 1 ) ;
+			return ;
+		}
+		root = HKEY_CURRENT_USER ;
+	}
+	prefix = "Software\\Classes\\" ;
 
-	snprintf( buffer, sizeof(buffer), "\"%s\" %%1", path ) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "telnet\\shell\\open\\command", "", buffer ) ;
+	len = snprintf( report, sizeof(report), "%s\r\nRegistering: %s\r\n\r\n",
+			root == HKEY_LOCAL_MACHINE ?
+			"For all users of this machine (HKEY_LOCAL_MACHINE)." :
+			"For your account only (HKEY_CURRENT_USER)." , path ) ;
 
-	// SSH
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "ssh", "", "URL:SSH Protocol") ;
-	RegTestOrCreateDWORD( HKEY_CLASSES_ROOT, "ssh", "EditFlags", 2) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "ssh", "FriendlyTypeName", "@ieframe.dll,-907") ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "ssh", "URL Protocol", "") ;
-	RegTestOrCreateDWORD( HKEY_CLASSES_ROOT, "ssh", "BrowserFlags", 8) ;
+	for( i = 0 ; i < (int)(sizeof(protos)/sizeof(protos[0])) ; i++ ) {
+		int had ;
+		if( protos[i].optional && !withputty ) continue ;
+		had = UrlHandlerCurrentCommand( protos[i].proto, prev, sizeof(prev) ) ;
+		n++ ;
+		if( protos[i].session )
+			snprintf( cmd, sizeof(cmd), "\"%s\" -load \"%%1\"", path ) ;
+		else
+			/* "%1" quoted: unquoted, a URL containing a space arrives split
+			 * across arguments and only its first word reaches KiTTY. */
+			snprintf( cmd, sizeof(cmd), "\"%s\" \"%%1\"", path ) ;
 
-	snprintf( buffer, sizeof(buffer), "%s,0", path ) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "ssh\\DefaultIcon", "", buffer ) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "ssh\\shell", "", "") ;
+		if( had && !strcmp( prev, cmd ) ) {
+			len += snprintf( report+len, sizeof(report)-len,
+					 "%s://  already registered for this KiTTY\r\n",
+					 protos[i].proto ) ;
+			written++ ;
+			continue ;
+		}
+		if( had && !force ) {
+			char prog[MAX_PATH] ;
+			UrlHandlerProgram( prev, prog, sizeof(prog) ) ;
+			len += snprintf( report+len, sizeof(report)-len,
+					 "%s://  LEFT ALONE, currently opened by %s\r\n"
+					 "           %s\r\n",
+					 protos[i].proto, prog[0] ? prog : "another program", prev ) ;
+			kept++ ;
+			continue ;
+		}
+		/* About to replace someone else's registration: save it first, so the
+		 * report can hand back a command that undoes this, rather than a
+		 * registry value the user would have to rebuild by hand. */
+		backup[0] = '\0' ;
+		if( had )
+			UrlHandlerBackup( protos[i].proto, backup, sizeof(backup) ) ;
+		if( !UrlHandlerWrite( root, prefix, protos[i].proto,
+				      protos[i].friendly, path, cmd ) ) {
+			len += snprintf( report+len, sizeof(report)-len,
+					 "%s://  COULD NOT BE WRITTEN\r\n", protos[i].proto ) ;
+			continue ;
+		}
+		written++ ;
+		if( had ) {
+			char prog[MAX_PATH] ;
+			UrlHandlerProgram( prev, prog, sizeof(prog) ) ;
+			replaced++ ;
+			len += snprintf( report+len, sizeof(report)-len,
+					 "%s://  taken over from %s\r\n           %s\r\n",
+					 protos[i].proto, prog[0] ? prog : "another program", prev ) ;
+			if( backup[0] )
+				len += snprintf( report+len, sizeof(report)-len,
+					 "           to undo:  reg import \"%s\"\r\n", backup ) ;
+			else
+				len += snprintf( report+len, sizeof(report)-len,
+					 "           (the old setting could NOT be backed up)\r\n" ) ;
+		} else {
+			len += snprintf( report+len, sizeof(report)-len,
+					 "%s://  registered\r\n", protos[i].proto ) ;
+		}
+		if( len >= sizeof(report) ) break ;   /* report full; stop appending */
+	}
 
-	snprintf( buffer, sizeof(buffer), "\"%s\" %%1", path ) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "ssh\\shell\\open\\command", "", buffer ) ;
+	if( kept && len < sizeof(report) )
+		snprintf( report+len, sizeof(report)-len,
+			  "\r\n%d left untouched because %s already opened by another "
+			  "program. Add -force to take %s over as well; the setting "
+			  "replaced is exported to a .reg file first, and the report then "
+			  "names the command that puts it back.",
+			  kept, kept == 1 ? "it is" : "they are",
+			  kept == 1 ? "it" : "them" ) ;
 
-	// PuTTY
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "putty", "", "URL:PuTTY Protocol") ;
-	RegTestOrCreateDWORD( HKEY_CLASSES_ROOT, "putty", "EditFlags", 2) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "putty", "FriendlyTypeName", "@ieframe.dll,-907") ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "putty", "URL Protocol", "") ;
-	RegTestOrCreateDWORD( HKEY_CLASSES_ROOT, "putty", "BrowserFlags", 8) ;
+	KittyCliReport( "KiTTY URL handlers", report, written == n ? 0 : 1 ) ;
+	(void)replaced ;
+}
 
-	snprintf( buffer, sizeof(buffer), "%s,0", path ) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "putty\\DefaultIcon", "", buffer ) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "putty\\shell", "", "") ;
+/* KiTTY (-sshhandler -uninstall): remove the URL handlers again.
+ *
+ * Only ones that point at a KiTTY are removed - a handler belonging to some
+ * other program is left exactly where it is, even if it sits under a protocol
+ * we can register. Each key is exported before it is deleted, so this is
+ * undoable too. HKCU first (that is where an unelevated registration went),
+ * then HKLM if this process may write there. */
+void RemoveSSHHandler( void ) {
+	static const char *protos[] = { "telnet", "ssh", "kitty", "putty" } ;
+	static const struct { HKEY root ; const char *label ; } hives[] = {
+		{ HKEY_CURRENT_USER,  "your account" },
+		{ HKEY_LOCAL_MACHINE, "all users" },
+	} ;
+	char report[4096], key[512], cur[1024], backup[MAX_PATH], prog[MAX_PATH] ;
+	size_t len ;
+	int i, h, removed = 0, kept = 0 ;
 
-	snprintf( buffer, sizeof(buffer), "\"%s\" -load \"%%1\"", path ) ;
-	RegTestOrCreate( HKEY_CLASSES_ROOT, "putty\\shell\\open\\command", "", buffer ) ;
+	len = snprintf( report, sizeof(report),
+			"Removing KiTTY's telnet://, ssh://, kitty:// and putty:// "
+			"handlers.\r\n\r\n" ) ;
+
+	for( h = 0 ; h < (int)(sizeof(hives)/sizeof(hives[0])) ; h++ ) {
+		for( i = 0 ; i < (int)(sizeof(protos)/sizeof(protos[0])) ; i++ ) {
+			HKEY hk ;
+			DWORD sz = sizeof(cur) ;
+			snprintf( key, sizeof(key), "Software\\Classes\\%s", protos[i] ) ;
+			if( RegOpenKeyExA( hives[h].root, key, 0, KEY_READ, &hk ) != ERROR_SUCCESS )
+				continue ;
+			RegCloseKey( hk ) ;
+
+			snprintf( key, sizeof(key),
+				  "Software\\Classes\\%s\\shell\\open\\command", protos[i] ) ;
+			cur[0] = '\0' ;
+			if( RegGetValueA( hives[h].root, key, NULL, RRF_RT_REG_SZ, NULL,
+					  cur, &sz ) != ERROR_SUCCESS ) cur[0] = '\0' ;
+
+			/* Ours? Anything else stays. */
+			UrlHandlerProgram( cur, prog, sizeof(prog) ) ;
+			if( strnicmp( prog, "kitty", 5 ) != 0 ) {
+				if( cur[0] ) {
+					len += snprintf( report+len, sizeof(report)-len,
+						 "%s:// (%s)  LEFT ALONE, opened by %s\r\n",
+						 protos[i], hives[h].label,
+						 prog[0] ? prog : "another program" ) ;
+					kept++ ;
+				}
+				continue ;
+			}
+
+			backup[0] = '\0' ;
+			UrlHandlerBackup( protos[i], backup, sizeof(backup) ) ;
+			snprintf( key, sizeof(key), "Software\\Classes\\%s", protos[i] ) ;
+			if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS ) {
+				removed++ ;
+				len += snprintf( report+len, sizeof(report)-len,
+					 "%s:// (%s)  removed\r\n", protos[i], hives[h].label ) ;
+				if( backup[0] )
+					len += snprintf( report+len, sizeof(report)-len,
+						 "           to undo:  reg import \"%s\"\r\n", backup ) ;
+			} else {
+				len += snprintf( report+len, sizeof(report)-len,
+					 "%s:// (%s)  could not be removed%s\r\n",
+					 protos[i], hives[h].label,
+					 hives[h].root == HKEY_LOCAL_MACHINE ?
+					 " - needs administrator rights" : "" ) ;
+			}
+			if( len >= sizeof(report) ) break ;
+		}
+	}
+
+	if( !removed && len < sizeof(report) )
+		snprintf( report+len, sizeof(report)-len,
+			  "Nothing of KiTTY's was registered%s.",
+			  kept ? " (the handlers above belong to other programs)" : "" ) ;
+
+	KittyCliReport( "KiTTY URL handlers", report, removed ? 0 : 1 ) ;
 }
 
 // Creation de l'association de fichiers *.ktx

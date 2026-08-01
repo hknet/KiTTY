@@ -31,7 +31,11 @@ extern int  SetTextToClipboard(const char *buf);    /* kitty_win.c */
 extern void mungestr(const char *in, char *out);    /* kitty_commun.c */
 extern int  existfile(const char *filename);        /* kitty_tools.c */
 extern void CreateFileAssoc(void);                  /* kitty_registry.c: .ktx file association */
-extern void CreateSSHHandler(void);                 /* kitty_registry.c: telnet/ssh/putty URL handlers */
+extern void CreateSSHHandler(int force, int peruser, int assume_yes,
+                             int withputty);         /* kitty_registry.c: URL handlers */
+extern void RemoveSSHHandler(void);                 /* kitty_registry.c: -sshhandler -uninstall */
+extern void KittyCliReport(const char *title, const char *text, int warn); /* kitty_registry.c */
+extern char *GetHelpMessage(void);                  /* kitty.c: the -help text */
 extern int  kitty_get_last_session(char *buf, int buflen); /* storage.c: remember-last-session */
 extern int  GetLoadLastSessionFlag(void);           /* kitty.c: [ConfigBox] loadlastsession */
 extern void SetQuickConnectMode(const int flag);    /* kitty.c: #23 quick connect */
@@ -322,10 +326,48 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * to HKCU\Software\Classes when not elevated). */
                 CreateFileAssoc();
                 cleanup_exit(0);
+            } else if (!strcmp(p, "-help") || !strcmp(p, "--help") ||
+                       !strcmp(p, "-h") || !strcmp(p, "-?")) {
+                /* KiTTY: print the command-line options at the prompt and
+                 * quit. There was no way to ask: a GUI program with three
+                 * dozen switches and no -help is a program whose switches
+                 * only their author knows. */
+                char *help = dupprintf(
+                    "%s %s\r\n"
+                    "\r\nUsage: kitty.exe [options] [user@]host[:port]"
+                    "\r\n       kitty.exe [options] -load <saved session>"
+                    "\r\n       kitty.exe ssh://[user@]host[:port]"
+                    "\r\n       kitty.exe kitty://<saved session>"
+                    "\r\n%s", appname, BUILD_VERSION, GetHelpMessage());
+                KittyCliReport("KiTTY command line", help, 0);
+                sfree(help);
+                cleanup_exit(0);
             } else if (!strcmp(p, "-sshhandler")) {
                 /* Register KiTTY as the telnet/ssh/putty URL protocol handler,
-                 * then quit. */
-                CreateSSHHandler();
+                 * then quit. Machine-wide when elevated, for this user
+                 * otherwise; protocols another program already handles are
+                 * left alone and reported unless -force is given as well
+                 * (scanned for over the whole command line, since it may
+                 * follow this option). */
+                bool force = false, peruser = false, assume_yes = false;
+                bool withputty = false, uninstall = false;
+                for (size_t a = 0; a < arglist->nargs; a++) {
+                    const char *ap = cmdline_arg_to_str(arglist->args[a]);
+                    if (ap && !strcmp(ap, "-force"))
+                        force = true;
+                    else if (ap && !strcmp(ap, "-user"))
+                        peruser = true;
+                    else if (ap && !strcmp(ap, "-yes"))
+                        assume_yes = true;
+                    else if (ap && !strcmp(ap, "-puttyurl"))
+                        withputty = true;
+                    else if (ap && !strcmp(ap, "-uninstall"))
+                        uninstall = true;
+                }
+                if (uninstall)
+                    RemoveSSHHandler();
+                else
+                    CreateSSHHandler(force, peruser, assume_yes, withputty);
                 cleanup_exit(0);
 #endif
             } else if (!strcmp(p, "-cleanup")) {

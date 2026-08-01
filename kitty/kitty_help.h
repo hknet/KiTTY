@@ -35,7 +35,13 @@ In KiTTY some new command-line options are available:\r\n\
 * -runagent: start the integrated SSH agent\r\n\
 * -send-to-tray: start a session directly in the [system tray](SendToTray.md) (useful for SSH tunnels)\r\n\
 * -sendcmd: to send a command to all windows with the same class name\r\n\
-* -sshhandler: create protocols associations (telnet://, ssh://) for internet explorer\r\n\
+* -help (also --help, -h, -?): print this list and quit\r\n\
+* -sshhandler: make KiTTY the program that opens telnet://, ssh:// and kitty:// links (kitty://name opens a saved session). Machine-wide when run as administrator, for your account otherwise; a protocol another program already opens is reported and left alone. Options:\r\n\
+    -force      take those over too (the old setting is exported to a .reg file, and the report names the command that restores it)\r\n\
+    -user       register for your account, without asking for administrator rights\r\n\
+    -yes        skip the question a portable KiTTY asks before writing to the registry\r\n\
+    -puttyurl   also register putty:// (KiTTY reads putty:// links whether or not it is registered for them)\r\n\
+    -uninstall  remove the handlers again - only ones that point at a KiTTY\r\n\
 * -title: set a window title\r\n\
 * -version: only open the about box\r\n\
 * -xpos: to set the initial X position\r\n\
