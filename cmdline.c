@@ -522,6 +522,36 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         RETURN(2);
         /* This parameter must be processed immediately rather than being
          * saved. */
+#ifdef MOD_PERSO
+        {
+            /* KiTTY: "kitty://session" - and "putty://session", the older name
+             * classic KiTTY used - are URL forms KiTTY registers itself for
+             * (-sshhandler), and the shell hands the whole URL to -load. Strip
+             * the scheme, and the trailing slash a browser adds, so the session
+             * is looked up by its actual name rather than by a name that could
+             * never exist. Classic KiTTY did this in the hostname branch above;
+             * the registered command line goes through -load. Both schemes are
+             * accepted here whether or not either is registered. */
+            const char *v = value;
+            size_t scheme = !strncmp(v, "kitty:", 6) ? 6 :
+                            !strncmp(v, "putty:", 6) ? 6 : 0;
+            if (scheme) {
+                char *name;
+                size_t n;
+                v += scheme;
+                if (v[0] == '/' && v[1] == '/')
+                    v += 2;
+                n = strlen(v);
+                while (n > 0 && v[n-1] == '/')
+                    n--;
+                name = dupprintf("%.*s", (int)n, v);
+                do_defaults(name, conf);
+                sfree(name);
+                loaded_session = true;
+                return 2;
+            }
+        }
+#endif
         do_defaults(value, conf);
         loaded_session = true;
         return 2;
