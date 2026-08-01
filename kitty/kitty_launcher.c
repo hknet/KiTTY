@@ -46,6 +46,10 @@ static int LauncherIgnoreUp = 0 ;
 static int LauncherUpdateKnown = 0 ;
 static char LauncherUpdateLatest[64] = "" ;
 static int LauncherUpdateBeta = 0 ;
+/* The update balloon is shown at most once per launcher run: the check runs
+ * twice (the cached answer at startup, then the async fetch) and each used to
+ * raise its own balloon. */
+static int LauncherUpdateBalloonShown = 0 ;
 
 struct LauncherHotkey {
 	int id ;
@@ -204,9 +208,12 @@ HMENU InitLauncherMenu( char * Key ) {
 
 	if( LauncherUpdateKnown && LauncherUpdateLatest[0] ) {
 		char upmsg[160] ;
-		snprintf( upmsg, sizeof(upmsg), "Update available: KiTTY %s%s",
+		/* KiTTY: clickable, like the balloon. This was a greyed label stating
+		 * that an update exists and leaving the user to find the terminal's
+		 * "Check for updates" themselves; it now opens that same updater. */
+		snprintf( upmsg, sizeof(upmsg), "Update available: KiTTY %s%s - install...",
 		          LauncherUpdateLatest, LauncherUpdateBeta ? " (beta)" : "" ) ;
-		AppendMenu( menu, MF_DISABLED | MF_GRAYED, 0, upmsg ) ;
+		AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+9, upmsg ) ;
 		AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 	}
 
@@ -605,8 +612,22 @@ static void ShowLauncherUpdateBalloon( void ) {
 		strncpy( LauncherUpdateLatest, ulatest, sizeof(LauncherUpdateLatest)-1 ) ;
 		LauncherUpdateLatest[sizeof(LauncherUpdateLatest)-1] = '\0' ;
 		snprintf( umsg, sizeof(umsg),
-			"KiTTY %s is available%s.\nUse \"Check for updates\" in a terminal to install it.",
+			"KiTTY %s is available%s.\nClick here to install it.",
 			ulatest, ubeta ? " (beta)" : "" ) ;
+		/* Tooltip and menu entry are refreshed on every call; the BALLOON is
+		 * raised once. This function runs twice per launcher run - once on the
+		 * cached answer, once when the async check returns - and used to pop a
+		 * second balloon for the same news. */
+		if( LauncherUpdateBalloonShown ) {
+			snprintf( TrayIcone.szTip, sizeof(TrayIcone.szTip),
+			          "KiTTY Launcher - update %s%s available",
+			          ulatest, ubeta ? " beta" : "" ) ;
+			TrayIcone.uFlags = NIF_TIP ;
+			Shell_NotifyIcon( NIM_MODIFY, &TrayIcone ) ;
+			TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE ;
+			return ;
+		}
+		LauncherUpdateBalloonShown = 1 ;
 		TrayIcone.uFlags = NIF_INFO | NIF_TIP ;
 		TrayIcone.dwInfoFlags = NIIF_INFO ;
 		TrayIcone.uTimeout = 10000 ;
@@ -755,7 +776,14 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		{
 			extern void kitty_start_update_check_notify(HWND,UINT) ;
 			kitty_start_update_check_notify( hwnd, KLWM_UPDATECHECKDONE ) ;
-			ShowLauncherUpdateBalloon() ;
+			/* POSTED, not called: this is still WM_CREATE. A balloon raised
+			 * from inside window creation is displayed, but a click on it does
+			 * not come back to us - the icon's callback only reaches a window
+			 * that has finished being created. That is why clicking the first
+			 * of the two balloons did nothing while the second one worked.
+			 * Handling it through the message loop is the same path the async
+			 * result takes, and it is known to work. */
+			PostMessage( hwnd, KLWM_UPDATECHECKDONE, 0, 0 ) ;
 		}
 		LauncherRegisterHotkeys( hwnd ) ;
 		if (IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_HIDE);
@@ -767,6 +795,20 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 	
 		case KLWM_NOTIFYICON :
 			switch (lParam)	{
+				/* KiTTY: the "update available" balloon is clickable - clicking
+				 * it opens the updater (the same dialog as the terminal's
+				 * "Check for updates"), instead of merely dismissing a notice
+				 * that told you to go and find that menu item yourself. Guarded
+				 * on LauncherUpdateKnown so a click on any OTHER balloon this
+				 * icon may show does not start an update check. The icon is
+				 * registered without NIM_SETVERSION, so the notification code
+				 * arrives in lParam like the mouse messages below. */
+				case NIN_BALLOONUSERCLICK :
+					if( LauncherUpdateKnown ) {
+						extern void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) ;
+						CheckVersionFromWebSite( hwnd, 0 ) ;
+					}
+				break ;
 				case WM_LBUTTONDBLCLK :
 					/* KiTTY: double click opens a new default KiTTY window
 					 * (the configuration box); cancel the pending
@@ -933,6 +975,12 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 					}
 					RefreshMenuLauncher() ;
 					break ; }
+				case IDM_LAUNCHER+9:
+					/* KiTTY: "Update available ... install" - same updater the
+					 * balloon click and the terminal's system menu open. */
+					{ extern void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) ;
+					  CheckVersionFromWebSite( hwnd, 0 ) ; }
+					break ;
 				case IDM_LAUNCHER+7:
 					if( LauncherConfReload ) InitLauncherRegistry() ;
 					RefreshMenuLauncher() ;
