@@ -2040,6 +2040,20 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
         show_mouseptr(wgs, true);
         wgs->session_closed = true;
         if (coe == FORCE_ON || coe == AUTO) {
+            /* KiTTY: defer while the user is reading the Event Log, exactly as
+             * exit_callback and the fatal-error close below do. This path was
+             * missed when that was introduced, and it is the one a Cisco takes:
+             * its late channel message arrives AFTER the session ended, so the
+             * program quit from under an open Event Log - at whatever moment
+             * the message loop next ran, which looks like "the window vanished
+             * when I clicked something". */
+            if (kitty_eventlog_is_open()) {
+                kitty_coe_pending_exit = 0;
+                logevent(wgs->logctx, "Session ended; window kept open while "
+                         "the Event Log is open (it closes when you close the "
+                         "log)");
+                return;
+            }
             if (conf_get_bool(wgs->conf, CONF_remember_winpos))
                 kitty_save_window_placement(wgs->term_hwnd);
             PostQuitMessage(0);
