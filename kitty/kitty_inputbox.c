@@ -170,18 +170,11 @@ BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 				SendMessage(GetParent(hwnd),WM_COMMAND,IDB_OK,0 ) ;
 				return 0;
 				}
-			else if( (wParam==VK_F12) && (GetKeyState( VK_SHIFT )& 0x8000) ){
-				GetWindowText( hwnd, buffer, 4096 ) ;
-				cryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD ) ;
-				SetWindowText( hwnd, buffer ) ;
-				return 0 ;
-				}
-			else if( (wParam==VK_F11) && (GetKeyState( VK_SHIFT )& 0x8000) ){
-				GetWindowText( hwnd, buffer, 4096 ) ;
-				decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD ) ;
-				SetWindowText( hwnd, buffer ) ;
-				return 0 ;
-				}
+			/* Shift+F12 / Shift+F11 removed 2026-08-02: they scrambled and
+			 * unscrambled the text in this box with the constant compiled into
+			 * every build, so the "encrypted" result could be read back by anyone
+			 * with a copy of KiTTY. Nothing was stored, so there is nothing to
+			 * migrate - it was a keystroke that made text look protected. */
 			else
 				return CallWindowProc((WNDPROC)lpfnOldEditProc, hwnd, message, wParam, lParam);
 			break;
