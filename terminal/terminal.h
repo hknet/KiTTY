@@ -215,6 +215,28 @@ struct terminal_tag {
  * chunk (5462 bytes once base64'd) plus its metadata several times over, and still
  * refuses anything absurd. */
 #define OSC_STR_MAX_5522 (16 * 1024)
+/*
+ * far2l clipboard payloads arrive as ONE APC sequence, not chunked, and far2l
+ * carries arbitrary Windows clipboard formats - CF_TEXT, CF_UNICODETEXT and any
+ * registered format >= 0xC000 - so this is the path an IMAGE travels. That sets
+ * the size: an uncompressed 4K CF_DIB is about 33 MB raw and about 44 MB once
+ * base64'd, so OSC 52's 16 MB is not enough and 64 MB is chosen to clear it with
+ * room for a larger screen.
+ *
+ * How big is too big, deliberately: the ceiling exists to bound a hostile or
+ * broken host that opens a sequence and never terminates it, which is otherwise
+ * remote memory exhaustion needing no user interaction. 64 MB is what one such
+ * host can make one window hold - and note the decode transiently costs about the
+ * same again (far2l_process_payload allocates a decode buffer of osc_strlen, plus
+ * the extracted clipboard data), so call it ~150 MB peak for a maximal payload.
+ * That is a real budget, bounded, and paid only by a session that has already been
+ * given far2l clipboard permission.
+ */
+#define OSC_STR_MAX_FAR2L (64 * 1024 * 1024)
+/* The far2l payload prefix, and its length. Recognised mid-accumulation, because
+ * the ceiling has to be raised before the payload has arrived. */
+#define FAR2L_DATA_PREFIX "far2l:"
+#define FAR2L_DATA_PREFIX_LEN 6
     OscType osc_type;
     int osc_strlen;
     char *osc_string;           /* heap; always has room for a terminating NUL */

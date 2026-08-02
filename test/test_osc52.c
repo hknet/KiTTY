@@ -730,6 +730,78 @@ static void test_osc5522(Mock *mk)
     stub_clip = L"secret";
 }
 
+/* ---------------------------------------------------------------------------
+ * far2l: the accumulation-buffer ceiling
+ *
+ * far2l clipboard payloads arrive as ONE APC sequence and share the OSC
+ * accumulation buffer. That buffer's APC ceiling was OSC_STR_MAX (2 KB), so any
+ * real copied selection was truncated by the parser and then dropped outright -
+ * silently. These tests are about the CEILING, not about the clipboard: they
+ * check how much the parser was willing to hold, which is where the bug was.
+ * ------------------------------------------------------------------------- */
+
+/* Feed an APC sequence and report how much of it the parser kept. clip_allowed is
+ * forced to 0 (deny) so nothing touches the real Windows clipboard and no dialog
+ * can appear - we are measuring the buffer, not the feature. */
+static int feed_apc(Mock *mk, const char *body, size_t len)
+{
+    char *seq = snewn(len + 8, char);
+    size_t n = 0;
+    int kept;
+    mk->term->clip_allowed = 0;
+    memcpy(seq + n, "\033_", 2); n += 2;
+    memcpy(seq + n, body, len);   n += len;
+    seq[n++] = '\007';
+    term_data(mk->term, seq, n);
+    /* read the parser's state BEFORE term_update, which starts the next sequence */
+    kept = mk->term->osc_strlen;
+    term_update(mk->term);
+    sfree(seq);
+    return kept;
+}
+
+static void test_far2l_ceiling(Mock *mk)
+{
+    const size_t big = 100000;         /* far past the old 2 KB ceiling */
+    char *body = snewn(big + 16, char);
+    int kept;
+
+    /* A far2l DATA payload is held whole. Before the fix this stopped at 2048. */
+    memcpy(body, "far2l:", 6);
+    memset(body + 6, 'A', big);
+    kept = feed_apc(mk, body, big + 6);
+    if (kept != (int)(big + 6))
+        fail("far2l payload ceiling",
+             "a large far2l payload was still truncated by the parser");
+    if (mk->term->osc_str_overflow)
+        fail("far2l payload ceiling", "a large far2l payload was marked overflowed");
+
+    /*
+     * ...but nothing else gets that headroom. An APC that is NOT a far2l data
+     * payload still stops where it always did, so announcing far2l support - or
+     * simply sending an APC - cannot buy a host a 64 MB buffer.
+     */
+    memcpy(body, "notfar2l:", 9);
+    memset(body + 9, 'A', big);
+    kept = feed_apc(mk, body, big + 9);
+    if (kept != OSC_STR_MAX)
+        fail("non-far2l APC ceiling",
+             "an unrelated APC sequence was allowed past the ordinary ceiling");
+    if (!mk->term->osc_str_overflow)
+        fail("non-far2l APC ceiling", "the overflow flag was not set");
+
+    /* The handshake is a few bytes and keeps the ordinary ceiling: only the
+     * "far2l:" DATA prefix grows the buffer. */
+    memcpy(body, "far2l1", 6);
+    memset(body + 6, 'A', big);
+    kept = feed_apc(mk, body, big + 6);
+    if (kept != OSC_STR_MAX)
+        fail("far2l handshake ceiling",
+             "the handshake prefix bought a large buffer");
+
+    sfree(body);
+}
+
 /* The focus rule applies to WRITES as well, which is a change to behaviour that
  * shipped working - so it gets its own test in both positions. */
 static void test_write_focus_rule(Mock *mk)
@@ -843,6 +915,7 @@ int main(void)
     test_read_direction(mk);
     test_osc5522(mk);
     test_write_focus_rule(mk);
+    test_far2l_ceiling(mk);
 
     mock_free(mk);
 

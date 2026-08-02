@@ -3336,12 +3336,25 @@ static void far2l_process_payload(Terminal *term)
     DWORD zero = 0;
 #endif
 
-    if (term->osc_strlen <= 6) return;
-    if (term->osc_strlen >= OSC_STR_MAX) return;   /* can't reply; drop (no crash) */
+    if (term->osc_strlen <= FAR2L_DATA_PREFIX_LEN) return;
+    /*
+     * A payload that did not fit is refused WHOLE, never acted on in part - the
+     * same rule as OSC 52, and for the same reason: half a clipboard looks like
+     * success. This used to read "osc_strlen >= OSC_STR_MAX", which was both the
+     * truncation detector AND the thing that made every far2l clipboard SET over
+     * ~2 KB vanish, because the ceiling it compared against was the 2 KB one.
+     * osc_str_overflow is now the honest test: it is set only when the ceiling
+     * for THIS sequence was actually exceeded.
+     */
+    if (term->osc_str_overflow) {
+        logevent(term->logctx, "far2l clipboard payload too large; dropped");
+        return;
+    }
     base64_init_decodestate(&ds);
     d_out = snewn(term->osc_strlen, char);
-    d_count = base64_decode_block(term->osc_string + 6,
-                                  term->osc_strlen - 6, d_out, &ds);
+    d_count = base64_decode_block(term->osc_string + FAR2L_DATA_PREFIX_LEN,
+                                  term->osc_strlen - FAR2L_DATA_PREFIX_LEN,
+                                  d_out, &ds);
     if (d_count < 2) { sfree(d_out); return; }
 
     id = (unsigned char)d_out[d_count - 1];   /* last byte = request id */
@@ -3604,6 +3617,34 @@ static void osc_addchar(Terminal *term, unsigned char c)
         term->osc_strsize = newsize;
     }
     term->osc_string[term->osc_strlen++] = (char)c;
+
+#ifdef MOD_FAR2L
+    /*
+     * KiTTY: a far2l clipboard payload has just identified itself, so raise this
+     * sequence's ceiling.
+     *
+     * It has to happen here rather than at osc_start(), because an APC sequence
+     * gives no clue what it is until its first few bytes have arrived - there is
+     * no numeric argument to switch on the way OSC 52 has. Six bytes in, "far2l:"
+     * is unambiguous.
+     *
+     * This is the bug that made far2l clipboard SET fail silently for anything
+     * over ~2 KB: the payload shares the OSC accumulation buffer, whose APC
+     * ceiling was OSC_STR_MAX, so a real copied selection was truncated by the
+     * parser and then dropped by the guard in far2l_process_payload - no message,
+     * nothing pasted. It is also why the far2l hands-on test never convinced
+     * anybody.
+     *
+     * Only the DATA prefix "far2l:" is grown. The handshake sequences ("far2l1",
+     * "far2l0") are a few bytes and keep the ordinary ceiling, so announcing
+     * far2l support does not by itself buy a host a large buffer.
+     */
+    if (term->osc_strlen == FAR2L_DATA_PREFIX_LEN &&
+        term->osc_type == OSCLIKE_APC &&
+        term->osc_str_limit == OSC_STR_MAX &&
+        !memcmp(term->osc_string, FAR2L_DATA_PREFIX, FAR2L_DATA_PREFIX_LEN))
+        term->osc_str_limit = OSC_STR_MAX_FAR2L;
+#endif
 }
 
 #ifdef MOD_PERSO

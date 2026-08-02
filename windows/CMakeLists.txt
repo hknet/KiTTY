@@ -283,11 +283,23 @@ target_link_libraries(test_terminal
 add_executable(test_osc52
   ${CMAKE_SOURCE_DIR}/test/test_osc52.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  # far2l's own base64, and its include dir below: MOD_FAR2L makes terminal.c
+  # include cdecode.h/cencode.h, which live under kitty/far2l/ and are not on the
+  # default include path.
+  ${CMAKE_SOURCE_DIR}/kitty/far2l/cdecode.c
+  ${CMAKE_SOURCE_DIR}/kitty/far2l/cencode.c
   ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
   ${CMAKE_SOURCE_DIR}/stubs/no-storage.c
   ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
   no-jump-list.c)
-target_compile_definitions(test_osc52 PRIVATE MOD_PERSO)
+target_include_directories(test_osc52 PRIVATE ${CMAKE_SOURCE_DIR}/kitty/far2l)
+# MOD_FAR2L as well as MOD_PERSO, so this target compiles terminal.c with the SAME
+# defines the shipping kitty target does. Without it the far2l APC paths - including
+# the accumulation-buffer ceiling that made large clipboard payloads vanish - are
+# not compiled here at all, and a test of them would pass by testing nothing. The
+# Terminal struct is unaffected either way: far2l's fields are unconditional
+# storage precisely so these builds share one layout.
+target_compile_definitions(test_osc52 PRIVATE MOD_PERSO MOD_FAR2L)
 target_link_libraries(test_osc52
   guiterminal settings eventloop utils ${platform_libraries})
 
