@@ -69,6 +69,7 @@ void nonfatal(const char *fmt, ...)
  */
 void load_open_settings_forced(char *filename, Conf *conf);   /* kitty_settings_load.c */
 int ksec_unprotect(const char *stored, char **out);           /* kitty_storage.c */
+int ksec_stored_is_legacy(const char *stored);                /* kitty_storage.c */
 
 const struct BackendVtable *const backends[] = { NULL };
 const int be_default_protocol = 0;
@@ -662,16 +663,28 @@ static void test_script_protection(void)
     }
 
     /*
-     * A value with NO marker - a session written before this change - must come
-     * back verbatim, so the legacy decoder downstream still sees what it expects.
-     * If unprotect ever started "helpfully" mangling unmarked values, every
-     * pre-existing login script would break silently.
+     * The trap that a login script must not fall into, pinned exactly.
+     *
+     * ksec_unprotect returns 1 for an UNMARKED value and hands it back verbatim -
+     * "unmarked legacy == plaintext". So a caller that decides "protected or
+     * legacy?" by looking at the RETURN VALUE gets 1 for both and sends every
+     * pre-existing scrambled script down the base64 path, where it decodes to
+     * rubbish. The right question is whether the value carries a marker, which is
+     * what ksec_stored_is_legacy answers.
+     *
+     * Asserted as an equality, not an "either is fine": the first version of this
+     * test accepted rc <= 0 OR verbatim, which passed while the caller was wrong.
      */
     {
+        static const char legacy[] = "some-legacy-scrambled-value";
         char *plain = NULL;
-        int rc = ksec_unprotect("some-legacy-scrambled-value", &plain);
-        check(rc <= 0 || (plain && !strcmp(plain, "some-legacy-scrambled-value")),
-              "script: an unmarked legacy value is not altered");
+        int rc = ksec_unprotect(legacy, &plain);
+        check(rc == 1 && plain && !strcmp(plain, legacy),
+              "script: an unmarked value comes back VERBATIM with rc==1");
+        check(ksec_stored_is_legacy(legacy) == 1,
+              "script: ...and is identified as legacy by the marker test");
+        check(ksec_stored_is_legacy(wrapped) == 0,
+              "script: a wrapped value is NOT identified as legacy");
         if (plain) sfree(plain);
     }
 

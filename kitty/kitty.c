@@ -2723,6 +2723,7 @@ extern char *kitty_secret_wrap_current_backend( const char *plaintext ) ;
 extern char *ksec_b64_encode( const unsigned char *in, int len ) ;
 extern unsigned char *ksec_b64_decode( const char *in, int *outlen ) ;
 extern int ksec_unprotect( const char *stored, char **out ) ;
+extern int ksec_stored_is_legacy( const char *stored ) ;
 
 void ReadInitScript( const char * filename ) {
 	char * pst, *buffer=NULL, *name=NULL ;
@@ -2804,7 +2805,15 @@ void ReadInitScript( const char * filename ) {
 			 * this change.
 			 */
 			char *plain = NULL ;
-			if( ksec_unprotect( name, &plain ) > 0 && plain && plain[0] ) {
+			/*
+			 * Ask whether it CARRIES A MARKER, not whether unprotect succeeded.
+			 * ksec_unprotect returns 1 for an unmarked value too, handing it back
+			 * verbatim ("unmarked legacy == plaintext"), so branching on its
+			 * return sends every pre-existing scrambled script down the base64
+			 * path and breaks it. ksec_stored_is_legacy tests the markers.
+			 */
+			if( !ksec_stored_is_legacy( name ) &&
+			    ksec_unprotect( name, &plain ) > 0 && plain && plain[0] ) {
 				int blen = 0 ;
 				unsigned char *raw = ksec_b64_decode( plain, &blen ) ;
 				if( raw && blen > 0 ) {
