@@ -3644,6 +3644,32 @@ static void osc_start(Terminal *term, size_t limit)
  * The sequences that were silently truncated before the buffer grew at all
  * still are, because their ceiling is the size the array used to have.
  */
+#if defined(MOD_PERSO) || defined(MOD_FAR2L)
+/*
+ * KiTTY: the ceiling for a clipboard payload, in bytes, from ClipboardMaxMB.
+ *
+ * Clamped rather than trusted. Lowering it only ever helps - it shrinks what a
+ * hostile host can make this window hold - but raising it without a bound would
+ * let a settings box turn a bounded denial of service into an unbounded one. A
+ * value of 0 or nonsense falls back to the default rather than to "no limit",
+ * because the failure mode of the other reading is memory exhaustion.
+ */
+static size_t clip_ceiling_bytes(Terminal *term)
+{
+    int mb = term->conf ? conf_get_int(term->conf, CONF_clipboard_max_mb)
+                        : CLIP_MAX_MB_DEFAULT;
+    size_t bytes;
+    if (mb <= 0)
+        mb = CLIP_MAX_MB_DEFAULT;
+    if (mb > CLIP_MAX_MB_CAP)
+        mb = CLIP_MAX_MB_CAP;
+    bytes = (size_t)mb * 1024 * 1024;
+    if (bytes < CLIP_MAX_BYTES_FLOOR)
+        bytes = CLIP_MAX_BYTES_FLOOR;
+    return bytes;
+}
+#endif
+
 static void osc_addchar(Terminal *term, unsigned char c)
 {
     if ((size_t)term->osc_strlen >= term->osc_str_limit) {
@@ -3686,7 +3712,7 @@ static void osc_addchar(Terminal *term, unsigned char c)
         term->osc_type == OSCLIKE_APC &&
         term->osc_str_limit == OSC_STR_MAX &&
         !memcmp(term->osc_string, FAR2L_DATA_PREFIX, FAR2L_DATA_PREFIX_LEN))
-        term->osc_str_limit = OSC_STR_MAX_FAR2L;
+        term->osc_str_limit = clip_ceiling_bytes(term);
 #endif
 }
 
@@ -7046,7 +7072,8 @@ static void term_out(Terminal *term, bool called_from_term_data)
                          * adds up. A generous 16 KB covers a full chunk plus its
                          * metadata and still refuses anything absurd. */
                         osc_start(term,
-                                  term->esc_args[0] == 52 ? OSC_STR_MAX_CLIP :
+                                  term->esc_args[0] == 52 ?
+                                      clip_ceiling_bytes(term) :
                                   term->esc_args[0] == 5522 ? OSC_STR_MAX_5522 :
                                   OSC_STR_MAX);
 #else

@@ -802,6 +802,36 @@ static void test_far2l_ceiling(Mock *mk)
         fail("far2l handshake ceiling",
              "the handshake prefix bought a large buffer");
 
+    /*
+     * The ceiling is a setting, and it is CLAMPED. Lowering it must work - that is
+     * the whole point of exposing it - and raising it beyond the cap must not,
+     * because this bounds memory a remote host can make us hold with no user
+     * interaction.
+     */
+    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 1);   /* 1 MB */
+    memcpy(body, "far2l:", 6);
+    memset(body + 6, 'A', big);
+    kept = feed_apc(mk, body, big + 6);
+    if (kept != (int)(big + 6))
+        fail("clipboard ceiling setting",
+             "100 KB did not fit under a 1 MB ceiling");
+
+    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 0);   /* nonsense -> default */
+    kept = feed_apc(mk, body, big + 6);
+    if (kept != (int)(big + 6))
+        fail("clipboard ceiling setting",
+             "a zero setting did not fall back to the default");
+
+    /* A huge number is clamped, not honoured: ask for 100 GB and the buffer must
+     * still refuse to grow past the cap. Checked via the limit rather than by
+     * actually feeding gigabytes. */
+    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 100000);
+    feed_apc(mk, body, big + 6);
+    if (mk->term->osc_str_limit > (size_t)CLIP_MAX_MB_CAP * 1024 * 1024)
+        fail("clipboard ceiling clamp",
+             "a huge ClipboardMaxMB was honoured instead of clamped");
+
+    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 64);
     sfree(body);
 }
 

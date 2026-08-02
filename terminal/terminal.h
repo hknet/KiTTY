@@ -202,37 +202,38 @@ struct terminal_tag {
  * as a side effect of the clipboard feature. osc_str_limit is chosen when the
  * parser enters OSC_STRING, at which point esc_args[0] is already known.
  *
- * OSC_STR_MAX_CLIP is a backstop against a hostile or broken host that opens an
- * OSC and never terminates it: without a ceiling that is remote, unauthenticated
- * memory exhaustion needing no user interaction. It is deliberately far above any
- * real payload (~12 MB of text once base64 is undone) — it bounds a runaway, it
- * is not a limit on what may be copied.
+ * The CLIPBOARD ceiling is a setting instead - ClipboardMaxMB, read through
+ * clip_ceiling_bytes() in terminal.c, which clamps it (bounds below). It is a
+ * backstop against a hostile or broken host that opens a sequence and never
+ * terminates it: without a ceiling that is remote, unauthenticated memory
+ * exhaustion needing no user interaction. It bounds a runaway; it is not meant as
+ * a limit on what may legitimately be copied.
  */
 #define OSC_STR_MAX 2048
-#define OSC_STR_MAX_CLIP (16 * 1024 * 1024)
 /* OSC 5522 chunks at 4 KB before base64, so no single sequence of it is ever
  * large - it is the transaction that adds up, not the packet. 16 KB covers a full
  * chunk (5462 bytes once base64'd) plus its metadata several times over, and still
  * refuses anything absurd. */
 #define OSC_STR_MAX_5522 (16 * 1024)
 /*
- * far2l clipboard payloads arrive as ONE APC sequence, not chunked, and far2l
- * carries arbitrary Windows clipboard formats - CF_TEXT, CF_UNICODETEXT and any
- * registered format >= 0xC000 - so this is the path an IMAGE travels. That sets
- * the size: an uncompressed 4K CF_DIB is about 33 MB raw and about 44 MB once
- * base64'd, so OSC 52's 16 MB is not enough and 64 MB is chosen to clear it with
- * room for a larger screen.
+ * The clipboard payload ceiling is a SETTING (ClipboardMaxMB, default 64 MB),
+ * shared by OSC 52 and far2l - see conf.h, and clip_ceiling_bytes() in terminal.c,
+ * which clamps it. These are the bounds of that clamp.
  *
- * How big is too big, deliberately: the ceiling exists to bound a hostile or
- * broken host that opens a sequence and never terminates it, which is otherwise
- * remote memory exhaustion needing no user interaction. 64 MB is what one such
- * host can make one window hold - and note the decode transiently costs about the
- * same again (far2l_process_payload allocates a decode buffer of osc_strlen, plus
- * the extracted clipboard data), so call it ~150 MB peak for a maximal payload.
- * That is a real budget, bounded, and paid only by a session that has already been
- * given far2l clipboard permission.
+ * Why 64 MB by default: far2l carries arbitrary Windows clipboard formats, so it
+ * is the path an IMAGE travels, and an uncompressed 4K CF_DIB is about 33 MB raw
+ * and about 44 MB once base64'd.
+ *
+ * Why it is clamped at all: this bounds a hostile or broken host that opens a
+ * sequence and never terminates it, which is otherwise remote memory exhaustion
+ * needing no user interaction. The decode transiently costs about the same again,
+ * so a maximal payload is roughly twice the ceiling in peak memory. A user may
+ * lower it freely - that only ever helps - but must not be able to raise it into
+ * an unbounded denial of service by typing a big number into a settings box.
  */
-#define OSC_STR_MAX_FAR2L (64 * 1024 * 1024)
+#define CLIP_MAX_MB_DEFAULT 64
+#define CLIP_MAX_MB_CAP 256                    /* the most a user may ask for */
+#define CLIP_MAX_BYTES_FLOOR (64 * 1024)       /* and the least, so it stays usable */
 /* The far2l payload prefix, and its length. Recognised mid-accumulation, because
  * the ceiling has to be raised before the payload has arrived. */
 #define FAR2L_DATA_PREFIX "far2l:"

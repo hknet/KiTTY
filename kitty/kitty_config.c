@@ -4655,6 +4655,12 @@ static void scb_panel_selection(struct controlbox *b)
     ctrl_checkbox(s, "Only allow remote clipboard access while this window has focus",
                   NO_SHORTCUT, HELPCTX(no_help),
                   conf_checkbox_handler, I(CONF_clipboard_require_focus));
+    /* One ceiling for OSC 52 and far2l both. Clamped in code (CLIP_MAX_MB_CAP):
+     * lowering it only ever helps, but it must not be possible to type a number
+     * here that turns a bounded denial of service into an unbounded one. */
+    ctrl_editbox(s, "Largest remote clipboard payload, in MB:", NO_SHORTCUT, 25,
+                 HELPCTX(no_help), conf_editbox_handler,
+                 I(CONF_clipboard_max_mb), ED_INT);
 
     /* The numbers behind the read dialog. They are settings because the values
      * shipped are guesses - no other terminal implements a hand-over rate limit

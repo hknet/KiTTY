@@ -1505,6 +1505,28 @@ CONF_OPTION(osc52_read_timeout, VALUE_TYPE(INT), DEFAULT_INT(60), SAVE_KEYWORD("
 /* KiTTY: most dialogs shown in any ten seconds, so a host cannot use the prompt
  * itself as the attack. Extras are refused without asking. */
 CONF_OPTION(osc52_read_dialogs, VALUE_TYPE(INT), DEFAULT_INT(3), SAVE_KEYWORD("OSC52ReadDialogs"),)
+/* KiTTY: largest single remote-clipboard payload we will hold, in megabytes.
+ * Applies to OSC 52 and to far2l alike; default 64.
+ *
+ * Sized for an image rather than a line of text, because far2l carries arbitrary
+ * Windows clipboard formats and an uncompressed 4K CF_DIB is ~33 MB raw and ~44 MB
+ * once base64'd. One number for both protocols on purpose: the old split (16 MB
+ * for OSC 52, 64 for far2l) only ever meant "text does not need as much", which is
+ * not a security argument, since the bound a hostile host can reach is the same
+ * either way.
+ *
+ * ⚠️ This is a memory-exhaustion backstop, not a feature limit. A host that opens
+ * a sequence and never terminates it can make one window hold this much with no
+ * user interaction, and the decode transiently costs about the same again. So it
+ * is CLAMPED in code (see clip_ceiling_bytes in terminal.c): a user cannot turn a
+ * bounded denial of service into an unbounded one by typing a large number here.
+ * Lowering it is the more interesting direction - somebody who never copies images
+ * can shrink what a hostile host can make them hold.
+ *
+ * It does NOT govern the 2 KB ceiling on ordinary escape sequences. That one stays
+ * fixed and unsettable: it is what stops the clipboard feature being used to hand
+ * us a multi-megabyte window title. */
+CONF_OPTION(clipboard_max_mb, VALUE_TYPE(INT), DEFAULT_INT(64), SAVE_KEYWORD("ClipboardMaxMB"),)
 /* KiTTY: show a tray balloon for remote-clipboard events - a permission granted or
  * expired, a request refused, or a payload dropped for being too large. Covers
  * OSC 52, OSC 5522 and far2l alike. Default on.
