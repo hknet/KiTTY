@@ -4313,10 +4313,24 @@ static void osc5522_read(Terminal *term, const char *meta,
     }
 
     if (osc5522_meta(meta, "pw", pwb64, sizeof(pwb64)) && *pwb64) {
-        /* The password is kept in its base64 form for comparison - we never need
-         * its plaintext, and not decoding it is one less copy of a credential.
-         * The spec makes `name` mandatory alongside it; without one the password
-         * does nothing, which is exactly what happens here. */
+        /*
+         * The password is kept in its base64 form for comparison - we never need
+         * its plaintext, and not decoding it is one less copy of a credential
+         * lying around.
+         *
+         * Trailing padding is stripped first, because that comparison is a string
+         * compare and base64 padding is optional in practice: kitty's own decoder
+         * accepts "dGl0bGU" as well as "dGl0bGU=". A client that padded its
+         * password on one request and not the next would otherwise look like a
+         * different program and be prompted about again - the exact fatigue this
+         * mechanism exists to remove. Stripping is enough; it cannot merge two
+         * genuinely different passwords, because '=' only ever appears as padding.
+         */
+        size_t n = strlen(pwb64);
+        while (n > 0 && pwb64[n - 1] == '=')
+            pwb64[--n] = '\0';
+        if (!*pwb64)
+            goto no_pw;                /* padding only: not a password at all */
         pw = pwb64;
         if (osc5522_meta(meta, "name", nameb64, sizeof(nameb64)) && *nameb64) {
             decoded = base64_decode_sb(ptrlen_from_asciz(nameb64));
@@ -4324,6 +4338,7 @@ static void osc5522_read(Terminal *term, const char *meta,
             strbuf_free(decoded);
         }
     }
+  no_pw:
 
     /* The payload is a base64 space-separated list of wanted MIME types, or "."
      * to ask what is available. */

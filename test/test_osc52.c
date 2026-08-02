@@ -630,6 +630,85 @@ static void test_osc5522(Mock *mk)
     if (osc52_dialogs != 1)
         fail("5522 one-off answer", "a one-off answer was remembered as an approval");
 
+    /*
+     * --- base64 tolerance ---
+     *
+     * These mirror the only part of kitty's own test suite that bears on the read
+     * path (kitty_tests/clipboard.py, which otherwise unit-tests their streaming
+     * decoder and the write direction we do not implement). What it establishes is
+     * that base64 PADDING IS OPTIONAL in practice, whatever the spec says about
+     * it being required - so anything of ours that compares or decodes base64 has
+     * to cope with both spellings.
+     */
+
+    /* An unpadded mime list still parses, so the request is still served.
+     * "text/plain" base64s to "dGV4dC9wbGFpbg==", and the unpadded spelling has
+     * to mean the same thing. */
+    read_reset(mk);
+    osc52_dialog_answer = true;
+    osc52_dialog_grant = GRANT_ONCE;
+    {
+        char *seq = dupprintf("\033]5522;type=read;dGV4dC9wbGFpbg\033\\");
+        osc52_sends = 0; osc52_dialogs = 0; osc52_last_send[0] = '\0';
+        term_data(mk->term, seq, strlen(seq));
+        term_update(mk->term);
+        sfree(seq);
+        if (osc52_sends != 3)
+            fail("5522 unpadded mime list", "an unpadded type list was not served");
+    }
+
+    /*
+     * The same password padded and unpadded is the SAME password. Without this a
+     * client that pads on one request and not the next looks like a different
+     * program and gets prompted about again - which is the exact fatigue the
+     * password mechanism exists to remove.
+     */
+    read_reset(mk);
+    osc52_dialog_answer = true;
+    osc52_dialog_grant = GRANT_SESSION;
+    feed_5522(mk, "type=read:pw=cHc=:name=bnZpbQ==", "text/plain");
+    if (osc52_dialogs != 1)
+        fail("5522 padding-insensitive password", "the first request did not ask");
+    feed_5522(mk, "type=read:pw=cHc:name=bnZpbQ==", "text/plain");
+    if (osc52_dialogs != 0)
+        fail("5522 padding-insensitive password",
+             "the same password unpadded was treated as a different program");
+
+    /*
+     * A "password" that is nothing but padding is not a password. Tested with a
+     * ONE-OFF answer on purpose: a session-wide answer would create the ordinary
+     * window-wide grant and serve the second request legitimately, which tells us
+     * nothing about whether an approval was recorded. With a one-off answer,
+     * nothing may be remembered by either mechanism, so the second request has to
+     * ask again.
+     */
+    read_reset(mk);
+    osc52_dialog_answer = true;
+    osc52_dialog_grant = GRANT_ONCE;
+    feed_5522(mk, "type=read:pw==:name=bnZpbQ==", "text/plain");
+    if (osc52_dialogs != 1)
+        fail("5522 empty password", "the first request did not ask");
+    feed_5522(mk, "type=read:pw==:name=bnZpbQ==", "text/plain");
+    if (osc52_dialogs != 1)
+        fail("5522 empty password", "an all-padding password became an approval");
+
+    /* Malformed base64 in the payload must fail CLOSED: the type list decodes to
+     * something that matches nothing, so no data is served and nobody is asked. */
+    read_reset(mk);
+    osc52_dialog_answer = true;
+    {
+        char *seq = dupprintf("\033]5522;type=read;!!!not-base64!!!\033\\");
+        osc52_sends = 0; osc52_dialogs = 0;
+        term_data(mk->term, seq, strlen(seq));
+        term_update(mk->term);
+        sfree(seq);
+        if (osc52_dialogs != 0)
+            fail("5522 malformed payload", "a malformed request prompted the user");
+        if (osc52_sends != 2)
+            fail("5522 malformed payload",
+                 "expected OK then DONE with no data for an unmatchable type list");
+    }
+
     /* A large clipboard is chunked at the size the specification requires, so the
      * transaction is OK + ceil(n/4096) DATA packets + DONE. */
     read_reset(mk);
