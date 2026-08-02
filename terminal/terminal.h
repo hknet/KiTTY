@@ -190,10 +190,35 @@ struct terminal_tag {
 #define ANSI(x,y)       ((x)+((y)*256))
 #define ANSI_QUE(x)     ANSI(x,1)
 
+/*
+ * The OSC accumulation buffer. Upstream this is a fixed 2 KB array; KiTTY grows
+ * it on demand, because an OSC 52 clipboard payload is a whole copied selection
+ * (a log, a config file) rather than a window title, and a truncated clipboard
+ * is worse than none at all.
+ *
+ * OSC_STR_MAX is now the BASE allocation and the per-sequence ceiling for every
+ * sequence EXCEPT OSC 52, so titles, the Linux palette sequence, OSC 4 and OSC 7
+ * behave exactly as before and no host can hand us a multi-megabyte window title
+ * as a side effect of the clipboard feature. osc_str_limit is chosen when the
+ * parser enters OSC_STRING, at which point esc_args[0] is already known.
+ *
+ * OSC_STR_MAX_CLIP is a backstop against a hostile or broken host that opens an
+ * OSC and never terminates it: without a ceiling that is remote, unauthenticated
+ * memory exhaustion needing no user interaction. It is deliberately far above any
+ * real payload (~12 MB of text once base64 is undone) — it bounds a runaway, it
+ * is not a limit on what may be copied.
+ */
 #define OSC_STR_MAX 2048
+#define OSC_STR_MAX_CLIP (16 * 1024 * 1024)
     OscType osc_type;
     int osc_strlen;
-    char osc_string[OSC_STR_MAX + 1];
+    char *osc_string;           /* heap; always has room for a terminating NUL */
+    size_t osc_strsize;         /* bytes allocated */
+    size_t osc_str_limit;       /* ceiling for the sequence being accumulated */
+    /* set when the sequence exceeded osc_str_limit. OSC 52 then refuses the
+     * whole payload rather than pasting a truncated one; the sequences that were
+     * silently truncated before this existed still are. */
+    bool osc_str_overflow;
 
     /* KiTTY far2l terminal extensions. These fields are UNCONDITIONAL (NOT under
      * #ifdef MOD_FAR2L): terminal.c is compiled into the kitty target WITH
@@ -209,6 +234,12 @@ struct terminal_tag {
     /* far2l clipboard-sync permission, seeded from CONF_shared_clipboard at the
      * handshake: 0=deny, 1=allow, 2=ask-then-latch (SHARED_CLIPBOARD_*). */
     int clip_allowed;
+    /* KiTTY OSC 52 permission, seeded from CONF_osc52_clipboard whenever config
+     * is copied in: 0=deny, 1=allow, 2=ask-then-latch (OSC52_CLIPBOARD_*).
+     * Latching matters: OSC 52 has no handshake, so a per-payload prompt would
+     * be a MessageBox storm any host could trigger at will. UNCONDITIONAL
+     * storage, for the ODR reason given above. */
+    int osc52_allowed;
 
     char id_string[1024];
 

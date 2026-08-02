@@ -2601,6 +2601,19 @@ enum {
 };
 #endif
 
+#ifdef MOD_PERSO
+/* KiTTY (OSC 52): whether a remote host may put text on the local clipboard.
+ * Deliberately the same three-way shape as SHARED_CLIPBOARD_* above - a second
+ * policy vocabulary for the same question would only confuse. This governs the
+ * WRITE direction only: OSC 52's clipboard-READ request ("?") is refused
+ * unconditionally and has no setting. */
+enum {
+    OSC52_CLIPBOARD_DISABLED,  /* ignore OSC 52 entirely */
+    OSC52_CLIPBOARD_ENABLED,   /* let the host set the clipboard */
+    OSC52_CLIPBOARD_ASK,       /* ask the user once per session */
+};
+#endif
+
 /*
  * Miscellaneous exports from the platform-specific code.
  *

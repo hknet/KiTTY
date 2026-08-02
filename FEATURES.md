@@ -62,6 +62,7 @@ one is available.
   - [New command-line options](#new-command-line-options)
   - [Non-blocking connection errors](#non-blocking-connection-errors)
   - [Run the clipboard as a command](#run-the-clipboard-as-a-command)
+  - [Remote clipboard writes (OSC 52)](#remote-clipboard-writes-osc-52)
   - [In-app updater (Check for updates)](#in-app-updater-check-for-updates)
 - **Bonus**
   - [Hidden text editor](#hidden-text-editor)
@@ -530,6 +531,16 @@ When a connection drops, is closed by the remote host, or the server reports a n
 KiTTY can run the current Windows clipboard contents as a local command with the **Ctrl+F5** shortcut — handy for sending a prepared command line straight into execution. Because that runs whatever happens to be on the clipboard, KiTTY shows a **confirmation prompt** (displaying the command) before running it and a **tray notification** after launch, so nothing runs unexpectedly.
 
 **How to enable:** the shortcut is built in; the two safeguards are on by default and toggled per session in **Window → Selection** ("Running the clipboard as a local command").
+
+(no screenshot)
+
+### Remote clipboard writes (OSC 52)
+
+A program on the remote host — `tmux`, `vim`, `nvim`, or anything that emits the standard **OSC 52** sequence — can put text straight onto your Windows clipboard, so yanking in a remote editor gives you something you can paste locally without selecting it with the mouse first. Only **text** travels this way; the sequence carries nothing else, so images and other clipboard formats are unaffected.
+
+Because a remote host writing your clipboard changes what you paste next, KiTTY gates it: **Disabled**, **Enabled**, or **Ask**, which prompts once and remembers your answer for the rest of that session. The **read** direction — where the host asks KiTTY to send *your* clipboard back to it — is deliberately **not implemented and cannot be switched on**; that is the exfiltration risk for which upstream PuTTY omits OSC 52 entirely. A payload that arrives truncated or malformed is refused whole rather than pasted in part.
+
+**How to enable:** **Window → Selection**, *Remote clipboard writes (OSC 52)* — set it to **Enabled**, or leave it on **Ask** (the default).
 
 (no screenshot)
 

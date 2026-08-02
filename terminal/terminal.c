@@ -1663,6 +1663,11 @@ static void term_copy_stuff_from_conf(Terminal *term)
      * handler reads (stock PuTTY sets it only from the LNM escape, mode 20). */
     if (conf_get_int(term->conf, CONF_enter_sends_crlf))
         term->cr_lf_return = true;
+    /* KiTTY OSC 52 clipboard policy. Re-seeded on reconfigure, which also
+     * releases an "ask" answer latched earlier in this session - deliberate:
+     * the user has just been through the config box, so a fresh decision is the
+     * honest behaviour, and only the user can cause this to happen. */
+    term->osc52_allowed = conf_get_int(term->conf, CONF_osc52_clipboard);
 #endif
     term->erase_to_scrollback = conf_get_bool(term->conf, CONF_erase_to_scrollback);
     term->funky_type = conf_get_int(term->conf, CONF_funky_type);
@@ -2101,6 +2106,13 @@ Terminal *term_init(Conf *myconf, struct unicode_data *ucsdata, TermWin *win)
     term->selstate = NO_SELECTION;
     term->answerback = strbuf_new();
 
+    /* KiTTY: the OSC accumulation buffer is heap-allocated and grows on demand
+     * (see terminal.h). Start at the size upstream uses as its fixed maximum;
+     * the +1 is the room a terminating NUL always has. */
+    term->osc_strsize = OSC_STR_MAX + 1;
+    term->osc_string = snewn(term->osc_strsize, char);
+    term->osc_str_limit = OSC_STR_MAX;
+
     term_copy_stuff_from_conf(term);
 
     deselect(term);
@@ -2170,6 +2182,7 @@ void term_free(Terminal *term)
     sfree(term->ltemp);
     sfree(term->wcFrom);
     sfree(term->wcTo);
+    sfree(term->osc_string);
     strbuf_free(term->answerback);
 
     for (i = 0; i < term->bidi_cache_size; i++) {
@@ -3491,6 +3504,157 @@ static void far2l_process_payload(Terminal *term)
 #endif /* MOD_FAR2L */
 
 /*
+ * KiTTY: begin accumulating a new OSC-like string, with the ceiling that applies
+ * to this particular sequence (see terminal.h). Also drops the buffer back to
+ * its base size, so a window that once received a large OSC 52 payload does not
+ * sit on that allocation for the rest of the session.
+ */
+static void osc_start(Terminal *term, size_t limit)
+{
+    term->osc_strlen = 0;
+    term->osc_str_limit = limit;
+    term->osc_str_overflow = false;
+    if (term->osc_strsize > OSC_STR_MAX + 1) {
+        term->osc_strsize = OSC_STR_MAX + 1;
+        term->osc_string = sresize(term->osc_string, term->osc_strsize, char);
+    }
+}
+
+/*
+ * KiTTY: append one byte, growing the buffer up to this sequence's ceiling.
+ * Beyond the ceiling the byte is dropped and osc_str_overflow is set, so a
+ * consumer that must not act on half a payload - OSC 52 - can refuse the lot.
+ * The sequences that were silently truncated before the buffer grew at all
+ * still are, because their ceiling is the size the array used to have.
+ */
+static void osc_addchar(Terminal *term, unsigned char c)
+{
+    if ((size_t)term->osc_strlen >= term->osc_str_limit) {
+        term->osc_str_overflow = true;
+        return;
+    }
+    /* +2 rather than +1: room for this byte AND for the terminating NUL that
+     * do_osc writes at osc_string[osc_strlen]. */
+    if ((size_t)term->osc_strlen + 2 > term->osc_strsize) {
+        size_t newsize = term->osc_strsize * 2;
+        if (newsize > term->osc_str_limit + 1)
+            newsize = term->osc_str_limit + 1;
+        term->osc_string = sresize(term->osc_string, newsize, char);
+        term->osc_strsize = newsize;
+    }
+    term->osc_string[term->osc_strlen++] = (char)c;
+}
+
+#ifdef MOD_PERSO
+/*
+ * KiTTY: OSC 52 - the remote host asks to put text on the LOCAL clipboard.
+ *
+ * The sequence is  ESC ] 52 ; Pc ; Pd ST , so by the time we get here
+ * osc_string holds "Pc;Pd": Pc names the selection(s), Pd is base64 text.
+ *
+ * Upstream PuTTY omits OSC 52 on purpose, and the reason is worth stating: a
+ * remote host writing your clipboard is a genuine risk, because what you paste
+ * next may not be what you think you copied. So this is policy-gated
+ * (CONF_osc52_clipboard: disabled / enabled / ask-once-per-session) and the
+ * READ direction is not implemented at all.
+ *
+ * Classic KiTTY's version differs in three ways we did not carry over: it drove
+ * the Win32 clipboard API directly from this cross-platform file, it honoured an
+ * OSC52ALLOWED environment variable that silently suppressed the prompt (an
+ * undiscoverable override of a security decision), and it asked on every single
+ * payload rather than latching per session.
+ */
+static void osc52_set_clipboard(Terminal *term)
+{
+    const char *sep, *pd, *p;
+    size_t pdlen;
+    strbuf *decoded;
+    wchar_t *wide;
+    size_t wlen;
+
+    sep = strchr(term->osc_string, ';');
+    if (!sep)
+        return;                        /* no Pd field at all */
+    pd = sep + 1;
+
+    /*
+     * Pc: xterm's selection characters. Windows has exactly one clipboard, so
+     * every one of these means the same thing to us. An unrecognised character
+     * means a sequence we do not understand, which is refused rather than
+     * guessed at. Empty Pc is legal and means the default selection.
+     */
+    for (p = term->osc_string; p < sep; p++)
+        if (!strchr("cpqs01234567", *p))
+            return;
+
+    /*
+     * SECURITY: Pd == "?" is the READ direction - it asks the terminal to send
+     * the local clipboard back to the host. That is an exfiltration channel, it
+     * is the main reason upstream leaves OSC 52 out, and no setting of ours
+     * makes it worth having. Never implemented, deliberately not configurable,
+     * and refused in silence: replying at all would tell a probing host whether
+     * the feature is present.
+     */
+    if (!strcmp(pd, "?"))
+        return;
+
+    /*
+     * A payload that did not fit is refused whole, never pasted in part. Half a
+     * clipboard is worse than none: it looks like it worked, and pasting half a
+     * command line is how that becomes somebody's bad day.
+     */
+    if (term->osc_str_overflow)
+        return;
+
+    /*
+     * Same rule for a malformed payload. base64_decode_atom silently yields
+     * nothing for an invalid 4-character group, so decoding without checking
+     * first would hand over a clipboard with holes punched in it.
+     */
+    pdlen = strlen(pd);
+    if (pdlen % 4 == 1)
+        return;
+    for (p = pd; *p; p++)
+        if (!((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+              (*p >= '0' && *p <= '9') || *p == '+' || *p == '/' || *p == '='))
+            return;
+
+    if (term->osc52_allowed == OSC52_CLIPBOARD_DISABLED)
+        return;
+    if (term->osc52_allowed == OSC52_CLIPBOARD_ASK) {
+#ifdef _WINDOWS
+        int status = MessageBox(
+            NULL,
+            "The server wants to put text on your clipboard.\n\n"
+            "Allow it for the rest of this session?",
+            "KiTTY", MB_OKCANCEL | MB_ICONQUESTION);
+        /* Latch either way: asking once per payload would let any host raise a
+         * dialog as often as it liked. */
+        term->osc52_allowed = (status == IDOK ?
+                               OSC52_CLIPBOARD_ENABLED :
+                               OSC52_CLIPBOARD_DISABLED);
+#else
+        term->osc52_allowed = OSC52_CLIPBOARD_DISABLED;
+#endif
+        if (term->osc52_allowed != OSC52_CLIPBOARD_ENABLED)
+            return;
+    }
+
+    decoded = base64_decode_sb(make_ptrlen(pd, pdlen));
+    /* strbuf keeps its contents NUL-terminated, and decode_utf8_to_wide_string
+     * substitutes U+FFFD for anything malformed rather than failing. */
+    wide = decode_utf8_to_wide_string(decoded->s);
+    wlen = wcslen(wide);
+    /* SELECTION_NUL_TERMINATED: the same length convention clipme() uses, i.e.
+     * on Windows the terminating NUL is part of what is handed over. */
+    win_clip_write(term->win, CLIP_SYSTEM, wide, NULL, NULL,
+                   (int)(wlen + SELECTION_NUL_TERMINATED), false);
+    sfree(wide);
+    strbuf_free(decoded);
+}
+#endif /* MOD_PERSO */
+
+/*
  * Process an OSC or similar sequence, with a whole embedded string,
  * like setting the window title or icon name.
  */
@@ -3586,6 +3750,11 @@ static void do_osc(Terminal *term)
              * the safe replacement for the removed __pw/__ws title-scan
              * dispatcher (CVE-2024-23749), which stays dead. */
             kitty_set_remote_cwd(term->osc_string);
+            break;
+          case 52:
+            /* OSC 52: the host wants to set the local clipboard. Text only -
+             * the protocol carries nothing else - and write only. */
+            osc52_set_clipboard(term);
             break;
 #endif
         }
@@ -4490,7 +4659,9 @@ static void term_out(Terminal *term, bool called_from_term_data)
                     compatibility(OTHER);
                     term->termstate = SEEN_OSC;
                     term->osc_type = OSCLIKE_OSC;
-                    term->osc_strlen = 0;
+                    /* the real ceiling is chosen on entry to OSC_STRING, once
+                     * esc_args[0] says which sequence this is */
+                    osc_start(term, OSC_STR_MAX);
                     term->esc_args[0] = 0;
                     term->esc_nargs = 1;
                     break;
@@ -4518,7 +4689,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
 #else
                     term->termstate = SEEN_OSC;
 #endif
-                    term->osc_strlen = 0;
+                    osc_start(term, OSC_STR_MAX);
                     term->esc_args[0] = 0;
                     term->esc_nargs = 1;
                     break;
@@ -5629,7 +5800,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
                 switch (c) {
                   case 'P':            /* Linux palette sequence */
                     term->termstate = SEEN_OSC_P;
-                    term->osc_strlen = 0;
+                    osc_start(term, OSC_STR_MAX);
                     break;
                   case 'R':            /* Linux palette reset */
                     palette_reset(term, false);
@@ -5693,7 +5864,17 @@ static void term_out(Terminal *term, bool called_from_term_data)
                         term->esc_args[term->esc_nargs++] = 0;
                     } else {
                         term->termstate = OSC_STRING;
-                        term->osc_strlen = 0;
+#ifdef MOD_PERSO
+                        /* KiTTY: OSC 52 carries a whole copied selection, so it
+                         * is the one sequence allowed past the fixed size every
+                         * other OSC keeps (see terminal.h). Deliberately gated:
+                         * a build without the OSC 52 handler must not buffer
+                         * megabytes it will only throw away. */
+                        osc_start(term, term->esc_args[0] == 52 ?
+                                  OSC_STR_MAX_CLIP : OSC_STR_MAX);
+#else
+                        osc_start(term, OSC_STR_MAX);
+#endif
                     }
                 }
                 break;
@@ -5764,8 +5945,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
                 }
 
                 /* Anything else gets added to the string */
-                if (term->osc_strlen < OSC_STR_MAX)
-                    term->osc_string[term->osc_strlen++] = (char)c;
+                osc_addchar(term, (unsigned char)c);
                 break;
               case OSC_MAYBE_ST_UTF8:
                 /* In UTF-8 mode, we've seen C2, so are we now seeing
@@ -5779,10 +5959,8 @@ static void term_out(Terminal *term, bool called_from_term_data)
                 /* No, so append the pending C2 byte to the OSC string
                  * followed by the current character, and go back to
                  * OSC string accumulation */
-                if (term->osc_strlen < OSC_STR_MAX)
-                    term->osc_string[term->osc_strlen++] = 0xC2;
-                if (term->osc_strlen < OSC_STR_MAX)
-                    term->osc_string[term->osc_strlen++] = (char)c;
+                osc_addchar(term, 0xC2);
+                osc_addchar(term, (unsigned char)c);
                 term->termstate = OSC_STRING;
                 break;
               case SEEN_OSC_P: {
@@ -5850,7 +6028,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
                     break;
                   default:
                     term->termstate = OSC_STRING;
-                    term->osc_strlen = 0;
+                    osc_start(term, OSC_STR_MAX);
                 }
                 break;
               case VT52_ESC:

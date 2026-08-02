@@ -169,6 +169,10 @@ void write_setting_i(settings_w *handle, const char *key, int value)
  * Settings" and for plink/pscp merely loading a session in passing. */
 static const char *const kitty_retired_keys[] = {
     "SaveWindowPos",   /* -> SetWindowPos: it pins a position, it saves nothing */
+    /* -> OSC52Clipboard. Note this one is a REPLACEMENT, not a rename: the old
+     * BOOL meant "warn before syncing" and nothing read it (OSC 52 was never
+     * ported), so its value is deliberately not carried across - see conf.h. */
+    "OSC52WarnBeforeClipboardSync",
 };
 
 static void kitty_retire_renamed_keys(settings_w *handle)

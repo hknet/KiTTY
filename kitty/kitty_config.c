@@ -4620,6 +4620,16 @@ static void scb_panel_selection(struct controlbox *b)
                       "Enabled", NO_SHORTCUT, I(SHARED_CLIPBOARD_ENABLED),
                       "Ask", NO_SHORTCUT, I(SHARED_CLIPBOARD_ASK));
 #endif
+    /* KiTTY (OSC 52): let the remote host put text on the local clipboard.
+     * Same three-way shape as the far2l control above, on purpose. "Ask"
+     * answers latch for the rest of the session. Only the write direction
+     * exists: OSC 52's clipboard-read request is always refused. */
+    ctrl_radiobuttons(s, "Remote clipboard writes (OSC 52):", NO_SHORTCUT, 3,
+                      HELPCTX(no_help), conf_radiobutton_handler,
+                      I(CONF_osc52_clipboard),
+                      "Disabled", NO_SHORTCUT, I(OSC52_CLIPBOARD_DISABLED),
+                      "Enabled", NO_SHORTCUT, I(OSC52_CLIPBOARD_ENABLED),
+                      "Ask", NO_SHORTCUT, I(OSC52_CLIPBOARD_ASK));
 
     s = ctrl_getset(b, "Window/Selection", "paste",
                     "Control pasting of text from clipboard to terminal");

@@ -1423,7 +1423,16 @@ CONF_OPTION(scrolllines, VALUE_TYPE(INT), DEFAULT_INT(-1), SAVE_KEYWORD("LinesAt
 CONF_OPTION(ssh_tunnel_print_in_title, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("SSHTunnelInTitle"),)
 CONF_OPTION(disablealtgr, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("DisableAltGr"),)
 CONF_OPTION(printclip, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("PrintToClipboard"),)
-CONF_OPTION(osc52_warn_before_cliboard_sync, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("OSC52WarnBeforeClipboardSync"),)
+/* KiTTY: may a remote host put text on the local clipboard with OSC 52?
+ * 0=disabled, 1=enabled, 2=ask-once-per-session (OSC52_CLIPBOARD_* in putty.h).
+ * Default ask, matching the far2l control above.
+ * Replaces the BOOL "OSC52WarnBeforeClipboardSync", which this port loaded and
+ * saved but never read, because OSC 52 itself was never ported. That key is NOT
+ * migrated on purpose: it meant "warn", so its default false meant "sync
+ * silently", and honouring it would quietly switch remote clipboard writes ON
+ * for every session imported from classic KiTTY. It is dropped when a session is
+ * next saved (windows/storage.c, kitty_retired_keys). */
+CONF_OPTION(osc52_clipboard, VALUE_TYPE(INT), DEFAULT_INT(2), SAVE_KEYWORD("OSC52Clipboard"),)
 /* ===== KiTTY rutty scripting (script.c) ===== */
 CONF_OPTION(script_mode, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("ScriptMode"),)
 CONF_OPTION(script_line_delay, VALUE_TYPE(INT), DEFAULT_INT(5), SAVE_KEYWORD("ScriptLineDelay"),)

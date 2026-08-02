@@ -276,6 +276,21 @@ add_executable(test_terminal
 target_link_libraries(test_terminal
   guiterminal settings eventloop utils ${platform_libraries})
 
+# OSC 52 regression tests. terminal.c is compiled directly into this target, and
+# with MOD_PERSO, for the same reason the kitty target does it: the OSC 52
+# handler lives behind that define and guiterminal is built WITHOUT it, so a
+# test that merely linked the library would silently exercise nothing at all.
+add_executable(test_osc52
+  ${CMAKE_SOURCE_DIR}/test/test_osc52.c
+  ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-storage.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
+  no-jump-list.c)
+target_compile_definitions(test_osc52 PRIVATE MOD_PERSO)
+target_link_libraries(test_osc52
+  guiterminal settings eventloop utils ${platform_libraries})
+
 add_sources_from_current_dir(test_conf no-jump-list.c handle-wait.c)
 
 # ===================== KiTTY target =====================

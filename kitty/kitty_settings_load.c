@@ -843,7 +843,11 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppb_forced(sesskey, "NoFocusReporting", true, conf, CONF_no_focus_rep);
     gppi_forced(sesskey, "LinesAtAScroll", 5, conf, CONF_scrolllines);
     gppb_forced(sesskey, "SSHTunnelInTitle", false, conf, CONF_ssh_tunnel_print_in_title);
-    gppb_forced(sesskey, "OSC52WarnBeforeClipboardSync", false, conf, CONF_osc52_warn_before_cliboard_sync);
+    /* OSC 52 clipboard policy. The old BOOL "OSC52WarnBeforeClipboardSync" is
+     * deliberately NOT read across (see conf.h): it meant "warn", so its default
+     * meant "sync silently", and migrating it would switch remote clipboard
+     * writes on for imported sessions. */
+    gppi_forced(sesskey, "OSC52Clipboard", OSC52_CLIPBOARD_ASK, conf, CONF_osc52_clipboard);
 #endif
 #ifdef MOD_PORTKNOCKING
 	gpps_forced(sesskey, "PortKnocking", "", conf, CONF_portknockingoptions );

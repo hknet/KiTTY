@@ -562,7 +562,7 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_b_forced(sesskey, "NoFocusReporting", conf_get_bool(conf, CONF_no_focus_rep));
     write_setting_i_forced(sesskey, "LinesAtAScroll", conf_get_int(conf, CONF_scrolllines));
     write_setting_b_forced(sesskey, "SSHTunnelInTitle", conf_get_bool(conf, CONF_ssh_tunnel_print_in_title));
-    write_setting_b_forced(sesskey, "OSC52WarnBeforeClipboardSync", conf_get_bool(conf, CONF_osc52_warn_before_cliboard_sync));
+    write_setting_i_forced(sesskey, "OSC52Clipboard", conf_get_int(conf, CONF_osc52_clipboard));
 #endif
     fclose(sesskey);
 }
