@@ -1393,8 +1393,29 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * backend is up (start_backend runs after this seat-setup). */
     if (conf_get_int(wgs->conf, CONF_script_mode) == 1) {
         Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
-        if (sf && filename_to_str(sf)[0])
+        if (sf && filename_to_str(sf)[0]) {
             SetTimer(wgs->term_hwnd, TIMER_SCRIPT, 1500, NULL);
+            /*
+             * KiTTY has TWO independent scripting features and they do not know
+             * about each other: rutty steps through a file line by line, and the
+             * login script answers prompts as they appear. Both observe the same
+             * incoming data in win_seat_output and both can send, with nothing
+             * sequencing them - so with both running, each is reacting to output
+             * the other caused.
+             *
+             * Not blocked, because either might be what the user meant. Named in
+             * the Event Log, with BOTH panels, because the whole difficulty is
+             * that they live in different places and each looks like "the"
+             * scripting feature.
+             */
+            if (ScriptFileContent != NULL)
+                lp_eventlog(&wgs->logpolicy,
+                    "Two scripts are active at once: the rutty script "
+                    "(Session > Scripting) and the login script "
+                    "(Connection > Data). They observe the same output and both "
+                    "send, with nothing sequencing them - if the automation "
+                    "misbehaves, that is the first thing to check.");
+        }
     }
 #endif
     setup_clipboards(wgs->term, wgs->conf);

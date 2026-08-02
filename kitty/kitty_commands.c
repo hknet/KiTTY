@@ -272,8 +272,33 @@ static int cmd_delfolder( HWND hwnd, char * arg ) {
 }
 
 static int cmd_loadinitscript( HWND hwnd, char * arg ) {
-	(void)hwnd ;
+	extern void kitty_notice_box( HWND owner, const char *caption, const char *text ) ; /* kitty_win.c */
+	extern char * ScriptFileContent ;                                                  /* kitty.c */
 	ReadInitScript( arg ) ;
+	/*
+	 * The other order of the same clash the Event Log warns about at connect:
+	 * a login script loaded by hand while a rutty script is already configured.
+	 * Said in a box rather than the log because the user is right here, having
+	 * just typed the command - a log line is for something they will read later.
+	 * Both panels are named, since the difficulty is that the two features live
+	 * in different places and each looks like "the" scripting one.
+	 */
+	if( ScriptFileContent != NULL && conf != NULL &&
+	    conf_get_int( conf, CONF_script_mode ) == 1 ) {
+		Filename *sf = conf_get_filename( conf, CONF_scriptfile ) ;
+		if( sf && filename_to_str(sf)[0] )
+			kitty_notice_box( hwnd, "KiTTY - two scripts are now active",
+				"A login script has been loaded while a rutty script is also "
+				"configured for this session.\n\n"
+				"They are separate features and neither knows about the other. "
+				"Both watch the same output from the host and both can send, "
+				"with nothing sequencing them, so each may react to output the "
+				"other caused.\n\n"
+				"You can see them here:\n"
+				"    Session > Scripting        - the rutty script file\n"
+				"    Connection > Data          - the login script\n\n"
+				"Nothing has been stopped; this is only a warning." ) ;
+	}
 	return 1 ;
 }
 
