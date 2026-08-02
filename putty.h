@@ -2608,8 +2608,8 @@ enum {
  * WRITE direction only: OSC 52's clipboard-READ request ("?") is refused
  * unconditionally and has no setting. */
 enum {
-    OSC52_CLIPBOARD_DISABLED,  /* ignore OSC 52 entirely */
-    OSC52_CLIPBOARD_ENABLED,   /* let the host set the clipboard */
+    OSC52_CLIPBOARD_DENY,      /* ignore OSC 52 entirely */
+    OSC52_CLIPBOARD_ALLOW,     /* let the host set the clipboard */
     OSC52_CLIPBOARD_ASK,       /* ask the user once per session */
 };
 #endif

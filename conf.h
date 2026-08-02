@@ -1424,15 +1424,29 @@ CONF_OPTION(ssh_tunnel_print_in_title, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SA
 CONF_OPTION(disablealtgr, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("DisableAltGr"),)
 CONF_OPTION(printclip, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("PrintToClipboard"),)
 /* KiTTY: may a remote host put text on the local clipboard with OSC 52?
- * 0=disabled, 1=enabled, 2=ask-once-per-session (OSC52_CLIPBOARD_* in putty.h).
- * Default ask, matching the far2l control above.
+ * 0=deny, 1=allow, 2=ask-once-per-session (OSC52_CLIPBOARD_* in putty.h).
+ *
+ * Default ALLOW, which is what every comparable terminal does: Ghostty permits
+ * OSC 52 writes unconditionally, Alacritty ships "OnlyCopy" (write yes, read
+ * no), kitty writes by default. Two reasons it is not "ask":
+ *  - the WRITE direction leaks nothing. It changes what you paste next, which
+ *    is worth a setting, but it cannot disclose anything to the host - unlike
+ *    the read direction, which we refuse outright and unconditionally;
+ *  - a prompt users do not think is warranted is how the whole protection ends
+ *    up switched off. Measured elsewhere, not assumed: kitty's own users report
+ *    its clipboard warnings are "so annoying that everyone will look for a fix
+ *    and disable" them, and Ghostty has bug reports of read prompts firing
+ *    repeatedly from nothing worse than Neovim polling the clipboard over SSH.
+ *    Spend the interruption where it buys something.
+ * Set it to Deny per session (or in Default Settings) if you would rather no
+ * host touched the clipboard at all.
  * Replaces the BOOL "OSC52WarnBeforeClipboardSync", which this port loaded and
  * saved but never read, because OSC 52 itself was never ported. That key is NOT
  * migrated on purpose: it meant "warn", so its default false meant "sync
  * silently", and honouring it would quietly switch remote clipboard writes ON
  * for every session imported from classic KiTTY. It is dropped when a session is
  * next saved (windows/storage.c, kitty_retired_keys). */
-CONF_OPTION(osc52_clipboard, VALUE_TYPE(INT), DEFAULT_INT(2), SAVE_KEYWORD("OSC52Clipboard"),)
+CONF_OPTION(osc52_clipboard, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("OSC52Clipboard"),)
 /* ===== KiTTY rutty scripting (script.c) ===== */
 CONF_OPTION(script_mode, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("ScriptMode"),)
 CONF_OPTION(script_line_delay, VALUE_TYPE(INT), DEFAULT_INT(5), SAVE_KEYWORD("ScriptLineDelay"),)

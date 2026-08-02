@@ -15,17 +15,20 @@ features are working and verified. Known limitations as of this release:
   clipboard for the rest of that session — it does not re-prompt per request. Set
   it to **Disabled** if you do not want a remote `far2l` to read/write your
   clipboard.
-- **OSC 52 remote clipboard writes are text-only, and write-only.** *Remote
-  clipboard writes (OSC 52)* (Window → Selection) lets a remote host put text on
-  your clipboard — that is all the sequence can carry, so images and other
-  clipboard formats never travel this way. The **read** direction (OSC 52's `?`
-  request, where the host asks for *your* clipboard) is **not implemented and
-  cannot be enabled**: it is an exfiltration channel, and it is the reason
-  upstream PuTTY leaves OSC 52 out altogether. As with far2l, answering **OK** to
-  an **Ask** prompt grants access for the rest of that session rather than
-  re-prompting per payload; changing any setting in the configuration box makes
-  it ask again. A payload too large to fit, or one that is not valid base64, is
-  refused entirely rather than pasted in part.
+- **OSC 52 remote clipboard writes are on by default, text-only, and
+  write-only.** *Remote clipboard writes (OSC 52)* (Window → Selection) defaults
+  to **Allow**, matching every comparable terminal — the write direction changes
+  what you paste next but cannot disclose anything to the host. Set it to
+  **Deny** if you would rather no host touched your clipboard, or **Ask** to be
+  prompted once per session. Only **text** travels this way; the sequence
+  carries nothing else, so images and other clipboard formats are unaffected.
+  The **read** direction (OSC 52's `?` request, where the host asks for *your*
+  clipboard) is **not implemented and cannot be enabled**: it is an exfiltration
+  channel, and it is the reason upstream PuTTY leaves OSC 52 out altogether. As
+  with far2l, answering **OK** to an **Ask** prompt grants access for the rest of
+  that session rather than re-prompting per payload; changing any setting in the
+  configuration box makes it ask again. A payload too large to fit, or one that
+  is not valid base64, is refused entirely rather than pasted in part.
 - **adb backend & rutty scripting:** functional and verified against test
   fixtures (a fake adb server / a scripted listener), but **not** yet validated
   against a real Android device or a live remote shell.

@@ -10,7 +10,7 @@
  *  - a malformed or truncated payload is refused WHOLE, never handed over in
  *    part, because half a clipboard looks like success and pasting half a
  *    command line is how that becomes somebody's bad day;
- *  - the policy gate is honoured (CONF_osc52_clipboard: disabled/enabled/ask).
+ *  - the policy gate is honoured (CONF_osc52_clipboard: deny/allow/ask).
  *    "Ask" is never exercised here - it raises a MessageBox, which would hang a
  *    headless run;
  *  - a real clipboard-sized payload survives, i.e. the buffer actually grows;
@@ -168,7 +168,7 @@ static int feed(Mock *mk, int policy, const char *data, size_t len)
 static void expect_clip(Mock *mk, const char *what, const char *seq,
                         const wchar_t *want)
 {
-    if (feed(mk, OSC52_CLIPBOARD_ENABLED, seq, strlen(seq)) != 1) {
+    if (feed(mk, OSC52_CLIPBOARD_ALLOW, seq, strlen(seq)) != 1) {
         fail(what, "nothing was written to the clipboard");
         return;
     }
@@ -178,7 +178,7 @@ static void expect_clip(Mock *mk, const char *what, const char *seq,
 
 static void expect_refused(Mock *mk, const char *what, const char *seq)
 {
-    if (feed(mk, OSC52_CLIPBOARD_ENABLED, seq, strlen(seq)) != 0)
+    if (feed(mk, OSC52_CLIPBOARD_ALLOW, seq, strlen(seq)) != 0)
         fail(what, "the clipboard was written when it should not have been");
 }
 
@@ -216,7 +216,7 @@ int main(void)
     expect_refused(mk, "no Pd field at all", "\033]52;SGVsbG8=\007");
 
     /* --- the policy gate --- */
-    if (feed(mk, OSC52_CLIPBOARD_DISABLED, "\033]52;c;SGVsbG8=\007",
+    if (feed(mk, OSC52_CLIPBOARD_DENY, "\033]52;c;SGVsbG8=\007",
              strlen("\033]52;c;SGVsbG8=\007")) != 0)
         fail("policy disabled", "the clipboard was written anyway");
 
@@ -235,7 +235,7 @@ int main(void)
             memcpy(seq + 7 + i * 4, "QUFB", 4);
         seq[seqlen - 1] = '\007';
         seq[seqlen] = '\0';
-        if (feed(mk, OSC52_CLIPBOARD_ENABLED, seq, seqlen) != 1)
+        if (feed(mk, OSC52_CLIPBOARD_ALLOW, seq, seqlen) != 1)
             fail("256 KB payload", "nothing was written to the clipboard");
         else if (mk->clip_len != 3 * k + 1)     /* +1: the terminating NUL */
             fail("256 KB payload", "the payload was truncated");

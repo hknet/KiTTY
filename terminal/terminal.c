@@ -3619,7 +3619,7 @@ static void osc52_set_clipboard(Terminal *term)
               (*p >= '0' && *p <= '9') || *p == '+' || *p == '/' || *p == '='))
             return;
 
-    if (term->osc52_allowed == OSC52_CLIPBOARD_DISABLED)
+    if (term->osc52_allowed == OSC52_CLIPBOARD_DENY)
         return;
     if (term->osc52_allowed == OSC52_CLIPBOARD_ASK) {
 #ifdef _WINDOWS
@@ -3631,12 +3631,12 @@ static void osc52_set_clipboard(Terminal *term)
         /* Latch either way: asking once per payload would let any host raise a
          * dialog as often as it liked. */
         term->osc52_allowed = (status == IDOK ?
-                               OSC52_CLIPBOARD_ENABLED :
-                               OSC52_CLIPBOARD_DISABLED);
+                               OSC52_CLIPBOARD_ALLOW :
+                               OSC52_CLIPBOARD_DENY);
 #else
-        term->osc52_allowed = OSC52_CLIPBOARD_DISABLED;
+        term->osc52_allowed = OSC52_CLIPBOARD_DENY;
 #endif
-        if (term->osc52_allowed != OSC52_CLIPBOARD_ENABLED)
+        if (term->osc52_allowed != OSC52_CLIPBOARD_ALLOW)
             return;
     }
 

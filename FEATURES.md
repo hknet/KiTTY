@@ -538,9 +538,9 @@ KiTTY can run the current Windows clipboard contents as a local command with the
 
 A program on the remote host — `tmux`, `vim`, `nvim`, or anything that emits the standard **OSC 52** sequence — can put text straight onto your Windows clipboard, so yanking in a remote editor gives you something you can paste locally without selecting it with the mouse first. Only **text** travels this way; the sequence carries nothing else, so images and other clipboard formats are unaffected.
 
-Because a remote host writing your clipboard changes what you paste next, KiTTY gates it: **Disabled**, **Enabled**, or **Ask**, which prompts once and remembers your answer for the rest of that session. The **read** direction — where the host asks KiTTY to send *your* clipboard back to it — is deliberately **not implemented and cannot be switched on**; that is the exfiltration risk for which upstream PuTTY omits OSC 52 entirely. A payload that arrives truncated or malformed is refused whole rather than pasted in part.
+Because a remote host writing your clipboard changes what you paste next, KiTTY gates it: **Deny**, **Allow**, or **Ask**, which prompts once and remembers your answer for the rest of that session. The **read** direction — where the host asks KiTTY to send *your* clipboard back to it — is deliberately **not implemented and cannot be switched on**; that is the exfiltration risk for which upstream PuTTY omits OSC 52 entirely. A payload that arrives truncated or malformed is refused whole rather than pasted in part.
 
-**How to enable:** **Window → Selection**, *Remote clipboard writes (OSC 52)* — set it to **Enabled**, or leave it on **Ask** (the default).
+**How to enable:** on by default (**Allow**), as in every comparable terminal — the write direction cannot disclose anything to the host, so it is not worth an interruption. Change it per session in **Window → Selection**, *Remote clipboard writes (OSC 52)*: **Deny** if you would rather no host touched your clipboard, or **Ask** to be prompted once per session.
 
 (no screenshot)
 

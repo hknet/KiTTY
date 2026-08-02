@@ -4613,11 +4613,14 @@ static void scb_panel_selection(struct controlbox *b)
     /* KiTTY (far2l): let a remote far2l session read/write the local clipboard.
      * Triples (label, NO_SHORTCUT, I(val)) — 0.84 ctrl_radiobuttons needs the
      * per-button shortcut slot. */
+    /* Deny/Allow/Ask rather than Disabled/Enabled: these grant a permission,
+     * they do not switch a feature on. The SHARED_CLIPBOARD_* value names still
+     * read DISABLED/ENABLED - stored values are unchanged either way. */
     ctrl_radiobuttons(s, "far2l shared clipboard:", NO_SHORTCUT, 3,
                       HELPCTX(no_help), conf_radiobutton_handler,
                       I(CONF_shared_clipboard),
-                      "Disabled", NO_SHORTCUT, I(SHARED_CLIPBOARD_DISABLED),
-                      "Enabled", NO_SHORTCUT, I(SHARED_CLIPBOARD_ENABLED),
+                      "Deny", NO_SHORTCUT, I(SHARED_CLIPBOARD_DISABLED),
+                      "Allow", NO_SHORTCUT, I(SHARED_CLIPBOARD_ENABLED),
                       "Ask", NO_SHORTCUT, I(SHARED_CLIPBOARD_ASK));
 #endif
     /* KiTTY (OSC 52): let the remote host put text on the local clipboard.
@@ -4627,8 +4630,8 @@ static void scb_panel_selection(struct controlbox *b)
     ctrl_radiobuttons(s, "Remote clipboard writes (OSC 52):", NO_SHORTCUT, 3,
                       HELPCTX(no_help), conf_radiobutton_handler,
                       I(CONF_osc52_clipboard),
-                      "Disabled", NO_SHORTCUT, I(OSC52_CLIPBOARD_DISABLED),
-                      "Enabled", NO_SHORTCUT, I(OSC52_CLIPBOARD_ENABLED),
+                      "Deny", NO_SHORTCUT, I(OSC52_CLIPBOARD_DENY),
+                      "Allow", NO_SHORTCUT, I(OSC52_CLIPBOARD_ALLOW),
                       "Ask", NO_SHORTCUT, I(OSC52_CLIPBOARD_ASK));
 
     s = ctrl_getset(b, "Window/Selection", "paste",

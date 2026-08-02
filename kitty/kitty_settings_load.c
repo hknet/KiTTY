@@ -847,7 +847,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
      * deliberately NOT read across (see conf.h): it meant "warn", so its default
      * meant "sync silently", and migrating it would switch remote clipboard
      * writes on for imported sessions. */
-    gppi_forced(sesskey, "OSC52Clipboard", OSC52_CLIPBOARD_ASK, conf, CONF_osc52_clipboard);
+    gppi_forced(sesskey, "OSC52Clipboard", OSC52_CLIPBOARD_ALLOW, conf, CONF_osc52_clipboard);
 #endif
 #ifdef MOD_PORTKNOCKING
 	gpps_forced(sesskey, "PortKnocking", "", conf, CONF_portknockingoptions );
