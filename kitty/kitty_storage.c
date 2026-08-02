@@ -1890,6 +1890,57 @@ char *kitty_secret_wrap_portable(const char *plaintext)
     }
     return ksec_protect_portable(plaintext);
 }
+/*
+ * The login script's two shapes, with no crypto in sight.
+ *
+ * STORED it is a NUL-separated blob - expect\0send\0expect\0send\0\0 - which is
+ * what ManageInitScript walks. SHOWN to a person it is one entry per line, which
+ * is exactly the format of the script FILE it came from, so the config box gives
+ * back what the user originally wrote.
+ *
+ * These live here, apart from the protection that wraps them, for one reason:
+ * this is where a mistake silently eats somebody's login script, so it has to be
+ * somewhere the tests can reach. The crypto half stays in kitty.c with the legacy
+ * decode it depends on.
+ */
+char *kitty_loginscript_blob_to_lines(const unsigned char *blob, int len)
+{
+    strbuf *sb;
+    int i = 0;
+    if (!blob || len <= 0) return ksec_dup("");
+    sb = strbuf_new_nm();
+    while (i < len && blob[i]) {
+        const char *e = (const char *)blob + i;
+        size_t n = strnlen(e, (size_t)(len - i));
+        if (sb->len) put_dataz(sb, "\r\n");
+        put_data(sb, e, n);
+        i += (int)n + 1;
+    }
+    return strbuf_to_str(sb);
+}
+
+/* text -> blob. *outlen gets the byte count INCLUDING the terminating empty
+ * entry. Caller frees with sfree. Empty lines are dropped, matching how the
+ * script file is read - a blank line there would become an entry that matches
+ * everything. */
+unsigned char *kitty_loginscript_lines_to_blob(const char *text, int *outlen)
+{
+    strbuf *raw = strbuf_new_nm();
+    const char *p = text ? text : "";
+    unsigned char *out;
+    while (*p) {
+        const char *nl = p;
+        while (*nl && *nl != '\r' && *nl != '\n') nl++;
+        if (nl > p) { put_data(raw, p, nl - p); put_byte(raw, 0); }
+        while (*nl == '\r' || *nl == '\n') nl++;
+        p = nl;
+    }
+    put_byte(raw, 0);
+    *outlen = (int)raw->len;
+    out = (unsigned char *)strbuf_to_str(raw);
+    return out;
+}
+
 /* Wrap for whatever backend is active now (registry -> DPAPI1, portable ->
  * MPW/legacy), for stores that live outside the write_setting_s chokepoint
  * (e.g. named proxies). Malloc'd; free() the result. */

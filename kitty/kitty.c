@@ -2724,6 +2724,66 @@ extern char *ksec_b64_encode( const unsigned char *in, int len ) ;
 extern unsigned char *ksec_b64_decode( const char *in, int *outlen ) ;
 extern int ksec_unprotect( const char *stored, char **out ) ;
 extern int ksec_stored_is_legacy( const char *stored ) ;
+extern char *kitty_loginscript_blob_to_lines( const unsigned char *blob, int len ) ;
+extern unsigned char *kitty_loginscript_lines_to_blob( const char *text, int *outlen ) ;
+
+/*
+ * The login script, as text a person can read and edit.
+ *
+ * Stored, it is a NUL-separated blob (expect\0send\0...\0\0) wrapped in the same
+ * at-rest protection as the password. As text it is simply one entry per line -
+ * which is exactly the format of the script FILE it was read from, so what the
+ * config box shows is what the user originally wrote.
+ *
+ * These two live here rather than in kitty_config.c so the legacy decode, and
+ * therefore MASTER_PASSWORD, stays confined to this file while it is being
+ * retired.
+ */
+char *kitty_loginscript_to_text( const char *stored )
+{
+	char *plain = NULL, *out = NULL ;
+	unsigned char *blob = NULL ;
+	int blen = 0 ;
+
+	if( !stored || !stored[0] ) return dupstr( "" ) ;
+	/* A path that has not been inlined yet: nothing to show, and showing the
+	 * path in a content box would invite someone to "correct" it. */
+	if( existfile( (char*)stored ) ) return dupstr( "" ) ;
+
+	if( !ksec_stored_is_legacy( stored ) &&
+	    ksec_unprotect( stored, &plain ) > 0 && plain && plain[0] ) {
+		blob = ksec_b64_decode( plain, &blen ) ;
+	} else {
+		char *tmp = dupstr( stored ) ;
+		int l = decryptstring( GetCryptSaltFlag(), tmp, MASTER_PASSWORD ) ;
+		if( l > 0 ) { blob = (unsigned char*)tmp ; blen = l ; }
+		else sfree( tmp ) ;
+	}
+	if( plain ) { smemclr( plain, strlen(plain) ) ; sfree( plain ) ; }
+	if( !blob || blen <= 0 ) { if( blob ) sfree( blob ) ; return dupstr( "" ) ; }
+
+	out = kitty_loginscript_blob_to_lines( blob, blen ) ;
+	smemclr( blob, blen ) ; sfree( blob ) ;
+	return out ;
+}
+
+/* text (one entry per line) -> the protected stored form. Caller frees. */
+char *kitty_loginscript_from_text( const char *text )
+{
+	unsigned char *raw ;
+	int rawlen = 0 ;
+	char *b64, *wrapped ;
+
+	if( !text || !text[0] ) return dupstr( "" ) ;
+	raw = kitty_loginscript_lines_to_blob( text, &rawlen ) ;
+	if( !raw ) return dupstr( "" ) ;
+	b64 = ksec_b64_encode( raw, rawlen ) ;
+	smemclr( raw, rawlen ) ; sfree( raw ) ;
+	if( !b64 ) return dupstr( "" ) ;
+	wrapped = kitty_secret_wrap_current_backend( b64 ) ;
+	smemclr( b64, strlen(b64) ) ; sfree( b64 ) ;
+	return wrapped ? wrapped : dupstr( "" ) ;
+}
 
 void ReadInitScript( const char * filename ) {
 	char * pst, *buffer=NULL, *name=NULL ;

@@ -81,6 +81,38 @@ static void kitty_checkbox_int_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * keys are recommended). Declining clears the field. Consent happens HERE, at
  * configuration time, so the auto-login itself stays silent at connect time. */
 int kitty_autopw_warn(void);   /* kitty_win.c */
+/*
+ * The login script box: show the script as lines, store it protected.
+ *
+ * The conversions live in kitty.c next to ReadInitScript, so the legacy decode -
+ * and with it the compiled-in constant being retired - stays in one file.
+ *
+ * EVENT_REFRESH decrypts for display; EVENT_VALCHANGE re-wraps what was typed.
+ * That is the same shape the auto-login password below uses: the user handles
+ * plaintext and the protection is invisible, rather than the raw stored value
+ * being put in front of them to edit by hand.
+ */
+char *kitty_loginscript_to_text(const char *stored);     /* kitty.c */
+char *kitty_loginscript_from_text(const char *text);     /* kitty.c */
+
+static void kitty_loginscript_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                      void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        char *txt = kitty_loginscript_to_text(
+            conf_get_str(conf, CONF_scriptfilecontent));
+        dlg_editbox_set(ctrl, dlg, txt ? txt : "");
+        if (txt) { smemclr(txt, strlen(txt)); sfree(txt); }
+    } else if (event == EVENT_VALCHANGE) {
+        char *txt = dlg_editbox_get(ctrl, dlg);
+        char *stored = kitty_loginscript_from_text(txt ? txt : "");
+        conf_set_str(conf, CONF_scriptfilecontent, stored ? stored : "");
+        if (stored) sfree(stored);
+        if (txt) { smemclr(txt, strlen(txt)); sfree(txt); }
+    }
+}
+
 static void kitty_autopw_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                  void *data, int event)
 {
@@ -5013,14 +5045,28 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
                              50, HELPCTX(no_help),
                              conf_editbox_handler,
                              I(CONF_autocommand), ED_STR);
-                ctrl_filesel(s, "Login script file:", NO_SHORTCUT,
-                             FILTER_ALL_FILES, false,
-                             "Select the login script file to load",
-                             HELPCTX(no_help),
-                             conf_filesel_handler, I(CONF_scriptfile));
-                ctrl_editbox(s, "Login script content:", NO_SHORTCUT, 60,
-                             HELPCTX(no_help), conf_editbox_handler,
-                             I(CONF_scriptfilecontent), ED_STR);
+                /*
+                 * The login script, readable and editable.
+                 *
+                 * It used to be a single-line box bound straight to the STORED
+                 * value, which meant it showed protected gibberish and - worse -
+                 * writing in it produced a value no decoder could open, so the
+                 * script silently stopped working. It now shows the script the
+                 * way it is written in a script file: one entry per line,
+                 * alternating what to wait for and what to send.
+                 *
+                 * The "Login script file:" picker that used to sit above this is
+                 * GONE. It was bound to CONF_scriptfile, which belongs to the
+                 * rutty scripting on Session > Scripting - so choosing a file
+                 * here silently changed THAT setting and did nothing whatever for
+                 * the login script, which nothing ever read it for. Load a file
+                 * with -loginscript; edit it here afterwards.
+                 */
+                ctrl_editbox_multiline(s, "Login script (wait-for and send-text,"
+                                       " one per line):", NO_SHORTCUT, 8, false,
+                                       HELPCTX(no_help),
+                                       kitty_loginscript_handler,
+                                       I(CONF_scriptfilecontent), ED_STR);
             }
 #endif
 

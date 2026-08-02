@@ -70,6 +70,8 @@ void nonfatal(const char *fmt, ...)
 void load_open_settings_forced(char *filename, Conf *conf);   /* kitty_settings_load.c */
 int ksec_unprotect(const char *stored, char **out);           /* kitty_storage.c */
 int ksec_stored_is_legacy(const char *stored);                /* kitty_storage.c */
+char *kitty_loginscript_blob_to_lines(const unsigned char *blob, int len);
+unsigned char *kitty_loginscript_lines_to_blob(const char *text, int *outlen);
 
 const struct BackendVtable *const backends[] = { NULL };
 const int be_default_protocol = 0;
@@ -693,6 +695,61 @@ static void test_script_protection(void)
     sfree(b64);
 }
 
+/* ---------- the login script's readable form ----------
+ *
+ * The config box shows the script as one entry per line and stores it as a
+ * NUL-separated blob. This is where a mistake silently eats somebody's login
+ * script, which is why the conversion lives apart from the crypto that wraps it -
+ * so it can be tested at all.
+ */
+static void test_script_lines(void)
+{
+    static const unsigned char blob[] = "login:\0user\0password:\0s3cret\0";
+    const int bloblen = (int)sizeof(blob);
+    char *text;
+    unsigned char *back;
+    int backlen = 0;
+
+    text = kitty_loginscript_blob_to_lines(blob, bloblen);
+    check(text && !strcmp(text, "login:\r\nuser\r\npassword:\r\ns3cret"),
+          "lines: blob shows as one entry per line");
+
+    back = kitty_loginscript_lines_to_blob(text ? text : "", &backlen);
+    check(back && backlen == bloblen && !memcmp(back, blob, bloblen),
+          "lines: and converts back byte for byte");
+    if (back) sfree(back);
+    if (text) sfree(text);
+
+    /* Blank lines are dropped rather than becoming an entry. An empty wait-for
+     * string would match ANY output, firing the next send-text immediately -
+     * so a stray blank line in the box must not become one. */
+    back = kitty_loginscript_lines_to_blob("a\r\n\r\n\r\nb\r\n", &backlen);
+    check(back && backlen == 5 && !memcmp(back, "a\0b\0", 5),
+          "lines: blank lines are dropped, not turned into match-anything entries");
+    if (back) sfree(back);
+
+    /* Bare LF as well as CRLF - anything pasted from a Unix-side file. */
+    back = kitty_loginscript_lines_to_blob("a\nb", &backlen);
+    check(back && backlen == 5 && !memcmp(back, "a\0b\0", 5),
+          "lines: bare LF is accepted too");
+    if (back) sfree(back);
+
+    /* Empty input must produce a well-formed empty blob, not a null one. */
+    back = kitty_loginscript_lines_to_blob("", &backlen);
+    check(back && backlen == 1 && back[0] == 0,
+          "lines: empty text gives a terminated empty blob");
+    if (back) sfree(back);
+
+    /* A blob with no terminator must not be walked off the end. */
+    {
+        static const unsigned char trunc[] = { 'a','b','c' };
+        char *t = kitty_loginscript_blob_to_lines(trunc, (int)sizeof(trunc));
+        check(t && !strcmp(t, "abc"),
+              "lines: an unterminated blob is read to its length, not past it");
+        if (t) sfree(t);
+    }
+}
+
 int main(void)
 {
     printf("== registry backend (DPAPI) ==\n");
@@ -709,6 +766,8 @@ int main(void)
     test_old_ktx();
     printf("== login script protected like a password ==\n");
     test_script_protection();
+    printf("== login script readable form ==\n");
+    test_script_lines();
     printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",
            failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
