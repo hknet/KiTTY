@@ -298,7 +298,7 @@ static void read_reset(Mock *mk)
      * by nobody - which makes every test pass or fail for the wrong reason. */
     Conf *c = mk->term->conf;
     conf_set_int(c, CONF_osc52_clipboard_read, OSC52_READ_ASK);
-    conf_set_bool(c, CONF_osc52_require_focus, true);
+    conf_set_bool(c, CONF_clipboard_require_focus, true);
     conf_set_int(c, CONF_osc52_read_interval, 0);
     conf_set_int(c, CONF_osc52_read_max, 0);
     conf_set_int(c, CONF_osc52_read_dialogs, 3);
@@ -363,7 +363,7 @@ static void test_read_direction(Mock *mk)
     /* The focus rule can be switched off, because it changes write behaviour
      * that shipped working; when it is off, an unfocused read still serves. */
     read_reset(mk);
-    conf_set_bool(mk->term->conf, CONF_osc52_require_focus, false);
+    conf_set_bool(mk->term->conf, CONF_clipboard_require_focus, false);
     mk->term->osc52_read_decision = 1;
     mk->term->osc52_read_remaining = -1;
     mk->term->has_focus = false;
@@ -748,7 +748,6 @@ static int feed_apc(Mock *mk, const char *body, size_t len)
     char *seq = snewn(len + 8, char);
     size_t n = 0;
     int kept;
-    mk->term->clip_allowed = 0;
     memcpy(seq + n, "\033_", 2); n += 2;
     memcpy(seq + n, body, len);   n += len;
     seq[n++] = '\007';
@@ -765,6 +764,10 @@ static void test_far2l_ceiling(Mock *mk)
     const size_t big = 100000;         /* far past the old 2 KB ceiling */
     char *body = snewn(big + 16, char);
     int kept;
+
+    /* deny, so nothing here can reach the real Windows clipboard or raise a
+     * dialog: these cases are about the parser's ceiling, not the feature */
+    mk->term->clip_allowed = 0;
 
     /* A far2l DATA payload is held whole. Before the fix this stopped at 2048. */
     memcpy(body, "far2l:", 6);
@@ -802,13 +805,81 @@ static void test_far2l_ceiling(Mock *mk)
     sfree(body);
 }
 
+/*
+ * far2l obeys the focus rule too. It was the one clipboard path that ignored it,
+ * which made the rule untrue as stated - and "KiTTY never touches your clipboard
+ * unless you are looking at that window" is worth having precisely because it has
+ * no exceptions.
+ *
+ * The far2l clipboard subcommands are Win32-only, so what is checked here is the
+ * decision the gate makes, not the clipboard itself: an unfocused window must
+ * behave exactly as though the policy were Deny, and must still SEND a deny reply
+ * rather than going quiet, or the remote far2l waits for an answer that never
+ * comes.
+ */
+static void test_far2l_focus(Mock *mk)
+{
+    /*
+     * far2l's clipboard OPEN subcommand ('o'), which is its permission gate: its
+     * reply is a plain yes(1)/no(-1) byte, so it reads our gate directly and the
+     * answer is observable. Payload is base64 of the bytes { 'o', 'c', id } -
+     * far2l reads its command bytes from the END of the decoded buffer, so the
+     * subcommand comes first in the array.
+     */
+    static const char ask[] = "far2l:b2MB";     /* base64 of 6F 63 01 = 'o','c',1 */
+    char allowed[sizeof(osc52_last_send)];
+
+    conf_set_bool(mk->term->conf, CONF_clipboard_require_focus, true);
+    mk->term->clip_allowed = 1;                 /* policy says allow */
+
+    mk->term->has_focus = true;
+    osc52_sends = 0;
+    osc52_last_send[0] = '\0';
+    feed_apc(mk, ask, strlen(ask));
+    if (osc52_sends == 0) {
+        fail("far2l focus rule", "no reply at all when focused");
+        return;
+    }
+    strcpy(allowed, osc52_last_send);
+
+    mk->term->has_focus = false;
+    osc52_sends = 0;
+    osc52_last_send[0] = '\0';
+    feed_apc(mk, ask, strlen(ask));
+
+    /*
+     * It must still ANSWER - silence would leave the remote far2l waiting for a
+     * reply that never comes, which is why the gate zeroes the permission rather
+     * than returning early - and the answer must be a different one, because
+     * unfocused has to mean refused.
+     */
+    if (osc52_sends == 0)
+        fail("far2l focus rule",
+             "far2l stopped replying when unfocused; the remote would hang");
+    else if (!strcmp(allowed, osc52_last_send))
+        fail("far2l focus rule",
+             "an unfocused window gave the same answer as a focused one");
+
+    /* and with the rule switched off, focus stops mattering again */
+    conf_set_bool(mk->term->conf, CONF_clipboard_require_focus, false);
+    osc52_last_send[0] = '\0';
+    feed_apc(mk, ask, strlen(ask));
+    if (strcmp(allowed, osc52_last_send))
+        fail("far2l focus rule off",
+             "focus still mattered after the rule was switched off");
+
+    conf_set_bool(mk->term->conf, CONF_clipboard_require_focus, true);
+    mk->term->has_focus = true;
+    mk->term->clip_allowed = 0;
+}
+
 /* The focus rule applies to WRITES as well, which is a change to behaviour that
  * shipped working - so it gets its own test in both positions. */
 static void test_write_focus_rule(Mock *mk)
 {
     const char *seq = "\033]52;c;SGVsbG8=\007";
 
-    conf_set_bool(mk->term->conf, CONF_osc52_require_focus, true);
+    conf_set_bool(mk->term->conf, CONF_clipboard_require_focus, true);
     mk->term->has_focus = false;
     if (feed(mk, OSC52_CLIPBOARD_ALLOW, seq, strlen(seq)) != 0)
         fail("write with no focus", "the clipboard was written anyway");
@@ -818,12 +889,12 @@ static void test_write_focus_rule(Mock *mk)
         fail("write with focus", "the clipboard was not written");
 
     /* switched off, an unfocused write works again */
-    conf_set_bool(mk->term->conf, CONF_osc52_require_focus, false);
+    conf_set_bool(mk->term->conf, CONF_clipboard_require_focus, false);
     mk->term->has_focus = false;
     if (feed(mk, OSC52_CLIPBOARD_ALLOW, seq, strlen(seq)) != 1)
         fail("write, focus rule off", "the clipboard was not written");
 
-    conf_set_bool(mk->term->conf, CONF_osc52_require_focus, true);
+    conf_set_bool(mk->term->conf, CONF_clipboard_require_focus, true);
     mk->term->has_focus = true;
 }
 
@@ -916,6 +987,7 @@ int main(void)
     test_osc5522(mk);
     test_write_focus_rule(mk);
     test_far2l_ceiling(mk);
+    test_far2l_focus(mk);
 
     mock_free(mk);
 

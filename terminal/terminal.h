@@ -317,6 +317,16 @@ struct terminal_tag {
     unsigned long osc5522_pw_until[OSC5522_MAX_APPROVALS];  /* 0 = rest of session */
     int osc5522_pw_count;
 
+    /* KiTTY: accounting for "a clipboard payload was too big and was dropped",
+     * shared by OSC 52, OSC 5522 and far2l so all three report it the same way.
+     * Every one of these events fires at a moment the REMOTE HOST chose, so both
+     * the Event Log line and the balloon are rate-limited; suppressed ones are
+     * counted and mentioned in the next line rather than pretended away.
+     * Unconditional storage, same ODR reason as everything above. */
+    int clip_dropped_quiet;
+    unsigned long clip_dropped_logged;
+    unsigned long clip_notified_last;
+
     char id_string[1024];
 
     unsigned char *tabs;

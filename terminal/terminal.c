@@ -45,14 +45,23 @@ bool kitty_osc52_save_deny_for_host(Terminal *term);
 /* Transient tray balloon on the session window; no-op when notifications are
  * switched off or the window has no tray icon to hang one on. */
 void kitty_osc52_notify(Terminal *term, const char *title, const char *msg);
+#endif
+#if defined(MOD_PERSO) || defined(MOD_FAR2L)
 /* Send bytes down to the host. A seam rather than an ldisc_send() here so that the
  * one thing in this file that must never happen by accident - the clipboard
  * actually leaving the machine - is a single call the tests can count. Used by
- * both OSC 52 and OSC 5522, each of which builds its own complete sequence. */
+ * OSC 52, OSC 5522 and far2l alike, each of which builds its own complete
+ * sequence. */
 void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len);
+#endif
+#ifdef MOD_PERSO
 /* A clipboard permission started, expired, or changed between active and paused:
  * re-apply the title marker and the window colouring. */
 void kitty_osc52_state_changed(Terminal *term);
+/* "A clipboard payload was too big and was dropped" - Event Log plus a balloon,
+ * both rate-limited. Declared up here because far2l_process_payload sits earlier
+ * in the file than the definition, and all three protocols share it. */
+static void clip_payload_dropped(Terminal *term, const char *what, bool enabled);
 #endif
 #ifdef MOD_FAR2L
 #include "cdecode.h"
@@ -3305,14 +3314,22 @@ static void far2l_send_reply(Terminal *term, const unsigned char *reply, int rep
     base64_encodestate es;
     char *out;
     int count;
-    if (!term->ldisc || reply_size <= 0) return;
+    strbuf *sb;
+    if (reply_size <= 0) return;
     base64_init_encodestate(&es);
     out = snewn(reply_size * 2 + 8, char);
     count = base64_encode_block((const char *)reply, reply_size, out, &es);
     count += base64_encode_blockend(out + count, &es);
-    ldisc_send(term->ldisc, "\x1b_far2l", 7, false);
-    ldisc_send(term->ldisc, out, count, false);
-    ldisc_send(term->ldisc, "\x07", 1, false);
+    /* Through the same seam as the OSC 52 and OSC 5522 replies, rather than three
+     * ldisc_send() calls of its own: one place where clipboard data leaves the
+     * machine is easier to audit than three, and it is what lets the tests observe
+     * far2l's replies at all - they have no ldisc, so direct sends vanished. */
+    sb = strbuf_new_nm();
+    put_dataz(sb, "\x1b_far2l");
+    put_data(sb, out, count);
+    put_byte(sb, '\x07');
+    kitty_osc52_send_raw(term, sb->s, sb->len);
+    strbuf_free(sb);
     sfree(out);
 }
 
@@ -3331,6 +3348,19 @@ static void far2l_process_payload(Terminal *term)
     unsigned char id;
     char *reply = NULL;
     int reply_size = 0;
+    /*
+     * The permission actually in force for THIS payload: the session's far2l
+     * clipboard policy, but zero while the window has no keyboard focus.
+     *
+     * far2l was the one clipboard path that ignored the focus rule, which made the
+     * rule untrue as stated - "KiTTY never touches your clipboard unless you are
+     * looking at that window" is worth having precisely because it has no
+     * exceptions in it. Zero rather than a separate flag, so every existing
+     * "allowed?" test below is covered without being rewritten, and so the
+     * per-subcommand DENY replies still go out and the remote far2l never hangs
+     * waiting for an answer.
+     */
+    int clip_allowed_eff;
 #ifdef _WINDOWS
     DWORD len;
     DWORD zero = 0;
@@ -3347,9 +3377,22 @@ static void far2l_process_payload(Terminal *term)
      * for THIS sequence was actually exceeded.
      */
     if (term->osc_str_overflow) {
-        logevent(term->logctx, "far2l clipboard payload too large; dropped");
+#ifdef MOD_PERSO
+        /* Rate-limited and shared with the OSC paths: a host that keeps sending
+         * oversize payloads must not be able to fill the Event Log with our own
+         * writing, which the first version of this line allowed. */
+        clip_payload_dropped(term, "A far2l clipboard payload",
+                             term->clip_allowed != 0);
+#endif
         return;
     }
+
+    clip_allowed_eff = term->clip_allowed;
+#ifdef MOD_PERSO
+    if (conf_get_bool(term->conf, CONF_clipboard_require_focus) && !term->has_focus)
+        clip_allowed_eff = 0;
+#endif
+
     base64_init_decodestate(&ds);
     d_out = snewn(term->osc_strlen, char);
     d_count = base64_decode_block(term->osc_string + FAR2L_DATA_PREFIX_LEN,
@@ -3370,7 +3413,7 @@ static void far2l_process_payload(Terminal *term)
              * Gate behind clip_allowed so a malicious server can't register
              * clipboard formats with zero user consent. */
             uint32_t status = 0;
-            if (term->clip_allowed == 1 && d_count >= 7) {
+            if (clip_allowed_eff == 1 && d_count >= 7) {
                 memcpy(&len, d_out + d_count - 3 - 4, sizeof(DWORD));
                 if (len > (DWORD)(d_count - 7)) len = (DWORD)(d_count - 7);
                 d_out[len] = 0;                 /* always terminate the name */
@@ -3388,7 +3431,7 @@ static void far2l_process_payload(Terminal *term)
           case 'e': {                          /* empty clipboard */
 #ifdef _WINDOWS
             char ec_status = 0;
-            if (term->clip_allowed == 1 && OpenClipboard(NULL)) {
+            if (clip_allowed_eff == 1 && OpenClipboard(NULL)) {
                 ec_status = EmptyClipboard() ? 1 : 0;
                 CloseClipboard();
             }
@@ -3406,7 +3449,7 @@ static void far2l_process_payload(Terminal *term)
             /* SECURITY: 4-byte format id at d_out+d_count-7 -> need d_count>=7,
              * and gate behind clip_allowed (no zero-consent clipboard probing). */
             char avail = 0;
-            if (term->clip_allowed == 1 && d_count >= 7) {
+            if (clip_allowed_eff == 1 && d_count >= 7) {
                 uint32_t a_fmt;
                 memcpy(&a_fmt, d_out + d_count - 3 - 4, sizeof(uint32_t));
                 avail = IsClipboardFormatAvailable(a_fmt) ? 1 : 0;
@@ -3423,12 +3466,12 @@ static void far2l_process_payload(Terminal *term)
           case 'o': {                          /* open: permission gate */
             reply_size = 2; reply = snewn(reply_size, char);
 #ifdef _WINDOWS
-            if (term->clip_allowed == 2) {     /* ask once, then latch */
+            if (clip_allowed_eff == 2) {     /* ask once, then latch */
                 int status = MessageBox(NULL, "Allow far2l clipboard sync?",
                                         "KiTTY", MB_OKCANCEL);
                 term->clip_allowed = (status == IDOK) ? 1 : 0;
             }
-            reply[0] = (term->clip_allowed == 1) ? 1 : (char)-1;
+            reply[0] = (clip_allowed_eff == 1) ? 1 : (char)-1;
 #else
             reply[0] = (char)-1;
 #endif
@@ -3436,7 +3479,7 @@ static void far2l_process_payload(Terminal *term)
           }
           case 's': {                          /* set clipboard data */
 #ifdef _WINDOWS
-            if (term->clip_allowed == 1 && d_count >= 4 + 4 + 3) {
+            if (clip_allowed_eff == 1 && d_count >= 4 + 4 + 3) {
                 uint32_t fmt;
                 char *buffer = NULL;
                 int BufferSize = 0;
@@ -3490,7 +3533,7 @@ static void far2l_process_payload(Terminal *term)
           case 'g': {                          /* get clipboard data */
 #ifdef _WINDOWS
             /* SECURITY: 4-byte format id at d_out+d_count-7 -> need d_count>=7. */
-            if (term->clip_allowed == 1 && d_count >= 7) {
+            if (clip_allowed_eff == 1 && d_count >= 7) {
                 uint32_t gfmt;
                 void *ClipText = NULL;
                 int ClipTextSize = 0;
@@ -3649,6 +3692,69 @@ static void osc_addchar(Terminal *term, unsigned char c)
 
 #ifdef MOD_PERSO
 /*
+ * KiTTY: a clipboard payload was too large for the ceiling on its sequence, so it
+ * was dropped whole. Say so.
+ *
+ * Shared by OSC 52, OSC 5522 and far2l deliberately. It is one event - "the thing
+ * you copied did not arrive" - and three protocols reporting it three different
+ * ways is how far2l's 2 KB cap survived unnoticed: the parser truncated, the
+ * handler dropped it, and nothing anywhere said a word, so it was indistinguishable
+ * from the feature simply not working.
+ *
+ * Both channels are rate-limited, because a remote host chooses when this fires and
+ * could otherwise use it to flood the Event Log or fire balloons at will. The
+ * balloon additionally only speaks for a feature the user actually turned on:
+ * someone who set a policy to Deny has already answered, and does not need telling
+ * that a host they refused was refused again.
+ */
+#define CLIP_DROP_LOG_GAP 5            /* seconds between Event Log lines */
+#define CLIP_NOTIFY_GAP  30            /* seconds between balloons */
+
+static void clip_payload_dropped(Terminal *term, const char *what, bool enabled)
+{
+    unsigned long now = (unsigned long)time(NULL);
+
+    if (term->clip_dropped_logged == 0 ||
+        now - term->clip_dropped_logged >= CLIP_DROP_LOG_GAP) {
+        char *msg;
+        if (term->clip_dropped_quiet > 0)
+            msg = dupprintf("%s was too large and was dropped; %d further "
+                            "payload%s also dropped", what,
+                            term->clip_dropped_quiet,
+                            term->clip_dropped_quiet == 1 ? "" : "s");
+        else
+            msg = dupprintf("%s was too large and was dropped", what);
+        logevent(term->logctx, msg);
+        sfree(msg);
+        term->clip_dropped_quiet = 0;
+        term->clip_dropped_logged = now;
+    } else {
+        term->clip_dropped_quiet++;
+    }
+
+    if (!enabled || !conf_get_bool(term->conf, CONF_clipboard_notify))
+        return;
+    if (term->clip_notified_last != 0 &&
+        now - term->clip_notified_last < CLIP_NOTIFY_GAP)
+        return;
+    term->clip_notified_last = now;
+    /*
+     * Named as a size problem, not as a refusal: the user did nothing wrong and
+     * neither, necessarily, did the host - this is a limit being hit.
+     *
+     * It says the Event Log has the rest BECAUSE this balloon is rate-limited: it
+     * can only ever report that something was dropped, never how many times or
+     * which, and a notification that quietly stands for an unknown number of
+     * events is worse than one that admits it. Clicking it opens the log.
+     */
+    kitty_osc52_notify(term, "KiTTY clipboard",
+                       "Too much data arrived for the clipboard in one go, so it "
+                       "was not copied. Nothing was pasted in part.\n"
+                       "Click here for the Event Log, which lists every one of "
+                       "these (this notice is rate-limited).");
+}
+
+/*
  * ===========================================================================
  * KiTTY: OSC 52 clipboard READ - a host asking for the contents of YOUR
  * clipboard, which we then send to it.
@@ -3692,7 +3798,7 @@ static void osc52_read_forget_decision(Terminal *term)
     term->osc52_read_remaining = 0;
     if (was_granting) {
         kitty_osc52_state_changed(term);
-        if (conf_get_bool(term->conf, CONF_osc52_notify))
+        if (conf_get_bool(term->conf, CONF_clipboard_notify))
             kitty_osc52_notify(term, "KiTTY clipboard",
                                "Permission to read the clipboard has expired.");
     }
@@ -3744,7 +3850,7 @@ static void osc52_read_refuse(Terminal *term, const char *why, bool tell_user)
          */
         if (tell_user &&
             conf_get_int(term->conf, CONF_osc52_clipboard_read) == OSC52_READ_ASK &&
-            conf_get_bool(term->conf, CONF_osc52_notify))
+            conf_get_bool(term->conf, CONF_clipboard_notify))
             kitty_osc52_notify(term, "KiTTY clipboard",
                                "A server asked to read your clipboard. "
                                "It was refused.");
@@ -3922,7 +4028,7 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
      * asked. The stored permission is deliberately left ALONE: it is suspended,
      * not thrown away, and resumes without a second dialog when you come back.
      */
-    if (conf_get_bool(term->conf, CONF_osc52_require_focus) && !term->has_focus) {
+    if (conf_get_bool(term->conf, CONF_clipboard_require_focus) && !term->has_focus) {
         if (term->osc52_read_decision > 0)
             kitty_osc52_state_changed(term);   /* show it as paused */
         osc52_read_refuse(term, "window not focused", false);
@@ -4151,7 +4257,7 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
         }
         if (term->osc52_read_decision > 0) {
             kitty_osc52_state_changed(term);
-            if (conf_get_bool(term->conf, CONF_osc52_notify))
+            if (conf_get_bool(term->conf, CONF_clipboard_notify))
                 kitty_osc52_notify(term, "KiTTY clipboard",
                                    "This server may now read your clipboard. "
                                    "The title bar shows it while that lasts.");
@@ -4401,7 +4507,7 @@ static void osc5522_read(Terminal *term, const char *meta,
     if (!strcmp(want, ".")) {
         bool have_text;
         if (conf_get_int(term->conf, CONF_osc52_clipboard_read) != OSC52_READ_ASK ||
-            (conf_get_bool(term->conf, CONF_osc52_require_focus) &&
+            (conf_get_bool(term->conf, CONF_clipboard_require_focus) &&
              !term->has_focus)) {
             snprintf(reply, sizeof(reply), "type=read%s:status=EPERM", idpart);
             osc5522_send(term, reply, NULL, 0);
@@ -4544,6 +4650,10 @@ static void osc5522_process(Terminal *term)
          * EPERM and EBUSY, and the other two would both say something untrue.
          */
         if (term->osc_str_overflow) {
+            clip_payload_dropped(
+                term, "A clipboard request (OSC 5522)",
+                conf_get_int(term->conf, CONF_osc52_clipboard_read) ==
+                OSC52_READ_ASK);
             osc5522_send(term, "type=read:status=EBUSY", NULL, 0);
             return;
         }
@@ -4631,9 +4741,15 @@ static void osc52_set_clipboard(Terminal *term)
      * A payload that did not fit is refused whole, never pasted in part. Half a
      * clipboard is worse than none: it looks like it worked, and pasting half a
      * command line is how that becomes somebody's bad day.
+     *
+     * It used to be refused in total silence, which is worse again - the feature
+     * simply appeared not to work, with nothing anywhere to say why.
      */
-    if (term->osc_str_overflow)
+    if (term->osc_str_overflow) {
+        clip_payload_dropped(term, "A remote clipboard write (OSC 52)",
+                             term->osc52_allowed != OSC52_CLIPBOARD_DENY);
         return;
+    }
 
     /*
      * Same rule for a malformed payload. base64_decode_atom silently yields
@@ -4663,7 +4779,7 @@ static void osc52_set_clipboard(Terminal *term)
      * Nothing is queued - the sequence is dropped, because replaying a stale
      * clipboard write when focus comes back is worse than not doing it.
      */
-    if (conf_get_bool(term->conf, CONF_osc52_require_focus) && !term->has_focus) {
+    if (conf_get_bool(term->conf, CONF_clipboard_require_focus) && !term->has_focus) {
         logevent(term->logctx, "Remote clipboard write ignored: "
                  "the window does not have focus");
         return;
@@ -9561,7 +9677,7 @@ int term_osc52_perm_state(Terminal *term, bool *read, bool *write)
     if (write) *write = w;
     if (!r && !w)
         return OSC52_PERM_NONE;
-    if (conf_get_bool(term->conf, CONF_osc52_require_focus) && !term->has_focus)
+    if (conf_get_bool(term->conf, CONF_clipboard_require_focus) && !term->has_focus)
         return OSC52_PERM_PAUSED;
     return OSC52_PERM_ACTIVE;
 }

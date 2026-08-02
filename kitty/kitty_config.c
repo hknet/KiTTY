@@ -4650,9 +4650,11 @@ static void scb_panel_selection(struct controlbox *b)
                       I(CONF_osc52_clipboard_read),
                       "Deny", NO_SHORTCUT, I(OSC52_READ_DENY),
                       "Ask", NO_SHORTCUT, I(OSC52_READ_ASK));
-    ctrl_checkbox(s, "Only allow clipboard access while this window has focus",
+    /* Covers OSC 52, OSC 5522 AND far2l, which is why the label names none of
+     * them: a rule with an exception in it is not the rule people remember. */
+    ctrl_checkbox(s, "Only allow remote clipboard access while this window has focus",
                   NO_SHORTCUT, HELPCTX(no_help),
-                  conf_checkbox_handler, I(CONF_osc52_require_focus));
+                  conf_checkbox_handler, I(CONF_clipboard_require_focus));
 
     /* The numbers behind the read dialog. They are settings because the values
      * shipped are guesses - no other terminal implements a hand-over rate limit
@@ -4689,9 +4691,13 @@ static void scb_panel_selection(struct controlbox *b)
     ctrl_checkbox(s, "Tint the title bar and border too (Windows 11 only)",
                   NO_SHORTCUT, HELPCTX(no_help),
                   conf_checkbox_handler, I(CONF_osc52_colour_frame));
-    ctrl_checkbox(s, "Show a tray notification when a permission starts or ends",
+    /* One switch for every remote-clipboard balloon - permission granted or
+     * expired, request refused, payload too large - across all three protocols.
+     * The balloons are rate-limited and say so, and clicking one opens the Event
+     * Log, which is where the events actually all are. */
+    ctrl_checkbox(s, "Show tray notifications for remote clipboard events",
                   NO_SHORTCUT, HELPCTX(no_help),
-                  conf_checkbox_handler, I(CONF_osc52_notify));
+                  conf_checkbox_handler, I(CONF_clipboard_notify));
 
     s = ctrl_getset(b, "Window/Selection", "paste",
                     "Control pasting of text from clipboard to terminal");

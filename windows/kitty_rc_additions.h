@@ -553,3 +553,12 @@
 #ifndef IDC_O52_APPLYLBL
 #define IDC_O52_APPLYLBL 1273
 #endif
+/* Callback message for the transient clipboard tray balloon, so that CLICKING the
+ * balloon opens the Event Log. The balloon is rate-limited on purpose - a remote
+ * host chooses when it fires - so it can only ever say that something was dropped,
+ * not how often or which; the Event Log is where that actually lives, and a click
+ * is the shortest route to it. Sent to the terminal window (kitty_osc52.c adds the
+ * icon with NIF_MESSAGE; windows/window.c handles it). */
+#ifndef WM_KITTY_CLIPBALLOON
+#define WM_KITTY_CLIPBALLOON (WM_APP + 71)
+#endif

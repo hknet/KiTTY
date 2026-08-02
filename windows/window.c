@@ -3506,6 +3506,28 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
         break;
 #endif
+#ifdef MOD_PERSO
+      case WM_KITTY_CLIPBALLOON:
+        /*
+         * KiTTY: the transient clipboard tray balloon was clicked. Open the Event
+         * Log, because that is where the detail is.
+         *
+         * The balloon is rate-limited on purpose - every one of these events fires
+         * at a moment the remote host chose - so it can only ever say THAT
+         * something was dropped, never how many times or which. Saying so and then
+         * making the log one click away is the difference between a notification
+         * and an answer.
+         *
+         * lParam carries the mouse/balloon event; NIN_BALLOONUSERCLICK is the
+         * balloon body being clicked, and a plain left-click on the icon in the
+         * few seconds it exists means the same thing here.
+         */
+        if (lParam == NIN_BALLOONUSERCLICK || lParam == WM_LBUTTONUP) {
+            SetForegroundWindow(hwnd);
+            showeventlog(hwnd);
+        }
+        return 0;
+#endif
       case WM_COMMAND:
       case WM_SYSCOMMAND:
         switch (wParam & ~0xF) {       /* low 4 bits reserved to Windows */

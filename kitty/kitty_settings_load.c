@@ -851,14 +851,14 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     /* OSC 52 READ direction, and the numbers that bound a granted read. Reads
      * default to DENY; nothing here can be set to a standing "allow". */
     gppi_forced(sesskey, "OSC52ClipboardRead", OSC52_READ_DENY, conf, CONF_osc52_clipboard_read);
-    gppb_forced(sesskey, "OSC52RequireFocus", true, conf, CONF_osc52_require_focus);
+    gppb_forced(sesskey, "ClipboardRequireFocus", true, conf, CONF_clipboard_require_focus);
     gppi_forced(sesskey, "OSC52ReadMinutes", 10, conf, CONF_osc52_read_minutes);
     gppi_forced(sesskey, "OSC52ReadRequests", 25, conf, CONF_osc52_read_requests);
     gppi_forced(sesskey, "OSC52ReadInterval", 2, conf, CONF_osc52_read_interval);
     gppi_forced(sesskey, "OSC52ReadMax", 200, conf, CONF_osc52_read_max);
     gppi_forced(sesskey, "OSC52ReadTimeout", 60, conf, CONF_osc52_read_timeout);
     gppi_forced(sesskey, "OSC52ReadDialogs", 3, conf, CONF_osc52_read_dialogs);
-    gppb_forced(sesskey, "OSC52Notify", true, conf, CONF_osc52_notify);
+    gppb_forced(sesskey, "ClipboardNotify", true, conf, CONF_clipboard_notify);
     gppb_forced(sesskey, "OSC52TitleMark", true, conf, CONF_osc52_title_mark);
     gppb_forced(sesskey, "OSC52ColourFrame", true, conf, CONF_osc52_colour_frame);
 #endif

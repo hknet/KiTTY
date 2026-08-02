@@ -1459,20 +1459,25 @@ CONF_OPTION(osc52_clipboard, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("OSC5
  * There is no "allow" value, here or in kitty.ini, on purpose: see OSC52_READ_*.
  * Everything about how long a granted read lasts is in the OSC52Read* keys. */
 CONF_OPTION(osc52_clipboard_read, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("OSC52ClipboardRead"),)
-/* KiTTY: require the window to have keyboard focus before ANY OSC 52 clipboard
- * activity - reads and writes both. Default on.
+/* KiTTY: require the window to have keyboard focus before ANY remote clipboard
+ * activity at all - reads AND writes, over OSC 52, OSC 5522 AND far2l. Default on.
  *
  * "KiTTY never touches your clipboard unless you are looking at that window" is
- * short enough to hold in your head, which is most of its value. It also kills
- * the failure mode Ghostty hit: an editor polling the clipboard over SSH raising
- * dialogs on a window nobody is looking at. A grant is SUSPENDED while focus is
- * elsewhere, not cancelled - it resumes without asking again when you come back.
+ * short enough to hold in your head, which is most of its value - and a rule with
+ * an exception in it is not that sentence any more, which is why far2l is included
+ * rather than left as the one protocol that ignores it. It also kills the failure
+ * mode Ghostty hit: an editor polling the clipboard over SSH raising dialogs on a
+ * window nobody is looking at. A grant is SUSPENDED while focus is elsewhere, not
+ * cancelled - it resumes without asking again when you come back.
  *
- * It is a setting rather than a hard rule only because it changes the shipped
- * write behaviour: a background job that copies its own output stops working
- * while you are in another window, and someone who relies on that needs a way
- * back. The default enforces the rule. */
-CONF_OPTION(osc52_require_focus, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("OSC52RequireFocus"),)
+ * It is a setting rather than a hard rule only because it changes behaviour that
+ * shipped working: a background job that copies its own output stops working while
+ * you are in another window, and someone who relies on that needs a way back. The
+ * default enforces the rule.
+ *
+ * Named Clipboard* rather than OSC52* because it governs far2l too; a key called
+ * OSC52RequireFocus that silently also gated far2l would be a lie. */
+CONF_OPTION(clipboard_require_focus, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ClipboardRequireFocus"),)
 /* KiTTY: how long the dialog's "the next N minutes" grant lasts. Minutes. */
 CONF_OPTION(osc52_read_minutes, VALUE_TYPE(INT), DEFAULT_INT(10), SAVE_KEYWORD("OSC52ReadMinutes"),)
 /* KiTTY: how many requests the dialog's "the next N requests" grant covers. */
@@ -1500,14 +1505,22 @@ CONF_OPTION(osc52_read_timeout, VALUE_TYPE(INT), DEFAULT_INT(60), SAVE_KEYWORD("
 /* KiTTY: most dialogs shown in any ten seconds, so a host cannot use the prompt
  * itself as the attack. Extras are refused without asking. */
 CONF_OPTION(osc52_read_dialogs, VALUE_TYPE(INT), DEFAULT_INT(3), SAVE_KEYWORD("OSC52ReadDialogs"),)
-/* KiTTY: show a tray balloon when a clipboard permission is granted, expires, or
- * a request is refused. Default on.
+/* KiTTY: show a tray balloon for remote-clipboard events - a permission granted or
+ * expired, a request refused, or a payload dropped for being too large. Covers
+ * OSC 52, OSC 5522 and far2l alike. Default on.
  *
  * It carries the meaning when the title bar cannot - full screen, or decorations
- * off. Refusals are only announced when the setting is "ask": someone who chose
- * Deny has already said no and does not need telling again, though the Event Log
- * still records it. */
-CONF_OPTION(osc52_notify, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("OSC52Notify"),)
+ * off. Two rules keep it from becoming something a host can pull at will:
+ *  - it only speaks for a feature the user actually enabled. Someone who set a
+ *    policy to Deny has already answered and does not need telling again, though
+ *    the Event Log records it either way;
+ *  - it is rate-limited (CLIP_NOTIFY_GAP in terminal.c), because every one of
+ *    these events fires at a moment the REMOTE HOST chose.
+ *
+ * The dropped-payload case is the one that earns this its keep: a silent refusal
+ * is indistinguishable from a broken feature, which is exactly how far2l's 2 KB
+ * cap went unnoticed for so long. */
+CONF_OPTION(clipboard_notify, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ClipboardNotify"),)
 /* KiTTY: append a "clip read"/"clip write" marker to the window title while a
  * clipboard permission is live. Default on. */
 CONF_OPTION(osc52_title_mark, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("OSC52TitleMark"),)

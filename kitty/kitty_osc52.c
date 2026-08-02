@@ -497,7 +497,12 @@ static DWORD WINAPI osc52_balloon_thread(LPVOID p)
     nid.cbSize = sizeof(nid);
     nid.hWnd = b->hwnd;
     nid.uID = (UINT)InterlockedIncrement(&uid);
-    nid.uFlags = NIF_ICON | NIF_INFO;
+    /* NIF_MESSAGE so that clicking the balloon reaches the terminal window, which
+     * opens the Event Log (window.c). Worth the extra field: this balloon is
+     * rate-limited, so it can only ever say THAT something was dropped - the
+     * Event Log is where how-often and which-one actually live. */
+    nid.uFlags = NIF_ICON | NIF_INFO | NIF_MESSAGE;
+    nid.uCallbackMessage = WM_KITTY_CLIPBALLOON;
     nid.hIcon = LoadIcon(NULL, IDI_WARNING);
     nid.dwInfoFlags = NIIF_WARNING;
     strncpy(nid.szInfoTitle, b->title, sizeof(nid.szInfoTitle) - 1);
@@ -519,7 +524,7 @@ void kitty_osc52_notify(Terminal *term, const char *title, const char *msg)
 
     if (!MainHwnd || !title || !msg)
         return;
-    if (term && term->conf && !conf_get_bool(term->conf, CONF_osc52_notify))
+    if (term && term->conf && !conf_get_bool(term->conf, CONF_clipboard_notify))
         return;
 
     b = snew(struct osc52_balloon);
