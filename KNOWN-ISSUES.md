@@ -43,6 +43,15 @@ features are working and verified. Known limitations as of this release:
   suspended rather than cancelled — the title shows `(clip read paused)` — and
   resumes without asking again when you come back. Turn it off if you rely on a
   background job that copies its own output into your clipboard.
+- **OSC 5522 (kitty's clipboard protocol): reads work, writes do not.** Reads go
+  through the same permission control and the same limits as OSC 52 reads above —
+  it is one permission, reachable two ways, not two settings. Because this protocol
+  can identify the program asking, a program that sends a password and a name can
+  be approved once and then not asked about again for as long as that answer lasts;
+  those approvals are never written to disk. Writes (`type=write`, `wdata`,
+  `walias`) answer **ENOSYS**, so a program falls back to OSC 52 for text. Paste
+  events (`CSI ? 5522 h`) are not implemented, and the mode is ignored rather than
+  accepted — enabling it would otherwise look like it had worked.
 - **The lilac tint on the title bar and border needs Windows 11.** While a
   clipboard permission is live the window is marked; the *text* marker in the
   title works everywhere, but the colouring uses an API that exists only on
