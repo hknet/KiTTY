@@ -22,13 +22,31 @@ features are working and verified. Known limitations as of this release:
   **Deny** if you would rather no host touched your clipboard, or **Ask** to be
   prompted once per session. Only **text** travels this way; the sequence
   carries nothing else, so images and other clipboard formats are unaffected.
-  The **read** direction (OSC 52's `?` request, where the host asks for *your*
-  clipboard) is **not implemented and cannot be enabled**: it is an exfiltration
-  channel, and it is the reason upstream PuTTY leaves OSC 52 out altogether. As
-  with far2l, answering **OK** to an **Ask** prompt grants access for the rest of
-  that session rather than re-prompting per payload; changing any setting in the
-  configuration box makes it ask again. A payload too large to fit, or one that
-  is not valid base64, is refused entirely rather than pasted in part.
+  As with far2l, answering **OK** to an **Ask** prompt grants access for the rest
+  of that session rather than re-prompting per payload; changing any setting in
+  the configuration box makes it ask again. A payload too large to fit, or one
+  that is not valid base64, is refused entirely rather than pasted in part.
+- **OSC 52 remote clipboard *reads* are off by default, and there is no way to
+  switch them permanently on.** *Remote clipboard reads (OSC 52)* (Window →
+  Selection) is the other direction: a host asking for the contents of your
+  clipboard, which are then sent to it. It offers **Deny** (the default) and
+  **Ask** — and deliberately no "Allow", because a clipboard holds a password
+  often enough to matter and the host chooses the moment it asks. A read can be
+  permitted only by answering the prompt, and only for as long as that answer
+  says: one request, a number of minutes, a number of requests, or the rest of
+  the session, the last of which asks a second time before it takes effect. No
+  permission to read is ever written to disk. Every limit is a setting in the same
+  panel.
+- **No remote clipboard access at all while the window has no keyboard focus.**
+  *Only allow clipboard access while this window has focus* (Window → Selection)
+  defaults to on and covers reads **and writes**. An existing permission is
+  suspended rather than cancelled — the title shows `(clip read paused)` — and
+  resumes without asking again when you come back. Turn it off if you rely on a
+  background job that copies its own output into your clipboard.
+- **The lilac tint on the title bar and border needs Windows 11.** While a
+  clipboard permission is live the window is marked; the *text* marker in the
+  title works everywhere, but the colouring uses an API that exists only on
+  Windows 11 build 22000 and newer and silently does nothing on Windows 10.
 - **adb backend & rutty scripting:** functional and verified against test
   fixtures (a fake adb server / a scripted listener), but **not** yet validated
   against a real Android device or a live remote shell.
