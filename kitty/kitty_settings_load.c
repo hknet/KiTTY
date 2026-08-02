@@ -861,6 +861,10 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "ClipboardMaxMB", 64, conf, CONF_clipboard_max_mb);
     gppi_forced(sesskey, "ClipboardWritesPerSecond", 10, conf, CONF_clipboard_writes_per_sec);
     gppb_forced(sesskey, "ClipboardNotify", true, conf, CONF_clipboard_notify);
+    gppb_forced(sesskey, "WindowHasSysMenu", true, conf, CONF_window_has_sysmenu);
+    gppb_forced(sesskey, "WindowClosable", true, conf, CONF_window_closable);
+    gppb_forced(sesskey, "WindowMinimizable", true, conf, CONF_window_minimizable);
+    gppb_forced(sesskey, "WindowMaximizable", true, conf, CONF_window_maximizable);
     gppb_forced(sesskey, "ClipboardMarkAlways", false, conf, CONF_clipboard_mark_always);
     gppb_forced(sesskey, "ClipboardActivityMark", true, conf, CONF_clipboard_activity_mark);
     gppi_forced(sesskey, "ClipboardActivitySeconds", 5, conf, CONF_clipboard_activity_secs);

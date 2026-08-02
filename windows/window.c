@@ -676,6 +676,50 @@ static void start_backend(WinGuiSeat *wgs)
  * connection's name and is never touched by a close, so no amount of closing
  * and reconnecting can nest markers. UTF-8 because the title may have arrived
  * in any codepage and has to be concatenated with the UTF-8 warning glyph. */
+/*
+ * KiTTY (classic parity): the four window-button settings.
+ *
+ * Two halves, because Windows expresses them in two different places. The system
+ * menu and the minimise/maximise boxes are WINDOW STYLES, applied here and again
+ * whenever the window is reconfigured. "Closable" is not a style at all - there is
+ * no WS_ bit for it - so it is done by greying SC_CLOSE on the system menu, which
+ * is what also greys the X in the caption and disables Alt+F4.
+ *
+ * WS_SYSMENU dominates: without it Windows draws no caption button at all, so
+ * turning the system menu off hides close, minimise and maximise regardless of
+ * what those three are set to.
+ */
+static LONG kitty_window_button_styles(Conf *conf, LONG style)
+{
+    if (!conf_get_bool(conf, CONF_window_has_sysmenu))
+        style &= ~WS_SYSMENU;
+    else
+        style |= WS_SYSMENU;
+    if (!conf_get_bool(conf, CONF_window_minimizable))
+        style &= ~WS_MINIMIZEBOX;
+    else
+        style |= WS_MINIMIZEBOX;
+    if (!conf_get_bool(conf, CONF_window_maximizable))
+        style &= ~WS_MAXIMIZEBOX;
+    else
+        style |= WS_MAXIMIZEBOX;
+    return style;
+}
+
+/* Grey (or restore) the Close item, which is what disables the X and Alt+F4.
+ * MF_GRAYED rather than removing the item: a Close that is visibly unavailable
+ * explains itself, where a missing one just looks like a bug. */
+static void kitty_apply_close_button(WinGuiSeat *wgs, HWND hwnd)
+{
+    HMENU sysmenu = GetSystemMenu(hwnd, FALSE);
+    if (!sysmenu)
+        return;
+    EnableMenuItem(sysmenu, SC_CLOSE,
+                   MF_BYCOMMAND |
+                   (conf_get_bool(wgs->conf, CONF_window_closable)
+                    ? MF_ENABLED : (MF_GRAYED | MF_DISABLED)));
+}
+
 /* kitty/kitty_osc52.c: what clicking the most recent clipboard balloon should do
  * (CLIP_BALLOON_*), and re-applying the window's clipboard markers/tint. */
 int kitty_clipboard_balloon_action(void);
@@ -1164,6 +1208,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             exwinmode |= WS_EX_TOPMOST;
         if (conf_get_bool(wgs->conf, CONF_sunken_edge))
             exwinmode |= WS_EX_CLIENTEDGE;
+#ifdef MOD_PERSO
+        /* KiTTY (classic parity): which of the window's own buttons exist. See
+         * conf.h - dropping WS_SYSMENU removes all three caption buttons whatever
+         * the other settings say, because Windows will not draw one without it.
+         * "Closable" is handled separately, on the system menu (kitty_apply_window_
+         * buttons), so that it also greys the X and disables Alt+F4. */
+        winmode = kitty_window_button_styles(wgs->conf, winmode);
+#endif
 
 #ifdef TEST_ANSI_WINDOW
         /* For developer testing of ANSI window support, pretend
@@ -1609,6 +1661,13 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #endif
         }
     }
+
+#ifdef MOD_PERSO
+    /* KiTTY: grey Close if this session may not be closed. Must run AFTER the
+     * system menu above has been built, because GetSystemMenu(FALSE) hands back
+     * the menu that setup populated. */
+    kitty_apply_close_button(wgs, wgs->term_hwnd);
+#endif
 
     if (restricted_acl()) {
         lp_eventlog(&wgs->logpolicy, "Running with restricted process ACL");
@@ -3552,6 +3611,28 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #endif
       case WM_CLOSE: {
         char *title, *msg, *additional = NULL;
+#ifdef MOD_PERSO
+        /*
+         * KiTTY: this session may not be closed by the user.
+         *
+         * Greying SC_CLOSE takes care of the X and Alt+F4, but NOT of the
+         * taskbar's own "Close window", which posts WM_CLOSE straight here and
+         * would otherwise walk past a disabled menu item as though it were not
+         * there. This is the point of the setting for an embedded or kiosk
+         * KiTTY, so it has to hold from every direction.
+         *
+         * Only WM_CLOSE. A Windows shutdown or logoff arrives as
+         * WM_QUERYENDSESSION and is deliberately left alone - refusing to close
+         * for a user is a feature, refusing to close for the operating system is
+         * a hung machine at shutdown. A session that ends on its own still ends:
+         * this blocks the request to close, not the closing.
+         */
+        if (!conf_get_bool(wgs->conf, CONF_window_closable) &&
+            !wgs->session_closed) {
+            MessageBeep(MB_ICONWARNING);
+            return 0;
+        }
+#endif
         show_mouseptr(wgs, true);
         title = dupprintf("%s Exit Confirmation", appname);
         if (wgs->backend && wgs->backend->vt->close_warn_text) {
@@ -3961,6 +4042,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                     nflg &= ~WS_MAXIMIZEBOX;
                 else
                     nflg |= WS_MAXIMIZEBOX;
+
+#ifdef MOD_PERSO
+                /* KiTTY: the window-button settings, re-applied after Change
+                 * Settings. LAST, so that switching maximise off wins over the
+                 * resize-action line above rather than being undone by it - the
+                 * two disagree only when the user asked for no maximise button
+                 * AND left resizing enabled, and the explicit setting is the one
+                 * they typed. */
+                nflg = kitty_window_button_styles(wgs->conf, nflg);
+                kitty_apply_close_button(wgs, hwnd);
+#endif
 
                 if (nflg != flag || nexflag != exflag) {
                     if (nflg != flag)

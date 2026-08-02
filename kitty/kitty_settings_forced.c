@@ -574,6 +574,10 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_i_forced(sesskey, "ClipboardMaxMB", conf_get_int(conf, CONF_clipboard_max_mb));
     write_setting_i_forced(sesskey, "ClipboardWritesPerSecond", conf_get_int(conf, CONF_clipboard_writes_per_sec));
     write_setting_b_forced(sesskey, "ClipboardNotify", conf_get_bool(conf, CONF_clipboard_notify));
+    write_setting_b_forced(sesskey, "WindowHasSysMenu", conf_get_bool(conf, CONF_window_has_sysmenu));
+    write_setting_b_forced(sesskey, "WindowClosable", conf_get_bool(conf, CONF_window_closable));
+    write_setting_b_forced(sesskey, "WindowMinimizable", conf_get_bool(conf, CONF_window_minimizable));
+    write_setting_b_forced(sesskey, "WindowMaximizable", conf_get_bool(conf, CONF_window_maximizable));
     write_setting_b_forced(sesskey, "ClipboardMarkAlways", conf_get_bool(conf, CONF_clipboard_mark_always));
     write_setting_b_forced(sesskey, "ClipboardActivityMark", conf_get_bool(conf, CONF_clipboard_activity_mark));
     write_setting_i_forced(sesskey, "ClipboardActivitySeconds", conf_get_int(conf, CONF_clipboard_activity_secs));

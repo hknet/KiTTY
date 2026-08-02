@@ -1418,6 +1418,26 @@ CONF_OPTION(foreground_on_bell, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYW
 CONF_OPTION(ctrl_tab_switch, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("CtrlTabSwitch"),)
 CONF_OPTION(comment, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Comment"),)
 CONF_OPTION(launcherhide, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("LauncherHide"),) /* KiTTY: exclude from kitty -launcher */
+/* KiTTY (classic parity): which of the window's own buttons exist.
+ *
+ * All default TRUE, i.e. an ordinary window - turning any of them off is the
+ * unusual case. This is a kiosk / embedding feature: KiTTY hosted inside another
+ * application (mRemoteNG puts it in a tab) has no use for a Close button that
+ * would strand the host, and a window nobody may minimise is the point of a kiosk.
+ *
+ * ⚠️ WindowHasSysMenu is not one of four equals - Windows will not draw ANY caption
+ * button without WS_SYSMENU, so turning it off removes close, minimise and
+ * maximise whatever those three say. Classic KiTTY greyed the other three boxes in
+ * its dialog to show that; this port has no dlg_enable() to grey a control with, so
+ * the labels say it instead. The behaviour is identical either way, because it is
+ * Windows enforcing it and not us.
+ *
+ * Closing is disabled by greying SC_CLOSE on the system menu rather than by
+ * dropping a style bit, which is what also greys the X and disables Alt+F4. */
+CONF_OPTION(window_has_sysmenu, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("WindowHasSysMenu"),)
+CONF_OPTION(window_closable, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("WindowClosable"),)
+CONF_OPTION(window_minimizable, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("WindowMinimizable"),)
+CONF_OPTION(window_maximizable, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("WindowMaximizable"),)
 CONF_OPTION(no_focus_rep, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("NoFocusReporting"),)
 CONF_OPTION(scrolllines, VALUE_TYPE(INT), DEFAULT_INT(-1), SAVE_KEYWORD("LinesAtAScroll"),)
 CONF_OPTION(ssh_tunnel_print_in_title, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("SSHTunnelInTitle"),)

@@ -4372,6 +4372,32 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
                       HELPCTX(no_help), conf_checkbox_handler,
                       I(CONF_remember_winpos));
     }
+
+    /*
+     * KiTTY (classic parity): which of the window's own buttons exist. A kiosk /
+     * embedding feature - KiTTY hosted in another application's tab has no use for
+     * a Close button that would strand the host.
+     *
+     * The system-menu box comes FIRST and says what it does to the others, because
+     * Windows will not draw any caption button without WS_SYSMENU. Classic KiTTY
+     * greyed the other three to show that dependency; this port has no dlg_enable()
+     * to grey a control with, so the label carries it instead - the behaviour is
+     * the same either way, since it is Windows enforcing it rather than us.
+     */
+    if (!GetPuttyFlag()) {
+        s = ctrl_getset(b, "Window/Behaviour", "windowbuttons",
+                        "Window buttons (for kiosk or embedded use)");
+        ctrl_checkbox(s, "System menu, and therefore any caption buttons at all",
+                      NO_SHORTCUT, HELPCTX(no_help),
+                      conf_checkbox_handler, I(CONF_window_has_sysmenu));
+        ctrl_checkbox(s, "Allow closing (also disables the X and Alt+F4)",
+                      NO_SHORTCUT, HELPCTX(no_help),
+                      conf_checkbox_handler, I(CONF_window_closable));
+        ctrl_checkbox(s, "Minimize button", NO_SHORTCUT, HELPCTX(no_help),
+                      conf_checkbox_handler, I(CONF_window_minimizable));
+        ctrl_checkbox(s, "Maximize button", NO_SHORTCUT, HELPCTX(no_help),
+                      conf_checkbox_handler, I(CONF_window_maximizable));
+    }
 #endif
 
 #ifdef MOD_LAUNCHER
