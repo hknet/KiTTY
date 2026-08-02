@@ -85,9 +85,18 @@ static bool osc52_dialog_answer;   /* what the fake user says */
 static int osc52_dialog_grant;     /* and for how long */
 static int osc52_state_changes;
 
-void kitty_osc52_send_reply(Terminal *term, const char *b64, size_t len)
+/* Captures the last sequence sent to the host, so the OSC 5522 tests can check
+ * the wire format and not merely that something went out. */
+static char osc52_last_send[4096];
+static int osc52_last_len;
+
+void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len)
 {
     osc52_sends++;
+    osc52_last_len = (int)(len < sizeof(osc52_last_send) - 1
+                           ? len : sizeof(osc52_last_send) - 1);
+    memcpy(osc52_last_send, data, osc52_last_len);
+    osc52_last_send[osc52_last_len] = '\0';
 }
 
 wchar_t *kitty_osc52_get_clipboard(int *len)
@@ -306,6 +315,20 @@ static void read_reset(Mock *mk)
     mk->term->osc52_read_asking = false;
     mk->term->osc52_read_refused_quiet = 0;
     mk->term->osc52_read_refused_logged = 0;
+    /* Clear the OSC 5522 approvals too. Without this an approval granted by one
+     * test silently satisfies the next one, which is how "a one-off answer was
+     * remembered" showed up as a code bug when it was a harness bug. */
+    {
+        int i;
+        for (i = 0; i < OSC5522_MAX_APPROVALS; i++) {
+            sfree(mk->term->osc5522_pw[i]);
+            sfree(mk->term->osc5522_pw_name[i]);
+            mk->term->osc5522_pw[i] = NULL;
+            mk->term->osc5522_pw_name[i] = NULL;
+            mk->term->osc5522_pw_until[i] = 0;
+        }
+        mk->term->osc5522_pw_count = 0;
+    }
     stub_clip = L"secret";
     osc52_dialog_answer = true;
     osc52_dialog_grant = GRANT_ONCE;
@@ -431,6 +454,203 @@ static void test_read_direction(Mock *mk)
     expect_read(mk, "write permission does not grant a read", 0, 0);
 }
 
+/* ---------------------------------------------------------------------------
+ * OSC 5522 - the kitty clipboard protocol
+ * ------------------------------------------------------------------------- */
+
+/* base64 of a plain string, for building request payloads. */
+static char *b64(const char *s)
+{
+    strbuf *sb = strbuf_new();
+    char *r;
+    base64_encode_bs(BinarySink_UPCAST(sb), ptrlen_from_asciz(s), 0);
+    r = strbuf_to_str(sb);
+    return r;
+}
+
+/* Feed one OSC 5522 sequence: OSC 5522 ; <meta> ; <base64 payload> ST */
+static void feed_5522(Mock *mk, const char *meta, const char *plain_payload)
+{
+    char *p = plain_payload ? b64(plain_payload) : NULL;
+    char *seq = p ? dupprintf("\033]5522;%s;%s\033\\", meta, p)
+                  : dupprintf("\033]5522;%s\033\\", meta);
+    osc52_gets = 0;
+    osc52_sends = 0;
+    osc52_dialogs = 0;
+    osc52_last_send[0] = '\0';
+    term_data(mk->term, seq, strlen(seq));
+    term_update(mk->term);
+    sfree(seq);
+    sfree(p);
+}
+
+/* Did any reply contain this substring? Only the LAST is captured, so this is
+ * used for the final packet of a transaction. */
+static void expect_last(Mock *mk, const char *what, const char *want)
+{
+    if (!strstr(osc52_last_send, want)) {
+        printf("   last reply was: %s\n", osc52_last_send);
+        fail(what, "the last reply did not contain what it should have");
+    }
+}
+
+static void test_osc5522(Mock *mk)
+{
+    /*
+     * The whole reason OSC 5522 is worth having: it can be REFUSED OUT LOUD. OSC
+     * 52 must stay silent because any reply confirms the feature exists, but this
+     * protocol has real error codes, so a well-behaved program learns to stop
+     * asking instead of retrying for ever.
+     */
+    read_reset(mk);
+    conf_set_int(mk->term->conf, CONF_osc52_clipboard_read, OSC52_READ_DENY);
+    feed_5522(mk, "type=read", "text/plain");
+    expect_last(mk, "5522 read when set to Deny", "status=EPERM");
+    if (osc52_dialogs != 0)
+        fail("5522 read when set to Deny", "it asked the user anyway");
+
+    /* No focus, nothing happens - EPERM, and still no prompt. */
+    read_reset(mk);
+    mk->term->has_focus = false;
+    feed_5522(mk, "type=read", "text/plain");
+    expect_last(mk, "5522 read with no focus", "status=EPERM");
+    if (osc52_dialogs != 0)
+        fail("5522 read with no focus", "it asked the user anyway");
+
+    /* The ordinary allowed case: OK, one DATA packet, DONE. */
+    read_reset(mk);
+    osc52_dialog_answer = true;
+    osc52_dialog_grant = GRANT_ONCE;
+    feed_5522(mk, "type=read", "text/plain");
+    if (osc52_dialogs != 1)
+        fail("5522 read, allowed", "the user was not asked");
+    if (osc52_sends != 3)
+        fail("5522 read, allowed", "expected exactly OK, one DATA, then DONE");
+    expect_last(mk, "5522 read, allowed", "type=read:status=DONE");
+
+    /* A type we cannot produce is NOT an error: OK then DONE, no data. That is
+     * what kitty does, and an error would describe it worse. */
+    read_reset(mk);
+    feed_5522(mk, "type=read", "image/png");
+    if (osc52_sends != 2)
+        fail("5522 read, unavailable type", "expected OK then DONE and nothing else");
+    if (osc52_dialogs != 0)
+        fail("5522 read, unavailable type",
+             "the user was asked about a type we cannot supply");
+    expect_last(mk, "5522 read, unavailable type", "status=DONE");
+
+    /* Listing the available types must NOT prompt - the spec requires that, so an
+     * application is not asked twice for one paste. */
+    read_reset(mk);
+    feed_5522(mk, "type=read", ".");
+    if (osc52_dialogs != 0)
+        fail("5522 type list", "listing the available types asked the user");
+    if (osc52_sends != 3)
+        fail("5522 type list", "expected OK, the list, then DONE");
+    expect_last(mk, "5522 type list", "status=DONE");
+
+    /* ...but it is still refused when reads are Deny, because the answer says
+     * whether there is text on the clipboard. */
+    read_reset(mk);
+    conf_set_int(mk->term->conf, CONF_osc52_clipboard_read, OSC52_READ_DENY);
+    feed_5522(mk, "type=read", ".");
+    expect_last(mk, "5522 type list when set to Deny", "status=EPERM");
+
+    /* primary selection does not exist on Windows: ENOSYS rather than quietly
+     * serving the clipboard, which would be a worse answer than a refusal. */
+    read_reset(mk);
+    feed_5522(mk, "type=read:loc=primary", "text/plain");
+    expect_last(mk, "5522 primary selection", "status=ENOSYS");
+
+    /* The write direction is not built, and says so, so a program can fall back
+     * to OSC 52 rather than hang. */
+    read_reset(mk);
+    feed_5522(mk, "type=write", NULL);
+    expect_last(mk, "5522 write", "type=write:status=ENOSYS");
+    read_reset(mk);
+    feed_5522(mk, "type=walias", NULL);
+    expect_last(mk, "5522 walias", "type=walias:status=ENOSYS");
+
+    /* A request with no type= gets NO reply. Every reply must carry a type=, so
+     * answering one whose type we could not read would mean inventing it. */
+    read_reset(mk);
+    feed_5522(mk, "nonsense=1", NULL);
+    if (osc52_sends != 0)
+        fail("5522 no type key", "an unidentifiable request was answered anyway");
+
+    /* A type we do not implement is ENOSYS, against the type the host named. */
+    read_reset(mk);
+    feed_5522(mk, "type=frobnicate", NULL);
+    expect_last(mk, "5522 unknown type", "type=frobnicate:status=ENOSYS");
+
+    /* id is echoed back so a multiplexer can match replies to requests. */
+    read_reset(mk);
+    feed_5522(mk, "type=read:id=ab-1_2+x.y", "image/png");
+    expect_last(mk, "5522 id echoed", "id=ab-1_2+x.y");
+
+    /* An id outside the character set the spec allows is NOT echoed: whatever we
+     * echo ends up inside sequences we generate, so it has to be known-safe.
+     * (A ';' cannot be tested here - it separates metadata from payload, so it
+     * never reaches the id in the first place.) */
+    read_reset(mk);
+    feed_5522(mk, "type=read:id=ba*d", "image/png");
+    if (strstr(osc52_last_send, "ba*d"))
+        fail("5522 bad id", "an id with illegal characters was echoed back");
+
+    /*
+     * The fatigue fix, and the one thing OSC 52 cannot do. A program that was
+     * approved once, by password AND name, is not asked again.
+     */
+    read_reset(mk);
+    osc52_dialog_answer = true;
+    osc52_dialog_grant = GRANT_SESSION;
+    feed_5522(mk, "type=read:pw=cHc=:name=bnZpbQ==", "text/plain");
+    if (osc52_dialogs != 1)
+        fail("5522 approve by password", "the first request did not ask");
+    feed_5522(mk, "type=read:pw=cHc=:name=bnZpbQ==", "text/plain");
+    if (osc52_dialogs != 0)
+        fail("5522 approve by password", "the SAME program was asked again");
+    if (osc52_sends != 3)
+        fail("5522 approve by password", "the approved program was not served");
+
+    /* The same password under a different name is not the same program. The
+     * password alone would let anything reuse a token it overheard. */
+    feed_5522(mk, "type=read:pw=cHc=:name=ZXZpbA==", "text/plain");
+    if (osc52_dialogs != 1)
+        fail("5522 approval is per name too",
+             "a different name reused the approval without being asked");
+
+    /* And a one-off answer is never remembered, whatever the program calls
+     * itself. */
+    read_reset(mk);
+    osc52_dialog_answer = true;
+    osc52_dialog_grant = GRANT_ONCE;
+    feed_5522(mk, "type=read:pw=cHc=:name=bnZpbQ==", "text/plain");
+    feed_5522(mk, "type=read:pw=cHc=:name=bnZpbQ==", "text/plain");
+    if (osc52_dialogs != 1)
+        fail("5522 one-off answer", "a one-off answer was remembered as an approval");
+
+    /* A large clipboard is chunked at the size the specification requires, so the
+     * transaction is OK + ceil(n/4096) DATA packets + DONE. */
+    read_reset(mk);
+    {
+        static wchar_t big[10000];
+        int i;
+        for (i = 0; i < 9999; i++)
+            big[i] = L'x';
+        big[9999] = L'\0';
+        stub_clip = big;
+        osc52_dialog_answer = true;
+        osc52_dialog_grant = GRANT_ONCE;
+        feed_5522(mk, "type=read", "text/plain");
+        /* 9999 bytes of UTF-8 -> 3 chunks at 4096 -> OK + 3 DATA + DONE */
+        if (osc52_sends != 5)
+            fail("5522 chunking", "a 9999-character clipboard was not sent in 3 chunks");
+        expect_last(mk, "5522 chunking", "status=DONE");
+    }
+    stub_clip = L"secret";
+}
+
 /* The focus rule applies to WRITES as well, which is a change to behaviour that
  * shipped working - so it gets its own test in both positions. */
 static void test_write_focus_rule(Mock *mk)
@@ -542,6 +762,7 @@ int main(void)
 
     /* --- the read permission engine, and the focus rule on writes --- */
     test_read_direction(mk);
+    test_osc5522(mk);
     test_write_focus_rule(mk);
 
     mock_free(mk);

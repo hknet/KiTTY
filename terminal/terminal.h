@@ -210,6 +210,11 @@ struct terminal_tag {
  */
 #define OSC_STR_MAX 2048
 #define OSC_STR_MAX_CLIP (16 * 1024 * 1024)
+/* OSC 5522 chunks at 4 KB before base64, so no single sequence of it is ever
+ * large - it is the transaction that adds up, not the packet. 16 KB covers a full
+ * chunk (5462 bytes once base64'd) plus its metadata several times over, and still
+ * refuses anything absurd. */
+#define OSC_STR_MAX_5522 (16 * 1024)
     OscType osc_type;
     int osc_strlen;
     char *osc_string;           /* heap; always has room for a terminating NUL */
@@ -274,6 +279,21 @@ struct terminal_tag {
      * written. A host that asks in a loop must not be able to fill the log. */
     int osc52_read_refused_quiet;
     unsigned long osc52_read_refused_logged;
+
+    /* KiTTY OSC 5522 (the kitty clipboard protocol). Unconditional storage, same
+     * ODR reason as everything above.
+     *
+     * Approvals remembered by (password, name). This is the one thing OSC 5522 can
+     * do that OSC 52 fundamentally cannot: identify the asker, so an editor
+     * polling the clipboard is something we can recognise instead of something we
+     * prompt about every time. In MEMORY ONLY and bounded - no permission to read
+     * is ever written to disk, and a fixed array means a host cannot make us
+     * allocate by sending endless distinct passwords. Oldest is evicted. */
+#define OSC5522_MAX_APPROVALS 8
+    char *osc5522_pw[OSC5522_MAX_APPROVALS];    /* the base64 password, verbatim */
+    char *osc5522_pw_name[OSC5522_MAX_APPROVALS];        /* the claimed name */
+    unsigned long osc5522_pw_until[OSC5522_MAX_APPROVALS];  /* 0 = rest of session */
+    int osc5522_pw_count;
 
     char id_string[1024];
 
