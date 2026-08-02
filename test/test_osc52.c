@@ -125,7 +125,7 @@ bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
 }
 
 bool kitty_osc52_save_deny_for_host(Terminal *term) { return true; }
-void kitty_osc52_notify(Terminal *term, const char *t, const char *m) { }
+void kitty_osc52_notify(Terminal *term, const char *t, const char *m, int a) { }
 void kitty_osc52_state_changed(Terminal *term) { osc52_state_changes++; }
 
 typedef struct Mock {
@@ -225,6 +225,12 @@ static void fail(const char *what, const char *detail)
 static int feed(Mock *mk, int policy, const char *data, size_t len)
 {
     mk->term->osc52_allowed = policy;
+    /* These cases fire many writes in the same second, which is exactly what the
+     * write rate cap exists to stop. Reset the window before each so the cap is
+     * not what is under test here - it has its own cases in
+     * test_clipboard_write_rate(). */
+    mk->term->clip_write_second = 0;
+    mk->term->clip_write_count = 0;
     mk->clip_writes = 0;
     term_data(mk->term, data, len);
     term_update(mk->term);
@@ -730,6 +736,79 @@ static void test_osc5522(Mock *mk)
     stub_clip = L"secret";
 }
 
+/*
+ * The remote clipboard WRITE rate cap. This is the direction that is ON by
+ * default, so it is the one an ordinary user is exposed to.
+ */
+static void test_clipboard_write_rate(Mock *mk)
+{
+    const char *seq = "\033]52;c;SGVsbG8=\007";
+    int i, applied;
+
+    conf_set_bool(mk->term->conf, CONF_clipboard_require_focus, true);
+    mk->term->has_focus = true;
+    mk->term->osc52_allowed = OSC52_CLIPBOARD_ALLOW;
+
+    /* Five writes with a cap of three: three land, two are dropped. */
+    conf_set_int(mk->term->conf, CONF_clipboard_writes_per_sec, 3);
+    mk->term->clip_write_second = 0;
+    mk->term->clip_write_count = 0;
+    mk->clip_writes = 0;
+    for (i = 0; i < 5; i++)
+        term_data(mk->term, seq, strlen(seq));
+    term_update(mk->term);
+    applied = mk->clip_writes;
+    if (applied != 3)
+        fail("clipboard write rate cap",
+             "the cap did not limit a burst to exactly its allowance");
+
+    /* The window moves on: a later second gets a fresh allowance. Simulated by
+     * ageing the recorded second rather than sleeping through a test run. */
+    mk->term->clip_write_second = 0;
+    mk->term->clip_write_count = 0;
+    mk->clip_writes = 0;
+    term_data(mk->term, seq, strlen(seq));
+    term_update(mk->term);
+    if (mk->clip_writes != 1)
+        fail("clipboard write rate cap",
+             "a new second did not restore the allowance");
+
+    /* Zero means no limit, for anyone who wants the old behaviour back. */
+    conf_set_int(mk->term->conf, CONF_clipboard_writes_per_sec, 0);
+    mk->term->clip_write_second = 0;
+    mk->term->clip_write_count = 0;
+    mk->clip_writes = 0;
+    for (i = 0; i < 20; i++)
+        term_data(mk->term, seq, strlen(seq));
+    term_update(mk->term);
+    if (mk->clip_writes != 20)
+        fail("clipboard write rate cap", "zero did not mean unlimited");
+
+    /*
+     * A REFUSED write must not cost anyone their allowance - otherwise a host that
+     * is already denied could exhaust the budget and stop a legitimate one landing.
+     */
+    conf_set_int(mk->term->conf, CONF_clipboard_writes_per_sec, 2);
+    mk->term->clip_write_second = 0;
+    mk->term->clip_write_count = 0;
+    mk->term->has_focus = false;                /* so these are all refused */
+    for (i = 0; i < 10; i++)
+        term_data(mk->term, seq, strlen(seq));
+    term_update(mk->term);
+    mk->term->has_focus = true;
+    mk->clip_writes = 0;
+    for (i = 0; i < 2; i++)
+        term_data(mk->term, seq, strlen(seq));
+    term_update(mk->term);
+    if (mk->clip_writes != 2)
+        fail("clipboard write rate cap",
+             "refused writes consumed the allowance for allowed ones");
+
+    conf_set_int(mk->term->conf, CONF_clipboard_writes_per_sec, 10);
+    mk->term->clip_write_second = 0;
+    mk->term->clip_write_count = 0;
+}
+
 /* ---------------------------------------------------------------------------
  * far2l: the accumulation-buffer ceiling
  *
@@ -808,30 +887,62 @@ static void test_far2l_ceiling(Mock *mk)
      * because this bounds memory a remote host can make us hold with no user
      * interaction.
      */
-    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 1);   /* 1 MB */
+    /*
+     * The ceiling is a setting, and it is CLAMPED.
+     *
+     * These assert the LIMIT ITSELF rather than "a payload fitted", because those
+     * are not the same claim: 100 KB fits under 1 MB, under 64 MB and under no
+     * limit at all, so a fitting payload cannot tell an honoured setting from an
+     * ignored one, nor a fallback-to-default from a fallback-to-unlimited - which
+     * is the failure that actually matters here, since the unlimited reading is
+     * remote memory exhaustion.
+     */
     memcpy(body, "far2l:", 6);
     memset(body + 6, 'A', big);
-    kept = feed_apc(mk, body, big + 6);
-    if (kept != (int)(big + 6))
-        fail("clipboard ceiling setting",
-             "100 KB did not fit under a 1 MB ceiling");
 
-    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 0);   /* nonsense -> default */
-    kept = feed_apc(mk, body, big + 6);
-    if (kept != (int)(big + 6))
-        fail("clipboard ceiling setting",
-             "a zero setting did not fall back to the default");
+    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 1);
+    feed_apc(mk, body, 16);            /* short: we only want the limit chosen */
+    if (mk->term->osc_str_limit != (size_t)1 * 1024 * 1024)
+        fail("clipboard ceiling setting", "a 1 MB setting was not honoured");
 
-    /* A huge number is clamped, not honoured: ask for 100 GB and the buffer must
-     * still refuse to grow past the cap. Checked via the limit rather than by
+    /* ...and lowering it actually bites. The smallest settable ceiling is 1 MB (the
+     * unit is megabytes), so this needs a payload comfortably over that: 1.5 MB
+     * must be truncated at exactly the ceiling and flagged as overflowed, which is
+     * what makes the whole payload get refused rather than half-pasted. */
+    {
+        const size_t over = 1536 * 1024;
+        char *big_body = snewn(over + 16, char);
+        int got;
+        memcpy(big_body, "far2l:", 6);
+        memset(big_body + 6, 'A', over);
+        conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 1);
+        got = feed_apc(mk, big_body, over + 6);
+        if ((size_t)got != (size_t)1 * 1024 * 1024)
+            fail("clipboard ceiling setting",
+                 "a payload over a lowered ceiling was not cut at that ceiling");
+        if (!mk->term->osc_str_overflow)
+            fail("clipboard ceiling setting",
+                 "a payload over the ceiling was not flagged as overflowed");
+        sfree(big_body);
+    }
+
+    /* Zero is nonsense, and must fall back to the DEFAULT - not to "no limit",
+     * which is the reading whose failure mode is memory exhaustion. */
+    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 0);
+    feed_apc(mk, body, 16);
+    if (mk->term->osc_str_limit != (size_t)CLIP_MAX_MB_DEFAULT * 1024 * 1024)
+        fail("clipboard ceiling setting",
+             "a zero setting did not fall back to exactly the default");
+
+    /* A huge number is clamped, not honoured. Checked on the limit rather than by
      * actually feeding gigabytes. */
     conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 100000);
-    feed_apc(mk, body, big + 6);
-    if (mk->term->osc_str_limit > (size_t)CLIP_MAX_MB_CAP * 1024 * 1024)
+    feed_apc(mk, body, 16);
+    if (mk->term->osc_str_limit != (size_t)CLIP_MAX_MB_CAP * 1024 * 1024)
         fail("clipboard ceiling clamp",
-             "a huge ClipboardMaxMB was honoured instead of clamped");
+             "a huge ClipboardMaxMB was not clamped to exactly the cap");
 
-    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 64);
+    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, CLIP_MAX_MB_DEFAULT);
     sfree(body);
 }
 
@@ -1016,6 +1127,7 @@ int main(void)
     test_read_direction(mk);
     test_osc5522(mk);
     test_write_focus_rule(mk);
+    test_clipboard_write_rate(mk);
     test_far2l_ceiling(mk);
     test_far2l_focus(mk);
 

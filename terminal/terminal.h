@@ -233,7 +233,9 @@ struct terminal_tag {
  */
 #define CLIP_MAX_MB_DEFAULT 64
 #define CLIP_MAX_MB_CAP 256                    /* the most a user may ask for */
-#define CLIP_MAX_BYTES_FLOOR (64 * 1024)       /* and the least, so it stays usable */
+/* There is deliberately no floor constant: the unit is megabytes, so the smallest
+ * value anyone can set is 1 MB, and anything <= 0 falls back to the default. A
+ * floor would be dead code that read as though it were doing something. */
 /* The far2l payload prefix, and its length. Recognised mid-accumulation, because
  * the ceiling has to be raised before the payload has arrived. */
 #define FAR2L_DATA_PREFIX "far2l:"
@@ -327,6 +329,17 @@ struct terminal_tag {
     int clip_dropped_quiet;
     unsigned long clip_dropped_logged;
     unsigned long clip_notified_last;
+
+    /* KiTTY: rate-capping remote clipboard WRITES (ClipboardWritesPerSecond),
+     * shared by OSC 52 and far2l. A fixed one-second window: clip_write_second is
+     * which second we are counting in, clip_write_count how many have been APPLIED
+     * in it. Counting applied rather than attempted writes means a host cannot use
+     * refused ones to exhaust anybody's budget but its own.
+     * Unconditional storage, same ODR reason as everything above. */
+    unsigned long clip_write_second;
+    int clip_write_count;
+    int clip_write_quiet;
+    unsigned long clip_write_logged;
 
     char id_string[1024];
 

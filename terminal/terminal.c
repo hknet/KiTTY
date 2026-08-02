@@ -43,8 +43,11 @@ wchar_t *kitty_osc52_get_clipboard(int *len);
  * user rather than inventing a hidden host list behind their back. */
 bool kitty_osc52_save_deny_for_host(Terminal *term);
 /* Transient tray balloon on the session window; no-op when notifications are
- * switched off or the window has no tray icon to hang one on. */
-void kitty_osc52_notify(Terminal *term, const char *title, const char *msg);
+ * switched off. `action` is one of CLIP_BALLOON_* and says what CLICKING it does,
+ * because a rate-limited balloon stands for more events than it can describe and
+ * so has to lead somewhere. */
+void kitty_osc52_notify(Terminal *term, const char *title, const char *msg,
+                        int action);
 #endif
 #if defined(MOD_PERSO) || defined(MOD_FAR2L)
 /* Send bytes down to the host. A seam rather than an ldisc_send() here so that the
@@ -62,6 +65,10 @@ void kitty_osc52_state_changed(Terminal *term);
  * both rate-limited. Declared up here because far2l_process_payload sits earlier
  * in the file than the definition, and all three protocols share it. */
 static void clip_payload_dropped(Terminal *term, const char *what, bool enabled);
+/* The remote-clipboard-write rate cap, and its report. Declared up here for the
+ * same reason as above: far2l's set path sits earlier in the file. */
+static bool clip_write_allowed(Terminal *term);
+static void clip_write_throttled(Terminal *term);
 #endif
 #ifdef MOD_FAR2L
 #include "cdecode.h"
@@ -3479,6 +3486,15 @@ static void far2l_process_payload(Terminal *term)
           }
           case 's': {                          /* set clipboard data */
 #ifdef _WINDOWS
+#ifdef MOD_PERSO
+            /* Same rate cap as OSC 52, and sharing its budget: far2l is the other
+             * way a host can overwrite the clipboard, so capping them separately
+             * would just let one host use both and get twice the rate. Dropping
+             * to "not allowed" falls into the ordinary failure reply below, so the
+             * remote far2l gets an answer rather than hanging. */
+            if (clip_allowed_eff == 1 && !clip_write_allowed(term))
+                clip_allowed_eff = 0;
+#endif
             if (clip_allowed_eff == 1 && d_count >= 4 + 4 + 3) {
                 uint32_t fmt;
                 char *buffer = NULL;
@@ -3658,15 +3674,13 @@ static size_t clip_ceiling_bytes(Terminal *term)
 {
     int mb = term->conf ? conf_get_int(term->conf, CONF_clipboard_max_mb)
                         : CLIP_MAX_MB_DEFAULT;
-    size_t bytes;
     if (mb <= 0)
         mb = CLIP_MAX_MB_DEFAULT;
     if (mb > CLIP_MAX_MB_CAP)
         mb = CLIP_MAX_MB_CAP;
-    bytes = (size_t)mb * 1024 * 1024;
-    if (bytes < CLIP_MAX_BYTES_FLOOR)
-        bytes = CLIP_MAX_BYTES_FLOOR;
-    return bytes;
+    /* No lower clamp is needed: the unit is megabytes, so 1 is the smallest a
+     * user can ask for and anything <= 0 has already become the default. */
+    return (size_t)mb * 1024 * 1024;
 }
 #endif
 
@@ -3777,7 +3791,80 @@ static void clip_payload_dropped(Terminal *term, const char *what, bool enabled)
                        "Too much data arrived for the clipboard in one go, so it "
                        "was not copied. Nothing was pasted in part.\n"
                        "Click here for the Event Log, which lists every one of "
-                       "these (this notice is rate-limited).");
+                       "these (this notice is rate-limited).",
+                       CLIP_BALLOON_LOG);
+}
+
+/*
+ * KiTTY: a remote clipboard WRITE arrived too soon after the last one, so it was
+ * dropped. Same shape as clip_payload_dropped above, and separate accounting so
+ * the two cannot mask each other.
+ *
+ * The balloon offers to BLOCK rather than pointing at the Event Log. Telling
+ * somebody that a server is stamping on their clipboard is not much use without a
+ * way to stop it, and "open the configuration box and find the right panel" is not
+ * a way to stop it while it is still happening.
+ */
+/*
+ * May a remote clipboard write be applied right now? Counts APPLIED writes in a
+ * fixed one-second window; over the cap, the write is dropped and reported.
+ *
+ * Returns true and books the write, or false having already reported it.
+ */
+static bool clip_write_allowed(Terminal *term)
+{
+    int cap = conf_get_int(term->conf, CONF_clipboard_writes_per_sec);
+    unsigned long now = (unsigned long)time(NULL);
+
+    if (cap <= 0)
+        return true;                   /* no limit, by request */
+
+    if (term->clip_write_second != now) {
+        term->clip_write_second = now;
+        term->clip_write_count = 0;
+    }
+    if (term->clip_write_count >= cap) {
+        clip_write_throttled(term);
+        return false;
+    }
+    term->clip_write_count++;
+    return true;
+}
+
+static void clip_write_throttled(Terminal *term)
+{
+    unsigned long now = (unsigned long)time(NULL);
+
+    if (term->clip_write_logged == 0 ||
+        now - term->clip_write_logged >= CLIP_DROP_LOG_GAP) {
+        char *msg;
+        if (term->clip_write_quiet > 0)
+            msg = dupprintf("Remote clipboard write ignored: more than the "
+                            "permitted number in one second; %d further write%s "
+                            "also ignored", term->clip_write_quiet,
+                            term->clip_write_quiet == 1 ? "" : "s");
+        else
+            msg = dupprintf("Remote clipboard write ignored: more than the "
+                            "permitted number in one second");
+        logevent(term->logctx, msg);
+        sfree(msg);
+        term->clip_write_quiet = 0;
+        term->clip_write_logged = now;
+    } else {
+        term->clip_write_quiet++;
+    }
+
+    if (!conf_get_bool(term->conf, CONF_clipboard_notify))
+        return;
+    if (term->clip_notified_last != 0 &&
+        now - term->clip_notified_last < CLIP_NOTIFY_GAP)
+        return;
+    term->clip_notified_last = now;
+    kitty_osc52_notify(term, "KiTTY clipboard",
+                       "A server is repeatedly changing your clipboard. The extra "
+                       "changes are being ignored.\n"
+                       "Click here to stop this server changing it at all.",
+                       CLIP_BALLOON_BLOCK_WRITES);
 }
 
 /*
@@ -3826,7 +3913,8 @@ static void osc52_read_forget_decision(Terminal *term)
         kitty_osc52_state_changed(term);
         if (conf_get_bool(term->conf, CONF_clipboard_notify))
             kitty_osc52_notify(term, "KiTTY clipboard",
-                               "Permission to read the clipboard has expired.");
+                               "Permission to read the clipboard has expired.",
+                               CLIP_BALLOON_LOG);
     }
 }
 
@@ -3879,7 +3967,10 @@ static void osc52_read_refuse(Terminal *term, const char *why, bool tell_user)
             conf_get_bool(term->conf, CONF_clipboard_notify))
             kitty_osc52_notify(term, "KiTTY clipboard",
                                "A server asked to read your clipboard. "
-                               "It was refused.");
+                               "It was refused.\n"
+                               "Click here for the Event Log (this notice is "
+                               "rate-limited).",
+                               CLIP_BALLOON_LOG);
     } else {
         term->osc52_read_refused_quiet++;
     }
@@ -4286,7 +4377,8 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
             if (conf_get_bool(term->conf, CONF_clipboard_notify))
                 kitty_osc52_notify(term, "KiTTY clipboard",
                                    "This server may now read your clipboard. "
-                                   "The title bar shows it while that lasts.");
+                                   "The title bar shows it while that lasts.",
+                                   CLIP_BALLOON_LOG);
         }
         /*
          * A named program that was allowed for more than this one request gets its
@@ -4829,6 +4921,11 @@ static void osc52_set_clipboard(Terminal *term)
         if (term->osc52_allowed != OSC52_CLIPBOARD_ALLOW)
             return;
     }
+
+    /* Rate cap. Checked after the permission gates and immediately before the
+     * write, so a refused or unfocused write costs nobody any budget. */
+    if (!clip_write_allowed(term))
+        return;
 
     decoded = base64_decode_sb(make_ptrlen(pd, pdlen));
     /* strbuf keeps its contents NUL-terminated, and decode_utf8_to_wide_string
