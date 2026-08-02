@@ -76,21 +76,20 @@ wchar_t *kitty_osc52_get_clipboard(int *len)
 }
 
 /*
- * Send the reply: ESC ] 52 ; c ; <base64> BEL, the same shape we accept in the
- * write direction. BEL rather than ESC \ because it is what every implementation
- * accepts and it is the terminator the request itself almost always arrives with.
+ * Send a complete, already-built sequence to the host. Used by both OSC 52 and
+ * OSC 5522; the caller builds the whole thing, because the two protocols frame
+ * their replies differently and this end has no business knowing which is which.
  *
- * This is a seam rather than three ldisc_send() calls in terminal.c so that the
- * one event that must never happen by accident - the clipboard leaving the
- * machine - is a single function the tests can count.
+ * It is a seam rather than an ldisc_send() inside terminal.c so that the one event
+ * that must never happen by accident - the clipboard leaving the machine - is a
+ * single function, which the tests can count and which is the obvious place to put
+ * a breakpoint when asking "did it actually go out?".
  */
-void kitty_osc52_send_reply(Terminal *term, const char *b64, size_t len)
+void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len)
 {
-    if (!term || !term->ldisc || !b64)
+    if (!term || !term->ldisc || !data || !len)
         return;                        /* no connection to reply down */
-    ldisc_send(term->ldisc, "\033]52;c;", 7, false);
-    ldisc_send(term->ldisc, b64, (int)len, false);
-    ldisc_send(term->ldisc, "\007", 1, false);
+    ldisc_send(term->ldisc, data, (int)len, false);
 }
 
 /* ------------------------------------------------------------------------
@@ -263,9 +262,16 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
         SetDlgItemText(hwnd, IDC_O52_REQUESTS, s);
         sfree(s);
 
-        /* Nothing is pre-selected. "Just this request" is the narrowest answer,
-         * but pre-ticking anything in a security question is a nudge, and the
-         * grant defaults to ONCE in the caller anyway if none is chosen. */
+        /*
+         * "Just this request" starts selected. Leaving all four blank looks more
+         * neutral and is actually worse: the code below falls back to ONCE when
+         * nothing is picked, so the narrowest answer was in force with nothing on
+         * screen saying so - an invisible default, which is the one thing a
+         * security dialog must not have. Showing it nudges towards nothing,
+         * because it IS the narrowest option, and it makes the consequence of
+         * pressing either button visible before it is pressed.
+         */
+        CheckRadioButton(hwnd, IDC_O52_ONCE, IDC_O52_SESSION, IDC_O52_ONCE);
 
         ask->seconds_left = conf_get_int(ask->term->conf, CONF_osc52_read_timeout);
         osc52_set_countdown(hwnd, ask);

@@ -314,9 +314,11 @@ END
  *    only after View is pressed, and that control starts hidden. A dialog that
  *    displays a password to answer a question about a password is a bad dialog.
  *  - Deny is DEFPUSHBUTTON and IDCANCEL both, so Return and Escape refuse, and
- *    Allow has no keyboard shortcut of the kind you hit by accident. Nothing in
- *    "Apply this decision to" is pre-selected: this is a security question and a
- *    pre-selected wider answer is a nudge towards it.
+ *    Allow has no keyboard shortcut of the kind you hit by accident. In "Apply
+ *    this decision to", the NARROWEST option is pre-selected by the dialog proc:
+ *    a pre-selected wider answer would be a nudge, but leaving all four blank is
+ *    worse than either, because the code falls back to "just this request"
+ *    anyway and the user cannot see that.
  */
 IDD_OSC52READ DIALOG DISCARDABLE 0, 0, 300, 246
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
