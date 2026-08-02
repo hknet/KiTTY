@@ -125,7 +125,18 @@ bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
 }
 
 bool kitty_osc52_save_deny_for_host(Terminal *term) { return true; }
-void kitty_osc52_notify(Terminal *term, const char *t, const char *m, int a) { }
+/* Counted, because "the ordinary case is silent" is a promise worth keeping: a
+ * notification that fires on a normal clipboard write would be worse than none,
+ * since the first thing anybody does with a noisy notifier is switch it off - and
+ * then the one that matters never arrives either. */
+static int osc52_notifies;
+static int osc52_notify_action;
+
+void kitty_osc52_notify(Terminal *term, const char *t, const char *m, int a)
+{
+    osc52_notifies++;
+    osc52_notify_action = a;
+}
 void kitty_osc52_state_changed(Terminal *term) { osc52_state_changes++; }
 
 typedef struct Mock {
@@ -749,10 +760,44 @@ static void test_clipboard_write_rate(Mock *mk)
     mk->term->has_focus = true;
     mk->term->osc52_allowed = OSC52_CLIPBOARD_ALLOW;
 
+    /*
+     * FIRST, and most important: an ordinary clipboard write is SILENT. No
+     * balloon, no Event Log line, nothing. A notifier that speaks up when a
+     * feature is working normally gets switched off within a day, and then the
+     * one message that mattered never arrives either.
+     */
+    conf_set_int(mk->term->conf, CONF_clipboard_writes_per_sec, 10);
+    mk->term->clip_write_second = 0;
+    mk->term->clip_write_count = 0;
+    mk->term->clip_notified_last = 0;
+    osc52_notifies = 0;
+    mk->clip_writes = 0;
+    term_data(mk->term, seq, strlen(seq));
+    term_update(mk->term);
+    if (mk->clip_writes != 1)
+        fail("single clipboard write", "an ordinary write did not reach the clipboard");
+    if (osc52_notifies != 0)
+        fail("single clipboard write",
+             "an ordinary write raised a notification");
+
+    /* and a handful under the cap stays silent too - the cap must clear a
+     * realistic burst without complaining about it */
+    osc52_notifies = 0;
+    mk->clip_writes = 0;
+    for (i = 0; i < 5; i++)
+        term_data(mk->term, seq, strlen(seq));
+    term_update(mk->term);
+    if (mk->clip_writes != 5)
+        fail("burst under the cap", "a burst within the allowance was throttled");
+    if (osc52_notifies != 0)
+        fail("burst under the cap", "a burst within the allowance raised a notification");
+
     /* Five writes with a cap of three: three land, two are dropped. */
     conf_set_int(mk->term->conf, CONF_clipboard_writes_per_sec, 3);
     mk->term->clip_write_second = 0;
     mk->term->clip_write_count = 0;
+    mk->term->clip_notified_last = 0;
+    osc52_notifies = 0;
     mk->clip_writes = 0;
     for (i = 0; i < 5; i++)
         term_data(mk->term, seq, strlen(seq));
@@ -761,6 +806,16 @@ static void test_clipboard_write_rate(Mock *mk)
     if (applied != 3)
         fail("clipboard write rate cap",
              "the cap did not limit a burst to exactly its allowance");
+    /* ...and THAT is worth a word, exactly once however many were dropped, and it
+     * has to be the notification that offers to block rather than one that merely
+     * points at the log. */
+    if (osc52_notifies != 1)
+        fail("clipboard write rate cap",
+             osc52_notifies == 0 ? "exceeding the cap said nothing at all"
+                                 : "exceeding the cap raised one notice per drop");
+    if (osc52_notify_action != CLIP_BALLOON_BLOCK_WRITES)
+        fail("clipboard write rate cap",
+             "the notice did not offer to block the server");
 
     /* The window moves on: a later second gets a fresh allowance. Simulated by
      * ageing the recorded second rather than sleeping through a test run. */
