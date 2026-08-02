@@ -4920,6 +4920,15 @@ static void osc52_set_clipboard(Terminal *term)
 #endif
         if (term->osc52_allowed != OSC52_CLIPBOARD_ALLOW)
             return;
+        /*
+         * Answering "yes" here is a GRANT with a lifetime - it latches for the rest
+         * of the session - exactly like allowing a read for the session, so the
+         * window has to start showing it. Without this the "(clip write)" marker
+         * did not appear until the session next set its own title, which for a
+         * shell that never sets one is never: the permission was live and invisible,
+         * which is the one thing the marker exists to prevent.
+         */
+        kitty_osc52_state_changed(term);
     }
 
     /* Rate cap. Checked after the permission gates and immediately before the
