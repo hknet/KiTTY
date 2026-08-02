@@ -43,6 +43,12 @@ features are working and verified. Known limitations as of this release:
   suspended rather than cancelled — the title shows `(clip read paused)` — and
   resumes without asking again when you come back. Turn it off if you rely on a
   background job that copies its own output into your clipboard.
+- **far2l shared clipboard: payloads over ~2 KB used to be dropped in silence.**
+  Fixed — a far2l clipboard payload may now be up to 64 MB, sized for an image
+  rather than a line of text, and one that still does not fit is refused whole and
+  recorded in the Event Log instead of vanishing. If copying large selections in a
+  far2l session appeared to do nothing before, that was this. Whether non-text
+  formats (images) round-trip is not yet verified.
 - **OSC 5522 (kitty's clipboard protocol): reads work, writes do not.** Reads go
   through the same permission control and the same limits as OSC 52 reads above —
   it is one permission, reachable two ways, not two settings. Because this protocol
