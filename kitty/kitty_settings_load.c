@@ -181,12 +181,58 @@ static void gprefs_from_str(const char *str,
 /* ================= extracted from KiTTY 0.76b kitty_settings.c ================= */
 
 /* ---- load_open_settings_forced (kitty_settings.c:465-1122) ---- */
+/*
+ * KiTTY 2026-08-02: a .ktx line that does not end in the continuation backslash
+ * was written encrypted, so the legacy decode is about to run on it. That format
+ * is DEPRECATED - still read, no longer written - and the user is told once,
+ * because otherwise the only sign is that a feature they switched on has quietly
+ * stopped applying to new exports.
+ *
+ * Told at LOAD rather than at startup, deliberately: there is no persistent
+ * "encrypt my config files" setting to detect at startup. The flag lived for one
+ * run and was never saved, so a startup notice would have nothing to trigger on.
+ * Loading such a file is the only moment we can know, and the moment the user is
+ * thinking about that file anyway.
+ */
+void KittyCliReport( const char *title, const char *text, int warn ) ; /* kitty_registry.c */
+
+static int g_ktx_encrypted_seen = 0 ;
+static void ktx_note_encrypted( void ) { g_ktx_encrypted_seen = 1 ; }
+static int ktx_encrypted_was_seen( void ) { int n = g_ktx_encrypted_seen ; g_ktx_encrypted_seen = 0 ; return n ; }
+
+/* Told once per KiTTY run, however many encrypted files are loaded: importing a
+ * folder of them must not produce one box per file. */
+static int g_ktx_encrypted_told = 0 ;
+
+static void ktx_warn_encrypted_once( void ) {
+	if( g_ktx_encrypted_told ) return ;
+	if( !ktx_encrypted_was_seen() ) return ;
+	g_ktx_encrypted_told = 1 ;
+	/*
+	 * KittyCliReport, not MessageBox: this path is reached from -kload / -loadfile
+	 * as well as from the GUI, and a modal box nobody can click is a hang for
+	 * anyone importing from a script. The helper writes to the console of the
+	 * shell that launched us and falls back to a box only when there is no console
+	 * at all - started from Explorer, a shortcut or the installer.
+	 */
+	KittyCliReport(
+		"KiTTY - encrypted configuration files are deprecated",
+		"This file was written by an older KiTTY with \"encrypted configuration "
+		"files\" switched on. It has been read normally.\n\n"
+		"That option is gone. It scrambled the file with a key built into every "
+		"copy of KiTTY, so anyone with KiTTY could unscramble it - it protected "
+		"nothing. KiTTY still READS these files, but no longer writes them, and "
+		"anything you export from now on will be plain.\n\n"
+		"Saved passwords are unaffected: those are protected properly, with "
+		"Windows DPAPI or your master password.", 0 ) ;
+}
+
 void load_open_settings_forced(char *filename, Conf *conf) {
 	FILE *sesskey ;
-	if( (sesskey=fopen(filename,"r")) == NULL ) { 
+	if( (sesskey=fopen(filename,"r")) == NULL ) {
 		char buffer[1024] ;
 		snprintf(buffer,sizeof(buffer),"File %s not found !",filename);
-		MessageBox(NULL, buffer, "Error", MB_OK|MB_ICONERROR) ; return ; 
+		MessageBox(NULL, buffer, "Error", MB_OK|MB_ICONERROR) ; return ;
 		}
 	Conf * confDef ;
 	confDef = conf_new() ;
@@ -891,8 +937,12 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 		conf_set_bool( conf, CONF_osc7_cwd_tracking, true ) ;
 	conf_set_str( conf, CONF_folder, "Default") ;
 	fclose(sesskey) ;
-		
+
 	conf_free( confDef ) ;
+
+	/* After the load, not during it: the readers above are called once per key,
+	 * so warning inside them would fire hundreds of times for one file. */
+	ktx_warn_encrypted_once() ;
 }
 
 /* ---- read-side helpers (kitty_settings.c:1317-1552) ---- */
@@ -905,6 +955,23 @@ static void rstrip_eol_forced( char *s ) {
 	size_t l = strlen( s ) ;
 	while( l > 0 && ( s[l-1]=='\n' || s[l-1]=='\r' ) ) { s[--l] = '\0' ; }
 }
+/*
+ * KiTTY 2026-08-02: a .ktx line that does not end in the continuation backslash
+ * was written encrypted, so we are about to run the legacy decode on it. That
+ * format is DEPRECATED - we still read it, we no longer write it - and the user
+ * should be told once, because otherwise the only sign is that a feature they
+ * turned on has silently stopped applying to new exports.
+ *
+ * Told HERE rather than at startup, and this is the point: there is no persistent
+ * "encrypt my config files" setting to detect at startup. CryptFileFlag lived for
+ * one run and was never saved, so a startup notice would have nothing to trigger
+ * on and would either never fire or fire for everybody. Loading such a file is the
+ * only moment we can know, and it is also the moment the user is thinking about
+ * the file.
+ *
+ * Once per run, and never in a headless/CLI context - a message box nobody can
+ * click is a hang, which is why this only sets a flag and window.c decides.
+ */
 static void rstrip_cont_forced( char *s ) {
 	size_t l = strlen( s ) ;
 	while( l > 0 && ( s[l-1]=='\\' || s[l-1]=='\n' || s[l-1]=='\r' ) ) { s[--l] = '\0' ; }
@@ -917,7 +984,7 @@ int read_setting_i_forced(void *handle, const char *key, int defvalue) {
 	snprintf( name, sizeof(name), "%s\\", key ) ;
 	while( fgets(buffer,2047,handle)!=NULL ) {
 		rstrip_eol_forced( buffer ) ;
-		if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }
+		if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { ktx_note_encrypted() ; decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }
 		if( strstr( buffer, name ) == buffer ) {
 			rstrip_cont_forced( buffer ) ;
 			n = atoi( buffer+strlen(name) ) ;
@@ -935,7 +1002,7 @@ char *read_setting_s_forced(void *handle, const char *key) {
 	
 	while( fgets(buffer,2047,handle)!=NULL ) {
 		rstrip_eol_forced( buffer ) ;
-		if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }
+		if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { ktx_note_encrypted() ; decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }
 		if( strstr( buffer, name ) == buffer ) {
 			rstrip_cont_forced( buffer ) ;
 			loadResult = (char*) malloc( strlen( buffer+strlen(name) ) + 1 ) ;
@@ -953,7 +1020,7 @@ Filename *read_setting_filename_forced(void *handle, const char *key) {
 	snprintf( name, sizeof(name), "%s\\", key ) ;
 	while( fgets(buffer,2047,handle)!=NULL ) {
 		rstrip_eol_forced( buffer ) ;
-		if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }
+		if( strlen(buffer)==0 || buffer[strlen(buffer)-1] != '\\' ) { ktx_note_encrypted() ; decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD) ; }
 		if( strstr( buffer, name ) == buffer ) {
 			rstrip_cont_forced( buffer ) ;
 			unmungestr( buffer+strlen(name), buffer, 2047 ) ;

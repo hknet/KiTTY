@@ -81,6 +81,13 @@ char *GetValueData(HKEY k, char *sub, const char *name, char *out)
 { return NULL; }                    /* "no such registry value" */
 int readINI(const char *f, const char *sec, const char *key, char *p, size_t n)
 { return 0; }                       /* "no such ini key" */
+/* Deliberately LOUD rather than silent. The .ktx test fixture is not encrypted, so
+ * this should never fire - but if someone later adds an encrypted fixture, a quiet
+ * stub would swallow the deprecation notice and the test would pass while telling
+ * nobody. Printing means it shows up in the run. */
+void KittyCliReport(const char *title, const char *text, int warn)
+{ printf("  [KittyCliReport] %s\n", title ? title : "(no title)"); }
+
 char *str_rtrim(char *s, const char *set)
 {
     size_t n = s ? strlen(s) : 0;

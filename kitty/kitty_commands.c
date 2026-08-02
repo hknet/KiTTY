@@ -236,9 +236,29 @@ static int cmd_copytokitty( HWND hwnd, char * arg ) {
 	return 1 ;
 }
 
+/*
+ * /switchcrypt no longer does anything, and says so rather than disappearing.
+ *
+ * It used to toggle a global that made exported .ktx files "encrypted" with a
+ * constant compiled into every build - obfuscation, not encryption, undoable by
+ * anyone holding a copy of KiTTY. The write path went on 2026-08-02.
+ *
+ * The command is KEPT, answering with an explanation, because deleting it outright
+ * would answer anyone who has it in their fingers with "unknown command" - which
+ * tells them nothing about why, and looks like a bug rather than a decision.
+ * Reading old encrypted .ktx files still works.
+ */
 static int cmd_switchcrypt( HWND hwnd, char * arg ) {
-	(void)hwnd ; (void)arg ;
-	SwitchCryptFlag() ;
+	(void)arg ;
+	MessageBox( hwnd,
+		"Encrypted configuration files are no longer written.\n\n"
+		"This setting used to scramble exported .ktx files with a key built "
+		"into every copy of KiTTY, so anyone with KiTTY could unscramble them. "
+		"It protected nothing, and it is gone.\n\n"
+		"Existing encrypted .ktx files are still read normally. Saved passwords "
+		"are unaffected - those are protected properly, with Windows DPAPI or "
+		"your master password.",
+		"KiTTY - this setting has been removed", MB_OK | MB_ICONINFORMATION ) ;
 	return 1 ;
 }
 
@@ -411,7 +431,7 @@ static const struct InternalCmdDef {
 	{ "/savesessions",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "export the saved sessions to kitty.ses",		cmd_savesessions },
 	{ "/copytoputty",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "copy the sessions to stock PuTTY (replaces its sessions)", cmd_copytoputty },
 	{ "/copytokitty",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "copy stock PuTTY's sessions into KiTTY",		cmd_copytokitty },
-	{ "/switchcrypt",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "switch the crypt mode",					cmd_switchcrypt },
+	{ "/switchcrypt",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "(removed) encrypted config files are no longer written",	cmd_switchcrypt },
 	{ "/delfolder",		IC_ARG_REQUIRED, "<name>", CAT_STORE,  "delete a session folder",				cmd_delfolder },
 	{ "/loadinitscript",	IC_ARG_OPTIONAL, "[file]", CAT_STORE,  "(re)load the init script",				cmd_loadinitscript },
 

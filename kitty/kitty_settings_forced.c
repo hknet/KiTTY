@@ -23,8 +23,26 @@
 #include "kitty_commun.h"  /* GetCryptSaltFlag, MASKPASS */
 #include "kitty_crypt.h"   /* cryptpassword */
 
-/* CryptFileFlag lives in kitty_bridge.c; cryptstring/mungestr in kitty modules. */
-extern int CryptFileFlag;
+/*
+ * KiTTY 2026-08-02: exported .ktx files are no longer written encrypted.
+ *
+ * The "encryption" was `cryptstring` under MASTER_PASSWORD - a constant compiled
+ * into every build and visible in the build file - so it could be undone by
+ * anyone holding a copy of KiTTY. It was obfuscation presented as protection.
+ *
+ * It was also unreachable by accident: no menu item, no documentation, off by
+ * default, and switched on only by the undocumented internal command /crypt,
+ * which has been removed with it. So nobody was relying on it, and nobody was
+ * misled into thinking a file was safe. The project had already published the
+ * same reasoning for the neighbouring case - FEATURES.md on backups: "the
+ * registry already holds saved passwords in protected form, so a second layer
+ * added nothing".
+ *
+ * The READ path in kitty_settings_load.c deliberately stays: .ktx files written
+ * by older builds must keep loading, and KNOWN-ISSUES.md documents that they do.
+ * Removing the read side is part of retiring MASTER_PASSWORD itself, which cannot
+ * happen until users have re-saved.
+ */
 int cryptstring(const int mode, char *st, const char *key);
 
 /* ---- forced writers (write to a plain FILE* in KiTTY .ktx line format) ---- */
@@ -32,7 +50,6 @@ int cryptstring(const int mode, char *st, const char *key);
 void write_setting_i_forced(void *handle, const char *key, int value) {
     char buf[1024];
     snprintf( buf, sizeof(buf), "%s\\%i\\", key, value);
-    if (CryptFileFlag) { cryptstring(GetCryptSaltFlag(), buf, MASTER_PASSWORD); }
     fprintf((FILE*)handle, "%s\n", buf);
     fflush(handle);
 }
@@ -46,7 +63,6 @@ void write_setting_s_forced(void *handle, const char *key, const char *value) {
     mungestr(value, p);
     char *buf = (char*)malloc(2*(strlen(key)+strlen(p))+10);
     sprintf(buf, "%s\\%s\\", key, p);
-    if (CryptFileFlag) { cryptstring(GetCryptSaltFlag(), buf, MASTER_PASSWORD); }
     fprintf((FILE*)handle, "%s\n", buf);
     fflush(handle);
     free(buf);
@@ -59,7 +75,6 @@ void write_setting_filename_forced(void *handle, const char *key, Filename *valu
     mungestr(path, p);
     char *buf = (char*)malloc(2*(strlen(key)+strlen(p))+10);
     sprintf(buf, "%s\\%s\\", key, p);
-    if (CryptFileFlag) { cryptstring(GetCryptSaltFlag(), buf, MASTER_PASSWORD); }
     fprintf((FILE*)handle, "%s\n", buf);
     fflush(handle);
     free(buf);
