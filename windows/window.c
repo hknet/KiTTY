@@ -6694,6 +6694,29 @@ static char *kitty_decorate_title(WinGuiSeat *wgs, const char *title)
      * wrong kitty.ini leaves the user believing they are hardened in silence. */
     if (restricted_acl())
         put_dataz(sb, " (RESTRICTED)");
+    /*
+     * KiTTY: a clipboard permission is live. Agreeing to be read once is not
+     * agreeing to be read invisibly from then on, so while the permission lasts it
+     * is on the window.
+     *
+     * "(paused)" is the case that earns this its keep. Losing focus suspends the
+     * permission, and losing focus is exactly when the user CAN read the title -
+     * they are looking at something in front of this window. A permission that
+     * silently stopped applying would be worse than none, because they would have
+     * no idea why the editor had stopped seeing pastes.
+     *
+     * Short markers, and at the end: the connection name has to survive the
+     * taskbar cutting the title off, so it keeps the first characters.
+     */
+    if (wgs->term && conf_get_bool(wgs->conf, CONF_osc52_title_mark)) {
+        bool rd, wr;
+        int state = term_osc52_perm_state(wgs->term, &rd, &wr);
+        if (state != OSC52_PERM_NONE) {
+            const char *which = (rd && wr) ? "read+write" : (rd ? "read" : "write");
+            put_fmt(sb, " (clip %s%s)", which,
+                    state == OSC52_PERM_PAUSED ? " paused" : "");
+        }
+    }
     return strbuf_to_str(sb);
 }
 
