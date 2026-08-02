@@ -342,6 +342,19 @@ BEGIN
     DEFPUSHBUTTON   "Deny", IDCANCEL, 241, 224, 52, 14
 END
 
+/* Generic notice: a caption, a block of text, and OK. A real dialog rather than a
+ * MessageBox so the dialog manager gives it the shell font at the correct DPI,
+ * exactly like every other KiTTY window - the height here is a starting point,
+ * because kitty_notice_box() grows it to fit the text at that font. */
+IDD_NOTICEBOX DIALOG DISCARDABLE 0, 0, 260, 92
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "KiTTY"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "", IDC_NOTICE_TEXT, 10, 9, 240, 56
+    DEFPUSHBUTTON   "OK", IDOK, 206, 72, 44, 14
+END
+
 IDD_INFOBOX DIALOG DISCARDABLE 0, 0, 350, 28
 STYLE WS_DLGFRAME | DS_CENTER | WS_POPUP | WS_VISIBLE
 CAPTION "KiTTY"

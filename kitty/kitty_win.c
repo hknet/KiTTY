@@ -964,6 +964,72 @@ static INT_PTR CALLBACK kitty_upd_dlgproc( HWND h, UINT msg, WPARAM wp, LPARAM l
 	return FALSE ;
 }
 
+/*
+ * Generic notice box: a caption, a block of text, and OK.
+ *
+ * A real dialog rather than MessageBox, for the reason the update popup below
+ * gives: the dialog manager hands it the shell font at the right DPI, so nothing
+ * here hand-rolls DPI scaling and the text is not the wrong size on a scaled
+ * display. It grows to fit its text at that font, the same way the update popup
+ * does, so a long explanation is not clipped into a fixed rectangle.
+ *
+ * MODAL, unlike the update popup: this is used to tell somebody that a thing they
+ * just did no longer works, and a notice that answers a deliberate action has to
+ * be acknowledged rather than time out unread.
+ */
+typedef struct { const char *caption ; const char *text ; } kitty_notice_t ;
+
+static INT_PTR CALLBACK kitty_notice_dlgproc( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
+	switch( msg ) {
+	  case WM_INITDIALOG: {
+		const kitty_notice_t *n = (const kitty_notice_t *)lp ;
+		const char *text = n ? n->text : NULL ;
+		HWND txt = GetDlgItem( h, IDC_NOTICE_TEXT ) ;
+		HFONT f = (HFONT)SendMessage( h, WM_GETFONT, 0, 0 ) ;
+		if( n && n->caption ) SetWindowTextA( h, n->caption ) ;
+		SetDlgItemTextA( h, IDC_NOTICE_TEXT, text ? text : "" ) ;
+		if( txt && text ) {
+			/* same fit-to-text as the update popup: measure at the DIALOG's font,
+			 * grow the control, push the button down, grow the window. */
+			RECT tr ; GetWindowRect( txt, &tr ) ;
+			MapWindowPoints( NULL, h, (POINT*)&tr, 2 ) ;
+			int tw = tr.right - tr.left, cur_th = tr.bottom - tr.top ;
+			HDC dc = GetDC( txt ) ; HFONT of = (HFONT)SelectObject( dc, f ) ;
+			RECT mr = { 0, 0, tw, 0 } ;
+			DrawText( dc, text, -1, &mr, DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX ) ;
+			int dh = mr.bottom - cur_th ;
+			SelectObject( dc, of ) ; ReleaseDC( txt, dc ) ;
+			if( dh != 0 ) {
+				HWND b = GetDlgItem( h, IDOK ) ;
+				MoveWindow( txt, tr.left, tr.top, tw, mr.bottom, TRUE ) ;
+				if( b ) {
+					RECT br ; GetWindowRect( b, &br ) ;
+					MapWindowPoints( NULL, h, (POINT*)&br, 2 ) ;
+					MoveWindow( b, br.left, br.top + dh,
+						br.right-br.left, br.bottom-br.top, TRUE ) ;
+				}
+				RECT wr ; GetWindowRect( h, &wr ) ;
+				SetWindowPos( h, NULL, 0, 0, wr.right-wr.left,
+					(wr.bottom-wr.top)+dh, SWP_NOMOVE|SWP_NOZORDER ) ;
+			}
+		}
+		return TRUE ;
+	  }
+	  case WM_COMMAND:
+		if( LOWORD(wp)==IDOK || LOWORD(wp)==IDCANCEL ) { EndDialog( h, 0 ) ; return TRUE ; }
+		return FALSE ;
+	  case WM_CLOSE: EndDialog( h, 0 ) ; return TRUE ;
+	}
+	return FALSE ;
+}
+
+void kitty_notice_box( HWND owner, const char *caption, const char *text ) {
+	kitty_notice_t n ;
+	n.caption = caption ; n.text = text ;
+	DialogBoxParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_NOTICEBOX),
+		owner, kitty_notice_dlgproc, (LPARAM)&n ) ;
+}
+
 /* Show the modeless "update available / up to date" popup over `owner`. It is a
  * real dialog (IDD_UPDATEBOX) so the dialog manager gives it the shell font at
  * the correct DPI, exactly like every other KiTTY window - no hand-rolled DPI

@@ -249,16 +249,19 @@ static int cmd_copytokitty( HWND hwnd, char * arg ) {
  * Reading old encrypted .ktx files still works.
  */
 static int cmd_switchcrypt( HWND hwnd, char * arg ) {
+	extern void kitty_notice_box( HWND owner, const char *caption, const char *text ) ; /* kitty_win.c */
 	(void)arg ;
-	MessageBox( hwnd,
+	/* kitty_notice_box, not MessageBox: a real dialog, so the dialog manager
+	 * gives it the shell font at the right DPI and it grows to fit the text -
+	 * the same treatment every other KiTTY dialog gets. */
+	kitty_notice_box( hwnd, "KiTTY - this setting has been removed",
 		"Encrypted configuration files are no longer written.\n\n"
 		"This setting used to scramble exported .ktx files with a key built "
 		"into every copy of KiTTY, so anyone with KiTTY could unscramble them. "
 		"It protected nothing, and it is gone.\n\n"
 		"Existing encrypted .ktx files are still read normally. Saved passwords "
 		"are unaffected - those are protected properly, with Windows DPAPI or "
-		"your master password.",
-		"KiTTY - this setting has been removed", MB_OK | MB_ICONINFORMATION ) ;
+		"your master password." ) ;
 	return 1 ;
 }
 

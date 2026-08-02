@@ -559,6 +559,16 @@
  * not how often or which; the Event Log is where that actually lives, and a click
  * is the shortest route to it. Sent to the terminal window (kitty_osc52.c adds the
  * icon with NIF_MESSAGE; windows/window.c handles it). */
+/* Generic "here is something you should know" notice. A real dialog, not a
+ * MessageBox, for the reason IDD_UPDATEBOX gives above it: the dialog manager
+ * hands it the shell font at the right DPI, so the text is not the wrong size on
+ * a scaled display. The box grows to fit its text at that font. */
+#ifndef IDD_NOTICEBOX
+#define IDD_NOTICEBOX 146
+#endif
+#ifndef IDC_NOTICE_TEXT
+#define IDC_NOTICE_TEXT 1274
+#endif
 #ifndef WM_KITTY_CLIPBALLOON
 #define WM_KITTY_CLIPBALLOON (WM_APP + 71)
 #endif
