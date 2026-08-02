@@ -250,10 +250,25 @@ add_executable(test_storage_roundtrip
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_mpw.c
+  # the .ktx reader, so the old-export test drives the real parser rather than a
+  # copy of it (design doc 8.17), plus the two files it needs: the legacy string
+  # decoder and the mungestr/salt helpers it decodes through
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_settings_load.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_crypt.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_commun.c
   no-jump-list.c
   ${CMAKE_SOURCE_DIR}/sshrand.c)
+target_include_directories(test_storage_roundtrip PRIVATE
+  ${CMAKE_SOURCE_DIR}/kitty ${CMAKE_SOURCE_DIR}/kitty/base64
+  ${CMAKE_SOURCE_DIR}/kitty/bcrypt ${CMAKE_SOURCE_DIR}/kitty/md5)
+# MOD_PERSO + MASTER_PASSWORD because the .ktx reader is KiTTY code and uses the
+# compiled-in constant on its legacy decode path. Matching the shipping targets
+# here matters: a test built with different defines would exercise a different
+# decoder from the one users run.
+target_compile_definitions(test_storage_roundtrip PRIVATE
+  MOD_PERSO MASTER_PASSWORD="kitty")
 target_link_libraries(test_storage_roundtrip
-  crypto utils ${platform_libraries}
+  crypto utils settings ${platform_libraries}
   crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_64.a)
 
 add_executable(test_lineedit

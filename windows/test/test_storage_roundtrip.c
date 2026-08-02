@@ -54,6 +54,40 @@ void nonfatal(const char *fmt, ...)
     va_end(ap);
 }
 
+/*
+ * Stubs for the .ktx reader's environment (design doc 8.17).
+ *
+ * kitty_settings_load.c is application code and reaches for the registry, the ini
+ * file and the backend table. None of that is on the path a .ktx parse takes, so
+ * these stand in for it - but each one matches the REAL declaration exactly,
+ * because a stub with a convenient signature links happily and then lies about
+ * what the tested code does.
+ *
+ * If any of these ever starts being called for real by this test, it should fail
+ * loudly rather than return something plausible; that is why the two lookups
+ * return "not found" rather than an empty string.
+ */
+void load_open_settings_forced(char *filename, Conf *conf);   /* kitty_settings_load.c */
+
+const struct BackendVtable *const backends[] = { NULL };
+const int be_default_protocol = 0;
+const struct keyvalwhere gsslibkeywords[] = { { "", 0, -1, -1 } };
+const int ngsslibs = 0;
+Conf *conf = NULL;                  /* the app's active-seat global */
+bool conf_launchable(Conf *c) { return true; }
+char *get_username(void) { return dupstr("selftest"); }
+void burnwcs(wchar_t *s) { if (s) { while (*s) *s++ = 0; } }
+char *GetValueData(HKEY k, char *sub, const char *name, char *out)
+{ return NULL; }                    /* "no such registry value" */
+int readINI(const char *f, const char *sec, const char *key, char *p, size_t n)
+{ return 0; }                       /* "no such ini key" */
+char *str_rtrim(char *s, const char *set)
+{
+    size_t n = s ? strlen(s) : 0;
+    while (n > 0 && strchr(set, s[n - 1])) s[--n] = '\0';
+    return s;
+}
+
 static int failures = 0;
 static void check(int cond, const char *what)
 {
@@ -415,6 +449,143 @@ static void test_renamed_key(void)
     del_settings(MSESS);
 }
 
+/* ---------- reading a session out of the OLD 9bis KiTTY hive (§8.10) ----------
+ *
+ * Sessions written by classic KiTTY live under Software\9bis.com\KiTTY, and we
+ * still read them: precedence is our own base, then that hive, then stock PuTTY's.
+ * This was on the owed-live-tests list as "legacy read", but the DECODER is
+ * already covered transitively - what was never checked is the PLUMBING, i.e. that
+ * a session which exists ONLY in the old hive is found at all, and that its values
+ * come back intact. That part needs no human, so it should not have been on a
+ * hands-on list.
+ *
+ * Deliberately uses a cleartext password: the legacy-encrypted form is the same
+ * decoder tested elsewhere, and mixing the two would test the decoder twice while
+ * still not testing the lookup.
+ */
+#define OSESS   "zz-kitty-selftest-oldhive"
+#define OSECRET "old-hive-plain-pw"
+
+static void test_old_kitty_hive(void)
+{
+    char path[600];
+    HKEY hk;
+    settings_r *r;
+
+    snprintf(path, sizeof(path), "Software\\9bis.com\\KiTTY\\Sessions\\%s", OSESS);
+
+    /* make sure our own hive does NOT have it, or we would be testing that */
+    del_settings(OSESS);
+
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, path, 0, NULL, 0, KEY_SET_VALUE,
+                        NULL, &hk, NULL) != ERROR_SUCCESS) {
+        check(0, "old hive: could not seed a session (skipped)");
+        return;
+    }
+    RegSetValueExA(hk, "HostName", 0, REG_SZ,
+                   (const BYTE *)"oldhive.example", 16);
+    RegSetValueExA(hk, "Password", 0, REG_SZ,
+                   (const BYTE *)OSECRET, sizeof(OSECRET));
+    RegCloseKey(hk);
+
+    r = open_settings_r(OSESS);
+    check(r != NULL, "old hive: a session only in the 9bis hive is found");
+    if (r) {
+        char *hn = read_setting_s(r, "HostName");
+        check(hn && !strcmp(hn, "oldhive.example"),
+              "old hive: hostname reads back");
+        if (hn) sfree(hn);
+        char *pw = read_setting_s(r, "Password");
+        check(pw && !strcmp(pw, OSECRET),
+              "old hive: password reads back");
+        if (pw) sfree(pw);
+        close_settings_r(r);
+    }
+
+    /* our own hive must win when both exist - precedence, not merely fallback */
+    {
+        char *err = NULL;
+        settings_w *w = open_settings_w(OSESS, &err);
+        if (w) {
+            write_setting_s(w, "HostName", "ourhive.example");
+            close_settings_w(w);
+        }
+        r = open_settings_r(OSESS);
+        char *hn = r ? read_setting_s(r, "HostName") : NULL;
+        check(hn && !strcmp(hn, "ourhive.example"),
+              "old hive: our own hive takes precedence over it");
+        if (hn) sfree(hn);
+        if (r) close_settings_r(r);
+        del_settings(OSESS);
+    }
+
+    RegDeleteKeyA(HKEY_CURRENT_USER, path);
+}
+
+/* ---------- reading an old .ktx export (§8.17) ----------
+ *
+ * A .ktx is KiTTY's exported-session file: "Key\value\" lines, optionally with the
+ * whole file encrypted. Same reasoning as the old-hive test above - the crypto is
+ * covered elsewhere, the PARSER is what was never exercised - so this drives
+ * load_open_settings_forced() over a file written by hand in the old shape, which
+ * is exactly what an old KiTTY would have produced.
+ */
+#define KSESS_HOST "ktx.example"
+
+static void test_old_ktx(void)
+{
+    char dir[MAX_PATH], path[MAX_PATH];
+    FILE *fp;
+    Conf *conf;
+
+    if (!GetTempPathA(sizeof(dir), dir)) {
+        check(0, "ktx: no temp dir (skipped)");
+        return;
+    }
+    snprintf(path, sizeof(path), "%szz-kitty-selftest.ktx", dir);
+    fp = fopen(path, "wb");
+    if (!fp) {
+        check(0, "ktx: could not write a scratch .ktx (skipped)");
+        return;
+    }
+    /* the old shape, including a key we retired (SaveWindowPos) and one with an
+     * escaped separator, both of which a real old export could contain */
+    fprintf(fp, "HostName\\%s\\\n", KSESS_HOST);
+    fprintf(fp, "PortNumber\\2222\\\n");
+    fprintf(fp, "Password\\PLAIN:ktx-secret\\\n");
+    fprintf(fp, "SaveWindowPos\\1\\\n");
+    fprintf(fp, "TerminalType\\xterm\\\n");
+    fclose(fp);
+
+    /*
+     * NOTE on the port, found while writing this: load_open_settings_forced()
+     * reads PortNumber only INSIDE the "did Protocol name a backend we have?"
+     * branch, so a .ktx whose Protocol line is missing - or whose protocol this
+     * binary was not built with - loads with port 0 rather than a default. Real
+     * exports always carry a Protocol line, so this is not a bug in practice, but
+     * it does mean the port cannot be asserted in this harness: the backend table
+     * here is a deliberate stub, so no protocol ever resolves. Asserting it would
+     * mean linking the real backends to test a parser, which is the wrong trade.
+     */
+
+    conf = conf_new();
+    do_defaults(NULL, conf);
+    load_open_settings_forced(path, conf);
+
+    check(!strcmp(conf_get_str(conf, CONF_host), KSESS_HOST),
+          "ktx: hostname parsed from an old export");
+    check(!strcmp(conf_get_str(conf, CONF_termtype), "xterm"),
+          "ktx: terminal type parsed from an old export");
+    /* PLAIN: means "this is the password, do not try to decode it" - the marker
+     * that stopped cleartext in an imported .ktx being mangled by the legacy
+     * decoder. */
+    check(!strcmp(conf_get_str(conf, CONF_password), "ktx-secret"),
+          "ktx: PLAIN: cleartext password imports verbatim");
+
+    conf_free(conf);
+    DeleteFileA(path);
+}
+
 int main(void)
 {
     printf("== registry backend (DPAPI) ==\n");
@@ -425,6 +596,10 @@ int main(void)
     test_long_values();
     printf("== renamed setting migrates on save ==\n");
     test_renamed_key();
+    printf("== old 9bis KiTTY hive is still read (design doc 8.10) ==\n");
+    test_old_kitty_hive();
+    printf("== old .ktx export is still read (design doc 8.17) ==\n");
+    test_old_ktx();
     printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",
            failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
