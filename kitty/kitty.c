@@ -2715,6 +2715,15 @@ void ReadAutoCommandFromFile( const char * filename ) {
 	free(buffer);
 }
 
+/* At-rest protection for the login script: the same chokepoint saved passwords
+ * use (kitty_storage.c), plus the base64 pair, because the script is a
+ * NUL-separated blob rather than a C string. kitty_proxy.c declares the wrap the
+ * same way - these live in kitty_storage.c but not all of them in its header. */
+extern char *kitty_secret_wrap_current_backend( const char *plaintext ) ;
+extern char *ksec_b64_encode( const unsigned char *in, int len ) ;
+extern unsigned char *ksec_b64_decode( const char *in, int *outlen ) ;
+extern int ksec_unprotect( const char *stored, char **out ) ;
+
 void ReadInitScript( const char * filename ) {
 	char * pst, *buffer=NULL, *name=NULL ;
 	FILE *fp ;
@@ -2754,15 +2763,59 @@ void ReadInitScript( const char * filename ) {
 				pst[0] = '\0' ;
 				l++ ;
 				fclose( fp ) ;
-				bcrypt_string_base64( ScriptFileContent, buffer, l, MASTER_PASSWORD, 0 ) ;
-				if( IniFileFlag==SAVEMODE_REG ) {
-					//WriteParameter( INIT_SECTION, "KiCrSt", buffer ) ;
+				/*
+				 * The login script is stored with the SAME at-rest protection as
+				 * a saved password - DPAPI in the registry, the master password
+				 * in a portable store - rather than scrambled with the constant
+				 * compiled into every build.
+				 *
+				 * It sits in the same session record as CONF_password, and its
+				 * "send" halves are what gets typed at login prompts, so it can
+				 * hold a credential itself. Protecting the password properly and
+				 * the text typed at the password prompt with a public key was the
+				 * inconsistency worth removing; the constant is incidental.
+				 *
+				 * base64 FIRST, because ScriptFileContent is NUL-separated
+				 * (expect\0send\0...\0\0) with an explicit length, and the
+				 * protection chokepoint takes C strings - handing it the raw blob
+				 * would silently store only up to the first NUL, i.e. the first
+				 * expect string and nothing else.
+				 */
+				{
+					char *b64 = ksec_b64_encode( (const unsigned char*)ScriptFileContent, (int)l ) ;
+					char *wrapped = b64 ? kitty_secret_wrap_current_backend( b64 ) : NULL ;
+					if( wrapped ) {
+						conf_set_str( conf, CONF_scriptfilecontent, wrapped ) ;
+						free( wrapped ) ;
+					}
+					if( b64 ) { smemclr( b64, strlen(b64) ) ; free( b64 ) ; }
 				}
-				conf_set_str(conf, CONF_scriptfilecontent, buffer );
 			}
 			if( buffer!=NULL ) { free(buffer); buffer=NULL; }
 		} else {
-			if( (buffer=(char*)malloc(strlen(name)+1))!=NULL ) {
+			/*
+			 * Not a path, so it is stored content. Which form it is in says how to
+			 * open it, and the marker answers that without guessing: a protected
+			 * value carries DPAPI1:/MPW2:/PLAIN:, and anything else is a session
+			 * written before this change and still scrambled with the constant.
+			 *
+			 * Both are read for as long as it takes users to re-save. Dropping the
+			 * legacy branch is part of retiring MASTER_PASSWORD itself, not of
+			 * this change.
+			 */
+			char *plain = NULL ;
+			if( ksec_unprotect( name, &plain ) > 0 && plain && plain[0] ) {
+				int blen = 0 ;
+				unsigned char *raw = ksec_b64_decode( plain, &blen ) ;
+				if( raw && blen > 0 ) {
+					if( ScriptFileContent != NULL ) free( ScriptFileContent ) ;
+					ScriptFileContent = (char*) malloc( blen + 1 ) ;
+					memcpy( ScriptFileContent, raw, blen ) ;
+					ScriptFileContent[blen] = '\0' ;
+				}
+				if( raw ) { smemclr( raw, blen ) ; free( raw ) ; }
+			} else if( (buffer=(char*)malloc(strlen(name)+1))!=NULL ) {
+				/* legacy: scrambled with the compiled-in constant */
 				strcpy( buffer, name ) ;
 				l = decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD ) ;
 				if( ScriptFileContent!= NULL ) free( ScriptFileContent ) ;
@@ -2770,6 +2823,7 @@ void ReadInitScript( const char * filename ) {
 				memcpy( ScriptFileContent, buffer, l ) ;
 				free(buffer);buffer=NULL;
 			}
+			if( plain ) { smemclr( plain, strlen(plain) ) ; free( plain ) ; }
 		}
 	}
 }

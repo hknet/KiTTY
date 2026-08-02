@@ -68,6 +68,7 @@ void nonfatal(const char *fmt, ...)
  * return "not found" rather than an empty string.
  */
 void load_open_settings_forced(char *filename, Conf *conf);   /* kitty_settings_load.c */
+int ksec_unprotect(const char *stored, char **out);           /* kitty_storage.c */
 
 const struct BackendVtable *const backends[] = { NULL };
 const int be_default_protocol = 0;
@@ -593,6 +594,92 @@ static void test_old_ktx(void)
     DeleteFileA(path);
 }
 
+/* ---------- the login script is protected like a password ----------
+ *
+ * CONF_scriptfilecontent holds the inlined login script, in the same session
+ * record as CONF_password. It used to be scrambled with the constant compiled
+ * into every build; it is now wrapped by the same at-rest protection the password
+ * gets. What is checked here is the STORAGE property, not ReadInitScript's file
+ * parsing: that the wrapped form survives a round trip, that it is not stored in
+ * the clear, and - the part that matters for a two-phase migration - that a value
+ * carrying NO marker is still returned verbatim so the legacy decoder downstream
+ * can have it.
+ *
+ * base64 first is the reason this is worth a test at all: the script is
+ * NUL-separated, and handing the raw blob to a chokepoint that takes C strings
+ * would store only up to the first NUL and lose the rest in silence.
+ */
+#define SCRIPTSESS "zz-kitty-selftest-script"
+
+static void test_script_protection(void)
+{
+    /* a NUL-separated blob, exactly the shape ScriptFileContent has:
+     * "login:\0user\0password:\0s3cret\0\0" */
+    static const char blob[] = "login:\0user\0password:\0s3cret\0";
+    const int bloblen = (int)sizeof(blob);          /* includes the trailing NUL */
+    char *b64, *wrapped, *err = NULL;
+
+    b64 = ksec_b64_encode((const unsigned char *)blob, bloblen);
+    check(b64 != NULL, "script: blob base64-encodes");
+    if (!b64) return;
+    /* base64 of a NUL-containing blob must be longer than the first segment -
+     * catches the "silently truncated at the first NUL" failure directly */
+    check(strlen(b64) > 12, "script: base64 covers the whole blob, not just the first string");
+
+    wrapped = kitty_secret_wrap_current_backend(b64);
+    check(wrapped != NULL, "script: wraps for the active backend");
+    if (!wrapped) { sfree(b64); return; }
+    check(strstr(wrapped, "s3cret") == NULL,
+          "script: the wrapped form is not plaintext");
+
+    /* store it in a real session and read it back the way KiTTY would */
+    settings_w *w = open_settings_w(SCRIPTSESS, &err);
+    if (w) {
+        write_setting_s(w, "ScriptfileContent", wrapped);
+        close_settings_w(w);
+    }
+    settings_r *r = open_settings_r(SCRIPTSESS);
+    char *got = r ? read_setting_s(r, "ScriptfileContent") : NULL;
+    if (r) close_settings_r(r);
+
+    if (got) {
+        char *plain = NULL;
+        int rc = ksec_unprotect(got, &plain);
+        check(rc > 0 && plain, "script: stored value unprotects");
+        if (rc > 0 && plain) {
+            int blen = 0;
+            unsigned char *raw = ksec_b64_decode(plain, &blen);
+            check(raw && blen == bloblen,
+                  "script: round-trips to the original length, NULs and all");
+            check(raw && blen == bloblen && !memcmp(raw, blob, bloblen),
+                  "script: round-trips byte for byte");
+            if (raw) sfree(raw);
+        }
+        if (plain) sfree(plain);
+        sfree(got);
+    } else {
+        check(0, "script: could not read the value back");
+    }
+
+    /*
+     * A value with NO marker - a session written before this change - must come
+     * back verbatim, so the legacy decoder downstream still sees what it expects.
+     * If unprotect ever started "helpfully" mangling unmarked values, every
+     * pre-existing login script would break silently.
+     */
+    {
+        char *plain = NULL;
+        int rc = ksec_unprotect("some-legacy-scrambled-value", &plain);
+        check(rc <= 0 || (plain && !strcmp(plain, "some-legacy-scrambled-value")),
+              "script: an unmarked legacy value is not altered");
+        if (plain) sfree(plain);
+    }
+
+    del_settings(SCRIPTSESS);
+    sfree(wrapped);
+    sfree(b64);
+}
+
 int main(void)
 {
     printf("== registry backend (DPAPI) ==\n");
@@ -607,6 +694,8 @@ int main(void)
     test_old_kitty_hive();
     printf("== old .ktx export is still read (design doc 8.17) ==\n");
     test_old_ktx();
+    printf("== login script protected like a password ==\n");
+    test_script_protection();
     printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",
            failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
