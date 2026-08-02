@@ -2631,6 +2631,19 @@ enum {
     OSC52_READ_ASK,            /* ask, with everything in osc52_read_* below */
 };
 
+/* KiTTY: what clicking a clipboard tray balloon should do.
+ *
+ * The balloons are rate-limited, so one can stand for many events - which means
+ * the click has to lead somewhere useful rather than just dismissing. For most of
+ * them that is the Event Log, where all the events actually are. For a server
+ * repeatedly overwriting the clipboard it is the fix itself: being told that it is
+ * happening is no use without a way to stop it, and hunting through the
+ * configuration box while a host stamps on your clipboard is not a way to stop it. */
+enum {
+    CLIP_BALLOON_LOG,              /* click -> open the Event Log */
+    CLIP_BALLOON_BLOCK_WRITES,     /* click -> offer to refuse this host's writes */
+};
+
 /* KiTTY: what a live clipboard permission is doing right now. Drives the title
  * marker and the window colouring, so it is a window-visible state and not just
  * bookkeeping. */

@@ -517,7 +517,23 @@ static DWORD WINAPI osc52_balloon_thread(LPVOID p)
     return 0;
 }
 
-void kitty_osc52_notify(Terminal *term, const char *title, const char *msg)
+/*
+ * What clicking the most recent balloon should do. A single value rather than one
+ * per balloon because only one is ever on screen at a time - they are rate-limited
+ * to one per 30 seconds - and because Windows gives the click back as a bare
+ * notification on the window, with no room to carry state of our own.
+ *
+ * Read by windows/window.c when the click arrives.
+ */
+static LONG volatile s_balloon_action = CLIP_BALLOON_LOG;
+
+int kitty_clipboard_balloon_action(void)
+{
+    return (int)InterlockedCompareExchange(&s_balloon_action, 0, 0);
+}
+
+void kitty_osc52_notify(Terminal *term, const char *title, const char *msg,
+                        int action)
 {
     struct osc52_balloon *b;
     HANDLE t;
@@ -526,6 +542,8 @@ void kitty_osc52_notify(Terminal *term, const char *title, const char *msg)
         return;
     if (term && term->conf && !conf_get_bool(term->conf, CONF_clipboard_notify))
         return;
+
+    InterlockedExchange(&s_balloon_action, (LONG)action);
 
     b = snew(struct osc52_balloon);
     b->hwnd = MainHwnd;

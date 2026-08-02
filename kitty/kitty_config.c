@@ -4661,6 +4661,11 @@ static void scb_panel_selection(struct controlbox *b)
     ctrl_editbox(s, "Largest remote clipboard payload, in MB:", NO_SHORTCUT, 25,
                  HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_clipboard_max_mb), ED_INT);
+    /* A cap per second rather than a gap between writes: a gap would make the
+     * FIRST write of a burst win, leaving a stale clipboard, which is backwards. */
+    ctrl_editbox(s, "Most clipboard changes a server may make per second (0 = no limit):",
+                 NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
+                 I(CONF_clipboard_writes_per_sec), ED_INT);
 
     /* The numbers behind the read dialog. They are settings because the values
      * shipped are guesses - no other terminal implements a hand-over rate limit

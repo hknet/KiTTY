@@ -1505,6 +1505,40 @@ CONF_OPTION(osc52_read_timeout, VALUE_TYPE(INT), DEFAULT_INT(60), SAVE_KEYWORD("
 /* KiTTY: most dialogs shown in any ten seconds, so a host cannot use the prompt
  * itself as the attack. Extras are refused without asking. */
 CONF_OPTION(osc52_read_dialogs, VALUE_TYPE(INT), DEFAULT_INT(3), SAVE_KEYWORD("OSC52ReadDialogs"),)
+/* KiTTY: most remote clipboard WRITES applied in any one second. 0 = no limit.
+ * Default 10. Covers OSC 52 and far2l.
+ *
+ * A RATE CAP rather than a minimum gap between writes, and the difference matters.
+ * A minimum gap means the FIRST write in a burst wins and the rest are dropped, so
+ * a script that copies three things in quick succession leaves you holding the
+ * first - a stale value, silently. That is the wrong way round for a clipboard,
+ * where the whole convention is that the last write wins. A cap high enough to
+ * clear any realistic burst keeps last-wins intact for every legitimate case and
+ * still bounds the abusive one.
+ *
+ * The write direction had no rate limit at all, and it is the one that is ON BY
+ * DEFAULT - reads default to Deny, writes to Allow - so the unprotected path was
+ * the one every user has. A host could call SetClipboardData as fast as it could
+ * send sequences, which destroys whatever you copied, floods the Win+V history so
+ * your real entries fall off it, hammers any clipboard manager watching, and in
+ * the targeted version overwrites your clipboard at the moment you are about to
+ * paste.
+ *
+ * Ten per second because no human workflow produces more, while a bomb produces
+ * thousands - so the cap separates them without having to guess at intent.
+ *
+ * Exceeding it drops the write and says so - it does NOT withdraw permission, and
+ * that is the deliberate difference from the read side. Tripping a read limit is
+ * evidence of harvesting and withdrawing is proportionate; a write burst is far
+ * more likely to be an ordinary script, and revoking would break the normal case
+ * to punish it. There is no per-window total for writes either: a total bounds
+ * cumulative disclosure, and writes disclose nothing.
+ *
+ * Honest limit: even at ten per second a hostile host can still stamp on your
+ * clipboard for ever. No cap fixes that - the answer there is setting writes to
+ * Deny, which is exactly what clicking the notification offers. What this turns
+ * off is "thousands per second, invisibly". */
+CONF_OPTION(clipboard_writes_per_sec, VALUE_TYPE(INT), DEFAULT_INT(10), SAVE_KEYWORD("ClipboardWritesPerSecond"),)
 /* KiTTY: largest single remote-clipboard payload we will hold, in megabytes.
  * Applies to OSC 52 and to far2l alike; default 64.
  *

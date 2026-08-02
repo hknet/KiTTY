@@ -859,6 +859,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "OSC52ReadTimeout", 60, conf, CONF_osc52_read_timeout);
     gppi_forced(sesskey, "OSC52ReadDialogs", 3, conf, CONF_osc52_read_dialogs);
     gppi_forced(sesskey, "ClipboardMaxMB", 64, conf, CONF_clipboard_max_mb);
+    gppi_forced(sesskey, "ClipboardWritesPerSecond", 10, conf, CONF_clipboard_writes_per_sec);
     gppb_forced(sesskey, "ClipboardNotify", true, conf, CONF_clipboard_notify);
     gppb_forced(sesskey, "OSC52TitleMark", true, conf, CONF_osc52_title_mark);
     gppb_forced(sesskey, "OSC52ColourFrame", true, conf, CONF_osc52_colour_frame);

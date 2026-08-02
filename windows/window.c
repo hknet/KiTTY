@@ -676,6 +676,10 @@ static void start_backend(WinGuiSeat *wgs)
  * connection's name and is never touched by a close, so no amount of closing
  * and reconnecting can nest markers. UTF-8 because the title may have arrived
  * in any codepage and has to be concatenated with the UTF-8 warning glyph. */
+/* kitty/kitty_osc52.c: what clicking the most recent clipboard balloon should do
+ * (CLIP_BALLOON_*). */
+int kitty_clipboard_balloon_action(void);
+
 static char *kitty_session_title_utf8(Terminal *term)
 {
     wchar_t *wide;
@@ -3524,7 +3528,40 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          */
         if (lParam == NIN_BALLOONUSERCLICK || lParam == WM_LBUTTONUP) {
             SetForegroundWindow(hwnd);
-            showeventlog(hwnd);
+            if (kitty_clipboard_balloon_action() == CLIP_BALLOON_BLOCK_WRITES) {
+                /*
+                 * A server is repeatedly overwriting the clipboard. Being told
+                 * that is no use without a way to stop it, and hunting through
+                 * the configuration box while it is still happening is not a way
+                 * to stop it - so the click IS the fix, behind one confirmation.
+                 */
+                if (MessageBox(hwnd,
+                               "A server has been changing your clipboard "
+                               "repeatedly.\n\n"
+                               "Stop it changing your clipboard at all for the "
+                               "rest of this session?\n\n"
+                               "You can turn it back on under "
+                               "Window > Selection, \"Remote clipboard writes\".",
+                               "KiTTY - block this server's clipboard writes?",
+                               MB_YESNO | MB_ICONWARNING) == IDYES) {
+                    if (wgs->term)
+                        wgs->term->osc52_allowed = OSC52_CLIPBOARD_DENY;
+                    /* the live Conf too, so Change Settings shows the truth and
+                     * far2l's own policy is not left saying something else */
+                    conf_set_int(wgs->conf, CONF_osc52_clipboard,
+                                 OSC52_CLIPBOARD_DENY);
+                    if (wgs->term)
+                        wgs->term->clip_allowed = 0;
+                    conf_set_int(wgs->conf, CONF_shared_clipboard,
+                                 SHARED_CLIPBOARD_DISABLED);
+                    logevent(wgs->logctx, "Remote clipboard writes blocked for "
+                             "this session at the user's request");
+                } else {
+                    showeventlog(hwnd);
+                }
+            } else {
+                showeventlog(hwnd);
+            }
         }
         return 0;
 #endif
