@@ -341,6 +341,14 @@ struct terminal_tag {
     int clip_write_quiet;
     unsigned long clip_write_logged;
 
+    /* KiTTY: the host actually TOUCHED the clipboard - as against merely having
+     * permission to. Direction bits (CLIP_ACT_*) and when the marker stops
+     * applying. Repeated activity extends the deadline without repainting, so a
+     * host writing at the permitted rate cannot make the title flicker.
+     * Unconditional storage, same ODR reason as everything above. */
+    int clip_activity_dir;
+    unsigned long clip_activity_until;
+
     char id_string[1024];
 
     unsigned char *tabs;

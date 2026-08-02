@@ -4694,9 +4694,22 @@ static void scb_panel_selection(struct controlbox *b)
 
     s = ctrl_getset(b, "Window/Selection", "osc52show",
                     "Showing a live clipboard permission");
-    ctrl_checkbox(s, "Mark the window title while a permission is live",
+    /* The two markers answer different questions: permission says what COULD
+     * happen, activity says what DID. Icons rather than words - the title bar is
+     * shared with the connection name - with the standing one bracketed at the end
+     * and the transient one bare at the front. */
+    ctrl_checkbox(s, "Mark the title while a permission is live  (end, in brackets)",
                   NO_SHORTCUT, HELPCTX(no_help),
                   conf_checkbox_handler, I(CONF_osc52_title_mark));
+    ctrl_checkbox(s, "Also mark a standing \"Allow\", not just a granted permission",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  conf_checkbox_handler, I(CONF_clipboard_mark_always));
+    ctrl_checkbox(s, "Mark the title when the server actually uses the clipboard  (front)",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  conf_checkbox_handler, I(CONF_clipboard_activity_mark));
+    ctrl_editbox(s, "How long that activity marker stays up, in seconds:",
+                 NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
+                 I(CONF_clipboard_activity_secs), ED_INT);
     /* Windows 11 build 22000+ only; silently does nothing on Windows 10, which
      * is why the title marker above has to carry the meaning by itself. */
     ctrl_checkbox(s, "Tint the title bar and border too (Windows 11 only)",

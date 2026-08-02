@@ -125,6 +125,9 @@ bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
 }
 
 bool kitty_osc52_save_deny_for_host(Terminal *term) { return true; }
+/* true: the tests model a normal window with a title bar, so the full-screen
+ * balloon fallback stays out of the way of the counters. */
+bool kitty_osc52_title_visible(void) { return true; }
 /* Counted, because "the ordinary case is silent" is a promise worth keeping: a
  * notification that fires on a normal clipboard write would be worse than none,
  * since the first thing anybody does with a noisy notifier is switch it off - and

@@ -532,6 +532,22 @@ int kitty_clipboard_balloon_action(void)
     return (int)InterlockedCompareExchange(&s_balloon_action, 0, 0);
 }
 
+/*
+ * Is there a title bar to put a marker on?
+ *
+ * In full screen - and with window decorations switched off - PuTTY drops
+ * WS_CAPTION, so both the clipboard icon and the DWM caption tint have nowhere to
+ * appear. Everything the window-based signals say is simply invisible in that
+ * state, which is exactly when the terminal is filling the screen and the user is
+ * least likely to notice anything else either.
+ */
+bool kitty_osc52_title_visible(void)
+{
+    if (!MainHwnd)
+        return false;
+    return (GetWindowLongPtr(MainHwnd, GWL_STYLE) & WS_CAPTION) != 0;
+}
+
 void kitty_osc52_notify(Terminal *term, const char *title, const char *msg,
                         int action)
 {
@@ -622,6 +638,38 @@ void kitty_osc52_state_changed(Terminal *term)
         return;
     if (!conf_get_bool(term->conf, CONF_osc52_colour_frame))
         return;
+
+    /*
+     * ACTIVITY wins over standing permission, because it is the thing that just
+     * happened and it is on screen for only a few seconds.
+     *
+     * AMBER when the clipboard was READ - data left you for the host. BLUE when it
+     * was WRITTEN - the host put something in. Both at once takes amber, the
+     * riskier of the two.
+     *
+     * Deliberately NOT red/green, for two reasons. Risk-wise they come out
+     * backwards: the read is the direction that can hand over a password, and the
+     * write is the mild one, so "green for copy, red for paste" would paint the
+     * dangerous case reassuringly. And red/green is the one pair a large minority
+     * of men cannot separate, which for a signal whose entire job is to be read at
+     * a glance is the wrong pair to choose. Amber and blue survive both.
+     */
+    {
+        int act = term_clipboard_activity(term);
+        if (act) {
+            if (act & CLIP_ACT_READ)
+                osc52_set_frame_colour(MainHwnd, RGB(224, 160, 48));   /* amber */
+            else
+                osc52_set_frame_colour(MainHwnd, RGB(72, 140, 224));   /* blue */
+            /* and take it back down again when the marker lapses */
+            SetTimer(MainHwnd, TIMER_CLIPACTIVITY,
+                     (UINT)(conf_get_int(term->conf, CONF_clipboard_activity_secs)
+                            > 0 ? conf_get_int(term->conf,
+                                               CONF_clipboard_activity_secs) * 1000
+                                : 5000), NULL);
+            return;
+        }
+    }
 
     state = term_osc52_perm_state(term, &rd, &wr);
     switch (state) {

@@ -562,3 +562,11 @@
 #ifndef WM_KITTY_CLIPBALLOON
 #define WM_KITTY_CLIPBALLOON (WM_APP + 71)
 #endif
+/* One-shot timer that takes the clipboard ACTIVITY marker back down - the icon at
+ * the front of the title and the amber/blue tint. Without it the marker would sit
+ * there until the session next set its own title, which for a shell that never
+ * sets one is never, and a transient signal that never goes away is just a
+ * permanent one that lies about being transient. */
+#ifndef TIMER_CLIPACTIVITY
+#define TIMER_CLIPACTIVITY 8712
+#endif

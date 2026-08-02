@@ -677,8 +677,88 @@ static void start_backend(WinGuiSeat *wgs)
  * and reconnecting can nest markers. UTF-8 because the title may have arrived
  * in any codepage and has to be concatenated with the UTF-8 warning glyph. */
 /* kitty/kitty_osc52.c: what clicking the most recent clipboard balloon should do
- * (CLIP_BALLOON_*). */
+ * (CLIP_BALLOON_*), and re-applying the window's clipboard markers/tint. */
 int kitty_clipboard_balloon_action(void);
+void kitty_osc52_state_changed(Terminal *term);
+
+/*
+ * KiTTY: the clipboard markers on the window title, as icons.
+ *
+ * Two different things, told apart by POSITION and by BRACKETS:
+ *
+ *   "[]v Session"     - at the FRONT and bare: the host just DID something. Here
+ *                       it wrote to your clipboard. Transient; clears itself.
+ *   "Session ([]^)"   - at the END and in brackets: a standing PERMISSION is in
+ *                       force. Brackets because a configuration is not an event,
+ *                       and the two must not be confused at a glance.
+ *
+ * (Above written in ASCII; the real markers are U+1F4CB CLIPBOARD plus an arrow.)
+ * The arrow says which way the data went: UP means it left you for the host, DOWN
+ * means the host put something into your clipboard, UP-DOWN means both.
+ *
+ * Icons rather than the words "(clip read+write)" because the title bar is scarce
+ * and shared with the connection name - three glyphs say it where fourteen
+ * characters did. A pause sign is appended when a permission is suspended for want
+ * of focus.
+ *
+ * Built as wide characters on purpose. Doing this in kitty_decorate_title() would
+ * mean appending UTF-8 to a title that arrived in some other codepage.
+ */
+static const wchar_t *kitty_clip_icon(int dir, bool paused)
+{
+    /* U+1F4CB is astral, so these are surrogate pairs; the arrows are BMP. */
+    if (dir == (CLIP_ACT_READ | CLIP_ACT_WRITE))
+        return paused ? L"\U0001F4CB↕⏸" : L"\U0001F4CB↕";
+    if (dir == CLIP_ACT_READ)
+        return paused ? L"\U0001F4CB↑⏸" : L"\U0001F4CB↑";
+    return paused ? L"\U0001F4CB↓⏸" : L"\U0001F4CB↓";
+}
+
+/* Wrap the converted title with whichever clipboard markers apply. Returns a
+ * fresh string; the caller frees. */
+static wchar_t *kitty_clip_decorate_wide(WinGuiSeat *wgs, wchar_t *name)
+{
+    int activity = 0, state = OSC52_PERM_NONE;
+    bool rd = false, wr = false;
+    const wchar_t *front = NULL, *tail = NULL;
+    wchar_t *out;
+    size_t len;
+
+    if (!wgs->term)
+        return name;
+
+    if (conf_get_bool(wgs->conf, CONF_clipboard_activity_mark))
+        activity = term_clipboard_activity(wgs->term);
+    if (conf_get_bool(wgs->conf, CONF_osc52_title_mark)) {
+        state = term_osc52_perm_state(wgs->term, &rd, &wr);
+        if (state != OSC52_PERM_NONE)
+            tail = kitty_clip_icon((rd ? CLIP_ACT_READ : 0) |
+                                   (wr ? CLIP_ACT_WRITE : 0),
+                                   state == OSC52_PERM_PAUSED);
+    }
+    if (activity)
+        front = kitty_clip_icon(activity, false);
+    if (!front && !tail)
+        return name;
+
+    len = wcslen(name) + 1;
+    if (front) len += wcslen(front) + 1;
+    if (tail)  len += wcslen(tail) + 4;      /* " (" + ")" + slack */
+    out = snewn(len, wchar_t);
+    out[0] = L'\0';
+    if (front) {
+        wcscat(out, front);
+        wcscat(out, L" ");
+    }
+    wcscat(out, name);
+    if (tail) {
+        wcscat(out, L" (");
+        wcscat(out, tail);
+        wcscat(out, L")");
+    }
+    sfree(name);
+    return out;
+}
 
 static char *kitty_session_title_utf8(Terminal *term)
 {
@@ -3335,6 +3415,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         return 0;
       case WM_TIMER:
 #ifdef MOD_PERSO
+        if ((UINT_PTR)wParam == TIMER_CLIPACTIVITY) {
+            /* The clipboard activity marker has run its few seconds. Take it
+             * down: refreshing the title re-reads term_clipboard_activity(),
+             * which has now lapsed, so both the icon and the tint go with it. */
+            KillTimer(hwnd, TIMER_CLIPACTIVITY);
+            kitty_refresh_title();
+            if (wgs && wgs->term)
+                kitty_osc52_state_changed(wgs->term);
+            return 0;
+        }
         if ((UINT_PTR)wParam == TIMER_EMBEDFILL) {
             /* #554: keep the embedded child filling the host's client area. */
             if (KITTY_EMBEDDED() && IsWindow(kitty_hwnd_parent)) {
@@ -6767,15 +6857,11 @@ static char *kitty_decorate_title(WinGuiSeat *wgs, const char *title)
      * Short markers, and at the end: the connection name has to survive the
      * taskbar cutting the title off, so it keeps the first characters.
      */
-    if (wgs->term && conf_get_bool(wgs->conf, CONF_osc52_title_mark)) {
-        bool rd, wr;
-        int state = term_osc52_perm_state(wgs->term, &rd, &wr);
-        if (state != OSC52_PERM_NONE) {
-            const char *which = (rd && wr) ? "read+write" : (rd ? "read" : "write");
-            put_fmt(sb, " (clip %s%s)", which,
-                    state == OSC52_PERM_PAUSED ? " paused" : "");
-        }
-    }
+    /* The clipboard markers are NOT added here. They are Unicode, and this
+     * function works on the session's raw title in whatever codepage it arrived
+     * in - appending UTF-8 to a codepage-1252 title mangles both. They go on in
+     * wintw_set_title instead, after the conversion to wide characters, where
+     * there is no codepage left to get wrong. */
     return strbuf_to_str(sb);
 }
 
@@ -6806,6 +6892,9 @@ static void wintw_set_title(TermWin *tw, const char *title, int codepage)
         decorated = kitty_decorate_title(wgs, kitty_raw_title);
         new_window_name = dup_mb_to_wc(codepage, decorated);
         sfree(decorated);
+        /* Clipboard markers go on AFTER the codepage conversion: they are Unicode,
+         * and the title itself may have arrived in any codepage. */
+        new_window_name = kitty_clip_decorate_wide(wgs, new_window_name);
     }
 #else
     wchar_t *new_window_name = dup_mb_to_wc(codepage, title);

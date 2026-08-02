@@ -61,6 +61,9 @@ void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len);
 /* A clipboard permission started, expired, or changed between active and paused:
  * re-apply the title marker and the window colouring. */
 void kitty_osc52_state_changed(Terminal *term);
+/* Is there a title bar to put a marker on? False in full screen and with window
+ * decorations off, where the icon and the caption tint have nowhere to appear. */
+bool kitty_osc52_title_visible(void);
 /* "A clipboard payload was too big and was dropped" - Event Log plus a balloon,
  * both rate-limited. Declared up here because far2l_process_payload sits earlier
  * in the file than the definition, and all three protocols share it. */
@@ -69,6 +72,9 @@ static void clip_payload_dropped(Terminal *term, const char *what, bool enabled)
  * same reason as above: far2l's set path sits earlier in the file. */
 static bool clip_write_allowed(Terminal *term);
 static void clip_write_throttled(Terminal *term);
+/* "The host just touched the clipboard" - lights the transient activity marker.
+ * Declared here because far2l's set path sits earlier in the file. */
+static void clip_note_activity(Terminal *term, int dir);
 #endif
 #ifdef MOD_FAR2L
 #include "cdecode.h"
@@ -3536,6 +3542,10 @@ static void far2l_process_payload(Terminal *term)
                     } else if (hData) GlobalFree(hData);
                 }
                 free(buffer);
+#ifdef MOD_PERSO
+                if (set_ok)
+                    clip_note_activity(term, CLIP_ACT_WRITE);
+#endif
                 reply_size = 2; reply = snewn(reply_size, char);
                 reply[0] = set_ok;
             } else {
@@ -3806,6 +3816,61 @@ static void clip_payload_dropped(Terminal *term, const char *what, bool enabled)
  * a way to stop it while it is still happening.
  */
 /*
+ * KiTTY: the host has just touched the clipboard. Light the activity marker.
+ *
+ * Permission says what COULD happen; this says what DID. It is the more useful of
+ * the two day to day - a clipboard the host never touches and one it reads every
+ * thirty seconds look identical without it.
+ *
+ * Repeated activity EXTENDS the deadline rather than repainting, so a host writing
+ * at the permitted rate cannot make the title flicker; the window is only told
+ * when the visible state actually changes.
+ */
+static void clip_note_activity(Terminal *term, int dir)
+{
+    unsigned long now = (unsigned long)time(NULL);
+    int secs, was_dir;
+
+    if (!conf_get_bool(term->conf, CONF_clipboard_activity_mark))
+        return;
+    secs = conf_get_int(term->conf, CONF_clipboard_activity_secs);
+    if (secs <= 0)
+        secs = 5;
+
+    was_dir = (term->clip_activity_until > now) ? term->clip_activity_dir : 0;
+    term->clip_activity_dir = was_dir | dir;
+    term->clip_activity_until = now + (unsigned long)secs;
+    if (term->clip_activity_dir != was_dir)
+        kitty_osc52_state_changed(term);
+
+    /*
+     * Full screen, or decorations switched off: there is no title bar to carry the
+     * icon and no caption to tint, so everything above is invisible. Fall back to a
+     * balloon, which is the only channel left.
+     *
+     * Rate-limited by the same 30-second gap as every other balloon, and sharing
+     * its timestamp, so this cannot become a stream - a host writing at the
+     * permitted rate would otherwise be able to raise one every few seconds. Both
+     * directions, because the point of the activity marker is to show that the
+     * clipboard was touched at all.
+     */
+    if (!kitty_osc52_title_visible() &&
+        conf_get_bool(term->conf, CONF_clipboard_notify) &&
+        (term->clip_notified_last == 0 ||
+         now - term->clip_notified_last >= CLIP_NOTIFY_GAP)) {
+        term->clip_notified_last = now;
+        kitty_osc52_notify(
+            term, "KiTTY clipboard",
+            (dir & CLIP_ACT_READ)
+            ? "A server has read your clipboard.\n"
+              "Shown here because this window has no title bar to mark."
+            : "A server has changed your clipboard.\n"
+              "Shown here because this window has no title bar to mark.",
+            CLIP_BALLOON_LOG);
+    }
+}
+
+/*
  * May a remote clipboard write be applied right now? Counts APPLIED writes in a
  * fixed one-second window; over the cap, the write is dropped and reported.
  *
@@ -4003,6 +4068,7 @@ static void osc52_read_send(Terminal *term, const wchar_t *clip, int clip_len)
 
     term->osc52_read_served++;
     term->osc52_read_last_served = (unsigned long)time(NULL);
+    clip_note_activity(term, CLIP_ACT_READ);
     msg = dupprintf("Clipboard sent to the server on request "
                     "(%d character%s; %d read%s served in this window)",
                     clip_len, clip_len == 1 ? "" : "s",
@@ -4709,6 +4775,7 @@ static void osc5522_read(Terminal *term, const char *meta,
 
         term->osc52_read_served++;
         term->osc52_read_last_served = (unsigned long)time(NULL);
+        clip_note_activity(term, CLIP_ACT_READ);
         msg = dupprintf("Clipboard sent to the server on request over OSC 5522 "
                         "(%d character%s%s%s; %d read%s served in this window)",
                         clip_len, clip_len == 1 ? "" : "s",
@@ -4945,6 +5012,7 @@ static void osc52_set_clipboard(Terminal *term)
      * on Windows the terminating NUL is part of what is handed over. */
     win_clip_write(term->win, CLIP_SYSTEM, wide, NULL, NULL,
                    (int)(wlen + SELECTION_NUL_TERMINATED), false);
+    clip_note_activity(term, CLIP_ACT_WRITE);
     sfree(wide);
     strbuf_free(decoded);
 }
@@ -9795,6 +9863,22 @@ void term_set_focus(Terminal *term, bool has_focus)
  * *read and *write are set to whether each is live; the return value is
  * OSC52_PERM_NONE / _ACTIVE / _PAUSED for the pair.
  */
+/*
+ * KiTTY: which directions the host has touched the clipboard in recently
+ * (CLIP_ACT_* bits), or 0 once that has lapsed. The window asks on every title
+ * refresh, so this also decides when the marker disappears.
+ */
+int term_clipboard_activity(Terminal *term)
+{
+    if (!term || !term->clip_activity_dir)
+        return 0;
+    if ((unsigned long)time(NULL) >= term->clip_activity_until) {
+        term->clip_activity_dir = 0;
+        return 0;
+    }
+    return term->clip_activity_dir;
+}
+
 int term_osc52_perm_state(Terminal *term, bool *read, bool *write)
 {
     bool r, w;
@@ -9804,8 +9888,13 @@ int term_osc52_perm_state(Terminal *term, bool *read, bool *write)
         return OSC52_PERM_NONE;
     }
     r = (term->osc52_read_decision > 0) && !osc52_read_decision_expired(term);
+    /* A standing "Allow" is a configuration, not a grant, so it is not marked -
+     * unless the user asked for the title to be a complete statement, because
+     * without that "no marker" means "nothing granted in the moment" rather than
+     * "no access is possible". */
     w = (term->osc52_allowed == OSC52_CLIPBOARD_ALLOW &&
-         conf_get_int(term->conf, CONF_osc52_clipboard) == OSC52_CLIPBOARD_ASK);
+         (conf_get_int(term->conf, CONF_osc52_clipboard) == OSC52_CLIPBOARD_ASK ||
+          conf_get_bool(term->conf, CONF_clipboard_mark_always)));
     if (read) *read = r;
     if (write) *write = w;
     if (!r && !w)

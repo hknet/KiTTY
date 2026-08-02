@@ -2071,6 +2071,9 @@ void term_set_focus(Terminal *term, bool has_focus);
 /* KiTTY: which OSC 52 clipboard permission is live, for the title marker and the
  * window tint. Returns OSC52_PERM_*; *read/*write say which. */
 int term_osc52_perm_state(Terminal *term, bool *read, bool *write);
+/* KiTTY: which directions the host has touched the clipboard in recently
+ * (CLIP_ACT_* bits), or 0 once that has lapsed. */
+int term_clipboard_activity(Terminal *term);
 #endif
 char *term_get_ttymode(Terminal *term, const char *mode);
 SeatPromptResult term_get_userpass_input(Terminal *term, prompts_t *p);
@@ -2630,6 +2633,12 @@ enum {
     OSC52_READ_DENY,           /* never send the clipboard; the default */
     OSC52_READ_ASK,            /* ask, with everything in osc52_read_* below */
 };
+
+/* KiTTY: which way clipboard data has just moved, for the activity marker.
+ * READ means it left you (up to the host), WRITE means the host put something
+ * into your clipboard. */
+#define CLIP_ACT_READ  1
+#define CLIP_ACT_WRITE 2
 
 /* KiTTY: what clicking a clipboard tray balloon should do.
  *

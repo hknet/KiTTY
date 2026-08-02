@@ -1580,6 +1580,35 @@ CONF_OPTION(clipboard_notify, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD
 /* KiTTY: append a "clip read"/"clip write" marker to the window title while a
  * clipboard permission is live. Default on. */
 CONF_OPTION(osc52_title_mark, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("OSC52TitleMark"),)
+/* KiTTY: also mark a STANDING permission - writes left on "Allow" - and not only
+ * one granted in the moment. Default OFF.
+ *
+ * Off by default because writes ship as Allow, so this would put a marker in the
+ * title of every session for ever, and a marker that is always on is one nobody
+ * reads within a day.
+ *
+ * On for anyone who wants the title to be a complete statement. Without it, "no
+ * marker" means "no permission granted in the moment", NOT "no remote clipboard
+ * access is possible" - which is exactly true for reads, since they can never be
+ * standing, and not true for writes. */
+CONF_OPTION(clipboard_mark_always, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("ClipboardMarkAlways"),)
+/* KiTTY: show a marker when the host actually READS or WRITES the clipboard, as
+ * against merely having permission to. Default on.
+ *
+ * This is a different question from the permission markers above, and the more
+ * useful one day to day: permission says what COULD happen, activity says what
+ * DID. A clipboard the host never touches and one it reads every thirty seconds
+ * look identical without it.
+ *
+ * The marker goes at the FRONT of the title, unlike the permission markers, and
+ * that is deliberate: it is transient and meant to catch the eye, whereas those
+ * are standing state that must not push the connection name out of a truncated
+ * taskbar entry. It clears itself after ClipboardActivitySeconds. */
+CONF_OPTION(clipboard_activity_mark, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ClipboardActivityMark"),)
+/* KiTTY: how long that activity marker stays up, in seconds. Default 5.
+ * Repeated activity extends it rather than repainting, so a host writing at the
+ * permitted rate cannot make the title flicker. */
+CONF_OPTION(clipboard_activity_secs, VALUE_TYPE(INT), DEFAULT_INT(5), SAVE_KEYWORD("ClipboardActivitySeconds"),)
 /* KiTTY: tint the title bar and window border while a clipboard permission is
  * live. Default on, but Windows 11 build 22000+ only - on Windows 10 there is no
  * supported way for an application to colour either, so the title marker has to

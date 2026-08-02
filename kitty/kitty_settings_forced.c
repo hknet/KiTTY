@@ -574,6 +574,9 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_i_forced(sesskey, "ClipboardMaxMB", conf_get_int(conf, CONF_clipboard_max_mb));
     write_setting_i_forced(sesskey, "ClipboardWritesPerSecond", conf_get_int(conf, CONF_clipboard_writes_per_sec));
     write_setting_b_forced(sesskey, "ClipboardNotify", conf_get_bool(conf, CONF_clipboard_notify));
+    write_setting_b_forced(sesskey, "ClipboardMarkAlways", conf_get_bool(conf, CONF_clipboard_mark_always));
+    write_setting_b_forced(sesskey, "ClipboardActivityMark", conf_get_bool(conf, CONF_clipboard_activity_mark));
+    write_setting_i_forced(sesskey, "ClipboardActivitySeconds", conf_get_int(conf, CONF_clipboard_activity_secs));
     write_setting_b_forced(sesskey, "OSC52TitleMark", conf_get_bool(conf, CONF_osc52_title_mark));
     write_setting_b_forced(sesskey, "OSC52ColourFrame", conf_get_bool(conf, CONF_osc52_colour_frame));
 #endif
