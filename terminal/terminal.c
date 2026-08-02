@@ -15,6 +15,43 @@
 #ifdef MOD_PERSO
 char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf);
 void kitty_set_remote_cwd(const char *osc7);   /* OSC 7 cwd tracking (kitty.c) */
+
+/*
+ * KiTTY OSC 52 clipboard-READ seams. Implemented on the platform side
+ * (kitty/kitty_osc52.c) so this cross-platform file stays free of Win32 and of
+ * dialog code; the test target supplies its own stubs, which is also how it
+ * exercises the permission logic without a window ever appearing.
+ *
+ * kitty_osc52_read_dialog() returns true for allow and false for deny, and fills
+ * in how long the answer applies (one of OSC52_GRANT_*) plus whether the user
+ * ticked "always deny for this host". It is the ONLY place a read can be
+ * permitted; there is no setting that does it.
+ */
+enum {
+    OSC52_GRANT_ONCE,          /* just this request */
+    OSC52_GRANT_MINUTES,       /* CONF_osc52_read_minutes */
+    OSC52_GRANT_REQUESTS,      /* CONF_osc52_read_requests */
+    OSC52_GRANT_SESSION,       /* the rest of this terminal session */
+};
+bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
+                             const char *claim, int *grant, bool *always_deny);
+/* Fetch the local clipboard as wide text. Caller frees. NULL if empty or if the
+ * clipboard holds something that is not text. */
+wchar_t *kitty_osc52_get_clipboard(int *len);
+/* Write "always deny for this host" into the saved session. Returns false if
+ * there is no saved session to write it into, in which case the caller tells the
+ * user rather than inventing a hidden host list behind their back. */
+bool kitty_osc52_save_deny_for_host(Terminal *term);
+/* Transient tray balloon on the session window; no-op when notifications are
+ * switched off or the window has no tray icon to hang one on. */
+void kitty_osc52_notify(Terminal *term, const char *title, const char *msg);
+/* Send the base64 reply down to the host. A seam rather than an ldisc_send() here
+ * so that the one thing in this file that must never happen by accident - the
+ * clipboard actually leaving the machine - is a single call the tests can count. */
+void kitty_osc52_send_reply(Terminal *term, const char *b64, size_t len);
+/* A clipboard permission started, expired, or changed between active and paused:
+ * re-apply the title marker and the window colouring. */
+void kitty_osc52_state_changed(Terminal *term);
 #endif
 #ifdef MOD_FAR2L
 #include "cdecode.h"
@@ -3547,6 +3584,345 @@ static void osc_addchar(Terminal *term, unsigned char c)
 
 #ifdef MOD_PERSO
 /*
+ * ===========================================================================
+ * KiTTY: OSC 52 clipboard READ - a host asking for the contents of YOUR
+ * clipboard, which we then send to it.
+ * ===========================================================================
+ *
+ * This is not the same kind of feature as the write direction below it, and the
+ * asymmetry in the code is deliberate. A write changes what you paste next. A
+ * read hands over whatever is on the clipboard right now, which is a password
+ * often enough to matter, to a host that chose the moment - typically just after
+ * you pasted something into it, because then it knows there is something worth
+ * taking. So it is not a feature that gets switched on. It is a permission that
+ * gets given, narrowly, in the moment, and then expires.
+ *
+ * One fact shapes all of it: a bare OSC 52 read cannot tell us who is asking.
+ * The sequence is a selector and a question mark - no program name, no token. A
+ * request from your editor is byte-for-byte a request from a one-line command a
+ * hostile host ran a second ago. "Remember this program and stop asking" is
+ * therefore impossible here; it needs OSC 5522, which carries a name. The honest
+ * choices on OSC 52 are to ask, or to refuse.
+ */
+
+/* Has the standing decision run out? A grant is bounded by a deadline, a request
+ * count, or neither (rest of session); any of the three can be the live one. */
+static bool osc52_read_decision_expired(Terminal *term)
+{
+    if (term->osc52_read_decision == 0)
+        return true;
+    if (term->osc52_read_until != 0 &&
+        (unsigned long)time(NULL) >= term->osc52_read_until)
+        return true;
+    if (term->osc52_read_remaining == 0)
+        return true;
+    return false;
+}
+
+static void osc52_read_forget_decision(Terminal *term)
+{
+    bool was_granting = (term->osc52_read_decision > 0);
+    term->osc52_read_decision = 0;
+    term->osc52_read_until = 0;
+    term->osc52_read_remaining = 0;
+    if (was_granting) {
+        kitty_osc52_state_changed(term);
+        if (conf_get_bool(term->conf, CONF_osc52_notify))
+            kitty_osc52_notify(term, "KiTTY clipboard",
+                               "Permission to read the clipboard has expired.");
+    }
+}
+
+/*
+ * Refuse, and account for it. Refusals are Event-Logged because a record after
+ * the fact is the only way to notice a host that spent an hour asking - but a
+ * host that asks in a loop must not be able to fill the log with our own writing,
+ * so consecutive refusals of the same kind are coalesced into one line every few
+ * seconds with a count.
+ *
+ * Nothing is sent to the host. OSC 52 has no error reply: any reply at all tells
+ * a probing host that the feature exists and, worse, that somebody was there to
+ * say no. Silence tells it less.
+ */
+#define OSC52_REFUSE_LOG_GAP 5         /* seconds between refusal log lines */
+
+static void osc52_read_refuse(Terminal *term, const char *why, bool tell_user)
+{
+    unsigned long now = (unsigned long)time(NULL);
+
+    if (term->osc52_read_refused_logged == 0 ||
+        now - term->osc52_read_refused_logged >= OSC52_REFUSE_LOG_GAP) {
+        if (term->osc52_read_refused_quiet > 0) {
+            /* mention what was swallowed rather than pretending it did not
+             * happen: "one refusal" and "four hundred refusals" are different
+             * events and the log has to be able to say which this was */
+            char *msg = dupprintf("Clipboard read refused (%s); %d further "
+                                  "request%s also refused",
+                                  why, term->osc52_read_refused_quiet,
+                                  term->osc52_read_refused_quiet == 1 ? "" : "s");
+            logevent(term->logctx, msg);
+            sfree(msg);
+        } else {
+            char *msg = dupprintf("Clipboard read refused (%s)", why);
+            logevent(term->logctx, msg);
+            sfree(msg);
+        }
+        term->osc52_read_refused_quiet = 0;
+        term->osc52_read_refused_logged = now;
+
+        /*
+         * Only tell the user out loud when the setting is "ask". Someone who set
+         * it to Deny has already answered this question and does not need
+         * telling again - but the Event Log above still carries it either way.
+         * Rate-limited by the same gap, so refusals cannot become a way to spam
+         * notifications.
+         */
+        if (tell_user &&
+            conf_get_int(term->conf, CONF_osc52_clipboard_read) == OSC52_READ_ASK &&
+            conf_get_bool(term->conf, CONF_osc52_notify))
+            kitty_osc52_notify(term, "KiTTY clipboard",
+                               "A server asked to read your clipboard. "
+                               "It was refused.");
+    } else {
+        term->osc52_read_refused_quiet++;
+    }
+}
+
+/*
+ * Actually hand the clipboard over: ESC ] 52 ; c ; <base64 UTF-8> ST, the same
+ * shape we accept in the write direction. Counts the hand-over against the limits
+ * and writes the Event Log line, because a read that was served is exactly the
+ * thing someone will want a record of afterwards.
+ */
+static void osc52_read_send(Terminal *term, const wchar_t *clip, int clip_len)
+{
+    char *utf8;
+    strbuf *b64;
+    char *msg;
+
+    utf8 = encode_wide_string_as_utf8(clip);
+    b64 = strbuf_new_nm();             /* _nm: this is clipboard content */
+    base64_encode_bs(BinarySink_UPCAST(b64), ptrlen_from_asciz(utf8), 0);
+
+    kitty_osc52_send_reply(term, b64->s, b64->len);
+
+    smemclr(utf8, strlen(utf8));
+    sfree(utf8);
+    strbuf_free(b64);
+
+    term->osc52_read_served++;
+    term->osc52_read_last_served = (unsigned long)time(NULL);
+    msg = dupprintf("Clipboard sent to the server on request "
+                    "(%d character%s; %d read%s served in this window)",
+                    clip_len, clip_len == 1 ? "" : "s",
+                    term->osc52_read_served,
+                    term->osc52_read_served == 1 ? "" : "s");
+    logevent(term->logctx, msg);
+    sfree(msg);
+}
+
+/*
+ * The whole read gate, in one place and in one order, so that reading it top to
+ * bottom is the specification.
+ */
+static void osc52_read_clipboard(Terminal *term)
+{
+    wchar_t *clip;
+    int clip_len = 0;
+    unsigned long now = (unsigned long)time(NULL);
+    int interval, max_served, dialog_cap;
+
+    /* 1. The setting says no. Nothing else is even looked at. */
+    if (conf_get_int(term->conf, CONF_osc52_clipboard_read) != OSC52_READ_ASK) {
+        osc52_read_refuse(term, "reads are set to Deny", false);
+        return;
+    }
+
+    /*
+     * 2. The window is not the one you are working in.
+     *
+     * This comes before any stored permission, because the rule is that nothing
+     * leaves the window while you are elsewhere - not merely that you are not
+     * asked. The stored permission is deliberately left ALONE: it is suspended,
+     * not thrown away, and resumes without a second dialog when you come back.
+     */
+    if (conf_get_bool(term->conf, CONF_osc52_require_focus) && !term->has_focus) {
+        if (term->osc52_read_decision > 0)
+            kitty_osc52_state_changed(term);   /* show it as paused */
+        osc52_read_refuse(term, "window not focused", false);
+        return;
+    }
+
+    /* 3. A refusal is in force. "Deny for the next ten minutes" is also how you
+     * get rid of a host that will not stop asking, which is why the dialog's
+     * duration choice applies to Deny and not only to Allow. */
+    if (term->osc52_read_decision < 0 && !osc52_read_decision_expired(term)) {
+        if (term->osc52_read_remaining > 0)
+            term->osc52_read_remaining--;
+        osc52_read_refuse(term, "refused earlier, and that still applies", false);
+        return;
+    }
+    if (osc52_read_decision_expired(term))
+        osc52_read_forget_decision(term);
+
+    /* 4. A grant is in force - but a grant is permission for a read, not for a
+     * tap on the clipboard. */
+    if (term->osc52_read_decision > 0) {
+        max_served = conf_get_int(term->conf, CONF_osc52_read_max);
+        interval = conf_get_int(term->conf, CONF_osc52_read_interval);
+
+        /*
+         * Both limits WITHDRAW the permission and then fall through to asking
+         * again, rather than refusing and carrying on with the grant intact. That
+         * is the important half: a host that trips these has shown it is
+         * harvesting the clipboard rather than using it, and the user should get
+         * the chance to see that and say no. The dialog ration in step 5 is what
+         * stops the fall-through becoming a prompt storm.
+         */
+        if (max_served > 0 && term->osc52_read_served >= max_served) {
+            /* the whole-window backstop: allowing a host for the session must not
+             * amount to allowing it everything you copy for an hour */
+            logevent(term->logctx, "Clipboard permission withdrawn: the limit on "
+                     "reads served in this window was reached");
+            osc52_read_forget_decision(term);
+        } else if (interval > 0 && term->osc52_read_last_served != 0 &&
+                   now - term->osc52_read_last_served < (unsigned long)interval) {
+            logevent(term->logctx, "Clipboard permission withdrawn: the server "
+                     "asked again sooner than the minimum gap allows");
+            osc52_read_forget_decision(term);
+        } else {
+            if (term->osc52_read_remaining > 0)
+                term->osc52_read_remaining--;
+            clip = kitty_osc52_get_clipboard(&clip_len);
+            if (!clip || clip_len <= 0) {
+                sfree(clip);
+                osc52_read_refuse(term, "clipboard is empty or not text", false);
+                return;
+            }
+            osc52_read_send(term, clip, clip_len);
+            smemclr(clip, clip_len * sizeof(wchar_t));
+            sfree(clip);
+            return;
+        }
+    }
+
+    /* 5. The prompt itself is an attack surface, so it is rationed. A dialog
+     * already open for this window means the next request is refused, not
+     * stacked behind it. */
+    if (term->osc52_read_asking) {
+        osc52_read_refuse(term, "a clipboard dialog is already open", false);
+        return;
+    }
+    dialog_cap = conf_get_int(term->conf, CONF_osc52_read_dialogs);
+    if (term->osc52_read_prompt_window == 0 ||
+        now - term->osc52_read_prompt_window >= 10) {
+        term->osc52_read_prompt_window = now;
+        term->osc52_read_prompts = 0;
+    }
+    if (dialog_cap > 0 && term->osc52_read_prompts >= dialog_cap) {
+        osc52_read_refuse(term, "asking repeatedly; not prompting again yet", true);
+        return;
+    }
+
+    /* 6. Ask. The clipboard is fetched now because the dialog shows a masked
+     * summary of it - how much, and the first few characters - and because there
+     * is no point asking about an empty clipboard. */
+    clip = kitty_osc52_get_clipboard(&clip_len);
+    if (!clip || clip_len <= 0) {
+        /* Nothing to send. Refuse in silence and do NOT ask: a dialog about an
+         * empty clipboard is a dialog that trains people to click Allow. */
+        sfree(clip);
+        osc52_read_refuse(term, "clipboard is empty or not text", false);
+        return;
+    }
+
+    {
+        int grant = OSC52_GRANT_ONCE;
+        bool always_deny = false;
+        bool allowed;
+
+        term->osc52_read_asking = true;
+        term->osc52_read_prompts++;
+        /* claim = NULL: a bare OSC 52 read carries no program name, and the
+         * dialog must not imply one. OSC 5522 passes the name the program chose
+         * for itself, which the dialog words as a claim rather than a fact. */
+        allowed = kitty_osc52_read_dialog(term, clip, clip_len, NULL,
+                                          &grant, &always_deny);
+        term->osc52_read_asking = false;
+
+        if (always_deny) {
+            if (kitty_osc52_save_deny_for_host(term)) {
+                conf_set_int(term->conf, CONF_osc52_clipboard_read,
+                             OSC52_READ_DENY);
+                logevent(term->logctx, "Clipboard reads set to Deny for this "
+                         "host, and saved in the session");
+            } else {
+                /* There is nowhere to write it: someone typed a hostname into
+                 * the config box and connected. Say so (the dialog does) and let
+                 * the refusal stand for the rest of this window - we do not
+                 * invent an invisible host list, because an unseen permission
+                 * record is the thing this design exists to avoid. */
+                logevent(term->logctx, "Clipboard reads refused for the rest of "
+                         "this session; no saved session to store it in");
+                allowed = false;
+                grant = OSC52_GRANT_SESSION;
+            }
+        }
+
+        /* Record the answer and when it stops applying. A timeout or a dismissed
+         * dialog arrives here as deny-once, which is the right reading of it:
+         * nobody decided anything, so nothing is remembered and the next request
+         * asks again. */
+        term->osc52_read_until = 0;
+        term->osc52_read_remaining = 0;
+        switch (grant) {
+          case OSC52_GRANT_MINUTES: {
+            int mins = conf_get_int(term->conf, CONF_osc52_read_minutes);
+            if (mins <= 0) mins = 10;
+            term->osc52_read_until = now + (unsigned long)mins * 60;
+            term->osc52_read_remaining = -1;
+            term->osc52_read_decision = allowed ? 1 : -1;
+            break;
+          }
+          case OSC52_GRANT_REQUESTS: {
+            int n = conf_get_int(term->conf, CONF_osc52_read_requests);
+            if (n <= 0) n = 25;
+            term->osc52_read_remaining = n;
+            term->osc52_read_decision = allowed ? 1 : -1;
+            break;
+          }
+          case OSC52_GRANT_SESSION:
+            term->osc52_read_remaining = -1;
+            term->osc52_read_decision = allowed ? 1 : -1;
+            break;
+          case OSC52_GRANT_ONCE:
+          default:
+            /* one request, and this is it: nothing is stored either way */
+            term->osc52_read_decision = 0;
+            break;
+        }
+
+        if (!allowed) {
+            sfree(clip);
+            osc52_read_refuse(term, "the user said no", false);
+            return;
+        }
+        if (term->osc52_read_decision > 0) {
+            kitty_osc52_state_changed(term);
+            if (conf_get_bool(term->conf, CONF_osc52_notify))
+                kitty_osc52_notify(term, "KiTTY clipboard",
+                                   "This server may now read your clipboard. "
+                                   "The title bar shows it while that lasts.");
+        }
+        osc52_read_send(term, clip, clip_len);
+        smemclr(clip, clip_len * sizeof(wchar_t));
+        sfree(clip);
+    }
+}
+#endif /* MOD_PERSO */
+
+#ifdef MOD_PERSO
+/*
  * KiTTY: OSC 52 - the remote host asks to put text on the LOCAL clipboard.
  *
  * The sequence is  ESC ] 52 ; Pc ; Pd ST , so by the time we get here
@@ -3588,15 +3964,16 @@ static void osc52_set_clipboard(Terminal *term)
             return;
 
     /*
-     * SECURITY: Pd == "?" is the READ direction - it asks the terminal to send
-     * the local clipboard back to the host. That is an exfiltration channel, it
-     * is the main reason upstream leaves OSC 52 out, and no setting of ours
-     * makes it worth having. Never implemented, deliberately not configurable,
-     * and refused in silence: replying at all would tell a probing host whether
-     * the feature is present.
+     * Pd == "?" is the READ direction - it asks us to send the local clipboard
+     * back to the host. It is the dangerous half of OSC 52 and the reason
+     * upstream leaves the sequence out altogether, so it has its own permission
+     * machinery above and its own setting, which defaults to Deny. It is not a
+     * variation on the write below and does not share its policy.
      */
-    if (!strcmp(pd, "?"))
+    if (!strcmp(pd, "?")) {
+        osc52_read_clipboard(term);
         return;
+    }
 
     /*
      * A payload that did not fit is refused whole, never pasted in part. Half a
@@ -3621,6 +3998,25 @@ static void osc52_set_clipboard(Terminal *term)
 
     if (term->osc52_allowed == OSC52_CLIPBOARD_DENY)
         return;
+
+    /*
+     * KiTTY: the focus rule applies to writes as well as reads (user decision,
+     * 2026-08-02). "KiTTY does not touch your clipboard unless you are looking at
+     * that window" is worth more for being one sentence with no exceptions in it,
+     * and it also means no host can change what you are about to paste at a
+     * moment you were not watching.
+     *
+     * It costs something and the setting exists because of that: a background job
+     * that copies its own output stops working while you are in another window.
+     * Nothing is queued - the sequence is dropped, because replaying a stale
+     * clipboard write when focus comes back is worse than not doing it.
+     */
+    if (conf_get_bool(term->conf, CONF_osc52_require_focus) && !term->has_focus) {
+        logevent(term->logctx, "Remote clipboard write ignored: "
+                 "the window does not have focus");
+        return;
+    }
+
     if (term->osc52_allowed == OSC52_CLIPBOARD_ASK) {
 #ifdef _WINDOWS
         int status = MessageBox(
@@ -8455,9 +8851,56 @@ void term_provide_logctx(Terminal *term, LogContext *logctx)
 
 void term_set_focus(Terminal *term, bool has_focus)
 {
+    bool changed = (term->has_focus != has_focus);
     term->has_focus = has_focus;
     term_schedule_cblink(term);
+#ifdef MOD_PERSO
+    /* KiTTY: a live clipboard permission stops applying the moment focus leaves,
+     * and starts applying again when it comes back. Losing focus is precisely
+     * when the user CAN see the window - they are looking at something in front
+     * of it - so that is when the title has to say "(paused)". A permission that
+     * silently stopped working would be worse than one that never existed,
+     * because they would have no idea why the editor stopped seeing pastes. */
+    if (changed && term->osc52_read_decision > 0)
+        kitty_osc52_state_changed(term);
+#endif
 }
+
+#ifdef MOD_PERSO
+/*
+ * KiTTY: what clipboard permission is live right now, for the title marker and
+ * the window colouring. Agreeing to be read once is not agreeing to be read
+ * invisibly from then on, so while a permission is in force it is on the window.
+ *
+ * Only permissions GRANTED IN THE MOMENT count here. A setting of Allow is a
+ * configuration, not a grant: writes default to Allow, so marking that would put
+ * "clip write" in every title of every session and the marker would stop meaning
+ * anything within a day. A write permission latched by answering the Ask dialog
+ * does count - the user was asked, and this is the reminder that they said yes.
+ *
+ * *read and *write are set to whether each is live; the return value is
+ * OSC52_PERM_NONE / _ACTIVE / _PAUSED for the pair.
+ */
+int term_osc52_perm_state(Terminal *term, bool *read, bool *write)
+{
+    bool r, w;
+    if (!term) {
+        if (read) *read = false;
+        if (write) *write = false;
+        return OSC52_PERM_NONE;
+    }
+    r = (term->osc52_read_decision > 0) && !osc52_read_decision_expired(term);
+    w = (term->osc52_allowed == OSC52_CLIPBOARD_ALLOW &&
+         conf_get_int(term->conf, CONF_osc52_clipboard) == OSC52_CLIPBOARD_ASK);
+    if (read) *read = r;
+    if (write) *write = w;
+    if (!r && !w)
+        return OSC52_PERM_NONE;
+    if (conf_get_bool(term->conf, CONF_osc52_require_focus) && !term->has_focus)
+        return OSC52_PERM_PAUSED;
+    return OSC52_PERM_ACTIVE;
+}
+#endif
 
 /*
  * Provide "auto" settings for remote tty modes, suitable for an

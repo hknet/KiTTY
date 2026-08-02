@@ -241,6 +241,40 @@ struct terminal_tag {
      * storage, for the ODR reason given above. */
     int osc52_allowed;
 
+    /* KiTTY OSC 52 READ direction (a host asking for the contents of the local
+     * clipboard). All UNCONDITIONAL storage, for the ODR reason above.
+     *
+     * osc52_read_policy is the setting (OSC52_READ_DENY / _ASK). The rest is the
+     * live decision, which never reaches disk: a grant is a permission given for
+     * a moment, and a moment does not outlive the window. A REFUSAL may be saved,
+     * because refusing only ever takes permission away - that is what the
+     * dialog's "always deny for this host" does, and it goes into the session
+     * settings, not here. The POLICY itself is not mirrored here on purpose - it
+     * is read live from the Conf, so changing it in Change Settings takes effect
+     * on the next request instead of at the next connection. */
+    /* the standing decision: 0 = none/ask again, 1 = allowing, -1 = refusing */
+    int osc52_read_decision;
+    /* when that decision expires. 0 = it does not (rest of session). Wall clock
+     * seconds, from time(NULL) - a grant has to expire while the machine sleeps
+     * too, so this cannot be a tick count. */
+    unsigned long osc52_read_until;
+    /* or how many further requests it covers. -1 = unlimited (rest of session) */
+    int osc52_read_remaining;
+    /* hand-overs actually served in this window, and when the last one was:
+     * the rate limit that stops a single grant becoming an hour of clipboard */
+    int osc52_read_served;
+    unsigned long osc52_read_last_served;
+    /* dialogs shown, and the start of the ten-second window they are counted in */
+    int osc52_read_prompts;
+    unsigned long osc52_read_prompt_window;
+    /* true while a permission dialog is open for this terminal: the next request
+     * is refused, not stacked behind it */
+    bool osc52_read_asking;
+    /* refusals suppressed since the last Event Log line, and when that line was
+     * written. A host that asks in a loop must not be able to fill the log. */
+    int osc52_read_refused_quiet;
+    unsigned long osc52_read_refused_logged;
+
     char id_string[1024];
 
     unsigned char *tabs;

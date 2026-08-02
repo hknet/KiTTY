@@ -302,6 +302,44 @@ BEGIN
     DEFPUSHBUTTON   "Close", IDCANCEL, 243, 146, 50, 14
 END
 
+/* A server has asked to READ the local clipboard and have the contents sent to
+ * it (design/TASK_clipboard_read_permission.md). Handled by
+ * kitty/kitty_osc52.c.
+ *
+ * Three things about this layout are load-bearing:
+ *  - "READ" is in the first line in capitals. People have been trained by the
+ *    write prompt to expect the harmless direction, and this is the other one.
+ *  - the contents are MASKED. IDC_O52_SUMMARY says how much there is and shows
+ *    only the first few characters; the full text appears in IDC_O52_PREVIEW
+ *    only after View is pressed, and that control starts hidden. A dialog that
+ *    displays a password to answer a question about a password is a bad dialog.
+ *  - Deny is DEFPUSHBUTTON and IDCANCEL both, so Return and Escape refuse, and
+ *    Allow has no keyboard shortcut of the kind you hit by accident. Nothing in
+ *    "Apply this decision to" is pre-selected: this is a security question and a
+ *    pre-selected wider answer is a nudge towards it.
+ */
+IDD_OSC52READ DIALOG DISCARDABLE 0, 0, 300, 246
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "KiTTY - a server wants to read your clipboard"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "", IDC_O52_WHAT, 7, 7, 286, 18
+    LTEXT           "", IDC_O52_WHERE, 7, 27, 286, 8
+    LTEXT           "", IDC_O52_CLAIM, 7, 37, 286, 8
+    LTEXT           "", IDC_O52_SUMMARY, 7, 50, 218, 18
+    PUSHBUTTON      "&View...", IDC_O52_VIEW, 235, 50, 58, 14
+    EDITTEXT        IDC_O52_PREVIEW, 7, 72, 286, 52, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | NOT WS_VISIBLE
+    LTEXT           "Apply this decision to:", IDC_O52_APPLYLBL, 7, 130, 286, 8
+    AUTORADIOBUTTON "just this &request", IDC_O52_ONCE, 14, 142, 279, 10, WS_GROUP | WS_TABSTOP
+    AUTORADIOBUTTON "", IDC_O52_MINUTES, 14, 154, 279, 10
+    AUTORADIOBUTTON "", IDC_O52_REQUESTS, 14, 166, 279, 10
+    AUTORADIOBUTTON "the rest of this terminal &session", IDC_O52_SESSION, 14, 178, 279, 10
+    AUTOCHECKBOX    "Always &deny for this host (saved in the session)", IDC_O52_ALWAYSDENY, 7, 194, 286, 10, WS_GROUP
+    LTEXT           "", IDC_O52_COUNTDOWN, 7, 227, 170, 8
+    PUSHBUTTON      "&Allow", IDC_O52_ALLOW, 183, 224, 52, 14
+    DEFPUSHBUTTON   "Deny", IDCANCEL, 241, 224, 52, 14
+END
+
 IDD_INFOBOX DIALOG DISCARDABLE 0, 0, 350, 28
 STYLE WS_DLGFRAME | DS_CENTER | WS_POPUP | WS_VISIBLE
 CAPTION "KiTTY"

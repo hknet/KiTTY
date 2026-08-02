@@ -1447,6 +1447,75 @@ CONF_OPTION(printclip, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("PrintToCli
  * for every session imported from classic KiTTY. It is dropped when a session is
  * next saved (windows/storage.c, kitty_retired_keys). */
 CONF_OPTION(osc52_clipboard, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("OSC52Clipboard"),)
+/* KiTTY: may a remote host ask for the CONTENTS of the local clipboard and have
+ * them sent back? 0=deny, 1=ask (OSC52_READ_* in putty.h). Default DENY.
+ *
+ * This is the opposite direction from OSC52Clipboard above and it is not the same
+ * kind of question. A write changes what you paste next; a read hands the host
+ * whatever is on your clipboard, which is a password often enough to matter, and
+ * the host picks the moment - typically just after you pasted something into it,
+ * because then it knows there is something worth taking.
+ *
+ * There is no "allow" value, here or in kitty.ini, on purpose: see OSC52_READ_*.
+ * Everything about how long a granted read lasts is in the OSC52Read* keys. */
+CONF_OPTION(osc52_clipboard_read, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("OSC52ClipboardRead"),)
+/* KiTTY: require the window to have keyboard focus before ANY OSC 52 clipboard
+ * activity - reads and writes both. Default on.
+ *
+ * "KiTTY never touches your clipboard unless you are looking at that window" is
+ * short enough to hold in your head, which is most of its value. It also kills
+ * the failure mode Ghostty hit: an editor polling the clipboard over SSH raising
+ * dialogs on a window nobody is looking at. A grant is SUSPENDED while focus is
+ * elsewhere, not cancelled - it resumes without asking again when you come back.
+ *
+ * It is a setting rather than a hard rule only because it changes the shipped
+ * write behaviour: a background job that copies its own output stops working
+ * while you are in another window, and someone who relies on that needs a way
+ * back. The default enforces the rule. */
+CONF_OPTION(osc52_require_focus, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("OSC52RequireFocus"),)
+/* KiTTY: how long the dialog's "the next N minutes" grant lasts. Minutes. */
+CONF_OPTION(osc52_read_minutes, VALUE_TYPE(INT), DEFAULT_INT(10), SAVE_KEYWORD("OSC52ReadMinutes"),)
+/* KiTTY: how many requests the dialog's "the next N requests" grant covers. */
+CONF_OPTION(osc52_read_requests, VALUE_TYPE(INT), DEFAULT_INT(25), SAVE_KEYWORD("OSC52ReadRequests"),)
+/* KiTTY: shortest gap, in seconds, between two clipboard hand-overs. 0 = no
+ * limit.
+ *
+ * This is the one that stops a grant being turned against the user, and it is
+ * separate from the limit on dialogs. Allow a host for the rest of the session
+ * and it does not receive one clipboard: asking every two seconds for an hour, it
+ * receives EVERYTHING copied during that hour, including whatever a password
+ * manager put there in between. Exceeding this drops the grant and goes back to
+ * asking, rather than quietly continuing. No other terminal appears to implement
+ * such a limit - kitty and Ghostty spend their effort on per-program permission
+ * instead - so the number is ours and is a guess worth revisiting. */
+CONF_OPTION(osc52_read_interval, VALUE_TYPE(INT), DEFAULT_INT(2), SAVE_KEYWORD("OSC52ReadInterval"),)
+/* KiTTY: most clipboard hand-overs served in one window, ever. 0 = no ceiling.
+ * The whole-session backstop for the same problem as OSC52ReadInterval. */
+CONF_OPTION(osc52_read_max, VALUE_TYPE(INT), DEFAULT_INT(200), SAVE_KEYWORD("OSC52ReadMax"),)
+/* KiTTY: seconds before an unanswered clipboard-read dialog gives up. 0 = wait
+ * for ever. A timeout is NOT a decision: the request is refused and nothing is
+ * remembered either way, so the next request asks again. Anything else would
+ * record a choice the user never made. */
+CONF_OPTION(osc52_read_timeout, VALUE_TYPE(INT), DEFAULT_INT(60), SAVE_KEYWORD("OSC52ReadTimeout"),)
+/* KiTTY: most dialogs shown in any ten seconds, so a host cannot use the prompt
+ * itself as the attack. Extras are refused without asking. */
+CONF_OPTION(osc52_read_dialogs, VALUE_TYPE(INT), DEFAULT_INT(3), SAVE_KEYWORD("OSC52ReadDialogs"),)
+/* KiTTY: show a tray balloon when a clipboard permission is granted, expires, or
+ * a request is refused. Default on.
+ *
+ * It carries the meaning when the title bar cannot - full screen, or decorations
+ * off. Refusals are only announced when the setting is "ask": someone who chose
+ * Deny has already said no and does not need telling again, though the Event Log
+ * still records it. */
+CONF_OPTION(osc52_notify, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("OSC52Notify"),)
+/* KiTTY: append a "clip read"/"clip write" marker to the window title while a
+ * clipboard permission is live. Default on. */
+CONF_OPTION(osc52_title_mark, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("OSC52TitleMark"),)
+/* KiTTY: tint the title bar and window border while a clipboard permission is
+ * live. Default on, but Windows 11 build 22000+ only - on Windows 10 there is no
+ * supported way for an application to colour either, so the title marker has to
+ * carry the meaning by itself and this silently does nothing. */
+CONF_OPTION(osc52_colour_frame, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("OSC52ColourFrame"),)
 /* ===== KiTTY rutty scripting (script.c) ===== */
 CONF_OPTION(script_mode, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("ScriptMode"),)
 CONF_OPTION(script_line_delay, VALUE_TYPE(INT), DEFAULT_INT(5), SAVE_KEYWORD("ScriptLineDelay"),)

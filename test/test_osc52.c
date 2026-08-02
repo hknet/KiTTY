@@ -62,6 +62,63 @@ char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf)
 { return dupstr(title ? title : ""); }
 void kitty_set_remote_cwd(const char *osc7) { }
 
+/*
+ * The OSC 52 clipboard-READ seams. The real ones live in kitty/kitty_osc52.c and
+ * need a window, the Windows clipboard and a modal dialog; these stubs are how
+ * the permission engine gets tested without any of that, which is the whole
+ * reason the engine and the platform half are separate files.
+ *
+ * Three separate counters, because three different things can happen and two of
+ * them look alike from the outside:
+ *  - osc52_sends is the one that matters. It counts the clipboard actually
+ *    LEAVING the machine, which is the event the whole design exists to control;
+ *  - osc52_dialogs counts times the engine tried to ASK, so "refused without
+ *    prompting" and "prompted, and the user said no" can be told apart;
+ *  - osc52_gets counts clipboard fetches, which happens on the ask path too
+ *    (the dialog shows a masked summary), so it is NOT a proxy for a send.
+ */
+static const wchar_t *stub_clip = L"secret";
+static int osc52_gets;             /* times the clipboard was fetched */
+static int osc52_sends;            /* times it was actually sent to the host */
+static int osc52_dialogs;          /* times the engine tried to ask */
+static bool osc52_dialog_answer;   /* what the fake user says */
+static int osc52_dialog_grant;     /* and for how long */
+static int osc52_state_changes;
+
+void kitty_osc52_send_reply(Terminal *term, const char *b64, size_t len)
+{
+    osc52_sends++;
+}
+
+wchar_t *kitty_osc52_get_clipboard(int *len)
+{
+    size_t n;
+    wchar_t *out;
+    osc52_gets++;
+    if (!stub_clip) {
+        if (len) *len = 0;
+        return NULL;
+    }
+    n = wcslen(stub_clip);
+    out = snewn(n + 1, wchar_t);
+    memcpy(out, stub_clip, (n + 1) * sizeof(wchar_t));
+    if (len) *len = (int)n;
+    return out;
+}
+
+bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
+                             const char *claim, int *grant, bool *always_deny)
+{
+    osc52_dialogs++;
+    if (grant) *grant = osc52_dialog_grant;
+    if (always_deny) *always_deny = false;
+    return osc52_dialog_answer;
+}
+
+bool kitty_osc52_save_deny_for_host(Terminal *term) { return true; }
+void kitty_osc52_notify(Terminal *term, const char *t, const char *m) { }
+void kitty_osc52_state_changed(Terminal *term) { osc52_state_changes++; }
+
 typedef struct Mock {
     Terminal *term;
     Conf *conf;
@@ -182,6 +239,223 @@ static void expect_refused(Mock *mk, const char *what, const char *seq)
         fail(what, "the clipboard was written when it should not have been");
 }
 
+/* ---------------------------------------------------------------------------
+ * The READ direction
+ * ------------------------------------------------------------------------- */
+
+/* Mirrors the grant kinds in terminal.c. Four values that the design settled;
+ * kept in step by hand rather than exported, for the same reason the platform
+ * half does it. */
+enum {
+    GRANT_ONCE, GRANT_MINUTES, GRANT_REQUESTS, GRANT_SESSION,
+};
+
+#define READ_SEQ "\033]52;c;?\007"
+
+/* Feed one clipboard-read request and report what the gate did. */
+static void feed_read(Mock *mk)
+{
+    osc52_gets = 0;
+    osc52_sends = 0;
+    osc52_dialogs = 0;
+    term_data(mk->term, READ_SEQ, strlen(READ_SEQ));
+    term_update(mk->term);
+}
+
+/* Assert on both halves of the outcome: whether the clipboard actually went to
+ * the host, and whether the user was asked. Refusing silently and refusing after
+ * a prompt are different behaviours and the tests have to tell them apart. */
+static void expect_read(Mock *mk, const char *what, int want_sends,
+                        int want_dialogs)
+{
+    feed_read(mk);
+    if (osc52_sends != want_sends)
+        fail(what, osc52_sends > want_sends
+             ? "the clipboard was SENT when it should not have been"
+             : "the clipboard was not sent when it should have been");
+    if (osc52_dialogs != want_dialogs)
+        fail(what, osc52_dialogs > want_dialogs
+             ? "the user was asked when they should not have been"
+             : "the user was not asked when they should have been");
+}
+
+/* Put the terminal in a known state: reads allowed to ask, focused, no standing
+ * decision, no history. Each test starts from here so an earlier grant or an
+ * earlier refusal cannot make the next one pass for the wrong reason. */
+static void read_reset(Mock *mk)
+{
+    /* NOTE: term->conf, not mk->conf. term_init() takes a COPY of the Conf it is
+     * given, so settings poked into the mock's own Conf after that point are read
+     * by nobody - which makes every test pass or fail for the wrong reason. */
+    Conf *c = mk->term->conf;
+    conf_set_int(c, CONF_osc52_clipboard_read, OSC52_READ_ASK);
+    conf_set_bool(c, CONF_osc52_require_focus, true);
+    conf_set_int(c, CONF_osc52_read_interval, 0);
+    conf_set_int(c, CONF_osc52_read_max, 0);
+    conf_set_int(c, CONF_osc52_read_dialogs, 3);
+    conf_set_int(c, CONF_osc52_read_minutes, 10);
+    conf_set_int(c, CONF_osc52_read_requests, 25);
+    mk->term->has_focus = true;
+    mk->term->osc52_read_decision = 0;
+    mk->term->osc52_read_until = 0;
+    mk->term->osc52_read_remaining = 0;
+    mk->term->osc52_read_served = 0;
+    mk->term->osc52_read_last_served = 0;
+    mk->term->osc52_read_prompts = 0;
+    mk->term->osc52_read_prompt_window = 0;
+    mk->term->osc52_read_asking = false;
+    mk->term->osc52_read_refused_quiet = 0;
+    mk->term->osc52_read_refused_logged = 0;
+    stub_clip = L"secret";
+    osc52_dialog_answer = true;
+    osc52_dialog_grant = GRANT_ONCE;
+}
+
+static void test_read_direction(Mock *mk)
+{
+    /*
+     * The default. This is the one that matters most: a host that asks a KiTTY
+     * nobody has configured must get silence, and must not even cause a prompt.
+     */
+    read_reset(mk);
+    conf_set_int(mk->term->conf, CONF_osc52_clipboard_read, OSC52_READ_DENY);
+    expect_read(mk, "reads default to Deny", 0, 0);
+
+    /*
+     * No focus, nothing happens - and this is checked BEFORE any stored
+     * permission, so a grant cannot be spent while the user is working
+     * elsewhere. The grant must survive: it is suspended, not cancelled.
+     */
+    read_reset(mk);
+    mk->term->osc52_read_decision = 1;
+    mk->term->osc52_read_remaining = -1;
+    mk->term->has_focus = false;
+    expect_read(mk, "unfocused window serves nothing", 0, 0);
+    if (mk->term->osc52_read_decision != 1)
+        fail("unfocused window", "the grant was thrown away instead of paused");
+    /* and it resumes on its own when focus comes back, without asking again */
+    mk->term->has_focus = true;
+    expect_read(mk, "grant resumes when focus returns", 1, 0);
+
+    /* The focus rule can be switched off, because it changes write behaviour
+     * that shipped working; when it is off, an unfocused read still serves. */
+    read_reset(mk);
+    conf_set_bool(mk->term->conf, CONF_osc52_require_focus, false);
+    mk->term->osc52_read_decision = 1;
+    mk->term->osc52_read_remaining = -1;
+    mk->term->has_focus = false;
+    expect_read(mk, "focus rule off", 1, 0);
+
+    /* "Just this request" remembers nothing: the next request asks again. */
+    read_reset(mk);
+    osc52_dialog_grant = GRANT_ONCE;
+    expect_read(mk, "allow once, first request", 1, 1);
+    if (mk->term->osc52_read_decision != 0)
+        fail("allow once", "a one-off answer was remembered");
+    expect_read(mk, "allow once, second request asks again", 1, 1);
+
+    /* A refusal, on the other hand, applies for as long as it was given for,
+     * and does so without prompting again. That is what makes "deny for ten
+     * minutes" a usable way to get rid of a host that will not stop asking. */
+    read_reset(mk);
+    osc52_dialog_answer = false;
+    osc52_dialog_grant = GRANT_SESSION;
+    expect_read(mk, "deny for the session, first request", 0, 1);
+    expect_read(mk, "deny for the session holds", 0, 0);
+    expect_read(mk, "deny for the session still holds", 0, 0);
+
+    /* A request-counted grant covers exactly that many, then asks again. */
+    read_reset(mk);
+    mk->term->osc52_read_decision = 1;
+    mk->term->osc52_read_remaining = 2;
+    expect_read(mk, "counted grant, 1 of 2", 1, 0);
+    expect_read(mk, "counted grant, 2 of 2", 1, 0);
+    expect_read(mk, "counted grant is spent", 1, 1);
+
+    /* A time-limited grant that has run out asks again rather than serving. */
+    read_reset(mk);
+    mk->term->osc52_read_decision = 1;
+    mk->term->osc52_read_remaining = -1;
+    mk->term->osc52_read_until = (unsigned long)time(NULL) - 1;
+    osc52_dialog_answer = false;
+    expect_read(mk, "expired grant", 0, 1);
+
+    /*
+     * The hand-over rate limit, which is the one that stops a grant being turned
+     * against the user. Asking faster than the limit does not merely get refused:
+     * it costs the host the permission, because that pattern is harvesting rather
+     * than use.
+     */
+    read_reset(mk);
+    conf_set_int(mk->term->conf, CONF_osc52_read_interval, 3600);
+    mk->term->osc52_read_decision = 1;
+    mk->term->osc52_read_remaining = -1;
+    mk->term->osc52_read_last_served = (unsigned long)time(NULL);
+    osc52_dialog_answer = false;
+    expect_read(mk, "too fast: refused and permission withdrawn", 0, 1);
+    if (mk->term->osc52_read_decision > 0)
+        fail("hand-over rate limit", "the grant survived being exceeded");
+
+    /* Same for the whole-window ceiling. */
+    read_reset(mk);
+    conf_set_int(mk->term->conf, CONF_osc52_read_max, 2);
+    mk->term->osc52_read_decision = 1;
+    mk->term->osc52_read_remaining = -1;
+    mk->term->osc52_read_served = 2;
+    osc52_dialog_answer = false;
+    expect_read(mk, "window ceiling reached", 0, 1);
+    if (mk->term->osc52_read_decision > 0)
+        fail("window ceiling", "the grant survived the ceiling");
+
+    /* The prompt itself is rationed, so a host cannot use the dialog as the
+     * attack. Past the cap, requests are refused WITHOUT asking. */
+    read_reset(mk);
+    conf_set_int(mk->term->conf, CONF_osc52_read_dialogs, 2);
+    osc52_dialog_answer = false;
+    osc52_dialog_grant = GRANT_ONCE;
+    expect_read(mk, "prompt 1 of 2", 0, 1);
+    expect_read(mk, "prompt 2 of 2", 0, 1);
+    expect_read(mk, "prompt cap reached", 0, 0);
+
+    /* An empty clipboard never raises a dialog. A prompt about nothing is a
+     * prompt that teaches people to click Allow. */
+    read_reset(mk);
+    stub_clip = NULL;
+    expect_read(mk, "empty clipboard", 0, 0);
+
+    /* Reads and writes are separate permissions: allowing writes must not
+     * permit a read. */
+    read_reset(mk);
+    conf_set_int(mk->term->conf, CONF_osc52_clipboard_read, OSC52_READ_DENY);
+    mk->term->osc52_allowed = OSC52_CLIPBOARD_ALLOW;
+    expect_read(mk, "write permission does not grant a read", 0, 0);
+}
+
+/* The focus rule applies to WRITES as well, which is a change to behaviour that
+ * shipped working - so it gets its own test in both positions. */
+static void test_write_focus_rule(Mock *mk)
+{
+    const char *seq = "\033]52;c;SGVsbG8=\007";
+
+    conf_set_bool(mk->term->conf, CONF_osc52_require_focus, true);
+    mk->term->has_focus = false;
+    if (feed(mk, OSC52_CLIPBOARD_ALLOW, seq, strlen(seq)) != 0)
+        fail("write with no focus", "the clipboard was written anyway");
+
+    mk->term->has_focus = true;
+    if (feed(mk, OSC52_CLIPBOARD_ALLOW, seq, strlen(seq)) != 1)
+        fail("write with focus", "the clipboard was not written");
+
+    /* switched off, an unfocused write works again */
+    conf_set_bool(mk->term->conf, CONF_osc52_require_focus, false);
+    mk->term->has_focus = false;
+    if (feed(mk, OSC52_CLIPBOARD_ALLOW, seq, strlen(seq)) != 1)
+        fail("write, focus rule off", "the clipboard was not written");
+
+    conf_set_bool(mk->term->conf, CONF_osc52_require_focus, true);
+    mk->term->has_focus = true;
+}
+
 int main(void)
 {
     Mock *mk = mock_new();
@@ -202,9 +476,10 @@ int main(void)
     expect_clip(mk, "utf-8 payload", "\033]52;c;aMOpbGxv\007", L"héllo");
 
     /*
-     * --- the READ direction, which must never be served ---
-     * This is the security-critical case: "?" asks us to send the local
-     * clipboard TO the host.
+     * --- the READ direction ---
+     * "?" asks us to send the local clipboard TO the host. It never writes the
+     * clipboard, whatever the write policy says, and by default it sends nothing
+     * either; the permission engine has its own tests below.
      */
     expect_refused(mk, "clipboard read request", "\033]52;c;?\007");
     expect_refused(mk, "clipboard read, no selector", "\033]52;;?\007");
@@ -264,6 +539,10 @@ int main(void)
                  "a long title was not cut where it always was");
         sfree(seq);
     }
+
+    /* --- the read permission engine, and the focus rule on writes --- */
+    test_read_direction(mk);
+    test_write_focus_rule(mk);
 
     mock_free(mk);
 

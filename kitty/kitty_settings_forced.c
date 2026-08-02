@@ -563,6 +563,17 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_i_forced(sesskey, "LinesAtAScroll", conf_get_int(conf, CONF_scrolllines));
     write_setting_b_forced(sesskey, "SSHTunnelInTitle", conf_get_bool(conf, CONF_ssh_tunnel_print_in_title));
     write_setting_i_forced(sesskey, "OSC52Clipboard", conf_get_int(conf, CONF_osc52_clipboard));
+    write_setting_i_forced(sesskey, "OSC52ClipboardRead", conf_get_int(conf, CONF_osc52_clipboard_read));
+    write_setting_b_forced(sesskey, "OSC52RequireFocus", conf_get_bool(conf, CONF_osc52_require_focus));
+    write_setting_i_forced(sesskey, "OSC52ReadMinutes", conf_get_int(conf, CONF_osc52_read_minutes));
+    write_setting_i_forced(sesskey, "OSC52ReadRequests", conf_get_int(conf, CONF_osc52_read_requests));
+    write_setting_i_forced(sesskey, "OSC52ReadInterval", conf_get_int(conf, CONF_osc52_read_interval));
+    write_setting_i_forced(sesskey, "OSC52ReadMax", conf_get_int(conf, CONF_osc52_read_max));
+    write_setting_i_forced(sesskey, "OSC52ReadTimeout", conf_get_int(conf, CONF_osc52_read_timeout));
+    write_setting_i_forced(sesskey, "OSC52ReadDialogs", conf_get_int(conf, CONF_osc52_read_dialogs));
+    write_setting_b_forced(sesskey, "OSC52Notify", conf_get_bool(conf, CONF_osc52_notify));
+    write_setting_b_forced(sesskey, "OSC52TitleMark", conf_get_bool(conf, CONF_osc52_title_mark));
+    write_setting_b_forced(sesskey, "OSC52ColourFrame", conf_get_bool(conf, CONF_osc52_colour_frame));
 #endif
     fclose(sesskey);
 }

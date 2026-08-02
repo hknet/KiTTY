@@ -499,3 +499,57 @@
 #ifndef IDC_TITLEVARS_COPY
 #define IDC_TITLEVARS_COPY 1258
 #endif
+/* OSC 52 clipboard-READ permission prompt (design/TASK_clipboard_read_permission.md).
+ * A real dialog rather than a MessageBox because it has to show a MASKED summary
+ * of what would be sent plus a View button - someone standing behind you, or a
+ * screen-share, must not capture the clipboard just because a dialog appeared,
+ * least of all when the answer is about to be no.
+ *
+ * Deny is the default button AND IDCANCEL, so Return on a dialog nobody read and
+ * Escape both refuse. Allow is deliberately NOT IDOK: "OK on a dialog nobody
+ * read" is precisely how this feature would go wrong. */
+#ifndef IDD_OSC52READ
+#define IDD_OSC52READ 145
+#endif
+#ifndef IDC_O52_WHAT
+#define IDC_O52_WHAT 1260
+#endif
+#ifndef IDC_O52_WHERE
+#define IDC_O52_WHERE 1261
+#endif
+#ifndef IDC_O52_CLAIM
+#define IDC_O52_CLAIM 1262
+#endif
+#ifndef IDC_O52_SUMMARY
+#define IDC_O52_SUMMARY 1263
+#endif
+#ifndef IDC_O52_PREVIEW
+#define IDC_O52_PREVIEW 1264
+#endif
+#ifndef IDC_O52_VIEW
+#define IDC_O52_VIEW 1265
+#endif
+#ifndef IDC_O52_ONCE
+#define IDC_O52_ONCE 1266
+#endif
+#ifndef IDC_O52_MINUTES
+#define IDC_O52_MINUTES 1267
+#endif
+#ifndef IDC_O52_REQUESTS
+#define IDC_O52_REQUESTS 1268
+#endif
+#ifndef IDC_O52_SESSION
+#define IDC_O52_SESSION 1269
+#endif
+#ifndef IDC_O52_ALWAYSDENY
+#define IDC_O52_ALWAYSDENY 1270
+#endif
+#ifndef IDC_O52_ALLOW
+#define IDC_O52_ALLOW 1271
+#endif
+#ifndef IDC_O52_COUNTDOWN
+#define IDC_O52_COUNTDOWN 1272
+#endif
+#ifndef IDC_O52_APPLYLBL
+#define IDC_O52_APPLYLBL 1273
+#endif

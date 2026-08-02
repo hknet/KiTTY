@@ -848,6 +848,19 @@ void load_open_settings_forced(char *filename, Conf *conf) {
      * meant "sync silently", and migrating it would switch remote clipboard
      * writes on for imported sessions. */
     gppi_forced(sesskey, "OSC52Clipboard", OSC52_CLIPBOARD_ALLOW, conf, CONF_osc52_clipboard);
+    /* OSC 52 READ direction, and the numbers that bound a granted read. Reads
+     * default to DENY; nothing here can be set to a standing "allow". */
+    gppi_forced(sesskey, "OSC52ClipboardRead", OSC52_READ_DENY, conf, CONF_osc52_clipboard_read);
+    gppb_forced(sesskey, "OSC52RequireFocus", true, conf, CONF_osc52_require_focus);
+    gppi_forced(sesskey, "OSC52ReadMinutes", 10, conf, CONF_osc52_read_minutes);
+    gppi_forced(sesskey, "OSC52ReadRequests", 25, conf, CONF_osc52_read_requests);
+    gppi_forced(sesskey, "OSC52ReadInterval", 2, conf, CONF_osc52_read_interval);
+    gppi_forced(sesskey, "OSC52ReadMax", 200, conf, CONF_osc52_read_max);
+    gppi_forced(sesskey, "OSC52ReadTimeout", 60, conf, CONF_osc52_read_timeout);
+    gppi_forced(sesskey, "OSC52ReadDialogs", 3, conf, CONF_osc52_read_dialogs);
+    gppb_forced(sesskey, "OSC52Notify", true, conf, CONF_osc52_notify);
+    gppb_forced(sesskey, "OSC52TitleMark", true, conf, CONF_osc52_title_mark);
+    gppb_forced(sesskey, "OSC52ColourFrame", true, conf, CONF_osc52_colour_frame);
 #endif
 #ifdef MOD_PORTKNOCKING
 	gpps_forced(sesskey, "PortKnocking", "", conf, CONF_portknockingoptions );

@@ -4633,6 +4633,65 @@ static void scb_panel_selection(struct controlbox *b)
                       "Deny", NO_SHORTCUT, I(OSC52_CLIPBOARD_DENY),
                       "Allow", NO_SHORTCUT, I(OSC52_CLIPBOARD_ALLOW),
                       "Ask", NO_SHORTCUT, I(OSC52_CLIPBOARD_ASK));
+    /* KiTTY (OSC 52 read): the other direction - a host asking for the CONTENTS
+     * of the clipboard, which we then send to it. Directly under the write
+     * control, so both clipboard permissions are found in one place.
+     *
+     * TWO buttons where the write control has three, and the missing one is
+     * "Allow", deliberately. A standing, unattended permission to read the
+     * clipboard is the exact thing this control exists to prevent: a clipboard
+     * holds a password for half a minute at a time, and the host chooses when it
+     * asks. A read can still be allowed, or a bounded run of them, but only from
+     * the dialog, with the request on screen, and it always expires. There is no
+     * hidden kitty.ini key for it either. Documented so it does not read as
+     * something that was forgotten. */
+    ctrl_radiobuttons(s, "Remote clipboard reads (OSC 52):", NO_SHORTCUT, 2,
+                      HELPCTX(no_help), conf_radiobutton_handler,
+                      I(CONF_osc52_clipboard_read),
+                      "Deny", NO_SHORTCUT, I(OSC52_READ_DENY),
+                      "Ask", NO_SHORTCUT, I(OSC52_READ_ASK));
+    ctrl_checkbox(s, "Only allow clipboard access while this window has focus",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  conf_checkbox_handler, I(CONF_osc52_require_focus));
+
+    /* The numbers behind the read dialog. They are settings because the values
+     * shipped are guesses - no other terminal implements a hand-over rate limit
+     * to copy from - and because someone who wants a five-minute grant instead of
+     * ten should not have to argue with us about it. */
+    s = ctrl_getset(b, "Window/Selection", "osc52read",
+                    "Limits on a granted clipboard read (OSC 52)");
+    ctrl_editbox(s, "Grant length offered, in minutes:", NO_SHORTCUT, 25,
+                 HELPCTX(no_help), conf_editbox_handler,
+                 I(CONF_osc52_read_minutes), ED_INT);
+    ctrl_editbox(s, "Grant length offered, in requests:", NO_SHORTCUT, 25,
+                 HELPCTX(no_help), conf_editbox_handler,
+                 I(CONF_osc52_read_requests), ED_INT);
+    ctrl_editbox(s, "Shortest gap between hand-overs, in seconds (0 = none):",
+                 NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
+                 I(CONF_osc52_read_interval), ED_INT);
+    ctrl_editbox(s, "Most hand-overs in one window (0 = no limit):",
+                 NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
+                 I(CONF_osc52_read_max), ED_INT);
+    ctrl_editbox(s, "Seconds before an unanswered prompt gives up (0 = never):",
+                 NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
+                 I(CONF_osc52_read_timeout), ED_INT);
+    ctrl_editbox(s, "Most prompts in any ten seconds:", NO_SHORTCUT, 25,
+                 HELPCTX(no_help), conf_editbox_handler,
+                 I(CONF_osc52_read_dialogs), ED_INT);
+
+    s = ctrl_getset(b, "Window/Selection", "osc52show",
+                    "Showing a live clipboard permission");
+    ctrl_checkbox(s, "Mark the window title while a permission is live",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  conf_checkbox_handler, I(CONF_osc52_title_mark));
+    /* Windows 11 build 22000+ only; silently does nothing on Windows 10, which
+     * is why the title marker above has to carry the meaning by itself. */
+    ctrl_checkbox(s, "Tint the title bar and border too (Windows 11 only)",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  conf_checkbox_handler, I(CONF_osc52_colour_frame));
+    ctrl_checkbox(s, "Show a tray notification when a permission starts or ends",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  conf_checkbox_handler, I(CONF_osc52_notify));
 
     s = ctrl_getset(b, "Window/Selection", "paste",
                     "Control pasting of text from clipboard to terminal");

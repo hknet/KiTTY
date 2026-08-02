@@ -2067,6 +2067,11 @@ size_t term_data_wide(Terminal *, const wchar_t *widebuf, size_t len);
 void term_provide_backend(Terminal *term, Backend *backend);
 void term_provide_logctx(Terminal *term, LogContext *logctx);
 void term_set_focus(Terminal *term, bool has_focus);
+#ifdef MOD_PERSO
+/* KiTTY: which OSC 52 clipboard permission is live, for the title marker and the
+ * window tint. Returns OSC52_PERM_*; *read/*write say which. */
+int term_osc52_perm_state(Terminal *term, bool *read, bool *write);
+#endif
 char *term_get_ttymode(Terminal *term, const char *mode);
 SeatPromptResult term_get_userpass_input(Terminal *term, prompts_t *p);
 void term_set_trust_status(Terminal *term, bool trusted);
@@ -2605,12 +2610,34 @@ enum {
 /* KiTTY (OSC 52): whether a remote host may put text on the local clipboard.
  * Deliberately the same three-way shape as SHARED_CLIPBOARD_* above - a second
  * policy vocabulary for the same question would only confuse. This governs the
- * WRITE direction only: OSC 52's clipboard-READ request ("?") is refused
- * unconditionally and has no setting. */
+ * WRITE direction; the READ direction has its own two-way setting below. */
 enum {
     OSC52_CLIPBOARD_DENY,      /* ignore OSC 52 entirely */
     OSC52_CLIPBOARD_ALLOW,     /* let the host set the clipboard */
     OSC52_CLIPBOARD_ASK,       /* ask the user once per session */
+};
+
+/* KiTTY (OSC 52 read): whether a remote host may ask for the contents of the
+ * local clipboard, which is sent back to it.
+ *
+ * TWO values, not three, and the missing one is the point: there is deliberately
+ * no ALLOW. Standing, unattended permission to read the clipboard is the exact
+ * thing this setting exists to prevent - a clipboard holds a password for half a
+ * minute at a time, and the host chooses the moment it asks. A person can still
+ * allow a request, or a bounded run of requests, but only from the dialog, with
+ * the request in front of them, and it always expires. */
+enum {
+    OSC52_READ_DENY,           /* never send the clipboard; the default */
+    OSC52_READ_ASK,            /* ask, with everything in osc52_read_* below */
+};
+
+/* KiTTY: what a live clipboard permission is doing right now. Drives the title
+ * marker and the window colouring, so it is a window-visible state and not just
+ * bookkeeping. */
+enum {
+    OSC52_PERM_NONE,           /* nothing granted; nothing shown */
+    OSC52_PERM_ACTIVE,         /* a grant is in force AND the window has focus */
+    OSC52_PERM_PAUSED,         /* granted, but the window lost focus: suspended */
 };
 #endif
 
