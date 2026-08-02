@@ -890,40 +890,29 @@ void CountUp( void ) {
 	snprintf( buffer, sizeof(buffer), "%ld", n ) ;
 	WriteParameter( INIT_SECTION, "KiCount", buffer) ;
 	
-	if( ReadParameterN( INIT_SECTION, "KiLastUp", buffer, sizeof(buffer) ) == 0 ) { snprintf( buffer, sizeof(buffer), "%ld/", time(0) ) ; }
-	buffer[2048]='\0';
-	if( (pst=strstr(buffer,"/"))==NULL ) { strcat(buffer,"/") ; pst=buffer+strlen(buffer)-1 ; }
-	sprintf( pst+1, "%ld", time(0) ) ;
-	WriteParameter( INIT_SECTION, "KiLastUp", buffer) ;
-	
-	if( GetUserName( buffer, (void*)&len ) ) { 
-		strcat( buffer, "@" ) ;
-		len = 1024 ;
-		if( GetComputerName( buffer+strlen(buffer), (void*)&len ) ) {
-			cryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD ) ;
-			WriteParameter( INIT_SECTION, "KiLastUH", buffer) ;
-			}
-		}
-		
-	if( IniFileFlag != SAVEMODE_DIR ) {
-		snprintf( buffer, sizeof(buffer), "%s\\Sessions", PUTTY_REG_POS ) ;
-		n = (long int) RegCountKey( HKEY_CURRENT_USER, buffer ) ;
-		snprintf( buffer, sizeof(buffer), "%ld", n ) ;
-		WriteParameter( INIT_SECTION, "KiSess", buffer) ;
-	} else {
-		snprintf( buffer, sizeof(buffer), "0 (Not in registry mode)" ) ;
-		WriteParameter( INIT_SECTION, ";KiSess", buffer) ;
-	}
-			
-	GetOSInfo( buffer ) ;
-	cryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD ) ;
-	WriteParameter( INIT_SECTION, "KiVers", buffer) ;
-		
-	if( GetModuleFileName( NULL, (LPTSTR)buffer, 1024 ) ) 
-		if( strlen( buffer ) > 0 ) 
-			{ WriteParameter( INIT_SECTION, "KiPath", buffer) ; }
-			
-	if( ReadParameterN( INIT_SECTION, "KiLic", buffer, sizeof(buffer) ) == 0 ) { 
+	/*
+	 * KiTTY: KiLastUp, KiLastUH, KiSess, KiVers and KiPath used to be written
+	 * here on every run. They are gone (2026-08-02), and nothing replaces them.
+	 *
+	 * NOTHING EVER READ THEM. Verified repo-wide: the only references besides the
+	 * writes were RegDeleteValue calls in the registry scrub. KiLastUp read only
+	 * its OWN previous value, to append a second timestamp to it. This is
+	 * telemetry-shaped bookkeeping inherited from classic KiTTY that outlived
+	 * whatever was meant to consume it.
+	 *
+	 * Two of them - KiLastUH (your Windows username @ computer name) and KiVers
+	 * (OS info) - were additionally "encrypted" with the compiled-in public
+	 * constant, which is obfuscation and not encryption. That was the worst part
+	 * rather than a redeeming one: kitty.ini gets shared - posted for support,
+	 * copied between machines, committed to dotfiles - and scrambling those two
+	 * values hid from their OWNER that their username and hostname were in the
+	 * file at all. Plaintext would at least have been visible.
+	 *
+	 * kitty_retire_countup_leftovers() below removes them from stores that already
+	 * have them; stopping the writes alone would just freeze stale values in place.
+	 */
+
+	if( ReadParameterN( INIT_SECTION, "KiLic", buffer, sizeof(buffer) ) == 0 ) {
 		strcpy( buffer, "KI67" ) ;
 		license_make_with_first( buffer, 25, 97, 0 )  ;
 		license_form( buffer, '-', 5 ) ;
@@ -1323,6 +1312,39 @@ void RetireConfigPasswordLeftovers( void ) {
 	if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag()
 	    && readINI( KittyIniFile, INIT_SECTION, "password", buf, sizeof(buf) ) )
 		delINI( KittyIniFile, INIT_SECTION, "password" ) ;
+	memset( buf, 0, sizeof(buf) ) ;
+	}
+
+/*
+ * CountUp() used to write five bookkeeping values on every run - KiLastUp,
+ * KiLastUH, KiSess, KiVers, KiPath - that nothing ever read back. The writes are
+ * gone; this removes them from stores that already have them, because stopping
+ * the writes on its own would just freeze stale values in place for ever.
+ *
+ * Two of them mattered more than the rest. KiLastUH held your Windows username
+ * and computer name, and KiVers your OS version, both scrambled with the
+ * compiled-in public constant - which is obfuscation, not encryption, and which
+ * made the leak invisible to the one person who would care: kitty.ini gets
+ * shared, and nobody reading their own file could tell those two lines were
+ * their username and machine.
+ *
+ * Self-limiting, like RetireConfigPasswordLeftovers above: every delete is
+ * skipped when the value is absent, so this costs nothing on a clean store and
+ * runs at most once usefully.
+ */
+void RetireCountUpLeftovers( void ) {
+	/* char* rather than const char*: RegDelValue takes LPTSTR. */
+	static char *const dead[] = {
+		"KiLastUp", "KiLastUH", "KiSess", ";KiSess", "KiVers", "KiPath" } ;
+	char buf[4096] ;
+	size_t i ;
+	for( i = 0 ; i < lenof(dead) ; i++ ) {
+		if( GetValueDataN( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), dead[i], buf, sizeof(buf) ) != NULL )
+			RegDelValue( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), dead[i] ) ;
+		if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag()
+		    && readINI( KittyIniFile, INIT_SECTION, dead[i], buf, sizeof(buf) ) )
+			delINI( KittyIniFile, INIT_SECTION, dead[i] ) ;
+	}
 	memset( buf, 0, sizeof(buf) ) ;
 	}
 
@@ -3498,6 +3520,10 @@ void InitWinMain( void ) {
 	/* Not gated on the save mode: the obsolete kitty.ini copy exists in
 	 * portable installs too. */
 	RetireConfigPasswordLeftovers() ;
+	/* Same reasoning, same place: the retired CountUp bookkeeping can be in a
+	 * kitty.ini as well as in the hive, and two of those values held the user's
+	 * username and machine name. */
+	RetireCountUpLeftovers() ;
 
 	// Chargement de la base de registre si besoin
 	if( IniFileFlag == SAVEMODE_REG ) { // Mode de sauvegarde registry
