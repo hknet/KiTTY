@@ -424,10 +424,15 @@ static void test_read_direction(Mock *mk)
     expect_read(mk, "expired grant", 0, 1);
 
     /*
-     * The hand-over rate limit, which is the one that stops a grant being turned
-     * against the user. Asking faster than the limit does not merely get refused:
-     * it costs the host the permission, because that pattern is harvesting rather
-     * than use.
+     * The hand-over rate limit is PACING, and pacing refuses the request without
+     * touching the grant or asking anything.
+     *
+     * It used to withdraw the permission and ask again, and hands-on testing
+     * killed that: a host asking every second produced a DIALOG every second,
+     * which is the prompt storm the whole design exists to prevent, and it
+     * overrode a decision the user had explicitly made - "ten minutes" has to
+     * mean ten minutes, not "until the host gets impatient". Hence the two
+     * assertions below: nothing sent, and NO dialog, and the grant still standing.
      */
     read_reset(mk);
     conf_set_int(mk->term->conf, CONF_osc52_read_interval, 3600);
@@ -435,9 +440,9 @@ static void test_read_direction(Mock *mk)
     mk->term->osc52_read_remaining = -1;
     mk->term->osc52_read_last_served = (unsigned long)time(NULL);
     osc52_dialog_answer = false;
-    expect_read(mk, "too fast: refused and permission withdrawn", 0, 1);
-    if (mk->term->osc52_read_decision > 0)
-        fail("hand-over rate limit", "the grant survived being exceeded");
+    expect_read(mk, "too fast: refused, no dialog", 0, 0);
+    if (mk->term->osc52_read_decision <= 0)
+        fail("hand-over rate limit", "pacing must not cost the user their grant");
 
     /* Same for the whole-window ceiling. */
     read_reset(mk);

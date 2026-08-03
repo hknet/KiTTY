@@ -4252,15 +4252,20 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
     if (pw && *pw && claim && *claim && osc5522_pw_approved(term, pw, claim)) {
         max_served = conf_get_int(term->conf, CONF_osc52_read_max);
         interval = conf_get_int(term->conf, CONF_osc52_read_interval);
-        if ((max_served > 0 && term->osc52_read_served >= max_served) ||
-            (interval > 0 && term->osc52_read_last_served != 0 &&
-             now - term->osc52_read_last_served < (unsigned long)interval)) {
-            /* same rule as a dialog-granted permission: tripping the limits
-             * withdraws the approval rather than merely refusing this request */
+        /* Same split as the dialog-granted permission below: pacing refuses the
+         * request, the ceiling ends the approval. An approved program that is
+         * merely chatty must not lose its approval and start prompting again. */
+        if (interval > 0 && term->osc52_read_last_served != 0 &&
+            now - term->osc52_read_last_served < (unsigned long)interval) {
+            osc52_read_refuse(term, "approved program asked again sooner than "
+                              "the minimum gap allows", false);
+            return false;
+        }
+        if (max_served > 0 && term->osc52_read_served >= max_served) {
             osc5522_pw_forget(term, pw);
-            logevent(term->logctx, "Clipboard approval withdrawn: the program "
-                     "asked too often for the approval it was given");
-            osc52_read_refuse(term, "approved program asking too fast", true);
+            logevent(term->logctx, "Clipboard approval withdrawn: the limit on "
+                     "reads served in this window was reached");
+            osc52_read_refuse(term, "approved program reached the read limit", true);
             return false;
         }
         clip = kitty_osc52_get_clipboard(&clip_len);
@@ -4281,24 +4286,34 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
         interval = conf_get_int(term->conf, CONF_osc52_read_interval);
 
         /*
-         * Both limits WITHDRAW the permission and then fall through to asking
-         * again, rather than refusing and carrying on with the grant intact. That
-         * is the important half: a host that trips these has shown it is
-         * harvesting the clipboard rather than using it, and the user should get
-         * the chance to see that and say no. The dialog ration in step 5 is what
-         * stops the fall-through becoming a prompt storm.
+         * The two limits are NOT the same kind of thing, and they were treated
+         * as one until a tester met the result.
+         *
+         * The minimum gap is PACING. Tripping it means the host asked again too
+         * soon - a chatty editor does this - and the answer is to refuse that one
+         * request and carry on. It must NOT touch the grant. Withdrawing here and
+         * falling through to a fresh dialog was the original behaviour and it was
+         * wrong twice over: it overrode a decision the user had explicitly made
+         * ("ten minutes" means ten minutes, not "until the host is impatient"),
+         * and it turned a rate limit into the prompt storm this whole design
+         * exists to prevent - a host asking every second produced a dialog every
+         * second, which is worse than no rate limit at all.
+         *
+         * The count is a CEILING, not pacing: it is the whole-window backstop
+         * that stops "allow for ten minutes" amounting to everything the user
+         * copies in ten minutes. Reaching it does end the grant, and the next
+         * request asks again - once, because the count then starts over.
          */
         if (max_served > 0 && term->osc52_read_served >= max_served) {
-            /* the whole-window backstop: allowing a host for the session must not
-             * amount to allowing it everything you copy for an hour */
             logevent(term->logctx, "Clipboard permission withdrawn: the limit on "
                      "reads served in this window was reached");
             osc52_read_forget_decision(term);
         } else if (interval > 0 && term->osc52_read_last_served != 0 &&
                    now - term->osc52_read_last_served < (unsigned long)interval) {
-            logevent(term->logctx, "Clipboard permission withdrawn: the server "
-                     "asked again sooner than the minimum gap allows");
-            osc52_read_forget_decision(term);
+            /* refuse this one; the grant stands and the user is not asked */
+            osc52_read_refuse(term, "asked again sooner than the minimum gap "
+                              "allows", false);
+            return false;
         } else {
             if (term->osc52_read_remaining > 0)
                 term->osc52_read_remaining--;
