@@ -773,14 +773,49 @@ void kitty_notice_box(HWND owner, const char *caption, const char *text); /* kit
  * Built as wide characters on purpose. Doing this in kitty_decorate_title() would
  * mean appending UTF-8 to a title that arrived in some other codepage.
  */
-static const wchar_t *kitty_clip_icon(int dir, bool paused)
+static const wchar_t *kitty_clip_icon(int dir, bool paused, bool standing)
 {
-    /* U+1F4CB is astral, so these are surrogate pairs; the arrows are BMP. */
+    /*
+     * SOLID SHAPES, not colour, and not thin line art.
+     *
+     * Two attempts got this wrong before this one, both for the same reason -
+     * they were invisible to the person they exist for:
+     *
+     *  1. The clipboard glyph and a thin arrow. Line art, the same weight as the
+     *     title text beside it. A title that changes by one small glyph looks
+     *     unchanged.
+     *  2. A coloured disc in front of it (U+1F7E0 and friends). Colour emoji do
+     *     NOT render in colour in a Windows title bar: DWM draws caption text
+     *     monochrome, so the disc arrived as a black-brown blob on the amber
+     *     tint - worse than nothing, because it was mass with no meaning.
+     *
+     * So the title marker carries SHAPE and the frame tint carries COLOUR, and
+     * neither tries to do the other's job. Solid BMP triangles: filled, high
+     * contrast against any caption background, guaranteed monochrome so they
+     * cannot be mangled by an emoji font, and the direction is readable at a
+     * glance. UP means data left you for the host, DOWN means the host put
+     * something into your clipboard.
+     *
+     * Colour still has to be optional-extra rather than the signal: the tint is
+     * Windows 11 only, and on Windows 10 these glyphs are the whole marker.
+     *
+     * U+1F4CB is astral, so it is a surrogate pair; the triangles and the pause
+     * sign are BMP.
+     */
+    if (standing) {
+        /* the direction is still carried: a permission to read and a permission
+         * to write are not the same standing state */
+        if (dir == (CLIP_ACT_READ | CLIP_ACT_WRITE))
+            return paused ? L"\U0001F4CB▲▼⏸" : L"\U0001F4CB▲▼";
+        if (dir == CLIP_ACT_READ)
+            return paused ? L"\U0001F4CB▲⏸" : L"\U0001F4CB▲";
+        return paused ? L"\U0001F4CB▼⏸" : L"\U0001F4CB▼";
+    }
     if (dir == (CLIP_ACT_READ | CLIP_ACT_WRITE))
-        return paused ? L"\U0001F4CB↕⏸" : L"\U0001F4CB↕";
+        return L"\U0001F4CB▲▼";
     if (dir == CLIP_ACT_READ)
-        return paused ? L"\U0001F4CB↑⏸" : L"\U0001F4CB↑";
-    return paused ? L"\U0001F4CB↓⏸" : L"\U0001F4CB↓";
+        return L"\U0001F4CB▲";
+    return L"\U0001F4CB▼";
 }
 
 /* Wrap the converted title with whichever clipboard markers apply. Returns a
@@ -803,10 +838,10 @@ static wchar_t *kitty_clip_decorate_wide(WinGuiSeat *wgs, wchar_t *name)
         if (state != OSC52_PERM_NONE)
             tail = kitty_clip_icon((rd ? CLIP_ACT_READ : 0) |
                                    (wr ? CLIP_ACT_WRITE : 0),
-                                   state == OSC52_PERM_PAUSED);
+                                   state == OSC52_PERM_PAUSED, true);
     }
     if (activity)
-        front = kitty_clip_icon(activity, false);
+        front = kitty_clip_icon(activity, false, false);
     if (!front && !tail)
         return name;
 

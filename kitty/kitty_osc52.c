@@ -87,9 +87,30 @@ wchar_t *kitty_osc52_get_clipboard(int *len)
  */
 void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len)
 {
-    if (!term || !term->ldisc || !data || !len)
+    if (!term || !data || !len)
+        return;
+
+    /*
+     * Straight at the BACKEND, deliberately, and NOT through ldisc_send().
+     *
+     * ldisc_send() feeds the LOCAL LINE EDITOR. With local line editing on -
+     * which is the default for Raw, and which anyone may switch on for any
+     * protocol - our reply is not sent at all: it is appended to the line the
+     * user is typing and leaves only when they press Return. Found the only way
+     * it could be found, by watching the wire: an allowed read produced the
+     * amber activity marker and the "clipboard sent" log line, and the host got
+     * nothing until a Ctrl+D flushed the buffer minutes later.
+     *
+     * A protocol reply is not typed input. It must not be echoed, must not be
+     * editable, and must not queue behind a half-typed command. PuTTY's own
+     * DA/DSR replies do go through ldisc and have the same quirk; that is
+     * upstream's business, and this is not the place to change it - but a reply
+     * that carries CLIPBOARD CONTENTS must not be able to sit in a buffer,
+     * visible on screen, until an unrelated keystroke pushes it out.
+     */
+    if (!term->backend)
         return;                        /* no connection to reply down */
-    ldisc_send(term->ldisc, data, (int)len, false);
+    backend_send(term->backend, data, (int)len);
 }
 
 /* ------------------------------------------------------------------------

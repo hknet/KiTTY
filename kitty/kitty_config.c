@@ -4488,7 +4488,11 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
     if (!GetPuttyFlag()) {
         s = ctrl_getset(b, "Window/Behaviour", "windowbuttons",
                         "Window buttons (for kiosk or embedded use)");
-        ctrl_checkbox(s, "System menu, and therefore any caption buttons at all",
+        /* Short enough to fit the panel. The dependency still has to be stated -
+         * Windows draws no caption button without WS_SYSMENU - and with no
+         * dlg_enable() to grey the other three, the label is the only place left
+         * to say it. */
+        ctrl_checkbox(s, "System menu (off hides all buttons)",
                       NO_SHORTCUT, HELPCTX(no_help),
                       conf_checkbox_handler, I(CONF_window_has_sysmenu));
         ctrl_checkbox(s, "Allow closing (also disables the X and Alt+F4)",
@@ -4736,6 +4740,36 @@ static void scb_panel_selection(struct controlbox *b)
     clipboard_control(s, "Ctrl + Shift + {C,V}:", NO_SHORTCUT, 60,
                       HELPCTX(selection_clipactions),
                       CONF_ctrlshiftcv, CONF_ctrlshiftcv_custom);
+    s = ctrl_getset(b, "Window/Selection", "paste",
+                    "Control pasting of text from clipboard to terminal");
+    ctrl_checkbox(s, "Permit control characters in pasted text",
+                  NO_SHORTCUT, HELPCTX(selection_pastectrl),
+                  conf_checkbox_handler, I(CONF_paste_controls));
+
+    s = ctrl_getset(b, "Window/Selection", "runclipcmd",
+                    "Running the clipboard as a local command (Ctrl+F5)");
+    ctrl_checkbox(s, "Confirm before running the clipboard as a command",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  conf_checkbox_handler, I(CONF_runcmdconfirm));
+    ctrl_checkbox(s, "Show a tray notification after running a clipboard command",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  conf_checkbox_handler, I(CONF_runcmdnotify));
+
+    /*
+     * The Window/Selection/Remote clipboard panels (KiTTY).
+     *
+     * These controls were all on Window/Selection until they outgrew it: the
+     * clipboard-read work added eleven settings to a panel that already carried
+     * the mouse buttons and the clipboard assignments, and the result ran off
+     * the bottom of the dialog with half the labels truncated. Split three ways
+     * by the question each answers - may the host do it, how much of it, and do
+     * I get told - which also keeps every label short enough to read.
+     */
+    ctrl_settitle(b, "Window/Selection/Remote clipboard",
+                  "What a remote host may do with your clipboard");
+
+    s = ctrl_getset(b, "Window/Selection/Remote clipboard", "policy",
+                    "Permissions");
 #ifdef MOD_FAR2L
     /* KiTTY (far2l): let a remote far2l session read/write the local clipboard.
      * Triples (label, NO_SHORTCUT, I(val)) — 0.84 ctrl_radiobuttons needs the
@@ -4752,9 +4786,9 @@ static void scb_panel_selection(struct controlbox *b)
 #endif
     /* KiTTY (OSC 52): let the remote host put text on the local clipboard.
      * Same three-way shape as the far2l control above, on purpose. "Ask"
-     * answers latch for the rest of the session. Only the write direction
-     * exists: OSC 52's clipboard-read request is always refused. */
-    ctrl_radiobuttons(s, "Remote clipboard writes (OSC 52):", NO_SHORTCUT, 3,
+     * answers latch for the rest of the session. */
+    ctrl_radiobuttons(s, "Writes - host sets your clipboard (OSC 52):",
+                      NO_SHORTCUT, 3,
                       HELPCTX(no_help), conf_radiobutton_handler,
                       I(CONF_osc52_clipboard),
                       "Deny", NO_SHORTCUT, I(OSC52_CLIPBOARD_DENY),
@@ -4772,25 +4806,35 @@ static void scb_panel_selection(struct controlbox *b)
      * the dialog, with the request on screen, and it always expires. There is no
      * hidden kitty.ini key for it either. Documented so it does not read as
      * something that was forgotten. */
-    ctrl_radiobuttons(s, "Remote clipboard reads (OSC 52):", NO_SHORTCUT, 2,
+    ctrl_radiobuttons(s, "Reads - host asks for your clipboard (OSC 52):",
+                      NO_SHORTCUT, 2,
                       HELPCTX(no_help), conf_radiobutton_handler,
                       I(CONF_osc52_clipboard_read),
                       "Deny", NO_SHORTCUT, I(OSC52_READ_DENY),
                       "Ask", NO_SHORTCUT, I(OSC52_READ_ASK));
     /* Covers OSC 52, OSC 5522 AND far2l, which is why the label names none of
      * them: a rule with an exception in it is not the rule people remember. */
-    ctrl_checkbox(s, "Only allow remote clipboard access while this window has focus",
+    ctrl_checkbox(s, "Only while this window has focus",
                   NO_SHORTCUT, HELPCTX(no_help),
                   conf_checkbox_handler, I(CONF_clipboard_require_focus));
+
+    /*
+     * The Window/Selection/Remote clipboard/Limits panel.
+     */
+    ctrl_settitle(b, "Window/Selection/Remote clipboard/Limits",
+                  "Bounds on what a permitted host can do");
+
+    s = ctrl_getset(b, "Window/Selection/Remote clipboard/Limits", "size",
+                    "Any protocol (OSC 52, OSC 5522, far2l)");
     /* One ceiling for OSC 52 and far2l both. Clamped in code (CLIP_MAX_MB_CAP):
      * lowering it only ever helps, but it must not be possible to type a number
      * here that turns a bounded denial of service into an unbounded one. */
-    ctrl_editbox(s, "Largest remote clipboard payload, in MB:", NO_SHORTCUT, 25,
+    ctrl_editbox(s, "Largest payload, in MB:", NO_SHORTCUT, 25,
                  HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_clipboard_max_mb), ED_INT);
     /* A cap per second rather than a gap between writes: a gap would make the
      * FIRST write of a burst win, leaving a stale clipboard, which is backwards. */
-    ctrl_editbox(s, "Most clipboard changes a server may make per second (0 = no limit):",
+    ctrl_editbox(s, "Most writes per second (0 = no limit):",
                  NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_clipboard_writes_per_sec), ED_INT);
 
@@ -4798,72 +4842,66 @@ static void scb_panel_selection(struct controlbox *b)
      * shipped are guesses - no other terminal implements a hand-over rate limit
      * to copy from - and because someone who wants a five-minute grant instead of
      * ten should not have to argue with us about it. */
-    s = ctrl_getset(b, "Window/Selection", "osc52read",
-                    "Limits on a granted clipboard read (OSC 52)");
-    ctrl_editbox(s, "Grant length offered, in minutes:", NO_SHORTCUT, 25,
+    s = ctrl_getset(b, "Window/Selection/Remote clipboard/Limits", "read",
+                    "A granted clipboard read");
+    ctrl_editbox(s, "Grant offered, in minutes:", NO_SHORTCUT, 25,
                  HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_osc52_read_minutes), ED_INT);
-    ctrl_editbox(s, "Grant length offered, in requests:", NO_SHORTCUT, 25,
+    ctrl_editbox(s, "Grant offered, in requests:", NO_SHORTCUT, 25,
                  HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_osc52_read_requests), ED_INT);
-    ctrl_editbox(s, "Shortest gap between hand-overs, in seconds (0 = none):",
+    ctrl_editbox(s, "Shortest gap between reads, in seconds (0 = none):",
                  NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_osc52_read_interval), ED_INT);
-    ctrl_editbox(s, "Most hand-overs in one window (0 = no limit):",
+    ctrl_editbox(s, "Most reads per window (0 = no limit):",
                  NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_osc52_read_max), ED_INT);
-    ctrl_editbox(s, "Seconds before an unanswered prompt gives up (0 = never):",
+    ctrl_editbox(s, "Unanswered prompt gives up after, in seconds (0 = never):",
                  NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_osc52_read_timeout), ED_INT);
-    ctrl_editbox(s, "Most prompts in any ten seconds:", NO_SHORTCUT, 25,
+    ctrl_editbox(s, "Most prompts per ten seconds:", NO_SHORTCUT, 25,
                  HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_osc52_read_dialogs), ED_INT);
 
-    s = ctrl_getset(b, "Window/Selection", "osc52show",
-                    "Showing a live clipboard permission");
+    /*
+     * The Window/Selection/Remote clipboard/Notices panel.
+     */
+    ctrl_settitle(b, "Window/Selection/Remote clipboard/Notices",
+                  "Being told about remote clipboard use");
+
+    s = ctrl_getset(b, "Window/Selection/Remote clipboard/Notices", "title",
+                    "Title bar");
     /* The two markers answer different questions: permission says what COULD
      * happen, activity says what DID. Icons rather than words - the title bar is
      * shared with the connection name - with the standing one bracketed at the end
      * and the transient one bare at the front. */
-    ctrl_checkbox(s, "Mark the title while a permission is live  (end, in brackets)",
+    ctrl_checkbox(s, "Mark while a permission is live  (end, in brackets)",
                   NO_SHORTCUT, HELPCTX(no_help),
                   conf_checkbox_handler, I(CONF_osc52_title_mark));
-    ctrl_checkbox(s, "Also mark a standing \"Allow\", not just a granted permission",
+    ctrl_checkbox(s, "Also mark a standing \"Allow\"",
                   NO_SHORTCUT, HELPCTX(no_help),
                   conf_checkbox_handler, I(CONF_clipboard_mark_always));
-    ctrl_checkbox(s, "Mark the title when the server actually uses the clipboard  (front)",
+    ctrl_checkbox(s, "Mark when the host actually uses it  (front)",
                   NO_SHORTCUT, HELPCTX(no_help),
                   conf_checkbox_handler, I(CONF_clipboard_activity_mark));
-    ctrl_editbox(s, "How long that activity marker stays up, in seconds:",
+    ctrl_editbox(s, "That marker stays up, in seconds:",
                  NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_clipboard_activity_secs), ED_INT);
     /* Windows 11 build 22000+ only; silently does nothing on Windows 10, which
      * is why the title marker above has to carry the meaning by itself. */
-    ctrl_checkbox(s, "Tint the title bar and border too (Windows 11 only)",
+    ctrl_checkbox(s, "Tint the title bar and border (Windows 11 only)",
                   NO_SHORTCUT, HELPCTX(no_help),
                   conf_checkbox_handler, I(CONF_osc52_colour_frame));
+
+    s = ctrl_getset(b, "Window/Selection/Remote clipboard/Notices", "tray",
+                    "Notification area");
     /* One switch for every remote-clipboard balloon - permission granted or
      * expired, request refused, payload too large - across all three protocols.
      * The balloons are rate-limited and say so, and clicking one opens the Event
      * Log, which is where the events actually all are. */
-    ctrl_checkbox(s, "Show tray notifications for remote clipboard events",
+    ctrl_checkbox(s, "Show tray notifications for clipboard events",
                   NO_SHORTCUT, HELPCTX(no_help),
                   conf_checkbox_handler, I(CONF_clipboard_notify));
-
-    s = ctrl_getset(b, "Window/Selection", "paste",
-                    "Control pasting of text from clipboard to terminal");
-    ctrl_checkbox(s, "Permit control characters in pasted text",
-                  NO_SHORTCUT, HELPCTX(selection_pastectrl),
-                  conf_checkbox_handler, I(CONF_paste_controls));
-
-    s = ctrl_getset(b, "Window/Selection", "runclipcmd",
-                    "Running the clipboard as a local command (Ctrl+F5)");
-    ctrl_checkbox(s, "Confirm before running the clipboard as a command",
-                  NO_SHORTCUT, HELPCTX(no_help),
-                  conf_checkbox_handler, I(CONF_runcmdconfirm));
-    ctrl_checkbox(s, "Show a tray notification after running a clipboard command",
-                  NO_SHORTCUT, HELPCTX(no_help),
-                  conf_checkbox_handler, I(CONF_runcmdnotify));
 
     /*
      * The Window/Selection/Copy panel.
