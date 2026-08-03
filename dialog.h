@@ -656,6 +656,20 @@ bool dlg_is_visible(dlgcontrol *ctrl, dlgparam *dp);
 void dlg_beep(dlgparam *dp);
 void dlg_error_msg(dlgparam *dp, const char *msg);
 /*
+ * KiTTY: ask the user a yes/no question from inside the config box, and wait
+ * for the answer. Added for the Save-overwrites-a-session guard; dlg_error_msg
+ * cannot be used because that only tells, it does not ask.
+ *
+ * Synchronous, which is why this is a KiTTY seam rather than a new dlg_*
+ * function: the GTK front end's message boxes are asynchronous and answer
+ * through a callback, so a portable blocking version would mean restructuring
+ * the caller. The unix implementation returns true - no question, old
+ * behaviour - and says so.
+ *
+ * Returns true to go ahead.
+ */
+bool kitty_dlg_confirm(dlgparam *dp, const char *title, const char *msg);
+/*
  * This function signals to the front end that the dialog's
  * processing is completed, and passes an integer value (typically
  * a success status).

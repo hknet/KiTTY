@@ -334,6 +334,11 @@ add_executable(kitty
   # actually compiled: the settings library is built without MOD_PERSO, where
   # such a block would be silently dead.
   ${CMAKE_SOURCE_DIR}/cmdline.c
+  # NOTE: config.c is deliberately NOT here. kitty/kitty_config.c below is a
+  # full KiTTY replacement for it, compiled with MOD_PERSO, and it already wins
+  # at link time. Adding config.c as well gives "multiple definition of
+  # setup_config_box". Config-box changes go in kitty_config.c - a MOD_PERSO
+  # block added to config.c is dead code twice over.
   ${KITTY_DIR}/far2l/cdecode.c
   ${KITTY_DIR}/far2l/cencode.c
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
@@ -402,7 +407,8 @@ add_executable(kitty_portable
   putty.c
   help.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
-  # cmdline.c: see the comment on the kitty target above
+  # cmdline.c: see the comment on the kitty target above (and the note there on
+  # why config.c must NOT be listed)
   ${CMAKE_SOURCE_DIR}/cmdline.c
   ${KITTY_DIR}/far2l/cdecode.c
   ${KITTY_DIR}/far2l/cencode.c
@@ -468,3 +474,69 @@ target_link_libraries(kitty_portable
   ${platform_libraries} wininet wintrust crypt32 msi
   uuid.lib)   # KiTTY: CLSID_ShellLink GUIDs (kitty_startup_shortcut.c, launcher autostart)
 set_target_properties(kitty_portable PROPERTIES WIN32_EXECUTABLE ON)
+
+# ===================================================================
+# MOD_PERSO COVERAGE CHECK - fail the build, not the user
+# ===================================================================
+#
+# The single most expensive recurring mistake in this port: writing KiTTY code
+# inside "#ifdef MOD_PERSO" in a SHARED PuTTY source file that reaches the
+# executable through a library built WITHOUT that define. The preprocessor
+# deletes the code, the build is clean, zero warnings, and the feature simply is
+# not there. It has cost this project cmdline.c, terminal.c and - most recently -
+# config.c, where a guard meant to stop a saved session being destroyed was
+# deployed, declared working, and then destroyed a saved session.
+#
+# Comments were written each time saying "remember this". Comments do not fail
+# builds. This does.
+#
+# The rule: any shared source file (repo root, terminal/, windows/ - anything
+# outside kitty/, which is always compiled with the define) that contains a
+# "#ifdef MOD_PERSO" style guard MUST be listed directly in the kitty target's
+# sources, where the per-target define reaches it. If it is not, configuring
+# stops here with an explanation.
+#
+# Deliberately NOT a fix-it-for-you: adding a file to the executable changes
+# which objects win at link time, and that is a decision to take deliberately.
+# The alternative, when the code does not really need the define, is to drop the
+# guard entirely - see kitty_dlg_confirm() in controls.c and the note in
+# dialog.c.
+file(GLOB _kitty_shared_sources
+  "${CMAKE_SOURCE_DIR}/*.c"
+  "${CMAKE_SOURCE_DIR}/terminal/*.c"
+  "${CMAKE_SOURCE_DIR}/windows/*.c")
+
+get_target_property(_kitty_target_sources kitty SOURCES)
+set(_kitty_covered "")
+foreach(_src ${_kitty_target_sources})
+  get_filename_component(_abs "${_src}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+  list(APPEND _kitty_covered "${_abs}")
+endforeach()
+
+set(_kitty_uncovered "")
+foreach(_src ${_kitty_shared_sources})
+  file(READ "${_src}" _content)
+  # a real preprocessor guard, not a passing mention in a comment
+  if(_content MATCHES "#[ \t]*if(n?def[ \t]+MOD_PERSO|[ \t]+.*defined[ \t]*\\([ \t]*MOD_PERSO)")
+    get_filename_component(_abs "${_src}" ABSOLUTE)
+    if(NOT "${_abs}" IN_LIST _kitty_covered)
+      list(APPEND _kitty_uncovered "${_abs}")
+    endif()
+  endif()
+endforeach()
+
+if(_kitty_uncovered)
+  string(REPLACE ";" "\n    " _kitty_uncovered_pretty "${_kitty_uncovered}")
+  message(FATAL_ERROR
+    "MOD_PERSO coverage check failed.\n\n"
+    "These shared source files contain '#ifdef MOD_PERSO' but are NOT compiled\n"
+    "directly into the kitty target, so they reach the binary through a library\n"
+    "built WITHOUT MOD_PERSO. Every guarded line in them is silently deleted by\n"
+    "the preprocessor - the build succeeds and the code is not there:\n\n"
+    "    ${_kitty_uncovered_pretty}\n\n"
+    "Fix it one of two ways:\n"
+    "  1. Add the file to BOTH the kitty and kitty_portable target source lists\n"
+    "     (see cmdline.c and config.c there for the pattern), or\n"
+    "  2. Drop the MOD_PERSO guard if the code does not need it - see\n"
+    "     kitty_dlg_confirm() in windows/controls.c.\n")
+endif()

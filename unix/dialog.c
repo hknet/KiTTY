@@ -1106,6 +1106,22 @@ void dlg_error_msg(dlgparam *dp, const char *msg)
 }
 
 /*
+ * KiTTY: see dialog.h. NOT IMPLEMENTED HERE, deliberately, and it says yes.
+ *
+ * GTK message boxes here are asynchronous - create_message_box() returns at
+ * once and the answer arrives in a callback - so there is no honest way to
+ * block for one. Returning true means the unix build keeps PuTTY's original
+ * behaviour (the save just happens), which is the right failure: the guard is a
+ * safety net, and a safety net that is missing must not also break the thing it
+ * was protecting. Anyone building the config box on unix and wanting the guard
+ * has to restructure the caller to be callback-driven.
+ */
+bool kitty_dlg_confirm(dlgparam *dp, const char *title, const char *msg)
+{
+    return true;
+}
+
+/*
  * This function signals to the front end that the dialog's
  * processing is completed, and passes an integer value (typically
  * a success status).

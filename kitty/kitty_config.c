@@ -1293,6 +1293,11 @@ struct sessionsaver_data {
     int folder_action;           /* what ssd->createbutton currently does */
     const char *folder_button_label; /* its current label, to avoid redundant sets */
     int initial_focus_set;
+    /* KiTTY: the session whose settings are actually in the box, as opposed to
+     * the name sitting in the edit box. They part company the moment you click a
+     * name in the list, because that only copies the NAME across - which is the
+     * whole reason the Save guard exists. NULL = nothing loaded in this box. */
+    char *loaded_from;
 #endif
 };
 
@@ -1370,6 +1375,7 @@ static void sessionsaver_data_free(void *ssdv)
     sfree(ssd->newfolder);
     sfree(ssd->searchfilter);
     sfree(ssd->folder_at_load);
+    sfree(ssd->loaded_from);
 #endif
     sfree(ssd);
 }
@@ -1439,6 +1445,9 @@ static bool load_selected_session(
     isdef = !strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION);
     load_settings(ssd->sesslist.sessions[i], conf);
 #ifdef MOD_PERSO
+    /* KiTTY: what is genuinely in the box now, for the Save guard. */
+    sfree(ssd->loaded_from);
+    ssd->loaded_from = dupstr(ssd->sesslist.sessions[i]);
     /* KiTTY: follow the loaded session into its folder, and remember which
      * folder it arrived in. The folder combo is the list filter, but Save also
      * uses it to file the session (it is the only way to move a session
@@ -2358,6 +2367,49 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                         conf_set_str(conf, CONF_folder, cur);
                     /* else: keep the folder the session was loaded with */
                 }
+                /*
+                 * KiTTY: confirm before REPLACING a session you never loaded.
+                 *
+                 * The accident this stops, reported with an exact repro: load
+                 * and start session A, then single-click session B in the list
+                 * and press Save. Clicking a name only copies the NAME into the
+                 * edit box - it does not load that session - so Save writes A's
+                 * entire configuration over B. Host, port, protocol, everything,
+                 * with no prompt and nothing on screen to say it happened. Stock
+                 * PuTTY has always behaved this way; it is still somebody's whole
+                 * session gone, and the person it happened to could not tell what
+                 * they had done wrong.
+                 *
+                 * Asked only when BOTH hold: the target already exists, and it is
+                 * not what was loaded into this box. So "load it, change it, save
+                 * it" never sees this, nor does saving under a new name, nor two
+                 * saves in a row. Default Settings is exempt - a freshly opened
+                 * box has loaded nothing, and prompting there would nag the one
+                 * save people make most deliberately.
+                 */
+                if (!isdef && ssd->savedsession[0] &&
+                    (!ssd->loaded_from ||
+                     strcmp(ssd->loaded_from, ssd->savedsession) != 0)) {
+                    settings_r *victim = open_settings_r(ssd->savedsession);
+                    if (victim) {
+                        close_settings_r(victim);
+                        char *q = dupprintf(
+                            "Replace the saved session \"%s\"?\n\n"
+                            "You did not load it, so its settings are about to "
+                            "be overwritten with the ones currently in this "
+                            "dialog - host name, port, protocol and everything "
+                            "else.\n\n"
+                            "Clicking a name in the session list only fills in "
+                            "the name; it does not load that session. Use Load "
+                            "first if you meant to edit it.",
+                            ssd->savedsession);
+                        bool go = kitty_dlg_confirm(
+                            dlg, "Overwrite saved session?", q);
+                        sfree(q);
+                        if (!go)
+                            return;
+                    }
+                }
 #endif
                 /* Back up the store before OVERWRITING a saved session, so its
                  * previous contents stay recoverable. Blocking on purpose - an
@@ -2378,6 +2430,12 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     dlg_error_msg(dlg, errmsg);
                     sfree(errmsg);
                 } else {
+                    /* What is in the box now IS this session, so a second Save
+                     * in a row must not ask to overwrite it again. */
+                    if (ssd->savedsession[0]) {
+                        sfree(ssd->loaded_from);
+                        ssd->loaded_from = dupstr(ssd->savedsession);
+                    }
                     /* Tell a running KiTTY Launcher to refresh its saved-session
                      * list and re-register per-session global hotkeys. This is a
                      * best-effort broadcast; if no launcher is running, nothing

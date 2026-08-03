@@ -2669,6 +2669,24 @@ void dlg_error_msg(dlgparam *dp, const char *msg)
 }
 
 /*
+ * KiTTY: see dialog.h.
+ *
+ * NOT guarded by MOD_PERSO, and that is deliberate - same reason as the note in
+ * dialog.c. This file compiles into the shared guiterminal library, which is
+ * built WITHOUT MOD_PERSO, so anything behind that define here is dead code that
+ * still compiles cleanly. An always-present function costs a few bytes in the
+ * other suite binaries and cannot silently do nothing.
+ *
+ * MB_DEFBUTTON2 so a reflex Return does NOT confirm: this is asked precisely
+ * when we suspect the user is not looking.
+ */
+bool kitty_dlg_confirm(dlgparam *dp, const char *title, const char *msg)
+{
+    return MessageBox(dp->hwnd, msg, title,
+                      MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES;
+}
+
+/*
  * This function signals to the front end that the dialog's
  * processing is completed, and passes an integer value (typically
  * a success status).
