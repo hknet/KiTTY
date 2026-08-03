@@ -171,7 +171,7 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.67-beta @ 2026-08-01`.
+- **Version string:** binaries report `0.84.1.68-beta @ 2026-08-03`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
