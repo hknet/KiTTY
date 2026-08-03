@@ -5,6 +5,129 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.68-beta — 2026-08-03
+
+### The remote clipboard
+
+A terminal can be asked by the machine at the other end to put something on your
+clipboard, or to hand over what is already there. KiTTY now does both, and the
+second one asks first.
+
+- **A remote host can set your clipboard (OSC 52).** Programs that copy for you —
+  `tmux`, `neovim`, a script that wants to hand you a URL — work over the
+  connection instead of needing a mouse selection. *Window → Selection → Remote
+  clipboard* controls it, and it defaults to **Allow**, matching every comparable
+  terminal: this direction changes what you paste next, but it cannot disclose
+  anything to the host. Set it to **Deny**, or **Ask** to be prompted.
+
+- **A remote host can ask to READ your clipboard — and you are asked every
+  time.** This is the direction that can leak, because a clipboard holds a
+  password for half a minute at a time and the host chooses when it asks. It
+  defaults to **Deny** and there is deliberately **no Allow setting**: a
+  permission to read can only be granted from the prompt, with the request on
+  screen, and it always expires. The prompt shows how much text would be sent and
+  the first few characters of it, and offers to allow the one request, the next
+  few minutes, a number of requests, or the rest of the session — with the
+  narrowest option pre-selected. **Deny** is the default button.
+
+- **Nothing leaves the window while you are working somewhere else.** A granted
+  permission is suspended when the window loses focus and resumes when you come
+  back, without asking again. Covers all three clipboard protocols. Switch it off
+  in *Remote clipboard* if a background job needs to copy its own output.
+
+- **A host that asks too often gets refused, not rewarded.** There are limits on
+  how many reads a grant is worth, how close together they may come, and how
+  often you can be prompted at all. Exceeding the pacing limit refuses that one
+  request and leaves your grant alone — the settings are in *Remote clipboard →
+  Limits*, along with a ceiling on payload size (64 MB) and a cap on how often a
+  server may overwrite your clipboard (10/second).
+
+- **You can see when the clipboard is being used.** The title bar shows a
+  clipboard icon with an arrow — up when data left you, down when the host put
+  something in — and on Windows 11 the window frame is tinted, amber for a read
+  and blue for a write. A standing permission is shown at the end of the title in
+  brackets, greyed with a pause mark while it is suspended. Tray notifications
+  cover refusals and oversized payloads. All of it is in *Remote clipboard →
+  Notices*.
+
+- **KiTTY answers the kitty terminal's clipboard protocol (OSC 5522) as well.**
+  Unlike OSC 52 it can say who is asking, so a program you have approved once is
+  not asked about again while that lasts, and it has real error codes instead of
+  silence. Reads are served; writes answer "not implemented" so an application
+  falls back to OSC 52.
+
+- **far2l clipboard payloads over about 2 KB no longer vanish.** Anything larger
+  was silently truncated and then dropped, with no error at either end. Verified
+  to 80 KB.
+
+- **The clipboard settings have their own panels.** They had outgrown *Window →
+  Selection*, which was showing labels cut off at the edge. They are now under
+  *Window → Selection → Remote clipboard*, split into permissions, *Limits* and
+  *Notices*.
+
+### Fixes
+
+- **The login script never ran.** A session's login script — the stored
+  expect/send pairs that answer a login prompt for you — has not executed at any
+  point in the 0.84 line. The settings saved, the interface was present, and
+  nothing about it looked wrong; what the port had lost was the step that arms it
+  before a connection. It now runs on connect, on **Restart Session** and on every
+  automatic reconnect. Inherited from classic KiTTY.
+
+- **The login script is readable and editable again.** *Connection → Data* showed
+  its raw stored form in a single-line box, where it could not be read and where
+  typing produced a value nothing could open. It is now a multiline editor with
+  one entry per line, plus a **Load from file** button. A file picker beside it
+  was writing to the *rutty* setting instead, silently changing a different
+  feature; it is gone.
+
+- **A saved login script is protected at rest**, the same way the password stored
+  beside it is.
+
+- **Save no longer replaces a session you never opened.** Clicking a name in the
+  session list only fills in the name — it does not load that session — so
+  pressing **Save** afterwards overwrote it with whatever was in the dialog:
+  host, port, protocol and all. KiTTY now asks first, defaulting to **No**, and
+  only when the session exists and was not the one you loaded.
+
+- **Long settings are no longer truncated**, and the buffer they are read back
+  into grew to match.
+
+- **The restricted-ACL option says when it is on** — and is now applied in the
+  places it was being skipped.
+
+- **"Save settings on exit" and the AltGr option do what they say.**
+
+- **Title placeholders and a fixed window position behave.** The pinned position
+  is stored the way Windows actually applies it.
+
+- **The launcher's update notice does something when clicked.**
+
+### Removed
+
+- **KiTTY no longer writes encrypted `.ktx` configuration files.** They were
+  encrypted under a key compiled into every copy of KiTTY, so anyone with the
+  program could read them — the protection was apparent rather than real. Reading
+  them still works, so existing files and imports are unaffected, and anyone who
+  used the feature is told once, with a dialog, what to do instead. The
+  **Shift+F12 / Shift+F11** scramble shortcuts are gone for the same reason.
+
+- **Five bookkeeping values are no longer written to the registry.** Nothing ever
+  read them.
+
+- **An installer action that never worked has been removed.** It was meant to
+  stop Windows reopening your KiTTY windows after a background upgrade, but it
+  ran too late in the install to have any effect. Deployers who want that can
+  pass `MSIDISABLERMRESTART=1` on the `msiexec` command line, where it does work.
+
+### Other
+
+- **A session can hide its own window buttons** — system menu, Close, Minimize,
+  Maximize — for kiosk and embedded use.
+
+- **KiTTY explains why it still asks for the master password** after you switch
+  the feature off.
+
 ## 0.84.1.67-beta — 2026-08-01
 
 - **A disconnected window still says which connection it was.** When a session

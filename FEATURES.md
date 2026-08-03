@@ -62,7 +62,7 @@ one is available.
   - [New command-line options](#new-command-line-options)
   - [Non-blocking connection errors](#non-blocking-connection-errors)
   - [Run the clipboard as a command](#run-the-clipboard-as-a-command)
-  - [Remote clipboard writes (OSC 52)](#remote-clipboard-writes-osc-52)
+  - [The remote clipboard (OSC 52, OSC 5522, far2l)](#the-remote-clipboard-osc-52-osc-5522-far2l)
   - [In-app updater (Check for updates)](#in-app-updater-check-for-updates)
 - **Bonus**
   - [Hidden text editor](#hidden-text-editor)
@@ -135,7 +135,11 @@ For favourite sessions, you can assign a **global hotkey** in the session's **Wi
 
 KiTTY can automatically respond to a server's login prompts using a simple challenge-and-response script. You write a plain text file that alternates lines: an expected piece of text the server prints (such as `login:` or `password:`), followed by the text KiTTY should send in reply. This is handy for automating connections to passive protocols like telnet, where you can have your username and password sent for you. Note that it cannot handle SSH authentication, since SSH builds authentication into the protocol itself rather than exchanging plain prompts.
 
-**How to enable:** Configuration > **Connection > Data**: set *Login script file* / *Login script content*, or launch with **`kitty.exe -loginscript <file>`**. The script's expect/answer lines auto-respond to the server's login prompts.
+The script is stored with the session and protected at rest, the same way a stored password is, but the configuration box shows and edits it in the clear: one entry per line, expected text and reply alternating.
+
+**How to enable:** Configuration > **Connection > Data**, *Login script*: type the lines directly, or use **Load from file** to read an existing script in. You can also launch with **`kitty.exe -loginscript <file>`**. It runs on connect, on **Restart Session**, and on every automatic reconnect.
+
+⚠️ This and the **rutty** scripting under *Session → Scripting* both watch what the server sends. If you configure both, KiTTY warns you and runs the login script first; prefer one or the other per session.
 
 (no screenshot)
 
@@ -540,13 +544,25 @@ KiTTY can run the current Windows clipboard contents as a local command with the
 
 (no screenshot)
 
-### Remote clipboard writes (OSC 52)
+### The remote clipboard (OSC 52, OSC 5522, far2l)
 
-A program on the remote host — `tmux`, `vim`, `nvim`, or anything that emits the standard **OSC 52** sequence — can put text straight onto your Windows clipboard, so yanking in a remote editor gives you something you can paste locally without selecting it with the mouse first. Only **text** travels this way; the sequence carries nothing else, so images and other clipboard formats are unaffected.
+A program on the remote host — `tmux`, `vim`, `nvim`, or anything that emits the standard **OSC 52** sequence — can put text straight onto your Windows clipboard, so yanking in a remote editor gives you something you can paste locally without selecting it with the mouse first. Only **text** travels this way; the sequence carries nothing else, so images and other clipboard formats are unaffected. A payload that arrives truncated or malformed is refused whole rather than pasted in part.
 
-Because a remote host writing your clipboard changes what you paste next, KiTTY gates it: **Deny**, **Allow**, or **Ask**, which prompts once and remembers your answer for the rest of that session. The **read** direction — where the host asks KiTTY to send *your* clipboard back to it — is deliberately **not implemented and cannot be switched on**; that is the exfiltration risk for which upstream PuTTY omits OSC 52 entirely. A payload that arrives truncated or malformed is refused whole rather than pasted in part.
+**Writes are allowed by default**, as in every comparable terminal: this direction changes what you paste next but cannot disclose anything to the host. **Deny**, **Allow** or **Ask** per session.
 
-**How to enable:** on by default (**Allow**), as in every comparable terminal — the write direction cannot disclose anything to the host, so it is not worth an interruption. Change it per session in **Window → Selection**, *Remote clipboard writes (OSC 52)*: **Deny** if you would rather no host touched your clipboard, or **Ask** to be prompted once per session.
+**Reads are the other direction, and are treated very differently.** Here the host asks KiTTY to send *your* clipboard back to it — the exfiltration risk for which upstream PuTTY omits OSC 52 altogether. A clipboard holds a password often enough to matter, and the host chooses the moment it asks, so reads default to **Deny** and there is deliberately **no Allow setting**. A read can be permitted only by answering the prompt, which shows how much text would be sent and the first few characters of it, and which offers to allow that one request, the next few minutes, a number of requests, or the rest of the session. **Deny** is the default button, the narrowest option is pre-selected, and no permission to read is ever written to disk.
+
+Three protections apply to every clipboard protocol at once:
+
+- **Focus.** Nothing leaves the window while you are working somewhere else. An existing permission is *suspended*, not cancelled, and resumes without asking again when you return.
+- **Limits.** How many reads a grant is worth, how close together they may come, how often you can be prompted, how large a payload may be (64 MB), and how often a server may overwrite your clipboard (10/second). A host that asks faster than the pacing limit has that request refused — it does not cost you the permission you gave.
+- **Visibility.** The title bar shows a clipboard icon with an arrow — up when data left you, down when the host put something in — and on Windows 11 the frame is tinted, amber for a read and blue for a write. A standing permission appears at the end of the title in brackets. Tray notifications cover refusals and oversized payloads.
+
+**KiTTY also answers the kitty terminal's clipboard protocol, OSC 5522.** Unlike OSC 52 it can identify the program asking, so one you have approved is not asked about again while that grant lasts, and it reports real error codes instead of silence. Reads use the same permission and the same limits — one permission reachable two ways, not two settings. Writes answer *not implemented*, so an application falls back to OSC 52 for text.
+
+**A remote `far2l` session shares the clipboard both ways** on its own protocol, under the same focus rule and the same size ceiling.
+
+**How to enable:** **Window → Selection → Remote clipboard** for the three permissions and the focus rule; **→ Limits** for the numbers; **→ Notices** for the title and tray markers.
 
 (no screenshot)
 
