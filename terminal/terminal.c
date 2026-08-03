@@ -4819,6 +4819,7 @@ static void osc5522_process(Terminal *term)
     char *meta, *payload = NULL;
     size_t payload_len = 0;
     char type[32];
+    char idpart[40] = "";
     char *sep;
 
     /* osc_string holds "<metadata>" or "<metadata>;<payload>". */
@@ -4841,6 +4842,29 @@ static void osc5522_process(Terminal *term)
     if (!osc5522_meta(meta, "type", type, sizeof(type)))
         return;
 
+    /*
+     * Echo the request id on EVERY reply this function sends, not only on the
+     * ones osc5522_read() builds.
+     *
+     * The id is how a client matches an answer to a question, and it may have
+     * several in flight. The ENOSYS and EBUSY replies below were sending
+     * "type=write:status=ENOSYS" with no id at all, so a pipelining client could
+     * see the refusal but not learn WHICH request had been refused. Caught by a
+     * test asking for "id=4:status=ENOSYS" and getting the status without it.
+     */
+    {
+        char id[32];
+        if (osc5522_meta(meta, "id", id, sizeof(id)) && *id) {
+            const char *q;
+            for (q = id; *q; q++)      /* plain token only; never echo junk back */
+                if (!((*q >= '0' && *q <= '9') || (*q >= 'a' && *q <= 'z') ||
+                      (*q >= 'A' && *q <= 'Z') || *q == '-' || *q == '_'))
+                    break;
+            if (!*q)
+                snprintf(idpart, sizeof(idpart), ":id=%s", id);
+        }
+    }
+
     if (!strcmp(type, "read")) {
         /*
          * A read that did not fit is refused whole - same rule as OSC 52, since
@@ -4854,7 +4878,9 @@ static void osc5522_process(Terminal *term)
                 term, "A clipboard request (OSC 5522)",
                 conf_get_int(term->conf, CONF_osc52_clipboard_read) ==
                 OSC52_READ_ASK);
-            osc5522_send(term, "type=read:status=EBUSY", NULL, 0);
+            char ebusy[64];
+            snprintf(ebusy, sizeof(ebusy), "type=read%s:status=EBUSY", idpart);
+            osc5522_send(term, ebusy, NULL, 0);
             return;
         }
         osc5522_read(term, meta, payload, payload_len);
@@ -4864,20 +4890,20 @@ static void osc5522_process(Terminal *term)
         !strcmp(type, "walias")) {
         /* Not built. ENOSYS is the honest answer and lets a well-behaved
          * application fall back to OSC 52, which does carry text writes. */
-        char reply[64];
-        snprintf(reply, sizeof(reply), "type=%s:status=ENOSYS", type);
+        char reply[112];
+        snprintf(reply, sizeof(reply), "type=%s%s:status=ENOSYS", type, idpart);
         osc5522_send(term, reply, NULL, 0);
         return;
     }
     /* A type we do not implement at all. ENOSYS, reported against the type the
      * host actually named, so nothing is invented. */
     {
-        char reply[64];
+        char reply[112];
         const char *q;
         for (q = type; *q; q++)
             if (!((*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z')))
                 return;                /* not a plausible type name: say nothing */
-        snprintf(reply, sizeof(reply), "type=%s:status=ENOSYS", type);
+        snprintf(reply, sizeof(reply), "type=%s%s:status=ENOSYS", type, idpart);
         osc5522_send(term, reply, NULL, 0);
     }
 }
@@ -5057,9 +5083,18 @@ static void do_osc(Terminal *term)
                 term->far2l_ext = 1;
                 /* seed clipboard permission from config for this session */
                 term->clip_allowed = conf_get_int(term->conf, CONF_shared_clipboard);
-                if (term->ldisc) {
+                {
+                    /* Through the same seam as every other far2l and OSC 52
+                     * reply, NOT ldisc_send(): ldisc feeds the local line
+                     * editor, so with local line editing on (the default for
+                     * Raw) this acknowledgement is appended to whatever the user
+                     * is typing and leaves only when they press Return. far2l
+                     * would sit waiting for a handshake that had already been
+                     * "sent". Exactly the bug fixed in the clipboard replies -
+                     * this one survived because it is the one far2l message that
+                     * was not going through the seam. */
                     static const char ok[] = "\x1b_far2lok\x07";
-                    ldisc_send(term->ldisc, ok, (int)(sizeof(ok) - 1), false);
+                    kitty_osc52_send_raw(term, ok, sizeof(ok) - 1);
                 }
             } else if (arg[0] == '0') {
                 term->far2l_ext = 0;
