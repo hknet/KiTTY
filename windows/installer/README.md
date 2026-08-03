@@ -37,17 +37,17 @@ handle is never replayed.
 |---|---|---|
 | Full UI (`msiexec /i`, and the in-app updater) | yes, defaulting to *"close and restart"* | closed by RM, then reopened and reconnected |
 | Silent (`/qn`) — user or winget | none; Windows always uses RM at silent UI level | closed by RM, then reopened and reconnected |
-| Silent, **SYSTEM-initiated** (SCCM, Intune, a SYSTEM scheduled task) | none | closed by RM, **not** reopened |
+| Silent, **SYSTEM-initiated** (SCCM, Intune, a SYSTEM scheduled task) | none | closed by RM, then reopened — but into no desktop |
 
-The last row is deliberate: a SYSTEM-context deployment has no interactive
-desktop to relaunch into, so the package sets `MSIDISABLERMRESTART=1` when
-`UserSID` is `S-1-5-18`. Only the *restart* leg is suppressed — the shutdown
-still happens, so the upgrade itself is unaffected. An elevated but
-user-initiated install still reports the real user's SID and therefore still
-reopens its windows.
+The package used to try to suppress the restart for that last case by setting
+`MSIDISABLERMRESTART=1` when `UserSID` was `S-1-5-18`. **That was removed in
+2026-08 because it never worked:** the property only has an effect if it is set
+*before* the Restart Manager session opens, and the action was sequenced well
+after it. It is not a loss in practice — in a SYSTEM context there is no desktop
+for the relaunched windows to appear on.
 
-To override either way, set the standard Windows Installer property on the
-command line:
+**Deploying in SYSTEM context? Pass the property yourself** — on the command
+line it is set early enough and demonstrably works:
 
 ```
 msiexec /i KiTTY-<ver>-x64-system.msi /qn MSIDISABLERMRESTART=1   # never reopen
