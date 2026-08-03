@@ -95,6 +95,11 @@ int kitty_autopw_warn(void);   /* kitty_win.c */
 char *kitty_loginscript_to_text(const char *stored);     /* kitty.c */
 char *kitty_loginscript_from_text(const char *text);     /* kitty.c */
 
+/* The login-script box, captured at build time so the "Load from file..." button
+ * beside it can fill it in. Same trick as g_autopw_ctrl below. */
+static dlgcontrol *g_loginscript_ctrl = NULL;
+int OpenFileName(HWND hFrame, char *filename, char *Title, char *Filter); /* kitty_win.c */
+
 static void kitty_loginscript_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                       void *data, int event)
 {
@@ -110,6 +115,70 @@ static void kitty_loginscript_handler(dlgcontrol *ctrl, dlgparam *dlg,
         conf_set_str(conf, CONF_scriptfilecontent, stored ? stored : "");
         if (stored) sfree(stored);
         if (txt) { smemclr(txt, strlen(txt)); sfree(txt); }
+    }
+}
+
+/*
+ * "Load from file..." beside the login-script box.
+ *
+ * Classic KiTTY had a file picker that read the script, inlined it into the
+ * session and then cleared itself. This port had bound that picker to the wrong
+ * setting entirely - CONF_scriptfile, which belongs to the rutty scripting - so
+ * it silently changed a different feature and never loaded anything. This
+ * replaces it honestly: read the file INTO THE BOX, and touch nothing else.
+ *
+ * It deliberately does not arm the running session or write CONF_scriptfile. The
+ * file is a source of text, nothing more; what is saved with the session is
+ * whatever ends up in the box, which the user can still read and edit before
+ * saving. Setting the box fires the normal VALCHANGE, so the value is protected
+ * and stored by the ordinary path.
+ */
+static void kitty_loginscript_load_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                           void *data, int event)
+{
+    if (event != EVENT_ACTION)
+        return;
+    if (!g_loginscript_ctrl) {
+        dlg_error_msg(dlg, "The login script box is not available.");
+        return;
+    }
+    {
+        char path[4096];
+        path[0] = '\0';
+        if (!OpenFileName(GetActiveWindow(), path,
+                          "Select a login script file",
+                          "Script files (*.txt;*.ksc)|*.txt;*.ksc|All files (*.*)|*.*|"))
+            return;                       /* cancelled */
+        {
+            FILE *fp = fopen(path, "rb");
+            strbuf *sb;
+            char line[4096];
+            if (!fp) {
+                dlg_error_msg(dlg, "That file could not be opened.");
+                return;
+            }
+            sb = strbuf_new_nm();
+            while (fgets(line, sizeof(line), fp)) {
+                size_t n = strlen(line);
+                while (n > 0 && (line[n-1] == '\n' || line[n-1] == '\r'))
+                    line[--n] = '\0';
+                /* Blank lines are dropped here as well as on the way to storage:
+                 * an empty wait-for entry matches ANY output and would fire the
+                 * next send immediately. Better to never show one. */
+                if (n == 0)
+                    continue;
+                if (sb->len)
+                    put_dataz(sb, "\r\n");
+                put_dataz(sb, line);
+            }
+            fclose(fp);
+            {
+                char *txt = strbuf_to_str(sb);
+                dlg_editbox_set(g_loginscript_ctrl, dlg, txt);
+                smemclr(txt, strlen(txt));
+                sfree(txt);
+            }
+        }
     }
 }
 
@@ -5062,11 +5131,19 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
                  * the login script, which nothing ever read it for. Load a file
                  * with -loginscript; edit it here afterwards.
                  */
-                ctrl_editbox_multiline(s, "Login script (wait-for and send-text,"
-                                       " one per line):", NO_SHORTCUT, 8, false,
-                                       HELPCTX(no_help),
-                                       kitty_loginscript_handler,
-                                       I(CONF_scriptfilecontent), ED_STR);
+                g_loginscript_ctrl =
+                    ctrl_editbox_multiline(s, "Login script (wait-for and"
+                                           " send-text, one per line):",
+                                           NO_SHORTCUT, 8, false,
+                                           HELPCTX(no_help),
+                                           kitty_loginscript_handler,
+                                           I(CONF_scriptfilecontent), ED_STR);
+                /* Replaces classic's picker, which read a file into the session
+                 * and cleared itself. This only fills the box - what gets saved
+                 * is what you can see and edit above. */
+                ctrl_pushbutton(s, "Load script from file...", NO_SHORTCUT,
+                                HELPCTX(no_help),
+                                kitty_loginscript_load_handler, I(0));
             }
 #endif
 
