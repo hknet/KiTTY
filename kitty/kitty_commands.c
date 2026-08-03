@@ -287,13 +287,14 @@ static int cmd_loadinitscript( HWND hwnd, char * arg ) {
 	    conf_get_int( conf, CONF_script_mode ) == 1 ) {
 		Filename *sf = conf_get_filename( conf, CONF_scriptfile ) ;
 		if( sf && filename_to_str(sf)[0] )
-			kitty_notice_box( hwnd, "KiTTY - two scripts are now active",
-				"A login script has been loaded while a rutty script is also "
-				"configured for this session.\n\n"
-				"They are separate features and neither knows about the other. "
-				"Both watch the same output from the host and both can send, "
-				"with nothing sequencing them, so each may react to output the "
-				"other caused.\n\n"
+			kitty_notice_box( hwnd, "KiTTY - a rutty script is also configured",
+				"A login script has just been loaded, and this session also has "
+				"a rutty script.\n\n"
+				"They are separate features. At CONNECT they are sequenced - the "
+				"login script gets you in, then the rutty script sends its file. "
+				"Loading one by hand mid-session skips that ordering, so if the "
+				"rutty script is already running the two will now be watching "
+				"the same output and both sending.\n\n"
 				"You can see them here:\n"
 				"    Session > Scripting        - the rutty script file\n"
 				"    Connection > Data          - the login script\n\n"

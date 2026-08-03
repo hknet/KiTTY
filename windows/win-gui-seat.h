@@ -82,6 +82,14 @@ struct WinGuiSeat {
                               * a FATAL error; close_session shows a warning-glyph
                               * titlebar marker. Reset per connection in start_backend. */
     bool reconfiguring;
+    int script_defer_ticks;  /* KiTTY: how many times the rutty script (Session >
+                              * Scripting) has stood aside for a login script
+                              * (Connection > Data) that is still running. The two
+                              * engines both watch the same incoming data and both
+                              * send, so they are sequenced rather than allowed to
+                              * race; this bounds the wait so a login script whose
+                              * prompt never arrives cannot hold rutty off for
+                              * ever. */
     bool autopw_tried;       /* KiTTY auto-login: the stored CONF_password has been
                               * auto-answered once on THIS connection. Prevents
                               * re-sending a rejected password on every server

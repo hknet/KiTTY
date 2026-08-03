@@ -724,6 +724,7 @@ static void kitty_apply_close_button(WinGuiSeat *wgs, HWND hwnd)
  * (CLIP_BALLOON_*), and re-applying the window's clipboard markers/tint. */
 int kitty_clipboard_balloon_action(void);
 void kitty_osc52_state_changed(Terminal *term);
+void kitty_notice_box(HWND owner, const char *caption, const char *text); /* kitty_win.c */
 
 /*
  * KiTTY: the clipboard markers on the window title, as icons.
@@ -1340,6 +1341,24 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         ReadInitScript(kitty_cli_loginscript);
         sfree(kitty_cli_loginscript);
         kitty_cli_loginscript = NULL;
+    } else {
+        /*
+         * Arm the session's stored login script, exactly as classic KiTTY did
+         * (ReadInitScript(NULL) at this point in its own window.c).
+         *
+         * This wiring was LOST in the forward-port to 0.84: the driver that scans
+         * incoming data was re-added, but nothing ever loaded the stored script
+         * into ScriptFileContent, so for the life of 0.84 a saved script has been
+         * written, shown and protected - and then silently never run unless
+         * somebody typed /loadinitscript. Classic armed it here, on reconnect, and
+         * when the file was picked in the config box.
+         *
+         * Restored without a gate, deliberately. It is our regression, so the fix
+         * is to do what the user already configured and classic already did;
+         * making them re-approve their own working setup would charge them for
+         * our mistake. ReadInitScript self-skips when there is nothing stored.
+         */
+        ReadInitScript(NULL);
     }
     kitty_apply_transparency(wgs);
     /* kitty_apply_window_pos is deferred until AFTER the startup sizing/clamp
@@ -1394,27 +1413,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     if (conf_get_int(wgs->conf, CONF_script_mode) == 1) {
         Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
         if (sf && filename_to_str(sf)[0]) {
+            /* If a login script is also set, the timer handler stands aside
+             * until it has finished rather than racing it - see TIMER_SCRIPT. */
+            wgs->script_defer_ticks = 0;
             SetTimer(wgs->term_hwnd, TIMER_SCRIPT, 1500, NULL);
-            /*
-             * KiTTY has TWO independent scripting features and they do not know
-             * about each other: rutty steps through a file line by line, and the
-             * login script answers prompts as they appear. Both observe the same
-             * incoming data in win_seat_output and both can send, with nothing
-             * sequencing them - so with both running, each is reacting to output
-             * the other caused.
-             *
-             * Not blocked, because either might be what the user meant. Named in
-             * the Event Log, with BOTH panels, because the whole difficulty is
-             * that they live in different places and each looks like "the"
-             * scripting feature.
-             */
-            if (ScriptFileContent != NULL)
-                lp_eventlog(&wgs->logpolicy,
-                    "Two scripts are active at once: the rutty script "
-                    "(Session > Scripting) and the login script "
-                    "(Connection > Data). They observe the same output and both "
-                    "send, with nothing sequencing them - if the automation "
-                    "misbehaves, that is the first thing to check.");
         }
     }
 #endif
@@ -3552,6 +3554,37 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
         if ((UINT_PTR)wParam == TIMER_SCRIPT) {
             KillTimer(hwnd, TIMER_SCRIPT);
+            /*
+             * KiTTY has two scripting engines and they must not run at once.
+             * Both watch the same incoming data in win_seat_output and both
+             * send, with nothing between them, so each would end up reacting to
+             * output the other caused.
+             *
+             * They are SEQUENCED rather than one being switched off, because the
+             * two do different jobs and the order is obvious: the login script
+             * answers the prompts that get you in, and the rutty script sends a
+             * file once you are in. So rutty waits while the login script still
+             * has entries left, and starts when it has run out.
+             *
+             * Bounded, because a login script whose prompt never arrives would
+             * otherwise hold rutty off for ever. After the cap, rutty starts
+             * anyway and says so - a script that was going to be sent should not
+             * be silently dropped because another one is stuck.
+             */
+            if (ScriptFileContent != NULL && ScriptFileContent[0]) {
+                if (++wgs->script_defer_ticks <= 40) {          /* ~60s */
+                    if (wgs->script_defer_ticks == 1)
+                        lp_eventlog(&wgs->logpolicy,
+                            "Rutty script (Session > Scripting) is waiting for "
+                            "the login script (Connection > Data) to finish");
+                    SetTimer(hwnd, TIMER_SCRIPT, 1500, NULL);
+                    return 0;
+                }
+                lp_eventlog(&wgs->logpolicy,
+                    "Login script (Connection > Data) has not finished; starting "
+                    "the rutty script (Session > Scripting) anyway - if the "
+                    "automation misbehaves, that is why");
+            }
             if (wgs->backend && kitty_script_enabled()) {
                 Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
                 kitty_script_send_file(wgs->conf, wgs->backend, sf);
