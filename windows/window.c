@@ -585,6 +585,30 @@ static void start_backend(WinGuiSeat *wgs)
     kitty_proxy_select(wgs->conf);
 #endif
 
+#ifdef MOD_PERSO
+    /*
+     * KiTTY: (re-)arm the session's login script for the connection about to be
+     * made. ReadInitScript self-skips when nothing is stored.
+     *
+     * Here rather than at session setup, because ManageInitScript CONSUMES entries
+     * as they match: once a script has run it is spent, so a session that drops
+     * and reconnects would log in the first time and then sit at a login prompt
+     * for ever - precisely the case auto-reconnect exists for. Classic KiTTY
+     * re-armed it in both of its reconnect paths for this reason.
+     *
+     * start_backend is the one funnel for initial connect, Restart Session and
+     * MOD_RECONNECT auto-reconnect alike (see the MOD_PROXY note above), so one
+     * call covers what classic needed three for.
+     *
+     * Re-reading from the Conf is what makes this work: ManageInitScript mutates
+     * only the runtime copy, so CONF_scriptfilecontent still holds the whole
+     * script. It is also why the -loginscript command line stays safe - that path
+     * writes what it loaded into the Conf, so re-arming reproduces it rather than
+     * overwriting it.
+     */
+    ReadInitScript(NULL);
+#endif
+
     seat_set_trust_status(&wgs->seat, true);
     error = backend_init(vt, &wgs->seat, &wgs->backend, wgs->logctx, wgs->conf,
                          conf_get_str(wgs->conf, CONF_host),
@@ -8164,15 +8188,34 @@ static size_t win_seat_output(Seat *seat, SeatOutputType type,
      * interception point as ZModem; no terminal.c edits. */
     if (kitty_script_active() && type == SEAT_OUTPUT_STDOUT)
         kitty_script_remote(data, len);
-    /* KiTTY automatic logon script: scan incoming server output for the
-     * challenge string and auto-send the configured reply. The driving call
-     * lived in 0.76b term_data and was dropped during the forward-port; it is
-     * re-added here at the same OBSERVE point (data still flows on to term_data
-     * below). ManageInitScript self-skips when ScriptFileContent is NULL. */
-    if (!GetPuttyFlag() && ScriptFileContent != NULL && type == SEAT_OUTPUT_STDOUT)
-        ManageInitScript(data, len);
 #endif
-    return term_data(wgs->term, data, len);
+    {
+        size_t consumed = term_data(wgs->term, data, len);
+#ifdef MOD_PERSO
+        /*
+         * KiTTY automatic logon script: scan incoming server output for the
+         * challenge string and auto-send the configured reply. The driving call
+         * lived in 0.76b term_data and was dropped during the forward-port; it is
+         * re-added here as an OBSERVE-only hook, since this port does not edit
+         * terminal.c. ManageInitScript self-skips when ScriptFileContent is NULL.
+         *
+         * AFTER term_data, not before, and it matters on screen. Running it first
+         * meant the script matched the prompt and echoed its reply BEFORE the
+         * prompt itself had been drawn, so a login read back-to-front:
+         *
+         *     testuser          <- the reply, echoed
+         *     login: hunter2    <- the prompt that caused it, then the next reply
+         *     Password:         <- drawn last
+         *
+         * The script sees identical bytes either way, so this costs nothing and
+         * restores the order classic KiTTY showed when it drove this from inside
+         * term_data.
+         */
+        if (!GetPuttyFlag() && ScriptFileContent != NULL && type == SEAT_OUTPUT_STDOUT)
+            ManageInitScript(data, len);
+#endif
+        return consumed;
+    }
 }
 
 static void wintw_unthrottle(TermWin *tw, size_t bufsize)
