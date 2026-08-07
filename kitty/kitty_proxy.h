@@ -21,6 +21,15 @@ int kitty_export_proxies_to_dir( const char *dir ) ;   /* Piece 7 */
 int kitty_import_proxies_from_dir( const char *dir, int overwrite, int *skippedOut ) ;
 int kitty_proxy_name_exists( const char *name ) ;
 int kitty_proxies_dir_collisions( const char *dir ) ;
+/* How a named proxy's HOST must be read. Stored per definition as ProxyHostIs;
+ * absent means "follow kitty.ini [KiTTY] namedproxy", which itself defaults to
+ * the saved-session-first behaviour PuTTY has always had. */
+#define KITTY_PROXYHOST_FOLLOW   (-1)
+#define KITTY_PROXYHOST_SESSION  0    /* may be a saved session (the old way) */
+#define KITTY_PROXYHOST_HOSTNAME 1    /* a hostname, full stop */
+int kitty_proxy_host_kind( const char *name ) ;   /* one of the three above */
+int kitty_named_proxy_default_hostname( void ) ;  /* the global, 0/1 */
+
 int kitty_proxy_edit_dialog( HWND owner ) ;   /* kitty_proxy_gui.c */
 int kitty_proxy_pick_dialog( HWND owner, char *out, int len ) ;   /* kitty_proxy_gui.c */
 void SetProxySelectionFlag( const int flag ) ;

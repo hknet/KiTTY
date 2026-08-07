@@ -31,6 +31,7 @@ one is available.
   - [kageant — reorder loaded keys](#kageant--reorder-loaded-keys)
   - [Port knocking](#port-knocking)
   - [Proxy choice](#proxy-choice)
+  - [Workplace proxy mode](#workplace-proxy-mode)
   - [SSH handler (URL/OS integration)](#ssh-handler-urlos-integration)
 - **Technical features**
   - [Automatic command](#automatic-command)
@@ -303,7 +304,7 @@ A named proxy can also be an **SSH jump host**: pick one of the *SSH jump host* 
 
 **Where the jump host's settings come from.** Unlike OpenSSH's `ProxyJump`, the jump connection does *not* inherit the target session's settings — KiTTY loads a separate configuration for it, and which one depends on how the proxy was defined:
 
-- **A named proxy's Host is always a hostname.** The jump uses your **Default Settings** with the proxy's own host, port, username and password applied on top. (It is deliberately *not* looked up as a saved session: a jump host that happened to share a name with a saved session used to drag that session's own proxy in with it, so an SSH jump silently ran through an unrelated HTTP proxy.)
+- **A named proxy says what its Name indicates** — the *.. this is ..* setting in the editor, beside the Name/IP field. *A hostname or IP-address* uses your **Default Settings** with the proxy's own host, port, username and password applied on top. *Possibly the name of a saved session* keeps PuTTY's rule, where a Host matching a saved session loads that entire session as the jump configuration. A proxy that says neither follows `[KiTTY] namedproxy=` in kitty.ini, which is `sessionorhostname` — PuTTY's behaviour, and the default — unless you set it to `hostname`. The choice exists because the old rule is invisible when it fires: a jump host that happens to share a name with a saved session drags that session's own proxy in with it, so an SSH jump can silently run through an unrelated HTTP proxy. The Event Log names which reading was used on every connection.
 - **A host typed by hand on the Connection/Proxy panel** keeps the upstream PuTTY behaviour: if it matches the name of one of your **saved sessions**, that whole session is used — its private-key file, username, port, agent setting and its own proxy — otherwise it is a bare hostname and Default Settings apply.
 
 Either way, agent authentication to the jump host follows the *Attempt authentication using kageant (Pageant)* checkbox (Connection → SSH → Auth) of *that* configuration, not of the target session. So if the jump host needs a specific private key rather than an agent key, save a session for it and type that session's name as the proxy host by hand.
@@ -315,6 +316,22 @@ Either way, agent authentication to the jump host follows the *Attempt authentic
 **How to enable:** The dropdown appears automatically once you have any named proxy defined — click **Edit** beside it (which opens the editor on the definition currently selected) or the button on the Connection/Proxy panel to add one. Pick it from the Session panel to override the next connection only, or use **Load into this window** on the Connection/Proxy panel to make it part of the session; that one asks for confirmation first, naming everything it replaces (including the username and password), and warns in red when the session has *Save settings on exit* enabled and the change would therefore persist without an explicit Save. To force the dropdown always on or off, set `[ConfigBox]` `proxyselection=yes` (or `no`) in kitty.ini; the default is `auto`.
 
 ![Proxy choice](docs/features/img/config_proxychoice.jpg)
+
+### Workplace proxy mode
+
+Some days the proxy is not a property of any session — it is a fact about where you are sitting. At a customer site, on a VPN, or in a hotel, *everything* has to go through one local proxy, and editing every session to say so (and then remembering to undo it) is the wrong shape of work.
+
+Workplace proxy mode is that switch. Pick one of your named proxies, say how long for, and until it is switched off **every** connection KiTTY makes goes through it — from the configuration box, the launcher, a desktop shortcut, an `ssh://` link or an auto-reconnect — whatever each session stores. **No session is modified**, so there is nothing to undo afterwards.
+
+**Switching it on and off.** *Connection → Proxy* has the switch at the foot of the panel, set apart because it is not a setting of the session in front of you: choose the proxy, choose *Switch off after* (1, 2, 4, 8 or 12 hours, or only when the launcher exits) and press **Switch on**. The launcher's tray menu does the same in one click, using the proxy and duration you chose last. Either place can switch it off again.
+
+**How it ends.** The mode is held by the session launcher: switch it off yourself, let the time run out, or stop the launcher — logging off, shutting down or killing it all end the mode, and nothing is left behind to surprise you tomorrow. A launcher that KiTTY started only to hold the mode closes again when the mode ends, unless you set `[Launcher] exitwithworkplace=no`; a launcher you started yourself always stays.
+
+**Seeing it.** A window whose connection really went through the proxy shows a dark green frame and `⇄ workplace proxy` in its title, for as long as that connection lives. This describes the *connection*, not the mode: a window that was already open when you switched the mode on is not going through it and says nothing, and one that is keeps saying so even after the mode ends, because a connection that is already established cannot be re-routed. The launcher's tooltip names the proxy and the time left, and a notice near the clock says when the mode goes on, off, or times out — once each, never on every start. Only the timeout notice offers to switch it back on; if you switched it off yourself, KiTTY assumes you meant it.
+
+**When the proxy stops answering** — usually because you have left the place it belongs to — the failed connection offers to take you to *Connection → Proxy*, where you can switch the mode off or point it somewhere else. It does not switch anything off for you.
+
+**How to enable:** define at least one named proxy (above), then *Connection → Proxy* → **Switch on**, or the launcher's tray menu. The duration notice can be lengthened with `[Launcher] noticeseconds=` in kitty.ini.
 
 ### SSH handler (URL/OS integration)
 

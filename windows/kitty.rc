@@ -194,7 +194,7 @@ END
  * Pick a definition from the combo to edit it, or type a new name; Save writes
  * it, Delete removes it (after a confirm). The banner LTEXT warns when a stored
  * password is still plaintext (Phase B). */
-IDD_PROXYEDIT DIALOG DISCARDABLE 0, 0, 300, 304
+IDD_PROXYEDIT DIALOG DISCARDABLE 0, 0, 300, 322
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY named proxy definitions"
 FONT 8, "MS Shell Dlg"
@@ -205,32 +205,36 @@ BEGIN
     LTEXT           "Type:", -1, 17, 50, 25, 8
     COMBOBOX        IDC_PXE_TYPE, 48, 48, 160, 130, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
 
-    GROUPBOX        "Proxy / jump host", -1, 7, 75, 286, 68
-    LTEXT           "Host:", -1, 17, 90, 42, 8
+    /* The group is 18du taller than it was: the "what the Host field IS" row
+     * sits under Host/Port, and everything below it moved down to match. */
+    GROUPBOX        "Proxy / jump host / Sessionname", -1, 7, 75, 286, 86
+    LTEXT           "Name/IP:", -1, 17, 90, 42, 8
     EDITTEXT        IDC_PXE_HOST, 64, 88, 150, 12, ES_AUTOHSCROLL
     LTEXT           "Port:", -1, 222, 90, 18, 8
     EDITTEXT        IDC_PXE_PORT, 244, 88, 39, 12, ES_AUTOHSCROLL | ES_NUMBER
-    LTEXT           "Username:", -1, 17, 108, 42, 8
-    EDITTEXT        IDC_PXE_USER, 64, 106, 219, 12, ES_AUTOHSCROLL
-    LTEXT           "Password:", -1, 17, 126, 42, 8
-    EDITTEXT        IDC_PXE_PASS, 64, 124, 150, 12, ES_PASSWORD | ES_AUTOHSCROLL
-    AUTOCHECKBOX    "S&how", IDC_PXE_SHOWPW, 222, 125, 45, 10
+    LTEXT           ".. this is ..", -1, 17, 108, 44, 8
+    COMBOBOX        IDC_PXE_HOSTIS, 64, 106, 219, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Username:", -1, 17, 126, 42, 8
+    EDITTEXT        IDC_PXE_USER, 64, 124, 219, 12, ES_AUTOHSCROLL
+    LTEXT           "Password:", -1, 17, 144, 42, 8
+    EDITTEXT        IDC_PXE_PASS, 64, 142, 150, 12, ES_PASSWORD | ES_AUTOHSCROLL
+    AUTOCHECKBOX    "S&how", IDC_PXE_SHOWPW, 222, 143, 45, 10
 
-    GROUPBOX        "Options", -1, 7, 149, 286, 114
-    LTEXT           "Command to send (Telnet / Local / SSH execute-subsystem types):", -1, 17, 161, 266, 8
-    EDITTEXT        IDC_PXE_COMMAND, 17, 171, 266, 12, ES_AUTOHSCROLL
-    LTEXT           "Exclude Hosts/IPs (separate with commas or spaces):", -1, 17, 189, 266, 8
-    EDITTEXT        IDC_PXE_EXCLUDE, 17, 199, 266, 12, ES_AUTOHSCROLL
-    AUTOCHECKBOX    "Consider proxying local host connections", IDC_PXE_LOCALHOST, 17, 217, 266, 10
-    LTEXT           "DNS lookup at proxy end:", -1, 17, 233, 88, 8
-    COMBOBOX        IDC_PXE_DNS, 110, 231, 80, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Print proxy diagnostics:", -1, 17, 249, 88, 8
-    COMBOBOX        IDC_PXE_LOGTOTERM, 110, 247, 173, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "Options", -1, 7, 167, 286, 114
+    LTEXT           "Command to send (Telnet / Local / SSH execute-subsystem types):", -1, 17, 179, 266, 8
+    EDITTEXT        IDC_PXE_COMMAND, 17, 189, 266, 12, ES_AUTOHSCROLL
+    LTEXT           "Exclude Hosts/IPs (separate with commas or spaces):", -1, 17, 207, 266, 8
+    EDITTEXT        IDC_PXE_EXCLUDE, 17, 217, 266, 12, ES_AUTOHSCROLL
+    AUTOCHECKBOX    "Consider proxying local host connections", IDC_PXE_LOCALHOST, 17, 235, 266, 10
+    LTEXT           "DNS lookup at proxy end:", -1, 17, 251, 88, 8
+    COMBOBOX        IDC_PXE_DNS, 110, 249, 80, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Print proxy diagnostics:", -1, 17, 267, 88, 8
+    COMBOBOX        IDC_PXE_LOGTOTERM, 110, 265, 173, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
 
-    LTEXT           "", IDC_PXE_BANNER, 7, 267, 286, 16
-    DEFPUSHBUTTON   "&Save", IDC_PXE_SAVE, 128, 282, 52, 15
-    PUSHBUTTON      "&Delete", IDC_PXE_DELETE, 185, 282, 52, 15
-    PUSHBUTTON      "Close", IDCANCEL, 241, 282, 52, 15
+    LTEXT           "", IDC_PXE_BANNER, 7, 285, 286, 16
+    DEFPUSHBUTTON   "&Save", IDC_PXE_SAVE, 128, 300, 52, 15
+    PUSHBUTTON      "&Delete", IDC_PXE_DELETE, 185, 300, 52, 15
+    PUSHBUTTON      "Close", IDCANCEL, 241, 300, 52, 15
 END
 
 /* "Load named proxy pre-sets": pick a definition to copy into this session's own

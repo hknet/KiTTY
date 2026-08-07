@@ -465,6 +465,18 @@
 
 
 
+; namedproxy: how a NAMED PROXY's Host field is read, when the proxy itself
+; does not say (each proxy can, in the proxy editor: "That host is:").
+;   sessionorhostname  the title of a saved session first, then a hostname.
+;                      This is what PuTTY has always done, and the DEFAULT.
+;   hostname           a hostname, full stop.
+; Why you might set "hostname": with the old rule, a jump host that happens to
+; share its name with a saved session loads THAT SESSION as the jump-host
+; configuration - including whatever proxy the session itself carries - so a
+; connection can silently run through an unrelated proxy. Setting it per proxy
+; is the precise fix; this is the blanket one.
+;namedproxy=sessionorhostname
+
 [Launcher]
 
 ; reload: enable session list reload on each menu respawn

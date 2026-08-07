@@ -585,10 +585,10 @@ void kitty_osc52_notify(Terminal *term, const char *title, const char *msg,
     /*
      * Netdebug builds record every balloon that is fired, with its text, to
      * %USERPROFILE%\kitty_netdebug.log. A balloon is the one signal in this
-     * feature that no harness can observe: it is drawn by the shell, it is
-     * rate-limited, and it disappears. With this line a test knows exactly how
-     * many were fired and when, so the tester only has to say which ones they
-     * actually SAW - the difference between the two is the interesting part.
+     * feature that cannot be observed from outside the program: it is drawn by
+     * the shell, it is rate-limited, and it disappears. This line makes the
+     * fired set exact, so it can be compared with what actually appeared on
+     * screen - the difference between the two is the interesting part.
      * Never in a release build: it would write the clipboard-notice text of
      * every session to a file in the user's profile.
      */

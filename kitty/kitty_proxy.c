@@ -192,6 +192,11 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 		}
 		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyTelnetCommand", lpData, sizeof(lpData) ) ) { conf_set_str( conf, CONF_proxy_telnet_command, lpData ) ; }
 		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyLogToTerm", lpData, sizeof(lpData) ) ) { conf_set_int( conf, CONF_proxy_log_to_term, atoi(lpData) ) ; }
+		/* Absent means the proxy says nothing, so this is not read with a 0
+		 * default: 0 is an answer here. */
+		conf_set_int( conf, CONF_proxy_host_kind,
+			GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyHostIs", lpData, sizeof(lpData) )
+				? (atoi(lpData) ? 1 : 0) : -1 ) ;
 		RegCloseKey( hKey ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		char fullpath[MAX_VALUE_NAME] ;
@@ -238,6 +243,8 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 						conf_set_str( conf, CONF_proxy_telnet_command, buf2 ) ; 
 					} else if( ReadPortableValue(buffer, "ProxyLogToTerm", buf2, MAX_VALUE_NAME) ) { 
 						conf_set_int( conf, CONF_proxy_log_to_term, atoi(buf2) ) ; 
+					} else if( ReadPortableValue(buffer, "ProxyHostIs", buf2, MAX_VALUE_NAME) ) {
+						conf_set_int( conf, CONF_proxy_host_kind, atoi(buf2) ? 1 : 0 ) ;
 					}
 				}
 				fclose(fp);
@@ -299,6 +306,10 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 		RegTestOrCreate( HKEY_CURRENT_USER, sub, "ProxyPassword", pwblob ? pwblob : "" ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, sub, "ProxyTelnetCommand", conf_get_str(conf, CONF_proxy_telnet_command) ) ;
 		RegTestOrCreateDWORD( HKEY_CURRENT_USER, sub, "ProxyLogToTerm", conf_get_int(conf, CONF_proxy_log_to_term) ) ;
+		if( conf_get_int(conf, CONF_proxy_host_kind) < 0 )
+			RegDelValue( HKEY_CURRENT_USER, sub, "ProxyHostIs" ) ;   /* says nothing */
+		else
+			RegTestOrCreateDWORD( HKEY_CURRENT_USER, sub, "ProxyHostIs", conf_get_int(conf, CONF_proxy_host_kind) ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		char dir[2048], fullpath[2048], mv[4096] ;
 		char *fn = (char*)malloc(4*strlen(name)+1) ; mungestr( name, fn ) ;
@@ -320,6 +331,8 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 			WPS( "ProxyPassword", pwblob ? pwblob : "" ) ;
 			WPS( "ProxyTelnetCommand", conf_get_str(conf, CONF_proxy_telnet_command) ) ;
 			WPD( "ProxyLogToTerm", conf_get_int(conf, CONF_proxy_log_to_term) ) ;
+			if( conf_get_int(conf, CONF_proxy_host_kind) >= 0 )
+				WPD( "ProxyHostIs", conf_get_int(conf, CONF_proxy_host_kind) ) ;
 			#undef WPS
 			#undef WPD
 			fclose( fp ) ;
@@ -478,6 +491,8 @@ int kitty_export_proxies_to_dir( const char *dir ) {
 			WPS( "ProxyPassword", pwblob ? pwblob : "" ) ;
 			WPS( "ProxyTelnetCommand", conf_get_str(conf, CONF_proxy_telnet_command) ) ;
 			WPD( "ProxyLogToTerm", conf_get_int(conf, CONF_proxy_log_to_term) ) ;
+			if( conf_get_int(conf, CONF_proxy_host_kind) >= 0 )
+				WPD( "ProxyHostIs", conf_get_int(conf, CONF_proxy_host_kind) ) ;
 			#undef WPS
 			#undef WPD
 			fclose( fp ) ; count++ ;
@@ -562,7 +577,9 @@ int kitty_import_proxies_from_dir( const char *dir, int overwrite, int *skippedO
 				conf_set_str( conf, CONF_proxy_telnet_command, buf2 ) ;
 			} else if( ReadPortableValue(buffer, "ProxyLogToTerm", buf2, MAX_VALUE_NAME) ) {
 				conf_set_int( conf, CONF_proxy_log_to_term, atoi(buf2) ) ;
-			}
+			} else if( ReadPortableValue(buffer, "ProxyHostIs", buf2, MAX_VALUE_NAME) ) {
+						conf_set_int( conf, CONF_proxy_host_kind, atoi(buf2) ? 1 : 0 ) ;
+					}
 		}
 		fclose( fp ) ;
 		char *name = (char*)malloc( strlen(fd.cFileName)*4 + 1 ) ;

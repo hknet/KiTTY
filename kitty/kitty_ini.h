@@ -290,6 +290,11 @@ maxchar=85\n\
 \n\
 \n\
 \n\
+; namedproxy: how a named proxy's Host is read when the proxy does not say -\n\
+; sessionorhostname (a saved session's title first, then a hostname; PuTTY's\n\
+; long-standing rule and the default) or hostname (a hostname, full stop).\n\
+;namedproxy=sessionorhostname\n\
+\n\
 [Launcher]\n\
 \n\
 ; reload: enable session list reload on each menu respawn\n\

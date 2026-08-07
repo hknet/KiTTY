@@ -199,6 +199,40 @@ CONF_OPTION(proxy_chain_depth,
     DEFAULT_INT(0),
     NOT_SAVED,
 )
+/*
+ * KiTTY: how proxy/sshproxy.c must read the proxy HOST for this connection.
+ *
+ * 0 (the default, and what stock PuTTY does): try the host as the title of a
+ * saved session first, and fall back to treating it as a hostname. 1: it is a
+ * hostname, full stop.
+ *
+ * Decided per connection by kitty_proxy_select() from the named proxy's own
+ * setting, or failing that from kitty.ini [KiTTY] namedproxy, and carried here
+ * because sshproxy.c compiles into the shared crypto library WITHOUT MOD_PERSO
+ * and cannot call a KiTTY accessor. Defaulting to 0 keeps the behaviour every
+ * existing configuration already has.
+ */
+CONF_OPTION(proxy_named_hostname,
+    VALUE_TYPE(INT),
+    DEFAULT_INT(0),
+    NOT_SAVED,
+)
+/*
+ * KiTTY: what a NAMED PROXY says about its own Host field, carried with the rest
+ * of the definition (stored as ProxyHostIs).
+ *
+ *  -1  say nothing - follow kitty.ini [KiTTY] namedproxy (the default)
+ *   0  it may be the title of a saved session, as PuTTY has always allowed
+ *   1  it is a hostname
+ *
+ * NOT_SAVED because it belongs to a proxy definition, not to a session: it is
+ * only ever in a Conf while a definition is being loaded, edited or saved.
+ */
+CONF_OPTION(proxy_host_kind,
+    VALUE_TYPE(INT),
+    DEFAULT_INT(-1),
+    NOT_SAVED,
+)
 
 /* SSH options */
 CONF_OPTION(remote_cmd,

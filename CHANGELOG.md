@@ -5,6 +5,100 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.69-beta — 2026-08-07
+
+### Workplace proxy mode
+
+Some days the proxy is not a property of any session — it is a fact about where
+you are sitting. At a customer site, on a VPN, in a hotel, everything has to go
+through one local proxy, and editing every session to say so (and remembering to
+undo it) is the wrong shape of work.
+
+- **One proxy for every connection, until you switch it off.** Pick a named proxy
+  in *Connection → Proxy*, say how long for, and every connection KiTTY makes
+  goes through it — from the configuration box, the launcher, a desktop shortcut,
+  an `ssh://` link or an auto-reconnect — whatever each session stores. The
+  launcher's tray menu does the same in one click, using the proxy and the
+  duration you chose last. **No session is modified**, so there is nothing to
+  undo afterwards.
+
+- **It cannot be left on by accident.** The mode is held by the session launcher:
+  switch it off, let the time run out, or stop the launcher — logging off,
+  shutting down or killing it all end it, with nothing left behind. A launcher
+  that KiTTY started only to hold the mode closes again when the mode ends
+  (`[Launcher] exitwithworkplace=no` keeps it); one you started yourself always
+  stays, and switching the mode off from its own menu never closes it under you.
+
+- **A window says whether *this connection* went through the proxy** — a dark
+  green frame and `⇄ workplace proxy` in the title, for as long as that
+  connection lives. A window that was already open when you switched the mode on
+  is left alone, because it is not going through it; one that is keeps saying so
+  after the mode ends, because an established connection cannot be re-routed.
+
+- **You are told when it matters, once.** A notice near the clock says when the
+  mode goes on, when it goes off and when it times out — and once, on the next
+  start of any kind, if it ended because the launcher went away. Only the timeout
+  notice offers to switch it back on; if you switched it off yourself, KiTTY
+  assumes you meant it. The notice stays up while the pointer rests on it.
+
+- **If the proxy stops answering** — usually because you have left the place it
+  belongs to — the failed connection offers to take you to *Connection → Proxy*.
+  It does not switch anything off on your behalf.
+
+### Named proxies
+
+- **A named proxy can say whether its Name/IP is a machine or a saved session.**
+  PuTTY always tries a proxy name as the title of a saved session first, which is
+  how a jump host that happens to share a name with one of your sessions quietly
+  pulls that session's entire configuration — its user name, its key, its own
+  proxy — into the connection. Here KiTTY parts company with PuTTY deliberately,
+  because a setting whose meaning depends on what your session list contains is
+  neither clear nor safe: each proxy now states which it is. Nothing changes
+  unless you want it to — proxies that say nothing keep PuTTY's behaviour, and
+  `[KiTTY] namedproxy=hostname` switches the default for all of them.
+
+- **The Event Log says which reading was used.** The two can reach the same
+  machine by the same route and differ in everything else, so a connection that
+  worked was never evidence of which one ran.
+
+- **Choosing a named proxy for a connection no longer overwrites the session.**
+  The droplist on the Session panel is an override that lasts for that connection
+  only, and its caption says so while it is armed. Adopting a preset permanently
+  is now a separate, deliberate act — *Load named proxy pre-sets…* on the Proxy
+  panel — with a confirmation naming everything it replaces, including the user
+  name and password.
+
+- **The editor fills in the usual port, and asks before saving without one.** A
+  definition with no port reached the connection as port 0 and surfaced as
+  "Cannot assign requested address", which reads as a network fault rather than
+  an empty field.
+
+- **Proxy chains are bounded at five links** (`[KiTTY] proxychainmax`), with every
+  link written to the Event Log in order. Refusing an over-long chain used to
+  crash instead of reporting it.
+
+### Fixed
+
+- **Save could save over the wrong session.** With the session-name box empty,
+  Save used the position of the highlighted row against the *unfiltered* list, so
+  after typing in the search box it could write your settings over a different
+  session entirely. Save is now greyed out until the box has a name in it.
+
+- **A fresh configuration box treated the restored session as "loaded"** and
+  could save over it without being asked to.
+
+### Changed
+
+- **A host that writes your clipboard is asked about first.** For new sessions,
+  remote clipboard writes default to **Ask** rather than Allow, and the largest
+  payload a host may write is 16 MB rather than 64. Existing sessions keep the
+  settings they have.
+
+- **KNOWN-ISSUES.md carries limitations, not five betas of history.** The
+  release-by-release changelog it had accumulated is on the releases page, pinned
+  per tag; four live limitations that were buried in it moved up to where they
+  belong.
+
 ## 0.84.1.68-beta — 2026-08-03
 
 ### The remote clipboard

@@ -39,6 +39,41 @@ static const int   pxe_log_vals[]  = { FORCE_OFF, FORCE_ON, AUTO };
 static const char *pxe_log_names[] = { "No", "Yes", "Only until session starts" };
 #define PXE_NLOG ((int)(sizeof(pxe_log_vals)/sizeof(pxe_log_vals[0])))
 
+/*
+ * What the Host field above IS -> CONF_proxy_host_kind, stored as ProxyHostIs.
+ *
+ * PuTTY has always tried the Host as the title of a SAVED SESSION first, and
+ * only then as a hostname. That is convenient and it is also how a jump host
+ * that happens to share a name with a saved session silently drags that whole
+ * session's configuration - including its own proxy - into the connection.
+ * Saying which one it is here removes the guess, per proxy; leaving it at the
+ * first entry keeps whatever kitty.ini [KiTTY] namedproxy says, which defaults
+ * to the historical behaviour.
+ */
+static const int   pxe_hostis_vals[]  = { -1, 1, 0 };
+static const char *pxe_hostis_names[] = {
+    "as globally configured (kitty.ini: namedproxy=)",
+    "a hostname or IP-address",
+    "possibly the name of a saved session (PuTTY's old rule)" };
+#define PXE_NHOSTIS ((int)(sizeof(pxe_hostis_vals)/sizeof(pxe_hostis_vals[0])))
+
+/* The port a proxy of this type normally listens on, or 0 where the question
+ * does not arise (None, and Local, which runs a command rather than connecting
+ * to anything). Used to fill an empty port box, never to overwrite one. */
+static int pxe_default_port(int proxy_type)
+{
+    switch (proxy_type) {
+      case PROXY_SOCKS4:
+      case PROXY_SOCKS5:        return 1080;
+      case PROXY_HTTP:          return 3128;
+      case PROXY_TELNET:        return 23;
+      case PROXY_SSH_TCPIP:
+      case PROXY_SSH_EXEC:
+      case PROXY_SSH_SUBSYSTEM: return 22;
+      default:                  return 0;
+    }
+}
+
 static void pxe_combo_fill(HWND hdlg, int id, const char *const *names, int n)
 {
     HWND cb = GetDlgItem(hdlg, id);
@@ -58,6 +93,17 @@ static int pxe_combo_get_val(HWND hdlg, int id, const int *vals, int n)
 }
 
 static int g_pxe_changed;   /* set when a definition was saved or deleted */
+/*
+ * The port WE last filled in from the type, or 0.
+ *
+ * Needed because arrowing through the type list with the keyboard sends a
+ * selection change for every entry passed over: the first one (SOCKS 4) filled
+ * 1080, and every later type then found a non-empty box and left it alone, so
+ * the user landed on "SSH jump host" holding a SOCKS port they never typed
+ *. A port we put there may be replaced; a port the user
+ * typed never is, and the two are only distinguishable by remembering ours.
+ */
+static int g_pxe_autoport;
 /* Definition to open the editor ON, or NULL for defaults. Set by
  * kitty_proxy_edit_dialog_for() and consumed in WM_INITDIALOG. */
 static char *g_pxe_preselect = NULL;
@@ -100,6 +146,10 @@ static void pxe_conf_to_fields(HWND hdlg, Conf *conf)
                          conf_get_int(conf, CONF_proxy_dns));
     pxe_combo_select_val(hdlg, IDC_PXE_LOGTOTERM, pxe_log_vals, PXE_NLOG,
                          conf_get_int(conf, CONF_proxy_log_to_term));
+    pxe_combo_select_val(hdlg, IDC_PXE_HOSTIS, pxe_hostis_vals, PXE_NHOSTIS,
+                         conf_get_int(conf, CONF_proxy_host_kind));
+    /* Whatever port is showing now came from the definition, not from us. */
+    g_pxe_autoport = 0;
 }
 
 static void pxe_fields_to_conf(HWND hdlg, Conf *conf)
@@ -120,6 +170,8 @@ static void pxe_fields_to_conf(HWND hdlg, Conf *conf)
                  pxe_combo_get_val(hdlg, IDC_PXE_DNS, pxe_dns_vals, PXE_NDNS));
     conf_set_int(conf, CONF_proxy_log_to_term,
                  pxe_combo_get_val(hdlg, IDC_PXE_LOGTOTERM, pxe_log_vals, PXE_NLOG));
+    conf_set_int(conf, CONF_proxy_host_kind,
+                 pxe_combo_get_val(hdlg, IDC_PXE_HOSTIS, pxe_hostis_vals, PXE_NHOSTIS));
 }
 
 /* A fresh conf with valid defaults for the proxy fields we don't expose. */
@@ -182,6 +234,7 @@ static INT_PTR CALLBACK pxe_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
             SendMessageA(tc, CB_ADDSTRING, 0, (LPARAM)pxe_type_names[i]);
         pxe_combo_fill(hdlg, IDC_PXE_DNS, pxe_dns_names, PXE_NDNS);
         pxe_combo_fill(hdlg, IDC_PXE_LOGTOTERM, pxe_log_names, PXE_NLOG);
+        pxe_combo_fill(hdlg, IDC_PXE_HOSTIS, pxe_hostis_names, PXE_NHOSTIS);
         pxe_fill_names(hdlg);
         /* Open on the definition the caller named - normally the one selected in
          * the override droplist that the Edit button sits beside. Built-ins are
@@ -206,6 +259,29 @@ static INT_PTR CALLBACK pxe_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
 
       case WM_COMMAND:
         switch (LOWORD(wp)) {
+          case IDC_PXE_TYPE:
+            /* KiTTY: picking a type fills in that type's usual port, but only
+             * into an EMPTY box - a port somebody typed is never overwritten.
+             * An unset port used to travel all the way to the connection as
+             * port 0 and surface as "Cannot assign requested address", which
+             * reads as a network fault rather than a blank field. */
+            if (HIWORD(wp) == CBN_SELCHANGE) {
+                BOOL ok = FALSE;
+                UINT cur = GetDlgItemInt(hdlg, IDC_PXE_PORT, &ok, FALSE);
+                /* Empty, or still showing the port we filled in ourselves. */
+                if (!ok || cur == 0 || (g_pxe_autoport && (int)cur == g_pxe_autoport)) {
+                    int sel = (int)SendMessage(GetDlgItem(hdlg, IDC_PXE_TYPE),
+                                               CB_GETCURSEL, 0, 0);
+                    int port = pxe_default_port(sel >= 0 && sel < PXE_NTYPES
+                                                ? pxe_types[sel] : PROXY_NONE);
+                    if (port > 0) {
+                        SetDlgItemInt(hdlg, IDC_PXE_PORT, port, FALSE);
+                        g_pxe_autoport = port;
+                    }
+                }
+            }
+            return TRUE;
+
           case IDC_PXE_NAME:
             if (HIWORD(wp) == CBN_SELCHANGE) {
                 HWND cb = GetDlgItem(hdlg, IDC_PXE_NAME);
@@ -241,6 +317,31 @@ static INT_PTR CALLBACK pxe_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
                 MessageBoxA(hdlg, "That name is reserved.", "KiTTY",
                             MB_OK | MB_ICONWARNING);
                 return TRUE;
+            }
+            /* KiTTY: a type that connects somewhere needs a port, and leaving
+             * the box empty is easy to do. Ask rather than saving a definition
+             * that can only fail later, at connect time, as a network error. */
+            {
+                int tsel = (int)SendMessage(GetDlgItem(hdlg, IDC_PXE_TYPE),
+                                            CB_GETCURSEL, 0, 0);
+                int ttype = (tsel >= 0 && tsel < PXE_NTYPES)
+                            ? pxe_types[tsel] : PROXY_NONE;
+                int want = pxe_default_port(ttype);
+                BOOL ok = FALSE;
+                UINT port = GetDlgItemInt(hdlg, IDC_PXE_PORT, &ok, FALSE);
+                if (want > 0 && (!ok || port == 0)) {
+                    char q[256];
+                    snprintf(q, sizeof(q),
+                             "This proxy has no port. Use the usual port %d for "
+                             "this type?\n\nChoose No to go back and type one.",
+                             want);
+                    if (MessageBoxA(hdlg, q, "KiTTY",
+                                    MB_YESNO | MB_ICONQUESTION) != IDYES) {
+                        SetFocus(GetDlgItem(hdlg, IDC_PXE_PORT));
+                        return TRUE;
+                    }
+                    SetDlgItemInt(hdlg, IDC_PXE_PORT, want, FALSE);
+                }
             }
             int was_empty = !kitty_has_proxy_definitions();
             Conf *conf = pxe_new_conf();

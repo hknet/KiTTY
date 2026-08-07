@@ -108,6 +108,20 @@ static int ProxyChainMax = 5 ;
 int GetProxyChainMax(void) { return ProxyChainMax ; }
 void SetProxyChainMax( const int n ) { if( n > 0 ) ProxyChainMax = n ; }
 
+/* How a named proxy's Host is read when the proxy itself does not say
+ * (kitty.ini [KiTTY] namedproxy):
+ *   sessionorhostname  the title of a saved session first, then a hostname -
+ *                      what PuTTY has always done, and the DEFAULT, because
+ *                      existing configurations may rely on it;
+ *   hostname           a hostname, full stop.
+ * A proxy that DOES say overrides this, per definition. The silent
+ * substitution - a jump host that happens to share a name with a saved session
+ * quietly dragging that session's whole config in - is the reason a proxy can
+ * now say. */
+static int NamedProxyHostnameOnly = 0 ;
+int kitty_named_proxy_default_hostname( void ) { return NamedProxyHostnameOnly ; }
+void SetNamedProxyHostnameOnly( const int flag ) { NamedProxyHostnameOnly = flag ? 1 : 0 ; }
+
 // Flag de gestion de la fonction hyperlink. In 0.84 hyperlinks are provided by
 // kitty_url.c/window.c, not the historical terminal.c hyperlink patch, so keep
 // the feature available by default and let kitty.ini "hyperlink" disable it.
@@ -3400,6 +3414,13 @@ void LoadParameters( void ) {
 	/* NOTE: this parser is CASE-SENSITIVE (strcmp, not stricmp), so the key is
 	 * documented as exactly "proxychainmax". */
 	if( ReadParameterN( INIT_SECTION, "proxychainmax", buffer, sizeof(buffer) ) ) { if( atoi(buffer)>0 ) SetProxyChainMax( atoi(buffer) ) ; }
+	/* Same case-sensitivity note: exactly "namedproxy", value "hostname" or
+	 * "sessionorhostname" (the default). */
+	if( ReadParameterN( INIT_SECTION, "namedproxy", buffer, sizeof(buffer) ) ) {
+		str_rtrim( buffer, "\n\r \t" ) ;
+		if( !stricmp( buffer, "hostname" ) ) SetNamedProxyHostnameOnly( 1 ) ;
+		else if( !stricmp( buffer, "sessionorhostname" ) ) SetNamedProxyHostnameOnly( 0 ) ;
+	}
 	if( ReadParameterN( INIT_SECTION, "PSCPPath", buffer, sizeof(buffer) ) ) {
 		if( existfile( buffer ) ) { 
 			if( PSCPPath!=NULL) { free(PSCPPath) ; PSCPPath = NULL ; }

@@ -115,6 +115,12 @@
 #ifndef IDC_PXE_DNS
 #define IDC_PXE_DNS 1213
 #endif
+/* What this proxy says its Host field IS: follow the global setting, a hostname,
+ * or possibly the title of a saved session. Stored per definition as
+ * ProxyHostIs; see conf.h CONF_proxy_host_kind. */
+#ifndef IDC_PXE_HOSTIS
+#define IDC_PXE_HOSTIS 1278
+#endif
 #ifndef IDC_PXE_LOGTOTERM
 #define IDC_PXE_LOGTOTERM 1214
 #endif

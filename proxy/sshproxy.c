@@ -668,29 +668,34 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
     const char *proxy_hostname = conf_get_str(clientconf, CONF_proxy_host);
 
     /*
-     * KiTTY: a NAMED PROXY means a hostname, never a saved-session title.
+     * KiTTY: is this proxy host a hostname, or may it be the title of a saved
+     * session?
      *
-     * `CONF_proxyselection` holds the name of an entry from KiTTY's proxy
-     * editor, whose host and port are explicit. Upstream's saved-session-first
-     * interpretation of the proxy host is wrong for those, and not harmlessly:
-     * when a jump host is named after a machine that also has a saved session,
-     * that SESSION gets loaded as the jump-host config - including whatever proxy
-     * the session itself carries - so an SSH proxy can silently run through an
-     * unrelated HTTP proxy and connect twice to the same host.
+     * Upstream tries the saved session FIRST, and that is wrong for a named
+     * proxy in a way that is not harmless: when a jump host is named after a
+     * machine that also has a saved session, that SESSION is loaded as the
+     * jump-host config - including whatever proxy the session itself carries -
+     * so an SSH proxy can silently run through an unrelated HTTP proxy and
+     * connect twice to the same host.
      *
-     * The saved-session trick still works for a hand-typed proxy host, which is
-     * where it is documented and where someone might want it.
+     * But it is also long-standing behaviour that people's configurations may
+     * rely on, so the answer is NOT decided here any more. It arrives in the
+     * Conf, decided per connection by kitty_proxy_select() from the named
+     * proxy's own setting or from kitty.ini [KiTTY] namedproxy, and it defaults
+     * to 0 - i.e. to exactly what PuTTY has always done.
      *
      * NOT #ifdef MOD_PERSO: this file compiles into the shared `crypto`
      * library, which is built WITHOUT that define, so a guard here would be
      * silently dead code (the trap this project has hit four times). No guard is
-     * needed anyway - `CONF_proxyselection` is declared unconditionally in
-     * conf.h and is empty in the stock variants, so they keep upstream behaviour.
+     * needed anyway - the option is declared unconditionally in conf.h and is 0
+     * in the stock variants, so they keep upstream behaviour.
      */
-    const char *proxy_named = conf_get_str(clientconf, CONF_proxyselection);
-    bool from_named_proxy = (proxy_named && *proxy_named &&
-                             strcmp(proxy_named, KITTY_PROXY_NONE) != 0 &&
-                             strcmp(proxy_named, KITTY_PROXY_SESSION) != 0);
+    bool from_named_proxy = conf_get_int(clientconf, CONF_proxy_named_hostname) != 0;
+
+    /* KiTTY: which reading was used is recorded below, once the log exists -
+     * the two look identical in the Event Log otherwise, and "which of the two
+     * did it pick" is the whole question this setting answers. */
+    bool used_saved_session = false;
 
     if (!from_named_proxy && do_defaults(proxy_hostname, sp->conf)) {
         if (!conf_launchable(sp->conf)) {
@@ -698,6 +703,7 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
                                    proxy_hostname);
             return &sp->sock;
         }
+        used_saved_session = true;
     } else {
         do_defaults(NULL, sp->conf);
         /* In hostname mode, we default to PROT_SSH. This is more useful than
@@ -706,8 +712,15 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
          * can be used for this kind of proxy. */
         conf_set_int(sp->conf, CONF_protocol, PROT_SSH);
         conf_set_str(sp->conf, CONF_host, proxy_hostname);
-        conf_set_int(sp->conf, CONF_port,
-                     conf_get_int(clientconf, CONF_proxy_port));
+        {
+            /* KiTTY: a named proxy need not carry a port - the field is blank
+             * until somebody types in it - and copying that 0 straight through
+             * produced "Cannot assign requested address", which reads like a
+             * network fault rather than a missing setting. An SSH jump host
+             * with no port stated means 22. */
+            int pport = conf_get_int(clientconf, CONF_proxy_port);
+            conf_set_int(sp->conf, CONF_port, pport > 0 ? pport : 22);
+        }
     }
     const char *proxy_username = conf_get_str(clientconf, CONF_proxy_username);
     if (*proxy_username)
@@ -836,6 +849,18 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
     logeventf(sp->logctx, "proxy chain link %d: %s port %d",
               sp->chain_depth, conf_get_str(sp->conf, CONF_host),
               conf_get_int(sp->conf, CONF_port));
+    /* KiTTY: and WHICH READING of the proxy host produced that link. The two
+     * cases can connect to the same machine by the same route and still differ
+     * in everything else - a saved session brings its own username, key, port
+     * and proxy with it - so "it worked" is not evidence of which one ran. */
+    /* No "proxy:" prefix here - this log context already adds one, and writing
+     * a second produced "proxy: proxy: using ...". */
+    if (used_saved_session)
+        logeventf(sp->logctx, "using SAVED SESSION \"%s\" for this proxy "
+                  "connection (its own settings apply)", proxy_hostname);
+    else
+        logeventf(sp->logctx, "using HOSTNAME \"%s\" for this proxy "
+                  "connection (no saved session involved)", proxy_hostname);
 
     char *error, *realhost;
     error = backend_init(backvt, &sp->seat, &sp->backend, sp->logctx, sp->conf,

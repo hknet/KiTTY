@@ -1248,11 +1248,31 @@ void kitty_port_knock(Conf *conf)
  * connection lives, and a connection may outlive several switchings. */
 int kitty_workplace_applied = 0;
 
+/*
+ * Resolve, for the connection about to be made, whether the proxy Host is a
+ * hostname or may be the title of a saved session. The named proxy's own
+ * setting decides; when it says nothing, kitty.ini [KiTTY] namedproxy does, and
+ * that defaults to PuTTY's long-standing saved-session-first behaviour.
+ *
+ * proxy/sshproxy.c reads the answer out of the Conf, because it compiles into
+ * the shared crypto library without MOD_PERSO.
+ */
+static void kitty_proxy_apply_host_kind(Conf *conf)
+{
+    int kind = conf_get_int(conf, CONF_proxy_host_kind);   /* set by LoadProxyInfo */
+    if (kind < 0)
+        kind = kitty_named_proxy_default_hostname();
+    conf_set_int(conf, CONF_proxy_named_hostname, kind ? 1 : 0);
+}
+
 void kitty_proxy_select(Conf *conf)
 {
     const char *name;
 
     kitty_workplace_applied = 0;
+    /* A session's OWN proxy host keeps upstream behaviour; only a named proxy
+     * can say otherwise, below. */
+    conf_set_int(conf, CONF_proxy_named_hostname, 0);
     /* Workplace proxy mode wins over everything the session says
      * (design/TASK_workplace_proxy.md §2, §4). It is a mode about where the
      * user is sitting today, so it applies to every connection this install
@@ -1272,6 +1292,7 @@ void kitty_proxy_select(Conf *conf)
              * definition file that is not there. */
             if (kitty_proxy_name_exists(wp)) {
                 LoadProxyInfo(conf, wp);
+                kitty_proxy_apply_host_kind(conf);
                 conf_set_str(conf, CONF_proxyselection, wp);
                 kitty_workplace_applied = 1;
                 debug_logevent("workplace proxy mode: connecting through \"%s\"", wp);
@@ -1298,5 +1319,6 @@ void kitty_proxy_select(Conf *conf)
     if (name == NULL || name[0] == '\0')
         return;
     LoadProxyInfo(conf, name);
+    kitty_proxy_apply_host_kind(conf);
 }
 #endif
