@@ -231,7 +231,9 @@ struct terminal_tag {
  * lower it freely - that only ever helps - but must not be able to raise it into
  * an unbounded denial of service by typing a big number into a settings box.
  */
-#define CLIP_MAX_MB_DEFAULT 64
+/* Must match DEFAULT_INT on CONF_clipboard_max_mb in conf.h, which carries the
+ * reasoning for the number (lowered 64 -> 16 on 2026-08-05). */
+#define CLIP_MAX_MB_DEFAULT 16
 #define CLIP_MAX_MB_CAP 256                    /* the most a user may ask for */
 /* There is deliberately no floor constant: the unit is megabytes, so the smallest
  * value anyone can set is 1 MB, and anything <= 0 falls back to the default. A

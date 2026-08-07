@@ -58,7 +58,8 @@ features are working and verified. Known limitations as of this release:
   limit withdrew the permission and prompted again, which turned a chatty program
   into a stream of dialogs.
 - **far2l shared clipboard: payloads over ~2 KB used to be dropped in silence.**
-  Fixed — a far2l clipboard payload may now be up to 64 MB, sized for an image
+  Fixed — a far2l clipboard payload may now be up to 16 MB (raise *Largest
+  payload, in MB* if you copy 4K screenshots), sized for an image
   rather than a line of text, and one that still does not fit is refused whole and
   recorded in the Event Log instead of vanishing. If copying large selections in a
   far2l session appeared to do nothing before, that was this. Whether non-text

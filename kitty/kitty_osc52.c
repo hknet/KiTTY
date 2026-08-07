@@ -580,6 +580,34 @@ void kitty_osc52_notify(Terminal *term, const char *title, const char *msg,
     if (term && term->conf && !conf_get_bool(term->conf, CONF_clipboard_notify))
         return;
 
+#ifdef MOD_NETDEBUG
+    /*
+     * Netdebug builds record every balloon that is fired, with its text, to
+     * %USERPROFILE%\kitty_netdebug.log. A balloon is the one signal in this
+     * feature that no harness can observe: it is drawn by the shell, it is
+     * rate-limited, and it disappears. With this line a test knows exactly how
+     * many were fired and when, so the tester only has to say which ones they
+     * actually SAW - the difference between the two is the interesting part.
+     * Never in a release build: it would write the clipboard-notice text of
+     * every session to a file in the user's profile.
+     */
+    {
+        static FILE *bf = NULL;
+        SYSTEMTIME s; GetLocalTime(&s);
+        if (!bf) {
+            char p[MAX_PATH]; const char *h = getenv("USERPROFILE");
+            snprintf(p, sizeof(p), "%s\\kitty_netdebug.log", h ? h : "C:");
+            bf = fopen(p, "a");
+        }
+        if (bf) {
+            fprintf(bf, "%04d-%02d-%02d %02d:%02d:%02d.%03d  [BALLOON] %s | %s\n",
+                    s.wYear, s.wMonth, s.wDay, s.wHour, s.wMinute, s.wSecond,
+                    s.wMilliseconds, title, msg);
+            fflush(bf);
+        }
+    }
+#endif
+
     InterlockedExchange(&s_balloon_action, (LONG)action);
 
     b = snew(struct osc52_balloon);

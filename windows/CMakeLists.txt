@@ -463,6 +463,17 @@ if(KITTY_TEST_BUILD_LABEL)
   target_compile_definitions(puttygen PRIVATE KITTY_TEST_BUILD_LABEL="${KITTY_TEST_BUILD_LABEL}")
 endif()
 
+# KiTTY: opt-in build switch that tees the Event Log to
+# %USERPROFILE%\kitty_netdebug.log (windows/dialog.c). Off by default, so
+# releases are unaffected. Worth having as a switch rather than a separate
+# source variant: an intermittent disconnect, and any QA that has to know WHY
+# something was refused, both need the log as a FILE that outlives the window.
+option(KITTY_NETDEBUG "Tee the Event Log to %USERPROFILE%\\kitty_netdebug.log" OFF)
+if(KITTY_NETDEBUG)
+  target_compile_definitions(kitty PRIVATE MOD_NETDEBUG)
+  target_compile_definitions(kitty_portable PRIVATE MOD_NETDEBUG)
+endif()
+
 target_include_directories(kitty_portable PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
   ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)

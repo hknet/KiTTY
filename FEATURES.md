@@ -553,14 +553,30 @@ KiTTY can run the current Windows clipboard contents as a local command with the
 
 A program on the remote host — `tmux`, `vim`, `nvim`, or anything that emits the standard **OSC 52** sequence — can put text straight onto your Windows clipboard, so yanking in a remote editor gives you something you can paste locally without selecting it with the mouse first. Only **text** travels this way; the sequence carries nothing else, so images and other clipboard formats are unaffected. A payload that arrives truncated or malformed is refused whole rather than pasted in part.
 
-**Writes are allowed by default**, as in every comparable terminal: this direction changes what you paste next but cannot disclose anything to the host. **Deny**, **Allow** or **Ask** per session.
+**Writes are set to Ask by default, and this is deliberately stricter than other terminals.** The answer lasts for the rest of the session, so a host that copies for you costs one dialog on its first copy and nothing afterwards.
+
+<details>
+<summary>Why Ask, and when to change it to Allow</summary>
+
+**What the others do.** Ghostty permits OSC 52 writes unconditionally; Alacritty ships `OnlyCopy` — writes yes, reads no; kitty writes by default. On that evidence KiTTY first shipped **Allow** too, and there is a real argument for it: this direction cannot disclose anything to the host. Nothing of yours leaves the machine.
+
+**Why we changed our mind.** Not leaking is not the same as harmless. A host that silently replaces your clipboard chooses what you paste *next* — and the next paste may go into a root shell, a config file, or a payment field. The classic form of this is a copied command that arrives with a trailing newline, so it does not merely land in your shell, it *runs* there. Nothing leaves the machine; something arrives on it, of the host's choosing, at a moment you think you are in control of.
+
+**Why asking is affordable here, when it is not for reads.** The write question latches: one dialog per session, not one per copy. That matters, because a prompt people do not think is warranted is how a protection ends up switched off wholesale — kitty's own users describe its clipboard warnings as "so annoying that everyone will look for a fix and disable" them, and Ghostty has bug reports of read prompts firing repeatedly from nothing worse than Neovim polling the clipboard over SSH. A once-per-session question is not that.
+
+**Set it to Allow if** you work mainly on hosts you administer yourself, and you copy from remote editors constantly enough that even one dialog per session is friction you would rather not have. What you give up: a compromised or hostile host — including one you trust that someone else does not — can put anything it likes on your clipboard at any time, and the first you would know of it is the title-bar marker and the frame tint. Those stay on either way, which is why Allow is a reasonable choice rather than a reckless one.
+
+**Set it to Deny if** you never want a remote host touching the clipboard at all. Nothing else changes; local copy and paste are unaffected.
+</details>
+
+**Deny**, **Allow** or **Ask**, per session.
 
 **Reads are the other direction, and are treated very differently.** Here the host asks KiTTY to send *your* clipboard back to it — the exfiltration risk for which upstream PuTTY omits OSC 52 altogether. A clipboard holds a password often enough to matter, and the host chooses the moment it asks, so reads default to **Deny** and there is deliberately **no Allow setting**. A read can be permitted only by answering the prompt, which shows how much text would be sent and the first few characters of it, and which offers to allow that one request, the next few minutes, a number of requests, or the rest of the session. **Deny** is the default button, the narrowest option is pre-selected, and no permission to read is ever written to disk.
 
 Three protections apply to every clipboard protocol at once:
 
 - **Focus.** Nothing leaves the window while you are working somewhere else. An existing permission is *suspended*, not cancelled, and resumes without asking again when you return.
-- **Limits.** How many reads a grant is worth, how close together they may come, how often you can be prompted, how large a payload may be (64 MB), and how often a server may overwrite your clipboard (10/second). A host that asks faster than the pacing limit has that request refused — it does not cost you the permission you gave.
+- **Limits.** How many reads a grant is worth, how close together they may come, how often you can be prompted, how large a payload may be (16 MB, enough for a 1080p image and far more than any text), and how often a server may overwrite your clipboard (10/second). A host that asks faster than the pacing limit has that request refused — it does not cost you the permission you gave.
 - **Visibility.** The title bar shows a clipboard icon with an arrow — up when data left you, down when the host put something in — and on Windows 11 the frame is tinted, amber for a read and blue for a write. A standing permission appears at the end of the title in brackets. Tray notifications cover refusals and oversized payloads.
 
 **KiTTY also answers the kitty terminal's clipboard protocol, OSC 5522.** Unlike OSC 52 it can identify the program asking, so one you have approved is not asked about again while that grant lasts, and it reports real error codes instead of silence. Reads use the same permission and the same limits — one permission reachable two ways, not two settings. Writes answer *not implemented*, so an application falls back to OSC 52 for text.

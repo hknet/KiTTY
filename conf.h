@@ -1476,27 +1476,35 @@ CONF_OPTION(printclip, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("PrintToCli
 /* KiTTY: may a remote host put text on the local clipboard with OSC 52?
  * 0=deny, 1=allow, 2=ask-once-per-session (OSC52_CLIPBOARD_* in putty.h).
  *
- * Default ALLOW, which is what every comparable terminal does: Ghostty permits
- * OSC 52 writes unconditionally, Alacritty ships "OnlyCopy" (write yes, read
- * no), kitty writes by default. Two reasons it is not "ask":
- *  - the WRITE direction leaks nothing. It changes what you paste next, which
- *    is worth a setting, but it cannot disclose anything to the host - unlike
- *    the read direction, which we refuse outright and unconditionally;
- *  - a prompt users do not think is warranted is how the whole protection ends
- *    up switched off. Measured elsewhere, not assumed: kitty's own users report
- *    its clipboard warnings are "so annoying that everyone will look for a fix
- *    and disable" them, and Ghostty has bug reports of read prompts firing
- *    repeatedly from nothing worse than Neovim polling the clipboard over SSH.
- *    Spend the interruption where it buys something.
- * Set it to Deny per session (or in Default Settings) if you would rather no
- * host touched the clipboard at all.
+ * Default ASK (changed on a review of the defaults, 2026-08-05). That is one step
+ * stricter than the comparable terminals: Ghostty permits OSC 52 writes
+ * unconditionally, Alacritty ships "OnlyCopy" (write yes, read no), kitty writes
+ * by default. This shipped as ALLOW for exactly that reason.
+ *
+ * What ALLOW missed: "the write direction leaks nothing" is true, and is why the
+ * read direction is treated far more harshly - but a write is not harmless
+ * either. A host that silently replaces your clipboard chooses what you paste
+ * NEXT, possibly into a root shell. Nothing leaves the machine, and something can
+ * still arrive on it.
+ *
+ * ASK is affordable here precisely because it is NOT per-request: the answer
+ * latches for the rest of the session, so tmux or neovim costs one dialog on the
+ * first copy and nothing afterwards. That keeps it clear of the failure mode the
+ * read direction has to design around - measured elsewhere, not assumed: kitty's
+ * own users report its clipboard warnings are "so annoying that everyone will
+ * look for a fix and disable" them, and Ghostty has bug reports of read prompts
+ * firing repeatedly from nothing worse than Neovim polling the clipboard over
+ * SSH. A once-per-session question is not that.
+ *
+ * Set it to Allow per session (or in Default Settings) for the old behaviour, or
+ * to Deny if you would rather no host touched the clipboard at all.
  * Replaces the BOOL "OSC52WarnBeforeClipboardSync", which this port loaded and
  * saved but never read, because OSC 52 itself was never ported. That key is NOT
  * migrated on purpose: it meant "warn", so its default false meant "sync
  * silently", and honouring it would quietly switch remote clipboard writes ON
  * for every session imported from classic KiTTY. It is dropped when a session is
  * next saved (windows/storage.c, kitty_retired_keys). */
-CONF_OPTION(osc52_clipboard, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("OSC52Clipboard"),)
+CONF_OPTION(osc52_clipboard, VALUE_TYPE(INT), DEFAULT_INT(2), SAVE_KEYWORD("OSC52Clipboard"),)
 /* KiTTY: may a remote host ask for the CONTENTS of the local clipboard and have
  * them sent back? 0=deny, 1=ask (OSC52_READ_* in putty.h). Default DENY.
  *
@@ -1590,14 +1598,21 @@ CONF_OPTION(osc52_read_dialogs, VALUE_TYPE(INT), DEFAULT_INT(3), SAVE_KEYWORD("O
  * off is "thousands per second, invisibly". */
 CONF_OPTION(clipboard_writes_per_sec, VALUE_TYPE(INT), DEFAULT_INT(10), SAVE_KEYWORD("ClipboardWritesPerSecond"),)
 /* KiTTY: largest single remote-clipboard payload we will hold, in megabytes.
- * Applies to OSC 52 and to far2l alike; default 64.
+ * Applies to OSC 52 and to far2l alike; default 16 (lowered from 64 on a review
+ * of the defaults, 2026-08-05).
  *
  * Sized for an image rather than a line of text, because far2l carries arbitrary
- * Windows clipboard formats and an uncompressed 4K CF_DIB is ~33 MB raw and ~44 MB
- * once base64'd. One number for both protocols on purpose: the old split (16 MB
- * for OSC 52, 64 for far2l) only ever meant "text does not need as much", which is
- * not a security argument, since the bound a hostile host can reach is the same
- * either way.
+ * Windows clipboard formats. 64 came from the worst case anyone could name - an
+ * uncompressed 4K CF_DIB is ~33 MB raw, ~44 MB once base64'd - and defaulting to
+ * the worst case is the wrong way round: it is a ceiling a HOSTILE host reaches
+ * every time and a real one reaches almost never. 16 MB still carries a 1080p DIB
+ * (~8 MB raw, ~11 MB encoded) and every text payload by three orders of magnitude,
+ * while cutting what an attacker can make a window hold to a quarter. Somebody who
+ * really does copy 4K screenshots raises it and knows why they are doing it.
+ *
+ * One number for both protocols on purpose: the old split (16 MB for OSC 52, 64
+ * for far2l) only ever meant "text does not need as much", which is not a security
+ * argument, since the bound a hostile host can reach is the same either way.
  *
  * ⚠️ This is a memory-exhaustion backstop, not a feature limit. A host that opens
  * a sequence and never terminates it can make one window hold this much with no
@@ -1610,7 +1625,7 @@ CONF_OPTION(clipboard_writes_per_sec, VALUE_TYPE(INT), DEFAULT_INT(10), SAVE_KEY
  * It does NOT govern the 2 KB ceiling on ordinary escape sequences. That one stays
  * fixed and unsettable: it is what stops the clipboard feature being used to hand
  * us a multi-megabyte window title. */
-CONF_OPTION(clipboard_max_mb, VALUE_TYPE(INT), DEFAULT_INT(64), SAVE_KEYWORD("ClipboardMaxMB"),)
+CONF_OPTION(clipboard_max_mb, VALUE_TYPE(INT), DEFAULT_INT(16), SAVE_KEYWORD("ClipboardMaxMB"),)
 /* KiTTY: show a tray balloon for remote-clipboard events - a permission granted or
  * expired, a request refused, or a payload dropped for being too large. Covers
  * OSC 52, OSC 5522 and far2l alike. Default on.
