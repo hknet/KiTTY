@@ -287,6 +287,9 @@ extern int init_delay;      /* kitty.c: [KiTTY] initdelay, ms before the first
                              * auto-command/auto-password send (default 2000) */
 int GetPasteSize(void);     /* kitty.c: [KiTTY] pastesize, confirm before
                              * pasting more than N chars (0 = unlimited) */
+int GetProxyChainMax(void); /* kitty.c: [KiTTY] proxychainmax, how many SSH
+                             * proxies may be chained before we refuse
+                             * (default 5); enforced in proxy/sshproxy.c */
 #define TIMER_AUTOCOMMAND 8702
 /* Anti-idle: periodically send a keepalive string (CONF_antiidle). */
 void kitty_antiidle_tick(HWND hwnd);
@@ -579,10 +582,52 @@ static void start_backend(WinGuiSeat *wgs)
     kitty_port_knock(wgs->conf);
 #endif
 #ifdef MOD_PROXY
-    /* KiTTY feature: apply the selected proxy definition before connecting.
-     * Uses this seat's conf (not a global); covers initial connect, Restart
-     * Session, and MOD_RECONNECT auto-reconnect (all via start_backend). */
-    kitty_proxy_select(wgs->conf);
+    /*
+     * KiTTY feature: apply the selected proxy override for THIS CONNECTION ONLY.
+     *
+     * ⚠️ Applied to a THROWAWAY COPY, never to wgs->conf. It used to be applied
+     * to the seat's own conf, and that destroyed user data: the preset's fields
+     * were written over the session's own proxy settings, so anything that later
+     * saved the session persisted them - and a proxy password that existed only
+     * in that session was gone. It also left sessions in a split state, with the
+     * stored fields saying one thing and the remembered choice another, so which
+     * proxy you got depended on whether you had connected before saving.
+     * The rule is that an override may amend the connection and must never
+     * rewrite the stored session.
+     *
+     * Safe because backends copy the Conf they are given (ssh_init does
+     * conf_copy), so the connection keeps its own copy after this function
+     * returns and the temporary can be freed immediately.
+     *
+     * Everything else here still reads wgs->conf, which is correct: the session
+     * is unchanged, and only the transport is being routed differently.
+     */
+    /* KiTTY: publish the proxy-chain limit into the Conf. proxy/sshproxy.c enforces
+     * it but is built without MOD_PERSO, so it cannot read the kitty.ini value
+     * itself; the Conf is the only channel it shares with us. NOT_SAVED, so this
+     * never reaches a session file. */
+    conf_set_int(wgs->conf, CONF_proxy_chain_max, GetProxyChainMax());
+
+    Conf *connconf = wgs->conf;
+    Conf *proxyconf = NULL;
+    {
+        Conf *tmp = conf_copy(wgs->conf);
+        kitty_proxy_select(tmp);
+        if (conf_get_int(tmp, CONF_proxy_type) !=
+            conf_get_int(wgs->conf, CONF_proxy_type) ||
+            strcmp(conf_get_str(tmp, CONF_proxy_host),
+                   conf_get_str(wgs->conf, CONF_proxy_host)) ||
+            conf_get_int(tmp, CONF_proxy_port) !=
+            conf_get_int(wgs->conf, CONF_proxy_port)) {
+            /* an override really is in force - connect through the copy */
+            proxyconf = tmp;
+            connconf = tmp;
+        } else {
+            conf_free(tmp);       /* nothing overridden; keep it simple */
+        }
+    }
+#else
+    Conf *connconf = wgs->conf;
 #endif
 
 #ifdef MOD_PERSO
@@ -610,12 +655,19 @@ static void start_backend(WinGuiSeat *wgs)
 #endif
 
     seat_set_trust_status(&wgs->seat, true);
-    error = backend_init(vt, &wgs->seat, &wgs->backend, wgs->logctx, wgs->conf,
+    /* connconf == wgs->conf unless a proxy override is in force, in which case it
+     * is the throwaway copy carrying it (see the MOD_PROXY note above). Host,
+     * port and the TCP options are identical in both - only the proxy differs. */
+    error = backend_init(vt, &wgs->seat, &wgs->backend, wgs->logctx, connconf,
                          conf_get_str(wgs->conf, CONF_host),
                          conf_get_int(wgs->conf, CONF_port),
                          &realhost,
                          conf_get_bool(wgs->conf, CONF_tcp_nodelay),
                          conf_get_bool(wgs->conf, CONF_tcp_keepalives));
+#ifdef MOD_PROXY
+    /* The backend has taken its own copy by now. */
+    if (proxyconf) { conf_free(proxyconf); proxyconf = NULL; connconf = wgs->conf; }
+#endif
     if (error) {
         char *str = dupprintf("%s Error", appname);
         char *msg;
@@ -2265,8 +2317,8 @@ static bool kitty_is_auth_failure_msg(const char *msg)
  * nonexistent channel a FATAL protocol error, so without special handling an
  * ordinary logout would either spuriously auto-reconnect or pop a scary fatal
  * box. Recognise that post-logout artifact so connection_fatal can close
- * cleanly. (Diagnosed via netdebug on a Cisco switch: exit status 0 ->
- * SSH2_MSG_CHANNEL_REQUEST for nonexistent channel.)
+ * cleanly. (Observed on a Cisco switch: exit status 0, immediately followed by
+ * SSH2_MSG_CHANNEL_REQUEST for a nonexistent channel.)
  *
  * NOTE: this is belt-and-braces with ssh_post_exit_teardown_error() in
  * ssh/ssh.c, which suppresses the fatal at the protocol layer -- but (since
@@ -2275,7 +2327,7 @@ static bool kitty_is_auth_failure_msg(const char *msg)
  * sharing downstreams). This helper additionally catches the same device
  * artifact if it arrives without an exit status, or while another channel
  * is still open. Kept for now; revisit if upstream PuTTY accepts the ssh.c
- * change (see the upstream tracking notes). */
+ * change. */
 static bool kitty_is_benign_channel_close_msg(const char *msg)
 {
     return msg && strstr(msg, "nonexistent channel") != NULL;

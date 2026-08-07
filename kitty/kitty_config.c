@@ -349,17 +349,135 @@ static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
 #endif
 
 /* Proxy-choice droplist (KiTTY): lists named proxy definitions (plus the two
- * built-ins "- Session defined proxy -" / "- No proxy -") and stores the chosen
+ * built-ins KITTY_PROXY_SESSION / KITTY_PROXY_NONE) and stores the chosen
  * name in CONF_proxyselection, which kitty_proxy_select() overlays onto the
- * session's proxy settings at connect time. */
+ * session's proxy settings at connect time.
+ *
+ * ⚠️ That overlay is an OPEN BUG, not a design to build on: it writes the
+ * session's Proxy* fields, so a preset can destroy proxy credentials that exist
+ * only in the session. Do not "fix" it by writing the fields here either - that
+ * is the same data loss, moved earlier. */
+/*
+ * Does the session itself carry proxy settings? That is what the control's
+ * neutral position is derived from, and what "would this change anything?" is
+ * measured against.
+ */
+static bool kitty_session_has_proxy(Conf *conf)
+{
+    return conf_get_int(conf, CONF_proxy_type) != PROXY_NONE;
+}
+
+/* The neutral entry for this session: the one that changes nothing. */
+static const char *kitty_proxy_neutral(Conf *conf)
+{
+    return kitty_session_has_proxy(conf) ? KITTY_PROXY_SESSION
+                                         : KITTY_PROXY_NONE;
+}
+
+/*
+ * The control's caption, as a FUNCTION of (choice, session) rather than a pair of
+ * hard-coded strings - workplace-proxy mode adds a third state to this same
+ * control, and hard-coding two would mean rewriting it then.
+ *
+ * An override is active whenever the choice would change what the STORED session
+ * does. That includes picking "No proxy" for a session that has one: suppressing
+ * the session's proxy is a real change, not a neutral position.
+ */
+/* The two captions, named so that windows/dialog.c can recognise the active one
+ * and draw it BOLD without knowing anything else about this control. */
+#define KITTY_PROXY_LABEL_IDLE   "Proxy override options:"
+#define KITTY_PROXY_LABEL_ACTIVE "PROXY OVERRIDE ACTIVE:"
+
+/* Called from windows/dialog.c's WM_CTLCOLORSTATIC for every static in the config
+ * box, so it must be cheap and must answer false for everything else. Stubbed to
+ * false for the stock variants in windows/kitty_config_stubs.c. */
+bool kitty_proxy_label_is_active(const char *text)
+{
+    return text && !strcmp(text, KITTY_PROXY_LABEL_ACTIVE);
+}
+
+static const char *kitty_proxy_override_label(Conf *conf)
+{
+    const char *cur = conf_get_str(conf, CONF_proxyselection);
+
+    if (!cur || !*cur)
+        return KITTY_PROXY_LABEL_IDLE;
+
+    /*
+     * Compare EFFECTS, not strings.
+     *
+     * Comparing the choice against the neutral entry looked right and was wrong:
+     * on a session with NO proxy, "Session defined proxy" is a different string
+     * from the neutral "No proxy" while doing exactly the same nothing - and the
+     * caption then claimed an override was active when none was.
+     *
+     *   "Session defined proxy" -> use whatever the session has. Never an
+     *                              override, whether that is a proxy or nothing.
+     *   "No proxy"              -> an override ONLY if the session has a proxy,
+     *                              because then it suppresses it. On a session
+     *                              without one it changes nothing.
+     *   a named proxy           -> always an override.
+     */
+    if (!strcmp(cur, KITTY_PROXY_SESSION))
+        return KITTY_PROXY_LABEL_IDLE;
+    if (!strcmp(cur, KITTY_PROXY_NONE))
+        return kitty_session_has_proxy(conf) ? KITTY_PROXY_LABEL_ACTIVE
+                                             : KITTY_PROXY_LABEL_IDLE;
+    return KITTY_PROXY_LABEL_ACTIVE;
+}
+
+/*
+ * Proxy-override droplist (KiTTY): the named proxy definitions plus the two
+ * built-ins, applied to THIS CONNECTION ONLY (kitty_proxy_select() in
+ * kitty_bridge.c hands it to a throwaway Conf copy; it never writes the session).
+ *
+ * ⚠️ The control STARTS NEUTRAL every time the box opens, derived from the
+ * session's own proxy settings, and a value stored in the session cannot preselect
+ * it. That is deliberate: a remembered override is indistinguishable from a
+ * setting, and honouring it here while a double-click on the session list ignores
+ * it would mean the same session connecting differently depending on how it was
+ * started. Nothing invisible decides behaviour.
+ */
+struct pxchoice_data { bool picked; };
+
+/*
+ * The live override control of the current config box, so that LOADING a session
+ * can put it back to neutral.
+ *
+ * `picked` means "the user chose something in this box", and it must be scoped to
+ * the SESSION, not to the box. It was scoped to the box at first, and that was the
+ * bug: after touching the droplist once, loading another session no longer
+ * re-derived the neutral value, so a stale "No proxy" survived onto a session that
+ * did have a proxy - and the caption then correctly, and confusingly, called that
+ * an active override.
+ *
+ * Same single-instance pattern as session_filter_ssd above: cleared when the
+ * config box's saved-session data is freed, so it cannot dangle.
+ */
+static struct pxchoice_data *pxchoice_state = NULL;
+
+/* Put the override back to "changes nothing" for whatever conf is now loaded. */
+static void kitty_proxy_override_reset(Conf *conf)
+{
+    if (pxchoice_state)
+        pxchoice_state->picked = false;
+    conf_set_str(conf, CONF_proxyselection, kitty_proxy_neutral(conf));
+}
+
 static void kitty_proxy_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                 void *data, int event)
 {
     Conf *conf = (Conf *)data;
+    struct pxchoice_data *pc = (struct pxchoice_data *)ctrl->context.p;
     if (event == EVENT_REFRESH) {
-        kitty_proxy_resolve_selection(conf);   /* drop a deleted proxy ref, etc. */
-        const char *cur = conf_get_str(conf, CONF_proxyselection);
+        const char *cur;
         int i, sel = 0;
+        kitty_proxy_resolve_selection(conf);   /* drop a deleted proxy ref, etc. */
+        /* Until the user picks something in THIS box, the control shows the
+         * session's own state - never a value the session remembered. */
+        if (pc && !pc->picked)
+            conf_set_str(conf, CONF_proxyselection, kitty_proxy_neutral(conf));
+        cur = conf_get_str(conf, CONF_proxyselection);
         dlg_update_start(ctrl, dlg);
         dlg_listbox_clear(ctrl, dlg);
         for (i = 0; i < MAX_PROXY && proxies[i].name; i++) {
@@ -368,10 +486,137 @@ static void kitty_proxy_handler(dlgcontrol *ctrl, dlgparam *dlg,
         }
         dlg_listbox_select(ctrl, dlg, sel);
         dlg_update_done(ctrl, dlg);
+        dlg_label_change(ctrl, dlg, kitty_proxy_override_label(conf));
     } else if (event == EVENT_SELCHANGE) {
         int i = dlg_listbox_index(ctrl, dlg);
-        if (i >= 0 && i < MAX_PROXY && proxies[i].name)
+        if (i >= 0 && i < MAX_PROXY && proxies[i].name) {
+            if (pc) pc->picked = true;
             conf_set_str(conf, CONF_proxyselection, proxies[i].name);
+            dlg_label_change(ctrl, dlg, kitty_proxy_override_label(conf));
+        }
+    }
+}
+
+/*
+ * Connection/Proxy: "Named proxy settings:" + Load into this window.
+ *
+ * The DELIBERATE way to make a named proxy permanent for a session, and the
+ * counterpart to the Session-panel override, which must never write the session
+ * (see kitty_proxy_select() in kitty_bridge.c). Without this there would be no way
+ * to adopt a preset at all; with it, adopting one is an explicit act with a
+ * confirmation, rather than a side effect of connecting.
+ *
+ * Writes the preset's WHOLE set - method, host, port, username, password, exclude
+ * list, DNS, telnet command - because a half-loaded proxy is one that cannot
+ * authenticate. That includes clearing the password when the preset has none,
+ * which is exactly why it is confirmed every time.
+ *
+ * Nothing is stored until the session is saved, hence the wording "this window".
+ */
+struct pxload_data { char *name; dlgcontrol *list; };
+
+/*
+ * Map a row of the load droplist back to a proxy name.
+ *
+ * The list omits the two built-ins (KITTY_PROXY_NONE, KITTY_PROXY_SESSION):
+ * they are choices for the override, not definitions that can be loaded into a
+ * session. So row N is NOT proxies[N] and the skip has to be repeated here.
+ *
+ * ⚠️ Do NOT reach for dlg_editbox_get() to read the current text instead: this is
+ * a DROPLIST, which has no edit field, and that call asserts
+ * "c->ctrl->type == CTRL_EDITBOX" - it crashed the program with a runtime
+ * assertion the first time this was written that way.
+ */
+static const char *kitty_pxload_name_at(int row)
+{
+    int i, n = 0;
+    if (row < 0)
+        return NULL;
+    for (i = 0; i < MAX_PROXY && proxies[i].name; i++) {
+        if (!strcmp(proxies[i].name, KITTY_PROXY_NONE) ||
+            !strcmp(proxies[i].name, KITTY_PROXY_SESSION))
+            continue;
+        if (n++ == row)
+            return proxies[i].name;
+    }
+    return NULL;
+}
+
+static void kitty_pxload_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                 void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    struct pxload_data *pd = (struct pxload_data *)ctrl->context.p;
+    extern int kitty_confirm_box(HWND owner, const char *caption,
+                                 const char *text, const char *warn_red); /* kitty_win.c */
+
+    if (ctrl == pd->list) {
+        if (event == EVENT_REFRESH) {
+            int i, row = 0, sel = 0;
+            dlg_update_start(ctrl, dlg);
+            dlg_listbox_clear(ctrl, dlg);
+            for (i = 0; i < MAX_PROXY && proxies[i].name; i++) {
+                if (!strcmp(proxies[i].name, KITTY_PROXY_NONE) ||
+                    !strcmp(proxies[i].name, KITTY_PROXY_SESSION))
+                    continue;
+                dlg_listbox_add(ctrl, dlg, proxies[i].name);
+                if (pd->name && !strcmp(pd->name, proxies[i].name))
+                    sel = row;
+                row++;
+            }
+            dlg_listbox_select(ctrl, dlg, sel);
+            dlg_update_done(ctrl, dlg);
+            /* Remember whatever is showing, so pressing the button without ever
+             * touching the droplist loads the row the user can actually see. */
+            if (!pd->name) {
+                const char *n = kitty_pxload_name_at(sel);
+                if (n) pd->name = dupstr(n);
+            }
+        } else if (event == EVENT_SELCHANGE) {
+            const char *n = kitty_pxload_name_at(dlg_listbox_index(ctrl, dlg));
+            if (n) {
+                sfree(pd->name);
+                pd->name = dupstr(n);
+            }
+        }
+        return;
+    }
+
+    if (event != EVENT_ACTION)          /* the button */
+        return;
+
+    if (!pd->name || !pd->name[0]) {
+        dlg_beep(dlg);
+        return;
+    }
+    {
+        char *q = dupprintf(
+            "Load the named proxy \"%s\" into this configuration window?\n\n"
+            "It REPLACES this session's own proxy settings - type, host, port, "
+            "exclude list, DNS setting, and the proxy USERNAME AND PASSWORD. "
+            "If \"%s\" has no password stored, the one this session currently "
+            "holds is cleared.\n\n"
+            "Nothing is written to the saved session until you press Save.",
+            pd->name, pd->name);
+        /* The one case where the above is not the whole truth. */
+        const char *warn =
+            conf_get_bool(conf, CONF_saveonexit)
+            ? "This session has \"Save settings on exit\" enabled, so this WILL be "
+              "saved over your stored proxy settings when the session ends, even if "
+              "you never press Save."
+            : NULL;
+        bool go = kitty_confirm_box(GetActiveWindow(),
+                                    "Load named proxy settings?", q, warn);
+        sfree(q);
+        if (!go)
+            return;                     /* nothing touched at all */
+
+        LoadProxyInfo(conf, pd->name);
+        /* The fields ARE the preset now, so a remembered override naming it (or
+         * naming something else) would only be able to disagree. Clear it back to
+         * "use what the session says". */
+        conf_set_str(conf, CONF_proxyselection, KITTY_PROXY_SESSION);
+        dlg_refresh(NULL, dlg);         /* repaint the proxy fields we just wrote */
     }
 }
 
@@ -387,8 +632,17 @@ static void kitty_proxyedit_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                     void *data, int event)
 {
     if (event == EVENT_ACTION) {
-        extern int kitty_proxy_edit_dialog(HWND);
-        if (kitty_proxy_edit_dialog(GetActiveWindow())) {
+        Conf *conf = (Conf *)data;
+        extern int kitty_proxy_edit_dialog_for(HWND, const char *);
+        /* Open the editor ON the definition currently chosen in the override
+         * droplist this button sits beside - that is almost always the one the
+         * user means to edit. The two built-ins are not definitions, so they pass
+         * nothing and the editor opens on defaults as before. */
+        const char *sel = conf ? conf_get_str(conf, CONF_proxyselection) : NULL;
+        if (sel && (!strcmp(sel, KITTY_PROXY_SESSION) ||
+                    !strcmp(sel, KITTY_PROXY_NONE)))
+            sel = NULL;
+        if (kitty_proxy_edit_dialog_for(GetActiveWindow(), sel)) {
             dlg_refresh(NULL, dlg);
             /* A proxy was added / edited / deleted. Back up the config store now
              * (registry: kitty084.sav + rotation; portable: dated Backups\
@@ -1369,6 +1623,10 @@ static void sessionsaver_data_free(void *ssdv)
         session_filter_ctrl = NULL;
     if (session_filter_ssd == ssd)
         session_filter_ssd = NULL;
+    /* The override control belonged to this config box; it is ctrl_alloc'd and
+     * about to go with the ctrlbox, so drop the pointer rather than leave it
+     * dangling for the next box that opens. */
+    pxchoice_state = NULL;
     get_sesslist(&ssd->sesslist, false);
     sfree(ssd->savedsession);
 #ifdef MOD_PERSO
@@ -1448,6 +1706,11 @@ static bool load_selected_session(
     /* KiTTY: what is genuinely in the box now, for the Save guard. */
     sfree(ssd->loaded_from);
     ssd->loaded_from = dupstr(ssd->sesslist.sessions[i]);
+    /* KiTTY: the proxy override belongs to the session that was showing, not to
+     * the box. A newly loaded session starts with no override, derived from its
+     * own proxy settings - so this covers Load, a double-click on the list, and
+     * Enter from the search box alike, all of which come through here. */
+    kitty_proxy_override_reset(conf);
     /* KiTTY: follow the loaded session into its folder, and remember which
      * folder it arrived in. The folder combo is the list filter, but Save also
      * uses it to file the session (it is the only way to move a session
@@ -2010,6 +2273,29 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (event == EVENT_REFRESH) {
         if (ctrl == ssd->editbox) {
 #ifdef MOD_PERSO
+            /*
+             * KiTTY: mid-session, start with THIS session's name in the box.
+             *
+             * Change Settings exists to adjust the session you are in, so the
+             * name you almost always want is the one you are already running -
+             * and leaving the field blank meant retyping it to save a tweak,
+             * which is both a nuisance and a chance to mistype it over some
+             * other session.
+             *
+             * Only when the session HAS a name: CONF_sessionname is empty for a
+             * typed-in host and for Default Settings, and prefilling either would
+             * invent a save target the user never chose.
+             *
+             * Done here rather than at panel-build time because setup_config_box()
+             * has no Conf to read; this is the first place the name is available.
+             */
+            if (ssd->midsession && !ssd->savedsession[0]) {
+                const char *sn = conf_get_str(conf, CONF_sessionname);
+                if (sn && *sn) {
+                    sfree(ssd->savedsession);
+                    ssd->savedsession = dupstr(sn);
+                }
+            }
             ssd->suppress_edit_valchange++;
 #endif
             dlg_editbox_set(ctrl, dlg, ssd->savedsession);
@@ -2358,6 +2644,27 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * yet still feeds the folder-list rebuild, which resurrects
                  * deleted and renamed folders. Normalising it here also clears
                  * any such value left by earlier versions. */
+                /*
+                 * KiTTY: mid-session there is no "load" to have recorded a
+                 * folder, so folder_at_load was NULL and the test below fell
+                 * through to "the user chose this folder" - filing the session
+                 * into whatever the combo happened to be showing. Change
+                 * Settings never points that combo at the session's own folder,
+                 * so saving a tweak from a live session could MOVE it, silently.
+                 *
+                 * The running Conf carries the folder the session was opened
+                 * from, which is exactly what a load would have recorded. Seed
+                 * it, so mid-session Save keeps the session where it is and
+                 * moving it stays a deliberate act.
+                 *
+                 * Found while making the name box prefill mid-session: that made
+                 * Save a single click, which would have turned a latent hazard
+                 * into a one-click one.
+                 */
+                if (ssd->midsession && !ssd->folder_at_load) {
+                    const char *f = conf_get_str(conf, CONF_folder);
+                    ssd->folder_at_load = dupstr((f && *f) ? f : "Default");
+                }
                 if (!GetPuttyFlag() && ssd->folderlist) {
                     const char *cur = !CurrentFolder[0] ? "Default" : CurrentFolder;
                     if (isdef)
@@ -2387,6 +2694,20 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * box has loaded nothing, and prompting there would nag the one
                  * save people make most deliberately.
                  */
+                /*
+                 * Mid-session (Change Settings) the box was never "Loaded" from
+                 * the list - the settings came from the RUNNING SESSION - so
+                 * loaded_from is NULL and the guard below would warn about
+                 * saving your own session back over itself. That is the most
+                 * ordinary thing to do mid-session, and a warning there is
+                 * worse than no warning at all: it makes a safe action look
+                 * destructive. Seed it from the session's own name instead.
+                 */
+                if (!ssd->loaded_from) {
+                    const char *sn = conf_get_str(conf, CONF_sessionname);
+                    if (sn && *sn)
+                        ssd->loaded_from = dupstr(sn);
+                }
                 if (!isdef && ssd->savedsession[0] &&
                     (!ssd->loaded_from ||
                      strcmp(ssd->loaded_from, ssd->savedsession) != 0)) {
@@ -2453,6 +2774,15 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 strcmp(ssd->savedsession, KITTY_DEFAULT_SESSION) != 0)
                 kitty_set_last_session(ssd->savedsession);
             dlg_refresh(ssd->listbox, dlg);
+#ifdef MOD_PERSO
+            /* KiTTY: the read-only comment display reads the comment back from
+             * the STORE, so editing the comment on the Comment panel and saving
+             * left it showing the previous text - the box looked as though the
+             * edit had not been saved. The store has just been written, so
+             * re-read it here. */
+            if (ssd->commentbox)
+                update_comment_display(ssd, dlg);
+#endif
         } else if (!ssd->midsession &&
                    ssd->delbutton && ctrl == ssd->delbutton) {
             int i = dlg_listbox_index(ssd->listbox, dlg);
@@ -3815,9 +4145,17 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
     if (!GetPuttyFlag() && kitty_proxy_choice_shown()) {
         ctrl_columns(s, 1, 100);
         ctrl_columns(s, 2, 75, 25);
-        dlgcontrol *pc = ctrl_droplist(s, "Proxy choice", NO_SHORTCUT, 100,
+        /* Caption is set at runtime by the handler - it states whether an override
+         * is ACTIVE, and is a function of (choice, session). "Proxy choice" was
+         * the old caption and was wrong: it read as a setting rather than as
+         * something that amends only the next connection. */
+        struct pxchoice_data *pcd = (struct pxchoice_data *)
+            ctrl_alloc(b, sizeof(struct pxchoice_data));
+        memset(pcd, 0, sizeof(*pcd));
+        pxchoice_state = pcd;          /* so a session load can reset it */
+        dlgcontrol *pc = ctrl_droplist(s, "Proxy override options:", NO_SHORTCUT, 100,
                                        HELPCTX(session_saved),
-                                       kitty_proxy_handler, P(NULL));
+                                       kitty_proxy_handler, P(pcd));
         pc->column = 0;
         if (!midsession) {
             dlgcontrol *pe = ctrl_pushbutton(s, "Edit", NO_SHORTCUT,
@@ -4887,13 +5225,17 @@ static void scb_panel_selection(struct controlbox *b)
     /* One ceiling for OSC 52 and far2l both. Clamped in code (CLIP_MAX_MB_CAP):
      * lowering it only ever helps, but it must not be possible to type a number
      * here that turns a bounded denial of service into an unbounded one. */
-    ctrl_editbox(s, "Largest payload, in MB:", NO_SHORTCUT, 25,
+    /* 18, not 25, on every box in this panel: these hold two to four digits, and
+     * the 25% the other panels use was starving the labels - "Unanswered prompt
+     * gives up after, in seconds (0 = never)" lost its unit off the right edge,
+     * which is precisely the word that makes the number mean anything. */
+    ctrl_editbox(s, "Largest payload, in MB:", NO_SHORTCUT, 18,
                  HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_clipboard_max_mb), ED_INT);
     /* A cap per second rather than a gap between writes: a gap would make the
      * FIRST write of a burst win, leaving a stale clipboard, which is backwards. */
     ctrl_editbox(s, "Most writes per second (0 = no limit):",
-                 NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
+                 NO_SHORTCUT, 18, HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_clipboard_writes_per_sec), ED_INT);
 
     /* The numbers behind the read dialog. They are settings because the values
@@ -4902,22 +5244,25 @@ static void scb_panel_selection(struct controlbox *b)
      * ten should not have to argue with us about it. */
     s = ctrl_getset(b, "Window/Selection/Remote clipboard/Limits", "read",
                     "A granted clipboard read");
-    ctrl_editbox(s, "Grant offered, in minutes:", NO_SHORTCUT, 25,
+    ctrl_editbox(s, "Grant offered, in minutes:", NO_SHORTCUT, 18,
                  HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_osc52_read_minutes), ED_INT);
-    ctrl_editbox(s, "Grant offered, in requests:", NO_SHORTCUT, 25,
+    ctrl_editbox(s, "Grant offered, in requests:", NO_SHORTCUT, 18,
                  HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_osc52_read_requests), ED_INT);
-    ctrl_editbox(s, "Shortest gap between reads, in seconds (0 = none):",
-                 NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
+    ctrl_editbox(s, "Shortest gap between reads, in seconds:",
+                 NO_SHORTCUT, 18, HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_osc52_read_interval), ED_INT);
     ctrl_editbox(s, "Most reads per window (0 = no limit):",
-                 NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
+                 NO_SHORTCUT, 18, HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_osc52_read_max), ED_INT);
-    ctrl_editbox(s, "Unanswered prompt gives up after, in seconds (0 = never):",
-                 NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
+    /* "in seconds" has to survive: without a unit the number is meaningless, and
+     * it was the unit that fell off the edge. The "(0 = never)" the longer wording
+     * carried is the natural reading of a zero timeout anyway. */
+    ctrl_editbox(s, "Unanswered prompt expires, in seconds:",
+                 NO_SHORTCUT, 18, HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_osc52_read_timeout), ED_INT);
-    ctrl_editbox(s, "Most prompts per ten seconds:", NO_SHORTCUT, 25,
+    ctrl_editbox(s, "Most prompts per ten seconds:", NO_SHORTCUT, 18,
                  HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_osc52_read_dialogs), ED_INT);
 
@@ -4943,7 +5288,7 @@ static void scb_panel_selection(struct controlbox *b)
                   NO_SHORTCUT, HELPCTX(no_help),
                   conf_checkbox_handler, I(CONF_clipboard_activity_mark));
     ctrl_editbox(s, "That marker stays up, in seconds:",
-                 NO_SHORTCUT, 25, HELPCTX(no_help), conf_editbox_handler,
+                 NO_SHORTCUT, 18, HELPCTX(no_help), conf_editbox_handler,
                  I(CONF_clipboard_activity_secs), ED_INT);
     /* Windows 11 build 22000+ only; silently does nothing on Windows 10, which
      * is why the title marker above has to carry the meaning by itself. */
@@ -5300,6 +5645,28 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
         ctrl_settitle(b, "Connection/Proxy",
                       "Options controlling proxy usage");
 
+#ifdef MOD_PERSO
+        /* KiTTY: adopt a named proxy into THIS session. Deliberately ABOVE the
+         * proxy type, so the panel reads top-to-bottom as "start from a preset,
+         * or fill in your own below". Only when there is at least one named
+         * proxy to load; the editor at the foot of the panel is how the first
+         * one gets created. */
+        if (!GetPuttyFlag() && kitty_has_proxy_definitions()) {
+            struct pxload_data *pd = (struct pxload_data *)
+                ctrl_alloc(b, sizeof(struct pxload_data));
+            memset(pd, 0, sizeof(*pd));
+            /* Two full-width rows, NOT a shared 70/30 row: at 30% the button
+             * caption was clipped to "ad into this wind" and the droplist's own
+             * label lost its last word. The button now sits under the droplist and
+             * spans the panel, matching "Edit named proxies..." at the foot. */
+            s = ctrl_getset(b, "Connection/Proxy", "loadnamed", NULL);
+            pd->list = ctrl_droplist(s, "Named proxy settings:", NO_SHORTCUT, 60,
+                                     HELPCTX(no_help),
+                                     kitty_pxload_handler, P(pd));
+            ctrl_pushbutton(s, "Load into this window", NO_SHORTCUT,
+                            HELPCTX(no_help), kitty_pxload_handler, P(pd));
+        }
+#endif
         s = ctrl_getset(b, "Connection/Proxy", "basics", NULL);
         c = ctrl_droplist(s, "Proxy type:", 't', 70,
                           HELPCTX(proxy_type), proxy_type_handler, I(0));
@@ -5356,12 +5723,14 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
 #ifdef MOD_PERSO
         /* KiTTY: reusable named proxy definitions (hknet/KiTTY#11), managed
          * independently of this session's own proxy above. The chosen one is
-         * applied via the Session panel's "Proxy choice". Shown unless
+         * applied via the Session panel's proxy-override droplist, or loaded into
+         * this session with the row above. Shown unless
          * proxyselection=no, so it is the entry point to create the first
          * proxy even before the Session-panel droplist appears. */
         if (!GetPuttyFlag() && kitty_proxy_editor_available()) {
             ctrl_text(s, "Named proxies are reusable proxy definitions; pick one "
-                      "for a session with \"Proxy choice\" in the Session panel.",
+                      "for one connection with the proxy-override droplist in the "
+                      "Session panel, or load one into this session above.",
                       HELPCTX(no_help));
             ctrl_pushbutton(s, "Edit named proxies...", NO_SHORTCUT,
                             HELPCTX(no_help), kitty_proxyedit_handler, P(NULL));
@@ -6123,6 +6492,31 @@ static void scb_panel_other_protocols(struct controlbox *b, bool midsession, int
          */
         ctrl_settitle(b, "Connection/SUPDUP",
                       "Options controlling SUPDUP connections");
+
+        /* KiTTY: say what this protocol IS. The panel is inherited from upstream
+         * PuTTY and listed in the tree beside Telnet and Rlogin, where it reads
+         * as something a person might plausibly need - and then every option on
+         * it ("Location string", "WAITS", "**MORE** processing") is meaningless
+         * without knowing it is a 1970s DEC protocol. A user asked what it was;
+         * the panel should have told him. */
+        s = ctrl_getset(b, "Connection/SUPDUP", "what", NULL);
+        ctrl_text(s, "SUPDUP is a terminal protocol from 1977 (RFC 734), used by "
+                  "ITS - the Incompatible Timesharing System - on DEC PDP-10 "
+                  "mainframes. It is not related to Telnet or SSH: it is its own "
+                  "protocol, spoken directly over TCP, normally on port 95.",
+                  HELPCTX(no_help));
+        ctrl_text(s, "Unlike Telnet, which just carries characters, SUPDUP "
+                  "negotiates a virtual display terminal - KiTTY tells the host "
+                  "its screen size and capabilities, and the host replies with "
+                  "cursor-movement commands. Terminal types and termcap play no "
+                  "part.",
+                  HELPCTX(no_help));
+        ctrl_text(s, "You need this only to reach a PDP-10 running ITS - a "
+                  "handful of restored and emulated machines kept alive by "
+                  "retrocomputing enthusiasts. If that is not what you are "
+                  "connecting to, ignore this panel entirely; the settings below "
+                  "apply to SUPDUP sessions and nothing else.",
+                  HELPCTX(no_help));
 
         s = ctrl_getset(b, "Connection/SUPDUP", "main", NULL);
 

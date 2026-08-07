@@ -95,6 +95,19 @@ static int PasteSize = 0 ;
 int GetPasteSize(void) { return PasteSize ; }
 void SetPasteSize( const int size ) { PasteSize = size ; }
 
+/* How many SSH proxies may be chained before we refuse. An SSH jump host is
+ * configured from a Conf that may itself name a proxy, so a config that leads
+ * back into the chain recurses without bound: observed as a wall of
+ * "Making proxy^N SSH connection to ..." and a window that stops responding.
+ * There is no identity or cycle rule here on purpose - a jump host reached
+ * through itself is legitimate (a service bound to its own localhost, an
+ * internal interface that routes differently) and we cannot know how anyone's
+ * hosts are named. A depth BOUND is the only honest limit.
+ * kitty.ini [KiTTY] proxychainmax=<n> raises it; 0 or absent keeps the default. */
+static int ProxyChainMax = 5 ;
+int GetProxyChainMax(void) { return ProxyChainMax ; }
+void SetProxyChainMax( const int n ) { if( n > 0 ) ProxyChainMax = n ; }
+
 // Flag de gestion de la fonction hyperlink. In 0.84 hyperlinks are provided by
 // kitty_url.c/window.c, not the historical terminal.c hyperlink patch, so keep
 // the feature available by default and let kitty.ini "hyperlink" disable it.
@@ -3384,6 +3397,9 @@ void LoadParameters( void ) {
 		}				
 	}
 	if( ReadParameterN( INIT_SECTION, "pastesize", buffer, sizeof(buffer) ) ) { if( atoi(buffer)>0 ) SetPasteSize( atoi(buffer) ) ; }
+	/* NOTE: this parser is CASE-SENSITIVE (strcmp, not stricmp), so the key is
+	 * documented as exactly "proxychainmax". */
+	if( ReadParameterN( INIT_SECTION, "proxychainmax", buffer, sizeof(buffer) ) ) { if( atoi(buffer)>0 ) SetProxyChainMax( atoi(buffer) ) ; }
 	if( ReadParameterN( INIT_SECTION, "PSCPPath", buffer, sizeof(buffer) ) ) {
 		if( existfile( buffer ) ) { 
 			if( PSCPPath!=NULL) { free(PSCPPath) ; PSCPPath = NULL ; }

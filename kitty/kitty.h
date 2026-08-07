@@ -122,6 +122,10 @@ extern char * ScriptCommand ;
 int GetPasteSize(void) ;
 void SetPasteSize( const int size ) ;
 
+// Max chained SSH proxies before refusing; kitty.ini [KiTTY] proxychainmax (default 5)
+int GetProxyChainMax(void) ;
+void SetProxyChainMax( const int n ) ;
+
 // Flag de gestion de la fonction hyperlink
 extern int HyperlinkFlag ;
 int GetHyperlinkFlag(void) ;

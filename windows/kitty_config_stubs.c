@@ -30,6 +30,11 @@ int GetModalWeakKeyConfirmationFlag(void)        { return 1; }
 struct dlgcontrol;
 struct dlgcontrol *kitty_config_session_filter_ctrl(void) { return 0; } /* no Ctrl+F jump */
 
+/* dialog.c asks this for every static in the config box, so that KiTTY can draw
+ * the proxy-override caption bold while an override is armed. The stock variants
+ * have no proxy override and no such caption, so nothing is ever bold. */
+bool kitty_proxy_label_is_active(const char *text) { return false; }
+
 /* Ctrl+G resets the session-folder filter to the root list; the stock variants
  * have no folders, so there is nothing to reset. dialog.c only reaches this
  * after the accessor above returned non-NULL, which the stub never does — it

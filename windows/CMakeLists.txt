@@ -504,7 +504,12 @@ set_target_properties(kitty_portable PROPERTIES WIN32_EXECUTABLE ON)
 file(GLOB _kitty_shared_sources
   "${CMAKE_SOURCE_DIR}/*.c"
   "${CMAKE_SOURCE_DIR}/terminal/*.c"
-  "${CMAKE_SOURCE_DIR}/windows/*.c")
+  "${CMAKE_SOURCE_DIR}/windows/*.c"
+  # proxy/ and ssh/ added 2026-08-03: the check missed them, and proxy/sshproxy.c
+  # then needed a KiTTY change. It compiles into the shared `crypto` library, so a
+  # MOD_PERSO guard there would have been dead exactly like config.c's was.
+  "${CMAKE_SOURCE_DIR}/proxy/*.c"
+  "${CMAKE_SOURCE_DIR}/ssh/*.c")
 
 get_target_property(_kitty_target_sources kitty SOURCES)
 set(_kitty_covered "")
@@ -516,8 +521,13 @@ endforeach()
 set(_kitty_uncovered "")
 foreach(_src ${_kitty_shared_sources})
   file(READ "${_src}" _content)
-  # a real preprocessor guard, not a passing mention in a comment
-  if(_content MATCHES "#[ \t]*if(n?def[ \t]+MOD_PERSO|[ \t]+.*defined[ \t]*\\([ \t]*MOD_PERSO)")
+  # A real preprocessor guard, not a passing mention in a comment. ANCHORED to
+  # the start of a line (whitespace only before the #), because a directive must
+  # begin its line while a comment about one is preceded by " * " or "/* ".
+  # Without the anchor this check flagged proxy/sshproxy.c for a COMMENT
+  # explaining why it deliberately does not use the guard - the check tripping
+  # over its own documentation.
+  if(_content MATCHES "(^|\n)[ \t]*#[ \t]*if(n?def[ \t]+MOD_PERSO|[ \t]+[^\n]*defined[ \t]*\\([ \t]*MOD_PERSO)")
     get_filename_component(_abs "${_src}" ABSOLUTE)
     if(NOT "${_abs}" IN_LIST _kitty_covered)
       list(APPEND _kitty_uncovered "${_abs}")

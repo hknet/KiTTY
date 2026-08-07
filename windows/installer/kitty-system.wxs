@@ -46,15 +46,15 @@
          doing its job:
 
          MSIDISABLERMRESTART only has an effect if it is set BEFORE the Restart
-         Manager session opens. The `.65 -> .66` control run
-         (a local upgrade log, kept) shows the RM session opening at
-         sequence position 74 and this action scheduled at 191 - far too late.
-         The same log proves the property itself WORKS when set in time: passed
-         on the command line at 21:00:28.546, RM session at 21:00:28.553, and no
-         "Previously shut down applications have been restarted" line anywhere,
-         with the user's windows staying closed. And in the only context where
-         this action fired at all (SYSTEM, session 0) there is no desktop, so
-         its effect could never be observed there either.
+         Manager session opens. A verbose log of a real `.65 -> .66` silent
+         upgrade shows the RM session opening at sequence position 74 while this
+         action was scheduled at 191 - far too late. The same log shows the
+         property itself DOES work when set in time: passed on the command line
+         seven milliseconds before the RM session opened, no "Previously shut down
+         applications have been restarted" line appears and the open windows stay
+         closed. And in the only context where this action fired at all (SYSTEM,
+         session 0) there is no desktop, so its effect could never be observed
+         there either.
 
          Deployers who want the behaviour can pass MSIDISABLERMRESTART=1 on the
          command line, which is where it demonstrably works.
@@ -64,8 +64,7 @@
          enough to work (Property table, or an action before the RM session)
          applies to EVERY install, user-context included - so nobody's windows
          would ever come back after an upgrade. That is a product decision, not a
-         bug fix, and it is parked until someone actually asks for it. See
-         the maintainer notes. -->
+         bug fix, and it is parked until someone actually asks for it. -->
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="KiTTY" />

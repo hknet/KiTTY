@@ -924,7 +924,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	gppi_forced(sesskey, "DisableAltGr", 0, conf, CONF_disablealtgr);
 #endif
 #ifdef MOD_PROXY
-	gpps_forced(sesskey, "ProxySelection", "- Session defined proxy -", conf, CONF_proxyselection);
+	gpps_forced(sesskey, "ProxySelection", KITTY_PROXY_SESSION, conf, CONF_proxyselection);
 #endif
 // END COPY/PASTE
 	/* Retired-option migration for the file/portable sessions the user loads:

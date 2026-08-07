@@ -569,6 +569,21 @@
 #ifndef IDC_NOTICE_TEXT
 #define IDC_NOTICE_TEXT 1274
 #endif
+/* Yes/No confirmation with an optional SECOND line in red. A real dialog rather
+ * than MessageBox for two reasons, NEITHER of them DPI (a MessageBox is drawn by
+ * Windows and scales correctly - see the corrected note in kitty_win.c): it grows
+ * to fit a long explanation, and a MessageBox cannot colour text. The red line is
+ * for the case where the action would persist WITHOUT an explicit save, which the
+ * ordinary wording of a confirmation understates. */
+#ifndef IDD_CONFIRMBOX
+#define IDD_CONFIRMBOX 147
+#endif
+#ifndef IDC_CONFIRM_TEXT
+#define IDC_CONFIRM_TEXT 1275
+#endif
+#ifndef IDC_CONFIRM_WARN
+#define IDC_CONFIRM_WARN 1276
+#endif
 #ifndef WM_KITTY_CLIPBALLOON
 #define WM_KITTY_CLIPBALLOON (WM_APP + 71)
 #endif

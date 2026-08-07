@@ -343,9 +343,10 @@ BEGIN
 END
 
 /* Generic notice: a caption, a block of text, and OK. A real dialog rather than a
- * MessageBox so the dialog manager gives it the shell font at the correct DPI,
- * exactly like every other KiTTY window - the height here is a starting point,
- * because kitty_notice_box() grows it to fit the text at that font. */
+ * MessageBox because it must GROW TO FIT its text - the height here is only a
+ * starting point, kitty_notice_box() expands it at the dialog's font. NOT a DPI
+ * matter: a MessageBox is drawn by Windows and scales correctly (see the corrected
+ * note in kitty_win.c). */
 IDD_NOTICEBOX DIALOG DISCARDABLE 0, 0, 260, 92
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY"
@@ -353,6 +354,21 @@ FONT 8, "MS Shell Dlg"
 BEGIN
     LTEXT           "", IDC_NOTICE_TEXT, 10, 9, 240, 56
     DEFPUSHBUTTON   "OK", IDOK, 206, 72, 44, 14
+END
+
+/* Yes/No confirmation, with an optional second line drawn in RED. Heights here are
+ * a starting point: kitty_confirm_box() grows both text controls to fit and moves
+ * the buttons down. "No" is the DEFAULT - this is asked when something is about to
+ * be overwritten, so a reflex Return must not confirm it. */
+IDD_CONFIRMBOX DIALOG DISCARDABLE 0, 0, 280, 116
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "KiTTY"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "", IDC_CONFIRM_TEXT, 10, 9, 260, 56
+    LTEXT           "", IDC_CONFIRM_WARN, 10, 70, 260, 16
+    PUSHBUTTON      "&Yes", IDYES, 166, 94, 50, 14
+    DEFPUSHBUTTON   "&No", IDNO, 220, 94, 50, 14
 END
 
 IDD_INFOBOX DIALOG DISCARDABLE 0, 0, 350, 28

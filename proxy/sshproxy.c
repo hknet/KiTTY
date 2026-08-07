@@ -26,6 +26,10 @@ typedef struct SshProxy {
     bool got_proxy_password, tried_proxy_password;
     char *proxy_password;
 
+    /* KiTTY: how deep this link is in a chain of SSH proxies. Written into the
+     * child's Conf so the next link inherits it; see sshproxy_new_connection. */
+    int chain_depth;
+
     ProxyStderrBuf psb;
     Plug *plug;
 
@@ -614,12 +618,72 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
     sp->addr = addr;
     sp->port = port;
 
+    /*
+     * KiTTY: refuse a chain that has gone too deep, BEFORE building anything.
+     *
+     * A jump host is configured from a Conf that may itself name a proxy, so a
+     * configuration leading back into its own chain recurses without bound -
+     * observed as a wall of "Making proxy^N SSH connection to ..." and a window
+     * that stopped responding. No identity rule and no cycle rule: a jump host
+     * reached through itself is legitimate, and host names tell us nothing
+     * reliable. Only the depth is bounded.
+     *
+     * The depth travels DOWN the chain in each child's Conf (set further down), so
+     * overlapping connections cannot interfere with each other. The limit arrives
+     * the same way, because this file compiles into the shared crypto library
+     * without MOD_PERSO and so cannot call a KiTTY accessor.
+     *
+     * The message stays short and names the setting that raises it; the chain
+     * itself goes to the Event Log, one host per line, because that scrolls and
+     * can be copied and an error box cannot.
+     */
+    {
+        int depth = conf_get_int(clientconf, CONF_proxy_chain_depth);
+        int maxdepth = conf_get_int(clientconf, CONF_proxy_chain_max);
+        if (maxdepth <= 0)
+            maxdepth = 5;            /* kitty.ini [KiTTY] proxychainmax */
+        if (depth >= maxdepth) {
+            sp->errmsg = dupprintf(
+                "too many chained proxies (limit %d). Raise proxychainmax in the "
+                "[KiTTY] section of kitty.ini if that is intended; the full chain "
+                "is in the Event Log.", maxdepth);
+            return &sp->sock;
+        }
+        sp->chain_depth = depth + 1;
+    }
+
     sp->conf = conf_new();
     /* Try to treat proxy_hostname as the title of a saved session. If
      * that fails, set up a default Conf of our own treating it as a
      * hostname. */
     const char *proxy_hostname = conf_get_str(clientconf, CONF_proxy_host);
-    if (do_defaults(proxy_hostname, sp->conf)) {
+
+    /*
+     * KiTTY: a NAMED PROXY means a hostname, never a saved-session title.
+     *
+     * `CONF_proxyselection` holds the name of an entry from KiTTY's proxy
+     * editor, whose host and port are explicit. Upstream's saved-session-first
+     * interpretation of the proxy host is wrong for those, and not harmlessly:
+     * when a jump host is named after a machine that also has a saved session,
+     * that SESSION gets loaded as the jump-host config - including whatever proxy
+     * the session itself carries - so an SSH proxy can silently run through an
+     * unrelated HTTP proxy and connect twice to the same host.
+     *
+     * The saved-session trick still works for a hand-typed proxy host, which is
+     * where it is documented and where someone might want it.
+     *
+     * NOT #ifdef MOD_PERSO: this file compiles into the shared `crypto`
+     * library, which is built WITHOUT that define, so a guard here would be
+     * silently dead code (the trap this project has hit four times). No guard is
+     * needed anyway - `CONF_proxyselection` is declared unconditionally in
+     * conf.h and is empty in the stock variants, so they keep upstream behaviour.
+     */
+    const char *proxy_named = conf_get_str(clientconf, CONF_proxyselection);
+    bool from_named_proxy = (proxy_named && *proxy_named &&
+                             strcmp(proxy_named, KITTY_PROXY_NONE) != 0 &&
+                             strcmp(proxy_named, KITTY_PROXY_SESSION) != 0);
+
+    if (!from_named_proxy && do_defaults(proxy_hostname, sp->conf)) {
         if (!conf_launchable(sp->conf)) {
             sp->errmsg = dupprintf("saved session '%s' is not launchable",
                                    proxy_hostname);
@@ -740,7 +804,29 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
      */
     prepare_session(sp->conf);
 
+    /*
+     * KiTTY: hand the depth and the limit DOWN to this link's own Conf, so that if
+     * it in turn configures a proxy, that one sees where it is in the chain.
+     *
+     * Deliberately AFTER the do_defaults()/prepare_session() work above: when the
+     * proxy host names a saved session, do_defaults() replaces this Conf wholesale
+     * and would discard anything written earlier. The limit is copied across too,
+     * because the child's Conf came from a saved session and knows nothing of the
+     * kitty.ini value.
+     */
+    conf_set_int(sp->conf, CONF_proxy_chain_depth, sp->chain_depth);
+    conf_set_int(sp->conf, CONF_proxy_chain_max,
+                 conf_get_int(clientconf, CONF_proxy_chain_max));
+
     sp->logctx = log_init(&sp->logpolicy, sp->conf);
+
+    /* KiTTY: one line per link, so the Event Log carries the WHOLE chain in order.
+     * That is where the chain belongs rather than in the error box: it scrolls, it
+     * can be copied, and host names are often long. By the time the depth limit
+     * refuses a link, every link before it has already named itself here. */
+    logeventf(sp->logctx, "proxy chain link %d: %s port %d",
+              sp->chain_depth, conf_get_str(sp->conf, CONF_host),
+              conf_get_int(sp->conf, CONF_port));
 
     char *error, *realhost;
     error = backend_init(backvt, &sp->seat, &sp->backend, sp->logctx, sp->conf,

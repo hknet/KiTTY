@@ -166,8 +166,38 @@ CONF_OPTION(proxy_log_to_term,
  * "- Session defined proxy -" = no-op (matches LoadProxyInfo's short-circuit). */
 CONF_OPTION(proxyselection,
     VALUE_TYPE(STR),
-    DEFAULT_STR("- Session defined proxy -"),
+    DEFAULT_STR(KITTY_PROXY_SESSION),
     SAVE_KEYWORD("ProxySelection"),
+)
+
+/*
+ * KiTTY: bound on chained SSH proxies, and the depth reached so far.
+ *
+ * An SSH jump host is configured from a Conf that may itself name a proxy, so a
+ * configuration leading back into its own chain recurses without bound - seen live
+ * as a wall of "Making proxy^N SSH connection to ..." and an unresponsive window.
+ * There is deliberately no identity or cycle rule: a jump host reached through
+ * itself is legitimate (a service bound to its own localhost, an internal
+ * interface that routes differently), and we cannot know how anyone's hosts are
+ * named or what they serve. A depth bound is the only honest limit.
+ *
+ * Both are NOT_SAVED. The depth is per-connection state that travels DOWN the
+ * chain inside the child's Conf; a global counter would be wrong because
+ * connections overlap. The max is filled in at startup from kitty.ini [KiTTY]
+ * proxychainmax and carried in the Conf so that proxy/sshproxy.c - which compiles
+ * into the shared crypto library, WITHOUT MOD_PERSO - can read it without linking
+ * against a KiTTY symbol. 0 means "not configured"; the code substitutes its
+ * default.
+ */
+CONF_OPTION(proxy_chain_max,
+    VALUE_TYPE(INT),
+    DEFAULT_INT(0),
+    NOT_SAVED,
+)
+CONF_OPTION(proxy_chain_depth,
+    VALUE_TYPE(INT),
+    DEFAULT_INT(0),
+    NOT_SAVED,
 )
 
 /* SSH options */

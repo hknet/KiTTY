@@ -189,6 +189,11 @@
 ; pastesize: paste size limit (number of characters). Above the limit a confirmation is requested. (0 means unlimited)
 ;pastesize=0
 
+; proxychainmax: how many chained SSH proxies (jump hosts) a connection may use
+;    before it is refused with an error. Stops a proxy chain that loops back on
+;    itself from hanging. Default 5; values below 1 are ignored.
+;proxychainmax=5
+
 ; PSCPPath: the full path to the pscp.exe (or kscp.exe) binary
 ;PSCPPath=
 

@@ -36,7 +36,7 @@ extern const char *kitty_secret_strip_plain( const char *stored ) ;
 struct Proxies proxies[MAX_PROXY] ;
 
 /* True once InitProxyList() has found at least one user-defined proxy (beyond
- * the two built-in "- Session defined proxy -" / "- No proxy -" entries at
+ * the two built-in KITTY_PROXY_SESSION / KITTY_PROXY_NONE entries at
  * indices 0/1). Lets the config box show the Proxy-choice droplist
  * automatically for users who actually have proxies defined, without needing
  * the explicit [ConfigBox] proxyselection=yes flag (hknet/KiTTY#11). */
@@ -58,20 +58,20 @@ int kitty_proxy_choice_shown( void ) {
 int kitty_proxy_editor_available( void ) { return ProxySelectionFlag >= 0 ; }
 
 /* Resolve CONF_proxyselection at load/connect (hknet/KiTTY#11): a named proxy
- * that no longer exists (or "- Session defined proxy -" / empty) collapses to
- * "- Session defined proxy -" when the session has its OWN proxy configured,
- * else "- No proxy -". "- No proxy -" and an existing named proxy are kept.
+ * that no longer exists (or KITTY_PROXY_SESSION / empty) collapses to
+ * KITTY_PROXY_SESSION when the session has its OWN proxy configured,
+ * else KITTY_PROXY_NONE. KITTY_PROXY_NONE and an existing named proxy are kept.
  * Needs proxies[] populated (InitProxyList, done at startup). */
 void kitty_proxy_resolve_selection( Conf *conf ) {
 	const char *cur = conf_get_str( conf, CONF_proxyselection ) ;
-	if( cur && !strcmp( cur, "- No proxy -" ) ) return ;
-	if( cur && cur[0] && strcmp( cur, "- Session defined proxy -" ) ) {
+	if( cur && !strcmp( cur, KITTY_PROXY_NONE ) ) return ;
+	if( cur && cur[0] && strcmp( cur, KITTY_PROXY_SESSION ) ) {
 		for( int i = 2 ; i < MAX_PROXY && proxies[i].name ; i++ )
 			if( !strcmp( cur, proxies[i].name ) ) return ;   /* still exists */
 	}
 	conf_set_str( conf, CONF_proxyselection,
 		conf_get_int( conf, CONF_proxy_type ) != PROXY_NONE
-			? "- Session defined proxy -" : "- No proxy -" ) ;
+			? KITTY_PROXY_SESSION : KITTY_PROXY_NONE ) ;
 }
 
 void InitProxyList(void) {
@@ -83,8 +83,11 @@ void InitProxyList(void) {
 		proxies[i].name = NULL;
 		proxies[i].val = i;
 	}
-	proxies[0].name=(char*)malloc(26); strcpy(proxies[0].name,"- Session defined proxy -");
-	proxies[1].name=(char*)malloc(13); strcpy(proxies[1].name,"- No proxy -");
+	/* sizeof, not a hand-counted length: these were malloc(26) and malloc(13),
+	 * which happened to be right for the strings as spelled and would have
+	 * overflowed the moment either was edited. */
+	proxies[0].name=(char*)malloc(sizeof(KITTY_PROXY_SESSION)); strcpy(proxies[0].name,KITTY_PROXY_SESSION);
+	proxies[1].name=(char*)malloc(sizeof(KITTY_PROXY_NONE));    strcpy(proxies[1].name,KITTY_PROXY_NONE);
 	j=2;
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 		TCHAR 	achClass[MAX_PATH] = TEXT("");
@@ -135,8 +138,8 @@ void InitProxyList(void) {
 
 int LoadProxyInfo( Conf * conf, const char * name ) {
 	char buffer[MAX_VALUE_NAME] ;
-	if( !strcmp(name,"- Session defined proxy -") ) { return 0 ; }
-	if( !strcmp(name,"- No proxy -") ) { 
+	if( !strcmp(name,KITTY_PROXY_SESSION) ) { return 0 ; }
+	if( !strcmp(name,KITTY_PROXY_NONE) ) { 
 		debug_logevent( "Remove proxy definition" ) ;
 		conf_set_int(conf, CONF_proxy_type, PROXY_NONE) ; 
 		return 1 ;
@@ -273,7 +276,7 @@ void kitty_store_mark_dirty(void) ;   /* kitty_storage.c */
 int SaveProxyInfo( Conf *conf, const char *name ) {
 	kitty_store_mark_dirty() ;   /* named proxies live in the store too */
 	if( name == NULL || name[0] == '\0' ) return 0 ;
-	if( !strcmp(name,"- Session defined proxy -") || !strcmp(name,"- No proxy -") ) return 0 ;
+	if( !strcmp(name,KITTY_PROXY_SESSION) || !strcmp(name,KITTY_PROXY_NONE) ) return 0 ;
 	int method = proxy_method_from_conf( conf ) ;
 	int dns    = (conf_get_int(conf, CONF_proxy_dns) + 2) % 3 ;   /* mirror LoadProxyInfo */
 	int local  = conf_get_bool(conf, CONF_even_proxy_localhost) ? 1 : 0 ;
@@ -329,7 +332,7 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 /* Delete a named proxy definition (registry key or portable file). */
 int DeleteProxyInfo( const char *name ) {
 	if( name == NULL || name[0] == '\0' ) return 0 ;
-	if( !strcmp(name,"- Session defined proxy -") || !strcmp(name,"- No proxy -") ) return 0 ;
+	if( !strcmp(name,KITTY_PROXY_SESSION) || !strcmp(name,KITTY_PROXY_NONE) ) return 0 ;
 	if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
 		char sub[2048] ;
 		char *m = (char*)malloc(4*strlen(name)+1) ; mungestr( name, m ) ;

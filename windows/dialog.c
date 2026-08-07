@@ -750,6 +750,7 @@ static int kitty_cfgbox_restore_pos(HWND hwnd)
  * a session box exists; the stock GUI variants' stub accessor returns NULL,
  * so they never install it. */
 dlgcontrol *kitty_config_session_filter_ctrl(void); /* kitty_config.c / stub */
+bool kitty_proxy_label_is_active(const char *text);  /* kitty_config.c / stub */
 bool kitty_config_select_root_folder(dlgparam *dp); /* kitty_config.c / stub */
 static HHOOK kitty_cfg_kbdhook = NULL;
 static HWND kitty_cfg_hwnd = NULL;
@@ -795,6 +796,43 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
     struct treeview_faff tvfaff;
 
     switch (msg) {
+      case WM_CTLCOLORSTATIC: {
+        /*
+         * KiTTY: draw the proxy-override caption BOLD AND RED while an override
+         * is armed.
+         *
+         * Identified by its TEXT, not by a control id: the caption is set at
+         * runtime by the handler in kitty_config.c, and plumbing an id out through
+         * the portable control layer to reach it here would be a lot of machinery
+         * for one label. kitty_proxy_label_is_active() is the only thing that knows
+         * which wording counts, and it lives beside the code that produces it.
+         *
+         * Stubbed to false in windows/kitty_config_stubs.c, so the stock variants -
+         * which have no proxy override - link and behave exactly as before.
+         */
+        char buf[128];
+        if (GetWindowTextA((HWND)lParam, buf, sizeof(buf)) > 0 &&
+            kitty_proxy_label_is_active(buf)) {
+            static HFONT bold = NULL;      /* built once, reused for the process */
+            HDC hdc = (HDC)wParam;
+            if (!bold) {
+                LOGFONT lf;
+                HFONT cur = (HFONT)GetCurrentObject(hdc, OBJ_FONT);
+                if (cur && GetObject(cur, sizeof(lf), &lf)) {
+                    lf.lfWeight = FW_BOLD;
+                    bold = CreateFontIndirect(&lf);
+                }
+            }
+            if (bold)
+                SelectObject(hdc, bold);
+            /* Dark red, not pure red: it stays legible on the grey dialog face
+             * and on the lighter face high-contrast themes use. */
+            SetTextColor(hdc, RGB(192, 0, 0));
+            SetBkMode(hdc, TRANSPARENT);
+            return (INT_PTR)GetSysColorBrush(COLOR_BTNFACE);
+        }
+        return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
+      }
       case WM_EXITSIZEMOVE:
         kitty_cfgbox_save_pos(hwnd);   /* remember where the user dragged it */
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);

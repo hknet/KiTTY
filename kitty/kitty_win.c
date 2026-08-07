@@ -473,7 +473,8 @@ static int kitty_version_cmp( const int a[4], const int b[4] ) {
 
 typedef enum { KITTY_INST_PERUSER, KITTY_INST_SYSTEM, KITTY_INST_PORTABLE } kitty_install_t ;
 
-/* Our MSI UpgradeCodes (stable across versions; see the .wxs / the build runbook).
+/* Our MSI UpgradeCodes, stable across versions - they must match the ones in
+ * windows/installer/*.wxs, which is where they are defined.
  * MsiEnumRelatedProducts takes the braced GUID form. */
 #define KITTY_UPGRADE_SYSTEM  "{69EA2DD5-EF19-4811-B324-EF34CAA6942C}"
 #define KITTY_UPGRADE_PERUSER "{578952A6-AA7F-4146-918B-47803234700B}"
@@ -967,11 +968,16 @@ static INT_PTR CALLBACK kitty_upd_dlgproc( HWND h, UINT msg, WPARAM wp, LPARAM l
 /*
  * Generic notice box: a caption, a block of text, and OK.
  *
- * A real dialog rather than MessageBox, for the reason the update popup below
- * gives: the dialog manager hands it the shell font at the right DPI, so nothing
- * here hand-rolls DPI scaling and the text is not the wrong size on a scaled
- * display. It grows to fit its text at that font, the same way the update popup
- * does, so a long explanation is not clipped into a fixed rectangle.
+ * A real dialog rather than MessageBox because it must GROW TO FIT a long
+ * explanation instead of clipping it, and because it should look like the rest of
+ * KiTTY.
+ *
+ * ⚠️ NOT for DPI reasons, whatever this comment used to say. A MessageBox is drawn
+ * by WINDOWS in the system dialog font, and the system scales it for the process's
+ * DPI awareness - it is correct on a scaled display and always was. The DPI
+ * problems this project actually had came from windows we laid out OURSELVES with
+ * hard-coded pixel sizes. The record is corrected here because that wrong reason
+ * was about to be used to justify rewriting a working popup.
  *
  * MODAL, unlike the update popup: this is used to tell somebody that a thing they
  * just did no longer works, and a notice that answers a deliberate action has to
@@ -1028,6 +1034,110 @@ void kitty_notice_box( HWND owner, const char *caption, const char *text ) {
 	n.caption = caption ; n.text = text ;
 	DialogBoxParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_NOTICEBOX),
 		owner, kitty_notice_dlgproc, (LPARAM)&n ) ;
+}
+
+/*
+ * Yes/No confirmation with an optional second line in RED.
+ *
+ * Two things a MessageBox cannot do, which is the whole reason this exists - and
+ * NEITHER of them is DPI, since a MessageBox is drawn by Windows and scales
+ * correctly: it grows to fit a long explanation, and it can colour text. The red
+ * line is reserved for "this will persist even if you never press Save", which
+ * the ordinary wording of a confirmation understates.
+ *
+ * "No" is the default: this is asked precisely when something is about to be
+ * overwritten, so pressing Return without reading must not agree to it.
+ */
+typedef struct {
+	const char *caption ;
+	const char *text ;
+	const char *warn ;   /* NULL/"" = no red line, and that row collapses */
+} kitty_confirm_t ;
+
+/* Grow one text control to fit its text at the DIALOG's font, offset by extra_dy,
+ * and return the height change in pixels. Same measure-then-move approach the
+ * notice box uses, so neither hand-rolls DPI scaling. */
+static int kitty_fit_text( HWND dlg, int ctlid, const char *text, int extra_dy ) {
+	HWND c = GetDlgItem( dlg, ctlid ) ;
+	HFONT f = (HFONT)SendMessage( dlg, WM_GETFONT, 0, 0 ) ;
+	RECT r ; int w, cur, dh = 0 ;
+	if( !c ) return 0 ;
+	GetWindowRect( c, &r ) ; MapWindowPoints( NULL, dlg, (POINT*)&r, 2 ) ;
+	w = r.right - r.left ; cur = r.bottom - r.top ;
+	if( text && *text ) {
+		HDC dc = GetDC( c ) ; HFONT of = (HFONT)SelectObject( dc, f ) ;
+		RECT m = { 0, 0, w, 0 } ;
+		DrawText( dc, text, -1, &m, DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX ) ;
+		SelectObject( dc, of ) ; ReleaseDC( c, dc ) ;
+		dh = m.bottom - cur ;
+		MoveWindow( c, r.left, r.top + extra_dy, w, m.bottom, TRUE ) ;
+	} else {
+		dh = -cur ;                       /* collapse, do not leave a gap */
+		MoveWindow( c, r.left, r.top + extra_dy, w, 0, TRUE ) ;
+		ShowWindow( c, SW_HIDE ) ;
+	}
+	return dh ;
+}
+
+static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
+	static const kitty_confirm_t *cf = NULL ;
+	switch( msg ) {
+	  case WM_INITDIALOG: {
+		int d1, d2, dh, id ;
+		cf = (const kitty_confirm_t *)lp ;
+		if( cf && cf->caption ) SetWindowTextA( h, cf->caption ) ;
+		SetDlgItemTextA( h, IDC_CONFIRM_TEXT, cf && cf->text ? cf->text : "" ) ;
+		SetDlgItemTextA( h, IDC_CONFIRM_WARN, cf && cf->warn ? cf->warn : "" ) ;
+		d1 = kitty_fit_text( h, IDC_CONFIRM_TEXT, cf ? cf->text : NULL, 0 ) ;
+		d2 = kitty_fit_text( h, IDC_CONFIRM_WARN, cf ? cf->warn : NULL, d1 ) ;
+		dh = d1 + d2 ;
+		if( dh != 0 ) {
+			for( id = IDYES ; ; id = IDNO ) {
+				HWND b = GetDlgItem( h, id ) ;
+				if( b ) {
+					RECT br ; GetWindowRect( b, &br ) ;
+					MapWindowPoints( NULL, h, (POINT*)&br, 2 ) ;
+					MoveWindow( b, br.left, br.top + dh,
+						br.right-br.left, br.bottom-br.top, TRUE ) ;
+				}
+				if( id == IDNO ) break ;
+			}
+			{ RECT wr ; GetWindowRect( h, &wr ) ;
+			  SetWindowPos( h, NULL, 0, 0, wr.right-wr.left,
+				(wr.bottom-wr.top)+dh, SWP_NOMOVE|SWP_NOZORDER ) ; }
+		}
+		SetFocus( GetDlgItem( h, IDNO ) ) ;
+		return FALSE ;                     /* focus set here, not by the manager */
+	  }
+	  case WM_CTLCOLORSTATIC:
+		/* the warning line, and only it, is red */
+		if( cf && cf->warn && *cf->warn &&
+		    (HWND)lp == GetDlgItem( h, IDC_CONFIRM_WARN ) ) {
+			SetTextColor( (HDC)wp, RGB(200,0,0) ) ;
+			SetBkMode( (HDC)wp, TRANSPARENT ) ;
+			return (INT_PTR)GetSysColorBrush( COLOR_3DFACE ) ;
+		}
+		return FALSE ;
+	  case WM_COMMAND:
+		switch( LOWORD(wp) ) {
+		  case IDYES: EndDialog( h, 1 ) ; return TRUE ;
+		  case IDNO:
+		  case IDCANCEL: EndDialog( h, 0 ) ; return TRUE ;
+		}
+		return FALSE ;
+	  case WM_CLOSE: EndDialog( h, 0 ) ; return TRUE ;   /* closing means No */
+	}
+	return FALSE ;
+}
+
+/* True only if Yes was pressed. No, Escape and closing the box all mean no, which
+ * is the safe reading of every one of them. */
+int kitty_confirm_box( HWND owner, const char *caption, const char *text,
+                       const char *warn_red ) {
+	kitty_confirm_t cf ;
+	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ;
+	return DialogBoxParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_CONFIRMBOX),
+		owner, kitty_confirm_dlgproc, (LPARAM)&cf ) == 1 ;
 }
 
 /* Show the modeless "update available / up to date" popup over `owner`. It is a

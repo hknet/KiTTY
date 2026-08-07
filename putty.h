@@ -1792,6 +1792,22 @@ NORETURN void modalfatalbox(const char *, ...) PRINTF_LIKE(1, 2);
 NORETURN void cleanup_exit(int);
 
 /*
+ * KiTTY: the two built-in entries of the proxy-override droplist.
+ *
+ * They are compared by STRING in a dozen places across kitty_proxy.c,
+ * kitty_config.c, kitty_proxy_gui.c and proxy/sshproxy.c, and one of them is also
+ * the stored default of CONF_proxyselection. Repeating the literal meant a typo in
+ * any single comparison would fail silently - the entry would simply stop being
+ * recognised as a built-in and start being treated as the name of a definition.
+ * Two of the old uses even malloc'd a hand-counted length.
+ *
+ * Defined here, above the conf.h include, so conf.h's DEFAULT_STR can use it and
+ * proxy/sshproxy.c - which is built without MOD_PERSO - can see it too.
+ */
+#define KITTY_PROXY_SESSION "- Session defined proxy -"
+#define KITTY_PROXY_NONE    "- No proxy -"
+
+/*
  * Exports from conf.c, and a big enum (via parametric macro) of
  * configuration option keys.
  */

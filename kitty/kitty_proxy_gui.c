@@ -2,7 +2,8 @@
  * KiTTY named-proxy editor (hknet/KiTTY#11).
  *
  * A modal dialog to create / edit / delete the named proxy definitions that the
- * Session panel's "Proxy choice" droplist selects from. Pick a definition from
+ * Session panel's proxy-override droplist selects from, and that the Proxy panel
+ * can load permanently into a session. Pick a definition from
  * the combo to load its fields, or type a new name; Save writes it (via
  * SaveProxyInfo), Delete removes it (after a confirm). On any change we rescan
  * (InitProxyList) so the combo — and, after the dialog closes, the config box —
@@ -57,6 +58,9 @@ static int pxe_combo_get_val(HWND hdlg, int id, const int *vals, int n)
 }
 
 static int g_pxe_changed;   /* set when a definition was saved or deleted */
+/* Definition to open the editor ON, or NULL for defaults. Set by
+ * kitty_proxy_edit_dialog_for() and consumed in WM_INITDIALOG. */
+static char *g_pxe_preselect = NULL;
 
 static void pxe_fill_names(HWND hdlg)
 {
@@ -156,14 +160,14 @@ static void pxe_note_reopen(HWND hdlg, int appearing)
     if (GetProxySelectionFlag() != 0)    /* only "auto" shows/hides by count */
         return;
     MessageBoxA(hdlg, appearing
-        ? "Proxy defined.\r\n\r\nThe Proxy choice dropdown will appear in the "
+        ? "Proxy defined.\r\n\r\nThe proxy-override droplist will appear in the "
           "Session panel the next time a configuration window is opened - start "
           "a new KiTTY, or use the system-menu \"Change Settings...\" of a running "
           "session (that just reopens the config box; it does NOT disconnect or "
           "affect the live session)."
-        : "The last named proxy was removed.\r\n\r\nThe Proxy choice dropdown will "
-          "disappear from the Session panel the next time a configuration window "
-          "is opened - start a new KiTTY, or use the system-menu \"Change "
+        : "The last named proxy was removed.\r\n\r\nThe proxy-override droplist "
+          "will disappear from the Session panel the next time a configuration "
+          "window is opened - start a new KiTTY, or use the system-menu \"Change "
           "Settings...\" of a running session (that just reopens the config box; "
           "it does NOT disconnect or affect the live session).",
         "KiTTY named proxy", MB_OK | MB_ICONINFORMATION);
@@ -179,7 +183,22 @@ static INT_PTR CALLBACK pxe_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
         pxe_combo_fill(hdlg, IDC_PXE_DNS, pxe_dns_names, PXE_NDNS);
         pxe_combo_fill(hdlg, IDC_PXE_LOGTOTERM, pxe_log_names, PXE_NLOG);
         pxe_fill_names(hdlg);
-        pxe_load_named(hdlg, NULL);   /* fields to defaults (incl. command / DNS / diagnostics) */
+        /* Open on the definition the caller named - normally the one selected in
+         * the override droplist that the Edit button sits beside. Built-ins are
+         * not definitions, so the caller passes NULL for those. */
+        if (g_pxe_preselect) {
+            HWND cb = GetDlgItem(hdlg, IDC_PXE_NAME);
+            int idx = (int)SendMessageA(cb, CB_FINDSTRINGEXACT,
+                                        (WPARAM)-1, (LPARAM)g_pxe_preselect);
+            if (idx != CB_ERR) {
+                SendMessage(cb, CB_SETCURSEL, idx, 0);
+                pxe_load_named(hdlg, g_pxe_preselect);
+            } else {
+                pxe_load_named(hdlg, NULL);
+            }
+        } else {
+            pxe_load_named(hdlg, NULL);   /* defaults (incl. command / DNS / diagnostics) */
+        }
         pxe_update_banner(hdlg);
         SetForegroundWindow(hdlg);
         return TRUE;
@@ -218,7 +237,7 @@ static INT_PTR CALLBACK pxe_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
                             MB_OK | MB_ICONINFORMATION);
                 return TRUE;
             }
-            if (!strcmp(p, "- Session defined proxy -") || !strcmp(p, "- No proxy -")) {
+            if (!strcmp(p, KITTY_PROXY_SESSION) || !strcmp(p, KITTY_PROXY_NONE)) {
                 MessageBoxA(hdlg, "That name is reserved.", "KiTTY",
                             MB_OK | MB_ICONWARNING);
                 return TRUE;
@@ -279,11 +298,25 @@ static INT_PTR CALLBACK pxe_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
 }
 
 /* Launch the editor. Returns 1 if any definition was created/edited/deleted, so
- * the caller can rescan/refresh the config box's proxy droplist. */
-int kitty_proxy_edit_dialog(HWND owner)
+ * the caller can rescan/refresh the config box's proxy droplist.
+ *
+ * `preselect` is the definition to open on, or NULL to start on defaults. The Edit
+ * button beside the override droplist passes whatever is selected there: if a
+ * named proxy is showing, that is overwhelmingly the one the user means to edit,
+ * and making them pick it again in a second combo is busywork. */
+int kitty_proxy_edit_dialog_for(HWND owner, const char *preselect)
 {
     g_pxe_changed = 0;
     InitProxyList();
+    sfree(g_pxe_preselect);
+    g_pxe_preselect = (preselect && *preselect) ? dupstr(preselect) : NULL;
     DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_PROXYEDIT), owner, pxe_dlgproc);
+    sfree(g_pxe_preselect);
+    g_pxe_preselect = NULL;
     return g_pxe_changed;
+}
+
+int kitty_proxy_edit_dialog(HWND owner)
+{
+    return kitty_proxy_edit_dialog_for(owner, NULL);
 }
