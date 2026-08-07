@@ -2200,6 +2200,56 @@ static void sessionsaver_offer_hide_default(struct sessionsaver_data *ssd,
     dlg_refresh(ssd->listbox, dlg);
 }
 
+/*
+ * KiTTY: enable or grey out a config-box BUTTON.
+ *
+ * The cross-platform dlg_* API has no such call and never had one - it only
+ * ever carried what every backend could implement, so upstream's own config.c
+ * cannot grey a control either. This lives here rather than in dialog.h or
+ * windows/controls.c on purpose: both of those rebase with every PuTTY bump,
+ * and windows/controls.c compiles into the shared library WITHOUT MOD_PERSO,
+ * where a guarded addition would be silently dead code.
+ *
+ * Buttons only. A button's window id is its base_id; other control types split
+ * into several ids and would each need their own rule, which nothing wants yet.
+ */
+static void kitty_dlg_enable_button(dlgcontrol *ctrl, dlgparam *dlg,
+                                    bool enabled)
+{
+    int i;
+    if (!ctrl || !dlg)
+        return;
+    for (i = 0; i < dlg->nctrltrees; i++) {
+        struct winctrl *c = winctrl_findbyctrl(dlg->controltrees[i], ctrl);
+        if (c) {
+            HWND h = GetDlgItem(dlg->hwnd, c->base_id);
+            if (h)
+                EnableWindow(h, enabled);
+            return;
+        }
+    }
+}
+
+/*
+ * Save is greyed out while the session name box is empty.
+ *
+ * An empty box meant "use whichever row is highlighted", and the user was never
+ * shown which row that was: clicking a row copies its name INTO the box, so an
+ * empty box means no row was clicked here - the highlight is the one the dialog
+ * restored by itself. Reported live: a fresh box with new settings typed into
+ * it, Save, and those settings landed in the last-used session with no prompt.
+ * Nothing legitimate is lost - saving Default Settings still works by selecting
+ * it, which fills the box with its name.
+ */
+static void sessionsaver_update_save_button(struct sessionsaver_data *ssd,
+                                            dlgparam *dlg)
+{
+    if (!ssd->savebutton)
+        return;
+    kitty_dlg_enable_button(ssd->savebutton, dlg,
+                            ssd->savedsession && ssd->savedsession[0]);
+}
+
 static void sessionsaver_update_folder_button(struct sessionsaver_data *ssd,
                                               dlgparam *dlg)
 {
@@ -2314,6 +2364,10 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                      quickconnect_host_ctrl) ?
                                     quickconnect_host_ctrl : ctrl, dlg);
             }
+            /* Re-applied on every refresh, not just when the text changes: a
+             * panel switch rebuilds the controls, and an EnableWindow() made
+             * before that would be lost. */
+            sessionsaver_update_save_button(ssd, dlg);
 #endif
         } else if (ctrl == ssd->listbox) {
             int i;
@@ -2449,6 +2503,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             sfree(ssd->savedsession);
             ssd->savedsession = dlg_editbox_get(ctrl, dlg);
 #ifdef MOD_PERSO
+            /* Every keystroke: emptying the box must grey Save immediately, and
+             * this runs before the early returns further down. */
+            sessionsaver_update_save_button(ssd, dlg);
             if (!ssd->suppress_edit_valchange && GetSessionFilterFlag()) {
                 /* [ConfigBox] filter=no keeps searchfilter empty, so typing
                  * a name never narrows the saved-sessions list. */
@@ -2617,9 +2674,32 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             }
         } else if (ctrl == ssd->savebutton) {
             bool isdef = !strcmp(ssd->savedsession, KITTY_DEFAULT_SESSION);
+#ifdef MOD_PERSO
+            /* An EMPTY name box means the target is being taken from whichever
+             * row happens to be highlighted, and the user was never shown it:
+             * clicking a row copies its name INTO the box, so an empty box means
+             * no row was clicked in this dialog - the highlight is the one this
+             * box restored by itself. Reported live: a fresh box with settings
+             * typed into it, Save, and those settings landed in the last-used
+             * session with no prompt at all. Force the confirmation for this
+             * path whatever else says it is safe. */
+            bool target_from_highlight = !ssd->savedsession[0];
+#endif
             if (!ssd->savedsession[0]) {
+#ifdef MOD_PERSO
+                /* The VISIBLE row index is not the index into sesslist: a folder
+                 * filter or a search filter shows a subset, and the id attached
+                 * to each row is what maps back. Without the mapping, saving
+                 * with an empty name box while a folder was selected picked
+                 * whatever sat at that position in the UNFILTERED list - so the
+                 * overwrite warning named a session the user could not see, and
+                 * agreeing to it would have written over that one. The delete
+                 * path has always mapped; this one did not. */
+                int i = sessionsaver_selected_session_index(ssd, dlg);
+#else
                 int i = dlg_listbox_index(ssd->listbox, dlg);
-                if (i < 0) {
+#endif
+                if (i < 0 || i >= ssd->sesslist.nsessions) {
                     dlg_beep(dlg);
                     return;
                 }
@@ -2703,18 +2783,34 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * worse than no warning at all: it makes a safe action look
                  * destructive. Seed it from the session's own name instead.
                  */
-                if (!ssd->loaded_from) {
+                /* Only MID-SESSION, which is the case this seeding is for. In a
+                 * fresh config box CONF_sessionname can still name the session
+                 * that was restored at startup, and seeding from it there made
+                 * the guard below believe that session had been loaded - so a
+                 * box the user had typed new settings into saved over it in
+                 * silence. */
+                if (ssd->midsession && !ssd->loaded_from) {
                     const char *sn = conf_get_str(conf, CONF_sessionname);
                     if (sn && *sn)
                         ssd->loaded_from = dupstr(sn);
                 }
                 if (!isdef && ssd->savedsession[0] &&
-                    (!ssd->loaded_from ||
+                    (target_from_highlight ||
+                     !ssd->loaded_from ||
                      strcmp(ssd->loaded_from, ssd->savedsession) != 0)) {
                     settings_r *victim = open_settings_r(ssd->savedsession);
                     if (victim) {
                         close_settings_r(victim);
-                        char *q = dupprintf(
+                        char *q = target_from_highlight ? dupprintf(
+                            "Replace the saved session \"%s\"?\n\n"
+                            "The name box is empty, so the highlighted entry in "
+                            "the session list is the target. Its settings are "
+                            "about to be overwritten with the ones currently in "
+                            "this dialog - host name, port, protocol and "
+                            "everything else.\n\n"
+                            "Type a name in the box to save under a different "
+                            "one.",
+                            ssd->savedsession) : dupprintf(
                             "Replace the saved session \"%s\"?\n\n"
                             "You did not load it, so its settings are about to "
                             "be overwritten with the ones currently in this "

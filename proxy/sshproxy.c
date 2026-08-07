@@ -640,19 +640,28 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
     {
         int depth = conf_get_int(clientconf, CONF_proxy_chain_depth);
         int maxdepth = conf_get_int(clientconf, CONF_proxy_chain_max);
+        /* sshproxy_close() unconditionally conf_free()s this, and conf_free()
+         * dereferences its argument - so the refusal below must not return with
+         * it still NULL. Allocating here rather than adding a guard keeps every
+         * exit from this function looking the same. */
+        if (!sp->conf)
+            sp->conf = conf_new();
         if (maxdepth <= 0)
             maxdepth = 5;            /* kitty.ini [KiTTY] proxychainmax */
         if (depth >= maxdepth) {
+            /* No pointer to the Event Log here: this refusal happens before a
+             * terminal window exists, so there is nothing for the user to open.
+             * The chain is still logged for the cases that do have a window. */
             sp->errmsg = dupprintf(
                 "too many chained proxies (limit %d). Raise proxychainmax in the "
-                "[KiTTY] section of kitty.ini if that is intended; the full chain "
-                "is in the Event Log.", maxdepth);
+                "[KiTTY] section of kitty.ini if that is intended.", maxdepth);
             return &sp->sock;
         }
         sp->chain_depth = depth + 1;
     }
 
-    sp->conf = conf_new();
+    if (!sp->conf)
+        sp->conf = conf_new();
     /* Try to treat proxy_hostname as the title of a saved session. If
      * that fails, set up a default Conf of our own treating it as a
      * hostname. */
