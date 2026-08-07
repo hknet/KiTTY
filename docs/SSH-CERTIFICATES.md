@@ -232,6 +232,77 @@ accepted and not something else:
 
 Stop the lab with `kill $(cat /tmp/certlab/sshd.pid)` and delete `/tmp/certlab`.
 
+## Revoking a certificate
+
+⚠️ **Revocation happens on the SERVER.** A certificate is a statement the CA made
+about a key; nothing the client does can take it back, and deleting the `.ppk` on
+one machine says nothing about the copy someone else may hold. Everything below
+is `sshd` configuration.
+
+**The cheapest revocation is expiry.** A certificate signed with a short validity
+(`ssh-keygen -s ca -V +8h …`) revokes itself, and a site that renews daily rarely
+needs any of the machinery below. Reach for short lifetimes first; they fail
+safe, and a revocation list only works on servers that actually have it.
+
+**Which to revoke:** a *key* (that key is finished, however many certificates it
+has) or a *certificate* by serial or identity (this issuance is finished, the key
+may be re-signed). Serials only exist if the CA assigned them with `-z`, which is
+worth doing precisely so that this is possible.
+
+### The revocation list
+
+```sh
+# 1. by key or certificate file - the simple case
+ssh-keygen -k -f /etc/ssh/revoked.krl alice.pub bob-cert.pub
+
+# 2. by serial or identity, against the CA that issued them
+cat > /tmp/revoke.spec <<'SPEC'
+serial: 42
+serial: 100-199
+id: alice@example.com
+SPEC
+ssh-keygen -k -f /etc/ssh/revoked.krl -s /etc/ssh/user_ca.pub /tmp/revoke.spec
+
+# 3. add to an existing list later (-u updates rather than replacing)
+ssh-keygen -k -u -f /etc/ssh/revoked.krl carol-cert.pub
+
+# 4. check before trusting it
+ssh-keygen -Q -f /etc/ssh/revoked.krl alice-cert.pub
+```
+
+Then, in `sshd_config`:
+
+```
+RevokedKeys /etc/ssh/revoked.krl
+```
+
+and reload `sshd`. A key listed there is refused **before** any CA trust is
+considered, so it also covers keys that were never certified. ⚠️ If `RevokedKeys`
+names a file `sshd` cannot read or parse, OpenSSH refuses **every** public-key
+authentication rather than ignoring the setting — check it with `sshd -t` after
+editing, or you will lock everyone out at once.
+
+### The blunt instruments
+
+| Situation | What to do |
+|---|---|
+| The CA key itself is compromised | remove it from `TrustedUserCAKeys` (or `@cert-authority` lines in `known_hosts` for host CAs). Every certificate it ever signed stops being accepted |
+| One person is leaving | remove their principal from `AuthorizedPrincipalsFile`. Their certificate stays valid, but names nobody the server will admit |
+| One machine's host key leaked | stop trusting that host certificate on the client: *Connection → SSH → Host keys → Configure host CAs* and narrow or remove the record — see the note about **Valid hosts** below |
+
+### On the client side
+
+There is no revocation list in KiTTY, and there does not need to be: user
+certificates are judged by the server, and host certificates are judged by which
+CAs *you* trust. To stop accepting a host CA, remove its record under
+*Configure host CAs* — remembering that those records are per user, not per
+session, so removing one affects every session that relied on it.
+
+To find the serial or identity a revocation spec needs, read the certificate
+itself: `ssh-keygen -L -f something-cert.pub` prints the serial, the key ID, the
+principals and the validity window. For a certificate already folded into a
+`.ppk`, `kittygen-cli -O cert-info key.ppk` prints its certificate information.
+
 ## When it does not work
 
 | What you see | What it usually means |
