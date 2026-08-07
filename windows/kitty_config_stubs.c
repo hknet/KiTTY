@@ -33,7 +33,7 @@ struct dlgcontrol *kitty_config_session_filter_ctrl(void) { return 0; } /* no Ct
 /* dialog.c asks this for every static in the config box, so that KiTTY can draw
  * the proxy-override caption bold while an override is armed. The stock variants
  * have no proxy override and no such caption, so nothing is ever bold. */
-bool kitty_proxy_label_is_active(const char *text) { return false; }
+bool kitty_red_caption(const char *text) { return false; }
 
 /* Likewise for the bold-but-uncoloured captions: the stock variants have no
  * workplace proxy mode, so no caption of theirs is ever bold. */

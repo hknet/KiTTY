@@ -5,6 +5,70 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.70-beta — 2026-08-08
+
+### Fixed
+
+- **"Inherit New Session…" inherited nothing.** It opens a new window at the
+  configuration box carrying the current session's settings — except it did not:
+  the settings were handed over through a temporary saved session that the
+  original window deleted before the new one could read it, so the box came up
+  blank. Everything now travels through memory shared between the two windows,
+  which cannot race. As a consequence a session's stored password no longer takes
+  a trip through the settings store on its way to a new window, a box opened from
+  a restricted window is itself restricted, and one opened from a window whose
+  master password is unlocked no longer asks for it again.
+
+- **`kitty.ini` no longer eats its own values.** A value was taken verbatim from
+  after the `=` to the end of the line, so `configdir = C:\somewhere` carried the
+  space into the path and the directory was never found — and quoting the path,
+  the obvious next move, made it worse by keeping the quotes. Values are now
+  trimmed of surrounding whitespace and of one pair of matching quotes.
+  (cyd01/KiTTY#549)
+
+- **A `configdir` that is not there says so.** It used to be ignored in silence,
+  and KiTTY started on a different set of sessions with nothing to explain why.
+  You are now told what was not found — whether the drive is missing, or the path
+  under an existing parent — and asked whether to start anyway.
+
+- **The `opennewcurrent` shortcut opened a connection, not a configuration box.**
+  It duplicated the session instead, which is what the `duplicate` shortcut is
+  for.
+
+### Line spacing
+
+- **Rows can be given more air** — *Window → Appearance*, "Line spacing", a
+  percentage of the font's own line height from 100 to 300. The extra is shared
+  above and below the text, so the glyphs stay centred rather than hanging from
+  the top of a taller row. Above 100 % the line-drawing characters stop joining
+  up between rows: the gap between cells is real and the terminal cannot paint
+  across it, which is why the default is 100. (cyd01/KiTTY#524)
+
+### Quick connect
+
+- **The host comes with you.** In quick connect, "Inherit New Session…" now
+  carries the current host name into the new configuration box, selected — so the
+  next machine in a cluster is reached by editing one character and pressing
+  Enter, with every other setting already in place. Bind
+  `[Shortcuts] opennewcurrent` to a key and that is one keystroke per machine.
+  Outside quick connect the box opens without a host, exactly as before.
+  (cyd01/KiTTY#519)
+
+- **Loading "Default Settings" arms quick connect immediately.** It used to take
+  effect only at the next start, so the documented way of switching into that
+  mode appeared not to work at all. Loading any other session switches it off
+  again.
+
+### Changed
+
+- **The "Alternate host name (HostAlt)" field is gone** from *Connection → Data*.
+  Nothing ever read it: it held the host that "Inherit New Session…" had just
+  cleared, for a feature that was never finished. Saved sessions that carry the
+  value still load.
+
+- **The SSH certificates guide** explains why someone arriving from an older
+  KiTTY thinks certificate support is missing, and how to revoke a certificate.
+
 ## 0.84.1.69-beta — 2026-08-07
 
 ### Workplace proxy mode

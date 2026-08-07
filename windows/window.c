@@ -2897,9 +2897,30 @@ static void init_fonts(WinGuiSeat *wgs, int pick_width, int pick_height)
 
     hdc = GetDC(wgs->term_hwnd);
 
-    if (pick_height)
+#ifdef MOD_PERSO
+    /*
+     * KiTTY line spacing (CONF_line_spacing, a percentage; 100 = the font's own
+     * metrics). Needed here because the branch below has to know it: a
+     * pick_height handed to us is a CELL height that ALREADY includes the extra,
+     * and the font itself must be created at the glyph height. Resizing calls
+     * this function with the current font_height, so without the inverse step a
+     * cell would grow a little more on every resize.
+     *
+     * Clamped: under 100 would crop glyphs against their own metrics, and past
+     * 300 the text is lost in the gap.
+     */
+    int kitty_linespc = conf_get_int(wgs->conf, CONF_line_spacing);
+    if (kitty_linespc < 100) kitty_linespc = 100;
+    if (kitty_linespc > 300) kitty_linespc = 300;
+#endif
+
+    if (pick_height) {
+#ifdef MOD_PERSO
+        wgs->font_height = MulDiv(pick_height, 100, kitty_linespc);  /* cell -> glyph */
+#else
         wgs->font_height = pick_height;
-    else {
+#endif
+    } else {
         wgs->font_height = font->height;
         if (wgs->font_height > 0) {
             wgs->font_height = -MulDiv(
@@ -3017,6 +3038,38 @@ static void init_fonts(WinGuiSeat *wgs, int pick_width, int pick_height)
     wgs->descent = tm.tmAscent + 1;
     if (wgs->descent >= wgs->font_height)
         wgs->descent = wgs->font_height - 1;
+
+#ifdef MOD_PERSO
+    /*
+     * KiTTY line spacing: the glyph height is settled by here, so grow the CELL
+     * and remember by how much the glyph has to move down inside it. The extra
+     * is split evenly above and below - hanging it all underneath looks like a
+     * misaligned font rather than like spacing.
+     *
+     * descent and font_strikethrough_y both follow the glyph, because they
+     * position the underline, the underline cursor and the strike-through, and
+     * all three are measured downwards from the TOP of the cell. Leave them
+     * alone and they stay where the text used to be: the strike-through in
+     * particular then lands above the letters and reads as an overline.
+     * Everything else keys off font_height and needs no changes - the
+     * background of a cell is filled to the full, taller rectangle, so the extra
+     * space carries the cell's own colour.
+     *
+     * ⚠️ Box-drawing characters (U+2500 and friends) stop joining vertically at
+     * anything above 100: the glyph is drawn at its own size in a taller cell,
+     * so gaps appear between rows. That is inherent - every terminal offering
+     * line spacing does it - and is why the default is 100.
+     */
+    wgs->font_yshift = 0;
+    if (kitty_linespc > 100) {
+        int glyph_height = wgs->font_height;
+        int cell_height = MulDiv(glyph_height, kitty_linespc, 100);
+        wgs->font_yshift = (cell_height - glyph_height) / 2;
+        wgs->font_height = cell_height;
+        wgs->descent += wgs->font_yshift;
+        wgs->font_strikethrough_y += wgs->font_yshift;
+    }
+#endif
 
     for (i = 0; i < 3; i++) {
         if (wgs->fonts[i]) {
@@ -4388,6 +4441,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                     conf_get_int(prev_conf, CONF_vtmode) ||
                     conf_get_int(wgs->conf, CONF_bold_style) !=
                     conf_get_int(prev_conf, CONF_bold_style) ||
+#ifdef MOD_PERSO
+                    /* KiTTY line spacing changes the CELL height, so the fonts
+                     * and the whole layout have to be rebuilt - without this,
+                     * changing it in Change Settings did nothing until the
+                     * window was next resized. */
+                    conf_get_int(wgs->conf, CONF_line_spacing) !=
+                    conf_get_int(prev_conf, CONF_line_spacing) ||
+#endif
                     resize_action == RESIZE_DISABLED ||
                     resize_action == RESIZE_EITHER ||
                     resize_action != conf_get_int(prev_conf,
@@ -5881,6 +5942,19 @@ static void do_text_internal(
             force_manual_underline = true;
         }
     }
+#endif
+
+#ifdef MOD_PERSO
+    /*
+     * KiTTY line spacing: push the glyph down by half the cell's spare height,
+     * so the extra is shared above and below the text. Every glyph draw in this
+     * function offsets by text_adjust, so one addition covers them all - and it
+     * happens AFTER the VT100 linedraw hack above, which ASSIGNS text_adjust
+     * rather than adding to it and would otherwise throw the shift away. The
+     * background rectangles do not use text_adjust, so they keep filling the
+     * whole, taller cell.
+     */
+    text_adjust += wgs->font_yshift;
 #endif
 
     /* Anything left as an original character set is unprintable. */

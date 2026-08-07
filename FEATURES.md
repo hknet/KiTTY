@@ -476,6 +476,14 @@ KiTTY adds a **Font settings** option to the main menu that lets you adjust the 
 
 ![Font management](docs/features/img/ex_fonts.jpg)
 
+### Line spacing
+
+Terminal fonts pack their lines tightly. **Line spacing** stretches each row to a percentage of the font's own line height, so text is easier to read without changing the font size. 100 % leaves the font's metrics untouched; above that, the extra height is shared evenly above and below the text.
+
+Past 100 %, line-drawing characters no longer join up between rows — the gap between cells is real, and the terminal cannot draw across it. That is why the default is 100 %.
+
+**How to enable:** Configuration > **Window > Appearance** > **Line spacing (100-300 %)**.
+
 ### Word navigation modifier
 
 In a terminal, jumping the cursor a whole word left/right is driven by an xterm

@@ -82,6 +82,13 @@ struct WinGuiSeat {
                               * a FATAL error; close_session shows a warning-glyph
                               * titlebar marker. Reset per connection in start_backend. */
     bool reconfiguring;
+    int font_yshift;         /* KiTTY line spacing: pixels to push the GLYPH down
+                              * inside its cell, so extra height is shared above
+                              * and below the text instead of hanging under it.
+                              * 0 unless CONF_line_spacing is above 100. The cell
+                              * itself is font_height, which already includes the
+                              * extra; this is only about where the text sits in
+                              * it, and about descent, which follows the glyph. */
     bool workplace_proxied;  /* KiTTY: THIS connection was routed through workplace
                               * proxy mode's proxy. A property of the connection,
                               * not of the mode: a session already open when the

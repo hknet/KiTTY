@@ -389,10 +389,17 @@ static const char *kitty_proxy_neutral(Conf *conf)
 #define KITTY_PROXY_LABEL_IDLE   "Proxy override options:"
 #define KITTY_PROXY_LABEL_ACTIVE "PROXY OVERRIDE ACTIVE:"
 
+/* The line-spacing label. Unlike the captions above, this one does not change
+ * its wording when it turns red - a static is laid out once at the width of its
+ * initial text, so a longer string is simply cut off. The colour is driven by
+ * the flag below instead, and the text is only re-set to force a repaint. */
+#define KITTY_LINESPC_LABEL "Line spacing (100-300 %)"
+static bool g_linespc_out_of_range = false;
+
 /* Called from windows/dialog.c's WM_CTLCOLORSTATIC for every static in the config
  * box, so it must be cheap and must answer false for everything else. Stubbed to
  * false for the stock variants in windows/kitty_config_stubs.c. */
-bool kitty_proxy_label_is_active(const char *text)
+bool kitty_red_caption(const char *text)
 {
     if (!text)
         return false;
@@ -403,8 +410,13 @@ bool kitty_proxy_label_is_active(const char *text)
      * for the same reason - something is overriding this session right now, and
      * in ordinary body text that sentence was read as more of the paragraph
      * around it. */
-    return !strncmp(text, "Workplace proxy mode is ON",
-                    strlen("Workplace proxy mode is ON"));
+    if (!strncmp(text, "Workplace proxy mode is ON",
+                 strlen("Workplace proxy mode is ON")))
+        return true;
+    /* The line-spacing label while the typed number is outside 100-300. The
+     * value is clamped when the fonts are built either way, so the red is saying
+     * that the number in the box is not the number in use. */
+    return g_linespc_out_of_range && !strcmp(text, KITTY_LINESPC_LABEL);
 }
 
 /* Captions drawn BOLD (but in the ordinary colour, unlike the one above): the
@@ -425,6 +437,30 @@ bool kitty_proxy_label_is_active(const char *text)
 bool kitty_bold_caption(const char *text)
 {
     return text && !strcmp(text, KITTY_WORKPLACE_LEAD);
+}
+
+/* Line spacing: an ordinary integer editbox, plus a label that says so when the
+ * number typed into it is outside the range the terminal will actually honour.
+ * The clamp lives in init_fonts (windows/window.c) and happens regardless; this
+ * is only so the box does not sit there showing 900 as though 900 were in use.
+ * Repainting the label is what makes the colour follow, since dialog.c picks the
+ * colour from the label's text. */
+static void kitty_linespacing_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                      void *data, int event)
+{
+    conf_editbox_handler(ctrl, dlg, data, event);
+
+    if (event == EVENT_REFRESH || event == EVENT_VALCHANGE) {
+        int v = conf_get_int((Conf *)data, CONF_line_spacing);
+        bool bad = (v < 100 || v > 300);
+        if (bad != g_linespc_out_of_range) {
+            g_linespc_out_of_range = bad;
+            /* Same text, deliberately: SetWindowText repaints the static either
+             * way, and the repaint is the whole point - the colour is decided in
+             * dialog.c's WM_CTLCOLORSTATIC, which only runs on a paint. */
+            dlg_label_change(ctrl, dlg, KITTY_LINESPC_LABEL);
+        }
+    }
 }
 
 static const char *kitty_proxy_override_label(Conf *conf)
@@ -5262,6 +5298,20 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
     ctrl_fontsel(s, "Font used in the terminal window", 'n',
                  HELPCTX(appearance_font),
                  conf_fontsel_handler, I(CONF_font));
+#ifdef MOD_PERSO
+    /* KiTTY: line spacing as a percentage of the font's own line height
+     * (cyd01/KiTTY#524). 100 leaves the metrics untouched; a percentage rather
+     * than pixels so it survives a font change or a different-DPI monitor. */
+    if (!GetPuttyFlag()) {
+        /* One row: the Appearance panel is already at its full height, and a
+         * paragraph here pushed the icon controls off the bottom of the window.
+         * The caveat (line-drawing characters stop joining up above 100) lives
+         * in FEATURES.md instead. */
+        ctrl_editbox(s, KITTY_LINESPC_LABEL, NO_SHORTCUT,
+                     25, HELPCTX(no_help),
+                     kitty_linespacing_handler, I(CONF_line_spacing), ED_INT);
+    }
+#endif
 
     s = ctrl_getset(b, "Window/Appearance", "mouse",
                     "Adjust the use of the mouse pointer");

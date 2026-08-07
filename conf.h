@@ -233,6 +233,23 @@ CONF_OPTION(proxy_host_kind,
     DEFAULT_INT(-1),
     NOT_SAVED,
 )
+/*
+ * KiTTY: line spacing as a PERCENTAGE of the font's own line height. 100 is the
+ * font's metrics untouched, and is the default; 120 makes each cell a fifth
+ * taller with the glyph centred in it.
+ *
+ * A percentage rather than pixels, so it survives a font change and a move to a
+ * monitor at a different DPI - the same reason other terminals express it as a
+ * multiplier. It is also what makes the cell height INVERTIBLE, which matters
+ * because init_fonts() is called again on resize with the current cell height:
+ * glyph = cell * 100 / percent recovers the font's own height instead of
+ * inflating an already-inflated one.
+ */
+CONF_OPTION(line_spacing,
+    VALUE_TYPE(INT),
+    DEFAULT_INT(100),
+    SAVE_KEYWORD("LineSpacing"),
+)
 
 /* SSH options */
 CONF_OPTION(remote_cmd,
