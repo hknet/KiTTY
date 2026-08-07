@@ -24,6 +24,7 @@
 #include <windows.h>
 
 #include "kitty.h"
+#include "kitty_workplace.h"   /* the frame's resting state while the mode is on */
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
 void kitty_refresh_title(void);        /* windows/window.c */
@@ -674,6 +675,44 @@ static void osc52_set_frame_colour(HWND hwnd, COLORREF colour)
  * Re-apply both signals: the text marker in the title (window.c builds it from
  * term_osc52_perm_state) and the tint.
  */
+/*
+ * ⚠️ The frame has a RESTING STATE, and it is not always "no tint".
+ *
+ * A window whose connection went through workplace proxy mode's proxy rests at
+ * DARK GREEN for as long as that connection lives. A clipboard event still wins
+ * the frame for its few seconds - it is the thing that just happened - and then
+ * the frame must RETURN to green rather than be cleared. Anything that takes a
+ * tint down has to come through here, or a single clipboard read would silently
+ * switch off the visible half of workplace proxy mode for the rest of the day.
+ *
+ * ⚠️ It asks whether THIS CONNECTION was proxied, not whether the mode is on
+ * now. Those differ in both directions and the difference matters: a window
+ * opened before the mode was switched on is not going through that proxy and
+ * must not be painted as if it were, and one that IS going through it keeps the
+ * colour after the mode is switched off, because a live connection cannot be
+ * re-routed.
+ *
+ * The standing clipboard-permission colours (lilac, grey) rank BELOW green: a
+ * permission is per-session and is also spelled out in the title, while being
+ * proxied elsewhere is the thing that is easier to forget and costlier to.
+ */
+int kitty_active_seat_workplace_proxied(void);   /* windows/window.c */
+
+static COLORREF kitty_frame_resting_colour(void)
+{
+    if (kitty_active_seat_workplace_proxied())
+        return RGB(0, 100, 0);                 /* dark green */
+    return (COLORREF)DWMWA_COLOR_DEFAULT;
+}
+
+/* Put the frame back to whatever it should be with nothing momentary happening.
+ * Called by the clipboard-activity timer in window.c when its marker lapses, and
+ * whenever the mode is switched on or off. */
+void kitty_frame_restore_resting(void)
+{
+    osc52_set_frame_colour(MainHwnd, kitty_frame_resting_colour());
+}
+
 void kitty_osc52_state_changed(Terminal *term)
 {
     int state;
@@ -685,8 +724,13 @@ void kitty_osc52_state_changed(Terminal *term)
 
     if (!term || !term->conf || !MainHwnd)
         return;
-    if (!conf_get_bool(term->conf, CONF_osc52_colour_frame))
+    /* The clipboard's own frame setting governs the clipboard's colours only.
+     * Workplace mode is not a clipboard feature, so its green does not depend on
+     * a setting about OSC 52. */
+    if (!conf_get_bool(term->conf, CONF_osc52_colour_frame)) {
+        kitty_frame_restore_resting();
         return;
+    }
 
     /*
      * ACTIVITY wins over standing permission, because it is the thing that just
@@ -721,6 +765,13 @@ void kitty_osc52_state_changed(Terminal *term)
     }
 
     state = term_osc52_perm_state(term, &rd, &wr);
+    /* Workplace green outranks the standing permission colours (see the note on
+     * kitty_frame_resting_colour): while the mode is on, green is what a window
+     * shows whenever nothing momentary is happening. */
+    if (kitty_frame_resting_colour() != (COLORREF)DWMWA_COLOR_DEFAULT) {
+        kitty_frame_restore_resting();
+        return;
+    }
     switch (state) {
       case OSC52_PERM_ACTIVE:
         /* lilac: unlike a red or yellow, it is not already used by anything else

@@ -82,6 +82,20 @@ struct WinGuiSeat {
                               * a FATAL error; close_session shows a warning-glyph
                               * titlebar marker. Reset per connection in start_backend. */
     bool reconfiguring;
+    bool workplace_proxied;  /* KiTTY: THIS connection was routed through workplace
+                              * proxy mode's proxy. A property of the connection,
+                              * not of the mode: a session already open when the
+                              * mode is switched on did NOT go through it, and one
+                              * that did keeps going through it after the mode is
+                              * switched off (a live connection cannot be
+                              * re-routed). The title marker and the green frame
+                              * follow THIS, so they never claim something about a
+                              * connection that is not true of it. Set per
+                              * connection in start_backend.
+                              * NOT inside #ifdef MOD_PERSO: a conditionally
+                              * present field gives this struct two layouts, which
+                              * is the bug that crashed the inline security
+                              * prompts. */
     int script_defer_ticks;  /* KiTTY: how many times the rutty script (Session >
                               * Scripting) has stood aside for a login script
                               * (Connection > Data) that is still running. The two

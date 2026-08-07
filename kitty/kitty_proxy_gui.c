@@ -320,3 +320,62 @@ int kitty_proxy_edit_dialog(HWND owner)
 {
     return kitty_proxy_edit_dialog_for(owner, NULL);
 }
+
+/* ---- "Load named proxy pre-sets": pick one definition ---- */
+
+static char g_pxp_picked[512];
+
+static INT_PTR CALLBACK pxp_dlgproc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+      case WM_INITDIALOG: {
+        HWND cb = GetDlgItem(hdlg, IDC_PXP_LIST);
+        for (int i = 2; i < MAX_PROXY && proxies[i].name; i++)
+            SendMessageA(cb, CB_ADDSTRING, 0, (LPARAM)proxies[i].name);
+        /* Preselect the one named on the way in (the session's current choice),
+         * else the first, so OK always means something. */
+        int sel = 0;
+        if (g_pxp_picked[0]) {
+            int f = (int)SendMessageA(cb, CB_FINDSTRINGEXACT, (WPARAM)-1,
+                                      (LPARAM)g_pxp_picked);
+            if (f != CB_ERR) sel = f;
+        }
+        SendMessage(cb, CB_SETCURSEL, sel, 0);
+        return TRUE;
+      }
+      case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK) {
+            HWND cb = GetDlgItem(hdlg, IDC_PXP_LIST);
+            int sel = (int)SendMessage(cb, CB_GETCURSEL, 0, 0);
+            g_pxp_picked[0] = '\0';
+            if (sel != CB_ERR)
+                SendMessageA(cb, CB_GETLBTEXT, sel, (LPARAM)g_pxp_picked);
+            EndDialog(hdlg, g_pxp_picked[0] ? IDOK : IDCANCEL);
+            return TRUE;
+        } else if (LOWORD(wParam) == IDCANCEL) {
+            EndDialog(hdlg, IDCANCEL);
+            return TRUE;
+        }
+        break;
+    }
+    return FALSE;
+}
+
+/* 1 and the chosen name in out[] when the user picked one and pressed OK.
+ * out may carry a name on the way in, which is preselected. */
+int kitty_proxy_pick_dialog(HWND owner, char *out, int len)
+{
+    INT_PTR r;
+    InitProxyList();
+    if (!proxies[2].name)
+        return 0;                      /* nothing to pick */
+    g_pxp_picked[0] = '\0';
+    if (out && len > 0 && out[0] && strlen(out) < sizeof(g_pxp_picked))
+        strcpy(g_pxp_picked, out);
+    r = DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_PROXYPICK),
+                   owner, pxp_dlgproc);
+    if (r != IDOK || !g_pxp_picked[0] || (int)strlen(g_pxp_picked) >= len)
+        return 0;
+    strcpy(out, g_pxp_picked);
+    return 1;
+}

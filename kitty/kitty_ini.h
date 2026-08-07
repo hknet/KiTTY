@@ -294,4 +294,12 @@ maxchar=85\n\
 \n\
 ; reload: enable session list reload on each menu respawn\n\
 reload=yes\n\
+\n\
+; exitwithworkplace: close the launcher again when workplace proxy mode is\n\
+; switched off (default yes), but only when the mode itself started it. A\n\
+; launcher you started yourself is never closed this way. Set no to keep it.\n\
+;exitwithworkplace=yes\n\
+\n\
+; noticeseconds: how long the workplace proxy mode notice stays up (default 15)\n\
+;noticeseconds=15\n\
 " ;

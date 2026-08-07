@@ -22,6 +22,7 @@ int kitty_import_proxies_from_dir( const char *dir, int overwrite, int *skippedO
 int kitty_proxy_name_exists( const char *name ) ;
 int kitty_proxies_dir_collisions( const char *dir ) ;
 int kitty_proxy_edit_dialog( HWND owner ) ;   /* kitty_proxy_gui.c */
+int kitty_proxy_pick_dialog( HWND owner, char *out, int len ) ;   /* kitty_proxy_gui.c */
 void SetProxySelectionFlag( const int flag ) ;
 int LoadProxyInfo( Conf * conf, const char * name ) ;
 void InitProxyList(void) ;

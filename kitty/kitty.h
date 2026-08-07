@@ -696,6 +696,13 @@ void xyz_updateMenuItems(Terminal *term) ;
 #define IDM_GOHIDE    0x9000
 #endif
 
+/* Launcher tray menu, workplace proxy mode: the base id switches the mode OFF,
+ * base+1+i switches it on with named proxy i. A range, like GOHIDE above, and
+ * clear of it (GOHIDE holds at most 100 open windows). */
+#ifndef IDM_WORKPLACE
+#define IDM_WORKPLACE 0x9800
+#endif
+
 /*************************************************
 ** FIN DE DEFINITION DES DEFINES
 *************************************************/

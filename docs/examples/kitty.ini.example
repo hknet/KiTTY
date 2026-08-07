@@ -470,6 +470,19 @@
 ; reload: enable session list reload on each menu respawn
 ;reload=yes
 
+; exitwithworkplace: close the launcher again when workplace proxy mode is
+; switched off (default yes). Only applies to a launcher that the mode itself
+; started, by switching the mode on when none was running - a launcher you
+; started yourself always keeps running, because it is also your session list
+; and your hotkeys. Set no to keep the started one too.
+;exitwithworkplace=yes
+
+; noticeseconds: how long the workplace proxy mode notice stays on screen
+; (default 15). It is a window of our own rather than a tray balloon precisely
+; so that this is ours to set: Windows has ignored the requested balloon
+; duration since Vista, and a balloon cannot carry the mode's colour.
+;noticeseconds=15
+
 
 [Agent]
 

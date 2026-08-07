@@ -351,6 +351,8 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_image.c
   ${KITTY_DIR}/kitty_proxy.c
   ${KITTY_DIR}/kitty_proxy_gui.c
+  ${KITTY_DIR}/kitty_workplace.c
+  ${KITTY_DIR}/kitty_notice.c
   ${KITTY_DIR}/kitty_registry.c
   ${KITTY_DIR}/kitty_ssh.c
   ${KITTY_DIR}/kitty_store.c
@@ -422,6 +424,8 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_image.c
   ${KITTY_DIR}/kitty_proxy.c
   ${KITTY_DIR}/kitty_proxy_gui.c
+  ${KITTY_DIR}/kitty_workplace.c
+  ${KITTY_DIR}/kitty_notice.c
   ${KITTY_DIR}/kitty_registry.c
   ${KITTY_DIR}/kitty_ssh.c
   ${KITTY_DIR}/kitty_store.c

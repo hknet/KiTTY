@@ -18,6 +18,8 @@
 #include "kitty_commun.h"  /* GetCryptSaltFlag, MASKPASS */
 #ifdef MOD_PROXY
 #include "kitty_proxy.h"   /* LoadProxyInfo, GetProxySelectionFlag */
+#include "kitty_workplace.h"   /* workplace proxy mode: is an arming held? */
+void debug_logevent( const char *fmt, ... ) ;   /* kitty_win.c */
 #endif
 
 /* KiTTY logging mode toggle (originally KiTTY logging.c) */
@@ -1239,9 +1241,47 @@ void kitty_port_knock(Conf *conf)
  * onto this seat's conf. LoadProxyInfo writes CONF_proxy_* from the named entry.
  * "- Session defined proxy -" is a no-op. Called from start_backend() before
  * backend_init(). No-global: takes the seat conf. */
+/* Set by kitty_proxy_select() for the call that has just happened: 1 when the
+ * proxy applied came from workplace proxy mode. start_backend() reads it
+ * immediately afterwards and records it on the seat, because from then on it is
+ * a fact about that connection - the mode may be switched off while the
+ * connection lives, and a connection may outlive several switchings. */
+int kitty_workplace_applied = 0;
+
 void kitty_proxy_select(Conf *conf)
 {
     const char *name;
+
+    kitty_workplace_applied = 0;
+    /* Workplace proxy mode wins over everything the session says
+     * (design/TASK_workplace_proxy.md §2, §4). It is a mode about where the
+     * user is sitting today, so it applies to every connection this install
+     * starts, and it applies whether or not the Session-panel selector is
+     * shown - that gate is about the droplist, not about this.
+     *
+     * Same rule as the droplist override: the connection is amended, the
+     * stored session is not. start_backend() calls us on a throwaway copy.
+     *
+     * A proxy that has since been deleted leaves the connection unproxied, so
+     * say so in the Event Log rather than connecting direct in silence. */
+    {
+        char wp[256];
+        if (kitty_workplace_query(wp, sizeof(wp))) {
+            /* kitty_proxy_name_exists() rather than LoadProxyInfo()'s return
+             * value: in portable (dir) mode LoadProxyInfo reports success for a
+             * definition file that is not there. */
+            if (kitty_proxy_name_exists(wp)) {
+                LoadProxyInfo(conf, wp);
+                conf_set_str(conf, CONF_proxyselection, wp);
+                kitty_workplace_applied = 1;
+                debug_logevent("workplace proxy mode: connecting through \"%s\"", wp);
+            } else {
+                debug_logevent("workplace proxy mode: proxy \"%s\" is not defined "
+                               "- connection NOT proxied", wp);
+            }
+            return;
+        }
+    }
     /* Refresh proxies[] from the store first: this runs at connect time, which
      * may be a different context than the startup InitProxyList() (spawned
      * session, -load, auto-reconnect), and both the "shown" gate below and the

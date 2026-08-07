@@ -15,6 +15,7 @@
 #endif
 #ifdef MOD_PERSO
 #include "kitty_proxy.h"   /* proxy-choice droplist: proxies[], GetProxySelectionFlag, MAX_PROXY */
+#include "kitty_workplace.h"  /* workplace proxy mode: query/request the arming */
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION */
 #endif
 
@@ -393,7 +394,37 @@ static const char *kitty_proxy_neutral(Conf *conf)
  * false for the stock variants in windows/kitty_config_stubs.c. */
 bool kitty_proxy_label_is_active(const char *text)
 {
-    return text && !strcmp(text, KITTY_PROXY_LABEL_ACTIVE);
+    if (!text)
+        return false;
+    if (!strcmp(text, KITTY_PROXY_LABEL_ACTIVE))
+        return true;
+    /* Workplace proxy mode's live state line while the mode is ON. Prefix, not
+     * equality: the proxy's name is appended to it. Same bold red as above and
+     * for the same reason - something is overriding this session right now, and
+     * in ordinary body text that sentence was read as more of the paragraph
+     * around it. */
+    return !strncmp(text, "Workplace proxy mode is ON",
+                    strlen("Workplace proxy mode is ON"));
+}
+
+/* Captions drawn BOLD (but in the ordinary colour, unlike the one above): the
+ * lead line of the workplace-proxy box, because that box is the one thing on
+ * the Proxy panel that is NOT part of the session in front of you, and it has
+ * to look different at a glance rather than on a careful read. Matched by text
+ * for the same reason as above - no id has to be plumbed through the portable
+ * control layer. Same cheap-and-false-by-default contract, and the same stub in
+ * windows/kitty_config_stubs.c.
+ *
+ * ⚠️ The box's GROUP TITLE cannot be bolded this way, measured 2026-08-06: a
+ * group box is a themed BUTTON and draws its own caption, ignoring the font
+ * selected into the DC here. Hence the bold lead line INSIDE the box - which is
+ * an ordinary static, and does honour it. */
+#define KITTY_WORKPLACE_BOX_TITLE "Workplace proxy mode"
+#define KITTY_WORKPLACE_LEAD      "This is NOT a setting of this session."
+
+bool kitty_bold_caption(const char *text)
+{
+    return text && !strcmp(text, KITTY_WORKPLACE_LEAD);
 }
 
 static const char *kitty_proxy_override_label(Conf *conf)
@@ -546,49 +577,24 @@ static void kitty_pxload_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                  void *data, int event)
 {
     Conf *conf = (Conf *)data;
-    struct pxload_data *pd = (struct pxload_data *)ctrl->context.p;
+    char picked[512] = "";
     extern int kitty_confirm_box(HWND owner, const char *caption,
                                  const char *text, const char *warn_red); /* kitty_win.c */
 
-    if (ctrl == pd->list) {
-        if (event == EVENT_REFRESH) {
-            int i, row = 0, sel = 0;
-            dlg_update_start(ctrl, dlg);
-            dlg_listbox_clear(ctrl, dlg);
-            for (i = 0; i < MAX_PROXY && proxies[i].name; i++) {
-                if (!strcmp(proxies[i].name, KITTY_PROXY_NONE) ||
-                    !strcmp(proxies[i].name, KITTY_PROXY_SESSION))
-                    continue;
-                dlg_listbox_add(ctrl, dlg, proxies[i].name);
-                if (pd->name && !strcmp(pd->name, proxies[i].name))
-                    sel = row;
-                row++;
-            }
-            dlg_listbox_select(ctrl, dlg, sel);
-            dlg_update_done(ctrl, dlg);
-            /* Remember whatever is showing, so pressing the button without ever
-             * touching the droplist loads the row the user can actually see. */
-            if (!pd->name) {
-                const char *n = kitty_pxload_name_at(sel);
-                if (n) pd->name = dupstr(n);
-            }
-        } else if (event == EVENT_SELCHANGE) {
-            const char *n = kitty_pxload_name_at(dlg_listbox_index(ctrl, dlg));
-            if (n) {
-                sfree(pd->name);
-                pd->name = dupstr(n);
-            }
-        }
-        return;
-    }
-
-    if (event != EVENT_ACTION)          /* the button */
+    if (event != EVENT_ACTION)          /* one button, nothing else */
         return;
 
-    if (!pd->name || !pd->name[0]) {
-        dlg_beep(dlg);
-        return;
+    /* Choose the template in a window of its own. Preselect the session's
+     * remembered choice when it names one, so the common case is OK, OK. */
+    {
+        const char *cur = conf_get_str(conf, CONF_proxyselection);
+        if (cur && cur[0] && strcmp(cur, KITTY_PROXY_NONE) &&
+            strcmp(cur, KITTY_PROXY_SESSION) && strlen(cur) < sizeof(picked))
+            strcpy(picked, cur);
     }
+    if (!kitty_proxy_pick_dialog(GetActiveWindow(), picked, sizeof(picked)))
+        return;                         /* cancelled - nothing touched */
+
     {
         char *q = dupprintf(
             "Load the named proxy \"%s\" into this configuration window?\n\n"
@@ -597,7 +603,7 @@ static void kitty_pxload_handler(dlgcontrol *ctrl, dlgparam *dlg,
             "If \"%s\" has no password stored, the one this session currently "
             "holds is cleared.\n\n"
             "Nothing is written to the saved session until you press Save.",
-            pd->name, pd->name);
+            picked, picked);
         /* The one case where the above is not the whole truth. */
         const char *warn =
             conf_get_bool(conf, CONF_saveonexit)
@@ -611,13 +617,379 @@ static void kitty_pxload_handler(dlgcontrol *ctrl, dlgparam *dlg,
         if (!go)
             return;                     /* nothing touched at all */
 
-        LoadProxyInfo(conf, pd->name);
+        LoadProxyInfo(conf, picked);
         /* The fields ARE the preset now, so a remembered override naming it (or
          * naming something else) would only be able to disagree. Clear it back to
          * "use what the session says". */
         conf_set_str(conf, CONF_proxyselection, KITTY_PROXY_SESSION);
         dlg_refresh(NULL, dlg);         /* repaint the proxy fields we just wrote */
     }
+}
+
+/*
+ * Connection/Proxy: switching WORKPLACE PROXY MODE on and off
+ * (design/TASK_workplace_proxy.md §3, §6).
+ *
+ * The mode routes EVERY connection this install starts through one chosen
+ * proxy, whatever each session stores, until it is switched off. It is not a
+ * session setting and nothing here is saved into the session: what is written
+ * is the SELECTION (which proxy the mode uses), because the mode being ON is
+ * only ever a launcher holding the arming.
+ *
+ * So this button does not set a value, it asks the launcher: switch on, and if
+ * no launcher of this install is running, one is started already armed. That
+ * indirection is the design - the launcher going away is what switches the mode
+ * off, so it has to be the thing holding it.
+ */
+/* Declared again here (and again below, for the WinSCP path): this file keeps
+ * its kitty.c accessors next to the code that uses them rather than in a
+ * header, and the workplace handler sits above the other copy. */
+int ReadParameterN(const char *key, const char *name, char *value, size_t size); /* kitty.c */
+int WriteParameter(const char *key, const char *name, char *value);              /* kitty.c */
+#ifndef INIT_SECTION
+#define INIT_SECTION "KiTTY"
+#endif
+
+struct wpmode_data {
+    char *name; unsigned int minutes;
+    /* Whether `name` is a choice the USER made in this box, as opposed to
+     * whatever happened to be preselected. Only a real choice may outrank the
+     * stored selection when the list is rebuilt - without this distinction the
+     * box latched onto its own preselected row and then ignored the launcher
+     * changing the selection, showing one proxy while the store held another
+     *. */
+    bool picked;
+    dlgcontrol *list; dlgcontrol *hours; dlgcontrol *button; dlgcontrol *state;
+};
+
+/* The live state line. The ON wording is matched by windows/dialog.c and drawn
+ * BOLD RED - the same treatment the armed proxy-override caption gets, for the
+ * same reason: something is overriding this session right now. Prefix-matched,
+ * because the proxy's name is appended to it. */
+/* Both must fit ONE line at the panel width: the control keeps the size it was
+ * given when the panel was built, so a longer replacement is clipped. */
+#define KITTY_WORKPLACE_STATE_ON  "Workplace proxy mode is ON for every connection."
+#define KITTY_WORKPLACE_STATE_OFF "Workplace proxy mode is off."
+
+/* How long "switch off after" can be set to. 0 means no timeout: the mode then
+ * ends only when it is switched off or the launcher exits, which is still a
+ * bounded promise because the launcher dies with the logon. */
+static const struct { const char *label; unsigned int minutes; } wpmode_spans[] = {
+    { "1 hour",                        60 },
+    { "2 hours",                      120 },
+    { "4 hours",                      240 },
+    { "8 hours",                      480 },
+    { "12 hours",                     720 },
+    { "Only when the launcher exits",    0 },
+};
+
+/*
+ * KiTTY: let a droplist's DROPPED-DOWN list be wider than the closed control,
+ * so entries are readable in full when it is open even though the closed box is
+ * only as wide as the panel allows. CB_SETDROPPEDWIDTH is the only way to say
+ * this; the portable dlg_* API has no notion of it.
+ *
+ * Measured from the entries themselves rather than guessed, and clamped to the
+ * dialog's own width so it cannot spill off the window.
+ */
+static void kitty_dlg_droplist_fit(dlgcontrol *ctrl, dlgparam *dlg)
+{
+    int i;
+    if (!ctrl || !dlg)
+        return;
+    for (i = 0; i < dlg->nctrltrees; i++) {
+        struct winctrl *c = winctrl_findbyctrl(dlg->controltrees[i], ctrl);
+        HWND cb;
+        if (!c)
+            continue;
+        cb = GetDlgItem(dlg->hwnd, c->base_id + 1);   /* label, then the combo */
+        if (!cb)
+            return;
+        {
+            HDC dc = GetDC(cb);
+            HFONT f = (HFONT)SendMessage(cb, WM_GETFONT, 0, 0);
+            HFONT old = f ? (HFONT)SelectObject(dc, f) : NULL;
+            int n = (int)SendMessage(cb, CB_GETCOUNT, 0, 0), k, wmax = 0;
+            RECT dr;
+            for (k = 0; k < n; k++) {
+                char buf[512];
+                SIZE sz;
+                int len = (int)SendMessage(cb, CB_GETLBTEXTLEN, k, 0);
+                if (len <= 0 || len >= (int)sizeof(buf))
+                    continue;
+                SendMessageA(cb, CB_GETLBTEXT, k, (LPARAM)buf);
+                if (GetTextExtentPoint32A(dc, buf, (int)strlen(buf), &sz) &&
+                    sz.cx > wmax)
+                    wmax = sz.cx;
+            }
+            if (old) SelectObject(dc, old);
+            ReleaseDC(cb, dc);
+            wmax += GetSystemMetrics(SM_CXVSCROLL) + 16;   /* scrollbar + padding */
+            if (GetClientRect(dlg->hwnd, &dr) && wmax > dr.right - dr.left - 24)
+                wmax = dr.right - dr.left - 24;
+            if (wmax > 0)
+                SendMessage(cb, CB_SETDROPPEDWIDTH, (WPARAM)wmax, 0);
+        }
+        return;
+    }
+}
+
+/* Is this control laid out right now - i.e. is its panel the one on screen?
+ * dlg_label_change asserts on a control that is not, so anything refreshing
+ * from OUTSIDE a user action (the poll below) has to ask first. Same
+ * winctrl_findbyctrl walk as kitty_dlg_enable_button, and here for the same
+ * reason: windows/controls.c is built without MOD_PERSO. */
+static bool kitty_dlg_ctrl_present(dlgcontrol *ctrl, dlgparam *dlg)
+{
+    int i;
+    if (!ctrl || !dlg)
+        return false;
+    for (i = 0; i < dlg->nctrltrees; i++)
+        if (winctrl_findbyctrl(dlg->controltrees[i], ctrl))
+            return true;
+    return false;
+}
+
+/* Keep the state line telling the truth. Called from the button's refresh, so
+ * it follows every action taken in this box; a change made elsewhere is picked
+ * up by the poll below. */
+static void kitty_wpmode_state_label(struct wpmode_data *wd, dlgparam *dlg)
+{
+    char armed[256];
+    if (!wd->state)
+        return;
+    if (kitty_workplace_query(armed, sizeof(armed))) {
+        /* ⚠️ No proxy name here, and nothing longer: the control was sized from
+         * the OFF wording when the panel was built, so a longer line is CLIPPED
+         * mid-sentence rather than wrapped. The name is in the droplist two rows
+         * below anyway. */
+        dlg_label_change(wd->state, dlg, KITTY_WORKPLACE_STATE_ON);
+    } else {
+        dlg_label_change(wd->state, dlg, KITTY_WORKPLACE_STATE_OFF);
+    }
+}
+
+/* The workplace controls of the config box that is open, so the poll below can
+ * find them. One config box at a time; cleared when its panel is rebuilt. */
+static struct wpmode_data *kitty_wpmode_active = NULL;
+
+/*
+ * Which panel the config box should open on, instead of Session.
+ *
+ * Set by "kitty.exe -cfgpanel Connection/Proxy" (windows/window.c parses it),
+ * which is how the "your workplace proxy did not answer" notice puts the user
+ * in front of the switch rather than switching anything off for them: a single
+ * stray click should not tear down a proxy setup they may still want (user,
+ * 2026-08-07).
+ */
+static char kitty_cfgbox_panel[128] = "";
+
+void kitty_cfgbox_open_on_panel(const char *path)
+{
+    if (!path || !path[0] || strlen(path) >= sizeof(kitty_cfgbox_panel))
+        kitty_cfgbox_panel[0] = '\0';
+    else
+        strcpy(kitty_cfgbox_panel, path);
+}
+
+const char *kitty_cfgbox_wanted_panel(void)
+{
+    return kitty_cfgbox_panel[0] ? kitty_cfgbox_panel : NULL;
+}
+
+static void kitty_wpmode_button_label(dlgcontrol *ctrl, dlgparam *dlg)
+{
+    char armed[256], left[64];
+    if (kitty_workplace_query(armed, sizeof(armed))) {
+        /* The proxy is named in the droplist directly above, so the button says
+         * only what pressing it does and how long the mode has left. */
+        char *s;
+        kitty_workplace_left_text(left, sizeof(left));
+        s = left[0] ? dupprintf("Switch off now (%s left)", left)
+                    : dupstr("Switch off now");
+        dlg_label_change(ctrl, dlg, s);
+        sfree(s);
+    } else {
+        dlg_label_change(ctrl, dlg, "Switch on");
+    }
+}
+
+/*
+ * Called on a timer by the config box (windows/dialog.c) so that switching the
+ * mode from the TRAY reaches a config box that is already open. Without it the
+ * box kept saying "ON" until the user left the panel and came back - the state
+ * is held by another process, so nothing in this one hears about the change
+ *.
+ *
+ * Deliberately narrow: it repaints the two workplace controls and only when the
+ * armed state has actually MOVED. A blanket dlg_refresh() every second would
+ * re-read the whole panel from the Conf and could throw away what the user is
+ * in the middle of typing in the fields above.
+ */
+void kitty_cfgbox_workplace_poll(dlgparam *dlg)
+{
+    static int last = -1;
+    char armed[256];
+    int now;
+    struct wpmode_data *wd = kitty_wpmode_active;
+    /* Opening the config box is one of the ways KiTTY gets started, so it is
+     * also one of the places that owes the "the mode is not active any more"
+     * notice when the launcher went away without saying so. Cheap and
+     * self-clearing: it fires at most once, whichever path reaches it first. */
+    kitty_workplace_show_pending_notice();
+    if (!wd || !dlg)
+        return;
+    now = kitty_workplace_query(armed, sizeof(armed)) ? 1 : 0;
+    if (now == last)
+        return;
+    last = now;
+    if (!kitty_dlg_ctrl_present(wd->button, dlg))
+        return;                         /* another panel is showing */
+    kitty_wpmode_button_label(wd->button, dlg);
+    kitty_wpmode_state_label(wd, dlg);
+    /* The droplist carries state too - it marks the proxy the mode is using
+     * "(in use)" - so it has to follow a change made from the tray as well, or
+     * it would go on pointing at a proxy that is no longer in use. */
+    if (wd->list)
+        dlg_refresh(wd->list, dlg);
+}
+
+static void kitty_wpmode_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                 void *data, int event)
+{
+    struct wpmode_data *wd = (struct wpmode_data *)ctrl->context.p;
+
+    if (ctrl == wd->list) {
+        if (event == EVENT_REFRESH) {
+            /* Preselect what the mode is using, or failing that what it last
+             * used - the answer to "switch it back on with what?". */
+            char cur[256] = "", armed[256] = "", remembered[256] = "";
+            int i, row = 0, sel = 0;
+            /* Which to preselect: what the mode is using, else what it last
+             * used. The entries say which is which, the same way the tray menu
+             * does - a droplist of bare names cannot tell you why one of them
+             * is showing. */
+            if (!kitty_workplace_query(armed, sizeof(armed)))
+                armed[0] = '\0';
+            if (!ReadParameterN(INIT_SECTION, "WorkplaceProxy",
+                                remembered, sizeof(remembered)))
+                remembered[0] = '\0';
+            /* A choice already made in this box wins: the list is also rebuilt
+             * when the mode changes elsewhere (to move the "(in use)" tag), and
+             * that must not drag the user's selection somewhere they did not
+             * put it. */
+            snprintf(cur, sizeof(cur), "%s",
+                     (wd->picked && wd->name && wd->name[0]) ? wd->name :
+                     (armed[0] ? armed : remembered));
+            dlg_update_start(ctrl, dlg);
+            dlg_listbox_clear(ctrl, dlg);
+            for (i = 0; i < MAX_PROXY && proxies[i].name; i++) {
+                const char *tag = "";
+                if (!strcmp(proxies[i].name, KITTY_PROXY_NONE) ||
+                    !strcmp(proxies[i].name, KITTY_PROXY_SESSION))
+                    continue;
+                if (armed[0] && !strcmp(armed, proxies[i].name))
+                    tag = "  (in use)";
+                else if (remembered[0] && !strcmp(remembered, proxies[i].name))
+                    tag = "  (last used)";
+                if (*tag) {
+                    char *label = dupprintf("%s%s", proxies[i].name, tag);
+                    dlg_listbox_add(ctrl, dlg, label);
+                    sfree(label);
+                } else {
+                    dlg_listbox_add(ctrl, dlg, proxies[i].name);
+                }
+                if (cur[0] && !strcmp(cur, proxies[i].name))
+                    sel = row;
+                row++;
+            }
+            dlg_listbox_select(ctrl, dlg, sel);
+            dlg_update_done(ctrl, dlg);
+            /* The entries carry "(in use)"/"(last used)", so they are longer
+             * than the closed control: widen the dropped-down list to fit. */
+            kitty_dlg_droplist_fit(ctrl, dlg);
+            {
+                const char *n = kitty_pxload_name_at(sel);
+                sfree(wd->name);
+                wd->name = n ? dupstr(n) : NULL;
+            }
+        } else if (event == EVENT_SELCHANGE) {
+            const char *n = kitty_pxload_name_at(dlg_listbox_index(ctrl, dlg));
+            if (n) {
+                sfree(wd->name);
+                wd->name = dupstr(n);
+                wd->picked = true;      /* a real choice, not a preselection */
+                /* Remember the choice as soon as it is made, not only when the
+                 * mode is switched on: this droplist and the launcher's menu
+                 * read the same remembered selection, so picking here is also
+                 * how you tell the launcher what to offer next time. */
+                WriteParameter(INIT_SECTION, "WorkplaceProxy", wd->name);
+            }
+        }
+        return;
+    }
+
+    if (ctrl == wd->hours) {
+        if (event == EVENT_REFRESH) {
+            char stored[32] = "";
+            unsigned int m = 240;           /* a working afternoon */
+            size_t i, sel = 0;
+            if (ReadParameterN(INIT_SECTION, "WorkplaceMinutes", stored, sizeof(stored))
+                && atoi(stored) >= 0)
+                m = (unsigned int)atoi(stored);
+            dlg_update_start(ctrl, dlg);
+            dlg_listbox_clear(ctrl, dlg);
+            for (i = 0; i < lenof(wpmode_spans); i++) {
+                dlg_listbox_add(ctrl, dlg, wpmode_spans[i].label);
+                if (wpmode_spans[i].minutes == m)
+                    sel = i;
+            }
+            dlg_listbox_select(ctrl, dlg, sel);
+            dlg_update_done(ctrl, dlg);
+            wd->minutes = wpmode_spans[sel].minutes;
+        } else if (event == EVENT_SELCHANGE) {
+            int i = dlg_listbox_index(ctrl, dlg);
+            if (i >= 0 && i < (int)lenof(wpmode_spans)) {
+                char m[32];
+                wd->minutes = wpmode_spans[i].minutes;
+                sprintf(m, "%u", wd->minutes);
+                WriteParameter(INIT_SECTION, "WorkplaceMinutes", m);   /* remembered */
+            }
+        }
+        return;
+    }
+
+    if (event == EVENT_REFRESH) {           /* the button and the state line */
+        kitty_wpmode_button_label(ctrl, dlg);
+        kitty_wpmode_state_label(wd, dlg);
+        return;
+    }
+    if (event != EVENT_ACTION)
+        return;
+
+    char armed[256];
+    if (kitty_workplace_query(armed, sizeof(armed))) {
+        /* On: ask the launcher to let go. */
+        if (!kitty_workplace_request(0, 0))
+            dlg_error_msg(dlg, "The launcher did not switch workplace proxy mode "
+                          "off. Closing the launcher also switches it off.");
+    } else {
+        char m[32];
+        if (!wd->name || !wd->name[0]) {
+            dlg_beep(dlg);
+            return;
+        }
+        /* Remember the SELECTION first: a running launcher arms from it, and a
+         * launcher started below is handed the same name. */
+        WriteParameter(INIT_SECTION, "WorkplaceProxy", wd->name);
+        sprintf(m, "%u", wd->minutes);
+        WriteParameter(INIT_SECTION, "WorkplaceMinutes", m);
+        if (!kitty_workplace_request(1, wd->minutes) &&
+            !kitty_workplace_start_launcher(wd->name, wd->minutes))
+            dlg_error_msg(dlg, "Could not switch workplace proxy mode on: the "
+                          "launcher, which holds the mode, did not start.");
+    }
+    dlg_refresh(NULL, dlg);
 }
 
 /* "Edit" button beside the Proxy-choice droplist (and at the foot of the
@@ -5742,28 +6114,38 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
                       "Options controlling proxy usage");
 
 #ifdef MOD_PERSO
-        /* KiTTY: adopt a named proxy into THIS session. Deliberately ABOVE the
-         * proxy type, so the panel reads top-to-bottom as "start from a preset,
-         * or fill in your own below". Only when there is at least one named
-         * proxy to load; the editor at the foot of the panel is how the first
-         * one gets created. */
-        if (!GetPuttyFlag() && kitty_has_proxy_definitions()) {
-            struct pxload_data *pd = (struct pxload_data *)
-                ctrl_alloc(b, sizeof(struct pxload_data));
-            memset(pd, 0, sizeof(*pd));
-            /* Two full-width rows, NOT a shared 70/30 row: at 30% the button
-             * caption was clipped to "ad into this wind" and the droplist's own
-             * label lost its last word. The button now sits under the droplist and
-             * spans the panel, matching "Edit named proxies..." at the foot. */
-            s = ctrl_getset(b, "Connection/Proxy", "loadnamed", NULL);
-            pd->list = ctrl_droplist(s, "Named proxy settings:", NO_SHORTCUT, 60,
-                                     HELPCTX(no_help),
-                                     kitty_pxload_handler, P(pd));
-            ctrl_pushbutton(s, "Load into this window", NO_SHORTCUT,
-                            HELPCTX(no_help), kitty_pxload_handler, P(pd));
+        /* KiTTY: the named-proxy EDITOR first, because it is where the reusable
+         * definitions come from, and the two things below it both consume one.
+         * (It used to sit at the foot of the panel, under the session's own
+         * fields.) */
+        if (!GetPuttyFlag() && kitty_proxy_editor_available()) {
+            s = ctrl_getset(b, "Connection/Proxy", "editnamed",
+                            "Named proxies (proxy templates)");
+            ctrl_pushbutton(s, "Edit named proxies...", NO_SHORTCUT,
+                            HELPCTX(no_help), kitty_proxyedit_handler, P(NULL));
         }
 #endif
-        s = ctrl_getset(b, "Connection/Proxy", "basics", NULL);
+        s = ctrl_getset(b, "Connection/Proxy", "basics",
+                        "This session's own proxy");
+#ifdef MOD_PERSO
+        /* KiTTY: adopt a template into THIS session. One button, inside the
+         * session's own settings because that is what it writes; it opens a
+         * small window to choose the template, then confirms. It replaced a
+         * droplist plus "Load into this window" sitting above the session's
+         * fields, which read as though the droplist were one of them. */
+        if (!GetPuttyFlag() && kitty_has_proxy_definitions())
+            ctrl_pushbutton(s, "Load named proxy pre-sets...", NO_SHORTCUT,
+                            HELPCTX(no_help), kitty_pxload_handler, P(NULL));
+        /* KiTTY: the §6b notice used to be a three-line paragraph HERE, added
+         * only while the mode was armed. Two things were wrong with it and both
+         * came from the same mistake - it was built at panel-construction time:
+         *  - it could not change, so switching the mode off left it insisting
+         *    the mode was on;
+         *  - the three extra lines pushed the workplace box's own button off the
+         *    bottom of the config box, behind Open/Cancel.
+         * The live state now sits in the workplace box below, on a text control
+         * that is relabelled as the state moves. Nothing is said twice. */
+#endif
         c = ctrl_droplist(s, "Proxy type:", 't', 70,
                           HELPCTX(proxy_type), proxy_type_handler, I(0));
         ctrl_columns(s, 2, 80, 20);
@@ -5817,19 +6199,57 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
                           "Yes", I(FORCE_ON),
                           "Only until session starts", I(AUTO));
 #ifdef MOD_PERSO
-        /* KiTTY: reusable named proxy definitions (hknet/KiTTY#11), managed
-         * independently of this session's own proxy above. The chosen one is
-         * applied via the Session panel's proxy-override droplist, or loaded into
-         * this session with the row above. Shown unless
-         * proxyselection=no, so it is the entry point to create the first
-         * proxy even before the Session-panel droplist appears. */
-        if (!GetPuttyFlag() && kitty_proxy_editor_available()) {
-            ctrl_text(s, "Named proxies are reusable proxy definitions; pick one "
-                      "for one connection with the proxy-override droplist in the "
-                      "Session panel, or load one into this session above.",
+        /* A blank line at the foot of the session's own settings, so the
+         * application-wide box below does not sit flush against them and read as
+         * a continuation of the same thing. */
+        if (!GetPuttyFlag() && kitty_has_proxy_definitions())
+            ctrl_text(s, " ", HELPCTX(no_help));
+#endif
+#ifdef MOD_PERSO
+        /* KiTTY: workplace proxy mode, LAST on the panel and in a box of its own.
+         * Everything above it is this session's configuration; this is not. It is
+         * an application-wide switch that overrides every session at once, and
+         * putting it between the preset loader and the session's own fields (where
+         * it first sat) read as though it were part of them. */
+        if (!GetPuttyFlag() && kitty_has_proxy_definitions()) {
+            struct wpmode_data *wd = (struct wpmode_data *)
+                ctrl_alloc(b, sizeof(struct wpmode_data));
+            memset(wd, 0, sizeof(*wd));
+            kitty_wpmode_active = wd;   /* what the tray-change poll repaints */
+            s = ctrl_getset(b, "Connection/Proxy", "workplace",
+                            KITTY_WORKPLACE_BOX_TITLE);
+            ctrl_text(s, KITTY_WORKPLACE_LEAD, HELPCTX(no_help));
+            /* The live state, drawn BOLD RED while the mode is on so it is seen
+             * rather than read: this is the one line on the panel that says
+             * something is overriding every session right now.
+             *
+             * ⚠️ Relabelled in place (see dlg_label_change), so the two wordings
+             * must occupy the same number of lines - the control's height was
+             * fixed when the panel was built. Both are one line at this width.
+             *
+             * ⚠️ It says the connection WILL USE the workplace proxy; it does
+             * not say "these settings are ignored". That would not be true in
+             * every case - a proxy Host naming a saved session still drags that
+             * session's configuration in - and the first person to hit a chained
+             * case would find the notice lying to them. */
+            wd->state = ctrl_text(s, KITTY_WORKPLACE_STATE_OFF, HELPCTX(no_help));
+            ctrl_text(s, "While it is on, EVERY connection goes through the proxy "
+                      "below, whatever each session stores. Nothing is saved into "
+                      "any session, and you can still edit the settings above.",
                       HELPCTX(no_help));
-            ctrl_pushbutton(s, "Edit named proxies...", NO_SHORTCUT,
-                            HELPCTX(no_help), kitty_proxyedit_handler, P(NULL));
+            /* Label kept to the length of "Named proxy settings:" above: at 60%
+             * droplist width the label gets the other 40%, and "Proxy for every
+             * connection:" was clipped to "Proxy for every" - the same squeeze
+             * that once clipped the "Load into this window" button. */
+            wd->list = ctrl_droplist(s, "Proxy for everything:", NO_SHORTCUT,
+                                     60, HELPCTX(no_help),
+                                     kitty_wpmode_handler, P(wd));
+            wd->hours = ctrl_droplist(s, "Switch off after:", NO_SHORTCUT,
+                                      60, HELPCTX(no_help),
+                                      kitty_wpmode_handler, P(wd));
+            wd->button = ctrl_pushbutton(s, "Switch on", NO_SHORTCUT,
+                                         HELPCTX(no_help),
+                                         kitty_wpmode_handler, P(wd));
         }
 #endif
     }

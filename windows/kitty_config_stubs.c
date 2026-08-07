@@ -35,6 +35,18 @@ struct dlgcontrol *kitty_config_session_filter_ctrl(void) { return 0; } /* no Ct
  * have no proxy override and no such caption, so nothing is ever bold. */
 bool kitty_proxy_label_is_active(const char *text) { return false; }
 
+/* Likewise for the bold-but-uncoloured captions: the stock variants have no
+ * workplace proxy mode, so no caption of theirs is ever bold. */
+bool kitty_bold_caption(const char *text) { return false; }
+
+/* The config box polls once a second so that switching workplace proxy mode
+ * from the tray reaches an open box. No such mode here, so nothing to poll. */
+struct dlgparam;
+void kitty_cfgbox_workplace_poll(struct dlgparam *dp) { }
+
+/* And nothing ever asks the stock variants to open on a particular panel. */
+const char *kitty_cfgbox_wanted_panel(void) { return 0; }
+
 /* Ctrl+G resets the session-folder filter to the root list; the stock variants
  * have no folders, so there is nothing to reset. dialog.c only reaches this
  * after the accessor above returned non-NULL, which the stub never does — it

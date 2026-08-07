@@ -10,9 +10,23 @@
 
 #define KLWM_NOTIFYICON		(WM_USER+2)
 #define KLWM_UPDATECHECKDONE	(WM_USER+12)
+/* Posted from WM_CREATE: the "workplace proxy mode is off, click to switch it
+ * on" offer. Posted rather than called, for the reason the update balloon is -
+ * a balloon raised from inside window creation shows, but a click on it never
+ * comes back. */
+#define KLWM_WORKPLACEOFFER	(WM_USER+13)
+/* Posted by the "mode is OFF" notice window when it is clicked. */
+#define KLWM_WORKPLACEREARM	(WM_USER+14)
 /* KiTTY: timer id for the delayed single-left-click tray menu (so a double
  * click - new default window - doesn't pop the menu up first) */
 #define LAUNCHER_TRAYCLICK_TIMER	100
+/* Workplace proxy mode: notices the arming's time running out, so the mode ends
+ * visibly rather than only when the next connection is made. */
+#define LAUNCHER_WORKPLACE_TIMER	101
+/* A launcher the mode started is closing, but not before the notice saying the
+ * mode is off has been readable - and not at all if the user takes that
+ * notice's offer to switch the mode back on. */
+#define LAUNCHER_EXITAFTERNOTICE_TIMER	102
 #define LAUNCHER_HOTKEY_BASE	0x4B00
 #define LAUNCHER_HOTKEY_MAX	32
 #define KITTY_LAUNCHER_REFRESH_MESSAGE "KiTTYLauncherRefreshSessionsAndHotkeys"
@@ -30,6 +44,8 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) ;
 extern const char *kitty_registry_base( void ) ;
 
 #include "kitty_startup_shortcut.h"   /* KiTTY: on-request Startup-folder shortcut */
+#include "kitty_workplace.h"          /* KiTTY: workplace proxy mode arming */
+#include "kitty_notice.h"           /* KiTTY: our own arm/disarm notice window */
 
 static HMENU MenuLauncher = NULL ;
 static HMENU HideMenu ;
@@ -50,6 +66,16 @@ static int LauncherUpdateBeta = 0 ;
  * twice (the cached answer at startup, then the async fetch) and each used to
  * raise its own balloon. */
 static int LauncherUpdateBalloonShown = 0 ;
+
+/* The proxy the "mode is OFF" notice offered to switch back on, so a click on
+ * that notice knows which one it meant. */
+static char LauncherRearmProxy[256] = "" ;
+
+/* Workplace proxy mode: the proxy this launcher is arming with while the mode
+ * is on, empty while it is off. Declared here because the tray menu is built
+ * further up this file than the workplace helpers are defined. */
+static char LauncherWorkplaceProxy[256] = "" ;
+static int LauncherRememberedWorkplaceProxy( char *out, int len ) ;
 
 struct LauncherHotkey {
 	int id ;
@@ -251,6 +277,58 @@ HMENU InitLauncherMenu( char * Key ) {
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+7, "&Refresh" ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+1, "&Configuration" ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+2, "&TTY-ed" ) ;
+	/* KiTTY: workplace proxy mode. While it is on, ONE item that says which
+	 * proxy everything is going through and switches it off; while it is off, a
+	 * submenu of the named proxies to switch it on with, the remembered one
+	 * ticked. The wording says "every connection" both ways round because that
+	 * is the whole point of the mode, and because a proxy override left on by
+	 * accident is the risk this feature has to keep visible
+	 * (design/TASK_workplace_proxy.md §6). */
+	{
+		AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
+		if( kitty_workplace_holding() ) {
+			char item[400], left[64] ;
+			kitty_workplace_left_text( left, sizeof(left) ) ;
+			if( left[0] )
+				snprintf( item, sizeof(item),
+					"&Workplace proxy ON: \"%.200s\" for another %s - switch off now",
+					LauncherWorkplaceProxy, left ) ;
+			else
+				snprintf( item, sizeof(item),
+					"&Workplace proxy ON: every connection uses \"%.200s\" - switch off",
+					LauncherWorkplaceProxy ) ;
+			AppendMenu( menu, MF_ENABLED, IDM_WORKPLACE, item ) ;
+		} else {
+			HMENU wpmenu = CreatePopupMenu() ;
+			char remembered[256] ;
+			int have_remembered = LauncherRememberedWorkplaceProxy( remembered, sizeof(remembered) ) ;
+			int i, n = 0 ;
+			InitProxyList() ;
+			for( i = 2 ; i < MAX_PROXY && proxies[i].name ; i++ ) {
+				/* The last-used one is LABELLED, not ticked: a tick on a menu
+				 * item reads as something you can turn off, and there is
+				 * nothing here to turn off - every item is "switch the mode on
+				 * with this proxy". */
+				char item[320] ;
+				if( have_remembered && !strcmp( remembered, proxies[i].name ) )
+					snprintf( item, sizeof(item), "%.250s (last used)", proxies[i].name ) ;
+				else
+					snprintf( item, sizeof(item), "%.250s", proxies[i].name ) ;
+				AppendMenu( wpmenu, MF_ENABLED, IDM_WORKPLACE+1+(i-2), item ) ;
+				n++ ;
+			}
+			if( n > 0 ) {
+				AppendMenu( menu, MF_POPUP, (UINT_PTR)wpmenu,
+					"&Workplace proxy mode (off) - use one proxy for everything" ) ;
+			} else {
+				/* No named proxies: say why rather than offer an empty submenu. */
+				DestroyMenu( wpmenu ) ;
+				AppendMenu( menu, MF_GRAYED, 0,
+					"Workplace proxy mode (needs a named proxy)" ) ;
+			}
+		}
+		AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
+	}
 	/* KiTTY: user-Startup-folder shortcut for the launcher, on request.
 	 * Checked only when a "KiTTY Launcher" shortcut pointing at THIS exe
 	 * exists (user or all-users) - a same-named shortcut for a different
@@ -720,6 +798,203 @@ static void LauncherRefreshSessionsAndHotkeys( HWND hwnd ) {
 	LauncherRegisterHotkeys( hwnd ) ;
 }
 	
+/* KiTTY: the tray tooltip, built in one place because it now has a part that
+ * changes at runtime - workplace proxy mode names the proxy every connection is
+ * going through while this launcher holds the arming
+ * (design/TASK_workplace_proxy.md §6). Safe to call before the icon exists;
+ * NIM_MODIFY on an unregistered icon simply fails. */
+static void LauncherSetTrayTip( void ) {
+#ifdef MOD_PORTABLE
+	strcpy( TrayIcone.szTip, "KiTTY Launcher\r\n(portable)" ) ;
+#else
+	strcpy( TrayIcone.szTip, "KiTTY Launcher" ) ;
+#endif
+	/* KiTTY: say so when this launcher - and so every session it starts, via
+	 * the "&R" prefix - runs with the restricted ACL. */
+	if( restricted_acl() ) strcat( TrayIcone.szTip, "\r\n(RESTRICTED)" ) ;
+	if( kitty_workplace_holding() && LauncherWorkplaceProxy[0] ) {
+		char line[220], left[64] ;
+		kitty_workplace_left_text( left, sizeof(left) ) ;
+		snprintf( line, sizeof(line), "\r\nWorkplace proxy: %.100s%s%s",
+			LauncherWorkplaceProxy, left[0] ? "\r\nSwitches off in " : "", left ) ;
+		if( strlen(TrayIcone.szTip) + strlen(line) < sizeof(TrayIcone.szTip) )
+			strcat( TrayIcone.szTip, line ) ;
+	}
+}
+
+/* ⚠️ The SELECTION is remembered, the ARMED state never is
+ * (design/TASK_workplace_proxy.md §3). Which proxy was last chosen is written
+ * here so a later launcher start can offer to switch the mode back on; "armed"
+ * exists only as this process holding the arming, and switching the mode off
+ * deliberately KEEPS the selection - it is what you would want back tomorrow
+ * morning. Key spelling matters: mini.c matches ini keys case-sensitively. */
+#define WORKPLACE_PROXY_KEY   "WorkplaceProxy"
+#define WORKPLACE_MINUTES_KEY "WorkplaceMinutes"
+
+static void LauncherRememberWorkplaceProxy( const char *proxyname, unsigned int minutes ) {
+	char m[32] ;
+	WriteParameter( INIT_SECTION, WORKPLACE_PROXY_KEY, (char*)proxyname ) ;
+	snprintf( m, sizeof(m), "%u", minutes ) ;
+	WriteParameter( INIT_SECTION, WORKPLACE_MINUTES_KEY, m ) ;
+}
+
+/* How long the mode was last switched on for; 0 = until it is switched off or
+ * the launcher exits. Remembered with the proxy, so switching it on from the
+ * tray repeats the choice made in the config box. */
+static unsigned int LauncherRememberedWorkplaceMinutes( void ) {
+	char buffer[32] = "" ;
+	if( !ReadParameterN( INIT_SECTION, WORKPLACE_MINUTES_KEY, buffer, sizeof(buffer) ) ) return 0 ;
+	if( atoi(buffer) <= 0 ) return 0 ;
+	return (unsigned int)atoi(buffer) ;
+}
+
+static int LauncherRememberedWorkplaceProxy( char *out, int len ) {
+	char buffer[512] = "" ;
+	out[0] = '\0' ;
+	if( !ReadParameterN( INIT_SECTION, WORKPLACE_PROXY_KEY, buffer, sizeof(buffer) ) ) return 0 ;
+	if( !buffer[0] || (int)strlen(buffer) >= len ) return 0 ;
+	strcpy( out, buffer ) ;
+	return 1 ;
+}
+
+/* How long the workplace notice stays up: [Launcher] noticeseconds, default 15.
+ * Ours to choose, which is half the reason the notice is our own window - the
+ * shell has ignored the requested balloon duration since Vista. */
+static int LauncherNoticeSeconds( void ) {
+	char buffer[32] ;
+	if( ReadParameterN( "Launcher", "noticeseconds", buffer, sizeof(buffer) )
+	    && atoi(buffer) > 0 ) return atoi(buffer) ;
+	return 15 ;
+}
+
+/* Dark green, the same colour the terminal frame uses while a connection is
+ * going through the mode's proxy, so the notice and the window read as one
+ * thing (design §7a). */
+#define WORKPLACE_GREEN RGB(0,100,0)
+
+static void LauncherWorkplaceBalloon( int on, int by_timeout ) {
+	char msg[512] ;
+	if( on ) {
+		char left[64] ;
+		kitty_workplace_left_text( left, sizeof(left) ) ;
+		if( left[0] )
+			snprintf( msg, sizeof(msg),
+				"Every connection now uses the proxy \"%.200s\", whatever each "
+				"session says. Switches off in %s, or when this launcher stops.",
+				LauncherWorkplaceProxy, left ) ;
+		else
+			snprintf( msg, sizeof(msg),
+				"Every connection now uses the proxy \"%.200s\", whatever each "
+				"session says. It stays on until you switch it off or this "
+				"launcher stops.", LauncherWorkplaceProxy ) ;
+	}
+	else if( by_timeout )
+		snprintf( msg, sizeof(msg),
+			"The time you set for workplace proxy mode has run out, so it is off. "
+			"New connections use each session's own proxy settings again. Click "
+			"here to switch it on again with \"%.200s\".", LauncherRearmProxy ) ;
+	else
+		snprintf( msg, sizeof(msg),
+			"Workplace proxy mode is off. New connections use each session's own "
+			"proxy settings again; connections already open keep the proxy they "
+			"connected through." ) ;
+	/* Our own window, not a tray balloon: it carries the mode's colour and a
+	 * duration we choose, and it is not silently swallowed by focus assist the
+	 * way balloons are. The tray tooltip and menu still say the same thing, so
+	 * a notice that is missed is never the only record. */
+	LauncherSetTrayTip() ;
+	Shell_NotifyIcon( NIM_MODIFY, &TrayIcone ) ;
+	/* ⚠️ Only the TIMEOUT notice offers to switch the mode back on. When the
+	 * user switched it off themselves they have said what they want, and a
+	 * one-click undo in front of them invites the opposite; a timeout is the
+	 * case where the mode ended without them deciding anything (user,
+	 * 2026-08-07). */
+	kitty_notice_show( on ? "Workplace proxy mode is ON"
+	                      : (by_timeout ? "Workplace proxy mode has timed out"
+	                                    : "Workplace proxy mode is OFF"),
+	                   msg, WORKPLACE_GREEN, LauncherNoticeSeconds(),
+	                   (!on && by_timeout) ? MainHwnd : NULL,
+	                   (!on && by_timeout) ? KLWM_WORKPLACEREARM : 0 ) ;
+	/* The user has now been told, whichever way it ended, so no later start owes
+	 * them the "it is not active" notice. */
+	if( !on ) kitty_workplace_notice_settled() ;
+}
+
+/* Take the arming for workplace proxy mode. From here on every connection this
+ * install starts asks us, and gets this proxy until we let go or die. */
+int LauncherArmWorkplace( const char *proxyname, unsigned int minutes ) {
+	if( !kitty_workplace_arm( proxyname, minutes ) ) return 0 ;
+	/* Check often enough that "switch off after 4 hours" is not visibly late,
+	 * rarely enough to be free. The readers honour the expiry too, so a missed
+	 * tick can never route a connection through a proxy whose time is up. */
+	if( minutes ) SetTimer( MainHwnd, LAUNCHER_WORKPLACE_TIMER, 30000, NULL ) ;
+	else KillTimer( MainHwnd, LAUNCHER_WORKPLACE_TIMER ) ;
+	strncpy( LauncherWorkplaceProxy, proxyname, sizeof(LauncherWorkplaceProxy)-1 ) ;
+	LauncherWorkplaceProxy[sizeof(LauncherWorkplaceProxy)-1] = '\0' ;
+	LauncherRememberWorkplaceProxy( LauncherWorkplaceProxy, minutes ) ;
+	/* The breadcrumb: if this arming ends without anybody being told - the
+	 * launcher killed, logged off, rebooted - the next start owes one notice. */
+	kitty_workplace_mark_armed() ;
+	LauncherSetTrayTip() ;
+	Shell_NotifyIcon( NIM_MODIFY, &TrayIcone ) ;
+	return 1 ;
+}
+
+/* What a launcher start says about workplace proxy mode - which, most of the
+ * time, is NOTHING.
+ *
+ * It used to offer to switch the mode back on at every single start, because a
+ * remembered selection existed. People run this launcher all day for the session
+ * list, so that turned into a notice to be dismissed each time and then ignored
+ * - and a notice that is ignored is worse than none, because the one that
+ * matters is ignored with it.
+ *
+ * So: say something only when there is news. The mode having ended without
+ * anybody being told IS news, and is said once. Everything else is silence.
+ * Switching the mode on lives in the tray menu, where somebody who wants it can
+ * find it. */
+static void LauncherOfferWorkplaceRearm( void ) {
+	/* Already armed - this launcher was started BY the mode being switched on,
+	 * and took the arming from its command line before it had a tray icon to
+	 * raise a notice from. Say it now, or switching the mode on from the config
+	 * box is the one route that announces nothing. */
+	if( kitty_workplace_holding() ) { LauncherWorkplaceBalloon( 1, 0 ) ; return ; }
+	kitty_workplace_show_pending_notice() ;
+}
+
+void LauncherDisarmWorkplace( void ) {
+	KillTimer( MainHwnd, LAUNCHER_WORKPLACE_TIMER ) ;
+	kitty_workplace_disarm() ;
+	LauncherWorkplaceProxy[0] = '\0' ;   /* the selection stays remembered */
+	LauncherSetTrayTip() ;
+	Shell_NotifyIcon( NIM_MODIFY, &TrayIcone ) ;
+}
+
+/* A launcher that the MODE started goes away again when the mode is switched
+ * off: it was started to hold the arming, and leaving a tray icon behind that
+ * the user never asked for reads as a bug. [Launcher]
+ * exitwithworkplace=no keeps it running instead, for anyone who would rather
+ * gain the session list and hotkeys from it.
+ *
+ * ⚠️ It applies ONLY to a launcher that the mode itself started. A launcher the
+ * user was already running must never be closed by switching a proxy mode off -
+ * that would take their session list away as a side effect. */
+static int LauncherStartedForWorkplace = 0 ;
+
+static void LauncherExitIfStartedForWorkplace( HWND hwnd ) {
+	char buffer[32] ;
+	if( !LauncherStartedForWorkplace ) return ;
+	if( ReadParameterN( "Launcher", "exitwithworkplace", buffer, sizeof(buffer) )
+	    && !stricmp( buffer, "no" ) ) return ;   /* absent = yes */
+	/* ⚠️ NOT straight away. The notice saying the mode is off is a window of
+	 * OURS, so quitting here would take it off the screen the instant it
+	 * appeared - and on the timeout path it is the notice that offers the mode
+	 * back with a click, so quitting would remove the offer as well as the news.
+	 * Wait for the notice to have had its time, then go. */
+	SetTimer( hwnd, LAUNCHER_EXITAFTERNOTICE_TIMER,
+	          (UINT)(LauncherNoticeSeconds()*1000 + 1000), NULL ) ;
+}
+
 // Procedures principales du launcher
 
 LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -728,6 +1003,28 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 
 	if( LauncherRefreshMessage != 0 && uMsg == LauncherRefreshMessage ) {
 		LauncherRefreshSessionsAndHotkeys( hwnd ) ;
+		return 0 ;
+	}
+
+	/* KiTTY: the config box asking for workplace proxy mode on (wParam 1) or off
+	 * (wParam 0). The proxy is not in the message - the requester has just
+	 * written the remembered selection, and reading it here keeps one source of
+	 * truth for which proxy the mode uses. Install-keyed message, so another
+	 * install's launcher never answers this. */
+	if( uMsg != 0 && uMsg == kitty_workplace_message() ) {
+		if( wParam ) {
+			char proxy[256] ;
+			if( LauncherRememberedWorkplaceProxy( proxy, sizeof(proxy) )
+			    && LauncherArmWorkplace( proxy, (unsigned int)lParam ) ) {
+				RefreshMenuLauncher() ;
+				LauncherWorkplaceBalloon( 1, 0 ) ;
+			}
+		} else if( kitty_workplace_holding() ) {
+			LauncherDisarmWorkplace() ;
+			RefreshMenuLauncher() ;
+			LauncherWorkplaceBalloon( 0, 0 ) ;
+			LauncherExitIfStartedForWorkplace( hwnd ) ;
+		}
 		return 0 ;
 	}
 	
@@ -749,25 +1046,11 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 	// On lui dit qu'il devra "écouter" son environement (clique de souris, etc)
 	TrayIcone.uCallbackMessage = KLWM_NOTIFYICON;
 	//TrayIcone.szTip[1024] = "KiTTY That\'s all folks!\0" ;			// Le tooltip par défaut, soit rien
-#ifdef MOD_PORTABLE
-		strcpy( TrayIcone.szTip, "KiTTY Launcher\r\n(portable)" ) ;
-#else
-		strcpy( TrayIcone.szTip, "KiTTY Launcher" ) ;
-#endif
-		/* KiTTY: and say so when this launcher - and so every session it
-		 * starts, via the "&R" prefix below - runs with the restricted ACL. */
-		if( restricted_acl() ) strcat( TrayIcone.szTip, "\r\n(RESTRICTED)" ) ;
+	LauncherSetTrayTip() ;
 	TrayIcone.hWnd = hwnd ;
 	ResShell = Shell_NotifyIcon(NIM_ADD, &TrayIcone);
 	if( ResShell ) {
-#ifdef MOD_PORTABLE
-		strcpy( TrayIcone.szTip, "KiTTY Launcher\r\n(portable)" ) ;
-#else
-		strcpy( TrayIcone.szTip, "KiTTY Launcher" ) ;
-#endif
-		/* KiTTY: and say so when this launcher - and so every session it
-		 * starts, via the "&R" prefix below - runs with the restricted ACL. */
-		if( restricted_acl() ) strcat( TrayIcone.szTip, "\r\n(RESTRICTED)" ) ;
+		LauncherSetTrayTip() ;
 		ResShell = Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
 		/* KiTTY: refresh the cached latest version async. The notify variant posts
 		 * back when the fetch finishes, so the launcher balloon can appear on the
@@ -784,7 +1067,12 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 			 * Handling it through the message loop is the same path the async
 			 * result takes, and it is known to work. */
 			PostMessage( hwnd, KLWM_UPDATECHECKDONE, 0, 0 ) ;
+			PostMessage( hwnd, KLWM_WORKPLACEOFFER, 0, 0 ) ;
 		}
+		/* An arming taken from the command line was taken before this window
+		 * existed, so its expiry timer could not be set against it then. */
+		if( kitty_workplace_holding() && kitty_workplace_minutes_left() )
+			SetTimer( hwnd, LAUNCHER_WORKPLACE_TIMER, 30000, NULL ) ;
 		LauncherRegisterHotkeys( hwnd ) ;
 		if (IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_HIDE);
 		//SendMessage(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
@@ -793,6 +1081,24 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		return 0 ;
 			break ;
 	
+		case KLWM_WORKPLACEOFFER :
+			LauncherOfferWorkplaceRearm() ;
+			break ;
+
+		case KLWM_WORKPLACEREARM :
+			/* Taking the offer cancels the pending close outright, rather than
+			 * relying on the check in the timer: this launcher is wanted. */
+			KillTimer( hwnd, LAUNCHER_EXITAFTERNOTICE_TIMER ) ;
+			/* The "mode is OFF" notice was clicked: switch it on with the
+			 * proxy the notice named. */
+			if( LauncherRearmProxy[0]
+			    && LauncherArmWorkplace( LauncherRearmProxy,
+			                             LauncherRememberedWorkplaceMinutes() ) ) {
+				RefreshMenuLauncher() ;
+				LauncherWorkplaceBalloon( 1, 0 ) ;
+			}
+			break ;
+
 		case KLWM_NOTIFYICON :
 			switch (lParam)	{
 				/* KiTTY: the "update available" balloon is clickable - clicking
@@ -804,6 +1110,8 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 				 * registered without NIM_SETVERSION, so the notification code
 				 * arrives in lParam like the mouse messages below. */
 				case NIN_BALLOONUSERCLICK :
+					/* The update balloon is the only balloon left: the workplace
+					 * notices are our own window, which handles its own click. */
 					if( LauncherUpdateKnown ) {
 						extern void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) ;
 						CheckVersionFromWebSite( hwnd, 0 ) ;
@@ -848,6 +1156,33 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		case WM_TIMER:
 			/* KiTTY: no double click arrived - deliver the left-click menu
 			 * at the position of the original click */
+			if( wParam == LAUNCHER_EXITAFTERNOTICE_TIMER ) {
+				KillTimer( hwnd, LAUNCHER_EXITAFTERNOTICE_TIMER ) ;
+				/* Unless the mode is back on - the user clicked the timeout
+				 * notice, and closing now would take away what they just
+				 * asked for. */
+				if( !kitty_workplace_holding() ) {
+					Shell_NotifyIcon( NIM_DELETE, &TrayIcone ) ;
+					PostQuitMessage( 0 ) ;
+				}
+				break ;
+			}
+			if( wParam == LAUNCHER_WORKPLACE_TIMER ) {
+				/* The arming's time is up: end the mode where the user can see
+				 * it, rather than leaving the tray saying it is on until the
+				 * next connection quietly disagrees. */
+				if( kitty_workplace_holding() && !kitty_workplace_minutes_left() ) {
+					/* Remember what it was using, so the timeout notice can
+					 * offer that same proxy back with one click. */
+					LauncherRememberedWorkplaceProxy( LauncherRearmProxy,
+					                                  sizeof(LauncherRearmProxy) ) ;
+					LauncherDisarmWorkplace() ;
+					RefreshMenuLauncher() ;
+					LauncherWorkplaceBalloon( 0, 1 ) ;   /* by timeout */
+					LauncherExitIfStartedForWorkplace( hwnd ) ;
+				}
+				break ;
+			}
 			if( wParam == LAUNCHER_TRAYCLICK_TIMER ) {
 				KillTimer( hwnd, LAUNCHER_TRAYCLICK_TIMER ) ;
 				RefreshMenuLauncher() ;
@@ -1000,6 +1335,36 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 				case IDM_GOPREVIOUS:
 					ManageGoPrevious( hwnd ) ;
 					break ;
+				case IDM_WORKPLACE:
+					/* Switch workplace proxy mode off. The selection stays
+					 * remembered so the next start can offer it back.
+					 *
+					 * ⚠️ And this launcher STAYS, even when the mode started it
+					 * and exitwithworkplace is on: the user is standing in this
+					 * menu right now, so the thing they just clicked vanishing
+					 * under them reads as a crash. The exit
+					 * is for disarms the user did not perform HERE - from the
+					 * config box, or the timeout running out - where nobody is
+					 * looking at the tray and a leftover icon is the surprise
+					 * instead. */
+					LauncherDisarmWorkplace() ;
+					RefreshMenuLauncher() ;
+					LauncherWorkplaceBalloon( 0, 0 ) ;
+					break ;
+				}
+				/* Workplace proxy mode ON, with named proxy (id - base - 1).
+				 * A range, so it cannot be a switch case above. */
+				{
+					int wp = LOWORD(wParam) - (IDM_WORKPLACE+1) ;
+					if( wp >= 0 && wp < MAX_PROXY-2 ) {
+						InitProxyList() ;
+						if( proxies[wp+2].name ) {
+							if( LauncherArmWorkplace( proxies[wp+2].name,
+						                          LauncherRememberedWorkplaceMinutes() ) )
+								LauncherWorkplaceBalloon( 1, 0 ) ;
+							RefreshMenuLauncher() ;
+						}
+					}
 				}
 				int nb ;
 				nb = LOWORD(wParam)-IDM_USERCMD ;
@@ -1054,15 +1419,72 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 		if( strlen(buffer)>0 ) { strcpy(className,buffer) ; }
 	}
 	
-	if( FindWindow(className,className) ) {
-		if( ReadParameterN( "Launcher", "alreadyRunCheck", buffer, sizeof(buffer) ) ) {
-			if( !stricmp( buffer, "yes" ) ) return 0 ;
-		} else { 
-			return 0 ; 
+	if( strstr( cmdline, "-putty" ) != NULL ) SetPuttyFlag(1) ;
+
+	/* KiTTY: -workplace <named proxy> switches workplace proxy mode ON and
+	 * hands this launcher the arming (design/TASK_workplace_proxy.md §3). The
+	 * arming lives and dies with this process: every connection asks whether one
+	 * is held right now, so killing the launcher, logging off or rebooting
+	 * switches the mode off with nothing to clean up.
+	 *
+	 * Taken BEFORE the window exists, so the tray tooltip built in WM_CREATE
+	 * already names the proxy - and BEFORE the already-running check below,
+	 * which is the subtle part: see the comment on that check. */
+	{
+		char *w = strstr( cmdline, "-workplace" ) ;
+		unsigned int minutes = 0 ;
+		char *m = strstr( cmdline, "-workplaceminutes" ) ;
+		if( m != NULL ) {
+			m += strlen("-workplaceminutes") ;
+			while( *m==' ' || *m=='\t' ) m++ ;
+			if( atoi(m) > 0 ) minutes = (unsigned int)atoi(m) ;
+		}
+		/* "-workplace" must be followed by whitespace or a quote, or
+		 * "-workplaceminutes 240" would be read as a proxy named "minutes". */
+		if( w != NULL && (w[strlen("-workplace")]==' ' || w[strlen("-workplace")]=='\t'
+		                  || w[strlen("-workplace")]=='"') ) {
+			char proxy[256] = "" ;
+			w += strlen("-workplace") ;
+			while( *w==' ' || *w=='\t' ) w++ ;
+			if( *w=='"' ) {
+				char *end = strchr( ++w, '"' ) ;
+				if( end && (end-w) < (int)sizeof(proxy) ) {
+					memcpy( proxy, w, end-w ) ; proxy[end-w] = '\0' ;
+				}
+			} else {
+				int i = 0 ;
+				while( *w && *w!=' ' && *w!='\t' && i < (int)sizeof(proxy)-1 ) proxy[i++] = *w++ ;
+				proxy[i] = '\0' ;
+			}
+			if( proxy[0] && LauncherArmWorkplace( proxy, minutes ) )
+				/* Started BY the mode: only such a launcher may be closed again
+				 * when the mode goes off, and only if asked to be. */
+				LauncherStartedForWorkplace = 1 ;
 		}
 	}
 
-	if( strstr( cmdline, "-putty" ) != NULL ) SetPuttyFlag(1) ;
+	/*
+	 * Only ONE launcher, normally - but the window class is shared by every
+	 * KiTTY on the machine, while workplace proxy mode is per INSTALL.
+	 *
+	 * So a portable copy on a stick, or a second installation in another
+	 * directory, owns this class as soon as its launcher is in the tray, and a
+	 * launcher started to hold OUR install's arming would exit here without
+	 * arming anything - the mode would simply refuse to switch on, with a
+	 * launcher visibly running. That is why the arming is taken above and why
+	 * holding one exempts this launcher from the check.
+	 *
+	 * Two launchers of the SAME install still cannot both arm: the arming
+	 * itself refuses a second holder (CreateFileMapping ERROR_ALREADY_EXISTS),
+	 * so the second one fails to arm and exits here like any other duplicate.
+	 */
+	if( !kitty_workplace_holding() && FindWindow(className,className) ) {
+		if( ReadParameterN( "Launcher", "alreadyRunCheck", buffer, sizeof(buffer) ) ) {
+			if( !stricmp( buffer, "yes" ) ) return 0 ;
+		} else {
+			return 0 ;
+		}
+	}
 
 	LauncherRefreshMessage = RegisterWindowMessageA(KITTY_LAUNCHER_REFRESH_MESSAGE) ;
 

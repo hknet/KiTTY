@@ -2481,6 +2481,19 @@ void dlg_label_change(dlgcontrol *ctrl, dlgparam *dp, char const *text)
         escaped = shortcut_escape(text, ctrl->fontselect.shortcut);
         id = c->base_id;
         break;
+      case CTRL_TEXT:
+        /* KiTTY: a text control is a single static (or, when it does not wrap,
+         * one borderless read-only editbox), and SetDlgItemText below changes
+         * either. So a line of explanatory text can state something that MOVES
+         * instead of being fixed when the panel was built and then quietly
+         * lying about the current state. Reaching here used to assert.
+         *
+         * ⚠️ The control's HEIGHT was fixed at layout time from the original
+         * text, so replacement text must occupy the same number of lines -
+         * keep the wordings the same length. */
+        escaped = shortcut_escape(text, NO_SHORTCUT);
+        id = c->base_id;
+        break;
       default:
         unreachable("bad control type in label_change");
     }

@@ -233,6 +233,21 @@ BEGIN
     PUSHBUTTON      "Close", IDCANCEL, 241, 282, 52, 15
 END
 
+/* "Load named proxy pre-sets": pick a definition to copy into this session's own
+ * proxy settings. Handled by kitty/kitty_proxy_gui.c; the confirmation that
+ * follows OK is the same one the Proxy panel always used, because loading a
+ * template overwrites the session's proxy username and password too. */
+IDD_PROXYPICK DIALOG DISCARDABLE 0, 0, 260, 76
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Load named proxy pre-sets"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT           "Copy the settings of this named proxy into the session's own proxy settings:", -1, 7, 7, 246, 18
+    COMBOBOX        IDC_PXP_LIST, 7, 29, 246, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "OK", IDOK, 146, 55, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 203, 55, 50, 14
+END
+
 /* "Update available / up to date" popup (kitty/kitty_win.c). A real (modeless)
  * dialog so the dialog manager applies the shell font at the correct DPI, like
  * every other KiTTY window. The message area + window are grown to fit the text

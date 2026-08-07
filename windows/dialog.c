@@ -751,6 +751,12 @@ static int kitty_cfgbox_restore_pos(HWND hwnd)
  * so they never install it. */
 dlgcontrol *kitty_config_session_filter_ctrl(void); /* kitty_config.c / stub */
 bool kitty_proxy_label_is_active(const char *text);  /* kitty_config.c / stub */
+bool kitty_bold_caption(const char *text);           /* kitty_config.c / stub */
+void kitty_cfgbox_workplace_poll(dlgparam *dp);      /* kitty_config.c / stub */
+const char *kitty_cfgbox_wanted_panel(void);         /* kitty_config.c / stub:
+                                                      * panel path to open on,
+                                                      * or NULL for the first */
+#define KITTY_WORKPLACE_POLL_TIMER 8730
 bool kitty_config_select_root_folder(dlgparam *dp); /* kitty_config.c / stub */
 static HHOOK kitty_cfg_kbdhook = NULL;
 static HWND kitty_cfg_hwnd = NULL;
@@ -811,8 +817,9 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
          * which have no proxy override - link and behave exactly as before.
          */
         char buf[128];
-        if (GetWindowTextA((HWND)lParam, buf, sizeof(buf)) > 0 &&
-            kitty_proxy_label_is_active(buf)) {
+        if (GetWindowTextA((HWND)lParam, buf, sizeof(buf)) <= 0)
+            buf[0] = '\0';
+        if (buf[0] && kitty_proxy_label_is_active(buf)) {
             static HFONT bold = NULL;      /* built once, reused for the process */
             HDC hdc = (HDC)wParam;
             if (!bold) {
@@ -828,6 +835,27 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             /* Dark red, not pure red: it stays legible on the grey dialog face
              * and on the lighter face high-contrast themes use. */
             SetTextColor(hdc, RGB(192, 0, 0));
+            SetBkMode(hdc, TRANSPARENT);
+            return (INT_PTR)GetSysColorBrush(COLOR_BTNFACE);
+        }
+        /* KiTTY: captions that are BOLD but not coloured - the workplace-proxy
+         * box, which is the one thing on that panel that does not belong to the
+         * session being configured. Same text-matching contract as above; a
+         * theme-drawn group box may ignore this, which is why the box also
+         * carries a bold lead line of its own. */
+        if (buf[0] && kitty_bold_caption(buf)) {
+            static HFONT boldplain = NULL;
+            HDC hdc = (HDC)wParam;
+            if (!boldplain) {
+                LOGFONT lf;
+                HFONT cur = (HFONT)GetCurrentObject(hdc, OBJ_FONT);
+                if (cur && GetObject(cur, sizeof(lf), &lf)) {
+                    lf.lfWeight = FW_BOLD;
+                    boldplain = CreateFontIndirect(&lf);
+                }
+            }
+            if (boldplain)
+                SelectObject(hdc, boldplain);
             SetBkMode(hdc, TRANSPARENT);
             return (INT_PTR)GetSysColorBrush(COLOR_BTNFACE);
         }
@@ -969,10 +997,10 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
          * Set up the tree view contents.
          */
         {
-            HTREEITEM hfirst = NULL;
+            HTREEITEM hfirst = NULL, hwanted = NULL;
             int i;
             char *path = NULL;
-            char *firstpath = NULL;
+            char *firstpath = NULL, *wantedpath = NULL;
 
             for (i = 0; i < pds->ctrlbox->nctrlsets; i++) {
                 struct controlset *s = pds->ctrlbox->ctrlsets[i];
@@ -1009,15 +1037,30 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                     hfirst = item;
                     firstpath = s->pathname;
                 }
+                /* KiTTY: open the box on a named panel instead of the first one,
+                 * when something asked for that - the "your workplace proxy did
+                 * not answer" notice opens the box straight at Connection/Proxy,
+                 * where the switch, the proxy and the timeout all are. Recorded
+                 * as the tree is built, because that is the only place the path
+                 * and its tree item are known together. */
+                if (kitty_cfgbox_wanted_panel() &&
+                    !strcmp(s->pathname, kitty_cfgbox_wanted_panel())) {
+                    hwanted = item;
+                    wantedpath = s->pathname;
+                }
 
                 path = s->pathname;
             }
 
             /*
              * Put the treeview selection on to the first panel in the
-             * ctrlbox.
+             * ctrlbox - or on the panel something asked us to open on.
              */
-            TreeView_SelectItem(treeview, hfirst);
+            /* hfirst stays the FIRST panel (the Session one) because the Ctrl+F
+             * jump below is anchored to it; only what we select changes. */
+            HTREEITEM hsel = hwanted ? hwanted : hfirst;
+            char *selpath = hwanted ? wantedpath : firstpath;
+            TreeView_SelectItem(treeview, hsel);
 
             /* KiTTY: arm the Ctrl+F session-search jump (first tree item ==
              * the Session panel). Only when this dialog's ctrlbox actually
@@ -1036,20 +1079,31 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
              * And create the actual control set for that panel, to
              * match the initial treeview selection.
              */
-            assert(firstpath);   /* config.c must have given us _something_ */
+            assert(selpath);     /* config.c must have given us _something_ */
             pds_create_controls(pds, TREE_PANEL, IDCX_PANELBASE,
-                                100, 3, 13, firstpath);
+                                100, 3, 13, selpath);
             dlg_refresh(NULL, pds->dp);    /* and set up control values */
         }
 
         if (dialog_box_demo_screenshot_filename)
             SetTimer(hwnd, DEMO_SCREENSHOT_TIMER_ID, TICKSPERSEC, NULL);
 
+        /* KiTTY: workplace proxy mode is held by ANOTHER process (the
+         * launcher), so switching it off from the tray reaches this box only if
+         * the box looks. One second, one OpenFileMapping, and the poll repaints
+         * two controls and only when the state actually moved. Stubbed to
+         * nothing in the stock variants. */
+        SetTimer(hwnd, KITTY_WORKPLACE_POLL_TIMER, 1000, NULL);
+
         pds_initdialog_finish(pds);
         return 0;
       }
 
       case WM_TIMER:
+        if ((UINT_PTR)wParam == KITTY_WORKPLACE_POLL_TIMER) {
+            kitty_cfgbox_workplace_poll(pds->dp);
+            return 0;
+        }
         if (dialog_box_demo_screenshot_filename &&
             (UINT_PTR)wParam == DEMO_SCREENSHOT_TIMER_ID) {
             KillTimer(hwnd, DEMO_SCREENSHOT_TIMER_ID);

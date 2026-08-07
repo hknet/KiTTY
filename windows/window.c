@@ -290,6 +290,22 @@ int GetPasteSize(void);     /* kitty.c: [KiTTY] pastesize, confirm before
 int GetProxyChainMax(void); /* kitty.c: [KiTTY] proxychainmax, how many SSH
                              * proxies may be chained before we refuse
                              * (default 5); enforced in proxy/sshproxy.c */
+/* KiTTY: set by kitty_proxy_select() (kitty/kitty_bridge.c) when the proxy it
+ * just applied came from workplace proxy mode; start_backend records it on the
+ * seat, where it stays true for the life of that connection. Declared here
+ * rather than by including a KiTTY header, to leave this shared file's includes
+ * as they are; every use is inside MOD_PERSO. */
+extern int kitty_workplace_applied;
+void kitty_frame_restore_resting(void);   /* kitty/kitty_osc52.c: the frame's
+                                           * standing colour for this window */
+int kitty_workplace_query(char *name, int len);   /* kitty/kitty_workplace.c */
+int kitty_workplace_request(int arm, unsigned int minutes);
+void kitty_notice_show(const char *title, const char *text, COLORREF accent,
+                       int seconds, HWND click_hwnd, unsigned int click_msg);
+void kitty_workplace_show_pending_notice(void);
+void kitty_cfgbox_open_on_panel(const char *path);   /* kitty/kitty_config.c */
+/* Posted by that notice when it is clicked: switch workplace proxy mode off. */
+#define WM_KITTY_WORKPLACE_DISARM (WM_APP + 72)
 #define TIMER_AUTOCOMMAND 8702
 /* Anti-idle: periodically send a keepalive string (CONF_antiidle). */
 void kitty_antiidle_tick(HWND hwnd);
@@ -613,6 +629,12 @@ static void start_backend(WinGuiSeat *wgs)
     {
         Conf *tmp = conf_copy(wgs->conf);
         kitty_proxy_select(tmp);
+        /* Whether workplace proxy mode routed THIS connection - recorded now,
+         * because it stays true of the connection for as long as it lives, and
+         * the mode itself can be switched off meanwhile. Every start path comes
+         * through here, including auto-reconnect and Restart Session, so a
+         * reconnect re-answers the question rather than inheriting the answer. */
+        wgs->workplace_proxied = (kitty_workplace_applied != 0);
         if (conf_get_int(tmp, CONF_proxy_type) !=
             conf_get_int(wgs->conf, CONF_proxy_type) ||
             strcmp(conf_get_str(tmp, CONF_proxy_host),
@@ -698,6 +720,40 @@ static void start_backend(WinGuiSeat *wgs)
             return;
         }
 #endif
+#ifdef MOD_PERSO
+        /*
+         * KiTTY: the one detection workplace proxy mode is worth having
+         * (design/TASK_workplace_proxy.md §9). This connection went through the
+         * mode's proxy and did not come up - overwhelmingly because the user has
+         * left the place where that proxy exists. Ask, at the exact moment it
+         * matters, instead of leaving them to work out why nothing connects any
+         * more.
+         *
+         * It replaces the ordinary failure box rather than adding a second one,
+         * and it states what happened rather than blaming the proxy: the failure
+         * could equally be the far end. Answering No leaves the mode alone.
+         */
+        {
+            char wp[256];
+            if (wgs->workplace_proxied && kitty_workplace_query(wp, sizeof(wp))) {
+                extern int kitty_confirm_box(HWND owner, const char *caption,
+                                             const char *text, const char *warn_red);
+                char *q = dupprintf(
+                    "%s\n\n"
+                    "Workplace proxy mode is on, so this connection was made "
+                    "through the proxy \"%s\" rather than through this session's "
+                    "own settings.\n\n"
+                    "Switch workplace proxy mode off? Connections would then use "
+                    "each session's own proxy settings again.", msg, wp);
+                if (kitty_confirm_box(NULL, "Connection failed", q, NULL))
+                    kitty_workplace_request(0, 0);
+                sfree(q);
+                sfree(str);
+                sfree(msg);
+                exit(0);
+            }
+        }
+#endif
         MessageBox(NULL, msg, str, MB_ICONERROR | MB_OK);
         sfree(str);
         sfree(msg);
@@ -705,6 +761,21 @@ static void start_backend(WinGuiSeat *wgs)
     }
     term_setup_window_titles(wgs->term, realhost);
     sfree(realhost);
+
+#ifdef MOD_PERSO
+    /* KiTTY: the connection has just been made, so paint the window for what it
+     * actually is - the workplace-proxy green belongs to a connection, and this
+     * is the moment that answer changes. Also covers Restart Session and
+     * auto-reconnect, which come through here too and may well answer
+     * differently from the connection they replace. */
+    kitty_frame_restore_resting();
+    /* And if workplace proxy mode ended with nobody being told - the launcher
+     * killed, the machine rebooted - say so once, here as well as in the
+     * launcher and the config box, because a session started from a shortcut or
+     * an ssh:// link may be the first KiTTY of the day. Self-clearing: whichever
+     * path gets there first is the only one that shows it. */
+    kitty_workplace_show_pending_notice();
+#endif
 
     /*
      * Connect the terminal to the backend for resize purposes.
@@ -876,7 +947,7 @@ static wchar_t *kitty_clip_decorate_wide(WinGuiSeat *wgs, wchar_t *name)
 {
     int activity = 0, state = OSC52_PERM_NONE;
     bool rd = false, wr = false;
-    const wchar_t *front = NULL, *tail = NULL;
+    const wchar_t *lead = NULL, *front = NULL, *tail = NULL;
     wchar_t *out;
     size_t len;
 
@@ -894,14 +965,26 @@ static wchar_t *kitty_clip_decorate_wide(WinGuiSeat *wgs, wchar_t *name)
     }
     if (activity)
         front = kitty_clip_icon(activity, false, false);
-    if (!front && !tail)
+    /* KiTTY: THIS connection went through workplace proxy mode's proxy. Keyed to
+     * the connection, not to the mode - a window opened before the mode was
+     * switched on is not going through it and must not say so. In words, because
+     * DWM renders the caption monochrome and a coloured glyph arrives as a black
+     * blob: the title carries the shape, the frame tint carries the colour. */
+    if (wgs->workplace_proxied)
+        lead = L"⇄ workplace proxy";
+    if (!front && !tail && !lead)
         return name;
 
     len = wcslen(name) + 1;
+    if (lead)  len += wcslen(lead) + 3;
     if (front) len += wcslen(front) + 1;
     if (tail)  len += wcslen(tail) + 4;      /* " (" + ")" + slack */
     out = snewn(len, wchar_t);
     out[0] = L'\0';
+    if (lead) {
+        wcscat(out, lead);
+        wcscat(out, L" ");
+    }
     if (front) {
         wcscat(out, front);
         wcscat(out, L" ");
@@ -1210,6 +1293,27 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * the exact failure this marker work is about - believing you are
          * hardened when you are not. "&R" from a parent KiTTY is handled the
          * same way, by the shared prefix helper. */
+        /* KiTTY: "-cfgpanel <path>" opens the configuration box on that panel
+         * instead of Session. Used by the workplace-proxy "did not answer"
+         * notice to land the user on Connection/Proxy. Stripped here rather
+         * than parsed later: the ordinary parser would reject it, and the panel
+         * is not a session setting. */
+        {
+            char *p = strstr(cl, "-cfgpanel");
+            if (p) {
+                char panel[128];
+                int i = 0;
+                char *q = p + strlen("-cfgpanel");
+                while (*q == ' ' || *q == '\t') q++;
+                while (*q && *q != ' ' && *q != '\t' && i < (int)sizeof(panel)-1)
+                    panel[i++] = *q++;
+                panel[i] = '\0';
+                if (panel[0])
+                    kitty_cfgbox_open_on_panel(panel);
+                /* blank the option out so the ordinary parser never sees it */
+                while (p < q) *p++ = ' ';
+            }
+        }
         {
             char *lcl = handle_restrict_acl_cmdline_prefix(cl);
             if (kitty_cmdline_has_token(lcl, "-launcher")) {
@@ -2437,6 +2541,33 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
     }
 #endif
 #ifdef MOD_PERSO
+    /*
+     * KiTTY, workplace proxy mode (design §9): this connection went through the
+     * mode's proxy and never came up. Overwhelmingly that means the user has
+     * left the place where that proxy exists - so say so, and offer to switch
+     * the mode off, at the one moment the offer is useful.
+     *
+     * A NOTICE, not a dialog: the whole point of the inline error below is that
+     * a fatal error does not block the terminal (#548), and a modal question
+     * here would take that back. Clicking the notice switches the mode off.
+     *
+     * Gated on never having authenticated, so this is about a connection that
+     * failed to establish, not about a working session that later dropped.
+     */
+    {
+        char wp[256];
+        if (!wgs->ever_authenticated && wgs->workplace_proxied &&
+            kitty_workplace_query(wp, sizeof(wp))) {
+            char *note = dupprintf(
+                "This connection went through \"%s\" because workplace proxy "
+                "mode is on, and it did not come up. If you have left the place "
+                "that proxy belongs to, click here to switch the mode off.", wp);
+            kitty_notice_show("Workplace proxy mode is on", note,
+                              RGB(0, 100, 0), 20, wgs->term_hwnd,
+                              WM_KITTY_WORKPLACE_DISARM);
+            sfree(note);
+        }
+    }
     /* KiTTY: instead of a modal "Fatal Error" box that blocks the terminal,
      * print the error INLINE (red label, default-coloured detail) and let the
      * session go inactive, so the user can read it and choose Restart / next
@@ -5464,6 +5595,40 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       case WM_GOT_CLIPDATA:
         process_clipdata(wgs, (HGLOBAL)lParam, wParam);
         return 0;
+#ifdef MOD_PERSO
+      case WM_KITTY_WORKPLACE_DISARM:
+        /*
+         * The "your workplace proxy did not answer" notice was clicked.
+         *
+         * It does NOT switch the mode off. Disarming a whole proxy setup from
+         * one click on a notice is too much for a click to do, and the user may
+         * well want the mode and simply be somewhere else for an hour. So this
+         * opens a configuration window straight at Connection/Proxy, where the
+         * switch, the proxy in use and the timeout are all in front of them and
+         * the decision is theirs.
+         *
+         * A new window rather than this session's Change Settings: the Proxy
+         * panel is not offered mid-session, so Change Settings would open on a
+         * box that does not contain the thing they came for.
+         */
+        {
+            char exe[MAX_PATH], cmd[MAX_PATH + 64];
+            DWORD n = GetModuleFileNameA(NULL, exe, sizeof(exe));
+            if (n && n < sizeof(exe)) {
+                STARTUPINFOA si;
+                PROCESS_INFORMATION pi;
+                memset(&si, 0, sizeof(si)); si.cb = sizeof(si);
+                memset(&pi, 0, sizeof(pi));
+                sprintf(cmd, "\"%s\" -cfgpanel Connection/Proxy", exe);
+                if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL,
+                                   &si, &pi)) {
+                    CloseHandle(pi.hThread);
+                    CloseHandle(pi.hProcess);
+                }
+            }
+        }
+        return 0;
+#endif
       default:
         if (message == wm_mousewheel || message == WM_MOUSEWHEEL
                                                 || message == WM_MOUSEHWHEEL) {
@@ -8401,6 +8566,15 @@ void kitty_set_active_seat(WinGuiSeat *wgs) {
      * Previously only set on the background-image / input-box paths, leaving
      * it NULL in a plain session. */
     if (wgs && wgs->term_hwnd) MainHwnd = wgs->term_hwnd;
+}
+
+/* Did the active window's connection go through workplace proxy mode's proxy?
+ * The frame tint (kitty/kitty_osc52.c) asks this rather than asking whether the
+ * MODE is on, for the same reason the title marker does: the colour describes
+ * this connection, and connections outlive switchings of the mode in both
+ * directions. */
+int kitty_active_seat_workplace_proxied(void) {
+    return kitty_active_wgs && kitty_active_wgs->workplace_proxied;
 }
 
 void do_eventlog(const char *st) {
