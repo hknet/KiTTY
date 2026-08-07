@@ -17,6 +17,26 @@ KiTTY supports both, inherited from PuTTY and unchanged in behaviour. This page
 covers how to do it from KiTTY, and the OpenSSH server side that makes it useful.
 Everything here was run end to end against a real `sshd` before it was written.
 
+## Coming from an older KiTTY?
+
+**Then you remember this as missing, and you were right.** Classic KiTTY is built
+on a PuTTY that predates certificate support, so it has neither the certificate
+items in the key generator nor the certificate fields in the configuration box.
+That is what the long-standing *"DetachedCertificate supported in PuTTY but not
+in KiTTY"* report is about.
+
+This port is built on PuTTY 0.84, so all of it is here — including the detached
+form that report names: *Connection → SSH → Auth → Credentials* → **"Certificate
+to use with the private key (optional)"**. A saved session stores it under the
+keyword `DetachedCertificate`, the same keyword PuTTY uses, so a session migrated
+from PuTTY brings its certificate setting with it.
+
+⚠️ One thing does **not** travel automatically: **host CA records** are kept per
+user rather than per session (see the note below), in KiTTY's own registry area.
+After moving from PuTTY you may have to add trusted host CAs again under
+*Connection → SSH → Host keys → Configure host CAs*. User certificates are
+unaffected — those live in the key file or in the session.
+
 ## What KiTTY gives you
 
 | Where | What |
