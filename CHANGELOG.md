@@ -5,6 +5,95 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.71-beta — 2026-08-08
+
+### kageant: keys that live on removable media
+
+A key kept on a USB stick or a network share is not there when you log in, and
+is there later. kageant skipped it, said so, and left you to add it by hand every
+time.
+
+- **It waits for the drive instead.** A startup key whose file is not reachable
+  is kept, and loaded the moment the drive appears — Windows says when that
+  happens, so there is no polling. `[Agent] retrykeys` (on by default) turns it
+  off; it does nothing at all unless a startup key is actually missing.
+
+- **Optionally, the key goes when its media does.** `[Agent] unloadonremove`
+  (off by default) drops keys whose drive has been removed, and brings them back
+  when it returns. Off by default deliberately: pulling a stick should not break
+  the session you are authenticating right then, and a loaded key is already
+  protected in memory. **Nothing is ever deleted from disk.** A key that is also
+  loaded from a file still present is left alone — the agent holds one key
+  however many files it came from.
+
+- **Keys keep their place.** The list is the order keys are offered to a server,
+  and every key offered that the server does not want spends one of the attempts
+  it allows before locking the account out. A key that comes back returns to its
+  own position rather than the end.
+
+- **A key you asked for is no longer lost.** The startup list was rebuilt from
+  the keys currently loaded, so an entry whose drive was absent was dropped
+  permanently: start with the stick unplugged, add any other key, and the entry
+  was gone with nothing said.
+
+### kageant: knowing which key is which
+
+- **Each startup entry now remembers its key's fingerprint.** If a key file has
+  been replaced — swapped on a stick, overwritten by an old backup, a copy that
+  is not yours — kageant says so before loading it and shows both fingerprints.
+  Accepting is permanent, because a key you rotated yourself looks exactly the
+  same as one that was tampered with, and a warning you can only dismiss is one
+  people learn to click through.
+
+- **A failing key names its file**, and if it is in the startup list, offers to
+  stop trying it. "Couldn't load this key (unable to open file)" at every login,
+  naming nothing, was not something you could act on. (cyd01/KiTTY#522)
+
+- **Removing a key removes it properly.** It used to come back at the next
+  start: the startup list was only written when a key was *added*. Removal now
+  drops every file that provided that key, including ones whose media is absent,
+  and takes the key out of the saved offer order so it cannot reclaim its old
+  position later. Remove also asks first now.
+
+- **The key list shows the state in its own column**, so "(encrypted)" is no
+  longer pushed off the edge by a long comment — that is the field saying
+  whether a key is usable now or will ask for a passphrase first.
+  Double-clicking a key shows its full fingerprint, its comment, and every file
+  it was loaded from.
+
+### Fixed
+
+- **An empty remote clipboard write no longer clears your clipboard.** A
+  multiplexer sends one whenever a selection gesture selects nothing — a
+  double-click below the prompt, a drag that did not move — and an accidental
+  click threw away whatever you had copied. (cyd01/KiTTY#495)
+
+- **Three settings that were shown but did nothing, or lied.** "Lines scrolled
+  per wheel turn" (*Window → Scrollback*) had never been read by anything; it
+  works now, and the panel explains its two negative values. The kscp flags
+  default to `-r`, so dropping a **folder** on a terminal uploads it, which the
+  panel had always claimed. The "Alternate host name (HostAlt)" field is gone —
+  nothing ever read it.
+
+- **Importing a `.ktx` session file could silently weaken it.** Its loader kept
+  its own copy of every default, and two had drifted: remote clipboard writes
+  came back as *Allow* where the setting says *Ask*, at a 64 MB limit rather
+  than 16. The fallbacks all come from one place now.
+
+### Changed
+
+- **Passphrases typed while adding keys are kept encrypted** and scrubbed after
+  a minute even if the add is abandoned half-way. They were held in the clear
+  until the add finished, and an add that never finished held them until kageant
+  exited. `[Agent] passphrasecacheseconds` adjusts it.
+
+- **File transfers default to SFTP** rather than the legacy SCP protocol, which
+  OpenSSH deprecated and which many hardened servers no longer offer. SCP stays
+  selectable per session for equipment that has nothing else.
+
+- **The WinSCP executable says it is not a setting of this session** — it sits
+  among per-session options but is shared by all of them.
+
 ## 0.84.1.70-beta — 2026-08-08
 
 ### Fixed
