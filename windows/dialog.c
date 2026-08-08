@@ -1208,6 +1208,42 @@ void defuse_showwindow(void)
     }
 }
 
+/* KiTTY: say in the configuration box's title bar when quick connect is on -
+ * the mode where the box starts from the defaults and a host is typed rather
+ * than picked. Until this, the only sign of it was where the caret happened to
+ * be, so the mode could be on or off with nothing on screen to say which.
+ *
+ * It retitles the LIVE window rather than dp->wintitle, because the mode is
+ * armed and disarmed while the box is open (loading "Default Settings" arms it,
+ * loading anything else disarms it), and dp->wintitle is the unmarked base to
+ * go back to.
+ *
+ * Not inside #ifdef MOD_PERSO: this file compiles into the shared GUI library
+ * without that define, and kitty_config.c - which does have it - is the caller.
+ * Harmless in the stock variants, which never call it. */
+void kitty_dlg_mark_quickconnect(dlgparam *dp, int on)
+{
+    if (!dp || !dp->hwnd || !dp->wintitle)
+        return;
+    if (on) {
+        /* In FRONT of the test-build stamp, not after it. Appended, the marker
+         * was the first thing to fall off the end of a title bar that already
+         * carried "(portable)" and a build label - which is exactly the window
+         * where it was wanted. */
+        const char *stamp = strstr(dp->wintitle, "  *** ");
+        char *t;
+        if (stamp)
+            t = dupprintf("%.*s - quick connect%s",
+                          (int)(stamp - dp->wintitle), dp->wintitle, stamp);
+        else
+            t = dupprintf("%s - quick connect", dp->wintitle);
+        SetWindowText(dp->hwnd, t);
+        sfree(t);
+    } else {
+        SetWindowText(dp->hwnd, dp->wintitle);
+    }
+}
+
 bool do_config(Conf *conf)
 {
     bool ret;

@@ -54,6 +54,9 @@ see [FEATURES.md](FEATURES.md).
   Outside quick connect the box opens without a host, exactly as before.
   (cyd01/KiTTY#519)
 
+- **The configuration box says when quick connect is on**, in its title. Until
+  now the only sign was where the caret happened to be.
+
 - **Loading "Default Settings" arms quick connect immediately.** It used to take
   effect only at the next start, so the documented way of switching into that
   mode appeared not to work at all. Loading any other session switches it off

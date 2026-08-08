@@ -1983,6 +1983,7 @@ dlgcontrol *kitty_config_session_filter_ctrl(void)
 static dlgcontrol *quickconnect_host_ctrl = NULL;
 int GetQuickConnectMode(void);   /* kitty.c */
 void SetQuickConnectMode(const int flag);   /* kitty.c */
+void kitty_dlg_mark_quickconnect(dlgparam *dp, int on);   /* windows/dialog.c */
 
 /* KiTTY: the same dialog's session-saver data, for the Ctrl+G "search
  * everywhere" jump (windows/dialog.c). Registered and cleared together with
@@ -2201,6 +2202,7 @@ static bool load_selected_session(
      * cannot do this one: it fires once, on the first refresh. */
     if (!GetPuttyFlag()) {
         SetQuickConnectMode(isdef ? 1 : 0);
+        kitty_dlg_mark_quickconnect(dlg, isdef);
         if (isdef && quickconnect_host_ctrl)
             dlg_set_focus_later(quickconnect_host_ctrl, dlg);
     }
@@ -2790,6 +2792,11 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 dlg_set_focus_later((GetQuickConnectMode() &&
                                      quickconnect_host_ctrl) ?
                                     quickconnect_host_ctrl : ctrl, dlg);
+                /* ...and say so in the title bar, for the box that comes UP in
+                 * quick connect. The Load path marks it when the mode changes
+                 * later; this is the one case that happens before any Load. */
+                if (!GetPuttyFlag())
+                    kitty_dlg_mark_quickconnect(dlg, GetQuickConnectMode());
             }
             /* Re-applied on every refresh, not just when the text changes: a
              * panel switch rebuilds the controls, and an EnableWindow() made
