@@ -15,6 +15,9 @@
 #include "tree234.h"
 #include "security-api.h"
 #include "cryptoapi.h"
+/* AFTER putty.h: dbt.h needs windows.h, which putty.h is what pulls in here.
+ * KiTTY: DBT_DEVICEARRIVAL / DBT_DEVICEREMOVECOMPLETE. */
+#include <dbt.h>
 #include "pageant.h"
 #include "licence.h"
 #include "pageant-rc.h"
@@ -673,6 +676,11 @@ void win_add_keyfile(Filename *filename, bool encrypted)
      */
     {
         const char *path = filename_to_str(filename);
+        /* Note there is no "quiet" case here. A key that reaches this point
+         * EXISTS and would not load - a broken or wrong-format file - which is
+         * something to tell the user about however they have configured
+         * missing keys. [Agent] quietmissingkeys covers absent files, which are
+         * expected on removable media, and nothing else. */
         if (kageant_startup_loading()) {
             char *msg = dupprintf(
                 "%s\n\n    %s\n\n"
@@ -1030,9 +1038,43 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 for (i = sCount - 1; (itemNum >= 0) && (i >= 0); i--) {
                     if (selectedArray[itemNum] == rCount + i) {
                         switch (LOWORD(wParam)) {
-                          case IDC_KEYLIST_REMOVE:
-                            pageant_delete_nth_ssh2_key(i);
+                          case IDC_KEYLIST_REMOVE: {
+                            /*
+                             * KiTTY: remove the key this ROW is showing, found
+                             * by the public blob the row already carries for
+                             * reordering - not by position.
+                             *
+                             * The displayed order and the agent's own order are
+                             * not the same thing here: Move Up/Down reorders
+                             * the display, and a key that is unloaded and
+                             * loaded again (removable media) goes to the end of
+                             * the agent's list while staying where it is on
+                             * screen. Deleting by position then removes a
+                             * DIFFERENT key from the one selected - measured
+                             * 2026-08-08, selecting an RSA key removed the DSA
+                             * key below it.
+                             *
+                             * Falls back to the positional call only if the row
+                             * has no blob, which should not happen.
+                             */
+                            struct keylist_display_data *disp =
+                                (struct keylist_display_data *)
+                                SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX,
+                                                   LB_GETITEMDATA,
+                                                   selectedArray[itemNum], 0);
+                            if (disp && disp->blob && disp->blob->len) {
+                                pageant_delete_ssh2_key_by_blob(
+                                    ptrlen_from_strbuf(disp->blob));
+                                /* and stop loading it at every start - the
+                                 * startup list is otherwise only written when a
+                                 * key is ADDED, so a removed key came back. */
+                                kageant_forget_loaded_by_blob(
+                                    ptrlen_from_strbuf(disp->blob));
+                            } else {
+                                pageant_delete_nth_ssh2_key(i);
+                            }
                             break;
+                          }
                           case IDC_KEYLIST_REENCRYPT:
                             pageant_reencrypt_nth_ssh2_key(i);
                             break;
@@ -1571,6 +1613,27 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             if (menuitem != -1)
                 PostMessage(hwnd, WM_COMMAND, menuitem, 0);
         }
+        break;
+      case WM_DEVICECHANGE:
+        /*
+         * KiTTY: keys on removable media.
+         *
+         * A key on a USB stick or a network share is absent at login and
+         * present later. Windows tells us when that changes, so there is no
+         * polling and no "retry on every agent request": DBT_DEVICEARRIVAL is
+         * the moment to try the startup keys that were not there, and
+         * DBT_DEVICEREMOVECOMPLETE the moment their media has gone.
+         *
+         * Both halves are opt-out/opt-in through [Agent] retrykeys and
+         * unloadonremove, and both are no-ops unless a startup key is actually
+         * on media that comes and goes.
+         */
+        if (wParam == DBT_DEVICEARRIVAL)
+            kageant_retry_pending_keys();
+        else if (wParam == DBT_DEVICEREMOVECOMPLETE)
+            kageant_media_gone();
+        if (wParam == DBT_DEVICEARRIVAL || wParam == DBT_DEVICEREMOVECOMPLETE)
+            keylist_update();          /* the View Keys window, if it is open */
         break;
       case WM_TIMER:
         /* KiTTY: no double click arrived - deliver the left-click menu */
