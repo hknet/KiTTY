@@ -493,6 +493,28 @@ static int kageant_key_needs_pass(const char *abspath)
  * portable install with startup-load on, a key from outside the install
  * folder prompts to be copied in (so it travels) or referenced in place.
  * When the feature is on, persist the updated set (unless mid startup load). */
+/*
+ * How long typed passphrases may sit in the cache, in seconds.
+ *
+ * They are kept so that adding several keys at once asks once, and are scrubbed
+ * when the add finishes - but an add that is abandoned never finishes, and they
+ * would then stay until kageant exits. [Agent] passphrasecacheseconds bounds
+ * that; 0 turns the backstop off, which is the old behaviour and not advised.
+ *
+ * ini-only, like restrictacl: it is a policy for this installation, and a
+ * registry copy would be one more place for the two to disagree.
+ */
+int kageant_passphrase_ttl(void)
+{
+    char buf[16];
+    if (kitty_inilight_read("Agent", "passphrasecacheseconds", buf, sizeof(buf))) {
+        int v = atoi(buf);
+        if (v >= 0)
+            return v;
+    }
+    return 60;
+}
+
 /* Is a startup-list load in progress? Lets the failure path tell "this key
  * could not be loaded" from "this key you just picked could not be loaded",
  * which are different problems needing different words. */

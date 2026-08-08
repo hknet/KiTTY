@@ -32,6 +32,7 @@
 #define WM_SYSTRAY2  (WM_APP + 7)
 /* KiTTY: timer id for the delayed single-left-click tray menu */
 #define TID_TRAYCLICK 1
+#define TID_PASSPHRASE_CACHE 2   /* KiTTY: scrub cached passphrases (see WM_TIMER) */
 
 #define APPNAME "kageant"
 
@@ -588,6 +589,18 @@ void win_add_keyfile(Filename *filename, bool encrypted)
 {
     char *err;
     int ret;
+
+    /*
+     * KiTTY: arm the backstop that scrubs cached passphrases (WM_TIMER,
+     * TID_PASSPHRASE_CACHE). Re-armed on every add, so a run of adds keeps
+     * pushing it out and an add that is abandoned half-way still ends with the
+     * cache cleared instead of held until kageant exits.
+     */
+    if (traywindow) {
+        int secs = kageant_passphrase_ttl();
+        if (secs > 0)
+            SetTimer(traywindow, TID_PASSPHRASE_CACHE, secs * 1000, NULL);
+    }
 
     /*
      * Try loading the key without a passphrase. (Or rather, without a
@@ -1564,6 +1577,24 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
         if (wParam == TID_TRAYCLICK) {
             KillTimer(hwnd, TID_TRAYCLICK);
             PostMessage(hwnd, WM_SYSTRAY2, trayclickpos.x, trayclickpos.y);
+        }
+        /*
+         * KiTTY: backstop for the passphrase cache.
+         *
+         * Passphrases typed while adding keys are kept in plain memory so that
+         * adding several keys at once only asks once, and are scrubbed when the
+         * add finishes (see the pageant_forget_passphrases() calls). "When the
+         * add finishes" is doing a lot of work there: an add left half-done -
+         * the file dialog still open, a passphrase prompt abandoned - never
+         * finishes, and the typed passphrases stay until kageant exits.
+         *
+         * So the add also arms this, and it scrubs them regardless. The default
+         * is a minute, which is far longer than any add that is actually being
+         * attended to.
+         */
+        if (wParam == TID_PASSPHRASE_CACHE) {
+            KillTimer(hwnd, TID_PASSPHRASE_CACHE);
+            pageant_forget_passphrases();
         }
         break;
       case WM_SYSTRAY2:

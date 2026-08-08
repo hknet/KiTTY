@@ -2268,6 +2268,74 @@ void pageant_listener_free(struct pageant_listen_state *pl)
 
 static tree234 *passphrases = NULL;
 
+/*
+ * KiTTY: the cached passphrases are held ENCRYPTED, and decrypted only for the
+ * instant they are handed to a key-loading attempt.
+ *
+ * They exist so that adding several keys at once asks once. Holding them in the
+ * clear for that convenience puts them in our working set, in any crash dump we
+ * produce, and in the page file - the same objections that put the private keys
+ * themselves behind CryptProtectMemory (see protected_skey_from_key above).
+ * This uses the same pair of helpers and the same block padding.
+ *
+ * A cached entry is: [4-byte length][passphrase][padding], the whole thing
+ * encrypted. Length first because the padding is not distinguishable from a
+ * passphrase that happens to end in NULs.
+ *
+ * The protection is not absolute - anything that can debug this process can
+ * read the plaintext during the window in which it is used - which is why it is
+ * paired with a backstop that scrubs the cache outright (kageant's
+ * TID_PASSPHRASE_CACHE). Deleting beats encrypting; this covers the interval
+ * before the deleting happens.
+ */
+static unsigned char *pp_protect(const char *pp, size_t *outlen)
+{
+    size_t len = strlen(pp);
+    size_t need = 4 + len;
+    size_t padded = ((need + CRYPTPROTECTMEMORY_BLOCK_SIZE - 1) /
+                     CRYPTPROTECTMEMORY_BLOCK_SIZE) *
+                    CRYPTPROTECTMEMORY_BLOCK_SIZE;
+    unsigned char *buf = snewn(padded, unsigned char);
+    memset(buf, 0, padded);
+    PUT_32BIT_MSB_FIRST(buf, (unsigned long)len);
+    memcpy(buf + 4, pp, len);
+    if (!pageant_protect_memory(buf, padded)) {
+        smemclr(buf, padded);
+        sfree(buf);
+        return NULL;
+    }
+    *outlen = padded;
+    return buf;
+}
+
+/* Decrypt into a fresh string, re-encrypt the stored copy immediately. The
+ * caller owns the result and must smemclr+free it. */
+static char *pp_unprotect(unsigned char *buf, size_t buflen)
+{
+    char *out = NULL;
+    if (!buf || !pageant_unprotect_memory(buf, buflen))
+        return NULL;
+    {
+        unsigned long len = GET_32BIT_MSB_FIRST(buf);
+        if (len <= buflen - 4) {
+            out = snewn(len + 1, char);
+            memcpy(out, buf + 4, len);
+            out[len] = '\0';
+        }
+    }
+    if (!pageant_protect_memory(buf, buflen)) {
+        /* Cannot re-protect: do not leave the plaintext lying in the cache. */
+        smemclr(buf, buflen);
+    }
+    return out;
+}
+
+/* One cache entry. */
+typedef struct CachedPassphrase {
+    unsigned char *data;
+    size_t len;
+} CachedPassphrase;
+
 typedef struct PageantInternalClient {
     strbuf *response;
     bool got_response;
@@ -2381,10 +2449,14 @@ void pageant_forget_passphrases(void)
         return;
 
     while (count234(passphrases) > 0) {
-        char *pp = index234(passphrases, 0);
-        smemclr(pp, strlen(pp));
+        CachedPassphrase *cp = index234(passphrases, 0);
+        if (cp->data) {
+            smemclr(cp->data, cp->len);   /* the ENCRYPTED form, cleared anyway */
+            sfree(cp->data);
+        }
         delpos234(passphrases, 0);
-        sfree(pp);
+        smemclr(cp, sizeof(*cp));
+        sfree(cp);
     }
 }
 
@@ -2502,6 +2574,8 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
     int attempts;
     char *comment;
     const char *this_passphrase;
+    char *cached_plain = NULL;   /* KiTTY: decrypted cache entry, this attempt only */
+    bool skip_cache_store = false;   /* KiTTY: it came FROM the cache */
     const char *error = NULL;
     int type;
 
@@ -2663,7 +2737,17 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
             if (passphrase) {
                 this_passphrase = (attempts == 0 ? passphrase : NULL);
             } else {
-                this_passphrase = (const char *)index234(passphrases, attempts);
+                /* KiTTY: decrypt one cached passphrase for this attempt only.
+                 * cached_plain is scrubbed and freed at the bottom of the loop,
+                 * so the clear text exists for one load attempt and no longer. */
+                CachedPassphrase *cp = index234(passphrases, attempts);
+                if (cached_plain) {
+                    smemclr(cached_plain, strlen(cached_plain));
+                    sfree(cached_plain);
+                    cached_plain = NULL;
+                }
+                cached_plain = cp ? pp_unprotect(cp->data, cp->len) : NULL;
+                this_passphrase = cached_plain;
             }
 
             if (!this_passphrase) {
@@ -2687,6 +2771,26 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
                 ret = 0;
             else
                 ret = 1;
+        }
+
+        /* KiTTY: the attempt is over, so the decrypted cache entry has done its
+         * job. Scrubbed HERE, immediately after the only use, rather than at
+         * the exits below - there are several of them, and one forgotten return
+         * would leave a passphrase in the clear for the life of the process.
+         * this_passphrase must not be read past this point; the store below
+         * uses it only when the caller supplied the passphrase, and that copy
+         * is the caller's, not ours. */
+        if (cached_plain) {
+            bool was_cached = (this_passphrase == cached_plain);
+            smemclr(cached_plain, strlen(cached_plain));
+            sfree(cached_plain);
+            cached_plain = NULL;
+            if (was_cached && ret == 1) {
+                /* Loaded with a passphrase we already had cached: it is in the
+                 * cache already, so there is nothing to add and nothing that
+                 * needs the clear text again. */
+                skip_cache_store = true;
+            }
         }
 
         if (ret == 0) {
@@ -2721,12 +2825,22 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
      * If the key was successfully decrypted, save the passphrase for
      * use with other keys we try to load.
      */
-    {
-        char *pp_copy = dupstr(this_passphrase);
-        if (addpos234(passphrases, pp_copy, 0) != pp_copy) {
-            /* No need; it was already there. */
-            smemclr(pp_copy, strlen(pp_copy));
-            sfree(pp_copy);
+    /* KiTTY: stored encrypted. The tree is unsorted (newtree234(NULL)), so
+     * entries are compared by address and a duplicate passphrase simply becomes
+     * a second entry - as it did before, since the same was true of the plain
+     * strings. */
+    if (!skip_cache_store && this_passphrase && *this_passphrase) {
+        size_t plen = 0;
+        unsigned char *prot = pp_protect(this_passphrase, &plen);
+        if (prot) {
+            CachedPassphrase *cp = snew(CachedPassphrase);
+            cp->data = prot;
+            cp->len = plen;
+            if (addpos234(passphrases, cp, 0) != cp) {
+                smemclr(cp->data, cp->len);
+                sfree(cp->data);
+                sfree(cp);
+            }
         }
     }
 
