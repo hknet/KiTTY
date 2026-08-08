@@ -972,7 +972,7 @@ void LauncherDisarmWorkplace( void ) {
 
 /* A launcher that the MODE started goes away again when the mode is switched
  * off: it was started to hold the arming, and leaving a tray icon behind that
- * the user never asked for reads as a bug. [Launcher]
+ * nobody asked for reads as a bug. [Launcher]
  * exitwithworkplace=no keeps it running instead, for anyone who would rather
  * gain the session list and hotkeys from it.
  *
