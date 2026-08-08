@@ -5282,11 +5282,22 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
                   HELPCTX(window_scrollback),
                   conf_checkbox_handler, I(CONF_scrollbar));
 #ifdef MOD_PERSO
-    if (!GetPuttyFlag())
-        ctrl_editbox(s, "Lines scrolled per wheel turn"
-                     " (-1 half / -2 full screen)", NO_SHORTCUT, 50,
+    if (!GetPuttyFlag()) {
+        ctrl_editbox(s, "Lines scrolled per wheel turn", NO_SHORTCUT, 50,
                      HELPCTX(no_help),
                      conf_editbox_handler, I(CONF_scrolllines), ED_INT);
+        /* Lines of their own rather than a longer label: an editbox label is a
+         * static, laid out once at the width of its first text, so anything
+         * longer is simply cut off.
+         *
+         * TWO controls rather than one that wraps, so the break falls where it
+         * reads best - the two special values together, the ordinary case on
+         * its own line - instead of wherever the panel width happens to put
+         * it. */
+        ctrl_text(s, "-1 = half a screen (the default), -2 = a whole screen,",
+                  HELPCTX(no_help));
+        ctrl_text(s, "or a positive number of lines.", HELPCTX(no_help));
+    }
 #endif
     ctrl_checkbox(s, "Reset scrollback on keypress", 'k',
                   HELPCTX(window_scrollback),
@@ -5298,6 +5309,13 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
                   HELPCTX(window_erased),
                   conf_checkbox_handler,
                   I(CONF_erase_to_scrollback));
+#ifdef MOD_PERSO
+    /* What the setting is FOR, which the wording does not say: with it on, a
+     * screen that was cleared can still be scrolled back to. */
+    if (!GetPuttyFlag())
+        ctrl_text(s, "Turn off where a cleared screen must not stay readable.",
+                  HELPCTX(window_erased));
+#endif
 
     /*
      * The Window/Appearance panel.
