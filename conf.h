@@ -1446,7 +1446,11 @@ CONF_OPTION(icone, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("Icone"),)
 CONF_OPTION(iconefile, VALUE_TYPE(FILENAME), SAVE_KEYWORD("IconeFile"),)
 CONF_OPTION(password, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Password"),)
 CONF_OPTION(portknockingoptions, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("PortKnocking"),)
-CONF_OPTION(pscpoptions, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("PSCPOptions"),)
+/* Flags handed to kscp. "-r" so that dropping a FOLDER on a terminal uploads it,
+ * which is what the configuration panel has always told the user the default is
+ * - and what the .ktx loader supplied, while every ordinary session got nothing
+ * and the upload of a folder failed. */
+CONF_OPTION(pscpoptions, VALUE_TYPE(STR), DEFAULT_STR("-r"), SAVE_KEYWORD("PSCPOptions"),)
 CONF_OPTION(pscpremotedir, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("PSCPRemoteDir"),)
 CONF_OPTION(pscpshell, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("PSCPShell"),)
 CONF_OPTION(saveonexit, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("SaveOnExit"),)
