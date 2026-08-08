@@ -47,6 +47,7 @@ int  kageant_retry_keys(void);                      /* [Agent] retrykeys */
 int  kageant_unload_on_remove(void);                /* [Agent] unloadonremove */
 void kageant_note_pending(const char *path, int encrypted, int slot);
 void kageant_forget_loaded_by_blob(ptrlen blob);   /* removed in View Keys */
+char *kageant_paths_of_blob(ptrlen blob);  /* every file it came from; free it */
 void kageant_retry_pending_keys(void);              /* on device arrival */
 void kageant_media_gone(void);                      /* on device removal */
 void kageant_forget_startup_key(const char *path);  /* drop one stored entry */

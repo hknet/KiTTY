@@ -524,7 +524,8 @@ static void keylist_update_callback(
 }
 
 /* Column start positions for the list box, in pixels (not dialog units). */
-static int colpos_bits, colpos_hash, colpos_comment;
+static int colpos_bits, colpos_hash, colpos_state, colpos_comment;
+static int statewidth;
 
 /*
  * Update the visible key list.
@@ -569,12 +570,35 @@ void keylist_update(void)
         GetTextExtentPoint32(ctx->hdc, "MM", 2, &sz);
         int gutter = sz.cx;
 
+        /*
+         * KiTTY: the STATE gets a column of its own, before the comment.
+         *
+         * It used to be tacked onto the end of the comment with a tab between,
+         * so a long algorithm name or a long comment pushed "(encrypted)" off
+         * the right-hand edge - and that is the one field which says whether a
+         * key is usable right now or will ask for a passphrase first. Measured
+         * 2026-08-08 with a DSA key: an hour spent chasing a key that WAS
+         * deferred and did not look it.
+         *
+         * Width is the widest state text rather than the widest one in the
+         * list, so the columns do not jump about as keys are added and removed.
+         */
+        {
+            SIZE s1, s2;
+            HDC hdc2 = GetDC(keylist);
+            SelectObject(hdc2, (HFONT)SendMessage(keylist, WM_GETFONT, 0, 0));
+            GetTextExtentPoint32(hdc2, "(encrypted)", 11, &s1);
+            GetTextExtentPoint32(hdc2, "(re-encryptable)", 16, &s2);
+            statewidth = (s1.cx > s2.cx ? s1.cx : s2.cx);
+            DeleteDC(hdc2);
+        }
         DeleteDC(ctx->hdc);
         colpos_hash = ctx->algwidth + ctx->bitswidth + 2*gutter;
         if (colpos_hash < ctx->algbitswidth + gutter)
             colpos_hash = ctx->algbitswidth + gutter;
         colpos_bits = colpos_hash - ctx->bitswidth - gutter;
-        colpos_comment = colpos_hash + ctx->hashwidth + gutter;
+        colpos_state = colpos_hash + ctx->hashwidth + gutter;
+        colpos_comment = colpos_state + statewidth + gutter;
         assert(status == PAGEANT_ACTION_OK);
         assert(!errmsg);
 
@@ -903,17 +927,18 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                        di->rcItem.top, ETO_CLIPPED, &di->rcItem,
                        disp->hash->s, disp->hash->len, NULL);
 
-            strbuf *sb = strbuf_new();
-            put_datapl(sb, ptrlen_from_strbuf(disp->comment));
+            /* KiTTY: state in its own column, then the comment - so a long
+             * comment can be clipped at the right edge without taking the
+             * state with it. */
             if (disp->info->len) {
-                put_byte(sb, '\t');
-                put_datapl(sb, ptrlen_from_strbuf(disp->info));
+                ExtTextOut(di->hDC, di->rcItem.left + r.right + colpos_state,
+                           di->rcItem.top, ETO_CLIPPED, &di->rcItem,
+                           disp->info->s, disp->info->len, NULL);
             }
 
-            TabbedTextOut(di->hDC, di->rcItem.left + r.right + colpos_comment,
-                          di->rcItem.top, sb->s, sb->len, 0, NULL, 0);
-
-            strbuf_free(sb);
+            ExtTextOut(di->hDC, di->rcItem.left + r.right + colpos_comment,
+                       di->rcItem.top, ETO_CLIPPED, &di->rcItem,
+                       disp->comment->s, disp->comment->len, NULL);
 
             SetTextColor(di->hDC, oldfg);
             SetBkColor(di->hDC, oldbg);
@@ -941,6 +966,55 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                     break;
                 }
                 prompt_add_keyfile(LOWORD(wParam) == IDC_KEYLIST_ADDKEY_ENC);
+            }
+            return 0;
+          case IDC_KEYLIST_LISTBOX:
+            /*
+             * KiTTY: double-click a row for the details that do not fit in it -
+             * the full fingerprint, the comment in full, whether it is loaded
+             * or waiting for a passphrase, and WHICH FILE it came from. The
+             * last one is the reason this exists: the list shows a comment,
+             * which is whatever was typed when the key was made, and says
+             * nothing about which of several similar files is loaded.
+             */
+            if (HIWORD(wParam) == LBN_DBLCLK) {
+                int sel = SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX,
+                                             LB_GETCURSEL, 0, 0);
+                if (sel != LB_ERR) {
+                    struct keylist_display_data *disp =
+                        (struct keylist_display_data *)SendDlgItemMessage(
+                            hwnd, IDC_KEYLIST_LISTBOX, LB_GETITEMDATA, sel, 0);
+                    if (disp) {
+                        char *path = disp->blob && disp->blob->len ?
+                            kageant_paths_of_blob(ptrlen_from_strbuf(disp->blob))
+                            : NULL;
+                        char *msg = dupprintf(
+                            "%.*s%s%.*s\n\n"
+                            "Fingerprint:\n    %.*s\n\n"
+                            "Comment:\n    %.*s\n\n"
+                            "State:\n    %s\n\n"
+                            "Loaded from:\n    %s\n",
+                            (int)disp->alg->len, disp->alg->s,
+                            disp->bits->len ? " " : "",
+                            (int)disp->bits->len, disp->bits->s,
+                            (int)disp->hash->len, disp->hash->s,
+                            (int)disp->comment->len, disp->comment->s,
+                            disp->info->len ?
+                                (disp->info->s[1] == 'e' ?
+                                 "encrypted - the passphrase is asked for at "
+                                 "first use" :
+                                 "loaded, and the key file it came from is "
+                                 "encrypted") :
+                                "loaded and ready to use",
+                            path ? path :
+                                "not known - this key was added by another "
+                                "program, or by a build that did not record it");
+                        MessageBox(hwnd, msg, "kageant - key details",
+                                   MB_OK | MB_ICONINFORMATION);
+                        sfree(msg);
+                        sfree(path);
+                    }
+                }
             }
             return 0;
           case IDC_KEYLIST_CONFIRM_YES:

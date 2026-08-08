@@ -931,6 +931,62 @@ static int kageant_fp_ok(const char *path, const char *stored, int *adopt)
     return 0;
 }
 
+/*
+ * Which file did this key come from? Answered by the public blob, so it works
+ * for a key however it was added, and returns NULL when the key was added by
+ * some other client and we never saw a file for it.
+ *
+ * The returned string belongs to the tracking list - copy it if you need to
+ * keep it.
+ */
+char *kageant_paths_of_blob(ptrlen blob)
+{
+    strbuf *out = strbuf_new();
+    char *fp = NULL;
+    int i, n = 0;
+
+    /* Every file we loaded this key from - ALL of them, because the same key
+     * in two places is exactly the case where "which file?" is worth asking:
+     * a copy on a stick and a copy on the disk are one key to the agent. */
+    for (i = 0; i < g_nloaded && i < g_nblobs; i++) {
+        if (!g_loaded_blobs[i])
+            continue;
+        if (g_loaded_blobs[i]->len == blob.len &&
+            !memcmp(g_loaded_blobs[i]->s, blob.ptr, blob.len)) {
+            if (n++) put_dataz(out, "\n    ");
+            put_dataz(out, g_loaded_keypaths[i]);
+        }
+    }
+
+    /*
+     * And the entries whose file is not reachable, matched on the fingerprint
+     * they remember - the stick is out, the key is still in the agent, and
+     * naming the file it belongs to is the whole point of the question.
+     */
+    {
+        strbuf *b = strbuf_new();
+        put_datapl(b, blob);
+        fp = kageant_fp_of_blob(b);
+        strbuf_free(b);
+    }
+    if (fp) {
+        for (i = 0; i < g_npending; i++) {
+            if (g_pending[i].fp[0] && !strcmp(g_pending[i].fp, fp)) {
+                if (n++) put_dataz(out, "\n    ");
+                put_dataz(out, g_pending[i].path);
+                put_dataz(out, "   (not reachable right now)");
+            }
+        }
+        sfree(fp);
+    }
+
+    if (!n) {
+        strbuf_free(out);
+        return NULL;
+    }
+    return strbuf_to_str(out);
+}
+
 /* Remember a startup key whose file was not there, so a device event can try it
  * again. Silently full at 64: past that, something is wrong with the list
  * rather than with the media. */
