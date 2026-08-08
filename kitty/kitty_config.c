@@ -1982,6 +1982,7 @@ dlgcontrol *kitty_config_session_filter_ctrl(void)
  * is the live one. */
 static dlgcontrol *quickconnect_host_ctrl = NULL;
 int GetQuickConnectMode(void);   /* kitty.c */
+void SetQuickConnectMode(const int flag);   /* kitty.c */
 
 /* KiTTY: the same dialog's session-saver data, for the Ctrl+G "search
  * everywhere" jump (windows/dialog.c). Registered and cleared together with
@@ -2185,6 +2186,24 @@ static bool load_selected_session(
      * again now the selection is restored, so the comment stays shown after Load. */
     if (ssd->commentbox)
         dlg_refresh(ssd->commentbox, dlg);
+
+    /* KiTTY (hknet/KiTTY#23): loading the defaults arms quick connect NOW, in
+     * this box, not only at the next start.
+     *
+     * kitty_set_last_session() above is what a future start reads, and that was
+     * the whole of it: within the run where the user actually loaded "Default
+     * Settings" nothing happened, so "load the defaults and type a host" only
+     * came true after a restart. Loading any other session disarms it again, so
+     * the two ways of working stay one click apart.
+     *
+     * With it armed, put the caret in Host Name and select what is there - the
+     * same thing the box does when it opens in quick connect. The startup path
+     * cannot do this one: it fires once, on the first refresh. */
+    if (!GetPuttyFlag()) {
+        SetQuickConnectMode(isdef ? 1 : 0);
+        if (isdef && quickconnect_host_ctrl)
+            dlg_set_focus_later(quickconnect_host_ctrl, dlg);
+    }
 #endif
     return true;
 }
