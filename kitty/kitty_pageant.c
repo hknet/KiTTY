@@ -822,14 +822,54 @@ void kageant_forget_loaded_by_blob(ptrlen blob)
         i--;
     }
 
-    /* ⚠️ Pending entries are left alone. They are paths whose file was never
-     * readable, so there is no blob to compare and no way to tell that one of
-     * them is this same key. If a removed key also sits on media that is
-     * currently absent, plugging that media in loads it again. Rare, visible
-     * when it happens, and the alternative is guessing by filename. */
+    /*
+     * Pending entries too, matched on the stored fingerprint.
+     *
+     * These are paths whose file is not readable right now, so there is nothing
+     * to compute a blob from - but the entry remembers which key it is, which
+     * is exactly what that fingerprint is for. Without this, removing a key
+     * that also lives on a stick meant plugging the stick in loaded it straight
+     * back.
+     */
+    {
+        char *fp = NULL;
+        for (i = 0; i < g_npending; i++) {
+            if (!g_pending[i].fp[0])
+                continue;               /* entry predates fingerprints */
+            if (!fp) {
+                strbuf *b = strbuf_new();
+                put_datapl(b, blob);
+                fp = kageant_fp_of_blob(b);
+                strbuf_free(b);
+                if (!fp)
+                    break;
+            }
+            if (strcmp(g_pending[i].fp, fp))
+                continue;
+            for (j = i; j < g_npending - 1; j++)
+                g_pending[j] = g_pending[j + 1];
+            g_npending--;
+            removed = 1;
+            i--;
+        }
+        sfree(fp);
+    }
 
     if (removed && kageant_startup_get())
         kageant_save_startup_keys();
+
+    /*
+     * Prune the saved offer order too. It is rebuilt from the keys the agent
+     * holds now, and the key has already been deleted by the caller, so this
+     * drops its fingerprint.
+     *
+     * Unconditionally, not only when an entry was removed: the agent's key list
+     * has changed either way. A stale fingerprint left in the order is not
+     * inert - if that key is ever loaded again it takes the old position back,
+     * which is a surprise, and position is what decides the sequence keys are
+     * offered to a server in.
+     */
+    kageant_save_key_order();
 }
 
 /*
