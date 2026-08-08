@@ -219,6 +219,33 @@ static int    g_nloaded = 0;
 static int    g_startup_loading = 0;       /* suppress re-save during startup load */
 static int    g_startup_missing = 0;       /* startup keys not found at last load */
 
+/*
+ * Startup keys whose FILE was not there when we tried to load them, kept so
+ * they can be tried again when it appears - a key on a USB stick or a network
+ * share is absent at login and present later, and asking the user to re-add it
+ * by hand every time is the whole problem.
+ *
+ * Only absent files go here. A file that exists and fails to PARSE is a
+ * permanent error; retrying it on every device event would just re-run a
+ * failure. That case gets the named-path box instead.
+ */
+typedef struct {
+    char path[MAX_PATH + 1];
+    int  encrypted;
+    int  failed;      /* the file was there and would not load: stop retrying */
+    int  slot;        /* where it sat in the startup list - see below */
+} KageantPendingKey;
+static KageantPendingKey g_pending[64];
+static int g_npending = 0;
+
+/* The public blob of each loaded key, alongside its path, so a key can be
+ * identified later without its file - which is exactly the situation when the
+ * media it came from has gone. Deletion by blob, never by list position: a
+ * client can add or remove keys behind our back, and position N in our list is
+ * then a different key from position N in the agent's. */
+static strbuf **g_loaded_blobs = NULL;    /* public blob per loaded key, or NULL */
+static int      g_nblobs = 0;
+
 /* defined in the notify/confirm block below; used by the ini-aware
  * startup getters/setters here. */
 static int kageant_reg_read(const char *name, int *val_out);
@@ -439,19 +466,60 @@ void kageant_save_startup_keys(void)
             if (probe[0]) { WritePrivateProfileStringA("Agent", key, NULL, f); gap = 0; }
             else gap++;
         }
-        for (i = 0; i < g_nloaded; i++) {
-            kageant_store_form(g_loaded_keypaths[i], store, sizeof(store));
-            snprintf(key, sizeof(key), "startupkey%d", i + 1);
-            snprintf(val, sizeof(val), "%s%s", store,
-                     g_loaded_encrypted[i] ? ",encrypted" : "");
-            WritePrivateProfileStringA("Agent", key, val, f);
+        /*
+         * Loaded keys AND the ones waiting for their drive, IN ORDER.
+         *
+         * Two things this has to get right:
+         *
+         * - a key whose file was not reachable must stay in the list. It is
+         *   rebuilt from the keys currently loaded, so anything that did not
+         *   load was dropped permanently: start with the USB drive unplugged,
+         *   add any other key later, and the entry was gone for good with
+         *   nothing said.
+         *
+         * - and it must stay where it WAS. The list is the order in which keys
+         *   are offered to a server, and every key offered that the server does
+         *   not want costs one of the attempts it allows before locking the
+         *   account out. Appending recovered keys at the end quietly changes
+         *   which keys are tried first.
+         *
+         * Pending entries carry the slot they came from and are woven back in
+         * there; anything beyond the end simply lands at the end.
+         */
+        {
+            int n = 0, p = 0, li = 0;
+            while (li < g_nloaded || p < g_npending) {
+                const char *path;
+                int enc;
+                if (p < g_npending && g_pending[p].slot <= n) {
+                    path = g_pending[p].path;
+                    enc  = g_pending[p].encrypted;
+                    p++;
+                } else if (li < g_nloaded) {
+                    path = g_loaded_keypaths[li];
+                    enc  = g_loaded_encrypted[li];
+                    li++;
+                } else {
+                    path = g_pending[p].path;
+                    enc  = g_pending[p].encrypted;
+                    p++;
+                }
+                kageant_store_form(path, store, sizeof(store));
+                snprintf(key, sizeof(key), "startupkey%d", ++n);
+                snprintf(val, sizeof(val), "%s%s", store,
+                         enc ? ",encrypted" : "");
+                WritePrivateProfileStringA("Agent", key, val, f);
+            }
         }
         return;
     }
 
     {
+        /* Loaded keys AND the ones waiting for their drive - see the ini branch
+         * above for why the waiting ones must not be dropped. */
+        int nent = g_nloaded + g_npending;
         size_t total = 1;
-        char **entries = (g_nloaded ? snewn(g_nloaded, char *) : NULL);
+        char **entries = (nent ? snewn(nent, char *) : NULL);
         char *buf, *p;
         HKEY hk;
         for (i = 0; i < g_nloaded; i++) {
@@ -459,8 +527,14 @@ void kageant_save_startup_keys(void)
                                    g_loaded_encrypted[i] ? "encrypted" : "plain");
             total += strlen(entries[i]) + 1;
         }
+        for (i = 0; i < g_npending; i++) {
+            entries[g_nloaded + i] = dupprintf(
+                "%s,%s", g_pending[i].path,
+                g_pending[i].encrypted ? "encrypted" : "plain");
+            total += strlen(entries[g_nloaded + i]) + 1;
+        }
         buf = snewn(total, char); p = buf;
-        for (i = 0; i < g_nloaded; i++) {
+        for (i = 0; i < nent; i++) {
             size_t L = strlen(entries[i]) + 1;
             memcpy(p, entries[i], L); p += L; sfree(entries[i]);
         }
@@ -504,6 +578,53 @@ static int kageant_key_needs_pass(const char *abspath)
  * ini-only, like restrictacl: it is a policy for this installation, and a
  * registry copy would be one more place for the two to disagree.
  */
+/*
+ * [Agent] quietmissingkeys: do not announce startup keys whose FILE is not
+ * there. For installations where keys live on media that is not always plugged
+ * in, where their absence is the normal state and not news.
+ *
+ * Deliberately about MISSING keys only. A key file that exists and will not
+ * load is a broken key - a truncated file, a wrong format, a corrupted copy -
+ * and that is reported whatever this is set to. Silencing it would hide the one
+ * case the user genuinely needs to act on, which is why this is not the
+ * "quietkeyfailures" it started out as.
+ *
+ * ini-only, like the TTL below.
+ */
+int kageant_quiet_missing(void)
+{
+    char buf[8];
+    if (kitty_inilight_read("Agent", "quietmissingkeys", buf, sizeof(buf)))
+        return !stricmp(buf, "yes");
+    return 0;
+}
+
+/* [Agent] retrykeys: when a drive appears, try the startup keys that were not
+ * there at login. Default ON - it does nothing at all unless a startup key is
+ * actually missing, so there is no cost to anyone else. */
+int kageant_retry_keys(void)
+{
+    char buf[8];
+    if (kitty_inilight_read("Agent", "retrykeys", buf, sizeof(buf)))
+        return !stricmp(buf, "yes");
+    return 1;
+}
+
+/* [Agent] unloadonremove: when the media a key came from goes away, drop that
+ * key from the agent. Default OFF, deliberately: pulling a stick should not
+ * break the session someone is authenticating right now, and a loaded key is
+ * already protected in memory. For people who want "this key exists only while
+ * its media is present", which is a real requirement and not the common one.
+ * NOTHING is deleted from disk - the key is unloaded from the agent, and put
+ * back on the pending list so it returns if the media does. */
+int kageant_unload_on_remove(void)
+{
+    char buf[8];
+    if (kitty_inilight_read("Agent", "unloadonremove", buf, sizeof(buf)))
+        return !stricmp(buf, "yes");
+    return 0;
+}
+
 int kageant_passphrase_ttl(void)
 {
     char buf[16];
@@ -513,6 +634,247 @@ int kageant_passphrase_ttl(void)
             return v;
     }
     return 60;
+}
+
+/*
+ * Read a key file's PUBLIC blob. No passphrase involved - the public half of a
+ * .ppk is not encrypted - and it is the only thing that identifies the key to
+ * the agent afterwards, when the file may be gone.
+ *
+ * Returned as a malloc'd strbuf the caller frees, or NULL if the file cannot be
+ * read as a key.
+ */
+static strbuf *kageant_pubblob(const char *path)
+{
+    Filename *fn = filename_from_str(path);
+    strbuf *blob = strbuf_new();
+    char *alg = NULL, *comment = NULL;
+    const char *error = NULL;
+    bool ok = ppk_loadpub_f(fn, &alg, BinarySink_UPCAST(blob), &comment, &error);
+    filename_free(fn);
+    sfree(alg);
+    sfree(comment);
+    if (!ok) {
+        strbuf_free(blob);
+        return NULL;
+    }
+    return blob;
+}
+
+/*
+ * Drop from the agent every key that came from media which is no longer there.
+ *
+ * NOTHING is deleted from disk, and nothing is deleted by list position: each
+ * key is identified by the public blob captured when it loaded, so a key list
+ * that has been changed by a client in the meantime cannot make us unload the
+ * wrong one. Each unloaded key goes back on the pending list, so plugging the
+ * media in again brings it back.
+ */
+void kageant_media_gone(void)
+{
+    int i;
+    if (!kageant_unload_on_remove())
+        return;
+
+    for (i = 0; i < g_nloaded; i++) {
+        int j, still_backed = 0;
+
+        if (GetFileAttributesA(g_loaded_keypaths[i]) != INVALID_FILE_ATTRIBUTES)
+            continue;                          /* its file is still reachable */
+        if (i >= g_nblobs || !g_loaded_blobs[i])
+            continue;                          /* never identified: leave alone */
+
+        /*
+         * The AGENT holds one key, however many files it came from. If the same
+         * key is also loaded from a file that is still reachable - the same key
+         * kept on a stick AND on the local disk - then unloading it because the
+         * stick has gone takes away a key the user still has. Measured
+         * 2026-08-08: unplugging cost a key that was equally available locally.
+         */
+        for (j = 0; j < g_nloaded && !still_backed; j++) {
+            if (j == i || j >= g_nblobs || !g_loaded_blobs[j])
+                continue;
+            if (g_loaded_blobs[j]->len == g_loaded_blobs[i]->len &&
+                !memcmp(g_loaded_blobs[j]->s, g_loaded_blobs[i]->s,
+                        g_loaded_blobs[i]->len) &&
+                GetFileAttributesA(g_loaded_keypaths[j]) !=
+                    INVALID_FILE_ATTRIBUTES)
+                still_backed = 1;
+        }
+        if (still_backed)
+            continue;
+
+        if (pageant_delete_ssh2_key_by_blob(
+                ptrlen_from_strbuf(g_loaded_blobs[i]))) {
+            /* Back onto the pending list, at the position it held, so its place
+             * in the offer order survives the round trip - the order decides
+             * which keys a server is asked to try first, and a wrong key costs
+             * one of the attempts before a lockout. */
+            kageant_note_pending(g_loaded_keypaths[i], g_loaded_encrypted[i], i);
+
+            /* And out of the loaded list, or the next save would write it twice
+             * - once as loaded, once as pending. */
+            sfree(g_loaded_keypaths[i]);
+            if (g_loaded_blobs[i]) strbuf_free(g_loaded_blobs[i]);
+            for (j = i; j < g_nloaded - 1; j++) {
+                g_loaded_keypaths[j] = g_loaded_keypaths[j + 1];
+                g_loaded_encrypted[j] = g_loaded_encrypted[j + 1];
+                g_loaded_blobs[j] = g_loaded_blobs[j + 1];
+            }
+            g_nloaded--;
+            g_nblobs = g_nloaded;
+            i--;                               /* re-examine this slot */
+        }
+    }
+}
+
+/*
+ * A key has been removed from the agent by hand: forget every file that
+ * provided it, and write the startup list out.
+ *
+ * Removing a key in the View Keys window used to leave the startup list alone,
+ * which is only ever saved when a key is ADDED. So the key came back at the
+ * next start, and nothing in the UI could stop it - the list is not editable
+ * anywhere else. Measured 2026-08-08.
+ *
+ * By blob, and ALL matching entries: the same key can be loaded from more than
+ * one file (a copy on a stick and a copy on the disk), the agent holds it once,
+ * and leaving either path behind would bring it back.
+ */
+void kageant_forget_loaded_by_blob(ptrlen blob)
+{
+    int i, j, removed = 0;
+
+    for (i = 0; i < g_nloaded; i++) {
+        if (i >= g_nblobs || !g_loaded_blobs[i])
+            continue;
+        if (g_loaded_blobs[i]->len != blob.len ||
+            memcmp(g_loaded_blobs[i]->s, blob.ptr, blob.len))
+            continue;
+
+        sfree(g_loaded_keypaths[i]);
+        strbuf_free(g_loaded_blobs[i]);
+        for (j = i; j < g_nloaded - 1; j++) {
+            g_loaded_keypaths[j] = g_loaded_keypaths[j + 1];
+            g_loaded_encrypted[j] = g_loaded_encrypted[j + 1];
+            g_loaded_blobs[j] = g_loaded_blobs[j + 1];
+        }
+        g_nloaded--;
+        g_nblobs = g_nloaded;
+        removed = 1;
+        i--;
+    }
+
+    /* ⚠️ Pending entries are left alone. They are paths whose file was never
+     * readable, so there is no blob to compare and no way to tell that one of
+     * them is this same key. If a removed key also sits on media that is
+     * currently absent, plugging that media in loads it again. Rare, visible
+     * when it happens, and the alternative is guessing by filename. */
+
+    if (removed && kageant_startup_get())
+        kageant_save_startup_keys();
+}
+
+/* Remember a startup key whose file was not there, so a device event can try it
+ * again. Silently full at 64: past that, something is wrong with the list
+ * rather than with the media. */
+void kageant_note_pending(const char *path, int encrypted, int slot)
+{
+    int i;
+    if (!path || !*path || g_npending >= (int)lenof(g_pending))
+        return;
+    for (i = 0; i < g_npending; i++)
+        if (!stricmp(g_pending[i].path, path))
+            return;
+    snprintf(g_pending[g_npending].path, sizeof(g_pending[0].path), "%s", path);
+    g_pending[g_npending].encrypted = encrypted;
+    g_pending[g_npending].failed = 0;
+    g_pending[g_npending].slot = slot;
+    g_npending++;
+}
+
+/*
+ * Try the pending keys again. Called when a device arrives.
+ *
+ * Loaded DEFERRED whatever the entry said: a deferred load never asks for a
+ * passphrase - it is wanted at first use - and a device event is no moment to
+ * put a modal prompt in front of someone. The key coming back is silent; using
+ * it asks, as it would for any deferred key.
+ */
+void kageant_retry_pending_keys(void)
+{
+    int i, w = 0, loaded_any = 0;
+    if (!g_npending || !kageant_retry_keys())
+        return;
+
+    for (i = 0; i < g_npending; i++) {
+        int before;
+
+        if (g_pending[i].failed ||
+            GetFileAttributesA(g_pending[i].path) == INVALID_FILE_ATTRIBUTES) {
+            /* Still not there, or there and broken. Either way it stays on the
+             * list: the list is also what keeps the entry in the saved startup
+             * keys, and a key must not vanish from a user's configuration
+             * because one load went wrong. */
+            if (w != i) g_pending[w] = g_pending[i];
+            w++;
+            continue;
+        }
+        {
+            Filename *fn = filename_from_str(g_pending[i].path);
+            int j;
+            before = g_nloaded;
+            g_startup_loading = 1;             /* a failure now is a startup one */
+            win_add_keyfile(fn, true);
+            g_startup_loading = 0;
+            filename_free(fn);
+
+            if (g_nloaded == before) {
+                /* Did not load. Keep the entry, but stop trying it: the file is
+                 * present and broken, the user has already been told, and
+                 * repeating the box at every device event would be its own
+                 * annoyance. Restarting kageant tries again from scratch. */
+                g_pending[i].failed = 1;
+                if (w != i) g_pending[w] = g_pending[i];
+                w++;
+                continue;
+            }
+
+            /*
+             * Loading deferred is a decision about THIS moment - a device
+             * arriving is no time to raise a passphrase prompt - not about how
+             * the user wants this key added in future. Put the recorded
+             * preference back to what the stored entry said.
+             *
+             * Without this the deferred flag became permanent by accident: the
+             * startup list is saved from the in-memory state, so the next time
+             * any key was added by hand the whole list was written out with
+             * this key now marked ",encrypted". Measured 2026-08-08 - keys the
+             * user had deliberately added un-deferred came back deferred a
+             * session later.
+             */
+            for (j = 0; j < g_nloaded; j++)
+                if (!stricmp(g_loaded_keypaths[j], g_pending[i].path))
+                    g_loaded_encrypted[j] = g_pending[i].encrypted;
+            loaded_any = 1;
+        }
+        /* Dropped from the list whether or not it loaded: if the file is there
+         * and will not parse, retrying on every future device event only
+         * repeats the failure. */
+    }
+    g_npending = w;
+
+    /*
+     * A key that has just been re-added sits at the END of the agent's list,
+     * which is the order keys are offered in - so a key the user had put first
+     * comes back last, and the rest shift. Re-apply the saved offer order, the
+     * same call the startup path makes once its keys are in.
+     *
+     * This matters beyond tidiness: each key offered that a server does not
+     * want spends one of the attempts it allows before locking the account.
+     */
+    if (loaded_any)
+        kageant_apply_saved_order();
 }
 
 /* Is a startup-list load in progress? Lets the failure path tell "this key
@@ -647,9 +1009,14 @@ void kageant_track_keypath(const char *path, int encrypted)
                 "\n\nWARNING: this key has no passphrase - copying it onto "
                 "portable media lets anyone holding the media use it.",
                 dir);
+            /* Default NO - reference the key where it is. Copying a private key
+             * is the answer that cannot be undone by changing your mind later,
+             * and it is the wrong one for the case this prompt fires on most:
+             * a key deliberately kept on a stick, which the user does not want
+             * duplicated onto every machine they plug into. */
             int choice = MessageBox(NULL, prompt,
                 "kageant - add key to startup",
-                MB_ICONQUESTION | MB_YESNOCANCEL | MB_DEFBUTTON1);
+                MB_ICONQUESTION | MB_YESNOCANCEL | MB_DEFBUTTON2);
             sfree(prompt);
             if (choice == IDCANCEL)
                 return;               /* loaded this session, not persisted */
@@ -679,9 +1046,16 @@ void kageant_track_keypath(const char *path, int encrypted)
 
     g_loaded_keypaths = sresize(g_loaded_keypaths, g_nloaded + 1, char *);
     g_loaded_encrypted = sresize(g_loaded_encrypted, g_nloaded + 1, int);
+    g_loaded_blobs = sresize(g_loaded_blobs, g_nloaded + 1, strbuf *);
     g_loaded_keypaths[g_nloaded] = dupstr(abspath);
     g_loaded_encrypted[g_nloaded] = encrypted ? 1 : 0;
+    /* The key's public blob, captured NOW while the file is readable. It is
+     * what identifies this key to the agent later, when the media it came from
+     * may be gone - see kageant_media_gone(). NULL is fine: that key simply is
+     * not eligible to be unloaded automatically. */
+    g_loaded_blobs[g_nloaded] = kageant_pubblob(abspath);
     g_nloaded++;
+    g_nblobs = g_nloaded;
     if (!g_startup_loading && kageant_startup_get())
         kageant_save_startup_keys();
 }
@@ -922,7 +1296,10 @@ void kageant_load_startup_keys(void)
             else if (c && !stricmp(c + 1, "plain")) { *c = '\0'; enc = 0; }
             kageant_resolve_form(val, abspath, sizeof(abspath));
             if (GetFileAttributesA(abspath) == INVALID_FILE_ATTRIBUTES) {
-                g_startup_missing++; continue;
+                g_startup_missing++;
+                /* seen-so-far count is this entry's place in the offer order */
+                kageant_note_pending(abspath, enc, g_nloaded + g_npending);
+                continue;
             }
             Filename *fn = filename_from_str(abspath);
             win_add_keyfile(fn, enc ? true : false);
@@ -951,7 +1328,9 @@ void kageant_load_startup_keys(void)
                     if (c && !stricmp(c + 1, "encrypted")) { *c = '\0'; enc = 1; }
                     else if (c && !stricmp(c + 1, "plain")) { *c = '\0'; enc = 0; }
                     if (GetFileAttributesA(p) == INVALID_FILE_ATTRIBUTES) {
-                        g_startup_missing++; continue;
+                        g_startup_missing++;
+                        kageant_note_pending(p, enc, g_nloaded + g_npending);
+                        continue;
                     }
                     Filename *fn = filename_from_str(p);
                     win_add_keyfile(fn, enc ? true : false);
@@ -972,6 +1351,13 @@ void kageant_notify_startup_missing(void)
     NOTIFYICONDATA nid;
     if (g_startup_missing <= 0 || !traywindow)
         return;
+    /* [Agent] quietmissingkeys: the user has said that keys being absent is
+     * expected here - media that is not always plugged in - so counting them at
+     * every start is noise. A key file that EXISTS and will not load is still
+     * reported: that is a broken key, not an absent one, and staying quiet
+     * about it would hide a real problem. */
+    if (kageant_quiet_missing())
+        return;
     memset(&nid, 0, sizeof(nid));
     nid.cbSize = sizeof(nid);
     nid.hWnd = traywindow;
@@ -980,10 +1366,20 @@ void kageant_notify_startup_missing(void)
     nid.dwInfoFlags = NIIF_WARNING;
     nid.uTimeout = 5000;
     snprintf(nid.szInfoTitle, sizeof(nid.szInfoTitle), "kageant: startup keys");
-    snprintf(nid.szInfo, sizeof(nid.szInfo),
-             "%d startup key%s could not be found and %s skipped.",
-             g_startup_missing, g_startup_missing == 1 ? "" : "s",
-             g_startup_missing == 1 ? "was" : "were");
+    /* Say what happens NEXT, not just what did not happen: with retrying on,
+     * these keys are waiting rather than lost, and they load by themselves when
+     * the drive comes back. Read as a plain failure, the old wording sent
+     * people looking for something to fix. */
+    if (kageant_retry_keys())
+        snprintf(nid.szInfo, sizeof(nid.szInfo),
+                 "%d startup key%s not reachable right now. They will be "
+                 "loaded as soon as the drive they are on is back.",
+                 g_startup_missing, g_startup_missing == 1 ? " is" : "s are");
+    else
+        snprintf(nid.szInfo, sizeof(nid.szInfo),
+                 "%d startup key%s could not be found and %s skipped.",
+                 g_startup_missing, g_startup_missing == 1 ? "" : "s",
+                 g_startup_missing == 1 ? "was" : "were");
     Shell_NotifyIcon(NIM_MODIFY, &nid);
 }
 
@@ -1005,6 +1401,37 @@ void kageant_save_key_order(void)
     }
     sfree(fps);
     *p = '\0';
+
+    /*
+     * In a portable install this belongs in the ini, like everything else.
+     *
+     * It used to go to the registry unconditionally - so the offer order did
+     * not travel with a portable install, and writing it left a trace on every
+     * machine the stick was plugged into. The order is not cosmetic: it decides
+     * which keys a server is offered first, and each key it does not want costs
+     * one of the attempts before a lockout.
+     */
+    if (!kitty_inilight_registry_authoritative() && kitty_inilight_file()) {
+        const char *f = kitty_inilight_file();
+        char key[32];
+        int i, gap;
+        /* clear the old numbering first - a shorter list must leave no tail */
+        for (i = 1, gap = 0; gap < 8; i++) {
+            char probe[512];
+            snprintf(key, sizeof(key), "keyorder%d", i);
+            GetPrivateProfileStringA("Agent", key, "", probe, sizeof(probe), f);
+            if (probe[0]) { WritePrivateProfileStringA("Agent", key, NULL, f); gap = 0; }
+            else gap++;
+        }
+        i = 0;
+        for (char *q = buf; *q; q += strlen(q) + 1) {
+            snprintf(key, sizeof(key), "keyorder%d", ++i);
+            WritePrivateProfileStringA("Agent", key, q, f);
+        }
+        sfree(buf);
+        return;
+    }
+
     HKEY hk;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
                         KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
@@ -1021,6 +1448,30 @@ void kageant_apply_saved_order(void)
 {
     HKEY hk;
     DWORD type = 0, sz = 0;
+
+    /* The ini first, where it is authoritative - see kageant_save_key_order. */
+    if (!kitty_inilight_registry_authoritative() && kitty_inilight_file()) {
+        const char *f = kitty_inilight_file();
+        char key[32], val[512];
+        char **fps = NULL;
+        int n = 0, i, gap;
+        for (i = 1, gap = 0; gap < 8; i++) {
+            snprintf(key, sizeof(key), "keyorder%d", i);
+            GetPrivateProfileStringA("Agent", key, "", val, sizeof(val), f);
+            if (!val[0]) { gap++; continue; }
+            gap = 0;
+            fps = sresize(fps, n + 1, char *);
+            fps[n++] = dupstr(val);
+        }
+        if (n) {
+            pageant_apply_key_order(fps, n);
+            for (i = 0; i < n; i++)
+                sfree(fps[i]);
+        }
+        sfree(fps);
+        return;
+    }
+
     if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0,
                       KEY_QUERY_VALUE, &hk) != ERROR_SUCCESS)
         return;
