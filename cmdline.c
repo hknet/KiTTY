@@ -781,11 +781,19 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         }
     }
 
+#ifdef MOD_PERSO
     /* KiTTY: -masterpwfile <path> unlocks the master-password at-rest secret
      * store (windows/storage.c). File form only (a literal master password on
      * argv is readable by other same-user processes). NOT SSH-gated - it unlocks
      * a local store regardless of protocol - and distinct from -pwfile, which
-     * sets the SSH login password. Non-interactive, so -batch-safe. */
+     * sets the SSH login password. Non-interactive, so -batch-safe.
+     *
+     * ⚠️ GUARDED, because this file is compiled twice: once into the kitty
+     * targets with MOD_PERSO, and once into the shared settings library WITHOUT
+     * it, which the stock console tools (plink, pscp, psftp) link. Unguarded,
+     * the two KiTTY symbols below left those three unlinkable - and it went
+     * unnoticed for weeks because an INCREMENTAL build relinks nothing that has
+     * not changed. It only surfaced on the next build from a clean tree. */
     if (!strcmp(p, "-masterpwfile")) {
         extern void kitty_set_master_passphrase(const char *);
         extern int kitty_portable_password_dpapi(void);
@@ -820,6 +828,7 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         }
         filename_free(fn);
     }
+#endif /* MOD_PERSO: -masterpwfile */
 
     if (!strcmp(p, "-agent") || !strcmp(p, "-pagent") ||
         !strcmp(p, "-pageant")) {

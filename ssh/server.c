@@ -472,6 +472,29 @@ void ssh_remote_eof(Ssh *ssh, const char *fmt, ...)
     queue_toplevel_callback(ssh_server_free_callback, srv);
 }
 
+/*
+ * KiTTY: the server-side counterpart of the client's ssh_remote_eof_unexpected()
+ * (ssh/ssh.c), which the clean-exit work split out of ssh_remote_error().
+ *
+ * The shared BPP code (bpp1.c, bpp2.c, bpp-bare.c) calls it, and that code links
+ * into the SSH SERVER tools - psusan and uppity - as well as into the client.
+ * Without a definition here those two do not link at all, and an incremental
+ * build hides that completely: nothing re-links them until their own inputs
+ * change, so it surfaces only on the next build from a clean tree.
+ *
+ * Nothing server-specific to decide. The client version exists to keep a clean
+ * exit quiet, and a server has no exit status to race against, so this is simply
+ * the peer going away: log it and tear the connection down, exactly as
+ * ssh_remote_eof() above.
+ */
+void ssh_remote_eof_unexpected(Ssh *ssh)
+{
+    server *srv = container_of(ssh, server, ssh);
+    logevent(srv->logctx,
+             "Remote side unexpectedly closed network connection");
+    queue_toplevel_callback(ssh_server_free_callback, srv);
+}
+
 void ssh_proto_error(Ssh *ssh, const char *fmt, ...)
 {
     server *srv = container_of(ssh, server, ssh);
