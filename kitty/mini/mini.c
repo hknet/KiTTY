@@ -266,6 +266,39 @@ void printINI( SINI * Ini ) {
 	printSECTION( Ini->first ) ;
 	}
 
+/*
+ * KiTTY: tidy the VALUE side of a "key = value" line - strip whitespace at both
+ * ends, then one pair of matching quotes.
+ *
+ * The value used to be taken verbatim from after the '=' to the end of the
+ * line, while the key name was already being right-trimmed. So
+ * "configdir = C:\somewhere" carried a LEADING SPACE into the path, the
+ * directory was never found, and the natural next move - quoting the path -
+ * made it worse by adding two more characters that were also kept
+ * (cyd01/KiTTY#549: the reporter reasonably concluded that paths with spaces
+ * were unsupported; spaces in the path were never the problem). Trailing
+ * spaces are invisible and did the same damage.
+ *
+ * A value that genuinely wants a leading or trailing space, or literal quotes
+ * at both ends, can no longer have one from an ini file. No key in the suite
+ * does, and on Windows a path cannot.
+ */
+void mini_clean_value( char * value ) {
+	size_t l ;
+	char * p = value ;
+	if( value == NULL ) return ;
+	while( *p==' ' || *p=='\t' ) p++ ;
+	if( p != value ) memmove( value, p, strlen(p)+1 ) ;
+	while( (l=strlen(value))>0 && (value[l-1]==' '||value[l-1]=='\t') ) value[l-1]='\0' ;
+	l = strlen( value ) ;
+	if( l >= 2 && ( (value[0]=='"' && value[l-1]=='"') || (value[0]=='\'' && value[l-1]=='\'') ) ) {
+		memmove( value, value+1, l-2 ) ;
+		value[l-2] = '\0' ;
+		/* and again for whitespace that was inside the quotes */
+		while( (l=strlen(value))>0 && (value[l-1]==' '||value[l-1]=='\t') ) value[l-1]='\0' ;
+	}
+}
+
 int loadINI( SINI * Ini, const char * filename ) {
 	FILE * fp ;
 	SSECTION * Section, * Last = NULL ;
@@ -303,6 +336,7 @@ int loadINI( SINI * Ini, const char * filename ) {
 				for( i=0; i<p; i++ ) { name[i] = buffer[i] ; } name[p]='\0' ;
 				for( i=p+1; i<strlen(buffer); i++ ) { value[i-p-1]=buffer[i] ; value[i-p]='\0' ; }
 				{ size_t _l; while( (_l=strlen(name))>0 && (name[_l-1]==' '||name[_l-1]=='\t') ) name[_l-1]='\0' ; }
+				mini_clean_value( value ) ;
 				Key = newKEY( name, value ) ;
 				addKEY( Last, Key ) ;
 				}
