@@ -5768,10 +5768,41 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 }
 #endif
                 else if (message != WM_MOUSEHWHEEL) {
+#ifdef MOD_PERSO
+                    /*
+                     * KiTTY: how far one wheel notch scrolls, from
+                     * CONF_scrolllines ("Lines at a time" / LinesAtAScroll).
+                     *
+                     *   -1  half a screen - the default, and what this did
+                     *       unconditionally before, so nobody's scrolling moves
+                     *       unless they ask for it
+                     *   -2  a whole screen
+                     *    N  that many lines, for N > 0
+                     *
+                     * Anything below -2 is a value nobody meant; 3 lines is the
+                     * Windows convention and beats scrolling by a negative
+                     * number of lines.
+                     *
+                     * The setting has been on the Window panel and in every
+                     * saved session all along - nothing read it, so it did
+                     * nothing at all. */
+                    int lines;
+                    {
+                        int cs = conf_get_int(wgs->conf, CONF_scrolllines);
+                        lines = (cs == -1) ? wgs->term->rows / 2 :
+                                (cs == -2) ? wgs->term->rows :
+                                (cs   <  0) ? 3 : cs;
+                        if (lines < 1)
+                            lines = 1;   /* 0 would make the wheel do nothing */
+                    }
+                    term_scroll(wgs->term, 0,
+                                b == MBT_WHEEL_UP ? -lines : lines);
+#else
                     /* trigger a scroll */
                     term_scroll(wgs->term, 0,
                                 b == MBT_WHEEL_UP ?
                                 -wgs->term->rows / 2 : wgs->term->rows / 2);
+#endif
                 }
             }
             return 0;
