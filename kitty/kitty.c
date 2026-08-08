@@ -122,6 +122,16 @@ static int NamedProxyHostnameOnly = 0 ;
 int kitty_named_proxy_default_hostname( void ) { return NamedProxyHostnameOnly ; }
 void SetNamedProxyHostnameOnly( const int flag ) { NamedProxyHostnameOnly = flag ? 1 : 0 ; }
 
+/* [KiTTY] funkeys: the function-key mode a session that has none of its own
+ * starts with. -1 means "say nothing", which is the default and leaves PuTTY's
+ * own default (ESC[n~) in place. The values are the modes the Keyboard panel
+ * lists, spelled as the panel spells them (cyd01/KiTTY#556 - see the comment on
+ * the load hook in windows/putty.c for why anyone wants this).
+ * NOTE: the ini parser matches keys case-SENSITIVELY, so this is "funkeys". */
+static int FunkeysDefault = -1 ;
+int GetFunkeysDefault( void ) { return FunkeysDefault ; }
+void SetFunkeysDefault( const int t ) { FunkeysDefault = t ; }
+
 // Flag de gestion de la fonction hyperlink. In 0.84 hyperlinks are provided by
 // kitty_url.c/window.c, not the historical terminal.c hyperlink patch, so keep
 // the feature available by default and let kitty.ini "hyperlink" disable it.
@@ -3389,8 +3399,95 @@ void LoadParameters( void ) {
 		autocommand_delay = (int)(1000*atof( buffer )) ;
 		if(autocommand_delay<5) autocommand_delay = 5 ; 
 	}
-	if( ReadParameterN( INIT_SECTION, "configdir", buffer, sizeof(buffer) ) ) { 
-		if( strlen( buffer ) > 0 ) { if( existdirectory(buffer) ) SetConfigDirectory( buffer ) ; }
+	if( ReadParameterN( INIT_SECTION, "configdir", buffer, sizeof(buffer) ) ) {
+		if( strlen( buffer ) > 0 ) {
+			if( existdirectory(buffer) ) { SetConfigDirectory( buffer ) ; }
+			else {
+				/*
+				 * KiTTY: ASK, do not just announce (cyd01/KiTTY#549).
+				 *
+				 * This used to fall through in silence, and KiTTY starting with
+				 * the default store and none of your sessions looks like lost
+				 * data rather than like a setting pointing at nothing. But a
+				 * notice with one OK button is barely better: it is dismissed on
+				 * reflex, and then KiTTY runs with a configuration nobody chose.
+				 *
+				 * So the choice is the user's. Carrying on is genuinely useful -
+				 * a terminal you can work in beats no terminal when the
+				 * directory is on a drive that is not plugged in - but so is
+				 * stopping, fixing the path and starting again, and only the
+				 * person at the keyboard knows which.
+				 *
+				 * ⚠️ It says "as if configdir had not been set" rather than
+				 * naming the fallback store, because at this point in startup we
+				 * do not know it: GetSaveMode() has not run yet, so whether
+				 * settings come from the registry or from a directory is still
+				 * undecided. Calling it "the usual configuration" was worse than
+				 * vague - if configdir was set, the missing directory WAS the
+				 * usual one. The path is on its own
+				 * line, and the consequence is the red warning line, because the
+				 * interesting cases are a typo, a disconnected drive, and (until
+				 * this release) a value that arrived with a stray leading space
+				 * or quotes around it.
+				 */
+				extern int kitty_confirm_box( HWND owner, const char *caption,
+				                              const char *text, const char *warn_red ) ;
+				char msg[4096+512] ;
+				/*
+				 * Say what we actually KNOW, and no more. All this code has
+				 * established is that the path does not exist right now; it
+				 * cannot know whether the directory was deleted, renamed, never
+				 * created, or is simply on a drive that is not plugged in - and
+				 * "nothing has been deleted" would be a claim about the world
+				 * rather than about KiTTY.
+				 *
+				 * Two cheap tests do narrow it down, though, and the answer
+				 * changes what the user should do next: whether the DRIVE is
+				 * there at all, and whether the PARENT folder is. A missing
+				 * drive is a disconnected disk; a present parent with a missing
+				 * leaf is a typo or a rename.
+				 */
+				char diag[512], parent[4096] ;
+				strcpy( parent, buffer ) ;
+				{
+					char *slash = strrchr( parent, '\\' ) ;
+					char *fwd   = strrchr( parent, '/' ) ;
+					if( fwd > slash ) slash = fwd ;
+					if( slash && slash != parent ) *slash = '\0' ; else parent[0] = '\0' ;
+				}
+				if( buffer[0] && buffer[1] == ':' ) {
+					char root[8] ; snprintf( root, sizeof(root), "%c:\\", buffer[0] ) ;
+					if( GetDriveType( root ) <= DRIVE_NO_ROOT_DIR )
+						snprintf( diag, sizeof(diag),
+							"Drive %c: is not available, so this looks like a "
+							"disconnected disk rather than a missing folder.", buffer[0] ) ;
+					else if( parent[0] && existdirectory( parent ) )
+						snprintf( diag, sizeof(diag),
+							"The folder above it does exist, so only the last part "
+							"of the path is missing - a typo or a rename." ) ;
+					else
+						snprintf( diag, sizeof(diag),
+							"Neither it nor the folder above it exists." ) ;
+				} else {
+					snprintf( diag, sizeof(diag),
+						"KiTTY has not created or removed anything here - it only "
+						"looked." ) ;
+				}
+				snprintf( msg, sizeof(msg),
+					"kitty.ini points configdir at a directory that is not there:\n\n"
+					"    %s\n\n"
+					"%s\n\n"
+					"Start anyway, as if configdir had not been set?\n\n"
+					"Yes  -  start now; whatever is kept in that directory is not listed.\n"
+					"No   -  quit, so you can fix the path in kitty.ini first.",
+					buffer, diag ) ;
+				if( !kitty_confirm_box( NULL, "KiTTY: configdir not found", msg,
+					"KiTTY has not written to or removed that directory - this "
+					"check runs before anything is opened." ) ) {
+					exit( 0 ) ;
+				}
+			}
+		}
 	}
 	if( ReadParameterN( INIT_SECTION, "iconfile", buffer, sizeof(buffer) ) ) {
 		if( existfile( buffer ) ) {
@@ -3414,6 +3511,20 @@ void LoadParameters( void ) {
 	/* NOTE: this parser is CASE-SENSITIVE (strcmp, not stricmp), so the key is
 	 * documented as exactly "proxychainmax". */
 	if( ReadParameterN( INIT_SECTION, "proxychainmax", buffer, sizeof(buffer) ) ) { if( atoi(buffer)>0 ) SetProxyChainMax( atoi(buffer) ) ; }
+	/* [KiTTY] funkeys=<mode>: the function-key mode for sessions that do not
+	 * carry one. Spelled as the Keyboard panel spells the modes; "xterm216" is
+	 * the one worth setting, because it is the only mode in which Shift+F1..F12
+	 * mean F13..F24 the way terminfo and every modern host expect. */
+	if( ReadParameterN( INIT_SECTION, "funkeys", buffer, sizeof(buffer) ) ) {
+		str_rtrim( buffer, "\n\r \t" ) ;
+		if( !stricmp(buffer,"xterm216") || !stricmp(buffer,"xterm 216+") ) SetFunkeysDefault( FUNKY_XTERM_216 ) ;
+		else if( !stricmp(buffer,"tilde") || !stricmp(buffer,"esc[n~") )   SetFunkeysDefault( FUNKY_TILDE ) ;
+		else if( !stricmp(buffer,"linux") )                                SetFunkeysDefault( FUNKY_LINUX ) ;
+		else if( !stricmp(buffer,"xtermr6") || !stricmp(buffer,"xterm r6") ) SetFunkeysDefault( FUNKY_XTERM ) ;
+		else if( !stricmp(buffer,"vt400") )                                SetFunkeysDefault( FUNKY_VT400 ) ;
+		else if( !stricmp(buffer,"vt100p") || !stricmp(buffer,"vt100+") )  SetFunkeysDefault( FUNKY_VT100P ) ;
+		else if( !stricmp(buffer,"sco") )                                  SetFunkeysDefault( FUNKY_SCO ) ;
+	}
 	/* Same case-sensitivity note: exactly "namedproxy", value "hostname" or
 	 * "sessionorhostname" (the default). */
 	if( ReadParameterN( INIT_SECTION, "namedproxy", buffer, sizeof(buffer) ) ) {
