@@ -4990,6 +4990,28 @@ static void osc52_set_clipboard(Terminal *term)
               (*p >= '0' && *p <= '9') || *p == '+' || *p == '/' || *p == '='))
             return;
 
+    /*
+     * An EMPTY payload does nothing at all - it does not clear the clipboard.
+     *
+     * "ESC ] 52 ; c ; ST" is what a terminal multiplexer sends when a selection
+     * gesture selected nothing, which happens constantly: a double-click below
+     * the prompt, a drag that did not move. Treating it as a write would throw
+     * away what the user had copied, in response to a click they made by
+     * accident, and with the setting on Ask it would raise a permission dialog
+     * to do it. Windows itself works the other way round - copying an empty
+     * selection leaves the clipboard alone - and so does this.
+     *
+     * Before the permission gate deliberately: there is nothing to ask about,
+     * and nothing to spend a rate-limit budget on. Reported against classic
+     * KiTTY as cyd01/KiTTY#495, where the same case crashed outright; ours never
+     * could, because the decode below cannot return NULL, but clearing the
+     * clipboard was wrong regardless.
+     */
+    if (pdlen == 0) {
+        logevent(term->logctx, "Remote clipboard write ignored: empty payload");
+        return;
+    }
+
     if (term->osc52_allowed == OSC52_CLIPBOARD_DENY)
         return;
 

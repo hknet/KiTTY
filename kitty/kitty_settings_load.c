@@ -893,7 +893,14 @@ void load_open_settings_forced(char *filename, Conf *conf) {
      * deliberately NOT read across (see conf.h): it meant "warn", so its default
      * meant "sync silently", and migrating it would switch remote clipboard
      * writes on for imported sessions. */
-    gppi_forced(sesskey, "OSC52Clipboard", OSC52_CLIPBOARD_ALLOW, conf, CONF_osc52_clipboard);
+    /* ⚠️ The fallback given here is what a session that does NOT carry the key
+     * gets, so it must match the DEFAULT_INT in conf.h. It did not: this said
+     * ALLOW while conf.h says ASK, so importing a session file written before
+     * the key existed switched remote clipboard writes on silently - the exact
+     * hardening .69 shipped, undone by the import path. Same story below for
+     * ClipboardMaxMB (64 here against conf.h's 16). If a default changes in
+     * conf.h it has to change here too; nothing checks that for us. */
+    gppi_forced(sesskey, "OSC52Clipboard", OSC52_CLIPBOARD_ASK, conf, CONF_osc52_clipboard);
     /* OSC 52 READ direction, and the numbers that bound a granted read. Reads
      * default to DENY; nothing here can be set to a standing "allow". */
     gppi_forced(sesskey, "OSC52ClipboardRead", OSC52_READ_DENY, conf, CONF_osc52_clipboard_read);
@@ -904,7 +911,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "OSC52ReadMax", 200, conf, CONF_osc52_read_max);
     gppi_forced(sesskey, "OSC52ReadTimeout", 60, conf, CONF_osc52_read_timeout);
     gppi_forced(sesskey, "OSC52ReadDialogs", 3, conf, CONF_osc52_read_dialogs);
-    gppi_forced(sesskey, "ClipboardMaxMB", 64, conf, CONF_clipboard_max_mb);
+    gppi_forced(sesskey, "ClipboardMaxMB", 16, conf, CONF_clipboard_max_mb);
     gppi_forced(sesskey, "ClipboardWritesPerSecond", 10, conf, CONF_clipboard_writes_per_sec);
     gppb_forced(sesskey, "ClipboardNotify", true, conf, CONF_clipboard_notify);
     gppb_forced(sesskey, "WindowHasSysMenu", true, conf, CONF_window_has_sysmenu);
