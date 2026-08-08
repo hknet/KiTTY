@@ -1021,6 +1021,32 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                     break;
                 }
 
+                /*
+                 * KiTTY: ask before removing.
+                 *
+                 * Remove sits next to Add and Re-encrypt and used to act
+                 * instantly. It now does more than unload: the key stops being
+                 * loaded at startup, and its place in the offer order goes with
+                 * it - so a mis-click costs a configuration change, not just a
+                 * reload. Re-encrypt is left alone; it is undoable by using the
+                 * key.
+                 */
+                if (LOWORD(wParam) == IDC_KEYLIST_REMOVE) {
+                    char *msg = dupprintf(
+                        numSelected == 1 ?
+                        "Remove the selected key from the agent?\n\n"
+                        "It will also stop being loaded at startup." :
+                        "Remove the %d selected keys from the agent?\n\n"
+                        "They will also stop being loaded at startup.",
+                        numSelected);
+                    int r = MessageBox(hwnd, msg, APPNAME,
+                                       MB_YESNO | MB_ICONQUESTION |
+                                       MB_DEFBUTTON2);
+                    sfree(msg);
+                    if (r != IDYES)
+                        break;
+                }
+
                 /* get item indices in an array */
                 selectedArray = snewn(numSelected, int);
                 SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX, LB_GETSELITEMS,
