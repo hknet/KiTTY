@@ -493,6 +493,106 @@ static int kageant_key_needs_pass(const char *abspath)
  * portable install with startup-load on, a key from outside the install
  * folder prompts to be copied in (so it travels) or referenced in place.
  * When the feature is on, persist the updated set (unless mid startup load). */
+/* Is a startup-list load in progress? Lets the failure path tell "this key
+ * could not be loaded" from "this key you just picked could not be loaded",
+ * which are different problems needing different words. */
+int kageant_startup_loading(void) { return g_startup_loading; }
+
+/*
+ * Drop one entry from the persisted startup list, by path.
+ *
+ * NOT a matter of calling kageant_save_startup_keys(): that rebuilds the list
+ * from the keys currently LOADED, and a key that failed to load was never in
+ * that array - saving would either leave the entry untouched or wipe every
+ * other startup key with it. So the stored list is edited where it lives.
+ *
+ * Matching is on the resolved absolute path, because entries are stored
+ * relative when they sit inside a portable install.
+ */
+void kageant_forget_startup_key(const char *path)
+{
+    const char *f;
+    char want[MAX_PATH + 1];
+
+    if (!path || !*path)
+        return;
+    if (!_fullpath(want, path, sizeof(want)))
+        snprintf(want, sizeof(want), "%s", path);
+
+    if (!kitty_inilight_registry_authoritative() &&
+        (f = kitty_inilight_file()) != NULL) {
+        typedef char kageant_entry[MAX_PATH + 32];   /* snewn casts to (T *) */
+        kageant_entry *keep;
+        char key[32], val[MAX_PATH + 32], abspath[MAX_PATH + 1];
+        int i, gap, n = 0, cap = 64;
+
+        keep = snewn(cap, kageant_entry);
+        for (i = 1, gap = 0; gap < 8 && n < cap; i++) {
+            char raw[MAX_PATH + 32], *c;
+            snprintf(key, sizeof(key), "startupkey%d", i);
+            GetPrivateProfileStringA("Agent", key, "", val, sizeof(val), f);
+            if (!val[0]) { gap++; continue; }
+            gap = 0;
+            snprintf(raw, sizeof(raw), "%s", val);      /* keep the ,marker */
+            c = strrchr(val, ',');
+            if (c && (!stricmp(c + 1, "encrypted") || !stricmp(c + 1, "plain")))
+                *c = '\0';
+            kageant_resolve_form(val, abspath, sizeof(abspath));
+            if (!stricmp(abspath, want))
+                continue;                               /* the one being dropped */
+            snprintf(keep[n++], MAX_PATH + 32, "%s", raw);
+        }
+        /* Clear the old numbering before writing the survivors back: the list
+         * is positional, so a shorter list must not leave a stale tail. */
+        for (i = 1, gap = 0; gap < 8; i++) {
+            snprintf(key, sizeof(key), "startupkey%d", i);
+            GetPrivateProfileStringA("Agent", key, "", val, sizeof(val), f);
+            if (val[0]) { WritePrivateProfileStringA("Agent", key, NULL, f); gap = 0; }
+            else gap++;
+        }
+        for (i = 0; i < n; i++) {
+            snprintf(key, sizeof(key), "startupkey%d", i + 1);
+            WritePrivateProfileStringA("Agent", key, keep[i], f);
+        }
+        sfree(keep);
+        return;
+    }
+
+    {
+        HKEY hk;
+        DWORD type = 0, sz = 0;
+        if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0,
+                          KEY_QUERY_VALUE | KEY_SET_VALUE, &hk) != ERROR_SUCCESS)
+            return;
+        if (RegQueryValueExA(hk, KAGEANT_REG_KEYS, NULL, &type, NULL, &sz)
+                == ERROR_SUCCESS && type == REG_MULTI_SZ && sz > 0) {
+            char *buf = snewn(sz + 2, char);
+            if (RegQueryValueExA(hk, KAGEANT_REG_KEYS, NULL, NULL,
+                                 (BYTE *)buf, &sz) == ERROR_SUCCESS) {
+                char *out = snewn(sz + 2, char), *o = out, *p;
+                buf[sz] = '\0'; buf[sz + 1] = '\0';
+                for (p = buf; *p; p += strlen(p) + 1) {
+                    char entry[MAX_PATH + 32], *c;
+                    snprintf(entry, sizeof(entry), "%s", p);
+                    c = strrchr(entry, ',');
+                    if (c && (!stricmp(c + 1, "encrypted") ||
+                              !stricmp(c + 1, "plain")))
+                        *c = '\0';
+                    if (!stricmp(entry, want))
+                        continue;
+                    memcpy(o, p, strlen(p) + 1); o += strlen(p) + 1;
+                }
+                *o++ = '\0';
+                RegSetValueExA(hk, KAGEANT_REG_KEYS, 0, REG_MULTI_SZ,
+                               (const BYTE *)out, (DWORD)(o - out));
+                sfree(out);
+            }
+            sfree(buf);
+        }
+        RegCloseKey(hk);
+    }
+}
+
 void kageant_track_keypath(const char *path, int encrypted)
 {
     char abspath[MAX_PATH + 1];

@@ -641,8 +641,44 @@ void win_add_keyfile(Filename *filename, bool encrypted)
     }
 
   error:
-    message_box(traywindow, err, APPNAME, MB_OK | MB_ICONERROR, false,
-                HELPCTXID(errors_cantloadkey));
+    /*
+     * KiTTY: say WHICH file. Upstream's message is the reason alone -
+     * "Couldn't load this key (unable to open file)" - which is no help at all
+     * when it appears at every start and the user has no idea which key it
+     * means (cyd01/KiTTY#522). The path is right here and was simply not used.
+     *
+     * And when the attempt came from the startup list rather than from someone
+     * choosing a file, offer to drop it: that is the case that repeats every
+     * single start, and the entry is otherwise only reachable by hand-editing
+     * kitty.ini or the registry.
+     *
+     * NOT under #ifdef MOD_PERSO: this file is built only into the pageant
+     * target (packaged as kageant.exe), which does not define it - the build's
+     * own coverage check refuses guarded code here, because it would silently
+     * vanish. kitty/kitty_pageant.c is in that target's sources, so the
+     * kageant_* calls below link.
+     */
+    {
+        const char *path = filename_to_str(filename);
+        if (kageant_startup_loading()) {
+            char *msg = dupprintf(
+                "%s\n\n    %s\n\n"
+                "This key is in the list loaded at kageant startup, so this "
+                "will happen every time.\n\n"
+                "Remove it from that list?",
+                err, path);
+            int r = MessageBox(traywindow, msg, APPNAME,
+                               MB_YESNO | MB_ICONERROR | MB_DEFBUTTON2);
+            sfree(msg);
+            if (r == IDYES)
+                kageant_forget_startup_key(path);
+        } else {
+            char *msg = dupprintf("%s\n\n    %s", err, path);
+            message_box(traywindow, msg, APPNAME, MB_OK | MB_ICONERROR, false,
+                        HELPCTXID(errors_cantloadkey));
+            sfree(msg);
+        }
+    }
   done:
     sfree(err);
     return;

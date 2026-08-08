@@ -40,6 +40,8 @@ void kageant_write_identityagent(FILE *fp, const char *pipename);
 
 /* ---- load-keys-on-startup + persistent key offer order ---- */
 void kageant_track_keypath(const char *path, int encrypted);
+int  kageant_startup_loading(void);                 /* a startup load is running */
+void kageant_forget_startup_key(const char *path);  /* drop one stored entry */
 void kageant_notify_startup_missing(void);
 void kageant_save_startup_keys(void);
 void kageant_load_startup_keys(void);
