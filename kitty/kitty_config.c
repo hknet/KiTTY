@@ -432,11 +432,14 @@ bool kitty_red_caption(const char *text)
  * selected into the DC here. Hence the bold lead line INSIDE the box - which is
  * an ordinary static, and does honour it. */
 #define KITTY_WORKPLACE_BOX_TITLE "Workplace proxy mode"
-#define KITTY_WORKPLACE_LEAD      "This is NOT a setting of this session."
+/* One sentence, used wherever a control sits on a session's panel without
+ * belonging to the session - the workplace-proxy box, and the WinSCP executable
+ * path further down. Saying it the same way every time is the point. */
+#define KITTY_NOT_SESSION_LEAD    "This is NOT a setting of this session."
 
 bool kitty_bold_caption(const char *text)
 {
-    return text && !strcmp(text, KITTY_WORKPLACE_LEAD);
+    return text && !strcmp(text, KITTY_NOT_SESSION_LEAD);
 }
 
 /* Line spacing: an ordinary integer editbox, plus a label that says so when the
@@ -6314,7 +6317,7 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
             kitty_wpmode_active = wd;   /* what the tray-change poll repaints */
             s = ctrl_getset(b, "Connection/Proxy", "workplace",
                             KITTY_WORKPLACE_BOX_TITLE);
-            ctrl_text(s, KITTY_WORKPLACE_LEAD, HELPCTX(no_help));
+            ctrl_text(s, KITTY_NOT_SESSION_LEAD, HELPCTX(no_help));
             /* The live state, drawn BOLD RED while the mode is on so it is seen
              * rather than read: this is the one line on the panel that says
              * something is overriding every session right now.
@@ -6979,6 +6982,14 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                          FILTER_ALL_FILES, false, "Select WinSCP executable",
                          HELPCTX(no_help),
                          kitty_winscppath_handler, P(NULL));
+            /* Say so, in the same words and the same bold as the workplace-proxy
+             * box: this control is on a session's panel but does not belong to
+             * the session, and changing it changes every session at once. Which
+             * is invisible unless it is written down. */
+            ctrl_text(s, KITTY_NOT_SESSION_LEAD, HELPCTX(no_help));
+            ctrl_text(s, "Where WinSCP is installed is a property of this PC, so "
+                         "it is kept in kitty.ini and shared by every session.",
+                      HELPCTX(no_help));
             ctrl_editbox(s, "SFTP connect ([user@]hostname[:port])",
                          NO_SHORTCUT, 100,
                          HELPCTX(no_help),
