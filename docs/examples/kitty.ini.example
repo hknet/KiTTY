@@ -465,6 +465,19 @@
 
 
 
+; funkeys: which function-key mode a session starts with when it does not
+; already carry one of its own. Saved sessions are NOT affected - they store the
+; mode they were saved with; change those on Terminal -> Keyboard.
+;   xterm216   what to set if F13-F24 "do nothing". On a modern keyboard those
+;              keys ARE Shift+F1..F12, and this is the only mode that says so in
+;              the way terminfo and modern hosts expect (xterm's kf13 is
+;              CSI 1;2P, kf24 is CSI 24;2~ - the F-key with the shift modifier
+;              encoded). Every other mode folds Shift into the key number, so
+;              Shift+F1 arrives as F11 and F13 upwards cannot be produced.
+;   tilde      ESC[n~ - PuTTY's own default, and what you get if this is unset
+;   linux | xtermr6 | vt400 | vt100p | sco   the remaining Keyboard-panel modes
+;funkeys=xterm216
+
 ; namedproxy: how a NAMED PROXY's Host field is read, when the proxy itself
 ; does not say (each proxy can, in the proxy editor: "That host is:").
 ;   sessionorhostname  the title of a saved session first, then a hostname.

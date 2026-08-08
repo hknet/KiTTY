@@ -40,6 +40,7 @@ extern char *GetHelpMessage(void);                  /* kitty.c: the -help text *
 extern int  kitty_get_last_session(char *buf, int buflen); /* storage.c: remember-last-session */
 extern int  GetLoadLastSessionFlag(void);           /* kitty.c: [ConfigBox] loadlastsession */
 extern void SetQuickConnectMode(const int flag);    /* kitty.c: #23 quick connect */
+extern int  GetFunkeysDefault(void);                /* kitty.c: [KiTTY] funkeys */
 
 static void kitty_settings_load_hook(const char *section, Conf *conf, bool exists)
 {
@@ -50,6 +51,34 @@ static void kitty_settings_load_hook(const char *section, Conf *conf, bool exist
     if (exists && section && *section &&
         strcmp(section, "Default Settings") != 0)
         conf_set_str(conf, CONF_sessionname, section);
+
+    /*
+     * KiTTY: [KiTTY] funkeys in kitty.ini chooses the function-key mode a
+     * session starts with when it does not already have one of its own.
+     *
+     * Why it exists (cyd01/KiTTY#556, "F13-F24 do nothing"): on a modern
+     * keyboard those keys ARE Shift+F1..F12, and terminfo says so - xterm's
+     * kf13 is CSI 1;2P and kf24 is CSI 24;2~, the ordinary F-key with the
+     * shift modifier encoded. PuTTY emits exactly that in its "Xterm 216+"
+     * mode and in no other: the default mode folds Shift into the key NUMBER
+     * instead, so Shift+F1 arrives as F11 and F13 upwards are unreachable. The
+     * keys were never missing; the default is simply older than the convention
+     * every host now assumes.
+     *
+     * Applied to a session that does not exist yet, and to DEFAULT SETTINGS
+     * whether or not those have been saved - so it reaches every new session,
+     * including the one the configuration box opens on.
+     *
+     * ⚠️ A saved, NAMED session always keeps the mode it was saved with: it
+     * stores LinuxFunctionKeys explicitly, and silently changing the keyboard
+     * under an existing session is exactly the kind of surprise this setting is
+     * meant to remove. Changing one is a one-off on its Keyboard panel.
+     */
+    if (!exists || !section || !strcmp(section, "Default Settings")) {
+        int fk = GetFunkeysDefault();
+        if (fk >= 0)
+            conf_set_int(conf, CONF_funky_type, fk);
+    }
 }
 #endif
 

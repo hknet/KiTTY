@@ -290,6 +290,12 @@ maxchar=85\n\
 \n\
 \n\
 \n\
+; funkeys: function-key mode for sessions that carry none of their own. Set\n\
+; xterm216 if F13-F24 do nothing: those keys are Shift+F1..F12, and that is the\n\
+; only mode which says so the way terminfo and modern hosts expect. Saved\n\
+; sessions keep their own mode (Terminal > Keyboard).\n\
+;funkeys=xterm216\n\
+\n\
 ; namedproxy: how a named proxy's Host is read when the proxy does not say -\n\
 ; sessionorhostname (a saved session's title first, then a hostname; PuTTY's\n\
 ; long-standing rule and the default) or hostname (a hostname, full stop).\n\
