@@ -110,6 +110,80 @@ void RunSessionWithConfSettings(Conf *conf) {
     sfree(cl);
 }
 
+/* Open a new window's CONFIGURATION BOX on these settings, without connecting.
+ *
+ * Same shared-memory hand-off as RunSessionWithConfSettings above - the Conf is
+ * serialised into a file mapping whose handle the child inherits - but sent as
+ * an ordinary "-confmap" switch rather than the leading "&" form, for two
+ * reasons: the "&" form is defined to consume the WHOLE command line, so
+ * nothing else could be passed with it; and the child has to be told to stop at
+ * the box, which is what "-cfgbox" says. The "&" form implies "this is a
+ * complete session, launch it".
+ *
+ * Why not a temporary saved session, which is how this used to work: settings
+ * written to the store are visible to every process on the machine, they
+ * include CONF_password, they are left behind if the child dies - and the
+ * writer cannot know when the reader is done, which is exactly the race that
+ * made "Inherit New Session..." silently inherit nothing (measured
+ * 2026-08-08). A file mapping is private to the two processes, needs no name,
+ * and stays alive precisely as long as one of them holds a handle. */
+void RunConfigBoxWithConfSettings(Conf *conf) {
+    char exe[2048];
+    char *cl = NULL;
+    STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+    HANDLE filemap = NULL, mpwmap = NULL;
+    char mpwtok[80] = "";
+    SECURITY_ATTRIBUTES sa;
+    strbuf *serbuf;
+    void *p;
+    int size;
+
+    serbuf = strbuf_new();
+    conf_serialise(BinarySink_UPCAST(serbuf), conf);
+    size = serbuf->len;
+
+    sa.nLength = sizeof(sa);
+    sa.lpSecurityDescriptor = NULL;
+    sa.bInheritHandle = true;
+    filemap = CreateFileMapping(INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE,
+                                0, size, NULL);
+    if (filemap && filemap != INVALID_HANDLE_VALUE) {
+        p = MapViewOfFile(filemap, FILE_MAP_WRITE, 0, 0, size);
+        if (p) { memcpy(p, serbuf->s, size); UnmapViewOfFile(p); }
+    }
+    strbuf_free(serbuf);
+    if (!filemap || filemap == INVALID_HANDLE_VALUE)
+        return;
+
+    /* Pass on the restricted ACL and the master-password unlock, exactly as
+     * RunSession() does - a config box opened from a restricted window must be
+     * restricted too, and one opened from an unlocked window should not ask for
+     * the master password again. Both switches come BEFORE -confmap so they are
+     * in effect while the settings are read. */
+    { extern int kitty_mpw_startup_unlock(void);
+      extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
+      kitty_mpw_startup_unlock();
+      mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
+
+    cl = dupprintf("putty%s%s -confmap %p:%u -cfgbox",
+                   restricted_acl() ? " -restrict-acl" : "", mpwtok,
+                   filemap, (unsigned)size);
+    GetModuleFileName(NULL, exe, sizeof(exe) - 1);
+    si.cb = sizeof(si);
+    si.lpReserved = NULL; si.lpDesktop = NULL; si.lpTitle = NULL;
+    si.dwFlags = 0; si.cbReserved2 = 0; si.lpReserved2 = NULL;
+    if (CreateProcess(exe, cl, NULL, NULL, true /*inherit_handles*/,
+                      NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi)) {
+        AllowSetForegroundWindow(pi.dwProcessId);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+    }
+    if (mpwmap) CloseHandle(mpwmap);
+    CloseHandle(filemap);
+    sfree(cl);
+}
+
 void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
                                    const char *user, const char *pass,
                                    const int port, const char *remotepath) {
@@ -140,9 +214,13 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
     if (conf_launchable(newconf)) {
         RunSessionWithConfSettings(newconf);
     } else {
-        save_settings("__STARTUP", newconf);
-        RunSession(hwnd, conf_get_str(oldconf, CONF_folder), "__STARTUP");
-        del_settings("__STARTUP");
+        /* Not launchable: the new window starts at the configuration box. The
+         * settings go through shared memory - see RunConfigBoxWithConfSettings.
+         * This used to save them to a session called "__STARTUP" and delete it
+         * immediately after spawning the child, which lost the race often
+         * enough that the child usually came up on empty settings. */
+        (void)hwnd;
+        RunConfigBoxWithConfSettings(newconf);
     }
     conf_free(newconf);
 }

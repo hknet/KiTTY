@@ -752,6 +752,9 @@ void xyz_updateMenuItems(Terminal *term) ;
 #ifndef IDM_DUPSESS
 #define IDM_DUPSESS   0x0030
 #endif
+#ifndef IDM_NEWDUPSESS
+#define IDM_NEWDUPSESS  0xB1B0  /* "Inherit New Session..." - must match window.c */
+#endif
 #ifndef IDM_RECONF
 #define IDM_RECONF   0x0050
 #endif

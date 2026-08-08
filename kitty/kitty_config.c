@@ -6036,12 +6036,14 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
             ctrl_editbox(s, "Auto-login username", 'u', 50,
                          HELPCTX(connection_username),
                          conf_editbox_handler, I(CONF_username), ED_STR);
-#ifdef MOD_PERSO
-            if (!GetPuttyFlag())
-                ctrl_editbox(s, "Alternate host name (HostAlt)", NO_SHORTCUT,
-                             50, HELPCTX(no_help),
-                             conf_editbox_handler, I(CONF_host_alt), ED_STR);
-#endif
+            /* No "Alternate host name (HostAlt)" box here. HostAlt never had a
+             * reader: KiTTY wrote the host into it when Inherit New Session
+             * cleared CONF_host, and the only code that ever read it back was
+             * commented out upstream. This port then gave it an editbox, so
+             * users could type into a field that did nothing. The job it was
+             * meant to do is now done properly by CONF_host_inherited
+             * (cyd01/KiTTY#519). The conf key itself is kept so existing saved
+             * sessions still load without complaint. */
             {
                 /* We assume the local username is sufficiently stable
                  * to include on the dialog box. */

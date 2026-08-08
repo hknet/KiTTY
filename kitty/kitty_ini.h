@@ -233,7 +233,9 @@ zmodem=yes\n\
 ; New session ...\n\
 ;opennew=\n\
 \n\
-; Start a new configuration box with current settings but without hostname\n\
+; Inherit New Session: a new configuration box carrying the current settings.\n\
+;    In quick connect the host name comes with them, selected and ready to be\n\
+;    edited into the next machine; otherwise the box opens without a host.\n\
 ;opennewcurrent=\n\
 \n\
 ; Print current clipboard content (default if SHIFT+F7)\n\

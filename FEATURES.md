@@ -509,6 +509,19 @@ KiTTY lets you instantly open a second window that inherits all of the current s
 
 **How to enable:** System menu **Duplicate Session** — opens a new window with the current session's settings.
 
+**Inherit New Session...** is the same idea with a stop: the new window comes up at the **configuration box** carrying those settings, so something can be changed before connecting. Otherwise the box opens without a host, ready for a fresh one.
+
+#### Working through a cluster, one key at a time
+
+Put the two together and a room full of near-identical machines takes one keystroke each.
+
+1. Work in **quick connect**. Either start from **Default Settings** once — which arms it until you load some other session — or set `loadlastsession=no` under `[ConfigBox]` in `kitty.ini` to work that way always.
+2. Bind Inherit New Session to a key, e.g. `opennewcurrent={CONTROL}N` under `[Shortcuts]`.
+
+Now, from any connected window, **CTRL+N** opens a configuration box with everything from that session — user, port, keys, appearance, the lot — and the **host name already in it and selected**. Type over it for an unrelated machine, or edit the one character that differs (`web01` → `web02`), press **Enter**, and you are connected. Repeat from the new window and you walk the whole cluster without touching the launcher or retyping a single setting.
+
+(Binding CTRL+N does take `^N` away from the shell in that window; pick another key if you need it.)
+
 (no screenshot)
 
 ### Window title placeholders

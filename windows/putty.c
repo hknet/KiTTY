@@ -99,6 +99,13 @@ extern void kitty_netdbg_ts(const char *msg);   /* kitty.c: startup checkpoint l
 #define NETDBG_TS(m) ((void)0)
 #endif
 
+#ifdef MOD_PERSO
+/* KiTTY: -cfgbox, set by a parent KiTTY that wants this window to START at the
+ * configuration box carrying the settings it sent, rather than connect with
+ * them. */
+static bool kitty_start_at_config_box = false;
+#endif
+
 void gui_term_process_cmdline(Conf *conf, char *cmdline)
 {
     char *p;
@@ -170,6 +177,47 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 { extern void kitty_mpw_consume_handle_str(const char *);
                   kitty_mpw_consume_handle_str(
                       cmdline_arg_to_str(arglist->args[arglistpos++])); }
+            } else if (!strcmp(p, "-confmap")) {
+                /* KiTTY: settings handed over by a parent KiTTY through shared
+                 * memory - "<inherited handle>:<size>", holding a serialised
+                 * Conf (kitty_bridge.c RunConfigBoxWithConfSettings).
+                 *
+                 * REPLACES conf wholesale, so it is written first on the command
+                 * lines that use it; anything set by an earlier switch would be
+                 * overwritten here.
+                 *
+                 * Unlike the "&<handle>:<size>" form, which means "here is a
+                 * complete session, launch it" and consumes the whole command
+                 * line, this is an ordinary switch, so -restrict-acl and
+                 * -mpwkey can travel with it. */
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                {
+                    const char *v = cmdline_arg_to_str(arglist->args[arglistpos++]);
+                    HANDLE filemap;
+                    unsigned cpsize;
+                    if (sscanf(v, "%p:%u", &filemap, &cpsize) != 2) {
+                        cmdline_error("bad argument \"%s\" to option \"%s\"", v, p);
+                    } else {
+                        void *cp = MapViewOfFile(filemap, FILE_MAP_READ, 0, 0,
+                                                 cpsize);
+                        if (cp) {
+                            BinarySource src[1];
+                            BinarySource_BARE_INIT(src, cp, cpsize);
+                            if (!conf_deserialise(conf, src))
+                                modalfatalbox("Serialised configuration data "
+                                              "was invalid");
+                            UnmapViewOfFile(cp);
+                        }
+                        CloseHandle(filemap);
+                    }
+                }
+            } else if (!strcmp(p, "-cfgbox")) {
+                /* KiTTY: stop at the configuration box even though the settings
+                 * we were given could be connected with. "Inherit New
+                 * Session...": the point is to edit the host before connecting,
+                 * so the box has to appear WITH the host in it. */
+                kitty_start_at_config_box = true;
             } else if (!strcmp(p, "-fullscreen")) {
                 conf_set_int(conf, CONF_fullscreen, 1);
             } else if (!strcmp(p, "-send-to-tray")) {
@@ -488,6 +536,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
     cmdline_run_saved(conf);
     NETDBG_TS("cmdline: after cmdline_run_saved");
 
+
 #ifdef MOD_PERSO
     /* Whole-store export/import (do-and-exit). Runs here, after the storage
      * backend is initialised, so it targets the active store (registry or
@@ -577,7 +626,16 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
          * Bring up the config dialog if the command line hasn't
          * (explicitly) specified a launchable configuration.
          */
-        if (!(special_launchable_argument || cmdline_host_ok(conf))) {
+#ifdef MOD_PERSO
+        /* KiTTY: -cfgbox wins over "these settings are launchable". */
+        if (kitty_start_at_config_box)
+            special_launchable_argument = false;
+#endif
+        if (!(special_launchable_argument || cmdline_host_ok(conf))
+#ifdef MOD_PERSO
+            || kitty_start_at_config_box
+#endif
+            ) {
 #ifdef MOD_PERSO
             /* KiTTY: prompt once, up front, to unlock the portable master
              * password (launcher-mpw-sharing "unlock at startup") BEFORE the
@@ -607,7 +665,10 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 if (!GetLoadLastSessionFlag() ||
                     (havelast && !strcmp(lastsess, "Default Settings"))) {
                     SetQuickConnectMode(1);
-                } else if (havelast) {
+                } else if (havelast && !kitty_start_at_config_box) {
+                    /* Not when a parent handed us settings: they are the whole
+                     * point of this window, and loading the last-used session
+                     * over the top would throw them away. */
                     struct sesslist sl;
                     int i, found = 0;
                     get_sesslist(&sl, true);

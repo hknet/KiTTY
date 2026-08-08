@@ -275,6 +275,9 @@ int  GetWinrolFlag(void);                /* kitty.c */
 void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
                                    const char *user, const char *pass,
                                    const int port, const char *remotepath); /* kitty_bridge.c */
+void RunConfigBoxWithConfSettings(Conf *conf); /* kitty_bridge.c */
+int  GetLoadLastSessionFlag(void);       /* kitty.c: [ConfigBox] loadlastsession */
+int  GetQuickConnectMode(void);          /* kitty.c: quick connect armed this run */
 /* KiTTY font fallback (kitty/winfont_fallback.c, ported from upstream PR
  * cyd01/KiTTY#555): characters the primary font lacks are drawn from a
  * configurable list of fallback fonts. kitty.ini [FontFallback]. */
@@ -4561,12 +4564,28 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           case IDM_SCRIPTFILE2:
             OpenAndSendScriptFile(wgs->term_hwnd);
             break;
-          case IDM_NEWDUPSESS:
-            conf_set_str(wgs->conf, CONF_host_alt,
-                         conf_get_str(wgs->conf, CONF_host));
-            RunSessionWithCurrentSettings(wgs->term_hwnd, wgs->conf,
-                                          "", NULL, NULL, 0, NULL);
+          case IDM_NEWDUPSESS: {
+            /* A new window that starts at the configuration box carrying this
+             * session's settings.
+             *
+             * KiTTY (cyd01/KiTTY#519): in the quick-connect way of working the
+             * host comes WITH them, so the next machine in a cluster is reached
+             * by editing one character of the one in front of you. The box puts
+             * the caret in Host Name with the text selected, so typing replaces
+             * it and Enter keeps it. Otherwise the host is dropped and the box
+             * comes up empty, as it always has.
+             *
+             * Quick connect is reached two ways: [ConfigBox] loadlastsession=no
+             * sets it for good, and loading "Default Settings" arms it for one
+             * run (windows/putty.c). GetQuickConnectMode() is still true here -
+             * the config box and the session it opened are the same process. */
+            Conf *handoff = conf_copy(wgs->conf);
+            if (GetLoadLastSessionFlag() && !GetQuickConnectMode())
+                conf_set_str(handoff, CONF_host, "");
+            RunConfigBoxWithConfSettings(handoff);
+            conf_free(handoff);
             break;
+          }
           case IDM_FONTUP:
             kitty_font_resize(wgs->term, wgs->conf, 1);
             break;

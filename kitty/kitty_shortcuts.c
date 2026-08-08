@@ -397,7 +397,12 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 	else if( key == shortcuts_tab.opennew ) 		// Open new session
 		{ SendMessage( hwnd, WM_COMMAND, IDM_NEWSESS, 0 ) ; return 1 ; }
 	else if( key == shortcuts_tab.opennewcurrent ) 		// Open new config box with current settings
-		{ RunSessionWithCurrentSettings( hwnd, conf, NULL, NULL, NULL, 0, NULL ) ; return 1 ; }
+		/* The menu item, not a second implementation of it: passing NULL as the
+		 * host left CONF_host in place, which makes the conf launchable, which
+		 * makes RunSessionWithCurrentSettings connect instead of opening the
+		 * box. That is Duplicate Session - already on its own shortcut - and
+		 * not what this one is documented to do. */
+		{ SendMessage( hwnd, WM_COMMAND, IDM_NEWDUPSESS, 0 ) ; return 1 ; }
 	else if( key == shortcuts_tab.changesettings ) 		// Change settings
 		{ SendMessage( hwnd, WM_COMMAND, IDM_RECONF, 0 ) ; return 1 ; }
 	else if( key == shortcuts_tab.clearscrollback )		// Clear scrollback

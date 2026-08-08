@@ -408,7 +408,10 @@
 ; New session ...
 ;opennew=
 
-; Start a new configuration box with current settings but without hostname
+; Inherit New Session: a new configuration box carrying the current settings.
+;    In quick connect (see [ConfigBox] loadlastsession) the host name comes with
+;    them, selected and ready to be edited into the next machine; otherwise the
+;    box opens without a host.
 ;opennewcurrent=
 
 ; Print current clipboard content (default if SHIFT+F7)
