@@ -1473,7 +1473,16 @@ CONF_OPTION(url_hover_cursor, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("Hyp
 CONF_OPTION(url_ctrl_click, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkUseCtrlClick"),)
 CONF_OPTION(windowstate, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("WindowState"),)
 CONF_OPTION(winscpoptions, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("WinSCPOptions"),)
-CONF_OPTION(winscpprot, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("WinSCPProtocol"),)
+/* 0=scp 1=sftp 2=ftp 3=ftps 4=ftpes 5=http 6=https. Defaults to SFTP: OpenSSH
+ * deprecated the legacy SCP protocol, and its own scp(1) has spoken SFTP
+ * underneath since 9.0, because the old one had the remote SHELL expand paths -
+ * which is where a decade of quoting and path-traversal bugs came from. Plenty
+ * of hardened servers now offer only the sftp subsystem. SCP stays selectable
+ * for embedded gear that has no sftp-server.
+ * ⚠️ This one value drives BOTH kscp's -scp/-sftp flag and WinSCP's URL scheme
+ * (kitty/kitty_xfer.c). Splitting it per tool is part of the file-transfer panel
+ * rework. */
+CONF_OPTION(winscpprot, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("WinSCPProtocol"),)
 CONF_OPTION(winscprawsettings, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("WinSCPRawSettings"),)
 CONF_OPTION(xpos, VALUE_TYPE(INT), DEFAULT_INT(-1), SAVE_KEYWORD("TermXPos"),)
 CONF_OPTION(ypos, VALUE_TYPE(INT), DEFAULT_INT(-1), SAVE_KEYWORD("TermYPos"),)
