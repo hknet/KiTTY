@@ -66,8 +66,6 @@ void set_sshver(const char *vers) {
  * a file-mapping and spawning "<exe> &<filemap>:<size>" — exactly the native
  * 0.84 Duplicate-Session mechanism (windows/window.c IDM_DUPSESS), which the
  * child parses via handle_special_filemapping_cmdline(). */
-int RunSession(HWND hwnd, const char *folder_in, char *session_in);
-void del_settings(const char *sessionname);
 void RunSessionWithConfSettings(Conf *conf) {
     char b[2048];
     char *cl = NULL;
@@ -194,8 +192,9 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
     if (pass != NULL) conf_set_str(newconf, CONF_password, pass);
 
     /* Keep CONF_password PLAINTEXT here. newconf is serialised straight to the
-     * child via the inherit-only file-mapping (RunSessionWithConfSettings) or
-     * saved to __STARTUP, and the child reads CONF_password raw at connect time.
+     * child through an inherit-only file mapping - whichever of the two calls
+     * below is taken - and the child reads CONF_password raw at connect time.
+     * It never reaches the settings store on this path.
      * The old MASKPASS here turned the (plaintext) password into high-byte
      * garbage -> Duplicate-Session / open-new-with-current auto-login sent a
      * corrupted password (even for ASCII). Runtime conf is plaintext (see
