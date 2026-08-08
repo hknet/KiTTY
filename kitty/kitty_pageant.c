@@ -234,9 +234,12 @@ typedef struct {
     int  encrypted;
     int  failed;      /* the file was there and would not load: stop retrying */
     int  slot;        /* where it sat in the startup list - see below */
+    char fp[160];     /* stored fingerprint, "" if the entry had none */
 } KageantPendingKey;
 static KageantPendingKey g_pending[64];
 static int g_npending = 0;
+static int g_fp_adopted = 0;   /* a changed key was accepted: re-save after load */
+static char *kageant_fp_of_blob(strbuf *blob);   /* defined with the identity code */
 
 /* The public blob of each loaded key, alongside its path, so a key can be
  * identified later without its file - which is exactly the situation when the
@@ -489,26 +492,36 @@ void kageant_save_startup_keys(void)
         {
             int n = 0, p = 0, li = 0;
             while (li < g_nloaded || p < g_npending) {
-                const char *path;
+                const char *path, *fp = NULL;
+                char *fp_owned = NULL;
                 int enc;
                 if (p < g_npending && g_pending[p].slot <= n) {
                     path = g_pending[p].path;
                     enc  = g_pending[p].encrypted;
+                    fp   = g_pending[p].fp[0] ? g_pending[p].fp : NULL;
                     p++;
                 } else if (li < g_nloaded) {
                     path = g_loaded_keypaths[li];
                     enc  = g_loaded_encrypted[li];
+                    /* Computed from the blob captured when the key loaded, so
+                     * it costs no file access and cannot disagree with what is
+                     * actually in the agent. */
+                    if (li < g_nblobs)
+                        fp = fp_owned = kageant_fp_of_blob(g_loaded_blobs[li]);
                     li++;
                 } else {
                     path = g_pending[p].path;
                     enc  = g_pending[p].encrypted;
+                    fp   = g_pending[p].fp[0] ? g_pending[p].fp : NULL;
                     p++;
                 }
                 kageant_store_form(path, store, sizeof(store));
                 snprintf(key, sizeof(key), "startupkey%d", ++n);
-                snprintf(val, sizeof(val), "%s%s", store,
-                         enc ? ",encrypted" : "");
+                snprintf(val, sizeof(val), "%s%s%s%s", store,
+                         enc ? ",encrypted" : "",
+                         fp ? "," : "", fp ? fp : "");
                 WritePrivateProfileStringA("Agent", key, val, f);
+                sfree(fp_owned);
             }
         }
         return;
@@ -523,14 +536,20 @@ void kageant_save_startup_keys(void)
         char *buf, *p;
         HKEY hk;
         for (i = 0; i < g_nloaded; i++) {
-            entries[i] = dupprintf("%s,%s", g_loaded_keypaths[i],
-                                   g_loaded_encrypted[i] ? "encrypted" : "plain");
+            char *fp = (i < g_nblobs) ? kageant_fp_of_blob(g_loaded_blobs[i])
+                                      : NULL;
+            entries[i] = dupprintf("%s,%s%s%s", g_loaded_keypaths[i],
+                                   g_loaded_encrypted[i] ? "encrypted" : "plain",
+                                   fp ? "," : "", fp ? fp : "");
+            sfree(fp);
             total += strlen(entries[i]) + 1;
         }
         for (i = 0; i < g_npending; i++) {
             entries[g_nloaded + i] = dupprintf(
-                "%s,%s", g_pending[i].path,
-                g_pending[i].encrypted ? "encrypted" : "plain");
+                "%s,%s%s%s", g_pending[i].path,
+                g_pending[i].encrypted ? "encrypted" : "plain",
+                g_pending[i].fp[0] ? "," : "",
+                g_pending[i].fp[0] ? g_pending[i].fp : "");
             total += strlen(entries[g_nloaded + i]) + 1;
         }
         buf = snewn(total, char); p = buf;
@@ -634,6 +653,44 @@ int kageant_passphrase_ttl(void)
             return v;
     }
     return 60;
+}
+
+/*
+ * ---- key identity: the fingerprint stored beside each startup entry --------
+ *
+ * A startup entry is a PATH, and a path says nothing about what is at the end
+ * of it. Storing the key's fingerprint alongside buys three things:
+ *
+ *  - a key file that has been REPLACED is noticed. Swapped on a stick,
+ *    overwritten by an old backup, a copy that is not yours: without this it
+ *    loads silently and you go on believing you are using the key you put
+ *    there.
+ *  - a key whose file is currently unreachable can still be identified, so
+ *    removing it in View Keys can drop those entries too.
+ *  - messages can name a key rather than only a path.
+ *
+ * Stored as an extra comma-separated token: "path[,encrypted][,SHA256:...]".
+ * Entries written by older versions simply have none, and adopt one the first
+ * time they load successfully.
+ */
+static char *kageant_fp_of_blob(strbuf *blob)
+{
+    char *full, *bare;
+    if (!blob || !blob->len)
+        return NULL;
+    full = ssh2_fingerprint_blob(ptrlen_from_strbuf(blob), SSH_FPTYPE_SHA256);
+    if (!full)
+        return NULL;
+    /* ssh2_fingerprint_blob gives "ssh-rsa 4096 SHA256:...." - algorithm and
+     * bit count included. Only the hash goes into the stored entry: the rest is
+     * derivable from the key and, being full of spaces, makes the entry harder
+     * to read and to parse back. */
+    bare = strstr(full, "SHA256:");
+    if (!bare)
+        return full;
+    bare = dupstr(bare);
+    sfree(full);
+    return bare;
 }
 
 /*
@@ -773,6 +830,65 @@ void kageant_forget_loaded_by_blob(ptrlen blob)
 
     if (removed && kageant_startup_get())
         kageant_save_startup_keys();
+}
+
+/*
+ * Does the key at `path` still match the fingerprint stored for it?
+ *
+ * Returns 1 to go ahead (matched, or nothing stored to compare, or the user
+ * accepted the new key), 0 to skip this entry. On acceptance *adopt is set, and
+ * the caller records the new fingerprint.
+ *
+ * The prompt has to offer accepting PERMANENTLY, because a legitimate key
+ * rotation looks exactly like a swapped file. A warning that can only be
+ * dismissed and will return at every start is one people learn to click
+ * through, which is worse than not warning at all.
+ */
+static int kageant_fp_ok(const char *path, const char *stored, int *adopt)
+{
+    strbuf *blob;
+    char *actual;
+    char *msg;
+    int r;
+
+    *adopt = 0;
+    if (!stored || !*stored)
+        return 1;                       /* nothing to compare against yet */
+
+    blob = kageant_pubblob(path);
+    if (!blob)
+        return 1;                       /* unreadable: the loader reports it */
+    actual = kageant_fp_of_blob(blob);
+    strbuf_free(blob);
+    if (!actual)
+        return 1;
+
+    if (!strcmp(actual, stored)) {
+        sfree(actual);
+        return 1;
+    }
+
+    msg = dupprintf(
+        "The key file loaded at startup is NOT the key that was there before.\n\n"
+        "    %s\n\n"
+        "Stored:  %s\n"
+        "Found:   %s\n\n"
+        "If you replaced this key yourself, this is expected - answer Yes and "
+        "the new key is remembered, and you will not be asked again.\n\n"
+        "If you did not, the file has been changed by something else. Answer No "
+        "to leave it out until you have looked at it.\n\n"
+        "Load this key and remember it?",
+        path, stored, actual);
+    r = MessageBox(NULL, msg, "kageant - this key has changed",
+                   MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
+    sfree(msg);
+    sfree(actual);
+
+    if (r == IDYES) {
+        *adopt = 1;
+        return 1;
+    }
+    return 0;
 }
 
 /* Remember a startup key whose file was not there, so a device event can try it
@@ -1285,27 +1401,63 @@ void kageant_load_startup_keys(void)
          * startupkeyN line must not truncate the rest of the list. Stop only
          * after a run of empty slots (matching the save-side clear scan). */
         for (i = 1, gap = 0; gap < 8; i++) {
-            int enc = 0;
+            int enc = 0, adopt = 0;
             char *c;
+            char fp[160];
+            fp[0] = '\0';
             snprintf(key, sizeof(key), "startupkey%d", i);
             GetPrivateProfileStringA("Agent", key, "", val, sizeof(val), f);
             if (!val[0]) { gap++; continue; }
             gap = 0;
-            c = strrchr(val, ',');
-            if (c && !stricmp(c + 1, "encrypted")) { *c = '\0'; enc = 1; }
-            else if (c && !stricmp(c + 1, "plain")) { *c = '\0'; enc = 0; }
+            /* Trailing tokens, in any order and any of them absent:
+             * ",encrypted"/",plain" and ",SHA256:..." (the fingerprint). */
+            for (;;) {
+                c = strrchr(val, ',');
+                if (!c) break;
+                if (!stricmp(c + 1, "encrypted")) { enc = 1; *c = '\0'; }
+                else if (!stricmp(c + 1, "plain")) { enc = 0; *c = '\0'; }
+                else if (strstr(c + 1, "SHA256:")) {
+                    /* Bare "SHA256:..." as written now, and the longer
+                     * "alg bits SHA256:..." that a build in between wrote -
+                     * take the hash out of either. */
+                    snprintf(fp, sizeof(fp), "%s", strstr(c + 1, "SHA256:"));
+                    *c = '\0';
+                } else break;           /* part of the path: leave it alone */
+            }
             kageant_resolve_form(val, abspath, sizeof(abspath));
             if (GetFileAttributesA(abspath) == INVALID_FILE_ATTRIBUTES) {
                 g_startup_missing++;
                 /* seen-so-far count is this entry's place in the offer order */
                 kageant_note_pending(abspath, enc, g_nloaded + g_npending);
+                if (fp[0] && g_npending > 0)
+                    snprintf(g_pending[g_npending - 1].fp,
+                             sizeof(g_pending[0].fp), "%s", fp);
                 continue;
             }
-            Filename *fn = filename_from_str(abspath);
-            win_add_keyfile(fn, enc ? true : false);
-            filename_free(fn);
+            /* Is it still the key that was here? */
+            if (!kageant_fp_ok(abspath, fp, &adopt))
+                continue;               /* user said no: leave it out */
+            {
+                Filename *fn = filename_from_str(abspath);
+                win_add_keyfile(fn, enc ? true : false);
+                filename_free(fn);
+            }
+            /* Write the list out afterwards if anything changed: a key the user
+             * accepted as replaced, or - the common case on the first run after
+             * an upgrade - an entry that had no fingerprint yet and has now
+             * been identified.
+             *
+             * AFTER the loop, never inside it: the list is saved from the keys
+             * loaded so far, so saving half way through would truncate it to
+             * whatever had loaded by then. */
+            if (adopt || !fp[0])
+                g_fp_adopted = 1;
         }
         g_startup_loading = 0;
+        if (g_fp_adopted) {
+            g_fp_adopted = 0;
+            kageant_save_startup_keys();   /* now the list is complete */
+        }
         return;
     }
 
@@ -1324,19 +1476,46 @@ void kageant_load_startup_keys(void)
                 g_startup_loading = 1;
                 for (char *p = buf; *p; p += strlen(p) + 1) {
                     int enc = 1;   /* legacy entries had no marker: deferred */
-                    char *c = strrchr(p, ',');
-                    if (c && !stricmp(c + 1, "encrypted")) { *c = '\0'; enc = 1; }
-                    else if (c && !stricmp(c + 1, "plain")) { *c = '\0'; enc = 0; }
+                    int adopt = 0;
+                    char fp[160];
+                    char *c;
+                    fp[0] = '\0';
+                    /* Same trailing tokens as the ini form: ",encrypted" /
+                     * ",plain" and ",SHA256:..." - see the ini branch above. */
+                    for (;;) {
+                        c = strrchr(p, ',');
+                        if (!c) break;
+                        if (!stricmp(c + 1, "encrypted")) { enc = 1; *c = '\0'; }
+                        else if (!stricmp(c + 1, "plain")) { enc = 0; *c = '\0'; }
+                        else if (strstr(c + 1, "SHA256:")) {
+                            snprintf(fp, sizeof(fp), "%s",
+                                     strstr(c + 1, "SHA256:"));
+                            *c = '\0';
+                        } else break;
+                    }
                     if (GetFileAttributesA(p) == INVALID_FILE_ATTRIBUTES) {
                         g_startup_missing++;
                         kageant_note_pending(p, enc, g_nloaded + g_npending);
+                        if (fp[0] && g_npending > 0)
+                            snprintf(g_pending[g_npending - 1].fp,
+                                     sizeof(g_pending[0].fp), "%s", fp);
                         continue;
                     }
-                    Filename *fn = filename_from_str(p);
-                    win_add_keyfile(fn, enc ? true : false);
-                    filename_free(fn);
+                    if (!kageant_fp_ok(p, fp, &adopt))
+                        continue;
+                    {
+                        Filename *fn = filename_from_str(p);
+                        win_add_keyfile(fn, enc ? true : false);
+                        filename_free(fn);
+                    }
+                    if (adopt || !fp[0])
+                        g_fp_adopted = 1;   /* see the ini branch above */
                 }
                 g_startup_loading = 0;
+                if (g_fp_adopted) {
+                    g_fp_adopted = 0;
+                    kageant_save_startup_keys();
+                }
             }
             sfree(buf);
         }
