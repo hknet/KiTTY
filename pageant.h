@@ -120,6 +120,10 @@ int pageant_count_ssh1_keys(void);
 int pageant_count_ssh2_keys(void);
 bool pageant_delete_nth_ssh1_key(int i);
 bool pageant_delete_nth_ssh2_key(int i);
+/* KiTTY: in-agent removal by public blob, for callers that cannot use a list
+ * position because the list may have changed under them. NOT the same as
+ * pageant_delete_key() below, which is the CLIENT-side call - see pageant.c. */
+bool pageant_delete_ssh2_key_by_blob(ptrlen blob);
 bool pageant_reencrypt_nth_ssh2_key(int i);
 void pageant_delete_all(void);
 void pageant_reencrypt_all(void);

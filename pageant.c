@@ -1945,6 +1945,31 @@ bool pageant_delete_nth_ssh1_key(int i)
     return true;
 }
 
+/*
+ * KiTTY: remove one SSH-2 key from THIS agent, identified by its public blob.
+ *
+ * The in-agent counterpart of pageant_delete_nth_ssh2_key() - same primitives,
+ * different way of naming the key. Position is no good when the caller is
+ * reacting to a drive disappearing: a client may have added or removed keys
+ * since, so index N is no longer the key that was meant.
+ *
+ * NOT pageant_delete_key(): that is the CLIENT-side call, for a separate
+ * process asking an agent to drop a key, and driving it from inside the agent
+ * left pubkeytree and privkeytree inconsistent - "Public and private trees out
+ * of sync!" on the next lookup. This mirrors what the REMOVE_IDENTITY request
+ * handler does instead, which is the path that is known to keep both trees
+ * straight.
+ */
+bool pageant_delete_ssh2_key_by_blob(ptrlen blob)
+{
+    PageantPublicKey *pub = findpubkey2(blob);
+    if (!pub)
+        return false;
+    del_pubkey(pub);
+    pk_pub_free(pub);
+    return true;
+}
+
 bool pageant_delete_nth_ssh2_key(int i)
 {
     PageantPublicKey *pub = del_pubkey_pos(
