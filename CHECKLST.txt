@@ -52,8 +52,6 @@ Things to do during the branch-stabilisation period:
     + build the old-Windows binaries and test-run them on Win95 (PuTTY
       proper even without WinSock2)
 
- - Check Coverity is happy.
-
  - Check the side-channel tester is happy.
 
  - Check all the non-SSH network backends still basically work.
@@ -148,8 +146,6 @@ Making a release candidate build
       case there's an unguarded clangism that would prevent it)
     * quick check of the outlying network protocols (Telnet, SUPDUP
       etc)
-    * feed the release-candidate source to Coverity and make sure it
-      didn't turn up any last-minute problems
     * make sure we have a clean run of testsc
     * do some testing on a system with a completely clean slate (no
       prior saved session data)
