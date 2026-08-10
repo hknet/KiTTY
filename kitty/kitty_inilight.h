@@ -8,6 +8,7 @@
 #define KITTY_INILIGHT_H
 
 const char *kitty_inilight_file(void);
+int kitty_inilight_portable(void);   /* portable storage layout beside the exe? */
 int kitty_inilight_registry_authoritative(void);
 int kitty_inilight_read(const char *section, const char *key,
                         char *value, int len);

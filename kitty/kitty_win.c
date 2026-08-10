@@ -1,5 +1,6 @@
 #include "kitty_win.h"
 #include "kitty_authenticode.h"   /* shared Authenticode trust + CN gate */
+#include "kitty_notice.h"          /* near-the-clock warning window */
 #include "kitty_rc_additions.h"   /* IDD_UPDATEBOX, IDC_UPD_TEXT, IDC_UPD_UPDATE */
 #include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
 #include <wintrust.h>  /* in-app updater: Authenticode trust verification */
@@ -1683,4 +1684,94 @@ void kitty_menu_toggle_hyperlink(HWND hwnd)
     SetHyperlinkFlag(nf);
     CheckMenuItem(GetSystemMenu(hwnd, FALSE), IDM_HYPERLINKTOGGLE,
                   MF_BYCOMMAND | (nf ? MF_CHECKED : MF_UNCHECKED));
+}
+
+
+/* ------------------------------------------------------------------ *
+ * KiTTY: client-side serving-agent verification (security pass #3).
+ *
+ * When kitty.exe asks the SSH agent to list or sign, SOMETHING answers on
+ * our agent pipe / Pageant window. This confirms that something is a
+ * genuine, our-publisher-signed KiTTY/kageant, and warns once if not - a
+ * hostile program that grabbed the pipe/window would otherwise see every
+ * key operation this session performs.
+ *
+ * Fail-quiet and best-effort: only a SIGNED (release) kitty.exe can
+ * honestly demand a signed agent, so an unsigned dev build says nothing;
+ * an unreadable server process says nothing. Never blocks the query - the
+ * answer is already in hand when this runs. Configurable off via
+ * [KiTTY] verifyagent=no.
+ * ------------------------------------------------------------------ */
+extern int ReadParameter(const char *key, const char *name, char *value);
+
+static void kitty_agent_serving_check(unsigned long server_pid, int transport)
+{
+    static int done = 0;
+    char self[MAX_PATH], srv[MAX_PATH], cfg[16];
+    HANDLE h;
+    DWORD sz = sizeof(srv);
+    int gotpath;
+    (void)transport;
+
+    if (done)
+        return;
+
+    /* Opt-out. */
+    if (ReadParameter("KiTTY", "verifyagent", cfg) && !stricmp(cfg, "no")) {
+        done = 1;
+        return;
+    }
+
+    if (GetModuleFileNameA(NULL, self, sizeof(self)) == 0)
+        return;                        /* try again on the next query */
+
+    /* An unsigned build cannot honestly insist the agent be signed. */
+    if (!kitty_authenticode_verify(self)) {
+        done = 1;
+        return;
+    }
+
+    if (server_pid == 0)
+        return;                        /* unknown this time; retry later */
+
+    h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
+                    (DWORD)server_pid);
+    if (!h) {
+        done = 1;                      /* cannot inspect: stay quiet */
+        return;
+    }
+    gotpath = QueryFullProcessImageNameA(h, 0, srv, &sz);
+    CloseHandle(h);
+    if (!gotpath) {
+        done = 1;
+        return;
+    }
+
+    done = 1;
+    if (kitty_authenticode_verify(srv))
+        return;                        /* genuine KiTTY/kageant - all good */
+
+    {
+        /* Say WHO is speaking (this terminal, not the agent) before saying
+         * what was found - an anonymous amber box reads as "something says
+         * my key is compromised" and confuses more than it warns. */
+        const char *base = strrchr(srv, '\\');
+        char *msg = dupprintf(
+            "This KiTTY terminal window checked which program answers its "
+            "SSH agent requests. The answer came from an unverified "
+            "program:\n\n%s\n\nThat program handles every key this session "
+            "uses. Expected if you run stock Pageant or a self-built agent "
+            "on purpose; if you did not start it yourself, treat the keys "
+            "it holds as exposed. ([KiTTY] verifyagent=no turns this check "
+            "off.)",
+            base ? base + 1 : srv);
+        kitty_notice_show("KiTTY: SSH agent not verified", msg,
+                          RGB(190, 110, 0), 15, NULL, 0);
+        sfree(msg);
+    }
+}
+
+void kitty_install_agent_check(void)
+{
+    agent_serving_check_hook = kitty_agent_serving_check;
 }

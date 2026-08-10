@@ -59,6 +59,40 @@ Note: the command-line tools (`klink`/`kscp`/`ksftp`) always read the
 **registry** session store — a portable `savemode=dir` store is usable from
 the GUI only (see [KNOWN-ISSUES.md](../KNOWN-ISSUES.md)).
 
+## kageant and the store — the `(kitty.ini mode)` and `(portable)` markers
+
+kageant (the SSH agent) follows the *same* store decision as the sessions,
+and the same decision governs three things at once: kageant's settings, its
+remembered **startup key list**, and the **offer order** of those keys. There
+are three cases, and kageant's window title and tray tooltip tell you which
+one you are in.
+
+| Mode | Where settings + the key list + key order live | Markers shown |
+|---|---|---|
+| **Registry** *(default)* | `HKCU\...\kapper.net\KiTTY` — settings, plus the `StartupKeys` and `KeyOrder` values | *(none)* |
+| **kitty.ini** | the ini file — settings, plus `[Agent] startupkeyN` and `keyorderN` | `(kitty.ini mode)` |
+| **Portable** | the ini and its store, sitting **next to the exe** so they travel | `(kitty.ini mode)` **and** `(portable)` |
+
+Reading the markers:
+
+- **No marker** — registry mode, the default. A `kitty.ini` may still be
+  present, but it is not the authoritative store; its keys act as first-run
+  defaults only. Nothing kageant holds is written to the ini.
+- **`(kitty.ini mode)`** — the ini is authoritative (`savemode=file`/`dir`, or
+  a portable layout was found). kageant's settings, the keys it re-loads at
+  startup, and their order are all read from and written to the ini, at
+  whatever path the ini resolved to. The registry is not touched.
+- **`(portable)`** — a stricter case of kitty.ini mode: kageant found a store
+  **beside the executable** (a `Sessions\` folder or a `KiTTYState` file), which
+  forces ini/dir mode. Because the store travels with the exe, a portable stick
+  stays self-contained. **Portable always implies kitty.ini mode**; the reverse
+  is not true — a `savemode=file` install is kitty.ini mode without being
+  portable, and shows only the first marker.
+
+So the two markers are levels, not duplicates: `(kitty.ini mode)` says *the ini
+is the store*, and the extra `(portable)` says *and that store lives next to the
+exe*.
+
 ## Sections at a glance
 
 | Section | What it configures |

@@ -199,6 +199,7 @@ struct PageantPublicKey {
     strbuf *base_pub;            /* the true owner of sort.priv.base_pub */
     strbuf *full_pub;            /* the true owner of sort.full_pub */
     char *comment;
+    bool confirm;      /* KiTTY: ask the user before each use (ssh-add -c) */
 };
 static tree234 *pubkeytree;
 
@@ -235,6 +236,7 @@ typedef struct PageantSignOp PageantSignOp;
 struct PageantSignOp {
     PageantPrivateKey *priv;
     char *comment;                  /* key comment (KiTTY usage confirmation) */
+    bool confirm;                   /* KiTTY: per-key confirm-on-use flag */
     strbuf *data_to_sign;
     unsigned flags;
     int crLine;
@@ -736,6 +738,8 @@ static void list_key_emit(BinarySink *bs, PageantPublicKey *pub,
             flags |= LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY;
         if (priv->encrypted_key_file)
             flags |= LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE;
+        if (pub->confirm)
+            flags |= LIST_EXTENDED_FLAG_CONFIRM_ON_USE;   /* KiTTY */
         put_uint32(sb, flags);
 
         put_stringsb(bs, sb);
@@ -944,7 +948,27 @@ static bool request_passphrase(PageantClient *pc, PageantPrivateKey *priv)
  * means "no confirmation", so other binaries that link this agent core are
  * unaffected; the Windows Pageant GUI installs it at startup. The hook is
  * passed the key comment and returns 0 to REFUSE signing, nonzero to allow. */
-int (*kageant_confirm_hook)(const char *comment) = NULL;
+int (*kageant_confirm_hook)(const char *comment, int key_confirm) = NULL;
+
+/* KiTTY: does this comment carry the per-key confirmation convention?
+ * Consulted once at ADD time, turning the convention into a real, sticky
+ * per-key flag. NULL outside the GUI agent. */
+int (*kageant_comment_confirm_hook)(const char *comment) = NULL;
+
+/* KiTTY: external-transport mutation notices - see pageant.h. */
+void (*kageant_mutation_notice_hook)(int op, const char *comment) = NULL;
+int (*kageant_ipc_blocked_hook)(int op) = NULL;
+bool pageant_external_request = false;
+unsigned long pageant_external_pid = 0;
+
+/* KiTTY: is this external mutation refused by the access-control settings?
+ * Only external requests are gated - the agent's own UI does not set
+ * pageant_external_request. */
+static bool kageant_mutation_blocked(int op)
+{
+    return pageant_external_request && kageant_ipc_blocked_hook &&
+        kageant_ipc_blocked_hook(op);
+}
 /* KiTTY: optional "a key was just used" notification hook, set by kageant to show
  * a tray balloon. Fired after a successful signature. NULL outside the GUI agent. */
 void (*kageant_notify_hook)(const char *comment) = NULL;
@@ -1031,7 +1055,8 @@ static void signop_coroutine(PageantAsyncOp *pao)
      * confirmed by the user before each use (Cernko patch). The hook is NULL
      * except in the Pageant GUI, and returns nonzero unless confirmation is
      * required and the user refused. */
-    if (kageant_confirm_hook && !kageant_confirm_hook(so->comment)) {
+    if (kageant_confirm_hook &&
+        !kageant_confirm_hook(so->comment, so->confirm)) {
         response = strbuf_new();
         failure(so->pao.info->pc, so->pao.reqid, response, so->failure_type,
                 "key usage not confirmed by user");
@@ -1446,6 +1471,7 @@ static PageantAsyncOp *pageant_make_op(
         so->pao.reqid = reqid;
         so->priv = pub_to_priv(pub);
         so->comment = pub->comment ? dupstr(pub->comment) : NULL;
+        so->confirm = pub->confirm;
         so->pkr.prev = so->pkr.next = NULL;
         so->data_to_sign = strbuf_dup(sigdata);
         so->flags = flags;
@@ -1462,6 +1488,11 @@ static PageantAsyncOp *pageant_make_op(
         RSAKey *key;
 
         pageant_client_log(pc, reqid, "request: SSH1_AGENTC_ADD_RSA_IDENTITY");
+
+        if (kageant_mutation_blocked(KAGEANT_MUT_ADD)) {
+            fail("adding keys over IPC is blocked by kageant policy");
+            goto responded;
+        }
 
         key = get_rsa_ssh1_priv_agent(msg);
         key->comment = mkstr(get_string(msg));
@@ -1515,6 +1546,11 @@ static PageantAsyncOp *pageant_make_op(
 
         pageant_client_log(pc, reqid, "request: SSH2_AGENTC_ADD_IDENTITY");
 
+        if (kageant_mutation_blocked(KAGEANT_MUT_ADD)) {
+            fail("adding keys over IPC is blocked by kageant policy");
+            goto add2_cleanup;   /* key is NULL here */
+        }
+
         algpl = get_string(msg);
 
         key = snew(ssh2_userkey);
@@ -1542,14 +1578,17 @@ static PageantAsyncOp *pageant_make_op(
 
         /* KiTTY: any bytes after the comment are per-key constraints. Parse
          * them - do not leave them unread (that is the accept-and-ignore bug).
-         * Lifetime is captured here and applied after the key is added;
-         * confirm and destination constraints are not yet implemented, so
-         * refuse rather than pretend. */
+         * Lifetime and confirm are captured here and applied after the
+         * key is added; destination and unknown constraints stay refused
+         * rather than pretended. */
         unsigned key_lifetime = 0;
+        bool key_confirm = false;
         while (get_avail(msg) > 0) {
             unsigned char ctype = get_byte(msg);
             if (ctype == SSH_AGENT_CONSTRAIN_LIFETIME) {
                 key_lifetime = get_uint32(msg);
+            } else if (ctype == SSH_AGENT_CONSTRAIN_CONFIRM) {
+                key_confirm = true;   /* ssh-add -c */
             } else {
                 fail("this key constraint is not supported by kageant");
                 goto add2_cleanup;
@@ -1572,21 +1611,47 @@ static PageantAsyncOp *pageant_make_op(
             sfree(fingerprint);
         }
 
-        if (pageant_add_ssh2_key(key)) {
-            /* KiTTY: honour an ssh-add -t lifetime - the frontend arms a
-             * timer that removes this key when it expires. Identify the key
-             * by the same public blob the delete-by-blob path uses. */
-            if (kageant_key_lifetime_hook) {
-                /* Same blob the delete-by-blob path matches on (full_pub via
-                 * makeblob2full), so a certificate key expires correctly too -
-                 * ssh_key_public_blob would give a different blob for certs.
-                 * Called even with no lifetime: 0 CLEARS a stale entry, so a
-                 * plain re-add of a key that had -t does not inherit it. */
-                strbuf *pb = makeblob2full(key->key);
+        /* KiTTY: a re-add of an already-loaded key with constraints is a
+         * constraint UPDATE, not the plain-duplicate no-op: ssh-add -t on
+         * a loaded key resets its clock (OpenSSH semantics). Only a
+         * constraint-free duplicate keeps the old failure reply. */
+        bool k_added = pageant_add_ssh2_key(key);
+        bool k_present = k_added;
+        if (!k_added && (key_lifetime || key_confirm)) {
+            strbuf *chk = makeblob2full(key->key);
+            k_present = findpubkey2(ptrlen_from_strbuf(chk)) != NULL;
+            strbuf_free(chk);
+        }
+        if (k_present) {
+            /* KiTTY: apply the per-key constraints to the key now in the
+             * tree, identified by the same blob the delete-by-blob path
+             * matches on (full_pub via makeblob2full - correct for
+             * certificate keys too). */
+            strbuf *pb = makeblob2full(key->key);
+            /* Lifetime (ssh-add -t): the frontend arms a timer that removes
+             * the key when it expires. Called even with no lifetime: 0
+             * CLEARS a stale entry, so a plain re-add of a key that had -t
+             * does not inherit it. */
+            if (kageant_key_lifetime_hook)
                 kageant_key_lifetime_hook(ptrlen_from_strbuf(pb),
                                           key_lifetime);
-                strbuf_free(pb);
+            /* Confirm-on-use (ssh-add -c), or the comment convention -
+             * either sets the real per-key flag. Sticky: a plain re-add
+             * does not clear a flag the user set. */
+            {
+                PageantPublicKey *cpub = findpubkey2(ptrlen_from_strbuf(pb));
+                if (cpub && (key_confirm ||
+                             (kageant_comment_confirm_hook && cpub->comment &&
+                              kageant_comment_confirm_hook(cpub->comment))))
+                    cpub->confirm = true;
+                /* KiTTY: the key set just changed over an external
+                 * transport - tell the user (a notice, never a prompt). */
+                if (pageant_external_request && kageant_mutation_notice_hook)
+                    kageant_mutation_notice_hook(
+                        KAGEANT_MUT_ADD,
+                        cpub && cpub->comment ? cpub->comment : NULL);
             }
+            strbuf_free(pb);
             keylist_update();
             put_byte(sb, SSH_AGENT_SUCCESS);
 
@@ -1637,6 +1702,11 @@ static PageantAsyncOp *pageant_make_op(
             sfree(fingerprint);
         }
 
+        if (kageant_mutation_blocked(KAGEANT_MUT_REMOVE)) {
+            freersakey(&reqkey);
+            fail("removing keys over IPC is blocked by kageant policy");
+            goto responded;
+        }
         pub = findpubkey1(&reqkey);
         freersakey(&reqkey);
         if (pub) {
@@ -1673,6 +1743,11 @@ static PageantAsyncOp *pageant_make_op(
             goto responded;
         }
 
+        if (kageant_mutation_blocked(KAGEANT_MUT_REMOVE)) {
+            fail("removing keys over IPC is blocked by kageant policy");
+            goto responded;
+        }
+
         if (!pc->suppress_logging) {
             char *fingerprint = ssh2_double_fingerprint_blob(
                 blob, SSH_FPTYPE_DEFAULT);
@@ -1688,6 +1763,8 @@ static PageantAsyncOp *pageant_make_op(
 
         pageant_client_log(pc, reqid, "found with comment: %s", pub->comment);
 
+        if (pageant_external_request && kageant_mutation_notice_hook)
+            kageant_mutation_notice_hook(KAGEANT_MUT_REMOVE, pub->comment);
         del_pubkey(pub);
         pk_pub_free(pub); /* KiTTY: purge puborder BEFORE the list
                            * refresh walks it (assert pageant.c:415) */
@@ -1706,7 +1783,14 @@ static PageantAsyncOp *pageant_make_op(
         pageant_client_log(pc, reqid,
                            "request: SSH1_AGENTC_REMOVE_ALL_RSA_IDENTITIES");
 
+        if (kageant_mutation_blocked(KAGEANT_MUT_REMOVE_ALL)) {
+            fail("removing keys over IPC is blocked by kageant policy");
+            goto responded;
+        }
+
         remove_all_keys(1);
+        if (pageant_external_request && kageant_mutation_notice_hook)
+            kageant_mutation_notice_hook(KAGEANT_MUT_REMOVE_ALL, NULL);
         keylist_update();
 
         put_byte(sb, SSH_AGENT_SUCCESS);
@@ -1721,9 +1805,16 @@ static PageantAsyncOp *pageant_make_op(
         pageant_client_log(pc, reqid,
                            "request: SSH2_AGENTC_REMOVE_ALL_IDENTITIES");
 
+        if (kageant_mutation_blocked(KAGEANT_MUT_REMOVE_ALL)) {
+            fail("removing keys over IPC is blocked by kageant policy");
+            goto responded;
+        }
+
         remove_all_keys(2);
         if (kageant_key_lifetime_hook)   /* KiTTY: drop every pending -t */
             kageant_key_lifetime_hook(make_ptrlen(NULL, 0), 0);
+        if (pageant_external_request && kageant_mutation_notice_hook)
+            kageant_mutation_notice_hook(KAGEANT_MUT_REMOVE_ALL, NULL);
         keylist_update();
 
         put_byte(sb, SSH_AGENT_SUCCESS);
@@ -1775,6 +1866,11 @@ static PageantAsyncOp *pageant_make_op(
 
             if (get_err(msg)) {
                 fail("unable to decode request");
+                goto responded;
+            }
+
+            if (kageant_mutation_blocked(KAGEANT_MUT_ADD)) {
+                fail("adding keys over IPC is blocked by kageant policy");
                 goto responded;
             }
 
@@ -2047,6 +2143,23 @@ bool pageant_delete_ssh2_key_by_blob(ptrlen blob)
     return true;
 }
 
+/* KiTTY: the per-key confirm-on-use flag (ssh-add -c / details checkbox /
+ * comment convention). */
+bool pageant_get_key_confirm(ptrlen blob)
+{
+    PageantPublicKey *pub = findpubkey2(blob);
+    return pub && pub->confirm;
+}
+
+bool pageant_set_key_confirm(ptrlen blob, bool on)
+{
+    PageantPublicKey *pub = findpubkey2(blob);
+    if (!pub)
+        return false;
+    pub->confirm = on;
+    return true;
+}
+
 bool pageant_delete_nth_ssh2_key(int i)
 {
     PageantPublicKey *pub = del_pubkey_pos(
@@ -2126,6 +2239,7 @@ struct pageant_conn_state {
     bool real_packet;
     size_t conn_index;     /* for indexing connections in log messages */
     size_t req_index;      /* for indexing requests in log messages */
+    unsigned long client_pid;   /* KiTTY: best-effort peer pid (0 unknown) */
     int crLine;            /* for coroutine in pageant_conn_receive */
 
     struct pageant_conn_queued_response response_queue;
@@ -2267,8 +2381,15 @@ static void pageant_conn_receive(
         }
 
         if (pc->real_packet) {
+            /* KiTTY: the pipe is an external transport (also what the
+             * Windows-OpenSSH integration serves) - mark the dispatch so
+             * the mutation handlers can notify, and say who is asking. */
+            pageant_external_request = true;
+            pageant_external_pid = pc->client_pid;
             pageant_handle_msg(&pc->pc, &pc->response_queue.prev->reqid,
                                make_ptrlen(pc->pktbuf, pc->len));
+            pageant_external_request = false;
+            pageant_external_pid = 0;
             smemclr(pc->pktbuf, pc->len);
         }
     }
@@ -2331,7 +2452,14 @@ static int pageant_listen_accepting(Plug *plug,
     sk_set_frozen(pc->connsock, false);
 
     peerinfo = sk_peer_info(pc->connsock);
+    pc->client_pid = 0;
     if (peerinfo && peerinfo->log_text) {
+        /* KiTTY: the Windows named-pipe backend formats the client pid into
+         * the log text ("process id %lu") and frees the info right after -
+         * keep the pid for the mutation notices. */
+        const char *pidtag = strstr(peerinfo->log_text, "process id ");
+        if (pidtag)
+            pc->client_pid = strtoul(pidtag + 11, NULL, 10);
         pageant_listener_client_log(pl->plc,
                                     "c#%"SIZEu": new connection from %s",
                                     pc->conn_index, peerinfo->log_text);

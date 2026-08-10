@@ -24,6 +24,8 @@
 int kageant_openssh_get(void);
 void kageant_openssh_set(int on);
 int kageant_startup_get(void);
+void kageant_noload_set(void);    /* -noload: clean-slate run */
+int  kageant_noload(void);
 void kageant_startup_set(int on);
 int kageant_notify_get(void);          /* default on */
 void kageant_notify_set(int on);
@@ -112,10 +114,15 @@ void kageant_apply_saved_order(void);
 int kageant_nloaded(void);             /* key paths tracked this session */
 
 /* ---- key-use confirm/notify (installed as agent-core hook pointers) ---- */
-int kageant_do_confirm(const char *comment);
+int kageant_do_confirm(const char *comment, int key_confirm);
+void kageant_do_mutation_notice(int op, const char *comment);
+int  kageant_ipc_blocked(int op);   /* IPC access-control policy */
+int  kageant_lockdown_get(void);
+int kageant_comment_wants_confirm(const char *comment);
 void kageant_do_notify(const char *comment);
 /* the hook pointers themselves live in the agent core (../pageant.c) */
-extern int (*kageant_confirm_hook)(const char *comment);
+extern int (*kageant_confirm_hook)(const char *comment, int key_confirm);
+extern int (*kageant_comment_confirm_hook)(const char *comment);
 extern void (*kageant_notify_hook)(const char *comment);
 
 /* ---- provided by windows/pageant.c for kitty_pageant.c ---- */

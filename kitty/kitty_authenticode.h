@@ -24,4 +24,14 @@ int kitty_file_version(const char *path, unsigned long *ms, unsigned long *ls);
  * signed sibling. The exact-version match always applies. 1 = allow. */
 int kitty_verify_sibling(const char *path);
 
+/* KiTTY: client-side "which agent answers us" check. agent-client.c calls
+ * this hook (when installed) with the serving agent's process id, once per
+ * process; kitty.exe installs an implementation that verifies the server
+ * binary against our publisher and warns if it is not a genuine
+ * KiTTY/kageant. Console tools (plink/pscp/psftp) leave it NULL. */
+enum { KITTY_AGENT_TRANSPORT_PIPE, KITTY_AGENT_TRANSPORT_WMCOPYDATA };
+extern void (*agent_serving_check_hook)(unsigned long server_pid,
+                                        int transport);
+void kitty_install_agent_check(void);   /* kitty.exe: install the hook */
+
 #endif /* KITTY_AUTHENTICODE_H */

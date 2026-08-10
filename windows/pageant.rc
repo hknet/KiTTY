@@ -97,7 +97,7 @@ END
  * point of looking at a fingerprint is usually to copy it and compare it
  * with one somewhere else. Wide enough that a full SHA-256 line fits, and
  * resizable (WS_THICKFRAME) for the ones that still do not. */
-IDD_KEYDETAILS DIALOG DISCARDABLE 0, 0, 420, 238
+IDD_KEYDETAILS DIALOG DISCARDABLE 0, 0, 420, 252
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION "kageant - key details"
 FONT 8, "MS Shell Dlg"
@@ -119,8 +119,10 @@ BEGIN
     EDITTEXT IDC_KEYDETAIL_LIFETIME, 66, 182, 344, 12,
         ES_READONLY | ES_AUTOHSCROLL
     AUTOCHECKBOX "Load this key &deferred at startup (passphrase at first use)",
-        IDC_KEYDETAIL_DEFER, 10, 206, 300, 10
-    DEFPUSHBUTTON "&Close", IDOK, 360, 218, 50, 14
+        IDC_KEYDETAIL_DEFER, 10, 202, 300, 10
+    AUTOCHECKBOX "Ask for confir&mation each time this key is used",
+        IDC_KEYDETAIL_CONFIRM, 10, 216, 300, 10
+    DEFPUSHBUTTON "&Close", IDOK, 360, 232, 50, 14
 END
 
 /* KiTTY: the [Agent] settings dialog, reached from the key list window's

@@ -82,6 +82,8 @@ add_dependencies(guiterminal generated_licence_h) # dialog.c uses licence.h
 # KiTTY: self-contained aux-window placement/position-memory helper, called from
 # dialog.c's AboutProc (and reusable by the other suite exes).
 target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c)
+# KiTTY: shared title-suffix composer ((portable)/(RESTRICTED)/test label).
+target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c)
 
 # This object awkwardly needs to live in the network library as well
 # as the eventloop library, in case it didn't get pulled in from the
@@ -101,6 +103,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_pageant.c   # KiTTY: kageant additions (split out of pageant.c)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_authenticode.c  # KiTTY: shared verify for the New key launcher
   ${CMAKE_SOURCE_DIR}/kitty/kitty_notice.c    # KiTTY: shared near-the-clock notice window (replaces tray balloons)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c     # KiTTY: shared title-suffix composer
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inilight.c  # KiTTY: light kitty.ini resolver for satellite binaries
   ${CMAKE_SOURCE_DIR}/kitty/kitty_startup_shortcut.c  # KiTTY: Startup-folder shortcut (portable autostart)
   pageant.rc)

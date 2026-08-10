@@ -532,7 +532,23 @@
 ;askconfirmation=auto
 
 ; messageonkeyusage: tray balloon naming the key after each signature
+; messageonkeyusage covers key USE (signatures) and, over IPC, key ADD /
+; REMOVE / REMOVE-ALL naming the requesting program - a notice, never a
+; prompt, so it does not break scripted ssh-add.
 ;messageonkeyusage=yes
+
+; --- IPC access control (all default no). These restrict only requests
+; that arrive from OTHER programs over the agent protocol (WM_COPYDATA /
+; the named pipe, which is also what the Windows-OpenSSH integration
+; uses); the kageant window's own Add/Remove buttons are never affected.
+; Signing and listing keys are always allowed; re-encrypting a key is
+; allowed even under lockdown (it only tightens a key by dropping its
+; cleartext).
+; lockdownmode: refuse ALL key add/remove/remove-all over IPC.
+;lockdownmode=no
+; blockipcadd / blockipcremove: refuse just adds, or just removes.
+;blockipcadd=no
+;blockipcremove=no
 
 ; loadonstartup: re-add the remembered keys when kageant starts, added
 ; encrypted (passphrase asked on first use). Toggle it from the kageant

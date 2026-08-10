@@ -124,6 +124,22 @@ bool pageant_delete_nth_ssh2_key(int i);
  * position because the list may have changed under them. NOT the same as
  * pageant_delete_key() below, which is the CLIENT-side call - see pageant.c. */
 bool pageant_delete_ssh2_key_by_blob(ptrlen blob);
+bool pageant_get_key_confirm(ptrlen blob);   /* KiTTY: per-key confirm */
+bool pageant_set_key_confirm(ptrlen blob, bool on);
+
+/* KiTTY: notice hook for key-set mutations arriving over an EXTERNAL
+ * transport (WM_COPYDATA / the named pipe). The transports set
+ * pageant_external_request (+ the requester pid) around dispatch; the
+ * core mutation handlers fire the hook only while it is up, so the
+ * agent's own UI (which uses the same handlers) stays silent. */
+enum { KAGEANT_MUT_ADD, KAGEANT_MUT_REMOVE, KAGEANT_MUT_REMOVE_ALL };
+/* KiTTY: IPC access control - is this mutation blocked for an external
+ * request? op is one of the KAGEANT_MUT_* values. NULL outside the GUI
+ * agent (so a non-GUI build blocks nothing). */
+extern int (*kageant_ipc_blocked_hook)(int op);
+extern void (*kageant_mutation_notice_hook)(int op, const char *comment);
+extern bool pageant_external_request;
+extern unsigned long pageant_external_pid;   /* 0 = unknown */
 bool pageant_reencrypt_nth_ssh2_key(int i);
 /* KiTTY: in-agent re-encrypt by public blob, same rationale as the delete. */
 bool pageant_reencrypt_ssh2_key_by_blob(ptrlen blob);
@@ -266,3 +282,4 @@ int pageant_sign(struct pageant_pubkey *key, ptrlen message, strbuf *out,
 
 #define LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE    1
 #define LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY      2
+#define LIST_EXTENDED_FLAG_CONFIRM_ON_USE            4  /* KiTTY */

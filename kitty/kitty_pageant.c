@@ -240,6 +240,7 @@ static int    g_startup_missing = 0;       /* startup keys not found at last loa
 typedef struct {
     char path[MAX_PATH + 1];
     int  encrypted;
+    int  confirm;     /* stored ,confirm marker (per-key confirm-on-use) */
     int  failed;      /* the file was there and would not load: stop retrying */
     int  slot;        /* where it sat in the startup list - see below */
     char fp[160];     /* stored fingerprint, "" if the entry had none */
@@ -262,9 +263,21 @@ static int      g_nblobs = 0;
 static int kageant_reg_read(const char *name, int *val_out);
 static void kageant_reg_write(const char *name, int on);
 
+/* KiTTY: -noload (clean slate). One switch turns the whole startup-keys
+ * mechanism off for this run: kageant_startup_get() reports it disabled
+ * (so nothing loads and the implicit save-on-add/remove snapshots skip),
+ * and kageant_save_startup_keys() refuses outright as a belt-and-braces
+ * guard - a clean-slate run must never rewrite the stored list with its
+ * own (empty) key set. */
+static int g_noload = 0;
+void kageant_noload_set(void) { g_noload = 1; }
+int kageant_noload(void) { return g_noload; }
+
 int kageant_startup_get(void)
 {
     char buf[8];
+    if (g_noload)
+        return 0;
     int ini_val = -1, reg_val;
     if (kitty_inilight_read("Agent", "loadonstartup", buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) ini_val = 1;
@@ -524,6 +537,28 @@ static void kageant_resolve_form(const char *stored, char *out, size_t outlen)
         snprintf(out, outlen, "%s", stored);
 }
 
+/* KiTTY: per-key confirm helpers for the startup list. The flag itself
+ * lives in the agent core (pageant_get/set_key_confirm); these map it onto
+ * the tracked key paths for the ,confirm token. */
+static int kageant_confirm_of_loaded(int li)
+{
+    if (li < g_nblobs && g_loaded_blobs[li])
+        return pageant_get_key_confirm(ptrlen_from_strbuf(g_loaded_blobs[li]));
+    return 0;
+}
+
+static void kageant_apply_confirm_by_path(const char *abspath)
+{
+    int i;
+    for (i = g_nloaded - 1; i >= 0; i--)
+        if (!stricmp(g_loaded_keypaths[i], abspath)) {
+            if (i < g_nblobs && g_loaded_blobs[i])
+                pageant_set_key_confirm(
+                    ptrlen_from_strbuf(g_loaded_blobs[i]), true);
+            return;
+        }
+}
+
 /* Persist the tracked key set. Portable (ini authoritative): numbered
  * [Agent] startupkeyN entries, relative where possible, with a trailing
  * ,encrypted marker. Otherwise: the StartupKeys REG_MULTI_SZ value, each
@@ -532,6 +567,9 @@ void kageant_save_startup_keys(void)
 {
     const char *f;
     int i;
+
+    if (g_noload)   /* clean-slate run: never touch the stored list */
+        return;
 
     if (!kitty_inilight_registry_authoritative() &&
         (f = kitty_inilight_file()) != NULL) {
@@ -568,15 +606,17 @@ void kageant_save_startup_keys(void)
             while (li < g_nloaded || p < g_npending) {
                 const char *path, *fp = NULL;
                 char *fp_owned = NULL;
-                int enc;
+                int enc, conf;
                 if (p < g_npending && g_pending[p].slot <= n) {
                     path = g_pending[p].path;
                     enc  = g_pending[p].encrypted;
+                    conf = g_pending[p].confirm;
                     fp   = g_pending[p].fp[0] ? g_pending[p].fp : NULL;
                     p++;
                 } else if (li < g_nloaded) {
                     path = g_loaded_keypaths[li];
                     enc  = g_loaded_encrypted[li];
+                    conf = kageant_confirm_of_loaded(li);
                     /* Computed from the blob captured when the key loaded, so
                      * it costs no file access and cannot disagree with what is
                      * actually in the agent. */
@@ -586,13 +626,15 @@ void kageant_save_startup_keys(void)
                 } else {
                     path = g_pending[p].path;
                     enc  = g_pending[p].encrypted;
+                    conf = g_pending[p].confirm;
                     fp   = g_pending[p].fp[0] ? g_pending[p].fp : NULL;
                     p++;
                 }
                 kageant_store_form(path, store, sizeof(store));
                 snprintf(key, sizeof(key), "startupkey%d", ++n);
-                snprintf(val, sizeof(val), "%s%s%s%s", store,
+                snprintf(val, sizeof(val), "%s%s%s%s%s", store,
                          enc ? ",encrypted" : "",
+                         conf ? ",confirm" : "",
                          fp ? "," : "", fp ? fp : "");
                 WritePrivateProfileStringA("Agent", key, val, f);
                 sfree(fp_owned);
@@ -612,16 +654,18 @@ void kageant_save_startup_keys(void)
         for (i = 0; i < g_nloaded; i++) {
             char *fp = (i < g_nblobs) ? kageant_fp_of_blob(g_loaded_blobs[i])
                                       : NULL;
-            entries[i] = dupprintf("%s,%s%s%s", g_loaded_keypaths[i],
+            entries[i] = dupprintf("%s,%s%s%s%s", g_loaded_keypaths[i],
                                    g_loaded_encrypted[i] ? "encrypted" : "plain",
+                                   kageant_confirm_of_loaded(i) ? ",confirm" : "",
                                    fp ? "," : "", fp ? fp : "");
             sfree(fp);
             total += strlen(entries[i]) + 1;
         }
         for (i = 0; i < g_npending; i++) {
             entries[g_nloaded + i] = dupprintf(
-                "%s,%s%s%s", g_pending[i].path,
+                "%s,%s%s%s%s", g_pending[i].path,
                 g_pending[i].encrypted ? "encrypted" : "plain",
+                g_pending[i].confirm ? ",confirm" : "",
                 g_pending[i].fp[0] ? "," : "",
                 g_pending[i].fp[0] ? g_pending[i].fp : "");
             total += strlen(entries[g_nloaded + i]) + 1;
@@ -872,6 +916,8 @@ void kageant_media_gone(void)
              * which keys a server is asked to try first, and a wrong key costs
              * one of the attempts before a lockout. */
             kageant_note_pending(g_loaded_keypaths[i], g_loaded_encrypted[i], i);
+            if (g_npending > 0)
+                g_pending[g_npending - 1].confirm = kageant_confirm_of_loaded(i);
 
             /* And out of the loaded list, or the next save would write it twice
              * - once as loaded, once as pending. */
@@ -1119,8 +1165,10 @@ void kageant_note_pending(const char *path, int encrypted, int slot)
             return;
     snprintf(g_pending[g_npending].path, sizeof(g_pending[0].path), "%s", path);
     g_pending[g_npending].encrypted = encrypted;
+    g_pending[g_npending].confirm = 0;   /* callers set it when known */
     g_pending[g_npending].failed = 0;
     g_pending[g_npending].slot = slot;
+    g_pending[g_npending].fp[0] = '\0';  /* the array slot may be reused */
     g_npending++;
 }
 
@@ -1187,6 +1235,8 @@ void kageant_retry_pending_keys(void)
             for (j = 0; j < g_nloaded; j++)
                 if (!stricmp(g_loaded_keypaths[j], g_pending[i].path))
                     g_loaded_encrypted[j] = g_pending[i].encrypted;
+            if (g_pending[i].confirm)
+                kageant_apply_confirm_by_path(g_pending[i].path);
             loaded_any = 1;
         }
         /* Dropped from the list whether or not it loaded: if the file is there
@@ -1423,7 +1473,7 @@ static void kageant_entry_strip(char *entry)
         if (!c)
             return;
         if (!stricmp(c + 1, "encrypted") || !stricmp(c + 1, "plain") ||
-            strstr(c + 1, "SHA256:"))
+            !stricmp(c + 1, "confirm") || strstr(c + 1, "SHA256:"))
             *c = '\0';
         else
             return;
@@ -1817,7 +1867,7 @@ void kageant_load_startup_keys(void)
          * startupkeyN line must not truncate the rest of the list. Stop only
          * after a run of empty slots (matching the save-side clear scan). */
         for (i = 1, gap = 0; gap < 8; i++) {
-            int enc = 0, adopt = 0;
+            int enc = 0, conf = 0, adopt = 0;
             char *c;
             char fp[160];
             fp[0] = '\0';
@@ -1832,6 +1882,7 @@ void kageant_load_startup_keys(void)
                 if (!c) break;
                 if (!stricmp(c + 1, "encrypted")) { enc = 1; *c = '\0'; }
                 else if (!stricmp(c + 1, "plain")) { enc = 0; *c = '\0'; }
+                else if (!stricmp(c + 1, "confirm")) { conf = 1; *c = '\0'; }
                 else if (strstr(c + 1, "SHA256:")) {
                     /* Bare "SHA256:..." as written now, and the longer
                      * "alg bits SHA256:..." that a build in between wrote -
@@ -1845,9 +1896,12 @@ void kageant_load_startup_keys(void)
                 g_startup_missing++;
                 /* seen-so-far count is this entry's place in the offer order */
                 kageant_note_pending(abspath, enc, g_nloaded + g_npending);
-                if (fp[0] && g_npending > 0)
-                    snprintf(g_pending[g_npending - 1].fp,
-                             sizeof(g_pending[0].fp), "%s", fp);
+                if (g_npending > 0) {
+                    g_pending[g_npending - 1].confirm = conf;
+                    if (fp[0])
+                        snprintf(g_pending[g_npending - 1].fp,
+                                 sizeof(g_pending[0].fp), "%s", fp);
+                }
                 continue;
             }
             /* Is it still the key that was here? */
@@ -1857,6 +1911,8 @@ void kageant_load_startup_keys(void)
                 Filename *fn = filename_from_str(abspath);
                 win_add_keyfile(fn, enc ? true : false);
                 filename_free(fn);
+                if (conf)
+                    kageant_apply_confirm_by_path(abspath);
             }
             /* Write the list out afterwards if anything changed: a key the user
              * accepted as replaced, or - the common case on the first run after
@@ -1892,6 +1948,7 @@ void kageant_load_startup_keys(void)
                 g_startup_loading = 1;
                 for (char *p = buf; *p; p += strlen(p) + 1) {
                     int enc = 1;   /* legacy entries had no marker: deferred */
+                    int conf = 0;
                     int adopt = 0;
                     char fp[160];
                     char *c;
@@ -1912,6 +1969,7 @@ void kageant_load_startup_keys(void)
                         if (!c) break;
                         if (!stricmp(c + 1, "encrypted")) { enc = 1; *c = '\0'; }
                         else if (!stricmp(c + 1, "plain")) { enc = 0; *c = '\0'; }
+                        else if (!stricmp(c + 1, "confirm")) { conf = 1; *c = '\0'; }
                         else if (strstr(c + 1, "SHA256:")) {
                             snprintf(fp, sizeof(fp), "%s",
                                      strstr(c + 1, "SHA256:"));
@@ -1922,9 +1980,12 @@ void kageant_load_startup_keys(void)
                         g_startup_missing++;
                         kageant_note_pending(entry, enc,
                                              g_nloaded + g_npending);
-                        if (fp[0] && g_npending > 0)
-                            snprintf(g_pending[g_npending - 1].fp,
-                                     sizeof(g_pending[0].fp), "%s", fp);
+                        if (g_npending > 0) {
+                            g_pending[g_npending - 1].confirm = conf;
+                            if (fp[0])
+                                snprintf(g_pending[g_npending - 1].fp,
+                                         sizeof(g_pending[0].fp), "%s", fp);
+                        }
                         continue;
                     }
                     if (!kageant_fp_ok(entry, fp, &adopt))
@@ -1933,6 +1994,8 @@ void kageant_load_startup_keys(void)
                         Filename *fn = filename_from_str(entry);
                         win_add_keyfile(fn, enc ? true : false);
                         filename_free(fn);
+                        if (conf)
+                            kageant_apply_confirm_by_path(entry);
                     }
                     if (adopt || !fp[0])
                         g_fp_adopted = 1;   /* see the ini branch above */
@@ -2102,15 +2165,109 @@ void kageant_apply_saved_order(void)
  * key to sign when the global "Confirm every key use" toggle is on, or when
  * the key's comment requests confirmation for just that key. Returns 0 to
  * refuse, nonzero to allow. */
-extern int (*kageant_confirm_hook)(const char *comment);
-int kageant_do_confirm(const char *comment)
+extern int (*kageant_confirm_hook)(const char *comment, int key_confirm);
+
+/* KiTTY: notice for a key-set mutation that arrived over an external
+ * transport (WM_COPYDATA or the pipe): name the key and, best effort, the
+ * requesting process. Deliberately a NOTICE and not a prompt - a prompt
+ * would break every scripted ssh-add. Shares the "Notify key usage"
+ * setting with the signature notices. */
+/* KiTTY: IPC access-control policy. All default OFF. lockdownmode blocks
+ * both add and remove; blockipcadd / blockipcremove block one direction.
+ * Read from the ini where authoritative, else the registry, same shape as
+ * the other kageant settings. Enforced only for EXTERNAL requests. */
+static int kageant_policy_get(const char *inikey, const char *regname)
+{
+    char buf[32];
+    int ini_val = -1, reg_val;
+    if (kitty_inilight_read("Agent", inikey, buf, sizeof(buf))) {
+        if (!stricmp(buf, "yes")) ini_val = 1;
+        else if (!stricmp(buf, "no")) ini_val = 0;
+    }
+    if (kitty_inilight_registry_authoritative())
+        return kageant_reg_read(regname, &reg_val) ? reg_val :
+               (ini_val >= 0 ? ini_val : 0);
+    if (ini_val >= 0)
+        return ini_val;
+    return kageant_reg_read(regname, &reg_val) ? reg_val : 0;
+}
+
+int kageant_lockdown_get(void)
+{
+    return kageant_policy_get("lockdownmode", "LockdownMode");
+}
+
+int kageant_ipc_blocked(int op)
+{
+    if (kageant_lockdown_get())
+        return 1;   /* add + remove + remove-all all blocked */
+    if (op == KAGEANT_MUT_ADD)
+        return kageant_policy_get("blockipcadd", "BlockIpcAdd");
+    /* remove and remove-all share the one switch */
+    return kageant_policy_get("blockipcremove", "BlockIpcRemove");
+}
+
+void kageant_do_mutation_notice(int op, const char *comment)
+{
+    char proc[MAX_PATH + 32];
+    const char *title;
+    char *text;
+
+    if (!kageant_notify_get() || !traywindow)
+        return;
+
+    proc[0] = '\0';
+    if (pageant_external_pid) {
+        HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
+                               (DWORD)pageant_external_pid);
+        char path[MAX_PATH];
+        DWORD sz = sizeof(path);
+        if (h && QueryFullProcessImageNameA(h, 0, path, &sz)) {
+            const char *base = strrchr(path, '\\');
+            snprintf(proc, sizeof(proc), " by %s (pid %lu)",
+                     base ? base + 1 : path, pageant_external_pid);
+        } else {
+            snprintf(proc, sizeof(proc), " by pid %lu", pageant_external_pid);
+        }
+        if (h)
+            CloseHandle(h);
+    }
+
+    title = op == KAGEANT_MUT_ADD    ? "kageant - key added" :
+            op == KAGEANT_MUT_REMOVE ? "kageant - key removed" :
+                                       "kageant - ALL keys removed";
+    if (op == KAGEANT_MUT_REMOVE_ALL)
+        text = dupprintf("All keys were removed from the agent%s.", proc);
+    else
+        text = dupprintf("%s%s:\n%s",
+                         op == KAGEANT_MUT_ADD
+                             ? "A key was added to the agent"
+                             : "A key was removed from the agent",
+                         proc, comment && *comment ? comment : "(no comment)");
+    kitty_notice_show(title, text,
+                      op == KAGEANT_MUT_ADD ? KAGEANT_NOTICE_INFO
+                                            : KAGEANT_NOTICE_WARN,
+                      8, traywindow, KAGEANT_WM_NOTICE_CLICK);
+    sfree(text);
+}
+
+/* The comment convention. Checked once at ADD time (via
+ * kageant_comment_confirm_hook) to set the real per-key flag; the sign-time
+ * AUTO-mode check below stays as a safety net. */
+int kageant_comment_wants_confirm(const char *comment)
+{
+    return comment &&
+        (strstr(comment, "confirmation") ||
+         strstr(comment, "need confirm") ||
+         strstr(comment, "needs confirm"));
+}
+
+int kageant_do_confirm(const char *comment, int key_confirm)
 {
     int mode = kageant_confirm_mode();
-    if (mode == KAGEANT_CONFIRM_YES ||
+    if (mode == KAGEANT_CONFIRM_YES || key_confirm ||
         (mode == KAGEANT_CONFIRM_AUTO && comment &&
-         (strstr(comment, "confirmation") ||
-          strstr(comment, "need confirm") ||
-          strstr(comment, "needs confirm")))) {
+         kageant_comment_wants_confirm(comment))) {
         char *msg = dupprintf(
             "A remote session is requesting to authenticate with the SSH key:"
             "\n\n    %s\n\nAllow this key to be used?", comment);

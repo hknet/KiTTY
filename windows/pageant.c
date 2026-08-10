@@ -530,6 +530,7 @@ struct keylist_display_data {
     char *fp_full[SSH_N_FPTYPES];  /* KiTTY: every fingerprint form, for the
                                     * details dialog; NULL where inapplicable
                                     * (certificate forms of a plain key) */
+    int confirm;      /* KiTTY: per-key confirm-on-use (from the ext flag) */
     int pending;      /* KiTTY: a not-loaded startup entry, not an agent key */
     char *pendpath;   /* KiTTY: its stored file path (pending rows only) */
     int ssh_version;  /* KiTTY: 1 or 2; SSH-1 keys cannot be re-encrypted */
@@ -554,6 +555,7 @@ static void keylist_update_callback(
     /* KiTTY: keep every fingerprint form for the details dialog. */
     for (size_t t = 0; t < SSH_N_FPTYPES; t++)
         disp->fp_full[t] = fingerprints[t] ? dupstr(fingerprints[t]) : NULL;
+    disp->confirm = (ext_flags & LIST_EXTENDED_FLAG_CONFIRM_ON_USE) != 0;
     disp->pending = 0;
     disp->pendpath = NULL;
     disp->ssh_version = key->ssh_version;
@@ -974,6 +976,7 @@ void keylist_update(void)
             disp->state = failed ? KEYSTATE_FAILED : KEYSTATE_MISSING;
             for (size_t t = 0; t < SSH_N_FPTYPES; t++)
                 disp->fp_full[t] = NULL;
+            disp->confirm = 0;
             disp->pending = 1;
             disp->pendpath = dupstr(path);
             disp->ssh_version = 0;
@@ -1314,6 +1317,7 @@ static const struct kl_anchor keydetail_anchors[] = {
     {IDC_KEYDETAIL_LIFETIME,
      KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
     {IDC_KEYDETAIL_DEFER,   KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_CONFIRM, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDOK,                  KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
 };
 static RECT keydetail_baserects[lenof(keydetail_anchors)];
@@ -1558,6 +1562,12 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                            BST_CHECKED : BST_UNCHECKED);
         }
 
+        /* KiTTY: per-key confirm-on-use - a live agent-key setting, so it
+         * needs a loaded key (pending rows have nothing to flag). */
+        EnableWindow(GetDlgItem(hwnd, IDC_KEYDETAIL_CONFIRM), !disp->pending);
+        CheckDlgButton(hwnd, IDC_KEYDETAIL_CONFIRM,
+                       disp->confirm ? BST_CHECKED : BST_UNCHECKED);
+
         /* KiTTY: the Lifetime line, ticking while the dialog is open. */
         keydetail_blob = strbuf_dup(ptrlen_from_strbuf(disp->blob));
         {
@@ -1618,6 +1628,20 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                         keypath,
                         IsDlgButtonChecked(hwnd, IDC_KEYDETAIL_DEFER) ==
                             BST_CHECKED);
+            }
+            return 0;
+          case IDC_KEYDETAIL_CONFIRM:
+            /* KiTTY: flip the live per-key confirm flag; the startup list
+             * (which persists it as a ,confirm token) is rewritten when
+             * this key is tracked there. */
+            if (keydetail_blob && keydetail_blob->len) {
+                pageant_set_key_confirm(
+                    ptrlen_from_strbuf(keydetail_blob),
+                    IsDlgButtonChecked(hwnd, IDC_KEYDETAIL_CONFIRM) ==
+                        BST_CHECKED);
+                if (kageant_startup_get())
+                    kageant_save_startup_keys();
+                keylist_update();
             }
             return 0;
           case IDOK:
@@ -2704,13 +2728,19 @@ struct WmCopydataTransaction {
     char *length, *body;
     size_t bodysize, bodylen;
     HANDLE ev_msg_ready, ev_reply_ready;
+    DWORD sender_pid;    /* KiTTY: WM_COPYDATA sender, for mutation notices */
 } wmct;
 
 static struct PageantClient wmcpc;
 
 static void wm_copydata_got_msg(void *vctx)
 {
+    /* KiTTY: WM_COPYDATA is an external transport - see the pipe path. */
+    pageant_external_request = true;
+    pageant_external_pid = wmct.sender_pid;
     pageant_handle_msg(&wmcpc, NULL, make_ptrlen(wmct.body, wmct.bodylen));
+    pageant_external_request = false;
+    pageant_external_pid = 0;
 }
 
 static void wm_copydata_got_response(
@@ -3358,6 +3388,11 @@ static LRESULT CALLBACK wm_copydata_WndProc(HWND hwnd, UINT message,
         cds = (COPYDATASTRUCT *) lParam;
         if (cds->dwData != AGENT_COPYDATA_ID)
             return 0;              /* not our message, mate */
+        /* KiTTY: wParam is the sending window, by the WM_COPYDATA contract -
+         * best-effort requester identity for the mutation notices. */
+        wmct.sender_pid = 0;
+        if (wParam)
+            GetWindowThreadProcessId((HWND)wParam, &wmct.sender_pid);
         mapname = (char *) cds->lpData;
         if (mapname[cds->cbData - 1] != '\0')
             return 0;              /* failure to be ASCIZ! */
@@ -3471,6 +3506,10 @@ static void show_cmdline_help(void)
         "        passphrase is asked at first use\n"
         "-keylist\n"
         "        open the key list window at startup\n"
+        "-noload\n"
+        "        clean slate: do not load the stored startup keys (no\n"
+        "        passphrase prompts) and leave the stored list untouched;\n"
+        "        key files named on the command line still load\n"
         "-c command [args ...]\n"
         "        run the command once the agent is up; everything\n"
         "        after -c is the command line\n"
@@ -3679,6 +3718,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             add_keys_encrypted = true;
         } else if (match_opt("-keylist")) {
             show_keylist_on_startup = true;
+        } else if (match_opt("-noload", "-no-load", "-clean")) {
+            /* Clean slate: ignore the stored startup keys (no loads, no
+             * passphrase prompts) and leave the stored list untouched. */
+            kageant_noload_set();
         } else if (match_optval("-openssh-config", "-openssh_config")) {
             openssh_config_file = cmdline_arg_to_filename(valarg);
         } else if (match_optval("-unix")) {
@@ -3773,6 +3816,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         /* KiTTY: enable private-key usage confirmation for keys whose comment
          * requests it (see kageant_do_confirm). */
         kageant_confirm_hook = kageant_do_confirm;
+        kageant_comment_confirm_hook = kageant_comment_wants_confirm;
+        kageant_mutation_notice_hook = kageant_do_mutation_notice;
+        kageant_ipc_blocked_hook = kageant_ipc_blocked;
         kageant_notify_hook = kageant_do_notify;
         kageant_key_lifetime_hook = kageant_key_set_lifetime;   /* ssh-add -t */
 

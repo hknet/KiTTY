@@ -137,6 +137,11 @@ static int inilight_portable_layout(void)
  * auto-created kitty.ini whose savemode key was deleted when the mode was
  * selected - except that portable builds force dir mode without ever
  * writing a savemode key, so their on-disk layout counts as evidence. */
+int kitty_inilight_portable(void)
+{
+    return inilight_portable_layout();
+}
+
 int kitty_inilight_registry_authoritative(void)
 {
     char buf[32];

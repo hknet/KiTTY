@@ -12,6 +12,14 @@
 #include "security-api.h"
 #include "cryptoapi.h"
 
+#include "../kitty/kitty_authenticode.h"   /* KiTTY: serving-agent check hook */
+
+/* KiTTY: installed by kitty.exe only (NULL in console tools). Called with the
+ * serving agent's pid after a query is answered - observational, never gates
+ * the query. The static below keeps it to one real check per process. */
+void (*agent_serving_check_hook)(unsigned long server_pid, int transport) = NULL;
+static bool agent_serving_checked = false;
+
 static bool wm_copydata_agent_exists(void)
 {
     HWND hwnd;
@@ -97,6 +105,14 @@ static void wm_copydata_agent_query(strbuf *query, void **out, int *outlen)
      */
     id = SendMessage(hwnd, WM_COPYDATA, (WPARAM) NULL, (LPARAM) &cds);
     if (id > 0) {
+        /* KiTTY: who answered? (best effort - the sending window's process) */
+        if (agent_serving_check_hook && !agent_serving_checked) {
+            DWORD spid = 0;
+            GetWindowThreadProcessId(hwnd, &spid);
+            agent_serving_checked = true;
+            agent_serving_check_hook((unsigned long)spid,
+                                     KITTY_AGENT_TRANSPORT_WMCOPYDATA);
+        }
         uint32_t length_field = GET_32BIT_MSB_FIRST(p);
         if (length_field > 0 && length_field <= AGENT_MAX_MSGLEN - 4) {
             retlen = length_field + 4;
@@ -210,6 +226,16 @@ static agent_pending_query *named_pipe_agent_query(
     pipehandle = connect_to_named_pipe(pipename, &err);
     if (pipehandle == INVALID_HANDLE_VALUE)
         goto failure;
+
+    /* KiTTY: which process is serving this pipe? Observational only. */
+    if (agent_serving_check_hook && !agent_serving_checked) {
+        ULONG spid = 0;
+        if (GetNamedPipeServerProcessId(pipehandle, &spid)) {
+            agent_serving_checked = true;
+            agent_serving_check_hook((unsigned long)spid,
+                                     KITTY_AGENT_TRANSPORT_PIPE);
+        }
+    }
 
     strbuf_finalise_agent_query(query);
 

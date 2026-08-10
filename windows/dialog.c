@@ -1256,17 +1256,15 @@ bool do_config(Conf *conf)
      * portable KiTTY from an installed one at a glance. */
     {
         extern int kitty_storage_is_portable(void);
+        extern char *kitty_title_compose(const char *, int, int, int);
         /* ...and with the restricted process ACL, since this window is what a
          * "kitty.exe -restrict-acl" with no session shows: the terminal title
-         * carries the same marker, but there is no terminal yet here. */
-        pds->dp->wintitle = dupprintf("%s Configuration%s%s", appname,
-            kitty_storage_is_portable() ? " (portable)" : "",
-            restricted_acl() ? " (RESTRICTED)" : "");
-#ifdef KITTY_TEST_BUILD_LABEL
-        { char *t = dupprintf("%s  *** TEST BUILD: %s ***", pds->dp->wintitle,
-                              KITTY_TEST_BUILD_LABEL);
-          sfree(pds->dp->wintitle); pds->dp->wintitle = t; }
-#endif
+         * carries the same marker, but there is no terminal yet here.
+         * Suffixes composed in kitty/kitty_title.c - one place for all. */
+        char *base = dupprintf("%s Configuration", appname);
+        pds->dp->wintitle = kitty_title_compose(
+            base, kitty_storage_is_portable(), restricted_acl(), true);
+        sfree(base);
     }
     pds->dp->data = conf;
 
@@ -1298,13 +1296,13 @@ bool do_reconfig(HWND hwnd, Conf *conf, int protcfginfo)
 
     {
         extern int kitty_storage_is_portable(void);
-        pds->dp->wintitle = dupprintf("%s Reconfiguration%s", appname,
-            kitty_storage_is_portable() ? " (portable)" : "");
-#ifdef KITTY_TEST_BUILD_LABEL
-        { char *t = dupprintf("%s  *** TEST BUILD: %s ***", pds->dp->wintitle,
-                              KITTY_TEST_BUILD_LABEL);
-          sfree(pds->dp->wintitle); pds->dp->wintitle = t; }
-#endif
+        extern char *kitty_title_compose(const char *, int, int, int);
+        /* This window missed (RESTRICTED) while every title rolled its own
+         * suffixes - composed in kitty/kitty_title.c now, one place for all. */
+        char *base = dupprintf("%s Reconfiguration", appname);
+        pds->dp->wintitle = kitty_title_compose(
+            base, kitty_storage_is_portable(), restricted_acl(), true);
+        sfree(base);
     }
     pds->dp->data = conf;
 

@@ -3704,6 +3704,9 @@ void InitWinMain( void ) {
 	int i ;
 
 	NETDBG_TS("InitWinMain: enter");
+
+	/* KiTTY: install the client-side serving-agent check (security). */
+	{ extern void kitty_install_agent_check(void); kitty_install_agent_check(); }
 	srand(time(NULL));
 	
 	if( existfile("kitty.log") ) { unlink( "kitty.log" ) ; }
