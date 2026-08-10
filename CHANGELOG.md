@@ -5,6 +5,148 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.72-beta — 2026-08-10
+
+### Fixed
+
+- **Ghost keys in the agent's list — cleaned up automatically.** 0.84.1.71's
+  registry parser stripped a startup entry's `,plain`/`,encrypted`/
+  `,SHA256:…` markers in place inside the stored list, so its walk re-entered
+  the record and read each marker as one more entry — and the next save
+  persisted those fragments as startup keys. The result: phantom entries
+  named `plain`, `encrypted` or `SHA256:…` in the key list and an inflated
+  "keys not loaded" count. The parser is fixed, and the first start of this
+  release removes the phantoms .71 wrote. Only entries whose "path" is
+  exactly such a fragment *and* names no existing file are touched — real
+  keys, including ones waiting for an absent USB drive, keep their entry and
+  their place in the offer order.
+
+- **Generating a key of one type over a key of another could crash
+  kittygen.** Generate an Ed25519 key, then generate an RSA key in the same
+  window, and freeing the first key's remains could free a stray pointer.
+  Pre-existing; found while building the in-memory protection below.
+
+- **The licence text can be scrolled at last.** The licence boxes of KiTTY,
+  kageant and kittygen had no scrollbar, and our licence text is longer than
+  upstream's, so its tail — including the actual MIT licence — could not be
+  reached at all.
+
+- **Removing a key over IPC while the key list was open could trip an
+  assertion.** The list now survives the key set changing under it.
+
+### kageant: a real key-list window
+
+The keys window was a fixed-size listbox with three buttons. It is now the
+place the agent is actually operated from.
+
+- **A real list.** Columns for a key's type, size, state, confirmation and
+  remaining lifetime, with draggable widths; the window resizes and remembers
+  its geometry. Double-clicking a key opens a details dialog whose fields can
+  be copied — every fingerprint form, the comment, and each file the key was
+  loaded from, with a *Load key now* for deferred keys.
+
+- **The list is the offer order, so you can arrange it.** Drag rows to
+  reorder; the order is what servers are offered, and every refused key
+  spends one of the attempts a server allows.
+
+- **Drop a key file on the window to add it.** And each key chooses for
+  itself whether it loads decrypted or deferred (passphrase on first use);
+  one state-aware button decrypts or re-encrypts whatever is selected.
+
+- **New key, Stop agent, Settings.** *New key* starts the key generator —
+  after verifying its signature, with an explicit override if you know why it
+  is unsigned. *Settings* collects the `[Agent]` options that used to live
+  only in kitty.ini or scattered tray toggles, including the notice timeout
+  and the IPC controls below. The window opens by itself when kageant starts
+  with nothing loaded and nothing pending — an empty tray icon told nobody
+  anything.
+
+### kageant: the agent protocol's security features now work
+
+- **`ssh-add -t` (key lifetime) is honoured.** The agent used to read a
+  constrained add, drop the constraint bytes unread, and answer *success* —
+  stock PuTTY behaviour, but it meant a client asking for a one-hour key was
+  told it got one and did not. Lifetimes now count down in their own column
+  and the key unloads when its time is up.
+
+- **`ssh-add -c` (confirm each use) is honoured per key.** The confirm flag
+  is a real per-key property — set by `-c`, by the comment convention, or by
+  a checkbox in the key's details — and the global setting is three-state
+  (always / per-key / never) everywhere it appears.
+
+- **You are told when a program changes the key set.** Any process running as
+  you may add or remove keys over the agent protocol — that is the protocol —
+  but it now happens in the open: a notice names the key and, where it can be
+  established, the requesting program. A notice, deliberately not a prompt:
+  an agent that blocks on a dialog breaks every scripted `ssh-add`.
+
+- **And you can refuse it.** `[Agent] lockdownmode` refuses all key
+  management over IPC; `blockipcadd` / `blockipcremove` refuse just one
+  direction. The window's own buttons are never affected, and signing is
+  never blocked — this locks the key *set*, not the agent.
+
+- **Notices are kageant's own windows now, not tray balloons.** Windows focus
+  assist swallowed balloons silently, which for security notices is the worst
+  possible failure. The new notices stay up for a configurable time
+  (`[Agent] noticetimeout`), hold while the pointer is over them, and open
+  the key list when clicked.
+
+- **Denied confirmations cannot wedge the agent quietly.** A denied
+  confirm-storm can be stopped with one click ("stop asking"), and resuming
+  is offered three ways — the tray, a button in the key list, and the notice
+  itself — instead of being buried.
+
+### kittygen: a fresh key no longer sits in memory in the clear
+
+- **The generated (or loaded) private key is held encrypted in memory** and
+  decrypted only for the moment it is saved, exported or has a certificate
+  attached. The window is typically open for minutes while a comment,
+  passphrase and filename are chosen; a crash dump, the pagefile or the
+  hibernation file taken in that window used to contain the key in the
+  clear — a clean close wiped it, but a crash never runs the wipe. kageant
+  has protected its held keys this way since 0.84.1.44; the key generator
+  now does the same, in both the window and the command-line tool.
+
+- **kittygen states its circumstances.** Its title now carries the same
+  `(portable)` / `(RESTRICTED)` markers as the other windows — this window
+  holds a fresh private key, so "am I restricted?" matters here too — and a
+  restricted kageant launches it restricted instead of unrestricted.
+
+### kitty.exe: knowing which agent answered
+
+- **A signed KiTTY now checks who is answering its agent requests.** Any
+  process may own the agent name and pipe, and whoever does receives every
+  key request. When the answering process is not our own signed kageant,
+  KiTTY says so — once, quietly — instead of letting stock Pageant, an old
+  KiTTY agent or something pretending to be one collect requests while you
+  believe your keys sit behind kageant's protections. (Inactive in unsigned
+  local builds, which cannot vouch for anyone.) Running another agent on
+  purpose is a fine reason to switch the warning off: a checkbox under
+  *Connection → SSH → Auth* — marked as the application-wide setting it is —
+  or `[KiTTY] verifyagent=no`.
+
+### Changed
+
+- **kageant answers `-h`, `-help` and `--help`** with its actual options
+  instead of silently starting. The PGP-fingerprints box now presents
+  upstream PuTTY's master keys as the historic information they are, rather
+  than implying they vouch for these binaries.
+
+- **`kageant -noload`** starts the agent with the startup keys left alone —
+  for a test run, or a machine where the sticks are elsewhere.
+
+- **The tray menu can start terminal sessions again.** The classic-KiTTY
+  session launcher in kageant's tray menu is back, launching the kitty.exe
+  found beside the agent — and hard-gated: it appears only when that binary
+  verifies.
+
+- **The update-available box gained a "View release notes" button**, so what
+  changed can be read before agreeing to it.
+
+- **kitty.ini.example documents eight keys that had escaped it**, including
+  the removable-media `[Agent]` settings from 0.84.1.71 and the
+  `[KiTTY] funkeys` / `namedproxy` globals; the drift checker is clean again.
+
 ## 0.84.1.71-beta — 2026-08-08
 
 ### kageant: keys that live on removable media

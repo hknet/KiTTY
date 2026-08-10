@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.71 — Known issues & limitations
+# KiTTY 0.84.1.72 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -171,6 +171,18 @@ features are working and verified. Known limitations as of this release:
 
 ## Security
 
+- **The agent-identity check works only in signed builds.** Since 0.84.1.72 a
+  KiTTY that is itself Authenticode-signed verifies which process answers its
+  agent requests and warns when it is not our signed kageant. A locally built,
+  unsigned KiTTY cannot vouch for anyone and skips the check entirely — so
+  "no warning" in a self-built binary is absence of the check, not a clean
+  bill.
+- **kittygen's in-memory protection covers SSH-2 keys.** A generated or
+  loaded SSH-2 private key is held `CryptProtectMemory`-encrypted from
+  0.84.1.72 and decrypted only for the instant of use. Legacy **SSH-1** keys
+  stay in the clear while the window is open — the format is obsolete and the
+  retrofit deliberately did not touch that path. The residual for SSH-2 is the
+  brief decrypt-to-use window itself.
 - **Diagnostic dumps have been removed.** `/savedump` and `kitty.exe -savedump`
   are gone as of **0.84.1.65**. The dump was written encrypted under a key
   compiled into the program, and KiTTY shipped no way to read one back, so a
@@ -217,7 +229,7 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.71-beta @ 2026-08-08`.
+- **Version string:** binaries report `0.84.1.72-beta @ 2026-08-10`.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
