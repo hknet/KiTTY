@@ -15,6 +15,7 @@
 #include "licence.h"
 #include "security-api.h"
 #include "puttygen-rc.h"
+#include "../kitty/kitty_title.h"   /* KiTTY: shared title composer */
 
 #include <commctrl.h>
 
@@ -1633,6 +1634,17 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
         state->entropy = NULL;
         state->key_exists = false;
         SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR) state);
+        /* KiTTY: carry the same (portable)/(RESTRICTED)/test-label markers as
+         * the config box and kageant - this window holds a freshly generated
+         * private key, so "am I restricted?" matters here too. */
+        {
+            extern int kitty_storage_is_portable(void);
+            char *t = kitty_title_compose("KiTTY Key Generator",
+                                          kitty_storage_is_portable(),
+                                          restricted_acl(), 1);
+            SetWindowText(hwnd, t);
+            sfree(t);
+        }
         {
             HMENU menu, menu1;
 

@@ -2521,8 +2521,12 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                         go = (r == IDYES);
                     }
                     if (go)
-                        ShellExecute(hwnd, NULL, g, NULL, NULL,
-                                     SW_SHOWNORMAL);
+                        /* KiTTY: a restricted agent must launch a restricted
+                         * key generator - the new private key would otherwise
+                         * sit in an unrestricted process. */
+                        ShellExecute(hwnd, NULL, g,
+                                     restricted_acl() ? "-restrict-acl" : NULL,
+                                     NULL, SW_SHOWNORMAL);
                     sfree(g);
                 }
             }

@@ -172,6 +172,7 @@ installed_program(puttytel)
 add_executable(puttygen
   puttygen.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c    # KiTTY: shared (portable)/(RESTRICTED)/test-label title composer
   ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
   noise.c
   no-jump-list.c
