@@ -4459,6 +4459,28 @@ static void kitty_showforeign_handler(dlgcontrol *ctrl, dlgparam *dlg,
         dlg_refresh(ssd->listbox, dlg);
     }
 }
+
+/* KiTTY: [KiTTY] verifyagent - the warning a signed kitty.exe shows when an
+ * unverified program answers its SSH agent requests (kitty_win.c, the
+ * serving-agent check). A GLOBAL application setting, deliberately not part
+ * of the session's Conf: the checkbox reads and writes the settings store
+ * directly, and a change applies to windows opened from then on. */
+static void kitty_verifyagent_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                      void *data, int event)
+{
+    (void)data;
+    if (event == EVENT_REFRESH) {
+        char cfg[16];
+        int warn = 1;
+        if (ReadParameterN(INIT_SECTION, "verifyagent", cfg, sizeof(cfg)) &&
+            !stricmp(cfg, "no"))
+            warn = 0;
+        dlg_checkbox_set(ctrl, dlg, warn);
+    } else if (event == EVENT_VALCHANGE) {
+        WriteParameter(INIT_SECTION, "verifyagent",
+                       dlg_checkbox_get(ctrl, dlg) ? "yes" : "no");
+    }
+}
 #endif
 
 
@@ -6626,6 +6648,23 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                           HELPCTX(ssh_auth_changeuser),
                           conf_checkbox_handler,
                           I(CONF_change_username));
+
+#ifdef MOD_PERSO
+            /* KiTTY: the serving-agent warning's off switch, surfaced where
+             * agent authentication is configured. Announced the way the
+             * WinSCP path and the workplace-proxy box announce it - the
+             * shared bold lead line - so it cannot be read as one more
+             * session option ([KiTTY] verifyagent; see the handler). */
+            if (!GetPuttyFlag()) {
+                s = ctrl_getset(b, "Connection/SSH/Auth", "kittyapp",
+                                "Unverified SSH agent warning");
+                ctrl_text(s, KITTY_NOT_SESSION_LEAD, HELPCTX(no_help));
+                ctrl_checkbox(s, "Warn when an unverified agent serves "
+                              "the keys", NO_SHORTCUT,
+                              HELPCTX(no_help),
+                              kitty_verifyagent_handler, P(NULL));
+            }
+#endif
 
             ctrl_settitle(b, "Connection/SSH/Auth/Credentials",
                           "Credentials to authenticate with");

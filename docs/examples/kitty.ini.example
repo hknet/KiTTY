@@ -212,6 +212,13 @@
 ;    and every modern host expect.
 ;funkeys=xterm216
 
+; verifyagent: a signed KiTTY checks, once per terminal window, whether the
+;    program answering its SSH agent requests is a verified KiTTY/kageant
+;    build, and warns when it is not. Set no if you deliberately run stock
+;    Pageant, the Windows OpenSSH agent or another agent. Also a checkbox:
+;    Connection -> SSH -> Auth (an application-wide setting, not per session).
+;verifyagent=yes
+
 ; WorkplaceProxy / WorkplaceMinutes: the workplace-proxy-mode droplists'
 ;    remembered LAST selection (which proxy, for how long), shared between
 ;    the config box and the launcher menu so both offer the same thing next

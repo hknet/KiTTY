@@ -17,4 +17,11 @@ void kitty_notice_show(const char *title, const char *text, COLORREF accent,
                        int seconds, HWND click_hwnd, unsigned int click_msg);
 void kitty_notice_hide(void);
 
+/* Clicking the "SSH agent not verified" notice (kitty_win.c) posts this to
+ * the terminal window; window.c answers by opening a configuration window
+ * on Connection/SSH/Auth, where the warning's off switch lives. Shared here
+ * because sender and receiver are different files. (WM_APP+71 is the
+ * clipboard balloon, +72 the workplace-disarm notice in window.c.) */
+#define WM_KITTY_AGENT_UNVERIFIED (WM_APP + 73)
+
 #endif

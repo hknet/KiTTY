@@ -303,8 +303,8 @@ void kitty_frame_restore_resting(void);   /* kitty/kitty_osc52.c: the frame's
                                            * standing colour for this window */
 int kitty_workplace_query(char *name, int len);   /* kitty/kitty_workplace.c */
 int kitty_workplace_request(int arm, unsigned int minutes);
-void kitty_notice_show(const char *title, const char *text, COLORREF accent,
-                       int seconds, HWND click_hwnd, unsigned int click_msg);
+#include "../kitty/kitty_notice.h"  /* kitty_notice_show + the notice click
+                                     * messages (WM_KITTY_AGENT_UNVERIFIED) */
 void kitty_workplace_show_pending_notice(void);
 void kitty_cfgbox_open_on_panel(const char *path);   /* kitty/kitty_config.c */
 /* Posted by that notice when it is clicked: switch workplace proxy mode off. */
@@ -5700,6 +5700,31 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 memset(&si, 0, sizeof(si)); si.cb = sizeof(si);
                 memset(&pi, 0, sizeof(pi));
                 sprintf(cmd, "\"%s\" -cfgpanel Connection/Proxy", exe);
+                if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL,
+                                   &si, &pi)) {
+                    CloseHandle(pi.hThread);
+                    CloseHandle(pi.hProcess);
+                }
+            }
+        }
+        return 0;
+      case WM_KITTY_AGENT_UNVERIFIED:
+        /*
+         * The "SSH agent not verified" notice (kitty_win.c) was clicked.
+         * Same shape as the workplace notice above: put the user in front
+         * of the setting rather than changing anything for them - and a
+         * NEW window rather than Change Settings, because the SSH/Auth
+         * panel is not offered mid-session.
+         */
+        {
+            char exe[MAX_PATH], cmd[MAX_PATH + 64];
+            DWORD n = GetModuleFileNameA(NULL, exe, sizeof(exe));
+            if (n && n < sizeof(exe)) {
+                STARTUPINFOA si;
+                PROCESS_INFORMATION pi;
+                memset(&si, 0, sizeof(si)); si.cb = sizeof(si);
+                memset(&pi, 0, sizeof(pi));
+                sprintf(cmd, "\"%s\" -cfgpanel Connection/SSH/Auth", exe);
                 if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL,
                                    &si, &pi)) {
                     CloseHandle(pi.hThread);

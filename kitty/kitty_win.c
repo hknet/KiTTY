@@ -1754,19 +1754,27 @@ static void kitty_agent_serving_check(unsigned long server_pid, int transport)
     {
         /* Say WHO is speaking (this terminal, not the agent) before saying
          * what was found - an anonymous amber box reads as "something says
-         * my key is compromised" and confuses more than it warns. */
+         * my key is compromised" and confuses more than it warns. And say
+         * what is actually at stake: the program SERVES the keys, so it can
+         * see and sign with them - that is not the same as "your key
+         * material leaked", which the first wording implied. Clicking the
+         * notice lands on the setting that turns the warning off, for
+         * people who run another agent on purpose. */
+        HWND GetMainHwnd(void);
         const char *base = strrchr(srv, '\\');
         char *msg = dupprintf(
             "This KiTTY terminal window checked which program answers its "
             "SSH agent requests. The answer came from an unverified "
-            "program:\n\n%s\n\nThat program handles every key this session "
-            "uses. Expected if you run stock Pageant or a self-built agent "
-            "on purpose; if you did not start it yourself, treat the keys "
-            "it holds as exposed. ([KiTTY] verifyagent=no turns this check "
-            "off.)",
+            "program:\n\n%s\n\nThat program sees, and can sign with, every "
+            "key this session uses. That is expected if you chose to run "
+            "stock Pageant, the Windows OpenSSH agent or another agent - "
+            "click this notice to open the setting that turns the warning "
+            "off. If you did not choose that agent, find out what that "
+            "program is before trusting this session.",
             base ? base + 1 : srv);
         kitty_notice_show("KiTTY: SSH agent not verified", msg,
-                          RGB(190, 110, 0), 15, NULL, 0);
+                          RGB(190, 110, 0), 15,
+                          GetMainHwnd(), WM_KITTY_AGENT_UNVERIFIED);
         sfree(msg);
     }
 }
