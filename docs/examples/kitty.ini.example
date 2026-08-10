@@ -194,6 +194,32 @@
 ;    itself from hanging. Default 5; values below 1 are ignored.
 ;proxychainmax=5
 
+; namedproxy: how a named proxy's Host field is read when the proxy entry
+;    itself does not say:
+;      sessionorhostname = the title of a saved session first, then a
+;                          hostname (the default - what PuTTY has always
+;                          done, and existing configurations may rely on it)
+;      hostname          = a hostname, full stop. Guards against a jump host
+;                          that happens to share a name with a saved session
+;                          silently dragging that session's whole config in.
+;    A proxy entry that says for itself overrides this.
+;namedproxy=sessionorhostname
+
+; funkeys: the default function-key mode for sessions that do not carry one,
+;    spelled as the Keyboard panel spells the modes: tilde, linux, xtermr6,
+;    vt400, vt100p, sco, xterm216. "xterm216" is the one worth setting - it
+;    is the only mode in which Shift+F1..F12 mean F13..F24 the way terminfo
+;    and every modern host expect.
+;funkeys=xterm216
+
+; WorkplaceProxy / WorkplaceMinutes: the workplace-proxy-mode droplists'
+;    remembered LAST selection (which proxy, for how long), shared between
+;    the config box and the launcher menu so both offer the same thing next
+;    time. KiTTY writes these itself - not knobs to edit by hand, and NOT
+;    the mode's state: arming lives only in the running launcher.
+;WorkplaceProxy=
+;WorkplaceMinutes=240
+
 ; PSCPPath: the full path to the pscp.exe (or kscp.exe) binary
 ;PSCPPath=
 
@@ -566,6 +592,28 @@
 ; trailing ",encrypted" loads that key deferred. kageant writes these when
 ; you load keys with loadonstartup on - you normally do not edit them by hand.
 ;startupkey1=keys\id_ed25519.ppk,encrypted
+
+; --- Startup keys on removable media.
+; retrykeys: when a drive appears, load the startup keys that were not there
+; at login (they wait as "not loaded" rows in the key list rather than being
+; dropped). Default yes - it does nothing unless a startup key is actually
+; missing.
+;retrykeys=yes
+; unloadonremove: when the media a key came from goes away, drop that key
+; from the agent and put it back on the pending list, so it returns when the
+; media does. Default no, deliberately: pulling a stick must not break an
+; authentication that is running right now.
+;unloadonremove=no
+; quietmissingkeys: skip the startup notice that counts keys whose media is
+; absent (expected, when they live on a stick that is not always plugged
+; in). A key file that EXISTS but will not load is still reported - that is
+; a broken key, not an absent one.
+;quietmissingkeys=no
+
+; passphrasecacheseconds: how long a typed passphrase is kept (encrypted in
+; memory) to unlock further keys of a batch add without retyping it.
+; 0 = do not cache; capped at 300. Default 60.
+;passphrasecacheseconds=60
 
 ; keylistgeometry / keylistcolumns: the key-list window's remembered
 ; position/size and column widths. kageant writes these itself when the
