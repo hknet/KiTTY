@@ -818,8 +818,7 @@ static struct wpmode_data *kitty_wpmode_active = NULL;
  * Set by "kitty.exe -cfgpanel Connection/Proxy" (windows/window.c parses it),
  * which is how the "your workplace proxy did not answer" notice puts the user
  * in front of the switch rather than switching anything off for them: a single
- * stray click should not tear down a proxy setup they may still want (user,
- * 2026-08-07).
+ * stray click should not tear down a proxy setup they may still want.
  */
 static char kitty_cfgbox_panel[128] = "";
 

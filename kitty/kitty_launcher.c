@@ -907,8 +907,7 @@ static void LauncherWorkplaceBalloon( int on, int by_timeout ) {
 	/* ⚠️ Only the TIMEOUT notice offers to switch the mode back on. When the
 	 * user switched it off themselves they have said what they want, and a
 	 * one-click undo in front of them invites the opposite; a timeout is the
-	 * case where the mode ended without them deciding anything (user,
-	 * 2026-08-07). */
+	 * case where the mode ended without them deciding anything. */
 	kitty_notice_show( on ? "Workplace proxy mode is ON"
 	                      : (by_timeout ? "Workplace proxy mode has timed out"
 	                                    : "Workplace proxy mode is OFF"),

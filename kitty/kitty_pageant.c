@@ -759,8 +759,8 @@ static int kageant_key_needs_pass(const char *abspath)
  * case the user genuinely needs to act on, which is why this is not the
  * "quietkeyfailures" it started out as.
  *
- * Written THROUGH to both stores and read from the authoritative one (user,
- * 2026-08-10, unifying with the other agent settings): a registry-mode user
+ * Written THROUGH to both stores and read from the authoritative one, the
+ * same rule as every other agent setting: a registry-mode user
  * with keys on removable media wants these too, and keeping both stores equal
  * removes the "which store?" ambiguity the earlier ini-only rule was meant to
  * avoid.
