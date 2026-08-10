@@ -15,6 +15,7 @@
 #include "ssh.h"
 #include "sshkeygen.h"
 #include "mpint.h"
+#include "kitty/kitty_protkey.h"   /* KiTTY (#4): shared protected-key core */
 
 
 /* Use progname in all user-visible messages (set from argv[0] in main) */
@@ -1342,6 +1343,26 @@ int main(int argc, char **argv)
     if (new_passphrase && !*new_passphrase) {
         sfree(new_passphrase);
         new_passphrase = NULL;
+    }
+
+    /*
+     * KiTTY (#4): route the finalised key through the shared protected-key
+     * core (kitty/kitty_protkey.c) before writing output, so the CLI self-test
+     * (qa_kittygen_cli.ps1) validates the encrypt->materialise round-trip on
+     * every key type, format and certificate - the same core the kittygen GUI
+     * holds its key in. Crypt-unavailable returns NULL and we keep the
+     * original key, so behaviour is unchanged where protection is impossible.
+     */
+    if (ssh2key && ssh2key->key) {
+        KittyProtKey *pk = kitty_protkey_from_key(ssh2key->key);
+        if (pk) {
+            ssh_key *tmp = kitty_protkey_to_temp_key(pk);
+            kitty_protkey_free(pk);
+            if (tmp) {
+                ssh_key_free(ssh2key->key);
+                ssh2key->key = tmp;
+            }
+        }
     }
 
     /*

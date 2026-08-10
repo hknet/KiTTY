@@ -16,6 +16,7 @@
 #include "security-api.h"
 #include "puttygen-rc.h"
 #include "../kitty/kitty_title.h"   /* KiTTY: shared title composer */
+#include "../kitty/kitty_protkey.h" /* KiTTY: in-memory key protection */
 
 #include <commctrl.h>
 
@@ -659,6 +660,14 @@ struct MainDlgState {
         struct eddsa_key edkey;
     };
     HMENU filemenu, keymenu, cvtmenu;
+    /*
+     * KiTTY: when non-NULL, the SSH-2 private key is held ENCRYPTED in this
+     * blob (CryptProtectMemory) and ssh2key.key is only a PUBLIC-key
+     * stand-in - see protect_current_ssh2_key() below. NULL means cleartext
+     * mode: ssh2key.key is the real live key (crypt API unavailable, or an
+     * SSH-1 key, which this scheme does not cover).
+     */
+    KittyProtKey *protkey2;
 };
 
 /*
@@ -749,6 +758,14 @@ static void burn_key_state(struct MainDlgState *state)
     if (!state->key_exists)
         return;
 
+    /* KiTTY: drop the encrypted in-memory copy along with the live key.
+     * This single hook covers all three callers: close, regenerate, and
+     * load-over-an-existing-key. */
+    if (state->protkey2) {
+        kitty_protkey_free(state->protkey2);
+        state->protkey2 = NULL;
+    }
+
     if (state->ssh2) {
         free_current_ssh2_key(state);
         sfree(state->ssh2key.comment);
@@ -759,6 +776,88 @@ static void burn_key_state(struct MainDlgState *state)
 
     state->commentptr = NULL;
     state->key_exists = false;
+}
+
+/*
+ * KiTTY: hold the SSH-2 private key ENCRYPTED in memory instead of live for
+ * the whole life of the window. On a clean close the wipes above run, but a
+ * crash or kill never runs them, so the plaintext could otherwise survive in
+ * the pagefile / hibernation file / a crash dump. Mirrors what kageant does
+ * for held keys, via the shared kitty_protkey core.
+ *
+ * The trick that keeps this small: after protecting the private key we
+ * replace ssh2key.key with a PUBLIC-only stand-in key (ssh_key_new_pub of
+ * its own public blob). Every public-only site - fingerprint, the
+ * authorized_keys text, Save public key, the cert-info dialog, the menu
+ * enable checks - keeps working unchanged on the stand-in. Only the four
+ * private-using sites (Save private key, the exports, add/remove
+ * certificate) materialise the real key, for just the instant of use.
+ *
+ * The stand-in is a normal heap key, so free_current_ssh2_key()'s in_place
+ * test naturally takes the ssh_key_free() path for it afterwards.
+ */
+
+/*
+ * Protect state->ssh2key.key into state->protkey2 and swap in the public
+ * stand-in. Call only when ssh2key.key is a real private key. On any
+ * failure the live key is left in place - cleartext mode, no worse than
+ * before this feature.
+ */
+static void protect_current_ssh2_key(struct MainDlgState *state)
+{
+    ssh_key *k = state->ssh2key.key;
+    if (!k || !ssh_key_has_private(k))
+        return;                        /* nothing secret to protect */
+
+    /* A stale blob from a previous key must not survive a new live key -
+     * materialising would silently resurrect the OLD key. */
+    if (state->protkey2) {
+        kitty_protkey_free(state->protkey2);
+        state->protkey2 = NULL;
+    }
+
+    KittyProtKey *pk = kitty_protkey_from_key(k);
+    if (!pk)
+        return;                        /* crypt API unavailable */
+
+    /* Build the stand-in BEFORE freeing the live key. */
+    strbuf *pub = strbuf_new();
+    ssh_key_public_blob(k, BinarySink_UPCAST(pub));
+    ssh_key *standin = ssh_key_new_pub(ssh_key_alg(k),
+                                       ptrlen_from_strbuf(pub));
+    strbuf_free(pub);
+    if (!standin) {
+        kitty_protkey_free(pk);
+        return;
+    }
+
+    free_current_ssh2_key(state);      /* union-aware */
+    state->ssh2key.key = standin;
+    state->protkey2 = pk;
+}
+
+/*
+ * Materialise the real private key for one use. In cleartext mode this is
+ * just the live key itself. Returns NULL only on a decryption failure -
+ * the caller must then abort its operation (NEVER fall through to a
+ * private-key path with the public stand-in still installed: that would
+ * write out a silently corrupted key file).
+ */
+static ssh_key *materialise_ssh2_key(struct MainDlgState *state)
+{
+    if (!state->protkey2)
+        return state->ssh2key.key;
+    return kitty_protkey_to_temp_key(state->protkey2);
+}
+
+/*
+ * Release a key obtained from materialise_ssh2_key(). A temp key is freed;
+ * the cleartext-mode live key (== ssh2key.key) is left alone.
+ */
+static void finished_with_ssh2_key(struct MainDlgState *state, ssh_key *k)
+{
+    if (k && k != state->ssh2key.key)
+        ssh_key_free(k);
 }
 
 /*
@@ -1221,6 +1320,11 @@ static void update_ui_after_load(HWND hwnd, struct MainDlgState *state,
      */
     ui_set_state(hwnd, state, 2);
     state->key_exists = true;
+
+    /* KiTTY: the UI above is fully updated - swap the private key out of
+     * memory for the encrypted blob + public stand-in. */
+    if (state->ssh2)
+        protect_current_ssh2_key(state);
 }
 
 void load_key_file(HWND hwnd, struct MainDlgState *state,
@@ -1404,8 +1508,20 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
         return;
     }
 
+    /* KiTTY: the private blob needs the real key, not the public stand-in -
+     * materialise it for just this extraction. Abort on failure. */
+    ssh_key *livekey = materialise_ssh2_key(state);
+    if (!livekey) {
+        char *msg = dupprintf("Unable to decrypt the in-memory private key");
+        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
+                    false, HELPCTXID(errors_cantloadkey));
+        sfree(msg);
+        strbuf_free(pub);
+        return;
+    }
     strbuf *priv = strbuf_new_nm();
-    ssh_key_private_blob(state->ssh2key.key, BinarySink_UPCAST(priv));
+    ssh_key_private_blob(livekey, BinarySink_UPCAST(priv));
+    finished_with_ssh2_key(state, livekey);
     ssh_key *newkey = ssh_key_new_priv(
         alg, ptrlen_from_strbuf(pub), ptrlen_from_strbuf(priv));
     strbuf_free(pub);
@@ -1424,6 +1540,9 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
      * with a CA-signed certificate for a just-generated Ed25519 key). */
     free_current_ssh2_key(state);
     state->ssh2key.key = newkey;
+    /* KiTTY: newkey is a full private key - protect it and swap the
+     * stand-in back in (this also drops the pre-certificate blob). */
+    protect_current_ssh2_key(state);
 
     update_ui_after_ssh2_pubkey_change(hwnd, state);
     ui_set_state(hwnd, state, 2);
@@ -1431,9 +1550,20 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
 
 void remove_certificate(HWND hwnd, struct MainDlgState *state)
 {
-    ssh_key *newkey = ssh_key_clone(ssh_key_base_key(state->ssh2key.key));
+    /* KiTTY: cloning the base key must clone the PRIVATE key, so it has to
+     * work on the materialised real key, not the public stand-in. */
+    ssh_key *livekey = materialise_ssh2_key(state);
+    if (!livekey) {
+        MessageBox(hwnd, "Unable to decrypt the in-memory private key",
+                   "KiTTYgen Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    ssh_key *newkey = ssh_key_clone(ssh_key_base_key(livekey));
+    finished_with_ssh2_key(state, livekey);
     free_current_ssh2_key(state);          /* see add_certificate */
     state->ssh2key.key = newkey;
+    /* KiTTY: re-protect the uncertified private key. */
+    protect_current_ssh2_key(state);
     update_ui_after_ssh2_pubkey_change(hwnd, state);
     ui_set_state(hwnd, state, 2);
 }
@@ -1449,6 +1579,19 @@ static void start_generating_key(HWND hwnd, struct MainDlgState *state)
     /* KiTTY: the generation thread writes straight into state's key union, so
      * anything still in there has to be wiped BEFORE it starts. */
     burn_key_state(state);
+
+    /* KiTTY: and then ZEROED. The union may still hold byte residue of a
+     * previous key of a DIFFERENT type (snew doesn't zero it at startup
+     * either), and the generators don't initialise every field of their
+     * member - rsa_generate never touches RSAKey.comment, so freersakey()
+     * would later sfree() whatever stale pointer of an old eddsa/ecdsa key
+     * happened to overlay it (crashed live 2026-08-10: generate Ed25519,
+     * then generate RSA). The members all overlay each other, so zeroing
+     * each one in turn clears the union's full extent. */
+    memset(&state->key, 0, sizeof(state->key));
+    memset(&state->dsakey, 0, sizeof(state->dsakey));
+    memset(&state->eckey, 0, sizeof(state->eckey));
+    memset(&state->edkey, 0, sizeof(state->edkey));
 
     SetDlgItemText(hwnd, IDC_GENERATING, generating_msg);
     SendDlgItemMessage(hwnd, IDC_PROGRESS, PBM_SETRANGE, 0,
@@ -1633,6 +1776,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
         state->generation_thread_exists = false;
         state->entropy = NULL;
         state->key_exists = false;
+        state->ssh2key.key = NULL;     /* KiTTY: snew does not zero */
+        state->protkey2 = NULL;        /* KiTTY: ditto */
         SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR) state);
         /* KiTTY: carry the same (portable)/(RESTRICTED)/test-label markers as
          * the config box and kageant - this window holds a freshly generated
@@ -2211,13 +2356,31 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     }
 
                     if (state->ssh2) {
-                        if (type != realtype)
-                            ret = export_ssh2(fn, type, &state->ssh2key,
-                                              *passphrase ? passphrase : NULL);
-                        else
-                            ret = ppk_save_f(fn, &state->ssh2key,
-                                             *passphrase ? passphrase : NULL,
-                                             &save_params);
+                        /* KiTTY: materialise the real private key for the
+                         * write; ssh2key.key is normally only the public
+                         * stand-in. On failure ABORT - saving the stand-in
+                         * would write a silently corrupted key file. */
+                        ssh_key *livekey = materialise_ssh2_key(state);
+                        if (!livekey) {
+                            MessageBox(hwnd, "Unable to decrypt the "
+                                       "in-memory private key",
+                                       "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                            ret = 1;   /* error already reported */
+                        } else {
+                            ssh_key *standin = state->ssh2key.key;
+                            state->ssh2key.key = livekey;
+                            if (type != realtype)
+                                ret = export_ssh2(
+                                    fn, type, &state->ssh2key,
+                                    *passphrase ? passphrase : NULL);
+                            else
+                                ret = ppk_save_f(
+                                    fn, &state->ssh2key,
+                                    *passphrase ? passphrase : NULL,
+                                    &save_params);
+                            state->ssh2key.key = standin;
+                            finished_with_ssh2_key(state, livekey);
+                        }
                     } else {
                         if (type != realtype)
                             ret = export_ssh1(fn, type, &state->key,
@@ -2429,6 +2592,12 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
          * Finally, hide the progress bar and show the key data.
          */
         ui_set_state(hwnd, state, 2);
+        /* KiTTY: the UI above is fully updated - swap the freshly generated
+         * private key out of memory for the encrypted blob + public
+         * stand-in. free_current_ssh2_key() inside knows the generated key
+         * is interior to the state union. */
+        if (state->ssh2)
+            protect_current_ssh2_key(state);
         break;
       case WM_HELP: {
         int id = ((LPHELPINFO)lParam)->iCtrlId;

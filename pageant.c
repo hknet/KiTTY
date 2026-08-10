@@ -291,6 +291,11 @@ static void protected_skey_free(PageantProtectedKeyBlob *psk)
     sfree(psk);
 }
 
+/* DEDUP PENDING: this protected_skey_* trio (from_key / to_temp_key / free)
+ * was extracted into the shared kitty/kitty_protkey.c so kageant, the kittygen
+ * GUI and the kittygen CLI share one copy. kageant has NOT yet been migrated
+ * onto it, deliberately, so building the kittygen protection does not risk the
+ * running agent - this copy stays until that follow-up. Not a missed refactor. */
 static PageantProtectedKeyBlob *protected_skey_from_key(ssh_key *key)
 {
     strbuf *plain = strbuf_new_nm();
