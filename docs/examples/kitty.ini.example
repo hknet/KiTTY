@@ -537,6 +537,12 @@
 ; prompt, so it does not break scripted ssh-add.
 ;messageonkeyusage=yes
 
+; noticetimeout: how long the kageant notices stay on screen, in
+; seconds (2-120). One knob for all of them (key used, key added/
+; removed over IPC, startup keys missing). Absent = each notice's own
+; default. Hovering the pointer over a notice holds it open regardless.
+;noticetimeout=8
+
 ; --- IPC access control (all default no). These restrict only requests
 ; that arrive from OTHER programs over the agent protocol (WM_COPYDATA /
 ; the named pipe, which is also what the Windows-OpenSSH integration

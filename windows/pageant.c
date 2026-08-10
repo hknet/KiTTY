@@ -47,6 +47,7 @@
 #define TID_TRAYCLICK 1
 #define TID_PASSPHRASE_CACHE 2   /* KiTTY: scrub cached passphrases (see WM_TIMER) */
 #define TID_KEY_LIFETIME 3       /* KiTTY: expire ssh-add -t keys (see WM_TIMER) */
+#define TID_KL_RESUME    7       /* KiTTY: key-list Resume-button sync */
 
 #define APPNAME "kageant"
 
@@ -110,6 +111,7 @@ static filereq_saved_dir *keypath = NULL;
 #define IDM_NOTIFY_KEYUSE      0x00C0    /* KiTTY: toggle "notify on key use" balloon */
 #define IDM_CONFIRM_KEYUSE     0x00D0    /* KiTTY: toggle "confirm every key use" prompt */
 #define IDM_SETTINGS           0x00E0    /* KiTTY: open the [Agent] settings dialog */
+#define IDM_RESUME_CONFIRM     0x00F0    /* KiTTY: lift the confirm-suppress latch */
 #define IDM_SESSIONS_BASE      0x1000
 #define IDM_SESSIONS_MAX       0x2000
 /* KiTTY: kageant's session submenu reads KiTTY's own hive (where sessions actually
@@ -654,7 +656,8 @@ static void keylist_update_callback(
     ListView_SetItemText(ctx->hlist, row, 2, disp->hash->s);
     ListView_SetItemText(ctx->hlist, row, 3, disp->info->s);
     ListView_SetItemText(ctx->hlist, row, 4, disp->expires->s);
-    ListView_SetItemText(ctx->hlist, row, 5, disp->comment->s);
+    ListView_SetItemText(ctx->hlist, row, 5, disp->confirm ? "required" : "");
+    ListView_SetItemText(ctx->hlist, row, 6, disp->comment->s);
     ctx->index++;
 }
 
@@ -992,7 +995,7 @@ void keylist_update(void)
             ListView_SetItemText(hlist, row, 3, disp->info->s);
             /* The path is the only name these entries have - it goes in the
              * comment column, where the eye looks for "which key is this". */
-            ListView_SetItemText(hlist, row, 5, disp->pendpath);
+            ListView_SetItemText(hlist, row, 6, disp->pendpath);
             ctx->index++;
             /* Removing a dead entry is the point of showing them. */
             ctx->enable_remove_controls = true;
@@ -1277,6 +1280,8 @@ static const struct kl_anchor keylist_anchors[] = {
     {IDC_KEYLIST_NEWKEY,        KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYLIST_SETTINGS,      KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYLIST_STOPAGENT,     KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_ABOUT,         KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_RESUMECONFIRM, KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
     {IDOK,                      KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
 };
 static RECT keylist_baserects[lenof(keylist_anchors)];
@@ -1288,12 +1293,37 @@ static bool keylist_layout_ready = false;
 #define KL_GEOM_REGVAL "KeyListGeometry"
 #define KL_COLS_INIKEY "keylistcolumns"
 #define KL_COLS_REGVAL "KeyListColumns"
-#define KL_NCOLS 6
+#define KL_NCOLS 7
 
 static void keylist_capture_layout(HWND hwnd)
 {
     anchored_capture(hwnd, keylist_anchors, lenof(keylist_anchors),
                      keylist_baserects, &keylist_basesize, &keylist_minsize);
+    /* KiTTY: the template height would pin the minimum window at ~10 rows.
+     * Lower it by the list's excess so the user can shrink the window until
+     * the list shows about 8 rows - everything below the list keeps its
+     * height. Header/row metrics are not up yet at capture time, so estimate
+     * a row when the real one is unavailable. */
+    {
+        HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+        if (hlist) {
+            RECT lr;
+            GetClientRect(hlist, &lr);
+            int list_h = lr.bottom - lr.top;
+            int hdr_h = 0, row_h = 0;
+            HWND hh = ListView_GetHeader(hlist);
+            if (hh) { RECT hr; GetClientRect(hh, &hr); hdr_h = hr.bottom - hr.top; }
+            RECT ir;
+            if (ListView_GetItemCount(hlist) > 0 &&
+                ListView_GetItemRect(hlist, 0, &ir, LVIR_BOUNDS))
+                row_h = ir.bottom - ir.top;
+            if (row_h <= 0) row_h = 18;          /* default-font estimate */
+            if (hdr_h <= 0) hdr_h = row_h;
+            int want = hdr_h + 8 * row_h + 4;    /* 8 rows + a little slack */
+            if (want < list_h)
+                keylist_minsize.cy -= (list_h - want);
+        }
+    }
     keylist_layout_ready = true;
 }
 
@@ -1367,13 +1397,14 @@ static void keylist_save_geometry(HWND hwnd)
     HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
     if (hlist) {
         char cols[80];
-        sprintf(cols, "%d,%d,%d,%d,%d,%d",
+        sprintf(cols, "%d,%d,%d,%d,%d,%d,%d",
                 ListView_GetColumnWidth(hlist, 0),
                 ListView_GetColumnWidth(hlist, 1),
                 ListView_GetColumnWidth(hlist, 2),
                 ListView_GetColumnWidth(hlist, 3),
                 ListView_GetColumnWidth(hlist, 4),
-                ListView_GetColumnWidth(hlist, 5));
+                ListView_GetColumnWidth(hlist, 5),
+                ListView_GetColumnWidth(hlist, 6));
         kageant_setting_str_set(KL_COLS_INIKEY, KL_COLS_REGVAL, cols);
     }
 }
@@ -1802,15 +1833,18 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             kageant_quiet_missing() ? BST_CHECKED : BST_UNCHECKED);
         SetDlgItemInt(hwnd, IDC_SET_TTL, kageant_passphrase_ttl(), FALSE);
         SendDlgItemMessage(hwnd, IDC_SET_TTL, EM_SETLIMITTEXT, 3, 0);
-        /* The removable-media options live in kitty.ini only. If no kitty.ini
-         * is reachable (a bare install with no ini anywhere), there is nowhere
-         * to store them - grey them rather than pretend a change was saved. */
-        if (!kageant_ini_present()) {
-            static const int inionly[] = {
-                IDC_SET_RETRY, IDC_SET_UNLOAD, IDC_SET_QUIET, IDC_SET_TTL };
-            for (size_t i = 0; i < lenof(inionly); i++)
-                EnableWindow(GetDlgItem(hwnd, inionly[i]), FALSE);
+        CheckDlgButton(hwnd, IDC_SET_LOCKDOWN,
+            kageant_lockdown_get() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_BLOCKADD,
+            kageant_blockadd_get() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_BLOCKREMOVE,
+            kageant_blockremove_get() ? BST_CHECKED : BST_UNCHECKED);
+        {
+            int ns = kageant_notice_timeout_get();
+            if (ns > 0)
+                SetDlgItemInt(hwnd, IDC_SET_NOTICESECS, ns, FALSE);
         }
+        SendDlgItemMessage(hwnd, IDC_SET_NOTICESECS, EM_SETLIMITTEXT, 3, 0);
         kitty_auxpos_apply(hwnd, "kageantSettings",
                            GetWindow(hwnd, GW_OWNER), 0);
         return 1;
@@ -1819,24 +1853,34 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
           case IDOK: {
             kageant_notify_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_NOTIFY) == BST_CHECKED);
-            /* The four ini-only options only when there is an ini to hold
-             * them (matches the greying above). */
-            if (kageant_ini_present()) {
-                kageant_retry_keys_set(
-                    IsDlgButtonChecked(hwnd, IDC_SET_RETRY) == BST_CHECKED);
-                kageant_unload_on_remove_set(
-                    IsDlgButtonChecked(hwnd, IDC_SET_UNLOAD) == BST_CHECKED);
-                kageant_quiet_missing_set(
-                    IsDlgButtonChecked(hwnd, IDC_SET_QUIET) == BST_CHECKED);
-                /* Clamp to [0, KAGEANT_TTL_MAX]; the setter clamps too. A
-                 * blank field keeps the current value. */
+            /* All agent settings write through to both stores now, so these
+             * apply in either mode - no kitty.ini gate. */
+            kageant_retry_keys_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_RETRY) == BST_CHECKED);
+            kageant_unload_on_remove_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_UNLOAD) == BST_CHECKED);
+            kageant_quiet_missing_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_QUIET) == BST_CHECKED);
+            {
+                /* Blank field keeps the current value; the setter clamps. */
                 BOOL ok = FALSE;
                 UINT ttl = GetDlgItemInt(hwnd, IDC_SET_TTL, &ok, FALSE);
-                if (ok) {
-                    if (ttl > KAGEANT_TTL_MAX)
-                        ttl = KAGEANT_TTL_MAX;
+                if (ok)
                     kageant_passphrase_ttl_set((int)ttl);
-                }
+            }
+            /* KiTTY: IPC access control + notice timeout work in either store,
+             * so they are always applied (not gated on a kitty.ini). */
+            kageant_lockdown_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_LOCKDOWN) == BST_CHECKED);
+            kageant_blockadd_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_BLOCKADD) == BST_CHECKED);
+            kageant_blockremove_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_BLOCKREMOVE) == BST_CHECKED);
+            {
+                BOOL nok = FALSE;
+                UINT ns = GetDlgItemInt(hwnd, IDC_SET_NOTICESECS, &nok, FALSE);
+                if (nok)
+                    kageant_notice_timeout_set((int)ns);   /* blank = unchanged */
             }
             /* Side-effectful toggles: fire the tray handler only on a real
              * change (it may prompt or refuse, and it is the authority). */
@@ -1884,6 +1928,14 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
     switch (msg) {
       case WM_INITDIALOG: {
         kageant_set_window_icon(hwnd);
+        /* KiTTY: opening the key list lifts any confirm-suppress latch the
+         * user set during a prompt storm - they are attending to the agent. */
+        kageant_confirm_resume();
+        /* The Resume button shows only while blocked; a 1s timer re-syncs it
+         * if a storm re-engages the latch while this window stays open. */
+        EnableWindow(GetDlgItem(hwnd, IDC_KEYLIST_RESUMECONFIRM),
+                     kageant_confirm_suppressed());
+        SetTimer(hwnd, TID_KL_RESUME, 1000, NULL);
         /* KiTTY: mark the key list with the agent's state - this is the
          * process holding the keys, so portable/restricted get answered
          * here. Suffixes composed in kitty/kitty_title.c - one place. */
@@ -1894,42 +1946,8 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             SetWindowText(hwnd, t);
             sfree(t);
         }
-        /* KiTTY: the kitty.ini status line + three-state confirm radios are
-         * shown only in kitty.ini mode. In registry mode, hide them and
-         * reclaim their height BEFORE centring so the shorter dialog centres. */
-        if (!kageant_ini_status()) {
-            static const int inirows[] = {
-                IDC_KEYLIST_INISTATUS, IDC_KEYLIST_CONFIRM_LABEL,
-                IDC_KEYLIST_CONFIRM_YES, IDC_KEYLIST_CONFIRM_AUTO,
-                IDC_KEYLIST_CONFIRM_NO };
-            RECT dr; int dy, k; size_t i;
-            dr.left = dr.top = dr.right = 0; dr.bottom = 32;
-            MapDialogRect(hwnd, &dr); dy = dr.bottom;
-            for (i = 0; i < lenof(inirows); i++) {
-                HWND c = GetDlgItem(hwnd, inirows[i]);
-                if (c) ShowWindow(c, SW_HIDE);
-            }
-            /* The whole bottom row rides above the (now hidden) confirm
-             * rows - Help/Close and the window-action buttons alike. */
-            static const int botrow[] = {
-                IDC_KEYLIST_HELP, IDOK, IDC_KEYLIST_NEWKEY,
-                IDC_KEYLIST_SETTINGS, IDC_KEYLIST_STOPAGENT };
-            for (k = 0; k < (int)lenof(botrow); k++) {
-                HWND c = GetDlgItem(hwnd, botrow[k]);
-                if (c) {
-                    RECT r; POINT p;
-                    GetWindowRect(c, &r); p.x = r.left; p.y = r.top;
-                    ScreenToClient(hwnd, &p);
-                    SetWindowPos(c, NULL, p.x, p.y - dy, 0, 0,
-                                 SWP_NOSIZE | SWP_NOZORDER);
-                }
-            }
-            {
-                RECT wr; GetWindowRect(hwnd, &wr);
-                SetWindowPos(hwnd, NULL, 0, 0, wr.right - wr.left,
-                             (wr.bottom - wr.top) - dy, SWP_NOMOVE | SWP_NOZORDER);
-            }
-        }
+        /* KiTTY: the confirm-mode radios are shown in BOTH stores' modes now
+         * (registry gained the third state), so nothing is hidden here. */
         /* KiTTY: the layout baseline for resizing - captured now, after the
          * ini-mode rows above may have shrunk the template. */
         keylist_capture_layout(hwnd);
@@ -1983,6 +2001,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 {"Fingerprint", 168, LVCFMT_LEFT},
                 {"State", 52, LVCFMT_LEFT},
                 {"Lifetime", 40, LVCFMT_RIGHT},
+                {"Confirm", 44, LVCFMT_LEFT},
                 {"Comment", 104, LVCFMT_LEFT},
             };
             HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
@@ -2013,9 +2032,9 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             if (kageant_setting_str_get(KL_COLS_INIKEY, KL_COLS_REGVAL,
                                         colstr, sizeof(colstr))) {
                 int cw[KL_NCOLS];
-                if (sscanf(colstr, "%d,%d,%d,%d,%d,%d",
-                           &cw[0], &cw[1], &cw[2], &cw[3], &cw[4], &cw[5]) ==
-                    KL_NCOLS) {
+                if (sscanf(colstr, "%d,%d,%d,%d,%d,%d,%d",
+                           &cw[0], &cw[1], &cw[2], &cw[3], &cw[4], &cw[5],
+                           &cw[6]) == KL_NCOLS) {
                     for (int i = 0; i < KL_NCOLS; i++)
                         if (cw[i] >= 8)
                             ListView_SetColumnWidth(hlist, i, cw[i]);
@@ -2047,18 +2066,21 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
 
         keylist_update();
 
-        /* KiTTY: show when the settings live in the suite ini, and preselect
-         * the confirm-mode radio matching the current askconfirmation value. */
-        if (kageant_ini_status()) {
-            char *inimsg = dupprintf("Settings file (kitty.ini mode): %s",
-                                     kageant_ini_status());
+        /* KiTTY: the confirm radios always reflect the live mode; the ini-path
+         * line is filled only when the ini is the authoritative store. */
+        {
             int m = kageant_confirm_mode();
-            SetDlgItemText(hwnd, IDC_KEYLIST_INISTATUS, inimsg);
-            sfree(inimsg);
-            CheckRadioButton(hwnd, IDC_KEYLIST_CONFIRM_YES, IDC_KEYLIST_CONFIRM_NO,
+            CheckRadioButton(hwnd, IDC_KEYLIST_CONFIRM_YES,
+                IDC_KEYLIST_CONFIRM_NO,
                 m == KAGEANT_CONFIRM_YES ? IDC_KEYLIST_CONFIRM_YES :
                 m == KAGEANT_CONFIRM_NO  ? IDC_KEYLIST_CONFIRM_NO  :
                                            IDC_KEYLIST_CONFIRM_AUTO);
+        }
+        if (kageant_ini_status()) {
+            char *inimsg = dupprintf("Settings file (kitty.ini mode): %s",
+                                     kageant_ini_status());
+            SetDlgItemText(hwnd, IDC_KEYLIST_INISTATUS, inimsg);
+            sfree(inimsg);
         }
         return 0;
       }
@@ -2531,6 +2553,21 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 }
             }
             return 0;
+          case IDC_KEYLIST_ABOUT:
+            /* KiTTY: About was tray-only; drive the same handler. */
+            if (HIWORD(wParam) == BN_CLICKED ||
+                HIWORD(wParam) == BN_DOUBLECLICKED)
+                PostMessage(traywindow, WM_COMMAND, IDM_ABOUT, 0);
+            return 0;
+          case IDC_KEYLIST_RESUMECONFIRM:
+            /* KiTTY: lift the confirm-suppress latch and hide the button. */
+            if (HIWORD(wParam) == BN_CLICKED ||
+                HIWORD(wParam) == BN_DOUBLECLICKED) {
+                kageant_confirm_resume();
+                EnableWindow(GetDlgItem(hwnd, IDC_KEYLIST_RESUMECONFIRM),
+                             FALSE);
+            }
+            return 0;
           case IDC_KEYLIST_FPTYPE:
             if (HIWORD(wParam) == CBN_SELCHANGE) {
                 int selection = SendDlgItemMessage(
@@ -2564,11 +2601,17 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
         }
         break;
       }
+      case WM_TIMER:
+        if (wParam == TID_KL_RESUME)
+            EnableWindow(GetDlgItem(hwnd, IDC_KEYLIST_RESUMECONFIRM),
+                         kageant_confirm_suppressed());
+        return 0;
       case WM_CLOSE:
         keylist = NULL;
         DestroyWindow(hwnd);
         return 0;
       case WM_DESTROY:
+        KillTimer(hwnd, TID_KL_RESUME);   /* KiTTY: Resume-button sync timer */
         /* KiTTY: every close path funnels through here - the Close button,
          * Escape, and the window menu. Save the geometry and free the
          * display structs the rows still point at (the ListView children
@@ -3065,7 +3108,10 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
       case KAGEANT_WM_NOTICE_CLICK:
         /* KiTTY: a kageant notice window was clicked - open View Keys, the
          * window that answers "which keys?" for both the key-used and the
-         * startup-keys-missing notices. */
+         * startup-keys-missing notices. Also lift any confirm-suppress latch
+         * (a no-op when not suppressed), so clicking the "confirmations
+         * blocked" notice resumes even when the key list is already open. */
+        kageant_confirm_resume();
         PostMessage(hwnd, WM_COMMAND, IDM_VIEWKEYS, 0);
         break;
       case WM_DEVICECHANGE:
@@ -3137,6 +3183,9 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                           (kageant_autostart_active() ? MF_CHECKED : MF_UNCHECKED));
             CheckMenuItem(systray_menu, IDM_OPENSSH_INTEGRATION, MF_BYCOMMAND |
                           (kageant_openssh_get() ? MF_CHECKED : MF_UNCHECKED));
+            EnableMenuItem(systray_menu, IDM_RESUME_CONFIRM, MF_BYCOMMAND |
+                           (kageant_confirm_suppressed() ? MF_ENABLED
+                                                         : MF_GRAYED));
             SetForegroundWindow(hwnd);
             TrackPopupMenu(systray_menu,
                            TPM_RIGHTALIGN | TPM_BOTTOMALIGN |
@@ -3335,6 +3384,11 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                           MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
             break;
           }
+          case IDM_RESUME_CONFIRM:
+            /* KiTTY: lift the confirm-suppress latch from the tray, reachable
+             * whether or not the key list is open. */
+            kageant_confirm_resume();
+            break;
           default: {
             if (wParam >= IDM_SESSIONS_BASE && wParam <= IDM_SESSIONS_MAX) {
                 MENUITEMINFO mii;
@@ -4017,7 +4071,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY: opt-in load-keys-on-startup (default off). */
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_autostart_active() ? MF_CHECKED : MF_UNCHECKED),
-               IDM_LOAD_ON_STARTUP, "&Load keys on startup");
+               IDM_LOAD_ON_STARTUP, "&Start kageant at login");
     /* KiTTY: opt-in (default on) tray balloon when a key is used to sign. */
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_notify_get() ? MF_CHECKED : MF_UNCHECKED),
@@ -4026,7 +4080,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * (classic [Agent] askconfirmation; per-key comment opt-in still works). */
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_confirm_get() ? MF_CHECKED : MF_UNCHECKED),
-               IDM_CONFIRM_KEYUSE, "As&k confirmation before key use");
+               IDM_CONFIRM_KEYUSE, "As&k confirmation");
+    AppendMenu(systray_menu, MF_ENABLED,
+               IDM_RESUME_CONFIRM, "Res&ume key-use confirmations");
     /* KiTTY: the same [Agent] settings dialog the key list window opens,
      * reachable straight from the tray. */
     AppendMenu(systray_menu, MF_ENABLED, IDM_SETTINGS, "&Settings...");
@@ -4042,6 +4098,16 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     SetMenuDefaultItem(systray_menu, IDM_VIEWKEYS, false);
 
     ShowWindow(traywindow, SW_HIDE);
+
+    /* KiTTY: land the user on the key list when there is nothing to work
+     * with yet - started with -noload, or a fresh agent with no keys loaded
+     * and none waiting on absent media (a new install). Beats hunting for the
+     * tray icon to add the first key. */
+    if (!already_running && !show_keylist_on_startup &&
+        (kageant_noload() ||
+         (pageant_count_ssh1_keys() + pageant_count_ssh2_keys() == 0 &&
+          kageant_pending_count() == 0)))
+        show_keylist_on_startup = true;
 
     /* Open the visible key list window, if we've been asked to. */
     if (show_keylist_on_startup)

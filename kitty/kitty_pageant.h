@@ -28,6 +28,7 @@ void kageant_noload_set(void);    /* -noload: clean-slate run */
 int  kageant_noload(void);
 void kageant_startup_set(int on);
 int kageant_notify_get(void);          /* default on */
+int kageant_notice_seconds(int fallback);  /* [Agent] noticetimeout */
 void kageant_notify_set(int on);
 int kageant_confirm_get(void);         /* default off */
 void kageant_confirm_set(int on);
@@ -117,7 +118,16 @@ int kageant_nloaded(void);             /* key paths tracked this session */
 int kageant_do_confirm(const char *comment, int key_confirm);
 void kageant_do_mutation_notice(int op, const char *comment);
 int  kageant_ipc_blocked(int op);   /* IPC access-control policy */
+void kageant_confirm_resume(void);  /* lift the confirm-suppress latch */
+int  kageant_confirm_suppressed(void);  /* is the latch engaged? */
 int  kageant_lockdown_get(void);
+void kageant_lockdown_set(int on);
+int  kageant_blockadd_get(void);
+void kageant_blockadd_set(int on);
+int  kageant_blockremove_get(void);
+void kageant_blockremove_set(int on);
+int  kageant_notice_timeout_get(void);   /* raw seconds, 0 = default */
+void kageant_notice_timeout_set(int seconds);
 int kageant_comment_wants_confirm(const char *comment);
 void kageant_do_notify(const char *comment);
 /* the hook pointers themselves live in the agent core (../pageant.c) */

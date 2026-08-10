@@ -21,6 +21,10 @@
 #define IDC_SET_UNLOAD 304
 #define IDC_SET_QUIET 305
 #define IDC_SET_TTL 306
+#define IDC_SET_NOTICESECS 307   /* notice display seconds */
+#define IDC_SET_LOCKDOWN 308      /* IPC: refuse all add/remove */
+#define IDC_SET_BLOCKADD 309      /* IPC: refuse adds */
+#define IDC_SET_BLOCKREMOVE 310   /* IPC: refuse removes */
 
 /* KiTTY: the key-details dialog */
 #define IDC_KEYDETAIL_KEY 100
@@ -59,6 +63,8 @@
 #define IDC_KEYLIST_NEWKEY 119      /* launch kittygen */
 #define IDC_KEYLIST_SETTINGS 120    /* the [Agent] settings dialog */
 #define IDC_KEYLIST_STOPAGENT 121   /* quit kageant */
+#define IDC_KEYLIST_ABOUT 122       /* open the About box */
+#define IDC_KEYLIST_RESUMECONFIRM 123  /* lift confirm-suppress; shown only when blocked */
 
 #define IDC_ABOUT_LICENCE 101
 #define IDC_ABOUT_WEBSITE 102

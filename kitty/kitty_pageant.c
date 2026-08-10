@@ -301,6 +301,7 @@ void kageant_startup_set(int on)
 
 #define KAGEANT_REG_NOTIFY "NotifyOnKeyUse"
 #define KAGEANT_REG_CONFIRM "ConfirmKeyUse"
+#define KAGEANT_REG_NOTICESECS "NoticeTimeout"  /* notice display seconds */
 
 /*
  * KiTTY: the notify/confirm settings live in the registry by default, but
@@ -415,10 +416,46 @@ void kageant_notify_set(int on)
     kageant_reg_write(KAGEANT_REG_NOTIFY, on);
 }
 
+/* KiTTY: how long a notice stays up, [Agent] noticetimeout (seconds). One
+ * knob for all of them; absent/0 keeps each notice's own default. Clamped to
+ * a sane 2..120s. The user can still HOVER to hold any notice open longer. */
+int kageant_notice_seconds(int fallback)
+{
+    char buf[16];
+    int ini_v = -1, reg_v, v;
+    if (kitty_inilight_read("Agent", "noticetimeout", buf, sizeof(buf)))
+        ini_v = atoi(buf);
+    if (kitty_inilight_registry_authoritative())
+        v = kageant_reg_read(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v :
+            (ini_v > 0 ? ini_v : 0);
+    else
+        v = (ini_v >= 0) ? ini_v :
+            (kageant_reg_read(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v : 0);
+    if (v <= 0)
+        return fallback;
+    if (v < 2) v = 2;
+    if (v > 120) v = 120;
+    return v;
+}
+
 /* KiTTY: key-use confirmation mode (classic [Agent] askconfirmation).
  * KAGEANT_CONFIRM_NO silences even the per-key comment prompts (automation)
  * and is expressible only in the ini; the registry DWORD and the two-state
  * tray toggle keep their historical 0=auto / 1=yes meaning. Default AUTO. */
+/* Registry <-> mode mapping. Historically the DWORD was two-state
+ * (0 = auto, 1 = yes); we KEEP that and add 2 = no, so an existing install
+ * is read exactly as before and only the new "Never" needs the new value. */
+static int kageant_reg_to_mode(int r)
+{
+    return r == 1 ? KAGEANT_CONFIRM_YES :
+           r == 2 ? KAGEANT_CONFIRM_NO  : KAGEANT_CONFIRM_AUTO;
+}
+static int kageant_mode_to_reg(int m)
+{
+    return m == KAGEANT_CONFIRM_YES ? 1 :
+           m == KAGEANT_CONFIRM_NO  ? 2 : 0;
+}
+
 int kageant_confirm_mode(void)
 {
     char buf[32];
@@ -430,13 +467,12 @@ int kageant_confirm_mode(void)
     }
     if (kitty_inilight_registry_authoritative())
         return kageant_reg_read(KAGEANT_REG_CONFIRM, &reg_val) ?
-               (reg_val ? KAGEANT_CONFIRM_YES : KAGEANT_CONFIRM_AUTO) :
+               kageant_reg_to_mode(reg_val) :
                (ini_mode >= 0 ? ini_mode : KAGEANT_CONFIRM_AUTO);
     if (ini_mode >= 0)
         return ini_mode;
     return kageant_reg_read(KAGEANT_REG_CONFIRM, &reg_val) ?
-           (reg_val ? KAGEANT_CONFIRM_YES : KAGEANT_CONFIRM_AUTO) :
-           KAGEANT_CONFIRM_AUTO;
+           kageant_reg_to_mode(reg_val) : KAGEANT_CONFIRM_AUTO;
 }
 
 /* The tray checkbox is two-state: checked = YES, unchecked = AUTO (or NO). */
@@ -447,23 +483,20 @@ int kageant_confirm_get(void)
 
 void kageant_confirm_set(int on)
 {
-    if (!kitty_inilight_registry_authoritative() &&
-        kitty_inilight_write("Agent", "askconfirmation", on ? "yes" : "auto"))
-        return;
-    kageant_reg_write(KAGEANT_REG_CONFIRM, on);
+    /* The two-state tray toggle: on = confirm every use, off = by comment. */
+    kageant_confirm_set_mode(on ? KAGEANT_CONFIRM_YES : KAGEANT_CONFIRM_AUTO);
 }
 
-/* Set the full three-state mode (the key-list radio buttons). The ini can
- * store all three; the registry DWORD only yes/auto, so "no" folds to auto
- * there - but the radios are only offered in ini mode anyway. */
+/* Set the full three-state mode (the key-list radio buttons), written
+ * THROUGH to both stores so an export/import lands the same value whichever
+ * store the other machine reads. The registry now holds all three states
+ * (0 = auto, 1 = yes, 2 = no; the first two unchanged from the old form). */
 void kageant_confirm_set_mode(int mode)
 {
     const char *s = (mode == KAGEANT_CONFIRM_YES) ? "yes" :
                     (mode == KAGEANT_CONFIRM_NO)  ? "no"  : "auto";
-    if (!kitty_inilight_registry_authoritative() &&
-        kitty_inilight_write("Agent", "askconfirmation", s))
-        return;
-    kageant_reg_write(KAGEANT_REG_CONFIRM, mode == KAGEANT_CONFIRM_YES ? 1 : 0);
+    kitty_inilight_write("Agent", "askconfirmation", s);
+    kageant_reg_write(KAGEANT_REG_CONFIRM, kageant_mode_to_reg(mode));
 }
 
 /* KiTTY: "kitty.ini mode" indicator for the key-list window and the tray
@@ -726,16 +759,36 @@ static int kageant_key_needs_pass(const char *abspath)
  * case the user genuinely needs to act on, which is why this is not the
  * "quietkeyfailures" it started out as.
  *
- * kitty.ini only, on purpose: these four options live in one place so they
- * cannot drift between two stores (user, 2026-08-09). The Settings dialog
- * writes them here whatever the session's storage mode.
+ * Written THROUGH to both stores and read from the authoritative one (user,
+ * 2026-08-10, unifying with the other agent settings): a registry-mode user
+ * with keys on removable media wants these too, and keeping both stores equal
+ * removes the "which store?" ambiguity the earlier ini-only rule was meant to
+ * avoid.
  */
-int kageant_quiet_missing(void)
+static int kageant_bool_get(const char *inikey, const char *regname, int def)
 {
     char buf[8];
-    if (kitty_inilight_read("Agent", "quietmissingkeys", buf, sizeof(buf)))
-        return !stricmp(buf, "yes");
-    return 0;
+    int ini_v = -1, reg_v;
+    if (kitty_inilight_read("Agent", inikey, buf, sizeof(buf))) {
+        if (!stricmp(buf, "yes")) ini_v = 1;
+        else if (!stricmp(buf, "no")) ini_v = 0;
+    }
+    if (kitty_inilight_registry_authoritative())
+        return kageant_reg_read(regname, &reg_v) ? reg_v :
+               (ini_v >= 0 ? ini_v : def);
+    if (ini_v >= 0)
+        return ini_v;
+    return kageant_reg_read(regname, &reg_v) ? reg_v : def;
+}
+static int kageant_clamp_ttl(int v)
+{
+    if (v < 0) return 0;
+    return v > KAGEANT_TTL_MAX ? KAGEANT_TTL_MAX : v;
+}
+
+int kageant_quiet_missing(void)
+{
+    return kageant_bool_get("quietmissingkeys", "QuietMissingKeys", 0);
 }
 
 /* [Agent] retrykeys: when a drive appears, try the startup keys that were not
@@ -743,10 +796,7 @@ int kageant_quiet_missing(void)
  * actually missing, so there is no cost to anyone else. */
 int kageant_retry_keys(void)
 {
-    char buf[8];
-    if (kitty_inilight_read("Agent", "retrykeys", buf, sizeof(buf)))
-        return !stricmp(buf, "yes");
-    return 1;
+    return kageant_bool_get("retrykeys", "RetryKeys", 1);
 }
 
 /* [Agent] unloadonremove: when the media a key came from goes away, drop that
@@ -758,10 +808,7 @@ int kageant_retry_keys(void)
  * back on the pending list so it returns if the media does. */
 int kageant_unload_on_remove(void)
 {
-    char buf[8];
-    if (kitty_inilight_read("Agent", "unloadonremove", buf, sizeof(buf)))
-        return !stricmp(buf, "yes");
-    return 0;
+    return kageant_bool_get("unloadonremove", "UnloadOnRemove", 0);
 }
 
 /* Seconds a typed passphrase is cached (encrypted) during a batch add.
@@ -769,38 +816,58 @@ int kageant_unload_on_remove(void)
 int kageant_passphrase_ttl(void)
 {
     char buf[16];
+    int ini_v = -1, reg_v;
     if (kitty_inilight_read("Agent", "passphrasecacheseconds",
                             buf, sizeof(buf))) {
         int v = atoi(buf);
         if (v >= 0)
-            return v > KAGEANT_TTL_MAX ? KAGEANT_TTL_MAX : v;
+            ini_v = kageant_clamp_ttl(v);
     }
-    return 60;
+    if (kitty_inilight_registry_authoritative())
+        return kageant_reg_read("PassphraseCacheSeconds", &reg_v) ?
+               kageant_clamp_ttl(reg_v) : (ini_v >= 0 ? ini_v : 60);
+    if (ini_v >= 0)
+        return ini_v;
+    return kageant_reg_read("PassphraseCacheSeconds", &reg_v) ?
+           kageant_clamp_ttl(reg_v) : 60;
 }
 
-/* Setters - kitty.ini only (see above). Return kitty_inilight_write's
- * result so the caller knows whether the ini was actually writable. */
+/* Setters - write THROUGH to both stores so the value is consistent whichever
+ * is authoritative and survives export/import. */
 int kageant_quiet_missing_set(int on)
 {
-    return kitty_inilight_write("Agent", "quietmissingkeys", on ? "yes" : "no");
+    kitty_inilight_write("Agent", "quietmissingkeys", on ? "yes" : "no");
+    kageant_reg_write("QuietMissingKeys", on ? 1 : 0);
+    return 1;
 }
 int kageant_retry_keys_set(int on)
 {
-    return kitty_inilight_write("Agent", "retrykeys", on ? "yes" : "no");
+    kitty_inilight_write("Agent", "retrykeys", on ? "yes" : "no");
+    kageant_reg_write("RetryKeys", on ? 1 : 0);
+    return 1;
 }
 int kageant_unload_on_remove_set(int on)
 {
-    return kitty_inilight_write("Agent", "unloadonremove", on ? "yes" : "no");
+    kitty_inilight_write("Agent", "unloadonremove", on ? "yes" : "no");
+    kageant_reg_write("UnloadOnRemove", on ? 1 : 0);
+    return 1;
 }
 int kageant_passphrase_ttl_set(int seconds)
 {
     char buf[16];
-    if (seconds < 0)
-        seconds = 0;
-    if (seconds > KAGEANT_TTL_MAX)
-        seconds = KAGEANT_TTL_MAX;
+    HKEY hk;
+    seconds = kageant_clamp_ttl(seconds);
     snprintf(buf, sizeof(buf), "%d", seconds);
-    return kitty_inilight_write("Agent", "passphrasecacheseconds", buf);
+    kitty_inilight_write("Agent", "passphrasecacheseconds", buf);
+    /* kageant_reg_write only stores 0/1, so write this DWORD directly. */
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        DWORD v = (DWORD)seconds;
+        RegSetValueExA(hk, "PassphraseCacheSeconds", 0, REG_DWORD,
+                       (const BYTE *)&v, sizeof(v));
+        RegCloseKey(hk);
+    }
+    return 1;
 }
 
 /*
@@ -2044,7 +2111,8 @@ void kageant_notify_startup_missing(void)
      * warning (a key did not load); 10s - longer than key-use info, since a
      * missing key is something to act on; click opens View Keys. */
     kitty_notice_show("kageant: startup keys", text, KAGEANT_NOTICE_WARN,
-                      10, traywindow, KAGEANT_WM_NOTICE_CLICK);
+                      kageant_notice_seconds(10), traywindow,
+                      KAGEANT_WM_NOTICE_CLICK);
 }
 
 /* KiTTY: persist the current key offer order (SHA256 fingerprints, REG_MULTI_SZ).
@@ -2197,6 +2265,66 @@ int kageant_lockdown_get(void)
     return kageant_policy_get("lockdownmode", "LockdownMode");
 }
 
+/* Write a yes/no policy through to BOTH stores, like the confirm mode, so
+ * the value is consistent in either mode and survives export/import. */
+static void kageant_policy_set(const char *inikey, const char *regname, int on)
+{
+    kitty_inilight_write("Agent", inikey, on ? "yes" : "no");
+    kageant_reg_write(regname, on ? 1 : 0);
+}
+void kageant_lockdown_set(int on)
+{
+    kageant_policy_set("lockdownmode", "LockdownMode", on);
+}
+int  kageant_blockadd_get(void)
+{
+    return kageant_policy_get("blockipcadd", "BlockIpcAdd");
+}
+void kageant_blockadd_set(int on)
+{
+    kageant_policy_set("blockipcadd", "BlockIpcAdd", on);
+}
+int  kageant_blockremove_get(void)
+{
+    return kageant_policy_get("blockipcremove", "BlockIpcRemove");
+}
+void kageant_blockremove_set(int on)
+{
+    kageant_policy_set("blockipcremove", "BlockIpcRemove", on);
+}
+
+/* The raw configured notice display time (0 = unset = per-notice default). */
+int kageant_notice_timeout_get(void)
+{
+    char buf[16];
+    int ini_v = -1, reg_v;
+    if (kitty_inilight_read("Agent", "noticetimeout", buf, sizeof(buf)))
+        ini_v = atoi(buf);
+    if (kitty_inilight_registry_authoritative())
+        return kageant_reg_read(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v :
+               (ini_v > 0 ? ini_v : 0);
+    if (ini_v >= 0)
+        return ini_v;
+    return kageant_reg_read(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v : 0;
+}
+void kageant_notice_timeout_set(int seconds)
+{
+    char buf[16];
+    HKEY hk;
+    if (seconds < 0) seconds = 0;
+    if (seconds > 120) seconds = 120;
+    snprintf(buf, sizeof(buf), "%d", seconds);
+    kitty_inilight_write("Agent", "noticetimeout", buf);
+    /* kageant_reg_write only stores 0/1, so write this DWORD directly. */
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        DWORD v = (DWORD)seconds;
+        RegSetValueExA(hk, KAGEANT_REG_NOTICESECS, 0, REG_DWORD,
+                       (const BYTE *)&v, sizeof(v));
+        RegCloseKey(hk);
+    }
+}
+
 int kageant_ipc_blocked(int op)
 {
     if (kageant_lockdown_get())
@@ -2247,7 +2375,8 @@ void kageant_do_mutation_notice(int op, const char *comment)
     kitty_notice_show(title, text,
                       op == KAGEANT_MUT_ADD ? KAGEANT_NOTICE_INFO
                                             : KAGEANT_NOTICE_WARN,
-                      8, traywindow, KAGEANT_WM_NOTICE_CLICK);
+                      kageant_notice_seconds(8), traywindow,
+                      KAGEANT_WM_NOTICE_CLICK);
     sfree(text);
 }
 
@@ -2262,21 +2391,77 @@ int kageant_comment_wants_confirm(const char *comment)
          strstr(comment, "needs confirm"));
 }
 
+/* Storm protection: at most one confirm box on screen, and a user-set
+ * "deny everything from now on" latch. See kageant_do_confirm. */
+static int g_confirm_active = 0;    /* a confirm box is up right now */
+static int g_confirm_suppress = 0;  /* user chose "deny & stop asking" */
+
+/* Called when the user opens the key list - a deliberate "I am dealing with
+ * this now" action, so lift any confirm-suppress latch they set during a
+ * storm. */
+void kageant_confirm_resume(void)
+{
+    g_confirm_suppress = 0;
+}
+
+int kageant_confirm_suppressed(void)
+{
+    return g_confirm_suppress;
+}
+
 int kageant_do_confirm(const char *comment, int key_confirm)
 {
     int mode = kageant_confirm_mode();
-    if (mode == KAGEANT_CONFIRM_YES || key_confirm ||
-        (mode == KAGEANT_CONFIRM_AUTO && comment &&
-         kageant_comment_wants_confirm(comment))) {
+    /* Every use -> always; By comment -> only if this key's own flag is set
+     * (the comment merely seeds that flag when the key is added, so a per-key
+     * "No" set in Key details wins); Never -> never, even a flagged key. */
+    int needs = (mode == KAGEANT_CONFIRM_YES) ||
+                (mode == KAGEANT_CONFIRM_AUTO && key_confirm);
+    (void)comment;
+    if (!needs)
+        return 1;   /* this key does not require usage confirmation */
+
+    /* The user hit "deny & stop asking" during a storm: keep denying, no box. */
+    if (g_confirm_suppress)
+        return 0;
+
+    /* One box at a time. A hostile client can fire many sign requests; the
+     * MessageBox modal loop pumps messages, so a second request can arrive
+     * and stack another box on top. Deny the pile-up rather than let a bad
+     * client fill the screen while the user is trying to say no. */
+    if (g_confirm_active)
+        return 0;
+
+    g_confirm_active = 1;
+    {
         char *msg = dupprintf(
             "A remote session is requesting to authenticate with the SSH key:"
-            "\n\n    %s\n\nAllow this key to be used?", comment);
+            "\n\n    %s\n\n"
+            "Yes - allow this one use.\n"
+            "No - deny this one use.\n"
+            "Cancel - deny this AND stop asking: all further requests are "
+            "denied silently until you open the kageant key list.",
+            comment && *comment ? comment : "(unnamed key)");
         int r = MessageBox(NULL, msg, "Confirm SSH key usage",
-                           MB_ICONQUESTION | MB_YESNO | MB_SYSTEMMODAL);
+                           MB_ICONQUESTION | MB_YESNOCANCEL | MB_SYSTEMMODAL |
+                           MB_DEFBUTTON2);   /* default No */
         sfree(msg);
+        g_confirm_active = 0;
+
+        if (r == IDCANCEL) {
+            g_confirm_suppress = 1;
+            if (kageant_notify_get() && traywindow)
+                kitty_notice_show(
+                    "kageant: confirmations blocked",
+                    "Key-use confirmations are now being denied silently. "
+                    "Click this notice, the tray \"Resume\" item, or the "
+                    "key list's Resume button to allow them again.",
+                    KAGEANT_NOTICE_WARN, kageant_notice_seconds(10),
+                    traywindow, KAGEANT_WM_NOTICE_CLICK);
+            return 0;
+        }
         return (r == IDYES);
     }
-    return 1;   /* this key does not require usage confirmation */
 }
 
 /* KiTTY: show a short tray balloon when a key is used to authenticate. Installed
@@ -2294,7 +2479,8 @@ void kageant_do_notify(const char *comment)
     snprintf(text, sizeof(text), "A key was used to authenticate:\n%s",
              (comment && *comment) ? comment : "(unnamed key)");
     kitty_notice_show("kageant: SSH key used", text, KAGEANT_NOTICE_INFO,
-                      5, traywindow, KAGEANT_WM_NOTICE_CLICK);
+                      kageant_notice_seconds(5), traywindow,
+                      KAGEANT_WM_NOTICE_CLICK);
 }
 
 /* Seam accessor: the "Load keys on startup" tray handler (windows/pageant.c)
