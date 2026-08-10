@@ -687,8 +687,25 @@ static int keylist_action_for(struct keylist_display_data *disp,
         sfree(p);
         return KLBTN_NONE;
     }
-    int action = (disp->state == KEYSTATE_ENCRYPTED) ?
-        KLBTN_DECRYPT : KLBTN_REENCRYPT;
+    int action;
+    if (disp->state == KEYSTATE_ENCRYPTED) {
+        action = KLBTN_DECRYPT;
+    } else {
+        /* Plainly loaded -> re-encrypt by recovering the encrypted form from
+         * the file. That only works if the PPK actually HAS a passphrase; a
+         * passphraseless key has nothing to re-encrypt to, and re-adding it
+         * would fail ("agent refused"). */
+        Filename *fn = filename_from_str(p);
+        char *cmt = NULL;
+        bool enc = ppk_encrypted_f(fn, &cmt);
+        filename_free(fn);
+        sfree(cmt);
+        if (!enc) {
+            sfree(p);
+            return KLBTN_NONE;
+        }
+        action = KLBTN_REENCRYPT;
+    }
     if (path_out)
         *path_out = p;
     else
@@ -696,14 +713,99 @@ static int keylist_action_for(struct keylist_display_data *disp,
     return action;
 }
 
-/* Retext + enable the action button from the currently focused/selected row. */
+/*
+ * KiTTY: does the button's TARGET action apply to this row, and if so what
+ * file does it need? The button has ONE meaning (Decrypt or Re-encrypt, from
+ * the focused row); clicking it settles every selected key to that state, it
+ * does not flip each key on its own:
+ *   - a Decrypt target acts only on a still-encrypted key (already-loaded
+ *     keys are already there - skip);
+ *   - a Re-encrypt target acts only on a loaded SSH-2 key (already-encrypted
+ *     keys are already there - skip; SSH-1 cannot re-encrypt).
+ * Returns 1 when it applies, with *path_out set to the key file when one is
+ * needed (a Decrypt, or re-encrypting a plainly-loaded key).
+ */
+static int keylist_row_for_target(struct keylist_display_data *disp,
+                                  int target, char **path_out)
+{
+    if (path_out)
+        *path_out = NULL;
+    if (!disp || disp->pending || !disp->blob->len)
+        return 0;
+
+    if (target == KLBTN_DECRYPT) {
+        if (disp->state != KEYSTATE_ENCRYPTED || disp->ssh_version != 2)
+            return 0;
+    } else if (target == KLBTN_REENCRYPT) {
+        if (disp->state == KEYSTATE_ENCRYPTED)
+            return 0;                       /* already encrypted */
+        if (disp->state == KEYSTATE_REENCRYPTABLE)
+            return 1;                       /* has its own fallback; no file */
+        if (disp->ssh_version != 2)
+            return 0;                       /* SSH-1 can't re-encrypt */
+    } else {
+        return 0;
+    }
+
+    /* Both remaining cases need the key's file on disk. */
+    char *p = kageant_file_of_blob(ptrlen_from_strbuf(disp->blob));
+    if (!p || GetFileAttributesA(p) == INVALID_FILE_ATTRIBUTES) {
+        sfree(p);
+        return 0;
+    }
+    if (target == KLBTN_REENCRYPT) {
+        /* Plainly loaded: re-encryptable only if the PPK has a passphrase
+         * (see keylist_action_for). */
+        Filename *fn = filename_from_str(p);
+        char *cmt = NULL;
+        bool enc = ppk_encrypted_f(fn, &cmt);
+        filename_free(fn);
+        sfree(cmt);
+        if (!enc) {
+            sfree(p);
+            return 0;
+        }
+    }
+    if (path_out)
+        *path_out = p;
+    else
+        sfree(p);
+    return 1;
+}
+
+/*
+ * KiTTY: what the single action button means for the CURRENT selection.
+ *
+ * The focused row sets the direction when it can act - so the row you land on
+ * decides Decrypt vs Re-encrypt. But if the focused row offers nothing (a
+ * passphraseless key, SSH-1, a key with no file), the button must not grey
+ * while OTHER selected keys are perfectly actionable - which happened when the
+ * non-actionable key just happened to be the last one marked. In that case
+ * fall back to the first selected key that can act, so the button stays live
+ * and consistent regardless of marking order.
+ */
+static int keylist_button_target(HWND hlist)
+{
+    int focus = ListView_GetNextItem(hlist, -1, LVNI_FOCUSED | LVNI_SELECTED);
+    if (focus >= 0) {
+        int a = keylist_action_for(keylist_row_data(hlist, focus), NULL);
+        if (a != KLBTN_NONE)
+            return a;
+    }
+    int row = -1;
+    while ((row = ListView_GetNextItem(hlist, row, LVNI_SELECTED)) >= 0) {
+        int a = keylist_action_for(keylist_row_data(hlist, row), NULL);
+        if (a != KLBTN_NONE)
+            return a;
+    }
+    return KLBTN_NONE;
+}
+
+/* Retext + enable the action button from the current selection. */
 static void keylist_refresh_actionbtn(HWND dlg)
 {
     HWND hlist = GetDlgItem(dlg, IDC_KEYLIST_LISTBOX);
-    int focus = ListView_GetNextItem(hlist, -1, LVNI_FOCUSED | LVNI_SELECTED);
-    if (focus < 0)
-        focus = ListView_GetNextItem(hlist, -1, LVNI_SELECTED);
-    int mode = keylist_action_for(keylist_row_data(hlist, focus), NULL);
+    int mode = keylist_button_target(hlist);
     HWND btn = GetDlgItem(dlg, IDC_KEYLIST_REENCRYPT);
     SetWindowText(btn, mode == KLBTN_DECRYPT ? "&Decrypt" : "Re-e&ncrypt");
     EnableWindow(btn, mode != KLBTN_NONE);
@@ -1316,12 +1418,25 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
         SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)keypath);
 
         /* KiTTY: how this key will be added the NEXT time the startup list
-         * loads it. Greyed for keys the startup list does not track. */
+         * loads it. Greyed for keys the startup list does not track, and for
+         * a passphraseless key - "deferred" means "passphrase at first use",
+         * which is meaningless without a passphrase, so it always loads plain
+         * and the box must not suggest otherwise. */
         {
             int mode = keypath ? kageant_startup_mode_get(keypath) : -1;
-            EnableWindow(GetDlgItem(hwnd, IDC_KEYDETAIL_DEFER), mode >= 0);
+            bool can_defer = false;
+            if (keypath) {
+                Filename *fn = filename_from_str(keypath);
+                char *cmt = NULL;
+                can_defer = ppk_encrypted_f(fn, &cmt);
+                filename_free(fn);
+                sfree(cmt);
+            }
+            EnableWindow(GetDlgItem(hwnd, IDC_KEYDETAIL_DEFER),
+                         mode >= 0 && can_defer);
             CheckDlgButton(hwnd, IDC_KEYDETAIL_DEFER,
-                           mode == 1 ? BST_CHECKED : BST_UNCHECKED);
+                           (mode == 1 && can_defer) ?
+                           BST_CHECKED : BST_UNCHECKED);
         }
 
         /* Resize baseline (fields captured; the paths box takes the extra
@@ -2087,21 +2202,33 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             return 0;
           case IDC_KEYLIST_REENCRYPT:
             /*
-             * KiTTY: the single state-sensitive action button - Decrypt a
-             * deferred key, or Re-encrypt a loaded one (re-reading the file
-             * to recover the encrypted form for a key added plain).
+             * KiTTY: the single state-sensitive action button. It has ONE
+             * meaning - Decrypt or Re-encrypt, decided by the focused row and
+             * shown on the button - and clicking it settles EVERY selected key
+             * to that state. It does not flip each key on its own: with a
+             * mixed selection and the button reading "Decrypt", every selected
+             * key ends up decrypted (the encrypted ones load; the ones already
+             * loaded are left alone), and vice-versa for "Re-encrypt".
              *
-             * Unlike Remove, these actions re-add a key, which loops back
-             * into the agent and rebuilds the ListView synchronously - so we
-             * must NOT touch a row's disp struct after the first one. Gather
-             * every selected key's action, a COPY of its blob, and its file
-             * path FIRST; then act from that snapshot.
+             * Unlike Remove, these actions re-add a key, which loops back into
+             * the agent and rebuilds the ListView synchronously - so we must
+             * NOT touch a row's disp struct after the first one. Gather each
+             * matching key's blob COPY and file path FIRST; then act.
              */
             if (HIWORD(wParam) == BN_CLICKED ||
                 HIWORD(wParam) == BN_DOUBLECLICKED) {
                 HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+                /* The button's meaning = exactly what the label shows
+                 * (keylist_button_target: focused row, else the first
+                 * actionable selected key). */
+                int target = keylist_button_target(hlist);
+                if (target == KLBTN_NONE) {
+                    MessageBeep(0);
+                    return 0;
+                }
+
                 int nitems = ListView_GetItemCount(hlist);
-                struct keyaction { int action; strbuf *blob; char *path; };
+                struct keyaction { strbuf *blob; char *path; };
                 struct keyaction *jobs =
                     snewn(nitems ? nitems : 1, struct keyaction);
                 int njobs = 0;
@@ -2112,31 +2239,25 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                     struct keylist_display_data *disp =
                         keylist_row_data(hlist, row);
                     char *path = NULL;
-                    int action = keylist_action_for(disp, &path);
-                    if (action == KLBTN_NONE) {
-                        sfree(path);
-                        continue;
-                    }
-                    jobs[njobs].action = action;
+                    if (!keylist_row_for_target(disp, target, &path))
+                        continue;           /* already in the target state */
                     jobs[njobs].blob =
                         strbuf_dup(ptrlen_from_strbuf(disp->blob));
                     jobs[njobs].path = path;   /* owned; may be NULL */
                     njobs++;
                 }
-                if (njobs == 0)
-                    MessageBeep(0);
                 for (int j = 0; j < njobs; j++) {
                     ptrlen blob = ptrlen_from_strbuf(jobs[j].blob);
-                    if (jobs[j].action == KLBTN_DECRYPT && jobs[j].path) {
+                    if (target == KLBTN_DECRYPT) {
                         if (modal_passphrase_hwnd) {
                             MessageBeep(MB_ICONERROR);
                             SetForegroundWindow(modal_passphrase_hwnd);
-                        } else {
+                        } else if (jobs[j].path) {
                             Filename *fn = filename_from_str(jobs[j].path);
                             win_add_keyfile(fn, false);   /* decrypt now */
                             filename_free(fn);
                         }
-                    } else if (jobs[j].action == KLBTN_REENCRYPT) {
+                    } else {   /* KLBTN_REENCRYPT */
                         /* A plainly-loaded key has no encrypted fallback;
                          * re-add it encrypted from its file to attach one
                          * (silent - an encrypted add never prompts), then
@@ -2753,6 +2874,12 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
              * opens the window that answers it, instead of doing nothing. */
             PostMessage(hwnd, WM_COMMAND, IDM_VIEWKEYS, 0);
         }
+        break;
+      case KAGEANT_WM_NOTICE_CLICK:
+        /* KiTTY: a kageant notice window was clicked - open View Keys, the
+         * window that answers "which keys?" for both the key-used and the
+         * startup-keys-missing notices. */
+        PostMessage(hwnd, WM_COMMAND, IDM_VIEWKEYS, 0);
         break;
       case WM_DEVICECHANGE:
         /*

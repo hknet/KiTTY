@@ -13,6 +13,13 @@
 /* HKCU ...\Run autostart value name (also shown in the tray info box). */
 #define KAGEANT_RUN_NAME    "KiTTY-kageant"
 
+/* Message the notice window posts to the tray window when a kageant notice is
+ * clicked; the tray handler opens View Keys. kageant already uses WM_APP +5
+ * (WM_NETEVENT), +6 (WM_SYSTRAY), +7 (WM_SYSTRAY2) and +8 (WM_DONE_WITH_SOCKET),
+ * so +9. This header is included after putty.h (see the file banner), so
+ * windows.h - and WM_APP - are in scope. */
+#define KAGEANT_WM_NOTICE_CLICK (WM_APP + 9)
+
 /* ---- registry-backed tray toggles (HKCU, consolidated KiTTY hive) ---- */
 int kageant_openssh_get(void);
 void kageant_openssh_set(int on);

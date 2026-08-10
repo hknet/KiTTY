@@ -15,7 +15,15 @@
 #include <shellapi.h>
 
 #include "kitty_pageant.h"
+#include "kitty_notice.h"   /* KiTTY: near-the-clock notice window (not a balloon) */
 #include "kitty_inilight.h"
+
+/* KiTTY: notice accents. Kitty's own notices are green (workplace proxy), so
+ * kageant uses two distinct colours: an amber WARNING for key-load problems,
+ * and a blue INFO for key use - recognisably kageant, not a stray kitty
+ * notice, and not confusable with a warning. */
+#define KAGEANT_NOTICE_WARN RGB(190, 110, 0)
+#define KAGEANT_NOTICE_INFO RGB(40, 70, 170)
 #include "kitty_startup_shortcut.h"
 #include "ssh.h"
 
@@ -1835,7 +1843,6 @@ void kageant_load_startup_keys(void)
  * tray icon exists). Silent when none were missing. */
 void kageant_notify_startup_missing(void)
 {
-    NOTIFYICONDATA nid;
     if (g_startup_missing <= 0 || !traywindow)
         return;
     /* [Agent] quietmissingkeys: the user has said that keys being absent is
@@ -1845,29 +1852,26 @@ void kageant_notify_startup_missing(void)
      * about it would hide a real problem. */
     if (kageant_quiet_missing())
         return;
-    memset(&nid, 0, sizeof(nid));
-    nid.cbSize = sizeof(nid);
-    nid.hWnd = traywindow;
-    nid.uID = 1;
-    nid.uFlags = NIF_INFO;
-    nid.dwInfoFlags = NIIF_WARNING;
-    nid.uTimeout = 5000;
-    snprintf(nid.szInfoTitle, sizeof(nid.szInfoTitle), "kageant: startup keys");
     /* Say what happens NEXT, not just what did not happen: with retrying on,
      * these keys are waiting rather than lost, and they load by themselves when
      * the drive comes back. Read as a plain failure, the old wording sent
      * people looking for something to fix. */
+    char text[256];
     if (kageant_retry_keys())
-        snprintf(nid.szInfo, sizeof(nid.szInfo),
+        snprintf(text, sizeof(text),
                  "%d startup key%s not reachable right now. They will be "
                  "loaded as soon as the drive they are on is back.",
                  g_startup_missing, g_startup_missing == 1 ? " is" : "s are");
     else
-        snprintf(nid.szInfo, sizeof(nid.szInfo),
+        snprintf(text, sizeof(text),
                  "%d startup key%s could not be found and %s skipped.",
                  g_startup_missing, g_startup_missing == 1 ? "" : "s",
                  g_startup_missing == 1 ? "was" : "were");
-    Shell_NotifyIcon(NIM_MODIFY, &nid);
+    /* KiTTY: our own notice window instead of a tray balloon. Amber = a
+     * warning (a key did not load); 10s - longer than key-use info, since a
+     * missing key is something to act on; click opens View Keys. */
+    kitty_notice_show("kageant: startup keys", text, KAGEANT_NOTICE_WARN,
+                      10, traywindow, KAGEANT_WM_NOTICE_CLICK);
 }
 
 /* KiTTY: persist the current key offer order (SHA256 fingerprints, REG_MULTI_SZ).
@@ -2016,19 +2020,14 @@ void kageant_do_notify(const char *comment)
 {
     if (!kageant_notify_get() || !traywindow)
         return;
-    NOTIFYICONDATA nid;
-    memset(&nid, 0, sizeof(nid));
-    nid.cbSize = sizeof(nid);
-    nid.hWnd = traywindow;
-    nid.uID = 1;                       /* same icon AddTrayIcon registered */
-    nid.uFlags = NIF_INFO;
-    nid.dwInfoFlags = NIIF_INFO;
-    nid.uTimeout = 5000;
-    snprintf(nid.szInfoTitle, sizeof(nid.szInfoTitle), "kageant: SSH key used");
-    snprintf(nid.szInfo, sizeof(nid.szInfo),
-             "A key was used to authenticate:\n%s",
+    /* KiTTY: our own notice window, not a tray balloon (the shell ignores
+     * balloon durations and often suppresses them). Blue = kageant info; 5s;
+     * click opens View Keys. */
+    char text[256];
+    snprintf(text, sizeof(text), "A key was used to authenticate:\n%s",
              (comment && *comment) ? comment : "(unnamed key)");
-    Shell_NotifyIcon(NIM_MODIFY, &nid);
+    kitty_notice_show("kageant: SSH key used", text, KAGEANT_NOTICE_INFO,
+                      5, traywindow, KAGEANT_WM_NOTICE_CLICK);
 }
 
 /* Seam accessor: the "Load keys on startup" tray handler (windows/pageant.c)

@@ -778,6 +778,7 @@ typedef struct {
 	int   action ;
 	kitty_install_t itype ;
 	char  asseturl[1024] ;
+	char  notesurl[512] ; /* KiTTY: that release's GitHub page; "" => no button */
 	char  text[2048] ;    /* message; the dialog is grown to fit it */
 	int   has_update ;    /* update available (Update now/Later) vs info (OK) */
 } kitty_upd_ctx ;
@@ -852,8 +853,8 @@ static void kitty_upd_fit_to_text( HWND h, const char *text ) {
 	int dh = new_th - cur_th ;
 	if( dh == 0 ) return ;
 	MoveWindow( txt, tr.left, tr.top, tw, new_th, TRUE ) ;
-	int ids[] = { IDOK, IDCANCEL, IDC_UPD_UPDATE } ;
-	for( int i=0 ; i<3 ; i++ ) {
+	int ids[] = { IDOK, IDCANCEL, IDC_UPD_UPDATE, IDC_UPD_NOTES } ;
+	for( int i=0 ; i<(int)(sizeof(ids)/sizeof(ids[0])) ; i++ ) {
 		HWND b = GetDlgItem( h, ids[i] ) ; if( !b ) continue ;
 		RECT br ; GetWindowRect( b, &br ) ; MapWindowPoints( NULL, h, (POINT*)&br, 2 ) ;
 		MoveWindow( b, br.left, br.top + dh, br.right-br.left, br.bottom-br.top, TRUE ) ;
@@ -875,6 +876,10 @@ static INT_PTR CALLBACK kitty_upd_dlgproc( HWND h, UINT msg, WPARAM wp, LPARAM l
 			ShowWindow( GetDlgItem( h, IDC_UPD_UPDATE ), SW_HIDE ) ;   /* just OK */
 			ShowWindow( GetDlgItem( h, IDCANCEL ), SW_HIDE ) ;
 		}
+		/* KiTTY: the "View release notes" button only when we have an update
+		 * and a release URL to point at. */
+		if( !( c && c->has_update && c->notesurl[0] ) )
+			ShowWindow( GetDlgItem( h, IDC_UPD_NOTES ), SW_HIDE ) ;
 		if( c ) kitty_upd_fit_to_text( h, c->text ) ;
 		CenterDlgInParent( h ) ;
 		SetWindowPos( h, HWND_TOP, 0,0,0,0, SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW ) ;
@@ -898,6 +903,13 @@ static INT_PTR CALLBACK kitty_upd_dlgproc( HWND h, UINT msg, WPARAM wp, LPARAM l
 			DestroyWindow( h ) ;   /* close the popup, then act */
 			if( action==KUP_ACT_OPENPAGE ) ShellExecute( owner, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
 			else if( action==KUP_ACT_MSI ) kitty_do_msi_update( owner, url, itype ) ;
+			return TRUE ;
+		}
+		if( LOWORD(wp)==IDC_UPD_NOTES ) {
+			/* KiTTY: open the release page in the browser; leave the popup up
+			 * so the user can still choose Update now / Later afterwards. */
+			if( c && c->notesurl[0] )
+				ShellExecute( c->owner, "open", c->notesurl, 0, 0, SW_SHOWDEFAULT ) ;
 			return TRUE ;
 		}
 		if( LOWORD(wp)==IDOK || LOWORD(wp)==IDCANCEL ) { DestroyWindow( h ) ; return TRUE ; }
@@ -1092,13 +1104,15 @@ int kitty_confirm_box( HWND owner, const char *caption, const char *text,
  * 5s); otherwise "Update now" runs the action and "Later" dismisses, and it
  * stays up until the user decides so the offer can't silently vanish. */
 static void kitty_show_update_popup( HWND owner, const char *text, int action,
-                                     const char *asseturl, kitty_install_t itype ) {
+                                     const char *asseturl, kitty_install_t itype,
+                                     const char *notesurl ) {
 	kitty_upd_ctx *c = (kitty_upd_ctx*)calloc( 1, sizeof(kitty_upd_ctx) ) ;
 	if( !c ) return ;
 	c->owner = owner ; c->action = action ; c->itype = itype ;
 	c->has_update = ( action != KUP_ACT_NONE ) ;
 	if( text ) { strncpy( c->text, text, sizeof(c->text)-1 ) ; }
 	if( asseturl ) { strncpy( c->asseturl, asseturl, sizeof(c->asseturl)-1 ) ; }
+	if( notesurl ) { strncpy( c->notesurl, notesurl, sizeof(c->notesurl)-1 ) ; }
 	/* Modeless: don't block the session that's starting up. The dialog frees c
 	 * on WM_NCDESTROY. */
 	HWND h = CreateDialogParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_UPDATEBOX),
@@ -1208,6 +1222,8 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 	if( ok && (body!=NULL) ) {
 		char *p = strstr( body, "\"tag_name\"" ) ;
 		char latestnum[64]="" ;
+		char tag[128]="" ;   /* KiTTY: the full tag, e.g. "kitty-0.84.1.72-beta",
+		                      * kept for the "View release notes" URL */
 		int latest_is_beta = 0 ;
 		/* Channel of the newest release from GitHub's own "prerelease" flag
 		 * (betas are published with "prerelease":true) rather than the tag text;
@@ -1223,7 +1239,7 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 		if( p != NULL ) {
 			p = strchr( p, ':' ) ; if( p!=NULL ) p++ ;
 			while( (p!=NULL) && (*p==' '||*p=='\"') ) p++ ;
-			char tag[128]="" ; int j=0 ;
+			int j=0 ;
 			while( (p!=NULL) && *p && (*p!='\"') && (j<(int)sizeof(tag)-1) ) { tag[j++]=*p++ ; }
 			tag[j]='\0' ;
 			/* tag is e.g. "kitty-0.84.0.16-beta": skip to the first digit, keep digits/dots. */
@@ -1243,6 +1259,11 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 				 * (kitty_do_msi_update), which keeps modal error boxes. */
 				int stable_taking_beta = ( !cur_is_beta && latest_is_beta ) ;
 				kitty_install_t itype = kitty_detect_install_type() ;
+				/* KiTTY: that release's GitHub page, for "View release notes". */
+				char notesurl[512]="" ;
+				if( tag[0] )
+					snprintf( notesurl, sizeof(notesurl), "%s/tag/%s",
+						KITTY_RELEASES_URL, tag ) ;
 				char asseturl[1024]="" ; int haveasset = 0 ;
 				if( itype != KITTY_INST_PORTABLE ) {
 					const char *suffix = (itype==KITTY_INST_SYSTEM)
@@ -1261,7 +1282,7 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 						(itype==KITTY_INST_PORTABLE)
 						  ? "Portable copy - auto-install is disabled. Open the download page?"
 						  : "The matching installer wasn't found. Open the download page?" ) ;
-					kitty_show_update_popup( hwnd, msg, KUP_ACT_OPENPAGE, KITTY_RELEASES_URL, itype ) ;
+					kitty_show_update_popup( hwnd, msg, KUP_ACT_OPENPAGE, KITTY_RELEASES_URL, itype, notesurl ) ;
 					return ;
 				}
 				/* MSI install path. If a stable build is offered a beta, say so in
@@ -1274,7 +1295,7 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 					stable_taking_beta
 					  ? "You are on a STABLE release and the newest build is a BETA (less tested). "
 					  : "" ) ;
-				kitty_show_update_popup( hwnd, msg, KUP_ACT_MSI, asseturl, itype ) ;
+				kitty_show_update_popup( hwnd, msg, KUP_ACT_MSI, asseturl, itype, notesurl ) ;
 				return ;
 			} else {
 				/* No update. In a live terminal, state it in the title for 3s (no
@@ -1288,7 +1309,7 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 					snprintf( msg, sizeof(msg),
 						"You are running the latest version.\r\n\r\nInstalled: %s\r\nLatest:    %s",
 						curnum, latestnum ) ;
-					kitty_show_update_popup( hwnd, msg, KUP_ACT_NONE, NULL, 0 ) ;
+					kitty_show_update_popup( hwnd, msg, KUP_ACT_NONE, NULL, 0, NULL ) ;
 				}
 				free( body ) ;
 				return ;

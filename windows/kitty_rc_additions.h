@@ -136,6 +136,9 @@
 #ifndef IDC_UPD_UPDATE
 #define IDC_UPD_UPDATE 1221
 #endif
+#ifndef IDC_UPD_NOTES
+#define IDC_UPD_NOTES 1222
+#endif
 #ifndef IDI_BLACKBALL
 #define IDI_BLACKBALL 9902
 #endif
