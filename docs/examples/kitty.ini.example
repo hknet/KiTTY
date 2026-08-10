@@ -545,6 +545,12 @@
 ; you load keys with loadonstartup on - you normally do not edit them by hand.
 ;startupkey1=keys\id_ed25519.ppk,encrypted
 
+; keylistgeometry / keylistcolumns: the key-list window's remembered
+; position/size and column widths. kageant writes these itself when the
+; window is moved, resized or closed - not knobs to edit by hand.
+;keylistgeometry=
+;keylistcolumns=
+
 
 [FontFallback]
 

@@ -520,6 +520,17 @@ static bool pageant_add_key_common(PageantPublicKey *pub,
      * Try to add the private key to privkeytree, or combine new parts
      * of it with what's already there.
      */
+    /* KiTTY: did this add actually CHANGE an already-present key - supply the
+     * cleartext of a deferred key (decrypt in place), or attach an encrypted
+     * fallback to a key that was held only in clear (so it can be
+     * re-encrypted)? Either is a real, successful operation, not the no-op of
+     * re-adding a key that is already there in full. We must tell them apart
+     * so the agent replies SUCCESS: the Decrypt and Re-encrypt actions re-add
+     * a key on purpose to trigger these merges, and reporting the
+     * pubkey-already-present no-op as FAILURE put an "agent refused to add the
+     * key" box in front of an operation that had in fact just worked. */
+    bool changed_existing = false;
+
     PageantPrivateKey *priv_in_tree = add234(privkeytree, priv);
     if (priv_in_tree == priv) {
         /* The key wasn't in the tree at all, and we've just added it. */
@@ -533,6 +544,7 @@ static bool pageant_add_key_common(PageantPublicKey *pub,
             priv_in_tree->skey = priv->skey;
             priv->skey = NULL;       /* so pk_priv_free won't free it */
             protect_priv_skey_if_possible(priv_in_tree);
+            changed_existing = true;
         }
 
         if (ssh_version == 2 && priv->protected_skey &&
@@ -541,6 +553,7 @@ static bool pageant_add_key_common(PageantPublicKey *pub,
              * protected unencrypted version to add to the existing record. */
             priv_in_tree->protected_skey = priv->protected_skey;
             priv->protected_skey = NULL;
+            changed_existing = true;
         }
 
         if (ssh_version == 2 && priv->encrypted_key_file &&
@@ -551,6 +564,8 @@ static bool pageant_add_key_common(PageantPublicKey *pub,
             priv->encrypted_key_file = NULL;
             priv_in_tree->encrypted_key_comment = priv->encrypted_key_comment;
             priv->encrypted_key_comment = NULL;
+            changed_existing = true;    /* KiTTY: enables re-encrypt of a
+                                         * plainly-loaded key */
         }
 
         pk_priv_free(priv);
@@ -565,9 +580,11 @@ static bool pageant_add_key_common(PageantPublicKey *pub,
         puborder_append(pub);    /* KiTTY: new key joins the end of the offer order */
         return true;
     } else {
-        /* This public key was already there. */
+        /* This public key was already there. Still a success if we just
+         * changed it in place (KiTTY, see above); a plain duplicate is the
+         * no-op it always was. */
         pk_pub_free(pub);
-        return false;
+        return changed_existing;
     }
 }
 
@@ -1984,6 +2001,17 @@ bool pageant_reencrypt_nth_ssh2_key(int i)
 {
     PageantPublicKey *pub = index234(
         pubkeytree, find_first_pubkey_for_version(2) + i);
+    if (!pub)
+        return false;
+    return reencrypt_key(pub);
+}
+
+/* KiTTY: re-encrypt by public blob, for the same reason as
+ * pageant_delete_ssh2_key_by_blob above: the caller's list position and the
+ * agent's can differ, and acting on the wrong key is the failure mode. */
+bool pageant_reencrypt_ssh2_key_by_blob(ptrlen blob)
+{
+    PageantPublicKey *pub = findpubkey2(blob);
     if (!pub)
         return false;
     return reencrypt_key(pub);

@@ -312,6 +312,62 @@ static void kageant_reg_write(const char *name, int on)
     }
 }
 
+
+/*
+ * KiTTY: string settings with the same store precedence as the toggles
+ * above - the authoritative store wins, the other is a first-run fallback,
+ * and writes go to the authoritative store only (a portable install never
+ * touches the registry). Used for the key-list window geometry and column
+ * widths, which want to persist in portable mode too - which is why the
+ * AuxWinPos mechanism (registry-only, persistence off in portable) is not
+ * used for them.
+ */
+static int kageant_reg_read_str(const char *name, char *buf, size_t len)
+{
+    DWORD sz = (DWORD)len;
+    if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, name,
+                     RRF_RT_REG_SZ, NULL, buf, &sz) != ERROR_SUCCESS)
+        return 0;
+    return buf[0] != '\0';
+}
+
+int kageant_setting_str_get(const char *inikey, const char *regname,
+                            char *buf, size_t len)
+{
+    char ini[256];
+    int have_ini = kitty_inilight_read("Agent", inikey, ini, sizeof(ini)) &&
+        ini[0];
+    if (kitty_inilight_registry_authoritative()) {
+        if (kageant_reg_read_str(regname, buf, len))
+            return 1;
+    } else if (have_ini) {
+        snprintf(buf, len, "%s", ini);
+        return 1;
+    } else {
+        return kageant_reg_read_str(regname, buf, len);
+    }
+    if (have_ini) {
+        snprintf(buf, len, "%s", ini);
+        return 1;
+    }
+    return 0;
+}
+
+void kageant_setting_str_set(const char *inikey, const char *regname,
+                             const char *value)
+{
+    if (!kitty_inilight_registry_authoritative() &&
+        kitty_inilight_write("Agent", inikey, value))
+        return;
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        RegSetValueExA(hk, regname, 0, REG_SZ, (const BYTE *)value,
+                       (DWORD)(strlen(value) + 1));
+        RegCloseKey(hk);
+    }
+}
+
 /* KiTTY: "notify on key use" tray-balloon toggle ([Agent] messageonkeyusage).
  * Default ON (absent everywhere => on). */
 int kageant_notify_get(void)
@@ -396,6 +452,16 @@ const char *kageant_ini_status(void)
 {
     return kitty_inilight_registry_authoritative() ? NULL
                                                    : kitty_inilight_file();
+}
+
+/* A kitty.ini exists somewhere the resolver can reach (next to the exe,
+ * KITTY_INI_FILE, or %APPDATA%\KiTTY) - so there is a place to store the
+ * ini-only [Agent] options, whatever the session's mode. NOT the same as
+ * kageant_ini_status(), which is non-NULL only when the ini is ALSO the
+ * authoritative store; here we just need a file to write to. */
+int kageant_ini_present(void)
+{
+    return kitty_inilight_file() != NULL;
 }
 
 /* Directory holding the resolved authoritative ini (no trailing separator);
@@ -608,7 +674,9 @@ static int kageant_key_needs_pass(const char *abspath)
  * case the user genuinely needs to act on, which is why this is not the
  * "quietkeyfailures" it started out as.
  *
- * ini-only, like the TTL below.
+ * kitty.ini only, on purpose: these four options live in one place so they
+ * cannot drift between two stores (user, 2026-08-09). The Settings dialog
+ * writes them here whatever the session's storage mode.
  */
 int kageant_quiet_missing(void)
 {
@@ -644,15 +712,43 @@ int kageant_unload_on_remove(void)
     return 0;
 }
 
+/* Seconds a typed passphrase is cached (encrypted) during a batch add.
+ * Clamped to a sane range: 0 (do not cache) .. KAGEANT_TTL_MAX. */
 int kageant_passphrase_ttl(void)
 {
     char buf[16];
-    if (kitty_inilight_read("Agent", "passphrasecacheseconds", buf, sizeof(buf))) {
+    if (kitty_inilight_read("Agent", "passphrasecacheseconds",
+                            buf, sizeof(buf))) {
         int v = atoi(buf);
         if (v >= 0)
-            return v;
+            return v > KAGEANT_TTL_MAX ? KAGEANT_TTL_MAX : v;
     }
     return 60;
+}
+
+/* Setters - kitty.ini only (see above). Return kitty_inilight_write's
+ * result so the caller knows whether the ini was actually writable. */
+int kageant_quiet_missing_set(int on)
+{
+    return kitty_inilight_write("Agent", "quietmissingkeys", on ? "yes" : "no");
+}
+int kageant_retry_keys_set(int on)
+{
+    return kitty_inilight_write("Agent", "retrykeys", on ? "yes" : "no");
+}
+int kageant_unload_on_remove_set(int on)
+{
+    return kitty_inilight_write("Agent", "unloadonremove", on ? "yes" : "no");
+}
+int kageant_passphrase_ttl_set(int seconds)
+{
+    char buf[16];
+    if (seconds < 0)
+        seconds = 0;
+    if (seconds > KAGEANT_TTL_MAX)
+        seconds = KAGEANT_TTL_MAX;
+    snprintf(buf, sizeof(buf), "%d", seconds);
+    return kitty_inilight_write("Agent", "passphrasecacheseconds", buf);
 }
 
 /*
@@ -987,6 +1083,21 @@ char *kageant_paths_of_blob(ptrlen blob)
     return strbuf_to_str(out);
 }
 
+/* KiTTY: the first tracked file path for this blob, as a plain path with no
+ * annotations - for feeding back into win_add_keyfile ("Load key now" on a
+ * deferred key). NULL when the key was added by another program. */
+char *kageant_file_of_blob(ptrlen blob)
+{
+    for (int i = 0; i < g_nloaded && i < g_nblobs; i++) {
+        if (!g_loaded_blobs[i])
+            continue;
+        if (g_loaded_blobs[i]->len == blob.len &&
+            !memcmp(g_loaded_blobs[i]->s, blob.ptr, blob.len))
+            return dupstr(g_loaded_keypaths[i]);
+    }
+    return NULL;
+}
+
 /* Remember a startup key whose file was not there, so a device event can try it
  * again. Silently full at 64: past that, something is wrong with the list
  * rather than with the media. */
@@ -1094,6 +1205,82 @@ void kageant_retry_pending_keys(void)
  * which are different problems needing different words. */
 int kageant_startup_loading(void) { return g_startup_loading; }
 
+/* ------------------------------------------------------------------ *
+ * KiTTY: the pending (not-loaded) startup entries, exposed for the    *
+ * key list window - so "6 keys could not be loaded" is answerable     *
+ * without digging in the registry, and a dead entry can be removed.   *
+ * ------------------------------------------------------------------ */
+int kageant_pending_count(void) { return g_npending; }
+
+int kageant_pending_get(int i, const char **path, int *encrypted,
+                        const char **fp, int *failed)
+{
+    if (i < 0 || i >= g_npending)
+        return 0;
+    *path = g_pending[i].path;
+    *encrypted = g_pending[i].encrypted;
+    *fp = g_pending[i].fp;
+    *failed = g_pending[i].failed;
+    return 1;
+}
+
+/* Remove one pending entry: from memory (or the next save would write it
+ * right back) AND from the stored list. */
+void kageant_drop_pending(const char *path)
+{
+    int i, j;
+    if (!path || !*path)
+        return;
+    for (i = 0; i < g_npending; i++) {
+        if (!stricmp(g_pending[i].path, path)) {
+            for (j = i; j < g_npending - 1; j++)
+                g_pending[j] = g_pending[j + 1];
+            g_npending--;
+            break;
+        }
+    }
+    kageant_forget_startup_key(path);
+}
+
+/* ------------------------------------------------------------------ *
+ * KiTTY: per-key load mode - how this key will be added the NEXT time *
+ * the startup list loads it: deferred (,encrypted) or decrypted at    *
+ * load (,plain). Switchable from the key-details dialog; changing it  *
+ * does not touch the key's current state in the agent.                *
+ * ------------------------------------------------------------------ */
+int kageant_startup_mode_get(const char *path)
+{
+    int i;
+    if (!path || !*path)
+        return -1;
+    for (i = 0; i < g_nloaded; i++)
+        if (!stricmp(g_loaded_keypaths[i], path))
+            return g_loaded_encrypted[i] ? 1 : 0;
+    for (i = 0; i < g_npending; i++)
+        if (!stricmp(g_pending[i].path, path))
+            return g_pending[i].encrypted ? 1 : 0;
+    return -1;
+}
+
+void kageant_startup_mode_set(const char *path, int encrypted)
+{
+    int i, hit = 0;
+    if (!path || !*path)
+        return;
+    for (i = 0; i < g_nloaded; i++)
+        if (!stricmp(g_loaded_keypaths[i], path)) {
+            g_loaded_encrypted[i] = encrypted ? 1 : 0;
+            hit = 1;
+        }
+    for (i = 0; i < g_npending; i++)
+        if (!stricmp(g_pending[i].path, path)) {
+            g_pending[i].encrypted = encrypted ? 1 : 0;
+            hit = 1;
+        }
+    if (hit)
+        kageant_save_startup_keys();
+}
+
 /*
  * Drop one entry from the persisted startup list, by path.
  *
@@ -1105,6 +1292,26 @@ int kageant_startup_loading(void) { return g_startup_loading; }
  * Matching is on the resolved absolute path, because entries are stored
  * relative when they sit inside a portable install.
  */
+/* Strip an entry's trailing ",encrypted"/",plain"/",SHA256:..." tokens in
+ * place, leaving the stored path. Mirrors the loader's parser: one token per
+ * pass from the right, an unknown token belongs to the path. The old
+ * single-token strip here missed the fingerprint that .71 entries carry, so
+ * removing a fingerprinted entry from the stored list silently failed and
+ * the key came back at the next start. */
+static void kageant_entry_strip(char *entry)
+{
+    for (;;) {
+        char *c = strrchr(entry, ',');
+        if (!c)
+            return;
+        if (!stricmp(c + 1, "encrypted") || !stricmp(c + 1, "plain") ||
+            strstr(c + 1, "SHA256:"))
+            *c = '\0';
+        else
+            return;
+    }
+}
+
 void kageant_forget_startup_key(const char *path)
 {
     const char *f;
@@ -1124,15 +1331,13 @@ void kageant_forget_startup_key(const char *path)
 
         keep = snewn(cap, kageant_entry);
         for (i = 1, gap = 0; gap < 8 && n < cap; i++) {
-            char raw[MAX_PATH + 32], *c;
+            char raw[MAX_PATH + 32];
             snprintf(key, sizeof(key), "startupkey%d", i);
             GetPrivateProfileStringA("Agent", key, "", val, sizeof(val), f);
             if (!val[0]) { gap++; continue; }
             gap = 0;
-            snprintf(raw, sizeof(raw), "%s", val);      /* keep the ,marker */
-            c = strrchr(val, ',');
-            if (c && (!stricmp(c + 1, "encrypted") || !stricmp(c + 1, "plain")))
-                *c = '\0';
+            snprintf(raw, sizeof(raw), "%s", val);      /* keep the ,markers */
+            kageant_entry_strip(val);
             kageant_resolve_form(val, abspath, sizeof(abspath));
             if (!stricmp(abspath, want))
                 continue;                               /* the one being dropped */
@@ -1168,12 +1373,9 @@ void kageant_forget_startup_key(const char *path)
                 char *out = snewn(sz + 2, char), *o = out, *p;
                 buf[sz] = '\0'; buf[sz + 1] = '\0';
                 for (p = buf; *p; p += strlen(p) + 1) {
-                    char entry[MAX_PATH + 32], *c;
+                    char entry[MAX_PATH + 32];
                     snprintf(entry, sizeof(entry), "%s", p);
-                    c = strrchr(entry, ',');
-                    if (c && (!stricmp(c + 1, "encrypted") ||
-                              !stricmp(c + 1, "plain")))
-                        *c = '\0';
+                    kageant_entry_strip(entry);
                     if (!stricmp(entry, want))
                         continue;
                     memcpy(o, p, strlen(p) + 1); o += strlen(p) + 1;
@@ -1575,11 +1777,20 @@ void kageant_load_startup_keys(void)
                     int adopt = 0;
                     char fp[160];
                     char *c;
+                    /* Parse a COPY: stripping the trailing tokens in place
+                     * would shorten *p, and the walk's `p += strlen(p) + 1`
+                     * would then re-enter the middle of this same record and
+                     * read its leftover token bytes as bogus extra entries -
+                     * which is exactly what inflated the "keys not loaded"
+                     * count (each marked+fingerprinted entry spawned one or
+                     * two phantom missing keys). */
+                    char entry[MAX_PATH + 32];
+                    snprintf(entry, sizeof(entry), "%s", p);
                     fp[0] = '\0';
                     /* Same trailing tokens as the ini form: ",encrypted" /
                      * ",plain" and ",SHA256:..." - see the ini branch above. */
                     for (;;) {
-                        c = strrchr(p, ',');
+                        c = strrchr(entry, ',');
                         if (!c) break;
                         if (!stricmp(c + 1, "encrypted")) { enc = 1; *c = '\0'; }
                         else if (!stricmp(c + 1, "plain")) { enc = 0; *c = '\0'; }
@@ -1589,18 +1800,19 @@ void kageant_load_startup_keys(void)
                             *c = '\0';
                         } else break;
                     }
-                    if (GetFileAttributesA(p) == INVALID_FILE_ATTRIBUTES) {
+                    if (GetFileAttributesA(entry) == INVALID_FILE_ATTRIBUTES) {
                         g_startup_missing++;
-                        kageant_note_pending(p, enc, g_nloaded + g_npending);
+                        kageant_note_pending(entry, enc,
+                                             g_nloaded + g_npending);
                         if (fp[0] && g_npending > 0)
                             snprintf(g_pending[g_npending - 1].fp,
                                      sizeof(g_pending[0].fp), "%s", fp);
                         continue;
                     }
-                    if (!kageant_fp_ok(p, fp, &adopt))
+                    if (!kageant_fp_ok(entry, fp, &adopt))
                         continue;
                     {
-                        Filename *fn = filename_from_str(p);
+                        Filename *fn = filename_from_str(entry);
                         win_add_keyfile(fn, enc ? true : false);
                         filename_free(fn);
                     }

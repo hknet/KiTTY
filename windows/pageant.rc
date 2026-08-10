@@ -46,13 +46,28 @@ BEGIN
     PUSHBUTTON "&Help", IDHELP, 165, 60, 50, 14
 END
 
+/* KiTTY: ListView styles for the key list; the winres headers do not
+ * reliably define them for the resource compiler. */
+#ifndef LVS_REPORT
+#define LVS_REPORT 0x0001
+#endif
+#ifndef LVS_SHOWSELALWAYS
+#define LVS_SHOWSELALWAYS 0x0008
+#endif
+
+/* KiTTY: WS_THICKFRAME instead of DS_MODALFRAME - the window is resizable,
+ * relaid out in WM_SIZE, with the template size as the minimum. */
 IDD_KEYLIST DIALOG DISCARDABLE 0, 0, 450, 260
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX
 CAPTION "kageant Key List"
 FONT 8, "MS Shell Dlg"
 BEGIN
-    LISTBOX IDC_KEYLIST_LISTBOX, 10, 10, 420, 155,
-        LBS_EXTENDEDSEL | LBS_OWNERDRAWFIXED | WS_VSCROLL | WS_TABSTOP
+    /* KiTTY: a real ListView in report mode instead of upstream's owner-drawn
+     * listbox with pixel-computed pseudo-columns. Extended styles (full-row
+     * select, grid lines) are set at runtime in WM_INITDIALOG. */
+    CONTROL "", IDC_KEYLIST_LISTBOX, "SysListView32",
+        LVS_REPORT | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,
+        10, 10, 420, 155
     PUSHBUTTON "&Add Key", IDC_KEYLIST_ADDKEY, 10, 187, 60, 14
     PUSHBUTTON "Add Key (&encrypted)", IDC_KEYLIST_ADDKEY_ENC, 75, 187, 80, 14
     PUSHBUTTON "Move &Up", IDC_KEYLIST_MOVEUP, 170, 187, 55, 14
@@ -65,9 +80,74 @@ BEGIN
     AUTORADIOBUTTON "By key co&mment", IDC_KEYLIST_CONFIRM_AUTO, 140, 220, 84, 10
     AUTORADIOBUTTON "Ne&ver", IDC_KEYLIST_CONFIRM_NO, 228, 220, 50, 10
     PUSHBUTTON "&Help", IDC_KEYLIST_HELP, 10, 238, 50, 14
+    /* KiTTY: window-level actions, grouped apart from the key-level buttons
+     * above. Settings sits at x=130 (added with its dialog). */
+    PUSHBUTTON "Ne&w key...", IDC_KEYLIST_NEWKEY, 70, 238, 55, 14
+    PUSHBUTTON "&Settings...", IDC_KEYLIST_SETTINGS, 130, 238, 55, 14
+    PUSHBUTTON "Stop &agent", IDC_KEYLIST_STOPAGENT, 195, 238, 60, 14
     DEFPUSHBUTTON "&Close", IDOK, 390, 238, 50, 14
     LTEXT "&Fingerprint type:", IDC_KEYLIST_FPTYPE_STATIC, 10, 172, 60, 8
     COMBOBOX IDC_KEYLIST_FPTYPE, 70, 170, 100, 12, CBS_DROPDOWNLIST
+    /* KiTTY: startup entries whose file is absent/broken, shown as rows */
+    AUTOCHECKBOX "Show unavailable keys", IDC_KEYLIST_SHOWUNAVAIL,
+        185, 171, 95, 10
+END
+
+/* KiTTY: key details. Read-only EDIT controls, not statics, because the
+ * point of looking at a fingerprint is usually to copy it and compare it
+ * with one somewhere else. Wide enough that a full SHA-256 line fits, and
+ * resizable (WS_THICKFRAME) for the ones that still do not. */
+IDD_KEYDETAILS DIALOG DISCARDABLE 0, 0, 420, 222
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+CAPTION "kageant - key details"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT "Key:", -1, 10, 12, 52, 8
+    EDITTEXT IDC_KEYDETAIL_KEY, 66, 10, 344, 12, ES_READONLY | ES_AUTOHSCROLL
+    LTEXT "State:", -1, 10, 28, 52, 8
+    EDITTEXT IDC_KEYDETAIL_STATE, 66, 26, 344, 12, ES_READONLY | ES_AUTOHSCROLL
+    LTEXT "Fingerprints:", -1, 10, 44, 52, 8
+    EDITTEXT IDC_KEYDETAIL_FPS, 66, 42, 344, 46,
+        ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_HSCROLL | WS_VSCROLL
+    LTEXT "Comment:", -1, 10, 94, 52, 8
+    EDITTEXT IDC_KEYDETAIL_COMMENT, 66, 92, 344, 26,
+        ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL
+    LTEXT "Loaded from:", -1, 10, 124, 52, 8
+    EDITTEXT IDC_KEYDETAIL_PATHS, 66, 122, 344, 56,
+        ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_VSCROLL
+    AUTOCHECKBOX "Load this key &deferred at startup (passphrase at first use)",
+        IDC_KEYDETAIL_DEFER, 10, 190, 300, 10
+    DEFPUSHBUTTON "&Close", IDOK, 360, 202, 50, 14
+END
+
+/* KiTTY: the [Agent] settings dialog, reached from the key list window's
+ * Settings button. Confirm-key-use stays as the key list's inline radios
+ * (design), so it is deliberately not duplicated here. The removable-media
+ * options are honoured only from kitty.ini, so they are greyed in a
+ * registry-authoritative (non-portable) install. */
+IDD_KEYSETTINGS DIALOG DISCARDABLE 0, 0, 250, 192
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "kageant - settings"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    GROUPBOX "Agent", -1, 8, 4, 234, 58
+    AUTOCHECKBOX "Register as Windows &OpenSSH agent", IDC_SET_OPENSSH,
+        16, 18, 218, 10
+    AUTOCHECKBOX "&Load keys on startup", IDC_SET_STARTUP, 16, 32, 218, 10
+    AUTOCHECKBOX "&Notify when a key is used", IDC_SET_NOTIFY, 16, 46, 218, 10
+    GROUPBOX "Removable-media keys (kitty.ini only)", -1, 8, 66, 234, 90
+    AUTOCHECKBOX "&Retry startup keys when their drive appears",
+        IDC_SET_RETRY, 16, 80, 220, 10
+    AUTOCHECKBOX "&Unload a key when its media is removed",
+        IDC_SET_UNLOAD, 16, 94, 220, 10
+    AUTOCHECKBOX "Do not &warn about missing startup keys",
+        IDC_SET_QUIET, 16, 108, 220, 10
+    LTEXT "&Passphrase cache (seconds):", -1, 16, 126, 108, 10
+    EDITTEXT IDC_SET_TTL, 126, 124, 40, 12, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "0 = do not cache; default 60, maximum 300 (5 min).",
+        -1, 16, 142, 220, 9
+    DEFPUSHBUTTON "OK", IDOK, 132, 172, 50, 14
+    PUSHBUTTON "Cancel", IDCANCEL, 190, 172, 50, 14
 END
 
 /* Accelerators used: cl */

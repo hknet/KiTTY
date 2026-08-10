@@ -125,6 +125,8 @@ bool pageant_delete_nth_ssh2_key(int i);
  * pageant_delete_key() below, which is the CLIENT-side call - see pageant.c. */
 bool pageant_delete_ssh2_key_by_blob(ptrlen blob);
 bool pageant_reencrypt_nth_ssh2_key(int i);
+/* KiTTY: in-agent re-encrypt by public blob, same rationale as the delete. */
+bool pageant_reencrypt_ssh2_key_by_blob(ptrlen blob);
 void pageant_delete_all(void);
 void pageant_reencrypt_all(void);
 

@@ -1,4 +1,5 @@
 #include "kitty_win.h"
+#include "kitty_authenticode.h"   /* shared Authenticode trust + CN gate */
 #include "kitty_rc_additions.h"   /* IDD_UPDATEBOX, IDC_UPD_TEXT, IDC_UPD_UPDATE */
 #include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
 #include <wintrust.h>  /* in-app updater: Authenticode trust verification */
@@ -571,67 +572,11 @@ static int kitty_download_to_file( const char *url, const char *path ) {
 	return ok ;
 }
 
-/* SECURITY GATE. Verify an Authenticode signature on the downloaded installer.
- * Returns 1 only if BOTH hold:
- *   (1) WinVerifyTrust reports a valid trust chain (kills self-signed spoofs);
- *   (2) the signing certificate's subject CN is EXACTLY our publisher (kills a
- *       different-but-valid certificate).
- * Fail-closed: every error path returns 0 (reject). */
-static int kitty_verify_signature( const char *path ) {
-	wchar_t wpath[MAX_PATH] ;
-	if( MultiByteToWideChar( CP_ACP, 0, path, -1, wpath, MAX_PATH ) == 0 ) return 0 ;
-
-	/* (1) Trust chain. */
-	WINTRUST_FILE_INFO fi ; memset(&fi,0,sizeof(fi)) ;
-	fi.cbStruct = sizeof(fi) ;
-	fi.pcwszFilePath = wpath ;
-	GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2 ;
-	WINTRUST_DATA wd ; memset(&wd,0,sizeof(wd)) ;
-	wd.cbStruct = sizeof(wd) ;
-	wd.dwUIChoice = WTD_UI_NONE ;
-	wd.fdwRevocationChecks = WTD_REVOKE_WHOLECHAIN ;
-	wd.dwUnionChoice = WTD_CHOICE_FILE ;
-	wd.pFile = &fi ;
-	wd.dwStateAction = WTD_STATEACTION_VERIFY ;
-	LONG st = WinVerifyTrust( (HWND)INVALID_HANDLE_VALUE, &action, &wd ) ;
-	wd.dwStateAction = WTD_STATEACTION_CLOSE ;
-	WinVerifyTrust( (HWND)INVALID_HANDLE_VALUE, &action, &wd ) ;
-	if( st != ERROR_SUCCESS ) return 0 ;
-
-	/* (2) Signer CN pin. */
-	int matched = 0 ;
-	HCERTSTORE hStore = NULL ; HCRYPTMSG hMsg = NULL ;
-	if( CryptQueryObject( CERT_QUERY_OBJECT_FILE, wpath,
-			CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED_EMBED,
-			CERT_QUERY_FORMAT_FLAG_BINARY, 0, NULL, NULL, NULL,
-			&hStore, &hMsg, NULL ) ) {
-		DWORD si_sz = 0 ;
-		if( CryptMsgGetParam( hMsg, CMSG_SIGNER_INFO_PARAM, 0, NULL, &si_sz ) && si_sz>0 ) {
-			CMSG_SIGNER_INFO *si = (CMSG_SIGNER_INFO*)malloc( si_sz ) ;
-			if( si!=NULL && CryptMsgGetParam( hMsg, CMSG_SIGNER_INFO_PARAM, 0, si, &si_sz ) ) {
-				CERT_INFO ci ; memset(&ci,0,sizeof(ci)) ;
-				ci.Issuer = si->Issuer ;
-				ci.SerialNumber = si->SerialNumber ;
-				PCCERT_CONTEXT cert = CertFindCertificateInStore( hStore,
-					X509_ASN_ENCODING|PKCS_7_ASN_ENCODING, 0,
-					CERT_FIND_SUBJECT_CERT, &ci, NULL ) ;
-				if( cert!=NULL ) {
-					char cn[256]="" ;
-					if( CertGetNameStringA( cert, CERT_NAME_ATTR_TYPE, 0,
-							szOID_COMMON_NAME, cn, sizeof(cn) ) > 1 ) {
-						if( _stricmp( cn, "KAPPER NETWORK-COMMUNICATIONS GmbH" )==0 )
-							matched = 1 ;
-					}
-					CertFreeCertificateContext( cert ) ;
-				}
-			}
-			if( si!=NULL ) free( si ) ;
-		}
-	}
-	if( hMsg!=NULL ) CryptMsgClose( hMsg ) ;
-	if( hStore!=NULL ) CertCloseStore( hStore, 0 ) ;
-	return matched ;
-}
+/* SECURITY GATE for the downloaded installer: a valid Authenticode trust
+ * chain AND an exact publisher-CN match. The implementation now lives in
+ * kitty_authenticode.c so the kageant "New key" launcher shares the exact
+ * same gate - see kitty_authenticode.h. The installer is a NEWER version than
+ * the running kitty, so only trust+CN is checked here, never a version match. */
 
 /* Launch the (already verified) MSI. System installs need elevation (runas);
  * per-user installs run unelevated. Restart Manager inside msiexec will close
@@ -871,7 +816,7 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 		return ;
 	}
 	/* SECURITY GATE: reject anything not genuinely KAPPER-signed. */
-	if( !kitty_verify_signature( tmpfile ) ) {
+	if( !kitty_authenticode_verify( tmpfile ) ) {
 		CloseHandle( updguard ) ;
 		DeleteFileA( tmpfile ) ;
 		MessageBox( owner, "The downloaded installer FAILED signature verification "

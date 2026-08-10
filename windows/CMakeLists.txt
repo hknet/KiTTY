@@ -99,6 +99,7 @@ add_executable(pageant
   help.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
   ${CMAKE_SOURCE_DIR}/kitty/kitty_pageant.c   # KiTTY: kageant additions (split out of pageant.c)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_authenticode.c  # KiTTY: shared verify for the New key launcher
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inilight.c  # KiTTY: light kitty.ini resolver for satellite binaries
   ${CMAKE_SOURCE_DIR}/kitty/kitty_startup_shortcut.c  # KiTTY: Startup-folder shortcut (portable autostart)
   pageant.rc)
@@ -106,6 +107,8 @@ add_dependencies(pageant generated_licence_h)
 target_link_libraries(pageant
   guimisc agent network crypto eventloop utils
   uuid.lib   # KiTTY: CLSID_ShellLink / IID_IShellLink GUIDs (kitty_startup_shortcut.c)
+  comctl32.lib   # KiTTY: InitCommonControlsEx for the key-list ListView
+  wintrust crypt32 version   # KiTTY: kitty_authenticode.c (New key launcher gate)
   ${platform_libraries})  # order matters (single-pass static link): network ->
                           # eventloop (network.c's new schedule_timer pulls
                           # timing.c) -> utils (timing.c's timer_change_notify +
@@ -360,6 +363,7 @@ add_executable(kitty
   ${KITTY_DIR}/blocnote/notepad.c
   ${KITTY_DIR}/blocnote/notepad.rc
   ${KITTY_DIR}/kitty_win.c
+  ${KITTY_DIR}/kitty_authenticode.c   # KiTTY: shared Authenticode trust + CN gate
   ${KITTY_DIR}/winfont_fallback.c
   ${KITTY_DIR}/url/urlhack.c
   ${KITTY_DIR}/url/re_lib/regexp.c
@@ -396,7 +400,7 @@ target_link_libraries(kitty
   ${KITTY_DIR}/libs/libjpeg_64.a
   ${KITTY_DIR}/libs/base64_64.a ${KITTY_DIR}/libs/bcrypt_64.a
   ${KITTY_DIR}/libs/MD5check_64.a
-  ${platform_libraries} wininet wintrust crypt32 msi
+  ${platform_libraries} wininet wintrust crypt32 msi version
   uuid.lib)   # KiTTY: CLSID_ShellLink GUIDs (kitty_startup_shortcut.c, launcher autostart)
 set_target_properties(kitty PROPERTIES WIN32_EXECUTABLE ON)
 
@@ -433,6 +437,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/blocnote/notepad.c
   ${KITTY_DIR}/blocnote/notepad.rc
   ${KITTY_DIR}/kitty_win.c
+  ${KITTY_DIR}/kitty_authenticode.c   # KiTTY: shared Authenticode trust + CN gate
   ${KITTY_DIR}/winfont_fallback.c
   ${KITTY_DIR}/url/urlhack.c
   ${KITTY_DIR}/url/re_lib/regexp.c
@@ -486,7 +491,7 @@ target_link_libraries(kitty_portable
   ${KITTY_DIR}/libs/libjpeg_64.a
   ${KITTY_DIR}/libs/base64_64.a ${KITTY_DIR}/libs/bcrypt_64.a
   ${KITTY_DIR}/libs/MD5check_64.a
-  ${platform_libraries} wininet wintrust crypt32 msi
+  ${platform_libraries} wininet wintrust crypt32 msi version
   uuid.lib)   # KiTTY: CLSID_ShellLink GUIDs (kitty_startup_shortcut.c, launcher autostart)
 set_target_properties(kitty_portable PROPERTIES WIN32_EXECUTABLE ON)
 

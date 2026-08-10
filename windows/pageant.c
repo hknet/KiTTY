@@ -18,10 +18,14 @@
 /* AFTER putty.h: dbt.h needs windows.h, which putty.h is what pulls in here.
  * KiTTY: DBT_DEVICEARRIVAL / DBT_DEVICEREMOVECOMPLETE. */
 #include <dbt.h>
+/* KiTTY: the key list window is a SysListView32 in report mode. */
+#include <commctrl.h>
+#include <windowsx.h>   /* KiTTY: GET_X_LPARAM/GET_Y_LPARAM (drag reorder) */
 #include "pageant.h"
 #include "licence.h"
 #include "pageant-rc.h"
 #include "../kitty/kitty_pageant.h"  /* KiTTY: the kageant additions (split out of this file) */
+#include "../kitty/kitty_authenticode.h"  /* KiTTY: shared verify for New key */
 
 #include <shellapi.h>
 
@@ -33,6 +37,10 @@
 
 #define WM_SYSTRAY   (WM_APP + 6)
 #define WM_SYSTRAY2  (WM_APP + 7)
+/* KiTTY: balloon-click notification; absent from older SDK headers. */
+#ifndef NIN_BALLOONUSERCLICK
+#define NIN_BALLOONUSERCLICK (WM_USER + 5)
+#endif
 /* KiTTY: timer id for the delayed single-left-click tray menu */
 #define TID_TRAYCLICK 1
 #define TID_PASSPHRASE_CACHE 2   /* KiTTY: scrub cached passphrases (see WM_TIMER) */
@@ -79,6 +87,7 @@ static filereq_saved_dir *keypath = NULL;
 #define IDM_LOAD_ON_STARTUP    0x00B0    /* KiTTY: toggle load-keys-on-startup */
 #define IDM_NOTIFY_KEYUSE      0x00C0    /* KiTTY: toggle "notify on key use" balloon */
 #define IDM_CONFIRM_KEYUSE     0x00D0    /* KiTTY: toggle "confirm every key use" prompt */
+#define IDM_SETTINGS           0x00E0    /* KiTTY: open the [Agent] settings dialog */
 #define IDM_SESSIONS_BASE      0x1000
 #define IDM_SESSIONS_MAX       0x2000
 /* KiTTY: kageant's session submenu reads KiTTY's own hive (where sessions actually
@@ -114,6 +123,8 @@ struct PassphraseProcStruct {
                   * terminal, captured as the foreground window); NULL = desktop */
 };
 
+static void kageant_set_window_icon(HWND hwnd);   /* defined below */
+
 /*
  * Dialog-box function for the Licence box.
  */
@@ -122,6 +133,7 @@ static INT_PTR CALLBACK LicenceProc(HWND hwnd, UINT msg,
 {
     switch (msg) {
       case WM_INITDIALOG:
+        kageant_set_window_icon(hwnd);
         SetDlgItemText(hwnd, IDC_LICENCE_TEXTBOX, LICENCE_TEXT("\r\n\r\n"));
         return 1;
       case WM_COMMAND:
@@ -143,6 +155,46 @@ static INT_PTR CALLBACK LicenceProc(HWND hwnd, UINT msg,
 void kitty_auxpos_apply(HWND dlg, const char *key, HWND anchor, int near_tray);
 void kitty_auxpos_save(HWND dlg, const char *key);
 
+/* KiTTY: the KiTTY key generator, sitting next to us - kittygen.exe in a
+ * release, puttygen.exe in a dev build. Returns a malloc'd path if present,
+ * else NULL (so the New key button can grey itself when it is not around).
+ * Mirrors the putty.exe discovery in WinMain. */
+static char *find_kittygen(void)
+{
+    char b[2048], *r, *p, *q;
+    static const char *const names[] = { "kittygen.exe", "puttygen.exe" };
+    DWORD n = GetModuleFileNameA(NULL, b, sizeof(b) - 32);
+    if (!n || n >= sizeof(b) - 32)
+        return NULL;
+    r = b;
+    p = strrchr(b, '\\'); if (p && p >= r) r = p + 1;
+    q = strrchr(b, ':');  if (q && q >= r) r = q + 1;
+    for (size_t i = 0; i < lenof(names); i++) {
+        strcpy(r, names[i]);
+        if (GetFileAttributesA(b) != INVALID_FILE_ATTRIBUTES)
+            return dupstr(b);
+    }
+    return NULL;
+}
+
+/* KiTTY: give a dialog the kageant title-bar icon. Dialogs created with
+ * CreateDialog/DialogBox get no icon of their own and show the generic
+ * Windows default; the tray app has one, so use it. LR_SHARED handles are
+ * managed by the system - no DestroyIcon needed. */
+static void kageant_set_window_icon(HWND hwnd)
+{
+    HICON big = (HICON)LoadImage(hinst, MAKEINTRESOURCE(IDI_MAINICON),
+                                 IMAGE_ICON, GetSystemMetrics(SM_CXICON),
+                                 GetSystemMetrics(SM_CYICON), LR_SHARED);
+    HICON small = (HICON)LoadImage(hinst, MAKEINTRESOURCE(IDI_MAINICON),
+                                   IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
+                                   GetSystemMetrics(SM_CYSMICON), LR_SHARED);
+    if (big)
+        SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)big);
+    if (small)
+        SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)small);
+}
+
 /*
  * Dialog-box function for the About box.
  */
@@ -151,6 +203,7 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
 {
     switch (msg) {
       case WM_INITDIALOG: {
+        kageant_set_window_icon(hwnd);
         char *buildinfo_text = buildinfo("\r\n");
 #ifdef KITTY_TEST_BUILD_LABEL
         const char *testbuild = "\r\n*** TEST BUILD: " KITTY_TEST_BUILD_LABEL " ***";
@@ -303,6 +356,7 @@ static INT_PTR CALLBACK PassphraseProc(HWND hwnd, UINT msg,
 
     switch (msg) {
       case WM_INITDIALOG: {
+        kageant_set_window_icon(hwnd);
         if (p->modal)
             modal_passphrase_hwnd = hwnd;
 
@@ -421,15 +475,30 @@ void old_keyfile_warning(void)
 }
 
 struct keylist_update_ctx {
-    HDC hdc;
-    int algbitswidth, algwidth, bitswidth, hashwidth;
+    HWND hlist;                    /* KiTTY: the ListView being filled */
+    int index;                     /* KiTTY: next row to insert */
     bool enable_remove_controls;
     bool enable_reencrypt_controls;
 };
 
+/* KiTTY: what a row's State column can say. KEYSTATE_ENCRYPTED is a deferred
+ * key (no cleartext in the agent yet, passphrase asked at first use);
+ * KEYSTATE_REENCRYPTABLE is loaded with an encrypted file to fall back to.
+ * The last two are startup entries that are NOT in the agent at all: their
+ * file is absent (missing) or present-but-unloadable (failed). */
+enum { KEYSTATE_LOADED, KEYSTATE_ENCRYPTED, KEYSTATE_REENCRYPTABLE,
+       KEYSTATE_MISSING, KEYSTATE_FAILED };
+
 struct keylist_display_data {
     strbuf *alg, *bits, *hash, *comment, *info;
     strbuf *blob;     /* KiTTY: public blob, to identify this row for reordering */
+    int state;        /* KiTTY: KEYSTATE_*, for the State column and details */
+    char *fp_full[SSH_N_FPTYPES];  /* KiTTY: every fingerprint form, for the
+                                    * details dialog; NULL where inapplicable
+                                    * (certificate forms of a plain key) */
+    int pending;      /* KiTTY: a not-loaded startup entry, not an agent key */
+    char *pendpath;   /* KiTTY: its stored file path (pending rows only) */
+    int ssh_version;  /* KiTTY: 1 or 2; SSH-1 keys cannot be re-encrypted */
 };
 
 static void keylist_update_callback(
@@ -447,6 +516,12 @@ static void keylist_update_callback(
     disp->comment = strbuf_new();
     disp->info = strbuf_new();
     disp->blob = strbuf_dup(ptrlen_from_strbuf(key->blob));  /* KiTTY: for reordering */
+    /* KiTTY: keep every fingerprint form for the details dialog. */
+    for (size_t t = 0; t < SSH_N_FPTYPES; t++)
+        disp->fp_full[t] = fingerprints[t] ? dupstr(fingerprints[t]) : NULL;
+    disp->pending = 0;
+    disp->pendpath = NULL;
+    disp->ssh_version = key->ssh_version;
 
     /* There is at least one key, so the controls for removing keys
      * should be enabled */
@@ -494,122 +569,290 @@ static void keylist_update_callback(
 
     put_dataz(disp->comment, comment);
 
-    SIZE sz;
-    if (disp->bits->len) {
-        GetTextExtentPoint32(ctx->hdc, disp->alg->s, disp->alg->len, &sz);
-        if (ctx->algwidth < sz.cx) ctx->algwidth = sz.cx;
-        GetTextExtentPoint32(ctx->hdc, disp->bits->s, disp->bits->len, &sz);
-        if (ctx->bitswidth < sz.cx) ctx->bitswidth = sz.cx;
-    } else {
-        GetTextExtentPoint32(ctx->hdc, disp->alg->s, disp->alg->len, &sz);
-        if (ctx->algbitswidth < sz.cx) ctx->algbitswidth = sz.cx;
-    }
-    GetTextExtentPoint32(ctx->hdc, disp->hash->s, disp->hash->len, &sz);
-    if (ctx->hashwidth < sz.cx) ctx->hashwidth = sz.cx;
-
+    /*
+     * KiTTY: the state - is this key usable right now, or will it ask for a
+     * passphrase first? - gets a real column. It used to be tacked onto the
+     * comment, where a long algorithm name or comment pushed it off the right
+     * edge; measured 2026-08-08 with a DSA key: an hour spent chasing a key
+     * that WAS deferred and did not look it.
+     */
     if (ext_flags & LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY) {
-        put_fmt(disp->info, "(encrypted)");
+        disp->state = KEYSTATE_ENCRYPTED;
+        put_dataz(disp->info, "encrypted");
     } else if (ext_flags & LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE) {
-        put_fmt(disp->info, "(re-encryptable)");
+        disp->state = KEYSTATE_REENCRYPTABLE;
+        put_dataz(disp->info, "re-encryptable");
 
         /* At least one key can be re-encrypted */
         ctx->enable_reencrypt_controls = true;
+    } else {
+        disp->state = KEYSTATE_LOADED;
+        put_dataz(disp->info, "loaded");
     }
 
-    /* This list box is owner-drawn but doesn't have LBS_HASSTRINGS,
-     * so we can use LB_ADDSTRING to hand the list box our display
-     * info pointer */
-    SendDlgItemMessage(keylist, IDC_KEYLIST_LISTBOX,
-                       LB_ADDSTRING, 0, (LPARAM)disp);
+    /* KiTTY: one ListView row per key; the display struct rides along as the
+     * row's lParam, exactly as it used to ride in the listbox item data. */
+    LVITEM lvi;
+    memset(&lvi, 0, sizeof(lvi));
+    lvi.mask = LVIF_TEXT | LVIF_PARAM;
+    lvi.iItem = ctx->index;
+    lvi.pszText = disp->alg->s;
+    lvi.lParam = (LPARAM)disp;
+    int row = ListView_InsertItem(ctx->hlist, &lvi);
+    ListView_SetItemText(ctx->hlist, row, 1, disp->bits->s);
+    ListView_SetItemText(ctx->hlist, row, 2, disp->hash->s);
+    ListView_SetItemText(ctx->hlist, row, 3, disp->info->s);
+    ListView_SetItemText(ctx->hlist, row, 4, disp->comment->s);
+    ctx->index++;
 }
 
-/* Column start positions for the list box, in pixels (not dialog units). */
-static int colpos_bits, colpos_hash, colpos_state, colpos_comment;
-static int statewidth;
+/* KiTTY: fetch the display struct a ListView row carries in its lParam. */
+static struct keylist_display_data *keylist_row_data(HWND hlist, int row)
+{
+    LVITEM lvi;
+    memset(&lvi, 0, sizeof(lvi));
+    lvi.mask = LVIF_PARAM;
+    lvi.iItem = row;
+    if (row < 0 || !ListView_GetItem(hlist, &lvi))
+        return NULL;
+    return (struct keylist_display_data *)lvi.lParam;
+}
+
+/* KiTTY: free the display structs the ListView rows point at. Called before
+ * every rebuild and once more when the window closes. */
+static void keylist_free_display_data(HWND hlist)
+{
+    int nitems = ListView_GetItemCount(hlist);
+    for (int i = 0; i < nitems; i++) {
+        struct keylist_display_data *disp = keylist_row_data(hlist, i);
+        if (!disp)
+            continue;
+        strbuf_free(disp->alg);
+        strbuf_free(disp->bits);
+        strbuf_free(disp->hash);
+        strbuf_free(disp->comment);
+        strbuf_free(disp->info);
+        strbuf_free(disp->blob);
+        for (size_t t = 0; t < SSH_N_FPTYPES; t++)
+            sfree(disp->fp_full[t]);
+        sfree(disp->pendpath);
+        sfree(disp);
+    }
+}
+
+/* KiTTY: is the "Show unavailable keys" toggle on? Persisted like the other
+ * kageant settings; default on - the whole point is that these entries were
+ * invisible. */
+static bool keylist_show_unavail = true;
+
+/* KiTTY: set while keylist_update() tears down and rebuilds the ListView.
+ * The teardown frees every row's disp struct before deleting the items, and
+ * the deletes/inserts fire LVN_ITEMCHANGED - whose handler must not then read
+ * a freed lParam. The post-rebuild button refresh happens explicitly at the
+ * end of keylist_update() instead. */
+static bool keylist_rebuilding = false;
+
+/*
+ * KiTTY: the single, state-sensitive action button (in the Re-encrypt slot).
+ *
+ * One button beats a Re-encrypt on the list plus a Load-key-now hidden in
+ * the details dialog. What it offers depends on the selected key:
+ *   - a deferred (encrypted) key whose file is reachable -> DECRYPT it now
+ *   - a re-encryptable key (has its own encrypted fallback)   -> RE-ENCRYPT
+ *   - a plainly loaded key whose file is reachable            -> RE-ENCRYPT
+ *     (kageant kept no encrypted form for a plainly-added key, so we re-read
+ *      it from disk to recover one, then drop the cleartext)
+ * SSH-1 keys cannot be re-encrypted at all; a key with no reachable file
+ * offers nothing.
+ */
+enum { KLBTN_NONE, KLBTN_DECRYPT, KLBTN_REENCRYPT };
+
+static int keylist_action_for(struct keylist_display_data *disp,
+                              char **path_out)
+{
+    if (path_out)
+        *path_out = NULL;
+    if (!disp || disp->pending || !disp->blob->len)
+        return KLBTN_NONE;
+
+    if (disp->state == KEYSTATE_REENCRYPTABLE)
+        return KLBTN_REENCRYPT;    /* has its own fallback; no file needed */
+
+    if (disp->ssh_version != 2)
+        return KLBTN_NONE;         /* SSH-1: neither decrypt-now nor re-encrypt */
+
+    /* Both remaining actions need the key's file on disk. */
+    char *p = kageant_file_of_blob(ptrlen_from_strbuf(disp->blob));
+    if (!p || GetFileAttributesA(p) == INVALID_FILE_ATTRIBUTES) {
+        sfree(p);
+        return KLBTN_NONE;
+    }
+    int action = (disp->state == KEYSTATE_ENCRYPTED) ?
+        KLBTN_DECRYPT : KLBTN_REENCRYPT;
+    if (path_out)
+        *path_out = p;
+    else
+        sfree(p);
+    return action;
+}
+
+/* Retext + enable the action button from the currently focused/selected row. */
+static void keylist_refresh_actionbtn(HWND dlg)
+{
+    HWND hlist = GetDlgItem(dlg, IDC_KEYLIST_LISTBOX);
+    int focus = ListView_GetNextItem(hlist, -1, LVNI_FOCUSED | LVNI_SELECTED);
+    if (focus < 0)
+        focus = ListView_GetNextItem(hlist, -1, LVNI_SELECTED);
+    int mode = keylist_action_for(keylist_row_data(hlist, focus), NULL);
+    HWND btn = GetDlgItem(dlg, IDC_KEYLIST_REENCRYPT);
+    SetWindowText(btn, mode == KLBTN_DECRYPT ? "&Decrypt" : "Re-e&ncrypt");
+    EnableWindow(btn, mode != KLBTN_NONE);
+}
 
 /*
  * Update the visible key list.
  */
 void keylist_update(void)
 {
-    if (keylist) {
-        /*
-         * Clear the previous list box content and free their display
-         * structures.
-         */
-        {
-            int nitems = SendDlgItemMessage(keylist, IDC_KEYLIST_LISTBOX,
-                                            LB_GETCOUNT, 0, 0);
-            for (int i = 0; i < nitems; i++) {
-                struct keylist_display_data *disp =
-                    (struct keylist_display_data *)SendDlgItemMessage(
-                        keylist, IDC_KEYLIST_LISTBOX, LB_GETITEMDATA, i, 0);
-                strbuf_free(disp->alg);
-                strbuf_free(disp->bits);
-                strbuf_free(disp->hash);
-                strbuf_free(disp->comment);
-                strbuf_free(disp->info);
-                strbuf_free(disp->blob);
-                sfree(disp);
-            }
+    if (!keylist)
+        return;
+
+    HWND hlist = GetDlgItem(keylist, IDC_KEYLIST_LISTBOX);
+
+    /*
+     * KiTTY: this is called at any time - device events and the agent both
+     * trigger it while the window is open - so the rebuild must not lose the
+     * user's place. Remember which keys were selected (and which had focus)
+     * BY BLOB and re-select them afterwards; a row index would name a
+     * different key once the list has changed.
+     */
+    int nsel = 0;
+    strbuf **selblobs;
+    strbuf *focusblob = NULL;
+    {
+        int nitems = ListView_GetItemCount(hlist);
+        selblobs = snewn(nitems ? nitems : 1, strbuf *);
+        for (int i = 0; i < nitems; i++) {
+            UINT st = ListView_GetItemState(hlist, i,
+                                            LVIS_SELECTED | LVIS_FOCUSED);
+            if (!st)
+                continue;
+            struct keylist_display_data *disp = keylist_row_data(hlist, i);
+            /* Pending rows have no blob; an empty blob would cross-match
+             * every other pending row after the rebuild, so skip them. */
+            if (!disp || !disp->blob->len)
+                continue;
+            if (st & LVIS_SELECTED)
+                selblobs[nsel++] = strbuf_dup(ptrlen_from_strbuf(disp->blob));
+            if (st & LVIS_FOCUSED)
+                focusblob = strbuf_dup(ptrlen_from_strbuf(disp->blob));
         }
-        SendDlgItemMessage(keylist, IDC_KEYLIST_LISTBOX,
-                           LB_RESETCONTENT, 0, 0);
-
-        char *errmsg;
-        struct keylist_update_ctx ctx[1];
-        ctx->enable_remove_controls = false;
-        ctx->enable_reencrypt_controls = false;
-        ctx->algbitswidth = ctx->algwidth = 0;
-        ctx->bitswidth = ctx->hashwidth = 0;
-        ctx->hdc = GetDC(keylist);
-        SelectObject(ctx->hdc, (HFONT)SendMessage(keylist, WM_GETFONT, 0, 0));
-        int status = pageant_enum_keys(keylist_update_callback, ctx, &errmsg);
-
-        SIZE sz;
-        GetTextExtentPoint32(ctx->hdc, "MM", 2, &sz);
-        int gutter = sz.cx;
-
-        /*
-         * KiTTY: the STATE gets a column of its own, before the comment.
-         *
-         * It used to be tacked onto the end of the comment with a tab between,
-         * so a long algorithm name or a long comment pushed "(encrypted)" off
-         * the right-hand edge - and that is the one field which says whether a
-         * key is usable right now or will ask for a passphrase first. Measured
-         * 2026-08-08 with a DSA key: an hour spent chasing a key that WAS
-         * deferred and did not look it.
-         *
-         * Width is the widest state text rather than the widest one in the
-         * list, so the columns do not jump about as keys are added and removed.
-         */
-        {
-            SIZE s1, s2;
-            HDC hdc2 = GetDC(keylist);
-            SelectObject(hdc2, (HFONT)SendMessage(keylist, WM_GETFONT, 0, 0));
-            GetTextExtentPoint32(hdc2, "(encrypted)", 11, &s1);
-            GetTextExtentPoint32(hdc2, "(re-encryptable)", 16, &s2);
-            statewidth = (s1.cx > s2.cx ? s1.cx : s2.cx);
-            DeleteDC(hdc2);
-        }
-        DeleteDC(ctx->hdc);
-        colpos_hash = ctx->algwidth + ctx->bitswidth + 2*gutter;
-        if (colpos_hash < ctx->algbitswidth + gutter)
-            colpos_hash = ctx->algbitswidth + gutter;
-        colpos_bits = colpos_hash - ctx->bitswidth - gutter;
-        colpos_state = colpos_hash + ctx->hashwidth + gutter;
-        colpos_comment = colpos_state + statewidth + gutter;
-        assert(status == PAGEANT_ACTION_OK);
-        assert(!errmsg);
-
-        SendDlgItemMessage(keylist, IDC_KEYLIST_LISTBOX,
-                           LB_SETCURSEL, (WPARAM) - 1, 0);
-
-        EnableWindow(GetDlgItem(keylist, IDC_KEYLIST_REMOVE),
-                     ctx->enable_remove_controls);
-        EnableWindow(GetDlgItem(keylist, IDC_KEYLIST_REENCRYPT),
-                     ctx->enable_reencrypt_controls);
     }
+
+    SendMessage(hlist, WM_SETREDRAW, false, 0);
+    keylist_rebuilding = true;   /* LVN_ITEMCHANGED must not read freed rows */
+
+    keylist_free_display_data(hlist);
+    ListView_DeleteAllItems(hlist);
+
+    char *errmsg;
+    struct keylist_update_ctx ctx[1];
+    ctx->hlist = hlist;
+    ctx->index = 0;
+    ctx->enable_remove_controls = false;
+    ctx->enable_reencrypt_controls = false;
+    int status = pageant_enum_keys(keylist_update_callback, ctx, &errmsg);
+    assert(status == PAGEANT_ACTION_OK);
+    assert(!errmsg);
+
+    /*
+     * KiTTY: append the startup entries that are NOT in the agent - file
+     * absent (missing) or present but unloadable (failed) - so "N keys could
+     * not be loaded" is answerable, and a dead entry can be Removed, without
+     * digging in the registry or the ini. Toggleable, on by default.
+     */
+    if (keylist_show_unavail) {
+        int np = kageant_pending_count();
+        for (int i = 0; i < np; i++) {
+            const char *path, *fp;
+            int enc, failed;
+            if (!kageant_pending_get(i, &path, &enc, &fp, &failed))
+                continue;
+            struct keylist_display_data *disp =
+                snew(struct keylist_display_data);
+            disp->alg = strbuf_new();
+            put_dataz(disp->alg, "(not loaded)");
+            disp->bits = strbuf_new();
+            disp->hash = strbuf_new();
+            if (fp && *fp)
+                put_dataz(disp->hash, fp);
+            disp->comment = strbuf_new();
+            disp->info = strbuf_new();
+            put_dataz(disp->info, failed ? "failed" : "missing");
+            disp->blob = strbuf_new();
+            disp->state = failed ? KEYSTATE_FAILED : KEYSTATE_MISSING;
+            for (size_t t = 0; t < SSH_N_FPTYPES; t++)
+                disp->fp_full[t] = NULL;
+            disp->pending = 1;
+            disp->pendpath = dupstr(path);
+            disp->ssh_version = 0;
+
+            LVITEM lvi;
+            memset(&lvi, 0, sizeof(lvi));
+            lvi.mask = LVIF_TEXT | LVIF_PARAM;
+            lvi.iItem = ctx->index;
+            lvi.pszText = disp->alg->s;
+            lvi.lParam = (LPARAM)disp;
+            int row = ListView_InsertItem(hlist, &lvi);
+            ListView_SetItemText(hlist, row, 2, disp->hash->s);
+            ListView_SetItemText(hlist, row, 3, disp->info->s);
+            /* The path is the only name these entries have - it goes in the
+             * comment column, where the eye looks for "which key is this". */
+            ListView_SetItemText(hlist, row, 4, disp->pendpath);
+            ctx->index++;
+            /* Removing a dead entry is the point of showing them. */
+            ctx->enable_remove_controls = true;
+        }
+    }
+
+    /* Re-select what was selected before the rebuild. */
+    if (nsel || focusblob) {
+        int nitems = ListView_GetItemCount(hlist);
+        for (int i = 0; i < nitems; i++) {
+            struct keylist_display_data *disp = keylist_row_data(hlist, i);
+            if (!disp)
+                continue;
+            ptrlen blob = ptrlen_from_strbuf(disp->blob);
+            UINT st = 0;
+            for (int j = 0; j < nsel; j++) {
+                if (ptrlen_eq_ptrlen(blob, ptrlen_from_strbuf(selblobs[j]))) {
+                    st |= LVIS_SELECTED;
+                    break;
+                }
+            }
+            if (focusblob &&
+                ptrlen_eq_ptrlen(blob, ptrlen_from_strbuf(focusblob)))
+                st |= LVIS_FOCUSED;
+            if (st)
+                ListView_SetItemState(hlist, i, st, st);
+        }
+    }
+    for (int j = 0; j < nsel; j++)
+        strbuf_free(selblobs[j]);
+    sfree(selblobs);
+    if (focusblob)
+        strbuf_free(focusblob);
+
+    keylist_rebuilding = false;
+
+    SendMessage(hlist, WM_SETREDRAW, true, 0);
+    InvalidateRect(hlist, NULL, false);
+
+    EnableWindow(GetDlgItem(keylist, IDC_KEYLIST_REMOVE),
+                 ctx->enable_remove_controls);
+    /* KiTTY: the Re-encrypt slot is now a state-sensitive Decrypt/Re-encrypt
+     * button; its label and enabled state come from the selected key. */
+    keylist_refresh_actionbtn(keylist);
 }
 
 void win_add_keyfile(Filename *filename, bool encrypted)
@@ -752,6 +995,591 @@ static void prompt_add_keyfile(bool encrypted)
 }
 
 /*
+ * KiTTY: resizable key-list window.
+ *
+ * Each control is anchored to the dialog edges: the list stretches both
+ * ways, everything below it rides the bottom edge, and Re-encrypt/Remove
+ * and the Close button also ride the right edge. Base positions are
+ * captured once at the end of WM_INITDIALOG (after the ini-mode rows are
+ * collapsed), and WM_SIZE places everything relative to them - so the
+ * layout follows the template and does not need touching when a control
+ * is added there.
+ *
+ * Geometry and column widths persist through the [Agent] settings layer
+ * (keylistgeometry / keylistcolumns) rather than the AuxWinPos registry
+ * mechanism, so a portable install remembers them in kitty.ini instead of
+ * not at all. A remembered position is clamped onto the nearest monitor's
+ * work area, the same rule the terminal windows follow, so a monitor that
+ * no longer exists cannot strand the window off-screen.
+ */
+#define KL_ANCH_LEFT   1
+#define KL_ANCH_TOP    2
+#define KL_ANCH_RIGHT  4
+#define KL_ANCH_BOTTOM 8
+struct kl_anchor { int id; unsigned anchor; };
+
+/* Capture the current client size, each anchored control's rect, and the
+ * window size (= the minimum) as the baseline WM_SIZE re-places against. */
+static void anchored_capture(HWND hwnd, const struct kl_anchor *anchors,
+                             size_t n, RECT *rects, SIZE *basesize,
+                             SIZE *minsize)
+{
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    basesize->cx = rc.right - rc.left;
+    basesize->cy = rc.bottom - rc.top;
+    for (size_t i = 0; i < n; i++) {
+        HWND c = GetDlgItem(hwnd, anchors[i].id);
+        RECT r = {0, 0, 0, 0};
+        if (c) {
+            GetWindowRect(c, &r);
+            MapWindowPoints(NULL, hwnd, (POINT *)&r, 2);
+        }
+        rects[i] = r;
+    }
+    GetWindowRect(hwnd, &rc);
+    minsize->cx = rc.right - rc.left;
+    minsize->cy = rc.bottom - rc.top;
+}
+
+static void anchored_relayout(HWND hwnd, const struct kl_anchor *anchors,
+                              size_t n, const RECT *rects, SIZE basesize)
+{
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    int dx = (rc.right - rc.left) - basesize.cx;
+    int dy = (rc.bottom - rc.top) - basesize.cy;
+    HDWP hdwp = BeginDeferWindowPos((int)n);
+    for (size_t i = 0; i < n; i++) {
+        HWND c = GetDlgItem(hwnd, anchors[i].id);
+        if (!c)
+            continue;                  /* e.g. Help destroyed when no help */
+        unsigned a = anchors[i].anchor;
+        RECT r = rects[i];
+        int x = r.left +
+            (((a & KL_ANCH_RIGHT) && !(a & KL_ANCH_LEFT)) ? dx : 0);
+        int y = r.top +
+            (((a & KL_ANCH_BOTTOM) && !(a & KL_ANCH_TOP)) ? dy : 0);
+        int w = (r.right - r.left) +
+            (((a & KL_ANCH_LEFT) && (a & KL_ANCH_RIGHT)) ? dx : 0);
+        int h = (r.bottom - r.top) +
+            (((a & KL_ANCH_TOP) && (a & KL_ANCH_BOTTOM)) ? dy : 0);
+        hdwp = DeferWindowPos(hdwp, c, NULL, x, y, w, h,
+                              SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    EndDeferWindowPos(hdwp);
+    InvalidateRect(hwnd, NULL, true);
+}
+
+static const struct kl_anchor keylist_anchors[] = {
+    {IDC_KEYLIST_LISTBOX,
+     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_FPTYPE_STATIC, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_FPTYPE,        KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_SHOWUNAVAIL,   KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_ADDKEY,        KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_ADDKEY_ENC,    KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_MOVEUP,        KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_MOVEDOWN,      KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_REENCRYPT,     KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_REMOVE,        KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_INISTATUS,
+     KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_CONFIRM_LABEL, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_CONFIRM_YES,   KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_CONFIRM_AUTO,  KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_CONFIRM_NO,    KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_HELP,          KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_NEWKEY,        KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_SETTINGS,      KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_STOPAGENT,     KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDOK,                      KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+};
+static RECT keylist_baserects[lenof(keylist_anchors)];
+static SIZE keylist_basesize;      /* client size the base rects refer to */
+static SIZE keylist_minsize;       /* window minimum = the template's size */
+static bool keylist_layout_ready = false;
+
+#define KL_GEOM_INIKEY "keylistgeometry"
+#define KL_GEOM_REGVAL "KeyListGeometry"
+#define KL_COLS_INIKEY "keylistcolumns"
+#define KL_COLS_REGVAL "KeyListColumns"
+#define KL_NCOLS 5
+
+static void keylist_capture_layout(HWND hwnd)
+{
+    anchored_capture(hwnd, keylist_anchors, lenof(keylist_anchors),
+                     keylist_baserects, &keylist_basesize, &keylist_minsize);
+    keylist_layout_ready = true;
+}
+
+static void keylist_relayout(HWND hwnd)
+{
+    anchored_relayout(hwnd, keylist_anchors, lenof(keylist_anchors),
+                      keylist_baserects, keylist_basesize);
+}
+
+/* KiTTY: the details dialog resizes too (long fingerprints, long paths).
+ * Fields stretch with the right edge; the paths box gets the extra height.
+ * Only one details dialog exists at a time (it is modal), so statics. */
+static const struct kl_anchor keydetail_anchors[] = {
+    {IDC_KEYDETAIL_KEY,     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
+    {IDC_KEYDETAIL_STATE,   KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
+    {IDC_KEYDETAIL_FPS,     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
+    {IDC_KEYDETAIL_COMMENT, KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
+    {IDC_KEYDETAIL_PATHS,
+     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_DEFER,   KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDOK,                  KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+};
+static RECT keydetail_baserects[lenof(keydetail_anchors)];
+static SIZE keydetail_basesize, keydetail_minsize;
+static bool keydetail_layout_ready = false;
+
+static void keylist_save_geometry(HWND hwnd)
+{
+    if (IsIconic(hwnd) || IsZoomed(hwnd))
+        return;
+    RECT r;
+    if (GetWindowRect(hwnd, &r)) {
+        char buf[64];
+        sprintf(buf, "%ld,%ld,%ld,%ld", (long)r.left, (long)r.top,
+                (long)(r.right - r.left), (long)(r.bottom - r.top));
+        kageant_setting_str_set(KL_GEOM_INIKEY, KL_GEOM_REGVAL, buf);
+    }
+    HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+    if (hlist) {
+        char cols[80];
+        sprintf(cols, "%d,%d,%d,%d,%d",
+                ListView_GetColumnWidth(hlist, 0),
+                ListView_GetColumnWidth(hlist, 1),
+                ListView_GetColumnWidth(hlist, 2),
+                ListView_GetColumnWidth(hlist, 3),
+                ListView_GetColumnWidth(hlist, 4));
+        kageant_setting_str_set(KL_COLS_INIKEY, KL_COLS_REGVAL, cols);
+    }
+}
+
+/* Apply a remembered window position/size, clamped onto the nearest
+ * monitor's work area. Returns false if nothing (usable) is stored, in
+ * which case the caller centres the window as it always did. */
+static bool keylist_restore_geometry(HWND hwnd)
+{
+    char buf[64];
+    int x, y, w, h;
+    if (!kageant_setting_str_get(KL_GEOM_INIKEY, KL_GEOM_REGVAL,
+                                 buf, sizeof(buf)))
+        return false;
+    if (sscanf(buf, "%d,%d,%d,%d", &x, &y, &w, &h) != 4)
+        return false;
+    if (w < keylist_minsize.cx) w = keylist_minsize.cx;
+    if (h < keylist_minsize.cy) h = keylist_minsize.cy;
+    RECT want;
+    SetRect(&want, x, y, x + w, y + h);
+    HMONITOR mon = MonitorFromRect(&want, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi;
+    mi.cbSize = sizeof(mi);
+    if (mon && GetMonitorInfo(mon, &mi)) {
+        RECT wk = mi.rcWork;
+        if (w > wk.right - wk.left) w = wk.right - wk.left;
+        if (h > wk.bottom - wk.top) h = wk.bottom - wk.top;
+        if (x + w > wk.right)  x = wk.right - w;
+        if (y + h > wk.bottom) y = wk.bottom - h;
+        if (x < wk.left) x = wk.left;
+        if (y < wk.top)  y = wk.top;
+    }
+    SetWindowPos(hwnd, NULL, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+    return true;
+}
+
+/*
+ * KiTTY: details for one key, on double-click or Enter - a real dialog, not
+ * a MessageBox, because the point of looking at a fingerprint is usually to
+ * copy it and compare it with one somewhere else: every field is a read-only
+ * edit control. Shows ALL fingerprint forms at once, the comment in full,
+ * the state, and WHICH FILE(s) the key came from - the list shows a comment,
+ * which is whatever was typed when the key was made, and says nothing about
+ * which of several similar files is loaded.
+ *
+ * A deferred key with a known file can be decrypted on the spot with "Load
+ * key now": re-adding the unencrypted form is the upstream-supported way to
+ * decrypt a key that is present encrypted, so this goes through the same
+ * win_add_keyfile path as the Add Key button, passphrase prompt included.
+ *
+ * Everything is copied OUT of the display struct in WM_INITDIALOG: the key
+ * list can rebuild behind this modal dialog (device events keep arriving),
+ * and the struct dies with the rebuild.
+ */
+static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
+                                       WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+      case WM_INITDIALOG: {
+        struct keylist_display_data *disp =
+            (struct keylist_display_data *)lParam;
+
+        kageant_set_window_icon(hwnd);
+
+        char *key = dupprintf("%.*s%s%.*s%s",
+                              (int)disp->alg->len, disp->alg->s,
+                              disp->bits->len ? " " : "",
+                              (int)disp->bits->len, disp->bits->s,
+                              disp->bits->len ? " bits" : "");
+        SetDlgItemText(hwnd, IDC_KEYDETAIL_KEY, key);
+        sfree(key);
+
+        SetDlgItemText(hwnd, IDC_KEYDETAIL_STATE,
+                       disp->state == KEYSTATE_ENCRYPTED ?
+                           "encrypted - the passphrase is asked for at "
+                           "first use" :
+                       disp->state == KEYSTATE_REENCRYPTABLE ?
+                           "loaded, and the key file it came from is "
+                           "encrypted" :
+                       disp->state == KEYSTATE_MISSING ?
+                           "not loaded - the key file is not reachable "
+                           "(absent media, or a path that no longer exists)" :
+                       disp->state == KEYSTATE_FAILED ?
+                           "not loaded - the file is present but would not "
+                           "load" :
+                           "loaded and ready to use");
+
+        {
+            /* All fingerprint forms at once, SHA-256 first; certificate
+             * forms exist only for keys that carry a certificate. */
+            static const struct { FingerprintType t; const char *label; }
+            fporder[] = {
+                {SSH_FPTYPE_SHA256, "SHA-256:  "},
+                {SSH_FPTYPE_MD5, "MD5:  "},
+                {SSH_FPTYPE_SHA256_CERT, "SHA-256 incl. certificate:  "},
+                {SSH_FPTYPE_MD5_CERT, "MD5 incl. certificate:  "},
+            };
+            strbuf *sb = strbuf_new();
+            for (size_t i = 0; i < lenof(fporder); i++) {
+                if (!disp->fp_full[fporder[i].t])
+                    continue;
+                if (sb->len)
+                    put_dataz(sb, "\r\n");
+                put_dataz(sb, fporder[i].label);
+                put_dataz(sb, disp->fp_full[fporder[i].t]);
+            }
+            /* A not-loaded entry has no live key to fingerprint; show what
+             * the startup list recorded when it was last saved, if anything. */
+            if (!sb->len && disp->hash->len) {
+                put_dataz(sb, "recorded at last save:  ");
+                put_dataz(sb, disp->hash->s);
+            }
+            SetDlgItemText(hwnd, IDC_KEYDETAIL_FPS, sb->s);
+            strbuf_free(sb);
+        }
+
+        SetDlgItemText(hwnd, IDC_KEYDETAIL_COMMENT, disp->comment->s);
+
+        if (disp->pending) {
+            /* The stored path IS the identity of a not-loaded entry. */
+            SetDlgItemText(hwnd, IDC_KEYDETAIL_PATHS, disp->pendpath);
+        } else {
+            /* kageant_paths_of_blob separates entries with "\n    " for the
+             * old MessageBox layout; an edit control wants plain CRLFs. */
+            char *paths = disp->blob->len ?
+                kageant_paths_of_blob(ptrlen_from_strbuf(disp->blob)) : NULL;
+            if (paths) {
+                strbuf *sb = strbuf_new();
+                for (const char *p = paths; *p; p++) {
+                    if (*p == '\n') {
+                        put_dataz(sb, "\r\n");
+                        while (p[1] == ' ')
+                            p++;
+                    } else {
+                        put_byte(sb, *p);
+                    }
+                }
+                SetDlgItemText(hwnd, IDC_KEYDETAIL_PATHS, sb->s);
+                strbuf_free(sb);
+                sfree(paths);
+            } else {
+                SetDlgItemText(hwnd, IDC_KEYDETAIL_PATHS,
+                               "not known - this key was added by another "
+                               "program, or by a build that did not record "
+                               "it");
+            }
+        }
+
+        /* The key's tracked file path, kept in the window's user data for the
+         * load-mode checkbox (any tracked key, pending ones included).
+         * Decrypt/Re-encrypt now live on the key-list window's single action
+         * button, not here. */
+        char *keypath = NULL;
+        if (disp->pending)
+            keypath = dupstr(disp->pendpath);
+        else if (disp->blob->len)
+            keypath = kageant_file_of_blob(ptrlen_from_strbuf(disp->blob));
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)keypath);
+
+        /* KiTTY: how this key will be added the NEXT time the startup list
+         * loads it. Greyed for keys the startup list does not track. */
+        {
+            int mode = keypath ? kageant_startup_mode_get(keypath) : -1;
+            EnableWindow(GetDlgItem(hwnd, IDC_KEYDETAIL_DEFER), mode >= 0);
+            CheckDlgButton(hwnd, IDC_KEYDETAIL_DEFER,
+                           mode == 1 ? BST_CHECKED : BST_UNCHECKED);
+        }
+
+        /* Resize baseline (fields captured; the paths box takes the extra
+         * height), then the same placement memory the About box uses,
+         * anchored to the key list window it was opened from. */
+        anchored_capture(hwnd, keydetail_anchors, lenof(keydetail_anchors),
+                         keydetail_baserects, &keydetail_basesize,
+                         &keydetail_minsize);
+        keydetail_layout_ready = true;
+        kitty_auxpos_apply(hwnd, "kageantKeyDetails",
+                           GetWindow(hwnd, GW_OWNER), 0);
+        return 1;
+      }
+      case WM_SIZE:
+        if (keydetail_layout_ready && wParam != SIZE_MINIMIZED)
+            anchored_relayout(hwnd, keydetail_anchors,
+                              lenof(keydetail_anchors), keydetail_baserects,
+                              keydetail_basesize);
+        return 0;
+      case WM_GETMINMAXINFO:
+        if (keydetail_layout_ready && keydetail_minsize.cx) {
+            MINMAXINFO *mmi = (MINMAXINFO *)lParam;
+            mmi->ptMinTrackSize.x = keydetail_minsize.cx;
+            mmi->ptMinTrackSize.y = keydetail_minsize.cy;
+        }
+        return 0;
+      case WM_DESTROY:
+        keydetail_layout_ready = false;
+        return 0;
+      case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+          case IDC_KEYDETAIL_DEFER:
+            /* KiTTY: flip how this key loads next time; takes effect in the
+             * stored startup list immediately, current state untouched. */
+            {
+                char *keypath = (char *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+                if (keypath)
+                    kageant_startup_mode_set(
+                        keypath,
+                        IsDlgButtonChecked(hwnd, IDC_KEYDETAIL_DEFER) ==
+                            BST_CHECKED);
+            }
+            return 0;
+          case IDOK:
+          case IDCANCEL: {
+            kitty_auxpos_save(hwnd, "kageantKeyDetails");
+            char *loadpath = (char *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+            sfree(loadpath);
+            EndDialog(hwnd, 1);
+            return 0;
+          }
+        }
+        return 0;
+      case WM_CLOSE: {
+        kitty_auxpos_save(hwnd, "kageantKeyDetails");
+        char *loadpath = (char *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+        sfree(loadpath);
+        EndDialog(hwnd, 1);
+        return 0;
+      }
+    }
+    return 0;
+}
+
+static void keylist_show_details(HWND hwnd, struct keylist_display_data *disp)
+{
+    if (!disp)
+        return;
+    DialogBoxParam(hinst, MAKEINTRESOURCE(IDD_KEYDETAILS), hwnd,
+                   KeyDetailsProc, (LPARAM)disp);
+}
+
+/*
+ * KiTTY: drag-and-drop reordering.
+ *
+ * The list order IS the offer order, and dragging a row is the direct way
+ * to set it; Move Up/Down stay as the keyboard-accessible equivalent. The
+ * dragged key is identified by its PUBLIC BLOB, never by its row index: the
+ * list can rebuild mid-drag (device events), and the source row is
+ * recomputed from the blob at the moment of the drop. The drop goes through
+ * pageant_reorder_key() one step at a time and then persists through
+ * kageant_save_key_order(), exactly as the buttons do.
+ */
+static bool keylist_dragging = false;
+static strbuf *keylist_dragblob = NULL;
+
+static int keylist_row_of_blob(HWND hlist, ptrlen blob)
+{
+    int nitems = ListView_GetItemCount(hlist);
+    for (int i = 0; i < nitems; i++) {
+        struct keylist_display_data *disp = keylist_row_data(hlist, i);
+        if (disp && ptrlen_eq_ptrlen(ptrlen_from_strbuf(disp->blob), blob))
+            return i;
+    }
+    return -1;
+}
+
+static void keylist_drag_cancel(HWND hwnd)
+{
+    if (!keylist_dragging)
+        return;
+    keylist_dragging = false;
+    if (keylist_dragblob) {
+        strbuf_free(keylist_dragblob);
+        keylist_dragblob = NULL;
+    }
+    LVINSERTMARK im;
+    im.cbSize = sizeof(im);
+    im.dwFlags = 0;
+    im.iItem = -1;
+    ListView_SetInsertMark(GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX), &im);
+}
+
+/* Where would a drop at dialog-client point pt land? Returns the row to
+ * insert BEFORE (list length = append at the end), or -1 for nowhere. */
+static int keylist_drop_target(HWND hwnd, POINT pt)
+{
+    HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+    MapWindowPoints(hwnd, hlist, &pt, 1);
+    LVINSERTMARK im;
+    im.cbSize = sizeof(im);
+    im.dwFlags = 0;
+    im.iItem = -1;
+    if (ListView_InsertMarkHitTest(hlist, &pt, &im) && im.iItem >= 0)
+        return im.iItem + ((im.dwFlags & LVIM_AFTER) ? 1 : 0);
+    /* Above the first row means "to the front", below the last row (or in
+     * the empty space of a short list) means "to the end". */
+    RECT r0;
+    if (ListView_GetItemCount(hlist) > 0 &&
+        ListView_GetItemRect(hlist, 0, &r0, LVIR_BOUNDS) && pt.y < r0.top)
+        return 0;
+    LVHITTESTINFO ht;
+    memset(&ht, 0, sizeof(ht));
+    ht.pt = pt;
+    if (ListView_HitTest(hlist, &ht) < 0) {
+        RECT rc;
+        GetClientRect(hlist, &rc);
+        if (PtInRect(&rc, pt))
+            return ListView_GetItemCount(hlist);
+    }
+    return -1;
+}
+
+/*
+ * KiTTY: drop a key file on the window to add it (deferred, like the Add
+ * Key (encrypted) button - a drop should never interrupt with a passphrase
+ * prompt; the details dialog's "Load key now" decrypts on demand). A drop
+ * lands on the deepest window that accepts files and goes no further, so
+ * the ListView must accept and forward - it covers most of the dialog.
+ */
+static LRESULT CALLBACK keylist_lv_subclass(HWND hwnd, UINT msg,
+                                            WPARAM wParam, LPARAM lParam,
+                                            UINT_PTR id, DWORD_PTR ref)
+{
+    if (msg == WM_DROPFILES)
+        return SendMessage(GetParent(hwnd), WM_DROPFILES, wParam, lParam);
+    if (msg == WM_NCDESTROY)
+        RemoveWindowSubclass(hwnd, keylist_lv_subclass, id);
+    return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
+/*
+ * KiTTY: the [Agent] settings dialog, opened from the key list's Settings
+ * button. It gathers the [Agent] options that are NOT already on the key
+ * list window (confirm-key-use stays as the inline radios).
+ *
+ * The two side-effectful settings - OpenSSH integration and load-on-startup
+ * - are routed through the existing tray-menu handlers when actually
+ * changed, rather than reimplemented here: those handlers edit ~/.ssh files,
+ * install autostart shortcuts and run conflict prompts, and there must be
+ * exactly one copy of that logic. The removable-media options are honoured
+ * only from kitty.ini, so they are greyed in a registry-authoritative
+ * install.
+ */
+static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
+                                        WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+      case WM_INITDIALOG:
+        kageant_set_window_icon(hwnd);
+        CheckDlgButton(hwnd, IDC_SET_OPENSSH,
+            kageant_openssh_get() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_STARTUP,
+            kageant_autostart_active() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_NOTIFY,
+            kageant_notify_get() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_RETRY,
+            kageant_retry_keys() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_UNLOAD,
+            kageant_unload_on_remove() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_QUIET,
+            kageant_quiet_missing() ? BST_CHECKED : BST_UNCHECKED);
+        SetDlgItemInt(hwnd, IDC_SET_TTL, kageant_passphrase_ttl(), FALSE);
+        SendDlgItemMessage(hwnd, IDC_SET_TTL, EM_SETLIMITTEXT, 3, 0);
+        /* The removable-media options live in kitty.ini only. If no kitty.ini
+         * is reachable (a bare install with no ini anywhere), there is nowhere
+         * to store them - grey them rather than pretend a change was saved. */
+        if (!kageant_ini_present()) {
+            static const int inionly[] = {
+                IDC_SET_RETRY, IDC_SET_UNLOAD, IDC_SET_QUIET, IDC_SET_TTL };
+            for (size_t i = 0; i < lenof(inionly); i++)
+                EnableWindow(GetDlgItem(hwnd, inionly[i]), FALSE);
+        }
+        kitty_auxpos_apply(hwnd, "kageantSettings",
+                           GetWindow(hwnd, GW_OWNER), 0);
+        return 1;
+      case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+          case IDOK: {
+            kageant_notify_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_NOTIFY) == BST_CHECKED);
+            /* The four ini-only options only when there is an ini to hold
+             * them (matches the greying above). */
+            if (kageant_ini_present()) {
+                kageant_retry_keys_set(
+                    IsDlgButtonChecked(hwnd, IDC_SET_RETRY) == BST_CHECKED);
+                kageant_unload_on_remove_set(
+                    IsDlgButtonChecked(hwnd, IDC_SET_UNLOAD) == BST_CHECKED);
+                kageant_quiet_missing_set(
+                    IsDlgButtonChecked(hwnd, IDC_SET_QUIET) == BST_CHECKED);
+                /* Clamp to [0, KAGEANT_TTL_MAX]; the setter clamps too. A
+                 * blank field keeps the current value. */
+                BOOL ok = FALSE;
+                UINT ttl = GetDlgItemInt(hwnd, IDC_SET_TTL, &ok, FALSE);
+                if (ok) {
+                    if (ttl > KAGEANT_TTL_MAX)
+                        ttl = KAGEANT_TTL_MAX;
+                    kageant_passphrase_ttl_set((int)ttl);
+                }
+            }
+            /* Side-effectful toggles: fire the tray handler only on a real
+             * change (it may prompt or refuse, and it is the authority). */
+            int want = IsDlgButtonChecked(hwnd, IDC_SET_OPENSSH) == BST_CHECKED;
+            if (want != (kageant_openssh_get() ? 1 : 0))
+                SendMessage(traywindow, WM_COMMAND,
+                            IDM_OPENSSH_INTEGRATION, 0);
+            want = IsDlgButtonChecked(hwnd, IDC_SET_STARTUP) == BST_CHECKED;
+            if (want != (kageant_autostart_active() ? 1 : 0))
+                SendMessage(traywindow, WM_COMMAND, IDM_LOAD_ON_STARTUP, 0);
+            kitty_auxpos_save(hwnd, "kageantSettings");
+            EndDialog(hwnd, 1);
+            return 0;
+          }
+          case IDCANCEL:
+            kitty_auxpos_save(hwnd, "kageantSettings");
+            EndDialog(hwnd, 0);
+            return 0;
+        }
+        return 0;
+      case WM_CLOSE:
+        kitty_auxpos_save(hwnd, "kageantSettings");
+        EndDialog(hwnd, 0);
+        return 0;
+    }
+    return 0;
+}
+
+/*
  * Dialog-box function for the key list box.
  */
 static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
@@ -769,6 +1597,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
 
     switch (msg) {
       case WM_INITDIALOG: {
+        kageant_set_window_icon(hwnd);
         /* KiTTY: mark the key list itself when this agent runs with the
          * restricted ACL. The tray tooltip says so too, but this window is the
          * one you open to look at your keys - and it is the process holding
@@ -790,8 +1619,13 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 HWND c = GetDlgItem(hwnd, inirows[i]);
                 if (c) ShowWindow(c, SW_HIDE);
             }
-            for (k = 0; k < 2; k++) {
-                HWND c = GetDlgItem(hwnd, k ? IDOK : IDC_KEYLIST_HELP);
+            /* The whole bottom row rides above the (now hidden) confirm
+             * rows - Help/Close and the window-action buttons alike. */
+            static const int botrow[] = {
+                IDC_KEYLIST_HELP, IDOK, IDC_KEYLIST_NEWKEY,
+                IDC_KEYLIST_SETTINGS, IDC_KEYLIST_STOPAGENT };
+            for (k = 0; k < (int)lenof(botrow); k++) {
+                HWND c = GetDlgItem(hwnd, botrow[k]);
                 if (c) {
                     RECT r; POINT p;
                     GetWindowRect(c, &r); p.x = r.left; p.y = r.top;
@@ -806,18 +1640,24 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                              (wr.bottom - wr.top) - dy, SWP_NOMOVE | SWP_NOZORDER);
             }
         }
-        /*
-         * Centre the window.
-         */
-        RECT rs, rd;
-        HWND hw;
+        /* KiTTY: the layout baseline for resizing - captured now, after the
+         * ini-mode rows above may have shrunk the template. */
+        keylist_capture_layout(hwnd);
 
-        hw = GetDesktopWindow();
-        if (GetWindowRect(hw, &rs) && GetWindowRect(hwnd, &rd))
-            MoveWindow(hwnd,
-                       (rs.right + rs.left + rd.left - rd.right) / 2,
-                       (rs.bottom + rs.top + rd.top - rd.bottom) / 2,
-                       rd.right - rd.left, rd.bottom - rd.top, true);
+        /*
+         * Centre the window - unless a remembered geometry applies.
+         */
+        if (!keylist_restore_geometry(hwnd)) {
+            RECT rs, rd;
+            HWND hw;
+
+            hw = GetDesktopWindow();
+            if (GetWindowRect(hw, &rs) && GetWindowRect(hwnd, &rd))
+                MoveWindow(hwnd,
+                           (rs.right + rs.left + rd.left - rd.right) / 2,
+                           (rs.bottom + rs.top + rd.top - rd.bottom) / 2,
+                           rd.right - rd.left, rd.bottom - rd.top, true);
+        }
 
         if (has_help())
             SetWindowLongPtr(hwnd, GWL_EXSTYLE,
@@ -830,6 +1670,79 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
         }
 
         keylist = hwnd;
+
+        /* KiTTY: New key launches kittygen - grey it if kittygen is not
+         * beside us (e.g. a standalone kageant). */
+        {
+            char *g = find_kittygen();
+            EnableWindow(GetDlgItem(hwnd, IDC_KEYLIST_NEWKEY), g != NULL);
+            sfree(g);
+        }
+
+        /*
+         * KiTTY: set up the ListView. Full-row select and grid lines are
+         * extended styles, settable only at runtime; the column widths here
+         * are first-open defaults in dialog units (so they scale with the
+         * dialog font/DPI) - the user can drag the header dividers.
+         */
+        {
+            static const struct { const char *title; int du; int fmt; }
+            cols[] = {
+                {"Algorithm", 62, LVCFMT_LEFT},
+                {"Bits", 24, LVCFMT_RIGHT},
+                {"Fingerprint", 168, LVCFMT_LEFT},
+                {"State", 52, LVCFMT_LEFT},
+                {"Comment", 104, LVCFMT_LEFT},
+            };
+            HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+            ListView_SetExtendedListViewStyle(
+                hlist, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES |
+                LVS_EX_LABELTIP | LVS_EX_DOUBLEBUFFER);
+            for (size_t i = 0; i < lenof(cols); i++) {
+                RECT r;
+                r.left = r.top = r.bottom = 0;
+                r.right = cols[i].du;
+                MapDialogRect(hwnd, &r);
+                LVCOLUMN lvc;
+                memset(&lvc, 0, sizeof(lvc));
+                lvc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT;
+                lvc.pszText = (char *)cols[i].title;
+                lvc.cx = r.right;
+                lvc.fmt = cols[i].fmt;
+                ListView_InsertColumn(hlist, (int)i, &lvc);
+            }
+
+            /* KiTTY: accept key files dropped anywhere on the window. */
+            DragAcceptFiles(hwnd, true);
+            DragAcceptFiles(hlist, true);
+            SetWindowSubclass(hlist, keylist_lv_subclass, 1, 0);
+
+            /* Remembered column widths, if any, override the defaults. */
+            char colstr[80];
+            if (kageant_setting_str_get(KL_COLS_INIKEY, KL_COLS_REGVAL,
+                                        colstr, sizeof(colstr))) {
+                int cw[KL_NCOLS];
+                if (sscanf(colstr, "%d,%d,%d,%d,%d",
+                           &cw[0], &cw[1], &cw[2], &cw[3], &cw[4]) ==
+                    KL_NCOLS) {
+                    for (int i = 0; i < KL_NCOLS; i++)
+                        if (cw[i] >= 8)
+                            ListView_SetColumnWidth(hlist, i, cw[i]);
+                }
+            }
+        }
+
+        /* KiTTY: the show-unavailable toggle, persisted like the rest. */
+        {
+            char b[16];
+            keylist_show_unavail = true;
+            if (kageant_setting_str_get("showunavailablekeys",
+                                        "ShowUnavailableKeys",
+                                        b, sizeof(b)) && !stricmp(b, "no"))
+                keylist_show_unavail = false;
+            CheckDlgButton(hwnd, IDC_KEYLIST_SHOWUNAVAIL,
+                           keylist_show_unavail ? BST_CHECKED : BST_UNCHECKED);
+        }
 
         int selection = 0;
         for (size_t i = 0; i < lenof(fptypes); i++) {
@@ -858,100 +1771,185 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
         }
         return 0;
       }
-      case WM_MEASUREITEM: {
-        assert(wParam == IDC_KEYLIST_LISTBOX);
-
-        MEASUREITEMSTRUCT *mi = (MEASUREITEMSTRUCT *)lParam;
-
-        /*
-         * Our list box is owner-drawn, but we put normal text in it.
-         * So the line height is the same as it would normally be,
-         * which is 8 dialog units.
-         */
-        RECT r;
-        r.left = r.right = r.top = 0;
-        r.bottom = 8;
-        MapDialogRect(hwnd, &r);
-        mi->itemHeight = r.bottom;
-
+      case WM_SIZE:
+        /* KiTTY: re-place every control against its anchors. */
+        if (keylist_layout_ready && wParam != SIZE_MINIMIZED)
+            keylist_relayout(hwnd);
+        return 0;
+      case WM_GETMINMAXINFO:
+        /* KiTTY: the template size is the minimum - every control stays
+         * reachable. (Arrives before WM_INITDIALOG too; 0 = not known yet.) */
+        if (keylist_minsize.cx) {
+            MINMAXINFO *mmi = (MINMAXINFO *)lParam;
+            mmi->ptMinTrackSize.x = keylist_minsize.cx;
+            mmi->ptMinTrackSize.y = keylist_minsize.cy;
+        }
+        return 0;
+      case WM_EXITSIZEMOVE:
+        /* KiTTY: persist geometry as soon as a move/resize ends, not only at
+         * close - a tray Exit can end the process with this window open. */
+        keylist_save_geometry(hwnd);
+        return 0;
+      case WM_NOTIFY: {
+        /* KiTTY: ListView notifications. Double-click activates a row ->
+         * details. (Enter arrives as IDOK instead - see WM_COMMAND.) */
+        NMHDR *nm = (NMHDR *)lParam;
+        if (nm->idFrom == IDC_KEYLIST_LISTBOX &&
+            nm->code == LVN_ITEMACTIVATE) {
+            NMITEMACTIVATE *ia = (NMITEMACTIVATE *)lParam;
+            HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+            keylist_show_details(hwnd, keylist_row_data(hlist, ia->iItem));
+        }
+        if (nm->idFrom == IDC_KEYLIST_LISTBOX && nm->code == NM_CUSTOMDRAW) {
+            /* KiTTY: paint the not-loaded rows grey - they are startup
+             * entries, not keys the agent holds. */
+            NMLVCUSTOMDRAW *cd = (NMLVCUSTOMDRAW *)lParam;
+            LRESULT res = CDRF_DODEFAULT;
+            if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) {
+                res = CDRF_NOTIFYITEMDRAW;
+            } else if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+                struct keylist_display_data *disp =
+                    (struct keylist_display_data *)cd->nmcd.lItemlParam;
+                if (disp && disp->pending)
+                    cd->clrText = GetSysColor(COLOR_GRAYTEXT);
+            }
+            SetWindowLongPtr(hwnd, DWLP_MSGRESULT, res);
+            return 1;
+        }
+        if (nm->idFrom == IDC_KEYLIST_LISTBOX && nm->code == LVN_BEGINDRAG) {
+            /* Start reordering by drag: remember WHICH KEY (by blob), not
+             * which row, and capture the mouse; the drop lands in
+             * WM_LBUTTONUP below. */
+            NMLISTVIEW *nml = (NMLISTVIEW *)lParam;
+            HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+            struct keylist_display_data *disp =
+                keylist_row_data(hlist, nml->iItem);
+            if (disp && disp->blob->len) {
+                keylist_drag_cancel(hwnd);   /* stale state, just in case */
+                keylist_dragblob =
+                    strbuf_dup(ptrlen_from_strbuf(disp->blob));
+                keylist_dragging = true;
+                ListView_SetItemState(hlist, nml->iItem,
+                                      LVIS_SELECTED | LVIS_FOCUSED,
+                                      LVIS_SELECTED | LVIS_FOCUSED);
+                SetCapture(hwnd);
+            }
+        }
+        if (nm->idFrom == IDC_KEYLIST_LISTBOX &&
+            nm->code == LVN_ITEMCHANGED && !keylist_rebuilding) {
+            /* Selection moved: retext Decrypt/Re-encrypt for the new key.
+             * Suppressed during a rebuild, when the rows are being freed. */
+            keylist_refresh_actionbtn(hwnd);
+        }
         return 0;
       }
-      case WM_DRAWITEM: {
-        assert(wParam == IDC_KEYLIST_LISTBOX);
-
-        DRAWITEMSTRUCT *di = (DRAWITEMSTRUCT *)lParam;
-
-        if (di->itemAction == ODA_FOCUS) {
-            /* Just toggle the focus rectangle either on or off. This
-             * is an XOR-type function, so it's the same call in
-             * either case. */
-            DrawFocusRect(di->hDC, &di->rcItem);
-        } else {
-            /* Draw the full text. */
-            bool selected = (di->itemState & ODS_SELECTED);
-            COLORREF newfg = GetSysColor(
-                selected ? COLOR_HIGHLIGHTTEXT : COLOR_WINDOWTEXT);
-            COLORREF newbg = GetSysColor(
-                selected ? COLOR_HIGHLIGHT : COLOR_WINDOW);
-            COLORREF oldfg = SetTextColor(di->hDC, newfg);
-            COLORREF oldbg = SetBkColor(di->hDC, newbg);
-
-            HFONT font = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
-            HFONT oldfont = SelectObject(di->hDC, font);
-
-            /* ExtTextOut("") is an easy way to just draw the
-             * background rectangle */
-            ExtTextOut(di->hDC, di->rcItem.left, di->rcItem.top,
-                       ETO_OPAQUE | ETO_CLIPPED, &di->rcItem, "", 0, NULL);
-
-            struct keylist_display_data *disp =
-                (struct keylist_display_data *)di->itemData;
-
-            RECT r;
-
-            /* Apparently real list boxes start drawing at x=1, not x=0 */
-            r.left = r.top = r.bottom = 0;
-            r.right = 1;
-            MapDialogRect(hwnd, &r);
-            ExtTextOut(di->hDC, di->rcItem.left + r.right, di->rcItem.top,
-                       ETO_CLIPPED, &di->rcItem, disp->alg->s,
-                       disp->alg->len, NULL);
-
-            if (disp->bits->len) {
-                ExtTextOut(di->hDC, di->rcItem.left + r.right + colpos_bits,
-                           di->rcItem.top, ETO_CLIPPED, &di->rcItem,
-                           disp->bits->s, disp->bits->len, NULL);
+      case WM_MOUSEMOVE:
+        if (keylist_dragging) {
+            /* Show where the drop would land. */
+            POINT pt;
+            pt.x = GET_X_LPARAM(lParam);
+            pt.y = GET_Y_LPARAM(lParam);
+            HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+            int dst = keylist_drop_target(hwnd, pt);
+            LVINSERTMARK im;
+            im.cbSize = sizeof(im);
+            im.dwFlags = 0;
+            im.iItem = -1;
+            if (dst >= 0) {
+                int nitems = ListView_GetItemCount(hlist);
+                if (dst >= nitems) {
+                    im.iItem = nitems - 1;
+                    im.dwFlags = LVIM_AFTER;
+                } else {
+                    im.iItem = dst;
+                }
             }
-
-            ExtTextOut(di->hDC, di->rcItem.left + r.right + colpos_hash,
-                       di->rcItem.top, ETO_CLIPPED, &di->rcItem,
-                       disp->hash->s, disp->hash->len, NULL);
-
-            /* KiTTY: state in its own column, then the comment - so a long
-             * comment can be clipped at the right edge without taking the
-             * state with it. */
-            if (disp->info->len) {
-                ExtTextOut(di->hDC, di->rcItem.left + r.right + colpos_state,
-                           di->rcItem.top, ETO_CLIPPED, &di->rcItem,
-                           disp->info->s, disp->info->len, NULL);
-            }
-
-            ExtTextOut(di->hDC, di->rcItem.left + r.right + colpos_comment,
-                       di->rcItem.top, ETO_CLIPPED, &di->rcItem,
-                       disp->comment->s, disp->comment->len, NULL);
-
-            SetTextColor(di->hDC, oldfg);
-            SetBkColor(di->hDC, oldbg);
-            SelectObject(di->hDC, oldfont);
-
-            if (di->itemState & ODS_FOCUS)
-                DrawFocusRect(di->hDC, &di->rcItem);
+            ListView_SetInsertMark(hlist, &im);
+            SetCursor(LoadCursor(NULL, IDC_SIZENS));
         }
+        return 0;
+      case WM_LBUTTONUP:
+        if (keylist_dragging) {
+            POINT pt;
+            pt.x = GET_X_LPARAM(lParam);
+            pt.y = GET_Y_LPARAM(lParam);
+            HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+            /* Copy what the drop needs BEFORE cancelling clears it. */
+            strbuf *blob = strbuf_dup(ptrlen_from_strbuf(keylist_dragblob));
+            ReleaseCapture();              /* -> WM_CAPTURECHANGED cancels */
+            keylist_drag_cancel(hwnd);     /* no-op if capture already did */
+            int dst = keylist_drop_target(hwnd, pt);
+            /* Recompute the source row NOW - the list can have rebuilt
+             * since the drag began, so only the blob can be trusted. */
+            int src = keylist_row_of_blob(hlist, ptrlen_from_strbuf(blob));
+            if (src >= 0 && dst >= 0) {
+                if (dst > src)
+                    dst--;                 /* removing src shifts the rest up */
+                int dir = (dst > src) ? 1 : -1;
+                int steps = (dst > src) ? dst - src : src - dst;
+                bool moved = false;
+                while (steps-- > 0 &&
+                       pageant_reorder_key(ptrlen_from_strbuf(blob), dir))
+                    moved = true;
+                if (moved) {
+                    kageant_save_key_order();
+                    keylist_update();
+                }
+            }
+            strbuf_free(blob);
+        }
+        return 0;
+      case WM_CAPTURECHANGED:
+        /* Capture lost to someone else mid-drag: abandon the drag. */
+        keylist_drag_cancel(hwnd);
+        return 0;
+      case WM_DROPFILES: {
+        /* KiTTY: files dropped on the window are offered to the same path
+         * as Add Key (encrypted) - several at once work, and a file that
+         * is not a key is refused by the loader with a box naming it. */
+        HDROP drop = (HDROP)wParam;
+        if (modal_passphrase_hwnd) {
+            MessageBeep(MB_ICONERROR);
+            SetForegroundWindow(modal_passphrase_hwnd);
+            DragFinish(drop);
+            return 0;
+        }
+        UINT nfiles = DragQueryFile(drop, 0xFFFFFFFF, NULL, 0);
+        for (UINT i = 0; i < nfiles; i++) {
+            UINT len = DragQueryFile(drop, i, NULL, 0);
+            char *path = snewn((size_t)len + 2, char);
+            if (DragQueryFile(drop, i, path, len + 1)) {
+                Filename *fn = filename_from_str(path);
+                win_add_keyfile(fn, true);   /* deferred, like Add Key
+                                              * (encrypted) */
+                filename_free(fn);
+            }
+            sfree(path);
+        }
+        DragFinish(drop);
+        keylist_update();
+        pageant_forget_passphrases();
+        SetForegroundWindow(hwnd);
         return 0;
       }
       case WM_COMMAND:
         switch (LOWORD(wParam)) {
           case IDOK:
+            /* KiTTY: Enter with the list focused means "show details".
+             * Closing the window because IDOK happens to be the default
+             * button was a booby trap; Escape and the Close button still
+             * close. */
+            {
+                HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+                if (GetFocus() == hlist) {
+                    keylist_show_details(
+                        hwnd, keylist_row_data(
+                            hlist, ListView_GetNextItem(hlist, -1,
+                                                        LVNI_FOCUSED)));
+                    return 0;
+                }
+            }
+            /* fall through */
           case IDCANCEL:
             keylist = NULL;
             DestroyWindow(hwnd);
@@ -968,54 +1966,15 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 prompt_add_keyfile(LOWORD(wParam) == IDC_KEYLIST_ADDKEY_ENC);
             }
             return 0;
-          case IDC_KEYLIST_LISTBOX:
-            /*
-             * KiTTY: double-click a row for the details that do not fit in it -
-             * the full fingerprint, the comment in full, whether it is loaded
-             * or waiting for a passphrase, and WHICH FILE it came from. The
-             * last one is the reason this exists: the list shows a comment,
-             * which is whatever was typed when the key was made, and says
-             * nothing about which of several similar files is loaded.
-             */
-            if (HIWORD(wParam) == LBN_DBLCLK) {
-                int sel = SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX,
-                                             LB_GETCURSEL, 0, 0);
-                if (sel != LB_ERR) {
-                    struct keylist_display_data *disp =
-                        (struct keylist_display_data *)SendDlgItemMessage(
-                            hwnd, IDC_KEYLIST_LISTBOX, LB_GETITEMDATA, sel, 0);
-                    if (disp) {
-                        char *path = disp->blob && disp->blob->len ?
-                            kageant_paths_of_blob(ptrlen_from_strbuf(disp->blob))
-                            : NULL;
-                        char *msg = dupprintf(
-                            "%.*s%s%.*s\n\n"
-                            "Fingerprint:\n    %.*s\n\n"
-                            "Comment:\n    %.*s\n\n"
-                            "State:\n    %s\n\n"
-                            "Loaded from:\n    %s\n",
-                            (int)disp->alg->len, disp->alg->s,
-                            disp->bits->len ? " " : "",
-                            (int)disp->bits->len, disp->bits->s,
-                            (int)disp->hash->len, disp->hash->s,
-                            (int)disp->comment->len, disp->comment->s,
-                            disp->info->len ?
-                                (disp->info->s[1] == 'e' ?
-                                 "encrypted - the passphrase is asked for at "
-                                 "first use" :
-                                 "loaded, and the key file it came from is "
-                                 "encrypted") :
-                                "loaded and ready to use",
-                            path ? path :
-                                "not known - this key was added by another "
-                                "program, or by a build that did not record it");
-                        MessageBox(hwnd, msg, "kageant - key details",
-                                   MB_OK | MB_ICONINFORMATION);
-                        sfree(msg);
-                        sfree(path);
-                    }
-                }
-            }
+          case IDC_KEYLIST_SHOWUNAVAIL:
+            /* KiTTY: toggle the not-loaded rows; remembered. */
+            keylist_show_unavail =
+                IsDlgButtonChecked(hwnd, IDC_KEYLIST_SHOWUNAVAIL) ==
+                BST_CHECKED;
+            kageant_setting_str_set("showunavailablekeys",
+                                    "ShowUnavailableKeys",
+                                    keylist_show_unavail ? "yes" : "no");
+            keylist_update();
             return 0;
           case IDC_KEYLIST_CONFIRM_YES:
             kageant_confirm_set_mode(KAGEANT_CONFIRM_YES);
@@ -1029,65 +1988,31 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
           case IDC_KEYLIST_MOVEUP:
           case IDC_KEYLIST_MOVEDOWN:
             /* KiTTY: reorder the offer order. Acts on a single selected key;
-             * persists the new order and re-selects the moved key. */
+             * persists the new order. The moved key stays selected at its new
+             * row because keylist_update() re-selects by blob. */
             if (HIWORD(wParam) == BN_CLICKED ||
                 HIWORD(wParam) == BN_DOUBLECLICKED) {
-                int numSelected = SendDlgItemMessage(
-                    hwnd, IDC_KEYLIST_LISTBOX, LB_GETSELCOUNT, 0, 0);
-                if (numSelected != 1) {       /* one key at a time */
-                    MessageBeep(0);
+                HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+                if (ListView_GetSelectedCount(hlist) != 1) {
+                    MessageBeep(0);            /* one key at a time */
                     break;
                 }
-                int sel = -1;
-                SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX, LB_GETSELITEMS,
-                                   1, (WPARAM)&sel);
-                if (sel < 0)
-                    break;
-                struct keylist_display_data *disp =
-                    (struct keylist_display_data *)SendDlgItemMessage(
-                        hwnd, IDC_KEYLIST_LISTBOX, LB_GETITEMDATA, sel, 0);
+                struct keylist_display_data *disp = keylist_row_data(
+                    hlist, ListView_GetNextItem(hlist, -1, LVNI_SELECTED));
                 if (!disp)
                     break;
-                /* Copy the blob: keylist_update() below frees the disp structs. */
-                strbuf *want = strbuf_dup(ptrlen_from_strbuf(disp->blob));
                 int dir = (LOWORD(wParam) == IDC_KEYLIST_MOVEUP) ? -1 : 1;
-                if (pageant_reorder_key(ptrlen_from_strbuf(want), dir)) {
+                if (pageant_reorder_key(ptrlen_from_strbuf(disp->blob), dir)) {
                     kageant_save_key_order();
                     keylist_update();
-                    /* Re-select the moved key at its new row. */
-                    SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX,
-                                       LB_SETSEL, false, (LPARAM)-1);
-                    int nitems = SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX,
-                                                    LB_GETCOUNT, 0, 0);
-                    for (int i = 0; i < nitems; i++) {
-                        struct keylist_display_data *d =
-                            (struct keylist_display_data *)SendDlgItemMessage(
-                                hwnd, IDC_KEYLIST_LISTBOX, LB_GETITEMDATA, i, 0);
-                        if (d && ptrlen_eq_ptrlen(ptrlen_from_strbuf(d->blob),
-                                                  ptrlen_from_strbuf(want))) {
-                            SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX,
-                                               LB_SETSEL, true, i);
-                            break;
-                        }
-                    }
                 }
-                strbuf_free(want);
             }
             return 0;
           case IDC_KEYLIST_REMOVE:
-          case IDC_KEYLIST_REENCRYPT:
             if (HIWORD(wParam) == BN_CLICKED ||
                 HIWORD(wParam) == BN_DOUBLECLICKED) {
-                int i;
-                int rCount, sCount;
-                int *selectedArray;
-
-                /* our counter within the array of selected items */
-                int itemNum;
-
-                /* get the number of items selected in the list */
-                int numSelected = SendDlgItemMessage(
-                    hwnd, IDC_KEYLIST_LISTBOX, LB_GETSELCOUNT, 0, 0);
+                HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+                int numSelected = ListView_GetSelectedCount(hlist);
 
                 /* none selected? that was silly */
                 if (numSelected == 0) {
@@ -1098,14 +2023,12 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 /*
                  * KiTTY: ask before removing.
                  *
-                 * Remove sits next to Add and Re-encrypt and used to act
-                 * instantly. It now does more than unload: the key stops being
-                 * loaded at startup, and its place in the offer order goes with
-                 * it - so a mis-click costs a configuration change, not just a
-                 * reload. Re-encrypt is left alone; it is undoable by using the
-                 * key.
+                 * Remove used to act instantly. It now does more than unload:
+                 * the key stops being loaded at startup, and its place in the
+                 * offer order goes with it - so a mis-click costs a
+                 * configuration change, not just a reload.
                  */
-                if (LOWORD(wParam) == IDC_KEYLIST_REMOVE) {
+                {
                     char *msg = dupprintf(
                         numSelected == 1 ?
                         "Remove the selected key from the agent?\n\n"
@@ -1121,84 +2044,116 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                         break;
                 }
 
-                /* get item indices in an array */
-                selectedArray = snewn(numSelected, int);
-                SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX, LB_GETSELITEMS,
-                                   numSelected, (WPARAM)selectedArray);
-
-                itemNum = numSelected - 1;
-                rCount = pageant_count_ssh1_keys();
-                sCount = pageant_count_ssh2_keys();
-
-                /* go through the non-rsakeys until we've covered them all,
-                 * and/or we're out of selected items to check. note that
-                 * we go *backwards*, to avoid complications from deleting
-                 * things hence altering the offset of subsequent items
+                /*
+                 * KiTTY: act on each selected row's PUBLIC BLOB, never on a
+                 * list position: the displayed order and the agent's own
+                 * order are different things (measured 2026-08-08 - an RSA
+                 * key selected, the DSA key below it removed). Only an SSH-1
+                 * key, which the by-blob calls do not cover, falls back to
+                 * its position: SSH-1 keys enumerate first, so its row index
+                 * IS its index among them. Rows are walked backwards so that
+                 * positional fallback survives earlier deletions. Neither
+                 * delete rebuilds the list, so iterating it here is safe.
                  */
-                for (i = sCount - 1; (itemNum >= 0) && (i >= 0); i--) {
-                    if (selectedArray[itemNum] == rCount + i) {
-                        switch (LOWORD(wParam)) {
-                          case IDC_KEYLIST_REMOVE: {
-                            /*
-                             * KiTTY: remove the key this ROW is showing, found
-                             * by the public blob the row already carries for
-                             * reordering - not by position.
-                             *
-                             * The displayed order and the agent's own order are
-                             * not the same thing here: Move Up/Down reorders
-                             * the display, and a key that is unloaded and
-                             * loaded again (removable media) goes to the end of
-                             * the agent's list while staying where it is on
-                             * screen. Deleting by position then removes a
-                             * DIFFERENT key from the one selected - measured
-                             * 2026-08-08, selecting an RSA key removed the DSA
-                             * key below it.
-                             *
-                             * Falls back to the positional call only if the row
-                             * has no blob, which should not happen.
-                             */
-                            struct keylist_display_data *disp =
-                                (struct keylist_display_data *)
-                                SendDlgItemMessage(hwnd, IDC_KEYLIST_LISTBOX,
-                                                   LB_GETITEMDATA,
-                                                   selectedArray[itemNum], 0);
-                            if (disp && disp->blob && disp->blob->len) {
-                                pageant_delete_ssh2_key_by_blob(
-                                    ptrlen_from_strbuf(disp->blob));
-                                /* and stop loading it at every start - the
-                                 * startup list is otherwise only written when a
-                                 * key is ADDED, so a removed key came back. */
-                                kageant_forget_loaded_by_blob(
-                                    ptrlen_from_strbuf(disp->blob));
-                            } else {
-                                pageant_delete_nth_ssh2_key(i);
-                            }
-                            break;
-                          }
-                          case IDC_KEYLIST_REENCRYPT:
-                            pageant_reencrypt_nth_ssh2_key(i);
-                            break;
-                        }
-                        itemNum--;
+                for (int row = ListView_GetItemCount(hlist) - 1; row >= 0;
+                     row--) {
+                    if (!(ListView_GetItemState(hlist, row, LVIS_SELECTED) &
+                          LVIS_SELECTED))
+                        continue;
+                    struct keylist_display_data *disp =
+                        keylist_row_data(hlist, row);
+                    if (!disp)
+                        continue;
+                    /* A not-loaded startup entry has nothing in the agent:
+                     * Remove drops it from the startup list (memory AND
+                     * store). */
+                    if (disp->pending) {
+                        kageant_drop_pending(disp->pendpath);
+                        continue;
+                    }
+                    ptrlen blob = ptrlen_from_strbuf(disp->blob);
+                    if (disp->blob->len &&
+                        pageant_delete_ssh2_key_by_blob(blob)) {
+                        /* and stop loading it at every start - the startup
+                         * list is otherwise only written when a key is ADDED,
+                         * so a removed key came back. */
+                        kageant_forget_loaded_by_blob(blob);
+                    } else if (row < pageant_count_ssh1_keys()) {
+                        pageant_delete_nth_ssh1_key(row);
                     }
                 }
-
-                /* do the same for the rsa keys */
-                for (i = rCount - 1; (itemNum >= 0) && (i >= 0); i--) {
-                    if (selectedArray[itemNum] == i) {
-                        switch (LOWORD(wParam)) {
-                          case IDC_KEYLIST_REMOVE:
-                            pageant_delete_nth_ssh1_key(i);
-                            break;
-                          case IDC_KEYLIST_REENCRYPT:
-                            /* SSH-1 keys can't be re-encrypted */
-                            break;
-                        }
-                        itemNum--;
+                keylist_update();
+            }
+            return 0;
+          case IDC_KEYLIST_REENCRYPT:
+            /*
+             * KiTTY: the single state-sensitive action button - Decrypt a
+             * deferred key, or Re-encrypt a loaded one (re-reading the file
+             * to recover the encrypted form for a key added plain).
+             *
+             * Unlike Remove, these actions re-add a key, which loops back
+             * into the agent and rebuilds the ListView synchronously - so we
+             * must NOT touch a row's disp struct after the first one. Gather
+             * every selected key's action, a COPY of its blob, and its file
+             * path FIRST; then act from that snapshot.
+             */
+            if (HIWORD(wParam) == BN_CLICKED ||
+                HIWORD(wParam) == BN_DOUBLECLICKED) {
+                HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+                int nitems = ListView_GetItemCount(hlist);
+                struct keyaction { int action; strbuf *blob; char *path; };
+                struct keyaction *jobs =
+                    snewn(nitems ? nitems : 1, struct keyaction);
+                int njobs = 0;
+                for (int row = 0; row < nitems; row++) {
+                    if (!(ListView_GetItemState(hlist, row, LVIS_SELECTED) &
+                          LVIS_SELECTED))
+                        continue;
+                    struct keylist_display_data *disp =
+                        keylist_row_data(hlist, row);
+                    char *path = NULL;
+                    int action = keylist_action_for(disp, &path);
+                    if (action == KLBTN_NONE) {
+                        sfree(path);
+                        continue;
                     }
+                    jobs[njobs].action = action;
+                    jobs[njobs].blob =
+                        strbuf_dup(ptrlen_from_strbuf(disp->blob));
+                    jobs[njobs].path = path;   /* owned; may be NULL */
+                    njobs++;
                 }
-
-                sfree(selectedArray);
+                if (njobs == 0)
+                    MessageBeep(0);
+                for (int j = 0; j < njobs; j++) {
+                    ptrlen blob = ptrlen_from_strbuf(jobs[j].blob);
+                    if (jobs[j].action == KLBTN_DECRYPT && jobs[j].path) {
+                        if (modal_passphrase_hwnd) {
+                            MessageBeep(MB_ICONERROR);
+                            SetForegroundWindow(modal_passphrase_hwnd);
+                        } else {
+                            Filename *fn = filename_from_str(jobs[j].path);
+                            win_add_keyfile(fn, false);   /* decrypt now */
+                            filename_free(fn);
+                        }
+                    } else if (jobs[j].action == KLBTN_REENCRYPT) {
+                        /* A plainly-loaded key has no encrypted fallback;
+                         * re-add it encrypted from its file to attach one
+                         * (silent - an encrypted add never prompts), then
+                         * drop the cleartext. A key that already has a
+                         * fallback has no path and skips straight to that. */
+                        if (jobs[j].path) {
+                            Filename *fn = filename_from_str(jobs[j].path);
+                            win_add_keyfile(fn, true);
+                            filename_free(fn);
+                        }
+                        pageant_reencrypt_ssh2_key_by_blob(blob);
+                    }
+                    strbuf_free(jobs[j].blob);
+                    sfree(jobs[j].path);
+                }
+                sfree(jobs);
+                pageant_forget_passphrases();
                 keylist_update();
             }
             return 0;
@@ -1206,6 +2161,77 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             if (HIWORD(wParam) == BN_CLICKED ||
                 HIWORD(wParam) == BN_DOUBLECLICKED) {
                 launch_help(hwnd, WINHELP_CTX_pageant_general);
+            }
+            return 0;
+          case IDC_KEYLIST_NEWKEY:
+            /* KiTTY: make a new key - launch kittygen (it is beside us; the
+             * button is greyed at init when it is not).
+             *
+             * SECURITY GATE: only launch a kittygen that is genuinely ours -
+             * the same publisher signature the updater checks, and the exact
+             * same version as this kageant (kitty_verify_sibling). Refuse a
+             * planted or mismatched binary rather than run it. A dev/test
+             * build of kageant is itself unsigned, so the signature leg is
+             * skipped there and only the version must match - see
+             * kitty_authenticode.c. */
+            if (HIWORD(wParam) == BN_CLICKED ||
+                HIWORD(wParam) == BN_DOUBLECLICKED) {
+                char *g = find_kittygen();
+                if (!g) {
+                    MessageBox(hwnd,
+                        "The KiTTY key generator (kittygen) was not found "
+                        "next to kageant.", APPNAME,
+                        MB_OK | MB_ICONINFORMATION);
+                } else {
+                    /* Verify, but let the user override a failure: they can
+                     * run the generator by hand anyway, so a hard refusal
+                     * buys little - a warning that they can act on is more
+                     * use. Default No, so a careless Enter does not launch an
+                     * unverified binary. */
+                    int go = 1;
+                    if (!kitty_verify_sibling(g)) {
+                        int r = MessageBox(hwnd,
+                            "The key generator next to kageant could not be "
+                            "verified as a genuine, matching KiTTY build - its "
+                            "signature or version did not check out.\n\n"
+                            "It may simply be a different version, or it may "
+                            "have been replaced with something else.\n\n"
+                            "Start it anyway?",
+                            "kageant - key generator not verified",
+                            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+                        go = (r == IDYES);
+                    }
+                    if (go)
+                        ShellExecute(hwnd, NULL, g, NULL, NULL,
+                                     SW_SHOWNORMAL);
+                    sfree(g);
+                }
+            }
+            return 0;
+          case IDC_KEYLIST_SETTINGS:
+            /* KiTTY: the [Agent] settings dialog. */
+            if (HIWORD(wParam) == BN_CLICKED ||
+                HIWORD(wParam) == BN_DOUBLECLICKED) {
+                DialogBox(hinst, MAKEINTRESOURCE(IDD_KEYSETTINGS), hwnd,
+                          KeySettingsProc);
+            }
+            return 0;
+          case IDC_KEYLIST_STOPAGENT:
+            /* KiTTY: quit kageant from the window that is already open,
+             * rather than hunting for the tray icon. Confirm first - it
+             * unloads every key and cuts off anything using the agent. */
+            if (HIWORD(wParam) == BN_CLICKED ||
+                HIWORD(wParam) == BN_DOUBLECLICKED) {
+                if (MessageBox(hwnd,
+                        "Stop the kageant agent?\n\n"
+                        "Every loaded key is unloaded, and any program using "
+                        "the agent (PuTTY sessions, ssh, WinSCP...) loses "
+                        "access until kageant is started again.",
+                        APPNAME, MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2)
+                    == IDYES) {
+                    /* Drive the same exit path as the tray menu's Exit. */
+                    PostMessage(traywindow, WM_COMMAND, IDM_CLOSE, 0);
+                }
             }
             return 0;
           case IDC_KEYLIST_FPTYPE:
@@ -1244,6 +2270,16 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
       case WM_CLOSE:
         keylist = NULL;
         DestroyWindow(hwnd);
+        return 0;
+      case WM_DESTROY:
+        /* KiTTY: every close path funnels through here - the Close button,
+         * Escape, and the window menu. Save the geometry and free the
+         * display structs the rows still point at (the ListView children
+         * are destroyed after their parent gets WM_DESTROY, so the rows
+         * are still readable). */
+        keylist_save_geometry(hwnd);
+        keylist_free_display_data(GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX));
+        keylist_layout_ready = false;
         return 0;
     }
     return 0;
@@ -1712,6 +2748,10 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             trayignoreup = true;
             if (menuitem != -1)
                 PostMessage(hwnd, WM_COMMAND, menuitem, 0);
+        } else if (lParam == NIN_BALLOONUSERCLICK) {
+            /* KiTTY: clicking a balloon - "N keys not loaded", "key used" -
+             * opens the window that answers it, instead of doing nothing. */
+            PostMessage(hwnd, WM_COMMAND, IDM_VIEWKEYS, 0);
         }
         break;
       case WM_DEVICECHANGE:
@@ -1774,6 +2814,8 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                           (kageant_confirm_get() ? MF_CHECKED : MF_UNCHECKED));
             CheckMenuItem(systray_menu, IDM_LOAD_ON_STARTUP, MF_BYCOMMAND |
                           (kageant_autostart_active() ? MF_CHECKED : MF_UNCHECKED));
+            CheckMenuItem(systray_menu, IDM_OPENSSH_INTEGRATION, MF_BYCOMMAND |
+                          (kageant_openssh_get() ? MF_CHECKED : MF_UNCHECKED));
             SetForegroundWindow(hwnd);
             TrackPopupMenu(systray_menu,
                            TPM_RIGHTALIGN | TPM_BOTTOMALIGN |
@@ -1847,6 +2889,13 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                 SetWindowPos(aboutbox, HWND_TOP, 0, 0, 0, 0,
                              SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
             }
+            break;
+          case IDM_SETTINGS:
+            /* KiTTY: the [Agent] settings dialog, straight from the tray.
+             * Modal, no owner window here - auxpos anchors to the foreground
+             * window / notification area. */
+            DialogBox(hinst, MAKEINTRESOURCE(IDD_KEYSETTINGS), NULL,
+                      KeySettingsProc);
             break;
           case IDM_HELP:
             launch_help(hwnd, WINHELP_CTX_pageant_general);
@@ -2145,6 +3194,16 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     enable_dit();
 
     hinst = inst;
+
+    /* KiTTY: the key list window uses a SysListView32. The Common Controls 6
+     * manifest alone does not register the class - without this call the
+     * dialog silently fails to create. */
+    {
+        INITCOMMONCONTROLSEX icc;
+        icc.dwSize = sizeof(icc);
+        icc.dwICC = ICC_LISTVIEW_CLASSES;
+        InitCommonControlsEx(&icc);
+    }
 
     /*
      * KiTTY: [KiTTY] restrictacl=yes in kitty.ini hardens kageant too.
@@ -2547,6 +3606,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_confirm_get() ? MF_CHECKED : MF_UNCHECKED),
                IDM_CONFIRM_KEYUSE, "As&k confirmation before key use");
+    /* KiTTY: the same [Agent] settings dialog the key list window opens,
+     * reachable straight from the tray. */
+    AppendMenu(systray_menu, MF_ENABLED, IDM_SETTINGS, "&Settings...");
     AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
     if (has_help())
         AppendMenu(systray_menu, MF_ENABLED, IDM_HELP, "&Help");

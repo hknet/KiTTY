@@ -10,6 +10,26 @@
 #define IDD_ONDEMAND_PASSPHRASE 212
 #define IDD_ABOUT 213
 #define IDD_LICENCE 214
+#define IDD_KEYDETAILS 215     /* KiTTY: key details (copyable fields) */
+#define IDD_KEYSETTINGS 216    /* KiTTY: the [Agent] settings dialog */
+
+/* KiTTY: the settings dialog */
+#define IDC_SET_OPENSSH 300
+#define IDC_SET_STARTUP 301
+#define IDC_SET_NOTIFY 302
+#define IDC_SET_RETRY 303
+#define IDC_SET_UNLOAD 304
+#define IDC_SET_QUIET 305
+#define IDC_SET_TTL 306
+
+/* KiTTY: the key-details dialog */
+#define IDC_KEYDETAIL_KEY 100
+#define IDC_KEYDETAIL_STATE 101
+#define IDC_KEYDETAIL_FPS 102
+#define IDC_KEYDETAIL_COMMENT 103
+#define IDC_KEYDETAIL_PATHS 104
+#define IDC_KEYDETAIL_LOADNOW 105
+#define IDC_KEYDETAIL_DEFER 106
 
 #define IDC_PASSPHRASE_STATIC1 100
 #define IDC_PASSPHRASE_FINGERPRINT 101
@@ -32,6 +52,10 @@
 #define IDC_KEYLIST_CONFIRM_YES 115
 #define IDC_KEYLIST_CONFIRM_AUTO 116
 #define IDC_KEYLIST_CONFIRM_NO 117
+#define IDC_KEYLIST_SHOWUNAVAIL 118
+#define IDC_KEYLIST_NEWKEY 119      /* launch kittygen */
+#define IDC_KEYLIST_SETTINGS 120    /* the [Agent] settings dialog */
+#define IDC_KEYLIST_STOPAGENT 121   /* quit kageant */
 
 #define IDC_ABOUT_LICENCE 101
 #define IDC_ABOUT_WEBSITE 102
