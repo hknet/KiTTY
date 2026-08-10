@@ -1917,6 +1917,22 @@ void kageant_set_autostart(int on)
     kageant_set_run_entry(on);
 }
 
+/* A stored "path" that is really a stray format token. 0.84.1.71's registry
+ * loader stripped an entry's trailing ,plain/,encrypted/,SHA256:... tokens
+ * IN PLACE in the REG_MULTI_SZ buffer, so its walk re-entered the record and
+ * read each token as one more entry - and the next save persisted those
+ * phantoms as startup keys (",encrypted" appended, the legacy default). The
+ * parser bug is fixed (both branches below parse a copy), but every .71
+ * install with fingerprinted entries still carries the phantoms it wrote:
+ * recognise them so the loaders can scrub them. Only ever consulted for an
+ * entry whose file does NOT exist, so a real key file that happened to have
+ * such a name is never touched. */
+static int kageant_entry_is_phantom(const char *path)
+{
+    return !stricmp(path, "plain") || !stricmp(path, "encrypted") ||
+           !stricmp(path, "confirm") || !strnicmp(path, "SHA256:", 7);
+}
+
 /* Re-add remembered startup keys. A ,encrypted entry loads deferred
  * (passphrase on first use); ,plain loads immediately. Missing files are
  * counted (kageant_startup_missing) and skipped, not purged. */
@@ -1960,6 +1976,12 @@ void kageant_load_startup_keys(void)
             }
             kageant_resolve_form(val, abspath, sizeof(abspath));
             if (GetFileAttributesA(abspath) == INVALID_FILE_ATTRIBUTES) {
+                if (kageant_entry_is_phantom(val)) {
+                    /* a .71 parser phantom: drop it, and rewrite the stored
+                     * list after the loop so it stays gone */
+                    g_fp_adopted = 1;
+                    continue;
+                }
                 g_startup_missing++;
                 /* seen-so-far count is this entry's place in the offer order */
                 kageant_note_pending(abspath, enc, g_nloaded + g_npending);
@@ -2044,6 +2066,11 @@ void kageant_load_startup_keys(void)
                         } else break;
                     }
                     if (GetFileAttributesA(entry) == INVALID_FILE_ATTRIBUTES) {
+                        if (kageant_entry_is_phantom(entry)) {
+                            /* a .71 parser phantom - see the helper above */
+                            g_fp_adopted = 1;
+                            continue;
+                        }
                         g_startup_missing++;
                         kageant_note_pending(entry, enc,
                                              g_nloaded + g_npending);
