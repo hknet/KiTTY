@@ -1214,6 +1214,116 @@ void kageant_retry_pending_keys(void)
 int kageant_startup_loading(void) { return g_startup_loading; }
 
 /* ------------------------------------------------------------------ *
+ * KiTTY: ssh-add -t key lifetimes.                                    *
+ *                                                                     *
+ * A key added over the agent with a lifetime constraint must be       *
+ * removed when it expires. The agent core (pageant.c) hands us the    *
+ * key's public blob and the seconds via kageant_key_lifetime_hook; we *
+ * remember (blob, expiry) and a 1-second frontend timer (TrayWndProc) *
+ * calls kageant_expire_due_keys() to drop the ones whose time is up.  *
+ * ------------------------------------------------------------------ */
+typedef struct {
+    strbuf *blob;
+    ULONGLONG expiry;
+    unsigned set_seconds;   /* the lifetime as requested, for display */
+} KageantLifetime;
+static KageantLifetime *g_lifetimes = NULL;
+static int g_nlifetimes = 0, g_lifetimes_cap = 0;
+
+static void kageant_lifetime_drop(int i)
+{
+    strbuf_free(g_lifetimes[i].blob);
+    memmove(&g_lifetimes[i], &g_lifetimes[i + 1],
+            (g_nlifetimes - i - 1) * sizeof(*g_lifetimes));
+    g_nlifetimes--;
+}
+
+void kageant_key_set_lifetime(ptrlen pubblob, unsigned seconds)
+{
+    int i;
+    /* NULL blob: a remove-all - forget every pending lifetime. */
+    if (!pubblob.ptr) {
+        while (g_nlifetimes > 0)
+            kageant_lifetime_drop(0);
+        return;
+    }
+    for (i = 0; i < g_nlifetimes; i++)
+        if (g_lifetimes[i].blob->len == pubblob.len &&
+            !memcmp(g_lifetimes[i].blob->s, pubblob.ptr, pubblob.len))
+            break;
+    /* 0 seconds: the key was removed, or re-added without -t - either way
+     * a stale pending removal must not survive to kill its successor. */
+    if (seconds == 0) {
+        if (i < g_nlifetimes)
+            kageant_lifetime_drop(i);
+        return;
+    }
+    /* If this key already has a lifetime pending, replace it (a re-add with a
+     * new -t resets the clock) rather than stacking two removals. */
+    if (i == g_nlifetimes) {
+        if (g_nlifetimes >= g_lifetimes_cap) {
+            g_lifetimes_cap = g_lifetimes_cap ? g_lifetimes_cap * 2 : 8;
+            g_lifetimes = sresize(g_lifetimes, g_lifetimes_cap, KageantLifetime);
+        }
+        g_lifetimes[g_nlifetimes++].blob = strbuf_dup(pubblob);
+    }
+    g_lifetimes[i].expiry = GetTickCount64() + (ULONGLONG)seconds * 1000;
+    g_lifetimes[i].set_seconds = seconds;
+}
+
+int kageant_expire_due_keys(void)
+{
+    ULONGLONG now = GetTickCount64();
+    int w = 0, i, ndue = 0;
+    strbuf **due = NULL;
+    /* Pop every due entry off the table FIRST: deleting the key calls back
+     * into this table (clear-on-remove), which must not find the entry
+     * mid-compaction. */
+    for (i = 0; i < g_nlifetimes; i++) {
+        if (g_lifetimes[i].expiry <= now) {
+            due = sresize(due, ndue + 1, strbuf *);
+            due[ndue++] = g_lifetimes[i].blob;
+        } else {
+            if (w != i) g_lifetimes[w] = g_lifetimes[i];
+            w++;
+        }
+    }
+    g_nlifetimes = w;
+    for (i = 0; i < ndue; i++) {
+        /* Just unload it from the agent - a lifetime is about in-memory
+         * exposure, not the startup configuration, so leave any startup
+         * entry alone (it can load again next time). */
+        pageant_delete_ssh2_key_by_blob(ptrlen_from_strbuf(due[i]));
+        strbuf_free(due[i]);
+    }
+    sfree(due);
+    return ndue;
+}
+
+int kageant_key_lifetime_get(ptrlen pubblob, unsigned *set_seconds,
+                             unsigned *remaining_seconds)
+{
+    ULONGLONG now = GetTickCount64();
+    for (int i = 0; i < g_nlifetimes; i++) {
+        if (g_lifetimes[i].blob->len == pubblob.len &&
+            !memcmp(g_lifetimes[i].blob->s, pubblob.ptr, pubblob.len)) {
+            if (set_seconds)
+                *set_seconds = g_lifetimes[i].set_seconds;
+            if (remaining_seconds)   /* round up: show 20 at t=0, 0 only when gone */
+                *remaining_seconds = g_lifetimes[i].expiry > now ?
+                    (unsigned)((g_lifetimes[i].expiry - now + 999) / 1000) : 0;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int kageant_lifetime_count(void)
+{
+    return g_nlifetimes;
+}
+
+/* ------------------------------------------------------------------ *
  * KiTTY: the pending (not-loaded) startup entries, exposed for the    *
  * key list window - so "6 keys could not be loaded" is answerable     *
  * without digging in the registry, and a dead entry can be removed.   *

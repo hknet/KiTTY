@@ -26,6 +26,8 @@
 #include "pageant-rc.h"
 #include "../kitty/kitty_pageant.h"  /* KiTTY: the kageant additions (split out of this file) */
 #include "../kitty/kitty_authenticode.h"  /* KiTTY: shared verify for New key */
+#include "../kitty/kitty_title.h"     /* KiTTY: shared title-suffix composer */
+#include "../kitty/kitty_inilight.h"  /* KiTTY: portable-layout probe */
 
 #include <shellapi.h>
 
@@ -44,6 +46,7 @@
 /* KiTTY: timer id for the delayed single-left-click tray menu */
 #define TID_TRAYCLICK 1
 #define TID_PASSPHRASE_CACHE 2   /* KiTTY: scrub cached passphrases (see WM_TIMER) */
+#define TID_KEY_LIFETIME 3       /* KiTTY: expire ssh-add -t keys (see WM_TIMER) */
 
 #define APPNAME "kageant"
 
@@ -63,8 +66,27 @@ static HMENU systray_menu, session_menu;
 static bool already_running;
 static FingerprintType fptype = SSH_FPTYPE_DEFAULT;
 
-static char *putty_path;
+static char *putty_path;          /* KiTTY: kitty.exe beside kageant */
 static bool restrict_putty_acl = false;
+
+/* KiTTY: gate every tray session launch through the same Authenticode/
+ * version check as kittygen - but HARD: a terminal gets the agent's keys,
+ * so an unverifiable kitty.exe is refused outright, no start-anyway. */
+static bool kageant_kitty_launch_allowed(HWND owner)
+{
+    extern int kitty_verify_sibling(const char *path);
+    if (putty_path && kitty_verify_sibling(putty_path))
+        return true;
+    MessageBox(owner,
+               "The kitty.exe next to kageant could not be verified as a "
+               "genuine, matching KiTTY build - its signature or version "
+               "did not check out.\n\n"
+               "It may have been replaced with something else. Because a "
+               "terminal started from here would get access to the agent's "
+               "keys, kageant will not start it.",
+               "kageant - session launch blocked", MB_OK | MB_ICONERROR);
+    return false;
+}
 
 /* CWD for "add key" file requester. */
 static filereq_saved_dir *keypath = NULL;
@@ -489,8 +511,20 @@ struct keylist_update_ctx {
 enum { KEYSTATE_LOADED, KEYSTATE_ENCRYPTED, KEYSTATE_REENCRYPTABLE,
        KEYSTATE_MISSING, KEYSTATE_FAILED };
 
+/* KiTTY: render a lifetime countdown compactly: "47 s", "12:05", "1:02:33". */
+static void kageant_fmt_seconds(unsigned s, char *buf, size_t len)
+{
+    if (s < 60)
+        snprintf(buf, len, "%u s", s);
+    else if (s < 3600)
+        snprintf(buf, len, "%u:%02u", s / 60, s % 60);
+    else
+        snprintf(buf, len, "%u:%02u:%02u", s / 3600, (s / 60) % 60, s % 60);
+}
+
 struct keylist_display_data {
     strbuf *alg, *bits, *hash, *comment, *info;
+    strbuf *expires;  /* KiTTY: the Lifetime column - countdown or "unlimited" */
     strbuf *blob;     /* KiTTY: public blob, to identify this row for reordering */
     int state;        /* KiTTY: KEYSTATE_*, for the State column and details */
     char *fp_full[SSH_N_FPTYPES];  /* KiTTY: every fingerprint form, for the
@@ -515,6 +549,7 @@ static void keylist_update_callback(
     disp->hash = strbuf_new();
     disp->comment = strbuf_new();
     disp->info = strbuf_new();
+    disp->expires = strbuf_new();
     disp->blob = strbuf_dup(ptrlen_from_strbuf(key->blob));  /* KiTTY: for reordering */
     /* KiTTY: keep every fingerprint form for the details dialog. */
     for (size_t t = 0; t < SSH_N_FPTYPES; t++)
@@ -590,6 +625,20 @@ static void keylist_update_callback(
         put_dataz(disp->info, "loaded");
     }
 
+    /* KiTTY: the Lifetime column - a countdown for an ssh-add -t key,
+     * "unlimited" for everything else. */
+    {
+        unsigned set_s, rem_s;
+        if (kageant_key_lifetime_get(ptrlen_from_strbuf(disp->blob),
+                                     &set_s, &rem_s)) {
+            char buf[32];
+            kageant_fmt_seconds(rem_s, buf, sizeof(buf));
+            put_dataz(disp->expires, buf);
+        } else {
+            put_dataz(disp->expires, "unlimited");
+        }
+    }
+
     /* KiTTY: one ListView row per key; the display struct rides along as the
      * row's lParam, exactly as it used to ride in the listbox item data. */
     LVITEM lvi;
@@ -602,7 +651,8 @@ static void keylist_update_callback(
     ListView_SetItemText(ctx->hlist, row, 1, disp->bits->s);
     ListView_SetItemText(ctx->hlist, row, 2, disp->hash->s);
     ListView_SetItemText(ctx->hlist, row, 3, disp->info->s);
-    ListView_SetItemText(ctx->hlist, row, 4, disp->comment->s);
+    ListView_SetItemText(ctx->hlist, row, 4, disp->expires->s);
+    ListView_SetItemText(ctx->hlist, row, 5, disp->comment->s);
     ctx->index++;
 }
 
@@ -632,11 +682,39 @@ static void keylist_free_display_data(HWND hlist)
         strbuf_free(disp->hash);
         strbuf_free(disp->comment);
         strbuf_free(disp->info);
+        strbuf_free(disp->expires);
         strbuf_free(disp->blob);
         for (size_t t = 0; t < SSH_N_FPTYPES; t++)
             sfree(disp->fp_full[t]);
         sfree(disp->pendpath);
         sfree(disp);
+    }
+}
+
+/* KiTTY: tick the Lifetime column in place each second while the key list
+ * is open. With more than 5 time-limited keys the per-second redraw is
+ * deliberately skipped, so a large list is not repainted every second: the
+ * column then keeps the remaining time as of the last full list fill. */
+static void keylist_tick_lifetimes(void)
+{
+    int nlim = kageant_lifetime_count();
+    if (!keylist || nlim == 0 || nlim > 5)
+        return;
+    HWND hlist = GetDlgItem(keylist, IDC_KEYLIST_LISTBOX);
+    if (!hlist)
+        return;
+    int nitems = ListView_GetItemCount(hlist);
+    for (int i = 0; i < nitems; i++) {
+        struct keylist_display_data *disp = keylist_row_data(hlist, i);
+        unsigned set_s, rem_s;
+        if (!disp || disp->pending || !disp->blob->len)
+            continue;
+        if (kageant_key_lifetime_get(ptrlen_from_strbuf(disp->blob),
+                                     &set_s, &rem_s)) {
+            char buf[32];
+            kageant_fmt_seconds(rem_s, buf, sizeof(buf));
+            ListView_SetItemText(hlist, i, 4, buf);
+        }
     }
 }
 
@@ -891,6 +969,7 @@ void keylist_update(void)
             disp->comment = strbuf_new();
             disp->info = strbuf_new();
             put_dataz(disp->info, failed ? "failed" : "missing");
+            disp->expires = strbuf_new();  /* not in the agent: no lifetime */
             disp->blob = strbuf_new();
             disp->state = failed ? KEYSTATE_FAILED : KEYSTATE_MISSING;
             for (size_t t = 0; t < SSH_N_FPTYPES; t++)
@@ -910,7 +989,7 @@ void keylist_update(void)
             ListView_SetItemText(hlist, row, 3, disp->info->s);
             /* The path is the only name these entries have - it goes in the
              * comment column, where the eye looks for "which key is this". */
-            ListView_SetItemText(hlist, row, 4, disp->pendpath);
+            ListView_SetItemText(hlist, row, 5, disp->pendpath);
             ctx->index++;
             /* Removing a dead entry is the point of showing them. */
             ctx->enable_remove_controls = true;
@@ -1206,7 +1285,7 @@ static bool keylist_layout_ready = false;
 #define KL_GEOM_REGVAL "KeyListGeometry"
 #define KL_COLS_INIKEY "keylistcolumns"
 #define KL_COLS_REGVAL "KeyListColumns"
-#define KL_NCOLS 5
+#define KL_NCOLS 6
 
 static void keylist_capture_layout(HWND hwnd)
 {
@@ -1231,12 +1310,44 @@ static const struct kl_anchor keydetail_anchors[] = {
     {IDC_KEYDETAIL_COMMENT, KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KEYDETAIL_PATHS,
      KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_LIFETIME_LBL, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_LIFETIME,
+     KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
     {IDC_KEYDETAIL_DEFER,   KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDOK,                  KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
 };
 static RECT keydetail_baserects[lenof(keydetail_anchors)];
 static SIZE keydetail_basesize, keydetail_minsize;
 static bool keydetail_layout_ready = false;
+
+/* KiTTY: the Lifetime line ticks while the (modal, hence single) details
+ * dialog is open. The blob is OUR copy: a list rebuild while the dialog is
+ * up frees the row data the dialog was opened from. */
+static strbuf *keydetail_blob = NULL;
+static bool keydetail_had_lifetime = false;
+#define TID_KEYDETAIL_LIFETIME 1
+
+static void keydetail_show_lifetime(HWND hwnd)
+{
+    unsigned set_s, rem_s;
+    if (!keydetail_blob || !keydetail_blob->len) {
+        SetDlgItemText(hwnd, IDC_KEYDETAIL_LIFETIME, "not loaded");
+    } else if (kageant_key_lifetime_get(ptrlen_from_strbuf(keydetail_blob),
+                                        &set_s, &rem_s)) {
+        char setbuf[32], rembuf[32], line[96];
+        kageant_fmt_seconds(set_s, setbuf, sizeof(setbuf));
+        kageant_fmt_seconds(rem_s, rembuf, sizeof(rembuf));
+        snprintf(line, sizeof(line), "set to %s - %s remaining",
+                 setbuf, rembuf);
+        SetDlgItemText(hwnd, IDC_KEYDETAIL_LIFETIME, line);
+    } else {
+        /* No entry: either never had a lifetime, or it just ran out
+         * while this dialog was open and the key is gone. */
+        SetDlgItemText(hwnd, IDC_KEYDETAIL_LIFETIME,
+                       keydetail_had_lifetime ? "expired - key removed"
+                                              : "unlimited");
+    }
+}
 
 static void keylist_save_geometry(HWND hwnd)
 {
@@ -1252,12 +1363,13 @@ static void keylist_save_geometry(HWND hwnd)
     HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
     if (hlist) {
         char cols[80];
-        sprintf(cols, "%d,%d,%d,%d,%d",
+        sprintf(cols, "%d,%d,%d,%d,%d,%d",
                 ListView_GetColumnWidth(hlist, 0),
                 ListView_GetColumnWidth(hlist, 1),
                 ListView_GetColumnWidth(hlist, 2),
                 ListView_GetColumnWidth(hlist, 3),
-                ListView_GetColumnWidth(hlist, 4));
+                ListView_GetColumnWidth(hlist, 4),
+                ListView_GetColumnWidth(hlist, 5));
         kageant_setting_str_set(KL_COLS_INIKEY, KL_COLS_REGVAL, cols);
     }
 }
@@ -1321,6 +1433,13 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             (struct keylist_display_data *)lParam;
 
         kageant_set_window_icon(hwnd);
+        {
+            char *t = kitty_title_compose("kageant - key details",
+                                          kitty_inilight_portable(),
+                                          restricted_acl(), false);
+            SetWindowText(hwnd, t);
+            sfree(t);
+        }
 
         char *key = dupprintf("%.*s%s%.*s%s",
                               (int)disp->alg->len, disp->alg->s,
@@ -1439,6 +1558,18 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                            BST_CHECKED : BST_UNCHECKED);
         }
 
+        /* KiTTY: the Lifetime line, ticking while the dialog is open. */
+        keydetail_blob = strbuf_dup(ptrlen_from_strbuf(disp->blob));
+        {
+            unsigned set_s, rem_s;
+            keydetail_had_lifetime = !disp->pending &&
+                kageant_key_lifetime_get(ptrlen_from_strbuf(keydetail_blob),
+                                         &set_s, &rem_s);
+        }
+        keydetail_show_lifetime(hwnd);
+        if (keydetail_had_lifetime)
+            SetTimer(hwnd, TID_KEYDETAIL_LIFETIME, 1000, NULL);
+
         /* Resize baseline (fields captured; the paths box takes the extra
          * height), then the same placement memory the About box uses,
          * anchored to the key list window it was opened from. */
@@ -1463,7 +1594,16 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             mmi->ptMinTrackSize.y = keydetail_minsize.cy;
         }
         return 0;
+      case WM_TIMER:
+        if (wParam == TID_KEYDETAIL_LIFETIME)
+            keydetail_show_lifetime(hwnd);
+        return 0;
       case WM_DESTROY:
+        KillTimer(hwnd, TID_KEYDETAIL_LIFETIME);
+        if (keydetail_blob) {
+            strbuf_free(keydetail_blob);
+            keydetail_blob = NULL;
+        }
         keydetail_layout_ready = false;
         return 0;
       case WM_COMMAND:
@@ -1617,6 +1757,13 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
     switch (msg) {
       case WM_INITDIALOG:
         kageant_set_window_icon(hwnd);
+        {
+            char *t = kitty_title_compose("kageant - settings",
+                                          kitty_inilight_portable(),
+                                          restricted_acl(), false);
+            SetWindowText(hwnd, t);
+            sfree(t);
+        }
         CheckDlgButton(hwnd, IDC_SET_OPENSSH,
             kageant_openssh_get() ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(hwnd, IDC_SET_STARTUP,
@@ -1713,12 +1860,16 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
     switch (msg) {
       case WM_INITDIALOG: {
         kageant_set_window_icon(hwnd);
-        /* KiTTY: mark the key list itself when this agent runs with the
-         * restricted ACL. The tray tooltip says so too, but this window is the
-         * one you open to look at your keys - and it is the process holding
-         * them, so it is where the question gets asked. */
-        if (restricted_acl())
-            SetWindowText(hwnd, "kageant Key List (RESTRICTED)");
+        /* KiTTY: mark the key list with the agent's state - this is the
+         * process holding the keys, so portable/restricted get answered
+         * here. Suffixes composed in kitty/kitty_title.c - one place. */
+        {
+            char *t = kitty_title_compose("kageant Key List",
+                                          kitty_inilight_portable(),
+                                          restricted_acl(), false);
+            SetWindowText(hwnd, t);
+            sfree(t);
+        }
         /* KiTTY: the kitty.ini status line + three-state confirm radios are
          * shown only in kitty.ini mode. In registry mode, hide them and
          * reclaim their height BEFORE centring so the shorter dialog centres. */
@@ -1807,6 +1958,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 {"Bits", 24, LVCFMT_RIGHT},
                 {"Fingerprint", 168, LVCFMT_LEFT},
                 {"State", 52, LVCFMT_LEFT},
+                {"Lifetime", 40, LVCFMT_RIGHT},
                 {"Comment", 104, LVCFMT_LEFT},
             };
             HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
@@ -1837,8 +1989,8 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             if (kageant_setting_str_get(KL_COLS_INIKEY, KL_COLS_REGVAL,
                                         colstr, sizeof(colstr))) {
                 int cw[KL_NCOLS];
-                if (sscanf(colstr, "%d,%d,%d,%d,%d",
-                           &cw[0], &cw[1], &cw[2], &cw[3], &cw[4]) ==
+                if (sscanf(colstr, "%d,%d,%d,%d,%d,%d",
+                           &cw[0], &cw[1], &cw[2], &cw[3], &cw[4], &cw[5]) ==
                     KL_NCOLS) {
                     for (int i = 0; i < KL_NCOLS; i++)
                         if (cw[i] >= 8)
@@ -2424,15 +2576,20 @@ static BOOL AddTrayIcon(HWND hwnd)
     tnid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     tnid.uCallbackMessage = WM_SYSTRAY;
     tnid.hIcon = hicon = LoadIcon(hinst, MAKEINTRESOURCE(201));
-    /* KiTTY: second tooltip line when the suite ini is the settings store, and
-     * a third when this process runs with the restricted ACL - the agent holds
-     * the keys, so "is the lockdown actually on?" is worth answering without
-     * opening anything. szTip is 128 chars; both lines together fit. */
-    strcpy(tnid.szTip, kageant_ini_status()
-           ? "kageant (KiTTY authentication agent)\r\n(kitty.ini mode)"
-           : "kageant (KiTTY authentication agent)");
-    if (restricted_acl())
-        strcat(tnid.szTip, "\r\n(RESTRICTED)");
+    /* KiTTY: extra tooltip lines for the agent's state - ini store,
+     * portable layout, restricted ACL. The agent holds the keys, so "is the
+     * lockdown actually on?" is worth answering without opening anything.
+     * Composed in kitty/kitty_title.c; szTip is 128 chars, all lines fit. */
+    {
+        char *tip = kitty_title_compose_sep(
+            kageant_ini_status()
+                ? "kageant (KiTTY authentication agent)\r\n(kitty.ini mode)"
+                : "kageant (KiTTY authentication agent)",
+            "\r\n", kitty_inilight_portable(), restricted_acl(), false);
+        strncpy(tnid.szTip, tip, sizeof(tnid.szTip) - 1);
+        tnid.szTip[sizeof(tnid.szTip) - 1] = '\0';
+        sfree(tip);
+    }
 
     res = Shell_NotifyIcon(NIM_ADD, &tnid);
 
@@ -2926,6 +3083,13 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             KillTimer(hwnd, TID_PASSPHRASE_CACHE);
             pageant_forget_passphrases();
         }
+        /* KiTTY: remove any ssh-add -t keys whose lifetime has run out. */
+        if (wParam == TID_KEY_LIFETIME) {
+            if (kageant_expire_due_keys())
+                keylist_update();          /* refresh the window if it is open */
+            else
+                keylist_tick_lifetimes();  /* live countdown column */
+        }
         break;
       case WM_SYSTRAY2:
         if (!menuinprogress) {
@@ -2957,13 +3121,15 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
         switch (command) {
           case IDM_PUTTY: {
             TCHAR cmdline[10];
+            if (!kageant_kitty_launch_allowed(hwnd))
+                break;
             cmdline[0] = '\0';
             if (restrict_putty_acl)
                 strcat(cmdline, "&R");
 
             if ((INT_PTR)ShellExecute(hwnd, NULL, putty_path, cmdline,
                                       _T(""), SW_SHOW) <= 32) {
-                MessageBox(NULL, "Unable to execute PuTTY!",
+                MessageBox(NULL, "Unable to execute KiTTY!",
                            "Error", MB_OK | MB_ICONERROR);
             }
             break;
@@ -3150,6 +3316,8 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                 mii.cch = MAX_PATH;
                 mii.dwTypeData = buf;
                 GetMenuItemInfo(session_menu, wParam, false, &mii);
+                if (!kageant_kitty_launch_allowed(hwnd))
+                    break;
                 param[0] = '\0';
                 if (restrict_putty_acl)
                     strcat(param, "&R");
@@ -3157,7 +3325,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                 strcat(param, mii.dwTypeData);
                 if ((INT_PTR)ShellExecute(hwnd, NULL, putty_path, param,
                                           _T(""), SW_SHOW) <= 32) {
-                    MessageBox(NULL, "Unable to execute PuTTY!", "Error",
+                    MessageBox(NULL, "Unable to execute KiTTY!", "Error",
                                MB_OK | MB_ICONERROR);
                 }
             }
@@ -3284,6 +3452,77 @@ static NORETURN void opt_error(const char *fmt, ...)
     exit(1);
 }
 
+/* KiTTY: -h / -help / --help. If the caller has a console (cmd,
+ * PowerShell), print the summary inline there - a GUI-subsystem exe is
+ * not attached to it by default, so attach explicitly. Started with no
+ * console (the Run box, a shortcut), fall back to a message box, the
+ * same way the command-line errors do. */
+static void show_cmdline_help(void)
+{
+    static const char help[] =
+        "kageant - the KiTTY SSH authentication agent\n"
+        "\n"
+        "Usage:  kageant [options] [keyfile ...]\n"
+        "\n"
+        "Key files named on the command line are loaded at startup.\n"
+        "\n"
+        "-encrypted, -no-decrypt\n"
+        "        load the key files that follow deferred: the\n"
+        "        passphrase is asked at first use\n"
+        "-keylist\n"
+        "        open the key list window at startup\n"
+        "-c command [args ...]\n"
+        "        run the command once the agent is up; everything\n"
+        "        after -c is the command line\n"
+        "-openssh-config FILE\n"
+        "        write an OpenSSH client config file pointing ssh at\n"
+        "        this agent's named pipe\n"
+        "-unix PATH\n"
+        "        also serve an AF_UNIX agent socket at PATH\n"
+        "-restrict-acl\n"
+        "        restrict the ACL of the kageant process\n"
+        "-restrict-putty-acl\n"
+        "        pass -restrict-acl on to KiTTY sessions started\n"
+        "        from the tray menu\n"
+        "-pgpfp\n"
+        "        show the PGP fingerprints of the PuTTY release keys\n"
+        "        (deprecated)\n"
+        "-h, -help, --help\n"
+        "        this summary\n";
+
+    /* A redirected stdout (`kageant -h > file`, a pipe) is inherited even
+     * by a GUI-subsystem exe - and it must be looked at BEFORE any
+     * AttachConsole, which would replace the std handles with the
+     * console's and send the text to the screen instead of the file. */
+    HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+    bool attached = false, opened = false;
+    if (h == NULL || h == INVALID_HANDLE_VALUE) {
+        /* No redirection. If the caller has a console, print on it. */
+        if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+            attached = true;
+            h = CreateFile("CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE,
+                           NULL, OPEN_EXISTING, 0, NULL);
+            opened = (h != INVALID_HANDLE_VALUE);
+        }
+    }
+    if (h != NULL && h != INVALID_HANDLE_VALUE) {
+        DWORD written;
+        if (attached)   /* the shell's prompt is already mid-line */
+            WriteFile(h, "\r\n", 2, &written, NULL);
+        WriteFile(h, help, (DWORD)strlen(help), &written, NULL);
+        if (opened)
+            CloseHandle(h);
+        if (attached)
+            FreeConsole();
+        return;
+    }
+    if (attached)
+        FreeConsole();
+
+    MessageBox(NULL, help, "kageant command line",
+               MB_ICONINFORMATION | MB_OK);
+}
+
 #ifdef LEGACY_WINDOWS
 BOOL sw_PeekMessage(LPMSG msg, HWND hwnd, UINT min, UINT max, UINT remove)
 {
@@ -3390,7 +3629,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         if (p && p >= r) r = p+1;
         q = strrchr(b, ':');
         if (q && q >= r) r = q+1;
-        strcpy(r, "putty.exe");
+        strcpy(r, "kitty.exe");   /* KiTTY: we launch our own terminal */
         if ( (fp = fopen(b, "r")) != NULL) {
             putty_path = dupstr(b);
             fclose(fp);
@@ -3424,6 +3663,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             clkey->add_encrypted = add_keys_encrypted;
         } else if (match_opt("-pgpfp")) {
             pgp_fingerprints_msgbox(NULL);
+            return 0;
+        } else if (match_opt("-h", "-help")) {
+            /* --help arrives here too: the matcher folds a GNU-style
+             * double dash onto the single-dash form. */
+            show_cmdline_help();
             return 0;
         } else if (match_opt("-restrict-acl", "-restrict_acl",
                              "-restrictacl")) {
@@ -3530,6 +3774,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * requests it (see kageant_do_confirm). */
         kageant_confirm_hook = kageant_do_confirm;
         kageant_notify_hook = kageant_do_notify;
+        kageant_key_lifetime_hook = kageant_key_set_lifetime;   /* ssh-add -t */
 
         /*
          * Set up a named-pipe listener.
@@ -3695,6 +3940,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* Set up a system tray icon */
     AddTrayIcon(traywindow);
     kageant_notify_startup_missing();
+    /* KiTTY: a 1-second heartbeat to expire ssh-add -t keys. Cheap, and only
+     * the primary instance (which owns traywindow) runs it. */
+    SetTimer(traywindow, TID_KEY_LIFETIME, 1000, NULL);
 
     /* Accelerators used: nsvkxaol */
     systray_menu = CreatePopupMenu();

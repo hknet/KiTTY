@@ -623,9 +623,16 @@ void old_keyfile_warning(void)
  */
 void pgp_fingerprints(void)
 {
-    fputs("These are the fingerprints of the PuTTY PGP Master Keys. They can\n"
-          "be used to establish a trust path from this executable to another\n"
-          "one. See the manual for more information.\n"
+    /* KiTTY: same historic-information-only text as the GUI message box
+     * (windows/utils/pgp_fingerprints_msgbox.c) - the upstream trust-path
+     * claim is wrong for a fork. */
+    fputs("These are the fingerprints of the PuTTY PGP Master Keys, shown\n"
+          "for historic reasons only: this program is KiTTY 0.84 code, not\n"
+          "a PuTTY release. The fingerprints say nothing about the\n"
+          "authenticity of this executable, and printing them proves\n"
+          "nothing - any program could print them. They are only useful\n"
+          "for checking the PGP signatures on downloads from the PuTTY\n"
+          "project itself.\n"
           "(Note: these fingerprints have nothing to do with SSH!)\n"
           "\n"
           "PuTTY Master Key as of " PGP_MASTER_KEY_YEAR
@@ -633,7 +640,10 @@ void pgp_fingerprints(void)
           "  " PGP_MASTER_KEY_FP "\n\n"
           "Previous Master Key (" PGP_PREV_MASTER_KEY_YEAR
           ", " PGP_PREV_MASTER_KEY_DETAILS "):\n"
-          "  " PGP_PREV_MASTER_KEY_FP "\n", stdout);
+          "  " PGP_PREV_MASTER_KEY_FP "\n"
+          "\n"
+          "This command-line option (-pgpfp) is deprecated and will be\n"
+          "removed in a future KiTTY release.\n", stdout);
 }
 
 void console_logging_error(LogPolicy *lp, const char *string)

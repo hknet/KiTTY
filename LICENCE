@@ -8,9 +8,11 @@ Brabandt, Jeff Smith, Pavel Kryukov, Maxim Kuznetsov, Svyatoslav
 Kuzmich, Nico Williams, Viktor Dukhovni, Josh Dersch, Lars Brinkhoff,
 and CORE SDI S.A.
 
-The KiTTY features added in this fork are copyright 2007-2013 Cyril
-Dupont <https://www.9bis.net/kitty/>. KiTTY is released under the same
-MIT licence as PuTTY (the identical text below), so the combined work is
+The original KiTTY features are copyright 2007-2013 Cyril Dupont
+<https://www.9bis.net/kitty/>. This KiTTY 0.84 port, and the features
+added in it, are copyright 2026 KAPPER NETWORK-COMMUNICATIONS GmbH
+<https://github.com/hknet/KiTTY>. Both are released under the same MIT
+licence as PuTTY (the identical text below), so the combined work is
 covered by the single licence that follows.
 
 The far2l terminal-extension support (including the far2l shared

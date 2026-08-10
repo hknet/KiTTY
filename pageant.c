@@ -949,6 +949,19 @@ int (*kageant_confirm_hook)(const char *comment) = NULL;
  * a tray balloon. Fired after a successful signature. NULL outside the GUI agent. */
 void (*kageant_notify_hook)(const char *comment) = NULL;
 
+/*
+ * KiTTY: SSH agent per-key constraints (`ssh-add -t` lifetime / `-c` confirm).
+ * Stock PuTTY 0.84 reads NONE of these - it accepts the add and silently drops
+ * the constraint, so a client is told it got confirm-on-use or a lifetime and
+ * did not. We now parse them. A lifetime is honoured through this hook (the
+ * frontend arms a timer that removes the key when it expires); constraints we
+ * do not yet implement are REFUSED, never silently ignored.
+ */
+#define SSH_AGENT_CONSTRAIN_LIFETIME   1
+#define SSH_AGENT_CONSTRAIN_CONFIRM    2
+#define SSH_AGENT_CONSTRAIN_EXTENSION  255
+void (*kageant_key_lifetime_hook)(ptrlen pubblob, unsigned seconds) = NULL;
+
 static void signop_coroutine(PageantAsyncOp *pao)
 {
     PageantSignOp *so = container_of(pao, PageantSignOp, pao);
@@ -1486,6 +1499,11 @@ static PageantAsyncOp *pageant_make_op(
         }
         break;
       }
+      case SSH2_AGENTC_ADD_ID_CONSTRAINED:
+        /* KiTTY: the same request with per-key constraints appended.
+         * OpenSSH's ssh-add -t/-c sends THIS type, never a constrained
+         * type-17 message; the shared handler parses the trailing
+         * constraint bytes either way. */
       case SSH2_AGENTC_ADD_IDENTITY: {
         /*
          * Add to the list and return SSH_AGENT_SUCCESS, or
@@ -1522,6 +1540,26 @@ static PageantAsyncOp *pageant_make_op(
             goto add2_cleanup;
         }
 
+        /* KiTTY: any bytes after the comment are per-key constraints. Parse
+         * them - do not leave them unread (that is the accept-and-ignore bug).
+         * Lifetime is captured here and applied after the key is added;
+         * confirm and destination constraints are not yet implemented, so
+         * refuse rather than pretend. */
+        unsigned key_lifetime = 0;
+        while (get_avail(msg) > 0) {
+            unsigned char ctype = get_byte(msg);
+            if (ctype == SSH_AGENT_CONSTRAIN_LIFETIME) {
+                key_lifetime = get_uint32(msg);
+            } else {
+                fail("this key constraint is not supported by kageant");
+                goto add2_cleanup;
+            }
+        }
+        if (get_err(msg)) {
+            fail("unable to decode key constraints");
+            goto add2_cleanup;
+        }
+
         /* This packet contains a clear SSH-2 private key. Once decoded into
          * owned key objects, wipe the transport/request copy immediately; do
          * not wait for connection teardown or allocator reuse. */
@@ -1535,6 +1573,20 @@ static PageantAsyncOp *pageant_make_op(
         }
 
         if (pageant_add_ssh2_key(key)) {
+            /* KiTTY: honour an ssh-add -t lifetime - the frontend arms a
+             * timer that removes this key when it expires. Identify the key
+             * by the same public blob the delete-by-blob path uses. */
+            if (kageant_key_lifetime_hook) {
+                /* Same blob the delete-by-blob path matches on (full_pub via
+                 * makeblob2full), so a certificate key expires correctly too -
+                 * ssh_key_public_blob would give a different blob for certs.
+                 * Called even with no lifetime: 0 CLEARS a stale entry, so a
+                 * plain re-add of a key that had -t does not inherit it. */
+                strbuf *pb = makeblob2full(key->key);
+                kageant_key_lifetime_hook(ptrlen_from_strbuf(pb),
+                                          key_lifetime);
+                strbuf_free(pb);
+            }
             keylist_update();
             put_byte(sb, SSH_AGENT_SUCCESS);
 
@@ -1592,8 +1644,9 @@ static PageantAsyncOp *pageant_make_op(
                                pub->comment);
 
             del_pubkey(pub);
+            pk_pub_free(pub); /* KiTTY: purge puborder BEFORE the list
+                               * refresh walks it (assert pageant.c:415) */
             keylist_update();
-            pk_pub_free(pub);
             put_byte(sb, SSH_AGENT_SUCCESS);
 
             pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS");
@@ -1636,8 +1689,11 @@ static PageantAsyncOp *pageant_make_op(
         pageant_client_log(pc, reqid, "found with comment: %s", pub->comment);
 
         del_pubkey(pub);
+        pk_pub_free(pub); /* KiTTY: purge puborder BEFORE the list
+                           * refresh walks it (assert pageant.c:415) */
+        if (kageant_key_lifetime_hook)   /* KiTTY: drop any pending -t */
+            kageant_key_lifetime_hook(blob, 0);
         keylist_update();
-        pk_pub_free(pub);
         put_byte(sb, SSH_AGENT_SUCCESS);
 
         pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS");
@@ -1666,6 +1722,8 @@ static PageantAsyncOp *pageant_make_op(
                            "request: SSH2_AGENTC_REMOVE_ALL_IDENTITIES");
 
         remove_all_keys(2);
+        if (kageant_key_lifetime_hook)   /* KiTTY: drop every pending -t */
+            kageant_key_lifetime_hook(make_ptrlen(NULL, 0), 0);
         keylist_update();
 
         put_byte(sb, SSH_AGENT_SUCCESS);
@@ -1984,6 +2042,8 @@ bool pageant_delete_ssh2_key_by_blob(ptrlen blob)
         return false;
     del_pubkey(pub);
     pk_pub_free(pub);
+    if (kageant_key_lifetime_hook)   /* KiTTY: drop any pending -t */
+        kageant_key_lifetime_hook(blob, 0);
     return true;
 }
 
@@ -1993,6 +2053,8 @@ bool pageant_delete_nth_ssh2_key(int i)
         find_first_pubkey_for_version(2) + i);
     if (!pub)
         return false;
+    if (kageant_key_lifetime_hook)   /* KiTTY: drop any pending -t */
+        kageant_key_lifetime_hook(pub->sort.full_pub, 0);
     pk_pub_free(pub);
     return true;
 }

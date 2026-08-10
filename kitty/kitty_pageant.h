@@ -87,6 +87,18 @@ int kageant_startup_mode_get(const char *path);
 void kageant_startup_mode_set(const char *path, int encrypted);
 void kageant_retry_pending_keys(void);              /* on device arrival */
 void kageant_media_gone(void);                      /* on device removal */
+/* ssh-add -t key lifetimes: the agent core calls kageant_key_set_lifetime via
+ * kageant_key_lifetime_hook when a key is added with a lifetime; a frontend
+ * timer calls kageant_expire_due_keys() (returns how many it removed).
+ * seconds == 0 clears a pending lifetime (key removed, or re-added without
+ * -t); a NULL blob clears them all (remove-all). The _get/_count accessors
+ * feed the key list's Lifetime column and the details dialog. */
+extern void (*kageant_key_lifetime_hook)(ptrlen pubblob, unsigned seconds);
+void kageant_key_set_lifetime(ptrlen pubblob, unsigned seconds);
+int  kageant_expire_due_keys(void);
+int  kageant_key_lifetime_get(ptrlen pubblob, unsigned *set_seconds,
+                              unsigned *remaining_seconds);
+int  kageant_lifetime_count(void);
 void kageant_forget_startup_key(const char *path);  /* drop one stored entry */
 void kageant_notify_startup_missing(void);
 void kageant_save_startup_keys(void);
