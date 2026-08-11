@@ -470,7 +470,7 @@ When you run long background batches or just keep KiTTY open to maintain SSH tun
 
 KiTTY lets you make a terminal window see-through, so you can watch what's happening behind it while you work. You set how transparent the window is, and you can fine-tune the level on the fly using the numeric keypad: **CTRL +** (or **CTRL+UP**) makes the window more opaque, while **CTRL -** (or **CTRL+DOWN**) makes it more transparent. The setting can be defined separately for each session. Note that transparency may interfere with certain window-management or screen-capture tools, so leave it off if you rely on those.
 
-**How to enable:** Configuration > **Window > Transparency** (set the level), and the system-menu **Transparency +/-** items to adjust it live.
+**How to enable:** Configuration > **Window > Transparency** (set the level), and the system-menu **Transparency +/-** items to adjust it live. `0` is fully opaque and is the default for a new session; `255` is as see-through as it goes. Set a session to `-1` to lock it opaque — the menu entries are then not offered and the keyboard shortcuts decline, which is what you want when an accidental **CTRL+DOWN** must never dim that window. `transparency=no` in the kitty.ini `[KiTTY]` section removes the feature altogether, for every session.
 
 ![Transparency](docs/features/img/config_transparency.jpg)
 
@@ -659,7 +659,7 @@ Three protections apply to every clipboard protocol at once:
 
 Pasting into a terminal executes whatever the clipboard contains, line by line — so an accidental paste of the wrong (or huge) clipboard can flood the shell with unintended commands. KiTTY can ask for confirmation before pasting more than a configurable number of characters, telling you how large the clipboard is so you can abort a mis-aimed paste.
 
-**How to enable:** set `pastesize=<N>` in the kitty.ini `[KiTTY]` section (number of characters above which the confirmation appears; `0`, the default, pastes without asking).
+**How to enable:** on by default since 0.84.1.73-beta — a paste of more than 5120 characters asks first, as Windows Terminal does. Set `pastesize=<N>` in the kitty.ini `[KiTTY]` section to choose your own threshold, or `pastesize=0` to turn the confirmation off entirely.
 
 (no screenshot)
 
