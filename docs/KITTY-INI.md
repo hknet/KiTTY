@@ -59,6 +59,27 @@ Note: the command-line tools (`klink`/`kscp`/`ksftp`) always read the
 **registry** session store — a portable `savemode=dir` store is usable from
 the GUI only (see [KNOWN-ISSUES.md](../KNOWN-ISSUES.md)).
 
+## When an edited kitty.ini appears to do nothing
+
+Outside portable mode, a global `[KiTTY]` switch is looked up **in the registry
+first**, and read from `kitty.ini` only when the registry has no value of that
+name. So if a value was ever written to
+`HKCU\Software\kapper.net\KiTTY`, editing the same key in `kitty.ini` has no
+effect at all — the file is never consulted for it. Delete the registry value
+and the ini line takes over.
+
+Portable mode is the exception and is deliberately registry-independent: with
+`savemode=dir`, global parameters are read from `kitty.ini` only, so a stale
+registry value left behind by an installed copy cannot reach in.
+
+Two other reasons a line can look dead:
+
+- **The key is misspelt.** Keys are matched exactly; an unrecognised key is
+  silently ignored rather than reported.
+- **The value is not one the key accepts.** Several switches only act on one
+  of `yes`/`no` and ignore the other — each such key says so in
+  [`kitty.ini.example`](examples/kitty.ini.example).
+
 ## kageant and the store — the `(kitty.ini mode)` and `(portable)` markers
 
 kageant (the SSH agent) follows the *same* store decision as the sessions,

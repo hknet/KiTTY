@@ -14,10 +14,14 @@
 ;    - start: launch it in a new window and keep the configuration box open (like the Start button)
 ;dblclick=open
 
-; defaultsettings: when no, KiTTY does not auto-create a 'Default Settings'
-;    session AND hides it from the saved-session list in the config box. It still
-;    works as the template for a new session (loaded by name), it just isn't
-;    listed. Default yes (create it and show it, like stock PuTTY).
+; defaultsettings: when no, 'Default Settings' is hidden from the saved-session
+;    list in the config box. The session itself is always there either way - it
+;    is the template every new session starts from - so this only decides
+;    whether you can see and click it. Default yes (shown, like stock PuTTY).
+;    Note it is also the way into quick connect, where you type a host instead
+;    of picking a session: you get there by loading Default Settings once. Hide
+;    the row and that route is gone unless you set loadlastsession=no below.
+;    https://github.com/hknet/KiTTY/blob/kitty-0.84/FEATURES.md#quick-connect-type-a-host-instead-of-picking-a-session
 ;defaultsettings=yes
 
 ; categoryexpand: how many levels of the config-box Category tree are expanded
@@ -26,7 +30,20 @@
 ;    and so on.
 ;categoryexpand=all
 
-; filter: enable/disable filter in saved sessions selection box
+; filter: with yes (the default), typing in the Saved Sessions NAME BOX narrows
+;    the list below to sessions matching what you typed. no leaves the box as a
+;    plain name field and the list always shows everything, like stock PuTTY.
+;    Typing directly into the list is Windows' own first-letter jump and is not
+;    affected either way.
+;    Two keys go with it, from anywhere in the configuration box:
+;      Ctrl+F  jump to the Session panel and put the cursor in that name box,
+;              with what is already there selected so you can type over it.
+;              It searches within the folder currently selected.
+;      Ctrl+G  the same, but drops the folder filter back to the root list
+;              first - "search everywhere", for finding a session when you
+;              do not remember which folder it is in.
+;    Neither loads, moves or saves anything, and neither is affected by
+;    [KiTTY] shortcuts.
 ;filter=yes
 
 ; height: the number of visible lines in the saved-sessions list (default 16 = stock fit)
@@ -47,13 +64,18 @@
 
 ; proxyselection: show the named-proxy chooser in the Session panel.
 ;   auto (default) = show once any named proxy is defined; yes = always; no = never
+;   Where you DEFINE one in the first place depends on this setting: with yes
+;   the chooser is always in the Session panel and carries an Edit button next
+;   to it. With auto the chooser stays hidden until a definition exists, so the
+;   way in is Connection > Proxy > "Edit named proxies...". no hides both, and
+;   nothing in the GUI can then create or edit a definition.
 ;proxyselection=auto
 
 ; windowheight: force the configuration window to an explicit height, in pixels
 ;    (scaled for your display DPI). Default 0 = off, so the window is sized from
 ;    [ConfigBox] height instead. This is a blunt override - it resizes only the
 ;    outer window, not the inner controls - so [ConfigBox] height is usually what
-;    you want. The 800 below is only an example value.
+;    you want. Set a pixel value, e.g. 800, to force it.
 ;windowheight=0
 
 
@@ -68,7 +90,11 @@
 ; antiidledelay: time delay between two sending
 ;antiidledelay=60
 
-; autoreconnect: enable/disable the automatic reconnection feature
+; autoreconnect: reconnect a session by itself when the link drops, retrying
+;    while the network is away. This is one of the premiere features users
+;    start using KiTTY for - a session disconnect is no longer a manual job to
+;    reconnect but solved by KiTTY for the user. On by default; see
+;    ReconnectDelay for how long it waits between attempts.
 ;autoreconnect=yes
 
 ; backgroundimage: enable/disable the background image feature
@@ -85,12 +111,31 @@
 ;    enforced 0.005.
 ;commanddelay=0.05
 
-; conf: enable/disable the automatic creation of the default configuration file
+; conf: `no` stops KiTTY creating and maintaining its own files - kitty.ini is
+;   not auto-created, and neither the kitty.sav backup nor the portable-folder
+;   backups are written. Only `no` does anything: `conf=yes` is ignored rather
+;   than being a way to switch the behaviour back on. It is not remembered
+;   either - drop the line and the next start behaves normally.
+;   Yes, an option that says "write no configuration file" living IN the
+;   configuration file contradicts itself. Noted - and it still does what it
+;   advertises: no further writes to those files. If you want no kitty.ini at
+;   all, put the value in the registry instead - a string value conf = no
+;   under HKCU\Software\kapper.net\KiTTY - and delete kitty.ini. Outside
+;   portable mode the registry is read first, so it is honoured from there.
 ;conf=yes
 
-; configdir: set the configuration directory
-;    In portable mode it is the place where to find settings files directories: Sessions, SshHostKeys, ...
-;    Usually it is the same directory where kitty.exe is
+; configdir: where the settings directories live - Sessions, SshHostKeys and
+;    the rest. Portable mode uses it; by default it is the directory kitty.exe
+;    sits in.
+;    It does NOT move kitty.ini. This file has to be found before anything in
+;    it can be read, so KiTTY is already holding it by the time it learns where
+;    configdir points - kitty.ini stays where it was.
+;    Removing the setting later does not move anything back either: your
+;    sessions, host keys and stored keys stay in that directory and KiTTY stops
+;    looking there, so they simply disappear from the list. Before you unset or
+;    change it, use "Export all..." in the configuration box (Session panel),
+;    then change the setting, then "Import all..." - that carries everything
+;    across instead of stranding it.
 ;configdir=
 
 ; browsedirectory: base directory for portable/session file browsing; normally auto-detected
@@ -100,7 +145,10 @@
 ;Folders=
 
 ; RootFolderLabel: what the configuration box's folder selector calls the root
-;    session list (the sessions that are in no folder). Display only - that
+;    session list. That list is not "the sessions in no folder" - it is ALL
+;    of them: picking the root switches the folder filter off, so sessions
+;    filed in folders stay listed too. Which is why the built-in label says
+;    "All sessions". Display only - that
 ;    folder is always stored as "Default", so renaming the label changes no
 ;    session and no saved setting. Normally set from the config box itself:
 ;    select the root list, type a new name over its label, press Rename; typing
@@ -115,10 +163,23 @@
 ; CtHelperPath: the full path to the cthelper.exe binary (Wrapper for Cygwin feature)
 ;CtHelperPath=
 
-; ctrltab: switch between PuTTY windows with CTRL+Tab
+; ctrltab: allow Ctrl+Tab to switch between open KiTTY windows. This is the
+;    master switch only - it does not turn the feature on by itself. Each
+;    session also has its own "Switch KiTTY windows with Ctrl + TAB" box in
+;    Window > Behaviour, which is off until you tick it, and that box is only
+;    offered while this is yes. no hides the box and disables the key; the
+;    -noctrltab command-line switch does the same for one window.
 ;ctrltab=yes
 
-; debug: for debug purpose only
+; debug: extra tracing in the Event Log - saved-session lookups, the automatic
+;    command, key remappings, the internal editor, and the pscp / WinSCP
+;    command lines actually run. The password those command lines carry is
+;    blanked in the log, but the host, user, paths and switches are not, so
+;    read a debug log before you send it to anyone.
+;    It also enables /passwd, which shows this session's password and copies
+;    it to the clipboard; without debug mode that command is treated as plain
+;    text and sent to the host instead. /debug turns all of this on and off at
+;    runtime, so it does not have to live in this file.
 ;debug=no
 
 ; downloaddir: this is the local directory where files are downloaded with the pscp integration
@@ -132,9 +193,6 @@
 
 ; hyperlink: enable/disable the hyperlink feature
 ;hyperlink=yes
-
-; icon: enable/disable the icon management feature (a particular icon for specific session)
-;icon=yes
 
 ; iconfile: point to a file where internal icons are located
 ;iconfile=kitty.exe
@@ -180,14 +238,28 @@
 ; mouseshortcuts: enable/disable mouse shortcuts
 ;mouseshortcuts=yes
 
-; numberoficons: total number of internal icons
-;numberoficons=45
-
-; internaldelay: legacy internal delay in milliseconds for some automated actions
+; internaldelay: how long KiTTY pauses, in milliseconds, while it types for
+;    you - between the lines of a multi-line send, and around each
+;    synthesised keystroke that carries Ctrl/Shift/Alt. It paces the login
+;    and automatic commands, \n breaks in the send-text boxes, user-command
+;    menu entries and remapped keys. Default 10, minimum 1.
+;    Raise it if a host drops characters out of a scripted or pasted block -
+;    a slow link or a shell that echoes lazily needs more than 10 ms per
+;    line. It has no effect on ordinary typing or on paste.
 ;internaldelay=10
 
-; pastesize: paste size limit (number of characters). Above the limit a confirmation is requested. (0 means unlimited)
-;pastesize=0
+; pastesize: warn before a large paste into the terminal. When the clipboard
+;    holds more than this many characters, KiTTY names the count and the
+;    limit and asks before sending anything - and the default answer is No,
+;    so a stray Enter cancels the paste instead of flooding the shell.
+;    The default is 5120 characters - about 5 KB, the same threshold Windows
+;    Terminal warns at. 0 switches the warning off entirely. It counts
+;    characters rather than lines, and judges only the size: what the
+;    clipboard actually contains is not examined.
+;    Note this key is read from the registry first (outside portable mode), so
+;    if a pastesize value ever lands there, changing the line here has no
+;    effect until you delete the registry value.
+;pastesize=5120
 
 ; proxychainmax: how many chained SSH proxies (jump hosts) a connection may use
 ;    before it is refused with an error. Stops a proxy chain that loops back on
@@ -227,19 +299,47 @@
 ;WorkplaceProxy=
 ;WorkplaceMinutes=240
 
-; PSCPPath: the full path to the pscp.exe (or kscp.exe) binary
+; PSCPPath: the full path to the file-copy helper - kscp.exe, or PuTTY's
+;    pscp.exe - used by drag-and-drop upload and the Send/Get file commands.
+;    You do not normally set this: KiTTY looks for the tool at startup and
+;    writes what it found back here. It searches, in order:
+;      1. this key, if it still points at a file that exists
+;      2. the pscpdir directory, kscp.exe first, then pscp.exe
+;      3. kscp.exe beside kitty.exe - the usual answer, since kscp ships
+;         with KiTTY and lives in the same folder
+;      4. %ProgramFiles%\PuTTY\pscp.exe
+;      5. pscp.exe beside kitty.exe
+;    A value naming a file that has gone away is dropped and the search runs
+;    again, so moving KiTTY does not leave it pointing at nothing. Set it by
+;    hand only to force a particular binary.
 ;PSCPPath=
 
 ; pscpdir: legacy fallback directory containing pscp.exe/kscp.exe (prefer PSCPPath)
 ;pscpdir=
 
-; pscpport: port used by pscp integration; use * to reuse the current session port
-;pscpport=22
+; pscpport: the port kscp/pscp connects to for file transfer. Leave it unset
+;    and the transfer follows the SESSION's port - a host on 2222 transfers on
+;    2222, no second place to keep in step. * says the same thing explicitly.
+;    Give a number only to pin transfers to one port regardless of the session.
+;    (The old "22" shown here was wrong: unset has never meant 22.)
+;pscpport=*
 
 ; ReconnectDelay: the delay before trying to reconnect automatically (in seconds)
 ;ReconnectDelay=5
 
-; readonly: open KiTTY in read-only configuration mode
+; readonly: refuse to write to the CONFIGURATION FILE side of the settings.
+;    With yes, KiTTY will not write or delete entries in kitty.ini, will not
+;    create kitty.ini if it is missing, will not create the store's
+;    directories, and will not remove a legacy plaintext password it finds
+;    in the file. The configuration box says so instead of failing quietly.
+;    Not the same as conf=no, which is about KiTTY maintaining its OWN files
+;    (auto-creating kitty.ini, the kitty.sav and portable backups). readonly
+;    is the broader "do not write", and it covers deletes and directory
+;    creation as well.
+;    ⚠ Two things it does NOT do, despite the name: saved SESSIONS can still
+;    be written - they go through the session store, not this path - and in
+;    registry mode global settings are still written to the registry. Today
+;    it protects the ini file, not everything KiTTY stores.
 ;readonly=no
 
 ; restrictacl: apply the restricted process ACL to every KiTTY process, so you
@@ -252,6 +352,12 @@
 ;    kittygen is not: pass it -restrict-acl if you want it hardened.
 ;    Off by default, because it also blocks
 ;    legitimate uses, notably screen readers and other accessibility tools.
+;    Worth knowing before an upgrade: an in-place MSI install will NOT reopen
+;    your sessions while this is on. Windows' Restart Manager cannot inspect
+;    a restricted process, so the installer closes those windows and cannot
+;    put them back. That is the hardening working as intended, not a fault in
+;    the installer - the whole point is that other processes running as you
+;    cannot reach into KiTTY, and the Restart Manager is one of them.
 ;    yes is the only value that does anything: a process cannot un-restrict
 ;    itself, so restrictacl=no does not lift a restriction already applied by
 ;    -restrict-acl. If the ACL cannot be applied, KiTTY reports the error and
@@ -324,7 +430,15 @@
 ;    "Send a script file" menu entry refuses with a notice.
 ;scriptmode=yes
 
-; shortcuts: enable/disable keyboard shortcuts
+; shortcuts: enable/disable KiTTY's keyboard shortcuts. These are the ones
+;    that work in a TERMINAL WINDOW - the [Shortcuts] section below binds
+;    them, and they are what the Ctrl+Shift+letter predefined commands ride
+;    on. Set no if they clash with a full-screen program inside the terminal
+;    (Midnight Commander is the usual example) and the key should reach the
+;    host instead.
+;    It does not affect the configuration box: Ctrl+F and Ctrl+G there are a
+;    separate mechanism and keep working either way. Nor does it affect the
+;    per-session global hotkey, which is registered with Windows.
 ;shortcuts=yes
 
 ; size: append the live terminal size, e.g. [24x80] (rows x columns), to the
@@ -351,7 +465,9 @@
 ; userpasssshnosave: if yes, SSH password will not be saved internally (and can't be reused automatically) 
 ;userpasssshnosave=no
 
-; winroll: enable/disable the rolling feature (rolling into the title bar)
+; winroll: double-click the title bar to roll the window up into the title bar
+;   alone, and double-click again to restore it. Ctrl+F12 does the same (see
+;   [Shortcuts] rollup), as does the /winroll command.
 ;winroll=yes
 
 ; WinSCPPath: the full path to the winscp.exe binary: 
@@ -366,12 +482,21 @@
 ;    decorated - the old remote title-command channel stays removed.
 ;wintitle=yes
 
-; zmodem: enable/disable zmodem feature (to send/receive files with sz/rz commands)
+; zmodem: enable ZModem transfers (the sz/rz commands). The switch gates both
+;   the ZModem Receive/Upload/Abort entries in the terminal's Tools menu and
+;   the Connection > ZModem configuration panel: with it off, neither appears.
+;   On by default; set it to no to hide both.
 ;zmodem=yes
 
 
 
 [Shortcuts]
+
+; list: the keys that have a user-defined action, separated by spaces. Each
+;    name listed here needs its own <key>=<text to send> line below, so
+;    "list={F5} {CONTROL}{F6}" expects a {F5}= and a {CONTROL}{F6}= line.
+;    Without the name in this list the key line is never read.
+;list={F5} {CONTROL}{F6}
 
 ; Shortcuts: definition for the menu shortcuts keys
 
@@ -501,32 +626,26 @@
 
 
 
-; funkeys: which function-key mode a session starts with when it does not
-; already carry one of its own. Saved sessions are NOT affected - they store the
-; mode they were saved with; change those on Terminal -> Keyboard.
-;   xterm216   what to set if F13-F24 "do nothing". On a modern keyboard those
-;              keys ARE Shift+F1..F12, and this is the only mode that says so in
-;              the way terminfo and modern hosts expect (xterm's kf13 is
-;              CSI 1;2P, kf24 is CSI 24;2~ - the F-key with the shift modifier
-;              encoded). Every other mode folds Shift into the key number, so
-;              Shift+F1 arrives as F11 and F13 upwards cannot be produced.
-;   tilde      ESC[n~ - PuTTY's own default, and what you get if this is unset
-;   linux | xtermr6 | vt400 | vt100p | sco   the remaining Keyboard-panel modes
-;funkeys=xterm216
-
-; namedproxy: how a NAMED PROXY's Host field is read, when the proxy itself
-; does not say (each proxy can, in the proxy editor: "That host is:").
-;   sessionorhostname  the title of a saved session first, then a hostname.
-;                      This is what PuTTY has always done, and the DEFAULT.
-;   hostname           a hostname, full stop.
-; Why you might set "hostname": with the old rule, a jump host that happens to
-; share its name with a saved session loads THAT SESSION as the jump-host
-; configuration - including whatever proxy the session itself carries - so a
-; connection can silently run through an unrelated proxy. Setting it per proxy
-; is the precise fix; this is the blanket one.
-;namedproxy=sessionorhostname
-
 [Launcher]
+
+; alreadyRunCheck: what a second launcher does when one is already running.
+;    Unset (the default) the second one exits silently. yes = exit as well,
+;    stated explicitly. Any other value lets it start anyway, which is only
+;    useful when you deliberately want two launcher windows.
+;    One case ignores this setting entirely: a launcher started to HOLD
+;    workplace proxy mode. The launcher window class is shared by every
+;    KiTTY on the machine, while workplace mode is per installation - so a
+;    portable copy or a second install already in the tray owns that class,
+;    and a launcher started to arm OUR install would exit here without
+;    arming anything. Holding the arming therefore exempts it from the
+;    check. Two launchers of the SAME install still cannot both arm: the
+;    arming refuses a second holder, and that one exits like any duplicate.
+;alreadyRunCheck=yes
+
+; classname: override the Win32 window class the launcher registers and
+;    looks for. Only worth setting to keep two KiTTY installations from
+;    recognising each other as "already running".
+;classname=KiTTYLauncher
 
 ; reload: enable session list reload on each menu respawn
 ;reload=yes
@@ -589,10 +708,18 @@
 ;blockipcadd=no
 ;blockipcremove=no
 
-; loadonstartup: re-add the remembered keys when kageant starts, added
-; encrypted (passphrase asked on first use). Toggle it from the kageant
-; tray menu ("Load keys on startup"); the key list below is managed for you.
-;loadonstartup=no
+; loadkeysonstartup: re-add the remembered keys when kageant starts, added
+;    encrypted so the passphrase is asked on first use, not at login. Only the
+;    key FILE PATHS are remembered - never a passphrase or key material - and
+;    the list below is maintained for you as you add and remove keys.
+;    Off by default. Was called loadonstartup; the old name is read once and
+;    rewritten under this one.
+;    Note the tray item and the Settings checkbox are labelled "Start kageant
+;    at login": today that one command does both jobs - it installs the login
+;    autostart AND turns this on - and whether it looks ticked is decided by
+;    the autostart itself (the Run entry or Startup shortcut, checked to be
+;    THIS kageant), not by this setting.
+;loadkeysonstartup=no
 
 ; startupkey1, startupkey2, ...: the remembered key files, in order. Paths
 ; under this install folder are stored relative to it (so they travel); a
@@ -658,5 +785,12 @@
 ; fontfallback.log next to kitty.exe (debug/trace are high volume)
 ;log=off
 
-; logfile: alternative path for the log file
+; logfile: where to write that log instead of the default. Unset, it goes to
+;    fontfallback.log in the folder the running executable sits in - which is
+;    read-only for a normal user under Program Files, so a per-user install or
+;    a portable copy gets the file and an installed one may not. Give a full
+;    path to put it somewhere writable, e.g. %USERPROFILE%\fontfallback.log
+;    spelled out (this file does not expand environment variables).
+;    The file is appended to, and one previous copy is kept alongside it
+;    with a .1 suffix.
 ;logfile=

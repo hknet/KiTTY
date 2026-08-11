@@ -190,4 +190,40 @@ if(platform STREQUAL unix)
   target_link_libraries(utils charset)
 endif()
 
+# KiTTY: keep the two kitty.ini templates honest at BUILD time rather than at
+# release time. The failure it catches is "added an ini key, forgot the
+# template" - and its mirror, a template key that nothing reads: `winrol=yes`
+# sat in the compiled-in template matching nothing at all, because a key no
+# code asks for cannot show up as a missing one.
+# find_program, not find_package(Python3), because FindPython3 needs cmake 3.12
+# and this tree still declares 3.7. Absent python = check skipped, the same way
+# doc/CMakeLists.txt skips the manual without Halibut, so nobody's build breaks
+# over a lint.
+find_program(KITTY_INI_CHECK_PYTHON NAMES python3 python)
+if(KITTY_INI_CHECK_PYTHON)
+  # The check reads every ini key literal in these, so they are its inputs.
+  if(CMAKE_VERSION VERSION_LESS 3.12)
+    file(GLOB KITTY_INI_CHECK_SOURCES
+      ${CMAKE_CURRENT_SOURCE_DIR}/kitty/*.c ${CMAKE_CURRENT_SOURCE_DIR}/windows/*.c)
+  else()
+    file(GLOB KITTY_INI_CHECK_SOURCES CONFIGURE_DEPENDS
+      ${CMAKE_CURRENT_SOURCE_DIR}/kitty/*.c ${CMAKE_CURRENT_SOURCE_DIR}/windows/*.c)
+  endif()
+  # Stamped, so an incremental build that touched none of the inputs does not
+  # re-scan ~90 source files for nothing.
+  set(KITTY_INI_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_ini_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_INI_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-kitty-ini-example.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_INI_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-kitty-ini-example.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/kitty/kitty_ini.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/docs/examples/kitty.ini.example
+            ${KITTY_INI_CHECK_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking kitty.ini templates against the options the source reads")
+  add_custom_target(check_kitty_ini ALL DEPENDS ${KITTY_INI_CHECK_STAMP})
+endif()
+
 configure_file(cmake/cmake.h.in ${GENERATED_SOURCES_DIR}/cmake.h)
