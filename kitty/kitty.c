@@ -91,7 +91,11 @@ char * AutoCommand = NULL ;
 char * ScriptCommand = NULL ;
 
 // paste size limit (number of characters). Above the limit a confirmation is requested. (0 means unlimited)
-static int PasteSize = 0 ;
+/* KiTTY: warn above 5120 characters by default - the same threshold Windows
+ * Terminal uses for its large-paste warning. It used to be 0, i.e. no check,
+ * which meant a mis-aimed paste of a whole file went to the shell unasked.
+ * 0 still disables the warning; see the reader in LoadParameters(). */
+static int PasteSize = 5120 ;
 int GetPasteSize(void) { return PasteSize ; }
 void SetPasteSize( const int size ) { PasteSize = size ; }
 
@@ -222,24 +226,16 @@ static int MouseShortcutsFlag = 1 ;
 int GetMouseShortcutsFlag(void) { return MouseShortcutsFlag  ; }
 void SetMouseShortcutsFlag( const int flag ) { MouseShortcutsFlag  = flag ; }
 
-// Flag pour permettre la definition d'icone de connexion
-static int IconeFlag = 0 ;
-int GetIconeFlag(void) { return IconeFlag ; }
-void SetIconeFlag( const int flag ) { IconeFlag = flag ; }
-
-// Nombre d'icones differentes (identifiant commence a 1 dans le fichier .rc)
+/* KiTTY: the multiple-icon feature is gone - the [KiTTY] icon and
+ * numberoficons keys, IconeFlag, IconeNum and NumberOfIcons with it. Nothing
+ * ever asked SetNewIcon to cycle or randomise (every caller passes SI_INIT),
+ * and the ini key could only switch the flag on, so the feature did nothing.
+ * The 50 embedded icons remain and are still selectable per session, by
+ * number or as an external file (CONF_icone / CONF_iconefile). */
 #ifndef MOD_PERSO
-#define NB_ICONES 1
 #define IDI_MAINICON_0 1
 #define IDC_RESULT 1008
 #endif
-static int NumberOfIcons = NB_ICONES ;
-int GetNumberOfIcons(void) { return NumberOfIcons ; }
-void SetNumberOfIcons( const int flag ) { NumberOfIcons = flag ; }
-
-static int IconeNum = 0 ;
-int GetIconeNum(void) { return IconeNum ; }
-void SetIconeNum( const int num ) { IconeNum = num ; }
 
 // La librairie dans laquelle chercher les icones (fichier defini dans kitty.ini, sinon kitty.dll s'il existe, sinon kitty.exe)
 static HINSTANCE hInstIcons =  NULL ;
@@ -2064,29 +2060,16 @@ void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) {
 		TrayIcone.hIcon = hIcon ;
 		//DeleteObject( hIcon ) ; 
 	} else {
-		if( mode == SI_INIT ) {
-			if( icone!=0 ) IconeNum = icone - 1 ;
-			hIcon = LoadIcon( hInstIcons, MAKEINTRESOURCE(IDI_MAINICON_0 + IconeNum ) ) ;
-			SendMessage( hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon );
-			SendMessage( hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon );
-			TrayIcone.hIcon = hIcon ;
-		} else {
-			if( IconeFlag==0 ) return ;
-			if( IconeFlag <= 0 ) { IconeNum = 0 ; 
-			} else {
-				if( mode == SI_RANDOM ) { 
-					SYSTEMTIME st ;
-					GetSystemTime( &st ) ;
-					IconeNum = ( GetCurrentProcessId() * time( NULL ) ) % NumberOfIcons ; 
-				} else { 
-					IconeNum++ ; if( IconeNum >= NumberOfIcons ) IconeNum = 0 ; 
-				}
-			}
-			hIcon = LoadIcon( hInstIcons, MAKEINTRESOURCE(IDI_MAINICON_0 + IconeNum ) ) ;
-			SendMessage( hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon );	
-			SendMessage( hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon );
-			TrayIcone.hIcon = hIcon ;
-		}
+		/* KiTTY: the embedded icon, indexed by the session's own CONF_icone.
+		 * The cycling/randomising branch that used to sit here was dead - no
+		 * caller ever passed anything but SI_INIT - and went with the rest of
+		 * the multiple-icon feature. `mode` is kept for the callers. */
+		int num = ( icone != 0 ) ? icone - 1 : 0 ;
+		(void)mode ;
+		hIcon = LoadIcon( hInstIcons, MAKEINTRESOURCE(IDI_MAINICON_0 + num ) ) ;
+		SendMessage( hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon );
+		SendMessage( hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon );
+		TrayIcone.hIcon = hIcon ;
 	}
 	Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
 }
@@ -3303,7 +3286,6 @@ static const IniParam ini_params[] = {
 	INIP_NUM( INIT_SECTION, 0, "cryptsalt",		IGN,		NULL, SetCryptSaltFlag ),
 	INIP_KW( INIT_SECTION, 0, "ctrltab",		IGN, 0, IGN,	NULL, SetCtrlTabFlag ),
 	INIP_KW( INIT_SECTION, 0, "hyperlink",		1, 0, IGN,	&HyperlinkFlag, NULL ),
-	INIP_KW( INIT_SECTION, 0, "icon",		1, IGN, IGN,	&IconeFlag, NULL ),
 	INIP_NUM( INIT_SECTION, 0, "internaldelay",	1,		&internal_delay, NULL ),
 	INIP_KW( INIT_SECTION, 0, "mouseshortcuts",	1, 0, IGN,	&MouseShortcutsFlag, NULL ),
 	/* cyd01/KiTTY #548: force classic modal error boxes instead of inline terminal errors */
@@ -3494,7 +3476,6 @@ void LoadParameters( void ) {
 			if( IconFile != NULL ) free( IconFile ) ;
 			IconFile = (char*) malloc( strlen(buffer)+1 ) ;
 			strcpy( IconFile, buffer ) ;
-			if( ReadParameterN( INIT_SECTION, "numberoficons", buffer, sizeof(buffer) ) ) { NumberOfIcons = atof( buffer ) ; }
 		}
 	}
 	if( ReadParameterN( INIT_SECTION, "initdelay", buffer, sizeof(buffer) ) ) { 
@@ -3507,7 +3488,15 @@ void LoadParameters( void ) {
 			str_rtrim( FileExtension, " " ) ;
 		}				
 	}
-	if( ReadParameterN( INIT_SECTION, "pastesize", buffer, sizeof(buffer) ) ) { if( atoi(buffer)>0 ) SetPasteSize( atoi(buffer) ) ; }
+	if( ReadParameterN( INIT_SECTION, "pastesize", buffer, sizeof(buffer) ) ) {
+		/* KiTTY: accept 0 as "no warning". The old test was atoi(buffer)>0, so a
+		 * 0 could not turn the check off - harmless while the default WAS 0, and
+		 * wrong the moment it became 5120. Still requires a number, so a stray
+		 * value cannot silently disable the warning. */
+		const char * pv = buffer ;
+		while( (*pv==' ') || (*pv=='\t') ) pv++ ;
+		if( (*pv >= '0') && (*pv <= '9') ) SetPasteSize( atoi(pv) ) ;
+	}
 	/* NOTE: this parser is CASE-SENSITIVE (strcmp, not stricmp), so the key is
 	 * documented as exactly "proxychainmax". */
 	if( ReadParameterN( INIT_SECTION, "proxychainmax", buffer, sizeof(buffer) ) ) { if( atoi(buffer)>0 ) SetProxyChainMax( atoi(buffer) ) ; }

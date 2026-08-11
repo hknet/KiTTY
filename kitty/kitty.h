@@ -256,20 +256,6 @@ NOTIFYICONDATA TrayIcone ;
 #define MYWM_NOTIFYICON		(WM_USER+3)
 #endif
 
-// Flag pour permettre la definition d'icone de connexion
-// extern int IconeFlag ;
-int GetIconeFlag(void) ;
-void SetIconeFlag( const int flag ) ;
-
-// Nombre d'icones differentes (identifiant commence a 1 dans le fichier .rc)
-// extern int NumberOfIcons ;
-int GetNumberOfIcons(void) ;
-void SetNumberOfIcons( const int flag ) ;
-
-// extern int IconeNum ;
-int GetIconeNum(void) ;
-void SetIconeNum( const int num ) ;
-
 // La librairie dans laquelle chercher les icones (fichier defini dans kitty.ini, sinon kitty.dll s'il existe, sinon kitty.exe)
 // extern HINSTANCE hInstIcons ;
 HINSTANCE GethInstIcons(void) ;

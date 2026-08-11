@@ -19,8 +19,43 @@
 
 #include "kitty.h"
 #include "kitty_commun.h"    /* MASKPASS */
+
 #include "kitty_tools.h"     /* existfile/existdirectory, poss, set_env */
 #include "kitty_win.h"       /* OpenFileName */
+/*
+ * KiTTY: log a command line that had a password built into it.
+ *
+ * The command itself needs the secret - that is how pscp and WinSCP are
+ * driven - but the Event Log copy does not, and the Event Log is scrollable,
+ * copyable and saveable. Callers record where the secret landed (the buffer
+ * length either side of the insertion) and this blanks exactly that span, so
+ * it works whether the password was qcat-escaped, percent-encoded or plain.
+ * A zero-length span means there was no password to hide.
+ */
+static void debug_logevent_redacted(const char *what, const char *cmd,
+                                    size_t secret_at, size_t secret_len)
+{
+    char *safe;
+    size_t n;
+    if (!debug_flag)
+        return;
+    if (secret_len == 0) {
+        debug_logevent("%s: %s", what, cmd);
+        return;
+    }
+    safe = dupstr(cmd);
+    n = strlen(safe);
+    if (secret_at < n) {
+        size_t end = secret_at + secret_len;
+        if (end > n)
+            end = n;
+        memset(safe + secret_at, '*', end - secret_at);
+    }
+    debug_logevent("%s: %s", what, safe);
+    smemclr(safe, strlen(safe));
+    sfree(safe);
+}
+
 
 extern Conf *conf ;          /* the live session configuration (windows/window.c) */
 
@@ -481,6 +516,7 @@ static void urlcat( char *dst, size_t cap, const char *s ) {
 
 void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) {
 	char buffer[4096], pscppath[4096]="", pscpport[4096]="22", remotedir[4096]=".",dir[4096], b1[256], tgt[4096] ;
+	size_t pw_at = 0, pw_len = 0 ;   /* KiTTY: where the password lands in buffer */
 	int p ;
 	
 	if( distantdir == NULL ) { distantdir = kitty_current_dir() ; } 
@@ -542,8 +578,13 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 
 	if( strlen( conf_get_str(conf,CONF_password)) > 0 ) {
 		/* CONF_password is plaintext at runtime; do NOT MASKPASS. qcat escapes any
-		 * quote so the password can't inject an extra switch. */
-		bcat( buffer, BC, "-pw " ) ; qcat( buffer, BC, conf_get_str(conf,CONF_password) ) ; bcat( buffer, BC, " " ) ;
+		 * quote so the password can't inject an extra switch. The span is noted so
+		 * the debug log can blank it - see debug_logevent_redacted(). */
+		bcat( buffer, BC, "-pw " ) ;
+		pw_at = strlen( buffer ) ;
+		qcat( buffer, BC, conf_get_str(conf,CONF_password) ) ;
+		pw_len = strlen( buffer ) - pw_at ;
+		bcat( buffer, BC, " " ) ;
 	}
 	if( strlen( conf_get_str(conf,CONF_portknockingoptions)) > 0 ) {
 		bcat( buffer, BC, "-knock " ) ; qcat( buffer, BC, conf_get_str(conf,CONF_portknockingoptions) ) ; bcat( buffer, BC, " " ) ;
@@ -582,7 +623,7 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	}
 
 	chdir( InitialDirectory ) ;
-	if( debug_flag ) { debug_logevent( "Run: %s", buffer ) ; }
+	debug_logevent_redacted( "Run", buffer, pw_at, pw_len ) ;
 	/* Capture output + show it on failure, instead of flashing a console shut
 	 * (so e.g. a server's exit-127 "Cannot initialize SFTP" is readable). */
 	{ char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), "Upload of \"%s\"", filename ? filename : "file" ) ;
@@ -1029,6 +1070,7 @@ start "C:\Program Files\WinSCP\WinSCP.exe" "%1" "%2" "%3" "%4" "%5" "%6" "%7" "%
 */	
 // winscp.exe [(sftp|ftp|scp)://][user[:password]@]host[:port][/path/[file]] [/privatekey=key_file] [/rawsettings (ProxyMethod=1) (Compression=1)]
 void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
+	size_t pw_at = 0, pw_len = 0 ;   /* KiTTY: where the password lands in cmd */
 	char cmd[4096], shortpath[1024], buffer[4096], proto[10] ;
 	int raw = 0;
 	
@@ -1061,7 +1103,10 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			urlcat( cmd, sizeof(cmd), user!=NULL ? user : conf_get_str_ambi(conf,CONF_username,NULL) ) ;
 			if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
 				/* plaintext at runtime; do NOT MASKPASS. (Goes into the WinSCP URL -- #535: percent-encode so '@' '/' etc. can't redirect the host.) */
-				bcat( cmd, sizeof(cmd), ":" ) ; urlcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_password) ) ;
+				bcat( cmd, sizeof(cmd), ":" ) ;
+				pw_at = strlen( cmd ) ;
+				urlcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_password) ) ;
+				pw_len = strlen( cmd ) - pw_at ;
 			}
 			bcat( cmd, sizeof(cmd), "@" ) ;
 			if( poss( ":", host!=NULL ? host : conf_get_str(conf,CONF_host) )>0 ) { bcat(cmd,sizeof(cmd),"[") ; bcat(cmd,sizeof(cmd), host!=NULL ? host : conf_get_str(conf,CONF_host)) ; bcat(cmd,sizeof(cmd),"]") ; }
@@ -1141,7 +1186,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		bcat( cmd, sizeof(cmd), " " ) ; bcat( cmd, sizeof(cmd), "Shell=\"" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_pscpshell) ) ; bcat( cmd, sizeof(cmd), "\"" ) ;
 	}
 	
-	if( debug_flag ) { debug_logevent( "Start WinSCP: %s", cmd ) ; }
+	debug_logevent_redacted( "Start WinSCP", cmd, pw_at, pw_len ) ;
 	RunCommand( hwnd, cmd ) ;
 	memset(cmd,0,strlen(cmd));
 }

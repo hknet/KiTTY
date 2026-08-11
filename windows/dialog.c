@@ -313,9 +313,17 @@ static void logbox_layout(HWND hwnd)
     MoveWindow(list, m, m, rc.right - 2*m, btop - 2*m, true);
     gap = bw / 4;
     left = (rc.right - (3*bw + 2*gap)) / 2;
-    MoveWindow(btnclear, left, btop, bw, bh, true);
+    /* KiTTY: Close, Copy, Clear - in that order left to right, matching the
+     * order the controls appear in the template, because THAT is the tab
+     * order. Laid out the other way round (Clear leftmost, Close rightmost)
+     * Tab and the arrow keys walked the buttons right to left, which is what
+     * a user hitting Tab from Close actually reported. Fixing it here rather
+     * than by reordering the template keeps the two useful properties of the
+     * current order: the initial focus is the default button, and it is not
+     * the destructive one. */
+    MoveWindow(btnok, left, btop, bw, bh, true);
     MoveWindow(btncopy, left + bw + gap, btop, bw, bh, true);
-    MoveWindow(btnok, left + 2*(bw + gap), btop, bw, bh, true);
+    MoveWindow(btnclear, left + 2*(bw + gap), btop, bw, bh, true);
 }
 
 static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,

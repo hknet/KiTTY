@@ -860,14 +860,6 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             if (top == ssd->sesslist.nsessions) {
                 top -= 1;
             }
-            /* KiTTY: "Default Settings" is forced to index 0, so a real
-             * session name that sorts before it lands the binary search on 0.
-             * Move the highlight to the first real stored session instead. */
-            if (top == 0 && ssd->sesslist.nsessions > 1 &&
-                !strcmp(ssd->sesslist.sessions[0], "Default Settings") &&
-                ssd->savedsession[0] &&
-                strcmp(ssd->savedsession, "Default Settings") != 0)
-                top = 1;
             dlg_listbox_select(ssd->listbox, dlg, top);
         }
     } else if (event == EVENT_ACTION) {
@@ -2108,13 +2100,6 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       I(CONF_sharrow_type),
                       "Ctrl toggles app mode", I(SHARROW_APPLICATION),
                       "xterm-style bitmap", I(SHARROW_BITMAP));
-    ctrl_radiobuttons(s, "Word navigation (Left/Right arrows)", 'n', 3,
-                      HELPCTX(no_help),
-                      conf_radiobutton_handler,
-                      I(CONF_word_nav_modifier),
-                      "Alt", I(WORDNAV_ALT),
-                      "Ctrl", I(WORDNAV_CTRL),
-                      "Both", I(WORDNAV_BOTH));
 
     s = ctrl_getset(b, "Terminal/Keyboard", "appkeypad",
                     "Application keypad settings:");
@@ -2771,9 +2756,6 @@ void setup_config_box(struct controlbox *b, bool midsession,
                               HELPCTX(ssh_kexlist),
                               kexlist_handler, P(NULL));
             c->listbox.height = 10;
-            ctrl_checkbox(s, "Warn if Key Exchange is not post-quantum secure", 'q', HELPCTX(ssh_kexlist),
-                          conf_checkbox_handler,
-                          I(CONF_ssh_warn_pre_quantum));
 #ifndef NO_GSSAPI
             ctrl_checkbox(s, "Attempt GSSAPI key exchange",
                           'k', HELPCTX(ssh_gssapi),

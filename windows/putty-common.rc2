@@ -42,11 +42,19 @@ STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX
 CAPTION "PuTTY Event Log"
 FONT 8, "MS Shell Dlg"
 BEGIN
-    DEFPUSHBUTTON "&Close", IDOK, 215, 203, 44, 14
+    /* KiTTY: control order here IS the tab order, and logbox_layout() places
+     * them left to right in the same order - Close, Copy, Clear - so Tab and
+     * the arrow keys move rightwards. The coordinates below only matter until
+     * WM_INITDIALOG lays them out; they are kept in step to avoid misleading
+     * anyone reading the template. */
+    DEFPUSHBUTTON "&Close", IDOK, 107, 203, 44, 14
     PUSHBUTTON "C&opy", IDN_COPY, 161, 203, 44, 14
-    /* KiTTY: empty the log (LogProc lays all three out on WM_SIZE) */
-    PUSHBUTTON "C&lear", IDN_CLEAR, 107, 203, 44, 14
-    LISTBOX IDN_LIST, 3, 3, 454, 196, LBS_HASSTRINGS | LBS_USETABSTOPS | WS_VSCROLL | WS_HSCROLL | LBS_EXTENDEDSEL | LBS_NOINTEGRALHEIGHT | LBS_WANTKEYBOARDINPUT
+    PUSHBUTTON "C&lear", IDN_CLEAR, 215, 203, 44, 14
+    /* KiTTY: WS_TABSTOP - without it the list is not in the tab order at all
+     * (upstream's line lacks it too), so Tab cycled around the three buttons
+     * and could never reach the log itself. Last in the template, so the
+     * cycle reads Close, Copy, Clear, log. */
+    LISTBOX IDN_LIST, 3, 3, 454, 196, LBS_HASSTRINGS | LBS_USETABSTOPS | WS_VSCROLL | WS_HSCROLL | LBS_EXTENDEDSEL | LBS_NOINTEGRALHEIGHT | LBS_WANTKEYBOARDINPUT | WS_TABSTOP
 END
 
 /* No accelerators used */

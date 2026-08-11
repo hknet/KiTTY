@@ -267,12 +267,9 @@ void kitty_shortcuts_toggle(HWND hwnd) { ManageShortcutsFlag(hwnd); }
 void kitty_start_winscp(HWND hwnd) { StartWinSCP(hwnd, NULL, NULL, NULL); }
 void kitty_send_file(HWND hwnd) { SendFile(hwnd); }
 
-/* Per-session icon (IconeFlag/CONF_icone/CONF_iconefile). Mirrors KiTTY
- * window.c: when icons are enabled (GetIconeFlag()!=-1) apply either the
- * external icon file (CONF_iconefile) or the embedded icon set indexed by
- * CONF_icone via SetNewIcon. */
+/* Per-session icon: the external icon file (CONF_iconefile) if the session
+ * names one, otherwise the embedded icon indexed by CONF_icone. */
 void kitty_apply_icon(HWND hwnd, Conf *conf) {
-    if (GetIconeFlag() == -1) return;
     const char *iconfile = filename_to_str(conf_get_filename(conf, CONF_iconefile));
     char buf[1024];
     buf[0] = '\0';
@@ -284,9 +281,8 @@ void kitty_apply_icon(HWND hwnd, Conf *conf) {
 }
 
 /* KiTTY: restore the session's normal window icon after a (re)connect, undoing
- * SetConnBreakIcon(). Unlike kitty_apply_icon() this always runs (no
- * GetIconeFlag()==-1 early return), so the broken-connection icon never sticks
- * once the session is back up. */
+ * SetConnBreakIcon(), so the broken-connection icon never sticks once the
+ * session is back up. */
 void kitty_restore_icon(HWND hwnd, Conf *conf) {
     const char *iconfile = filename_to_str(conf_get_filename(conf, CONF_iconefile));
     char buf[1024];

@@ -114,9 +114,39 @@ To convert everything in one go, use **Export all…** followed by **Import all�
 
 ### Shortcuts for pre-defined commands
 
-KiTTY lets you define your own list of pre-defined commands that appear in a dedicated **User Command** menu, reachable by holding Ctrl and right-clicking anywhere inside a KiTTY window. Each command you define is automatically assigned a keyboard shortcut (Ctrl+Shift+A, Ctrl+Shift+B, and so on, in the order they were created), so you can fire frequently used commands instantly. You can add as many commands as you like, and define them globally, per saved session, or per session folder. If the shortcuts ever clash with another program running inside the window (for example Midnight Commander), you can turn them off by adding `shortcuts=no` under a `[KiTTY]` section in your `kitty.ini` file.
+KiTTY lets you define your own list of pre-defined commands that appear in a dedicated **User Command** submenu of the KiTTY menu — the one you get by right-clicking the title bar, or by holding Ctrl and right-clicking anywhere inside the window. The submenu is only shown once at least one command is defined, so an empty `Commands` key means no menu entry at all. Each command you define is automatically assigned a keyboard shortcut (Ctrl+Shift+A, Ctrl+Shift+B, and so on, in the order the store lists them — the menu label tells you which letter a command got), so you can fire frequently used commands instantly. You can add as many commands as you like, and define them globally, per saved session, or per session folder. If the shortcuts ever clash with another program running inside the window (for example Midnight Commander), you can turn them off by adding `shortcuts=no` under a `[KiTTY]` section in your `kitty.ini` file.
 
-**How to enable:** Define commands under the `Commands` registry/ini key (global, per-folder, or per-session). They appear in the **User Command** menu and each gets a **Ctrl+Shift+<letter>** shortcut.
+**How to define them.** There is no editor for this yet — the commands live in the
+settings store and are edited by hand.
+
+In registry mode (the default), each command is one **value** under a `Commands`
+key. The value *name* is the menu label; the value *data* is what gets sent:
+
+| Scope | Key |
+|---|---|
+| Global | `HKCU\Software\kapper.net\KiTTY\Commands` |
+| Per folder | `HKCU\Software\kapper.net\KiTTY\Folders\<folder>\Commands` |
+| Per session | `HKCU\Software\kapper.net\KiTTY\Sessions\<session>\Commands` |
+
+The data is tried as a **filename** first: if it names a readable file, every line
+of that file is sent in turn; otherwise the text itself is sent. Either way it
+goes through the same send-text path as the other KiTTY shortcuts, so `\n` sends
+Enter. Session keys use the escaped session name (spaces become `%20`).
+
+In portable / `savemode=dir` mode the same lists are files under
+`<configdir>\Commands` (and `Sessions_Commands\<session>`), one command per line
+in the form `label\command\` — the trailing backslash is required. **Accelerators
+are not assigned in this mode**: the directory reader builds the menu without
+them, so the commands are click-only.
+
+**About the Ctrl+Shift+letter accelerators.** The first 26 commands get one each,
+in the order the store enumerates them — which is not necessarily the order you
+created them in, and can shift when you add or rename a command. The menu label
+shows which letter a command actually has; trust that rather than counting. A
+letter with no command behind it is left alone, and an explicit binding in
+`[Shortcuts]` always wins over the accelerator, so you can bind e.g.
+`eventlog={CONTROL}{SHIFT}L` without it being swallowed. To turn the whole
+mechanism off, set `shortcuts=no` in the `[KiTTY]` section of `kitty.ini`.
 
 ![Shortcuts for pre-defined commands](docs/features/img/menu_shortcuts.jpg)
 
@@ -727,7 +757,7 @@ Exporting needs one of the last two — without them it refuses rather than prot
 
 KiTTY integrates ZModem support (originally from LePuTTY) so you can transfer files directly over an interactive terminal session. With the rz/sz helper tools in place, you trigger a receive or upload straight from the menu and move files to and from the remote host without opening a separate file-transfer client.
 
-**How to enable:** Add `zmodem=yes` to `[KiTTY]` in kitty.ini and set the rz/sz (lrzsz) helper paths in **Connection > ZModem**. The Tools menu then offers **ZModem Receive / Upload / Abort**.
+**How to enable:** On by default — set the rz/sz (lrzsz) helper paths in **Connection > ZModem** and the Tools menu offers **ZModem Receive / Upload / Abort**. `zmodem=no` in `[KiTTY]` hides the panel and the menu entries.
 
 ![ZModem file transfer](docs/features/img/config_zmodem.jpg)
 

@@ -228,6 +228,12 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * the shortcuts it creates ("-load NAME -send-to-tray"). */
                 { extern void SetAutoSendToTray(const int flag);
                   SetAutoSendToTray(1); }
+            } else if (!strcmp(p, "-noctrltab")) {
+                /* KiTTY: turn Ctrl+Tab window switching off for this window,
+                 * whatever [KiTTY] ctrltab says. Classic KiTTY had this switch;
+                 * it did not come across with the rest of the feature. */
+                { extern void SetCtrlTabFlag(const int flag);
+                  SetCtrlTabFlag(0); }
             } else if (!strcmp(p, "-xpos")) {
                 if (!arglist->args[arglistpos])
                     cmdline_error("option \"%s\" requires an argument", p);

@@ -80,13 +80,6 @@ static int cmd_backgroundimage( HWND hwnd, char * arg ) {
 	return 1 ;
 }
 
-static int cmd_icon( HWND hwnd, char * arg ) {
-	(void)hwnd ; (void)arg ;
-	IconeFlag = abs( IconeFlag - 1 ) ;
-	conf_set_int(conf,CONF_icone,IconeNum) ;
-	return 1 ;
-}
-
 static int cmd_hyperlink( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	HyperlinkFlag = abs( HyperlinkFlag - 1 ) ;
@@ -438,7 +431,6 @@ static const struct InternalCmdDef {
 	{ "/title",		IC_ARG_REQUIRED, "<text>", CAT_WINDOW, "set the window title",					cmd_title },
 	{ "/transparency",	IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "toggle window transparency",				cmd_transparency },
 	{ "/backgroundimage",	IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "toggle the background image feature",			cmd_backgroundimage },
-	{ "/icon",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "toggle per-session window icons",			cmd_icon },
 	{ "/hyperlink",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "toggle clickable URLs",					cmd_hyperlink },
 	{ "/winroll",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "toggle title-bar double-click roll-up",			cmd_winroll },
 	{ "/redraw",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "repaint the window",					cmd_redraw },

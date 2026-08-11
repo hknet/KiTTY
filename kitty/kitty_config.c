@@ -25,6 +25,7 @@
  * shared guiterminal config.o (which is built without MOD_PERSO) so
  * the other shipping binaries are unaffected. */
 int GetPuttyFlag(void);
+int GetCtrlTabFlag(void);        /* kitty.c: [KiTTY] ctrltab / -noctrltab */
 int GetSessionFilterFlag(void);  /* kitty.c: [ConfigBox] filter, gates the
                                   * live type-to-search session filter */
 int GetTransparencyFlag(void);
@@ -2604,6 +2605,10 @@ static void sessionsaver_offer_hide_default(struct sessionsaver_data *ssd,
              "starts from.\n\n"
              "It can be hidden from this list instead. The template itself "
              "keeps working; it simply stops taking up a row.\n\n"
+             "Note it is also the way into quick connect - loading it once "
+             "puts the caret in Host Name so you can type an address instead "
+             "of picking a session. With the row hidden you would reach that "
+             "by setting [ConfigBox] loadlastsession=no instead.\n\n"
              "Hide it?\n\n"
              "To show it again later you have to edit the configuration file "
              "by hand and set:\n"
@@ -5444,6 +5449,17 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
         ctrl_checkbox(s, "Full screen on startup", NO_SHORTCUT,
                       HELPCTX(no_help),
                       kitty_checkbox_int_handler, I(CONF_fullscreen));
+        /* KiTTY: Ctrl+Tab between windows. Two gates, as in classic KiTTY:
+         * [KiTTY] ctrltab (or -noctrltab) decides whether the feature exists at
+         * all, and this per-session box turns it on for a session. The port
+         * kept both gates but not this box, which left CONF_ctrl_tab_switch at
+         * its default 0 with no way to change it - so ctrltab=yes did nothing.
+         * Offered only when the feature is enabled, and not mid-session,
+         * matching classic (0.76b windows/config.c). */
+        if (!midsession && GetCtrlTabFlag())
+            ctrl_checkbox(s, "Switch KiTTY windows with Ctrl + TAB", NO_SHORTCUT,
+                          HELPCTX(no_help),
+                          kitty_checkbox_int_handler, I(CONF_ctrl_tab_switch));
         /* KiTTY: where a window OPENS is window behaviour, not a property of
          * the connection - this used to sit on the Session panel, among the
          * host and port. Classic KiTTY's equivalent ("Save position and size on
@@ -5585,7 +5601,7 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
                      HELPCTX(no_help), conf_editbox_handler,
                      I(CONF_icone), ED_INT);
         ctrl_filesel(s, "External icon file:", NO_SHORTCUT,
-                     FILTER_ALL_FILES, false, "Select icon file",
+                     FILTER_ICON_FILES, false, "Select icon file",
                      HELPCTX(no_help),
                      conf_filesel_handler, I(CONF_iconefile));
     }
@@ -6428,7 +6444,11 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
         }
 
         if (!midsession) {
-            s = ctrl_getset(b, "Connection/SSH", "sharing", "Sharing an SSH connection between PuTTY tools");
+            /* KiTTY: these two strings name the OTHER PROCESS in a shared
+             * connection, not the PuTTY project - upstream calls it "the
+             * upstream PuTTY", which reads here as if it meant our upstream.
+             * Keep them saying KiTTY on a rebase. */
+            s = ctrl_getset(b, "Connection/SSH", "sharing", "Sharing an SSH connection between KiTTY tools");
 
             ctrl_checkbox(s, "Share SSH connections if possible", 's',
                           HELPCTX(ssh_share),
@@ -6441,7 +6461,7 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                           HELPCTX(ssh_share),
                           conf_checkbox_handler,
                           I(CONF_ssh_connection_sharing_upstream));
-            ctrl_checkbox(s, "Downstream (connecting to the upstream PuTTY)", 'd',
+            ctrl_checkbox(s, "Downstream (connecting to the upstream KiTTY)", 'd',
                           HELPCTX(ssh_share),
                           conf_checkbox_handler,
                           I(CONF_ssh_connection_sharing_downstream));

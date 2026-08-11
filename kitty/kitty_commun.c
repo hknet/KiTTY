@@ -75,7 +75,11 @@ void SetReadOnlyFlag( const int flag ) { ReadOnlyFlag = flag ; }
 
 #ifdef MOD_ZMODEM
 // Flag pour inhiber les fonctions ZMODEM
-static int ZModemFlag = 0 ;
+/* KiTTY: on by default. The shipped kitty.ini template has always written
+ * zmodem=yes, so the feature was present for anyone whose kitty.ini had been
+ * generated and absent for everyone else - including every registry-mode
+ * install without one. The template line is now a no-op restating this. */
+static int ZModemFlag = 1 ;
 int GetZModemFlag(void) { return ZModemFlag ; }
 void SetZModemFlag( const int flag ) { ZModemFlag = flag ; }
 #endif

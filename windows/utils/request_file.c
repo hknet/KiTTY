@@ -107,6 +107,11 @@ static bool do_filereq_a(
             "All Files (*.*)\0*\0\0\0";
         of.lpstrDefExt = ".dll";
         break;
+      case FILTER_ICON_FILES:
+        of.lpstrFilter = "Icon Files (*.ico)\0*.ico\0"
+            "All Files (*.*)\0*\0\0\0";
+        of.lpstrDefExt = ".ico";
+        break;
       case FILTER_SOUND_FILES:
         of.lpstrFilter = "Wave Files (*.wav)\0*.WAV\0"
             "All Files (*.*)\0*\0\0\0";
@@ -177,6 +182,11 @@ static bool do_filereq_w(
         of.lpstrFilter = L"Dynamic Library Files (*.dll)\0*.dll\0"
             "All Files (*.*)\0*\0\0\0";
         of.lpstrDefExt = L".dll";
+        break;
+      case FILTER_ICON_FILES:
+        of.lpstrFilter = L"Icon Files (*.ico)\0*.ico\0"
+            "All Files (*.*)\0*\0\0\0";
+        of.lpstrDefExt = L".ico";
         break;
       case FILTER_SOUND_FILES:
         of.lpstrFilter = L"Wave Files (*.wav)\0*.WAV\0"

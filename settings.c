@@ -1104,10 +1104,55 @@ bool do_defaults(const char *session, Conf *conf)
     return load_settings(session, conf);
 }
 
+/*
+ * KiTTY: compare two names in NATURAL order - a run of digits compares by
+ * value rather than character by character, so "2" sorts before "10" instead
+ * of after "1". Numbered session names are common enough that plain strcmp
+ * ordering reads as broken.
+ *
+ * Deliberately not wrapped in #ifdef MOD_PERSO: settings.c is compiled into
+ * the settings library, which is built WITHOUT that define, so a guarded
+ * block here would never be compiled.
+ *
+ * Returns 0 when the two differ only in digit-run padding ("007" vs "7");
+ * the caller falls back to strcmp so the order stays total and stable.
+ */
+static int naturalcmp(const char *a, const char *b)
+{
+    while (*a && *b) {
+        bool da = (*a >= '0' && *a <= '9'), db = (*b >= '0' && *b <= '9');
+        if (da && db) {
+            const char *sa, *sb, *ea, *eb;
+            size_t la, lb;
+            int c;
+            while (*a == '0') a++;     /* leading zeros carry no value */
+            while (*b == '0') b++;
+            sa = a; sb = b;
+            while (*a >= '0' && *a <= '9') a++;
+            while (*b >= '0' && *b <= '9') b++;
+            ea = a; eb = b;
+            la = ea - sa; lb = eb - sb;
+            if (la != lb)              /* more digits = larger number */
+                return la < lb ? -1 : +1;
+            c = strncmp(sa, sb, la);
+            if (c)
+                return c < 0 ? -1 : +1;
+            continue;                  /* equal run, keep going */
+        }
+        if (*a != *b)
+            return (unsigned char)*a < (unsigned char)*b ? -1 : +1;
+        a++; b++;
+    }
+    if (*a) return +1;
+    if (*b) return -1;
+    return 0;
+}
+
 static int sessioncmp(const void *av, const void *bv)
 {
     const char *a = *(const char *const *) av;
     const char *b = *(const char *const *) bv;
+    int c;
 
     /*
      * Alphabetical order, except that "Default Settings" is a
@@ -1121,7 +1166,8 @@ static int sessioncmp(const void *av, const void *bv)
      * FIXME: perhaps we should ignore the first & in determining
      * sort order.
      */
-    return strcmp(a, b);               /* otherwise, compare normally */
+    c = naturalcmp(a, b);              /* KiTTY: 2 before 10 */
+    return c ? c : strcmp(a, b);
 }
 
 bool sesslist_demo_mode = false;

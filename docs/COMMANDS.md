@@ -59,14 +59,6 @@ Toggle the background-image feature on or off.
 
 **Persists:** runtime only; startup default via kitty.ini `bgimage=`.
 
-### /icon
-
-Toggle the per-session window icons feature (each session shows its configured
-icon instead of the default KiTTY icon).
-
-**Persists:** runtime only; startup default via kitty.ini `icon=yes` (the key
-can only enable). The icon *number* itself is a session setting.
-
 ### /hyperlink
 
 Toggle clickable URLs (hyperlink detection) in the terminal.

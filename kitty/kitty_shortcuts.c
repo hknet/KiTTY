@@ -341,11 +341,6 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 		return 1 ;
 	}
 
-	if( ( IniFileFlag != SAVEMODE_DIR ) && shift_flag && control_flag ) {		
-		if( ( key_num >= 'A' ) && ( key_num <= 'Z' ) ) // Raccourci commandes speciales (SpecialMenu) CTRL+SHIFT+'A' ... CTRL+SHIFT+'Z'
-			{ SendMessage( hwnd, WM_COMMAND, IDM_USERCMD+key_num-'A', 0 ) ; return 1 ; }
-	}
-		
 	if( key == shortcuts_tab.editor ) {			// Lancement d'un putty-ed
 		if( debug_flag ) { debug_logevent( "Start empty internal editor" ) ; }
 		RunPuttyEd( hwnd, NULL ) ; 
@@ -465,5 +460,30 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 		*/
 #endif
 	}
+
+	/* KiTTY predefined-command accelerators: Ctrl+Shift+A..Z fires the Nth
+	 * entry of the User Command menu (kitty_specialmenu.c labels the menu
+	 * item with the same letter, for the first 26 entries).
+	 *
+	 * Deliberately LAST, and deliberately conditional on that entry EXISTING.
+	 * This block used to run before every shortcuts_tab comparison and claim
+	 * the whole A-Z range unconditionally, which had two consequences: any
+	 * {CONTROL}{SHIFT}<letter> binding in [Shortcuts] was unreachable, and a
+	 * letter with no command behind it was still swallowed - dispatched to a
+	 * SpecialMenu[] slot that is NULL, so nothing happened and nothing said
+	 * why. With no commands defined at all, which is the common case, that
+	 * cost all 26 combinations for a menu KiTTY does not even display (it is
+	 * only added when at least one command exists).
+	 *
+	 * SAVEMODE_DIR stays excluded: the directory loader assigns no
+	 * accelerators, so there is nothing to dispatch there. */
+	if( ( IniFileFlag != SAVEMODE_DIR ) && shift_flag && control_flag
+	 && ( key_num >= 'A' ) && ( key_num <= 'Z' ) ) {
+		int usercmd = key_num - 'A' ;
+		if( ( usercmd < NB_MENU_MAX ) && ( SpecialMenu[usercmd] != NULL )
+		 && ( strlen( SpecialMenu[usercmd] ) > 0 ) )
+			{ SendMessage( hwnd, WM_COMMAND, IDM_USERCMD+usercmd, 0 ) ; return 1 ; }
+	}
+
 	return 0 ;
 }
