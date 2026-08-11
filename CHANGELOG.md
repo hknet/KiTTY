@@ -5,6 +5,97 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.73-beta — 2026-08-11
+
+### Fixed
+
+- **No `{CONTROL}{SHIFT}<letter>` shortcut could ever fire.** Ctrl+Shift+A..Z
+  was claimed for the User Command menu whether or not a command existed
+  behind that letter, so a binding in `[Shortcuts]` was shadowed by an
+  accelerator that led nowhere. The letters are claimed only where there is a
+  command behind them.
+- **Ctrl+Tab window switching could not be enabled.** The per-session checkbox
+  it reads had gone missing in the port, leaving the feature with no way in.
+  It is back in *Window > Behaviour*, with `-noctrltab` to override it from
+  the command line.
+- **`debug=yes` logged the session password.** The pscp and WinSCP command
+  lines were written to the Event Log verbatim, credentials included; the
+  logged copy is now redacted. The command actually executed is unchanged.
+- **kageant: enabling "load remembered keys at startup" with nothing loaded
+  overwrote the remembered list with an empty one.** The snapshot is taken
+  only when there is something to snapshot.
+- **The Event Log dialog is keyboard-usable**: its buttons are in tab order
+  and the list itself is reachable with Tab.
+- **kageant's key list lost every colour it set.** The custom-draw handler
+  returned `CDRF_DODEFAULT` after choosing its colours, which also explains
+  the grey that never appeared on not-loaded rows; and a selected row ignored
+  them until `CDIS_SELECTED` is cleared for the paint.
+- **A new kageant menu id aliased an existing command**, because the handler
+  masks the low nibble of `wParam` — ids there must be multiples of `0x10`.
+
+### kitty.ini: the shipped file is generated, and it is the documentation
+
+- **`kitty/kitty_ini.h` is generated from `docs/examples/kitty.ini.example`.**
+  The two were maintained separately and the shipped template had drifted 36
+  options behind the sample, so a KiTTY that wrote its own kitty.ini never
+  mentioned the `[Agent]` block, `restrictacl`, `verifyagent` or `namedproxy`.
+  Every line is emitted commented out, so the generated file sets nothing and
+  the compiled-in defaults continue to rule.
+- **Every one of the 134 documented options was read against the code that
+  consumes it**, and the descriptions that were wrong or empty were rewritten.
+  Among the corrections: `savemode=file` is not a file-based session store
+  (sessions stay in the registry; the mode only adds the `.sav` import, and it
+  was abandoned upstream); `[Print] height` is the line pitch, not a character
+  size; `bgimage`'s text named a key KiTTY does not read; `Folders` is the
+  live folder list, not a legacy cache; `mouseshortcuts` named neither of the
+  two chords it governs; `shrinkbitmap` applies to the *Stretch+* placement
+  only; and fifteen `[Shortcuts]` actions ship with no default key, which
+  nothing said.
+- **The drift check covers all seven sections in both directions** and now
+  also reports a key that is read into a variable nothing consults. It runs
+  from the build (`check_kitty_ini`) and again as a release guard.
+
+### Changed
+
+- **`[KiTTY] antiidledelay` is now a plain interval in seconds.** It was
+  divided by ten to count ticks of a fixed 30-second timer, so the value meant
+  roughly three times what it said (60 gave 180 seconds) with 30-second
+  granularity. The timer period is now the interval itself. Divide a
+  carried-over value by three to keep the interval you had; values below 5 are
+  treated as 5.
+- **`[KiTTY] transparency=no` switches the feature off, not only its
+  controls.** A session with a level saved used to open translucent while the
+  configuration panel and menu entries were hidden. A session set to `-1` is
+  now a real lock as well: the window menu does not offer the Transparency
+  entries, the keyboard refuses, and `/transparency` declines. The ini answer
+  is kept separately from the live state, so the console command cannot
+  re-enable what the file disabled.
+- **A paste of more than 5120 characters asks for confirmation**, matching
+  Windows Terminal, and `pastesize=0` disables the warning — the reader
+  previously ignored any value not greater than zero, so it could not be
+  turned off.
+- **ZModem is enabled by default.** The flag was 0 in the code while the
+  shipped template said `yes`, so whether you had ZModem depended on whether a
+  kitty.ini existed.
+- **The saved-session list sorts naturally**, so `2` precedes `10`.
+- **kageant's single startup toggle became two.** One tray item installed the
+  login autostart *and* remembered the loaded keys; they are now separate
+  items and separate checkboxes. `[Agent] loadonstartup` is renamed
+  `loadkeysonstartup` and migrated on first read. Whether kageant starts at
+  login is read from the autostart artifact, and the portable path verifies
+  the Startup shortcut points at *this* kageant.
+- **kageant tints the row of a key that has just been used** — blue when it
+  signed, amber when the request was refused — reported from the agent core
+  and identified by the stored key's fingerprint.
+- **The multiple-icon feature is removed**: one flag, a key that could only
+  switch it on, and a cycling path no caller reached. The 50 embedded icons
+  and the per-session icon choice are unaffected, and the icon file selector
+  now filters on `*.ico`.
+- **`config.c` is back to upstream.** `kitty/kitty_config.c` replaces it for
+  kitty.exe, so the KiTTY edits that sat in `config.c` were compiled into
+  nothing.
+- `licence.pl` moved to `cmake/`, beside the file that runs it.
+
 ## 0.84.1.72-beta — 2026-08-10
 
 ### Fixed
