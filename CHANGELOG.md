@@ -5,6 +5,20 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.74-beta — 2026-08-11
+
+### Changed
+
+- **A `kitty.ini` now says which KiTTY wrote it, and the shipped
+  `kitty.ini.example` says which release it came from.** Neither file carried
+  a version, so a copy of one - pasted into a support thread, or found in an
+  install folder years later - could not be traced back to a release. The
+  `kitty.ini` KiTTY creates on first run now opens with the build version and
+  date, and the sample shipped in the installers and ZIPs opens with the
+  release it was packaged for plus a link to that version of the file. The
+  copy in the repository is deliberately left unstamped: there, the branch or
+  tag you are reading already says which version it is.
+
 ## 0.84.1.73-beta — 2026-08-11
 
 ### Fixed
