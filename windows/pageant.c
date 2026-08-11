@@ -111,6 +111,9 @@ static filereq_saved_dir *keypath = NULL;
 #define IDM_NOTIFY_KEYUSE      0x00C0    /* KiTTY: toggle "notify on key use" balloon */
 #define IDM_CONFIRM_KEYUSE     0x00D0    /* KiTTY: toggle "confirm every key use" prompt */
 #define IDM_SETTINGS           0x00E0    /* KiTTY: open the [Agent] settings dialog */
+/* NB: the WM_COMMAND handler masks with ~0xF, so every IDM_ here must be a
+ * multiple of 0x10. 0x00B8 silently aliased to IDM_LOAD_ON_STARTUP. */
+#define IDM_LOAD_KEYS          0x0100    /* KiTTY: re-add remembered keys */
 #define IDM_RESUME_CONFIRM     0x00F0    /* KiTTY: lift the confirm-suppress latch */
 #define IDM_SESSIONS_BASE      0x1000
 #define IDM_SESSIONS_MAX       0x2000
@@ -885,6 +888,40 @@ static int keylist_button_target(HWND hlist)
 }
 
 /* Retext + enable the action button from the current selection. */
+/* KiTTY: the confirm mode is shown in two places - the key list's radios and
+ * the tray item's tick - and either can change it. Each change syncs the
+ * other, so an open key list does not keep showing the old answer. */
+/* KiTTY: a key-use tint appeared or changed - repaint the list and keep a
+ * timer running while any tint is live, so the row clears itself. */
+#define KEYLIST_FLASH_TIMER 0x4B46
+void kageant_keylist_flash_changed(void)
+{
+    if (!keylist)
+        return;
+    InvalidateRect(GetDlgItem(keylist, IDC_KEYLIST_LISTBOX), NULL, FALSE);
+    SetTimer(keylist, KEYLIST_FLASH_TIMER, 150, NULL);
+}
+
+static void keylist_sync_confirm_radios(void)
+{
+    int m;
+    if (!keylist)
+        return;
+    m = kageant_confirm_mode();
+    CheckRadioButton(keylist, IDC_KEYLIST_CONFIRM_YES, IDC_KEYLIST_CONFIRM_NO,
+                     m == KAGEANT_CONFIRM_YES ? IDC_KEYLIST_CONFIRM_YES :
+                     m == KAGEANT_CONFIRM_NO  ? IDC_KEYLIST_CONFIRM_NO  :
+                                                IDC_KEYLIST_CONFIRM_AUTO);
+}
+
+static void tray_sync_confirm_check(void)
+{
+    if (systray_menu)
+        CheckMenuItem(systray_menu, IDM_CONFIRM_KEYUSE,
+                      MF_BYCOMMAND |
+                      (kageant_confirm_get() ? MF_CHECKED : MF_UNCHECKED));
+}
+
 static void keylist_refresh_actionbtn(HWND dlg)
 {
     HWND hlist = GetDlgItem(dlg, IDC_KEYLIST_LISTBOX);
@@ -1821,6 +1858,8 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
         }
         CheckDlgButton(hwnd, IDC_SET_OPENSSH,
             kageant_openssh_get() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_LOADKEYS,
+                       kageant_startup_get() ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(hwnd, IDC_SET_STARTUP,
             kageant_autostart_active() ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(hwnd, IDC_SET_NOTIFY,
@@ -1891,6 +1930,9 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             want = IsDlgButtonChecked(hwnd, IDC_SET_STARTUP) == BST_CHECKED;
             if (want != (kageant_autostart_active() ? 1 : 0))
                 SendMessage(traywindow, WM_COMMAND, IDM_LOAD_ON_STARTUP, 0);
+            want = IsDlgButtonChecked(hwnd, IDC_SET_LOADKEYS) == BST_CHECKED;
+            if (want != (kageant_startup_get() ? 1 : 0))
+                SendMessage(traywindow, WM_COMMAND, IDM_LOAD_KEYS, 0);
             kitty_auxpos_save(hwnd, "kageantSettings");
             EndDialog(hwnd, 1);
             return 0;
@@ -2114,6 +2156,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             keylist_show_details(hwnd, keylist_row_data(hlist, ia->iItem));
         }
         if (nm->idFrom == IDC_KEYLIST_LISTBOX && nm->code == NM_CUSTOMDRAW) {
+            /* KiTTY: see keylist_flash_paint below for the key-use tint. */
             /* KiTTY: paint the not-loaded rows grey - they are startup
              * entries, not keys the agent holds. */
             NMLVCUSTOMDRAW *cd = (NMLVCUSTOMDRAW *)lParam;
@@ -2123,8 +2166,50 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             } else if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
                 struct keylist_display_data *disp =
                     (struct keylist_display_data *)cd->nmcd.lItemlParam;
-                if (disp && disp->pending)
+                /* Any colour we set here is only honoured if we say we changed
+                 * something: CDRF_DODEFAULT means "nothing to see", and the
+                 * control then paints in its own colours. */
+                if (disp && disp->pending) {
                     cd->clrText = GetSysColor(COLOR_GRAYTEXT);
+                    res = CDRF_NEWFONT;
+                }
+                /* KiTTY: this key was just used - the whole row takes the
+                 * accent the notice windows use, amber for refused and blue
+                 * for signed, with white text on it as they have. Left alone
+                 * in a high-contrast theme, where the system owns the
+                 * colours. (Both colours only stick because this branch
+                 * returns CDRF_NEWFONT; with CDRF_DODEFAULT the control keeps
+                 * its own and the row paints as if nothing was set.) */
+                HIGHCONTRASTA hc;
+                hc.cbSize = sizeof(hc);
+                if (!SystemParametersInfoA(SPI_GETHIGHCONTRAST,
+                                           sizeof(hc), &hc, 0))
+                    hc.dwFlags = 0;
+                if (disp && !(hc.dwFlags & HCF_HIGHCONTRASTON)) {
+                    int allowed = 1, hit = 0;
+                    size_t t;
+                    /* Any form the row holds: the core reports one of them and
+                     * which index a key's fingerprints land under is not ours
+                     * to assume. */
+                    for (t = 0; t < SSH_N_FPTYPES && !hit; t++)
+                        if (disp->fp_full[t] &&
+                            kageant_flash_get(disp->fp_full[t], &allowed))
+                            hit = 1;
+                    if (hit) {
+                        cd->clrTextBk = allowed ? KAGEANT_NOTICE_INFO
+                                                : KAGEANT_NOTICE_WARN;
+                        cd->clrText = RGB(255, 255, 255);
+                        /* A SELECTED row is painted in the system selection
+                         * colours and ignores clrTextBk/clrText entirely -
+                         * which hid the tint on precisely the row the user had
+                         * just clicked, Move Up/Down leaving it selected. Drop
+                         * the selection bits for this paint so our colours are
+                         * the ones that get used; the selection itself is
+                         * untouched and reappears when the tint expires. */
+                        cd->nmcd.uItemState &= ~(CDIS_SELECTED | CDIS_FOCUS);
+                        res = CDRF_NEWFONT;
+                    }
+                }
             }
             SetWindowLongPtr(hwnd, DWLP_MSGRESULT, res);
             return 1;
@@ -2291,12 +2376,15 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             return 0;
           case IDC_KEYLIST_CONFIRM_YES:
             kageant_confirm_set_mode(KAGEANT_CONFIRM_YES);
+            tray_sync_confirm_check();
             return 0;
           case IDC_KEYLIST_CONFIRM_AUTO:
             kageant_confirm_set_mode(KAGEANT_CONFIRM_AUTO);
+            tray_sync_confirm_check();
             return 0;
           case IDC_KEYLIST_CONFIRM_NO:
             kageant_confirm_set_mode(KAGEANT_CONFIRM_NO);
+            tray_sync_confirm_check();
             return 0;
           case IDC_KEYLIST_MOVEUP:
           case IDC_KEYLIST_MOVEDOWN:
@@ -2606,6 +2694,13 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
         break;
       }
       case WM_TIMER:
+        /* KiTTY: expire the key-use tints; stop asking once none are live. */
+        if (wParam == KEYLIST_FLASH_TIMER) {
+            InvalidateRect(GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX), NULL, FALSE);
+            if (!kageant_flash_any())
+                KillTimer(hwnd, KEYLIST_FLASH_TIMER);
+            return 0;
+        }
         if (wParam == TID_KL_RESUME)
             EnableWindow(GetDlgItem(hwnd, IDC_KEYLIST_RESUMECONFIRM),
                          kageant_confirm_suppressed());
@@ -3336,14 +3431,11 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                 }
             }
 
-            kageant_startup_set(on);
             /* Autostart at login: a registry-free Startup-folder shortcut in
              * portable mode, the HKCU ...\Run entry otherwise. Either way it is
              * machine-local (an absolute path) and does not travel, but that is
              * what unattended/fixed installs want; disabling removes it. */
             kageant_set_autostart(on);
-            if (on)
-                kageant_save_startup_keys();   /* snapshot current key set */
             CheckMenuItem(systray_menu, IDM_LOAD_ON_STARTUP,
                           MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
             if (on) {
@@ -3372,6 +3464,25 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             }
             break;
           }
+          case IDM_LOAD_KEYS: {
+            /* KiTTY: remember the loaded keys and re-add them next start. Only
+             * the flag and the snapshot - starting kageant itself is the other
+             * item. Key FILE PATHS are stored, never passphrases or key
+             * material, and they come back encrypted (deferred). */
+            int on = !kageant_startup_get();
+            kageant_startup_set(on);
+            /* Snapshot the current key set - but ONLY if there is one. Turning
+             * this on means "remember what I have loaded"; with nothing loaded
+             * it must not mean "forget what you remembered". Disable, restart
+             * (so nothing is re-added), re-enable, and an empty snapshot used
+             * to overwrite the stored list. Removing keys still empties it -
+             * that path snapshots after an explicit removal. */
+            if (on && kageant_nloaded() > 0)
+                kageant_save_startup_keys();
+            CheckMenuItem(systray_menu, IDM_LOAD_KEYS,
+                          MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
+            break;
+          }
           case IDM_NOTIFY_KEYUSE: {
             /* KiTTY: toggle the "a key was used to authenticate" tray balloon. */
             int on = !kageant_notify_get();
@@ -3386,6 +3497,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             kageant_confirm_set(on);
             CheckMenuItem(systray_menu, IDM_CONFIRM_KEYUSE,
                           MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
+            keylist_sync_confirm_radios();   /* an open key list, too */
             break;
           }
           case IDM_RESUME_CONFIRM:
@@ -3878,6 +3990,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kageant_mutation_notice_hook = kageant_do_mutation_notice;
         kageant_ipc_blocked_hook = kageant_ipc_blocked;
         kageant_notify_hook = kageant_do_notify;
+        kageant_keyuse_hook = kageant_note_keyuse;
         kageant_key_lifetime_hook = kageant_key_set_lifetime;   /* ssh-add -t */
 
         /*
@@ -4054,7 +4167,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         session_menu = CreateMenu();
         AppendMenu(systray_menu, MF_ENABLED, IDM_PUTTY, "&New Session");
         AppendMenu(systray_menu, MF_POPUP | MF_ENABLED,
-                   (UINT_PTR) session_menu, "&Saved Sessions");
+                   (UINT_PTR) session_menu, "Save&d Sessions");
         AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
     }
     AppendMenu(systray_menu, MF_ENABLED, IDM_VIEWKEYS,
@@ -4072,10 +4185,16 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_openssh_get() ? MF_CHECKED : MF_UNCHECKED),
                IDM_OPENSSH_INTEGRATION, "Register as Windows &OpenSSH agent");
-    /* KiTTY: opt-in load-keys-on-startup (default off). */
+    /* KiTTY: two separate things, one each. "Start at login" is an artifact
+     * (Run entry or Startup shortcut, verified to be THIS kageant); "load
+     * remembered keys" is a stored flag. They used to share one command, so
+     * neither could be had without the other. */
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_autostart_active() ? MF_CHECKED : MF_UNCHECKED),
                IDM_LOAD_ON_STARTUP, "&Start kageant at login");
+    AppendMenu(systray_menu, MF_ENABLED |
+               (kageant_startup_get() ? MF_CHECKED : MF_UNCHECKED),
+               IDM_LOAD_KEYS, "&Load remembered keys at startup");
     /* KiTTY: opt-in (default on) tray balloon when a key is used to sign. */
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_notify_get() ? MF_CHECKED : MF_UNCHECKED),
@@ -4084,12 +4203,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * (classic [Agent] askconfirmation; per-key comment opt-in still works). */
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_confirm_get() ? MF_CHECKED : MF_UNCHECKED),
-               IDM_CONFIRM_KEYUSE, "As&k confirmation");
+               IDM_CONFIRM_KEYUSE, "Ask &confirmation before each key use");
     AppendMenu(systray_menu, MF_ENABLED,
                IDM_RESUME_CONFIRM, "Res&ume key-use confirmations");
     /* KiTTY: the same [Agent] settings dialog the key list window opens,
      * reachable straight from the tray. */
-    AppendMenu(systray_menu, MF_ENABLED, IDM_SETTINGS, "&Settings...");
+    AppendMenu(systray_menu, MF_ENABLED, IDM_SETTINGS, "Settin&gs...");
     AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
     if (has_help())
         AppendMenu(systray_menu, MF_ENABLED, IDM_HELP, "&Help");

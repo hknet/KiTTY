@@ -237,6 +237,11 @@ struct PageantSignOp {
     PageantPrivateKey *priv;
     char *comment;                  /* key comment (KiTTY usage confirmation) */
     bool confirm;                   /* KiTTY: per-key confirm-on-use flag */
+    char *keyfp;                    /* KiTTY: SHA256 fingerprint of the key, for
+                                     * kageant_keyuse_hook - the same identity
+                                     * the offer order is persisted by */
+    bool signed_ok;                 /* KiTTY: did it actually sign? (coroutine
+                                     * state: a local would not survive a yield) */
     strbuf *data_to_sign;
     unsigned flags;
     int crLine;
@@ -927,6 +932,7 @@ static void signop_free(PageantAsyncOp *pao)
     PageantSignOp *so = container_of(pao, PageantSignOp, pao);
     signop_unlink(so);
     strbuf_free(so->data_to_sign);
+    sfree(so->keyfp);
     sfree(so->comment);
     sfree(so);
 }
@@ -955,6 +961,12 @@ static bool request_passphrase(PageantClient *pc, PageantPrivateKey *priv)
  * passed the key comment and returns 0 to REFUSE signing, nonzero to allow. */
 int (*kageant_confirm_hook)(const char *comment, int key_confirm) = NULL;
 
+/* KiTTY: the outcome of a signing request, for the GUI agent's key list -
+ * allowed nonzero when the key signed, zero when the user or a policy refused.
+ * Identified by the public blob because that is what a row is keyed on; a
+ * comment is not unique and is often empty. NULL everywhere but the GUI. */
+void (*kageant_keyuse_hook)(const char *fingerprint, int allowed) = NULL;
+
 /* KiTTY: does this comment carry the per-key confirmation convention?
  * Consulted once at ADD time, turning the convention into a real, sticky
  * per-key flag. NULL outside the GUI agent. */
@@ -976,7 +988,8 @@ static bool kageant_mutation_blocked(int op)
 }
 /* KiTTY: optional "a key was just used" notification hook, set by kageant to show
  * a tray balloon. Fired after a successful signature. NULL outside the GUI agent. */
-void (*kageant_notify_hook)(const char *comment) = NULL;
+void (*kageant_notify_hook)(const char *comment,
+                            const char *fingerprint) = NULL;
 
 /*
  * KiTTY: SSH agent per-key constraints (`ssh-add -t` lifetime / `-c` confirm).
@@ -1073,14 +1086,20 @@ static void signop_coroutine(PageantAsyncOp *pao)
                  so->flags, BinarySink_UPCAST(signature));
 
     /* KiTTY: a key was just used to authenticate -- let the GUI agent nudge. */
+    so->signed_ok = true;
     if (kageant_notify_hook)
-        kageant_notify_hook(so->comment);
+        kageant_notify_hook(so->comment, so->keyfp);
 
     response = strbuf_new();
     put_byte(response, SSH2_AGENT_SIGN_RESPONSE);
     put_stringsb(response, signature);
 
   respond:
+    /* KiTTY: tell the GUI what happened to this key, whichever way we got
+     * here - every failure path lands on this label, and a refusal the user
+     * can see is the whole point of the key list's tint. */
+    if (kageant_keyuse_hook && so->keyfp)
+        kageant_keyuse_hook(so->keyfp, so->signed_ok);
     if (temp_skey)
         ssh_key_free(temp_skey);
     pageant_client_got_response(so->pao.info->pc, so->pao.reqid,
@@ -1477,6 +1496,12 @@ static PageantAsyncOp *pageant_make_op(
         so->priv = pub_to_priv(pub);
         so->comment = pub->comment ? dupstr(pub->comment) : NULL;
         so->confirm = pub->confirm;
+        /* The STORED key's blob, not the request's: the key list is built
+         * from the stored one, and the two need not be byte-identical -
+         * findpubkey2() has just matched them for us. */
+        so->keyfp = ssh2_fingerprint_blob(pub->sort.full_pub,
+                                          SSH_FPTYPE_SHA256);
+        so->signed_ok = false;
         so->pkr.prev = so->pkr.next = NULL;
         so->data_to_sign = strbuf_dup(sigdata);
         so->flags = flags;

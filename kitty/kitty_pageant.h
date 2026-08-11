@@ -129,14 +129,34 @@ void kageant_blockremove_set(int on);
 int  kageant_notice_timeout_get(void);   /* raw seconds, 0 = default */
 void kageant_notice_timeout_set(int seconds);
 int kageant_comment_wants_confirm(const char *comment);
-void kageant_do_notify(const char *comment);
+void kageant_do_notify(const char *comment, const char *fingerprint);
 /* the hook pointers themselves live in the agent core (../pageant.c) */
 extern int (*kageant_confirm_hook)(const char *comment, int key_confirm);
 extern int (*kageant_comment_confirm_hook)(const char *comment);
-extern void (*kageant_notify_hook)(const char *comment);
+extern void (*kageant_notify_hook)(const char *comment,
+                                   const char *fingerprint);
+/* KiTTY: outcome of a signing request, for the key list's tint. */
+extern void (*kageant_keyuse_hook)(const char *fingerprint, int allowed);
 
 /* ---- provided by windows/pageant.c for kitty_pageant.c ---- */
 HWND kageant_traywindow(void);         /* tray window, for balloon popups */
 void win_add_keyfile(Filename *filename, bool encrypted);
+
+
+/* KiTTY: the two notice accents, shared with the key list's key-use tint so
+ * one palette covers both. Amber warns, blue informs. */
+#ifndef KAGEANT_NOTICE_WARN
+#define KAGEANT_NOTICE_WARN RGB(190, 110, 0)
+#define KAGEANT_NOTICE_INFO RGB(40, 70, 170)
+#endif
+
+/* KiTTY: key-use tint. kageant_note_keyuse() is the kageant_keyuse_hook;
+ * the key list asks kageant_flash_get() while painting a row and
+ * kageant_flash_any() to decide whether it still needs its repaint timer.
+ * kageant_keylist_flash_changed() lives in windows/pageant.c. */
+int kageant_flash_get(const char *fingerprint, int *allowed);
+int kageant_flash_any(void);
+void kageant_note_keyuse(const char *fingerprint, int allowed);
+void kageant_keylist_flash_changed(void);
 
 #endif /* KITTY_PAGEANT_H */

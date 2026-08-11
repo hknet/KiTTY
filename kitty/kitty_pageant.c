@@ -22,8 +22,6 @@
  * kageant uses two distinct colours: an amber WARNING for key-load problems,
  * and a blue INFO for key use - recognisably kageant, not a stray kitty
  * notice, and not confusable with a warning. */
-#define KAGEANT_NOTICE_WARN RGB(190, 110, 0)
-#define KAGEANT_NOTICE_INFO RGB(40, 70, 170)
 #include "kitty_startup_shortcut.h"
 #include "ssh.h"
 
@@ -273,16 +271,40 @@ static int g_noload = 0;
 void kageant_noload_set(void) { g_noload = 1; }
 int kageant_noload(void) { return g_noload; }
 
-int kageant_startup_get(void)
+/* KiTTY: the ini key is loadkeysonstartup. It was loadonstartup, which read
+ * as "start the agent" - the thing the tray item next to it actually does -
+ * while this one only decides whether the REMEMBERED KEYS are re-added. The
+ * old name is still read once and rewritten under the new one; there is no
+ * delete in the inilight API, so the old key is blanked rather than removed,
+ * which is enough to stop it being authoritative. */
+static int kageant_startup_read_ini(void)
 {
     char buf[8];
+    int val = -1;
+    if (kitty_inilight_read("Agent", "loadkeysonstartup", buf, sizeof(buf))) {
+        if (!stricmp(buf, "yes")) val = 1;
+        else if (!stricmp(buf, "no")) val = 0;
+        if (val >= 0)
+            return val;
+    }
+    if (kitty_inilight_read("Agent", "loadonstartup", buf, sizeof(buf))) {
+        if (!stricmp(buf, "yes")) val = 1;
+        else if (!stricmp(buf, "no")) val = 0;
+        if (val >= 0) {
+            /* migrate: write the new name, retire the old one */
+            if (kitty_inilight_write("Agent", "loadkeysonstartup",
+                                     val ? "yes" : "no"))
+                kitty_inilight_write("Agent", "loadonstartup", "");
+        }
+    }
+    return val;
+}
+
+int kageant_startup_get(void)
+{
     if (g_noload)
         return 0;
-    int ini_val = -1, reg_val;
-    if (kitty_inilight_read("Agent", "loadonstartup", buf, sizeof(buf))) {
-        if (!stricmp(buf, "yes")) ini_val = 1;
-        else if (!stricmp(buf, "no")) ini_val = 0;
-    }
+    int ini_val = kageant_startup_read_ini(), reg_val;
     if (kitty_inilight_registry_authoritative())
         return kageant_reg_read(KAGEANT_REG_STARTUP, &reg_val) ? reg_val :
                (ini_val >= 0 ? ini_val : 0);
@@ -294,7 +316,7 @@ int kageant_startup_get(void)
 void kageant_startup_set(int on)
 {
     if (!kitty_inilight_registry_authoritative() &&
-        kitty_inilight_write("Agent", "loadonstartup", on ? "yes" : "no"))
+        kitty_inilight_write("Agent", "loadkeysonstartup", on ? "yes" : "no"))
         return;
     kageant_reg_write(KAGEANT_REG_STARTUP, on);
 }
@@ -1866,8 +1888,16 @@ static void kageant_clear_own_run_entry(void)
  * Startup shortcut in portable mode, our own Run entry in registry mode. */
 int kageant_autostart_active(void)
 {
-    if (!kitty_inilight_registry_authoritative())
-        return kitty_startup_shortcut_exists(KAGEANT_SHORTCUT_NAME);
+    if (!kitty_inilight_registry_authoritative()) {
+        /* KiTTY: a shortcut of that NAME existing is not the question - it may
+         * point at another kageant entirely, in which case "starts at login"
+         * would be a claim about somebody else's agent. Check the target, as
+         * the registry branch below already does. */
+        char myexe[MAX_PATH];
+        if (!GetModuleFileNameA(NULL, myexe, sizeof(myexe)))
+            return 0;
+        return kitty_startup_shortcut_points_to(KAGEANT_SHORTCUT_NAME, 0, myexe);
+    }
     {
         char myexe[MAX_PATH], data[MAX_PATH + 8], exe[MAX_PATH];
         HKEY hk;
@@ -2494,17 +2524,89 @@ int kageant_do_confirm(const char *comment, int key_confirm)
 /* KiTTY: show a short tray balloon when a key is used to authenticate. Installed
  * into the agent core via kageant_notify_hook; gated by the "Notify when a key
  * is used" toggle (default on). Non-blocking (no Sleep). */
-extern void (*kageant_notify_hook)(const char *comment);
-void kageant_do_notify(const char *comment)
+extern void (*kageant_notify_hook)(const char *comment,
+                                   const char *fingerprint);
+/* KiTTY: the key list tints a row for a moment when that key is used, so a
+ * signature you did not expect is visible while it happens. Amber = refused,
+ * blue = signed, matching the notice windows. Keyed by public blob: the list
+ * is keyed that way too, and comments repeat or are empty. A handful of slots
+ * is plenty - the tint lasts a second. */
+#define KAGEANT_FLASH_SLOTS 8
+#define KAGEANT_FLASH_MS    1200
+static struct kageant_flash {
+    char *fp;            /* SHA256 fingerprint string, as the rows carry */
+    DWORD until;
+    int allowed;
+} g_flash[KAGEANT_FLASH_SLOTS];
+
+/* 1 and the verdict if this key was used within the last KAGEANT_FLASH_MS. */
+int kageant_flash_get(const char *fingerprint, int *allowed)
+{
+    DWORD now = GetTickCount();
+    int i;
+    if (!fingerprint)
+        return 0;
+    for (i = 0; i < KAGEANT_FLASH_SLOTS; i++) {
+        if (!g_flash[i].fp || strcmp(g_flash[i].fp, fingerprint))
+            continue;
+        if ((int)(g_flash[i].until - now) <= 0)
+            return 0;
+        if (allowed)
+            *allowed = g_flash[i].allowed;
+        return 1;
+    }
+    return 0;
+}
+
+/* Any tint still live? The key list keeps its repaint timer only while so. */
+int kageant_flash_any(void)
+{
+    DWORD now = GetTickCount();
+    int i;
+    for (i = 0; i < KAGEANT_FLASH_SLOTS; i++)
+        if (g_flash[i].fp && (int)(g_flash[i].until - now) > 0)
+            return 1;
+    return 0;
+}
+
+void kageant_note_keyuse(const char *fingerprint, int allowed)
+{
+    DWORD now = GetTickCount();
+    int i, use = -1;
+    if (!fingerprint || !*fingerprint)
+        return;
+    for (i = 0; i < KAGEANT_FLASH_SLOTS; i++)            /* same key again? */
+        if (g_flash[i].fp && !strcmp(g_flash[i].fp, fingerprint)) {
+            use = i;
+            break;
+        }
+    if (use < 0)
+        for (i = 0; i < KAGEANT_FLASH_SLOTS; i++)        /* a free/expired one */
+            if (!g_flash[i].fp || (int)(g_flash[i].until - now) <= 0) {
+                use = i;
+                break;
+            }
+    if (use < 0)
+        use = 0;                                          /* all live: recycle */
+    sfree(g_flash[use].fp);
+    g_flash[use].fp = dupstr(fingerprint);
+    g_flash[use].until = now + KAGEANT_FLASH_MS;
+    g_flash[use].allowed = allowed;
+    kageant_keylist_flash_changed();     /* windows/pageant.c: repaint + timer */
+}
+
+void kageant_do_notify(const char *comment, const char *fingerprint)
 {
     if (!kageant_notify_get() || !traywindow)
         return;
     /* KiTTY: our own notice window, not a tray balloon (the shell ignores
      * balloon durations and often suppresses them). Blue = kageant info; 5s;
      * click opens View Keys. */
-    char text[256];
-    snprintf(text, sizeof(text), "A key was used to authenticate:\n%s",
-             (comment && *comment) ? comment : "(unnamed key)");
+    char text[512];
+    snprintf(text, sizeof(text), "A key was used to authenticate:\n%s%s%s",
+             (comment && *comment) ? comment : "(unnamed key)",
+             (fingerprint && *fingerprint) ? "\n" : "",
+             (fingerprint && *fingerprint) ? fingerprint : "");
     kitty_notice_show("kageant: SSH key used", text, KAGEANT_NOTICE_INFO,
                       kageant_notice_seconds(5), traywindow,
                       KAGEANT_WM_NOTICE_CLICK);

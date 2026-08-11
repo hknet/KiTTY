@@ -25,6 +25,7 @@
 #define IDC_SET_LOCKDOWN 308      /* IPC: refuse all add/remove */
 #define IDC_SET_BLOCKADD 309      /* IPC: refuse adds */
 #define IDC_SET_BLOCKREMOVE 310   /* IPC: refuse removes */
+#define IDC_SET_LOADKEYS 311      /* re-add remembered keys at startup */
 
 /* KiTTY: the key-details dialog */
 #define IDC_KEYDETAIL_KEY 100
