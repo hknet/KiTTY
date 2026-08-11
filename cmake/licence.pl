@@ -9,7 +9,7 @@ use warnings;
 use File::Basename;
 use Getopt::Long;
 
-my $usage = "usage: licence.pl (--header|--licencedoc|--copyrightdoc) " .
+my $usage = "usage: cmake/licence.pl (--header|--licencedoc|--copyrightdoc) " .
             "[-o OUTFILE]\n";
 my $mode = undef;
 my $output = undef;
@@ -20,8 +20,9 @@ GetOptions("--header" => sub {$mode = "header"},
     and defined $mode
     or die $usage;
 
-# Read the input file. We expect to find that alongside this script.
-my $infile = (dirname __FILE__) . "/LICENCE";
+# Read the input file. It lives in the repository root, one level above
+# this script.
+my $infile = (dirname __FILE__) . "/../LICENCE";
 open my $in, $infile or die "$infile: open: $!\n";
 my @lines = ();
 while (<$in>) {

@@ -16,7 +16,7 @@ set(manpage_outputs)
 
 if(HALIBUT AND PERL_EXECUTABLE)
   # Build the main manual, which requires not only Halibut, but also
-  # Perl to run licence.pl to generate the copyright and licence
+  # Perl to run cmake/licence.pl to generate the copyright and licence
   # sections from the master data outside this directory.
 
   # If this is a source archive in which a fixed version.but was
@@ -51,14 +51,14 @@ if(HALIBUT AND PERL_EXECUTABLE)
 
   add_custom_target(copy_but
     BYPRODUCTS copy.but
-    COMMAND ${PERL_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../licence.pl
+    COMMAND ${PERL_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/licence.pl
       --copyrightdoc -o copy.but
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../licence.pl ${CMAKE_CURRENT_SOURCE_DIR}/../LICENCE)
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/licence.pl ${CMAKE_CURRENT_SOURCE_DIR}/../LICENCE)
   add_custom_target(licence_but
     BYPRODUCTS licence.but
-    COMMAND ${PERL_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../licence.pl
+    COMMAND ${PERL_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/licence.pl
       --licencedoc -o licence.but
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../licence.pl ${CMAKE_CURRENT_SOURCE_DIR}/../LICENCE)
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/licence.pl ${CMAKE_CURRENT_SOURCE_DIR}/../LICENCE)
   set(manual_dependencies ${manual_dependencies} copy_but licence_but)
 
   set(manual_sources
