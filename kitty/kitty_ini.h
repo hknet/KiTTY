@@ -92,10 +92,15 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 \n\
 ; antiidle: string sent to the server periodically to keep the connection alive.\n\
 ;    Default (unset/empty) = disabled. \\k08 sends a backspace; pick a sequence the\n\
-;    remote ignores. Interval is set by antiidledelay (seconds).\n\
+;    remote ignores. How often it is sent is set by antiidledelay below.\n\
 ;antiidle=\\k08\\\n\
 \n\
-; antiidledelay: time delay between two sending\n\
+; antiidledelay: how often that string is sent, in seconds. Default 180.\n\
+;    Values below 5 are treated as 5, so a typo cannot turn a keepalive into\n\
+;    a flood. (Before this it was not seconds: the number was divided by 10 to\n\
+;    count ticks of a 30-second timer, so it meant about three times what it\n\
+;    said - 60 gave 180 seconds. Divide a carried-over value by three to keep\n\
+;    the interval you had.)\n\
 ;antiidledelay=60\n\
 \n\
 ; autoreconnect: reconnect a session by itself when the link drops, retrying\n\
@@ -105,7 +110,8 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;    ReconnectDelay for how long it waits between attempts.\n\
 ;autoreconnect=yes\n\
 \n\
-; backgroundimage: enable/disable the background image feature\n\
+; bgimage: enable/disable the background image feature. (The description\n\
+;    here used to call it backgroundimage, which is not a key KiTTY reads.)\n\
 ;bgimage=no\n\
 \n\
 ; bcdelay: delay in MILLISECONDS between each character in every automatic\n\
@@ -149,7 +155,10 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ; browsedirectory: base directory for portable/session file browsing; normally auto-detected\n\
 ;browsedirectory=\n\
 \n\
-; Folders: legacy session-folder cache, managed by KiTTY; edit only for recovery/debugging\n\
+; Folders: the list of session folders, written by KiTTY whenever you add or\n\
+;    remove one. It is the live list, not a cache of something else, so an\n\
+;    edit here is overwritten the next time the folder set changes. Edit it\n\
+;    only to recover a folder that has gone missing from the config box.\n\
 ;Folders=\n\
 \n\
 ; RootFolderLabel: what the configuration box's folder selector calls the root\n\
@@ -165,7 +174,12 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;    this file in file/dir mode.\n\
 ;RootFolderLabel=All sessions (root)\n\
 \n\
-; cryptsalt: set salt mode for password encryption\n\
+; cryptsalt: which salt variant the LEGACY stored-password scrambling uses\n\
+;    (the pre-DPAPI scheme - see the password notes in docs/KITTY-INI.md).\n\
+;    It is not a security control: the scheme is obfuscation with a\n\
+;    compiled-in key either way. Change it only if you know why, and be\n\
+;    aware that passwords already stored were scrambled with the previous\n\
+;    setting.\n\
 ;cryptsalt=1\n\
 \n\
 ; CtHelperPath: the full path to the cthelper.exe binary (Wrapper for Cygwin feature)\n\
@@ -205,7 +219,11 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ; iconfile: point to a file where internal icons are located\n\
 ;iconfile=kitty.exe\n\
 \n\
-; initdelay: initial delay in seconds before automatic sending of password, or auto command\n\
+; initdelay: how long KiTTY waits after the terminal opens before it starts\n\
+;    typing for you - the auto-command (including a \\p password step in it).\n\
+;    In seconds, fractions allowed: 0.5 is half a second. Default 2.0; a\n\
+;    negative value is ignored. It also sets the delay before an\n\
+;    autosendtotray session drops itself into the tray.\n\
 ;initdelay=2.0\n\
 \n\
 ; KiClassName: the Windows window-class name KiTTY registers, which also selects\n\
@@ -216,7 +234,9 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;    window class. This is NOT the default; leave it unset for normal use.\n\
 ;KiClassName=PuTTY\n\
 \n\
-; modalerrors: show connection errors as modal pop-up boxes instead of inline in the terminal (upstream cyd01/KiTTY #548). Default no (inline, non-trapping).\n\
+; modalerrors: show connection errors as modal pop-up boxes instead of inline\n\
+;    in the terminal (upstream cyd01/KiTTY #548). Default no - inline, so an\n\
+;    error cannot trap the window behind a dialog.\n\
 ;modalerrors=no\n\
 \n\
 ; modalnewhostkeyconfirmation: how to confirm an UNKNOWN (first-seen) host key.\n\
@@ -243,7 +263,17 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;    inline prompt is possible.\n\
 ;modalweakkeyconfirmation=yes\n\
 \n\
-; mouseshortcuts: enable/disable mouse shortcuts\n\
+; mouseshortcuts: the two mouse chords in the terminal window -\n\
+;    Ctrl+Shift+left-click duplicates the session, Ctrl+middle-click sends the\n\
+;    window to the tray. Default yes.\n\
+;    Why turn them off: both chords are swallowed by KiTTY and never reach the\n\
+;    host, so a program in the terminal that wants them - anything using\n\
+;    xterm-style mouse reporting, and middle-click paste in particular - will\n\
+;    look broken. Ctrl+Shift+left-click is also easy to hit by accident while\n\
+;    selecting text, and it opens a whole new window when you do. Set no and\n\
+;    the mouse behaves as it does in stock PuTTY; the same two actions stay\n\
+;    available from the window menu and from their keyboard shortcuts.\n\
+;    Protect mode and PuTTY mode switch them off regardless of this setting.\n\
 ;mouseshortcuts=yes\n\
 \n\
 ; internaldelay: how long KiTTY pauses, in milliseconds, while it types for\n\
@@ -381,7 +411,8 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;    %APPDATA%\\KiTTY\\kittynew.sav (i.e. the files are kittynew-YYYYMMDD-HHMMSS.sav)\n\
 ;    - NOT kitty.sav, so an old 0.76 KiTTY's backup is never touched. A legacy\n\
 ;    value ending in kitty.sav or kitty084.sav is ignored so this default takes\n\
-;    over; uncomment with a real path to force one.;    Backups left by earlier 0.84 builds (kitty-YYYYMMDD-HHMMSS.sav, from a\n\
+;    over; uncomment with a real path to force one.\n\
+;    Backups left by earlier 0.84 builds (kitty-YYYYMMDD-HHMMSS.sav, from a\n\
 ;    defect that made the default kitty.sav after all) are still READ for a\n\
 ;    first-run restore; new ones are only ever written under the name above.\n\
 ;sav=\n\
@@ -390,11 +421,21 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;    newest N are kept, older ones deleted. Default 5, max 50; 0 disables backups.\n\
 ;savbackupcount=5\n\
 \n\
-; savemode: specify the save mode for sessions settings\n\
+; savemode: where sessions are stored. Read from kitty.ini only - never from\n\
+;    the registry, since the registry cannot say \"do not use the registry\".\n\
 ;    Allowed values are:\n\
-;    - registry : to save sessions into windows registry\n\
-;    - file : to save sessions into one unique file (currently not maintained)\n\
-;    - dir : to save sessions into files in the directory structure\n\
+;    - registry : sessions in the Windows registry, under KiTTY's own hive.\n\
+;                 The default.\n\
+;    - dir      : sessions as files in a directory tree, one file each. This\n\
+;                 is portable mode: it also turns on folder browsing and the\n\
+;                 portable password protection described further down.\n\
+;    - file     : NOT a file backend, despite the name. Sessions still live\n\
+;                 in the registry exactly as in registry mode; all it adds is\n\
+;                 importing the .sav registry dump at startup when the hive is\n\
+;                 missing. Upstream KiTTY abandoned this mode years ago and\n\
+;                 marked it unmaintained; we kept it working as it is and are\n\
+;                 not developing it further. It is not a half-finished feature\n\
+;                 waiting to land - if you want sessions in files, use dir.\n\
 ;savemode=registry\n\
 \n\
 ; portablebackupcount: in portable dir mode, keep this many timestamped backups\n\
@@ -454,11 +495,23 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;    wintitle=yes (the default).\n\
 ;size=no\n\
 \n\
-; slidedelay: delay in seconds before automatic image switching in slideshow mode\n\
-;    0 means no automatic slide, waiting for keyboard event\n\
+; slidedelay: the GLOBAL FALLBACK for how long each background image is shown,\n\
+;    in seconds, when the background is a folder of images. It applies to every\n\
+;    session that does not set its own interval; a session that does (the\n\
+;    \"Slideshow:\" box under Window > Back.Image) always wins, and this value is\n\
+;    then not consulted at all. 0 or unset means no timer - the image only\n\
+;    changes when you ask for the next one. Nothing happens unless bgimage is\n\
+;    on and the session actually has a background image.\n\
 ;slidedelay=0\n\
 \n\
-; shrinkbitmap: shrink large background images to fit the terminal area\n\
+; shrinkbitmap: better quality when a background image has to be made smaller.\n\
+;    It applies to ONE image placement: \"Stretch+\" under Window > Back.Image >\n\
+;    Image placement - the placement whose whole job is fitting the image to\n\
+;    the window. Tile, Center, Stretch, Absolute and Blank ignore this key.\n\
+;    With Stretch+, and only when the image is larger than the window in both\n\
+;    directions, KiTTY resamples it down instead of letting Windows\n\
+;    stretch-blit it: visibly cleaner, slightly more work per repaint. On by\n\
+;    default; set no to get the plain fast stretch back.\n\
 ;shrinkbitmap=no\n\
 \n\
 ; sshversion: the client version string KiTTY announces to the SSH server.\n\
@@ -467,10 +520,32 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;    KiTTY looks like a stock client. Use a current OpenSSH version, e.g.:\n\
 ;sshversion=OpenSSH_10.0\n\
 \n\
-; transparency: enable/disable the transparency feature\n\
+; transparency: offer the window-transparency controls. On by default, and\n\
+;    offering them is not using them - every session starts fully opaque.\n\
+;    The level itself is PER SESSION, not set here. It lives in the\n\
+;    configuration box under Window > Transparency, as a single\n\
+;    \"Transparency:\" box, and is also reachable live from the window menu\n\
+;    (Transparency + / -) and with Ctrl+Up / Ctrl+Down.\n\
+;      0   fully opaque, and the default for a new session. The controls\n\
+;          still work, so you can dim the window and bring it back.\n\
+;      255 as see-through as it goes.\n\
+;      -1  opaque, and locked that way. Nothing will dim the window: the\n\
+;          keyboard refuses, the window menu does not even offer the\n\
+;          Transparency entries, and the /transparency command declines.\n\
+;          Pick it when an accidental Ctrl+Down must never dim this session.\n\
+;          On screen 0 and -1 look the same - neither is translucent.\n\
+;    If the panel is not in your configuration box, either this key is set to\n\
+;    no or KiTTY is running in PuTTY mode - both hide it.\n\
+;    Set no and transparency is off everywhere, not merely out of reach: the\n\
+;    panel and the menu entries go, and a session that has a level saved opens\n\
+;    opaque anyway. The /transparency command cannot turn it back on either.\n\
 ;transparency=yes\n\
 \n\
-; userpasssshnosave: if yes, SSH password will not be saved internally (and can't be reused automatically)\n\
+; userpasssshnosave: do not keep the username and password KiTTY learned during\n\
+;    a login in the running session's settings. They are then not carried into\n\
+;    a duplicated session and cannot be written out if the session is saved.\n\
+;    Default no. It does not remove or ignore a password you deliberately\n\
+;    stored in a saved session - that one is still used to log in.\n\
 ;userpasssshnosave=no\n\
 \n\
 ; winroll: double-click the title bar to roll the window up into the title bar\n\
@@ -500,36 +575,74 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 \n\
 [Shortcuts]\n\
 \n\
-; list: the keys that have a user-defined action, separated by spaces. Each\n\
-;    name listed here needs its own <key>=<text to send> line below, so\n\
-;    \"list={F5} {CONTROL}{F6}\" expects a {F5}= and a {CONTROL}{F6}= line.\n\
-;    Without the name in this list the key line is never read.\n\
+; This section holds two separate mechanisms that happen to share it.\n\
+;\n\
+; FIRST: type this text for me. Pick any key combination, and pressing it\n\
+; types a piece of text into the session instead of reaching the host. It takes\n\
+; two lines - name the combination in \"list\", then give it a line of its own\n\
+; saying what to type:\n\
+;\n\
+;      list={F5} {CONTROL}{F6}\n\
+;      {F5}=uptime\\n\n\
+;      {CONTROL}{F6}=cd /var/log\\n\n\
+;\n\
+; F5 now types \"uptime\" and presses Enter for you. \"list\" is what switches a\n\
+; key on: a {F5}= line whose key is not named in list is simply ignored, which\n\
+; is also how you park a definition without deleting it. Separate the names\n\
+; with spaces.\n\
+; In the text, \\n presses Enter, \\t is Tab, \\h is Backspace, \\p waits a second,\n\
+; \\s05 waits five, and \\\\ is a literal backslash.\n\
 ;list={F5} {CONTROL}{F6}\n\
 \n\
-; Shortcuts: definition for the menu shortcuts keys\n\
+; SECOND: the named actions below. These are KiTTY's own functions - roll the\n\
+; window up, send it to the tray, print the buffer - and each line changes the\n\
+; key that triggers one. They are not text: the name on the left is the action,\n\
+; and the value on the right is the key you want for it.\n\
+;\n\
+; Write a combination as modifiers then the key, each in braces:\n\
+; {CONTROL}{SHIFT}{F4}, {ALT}{HOME}, {CONTROL}{F5}. Modifiers are {CONTROL}\n\
+; {SHIFT} {ALT} {ALTGR} {WIN}; a plain letter or digit needs no braces\n\
+; ({CONTROL}{ALT}T). An empty value takes the key away and leaves the action\n\
+; with none; a combination KiTTY cannot parse falls back to the default.\n\
+;\n\
+; Each entry below says its default key. About a third say \"no default key\"\n\
+; instead: those actions are real and work, but nothing is bound to them out of\n\
+; the box, so they do nothing until you put a combination here. Most of them\n\
+; are also on the window menu, which is how they are reachable at all today.\n\
+;\n\
+; Two things worth knowing before you pick a combination:\n\
+;  - Ctrl+Shift+<letter> is where the predefined user commands live, and they\n\
+;    are claimed first - binding an action there will not reach it.\n\
+;  - shortcuts=no in [KiTTY] switches this whole section off.\n\
 \n\
 ; (re)send automatic command (default is SHIFT+F12)\n\
 ;autocommand=\n\
 \n\
 ; Change settings ...\n\
+;    No default key - it does nothing until you set one here.\n\
 ;changesettings=\n\
 \n\
 ; Clear scrollback\n\
+;    No default key - it does nothing until you set one here.\n\
 ;clearscrollback=\n\
 \n\
 ; Clear log file\n\
+;    No default key - it does nothing until you set one here.\n\
 ;clearlogfile=\n\
 \n\
 ; Close and restart current session\n\
+;    No default key - it does nothing until you set one here.\n\
 ;closerestart=\n\
 \n\
 ; run a local command (default is CONTROL+F5)\n\
 ;command=\n\
 \n\
 ; Copy all window buffers to clipboard\n\
+;    No default key - it does nothing until you set one here.\n\
 ;copyall=\n\
 \n\
 ; Open a duplicate window (with same session settings)\n\
+;    (default is CONTROL+ALT+T)\n\
 ;duplicate=\n\
 \n\
 ; open text editor connected to the main window (default is SHIFT+F2)\n\
@@ -539,21 +652,27 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;editorclipboard=\n\
 \n\
 ; Show event log\n\
+;    No default key - it does nothing until you set one here.\n\
 ;eventlog=\n\
 \n\
 ; Switch font to black on white colors\n\
+;    No default key - it does nothing until you set one here.\n\
 ;fontblackandwhite=\n\
 \n\
 ; Decrease font size\n\
+;    No default key - it does nothing until you set one here.\n\
 ;fontdown=\n\
 \n\
 ; Switch font to negative colors\n\
+;    No default key - it does nothing until you set one here.\n\
 ;fontnegative=\n\
 \n\
 ; Increase font size\n\
+;    No default key - it does nothing until you set one here.\n\
 ;fontup=\n\
 \n\
 ; Switch to full screen\n\
+;    No default key - it does nothing until you set one here.\n\
 ;fullscreen=\n\
 \n\
 ; receive a remote file with pscp.exe: the full path must be selected in clipboard (default is CONTROL+F4)\n\
@@ -569,18 +688,21 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;inputm=\n\
 \n\
 ; Repeat key exchange\n\
+;    No default key - it does nothing until you set one here.\n\
 ;keyexchange=\n\
 \n\
 ; New session ...\n\
+;    No default key - it does nothing until you set one here.\n\
 ;opennew=\n\
 \n\
 ; Inherit New Session: a new configuration box carrying the current settings.\n\
 ;    In quick connect (see [ConfigBox] loadlastsession) the host name comes with\n\
 ;    them, selected and ready to be edited into the next machine; otherwise the\n\
 ;    box opens without a host.\n\
+;    No default key - it does nothing until you set one here.\n\
 ;opennewcurrent=\n\
 \n\
-; Print current clipboard content (default if SHIFT+F7)\n\
+; Print current clipboard content (default is SHIFT+F7)\n\
 ;print=\n\
 \n\
 ; Print all window buffer content (default is F7)\n\
@@ -590,6 +712,7 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;protect=\n\
 \n\
 ; Reset terminal\n\
+;    No default key - it does nothing until you set one here.\n\
 ;resetterminal=\n\
 \n\
 ; Roll-up the window into the title bar (default is CONTROL+F12)\n\
@@ -623,13 +746,17 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 \n\
 [Print]\n\
 \n\
-; height: characters size (Printing)\n\
+; height: the vertical distance between printed lines, in printer device\n\
+;    units - each line is drawn at line number x this value, so it is a line\n\
+;    pitch rather than a font size. Raising it spaces the printout out;\n\
+;    lowering it packs it. The font itself is the terminal's.\n\
 ;height=100\n\
 \n\
-; maxline: maximum number of lines per page\n\
+; maxline: how many lines go on a page before a new one is started.\n\
 ;maxline=60\n\
 \n\
-; maxchar: maximum number of characters per line\n\
+; maxchar: where a long line is wrapped onto the next printed line. It wraps\n\
+;    rather than truncating, so nothing is lost.\n\
 ;maxchar=85\n\
 \n\
 \n\
@@ -655,7 +782,9 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;    recognising each other as \"already running\".\n\
 ;classname=KiTTYLauncher\n\
 \n\
-; reload: enable session list reload on each menu respawn\n\
+; reload: rebuild the launcher's session list each time its menu is opened,\n\
+;    so sessions saved since it started appear. On by default; only the value\n\
+;    no turns it off, and then the list is the one read at launcher startup.\n\
 ;reload=yes\n\
 \n\
 ; exitwithworkplace: close the launcher again when workplace proxy mode is\n\
@@ -691,7 +820,11 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;   no   = never - also disables the per-key comment prompts (automation)\n\
 ;askconfirmation=auto\n\
 \n\
-; messageonkeyusage: tray balloon naming the key after each signature\n\
+; messageonkeyusage: a notice naming the key after each signature - kageant's\n\
+;    own small window, not a tray balloon (Windows suppresses those under\n\
+;    focus assist, which for a security notice is the worst way to fail). It\n\
+;    names the key by comment and by fingerprint, since two keys can share a\n\
+;    comment.\n\
 ; messageonkeyusage covers key USE (signatures) and, over IPC, key ADD /\n\
 ; REMOVE / REMOVE-ALL naming the requesting program - a notice, never a\n\
 ; prompt, so it does not break scripted ssh-add.\n\
@@ -722,17 +855,17 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ;    the list below is maintained for you as you add and remove keys.\n\
 ;    Off by default. Was called loadonstartup; the old name is read once and\n\
 ;    rewritten under this one.\n\
-;    Note the tray item and the Settings checkbox are labelled \"Start kageant\n\
-;    at login\": today that one command does both jobs - it installs the login\n\
-;    autostart AND turns this on - and whether it looks ticked is decided by\n\
-;    the autostart itself (the Run entry or Startup shortcut, checked to be\n\
-;    THIS kageant), not by this setting.\n\
+;    This is its own tray item and its own Settings checkbox, \"Load remembered\n\
+;    keys at startup\". Starting kageant at login is a separate switch beside\n\
+;    it, and whether THAT looks ticked is decided by the autostart artifact -\n\
+;    the Run entry or Startup shortcut, checked to point at this kageant - not\n\
+;    by any setting in this file.\n\
 ;loadkeysonstartup=no\n\
 \n\
 ; startupkey1, startupkey2, ...: the remembered key files, in order. Paths\n\
 ; under this install folder are stored relative to it (so they travel); a\n\
 ; trailing \",encrypted\" loads that key deferred. kageant writes these when\n\
-; you load keys with loadonstartup on - you normally do not edit them by hand.\n\
+; you load keys with loadkeysonstartup on - not knobs to edit by hand.\n\
 ;startupkey1=keys\\id_ed25519.ppk,encrypted\n\
 \n\
 ; --- Startup keys on removable media.\n\
@@ -789,8 +922,11 @@ char default_init_file_content[] = "; kitty.ini - KiTTY's settings file. This on
 ; font regardless of probe results; multiple entries separated by ;\n\
 ;override=E000-F8FF:Symbols Nerd Font Mono;1F600-1F64F:Segoe UI Emoji\n\
 \n\
-; log: off|error|warn|info|debug|trace - troubleshooting log, written to\n\
-; fontfallback.log next to kitty.exe (debug/trace are high volume)\n\
+; log: off|error|warn|info|debug|trace - troubleshooting log for the fallback\n\
+;    probing. Written to fontfallback.log in the folder the running\n\
+;    executable sits in unless logfile says otherwise (see the note there\n\
+;    about that folder not always being writable). debug and trace are high\n\
+;    volume - a busy session writes megabytes.\n\
 ;log=off\n\
 \n\
 ; logfile: where to write that log instead of the default. Unset, it goes to\n\

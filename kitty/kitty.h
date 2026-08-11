@@ -247,8 +247,7 @@ extern int is_backend_first_connected ;
 extern int force_reconf ; 
 
 // Compteur pour l'envoi de anti-idle
-extern int AntiIdleCount ;
-extern int AntiIdleCountMax ;
+extern int AntiIdleSeconds ;   /* KiTTY: keepalive interval, in seconds */
 extern char AntiIdleStr[128] ;
 
 NOTIFYICONDATA TrayIcone ;

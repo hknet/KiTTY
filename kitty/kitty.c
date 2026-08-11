@@ -150,9 +150,17 @@ void SetHyperlinkFlag( const int flag ) { HyperlinkFlag = flag ; }
 // kitty_apply_transparency() applies nothing until a session sets a value > 0.
 // kitty.ini [KiTTY] transparency=no remains the master switch that removes the
 // whole feature (config panel + system-menu adjust items).
+/* TransparencyFlag is the LIVE state, which the /transparency command flips.
+ * TransparencyAllowed remembers what kitty.ini said and is never flipped, so
+ * transparency=no cannot be worked around from the console. */
 static int TransparencyFlag = 1 ;
+static int TransparencyAllowed = 1 ;
 int GetTransparencyFlag(void) { return TransparencyFlag ; }
+int GetTransparencyAllowed(void) { return TransparencyAllowed ; }
 void SetTransparencyFlag( const int flag ) { TransparencyFlag = flag ; }
+static void SetTransparencyIni( const int flag ) {
+	TransparencyFlag = flag ; TransparencyAllowed = flag ;
+}
 
 // Gestion du script file au lancement
 char * ScriptFileContent = NULL ;
@@ -376,8 +384,9 @@ void SetImageViewerFlag( const int flag ) { ImageViewerFlag = flag ; }
 int ImageSlideDelay = - 1 ;
 
 // Compteur pour l'envoi de anti-idle
-int AntiIdleCount = 0 ;
-int AntiIdleCountMax = 6 ;
+/* KiTTY: seconds between keepalives. Was a count of 30-second ticks, which
+ * made the ini value mean three times what it said. */
+int AntiIdleSeconds = 180 ;
 char AntiIdleStr[128] = "" ;  // Ex: " \x08"   => Fait un espace et le retire tout de suite
 
 // Chemin vers le programme cthelper.exe
@@ -3321,7 +3330,7 @@ static const IniParam ini_params[] = {
 	INIP_KW( INIT_SECTION, 0, "scriptmode",		1, 0, IGN,	NULL, kitty_script_set_enabled ),
 #ifndef MOD_NOTRANSPARENCY
 	/* transparency: anything but an explicit yes disables */
-	INIP_KW( INIT_SECTION, 0, "transparency",	1, 0, 0,	&TransparencyFlag, NULL ),
+	INIP_KW( INIT_SECTION, 0, "transparency",	1, 0, 0,	NULL, SetTransparencyIni ),
 #endif
 #ifdef MOD_BACKGROUNDIMAGE
 	INIP_KW( INIT_SECTION, 0, "shrinkbitmap",	1, 0, 0,	NULL, SetShrinkBitmapEnable ),
@@ -3371,8 +3380,12 @@ void LoadParameters( void ) {
 
 	/* The remaining keys have richer semantics and stay hand-written. */
 	if( ReadParameterN( INIT_SECTION, "antiidle", buffer, sizeof(buffer) ) ) { buffer[127]='\0'; strcpy( AntiIdleStr, buffer ) ; }
-	if( ReadParameterN( INIT_SECTION, "antiidledelay", buffer, sizeof(buffer) ) ) 
-		{ AntiIdleCountMax = (int)floor(atoi(buffer)/10.0) ; if( AntiIdleCountMax<=0 ) AntiIdleCountMax =1 ; }
+	if( ReadParameterN( INIT_SECTION, "antiidledelay", buffer, sizeof(buffer) ) ) {
+		/* Plain seconds. Floored at 5 so a stray small value cannot turn a
+		 * keepalive into a flood; 0 or nonsense leaves the default. */
+		int secs = atoi( buffer ) ;
+		if( secs > 0 ) AntiIdleSeconds = secs < 5 ? 5 : secs ;
+	}
 	if( ReadParameterN( INIT_SECTION, "browsedirectory", buffer, sizeof(buffer) ) ) { 
 		if( !stricmp( buffer, "NO" ) ) { DirectoryBrowseFlag = 0 ; }
 		else if( (!stricmp( buffer, "YES" )) && (IniFileFlag==SAVEMODE_DIR) ) DirectoryBrowseFlag = 1 ;

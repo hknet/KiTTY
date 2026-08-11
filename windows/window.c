@@ -219,6 +219,8 @@ int kitty_url_rescan(Terminal *term);
 int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor);
 void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal);
 void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up);
+void kitty_sync_transparency_menu(HMENU menu, Conf *conf, UINT id_up,
+                                  UINT id_down, UINT id_anchor);
 void kitty_menu_toggle_alwaysontop(HWND term_hwnd, Conf *conf);
 void kitty_menu_reposition(HWND term_hwnd, Conf *conf, int x, int y);
 void kitty_menu_toggle_hyperlink(HWND hwnd);
@@ -313,6 +315,7 @@ void kitty_cfgbox_open_on_panel(const char *path);   /* kitty/kitty_config.c */
 /* Anti-idle: periodically send a keepalive string (CONF_antiidle). */
 void kitty_antiidle_tick(HWND hwnd);
 extern char AntiIdleStr[128];
+extern int AntiIdleSeconds;   /* KiTTY: [KiTTY] antiidledelay, in seconds */
 #define TIMER_ANTIIDLE 8703
 #define TIMER_SCRIPT 8704
 #ifdef MOD_PERSO
@@ -1619,11 +1622,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                      init_delay > 0 ? init_delay : 1500, NULL);
     }
     /* KiTTY feature: anti-idle. Repeating 30s timer; kitty_antiidle_tick
-     * counts ticks and sends the keepalive once AntiIdleCountMax is reached. */
+     * period IS the configured interval ([KiTTY] antiidledelay, seconds), so
+     * the tick just sends. */
     {
         const char *ai = conf_get_str(wgs->conf, CONF_antiidle);
         if ((ai && ai[0]) || AntiIdleStr[0])
-            SetTimer(wgs->term_hwnd, TIMER_ANTIIDLE, 30 * 1000, NULL);
+            SetTimer(wgs->term_hwnd, TIMER_ANTIIDLE,
+                     (UINT)(AntiIdleSeconds > 0 ? AntiIdleSeconds : 180)
+                     * 1000, NULL);
     }
     /* KiTTY feature: rutty scripting. If script_mode == PLAY (1) and a script
      * file is configured, fire a one-shot timer to start sending once the
@@ -1818,10 +1824,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #ifdef MOD_PERSO
             /* ---- "Window" submenu: appearance & window state ---- */
             winmenu = CreatePopupMenu();
-            /* Transparency is opt-in (off by default). The adjust items appear
-             * only when the feature is enabled (kitty.ini [KiTTY] transparency=yes),
-             * so a default install can't accidentally turn the window translucent. */
-            if (GetTransparencyFlag()) {
+            /* Two ways to not get these: the feature switched off globally
+             * (kitty.ini [KiTTY] transparency=no), or this session carrying -1,
+             * which means "never dim this window". kitty_sync_transparency_menu
+             * keeps that in step if the session value changes later. */
+            if (GetTransparencyFlag()
+                && conf_get_int(wgs->conf, CONF_transparencynumber) != -1) {
                 AppendMenu(winmenu, MF_ENABLED, IDM_TRANSPARUP,   "Transparency &+");
                 AppendMenu(winmenu, MF_ENABLED, IDM_TRANSPARDOWN, "Transparency &-");
                 AppendMenu(winmenu, MF_SEPARATOR, 0, 0);
@@ -4013,6 +4021,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         PostQuitMessage(0);
         return 0;
       case WM_INITMENUPOPUP:
+#ifdef MOD_PERSO
+        /* Change Settings can turn a session's transparency to or from -1 while
+         * the window is open; the menu was built once, so re-check it here. */
+        kitty_sync_transparency_menu((HMENU)wParam, wgs->conf, IDM_TRANSPARUP,
+                                     IDM_TRANSPARDOWN, IDM_FONTUP);
+#endif
         if ((HMENU)wParam == wgs->savedsess_menu) {
             /* About to pop up Saved Sessions sub-menu.
              * Refresh the session list. */
@@ -8777,6 +8791,9 @@ COLORREF return_colours258(void) {
 void kitty_apply_transparency(WinGuiSeat *wgs)
 {
     if (!wgs || !wgs->term_hwnd) return;
+    /* kitty.ini transparency=no switches the feature off, not merely its
+     * controls: a session carrying a level must still open opaque. */
+    if (!GetTransparencyFlag()) return;
     int t = conf_get_int(wgs->conf, CONF_transparencynumber);
     if (t <= 0) return;                 /* opaque / disabled */
     if (t > 254) t = 254;

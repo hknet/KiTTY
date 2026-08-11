@@ -84,10 +84,15 @@
 
 ; antiidle: string sent to the server periodically to keep the connection alive.
 ;    Default (unset/empty) = disabled. \k08 sends a backspace; pick a sequence the
-;    remote ignores. Interval is set by antiidledelay (seconds).
+;    remote ignores. How often it is sent is set by antiidledelay below.
 ;antiidle=\k08\
 
-; antiidledelay: time delay between two sending
+; antiidledelay: how often that string is sent, in seconds. Default 180.
+;    Values below 5 are treated as 5, so a typo cannot turn a keepalive into
+;    a flood. (Before this it was not seconds: the number was divided by 10 to
+;    count ticks of a 30-second timer, so it meant about three times what it
+;    said - 60 gave 180 seconds. Divide a carried-over value by three to keep
+;    the interval you had.)
 ;antiidledelay=60
 
 ; autoreconnect: reconnect a session by itself when the link drops, retrying
@@ -97,7 +102,8 @@
 ;    ReconnectDelay for how long it waits between attempts.
 ;autoreconnect=yes
 
-; backgroundimage: enable/disable the background image feature
+; bgimage: enable/disable the background image feature. (The description
+;    here used to call it backgroundimage, which is not a key KiTTY reads.)
 ;bgimage=no
 
 ; bcdelay: delay in MILLISECONDS between each character in every automatic
@@ -141,7 +147,10 @@
 ; browsedirectory: base directory for portable/session file browsing; normally auto-detected
 ;browsedirectory=
 
-; Folders: legacy session-folder cache, managed by KiTTY; edit only for recovery/debugging
+; Folders: the list of session folders, written by KiTTY whenever you add or
+;    remove one. It is the live list, not a cache of something else, so an
+;    edit here is overwritten the next time the folder set changes. Edit it
+;    only to recover a folder that has gone missing from the config box.
 ;Folders=
 
 ; RootFolderLabel: what the configuration box's folder selector calls the root
@@ -157,7 +166,12 @@
 ;    this file in file/dir mode.
 ;RootFolderLabel=All sessions (root)
 
-; cryptsalt: set salt mode for password encryption 
+; cryptsalt: which salt variant the LEGACY stored-password scrambling uses
+;    (the pre-DPAPI scheme - see the password notes in docs/KITTY-INI.md).
+;    It is not a security control: the scheme is obfuscation with a
+;    compiled-in key either way. Change it only if you know why, and be
+;    aware that passwords already stored were scrambled with the previous
+;    setting.
 ;cryptsalt=1
 
 ; CtHelperPath: the full path to the cthelper.exe binary (Wrapper for Cygwin feature)
@@ -197,7 +211,11 @@
 ; iconfile: point to a file where internal icons are located
 ;iconfile=kitty.exe
 
-; initdelay: initial delay in seconds before automatic sending of password, or auto command
+; initdelay: how long KiTTY waits after the terminal opens before it starts
+;    typing for you - the auto-command (including a \p password step in it).
+;    In seconds, fractions allowed: 0.5 is half a second. Default 2.0; a
+;    negative value is ignored. It also sets the delay before an
+;    autosendtotray session drops itself into the tray.
 ;initdelay=2.0
 
 ; KiClassName: the Windows window-class name KiTTY registers, which also selects
@@ -208,7 +226,9 @@
 ;    window class. This is NOT the default; leave it unset for normal use.
 ;KiClassName=PuTTY
 
-; modalerrors: show connection errors as modal pop-up boxes instead of inline in the terminal (upstream cyd01/KiTTY #548). Default no (inline, non-trapping).
+; modalerrors: show connection errors as modal pop-up boxes instead of inline
+;    in the terminal (upstream cyd01/KiTTY #548). Default no - inline, so an
+;    error cannot trap the window behind a dialog.
 ;modalerrors=no
 
 ; modalnewhostkeyconfirmation: how to confirm an UNKNOWN (first-seen) host key.
@@ -235,7 +255,17 @@
 ;    inline prompt is possible.
 ;modalweakkeyconfirmation=yes
 
-; mouseshortcuts: enable/disable mouse shortcuts
+; mouseshortcuts: the two mouse chords in the terminal window -
+;    Ctrl+Shift+left-click duplicates the session, Ctrl+middle-click sends the
+;    window to the tray. Default yes.
+;    Why turn them off: both chords are swallowed by KiTTY and never reach the
+;    host, so a program in the terminal that wants them - anything using
+;    xterm-style mouse reporting, and middle-click paste in particular - will
+;    look broken. Ctrl+Shift+left-click is also easy to hit by accident while
+;    selecting text, and it opens a whole new window when you do. Set no and
+;    the mouse behaves as it does in stock PuTTY; the same two actions stay
+;    available from the window menu and from their keyboard shortcuts.
+;    Protect mode and PuTTY mode switch them off regardless of this setting.
 ;mouseshortcuts=yes
 
 ; internaldelay: how long KiTTY pauses, in milliseconds, while it types for
@@ -373,7 +403,8 @@
 ;    %APPDATA%\KiTTY\kittynew.sav (i.e. the files are kittynew-YYYYMMDD-HHMMSS.sav)
 ;    - NOT kitty.sav, so an old 0.76 KiTTY's backup is never touched. A legacy
 ;    value ending in kitty.sav or kitty084.sav is ignored so this default takes
-;    over; uncomment with a real path to force one.;    Backups left by earlier 0.84 builds (kitty-YYYYMMDD-HHMMSS.sav, from a
+;    over; uncomment with a real path to force one.
+;    Backups left by earlier 0.84 builds (kitty-YYYYMMDD-HHMMSS.sav, from a
 ;    defect that made the default kitty.sav after all) are still READ for a
 ;    first-run restore; new ones are only ever written under the name above.
 ;sav=
@@ -382,11 +413,21 @@
 ;    newest N are kept, older ones deleted. Default 5, max 50; 0 disables backups.
 ;savbackupcount=5
 
-; savemode: specify the save mode for sessions settings
+; savemode: where sessions are stored. Read from kitty.ini only - never from
+;    the registry, since the registry cannot say "do not use the registry".
 ;    Allowed values are:
-;    - registry : to save sessions into windows registry
-;    - file : to save sessions into one unique file (currently not maintained)
-;    - dir : to save sessions into files in the directory structure
+;    - registry : sessions in the Windows registry, under KiTTY's own hive.
+;                 The default.
+;    - dir      : sessions as files in a directory tree, one file each. This
+;                 is portable mode: it also turns on folder browsing and the
+;                 portable password protection described further down.
+;    - file     : NOT a file backend, despite the name. Sessions still live
+;                 in the registry exactly as in registry mode; all it adds is
+;                 importing the .sav registry dump at startup when the hive is
+;                 missing. Upstream KiTTY abandoned this mode years ago and
+;                 marked it unmaintained; we kept it working as it is and are
+;                 not developing it further. It is not a half-finished feature
+;                 waiting to land - if you want sessions in files, use dir.
 ;savemode=registry
 
 ; portablebackupcount: in portable dir mode, keep this many timestamped backups
@@ -446,11 +487,23 @@
 ;    wintitle=yes (the default).
 ;size=no
 
-; slidedelay: delay in seconds before automatic image switching in slideshow mode
-;    0 means no automatic slide, waiting for keyboard event
+; slidedelay: the GLOBAL FALLBACK for how long each background image is shown,
+;    in seconds, when the background is a folder of images. It applies to every
+;    session that does not set its own interval; a session that does (the
+;    "Slideshow:" box under Window > Back.Image) always wins, and this value is
+;    then not consulted at all. 0 or unset means no timer - the image only
+;    changes when you ask for the next one. Nothing happens unless bgimage is
+;    on and the session actually has a background image.
 ;slidedelay=0
 
-; shrinkbitmap: shrink large background images to fit the terminal area
+; shrinkbitmap: better quality when a background image has to be made smaller.
+;    It applies to ONE image placement: "Stretch+" under Window > Back.Image >
+;    Image placement - the placement whose whole job is fitting the image to
+;    the window. Tile, Center, Stretch, Absolute and Blank ignore this key.
+;    With Stretch+, and only when the image is larger than the window in both
+;    directions, KiTTY resamples it down instead of letting Windows
+;    stretch-blit it: visibly cleaner, slightly more work per repaint. On by
+;    default; set no to get the plain fast stretch back.
 ;shrinkbitmap=no
 
 ; sshversion: the client version string KiTTY announces to the SSH server.
@@ -459,10 +512,32 @@
 ;    KiTTY looks like a stock client. Use a current OpenSSH version, e.g.:
 ;sshversion=OpenSSH_10.0
 
-; transparency: enable/disable the transparency feature
+; transparency: offer the window-transparency controls. On by default, and
+;    offering them is not using them - every session starts fully opaque.
+;    The level itself is PER SESSION, not set here. It lives in the
+;    configuration box under Window > Transparency, as a single
+;    "Transparency:" box, and is also reachable live from the window menu
+;    (Transparency + / -) and with Ctrl+Up / Ctrl+Down.
+;      0   fully opaque, and the default for a new session. The controls
+;          still work, so you can dim the window and bring it back.
+;      255 as see-through as it goes.
+;      -1  opaque, and locked that way. Nothing will dim the window: the
+;          keyboard refuses, the window menu does not even offer the
+;          Transparency entries, and the /transparency command declines.
+;          Pick it when an accidental Ctrl+Down must never dim this session.
+;          On screen 0 and -1 look the same - neither is translucent.
+;    If the panel is not in your configuration box, either this key is set to
+;    no or KiTTY is running in PuTTY mode - both hide it.
+;    Set no and transparency is off everywhere, not merely out of reach: the
+;    panel and the menu entries go, and a session that has a level saved opens
+;    opaque anyway. The /transparency command cannot turn it back on either.
 ;transparency=yes
 
-; userpasssshnosave: if yes, SSH password will not be saved internally (and can't be reused automatically) 
+; userpasssshnosave: do not keep the username and password KiTTY learned during
+;    a login in the running session's settings. They are then not carried into
+;    a duplicated session and cannot be written out if the session is saved.
+;    Default no. It does not remove or ignore a password you deliberately
+;    stored in a saved session - that one is still used to log in.
 ;userpasssshnosave=no
 
 ; winroll: double-click the title bar to roll the window up into the title bar
@@ -492,36 +567,74 @@
 
 [Shortcuts]
 
-; list: the keys that have a user-defined action, separated by spaces. Each
-;    name listed here needs its own <key>=<text to send> line below, so
-;    "list={F5} {CONTROL}{F6}" expects a {F5}= and a {CONTROL}{F6}= line.
-;    Without the name in this list the key line is never read.
+; This section holds two separate mechanisms that happen to share it.
+;
+; FIRST: type this text for me. Pick any key combination, and pressing it
+; types a piece of text into the session instead of reaching the host. It takes
+; two lines - name the combination in "list", then give it a line of its own
+; saying what to type:
+;
+;      list={F5} {CONTROL}{F6}
+;      {F5}=uptime\n
+;      {CONTROL}{F6}=cd /var/log\n
+;
+; F5 now types "uptime" and presses Enter for you. "list" is what switches a
+; key on: a {F5}= line whose key is not named in list is simply ignored, which
+; is also how you park a definition without deleting it. Separate the names
+; with spaces.
+; In the text, \n presses Enter, \t is Tab, \h is Backspace, \p waits a second,
+; \s05 waits five, and \\ is a literal backslash.
 ;list={F5} {CONTROL}{F6}
 
-; Shortcuts: definition for the menu shortcuts keys
+; SECOND: the named actions below. These are KiTTY's own functions - roll the
+; window up, send it to the tray, print the buffer - and each line changes the
+; key that triggers one. They are not text: the name on the left is the action,
+; and the value on the right is the key you want for it.
+;
+; Write a combination as modifiers then the key, each in braces:
+; {CONTROL}{SHIFT}{F4}, {ALT}{HOME}, {CONTROL}{F5}. Modifiers are {CONTROL}
+; {SHIFT} {ALT} {ALTGR} {WIN}; a plain letter or digit needs no braces
+; ({CONTROL}{ALT}T). An empty value takes the key away and leaves the action
+; with none; a combination KiTTY cannot parse falls back to the default.
+;
+; Each entry below says its default key. About a third say "no default key"
+; instead: those actions are real and work, but nothing is bound to them out of
+; the box, so they do nothing until you put a combination here. Most of them
+; are also on the window menu, which is how they are reachable at all today.
+;
+; Two things worth knowing before you pick a combination:
+;  - Ctrl+Shift+<letter> is where the predefined user commands live, and they
+;    are claimed first - binding an action there will not reach it.
+;  - shortcuts=no in [KiTTY] switches this whole section off.
 
 ; (re)send automatic command (default is SHIFT+F12)
 ;autocommand=
 
 ; Change settings ...
+;    No default key - it does nothing until you set one here.
 ;changesettings=
 
 ; Clear scrollback
+;    No default key - it does nothing until you set one here.
 ;clearscrollback=
 
 ; Clear log file
+;    No default key - it does nothing until you set one here.
 ;clearlogfile=
 
 ; Close and restart current session
+;    No default key - it does nothing until you set one here.
 ;closerestart=
 
 ; run a local command (default is CONTROL+F5)
 ;command=
 
 ; Copy all window buffers to clipboard
+;    No default key - it does nothing until you set one here.
 ;copyall=
 
 ; Open a duplicate window (with same session settings)
+;    (default is CONTROL+ALT+T)
 ;duplicate=
 
 ; open text editor connected to the main window (default is SHIFT+F2)
@@ -531,21 +644,27 @@
 ;editorclipboard=
 
 ; Show event log
+;    No default key - it does nothing until you set one here.
 ;eventlog=
 
 ; Switch font to black on white colors
+;    No default key - it does nothing until you set one here.
 ;fontblackandwhite=
 
 ; Decrease font size
+;    No default key - it does nothing until you set one here.
 ;fontdown=
 
 ; Switch font to negative colors
+;    No default key - it does nothing until you set one here.
 ;fontnegative=
 
 ; Increase font size
+;    No default key - it does nothing until you set one here.
 ;fontup=
 
 ; Switch to full screen
+;    No default key - it does nothing until you set one here.
 ;fullscreen=
 
 ; receive a remote file with pscp.exe: the full path must be selected in clipboard (default is CONTROL+F4)
@@ -561,18 +680,21 @@
 ;inputm=
 
 ; Repeat key exchange
+;    No default key - it does nothing until you set one here.
 ;keyexchange=
 
 ; New session ...
+;    No default key - it does nothing until you set one here.
 ;opennew=
 
 ; Inherit New Session: a new configuration box carrying the current settings.
 ;    In quick connect (see [ConfigBox] loadlastsession) the host name comes with
 ;    them, selected and ready to be edited into the next machine; otherwise the
 ;    box opens without a host.
+;    No default key - it does nothing until you set one here.
 ;opennewcurrent=
 
-; Print current clipboard content (default if SHIFT+F7)
+; Print current clipboard content (default is SHIFT+F7)
 ;print=
 
 ; Print all window buffer content (default is F7)
@@ -582,6 +704,7 @@
 ;protect=
 
 ; Reset terminal
+;    No default key - it does nothing until you set one here.
 ;resetterminal=
 
 ; Roll-up the window into the title bar (default is CONTROL+F12)
@@ -615,13 +738,17 @@
 
 [Print]
 
-; height: characters size (Printing)
+; height: the vertical distance between printed lines, in printer device
+;    units - each line is drawn at line number x this value, so it is a line
+;    pitch rather than a font size. Raising it spaces the printout out;
+;    lowering it packs it. The font itself is the terminal's.
 ;height=100
 
-; maxline: maximum number of lines per page
+; maxline: how many lines go on a page before a new one is started.
 ;maxline=60
 
-; maxchar: maximum number of characters per line
+; maxchar: where a long line is wrapped onto the next printed line. It wraps
+;    rather than truncating, so nothing is lost.
 ;maxchar=85
 
 
@@ -647,7 +774,9 @@
 ;    recognising each other as "already running".
 ;classname=KiTTYLauncher
 
-; reload: enable session list reload on each menu respawn
+; reload: rebuild the launcher's session list each time its menu is opened,
+;    so sessions saved since it started appear. On by default; only the value
+;    no turns it off, and then the list is the one read at launcher startup.
 ;reload=yes
 
 ; exitwithworkplace: close the launcher again when workplace proxy mode is
@@ -683,7 +812,11 @@
 ;   no   = never - also disables the per-key comment prompts (automation)
 ;askconfirmation=auto
 
-; messageonkeyusage: tray balloon naming the key after each signature
+; messageonkeyusage: a notice naming the key after each signature - kageant's
+;    own small window, not a tray balloon (Windows suppresses those under
+;    focus assist, which for a security notice is the worst way to fail). It
+;    names the key by comment and by fingerprint, since two keys can share a
+;    comment.
 ; messageonkeyusage covers key USE (signatures) and, over IPC, key ADD /
 ; REMOVE / REMOVE-ALL naming the requesting program - a notice, never a
 ; prompt, so it does not break scripted ssh-add.
@@ -714,17 +847,17 @@
 ;    the list below is maintained for you as you add and remove keys.
 ;    Off by default. Was called loadonstartup; the old name is read once and
 ;    rewritten under this one.
-;    Note the tray item and the Settings checkbox are labelled "Start kageant
-;    at login": today that one command does both jobs - it installs the login
-;    autostart AND turns this on - and whether it looks ticked is decided by
-;    the autostart itself (the Run entry or Startup shortcut, checked to be
-;    THIS kageant), not by this setting.
+;    This is its own tray item and its own Settings checkbox, "Load remembered
+;    keys at startup". Starting kageant at login is a separate switch beside
+;    it, and whether THAT looks ticked is decided by the autostart artifact -
+;    the Run entry or Startup shortcut, checked to point at this kageant - not
+;    by any setting in this file.
 ;loadkeysonstartup=no
 
 ; startupkey1, startupkey2, ...: the remembered key files, in order. Paths
 ; under this install folder are stored relative to it (so they travel); a
 ; trailing ",encrypted" loads that key deferred. kageant writes these when
-; you load keys with loadonstartup on - you normally do not edit them by hand.
+; you load keys with loadkeysonstartup on - not knobs to edit by hand.
 ;startupkey1=keys\id_ed25519.ppk,encrypted
 
 ; --- Startup keys on removable media.
@@ -781,8 +914,11 @@
 ; font regardless of probe results; multiple entries separated by ;
 ;override=E000-F8FF:Symbols Nerd Font Mono;1F600-1F64F:Segoe UI Emoji
 
-; log: off|error|warn|info|debug|trace - troubleshooting log, written to
-; fontfallback.log next to kitty.exe (debug/trace are high volume)
+; log: off|error|warn|info|debug|trace - troubleshooting log for the fallback
+;    probing. Written to fontfallback.log in the folder the running
+;    executable sits in unless logfile says otherwise (see the note there
+;    about that folder not always being writable). debug and trace are high
+;    volume - a busy session writes megabytes.
 ;log=off
 
 ; logfile: where to write that log instead of the default. Unset, it goes to

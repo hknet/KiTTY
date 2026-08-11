@@ -1504,17 +1504,81 @@ void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal)
  * file keeps a smaller diff. Cases that touch window.c internals (e.g. the
  * terminal resize path via reset_window) deliberately stay inline there. */
 
-/* IDM_TRANSPARUP / IDM_TRANSPARDOWN: step the layered-window transparency. */
+int GetTransparencyFlag(void);          /* kitty.c */
+
+/* IDM_TRANSPARUP / IDM_TRANSPARDOWN: step the layered-window transparency.
+ * Refuses on both opt-outs. -1 used to be clamped to 0 and stepped from there,
+ * which let the menu undo a setting the keyboard already respected. */
 void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up)
 {
     int t = conf_get_int(conf, CONF_transparencynumber);
-    if (t < 0) t = 0;
+    if (!GetTransparencyFlag() || t < 0) return;
     t += up ? 10 : -10;
     if (t < 0) t = 0; if (t > 254) t = 254;
     conf_set_int(conf, CONF_transparencynumber, t);
     SetWindowLongPtr(term_hwnd, GWL_EXSTYLE,
         GetWindowLongPtr(term_hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
     SetLayeredWindowAttributes(term_hwnd, 0, (BYTE)(255 - t), LWA_ALPHA);
+}
+
+/* Position of a DIRECT child of this menu, or -1. Deliberately not
+ * GetMenuState/MF_BYCOMMAND: those search submenus, so asked about the system
+ * menu they answer about the Window submenu inside it - which meant the edits
+ * landed one menu deeper than the position checks around them. */
+static int kitty_menu_pos_of(HMENU menu, UINT id)
+{
+    int n = GetMenuItemCount(menu), i;
+    for (i = 0; i < n; i++)
+        if (GetMenuItemID(menu, i) == id)
+            return i;
+    return -1;
+}
+
+/* Add or remove the two transparency entries so the menu matches the session.
+ * Called for every popup that opens; the anchor item (Font Up) identifies the
+ * Window submenu, and being a DIRECT child is the test, so the system menu
+ * that merely contains that submenu is left alone. IDs are passed in rather
+ * than included, to keep the IDM_ table in one place. */
+void kitty_sync_transparency_menu(HMENU menu, Conf *conf, UINT id_up,
+                                  UINT id_down, UINT id_anchor)
+{
+    MENUITEMINFO mii;
+    int anchor;
+    bool want, have;
+
+    if (!menu)
+        return;
+    anchor = kitty_menu_pos_of(menu, id_anchor);
+    if (anchor < 0)
+        return;                         /* not the Window submenu itself */
+
+    want = GetTransparencyFlag() &&
+        conf_get_int(conf, CONF_transparencynumber) != -1;
+    have = kitty_menu_pos_of(menu, id_up) >= 0;
+    if (want == have)
+        return;
+
+    if (!want) {
+        DeleteMenu(menu, id_up, MF_BYCOMMAND);
+        DeleteMenu(menu, id_down, MF_BYCOMMAND);
+        /* The pair was followed by a separator, i.e. the item just before the
+         * anchor. Found relative to the anchor rather than assumed at the top,
+         * so it stays right if the submenu is reordered later. */
+        anchor = kitty_menu_pos_of(menu, id_anchor);
+        if (anchor > 0) {
+            memset(&mii, 0, sizeof(mii));
+            mii.cbSize = sizeof(mii);
+            mii.fMask = MIIM_FTYPE;
+            if (GetMenuItemInfo(menu, anchor - 1, TRUE, &mii) &&
+                (mii.fType & MFT_SEPARATOR))
+                DeleteMenu(menu, anchor - 1, MF_BYPOSITION);
+        }
+    } else {
+        /* each insert goes before the anchor, which shifts down by one */
+        InsertMenu(menu, anchor, MF_BYPOSITION, id_up, "Transparency &+");
+        InsertMenu(menu, anchor + 1, MF_BYPOSITION, id_down, "Transparency &-");
+        InsertMenu(menu, anchor + 2, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
+    }
 }
 
 /* IDM_VISIBLE: toggle always-on-top. */

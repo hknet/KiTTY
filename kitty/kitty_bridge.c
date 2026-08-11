@@ -1270,17 +1270,14 @@ int kitty_autocommand_tick(HWND hwnd)
     return 1;
 }
 
-/* Anti-idle: fired every 30s from a repeating TIMER_ANTIIDLE. KiTTY counts
- * ticks (AntiIdleCount) and, once AntiIdleCountMax (default 6 => 180s) is
- * reached, sends the keepalive string: CONF_antiidle if set, else the
- * kitty.ini-loaded global AntiIdleStr. Mirrors KiTTY window.c:3646-3651. */
+/* Anti-idle: fired by TIMER_ANTIIDLE, whose period is the configured
+ * interval ([KiTTY] antiidledelay, seconds, default 180) - so every firing
+ * sends the keepalive: CONF_antiidle if the session sets one, else the
+ * kitty.ini global AntiIdleStr. It used to be a fixed 30s timer with a tick
+ * counter, which is why the ini value meant three times what it said. */
 void kitty_antiidle_tick(HWND hwnd)
 {
     const char *s;
-    AntiIdleCount += 1;
-    if (AntiIdleCount < AntiIdleCountMax)
-        return;
-    AntiIdleCount = 0;
     s = conf_get_str(conf, CONF_antiidle);
     if (s != NULL && s[0] != '\0')
         SendAutoCommand(hwnd, s);

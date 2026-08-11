@@ -53,7 +53,12 @@ static int cmd_title( HWND hwnd, char * arg ) {
 static int cmd_transparency( HWND hwnd, char * arg ) {
 	(void)arg ;
 #ifndef MOD_NOTRANSPARENCY
-	if( (conf_get_int(conf,CONF_transparencynumber) == -1) || (TransparencyFlag == 0 ) ) {
+	/* The same two opt-outs as the menu and the keyboard: a session at -1 is
+	 * not to be dimmed, and transparency=no in kitty.ini is not a state this
+	 * command may leave. */
+	if( conf_get_int(conf,CONF_transparencynumber) == -1 ) return 1 ;
+	if( !GetTransparencyAllowed() ) return 1 ;
+	if( TransparencyFlag == 0 ) {
 		TransparencyFlag = 1 ;
 		SetWindowLongPtr(MainHwnd, GWL_EXSTYLE, GetWindowLong(MainHwnd, GWL_EXSTYLE) | WS_EX_LAYERED ) ;
 		SetWindowPos( MainHwnd, 0, 0, 0, 0, 0, SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER ) ;

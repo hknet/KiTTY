@@ -45,7 +45,7 @@ The `[KiTTY]` key `savemode` selects the session store:
 |---|---|
 | `registry` *(default)* | Windows registry, like stock PuTTY/KiTTY. |
 | `dir` | One file per session under the install folder — the **portable** mode (`kitty_portable.exe` forces this). |
-| `file` | Single-file store — legacy, not maintained; prefer `dir`. |
+| `file` | **Not a file store, despite the name** — sessions stay in the registry exactly as in `registry` mode; all it adds is importing a `.sav` registry dump at startup when the hive is missing. Abandoned upstream and unmaintained; use `dir` if you want sessions in files. |
 
 When kitty.ini says `savemode=file` or `savemode=dir`, the ini is the
 **authoritative store** for the companion tools too: kageant's tray toggles

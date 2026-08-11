@@ -23,6 +23,12 @@ Three checks, two of them fatal:
             tools/gen-kitty-ini-template.py, so the two agree by construction -
             this catches a sample that was never regenerated into the header.
 
+  4. FATAL  an ini_params[] key whose value nothing outside its own plumbing
+            ever reads - a knob that turns nothing. WEAK on purpose: it sees
+            references, not reachability, so a flag read only from dead code
+            still passes (that is how `icon` survived). It catches the blatant
+            cases and must not be trusted further than that.
+
 It intentionally focuses on string-literal keys in the global sections used by
 kitty.ini, not on per-session registry/portable settings.
 """
@@ -51,6 +57,10 @@ ALLOW_UNDOCUMENTED = {
     # Read only to migrate it to [Agent] loadkeysonstartup; not a knob.
     ("Agent", "loadonstartup"),
 }
+# Keys whose variable is referenced only from its own plumbing but which are
+# not dead - none known; entries here need a reason.
+ALLOW_DEAD_KNOBS: set[str] = set()
+
 ALLOW_TEMPLATE_UNREAD = {
     # The template documents cygterm, but nothing in the built sources reads the
     # key: the cygterm support under kitty/cthelper/ is not wired into this
@@ -153,6 +163,72 @@ def source_options() -> set[tuple[str, str]]:
     return opts
 
 
+def unread_knobs() -> list[tuple[str, str]]:
+    """ini_params[] rows whose value nothing consults.
+
+    A flag is usually read through its accessor - GetCtrlTabFlag() rather than
+    CtrlTabFlag - so both the variable AND its getter have to be unreferenced
+    outside their own plumbing before the key is called dead. Returns
+    (key, variable).
+    """
+    kitty_c = (ROOT / "kitty" / "kitty.c").read_text(encoding="utf-8", errors="ignore")
+    rows = re.findall(
+        r'INIP_(?:KW|NUM)\s*\(\s*(?:INIT_SECTION|"[^"]+")\s*,\s*\d+\s*,\s*'
+        r'"([^"]+)"[^)]*?,\s*(&\w+|NULL)\s*,\s*(\w+)\s*\)', kitty_c)
+
+    sources = list((ROOT / "kitty").glob("*.c")) + list((ROOT / "windows").glob("*.c"))
+    texts = {p: read_text(p) for p in sources}
+    all_text = "\n".join(texts.values())
+
+    def getters_for(var: str) -> set[str]:
+        """Functions whose body is just `return var`."""
+        return set(re.findall(
+            r"\b(\w+)\s*\([^)]*\)\s*\{\s*return\s+" + re.escape(var) + r"\s*;",
+            all_text))
+
+    def consulted(name: str, is_func: bool) -> bool:
+        pat = re.compile(r"\b" + re.escape(name) + (r"\s*\(" if is_func else r"\b"))
+        for text in texts.values():
+            for line in text.split("\n"):
+                if not pat.search(line):
+                    continue
+                st = line.strip()
+                if (st.startswith("//") or st.startswith("*") or
+                        st.startswith("/*") or st.startswith("extern ")):
+                    continue
+                if "INIP_KW(" in st or "INIP_NUM(" in st:
+                    continue
+                if re.match(r"(static\s+)?(int|BOOL|bool)\s+" + re.escape(name)
+                            + r"\s*(=|;)", st):
+                    continue
+                # the accessor pair itself, and a bare prototype
+                if re.search(r"\breturn\s+\w+\s*;", st) and "{" in st:
+                    continue
+                if re.match(r"void\s+\w+\s*\([^)]*\)\s*\{[^}]*=", st):
+                    continue
+                if re.match(r"(int|void|bool|BOOL)\s+" + re.escape(name)
+                            + r"\s*\([^)]*\)\s*;", st):
+                    continue
+                return True
+        return False
+
+    dead = []
+    for key, var, setter in rows:
+        name = var[1:] if var.startswith("&") else None
+        if not name:
+            m = re.search(r"void\s+" + re.escape(setter) +
+                          r"\s*\([^)]*\)\s*\{[^}]*?(\w+)\s*=", all_text)
+            if not m:
+                continue
+            name = m.group(1)
+        if consulted(name, False):
+            continue
+        if any(consulted(g, True) for g in getters_for(name)):
+            continue
+        dead.append((key, name))
+    return dead
+
+
 def main(verbose: bool = False) -> int:
     for path in (EXAMPLE, TEMPLATE):
         if not path.exists():
@@ -194,6 +270,16 @@ def main(verbose: bool = False) -> int:
               f"(re-run tools/gen-kitty-ini-template.py):", file=sys.stderr)
         for section, key in behind:
             print(f"  [{section}] {key}", file=sys.stderr)
+
+    # 4. a key that turns nothing. See the caveat at the top of this file.
+    dead = unread_knobs()
+    dead = [d for d in dead if (SECTIONS and d[0] not in ALLOW_DEAD_KNOBS)]
+    if dead:
+        failed = True
+        print("ini keys whose value nothing reads (a knob that turns nothing):",
+              file=sys.stderr)
+        for key, var in dead:
+            print(f"  {key}  ->  {var}", file=sys.stderr)
 
     if failed:
         return 1
