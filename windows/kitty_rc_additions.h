@@ -344,6 +344,12 @@
 #ifndef IDM_CLEARLOGFILE
 #define IDM_CLEARLOGFILE 0xB100
 #endif
+#ifndef IDM_OPENLOGFILE
+/* Open the session's current log file (hknet/KiTTY#31).
+ * ⚠️ These ids MUST be multiples of 0x10: WM_SYSCOMMAND dispatches on
+ * (wParam & ~0xF), so 0xB101 would arrive as IDM_CLEARLOGFILE. */
+#define IDM_OPENLOGFILE 0xB210
+#endif
 #ifndef IDM_RESIZE
 #define IDM_RESIZE 0xB020
 #endif

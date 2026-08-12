@@ -7,7 +7,26 @@ see [FEATURES.md](FEATURES.md).
 
 ## 0.84.1.74-beta — 2026-08-11
 
+### Added
+
+- **Open this session's log file from the window menu.** *Tools > Open log
+  file* hands the log the session is writing to whatever opens `.log` files on
+  your machine, so there is no hunting for it — which matters most with a
+  rotating file name, where "the current one" changes through the day. It
+  flushes first, so the newest lines are there even with *Flush log file
+  frequently* switched off. A key can be bound to it with `openlogfile` in the
+  `[Shortcuts]` section of `kitty.ini`. Refs hknet/KiTTY#31
+
 ### Fixed
+
+- **"Clear log file" does what it says, and says what it does.** It closed and
+  reopened the log through the same path a session start uses, which asks the
+  *"what to do if the log file already exists"* question again — so with
+  *append* selected an explicit clear silently did nothing. It now empties the
+  file regardless of that setting. It also renames itself to *Start a new log
+  file now* when the log file name contains a time, because there a
+  close-and-reopen writes a new file and keeps the old one rather than clearing
+  anything. Both log items are greyed out when the session is not logging.
 
 - **Session logs carry timestamps again.** `Session > Logging > Timestamp
   (strftime format)` has been present in the dialog all along, and the value

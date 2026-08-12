@@ -621,9 +621,17 @@ char default_init_file_content[] =
 ; the box, so they do nothing until you put a combination here. Most of them\n\
 ; are also on the window menu, which is how they are reachable at all today.\n\
 ;\n\
+; How to write one:  {CONTROL}{SHIFT}L  {ALT}F4  {SHIFT}F12  - modifiers first,\n\
+; in braces, then the key. So:\n\
+;    openlogfile={CONTROL}{SHIFT}L      open this session's log file\n\
+;    eventlog={CONTROL}{SHIFT}E         show the event log\n\
+;\n\
 ; Two things worth knowing before you pick a combination:\n\
-;  - Ctrl+Shift+<letter> is where the predefined user commands live, and they\n\
-;    are claimed first - binding an action there will not reach it.\n\
+;  - Ctrl+Shift+<letter> is also where the predefined user commands live, but\n\
+;    a binding here WINS: the user-command keys are tried last, and only when\n\
+;    a command is actually defined in that slot. The cost is the other way\n\
+;    round - binding Ctrl+Shift+L here means the 12th user command can no\n\
+;    longer be reached by keyboard, only from its menu.\n\
 ;  - shortcuts=no in [KiTTY] switches this whole section off.\n\
 \n\
 ; (re)send automatic command (default is SHIFT+F12)\n\
@@ -637,9 +645,22 @@ char default_init_file_content[] =
 ;    No default key - it does nothing until you set one here.\n\
 ;clearscrollback=\n\
 \n\
-; Clear log file\n\
+; Clear the log file - or start a new one\n\
+;    Which of the two it does depends on the log file name in\n\
+;    Session > Logging. A fixed name (kitty.log) can only be emptied, so it is\n\
+;    emptied. A name with a time in it (kitty_&T.log) gives a different file\n\
+;    each time, so a new one is started and the old one is kept - the window\n\
+;    menu says which it is about to do.\n\
 ;    No default key - it does nothing until you set one here.\n\
+;    Example:  clearlogfile={CONTROL}{SHIFT}K\n\
 ;clearlogfile=\n\
+\n\
+; Open the log file of this session\n\
+;    Opens the file this session is logging to, in whatever your system opens\n\
+;    .log files with. Nothing happens if the session is not logging.\n\
+;    No default key - it does nothing until you set one here.\n\
+;    Example:  openlogfile={CONTROL}{SHIFT}L\n\
+;openlogfile=\n\
 \n\
 ; Close and restart current session\n\
 ;    No default key - it does nothing until you set one here.\n\
@@ -663,7 +684,9 @@ char default_init_file_content[] =
 ;editorclipboard=\n\
 \n\
 ; Show event log\n\
+;    KiTTY's own record of what the connection did - not the session log.\n\
 ;    No default key - it does nothing until you set one here.\n\
+;    Example:  eventlog={CONTROL}{SHIFT}E\n\
 ;eventlog=\n\
 \n\
 ; Switch font to black on white colors\n\
@@ -926,8 +949,13 @@ char default_init_file_content[] =
 ; Yu Gothic UI, Malgun Gothic). Naming a built-in just promotes it. Fonts\n\
 ; that are not installed are skipped. Start the list with ! to REPLACE the\n\
 ; built-in defaults instead.\n\
-;fallback=Symbols Nerd Font Mono,JetBrains Mono\n\
-;fallback=!MyOnlyFont1,MyOnlyFont2\n\
+;    Example:  fallback=Symbols Nerd Font Mono,JetBrains Mono\n\
+;                 try those two first, then fall through to the built-in list\n\
+;    Example:  fallback=!MyOnlyFont1,MyOnlyFont2\n\
+;                 the leading ! drops the built-in list: only these two are\n\
+;                 tried, so a character neither font has stays a blank box\n\
+;    Default is empty - the built-in list above is used as it stands.\n\
+;fallback=\n\
 \n\
 ; override: force a Unicode range (or single codepoint, hex) to a specific\n\
 ; font regardless of probe results; multiple entries separated by ;\n\

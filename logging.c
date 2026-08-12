@@ -273,23 +273,69 @@ void logfopen(LogContext *ctx)
  * a convenience into data loss. Rotation needs a time-varying name; the config
  * dialog says so, and the event log says so here if it is ever asked to.
  */
-void logfile_rotate(LogContext *ctx)
+/*
+ * KiTTY: the log file currently being written, with the &-codes in the name
+ * already substituted. NULL when nothing is open, which is what the menu uses
+ * to decide whether there is anything to offer.
+ */
+const char *logfile_current_name(LogContext *ctx)
+{
+    if (!ctx || ctx->state != L_OPEN || !ctx->currlogfilename)
+        return NULL;
+    return filename_to_str(ctx->currlogfilename);
+}
+
+/*
+ * KiTTY: would closing and reopening the log land on a DIFFERENT file?
+ *
+ * This one predicate separates the two things a close-and-reopen can mean. A
+ * name with a time in it (&T) gives a new file each time - that is rotation. A
+ * fixed name gives the same file back, so a reopen can only truncate it - that
+ * is clearing. The menu asks this so its label matches what the action will
+ * actually do.
+ */
+bool logfile_name_varies(LogContext *ctx)
 {
     struct tm tm;
     Filename *newname;
-    bool unchanged;
+    bool varies;
 
     if (!ctx || ctx->state != L_OPEN || !ctx->currlogfilename)
-        return;
+        return false;
 
     tm = ltime();
     newname = xlatlognam(conf_get_filename(ctx->conf, CONF_logfilename),
                          conf_dest(ctx->conf),
                          conf_get_int(ctx->conf, CONF_port), &tm);
-    unchanged = filename_equal(newname, ctx->currlogfilename);
+    varies = !filename_equal(newname, ctx->currlogfilename);
     filename_free(newname);
+    return varies;
+}
 
-    if (unchanged) {
+/*
+ * KiTTY: clear the log the user is looking at - truncate THIS file, whatever
+ * "what to do if the log file already exists" says.
+ *
+ * That setting answers a different question: what to do when a session STARTS
+ * and finds a file already there. Asking it again here made an explicit
+ * "clear" do nothing at all in append mode. Classic KiTTY reopened with "wb"
+ * unconditionally; this restores that.
+ */
+void logfile_clear(LogContext *ctx)
+{
+    if (!ctx || ctx->logtype == LGTYP_NONE || !ctx->currlogfilename)
+        return;
+    logfclose(ctx);
+    logfopen_callback(ctx, 2);         /* 2 = truncate, same name */
+    ctx->at_line_start = true;
+}
+
+void logfile_rotate(LogContext *ctx)
+{
+    if (!ctx || ctx->state != L_OPEN || !ctx->currlogfilename)
+        return;
+
+    if (!logfile_name_varies(ctx)) {
         logevent(ctx, "Log rotation skipped: the log file name does not "
                  "change with time (use &T, or &Y&M&D, in it) - rotating "
                  "into the same name would overwrite the log");

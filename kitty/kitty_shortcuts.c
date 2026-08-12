@@ -242,6 +242,8 @@ void InitShortcuts( void ) {
 		shortcuts_tab.clearscrollback = 0 ;
 	if( !readINI(KittyIniFile,"Shortcuts","clearlogfile",buffer, sizeof(buffer)) || ( (shortcuts_tab.clearlogfile=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.clearlogfile = 0 ;
+	if( !readINI(KittyIniFile,"Shortcuts","openlogfile",buffer, sizeof(buffer)) || ( (shortcuts_tab.openlogfile=DefineShortcuts(buffer))<0 ) )
+		shortcuts_tab.openlogfile = 0 ;
 	if( !readINI(KittyIniFile,"Shortcuts","closerestart",buffer, sizeof(buffer)) || ( (shortcuts_tab.closerestart=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.closerestart = 0 ;
 	if( !readINI(KittyIniFile,"Shortcuts","eventlog",buffer, sizeof(buffer)) || ( (shortcuts_tab.eventlog=DefineShortcuts(buffer))<0 ) )
@@ -402,8 +404,10 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 		{ SendMessage( hwnd, WM_COMMAND, IDM_RECONF, 0 ) ; return 1 ; }
 	else if( key == shortcuts_tab.clearscrollback )		// Clear scrollback
 		{ SendMessage( hwnd, WM_COMMAND, IDM_CLRSB, 0 ) ; return 1 ; }
-	else if( key == shortcuts_tab.clearlogfile )		// Clear log file
+	else if( key == shortcuts_tab.clearlogfile )		// Clear log file / start a new one
 		{ SendMessage( hwnd, WM_COMMAND, IDM_CLEARLOGFILE, 0 ) ; return 1 ; }
+	else if( key == shortcuts_tab.openlogfile )		// Open the current log file
+		{ SendMessage( hwnd, WM_COMMAND, IDM_OPENLOGFILE, 0 ) ; return 1 ; }
 	else if( key == shortcuts_tab.closerestart )		// Close + restart
 		{ SendMessage( hwnd, WM_COMMAND, IDM_RESTARTSESSION, 0 ) ; return 1 ; }
 	else if( key == shortcuts_tab.eventlog )		// Event log

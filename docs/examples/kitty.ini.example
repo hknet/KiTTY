@@ -602,9 +602,17 @@
 ; the box, so they do nothing until you put a combination here. Most of them
 ; are also on the window menu, which is how they are reachable at all today.
 ;
+; How to write one:  {CONTROL}{SHIFT}L  {ALT}F4  {SHIFT}F12  - modifiers first,
+; in braces, then the key. So:
+;    openlogfile={CONTROL}{SHIFT}L      open this session's log file
+;    eventlog={CONTROL}{SHIFT}E         show the event log
+;
 ; Two things worth knowing before you pick a combination:
-;  - Ctrl+Shift+<letter> is where the predefined user commands live, and they
-;    are claimed first - binding an action there will not reach it.
+;  - Ctrl+Shift+<letter> is also where the predefined user commands live, but
+;    a binding here WINS: the user-command keys are tried last, and only when
+;    a command is actually defined in that slot. The cost is the other way
+;    round - binding Ctrl+Shift+L here means the 12th user command can no
+;    longer be reached by keyboard, only from its menu.
 ;  - shortcuts=no in [KiTTY] switches this whole section off.
 
 ; (re)send automatic command (default is SHIFT+F12)
@@ -618,9 +626,22 @@
 ;    No default key - it does nothing until you set one here.
 ;clearscrollback=
 
-; Clear log file
+; Clear the log file - or start a new one
+;    Which of the two it does depends on the log file name in
+;    Session > Logging. A fixed name (kitty.log) can only be emptied, so it is
+;    emptied. A name with a time in it (kitty_&T.log) gives a different file
+;    each time, so a new one is started and the old one is kept - the window
+;    menu says which it is about to do.
 ;    No default key - it does nothing until you set one here.
+;    Example:  clearlogfile={CONTROL}{SHIFT}K
 ;clearlogfile=
+
+; Open the log file of this session
+;    Opens the file this session is logging to, in whatever your system opens
+;    .log files with. Nothing happens if the session is not logging.
+;    No default key - it does nothing until you set one here.
+;    Example:  openlogfile={CONTROL}{SHIFT}L
+;openlogfile=
 
 ; Close and restart current session
 ;    No default key - it does nothing until you set one here.
@@ -644,7 +665,9 @@
 ;editorclipboard=
 
 ; Show event log
+;    KiTTY's own record of what the connection did - not the session log.
 ;    No default key - it does nothing until you set one here.
+;    Example:  eventlog={CONTROL}{SHIFT}E
 ;eventlog=
 
 ; Switch font to black on white colors
@@ -907,8 +930,13 @@
 ; Yu Gothic UI, Malgun Gothic). Naming a built-in just promotes it. Fonts
 ; that are not installed are skipped. Start the list with ! to REPLACE the
 ; built-in defaults instead.
-;fallback=Symbols Nerd Font Mono,JetBrains Mono
-;fallback=!MyOnlyFont1,MyOnlyFont2
+;    Example:  fallback=Symbols Nerd Font Mono,JetBrains Mono
+;                 try those two first, then fall through to the built-in list
+;    Example:  fallback=!MyOnlyFont1,MyOnlyFont2
+;                 the leading ! drops the built-in list: only these two are
+;                 tried, so a character neither font has stays a blank box
+;    Default is empty - the built-in list above is used as it stands.
+;fallback=
 
 ; override: force a Unicode range (or single codepoint, hex) to a specific
 ; font regardless of probe results; multiple entries separated by ;

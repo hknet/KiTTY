@@ -1893,6 +1893,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #endif
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
             AppendMenu(toolmenu, MF_ENABLED, IDM_PRINT,        "Print clip&board");
+            /* Both log items are re-labelled and enabled/greyed in
+             * WM_INITMENUPOPUP: whether there is a log at all, and whether
+             * clearing or rotating is what will happen, are only known when
+             * the menu is opened. */
+            AppendMenu(toolmenu, MF_ENABLED, IDM_OPENLOGFILE,  "&Open log file");
             AppendMenu(toolmenu, MF_ENABLED, IDM_CLEARLOGFILE, "Clear log fil&e");
             /* "Export current settings" exports the RUNNING session, a per-
              * connection action, so it belongs on the terminal menu. Whole-store
@@ -4053,6 +4058,24 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * the window is open; the menu was built once, so re-check it here. */
         kitty_sync_transparency_menu((HMENU)wParam, wgs->conf, IDM_TRANSPARUP,
                                      IDM_TRANSPARDOWN, IDM_FONTUP);
+        {
+            /* KiTTY: the two log items. Both are dead without a log, and the
+             * second one does two different jobs: with a time in the file name
+             * a close-and-reopen starts a NEW file (rotate), with a fixed name
+             * it can only truncate the one we have (clear). Say which. */
+            HMENU mp = (HMENU)wParam;
+            bool haslog = (wgs && wgs->logctx &&
+                           logfile_current_name(wgs->logctx) != NULL);
+            EnableMenuItem(mp, IDM_OPENLOGFILE, MF_BYCOMMAND |
+                           (haslog ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
+            EnableMenuItem(mp, IDM_CLEARLOGFILE, MF_BYCOMMAND |
+                           (haslog ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
+            if (haslog)
+                ModifyMenu(mp, IDM_CLEARLOGFILE, MF_BYCOMMAND | MF_STRING,
+                           IDM_CLEARLOGFILE,
+                           logfile_name_varies(wgs->logctx) ?
+                           "Start a new log file &now" : "Clear log fil&e");
+        }
 #endif
         if ((HMENU)wParam == wgs->savedsess_menu) {
             /* About to pop up Saved Sessions sub-menu.
@@ -4646,12 +4669,35 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             kitty_bw(wgs->term_hwnd);
             break;
           case IDM_CLEARLOGFILE:
+            /* Do what the label promised (see WM_INITMENUPOPUP). Previously
+             * this closed and reopened through logfopen(), which asks the
+             * "file already exists" setting again - so in append mode an
+             * explicit clear silently did nothing. */
             if (wgs->logctx &&
                 conf_get_int(wgs->conf, CONF_logtype) != LGTYP_NONE) {
-                logfclose(wgs->logctx);
-                logfopen(wgs->logctx);
+                if (logfile_name_varies(wgs->logctx))
+                    logfile_rotate(wgs->logctx);
+                else
+                    logfile_clear(wgs->logctx);
             }
             break;
+          case IDM_OPENLOGFILE: {
+            /* KiTTY: open the session's own log in whatever the system uses
+             * for it (hknet/KiTTY#31). Flush first - with "flush log file
+             * frequently" off, the newest lines are still in the C buffer,
+             * and those are exactly the ones being looked for. */
+            const char *lf = wgs->logctx ? logfile_current_name(wgs->logctx)
+                                         : NULL;
+            if (lf) {
+                logflush(wgs->logctx);
+                ShellExecute(hwnd, "open", lf, NULL, NULL, SW_SHOWNORMAL);
+            } else {
+                /* No log open: nothing to show. The menu greys this out, so
+                 * getting here means the state changed under the menu. */
+                MessageBeep(MB_ICONWARNING);
+            }
+            break;
+          }
           case IDM_RESIZE: {
             /* KiTTY: resize terminal to lParam cols(LOWORD) x rows(HIWORD) */
             int w = LOWORD(lParam), h = HIWORD(lParam);

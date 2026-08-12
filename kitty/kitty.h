@@ -354,6 +354,7 @@ struct TShortcuts {
 	int changesettings ;
 	int clearscrollback ;
 	int clearlogfile ;
+	int openlogfile ;
 	int closerestart ;
 	int eventlog ;
 	int fullscreen ;
@@ -647,6 +648,11 @@ void xyz_updateMenuItems(Terminal *term) ;
 #endif
 #ifndef IDM_CLEARLOGFILE
 #define IDM_CLEARLOGFILE 0xB100
+#endif
+#ifndef IDM_OPENLOGFILE
+/* Must match windows/kitty_rc_additions.h. Multiples of 0x10 only: the
+ * WM_SYSCOMMAND dispatch masks with ~0xF. */
+#define IDM_OPENLOGFILE 0xB210
 #endif
 
 #ifdef MOD_RECONNECT

@@ -2198,6 +2198,14 @@ void logfclose(LogContext *logctx);
 /* KiTTY: close the log so the next write reopens it under a freshly
  * substituted name. Declined when the name would not change - see logging.c. */
 void logfile_rotate(LogContext *logctx);
+/* KiTTY: truncate the log being written, whatever the "file already exists"
+ * setting says - an explicit clear is not the same question. */
+void logfile_clear(LogContext *logctx);
+/* KiTTY: the file currently being written (&-codes substituted), or NULL. */
+const char *logfile_current_name(LogContext *logctx);
+/* KiTTY: would a reopen land on a different file? Distinguishes "rotate" from
+ * "clear", so a menu can say which it is about to do. */
+bool logfile_name_varies(LogContext *logctx);
 #endif
 void logtraffic(LogContext *logctx, unsigned char c, int logmode);
 void logflush(LogContext *logctx);

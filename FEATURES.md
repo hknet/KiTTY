@@ -427,6 +427,16 @@ If you would rather not learn strftime to try it, the button under the field fil
 
 **Rotation.** *Log rotation delay* starts a new log file every N seconds, so a long-running session becomes a series of manageable files instead of one that grows all week. This only works if the file name changes with time — put `&T` in it, as in `kitty_&H_&T.log`. If the name has no time-varying code, KiTTY **declines to rotate** and says so in the Event Log, because reopening the same name would overwrite the log instead of rotating it.
 
+**Reading the log while you work.** The window menu's **Tools** section opens the log this session is writing, in whatever your system opens `.log` files with — no hunting for the file, and it works with a rotating name, where the "current" file changes through the day. Next to it is an item that either clears the log or starts a new one, and says which: with a fixed file name it can only empty the file, with a time-varying name it starts a fresh one and keeps the old.
+
+Both can be given keys in `kitty.ini`, which is worth doing if you check logs often:
+
+```ini
+[Shortcuts]
+openlogfile={CONTROL}{SHIFT}L      ; open this session's log file
+eventlog={CONTROL}{SHIFT}E         ; show the event log (KiTTY's own record)
+```
+
 **How to enable:** **Session > Logging**. Choose what to log, set *Log file name*, then put your pattern in *Timestamp (strftime format)* — or press the button beneath it. For rotation, set *Log rotation delay* and include `&T` in the file name.
 
 (no screenshot)
