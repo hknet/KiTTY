@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.73 — Known issues & limitations
+# KiTTY 0.84.1.74 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -229,7 +229,21 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.73-beta @ 2026-08-11`.
+- **Version string:** binaries report `0.84.1.74-beta @ 2026-08-13`.
+- **`kittygen.exe` and `kittygen-cli.exe` are two programs with two command
+  lines.** The window one takes only `-t`, `-b`, `-E`, `-primes`, `-strong-rsa`,
+  `-ppk-param`, `-restrict-acl` and `-pgpfp`; `-C`, `-q`, `-o`, `-l` and
+  `--new-passphrase` belong to **`kittygen-cli.exe`**. Give the window version a
+  switch it does not know and it says so in a dialog and waits for OK — correct
+  for a window, fatal in a script, which then hangs until someone clicks it.
+  **Script with `kittygen-cli.exe`.** Merging the two is on the list.
+- **kageant's key-file check protects against a swapped file, not against a
+  program running as you.** The fingerprint it compares against, and the path it
+  watches, are stored in the registry (or in `kitty.ini` on a portable install)
+  in plain text, so anything running under your account can rewrite them to
+  match a file it has put there. It answers "is this still the key that was on
+  my stick?", which is the case it was built for; it is not a defence against
+  malware already running as you.
 - **Embedded in mRemoteNG — vertical-drag wobble:** when KiTTY is hosted inside a
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;

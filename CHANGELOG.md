@@ -5,7 +5,49 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
-## 0.84.1.74-beta — 2026-08-11
+## 0.84.1.74-beta — 2026-08-13
+
+### Security
+
+- **kageant checks that a remembered key is still the key it remembers.** A key
+  loaded automatically at startup, when the drive holding it appears, or after
+  being unloaded because that drive was removed, is now compared against the
+  fingerprint recorded for that path — and the comparison
+  is made on the key the agent actually ended up holding, not on a separate look
+  at the file beforehand, so a file that changes between the two cannot slip
+  through. A key that does not match is taken back out of the agent instead of
+  being offered to servers. Nothing is asked while you are logging in or
+  plugging a device in: the key list shows such a key as a *mismatch*, the tray
+  tooltip says how many are being held back, and if a program asks the agent for
+  its keys while one is, a notice says so and names the program. A changed key
+  is accepted in one place only — open it in the key list and use *Accept this
+  key*, which shows the fingerprint recorded beside the one the file holds now.
+  Keys remembered by an earlier version have no fingerprint on record: those
+  load once, are recorded then, and are checked from that point on.
+- **Keys whose file was not there can be retried without restarting.** *Retry
+  unavailable keys* in the key list loads the ones whose file has since turned
+  up — a share that came back, or a stick that was already plugged in when
+  kageant started, neither of which produces a device event.
+- **Confirmation before key use now covers every route to a key.** Keys added
+  through the agent's add-key extension, and SSH-1 challenge signatures, did not
+  consult the per-key *ask before use* flag, so a key that should have prompted
+  could be used without one. A malformed agent message with a zero-length body
+  could also read past the end of its buffer and stop the agent.
+- **A key that will not load no longer takes the agent off the air.** kageant
+  reported it with a message box while loading its remembered keys, and a modal
+  blocks the agent's message loop: until someone clicked it, the agent answered
+  nothing at all, so every `ssh`, `git` or `scp` call that wanted a key simply
+  hung. It is a tray notice now. The offer that box carried is not lost — the
+  key stays in the key list, where *Remove* drops it for good, and clicking the
+  notice opens that window.
+- **kageant no longer blames an agent that is not there.** A key it could not
+  add was reported as *"The already running agent refused to add the key"* even
+  when kageant was the only agent running and had refused its own key; it now
+  says which case it is.
+- **"Ask confirmation before key use" remembers *Never*.** The three-state
+  setting was stored as a plain on/off in the registry, so *Never* came back as
+  *by key comment* on the next start — silently restoring prompts that had been
+  switched off.
 
 ### Added
 
