@@ -241,6 +241,25 @@ if(KITTY_INI_CHECK_PYTHON)
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Checking menu command ids for duplicates and 0x10 spacing")
   add_custom_target(check_menu_ids ALL DEPENDS ${KITTY_MENUID_CHECK_STAMP})
+
+  # Dialog accelerators. Same class of mistake as the menu ids: it builds, it
+  # looks right, and the only symptom is a key that presses the wrong control.
+  # "&Add Key" and "Stop &agent" shared Alt+A in kageant's key list until a user
+  # hit it - and Alt+A pressed Stop agent.
+  file(GLOB KITTY_ACCEL_CHECK_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/windows/*.rc)
+  set(KITTY_ACCEL_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_accel_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_ACCEL_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-dialog-accelerators.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_ACCEL_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-dialog-accelerators.py
+            ${KITTY_ACCEL_CHECK_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking dialog accelerators for duplicates within a dialog")
+  add_custom_target(check_dialog_accelerators ALL
+                    DEPENDS ${KITTY_ACCEL_CHECK_STAMP})
 endif()
 
 configure_file(cmake/cmake.h.in ${GENERATED_SOURCES_DIR}/cmake.h)

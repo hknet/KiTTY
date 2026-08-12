@@ -242,6 +242,14 @@ typedef struct {
     int  failed;      /* the file was there and would not load: stop retrying */
     int  slot;        /* where it sat in the startup list - see below */
     char fp[160];     /* stored fingerprint, "" if the entry had none */
+    /*
+     * The file at this path is NOT the key we recorded. Set when a device
+     * arrives carrying a different key: the key is refused and the user is
+     * told, rather than a dialog being raised at the moment something was
+     * plugged in. The stored fingerprint above is deliberately left ALONE -
+     * adopting the new one here would ratify the swap silently.
+     */
+    int  mismatch;
 } KageantPendingKey;
 static KageantPendingKey g_pending[64];
 static int g_npending = 0;
@@ -1034,8 +1042,28 @@ void kageant_media_gone(void)
              * which keys a server is asked to try first, and a wrong key costs
              * one of the attempts before a lockout. */
             kageant_note_pending(g_loaded_keypaths[i], g_loaded_encrypted[i], i);
-            if (g_npending > 0)
+            if (g_npending > 0) {
                 g_pending[g_npending - 1].confirm = kageant_confirm_of_loaded(i);
+                /*
+                 * And the fingerprint of the key we are unloading - WE KNOW IT,
+                 * it is the blob we just deleted by. Without this the entry goes
+                 * back with nothing recorded, and when the media returns the
+                 * retry takes the "nothing to compare against" branch and loads
+                 * whatever is at that path: unplug, swap the file, plug in, and
+                 * the swap is accepted and adopted as the new baseline.
+                 *
+                 * Reported from a real stick 2026-08-13. It survived testing
+                 * because pending entries have two origins and only the other
+                 * one - the stored startup list - was ever exercised; that one
+                 * carries a fingerprint, so the check looked complete.
+                 */
+                char *fp = kageant_fp_of_blob(g_loaded_blobs[i]);
+                if (fp) {
+                    snprintf(g_pending[g_npending - 1].fp,
+                             sizeof(g_pending[0].fp), "%s", fp);
+                    sfree(fp);
+                }
+            }
 
             /* And out of the loaded list, or the next save would write it twice
              * - once as loaded, once as pending. */
@@ -1125,6 +1153,11 @@ void kageant_forget_loaded_by_blob(ptrlen blob)
 
     if (removed && kageant_startup_get())
         kageant_save_startup_keys();
+    /* KiTTY: removing a key can take a HELD-BACK entry with it (they are
+     * matched on the stored fingerprint above), so the tooltip's warning line
+     * may no longer be true. */
+    if (removed)
+        kageant_refresh_tray_tip();
 
     /*
      * Prune the saved offer order too. It is rebuilt from the keys the agent
@@ -1152,51 +1185,193 @@ void kageant_forget_loaded_by_blob(ptrlen blob)
  * dismissed and will return at every start is one people learn to click
  * through, which is worse than not warning at all.
  */
-static int kageant_fp_ok(const char *path, const char *stored, int *adopt)
+/*
+ * KiTTY: does the file at `path` still hold the key `stored` describes?
+ *
+ *   1  = yes
+ *   0  = no, it is a different key
+ *  -1  = cannot tell (unreadable, or no fingerprint could be computed)
+ *
+ * The comparison lives here alone so the two callers cannot drift: the startup
+ * loader, which may ask the user about a mismatch, and the device-arrival
+ * retry, which must never ask and simply refuses.
+ */
+int kageant_fp_matches(const char *path, const char *stored)
 {
     strbuf *blob;
     char *actual;
-    char *msg;
-    int r;
+    int same;
 
-    *adopt = 0;
     if (!stored || !*stored)
-        return 1;                       /* nothing to compare against yet */
-
+        return -1;                      /* nothing to compare against */
     blob = kageant_pubblob(path);
     if (!blob)
-        return 0;    /* KiTTY: a stored fp we cannot verify -> skip, don't load */
+        return -1;
     actual = kageant_fp_of_blob(blob);
     strbuf_free(blob);
     if (!actual)
-        return 0;    /* KiTTY: unverifiable against a stored fp -> skip */
-
-    if (!strcmp(actual, stored)) {
-        sfree(actual);
-        return 1;
-    }
-
-    msg = dupprintf(
-        "The key file loaded at startup is NOT the key that was there before.\n\n"
-        "    %s\n\n"
-        "Stored:  %s\n"
-        "Found:   %s\n\n"
-        "If you replaced this key yourself, this is expected - answer Yes and "
-        "the new key is remembered, and you will not be asked again.\n\n"
-        "If you did not, the file has been changed by something else. Answer No "
-        "to leave it out until you have looked at it.\n\n"
-        "Load this key and remember it?",
-        path, stored, actual);
-    r = MessageBox(NULL, msg, "kageant - this key has changed",
-                   MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
-    sfree(msg);
+        return -1;
+    same = !strcmp(actual, stored);
     sfree(actual);
+    return same ? 1 : 0;
+}
 
-    if (r == IDYES) {
-        *adopt = 1;
+/*
+ * Is the key we are now holding for `path` the one recorded for it?
+ *
+ * This is the ONLY fingerprint comparison on the load paths, and it is made
+ * against what the agent actually ended up with rather than against the file.
+ *
+ * It used to be the other way round - inspect the file, then hand the same
+ * PATH to the loader, which opened it a second time. That was not a design;
+ * it fell out of bolting a check onto PuTTY's loader, whose entry point takes
+ * a filename (pageant_add_keyfile) and not a key we already parsed. Two reads
+ * of a file whose contents are not ours between them is exactly the hole this
+ * check exists to close: read once as the right key, once as another.
+ *
+ * Loading before checking is safe here because agent requests are answered on
+ * this same thread - the WM_COPYDATA subthread only signals an event, and both
+ * it and the named pipe are dispatched from the main event loop - so nothing
+ * can ask the agent to sign anything while this function is running.
+ *
+ * Returns 1 if the key matches, or if there is nothing recorded to compare
+ * against; 0 if it does not, in which case the key has been taken back out of
+ * the agent before returning. The stored ENTRY is deliberately left alone: the
+ * user's configuration is not something a swapped file gets to edit.
+ */
+static int kageant_verify_loaded(const char *path, const char *stored)
+{
+    int i, j, same, still_backed = 0;
+    char *fp;
+
+    if (!stored || !*stored)
+        return 1;                     /* nothing recorded to compare against */
+
+    for (i = g_nloaded - 1; i >= 0; i--)          /* the newest one wins */
+        if (!stricmp(g_loaded_keypaths[i], path))
+            break;
+    if (i < 0 || i >= g_nblobs || !g_loaded_blobs[i])
+        return 1;                     /* never identified: nothing to check */
+
+    fp = kageant_fp_of_blob(g_loaded_blobs[i]);
+    if (!fp)
         return 1;
+    same = !strcmp(fp, stored);
+    sfree(fp);
+    if (same)
+        return 1;
+
+    /*
+     * Does another tracked file provide this same key? Then the agent's copy is
+     * not ours to remove: a file that has been swapped for a copy of some OTHER
+     * key the user legitimately loaded would otherwise take that key away - a
+     * swap turning into a way to unload keys. Drop our own tracking of this
+     * path only, and let the entry be marked instead.
+     */
+    for (j = 0; j < g_nloaded && !still_backed; j++) {
+        if (j == i || j >= g_nblobs || !g_loaded_blobs[j])
+            continue;
+        if (g_loaded_blobs[j]->len == g_loaded_blobs[i]->len &&
+            !memcmp(g_loaded_blobs[j]->s, g_loaded_blobs[i]->s,
+                    g_loaded_blobs[i]->len))
+            still_backed = 1;
     }
+
+    /*
+     * Out of the agent first, then out of our own lists - in that order,
+     * because the delete reads the blob we are about to free.
+     */
+    if (!still_backed)
+        pageant_delete_ssh2_key_by_blob(ptrlen_from_strbuf(g_loaded_blobs[i]));
+
+    sfree(g_loaded_keypaths[i]);
+    strbuf_free(g_loaded_blobs[i]);
+    for (j = i; j < g_nloaded - 1; j++) {
+        g_loaded_keypaths[j] = g_loaded_keypaths[j + 1];
+        g_loaded_encrypted[j] = g_loaded_encrypted[j + 1];
+        g_loaded_blobs[j] = g_loaded_blobs[j + 1];
+    }
+    g_nloaded--;
+    g_nblobs = g_nloaded;
     return 0;
+}
+
+/*
+ * Can this key be added in deferred (still-encrypted) form?
+ *
+ * SSH-1 keys cannot: the agent's add-encrypted extension is SSH-2 only, and
+ * asking for it fails the whole add with "Can't add SSH-1 keys in encrypted
+ * form" (pageant.c). Anything that loads deferred-by-default therefore has to
+ * ask first, or an SSH-1 key never loads at all and the user gets an error box
+ * naming a file that is perfectly fine.
+ */
+static int kageant_can_defer(const char *path)
+{
+    Filename *fn = filename_from_str(path);
+    int type = key_type(fn);
+    filename_free(fn);
+    return type != SSH_KEYTYPE_SSH1;
+}
+
+/*
+ * Load one startup entry and keep it only if it is the key we recorded.
+ *
+ * Deferred FIRST, always, whatever the entry says: a deferred add asks for
+ * nothing, so the fingerprint is checked before anyone is invited to type a
+ * passphrase at a file that may have been swapped. Only once it is the right
+ * key does an entry stored as "decrypt at load" get decrypted - which re-reads
+ * the file, so the result is checked again.
+ *
+ * There is no dialog on this path any more. It used to raise a modal yes/no at
+ * startup where "Yes" adopted the new fingerprint - one click, made while
+ * logging in and looking at something else, permanently ratified a key swap.
+ * Consent for a changed key now happens in the key list, deliberately, on a row
+ * the user went and opened.
+ *
+ * Returns 1 loaded and verified, 0 the file held a DIFFERENT key, -1 nothing
+ * could be loaded from it at all.
+ */
+static int kageant_load_startup_entry(const char *path, int encrypted,
+                                      const char *fp)
+{
+    Filename *fn;
+    int before = g_nloaded;
+    int defer = kageant_can_defer(path);
+
+    fn = filename_from_str(path);
+    win_add_keyfile(fn, defer ? true : false);  /* deferred asks nothing */
+    filename_free(fn);
+    if (g_nloaded == before)
+        return -1;                             /* would not load at all */
+    if (!kageant_verify_loaded(path, fp))
+        return 0;                              /* not our key; already removed */
+
+    if (!encrypted && defer) {
+        /* The entry wants it decrypted now. That goes through the file again
+         * (the same path the key list's Decrypt button uses), so check what we
+         * are holding once more afterwards. */
+        fn = filename_from_str(path);
+        win_add_keyfile(fn, false);
+        filename_free(fn);
+        if (!kageant_verify_loaded(path, fp))
+            return 0;
+    }
+
+    /*
+     * Put the recorded load mode back. The deferred add above tracked this key
+     * as ",encrypted", and the startup list is saved from that in-memory state
+     * - so without this, loading a ",plain" entry rewrote it as deferred, and
+     * the next save made that permanent. The retry path has the same guard for
+     * the same reason (measured 2026-08-08; caught again here 2026-08-13, by
+     * the harness asserting what ended up in the registry).
+     */
+    {
+        int j;
+        for (j = 0; j < g_nloaded; j++)
+            if (!stricmp(g_loaded_keypaths[j], path))
+                g_loaded_encrypted[j] = encrypted;
+    }
+    return 1;
 }
 
 /*
@@ -1270,9 +1445,23 @@ char *kageant_file_of_blob(ptrlen blob)
     return NULL;
 }
 
-/* Remember a startup key whose file was not there, so a device event can try it
+/*
+ * Remember a startup key whose file was not there, so a device event can try it
  * again. Silently full at 64: past that, something is wrong with the list
- * rather than with the media. */
+ * rather than with the media.
+ *
+ * ⚠️ THE FINGERPRINT IS CLEARED HERE and every caller must set it unless it
+ * genuinely has none. An entry with no fingerprint is loaded WITHOUT being
+ * checked - that carve-out exists only for entries written by a version that
+ * did not record one, so that upgrading does not stop keys loading.
+ *
+ * Pending entries have two origins:
+ *   - the stored startup list, where an old entry may legitimately have none;
+ *   - a key being UNLOADED because its media went away (kageant_media_gone),
+ *     where the fingerprint is known and MUST be carried over.
+ * The second one shipped without it, which turned unplug-swap-replug into an
+ * accepted swap. If a third producer appears, it belongs in this list.
+ */
 void kageant_note_pending(const char *path, int encrypted, int slot)
 {
     int i;
@@ -1287,22 +1476,76 @@ void kageant_note_pending(const char *path, int encrypted, int slot)
     g_pending[g_npending].failed = 0;
     g_pending[g_npending].slot = slot;
     g_pending[g_npending].fp[0] = '\0';  /* the array slot may be reused */
+    g_pending[g_npending].mismatch = 0;  /* ditto - do not inherit a refusal */
     g_npending++;
 }
 
 /*
- * Try the pending keys again. Called when a device arrives.
+ * Park a startup entry that was NOT loaded, with the reason.
+ *
+ * The entry stays in the user's configuration and gains a row in the key list:
+ * a key that is refused has to be visible somewhere, or the only symptom is an
+ * SSH login that stopped working.
+ *
+ * The two reasons are kept apart, because only one of them is an accusation.
+ * `mismatch` means the file held a DIFFERENT key and needs the user's consent
+ * to resolve; otherwise the file simply would not load - the ordinary `failed`
+ * state, which must NOT be reported as "your key was replaced". A stick still
+ * being scanned by a virus checker would otherwise raise a swap alarm.
+ */
+static void kageant_park_unloaded(const char *path, int encrypted, int confirm,
+                                  const char *fp, int mismatch)
+{
+    int n;
+    kageant_note_pending(path, encrypted, g_nloaded + g_npending);
+    if (g_npending <= 0)
+        return;
+    n = g_npending - 1;
+    g_pending[n].confirm = confirm;
+    if (fp && *fp)
+        snprintf(g_pending[n].fp, sizeof(g_pending[0].fp), "%s", fp);
+    g_pending[n].mismatch = mismatch ? 1 : 0;
+    g_pending[n].failed = mismatch ? 0 : 1;
+}
+
+/*
+ * Try the pending keys again. Called when a device arrives, and from the key
+ * list's "Retry unavailable keys" button.
  *
  * Loaded DEFERRED whatever the entry said: a deferred load never asks for a
  * passphrase - it is wanted at first use - and a device event is no moment to
  * put a modal prompt in front of someone. The key coming back is silent; using
  * it asks, as it would for any deferred key.
+ *
+ * manual says the user pressed the button, which changes three things:
+ *
+ *  - the [Agent] retrykeys setting no longer applies. That setting governs
+ *    retrying by itself, and this is not by itself.
+ *  - entries parked as "failed" are tried once more. Having just fixed the
+ *    file is the reason to press the button.
+ *  - the outcome is always reported, "nothing happened" included - see
+ *    kageant_note_retry_result(). The automatic path deliberately reports only
+ *    news; a button that can be pressed to no visible effect is a bug.
+ *
+ * The load stays deferred either way: a passphrase prompt raised out of a
+ * button press is still a modal box appearing where nobody asked for one.
  */
-void kageant_retry_pending_keys(void)
+static void kageant_retry_pending_pass(int manual)
 {
     int i, w = 0, loaded_any = 0;
-    if (!g_npending || !kageant_retry_keys())
+    int mismatch_new = 0, unchecked = 0;
+    int loaded_n = 0, refused_n = 0, absent_n = 0, broken_n = 0;
+
+    if (!kageant_retry_keys() && !manual)
         return;
+    if (!g_npending) {
+        if (manual)
+            kageant_note_retry_result(0, 0, 0, 0, 0);
+        return;
+    }
+    if (manual)
+        for (i = 0; i < g_npending; i++)
+            g_pending[i].failed = 0;
 
     for (i = 0; i < g_npending; i++) {
         int before;
@@ -1313,25 +1556,70 @@ void kageant_retry_pending_keys(void)
              * list: the list is also what keeps the entry in the saved startup
              * keys, and a key must not vanish from a user's configuration
              * because one load went wrong. */
+            if (GetFileAttributesA(g_pending[i].path) ==
+                INVALID_FILE_ATTRIBUTES)
+                absent_n++;
+            else
+                broken_n++;
             if (w != i) g_pending[w] = g_pending[i];
             w++;
             continue;
         }
+        /*
+         * Nothing recorded to check against: it loads, and the fingerprint of
+         * whatever loaded becomes the baseline. Counted so the user is told it
+         * went unverified this once.
+         */
+        if (!g_pending[i].fp[0])
+            unchecked++;
         {
             Filename *fn = filename_from_str(g_pending[i].path);
             int j;
             before = g_nloaded;
             g_startup_loading = 1;             /* a failure now is a startup one */
-            win_add_keyfile(fn, true);
+            /* Deferred where that is possible - see kageant_can_defer. An
+             * SSH-1 key asked for deferred is refused outright, so this path
+             * used to fail every SSH-1 key on every device arrival. */
+            win_add_keyfile(fn, kageant_can_defer(g_pending[i].path) ?
+                                true : false);
             g_startup_loading = 0;
             filename_free(fn);
+
+            /*
+             * Is what we are now holding the key we recorded?
+             *
+             * This check used to run only at startup, which left the ONE place
+             * a swap is easiest - removable media - as the one place nothing
+             * was checked: a stick absent at login lands here, and whatever
+             * file appeared at that path was loaded unverified.
+             *
+             * A mismatch does NOT prompt. A device arriving is no moment for a
+             * dialog, and a fingerprint change is not something to wave away
+             * with one click either. The key is put back out of the agent, the
+             * entry is marked, and the user is told - see
+             * kageant_note_verify_problem().
+             */
+            if (g_nloaded != before &&
+                !kageant_verify_loaded(g_pending[i].path, g_pending[i].fp)) {
+                if (!g_pending[i].mismatch) {
+                    g_pending[i].mismatch = 1;
+                    mismatch_new++;        /* only a CHANGE is worth a notice */
+                }
+                refused_n++;               /* every pass, for the manual reply */
+                if (w != i) g_pending[w] = g_pending[i];
+                w++;
+                continue;
+            }
+            g_pending[i].mismatch = 0;     /* it is the right key again */
 
             if (g_nloaded == before) {
                 /* Did not load. Keep the entry, but stop trying it: the file is
                  * present and broken, the user has already been told, and
                  * repeating the box at every device event would be its own
-                 * annoyance. Restarting kageant tries again from scratch. */
+                 * annoyance. Restarting kageant tries again from scratch, and
+                 * so does the key list's "Retry unavailable keys". */
                 g_pending[i].failed = 1;
+                broken_n++;
                 if (w != i) g_pending[w] = g_pending[i];
                 w++;
                 continue;
@@ -1356,6 +1644,7 @@ void kageant_retry_pending_keys(void)
             if (g_pending[i].confirm)
                 kageant_apply_confirm_by_path(g_pending[i].path);
             loaded_any = 1;
+            loaded_n++;
         }
         /* Dropped from the list whether or not it loaded: if the file is there
          * and will not parse, retrying on every future device event only
@@ -1374,6 +1663,287 @@ void kageant_retry_pending_keys(void)
      */
     if (loaded_any)
         kageant_apply_saved_order();
+
+    if (manual)
+        kageant_note_retry_result(loaded_n, refused_n, absent_n, broken_n,
+                                  unchecked);
+    else
+        kageant_note_verify_problem(mismatch_new, unchecked);
+
+    kageant_refresh_tray_tip();    /* the held-back set may have changed */
+}
+
+/*
+ * The fingerprint of the file sitting at `path` right now, or NULL. Free it.
+ * The key list uses it to show the user what a changed file actually holds
+ * before they decide whether to accept it.
+ */
+char *kageant_fp_of_file(const char *path)
+{
+    strbuf *blob = kageant_pubblob(path);
+    char *fp;
+    if (!blob)
+        return NULL;
+    fp = kageant_fp_of_blob(blob);
+    strbuf_free(blob);
+    return fp;
+}
+
+/*
+ * The user has looked at a changed key in the key list and said yes to it.
+ *
+ * This is the ONLY way a new fingerprint is ever adopted. It replaces the
+ * modal that used to appear during startup, where a single click - made while
+ * logging in, with the dialog in front of whatever else was happening -
+ * permanently accepted a swapped key file.
+ *
+ * The entry's stored fingerprint is only rewritten AFTER the key has loaded and
+ * been verified against what was actually accepted, so a file that changes
+ * again between the click and the load does not get ratified by it.
+ *
+ * Returns 1 if the key is now loaded and the entry updated, 0 otherwise.
+ */
+int kageant_accept_pending_key(const char *path)
+{
+    int i, v;
+    char *actual;
+
+    for (i = 0; i < g_npending; i++)
+        if (!stricmp(g_pending[i].path, path))
+            break;
+    if (i >= g_npending || !g_pending[i].mismatch)
+        return 0;
+
+    actual = kageant_fp_of_file(path);
+    if (!actual)
+        return 0;                     /* cannot read it now: nothing to accept */
+
+    /* Load it and check we are holding what the user was shown. */
+    v = kageant_load_startup_entry(path, g_pending[i].encrypted, actual);
+    sfree(actual);
+    if (v != 1)
+        return 0;
+
+    if (g_pending[i].confirm)
+        kageant_apply_confirm_by_path(path);
+
+    /*
+     * Off the pending list - the key is loaded now, so it belongs to the loaded
+     * list instead, and saving writes its NEW fingerprint out from the key the
+     * agent is holding. Spliced here rather than through kageant_drop_pending(),
+     * which also deletes the stored entry: that would take the key out of the
+     * user's startup list for the moment between the two writes, and this is an
+     * acceptance, not a removal.
+     */
+    {
+        int j;
+        for (j = i; j < g_npending - 1; j++)
+            g_pending[j] = g_pending[j + 1];
+        g_npending--;
+    }
+    kageant_save_startup_keys();
+    kageant_apply_saved_order();
+    kageant_refresh_tray_tip();     /* one fewer key held back */
+    return 1;
+}
+
+/*
+ * KiTTY: somebody just asked for our keys while we are holding one back.
+ *
+ * This is the moment a refused key actually costs something - the login that
+ * is about to fail - rather than back when the stick was plugged in and the
+ * balloon may have been missed. It is also the ONLY trigger available: a
+ * refused key is not in the identity list, so nothing ever asks to sign with
+ * it.
+ *
+ * Rate-limited hard, because every SSH connection asks this, as do scp, git and
+ * any scripted plink - firing per request would be a balloon storm, and a
+ * warning that appears constantly is one people learn to dismiss:
+ *
+ *  - once per held-back SET. The count is the set's identity; it changes when a
+ *    key is refused or resolved, and only then does this re-arm.
+ *  - never while the key list is open. The user is already looking at the
+ *    answer.
+ */
+void kageant_do_identities_asked(unsigned long pid)
+{
+    static int announced_for = -1;      /* mismatch count already announced */
+    int held = kageant_mismatch_count();
+    char text[512];
+    char who[80];
+
+    if (held <= 0) {
+        announced_for = -1;             /* nothing held back: re-arm */
+        return;
+    }
+    if (held == announced_for)
+        return;                         /* same set, already said once */
+    if (!traywindow || kageant_keylist_open())
+        return;
+
+    who[0] = '\0';
+    if (pid) {
+        char path[MAX_PATH + 1];
+        HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
+                               (DWORD)pid);
+        if (h) {
+            DWORD n = sizeof(path);
+            if (QueryFullProcessImageNameA(h, 0, path, &n) && path[0]) {
+                const char *base = strrchr(path, '\\');
+                snprintf(who, sizeof(who), " %s", base ? base + 1 : path);
+            }
+            CloseHandle(h);
+        }
+        if (!who[0])
+            snprintf(who, sizeof(who), " a program (pid %lu)", pid);
+    }
+
+    snprintf(text, sizeof(text),
+             held == 1 ?
+             "Something%s just asked for your keys, and one of them is NOT "
+             "loaded: the file is not the key recorded for it. If that login "
+             "fails, this is why. Click to see it." :
+             "Something%s just asked for your keys, and %d of them are NOT "
+             "loaded: the files are not the keys recorded for them. If a login "
+             "fails, this is why. Click to see them.",
+             who, held);
+
+    kitty_notice_show("kageant: a key is being held back", text,
+                      KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
+                      traywindow, KAGEANT_WM_NOTICE_CLICK);
+    announced_for = held;
+}
+
+/* On a device arriving. */
+void kageant_retry_pending_keys(void) { kageant_retry_pending_pass(0); }
+
+/* On the key list's "Retry unavailable keys". Also the only way to drive the retry
+ * path without hardware: Windows will not let one process send another a
+ * WM_DEVICECHANGE (SendMessageTimeout fails with 87, PostMessage with 1159),
+ * so this button is what the fingerprint-refusal test can reach. */
+void kageant_retry_pending_keys_now(void) { kageant_retry_pending_pass(1); }
+
+/*
+ * KiTTY: say what verification did, without becoming noise.
+ *
+ * Called after a load pass (device arrival today). Two different things to
+ * report, and only when they are NEWS:
+ *
+ *  - mismatch_new: keys refused this pass because the file is not the key we
+ *    recorded. Counted per TRANSITION, not per pass: Windows sends several
+ *    WM_DEVICECHANGE messages for one insertion, and a refused entry stays on
+ *    the pending list, so reporting per pass would also announce it when an
+ *    unrelated mouse or phone was plugged in.
+ *
+ *  - unchecked: keys loaded with no recorded fingerprint to compare against.
+ *    That is one unverified load each, after which the fingerprint of whatever
+ *    loaded becomes the baseline - worth saying once.
+ *
+ * A notice, never a prompt: this fires when hardware appeared, which is not a
+ * moment to demand an answer. Clicking it opens the key list, where the State
+ * column says which key - and that list IS the persistent record, because the
+ * agent has no event log of its own (debug_logevent lives in kitty_win.c and
+ * is not linked here). A balloon is easily missed, so the refused entry must
+ * stay visible there until it is dealt with.
+ */
+void kageant_note_verify_problem(int mismatch_new, int unchecked)
+{
+    char text[512];
+
+    if (mismatch_new > 0) {
+        snprintf(text, sizeof(text),
+                 mismatch_new == 1 ?
+                 "A key file was NOT loaded: it is not the key recorded for "
+                 "that path. Click to see which - its State in the key list "
+                 "reads \"mismatch\"." :
+                 "%d key files were NOT loaded: they are not the keys recorded "
+                 "for those paths. Click to see which - their State in the key "
+                 "list reads \"mismatch\".",
+                 mismatch_new);
+        if (traywindow)
+            kitty_notice_show("kageant: key file changed", text,
+                              KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
+                              traywindow, KAGEANT_WM_NOTICE_CLICK);
+    }
+
+    if (unchecked > 0) {
+        snprintf(text, sizeof(text),
+                 unchecked == 1 ?
+                 "A key was loaded with no fingerprint on record, so nothing "
+                 "could be checked. Its fingerprint is recorded now and it "
+                 "will be checked from here on." :
+                 "%d keys were loaded with no fingerprint on record, so "
+                 "nothing could be checked. Their fingerprints are recorded "
+                 "now and they will be checked from here on.",
+                 unchecked);
+        if (traywindow)
+            kitty_notice_show("kageant: keys loaded unverified", text,
+                              KAGEANT_NOTICE_INFO, kageant_notice_seconds(10),
+                              traywindow, KAGEANT_WM_NOTICE_CLICK);
+    }
+}
+
+/*
+ * KiTTY: answer a "Retry unavailable keys".
+ *
+ * Always exactly one notice, whatever happened - including nothing. The
+ * automatic path reports only news, on purpose: it fires on hardware events
+ * and a refused entry stays refused across every later one. Reused here that
+ * would leave the button silent precisely when it is pressed a second time on
+ * a key that is still wrong, which reads as "the button is broken".
+ *
+ * Counts, not names: several entries can be in different states in one pass,
+ * and the key list is where a per-key answer belongs. Clicking the notice
+ * opens it.
+ */
+void kageant_note_retry_result(int loaded, int refused, int absent,
+                               int broken, int unchecked)
+{
+    char text[512];
+    int n = 0;
+    int warn = (refused > 0 || broken > 0);
+
+    if (!loaded && !refused && !absent && !broken) {
+        if (traywindow)
+            kitty_notice_show("kageant: nothing to retry",
+                              "No key is waiting to be loaded. Every "
+                              "remembered key is either loaded already or "
+                              "not in the startup list.",
+                              KAGEANT_NOTICE_INFO, kageant_notice_seconds(8),
+                              traywindow, KAGEANT_WM_NOTICE_CLICK);
+        return;
+    }
+
+    if (loaded > 0)
+        n += snprintf(text + n, sizeof(text) - n,
+                      "%d key%s loaded.%s ", loaded, loaded == 1 ? "" : "s",
+                      unchecked > 0 ?
+                      " There was no fingerprint on record for some of them,"
+                      " so nothing could be checked this once - what loaded"
+                      " is the baseline from here on." : "");
+    if (refused > 0)
+        n += snprintf(text + n, sizeof(text) - n,
+                      "%d refused: the file is not the key recorded for that "
+                      "path. ", refused);
+    if (absent > 0)
+        n += snprintf(text + n, sizeof(text) - n,
+                      "%d still not there. ", absent);
+    if (broken > 0)
+        n += snprintf(text + n, sizeof(text) - n,
+                      "%d could not be read as a key. ", broken);
+    /* All four clauses together come to well under sizeof(text), but snprintf
+     * returns what it WANTED to write, so an offset walked past the end would
+     * turn the size argument negative and enormous. */
+    if (n < 0 || n > (int)sizeof(text) - 1)
+        n = (int)sizeof(text) - 1;
+    snprintf(text + n, sizeof(text) - n, "Click to see which.");
+
+    if (traywindow)
+        kitty_notice_show(warn ? "kageant: keys not loaded"
+                               : "kageant: retry finished", text,
+                          warn ? KAGEANT_NOTICE_WARN : KAGEANT_NOTICE_INFO,
+                          kageant_notice_seconds(warn ? 12 : 8),
+                          traywindow, KAGEANT_WM_NOTICE_CLICK);
 }
 
 /* Is a startup-list load in progress? Lets the failure path tell "this key
@@ -1510,6 +2080,24 @@ int kageant_pending_get(int i, const char **path, int *encrypted,
     return 1;
 }
 
+/* KiTTY: was this entry refused because the file is not the key we recorded?
+ * Separate accessor so the older one keeps its signature and its callers. */
+int kageant_pending_mismatch(int i)
+{
+    return (i >= 0 && i < g_npending) ? g_pending[i].mismatch : 0;
+}
+
+/* KiTTY: how many entries are currently refused for a fingerprint mismatch -
+ * the number the tray tooltip and the key list want. */
+int kageant_mismatch_count(void)
+{
+    int i, n = 0;
+    for (i = 0; i < g_npending; i++)
+        if (g_pending[i].mismatch)
+            n++;
+    return n;
+}
+
 /* Remove one pending entry: from memory (or the next save would write it
  * right back) AND from the stored list. */
 void kageant_drop_pending(const char *path)
@@ -1526,6 +2114,8 @@ void kageant_drop_pending(const char *path)
         }
     }
     kageant_forget_startup_key(path);
+    /* the entry just dropped may have been one of the held-back ones */
+    kageant_refresh_tray_tip();
 }
 
 /* ------------------------------------------------------------------ *
@@ -1998,6 +2588,10 @@ static int kageant_entry_is_phantom(const char *path)
 void kageant_load_startup_keys(void)
 {
     const char *f;
+    /* Keys loaded with no fingerprint on record - reported once at the end, so
+     * the first start after an upgrade says what it did rather than doing it
+     * silently. */
+    int startup_unchecked = 0, startup_mismatch = 0;
     g_startup_missing = 0;
 
     if (!kitty_inilight_registry_authoritative() &&
@@ -2009,7 +2603,7 @@ void kageant_load_startup_keys(void)
          * startupkeyN line must not truncate the rest of the list. Stop only
          * after a run of empty slots (matching the save-side clear scan). */
         for (i = 1, gap = 0; gap < 8; i++) {
-            int enc = 0, conf = 0, adopt = 0;
+            int enc = 0, conf = 0;
             char *c;
             char fp[160];
             fp[0] = '\0';
@@ -2052,32 +2646,40 @@ void kageant_load_startup_keys(void)
                 }
                 continue;
             }
-            /* Is it still the key that was here? */
-            if (!kageant_fp_ok(abspath, fp, &adopt))
-                continue;               /* user said no: leave it out */
+            /* Load it, and keep it only if it is the key we recorded. A
+             * different key, or one that will not load, is parked with the
+             * reason instead - no dialog at login, and the key list is where it
+             * gets resolved. */
             {
-                Filename *fn = filename_from_str(abspath);
-                win_add_keyfile(fn, enc ? true : false);
-                filename_free(fn);
+                int v = kageant_load_startup_entry(abspath, enc, fp);
+                if (v != 1) {
+                    kageant_park_unloaded(abspath, enc, conf, fp, v == 0);
+                    if (v == 0) startup_mismatch++;
+                    continue;
+                }
                 if (conf)
                     kageant_apply_confirm_by_path(abspath);
             }
-            /* Write the list out afterwards if anything changed: a key the user
-             * accepted as replaced, or - the common case on the first run after
-             * an upgrade - an entry that had no fingerprint yet and has now
-             * been identified.
+            /* Write the list out afterwards if anything changed - the common
+             * case on the first run after an upgrade is an entry that had no
+             * fingerprint yet and has now been identified.
              *
              * AFTER the loop, never inside it: the list is saved from the keys
              * loaded so far, so saving half way through would truncate it to
              * whatever had loaded by then. */
-            if (adopt || !fp[0])
+            if (!fp[0])
                 g_fp_adopted = 1;
+            if (!fp[0])
+                startup_unchecked++;   /* loaded with nothing to compare */
         }
         g_startup_loading = 0;
         if (g_fp_adopted) {
             g_fp_adopted = 0;
             kageant_save_startup_keys();   /* now the list is complete */
         }
+        /* Say so once, after the list is complete - not per key. */
+        kageant_note_verify_problem(startup_mismatch, startup_unchecked);
+        kageant_refresh_tray_tip();
         return;
     }
 
@@ -2097,7 +2699,7 @@ void kageant_load_startup_keys(void)
                 for (char *p = buf; *p; p += strlen(p) + 1) {
                     int enc = 1;   /* legacy entries had no marker: deferred */
                     int conf = 0;
-                    int adopt = 0;
+
                     char fp[160];
                     char *c;
                     /* Parse a COPY: stripping the trailing tokens in place
@@ -2141,23 +2743,28 @@ void kageant_load_startup_keys(void)
                         }
                         continue;
                     }
-                    if (!kageant_fp_ok(entry, fp, &adopt))
-                        continue;
-                    {
-                        Filename *fn = filename_from_str(entry);
-                        win_add_keyfile(fn, enc ? true : false);
-                        filename_free(fn);
+                    {   /* see the ini branch above for all of this */
+                        int v = kageant_load_startup_entry(entry, enc, fp);
+                        if (v != 1) {
+                            kageant_park_unloaded(entry, enc, conf, fp, v == 0);
+                            if (v == 0) startup_mismatch++;
+                            continue;
+                        }
                         if (conf)
                             kageant_apply_confirm_by_path(entry);
                     }
-                    if (adopt || !fp[0])
+                    if (!fp[0])
                         g_fp_adopted = 1;   /* see the ini branch above */
+                    if (!fp[0])
+                        startup_unchecked++;
                 }
                 g_startup_loading = 0;
                 if (g_fp_adopted) {
                     g_fp_adopted = 0;
                     kageant_save_startup_keys();
                 }
+                kageant_note_verify_problem(startup_mismatch, startup_unchecked);
+                kageant_refresh_tray_tip();
             }
             sfree(buf);
         }

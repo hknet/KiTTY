@@ -72,8 +72,11 @@ BEGIN
     PUSHBUTTON "Add Key (&encrypted)", IDC_KEYLIST_ADDKEY_ENC, 75, 187, 80, 14
     PUSHBUTTON "Move &Up", IDC_KEYLIST_MOVEUP, 170, 187, 55, 14
     PUSHBUTTON "Move D&own", IDC_KEYLIST_MOVEDOWN, 230, 187, 55, 14
-    PUSHBUTTON "Re-e&ncrypt", IDC_KEYLIST_REENCRYPT, 315, 187, 60, 14
-    PUSHBUTTON "&Remove", IDC_KEYLIST_REMOVE, 380, 187, 60, 14
+    /* Right-hand buttons END at x=430, the ListView's right edge (10 + 420).
+     * They are RIGHT-anchored, so lining them up at the template size lines
+     * them up at every size. */
+    PUSHBUTTON "Re-e&ncrypt", IDC_KEYLIST_REENCRYPT, 305, 187, 60, 14
+    PUSHBUTTON "&Remove", IDC_KEYLIST_REMOVE, 370, 187, 60, 14
     /* Confirm row, pulled up directly under the key buttons. The Resume
      * button lives here because it re-enables THESE confirmations; it is
      * enabled only while they are suppressed (see WM_TIMER). */
@@ -85,18 +88,30 @@ BEGIN
     /* Window / agent actions; New key aligns under Add Key (x=10). */
     PUSHBUTTON "Ne&w key...", IDC_KEYLIST_NEWKEY, 10, 224, 56, 14
     PUSHBUTTON "&Settings...", IDC_KEYLIST_SETTINGS, 72, 224, 56, 14
-    PUSHBUTTON "Stop &agent", IDC_KEYLIST_STOPAGENT, 134, 224, 62, 14
+    /* a&gent, not &agent: A belongs to "&Add Key". With the letter on two
+     * controls Alt+A went to THIS one and pressed it (measured 2026-08-12) -
+     * the duplicate silently stole the key from Add Key. */
+    PUSHBUTTON "Stop a&gent", IDC_KEYLIST_STOPAGENT, 134, 224, 62, 14
     PUSHBUTTON "A&bout", IDC_KEYLIST_ABOUT, 202, 224, 46, 14
     PUSHBUTTON "&Help", IDC_KEYLIST_HELP, 254, 224, 44, 14
-    DEFPUSHBUTTON "&Close", IDOK, 390, 224, 50, 14
-    /* The ini-path line rides beside "Show unavailable keys" and stretches
-     * with the window width (LEFT|RIGHT|BOTTOM anchored). */
-    LTEXT "", IDC_KEYLIST_INISTATUS, 285, 172, 145, 8, SS_PATHELLIPSIS
+    DEFPUSHBUTTON "&Close", IDOK, 380, 224, 50, 14
+    /* The ini-path line rides beside "Show unavailable keys". It is the one control
+     * here that STRETCHES (LEFT|RIGHT|BOTTOM), so it starts narrow and takes
+     * every extra pixel the window is given - the Retry button beside it is
+     * RIGHT-anchored and simply moves, so the two never meet. */
+    LTEXT "", IDC_KEYLIST_INISTATUS, 275, 172, 52, 8, SS_PATHELLIPSIS
     LTEXT "&Fingerprint type:", IDC_KEYLIST_FPTYPE_STATIC, 10, 172, 60, 8
-    COMBOBOX IDC_KEYLIST_FPTYPE, 70, 170, 100, 12, CBS_DROPDOWNLIST
-    /* KiTTY: startup entries whose file is absent/broken, shown as rows */
+    COMBOBOX IDC_KEYLIST_FPTYPE, 70, 170, 95, 12, CBS_DROPDOWNLIST
+    /* KiTTY: startup entries whose file is absent/broken, shown as rows. The
+     * button sits with them: it acts on exactly these rows, says what the
+     * checkbox says, and ends at x=430 like every other right-hand control.
+     * "Retry", not "Load": the file may still be absent, and the button says so
+     * honestly. The trailing "keys" is what stops "Retry unavailable" being read
+     * as "retrying is unavailable". &k because R (Remove), U (Move Up), Y (Every
+     * use) and T (Stop rejecting keys) are all taken in this dialog. */
     AUTOCHECKBOX "Show unavailable keys", IDC_KEYLIST_SHOWUNAVAIL,
-        185, 171, 95, 10
+        175, 171, 95, 10
+    PUSHBUTTON "Retry unavailable &keys", IDC_KEYLIST_RETRY, 332, 169, 98, 14
 END
 
 /* KiTTY: key details. Read-only EDIT controls, not statics, because the
@@ -128,6 +143,10 @@ BEGIN
         IDC_KEYDETAIL_DEFER, 10, 202, 300, 10
     AUTOCHECKBOX "Ask for confir&mation each time this key is used",
         IDC_KEYDETAIL_CONFIRM, 10, 216, 300, 10
+    /* KiTTY: the ONLY place a changed key file can be accepted. Shown only for
+     * a fingerprint mismatch; the startup path used to ask this in a modal at
+     * login, where one click ratified a swap. */
+    PUSHBUTTON "&Accept this key", IDC_KEYDETAIL_ACCEPT, 10, 232, 90, 14
     DEFPUSHBUTTON "&Close", IDOK, 360, 232, 50, 14
 END
 

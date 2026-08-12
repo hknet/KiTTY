@@ -514,7 +514,11 @@ struct keylist_update_ctx {
  * The last two are startup entries that are NOT in the agent at all: their
  * file is absent (missing) or present-but-unloadable (failed). */
 enum { KEYSTATE_LOADED, KEYSTATE_ENCRYPTED, KEYSTATE_REENCRYPTABLE,
-       KEYSTATE_MISSING, KEYSTATE_FAILED };
+       KEYSTATE_MISSING, KEYSTATE_FAILED,
+       /* KiTTY: the file is present and readable but is NOT the key recorded
+        * for that path, so it was refused. Not an error like FAILED - it is a
+        * question for the user. */
+       KEYSTATE_MISMATCH };
 
 /* KiTTY: render a lifetime countdown compactly: "47 s", "12:05", "1:02:33". */
 static void kageant_fmt_seconds(unsigned s, char *buf, size_t len)
@@ -726,7 +730,8 @@ static void keylist_tick_lifetimes(void)
     }
 }
 
-/* KiTTY: is the "Show unavailable keys" toggle on? Persisted like the other
+/* KiTTY: is the "Show unavailable keys" toggle on? (The stored name stays
+ * showunavailablekeys - the label was reworded, the setting was not.) Persisted like the other
  * kageant settings; default on - the whole point is that these entries were
  * invisible. */
 static bool keylist_show_unavail = true;
@@ -1010,10 +1015,20 @@ void keylist_update(void)
                 put_dataz(disp->hash, fp);
             disp->comment = strbuf_new();
             disp->info = strbuf_new();
-            put_dataz(disp->info, failed ? "failed" : "missing");
+            /* KiTTY: a mismatch outranks the other two - the file IS there and
+             * IS readable, it is simply not the key we recorded, and that is
+             * the one the user has to act on. */
+            int mism = kageant_pending_mismatch(i);
+            /* "mismatch", not "changed!": the notices send the user here to
+             * look for that word. Not "fingerprint mismatch" - the State
+             * column is 66du and would show "fingerpri...", which says
+             * nothing. The details dialog carries the full sentence. */
+            put_dataz(disp->info, mism ? "mismatch" :
+                      failed ? "failed" : "missing");
             disp->expires = strbuf_new();  /* not in the agent: no lifetime */
             disp->blob = strbuf_new();
-            disp->state = failed ? KEYSTATE_FAILED : KEYSTATE_MISSING;
+            disp->state = mism ? KEYSTATE_MISMATCH :
+                          failed ? KEYSTATE_FAILED : KEYSTATE_MISSING;
             for (size_t t = 0; t < SSH_N_FPTYPES; t++)
                 disp->fp_full[t] = NULL;
             disp->confirm = 0;
@@ -1077,6 +1092,11 @@ void keylist_update(void)
     /* KiTTY: the Re-encrypt slot is now a state-sensitive Decrypt/Re-encrypt
      * button; its label and enabled state come from the selected key. */
     keylist_refresh_actionbtn(keylist);
+    /* KiTTY: "Retry unavailable keys" only means something while a key is waiting for
+     * its file. Rebuilt here because the pending list is exactly what this
+     * refresh has just read. */
+    EnableWindow(GetDlgItem(keylist, IDC_KEYLIST_RETRY),
+                 kageant_pending_count() > 0);
 }
 
 void win_add_keyfile(Filename *filename, bool encrypted)
@@ -1173,17 +1193,33 @@ void win_add_keyfile(Filename *filename, bool encrypted)
          * missing keys. [Agent] quietmissingkeys covers absent files, which are
          * expected on removable media, and nothing else. */
         if (kageant_startup_loading()) {
+            /*
+             * A NOTICE, not a message box.
+             *
+             * This fires while kageant is loading its own remembered keys -
+             * nobody clicked anything - and a modal here stops the agent's
+             * message loop, so the agent answers no requests at all until
+             * somebody dismisses it. Measured 2026-08-13: an ssh-add against
+             * the pipe hung indefinitely while this box was up at startup, and
+             * every ssh/git/scp call would have done the same. An informational
+             * dialog must never be able to take the agent off the air.
+             *
+             * The offer it used to carry ("Remove it from that list?") is not
+             * lost: the entry shows in the key list as a not-loaded row, and
+             * Remove there drops it from the startup list - the same call this
+             * box made. Clicking the notice opens that window.
+             */
             char *msg = dupprintf(
-                "%s\n\n    %s\n\n"
-                "This key is in the list loaded at kageant startup, so this "
-                "will happen every time.\n\n"
-                "Remove it from that list?",
-                err, path);
-            int r = MessageBox(traywindow, msg, APPNAME,
-                               MB_YESNO | MB_ICONERROR | MB_DEFBUTTON2);
+                "%s\n\n%s\n\n"
+                "It is still in the key list, and kageant will try it again at "
+                "the next start. Click to open the list, where Remove drops it "
+                "for good.", err, path);
+            if (traywindow)
+                kitty_notice_show("kageant: a remembered key did not load",
+                                  msg, KAGEANT_NOTICE_WARN,
+                                  kageant_notice_seconds(12), traywindow,
+                                  KAGEANT_WM_NOTICE_CLICK);
             sfree(msg);
-            if (r == IDYES)
-                kageant_forget_startup_key(path);
         } else {
             char *msg = dupprintf("%s\n\n    %s", err, path);
             message_box(traywindow, msg, APPNAME, MB_OK | MB_ICONERROR, false,
@@ -1319,6 +1355,7 @@ static const struct kl_anchor keylist_anchors[] = {
     {IDC_KEYLIST_STOPAGENT,     KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYLIST_ABOUT,         KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYLIST_RESUMECONFIRM, KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_RETRY,         KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
     {IDOK,                      KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
 };
 static RECT keylist_baserects[lenof(keylist_anchors)];
@@ -1396,6 +1433,10 @@ static bool keydetail_layout_ready = false;
  * up frees the row data the dialog was opened from. */
 static strbuf *keydetail_blob = NULL;
 static bool keydetail_had_lifetime = false;
+/* KiTTY: the fingerprint RECORDED for a mismatch row, kept for the Accept
+ * question - which shows what was recorded next to what the file holds now, so
+ * the user is comparing the two things rather than trusting a sentence. */
+static char keydetail_stored_fp[160] = "";
 #define TID_KEYDETAIL_LIFETIME 1
 
 static void keydetail_show_lifetime(HWND hwnd)
@@ -1534,6 +1575,12 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                        disp->state == KEYSTATE_FAILED ?
                            "not loaded - the file is present but would not "
                            "load" :
+                       disp->state == KEYSTATE_MISMATCH ?
+                           "NOT loaded - the file at this path is not the key "
+                           "recorded for it. Either you replaced it, or "
+                           "something else did. If you replaced it, use "
+                           "\"Accept this key\" below; until then it stays "
+                           "refused at every start and every re-plug." :
                            "loaded and ready to use");
 
         {
@@ -1636,6 +1683,20 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
         CheckDlgButton(hwnd, IDC_KEYDETAIL_CONFIRM,
                        disp->confirm ? BST_CHECKED : BST_UNCHECKED);
 
+        /* KiTTY: accepting a changed key file. Only ever offered for a row
+         * that IS a mismatch - this is the one place a new fingerprint can be
+         * adopted, and it should not be reachable by accident anywhere else. */
+        {
+            HWND acc = GetDlgItem(hwnd, IDC_KEYDETAIL_ACCEPT);
+            int is_mismatch = (disp->state == KEYSTATE_MISMATCH);
+            ShowWindow(acc, is_mismatch ? SW_SHOW : SW_HIDE);
+            EnableWindow(acc, is_mismatch);
+            keydetail_stored_fp[0] = '\0';
+            if (is_mismatch && disp->hash && disp->hash->len)
+                snprintf(keydetail_stored_fp, sizeof(keydetail_stored_fp),
+                         "%s", disp->hash->s);
+        }
+
         /* KiTTY: the Lifetime line, ticking while the dialog is open. */
         keydetail_blob = strbuf_dup(ptrlen_from_strbuf(disp->blob));
         {
@@ -1712,6 +1773,65 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                 keylist_update();
             }
             return 0;
+          case IDC_KEYDETAIL_ACCEPT: {
+            /*
+             * KiTTY: adopt a changed key file, deliberately.
+             *
+             * This is the consent that used to be a yes/no box during startup.
+             * It asks here because the user came looking - they opened the key
+             * list, opened this key, and pressed a button that only exists on a
+             * mismatch row - and because the answer is permanent. Both
+             * fingerprints are in the question: the one we recorded and the one
+             * the file holds now.
+             */
+            char *keypath = (char *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+            char *actual, *msg;
+            int r;
+
+            if (!keypath)
+                return 0;
+            actual = kageant_fp_of_file(keypath);
+            if (!actual) {
+                MessageBox(hwnd,
+                           "The key file cannot be read right now, so there is "
+                           "nothing to accept. Check the file is reachable and "
+                           "try again.",
+                           "kageant - cannot read that file",
+                           MB_ICONWARNING | MB_OK);
+                return 0;
+            }
+            msg = dupprintf(
+                "Accept the key that is in this file NOW, and remember it?\n\n"
+                "    %s\n\n"
+                "Recorded before:  %s\n"
+                "In the file now:  %s\n\n"
+                "Only do this if YOU replaced the key. Accepting means this "
+                "file is loaded now and trusted at every future start.",
+                keypath, keydetail_stored_fp[0] ? keydetail_stored_fp :
+                                                  "(none)", actual);
+            r = MessageBox(hwnd, msg, "kageant - accept this changed key?",
+                           MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
+            sfree(msg);
+            sfree(actual);
+            if (r != IDYES)
+                return 0;
+
+            if (!kageant_accept_pending_key(keypath)) {
+                MessageBox(hwnd,
+                           "The key could not be loaded, so nothing was "
+                           "changed and the entry stays refused.",
+                           "kageant - not accepted", MB_ICONWARNING | MB_OK);
+                keylist_update();
+                return 0;
+            }
+            keylist_update();
+            kitty_auxpos_save(hwnd, "kageantKeyDetails");
+            sfree(keypath);
+            /* cleared, or the IDOK/WM_CLOSE paths free it a second time */
+            SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)NULL);
+            EndDialog(hwnd, 1);
+            return 0;
+          }
           case IDOK:
           case IDCANCEL: {
             kitty_auxpos_save(hwnd, "kageantKeyDetails");
@@ -2040,8 +2160,10 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             cols[] = {
                 {"Algorithm", 62, LVCFMT_LEFT},
                 {"Bits", 24, LVCFMT_RIGHT},
-                {"Fingerprint", 168, LVCFMT_LEFT},
-                {"State", 52, LVCFMT_LEFT},
+                {"Fingerprint", 154, LVCFMT_LEFT},
+                /* KiTTY: wide enough for "mismatch" - the fingerprint beside
+                 * it is elided anyway, this word is the one to read. */
+                {"State", 66, LVCFMT_LEFT},
                 {"Lifetime", 40, LVCFMT_RIGHT},
                 {"Confirm", 44, LVCFMT_LEFT},
                 {"Comment", 104, LVCFMT_LEFT},
@@ -2660,6 +2782,24 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                              FALSE);
             }
             return 0;
+          case IDC_KEYLIST_RETRY:
+            /*
+             * KiTTY: try the keys whose file was not there. Otherwise they
+             * wait for a device event, and a file that came back over the
+             * network, or a stick that was already in when kageant started,
+             * never produces one.
+             *
+             * No guard on "is anything pending" here: the button is disabled
+             * when nothing is, but a WM_COMMAND can arrive with it disabled
+             * (that is how the test harness drives this), and the retry
+             * answers that case itself rather than doing nothing silently.
+             */
+            if (HIWORD(wParam) == BN_CLICKED ||
+                HIWORD(wParam) == BN_DOUBLECLICKED) {
+                kageant_retry_pending_keys_now();
+                keylist_update();     /* states and the button both changed */
+            }
+            return 0;
           case IDC_KEYLIST_FPTYPE:
             if (HIWORD(wParam) == CBN_SELCHANGE) {
                 int selection = SendDlgItemMessage(
@@ -3146,6 +3286,72 @@ HWND kageant_traywindow(void)
     return traywindow;
 }
 
+/* KiTTY: is the key list on screen? The held-back nudge stays quiet while it
+ * is - the user is already looking at the thing it would point them to. */
+int kageant_keylist_open(void)
+{
+    return keylist != NULL;
+}
+
+/*
+ * KiTTY: re-compose the tray tooltip.
+ *
+ * The tooltip carries the state that is ALWAYS true, which is what answers
+ * "why did my login stop working?" hours after a balloon came and went. So a
+ * key being held back has to appear here, and has to disappear again when it
+ * is resolved - hence NIM_MODIFY rather than composing it once at startup.
+ */
+void kageant_refresh_tray_tip(void)
+{
+    NOTIFYICONDATA tnid;
+    char *tip;
+    int held;
+
+    if (!traywindow)
+        return;
+
+    memset(&tnid, 0, sizeof(tnid));
+    tnid.cbSize = sizeof(tnid);
+    tnid.hWnd = traywindow;
+    tnid.uID = 1;
+    tnid.uFlags = NIF_TIP;
+
+    tip = kitty_title_compose_sep(
+        kageant_ini_status()
+            ? "kageant (KiTTY authentication agent)\r\n(kitty.ini mode)"
+            : "kageant (KiTTY authentication agent)",
+        "\r\n", kitty_inilight_portable(), restricted_acl(), false);
+
+    /*
+     * The existing lines - kitty.ini mode, portable, restricted ACL - all stay:
+     * this ADDS a line, it does not replace the state that was already there.
+     *
+     * It goes SECOND, straight after the name, rather than at the end. szTip is
+     * 128 characters, and a portable + restricted + kitty.ini install already
+     * spends most of them, so a line appended last is the one Windows cuts off.
+     * Of everything in here, "a key is not loaded" is the line someone is
+     * actually looking for.
+     */
+    held = kageant_mismatch_count();
+    if (held > 0) {
+        char line[64];
+        const char *rest = strstr(tip, "\r\n");
+        snprintf(line, sizeof(line),
+                 held == 1 ? "1 key NOT loaded - fingerprint mismatch"
+                           : "%d keys NOT loaded - fingerprint mismatch",
+                 held);
+        snprintf(tnid.szTip, sizeof(tnid.szTip), "%.*s\r\n%s%s",
+                 rest ? (int)(rest - tip) : (int)strlen(tip), tip,
+                 line, rest ? rest : "");
+    } else {
+        strncpy(tnid.szTip, tip, sizeof(tnid.szTip) - 1);
+        tnid.szTip[sizeof(tnid.szTip) - 1] = '\0';
+    }
+    sfree(tip);
+
+    Shell_NotifyIcon(NIM_MODIFY, &tnid);
+}
+
 static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                                     WPARAM wParam, LPARAM lParam)
 {
@@ -3169,6 +3375,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
              * have been lost.
              */
             AddTrayIcon(hwnd);
+            kageant_refresh_tray_tip();   /* explorer restarted: state too */
         }
         break;
 
@@ -3993,6 +4200,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kageant_ipc_blocked_hook = kageant_ipc_blocked;
         kageant_notify_hook = kageant_do_notify;
         kageant_keyuse_hook = kageant_note_keyuse;
+        /* KiTTY: speak up about held-back keys when a client asks for the
+         * identity list - see kageant_do_identities_asked for the rate limit. */
+        kageant_identities_asked_hook = kageant_do_identities_asked;
         kageant_key_lifetime_hook = kageant_key_set_lifetime;   /* ssh-add -t */
 
         /*
@@ -4158,6 +4368,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     /* Set up a system tray icon */
     AddTrayIcon(traywindow);
+    /* KiTTY: the startup load ran BEFORE this icon existed, so anything it
+     * refused could not reach the tooltip then. Compose it once here, or a key
+     * held back at login would be missing from the one surface that is meant to
+     * still be true hours later. */
+    kageant_refresh_tray_tip();
     kageant_notify_startup_missing();
     /* KiTTY: a 1-second heartbeat to expire ssh-add -t keys. Cheap, and only
      * the primary instance (which owns traywindow) runs it. */

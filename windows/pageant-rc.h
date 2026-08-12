@@ -38,6 +38,7 @@
 #define IDC_KEYDETAIL_LIFETIME 107
 #define IDC_KEYDETAIL_LIFETIME_LBL 108
 #define IDC_KEYDETAIL_CONFIRM 109
+#define IDC_KEYDETAIL_ACCEPT 110    /* adopt a changed key file (mismatch rows) */
 
 #define IDC_PASSPHRASE_STATIC1 100
 #define IDC_PASSPHRASE_FINGERPRINT 101
@@ -66,6 +67,7 @@
 #define IDC_KEYLIST_STOPAGENT 121   /* quit kageant */
 #define IDC_KEYLIST_ABOUT 122       /* open the About box */
 #define IDC_KEYLIST_RESUMECONFIRM 123  /* lift confirm-suppress; shown only when blocked */
+#define IDC_KEYLIST_RETRY 124       /* retry the keys whose file was missing */
 
 #define IDC_ABOUT_LICENCE 101
 #define IDC_ABOUT_WEBSITE 102

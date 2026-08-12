@@ -39,6 +39,21 @@ void random_read(void *buf, size_t size)
 
 static bool pageant_local = false;
 
+/*
+ * KiTTY: who refused an add?
+ *
+ * These paths are shared: the agent itself uses them to add its own keys, and
+ * a second instance uses them to hand a key to the agent already running. The
+ * message said "the already running agent" either way, so kageant refusing one
+ * of its own startup keys announced an agent that was not there - measured
+ * 2026-08-13, from a report of exactly that box.
+ */
+static const char *pageant_refuser(void)
+{
+    return pageant_local ? "The agent refused to add the key."
+                         : "The already running agent refused to add the key.";
+}
+
 struct PageantClientDialogId {
     int dummy;
 };
@@ -1005,6 +1020,20 @@ void (*kageant_notify_hook)(const char *comment,
                             const char *fingerprint) = NULL;
 
 /*
+ * KiTTY: a client just asked which keys we have.
+ *
+ * kageant uses it to speak up when a key is being held back - the moment the
+ * absence actually costs someone something, rather than back when the stick was
+ * plugged in and the balloon was missed. It is the ONLY usable trigger: a key
+ * that is refused never appears in this list, so no client ever asks to sign
+ * with it and there is no sign-time event to hang this on.
+ *
+ * Fired for EXTERNAL requests only, and rate-limiting is the hook's own problem
+ * - every SSH connection asks this, as do scp, git and any scripted plink.
+ */
+void (*kageant_identities_asked_hook)(unsigned long pid) = NULL;
+
+/*
  * KiTTY: SSH agent per-key constraints (`ssh-add -t` lifetime / `-c` confirm).
  * Stock PuTTY 0.84 reads NONE of these - it accepts the add and silently drops
  * the constraint, so a client is told it got confirm-on-use or a lifetime and
@@ -1394,6 +1423,12 @@ static PageantAsyncOp *pageant_make_op(
 
         put_byte(sb, SSH2_AGENT_IDENTITIES_ANSWER);
         pageant_make_keylist2(BinarySink_UPCAST(sb));
+
+        /* KiTTY: tell the frontend somebody wanted our keys, so it can point
+         * out any it is holding back. External requests only - the agent's own
+         * UI listing its keys is not a client that just failed to log in. */
+        if (pageant_external_request && kageant_identities_asked_hook)
+            kageant_identities_asked_hook(pageant_external_pid);
 
         pageant_client_log(pc, reqid, "reply: SSH2_AGENT_IDENTITIES_ANSWER");
         if (!pc->suppress_logging) {
@@ -3057,8 +3092,7 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
                 *retstr = dupstr("Agent doesn't support adding "
                                  "encrypted keys");
             } else {
-                *retstr = dupstr("The already running agent "
-                                 "refused to add the key.");
+                *retstr = dupstr(pageant_refuser());
             }
             return PAGEANT_ACTION_FAILURE;
         }
@@ -3213,8 +3247,7 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
         sfree(rkey);
 
         if (reply != SSH_AGENT_SUCCESS) {
-            *retstr = dupstr("The already running agent "
-                             "refused to add the key.");
+            *retstr = dupstr(pageant_refuser());
             return PAGEANT_ACTION_FAILURE;
         }
     } else {
@@ -3231,8 +3264,7 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
         sfree(skey);
 
         if (reply != SSH_AGENT_SUCCESS) {
-            *retstr = dupstr("The already running agent "
-                             "refused to add the key.");
+            *retstr = dupstr(pageant_refuser());
             return PAGEANT_ACTION_FAILURE;
         }
     }

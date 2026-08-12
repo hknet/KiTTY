@@ -83,12 +83,32 @@ char *kageant_file_of_blob(ptrlen blob);   /* first tracked path, for re-loading
 int kageant_pending_count(void);
 int kageant_pending_get(int i, const char **path, int *encrypted,
                         const char **fp, int *failed);
+/* does the file at `path` still hold the key `stored` describes?
+ * 1 = yes, 0 = a different key, -1 = cannot tell. NOT used to gate loading any
+ * more - the load paths compare the key the agent ended up with, so the file is
+ * read once (kageant_verify_loaded). */
+int kageant_fp_matches(const char *path, const char *stored);
+/* refused because the file at that path is not the key we recorded */
+int kageant_pending_mismatch(int i);
+int kageant_mismatch_count(void);
+/* fingerprint of the file at that path right now, or NULL; free it */
+char *kageant_fp_of_file(const char *path);
+/* the user accepted a changed key in the key list: load it and adopt the new
+ * fingerprint. The ONLY path that ever adopts one - see the comment there. */
+int kageant_accept_pending_key(const char *path);
+/* report a load pass: keys newly refused, and keys loaded with nothing to check
+ * against. A notice, never a prompt. */
+void kageant_note_verify_problem(int mismatch_new, int unchecked);
+/* answer a "Retry unavailable keys": one notice whatever happened, "nothing" included */
+void kageant_note_retry_result(int loaded, int refused, int absent,
+                               int broken, int unchecked);
 void kageant_drop_pending(const char *path);   /* memory + stored list */
 /* per-key load mode: 1 = deferred (,encrypted), 0 = decrypt at load
  * (,plain), -1 = key not tracked */
 int kageant_startup_mode_get(const char *path);
 void kageant_startup_mode_set(const char *path, int encrypted);
 void kageant_retry_pending_keys(void);              /* on device arrival */
+void kageant_retry_pending_keys_now(void);          /* key list, "Retry unavailable keys" */
 void kageant_media_gone(void);                      /* on device removal */
 /* ssh-add -t key lifetimes: the agent core calls kageant_key_set_lifetime via
  * kageant_key_lifetime_hook when a key is added with a lifetime; a frontend
@@ -137,10 +157,18 @@ extern void (*kageant_notify_hook)(const char *comment,
                                    const char *fingerprint);
 /* KiTTY: outcome of a signing request, for the key list's tint. */
 extern void (*kageant_keyuse_hook)(const char *fingerprint, int allowed);
+/* KiTTY: an external client asked for the identity list. Used to speak up about
+ * keys being held back, at the moment their absence costs something. */
+extern void (*kageant_identities_asked_hook)(unsigned long pid);
+void kageant_do_identities_asked(unsigned long pid);
 
 /* ---- provided by windows/pageant.c for kitty_pageant.c ---- */
 HWND kageant_traywindow(void);         /* tray window, for balloon popups */
+int  kageant_keylist_open(void);       /* the key list is on screen */
 void win_add_keyfile(Filename *filename, bool encrypted);
+/* the tray tooltip carries the always-true state, so "why did my login stop
+ * working?" has an answer hours later; re-composed when that state changes */
+void kageant_refresh_tray_tip(void);
 
 
 /* KiTTY: the two notice accents, shared with the key list's key-use tint so

@@ -363,8 +363,13 @@ void kitty_notice_show(const char *title, const char *text, COLORREF accent,
     if (notice_hwnd && IsWindow(notice_hwnd))
         notice_close(notice_hwnd);
 
+    /* The title goes in the window NAME as well as being painted. A WS_POPUP
+     * with no caption never shows it, so nothing changes on screen - but it
+     * makes a notice identifiable from outside the process, which is the only
+     * way a test harness can tell WHICH notice appeared (the visible title is
+     * drawn in WM_PAINT, and pixels are not readable). */
     hwnd = CreateWindowExA(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-                           NOTICE_CLASS, "", WS_POPUP,
+                           NOTICE_CLASS, title, WS_POPUP,
                            mi.rcWork.right - w - notice_scale(NOTICE_MARGIN, dpi),
                            mi.rcWork.bottom - h - notice_scale(NOTICE_MARGIN, dpi),
                            w, h, NULL, NULL, GetModuleHandle(NULL), NULL);
