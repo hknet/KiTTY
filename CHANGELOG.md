@@ -7,6 +7,29 @@ see [FEATURES.md](FEATURES.md).
 
 ## 0.84.1.74-beta — 2026-08-11
 
+### Fixed
+
+- **Session logs carry timestamps again.** `Session > Logging > Timestamp
+  (strftime format)` has been present in the dialog all along, and the value
+  was saved with the session, but nothing ever wrote it to the log — so the
+  field looked like it worked and did nothing. Setting a pattern now stamps
+  every logged line, as it did before the move to the 0.84 core. `%f` gives
+  milliseconds; an empty pattern, the default, leaves logs exactly as they
+  were. Packet and SSH raw-data logs are unchanged: they already carry their
+  own timestamps. A button beside the field fills in a working pattern, or
+  clears it, so the feature can be tried without knowing strftime. A pattern
+  the system cannot make sense of is ignored rather than acted on, and says so
+  once in the Event Log, so it is clear that the format is the problem.
+  Refs hknet/KiTTY#30
+
+- **Log rotation works.** `Session > Logging > Log rotation delay` was the
+  same kind of dead setting: stored, shown, never acted on. It now starts a
+  new log file at the interval you set. Rotation is declined, with a note in
+  the Event Log, when the log file name has no time-varying `&`-code in it —
+  reopening the same name would overwrite the log rather than rotate it, so
+  a rotation delay on a fixed name would have destroyed the log every few
+  seconds. Put `&T` (or `&Y&M&D`) in the name to use it.
+
 ### Changed
 
 - **A `kitty.ini` now says which KiTTY wrote it, and the shipped

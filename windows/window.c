@@ -321,6 +321,14 @@ extern int AntiIdleSeconds;   /* KiTTY: [KiTTY] antiidledelay, in seconds */
 #ifdef MOD_PERSO
 #define TIMER_EMBEDFILL 8706   /* #554: poll host client rect, keep embedded child filling it */
 #define TIMER_SENDTOTRAY 8711  /* free across window.c + kitty.c timer ids */
+/* Session > Logging > "Log rotation delay": start a new log file every N
+ * seconds (CONF_logtimerotation). Repeating; logfile_rotate() decides whether
+ * rotating is actually safe.
+ * ⚠️ 8712 is TIMER_CLIPACTIVITY (windows/kitty_rc_additions.h) - using it here
+ * put this timer behind that branch, which KillTimer()s it, so rotation fired
+ * once and never again. When picking an id, grep windows/*.h too, not just the
+ * .c files and kitty.h (which has its own unused TIMER_LOGROTATION 8707). */
+#define TIMER_LOGROTATION 8713
 #endif
 #ifdef MOD_RECONNECT
 #define TIMER_RECONNECT 8705
@@ -1647,6 +1655,16 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     setup_clipboards(wgs->term, wgs->conf);
     wgs->logctx = log_init(&wgs->logpolicy, wgs->conf);
     term_provide_logctx(wgs->term, wgs->logctx);
+#ifdef MOD_PERSO
+    {
+        /* KiTTY: arm log rotation. Repeating timer - SetTimer keeps firing
+         * until it is killed, which is what "every N seconds" wants. */
+        int rot = conf_get_int(wgs->conf, CONF_logtimerotation);
+        if (rot > 0 && wgs->term_hwnd)
+            SetTimer(wgs->term_hwnd, TIMER_LOGROTATION,
+                     (UINT)rot * 1000, NULL);
+    }
+#endif
     term_size(wgs->term, conf_get_int(wgs->conf, CONF_height),
               conf_get_int(wgs->conf, CONF_width),
               conf_get_int(wgs->conf, CONF_savelines));
@@ -3907,6 +3925,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             return 0;
         }
 #endif
+        if ((UINT_PTR)wParam == TIMER_LOGROTATION) {
+            /* KiTTY: time to start a new log file. logfile_rotate() only
+             * closes the current one - the next write reopens it under a
+             * freshly substituted name - and declines if that name would be
+             * the same, which would truncate the log instead of rotating it. */
+            if (wgs && wgs->logctx)
+                logfile_rotate(wgs->logctx);
+            return 0;
+        }
 #ifdef MOD_RECONNECT
         if ((UINT_PTR)wParam == TIMER_RECONNECT) {
             KillTimer(hwnd, TIMER_RECONNECT);

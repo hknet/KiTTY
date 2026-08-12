@@ -4883,10 +4883,44 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
 #endif
 }
 
+#ifdef MOD_PERSO
+/* KiTTY: the pattern the "use a default" button fills in. ISO-style date so it
+ * sorts, seconds because a session log without them is hard to correlate, and
+ * a trailing space so the stamp does not run into the logged line. */
+#define KITTY_LOGTIMESTAMP_DEFAULT "%Y-%m-%d %H:%M:%S "
+
+/*
+ * One button doing both halves of the same decision: with the field empty it
+ * offers a working pattern, with the field set it clears it. The label always
+ * says which, so the button is never a surprise.
+ */
+static void logtimestamp_button_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                        void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    const char *cur = conf_get_str(conf, CONF_logtimestamp);
+    bool empty = (!cur || !*cur);
+
+    if (event == EVENT_REFRESH) {
+        dlg_label_change(ctrl, dlg, empty ? "Use a default timestamp"
+                                          : "Clear the timestamp");
+    } else if (event == EVENT_ACTION) {
+        conf_set_str(conf, CONF_logtimestamp,
+                     empty ? KITTY_LOGTIMESTAMP_DEFAULT : "");
+        /* NULL: refresh every control. The edit box above has to show the new
+         * value, and this button's own label has to flip with it. */
+        dlg_refresh(NULL, dlg);
+    }
+}
+#endif
+
 /* The Session/Logging panel. */
 static void scb_panel_logging(struct controlbox *b, bool midsession, int protocol)
 {
     struct controlset *s;
+#ifdef MOD_PERSO
+    dlgcontrol *c;                     /* the two-column rotation row */
+#endif
 
     /*
      * The Session/Logging panel.
@@ -4939,12 +4973,51 @@ static void scb_panel_logging(struct controlbox *b, bool midsession, int protoco
                   conf_checkbox_handler, I(CONF_logheader));
 #ifdef MOD_PERSO
     if (!GetPuttyFlag()) {
-        ctrl_editbox(s, "Log rotation delay (sec, 0=off)", NO_SHORTCUT, 50,
-                     HELPCTX(no_help),
-                     conf_editbox_handler, I(CONF_logtimerotation), ED_INT);
+        /* Two columns so the unit sits AFTER the field, reading "every [ 0 ]
+         * sec." The old one-line label "Log rotation delay (sec, 0=off)" was
+         * clipped to "Log rotation delay (sec," - the edit box took half the
+         * row and the rest of the label had nowhere to go. */
+        /* "Automatic logrotation every [ 0 ] sec." on ONE baseline.
+         *
+         * All three parts are the same KIND of control on purpose. An editbox
+         * with a label draws that label as a STATIC positioned differently
+         * from the box's own text, so a trailing word ends up ~9px above the
+         * words it belongs to - it reads as hanging in the air. An UNWRAPPED
+         * ctrl_text is laid out as a borderless read-only edit box, and a
+         * label-less ctrl_editbox is a bare edit box, so all three are
+         * EDITHEIGHT boxes on the same row and their text lines up. */
+        ctrl_columns(s, 3, 52, 24, 24);
+        c = ctrl_text(s, "Automatic logrotation every", HELPCTX(no_help));
+        c->column = 0;
+        c->text.wrap = false;
+        c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
+                         HELPCTX(no_help),
+                         conf_editbox_handler, I(CONF_logtimerotation), ED_INT);
+        c->column = 1;
+        c = ctrl_text(s, "sec.", HELPCTX(no_help));
+        c->column = 2;
+        c->text.wrap = false;
+        ctrl_columns(s, 1, 100);
+        ctrl_text(s, "(0 = off. The log file name needs a time in it - put &T"
+                  " in it, as in kitty_&H_&T.log - or every rotation would"
+                  " reopen the same file and overwrite it. Without one,"
+                  " rotation is declined and says so in the Event Log.)",
+                  HELPCTX(no_help));
         ctrl_editbox(s, "Timestamp (strftime format)", NO_SHORTCUT, 100,
                      HELPCTX(no_help),
                      conf_editbox_handler, I(CONF_logtimestamp), ED_STR);
+        /* One button, two jobs: fill in a working pattern when the field is
+         * empty, clear it when it is not - so the feature can be tried, and
+         * undone, without knowing strftime. Its label says which it will do. */
+        ctrl_pushbutton(s, "Use a default timestamp", NO_SHORTCUT,
+                        HELPCTX(no_help), logtimestamp_button_handler, P(NULL));
+        /* The file-name field above says what its &-codes mean; this one said
+         * nothing at all, so the only way to learn the format was to guess. */
+        ctrl_text(s, "(Written at the start of each logged line, e.g."
+                  " %Y-%m-%d %H:%M:%S - plus %f for milliseconds."
+                  " Empty = no timestamps. Applies to the session logs, not to"
+                  " SSH packet logs, which timestamp themselves.)",
+                  HELPCTX(no_help));
     }
 #endif
 

@@ -2194,6 +2194,11 @@ void log_free(LogContext *logctx);
 void log_reconfig(LogContext *logctx, Conf *conf);
 void logfopen(LogContext *logctx);
 void logfclose(LogContext *logctx);
+#ifdef MOD_PERSO
+/* KiTTY: close the log so the next write reopens it under a freshly
+ * substituted name. Declined when the name would not change - see logging.c. */
+void logfile_rotate(LogContext *logctx);
+#endif
 void logtraffic(LogContext *logctx, unsigned char c, int logmode);
 void logflush(LogContext *logctx);
 LogPolicy *log_get_policy(LogContext *logctx);

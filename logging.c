@@ -20,11 +20,71 @@ struct LogContext {
     LogPolicy *lp;
     Conf *conf;
     int logtype;                       /* cached out of conf */
+#ifdef MOD_PERSO
+    /* KiTTY: LogTimestamp writes the configured stamp at the start of every
+     * logged line. Per CONTEXT, not a file-scope flag: several sessions can be
+     * logging at once and a shared one would stamp whichever session happened
+     * to end the previous line. */
+    bool at_line_start;
+    /* LogTimestamp pattern already reported as unusable - report once per log,
+     * not once per line. */
+    bool ts_warned;
+#endif
 };
 
 static Filename *xlatlognam(const Filename *s,
                             const char *hostname, int port,
                             const struct tm *tm);
+
+#ifdef MOD_PERSO
+#include <sys/time.h>                  /* gettimeofday, for the %f expansion */
+
+/*
+ * KiTTY: expand the LogTimestamp pattern (Session > Logging).
+ *
+ * strftime does the work; we only pre-expand %f (milliseconds), which strftime
+ * has no format for and which the KiTTY this port replaces supported. %% is
+ * passed through untouched so an escaped percent cannot be mistaken for %f.
+ *
+ * Returns the length written, or 0 if there is nothing to write - an empty
+ * pattern means the feature is off, which is the default.
+ */
+static size_t kitty_log_timestamp_text(const char *fmt, char *out, size_t outlen)
+{
+    char expanded[512];
+    size_t o = 0;
+    struct tm tm;
+    long ms = 0;
+
+    if (!fmt || !*fmt || outlen < 2)
+        return 0;
+
+    {
+        struct timeval tv;
+        /* gettimeofday, not C11's timespec_get: this builds as gnu99, where
+         * timespec_get and TIME_UTC do not exist. A failure here costs only
+         * the milliseconds, so there is nothing to report. */
+        if (gettimeofday(&tv, NULL) == 0)
+            ms = tv.tv_usec / 1000L;
+    }
+
+    for (const char *p = fmt; *p && o + 4 < sizeof(expanded); p++) {
+        if (p[0] == '%' && p[1] == 'f') {
+            o += snprintf(expanded + o, sizeof(expanded) - o, "%03ld", ms);
+            p++;
+        } else if (p[0] == '%' && p[1] == '%') {
+            expanded[o++] = *p++;      /* copy both, leave %% to strftime */
+            expanded[o++] = *p;
+        } else {
+            expanded[o++] = *p;
+        }
+    }
+    expanded[o] = '\0';
+
+    tm = ltime();
+    return strftime(out, outlen, expanded, &tm);
+}
+#endif
 
 /*
  * Internal wrapper function which must be called for _all_ output
@@ -102,6 +162,12 @@ static void logfopen_callback(void *vctx, int mode)
         ctx->lgfp = f_open(ctx->currlogfilename, fmode, false);
         if (ctx->lgfp) {
             ctx->state = L_OPEN;
+            /* KiTTY: deliberately NOT re-arming the LogTimestamp line latch
+             * here. Output that arrives while the file is still opening is
+             * queued, so by this point we may be in the MIDDLE of a line;
+             * re-arming stamped the next character and split the first line
+             * as "<stamp>a<stamp>lpha". log_init() arms it once, which is all
+             * the first line needs. */
         } else {
             ctx->state = L_ERROR;
             shout = true;
@@ -193,6 +259,48 @@ void logfopen(LogContext *ctx)
         logfopen_callback(ctx, mode);  /* open the file */
 }
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: log rotation (Session > Logging > "Log rotation delay").
+ *
+ * Closing the file is the whole mechanism: the next write reopens it, and
+ * logfopen() re-substitutes the &-codes in the name against the time of day,
+ * so &T (or &D over midnight) yields a new file.
+ *
+ * It REFUSES to rotate when the name would not change. Reopening the same name
+ * with "always overwrite" opens it "wb" and truncates it, so a rotation delay
+ * on a fixed filename would silently destroy the log every N seconds - turning
+ * a convenience into data loss. Rotation needs a time-varying name; the config
+ * dialog says so, and the event log says so here if it is ever asked to.
+ */
+void logfile_rotate(LogContext *ctx)
+{
+    struct tm tm;
+    Filename *newname;
+    bool unchanged;
+
+    if (!ctx || ctx->state != L_OPEN || !ctx->currlogfilename)
+        return;
+
+    tm = ltime();
+    newname = xlatlognam(conf_get_filename(ctx->conf, CONF_logfilename),
+                         conf_dest(ctx->conf),
+                         conf_get_int(ctx->conf, CONF_port), &tm);
+    unchanged = filename_equal(newname, ctx->currlogfilename);
+    filename_free(newname);
+
+    if (unchanged) {
+        logevent(ctx, "Log rotation skipped: the log file name does not "
+                 "change with time (use &T, or &Y&M&D, in it) - rotating "
+                 "into the same name would overwrite the log");
+        return;
+    }
+
+    logfclose(ctx);                    /* the next write reopens it */
+    ctx->at_line_start = true;
+}
+#endif
+
 void logfclose(LogContext *ctx)
 {
     if (ctx->lgfp) {
@@ -202,14 +310,64 @@ void logfclose(LogContext *ctx)
     ctx->state = L_CLOSED;
 }
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: write the stamp if we are at the start of a logged line. Session logs
+ * only (see logtraffic) - the packet and SSH-raw logs already timestamp every
+ * record of their own accord, and stamping those again would corrupt a format
+ * other tools parse.
+ */
+static void kitty_log_timestamp(LogContext *ctx)
+{
+    char buf[512];
+    size_t len;
+    const char *fmt;
+
+    if (!ctx->at_line_start)
+        return;
+    ctx->at_line_start = false;
+
+    fmt = conf_get_str(ctx->conf, CONF_logtimestamp);
+    if (!fmt || !*fmt)
+        return;                        /* feature off - the default */
+
+    len = kitty_log_timestamp_text(fmt, buf, sizeof(buf));
+    if (len) {
+        logwrite(ctx, make_ptrlen(buf, len));
+        return;
+    }
+
+    /*
+     * strftime refused the pattern (an unknown %-code, a trailing '%'), or the
+     * result did not fit. Nothing is written and the log itself is unharmed -
+     * but say so ONCE, because a field that is set and silently does nothing
+     * is the very confusion this option was fixed to end.
+     */
+    if (!ctx->ts_warned) {
+        ctx->ts_warned = true;
+        logevent(ctx, "Log timestamp: that strftime pattern produces nothing, "
+                 "so lines are not being stamped - check the format in "
+                 "Session > Logging");
+    }
+}
+#endif
+
 /*
  * Log session traffic.
  */
 void logtraffic(LogContext *ctx, unsigned char c, int logmode)
 {
     if (ctx->logtype > 0) {
-        if (ctx->logtype == logmode)
+        if (ctx->logtype == logmode) {
+#ifdef MOD_PERSO
+            /* KiTTY: LogTimestamp. Before the character, so the stamp opens
+             * the line; the newline itself stays on the line it ends. */
+            kitty_log_timestamp(ctx);
+            if (c == '\n')
+                ctx->at_line_start = true;
+#endif
             logwrite(ctx, make_ptrlen(&c, 1));
+        }
     }
 }
 
@@ -388,6 +546,10 @@ LogContext *log_init(LogPolicy *lp, Conf *conf)
     ctx->conf = conf_copy(conf);
     ctx->logtype = conf_get_int(ctx->conf, CONF_logtype);
     ctx->currlogfilename = NULL;
+#ifdef MOD_PERSO
+    ctx->at_line_start = true;         /* KiTTY: stamp the first line too */
+    ctx->ts_warned = false;
+#endif
     bufchain_init(&ctx->queue);
     return ctx;
 }

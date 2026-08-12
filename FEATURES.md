@@ -413,6 +413,24 @@ KiTTY can take a script file stored on your local PC and replay its contents int
 
 (no screenshot)
 
+### Session logging with timestamps
+
+KiTTY writes a session's output to a log file, and can stamp every logged line with the time it was written — which is what turns a log from a transcript into something you can correlate with a ticket, a monitoring alert or another machine's log.
+
+The stamp is a **strftime** pattern, so you choose the layout: `%Y-%m-%d %H:%M:%S ` gives `2026-08-12 15:31:55 `, and `%d.%m.%Y %H:%M:%S: ` gives `12.08.2026 15:31:55: `. In addition to the standard strftime codes, **`%f`** inserts milliseconds. **Leave the field empty and no timestamps are written** — logs look exactly as they did before, so nothing changes unless you ask for it.
+
+The **log file name** takes its own substitutions, which is how you keep one file per host or per day instead of overwriting a single file: **`&H`** host name, **`&P`** port, **`&Y` `&M` `&D`** year/month/day, **`&T`** time as HHMMSS, and `&&` for a literal `&`. So `kitty_&H_&Y&M&D.log` becomes `kitty_server1_20260812.log`. Characters that are illegal in a Windows file name are replaced automatically, so an IPv6 address in `&H` cannot produce an unusable name.
+
+Timestamps apply to the session logs — *Printable output* and *All session output*. The SSH packet and raw-data logs are deliberately left alone: they already timestamp every record in their own format, which other tools parse.
+
+If you would rather not learn strftime to try it, the button under the field fills in a sensible pattern; press it again to clear it. Its label always says which of the two it will do.
+
+**Rotation.** *Log rotation delay* starts a new log file every N seconds, so a long-running session becomes a series of manageable files instead of one that grows all week. This only works if the file name changes with time — put `&T` in it, as in `kitty_&H_&T.log`. If the name has no time-varying code, KiTTY **declines to rotate** and says so in the Event Log, because reopening the same name would overwrite the log instead of rotating it.
+
+**How to enable:** **Session > Logging**. Choose what to log, set *Log file name*, then put your pattern in *Timestamp (strftime format)* — or press the button beneath it. For rotation, set *Log rotation delay* and include `&T` in the file name.
+
+(no screenshot)
+
 ### Standard output to the clipboard
 
 KiTTY can route a session's terminal output straight into the Windows clipboard. By treating the clipboard as a kind of printer, you can capture the result of any remote command and paste it directly into another Windows application, with no manual selecting or copying. It's a handy way to grab a directory listing, a config file, or any command output and reuse it locally.

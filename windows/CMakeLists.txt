@@ -344,6 +344,9 @@ add_executable(kitty
   # actually compiled: the settings library is built without MOD_PERSO, where
   # such a block would be silently dead.
   ${CMAKE_SOURCE_DIR}/cmdline.c
+  # logging.c likewise, for the per-line LogTimestamp: it reaches other binaries
+  # through the utils library, built without MOD_PERSO.
+  ${CMAKE_SOURCE_DIR}/logging.c
   # NOTE: config.c is deliberately NOT here. kitty/kitty_config.c below is a
   # full KiTTY replacement for it, compiled with MOD_PERSO, and it already wins
   # at link time. Adding config.c as well gives "multiple definition of
@@ -423,6 +426,7 @@ add_executable(kitty_portable
   # cmdline.c: see the comment on the kitty target above (and the note there on
   # why config.c must NOT be listed)
   ${CMAKE_SOURCE_DIR}/cmdline.c
+  ${CMAKE_SOURCE_DIR}/logging.c
   ${KITTY_DIR}/far2l/cdecode.c
   ${KITTY_DIR}/far2l/cencode.c
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
