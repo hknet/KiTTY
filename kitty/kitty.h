@@ -5,6 +5,19 @@
 #include <process.h>
 #include <time.h>
 
+/*
+ * Menu command ids live in ONE place: windows/kitty_rc_additions.h, which the
+ * resource compiler already reads through windows/putty-rc.h and which is
+ * therefore preprocessor-only. This header used to carry its own copies of 25
+ * of them behind #ifndef guards, so whichever header a translation unit
+ * happened to include first decided the value - and three of them disagreed
+ * (IDM_XYZSTART/UPLOAD/ABORT were 0xA810/20/30 here and 0xB150/60/70 there).
+ * Nothing outside window.c used those three, so the build was consistent by
+ * luck; a ZModem entry added to kitty_shortcuts.c would have sent an id the
+ * menu was not listening for and done nothing at all.
+ */
+#include "kitty_rc_additions.h"
+
 // Handle sur la fenetre principale
 //extern HWND MainHwnd ;
 HWND GetMainHwnd(void) ;
@@ -550,15 +563,6 @@ int getpid(void) ;
 ** DEFINITION DES DEFINES
 *************************************************/
 #ifdef MOD_ZMODEM
-#ifndef IDM_XYZSTART
-#define IDM_XYZSTART  0xA810
-#endif
-#ifndef IDM_XYZUPLOAD
-#define IDM_XYZUPLOAD 0xA820
-#endif
-#ifndef IDM_XYZABORT
-#define IDM_XYZABORT  0xA830
-#endif
 int xyz_Process(Backend *back, void *backhandle, Terminal *term) ;
 void xyz_ReceiveInit(Terminal *term) ;
 void xyz_StartSending(Terminal *term) ;
@@ -566,41 +570,8 @@ void xyz_Cancel(Terminal *term) ;
 void xyz_updateMenuItems(Terminal *term) ;
 #endif
 
-#ifndef IDM_QUIT
-#define IDM_QUIT 0xA840
-#endif
-#ifndef IDM_VISIBLE
-#define IDM_VISIBLE   0xA850
-#endif
-#ifndef IDM_PROTECT
-#define IDM_PROTECT   0xA860
-#endif
-#ifndef IDM_PRINT
-#define IDM_PRINT   0xA870
-#endif
-#ifndef IDM_TRANSPARUP
-#define IDM_TRANSPARUP	0xA880
-#endif
-#ifndef IDM_TRANSPARDOWN
-#define IDM_TRANSPARDOWN	0xA890
-#endif
-#ifndef IDM_WINROL
-#define IDM_WINROL   0xA900
-#endif
-#ifndef IDM_PSCP
-#define IDM_PSCP	0xA910
-#endif
-#ifndef IDM_WINSCP
-#define IDM_WINSCP	0xA920
-#endif
-#ifndef IDM_TOTRAY
-#define IDM_TOTRAY   0xA930
-#endif
 #ifndef IDM_FROMTRAY
 #define IDM_FROMTRAY   0xA940
-#endif
-#ifndef IDM_SHOWPORTFWD
-#define IDM_SHOWPORTFWD	0xA950
 #endif
 #ifndef IDM_HIDE
 #define IDM_HIDE	0xA960
@@ -620,50 +591,15 @@ void xyz_updateMenuItems(Terminal *term) ;
 #ifndef IDM_SCRIPTFILE
 #define IDM_SCRIPTFILE 0xB010
 #endif
-#ifndef IDM_RESIZE
-#define IDM_RESIZE 0xB020
-#endif
-#ifndef IDM_REPOS
-#define IDM_REPOS 0xB030
-#endif
-#ifndef IDM_EXPORTSETTINGS
-#define IDM_EXPORTSETTINGS 0xB040
-#endif
 
-#ifndef IDM_FONTUP
-#define IDM_FONTUP 0xB050
-#endif
-#ifndef IDM_FONTDOWN
-#define IDM_FONTDOWN 0xB060
-#endif
-#ifndef IDM_FONTBLACKANDWHITE
-#define IDM_FONTBLACKANDWHITE 0xB070
-#endif
-#ifndef IDM_FONTNEGATIVE
-#define IDM_FONTNEGATIVE 0xB080
-#endif
 
 #ifndef IDM_PORTKNOCK
 #define IDM_PORTKNOCK	0xB090
 #endif
-#ifndef IDM_CLEARLOGFILE
-#define IDM_CLEARLOGFILE 0xB100
-#endif
-#ifndef IDM_OPENLOGFILE
-/* Must match windows/kitty_rc_additions.h. Multiples of 0x10 only: the
- * WM_SYSCOMMAND dispatch masks with ~0xF. */
-#define IDM_OPENLOGFILE 0xB210
-#endif
 
 #ifdef MOD_RECONNECT
-#ifndef IDM_RESTARTSESSION
-#define IDM_RESTARTSESSION 0xB110
-#endif
 #endif
 
-#ifndef IDM_SHORTCUTSTOGGLE
-#define IDM_SHORTCUTSTOGGLE 0xB120
-#endif
 
 /* [Shortcuts] keyexchange: window.c resolves this to the SSH "Repeat key
  * exchange" special by its SS_REKEY code (the specials menu is built
@@ -755,8 +691,7 @@ void xyz_updateMenuItems(Terminal *term) ;
 #ifndef IDM_FULLSCREEN
 #define IDM_FULLSCREEN	0x0180
 #endif
-#ifndef IDM_COPYALL
-#define IDM_COPYALL	0x0170
-#endif
+/* IDM_COPYALL was defined a second time here, with the same value as the copy
+ * above. Harmless, but it is how the ids that DID disagree got started. */
 
 #endif // KITTY_H

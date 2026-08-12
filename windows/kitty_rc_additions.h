@@ -374,9 +374,9 @@
 #ifndef IDM_EXPORTSETTINGS
 #define IDM_EXPORTSETTINGS 0xB040
 #endif
-#ifndef IDM_DUPKITTY
-#define IDM_DUPKITTY 0xB130
-#endif
+/* IDM_DUPKITTY (0xB130) removed 2026-08-12: nothing referenced it, and it sat
+ * on IDM_LAUNCHER, which is a RANGE base - kitty_launcher.c uses
+ * IDM_LAUNCHER+1..+9, so 0xB130-0xB13F belongs to the launcher's own menu. */
 #ifndef IDM_HYPERLINKTOGGLE
 #define IDM_HYPERLINKTOGGLE 0xB140
 #endif

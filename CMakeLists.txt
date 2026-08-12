@@ -224,6 +224,23 @@ if(KITTY_INI_CHECK_PYTHON)
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Checking kitty.ini templates against the options the source reads")
   add_custom_target(check_kitty_ini ALL DEPENDS ${KITTY_INI_CHECK_STAMP})
+
+  # Menu command ids. The mistakes this catches do not break the build - they
+  # produce a menu item or a shortcut that silently does nothing, which is only
+  # found by using the feature. See the comment in the script.
+  set(KITTY_MENUID_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_menuid_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_MENUID_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-menu-ids.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_MENUID_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-menu-ids.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/kitty/kitty.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/windows/kitty_rc_additions.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/windows/window.c
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking menu command ids for duplicates and 0x10 spacing")
+  add_custom_target(check_menu_ids ALL DEPENDS ${KITTY_MENUID_CHECK_STAMP})
 endif()
 
 configure_file(cmake/cmake.h.in ${GENERATED_SOURCES_DIR}/cmake.h)
