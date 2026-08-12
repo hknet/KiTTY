@@ -1136,11 +1136,11 @@ static int kageant_fp_ok(const char *path, const char *stored, int *adopt)
 
     blob = kageant_pubblob(path);
     if (!blob)
-        return 1;                       /* unreadable: the loader reports it */
+        return 0;    /* KiTTY: a stored fp we cannot verify -> skip, don't load */
     actual = kageant_fp_of_blob(blob);
     strbuf_free(blob);
     if (!actual)
-        return 1;
+        return 0;    /* KiTTY: unverifiable against a stored fp -> skip */
 
     if (!strcmp(actual, stored)) {
         sfree(actual);
@@ -2438,8 +2438,11 @@ void kageant_do_mutation_notice(int op, const char *comment)
 }
 
 /* The comment convention. Checked once at ADD time (via
- * kageant_comment_confirm_hook) to set the real per-key flag; the sign-time
- * AUTO-mode check below stays as a safety net. */
+ * kageant_comment_confirm_hook) on EVERY add path, turning the convention
+ * into the real, sticky per-key flag. There is deliberately no sign-time
+ * re-check of the comment: it could not tell a flag the user cleared in Key
+ * details from one that was never set, so it would silently override that
+ * "No". The per-key flag is the single source of truth at sign time. */
 int kageant_comment_wants_confirm(const char *comment)
 {
     return comment &&

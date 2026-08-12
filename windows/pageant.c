@@ -3564,6 +3564,8 @@ static LRESULT CALLBACK wm_copydata_WndProc(HWND hwnd, UINT message,
         if (wParam)
             GetWindowThreadProcessId((HWND)wParam, &wmct.sender_pid);
         mapname = (char *) cds->lpData;
+        if (!mapname || cds->cbData == 0)
+            return 0;              /* KiTTY: reject empty/NULL before indexing */
         if (mapname[cds->cbData - 1] != '\0')
             return 0;              /* failure to be ASCIZ! */
         err = answer_filemapping_message(mapname);

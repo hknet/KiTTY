@@ -972,6 +972,19 @@ void (*kageant_keyuse_hook)(const char *fingerprint, int allowed) = NULL;
  * per-key flag. NULL outside the GUI agent. */
 int (*kageant_comment_confirm_hook)(const char *comment) = NULL;
 
+/* KiTTY: turn the comment convention into the real per-key flag. The
+ * ADD_IDENTITY handler does this inline (it has the ssh-add -c constraint to
+ * apply as well); every other add path calls this, so that a key added over
+ * EXT_ADD_PPK honours the convention too. The flag lives on the PUBLIC entry,
+ * so it survives a later on-demand decryption of a deferred key. */
+static void kageant_arm_comment_confirm(ptrlen full_pub)
+{
+    PageantPublicKey *cpub = findpubkey2(full_pub);
+    if (cpub && cpub->comment && kageant_comment_confirm_hook &&
+        kageant_comment_confirm_hook(cpub->comment))
+        cpub->confirm = true;
+}
+
 /* KiTTY: external-transport mutation notices - see pageant.h. */
 void (*kageant_mutation_notice_hook)(int op, const char *comment) = NULL;
 int (*kageant_ipc_blocked_hook)(int op) = NULL;
@@ -1073,12 +1086,43 @@ static void signop_coroutine(PageantAsyncOp *pao)
      * confirmed by the user before each use (Cernko patch). The hook is NULL
      * except in the Pageant GUI, and returns nonzero unless confirmation is
      * required and the user refused. */
-    if (kageant_confirm_hook &&
-        !kageant_confirm_hook(so->comment, so->confirm)) {
-        response = strbuf_new();
-        failure(so->pao.info->pc, so->pao.reqid, response, so->failure_type,
-                "key usage not confirmed by user");
-        goto respond;
+    if (kageant_confirm_hook) {
+        /*
+         * The confirm box is modal and pumps the message loop, so another
+         * agent request - including one that deletes this key - can be served
+         * while it is up. This request is NOT on the key's blocked_requests
+         * list at this point (it was unlinked after the decryption wait), so
+         * fail_requests_for_key() will not cancel it, and sign_key may point
+         * straight into the tree: a protected key is signed from our own
+         * temp_skey copy, but a legacy cleartext one is priv->skey itself,
+         * which that delete frees. Remember the key's identity now so we can
+         * prove it survived the prompt.
+         */
+        PageantPrivateKeySort idsort;
+        strbuf *idblob = strbuf_dup(ptrlen_from_strbuf(so->priv->base_pub));
+        idsort.ssh_version = so->priv->sort.ssh_version;
+        idsort.base_pub = ptrlen_from_strbuf(idblob);
+
+        bool allowed = kageant_confirm_hook(so->comment, so->confirm);
+
+        /* Pointer comparison ONLY: so->priv may be dangling by now and must
+         * not be dereferenced. */
+        PageantPrivateKey *still = find234(privkeytree, &idsort, NULL);
+        strbuf_free(idblob);
+
+        if (!allowed) {
+            response = strbuf_new();
+            failure(so->pao.info->pc, so->pao.reqid, response,
+                    so->failure_type, "key usage not confirmed by user");
+            goto respond;
+        }
+        if (still != so->priv) {
+            response = strbuf_new();
+            failure(so->pao.info->pc, so->pao.reqid, response,
+                    so->failure_type,
+                    "key deleted while confirmation was pending");
+            goto respond;
+        }
     }
 
     strbuf *signature = strbuf_new();
@@ -1412,6 +1456,25 @@ static PageantAsyncOp *pageant_make_op(
             goto challenge1_cleanup;
         }
         priv = pub_to_priv(pub);
+
+        /* KiTTY: SSH-1 key use honours the same usage-confirmation as SSH-2
+         * signing (see signop_coroutine). Reachable via the global "confirm
+         * every use" mode; the per-key flag never attaches to an SSH-1 key. */
+        if (kageant_confirm_hook &&
+            !kageant_confirm_hook(pub->comment, pub->confirm)) {
+            fail("key usage not confirmed by user");
+            goto challenge1_cleanup;
+        }
+
+        /* The confirm box is modal and pumps the message loop, so another
+         * request can be served while it is up - including one that deletes
+         * this key. Re-resolve it rather than trusting the old pointers. */
+        if ((pub = findpubkey1(&reqkey)) == NULL) {
+            fail("key not found");
+            goto challenge1_cleanup;
+        }
+        priv = pub_to_priv(pub);
+
         response = rsa_ssh1_decrypt(challenge, priv->rkey);
 
         {
@@ -1426,6 +1489,17 @@ static PageantAsyncOp *pageant_make_op(
         put_data(sb, response_md5, 16);
 
         pageant_client_log(pc, reqid, "reply: SSH1_AGENT_RSA_RESPONSE");
+
+        /* KiTTY: nudge + tint on a successful SSH-1 key use, mirroring the
+         * SSH-2 signop path. Tint match is best-effort (SSH-1 fp format). */
+        if (kageant_notify_hook || kageant_keyuse_hook) {
+            char *fp = rsa_ssh1_fingerprint(priv->rkey);
+            if (kageant_notify_hook)
+                kageant_notify_hook(pub->comment, fp);
+            if (kageant_keyuse_hook && fp)
+                kageant_keyuse_hook(fp, true);
+            sfree(fp);
+        }
 
       challenge1_cleanup:
         if (response)
@@ -1939,6 +2013,11 @@ static PageantAsyncOp *pageant_make_op(
                     fail("failed to decode private key: %s", error);
                 } else {
                     if (pageant_add_ssh2_key(skey)) {
+                        /* KiTTY: honour the comment convention here too,
+                         * keyed exactly like the ADD_IDENTITY path. */
+                        strbuf *cb = makeblob2full(skey->key);
+                        kageant_arm_comment_confirm(ptrlen_from_strbuf(cb));
+                        strbuf_free(cb);
                         keylist_update();
                         put_byte(sb, SSH_AGENT_SUCCESS);
 
@@ -1962,6 +2041,8 @@ static PageantAsyncOp *pageant_make_op(
             base_pub = make_base_pub_2(&sort);
 
             pageant_add_ssh2_key_encrypted(sort, comment, keyfile);
+            /* KiTTY: and on the deferred/encrypted add path. */
+            kageant_arm_comment_confirm(ptrlen_from_strbuf(full_pub));
             keylist_update();
             put_byte(sb, SSH_AGENT_SUCCESS);
             pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS");
