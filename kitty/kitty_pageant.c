@@ -334,26 +334,52 @@ void kageant_startup_set(int on)
  * the registry is authoritative, ini keys act as first-run defaults only.
  */
 
-static int kageant_reg_read(const char *name, int *val_out)
+/*
+ * Value-preserving registry access. A setting with more than two states MUST
+ * use these directly: the boolean pair below deliberately collapses everything
+ * to 0/1 at BOTH ends, so a multi-valued setting routed through it silently
+ * loses every state above 1.
+ */
+static int kageant_reg_read_dword(const char *name, int *val_out)
 {
     DWORD val, sz = sizeof(val);
     if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, name,
                      RRF_RT_REG_DWORD, NULL, &val, &sz) != ERROR_SUCCESS)
         return 0;
-    *val_out = val ? 1 : 0;
+    *val_out = (int)val;
+    return 1;
+}
+
+static void kageant_reg_write_dword(const char *name, int val)
+{
+    HKEY hk;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        DWORD v = (DWORD)val;
+        RegSetValueExA(hk, name, 0, REG_DWORD,
+                       (const BYTE *)&v, sizeof(v));
+        RegCloseKey(hk);
+    }
+}
+
+/*
+ * The on/off toggles. Booleans ONLY - anything with a third state belongs on
+ * the pair above. The tri-state confirm mode was stored through here, so
+ * "Never" (2) was written as 1 and read back as "confirm every use": the
+ * setting did the exact opposite of what it said.
+ */
+static int kageant_reg_read(const char *name, int *val_out)
+{
+    int v;
+    if (!kageant_reg_read_dword(name, &v))
+        return 0;
+    *val_out = v ? 1 : 0;
     return 1;
 }
 
 static void kageant_reg_write(const char *name, int on)
 {
-    HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        DWORD val = on ? 1 : 0;
-        RegSetValueExA(hk, name, 0, REG_DWORD,
-                       (const BYTE *)&val, sizeof(val));
-        RegCloseKey(hk);
-    }
+    kageant_reg_write_dword(name, on ? 1 : 0);
 }
 
 
@@ -487,13 +513,15 @@ int kageant_confirm_mode(void)
         else if (!stricmp(buf, "no")) ini_mode = KAGEANT_CONFIRM_NO;
         else if (!stricmp(buf, "auto")) ini_mode = KAGEANT_CONFIRM_AUTO;
     }
+    /* _dword, not the boolean reader: this setting has three states and the
+     * boolean one would fold "no" (2) into "yes" (1). */
     if (kitty_inilight_registry_authoritative())
-        return kageant_reg_read(KAGEANT_REG_CONFIRM, &reg_val) ?
+        return kageant_reg_read_dword(KAGEANT_REG_CONFIRM, &reg_val) ?
                kageant_reg_to_mode(reg_val) :
                (ini_mode >= 0 ? ini_mode : KAGEANT_CONFIRM_AUTO);
     if (ini_mode >= 0)
         return ini_mode;
-    return kageant_reg_read(KAGEANT_REG_CONFIRM, &reg_val) ?
+    return kageant_reg_read_dword(KAGEANT_REG_CONFIRM, &reg_val) ?
            kageant_reg_to_mode(reg_val) : KAGEANT_CONFIRM_AUTO;
 }
 
@@ -518,7 +546,8 @@ void kageant_confirm_set_mode(int mode)
     const char *s = (mode == KAGEANT_CONFIRM_YES) ? "yes" :
                     (mode == KAGEANT_CONFIRM_NO)  ? "no"  : "auto";
     kitty_inilight_write("Agent", "askconfirmation", s);
-    kageant_reg_write(KAGEANT_REG_CONFIRM, kageant_mode_to_reg(mode));
+    /* _dword, not the boolean writer: it would store "no" (2) as 1. */
+    kageant_reg_write_dword(KAGEANT_REG_CONFIRM, kageant_mode_to_reg(mode));
 }
 
 /* KiTTY: "kitty.ini mode" indicator for the key-list window and the tray
