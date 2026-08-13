@@ -1198,7 +1198,7 @@ static inline void pq_kem_free_dk(pq_kem_dk *dk)
 #define GSS_KRB5_OID_HASH "toWM5Slw5Ew8Mqkay+al2g=="
 
 /*
- * Enumeration of signature flags from draft-miller-ssh-agent-02
+ * Enumeration of IANA SSH Agent Signature Flags
  */
 #define SSH_AGENT_RSA_SHA2_256 2
 #define SSH_AGENT_RSA_SHA2_512 4
