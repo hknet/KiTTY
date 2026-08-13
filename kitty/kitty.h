@@ -216,6 +216,11 @@ void SetSessionFilterFlag( const int flag ) ;
 int GetDefaultSettingsFlag(void) ;
 void SetDefaultSettingsFlag( const int flag ) ;
 
+// Browse folders as rows of the saved-session list instead of via the combo
+// [ConfigBox] foldernavigation=no
+int GetFolderNavigationFlag(void) ;
+void SetFolderNavigationFlag( const int flag ) ;
+
 // Quick connect: no = start from Default Settings with the caret in Host Name
 // [ConfigBox] loadlastsession=yes
 int GetLoadLastSessionFlag(void) ;

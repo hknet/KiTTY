@@ -1956,7 +1956,20 @@ struct sessionsaver_data {
     char *folder_at_load;        /* folder the loaded session came from, or NULL:
                                   * Save only re-files when this changed */
     int folder_action;           /* what ssd->createbutton currently does */
+    /* KiTTY folder navigation: Ctrl+G asked for a search that SPANS folders.
+     * Ordinary typing narrows the current level only, so without this the root
+     * level - which holds just the unfiled sessions in this mode - would be the
+     * whole of what Ctrl+G could find, and "search everywhere" would be the one
+     * thing it could not do. Armed by Ctrl+G, disarmed the moment the level
+     * changes or the filter empties. */
+    int search_all;
     const char *folder_button_label; /* its current label, to avoid redundant sets */
+    /* KiTTY folder navigation: the folder names currently drawn as rows, in row
+     * order. A folder row's id indexes THIS, not FolderList, because the two are
+     * not the same set - see kitty_rebuild_folder_rows(). Rebuilt on every list
+     * refresh and freed with the dialog. */
+    char **folderrows;
+    int nfolderrows;
     int initial_focus_set;
     /* KiTTY: the session whose settings are actually in the box, as opposed to
      * the name sitting in the edit box. They part company the moment you click a
@@ -1993,6 +2006,10 @@ void kitty_dlg_mark_quickconnect(dlgparam *dp, int on);   /* windows/dialog.c */
  * session_filter_ctrl above, so it can never outlive the dialog. */
 static struct sessionsaver_data *session_filter_ssd = NULL;
 
+/* [ConfigBox] foldernavigation - defined with the other folder-row helpers
+ * below, but needed here by Ctrl+G, which sits above them. */
+static bool kitty_folder_rows_on(void);
+
 /*
  * Ctrl+G: drop the folder filter back to the root list, then let the caller
  * run the ordinary Ctrl+F jump. Ctrl+F alone searches within whatever folder
@@ -2006,10 +2023,24 @@ static struct sessionsaver_data *session_filter_ssd = NULL;
 bool kitty_config_select_root_folder(dlgparam *dp)
 {
     struct sessionsaver_data *ssd = session_filter_ssd;
-    if (!ssd || GetPuttyFlag() || !ssd->folderlist || !ssd->listbox)
+    /* The combo is not required: folder navigation removes it and steers by the
+     * list instead, and Ctrl+G has to keep working there - it is the one route
+     * back to the root that does not depend on any particular control being on
+     * screen. Only the LIST is genuinely needed. */
+    if (!ssd || GetPuttyFlag() || !ssd->listbox)
         return false;
-    if (!strcmp(CurrentFolder, "Default"))
-        return false;                    /* already showing everything */
+    if (!ssd->folderlist && !kitty_folder_rows_on())
+        return false;
+    /* Arm the cross-folder search BEFORE the early-out below. With folder rows
+     * the root level is not "everything" any more - it is the unfiled sessions
+     * - so being at the root already is no reason to do nothing: that is
+     * exactly when Ctrl+G still has work to do. */
+    ssd->search_all = 1;
+    if (!strcmp(CurrentFolder, "Default")) {
+        if (ssd->listbox && dlg_is_visible(ssd->listbox, dp))
+            dlg_refresh(ssd->listbox, dp);
+        return false;                    /* already at the top; nothing moved */
+    }
     strcpy(CurrentFolder, "Default");
     kitty_set_last_folder(CurrentFolder);
     /* dlg_refresh rebuilds the combo and re-selects the row matching
@@ -2021,10 +2052,16 @@ bool kitty_config_select_root_folder(dlgparam *dp)
      * tolerates that (it calls the handler directly), but the handler goes on
      * to dlg_update_start()/dlg_listbox_clear(), which assert on a control
      * they cannot find. Skipping the refresh loses nothing - the panel
-     * rebuilds from CurrentFolder when it is next shown. */
-    if (dlg_is_visible(ssd->folderlist, dp))
+     * rebuilds from CurrentFolder when it is next shown.
+     *
+     * ⚠️ And only when the control EXISTS: folder navigation builds no combo at
+     * all, and dlg_is_visible(NULL) is not a question the dialog layer can
+     * answer - it looks the control up in a tree234 and asserts. That fired as a
+     * runtime assertion box the first time Ctrl+G was pressed in that mode, and
+     * took the list refresh below down with it. */
+    if (ssd->folderlist && dlg_is_visible(ssd->folderlist, dp))
         dlg_refresh(ssd->folderlist, dp);
-    if (dlg_is_visible(ssd->listbox, dp))
+    if (ssd->listbox && dlg_is_visible(ssd->listbox, dp))
         dlg_refresh(ssd->listbox, dp);
     return true;
 }
@@ -2047,16 +2084,122 @@ static void sessionsaver_data_free(void *ssdv)
     sfree(ssd->searchfilter);
     sfree(ssd->folder_at_load);
     sfree(ssd->loaded_from);
+    for (int fr = 0; fr < ssd->nfolderrows; fr++)
+        sfree(ssd->folderrows[fr]);
+    sfree(ssd->folderrows);
 #endif
     sfree(ssd);
 }
 
 #ifdef MOD_PERSO
 char *kitty_read_session_folder(const char *sessionname);   /* windows/storage.c */
+
+/*
+ * KiTTY folder navigation ([ConfigBox] foldernavigation=yes, hknet/KiTTY#26).
+ *
+ * Folders become ROWS of the saved-session list instead of entries in a combo:
+ * the folders of the current level first, then the sessions at that level, with
+ * ".." to step back out. Storage does not change - a folder is still an
+ * attribute of a session - so this is a VIEW, and turning the setting off puts
+ * everything back exactly as it was.
+ *
+ * Two kinds of row now share one listbox. They are told apart by ID: a session
+ * row carries its session index (>= 0, as before), a navigation row carries a
+ * NEGATIVE id. Everything that consumes a selection already rejects a negative
+ * id - load_selected_session beeps on selid < 0, update_comment_display and the
+ * SELCHANGE handler both test i >= 0 - so a folder row cannot be loaded, saved
+ * over or commented on by accident. The combo's synthetic "<new folder...>" row
+ * has used id -1 for the same reason, which is why the ids below start at -2.
+ */
+#define KITTY_ROW_PARENT       (-2)      /* the ".." row */
+#define KITTY_ROW_FOLDER_BASE  (-1000)   /* FolderList[i]  ->  BASE - i */
+
+static bool kitty_folder_rows_on(void)
+{
+    extern int GetFolderNavigationFlag(void);
+    return !GetPuttyFlag() && GetFolderNavigationFlag();
+}
+
+/*
+ * Are session folders available in this dialog at all?
+ *
+ * ⚠️ This exists because "the folder combo" and "folders work" USED to be the
+ * same condition, and several behaviours were written as `if (ssd->folderlist)`.
+ * Folder navigation sets that pointer to NULL - it steers by the list instead -
+ * so every one of those became a silent no-op in the new mode. The one that
+ * mattered: Save stopped re-filing a session, so loading one from a folder,
+ * stepping out to the root with ".." and saving left it in the old folder with
+ * no warning at all. Ask this, not for the control.
+ */
+static bool kitty_folder_rows_on(void);
+static bool kitty_folders_available(struct sessionsaver_data *ssd)
+{
+    return !GetPuttyFlag() && (ssd->folderlist || kitty_folder_rows_on());
+}
+
+/* "Default" is the root list rather than a folder of that name - every filter
+ * path in this file keys off that comparison, so it is spelt out once here. */
+static bool kitty_at_root_level(void)
+{
+    return (!CurrentFolder[0] || !strcmp(CurrentFolder, "Default"));
+}
+
+/*
+ * Does this session belong on the level being shown?
+ *
+ * Index 0 is "Default Settings": it belongs to no folder and is deliberately
+ * shown at every level (see the exemption at load_selected_session), so it is
+ * never filtered out here.
+ *
+ * The root level is where the two modes differ, and it is the visible change
+ * this setting makes: classic mode shows EVERY session at the root, annotating
+ * the filed ones "[folder]"; folder-navigation mode shows only the UNFILED
+ * ones, because the rest are reached by stepping into their folder row.
+ */
+/* Is a cross-folder search actually running? Ctrl+G arms it, but it only means
+ * anything while something is typed - with an empty box "search everywhere" and
+ * "show me the root" are the same list. */
+static bool kitty_searching_all_folders(struct sessionsaver_data *ssd)
+{
+    return kitty_folder_rows_on() && ssd->search_all &&
+        ssd->searchfilter && ssd->searchfilter[0];
+}
+
+static bool kitty_session_on_level(struct sessionsaver_data *ssd, int i)
+{
+    char *fld;
+    bool ok;
+    if (GetPuttyFlag() || i == 0)
+        return true;
+    if (kitty_searching_all_folders(ssd))
+        return true;                 /* Ctrl+G: every folder is in scope */
+    if (!kitty_at_root_level()) {
+        fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
+        ok = (fld && !strcmp(fld, CurrentFolder));
+        sfree(fld);
+        return ok;
+    }
+    if (!kitty_folder_rows_on())
+        return true;                 /* classic root list: everything shows */
+    fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
+    ok = (!fld || !*fld || !strcmp(fld, "Default"));
+    sfree(fld);
+    return ok;
+}
+
+/* How many navigation/folder rows sit ABOVE the session rows. The population
+ * loop and sessionsaver_folder_visible_position must agree exactly or the
+ * index->row mapping drifts and the selection lands on the wrong line, so both
+ * go through this rather than counting for themselves. */
+static int kitty_nav_row_count(struct sessionsaver_data *ssd);
+
 static int sessionsaver_folder_visible_position(struct sessionsaver_data *ssd,
                                                 int sessindex)
 {
-    int pos = 0;
+    /* Folder navigation puts its rows above the sessions, so every session row
+     * shifts down by that many. The rows themselves were worked out by the last
+     * refresh, which is the only thing that can have drawn them. */
+    int pos = kitty_nav_row_count(ssd);
     if (sessindex < 0 || sessindex >= ssd->sesslist.nsessions)
         return -1;
     for (int i = 0; i < ssd->sesslist.nsessions; i++) {
@@ -2069,13 +2212,8 @@ static int sessionsaver_folder_visible_position(struct sessionsaver_data *ssd,
               if (i == sessindex) return -1;   /* the hidden row has no position */
               continue;
           } }
-        if (!GetPuttyFlag() && i > 0 && strcmp(CurrentFolder, "Default") != 0) {
-            char *fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
-            int match = (fld && !strcmp(fld, CurrentFolder));
-            sfree(fld);
-            if (!match)
-                continue;
-        }
+        if (!kitty_session_on_level(ssd, i))
+            continue;
         if (i == sessindex)
             return pos;
         pos++;
@@ -2135,7 +2273,7 @@ static bool load_selected_session(
      * "Default Settings" is exempt: the filter shows it under every folder, so
      * it belongs to none, and following its (meaningless, but real) stored
      * value would drag the view somewhere the user never chose. */
-    if (!GetPuttyFlag() && ssd->folderlist && !isdef) {
+    if (kitty_folders_available(ssd) && !isdef) {
         const char *fld = conf_get_str(conf, CONF_folder);
         if (!fld || !*fld)
             fld = "Default";
@@ -2327,6 +2465,128 @@ static int sessionsaver_filter_match(const char *sessionname, const char *filter
     return prefix ? 2 : 1;              /* prefix-token matches before substrings */
 }
 
+/*
+ * The folders visible at the current level. With one level of drill-down that
+ * is "all of them, at the root, and none once you are inside one" - so this
+ * doubles as the answer to "am I somewhere I can go up from".
+ *
+ * The filter narrows folder rows exactly as it narrows session rows: they are
+ * rows of the same list, and a filter that skipped one kind would behave
+ * arbitrarily. ".." is the one exemption - it is the way out, so a search that
+ * matches nothing still leaves it on screen rather than a dead end.
+ */
+static bool kitty_folder_row_visible(const char *name, const char *filter)
+{
+    return name && name[0] && strcmp(name, "Default") != 0 &&
+        sessionsaver_filter_match(name, filter) != 0;
+}
+
+/*
+ * Work out which folders to draw, from TWO sources, because neither alone is
+ * complete:
+ *
+ *  - the SESSIONS themselves. A folder is an attribute of a session
+ *    (Folder=<name>), and that attribute is the design - kitty_read_session_folder
+ *    reads it in every save mode. This is the authoritative source of "folders
+ *    that have something in them".
+ *
+ *  - FolderList, the stored list ([KiTTY] Folders). Needed because a folder with
+ *    nothing in it still exists and must still be shown; no session names it, so
+ *    scanning sessions alone would silently drop it.
+ *
+ * The union matters in practice, not just in theory: FolderList is NOT filled
+ * from sessions in portable/dir mode. InitFolderList's dir branch is guarded
+ * `IniFileFlag == SAVEMODE_DIR && !DirectoryBrowseFlag` (kitty.c:676), while
+ * savemode=dir sets DirectoryBrowseFlag (kitty.c:1072) - so that scan never
+ * runs, and the legacy path it guards looks for folders as SUBDIRECTORIES,
+ * which is not how sessions are stored (kitty_storage.c: one flat file per
+ * session, carrying Folder=). Deriving the rows from the attribute sidesteps
+ * that disagreement entirely rather than depending on which mode is active.
+ */
+static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
+                                      const char *filter)
+{
+    int i, n = 0, cap;
+    for (i = 0; i < ssd->nfolderrows; i++)
+        sfree(ssd->folderrows[i]);
+    sfree(ssd->folderrows);
+    ssd->folderrows = NULL;
+    ssd->nfolderrows = 0;
+    if (!kitty_folder_rows_on() || !kitty_at_root_level())
+        return;                          /* one level: no folders inside one */
+
+    cap = ssd->sesslist.nsessions + 64;
+    ssd->folderrows = snewn(cap, char *);
+
+    for (i = 0; FolderList && FolderList[i] != NULL && n < cap; i++)
+        if (kitty_folder_row_visible(FolderList[i], filter))
+            ssd->folderrows[n++] = dupstr(FolderList[i]);
+
+    for (i = 0; i < ssd->sesslist.nsessions && n < cap; i++) {
+        char *fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
+        if (kitty_folder_row_visible(fld, filter)) {
+            int j, seen = 0;
+            for (j = 0; j < n; j++)
+                if (!strcmp(ssd->folderrows[j], fld)) { seen = 1; break; }
+            if (!seen)
+                ssd->folderrows[n++] = dupstr(fld);
+        }
+        sfree(fld);
+    }
+    ssd->nfolderrows = n;
+}
+
+static int kitty_nav_row_count(struct sessionsaver_data *ssd)
+{
+    if (!kitty_folder_rows_on())
+        return 0;
+    if (!kitty_at_root_level())
+        return 1;                        /* ".." only: one level, so no folders */
+    return ssd->nfolderrows;
+}
+
+/*
+ * Put the navigation rows in, above the sessions.
+ *
+ * Folders are drawn with a trailing "/" and the way up as "..", the filesystem
+ * spelling of the Explorer metaphor (§4c of the design note). That is an
+ * implementation choice, not a decision anyone recorded: icons are wanted
+ * eventually, and until then the rows have to be tellable from sessions by
+ * looking, in a list where a session may already read "name [folder]".
+ */
+static void sessionsaver_add_nav_rows(dlgcontrol *ctrl, dlgparam *dlg,
+                                      struct sessionsaver_data *ssd)
+{
+    int i;
+    if (!kitty_folder_rows_on())
+        return;
+    if (!kitty_at_root_level()) {
+        dlg_listbox_addwithid(ctrl, dlg, "..", KITTY_ROW_PARENT);
+        return;
+    }
+    for (i = 0; i < ssd->nfolderrows; i++) {
+        char disp[700];
+        snprintf(disp, sizeof(disp), "%s/", ssd->folderrows[i]);
+        dlg_listbox_addwithid(ctrl, dlg, disp, KITTY_ROW_FOLDER_BASE - i);
+    }
+}
+
+/* The folder a navigation row stands for, or NULL if the id is not one of
+ * ours. ".." maps to the root, since one level of drill-down means up is
+ * always the root. */
+static const char *kitty_folder_for_row_id(struct sessionsaver_data *ssd, int id)
+{
+    int idx;
+    if (id == KITTY_ROW_PARENT)
+        return "Default";
+    if (id > KITTY_ROW_FOLDER_BASE)
+        return NULL;
+    idx = KITTY_ROW_FOLDER_BASE - id;
+    if (idx < 0 || idx >= ssd->nfolderrows)
+        return NULL;
+    return ssd->folderrows[idx][0] ? ssd->folderrows[idx] : NULL;
+}
+
 static void sessionsaver_add_session_row(dlgcontrol *ctrl, dlgparam *dlg,
                                           struct sessionsaver_data *ssd,
                                           int session_index, bool searching)
@@ -2341,11 +2601,20 @@ static void sessionsaver_add_session_row(dlgcontrol *ctrl, dlgparam *dlg,
      * unfiled ones. Searching keeps tagging unfiled sessions "[root]" so every
      * result is accounted for; browsing the root leaves them bare, where the
      * bracket is meant to point out the ones that live somewhere else. */
-    bool root_view = (!CurrentFolder[0] || !strcmp(CurrentFolder, "Default"));
-    char *fld = (searching || root_view) ?
+    bool root_view = kitty_at_root_level();
+    /* Folder navigation normally never annotates: every row on screen belongs
+     * to the level you are looking at, so the bracket would repeat the same
+     * folder on every row.
+     *
+     * The exception is the Ctrl+G search, which deliberately spans folders -
+     * there the results come from everywhere, so each one has to say where it
+     * lives or the list is a set of names with no way to tell them apart. */
+    bool annotate_folders = !kitty_folder_rows_on() ||
+        kitty_searching_all_folders(ssd);
+    char *fld = (annotate_folders && (searching || root_view)) ?
         kitty_read_session_folder(sessionname) : NULL;
     bool filed = (fld && *fld && strcmp(fld, "Default"));
-    if (searching || filed) {
+    if (annotate_folders && (searching || filed)) {
         const char *folder = filed ? fld : "root";
         if (og == 0)
             snprintf(disp, sizeof(disp), "%s [%s]", sessionname, folder);
@@ -2693,6 +2962,16 @@ static void sessionsaver_update_folder_button(struct sessionsaver_data *ssd,
     sessionsaver_recompute_folder_action(ssd);
     if (!ssd->createbutton)          /* midsession / stock variants */
         return;
+    if (kitty_folder_rows_on()) {
+        /* One meaning, one label: the button acts on whatever is in the name
+         * box when it is pressed. Nothing to announce. */
+        label = "New folder";
+        if (ssd->folder_button_label != label) {
+            dlg_label_change(ssd->createbutton, dlg, label);
+            ssd->folder_button_label = label;
+        }
+        return;
+    }
     /* Keep these SHORT: the button shares a 75/25 row with the combo, and
      * anything longer than "New folder" overflows its width. */
     label = (ssd->folder_action == KITTY_FOLDER_ACTION_NEW) ?
@@ -2738,6 +3017,9 @@ static void sessionsaver_switch_folder(struct sessionsaver_data *ssd,
 {
     if (!strcmp(CurrentFolder, folder))
         return;
+    /* Stepping into or out of a folder is a statement about WHERE you want to
+     * look, so it ends the search that spanned everywhere. */
+    ssd->search_all = 0;
     strncpy(CurrentFolder, folder, 1023);
     CurrentFolder[1023] = '\0';
     kitty_set_last_folder(CurrentFolder);
@@ -2746,6 +3028,94 @@ static void sessionsaver_switch_folder(struct sessionsaver_data *ssd,
     dlg_refresh(ssd->listbox, dlg);
     if (ssd->commentbox)
         dlg_refresh(ssd->commentbox, dlg);
+}
+
+/*
+ * KiTTY folder navigation: create the folder named in the session-name box.
+ *
+ * Same rules and the same engine as the combo's create path - CleanFolderName,
+ * the reserved-name refusal, StringList_Add + SaveFolderList - so the two ways
+ * in cannot diverge in what they accept. What differs is only where the name
+ * comes from, and that this one then STEPS INTO the new folder: it is a row in
+ * the list now, and creating something you cannot see would be a strange
+ * result. The name box is cleared, because its text was a folder name and would
+ * otherwise be left behind as a session name or a search filter.
+ */
+static void sessionsaver_create_named_folder(struct sessionsaver_data *ssd,
+                                             dlgparam *dlg)
+{
+    char folder[1024];
+    strncpy(folder, ssd->savedsession ? ssd->savedsession : "", sizeof(folder)-1);
+    folder[sizeof(folder)-1] = '\0';
+    CleanFolderName(folder);
+    if (!folder[0]) {
+        /* Nothing typed: put the caret where the name goes rather than just
+         * beeping, so the button says what it wants instead of only refusing. */
+        dlg_set_focus(ssd->editbox, dlg);
+        return;
+    }
+    if (kitty_folder_name_reserved(folder)) {
+        dlg_error_msg(dlg, "That name is reserved for the root session list.");
+        return;
+    }
+    if (sessionsaver_folder_exists(folder)) {
+        dlg_error_msg(dlg, "A folder of that name already exists.");
+        return;
+    }
+    InitFolderList();
+    StringList_Add(FolderList, folder);
+    SaveFolderList();
+    sfree(ssd->savedsession);
+    ssd->savedsession = dupstr("");
+    sfree(ssd->searchfilter);
+    ssd->searchfilter = dupstr("");
+    sessionsaver_update_folder_button(ssd, dlg);
+    dlg_refresh(ssd->editbox, dlg);
+    /* Step into it. switch_folder refreshes the list for us; it compares against
+     * CurrentFolder, so a folder created while already inside another one is
+     * still a real change. */
+    sessionsaver_switch_folder(ssd, dlg, folder);
+    kitty_notify_launcher_sessions_changed();
+}
+
+/*
+ * KiTTY folder navigation: activate the highlighted row if it is a NAVIGATION
+ * row, and tell the caller whether it was one.
+ *
+ * true  - it was a folder or "..": the level changed, nothing was loaded, and
+ *         the caller must stop.
+ * false - an ordinary session row (or the mode is off), so the caller's usual
+ *         load/launch path should run exactly as before.
+ *
+ * Both ways of activating a row - double-click and Enter - come through here,
+ * so they cannot drift apart.
+ */
+static bool sessionsaver_enter_selected_folder(struct sessionsaver_data *ssd,
+                                               dlgparam *dlg)
+{
+    int row, id;
+    const char *folder;
+    if (!kitty_folder_rows_on() || !ssd->listbox)
+        return false;
+    row = dlg_listbox_index(ssd->listbox, dlg);
+    if (row < 0)
+        return false;
+    id = dlg_listbox_getid(ssd->listbox, dlg, row);
+    if (id >= 0)
+        return false;                   /* a session row: not one of ours */
+    folder = kitty_folder_for_row_id(ssd, id);
+    if (!folder)
+        return false;
+    {
+        /* Take a COPY first. switch_folder refreshes the list, and the refresh
+         * rebuilds ssd->folderrows - which is where `folder` points. Passing it
+         * straight through is a use-after-free the moment the name outlives the
+         * array it came from. */
+        char *want = dupstr(folder);
+        sessionsaver_switch_folder(ssd, dlg, want);
+        sfree(want);
+    }
+    return true;
 }
 #endif
 
@@ -2824,6 +3194,13 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             bool searching = (!GetPuttyFlag() && filter[0]);
             int havelast = kitty_get_last_session(lastsess, sizeof(lastsess));
             int selpos = -1, lbpos = 0;
+            /* Folder navigation: the rows of the current level go in first, and
+             * the sessions follow. They are ordinary rows - selectable, reached
+             * with the arrow keys, activated with Enter - not chrome. */
+            kitty_rebuild_folder_rows(ssd, filter);
+            sessionsaver_add_nav_rows(ctrl, dlg, ssd);
+            lbpos = kitty_nav_row_count(ssd);
+            int firstsession = -1;
             for (int pass = 2; pass >= 1; pass--) {
 #endif
             for (i = 0; i < ssd->sesslist.nsessions; i++) {
@@ -2838,21 +3215,20 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                   if (!GetDefaultSettingsFlag() &&
                       !strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION))
                       continue; }
-                /* KiTTY folder filter: hide sessions not in the selected folder,
-                 * but only when a specific (non-Default) folder is chosen, and
-                 * always keep entry 0 ("Default Settings"). */
-                if (!GetPuttyFlag() && i > 0 &&
-                    strcmp(CurrentFolder, "Default") != 0) {
-                    char *fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
-                    int match = (fld && !strcmp(fld, CurrentFolder));
-                    sfree(fld);
-                    if (!match)
-                        continue;
-                }
+                /* KiTTY folder filter: show only the sessions of the level
+                 * being displayed, always keeping entry 0 ("Default Settings").
+                 * What "this level" means differs between the classic combo and
+                 * folder navigation - kitty_session_on_level knows, and
+                 * sessionsaver_folder_visible_position asks the same function so
+                 * the two can never disagree. */
+                if (!kitty_session_on_level(ssd, i))
+                    continue;
                 smatch = sessionsaver_filter_match(ssd->sesslist.sessions[i], filter);
                 if (searching && smatch != pass)
                     continue;
                 sessionsaver_add_session_row(ctrl, dlg, ssd, i, searching);
+                if (firstsession < 0)
+                    firstsession = lbpos;
                 /* Which row to auto-select: while searching, the exact typed
                  * name; otherwise the session currently in the name box (what
                  * the user last loaded/selected THIS dialog), falling back to
@@ -2882,7 +3258,17 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
 #ifdef MOD_PERSO
             /* KiTTY: auto-select the best visible match (chosen above):
              * typed match while searching, else the current name-box session,
-             * else the remembered last session; default to row 0. */
+             * else the remembered last session; default to row 0.
+             *
+             * With folder rows present, row 0 is a NAVIGATION row, and the
+             * default has to skip past them to the first session: Enter on the
+             * highlighted row loads it, so highlighting ".." or a folder would
+             * turn that keystroke into "go somewhere else" - the one thing the
+             * user did not type for. Falling back to row 0 is still right when
+             * the level holds no sessions at all, because then the only row
+             * there is the way out. */
+            if (selpos < 0 && kitty_folder_rows_on() && firstsession >= 0)
+                selpos = firstsession;
             if (selpos < 0 && lbpos > 0)
                 selpos = 0;
             if (selpos >= 0) {
@@ -2952,6 +3338,11 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * a name never narrows the saved-sessions list. */
                 sfree(ssd->searchfilter);
                 ssd->searchfilter = dupstr(ssd->savedsession);
+                /* Emptying the box ends the Ctrl+G search: the next thing typed
+                 * is a fresh search of the level you are standing on, not a
+                 * continuation of the one that spanned every folder. */
+                if (!ssd->searchfilter[0])
+                    ssd->search_all = 0;
                 dlg_refresh(ssd->listbox, dlg);
                 if (ssd->commentbox)
                     dlg_refresh(ssd->commentbox, dlg);
@@ -3090,6 +3481,16 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
 #endif
     } else if (event == EVENT_ACTION) {
         bool mbl = false;
+#ifdef MOD_PERSO
+        /* KiTTY folder navigation: a double-click on a folder row STEPS INTO
+         * it - it does not load anything, so the name box, the loaded session
+         * and the Save target are all left alone. Handled before the load path
+         * below rather than inside it, because "activate this row" means two
+         * different things now and only the id says which. */
+        if (!ssd->midsession && ctrl == ssd->listbox &&
+            sessionsaver_enter_selected_folder(ssd, dlg))
+            return;
+#endif
         if (!ssd->midsession &&
             (ctrl == ssd->listbox ||
              (ssd->loadbutton && ctrl == ssd->loadbutton))) {
@@ -3186,7 +3587,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     const char *f = conf_get_str(conf, CONF_folder);
                     ssd->folder_at_load = dupstr((f && *f) ? f : "Default");
                 }
-                if (!GetPuttyFlag() && ssd->folderlist) {
+                if (kitty_folders_available(ssd)) {
                     const char *cur = !CurrentFolder[0] ? "Default" : CurrentFolder;
                     if (isdef)
                         conf_set_str(conf, CONF_folder, "Default");
@@ -3350,6 +3751,20 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * (sessionsaver_update_folder_button). The name comes from the
              * folder combo's edit half, never from the Saved Sessions field
              * (which holds the session name). */
+            /*
+             * KiTTY folder navigation: there IS no combo, so the name comes
+             * from the session-name box - the third meaning that field gets
+             * back once the combo is gone. Typing a name and pressing this
+             * button says what the user wants plainly enough; an earlier
+             * version made the first click "arm" the field and the second
+             * create, which guarded against creating a folder out of a live
+             * search filter and cost a hidden mode on every single use to do it.
+             * The text that is there is the name.
+             */
+            if (kitty_folder_rows_on()) {
+                sessionsaver_create_named_folder(ssd, dlg);
+                return;
+            }
             if (!ssd->newfolder || !ssd->newfolder[0]) {
                 dlg_beep(dlg);
             } else if (ssd->folder_action == KITTY_FOLDER_ACTION_RELABEL) {
@@ -3512,6 +3927,15 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
 #endif
         } else if (ctrl == ssd->okbutton) {
 #ifdef MOD_PERSO
+            /* Enter with a folder row highlighted steps into it, exactly as a
+             * double-click does. This has to come before the keyboard-hub flow
+             * below, which would otherwise try to launch the highlighted row -
+             * and before the search-filter branch, so that Enter in the name
+             * box reaches a folder the filter has narrowed to. */
+            if (!ssd->midsession &&
+                dlg_last_focused(ctrl, dlg) == ssd->listbox &&
+                sessionsaver_enter_selected_folder(ssd, dlg))
+                return;
             if (!ssd->midsession &&
                 (dlg_last_focused(ctrl, dlg) == ssd->editbox ||
                  dlg_last_focused(ctrl, dlg) == ssd->listbox)) {
@@ -4660,7 +5084,18 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
     s = ctrl_getset(b, "Session", "savedsessions",
                     midsession ? "Save the current session settings" :
                     "Load, save or delete a stored session");
-    ctrl_columns(s, 2, 75, 25);
+    /* KiTTY folder navigation: the name box shares its row with Save AND with
+     * New folder, because the combo that used to carry folder creation is gone.
+     * Three columns only in that mode, so the classic layout is untouched.
+     *
+     * The widths are not even thirds: "New folder" is more than twice the text
+     * of "Save" and gets the room to say so. Icons would make both narrow and
+     * equal, but that is deliberately later work (§4a) - so the text has to fit
+     * as text. */
+    if (kitty_folder_rows_on() && !midsession)
+        ctrl_columns(s, 3, 50, 18, 32);
+    else
+        ctrl_columns(s, 2, 75, 25);
     get_sesslist(&ssd->sesslist, true);
     ssd->editbox = ctrl_editbox(s, NULL, 'e', 100,
                                 HELPCTX(session_saved),
@@ -4673,6 +5108,17 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
                                       sessionsaver_handler, P(ssd));
     ssd->savebutton->column = 1;
     ssd->savebutton->align_next_to = ssd->editbox;   /* centre on the name field */
+    /* KiTTY folder navigation: creation lives here now. It is a text button for
+     * the moment; §4a of the design note wants an icon, and the switchable path
+     * that decision needs is a separate piece of work - the button must still be
+     * able to render as text or that decision cannot go the other way. */
+    if (kitty_folder_rows_on() && !midsession) {
+        ssd->createbutton = ctrl_pushbutton(s, "New folder", NO_SHORTCUT,
+                                            HELPCTX(session_saved),
+                                            sessionsaver_handler, P(ssd));
+        ssd->createbutton->column = 2;
+        ssd->createbutton->align_next_to = ssd->editbox;
+    }
     ctrl_columns(s, 1, 100);
     ctrl_columns(s, 2, 75, 25);
     /* Folder selector + create button share their own synchronized row. */
@@ -4681,7 +5127,15 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
      * Creating one is an explicit choice - pick the synthetic "<new folder...>"
      * row, type the name, press New folder. With the root list selected instead,
      * a typed name renames its LABEL (display only) and the button says so. */
-    if (!GetPuttyFlag()) {
+    /* KiTTY folder navigation: the LIST is the navigation in that mode, so the
+     * combo goes - two navigation models in one window is the thing to avoid.
+     * "New folder" goes with it rather than on its own account: the folder name
+     * it acts on comes from the combo's edit half, so without the combo it has
+     * no input. It returns beside the name box in a later step; until then this
+     * mode creates no folders, which is why the setting is opt-in and off by
+     * default. "Del folder" is a separate button beside the session list and is
+     * NOT affected - it works on the folder you are currently inside. */
+    if (!GetPuttyFlag() && !kitty_folder_rows_on()) {
         ssd->folderlist = ctrl_combobox(s, NULL, NO_SHORTCUT, 100,
                                         HELPCTX(session_saved),
                                         sessionsaver_handler, P(ssd), P(NULL));

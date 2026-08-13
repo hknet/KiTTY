@@ -46,6 +46,19 @@
 ;    [KiTTY] shortcuts.
 ;filter=yes
 
+; foldernavigation: with yes, session folders become ROWS of the saved-session
+;    list instead of entries in a drop-down. Folders are listed first, then the
+;    sessions at that level; double-click or Enter on a folder row steps into it
+;    and a '..' row steps back out. Typing in the name box narrows folders and
+;    sessions alike, and never hides '..', so a search that finds nothing still
+;    shows the way back. Default no, which keeps the folder drop-down.
+;    Turning it on changes what the ROOT list shows: only sessions that are in
+;    no folder, rather than every session with its folder in brackets. The
+;    sessions themselves are untouched either way - a folder is an attribute of
+;    a session, and this setting only changes how you look at them, so you can
+;    turn it off again and nothing has moved.
+;foldernavigation=no
+
 ; height: the number of visible lines in the saved-sessions list (default 16 = stock fit)
 ;height=16
 

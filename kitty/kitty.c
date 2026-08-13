@@ -343,6 +343,17 @@ static int DefaultSettingsFlag = 1 ;
 int GetDefaultSettingsFlag(void) { return DefaultSettingsFlag ; }
 void SetDefaultSettingsFlag( const int flag ) { DefaultSettingsFlag = flag ; }
 
+/* KiTTY (hknet/KiTTY#26) [ConfigBox] foldernavigation=yes: browse session
+ * folders as ROWS of the saved-session list - folders first, then the sessions
+ * at that level, with ".." to go back up - instead of picking a folder from a
+ * combo box. Opt-in, and OFF by default: it changes what the root list shows
+ * (only unfiled sessions, rather than every session annotated with its folder),
+ * which would be a surprise on upgrade. Storage is untouched either way; a
+ * folder remains an attribute of a session, and this is only a view over it. */
+static int FolderNavigationFlag = 0 ;
+int GetFolderNavigationFlag(void) { return FolderNavigationFlag ; }
+void SetFolderNavigationFlag( const int flag ) { FolderNavigationFlag = flag ; }
+
 /* KiTTY (hknet/KiTTY#23) [ConfigBox] loadlastsession=no: open the
  * configuration box on Default Settings instead of pre-filling it with the
  * session used last, and put the caret straight into "Host Name (or IP
@@ -3338,6 +3349,7 @@ static const IniParam ini_params[] = {
 	INIP_KW( "ConfigBox", 1, "noexit",		1, IGN, IGN,	&ConfigBoxNoExitFlag, NULL ),
 	INIP_KW( "ConfigBox", 1, "filter",		IGN, 0, IGN,	&SessionFilterFlag, NULL ),
 	INIP_KW( "ConfigBox", 1, "defaultsettings",	IGN, 0, IGN,	&DefaultSettingsFlag, NULL ),
+	INIP_KW( "ConfigBox", 1, "foldernavigation",	1, 0, IGN,	&FolderNavigationFlag, NULL ),
 	INIP_KW( "ConfigBox", 1, "loadlastsession",	1, 0, IGN,	&LoadLastSessionFlag, NULL ),
 	INIP_NUM( "ConfigBox", 1, "height",		IGN,		&ConfigBoxHeight, NULL ),
 	INIP_NUM( "ConfigBox", 1, "windowheight",	IGN,		&ConfigBoxWindowHeight, NULL ),

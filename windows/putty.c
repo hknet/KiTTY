@@ -699,8 +699,8 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
             /* KiTTY: register a BARE relaunch (no arguments -> reopens the
              * configuration box) BEFORE we show it, so that if an in-place MSI
              * upgrade closes this window while the config box is open - the
-             * user-reported case of "the update was started from the config
-             * window and it never came back" - the Restart Manager brings the
+             * case where the update was started from the config window and it
+             * never came back - the Restart Manager brings the
              * config box back, like it does the tray apps. If the user then Opens
              * a saved session, the registration just before prepare_session below
              * upgrades this to -load "NAME"; an ad-hoc/host-typed Open leaves the
