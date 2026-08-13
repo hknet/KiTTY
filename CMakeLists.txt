@@ -177,6 +177,23 @@ add_executable(test_conf
 be_list(test_conf TestConf SSH SERIAL OTHERBACKENDS)
 target_link_libraries(test_conf sshclient otherbackends settings network crypto utils ${platform_libraries})
 
+# KiTTY: the session list's baseline behaviour - enumeration, order, the Folder
+# attribute, the name round-trip. Hermetic: it puts the storage layer into file
+# mode against a temp directory, so it never reads or writes real sessions.
+add_executable(test_sessionlist
+  test/test_sessionlist.c
+  stubs/no-agent.c
+  stubs/no-callback.c
+  stubs/no-gss.c
+  stubs/no-ldisc.c
+  stubs/no-network.c
+  stubs/no-timing.c
+  proxy/noproxy.c
+)
+be_list(test_sessionlist TestSessionList SSH SERIAL OTHERBACKENDS)
+target_link_libraries(test_sessionlist
+  sshclient otherbackends settings network crypto utils ${platform_libraries})
+
 foreach(subdir ${platform} ${extra_dirs})
   add_subdirectory(${subdir})
 endforeach()
