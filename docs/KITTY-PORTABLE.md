@@ -22,6 +22,16 @@ to **directory save-mode** (`savemode=dir`) and resolve its config (`kitty.ini`)
 executable's own folder first. Auto-login passwords inside the session files are encrypted
 at rest with Windows DPAPI, exactly as in the registry path.
 
+**One file per session, folders included.** A session's folder is a line inside
+its own file (`Folder=work`), not a directory: `Sessions\` stays flat. Classic
+KiTTY could instead keep each folder as a real subdirectory
+(`[KiTTY] browsedirectory`), and **a store in that shape is not read by this
+version** — the sessions inside those subdirectories are not listed at all, and
+turning `browsedirectory` on does not change that. If you are moving such a
+folder across, copy the session files up into `Sessions\` yourself; each one
+still works, and you can re-file it from the configuration box afterwards. See
+[KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
+
 ## Current scope and password portability
 
 Portable mode now covers the normal saved-session and SSH trust/cache state used by
