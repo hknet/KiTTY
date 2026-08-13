@@ -1953,6 +1953,20 @@ struct sessionsaver_data {
     char *searchfilter;     /* live type-to-search filter from saved-session edit */
     int suppress_edit_valchange; /* set while programmatically updating editbox */
     int suppress_list_selchange; /* set while programmatically selecting list rows */
+    /* The folder named by the currently selected FOLDER ROW, or NULL when the
+     * selection is a session, "..", or nothing. Not a mode the user turns on:
+     * it is set by the selection event and cleared when the list is rebuilt, so
+     * it cannot be left armed by a path nobody thought of. It is what makes the
+     * Save button read "Rename". */
+    char *selected_folder;
+    const char *save_button_label;   /* last caption set on the Save button */
+    /* The folder name WE put in the name box when a folder row was selected,
+     * kept so it can be taken back out again if the user never touched it. A
+     * folder name is not a save target: left behind after the rename ends, one
+     * click on Save would write the running session into a NEW session named
+     * after the folder. Cleared the moment the text differs, which is what
+     * stops this from eating a search someone is typing. */
+    char *folder_text_in_box;
     int suppress_folder_valchange; /* set while programmatically updating folderlist */
     int folder_new_selected;     /* the synthetic "<new folder...>" row is picked */
     char *folder_at_load;        /* folder the loaded session came from, or NULL:
@@ -2074,6 +2088,60 @@ bool kitty_config_select_root_folder(dlgparam *dp)
     return true;
 }
 
+/*
+ * Ctrl+F / Ctrl+G: asking to search ends a pending folder rename.
+ *
+ * Selecting a folder row makes the name box that folder's new name, and the box
+ * stops filtering while it does - otherwise the live search rebuilds the list,
+ * drops the selection and disarms the rename halfway through typing it. But
+ * both search keys focus that same box WITHOUT changing the selection, so
+ * without this they would land the cursor in a box that no longer searches:
+ * a key whose whole purpose is searching, doing nothing visible.
+ *
+ * So the rule reads in both directions - a folder row selected means "renaming
+ * this", and changing the selection OR asking to search means "not any more".
+ */
+static void sessionsaver_update_save_button(struct sessionsaver_data *ssd,
+                                            dlgparam *dlg);
+/*
+ * End a pending folder rename: drop the folder selection, and take the folder
+ * name back out of the box if it is still the one we put there.
+ *
+ * Leaving it behind is an accident waiting to happen: the button has gone back
+ * to "Save", the box still reads "tests", and one click writes the running
+ * session into a NEW session called "tests", sitting beside the folder of that
+ * name. Stepping into a folder is the easy way to reach that state.
+ *
+ * ⚠️ Only when UNTOUCHED. This runs on every list rebuild, and typing in the box
+ * rebuilds the list - so clearing unconditionally would wipe a search halfway
+ * through typing it. Text the user has edited is theirs and stays.
+ */
+static void sessionsaver_end_folder_rename(struct sessionsaver_data *ssd,
+                                           dlgparam *dlg)
+{
+    bool untouched = (ssd->folder_text_in_box && ssd->savedsession &&
+                      !strcmp(ssd->folder_text_in_box, ssd->savedsession));
+    sfree(ssd->selected_folder);
+    ssd->selected_folder = NULL;
+    sfree(ssd->folder_text_in_box);
+    ssd->folder_text_in_box = NULL;
+    if (untouched) {
+        sfree(ssd->savedsession);
+        ssd->savedsession = dupstr("");
+        if (ssd->editbox)
+            dlg_refresh(ssd->editbox, dlg);
+    }
+    sessionsaver_update_save_button(ssd, dlg);
+}
+
+void kitty_config_end_folder_rename(dlgparam *dp)
+{
+    struct sessionsaver_data *ssd = session_filter_ssd;
+    if (!ssd || !ssd->selected_folder)
+        return;
+    sessionsaver_end_folder_rename(ssd, dp);
+}
+
 static void sessionsaver_data_free(void *ssdv)
 {
     struct sessionsaver_data *ssd = (struct sessionsaver_data *)ssdv;
@@ -2092,6 +2160,8 @@ static void sessionsaver_data_free(void *ssdv)
     sfree(ssd->searchfilter);
     sfree(ssd->folder_at_load);
     sfree(ssd->loaded_from);
+    sfree(ssd->selected_folder);
+    sfree(ssd->folder_text_in_box);
     for (int fr = 0; fr < ssd->nfolderrows; fr++)
         sfree(ssd->folderrows[fr]);
     sfree(ssd->folderrows);
@@ -2582,10 +2652,10 @@ static int kitty_nav_row_count(struct sessionsaver_data *ssd)
  * Put the navigation rows in, above the sessions.
  *
  * Folders are drawn with a trailing "/" and the way up as "..", the filesystem
- * spelling of the Explorer metaphor (§4c of the design note). That is an
- * implementation choice, not a decision anyone recorded: icons are wanted
- * eventually, and until then the rows have to be tellable from sessions by
- * looking, in a list where a session may already read "name [folder]".
+ * spelling of the Explorer metaphor. A row has to be tellable from a session by
+ * looking, in a list where a session may already read "name [folder]", and text
+ * is what does that: marking them with icons was considered and dropped, since
+ * a picture has no name for a screen reader to announce.
  */
 static void sessionsaver_add_nav_rows(dlgcontrol *ctrl, dlgparam *dlg,
                                       struct sessionsaver_data *ssd)
@@ -2829,6 +2899,74 @@ static void sessionsaver_recompute_folder_action(struct sessionsaver_data *ssd)
             KITTY_FOLDER_ACTION_RENAME;
 }
 
+/*
+ * Rename a folder, whether or not it is the one being browsed.
+ *
+ * A folder is not a container: membership is the "Folder" value of each
+ * session, and InitFolderList() rebuilds the folder set from the stored list
+ * PLUS a scan of those values. So the members are rewritten FIRST - renaming
+ * only the list entry would be undone by the very next rebuild.
+ *
+ * `old` is passed in rather than read from CurrentFolder because the two routes
+ * disagree about it: the combo renames the folder you are INSIDE, while a
+ * folder ROW is only ever shown at the root, so that route renames one you are
+ * not in. CurrentFolder therefore moves only when it was the renamed folder.
+ *
+ * Returns true if the folder was renamed. Reports its own errors.
+ */
+static bool sessionsaver_rename_folder(struct sessionsaver_data *ssd,
+                                       dlgparam *dlg, Conf *conf,
+                                       const char *oldname, const char *wanted)
+{
+    char folder[1024], old[1024];
+
+    strncpy(folder, wanted ? wanted : "", sizeof(folder)-1);
+    folder[sizeof(folder)-1] = '\0';
+    CleanFolderName(folder);
+    strncpy(old, oldname ? oldname : "", sizeof(old)-1);
+    old[sizeof(old)-1] = '\0';
+
+    if (!folder[0] || !old[0]) {
+        dlg_beep(dlg);
+        return false;
+    }
+    if (!strcmp(folder, old))
+        return false;                    /* nothing typed: not an error */
+    if (kitty_folder_name_reserved(folder)) {
+        dlg_error_msg(dlg, "That name is reserved for the root session list.");
+        return false;
+    }
+    if (stricmp(folder, old) && sessionsaver_folder_exists(folder)) {
+        dlg_error_msg(dlg, "A folder of that name already exists.");
+        return false;
+    }
+    if (sessionsaver_move_folder_sessions(ssd, dlg, old, folder) < 0)
+        return false;
+
+    InitFolderList();
+    StringList_Del(FolderList, old);
+    StringList_Add(FolderList, folder);
+    SaveFolderList();
+    /* Only follow the rename if we were standing in that folder. Renaming a row
+     * at the root must leave the view where it is. */
+    if (!strcmp(CurrentFolder, old)) {
+        strncpy(CurrentFolder, folder, 1023);
+        CurrentFolder[1023] = '\0';
+        kitty_set_last_folder(CurrentFolder);
+    }
+    /* The loaded session, if it was in the renamed folder, must follow it or
+     * the next Save would put it back under the old name. */
+    if (!strcmp(conf_get_str(conf, CONF_folder), old))
+        conf_set_str(conf, CONF_folder, folder);
+    sfree(ssd->newfolder);
+    ssd->newfolder = dupstr("");
+    ssd->folder_new_selected = 0;
+    dlg_refresh(ssd->folderlist, dlg);      /* NULL in folder-row mode: fine */
+    dlg_refresh(ssd->listbox, dlg);
+    kitty_notify_launcher_sessions_changed();
+    return true;
+}
+
 /* Deleting a folder that still holds sessions: ask, then empty it by moving
  * them to the root list. Returns true if the folder is now empty and the
  * caller may drop it. */
@@ -2984,6 +3122,18 @@ static void sessionsaver_update_save_button(struct sessionsaver_data *ssd,
 {
     if (!ssd->savebutton)
         return;
+    /* KiTTY: the button says what it will do. With a folder row selected the
+     * box holds that folder's name, and pressing this renames it - so the
+     * caption is the only thing telling the user that Save has become
+     * something else. Compared by POINTER against the last literal used, as the
+     * folder button does, so a redraw is issued only when it actually changes. */
+    {
+        const char *label = ssd->selected_folder ? "Rename" : "Save";
+        if (ssd->save_button_label != label) {
+            dlg_label_change(ssd->savebutton, dlg, label);
+            ssd->save_button_label = label;
+        }
+    }
     kitty_dlg_enable_button(ssd->savebutton, dlg,
                             ssd->savedsession && ssd->savedsession[0]);
 }
@@ -3339,6 +3489,13 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 dlg_listbox_select(ctrl, dlg, selpos);
                 ssd->suppress_list_selchange--;
             }
+            /* A rebuilt list forgets that a folder row was picked, so the button
+             * goes back to "Save". The selection above is made with the change
+             * event suppressed, so nothing else would clear it - and a stale
+             * "Rename" pointing at a folder the user can no longer see is
+             * exactly the silent-mode failure this design avoids. Clicking the
+             * row again arms it, deliberately. */
+            sessionsaver_end_folder_rename(ssd, dlg);
 #endif
         }
 #ifdef MOD_PERSO
@@ -3396,6 +3553,17 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             /* Every keystroke: emptying the box must grey Save immediately, and
              * this runs before the early returns further down. */
             sessionsaver_update_save_button(ssd, dlg);
+            /*
+             * While a folder row is selected the box holds that folder's NEW
+             * NAME, so typing must not also run the live search: the search
+             * rebuilds the list, and a rebuild drops the selection - which
+             * disarmed the rename halfway through typing it. The button then
+             * said "Save" again and the click created a SESSION named after the
+             * folder. Filtering is meaningless here anyway; picking any other
+             * row ends the rename and restores it.
+             */
+            if (ssd->selected_folder && !ssd->suppress_edit_valchange)
+                return;
             if (!ssd->suppress_edit_valchange && GetSessionFilterFlag()) {
                 /* [ConfigBox] filter=no keeps searchfilter empty, so typing
                  * a name never narrows the saved-sessions list. */
@@ -3525,6 +3693,53 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
          * (e.g. selecting "Default Settings" lets you re-save it directly).
          * Also refreshes the read-only comment display. */
         int i = sessionsaver_selected_session_index(ssd, dlg);
+        /*
+         * KiTTY: selecting a FOLDER row puts its name in the box and turns Save
+         * into Rename. Type a new name, press it, and the folder is renamed.
+         *
+         * Derived from the selection rather than armed by it: clicking a
+         * session, stepping into a folder, searching, creating or deleting one
+         * all move or rebuild the selection, and each of those either lands
+         * here again or clears this in the list's refresh. An "armed" flag
+         * would need every one of those exits handled by hand, and the failure
+         * mode - Save silently meaning Rename - is the one worth engineering
+         * out rather than remembering.
+         */
+        if (!ssd->suppress_list_selchange && kitty_folder_rows_active(ssd)) {
+            const char *fld = NULL;
+            int row = dlg_listbox_index(ssd->listbox, dlg);
+            if (row >= 0) {
+                int id = dlg_listbox_getid(ssd->listbox, dlg, row);
+                /* ".." is a folder row too, but it names the level above rather
+                 * than a folder anyone can rename. */
+                if (id < 0 && id != KITTY_ROW_PARENT)
+                    fld = kitty_folder_for_row_id(ssd, id);
+            }
+            sfree(ssd->selected_folder);
+            ssd->selected_folder = fld ? dupstr(fld) : NULL;
+            if (!fld) {
+                /* Moving to a session row ends any rename. Drop the marker
+                 * here rather than leaving it: a folder and a session may share
+                 * a name ("tests/" and "tests" are different things and both
+                 * show at the root), and a stale marker would then match the
+                 * session name the user has just deliberately chosen - and take
+                 * it back out of the box on the next rebuild. */
+                sfree(ssd->folder_text_in_box);
+                ssd->folder_text_in_box = NULL;
+            }
+            if (ssd->selected_folder) {
+                sfree(ssd->savedsession);
+                ssd->savedsession = dupstr(ssd->selected_folder);
+                /* Remember what we put there, so it can be taken back out if
+                 * the rename ends without the user having edited it. */
+                sfree(ssd->folder_text_in_box);
+                ssd->folder_text_in_box = dupstr(ssd->selected_folder);
+                sfree(ssd->searchfilter);
+                ssd->searchfilter = dupstr("");
+                dlg_refresh(ssd->editbox, dlg);
+            }
+            sessionsaver_update_save_button(ssd, dlg);
+        }
         if (!ssd->suppress_list_selchange && i >= 0 && i < ssd->sesslist.nsessions) {
             if (ssd->searchfilter && ssd->searchfilter[0]) {
                 /* In live-search mode, arrowing through the filtered list must
@@ -3578,7 +3793,29 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 dlg_end(dlg, 1);       /* it's all over, and succeeded */
             }
         } else if (ctrl == ssd->savebutton) {
-            bool isdef = !strcmp(ssd->savedsession, KITTY_DEFAULT_SESSION);
+            bool isdef;
+            /* KiTTY: with a folder row selected this button is "Rename" and
+             * acts on the folder, not on a session. Checked before anything
+             * reads savedsession as a save target - it holds the FOLDER name
+             * here, and saving a session under it would be the accident this
+             * whole route has to avoid. */
+            if (ssd->selected_folder) {
+                char *oldname = dupstr(ssd->selected_folder);
+                bool done = sessionsaver_rename_folder(ssd, dlg, conf, oldname,
+                                                       ssd->savedsession);
+                sfree(oldname);
+                if (done) {
+                    /* The list was rebuilt under us, which cleared the
+                     * selection: the button is "Save" again and the box holds
+                     * the new name, ready to be picked afresh. */
+                    sfree(ssd->savedsession);
+                    ssd->savedsession = dupstr("");
+                    dlg_refresh(ssd->editbox, dlg);
+                    sessionsaver_update_save_button(ssd, dlg);
+                }
+                return;
+            }
+            isdef = !strcmp(ssd->savedsession, KITTY_DEFAULT_SESSION);
 #ifdef MOD_PERSO
             /* An EMPTY name box means the target is being taken from whichever
              * row happens to be highlighted, and the user was never shown it:
@@ -3877,45 +4114,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     dlg_refresh(ssd->folderlist, dlg);
                 }
             } else if (ssd->folder_action == KITTY_FOLDER_ACTION_RENAME) {
-                /* Rename the selected folder. A folder is not a container:
-                 * membership is the "Folder" value of each session, and
-                 * InitFolderList() rebuilds the folder set from the Folders
-                 * value PLUS a scan of those values. So the members must be
-                 * rewritten FIRST - renaming only the list entry would be
-                 * undone by the very next rebuild. */
-                char folder[1024], old[1024];
-                strncpy(folder, ssd->newfolder, sizeof(folder)-1);
-                folder[sizeof(folder)-1] = '\0';
-                CleanFolderName(folder);
-                strncpy(old, CurrentFolder, sizeof(old)-1);
-                old[sizeof(old)-1] = '\0';
-                if (!folder[0]) {
-                    dlg_beep(dlg);
-                } else if (kitty_folder_name_reserved(folder)) {
-                    dlg_error_msg(dlg, "That name is reserved for the root session list.");
-                } else if (stricmp(folder, old) && sessionsaver_folder_exists(folder)) {
-                    dlg_error_msg(dlg, "A folder of that name already exists.");
-                } else if (sessionsaver_move_folder_sessions(ssd, dlg, old,
-                                                             folder) >= 0) {
-                    InitFolderList();
-                    StringList_Del(FolderList, old);
-                    StringList_Add(FolderList, folder);
-                    SaveFolderList();
-                    strncpy(CurrentFolder, folder, 1023);
-                    CurrentFolder[1023] = '\0';
-                    kitty_set_last_folder(CurrentFolder);
-                    /* The loaded session, if it was in the renamed folder,
-                     * must follow it or the next Save would put it back under
-                     * the old name. */
-                    if (!strcmp(conf_get_str(conf, CONF_folder), old))
-                        conf_set_str(conf, CONF_folder, folder);
-                    sfree(ssd->newfolder);
-                    ssd->newfolder = dupstr("");
-                    ssd->folder_new_selected = 0;
-                    dlg_refresh(ssd->folderlist, dlg);
-                    dlg_refresh(ssd->listbox, dlg);
-                    kitty_notify_launcher_sessions_changed();
-                }
+                /* The combo renames the folder currently being browsed. */
+                (void)sessionsaver_rename_folder(ssd, dlg, conf, CurrentFolder,
+                                                 ssd->newfolder);
             } else {
                 /* Create. StringList_Add dedupes internally. */
                 char folder[1024];
@@ -5163,12 +5364,16 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
      * New folder, because the combo that used to carry folder creation is gone.
      * Three columns only in that mode, so the classic layout is untouched.
      *
-     * The widths are not even thirds: "New folder" is more than twice the text
-     * of "Save" and gets the room to say so. Icons would make both narrow and
-     * equal, but that is deliberately later work (§4a) - so the text has to fit
-     * as text. */
+     * The widths are not even thirds, and not proportional to the captions
+     * either: the middle button carries "Save" OR "Rename", so it is sized for
+     * the longer of the two, while "New folder" had spare room to give up. Both
+     * are measured rather than judged by eye - the QA harness fails the build if
+     * either caption comes within ten pixels of its border.
+     * Icon buttons would have made them narrow and equal; they were dropped
+     * rather than deferred, because a labelled button names itself to a screen
+     * reader and an icon does not. */
     if (kitty_folder_rows_active(ssd))
-        ctrl_columns(s, 3, 50, 18, 32);
+        ctrl_columns(s, 3, 50, 22, 28);
     else
         ctrl_columns(s, 2, 75, 25);
     get_sesslist(&ssd->sesslist, true);
@@ -5183,10 +5388,9 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
                                       sessionsaver_handler, P(ssd));
     ssd->savebutton->column = 1;
     ssd->savebutton->align_next_to = ssd->editbox;   /* centre on the name field */
-    /* KiTTY folder navigation: creation lives here now. It is a text button for
-     * the moment; §4a of the design note wants an icon, and the switchable path
-     * that decision needs is a separate piece of work - the button must still be
-     * able to render as text or that decision cannot go the other way. */
+    /* KiTTY folder navigation: creation lives here now, as a TEXT button and
+     * permanently so - an icon button would carry no name for a screen reader
+     * to announce, which a caption gives for nothing. */
     if (kitty_folder_rows_active(ssd)) {
         ssd->createbutton = ctrl_pushbutton(s, "New folder", NO_SHORTCUT,
                                             HELPCTX(session_saved),

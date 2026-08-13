@@ -766,6 +766,7 @@ const char *kitty_cfgbox_wanted_panel(void);         /* kitty_config.c / stub:
                                                       * or NULL for the first */
 #define KITTY_WORKPLACE_POLL_TIMER 8730
 bool kitty_config_select_root_folder(dlgparam *dp); /* kitty_config.c / stub */
+void kitty_config_end_folder_rename(dlgparam *dp);  /* kitty_config.c / stub */
 static HHOOK kitty_cfg_kbdhook = NULL;
 static HWND kitty_cfg_hwnd = NULL;
 static HWND kitty_cfg_treeview = NULL;
@@ -790,6 +791,9 @@ static LRESULT CALLBACK kitty_cfg_kbd_hookproc(int code, WPARAM wParam,
                  * Ctrl+F on its own only searches the selected folder. */
                 if (wParam == 'G')
                     kitty_config_select_root_folder(kitty_cfg_dp);
+                /* Both keys: asking to search ends a pending folder rename, so
+                 * the box they focus is one that actually filters. */
+                kitty_config_end_folder_rename(kitty_cfg_dp);
                 if (kitty_cfg_treeview && kitty_cfg_sessionitem)
                     TreeView_SelectItem(kitty_cfg_treeview,
                                         kitty_cfg_sessionitem);

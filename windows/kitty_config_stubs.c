@@ -53,3 +53,5 @@ const char *kitty_cfgbox_wanted_panel(void) { return 0; }
  * exists purely to satisfy the link. */
 struct dlgparam;
 bool kitty_config_select_root_folder(struct dlgparam *dp) { (void)dp; return false; }
+/* Likewise: no folder rows in the stock variants, so no rename to end. */
+void kitty_config_end_folder_rename(struct dlgparam *dp) { (void)dp; }
