@@ -5,7 +5,7 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
-## 0.84.1.75-beta
+## 0.84.1.75-beta — 2026-08-14
 
 ### Session folders
 
@@ -20,8 +20,8 @@ see [FEATURES.md](FEATURES.md).
   one each result came from. Storage is unchanged: a folder is still an
   attribute of a session.
 - **The terminal's Saved Sessions menu groups by folder**, one submenu per
-  folder with the unfiled sessions below, matching what the tray launcher has
-  always done. Independent of the setting above.
+  folder, with the sessions that are in no folder below them, matching what the
+  tray launcher has always done. Independent of the setting above.
 
 ### Fixed
 

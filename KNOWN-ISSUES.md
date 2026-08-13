@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.74 — Known issues & limitations
+# KiTTY 0.84.1.75 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -229,7 +229,7 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.74-beta @ 2026-08-13`.
+- **Version string:** binaries report `0.84.1.75-beta @ 2026-08-14`.
 - **`kittygen.exe` and `kittygen-cli.exe` are two programs with two command
   lines.** The window one takes only `-t`, `-b`, `-E`, `-primes`, `-strong-rsa`,
   `-ppk-param`, `-restrict-acl` and `-pgpfp`; `-C`, `-q`, `-o`, `-l` and
@@ -248,6 +248,29 @@ features are working and verified. Known limitations as of this release:
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.84.1.75
+
+- **Session folders are one level deep.** A folder holds sessions, not other
+  folders — with `foldernavigation=yes` the `..` row therefore always returns to
+  the root. This is the same shape the folder drop-down has always had; the rows
+  only change how you move through it.
+- **A portable store whose sessions live in SUBDIRECTORIES is not read.** The old
+  `browsedirectory` layout kept each folder as a real directory under
+  `Sessions\`; this version writes one flat file per session with its folder
+  recorded inside, and it lists only the files directly under `Sessions\`. So a
+  classic portable KiTTY folder copied across shows none of its sessions.
+  Setting `browsedirectory=yes` does **not** fix that — it only changes where a
+  folder *name* is looked up, not which sessions are listed. Until an import
+  exists, move the session files up into `Sessions\` yourself; each one keeps
+  working, and you can re-file it from the config box afterwards.
+- **The mid-session Change Settings list does not navigate folders.** It opens on
+  the folder the running session is in and stays there: the list is only there to
+  name what you are saving, and a rename or a move belongs in the config box you
+  start from, where the whole store is in front of you.
+- **kageant's own Saved Sessions menu is a flat list**, and reads the registry
+  directly — so it does not group by folder, and it does not see a portable
+  store. KiTTY's tray launcher is the one that mirrors your folders.
 
 ## New in 0.84.1.67
 

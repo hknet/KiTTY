@@ -60,7 +60,8 @@
 ;    narrow the list; selecting anything else, stepping in or out, or pressing
 ;    Ctrl+F / Ctrl+G ends the rename and searching works again.
 ;    Ctrl+G matters more here than with the drop-down: the root shows only
-;    unfiled sessions, so it is what searches across every folder, marking each
+;    the sessions that are in no folder, so it is what searches across every
+;    folder, marking each
 ;    result with the folder it came from.
 ;    Turning it on changes what the ROOT list shows: only sessions that are in
 ;    no folder, rather than every session with its folder in brackets. The

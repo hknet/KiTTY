@@ -106,7 +106,8 @@ the filed ones in brackets.
   and the button returns to *Save*.
 - **Delete a folder:** *Del folder* acts on the folder you are inside, and asks
   before emptying it; the sessions themselves are kept and move to the root.
-- **Search across folders:** the root list only holds unfiled sessions here, so
+- **Search across folders:** the root list here holds only the sessions that are
+  in no folder, so
   **Ctrl+G** matters more than in the classic mode — it searches every folder
   and marks each result with the folder it lives in, `beta [work]`.
 
@@ -116,7 +117,7 @@ every session where it was. The setting is off by default.
 
 **Folders in the menus.** A terminal's **Saved Sessions** menu (the window's
 system menu, or right-click on the title bar) groups sessions into a submenu per
-folder, with unfiled sessions below them; the tray launcher's menu has always
+folder, with the root-level sessions below them; the tray launcher's menu has always
 done the same. This is independent of `foldernavigation` — the menus group
 either way.
 

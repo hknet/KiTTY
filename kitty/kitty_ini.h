@@ -79,7 +79,8 @@ char default_init_file_content[] =
 ;    narrow the list; selecting anything else, stepping in or out, or pressing\n\
 ;    Ctrl+F / Ctrl+G ends the rename and searching works again.\n\
 ;    Ctrl+G matters more here than with the drop-down: the root shows only\n\
-;    unfiled sessions, so it is what searches across every folder, marking each\n\
+;    the sessions that are in no folder, so it is what searches across every\n\
+;    folder, marking each\n\
 ;    result with the folder it came from.\n\
 ;    Turning it on changes what the ROOT list shows: only sessions that are in\n\
 ;    no folder, rather than every session with its folder in brackets. The\n\
