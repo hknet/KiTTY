@@ -2281,12 +2281,83 @@ void cleanup_exit(int code)
 static void update_savedsess_menu(WinGuiSeat *wgs)
 {
     int i;
+    int limit = ((sesslist.nsessions <= MENU_SAVED_MAX+1) ? sesslist.nsessions
+                                                          : MENU_SAVED_MAX+1);
+    /* DeleteMenu, not RemoveMenu: it destroys a submenu along with its item, so
+     * the folder popups built below do not leak on every rebuild. */
     while (DeleteMenu(wgs->savedsess_menu, 0, MF_BYPOSITION)) ;
+#ifdef MOD_PERSO
+    /*
+     * KiTTY: one submenu per folder, unfiled sessions after them.
+     *
+     * A folder is an attribute of a session, so this is a view, exactly as the
+     * config box's folder rows are - the store is not touched. It is NOT gated
+     * on [ConfigBox] foldernavigation: that setting chooses how the config box
+     * DIALOG presents the list, while the launcher's tray menu has grouped by
+     * folder since long before it existed. Gating here would have produced a
+     * fourth answer to "what sessions do I have" rather than removing one.
+     *
+     * The command id still derives from the session's index in sesslist, so
+     * where an item sits in the menu does not affect what it opens.
+     */
+    {
+        extern char *kitty_read_session_folder(const char *sessionname);
+#define KITTY_MENU_FOLDERS_MAX 64
+        HMENU fmenu[KITTY_MENU_FOLDERS_MAX];
+        char *fname[KITTY_MENU_FOLDERS_MAX];
+        int nfolders = 0, j;
+        int *unfiled = (limit > 1) ? snewn(limit, int) : NULL;
+        int nunfiled = 0;
+
+        /* skip sesslist.sessions[0] == Default Settings */
+        for (i = 1; i < limit; i++) {
+            char *fld = kitty_read_session_folder(sesslist.sessions[i]);
+            bool filed = (fld && *fld && strcmp(fld, "Default") != 0);
+            int slot = -1;
+            if (filed) {
+                for (j = 0; j < nfolders; j++)
+                    if (!strcmp(fname[j], fld)) { slot = j; break; }
+                if (slot < 0 && nfolders < KITTY_MENU_FOLDERS_MAX) {
+                    slot = nfolders++;
+                    fname[slot] = dupstr(fld);
+                    fmenu[slot] = CreateMenu();
+                }
+            }
+            if (slot >= 0) {
+                AppendMenu(fmenu[slot], MF_ENABLED,
+                           IDM_SAVED_MIN + (i-1)*MENU_SAVED_STEP,
+                           sesslist.sessions[i]);
+            } else if (unfiled) {
+                /* Unfiled, or more folders than this menu will hold: either way
+                 * the session stays VISIBLE at the top level rather than being
+                 * dropped into a folder that was never created. */
+                unfiled[nunfiled++] = i;
+            }
+            sfree(fld);
+        }
+
+        for (j = 0; j < nfolders; j++) {
+            AppendMenu(wgs->savedsess_menu, MF_POPUP | MF_ENABLED,
+                       (UINT_PTR)fmenu[j], fname[j]);
+            sfree(fname[j]);
+        }
+        if (nfolders && nunfiled)
+            AppendMenu(wgs->savedsess_menu, MF_SEPARATOR, 0, 0);
+        for (j = 0; j < nunfiled; j++)
+            AppendMenu(wgs->savedsess_menu, MF_ENABLED,
+                       IDM_SAVED_MIN + (unfiled[j]-1)*MENU_SAVED_STEP,
+                       sesslist.sessions[unfiled[j]]);
+        sfree(unfiled);
+
+        if (sesslist.nsessions <= 1)
+            AppendMenu(wgs->savedsess_menu, MF_GRAYED, IDM_SAVED_MIN,
+                       "(No sessions)");
+        return;
+    }
+#undef KITTY_MENU_FOLDERS_MAX
+#endif
     /* skip sesslist.sessions[0] == Default Settings */
-    for (i = 1;
-         i < ((sesslist.nsessions <= MENU_SAVED_MAX+1) ? sesslist.nsessions
-                                                       : MENU_SAVED_MAX+1);
-         i++)
+    for (i = 1; i < limit; i++)
         AppendMenu(wgs->savedsess_menu, MF_ENABLED,
                    IDM_SAVED_MIN + (i-1)*MENU_SAVED_STEP,
                    sesslist.sessions[i]);

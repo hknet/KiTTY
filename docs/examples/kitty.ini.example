@@ -157,7 +157,16 @@
 ;    across instead of stranding it.
 ;configdir=
 
-; browsedirectory: base directory for portable/session file browsing; normally auto-detected
+; browsedirectory: store session FOLDERS as real subdirectories under Sessions\
+;    (yes/no, default no). The legacy layout from classic KiTTY. This version
+;    writes one flat file per session with a Folder= line inside it whatever
+;    this says, so leaving it off is what you want.
+;    savemode=dir used to switch it on by itself, which sent the folder lookup
+;    hunting for subdirectories that nothing creates - the folder list came up
+;    empty and the tray menu could not group by folder.
+;    It does NOT make an old subdirectory tree readable: sessions inside
+;    subdirectories are not listed at all, so on a normal store turning it on
+;    only stops folders being found.
 ;browsedirectory=
 
 ; Folders: the list of session folders, written by KiTTY whenever you add or

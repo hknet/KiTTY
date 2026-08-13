@@ -1069,7 +1069,11 @@ void GetSaveMode( void ) {
 		str_rtrim( buffer, "\n\r \t" ) ;
 		if( !stricmp( buffer, "registry" ) ) IniFileFlag = SAVEMODE_REG ;
 		else if( !stricmp( buffer, "file" ) ) IniFileFlag = SAVEMODE_FILE ;
-		else if( !stricmp( buffer, "dir" ) ) { IniFileFlag = SAVEMODE_DIR ; DirectoryBrowseFlag = 1 ; }
+		/* savemode=dir no longer implies browsedirectory: the sessions it
+		 * writes are flat files carrying Folder=, so the subdirectory lookup
+		 * this used to switch on could never find anything. browsedirectory=yes
+		 * still selects it explicitly. */
+		else if( !stricmp( buffer, "dir" ) ) { IniFileFlag = SAVEMODE_DIR ; }
 	}
 	if( IniFileFlag!=SAVEMODE_DIR ) DirectoryBrowseFlag = 0 ;
 }

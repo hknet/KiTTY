@@ -30,12 +30,22 @@ int GetIniFileFlag(void) { return IniFileFlag ; }
 void SetIniFileFlag( const int flag ) { IniFileFlag = flag ; }
 void SwitchIniFileFlag(void) { if( IniFileFlag == SAVEMODE_REG ) { IniFileFlag = SAVEMODE_DIR ; } else if ( IniFileFlag == SAVEMODE_DIR ) { IniFileFlag = SAVEMODE_REG ; } }
 
-// Flag permettant la gestion de l'arborscence (dossier=folder) dans le cas d'un savemode=dir
-#ifdef MOD_PORTABLE
-int DirectoryBrowseFlag = 1 ;
-#else
+/*
+ * Folders as SUBDIRECTORIES under Sessions\, for savemode=dir. Off by default
+ * in every build, and opt-in through [KiTTY] browsedirectory=yes.
+ *
+ * It used to default on in the portable build, and savemode=dir switched it on
+ * everywhere else - which sent the folder lookup hunting for subdirectories
+ * that nothing creates. The session writer stores one flat file per session
+ * with Folder= inside it whatever this says, so with the flag on, no folder was
+ * ever found: the folder list was empty and the tray menu could not group.
+ *
+ * ⚠️ It is not merely unused. The portable enumerator skips directories and
+ * does not recurse (enum_settings_start), so a session inside a subdirectory is
+ * not listed at all - turning this on does not make a legacy tree readable, it
+ * only changes where a folder NAME is looked for.
+ */
 int DirectoryBrowseFlag = 0 ;
-#endif
 
 // Flag pour repasser en mode Putty basic
 int PuttyFlag = 0 ;

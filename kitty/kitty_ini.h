@@ -176,7 +176,16 @@ char default_init_file_content[] =
 ;    across instead of stranding it.\n\
 ;configdir=\n\
 \n\
-; browsedirectory: base directory for portable/session file browsing; normally auto-detected\n\
+; browsedirectory: store session FOLDERS as real subdirectories under Sessions\\\n\
+;    (yes/no, default no). The legacy layout from classic KiTTY. This version\n\
+;    writes one flat file per session with a Folder= line inside it whatever\n\
+;    this says, so leaving it off is what you want.\n\
+;    savemode=dir used to switch it on by itself, which sent the folder lookup\n\
+;    hunting for subdirectories that nothing creates - the folder list came up\n\
+;    empty and the tray menu could not group by folder.\n\
+;    It does NOT make an old subdirectory tree readable: sessions inside\n\
+;    subdirectories are not listed at all, so on a normal store turning it on\n\
+;    only stops folders being found.\n\
 ;browsedirectory=\n\
 \n\
 ; Folders: the list of session folders, written by KiTTY whenever you add or\n\
