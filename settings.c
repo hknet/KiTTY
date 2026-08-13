@@ -716,6 +716,27 @@ bool load_settings(const char *section, Conf *conf)
     NETDBG_TS("load_settings: after load_open_settings");
     close_settings_r(sesskey);
 
+    /*
+     * KiTTY: "Default Settings" belongs to no folder, so a Folder value stored
+     * on it must never reach the Conf.
+     *
+     * The save path normalises it (a save of Default Settings writes
+     * Folder=Default), but only when something saves it - a stray value left by
+     * an older version survives until then, and it is invisible, because the
+     * session list shows Default Settings at every level. It is inherited:
+     * do_defaults() loads this Conf at the top of every launch, so a session
+     * created from it - quick connect, or any save under a new name - is filed
+     * into a folder nobody chose. The same value also feeds the folder-list
+     * rebuild, which is how deleted and renamed folders come back.
+     *
+     * Not behind MOD_PERSO: settings.c compiles into a shared library where it
+     * is not defined, so a guard here would be dead code (the build says so).
+     * CONF_folder is an unconditional option and its default is already
+     * "Default", so this costs the tools that ignore folders nothing.
+     */
+    if (!section || !strcmp(section, "Default Settings"))
+        conf_set_str(conf, CONF_folder, "Default");
+
     if (settings_load_hook)
         settings_load_hook(section, conf, exists);
 

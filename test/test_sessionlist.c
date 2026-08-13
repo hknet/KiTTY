@@ -30,6 +30,7 @@
 void kitty_set_storage_mode(int mode);
 void kitty_set_session_dir(const char *dir);
 int  store_is_file(void);
+char *kitty_read_session_folder(const char *sessionname);
 
 /*
  * Stubs for the platform edges the storage layer touches. test_conf carries the
@@ -209,6 +210,39 @@ int main(int argc, char **argv)
         if (r) close_settings_r(r);
     }
 
+    head("the folder a mid-session save binds to");
+    /*
+     * Mid-session (Change Settings) a save must not re-file the session, and it
+     * reads the folder from STORAGE to decide what to write back rather than
+     * from the running Conf - which was filled when the session launched and is
+     * stale the moment the session is moved from another window. These are that
+     * contract, at the model level; whether the dialog actually calls it is
+     * layer B and is checked by hand.
+     */
+    make_session("filed", "filed.example", "work");
+    {
+        char *f = kitty_read_session_folder("filed");
+        ok_eq_str(f, "work", "a filed session reports the folder it is in");
+        sfree(f);
+
+        /* The other window moves it while the terminal stays open. */
+        make_session("filed", "filed.example", "network");
+        f = kitty_read_session_folder("filed");
+        ok_eq_str(f, "network",
+                  "a move made elsewhere is what a later save reads back");
+        sfree(f);
+
+        f = kitty_read_session_folder("no-such-session");
+        ok(f == NULL || !*f,
+           "a name that does not exist yet reports no folder");
+        sfree(f);
+
+        f = kitty_read_session_folder("alpha");
+        ok(f == NULL || !*f || !strcmp(f, "Default"),
+           "an unfiled session reports no folder, not a stray one");
+        sfree(f);
+    }
+
     head("names that need escaping survive the round trip");
     /* The file store munges a session name into a file name; a name with a
      * space, a dot and punctuation is where that goes wrong if it goes wrong. */
@@ -244,6 +278,19 @@ int main(int argc, char **argv)
         ok(index_of(&sl, "Default Settings") == 0,
            "it is listed, and first, with no file behind it");
         get_sesslist(&sl, false);
+    }
+
+    head("a folder stored on Default Settings is ignored");
+    /* It is shown at every level, so a folder on it is invisible - and it is
+     * inherited by everything created from the defaults, and it feeds the
+     * folder-list rebuild. Written here the way an older version would have
+     * left it behind. Last, because it puts a file behind Default Settings and
+     * the section above asserts that there is none. */
+    make_session("Default Settings", "d.example", "work");
+    {
+        char *f = kitty_read_session_folder("Default Settings");
+        ok(f == NULL || !*f, "Default Settings reports no folder even with one stored");
+        sfree(f);
     }
 
     {

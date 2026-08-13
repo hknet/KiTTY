@@ -1945,6 +1945,8 @@ struct sessionsaver_data {
 #endif
     struct sesslist sesslist;
     bool midsession;
+    int midsession_level_set;    /* the mid-session list has been pointed at the
+                                  * running session's own folder (once only) */
     char *savedsession;     /* the current contents of ssd->editbox */
 #ifdef MOD_PERSO
     char *newfolder;        /* typed folder name in ssd->folderlist combo */
@@ -2009,6 +2011,7 @@ static struct sessionsaver_data *session_filter_ssd = NULL;
 /* [ConfigBox] foldernavigation - defined with the other folder-row helpers
  * below, but needed here by Ctrl+G, which sits above them. */
 static bool kitty_folder_rows_on(void);
+static bool kitty_folder_rows_active(struct sessionsaver_data *ssd);
 
 /*
  * Ctrl+G: drop the folder filter back to the root list, then let the caller
@@ -2029,7 +2032,12 @@ bool kitty_config_select_root_folder(dlgparam *dp)
      * screen. Only the LIST is genuinely needed. */
     if (!ssd || GetPuttyFlag() || !ssd->listbox)
         return false;
-    if (!ssd->folderlist && !kitty_folder_rows_on())
+    /* Mid-session with folder rows configured there is NO folder control at
+     * all - no combo (rows replaced it) and no rows (they navigate nothing
+     * here) - so this had nothing to steer and moved the ambient folder
+     * instead: Ctrl+G set CurrentFolder to the root, and the next Save re-filed
+     * the running session there. A search must never move a session. */
+    if (!ssd->folderlist && !kitty_folder_rows_active(ssd))
         return false;
     /* Arm the cross-folder search BEFORE the early-out below. With folder rows
      * the root level is not "everything" any more - it is the unfiled sessions
@@ -2137,6 +2145,28 @@ static bool kitty_folders_available(struct sessionsaver_data *ssd)
     return !GetPuttyFlag() && (ssd->folderlist || kitty_folder_rows_on());
 }
 
+/*
+ * Does THIS dialog navigate folders as rows?
+ *
+ * The setting is global; the answer is not. Mid-session (Change Settings) the
+ * saved-session list exists only to name a save target - there is no load, so
+ * there is nothing to navigate TO - and the rows were drawn there with nothing
+ * able to activate them: ".." and every folder row were inert, because the
+ * handler that steps into them sits behind the same !midsession guard the load
+ * path needs. A row that does nothing when clicked is worse than no row.
+ *
+ * Ask this rather than kitty_folder_rows_on() for anything that decides what
+ * the list LOOKS LIKE or what activating a row DOES. The plain setting still
+ * answers "is this mode configured at all", which mid-session needs to know:
+ * it is the reason no folder combo is built there either, and therefore the
+ * reason the mid-session list must not be filtered by folder (see
+ * kitty_session_on_level) - a filter with no control to change it.
+ */
+static bool kitty_folder_rows_active(struct sessionsaver_data *ssd)
+{
+    return kitty_folder_rows_on() && ssd && !ssd->midsession;
+}
+
 /* "Default" is the root list rather than a folder of that name - every filter
  * path in this file keys off that comparison, so it is spelt out once here. */
 static bool kitty_at_root_level(void)
@@ -2161,7 +2191,7 @@ static bool kitty_at_root_level(void)
  * "show me the root" are the same list. */
 static bool kitty_searching_all_folders(struct sessionsaver_data *ssd)
 {
-    return kitty_folder_rows_on() && ssd->search_all &&
+    return kitty_folder_rows_active(ssd) && ssd->search_all &&
         ssd->searchfilter && ssd->searchfilter[0];
 }
 
@@ -2173,13 +2203,16 @@ static bool kitty_session_on_level(struct sessionsaver_data *ssd, int i)
         return true;
     if (kitty_searching_all_folders(ssd))
         return true;                 /* Ctrl+G: every folder is in scope */
+    /* Mid-session CurrentFolder is the running session's OWN folder (seeded at
+     * the list's first refresh), so filtering by it shows the session's
+     * neighbours - which is the level the user is actually looking at. */
     if (!kitty_at_root_level()) {
         fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
         ok = (fld && !strcmp(fld, CurrentFolder));
         sfree(fld);
         return ok;
     }
-    if (!kitty_folder_rows_on())
+    if (!kitty_folder_rows_active(ssd))
         return true;                 /* classic root list: everything shows */
     fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
     ok = (!fld || !*fld || !strcmp(fld, "Default"));
@@ -2512,7 +2545,7 @@ static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
     sfree(ssd->folderrows);
     ssd->folderrows = NULL;
     ssd->nfolderrows = 0;
-    if (!kitty_folder_rows_on() || !kitty_at_root_level())
+    if (!kitty_folder_rows_active(ssd) || !kitty_at_root_level())
         return;                          /* one level: no folders inside one */
 
     cap = ssd->sesslist.nsessions + 64;
@@ -2538,7 +2571,7 @@ static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
 
 static int kitty_nav_row_count(struct sessionsaver_data *ssd)
 {
-    if (!kitty_folder_rows_on())
+    if (!kitty_folder_rows_active(ssd))
         return 0;
     if (!kitty_at_root_level())
         return 1;                        /* ".." only: one level, so no folders */
@@ -2558,7 +2591,7 @@ static void sessionsaver_add_nav_rows(dlgcontrol *ctrl, dlgparam *dlg,
                                       struct sessionsaver_data *ssd)
 {
     int i;
-    if (!kitty_folder_rows_on())
+    if (!kitty_folder_rows_active(ssd))
         return;
     if (!kitty_at_root_level()) {
         dlg_listbox_addwithid(ctrl, dlg, "..", KITTY_ROW_PARENT);
@@ -2609,7 +2642,7 @@ static void sessionsaver_add_session_row(dlgcontrol *ctrl, dlgparam *dlg,
      * The exception is the Ctrl+G search, which deliberately spans folders -
      * there the results come from everywhere, so each one has to say where it
      * lives or the list is a set of names with no way to tell them apart. */
-    bool annotate_folders = !kitty_folder_rows_on() ||
+    bool annotate_folders = !kitty_folder_rows_active(ssd) ||
         kitty_searching_all_folders(ssd);
     char *fld = (annotate_folders && (searching || root_view)) ?
         kitty_read_session_folder(sessionname) : NULL;
@@ -3095,7 +3128,7 @@ static bool sessionsaver_enter_selected_folder(struct sessionsaver_data *ssd,
 {
     int row, id;
     const char *folder;
-    if (!kitty_folder_rows_on() || !ssd->listbox)
+    if (!kitty_folder_rows_active(ssd) || !ssd->listbox)
         return false;
     row = dlg_listbox_index(ssd->listbox, dlg);
     if (row < 0)
@@ -3183,6 +3216,36 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
         } else if (ctrl == ssd->listbox) {
             int i;
 #ifdef MOD_PERSO
+            /*
+             * KiTTY: mid-session the list opens on the RUNNING SESSION'S OWN
+             * folder, not on the ambient browse state.
+             *
+             * CurrentFolder is otherwise seeded from the persisted LastFolder,
+             * which names whatever was last browsed - possibly in an earlier
+             * run - so Change Settings showed a folder that had nothing to do
+             * with the session being changed. The folder comes from STORAGE for
+             * the same reason the save does: the running Conf was filled at
+             * launch and is stale if the session has been moved from another
+             * window. CONF_folder is the fallback for a session that is not in
+             * the store at all.
+             *
+             * Once per dialog: the user may still change folder with the combo
+             * where there is one, and re-seeding on every refresh would undo
+             * that. LastFolder is deliberately NOT written - a settings dialog
+             * should not decide where the next config box opens.
+             */
+            if (ssd->midsession && !ssd->midsession_level_set &&
+                !GetPuttyFlag()) {
+                const char *sn = conf_get_str(conf, CONF_sessionname);
+                const char *cf = conf_get_str(conf, CONF_folder);
+                char *fld = (sn && *sn) ? kitty_read_session_folder(sn) : NULL;
+                const char *lvl = (fld && *fld) ? fld :
+                                  ((cf && *cf) ? cf : "Default");
+                strncpy(CurrentFolder, lvl, 1023);
+                CurrentFolder[1023] = '\0';
+                sfree(fld);
+                ssd->midsession_level_set = 1;
+            }
             if (ssd->editbox && !ssd->midsession)
                 dlg_editbox_set_updown_target(ssd->editbox, ctrl, dlg);
 #endif
@@ -3267,7 +3330,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * user did not type for. Falling back to row 0 is still right when
              * the level holds no sessions at all, because then the only row
              * there is the way out. */
-            if (selpos < 0 && kitty_folder_rows_on() && firstsession >= 0)
+            if (selpos < 0 && kitty_folder_rows_active(ssd) && firstsession >= 0)
                 selpos = firstsession;
             if (selpos < 0 && lbpos > 0)
                 selpos = 0;
@@ -3567,27 +3630,39 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * deleted and renamed folders. Normalising it here also clears
                  * any such value left by earlier versions. */
                 /*
-                 * KiTTY: mid-session there is no "load" to have recorded a
-                 * folder, so folder_at_load was NULL and the test below fell
-                 * through to "the user chose this folder" - filing the session
-                 * into whatever the combo happened to be showing. Change
-                 * Settings never points that combo at the session's own folder,
-                 * so saving a tweak from a live session could MOVE it, silently.
+                 * KiTTY: mid-session, Save never re-files.
                  *
-                 * The running Conf carries the folder the session was opened
-                 * from, which is exactly what a load would have recorded. Seed
-                 * it, so mid-session Save keeps the session where it is and
-                 * moving it stays a deliberate act.
+                 * CurrentFolder is the ambient BROWSE state, seeded from the
+                 * persisted LastFolder whenever a config box is built, so
+                 * mid-session it names whatever folder was last browsed - quite
+                 * possibly in an earlier run - and never the session's own.
+                 * Treating that as a choice moved sessions silently: start one
+                 * from a shortcut, change a setting, Save, and it was re-filed
+                 * into an unrelated folder; Ctrl+G re-filed it to the root,
+                 * because searching sets CurrentFolder.
                  *
-                 * Found while making the name box prefill mid-session: that made
-                 * Save a single click, which would have turned a latent hazard
-                 * into a one-click one.
+                 * So mid-session the folder comes from STORAGE, read here at
+                 * save time. Not from the running Conf: that was filled at
+                 * launch and goes stale the moment the session is moved from
+                 * another window, and writing it back would silently undo the
+                 * move. A name that does not exist yet has no stored folder and
+                 * keeps the running session's, so a copy lands beside the
+                 * session it was copied from.
+                 *
+                 * Moving a session stays the startup config box's job, where the
+                 * folder is on screen and choosing it is an act of its own.
                  */
-                if (ssd->midsession && !ssd->folder_at_load) {
-                    const char *f = conf_get_str(conf, CONF_folder);
-                    ssd->folder_at_load = dupstr((f && *f) ? f : "Default");
-                }
-                if (kitty_folders_available(ssd)) {
+                if (ssd->midsession && !GetPuttyFlag()) {
+                    if (isdef) {
+                        conf_set_str(conf, CONF_folder, "Default");
+                    } else if (ssd->savedsession[0]) {
+                        char *stored =
+                            kitty_read_session_folder(ssd->savedsession);
+                        if (stored && *stored)
+                            conf_set_str(conf, CONF_folder, stored);
+                        sfree(stored);
+                    }
+                } else if (kitty_folders_available(ssd)) {
                     const char *cur = !CurrentFolder[0] ? "Default" : CurrentFolder;
                     if (isdef)
                         conf_set_str(conf, CONF_folder, "Default");
@@ -5092,7 +5167,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
      * of "Save" and gets the room to say so. Icons would make both narrow and
      * equal, but that is deliberately later work (§4a) - so the text has to fit
      * as text. */
-    if (kitty_folder_rows_on() && !midsession)
+    if (kitty_folder_rows_active(ssd))
         ctrl_columns(s, 3, 50, 18, 32);
     else
         ctrl_columns(s, 2, 75, 25);
@@ -5112,7 +5187,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
      * the moment; §4a of the design note wants an icon, and the switchable path
      * that decision needs is a separate piece of work - the button must still be
      * able to render as text or that decision cannot go the other way. */
-    if (kitty_folder_rows_on() && !midsession) {
+    if (kitty_folder_rows_active(ssd)) {
         ssd->createbutton = ctrl_pushbutton(s, "New folder", NO_SHORTCUT,
                                             HELPCTX(session_saved),
                                             sessionsaver_handler, P(ssd));

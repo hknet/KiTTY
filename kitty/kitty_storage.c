@@ -305,6 +305,14 @@ char *kitty_read_session_comment(const char *sessionname)
 
 char *kitty_read_session_folder(const char *sessionname)
 {
+    /* Default Settings is in no folder - it is shown at every level - so a
+     * stored value on it is answered as "none" rather than passed on. Without
+     * this it reaches the folder-list rebuild, which resurrects folders that
+     * were deleted or renamed, and the mid-session save, which reads the folder
+     * back from storage. The loader clears it on the way in (settings.c); this
+     * is the same rule for the paths that read the store directly. */
+    if (sessionname && !strcmp(sessionname, KITTY_DEFAULT_SESSION))
+        return NULL;
     return kitty_read_session_value_direct(sessionname, "Folder", 0);
 }
 
