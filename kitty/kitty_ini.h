@@ -71,6 +71,16 @@ char default_init_file_content[] =
 ;    and a '..' row steps back out. Typing in the name box narrows folders and\n\
 ;    sessions alike, and never hides '..', so a search that finds nothing still\n\
 ;    shows the way back. Default no, which keeps the folder drop-down.\n\
+;    The name box carries the folder controls too, since the drop-down is gone:\n\
+;    type a name and press 'New folder' to create one, and selecting a folder\n\
+;    ROW puts its name in the box and relabels 'Save' to 'Rename' - type over it\n\
+;    and press the button to rename the folder and everything in it. While a\n\
+;    folder row is selected the box is that folder's new name, so it does not\n\
+;    narrow the list; selecting anything else, stepping in or out, or pressing\n\
+;    Ctrl+F / Ctrl+G ends the rename and searching works again.\n\
+;    Ctrl+G matters more here than with the drop-down: the root shows only\n\
+;    unfiled sessions, so it is what searches across every folder, marking each\n\
+;    result with the folder it came from.\n\
 ;    Turning it on changes what the ROOT list shows: only sessions that are in\n\
 ;    no folder, rather than every session with its folder in brackets. The\n\
 ;    sessions themselves are untouched either way - a folder is an attribute of\n\

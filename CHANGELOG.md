@@ -5,6 +5,43 @@ KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patch
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.84.1.75-beta
+
+### Session folders
+
+- **Folders can be browsed as rows of the saved-session list.** Opt-in with
+  `foldernavigation=yes` in kitty.ini's `[ConfigBox]` section; off by default,
+  and switching it off restores the folder dropdown exactly as before. Folders
+  are drawn as rows (`work/`), Enter or a double-click steps inside, `..` steps
+  back out, and the root lists the sessions that are in no folder. **New folder**
+  takes its name from the session-name box, and selecting a folder row relabels
+  **Save** to **Rename**, so a folder is renamed where it is shown — every
+  session in it moves with it. **Ctrl+G** searches every folder and says which
+  one each result came from. Storage is unchanged: a folder is still an
+  attribute of a session.
+- **The terminal's Saved Sessions menu groups by folder**, one submenu per
+  folder with the unfiled sessions below, matching what the tray launcher has
+  always done. Independent of the setting above.
+
+### Fixed
+
+- **Changing settings mid-session could move the session to another folder.**
+  The saved-session list in *Change Settings* showed whichever folder was last
+  browsed — possibly in an earlier run — and saving re-filed the session there,
+  so a session started from a shortcut and saved after a tweak could end up
+  somewhere unrelated. Searching with Ctrl+G could move one to the root the same
+  way. The folder is now read from the store, so a mid-session save keeps the
+  session where it is, and the list opens on the session's own folder.
+- **A folder recorded on Default Settings is ignored.** It is invisible, because
+  that entry is listed at every level, yet it was inherited by everything
+  created from the defaults — including quick connect — and it kept deleted
+  folders alive in the folder list.
+- **Portable installs showed no folders.** Saving to a directory switched on the
+  `browsedirectory` layout by itself, which looks for folders held as
+  subdirectories that this version never creates, so the folder list stayed
+  empty and the tray menu could not group them. `browsedirectory` is now off
+  unless it is asked for.
+
 ## 0.84.1.74-beta — 2026-08-13
 
 ### Security

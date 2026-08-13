@@ -52,6 +52,16 @@
 ;    and a '..' row steps back out. Typing in the name box narrows folders and
 ;    sessions alike, and never hides '..', so a search that finds nothing still
 ;    shows the way back. Default no, which keeps the folder drop-down.
+;    The name box carries the folder controls too, since the drop-down is gone:
+;    type a name and press 'New folder' to create one, and selecting a folder
+;    ROW puts its name in the box and relabels 'Save' to 'Rename' - type over it
+;    and press the button to rename the folder and everything in it. While a
+;    folder row is selected the box is that folder's new name, so it does not
+;    narrow the list; selecting anything else, stepping in or out, or pressing
+;    Ctrl+F / Ctrl+G ends the rename and searching works again.
+;    Ctrl+G matters more here than with the drop-down: the root shows only
+;    unfiled sessions, so it is what searches across every folder, marking each
+;    result with the folder it came from.
 ;    Turning it on changes what the ROOT list shows: only sessions that are in
 ;    no folder, rather than every session with its folder in brackets. The
 ;    sessions themselves are untouched either way - a folder is an attribute of

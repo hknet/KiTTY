@@ -82,6 +82,44 @@ If you manage a large number of saved sessions, KiTTY lets you organize them int
 
 *See also: [How session folders work (PDF)](docs/features/kitty-folders_list_feature.pdf)*
 
+**Browsing folders as rows instead of using the dropdown (optional).** Set
+`foldernavigation=yes` in the `[ConfigBox]` section of kitty.ini and folders
+become **rows of the saved-session list** rather than entries in a dropdown, the
+way a file manager shows directories. The dropdown disappears, since two ways to
+change folder in one window is one too many.
+
+In this mode the list shows the folders of the current level first, drawn as
+`work/`, then the sessions. Double-click a folder row or press Enter on it to
+step inside; the `..` row at the top steps back out. There is one level, so `..`
+always returns to the root. The root itself lists only the sessions that are in
+no folder — the rest are reached through their folder — which is the difference
+you will notice first, because the classic root list shows everything and marks
+the filed ones in brackets.
+
+- **Create a folder:** type the name in the session-name box and press
+  **New folder**, which sits beside *Save*. No arming step, and creating a
+  folder steps into it.
+- **Rename a folder:** select its row. Its name appears in the session-name box
+  and the *Save* button relabels itself to **Rename**; type the new name over it
+  and press the button. Every session in the folder moves with it. Selecting
+  anything else, stepping in or out, or pressing Ctrl+F/Ctrl+G ends the rename
+  and the button returns to *Save*.
+- **Delete a folder:** *Del folder* acts on the folder you are inside, and asks
+  before emptying it; the sessions themselves are kept and move to the root.
+- **Search across folders:** the root list only holds unfiled sessions here, so
+  **Ctrl+G** matters more than in the classic mode — it searches every folder
+  and marks each result with the folder it lives in, `beta [work]`.
+
+Nothing about storage changes: a folder is still an attribute of a session, so
+turning the setting off puts the classic dropdown back exactly as it was, with
+every session where it was. The setting is off by default.
+
+**Folders in the menus.** A terminal's **Saved Sessions** menu (the window's
+system menu, or right-click on the title bar) groups sessions into a submenu per
+folder, with unfiled sessions below them; the tray launcher's menu has always
+done the same. This is independent of `foldernavigation` — the menus group
+either way.
+
 ### Quick connect (type a host instead of picking a session)
 
 The configuration box opens with the session you used last, which is what you want if you work from a list of saved sessions. If you connect by typing an address — a room full of switches, a lab, anything not worth saving — that is the wrong starting point every time: the settings that arrive belong to whichever host you happened to visit last, and the only way back to a known state is to load *Default Settings* by hand before each connection.
