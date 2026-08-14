@@ -153,7 +153,7 @@ typedef enum {
      * They consist of:
      *
      *  - 216 colours forming a 6x6x6 cube, with R the most
-     *    significant colour and G the least. In other words, these
+     *    significant colour and B the least. In other words, these
      *    occupy the space of indices 16 <= i < 232, with each
      *    individual colour found as i = 16 + 36*r + 6*g + b, for all
      *    0 <= r,g,b <= 5.
