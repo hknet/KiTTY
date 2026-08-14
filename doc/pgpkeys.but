@@ -156,7 +156,7 @@ once.
 
 \H{pgpkeys-rollover} Key rollover
 
-Our current keys were generated in July 2023.
+Our current keys were generated in July 2026.
 
 Each new Master Key is signed with the old one, to show that it really
 is owned by the same people and not substituted by an attacker.
