@@ -32,28 +32,41 @@
  * it works whether the password was qcat-escaped, percent-encoded or plain.
  * A zero-length span means there was no password to hide.
  */
-static void debug_logevent_redacted(const char *what, const char *cmd,
-                                    size_t secret_at, size_t secret_len)
+static void debug_logevent_redacted2(const char *what, const char *cmd,
+                                     size_t secret_at, size_t secret_len,
+                                     size_t secret2_at, size_t secret2_len)
 {
     char *safe;
     size_t n;
     if (!debug_flag)
         return;
-    if (secret_len == 0) {
+    if (secret_len == 0 && secret2_len == 0) {
         debug_logevent("%s: %s", what, cmd);
         return;
     }
     safe = dupstr(cmd);
     n = strlen(safe);
-    if (secret_at < n) {
+    if (secret_len > 0 && secret_at < n) {
         size_t end = secret_at + secret_len;
         if (end > n)
             end = n;
         memset(safe + secret_at, '*', end - secret_at);
     }
+    if (secret2_len > 0 && secret2_at < n) {
+        size_t end = secret2_at + secret2_len;
+        if (end > n)
+            end = n;
+        memset(safe + secret2_at, '*', end - secret2_at);
+    }
     debug_logevent("%s: %s", what, safe);
     smemclr(safe, strlen(safe));
     sfree(safe);
+}
+
+static void debug_logevent_redacted(const char *what, const char *cmd,
+                                    size_t secret_at, size_t secret_len)
+{
+    debug_logevent_redacted2(what, cmd, secret_at, secret_len, 0, 0);
 }
 
 
@@ -487,6 +500,29 @@ static void qcat( char *dst, size_t cap, const char *s ) {
 			}
 		}
 		for( size_t k=0 ; k<2*nbs ; k++ ) bcat(dst,cap,"\\") ;   /* trailing backslashes before closing quote */
+	}
+	bcat( dst, cap, "\"" ) ;
+}
+
+/* Append a WinSCP /rawsettings VALUE, quoted and escaped.
+ *
+ * A third quoting layer, and not the same as either of the other two: rawsettings
+ * are whitespace-separated, so a value with a space runs into the next setting,
+ * and WinSCP's own rule for a literal quote inside a quoted parameter is to write
+ * it TWICE ("Name=""a b""" - see its command-line documentation). qcat's
+ * backslash escaping is Win32 argv grammar and means nothing here; urlcat's %XX
+ * is URL grammar and would be stored literally.
+ *
+ * Use for every value we compose (proxy/tunnel host, user, password, commands,
+ * Shell). Do NOT use for CONF_winscpoptions / CONF_winscprawsettings: those are
+ * documented raw passthrough, where the user is writing command line on purpose.
+ */
+static void rawcat( char *dst, size_t cap, const char *s ) {
+	char one[2] = {0,0} ;
+	bcat( dst, cap, "\"" ) ;
+	if( s ) for( const char *p = s ; *p ; p++ ) {
+		if( *p == '"' ) bcat( dst, cap, "\"\"" ) ;
+		else { one[0] = *p ; bcat( dst, cap, one ) ; }
 	}
 	bcat( dst, cap, "\"" ) ;
 }
@@ -1071,6 +1107,7 @@ start "C:\Program Files\WinSCP\WinSCP.exe" "%1" "%2" "%3" "%4" "%5" "%6" "%7" "%
 // winscp.exe [(sftp|ftp|scp)://][user[:password]@]host[:port][/path/[file]] [/privatekey=key_file] [/rawsettings (ProxyMethod=1) (Compression=1)]
 void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	size_t pw_at = 0, pw_len = 0 ;   /* KiTTY: where the password lands in cmd */
+	size_t proxy_pw_at = 0, proxy_pw_len = 0 ;  /* ... and the proxy/tunnel one */
 	char cmd[4096], shortpath[1024], buffer[4096], proto[10] ;
 	int raw = 0;
 	
@@ -1150,20 +1187,97 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		bcat( cmd, sizeof(cmd), " " ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_winscpoptions) ) ;
 	}
 
-	if( (conf_get_int(conf,CONF_proxy_type) != PROXY_NONE) && (strlen( conf_get_str(conf, CONF_sftpconnect) )==0) ) {
-		if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
-		switch( conf_get_int(conf,CONF_proxy_type) ) {
-			case 2: bcat( cmd, sizeof(cmd), " ProxyMethod=2" ) ; break ;
-			case 3: bcat( cmd, sizeof(cmd), " ProxyMethod=3" ) ; break ;
-			case 4: bcat( cmd, sizeof(cmd), " ProxyMethod=4" ) ; break ;
-			case 5: bcat( cmd, sizeof(cmd), " ProxyMethod=5" ) ; break ;
-			default: bcat( cmd, sizeof(cmd), " ProxyMethod=1" ) ; break ;
+	/* Proxy -> WinSCP.  Two different WinSCP features hide behind PuTTY's one
+	 * "Proxy type" list, and they are not interchangeable:
+	 *
+	 *   - SOCKS4/SOCKS5/HTTP/Telnet/Local command are WinSCP's ProxyMethod,
+	 *     and PuTTY's PROXY_SOCKS4..PROXY_CMD happen to share WinSCP's 1..5.
+	 *     Match on the enum names anyway, so a future PuTTY renumbering is a
+	 *     compile-time question rather than a silent wrong proxy.
+	 *   - "SSH to proxy and use port forwarding" is not a proxy to WinSCP at
+	 *     all, it is a tunnel: Tunnel=on plus the TunnelXxx settings.  Sending
+	 *     it as a ProxyMethod made WinSCP open a SOCKS handshake against an SSH
+	 *     daemon, which answers with its "SSH-2.0-..." banner - the reported
+	 *     "SOCKS proxy response contained reply version numbers 83" ('S' = 83).
+	 *
+	 * PROXY_SSH_EXEC and PROXY_SSH_SUBSYSTEM have no WinSCP equivalent; their
+	 * host/user/password mean the same SSH proxy host, so they get the tunnel
+	 * too - the transport differs, the destination does not.  Anything else
+	 * (PROXY_FUZZ) gets nothing rather than a wrong guess.
+	 *
+	 * Values are quoted: rawsettings are whitespace-separated, so a password or
+	 * a hostname with a space would otherwise be read as the next setting.
+	 *
+	 * The fields come from the CONNECTION, not from the session: a named proxy
+	 * or workplace proxy mode amends a throwaway Conf copy and deliberately
+	 * leaves the stored session alone, so reading the session here handed WinSCP
+	 * whatever the session says - usually no proxy at all, and then WinSCP tries
+	 * to reach a host only the proxy can see. kitty_proxy_connection() is that
+	 * copy's answer, kept by start_backend(); NULL means we never connected, and
+	 * then the session's own fields are the best guess available.
+	 */
+	{
+	const struct kitty_proxy_snapshot *px = kitty_proxy_connection() ;
+	int          px_type = px ? px->type           : conf_get_int(conf,CONF_proxy_type) ;
+	int          px_port = px ? px->port           : conf_get_int(conf,CONF_proxy_port) ;
+	const char * px_host = px ? px->host           : conf_get_str(conf,CONF_proxy_host) ;
+	const char * px_user = px ? px->username       : conf_get_str(conf,CONF_proxy_username) ;
+	const char * px_pass = px ? px->password       : conf_get_str(conf,CONF_proxy_password) ;
+	const char * px_tcmd = px ? px->telnet_command : conf_get_str(conf,CONF_proxy_telnet_command) ;
+
+	if( (px_type != PROXY_NONE) && (strlen( conf_get_str(conf, CONF_sftpconnect) )==0) ) {
+		int ptype = px_type ;
+		int tunnel = (ptype==PROXY_SSH_TCPIP || ptype==PROXY_SSH_EXEC || ptype==PROXY_SSH_SUBSYSTEM) ;
+		int method = -1 ;
+
+		switch( ptype ) {
+			case PROXY_SOCKS4: method = 1 ; break ;
+			case PROXY_SOCKS5: method = 2 ; break ;
+			case PROXY_HTTP:   method = 3 ; break ;
+			case PROXY_TELNET: method = 4 ; break ;
+			case PROXY_CMD:    method = 5 ; break ;
+			default: break ;
 		}
-		if( strlen(conf_get_str(conf,CONF_proxy_host))>0 ) { bcat( cmd, sizeof(cmd), " ProxyHost=" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_proxy_host) ) ; }
-		snprintf( buffer, sizeof(buffer), " ProxyPort=%d", conf_get_int(conf,CONF_proxy_port)) ; bcat( cmd, sizeof(cmd), buffer ) ;
-		if( strlen(conf_get_str(conf,CONF_proxy_username))>0 ) { bcat( cmd, sizeof(cmd), " ProxyUsername=" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_proxy_username) ) ; }
-		if( strlen(conf_get_str(conf,CONF_proxy_password))>0 ) { bcat( cmd, sizeof(cmd), " ProxyPassword=" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_proxy_password) ) ; }
-		if( strlen(conf_get_str(conf,CONF_proxy_telnet_command))>0 ) { bcat( cmd, sizeof(cmd), " ProxyTelnetCommand=\"" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_proxy_telnet_command) ) ; bcat( cmd, sizeof(cmd), "\"") ; }
+
+		if( tunnel ) {
+			if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
+			bcat( cmd, sizeof(cmd), " Tunnel=1" ) ;
+			if( px_host && strlen(px_host)>0 ) { bcat( cmd, sizeof(cmd), " TunnelHostName=" ) ; rawcat( cmd, sizeof(cmd), px_host ) ; }
+			snprintf( buffer, sizeof(buffer), " TunnelPortNumber=%d", px_port ) ; bcat( cmd, sizeof(cmd), buffer ) ;
+			if( px_user && strlen(px_user)>0 ) { bcat( cmd, sizeof(cmd), " TunnelUserName=" ) ; rawcat( cmd, sizeof(cmd), px_user ) ; }
+			if( px_pass && strlen(px_pass)>0 ) {
+				/* plaintext at runtime; TunnelPassword expects WinSCP's own
+				 * encrypted form, TunnelPasswordPlain is the cleartext one.
+				 * The span covers the quotes rawcat adds, so the Event Log
+				 * blanks the whole value however it was escaped. */
+				bcat( cmd, sizeof(cmd), " TunnelPasswordPlain=" ) ;
+				proxy_pw_at = strlen( cmd ) ;
+				rawcat( cmd, sizeof(cmd), px_pass ) ;
+				proxy_pw_len = strlen( cmd ) - proxy_pw_at ;
+			}
+		} else if( method > 0 ) {
+			if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
+			snprintf( buffer, sizeof(buffer), " ProxyMethod=%d", method ) ; bcat( cmd, sizeof(cmd), buffer ) ;
+			if( px_host && strlen(px_host)>0 ) { bcat( cmd, sizeof(cmd), " ProxyHost=" ) ; rawcat( cmd, sizeof(cmd), px_host ) ; }
+			snprintf( buffer, sizeof(buffer), " ProxyPort=%d", px_port ) ; bcat( cmd, sizeof(cmd), buffer ) ;
+			if( px_user && strlen(px_user)>0 ) { bcat( cmd, sizeof(cmd), " ProxyUsername=" ) ; rawcat( cmd, sizeof(cmd), px_user ) ; }
+			if( px_pass && strlen(px_pass)>0 ) {
+				bcat( cmd, sizeof(cmd), " ProxyPassword=" ) ;   /* plaintext at runtime */
+				proxy_pw_at = strlen( cmd ) ;
+				rawcat( cmd, sizeof(cmd), px_pass ) ;
+				proxy_pw_len = strlen( cmd ) - proxy_pw_at ;
+			}
+			/* One PuTTY field, two WinSCP ones: CONF_proxy_telnet_command holds
+			 * the Telnet negotiation string for PROXY_TELNET and the local
+			 * command line for PROXY_CMD, and WinSCP keeps those apart. Sending
+			 * a local command as ProxyTelnetCommand left WinSCP with nothing to
+			 * run for method 5. */
+			if( px_tcmd && strlen(px_tcmd)>0 ) {
+				bcat( cmd, sizeof(cmd), method==5 ? " ProxyLocalCommand=" : " ProxyTelnetCommand=" ) ;
+				rawcat( cmd, sizeof(cmd), px_tcmd ) ;
+			}
+		}
+	}
 	}
 
 	if( conf_get_bool(conf,CONF_compression) ) {
@@ -1183,10 +1297,10 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 
 	if( !strcmp(proto,"scp") && (strlen(conf_get_str(conf, CONF_pscpshell))>0) ) {
 		if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
-		bcat( cmd, sizeof(cmd), " " ) ; bcat( cmd, sizeof(cmd), "Shell=\"" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_pscpshell) ) ; bcat( cmd, sizeof(cmd), "\"" ) ;
+		bcat( cmd, sizeof(cmd), " Shell=" ) ; rawcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_pscpshell) ) ;
 	}
 	
-	debug_logevent_redacted( "Start WinSCP", cmd, pw_at, pw_len ) ;
+	debug_logevent_redacted2( "Start WinSCP", cmd, pw_at, pw_len, proxy_pw_at, proxy_pw_len ) ;
 	RunCommand( hwnd, cmd ) ;
 	memset(cmd,0,strlen(cmd));
 }

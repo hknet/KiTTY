@@ -240,6 +240,9 @@ void kitty_port_knock(Conf *conf);
 #ifdef MOD_PROXY
 /* Proxy selection: overlay a named saved proxy definition before connecting. */
 void kitty_proxy_select(Conf *conf);
+/* Remember the proxy this connection resolved to, for the transfer helpers that
+ * only ever see the session Conf (see kitty/kitty.h). NULL = no override. */
+void kitty_proxy_record_connection(Conf *resolved);
 #endif
 #ifdef MOD_ZMODEM
 /* ZModem file transfer (kitty_zmodem.c). Menu-driven receive (rz) / send (sz);
@@ -658,9 +661,20 @@ static void start_backend(WinGuiSeat *wgs)
             /* an override really is in force - connect through the copy */
             proxyconf = tmp;
             connconf = tmp;
-        } else {
-            conf_free(tmp);       /* nothing overridden; keep it simple */
         }
+        /* Tell the transfer helpers how this connection is really reaching the
+         * host, BEFORE the copy goes: it is freed either here or as soon as
+         * backend_init() returns, and they read the session Conf, which by
+         * design does not know. Recorded from the resolved copy in both cases,
+         * not only when the test above fired: that test asks whether to connect
+         * differently, and credentials alone do not change that answer while
+         * they do change what WinSCP must be told. When nothing was overridden
+         * the copy still holds the session's own settings, so recording it is
+         * the same answer either way. Every connect comes through here, so a
+         * reconnect re-answers rather than leaving the old answer standing. */
+        kitty_proxy_record_connection(tmp);
+        if (!proxyconf)
+            conf_free(tmp);       /* nothing overridden; keep it simple */
     }
 #else
     Conf *connconf = wgs->conf;

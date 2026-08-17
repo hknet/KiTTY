@@ -1319,6 +1319,63 @@ void kitty_port_knock(Conf *conf)
 int kitty_workplace_applied = 0;
 
 /*
+ * The proxy THIS CONNECTION is actually going through.
+ *
+ * A named proxy or workplace proxy mode amends a throwaway copy of the Conf and
+ * never the session (see start_backend()) - which is right for the session file
+ * and wrong for everything downstream that wants to know how we got there. The
+ * transfer helpers read the session Conf, so a session routed through a named
+ * proxy was handing WinSCP the session's own proxy fields: usually none at all,
+ * so WinSCP tried to reach a host only the proxy can see.
+ *
+ * So the connection records what it resolved, the same way the seat already
+ * records workplace_proxied: it is a fact about the connection, and it must
+ * survive the throwaway copy being freed the moment backend_init() returns.
+ * Only the proxy fields are kept - nothing here needs the rest of the Conf, and
+ * a whole copy would be a second place the session's own password lives.
+ *
+ * NULL contents mean "no override": callers fall back to the session Conf.
+ */
+static struct kitty_proxy_snapshot kitty_conn_proxy = { PROXY_NONE, 0, NULL, NULL, NULL, NULL };
+
+static void kitty_proxy_snapshot_clear(void)
+{
+    if (kitty_conn_proxy.host) { sfree(kitty_conn_proxy.host); }
+    if (kitty_conn_proxy.username) { sfree(kitty_conn_proxy.username); }
+    if (kitty_conn_proxy.password) {
+        smemclr(kitty_conn_proxy.password, strlen(kitty_conn_proxy.password));
+        sfree(kitty_conn_proxy.password);
+    }
+    if (kitty_conn_proxy.telnet_command) { sfree(kitty_conn_proxy.telnet_command); }
+    kitty_conn_proxy.type = PROXY_NONE;
+    kitty_conn_proxy.port = 0;
+    kitty_conn_proxy.host = kitty_conn_proxy.username = NULL;
+    kitty_conn_proxy.password = kitty_conn_proxy.telnet_command = NULL;
+}
+
+/* resolved == NULL: the session's own proxy settings are what we connected
+ * with, so there is nothing to remember. Called on every connect, including
+ * auto-reconnect and Restart Session, so a reconnect re-answers the question
+ * instead of leaving the previous answer standing. */
+void kitty_proxy_record_connection(Conf *resolved)
+{
+    kitty_proxy_snapshot_clear();
+    if (!resolved)
+        return;
+    kitty_conn_proxy.type = conf_get_int(resolved, CONF_proxy_type);
+    kitty_conn_proxy.port = conf_get_int(resolved, CONF_proxy_port);
+    kitty_conn_proxy.host = dupstr(conf_get_str(resolved, CONF_proxy_host));
+    kitty_conn_proxy.username = dupstr(conf_get_str(resolved, CONF_proxy_username));
+    kitty_conn_proxy.password = dupstr(conf_get_str(resolved, CONF_proxy_password));
+    kitty_conn_proxy.telnet_command = dupstr(conf_get_str(resolved, CONF_proxy_telnet_command));
+}
+
+const struct kitty_proxy_snapshot *kitty_proxy_connection(void)
+{
+    return kitty_conn_proxy.host ? &kitty_conn_proxy : NULL;
+}
+
+/*
  * Resolve, for the connection about to be made, whether the proxy Host is a
  * hostname or may be the title of a saved session. The named proxy's own
  * setting decides; when it says nothing, kitty.ini [KiTTY] namedproxy does, and

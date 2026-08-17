@@ -427,6 +427,24 @@ void OpenAndSendScriptFile( HWND hwnd ) ;
 void SaveCurrentSetting( HWND hwnd ) ;
 void SendFile( HWND hwnd ) ;
 void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) ;
+
+/* The proxy the current connection actually went through, when a named proxy or
+ * workplace proxy mode overrode the session's own settings. Recorded by
+ * kitty_proxy_record_connection() from start_backend(), because that override
+ * lives on a throwaway Conf copy the session never sees; kitty_proxy_connection()
+ * returns NULL when the session's own proxy fields are the truth. Implemented in
+ * kitty_bridge.c. */
+struct kitty_proxy_snapshot {
+    int type ;                 /* PROXY_* as in putty.h */
+    int port ;
+    char * host ;
+    char * username ;
+    char * password ;
+    char * telnet_command ;
+} ;
+void kitty_proxy_record_connection( Conf * resolved ) ;
+const struct kitty_proxy_snapshot * kitty_proxy_connection( void ) ;
+
 void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) ;
 void SendFileList( HWND hwnd, char * filelist ) ;
 void GetOneFile( HWND hwnd, char * directory, const char * filename ) ;
