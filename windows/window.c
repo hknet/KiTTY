@@ -1898,11 +1898,23 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                            IDM_SCRIPTFILE2, "Send scr&ipt file");
             }
 #ifdef MOD_ZMODEM
+            /*
+             * KiTTY does not implement ZModem: it drives the rz/sz helpers the
+             * user supplies (Connection > ZModem). Built greyed and decided in
+             * WM_INITMENUPOPUP, because the menu is built once and Change
+             * Settings can set a helper path while the window is open - and
+             * because Receive needs rz while Upload needs sz, configured
+             * independently. Unconditionally live, they could only answer
+             * "Unable to find ZModem receive program", which reads as a broken
+             * feature rather than an unconfigured one.
+             *
+             * The CONFIG PANEL stays visible regardless: it is where the paths
+             * are set, so gating it on them would lock the feature away.
+             */
             if (GetZModemFlag()) {
-                int xfer = kitty_zmodem_active();
-                AppendMenu(toolmenu, xfer ? MF_GRAYED : MF_ENABLED, IDM_XYZSTART, "&ZModem Receive");
-                AppendMenu(toolmenu, xfer ? MF_GRAYED : MF_ENABLED, IDM_XYZUPLOAD, "ZModem &Upload");
-                AppendMenu(toolmenu, xfer ? MF_ENABLED : MF_GRAYED, IDM_XYZABORT, "ZModem &Abort");
+                AppendMenu(toolmenu, MF_GRAYED, IDM_XYZSTART, "&ZModem Receive");
+                AppendMenu(toolmenu, MF_GRAYED, IDM_XYZUPLOAD, "ZModem &Upload");
+                AppendMenu(toolmenu, MF_GRAYED, IDM_XYZABORT, "ZModem &Abort");
             }
 #endif
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
@@ -4161,6 +4173,32 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                            logfile_name_varies(wgs->logctx) ?
                            "Start a new log file &now" : "Clear log fil&e");
         }
+#ifdef MOD_ZMODEM
+        if (GetZModemFlag()) {
+            /* The ZModem entries follow the helpers this session has, checked
+             * now rather than at build time: Change Settings can set a path
+             * while the window is open. An entry with no helper behind it stays
+             * greyed and says which one is missing - the alternative was a menu
+             * item whose only possible outcome was an error box. Receive and
+             * Upload are independent; Abort is live only during a transfer. */
+            HMENU mp = (HMENU)wParam;
+            bool xfer = kitty_zmodem_active();
+            bool has_rz = *filename_to_str(
+                conf_get_filename(wgs->conf, CONF_rzcommand)) != '\0';
+            bool has_sz = *filename_to_str(
+                conf_get_filename(wgs->conf, CONF_szcommand)) != '\0';
+            EnableMenuItem(mp, IDM_XYZSTART, MF_BYCOMMAND |
+                           ((has_rz && !xfer) ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
+            EnableMenuItem(mp, IDM_XYZUPLOAD, MF_BYCOMMAND |
+                           ((has_sz && !xfer) ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
+            EnableMenuItem(mp, IDM_XYZABORT, MF_BYCOMMAND |
+                           (xfer ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
+            ModifyMenu(mp, IDM_XYZSTART, MF_BYCOMMAND | MF_STRING, IDM_XYZSTART,
+                       has_rz ? "&ZModem Receive" : "&ZModem Receive (set rz in Connection > ZModem)");
+            ModifyMenu(mp, IDM_XYZUPLOAD, MF_BYCOMMAND | MF_STRING, IDM_XYZUPLOAD,
+                       has_sz ? "ZModem &Upload" : "ZModem &Upload (set sz in Connection > ZModem)");
+        }
+#endif
 #endif
         if ((HMENU)wParam == wgs->savedsess_menu) {
             /* About to pop up Saved Sessions sub-menu.

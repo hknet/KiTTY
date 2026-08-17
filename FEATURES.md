@@ -826,7 +826,9 @@ Exporting needs one of the last two — without them it refuses rather than prot
 
 KiTTY integrates ZModem support (originally from LePuTTY) so you can transfer files directly over an interactive terminal session. With the rz/sz helper tools in place, you trigger a receive or upload straight from the menu and move files to and from the remote host without opening a separate file-transfer client.
 
-**How to enable:** On by default — set the rz/sz (lrzsz) helper paths in **Connection > ZModem** and the Tools menu offers **ZModem Receive / Upload / Abort**. `zmodem=no` in `[KiTTY]` hides the panel and the menu entries.
+**KiTTY does not implement the protocol itself and ships no transfer programs.** It drives the `rz`/`sz` helpers you point it at, so the feature needs those binaries before it can do anything. The usual implementation is **lrzsz** ([upstream](https://www.ohse.de/uwe/software/lrzsz.html), [source](https://github.com/UweOhse/lrzsz)) — GPL, distributed separately from KiTTY; Windows builds of it come from third parties, so treat them as you would any other downloaded binary. Until a helper is configured its menu entry stays greyed and says which one is missing.
+
+**How to enable:** On by default — set the rz/sz helper paths in **Connection > ZModem** and the Tools menu offers **ZModem Receive / Upload / Abort** (Receive needs `rz`, Upload needs `sz`; they are configured independently). `zmodem=no` in `[KiTTY]` hides the panel and the menu entries.
 
 ![ZModem file transfer](docs/features/img/config_zmodem.jpg)
 
