@@ -1,4 +1,4 @@
-<!-- Thanks for contributing to KiTTY (PuTTY 0.84 fork). -->
+<!-- Thanks for contributing to KiTTY (PuTTY 0.85 fork). -->
 
 **What does this PR do?**
 

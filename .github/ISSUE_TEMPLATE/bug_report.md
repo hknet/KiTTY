@@ -5,7 +5,7 @@ title: ""
 labels: bug
 ---
 
-**KiTTY version** (Help → About, e.g. `0.84.1.17-beta`):
+**KiTTY version** (Help → About, e.g. `0.85.1.0-beta`):
 
 **Install type:** per-user MSI / system-wide MSI / portable ZIP
 
@@ -23,5 +23,5 @@ A clear description of the problem.
 
 **Screenshots / logs** (if relevant)
 
-**Is this also reproducible in upstream PuTTY 0.84?** (helps tell KiTTY-specific
+**Is this also reproducible in upstream PuTTY 0.85?** (helps tell KiTTY-specific
 bugs from inherited ones) — yes / no / not sure

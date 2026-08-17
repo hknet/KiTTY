@@ -1,8 +1,8 @@
 # Security Policy
 
-KiTTY (this 0.84 line) is a fork of [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/)
+KiTTY (this 0.85 line) is a fork of [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/)
 maintained by KAPPER NETWORK-COMMUNICATIONS GmbH, forward-ported onto a modern,
-security-patched PuTTY 0.84 core.
+security-patched PuTTY 0.85 core.
 
 ## Supported versions
 
@@ -17,7 +17,7 @@ anything exploitable.
 
 - Use GitHub **Security Advisories** → *Report a vulnerability* on this repo, with
   details and, if possible, a proof of concept and the affected version (from
-  *Help → About*, e.g. `0.84.1.x-beta`).
+  *Help → About*, e.g. `0.85.1.x-beta`).
 
 We aim to acknowledge reports within a few days. Coordinated disclosure is
 appreciated; we will credit reporters who wish to be named.

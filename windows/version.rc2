@@ -54,7 +54,21 @@ BEGIN
 	    VALUE "FileVersion",	TEXTVER
 #endif
 	    VALUE "ProductVersion",	TEXTVER
-	    VALUE "LegalCopyright",	"Copyright \251 " SHORT_COPYRIGHT_DETAILS "."
+	    /*
+	     * All three layers, because all three hold copyright in what ships:
+	     * PuTTY upstream, the original KiTTY features, and this port. The
+	     * SHORT_COPYRIGHT_DETAILS macro is derived by cmake/licence.cmake from
+	     * the FIRST line of LICENCE only ("PuTTY is copyright ..."), so the
+	     * other two have to be named here or the binary credits upstream alone
+	     * while LICENCE credits all three.
+	     *
+	     * Upstream's notice is RETAINED, not replaced: the MIT licence requires
+	     * the copyright and permission notice to travel with the software. Ours
+	     * is added beside it, which is what that licence allows.
+	     */
+	    VALUE "LegalCopyright",	"Copyright \251 " SHORT_COPYRIGHT_DETAILS \
+	                                "; KiTTY features \251 2007-2013 Cyril Dupont" \
+	                                "; this port \251 2026 KAPPER NETWORK-COMMUNICATIONS GmbH."
 #if (!defined SNAPSHOT) && (!defined RELEASE) && (!defined PRERELEASE)
 	    /* Only if VS_FF_PRIVATEBUILD. */
 	    VALUE "PrivateBuild",	TEXTVER /* NBI */
