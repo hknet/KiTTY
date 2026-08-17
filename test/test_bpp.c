@@ -14,7 +14,9 @@ void modalfatalbox(const char *p, ...)
     exit(1);
 }
 
-const char *const appname = "test_bpp";
+/* Non-const, unlike upstream: KiTTY's masquerade mode (KiClassName) rewrites
+ * appname at runtime, so putty.h declares it without the second const. */
+const char *appname = "test_bpp";
 
 char *platform_default_s(const char *name)
 { return NULL; }
@@ -41,6 +43,10 @@ void ssh_proto_error(Ssh *ssh, const char *fmt, ...) {error_reported = true;}
 void ssh_remote_eof(Ssh *ssh, const char *fmt, ...) {error_reported = true;}
 void ssh_sw_abort(Ssh *ssh, const char *fmt, ...) {error_reported = true;}
 void ssh_user_close(Ssh *ssh, const char *fmt, ...) {error_reported = true;}
+/* KiTTY: bpp2.c reports an unexpected remote EOF through this (it drives the
+ * reconnect decision). Stubbed here like its siblings above - without it the
+ * linker pulls in the real ssh.c and duplicates every stub in this file. */
+void ssh_remote_eof_unexpected(Ssh *ssh) {error_reported = true;}
 
 char *get_remote_username(Conf *conf) { return NULL; }
 const bool share_can_be_upstream = false;
