@@ -249,8 +249,8 @@ void kitty_proxy_record_connection(Conf *resolved);
  * receive data is intercepted in win_seat_output, send is pumped from the
  * message loop. No terminal.c edits. */
 int kitty_zmodem_active(void);
-int kitty_zmodem_receive(Conf *conf, Backend *backend);
-int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend);
+int kitty_zmodem_receive(Conf *conf, Backend *backend, LogContext *logctx, Terminal *term);
+int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend, LogContext *logctx, Terminal *term);
 void kitty_zmodem_cancel(void);
 size_t kitty_zmodem_recv_data(const void *data, size_t len);
 int kitty_zmodem_process(void);
@@ -4826,11 +4826,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #ifdef MOD_ZMODEM
           case IDM_XYZSTART:
             if (GetZModemFlag())
-                kitty_zmodem_receive(wgs->conf, wgs->backend);
+                kitty_zmodem_receive(wgs->conf, wgs->backend, wgs->logctx, wgs->term);
             break;
           case IDM_XYZUPLOAD:
             if (GetZModemFlag())
-                kitty_zmodem_send(hwnd, wgs->conf, wgs->backend);
+                kitty_zmodem_send(hwnd, wgs->conf, wgs->backend, wgs->logctx, wgs->term);
             break;
           case IDM_XYZABORT:
             if (GetZModemFlag())
