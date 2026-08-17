@@ -12,7 +12,9 @@ void modalfatalbox(const char *p, ...)
     exit(1);
 }
 
-const char *appname = "test_lineedit";
+/* Upstream's corrected name; the type stays non-const here because KiTTY's
+ * masquerade mode (KiClassName) rewrites appname at runtime. */
+const char *appname = "test_terminal";
 
 char *platform_default_s(const char *name)
 { return NULL; }

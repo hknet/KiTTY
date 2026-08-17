@@ -206,6 +206,7 @@ struct PageantPrivateKey {
     bool decryption_prompt_active;
     PageantKeyRequestNode blocked_requests;
     PageantClientDialogId dlgid;
+    bool moribund;       /* have we been unlinked from privkeytree? */
 };
 static tree234 *privkeytree;
 
@@ -383,24 +384,50 @@ static void protect_priv_skey_if_possible(PageantPrivateKey *priv)
     priv->protected_skey = psk;
 }
 
-static void pk_priv_free(PageantPrivateKey *priv)
+static void pk_priv_free_private_material(PageantPrivateKey *priv)
 {
-    if (priv->base_pub)
-        strbuf_free(priv->base_pub);
     if (priv->sort.ssh_version == 1 && priv->rkey) {
         freersakey(priv->rkey);
         sfree(priv->rkey);
+        priv->rkey = NULL;
     }
     if (priv->sort.ssh_version == 2 && priv->skey) {
         ssh_key_free(priv->skey);
+        priv->skey = NULL;
     }
-    protected_skey_free(priv->protected_skey);
-    if (priv->encrypted_key_file)
+    /* KiTTY: the protected blob IS private material, so it goes here with the
+     * rest of it - and must be NULLed like upstream's fields, because this
+     * struct can now outlive its key (0.85: kept alive while a decryption
+     * prompt is pending). A stale pointer here would be freed twice. */
+    if (priv->protected_skey) {
+        protected_skey_free(priv->protected_skey);
+        priv->protected_skey = NULL;
+    }
+    if (priv->encrypted_key_file) {
         strbuf_free(priv->encrypted_key_file);
-    if (priv->encrypted_key_comment)
+        priv->encrypted_key_file = NULL;
+    }
+    if (priv->encrypted_key_comment) {
         sfree(priv->encrypted_key_comment);
+        priv->encrypted_key_comment = NULL;
+    }
     fail_requests_for_key(priv, "key deleted from Pageant while signing "
                           "request was pending");
+}
+
+static void pk_priv_free(PageantPrivateKey *priv)
+{
+    /* Expect no signing operations in progress, and also no active
+     * decryption prompt */
+    assert(priv->blocked_requests.next == &priv->blocked_requests);
+    assert(!priv->decryption_prompt_active);
+
+    if (priv->base_pub)
+        strbuf_free(priv->base_pub);
+    pk_priv_free_private_material(priv);
+    /* KiTTY: wipe the struct itself before releasing it - it has held key
+     * pointers and sort/comment metadata. Stays here, on the path that
+     * actually destroys the struct, not in the material-only half. */
     smemclr(priv, sizeof(*priv));
     sfree(priv);
 }
@@ -705,7 +732,10 @@ static void remove_pubkey_cleanup(PageantPublicKey *pub)
         PageantPrivateKey *priv = del234(privkeytree, &pub->sort.priv);
         assert(priv);
         assert(!privkey_cmpfn(&priv->sort, &pub->sort.priv));
-        pk_priv_free(priv);
+        pk_priv_free_private_material(priv);
+        priv->moribund = true;
+        if (!priv->decryption_prompt_active)
+            pk_priv_free(priv);
     }
 }
 
@@ -1231,6 +1261,13 @@ void pageant_passphrase_request_success(PageantClientDialogId *dlgid,
     gui_request_in_progress = false;
     priv->decryption_prompt_active = false;
 
+    if (priv->moribund) {
+        pk_priv_free(priv);
+        return;
+    }
+
+    /* KiTTY: a key we hold only as a protected blob counts as present, so the
+     * prompt result must not try to decrypt it again. */
     if (!priv->skey && !priv->protected_skey) {
         const char *error;
 

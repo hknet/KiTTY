@@ -1,3 +1,5 @@
+include(CheckCCompilerFlag)
+
 # Forcibly re-enable assertions, even if we're building in release
 # mode. This is a security project - assertions may be enforcing
 # security-critical constraints. A backstop #ifdef in defs.h should
@@ -140,9 +142,14 @@ function(map_pathname src dst)
       PARENT_SCOPE)
   elseif(CMAKE_C_COMPILER_ID MATCHES "GNU" OR
       CMAKE_C_COMPILER_ID MATCHES "Clang")
-    set(CMAKE_C_FLAGS
-      "${CMAKE_C_FLAGS} -fmacro-prefix-map=${src}=${dst}"
-      PARENT_SCOPE)
+    # Support older compilers which don't support -fmacro-prefix=map
+    check_c_compiler_flag("-fmacro-prefix-map=${src}=${dst}"
+      HAVE_FMACRO_PREFIX_MAP)
+    if(HAVE_FMACRO_PREFIX_MAP)
+      set(CMAKE_C_FLAGS
+        "${CMAKE_C_FLAGS} -fmacro-prefix-map=${src}=${dst}"
+        PARENT_SCOPE)
+    endif()
   endif()
 endfunction()
 map_pathname(${CMAKE_SOURCE_DIR} /kitty)
