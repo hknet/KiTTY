@@ -10,6 +10,12 @@
 #include <dirent.h>
 #include <windows.h>
 
+/* The registry hive chosen AT RUNTIME (kitty_set_registry_root, driven by
+ * kitty.ini KiClassName). Named proxies used the compile-time PUTTY_REG_POS
+ * macro while sessions used this, so with KiClassName=PuTTY the sessions and
+ * the proxies - passwords included - landed in DIFFERENT hives. */
+extern const char *kitty_registry_base( void ) ;
+
 
 /* Proxy-choice selector visibility (kitty.ini [ConfigBox] proxyselection):
  *   1  = yes   -> always shown
@@ -94,7 +100,7 @@ void InitProxyList(void) {
 		DWORD   cchClassName=MAX_PATH,cSubKeys=0,cbMaxSubKey,cchMaxClass;
 		DWORD	cValues,cchMaxValue,cbMaxValueData,cbSecurityDescriptor;
 		FILETIME ftLastWriteTime;
-		snprintf( buffer, sizeof(buffer), "%s\\Proxies", PUTTY_REG_POS ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Proxies", kitty_registry_base() ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, buffer, NULL, NULL ) ;
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
 		RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime);
@@ -147,7 +153,7 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 	debug_logevent( "Load proxy \"%s\" definition", name ) ;
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 		HKEY hKey ;
-		snprintf( buffer, sizeof(buffer), "%s\\Proxies\\", PUTTY_REG_POS ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\Proxies\\", kitty_registry_base() ) ;
 		char *b = (char*)malloc(4*strlen(name)+1);
 		mungestr(name,b);
 		{ size_t _bl=strlen(buffer); snprintf( buffer+_bl, sizeof(buffer)-_bl, "%s", b ) ; }
@@ -293,7 +299,7 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 	if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
 		char sub[2048] ;
 		char *m = (char*)malloc(4*strlen(name)+1) ; mungestr( name, m ) ;
-		snprintf( sub, sizeof(sub), "%s\\Proxies\\%s", PUTTY_REG_POS, m ) ;
+		snprintf( sub, sizeof(sub), "%s\\Proxies\\%s", kitty_registry_base(), m ) ;
 		free( m ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, sub, NULL, NULL ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, sub, "ProxyExcludeList", conf_get_str(conf, CONF_proxy_exclude_list) ) ;
@@ -349,7 +355,7 @@ int DeleteProxyInfo( const char *name ) {
 	if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
 		char sub[2048] ;
 		char *m = (char*)malloc(4*strlen(name)+1) ; mungestr( name, m ) ;
-		snprintf( sub, sizeof(sub), "%s\\Proxies\\%s", PUTTY_REG_POS, m ) ;
+		snprintf( sub, sizeof(sub), "%s\\Proxies\\%s", kitty_registry_base(), m ) ;
 		free( m ) ;
 		RegDeleteKey( HKEY_CURRENT_USER, sub ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
@@ -378,7 +384,7 @@ int DeleteProxyInfo( const char *name ) {
  * TASK_named_proxies.md Piece 5). */
 static int kitty_proxies_migrated( void ) {
 	HKEY h ; DWORD val = 0, sz = sizeof(val), type = 0 ; int got = 0 ;
-	if( RegOpenKeyEx( HKEY_CURRENT_USER, PUTTY_REG_POS, 0, KEY_READ, &h ) == ERROR_SUCCESS ) {
+	if( RegOpenKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), 0, KEY_READ, &h ) == ERROR_SUCCESS ) {
 		if( RegQueryValueEx( h, "ProxiesMigrated", NULL, &type, (LPBYTE)&val, &sz ) == ERROR_SUCCESS
 		    && type == REG_DWORD && val ) got = 1 ;
 		RegCloseKey( h ) ;
@@ -413,14 +419,14 @@ void kitty_migrate_old_proxies( void ) {
 			if( !strcmp(sub,"None") || !strcmp(sub,"Default") ) continue ;
 			char srcpath[2048], dstpath[2048] ;
 			snprintf( srcpath, sizeof(srcpath), "Software\\9bis.com\\KiTTY\\Proxies\\%s", sub ) ;
-			snprintf( dstpath, sizeof(dstpath), "%s\\Proxies\\%s", PUTTY_REG_POS, sub ) ;
+			snprintf( dstpath, sizeof(dstpath), "%s\\Proxies\\%s", kitty_registry_base(), sub ) ;
 			if( !RegTestKey( HKEY_CURRENT_USER, dstpath ) )
 				kitty_RegCopyTree( HKEY_CURRENT_USER, srcpath, dstpath ) ;  /* all fields (pw plaintext) */
 			kitty_proxy_encrypt_in_place( dstpath ) ;                       /* protect if still plaintext */
 		}
 		RegCloseKey( hSrc ) ;
 	}
-	RegTestOrCreateDWORD( HKEY_CURRENT_USER, PUTTY_REG_POS, "ProxiesMigrated", 1 ) ;
+	RegTestOrCreateDWORD( HKEY_CURRENT_USER, kitty_registry_base(), "ProxiesMigrated", 1 ) ;
 }
 
 /* True if any named proxy definition still has a NON-empty, UNENCRYPTED password
@@ -433,7 +439,7 @@ int kitty_proxy_any_plaintext_password( void ) {
 		char raw[4096] = "" ; int got = 0 ;
 		if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
 			char sub[2048] ; char *m = (char*)malloc(4*strlen(proxies[i].name)+1) ; mungestr( proxies[i].name, m ) ;
-			snprintf( sub, sizeof(sub), "%s\\Proxies\\%s", PUTTY_REG_POS, m ) ; free( m ) ;
+			snprintf( sub, sizeof(sub), "%s\\Proxies\\%s", kitty_registry_base(), m ) ; free( m ) ;
 			got = ( GetValueDataN( HKEY_CURRENT_USER, sub, "ProxyPassword", raw, sizeof(raw) ) != NULL ) ;
 		} else if( IniFileFlag == SAVEMODE_DIR ) {
 			char fullpath[2048] ; char *fn = (char*)malloc(4*strlen(proxies[i].name)+1) ; mungestr( proxies[i].name, fn ) ;
