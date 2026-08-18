@@ -782,6 +782,40 @@ static void start_backend(WinGuiSeat *wgs)
             }
         }
 #endif
+#ifdef MOD_PERSO
+        /*
+         * KiTTY (upstream cyd01/KiTTY #548, the last leftover of it): the
+         * INITIAL connect failure - a host that does not resolve, a refused
+         * port - used to be the one error that ignored `modalerrors` entirely.
+         * Every other error surface honours it; this one always popped a box
+         * and then exit(0)'d the process, so a mistyped hostname made the
+         * window vanish behind an OK-click.
+         *
+         * Now it follows the same rule as connection_fatal: inline in the
+         * terminal, window LEFT OPEN with the ⚠ titlebar marker, so the reason
+         * can be read (and copied) and the user closes when ready. Restart
+         * Session is right there for a typo.
+         *
+         * The box is still used where boxes are configured (modalerrors),
+         * in PuTTY-compat mode, or when there is no terminal to print into -
+         * printing where nothing can be seen is worse than a box.
+         */
+        if (!GetPuttyFlag() && !GetModalErrorsFlag() && wgs->term) {
+            /* Name the window after what we FAILED to reach, before closing the
+             * session down: the normal title is set further below, which this
+             * path never reaches, so without this a failed window is called
+             * plain "KiTTY" and ten of them are indistinguishable. */
+            term_setup_window_titles(wgs->term,
+                                     conf_get_str(wgs->conf, CONF_host));
+            kitty_term_print_inline_error(wgs->term, msg, true);
+            show_mouseptr(wgs, true);
+            wgs->error_close = true;   /* ⚠ + "(disconnected)" via close_session */
+            queue_toplevel_callback(close_session, wgs);
+            sfree(str);
+            sfree(msg);
+            return;                    /* NOT exit(0): the window stays up */
+        }
+#endif
         MessageBox(NULL, msg, str, MB_ICONERROR | MB_OK);
         sfree(str);
         sfree(msg);
