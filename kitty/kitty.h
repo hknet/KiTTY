@@ -313,7 +313,6 @@ int ReadParameter( const char * key, const char * name, char * value ) ; /* comp
 int WriteParameter( const char * key, const char * name, char * value ) ;
 int DelParameter( const char * key, const char * name ) ;
 void GetSessionFolderName( const char * session_in, char * folder ) ;
-int MakeDirTree( const char * Directory, const char * s, const char * sd ) ;
 int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) ;
 void print_log( const char *fmt, ...) ;
 char * SetInitialSessPath( void ) ;
@@ -327,11 +326,6 @@ int decode64 (char *buffer) ;
 void RunCommand( HWND hwnd, const char * cmd ) ;
 void timestamp_change_filename( void ) ;
 int InternalCommand( HWND hwnd, char * st ) ;
-// Convertit la base de registre en repertoire pour le mode savemode=dir
-int Convert2Dir( const char * Directory ) ;
-// Convertit une sauvegarde en mode savemode=dir vers la base de registre
-void ConvertDir2Reg( const char * Directory, HKEY hKey, char * path ) ;
-int Convert2Reg( const char * Directory ) ;
 void load_open_settings_forced(char *filename, Conf *conf) ;
 void save_open_settings_forced(char *filename, Conf *conf) ;
 int SwitchCryptFlag( void ) ;
