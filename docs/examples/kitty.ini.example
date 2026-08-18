@@ -455,9 +455,14 @@
 ;                 is portable mode: it also turns on folder browsing and the
 ;                 portable password protection described further down.
 ;    - file     : NOT a file backend, despite the name. Sessions still live
-;                 in the registry exactly as in registry mode; all it adds is
-;                 importing the .sav registry dump at startup when the hive is
-;                 missing. Upstream KiTTY abandoned this mode years ago and
+;                 in the registry exactly as in registry mode; what it adds is
+;                 loading the .sav registry dump into that hive at startup.
+;                 The dump REPLACES what is in the hive, so an existing
+;                 registry store is set aside first - once - under
+;                 Software\kapper.net\KiTTY_save. KiTTY says so when it does
+;                 that, and the next start WITHOUT savemode=file offers to put
+;                 those sessions back.
+;                 Upstream KiTTY abandoned this mode years ago and
 ;                 marked it unmaintained; we kept it working as it is and are
 ;                 not developing it further. It is not a half-finished feature
 ;                 waiting to land - if you want sessions in files, use dir.

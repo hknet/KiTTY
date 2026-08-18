@@ -1415,7 +1415,12 @@ struct sav_job { char dated[4096] ; char base[4096] ; int keep ; } ;
 
 static DWORD WINAPI sav_worker( LPVOID param ) {
 	struct sav_job * j = (struct sav_job *)param ;
-	SaveRegistryKeyEx( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), j->dated ) ;
+	/* The hive this run USES, not the compile-time one: with KiClassName=PuTTY
+	 * the sessions live in PuTTY's hive, and exporting kapper.net\KiTTY produced
+	 * a "backup" containing nothing but our migration markers. Worse than
+	 * useless - it looks like a backup right up to the day someone needs it. */
+	{ extern const char *kitty_registry_base( void ) ;
+	  SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), j->dated ) ; }
 	sav_prune( j->base, j->keep ) ;
 	free( j ) ;
 	InterlockedExchange( &sav_worker_busy, 0 ) ;
@@ -1452,7 +1457,8 @@ static void sav_backup( int async ) {
 	{ char dated[4096] ;
 	  sav_timestamped_path( KittySavFile, dated, sizeof(dated) ) ;
 	  if( !async ) {
-		SaveRegistryKeyEx( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), dated ) ;
+		extern const char *kitty_registry_base( void ) ;   /* see sav_worker */
+		SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), dated ) ;
 		sav_prune( KittySavFile, keep ) ;
 		return ;
 		}
@@ -3717,6 +3723,46 @@ void kitty_netdbg_ts( const char *msg ) {
 #define NETDBG_TS(m) ((void)0)
 #endif
 
+#ifdef MOD_PERSO
+/* Is this run one of the do-and-exit command-line paths (-importdir,
+ * -exportall, -fileassoc, ...)?
+ *
+ * InitWinMain() runs BEFORE the command line is parsed, so anything it wants to
+ * ask the user has to work this out from the raw command line itself. It only
+ * needs to be right about one thing: those paths run unattended, from scripts
+ * and test harnesses, so a modal box during startup does not inform anybody -
+ * it hangs the caller until something kills it.
+ * Deliberately conservative: an unrecognised switch counts as interactive, so
+ * the worst case is asking a question rather than swallowing one. */
+int kitty_cli_do_and_exit( void ) {
+	static const char * const batch[] = {
+		"-importdir", "-exportall", "-mungestr", "-sendcmd", "-edit", "-ed", "-edb",
+		"-fileassoc", "-sshhandler", "-cleanup", "-pgpfp",
+		/* Deliberately NOT "-h"/"-?": this scan has no notion of quoting, so a
+		 * one-letter token is far too easy to hit inside a session name or a
+		 * path and would silence the box in a genuinely interactive run. */
+		"-help", "--help",
+		"-demo-config-box", "-demo-terminal", NULL } ;
+	const char * cl = GetCommandLineA() ;
+	int i ;
+	if( cl == NULL ) return 0 ;
+	for( i = 0 ; batch[i] != NULL ; i++ ) {
+		size_t len = strlen( batch[i] ) ;
+		const char * p = cl ;
+		while( ( p = strstr( p, batch[i] ) ) != NULL ) {
+			char before = ( p == cl ) ? ' ' : p[-1] ;
+			char after  = p[len] ;
+			/* whole word only: "-h" must not match inside "-hwndparent" */
+			if( ( before == ' ' || before == '\t' || before == '"' )
+			 && ( after == '\0' || after == ' ' || after == '\t' || after == '"' ) )
+				return 1 ;
+			p += len ;
+			}
+		}
+	return 0 ;
+	}
+#endif
+
 void InitWinMain( void ) {
 	char buffer[4096];
 	int i ;
@@ -3788,6 +3834,34 @@ void InitWinMain( void ) {
 	InitShortcuts() ;
 	NETDBG_TS("after InitShortcuts");
 
+	/* Does our hive exist? ASK NOW, BEFORE the migrations below, because they
+	 * create it as a side effect.
+	 *
+	 * RepairSharrowDefaults() and MigrateScpAutoPwd() finish by writing a
+	 * one-time marker with RegTestOrCreateDWORD(), which CREATES the key when it
+	 * is missing. The first-run block further down then asks "does the hive
+	 * exist?" - and by then it always does, so neither of its branches could
+	 * ever run: no adopting a PuTTY installation's sessions, and, worse, no
+	 * restoring our own newest kittynew-*.sav after the hive is lost. A user who
+	 * loses their profile got an empty KiTTY with their backup sitting unused.
+	 * Found 2026-08-18 by scripts/qa_adopt_putty.ps1. */
+	int kitty_hive_existed ;
+
+	/* The hive this run actually uses, and the name file mode parks it under.
+	 * Taken at RUNTIME (kitty.ini KiClassName, applied by kitty_set_registry_root
+	 * further up in this same function) rather than from the PUTTY_REG_POS
+	 * macros: with KiClassName=PuTTY the sessions live in PuTTY's hive, so the
+	 * macro version set aside a store nothing was reading and left the one in
+	 * use in place - the same compile-time/runtime split that sent named proxies
+	 * to the wrong hive. */
+	char kitty_reg_live[512], kitty_reg_park[512], kitty_reg_park_sess[600], kitty_reg_live_sess[600] ;
+	{ extern const char *kitty_registry_base( void ) ;
+	  snprintf( kitty_reg_live, sizeof(kitty_reg_live), "%s", kitty_registry_base() ) ;
+	  snprintf( kitty_reg_park, sizeof(kitty_reg_park), "%s_save", kitty_registry_base() ) ;
+	  snprintf( kitty_reg_park_sess, sizeof(kitty_reg_park_sess), "%s\\Sessions", kitty_reg_park ) ; }
+	snprintf( kitty_reg_live_sess, sizeof(kitty_reg_live_sess), "%s\\Sessions", kitty_reg_live ) ;
+	kitty_hive_existed = RegTestKey( HKEY_CURRENT_USER, kitty_reg_live ) ;
+
 	/* KiTTY 0.84: migrate the old 9bis.com\KiTTY hive to kapper.net\KiTTY BEFORE the
 	 * PuTTY-import check below, so once our hive exists that import path stays out of the
 	 * way. Idempotent + non-destructive (see kitty_registry.c). */
@@ -3819,8 +3893,75 @@ void InitWinMain( void ) {
 
 	// Chargement de la base de registre si besoin
 	if( IniFileFlag == SAVEMODE_REG ) { // Mode de sauvegarde registry
-		// Si la cle n'existe pas ...
-		if( !RegTestKey( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS) ) ) { 
+#ifdef MOD_PERSO
+		/* The way back out of file mode.
+		 *
+		 * A file-mode start parks the registry store at PUTTY_REG_POS_SAVE and
+		 * loads kitty.sav over PUTTY_REG_POS (see SAVEMODE_FILE below). Nothing
+		 * ever put it back: dropping savemode=file left the user looking at the
+		 * last .sav content and their real sessions apparently gone. Offering
+		 * the restore HERE - on the next normal start - also covers the case an
+		 * exit-time restore cannot, a file-mode run that crashed or was killed.
+		 *
+		 * What PUTTY_REG_POS holds right now is the file-mode working copy, and
+		 * that copy still lives in kitty.sav, so replacing it loses nothing.
+		 * Asked at most once: Yes consumes the parked key, No leaves a marker
+		 * IN the parked key so the offer does not nag while the data stays put.
+		 *
+		 * Only offered when the parked key actually holds sessions. A modal at
+		 * startup is expensive when nobody is in front of it (test runs, an
+		 * "@session" shortcut), so it must not appear for an empty leftover -
+		 * with nothing to restore the question has no answer worth asking. */
+		if( RegTestKey( HKEY_CURRENT_USER, kitty_reg_park )
+		 && RegCountKey( HKEY_CURRENT_USER, kitty_reg_park_sess ) > 0
+		 && !kitty_cli_do_and_exit()
+		 && WindowsCount( MainHwnd ) == 1 ) {
+			DWORD declined = 0, dwsize = sizeof(DWORD), dwtype = 0 ;
+			HKEY hsave = NULL ;
+			if( RegOpenKeyEx( HKEY_CURRENT_USER, kitty_reg_park, 0, KEY_READ, &hsave ) == ERROR_SUCCESS ) {
+				if( RegQueryValueEx( hsave, "RestoreDeclined", NULL, &dwtype, (LPBYTE)&declined, &dwsize ) != ERROR_SUCCESS )
+					declined = 0 ;
+				RegCloseKey( hsave ) ;
+				}
+			if( !declined ) {
+				char question[1200] ;
+				snprintf( question, sizeof(question),
+					"KiTTY previously ran in file mode (savemode=file in kitty.ini) and "
+					"set your registry sessions aside at:\n\n"
+					"    HKEY_CURRENT_USER\\%s\n\n"
+					"It is now starting in normal (registry) mode. Put those sessions "
+					"back?\n\n"
+					"The sessions currently in the registry are the working copy of "
+					"kitty.sav and are kept in that file, so nothing is lost either way.\n\n"
+					"Answer No and they stay set aside; you will not be asked again.",
+					kitty_reg_park ) ;
+				if( MessageBox( NULL, question,
+					"KiTTY - restore your registry sessions?",
+					MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1 ) == IDYES ) {
+					HWND hdlg = InfoBox( hinst, NULL ) ;
+					InfoBoxSetText( hdlg, "Restoring registry sessions." ) ;
+					/* Copies the parked tree over the working copy and removes
+					 * the parked key, so the question cannot come back. */
+					RegRenameTree( hdlg, HKEY_CURRENT_USER, kitty_reg_park, kitty_reg_live ) ;
+					InfoBoxClose( hdlg ) ;
+					}
+				else {
+					RegTestOrCreateDWORD( HKEY_CURRENT_USER, kitty_reg_park, "RestoreDeclined", 1 ) ;
+					}
+				}
+			}
+#endif
+		/* Si la cle n'existait pas AU DEMARRAGE ...
+		 *
+		 * kitty_hive_existed, not a fresh RegTestKey: by this point the one-time
+		 * migrations above have created the key whether or not there was
+		 * anything to migrate, so testing here answers a question about
+		 * ourselves rather than about the machine.
+		 * The second half of the condition is the old-hive case: when
+		 * MigrateOldKittyHive() has just copied 9bis.com\KiTTY across, the
+		 * sessions are already here and there is nothing to restore or adopt. */
+		if( !kitty_hive_existed
+		 && !RegTestKey( HKEY_CURRENT_USER, kitty_reg_live_sess ) ) {
 			HWND hdlg = InfoBox( hinst, NULL ) ;
 			// ... on charge le backup le plus recent (kittynew-<timestamp>.sav),
 			// ou l'ancien fichier a nom fixe s'il existe encore.
@@ -3837,16 +3978,30 @@ void InitWinMain( void ) {
 			} else { // Sinon on regarde si il y a la cle de PuTTY et on la recupere
 				InfoBoxSetText( hdlg, "Initializing registry." ) ;
 				InfoBoxSetText( hdlg, "First time running. Loading saved sessions from PuTTY registry." ) ;
-				TestRegKeyOrCopyFromPuTTY( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS) ) ; 
+				/* Copy DIRECTLY rather than through TestRegKeyOrCopyFromPuTTY():
+				 * that helper first tests whether our key exists and does
+				 * nothing if it does - and the migration markers above have
+				 * created it, so it would decline every time. We have already
+				 * established that this is a first run (kitty_hive_existed);
+				 * what is in our hive at this point is markers, nothing a copy
+				 * could overwrite.
+				 *
+				 * And copy INTO the hive this run uses, not the compile-time one -
+				 * with KiClassName=PuTTY that hive IS PuTTY's, where there is by
+				 * definition nothing to adopt and copying a key onto itself is
+				 * the one thing worth refusing outright. */
+				if( stricmp( kitty_reg_live, "Software\\SimonTatham\\PuTTY" )
+				 && RegTestKey( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY" ) )
+					kitty_RegCopyTree( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY", kitty_reg_live ) ;
 				InfoBoxClose( hdlg ) ;
 			}
 		}
 	} else if( IniFileFlag == SAVEMODE_FILE ){ // Mode de sauvegarde fichier
-		if( !RegTestKey( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS) ) ) { // la cle de registre n'existe pas 
+		if( !RegTestKey( HKEY_CURRENT_USER, kitty_reg_live ) ) { // la cle de registre n'existe pas
 			HWND hdlg = InfoBox( hinst, NULL ) ;
 			InfoBoxSetText( hdlg, "Initializing registry." ) ;
 			InfoBoxSetText( hdlg, "Loading saved sessions from file." ) ;
-			LoadRegistryKey( hdlg ) ; 
+			LoadRegistryKey( hdlg ) ;
 			InfoBoxClose( hdlg ) ;
 			}
 #ifdef MOD_PERSO
@@ -3854,7 +4009,43 @@ void InitWinMain( void ) {
 			if( WindowsCount( MainHwnd ) == 1 ) { // Si c'est le 1er kitty on sauvegarde la cle de registre avant de charger le fichier kitty.sav
 				HWND hdlg = InfoBox( hinst, NULL ) ;
 				InfoBoxSetText( hdlg, "Initializing registry." ) ;
-				RegRenameTree( hdlg, HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), TEXT(PUTTY_REG_POS_SAVE) ) ;
+				/* File mode owns the registry view: kitty.sav is loaded INTO
+				 * PUTTY_REG_POS, so whatever is there now has to move aside.
+				 *
+				 * Park it ONCE, and only once. The first park holds the user's
+				 * real registry-mode store and must never be overwritten; every
+				 * later start would otherwise park the PREVIOUS RUN'S .sav
+				 * content on top of it, destroying the one copy worth keeping
+				 * (and, with a dated name, littering the registry instead).
+				 * If the parked key already exists, the current one is just the
+				 * last run's .sav content and can be replaced. */
+				if( !RegTestKey( HKEY_CURRENT_USER, kitty_reg_park ) ) {
+					RegRenameTree( hdlg, HKEY_CURRENT_USER, kitty_reg_live, kitty_reg_park ) ;
+					InfoBoxClose( hdlg ) ;
+					/* SAY SO. Silence here is the actual harm: the sessions
+					 * simply vanish from normal mode, with nothing pointing at
+					 * where they went. Shown only on the first park, so it does
+					 * not nag on every file-mode start - and never on a
+					 * do-and-exit run (-importdir and friends), where a modal
+					 * informs nobody and hangs the script that started it. */
+					if( !kitty_cli_do_and_exit() ) {
+						char notice[1200] ;
+						snprintf( notice, sizeof(notice),
+							"KiTTY is starting in file mode (savemode=file in kitty.ini), "
+							"which keeps its sessions in kitty.sav and uses the registry "
+							"as its working copy.\n\n"
+							"Your existing registry sessions have been SET ASIDE, not "
+							"deleted. They are at:\n\n"
+							"    HKEY_CURRENT_USER\\%s\n\n"
+							"Start KiTTY without savemode=file and it will offer to put "
+							"them back.",
+							kitty_reg_park ) ;
+						MessageBox( NULL, notice,
+							"KiTTY - your registry sessions were set aside",
+							MB_OK | MB_ICONINFORMATION ) ;
+						}
+					hdlg = InfoBox( hinst, NULL ) ;
+					}
 				InfoBoxSetText( hdlg, "Loading saved sessions." ) ;
 				LoadRegistryKey( hdlg ) ;
 				InfoBoxClose( hdlg ) ;

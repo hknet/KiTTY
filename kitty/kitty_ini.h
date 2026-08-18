@@ -474,9 +474,14 @@ char default_init_file_content[] =
 ;                 is portable mode: it also turns on folder browsing and the\n\
 ;                 portable password protection described further down.\n\
 ;    - file     : NOT a file backend, despite the name. Sessions still live\n\
-;                 in the registry exactly as in registry mode; all it adds is\n\
-;                 importing the .sav registry dump at startup when the hive is\n\
-;                 missing. Upstream KiTTY abandoned this mode years ago and\n\
+;                 in the registry exactly as in registry mode; what it adds is\n\
+;                 loading the .sav registry dump into that hive at startup.\n\
+;                 The dump REPLACES what is in the hive, so an existing\n\
+;                 registry store is set aside first - once - under\n\
+;                 Software\\kapper.net\\KiTTY_save. KiTTY says so when it does\n\
+;                 that, and the next start WITHOUT savemode=file offers to put\n\
+;                 those sessions back.\n\
+;                 Upstream KiTTY abandoned this mode years ago and\n\
 ;                 marked it unmaintained; we kept it working as it is and are\n\
 ;                 not developing it further. It is not a half-finished feature\n\
 ;                 waiting to land - if you want sessions in files, use dir.\n\
