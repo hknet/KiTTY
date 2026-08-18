@@ -798,7 +798,16 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         extern void kitty_set_master_passphrase(const char *);
         extern int kitty_portable_password_dpapi(void);
         RETURN(2);
-        SAVEABLE(0);
+        /* NOT saveable, deliberately. SAVEABLE() defers an option to the second
+         * pass (cmdline_run_saved), which runs AFTER -load has already read the
+         * session - and reading a session is exactly what needs this passphrase.
+         * Deferred, it arrived too late: the master-password unwrap ran with
+         * none supplied, handed back an empty password, and the session failed
+         * to authenticate with no explanation. `-masterpwfile f -load s` was
+         * therefore impossible, which is to say a master-password store could
+         * not be used unattended at all.
+         * This is store state needed TO READ a session, not a session setting,
+         * so it must take effect the moment it is parsed. */
         /* The two non-interactive ways to protect a portable store are mutually
          * exclusive, and honouring either one silently would misreport where the
          * protection came from: kitty.ini has already said "protect with DPAPI,

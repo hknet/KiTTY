@@ -280,19 +280,25 @@ char *read_setting_s(settings_r *handle, const char *key)
         if (handle->src_hive == KSEC_HIVE_OLDKITTY && slot == 0 &&
             strncmp(raw, KITTY_SECRET_DPAPI_MARK, strlen(KITTY_SECRET_DPAPI_MARK)) != 0)
             pt = ksec_legacy_decrypt(raw, handle->sesskey);   /* malloc or NULL */
+        int rv_dbg = -99;                     /* -99 = the decrypt path never ran */
         if (!pt) {
             /* DPAPI blob -> plaintext; unmarked value passes through. Record an
              * undecryptable-here blob for the never-wipe guard on next save. */
             int rv = ksec_unprotect(raw, &pt);
+            rv_dbg = rv;
             ksec_after_load(slot, raw, rv);
         }
         /* Migrate the auto-login password to UTF-8 (slot 0) so a legacy ANSI value
          * works at the UTF-8 prompt without re-entry; re-saved UTF-8 thereafter. */
         if (slot == 0) pt = ksec_to_utf8(pt);
         if (slot == 0)
-            kitty_pwdebug("LOAD pw: mode=%d filemode=%d rawmark=%.7s declen=%d cksum=%04x",
+            /* rv matters: declen=0 against an MPW2 raw value means the unwrap
+             * handed back an EMPTY string instead of failing, so the session
+             * authenticates with a blank password and says nothing. That is
+             * exactly how the SAVEABLE -masterpwfile defect presented. */
+            kitty_pwdebug("LOAD pw: mode=%d filemode=%d rawmark=%.7s declen=%d cksum=%04x rv=%d",
                           kitty_storage_mode(), handle->is_file, raw ? raw : "(null)",
-                          pt ? (int)strlen(pt) : -1, ksec_cksum(pt));
+                          pt ? (int)strlen(pt) : -1, ksec_cksum(pt), rv_dbg);
         sfree(raw);
         char *ret = dupstr(pt ? pt : "");
         if (pt) { memset(pt, 0, strlen(pt)); free(pt); }

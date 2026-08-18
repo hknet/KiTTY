@@ -28,10 +28,10 @@
 #define MPW_MAC_LEN     32      /* ssh_hmac_sha256 output */
 #define MPW_AESKEY_LEN  32      /* AES-256 */
 #define MPW_MACKEY_LEN  32
-/* Argon2id cost: interactive-friendly, mirrors PPK v3 defaults (~tenths of a sec). */
-#define MPW_ARGON_MEM       8192    /* KiB */
-#define MPW_ARGON_PASSES    13
-#define MPW_ARGON_PARALLEL  1
+/* Argon2id cost lives in kitty_mpw.h so test_mpw_params.c can check it. */
+#define MPW_ARGON_MEM       KITTY_MPW_ARGON_MEM
+#define MPW_ARGON_PASSES    KITTY_MPW_ARGON_PASSES
+#define MPW_ARGON_PARALLEL  KITTY_MPW_ARGON_PARALLEL
 
 void kitty_mpw_derive(const char *passphrase,
                       const unsigned char *salt, int saltlen,

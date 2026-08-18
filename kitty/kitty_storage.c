@@ -1108,6 +1108,13 @@ static int mpw_unprotect_with_salt(const char *m1blob,
     }
     int from_supplied = (g_mpw_passphrase != NULL);
     int tries = from_supplied ? 1 : 3;
+    /* Which key opened a value is invisible otherwise, and "why did it prompt
+     * when I passed -masterpwfile?" is the question that gets asked - it was a
+     * real defect once (the switch was SAVEABLE, so it arrived after -load).
+     * Flags only, no secrets. */
+    kitty_pwdebug("mpw2 unwrap: supplied=%d unlocked=%d f_valid=%d declined=%d defer=%d",
+                  from_supplied, g_mpw_unlocked, g_mpw_f_valid,
+                  g_mpw_declined, g_mpw_defer);
     /* Deferred startup load or no interactive prompt available -> stay locked
      * (the cached-key fast paths above already ran). */
     if (!from_supplied && (g_mpw_declined || !g_mpw_prompt || g_mpw_defer)) return 0;
