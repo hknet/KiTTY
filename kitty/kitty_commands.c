@@ -202,8 +202,35 @@ static int cmd_loadreg( HWND hwnd, char * arg ) {
 }
 
 static int cmd_delreg( HWND hwnd, char * arg ) {
-	(void)hwnd ; (void)arg ;
-	RegDelTree (HKEY_CURRENT_USER, TEXT(PUTTY_REG_PARENT)) ;
+	/* Deletes KiTTY's OWN hive - and asks first.
+	 *
+	 * It used to delete TEXT(PUTTY_REG_PARENT), i.e. Software\kapper.net: the
+	 * VENDOR key, not ours. Anything else stored under that vendor went with it,
+	 * on one typed word, with no confirmation and nothing to undo it. It also
+	 * used the compile-time macro, so with KiClassName=PuTTY it deleted a hive
+	 * the running KiTTY was not even using while leaving the one it WAS using
+	 * untouched - the same compile-time/runtime split fixed in kitty_proxy.c.
+	 *
+	 * kitty_registry_base() is the hive this process actually reads and writes.
+	 * The confirmation is not decoration: this is the only command in the
+	 * console that destroys data outright, and the person typing it is usually
+	 * aiming at "clear my settings", not "clear everything any kapper.net
+	 * program ever stored". */
+	extern const char *kitty_registry_base( void ) ;
+	char question[1024] ;
+	(void)arg ;
+	snprintf( question, sizeof(question),
+		"Delete KiTTY's registry hive?\n\n"
+		"    HKEY_CURRENT_USER\\%s\n\n"
+		"This removes every saved session, named proxy, cached host key and "
+		"setting stored there. It cannot be undone from inside KiTTY - the most "
+		"recent backup is your .sav file.\n\n"
+		"Delete it?",
+		kitty_registry_base() ) ;
+	if( MessageBox( hwnd, question, "KiTTY - delete the registry hive",
+	                MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 ) != IDYES )
+		return 1 ;
+	RegDelTree( HKEY_CURRENT_USER, kitty_registry_base() ) ;
 	return 1 ;
 }
 
