@@ -940,7 +940,14 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	 * written, so it drops off on the next save. */
 	if( conf_get_bool( conf, CONF_scp_auto_pwd ) )
 		conf_set_bool( conf, CONF_osc7_cwd_tracking, true ) ;
-	conf_set_str( conf, CONF_folder, "Default") ;
+	/* The folder read above (gpps_forced "Folder") STAYS. This function used to
+	 * end with an unconditional conf_set_str(CONF_folder, "Default"), which
+	 * threw it away again and made the empty-check up there dead code. The
+	 * visible cost was on import: kitty_import_one_ktx() loads through here, and
+	 * .ktx bundles DO carry the folder, so every imported session landed in
+	 * Default - export a store organised in folders, import it on a new machine,
+	 * get one flat list. A file that names no folder still gets "Default" from
+	 * the check next to the read. */
 	fclose(sesskey) ;
 
 	conf_free( confDef ) ;
