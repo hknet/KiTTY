@@ -224,12 +224,30 @@ int kitty_get_last_folder(char *buf, int buflen)
 }
 
 /*
- * KiTTY: expose the runtime registry base (e.g. "Software\9bis.com\KiTTY")
- * so legacy modules -- notably the tray launcher in kitty_launcher.c -- read
- * the SAME hive that session storage uses, instead of the compile-time
- * PUTTY_REG_POS macro (which is stock PuTTY's "Software\SimonTatham\PuTTY"
- * and does not hold KiTTY's sessions).  Returns the base WITHOUT any
- * "\Sessions" / "\Launcher" suffix; callers append their own.
+ * KiTTY: the registry hive this process is ACTUALLY using, so that every
+ * module reads and writes the same one.
+ *
+ * Two things are easy to get backwards here, and both have caused real
+ * defects:
+ *
+ *   PUTTY_REG_POS is OURS, not PuTTY's. It is "Software\kapper.net\KiTTY"
+ *   (windows/platform.h) - the hive we use BY DEFAULT. Code that deliberately
+ *   wants stock PuTTY's hive spells "Software\SimonTatham\PuTTY" out in full.
+ *
+ *   So the split is not "ours vs PuTTY's" but COMPILE-TIME vs RUNTIME. With
+ *   kitty.ini's KiClassName=PuTTY, kitty_set_registry_root() points this base
+ *   at PuTTY's hive and the sessions live there - while PUTTY_REG_POS still
+ *   says kapper.net\KiTTY. Code holding the macro then touches a hive this
+ *   process is not using: named proxies stored passwords in one hive while
+ *   their sessions went to another, sav_backup() exported the wrong hive,
+ *   savemode=file parked the wrong one, and /delreg deleted it.
+ *
+ * Use this for anything belonging to the store IN USE. Keep the macro only
+ * where the default hive is genuinely meant whatever the current root is -
+ * migration and adoption paths, which must name one specific hive.
+ *
+ * Returns the base WITHOUT any "\Sessions" / "\Launcher" suffix; callers
+ * append their own, or use kitty_reg_sessions() and friends.
  */
 const char *kitty_registry_base(void) { return reg_base_buf; }
 
