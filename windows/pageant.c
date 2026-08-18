@@ -117,9 +117,33 @@ static filereq_saved_dir *keypath = NULL;
 #define IDM_RESUME_CONFIRM     0x00F0    /* KiTTY: lift the confirm-suppress latch */
 #define IDM_SESSIONS_BASE      0x1000
 #define IDM_SESSIONS_MAX       0x2000
-/* KiTTY: kageant's session submenu reads KiTTY's own hive (where sessions actually
- * live) via the shared PUTTY_REG_POS macro, so it tracks the registry base/rename. */
-#define PUTTY_REGKEY      PUTTY_REG_POS "\\Sessions"
+/* KiTTY: kageant's session submenu reads the hive where the sessions actually
+ * live - which is a RUNTIME question, not a compile-time one.
+ *
+ * PUTTY_REG_POS is the DEFAULT hive ("Software\\kapper.net\\KiTTY"). When
+ * kitty.ini says KiClassName=PuTTY the terminal keeps its sessions in
+ * "Software\\SimonTatham\\PuTTY" instead, so a macro pinned at the default
+ * left this menu reading an empty key: the agent offered no sessions at all
+ * and looked broken, for a setting made somewhere else entirely.
+ *
+ * kageant cannot call kitty_registry_base(): that lives in kitty_storage.c,
+ * part of the `settings` library the terminal links and this binary does not.
+ * It can read kitty.ini though - kitty_inilight is exactly the resolver the
+ * satellite binaries use - so the same answer is worked out here, once. */
+static const char *kageant_sessions_key(void)
+{
+    static char key[300];
+    char cls[64];
+    if (key[0])
+        return key;                     /* settled on the first call */
+    cls[0] = '\0';
+    if (kitty_inilight_read("KiTTY", "KiClassName", cls, sizeof(cls)) &&
+        !stricmp(cls, "PuTTY"))
+        strcpy(key, "Software\\SimonTatham\\PuTTY\\Sessions");
+    else
+        strcpy(key, PUTTY_REG_POS "\\Sessions");
+    return key;
+}
 #define PUTTY_DEFAULT     "Default%20Settings"
 static int initial_menuitems_count;
 
@@ -2918,7 +2942,7 @@ static void update_sessions(void)
     if (!putty_path)
         return;
 
-    if (ERROR_SUCCESS != RegOpenKey(HKEY_CURRENT_USER, PUTTY_REGKEY, &hkey))
+    if (ERROR_SUCCESS != RegOpenKey(HKEY_CURRENT_USER, kageant_sessions_key(), &hkey))
         return;
 
     for (num_entries = GetMenuItemCount(session_menu);
