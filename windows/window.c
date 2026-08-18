@@ -51,6 +51,8 @@
 #define IDM_COPY      0x0190
 #define IDM_PASTE     0x01A0
 #define IDM_CHECKUPDATE 0x01B0  /* check GitHub releases for a newer KiTTY */
+/* kitty.c: types a string into this session (the WM_COPYDATA broadcast). */
+void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
 #ifdef MOD_PERSO
 #ifndef IDM_SCRIPTSEND
 #define IDM_SCRIPTSEND  0xB180  /* send recorded script (rutty) */
@@ -4175,6 +4177,49 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         sfree(additional);
         return 0;
       }
+#ifdef MOD_PERSO
+      case WM_COPYDATA: {
+        /*
+         * KiTTY: BROADCAST TO ALL WINDOWS - the receiving half.
+         *
+         * SendCommandAllWindows() (kitty.c) posts WM_COPYDATA with dwData==1 to
+         * every window of KiTTY's class. It is reached two ways, both offered to
+         * the user today:
+         *     /command <text>          - "run a command or send text in ALL windows"
+         *     kitty.exe -sendcmd <text>
+         * The receiver was lost in the 0.85 port, so both silently did nothing:
+         * the sender exited 0, DefWindowProc dropped the message, and no window
+         * ever saw it. 0.76 had this case (KiTTY/0.76b_My_PuTTY/windows/window.c).
+         *
+         * It TYPES the text into the session (SendKeyboardPlus), exactly as 0.76
+         * did - it does NOT run internal commands. Worth keeping that way:
+         * routing this through InternalCommand would let any process on the
+         * machine drive /delreg and friends in every open window, which is a far
+         * larger thing than typing into a terminal.
+         *
+         * 0.76 put this case and rutty's AHK ids in an #ifdef either/or, so a
+         * build with rutty silently lost the broadcast. Both are dispatched from
+         * the one switch on dwData here.
+         */
+        PCOPYDATASTRUCT cds = (PCOPYDATASTRUCT)lParam;
+        if (!cds || cds->cbData == 0 || cds->lpData == NULL)
+            return 0;
+        if (cds->dwData == 1) {
+            /* NOT assumed to be NUL-terminated: it comes from another process,
+             * so it is copied into a bounded buffer of our own first. */
+            size_t n = cds->cbData;
+            char *text;
+            if (n > 65536) n = 65536;
+            text = snewn(n + 1, char);
+            memcpy(text, cds->lpData, n);
+            text[n] = '\0';
+            SendKeyboardPlus(hwnd, text);
+            sfree(text);
+            return 1;
+        }
+        return 0;                      /* not ours - let the default happen */
+      }
+#endif
       case WM_DESTROY:
 #ifdef MOD_PERSO
         /* KiTTY: remember this window's position (topology-keyed) for next time. */
