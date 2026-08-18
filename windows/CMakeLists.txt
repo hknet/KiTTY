@@ -328,6 +328,16 @@ target_compile_definitions(test_osc52 PRIVATE MOD_PERSO MOD_FAR2L)
 target_link_libraries(test_osc52
   guiterminal settings eventloop utils ${platform_libraries})
 
+# The master password's Argon2id cost, checked against the limits PuTTY 0.85
+# enforces for PPK parameters (argon2_params_bad). Ours are compile-time
+# constants, so nothing validates them at run time - and the MPW1 envelope does
+# not record them, so a tuning pass would not merely be unvalidated, it would
+# lock every existing stored secret out. Links crypto for argon2_params_bad.
+add_executable(test_mpw_params
+  ${CMAKE_SOURCE_DIR}/test/test_mpw_params.c)
+target_link_libraries(test_mpw_params
+  crypto utils ${platform_libraries})
+
 add_sources_from_current_dir(test_conf no-jump-list.c handle-wait.c)
 
 # ===================== KiTTY target =====================
