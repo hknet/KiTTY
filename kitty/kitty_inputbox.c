@@ -16,6 +16,9 @@
 #include <windows.h>
 
 #include "kitty.h"
+/* The hive in use, not the compile-time default - see kitty_storage.c. */
+extern const char *kitty_reg_sessions( void ) ;
+
 #include "kitty_commun.h"
 #include "kitty_crypt.h"
 #include "kitty_registry.h"
@@ -185,7 +188,7 @@ BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 			if( (wParam==VK_RETURN) && (GetKeyState( VK_SHIFT )& 0x8000) )
 				return 0;
 			else if( (wParam==VK_F2) && (GetKeyState( VK_SHIFT )& 0x8000) ) { // Charge une Notes
-				snprintf( key_name, sizeof(key_name), "%s\\Sessions\\%s", TEXT(PUTTY_REG_POS), conf_get_str(conf,CONF_sessionname) ) ;
+				snprintf( key_name, sizeof(key_name), "%s\\%s", kitty_reg_sessions(), conf_get_str(conf,CONF_sessionname) ) ;
 				if( GetValueDataN(HKEY_CURRENT_USER, key_name, "Notes", buffer, sizeof(buffer)) != NULL ) {
 					if( GetWindowTextLength(hwnd) > 0 ) 
 						if( MessageBox(hwnd, "Are you sure you want to load Notes\nand erase this edit box ?","Load Warning", MB_YESNO|MB_ICONWARNING ) != IDYES ) break ;
@@ -197,7 +200,7 @@ BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 				if( strlen( buffer ) > 0 ) 
 					if( MessageBox(hwnd, "Are you sure you want to save Edit box\ninto Notes registry ?","Save Warning", MB_YESNO|MB_ICONWARNING ) != IDYES ) break ;
 				GetWindowText( hwnd, buffer, 4096 ) ;
-				snprintf( key_name, sizeof(key_name), "%s\\Sessions\\%s", TEXT(PUTTY_REG_POS), conf_get_str(conf,CONF_sessionname) ) ;
+				snprintf( key_name, sizeof(key_name), "%s\\%s", kitty_reg_sessions(), conf_get_str(conf,CONF_sessionname) ) ;
 				RegTestOrCreate( HKEY_CURRENT_USER, key_name, "Notes", buffer ) ;
 				}
 			else 

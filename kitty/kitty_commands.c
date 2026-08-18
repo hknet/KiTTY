@@ -238,7 +238,7 @@ static int cmd_savesessions( HWND hwnd, char * arg ) {
 	char buffer[4096] ;
 	(void)hwnd ; (void)arg ;
 	chdir( InitialDirectory ) ;
-	snprintf( buffer, sizeof(buffer), "%s\\Sessions", PUTTY_REG_POS ) ;
+	snprintf( buffer, sizeof(buffer), "%s", kitty_reg_sessions() ) ;
 	SaveRegistryKeyEx( HKEY_CURRENT_USER, buffer, "kitty.ses" ) ;
 	return 1 ;
 }
@@ -246,10 +246,21 @@ static int cmd_savesessions( HWND hwnd, char * arg ) {
 static int cmd_copytoputty( HWND hwnd, char * arg ) {
 	char buffer[4096] ;
 	(void)hwnd ; (void)arg ;
+	/* REFUSE when our own hive IS PuTTY's (kitty.ini KiClassName=PuTTY).
+	 * This deletes PuTTY\Sessions before copying into it, so in that mode it
+	 * would delete the sessions and then copy the emptied key over itself -
+	 * total loss, from a command that reads like a backup. */
+	if( kitty_root_is_putty() ) {
+		MessageBox( hwnd, "This KiTTY is already using PuTTY's registry hive "
+			"(KiClassName=PuTTY), so there is nothing to copy: the source and the "
+			"destination are the same key. Nothing was changed.",
+			"KiTTY - copy to PuTTY", MB_OK | MB_ICONINFORMATION ) ;
+		return 1 ;
+	}
 	RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Sessions" ) ;
-	snprintf( buffer, sizeof(buffer), "%s\\Sessions", PUTTY_REG_POS ) ;
+	snprintf( buffer, sizeof(buffer), "%s", kitty_reg_sessions() ) ;
 	kitty_RegCopyTree( HKEY_CURRENT_USER, buffer, "Software\\SimonTatham\\PuTTY\\Sessions" ) ;
-	snprintf( buffer, sizeof(buffer), "%s\\SshHostKeys", PUTTY_REG_POS ) ;
+	snprintf( buffer, sizeof(buffer), "%s", kitty_reg_hostkeys() ) ;
 	kitty_RegCopyTree( HKEY_CURRENT_USER, buffer, "Software\\SimonTatham\\PuTTY\\SshHostKeys" ) ;
 	RegCleanPuTTY() ;
 	return 1 ;
@@ -257,7 +268,16 @@ static int cmd_copytoputty( HWND hwnd, char * arg ) {
 
 static int cmd_copytokitty( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
-	kitty_RegCopyTree( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY", PUTTY_REG_POS ) ;
+	/* Same trap the other way round: with KiClassName=PuTTY the destination
+	 * IS the source, and a tree copied onto itself is at best pointless. */
+	if( kitty_root_is_putty() ) {
+		MessageBox( hwnd, "This KiTTY is already using PuTTY's registry hive "
+			"(KiClassName=PuTTY): its sessions ARE PuTTY's sessions, so there is "
+			"nothing to copy. Nothing was changed.",
+			"KiTTY - copy from PuTTY", MB_OK | MB_ICONINFORMATION ) ;
+		return 1 ;
+	}
+	kitty_RegCopyTree( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY", kitty_registry_base() ) ;
 	return 1 ;
 }
 

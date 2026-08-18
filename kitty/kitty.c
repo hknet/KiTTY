@@ -35,6 +35,15 @@
 #include "kitty_win.h"
 #include "kitty_launcher.h"
 #include "winfont_fallback.h"
+
+/* The hive this process is ACTUALLY using. Not TEXT(PUTTY_REG_POS): that is the
+ * compile-time DEFAULT, and with kitty.ini's KiClassName=PuTTY the two differ -
+ * see the long note on kitty_registry_base() in kitty/kitty_storage.c. */
+extern const char *kitty_registry_base( void ) ;
+extern const char *kitty_reg_sessions( void ) ;   /* <base>\Sessions */
+extern const char *kitty_reg_hostkeys( void ) ;   /* <base>\SshHostKeys */
+extern int kitty_root_is_putty( void ) ;          /* is the hive in use PuTTY-s? */
+
 #include "MD5check.h"
 /*************************************************
 ** FIN DE LA DEFINITION DES INCLUDES
@@ -638,7 +647,7 @@ void InitFolderList( void ) {
 		FILETIME ftLastWriteTime;      // last write time 
 		DWORD retCode; 
 
-		snprintf( buffer, sizeof(buffer), "%s\\\\Sessions", PUTTY_REG_POS );
+		snprintf( buffer, sizeof(buffer), "%s", kitty_reg_sessions() );
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
 	
 		retCode = RegQueryInfoKey(
@@ -742,7 +751,7 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
 		mungestr(buffer, session) ;
-		snprintf( buffer, sizeof(buffer), "%s\\Sessions\\%s", PUTTY_REG_POS, session ) ;
+		snprintf( buffer, sizeof(buffer), "%s\\%s", kitty_reg_sessions(), session ) ;
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
 			DWORD lpType ;
 			unsigned char lpData[1024] ;
@@ -798,7 +807,7 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 	strcpy( buffer, session_in ) ;
 	if( (p = strrchr(buffer, '[')) != NULL ) *(p-1) = '\0' ;
 	mungestr(buffer, session) ;
-	snprintf( buffer, sizeof(buffer), "%s\\Sessions\\%s", PUTTY_REG_POS, session ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s", kitty_reg_sessions(), session ) ;
 	strcpy( folder, folder_in );
 	CleanFolderName( folder );
 
@@ -1018,7 +1027,18 @@ int WriteParameter( const char * key, const char * name, char * value ) {
 			ret = writeINI( KittyIniFile, key, name, value ) ; 
 		}
 	} else { 
-		snprintf( buffer, sizeof(buffer), "%s\\%s", TEXT(PUTTY_REG_PARENT), key ) ;
+		/* The hive in use, matching ReadParameterN.
+		 *
+		 * This used to write to PUTTY_REG_PARENT\\<key> - "Software\\kapper.net"
+		 * plus the INI SECTION name - while the read side looked at the base
+		 * hive and ignored the section entirely. The two agreed only by
+		 * coincidence, when that section happened to be "KiTTY". With
+		 * KiClassName=PuTTY the section becomes "PuTTY" and the sessions move
+		 * to SimonTatham\\PuTTY, so a global setting was WRITTEN to
+		 * kapper.net\\PuTTY and READ from somewhere else entirely: saving one
+		 * appeared to work, and it came back with the old value for ever.
+		 * Read and write now name the same key - the one this process uses. */
+		strcpy( buffer, kitty_registry_base() ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, buffer, name, value ) ; 
 	}
 	return ret ;
@@ -1035,7 +1055,7 @@ int ReadParameterN( const char * key, const char * name, char * value, size_t si
 		 * parameters such as Folders are read from kitty.ini, not from a stale
 		 * HKCU value left by an installed/registry-mode copy. */
 		if( !readINI( KittyIniFile, key, name, buffer, sizeof(buffer) ) ) strcpy( buffer, "" ) ;
-	} else if( GetValueData( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), name, buffer ) == NULL ) {
+	} else if( GetValueData( HKEY_CURRENT_USER, kitty_registry_base(), name, buffer ) == NULL ) {
 		if( !readINI( KittyIniFile, key, name, buffer, sizeof(buffer) ) ) {
 			strcpy( buffer, "" ) ;
 			}
@@ -1057,7 +1077,9 @@ int ReadParameter( const char * key, const char * name, char * value ) {
 int DelParameter( const char * key, const char * name ) {
 	char buffer[4096] ;
 	if( !GetReadOnlyFlag() ) { delINI( KittyIniFile, key, name ) ; }
-	snprintf( buffer, sizeof(buffer), "%s\\%s", TEXT(PUTTY_REG_PARENT), key ) ;
+	/* The same key WriteParameter uses: a delete aimed at a different hive
+	 * removes nothing and still reports success. */
+	strcpy( buffer, kitty_registry_base() ) ;
 	RegDelValue( HKEY_CURRENT_USER, buffer, (char*)name ) ;
 	return 1 ;
 	}
@@ -1364,8 +1386,8 @@ static int sav_find_for_restore( const char *savfile, char *out, size_t outlen )
  * secret lying about. Self-limiting: both deletes are skipped when absent. */
 void RetireConfigPasswordLeftovers( void ) {
 	char buf[4096] ;
-	if( GetValueDataN( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "password", buf, sizeof(buf) ) != NULL )
-		RegDelValue( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "password" ) ;
+	if( GetValueDataN( HKEY_CURRENT_USER, kitty_registry_base(), "password", buf, sizeof(buf) ) != NULL )
+		RegDelValue( HKEY_CURRENT_USER, kitty_registry_base(), "password" ) ;
 	if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag()
 	    && readINI( KittyIniFile, INIT_SECTION, "password", buf, sizeof(buf) ) )
 		delINI( KittyIniFile, INIT_SECTION, "password" ) ;
@@ -1396,8 +1418,8 @@ void RetireCountUpLeftovers( void ) {
 	char buf[4096] ;
 	size_t i ;
 	for( i = 0 ; i < lenof(dead) ; i++ ) {
-		if( GetValueDataN( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), dead[i], buf, sizeof(buf) ) != NULL )
-			RegDelValue( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), dead[i] ) ;
+		if( GetValueDataN( HKEY_CURRENT_USER, kitty_registry_base(), dead[i], buf, sizeof(buf) ) != NULL )
+			RegDelValue( HKEY_CURRENT_USER, kitty_registry_base(), dead[i] ) ;
 		if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag()
 		    && readINI( KittyIniFile, INIT_SECTION, dead[i], buf, sizeof(buf) ) )
 			delINI( KittyIniFile, INIT_SECTION, dead[i] ) ;
@@ -2191,7 +2213,7 @@ void SaveWindowCoord( Conf * conf ) {
     if( strlen( conf_get_str(conf,CONF_sessionname) ) > 0 ) {
         if( IniFileFlag == SAVEMODE_REG ) {
             mungestr( conf_get_str(conf,CONF_sessionname), session ) ;
-            snprintf( key, sizeof(key), "%s\\Sessions\\%s", TEXT(PUTTY_REG_POS), session ) ;
+            snprintf( key, sizeof(key), "%s\\%s", kitty_reg_sessions(), session ) ;
             RegTestOrCreateDWORD( HKEY_CURRENT_USER, key, "TermXPos", conf_get_int(conf,CONF_xpos) ) ;
             RegTestOrCreateDWORD( HKEY_CURRENT_USER, key, "TermYPos", conf_get_int(conf,CONF_ypos) ) ;
             RegTestOrCreateDWORD( HKEY_CURRENT_USER, key, "TermWidth", conf_get_int(conf,CONF_width) ) ;
@@ -3833,7 +3855,7 @@ void InitWinMain( void ) {
 	kitty_retire_orphan_master_password() ;
 
 	// Make mandatory registry keys
-	snprintf( buffer, sizeof(buffer), "%s\\%s", TEXT(PUTTY_REG_POS), "Commands" ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s", kitty_registry_base(), "Commands" ) ;
 	if( (IniFileFlag == SAVEMODE_REG)||( IniFileFlag == SAVEMODE_FILE) ) 
 		RegTestOrCreate( HKEY_CURRENT_USER, buffer, NULL, NULL ) ;
 
@@ -3843,7 +3865,7 @@ void InitWinMain( void ) {
 #endif
 #ifdef MOD_LAUNCHER
 	// Initiate launcher
-	snprintf( buffer, sizeof(buffer), "%s\\%s", TEXT(PUTTY_REG_POS), "Launcher" ) ;
+	snprintf( buffer, sizeof(buffer), "%s\\%s", kitty_registry_base(), "Launcher" ) ;
 	if( (IniFileFlag == SAVEMODE_REG)||( IniFileFlag == SAVEMODE_FILE) )  
 		if( !RegTestKey( HKEY_CURRENT_USER, buffer ) ) { InitLauncherRegistry() ; }
 #endif
@@ -3871,12 +3893,12 @@ void InitWinMain( void ) {
 
 	NETDBG_TS("after icon-dll init");
 	// Teste la presence d'une note et l'affiche
-	if( GetValueData( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "Notes", buffer ) )
+	if( GetValueData( HKEY_CURRENT_USER, kitty_registry_base(), "Notes", buffer ) )
 		{ if( strlen( buffer ) > 0 ) MessageBox( NULL, buffer, "Notes", MB_OK ) ; }
 		
 	// Genere un fichier (4096ko max) d'initialisation de toute les Sessions
 	snprintf( buffer, sizeof(buffer), "%s\\%s.ses.updt", InitialDirectory, appname ) ;
-	if( existfile( buffer ) ) { InitAllSessions( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "Sessions", buffer ) ; }
+	if( existfile( buffer ) ) { InitAllSessions( HKEY_CURRENT_USER, kitty_registry_base(), "Sessions", buffer ) ; }
 	/* Format: registry like => UTF-8 encoded !!!
 	"ProxyUsername"="mylogin"
 	"ProxyPassword"="mypassword"

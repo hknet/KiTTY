@@ -16,6 +16,9 @@
 #include <windows.h>
 
 #include "kitty.h"
+/* The hive in use, not the compile-time default - see kitty_storage.c. */
+extern const char *kitty_registry_base( void ) ;
+
 #include "kitty_defs.h"      /* KITTY_DEFAULT_SESSION */
 #include "kitty_commun.h"    /* ConfigDirectory, mungestr/unmungestr */
 #include "kitty_registry.h"  /* MAX_VALUE_NAME */
@@ -76,7 +79,9 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			achValue[0] = '\0';
 
 			if( RegEnumValue(hKey,i,achValue,&cchValue,NULL,&lpType,lpData,&dwDataSize) == ERROR_SUCCESS ) {
-			if( strcmp(achValue,KITTY_DEFAULT_SESSION) || strcmp(KeyName,TEXT(PUTTY_REG_POS) "\\Launcher") ) {
+			char launcherkey[1024] ;
+			snprintf( launcherkey, sizeof(launcherkey), "%s\\Launcher", kitty_registry_base() ) ;
+			if( strcmp(achValue,KITTY_DEFAULT_SESSION) || strcmp(KeyName,launcherkey) ) {
 				if( ShortcutsFlag ) {
 					if( nb < 26 ) 
 						snprintf( buffer, sizeof(buffer), "%s\tCtrl+Shift+%c", achValue, ('A'+nb) ) ;
@@ -191,15 +196,15 @@ void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) {
 
 		}
 	else {
-		snprintf( KeyName, sizeof(KeyName), "%s\\Commands", TEXT(PUTTY_REG_POS) ) ;
+		snprintf( KeyName, sizeof(KeyName), "%s\\Commands", kitty_registry_base() ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 0 ) ;
 		
 		mungestr( folder, buffer ) ;
-		snprintf( KeyName, sizeof(KeyName), "%s\\Folders\\%s\\Commands", TEXT(PUTTY_REG_POS), buffer ) ;
+		snprintf( KeyName, sizeof(KeyName), "%s\\Folders\\%s\\Commands", kitty_registry_base(), buffer ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 1 ) ;
 
 		mungestr( sessionname, buffer ) ;
-		snprintf( KeyName, sizeof(KeyName), "%s\\Sessions\\%s\\Commands", TEXT(PUTTY_REG_POS), buffer ) ;
+		snprintf( KeyName, sizeof(KeyName), "%s\\Sessions\\%s\\Commands", kitty_registry_base(), buffer ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 1 ) ;
 		}
 

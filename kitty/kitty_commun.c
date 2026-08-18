@@ -164,12 +164,16 @@ void DelDir( const char * directory ) {
 // Lit un parametre soit dans le fichier de configuration, soit dans le registre
 char  * IniFile = NULL ;
 char INIT_SECTION[10];
+
+/* The hive in use, not the compile-time default - see kitty_storage.c. */
+extern const char *kitty_registry_base( void ) ;
+
 // Variante bornee: n'ecrit jamais plus de `size` octets (NUL final compris) dans `value`.
 int ReadParameterLightN( const char * key, const char * name, char * value, size_t size ) {
 	char buffer[4096] ;
 	strcpy( buffer, "" ) ;
 
-	if( GetValueData( HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), name, buffer ) == NULL ) {
+	if( GetValueData( HKEY_CURRENT_USER, kitty_registry_base(), name, buffer ) == NULL ) {
 		if( !readINI( IniFile, key, name, buffer, sizeof(buffer) ) ) {
 			strcpy( buffer, "" ) ;
 			}
