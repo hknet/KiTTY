@@ -1956,22 +1956,21 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #ifdef MOD_ZMODEM
             /*
              * KiTTY does not implement ZModem: it drives the rz/sz helpers the
-             * user supplies (Connection > ZModem). Built greyed and decided in
-             * WM_INITMENUPOPUP, because the menu is built once and Change
-             * Settings can set a helper path while the window is open - and
-             * because Receive needs rz while Upload needs sz, configured
-             * independently. Unconditionally live, they could only answer
-             * "Unable to find ZModem receive program", which reads as a broken
-             * feature rather than an unconfigured one.
+             * user supplies (Connection > ZModem). With no helper configured
+             * the entries are NOT SHOWN - an entry whose only possible outcome
+             * is "Unable to find ZModem receive program" reads as a broken
+             * feature rather than an unconfigured one, and a greyed row that
+             * explains itself in its own label is still a row nobody asked for.
+             * Receive needs rz and Upload needs sz, set independently, so they
+             * appear independently.
              *
              * The CONFIG PANEL stays visible regardless: it is where the paths
              * are set, so gating it on them would lock the feature away.
              */
-            if (GetZModemFlag()) {
-                AppendMenu(toolmenu, MF_GRAYED, IDM_XYZSTART, "&ZModem Receive");
-                AppendMenu(toolmenu, MF_GRAYED, IDM_XYZUPLOAD, "ZModem &Upload");
-                AppendMenu(toolmenu, MF_GRAYED, IDM_XYZABORT, "ZModem &Abort");
-            }
+            /* Nothing is added here: the ZModem entries are inserted (and
+             * removed) in WM_INITMENUPOPUP, because whether they belong in the
+             * menu at all depends on paths Change Settings can alter while the
+             * window is open. */
 #endif
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
             AppendMenu(toolmenu, MF_ENABLED, IDM_PRINT,        "Print clip&board");
@@ -4338,28 +4337,54 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
 #ifdef MOD_ZMODEM
         if (GetZModemFlag()) {
-            /* The ZModem entries follow the helpers this session has, checked
-             * now rather than at build time: Change Settings can set a path
-             * while the window is open. An entry with no helper behind it stays
-             * greyed and says which one is missing - the alternative was a menu
-             * item whose only possible outcome was an error box. Receive and
-             * Upload are independent; Abort is live only during a transfer. */
+            /*
+             * The ZModem entries are rebuilt every time this menu opens, and a
+             * helper that is not configured gets no entry at all. Change
+             * Settings can set or clear a path while the window is open, so the
+             * decision cannot be made when the menu is built.
+             *
+             * ⚠️ DELETE FIRST, THEN COMPUTE POSITIONS. MF_BYCOMMAND deletion is
+             * position-independent, but the insertion below is BY POSITION, and
+             * a position taken before the deletions would be off by however
+             * many rows the deletions removed.
+             */
             HMENU mp = (HMENU)wParam;
             bool xfer = kitty_zmodem_active();
             bool has_rz = *filename_to_str(
                 conf_get_filename(wgs->conf, CONF_rzcommand)) != '\0';
             bool has_sz = *filename_to_str(
                 conf_get_filename(wgs->conf, CONF_szcommand)) != '\0';
-            EnableMenuItem(mp, IDM_XYZSTART, MF_BYCOMMAND |
-                           ((has_rz && !xfer) ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
-            EnableMenuItem(mp, IDM_XYZUPLOAD, MF_BYCOMMAND |
-                           ((has_sz && !xfer) ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
-            EnableMenuItem(mp, IDM_XYZABORT, MF_BYCOMMAND |
-                           (xfer ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
-            ModifyMenu(mp, IDM_XYZSTART, MF_BYCOMMAND | MF_STRING, IDM_XYZSTART,
-                       has_rz ? "&ZModem Receive" : "&ZModem Receive (set rz in Connection > ZModem)");
-            ModifyMenu(mp, IDM_XYZUPLOAD, MF_BYCOMMAND | MF_STRING, IDM_XYZUPLOAD,
-                       has_sz ? "ZModem &Upload" : "ZModem &Upload (set sz in Connection > ZModem)");
+            int i, count, at = -1;
+
+            DeleteMenu(mp, IDM_XYZSTART,  MF_BYCOMMAND);
+            DeleteMenu(mp, IDM_XYZUPLOAD, MF_BYCOMMAND);
+            DeleteMenu(mp, IDM_XYZABORT,  MF_BYCOMMAND);
+
+            /* Where the block belongs: directly before the separator that
+             * precedes "Print clipboard". Anchoring on a command rather than a
+             * fixed index keeps this correct as the menu above it changes -
+             * the script entries, for one, are conditional too. */
+            count = GetMenuItemCount(mp);
+            for (i = 0; i < count; i++) {
+                if (GetMenuItemID(mp, i) == IDM_PRINT) {
+                    at = (i > 0) ? i - 1 : 0;   /* before that separator */
+                    break;
+                }
+            }
+            if (at >= 0 && (has_rz || has_sz)) {
+                if (has_rz)
+                    InsertMenu(mp, at++, MF_BYPOSITION | MF_STRING |
+                               (xfer ? (MF_DISABLED | MF_GRAYED) : MF_ENABLED),
+                               IDM_XYZSTART, "&ZModem Receive");
+                if (has_sz)
+                    InsertMenu(mp, at++, MF_BYPOSITION | MF_STRING |
+                               (xfer ? (MF_DISABLED | MF_GRAYED) : MF_ENABLED),
+                               IDM_XYZUPLOAD, "ZModem &Upload");
+                /* Abort belongs with them, and is live only during a transfer. */
+                InsertMenu(mp, at++, MF_BYPOSITION | MF_STRING |
+                           (xfer ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)),
+                           IDM_XYZABORT, "ZModem &Abort");
+            }
         }
 #endif
 #endif
