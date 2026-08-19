@@ -1,4 +1,5 @@
 #include "putty.h"
+#include "kitty_perf.h"
 
 #define TIMING_CLASS_NAME "PuTTYTimerWindow"
 #define TIMING_TIMER_ID 1234
@@ -46,6 +47,7 @@ void timer_change_notify(unsigned long next)
 {
     unsigned long now = GETTICKCOUNT();
     long ticks;
+    KP_T0;
     if (now - next < INT_MAX)
         ticks = 0;
     else
@@ -53,4 +55,5 @@ void timer_change_notify(unsigned long next)
     KillTimer(timing_hwnd, TIMING_TIMER_ID);
     SetTimer(timing_hwnd, TIMING_TIMER_ID, ticks, NULL);
     timing_next_time = next;
+    KP_T1(KP_TIMER);
 }

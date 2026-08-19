@@ -12,6 +12,7 @@
 #include <assert.h>
 #include "putty.h"
 #include "terminal.h"
+#include "kitty_perf.h"
 #ifdef MOD_PERSO
 char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf);
 void kitty_set_remote_cwd(const char *osc7);   /* OSC 7 cwd tracking (kitty.c) */
@@ -1452,8 +1453,17 @@ static void term_schedule_tblink(Terminal *term)
  */
 static void term_schedule_cblink(Terminal *term)
 {
-    int delay = CBLINK_DELAY;
-    if (term->blink_cur && term->has_focus && delay > 0) {
+    /* CBLINK_DELAY is a platform call - on Windows a USER32 syscall - and this
+     * function runs whenever the cursor moves, so ask only when the answer can
+     * matter. A window with a steady cursor, or without focus, never needs it. */
+    int delay;
+    if (!term->blink_cur || !term->has_focus) {
+        term->cblinker = true;         /* reset when not in use */
+        term->cblink_pending = false;
+        return;
+    }
+    delay = CBLINK_DELAY;
+    if (delay > 0) {
         if (!term->cblink_pending)
             term->next_cblink = schedule_timer(delay, term_timer, term);
         term->cblink_pending = true;
@@ -1580,6 +1590,7 @@ static void power_on(Terminal *term, bool clear)
  */
 void term_update(Terminal *term)
 {
+    KP_T0;
     term->window_update_pending = false;
 
     if (term->win_move_pending) {
@@ -1639,6 +1650,7 @@ void term_update(Terminal *term)
             term->win, term->curs.x, term->curs.y - term->disptop);
         win_free_draw_ctx(term->win);
     }
+    KP_T1(KP_UPDATE);
 }
 
 /*
@@ -9901,9 +9913,11 @@ void term_lost_clipboard_ownership(Terminal *term, int clipboard)
 static void term_added_data(Terminal *term, bool called_from_term_data)
 {
     if (!term->in_term_out) {
+        KP_T0;
         term->in_term_out = true;
         term_out(term, called_from_term_data);
         term->in_term_out = false;
+        KP_T1(KP_TERMOUT);
     }
 }
 

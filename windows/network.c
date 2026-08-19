@@ -15,6 +15,7 @@
 
 #include "putty.h"
 #include "network.h"
+#include "kitty_perf.h"
 #include "tree234.h"
 #include "ssh.h"
 
@@ -1703,7 +1704,7 @@ void select_result(WPARAM wParam, LPARAM lParam)
         } else
             atmark = true;
 
-        ret = p_recv(s->s, buf, sizeof(buf), 0);
+        { KP_T0; ret = p_recv(s->s, buf, sizeof(buf), 0); KP_T1(KP_RECV); }
         noise_ultralight(NOISE_SOURCE_IOLEN, ret);
         if (ret < 0) {
             err = p_WSAGetLastError();
@@ -1716,7 +1717,7 @@ void select_result(WPARAM wParam, LPARAM lParam)
         } else if (0 == ret) {
             plug_closing_normal(s->plug);
         } else {
-            plug_receive(s->plug, atmark ? 0 : 1, buf, ret);
+            { KP_T0; plug_receive(s->plug, atmark ? 0 : 1, buf, ret); KP_T1(KP_PLUG); }
         }
         break;
       case FD_OOB:

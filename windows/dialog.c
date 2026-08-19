@@ -1181,7 +1181,56 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             dlg_refresh(NULL, pds->dp);    /* set up control values */
 
             SendMessage (hwnd, WM_SETREDRAW, true, 0);
-            InvalidateRect (hwnd, NULL, true);
+
+            /*
+             * Repaint the PANEL, not the whole dialog.
+             *
+             * InvalidateRect(hwnd, NULL, true) erased and redrew everything -
+             * the category tree, the buttons, the lot - on every panel switch,
+             * even though only the right-hand side changed. Measured on
+             * 2026-08-19: a quarter of the time spent switching panels was in
+             * NtGdiPatBlt, i.e. erasing background that was about to be covered
+             * by the same controls as before.
+             *
+             * The tree is on the left and does not change, so the region right
+             * of it is what needs redrawing. If the tree's rectangle cannot be
+             * had for any reason, fall back to the old behaviour rather than
+             * leaving the dialog half-drawn.
+             */
+            {
+                RECT client, tree;
+                HWND treewin = ((LPNMHDR) lParam)->hwndFrom;
+                if (GetClientRect(hwnd, &client) &&
+                    GetWindowRect(treewin, &tree)) {
+                    MapWindowPoints(NULL, hwnd, (LPPOINT)&tree, 2);
+                    client.left = tree.right;
+                    /*
+                     * ONE pass, not two. InvalidateRect leaves the erase and the
+                     * children's repaints to happen separately, which the eye
+                     * sees as the panel appearing and then blinking once: the
+                     * new controls draw themselves, and the deferred background
+                     * erase then wipes and redraws underneath them.
+                     * RDW_UPDATENOW | RDW_ALLCHILDREN does the erase and every
+                     * child in a single synchronous pass before returning.
+                     */
+                    RedrawWindow(hwnd, &client, NULL,
+                                 RDW_ERASE | RDW_INVALIDATE |
+                                 RDW_UPDATENOW | RDW_ALLCHILDREN);
+                    /*
+                     * The TREE still has to be repainted, without the erase.
+                     *
+                     * Its selection has just moved, and WM_SETREDRAW was off
+                     * while that happened, so the invalidation the control would
+                     * normally do for itself was swallowed. Leaving it out left
+                     * the old row highlighted as well as the new one - two
+                     * selected-looking rows at once. It needs no background
+                     * erase, which is where the cost was.
+                     */
+                    InvalidateRect(treewin, NULL, false);
+                } else {
+                    InvalidateRect(hwnd, NULL, true);
+                }
+            }
 
             SetFocus(((LPNMHDR) lParam)->hwndFrom);     /* ensure focus stays */
         }

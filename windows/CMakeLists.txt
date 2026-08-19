@@ -301,6 +301,17 @@ add_executable(test_terminal
 target_link_libraries(test_terminal
   guiterminal settings eventloop utils ${platform_libraries})
 
+# Bulk-output benchmark: terminal.c and nothing else, so the same source can be
+# built by different toolchains and timed. Same stub set as test_terminal.
+add_executable(bench_term
+  ${CMAKE_SOURCE_DIR}/test/bench_term.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-storage.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
+  no-jump-list.c)
+target_link_libraries(bench_term
+  guiterminal settings eventloop utils ${platform_libraries})
+
 # OSC 52 regression tests. terminal.c is compiled directly into this target, and
 # with MOD_PERSO, for the same reason the kitty target does it: the OSC 52
 # handler lives behind that define and guiterminal is built WITHOUT it, so a
@@ -342,11 +353,20 @@ add_sources_from_current_dir(test_conf no-jump-list.c handle-wait.c)
 
 # ===================== KiTTY target =====================
 set(KITTY_DIR ${CMAKE_SOURCE_DIR}/kitty)
+# Stage timers for "where did the time go" builds. OFF by default; the header
+# compiles to nothing at all when it is off, so this costs a normal build
+# nothing. See kitty/kitty_perf.h for what the buckets mean.
+option(KITTY_PERF "instrument kitty.exe with per-stage timers" OFF)
+if(KITTY_PERF)
+  message(STATUS "KITTY_PERF: kitty.exe will write %TEMP%/kitty_perf.txt at exit")
+endif()
+
 add_executable(kitty
   window.c
   putty.c
   help.c
   # terminal.c compiled directly into the kitty target (not via guiterminal)
+
   # so it can carry MOD_FAR2L; the directly-listed object takes precedence over
   # guiterminal's terminal.o, leaving other binaries untouched.
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
@@ -412,6 +432,27 @@ set_source_files_properties(${KITTY_DIR}/blocnote/notepad.rc PROPERTIES COMPILE_
 add_dependencies(kitty generated_licence_h)
 target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.84.1.75" BUILD_TIME="2026-08-14")
 target_compile_options(kitty PRIVATE -fcommon)
+if(KITTY_PERF)
+  # The SAME timers in upstream's own binary. guiterminal already carries the
+  # define, so putty.exe's terminal.c is instrumented either way - it just needs
+  # the accumulator linked in to have somewhere to count. This is what separates
+  # "our MOD_PERSO/MOD_FAR2L additions cost the time" from "this file is simply
+  # slower when built for Windows": same payload, same timer, two binaries.
+  target_sources(putty PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_perf.c)
+  target_compile_definitions(putty PRIVATE KITTY_PERF)
+endif()
+
+if(KITTY_PERF)
+  # Stage timers (kitty/kitty_perf.h). The define has to reach every file that
+  # carries a timer, and terminal.c/network.c reach the binary through the
+  # guiterminal and network libraries rather than through this target.
+  target_sources(kitty PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_perf.c)
+  target_compile_definitions(kitty PRIVATE KITTY_PERF)
+  target_link_libraries(kitty psapi)
+  target_compile_definitions(guiterminal PRIVATE KITTY_PERF)
+  target_compile_definitions(guimisc PRIVATE KITTY_PERF)
+  target_compile_definitions(network PRIVATE KITTY_PERF)
+endif()
 target_include_directories(kitty PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
   ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)

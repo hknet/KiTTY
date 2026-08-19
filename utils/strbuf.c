@@ -21,6 +21,30 @@ void *strbuf_append(strbuf *buf_o, size_t len)
 {
     struct strbuf_impl *buf = container_of(buf_o, struct strbuf_impl, visible);
     char *toret;
+
+    /*
+     * FAST PATH: the allocation already has room.
+     *
+     * sgrowarray_general is a macro that ALWAYS calls safegrowarray(), which
+     * range-checks its arguments with four asserts before discovering there is
+     * nothing to do. That is fine for a few appends; the terminal's scrollback
+     * compressor drives this one BYTE AT A TIME through put_byte(), so on
+     * 2026-08-19 a profile of bulk output found safegrowarray at the top of the
+     * histogram - reached, and returning immediately, millions of times.
+     *
+     * The condition is safegrowarray's own "the size is already enough" test
+     * (oldsize > oldlen + extralen) with the same arguments the slow path
+     * passes: oldlen is len+1, because the terminating NUL needs room too. When
+     * it holds, the buffer does not move, so visible.u stays valid and no
+     * STRBUF_SET_UPTR is needed.
+     */
+    if (buf->size > buf->visible.len + 1 + len) {
+        toret = buf->visible.s + buf->visible.len;
+        buf->visible.len += len;
+        buf->visible.s[buf->visible.len] = '\0';
+        return toret;
+    }
+
     sgrowarray_general(
         buf->visible.s, buf->size, buf->visible.len + 1, len, buf->nm);
     STRBUF_SET_UPTR(buf);
