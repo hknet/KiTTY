@@ -3,7 +3,7 @@
 KiTTY is a fork of [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/),
 Simon Tatham's telnet/SSH client for Windows. On top of everything PuTTY does,
 KiTTY adds a large set of convenience and automation features. This page documents
-the features that are built into this 0.84-based port, grouped the same way as the
+the features that are built into this 0.85-based port, grouped the same way as the
 original [KiTTY website](https://github.com/cyd01/KiTTY/) by Cyril Dupont.
 
 Each entry includes a short description, how to turn it on, and a screenshot where
@@ -39,6 +39,7 @@ one is available.
   - [Run a locally saved script on a remote session](#run-a-locally-saved-script-on-a-remote-session)
   - [Standard output to the clipboard](#standard-output-to-the-clipboard)
   - [Restricted process ACL (-restrict-acl)](#restricted-process-acl--restrict-acl)
+  - [Send text to every window (broadcast)](#send-text-to-every-window-broadcast)
 - **Graphical features**
   - [An icon for each session](#an-icon-for-each-session)
   - [Send to tray](#send-to-tray)
@@ -516,6 +517,56 @@ Note that enabling it globally also applies the upgrade trade-off above to every
 (no screenshot)
 
 ---
+
+### Send text to every window (broadcast)
+
+One KiTTY can type into the others. `kitty.exe -sendcmd "uptime"` sends that text
+to every KiTTY window that is listening, and `/command uptime` in the commands
+console does the same from inside a session — useful when the same line has to go
+to a dozen machines you already have open.
+
+The text is **typed into the session, exactly as if you had typed it**. It is not
+run as an internal KiTTY command: `-sendcmd "/delreg"` puts those characters in
+front of the remote shell, it does not delete anything locally.
+
+Because anything running under your account could send the same message, a
+broadcast has to get past four gates before a window accepts it, and every
+refusal is written to that window's Event Log with the reason:
+
+1. **The sender identifies its group.** Messages in the pre-0.85 format, which
+   carried no sender identity, are refused.
+2. **The installation allows it.** `[KiTTY] sendcmdmode=yes` in kitty.ini —
+   **off by default**, so nothing arrives anywhere until you turn it on.
+3. **The broadcast key matches.** Each installation derives its own key, so a
+   portable copy on a stick and an installed one cannot type into each other by
+   accident. Set your own with `[KiTTY] sendcmdgroup=<text>`, or per session.
+4. **The session accepts broadcasts.** Off per session, ticked in
+   **Session > Scripting**, or from the terminal's **Tools > Accept broadcast**
+   for the current window.
+
+**Session > Scripting** also shows the key this session listens for, with
+**Copy** (it is long, and its whole purpose is to be carried to another session)
+and **Clear** (back to the installation's own). A line under the field says where
+the key came from: generated for this installation, taken from kitty.ini, or set
+for this session.
+
+**Aiming a broadcast.** `-sendcmdkey <key>` sends to the sessions carrying that
+key instead of the installation's. Give a group of sessions the same key and one
+command reaches exactly those, and nothing else:
+
+    kitty.exe -sendcmdkey lab-row-3 -sendcmd "systemctl restart nginx"
+
+⚠️ **None of this is a security boundary.** Anything running under your account
+can read the key and post the same message. The gates exist to stop accidents —
+the line meant for three lab boxes landing in the production session left open
+behind them — and to keep the feature off until you ask for it.
+
+**How to enable:** `[KiTTY] sendcmdmode=yes` in kitty.ini, then tick **Accept
+broadcast messages for this session** in **Session > Scripting** (or **Tools >
+Accept broadcast** in a running window). Send with `kitty.exe -sendcmd "<text>"`,
+`kitty.exe -sendcmdkey <key> -sendcmd "<text>"`, or `/command <text>`.
+
+(no screenshot)
 
 ## Graphical features
 

@@ -1,9 +1,84 @@
 # KiTTY changelog
 
-KiTTY is the full KiTTY feature set forward-ported onto a modern, security-patched
-**PuTTY 0.84** core. Versions below are this port's own `0.84.1.x` line. For current
+KiTTY is basically the full KiTTY feature set forward-ported onto a modern, security-patched
+and enhanced **PuTTY 0.85** core. Versions below are this port's own `0.85.1.x` line. For current
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
+
+## 0.85.1.0-beta — 2026-08-19
+
+### The Harder, Better, Faster, Stronger Release
+
+- **This release is built on PuTTY 0.85**, which is mostly security work. What it
+  brings: a buffer overflow in ETM-mode packet decode, a limit on the length of a
+  remote SSH greeting, rejection of a zero maximum packet size when opening a
+  channel, rejection of RSA public keys with exponent 1, Argon2 parameter
+  validation when both loading and saving key files, two memory leaks, and a
+  use-after-free when a key is deleted while its decryption prompt is open.
+- **The version scheme is now `0.85.x.y`**, starting at `0.85.1.0`.
+- **The shipped binaries credit all three copyright holders** — PuTTY, the
+  original KiTTY features, and this port — rather than upstream alone.
+
+### Faster and less Flicker
+
+- **Bulk output is about nine times faster.** Printing text asked Windows how
+  fast the cursor blinks once per character — a system call — and the scrollback
+  compressor grew its buffer a byte at a time. Testresults on our end: 3.55 MB
+  output took 5.61 s and now takes 0.63 s to render.
+  Both problems are inherited from upstream PuTTY and will be reported.
+- **The configuration window repaints only what changed.** Switching category
+  repainted the whole dialog, including the category tree and the buttons, and
+  the panel visibly blinked once as the background erase caught up with the new
+  controls. 94 ms per switch is now 74 ms, and the flicker is gone (hopefully).
+
+### Broadcasting to other windows
+
+- **`-sendcmd` and `/command` work again, and are now gated.** The receiving half
+  was lost, but were advertised in `-help` and did nothing, in all our 0.84 releases.
+  They are back, and a broadcast is only accepted when: (a) the sender identifies
+  its target-group, (b) `[KiTTY] sendcmdmode` is on (default off), (c) the
+  broadcast key matches, and (d) the session accepts broadcasts. Every refusal says
+  which it was in the Event Log.
+- **Session → Scripting** carries the per-session switch and the broadcast key,
+  with Copy and Clear; an empty key means the session follows the installation.
+  `-sendcmdkey <key>` aims a broadcast at the sessions carrying one key, and the
+  terminal's Tools menu still toggles the current window.
+- **Safety First**  is the name of the game here: a sequence sent to any terminal
+  from an unconfirmed sender is a serious risk, therefore we have four gates now.
+  You can easily switch these on and you got the massconfig-tool at hand.
+  Keep in mind a rogue process sending commands might enter your commandline.
+  The sendcmdkey exists to prevent accidential sends into terminals it is not security!
+  User discretion is advised.
+
+### Fixed
+
+- **A clipboard read request could vanish silently.** When another program held
+  the clipboard, KiTTY read that as "the clipboard is empty" and refused the
+  request without asking and without a word in the Event Log. It now retries, and
+  says so when the clipboard could not be read.
+- **Copy did nothing when the clipboard held anything other than text** — an
+  image, or nothing at all since login. Writing to the clipboard was guarded by a
+  test that belongs to reading it.
+- **`/delreg` deleted the wrong hive, and asked nothing first.** It now deletes
+  the hive this KiTTY is actually using, and asks before doing it. But hey,
+  don't delete us.
+- **Settings written to one hive and read from another.** Under
+  `KiClassName=PuTTY` the compile-time hive and the hive in use disagreed, so a
+  global setting could be saved and then keep returning its old value. Named
+  proxies, the `.sav` backup and the file-mode park had the same fault, and
+  `/copytoputty` would have deleted the sessions it was copying from — it refuses
+  that case now. kageant's session menu was empty under the same setting.
+- **An imported session lost its folder.** and we don't want you to have to re-sort
+  your folders after an import.
+- **A connection that fails at the start is reported in the terminal**, this was
+  a prior gap when the user opted to have no modal errors, but rather get those
+  in the terminal window (which incidentially closed immediately). Now we keep
+  the window open and Restart Session available, but we don't block the process
+  anymore with a modal messagebox (if you want this).
+- **ZModem menu entries are hidden when no helper is configured**, instead of
+  offering actions that reported the error "unable to find ZModem program".
+- **`-masterpwfile` is applied when it is parsed**, not later. The fix-translation
+  would be: previously we missed to load the masterpassword and unlock failed.
 
 ## 0.84.1.75-beta — 2026-08-14
 

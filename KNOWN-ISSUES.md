@@ -1,4 +1,4 @@
-# KiTTY 0.84.1.75 — Known issues & limitations
+# KiTTY 0.85.1.0 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -222,6 +222,11 @@ features are working and verified. Known limitations as of this release:
   authentication (kageant) and avoid saving passwords unless you understand
   these limits.**
 
+- **Remote clipboard reads report when they could not be served.** A read request
+  that arrives while another program holds the clipboard used to be refused in
+  silence; it is now refused with a reason in the Event Log, so "nothing
+  happened" can be told apart from "it was denied".
+
 ## Packaging / cosmetic
 
 - **Antivirus & UPX:** the standard `kitty-<version>.zip` contains only plain,
@@ -248,6 +253,44 @@ features are working and verified. Known limitations as of this release:
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.85.1.0
+
+- **A key on removable media is dropped if the media returns on a DIFFERENT
+  drive letter.** Pull the stick and put it back as the same letter and kageant
+  carries on; put it back as another letter and a key that was loaded from it at
+  startup is no longer held, because the path it was loaded from no longer
+  exists. One can opt to keep keys loaded in the kageant's settings they are held in
+  memory, and they keep signing even while the media is away. Re-locating a key
+  by its fingerprint when the volume comes back is planned; until then, add it
+  again from the new letter. (A decoy key left at the OLD path is not picked
+  up, if we have the Key-Fingerprint already on record.)
+- **Bulk output is much faster, and the scrollback is now the slowest part of
+  it.** With scrollback off, output is roughly twice as fast again. Nothing is
+  wrong with the scrollback — it compresses every line that scrolls off, and
+  that is what costs — but if you routinely dump megabytes into a window and
+  care about the last second of it, a smaller scrollback is now the setting that
+  moves the needle. Of course you can always buy newer hardware :).
+- **Switching category in the configuration window still rebuilds every control
+  on the page.** It is faster than it was and no longer flickers, but the cost is
+  in creating and destroying the controls themselves, which is how the dialog has
+  always worked. Panels with many controls are therefore the slowest to switch
+  to.
+- **`-sendcmd` needs to be switched on before it does anything.** It is off by
+  default: a broadcast is refused unless `[KiTTY] sendcmdmode=yes` is set for the
+  installation AND the receiving session accepts broadcasts (Session →
+  Scripting, or the Tools menu of the terminal-window). This is deliberate — anything
+  running under your account can post the same message, so an ungated version
+  would let any program type into every open session — but it does mean
+  `sendcmdmode=yes` alone changes nothing until a session opts in!
+- **A broadcast is typed into the session, not executed.** `-sendcmd "/delreg"`
+  types those characters at the far end; it does _not_ run an internal command in
+  the receiving windows. That is what the feature always meant, and it is worth
+  knowing before aiming one at a shell.
+- **The broadcast key is not a password.** Anything running under your account
+  can read it and send a matching message. It exists to stop ACCIDENTS — the
+  broadcast meant for three lab machines landing in the production session left
+  open behind them — not to keep anything out.
 
 ## New in 0.84.1.75
 
