@@ -234,7 +234,7 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.84.1.75-beta @ 2026-08-14`.
+- **Version string:** binaries report `0.85.1.0-beta @ 2026-08-20`.
 - **`kittygen.exe` and `kittygen-cli.exe` are two programs with two command
   lines.** The window one takes only `-t`, `-b`, `-E`, `-primes`, `-strong-rsa`,
   `-ppk-param`, `-restrict-acl` and `-pgpfp`; `-C`, `-q`, `-o`, `-l` and

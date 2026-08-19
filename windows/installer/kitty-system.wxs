@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  KiTTY 0.84-port  -  SYSTEM-WIDE (per-machine) MSI, built with WiX v5 (`wix build`).
+  KiTTY (this port)  -  SYSTEM-WIDE (per-machine) MSI, built with WiX v5 (`wix build`).
   Installs into "Program Files\KiTTY" for all users (needs admin/UAC).
   For the no-UAC current-user installer see kitty-peruser.wxs.
 
@@ -11,9 +11,9 @@
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
-  <Package Name="KiTTY 0.84.1.75-beta (system-wide install)"
-           Manufacturer="KiTTY 0.84 port"
-           Version="0.84.175"
+  <Package Name="KiTTY 0.85.1.0-beta (system-wide install)"
+           Manufacturer="KAPPER NETWORK-COMMUNICATIONS GmbH"
+           Version="0.85.100"
            UpgradeCode="69EA2DD5-EF19-4811-B324-EF34CAA6942C"
            Scope="perMachine"
            Compressed="yes">
@@ -110,6 +110,11 @@
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYLauncher" />
         </Shortcut>
         <RemoveFolder Id="rm_ShortcutDir" Directory="ShortcutDir" On="uninstall" />
+        <!-- The "0.84" in this key name is bookkeeping, not a version: it is the
+             KeyPath of this component, so renaming it in an upgrade orphans the
+             old value rather than moving it, and uninstall would leave it
+             behind. Renaming it is its own piece of work, planned separately,
+             not something to slip into a release build. -->
         <RegistryValue Root="HKLM" Key="Software\KiTTY-0.84-port" Name="smdir" Type="string" Value="" KeyPath="yes" />
       </Component>
     </DirectoryRef>

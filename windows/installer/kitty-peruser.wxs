@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  KiTTY 0.84-port  -  PER-USER (current user only) MSI, built with WiX v5 (`wix build`).
+  KiTTY (this port)  -  PER-USER (current user only) MSI, built with WiX v5 (`wix build`).
   Installs into "%LOCALAPPDATA%\Programs\KiTTY" for the current user; no admin/UAC.
 
   WiX v5 (not wixl): gives NON-ADVERTISED shortcuts (stable target path -> the
@@ -13,9 +13,9 @@
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
-  <Package Name="KiTTY 0.84.1.75-beta (per-user install)"
-           Manufacturer="KiTTY 0.84 port"
-           Version="0.84.175"
+  <Package Name="KiTTY 0.85.1.0-beta (per-user install)"
+           Manufacturer="KAPPER NETWORK-COMMUNICATIONS GmbH"
+           Version="0.85.100"
            UpgradeCode="578952A6-AA7F-4146-918B-47803234700B"
            Scope="perUser"
            Compressed="yes">
