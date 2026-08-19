@@ -547,10 +547,13 @@ struct terminal_tag {
     long window_update_cooldown_end;
 
     /*
-     * Track pending blinks and tblinks.
+     * Track pending blinks and tblinks. Also cache the cursor-blink
+     * period, since on Windows finding it out involves a perceptibly
+     * slow system call (at least if you do it on all terminal output).
      */
     bool tblink_pending, cblink_pending;
     long next_tblink, next_cblink;
+    int cblink_delay;
 
     /*
      * These are buffers used by the bidi and Arabic shaping code.

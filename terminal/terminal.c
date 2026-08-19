@@ -1988,16 +1988,17 @@ static void term_schedule_tblink(Terminal *term)
  */
 static void term_schedule_cblink(Terminal *term)
 {
-    /* CBLINK_DELAY is a platform call - on Windows a USER32 syscall - and this
-     * function runs whenever the cursor moves, so ask only when the answer can
-     * matter. A window with a steady cursor, or without focus, never needs it. */
+    /* The blink period is cached in term->cblink_delay (term_update re-reads
+     * it while the cursor blinks): on Windows reading it is a USER32
+     * syscall. A window with a steady cursor, or without focus, needs no
+     * timer at all. */
     int delay;
     if (!term->blink_cur || !term->has_focus) {
         term->cblinker = true;         /* reset when not in use */
         term->cblink_pending = false;
         return;
     }
-    delay = CBLINK_DELAY;
+    delay = term->cblink_delay;
     if (delay > 0) {
         if (!term->cblink_pending)
             term->next_cblink = schedule_timer(delay, term_timer, term);
@@ -2130,6 +2131,7 @@ static void power_on(Terminal *term, bool clear)
         term->curs.y = 0;
     }
     term->curs.x = 0;
+    term->cblink_delay = CBLINK_DELAY;
     term_schedule_tblink(term);
     term_schedule_cblink(term);
     term_schedule_update(term);
@@ -2210,6 +2212,16 @@ void term_update(Terminal *term)
         win_set_cursor_pos(
             term->win, term->curs.x, term->curs.y - term->disptop);
         win_free_draw_ctx(term->win);
+    }
+
+    /* If the cursor is currently blinking, re-check the system blink
+     * delay, in case it's been changed in OS configuration. */
+    if (term->blink_cur) {
+        int old_delay = term->cblink_delay;
+        term->cblink_delay = CBLINK_DELAY;
+        /* If blinking was just turned on, schedule a blink to start. */
+        if (term->cblink_delay != old_delay && !term->cblink_pending)
+            term_schedule_cblink(term);
     }
     KP_UPDATE_END;
     KP_T1(KP_UPDATE);
@@ -2506,9 +2518,10 @@ void term_reconfig(Terminal *term, Conf *conf)
     }
     if (palette_changed)
         term_notify_palette_changed(term);
+    term->cblink_delay = CBLINK_DELAY;
+    term_copy_stuff_from_conf(term);
     term_schedule_tblink(term);
     term_schedule_cblink(term);
-    term_copy_stuff_from_conf(term);
     term_update_raw_mouse_mode(term);
 }
 
