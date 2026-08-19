@@ -509,6 +509,35 @@
 ;    "Send a script file" menu entry refuses with a notice.
 ;scriptmode=yes
 
+; sendcmdmode: may OTHER programs type into this terminal?
+;    /command <text> and `kitty.exe -sendcmd <text>` broadcast text to every open
+;    KiTTY window, which then TYPES it into the session - and a trailing Return
+;    means it RUNS on the remote host. That is the point of the feature (say the
+;    same thing to twenty servers at once) and also its danger: the twenty
+;    include whatever production session you happen to have open.
+;    So it is OFF by default and each window decides for itself:
+;      no   - refuse and say so in the Event Log (default)
+;      yes  - windows start armed
+;    Tools > "Accept &broadcast" toggles the current window either way, and shows
+;    which windows are armed. Refusals and acceptances are both logged, because a
+;    feature that fails silently is one nobody notices is broken.
+;    NOT a security boundary: any program running as you can send these messages,
+;    and it could equally type into your session by other means. This is about
+;    deciding when your terminals accept it, not about keeping attackers out.
+;sendcmdmode=no
+
+; sendcmdgroup: which KiTTYs hear each other's broadcasts.
+;    Generated automatically on first run and stored with your settings, so an
+;    installed KiTTY and a portable one on a USB stick get DIFFERENT keys and
+;    cannot type into each other by accident - even though both are "KiTTY"
+;    windows on the same desktop. Windows of the same install share the key, so
+;    a broadcast still reaches them all.
+;    Set it by hand only to deliberately join two installs into one group, or to
+;    split one install into several. Empty means "use the generated value".
+;    Like sendcmdmode, this prevents ACCIDENTS, not attacks: the key travels in
+;    the message and anything local could copy it.
+;sendcmdgroup=
+
 ; shortcuts: enable/disable KiTTY's keyboard shortcuts. These are the ones
 ;    that work in a TERMINAL WINDOW - the [Shortcuts] section below binds
 ;    them, and they are what the Ctrl+Shift+letter predefined commands ride

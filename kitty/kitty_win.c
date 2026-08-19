@@ -368,8 +368,21 @@ void ManagePrint( HWND hwnd ) {
 int SetTextToClipboard( const char * buf ) {
 	HGLOBAL hglbCopy ;
 	LPTSTR lptstrCopy ;
-	if( !IsClipboardFormatAvailable(CF_TEXT) ) return 0 ;
-	if( !OpenClipboard(NULL) ) return 0 ;
+	int attempt ;
+	/* NO IsClipboardFormatAvailable(CF_TEXT) TEST HERE. It used to guard this
+	 * function, which made putting text on the clipboard depend on text already
+	 * being on it: with an image copied, or nothing copied since login, every
+	 * Copy in KiTTY silently did nothing and returned 0. That test belongs to
+	 * READING the clipboard, not writing it.
+	 *
+	 * The clipboard is a single system-wide resource and one process holds it at
+	 * a time, so OpenClipboard failing is normal and transient - it is worth
+	 * waiting for rather than silently dropping the text to be copied. */
+	for( attempt = 0 ; attempt < 10 ; attempt++ ) {
+		if( OpenClipboard(NULL) ) break ;
+		Sleep( 20 ) ;
+	}
+	if( attempt >= 10 ) return 0 ;
 	EmptyClipboard() ; 
 	if( (hglbCopy= GlobalAlloc(GMEM_MOVEABLE, (strlen(buf)+1) * sizeof(TCHAR)) ) == NULL ) {
 		CloseClipboard() ; 

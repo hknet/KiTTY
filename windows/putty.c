@@ -383,6 +383,16 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 SetTextToClipboard(b);
                 sfree(b);
                 cleanup_exit(0);
+            } else if (!strcmp(p, "-sendcmdkey")) {
+                /* Aim the broadcast: only sessions carrying this key accept it.
+                 * Must be parsed BEFORE -sendcmd is acted on, so on the command
+                 * line it may appear either side of it - the value is stored and
+                 * read when the broadcast is sent. */
+                extern void kitty_broadcast_set_send_key(const char *k);
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires an argument", p);
+                kitty_broadcast_set_send_key(
+                    cmdline_arg_to_str(arglist->args[arglistpos++]));
             } else if (!strcmp(p, "-sendcmd")) {
                 /* Send a command to all running KiTTY windows, then quit. */
                 if (!arglist->args[arglistpos])

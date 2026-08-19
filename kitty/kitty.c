@@ -1811,16 +1811,110 @@ void SendAutoCommand( HWND hwnd, const char * cmd ) {
 }
 
 // Command sender (send a command to all windows)
+/* ===================== broadcast gate (/command, -sendcmd) =================
+ *
+ * The broadcast TYPES text into every KiTTY window of this class, and a trailing
+ * Return means it RUNS on the far end. Useful (say one thing to twenty servers)
+ * and dangerous for the same reason: the twenty include whatever production
+ * session happens to be open. So a window accepts it only when armed -
+ * [KiTTY] sendcmdmode (default no) sets the starting state, Tools > "Accept
+ * broadcast" flips the current window.
+ *
+ * NEITHER this nor the group below is a security boundary. Anything running as
+ * you can post the same message, and could type into your session by other means
+ * anyway. This decides when your terminals accept it - it does not keep an
+ * attacker out.
+ */
+static int broadcast_default_on = 0;            /* [KiTTY] sendcmdmode */
+void kitty_broadcast_set_enabled( int on ) { broadcast_default_on = (on != 0) ; }
+int  kitty_broadcast_default( void ) { return broadcast_default_on ; }
+
+/*
+ * WHICH KiTTYs hear each other. An installed copy and a portable one on a USB
+ * stick are both "KiTTY" windows on the same desktop, so without this a
+ * broadcast from the stick would type into the laptop's admin sessions.
+ *
+ * DERIVED, not stored: the key is a hash of the executable path and the registry
+ * hive in use, so two installs differ by construction and every window of one
+ * install agrees - with nothing written anywhere. Generating a key on first run
+ * and saving it would do the same until the media is READ-ONLY, where each
+ * process would invent its own and the broadcast would quietly stop working
+ * inside that copy.
+ *
+ * [KiTTY] sendcmdgroup overrides it, for deliberately joining two installs into
+ * one group or splitting one into several.
+ */
+/* The key a BROADCAST IS SENT WITH. Normally this install's own, but
+ * `-sendcmdkey <key>` overrides it so a script can aim at the sessions carrying
+ * that key rather than at every window of the install. Separate flag rather than
+ * more syntax inside -sendcmd: the key must not be confusable with the text. */
+static char broadcast_send_key[80] = "" ;
+void kitty_broadcast_set_send_key( const char *k )
+{
+	if( k == NULL ) { broadcast_send_key[0] = '\0' ; return ; }
+	snprintf( broadcast_send_key, sizeof(broadcast_send_key), "%s", k ) ;
+}
+const char *kitty_broadcast_send_key( void )
+{
+	if( broadcast_send_key[0] ) return broadcast_send_key ;
+	return kitty_broadcast_group() ;
+}
+
+/* Did the install key come from kitty.ini, or was it derived? The config box
+ * says which, and "generated" versus "you set this in the ini" are different
+ * facts to the person reading it. */
+static int group_from_ini = 0 ;
+int kitty_broadcast_group_from_ini( void ) { (void)kitty_broadcast_group() ; return group_from_ini ; }
+
+const char *kitty_broadcast_group( void )
+{
+	static char group[80] = "" ;
+	char buf[4096] ;
+	char exe[MAX_PATH+1] = "" ;
+	unsigned long long h = 1469598103934665603ULL ;     /* FNV-1a, 64-bit */
+	const char *p ;
+	extern const char *kitty_registry_base( void ) ;
+
+	if( group[0] ) return group ;
+
+	if( ReadParameterN( INIT_SECTION, "sendcmdgroup", buf, sizeof(buf) ) && buf[0] ) {
+		snprintf( group, sizeof(group), "%s", buf ) ;      /* explicit override */
+		group_from_ini = 1 ;
+		return group ;
+	}
+	if( GetModuleFileNameA( NULL, exe, MAX_PATH ) == 0 ) exe[0] = '\0' ;
+	for( p = exe ; *p ; p++ ) {                            /* case-insensitive: */
+		h ^= (unsigned char)( (*p >= 'A' && *p <= 'Z') ? *p + 32 : *p ) ;
+		h *= 1099511628211ULL ;
+	}
+	for( p = kitty_registry_base() ; p && *p ; p++ ) {
+		h ^= (unsigned char)( (*p >= 'A' && *p <= 'Z') ? *p + 32 : *p ) ;
+		h *= 1099511628211ULL ;
+	}
+	snprintf( group, sizeof(group), "auto-%016llx", h ) ;
+	return group ;
+}
+
 BOOL CALLBACK SendCommandProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	GetClassName( hwnd, buffer, 256 ) ;
 	if( !strcmp( buffer, KiTTYClassName ) ) {
 		if( hwnd != MainHwnd ) {
 			COPYDATASTRUCT data;
-			data.dwData = 1 ;
-			data.cbData = strlen( (char*)lParam ) + 1 ;
-			data.lpData = (char*)lParam ;
+			/* dwData 2 carries "<group>\0<text>". The old dwData 1 was bare
+			 * text with no group, so a receiver cannot tell which install it
+			 * came from; it is refused (and logged) rather than obeyed. */
+			const char *grp = kitty_broadcast_send_key() ;
+			size_t glen = strlen( grp ) , tlen = strlen( (char*)lParam ) ;
+			char *payload = (char*)malloc( glen + 1 + tlen + 1 ) ;
+			memcpy( payload, grp, glen ) ; payload[glen] = '\0' ;
+			memcpy( payload + glen + 1, (char*)lParam, tlen ) ;
+			payload[glen + 1 + tlen] = '\0' ;
+			data.dwData = 2 ;
+			data.cbData = (DWORD)( glen + 1 + tlen + 1 ) ;
+			data.lpData = payload ;
 			SendMessage( hwnd, WM_COPYDATA, (WPARAM)(HWND)MainHwnd, (LPARAM) (LPVOID)&data ) ;
+			free( payload ) ;
 			NbWindows++ ;
 		}
 	}
@@ -3106,6 +3200,7 @@ static const IniParam ini_params[] = {
 	INIP_NUM( INIT_SECTION, 0, "ReconnectDelay",	1,		&ReconnectDelay, NULL ),
 #endif
 	INIP_KW( INIT_SECTION, 0, "scriptmode",		1, 0, IGN,	NULL, kitty_script_set_enabled ),
+	INIP_KW( INIT_SECTION, 0, "sendcmdmode",		1, 0, IGN,	NULL, kitty_broadcast_set_enabled ),
 #ifndef MOD_NOTRANSPARENCY
 	/* transparency: anything but an explicit yes disables */
 	INIP_KW( INIT_SECTION, 0, "transparency",	1, 0, 0,	NULL, SetTransparencyIni ),

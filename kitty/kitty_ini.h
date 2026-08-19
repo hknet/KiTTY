@@ -528,6 +528,35 @@ char default_init_file_content[] =
 ;    \"Send a script file\" menu entry refuses with a notice.\n\
 ;scriptmode=yes\n\
 \n\
+; sendcmdmode: may OTHER programs type into this terminal?\n\
+;    /command <text> and `kitty.exe -sendcmd <text>` broadcast text to every open\n\
+;    KiTTY window, which then TYPES it into the session - and a trailing Return\n\
+;    means it RUNS on the remote host. That is the point of the feature (say the\n\
+;    same thing to twenty servers at once) and also its danger: the twenty\n\
+;    include whatever production session you happen to have open.\n\
+;    So it is OFF by default and each window decides for itself:\n\
+;      no   - refuse and say so in the Event Log (default)\n\
+;      yes  - windows start armed\n\
+;    Tools > \"Accept &broadcast\" toggles the current window either way, and shows\n\
+;    which windows are armed. Refusals and acceptances are both logged, because a\n\
+;    feature that fails silently is one nobody notices is broken.\n\
+;    NOT a security boundary: any program running as you can send these messages,\n\
+;    and it could equally type into your session by other means. This is about\n\
+;    deciding when your terminals accept it, not about keeping attackers out.\n\
+;sendcmdmode=no\n\
+\n\
+; sendcmdgroup: which KiTTYs hear each other's broadcasts.\n\
+;    Generated automatically on first run and stored with your settings, so an\n\
+;    installed KiTTY and a portable one on a USB stick get DIFFERENT keys and\n\
+;    cannot type into each other by accident - even though both are \"KiTTY\"\n\
+;    windows on the same desktop. Windows of the same install share the key, so\n\
+;    a broadcast still reaches them all.\n\
+;    Set it by hand only to deliberately join two installs into one group, or to\n\
+;    split one install into several. Empty means \"use the generated value\".\n\
+;    Like sendcmdmode, this prevents ACCIDENTS, not attacks: the key travels in\n\
+;    the message and anything local could copy it.\n\
+;sendcmdgroup=\n\
+\n\
 ; shortcuts: enable/disable KiTTY's keyboard shortcuts. These are the ones\n\
 ;    that work in a TERMINAL WINDOW - the [Shortcuts] section below binds\n\
 ;    them, and they are what the Ctrl+Shift+letter predefined commands ride\n\

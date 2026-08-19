@@ -51,8 +51,28 @@
 #define IDM_COPY      0x0190
 #define IDM_PASTE     0x01A0
 #define IDM_CHECKUPDATE 0x01B0  /* check GitHub releases for a newer KiTTY */
+#ifdef MOD_PERSO
 /* kitty.c: types a string into this session (the WM_COPYDATA broadcast). */
 void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
+int  kitty_broadcast_default( void ) ;        /* kitty.c: [KiTTY] sendcmdmode */
+const char *kitty_broadcast_group( void ) ;  /* kitty.c: which KiTTYs hear us */
+#define IDM_BROADCASTTOGGLE 0x01C0           /* Tools > Accept broadcast */
+/*
+ * ONE state, two editors. The arming lives in the session's own conf
+ * (CONF_kitty_accept_broadcast), so Session > Scripting and this window's Tools
+ * toggle are two views of the SAME value: flip the menu item and Change Settings
+ * shows it; press Apply and the menu tick follows.
+ *
+ * A first attempt kept it in a window property instead. That was a SECOND state
+ * the config box could not see, and every awkward question about "what wins on
+ * Apply" came from it. Unsaved changes revert when the session is next loaded,
+ * which is ordinary conf behaviour and exactly what is wanted.
+ */
+static int kitty_broadcast_armed( WinGuiSeat *wgs )
+{
+    return wgs && wgs->conf && conf_get_bool( wgs->conf, CONF_kitty_accept_broadcast );
+}
+#endif /* MOD_PERSO */
 #ifdef MOD_PERSO
 #ifndef IDM_SCRIPTSEND
 #define IDM_SCRIPTSEND  0xB180  /* send recorded script (rutty) */
@@ -1970,6 +1990,17 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(toolmenu, MF_ENABLED, IDM_SHORTCUTSTOGGLE, "Shortcut&s");
             AppendMenu(toolmenu, MF_ENABLED | (GetHyperlinkFlag() ? MF_CHECKED : 0),
                        IDM_HYPERLINKTOGGLE, "Hyper&links");
+            /* Armed windows are visibly armed: the check mark is the only way to
+             * tell, before typing arrives, which of your windows will accept it. */
+            /* Named like the ZModem entries above: the menu says WHERE the
+             * setting lives, because a toggle with no home is the kind of thing
+             * people flip once and never find again. The label carries the
+             * panel; the Event Log carries the reason when a broadcast is
+             * refused. */
+            AppendMenu(toolmenu, MF_ENABLED |
+                       (conf_get_bool(wgs->conf, CONF_kitty_accept_broadcast) ? MF_CHECKED : 0),
+                       IDM_BROADCASTTOGGLE,
+                       "Accept &broadcast (Session > Scripting)");
             AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)toolmenu, "&Tools");
 
             /* KiTTY "Shortcuts for predefined commands": read the registry
@@ -4204,17 +4235,70 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         PCOPYDATASTRUCT cds = (PCOPYDATASTRUCT)lParam;
         if (!cds || cds->cbData == 0 || cds->lpData == NULL)
             return 0;
+
         if (cds->dwData == 1) {
-            /* NOT assumed to be NUL-terminated: it comes from another process,
-             * so it is copied into a bounded buffer of our own first. */
+            /* The pre-group format: bare text, no way to tell which install
+             * sent it. Refused rather than obeyed, and SAID so - this whole
+             * feature spent two releases broken precisely because it failed
+             * silently. */
+            logevent(wgs->logctx, "broadcast refused: sender did not identify "
+                     "its group (pre-0.85 format)");
+            return 0;
+        }
+
+        if (cds->dwData == 2) {
+            /* "<group>\0<text>", neither part assumed NUL-terminated: it comes
+             * from another process, so it is copied into a bounded buffer of
+             * our own before anything looks at it. */
             size_t n = cds->cbData;
-            char *text;
+            char *buf, *text;
+            const char *mygroup;
             if (n > 65536) n = 65536;
-            text = snewn(n + 1, char);
-            memcpy(text, cds->lpData, n);
-            text[n] = '\0';
+            buf = snewn(n + 2, char);
+            memcpy(buf, cds->lpData, n);
+            buf[n] = '\0';
+            buf[n + 1] = '\0';              /* so the text half is terminated */
+            text = buf + strlen(buf) + 1;
+            if (text > buf + n) text = buf + n;   /* no NUL found: empty text */
+
+            /* MASTER first: [KiTTY] sendcmdmode=no means the feature is
+             * inert on this install, whatever a session says. */
+            if (!kitty_broadcast_default()) {
+                logevent(wgs->logctx, "broadcast refused: disabled on this "
+                         "install ([KiTTY] sendcmdmode=no in kitty.ini)");
+                sfree(buf);
+                return 0;
+            }
+            /* The key this SESSION listens for: its own if set, else the
+             * install's. A session with its own key answers only to that one. */
+            mygroup = conf_get_str(wgs->conf, CONF_kitty_broadcast_key);
+            if (!mygroup || !*mygroup) mygroup = kitty_broadcast_group();
+            if (strcmp(buf, mygroup) != 0) {
+                /* Another KiTTY install - the portable copy on a stick talking
+                 * to the laptop's windows, typically. Not ours to obey. */
+                char *m = dupprintf("broadcast refused: from another KiTTY "
+                                    "install (group '%s', ours is '%s')",
+                                    buf, mygroup);
+                logevent(wgs->logctx, m);
+                sfree(m);
+                sfree(buf);
+                return 0;
+            }
+            if (!kitty_broadcast_armed(wgs)) {
+                logevent(wgs->logctx, "broadcast refused: this session does not "
+                         "accept broadcasts (Session > Scripting, or the "
+                         "Tools > Accept broadcast toggle)");
+                sfree(buf);
+                return 0;
+            }
+            {
+                char *m = dupprintf("broadcast accepted (%d bytes), typing it "
+                                    "into this session", (int)strlen(text));
+                logevent(wgs->logctx, m);
+                sfree(m);
+            }
             SendKeyboardPlus(hwnd, text);
-            sfree(text);
+            sfree(buf);
             return 1;
         }
         return 0;                      /* not ours - let the default happen */
@@ -4932,6 +5016,18 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           case IDM_EXPORTSETTINGS:
             kitty_export_settings(wgs->term_hwnd, wgs->conf);
             break;
+          case IDM_BROADCASTTOGGLE: {
+            /* The quick view of the session setting: flips the SAME conf value
+             * Session > Scripting edits, so the two never disagree. Not saved
+             * unless the session is - an unsaved flip reverts on next load. */
+            int on = !kitty_broadcast_armed(wgs);
+            conf_set_bool(wgs->conf, CONF_kitty_accept_broadcast, on != 0);
+            CheckMenuItem(GetSystemMenu(hwnd, FALSE), IDM_BROADCASTTOGGLE,
+                          MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
+            logevent(wgs->logctx, on ? "broadcasts accepted for this window"
+                                     : "broadcasts refused for this window");
+            break;
+          }
           case IDM_HYPERLINKTOGGLE:
             /* KiTTY: enable/disable URL hyperlink detection at runtime */
             kitty_menu_toggle_hyperlink(hwnd);

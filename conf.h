@@ -170,6 +170,35 @@ CONF_OPTION(proxyselection,
     SAVE_KEYWORD("ProxySelection"),
 )
 
+/* KiTTY: does THIS session accept broadcast text (/command, -sendcmd) from
+ * other KiTTY windows of the same install?
+ *
+ * Saved with the session, so the sessions you drive in bulk can be armed while
+ * the production one you keep open beside them is not - and the window menu
+ * shows which is which (Tools > Accept broadcast, which overrides this at
+ * runtime until the next Apply).
+ *
+ * The effective starting state is THIS setting OR the install-wide
+ * [KiTTY] sendcmdmode: the ini switch is "I use this feature here", the session
+ * flag is "and this session in particular". Default off, like the ini.
+ */
+CONF_OPTION(kitty_accept_broadcast,
+    VALUE_TYPE(BOOL),
+    DEFAULT_BOOL(false),
+    SAVE_KEYWORD("AcceptBroadcast"),
+)
+
+/* KiTTY: the key THIS session listens for. Empty = the install's key
+ * ([KiTTY] sendcmdgroup, generated when unset). Setting it here aims the
+ * feature: give three sessions a shared key and only they answer, even where
+ * the install key would have matched. Shown - and editable behind an Edit
+ * button - in Session > Scripting. */
+CONF_OPTION(kitty_broadcast_key,
+    VALUE_TYPE(STR),
+    DEFAULT_STR(""),
+    SAVE_KEYWORD("BroadcastKey"),
+)
+
 /*
  * KiTTY: bound on chained SSH proxies, and the depth reached so far.
  *

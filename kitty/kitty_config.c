@@ -17,6 +17,7 @@
 #include "kitty_proxy.h"   /* proxy-choice droplist: proxies[], GetProxySelectionFlag, MAX_PROXY */
 #include "kitty_workplace.h"  /* workplace proxy mode: query/request the arming */
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION */
+#include "kitty_win.h"   /* SetTextToClipboard */
 #endif
 
 #ifdef MOD_PERSO
@@ -5768,6 +5769,188 @@ static void scb_panel_logging(struct controlbox *b, bool midsession, int protoco
 }
 
 /* The Session/Scripting panel (KiTTY rutty scripting). */
+
+/* kitty.c: this installation's broadcast key (generated, or sendcmdgroup). */
+extern const char *kitty_broadcast_group(void);
+/* ...and whether that key came from kitty.ini rather than being derived: the
+ * provenance line says which, so a missing declaration here would silently be
+ * an implicit int() call. */
+extern int kitty_broadcast_group_from_ini(void);
+
+/* ---- Session > Scripting: the broadcast key -------------------------------
+ *
+ * The field shows the key this session listens for: its own if set, otherwise
+ * the install's generated one. It is LOCKED by default so it cannot be changed
+ * by a stray keystroke - the key is the aiming mechanism, and a typo silently
+ * stops every broadcast reaching this session.
+ *
+ * PuTTY's config framework has no generic "disable this control", so the lock is
+ * enforced here: while locked, an edit is reverted on the spot. Pressing Edit
+ * unlocks and relabels the button to Save; pressing Save writes the typed value
+ * into the session and locks the field again. Unsaved edits live in the live
+ * conf only, so they revert when the session is next loaded.
+ */
+static void kitty_bkey_box_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                   void *data, int event);
+
+static void kitty_bkey_clear_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                     void *data, int event);
+
+/* State for one config box. Allocated with ctrl_alloc so it lives and dies with
+ * the controlbox: file-scope statics would be shared by two config boxes open at
+ * once (two terminals in Change Settings), and the second one built would leave
+ * the first pointing at controls that are not in its dialog. */
+struct kitty_bkey_state {
+    dlgcontrol *box;
+    dlgcontrol *prov;    /* the "where this key came from" line */
+    bool setting;        /* we are writing the box ourselves - see set_box */
+};
+
+/* Write the box WITHOUT it counting as a user edit.
+ *
+ * SetDlgItemText makes the edit control notify EN_CHANGE, which the config
+ * framework turns into EVENT_VALCHANGE - indistinguishable from typing. This
+ * field is the one place that DISPLAYS something other than what it stores (the
+ * inherited key, when the session has none of its own), so that reflex wrote the
+ * displayed key straight back as a custom key: Clear looked like it did nothing,
+ * and any later visit to the page - returning to it, or loading a session -
+ * turned an inheriting session into a custom one at the next save. The
+ * notification is sent, not posted, so it arrives inside this call and a plain
+ * flag is enough.
+ */
+static void kitty_bkey_set_box(struct kitty_bkey_state *st, dlgparam *dp,
+                               const char *text)
+{
+    st->setting = true;
+    dlg_editbox_set(st->box, dp, text);
+    st->setting = false;
+}
+
+/* Update that line from what is STORED. Three states, and it moves: pressing
+ * Clear must not leave "Custom key for this session" sitting under a field that
+ * now shows the installation's key.
+ *
+ * ⚠️ dlg_label_change on a CTRL_TEXT cannot change the control's HEIGHT - that
+ * was fixed at layout time (windows/controls.c). All three wordings are
+ * therefore kept to one line of similar length; a longer one would be cut off.
+ */
+static void kitty_bkey_update_prov(struct kitty_bkey_state *st,
+                                  dlgparam *dp, Conf *conf)
+{
+    const char *own;
+    if (!st || !st->prov || !conf) return;
+    own = conf_get_str(conf, CONF_kitty_broadcast_key);
+    if (own && *own)
+        dlg_label_change(st->prov, dp,
+                         "Custom key for this session - Clear restores the default.");
+    else if (kitty_broadcast_group_from_ini())
+        dlg_label_change(st->prov, dp,
+                         "Default key, set as sendcmdgroup in your kitty.ini file.");
+    else
+        dlg_label_change(st->prov, dp,
+                         "Default key, generated for this KiTTY installation here.");
+}
+
+/* Put the key on the clipboard. The field is ordinary and selectable, but the
+ * key is a long generated string and its whole purpose is to be carried to
+ * another session or into kitty.ini - one click beats a careful drag. */
+static void kitty_bkey_copy_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                    void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event != EVENT_ACTION) return;
+    {
+        const char *k = conf_get_str(conf, CONF_kitty_broadcast_key);
+        if (!k || !*k) k = kitty_broadcast_group();     /* the install's key */
+        SetTextToClipboard(k);
+    }
+}
+
+void kitty_broadcast_key_controls(struct controlbox *b, struct controlset *s)
+{
+    struct kitty_bkey_state *st = (struct kitty_bkey_state *)
+        ctrl_alloc(b, sizeof(struct kitty_bkey_state));
+    dlgcontrol *c;
+    st->box = NULL; st->prov = NULL; st->setting = false;
+    /* An ordinary edit box, like every other field on this page: selectable,
+     * double-clickable, copyable - which is the whole point, since the key
+     * exists to be carried elsewhere. An earlier version locked it behind an
+     * Edit button, which made the value awkward to copy and gave one control the
+     * full width of the page for no benefit.
+     *
+     * Field and button share a row (75/25) so neither sprawls. */
+    /* The label goes on its OWN full-width line, and the row below holds a
+     * label-less box and the button. With the label attached to the editbox the
+     * two controls start at different heights - the box sits under its label
+     * while the button starts at the top of the row - and the button appears to
+     * float above the field. */
+    ctrl_text(s, "Broadcast key:", HELPCTX(no_help));
+    ctrl_columns(s, 3, 60, 20, 20);
+    c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
+                     HELPCTX(no_help), kitty_bkey_box_handler,
+                     P(st), ED_STR);
+    c->column = 0;
+    st->box = c;
+    c = ctrl_pushbutton(s, "Copy", NO_SHORTCUT,
+                        HELPCTX(no_help), kitty_bkey_copy_handler, P(st));
+    c->column = 1;
+    c = ctrl_pushbutton(s, "Clear", NO_SHORTCUT,
+                        HELPCTX(no_help), kitty_bkey_clear_handler, P(st));
+    c->column = 2;
+    ctrl_columns(s, 1, 100);
+    /* WHERE the value in front of the user came from. Three states, decided
+     * when the panel is built - it does not follow typing, and does not need
+     * to: what matters is that the field is never a mystery string on open.
+     * Typing makes it custom (Clear puts it back), so the wording is chosen
+     * from what is stored, not from what the box currently shows. */
+    /* Built with a full-length placeholder because the panel builder has no
+     * Conf to read: the first EVENT_REFRESH replaces it with the real state.
+     * The placeholder sets the control's HEIGHT, which cannot change later, so
+     * it must be as long as the longest wording. */
+    st->prov = ctrl_text(s, "Default key, generated for this KiTTY "
+                            "installation here.", HELPCTX(no_help));
+}
+
+static void kitty_bkey_box_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                   void *data, int event)
+{
+    struct kitty_bkey_state *st = (struct kitty_bkey_state *)ctrl->context.p;
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        const char *k = conf_get_str(conf, CONF_kitty_broadcast_key);
+        /* Empty means "the install's key" - SHOW that, rather than an empty box
+         * the user cannot copy anything out of. */
+        kitty_bkey_set_box(st, dp, (k && *k) ? k : kitty_broadcast_group());
+        kitty_bkey_update_prov(st, dp, conf);
+    } else if (event == EVENT_VALCHANGE) {
+        /* ANYTHING typed is a custom key, stored exactly as typed - even when it
+         * equals the installation's own. Guessing intent from the text is the
+         * dilemma this avoids: "follow the installation" is a separate ACTION
+         * (the Clear button), not a string that happens to match. */
+        char *typed;
+        if (st->setting)
+            return;              /* our own text, echoed back - not an edit */
+        typed = dlg_editbox_get(ctrl, dp);
+        conf_set_str(conf, CONF_kitty_broadcast_key, typed ? typed : "");
+        sfree(typed);
+        kitty_bkey_update_prov(st, dp, conf);
+    }
+}
+
+/* Back to the installation's key: stores empty, which is what "no key of my
+ * own" means everywhere else in the code. */
+static void kitty_bkey_clear_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                     void *data, int event)
+{
+    struct kitty_bkey_state *st = (struct kitty_bkey_state *)ctrl->context.p;
+    Conf *conf = (Conf *)data;
+    if (event != EVENT_ACTION) return;
+    conf_set_str(conf, CONF_kitty_broadcast_key, "");
+    kitty_bkey_set_box(st, dp, kitty_broadcast_group());   /* inherited again */
+    kitty_bkey_update_prov(st, dp, conf);   /* ...and the line stops saying custom */
+}
+
+
 static void scb_panel_scripting(struct controlbox *b)
 {
     struct controlset *s;
@@ -5816,13 +5999,38 @@ static void scb_panel_scripting(struct controlbox *b)
                           "Off",   NO_SHORTCUT, I(0),   /* SCRIPT_OFF  */
                           "no LF", NO_SHORTCUT, I(1),   /* SCRIPT_NOLF */
                           "CR",    NO_SHORTCUT, I(2),   /* SCRIPT_CR   */
-                          "Rec",   NO_SHORTCUT, I(3));  /* SCRIPT_REC  */
+                          "Rec",   NO_SHORTCUT, I(3)); 
+ /* SCRIPT_REC  */
         ctrl_checkbox(s, "Except for first command", NO_SHORTCUT,
                       HELPCTX(no_help), kitty_checkbox_int_handler,
                       I(CONF_script_except));
         ctrl_checkbox(s, "Use conditions from file", NO_SHORTCUT,
                       HELPCTX(no_help), kitty_checkbox_int_handler,
                       I(CONF_script_cond_use));
+        /* ---- receiving broadcasts: the BOTTOM of this page --------------
+         * Its own group box, after the script-file one. A ctrl_text(" ") spacer
+         * does NOT separate them: it lands in whichever group `s` currently
+         * points at and merely stretches that box downwards.
+         */
+        /* An UNTITLED set between the two boxes: a set with a NULL title draws
+         * no frame, so a blank line in it is space BETWEEN the boxes. Putting
+         * the blank line in either box only stretches that box - which is what
+         * the first attempt did, and it looked like one taller block rather
+         * than two separated ones. */
+        s = ctrl_getset(b, "Session/Scripting", "bcastgap", NULL);
+        ctrl_text(s, " ", HELPCTX(no_help));
+
+        s = ctrl_getset(b, "Session/Scripting", "broadcast",
+                        "Accept broadcasts from other KiTTY windows");
+        ctrl_checkbox(s, "Accept broadcast messages for this session", NO_SHORTCUT,
+                      HELPCTX(no_help), conf_checkbox_handler,
+                      I(CONF_kitty_accept_broadcast));
+        ctrl_text(s, "Another KiTTY can type into this session (/command, "
+                     "-sendcmd). Also needs sendcmdmode=yes in kitty.ini.",
+                  HELPCTX(no_help));
+        ctrl_text(s, "Only messages carrying the key below are accepted.",
+                  HELPCTX(no_help));
+        kitty_broadcast_key_controls(b, s);
     }
 }
 

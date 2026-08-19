@@ -144,6 +144,15 @@ extern int HyperlinkFlag ;
 int GetHyperlinkFlag(void) ;
 void SetHyperlinkFlag( const int flag ) ;
 
+// Broadcast gate: [KiTTY] sendcmdmode=yes|no starts windows armed or not, and
+// [KiTTY] sendcmdgroup (derived when unset) decides which KiTTYs hear each
+// other. Accident prevention, not a security boundary - see kitty.c.
+void kitty_broadcast_set_enabled( int on ) ;
+int  kitty_broadcast_default( void ) ;
+const char *kitty_broadcast_group( void ) ;
+int kitty_broadcast_group_from_ini( void ) ;   // key came from kitty.ini, not derived
+void kitty_broadcast_set_send_key( const char *k ) ;   // -sendcmdkey override
+const char *kitty_broadcast_send_key( void ) ;         // key a broadcast is SENT with
 // RuTTY script engine master switch: [KiTTY] scriptmode=yes|no (kitty_rutty.c)
 int kitty_script_enabled(void) ;
 void kitty_script_set_enabled( int on ) ;
