@@ -99,11 +99,23 @@ void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len)
     osc52_last_send[osc52_last_len] = '\0';
 }
 
-wchar_t *kitty_osc52_get_clipboard(int *len)
+/* stub_clip_busy models the clipboard being HELD by another program - a state
+ * the real one reports separately from "empty", because the read path treats
+ * empty as a decision and refuses without prompting. */
+static bool stub_clip_busy = false;
+
+
+wchar_t *kitty_osc52_get_clipboard_ex(int *len, bool *unavailable)
 {
     size_t n;
     wchar_t *out;
     osc52_gets++;
+    if (unavailable) *unavailable = false;
+    if (stub_clip_busy) {
+        if (len) *len = 0;
+        if (unavailable) *unavailable = true;
+        return NULL;
+    }
     if (!stub_clip) {
         if (len) *len = 0;
         return NULL;
@@ -113,6 +125,11 @@ wchar_t *kitty_osc52_get_clipboard(int *len)
     memcpy(out, stub_clip, (n + 1) * sizeof(wchar_t));
     if (len) *len = (int)n;
     return out;
+}
+
+wchar_t *kitty_osc52_get_clipboard(int *len)
+{
+    return kitty_osc52_get_clipboard_ex(len, NULL);
 }
 
 bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
@@ -452,6 +469,32 @@ static void test_read_direction(Mock *mk)
     mk->term->osc52_read_served = 2;
     osc52_dialog_answer = false;
     expect_read(mk, "window ceiling reached", 0, 1);
+
+    /*
+     * A BUSY clipboard is not an empty one. When another program holds the
+     * clipboard open, the fetch fails - and that used to be indistinguishable
+     * from "there is nothing on the clipboard", a state this code answers by
+     * refusing WITHOUT asking. So a read request that landed at the wrong moment
+     * disappeared: nothing sent, no dialog, and nothing in the Event Log either.
+     * Fail-closed, but silent, and the user had no way to know their request had
+     * been dropped rather than denied.
+     *
+     * Nothing sent and no dialog is still the right OUTCOME, and that is all
+     * this level can check: the mock has no LogContext, and logevent() returns
+     * early without one, so the refusal REASON is invisible here. The Event Log
+     * line is asserted by qa_clipboard_auto.ps1 instead - it can hold the real
+     * Windows clipboard, and it is mutation-tested against exactly this branch.
+     * What is proved here is that a busy clipboard is never SERVED and never
+     * prompts about a clipboard nobody can read.
+     */
+    read_reset(mk);
+    stub_clip_busy = true;
+    osc52_dialog_answer = true;          /* would allow, if it were ever asked */
+    expect_read(mk, "clipboard held by another program", 0, 0);
+    stub_clip_busy = false;
+    /* ...and the very next request, with the clipboard free again, behaves
+     * normally: a busy moment must not leave the session unable to ask. */
+    expect_read(mk, "recovers once the clipboard is free", 1, 1);
     if (mk->term->osc52_read_decision > 0)
         fail("window ceiling", "the grant survived the ceiling");
 

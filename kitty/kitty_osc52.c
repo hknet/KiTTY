@@ -42,19 +42,40 @@ void kitty_refresh_title(void);        /* windows/window.c */
  *
  * *len is the number of wide characters, not counting the terminating NUL.
  */
-wchar_t *kitty_osc52_get_clipboard(int *len)
+/* The clipboard is one system-wide resource and one process holds it at a time,
+ * so OpenClipboard failing is transient and normal - another program was mid-copy.
+ * Returning NULL for that is indistinguishable from "the clipboard is empty",
+ * and the OSC 52 read path treats empty as a decision: it refuses IN SILENCE and
+ * does not prompt. So a read request that happened to land while some other
+ * program held the clipboard was dropped without a dialog and without a word,
+ * about one time in eight under test. Fail-closed, but silent and wrong.
+ *
+ * `unavailable` separates the two answers; the retry makes it rare in the first
+ * place. Callers that only want the text can keep using the wrapper below. */
+wchar_t *kitty_osc52_get_clipboard_ex(int *len, bool *unavailable)
 {
     HANDLE h;
     void *p;
     wchar_t *out = NULL;
     size_t n;
+    int attempt;
 
     if (len)
         *len = 0;
+    if (unavailable)
+        *unavailable = false;
     if (!IsClipboardFormatAvailable(CF_UNICODETEXT))
+        return NULL;                      /* genuinely nothing of ours to send */
+    for (attempt = 0; attempt < 10; attempt++) {
+        if (OpenClipboard(NULL))
+            break;
+        Sleep(20);
+    }
+    if (attempt >= 10) {
+        if (unavailable)
+            *unavailable = true;
         return NULL;
-    if (!OpenClipboard(NULL))
-        return NULL;
+    }
     h = GetClipboardData(CF_UNICODETEXT);
     if (h && (p = GlobalLock(h)) != NULL) {
         /* GlobalSize is the allocation, which can be larger than the string;
@@ -74,6 +95,11 @@ wchar_t *kitty_osc52_get_clipboard(int *len)
         out = NULL;
     }
     return out;
+}
+
+wchar_t *kitty_osc52_get_clipboard(int *len)
+{
+    return kitty_osc52_get_clipboard_ex(len, NULL);
 }
 
 /*

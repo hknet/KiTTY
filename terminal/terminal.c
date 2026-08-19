@@ -38,6 +38,9 @@ bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
 /* Fetch the local clipboard as wide text. Caller frees. NULL if empty or if the
  * clipboard holds something that is not text. */
 wchar_t *kitty_osc52_get_clipboard(int *len);
+/* ...and the variant that distinguishes "empty" from "somebody else has it
+ * open", because only one of those is an answer. */
+wchar_t *kitty_osc52_get_clipboard_ex(int *len, bool *unavailable);
 /* Write "always deny for this host" into the saved session. Returns false if
  * there is no saved session to write it into, in which case the caller tells the
  * user rather than inventing a hidden host list behind their back. */
@@ -4352,7 +4355,20 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
     /* 6. Ask. The clipboard is fetched now because the dialog shows a masked
      * summary of it - how much, and the first few characters - and because there
      * is no point asking about an empty clipboard. */
-    clip = kitty_osc52_get_clipboard(&clip_len);
+    {
+        bool clip_unavailable = false;
+        clip = kitty_osc52_get_clipboard_ex(&clip_len, &clip_unavailable);
+        if (clip_unavailable) {
+            /* Another program has the clipboard open. That is not a decision
+             * about this request, so it is refused WITH a reason rather than in
+             * the silence an empty clipboard gets - otherwise a request that
+             * lands at the wrong moment vanishes without trace. */
+            osc52_read_refuse(term, "the clipboard was not available (another "
+                              "program has it open); not asking this time", true);
+            *err = "EBUSY";
+            return false;
+        }
+    }
     if (!clip || clip_len <= 0) {
         /* Nothing to send. Refuse in silence and do NOT ask: a dialog about an
          * empty clipboard is a dialog that trains people to click Allow. */
