@@ -35,6 +35,13 @@ see [FEATURES.md](FEATURES.md).
   after leaving it for other controls — browsing and picking results in the
   session list does not count as leaving.
 
+- **Merely visiting the Translation page no longer pins the character set.**
+  A session with no character set of its own follows the default, and the
+  Translation page shows the name of that default. Opening the page wrote the
+  shown name back into the session, so the next save stored it pinned — the
+  session stopped following the default without anyone choosing that. The
+  value is now only stored when a genuinely different character set is picked.
+
 - **`antiidledelay` is limited at both ends.** The keepalive interval was held
   at a minimum of 5 seconds, but had no upper limit - and the value is turned
   into milliseconds in 32 bits, so an absurdly large one wrapped and produced a

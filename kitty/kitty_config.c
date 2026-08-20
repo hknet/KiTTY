@@ -1857,12 +1857,21 @@ static void codepage_handler(dlgcontrol *ctrl, dlgparam *dlg,
         for (i = 0; (cp = cp_enumerate(i)) != NULL; i++)
             dlg_listbox_add(ctrl, dlg, cp);
         dlg_editbox_set(ctrl, dlg, thiscp);
-        conf_set_str(conf, CONF_line_codepage, thiscp);
         dlg_update_done(ctrl, dlg);
     } else if (event == EVENT_VALCHANGE) {
+        /* Store only a MEANINGFUL change. The box shows the decoded name of
+         * whatever is stored - for an empty setting, the name of the DEFAULT
+         * codepage - and a programmatic set of that display fires this event
+         * too, so writing unconditionally turned "follow the default" (the
+         * empty string) into that default's name, pinned, merely by the panel
+         * being refreshed. Comparing decoded codepages keeps the empty value
+         * empty while it still means what the box shows, and stores exactly
+         * what the user picked the moment it decodes differently. */
         char *codepage = dlg_editbox_get(ctrl, dlg);
-        conf_set_str(conf, CONF_line_codepage,
-                     cp_name(decode_codepage(codepage)));
+        if (decode_codepage(codepage) !=
+            decode_codepage(conf_get_str(conf, CONF_line_codepage)))
+            conf_set_str(conf, CONF_line_codepage,
+                         cp_name(decode_codepage(codepage)));
         sfree(codepage);
     }
 }
