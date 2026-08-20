@@ -726,30 +726,21 @@ static void start_backend(WinGuiSeat *wgs)
     ReadInitScript(NULL);
 
     /*
-     * ...and the SESSION > SCRIPTING script (rutty), for the same reason and in
-     * the same place. It used to be armed once in WinMain, so it ran on the
-     * first connect and never again: reboot the far end, let KiTTY reconnect,
-     * and nothing was sent (hknet/KiTTY#36). Classic KiTTY re-ran it on every
-     * connect.
+     * ...and RESET the SESSION > SCRIPTING (rutty) engine, for the same reason
+     * and in the same place. kitty_script_send_file() refuses while a script is
+     * still marked as running - and a script interrupted by a drop is exactly
+     * that, so without this the next connect would be refused for ever
+     * (hknet/KiTTY#36 covered the arming half; this is the reset half).
+     * kitty_script_stop() is safe when nothing is running and logs nothing.
      *
-     * The engine is stopped FIRST because kitty_script_send_file() refuses while
-     * a script is still marked as running - and a script interrupted by the drop
-     * is exactly that, so without this the next connect would be refused for
-     * ever. kitty_script_stop() is safe when nothing is running and logs
-     * nothing.
-     *
-     * The timer handler checks wgs->backend itself, so arming before
-     * backend_init is fine - the same reasoning as ReadInitScript above.
+     * The script itself is STARTED after backend_init below, not here: the
+     * engine can only match output received after it starts, so it has to be
+     * observing before the connection's first byte can arrive.
      */
     if (conf_get_int(wgs->conf, CONF_script_mode) == 1) {
         Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
-        if (sf && filename_to_str(sf)[0]) {
+        if (sf && filename_to_str(sf)[0])
             kitty_script_stop();
-            /* If a login script is also set, the timer handler stands aside
-             * until it has finished rather than racing it - see TIMER_SCRIPT. */
-            wgs->script_defer_ticks = 0;
-            SetTimer(wgs->term_hwnd, TIMER_SCRIPT, 1500, NULL);
-        }
     }
 #endif
 
@@ -870,6 +861,34 @@ static void start_backend(WinGuiSeat *wgs)
         sfree(msg);
         exit(0);
     }
+#ifdef MOD_PERSO
+    /*
+     * KiTTY: START the Session > Scripting (rutty) script for this connection,
+     * now that the backend exists. Directly, not on a timer: the engine only
+     * matches output received AFTER it starts, and a script whose first step
+     * waits for the login prompt - the default - must be observing before the
+     * first byte arrives. No data can flow until this function returns to the
+     * message loop, so this point is early enough by construction; the old
+     * 1500 ms timer start lost that race to any fast link, and the script died
+     * on its own wait timeout without typing a byte.
+     *
+     * The TIMER_SCRIPT path remains for one case only: a login script
+     * (Connection > Data) is pending, and the two engines must not react to
+     * each other's output - the timer handler polls until the login script has
+     * run out and only then starts this one (see the TIMER_SCRIPT handler).
+     */
+    if (conf_get_int(wgs->conf, CONF_script_mode) == 1) {
+        Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
+        if (sf && filename_to_str(sf)[0]) {
+            if (ScriptFileContent != NULL && ScriptFileContent[0]) {
+                wgs->script_defer_ticks = 0;
+                SetTimer(wgs->term_hwnd, TIMER_SCRIPT, 1500, NULL);
+            } else if (kitty_script_enabled()) {
+                kitty_script_send_file(wgs->conf, wgs->backend, sf);
+            }
+        }
+    }
+#endif
     term_setup_window_titles(wgs->term, realhost);
     sfree(realhost);
 

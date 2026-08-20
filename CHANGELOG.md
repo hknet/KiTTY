@@ -26,6 +26,16 @@ see [FEATURES.md](FEATURES.md).
   It now starts on every connection, including auto-reconnect and Close+Restart.
   A script interrupted by the disconnect no longer blocks the next one either. (hknet/KiTTY#36)
 
+- **A script that starts by waiting for the login prompt now works on fast
+  connections.** With *Wait for a prompt before each line* on and *Except for
+  first command* off,
+  an on-connect script's first wait could only see output that arrived after
+  the scripting engine started — and the engine started on a timer, one and a
+  half seconds after connecting. On a fast link the prompt had already been
+  printed by then, so the script silently timed out without typing anything,
+  while the same session worked against a distant server. The engine now
+  starts before the connection's first byte can arrive. (hknet/KiTTY#36)
+
 - **Correcting a Ctrl+G search no longer ends it.** In folder-navigation mode,
   Ctrl+G searches across every folder — but deleting a mistyped letter back to
   an empty box silently dropped the search back to the current folder, so the
