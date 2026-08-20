@@ -547,14 +547,21 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
         /* UTF-8 source: real (c) (\xc2\xa9) and em-dash (\xe2\x80\x94) rather than
          * CP1252 bytes, set as Unicode below so they render on any system codepage. */
         char *text = dupprintf(
-            "%s\r\n\r\n%s%s%s%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
+            "%s\r\n\r\n%s%s%s%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s"
+            "\r\n\r\n%s",
             appname, ver, netdbg, testbuild, aclnote, buildinfo_text,
             "This PuTTY 0.85 port \xc2\xa9 KAPPER NETWORK-COMMUNICATIONS GmbH "
             "\xe2\x80\x94 https://github.com/hknet/KiTTY",
             "KiTTY \xc2\xa9 2007-2013 Cyril Dupont \xe2\x80\x94 https://www.9bis.net/kitty/",
             "Based on PuTTY \xc2\xa9 " SHORT_COPYRIGHT_DETAILS ". All rights reserved.",
             "far2l terminal extensions from putty4far2l "
-            "(Ivan Sorokin, unxed, Ivan Shatsky); far2l \xe2\x80\x94 elfmz.");
+            "(Ivan Sorokin, unxed, Ivan Shatsky); far2l \xe2\x80\x94 elfmz.",
+            /* Session > Scripting is the RuTTY patch, carried forward like the
+             * far2l extensions above - and unconditional for the same reason
+             * given there: this file compiles into a shared lib that carries no
+             * per-target MOD_ define, and every KiTTY build ships the engine. */
+            "Session scripting from the RuTTY patch \xc2\xa9 2013-2014 "
+            "Ernst Dijk.");
         sfree(buildinfo_text);
         {
             int wn = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);

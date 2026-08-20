@@ -1,11 +1,11 @@
-# KiTTY (PuTTY 0.84 port)
+# KiTTY (PuTTY 0.85 port)
 
 **KiTTY** is a feature-rich fork of [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/),
-the free Windows SSH/Telnet client. This branch is a **forward-port of the entire KiTTY feature
-set onto current PuTTY 0.84** — so you get KiTTY's extras on top of a modern, security-patched
+the free Windows SSH/Telnet client. This branch is a **forward-port of the KiTTY features and more
+onto current PuTTY 0.85** — so you get KiTTY's extras on top of a modern, security-patched
 PuTTY core (≈1,200 upstream commits newer than KiTTY's original 0.76b base).
 
-> ⚠️ **Beta release** (`0.85.1.0-beta`). The full KiTTY feature set on a modern, security-patched PuTTY 0.84 core — including a post-quantum key-exchange warning and a console CLI key generator (`kittygen-cli.exe`). Please still read the known issues below.
+> ⚠️ **Beta release** (`0.85.1.0-beta`). The full KiTTY feature set on a modern, security-patched PuTTY 0.85 core — including a post-quantum key-exchange warning and a console CLI key generator (`kittygen-cli.exe`). Please still read the known issues below.
 
 ## Screenshots
 
@@ -40,7 +40,7 @@ Authenticode-signed.
 
 ---
 
-## What's included (KiTTY features on PuTTY 0.84)
+## What's included (KiTTY++ features on PuTTY 0.85)
 
 ~46 KiTTY features are ported and verified, including:
 
@@ -65,6 +65,10 @@ Authenticode-signed.
 - **Storage:** registry **or** portable file/dir storage (`kitty_portable.exe`), `kitty.ini` configuration.
 - Plus the standard PuTTY tools, renamed KiTTY-style: `klink`, `kscp`, `ksftp`, `kageant`, `kittygen`.
 - `kittygen-cli.exe` — a console-mode CLI key generator (generate, convert, fingerprint) for use in scripts and pipelines. Run `kittygen-cli --help` for options.
+- **Quick-Connect or Last-Session Mode:** set "loadlastsession=yes/no" and either get fast load the last session or your cursor set to the hostname to enter for a quick connection.
+- **Double the Folder-Navigation** whatever drives you: the mouse or the keyboard the "foldernavigation=yes/no" got you covered set it to yes and you can simply click through your folders in the Session-List; set it no and Ctrl+F and Ctrl+G help you to locate the sessions you need for your next adventure.
+- **Modal Box Free Work** if you don't want Message Boxes popping up if things go sideways, this KiTTY can put those notices in the terminalwindow. Switch to "modalerrors=no" and a message for another terminal can't block your work anymore. More modal-settings are in the kitty.ini and highly recommended if you hate Message Boxes.
+- **Workplace Proxy Mode** working on the go you sometimes have to set a proxy for all your needs.  If you have named proxies configured you can simply activate one on the go using the launcher or by starting the workplace-proxy in the KiTTY-config-window (Connection - Proxy) and you are set.
 
 > 📂 **Put your files where your `cwd` is.** Turn on **OSC 7 directory tracking** and
 > drag-and-drop uploads — and *Start WinSCP* — land in your shell's **current remote
@@ -96,13 +100,14 @@ or still want real-world testing. The full, per-release list is in
   executables. The `-upx.zip` flavour and the installers carry UPX-packed
   `kitty.exe`/`kitty_portable.exe` (smallest download), which can trip heuristic AV — if
   flagged, use the standard ZIP.
-- **far2l shared clipboard (GET)** — remote→clipboard (**SET**) is verified end-to-end; the
-  **GET** direction (remote reads your clipboard) transmits over **SSH only**, not raw (a
-  pre-existing PuTTY behaviour).
+- **far2l shared clipboard, non-text formats** — both directions are verified over the
+  wire (a remote writing your clipboard and reading it, including an 80 KB payload). What
+  is untested is whether **non-text** formats such as images survive the round trip; only
+  text has been exercised.
 - **far2l clipboard "Ask" mode** (Window → Selection) — answering **OK** grants the remote
-  clipboard access for the rest of the session (no per-request reprompt). Set it to **Disabled** to deny.
-- **adb backend & rutty scripting** — verified against test fixtures, not yet against a real
-  Android device / live remote shell.
+  clipboard access for the rest of the session (no per-request reprompt). Choose **Deny**
+  instead if a remote `far2l` should never reach your clipboard.
+- **adb backend** — verified against test fixtures, not yet against a real Android device.
 - **Stored passwords** — saving passwords is optional; saved ones are encrypted at rest:
   Windows **DPAPI** in registry mode (bound to your account/machine), an opt-in **master
   password** in portable mode (travels between machines; it is never stored — if you forget
@@ -143,6 +148,8 @@ parallel-target approach, and the constraints to know before editing shared file
   [**putty4far2l**](https://github.com/ivanshatsky/putty4far2l) project: far2l's PuTTY
   extensions originally by **Ivan Sorokin**, putty4far2l by **unxed**, the 0.78.5 port by
   **Ivan Shatsky**; the [far2l](https://github.com/elfmz/far2l) file manager by **elfmz** and contributors.
-- This 0.84 port keeps PuTTY's **MIT licence** — see [`LICENCE`](LICENCE).
+- **RuTTY** © 2013-2014 Ernst Dijk — the scripting patch behind *Session → Scripting*
+  (`kitty/rutty/`).
+- This port keeps PuTTY's **MIT licence** — see [`LICENCE`](LICENCE).
 
 The original PuTTY source README is preserved as [`README`](README).

@@ -416,6 +416,15 @@ features are working and verified. Known limitations as of this release:
   the machine account closes them **without** reopening, since there is no
   desktop to reopen onto; `MSIDISABLERMRESTART=1` forces that behaviour in
   any silent install.
+- **Running the MSI again over an existing install can fail with 1603.** This
+  is Windows' own "SecureRepair" check, not KiTTY: re-running an installer
+  puts Windows into repair mode, where it insists on finding the package under
+  the file name your FIRST install ran from. If that install was started
+  straight from a browser's download list, the name was a temporary one that
+  no longer exists, and the repair aborts. The log says
+  `SECREPAIR: Error determining package source type`. To install a new
+  version, uninstall the old one first, or run the MSI from a normal folder
+  under the same file name as before.
 
 ## New in 0.84.1.63
 

@@ -24,6 +24,12 @@ forward-ported to PuTTY 0.78.5 by Ivan Shatsky
 itself is by elfmz and contributors <https://github.com/elfmz/far2l>.
 These contributions are likewise released under the MIT licence below.
 
+The session-scripting engine is the RuTTY patch, copyright 2013-2014
+Ernst Dijk. It reached this port as part of KiTTY, which is distributed
+under the MIT licence; the RuTTY sources themselves carry a copyright
+notice and no licence text, so his notice is reproduced here as it
+stands rather than restated in other terms.
+
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation files
 (the "Software"), to deal in the Software without restriction,

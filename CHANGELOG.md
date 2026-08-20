@@ -5,6 +5,17 @@ and enhanced **PuTTY 0.85** core. Versions below are this port's own `0.85.1.x` 
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.1-beta — 2026-08-20
+
+### Fixed
+
+- **A session's script starts on every connect (again), not just once.**
+  With *Run the script on connect* ticked under **Session → Scripting**, the
+  script ran when the session first connected and never again - a session
+  that lost its connection and came back logged in and didn't do the script.
+  It now starts on every connection, including auto-reconnect and Close+Restart.
+  A script interrupted by the disconnect no longer blocks the next   one either. (hknet/KiTTY#36)
+
 ## 0.85.1.0-beta — 2026-08-20
 
 ### The Harder, Better, Faster, Stronger Release

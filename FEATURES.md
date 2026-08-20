@@ -218,7 +218,7 @@ The script is stored with the session and protected at rest, the same way a stor
 
 Based on the RuTTY patch, this lets you automate actions on a session by running a small script as soon as you connect. The script uses simple waitfor/halton commands to watch for text from the server and send responses, so common logon sequences and repetitive steps happen for you automatically. It is a handy way to script logins and routine interactions without typing them each time.
 
-**How to enable:** Configuration > **Connection > Scripting**: set a RuTTY script (waitfor/halton style). It plays automatically once connected. You can also run a script on demand in a live session: system menu > **Tools > Send recorded script**. The whole engine can be disabled with `[KiTTY] scriptmode=no` in `kitty.ini`.
+**How to enable:** Configuration > **Session > Scripting**: set a RuTTY script (waitfor/halton style). It plays automatically once connected. You can also run a script on demand in a live session: system menu > **Tools > Send recorded script**. The whole engine can be disabled with `[KiTTY] scriptmode=no` in `kitty.ini`.
 
 **Script file format** (see [docs/examples/logon-script.ksh](docs/examples/logon-script.ksh)):
 a script is a plain text file sent line by line. With **Wait for a prompt before
@@ -274,7 +274,7 @@ KiTTY can log you in automatically to telnet, SSH-1 and SSH-2 servers by storing
 
 ### Private-key usage confirmation
 
-When you store private keys in KiTTY's key agent (kageant), you can require an explicit confirmation each time a key is used. With this enabled, every session that needs the key triggers a pop-up asking you to approve its use before authentication proceeds, giving you a clear chance to spot and refuse unexpected sign-in attempts. This adds a helpful safeguard against a loaded key being used without your knowledge. Thanks to [Patrick Cernko](https://people.mpi-klsb.mpg.de/~pcernko/pageant.html) for this patch.
+When you store private keys in KiTTY's key agent (kageant), you can require an explicit confirmation each time a key is used. With this enabled, every session that needs the key triggers a pop-up asking you to approve its use before authentication proceeds, giving you a clear chance to spot and refuse unexpected sign-in attempts. This adds a helpful safeguard against a loaded key being used without your knowledge. Thanks to [Patrick Cernko](https://people.mpi-klsb.mpg.de/~pcernko/pageant.html) for the original patch.
 
 **How to enable:** For all keys at once, tick **"Ask confirmation before key use"** in the kageant tray menu (persisted, default off): every signing request then pops an allow/deny prompt naming the key. Or per key: generate a key whose **comment contains the word `confirmation`** (in kittygen), then load it into **kageant.exe** — only that key asks for confirmation. Or from **kitty.ini**: `[Agent] askconfirmation=` with the classic three states — `yes` (every use), `auto` (per-key comments only; the default), `no` (never — also silences the per-key prompts, for automation). kageant finds the ini on its own (`KITTY_INI_FILE`, else next to the exe, else `%APPDATA%`); when that file says `[KiTTY] savemode=file` or `dir` — or, with no savemode line, when a portable layout (a `Sessions` folder or `KiTTYState` file) sits beside it — the ini is the authoritative store and the tray toggle writes back to it, so a **portable** kageant never touches the registry; the key-list window and the tray tooltip show *kitty.ini mode* when this is in effect. The related **“Notify when a key is used”** tray balloon (default on) is controllable the same way with `[Agent] messageonkeyusage=yes/no`.
 
@@ -451,7 +451,7 @@ By default, pressing Enter sends a single carriage return to the remote host. In
 
 KiTTY can take a script file stored on your local PC and replay its contents into the currently connected remote session. The lines from the file are sent to the remote machine as if you had typed them yourself, so you can automate repetitive command sequences without retyping them each time. This is handy for setup routines, repeated diagnostics, or any series of commands you run often on a server.
 
-**How to enable:** Use the scripting menu / Connection > Scripting to play a locally stored script line-by-line into the active remote session.
+**How to enable:** Use the scripting menu / Session > Scripting to play a locally stored script line-by-line into the active remote session.
 
 (no screenshot)
 
@@ -998,4 +998,4 @@ KiTTY is developed by **Cyril Dupont** ([cyd01/KiTTY](https://github.com/cyd01/K
 based on **PuTTY** by **Simon Tatham** and contributors. Several features integrate
 third-party patches (RuTTY, the covidimus background-image patch, Patrick Cernko's
 key-confirmation patch, LePuTTY ZModem, and others), credited in their sections above.
-This 0.84-based port preserves those features on a current PuTTY base.
+This 0.85-based port preserves those features on a current PuTTY base.
