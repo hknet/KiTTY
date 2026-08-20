@@ -7,6 +7,16 @@ see [FEATURES.md](FEATURES.md).
 
 ## 0.85.1.1-beta — 2026-08-20
 
+### Faster
+
+- **Switching category in the configuration window no longer rebuilds the
+  panel.** Every switch used to destroy the panel's controls and create the new
+  panel's set from scratch — most of the switch time was window creation. Each
+  panel is now built the first time you visit it and simply shown or hidden
+  after that. A typical switch drops from 85 ms to about 51 ms, and the slowest
+  from 245 ms to 134 ms; values shown always follow the loaded session, and
+  saving after browsing every panel stores exactly what was loaded.
+
 ### Fixed
 
 - **A session's script starts on every connect (again), not just once.**

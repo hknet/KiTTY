@@ -681,6 +681,149 @@ enum {
 };
 
 /*
+ * KiTTY: panel cache - create each panel's controls ONCE and show/hide them.
+ *
+ * Upstream destroys every control in the visible panel and creates the new
+ * panel's set from scratch on every treeview switch. Profiled, nearly all of
+ * the switch time was NtUserCreateWindowEx - window creation itself - so the
+ * fix is to keep the windows. Panels are created lazily on first visit (so
+ * opening the box pays for one panel, as before) and then only shown/hidden.
+ *
+ * Three invariants make the cache safe:
+ *  - every panel gets its own disjoint dialog-id block (WM_COMMAND carries
+ *    the id in a 16-bit word, so all blocks must stay below 0x10000);
+ *  - all cached panels' winctrls live in the ONE shared TREE_PANEL tree, so
+ *    lookups by id or by ctrl, and a full dlg_refresh(NULL), see every panel
+ *    - a Load Session must update panels that are not currently visible;
+ *  - only the VISIBLE panel's keyboard shortcuts are registered in the
+ *    dlgparam table, or two panels using the same letter would collide.
+ *
+ * Contract kept from the rebuild design: a panel receives EVENT_REFRESH every
+ * time it becomes visible, exactly as it did after every rebuild - handlers
+ * rely on refresh-follows-build to fill their fields.
+ */
+#define KITTY_PANEL_ID_STRIDE 512
+
+struct kitty_cfg_panel {
+    char *path;                     /* treeview path, the cache key */
+    int base_id;                    /* this panel's dialog-id block */
+    struct winctrl **ctrls;         /* members, in creation order */
+    size_t nctrls, ctrlsize;
+};
+
+static struct kitty_cfg_panel **kitty_cfg_panels = NULL;
+static size_t kitty_cfg_npanels = 0, kitty_cfg_panelsize = 0;
+static struct kitty_cfg_panel *kitty_cfg_active_panel = NULL;
+
+static struct kitty_cfg_panel *kitty_cfg_panel_find(const char *path)
+{
+    for (size_t i = 0; i < kitty_cfg_npanels; i++)
+        if (!strcmp(kitty_cfg_panels[i]->path, path))
+            return kitty_cfg_panels[i];
+    return NULL;
+}
+
+/* Show or hide a cached panel's windows, and swap its shortcuts in or out of
+ * the dlgparam table with it. */
+static void kitty_cfg_panel_show(struct dlgparam *dp,
+                                 struct kitty_cfg_panel *p, bool show)
+{
+    for (size_t i = 0; i < p->nctrls; i++) {
+        struct winctrl *c = p->ctrls[i];
+        for (int k = 0; k < c->num_ids; k++) {
+            HWND item = GetDlgItem(dp->hwnd, c->base_id + k);
+            if (item)
+                ShowWindow(item, show ? SW_SHOW : SW_HIDE);
+        }
+        if (show)
+            winctrl_add_shortcuts(dp, c);
+        else
+            winctrl_rem_shortcuts(dp, c);
+    }
+}
+
+/* EVENT_REFRESH for one cached panel, in creation order - the scoped
+ * equivalent of what dlg_refresh(NULL) did when only one panel existed. */
+static void kitty_cfg_panel_refresh(struct dlgparam *dp,
+                                    struct kitty_cfg_panel *p)
+{
+    for (size_t i = 0; i < p->nctrls; i++) {
+        struct winctrl *c = p->ctrls[i];
+        if (c->ctrl && c->ctrl->handler != NULL)
+            c->ctrl->handler(c->ctrl, dp, dp->data, EVENT_REFRESH);
+    }
+}
+
+/* EVENT_REFRESH for one whole winctrls tree (the fixed button row). */
+static void kitty_cfg_winctrls_refresh(struct dlgparam *dp,
+                                       struct winctrls *wc)
+{
+    struct winctrl *c;
+    for (int i = 0; (c = winctrl_findbyindex(wc, i)) != NULL; i++)
+        if (c->ctrl && c->ctrl->handler != NULL)
+            c->ctrl->handler(c->ctrl, dp, dp->data, EVENT_REFRESH);
+}
+
+/* Create a panel's controls (visible, shortcuts registered - creation IS
+ * showing) and record it in the cache. The controls are laid out into a
+ * scratch tree, then moved one by one into the shared TREE_PANEL tree; the
+ * drain preserves creation order because winctrl_findbyindex walks the byid
+ * tree and ids ascend as they are handed out. */
+static struct kitty_cfg_panel *kitty_cfg_panel_create(
+    PortableDialogStuff *pds, const char *path)
+{
+    struct kitty_cfg_panel *p = snew(struct kitty_cfg_panel);
+    p->path = dupstr(path);
+    p->base_id = IDCX_PANELBASE +
+        (int)kitty_cfg_npanels * KITTY_PANEL_ID_STRIDE;
+    p->ctrls = NULL;
+    p->nctrls = p->ctrlsize = 0;
+
+    struct winctrls scratch;
+    winctrl_init(&scratch);
+
+    struct ctlpos cp;
+    ctlposinit(&cp, pds->dp->hwnd, 100, 3, 13);
+    int id = p->base_id;
+    for (int index = -1; (index = ctrl_find_path(
+                              pds->ctrlbox, p->path, index)) >= 0 ;) {
+        struct controlset *s = pds->ctrlbox->ctrlsets[index];
+        winctrl_layout(pds->dp, &scratch, &cp, s, &id);
+    }
+    assert(id - p->base_id <= KITTY_PANEL_ID_STRIDE);
+
+    struct winctrl *c;
+    while ((c = winctrl_findbyindex(&scratch, 0)) != NULL) {
+        winctrl_remove(&scratch, c);
+        winctrl_add(&pds->ctrltrees[TREE_PANEL], c);
+        sgrowarray(p->ctrls, p->ctrlsize, p->nctrls);
+        p->ctrls[p->nctrls++] = c;
+    }
+    winctrl_cleanup(&scratch);
+
+    sgrowarray(kitty_cfg_panels, kitty_cfg_panelsize, kitty_cfg_npanels);
+    kitty_cfg_panels[kitty_cfg_npanels++] = p;
+    return p;
+}
+
+/* The winctrl structures themselves belong to the TREE_PANEL tree and are
+ * freed with it in pds_free; this frees only the cache's own bookkeeping.
+ * Runs at both open and close of the box, so a cache can never leak from one
+ * instance into the next (the mid-session box builds a DIFFERENT panel set). */
+static void kitty_cfg_panel_cache_reset(void)
+{
+    for (size_t i = 0; i < kitty_cfg_npanels; i++) {
+        sfree(kitty_cfg_panels[i]->path);
+        sfree(kitty_cfg_panels[i]->ctrls);
+        sfree(kitty_cfg_panels[i]);
+    }
+    sfree(kitty_cfg_panels);
+    kitty_cfg_panels = NULL;
+    kitty_cfg_npanels = kitty_cfg_panelsize = 0;
+    kitty_cfg_active_panel = NULL;
+}
+
+/*
  * This function is the configuration box.
  * (Being a dialog procedure, in general it returns 0 if the default
  * dialog processing should be performed, and 1 if it should not.)
@@ -887,6 +1030,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         /* Robust backstop: capture the final position at close, regardless of
          * how the box was moved (WM_EXITSIZEMOVE only fires on interactive drag). */
         kitty_cfgbox_save_pos(hwnd);
+        kitty_cfg_panel_cache_reset();  /* the windows die with the dialog */
         /* KiTTY: tear down the Ctrl+F session-search jump with its dialog. */
         if (kitty_cfg_hwnd == hwnd) {
             if (kitty_cfg_kbdhook) {
@@ -1099,8 +1243,8 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
              * match the initial treeview selection.
              */
             assert(selpath);     /* config.c must have given us _something_ */
-            pds_create_controls(pds, TREE_PANEL, IDCX_PANELBASE,
-                                100, 3, 13, selpath);
+            kitty_cfg_panel_cache_reset();  /* nothing may carry over */
+            kitty_cfg_active_panel = kitty_cfg_panel_create(pds, selpath);
             dlg_refresh(NULL, pds->dp);    /* and set up control values */
         }
 
@@ -1163,29 +1307,40 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             item.cchTextMax = sizeof(buffer);
             item.mask = TVIF_TEXT | TVIF_PARAM;
             TreeView_GetItem(((LPNMHDR) lParam)->hwndFrom, &item);
+            /*
+             * KiTTY: swap the visible panel for the selected one - hide,
+             * show or create; never destroy. See the panel cache above.
+             */
             {
-                /* Destroy all controls in the currently visible panel. */
-                int k;
-                HWND item;
-                struct winctrl *c;
+                const char *newpath = (const char *)item.lParam;
+                struct kitty_cfg_panel *newpanel =
+                    kitty_cfg_panel_find(newpath);
 
-                while ((c = winctrl_findbyindex(
-                            &pds->ctrltrees[TREE_PANEL], 0)) != NULL) {
-                    for (k = 0; k < c->num_ids; k++) {
-                        item = GetDlgItem(hwnd, c->base_id + k);
-                        if (item)
-                            DestroyWindow(item);
-                    }
-                    winctrl_rem_shortcuts(pds->dp, c);
-                    winctrl_remove(&pds->ctrltrees[TREE_PANEL], c);
-                    sfree(c->data);
-                    sfree(c);
+                if (newpanel && newpanel == kitty_cfg_active_panel) {
+                    /* Re-selecting the visible panel: nothing to swap. */
+                    SendMessage (hwnd, WM_SETREDRAW, true, 0);
+                    SetFocus(((LPNMHDR) lParam)->hwndFrom);
+                    return 0;
                 }
-            }
-            pds_create_controls(pds, TREE_PANEL, IDCX_PANELBASE,
-                                100, 3, 13, (char *)item.lParam);
 
-            dlg_refresh(NULL, pds->dp);    /* set up control values */
+                if (kitty_cfg_active_panel)
+                    kitty_cfg_panel_show(pds->dp, kitty_cfg_active_panel,
+                                         false);
+                if (newpanel)
+                    kitty_cfg_panel_show(pds->dp, newpanel, true);
+                else
+                    newpanel = kitty_cfg_panel_create(pds, newpath);
+                kitty_cfg_active_panel = newpanel;
+
+                /* The shown panel is refreshed every time it appears, and
+                 * the button row keeps the refresh it always had. Panels
+                 * that stay hidden are NOT refreshed here - a full
+                 * dlg_refresh(NULL) would now reach every cached panel,
+                 * which only a whole-Conf change (Load Session) needs. */
+                kitty_cfg_panel_refresh(pds->dp, newpanel);
+                kitty_cfg_winctrls_refresh(pds->dp,
+                                           &pds->ctrltrees[TREE_BASE]);
+            }
 
             SendMessage (hwnd, WM_SETREDRAW, true, 0);
 

@@ -630,6 +630,7 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
                     struct ctlpos *cp, struct controlset *s, int *id);
 bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
                             WPARAM wParam, LPARAM lParam);
+void winctrl_add_shortcuts(struct dlgparam *dp, struct winctrl *c);
 void winctrl_rem_shortcuts(struct dlgparam *dp, struct winctrl *c);
 bool winctrl_context_help(struct dlgparam *dp, HWND hwnd, int id);
 
