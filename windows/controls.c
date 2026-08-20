@@ -1818,6 +1818,14 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
         endbox(cp);
 }
 
+/* KiTTY: the Ctrl+G cross-folder search follows where the focus goes. The
+ * config code plants this hook while its session panel exists (see
+ * kitty_config_ctrl_focus_gained() in kitty/kitty_config.c) and clears it
+ * with the panel. A function pointer rather than an extern with a stub,
+ * because controls.c also links into binaries that carry no config code at
+ * all (puttygen, pageant); for them it stays NULL and costs one test. */
+void (*kitty_ctrl_focus_hook)(dlgcontrol *ctrl, struct dlgparam *dp) = NULL;
+
 static void winctrl_set_focus(dlgcontrol *ctrl, struct dlgparam *dp,
                               bool has_focus)
 {
@@ -1825,6 +1833,8 @@ static void winctrl_set_focus(dlgcontrol *ctrl, struct dlgparam *dp,
         if (dp->focused)
             dp->lastfocused = dp->focused;
         dp->focused = ctrl;
+        if (kitty_ctrl_focus_hook)
+            kitty_ctrl_focus_hook(ctrl, dp);
     } else if (!has_focus && dp->focused == ctrl) {
         dp->lastfocused = dp->focused;
         dp->focused = NULL;

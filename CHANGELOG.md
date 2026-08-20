@@ -26,6 +26,15 @@ see [FEATURES.md](FEATURES.md).
   It now starts on every connection, including auto-reconnect and Close+Restart.
   A script interrupted by the disconnect no longer blocks the next one either. (hknet/KiTTY#36)
 
+- **Correcting a Ctrl+G search no longer ends it.** In folder-navigation mode,
+  Ctrl+G searches across every folder — but deleting a mistyped letter back to
+  an empty box silently dropped the search back to the current folder, so the
+  corrected text searched the wrong scope. Editing the search text, even
+  clearing it entirely, now keeps the cross-folder search armed. It ends when
+  you step into or out of a folder, or when you come back to the search box
+  after leaving it for other controls — browsing and picking results in the
+  session list does not count as leaving.
+
 - **`antiidledelay` is limited at both ends.** The keepalive interval was held
   at a minimum of 5 seconds, but had no upper limit - and the value is turned
   into milliseconds in 32 bits, so an absurdly large one wrapped and produced a

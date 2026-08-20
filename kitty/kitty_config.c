@@ -1977,9 +1977,20 @@ struct sessionsaver_data {
      * Ordinary typing narrows the current level only, so without this the root
      * level - which holds just the unfiled sessions in this mode - would be the
      * whole of what Ctrl+G could find, and "search everywhere" would be the one
-     * thing it could not do. Armed by Ctrl+G, disarmed the moment the level
-     * changes or the filter empties. */
+     * thing it could not do. Armed by Ctrl+G; disarmed when the level changes,
+     * or when focus comes BACK to the search box after having left it for
+     * anything other than the session list (see search_left below). Emptying
+     * the box while still in it does NOT disarm: deleting a mistyped search to
+     * correct it is part of the same search. */
     int search_all;
+    /* Focus went from the search box to some OTHER control (not the session
+     * list) while search_all was armed. Deliberately NOT an immediate disarm:
+     * the list still shows cross-folder rows, and every row-to-session mapping
+     * must keep using the mode the list was BUILT with, or a click on Load
+     * after picking a result would act on the wrong row. The disarm happens
+     * when focus returns to the search box - the old search is over, the list
+     * is rebuilt for the current level, and the two can never disagree. */
+    int search_left;
     const char *folder_button_label; /* its current label, to avoid redundant sets */
     /* KiTTY folder navigation: the folder names currently drawn as rows, in row
      * order. A folder row's id indexes THIS, not FolderList, because the two are
@@ -2059,6 +2070,9 @@ bool kitty_config_select_root_folder(dlgparam *dp)
      * - so being at the root already is no reason to do nothing: that is
      * exactly when Ctrl+G still has work to do. */
     ssd->search_all = 1;
+    /* A fresh Ctrl+G is a deliberate re-entry into the search box: whatever
+     * wandering the focus did before it must not count as having left. */
+    ssd->search_left = 0;
     if (!strcmp(CurrentFolder, "Default")) {
         if (ssd->listbox && dlg_is_visible(ssd->listbox, dp))
             dlg_refresh(ssd->listbox, dp);
@@ -2087,6 +2101,49 @@ bool kitty_config_select_root_folder(dlgparam *dp)
     if (ssd->listbox && dlg_is_visible(ssd->listbox, dp))
         dlg_refresh(ssd->listbox, dp);
     return true;
+}
+
+/*
+ * Focus tracking for the Ctrl+G cross-folder search - called by
+ * winctrl_set_focus() (windows/controls.c) whenever any config-box control
+ * gains the keyboard focus.
+ *
+ * The search stays armed while focus stays within the search box and the
+ * session list: correcting the search text (even deleting all of it) and
+ * picking a result are part of the search. Focus landing anywhere else marks
+ * the search as LEFT but changes nothing yet - the list still shows
+ * cross-folder rows, and disarming under them would remap rows to the wrong
+ * sessions (a Load click gains focus too, and must act on the row that was
+ * picked). The disarm happens when focus comes BACK to the search box: the
+ * old search is over, the filter is dropped and the list rebuilt for the
+ * current level, so what is shown and how it maps can never disagree.
+ *
+ * Reaches controls.c through the kitty_ctrl_focus_hook pointer, planted when
+ * the session panel is built and cleared with it - controls.c also links into
+ * binaries with no config code, which must not need a stub for this.
+ */
+extern void (*kitty_ctrl_focus_hook)(dlgcontrol *ctrl, dlgparam *dp);
+static void kitty_config_ctrl_focus_gained(dlgcontrol *ctrl, dlgparam *dlg)
+{
+    struct sessionsaver_data *ssd = session_filter_ssd;
+    if (!ssd || !ssd->search_all)
+        return;
+    if (ctrl == ssd->listbox)
+        return;
+    if (ctrl != ssd->editbox) {
+        ssd->search_left = 1;
+        return;
+    }
+    if (!ssd->search_left)
+        return;
+    ssd->search_all = 0;
+    ssd->search_left = 0;
+    sfree(ssd->searchfilter);
+    ssd->searchfilter = dupstr("");
+    if (ssd->listbox && dlg_is_visible(ssd->listbox, dlg))
+        dlg_refresh(ssd->listbox, dlg);
+    if (ssd->commentbox && dlg_is_visible(ssd->commentbox, dlg))
+        dlg_refresh(ssd->commentbox, dlg);
 }
 
 /*
@@ -2148,8 +2205,10 @@ static void sessionsaver_data_free(void *ssdv)
     struct sessionsaver_data *ssd = (struct sessionsaver_data *)ssdv;
     if (session_filter_ctrl == ssd->editbox)
         session_filter_ctrl = NULL;
-    if (session_filter_ssd == ssd)
+    if (session_filter_ssd == ssd) {
         session_filter_ssd = NULL;
+        kitty_ctrl_focus_hook = NULL;
+    }
     /* The override control belonged to this config box; it is ctrl_alloc'd and
      * about to go with the ctrlbox, so drop the pointer rather than leave it
      * dangling for the next box that opens. */
@@ -3570,11 +3629,12 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * a name never narrows the saved-sessions list. */
                 sfree(ssd->searchfilter);
                 ssd->searchfilter = dupstr(ssd->savedsession);
-                /* Emptying the box ends the Ctrl+G search: the next thing typed
-                 * is a fresh search of the level you are standing on, not a
-                 * continuation of the one that spanned every folder. */
-                if (!ssd->searchfilter[0])
-                    ssd->search_all = 0;
+                /* An emptied box does NOT end the Ctrl+G search any more:
+                 * deleting a mistyped letter (or the whole word) to correct it
+                 * is part of the same search, and with the box empty the level
+                 * list and "search everywhere" show the same rows anyway. The
+                 * search ends when the level changes or when focus comes back
+                 * after leaving the box - kitty_config_ctrl_focus_gained(). */
                 dlg_refresh(ssd->listbox, dlg);
                 if (ssd->commentbox)
                     dlg_refresh(ssd->commentbox, dlg);
@@ -5384,6 +5444,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
     ssd->editbox->column = 0;
     session_filter_ctrl = ssd->editbox;   /* Ctrl+F jump target, see above */
     session_filter_ssd = ssd;             /* Ctrl+G root-folder jump */
+    kitty_ctrl_focus_hook = kitty_config_ctrl_focus_gained; /* and its focus tracking */
     ssd->savebutton = ctrl_pushbutton(s, "Save", 'v',
                                       HELPCTX(session_saved),
                                       sessionsaver_handler, P(ssd));
