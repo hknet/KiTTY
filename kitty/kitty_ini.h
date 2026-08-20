@@ -131,8 +131,8 @@ char default_init_file_content[] =
 ;antiidle=\\k08\\\n\
 \n\
 ; antiidledelay: how often that string is sent, in seconds. Default 180.\n\
-;    Values below 5 are treated as 5, so a typo cannot turn a keepalive into\n\
-;    a flood. (Before this it was not seconds: the number was divided by 10 to\n\
+;    Values below 5 are treated as 5 and above 86400 (a day) as 86400, so\n\
+;    neither a typo nor an absurd number can turn a keepalive into a flood. (Before this it was not seconds: the number was divided by 10 to\n\
 ;    count ticks of a 30-second timer, so it meant about three times what it\n\
 ;    said - 60 gave 180 seconds. Divide a carried-over value by three to keep\n\
 ;    the interval you had.)\n\

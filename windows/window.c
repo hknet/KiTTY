@@ -1726,15 +1726,26 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             SetTimer(wgs->term_hwnd, TIMER_AUTOCOMMAND,
                      init_delay > 0 ? init_delay : 1500, NULL);
     }
-    /* KiTTY feature: anti-idle. Repeating 30s timer; kitty_antiidle_tick
-     * period IS the configured interval ([KiTTY] antiidledelay, seconds), so
-     * the tick just sends. */
+    /* KiTTY feature: anti-idle. The timer PERIOD is the configured interval
+     * ([KiTTY] antiidledelay, in seconds), so kitty_antiidle_tick() just sends.
+     * Classic KiTTY instead ran a fixed 30-second timer and counted ticks to
+     * AntiIdleCountMax; that counter is gone (7e2e290f) and nothing here counts
+     * any more.
+     *
+     * Milliseconds computed in 64 bits and bounded before the cast: seconds is
+     * an int from kitty.ini, and a 32-bit multiply by 1000 wraps at 4,294,968
+     * seconds - which arms a 704 ms timer instead of a 49-day one. kitty.c caps
+     * the value at a day, and this is the second half of that same belt: a
+     * caller reaching AntiIdleSeconds another way cannot produce a flood here.
+     * (USER_TIMER_MAXIMUM is Windows' own ceiling, ~24.8 days.) */
     {
         const char *ai = conf_get_str(wgs->conf, CONF_antiidle);
-        if ((ai && ai[0]) || AntiIdleStr[0])
-            SetTimer(wgs->term_hwnd, TIMER_ANTIIDLE,
-                     (UINT)(AntiIdleSeconds > 0 ? AntiIdleSeconds : 180)
-                     * 1000, NULL);
+        if ((ai && ai[0]) || AntiIdleStr[0]) {
+            long long secs = (AntiIdleSeconds > 0 ? AntiIdleSeconds : 180);
+            long long ms = secs * 1000LL;
+            if (ms > (long long)USER_TIMER_MAXIMUM) ms = USER_TIMER_MAXIMUM;
+            SetTimer(wgs->term_hwnd, TIMER_ANTIIDLE, (UINT)ms, NULL);
+        }
     }
     /* KiTTY feature: rutty scripting. The on-connect script is armed in
      * start_backend, not here: this runs once per PROCESS, and the script has to
@@ -4058,7 +4069,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             return 0;
         }
         if ((UINT_PTR)wParam == TIMER_ANTIIDLE) {
-            /* repeating 30s timer left armed; tick handles the counter */
+            /* Repeating, and left armed: the period already IS the configured
+             * interval, so every tick sends. No counter (see where it is set). */
             kitty_antiidle_tick(hwnd);
             return 0;
         }

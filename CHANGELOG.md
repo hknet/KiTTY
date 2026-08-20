@@ -14,7 +14,14 @@ see [FEATURES.md](FEATURES.md).
   script ran when the session first connected and never again - a session
   that lost its connection and came back logged in and didn't do the script.
   It now starts on every connection, including auto-reconnect and Close+Restart.
-  A script interrupted by the disconnect no longer blocks the next   one either. (hknet/KiTTY#36)
+  A script interrupted by the disconnect no longer blocks the next one either. (hknet/KiTTY#36)
+
+- **`antiidledelay` is limited at both ends.** The keepalive interval was held
+  at a minimum of 5 seconds, but had no upper limit - and the value is turned
+  into milliseconds in 32 bits, so an absurdly large one wrapped and produced a
+  keepalive several times a second instead of once every few days. It is now
+  capped at a day. If you have never set `antiidledelay` in `kitty.ini`,
+  nothing changes.
 
 ## 0.85.1.0-beta — 2026-08-20
 

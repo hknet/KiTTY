@@ -3255,9 +3255,16 @@ void LoadParameters( void ) {
 	/* The remaining keys have richer semantics and stay hand-written. */
 	if( ReadParameterN( INIT_SECTION, "antiidle", buffer, sizeof(buffer) ) ) { buffer[127]='\0'; strcpy( AntiIdleStr, buffer ) ; }
 	if( ReadParameterN( INIT_SECTION, "antiidledelay", buffer, sizeof(buffer) ) ) {
-		/* Plain seconds. Floored at 5 so a stray small value cannot turn a
-		 * keepalive into a flood; 0 or nonsense leaves the default. */
+		/* Plain seconds, floored at 5 AND capped at a day. 0 or nonsense
+		 * leaves the default.
+		 *
+		 * The cap is not tidiness: window.c turns this into milliseconds for
+		 * SetTimer, and that multiplication is done in 32 bits. Without an
+		 * upper bound, antiidledelay=4294968 becomes 4,294,968,000 ms, wraps,
+		 * and arms a 704 ms timer - a keepalive flood reached from the
+		 * opposite end of the range the floor above guards. */
 		int secs = atoi( buffer ) ;
+		if( secs > 86400 ) secs = 86400 ;
 		if( secs > 0 ) AntiIdleSeconds = secs < 5 ? 5 : secs ;
 	}
 	if( ReadParameterN( INIT_SECTION, "browsedirectory", buffer, sizeof(buffer) ) ) { 
