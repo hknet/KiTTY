@@ -724,6 +724,33 @@ static void start_backend(WinGuiSeat *wgs)
      * overwriting it.
      */
     ReadInitScript(NULL);
+
+    /*
+     * ...and the SESSION > SCRIPTING script (rutty), for the same reason and in
+     * the same place. It used to be armed once in WinMain, so it ran on the
+     * first connect and never again: reboot the far end, let KiTTY reconnect,
+     * and nothing was sent (hknet/KiTTY#36). Classic KiTTY re-ran it on every
+     * connect.
+     *
+     * The engine is stopped FIRST because kitty_script_send_file() refuses while
+     * a script is still marked as running - and a script interrupted by the drop
+     * is exactly that, so without this the next connect would be refused for
+     * ever. kitty_script_stop() is safe when nothing is running and logs
+     * nothing.
+     *
+     * The timer handler checks wgs->backend itself, so arming before
+     * backend_init is fine - the same reasoning as ReadInitScript above.
+     */
+    if (conf_get_int(wgs->conf, CONF_script_mode) == 1) {
+        Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
+        if (sf && filename_to_str(sf)[0]) {
+            kitty_script_stop();
+            /* If a login script is also set, the timer handler stands aside
+             * until it has finished rather than racing it - see TIMER_SCRIPT. */
+            wgs->script_defer_ticks = 0;
+            SetTimer(wgs->term_hwnd, TIMER_SCRIPT, 1500, NULL);
+        }
+    }
 #endif
 
     seat_set_trust_status(&wgs->seat, true);
@@ -1709,18 +1736,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                      (UINT)(AntiIdleSeconds > 0 ? AntiIdleSeconds : 180)
                      * 1000, NULL);
     }
-    /* KiTTY feature: rutty scripting. If script_mode == PLAY (1) and a script
-     * file is configured, fire a one-shot timer to start sending once the
-     * backend is up (start_backend runs after this seat-setup). */
-    if (conf_get_int(wgs->conf, CONF_script_mode) == 1) {
-        Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
-        if (sf && filename_to_str(sf)[0]) {
-            /* If a login script is also set, the timer handler stands aside
-             * until it has finished rather than racing it - see TIMER_SCRIPT. */
-            wgs->script_defer_ticks = 0;
-            SetTimer(wgs->term_hwnd, TIMER_SCRIPT, 1500, NULL);
-        }
-    }
+    /* KiTTY feature: rutty scripting. The on-connect script is armed in
+     * start_backend, not here: this runs once per PROCESS, and the script has to
+     * run once per CONNECTION. See kitty_arm_script_on_connect(). */
 #endif
     setup_clipboards(wgs->term, wgs->conf);
     wgs->logctx = log_init(&wgs->logpolicy, wgs->conf);
