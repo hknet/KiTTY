@@ -9,6 +9,16 @@ see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- **kageant and KiTTYgen say so when in-memory key protection is not
+  working.** SSH-2 private keys are normally held `CryptProtectMemory`-
+  encrypted; when that API fails — which on a normal Windows it never does —
+  the tools silently fell back to holding keys in plain memory. Now kageant
+  shows a one-time warning at startup and carries a permanent "keys
+  UNPROTECTED in memory" line in its tray tooltip, KiTTYgen warns once in
+  the window, and kittygen-cli prints a warning to stderr. The check is a
+  real protect/unprotect round trip, not just "does the DLL load", so a
+  hooked or stripped crypt API is caught too.
+
 - **The auto-command runs on every connect too.** 0.85.1.1 made the
   Session → Scripting script and the login script run again on reconnect,
   but *Auto-command after login* (Connection → Data) was the third sender

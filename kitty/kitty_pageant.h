@@ -124,6 +124,7 @@ int  kageant_key_lifetime_get(ptrlen pubblob, unsigned *set_seconds,
 int  kageant_lifetime_count(void);
 void kageant_forget_startup_key(const char *path);  /* drop one stored entry */
 void kageant_notify_startup_missing(void);
+void kageant_warn_unprotected_memory(void);  /* once: CryptProtectMemory dead */
 void kageant_save_startup_keys(void);
 void kageant_load_startup_keys(void);
 void kageant_set_run_entry(int on);    /* HKCU ...\Run autostart entry */

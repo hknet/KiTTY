@@ -827,8 +827,28 @@ static void protect_current_ssh2_key(struct MainDlgState *state)
     }
 
     KittyProtKey *pk = kitty_protkey_from_key(k);
-    if (!pk)
+    if (!pk) {
+        /* Cleartext mode - warn once per process instead of degrading
+         * silently: on any normal Windows the probe passes, so this firing
+         * means a stripped/emulated system or a hooked crypt API. Gated on
+         * the probe, not on the NULL alone, so an out-of-memory blip cannot
+         * masquerade as a missing protection. */
+        if (!kitty_protkey_available()) {
+            static bool warned = false;
+            if (!warned) {
+                warned = true;
+                MessageBox(NULL,
+                           "Windows' CryptProtectMemory is not working in "
+                           "this process, so this key is held in PLAIN "
+                           "memory while the window is open. On a normal "
+                           "Windows this never happens - something is "
+                           "stripping or hooking the crypt API.",
+                           "KiTTYgen: key not memory-protected",
+                           MB_ICONWARNING | MB_OK);
+            }
+        }
         return;                        /* crypt API unavailable */
+    }
 
     /* Build the stand-in BEFORE freeing the live key. */
     strbuf *pub = strbuf_new();

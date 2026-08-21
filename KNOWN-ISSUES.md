@@ -218,9 +218,12 @@ features are working and verified. Known limitations as of this release:
   requested on first use. After first use, and also for normally added SSH-2
   keys, kageant stores the long-lived private key material as a Windows
   `CryptProtectMemory`-protected blob and only unprotects/deserializes it
-  temporarily while signing. **If security matters, prefer public-key
-  authentication (kageant) and avoid saving passwords unless you understand
-  these limits.**
+  temporarily while signing. Legacy **SSH-1** keys are the exception, in the
+  agent just as in kittygen: they are held in plain process memory for as
+  long as they are loaded — the format is obsolete, and the protection was
+  deliberately not extended to that path. **If security matters, prefer
+  public-key authentication (kageant) with SSH-2 keys, and avoid saving
+  passwords unless you understand these limits.**
 
 - **Remote clipboard reads report when they could not be served.** A read request
   that arrives while another program holds the clipboard used to be refused in

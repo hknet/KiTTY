@@ -33,6 +33,25 @@ static bool kpk_unprotect(void *data, size_t len)
 #endif
 }
 
+int kitty_protkey_available(void)
+{
+    static int cached = -1;
+    if (cached < 0) {
+        /* A real round trip, not just got_crypt(): the DLL loading proves
+         * nothing about the calls working, and the whole point of asking is
+         * to TELL THE USER when their protection is off. */
+        unsigned char buf[CRYPTPROTECTMEMORY_BLOCK_SIZE];
+        unsigned char ref[sizeof(buf)];
+        memset(buf, 0xA5, sizeof(buf));
+        memcpy(ref, buf, sizeof(buf));
+        cached = kpk_protect(buf, sizeof(buf)) &&
+                 kpk_unprotect(buf, sizeof(buf)) &&
+                 memcmp(buf, ref, sizeof(buf)) == 0;
+        smemclr(buf, sizeof(buf));
+    }
+    return cached;
+}
+
 KittyProtKey *kitty_protkey_from_key(ssh_key *key)
 {
     strbuf *plain = strbuf_new_nm();

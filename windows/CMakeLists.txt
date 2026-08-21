@@ -106,6 +106,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c     # KiTTY: shared title-suffix composer
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inilight.c  # KiTTY: light kitty.ini resolver for satellite binaries
   ${CMAKE_SOURCE_DIR}/kitty/kitty_startup_shortcut.c  # KiTTY: Startup-folder shortcut (portable autostart)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: kitty_protkey_available for the unprotected-memory warning (the agent's key blobs still use pageant.c's own copy - DEDUP PENDING)
   pageant.rc)
 add_dependencies(pageant generated_licence_h)
 target_link_libraries(pageant

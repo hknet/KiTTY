@@ -22,6 +22,13 @@
 typedef struct KittyProtKey KittyProtKey;
 struct ssh_key;
 
+/* Is the memory protection actually WORKING in this process? Probed once
+ * with a real protect/unprotect round trip (a hooked or stripped crypt API
+ * can load and still fail), then cached. When this is 0 every
+ * kitty_protkey_from_key() call will return NULL and keys stay in plain
+ * memory - the callers use this to WARN instead of degrading silently. */
+int kitty_protkey_available(void);
+
 /* Serialise + encrypt `key`. Does NOT take ownership of `key` (caller still
  * frees it). Returns NULL if the crypt API is unavailable. */
 KittyProtKey *kitty_protkey_from_key(struct ssh_key *key);

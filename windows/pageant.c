@@ -28,6 +28,7 @@
 #include "../kitty/kitty_authenticode.h"  /* KiTTY: shared verify for New key */
 #include "../kitty/kitty_title.h"     /* KiTTY: shared title-suffix composer */
 #include "../kitty/kitty_inilight.h"  /* KiTTY: portable-layout probe */
+#include "../kitty/kitty_protkey.h"   /* KiTTY: kitty_protkey_available (tray tip) */
 
 #include <shellapi.h>
 
@@ -3356,6 +3357,20 @@ void kageant_refresh_tray_tip(void)
      * Of everything in here, "a key is not loaded" is the line someone is
      * actually looking for.
      */
+    /* KiTTY: when the in-memory protection is not working, the tip carries
+     * that permanently - the startup notice comes and goes, and this is the
+     * condition a user should be able to re-check any time. Composed into
+     * the SAME second-line slot as the mismatch line (both can be present;
+     * the mismatch stays first, it is the actionable one). */
+    if (!kitty_protkey_available()) {
+        const char *rest = strstr(tip, "\r\n");
+        char merged[256];
+        snprintf(merged, sizeof(merged), "%.*s\r\nkeys UNPROTECTED in memory%s",
+                 rest ? (int)(rest - tip) : (int)strlen(tip), tip,
+                 rest ? rest : "");
+        sfree(tip);
+        tip = dupstr(merged);
+    }
     held = kageant_mismatch_count();
     if (held > 0) {
         char line[64];
@@ -4398,6 +4413,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * still be true hours later. */
     kageant_refresh_tray_tip();
     kageant_notify_startup_missing();
+    /* KiTTY: if the in-memory key protection is not working, say so NOW,
+     * once - and the tray tip above carries it for as long as it holds. */
+    kageant_warn_unprotected_memory();
     /* KiTTY: a 1-second heartbeat to expire ssh-add -t keys. Cheap, and only
      * the primary instance (which owns traywindow) runs it. */
     SetTimer(traywindow, TID_KEY_LIFETIME, 1000, NULL);

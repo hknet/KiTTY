@@ -1354,6 +1354,16 @@ int main(int argc, char **argv)
      * original key, so behaviour is unchanged where protection is impossible.
      */
     if (ssh2key && ssh2key->key) {
+#ifdef _WINDOWS
+        /* Cleartext mode - warn on stderr instead of degrading silently.
+         * Windows only: on the other platforms this build never protects,
+         * by design, and a warning that always fires teaches people to
+         * ignore it. */
+        if (!kitty_protkey_available())
+            fprintf(stderr, "warning: CryptProtectMemory is not working in "
+                    "this process - the key was handled in unprotected "
+                    "memory\n");
+#endif
         KittyProtKey *pk = kitty_protkey_from_key(ssh2key->key);
         if (pk) {
             ssh_key *tmp = kitty_protkey_to_temp_key(pk);

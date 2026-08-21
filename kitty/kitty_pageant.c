@@ -23,6 +23,7 @@
  * and a blue INFO for key use - recognisably kageant, not a stray kitty
  * notice, and not confusable with a warning. */
 #include "kitty_startup_shortcut.h"
+#include "kitty_protkey.h"  /* kitty_protkey_available: the unprotected-memory warning */
 #include "ssh.h"
 
 /* Shim so the moved kageant_do_notify body below stays textually identical
@@ -3232,6 +3233,32 @@ void kageant_note_keyuse(const char *fingerprint, int allowed)
     g_flash[use].until = now + KAGEANT_FLASH_MS;
     g_flash[use].allowed = allowed;
     kageant_keylist_flash_changed();     /* windows/pageant.c: repaint + timer */
+}
+
+/* KiTTY: warn ONCE when the in-memory key protection is not working -
+ * kageant then holds every key in plain process memory, and a user counting
+ * on the CryptProtectMemory design deserves to hear that it is off rather
+ * than find out from a dump. On every supported Windows the probe passes, so
+ * this notice firing at all means a stripped/emulated system or something
+ * hooking the crypt API - itself worth a look. Called from windows/pageant.c
+ * once the tray exists (the notice needs a window to click through to); the
+ * durable half is the tray-tip line kageant_refresh_tray_tip() adds while
+ * the condition holds. The "refuse to hold keys instead" question is policy
+ * and stays open in the TODO - this only ends the silence. */
+void kageant_warn_unprotected_memory(void)
+{
+    static int warned = 0;
+    if (warned || kitty_protkey_available())
+        return;
+    warned = 1;
+    kitty_notice_show(
+        "kageant: keys are NOT memory-protected",
+        "Windows' CryptProtectMemory is not working in this process, so "
+        "private keys are held in PLAIN memory while loaded. On a normal "
+        "Windows this never happens - something is stripping or hooking the "
+        "crypt API, which is itself worth investigating.",
+        KAGEANT_NOTICE_WARN, kageant_notice_seconds(15),
+        traywindow, KAGEANT_WM_NOTICE_CLICK);
 }
 
 void kageant_do_notify(const char *comment, const char *fingerprint)
