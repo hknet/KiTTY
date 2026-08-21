@@ -1229,6 +1229,22 @@ void kitty_dup_session(HWND hwnd, Conf *conf) {
  * autocommand_delay (ms) is exposed for the caller's SetTimer interval. */
 extern Conf *conf;             /* active-seat global (window.c) */
 int del(char *ch, const int start, const int length);
+
+/* Reset the auto-command for a NEW connection: drop whatever is left of the
+ * previous run's copy so the next tick re-reads CONF_autocommand from the
+ * start. Without this a reconnect either resumed half-way through the old
+ * copy or - the common case - never ran again at all, because the timer was
+ * armed once in WinMain: the command ran once per PROCESS instead of once
+ * per connection. Same defect the rutty script and the login script had
+ * (hknet/KiTTY#36); this is the third of the three senders. */
+void kitty_autocommand_rearm(void)
+{
+    if (AutoCommand != NULL) {
+        free(AutoCommand);
+        AutoCommand = NULL;
+    }
+}
+
 int kitty_autocommand_tick(HWND hwnd)
 {
     char buffer[8192] = "";

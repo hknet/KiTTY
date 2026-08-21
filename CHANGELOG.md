@@ -7,6 +7,15 @@ see [FEATURES.md](FEATURES.md).
 
 ## 0.85.1.2-beta — 2026-08-21
 
+### Fixed
+
+- **The auto-command runs on every connect too.** 0.85.1.1 made the
+  Session → Scripting script and the login script run again on reconnect,
+  but *Auto-command after login* (Connection → Data) was the third sender
+  with the same fault and was missed: it ran on the first connection and
+  never again. It now re-runs on every connection, from its first line, like
+  the other two. (hknet/KiTTY#36)
+
 ### Faster
 
 - **The configuration window pre-builds its panels in the background.** Panels

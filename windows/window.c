@@ -312,6 +312,7 @@ int  GetQuickConnectMode(void);          /* kitty.c: quick connect armed this ru
 #endif
 /* Auto-command: send a command automatically after login (CONF_autocommand). */
 int kitty_autocommand_tick(HWND hwnd);
+void kitty_autocommand_rearm(void);  /* reset for a NEW connection */
 extern int autocommand_delay;
 extern int init_delay;      /* kitty.c: [KiTTY] initdelay, ms before the first
                              * auto-command/auto-password send (default 2000) */
@@ -894,6 +895,27 @@ static void start_backend(WinGuiSeat *wgs)
             } else if (kitty_script_enabled()) {
                 kitty_script_send_file(wgs->conf, wgs->backend, sf);
             }
+        }
+    }
+
+    /*
+     * ...and the AUTO-COMMAND (Connection > Data, CONF_autocommand), the
+     * third of the three per-connection senders and the one the first #36
+     * fix missed: its timer was armed once in WinMain, so the command ran on
+     * the first connection of the process and never again - reconnect, and
+     * nothing was typed (classic KiTTY re-ran it). Reported on the same
+     * issue after 0.85.1.1-beta shipped the other two.
+     *
+     * The rearm drops any half-consumed copy a dropped connection left
+     * behind, so the command always restarts from its first line. The first
+     * fire keeps the same establishment delay the WinMain arming used.
+     */
+    {
+        const char *ac = conf_get_str(wgs->conf, CONF_autocommand);
+        if (ac && ac[0]) {
+            kitty_autocommand_rearm();
+            SetTimer(wgs->term_hwnd, TIMER_AUTOCOMMAND,
+                     init_delay > 0 ? init_delay : 1500, NULL);
         }
     }
 #endif
