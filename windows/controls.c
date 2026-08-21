@@ -639,6 +639,49 @@ void staticedit(struct ctlpos *cp, const char *stext,
     staticedit_internal(cp, stext, sid, eid, percentedit, 0);
 }
 
+/* KiTTY: staticedit's row with a pushbutton appended - label, edit and
+ * button on ONE line. editbutton() is not that: it stacks the label on its
+ * own line above, which grows the dialog by a row. percentedit is the
+ * edit's share as in staticedit; percentbtn comes off the edit's right. */
+void staticeditbutton(struct ctlpos *cp, const char *stext,
+                      int sid, int eid, int percentedit,
+                      const char *btext, int bid, int percentbtn)
+{
+    const int height = (EDITHEIGHT > PUSHBTNHEIGHT ?
+                        EDITHEIGHT : PUSHBTNHEIGHT);
+    RECT r;
+    int lwid, rpos, bwid, bpos;
+
+    rpos = GAPBETWEEN + (100 - percentedit) * (cp->width + GAPBETWEEN) / 100;
+    lwid = rpos - 2 * GAPBETWEEN;
+    bwid = percentbtn * (cp->width + GAPBETWEEN) / 100;
+    bpos = cp->width + GAPBETWEEN - bwid;
+
+    r.left = GAPBETWEEN;
+    r.top = cp->ypos + (height - STATICHEIGHT) / 2;
+    r.right = lwid;
+    r.bottom = STATICHEIGHT;
+    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+
+    r.left = rpos;
+    r.top = cp->ypos + (height - EDITHEIGHT) / 2;
+    r.right = bpos - GAPBETWEEN - rpos;
+    r.bottom = EDITHEIGHT;
+    doctl(cp, r, "EDIT",
+          WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+          WS_EX_CLIENTEDGE, "", eid);
+
+    r.left = bpos;
+    r.top = cp->ypos + (height - PUSHBTNHEIGHT) / 2;
+    r.right = bwid;
+    r.bottom = PUSHBTNHEIGHT;
+    doctl(cp, r, "BUTTON",
+          WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+          0, btext, bid);
+
+    cp->ypos += height + GAPBETWEEN;
+}
+
 void staticpassedit(struct ctlpos *cp, const char *stext,
                     int sid, int eid, int percentedit)
 {

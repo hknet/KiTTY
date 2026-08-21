@@ -950,6 +950,10 @@ enum {
     IDC_EXPORT_OPENSSH_AUTO, IDC_EXPORT_OPENSSH_NEW,
     IDC_EXPORT_SSHCOM,
     IDC_ADDCERT, IDC_REMCERT,
+    /* KiTTY: appended at the END on purpose - inserting an id mid-enum
+     * renumbers every control after it, and external tooling (the QA
+     * harness, for one) addresses controls by NUMBER. */
+    IDC_ADDCONFIRM,
 };
 
 static void setupbigedit1(HWND hwnd, RSAKey *key)
@@ -1016,7 +1020,7 @@ static const int nokey_ids[] = { IDC_NOKEY, 0 };
 static const int generating_ids[] = { IDC_GENERATING, IDC_PROGRESS, 0 };
 static const int gotkey_ids_unconditional[] = {
     IDC_FPSTATIC, IDC_FINGERPRINT,
-    IDC_COMMENTSTATIC, IDC_COMMENTEDIT,
+    IDC_COMMENTSTATIC, IDC_COMMENTEDIT, IDC_ADDCONFIRM,
     IDC_PASSPHRASE1STATIC, IDC_PASSPHRASE1EDIT,
     IDC_PASSPHRASE2STATIC, IDC_PASSPHRASE2EDIT, 0
 };
@@ -1938,8 +1942,14 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                        IDC_FINGERPRINT, 82);
             SendDlgItemMessage(hwnd, IDC_FINGERPRINT, EM_SETREADONLY, 1,
                                0);
-            staticedit(&cp, "Key &comment:", IDC_COMMENTSTATIC,
-                       IDC_COMMENTEDIT, 82);
+            /* KiTTY: the comment ROW carries the "Add confirmation" button -
+             * same single line as before, the edit just shrinks to make
+             * room. kageant uses the key COMMENT as the confirm-on-use
+             * switch, and a magic word nobody can see is not a feature: the
+             * button appends it, and the tip below says what it means. */
+            staticeditbutton(&cp, "Key &comment:", IDC_COMMENTSTATIC,
+                             IDC_COMMENTEDIT, 82,
+                             "Add confirmation", IDC_ADDCONFIRM, 28);
             statictext(&cp, "Tip: include the word \"confirmation\" in the "
                        "comment so kageant asks before each use.", 1,
                        IDC_COMMENTHINT);
@@ -2144,6 +2154,25 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
           }
           case IDC_QUIT:
             PostMessage(hwnd, WM_CLOSE, 0, 0);
+            break;
+          case IDC_ADDCONFIRM:
+            /* KiTTY: append the confirm-on-use marker to the comment, unless
+             * a marker is already there - kageant matches the comment by
+             * SUBSTRING (kageant_comment_wants_confirm in kitty_pageant.c:
+             * "confirmation", "need confirm", "needs confirm"; keep this
+             * check in sync with it). Setting the edit text fires EN_CHANGE,
+             * so the stored comment and the public-key line update through
+             * the same path typing does. */
+            if (HIWORD(wParam) == BN_CLICKED) {
+                char buf[512];
+                GetDlgItemText(hwnd, IDC_COMMENTEDIT, buf, sizeof(buf) - 16);
+                if (!strstr(buf, "confirmation") &&
+                    !strstr(buf, "need confirm") &&
+                    !strstr(buf, "needs confirm")) {
+                    strcat(buf, buf[0] ? " confirmation" : "confirmation");
+                    SetDlgItemText(hwnd, IDC_COMMENTEDIT, buf);
+                }
+            }
             break;
           case IDC_COMMENTEDIT:
             if (HIWORD(wParam) == EN_CHANGE) {
@@ -2640,6 +2669,14 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
          * Finally, hide the progress bar and show the key data.
          */
         ui_set_state(hwnd, state, 2);
+        /* KiTTY: put the keyboard somewhere. The Generate button was
+         * disabled while it still had the focus, so after generation NO
+         * control had it - Tab went nowhere and only beeped. The passphrase
+         * field is the natural next stop before saving. WM_NEXTDLGCTL, not a
+         * bare SetFocus, so the dialog manager's default-button state stays
+         * consistent. */
+        SendMessage(hwnd, WM_NEXTDLGCTL,
+                    (WPARAM)GetDlgItem(hwnd, IDC_PASSPHRASE1EDIT), TRUE);
         /* KiTTY: the UI above is fully updated - swap the freshly generated
          * private key out of memory for the encrypted blob + public
          * stand-in. free_current_ssh2_key() inside knows the generated key

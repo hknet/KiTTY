@@ -13,9 +13,9 @@
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
-  <Package Name="KiTTY 0.85.1.1-beta (per-user install)"
+  <Package Name="KiTTY 0.85.1.2-beta (per-user install)"
            Manufacturer="KAPPER NETWORK-COMMUNICATIONS GmbH"
-           Version="0.85.101"
+           Version="0.85.102"
            UpgradeCode="578952A6-AA7F-4146-918B-47803234700B"
            Scope="perUser"
            Compressed="yes">

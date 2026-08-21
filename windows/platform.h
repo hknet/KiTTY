@@ -543,6 +543,9 @@ void ersatztab(struct ctlpos *cp, const char *stext, int sid, int lid,
                int s2id);
 void editbutton(struct ctlpos *cp, const char *stext, int sid,
                 int eid, const char *btext, int bid);
+void staticeditbutton(struct ctlpos *cp, const char *stext,
+                      int sid, int eid, int percentedit,
+                      const char *btext, int bid, int percentbtn);
 void sesssaver(struct ctlpos *cp, const char *text,
                int staticid, int editid, int listid, ...);
 void envsetter(struct ctlpos *cp, const char *stext, int sid,

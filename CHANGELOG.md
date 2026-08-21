@@ -7,6 +7,17 @@ see [FEATURES.md](FEATURES.md).
 
 ## 0.85.1.2-beta — 2026-08-21
 
+### New
+
+- **KiTTYgen: an "Add confirmation" button beside the key comment.** kageant
+  asks before each use of a key whose comment carries the word
+  "confirmation" — a feature that was invisible unless you knew the magic
+  word. The button appends it (and does nothing if a confirm marker is
+  already there), so a key can be made confirm-on-use the moment it is
+  created. Also fixed there: after generating a key, no control had the
+  keyboard focus — Tab went nowhere and only beeped; the passphrase field
+  takes the focus now.
+
 ### Fixed
 
 - **kageant never blocks itself with a message box you didn't ask for.** A
