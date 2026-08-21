@@ -39,6 +39,13 @@ see [FEATURES.md](FEATURES.md).
   moment that script finishes, instead of up to one and a half seconds
   later. (hknet/KiTTY#36)
 
+- **A login script read from a file survives without password protection.**
+  In a portable install with `PortablePasswordProtection=legacy`, a login
+  script given as a file (Connection → Data) worked on its first connect and
+  then silently never again: KiTTY inlines the file into the session, and the
+  unprotected stored form was misread as old-style scrambled content on the
+  way back. Installs using the default protection were not affected.
+
 - **Correcting a Ctrl+G search no longer ends it.** In folder-navigation mode,
   Ctrl+G searches across every folder — but deleting a mistyped letter back to
   an empty box silently dropped the search back to the current folder, so the

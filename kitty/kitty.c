@@ -2886,6 +2886,7 @@ void ReadAutoCommandFromFile( const char * filename ) {
  * NUL-separated blob rather than a C string. kitty_proxy.c declares the wrap the
  * same way - these live in kitty_storage.c but not all of them in its header. */
 extern char *kitty_secret_wrap_current_backend( const char *plaintext ) ;
+extern int kitty_secret_is_marked( const char *stored ) ;
 extern char *ksec_b64_encode( const unsigned char *in, int len ) ;
 extern unsigned char *ksec_b64_decode( const char *in, int *outlen ) ;
 extern int ksec_unprotect( const char *stored, char **out ) ;
@@ -2916,7 +2917,8 @@ char *kitty_loginscript_to_text( const char *stored )
 	 * path in a content box would invite someone to "correct" it. */
 	if( existfile( (char*)stored ) ) return dupstr( "" ) ;
 
-	if( !ksec_stored_is_legacy( stored ) &&
+	if( (!ksec_stored_is_legacy( stored ) ||
+	     !strncmp( stored, "PLAIN:", 6 )) &&    /* see ReadInitScript */
 	    ksec_unprotect( stored, &plain ) > 0 && plain && plain[0] ) {
 		blob = ksec_b64_decode( plain, &blen ) ;
 	} else {
@@ -3011,6 +3013,22 @@ void ReadInitScript( const char * filename ) {
 				{
 					char *b64 = ksec_b64_encode( (const unsigned char*)ScriptFileContent, (int)l ) ;
 					char *wrapped = b64 ? kitty_secret_wrap_current_backend( b64 ) : NULL ;
+					/*
+					 * The stored form MUST carry a marker, whatever the backend. In
+					 * PortablePasswordProtection=legacy mode the wrap hands the base64
+					 * back UNMARKED - right for passwords, whose legacy format is the
+					 * bare value - but the reader above classifies an unmarked script
+					 * as pre-change content scrambled with the compiled-in constant
+					 * and "decrypts" it into garbage: the login script silently died
+					 * on the connect after the one that inlined it. PLAIN: is the
+					 * marker that says stored-as-is (KITTY_SECRET_PLAIN_MARK).
+					 */
+					if( wrapped && wrapped[0] && !kitty_secret_is_marked( wrapped ) ) {
+						char *marked = (char*) malloc( strlen(wrapped) + 7 ) ;
+						sprintf( marked, "PLAIN:%s", wrapped ) ;
+						free( wrapped ) ;
+						wrapped = marked ;
+					}
 					if( wrapped ) {
 						conf_set_str( conf, CONF_scriptfilecontent, wrapped ) ;
 						free( wrapped ) ;
@@ -3036,9 +3054,13 @@ void ReadInitScript( const char * filename ) {
 			 * ksec_unprotect returns 1 for an unmarked value too, handing it back
 			 * verbatim ("unmarked legacy == plaintext"), so branching on its
 			 * return sends every pre-existing scrambled script down the base64
-			 * path and breaks it. ksec_stored_is_legacy tests the markers.
+			 * path and breaks it. ksec_stored_is_legacy tests the markers -
+			 * except PLAIN:, which it deliberately does not know (passwords'
+			 * legacy format IS the bare value), so that one is tested here:
+			 * a PLAIN: script is stored-as-is base64, not scrambled content.
 			 */
-			if( !ksec_stored_is_legacy( name ) &&
+			if( (!ksec_stored_is_legacy( name ) ||
+			     !strncmp( name, "PLAIN:", 6 )) &&
 			    ksec_unprotect( name, &plain ) > 0 && plain && plain[0] ) {
 				int blen = 0 ;
 				unsigned char *raw = ksec_b64_decode( plain, &blen ) ;
