@@ -512,6 +512,25 @@ static INT_PTR CALLBACK PassphraseProc(HWND hwnd, UINT msg,
 void old_keyfile_warning(void)
 {
     static const char mbtitle[] = "PuTTY Key File Warning";
+    /* KiTTY: during the STARTUP key load nobody clicked anything, and a
+     * modal here takes the agent off the air the same way the startup-load
+     * failure box did (see the notice above kageant_startup_loading() in
+     * win_add_keyfile) - an old-format key in the startup list would pop
+     * this at every login. Same sorting as the rest of the audit: a box in
+     * answer to a click stays a box; one the agent raises on its own becomes
+     * a notice. */
+    if (kageant_startup_loading()) {
+        if (traywindow)
+            kitty_notice_show(
+                "kageant: a remembered key uses the old file format",
+                "A key in the startup list is an SSH-2 key in the old PPK "
+                "format, which is not fully tamperproof and may stop being "
+                "supported. Load it into KiTTYgen and save it again to "
+                "convert it.",
+                KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
+                traywindow, KAGEANT_WM_NOTICE_CLICK);
+        return;
+    }
     static const char message[] =
         "You are loading an SSH-2 private key which has an\n"
         "old version of the file format. This means your key\n"
@@ -4398,10 +4417,17 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * keys), complain.
      */
     if (already_running) {
-        if (!command && !nclkeys) {
-            MessageBox(NULL, "kageant is already running", "kageant Error",
-                       MB_ICONERROR | MB_OK);
-        }
+        /* A BARE second instance exits SILENTLY now. The old "kageant is
+         * already running" box treated it as a user error, but a bare
+         * duplicate is an EXPECTED event on this fork: the MSI's Restart
+         * Manager relaunches kageant.exe with no arguments after an upgrade,
+         * and Windows' own restart-apps machinery does the same at login -
+         * both while the autostart entry starts one too, so every upgrade or
+         * restart popped the box at whoever logged in next. Keys or a
+         * command on the line were always handed to the running agent and
+         * exited quietly (that is the path above); the bare start now gets
+         * the same quiet exit - the tray icon of the running agent is the
+         * answer to "did it start?". */
         return 0;
     }
 

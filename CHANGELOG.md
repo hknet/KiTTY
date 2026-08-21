@@ -9,6 +9,16 @@ see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- **kageant never blocks itself with a message box you didn't ask for.** A
+  modal dialog stops the agent from answering requests while it is up, so
+  every ssh/git/scp call waits on it. The old-key-format warning could
+  appear during the automatic key load at login — it is a self-dismissing
+  notice there now. And a second kageant started with no arguments exits
+  quietly instead of complaining "already running": upgrades and Windows'
+  restart-apps machinery legitimately start one beside the autostart, and
+  keys passed on the command line were always handed to the running agent
+  silently.
+
 - **kageant and KiTTYgen say so when in-memory key protection is not
   working.** SSH-2 private keys are normally held `CryptProtectMemory`-
   encrypted; when that API fails — which on a normal Windows it never does —
