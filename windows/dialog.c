@@ -806,6 +806,73 @@ static struct kitty_cfg_panel *kitty_cfg_panel_create(
     return p;
 }
 
+/* Shortcut registration alone, without touching window visibility - the
+ * warm-up below needs the two separated. */
+static void kitty_cfg_panel_shortcuts(struct dlgparam *dp,
+                                      struct kitty_cfg_panel *p, bool add)
+{
+    for (size_t i = 0; i < p->nctrls; i++) {
+        if (add)
+            winctrl_add_shortcuts(dp, p->ctrls[i]);
+        else
+            winctrl_rem_shortcuts(dp, p->ctrls[i]);
+    }
+}
+
+/*
+ * Background warm-up: build one not-yet-cached panel, hidden, per call.
+ * Driven by a timer armed after the box opens, so that by the time the user
+ * clicks a category its panel already exists and the switch costs a
+ * show/hide, not a build - first visits become as fast as revisits.
+ *
+ * Two things make this safe:
+ *  - the whole step runs inside one message dispatch with the dialog's
+ *    redraw OFF. The new controls are created and hidden before any WM_PAINT
+ *    can run, and invalidations queued against a redraw-off window are
+ *    DISCARDED, so the visible panel's pixels are never touched and nothing
+ *    repaints when redraw comes back on;
+ *  - creation registers the new panel's keyboard shortcuts as a side effect
+ *    of layout, and the VISIBLE panel is holding its own letters - the same
+ *    letter on both would trip winctrl_add_shortcuts' collision assert. So
+ *    the visible panel's shortcuts are parked for the duration of the step
+ *    and restored afterwards; no user input can arrive mid-dispatch.
+ *
+ * The warm panel gets NO refresh here: the show-time EVENT_REFRESH contract
+ * (see the cache comment above) supplies its values on first visit, exactly
+ * as it does for a revisit.
+ *
+ * Returns false when every panel is cached and the timer can stop.
+ */
+static bool kitty_cfg_warmup_step(PortableDialogStuff *pds)
+{
+    char *path = NULL;
+    for (int i = 0; i < pds->ctrlbox->nctrlsets; i++) {
+        struct controlset *s = pds->ctrlbox->ctrlsets[i];
+        if (!s->pathname[0])
+            continue;
+        if (kitty_cfg_panel_find(s->pathname))
+            continue;              /* also skips same-path siblings: once the
+                                    * first ctrlset's panel is built, find()
+                                    * answers for the rest of its path */
+        path = s->pathname;
+        break;
+    }
+    if (!path)
+        return false;
+
+    SendMessage(pds->dp->hwnd, WM_SETREDRAW, false, 0);
+    if (kitty_cfg_active_panel)
+        kitty_cfg_panel_shortcuts(pds->dp, kitty_cfg_active_panel, false);
+    {
+        struct kitty_cfg_panel *p = kitty_cfg_panel_create(pds, path);
+        kitty_cfg_panel_show(pds->dp, p, false);
+    }
+    if (kitty_cfg_active_panel)
+        kitty_cfg_panel_shortcuts(pds->dp, kitty_cfg_active_panel, true);
+    SendMessage(pds->dp->hwnd, WM_SETREDRAW, true, 0);
+    return true;
+}
+
 /* The winctrl structures themselves belong to the TREE_PANEL tree and are
  * freed with it in pds_free; this frees only the cache's own bookkeeping.
  * Runs at both open and close of the box, so a cache can never leak from one
@@ -915,6 +982,7 @@ const char *kitty_cfgbox_wanted_panel(void);         /* kitty_config.c / stub:
                                                       * panel path to open on,
                                                       * or NULL for the first */
 #define KITTY_WORKPLACE_POLL_TIMER 8730
+#define KITTY_PANEL_WARMUP_TIMER 8731
 bool kitty_config_select_root_folder(dlgparam *dp); /* kitty_config.c / stub */
 void kitty_config_end_folder_rename(dlgparam *dp);  /* kitty_config.c / stub */
 static HHOOK kitty_cfg_kbdhook = NULL;
@@ -1258,11 +1326,22 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
          * nothing in the stock variants. */
         SetTimer(hwnd, KITTY_WORKPLACE_POLL_TIMER, 1000, NULL);
 
+        /* KiTTY: warm the panel cache in the background - one hidden panel
+         * per tick, so first visits cost a show, not a build. Not in demo-
+         * screenshot mode, whose box exists only to be photographed once. */
+        if (!dialog_box_demo_screenshot_filename)
+            SetTimer(hwnd, KITTY_PANEL_WARMUP_TIMER, 120, NULL);
+
         pds_initdialog_finish(pds);
         return 0;
       }
 
       case WM_TIMER:
+        if ((UINT_PTR)wParam == KITTY_PANEL_WARMUP_TIMER) {
+            if (!kitty_cfg_warmup_step(pds))
+                KillTimer(hwnd, KITTY_PANEL_WARMUP_TIMER);
+            return 0;
+        }
         if ((UINT_PTR)wParam == KITTY_WORKPLACE_POLL_TIMER) {
             kitty_cfgbox_workplace_poll(pds->dp);
             return 0;

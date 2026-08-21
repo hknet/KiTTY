@@ -5,6 +5,16 @@ and enhanced **PuTTY 0.85** core. Versions below are this port's own `0.85.1.x` 
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.2-beta — 2026-08-21
+
+### Faster
+
+- **The configuration window pre-builds its panels in the background.** Panels
+  are cached since 0.85.1.1; now the box quietly builds the not-yet-visited
+  ones while it sits open, one every 120 ms, so by the time you click a
+  category its panel already exists. Every switch — first visit or revisit —
+  now costs about 40 ms (from 94 ms two releases ago).
+
 ## 0.85.1.1-beta — 2026-08-21
 
 ### Faster
