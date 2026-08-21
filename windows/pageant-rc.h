@@ -39,6 +39,7 @@
 #define IDC_KEYDETAIL_LIFETIME_LBL 108
 #define IDC_KEYDETAIL_CONFIRM 109
 #define IDC_KEYDETAIL_ACCEPT 110    /* adopt a changed key file (mismatch rows) */
+#define IDC_KEYDETAIL_LOCATE 111    /* re-point an absent/unparseable entry */
 
 #define IDC_PASSPHRASE_STATIC1 100
 #define IDC_PASSPHRASE_FINGERPRINT 101

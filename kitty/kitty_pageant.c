@@ -1878,6 +1878,85 @@ int kageant_accept_pending_key(const char *path)
 }
 
 /*
+ * The user has pointed a not-loaded startup entry at a file they chose - the
+ * key details' "Locate..." button, offered only on a row whose recorded file
+ * is ABSENT or UNPARSEABLE. Never on a mismatch: "Accept this key" owns that
+ * case and is deliberately the only place a changed key file can be ratified.
+ *
+ * The entry is rewritten IN PLACE - it keeps its slot in the offer order and
+ * its confirm marker, which Remove + Add Key would both lose. An entry with a
+ * recorded fingerprint accepts only a file holding THAT key; an entry with
+ * none adopts the chosen file's fingerprint - the user picked this very file,
+ * which is the same consent Add Key rests on.
+ *
+ * If the same key is recorded at several locations and ALL are unreachable,
+ * they collapse into the one just chosen: there is no way to tell a
+ * deliberate second location from the same key added off three different
+ * sticks. Consequence accepted: a temporarily-down network share among them
+ * is forgotten and would need a fresh Add Key.
+ *
+ * Returns 1 loaded and re-pointed, 0 the chosen file holds a DIFFERENT key
+ * (refused, nothing changed), -1 nothing could be loaded from it at all.
+ */
+int kageant_locate_pending_key(const char *oldpath, const char *newpath)
+{
+    int i, j, v;
+    char fp[160];
+
+    for (i = 0; i < g_npending; i++)
+        if (!stricmp(g_pending[i].path, oldpath))
+            break;
+    if (i >= g_npending || g_pending[i].mismatch)
+        return -1;
+
+    if (g_pending[i].fp[0]) {
+        snprintf(fp, sizeof(fp), "%s", g_pending[i].fp);
+    } else {
+        /* Adopt what the chosen file holds; passing it through the loader's
+         * verify step still catches the file changing between this read and
+         * the load. */
+        char *actual = kageant_fp_of_file(newpath);
+        if (!actual)
+            return -1;
+        snprintf(fp, sizeof(fp), "%s", actual);
+        sfree(actual);
+    }
+
+    v = kageant_load_startup_entry(newpath, g_pending[i].encrypted, fp);
+    if (v != 1)
+        return v;          /* 0 = a different key; -1 = would not load */
+
+    if (g_pending[i].confirm)
+        kageant_apply_confirm_by_path(newpath);
+
+    /*
+     * Off the pending list - and every other UNREACHABLE entry recording the
+     * same key goes with it: the chosen location replaces them all. Spliced
+     * by hand rather than through kageant_drop_pending() for the same reason
+     * as the accept path - this is a re-pointing, not a removal, and the
+     * stored entry must never blink out between two writes.
+     */
+    {
+        int w = 0;
+        for (j = 0; j < g_npending; j++) {
+            int drop = (j == i) ||
+                (g_pending[j].fp[0] && !strcmp(g_pending[j].fp, fp) &&
+                 GetFileAttributesA(g_pending[j].path) ==
+                     INVALID_FILE_ATTRIBUTES);
+            if (!drop) {
+                if (w != j) g_pending[w] = g_pending[j];
+                w++;
+            }
+        }
+        g_npending = w;
+    }
+    kageant_save_startup_keys();
+    kageant_apply_saved_order();
+    kageant_refresh_tray_tip();
+    return 1;
+}
+
+/*
  * KiTTY: somebody just asked for our keys while we are holding one back.
  *
  * This is the moment a refused key actually costs something - the login that

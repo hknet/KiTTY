@@ -100,6 +100,10 @@ char *kageant_fp_of_file(const char *path);
 /* the user accepted a changed key in the key list: load it and adopt the new
  * fingerprint. The ONLY path that ever adopts one - see the comment there. */
 int kageant_accept_pending_key(const char *path);
+/* the user browsed a not-loaded (absent/unparseable, never mismatch) entry to
+ * a file: load it, keep slot + confirm marker, rewrite the path in place.
+ * 1 = done, 0 = the file holds a different key (refused), -1 = would not load */
+int kageant_locate_pending_key(const char *oldpath, const char *newpath);
 /* report a load pass: keys newly refused, keys loaded with nothing to check
  * against, and keys whose path appeared on a new drive but with no recorded
  * fingerprint to admit them by. A notice, never a prompt. */

@@ -21,6 +21,14 @@ see [FEATURES.md](FEATURES.md).
   file with no recorded fingerprint to check against, or with the wrong one,
   is refused and reported.
 
+- **Key details: a "Locate..." button re-points a not-loaded startup entry at
+  the file you browse to.** Offered only when the recorded file is absent or
+  will not parse — never on a fingerprint mismatch, where "Accept this key"
+  stays the one place a changed file can be ratified. The entry keeps its
+  place in the offer order and its confirm-on-use marker, which removing and
+  re-adding the key would lose; an entry with a recorded fingerprint accepts
+  only a file holding that key.
+
 ## 0.85.1.2-beta — 2026-08-21
 
 ### New

@@ -1461,6 +1461,7 @@ static const struct kl_anchor keydetail_anchors[] = {
     {IDC_KEYDETAIL_COMMENT, KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KEYDETAIL_PATHS,
      KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_LOCATE,  KL_ANCH_RIGHT | KL_ANCH_TOP},
     {IDC_KEYDETAIL_LIFETIME_LBL, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYDETAIL_LIFETIME,
      KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
@@ -1741,6 +1742,19 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                          "%s", disp->hash->s);
         }
 
+        /* KiTTY: re-pointing a not-loaded entry at a file the user browses
+         * to. Absent or unparseable rows ONLY - never a mismatch, where the
+         * file's presence is exactly the problem and Accept above is the one
+         * sanctioned answer. */
+        {
+            HWND loc = GetDlgItem(hwnd, IDC_KEYDETAIL_LOCATE);
+            int can_locate = disp->pending &&
+                (disp->state == KEYSTATE_MISSING ||
+                 disp->state == KEYSTATE_FAILED);
+            ShowWindow(loc, can_locate ? SW_SHOW : SW_HIDE);
+            EnableWindow(loc, can_locate);
+        }
+
         /* KiTTY: the Lifetime line, ticking while the dialog is open. */
         keydetail_blob = strbuf_dup(ptrlen_from_strbuf(disp->blob));
         {
@@ -1874,6 +1888,52 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             /* cleared, or the IDOK/WM_CLOSE paths free it a second time */
             SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)NULL);
             EndDialog(hwnd, 1);
+            return 0;
+          }
+          case IDC_KEYDETAIL_LOCATE: {
+            /*
+             * KiTTY: browse for the file this entry should point at. The
+             * heavy lifting - fingerprint check, in-place rewrite, collapsing
+             * other unreachable locations of the same key - is
+             * kageant_locate_pending_key(); this is only the file picker and
+             * the two refusal messages.
+             */
+            char *keypath = (char *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+            Filename *fn;
+            char *newpath;
+            int r;
+
+            if (!keypath)
+                return 0;
+            fn = request_file(hwnd, "Locate the key file", NULL, false,
+                              NULL, false, FILTER_KEY_FILES);
+            if (!fn)
+                return 0;
+            newpath = dupstr(filename_to_str(fn));
+            filename_free(fn);
+
+            r = kageant_locate_pending_key(keypath, newpath);
+            if (r == 1) {
+                keylist_update();
+                kitty_auxpos_save(hwnd, "kageantKeyDetails");
+                sfree(newpath);
+                sfree(keypath);
+                /* cleared, or IDOK/WM_CLOSE free it a second time */
+                SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)NULL);
+                EndDialog(hwnd, 1);
+                return 0;
+            }
+            MessageBox(hwnd,
+                       r == 0 ?
+                       "That file holds a DIFFERENT key, not the one recorded "
+                       "for this entry - nothing was changed. Add Key loads "
+                       "it as a new key; this button only re-points the entry "
+                       "at its own key." :
+                       "No key could be loaded from that file, so nothing "
+                       "was changed.",
+                       "kageant - not re-pointed", MB_ICONWARNING | MB_OK);
+            sfree(newpath);
+            keylist_update();
             return 0;
           }
           case IDOK:

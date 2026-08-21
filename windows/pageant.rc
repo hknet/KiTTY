@@ -134,8 +134,11 @@ BEGIN
     EDITTEXT IDC_KEYDETAIL_COMMENT, 66, 92, 344, 26,
         ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL
     LTEXT "Loaded from:", -1, 10, 124, 52, 8
-    EDITTEXT IDC_KEYDETAIL_PATHS, 66, 122, 344, 56,
+    EDITTEXT IDC_KEYDETAIL_PATHS, 66, 122, 284, 56,
         ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_VSCROLL
+    /* KiTTY: re-point a not-loaded entry whose file is absent or will not
+     * parse. Never shown on a mismatch - Accept below owns that case. */
+    PUSHBUTTON "&Locate...", IDC_KEYDETAIL_LOCATE, 356, 122, 54, 14
     LTEXT "Lifetime:", IDC_KEYDETAIL_LIFETIME_LBL, 10, 184, 52, 8
     EDITTEXT IDC_KEYDETAIL_LIFETIME, 66, 182, 344, 12,
         ES_READONLY | ES_AUTOHSCROLL
