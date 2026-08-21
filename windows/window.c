@@ -877,10 +877,18 @@ static void start_backend(WinGuiSeat *wgs)
      * each other's output - the timer handler polls until the login script has
      * run out and only then starts this one (see the TIMER_SCRIPT handler).
      */
+    wgs->script_deferred = false;
     if (conf_get_int(wgs->conf, CONF_script_mode) == 1) {
         Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
         if (sf && filename_to_str(sf)[0]) {
             if (ScriptFileContent != NULL && ScriptFileContent[0]) {
+                /* Defer to the login script. The real start is in
+                 * win_seat_output, the moment that script consumes its last
+                 * entry - waiting for a TIMER tick there would reopen the
+                 * missed-prompt race this block exists to close. The timer is
+                 * kept only as the bounded fallback for a login script whose
+                 * prompt never arrives. */
+                wgs->script_deferred = true;
                 wgs->script_defer_ticks = 0;
                 SetTimer(wgs->term_hwnd, TIMER_SCRIPT, 1500, NULL);
             } else if (kitty_script_enabled()) {
@@ -4126,6 +4134,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                     "the rutty script (Session > Scripting) anyway - if the "
                     "automation misbehaves, that is why");
             }
+            /* This tick takes over the start (normally the exhaustion hook in
+             * win_seat_output gets there first and this timer is disarmed);
+             * either way the hook must not fire again afterwards. */
+            wgs->script_deferred = false;
             if (wgs->backend && kitty_script_enabled()) {
                 Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
                 kitty_script_send_file(wgs->conf, wgs->backend, sf);
@@ -9073,6 +9085,26 @@ static size_t win_seat_output(Seat *seat, SeatOutputType type,
          */
         if (!GetPuttyFlag() && ScriptFileContent != NULL && type == SEAT_OUTPUT_STDOUT)
             ManageInitScript(data, len);
+        /*
+         * A rutty script deferred behind that login script starts HERE, the
+         * moment the login script has consumed its last entry - still inside
+         * the processing of the chunk whose match consumed it. Whatever the
+         * login script's final send provokes needs a server round trip and so
+         * arrives in a LATER chunk, which the engine is now observing; a
+         * timer tick instead of this reopened the missed-prompt race for any
+         * first step that waits. The fallback timer is disarmed with it.
+         */
+        if (wgs->script_deferred &&
+            !(ScriptFileContent != NULL && ScriptFileContent[0])) {
+            wgs->script_deferred = false;
+            KillTimer(wgs->term_hwnd, TIMER_SCRIPT);
+            if (kitty_script_enabled() &&
+                conf_get_int(wgs->conf, CONF_script_mode) == 1) {
+                Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
+                if (sf && filename_to_str(sf)[0])
+                    kitty_script_send_file(wgs->conf, wgs->backend, sf);
+            }
+        }
 #endif
         return consumed;
     }

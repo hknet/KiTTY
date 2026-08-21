@@ -111,6 +111,15 @@ struct WinGuiSeat {
                               * race; this bounds the wait so a login script whose
                               * prompt never arrives cannot hold rutty off for
                               * ever. */
+    bool script_deferred;    /* KiTTY: a rutty script is waiting for the login
+                              * script above to run out, and is started the moment
+                              * it does - from win_seat_output, inside the chunk
+                              * whose match consumed the last entry, so the engine
+                              * observes everything the login script's final send
+                              * provokes. The TIMER_SCRIPT poll remains only as
+                              * the bounded fallback for a login script that never
+                              * finishes. Like the fields above, NOT inside an
+                              * #ifdef: one struct, one layout. */
     bool autopw_tried;       /* KiTTY auto-login: the stored CONF_password has been
                               * auto-answered once on THIS connection. Prevents
                               * re-sending a rejected password on every server

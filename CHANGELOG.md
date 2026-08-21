@@ -34,7 +34,10 @@ see [FEATURES.md](FEATURES.md).
   half seconds after connecting. On a fast link the prompt had already been
   printed by then, so the script silently timed out without typing anything,
   while the same session worked against a distant server. The engine now
-  starts before the connection's first byte can arrive. (hknet/KiTTY#36)
+  starts before the connection's first byte can arrive — and when a login
+  script (Connection → Data) runs first, the scripting engine takes over the
+  moment that script finishes, instead of up to one and a half seconds
+  later. (hknet/KiTTY#36)
 
 - **Correcting a Ctrl+G search no longer ends it.** In folder-navigation mode,
   Ctrl+G searches across every folder — but deleting a mistyped letter back to
