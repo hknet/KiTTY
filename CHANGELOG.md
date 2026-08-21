@@ -19,6 +19,16 @@ see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- **Installer: shortcut bookkeeping moved to `Software\kapper.net\KiTTY-installer`,
+  and the system-wide installer tracks its Startup shortcut machine-wide.**
+  The old bookkeeping key carried this project's internal porting name
+  (`Software\KiTTY-0.84-port`); upgrading removes it. In the system-wide MSI
+  the autostart shortcut for the launcher was additionally tracked in the
+  *installing user's* registry although it applies to every account — the
+  cause of "Warning 1946" during installation on some machines, and of an
+  uninstall run by a different administrator leaving the shortcut behind. It
+  is now tracked machine-wide, like the other shortcuts.
+
 - **A session's script starts on every connect (again), not just once.**
   With *Run the script on connect* ticked under **Session → Scripting**, the
   script ran when the session first connected and never again - a session

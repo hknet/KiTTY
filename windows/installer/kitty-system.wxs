@@ -87,7 +87,7 @@
     </ComponentGroup>
 
     <DirectoryRef Id="ShortcutDir">
-      <Component Id="c_shortcuts" Guid="B1B2C3D4-0084-4005-9002-000000000001">
+      <Component Id="c_shortcuts" Guid="B1B2C3D4-0085-4005-9002-000000000001">
         <Shortcut Id="sc_kitty" Name="KiTTY" Target="[INSTALLFOLDER]kitty.exe" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTY" />
         </Shortcut>
@@ -110,12 +110,21 @@
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYLauncher" />
         </Shortcut>
         <RemoveFolder Id="rm_ShortcutDir" Directory="ShortcutDir" On="uninstall" />
-        <!-- The "0.84" in this key name is bookkeeping, not a version: it is the
-             KeyPath of this component, so renaming it in an upgrade orphans the
-             old value rather than moving it, and uninstall would leave it
-             behind. Renaming it is its own piece of work, planned separately,
-             not something to slip into a release build. -->
-        <RegistryValue Root="HKLM" Key="Software\KiTTY-0.84-port" Name="smdir" Type="string" Value="" KeyPath="yes" />
+        <!-- Shortcut bookkeeping lives under Software\kapper.net\KiTTY-installer,
+             a SIBLING of the application's own hive, never inside it: the
+             per-user MSI writes its KeyPaths at INSTALL time, and creating the
+             app hive before first run would disarm the first-run restore/adopt
+             logic; /delreg deletes the app subtree and savemode=file renames
+             it, either of which would silently destroy KeyPaths placed there.
+             All GUIDs in this file are NEW with this key (component rules:
+             a KeyPath change is a new component); the old
+             Software\KiTTY-0.84-port key is removed below - HKLM ONLY. The
+             HKCU copy of that key belongs to the per-user package (its
+             components' KeyPaths), so this package must not touch it even to
+             clean up: a not-yet-upgraded per-user install would break. -->
+        <RegistryValue Root="HKLM" Key="Software\kapper.net\KiTTY-installer" Name="smdir" Type="string" Value="" KeyPath="yes" />
+        <RemoveRegistryKey Root="HKLM" Key="Software\KiTTY-0.84-port" Action="removeOnInstall" />
+        <RemoveRegistryKey Root="HKLM" Key="Software\kapper.net\KiTTY-installer" Action="removeOnUninstall" />
       </Component>
     </DirectoryRef>
 
@@ -125,20 +134,30 @@
          autostarts for every account on the machine. The per-user MSI installs
          the same shortcut into just the installing user's Startup. -->
     <StandardDirectory Id="StartupFolder">
-      <Component Id="c_startup_launcher" Guid="B1B2C3D4-0084-4005-9002-000000000003">
+      <!-- HKLM, like this component's two siblings: a per-machine package with
+           an HKCU KeyPath is per-USER bookkeeping on a machine-wide shortcut -
+           installed-state answers wrong for every account but the installing
+           one, an uninstall run by another admin can leave the shortcut behind,
+           and the shortcut-property write ran in a context that does not own
+           the target folder (warning 1946 on some machines). The GUID is NEW
+           because a KeyPath change under the same GUID breaks the component
+           rules. The old HKCU value is deliberately NOT deleted anywhere in
+           this package: the per-user MSI uses the same value as ITS KeyPath,
+           and both packages may be installed at once. -->
+      <Component Id="c_startup_launcher" Guid="B1B2C3D4-0085-4005-9002-000000000003">
         <Shortcut Id="sc_startup_launcher" Name="KiTTY Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYLauncher" />
         </Shortcut>
-        <RegistryValue Root="HKCU" Key="Software\KiTTY-0.84-port" Name="startuplauncher" Type="string" Value="" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="Software\kapper.net\KiTTY-installer" Name="startuplauncher" Type="string" Value="" KeyPath="yes" />
       </Component>
     </StandardDirectory>
 
     <StandardDirectory Id="DesktopFolder">
-      <Component Id="c_desktop" Guid="B1B2C3D4-0084-4005-9002-000000000002">
+      <Component Id="c_desktop" Guid="B1B2C3D4-0085-4005-9002-000000000002">
         <Shortcut Id="sc_desktop" Name="KiTTY" Target="[INSTALLFOLDER]kitty.exe" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTY" />
         </Shortcut>
-        <RegistryValue Root="HKLM" Key="Software\KiTTY-0.84-port" Name="desktop" Type="string" Value="" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="Software\kapper.net\KiTTY-installer" Name="desktop" Type="string" Value="" KeyPath="yes" />
       </Component>
     </StandardDirectory>
 

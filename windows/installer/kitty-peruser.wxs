@@ -65,7 +65,7 @@
 
     <!-- Start-Menu shortcuts (non-advertised; icon = target exe; stable AUMID) -->
     <DirectoryRef Id="ShortcutDir">
-      <Component Id="c_shortcuts" Guid="A1B2C3D4-0084-4005-9001-000000000001">
+      <Component Id="c_shortcuts" Guid="A1B2C3D4-0085-4005-9001-000000000001">
         <Shortcut Id="sc_kitty" Name="KiTTY" Target="[INSTALLFOLDER]kitty.exe" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTY" />
         </Shortcut>
@@ -88,27 +88,43 @@
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYLauncher" />
         </Shortcut>
         <RemoveFolder Id="rm_ShortcutDir" Directory="ShortcutDir" On="uninstall" />
-        <RegistryValue Root="HKCU" Key="Software\KiTTY-0.84-port" Name="smdir" Type="string" Value="" KeyPath="yes" />
+        <!-- Shortcut bookkeeping under Software\kapper.net\KiTTY-installer, a
+             SIBLING of the application's hive, never inside it: these HKCU
+             values are written at INSTALL time, and creating the app hive
+             before KiTTY's first run would disarm the first-run restore/adopt
+             logic (which triggers on the hive NOT existing); /delreg and
+             savemode=file also delete/rename the app subtree, which would
+             destroy KeyPaths placed there. All GUIDs in this file are NEW
+             with this key (a KeyPath change is a new component). The old
+             Software\KiTTY-0.84-port key is removed below - HKCU ONLY, this
+             package's own root; the HKLM copy belongs to the system package.
+             (A not-yet-upgraded SYSTEM install's old HKCU startuplauncher
+             value dies with the key here; its removal decision then misses
+             the KeyPath, but the fixed system MSI rewrites the same-named
+             shortcut on its own upgrade, so the state self-heals.) -->
+        <RegistryValue Root="HKCU" Key="Software\kapper.net\KiTTY-installer" Name="smdir" Type="string" Value="" KeyPath="yes" />
+        <RemoveRegistryKey Root="HKCU" Key="Software\KiTTY-0.84-port" Action="removeOnInstall" />
+        <RemoveRegistryKey Root="HKCU" Key="Software\kapper.net\KiTTY-installer" Action="removeOnUninstall" />
       </Component>
     </DirectoryRef>
 
     <!-- Startup-folder shortcut: auto-run the tray session-launcher at login -->
     <StandardDirectory Id="StartupFolder">
-      <Component Id="c_startup_launcher" Guid="A1B2C3D4-0084-4005-9001-000000000003">
+      <Component Id="c_startup_launcher" Guid="A1B2C3D4-0085-4005-9001-000000000003">
         <Shortcut Id="sc_startup_launcher" Name="KiTTY Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYLauncher" />
         </Shortcut>
-        <RegistryValue Root="HKCU" Key="Software\KiTTY-0.84-port" Name="startuplauncher" Type="string" Value="" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\kapper.net\KiTTY-installer" Name="startuplauncher" Type="string" Value="" KeyPath="yes" />
       </Component>
     </StandardDirectory>
 
     <!-- Desktop shortcut for the main app -->
     <StandardDirectory Id="DesktopFolder">
-      <Component Id="c_desktop" Guid="A1B2C3D4-0084-4005-9001-000000000002">
+      <Component Id="c_desktop" Guid="A1B2C3D4-0085-4005-9001-000000000002">
         <Shortcut Id="sc_desktop" Name="KiTTY" Target="[INSTALLFOLDER]kitty.exe" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTY" />
         </Shortcut>
-        <RegistryValue Root="HKCU" Key="Software\KiTTY-0.84-port" Name="desktop" Type="string" Value="" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\kapper.net\KiTTY-installer" Name="desktop" Type="string" Value="" KeyPath="yes" />
       </Component>
     </StandardDirectory>
 
