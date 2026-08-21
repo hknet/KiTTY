@@ -973,7 +973,10 @@ char default_init_file_content[] =
 ; retrykeys: when a drive appears, load the startup keys that were not there\n\
 ; at login (they wait as \"not loaded\" rows in the key list rather than being\n\
 ; dropped). Default yes - it does nothing unless a startup key is actually\n\
-; missing.\n\
+; missing. A third value, ignoredriveletter, also tries each waiting key's\n\
+; stored path on the drive letter that just arrived - for sticks that come\n\
+; back as a different letter - loading only a key whose recorded fingerprint\n\
+; matches, and rewriting the stored path once it has.\n\
 ;retrykeys=yes\n\
 ; unloadonremove: when the media a key came from goes away, drop that key\n\
 ; from the agent and put it back on the pending list, so it returns when the\n\

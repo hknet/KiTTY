@@ -64,6 +64,10 @@ int  kageant_startup_loading(void);                 /* a startup load is running
 #define KAGEANT_TTL_MAX 300
 int  kageant_passphrase_ttl(void);                  /* seconds; 0 = no backstop */
 int  kageant_quiet_missing(void);                   /* [Agent] quietmissingkeys */
+/* [Agent] retrykeys is THREE-valued: 0 = never retry, 1 = retry from the
+ * stored drive+path, 2 = also try the stored path (minus its drive) on a
+ * drive that just arrived. Ini spellings: no / yes / ignoredriveletter. */
+#define KAGEANT_RETRY_ANYDRIVE 2
 int  kageant_retry_keys(void);                      /* [Agent] retrykeys */
 int  kageant_unload_on_remove(void);                /* [Agent] unloadonremove */
 /* Setters for the four ini-only [Agent] options above. They write to the
@@ -71,7 +75,7 @@ int  kageant_unload_on_remove(void);                /* [Agent] unloadonremove */
  * (registry-authoritative install), in which case the Settings dialog greys
  * them. */
 int  kageant_quiet_missing_set(int on);
-int  kageant_retry_keys_set(int on);
+int  kageant_retry_keys_set(int mode);              /* 0/1/KAGEANT_RETRY_ANYDRIVE */
 int  kageant_unload_on_remove_set(int on);
 int  kageant_passphrase_ttl_set(int seconds);
 void kageant_note_pending(const char *path, int encrypted, int slot);
@@ -96,9 +100,11 @@ char *kageant_fp_of_file(const char *path);
 /* the user accepted a changed key in the key list: load it and adopt the new
  * fingerprint. The ONLY path that ever adopts one - see the comment there. */
 int kageant_accept_pending_key(const char *path);
-/* report a load pass: keys newly refused, and keys loaded with nothing to check
- * against. A notice, never a prompt. */
-void kageant_note_verify_problem(int mismatch_new, int unchecked);
+/* report a load pass: keys newly refused, keys loaded with nothing to check
+ * against, and keys whose path appeared on a new drive but with no recorded
+ * fingerprint to admit them by. A notice, never a prompt. */
+void kageant_note_verify_problem(int mismatch_new, int unchecked,
+                                 int nofp_newdrive);
 /* answer a "Retry unavailable keys": one notice whatever happened, "nothing" included */
 void kageant_note_retry_result(int loaded, int refused, int absent,
                                int broken, int unchecked);
@@ -107,7 +113,10 @@ void kageant_drop_pending(const char *path);   /* memory + stored list */
  * (,plain), -1 = key not tracked */
 int kageant_startup_mode_get(const char *path);
 void kageant_startup_mode_set(const char *path, int encrypted);
-void kageant_retry_pending_keys(void);              /* on device arrival */
+/* On device arrival. arrived_mask is DEV_BROADCAST_VOLUME's dbcv_unitmask
+ * (bit 0 = A:), naming the letter(s) that just appeared; 0 when the arrival
+ * did not name a volume, in which case only the stored paths are probed. */
+void kageant_retry_pending_keys(unsigned long arrived_mask);
 void kageant_retry_pending_keys_now(void);          /* key list, "Retry unavailable keys" */
 void kageant_media_gone(void);                      /* on device removal */
 /* ssh-add -t key lifetimes: the agent core calls kageant_key_set_lifetime via

@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 #include "putty.h"
 #include "pageant.h"
@@ -251,6 +252,14 @@ typedef struct {
      * adopting the new one here would ratify the swap silently.
      */
     int  mismatch;
+    /*
+     * The path (minus its drive letter) turned up on a NEWLY ARRIVED drive,
+     * but this entry has no recorded fingerprint, so there is nothing to
+     * admit the file by and it was refused (see the anydrive block in the
+     * retry pass). Set so the refusal is announced once, not on every one of
+     * the several device-change messages Windows sends per insertion.
+     */
+    int  nofp_refused;
 } KageantPendingKey;
 static KageantPendingKey g_pending[64];
 static int g_npending = 0;
@@ -853,10 +862,32 @@ int kageant_quiet_missing(void)
 
 /* [Agent] retrykeys: when a drive appears, try the startup keys that were not
  * there at login. Default ON - it does nothing at all unless a startup key is
- * actually missing, so there is no cost to anyone else. */
+ * actually missing, so there is no cost to anyone else.
+ *
+ * THREE-valued, so it must not go through the boolean helpers (which collapse
+ * to 0/1 at both ends - see the note on kageant_reg_read):
+ *   0 = never, 1 = from the stored drive+path, 2 = from the stored path on
+ *   whichever drive just arrived (KAGEANT_RETRY_ANYDRIVE). The ini spellings
+ *   are no / yes / ignoredriveletter, so old files keep their meaning. */
 int kageant_retry_keys(void)
 {
-    return kageant_bool_get("retrykeys", "RetryKeys", 1);
+    char buf[24];
+    int ini_v = -1, reg_v;
+    if (kitty_inilight_read("Agent", "retrykeys", buf, sizeof(buf))) {
+        if (!stricmp(buf, "yes")) ini_v = 1;
+        else if (!stricmp(buf, "no")) ini_v = 0;
+        else if (!stricmp(buf, "ignoredriveletter")) ini_v = KAGEANT_RETRY_ANYDRIVE;
+    }
+    if (kitty_inilight_registry_authoritative()) {
+        if (kageant_reg_read_dword("RetryKeys", &reg_v))
+            return (reg_v >= 0 && reg_v <= KAGEANT_RETRY_ANYDRIVE) ? reg_v : 1;
+        return ini_v >= 0 ? ini_v : 1;
+    }
+    if (ini_v >= 0)
+        return ini_v;
+    if (kageant_reg_read_dword("RetryKeys", &reg_v))
+        return (reg_v >= 0 && reg_v <= KAGEANT_RETRY_ANYDRIVE) ? reg_v : 1;
+    return 1;
 }
 
 /* [Agent] unloadonremove: when the media a key came from goes away, drop that
@@ -900,10 +931,16 @@ int kageant_quiet_missing_set(int on)
     kageant_reg_write("QuietMissingKeys", on ? 1 : 0);
     return 1;
 }
-int kageant_retry_keys_set(int on)
+int kageant_retry_keys_set(int mode)
 {
-    kitty_inilight_write("Agent", "retrykeys", on ? "yes" : "no");
-    kageant_reg_write("RetryKeys", on ? 1 : 0);
+    if (mode < 0 || mode > KAGEANT_RETRY_ANYDRIVE)
+        mode = 1;
+    /* Value-preserving on BOTH ends - routed through the boolean pair this
+     * would write mode 2 as 1 and the third state could never exist. */
+    kitty_inilight_write("Agent", "retrykeys",
+                         mode == KAGEANT_RETRY_ANYDRIVE ? "ignoredriveletter" :
+                         mode ? "yes" : "no");
+    kageant_reg_write_dword("RetryKeys", mode);
     return 1;
 }
 int kageant_unload_on_remove_set(int on)
@@ -1478,6 +1515,7 @@ void kageant_note_pending(const char *path, int encrypted, int slot)
     g_pending[g_npending].slot = slot;
     g_pending[g_npending].fp[0] = '\0';  /* the array slot may be reused */
     g_pending[g_npending].mismatch = 0;  /* ditto - do not inherit a refusal */
+    g_pending[g_npending].nofp_refused = 0;   /* ditto */
     g_npending++;
 }
 
@@ -1531,13 +1569,44 @@ static void kageant_park_unloaded(const char *path, int encrypted, int confirm,
  * The load stays deferred either way: a passphrase prompt raised out of a
  * button press is still a modal box appearing where nobody asked for one.
  */
-static void kageant_retry_pending_pass(int manual)
+/*
+ * Retry mode (c), "from their stored path on any drive": the stored path with
+ * its drive letter replaced by a letter that JUST ARRIVED, if a file actually
+ * exists there. One GetFileAttributes per pending key per arrived letter and
+ * no enumeration - drives are never scanned, only the letter(s) the device
+ * broadcast named are tried. A UNC or relative path has no drive letter, so
+ * the mode does not apply to it; the stored letter itself is skipped because
+ * the stored-path probe already covers it.
+ *
+ * Returns buf (the candidate path) or NULL when nothing was found.
+ */
+static char *kageant_anydrive_probe(const KageantPendingKey *k,
+                                    unsigned long arrived_mask,
+                                    char *buf, size_t bufsz)
 {
-    int i, w = 0, loaded_any = 0;
-    int mismatch_new = 0, unchecked = 0;
-    int loaded_n = 0, refused_n = 0, absent_n = 0, broken_n = 0;
+    int bit;
+    if (!(isalpha((unsigned char)k->path[0]) && k->path[1] == ':'))
+        return NULL;
+    for (bit = 0; bit < 26; bit++) {
+        if (!(arrived_mask & (1UL << bit)))
+            continue;
+        if (toupper((unsigned char)k->path[0]) == 'A' + bit)
+            continue;
+        snprintf(buf, bufsz, "%c%s", 'A' + bit, k->path + 1);
+        if (GetFileAttributesA(buf) != INVALID_FILE_ATTRIBUTES)
+            return buf;
+    }
+    return NULL;
+}
 
-    if (!kageant_retry_keys() && !manual)
+static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
+{
+    int i, w = 0, loaded_any = 0, rewrote_any = 0;
+    int mismatch_new = 0, unchecked = 0, nofp_new = 0;
+    int loaded_n = 0, refused_n = 0, absent_n = 0, broken_n = 0;
+    int mode = kageant_retry_keys();
+
+    if (!mode && !manual)
         return;
     if (!g_npending) {
         if (manual)
@@ -1550,21 +1619,57 @@ static void kageant_retry_pending_pass(int manual)
 
     for (i = 0; i < g_npending; i++) {
         int before;
+        const char *loadpath = g_pending[i].path;
+        int on_new_drive = 0;
+        char altbuf[MAX_PATH + 1];
 
         if (g_pending[i].failed ||
             GetFileAttributesA(g_pending[i].path) == INVALID_FILE_ATTRIBUTES) {
-            /* Still not there, or there and broken. Either way it stays on the
-             * list: the list is also what keeps the entry in the saved startup
-             * keys, and a key must not vanish from a user's configuration
-             * because one load went wrong. */
-            if (GetFileAttributesA(g_pending[i].path) ==
-                INVALID_FILE_ATTRIBUTES)
-                absent_n++;
-            else
-                broken_n++;
-            if (w != i) g_pending[w] = g_pending[i];
-            w++;
-            continue;
+            int absent = GetFileAttributesA(g_pending[i].path) ==
+                         INVALID_FILE_ATTRIBUTES;
+            /*
+             * Not at its stored path. Mode (c): the same path on the drive
+             * that just arrived. Only the AUTOMATIC pass gets here with a
+             * mask - the manual button carries none, deliberately: a button
+             * press supplies no evidence about which volume is which, so
+             * manual retry stays a stored-path affair.
+             */
+            if (absent && !g_pending[i].failed &&
+                mode == KAGEANT_RETRY_ANYDRIVE && arrived_mask &&
+                kageant_anydrive_probe(&g_pending[i], arrived_mask,
+                                       altbuf, sizeof(altbuf))) {
+                if (!g_pending[i].fp[0]) {
+                    /*
+                     * No recorded fingerprint, so nothing to admit this file
+                     * by - REFUSED, never adopted. Loading it would mean
+                     * auto-loading a key we never recorded from media we
+                     * picked ourselves. (An fp-less entry still loads from
+                     * its RECORDED path - the user chose that path.)
+                     */
+                    if (!g_pending[i].nofp_refused) {
+                        g_pending[i].nofp_refused = 1;
+                        nofp_new++;        /* announced once, not per message */
+                    }
+                    if (w != i) g_pending[w] = g_pending[i];
+                    w++;
+                    continue;
+                }
+                loadpath = altbuf;
+                on_new_drive = 1;
+                /* fall through into the load below */
+            } else {
+                /* Still not there, or there and broken. Either way it stays
+                 * on the list: the list is also what keeps the entry in the
+                 * saved startup keys, and a key must not vanish from a user's
+                 * configuration because one load went wrong. */
+                if (absent)
+                    absent_n++;
+                else
+                    broken_n++;
+                if (w != i) g_pending[w] = g_pending[i];
+                w++;
+                continue;
+            }
         }
         /*
          * Nothing recorded to check against: it loads, and the fingerprint of
@@ -1574,14 +1679,14 @@ static void kageant_retry_pending_pass(int manual)
         if (!g_pending[i].fp[0])
             unchecked++;
         {
-            Filename *fn = filename_from_str(g_pending[i].path);
+            Filename *fn = filename_from_str(loadpath);
             int j;
             before = g_nloaded;
             g_startup_loading = 1;             /* a failure now is a startup one */
             /* Deferred where that is possible - see kageant_can_defer. An
              * SSH-1 key asked for deferred is refused outright, so this path
              * used to fail every SSH-1 key on every device arrival. */
-            win_add_keyfile(fn, kageant_can_defer(g_pending[i].path) ?
+            win_add_keyfile(fn, kageant_can_defer(loadpath) ?
                                 true : false);
             g_startup_loading = 0;
             filename_free(fn);
@@ -1601,7 +1706,7 @@ static void kageant_retry_pending_pass(int manual)
              * kageant_note_verify_problem().
              */
             if (g_nloaded != before &&
-                !kageant_verify_loaded(g_pending[i].path, g_pending[i].fp)) {
+                !kageant_verify_loaded(loadpath, g_pending[i].fp)) {
                 if (!g_pending[i].mismatch) {
                     g_pending[i].mismatch = 1;
                     mismatch_new++;        /* only a CHANGE is worth a notice */
@@ -1618,12 +1723,30 @@ static void kageant_retry_pending_pass(int manual)
                  * present and broken, the user has already been told, and
                  * repeating the box at every device event would be its own
                  * annoyance. Restarting kageant tries again from scratch, and
-                 * so does the key list's "Retry unavailable keys". */
-                g_pending[i].failed = 1;
+                 * so does the key list's "Retry unavailable keys".
+                 *
+                 * Unless the broken file sat on a NEW drive: parking the entry
+                 * then would also stop its stored path from being retried, over
+                 * a file that is not even the recorded one. */
+                if (!on_new_drive)
+                    g_pending[i].failed = 1;
                 broken_n++;
                 if (w != i) g_pending[w] = g_pending[i];
                 w++;
                 continue;
+            }
+
+            /*
+             * Only now, AFTER the fingerprint matched, does the entry's stored
+             * path move to the new drive - never before, so a wrong-but-
+             * plausible path can not end up written into the configuration.
+             * The re-save below makes it stick, and the next start needs no
+             * retry at all.
+             */
+            if (on_new_drive) {
+                snprintf(g_pending[i].path, sizeof(g_pending[i].path),
+                         "%s", loadpath);
+                rewrote_any = 1;
             }
 
             /*
@@ -1665,11 +1788,17 @@ static void kageant_retry_pending_pass(int manual)
     if (loaded_any)
         kageant_apply_saved_order();
 
+    /* A path moved to a new drive: write the startup list out with the new
+     * letter, so the next start finds the key without any retry. Only reached
+     * after a fingerprint match - see above. */
+    if (rewrote_any)
+        kageant_save_startup_keys();
+
     if (manual)
         kageant_note_retry_result(loaded_n, refused_n, absent_n, broken_n,
                                   unchecked);
     else
-        kageant_note_verify_problem(mismatch_new, unchecked);
+        kageant_note_verify_problem(mismatch_new, unchecked, nofp_new);
 
     kageant_refresh_tray_tip();    /* the held-back set may have changed */
 }
@@ -1815,14 +1944,19 @@ void kageant_do_identities_asked(unsigned long pid)
     announced_for = held;
 }
 
-/* On a device arriving. */
-void kageant_retry_pending_keys(void) { kageant_retry_pending_pass(0); }
+/* On a device arriving. The mask names the letter(s) that arrived (bit 0 =
+ * A:), or 0 when the broadcast did not name a volume - retry mode (c) then
+ * probes nothing beyond the stored paths. */
+void kageant_retry_pending_keys(unsigned long arrived_mask)
+{
+    kageant_retry_pending_pass(0, arrived_mask);
+}
 
 /* On the key list's "Retry unavailable keys". Also the only way to drive the retry
  * path without hardware: Windows will not let one process send another a
  * WM_DEVICECHANGE (SendMessageTimeout fails with 87, PostMessage with 1159),
  * so this button is what the fingerprint-refusal test can reach. */
-void kageant_retry_pending_keys_now(void) { kageant_retry_pending_pass(1); }
+void kageant_retry_pending_keys_now(void) { kageant_retry_pending_pass(1, 0); }
 
 /*
  * KiTTY: say what verification did, without becoming noise.
@@ -1840,6 +1974,13 @@ void kageant_retry_pending_keys_now(void) { kageant_retry_pending_pass(1); }
  *    That is one unverified load each, after which the fingerprint of whatever
  *    loaded becomes the baseline - worth saying once.
  *
+ *  - nofp_newdrive: a file matching a startup key's path (minus its drive)
+ *    appeared on a drive that just arrived, but the entry has no recorded
+ *    fingerprint, so there is nothing to admit the file by and it was refused.
+ *    Also per transition, via the entry's nofp_refused flag. The wording must
+ *    NOT send the user at the Retry button: manual retry only ever loads from
+ *    the RECORDED path, so pressing it would do nothing here.
+ *
  * A notice, never a prompt: this fires when hardware appeared, which is not a
  * moment to demand an answer. Clicking it opens the key list, where the State
  * column says which key - and that list IS the persistent record, because the
@@ -1847,7 +1988,8 @@ void kageant_retry_pending_keys_now(void) { kageant_retry_pending_pass(1); }
  * is not linked here). A balloon is easily missed, so the refused entry must
  * stay visible there until it is dealt with.
  */
-void kageant_note_verify_problem(int mismatch_new, int unchecked)
+void kageant_note_verify_problem(int mismatch_new, int unchecked,
+                                 int nofp_newdrive)
 {
     char text[512];
 
@@ -1880,6 +2022,24 @@ void kageant_note_verify_problem(int mismatch_new, int unchecked)
         if (traywindow)
             kitty_notice_show("kageant: keys loaded unverified", text,
                               KAGEANT_NOTICE_INFO, kageant_notice_seconds(10),
+                              traywindow, KAGEANT_WM_NOTICE_CLICK);
+    }
+
+    if (nofp_newdrive > 0) {
+        snprintf(text, sizeof(text),
+                 nofp_newdrive == 1 ?
+                 "A file matching a startup key's path appeared on the new "
+                 "drive, but that key has no fingerprint on record to check "
+                 "it against, so it was NOT loaded. Load the key once from "
+                 "its recorded path (or Add Key) to record one." :
+                 "%d files matching startup keys' paths appeared on the new "
+                 "drive, but those keys have no fingerprints on record to "
+                 "check them against, so they were NOT loaded. Load each key "
+                 "once from its recorded path (or Add Key) to record one.",
+                 nofp_newdrive);
+        if (traywindow)
+            kitty_notice_show("kageant: key on a new drive not loaded", text,
+                              KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
                               traywindow, KAGEANT_WM_NOTICE_CLICK);
     }
 }
@@ -2679,7 +2839,7 @@ void kageant_load_startup_keys(void)
             kageant_save_startup_keys();   /* now the list is complete */
         }
         /* Say so once, after the list is complete - not per key. */
-        kageant_note_verify_problem(startup_mismatch, startup_unchecked);
+        kageant_note_verify_problem(startup_mismatch, startup_unchecked, 0);
         kageant_refresh_tray_tip();
         return;
     }
@@ -2764,7 +2924,7 @@ void kageant_load_startup_keys(void)
                     g_fp_adopted = 0;
                     kageant_save_startup_keys();
                 }
-                kageant_note_verify_problem(startup_mismatch, startup_unchecked);
+                kageant_note_verify_problem(startup_mismatch, startup_unchecked, 0);
                 kageant_refresh_tray_tip();
             }
             sfree(buf);

@@ -5,6 +5,22 @@ and enhanced **PuTTY 0.85** core. Versions below are this port's own `0.85.1.x` 
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.3-beta — unreleased
+
+### New
+
+- **kageant can find a startup key again when its media comes back on a
+  different drive letter.** Windows hands a returning USB stick whichever
+  letter is free, and a key recorded as `E:\...` then read as "still absent"
+  forever. The retry setting is now three-valued — never / from the stored
+  drive and path / from the stored path on any drive (`[Agent]
+  retrykeys=ignoredriveletter`, off unless chosen). The new mode tries each
+  waiting key's stored path on exactly the letter that just arrived (drives
+  are never scanned), loads a key only if its recorded fingerprint matches,
+  and only then rewrites the stored path so the next start needs no retry. A
+  file with no recorded fingerprint to check against, or with the wrong one,
+  is refused and reported.
+
 ## 0.85.1.2-beta — 2026-08-21
 
 ### New

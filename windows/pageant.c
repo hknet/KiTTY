@@ -2028,8 +2028,26 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             kageant_autostart_active() ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(hwnd, IDC_SET_NOTIFY,
             kageant_notify_get() ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(hwnd, IDC_SET_RETRY,
-            kageant_retry_keys() ? BST_CHECKED : BST_UNCHECKED);
+        {
+            /*
+             * Retry is THREE-valued (item index == stored value 0/1/2), so it
+             * is a droplist, not a checkbox - and it must never travel
+             * through anything boolean on the way to the store, or the third
+             * state collapses to "yes" silently.
+             */
+            static const char *const retry_modes[] = {
+                "never",
+                "from their stored drive and path",
+                "from their stored path on any drive",
+            };
+            int rm, cur = kageant_retry_keys();
+            for (rm = 0; rm < (int)lenof(retry_modes); rm++)
+                SendDlgItemMessage(hwnd, IDC_SET_RETRY, CB_ADDSTRING, 0,
+                                   (LPARAM)retry_modes[rm]);
+            SendDlgItemMessage(hwnd, IDC_SET_RETRY, CB_SETCURSEL,
+                               (cur >= 0 && cur <= KAGEANT_RETRY_ANYDRIVE) ?
+                               cur : 1, 0);
+        }
         CheckDlgButton(hwnd, IDC_SET_UNLOAD,
             kageant_unload_on_remove() ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(hwnd, IDC_SET_QUIET,
@@ -2058,8 +2076,12 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 IsDlgButtonChecked(hwnd, IDC_SET_NOTIFY) == BST_CHECKED);
             /* All agent settings write through to both stores now, so these
              * apply in either mode - no kitty.ini gate. */
-            kageant_retry_keys_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_RETRY) == BST_CHECKED);
+            {
+                int sel = (int)SendDlgItemMessage(hwnd, IDC_SET_RETRY,
+                                                  CB_GETCURSEL, 0, 0);
+                if (sel >= 0 && sel <= KAGEANT_RETRY_ANYDRIVE)
+                    kageant_retry_keys_set(sel);
+            }
             kageant_unload_on_remove_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_UNLOAD) == BST_CHECKED);
             kageant_quiet_missing_set(
@@ -3492,9 +3514,21 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
          * unloadonremove, and both are no-ops unless a startup key is actually
          * on media that comes and goes.
          */
-        if (wParam == DBT_DEVICEARRIVAL)
-            kageant_retry_pending_keys();
-        else if (wParam == DBT_DEVICEREMOVECOMPLETE)
+        if (wParam == DBT_DEVICEARRIVAL) {
+            /*
+             * Which letter(s) arrived, when the broadcast says. A volume
+             * arrival carries a DEV_BROADCAST_VOLUME whose dbcv_unitmask
+             * names the letters (bit 0 = A:) - `subst` sends one too, with
+             * DBTF_NET set. Retry mode (c) tries the pending keys' stored
+             * paths on exactly those letters; an arrival with no volume
+             * mask (mask 0) probes nothing beyond the stored paths.
+             */
+            unsigned long mask = 0;
+            DEV_BROADCAST_HDR *hdr = (DEV_BROADCAST_HDR *)lParam;
+            if (hdr && hdr->dbch_devicetype == DBT_DEVTYP_VOLUME)
+                mask = ((DEV_BROADCAST_VOLUME *)hdr)->dbcv_unitmask;
+            kageant_retry_pending_keys(mask);
+        } else if (wParam == DBT_DEVICEREMOVECOMPLETE)
             kageant_media_gone();
         if (wParam == DBT_DEVICEARRIVAL || wParam == DBT_DEVICEREMOVECOMPLETE)
             keylist_update();          /* the View Keys window, if it is open */

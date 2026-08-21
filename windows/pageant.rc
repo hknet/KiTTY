@@ -155,7 +155,7 @@ END
  * (design), so it is deliberately not duplicated here. The removable-media
  * options are honoured only from kitty.ini, so they are greyed in a
  * registry-authoritative (non-portable) install. */
-IDD_KEYSETTINGS DIALOG DISCARDABLE 0, 0, 250, 286
+IDD_KEYSETTINGS DIALOG DISCARDABLE 0, 0, 250, 300
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "kageant - settings"
 FONT 8, "MS Shell Dlg"
@@ -178,21 +178,23 @@ BEGIN
         16, 122, 220, 10
     AUTOCHECKBOX "Block re&moving keys over IPC", IDC_SET_BLOCKREMOVE,
         16, 136, 220, 10
-    GROUPBOX "Removable-media keys", -1, 8, 156, 234, 90
-    AUTOCHECKBOX "&Retry startup keys when their drive appears",
-        IDC_SET_RETRY, 16, 170, 220, 10
+    GROUPBOX "Removable-media keys", -1, 8, 156, 234, 112
+    LTEXT "&Retry startup keys to load, when a drive appears:",
+        -1, 16, 170, 220, 10
+    COMBOBOX IDC_SET_RETRY, 16, 182, 200, 56,
+        CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     AUTOCHECKBOX "&Unload a key when its media is removed",
-        IDC_SET_UNLOAD, 16, 184, 220, 10
+        IDC_SET_UNLOAD, 16, 200, 220, 10
     AUTOCHECKBOX "Do not &warn about missing startup keys",
-        IDC_SET_QUIET, 16, 198, 220, 10
-    LTEXT "&Passphrase cache (seconds):", -1, 16, 216, 108, 10
-    EDITTEXT IDC_SET_TTL, 126, 214, 40, 12, ES_NUMBER | ES_AUTOHSCROLL
+        IDC_SET_QUIET, 16, 214, 220, 10
+    LTEXT "&Passphrase cache (seconds):", -1, 16, 232, 108, 10
+    EDITTEXT IDC_SET_TTL, 126, 230, 40, 12, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "0 = do not cache; default 60, maximum 300 (5 min).",
-        -1, 16, 230, 220, 9
+        -1, 16, 246, 220, 9
     LTEXT "Keys that share a passphrase then load with one prompt.",
-        -1, 16, 240, 220, 9
-    DEFPUSHBUTTON "OK", IDOK, 132, 264, 50, 14
-    PUSHBUTTON "Cancel", IDCANCEL, 190, 264, 50, 14
+        -1, 16, 256, 220, 9
+    DEFPUSHBUTTON "OK", IDOK, 132, 278, 50, 14
+    PUSHBUTTON "Cancel", IDCANCEL, 190, 278, 50, 14
 END
 
 /* Accelerators used: cl */

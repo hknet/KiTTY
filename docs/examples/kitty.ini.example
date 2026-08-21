@@ -954,7 +954,10 @@
 ; retrykeys: when a drive appears, load the startup keys that were not there
 ; at login (they wait as "not loaded" rows in the key list rather than being
 ; dropped). Default yes - it does nothing unless a startup key is actually
-; missing.
+; missing. A third value, ignoredriveletter, also tries each waiting key's
+; stored path on the drive letter that just arrived - for sticks that come
+; back as a different letter - loading only a key whose recorded fingerprint
+; matches, and rewriting the stored path once it has.
 ;retrykeys=yes
 ; unloadonremove: when the media a key came from goes away, drop that key
 ; from the agent and put it back on the pending list, so it returns when the
