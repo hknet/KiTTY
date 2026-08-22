@@ -12,6 +12,20 @@
 #define IDD_LICENCE 214
 #define IDD_KEYDETAILS 215     /* KiTTY: key details (copyable fields) */
 #define IDD_KEYSETTINGS 216    /* KiTTY: the [Agent] settings dialog */
+#define IDD_AUDITVIEW 217      /* KiTTY: the audit-log viewer */
+#define IDD_AUDITDETAIL 218    /* KiTTY: one audit record, field per line */
+
+/* KiTTY: the audit-log viewer's controls */
+#define IDC_AUDIT_FILTER 400
+#define IDC_AUDIT_ENABLE 401
+#define IDC_AUDIT_REFRESH 402
+#define IDC_AUDIT_LIST 403
+#define IDC_AUDIT_PATH 404
+#define IDC_AUDIT_DETAIL 405   /* the selected row's FULL raw line */
+#define IDC_AUDIT_REQFILTER 406  /* slice to one client app */
+#define IDC_AUDIT_FILTER_LBL 407
+#define IDC_AUDIT_APP_LBL 408
+#define IDC_AUDITDETAIL_TEXT 410
 
 /* KiTTY: the settings dialog */
 #define IDC_SET_OPENSSH 300
@@ -27,6 +41,12 @@
 #define IDC_SET_BLOCKREMOVE 310   /* IPC: refuse removes */
 #define IDC_SET_LOADKEYS 311      /* re-add remembered keys at startup */
 #define IDC_SET_HELLO 312         /* confirmations require Windows Hello */
+/* KiTTY: the agent-log group */
+#define IDC_SET_AGENTLOG 313      /* write the agent log */
+#define IDC_SET_AGENTLOGPATH 314  /* path override, blank = default */
+#define IDC_SET_AGENTLOGKB 315    /* rotate at (KB) */
+#define IDC_SET_AGENTLOGKEEP 316  /* rotated generations */
+#define IDC_SET_AGENTLOGDAYS 317  /* expunge after (days) */
 
 /* KiTTY: the key-details dialog */
 #define IDC_KEYDETAIL_KEY 100
@@ -71,6 +91,7 @@
 #define IDC_KEYLIST_ABOUT 122       /* open the About box */
 #define IDC_KEYLIST_RESUMECONFIRM 123  /* lift confirm-suppress; shown only when blocked */
 #define IDC_KEYLIST_RETRY 124       /* retry the keys whose file was missing */
+#define IDC_KEYLIST_AUDITLOG 125    /* open the audit-log viewer */
 
 #define IDC_ABOUT_LICENCE 101
 #define IDC_ABOUT_WEBSITE 102

@@ -79,6 +79,21 @@ int  kageant_quiet_missing_set(int on);
  * presence check (a per-key mode 2 does the same for one key). Boolean. */
 int  kageant_hello_get(void);
 int  kageant_hello_set(int on);
+/* the audit log: [Agent] auditlog on/off (default on) + rotation numbers;
+ * kageant_audit_setup() resolves the path and (re)configures the sink -
+ * call at startup and after a settings change. */
+int  kageant_audit_get(void);
+int  kageant_audit_set(int on);
+void kageant_audit_setup(void);
+/* the numeric knobs and the path override, for the settings dialog */
+int  kageant_audit_maxkb_get(void);
+int  kageant_audit_keep_get(void);
+int  kageant_audit_expire_get(void);
+int  kageant_audit_pathsetting_get(char *buf, size_t len);
+/* write the whole set through to both stores and re-arm the sink;
+ * path NULL/"" clears the override back to the default location */
+void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
+                           int expiredays);
 int  kageant_retry_keys_set(int mode);              /* 0/1/KAGEANT_RETRY_ANYDRIVE */
 int  kageant_unload_on_remove_set(int on);
 int  kageant_passphrase_ttl_set(int seconds);
@@ -174,7 +189,9 @@ extern int (*kageant_comment_confirm_hook)(const char *comment);
 extern void (*kageant_notify_hook)(const char *comment,
                                    const char *fingerprint);
 /* KiTTY: outcome of a signing request, for the key list's tint. */
-extern void (*kageant_keyuse_hook)(const char *fingerprint, int allowed);
+extern void (*kageant_keyuse_hook)(const char *fingerprint,
+                                   const char *comment, int allowed,
+                                   unsigned long req_pid);
 /* KiTTY: an external client asked for the identity list. Used to speak up about
  * keys being held back, at the moment their absence costs something. */
 extern void (*kageant_identities_asked_hook)(unsigned long pid);
@@ -202,7 +219,8 @@ void kageant_refresh_tray_tip(void);
  * kageant_keylist_flash_changed() lives in windows/pageant.c. */
 int kageant_flash_get(const char *fingerprint, int *allowed);
 int kageant_flash_any(void);
-void kageant_note_keyuse(const char *fingerprint, int allowed);
+void kageant_note_keyuse(const char *fingerprint, const char *comment,
+                         int allowed, unsigned long req_pid);
 void kageant_keylist_flash_changed(void);
 
 #endif /* KITTY_PAGEANT_H */

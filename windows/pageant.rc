@@ -60,6 +60,9 @@ END
 IDD_KEYLIST DIALOG DISCARDABLE 0, 0, 450, 244
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX
 CAPTION "kageant Key List"
+/* Deliberately the 8pt shell font for now: a Segoe UI 10 round exposed
+ * alignment problems across the dialogs, and the ruling is fix alignment
+ * on the known face FIRST, then revisit the font as its own round. */
 FONT 8, "MS Shell Dlg"
 BEGIN
     /* KiTTY: a real ListView in report mode instead of upstream's owner-drawn
@@ -94,6 +97,11 @@ BEGIN
     PUSHBUTTON "Stop a&gent", IDC_KEYLIST_STOPAGENT, 134, 224, 62, 14
     PUSHBUTTON "A&bout", IDC_KEYLIST_ABOUT, 202, 224, 46, 14
     PUSHBUTTON "&Help", IDC_KEYLIST_HELP, 254, 224, 44, 14
+    /* KiTTY: straight into the audit-log viewer - RIGHT-anchored, left of
+     * Close (which ends at 430, the ListView's right edge). */
+    /* &l: g belongs to "Stop a&gent" - the accelerator check caught the
+     * collision at build time, which is exactly its job. */
+    PUSHBUTTON "Agent &log...", IDC_KEYLIST_AUDITLOG, 318, 224, 56, 14
     DEFPUSHBUTTON "&Close", IDOK, 380, 224, 50, 14
     /* The ini-path line rides beside "Show unavailable keys". It is the one control
      * here that STRETCHES (LEFT|RIGHT|BOTTOM), so it starts narrow and takes
@@ -161,7 +169,7 @@ END
  * (design), so it is deliberately not duplicated here. The removable-media
  * options are honoured only from kitty.ini, so they are greyed in a
  * registry-authoritative (non-portable) install. */
-IDD_KEYSETTINGS DIALOG DISCARDABLE 0, 0, 250, 314
+IDD_KEYSETTINGS DIALOG DISCARDABLE 0, 0, 250, 392
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "kageant - settings"
 FONT 8, "MS Shell Dlg"
@@ -201,11 +209,76 @@ BEGIN
         -1, 16, 260, 220, 9
     LTEXT "Keys that share a passphrase then load with one prompt.",
         -1, 16, 270, 220, 9
-    DEFPUSHBUTTON "OK", IDOK, 132, 292, 50, 14
-    PUSHBUTTON "Cancel", IDCANCEL, 190, 292, 50, 14
+    GROUPBOX "Agent log", -1, 8, 286, 234, 84
+    AUTOCHECKBOX "Wr&ite the agent log", IDC_SET_AGENTLOG, 16, 300, 120, 10
+    LTEXT "File (blank = default):", -1, 16, 316, 78, 10
+    EDITTEXT IDC_SET_AGENTLOGPATH, 98, 314, 136, 12, ES_AUTOHSCROLL
+    LTEXT "Rotate at (KB):", -1, 16, 332, 56, 10
+    EDITTEXT IDC_SET_AGENTLOGKB, 76, 330, 40, 12, ES_NUMBER
+    LTEXT "Generations:", -1, 128, 332, 50, 10
+    EDITTEXT IDC_SET_AGENTLOGKEEP, 180, 330, 24, 12, ES_NUMBER
+    LTEXT "E&xpunge rotated logs after (days, 0 = keep):",
+        -1, 16, 348, 162, 10
+    EDITTEXT IDC_SET_AGENTLOGDAYS, 182, 346, 30, 12, ES_NUMBER
+    LTEXT "The log is evidence, not proof - see the manual.",
+        -1, 16, 360, 220, 9
+    DEFPUSHBUTTON "OK", IDOK, 132, 372, 50, 14
+    PUSHBUTTON "Cancel", IDCANCEL, 190, 372, 50, 14
+END
+
+/* KiTTY: the audit-log viewer - modeless (a log window is left open for an
+ * hour, and a modal one would stop the agent answering), resizable, with a
+ * live filter. */
+IDD_AUDITVIEW DIALOG DISCARDABLE 0, 0, 460, 260
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+CAPTION "kageant - agent log"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    /* ONE toolbar row: every control starts at y=6 and the edit and
+     * buttons share the same 13-DLU height (a closed combo box sizes
+     * itself from the font and lands on the same height). The first cuts
+     * mixed 12/13/14-tall controls on 5/6/7 tops and read as three rows -
+     * measured on a screenshot, not a guess. */
+    /* The template positions here are only a first approximation: at
+     * WM_INITDIALOG every control of this row is snapped to the SAME
+     * pixel top and height (the combo's natural height - see the
+     * row-aligner in AuditViewProc). Dialog-unit rounding cannot deliver
+     * that; measured screenshots kept proving it. */
+    LTEXT "&Filter:", IDC_AUDIT_FILTER_LBL, 8, 6, 22, 14, SS_CENTERIMAGE
+    EDITTEXT IDC_AUDIT_FILTER, 32, 6, 110, 14, ES_AUTOHSCROLL
+    LTEXT "&App:", IDC_AUDIT_APP_LBL, 150, 6, 18, 14, SS_CENTERIMAGE
+    COMBOBOX IDC_AUDIT_REQFILTER, 170, 6, 90, 90,
+        CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    AUTOCHECKBOX "&Logging", IDC_AUDIT_ENABLE, 268, 6, 44, 14
+    PUSHBUTTON "&Refresh", IDC_AUDIT_REFRESH, 352, 6, 46, 14
+    DEFPUSHBUTTON "&Close", IDOK, 404, 6, 48, 14
+    CONTROL "", IDC_AUDIT_LIST, "SysListView32",
+        LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_BORDER |
+        WS_TABSTOP, 8, 24, 444, 178
+    /* KiTTY: the drill-down. The list's first level stays human (comment,
+     * exe name); selecting a row shows its FULL raw record here -
+     * fingerprints, requester path, every field - copyable. Double-click
+     * opens the same record formatted one field per line (IDD_AUDITDETAIL). */
+    EDITTEXT IDC_AUDIT_DETAIL, 8, 206, 444, 38,
+        ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL
+    LTEXT "", IDC_AUDIT_PATH, 8, 248, 444, 10, SS_PATHELLIPSIS
+END
+
+/* KiTTY: one audit record, unfolded - every field on its own line, all of
+ * it selectable for copying (fingerprints, the requester's full path). */
+IDD_AUDITDETAIL DIALOG DISCARDABLE 0, 0, 330, 190
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+CAPTION "kageant - agent log record"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    EDITTEXT IDC_AUDITDETAIL_TEXT, 8, 8, 314, 154,
+        ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL
+    DEFPUSHBUTTON "&Close", IDOK, 272, 168, 50, 14
 END
 
 /* Accelerators used: cl */
+/* The text box scrolls if the About text ever outgrows it - cheap
+ * insurance whatever the dialog font is. */
 IDD_ABOUT DIALOG DISCARDABLE 140, 40, 270, 136
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About kageant"
@@ -215,7 +288,8 @@ BEGIN
     PUSHBUTTON "View &Licence", IDC_ABOUT_LICENCE, 6, 118, 70, 14
     PUSHBUTTON "Visit &Web Site", IDC_ABOUT_WEBSITE, 140, 118, 70, 14
     EDITTEXT IDC_ABOUT_TEXTBOX, 10, 6, 250, 110,
-        ES_READONLY | ES_MULTILINE | ES_CENTER, WS_EX_STATICEDGE
+        ES_READONLY | ES_MULTILINE | ES_CENTER | ES_AUTOVSCROLL |
+        WS_VSCROLL, WS_EX_STATICEDGE
 END
 
 /* No accelerators used */

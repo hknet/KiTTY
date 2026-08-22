@@ -21,6 +21,18 @@ see [FEATURES.md](FEATURES.md).
   file with no recorded fingerprint to check against, or with the wrong one,
   is refused and reported.
 
+- **kageant keeps an agent log: what signed, what was refused and why,
+  what was added or removed and by which process.** One line per event in
+  a capped, rotated local file (`[Agent] agentlog`, on by default; size,
+  generations and age-expunge configurable; `agentlogpath` overrides the
+  location). The "Agent log..." window - tray menu or the key list's
+  button - views it: newest first, colour-coded by outcome, events that
+  happened together banded as one flow, a text filter plus a per-app
+  slice, click for the raw record and double-click for it unfolded. Sign
+  events name the requesting program with its full path and pid. Called
+  the AGENT log deliberately: a local file is evidence, not proof;
+  tamper-evident and off-box sinks build on this format later.
+
 - **kageant can demand Windows Hello for key-use confirmations.** A
   confirmation box can be answered by any program running as you — a
   synthetic click is enough. With `[Agent] helloconfirm` on (or per key,

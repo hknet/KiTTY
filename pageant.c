@@ -258,6 +258,10 @@ struct PageantSignOp {
     char *keyfp;                    /* KiTTY: SHA256 fingerprint of the key, for
                                      * kageant_keyuse_hook - the same identity
                                      * the offer order is persisted by */
+    unsigned long req_pid;          /* KiTTY: requester pid, captured at op
+                                     * CREATION - pageant_external_pid is
+                                     * back to 0 by the time the deferred
+                                     * coroutine runs. 0 = unknown. */
     bool signed_ok;                 /* KiTTY: did it actually sign? (coroutine
                                      * state: a local would not survive a yield) */
     strbuf *data_to_sign;
@@ -1014,7 +1018,8 @@ int (*kageant_confirm_hook)(const char *comment, int key_confirm) = NULL;
  * allowed nonzero when the key signed, zero when the user or a policy refused.
  * Identified by the public blob because that is what a row is keyed on; a
  * comment is not unique and is often empty. NULL everywhere but the GUI. */
-void (*kageant_keyuse_hook)(const char *fingerprint, int allowed) = NULL;
+void (*kageant_keyuse_hook)(const char *fingerprint, const char *comment,
+                            int allowed, unsigned long req_pid) = NULL;
 
 /* KiTTY: does this comment carry the per-key confirmation convention?
  * Consulted once at ADD time, turning the convention into a real, sticky
@@ -1208,7 +1213,8 @@ static void signop_coroutine(PageantAsyncOp *pao)
      * here - every failure path lands on this label, and a refusal the user
      * can see is the whole point of the key list's tint. */
     if (kageant_keyuse_hook && so->keyfp)
-        kageant_keyuse_hook(so->keyfp, so->signed_ok);
+        kageant_keyuse_hook(so->keyfp, so->comment, so->signed_ok,
+                            so->req_pid);
     if (temp_skey)
         ssh_key_free(temp_skey);
     pageant_client_got_response(so->pao.info->pc, so->pao.reqid,
@@ -1575,7 +1581,8 @@ static PageantAsyncOp *pageant_make_op(
             if (kageant_notify_hook)
                 kageant_notify_hook(pub->comment, fp);
             if (kageant_keyuse_hook && fp)
-                kageant_keyuse_hook(fp, true);
+                kageant_keyuse_hook(fp, pub->comment, true,
+                                    pageant_external_pid);
             sfree(fp);
         }
 
@@ -1653,6 +1660,7 @@ static PageantAsyncOp *pageant_make_op(
          * findpubkey2() has just matched them for us. */
         so->keyfp = ssh2_fingerprint_blob(pub->sort.full_pub,
                                           SSH_FPTYPE_SHA256);
+        so->req_pid = pageant_external_pid;   /* valid NOW, 0 later */
         so->signed_ok = false;
         so->pkr.prev = so->pkr.next = NULL;
         so->data_to_sign = strbuf_dup(sigdata);

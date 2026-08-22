@@ -950,6 +950,27 @@ char default_init_file_content[] =
 ;blockipcadd=no\n\
 ;blockipcremove=no\n\
 \n\
+; --- The agent log: what the agent did with keys - what signed or was\n\
+; refused and why, what was added or removed and by which process. One\n\
+; line per event in a capped, rotated local file; the tray's \"Agent\n\
+; log...\" window views and filters it. Called the AGENT log on purpose: a\n\
+; local file is evidence, never proof - same-user malware can delete it -\n\
+; and the name must not claim otherwise. Tamper-evident and off-box sinks\n\
+; are planned on top of this format.\n\
+; agentlog: write the log. Default yes.\n\
+;agentlog=yes\n\
+; agentlogpath: full path of the log file. Default: next to kitty.ini for\n\
+; portable installs, else %LOCALAPPDATA%\\kapper.net\\KiTTY\\kageant.log.\n\
+;agentlogpath=\n\
+; agentlogmaxkb: rotate the active file when it crosses this size (KB).\n\
+;agentlogmaxkb=5120\n\
+; agentlogkeep: rotated generations to keep (.1 .. .N).\n\
+;agentlogkeep=3\n\
+; agentlogexpiredays: delete rotated generations older than this many days\n\
+; at rotation time. 0 = keep them forever. Shorter retention means less\n\
+; forensic history - this is a tradeoff, not housekeeping.\n\
+;agentlogexpiredays=90\n\
+\n\
 ; helloconfirm: every key-use confirmation demands a Windows Hello presence\n\
 ; check (biometrics or the device PIN, in Windows' own protected UI)\n\
 ; instead of a Yes button - a button click can be synthesized by another\n\
@@ -1009,6 +1030,13 @@ char default_init_file_content[] =
 ; window is moved, resized or closed - not knobs to edit by hand.\n\
 ;keylistgeometry=\n\
 ;keylistcolumns=\n\
+\n\
+; agentloggeometry / agentlogcolumns: the agent-log window's remembered\n\
+; position/size and column widths, written the same way. A remembered\n\
+; position is clamped back onto a live monitor, so a display that no\n\
+; longer exists cannot strand the window off-screen.\n\
+;agentloggeometry=\n\
+;agentlogcolumns=\n\
 \n\
 \n\
 [FontFallback]\n\

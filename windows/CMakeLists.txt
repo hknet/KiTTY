@@ -108,6 +108,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_startup_shortcut.c  # KiTTY: Startup-folder shortcut (portable autostart)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: kitty_protkey_available for the unprotected-memory warning (the agent's key blobs still use pageant.c's own copy - DEDUP PENDING)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c    # KiTTY: Windows Hello presence check (confirm-on-use gating)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_auditlog.c # KiTTY: the audit log's file sink
   pageant.rc)
 add_dependencies(pageant generated_licence_h)
 target_link_libraries(pageant

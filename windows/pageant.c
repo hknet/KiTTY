@@ -30,6 +30,7 @@
 #include "../kitty/kitty_inilight.h"  /* KiTTY: portable-layout probe */
 #include "../kitty/kitty_protkey.h"   /* KiTTY: kitty_protkey_available (tray tip) */
 #include "../kitty/kitty_hello.h"     /* KiTTY: Windows Hello presence check */
+#include "../kitty/kitty_auditlog.h"  /* KiTTY: the audit log's file sink */
 
 #include <shellapi.h>
 
@@ -116,6 +117,7 @@ static filereq_saved_dir *keypath = NULL;
 /* NB: the WM_COMMAND handler masks with ~0xF, so every IDM_ here must be a
  * multiple of 0x10. 0x00B8 silently aliased to IDM_LOAD_ON_STARTUP. */
 #define IDM_LOAD_KEYS          0x0100    /* KiTTY: re-add remembered keys */
+#define IDM_AUDITLOG           0x0110    /* KiTTY: open the audit-log viewer */
 #define IDM_RESUME_CONFIRM     0x00F0    /* KiTTY: lift the confirm-suppress latch */
 #define IDM_SESSIONS_BASE      0x1000
 #define IDM_SESSIONS_MAX       0x2000
@@ -1296,8 +1298,14 @@ static void prompt_add_keyfile(bool encrypted)
         keypath, true, FILTER_KEY_FILES);
 
     if (rmf) {
-        for (size_t i = 0; i < rmf->nfilenames; i++)
+        for (size_t i = 0; i < rmf->nfilenames; i++) {
             win_add_keyfile(rmf->filenames[i], encrypted);
+            /* KiTTY: GUI adds never pass the IPC mutation hook, so they
+             * get their own audit line. */
+            kitty_audit("add", "path", filename_to_str(rmf->filenames[i]),
+                        "result", "done", "reason", "gui",
+                        (const char *)NULL);
+        }
         request_multi_file_free(rmf);
 
         keylist_update();
@@ -1407,6 +1415,7 @@ static const struct kl_anchor keylist_anchors[] = {
     {IDC_KEYLIST_ABOUT,         KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYLIST_RESUMECONFIRM, KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
     {IDC_KEYLIST_RETRY,         KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_KEYLIST_AUDITLOG,      KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
     {IDOK,                      KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
 };
 static RECT keylist_baserects[lenof(keylist_anchors)];
@@ -2096,6 +2105,718 @@ static LRESULT CALLBACK keylist_lv_subclass(HWND hwnd, UINT msg,
 }
 
 /*
+ * KiTTY: the audit-log viewer. Modeless like the key list - a log window
+ * is exactly what gets left open for an hour, and a modal one would stop
+ * the agent answering (the .75 modal audit). Reads the active file plus
+ * the rotated generations, newest first, with a live substring filter
+ * across the RAW lines - "we know something happened but not why or when
+ * exactly by what" is the use case.
+ */
+static HWND auditview = NULL;
+
+static char **audit_lines = NULL;
+static int *audit_parity = NULL;     /* flow band: events close in time share
+                                      * a background, so a confirm and the
+                                      * sign it decided read as ONE flow */
+static int audit_nlines = 0;
+static int audit_repopulating = 0;   /* rows hold line indices: while a
+                                      * reload frees and rebuilds them, the
+                                      * selection notifications that deletion
+                                      * fires must not dereference them */
+#define AUDIT_VIEW_MAX 5000
+#define AUDIT_NREQS 32
+static char audit_reqs[AUDIT_NREQS][64];   /* distinct client apps seen */
+static int audit_nreqs = 0;
+
+static void auditview_free_lines(void)
+{
+    int i;
+    for (i = 0; i < audit_nlines; i++)
+        sfree(audit_lines[i]);
+    sfree(audit_lines);
+    sfree(audit_parity);
+    audit_lines = NULL;
+    audit_parity = NULL;
+    audit_nlines = 0;
+    audit_nreqs = 0;
+}
+
+static int auditview_field(const char *line, const char *key,
+                           char *out, size_t outsz);
+
+/* Seconds since some epoch for a log line's UTC stamp, or 0. Only DELTAS
+ * between lines matter (the flow grouping), so the epoch is irrelevant. */
+static ULONGLONG auditview_stamp(const char *line)
+{
+    SYSTEMTIME st;
+    FILETIME ft;
+    int y, mo, d, h, mi, s;
+    if (sscanf(line, "ts=%4d-%2d-%2dT%2d:%2d:%2dZ",
+               &y, &mo, &d, &h, &mi, &s) != 6)
+        return 0;
+    memset(&st, 0, sizeof(st));
+    st.wYear = (WORD)y; st.wMonth = (WORD)mo; st.wDay = (WORD)d;
+    st.wHour = (WORD)h; st.wMinute = (WORD)mi; st.wSecond = (WORD)s;
+    if (!SystemTimeToFileTime(&st, &ft))
+        return 0;
+    return (((ULONGLONG)ft.dwHighDateTime << 32) | ft.dwLowDateTime)
+           / 10000000ULL;
+}
+
+static void auditview_read_file(const char *path)
+{
+    FILE *fp = fopen(path, "rb");
+    char buf[2400];
+    if (!fp)
+        return;
+    while (fgets(buf, sizeof(buf), fp)) {
+        size_t n = strlen(buf);
+        while (n && (buf[n-1] == '\n' || buf[n-1] == '\r'))
+            buf[--n] = '\0';
+        if (!n)
+            continue;
+        if (audit_nlines >= AUDIT_VIEW_MAX) {
+            /* keep the NEWEST: drop the oldest collected line */
+            sfree(audit_lines[0]);
+            memmove(&audit_lines[0], &audit_lines[1],
+                    (audit_nlines - 1) * sizeof(*audit_lines));
+            audit_nlines--;
+        }
+        audit_lines = sresize(audit_lines, audit_nlines + 1, char *);
+        audit_lines[audit_nlines++] = dupstr(buf);
+    }
+    fclose(fp);
+}
+
+static void auditview_load(void)
+{
+    char gen[MAX_PATH + 8];
+    int i;
+    auditview_free_lines();
+    if (!*kitty_audit_path())
+        return;
+    for (i = 99; i >= 1; i--) {          /* oldest generations first */
+        snprintf(gen, sizeof(gen), "%s.%d", kitty_audit_path(), i);
+        if (GetFileAttributesA(gen) != INVALID_FILE_ATTRIBUTES)
+            auditview_read_file(gen);
+    }
+    auditview_read_file(kitty_audit_path());
+
+    /* Flow bands: a new group starts wherever more than 2 s passed since
+     * the previous event, so a confirm and the sign it decided - or an
+     * agent start and its key loads - share one background. */
+    audit_parity = snewn(audit_nlines ? audit_nlines : 1, int);
+    {
+        ULONGLONG prev = 0;
+        int group = 0;
+        for (i = 0; i < audit_nlines; i++) {
+            ULONGLONG t = auditview_stamp(audit_lines[i]);
+            if (i > 0 && (t == 0 || prev == 0 || t < prev || t - prev > 2))
+                group++;
+            audit_parity[i] = group & 1;
+            prev = t;
+        }
+    }
+
+    /* The distinct client apps, for the App droplist. */
+    for (i = 0; i < audit_nlines && audit_nreqs < AUDIT_NREQS; i++) {
+        char req[64];
+        int j, dup = 0;
+        if (!auditview_field(audit_lines[i], "req", req, sizeof(req)) ||
+            !req[0])
+            continue;
+        for (j = 0; j < audit_nreqs && !dup; j++)
+            if (!stricmp(audit_reqs[j], req))
+                dup = 1;
+        if (!dup)
+            snprintf(audit_reqs[audit_nreqs++], sizeof(audit_reqs[0]),
+                     "%s", req);
+    }
+}
+
+/* The line's stamp rendered as LOCAL time, the way the Time column shows
+ * it - also what the filter matches against, because the user searches the
+ * time they SEE, not the UTC form on disk. */
+static void auditview_localtime(const char *line, char *out, size_t sz)
+{
+    SYSTEMTIME utc, loc;
+    int y, mo, d, h, mi, s;
+    out[0] = '\0';
+    if (sscanf(line, "ts=%4d-%2d-%2dT%2d:%2d:%2dZ",
+               &y, &mo, &d, &h, &mi, &s) != 6)
+        return;
+    memset(&utc, 0, sizeof(utc));
+    utc.wYear = (WORD)y; utc.wMonth = (WORD)mo; utc.wDay = (WORD)d;
+    utc.wHour = (WORD)h; utc.wMinute = (WORD)mi; utc.wSecond = (WORD)s;
+    if (SystemTimeToTzSpecificLocalTime(NULL, &utc, &loc))
+        snprintf(out, sz, "%04u-%02u-%02u %02u:%02u:%02u",
+                 loc.wYear, loc.wMonth, loc.wDay,
+                 loc.wHour, loc.wMinute, loc.wSecond);
+}
+
+/* Pull one quoted value out of a log line, honouring the writer's escaping
+ * (\" \\ \n) so a comment containing a quote cannot truncate or shift the
+ * parse. Returns 0 if the field is absent. */
+static int auditview_field(const char *line, const char *key,
+                           char *out, size_t outsz)
+{
+    char pat[32];
+    const char *p;
+    size_t n = 0;
+    snprintf(pat, sizeof(pat), "%s=\"", key);
+    p = strstr(line, pat);
+    if (!p)
+        return 0;
+    p += strlen(pat);
+    while (*p && *p != '"' && n < outsz - 1) {
+        if (*p == '\\' && p[1]) {
+            p++;
+            out[n++] = (*p == 'n') ? ' ' : *p;
+        } else {
+            out[n++] = *p;
+        }
+        p++;
+    }
+    out[n] = '\0';
+    return 1;
+}
+
+/* One raw line into the list: local-time stamp, event, result, the key's
+ * human name (the comment - users do not deal in SHA256 strings), and the
+ * rest verbatim. The parse is deliberately shallow - unknown fields ride
+ * along in Details, which is the extensibility contract. */
+static void auditview_add_row(HWND hlist, int row, int line_index)
+{
+    const char *line = audit_lines[line_index];
+    char timebuf[32], evbuf[48], resbuf[48], keybuf[128];
+    char reqbuf[96], pidbuf[16];
+    const char *details = line;
+    LVITEM lvi;
+
+    timebuf[0] = evbuf[0] = resbuf[0] = keybuf[0] = reqbuf[0] = '\0';
+    auditview_localtime(line, timebuf, sizeof(timebuf));
+    if (timebuf[0]) {
+        details = strchr(line, ' ');
+        details = details ? details + 1 : "";
+    }
+    auditview_field(details, "ev", evbuf, sizeof(evbuf));
+    auditview_field(details, "result", resbuf, sizeof(resbuf));
+    /* The human name: the comment where there is one; a loadkey line has a
+     * path instead, which serves the same purpose. */
+    if (!auditview_field(details, "comment", keybuf, sizeof(keybuf)))
+        auditview_field(details, "path", keybuf, sizeof(keybuf));
+    if (auditview_field(details, "req", reqbuf, sizeof(reqbuf)) &&
+        auditview_field(details, "pid", pidbuf, sizeof(pidbuf))) {
+        size_t n = strlen(reqbuf);
+        snprintf(reqbuf + n, sizeof(reqbuf) - n, " (%s)", pidbuf);
+    }
+
+    memset(&lvi, 0, sizeof(lvi));
+    lvi.mask = LVIF_TEXT | LVIF_PARAM;
+    lvi.iItem = row;
+    lvi.pszText = timebuf;
+    lvi.lParam = (LPARAM)line_index;   /* index into audit_lines[] */
+    ListView_InsertItem(hlist, &lvi);
+    ListView_SetItemText(hlist, row, 1, evbuf);
+    ListView_SetItemText(hlist, row, 2, resbuf);
+    ListView_SetItemText(hlist, row, 3, keybuf);
+    ListView_SetItemText(hlist, row, 4, reqbuf);
+}
+
+/* ASCII case-blind substring - the filter box's whole engine. */
+static int auditview_match(const char *line, const char *needle)
+{
+    size_t nl;
+    if (!needle || !*needle)
+        return 1;
+    nl = strlen(needle);
+    for (; *line; line++)
+        if (!strnicmp(line, needle, nl))
+            return 1;
+    return 0;
+}
+
+static void auditview_populate(HWND hwnd)
+{
+    HWND hlist = GetDlgItem(hwnd, IDC_AUDIT_LIST);
+    char filter[128];
+    int i, row = 0;
+    char reqwant[64];
+    int reqsel;
+    GetDlgItemText(hwnd, IDC_AUDIT_FILTER, filter, sizeof(filter));
+    /* The App droplist: entry 0 is "(all)", the rest are the client apps
+     * seen in the log - "what is ssh-add.exe doing" in one click. */
+    reqwant[0] = '\0';
+    reqsel = (int)SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER,
+                                     CB_GETCURSEL, 0, 0);
+    if (reqsel > 0 && reqsel - 1 < audit_nreqs)
+        snprintf(reqwant, sizeof(reqwant), "req=\"%s\"",
+                 audit_reqs[reqsel - 1]);
+    audit_repopulating = 1;
+    SetDlgItemText(hwnd, IDC_AUDIT_DETAIL, "");
+    SendMessage(hlist, WM_SETREDRAW, FALSE, 0);
+    ListView_DeleteAllItems(hlist);
+    for (i = audit_nlines - 1; i >= 0; i--) {    /* newest first */
+        int hit = auditview_match(audit_lines[i], filter);
+        if (!hit && filter[0]) {
+            /* The Time column shows LOCAL time; a date/time typed into the
+             * filter must match what the user sees, not the UTC on disk. */
+            char lt[32];
+            auditview_localtime(audit_lines[i], lt, sizeof(lt));
+            hit = lt[0] && auditview_match(lt, filter);
+        }
+        if (hit && (!reqwant[0] || strstr(audit_lines[i], reqwant)))
+            auditview_add_row(hlist, row++, i);
+    }
+    SendMessage(hlist, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(hlist, NULL, TRUE);
+    audit_repopulating = 0;
+}
+
+static const struct kl_anchor auditview_anchors[] = {
+    {IDC_AUDIT_FILTER,  KL_ANCH_LEFT | KL_ANCH_TOP},
+    {IDC_AUDIT_REQFILTER, KL_ANCH_LEFT | KL_ANCH_TOP},
+    {IDC_AUDIT_ENABLE,  KL_ANCH_LEFT | KL_ANCH_TOP},
+    {IDC_AUDIT_REFRESH, KL_ANCH_RIGHT | KL_ANCH_TOP},
+    {IDOK,              KL_ANCH_RIGHT | KL_ANCH_TOP},
+    {IDC_AUDIT_LIST,
+     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_AUDIT_DETAIL,  KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_AUDIT_PATH,    KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+};
+static RECT auditview_baserects[lenof(auditview_anchors)];
+static SIZE auditview_basesize, auditview_minsize;
+static bool auditview_layout_ready = false;
+
+/* Geometry + column widths persist like the key list's - through the
+ * [Agent] settings layer, clamped back onto a live monitor on restore, so
+ * a vanished display can never strand the window. */
+#define AV_GEOM_INIKEY "agentloggeometry"
+#define AV_GEOM_REGVAL "AgentLogGeometry"
+#define AV_COLS_INIKEY "agentlogcolumns"
+#define AV_COLS_REGVAL "AgentLogColumns"
+#define AV_NCOLS 5
+
+static void auditview_save_geometry(HWND hwnd)
+{
+    RECT r;
+    HWND hlist;
+    if (IsIconic(hwnd) || IsZoomed(hwnd))
+        return;
+    if (GetWindowRect(hwnd, &r)) {
+        char buf[64];
+        sprintf(buf, "%ld,%ld,%ld,%ld", (long)r.left, (long)r.top,
+                (long)(r.right - r.left), (long)(r.bottom - r.top));
+        kageant_setting_str_set(AV_GEOM_INIKEY, AV_GEOM_REGVAL, buf);
+    }
+    hlist = GetDlgItem(hwnd, IDC_AUDIT_LIST);
+    if (hlist) {
+        char cols[80];
+        sprintf(cols, "%d,%d,%d,%d,%d",
+                ListView_GetColumnWidth(hlist, 0),
+                ListView_GetColumnWidth(hlist, 1),
+                ListView_GetColumnWidth(hlist, 2),
+                ListView_GetColumnWidth(hlist, 3),
+                ListView_GetColumnWidth(hlist, 4));
+        kageant_setting_str_set(AV_COLS_INIKEY, AV_COLS_REGVAL, cols);
+    }
+}
+
+static bool auditview_restore_geometry(HWND hwnd)
+{
+    char buf[64];
+    int x, y, w, h;
+    if (!kageant_setting_str_get(AV_GEOM_INIKEY, AV_GEOM_REGVAL,
+                                 buf, sizeof(buf)))
+        return false;
+    if (sscanf(buf, "%d,%d,%d,%d", &x, &y, &w, &h) != 4)
+        return false;
+    if (w < auditview_minsize.cx) w = auditview_minsize.cx;
+    if (h < auditview_minsize.cy) h = auditview_minsize.cy;
+    {
+        RECT want;
+        HMONITOR mon;
+        MONITORINFO mi;
+        SetRect(&want, x, y, x + w, y + h);
+        mon = MonitorFromRect(&want, MONITOR_DEFAULTTONEAREST);
+        mi.cbSize = sizeof(mi);
+        if (mon && GetMonitorInfo(mon, &mi)) {
+            RECT wk = mi.rcWork;
+            if (w > wk.right - wk.left) w = wk.right - wk.left;
+            if (h > wk.bottom - wk.top) h = wk.bottom - wk.top;
+            if (x + w > wk.right)  x = wk.right - w;
+            if (y + h > wk.bottom) y = wk.bottom - h;
+            if (x < wk.left) x = wk.left;
+            if (y < wk.top)  y = wk.top;
+        }
+    }
+    SetWindowPos(hwnd, NULL, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+    return true;
+}
+
+static bool auditview_restore_columns(HWND hlist)
+{
+    char buf[96];
+    int w[AV_NCOLS], i;
+    if (!kageant_setting_str_get(AV_COLS_INIKEY, AV_COLS_REGVAL,
+                                 buf, sizeof(buf)))
+        return false;
+    if (sscanf(buf, "%d,%d,%d,%d,%d",
+               &w[0], &w[1], &w[2], &w[3], &w[4]) != AV_NCOLS)
+        return false;
+    for (i = 0; i < AV_NCOLS; i++)
+        if (w[i] >= 20 && w[i] <= 2000)
+            ListView_SetColumnWidth(hlist, i, w[i]);
+    return true;
+}
+
+/* First open, nothing remembered: the three narrow columns take their
+ * actual content width, and Key + Requester split whatever is left 50:50. */
+static void auditview_default_columns(HWND hlist)
+{
+    RECT rc;
+    int i, used = 0, rest;
+    for (i = 0; i < 3; i++) {
+        ListView_SetColumnWidth(hlist, i, LVSCW_AUTOSIZE_USEHEADER);
+        used += ListView_GetColumnWidth(hlist, i);
+    }
+    GetClientRect(hlist, &rc);
+    rest = (rc.right - rc.left) - used - GetSystemMetrics(SM_CXVSCROLL);
+    if (rest < 160) rest = 160;
+    ListView_SetColumnWidth(hlist, 3, rest / 2);
+    ListView_SetColumnWidth(hlist, 4, rest - rest / 2);
+}
+
+/*
+ * One record, unfolded: every key=value on its own line, unescaped, in a
+ * copyable read-only box. The double-click deep view.
+ */
+static char *auditview_format_record(const char *line)
+{
+    strbuf *sb = strbuf_new();
+    const char *p = line;
+    while (*p) {
+        while (*p == ' ')
+            p++;
+        if (!*p)
+            break;
+        /* key */
+        while (*p && *p != '=' && *p != ' ') {
+            put_byte(sb, *p);
+            p++;
+        }
+        put_dataz(sb, ":  ");
+        if (*p == '=')
+            p++;
+        if (*p == '"') {
+            const char *vstart;
+            p++;
+            vstart = p;
+            while (*p && *p != '"') {
+                if (*p == '\\' && p[1]) {
+                    p++;
+                    if (*p == 'n')
+                        put_dataz(sb, "\r\n    ");
+                    else
+                        put_byte(sb, *p);
+                } else {
+                    put_byte(sb, *p);
+                }
+                p++;
+            }
+            /* The machine tokens stay machine tokens in the FILE; the
+             * unfolded view is where they get their sentence. */
+            if (!strncmp(vstart, "fp-refused", 10))
+                put_dataz(sb, "   (key refused: the file is not the key "
+                          "recorded for it - fingerprint mismatch)");
+            if (*p == '"')
+                p++;
+        } else {
+            while (*p && *p != ' ') {
+                put_byte(sb, *p);
+                p++;
+            }
+        }
+        put_dataz(sb, "\r\n");
+    }
+    return strbuf_to_str(sb);
+}
+
+static INT_PTR CALLBACK AuditDetailProc(HWND hwnd, UINT msg,
+                                        WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+      case WM_INITDIALOG:
+        kageant_set_window_icon(hwnd);
+        SetDlgItemText(hwnd, IDC_AUDITDETAIL_TEXT, (const char *)lParam);
+        return 1;
+      case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
+            EndDialog(hwnd, 1);
+            return 0;
+        }
+        return 0;
+      case WM_CLOSE:
+        EndDialog(hwnd, 1);
+        return 0;
+    }
+    return 0;
+}
+
+static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
+                                      WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+      case WM_INITDIALOG: {
+        HWND hlist = GetDlgItem(hwnd, IDC_AUDIT_LIST);
+        LVCOLUMN col;
+        kageant_set_window_icon(hwnd);
+        {
+            char *t = kitty_title_compose("kageant - agent log",
+                                          kitty_inilight_portable(),
+                                          restricted_acl(), false);
+            SetWindowText(hwnd, t);
+            sfree(t);
+        }
+        ListView_SetExtendedListViewStyle(
+            hlist, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+        memset(&col, 0, sizeof(col));
+        col.mask = LVCF_TEXT | LVCF_WIDTH;
+        col.pszText = "Time";    col.cx = 125;
+        ListView_InsertColumn(hlist, 0, &col);
+        col.pszText = "Event";   col.cx = 70;
+        ListView_InsertColumn(hlist, 1, &col);
+        col.pszText = "Result";  col.cx = 75;
+        ListView_InsertColumn(hlist, 2, &col);
+        col.pszText = "Key";       col.cx = 170;
+        ListView_InsertColumn(hlist, 3, &col);
+        col.pszText = "Requester"; col.cx = 130;
+        ListView_InsertColumn(hlist, 4, &col);
+
+        CheckDlgButton(hwnd, IDC_AUDIT_ENABLE,
+                       kageant_audit_get() ? BST_CHECKED : BST_UNCHECKED);
+        SetDlgItemText(hwnd, IDC_AUDIT_PATH,
+                       *kitty_audit_path() ? kitty_audit_path()
+                                           : "(no log path resolved)");
+        auditview_load();
+        {
+            int i;
+            SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER, CB_ADDSTRING, 0,
+                               (LPARAM)"(all apps)");
+            for (i = 0; i < audit_nreqs; i++)
+                SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER, CB_ADDSTRING,
+                                   0, (LPARAM)audit_reqs[i]);
+            SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER, CB_SETCURSEL,
+                               0, 0);
+        }
+        /*
+         * THE ROW-ALIGNER. Dialog units round differently per control
+         * class, a closed combo sizes itself from the font regardless of
+         * its template height, and a single-line edit top-anchors its
+         * text inside whatever height it is given - so no template can
+         * make this row line up exactly, and screenshots kept proving it.
+         * Instead: the combo's natural height IS the row, and every other
+         * control in the row is snapped to that top and height, to the
+         * pixel. Labels carry SS_CENTERIMAGE so their text centres on the
+         * same line; buttons and the checkbox centre their content
+         * anyway.
+         */
+        {
+            static const int row_ids[] = {
+                IDC_AUDIT_FILTER_LBL, IDC_AUDIT_FILTER, IDC_AUDIT_APP_LBL,
+                IDC_AUDIT_ENABLE, IDC_AUDIT_REFRESH, IDOK,
+            };
+            HWND combo = GetDlgItem(hwnd, IDC_AUDIT_REQFILTER);
+            RECT cr;
+            size_t ri;
+            GetWindowRect(combo, &cr);
+            MapWindowPoints(NULL, hwnd, (POINT *)&cr, 2);
+            for (ri = 0; ri < lenof(row_ids); ri++) {
+                HWND c = GetDlgItem(hwnd, row_ids[ri]);
+                RECT r;
+                if (!c)
+                    continue;
+                GetWindowRect(c, &r);
+                MapWindowPoints(NULL, hwnd, (POINT *)&r, 2);
+                SetWindowPos(c, NULL, r.left, cr.top,
+                             r.right - r.left, cr.bottom - cr.top,
+                             SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+        }
+        {
+            bool have_cols = auditview_restore_columns(hlist);
+            auditview_populate(hwnd);
+            if (!have_cols)
+                auditview_default_columns(hlist);   /* content-sized, after
+                                                     * the rows exist */
+        }
+
+        anchored_capture(hwnd, auditview_anchors, lenof(auditview_anchors),
+                         auditview_baserects, &auditview_basesize,
+                         &auditview_minsize);
+        auditview_layout_ready = true;
+        if (!auditview_restore_geometry(hwnd))
+            kitty_auxpos_apply(hwnd, "kageantAuditView",
+                               GetWindow(hwnd, GW_OWNER), 0);
+        return 1;
+      }
+      case WM_SIZE:
+        if (auditview_layout_ready && wParam != SIZE_MINIMIZED)
+            anchored_relayout(hwnd, auditview_anchors,
+                              lenof(auditview_anchors), auditview_baserects,
+                              auditview_basesize);
+        return 0;
+      case WM_GETMINMAXINFO:
+        if (auditview_layout_ready && auditview_minsize.cx) {
+            MINMAXINFO *mmi = (MINMAXINFO *)lParam;
+            mmi->ptMinTrackSize.x = auditview_minsize.cx;
+            mmi->ptMinTrackSize.y = auditview_minsize.cy;
+        }
+        return 0;
+      case WM_NOTIFY: {
+        NMHDR *hdr = (NMHDR *)lParam;
+        if (hdr->idFrom != IDC_AUDIT_LIST)
+            return 0;
+        /* Selecting a row fills the drill-down box with its FULL raw
+         * record - fingerprints, requester path, everything, copyable. */
+        if (hdr->code == LVN_ITEMCHANGED && !audit_repopulating) {
+            NMLISTVIEW *nm = (NMLISTVIEW *)lParam;
+            int idx = (int)nm->lParam;
+            if ((nm->uNewState & LVIS_SELECTED) &&
+                !(nm->uOldState & LVIS_SELECTED) &&
+                idx >= 0 && idx < audit_nlines)
+                SetDlgItemText(hwnd, IDC_AUDIT_DETAIL, audit_lines[idx]);
+        }
+        /* Double-click: the record unfolded, one field per line. */
+        if (hdr->code == NM_DBLCLK && !audit_repopulating) {
+            NMITEMACTIVATE *ia = (NMITEMACTIVATE *)lParam;
+            if (ia->iItem >= 0) {
+                LVITEM lvi;
+                memset(&lvi, 0, sizeof(lvi));
+                lvi.mask = LVIF_PARAM;
+                lvi.iItem = ia->iItem;
+                if (ListView_GetItem(hdr->hwndFrom, &lvi) &&
+                    lvi.lParam >= 0 && lvi.lParam < audit_nlines) {
+                    char *text = auditview_format_record(
+                        audit_lines[lvi.lParam]);
+                    DialogBoxParam(hinst, MAKEINTRESOURCE(IDD_AUDITDETAIL),
+                                   hwnd, AuditDetailProc, (LPARAM)text);
+                    sfree(text);
+                }
+            }
+        }
+        /* Colours: outcome decides the TEXT (green allowed, red refused,
+         * amber warnings, blue infrastructure), the flow band decides the
+         * BACKGROUND, so events that belong together read as one. High
+         * contrast is left to the system, same as the key list. */
+        if (hdr->code == NM_CUSTOMDRAW) {
+            NMLVCUSTOMDRAW *cd = (NMLVCUSTOMDRAW *)lParam;
+            LRESULT res = CDRF_DODEFAULT;
+            if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) {
+                res = CDRF_NOTIFYITEMDRAW;
+            } else if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+                HIGHCONTRASTA hc;
+                hc.cbSize = sizeof(hc);
+                if (!SystemParametersInfoA(SPI_GETHIGHCONTRAST,
+                                           sizeof(hc), &hc, 0))
+                    hc.dwFlags = 0;
+                if (!(hc.dwFlags & HCF_HIGHCONTRASTON) &&
+                    cd->nmcd.lItemlParam >= 0 &&
+                    cd->nmcd.lItemlParam < audit_nlines) {
+                    const char *l = audit_lines[cd->nmcd.lItemlParam];
+                    if (strstr(l, "result=\"denied\"") ||
+                        strstr(l, "result=\"blocked\"") ||
+                        strstr(l, "result=\"failed\"") ||
+                        strstr(l, "result=\"fp-refused\""))
+                        cd->clrText = RGB(178, 0, 0);
+                    else if (strstr(l, "unavailable") ||
+                             strstr(l, "error") ||
+                             strstr(l, "ev=\"logrotate\""))
+                        cd->clrText = KAGEANT_NOTICE_WARN;
+                    else if (strstr(l, "ev=\"agent\"") ||
+                             strstr(l, "ev=\"retry\""))
+                        cd->clrText = KAGEANT_NOTICE_INFO;
+                    else if (strstr(l, "result=\"allowed\"") ||
+                             strstr(l, "result=\"loaded\"") ||
+                             strstr(l, "result=\"done\""))
+                        cd->clrText = RGB(0, 122, 0);
+                    cd->clrTextBk =
+                        audit_parity[cd->nmcd.lItemlParam]
+                            ? RGB(242, 246, 252) : RGB(255, 255, 255);
+                    /* CDRF_NEWFONT, or every colour above is discarded -
+                     * the ListView custom-draw gotcha. */
+                    res = CDRF_NEWFONT;
+                }
+            }
+            SetWindowLongPtr(hwnd, DWLP_MSGRESULT, res);
+            return 1;
+        }
+        return 0;
+      }
+      case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+          case IDC_AUDIT_FILTER:
+            if (HIWORD(wParam) == EN_CHANGE)
+                auditview_populate(hwnd);
+            return 0;
+          case IDC_AUDIT_ENABLE:
+            kageant_audit_set(
+                IsDlgButtonChecked(hwnd, IDC_AUDIT_ENABLE) == BST_CHECKED);
+            SetDlgItemText(hwnd, IDC_AUDIT_PATH,
+                           *kitty_audit_path() ? kitty_audit_path()
+                                               : "(no log path resolved)");
+            return 0;
+          case IDC_AUDIT_REQFILTER:
+            if (HIWORD(wParam) == CBN_SELCHANGE)
+                auditview_populate(hwnd);
+            return 0;
+          case IDC_AUDIT_REFRESH: {
+            /* Reload re-derives the App list; keep the current slice if
+             * the app is still present. */
+            char cur[64];
+            cur[0] = '\0';
+            GetDlgItemText(hwnd, IDC_AUDIT_REQFILTER, cur, sizeof(cur));
+            auditview_load();
+            {
+                int i, sel = 0;
+                SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER,
+                                   CB_RESETCONTENT, 0, 0);
+                SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER, CB_ADDSTRING,
+                                   0, (LPARAM)"(all apps)");
+                for (i = 0; i < audit_nreqs; i++) {
+                    SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER,
+                                       CB_ADDSTRING, 0,
+                                       (LPARAM)audit_reqs[i]);
+                    if (!stricmp(audit_reqs[i], cur))
+                        sel = i + 1;
+                }
+                SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER, CB_SETCURSEL,
+                                   sel, 0);
+            }
+            auditview_populate(hwnd);
+            return 0;
+          }
+          case IDOK:
+          case IDCANCEL:
+            auditview_save_geometry(hwnd);
+            DestroyWindow(hwnd);
+            return 0;
+        }
+        return 0;
+      case WM_CLOSE:
+        auditview_save_geometry(hwnd);
+        DestroyWindow(hwnd);
+        return 0;
+      case WM_DESTROY:
+        auditview_free_lines();
+        auditview_layout_ready = false;
+        auditview = NULL;
+        return 0;
+    }
+    return 0;
+}
+
+/*
  * KiTTY: the [Agent] settings dialog, opened from the key list's Settings
  * button. It gathers the [Agent] options that are NOT already on the key
  * list window (confirm-key-use stays as the inline radios).
@@ -2182,6 +2903,21 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 SetDlgItemInt(hwnd, IDC_SET_NOTICESECS, ns, FALSE);
         }
         SendDlgItemMessage(hwnd, IDC_SET_NOTICESECS, EM_SETLIMITTEXT, 3, 0);
+        /* KiTTY: the agent log's knobs. */
+        CheckDlgButton(hwnd, IDC_SET_AGENTLOG,
+                       kageant_audit_get() ? BST_CHECKED : BST_UNCHECKED);
+        {
+            char lp[MAX_PATH + 1];
+            lp[0] = '\0';
+            kageant_audit_pathsetting_get(lp, sizeof(lp));
+            SetDlgItemText(hwnd, IDC_SET_AGENTLOGPATH, lp);
+        }
+        SetDlgItemInt(hwnd, IDC_SET_AGENTLOGKB,
+                      kageant_audit_maxkb_get(), FALSE);
+        SetDlgItemInt(hwnd, IDC_SET_AGENTLOGKEEP,
+                      kageant_audit_keep_get(), FALSE);
+        SetDlgItemInt(hwnd, IDC_SET_AGENTLOGDAYS,
+                      kageant_audit_expire_get(), FALSE);
         kitty_auxpos_apply(hwnd, "kageantSettings",
                            GetWindow(hwnd, GW_OWNER), 0);
         return 1;
@@ -2227,6 +2963,27 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 UINT ns = GetDlgItemInt(hwnd, IDC_SET_NOTICESECS, &nok, FALSE);
                 if (nok)
                     kageant_notice_timeout_set((int)ns);   /* blank = unchanged */
+            }
+            /* KiTTY: the agent log's knobs - written as a set (the setter
+             * clamps and re-arms the sink), then the on/off switch. */
+            {
+                char lp[MAX_PATH + 1];
+                BOOL ok1 = FALSE, ok2 = FALSE, ok3 = FALSE;
+                UINT kb = GetDlgItemInt(hwnd, IDC_SET_AGENTLOGKB,
+                                        &ok1, FALSE);
+                UINT kp = GetDlgItemInt(hwnd, IDC_SET_AGENTLOGKEEP,
+                                        &ok2, FALSE);
+                UINT dy = GetDlgItemInt(hwnd, IDC_SET_AGENTLOGDAYS,
+                                        &ok3, FALSE);
+                GetDlgItemText(hwnd, IDC_SET_AGENTLOGPATH, lp, sizeof(lp));
+                kageant_audit_cfg_set(
+                    lp,
+                    ok1 ? (int)kb : kageant_audit_maxkb_get(),
+                    ok2 ? (int)kp : kageant_audit_keep_get(),
+                    ok3 ? (int)dy : kageant_audit_expire_get());
+                kageant_audit_set(
+                    IsDlgButtonChecked(hwnd, IDC_SET_AGENTLOG)
+                        == BST_CHECKED);
             }
             /* Side-effectful toggles: fire the tray handler only on a real
              * change (it may prompt or refuse, and it is the authority). */
@@ -2935,6 +3692,13 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 DialogBox(hinst, MAKEINTRESOURCE(IDD_KEYSETTINGS), hwnd,
                           KeySettingsProc);
             }
+            return 0;
+          case IDC_KEYLIST_AUDITLOG:
+            /* KiTTY: straight into the audit-log viewer - one mechanism,
+             * two entry points (the tray item is the other). */
+            if (HIWORD(wParam) == BN_CLICKED ||
+                HIWORD(wParam) == BN_DOUBLECLICKED)
+                SendMessage(traywindow, WM_COMMAND, IDM_AUDITLOG, 0);
             return 0;
           case IDC_KEYLIST_STOPAGENT:
             /* KiTTY: quit kageant from the window that is already open,
@@ -3788,6 +4552,18 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             DialogBox(hinst, MAKEINTRESOURCE(IDD_KEYSETTINGS), NULL,
                       KeySettingsProc);
             break;
+          case IDM_AUDITLOG:
+            /* KiTTY: the audit-log viewer - MODELESS, like the key list. */
+            if (auditview && IsWindow(auditview)) {
+                SetForegroundWindow(auditview);
+            } else {
+                auditview = CreateDialog(hinst,
+                                         MAKEINTRESOURCE(IDD_AUDITVIEW),
+                                         NULL, AuditViewProc);
+                if (auditview)
+                    ShowWindow(auditview, SW_SHOW);
+            }
+            break;
           case IDM_HELP:
             launch_help(hwnd, WINHELP_CTX_pageant_general);
             break;
@@ -4407,6 +5183,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
         /* KiTTY: enable private-key usage confirmation for keys whose comment
          * requests it (see kageant_do_confirm). */
+        /* KiTTY: the audit log comes up BEFORE the hooks and the startup
+         * keys, so the very first loads are already on the record. */
+        kageant_audit_setup();
+        kitty_audit("agent", "result", "start", (const char *)NULL);
+
         kageant_confirm_hook = kageant_do_confirm;
         kageant_comment_confirm_hook = kageant_comment_wants_confirm;
         kageant_mutation_notice_hook = kageant_do_mutation_notice;
@@ -4572,6 +5353,20 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * keys), complain.
      */
     if (already_running) {
+        /* KiTTY: -keylist beside a running agent means "show me the RUNNING
+         * agent's key list", not nothing - post it the same command its
+         * tray menu sends, and hand over this process's foreground rights
+         * so the window can actually come to the front. */
+        if (show_keylist_on_startup) {
+            HWND tray = FindWindowA(TRAYCLASSNAME, NULL);
+            if (tray) {
+                DWORD tpid = 0;
+                GetWindowThreadProcessId(tray, &tpid);
+                if (tpid)
+                    AllowSetForegroundWindow(tpid);
+                PostMessageA(tray, WM_COMMAND, IDM_VIEWKEYS, 0);
+            }
+        }
         /* A BARE second instance exits SILENTLY now. The old "kageant is
          * already running" box treated it as a user error, but a bare
          * duplicate is an EXPECTED event on this fork: the MSI's Restart
@@ -4649,6 +5444,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY: the same [Agent] settings dialog the key list window opens,
      * reachable straight from the tray. */
     AppendMenu(systray_menu, MF_ENABLED, IDM_SETTINGS, "Settin&gs...");
+    AppendMenu(systray_menu, MF_ENABLED, IDM_AUDITLOG, "Agent lo&g...");
     AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
     if (has_help())
         AppendMenu(systray_menu, MF_ENABLED, IDM_HELP, "&Help");
@@ -4700,6 +5496,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 continue;
             if (IsWindow(aboutbox) && IsDialogMessage(aboutbox, &msg))
                 continue;
+            if (IsWindow(auditview) && IsDialogMessage(auditview, &msg))
+                continue;
             if (IsWindow(nonmodal_passphrase_hwnd) &&
                 IsDialogMessage(nonmodal_passphrase_hwnd, &msg))
                 continue;
@@ -4711,6 +5509,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         run_toplevel_callbacks();
     }
   finished:
+
+    /* KiTTY: the agent going DOWN is an audit event too - every graceful
+     * exit path funnels through here. (A force-kill cannot log, by nature;
+     * the next start line brackets the gap.) */
+    kitty_audit("agent", "result", "stop", (const char *)NULL);
 
     /* Clean up the system tray icon */
     {

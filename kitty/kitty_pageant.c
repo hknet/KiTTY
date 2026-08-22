@@ -26,6 +26,7 @@
 #include "kitty_startup_shortcut.h"
 #include "kitty_protkey.h"  /* kitty_protkey_available: the unprotected-memory warning */
 #include "kitty_hello.h"    /* Windows Hello presence check (confirm gating) */
+#include "kitty_auditlog.h" /* the audit log's file sink */
 #include "ssh.h"
 
 /* Shim so the moved kageant_do_notify body below stays textually identical
@@ -870,6 +871,171 @@ int kageant_quiet_missing(void)
     return kageant_bool_get("quietmissingkeys", "QuietMissingKeys", 0);
 }
 
+/* ---- the AGENT LOG: settings, path resolution and setup ----
+ * User-facing name "agent log", deliberately NOT "audit log" - a local
+ * file is evidence, never proof, and the name must not claim more than
+ * that (the internal kitty_audit_* names describe the purpose, not a
+ * promise). [Agent] agentlog (default ON), agentlogmaxkb / agentlogkeep /
+ * agentlogexpiredays for the file sink's rotation, agentlogpath to
+ * override the location entirely (also what makes the harness hermetic). */
+static int kageant_int_setting(const char *inikey, const char *regname,
+                               int def, int lo, int hi)
+{
+    char buf[16];
+    int ini_v = -1, reg_v;
+    if (kitty_inilight_read("Agent", inikey, buf, sizeof(buf))) {
+        int v = atoi(buf);
+        if (v >= lo && v <= hi)
+            ini_v = v;
+    }
+    if (kitty_inilight_registry_authoritative()) {
+        if (kageant_reg_read_dword(regname, &reg_v) &&
+            reg_v >= lo && reg_v <= hi)
+            return reg_v;
+        return ini_v >= 0 ? ini_v : def;
+    }
+    if (ini_v >= 0)
+        return ini_v;
+    if (kageant_reg_read_dword(regname, &reg_v) && reg_v >= lo && reg_v <= hi)
+        return reg_v;
+    return def;
+}
+
+int kageant_audit_get(void)
+{
+    return kageant_bool_get("agentlog", "AgentLog", 1);
+}
+int kageant_audit_set(int on)
+{
+    kitty_inilight_write("Agent", "agentlog", on ? "yes" : "no");
+    kageant_reg_write("AgentLog", on ? 1 : 0);
+    kageant_audit_setup();
+    return 1;
+}
+
+/* The knobs, for the settings dialog. Same defaults and clamps as the
+ * setup below - one source of truth for the ranges would be nicer, but
+ * these two sites are three lines apart and say the same numbers. */
+int kageant_audit_maxkb_get(void)
+{
+    return kageant_int_setting("agentlogmaxkb", "AgentLogMaxKB",
+                               5120, 16, 1048576);
+}
+int kageant_audit_keep_get(void)
+{
+    return kageant_int_setting("agentlogkeep", "AgentLogKeep", 3, 1, 99);
+}
+int kageant_audit_expire_get(void)
+{
+    return kageant_int_setting("agentlogexpiredays", "AgentLogExpireDays",
+                               90, 0, 3650);
+}
+int kageant_audit_pathsetting_get(char *buf, size_t len)
+{
+    return kageant_setting_str_get("agentlogpath", "AgentLogPath",
+                                   buf, len);
+}
+
+void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
+                           int expiredays)
+{
+    char num[16];
+    if (maxkb < 16) maxkb = 16;
+    if (maxkb > 1048576) maxkb = 1048576;
+    if (keep < 1) keep = 1;
+    if (keep > 99) keep = 99;
+    if (expiredays < 0) expiredays = 0;
+    if (expiredays > 3650) expiredays = 3650;
+    kageant_setting_str_set("agentlogpath", "AgentLogPath",
+                            path ? path : "");
+    snprintf(num, sizeof(num), "%d", maxkb);
+    kitty_inilight_write("Agent", "agentlogmaxkb", num);
+    kageant_reg_write_dword("AgentLogMaxKB", maxkb);
+    snprintf(num, sizeof(num), "%d", keep);
+    kitty_inilight_write("Agent", "agentlogkeep", num);
+    kageant_reg_write_dword("AgentLogKeep", keep);
+    snprintf(num, sizeof(num), "%d", expiredays);
+    kitty_inilight_write("Agent", "agentlogexpiredays", num);
+    kageant_reg_write_dword("AgentLogExpireDays", expiredays);
+    kageant_audit_setup();
+}
+
+/* Resolve the log path and (re)configure the sink. Portable installs log
+ * beside their kitty.ini; registry-mode installs under
+ * %LOCALAPPDATA%\kapper.net\KiTTY; [Agent] auditlogpath overrides both. */
+void kageant_audit_setup(void)
+{
+    char path[MAX_PATH + 1];
+    path[0] = '\0';
+    if (!kageant_setting_str_get("agentlogpath", "AgentLogPath",
+                                 path, sizeof(path)) || !path[0]) {
+        const char *ini;
+        if (!kitty_inilight_registry_authoritative() &&
+            (ini = kitty_inilight_file()) != NULL) {
+            const char *sl = strrchr(ini, '\\');
+            if (sl)
+                snprintf(path, sizeof(path), "%.*s\\kageant.log",
+                         (int)(sl - ini), ini);
+        }
+        if (!path[0]) {
+            char base[MAX_PATH + 1];
+            DWORD n = GetEnvironmentVariableA("LOCALAPPDATA", base,
+                                              sizeof(base));
+            if (n > 0 && n < sizeof(base)) {
+                char dir[MAX_PATH + 1];
+                snprintf(dir, sizeof(dir), "%s\\kapper.net", base);
+                CreateDirectoryA(dir, NULL);
+                snprintf(dir, sizeof(dir), "%s\\kapper.net\\KiTTY", base);
+                CreateDirectoryA(dir, NULL);
+                snprintf(path, sizeof(path), "%s\\kageant.log", dir);
+            }
+        }
+    }
+    kitty_audit_configure(
+        path[0] ? path : NULL, path[0] ? kageant_audit_get() : 0,
+        kageant_int_setting("agentlogmaxkb", "AgentLogMaxKB",
+                            5120, 16, 1048576),
+        kageant_int_setting("agentlogkeep", "AgentLogKeep", 3, 1, 99),
+        kageant_int_setting("agentlogexpiredays", "AgentLogExpireDays",
+                            90, 0, 3650));
+}
+
+/* Best-effort requester identity for the log: the exe base name AND its
+ * full path behind a pid - the base name is what the first-level view
+ * shows, the full path is the audit-trail fact ("which ssh.exe?"). */
+static void kageant_req_name(unsigned long pid, char *base_out, size_t bsz,
+                             char *path_out, size_t psz)
+{
+    HANDLE h;
+    base_out[0] = path_out[0] = '\0';
+    if (!pid)
+        return;
+    h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, (DWORD)pid);
+    if (h) {
+        char path[MAX_PATH + 1];
+        DWORD n = sizeof(path);
+        if (QueryFullProcessImageNameA(h, 0, path, &n) && path[0]) {
+            const char *base = strrchr(path, '\\');
+            snprintf(base_out, bsz, "%s", base ? base + 1 : path);
+            snprintf(path_out, psz, "%s", path);
+        }
+        CloseHandle(h);
+    }
+}
+
+/* One sign/confirm-shaped audit line; pid 0 drops the requester fields. */
+static void kageant_audit_use(const char *ev, const char *fp,
+                              const char *comment, const char *result,
+                              const char *reason, unsigned long pid)
+{
+    char req[80], reqpath[MAX_PATH + 1], pidbuf[16];
+    kageant_req_name(pid, req, sizeof(req), reqpath, sizeof(reqpath));
+    snprintf(pidbuf, sizeof(pidbuf), "%lu", pid);
+    kitty_audit(ev, "fp", fp, "comment", comment, "result", result,
+                "reason", reason, "req", req, "reqpath", reqpath,
+                "pid", pid ? pidbuf : NULL, (const char *)NULL);
+}
+
 /* [Agent] helloconfirm: every confirmation prompt demands a Windows Hello
  * presence check instead of a button. Default OFF; a single key can demand
  * it via its per-key confirm mode without this. Genuinely boolean. */
@@ -1393,6 +1559,20 @@ static int kageant_can_defer(const char *path)
  * Returns 1 loaded and verified, 0 the file held a DIFFERENT key, -1 nothing
  * could be loaded from it at all.
  */
+/* Audit one on-disk key-load outcome. enc reports what protects the FILE
+ * (password/blank) - the field the Hello/smartcard wraps will extend. */
+static void kageant_audit_load(const char *ev, const char *path,
+                               const char *result)
+{
+    Filename *fn = filename_from_str(path);
+    char *cmt = NULL;
+    int enc = ppk_encrypted_f(fn, &cmt);
+    filename_free(fn);
+    sfree(cmt);
+    kitty_audit(ev, "path", path, "result", result,
+                "enc", enc ? "password" : "blank", (const char *)NULL);
+}
+
 static int kageant_load_startup_entry(const char *path, int encrypted,
                                       const char *fp)
 {
@@ -1403,10 +1583,14 @@ static int kageant_load_startup_entry(const char *path, int encrypted,
     fn = filename_from_str(path);
     win_add_keyfile(fn, defer ? true : false);  /* deferred asks nothing */
     filename_free(fn);
-    if (g_nloaded == before)
+    if (g_nloaded == before) {
+        kageant_audit_load("loadkey", path, "failed");
         return -1;                             /* would not load at all */
-    if (!kageant_verify_loaded(path, fp))
+    }
+    if (!kageant_verify_loaded(path, fp)) {
+        kageant_audit_load("loadkey", path, "fp-refused");
         return 0;                              /* not our key; already removed */
+    }
 
     if (!encrypted && defer) {
         /* The entry wants it decrypted now. That goes through the file again
@@ -1415,9 +1599,12 @@ static int kageant_load_startup_entry(const char *path, int encrypted,
         fn = filename_from_str(path);
         win_add_keyfile(fn, false);
         filename_free(fn);
-        if (!kageant_verify_loaded(path, fp))
+        if (!kageant_verify_loaded(path, fp)) {
+            kageant_audit_load("loadkey", path, "fp-refused");
             return 0;
+        }
     }
+    kageant_audit_load("loadkey", path, "loaded");
 
     /*
      * Put the recorded load mode back. The deferred add above tracked this key
@@ -1818,6 +2005,19 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
      * after a fingerprint match - see above. */
     if (rewrote_any)
         kageant_save_startup_keys();
+
+    /* One summary line per pass with anything to say - quiet passes on an
+     * unrelated device arrival stay out of the log. */
+    if (loaded_n || refused_n || broken_n || nofp_new || (manual && absent_n)) {
+        char nums[4][12];
+        snprintf(nums[0], sizeof(nums[0]), "%d", loaded_n);
+        snprintf(nums[1], sizeof(nums[1]), "%d", refused_n);
+        snprintf(nums[2], sizeof(nums[2]), "%d", absent_n);
+        snprintf(nums[3], sizeof(nums[3]), "%d", broken_n);
+        kitty_audit("retry", "trigger", manual ? "button" : "device-arrival",
+                    "loaded", nums[0], "refused", nums[1],
+                    "absent", nums[2], "broken", nums[3], (const char *)NULL);
+    }
 
     if (manual)
         kageant_note_retry_result(loaded_n, refused_n, absent_n, broken_n,
@@ -3289,12 +3489,19 @@ void kageant_notice_timeout_set(int seconds)
 
 int kageant_ipc_blocked(int op)
 {
+    int blocked;
     if (kageant_lockdown_get())
-        return 1;   /* add + remove + remove-all all blocked */
-    if (op == KAGEANT_MUT_ADD)
-        return kageant_policy_get("blockipcadd", "BlockIpcAdd");
-    /* remove and remove-all share the one switch */
-    return kageant_policy_get("blockipcremove", "BlockIpcRemove");
+        blocked = 1;   /* add + remove + remove-all all blocked */
+    else if (op == KAGEANT_MUT_ADD)
+        blocked = kageant_policy_get("blockipcadd", "BlockIpcAdd");
+    else   /* remove and remove-all share the one switch */
+        blocked = kageant_policy_get("blockipcremove", "BlockIpcRemove");
+    if (blocked)
+        kageant_audit_use(op == KAGEANT_MUT_ADD    ? "add" :
+                          op == KAGEANT_MUT_REMOVE ? "remove" : "remove-all",
+                          NULL, NULL, "blocked", "ipc-policy",
+                          pageant_external_pid);
+    return blocked;
 }
 
 void kageant_do_mutation_notice(int op, const char *comment)
@@ -3302,6 +3509,12 @@ void kageant_do_mutation_notice(int op, const char *comment)
     char proc[MAX_PATH + 32];
     const char *title;
     char *text;
+
+    /* Audited BEFORE the notify gate: turning notices off must never turn
+     * the audit trail off with it. */
+    kageant_audit_use(op == KAGEANT_MUT_ADD    ? "add" :
+                      op == KAGEANT_MUT_REMOVE ? "remove" : "remove-all",
+                      NULL, comment, "done", "ipc", pageant_external_pid);
 
     if (!kageant_notify_get() || !traywindow)
         return;
@@ -3387,15 +3600,20 @@ int kageant_do_confirm(const char *comment, int key_confirm)
         return 1;   /* this key does not require usage confirmation */
 
     /* The user hit "deny & stop asking" during a storm: keep denying, no box. */
-    if (g_confirm_suppress)
+    if (g_confirm_suppress) {
+        kageant_audit_use("confirm", NULL, comment, "denied",
+                          "suppress-latch", 0);
         return 0;
+    }
 
     /* One box at a time. A hostile client can fire many sign requests; the
      * MessageBox modal loop pumps messages, so a second request can arrive
      * and stack another box on top. Deny the pile-up rather than let a bad
      * client fill the screen while the user is trying to say no. */
-    if (g_confirm_active)
+    if (g_confirm_active) {
+        kageant_audit_use("confirm", NULL, comment, "denied", "pileup", 0);
         return 0;
+    }
 
     /*
      * Windows Hello instead of a button - when this key's own mode says so,
@@ -3419,6 +3637,12 @@ int kageant_do_confirm(const char *comment, int key_confirm)
         g_confirm_active = 0;
 
         allowed = (hr == KITTY_HELLO_VERIFIED);
+        kageant_audit_use("confirm", NULL, comment,
+                          allowed ? "allowed" : "denied",
+                          hr == KITTY_HELLO_VERIFIED    ? "hello-verified" :
+                          hr == KITTY_HELLO_DENIED      ? "hello-denied" :
+                          hr == KITTY_HELLO_UNAVAILABLE ? "hello-unavailable" :
+                                                          "hello-error", 0);
         if (!allowed && hr != KITTY_HELLO_DENIED && traywindow)
             kitty_notice_show(
                 "kageant: key use DENIED",
@@ -3450,6 +3674,11 @@ int kageant_do_confirm(const char *comment, int key_confirm)
         sfree(msg);
         g_confirm_active = 0;
 
+        kageant_audit_use("confirm", NULL, comment,
+                          r == IDYES ? "allowed" : "denied",
+                          r == IDYES    ? "click-allow" :
+                          r == IDCANCEL ? "click-cancel-latch" : "click-deny",
+                          0);
         if (r == IDCANCEL) {
             g_confirm_suppress = 1;
             if (kageant_notify_get() && traywindow)
@@ -3514,12 +3743,18 @@ int kageant_flash_any(void)
     return 0;
 }
 
-void kageant_note_keyuse(const char *fingerprint, int allowed)
+void kageant_note_keyuse(const char *fingerprint, const char *comment,
+                         int allowed, unsigned long req_pid)
 {
     DWORD now = GetTickCount();
     int i, use = -1;
     if (!fingerprint || !*fingerprint)
         return;
+    /* THE audit line of the whole feature: what signed (or was refused),
+     * and by which process. The COMMENT rides along because that is the
+     * name users know a key by - nobody deals in SHA256 strings. */
+    kageant_audit_use("sign", fingerprint, comment,
+                      allowed ? "allowed" : "denied", NULL, req_pid);
     for (i = 0; i < KAGEANT_FLASH_SLOTS; i++)            /* same key again? */
         if (g_flash[i].fp && !strcmp(g_flash[i].fp, fingerprint)) {
             use = i;

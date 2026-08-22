@@ -76,7 +76,15 @@ ALLOW_TEMPLATE_UNREAD = {
     ("Agent", "blockipcremove"),
     ("Agent", "keylistgeometry"),
     ("Agent", "keylistcolumns"),
+    ("Agent", "agentloggeometry"),
+    ("Agent", "agentlogcolumns"),
     ("Agent", "startupkey1"),
+    #   kageant_int_setting("agentlogmaxkb", ...)  kitty/kitty_pageant.c
+    #   kageant_setting_str_get("agentlogpath", ...)      - " -
+    ("Agent", "agentlogpath"),
+    ("Agent", "agentlogmaxkb"),
+    ("Agent", "agentlogkeep"),
+    ("Agent", "agentlogexpiredays"),
 }
 
 
