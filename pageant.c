@@ -18,6 +18,9 @@
 #ifndef CRYPTPROTECTMEMORY_BLOCK_SIZE
 #define CRYPTPROTECTMEMORY_BLOCK_SIZE 16
 #endif
+/* KiTTY: the shared CryptProtectMemory key-blob wrapper - one copy for the
+ * agent core, kageant's satellites, kittygen and kittygen-cli alike. */
+#include "kitty/kitty_protkey.h"
 #ifndef CRYPTPROTECTMEMORY_SAME_PROCESS
 #define CRYPTPROTECTMEMORY_SAME_PROCESS 0x00
 #endif
@@ -62,7 +65,6 @@ typedef struct PageantPrivateKeySort PageantPrivateKeySort;
 typedef struct PageantPublicKeySort PageantPublicKeySort;
 typedef struct PageantPrivateKey PageantPrivateKey;
 typedef struct PageantPublicKey PageantPublicKey;
-typedef struct PageantProtectedKeyBlob PageantProtectedKeyBlob;
 typedef struct PageantAsyncOp PageantAsyncOp;
 typedef struct PageantAsyncOpVtable PageantAsyncOpVtable;
 typedef struct PageantClientRequestNode PageantClientRequestNode;
@@ -181,12 +183,6 @@ static int pubkey_cmpfn(void *av, void *bv)
         return ptrlen_strcmp(a->full_pub, b->full_pub);
 }
 
-struct PageantProtectedKeyBlob {
-    unsigned char *data;
-    size_t blob_len, protected_len;
-    const ssh_keyalg *alg;
-};
-
 struct PageantPrivateKey {
     PageantPrivateKeySort sort;
     strbuf *base_pub;              /* the true owner of sort.base_pub */
@@ -194,7 +190,11 @@ struct PageantPrivateKey {
         RSAKey *rkey;              /* if sort.priv.ssh_version == 1 */
         ssh_key *skey;             /* if sort.priv.ssh_version == 2 */
     };
-    PageantProtectedKeyBlob *protected_skey;
+    /* KiTTY: the at-rest form of skey - a CryptProtectMemory'd blob,
+     * materialised only around a signature. The SHARED implementation in
+     * kitty/kitty_protkey.c, the same one kageant's satellites use; the
+     * local copy it was extracted from is gone. */
+    KittyProtKey *protected_skey;
     strbuf *encrypted_key_file;
     /* encrypted_key_comment stores the comment belonging to the
      * encrypted key file. This is used when presenting deferred
@@ -304,84 +304,12 @@ static bool pageant_unprotect_memory(void *data, size_t len)
 #endif
 }
 
-static void protected_skey_free(PageantProtectedKeyBlob *psk)
-{
-    if (!psk)
-        return;
-    if (psk->data) {
-        /* The buffer is normally encrypted here; clearing it still avoids
-         * leaving the protected blob itself behind after key removal. */
-        smemclr(psk->data, psk->protected_len);
-        sfree(psk->data);
-    }
-    smemclr(psk, sizeof(*psk));
-    sfree(psk);
-}
-
-/* DEDUP PENDING: this protected_skey_* trio (from_key / to_temp_key / free)
- * was extracted into the shared kitty/kitty_protkey.c so kageant, the kittygen
- * GUI and the kittygen CLI share one copy. kageant has NOT yet been migrated
- * onto it, deliberately, so building the kittygen protection does not risk the
- * running agent - this copy stays until that follow-up. Not a missed refactor. */
-static PageantProtectedKeyBlob *protected_skey_from_key(ssh_key *key)
-{
-    strbuf *plain = strbuf_new_nm();
-    ssh_key_openssh_blob(key, BinarySink_UPCAST(plain));
-
-    size_t blob_len = plain->len;
-    size_t protected_len = ((blob_len + CRYPTPROTECTMEMORY_BLOCK_SIZE - 1) /
-                            CRYPTPROTECTMEMORY_BLOCK_SIZE) *
-                           CRYPTPROTECTMEMORY_BLOCK_SIZE;
-    unsigned char *data = snewn(protected_len, unsigned char);
-    memset(data, 0, protected_len);
-    memcpy(data, plain->u, blob_len);
-
-    bool ok = pageant_protect_memory(data, protected_len);
-    smemclr(plain->u, blob_len);
-    strbuf_free(plain);
-
-    if (!ok) {
-        smemclr(data, protected_len);
-        sfree(data);
-        return NULL;
-    }
-
-    PageantProtectedKeyBlob *psk = snew(PageantProtectedKeyBlob);
-    psk->data = data;
-    psk->blob_len = blob_len;
-    psk->protected_len = protected_len;
-    psk->alg = ssh_key_alg(key);
-    return psk;
-}
-
-static ssh_key *protected_skey_to_temp_key(PageantProtectedKeyBlob *psk)
-{
-    if (!psk)
-        return NULL;
-
-    if (!pageant_unprotect_memory(psk->data, psk->protected_len))
-        return NULL;
-
-    BinarySource src[1];
-    BinarySource_BARE_INIT_PL(src, make_ptrlen(psk->data, psk->blob_len));
-    ssh_key *key = ssh_key_new_priv_openssh(psk->alg, src);
-
-    if (!pageant_protect_memory(psk->data, psk->protected_len)) {
-        smemclr(psk->data, psk->protected_len);
-        if (key)
-            ssh_key_free(key);
-        return NULL;
-    }
-
-    return key;
-}
-
 static void protect_priv_skey_if_possible(PageantPrivateKey *priv)
 {
     if (priv->sort.ssh_version != 2 || !priv->skey || priv->protected_skey)
         return;
 
-    PageantProtectedKeyBlob *psk = protected_skey_from_key(priv->skey);
+    KittyProtKey *psk = kitty_protkey_from_key(priv->skey);
     if (!psk)
         return;                    /* leave legacy cleartext key usable */
 
@@ -406,7 +334,7 @@ static void pk_priv_free_private_material(PageantPrivateKey *priv)
      * struct can now outlive its key (0.85: kept alive while a decryption
      * prompt is pending). A stale pointer here would be freed twice. */
     if (priv->protected_skey) {
-        protected_skey_free(priv->protected_skey);
+        kitty_protkey_free(priv->protected_skey);
         priv->protected_skey = NULL;
     }
     if (priv->encrypted_key_file) {
@@ -1120,7 +1048,7 @@ static void signop_coroutine(PageantAsyncOp *pao)
 
     ssh_key *sign_key = so->priv->skey;
     if (!sign_key && so->priv->protected_skey) {
-        temp_skey = protected_skey_to_temp_key(so->priv->protected_skey);
+        temp_skey = kitty_protkey_to_temp_key(so->priv->protected_skey);
         sign_key = temp_skey;
         if (!sign_key) {
             response = strbuf_new();
@@ -1408,7 +1336,7 @@ static bool reencrypt_key(PageantPublicKey *pub)
         ssh_key_free(priv->skey);
         priv->skey = NULL;
     }
-    protected_skey_free(priv->protected_skey);
+    kitty_protkey_free(priv->protected_skey);
     priv->protected_skey = NULL;
 
     return true;
@@ -2718,7 +2646,7 @@ static tree234 *passphrases = NULL;
  * They exist so that adding several keys at once asks once. Holding them in the
  * clear for that convenience puts them in our working set, in any crash dump we
  * produce, and in the page file - the same objections that put the private keys
- * themselves behind CryptProtectMemory (see protected_skey_from_key above).
+ * themselves behind CryptProtectMemory (kitty/kitty_protkey.c).
  * This uses the same pair of helpers and the same block padding.
  *
  * A cached entry is: [4-byte length][passphrase][padding], the whole thing

@@ -106,7 +106,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c     # KiTTY: shared title-suffix composer
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inilight.c  # KiTTY: light kitty.ini resolver for satellite binaries
   ${CMAKE_SOURCE_DIR}/kitty/kitty_startup_shortcut.c  # KiTTY: Startup-folder shortcut (portable autostart)
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: kitty_protkey_available for the unprotected-memory warning (the agent's key blobs still use pageant.c's own copy - DEDUP PENDING)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: THE CryptProtectMemory key-blob wrapper - the agent core (pageant.c) uses this shared copy too now (a unix agent build would need this file added beside it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c    # KiTTY: Windows Hello presence check (confirm-on-use gating)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auditlog.c # KiTTY: the audit log's file sink
   pageant.rc)
