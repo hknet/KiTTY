@@ -21,11 +21,20 @@
              processorArchitecture="*"/>
    </dependentAssembly>
    </dependency>
-   <!-- Declare us to be "DPI-aware". -->
+   <!-- Declare us to be "DPI-aware". PerMonitorV2 (Win10 1703+, ignored
+        gracefully by anything older, which then uses the system-aware
+        line): the dialog manager rescales our windows, fonts and chrome
+        per monitor - kitty.exe declares the same, and kageant lagging on
+        the old level was why its dialogs looked wrong on high-DPI
+        displays while the terminal did not. -->
    <asmv3:application xmlns:asmv3="urn:schemas-microsoft-com:asm.v3">
      <asmv3:windowsSettings
          xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">
        <dpiAware>true</dpiAware>
+       <dpiAwareness
+           xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
+         PerMonitorV2
+       </dpiAwareness>
      </asmv3:windowsSettings>
    </asmv3:application>
 </assembly>
