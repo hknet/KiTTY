@@ -29,6 +29,7 @@
 #include "../kitty/kitty_title.h"     /* KiTTY: shared title-suffix composer */
 #include "../kitty/kitty_inilight.h"  /* KiTTY: portable-layout probe */
 #include "../kitty/kitty_protkey.h"   /* KiTTY: kitty_protkey_available (tray tip) */
+#include "../kitty/kitty_hello.h"     /* KiTTY: Windows Hello presence check */
 
 #include <shellapi.h>
 
@@ -608,7 +609,11 @@ static void keylist_update_callback(
     /* KiTTY: keep every fingerprint form for the details dialog. */
     for (size_t t = 0; t < SSH_N_FPTYPES; t++)
         disp->fp_full[t] = fingerprints[t] ? dupstr(fingerprints[t]) : NULL;
-    disp->confirm = (ext_flags & LIST_EXTENDED_FLAG_CONFIRM_ON_USE) != 0;
+    /* Mode, not a flag: 0 none, 1 click, 2 Windows Hello (bit 8 rides on
+     * top of bit 4, never alone). */
+    disp->confirm = (ext_flags & LIST_EXTENDED_FLAG_CONFIRM_ON_USE) ?
+                    ((ext_flags & LIST_EXTENDED_FLAG_CONFIRM_HELLO) ? 2 : 1)
+                    : 0;
     disp->pending = 0;
     disp->pendpath = NULL;
     disp->ssh_version = key->ssh_version;
@@ -707,7 +712,9 @@ static void keylist_update_callback(
     ListView_SetItemText(ctx->hlist, row, 2, disp->hash->s);
     ListView_SetItemText(ctx->hlist, row, 3, disp->info->s);
     ListView_SetItemText(ctx->hlist, row, 4, disp->expires->s);
-    ListView_SetItemText(ctx->hlist, row, 5, disp->confirm ? "required" : "");
+    ListView_SetItemText(ctx->hlist, row, 5,
+                         disp->confirm == 2 ? "Hello" :
+                         disp->confirm     ? "required" : "");
     ListView_SetItemText(ctx->hlist, row, 6, disp->comment->s);
     ctx->index++;
 }
@@ -1466,6 +1473,7 @@ static const struct kl_anchor keydetail_anchors[] = {
     {IDC_KEYDETAIL_LIFETIME,
      KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
     {IDC_KEYDETAIL_DEFER,   KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_CONFIRM_LBL, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYDETAIL_CONFIRM, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDOK,                  KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
 };
@@ -1723,10 +1731,25 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
         }
 
         /* KiTTY: per-key confirm-on-use - a live agent-key setting, so it
-         * needs a loaded key (pending rows have nothing to flag). */
-        EnableWindow(GetDlgItem(hwnd, IDC_KEYDETAIL_CONFIRM), !disp->pending);
-        CheckDlgButton(hwnd, IDC_KEYDETAIL_CONFIRM,
-                       disp->confirm ? BST_CHECKED : BST_UNCHECKED);
+         * needs a loaded key (pending rows have nothing to flag). Three
+         * values (item index == mode 0/1/2), so a droplist: routed through
+         * anything boolean the Hello mode would silently become "ask". */
+        {
+            static const char *const confirm_modes[] = {
+                "no",
+                "ask before each use",
+                "ask with Windows Hello",
+            };
+            int cm;
+            for (cm = 0; cm < (int)lenof(confirm_modes); cm++)
+                SendDlgItemMessage(hwnd, IDC_KEYDETAIL_CONFIRM, CB_ADDSTRING,
+                                   0, (LPARAM)confirm_modes[cm]);
+            SendDlgItemMessage(hwnd, IDC_KEYDETAIL_CONFIRM, CB_SETCURSEL,
+                               (disp->confirm >= 0 && disp->confirm <= 2) ?
+                               disp->confirm : 0, 0);
+            EnableWindow(GetDlgItem(hwnd, IDC_KEYDETAIL_CONFIRM),
+                         !disp->pending);
+        }
 
         /* KiTTY: accepting a changed key file. Only ever offered for a row
          * that IS a mismatch - this is the one place a new fingerprint can be
@@ -1818,17 +1841,20 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             }
             return 0;
           case IDC_KEYDETAIL_CONFIRM:
-            /* KiTTY: flip the live per-key confirm flag; the startup list
-             * (which persists it as a ,confirm token) is rewritten when
-             * this key is tracked there. */
-            if (keydetail_blob && keydetail_blob->len) {
-                pageant_set_key_confirm(
-                    ptrlen_from_strbuf(keydetail_blob),
-                    IsDlgButtonChecked(hwnd, IDC_KEYDETAIL_CONFIRM) ==
-                        BST_CHECKED);
-                if (kageant_startup_get())
-                    kageant_save_startup_keys();
-                keylist_update();
+            /* KiTTY: set the live per-key confirm MODE; the startup list
+             * (which persists it as a ,confirm / ,helloconfirm token) is
+             * rewritten when this key is tracked there. */
+            if (HIWORD(wParam) == CBN_SELCHANGE &&
+                keydetail_blob && keydetail_blob->len) {
+                int sel = (int)SendDlgItemMessage(
+                    hwnd, IDC_KEYDETAIL_CONFIRM, CB_GETCURSEL, 0, 0);
+                if (sel >= 0 && sel <= 2) {
+                    pageant_set_key_confirm(
+                        ptrlen_from_strbuf(keydetail_blob), sel);
+                    if (kageant_startup_get())
+                        kageant_save_startup_keys();
+                    keylist_update();
+                }
             }
             return 0;
           case IDC_KEYDETAIL_ACCEPT: {
@@ -1873,6 +1899,21 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             sfree(actual);
             if (r != IDYES)
                 return 0;
+
+            /* KiTTY: ratifying a changed key file is rare, deliberate and
+             * permanent - with [Agent] helloconfirm on, it takes a Windows
+             * Hello presence check on top of the Yes. FAIL CLOSED: an
+             * unavailable Hello refuses, never downgrades to the click. */
+            if (kageant_hello_get() &&
+                kitty_hello_verify(hwnd, "Accept the changed key file and "
+                                   "trust it from now on?")
+                    != KITTY_HELLO_VERIFIED) {
+                MessageBox(hwnd,
+                           "The Windows Hello check did not verify, so the "
+                           "key was NOT accepted and nothing was changed.",
+                           "kageant - not accepted", MB_ICONWARNING | MB_OK);
+                return 0;
+            }
 
             if (!kageant_accept_pending_key(keypath)) {
                 MessageBox(hwnd,
@@ -2114,6 +2155,21 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             kageant_quiet_missing() ? BST_CHECKED : BST_UNCHECKED);
         SetDlgItemInt(hwnd, IDC_SET_TTL, kageant_passphrase_ttl(), FALSE);
         SendDlgItemMessage(hwnd, IDC_SET_TTL, EM_SETLIMITTEXT, 3, 0);
+        /* Hello gating: greyed (and shown unticked) when Windows Hello has
+         * no credential to check against - the availability probe is the
+         * system's own answer. A remembered "yes" is preserved in the
+         * store; only the control is disabled. */
+        {
+            int avail = kitty_hello_available();
+            CheckDlgButton(hwnd, IDC_SET_HELLO,
+                (avail == 1 && kageant_hello_get()) ? BST_CHECKED
+                                                    : BST_UNCHECKED);
+            EnableWindow(GetDlgItem(hwnd, IDC_SET_HELLO), avail == 1);
+            if (avail != 1)
+                SetDlgItemText(hwnd, IDC_SET_HELLO,
+                               "Confirmations require Windows Hello "
+                               "(not set up on this system)");
+        }
         CheckDlgButton(hwnd, IDC_SET_LOCKDOWN,
             kageant_lockdown_get() ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(hwnd, IDC_SET_BLOCKADD,
@@ -2155,6 +2211,11 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             }
             /* KiTTY: IPC access control + notice timeout work in either store,
              * so they are always applied (not gated on a kitty.ini). */
+            /* Only writable while the control is live - a greyed checkbox
+             * must not overwrite the stored value with its display state. */
+            if (IsWindowEnabled(GetDlgItem(hwnd, IDC_SET_HELLO)))
+                kageant_hello_set(
+                    IsDlgButtonChecked(hwnd, IDC_SET_HELLO) == BST_CHECKED);
             kageant_lockdown_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_LOCKDOWN) == BST_CHECKED);
             kageant_blockadd_set(

@@ -25,6 +25,7 @@
  * notice, and not confusable with a warning. */
 #include "kitty_startup_shortcut.h"
 #include "kitty_protkey.h"  /* kitty_protkey_available: the unprotected-memory warning */
+#include "kitty_hello.h"    /* Windows Hello presence check (confirm gating) */
 #include "ssh.h"
 
 /* Shim so the moved kageant_do_notify body below stays textually identical
@@ -649,16 +650,24 @@ static int kageant_confirm_of_loaded(int li)
     return 0;
 }
 
-static void kageant_apply_confirm_by_path(const char *abspath)
+static void kageant_apply_confirm_by_path(const char *abspath, int mode)
 {
     int i;
     for (i = g_nloaded - 1; i >= 0; i--)
         if (!stricmp(g_loaded_keypaths[i], abspath)) {
             if (i < g_nblobs && g_loaded_blobs[i])
                 pageant_set_key_confirm(
-                    ptrlen_from_strbuf(g_loaded_blobs[i]), true);
+                    ptrlen_from_strbuf(g_loaded_blobs[i]), mode);
             return;
         }
+}
+
+/* The stored-entry marker for a confirm mode - the ONLY writer of these
+ * tokens, so mode 2 cannot flatten to ",confirm" at one site and survive at
+ * another. */
+static const char *kageant_confirm_token(int mode)
+{
+    return mode == 2 ? ",helloconfirm" : mode ? ",confirm" : "";
 }
 
 /* Persist the tracked key set. Portable (ini authoritative): numbered
@@ -736,7 +745,7 @@ void kageant_save_startup_keys(void)
                 snprintf(key, sizeof(key), "startupkey%d", ++n);
                 snprintf(val, sizeof(val), "%s%s%s%s%s", store,
                          enc ? ",encrypted" : "",
-                         conf ? ",confirm" : "",
+                         kageant_confirm_token(conf),
                          fp ? "," : "", fp ? fp : "");
                 WritePrivateProfileStringA("Agent", key, val, f);
                 sfree(fp_owned);
@@ -758,7 +767,8 @@ void kageant_save_startup_keys(void)
                                       : NULL;
             entries[i] = dupprintf("%s,%s%s%s%s", g_loaded_keypaths[i],
                                    g_loaded_encrypted[i] ? "encrypted" : "plain",
-                                   kageant_confirm_of_loaded(i) ? ",confirm" : "",
+                                   kageant_confirm_token(
+                                       kageant_confirm_of_loaded(i)),
                                    fp ? "," : "", fp ? fp : "");
             sfree(fp);
             total += strlen(entries[i]) + 1;
@@ -767,7 +777,7 @@ void kageant_save_startup_keys(void)
             entries[g_nloaded + i] = dupprintf(
                 "%s,%s%s%s%s", g_pending[i].path,
                 g_pending[i].encrypted ? "encrypted" : "plain",
-                g_pending[i].confirm ? ",confirm" : "",
+                kageant_confirm_token(g_pending[i].confirm),
                 g_pending[i].fp[0] ? "," : "",
                 g_pending[i].fp[0] ? g_pending[i].fp : "");
             total += strlen(entries[g_nloaded + i]) + 1;
@@ -858,6 +868,20 @@ static int kageant_clamp_ttl(int v)
 int kageant_quiet_missing(void)
 {
     return kageant_bool_get("quietmissingkeys", "QuietMissingKeys", 0);
+}
+
+/* [Agent] helloconfirm: every confirmation prompt demands a Windows Hello
+ * presence check instead of a button. Default OFF; a single key can demand
+ * it via its per-key confirm mode without this. Genuinely boolean. */
+int kageant_hello_get(void)
+{
+    return kageant_bool_get("helloconfirm", "HelloConfirm", 0);
+}
+int kageant_hello_set(int on)
+{
+    kitty_inilight_write("Agent", "helloconfirm", on ? "yes" : "no");
+    kageant_reg_write("HelloConfirm", on ? 1 : 0);
+    return 1;
 }
 
 /* [Agent] retrykeys: when a drive appears, try the startup keys that were not
@@ -1766,7 +1790,8 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
                 if (!stricmp(g_loaded_keypaths[j], g_pending[i].path))
                     g_loaded_encrypted[j] = g_pending[i].encrypted;
             if (g_pending[i].confirm)
-                kageant_apply_confirm_by_path(g_pending[i].path);
+                kageant_apply_confirm_by_path(g_pending[i].path,
+                                              g_pending[i].confirm);
             loaded_any = 1;
             loaded_n++;
         }
@@ -1855,7 +1880,7 @@ int kageant_accept_pending_key(const char *path)
         return 0;
 
     if (g_pending[i].confirm)
-        kageant_apply_confirm_by_path(path);
+        kageant_apply_confirm_by_path(path, g_pending[i].confirm);
 
     /*
      * Off the pending list - the key is loaded now, so it belongs to the loaded
@@ -1927,7 +1952,7 @@ int kageant_locate_pending_key(const char *oldpath, const char *newpath)
         return v;          /* 0 = a different key; -1 = would not load */
 
     if (g_pending[i].confirm)
-        kageant_apply_confirm_by_path(newpath);
+        kageant_apply_confirm_by_path(newpath, g_pending[i].confirm);
 
     /*
      * Off the pending list - and every other UNREACHABLE entry recording the
@@ -2421,7 +2446,8 @@ static void kageant_entry_strip(char *entry)
         if (!c)
             return;
         if (!stricmp(c + 1, "encrypted") || !stricmp(c + 1, "plain") ||
-            !stricmp(c + 1, "confirm") || strstr(c + 1, "SHA256:"))
+            !stricmp(c + 1, "confirm") || !stricmp(c + 1, "helloconfirm") ||
+            strstr(c + 1, "SHA256:"))
             *c = '\0';
         else
             return;
@@ -2819,7 +2845,8 @@ void kageant_set_autostart(int on)
 static int kageant_entry_is_phantom(const char *path)
 {
     return !stricmp(path, "plain") || !stricmp(path, "encrypted") ||
-           !stricmp(path, "confirm") || !strnicmp(path, "SHA256:", 7);
+           !stricmp(path, "confirm") || !stricmp(path, "helloconfirm") ||
+           !strnicmp(path, "SHA256:", 7);
 }
 
 /* Re-add remembered startup keys. A ,encrypted entry loads deferred
@@ -2859,6 +2886,7 @@ void kageant_load_startup_keys(void)
                 if (!stricmp(c + 1, "encrypted")) { enc = 1; *c = '\0'; }
                 else if (!stricmp(c + 1, "plain")) { enc = 0; *c = '\0'; }
                 else if (!stricmp(c + 1, "confirm")) { conf = 1; *c = '\0'; }
+                else if (!stricmp(c + 1, "helloconfirm")) { conf = 2; *c = '\0'; }
                 else if (strstr(c + 1, "SHA256:")) {
                     /* Bare "SHA256:..." as written now, and the longer
                      * "alg bits SHA256:..." that a build in between wrote -
@@ -2898,7 +2926,7 @@ void kageant_load_startup_keys(void)
                     continue;
                 }
                 if (conf)
-                    kageant_apply_confirm_by_path(abspath);
+                    kageant_apply_confirm_by_path(abspath, conf);
             }
             /* Write the list out afterwards if anything changed - the common
              * case on the first run after an upgrade is an entry that had no
@@ -2960,6 +2988,7 @@ void kageant_load_startup_keys(void)
                         if (!stricmp(c + 1, "encrypted")) { enc = 1; *c = '\0'; }
                         else if (!stricmp(c + 1, "plain")) { enc = 0; *c = '\0'; }
                         else if (!stricmp(c + 1, "confirm")) { conf = 1; *c = '\0'; }
+                        else if (!stricmp(c + 1, "helloconfirm")) { conf = 2; *c = '\0'; }
                         else if (strstr(c + 1, "SHA256:")) {
                             snprintf(fp, sizeof(fp), "%s",
                                      strstr(c + 1, "SHA256:"));
@@ -2991,7 +3020,7 @@ void kageant_load_startup_keys(void)
                             continue;
                         }
                         if (conf)
-                            kageant_apply_confirm_by_path(entry);
+                            kageant_apply_confirm_by_path(entry, conf);
                     }
                     if (!fp[0])
                         g_fp_adopted = 1;   /* see the ini branch above */
@@ -3367,6 +3396,43 @@ int kageant_do_confirm(const char *comment, int key_confirm)
      * client fill the screen while the user is trying to say no. */
     if (g_confirm_active)
         return 0;
+
+    /*
+     * Windows Hello instead of a button - when this key's own mode says so,
+     * or the global [Agent] helloconfirm toggle upgrades every confirmation.
+     * A click can be synthesized by same-user code; the Hello prompt cannot.
+     *
+     * FAIL CLOSED, never a Yes/No fallback: falling back to the box would
+     * convert the gate back to exactly what it replaced, precisely in the
+     * remote-driving scenario where Hello is unavailable. The refusal is
+     * announced, because the remote symptom is a bare "Permission denied".
+     */
+    if (key_confirm == 2 || kageant_hello_get()) {
+        char *msg;
+        int hr, allowed;
+
+        g_confirm_active = 1;
+        msg = dupprintf("Allow this use of the SSH key \"%s\"?",
+                        comment && *comment ? comment : "(unnamed key)");
+        hr = kitty_hello_verify(traywindow, msg);
+        sfree(msg);
+        g_confirm_active = 0;
+
+        allowed = (hr == KITTY_HELLO_VERIFIED);
+        if (!allowed && hr != KITTY_HELLO_DENIED && traywindow)
+            kitty_notice_show(
+                "kageant: key use DENIED",
+                hr == KITTY_HELLO_UNAVAILABLE ?
+                "A key use was denied: it requires a Windows Hello check, "
+                "and Hello is not available in this session (no Hello "
+                "credential, policy, or a remote desktop). The request was "
+                "REFUSED - it is never downgraded to a plain click." :
+                "A key use was denied: the Windows Hello check could not "
+                "be carried out.",
+                KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
+                traywindow, KAGEANT_WM_NOTICE_CLICK);
+        return allowed;
+    }
 
     g_confirm_active = 1;
     {

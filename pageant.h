@@ -124,8 +124,11 @@ bool pageant_delete_nth_ssh2_key(int i);
  * position because the list may have changed under them. NOT the same as
  * pageant_delete_key() below, which is the CLIENT-side call - see pageant.c. */
 bool pageant_delete_ssh2_key_by_blob(ptrlen blob);
-bool pageant_get_key_confirm(ptrlen blob);   /* KiTTY: per-key confirm */
-bool pageant_set_key_confirm(ptrlen blob, bool on);
+/* KiTTY: per-key confirm-on-use MODE - 0 = none, 1 = ask (a click),
+ * 2 = ask with a Windows Hello presence check. More than two states, so
+ * nothing on the way to or from storage may pass it through a bool. */
+int pageant_get_key_confirm(ptrlen blob);
+bool pageant_set_key_confirm(ptrlen blob, int mode);
 
 /* KiTTY: notice hook for key-set mutations arriving over an EXTERNAL
  * transport (WM_COPYDATA / the named pipe). The transports set
@@ -283,3 +286,6 @@ int pageant_sign(struct pageant_pubkey *key, ptrlen message, strbuf *out,
 #define LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE    1
 #define LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY      2
 #define LIST_EXTENDED_FLAG_CONFIRM_ON_USE            4  /* KiTTY */
+#define LIST_EXTENDED_FLAG_CONFIRM_HELLO             8  /* KiTTY: confirm mode
+                                                         * 2 - always set
+                                                         * alongside bit 4 */

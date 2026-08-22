@@ -26,6 +26,7 @@
 #define IDC_SET_BLOCKADD 309      /* IPC: refuse adds */
 #define IDC_SET_BLOCKREMOVE 310   /* IPC: refuse removes */
 #define IDC_SET_LOADKEYS 311      /* re-add remembered keys at startup */
+#define IDC_SET_HELLO 312         /* confirmations require Windows Hello */
 
 /* KiTTY: the key-details dialog */
 #define IDC_KEYDETAIL_KEY 100
@@ -40,6 +41,7 @@
 #define IDC_KEYDETAIL_CONFIRM 109
 #define IDC_KEYDETAIL_ACCEPT 110    /* adopt a changed key file (mismatch rows) */
 #define IDC_KEYDETAIL_LOCATE 111    /* re-point an absent/unparseable entry */
+#define IDC_KEYDETAIL_CONFIRM_LBL 112  /* label of the confirm-mode droplist */
 
 #define IDC_PASSPHRASE_STATIC1 100
 #define IDC_PASSPHRASE_FINGERPRINT 101

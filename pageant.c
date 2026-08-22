@@ -215,7 +215,9 @@ struct PageantPublicKey {
     strbuf *base_pub;            /* the true owner of sort.priv.base_pub */
     strbuf *full_pub;            /* the true owner of sort.full_pub */
     char *comment;
-    bool confirm;      /* KiTTY: ask the user before each use (ssh-add -c) */
+    int confirm;       /* KiTTY: confirm-on-use MODE - 0 none, 1 ask,
+                        * 2 ask with Windows Hello. NOT a bool: routing it
+                        * through anything boolean loses mode 2 silently. */
 };
 static tree234 *pubkeytree;
 
@@ -252,7 +254,7 @@ typedef struct PageantSignOp PageantSignOp;
 struct PageantSignOp {
     PageantPrivateKey *priv;
     char *comment;                  /* key comment (KiTTY usage confirmation) */
-    bool confirm;                   /* KiTTY: per-key confirm-on-use flag */
+    int confirm;                    /* KiTTY: per-key confirm mode (0/1/2) */
     char *keyfp;                    /* KiTTY: SHA256 fingerprint of the key, for
                                      * kageant_keyuse_hook - the same identity
                                      * the offer order is persisted by */
@@ -795,6 +797,8 @@ static void list_key_emit(BinarySink *bs, PageantPublicKey *pub,
             flags |= LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE;
         if (pub->confirm)
             flags |= LIST_EXTENDED_FLAG_CONFIRM_ON_USE;   /* KiTTY */
+        if (pub->confirm == 2)
+            flags |= LIST_EXTENDED_FLAG_CONFIRM_HELLO;    /* KiTTY: mode 2 */
         put_uint32(sb, flags);
 
         put_stringsb(bs, sb);
@@ -1025,9 +1029,11 @@ int (*kageant_comment_confirm_hook)(const char *comment) = NULL;
 static void kageant_arm_comment_confirm(ptrlen full_pub)
 {
     PageantPublicKey *cpub = findpubkey2(full_pub);
+    /* The comment seeds mode 1 (click) only, and never LOWERS a mode the
+     * user raised to Hello in Key details. */
     if (cpub && cpub->comment && kageant_comment_confirm_hook &&
-        kageant_comment_confirm_hook(cpub->comment))
-        cpub->confirm = true;
+        kageant_comment_confirm_hook(cpub->comment) && cpub->confirm < 1)
+        cpub->confirm = 1;
 }
 
 /* KiTTY: external-transport mutation notices - see pageant.h. */
@@ -1818,8 +1824,9 @@ static PageantAsyncOp *pageant_make_op(
                 PageantPublicKey *cpub = findpubkey2(ptrlen_from_strbuf(pb));
                 if (cpub && (key_confirm ||
                              (kageant_comment_confirm_hook && cpub->comment &&
-                              kageant_comment_confirm_hook(cpub->comment))))
-                    cpub->confirm = true;
+                              kageant_comment_confirm_hook(cpub->comment))) &&
+                    cpub->confirm < 1)
+                    cpub->confirm = 1;   /* raise to click, never lower Hello */
                 /* KiTTY: the key set just changed over an external
                  * transport - tell the user (a notice, never a prompt). */
                 if (pageant_external_request && kageant_mutation_notice_hook)
@@ -2328,18 +2335,20 @@ bool pageant_delete_ssh2_key_by_blob(ptrlen blob)
 
 /* KiTTY: the per-key confirm-on-use flag (ssh-add -c / details checkbox /
  * comment convention). */
-bool pageant_get_key_confirm(ptrlen blob)
+int pageant_get_key_confirm(ptrlen blob)
 {
     PageantPublicKey *pub = findpubkey2(blob);
-    return pub && pub->confirm;
+    return pub ? pub->confirm : 0;
 }
 
-bool pageant_set_key_confirm(ptrlen blob, bool on)
+bool pageant_set_key_confirm(ptrlen blob, int mode)
 {
     PageantPublicKey *pub = findpubkey2(blob);
     if (!pub)
         return false;
-    pub->confirm = on;
+    if (mode < 0 || mode > 2)
+        mode = 1;
+    pub->confirm = mode;
     return true;
 }
 

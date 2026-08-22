@@ -950,6 +950,16 @@ char default_init_file_content[] =
 ;blockipcadd=no\n\
 ;blockipcremove=no\n\
 \n\
+; helloconfirm: every key-use confirmation demands a Windows Hello presence\n\
+; check (biometrics or the device PIN, in Windows' own protected UI)\n\
+; instead of a Yes button - a button click can be synthesized by another\n\
+; program running as you; the Hello prompt cannot. When Hello cannot run\n\
+; (no Hello credential, policy, a remote-desktop session) the request is\n\
+; REFUSED, never downgraded to a click. A single key can demand Hello on\n\
+; its own via \"Confirm each use\" in its key details, without this global\n\
+; switch. Default no.\n\
+;helloconfirm=no\n\
+\n\
 ; loadkeysonstartup: re-add the remembered keys when kageant starts, added\n\
 ;    encrypted so the passphrase is asked on first use, not at login. Only the\n\
 ;    key FILE PATHS are remembered - never a passphrase or key material - and\n\

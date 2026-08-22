@@ -21,6 +21,18 @@ see [FEATURES.md](FEATURES.md).
   file with no recorded fingerprint to check against, or with the wrong one,
   is refused and reported.
 
+- **kageant can demand Windows Hello for key-use confirmations.** A
+  confirmation box can be answered by any program running as you — a
+  synthetic click is enough. With `[Agent] helloconfirm` on (or per key,
+  via the new three-way "Confirm each use" setting in key details: no /
+  ask / ask with Windows Hello), the approval is a Windows Hello presence
+  check — biometrics or the device PIN in Windows' own protected UI —
+  which another program cannot answer. Fail-closed by design: when Hello
+  cannot run (no Hello credential, policy, a remote-desktop session) the
+  key use is refused and reported, never downgraded to a plain click.
+  Accepting a changed key file is gated the same way when the global
+  switch is on.
+
 - **Key details: a "Locate..." button re-points a not-loaded startup entry at
   the file you browse to.** Offered only when the recorded file is absent or
   will not parse — never on a fingerprint mismatch, where "Accept this key"

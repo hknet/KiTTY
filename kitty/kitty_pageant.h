@@ -75,6 +75,10 @@ int  kageant_unload_on_remove(void);                /* [Agent] unloadonremove */
  * (registry-authoritative install), in which case the Settings dialog greys
  * them. */
 int  kageant_quiet_missing_set(int on);
+/* [Agent] helloconfirm: gate every confirmation behind a Windows Hello
+ * presence check (a per-key mode 2 does the same for one key). Boolean. */
+int  kageant_hello_get(void);
+int  kageant_hello_set(int on);
 int  kageant_retry_keys_set(int mode);              /* 0/1/KAGEANT_RETRY_ANYDRIVE */
 int  kageant_unload_on_remove_set(int on);
 int  kageant_passphrase_ttl_set(int seconds);

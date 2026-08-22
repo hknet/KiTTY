@@ -144,8 +144,11 @@ BEGIN
         ES_READONLY | ES_AUTOHSCROLL
     AUTOCHECKBOX "Load this key &deferred at startup (passphrase at first use)",
         IDC_KEYDETAIL_DEFER, 10, 202, 300, 10
-    AUTOCHECKBOX "Ask for confir&mation each time this key is used",
-        IDC_KEYDETAIL_CONFIRM, 10, 216, 300, 10
+    /* KiTTY: three-valued (none / ask / ask with Windows Hello), so a
+     * droplist, not a checkbox. */
+    LTEXT "Confir&m each use:", IDC_KEYDETAIL_CONFIRM_LBL, 10, 218, 62, 8
+    COMBOBOX IDC_KEYDETAIL_CONFIRM, 76, 216, 170, 48,
+        CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     /* KiTTY: the ONLY place a changed key file can be accepted. Shown only for
      * a fingerprint mismatch; the startup path used to ask this in a modal at
      * login, where one click ratified a swap. */
@@ -158,7 +161,7 @@ END
  * (design), so it is deliberately not duplicated here. The removable-media
  * options are honoured only from kitty.ini, so they are greyed in a
  * registry-authoritative (non-portable) install. */
-IDD_KEYSETTINGS DIALOG DISCARDABLE 0, 0, 250, 300
+IDD_KEYSETTINGS DIALOG DISCARDABLE 0, 0, 250, 314
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "kageant - settings"
 FONT 8, "MS Shell Dlg"
@@ -174,30 +177,32 @@ BEGIN
     EDITTEXT IDC_SET_NOTICESECS, 126, 74, 40, 12, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "(blank = default)", -1, 172, 76, 66, 10
     GROUPBOX "Security - block other programs over the agent IPC", -1,
-        8, 94, 234, 58
+        8, 94, 234, 72
     AUTOCHECKBOX "&Lock down: refuse ALL key add/remove over IPC",
         IDC_SET_LOCKDOWN, 16, 108, 220, 10
     AUTOCHECKBOX "Block &adding keys over IPC", IDC_SET_BLOCKADD,
         16, 122, 220, 10
     AUTOCHECKBOX "Block re&moving keys over IPC", IDC_SET_BLOCKREMOVE,
         16, 136, 220, 10
-    GROUPBOX "Removable-media keys", -1, 8, 156, 234, 112
+    AUTOCHECKBOX "Confirmations require Windows &Hello",
+        IDC_SET_HELLO, 16, 150, 220, 10
+    GROUPBOX "Removable-media keys", -1, 8, 170, 234, 112
     LTEXT "&Retry startup keys to load, when a drive appears:",
-        -1, 16, 170, 220, 10
-    COMBOBOX IDC_SET_RETRY, 16, 182, 200, 56,
+        -1, 16, 184, 220, 10
+    COMBOBOX IDC_SET_RETRY, 16, 196, 200, 56,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     AUTOCHECKBOX "&Unload a key when its media is removed",
-        IDC_SET_UNLOAD, 16, 200, 220, 10
+        IDC_SET_UNLOAD, 16, 214, 220, 10
     AUTOCHECKBOX "Do not &warn about missing startup keys",
-        IDC_SET_QUIET, 16, 214, 220, 10
-    LTEXT "&Passphrase cache (seconds):", -1, 16, 232, 108, 10
-    EDITTEXT IDC_SET_TTL, 126, 230, 40, 12, ES_NUMBER | ES_AUTOHSCROLL
+        IDC_SET_QUIET, 16, 228, 220, 10
+    LTEXT "&Passphrase cache (seconds):", -1, 16, 246, 108, 10
+    EDITTEXT IDC_SET_TTL, 126, 244, 40, 12, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "0 = do not cache; default 60, maximum 300 (5 min).",
-        -1, 16, 246, 220, 9
+        -1, 16, 260, 220, 9
     LTEXT "Keys that share a passphrase then load with one prompt.",
-        -1, 16, 256, 220, 9
-    DEFPUSHBUTTON "OK", IDOK, 132, 278, 50, 14
-    PUSHBUTTON "Cancel", IDCANCEL, 190, 278, 50, 14
+        -1, 16, 270, 220, 9
+    DEFPUSHBUTTON "OK", IDOK, 132, 292, 50, 14
+    PUSHBUTTON "Cancel", IDCANCEL, 190, 292, 50, 14
 END
 
 /* Accelerators used: cl */
