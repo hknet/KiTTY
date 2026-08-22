@@ -627,7 +627,7 @@ void pgp_fingerprints(void)
      * (windows/utils/pgp_fingerprints_msgbox.c) - the upstream trust-path
      * claim is wrong for a fork. */
     fputs("These are the fingerprints of the PuTTY PGP Master Keys, shown\n"
-          "for historic reasons only: this program is KiTTY 0.84 code, not\n"
+          "for historic reasons only: this program is KiTTY code, not\n"
           "a PuTTY release. The fingerprints say nothing about the\n"
           "authenticity of this executable, and printing them proves\n"
           "nothing - any program could print them. They are only useful\n"

@@ -14,7 +14,7 @@ void pgp_fingerprints_msgbox(HWND owner)
          * that claim is wrong, and it was never more than data any
          * program could print. Shown for historic reasons only. */
         "These are the fingerprints of the PuTTY PGP Master Keys, shown "
-        "for historic reasons only: this program is KiTTY 0.84 code, not "
+        "for historic reasons only: this program is KiTTY code, not "
         "a PuTTY release. The fingerprints say nothing about the "
         "authenticity of this executable, and printing them proves "
         "nothing - any program could print them. They are only useful "
