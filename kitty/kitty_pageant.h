@@ -102,6 +102,13 @@ void kageant_forget_loaded_by_blob(ptrlen blob);   /* removed in View Keys */
 char *kageant_paths_of_blob(ptrlen blob);  /* every file it came from; free it */
 char *kageant_file_of_blob(ptrlen blob);   /* first tracked path, for re-loading;
                                             * malloc'd or NULL */
+/* KiTTY: Hello-protected keys - the startup list's side (kitty_pageant.c) */
+int kageant_startup_replace_path(const char *oldpath, const char *newpath,
+                                 int encrypted);   /* -1 = keep the mode */
+int kageant_startup_forget_path(const char *path);
+int kageant_keypath_encrypted(const char *path);   /* 1/0, -1 untracked */
+char *kageant_hello_file_of_blob(ptrlen blob);     /* first file WITH a sidecar */
+char *kageant_paths_of_blob_annotated(ptrlen blob);/* details' Loaded-from text */
 /* pending (not-loaded) startup entries, for the key list window */
 int kageant_pending_count(void);
 int kageant_pending_get(int i, const char **path, int *encrypted,
@@ -185,6 +192,10 @@ int kageant_comment_wants_confirm(const char *comment);
 void kageant_do_notify(const char *comment, const char *fingerprint);
 /* the hook pointers themselves live in the agent core (../pageant.c) */
 extern int (*kageant_confirm_hook)(const char *comment, int key_confirm);
+extern void (*kageant_random_hook)(void *buf, size_t size);
+/* the public blob behind a deferred-decryption prompt (agent core) */
+struct PageantClientDialogId;
+ptrlen pageant_dlgid_pubblob(struct PageantClientDialogId *dlgid);
 extern int (*kageant_comment_confirm_hook)(const char *comment);
 extern void (*kageant_notify_hook)(const char *comment,
                                    const char *fingerprint);

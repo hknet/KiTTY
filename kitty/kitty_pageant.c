@@ -26,6 +26,7 @@
 #include "kitty_startup_shortcut.h"
 #include "kitty_protkey.h"  /* kitty_protkey_available: the unprotected-memory warning */
 #include "kitty_hello.h"    /* Windows Hello presence check (confirm gating) */
+#include "kitty_hello_keys.h"  /* Hello-protected keys: the sidecar test */
 #include "kitty_auditlog.h" /* the audit log's file sink */
 #include "ssh.h"
 
@@ -2787,6 +2788,16 @@ void kageant_track_keypath(const char *path, int encrypted)
                 if (strlen(dest) <= MAX_PATH &&
                     (CopyFileA(abspath, dest, TRUE) ||
                      GetLastError() == ERROR_FILE_EXISTS)) {
+                    /* KiTTY: a Hello-protected key travels WITH its
+                     * sidecar, or the copy could only be opened by the
+                     * printed secret. */
+                    if (kageant_hello_has_sidecar(abspath)) {
+                        char *s1 = kageant_hello_sidecar_path(abspath);
+                        char *s2 = kageant_hello_sidecar_path(dest);
+                        CopyFileA(s1, s2, TRUE);
+                        sfree(s1);
+                        sfree(s2);
+                    }
                     snprintf(abspath, sizeof(abspath), "%s", dest);
                     for (i = 0; i < g_nloaded; i++)   /* re-dedup on the copy */
                         if (!stricmp(g_loaded_keypaths[i], abspath))
@@ -3823,4 +3834,149 @@ void kageant_do_notify(const char *comment, const char *fingerprint)
 int kageant_nloaded(void)
 {
     return g_nloaded;
+}
+
+/* ------------------------------------------------------------------ *
+ * KiTTY: Hello-protected keys - the startup list's side of it.        *
+ * ------------------------------------------------------------------ */
+
+/*
+ * Swap one tracked path for another (the protected copy replacing the
+ * plaintext original it was made from): the entry keeps its slot, its
+ * blob (same key) and, unless told otherwise, its load mode. Returns 1
+ * replaced, 0 oldpath was not a tracked loaded path.
+ */
+int kageant_startup_replace_path(const char *oldpath, const char *newpath,
+                                 int encrypted)
+{
+    char want[MAX_PATH + 1], abspath[MAX_PATH + 1];
+    int i;
+    if (!_fullpath(want, oldpath, sizeof(want)))
+        snprintf(want, sizeof(want), "%s", oldpath);
+    if (!_fullpath(abspath, newpath, sizeof(abspath)))
+        snprintf(abspath, sizeof(abspath), "%s", newpath);
+    for (i = 0; i < g_nloaded; i++) {
+        if (stricmp(g_loaded_keypaths[i], want))
+            continue;
+        sfree(g_loaded_keypaths[i]);
+        g_loaded_keypaths[i] = dupstr(abspath);
+        if (encrypted >= 0)
+            g_loaded_encrypted[i] = encrypted ? 1 : 0;
+        if (kageant_startup_get())
+            kageant_save_startup_keys();
+        return 1;
+    }
+    return 0;
+}
+
+/*
+ * Forget ONE path of a loaded key - the key stays in the agent, only the
+ * startup list stops naming that file (a deleted plaintext original, a
+ * retired stick). A pending entry of that path is dropped the same way.
+ * Returns 1 if something was forgotten.
+ */
+int kageant_startup_forget_path(const char *path)
+{
+    char want[MAX_PATH + 1];
+    int i, j, done = 0;
+    if (!_fullpath(want, path, sizeof(want)))
+        snprintf(want, sizeof(want), "%s", path);
+    for (i = 0; i < g_nloaded; i++) {
+        if (stricmp(g_loaded_keypaths[i], want))
+            continue;
+        sfree(g_loaded_keypaths[i]);
+        if (i < g_nblobs && g_loaded_blobs[i])
+            strbuf_free(g_loaded_blobs[i]);
+        for (j = i; j < g_nloaded - 1; j++) {
+            g_loaded_keypaths[j] = g_loaded_keypaths[j + 1];
+            g_loaded_encrypted[j] = g_loaded_encrypted[j + 1];
+            g_loaded_blobs[j] = g_loaded_blobs[j + 1];
+        }
+        g_nloaded--;
+        g_nblobs = g_nloaded;
+        done = 1;
+        break;
+    }
+    for (i = 0; i < g_npending; i++) {
+        if (stricmp(g_pending[i].path, want))
+            continue;
+        for (j = i; j < g_npending - 1; j++)
+            g_pending[j] = g_pending[j + 1];
+        g_npending--;
+        done = 1;
+        break;
+    }
+    if (done) {
+        if (kageant_startup_get())
+            kageant_save_startup_keys();
+        kageant_refresh_tray_tip();
+    }
+    return done;
+}
+
+/* The load mode recorded for a tracked loaded path: 1 deferred, 0 plain,
+ * -1 not tracked. */
+int kageant_keypath_encrypted(const char *path)
+{
+    char want[MAX_PATH + 1];
+    int i;
+    if (!_fullpath(want, path, sizeof(want)))
+        snprintf(want, sizeof(want), "%s", path);
+    for (i = 0; i < g_nloaded; i++)
+        if (!stricmp(g_loaded_keypaths[i], want))
+            return g_loaded_encrypted[i] ? 1 : 0;
+    return -1;
+}
+
+/* Of the files a key was loaded from, the first with a .hello sidecar -
+ * the one a deferred-decryption prompt can open through Windows Hello.
+ * Caller sfree; NULL = this key has no protected file. */
+char *kageant_hello_file_of_blob(ptrlen blob)
+{
+    int i;
+    for (i = 0; i < g_nloaded && i < g_nblobs; i++) {
+        if (!g_loaded_blobs[i])
+            continue;
+        if (g_loaded_blobs[i]->len == blob.len &&
+            !memcmp(g_loaded_blobs[i]->s, blob.ptr, blob.len) &&
+            kageant_hello_has_sidecar(g_loaded_keypaths[i]))
+            return dupstr(g_loaded_keypaths[i]);
+    }
+    return NULL;
+}
+
+/* All files of a key, one per line, each annotated with how it is
+ * protected on disk: the key details' "Loaded from:" text. Caller sfree;
+ * NULL when nothing is tracked. Lines are separated by "\n    " like
+ * kageant_paths_of_blob's. */
+char *kageant_paths_of_blob_annotated(ptrlen blob)
+{
+    strbuf *out = strbuf_new();
+    int i, n = 0;
+    for (i = 0; i < g_nloaded && i < g_nblobs; i++) {
+        const char *how;
+        if (!g_loaded_blobs[i])
+            continue;
+        if (g_loaded_blobs[i]->len != blob.len ||
+            memcmp(g_loaded_blobs[i]->s, blob.ptr, blob.len))
+            continue;
+        if (kageant_hello_has_sidecar(g_loaded_keypaths[i])) {
+            how = "Windows Hello protected";
+        } else {
+            Filename *fn = filename_from_str(g_loaded_keypaths[i]);
+            char *cmt = NULL;
+            how = ppk_encrypted_f(fn, &cmt) ? "passphrase" :
+                  "UNPROTECTED - no passphrase";
+            filename_free(fn);
+            sfree(cmt);
+        }
+        if (n++)
+            put_dataz(out, "\n    ");
+        put_fmt(out, "%s  -  %s", g_loaded_keypaths[i], how);
+    }
+    if (!n) {
+        strbuf_free(out);
+        return NULL;
+    }
+    return strbuf_to_str(out);
 }

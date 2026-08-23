@@ -14,6 +14,8 @@
 #define IDD_KEYSETTINGS 216    /* KiTTY: the [Agent] settings dialog */
 #define IDD_AUDITVIEW 217      /* KiTTY: the audit-log viewer */
 #define IDD_AUDITDETAIL 218    /* KiTTY: one audit record, field per line */
+#define IDD_HELLOPROTECT 219   /* KiTTY: protect a key with Windows Hello */
+#define IDD_HELLOSECRET 220    /* KiTTY: the printed secret, shown once */
 
 /* KiTTY: the audit-log viewer's controls */
 #define IDC_AUDIT_FILTER 400
@@ -62,6 +64,29 @@
 #define IDC_KEYDETAIL_ACCEPT 110    /* adopt a changed key file (mismatch rows) */
 #define IDC_KEYDETAIL_LOCATE 111    /* re-point an absent/unparseable entry */
 #define IDC_KEYDETAIL_CONFIRM_LBL 112  /* label of the confirm-mode droplist */
+#define IDC_KEYDETAIL_PROTECT 113   /* protect with Windows Hello (a COPY) */
+#define IDC_KEYDETAIL_FORGET 114    /* forget one source path of this key */
+
+/* KiTTY: the Hello-protect dialog */
+#define IDC_HP_SRC 100
+#define IDC_HP_DEST 101
+#define IDC_HP_BROWSE 102
+#define IDC_HP_OPENFOLDER 103
+#define IDC_HP_SRCPASS_LBL 104
+#define IDC_HP_SRCPASS 105
+#define IDC_HP_USESRCPASS 106
+#define IDC_HP_RECPASS_LBL 107
+#define IDC_HP_RECPASS 108
+#define IDC_HP_RECPASS2_LBL 109
+#define IDC_HP_RECPASS2 110
+#define IDC_HP_REPLACE 111
+#define IDC_HP_WARN 112
+#define IDC_HP_HELLOONLY 113
+
+/* KiTTY: the printed-secret dialog */
+#define IDC_HS_TEXT 100
+#define IDC_HS_COPY 101
+#define IDC_HS_NOTE 102
 
 #define IDC_PASSPHRASE_STATIC1 100
 #define IDC_PASSPHRASE_FINGERPRINT 101

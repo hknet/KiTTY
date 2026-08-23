@@ -14,17 +14,17 @@
 IDI_MAINICON ICON "pageant.ico"
 IDI_TRAYICON ICON "pageants.ico"
 
-IDD_LOAD_PASSPHRASE DIALOG DISCARDABLE 0, 0, 140, 60
+IDD_LOAD_PASSPHRASE DIALOG DISCARDABLE 0, 0, 190, 68
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "kageant: Loading Encrypted Key"
 FONT 8, "MS Shell Dlg"
 BEGIN
-    CTEXT "Enter passphrase to load key", IDC_PASSPHRASE_STATIC1, 10, 6, 120, 8
-    CTEXT "", IDC_PASSPHRASE_FINGERPRINT, 10, 16, 120, 8
-    EDITTEXT IDC_PASSPHRASE_EDITBOX, 10, 26, 120, 12,
+    CTEXT "Enter passphrase to load key", IDC_PASSPHRASE_STATIC1, 10, 6, 170, 16
+    CTEXT "", IDC_PASSPHRASE_FINGERPRINT, 10, 24, 170, 8
+    EDITTEXT IDC_PASSPHRASE_EDITBOX, 10, 34, 170, 12,
         ES_PASSWORD | ES_AUTOHSCROLL
-    DEFPUSHBUTTON "O&K", IDOK, 20, 42, 40, 14
-    PUSHBUTTON "&Cancel", IDCANCEL, 80, 42, 40, 14
+    DEFPUSHBUTTON "O&K", IDOK, 45, 50, 40, 14
+    PUSHBUTTON "&Cancel", IDCANCEL, 105, 50, 40, 14
 END
 
 IDD_ONDEMAND_PASSPHRASE DIALOG DISCARDABLE 0, 0, 250, 78
@@ -161,6 +161,12 @@ BEGIN
      * a fingerprint mismatch; the startup path used to ask this in a modal at
      * login, where one click ratified a swap. */
     PUSHBUTTON "&Accept this key", IDC_KEYDETAIL_ACCEPT, 10, 232, 90, 14
+    /* KiTTY: Hello-protected keys. Protect writes a protected COPY of the
+     * key (never rewrites the original); Forget drops ONE source path from
+     * the startup list (a deleted plaintext original, a retired stick). */
+    PUSHBUTTON "&Protect with Windows Hello...", IDC_KEYDETAIL_PROTECT,
+        104, 232, 120, 14
+    PUSHBUTTON "For&get a path...", IDC_KEYDETAIL_FORGET, 228, 232, 70, 14
     DEFPUSHBUTTON "&Close", IDOK, 360, 232, 50, 14
 END
 
@@ -311,3 +317,45 @@ END
 #ifndef NO_MANIFESTS
 1 RT_MANIFEST "pageant.mft"
 #endif /* NO_MANIFESTS */
+
+/* KiTTY: protect a key with Windows Hello - writes a protected COPY beside
+ * the original and its .hello sidecar; the original is never touched. */
+IDD_HELLOPROTECT DIALOG DISCARDABLE 0, 0, 380, 300
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "kageant - protect a key with Windows Hello"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT "Key file:", -1, 10, 12, 60, 8
+    EDITTEXT IDC_HP_SRC, 72, 10, 298, 12, ES_READONLY | ES_AUTOHSCROLL
+    LTEXT "Protected copy:", -1, 10, 28, 60, 8
+    EDITTEXT IDC_HP_DEST, 72, 26, 230, 12, ES_AUTOHSCROLL
+    PUSHBUTTON "&Browse...", IDC_HP_BROWSE, 306, 25, 64, 14
+    LTEXT "Current passphrase:", IDC_HP_SRCPASS_LBL, 10, 48, 60, 8
+    EDITTEXT IDC_HP_SRCPASS, 72, 46, 210, 12, ES_PASSWORD | ES_AUTOHSCROLL
+    AUTOCHECKBOX "&Use the current passphrase as the recovery passphrase",
+        IDC_HP_USESRCPASS, 72, 64, 260, 10
+    LTEXT "Recovery passphrase:", IDC_HP_RECPASS_LBL, 10, 80, 60, 8
+    EDITTEXT IDC_HP_RECPASS, 72, 78, 210, 12, ES_PASSWORD | ES_AUTOHSCROLL
+    LTEXT "Confirm:", IDC_HP_RECPASS2_LBL, 10, 96, 60, 8
+    EDITTEXT IDC_HP_RECPASS2, 72, 94, 210, 12, ES_PASSWORD | ES_AUTOHSCROLL
+    AUTOCHECKBOX "&No recovery passphrase - Windows Hello and the printed secret only",
+        IDC_HP_HELLOONLY, 72, 112, 290, 10
+    AUTOCHECKBOX "&Replace this key's startup entry with the protected copy",
+        IDC_HP_REPLACE, 72, 126, 290, 10
+    LTEXT "", IDC_HP_WARN, 10, 142, 360, 130
+    PUSHBUTTON "&Open folder", IDC_HP_OPENFOLDER, 10, 278, 64, 14
+    DEFPUSHBUTTON "&Protect", IDOK, 256, 278, 54, 14
+    PUSHBUTTON "&Cancel", IDCANCEL, 316, 278, 54, 14
+END
+
+/* KiTTY: the printed secret of a freshly protected key - shown ONCE. */
+IDD_HELLOSECRET DIALOG DISCARDABLE 0, 0, 360, 130
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "kageant - the key's printed secret"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT "", IDC_HS_NOTE, 10, 10, 340, 56
+    EDITTEXT IDC_HS_TEXT, 10, 70, 340, 14, ES_READONLY | ES_AUTOHSCROLL
+    PUSHBUTTON "&Copy to clipboard", IDC_HS_COPY, 10, 108, 90, 14
+    DEFPUSHBUTTON "I have &stored it", IDOK, 260, 108, 90, 14
+END

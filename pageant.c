@@ -35,8 +35,17 @@
  * won't generate true random numbers. So we must scream, panic,
  * and exit immediately if that should happen.
  */
+/* KiTTY: a frontend that has a TRUE random source (the OS CSPRNG) installs
+ * it here; writing a Hello-protected PPK from inside the agent needs one
+ * for the file's salt. Left NULL, the original scream stands. */
+void (*kageant_random_hook)(void *buf, size_t size) = NULL;
+
 void random_read(void *buf, size_t size)
 {
+    if (kageant_random_hook) {
+        kageant_random_hook(buf, size);
+        return;
+    }
     modalfatalbox("Internal error: attempt to use random numbers in Pageant");
 }
 
@@ -941,6 +950,15 @@ static bool request_passphrase(PageantClient *pc, PageantPrivateKey *priv)
  * unaffected; the Windows Pageant GUI installs it at startup. The hook is
  * passed the key comment and returns 0 to REFUSE signing, nonzero to allow. */
 int (*kageant_confirm_hook)(const char *comment, int key_confirm) = NULL;
+
+/* KiTTY: which key is a deferred-decryption prompt about? The frontend gets
+ * only the dialog id and a comment; Hello-protected keys need the public
+ * blob to find the file (and its .hello sidecar) the key was loaded from. */
+ptrlen pageant_dlgid_pubblob(PageantClientDialogId *dlgid)
+{
+    PageantPrivateKey *priv = container_of(dlgid, PageantPrivateKey, dlgid);
+    return ptrlen_from_strbuf(priv->base_pub);
+}
 
 /* KiTTY: the outcome of a signing request, for the GUI agent's key list -
  * allowed nonzero when the key signed, zero when the user or a policy refused.

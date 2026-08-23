@@ -108,6 +108,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_startup_shortcut.c  # KiTTY: Startup-folder shortcut (portable autostart)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: THE CryptProtectMemory key-blob wrapper - the agent core (pageant.c) uses this shared copy too now (a unix agent build would need this file added beside it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c    # KiTTY: Windows Hello presence check (confirm-on-use gating)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: Hello-protected keys (sidecar, protect/unlock/enrol)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auditlog.c # KiTTY: the audit log's file sink
   pageant.rc)
 add_dependencies(pageant generated_licence_h)
@@ -351,6 +352,23 @@ add_executable(test_mpw_params
   ${CMAKE_SOURCE_DIR}/test/test_mpw_params.c)
 target_link_libraries(test_mpw_params
   crypto utils ${platform_libraries})
+
+# The Hello-wrapped-secret container: everything below the Hello UI
+# (compose/parse, both GCM wraps, the recorded-Argon2-cost validation),
+# driven with fixed KEKs so it runs headless. The WinRT half of
+# kitty_hello.c is compiled in but never called - it loads combase.dll
+# dynamically, so linking it costs the test nothing.
+add_executable(test_hello_container
+  ${CMAKE_SOURCE_DIR}/test/test_hello_container.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c
+  ${CMAKE_SOURCE_DIR}/sshpubk.c)
+# KITTY_HELLO_DIAG unlocks the hands-on diagnostics (selftest, the
+# WebAuthn probe modes, stage tracing) in kitty_hello.c - ONLY here, so
+# none of that code or its strings exists in a shipping binary.
+target_compile_definitions(test_hello_container PRIVATE KITTY_HELLO_DIAG)
+target_link_libraries(test_hello_container
+  eventloop crypto utils ${platform_libraries})
 
 add_sources_from_current_dir(test_conf no-jump-list.c handle-wait.c)
 
@@ -635,3 +653,17 @@ if(_kitty_uncovered)
     "  2. Drop the MOD_PERSO guard if the code does not need it - see\n"
     "     kitty_dlg_confirm() in windows/controls.c.\n")
 endif()
+
+# KiTTY hands-on diagnostic (never shipped): the PRF assertion in kageant's
+# clothes - GUI subsystem, kageant's manifest, dll_hijacking_protection() -
+# to separate process-shape differences from agent runtime state.
+add_executable(test_hello_gui
+  ${CMAKE_SOURCE_DIR}/test/test_hello_gui.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c
+  ${CMAKE_SOURCE_DIR}/sshpubk.c
+  test_hello_gui.rc)
+target_compile_definitions(test_hello_gui PRIVATE KITTY_HELLO_DIAG)
+set_target_properties(test_hello_gui PROPERTIES WIN32_EXECUTABLE ON)
+target_link_libraries(test_hello_gui
+  eventloop crypto utils ${platform_libraries})

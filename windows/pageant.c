@@ -30,6 +30,7 @@
 #include "../kitty/kitty_inilight.h"  /* KiTTY: portable-layout probe */
 #include "../kitty/kitty_protkey.h"   /* KiTTY: kitty_protkey_available (tray tip) */
 #include "../kitty/kitty_hello.h"     /* KiTTY: Windows Hello presence check */
+#include "../kitty/kitty_hello_keys.h" /* KiTTY: Hello-protected keys */
 #include "../kitty/kitty_auditlog.h"  /* KiTTY: the audit log's file sink */
 
 #include <shellapi.h>
@@ -42,6 +43,9 @@
 
 #define WM_SYSTRAY   (WM_APP + 6)
 #define WM_SYSTRAY2  (WM_APP + 7)
+/* KiTTY: a deferred-decryption prompt that Windows Hello can answer - posted
+ * so the unlock runs OUTSIDE the core's ask_passphrase callback. */
+#define KAGEANT_WM_HELLO_UNLOCK (WM_APP + 12)
 /* KiTTY: balloon-click notification; absent from older SDK headers. */
 #ifndef NIN_BALLOONUSERCLICK
 #define NIN_BALLOONUSERCLICK (WM_USER + 5)
@@ -88,7 +92,7 @@ static bool kageant_kitty_launch_allowed(HWND owner)
                "It may have been replaced with something else. Because a "
                "terminal started from here would get access to the agent's "
                "keys, kageant will not start it.",
-               "kageant - session launch blocked", MB_OK | MB_ICONERROR);
+               "kageant - session launch blocked",MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR);
     return false;
 }
 
@@ -163,7 +167,7 @@ void modalfatalbox(const char *fmt, ...)
     buf = dupvprintf(fmt, ap);
     va_end(ap);
     MessageBox(traywindow, buf, "kageant Fatal Error",
-               MB_SYSTEMMODAL | MB_ICONERROR | MB_OK);
+               MB_SYSTEMMODAL | MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
     sfree(buf);
     exit(1);
 }
@@ -176,6 +180,10 @@ struct PassphraseProcStruct {
     const char *comment;
     HWND over;   /* KiTTY: window to centre the prompt over (the requesting
                   * terminal, captured as the foreground window); NULL = desktop */
+    char *hello_path;  /* KiTTY: the Hello-protected file this prompt is for
+                        * (owned; NULL = an ordinary key). What the user
+                        * types is then a recovery passphrase or the printed
+                        * secret, translated before the core sees it. */
 };
 
 static void kageant_set_window_icon(HWND hwnd);   /* defined below */
@@ -358,10 +366,125 @@ static void pageant_force_foreground(HWND hwnd)
         AttachThreadInput(mythread, fgthread, FALSE);
 }
 
+/*
+ * KiTTY: Hello-protected keys - the frontend's shared pieces.
+ */
+
+/* The window Windows Hello prompts are owned by. The passkey machinery
+ * wants a REAL window of ours (a synthetic hidden host breaks its save
+ * flow): our own foreground window if we have one, else the key list,
+ * else the tray window. */
+static HWND hello_owner_window(void)
+{
+    HWND fg = GetForegroundWindow();
+    DWORD pid = 0;
+    if (fg && GetWindowThreadProcessId(fg, &pid) &&
+        pid == GetCurrentProcessId())
+        return fg;
+    if (keylist && IsWindowVisible(keylist))
+        return keylist;
+    return traywindow;
+}
+
+/* The agent core's random source (kageant_random_hook): the OS CSPRNG.
+ * Writing a protected PPK needs a salt; nothing else in the agent draws
+ * random numbers. */
+static void kageant_hello_random(void *buf, size_t size)
+{
+    unsigned char *p = (unsigned char *)buf;
+    while (size > 0) {
+        unsigned char chunk[KITTY_HELLO_SECRET_LEN];
+        size_t n = size < sizeof(chunk) ? size : sizeof(chunk);
+        if (!kitty_hello_new_secret(chunk))
+            modalfatalbox("The system random number generator failed");
+        memcpy(p, chunk, n);
+        smemclr(chunk, sizeof(chunk));
+        p += n;
+        size -= n;
+    }
+}
+
+/* After a recovery passphrase opened a protected key here: offer to add
+ * this account+machine as a Hello door, so next time Hello answers. */
+static void kageant_hello_offer_enrol(HWND owner, const char *path,
+                                      const char *passphrase)
+{
+    char *msg, *err = NULL;
+    int r;
+    if (kitty_hello_prf_available() != 1)
+        return;
+    if (kageant_hello_enrolled_here(path) == 1)
+        return;
+    msg = dupprintf(
+        "The recovery passphrase opened this Windows Hello protected key:\n\n"
+        "    %s\n\n"
+        "Add Windows Hello on this computer and account as a way to open "
+        "it, so the passphrase is not needed here next time?\n\n"
+        "(The file's .hello sidecar gets one more entry. Other computers "
+        "and accounts keep theirs.)", path);
+    r = MessageBox(owner, msg, "kageant - add Windows Hello here",
+                   MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON1);
+    sfree(msg);
+    if (r != IDYES)
+        return;
+    r = kageant_hello_enrol(owner ? owner : hello_owner_window(), path,
+                            passphrase, &err);
+    kitty_audit("hello-enrol", "path", path, "result",
+                r == KAGEANT_HELLO_OK ? "added" :
+                r == KAGEANT_HELLO_DENIED ? "denied" : "failed",
+                "detail", kitty_hello_last_detail(), (const char *)NULL);
+    if (r != KAGEANT_HELLO_OK) {
+        msg = dupprintf("Windows Hello was not added for this key:\n\n%s",
+                        err ? err : "unknown error");
+        MessageBox(owner, msg, "kageant", MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+        sfree(msg);
+    }
+    sfree(err);
+}
+
+/* The add-time "protect this key?" offer is a MODAL box in the agent's
+ * message loop, so it may fire ONLY for the user's own Add Key / drag-drop -
+ * never for command-line, IPC, startup or Accept adds, which would take the
+ * agent off the air (the gate found exactly that). Armed around those two
+ * call sites. */
+static bool hello_add_offer_armed = false;
+static int kageant_hello_add_offer(const char *src, char **newpath_out);
+
+/* Which deferred prompt Hello already answered (or tried to): the core
+ * re-asks synchronously on a wrong passphrase, and a second Hello round
+ * for the same key would loop prompts at the user. */
+static PageantClientDialogId *hello_tried_dlgid = NULL;
+/* The file and comment of the prompt posted to the tray window. */
+static char *hello_pending_path = NULL;
+static char *hello_pending_comment = NULL;
+static bool ask_passphrase_dialog(PageantClientDialogId *dlgid,
+                                  const char *comment);
+
 static void end_passphrase_dialog(HWND hwnd, INT_PTR result)
 {
     struct PassphraseProcStruct *p = (struct PassphraseProcStruct *)
         GetWindowLongPtr(hwnd, GWLP_USERDATA);
+
+    /* KiTTY: for a Hello-protected key the typed text is a door, not the
+     * passphrase itself - open it here, modal and non-modal alike. A
+     * typed recovery passphrase also earns the offer to add this account
+     * as a Hello door (the enrolment path for a second machine/user). */
+    if (result && p->hello_path && p->passphrase) {
+        int via_recovery = 0;
+        char *real = kageant_hello_translate(p->hello_path, p->passphrase,
+                                             &via_recovery);
+        if (real) {
+            burnstr(p->passphrase);
+            p->passphrase = real;
+            kitty_audit("hello-unlock", "path", p->hello_path, "result",
+                        via_recovery ? "recovery-passphrase" :
+                                       "printed-secret", (const char *)NULL);
+            if (via_recovery)
+                kageant_hello_offer_enrol(hwnd, p->hello_path, real);
+        }
+        /* Otherwise the text goes through as typed: it may well BE the
+         * literal passphrase. */
+    }
 
     if (p->modal) {
         EndDialog(hwnd, result);
@@ -389,6 +512,7 @@ static void end_passphrase_dialog(HWND hwnd, INT_PTR result)
             pageant_passphrase_request_refused(p->dlgid);
 
         burnstr(p->passphrase);
+        sfree(p->hello_path);
         sfree(p);
     }
 }
@@ -468,6 +592,19 @@ static INT_PTR CALLBACK PassphraseProc(HWND hwnd, UINT msg,
                                            * the prompt is focused and typable */
         if (p->comment)
             SetDlgItemText(hwnd, IDC_PASSPHRASE_FINGERPRINT, p->comment);
+        /* KiTTY: a Hello-protected key's prompt must SAY that the
+         * recovery passphrase and the printed secret open it too - the
+         * template text talks only of "passphrase". */
+        if (p->hello_path) {
+            if (p->modal)
+                SetDlgItemText(hwnd, IDC_PASSPHRASE_STATIC1,
+                               "Enter the passphrase, the RECOVERY "
+                               "passphrase or the printed secret:");
+            else
+                SetDlgItemText(hwnd, IDC_PASSPHRASE_STATIC3,
+                               "input focus, then enter the passphrase, "
+                               "RECOVERY passphrase or printed secret.");
+        }
         burnstr(p->passphrase);
         p->passphrase = dupstr("");
         SetDlgItemText(hwnd, IDC_PASSPHRASE_EDITBOX, p->passphrase);
@@ -545,7 +682,7 @@ void old_keyfile_warning(void)
         "You can perform this conversion by loading the key\n"
         "into PuTTYgen and then saving it again.";
 
-    MessageBox(NULL, message, mbtitle, MB_OK);
+    MessageBox(NULL, message, mbtitle,MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
 }
 
 struct keylist_update_ctx {
@@ -1170,6 +1307,44 @@ void win_add_keyfile(Filename *filename, bool encrypted)
     }
 
     /*
+     * KiTTY: the add-key moment, decided BEFORE anything is loaded. For the
+     * user's own Add Key / drag-drop of a passphraseless, unprotected file,
+     * offer Windows Hello protection: Yes writes the protected copy and
+     * THAT is what gets added; a protection that was chosen and then
+     * fails or is cancelled adds nothing at all (and says so); No loads
+     * the file as it is. Never during the startup load, never for IPC.
+     */
+    if (hello_add_offer_armed && !kageant_startup_loading()) {
+        const char *p = filename_to_str(filename);
+        char *cmt = NULL;
+        bool has_pass = ppk_encrypted_f(filename, &cmt);
+        sfree(cmt);
+        if (!has_pass && !kageant_hello_has_sidecar(p) &&
+            kageant_hello_offerable()) {
+            char *np = NULL;
+            int r = kageant_hello_add_offer(p, &np);
+            if (r > 0) {
+                Filename *nf = filename_from_str(np);
+                sfree(np);
+                win_add_keyfile(nf, encrypted);   /* the protected copy */
+                filename_free(nf);
+                return;
+            }
+            if (r < 0) {
+                char *m = dupprintf(
+                    "The key was NOT added:\n\n    %s\n\n"
+                    "You asked for Windows Hello protection and it did not "
+                    "complete, so the file was not loaded unprotected. Add "
+                    "it again and answer No to load it as it is.", p);
+                MessageBox(hello_owner_window(), m, "kageant - not added",
+                           MB_ICONWARNING | MB_OK);
+                sfree(m);
+                return;
+            }
+        }
+    }
+
+    /*
      * Try loading the key without a passphrase. (Or rather, without a
      * _new_ passphrase; pageant_add_keyfile will take care of trying
      * all the passphrases we've already stored.)
@@ -1180,6 +1355,68 @@ void win_add_keyfile(Filename *filename, bool encrypted)
         goto done;
     } else if (ret == PAGEANT_ACTION_FAILURE) {
         goto error;
+    }
+
+    /*
+     * KiTTY: a Hello-protected file answers through Windows Hello first.
+     * DENIED is final (no typed prompt behind a refused face); a sidecar
+     * without a door for this account falls through to the typed prompt,
+     * where a recovery passphrase or the printed secret opens it.
+     */
+    {
+        const char *hp = filename_to_str(filename);
+        if (kageant_hello_has_sidecar(hp)) {
+            char *pass = NULL, *owners = NULL;
+            int r = kageant_hello_unlock(hp, hello_owner_window(), &pass,
+                                         &owners);
+            kitty_audit("hello-unlock", "path", hp, "result",
+                        r == KAGEANT_HELLO_OK ? "hello" :
+                        r == KAGEANT_HELLO_DENIED ? "denied" :
+                        r == KAGEANT_HELLO_NODOOR ? "no-door-here" : "failed",
+                        "detail", kitty_hello_last_detail(), (const char *)NULL);
+            if (r == KAGEANT_HELLO_OK) {
+                sfree(err);
+                ret = pageant_add_keyfile(filename, pass, &err, false);
+                burnstr(pass);
+                if (ret == PAGEANT_ACTION_OK) {
+                    kageant_track_keypath(hp, encrypted);
+                    goto done;
+                } else if (ret == PAGEANT_ACTION_FAILURE) {
+                    goto error;
+                }
+                /* the sidecar no longer matches its file: typed prompt */
+            } else if (r == KAGEANT_HELLO_DENIED) {
+                /* Cancelled (or refused) Hello: the typed doors remain -
+                 * recovery passphrase / printed secret - at the ordinary
+                 * prompt below, which says so. */
+                char *e2 = dupprintf("Windows Hello was cancelled - enter "
+                                     "the recovery passphrase or the "
+                                     "printed secret for %s", err);
+                sfree(err);
+                err = e2;
+            } else if (r == KAGEANT_HELLO_NODOOR) {
+                char *msg = dupprintf(
+                    "%s\n\nwas protected with Windows Hello by: %s\n\n"
+                    "This computer and account cannot open it with Hello. "
+                    "Enter the recovery passphrase or the printed secret "
+                    "at the next prompt; the passphrase then also offers "
+                    "to add Windows Hello here.",
+                    hp, owners ? owners : "(unknown)");
+                /* A modal here during the startup load would take the
+                 * agent off the air (see the error path below): notice
+                 * instead, box only for the user's own add. */
+                if (kageant_startup_loading() && traywindow)
+                    kitty_notice_show("kageant: Windows Hello key from elsewhere",
+                                      msg, KAGEANT_NOTICE_WARN,
+                                      kageant_notice_seconds(12), traywindow, 0);
+                else
+                    MessageBox(hello_owner_window(), msg,
+                               "kageant - Windows Hello key from elsewhere",
+                               MB_ICONINFORMATION | MB_OK);
+                sfree(msg);
+            }
+            sfree(owners);
+        }
     }
 
     /*
@@ -1195,6 +1432,8 @@ void win_add_keyfile(Filename *filename, bool encrypted)
         pps.passphrase = NULL;
         pps.comment = err;
         pps.over = GetForegroundWindow();   /* KiTTY: centre over the active window */
+        pps.hello_path = kageant_hello_has_sidecar(filename_to_str(filename)) ?
+            dupstr(filename_to_str(filename)) : NULL;
         dlgret = DialogBoxParam(
             hinst, MAKEINTRESOURCE(IDD_LOAD_PASSPHRASE),
             NULL, PassphraseProc, (LPARAM) &pps);
@@ -1202,6 +1441,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
 
         if (!dlgret) {
             burnstr(pps.passphrase);
+            sfree(pps.hello_path);
             goto done;                 /* operation cancelled */
         }
 
@@ -1211,6 +1451,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
 
         ret = pageant_add_keyfile(filename, pps.passphrase, &err, false);
         burnstr(pps.passphrase);
+        sfree(pps.hello_path);
 
         if (ret == PAGEANT_ACTION_OK) {
             kageant_track_keypath(filename_to_str(filename), encrypted);   /* KiTTY startup-keys */
@@ -1275,7 +1516,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
             sfree(msg);
         } else {
             char *msg = dupprintf("%s\n\n    %s", err, path);
-            message_box(traywindow, msg, APPNAME, MB_OK | MB_ICONERROR, false,
+            message_box(traywindow, msg, APPNAME,MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR, false,
                         HELPCTXID(errors_cantloadkey));
             sfree(msg);
         }
@@ -1299,7 +1540,9 @@ static void prompt_add_keyfile(bool encrypted)
 
     if (rmf) {
         for (size_t i = 0; i < rmf->nfilenames; i++) {
+            hello_add_offer_armed = true;   /* the user's own add */
             win_add_keyfile(rmf->filenames[i], encrypted);
+            hello_add_offer_armed = false;
             /* KiTTY: GUI adds never pass the IPC mutation hook, so they
              * get their own audit line. */
             kitty_audit("add", "path", filename_to_str(rmf->filenames[i]),
@@ -1393,6 +1636,8 @@ static void anchored_relayout(HWND hwnd, const struct kl_anchor *anchors,
 static const struct kl_anchor keylist_anchors[] = {
     {IDC_KEYLIST_LISTBOX,
      KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_PROTECT, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_FORGET,  KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYLIST_FPTYPE_STATIC, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYLIST_FPTYPE,        KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYLIST_SHOWUNAVAIL,   KL_ANCH_LEFT | KL_ANCH_BOTTOM},
@@ -1599,6 +1844,340 @@ static bool keylist_restore_geometry(HWND hwnd)
  * list can rebuild behind this modal dialog (device events keep arriving),
  * and the struct dies with the rebuild.
  */
+/*
+ * KiTTY: "Protect with Windows Hello..." - the key details' route for a key
+ * that is already established. Everything it does is a COPY: the protected
+ * PPK plus its .hello sidecar are written beside the original, which is
+ * never rewritten; only the startup entry is re-pointed, and only when the
+ * user leaves that box ticked.
+ */
+struct hello_protect_ctx {
+    const char *src;        /* the key file being protected */
+    int src_encrypted;      /* it has a passphrase (we need it to load) */
+    int tracked;            /* it has a startup entry that could be replaced */
+    char *dest;             /* out: the protected copy's path */
+    char *srcpass;          /* out: the source passphrase (burn) */
+    char *recpass;          /* out: a separate recovery passphrase (burn),
+                             * NULL = "use the source passphrase" */
+    int replace;            /* out: re-point the startup entry */
+    int hello_only;         /* out: no recovery wrap at all (warned) */
+};
+
+static void hello_protect_explain(HWND hwnd, struct hello_protect_ctx *c)
+{
+    int hello_only = IsDlgButtonChecked(hwnd, IDC_HP_HELLOONLY) == BST_CHECKED;
+    char *text = dupprintf(
+        "%s"
+        "The original is not changed and keeps working as it does today. "
+        "The protected copy is the same key with a random secret as its "
+        "passphrase: Windows Hello opens it here, %s and the printed "
+        "secret (shown once, next) is that passphrase itself - it opens "
+        "the key in any PuTTY tool.\r\n\r\n"
+        "Delete the original yourself once the copy works; \"Forget a "
+        "path\" drops it from this key's list.",
+        c->src_encrypted ? "" :
+        "This key has NO passphrase. Keeping the original beside the "
+        "protected copy defeats the protection for whoever holds both "
+        "files.\r\n\r\n",
+        hello_only ?
+        "NO recovery passphrase: lose Windows Hello here (new PC, "
+        "re-enrolment, TPM reset) and ONLY the printout opens it -" :
+        "the recovery passphrase opens it anywhere,");
+    SetDlgItemText(hwnd, IDC_HP_WARN, text);
+    sfree(text);
+}
+
+static void hello_protect_sync(HWND hwnd, struct hello_protect_ctx *c)
+{
+    int hello_only = IsDlgButtonChecked(hwnd, IDC_HP_HELLOONLY) == BST_CHECKED;
+    int use_src = !hello_only && c->src_encrypted &&
+        IsDlgButtonChecked(hwnd, IDC_HP_USESRCPASS) == BST_CHECKED;
+    int typed = !hello_only && !use_src;
+    EnableWindow(GetDlgItem(hwnd, IDC_HP_USESRCPASS), !hello_only);
+    EnableWindow(GetDlgItem(hwnd, IDC_HP_RECPASS), typed);
+    EnableWindow(GetDlgItem(hwnd, IDC_HP_RECPASS2), typed);
+    EnableWindow(GetDlgItem(hwnd, IDC_HP_RECPASS_LBL), typed);
+    EnableWindow(GetDlgItem(hwnd, IDC_HP_RECPASS2_LBL), typed);
+    hello_protect_explain(hwnd, c);
+}
+
+static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
+                                         WPARAM wParam, LPARAM lParam)
+{
+    struct hello_protect_ctx *c = (struct hello_protect_ctx *)
+        GetWindowLongPtr(hwnd, GWLP_USERDATA);
+
+    switch (msg) {
+      case WM_INITDIALOG: {
+        c = (struct hello_protect_ctx *)lParam;
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)c);
+        kageant_set_window_icon(hwnd);
+        SetDlgItemText(hwnd, IDC_HP_SRC, c->src);
+        {
+            char *d = kageant_hello_default_destpath(c->src);
+            SetDlgItemText(hwnd, IDC_HP_DEST, d);
+            sfree(d);
+        }
+        EnableWindow(GetDlgItem(hwnd, IDC_HP_SRCPASS), c->src_encrypted);
+        EnableWindow(GetDlgItem(hwnd, IDC_HP_SRCPASS_LBL), c->src_encrypted);
+        ShowWindow(GetDlgItem(hwnd, IDC_HP_USESRCPASS),
+                   c->src_encrypted ? SW_SHOW : SW_HIDE);
+        CheckDlgButton(hwnd, IDC_HP_USESRCPASS,
+                       c->src_encrypted ? BST_CHECKED : BST_UNCHECKED);
+        EnableWindow(GetDlgItem(hwnd, IDC_HP_REPLACE), c->tracked);
+        CheckDlgButton(hwnd, IDC_HP_REPLACE,
+                       c->tracked ? BST_CHECKED : BST_UNCHECKED);
+        hello_protect_sync(hwnd, c);
+        kitty_auxpos_apply(hwnd, "kageantHelloProtect", GetWindow(hwnd, GW_OWNER), 0);
+        return 1;
+      }
+      case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+          case IDC_HP_USESRCPASS:
+          case IDC_HP_HELLOONLY:
+            hello_protect_sync(hwnd, c);
+            return 0;
+          case IDC_HP_BROWSE: {
+            char *cur = GetDlgItemText_alloc(hwnd, IDC_HP_DEST);
+            Filename *initial = filename_from_str(cur);
+            Filename *fn = request_file(hwnd, "Save the protected copy as",
+                                        initial, true, NULL, false,
+                                        FILTER_KEY_FILES);
+            filename_free(initial);
+            sfree(cur);
+            if (fn) {
+                SetDlgItemText(hwnd, IDC_HP_DEST, filename_to_str(fn));
+                filename_free(fn);
+            }
+            return 0;
+          }
+          case IDC_HP_OPENFOLDER: {
+            char *arg = dupprintf("/select,\"%s\"", c->src);
+            ShellExecute(hwnd, "open", "explorer.exe", arg, NULL,
+                         SW_SHOWNORMAL);
+            sfree(arg);
+            return 0;
+          }
+          case IDOK: {
+            char *dest = GetDlgItemText_alloc(hwnd, IDC_HP_DEST);
+            char *srcpass = GetDlgItemText_alloc(hwnd, IDC_HP_SRCPASS);
+            char *rec = GetDlgItemText_alloc(hwnd, IDC_HP_RECPASS);
+            char *rec2 = GetDlgItemText_alloc(hwnd, IDC_HP_RECPASS2);
+            int hello_only =
+                IsDlgButtonChecked(hwnd, IDC_HP_HELLOONLY) == BST_CHECKED;
+            int use_src = !hello_only && c->src_encrypted &&
+                IsDlgButtonChecked(hwnd, IDC_HP_USESRCPASS) == BST_CHECKED;
+            const char *problem = NULL;
+
+            if (!dest || !*dest)
+                problem = "Name the protected copy.";
+            else if (!stricmp(dest, c->src))
+                problem = "The protected copy must be a different file - "
+                          "the original is never rewritten.";
+            else if (GetFileAttributesA(dest) != INVALID_FILE_ATTRIBUTES)
+                problem = "That file already exists. Choose another name; "
+                          "nothing is overwritten.";
+            else if (c->src_encrypted && (!srcpass || !*srcpass))
+                problem = "Enter the key's current passphrase.";
+            else if (!hello_only && !use_src && (!rec || !*rec))
+                problem = "Enter a recovery passphrase - it is the only way "
+                          "to open the key where Windows Hello cannot.";
+            else if (!hello_only && !use_src && strcmp(rec, rec2))
+                problem = "The recovery passphrases do not match.";
+            if (problem) {
+                MessageBox(hwnd, problem, "kageant", MB_ICONWARNING | MB_OK);
+                sfree(dest);
+                burnstr(srcpass);
+                burnstr(rec);
+                burnstr(rec2);
+                return 0;
+            }
+            if (hello_only &&
+                MessageBox(hwnd,
+                           "No recovery passphrase: if Windows Hello on this "
+                           "computer is lost, ONLY the printed secret opens "
+                           "this key. Store the printout. Continue?",
+                           "kageant - Windows Hello only",
+                           MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) != IDYES) {
+                sfree(dest);
+                burnstr(srcpass);
+                burnstr(rec);
+                burnstr(rec2);
+                return 0;
+            }
+            c->dest = dest;
+            c->srcpass = srcpass;
+            c->hello_only = hello_only;
+            c->recpass = hello_only ? dupstr("") : (use_src ? NULL : rec);
+            if (use_src || hello_only)
+                burnstr(rec);
+            burnstr(rec2);
+            c->replace = c->tracked &&
+                IsDlgButtonChecked(hwnd, IDC_HP_REPLACE) == BST_CHECKED;
+            kitty_auxpos_save(hwnd, "kageantHelloProtect");
+            EndDialog(hwnd, 1);
+            return 0;
+          }
+          case IDCANCEL:
+            kitty_auxpos_save(hwnd, "kageantHelloProtect");
+            EndDialog(hwnd, 0);
+            return 0;
+        }
+        return 0;
+      case WM_CLOSE:
+        kitty_auxpos_save(hwnd, "kageantHelloProtect");
+        EndDialog(hwnd, 0);
+        return 0;
+    }
+    return 0;
+}
+
+/* The printed secret, shown exactly once. */
+static INT_PTR CALLBACK HelloSecretProc(HWND hwnd, UINT msg,
+                                        WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+      case WM_INITDIALOG: {
+        const char *printed = (const char *)lParam;
+        kageant_set_window_icon(hwnd);
+        SetDlgItemText(hwnd, IDC_HS_NOTE,
+            "This is the protected key's passphrase. It is shown ONCE - "
+            "kageant does not keep it.\r\n\r\n"
+            "Print it or store it in a password manager. It opens the key "
+            "in any PuTTY-compatible tool, on any machine, with or without "
+            "Windows Hello, and it is the last resort if Windows Hello and "
+            "the recovery passphrase are both lost.");
+        SetDlgItemText(hwnd, IDC_HS_TEXT, printed);
+        kitty_auxpos_apply(hwnd, "kageantHelloSecret", GetWindow(hwnd, GW_OWNER), 0);
+        return 1;
+      }
+      case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+          case IDC_HS_COPY: {
+            char *t = GetDlgItemText_alloc(hwnd, IDC_HS_TEXT);
+            if (t && OpenClipboard(hwnd)) {
+                size_t len = strlen(t) + 1;
+                HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, len);
+                EmptyClipboard();
+                if (h) {
+                    void *m = GlobalLock(h);
+                    if (m) {
+                        memcpy(m, t, len);
+                        GlobalUnlock(h);
+                        SetClipboardData(CF_TEXT, h);
+                    }
+                }
+                CloseClipboard();
+            }
+            burnstr(t);
+            return 0;
+          }
+          case IDOK:
+          case IDCANCEL:
+            kitty_auxpos_save(hwnd, "kageantHelloSecret");
+            SetDlgItemText(hwnd, IDC_HS_TEXT, "");
+            EndDialog(hwnd, 1);
+            return 0;
+        }
+        return 0;
+      case WM_CLOSE:
+        kitty_auxpos_save(hwnd, "kageantHelloSecret");
+        SetDlgItemText(hwnd, IDC_HS_TEXT, "");
+        EndDialog(hwnd, 1);
+        return 0;
+    }
+    return 0;
+}
+
+/* Run the whole protect flow for one key file from a real window. Returns
+ * the protected copy's path (caller sfree) when one was written, NULL
+ * otherwise; replaced_out says whether the startup entry was re-pointed. */
+static char *kageant_hello_protect_flow(HWND owner, const char *src,
+                                        int *replaced_out)
+{
+    struct hello_protect_ctx c;
+    Filename *fn = filename_from_str(src);
+    char *cmt = NULL, *printed = NULL, *err = NULL, *result = NULL;
+    int r;
+
+    memset(&c, 0, sizeof(c));
+    c.src = src;
+    c.src_encrypted = ppk_encrypted_f(fn, &cmt);
+    filename_free(fn);
+    sfree(cmt);
+    c.tracked = kageant_keypath_encrypted(src) >= 0;
+    if (replaced_out)
+        *replaced_out = 0;
+
+    if (!DialogBoxParam(hinst, MAKEINTRESOURCE(IDD_HELLOPROTECT), owner,
+                        HelloProtectProc, (LPARAM)&c))
+        return NULL;
+
+    r = kageant_hello_protect(owner, src, c.srcpass, c.recpass, c.dest,
+                              &printed, &err);
+    kitty_audit("hello-protect", "path", src, "dest", c.dest, "result",
+                r == KAGEANT_HELLO_OK ? "protected" :
+                r == KAGEANT_HELLO_DENIED ? "denied" : "failed",
+                "detail", kitty_hello_last_detail(), "err", err ? err : "",
+                (const char *)NULL);
+    if (r == KAGEANT_HELLO_OK) {
+        DialogBoxParam(hinst, MAKEINTRESOURCE(IDD_HELLOSECRET), owner,
+                       HelloSecretProc, (LPARAM)printed);
+        burnstr(printed);
+        if (c.replace && kageant_startup_replace_path(src, c.dest, -1) == 1) {
+            if (replaced_out)
+                *replaced_out = 1;
+            kitty_audit("hello-protect", "path", src, "dest", c.dest,
+                        "result", "startup-entry-replaced",
+                        (const char *)NULL);
+        }
+        result = c.dest;
+        c.dest = NULL;
+    } else {
+        char *msg = dupprintf("The key was not protected:\n\n%s",
+                              err ? err : "unknown error");
+        MessageBox(owner, msg, "kageant - not protected",
+                   MB_ICONWARNING | MB_OK);
+        sfree(msg);
+    }
+    sfree(err);
+    sfree(c.dest);
+    burnstr(c.srcpass);
+    burnstr(c.recpass);
+    return result;
+}
+
+/* The add-key moment (called from win_add_keyfile BEFORE the load): a passphraseless key
+ * just loaded by the user's own action - offer protection now, while the
+ * file is still being decided about. 1 = a protected copy was written and
+ * *newpath_out names it (caller sfree). */
+static int kageant_hello_add_offer(const char *src, char **newpath_out)
+{
+    char *msg;
+    int r;
+    *newpath_out = NULL;
+    if (!hello_add_offer_armed)
+        return 0;
+    if (!kageant_hello_offerable())
+        return 0;
+    msg = dupprintf(
+        "This key has no passphrase:\n\n    %s\n\n"
+        "Protect it with Windows Hello now? A protected COPY is written "
+        "beside it (the original is not changed) and the startup list "
+        "remembers the copy.", src);
+    r = MessageBox(hello_owner_window(), msg,
+                   "kageant - protect this key?",
+                   MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON2);
+    sfree(msg);
+    if (r != IDYES)
+        return 0;
+    *newpath_out = kageant_hello_protect_flow(hello_owner_window(), src,
+                                              NULL);
+    /* The user ASKED for protection: a failed or cancelled protect must
+     * not end with the key quietly loaded unprotected. -1 = do not add. */
+    return *newpath_out ? 1 : -1;
+}
+
 static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                                        WPARAM wParam, LPARAM lParam)
 {
@@ -1683,7 +2262,8 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             /* kageant_paths_of_blob separates entries with "\n    " for the
              * old MessageBox layout; an edit control wants plain CRLFs. */
             char *paths = disp->blob->len ?
-                kageant_paths_of_blob(ptrlen_from_strbuf(disp->blob)) : NULL;
+                kageant_paths_of_blob_annotated(ptrlen_from_strbuf(disp->blob))
+                : NULL;
             if (paths) {
                 strbuf *sb = strbuf_new();
                 for (const char *p = paths; *p; p++) {
@@ -1785,6 +2365,19 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                  disp->state == KEYSTATE_FAILED);
             ShowWindow(loc, can_locate ? SW_SHOW : SW_HIDE);
             EnableWindow(loc, can_locate);
+        }
+
+        /* KiTTY: Hello-protected keys. Protect needs a loaded key that came
+         * from a file without a sidecar and a machine that can offer Hello;
+         * Forget needs any tracked path at all. Greyed, never hidden, so the
+         * feature is discoverable where it is not (yet) applicable. */
+        {
+            int can_protect = keypath && !disp->pending &&
+                !kageant_hello_has_sidecar(keypath) &&
+                kageant_hello_offerable();
+            EnableWindow(GetDlgItem(hwnd, IDC_KEYDETAIL_PROTECT), can_protect);
+            EnableWindow(GetDlgItem(hwnd, IDC_KEYDETAIL_FORGET),
+                         keypath != NULL);
         }
 
         /* KiTTY: the Lifetime line, ticking while the dialog is open. */
@@ -1890,7 +2483,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                            "nothing to accept. Check the file is reachable and "
                            "try again.",
                            "kageant - cannot read that file",
-                           MB_ICONWARNING | MB_OK);
+                           MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 return 0;
             }
             msg = dupprintf(
@@ -1920,7 +2513,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                 MessageBox(hwnd,
                            "The Windows Hello check did not verify, so the "
                            "key was NOT accepted and nothing was changed.",
-                           "kageant - not accepted", MB_ICONWARNING | MB_OK);
+                           "kageant - not accepted", MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 return 0;
             }
 
@@ -1928,7 +2521,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                 MessageBox(hwnd,
                            "The key could not be loaded, so nothing was "
                            "changed and the entry stays refused.",
-                           "kageant - not accepted", MB_ICONWARNING | MB_OK);
+                           "kageant - not accepted", MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 keylist_update();
                 return 0;
             }
@@ -1938,6 +2531,99 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             /* cleared, or the IDOK/WM_CLOSE paths free it a second time */
             SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)NULL);
             EndDialog(hwnd, 1);
+            return 0;
+          }
+          case IDC_KEYDETAIL_PROTECT: {
+            char *keypath = (char *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+            char *newpath;
+            int replaced = 0;
+            if (!keypath)
+                return 0;
+            newpath = kageant_hello_protect_flow(hwnd, keypath, &replaced);
+            if (newpath) {
+                char *msg = dupprintf(
+                    "Protected copy written:\n\n    %s\n    %s.hello\n\n%s\n\n"
+                    "The original stays where it is:\n\n    %s",
+                    newpath, newpath,
+                    replaced ? "The startup list now names the protected "
+                               "copy instead of the original." :
+                               "The startup list was not changed.",
+                    keypath);
+                MessageBox(hwnd, msg, "kageant - key protected",
+                           MB_ICONINFORMATION | MB_OK);
+                sfree(msg);
+                sfree(newpath);
+                keylist_update();
+                kitty_auxpos_save(hwnd, "kageantKeyDetails");
+                sfree(keypath);
+                SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)NULL);
+                EndDialog(hwnd, 1);
+            }
+            return 0;
+          }
+          case IDC_KEYDETAIL_FORGET: {
+            /*
+             * Forget ONE source path of this key - the startup list stops
+             * naming that file; the key itself stays loaded. Walks the
+             * paths one by one (Yes = forget this one, No = next, Cancel =
+             * stop), which is enough for the two or three a key ever has.
+             */
+            char *keypath = (char *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+            char *paths, *p, *next;
+            int done = 0;
+            if (!keypath)
+                return 0;
+            paths = keydetail_blob && keydetail_blob->len ?
+                kageant_paths_of_blob(ptrlen_from_strbuf(keydetail_blob)) :
+                NULL;
+            if (!paths)
+                paths = dupstr(keypath);
+            {
+                int total = 1, idx = 0;
+                const char *q;
+                for (q = paths; (q = strchr(q, '\n')) != NULL; q++)
+                    total++;
+                for (p = paths; p && *p && !done; p = next) {
+                    char *msg;
+                    int r;
+                    next = strchr(p, '\n');
+                    if (next) {
+                        *next++ = '\0';
+                        while (*next == ' ')
+                            next++;
+                    }
+                    idx++;
+                    msg = dupprintf(
+                        "Forget this path (%d of %d)?\n\n    %s\n\n%s"
+                        "The startup list stops naming this file. The file "
+                        "itself is not touched.", idx, total, p,
+                        total == 1 ?
+                        "THIS IS THE KEY'S ONLY STARTUP ENTRY. Forgetting it "
+                        "means the key is no longer loaded at startup (it "
+                        "stays loaded now). To take the key out of the agent "
+                        "use Remove instead.\n\n" :
+                        "The key stays loaded and its other paths stay.\n\n");
+                    r = MessageBox(hwnd, msg, "kageant - forget a path",
+                                   MB_ICONQUESTION | MB_YESNOCANCEL |
+                                   MB_DEFBUTTON2);
+                    sfree(msg);
+                    if (r == IDCANCEL)
+                        break;
+                    if (r == IDYES && kageant_startup_forget_path(p)) {
+                        kitty_audit("forget-path", "path", p, "result",
+                                    "forgotten", (const char *)NULL);
+                        done = 1;
+                    }
+                }
+            }
+            sfree(paths);
+            if (done) {
+                keylist_update();
+                kitty_auxpos_save(hwnd, "kageantKeyDetails");
+                sfree(keypath);
+                SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)NULL);
+                EndDialog(hwnd, 1);
+            }
             return 0;
           }
           case IDC_KEYDETAIL_LOCATE: {
@@ -1981,7 +2667,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                        "at its own key." :
                        "No key could be loaded from that file, so nothing "
                        "was changed.",
-                       "kageant - not re-pointed", MB_ICONWARNING | MB_OK);
+                       "kageant - not re-pointed", MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
             sfree(newpath);
             keylist_update();
             return 0;
@@ -3384,8 +4070,10 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             char *path = snewn((size_t)len + 2, char);
             if (DragQueryFile(drop, i, path, len + 1)) {
                 Filename *fn = filename_from_str(path);
+                hello_add_offer_armed = true;   /* the user's own add */
                 win_add_keyfile(fn, true);   /* deferred, like Add Key
                                               * (encrypted) */
+                hello_add_offer_armed = false;
                 filename_free(fn);
             }
             sfree(path);
@@ -3654,7 +4342,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                     MessageBox(hwnd,
                         "The KiTTY key generator (kittygen) was not found "
                         "next to kageant.", APPNAME,
-                        MB_OK | MB_ICONINFORMATION);
+                       MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONINFORMATION);
                 } else {
                     /* Verify, but let the user override a failure: they can
                      * run the generator by hand anyway, so a hard refusal
@@ -4000,6 +4688,35 @@ static bool ask_passphrase_common(PageantClientDialogId *dlgid,
      * a passphrase prompt to exist already at this point */
     assert(!nonmodal_passphrase_hwnd);
 
+    /* KiTTY: a Hello-protected key answers through Windows Hello, not a
+     * typed passphrase - ONCE per request. The unlock is posted to the
+     * tray window: the core sets its in-progress state only after this
+     * returns, so the answer must arrive asynchronously. On a wrong
+     * result (a sidecar that no longer matches its file) the core re-asks
+     * here synchronously, and then the typed prompt below takes over. */
+    {
+        char *hpath = kageant_hello_file_of_blob(pageant_dlgid_pubblob(dlgid));
+        if (hpath && hello_tried_dlgid != dlgid) {
+            hello_tried_dlgid = dlgid;
+            sfree(hello_pending_path);
+            hello_pending_path = hpath;
+            sfree(hello_pending_comment);
+            hello_pending_comment = dupstr(comment);
+            PostMessage(traywindow, KAGEANT_WM_HELLO_UNLOCK, 0, (LPARAM)dlgid);
+            return true;
+        }
+        sfree(hpath);
+    }
+
+    return ask_passphrase_dialog(dlgid, comment);
+}
+
+/* The typed prompt itself - the ordinary deferred-decryption dialog, with
+ * door translation when the key is Hello-protected. */
+static bool ask_passphrase_dialog(PageantClientDialogId *dlgid,
+                                  const char *comment)
+{
+
     struct PassphraseProcStruct *pps = snew(struct PassphraseProcStruct);
     pps->modal = false;
     pps->help_topic = WINHELP_CTX_pageant_deferred;
@@ -4009,6 +4726,7 @@ static bool ask_passphrase_common(PageantClientDialogId *dlgid,
     /* KiTTY: capture the foreground window NOW (the terminal that just requested
      * the key) so the on-demand passphrase prompt opens centred over it. */
     pps->over = GetForegroundWindow();
+    pps->hello_path = kageant_hello_file_of_blob(pageant_dlgid_pubblob(dlgid));
 
     nonmodal_passphrase_hwnd = CreateDialogParam(
         hinst, MAKEINTRESOURCE(IDD_ONDEMAND_PASSPHRASE),
@@ -4376,6 +5094,63 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             PostMessage(hwnd, WM_COMMAND, IDM_VIEWKEYS, 0);
         }
         break;
+      case KAGEANT_WM_HELLO_UNLOCK: {
+        /* KiTTY: answer a deferred-decryption prompt through Windows Hello
+         * (posted from ask_passphrase_common). Exactly one of success /
+         * refused / the typed dialog must follow, or the core's request
+         * queue stays blocked. */
+        PageantClientDialogId *dlgid = (PageantClientDialogId *)lParam;
+        char *path = hello_pending_path, *comment = hello_pending_comment;
+        char *pass = NULL, *owners = NULL;
+        int r;
+        hello_pending_path = NULL;
+        hello_pending_comment = NULL;
+        r = path ? kageant_hello_unlock(path, hello_owner_window(),
+                                        &pass, &owners)
+                 : KAGEANT_HELLO_ERROR;
+        kitty_audit("hello-unlock", "path", path ? path : "", "result",
+                    r == KAGEANT_HELLO_OK ? "hello" :
+                    r == KAGEANT_HELLO_DENIED ? "denied" :
+                    r == KAGEANT_HELLO_NODOOR ? "no-door-here" : "failed",
+                    "detail", kitty_hello_last_detail(), (const char *)NULL);
+        if (r == KAGEANT_HELLO_OK) {
+            pageant_passphrase_request_success(dlgid, ptrlen_from_asciz(pass));
+            burnstr(pass);
+        } else {
+            /* DENIED (cancelled/refused Hello) and NODOOR/ERROR all end at
+             * the typed prompt: recovery passphrase or printed secret. */
+            if (r == KAGEANT_HELLO_NODOOR && traywindow) {
+                char *msg = dupprintf(
+                    "%s\n\nwas protected with Windows Hello by: %s\n\n"
+                    "This computer and account cannot open it with Hello. "
+                    "Enter the recovery passphrase or the printed secret.",
+                    path, owners ? owners : "(unknown)");
+                kitty_notice_show("kageant: Windows Hello key from elsewhere",
+                                  msg, KAGEANT_NOTICE_WARN,
+                                  kageant_notice_seconds(12), traywindow, 0);
+                sfree(msg);
+            }
+            {
+                char *c2 = dupprintf(
+                    r == KAGEANT_HELLO_DENIED ?
+                    "Windows Hello was cancelled - recovery passphrase or "
+                    "printed secret for %s" :
+                    "recovery passphrase or printed secret for %s",
+                    comment ? comment : "");
+                if (!ask_passphrase_dialog(dlgid, c2))
+                    pageant_passphrase_request_refused(dlgid);
+                sfree(c2);
+            }
+        }
+        /* A later request for the same key gets its Hello round again;
+         * the synchronous wrong-passphrase re-ask has already happened
+         * inside the success call above. */
+        hello_tried_dlgid = NULL;
+        sfree(path);
+        sfree(comment);
+        sfree(owners);
+        break;
+      }
       case KAGEANT_WM_NOTICE_CLICK:
         /* KiTTY: a kageant notice window was clicked - open View Keys, the
          * window that answers "which keys?" for both the key-used and the
@@ -4492,7 +5267,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             if ((INT_PTR)ShellExecute(hwnd, NULL, putty_path, cmdline,
                                       _T(""), SW_SHOW) <= 32) {
                 MessageBox(NULL, "Unable to execute KiTTY!",
-                           "Error", MB_OK | MB_ICONERROR);
+                           "Error",MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR);
             }
             break;
           }
@@ -4574,7 +5349,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             if (on && !should_have_security()) {
                 MessageBox(NULL, "Cannot register as the Windows OpenSSH agent: "
                            "this kageant has no named-pipe listener.",
-                           "kageant", MB_ICONERROR | MB_OK);
+                           "kageant", MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 break;
             }
             kageant_openssh_set(on);
@@ -4588,7 +5363,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                     "Added an \"Include kageant.conf\" block to:\n%s\n\n"
                     "(A one-time .kageant.bak backup was saved. Untick this "
                     "item to remove the block again.)", cfg ? cfg : "~/.ssh/config");
-                MessageBox(NULL, msg, "kageant", MB_ICONINFORMATION | MB_OK);
+                MessageBox(NULL, msg, "kageant", MB_ICONINFORMATION |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 sfree(msg); sfree(cfg);
             }
             break;
@@ -4655,7 +5430,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                     "remove any manual kageant Startup shortcut. Newly added keys "
                     "are remembered automatically while this stays enabled.",
                     kageant_nloaded(), KAGEANT_RUN_NAME);
-                MessageBox(NULL, msg, "kageant", MB_ICONINFORMATION | MB_OK);
+                MessageBox(NULL, msg, "kageant", MB_ICONINFORMATION |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 sfree(msg);
             }
             break;
@@ -4722,7 +5497,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                 if ((INT_PTR)ShellExecute(hwnd, NULL, putty_path, param,
                                           _T(""), SW_SHOW) <= 32) {
                     MessageBox(NULL, "Unable to execute KiTTY!", "Error",
-                               MB_OK | MB_ICONERROR);
+                              MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR);
                 }
             }
             break;
@@ -4808,7 +5583,7 @@ void spawn_cmd(const char *cmdline, const char *args, int show)
         char *msg;
         msg = dupprintf("Failed to run \"%s\": %s", cmdline,
                         win_strerror(GetLastError()));
-        MessageBox(NULL, msg, APPNAME, MB_OK | MB_ICONEXCLAMATION);
+        MessageBox(NULL, msg, APPNAME,MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONEXCLAMATION);
         sfree(msg);
     }
 }
@@ -4850,7 +5625,7 @@ static NORETURN void opt_error(const char *fmt, ...)
     char *msg = dupvprintf(fmt, ap);
     va_end(ap);
 
-    MessageBox(NULL, msg, "kageant command line error", MB_ICONERROR | MB_OK);
+    MessageBox(NULL, msg, "kageant command line error", MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
 
     exit(1);
 }
@@ -4927,7 +5702,7 @@ static void show_cmdline_help(void)
         FreeConsole();
 
     MessageBox(NULL, help, "kageant command line",
-               MB_ICONINFORMATION | MB_OK);
+               MB_ICONINFORMATION |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
 }
 
 #ifdef LEGACY_WINDOWS
@@ -5013,7 +5788,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             MessageBox(NULL,
                        "Unable to access security APIs. kageant will\n"
                        "not run, in case it causes a security breach.",
-                       "kageant Fatal Error", MB_ICONERROR | MB_OK);
+                       "kageant Fatal Error", MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
             return 1;
         }
     }
@@ -5131,7 +5906,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         mutex = lock_interprocess_mutex(mutexname, &err);
         sfree(mutexname);
         if (!mutex) {
-            MessageBox(NULL, err, "kageant Error", MB_ICONERROR | MB_OK);
+            MessageBox(NULL, err, "kageant Error", MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
             return 1;
         }
     }
@@ -5188,6 +5963,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kageant_audit_setup();
         kitty_audit("agent", "result", "start", (const char *)NULL);
 
+        kageant_random_hook = kageant_hello_random;   /* KiTTY: the OS CSPRNG, for writing protected PPKs */
         kageant_confirm_hook = kageant_do_confirm;
         kageant_comment_confirm_hook = kageant_comment_wants_confirm;
         kageant_mutation_notice_hook = kageant_do_mutation_notice;
@@ -5214,7 +5990,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 char *err = dupprintf("Unable to open named pipe at %s "
                                       "for SSH agent:\n%s", pipename,
                                       sk_socket_error(sock));
-                MessageBox(NULL, err, "kageant Error", MB_ICONERROR | MB_OK);
+                MessageBox(NULL, err, "kageant Error", MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 return 1;
             }
             pageant_listener_got_socket(pl, sock);
@@ -5230,7 +6006,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                         "Unable to write OpenSSH config file to %s",
                         filename_to_str(openssh_config_file));
                     MessageBox(NULL, err, "kageant Error",
-                               MB_ICONERROR | MB_OK);
+                               MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                     return 1;
                 }
                 kageant_write_identityagent(fp, pipename);
@@ -5264,7 +6040,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 char *err = dupprintf("Unable to open AF_UNIX socket at %s "
                                       "for SSH agent:\n%s", unixsocket,
                                       sk_socket_error(sock));
-                MessageBox(NULL, err, "kageant Error", MB_ICONERROR | MB_OK);
+                MessageBox(NULL, err, "kageant Error", MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 return 1;
             }
             pageant_listener_got_socket(pl, sock);

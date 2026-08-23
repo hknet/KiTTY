@@ -9,6 +9,11 @@ see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- **kageant can protect keys with Windows Hello.** A protected copy of
+  the key opens via Hello on this machine, via a recovery passphrase
+  anywhere, or via a printed secret that doubles as the key's passphrase
+  in any PuTTY-compatible tool. The original key file is never rewritten.
+
 - **kageant can find a startup key again when its media comes back on a
   different drive letter.** Windows hands a returning USB stick whichever
   letter is free, and a key recorded as `E:\...` then read as "still absent"
