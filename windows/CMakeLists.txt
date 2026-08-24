@@ -139,6 +139,7 @@ add_sources_from_current_dir(psocks nohelp.c)
 
 add_executable(putty
   window.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-hello-keys.c  # KiTTY feature: kitty.exe only
   putty.c
   help.c
   kitty_config_stubs.c
@@ -155,6 +156,7 @@ installed_program(putty)
 
 add_executable(puttytel
   window.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-hello-keys.c  # KiTTY: no key auth here
   putty.c
   help.c
   kitty_config_stubs.c
@@ -231,6 +233,7 @@ installed_program(kittygen_cli)
 if(HAVE_CONPTY)
   add_executable(pterm
     window.c
+    ${CMAKE_SOURCE_DIR}/stubs/no-hello-keys.c  # KiTTY: no key auth here
     pterm.c
     help.c
     conpty.c
@@ -394,6 +397,9 @@ endif()
 
 add_executable(kitty
   window.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c     # KiTTY: sidecar + translate
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_terminal.c # KiTTY: the terminal's hook glue
   putty.c
   help.c
   # terminal.c compiled directly into the kitty target (not via guiterminal)
@@ -502,6 +508,9 @@ set_target_properties(kitty PROPERTIES WIN32_EXECUTABLE ON)
 # registry. Produces build-*/kitty_portable.exe.
 add_executable(kitty_portable
   window.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c     # KiTTY: sidecar + translate
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_terminal.c # KiTTY: the terminal's hook glue
   putty.c
   help.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c

@@ -6,6 +6,19 @@
 #include <assert.h>
 
 #include "putty.h"
+
+/* KiTTY: Windows Hello protected key files (a .hello sidecar beside the
+ * PPK). The frontend that can serve them installs these; NULL (every
+ * other platform and build) changes nothing. unlock returns the file's
+ * passphrase via Windows Hello or NULL (fall through to the prompt);
+ * translate turns a typed recovery passphrase / recovery code / printed
+ * secret into the passphrase (NULL = use the text as typed); protected
+ * says whether the prompt should name those doors. Returned strings are
+ * the caller's to burn. */
+char *(*kitty_hello_keyfile_unlock_hook)(const char *path) = NULL;
+char *(*kitty_hello_keyfile_translate_hook)(const char *path,
+                                            const char *typed) = NULL;
+int (*kitty_hello_keyfile_protected_hook)(const char *path) = NULL;
 #include "ssh.h"
 #include "bpp.h"
 #include "ppl.h"
@@ -1182,17 +1195,44 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                                s->publickey_comment);
 
                 key = NULL;
+                {
+                    /* KiTTY: a Hello-protected file opens through Windows
+                     * Hello first - ONE try; denied or unavailable falls
+                     * through to the prompt, where the recovery doors are
+                     * accepted (translated below). */
+                    if (s->privatekey_encrypted &&
+                        kitty_hello_keyfile_unlock_hook) {
+                        char *hp = kitty_hello_keyfile_unlock_hook(
+                            filename_to_str(s->keyfile));
+                        if (hp) {
+                            const char *herror;
+                            key = ppk_load_f(s->keyfile, hp, &herror);
+                            smemclr(hp, strlen(hp));
+                            sfree(hp);
+                            if (key == SSH2_WRONG_PASSPHRASE)
+                                key = NULL;   /* stale sidecar: prompt */
+                        }
+                    }
+                }
                 while (!key) {
                     const char *error;  /* not live over crReturn */
                     if (s->privatekey_encrypted) {
                         /*
                          * Get a passphrase from the user.
                          */
+                        bool doors = kitty_hello_keyfile_protected_hook &&
+                            kitty_hello_keyfile_protected_hook(
+                                filename_to_str(s->keyfile));
                         s->cur_prompt = ssh_ppl_new_prompts(&s->ppl);
                         s->cur_prompt->to_server = false;
                         s->cur_prompt->from_server = false;
                         s->cur_prompt->name = dupstr("SSH key passphrase");
                         add_prompt(s->cur_prompt,
+                                   doors ?
+                                   dupprintf("Passphrase, recovery "
+                                             "passphrase/code or printed "
+                                             "secret for key \"%s\": ",
+                                             s->publickey_comment) :
                                    dupprintf("Passphrase for key \"%s\": ",
                                              s->publickey_comment),
                                    false);
@@ -1218,6 +1258,18 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                             prompt_get_result(s->cur_prompt->prompts[0]);
                         free_prompts(s->cur_prompt);
                         s->cur_prompt = NULL;
+                        /* KiTTY: recovery doors - a typed recovery
+                         * passphrase, recovery code or printed secret
+                         * becomes the file's real passphrase. */
+                        if (passphrase && kitty_hello_keyfile_translate_hook) {
+                            char *real = kitty_hello_keyfile_translate_hook(
+                                filename_to_str(s->keyfile), passphrase);
+                            if (real) {
+                                smemclr(passphrase, strlen(passphrase));
+                                sfree(passphrase);
+                                passphrase = real;
+                            }
+                        }
                     } else {
                         passphrase = NULL; /* no passphrase needed */
                     }

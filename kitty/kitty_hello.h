@@ -204,6 +204,12 @@ int kitty_hello_container_my_w(const char *container);
  * sfree. */
 char *kitty_hello_owner_tag(void);
 
+/* One-shot context for the NEXT Hello operation: WHICH window/session
+ * is asking (shown on the anchor card, which is then always displayed
+ * and opens over near_window). For apps with several instances - the
+ * terminal. Consumed by the operation; NULL clears. */
+void kitty_hello_set_context(const char *line, HWND near_window);
+
 /* A fresh 32-byte secret from the OS CSPRNG (1 = ok, 0 = failed). */
 int kitty_hello_new_secret(unsigned char secret[KITTY_HELLO_SECRET_LEN]);
 

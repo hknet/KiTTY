@@ -85,4 +85,9 @@ int kageant_hello_enrolled_here(const char *keypath);
  * No UI. */
 int kageant_hello_offerable(void);
 
+/* Terminal only (kitty_hello_terminal.c): install the userauth hooks
+ * for Hello-protected key files; the window anchors and identifies the
+ * asking instance. */
+void kitty_hello_terminal_init(HWND terminal_window);
+
 #endif /* KITTY_HELLO_KEYS_H */

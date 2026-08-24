@@ -642,7 +642,17 @@ int main(int argc, char **argv)
      * the protected copy's default name, door translation, and the
      * refusals protect must make before any Hello prompt. */
     {
-        const char *keyfile = "hello_worker_test.ppk";
+        /* In the TEMP directory, not the current one: these checks write
+         * a stand-in key and its sidecar, and the gate runs this binary
+         * from a directory it may not write to - which failed the whole
+         * group while the code under test was fine. */
+        char tmpdir[MAX_PATH], keypath[MAX_PATH], destpath[MAX_PATH];
+        const char *keyfile = keypath;
+        if (!GetTempPathA(sizeof(tmpdir), tmpdir))
+            strcpy(tmpdir, ".\\");
+        snprintf(keypath, sizeof(keypath), "%shello_worker_test.ppk", tmpdir);
+        snprintf(destpath, sizeof(destpath),
+                 "%shello_worker_test-hello.ppk", tmpdir);
         char *sc = kageant_hello_sidecar_path(keyfile);
         char *d1 = kageant_hello_default_destpath("C:\\keys\\id_ed25519.ppk");
         char *d2 = kageant_hello_default_destpath("C:\\keys\\noext");
@@ -652,8 +662,11 @@ int main(int argc, char **argv)
         unsigned char credid_dummy[16];
         memset(credid_dummy, 7, sizeof(credid_dummy));
 
-        check(sc && !strcmp(sc, "hello_worker_test.ppk.hello"),
-              "sidecar is <keyfile>.hello");
+        {
+            char scwant[MAX_PATH + 8];
+            snprintf(scwant, sizeof(scwant), "%s.hello", keypath);
+            check(sc && !strcmp(sc, scwant), "sidecar is <keyfile>.hello");
+        }
         check(d1 && !strcmp(d1, "C:\\keys\\id_ed25519-hello.ppk"),
               "protected copy defaults to <name>-hello.<ext>");
         check(d2 && !strcmp(d2, "C:\\keys\\noext-hello.ppk"),
@@ -708,8 +721,7 @@ int main(int argc, char **argv)
             FILE *fp = fopen(keyfile, "wb");   /* a stand-in "key" on disk */
             if (fp) { fputs("not a key", fp); fclose(fp); }
         }
-        check(kageant_hello_protect(NULL, keyfile, "", NULL,
-                                    "hello_worker_test-hello.ppk",
+        check(kageant_hello_protect(NULL, keyfile, "", NULL, destpath,
                                     &printed, &err) == KAGEANT_HELLO_ERROR &&
               err && strstr(err, "recovery passphrase") && !printed,
               "protect refuses an empty recovery passphrase");

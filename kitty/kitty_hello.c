@@ -1511,6 +1511,25 @@ static void khw_ui_load(void)
 static HWND khw_host_create(void);
 static void khw_host_destroy(HWND w);
 
+/*
+ * The context line: WHICH window/session is asking. Set (one-shot,
+ * consumed by the next Hello operation) by an app that can have several
+ * instances - the terminal - so the card identifies the asker. While a
+ * context is set the card is ALWAYS shown, and it opens over the asking
+ * window instead of the screen centre.
+ */
+static char khw_context[220];
+static HWND khw_context_near;
+
+void kitty_hello_set_context(const char *line, HWND near_window)
+{
+    if (line)
+        snprintf(khw_context, sizeof(khw_context), "%s", line);
+    else
+        khw_context[0] = '\0';
+    khw_context_near = near_window;
+}
+
 struct khw_anchor {
     HANDLE ready;              /* window created (or failed) */
     HANDLE thread;
@@ -1645,6 +1664,15 @@ static void khw_host_paint(HWND w)
                       dots[khw_host_phase & 3]);
             khw_ui.DrawTextEx(th, mem, 0, 0, status, -1,
                               DT_LEFT | DT_TOP | DT_SINGLELINE, &tr, &o);
+            if (khw_context[0]) {
+                WCHAR wctx[220];
+                MultiByteToWideChar(CP_ACP, 0, khw_context, -1, wctx, 220);
+                o.crText = RGB(150, 150, 150);
+                tr.top = 66 * px / 96;
+                khw_ui.DrawTextEx(th, mem, 0, 0, wctx, -1,
+                                  DT_LEFT | DT_TOP | DT_SINGLELINE |
+                                  DT_END_ELLIPSIS, &tr, &o);
+            }
             SelectObject(mem, of);
             DeleteObject(f1);
             DeleteObject(f2);
@@ -1699,9 +1727,19 @@ static HWND khw_host_create(void)
             return NULL;
     }
     SystemParametersInfoA(SPI_GETWORKAREA, 0, &rc, 0);
+    if (khw_context_near && IsWindow(khw_context_near) &&
+        IsWindowVisible(khw_context_near)) {
+        RECT nr;
+        if (GetWindowRect(khw_context_near, &nr) &&
+            nr.right > nr.left && nr.bottom > nr.top) {
+            /* Open over the ASKING window - with several instances the
+             * card must say and show where the question comes from. */
+            rc = nr;
+        }
+    }
     dpi = 96;
     cx = 340;
-    cy = 96;
+    cy = khw_context[0] ? 112 : 96;
     w = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"KiTTYHelloKeyHost",
                         L"Windows Hello", WS_POPUP,
                         (rc.left + rc.right - cx) / 2,
@@ -1757,6 +1795,9 @@ static void khw_host_destroy(HWND w)
 {
     if (w && IsWindow(w))
         DestroyWindow(w);
+    /* one-shot: the context belongs to the operation that just ended */
+    khw_context[0] = '\0';
+    khw_context_near = NULL;
 }
 
 /* Is the caller's window good enough to anchor the credential UI - a
@@ -1768,6 +1809,9 @@ static void khw_host_destroy(HWND w)
 static bool khw_owner_usable(HWND w)
 {
     DWORD pid = 0;
+    if (khw_context[0])
+        return false;    /* a context is set: ALWAYS show the card - the
+                          * identification is its purpose */
     return w && IsWindow(w) && IsWindowVisible(w) &&
            GetWindowThreadProcessId(w, &pid) &&
            pid == GetCurrentProcessId();

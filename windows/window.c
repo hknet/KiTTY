@@ -14,6 +14,7 @@
 #define COMPILE_MULTIMON_STUBS
 
 #include "putty.h"
+#include "../kitty/kitty_hello_keys.h"  /* KiTTY: Hello-protected key files */
 #include "ssh.h"
 #include "terminal.h"
 #include "storage.h"
@@ -1628,6 +1629,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             modalfatalbox("Unable to create terminal window: %s",
                           win_strerror(GetLastError()));
         }
+        /* KiTTY: Hello-protected key files (userauth hooks). The window
+         * anchors the prompt card and names this instance on it. */
+        kitty_hello_terminal_init(wgs->term_hwnd);
 #ifdef MOD_PERSO
         /* KiTTY #554: embed into the host window. SetParent is done HERE (after
          * creation), not via CreateWindow's hWndParent, because the latter breaks
