@@ -109,6 +109,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: THE CryptProtectMemory key-blob wrapper - the agent core (pageant.c) uses this shared copy too now (a unix agent build would need this file added beside it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c    # KiTTY: Windows Hello presence check (confirm-on-use gating)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: Hello-protected keys (sidecar, protect/unlock/enrol)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_ui.c    # KiTTY: the shared printout window
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auditlog.c # KiTTY: the audit log's file sink
   pageant.rc)
 add_dependencies(pageant generated_licence_h)
@@ -177,6 +178,7 @@ add_executable(puttygen
   puttygen.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: the .hello sidecar
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_ui.c    # KiTTY: the shared printout window
   ${CMAKE_SOURCE_DIR}/callback.c   # KiTTY: kitty_hello.c's nested pump
   handle-wait.c                    # KiTTY: ditto
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory

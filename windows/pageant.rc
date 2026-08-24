@@ -358,14 +358,3 @@ BEGIN
     PUSHBUTTON "&Cancel", IDCANCEL, 316, 304, 54, 14
 END
 
-/* KiTTY: the printed secret of a freshly protected key - shown ONCE. */
-IDD_HELLOSECRET DIALOG DISCARDABLE 0, 0, 360, 130
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "kageant - the key's printed secret"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    LTEXT "", IDC_HS_NOTE, 10, 10, 340, 56
-    EDITTEXT IDC_HS_TEXT, 10, 70, 340, 14, ES_READONLY | ES_AUTOHSCROLL
-    PUSHBUTTON "&Copy to clipboard", IDC_HS_COPY, 10, 108, 90, 14
-    DEFPUSHBUTTON "I have &stored it", IDOK, 260, 108, 90, 14
-END

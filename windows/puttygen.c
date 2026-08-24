@@ -11,6 +11,10 @@
 #include "ssh.h"
 #include "kitty/kitty_hello.h"       /* KiTTY: Hello-protected keys */
 #include "kitty/kitty_hello_keys.h"
+#include "kitty/kitty_hello_ui.h"   /* the shared printout window */
+
+#define KG_APPNAME "KiTTYgen"   /* the one place this app names itself
+                                * to the shared Hello UI */
 #include "sshkeygen.h"
 #include "mpint.h"                     /* mp_free, for burn_key_state */
 #include "crypto/ecc.h"                /* ecc_*_point_free, ditto */
@@ -1147,82 +1151,6 @@ static void kg_hello_sync(HWND hwnd)
     EnableWindow(GetDlgItem(hwnd, IDC_KGSIDEBOUND), on);
     if (!on)
         CheckDlgButton(hwnd, IDC_KGSIDEBOUND, BST_UNCHECKED);
-}
-
-/* KiTTY: the printed secret (or the sidecar-bound recovery code) of a
- * freshly protected key - shown ONCE. lParam: struct kg_secret_show. */
-struct kg_secret_show {
-    const char *printed;
-    int sidebound;
-};
-
-static INT_PTR CALLBACK HelloSecretProc(HWND hwnd, UINT msg,
-                                        WPARAM wParam, LPARAM lParam)
-{
-    switch (msg) {
-      case WM_INITDIALOG: {
-        const struct kg_secret_show *s =
-            (const struct kg_secret_show *)lParam;
-        SetDlgItemText(hwnd, IDC_HS_NOTE, s->sidebound ?
-            "This is the key's RECOVERY CODE. It is shown ONCE - KiTTYgen "
-            "does not keep it.\r\n\r\n"
-            "It opens the key only TOGETHER with the .hello file, in KiTTY "
-            "tools. Keep the printout AND back up the .hello file: without "
-            "the file the code is worthless, and the key file's own "
-            "passphrase is written nowhere." :
-            "This is the protected key's passphrase. It is shown ONCE - "
-            "KiTTYgen does not keep it.\r\n\r\n"
-            "Print it or store it in a password manager. It opens the key "
-            "in any PuTTY-compatible tool, on any machine, with or without "
-            "Windows Hello, and it is the last resort if Windows Hello and "
-            "the recovery passphrase are both lost.");
-        SetDlgItemText(hwnd, IDC_HS_TEXT, s->printed);
-        return 1;
-      }
-      case WM_COMMAND:
-        switch (LOWORD(wParam)) {
-          case IDC_HS_COPY: {
-            char *tx = GetDlgItemText_alloc(hwnd, IDC_HS_TEXT);
-            if (tx && OpenClipboard(hwnd)) {
-                size_t len = strlen(tx) + 1;
-                HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, len);
-                EmptyClipboard();
-                if (h) {
-                    void *m = GlobalLock(h);
-                    if (m) {
-                        memcpy(m, tx, len);
-                        GlobalUnlock(h);
-                        SetClipboardData(CF_TEXT, h);
-                    }
-                }
-                CloseClipboard();
-            }
-            burnstr(tx);
-            return 0;
-          }
-          case IDOK:
-            SetDlgItemText(hwnd, IDC_HS_TEXT, "");
-            EndDialog(hwnd, 1);
-            return 0;
-          case IDCANCEL:
-            /* X and Esc are NOT a quiet "stored it" - this text never
-             * appears again. */
-            if (MessageBox(hwnd, "Have you stored the printout? It will "
-                           "NEVER be shown again.",
-                           "KiTTYgen - printout not stored?",
-                           MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2)
-                    == IDYES) {
-                SetDlgItemText(hwnd, IDC_HS_TEXT, "");
-                EndDialog(hwnd, 1);
-            }
-            return 0;
-        }
-        return 0;
-      case WM_CLOSE:
-        SendMessage(hwnd, WM_COMMAND, IDCANCEL, 0);
-        return 0;
-    }
-    return 0;
 }
 
 static void setupbigedit1(HWND hwnd, RSAKey *key)
@@ -2898,16 +2826,10 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                             sfree(state->hello_saved_path);
                             state->hello_saved_path =
                                 dupstr(filename_to_str(fn));
-                            {
-                                struct kg_secret_show show;
-                                show.printed = hello_handout ? hello_handout
-                                                             : hello_printed;
-                                show.sidebound = hello_handout != NULL;
-                                DialogBoxParam(
-                                    hinst,
-                                    MAKEINTRESOURCE(IDD_KGHELLOSECRET),
-                                    hwnd, HelloSecretProc, (LPARAM)&show);
-                            }
+                            kitty_hello_ui_show_printout(
+                                hwnd, KG_APPNAME,
+                                hello_handout ? hello_handout : hello_printed,
+                                hello_handout != NULL);
                         }
                     } else if (type == realtype &&
                                kageant_hello_has_sidecar(

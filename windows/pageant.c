@@ -31,6 +31,7 @@
 #include "../kitty/kitty_protkey.h"   /* KiTTY: kitty_protkey_available (tray tip) */
 #include "../kitty/kitty_hello.h"     /* KiTTY: Windows Hello presence check */
 #include "../kitty/kitty_hello_keys.h" /* KiTTY: Hello-protected keys */
+#include "../kitty/kitty_hello_ui.h"   /* KiTTY: the shared printout window */
 #include "../kitty/kitty_auditlog.h"  /* KiTTY: the audit log's file sink */
 
 #include <shellapi.h>
@@ -2072,86 +2073,6 @@ static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
     return 0;
 }
 
-/* The printed secret (or the sidecar-bound recovery code), shown exactly
- * once. lParam: struct hello_secret_show. */
-struct hello_secret_show {
-    const char *printed;
-    int sidebound;
-};
-
-static INT_PTR CALLBACK HelloSecretProc(HWND hwnd, UINT msg,
-                                        WPARAM wParam, LPARAM lParam)
-{
-    switch (msg) {
-      case WM_INITDIALOG: {
-        const struct hello_secret_show *s =
-            (const struct hello_secret_show *)lParam;
-        kageant_set_window_icon(hwnd);
-        SetDlgItemText(hwnd, IDC_HS_NOTE, s->sidebound ?
-            "This is the key's RECOVERY CODE. It is shown ONCE - kageant "
-            "does not keep it.\r\n\r\n"
-            "It opens the key only TOGETHER with the .hello file, in KiTTY "
-            "tools. Keep the printout AND back up the .hello file: without "
-            "the file the code is worthless, and the key file's own "
-            "passphrase is written nowhere." :
-            "This is the protected key's passphrase. It is shown ONCE - "
-            "kageant does not keep it.\r\n\r\n"
-            "Print it or store it in a password manager. It opens the key "
-            "in any PuTTY-compatible tool, on any machine, with or without "
-            "Windows Hello, and it is the last resort if Windows Hello and "
-            "the recovery passphrase are both lost.");
-        SetDlgItemText(hwnd, IDC_HS_TEXT, s->printed);
-        kitty_auxpos_apply(hwnd, "kageantHelloSecret", GetWindow(hwnd, GW_OWNER), 0);
-        return 1;
-      }
-      case WM_COMMAND:
-        switch (LOWORD(wParam)) {
-          case IDC_HS_COPY: {
-            char *t = GetDlgItemText_alloc(hwnd, IDC_HS_TEXT);
-            if (t && OpenClipboard(hwnd)) {
-                size_t len = strlen(t) + 1;
-                HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, len);
-                EmptyClipboard();
-                if (h) {
-                    void *m = GlobalLock(h);
-                    if (m) {
-                        memcpy(m, t, len);
-                        GlobalUnlock(h);
-                        SetClipboardData(CF_TEXT, h);
-                    }
-                }
-                CloseClipboard();
-            }
-            burnstr(t);
-            return 0;
-          }
-          case IDOK:
-            kitty_auxpos_save(hwnd, "kageantHelloSecret");
-            SetDlgItemText(hwnd, IDC_HS_TEXT, "");
-            EndDialog(hwnd, 1);
-            return 0;
-          case IDCANCEL:
-            /* X and Esc are NOT a quiet "stored it" - this text never
-             * appears again. */
-            if (MessageBox(hwnd, "Have you stored the printout? It will "
-                           "NEVER be shown again.",
-                           "kageant - printout not stored?",
-                           MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2)
-                    == IDYES) {
-                kitty_auxpos_save(hwnd, "kageantHelloSecret");
-                SetDlgItemText(hwnd, IDC_HS_TEXT, "");
-                EndDialog(hwnd, 1);
-            }
-            return 0;
-        }
-        return 0;
-      case WM_CLOSE:
-        SendMessage(hwnd, WM_COMMAND, IDCANCEL, 0);
-        return 0;
-    }
-    return 0;
-}
-
 /* Run the whole protect flow for one key file from a real window. Returns
  * the protected copy's path (caller sfree) when one was written, NULL
  * otherwise; replaced_out says whether the startup entry was re-pointed. */
@@ -2187,11 +2108,8 @@ static char *kageant_hello_protect_flow(HWND owner, const char *src,
                 "detail", kitty_hello_last_detail(), "err", err ? err : "",
                 (const char *)NULL);
     if (r == KAGEANT_HELLO_OK) {
-        struct hello_secret_show show;
-        show.printed = printed;
-        show.sidebound = c.sidebound;
-        DialogBoxParam(hinst, MAKEINTRESOURCE(IDD_HELLOSECRET), owner,
-                       HelloSecretProc, (LPARAM)&show);
+        kitty_hello_ui_show_printout(owner, APPNAME, printed,
+                                     c.sidebound);
         burnstr(printed);
         if (c.replace && kageant_startup_replace_path(src, c.dest, -1) == 1) {
             if (replaced_out)

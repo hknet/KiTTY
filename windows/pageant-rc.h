@@ -15,7 +15,6 @@
 #define IDD_AUDITVIEW 217      /* KiTTY: the audit-log viewer */
 #define IDD_AUDITDETAIL 218    /* KiTTY: one audit record, field per line */
 #define IDD_HELLOPROTECT 219   /* KiTTY: protect a key with Windows Hello */
-#define IDD_HELLOSECRET 220    /* KiTTY: the printed secret, shown once */
 
 /* KiTTY: the audit-log viewer's controls */
 #define IDC_AUDIT_FILTER 400
@@ -86,9 +85,6 @@
 #define IDC_HP_HELLOONLY 113
 
 /* KiTTY: the printed-secret dialog */
-#define IDC_HS_TEXT 100
-#define IDC_HS_COPY 101
-#define IDC_HS_NOTE 102
 
 #define IDC_PASSPHRASE_STATIC1 100
 #define IDC_PASSPHRASE_FINGERPRINT 101

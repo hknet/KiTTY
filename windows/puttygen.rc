@@ -100,17 +100,6 @@ END
 1 RT_MANIFEST "puttygen.mft"
 #endif /* NO_MANIFESTS */
 
-/* KiTTY: the printed secret of a freshly protected key - shown ONCE. */
-IDD_KGHELLOSECRET DIALOG DISCARDABLE 0, 0, 360, 130
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTYgen - the key's printed secret"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    LTEXT "", IDC_HS_NOTE, 10, 10, 340, 56
-    EDITTEXT IDC_HS_TEXT, 10, 70, 340, 14, ES_READONLY | ES_AUTOHSCROLL
-    PUSHBUTTON "&Copy to clipboard", IDC_HS_COPY, 10, 108, 90, 14
-    DEFPUSHBUTTON "I have &stored it", IDOK, 260, 108, 90, 14
-END
 
 /* KiTTY: the sidecar door editor - a protected key's .hello, listed and
  * editable (remove a machine, add this computer). */
