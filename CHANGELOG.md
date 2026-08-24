@@ -9,6 +9,9 @@ see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- **kittygen shows and edits a protected key's Windows Hello doors**:
+  remove a machine's entry, add this computer.
+
 - **kittygen can generate keys born Windows Hello protected and open,
   arm and disarm protected keys**; kittygen-cli `--hello-recovery`
   covers scripts (recovery door only, printed secret on stdout once).

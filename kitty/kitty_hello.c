@@ -2763,6 +2763,59 @@ int kitty_hello_container_find_w(const char *container,
     return -1;
 }
 
+/*
+ * Remove the index-th W field - pure string surgery, no secret needed:
+ * taking a door AWAY must not require opening one. Refuses to remove
+ * the last door of the container (a sidecar with no doors is a lie
+ * beside the key file - delete the file instead). Caller sfree; NULL =
+ * refused or no such field.
+ */
+char *kitty_hello_container_remove_w(const char *container, int index)
+{
+    const char *mark_end;
+    const char *p;
+    strbuf *out;
+    int wi = 0, doors = 0, removed = 0;
+
+    if (!kitty_hello_container_valid(container))
+        return NULL;
+    doors = kitty_hello_container_w_count(container) +
+            (kitty_hello_container_has_hello(container) ? 1 : 0) +
+            (kitty_hello_container_has_recovery(container) ? 1 : 0);
+    if (doors <= 1)
+        return NULL;            /* never leave a doorless sidecar */
+    if (index < 0 || index >= kitty_hello_container_w_count(container))
+        return NULL;
+
+    mark_end = container + sizeof(HELLO_MARK) - 1;
+    out = strbuf_new();
+    put_data(out, container, mark_end - container);
+    p = mark_end;
+    while (*p) {
+        const char *end = strchr(p, '.');
+        size_t flen = end ? (size_t)(end - p) : strlen(p);
+        int skip = 0;
+        if (flen > 0 && *p == 'W') {
+            if (wi == index)
+                skip = 1;
+            wi++;
+        }
+        if (!skip) {
+            if (out->len > (size_t)(mark_end - container))
+                put_dataz(out, ".");
+            put_data(out, p, flen);
+        } else {
+            removed = 1;
+        }
+        p += flen + (end ? 1 : 0);
+    }
+    if (!removed) {
+        strbuf_free(out);
+        return NULL;
+    }
+    return strbuf_to_str(out);
+}
+
 char *kitty_hello_container_append_prf(const char *container,
                                        const unsigned char prf_kek[32],
                                        const unsigned char *prf_credid,

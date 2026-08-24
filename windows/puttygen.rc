@@ -111,3 +111,24 @@ BEGIN
     PUSHBUTTON "&Copy to clipboard", IDC_HS_COPY, 10, 108, 90, 14
     DEFPUSHBUTTON "I have &stored it", IDOK, 260, 108, 90, 14
 END
+
+/* KiTTY: the sidecar door editor - a protected key's .hello, listed and
+ * editable (remove a machine, add this computer). */
+IDD_KGHELLODOORS DIALOG DISCARDABLE 0, 0, 360, 190
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "KiTTYgen - Windows Hello doors"
+FONT 8, "MS Shell Dlg"
+BEGIN
+    LTEXT "Key file:", -1, 10, 10, 40, 8
+    EDITTEXT IDC_HD_FILE, 52, 8, 298, 12, ES_READONLY | ES_AUTOHSCROLL
+    LTEXT "Everything that opens this key:", -1, 10, 26, 200, 8
+    LISTBOX IDC_HD_LIST, 10, 38, 340, 100,
+        LBS_NOTIFY | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON "&Remove selected entry", IDC_HD_REMOVE, 10, 144, 100, 14
+    PUSHBUTTON "&Add this computer...", IDC_HD_ADD, 118, 144, 100, 14
+    LTEXT "Removing needs no unlock; adding asks for the recovery",
+        -1, 10, 162, 340, 9
+    LTEXT "passphrase or the printed secret, then Windows Hello.",
+        -1, 10, 171, 340, 9
+    DEFPUSHBUTTON "&Close", IDOK, 300, 144, 50, 14
+END

@@ -959,7 +959,173 @@ enum {
      * harness, for one) addresses controls by NUMBER. */
     IDC_ADDCONFIRM,
     IDC_HELLOPROTECT,  /* KiTTY: born-protected keys (appended, same reason) */
+    IDC_HELLODOORS,    /* KiTTY: the sidecar door editor (menu item) */
 };
+
+/*
+ * KiTTY: the sidecar door editor. A protected key's .hello lists its
+ * doors; a machine's Windows Hello entry can be REMOVED (string surgery,
+ * no secret involved - taking a door away must not require opening one),
+ * and THIS computer can be added after opening any door (recovery
+ * passphrase or printed secret; Hello itself when already enrolled would
+ * be pointless to add twice). The printed secret and the recovery door
+ * are listed but not removable here: the recovery wrap is the designed
+ * safety net, and the printed secret is the file's passphrase itself.
+ */
+struct hello_doors_ctx {
+    const char *path;      /* the protected PPK (sidecar beside it) */
+    int w_of_item[64];     /* listbox index -> W index, -1 = not removable */
+};
+
+static void hello_doors_fill(HWND hwnd, struct hello_doors_ctx *c)
+{
+    HWND list = GetDlgItem(hwnd, IDC_HD_LIST);
+    char *cont = kageant_hello_read_sidecar(c->path);
+    int i, item = 0, mine;
+
+    SendMessage(list, LB_RESETCONTENT, 0, 0);
+    for (i = 0; i < (int)lenof(c->w_of_item); i++)
+        c->w_of_item[i] = -1;
+    if (!cont) {
+        SendMessage(list, LB_ADDSTRING, 0,
+                    (LPARAM)"(no readable .hello sidecar)");
+        return;
+    }
+    mine = kitty_hello_container_my_w(cont);
+    for (i = 0; i < kitty_hello_container_w_count(cont); i++) {
+        char *owner = kitty_hello_container_w_owner(cont, i);
+        char *line = dupprintf("Windows Hello: %s%s",
+                               owner ? owner : "(untagged)",
+                               i == mine ? "  - this computer" : "");
+        SendMessage(list, LB_ADDSTRING, 0, (LPARAM)line);
+        if (item < (int)lenof(c->w_of_item))
+            c->w_of_item[item] = i;
+        item++;
+        sfree(line);
+        sfree(owner);
+    }
+    if (kitty_hello_container_has_hello(cont)) {
+        SendMessage(list, LB_ADDSTRING, 0,
+                    (LPARAM)"Windows Hello (KeyCredentialManager)");
+        item++;
+    }
+    if (kitty_hello_container_has_recovery(cont)) {
+        SendMessage(list, LB_ADDSTRING, 0,
+                    (LPARAM)"Recovery passphrase");
+        item++;
+    }
+    SendMessage(list, LB_ADDSTRING, 0,
+                (LPARAM)"Printed secret (the key's passphrase itself)");
+    sfree(cont);
+}
+
+static INT_PTR CALLBACK HelloDoorsProc(HWND hwnd, UINT msg,
+                                       WPARAM wParam, LPARAM lParam)
+{
+    struct hello_doors_ctx *c = (struct hello_doors_ctx *)
+        GetWindowLongPtr(hwnd, GWLP_USERDATA);
+
+    switch (msg) {
+      case WM_INITDIALOG: {
+        c = (struct hello_doors_ctx *)lParam;
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)c);
+        SetDlgItemText(hwnd, IDC_HD_FILE, c->path);
+        hello_doors_fill(hwnd, c);
+        return 1;
+      }
+      case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+          case IDC_HD_REMOVE: {
+            HWND list = GetDlgItem(hwnd, IDC_HD_LIST);
+            int sel = (int)SendMessage(list, LB_GETCURSEL, 0, 0);
+            int wi = (sel >= 0 && sel < (int)lenof(c->w_of_item)) ?
+                     c->w_of_item[sel] : -1;
+            char *cont, *newcont;
+            if (wi < 0) {
+                MessageBox(hwnd, "Only a machine's Windows Hello entry can "
+                           "be removed here. The recovery passphrase is the "
+                           "safety net, and the printed secret is the file's "
+                           "own passphrase.", "KiTTYgen",
+                           MB_OK | MB_ICONINFORMATION);
+                return 0;
+            }
+            if (MessageBox(hwnd, "Remove this Windows Hello entry? The "
+                           "machine it belongs to can then open the key "
+                           "only with the recovery passphrase or the "
+                           "printed secret.", "KiTTYgen - remove a door",
+                           MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2)
+                    != IDYES)
+                return 0;
+            cont = kageant_hello_read_sidecar(c->path);
+            newcont = cont ? kitty_hello_container_remove_w(cont, wi) : NULL;
+            if (newcont && kageant_hello_write_sidecar(c->path, newcont)) {
+                hello_doors_fill(hwnd, c);
+            } else {
+                MessageBox(hwnd, newcont ?
+                           "Could not rewrite the .hello sidecar." :
+                           "Refused: a sidecar never loses its last door. "
+                           "Disarm the key instead (save it without "
+                           "protection).",
+                           "KiTTYgen", MB_OK | MB_ICONWARNING);
+            }
+            sfree(cont);
+            burnstr(newcont);
+            return 0;
+          }
+          case IDC_HD_ADD: {
+            char *cont = kageant_hello_read_sidecar(c->path);
+            char *passphrase = NULL, *real = NULL, *err = NULL;
+            int r;
+            if (cont && kitty_hello_container_my_w(cont) >= 0) {
+                MessageBox(hwnd, "This computer is already enrolled.",
+                           "KiTTYgen", MB_OK | MB_ICONINFORMATION);
+                sfree(cont);
+                return 0;
+            }
+            sfree(cont);
+            {
+                struct PassphraseProcStruct pps;
+                pps.passphrase = &passphrase;
+                pps.comment = "recovery passphrase or printed secret";
+                if (!DialogBoxParam(hinst, MAKEINTRESOURCE(210), hwnd,
+                                    PassphraseProc, (LPARAM)&pps)) {
+                    burnstr(passphrase);
+                    return 0;
+                }
+            }
+            real = kageant_hello_translate(c->path, passphrase, NULL);
+            burnstr(passphrase);
+            if (!real) {
+                MessageBox(hwnd, "That opened no door - it is neither the "
+                           "recovery passphrase nor the printed secret.",
+                           "KiTTYgen", MB_OK | MB_ICONERROR);
+                return 0;
+            }
+            r = kageant_hello_enrol(hwnd, c->path, real, &err);
+            burnstr(real);
+            if (r == KAGEANT_HELLO_OK) {
+                hello_doors_fill(hwnd, c);
+            } else {
+                char *msg = dupprintf("Windows Hello was not added:\n\n%s",
+                                      err ? err : "unknown error");
+                MessageBox(hwnd, msg, "KiTTYgen", MB_OK | MB_ICONWARNING);
+                sfree(msg);
+            }
+            sfree(err);
+            return 0;
+          }
+          case IDOK:
+          case IDCANCEL:
+            EndDialog(hwnd, 1);
+            return 0;
+        }
+        return 0;
+      case WM_CLOSE:
+        EndDialog(hwnd, 1);
+        return 0;
+    }
+    return 0;
+}
 
 /* KiTTY: the printed secret of a freshly protected key - shown ONCE. */
 static INT_PTR CALLBACK HelloSecretProc(HWND hwnd, UINT msg,
@@ -1944,6 +2110,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                        "Add &certificate to key");
             AppendMenu(menu1, MF_ENABLED, IDC_REMCERT,
                        "Remove certificate from key");
+            AppendMenu(menu1, MF_ENABLED, IDC_HELLODOORS,
+                       "Windows Hello &doors...");
             AppendMenu(menu1, MF_SEPARATOR, 0, 0);
             AppendMenu(menu1, MF_ENABLED, IDC_KEYSSH1, "SSH-&1 key (RSA)");
             AppendMenu(menu1, MF_ENABLED, IDC_KEYSSH2RSA, "SSH-2 &RSA key");
@@ -2753,6 +2921,25 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                 }
             }
             break;
+          case IDC_HELLODOORS: {
+            state =
+                (struct MainDlgState *) GetWindowLongPtr(hwnd, GWLP_USERDATA);
+            if (!state->loaded_path ||
+                !kageant_hello_has_sidecar(state->loaded_path)) {
+                MessageBox(hwnd, "Load a Windows Hello protected key first "
+                           "(a .ppk with a .hello file beside it).",
+                           "KiTTYgen", MB_OK | MB_ICONINFORMATION);
+                break;
+            }
+            {
+                struct hello_doors_ctx c;
+                memset(&c, 0, sizeof(c));
+                c.path = state->loaded_path;
+                DialogBoxParam(hinst, MAKEINTRESOURCE(IDD_KGHELLODOORS),
+                               hwnd, HelloDoorsProc, (LPARAM)&c);
+            }
+            break;
+          }
           case IDC_LOAD:
           case IDC_IMPORT:
             if (HIWORD(wParam) != BN_CLICKED)

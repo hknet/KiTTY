@@ -162,6 +162,10 @@ int kitty_hello_container_find_w(const char *container,
                                  const unsigned char *credid,
                                  size_t credidlen);
 char *kitty_hello_container_owners_text(const char *container);
+/* Remove the index-th W door (string surgery, no secret needed); NULL =
+ * refused - a container never loses its LAST door this way. Caller
+ * sfree. */
+char *kitty_hello_container_remove_w(const char *container, int index);
 char *kitty_hello_container_append_prf(const char *container,
                                        const unsigned char prf_kek[32],
                                        const unsigned char *prf_credid,

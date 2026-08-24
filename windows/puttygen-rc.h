@@ -21,3 +21,10 @@
 #define IDC_HS_NOTE                     121
 #define IDC_HS_TEXT                     122
 #define IDC_HS_COPY                     123
+
+/* KiTTY: the sidecar door editor */
+#define IDD_KGHELLODOORS                130
+#define IDC_HD_FILE                     131
+#define IDC_HD_LIST                     132
+#define IDC_HD_REMOVE                   133
+#define IDC_HD_ADD                      134

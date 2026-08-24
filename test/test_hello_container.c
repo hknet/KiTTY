@@ -440,6 +440,30 @@ int main(int argc, char **argv)
                                                        sizeof(credid), NULL,
                                                        secret) == NULL,
                       "append onto a non-container refused");
+
+                /* remove_w: door surgery for the sidecar editor */
+                {
+                    char *r0 = kitty_hello_container_remove_w(c2, 0);
+                    check(r0 != NULL &&
+                          kitty_hello_container_w_count(r0) == 1 &&
+                          kitty_hello_container_find_w(r0, credid2,
+                                                       sizeof(credid2)) == 0 &&
+                          kitty_hello_container_has_recovery(r0),
+                          "removing W0 keeps W1 and the recovery door");
+                    if (r0) {
+                        memset(out, 0, sizeof(out));
+                        check(kitty_hello_container_open_prf(r0, wrong_kek,
+                                                             out) == 1 &&
+                              memcmp(out, secret, sizeof(secret)) == 0,
+                              "the surviving W still opens after surgery");
+                        check(kitty_hello_container_open_prf(r0, kek,
+                                                             out) == -1,
+                              "the removed W's KEK no longer opens");
+                        sfree(r0);
+                    }
+                    check(kitty_hello_container_remove_w(c2, 5) == NULL,
+                          "removing a W that is not there refused");
+                }
                 sfree(c2);
             }
             sfree(c);
@@ -456,6 +480,15 @@ int main(int argc, char **argv)
                                                    sizeof(credid)) == 0 &&
                       kitty_hello_container_open_prf(c3, kek, out) == 1,
                       "untagged W: no owner, id and open still work");
+                {
+                    char *wonly = kitty_hello_container_create_ex(
+                        NULL, kek, credid, sizeof(credid), NULL, NULL,
+                        secret);
+                    check(wonly != NULL &&
+                          kitty_hello_container_remove_w(wonly, 0) == NULL,
+                          "the LAST door can never be removed");
+                    sfree(wonly);
+                }
                 sfree(c3);
             }
         }
