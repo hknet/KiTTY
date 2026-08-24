@@ -203,6 +203,8 @@ static void win_progress_cleanup(struct progress *p)
 struct PassphraseProcStruct {
     char **passphrase;
     char *comment;
+    int hello;          /* KiTTY: the file is Hello-protected - the prompt
+                         * then names the recovery doors, not "passphrase" */
 };
 
 /*
@@ -237,6 +239,10 @@ static INT_PTR CALLBACK PassphraseProc(HWND hwnd, UINT msg,
 
         p = (struct PassphraseProcStruct *) lParam;
         passphrase = p->passphrase;
+        if (p->hello)
+            SetDlgItemText(hwnd, 100,
+                "Enter the recovery passphrase, the recovery code, or the "
+                "printed secret:");
         if (p->comment)
             SetDlgItemText(hwnd, 101, p->comment);
         burnstr(*passphrase);
@@ -960,6 +966,8 @@ enum {
     IDC_ADDCONFIRM,
     IDC_HELLOPROTECT,  /* KiTTY: born-protected keys (appended, same reason) */
     IDC_HELLODOORS,    /* KiTTY: the sidecar door editor (menu item) */
+    IDC_KGSIDEBOUND,   /* KiTTY: printout = code bound to the sidecar */
+    IDC_KGNEW,         /* KiTTY: File > New - clear the mask */
 };
 
 /*
@@ -1009,8 +1017,10 @@ static void hello_doors_fill(HWND hwnd, struct hello_doors_ctx *c)
                     (LPARAM)"Windows Hello (KeyCredentialManager)");
         item++;
     }
-    if (kitty_hello_container_has_recovery(cont)) {
+    for (i = 0; i < kitty_hello_container_r_count(cont); i++) {
         SendMessage(list, LB_ADDSTRING, 0,
+                    kitty_hello_container_r_is_code(cont, i) == 1 ?
+                    (LPARAM)"Recovery code (printout, bound to this file)" :
                     (LPARAM)"Recovery passphrase");
         item++;
     }
@@ -1086,7 +1096,8 @@ static INT_PTR CALLBACK HelloDoorsProc(HWND hwnd, UINT msg,
             {
                 struct PassphraseProcStruct pps;
                 pps.passphrase = &passphrase;
-                pps.comment = "recovery passphrase or printed secret";
+                pps.comment = NULL;
+                pps.hello = 1;
                 if (!DialogBoxParam(hinst, MAKEINTRESOURCE(210), hwnd,
                                     PassphraseProc, (LPARAM)&pps)) {
                     burnstr(passphrase);
@@ -1127,21 +1138,45 @@ static INT_PTR CALLBACK HelloDoorsProc(HWND hwnd, UINT msg,
     return 0;
 }
 
-/* KiTTY: the printed secret of a freshly protected key - shown ONCE. */
+/* KiTTY: the sidebound choice depends on Hello protection being ON -
+ * without it there is no sidecar for the code to bind to. */
+static void kg_hello_sync(HWND hwnd)
+{
+    bool on = IsWindowEnabled(GetDlgItem(hwnd, IDC_HELLOPROTECT)) &&
+              IsDlgButtonChecked(hwnd, IDC_HELLOPROTECT) == BST_CHECKED;
+    EnableWindow(GetDlgItem(hwnd, IDC_KGSIDEBOUND), on);
+    if (!on)
+        CheckDlgButton(hwnd, IDC_KGSIDEBOUND, BST_UNCHECKED);
+}
+
+/* KiTTY: the printed secret (or the sidecar-bound recovery code) of a
+ * freshly protected key - shown ONCE. lParam: struct kg_secret_show. */
+struct kg_secret_show {
+    const char *printed;
+    int sidebound;
+};
+
 static INT_PTR CALLBACK HelloSecretProc(HWND hwnd, UINT msg,
                                         WPARAM wParam, LPARAM lParam)
 {
     switch (msg) {
       case WM_INITDIALOG: {
-        const char *printed = (const char *)lParam;
-        SetDlgItemText(hwnd, IDC_HS_NOTE,
+        const struct kg_secret_show *s =
+            (const struct kg_secret_show *)lParam;
+        SetDlgItemText(hwnd, IDC_HS_NOTE, s->sidebound ?
+            "This is the key's RECOVERY CODE. It is shown ONCE - KiTTYgen "
+            "does not keep it.\r\n\r\n"
+            "It opens the key only TOGETHER with the .hello file, in KiTTY "
+            "tools. Keep the printout AND back up the .hello file: without "
+            "the file the code is worthless, and the key file's own "
+            "passphrase is written nowhere." :
             "This is the protected key's passphrase. It is shown ONCE - "
             "KiTTYgen does not keep it.\r\n\r\n"
             "Print it or store it in a password manager. It opens the key "
             "in any PuTTY-compatible tool, on any machine, with or without "
             "Windows Hello, and it is the last resort if Windows Hello and "
             "the recovery passphrase are both lost.");
-        SetDlgItemText(hwnd, IDC_HS_TEXT, printed);
+        SetDlgItemText(hwnd, IDC_HS_TEXT, s->printed);
         return 1;
       }
       case WM_COMMAND:
@@ -1166,15 +1201,25 @@ static INT_PTR CALLBACK HelloSecretProc(HWND hwnd, UINT msg,
             return 0;
           }
           case IDOK:
-          case IDCANCEL:
             SetDlgItemText(hwnd, IDC_HS_TEXT, "");
             EndDialog(hwnd, 1);
+            return 0;
+          case IDCANCEL:
+            /* X and Esc are NOT a quiet "stored it" - this text never
+             * appears again. */
+            if (MessageBox(hwnd, "Have you stored the printout? It will "
+                           "NEVER be shown again.",
+                           "KiTTYgen - printout not stored?",
+                           MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2)
+                    == IDYES) {
+                SetDlgItemText(hwnd, IDC_HS_TEXT, "");
+                EndDialog(hwnd, 1);
+            }
             return 0;
         }
         return 0;
       case WM_CLOSE:
-        SetDlgItemText(hwnd, IDC_HS_TEXT, "");
-        EndDialog(hwnd, 1);
+        SendMessage(hwnd, WM_COMMAND, IDCANCEL, 0);
         return 0;
     }
     return 0;
@@ -1246,7 +1291,8 @@ static const int gotkey_ids_unconditional[] = {
     IDC_FPSTATIC, IDC_FINGERPRINT,
     IDC_COMMENTSTATIC, IDC_COMMENTEDIT, IDC_ADDCONFIRM,
     IDC_PASSPHRASE1STATIC, IDC_PASSPHRASE1EDIT,
-    IDC_PASSPHRASE2STATIC, IDC_PASSPHRASE2EDIT, IDC_HELLOPROTECT, 0
+    IDC_PASSPHRASE2STATIC, IDC_PASSPHRASE2EDIT, IDC_HELLOPROTECT,
+    IDC_KGSIDEBOUND, 0
 };
 static const int gotkey_ids_conditional[] = {
     IDC_PKSTATIC, IDC_KEYDISPLAY,
@@ -1585,6 +1631,8 @@ static void update_ui_after_load(HWND hwnd, struct MainDlgState *state,
         protect_current_ssh2_key(state);
 }
 
+static void kg_hello_sync(HWND hwnd);   /* defined below */
+
 void load_key_file(HWND hwnd, struct MainDlgState *state,
                    Filename *filename, bool was_import_cmd)
 {
@@ -1649,6 +1697,9 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
             struct PassphraseProcStruct pps;
             pps.passphrase = &passphrase;
             pps.comment = comment;
+            pps.hello = (realtype == SSH_KEYTYPE_SSH2 &&
+                         kageant_hello_has_sidecar(
+                             filename_to_str(filename)));
             dlgret = DialogBoxParam(hinst,
                                     MAKEINTRESOURCE(210),
                                     NULL, PassphraseProc,
@@ -1708,12 +1759,14 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
         /* KiTTY: reflect the loaded file's Hello protection in the checkbox,
          * so ticking/unticking + Save is the arm/disarm gesture. Only where
          * the box is live at all. */
-        if (IsWindowEnabled(GetDlgItem(hwnd, IDC_HELLOPROTECT)))
+        if (IsWindowEnabled(GetDlgItem(hwnd, IDC_HELLOPROTECT))) {
             CheckDlgButton(hwnd, IDC_HELLOPROTECT,
                            (realtype == SSH_KEYTYPE_SSH2 &&
                             kageant_hello_has_sidecar(
                                 filename_to_str(filename))) ?
                            BST_CHECKED : BST_UNCHECKED);
+            kg_hello_sync(hwnd);
+        }
 
         /*
          * If the user has imported a foreign key
@@ -2095,6 +2148,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             menu = CreateMenu();
 
             menu1 = CreateMenu();
+            AppendMenu(menu1, MF_ENABLED, IDC_KGNEW, "&New (clear)");
+            AppendMenu(menu1, MF_SEPARATOR, 0, 0);
             AppendMenu(menu1, MF_ENABLED, IDC_LOAD, "&Load private key");
             AppendMenu(menu1, MF_ENABLED, IDC_SAVEPUB, "Save p&ublic key");
             AppendMenu(menu1, MF_ENABLED, IDC_SAVE, "&Save private key");
@@ -2230,8 +2285,12 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             checkbox(&cp, "Protect with Windows &Hello "
                      "(passphrase = recovery passphrase)",
                      IDC_HELLOPROTECT);
+            checkbox(&cp, "Printout is a recover&y code bound to the "
+                     ".hello file, not the key's passphrase",
+                     IDC_KGSIDEBOUND);
             if (!kageant_hello_offerable())
                 EnableWindow(GetDlgItem(hwnd, IDC_HELLOPROTECT), false);
+            kg_hello_sync(hwnd);
             endbox(&cp);
             beginbox(&cp, "Actions", IDC_BOX_ACTIONS);
             staticbtn(&cp, "Generate a public/private key pair",
@@ -2661,6 +2720,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                  * recovery passphrase. PPK format only. */
                 bool hello = IsDlgButtonChecked(hwnd, IDC_HELLOPROTECT) ==
                     BST_CHECKED;
+                bool sidebound = hello &&
+                    IsDlgButtonChecked(hwnd, IDC_KGSIDEBOUND) == BST_CHECKED;
                 if (hello && (type != realtype || !state->ssh2)) {
                     MessageBox(hwnd, "Windows Hello protection needs the "
                                "PuTTY PPK format (SSH-2). Save or export "
@@ -2694,6 +2755,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     int ret;
                     char *err = NULL;
                     char *hello_printed = NULL, *hello_container = NULL;
+                    char *hello_handout = NULL;
                     FILE *fp = f_open(fn, "r", false);
                     if (fp) {
                         char *buffer;
@@ -2727,6 +2789,30 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         hret = kitty_hello_wrap_auto(
                             hwnd, secret, *passphrase ? passphrase : NULL,
                             &hello_container, NULL);
+                        if (hret == KITTY_HELLO_VERIFIED && hello_container &&
+                            sidebound) {
+                            /* The printout becomes a CODE with its own R
+                             * door; the file's passphrase is then written
+                             * nowhere. */
+                            unsigned char code[KITTY_HELLO_SECRET_LEN];
+                            char *codetext = NULL, *withcode = NULL;
+                            if (kitty_hello_new_secret(code)) {
+                                codetext = kitty_hello_code_text(code);
+                                smemclr(code, sizeof(code));
+                                withcode = codetext ?
+                                    kitty_hello_container_append_recovery(
+                                        hello_container, codetext, secret) :
+                                    NULL;
+                            }
+                            if (withcode) {
+                                burnstr(hello_container);
+                                hello_container = withcode;
+                                hello_handout = codetext;
+                            } else {
+                                burnstr(codetext);
+                                hret = KITTY_HELLO_ERROR;
+                            }
+                        }
                         smemclr(secret, sizeof(secret));
                         if (hret != KITTY_HELLO_VERIFIED || !hello_container) {
                             MessageBox(hwnd,
@@ -2812,10 +2898,16 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                             sfree(state->hello_saved_path);
                             state->hello_saved_path =
                                 dupstr(filename_to_str(fn));
-                            DialogBoxParam(hinst,
-                                           MAKEINTRESOURCE(IDD_KGHELLOSECRET),
-                                           hwnd, HelloSecretProc,
-                                           (LPARAM)hello_printed);
+                            {
+                                struct kg_secret_show show;
+                                show.printed = hello_handout ? hello_handout
+                                                             : hello_printed;
+                                show.sidebound = hello_handout != NULL;
+                                DialogBoxParam(
+                                    hinst,
+                                    MAKEINTRESOURCE(IDD_KGHELLOSECRET),
+                                    hwnd, HelloSecretProc, (LPARAM)&show);
+                            }
                         }
                     } else if (type == realtype &&
                                kageant_hello_has_sidecar(
@@ -2866,6 +2958,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     sfree(err);
                     burnstr(hello_printed);
                     burnstr(hello_container);
+                    burnstr(hello_handout);
                     filename_free(fn);
                 }
                 burnstr(passphrase);
@@ -2920,6 +3013,33 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     filename_free(fn);
                 }
             }
+            break;
+          case IDC_KGNEW:
+            /* Clear the mask: forget the key, the remembered paths, and
+             * every field - a fresh start without a restart. */
+            state =
+                (struct MainDlgState *) GetWindowLongPtr(hwnd, GWLP_USERDATA);
+            if (state->generation_thread_exists)
+                break;                 /* not while generating */
+            burn_key_state(state);
+            sfree(state->loaded_path);
+            state->loaded_path = NULL;
+            sfree(state->hello_saved_path);
+            state->hello_saved_path = NULL;
+            SetDlgItemText(hwnd, IDC_COMMENTEDIT, "");
+            SetDlgItemText(hwnd, IDC_PASSPHRASE1EDIT, "");
+            SetDlgItemText(hwnd, IDC_PASSPHRASE2EDIT, "");
+            SetDlgItemText(hwnd, IDC_KEYDISPLAY, "");
+            SetDlgItemText(hwnd, IDC_FINGERPRINT, "");
+            CheckDlgButton(hwnd, IDC_ADDCONFIRM, BST_UNCHECKED);
+            CheckDlgButton(hwnd, IDC_HELLOPROTECT, BST_UNCHECKED);
+            CheckDlgButton(hwnd, IDC_KGSIDEBOUND, BST_UNCHECKED);
+            kg_hello_sync(hwnd);
+            ui_set_state(hwnd, state, 0);
+            break;
+          case IDC_HELLOPROTECT:
+            if (HIWORD(wParam) == BN_CLICKED)
+                kg_hello_sync(hwnd);
             break;
           case IDC_HELLODOORS: {
             state =

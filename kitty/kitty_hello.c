@@ -1501,6 +1501,63 @@ static void khw_ui_load(void)
         GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow");
 }
 
+/*
+ * An anchor window on its OWN pumping thread: credential CREATION must
+ * run on the calling thread (a worker gets RPC_E_WRONG_THREAD from the
+ * platform), and while that thread blocks inside the call, the owner
+ * window still has to live on a thread that answers messages - the
+ * proven shape (a console window's conhost) reproduced in-process.
+ */
+static HWND khw_host_create(void);
+static void khw_host_destroy(HWND w);
+
+struct khw_anchor {
+    HANDLE ready;              /* window created (or failed) */
+    HANDLE thread;
+    HWND hwnd;                 /* NULL = creation failed */
+    DWORD tid;
+};
+
+static DWORD WINAPI khw_anchor_thread(LPVOID p)
+{
+    struct khw_anchor *a = (struct khw_anchor *)p;
+    MSG msg;
+    a->hwnd = khw_host_create();
+    SetEvent(a->ready);
+    if (!a->hwnd)
+        return 0;
+    while (GetMessage(&msg, NULL, 0, 0) > 0) {
+        if (msg.message == WM_QUIT)
+            break;
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+    khw_host_destroy(a->hwnd);
+    return 0;
+}
+
+static void khw_anchor_start(struct khw_anchor *a)
+{
+    memset(a, 0, sizeof(*a));
+    a->ready = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (!a->ready)
+        return;
+    a->thread = CreateThread(NULL, 0, khw_anchor_thread, a, 0, &a->tid);
+    if (a->thread)
+        WaitForSingleObject(a->ready, 10000);
+}
+
+static void khw_anchor_stop(struct khw_anchor *a)
+{
+    if (a->thread) {
+        PostThreadMessage(a->tid, WM_QUIT, 0, 0);
+        WaitForSingleObject(a->thread, 5000);
+        CloseHandle(a->thread);
+    }
+    if (a->ready)
+        CloseHandle(a->ready);
+}
+
 /* Animated ellipsis state, one host at a time (khw_busy serialises). */
 static int khw_host_phase;
 
@@ -1716,25 +1773,6 @@ static bool khw_owner_usable(HWND w)
            pid == GetCurrentProcessId();
 }
 
-struct khw_make_job {
-    khw_api *api;
-    HWND owner;
-    KHW_RP_INFO *rp;
-    KHW_USER_INFO *user;
-    KHW_COSE_PARAMS *algs;
-    KHW_CLIENT_DATA *cd;
-    KHW_MAKE_OPTS *opts;
-    KHW_ATTESTATION *att;
-    HRESULT hr;
-};
-
-static void khw_make_job_run(void *arg)
-{
-    struct khw_make_job *m = (struct khw_make_job *)arg;
-    m->hr = m->api->MakeCredential(m->owner, m->rp, m->user, m->algs,
-                                   m->cd, m->opts, &m->att);
-}
-
 struct khw_assert_job {
     khw_api *api;
     HWND owner;
@@ -1835,18 +1873,18 @@ int kitty_hello_prf_credential(HWND owner, int create_if_missing,
     mkopts.Extensions.pExtensions = &hmac_ext;
 
     {
-        struct khw_make_job m;
-        HWND host = khw_owner_usable(owner) ? NULL : khw_host_create();
-        memset(&m, 0, sizeof(m));
-        m.api = api; m.owner = host ? host : owner;
-        m.rp = &rp; m.user = &user; m.algs = &algs; m.cd = &cd;
-        m.opts = &mkopts; m.hr = E_FAIL;
-        if (!khw_run_on_thread(khw_make_job_run, &m, owner))
-            m.hr = E_FAIL;
-        hr = m.hr;
-        att = m.att;
-        owner = m.owner;   /* for the detail line */
-        khw_host_destroy(host);
+        /* Direct call on THIS thread (a worker gets RPC_E_WRONG_THREAD);
+         * the anchor window pumps on its own thread meanwhile. When the
+         * caller's own visible window is on some OTHER live thread it
+         * would also do, but one shape for every case is simpler and it
+         * is the proven one. */
+        struct khw_anchor anchor;
+        khw_anchor_start(&anchor);
+        hr = api->MakeCredential(anchor.hwnd ? anchor.hwnd : owner,
+                                 &rp, &user, &algs, &cd, &mkopts, &att);
+        if (anchor.hwnd)
+            owner = anchor.hwnd;   /* for the detail line */
+        khw_anchor_stop(&anchor);
     }
     hello_trace("prf create: hr=0x%08lX", (unsigned long)hr);
     khw_set_detail("prf find=%d create hr=0x%08lX owner=%p", found,
@@ -1924,6 +1962,11 @@ void kitty_hello_cache_ttl_set(int seconds)
 {
     if (seconds < 0)
         seconds = 0;
+    /* A cached KEK carries the OLD deadline; a changed policy must apply
+     * NOW, not at the next gesture - measured: TTL set to 0 and the next
+     * unlock was still served silently from the old 60 s entry. */
+    if (seconds != khw_kekcache.ttl_seconds)
+        kitty_hello_cache_wipe();
     khw_kekcache.ttl_seconds = seconds;
 }
 
@@ -2899,22 +2942,18 @@ int kitty_hello_container_open_kek(const char *container,
     return ret;
 }
 
-int kitty_hello_container_open_recovery(const char *container,
-                                        const char *passphrase,
-                                        unsigned char
-                                            secret_out[KITTY_HELLO_SECRET_LEN])
+/* Open ONE R field body with the given passphrase. 1/-1. */
+static int hello_open_recovery_field(const char *f, size_t flen,
+                                     const char *passphrase,
+                                     unsigned char
+                                         secret_out[KITTY_HELLO_SECRET_LEN])
 {
-    size_t flen;
-    const char *f = hello_container_field(container, 'R', &flen);
     unsigned mem, passes, parallel;
     int consumed = 0;
     unsigned char salt[HELLO_SALT_LEN], kek[HELLO_KEK_LEN];
     unsigned char blob[HELLO_BLOB_LEN];
     const char *b64salt, *b64blob, *comma;
     int ret = -1;
-
-    if (!f)
-        return 0;
 
     /* R<mem>,<passes>,<parallel>,<b64 salt>,<b64 blob> - the numbers are
      * whatever the WRITING build used; they go through argon2_params_bad
@@ -2928,9 +2967,18 @@ int kitty_hello_container_open_recovery(const char *container,
         return -1;
     b64blob = comma + 1;
 
-    if (!hello_b64_fixed(b64salt, comma - b64salt, salt, HELLO_SALT_LEN) ||
-        !hello_b64_fixed(b64blob, flen - (b64blob - f), blob, HELLO_BLOB_LEN))
-        return -1;
+    {
+        /* An optional trailing ",c" tags a CODE door (the sidecar-bound
+         * printout); the blob ends at that comma. Unknown tags are
+         * ignored the same way. */
+        const char *bend = memchr(b64blob, ',', flen - (b64blob - f));
+        size_t bloblen = bend ? (size_t)(bend - b64blob)
+                              : flen - (b64blob - f);
+        if (!hello_b64_fixed(b64salt, comma - b64salt, salt,
+                             HELLO_SALT_LEN) ||
+            !hello_b64_fixed(b64blob, bloblen, blob, HELLO_BLOB_LEN))
+            return -1;
+    }
 
     if (hello_recovery_kek(passphrase, salt, mem, passes, parallel, kek))
         ret = hello_gcm_unwrap(kek, blob, secret_out) ? 1 : -1;
@@ -2938,6 +2986,156 @@ int kitty_hello_container_open_recovery(const char *container,
     smemclr(kek, sizeof(kek));
     smemclr(blob, sizeof(blob));
     return ret;
+}
+
+int kitty_hello_container_open_recovery(const char *container,
+                                        const char *passphrase,
+                                        unsigned char
+                                            secret_out[KITTY_HELLO_SECRET_LEN])
+{
+    /* A container may carry SEVERAL R doors (a typed recovery passphrase
+     * and a sidecar-bound recovery code are both R wraps); the given
+     * text opens exactly the one keyed on it - the KDF+GCM refuse the
+     * others - so trying each in turn is correct and cheap enough (one
+     * Argon2 run per R). */
+    int i = 0, ret = 0;
+    size_t flen;
+    const char *f;
+    while ((f = hello_container_field_n(container, 'R', i++, &flen))
+               != NULL) {
+        int r = hello_open_recovery_field(f, flen, passphrase, secret_out);
+        if (r == 1)
+            return 1;
+        ret = -1;
+    }
+    return ret;
+}
+
+/*
+ * The RECOVERY CODE's printed form - deliberately unmistakable for the
+ * printed passphrase (his report: the two looked identical and were
+ * mixed up): "KRC1-" prefix, 8 groups of 4 hex (16 random bytes - a
+ * KDF-protected door does not need 256 bits), and a 2-hex check group.
+ * The parser is as tolerant as the passphrase one (case, dashes,
+ * spaces) but REQUIRES the prefix.
+ */
+char *kitty_hello_code_text(const unsigned char code[16])
+{
+    static const char hexd[] = "0123456789ABCDEF";
+    unsigned char chk[32];
+    strbuf *sb = strbuf_new_nm();
+    int i;
+    ssh_hash *h = ssh_hash_new(&ssh_sha256);
+    put_data(h, code, 16);
+    ssh_hash_final(h, chk);
+    put_dataz(sb, "KRC1");
+    for (i = 0; i < 16; i++) {
+        if ((i & 1) == 0)
+            put_byte(sb, '-');
+        put_byte(sb, hexd[code[i] >> 4]);
+        put_byte(sb, hexd[code[i] & 15]);
+    }
+    put_fmt(sb, "-%c%c", hexd[chk[0] >> 4], hexd[chk[0] & 15]);
+    return strbuf_to_str(sb);
+}
+
+int kitty_hello_code_from_text(const char *text, unsigned char code_out[16])
+{
+    unsigned char digits[34];
+    unsigned char chk[32];
+    int nd = 0, i;
+    const char *p = text;
+
+    if (!text)
+        return 0;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    if ((p[0] != 'K' && p[0] != 'k') || (p[1] != 'R' && p[1] != 'r') ||
+        (p[2] != 'C' && p[2] != 'c') || p[3] != '1')
+        return 0;
+    p += 4;
+    for (; *p; p++) {
+        int v;
+        if (*p == '-' || *p == ' ' || *p == '\t')
+            continue;
+        if (*p >= '0' && *p <= '9') v = *p - '0';
+        else if (*p >= 'a' && *p <= 'f') v = *p - 'a' + 10;
+        else if (*p >= 'A' && *p <= 'F') v = *p - 'A' + 10;
+        else return 0;
+        if (nd >= 34)
+            return 0;
+        digits[nd++] = (unsigned char)v;
+    }
+    if (nd != 34)
+        return 0;
+    for (i = 0; i < 16; i++)
+        code_out[i] = (unsigned char)((digits[i * 2] << 4) | digits[i * 2 + 1]);
+    {
+        ssh_hash *h = ssh_hash_new(&ssh_sha256);
+        put_data(h, code_out, 16);
+        ssh_hash_final(h, chk);
+    }
+    if (((digits[32] << 4) | digits[33]) != chk[0]) {
+        smemclr(code_out, 16);
+        return 0;
+    }
+    return 1;
+}
+
+int kitty_hello_container_r_count(const char *container)
+{
+    size_t len;
+    int n = 0;
+    while (hello_container_field_n(container, 'R', n, &len))
+        n++;
+    return n;
+}
+
+/* Is the index-th R door a CODE door (",c" tag)? 1/0; -1 = no such R. */
+int kitty_hello_container_r_is_code(const char *container, int index)
+{
+    size_t flen;
+    const char *f = hello_container_field_n(container, 'R', index, &flen);
+    if (!f)
+        return -1;
+    return (flen >= 2 && f[flen - 2] == ',' && f[flen - 1] == 'c') ? 1 : 0;
+}
+
+/* Append one more R door to an existing container - the existing text is
+ * kept byte for byte (the sidecar-bound recovery code is such a door:
+ * an R keyed on a random printed code instead of a typed passphrase).
+ * Caller sfree; NULL on failure. */
+char *kitty_hello_container_append_recovery(
+    const char *container, const char *passphrase,
+    const unsigned char secret[KITTY_HELLO_SECRET_LEN])
+{
+    unsigned char salt[HELLO_SALT_LEN], kek[HELLO_KEK_LEN];
+    unsigned char blob[HELLO_BLOB_LEN];
+    strbuf *b64salt, *b64blob;
+    char *out;
+
+    if (!kitty_hello_container_valid(container) || !passphrase ||
+        !*passphrase)
+        return NULL;
+    if (!hello_random(salt, sizeof(salt)) ||
+        !hello_recovery_kek(passphrase, salt, HELLO_ARGON_MEM,
+                            HELLO_ARGON_PASSES, HELLO_ARGON_PARALLEL, kek) ||
+        !hello_gcm_wrap(kek, secret, blob)) {
+        smemclr(kek, sizeof(kek));
+        return NULL;
+    }
+    smemclr(kek, sizeof(kek));
+    b64salt = base64_encode_sb(make_ptrlen(salt, sizeof(salt)), 0);
+    b64blob = base64_encode_sb(make_ptrlen(blob, HELLO_BLOB_LEN), 0);
+    /* ",c": this R is a CODE door (the sidecar-bound printout) - the
+     * label distinction the door list needs; crypto-wise identical. */
+    out = dupprintf("%s.R%u,%u,%u,%s,%s,c", container,
+                    (unsigned)HELLO_ARGON_MEM, (unsigned)HELLO_ARGON_PASSES,
+                    (unsigned)HELLO_ARGON_PARALLEL, b64salt->s, b64blob->s);
+    strbuf_free(b64salt);
+    strbuf_free(b64blob);
+    smemclr(blob, sizeof(blob));
+    return out;
 }
 
 /* Pull the PRF credential id out of the W field (caller sfree).

@@ -82,6 +82,7 @@
 #define IDC_HP_RECPASS2 110
 #define IDC_HP_REPLACE 111
 #define IDC_HP_WARN 112
+#define IDC_HP_SIDEBOUND 114   /* printout = code bound to the sidecar */
 #define IDC_HP_HELLOONLY 113
 
 /* KiTTY: the printed-secret dialog */

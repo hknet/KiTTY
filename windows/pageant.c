@@ -1869,7 +1869,10 @@ struct hello_protect_ctx {
     char *recpass;          /* out: a separate recovery passphrase (burn),
                              * NULL = "use the source passphrase" */
     int replace;            /* out: re-point the startup entry */
+    int hide_replace;       /* the ADD-time flow: no entry exists yet, so
+                             * the box would be forever grey - hide it */
     int hello_only;         /* out: no recovery wrap at all (warned) */
+    int sidebound;          /* out: printout = code bound to the sidecar */
 };
 
 static void hello_protect_explain(HWND hwnd, struct hello_protect_ctx *c)
@@ -1898,6 +1901,8 @@ static void hello_protect_explain(HWND hwnd, struct hello_protect_ctx *c)
 
 static void hello_protect_sync(HWND hwnd, struct hello_protect_ctx *c)
 {
+    /* The sidebound choice does not interact with the others; it only
+     * changes WHAT the once-shown printout is. */
     int hello_only = IsDlgButtonChecked(hwnd, IDC_HP_HELLOONLY) == BST_CHECKED;
     int use_src = !hello_only && c->src_encrypted &&
         IsDlgButtonChecked(hwnd, IDC_HP_USESRCPASS) == BST_CHECKED;
@@ -1933,6 +1938,11 @@ static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
                    c->src_encrypted ? SW_SHOW : SW_HIDE);
         CheckDlgButton(hwnd, IDC_HP_USESRCPASS,
                        c->src_encrypted ? BST_CHECKED : BST_UNCHECKED);
+        /* Hidden only when it could never apply: the ADD flow with a path
+         * the startup list does not know. Re-adding a TRACKED file keeps
+         * the box - re-pointing that entry is exactly what Replace does. */
+        if (c->hide_replace && !c->tracked)
+            ShowWindow(GetDlgItem(hwnd, IDC_HP_REPLACE), SW_HIDE);
         EnableWindow(GetDlgItem(hwnd, IDC_HP_REPLACE), c->tracked);
         CheckDlgButton(hwnd, IDC_HP_REPLACE,
                        c->tracked ? BST_CHECKED : BST_UNCHECKED);
@@ -1993,6 +2003,25 @@ static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
                           "to open the key where Windows Hello cannot.";
             else if (!hello_only && !use_src && strcmp(rec, rec2))
                 problem = "The recovery passphrases do not match.";
+            /* The current passphrase is checked HERE, not after the
+             * dialog is gone: a typo must be correctable in place. One
+             * real load attempt (an Argon2 run for a v3 PPK - noticeable
+             * but honest). */
+            if (!problem && c->src_encrypted) {
+                Filename *sf = filename_from_str(c->src);
+                const char *lerr = NULL;
+                ssh2_userkey *k = ppk_load_f(sf, srcpass, &lerr);
+                filename_free(sf);
+                if (k == SSH2_WRONG_PASSPHRASE) {
+                    problem = "That is not this key's current passphrase.";
+                } else if (k) {
+                    ssh_key_free(k->key);
+                    sfree(k->comment);
+                    sfree(k);
+                }
+                /* NULL (unreadable file) is left for the worker's fuller
+                 * error message. */
+            }
             if (problem) {
                 MessageBox(hwnd, problem, "kageant", MB_ICONWARNING | MB_OK);
                 sfree(dest);
@@ -2023,6 +2052,8 @@ static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
             burnstr(rec2);
             c->replace = c->tracked &&
                 IsDlgButtonChecked(hwnd, IDC_HP_REPLACE) == BST_CHECKED;
+            c->sidebound =
+                IsDlgButtonChecked(hwnd, IDC_HP_SIDEBOUND) == BST_CHECKED;
             kitty_auxpos_save(hwnd, "kageantHelloProtect");
             EndDialog(hwnd, 1);
             return 0;
@@ -2041,22 +2072,35 @@ static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
     return 0;
 }
 
-/* The printed secret, shown exactly once. */
+/* The printed secret (or the sidecar-bound recovery code), shown exactly
+ * once. lParam: struct hello_secret_show. */
+struct hello_secret_show {
+    const char *printed;
+    int sidebound;
+};
+
 static INT_PTR CALLBACK HelloSecretProc(HWND hwnd, UINT msg,
                                         WPARAM wParam, LPARAM lParam)
 {
     switch (msg) {
       case WM_INITDIALOG: {
-        const char *printed = (const char *)lParam;
+        const struct hello_secret_show *s =
+            (const struct hello_secret_show *)lParam;
         kageant_set_window_icon(hwnd);
-        SetDlgItemText(hwnd, IDC_HS_NOTE,
+        SetDlgItemText(hwnd, IDC_HS_NOTE, s->sidebound ?
+            "This is the key's RECOVERY CODE. It is shown ONCE - kageant "
+            "does not keep it.\r\n\r\n"
+            "It opens the key only TOGETHER with the .hello file, in KiTTY "
+            "tools. Keep the printout AND back up the .hello file: without "
+            "the file the code is worthless, and the key file's own "
+            "passphrase is written nowhere." :
             "This is the protected key's passphrase. It is shown ONCE - "
             "kageant does not keep it.\r\n\r\n"
             "Print it or store it in a password manager. It opens the key "
             "in any PuTTY-compatible tool, on any machine, with or without "
             "Windows Hello, and it is the last resort if Windows Hello and "
             "the recovery passphrase are both lost.");
-        SetDlgItemText(hwnd, IDC_HS_TEXT, printed);
+        SetDlgItemText(hwnd, IDC_HS_TEXT, s->printed);
         kitty_auxpos_apply(hwnd, "kageantHelloSecret", GetWindow(hwnd, GW_OWNER), 0);
         return 1;
       }
@@ -2082,17 +2126,27 @@ static INT_PTR CALLBACK HelloSecretProc(HWND hwnd, UINT msg,
             return 0;
           }
           case IDOK:
-          case IDCANCEL:
             kitty_auxpos_save(hwnd, "kageantHelloSecret");
             SetDlgItemText(hwnd, IDC_HS_TEXT, "");
             EndDialog(hwnd, 1);
             return 0;
+          case IDCANCEL:
+            /* X and Esc are NOT a quiet "stored it" - this text never
+             * appears again. */
+            if (MessageBox(hwnd, "Have you stored the printout? It will "
+                           "NEVER be shown again.",
+                           "kageant - printout not stored?",
+                           MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2)
+                    == IDYES) {
+                kitty_auxpos_save(hwnd, "kageantHelloSecret");
+                SetDlgItemText(hwnd, IDC_HS_TEXT, "");
+                EndDialog(hwnd, 1);
+            }
+            return 0;
         }
         return 0;
       case WM_CLOSE:
-        kitty_auxpos_save(hwnd, "kageantHelloSecret");
-        SetDlgItemText(hwnd, IDC_HS_TEXT, "");
-        EndDialog(hwnd, 1);
+        SendMessage(hwnd, WM_COMMAND, IDCANCEL, 0);
         return 0;
     }
     return 0;
@@ -2115,6 +2169,9 @@ static char *kageant_hello_protect_flow(HWND owner, const char *src,
     filename_free(fn);
     sfree(cmt);
     c.tracked = kageant_keypath_encrypted(src) >= 0;
+    /* No replaced_out = the ADD-time offer: the key is being added right
+     * now, its startup entry does not exist yet. */
+    c.hide_replace = (replaced_out == NULL);
     if (replaced_out)
         *replaced_out = 0;
 
@@ -2122,16 +2179,19 @@ static char *kageant_hello_protect_flow(HWND owner, const char *src,
                         HelloProtectProc, (LPARAM)&c))
         return NULL;
 
-    r = kageant_hello_protect(owner, src, c.srcpass, c.recpass, c.dest,
-                              &printed, &err);
+    r = kageant_hello_protect_ex(owner, src, c.srcpass, c.recpass, c.dest,
+                                 c.sidebound, &printed, &err);
     kitty_audit("hello-protect", "path", src, "dest", c.dest, "result",
                 r == KAGEANT_HELLO_OK ? "protected" :
                 r == KAGEANT_HELLO_DENIED ? "denied" : "failed",
                 "detail", kitty_hello_last_detail(), "err", err ? err : "",
                 (const char *)NULL);
     if (r == KAGEANT_HELLO_OK) {
+        struct hello_secret_show show;
+        show.printed = printed;
+        show.sidebound = c.sidebound;
         DialogBoxParam(hinst, MAKEINTRESOURCE(IDD_HELLOSECRET), owner,
-                       HelloSecretProc, (LPARAM)printed);
+                       HelloSecretProc, (LPARAM)&show);
         burnstr(printed);
         if (c.replace && kageant_startup_replace_path(src, c.dest, -1) == 1) {
             if (replaced_out)
@@ -2180,11 +2240,26 @@ static int kageant_hello_add_offer(const char *src, char **newpath_out)
     sfree(msg);
     if (r != IDYES)
         return 0;
-    *newpath_out = kageant_hello_protect_flow(hello_owner_window(), src,
-                                              NULL);
-    /* The user ASKED for protection: a failed or cancelled protect must
-     * not end with the key quietly loaded unprotected. -1 = do not add. */
-    return *newpath_out ? 1 : -1;
+    for (;;) {
+        *newpath_out = kageant_hello_protect_flow(hello_owner_window(), src,
+                                                  NULL);
+        if (*newpath_out)
+            return 1;
+        /* A cancelled or failed protect returns to a CHOICE - it must not
+         * silently kill the whole add, nor quietly load the key
+         * unprotected. */
+        r = MessageBox(hello_owner_window(),
+                       "The key was not protected.\n\n"
+                       "Yes = try protecting it again\n"
+                       "No = load it UNPROTECTED\n"
+                       "Cancel = do not add it at all",
+                       "kageant - protect this key?",
+                       MB_ICONQUESTION | MB_YESNOCANCEL | MB_DEFBUTTON1);
+        if (r == IDNO)
+            return 0;
+        if (r != IDYES)
+            return -1;
+    }
 }
 
 static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,

@@ -162,6 +162,25 @@ int kitty_hello_container_find_w(const char *container,
                                  const unsigned char *credid,
                                  size_t credidlen);
 char *kitty_hello_container_owners_text(const char *container);
+/* The recovery CODE's printed form: "KRC1-" + 8x4 hex + check group -
+ * deliberately unmistakable for the printed passphrase. 16 random
+ * bytes; the code text is the R-door passphrase verbatim. */
+char *kitty_hello_code_text(const unsigned char code[16]);
+int kitty_hello_code_from_text(const char *text, unsigned char code_out[16]);
+
+/* R doors: how many, and is the index-th one a CODE door (the
+ * sidecar-bound printout) rather than a typed recovery passphrase
+ * (1/0; -1 = no such R). */
+int kitty_hello_container_r_count(const char *container);
+int kitty_hello_container_r_is_code(const char *container, int index);
+
+/* Append one more R door (a sidecar-bound recovery CODE is such a door:
+ * an R keyed on a random printed code). Existing text kept byte for
+ * byte. Caller sfree; NULL on failure. */
+char *kitty_hello_container_append_recovery(
+    const char *container, const char *passphrase,
+    const unsigned char secret[KITTY_HELLO_SECRET_LEN]);
+
 /* Remove the index-th W door (string surgery, no secret needed); NULL =
  * refused - a container never loses its LAST door this way. Caller
  * sfree. */

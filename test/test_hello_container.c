@@ -96,6 +96,41 @@ int main(int argc, char **argv)
      * the exe; after a REBOOT or sign-out, "persist2" unwraps it with
      * kitty_hello_unwrap_auto and compares. persist2 leaves the (real,
      * reusable) credential alone and deletes only the container file. */
+    /* Headless: what the UI's typed prompts do with the entered text -
+     * "translate <ppk> <typed text>". Prints the door that opened and
+     * whether the result decrypts the PPK. */
+    if (argc > 3 && !strcmp(argv[1], "translate")) {
+        int via = -1;
+        char *real = kageant_hello_translate(argv[2], argv[3], &via);
+        if (!real) {
+            printf("translate: NO DOOR opened (sidecar %s)\n",
+                   kageant_hello_has_sidecar(argv[2]) ? "present"
+                                                      : "MISSING");
+            return 1;
+        }
+        printf("translate: door=%s\n", via ? "recovery" : "printed");
+        {
+            Filename *fn = filename_from_str(argv[2]);
+            const char *lerr = NULL;
+            ssh2_userkey *k = ppk_load_f(fn, real, &lerr);
+            filename_free(fn);
+            if (k && k != SSH2_WRONG_PASSPHRASE) {
+                printf("translate: PPK DECRYPTS with the translated "
+                       "passphrase\n");
+                ssh_key_free(k->key);
+                sfree(k->comment);
+                sfree(k);
+                burnstr(real);
+                return 0;
+            }
+            printf("translate: translated text does NOT decrypt the PPK "
+                   "(%s)\n", k == SSH2_WRONG_PASSPHRASE ? "wrong passphrase"
+                                : (lerr ? lerr : "load failed"));
+        }
+        burnstr(real);
+        return 1;
+    }
+
     if (argc > 1 && (!strcmp(argv[1], "persist1") ||
                      !strcmp(argv[1], "persist2"))) {
         const char *path = "persist_test.hello";
@@ -489,6 +524,79 @@ int main(int argc, char **argv)
                           "the LAST door can never be removed");
                     sfree(wonly);
                 }
+
+        /* Several R doors: a typed recovery passphrase AND a sidecar-
+         * bound recovery code coexist; each text opens exactly its own. */
+        {
+            char *base = kitty_hello_container_create_ex(
+                NULL, kek, credid, sizeof(credid), NULL, pass, secret);
+            char *two = base ? kitty_hello_container_append_recovery(
+                base, "printed-code-stand-in", secret) : NULL;
+            check(two != NULL, "second R door appended");
+            if (two) {
+                check(!strncmp(two, base, strlen(base)) &&
+                      two[strlen(base)] == '.',
+                      "existing text kept byte for byte before the new R");
+                memset(out, 0, sizeof(out));
+                check(kitty_hello_container_open_recovery(two, pass,
+                                                          out) == 1 &&
+                      memcmp(out, secret, sizeof(secret)) == 0,
+                      "the FIRST R still opens with its passphrase");
+                memset(out, 0, sizeof(out));
+                check(kitty_hello_container_open_recovery(
+                          two, "printed-code-stand-in", out) == 1 &&
+                      memcmp(out, secret, sizeof(secret)) == 0,
+                      "the SECOND R opens with the code");
+                check(kitty_hello_container_open_recovery(two, "neither",
+                                                          out) == -1,
+                      "an unrelated text opens neither R");
+                check(kitty_hello_container_append_recovery(two, "",
+                                                            secret) == NULL,
+                      "an empty R passphrase refused");
+                {
+                    /* the KRC1 code format: round-trip, tolerance, check
+                     * group, and NO confusion with the passphrase form */
+                    unsigned char cd[16], cd2[16];
+                    char *ct, *lc;
+                    int k;
+                    for (k = 0; k < 16; k++) cd[k] = (unsigned char)(k * 7);
+                    ct = kitty_hello_code_text(cd);
+                    check(ct && strncmp(ct, "KRC1-", 5) == 0 &&
+                          strlen(ct) == 4 + 8 * 5 + 3,
+                          "code text has the KRC1 form");
+                    check(kitty_hello_code_from_text(ct, cd2) == 1 &&
+                          memcmp(cd, cd2, 16) == 0,
+                          "code round-trips");
+                    lc = dupstr(ct);
+                    for (k = 0; lc[k]; k++)
+                        if (lc[k] >= 'A' && lc[k] <= 'F' && k > 3)
+                            lc[k] += 'a' - 'A';
+                    check(kitty_hello_code_from_text(lc, cd2) == 1,
+                          "lower-case code accepted");
+                    lc[7] ^= 1;
+                    check(kitty_hello_code_from_text(lc, cd2) == 0,
+                          "a typo fails the code check group");
+                    check(kitty_hello_secret_from_text(ct, out) == 0,
+                          "a code is NOT mistaken for a printed secret");
+                    {
+                        char *st = kitty_hello_secret_text(secret);
+                        unsigned char dummy[16];
+                        check(kitty_hello_code_from_text(st, dummy) == 0,
+                              "a printed secret is NOT mistaken for a code");
+                        sfree(st);
+                    }
+                    sfree(lc);
+                    sfree(ct);
+                }
+                check(kitty_hello_container_r_count(two) == 2 &&
+                      kitty_hello_container_r_is_code(two, 0) == 0 &&
+                      kitty_hello_container_r_is_code(two, 1) == 1 &&
+                      kitty_hello_container_r_is_code(two, 2) == -1,
+                      "R doors counted; the appended one is tagged CODE");
+                sfree(two);
+            }
+            sfree(base);
+        }
                 sfree(c3);
             }
         }

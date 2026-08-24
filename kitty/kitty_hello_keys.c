@@ -168,14 +168,47 @@ char *kageant_hello_translate(const char *keypath, const char *typed,
         *via_recovery_out = 0;
     if (!typed)
         return NULL;
-    /* The printed secret typed in (any case/separators): canonicalise,
-     * so the PPK sees exactly the string it was saved with. */
-    if (kitty_hello_secret_from_text(typed, secret) == 1) {
-        out = kitty_hello_secret_text(secret);
-        smemclr(secret, sizeof(secret));
-        return out;
-    }
     c = kageant_hello_read_sidecar(keypath);
+    /* A KRC1 recovery code: canonicalise, open its R door. Unmistakable
+     * by format - no ambiguity with the passphrase. */
+    {
+        unsigned char codebuf[16];
+        if (kitty_hello_code_from_text(typed, codebuf)) {
+            char *canon = kitty_hello_code_text(codebuf);
+            smemclr(codebuf, sizeof(codebuf));
+            if (c && canon &&
+                kitty_hello_container_open_recovery(c, canon, secret) == 1) {
+                out = kitty_hello_secret_text(secret);
+                smemclr(secret, sizeof(secret));
+                if (via_recovery_out)
+                    *via_recovery_out = 1;
+            }
+            burnstr(canon);
+            sfree(c);
+            return out;
+        }
+    }
+    /* Printed format? That is EITHER the literal passphrase OR an
+     * OLD-FORMAT sidecar-bound code (pre-KRC1) - they shared the
+     * sidecar-bound recovery code - same format by design. The code case
+     * is decidable (its R door opens), so try that FIRST; only when no
+     * door answers is the text handed through as the passphrase. */
+    if (kitty_hello_secret_from_text(typed, secret) == 1) {
+        char *canon = kitty_hello_secret_text(secret);
+        smemclr(secret, sizeof(secret));
+        if (c && canon &&
+            kitty_hello_container_open_recovery(c, canon, secret) == 1) {
+            out = kitty_hello_secret_text(secret);
+            smemclr(secret, sizeof(secret));
+            burnstr(canon);
+            if (via_recovery_out)
+                *via_recovery_out = 1;
+            sfree(c);
+            return out;
+        }
+        sfree(c);
+        return canon;
+    }
     if (!c)
         return NULL;
     if (kitty_hello_container_open_recovery(c, typed, secret) == 1) {
@@ -193,11 +226,29 @@ int kageant_hello_protect(HWND owner, const char *srcpath,
                           const char *destpath, char **printed_out,
                           char **err_out)
 {
+    return kageant_hello_protect_ex(owner, srcpath, srcpass, recovery_pass,
+                                    destpath, 0, printed_out, err_out);
+}
+
+/*
+ * sidebound != 0: the printout handed back is a recovery CODE, not the
+ * file's passphrase - it opens the key only TOGETHER with the .hello
+ * sidecar (an extra R door keyed on the code), so the printout alone is
+ * not a credential. The costs, said at the UI: recovery then needs a
+ * KiTTY tool and the sidecar, and losing the sidecar makes the printout
+ * worthless. The PPK's own passphrase (the secret's printed form) is
+ * then written nowhere at all.
+ */
+int kageant_hello_protect_ex(HWND owner, const char *srcpath,
+                             const char *srcpass, const char *recovery_pass,
+                             const char *destpath, int sidebound,
+                             char **printed_out, char **err_out)
+{
     Filename *srcfn, *dstfn;
     ssh2_userkey *key;
     const char *loaderr = NULL;
     unsigned char secret[KITTY_HELLO_SECRET_LEN];
-    char *printed = NULL, *container = NULL;
+    char *printed = NULL, *container = NULL, *handout = NULL;
     const char *rpass;
     int ret = KAGEANT_HELLO_ERROR, hret;
 
@@ -253,6 +304,25 @@ int kageant_hello_protect(HWND owner, const char *srcpath,
     /* The Hello door first - it is the step that can be refused, and
      * refusing must leave no file behind. */
     hret = kitty_hello_wrap_auto(owner, secret, rpass, &container, NULL);
+    if (hret == KITTY_HELLO_VERIFIED && container && sidebound) {
+        unsigned char codebuf[KITTY_HELLO_SECRET_LEN];
+        char *withcode;
+        if (!kitty_hello_new_secret(codebuf)) {
+            *err_out = dupstr("the system random generator failed");
+            goto out;
+        }
+        handout = kitty_hello_code_text(codebuf);   /* KRC1-..., its own
+                                                     * unmistakable form */
+        smemclr(codebuf, sizeof(codebuf));
+        withcode = handout ? kitty_hello_container_append_recovery(
+                                 container, handout, secret) : NULL;
+        if (!withcode) {
+            *err_out = dupstr("could not add the recovery-code door");
+            goto out;
+        }
+        burnstr(container);
+        container = withcode;
+    }
     if (hret != KITTY_HELLO_VERIFIED || !container) {
         *err_out = dupstr(hret == KITTY_HELLO_DENIED ?
                           "the Windows Hello prompt was cancelled" :
@@ -279,14 +349,21 @@ int kageant_hello_protect(HWND owner, const char *srcpath,
         goto out;
     }
 
-    *printed_out = printed;
-    printed = NULL;
+    if (handout) {
+        *printed_out = handout;    /* the sidecar-bound recovery code */
+        handout = NULL;
+    } else {
+        *printed_out = printed;    /* the file's literal passphrase */
+        printed = NULL;
+    }
     ret = KAGEANT_HELLO_OK;
 
   out:
     smemclr(secret, sizeof(secret));
     if (printed)
         burnstr(printed);
+    if (handout)
+        burnstr(handout);
     if (container)
         burnstr(container);
     ssh_key_free(key->key);

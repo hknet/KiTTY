@@ -9,6 +9,11 @@ see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- **A protected key's printout can be a recovery code bound to the
+  .hello file** (KRC1-... format) instead of the key's passphrase;
+  prompts name every door, and kittygen gains File > New and a doors
+  editor polish.
+
 - **kittygen shows and edits a protected key's Windows Hello doors**:
   remove a machine's entry, add this computer.
 

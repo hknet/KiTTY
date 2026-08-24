@@ -57,6 +57,15 @@ char *kageant_hello_translate(const char *keypath, const char *typed,
  * empty srcpass the call is refused (it would protect nothing). On success printed_out (caller
  * burnstr) is the secret's printed form - show it ONCE. err_out (caller
  * sfree) explains a failure. Returns a KAGEANT_HELLO_* code. */
+/* As kageant_hello_protect, plus the sidecar-bound choice: with
+ * sidebound != 0 the printout is a recovery CODE (opens the key only
+ * together with the .hello file, in KiTTY tools) - the file's literal
+ * passphrase is then written nowhere. */
+int kageant_hello_protect_ex(HWND owner, const char *srcpath,
+                             const char *srcpass, const char *recovery_pass,
+                             const char *destpath, int sidebound,
+                             char **printed_out, char **err_out);
+
 int kageant_hello_protect(HWND owner, const char *srcpath,
                           const char *srcpass, const char *recovery_pass,
                           const char *destpath, char **printed_out,

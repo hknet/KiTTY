@@ -326,7 +326,7 @@ END
 
 /* KiTTY: protect a key with Windows Hello - writes a protected COPY beside
  * the original and its .hello sidecar; the original is never touched. */
-IDD_HELLOPROTECT DIALOG DISCARDABLE 0, 0, 380, 300
+IDD_HELLOPROTECT DIALOG DISCARDABLE 0, 0, 380, 326
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "kageant - protect a key with Windows Hello"
 FONT 8, "MS Shell Dlg"
@@ -348,10 +348,14 @@ BEGIN
         IDC_HP_HELLOONLY, 72, 112, 290, 10
     AUTOCHECKBOX "&Replace this key's startup entry with the protected copy",
         IDC_HP_REPLACE, 72, 126, 290, 10
-    LTEXT "", IDC_HP_WARN, 10, 142, 360, 130
-    PUSHBUTTON "&Open folder", IDC_HP_OPENFOLDER, 10, 278, 64, 14
-    DEFPUSHBUTTON "&Protect", IDOK, 256, 278, 54, 14
-    PUSHBUTTON "&Cancel", IDCANCEL, 316, 278, 54, 14
+    AUTOCHECKBOX "Printout is a recover&y code bound to the .hello file (not",
+        IDC_HP_SIDEBOUND, 72, 140, 290, 10
+    LTEXT "the key's passphrase - it opens nothing without the file)",
+        -1, 84, 152, 278, 9
+    LTEXT "", IDC_HP_WARN, 10, 168, 360, 130
+    PUSHBUTTON "&Open folder", IDC_HP_OPENFOLDER, 10, 304, 64, 14
+    DEFPUSHBUTTON "&Protect", IDOK, 256, 304, 54, 14
+    PUSHBUTTON "&Cancel", IDCANCEL, 316, 304, 54, 14
 END
 
 /* KiTTY: the printed secret of a freshly protected key - shown ONCE. */
