@@ -175,6 +175,10 @@ installed_program(puttytel)
 
 add_executable(puttygen
   puttygen.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: the .hello sidecar
+  ${CMAKE_SOURCE_DIR}/callback.c   # KiTTY: kitty_hello.c's nested pump
+  handle-wait.c                    # KiTTY: ditto
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
   ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c    # KiTTY: shared (portable)/(RESTRICTED)/test-label title composer
   ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: shared CryptProtectMemory key holder (#4)
@@ -198,6 +202,10 @@ installed_program(puttygen)
 
 add_executable(kittygen_cli
   ${CMAKE_SOURCE_DIR}/cmdgen.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys (container; no UI used here)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: the .hello sidecar writer
+  ${CMAKE_SOURCE_DIR}/callback.c   # KiTTY: kitty_hello.c's nested pump (unused here, must link)
+  handle-wait.c                    # KiTTY: ditto
   ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: shared CryptProtectMemory key holder (#4)
   ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
   noise.c

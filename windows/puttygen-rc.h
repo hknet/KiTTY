@@ -15,3 +15,9 @@
 #define IDC_ARGON2_TIME                 114
 #define IDC_ARGON2_PARALLEL_STATIC      115
 #define IDC_ARGON2_PARALLEL             116
+
+/* KiTTY: the printed secret of a freshly protected key (born-protected) */
+#define IDD_KGHELLOSECRET                 120
+#define IDC_HS_NOTE                     121
+#define IDC_HS_TEXT                     122
+#define IDC_HS_COPY                     123

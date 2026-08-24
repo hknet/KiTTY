@@ -54,6 +54,7 @@
 #define TID_TRAYCLICK 1
 #define TID_PASSPHRASE_CACHE 2   /* KiTTY: scrub cached passphrases (see WM_TIMER) */
 #define TID_KEY_LIFETIME 3       /* KiTTY: expire ssh-add -t keys (see WM_TIMER) */
+#define TID_HELLO_CACHE  4       /* KiTTY: wipe the Hello KEK cache at TTL */
 #define TID_KL_RESUME    7       /* KiTTY: key-list Resume-button sync */
 
 #define APPNAME "kageant"
@@ -1370,10 +1371,16 @@ void win_add_keyfile(Filename *filename, bool encrypted)
             int r = kageant_hello_unlock(hp, hello_owner_window(), &pass,
                                          &owners);
             kitty_audit("hello-unlock", "path", hp, "result",
-                        r == KAGEANT_HELLO_OK ? "hello" :
+                        r == KAGEANT_HELLO_OK ?
+                            (kitty_hello_last_was_cached() ? "hello-cached"
+                                                           : "hello") :
                         r == KAGEANT_HELLO_DENIED ? "denied" :
                         r == KAGEANT_HELLO_NODOOR ? "no-door-here" : "failed",
                         "detail", kitty_hello_last_detail(), (const char *)NULL);
+            if (r == KAGEANT_HELLO_OK && !kitty_hello_last_was_cached() &&
+                traywindow && kageant_hello_ttl() > 0)
+                SetTimer(traywindow, TID_HELLO_CACHE,
+                         (kageant_hello_ttl() + 2) * 1000, NULL);
             if (r == KAGEANT_HELLO_OK) {
                 sfree(err);
                 ret = pageant_add_keyfile(filename, pass, &err, false);
@@ -1539,6 +1546,7 @@ static void prompt_add_keyfile(bool encrypted)
         keypath, true, FILTER_KEY_FILES);
 
     if (rmf) {
+        kitty_hello_batch_begin();   /* one Hello gesture covers the batch */
         for (size_t i = 0; i < rmf->nfilenames; i++) {
             hello_add_offer_armed = true;   /* the user's own add */
             win_add_keyfile(rmf->filenames[i], encrypted);
@@ -1549,6 +1557,7 @@ static void prompt_add_keyfile(bool encrypted)
                         "result", "done", "reason", "gui",
                         (const char *)NULL);
         }
+        kitty_hello_batch_end();
         request_multi_file_free(rmf);
 
         keylist_update();
@@ -3562,6 +3571,8 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             kageant_quiet_missing() ? BST_CHECKED : BST_UNCHECKED);
         SetDlgItemInt(hwnd, IDC_SET_TTL, kageant_passphrase_ttl(), FALSE);
         SendDlgItemMessage(hwnd, IDC_SET_TTL, EM_SETLIMITTEXT, 3, 0);
+        SetDlgItemInt(hwnd, IDC_SET_HELLOTTL, kageant_hello_ttl(), FALSE);
+        SendDlgItemMessage(hwnd, IDC_SET_HELLOTTL, EM_SETLIMITTEXT, 3, 0);
         /* Hello gating: greyed (and shown unticked) when Windows Hello has
          * no credential to check against - the availability probe is the
          * system's own answer. A remembered "yes" is preserved in the
@@ -3630,6 +3641,12 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 UINT ttl = GetDlgItemInt(hwnd, IDC_SET_TTL, &ok, FALSE);
                 if (ok)
                     kageant_passphrase_ttl_set((int)ttl);
+                ok = FALSE;
+                ttl = GetDlgItemInt(hwnd, IDC_SET_HELLOTTL, &ok, FALSE);
+                if (ok) {
+                    kageant_hello_ttl_set((int)ttl);
+                    kitty_hello_cache_ttl_set(kageant_hello_ttl());
+                }
             }
             /* KiTTY: IPC access control + notice timeout work in either store,
              * so they are always applied (not gated on a kitty.ini). */
@@ -4065,6 +4082,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             return 0;
         }
         UINT nfiles = DragQueryFile(drop, 0xFFFFFFFF, NULL, 0);
+        kitty_hello_batch_begin();   /* one Hello gesture covers the batch */
         for (UINT i = 0; i < nfiles; i++) {
             UINT len = DragQueryFile(drop, i, NULL, 0);
             char *path = snewn((size_t)len + 2, char);
@@ -4076,6 +4094,8 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 hello_add_offer_armed = false;
                 filename_free(fn);
             }
+            if (i == nfiles - 1)
+                kitty_hello_batch_end();
             sfree(path);
         }
         DragFinish(drop);
@@ -5109,10 +5129,16 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                                         &pass, &owners)
                  : KAGEANT_HELLO_ERROR;
         kitty_audit("hello-unlock", "path", path ? path : "", "result",
-                    r == KAGEANT_HELLO_OK ? "hello" :
+                    r == KAGEANT_HELLO_OK ?
+                        (kitty_hello_last_was_cached() ? "hello-cached"
+                                                       : "hello") :
                     r == KAGEANT_HELLO_DENIED ? "denied" :
                     r == KAGEANT_HELLO_NODOOR ? "no-door-here" : "failed",
                     "detail", kitty_hello_last_detail(), (const char *)NULL);
+        if (r == KAGEANT_HELLO_OK && !kitty_hello_last_was_cached() &&
+            traywindow && kageant_hello_ttl() > 0)
+            SetTimer(traywindow, TID_HELLO_CACHE,
+                     (kageant_hello_ttl() + 2) * 1000, NULL);
         if (r == KAGEANT_HELLO_OK) {
             pageant_passphrase_request_success(dlgid, ptrlen_from_asciz(pass));
             burnstr(pass);
@@ -5216,6 +5242,13 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
         if (wParam == TID_PASSPHRASE_CACHE) {
             KillTimer(hwnd, TID_PASSPHRASE_CACHE);
             pageant_forget_passphrases();
+        }
+        /* KiTTY: the Hello KEK cache expires lazily on use; this timer is
+         * the hygiene half - the KEK must not sit in memory past its TTL
+         * just because nothing asked again. */
+        if (wParam == TID_HELLO_CACHE) {
+            KillTimer(hwnd, TID_HELLO_CACHE);
+            kitty_hello_cache_wipe();
         }
         /* KiTTY: remove any ssh-add -t keys whose lifetime has run out. */
         if (wParam == TID_KEY_LIFETIME) {
@@ -5964,6 +5997,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kitty_audit("agent", "result", "start", (const char *)NULL);
 
         kageant_random_hook = kageant_hello_random;   /* KiTTY: the OS CSPRNG, for writing protected PPKs */
+        kitty_hello_cache_ttl_set(kageant_hello_ttl());  /* KiTTY: KEK cache */
         kageant_confirm_hook = kageant_do_confirm;
         kageant_comment_confirm_hook = kageant_comment_wants_confirm;
         kageant_mutation_notice_hook = kageant_do_mutation_notice;

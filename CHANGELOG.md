@@ -9,6 +9,15 @@ see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- **kittygen can generate keys born Windows Hello protected and open,
+  arm and disarm protected keys**; kittygen-cli `--hello-recovery`
+  covers scripts (recovery door only, printed secret on stdout once).
+
+- **One Windows Hello gesture unlocks a whole batch of protected
+  keys**, and a configurable cache (agent settings, default 60 s)
+  covers quick successive unlocks; Hello prompts get a proper anchor
+  window where the app has none on screen.
+
 - **kageant can protect keys with Windows Hello.** A protected copy of
   the key opens via Hello on this machine, via a recovery passphrase
   anywhere, or via a printed secret that doubles as the key's passphrase

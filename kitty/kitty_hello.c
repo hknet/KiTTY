@@ -1414,10 +1414,306 @@ static bool khw_run_on_thread(void (*fn)(void *), void *arg, HWND caller)
     return true;
 }
 
-static HWND khw_owner_for_call(HWND preferred)
+/*
+ * The window the platform's credential UI attaches to. The UI presents
+ * reliably only on a real, visible window holding the FOREGROUND -
+ * measured 2026-08-24: with an arbitrary foreground window of another
+ * process the NGC prompt sometimes never presents at all (camera on, no
+ * UI, until the 120 s timeout). So each call gets a small visible host
+ * window of our own, granted the foreground by briefly attaching to the
+ * current foreground thread's input queue (the consent host's proven
+ * trick). Destroyed when the call returns.
+ */
+/*
+ * The anchor is drawn as a current-Windows card: borderless, rounded
+ * (DWMWA_WINDOW_CORNER_PREFERENCE), acrylic behind it
+ * (DWMWA_SYSTEMBACKDROP_TYPE = transient), dark-mode aware, Segoe UI
+ * type with an accent-coloured Hello glyph and an animated status line.
+ * Everything newer than base Win32 is loaded dynamically and skipped
+ * where absent - a machine with Windows Hello has all of it anyway.
+ * Text is drawn with DrawThemeTextEx(DTT_COMPOSITED): plain GDI text
+ * would punch alpha holes into the DWM-composed surface.
+ */
+#include <dwmapi.h>
+#include <uxtheme.h>
+
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 20
+#endif
+#ifndef DWMWA_WINDOW_CORNER_PREFERENCE
+#define DWMWA_WINDOW_CORNER_PREFERENCE 33
+#endif
+#ifndef DWMWA_SYSTEMBACKDROP_TYPE
+#define DWMWA_SYSTEMBACKDROP_TYPE 38
+#endif
+#define KHW_DWMWCP_ROUND 2
+#define KHW_DWMSBT_TRANSIENT 3
+
+typedef HRESULT (WINAPI *pDwmSetAttr_t)(HWND, DWORD, LPCVOID, DWORD);
+typedef HRESULT (WINAPI *pDwmExtend_t)(HWND, const MARGINS *);
+typedef HRESULT (WINAPI *pDwmColor_t)(DWORD *, BOOL *);
+typedef HTHEME (WINAPI *pOpenTheme_t)(HWND, LPCWSTR);
+typedef HRESULT (WINAPI *pCloseTheme_t)(HTHEME);
+typedef HRESULT (WINAPI *pDrawThemeTextEx_t)(HTHEME, HDC, int, int, LPCWSTR,
+                                             int, DWORD, RECT *,
+                                             const DTTOPTS *);
+typedef UINT (WINAPI *pGetDpiForWindow_t)(HWND);
+
+static struct {
+    int loaded;
+    pDwmSetAttr_t SetAttr;
+    pDwmExtend_t Extend;
+    pDwmColor_t Color;
+    pOpenTheme_t OpenTheme;
+    pCloseTheme_t CloseTheme;
+    pDrawThemeTextEx_t DrawTextEx;
+    pGetDpiForWindow_t DpiForWindow;
+} khw_ui;
+
+static void khw_ui_load(void)
 {
-    HWND fg = GetForegroundWindow();
-    return fg ? fg : preferred;
+    if (khw_ui.loaded)
+        return;
+    khw_ui.loaded = 1;
+    {
+        HMODULE dwm = LoadLibraryW(L"dwmapi.dll");
+        if (dwm) {
+            khw_ui.SetAttr = (pDwmSetAttr_t)
+                GetProcAddress(dwm, "DwmSetWindowAttribute");
+            khw_ui.Extend = (pDwmExtend_t)
+                GetProcAddress(dwm, "DwmExtendFrameIntoClientArea");
+            khw_ui.Color = (pDwmColor_t)
+                GetProcAddress(dwm, "DwmGetColorizationColor");
+        }
+    }
+    {
+        HMODULE ux = LoadLibraryW(L"uxtheme.dll");
+        if (ux) {
+            khw_ui.OpenTheme = (pOpenTheme_t)
+                GetProcAddress(ux, "OpenThemeData");
+            khw_ui.CloseTheme = (pCloseTheme_t)
+                GetProcAddress(ux, "CloseThemeData");
+            khw_ui.DrawTextEx = (pDrawThemeTextEx_t)
+                GetProcAddress(ux, "DrawThemeTextEx");
+        }
+    }
+    khw_ui.DpiForWindow = (pGetDpiForWindow_t)
+        GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow");
+}
+
+/* Animated ellipsis state, one host at a time (khw_busy serialises). */
+static int khw_host_phase;
+
+static void khw_host_paint(HWND w)
+{
+    PAINTSTRUCT ps;
+    HDC dc = BeginPaint(w, &ps);
+    RECT rc;
+    GetClientRect(w, &rc);
+    {
+        UINT dpi = khw_ui.DpiForWindow ? khw_ui.DpiForWindow(w) : 96;
+        int px = (int)dpi;   /* scale helper: (v * px / 96) */
+        HDC mem = CreateCompatibleDC(dc);
+        HBITMAP bmp = CreateCompatibleBitmap(dc, rc.right, rc.bottom);
+        HBITMAP oldbmp = (HBITMAP)SelectObject(mem, bmp);
+        HTHEME th = khw_ui.OpenTheme ? khw_ui.OpenTheme(w, L"TEXTSTYLE")
+                                     : NULL;
+
+        /* Black = fully transparent to the acrylic backdrop. */
+        {
+            HBRUSH b = (HBRUSH)GetStockObject(BLACK_BRUSH);
+            FillRect(mem, &rc, b);
+        }
+
+        /* Accent-coloured Hello glyph (fingerprint, Segoe Fluent/MDL2). */
+        {
+            DWORD argb = 0;
+            BOOL opaque = FALSE;
+            COLORREF accent = RGB(96, 205, 255);
+            if (khw_ui.Color && SUCCEEDED(khw_ui.Color(&argb, &opaque)))
+                accent = RGB((argb >> 16) & 0xff, (argb >> 8) & 0xff,
+                             argb & 0xff);
+            if (th && khw_ui.DrawTextEx) {
+                static const WCHAR glyph[] = { 0xE928, 0 };
+                HFONT f = CreateFontW(-(36 * px / 96), 0, 0, 0, FW_NORMAL,
+                                      FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                                      OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                      CLEARTYPE_QUALITY, DEFAULT_PITCH,
+                                      L"Segoe Fluent Icons");
+                HFONT of = (HFONT)SelectObject(mem, f);
+                DTTOPTS o;
+                RECT gr = rc;
+                memset(&o, 0, sizeof(o));
+                o.dwSize = sizeof(o);
+                o.dwFlags = DTT_COMPOSITED | DTT_TEXTCOLOR;
+                o.crText = accent;
+                gr.left = 22 * px / 96;
+                gr.top = 20 * px / 96;
+                khw_ui.DrawTextEx(th, mem, 0, 0, glyph, -1,
+                                  DT_LEFT | DT_TOP | DT_SINGLELINE, &gr, &o);
+                SelectObject(mem, of);
+                DeleteObject(f);
+            }
+        }
+
+        /* Title + animated status line. */
+        if (th && khw_ui.DrawTextEx) {
+            static const WCHAR *dots[] = { L"", L".", L"..", L"..." };
+            WCHAR status[64];
+            DTTOPTS o;
+            RECT tr = rc;
+            HFONT f1 = CreateFontW(-(15 * px / 96), 0, 0, 0, FW_SEMIBOLD,
+                                   FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                                   OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                   CLEARTYPE_QUALITY, DEFAULT_PITCH,
+                                   L"Segoe UI Variable Display");
+            HFONT f2 = CreateFontW(-(12 * px / 96), 0, 0, 0, FW_NORMAL,
+                                   FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                                   OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                   CLEARTYPE_QUALITY, DEFAULT_PITCH,
+                                   L"Segoe UI");
+            HFONT of = (HFONT)SelectObject(mem, f1);
+            memset(&o, 0, sizeof(o));
+            o.dwSize = sizeof(o);
+            o.dwFlags = DTT_COMPOSITED | DTT_TEXTCOLOR;
+            o.crText = RGB(255, 255, 255);
+            tr.left = 76 * px / 96;
+            tr.top = 22 * px / 96;
+            khw_ui.DrawTextEx(th, mem, 0, 0, L"Windows Hello", -1,
+                              DT_LEFT | DT_TOP | DT_SINGLELINE, &tr, &o);
+            SelectObject(mem, f2);
+            o.crText = RGB(190, 190, 190);
+            tr.top = 48 * px / 96;
+            wsprintfW(status, L"Authentication processing%s",
+                      dots[khw_host_phase & 3]);
+            khw_ui.DrawTextEx(th, mem, 0, 0, status, -1,
+                              DT_LEFT | DT_TOP | DT_SINGLELINE, &tr, &o);
+            SelectObject(mem, of);
+            DeleteObject(f1);
+            DeleteObject(f2);
+        }
+
+        BitBlt(dc, 0, 0, rc.right, rc.bottom, mem, 0, 0, SRCCOPY);
+        if (th && khw_ui.CloseTheme)
+            khw_ui.CloseTheme(th);
+        SelectObject(mem, oldbmp);
+        DeleteObject(bmp);
+        DeleteDC(mem);
+    }
+    EndPaint(w, &ps);
+}
+
+static LRESULT CALLBACK khw_host_wndproc(HWND w, UINT msg, WPARAM wp,
+                                         LPARAM lp)
+{
+    switch (msg) {
+      case WM_PAINT:
+        khw_host_paint(w);
+        return 0;
+      case WM_TIMER:
+        khw_host_phase++;
+        InvalidateRect(w, NULL, FALSE);
+        return 0;
+      case WM_ERASEBKGND:
+        return 1;
+    }
+    return DefWindowProcW(w, msg, wp, lp);
+}
+
+static HWND khw_host_create(void)
+{
+    static ATOM cls = 0;
+    HWND w;
+    RECT rc;
+    UINT dpi;
+    int cx, cy;
+
+    khw_ui_load();
+    if (!cls) {
+        WNDCLASSW wc;
+        memset(&wc, 0, sizeof(wc));
+        wc.lpfnWndProc = khw_host_wndproc;
+        wc.hInstance = GetModuleHandleW(NULL);
+        wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+        wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+        wc.lpszClassName = L"KiTTYHelloKeyHost";
+        cls = RegisterClassW(&wc);
+        if (!cls)
+            return NULL;
+    }
+    SystemParametersInfoA(SPI_GETWORKAREA, 0, &rc, 0);
+    dpi = 96;
+    cx = 340;
+    cy = 96;
+    w = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"KiTTYHelloKeyHost",
+                        L"Windows Hello", WS_POPUP,
+                        (rc.left + rc.right - cx) / 2,
+                        (rc.top + rc.bottom - cy) / 2, cx, cy,
+                        NULL, NULL, GetModuleHandleW(NULL), NULL);
+    if (!w)
+        return NULL;
+    if (khw_ui.DpiForWindow) {
+        dpi = khw_ui.DpiForWindow(w);
+        if (dpi != 96) {
+            cx = cx * (int)dpi / 96;
+            cy = cy * (int)dpi / 96;
+            SetWindowPos(w, NULL, (rc.left + rc.right - cx) / 2,
+                         (rc.top + rc.bottom - cy) / 2, cx, cy,
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
+    if (khw_ui.SetAttr) {
+        BOOL dark = TRUE;
+        DWORD corner = KHW_DWMWCP_ROUND;
+        DWORD backdrop = KHW_DWMSBT_TRANSIENT;
+        khw_ui.SetAttr(w, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark,
+                       sizeof(dark));
+        khw_ui.SetAttr(w, DWMWA_WINDOW_CORNER_PREFERENCE, &corner,
+                       sizeof(corner));
+        khw_ui.SetAttr(w, DWMWA_SYSTEMBACKDROP_TYPE, &backdrop,
+                       sizeof(backdrop));
+    }
+    if (khw_ui.Extend) {
+        MARGINS m = { -1, -1, -1, -1 };
+        khw_ui.Extend(w, &m);
+    }
+    khw_host_phase = 0;
+    SetTimer(w, 1, 400, NULL);
+    ShowWindow(w, SW_SHOWNOACTIVATE);
+    {
+        HWND fg = GetForegroundWindow();
+        DWORD fgt = fg ? GetWindowThreadProcessId(fg, NULL) : 0;
+        DWORD us = GetCurrentThreadId();
+        BOOL attached = FALSE;
+        if (fgt && fgt != us)
+            attached = AttachThreadInput(fgt, us, TRUE);
+        SetForegroundWindow(w);
+        BringWindowToTop(w);
+        if (attached)
+            AttachThreadInput(fgt, us, FALSE);
+        UpdateWindow(w);
+    }
+    return w;
+}
+
+static void khw_host_destroy(HWND w)
+{
+    if (w && IsWindow(w))
+        DestroyWindow(w);
+}
+
+/* Is the caller's window good enough to anchor the credential UI - a
+ * visible window of THIS process? Then no extra window appears (the
+ * interactive flows: a dialog or main window is right there). The
+ * anchor host is only for the windowless moments - agent startup,
+ * tray-only unlocks - where it is also the visible sign of WHO is
+ * asking for the verification. */
+static bool khw_owner_usable(HWND w)
+{
+    DWORD pid = 0;
+    return w && IsWindow(w) && IsWindowVisible(w) &&
+           GetWindowThreadProcessId(w, &pid) &&
+           pid == GetCurrentProcessId();
 }
 
 struct khw_make_job {
@@ -1540,8 +1836,9 @@ int kitty_hello_prf_credential(HWND owner, int create_if_missing,
 
     {
         struct khw_make_job m;
+        HWND host = khw_owner_usable(owner) ? NULL : khw_host_create();
         memset(&m, 0, sizeof(m));
-        m.api = api; m.owner = khw_owner_for_call(owner);
+        m.api = api; m.owner = host ? host : owner;
         m.rp = &rp; m.user = &user; m.algs = &algs; m.cd = &cd;
         m.opts = &mkopts; m.hr = E_FAIL;
         if (!khw_run_on_thread(khw_make_job_run, &m, owner))
@@ -1549,6 +1846,7 @@ int kitty_hello_prf_credential(HWND owner, int create_if_missing,
         hr = m.hr;
         att = m.att;
         owner = m.owner;   /* for the detail line */
+        khw_host_destroy(host);
     }
     hello_trace("prf create: hr=0x%08lX", (unsigned long)hr);
     khw_set_detail("prf find=%d create hr=0x%08lX owner=%p", found,
@@ -1570,9 +1868,124 @@ int kitty_hello_prf_credential(HWND owner, int create_if_missing,
     return ret;
 }
 
-/* Derive the PRF KEK for the given credential - one Hello prompt.
- * KEK = SHA-256(hmac-secret output), mirroring the KCM side's
- * KEK = SHA-256(signature). */
+/*
+ * The KEK cache: the PRF KEK is the same for every key (one credential,
+ * fixed salt), so one Hello gesture can serve a whole BATCH of unlocks
+ * and, when the app allows a TTL, quick successive ones. The KEK is held
+ * CryptProtectMemory'd; expiry is checked lazily on use and the app is
+ * expected to call kitty_hello_cache_wipe() from a timer for hygiene.
+ * TTL 0 = batch-only (the cache dies when the last batch ends).
+ */
+typedef BOOL (WINAPI *pCryptMem_t)(LPVOID, DWORD, DWORD);
+static struct {
+    unsigned char kek[32];       /* protected in place while resident */
+    unsigned char credid_hash[32];
+    int valid;
+    int protected_ok;
+    int batch_depth;
+    int ttl_seconds;
+    ULONGLONG expiry;            /* GetTickCount64() deadline; 0 = none */
+    pCryptMem_t protect, unprotect;
+    int fns_loaded;
+} khw_kekcache;
+static int khw_last_cached = 0;
+
+static void khw_kekcache_fns(void)
+{
+    if (!khw_kekcache.fns_loaded) {
+        HMODULE m = LoadLibraryW(L"crypt32.dll");
+        khw_kekcache.fns_loaded = 1;
+        if (m) {
+            khw_kekcache.protect = (pCryptMem_t)
+                GetProcAddress(m, "CryptProtectMemory");
+            khw_kekcache.unprotect = (pCryptMem_t)
+                GetProcAddress(m, "CryptUnprotectMemory");
+        }
+    }
+}
+
+static void khw_credid_hash(const unsigned char *credid, size_t credidlen,
+                            unsigned char out[32])
+{
+    ssh_hash *h = ssh_hash_new(&ssh_sha256);
+    put_data(h, credid, credidlen);
+    ssh_hash_final(h, out);
+}
+
+void kitty_hello_cache_wipe(void)
+{
+    smemclr(khw_kekcache.kek, sizeof(khw_kekcache.kek));
+    smemclr(khw_kekcache.credid_hash, sizeof(khw_kekcache.credid_hash));
+    khw_kekcache.valid = 0;
+    khw_kekcache.expiry = 0;
+}
+
+void kitty_hello_cache_ttl_set(int seconds)
+{
+    if (seconds < 0)
+        seconds = 0;
+    khw_kekcache.ttl_seconds = seconds;
+}
+
+void kitty_hello_batch_begin(void)
+{
+    khw_kekcache.batch_depth++;
+}
+
+void kitty_hello_batch_end(void)
+{
+    if (khw_kekcache.batch_depth > 0)
+        khw_kekcache.batch_depth--;
+    if (khw_kekcache.batch_depth == 0 && khw_kekcache.ttl_seconds == 0)
+        kitty_hello_cache_wipe();
+}
+
+int kitty_hello_last_was_cached(void)
+{
+    return khw_last_cached;
+}
+
+static int khw_kekcache_get(const unsigned char *credid, size_t credidlen,
+                            unsigned char kek[32])
+{
+    unsigned char h[32];
+    if (!khw_kekcache.valid)
+        return 0;
+    if (khw_kekcache.batch_depth == 0 &&
+        (khw_kekcache.expiry == 0 ||
+         GetTickCount64() > khw_kekcache.expiry)) {
+        kitty_hello_cache_wipe();
+        return 0;
+    }
+    khw_credid_hash(credid, credidlen, h);
+    if (memcmp(h, khw_kekcache.credid_hash, 32) != 0)
+        return 0;
+    memcpy(kek, khw_kekcache.kek, 32);
+    if (khw_kekcache.protected_ok && khw_kekcache.unprotect)
+        khw_kekcache.unprotect(kek, 32, 0 /* SAME_PROCESS */);
+    return 1;
+}
+
+static void khw_kekcache_put(const unsigned char *credid, size_t credidlen,
+                             const unsigned char kek[32])
+{
+    kitty_hello_cache_wipe();
+    khw_kekcache_fns();
+    memcpy(khw_kekcache.kek, kek, 32);
+    khw_kekcache.protected_ok = 0;
+    if (khw_kekcache.protect &&
+        khw_kekcache.protect(khw_kekcache.kek, 32, 0 /* SAME_PROCESS */))
+        khw_kekcache.protected_ok = 1;
+    khw_credid_hash(credid, credidlen, khw_kekcache.credid_hash);
+    khw_kekcache.expiry = khw_kekcache.ttl_seconds > 0 ?
+        GetTickCount64() + (ULONGLONG)khw_kekcache.ttl_seconds * 1000 : 0;
+    khw_kekcache.valid = 1;
+}
+
+/* Derive the PRF KEK for the given credential - one Hello prompt, unless
+ * the cache still holds this credential's KEK (a batch in progress, or
+ * within the app's TTL). KEK = SHA-256(hmac-secret output), mirroring
+ * the KCM side's KEK = SHA-256(signature). */
 int kitty_hello_prf_kek(HWND owner, const unsigned char *credid,
                         size_t credidlen, unsigned char kek[32])
 {
@@ -1585,16 +1998,28 @@ int kitty_hello_prf_kek(HWND owner, const unsigned char *credid,
 
     if (!api)
         return KITTY_HELLO_UNAVAILABLE;
+    khw_last_cached = 0;
+    if (khw_kekcache_get(credid, credidlen, prf_out)) {
+        ssh_hash *h = ssh_hash_new(&ssh_sha256);
+        put_data(h, prf_out, sizeof(prf_out));
+        ssh_hash_final(h, kek);
+        smemclr(prf_out, sizeof(prf_out));
+        khw_last_cached = 1;
+        khw_set_detail("kek=cached");
+        return KITTY_HELLO_VERIFIED;
+    }
     {
         struct khw_assert_job a;
+        HWND host = khw_owner_usable(owner) ? NULL : khw_host_create();
         memset(&a, 0, sizeof(a));
-        a.api = api; a.owner = khw_owner_for_call(owner);
+        a.api = api; a.owner = host ? host : owner;
         a.credid = credid; a.credidlen = credidlen; a.out = prf_out;
         a.hr = E_FAIL;
         if (!khw_run_on_thread(khw_assert_job_run, &a, owner))
             a.hr = E_FAIL;
         hr = a.hr;
         owner = a.owner;   /* for the detail line */
+        khw_host_destroy(host);
     }
     hello_trace("prf kek: assert hr=0x%08lX", (unsigned long)hr);
     {
@@ -1605,6 +2030,7 @@ int kitty_hello_prf_kek(HWND owner, const unsigned char *credid,
     }
     if (SUCCEEDED(hr)) {
         ssh_hash *h = ssh_hash_new(&ssh_sha256);
+        khw_kekcache_put(credid, credidlen, prf_out);
         put_data(h, prf_out, sizeof(prf_out));
         ssh_hash_final(h, kek);
         smemclr(prf_out, sizeof(prf_out));

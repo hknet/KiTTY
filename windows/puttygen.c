@@ -9,6 +9,8 @@
 
 #include "putty.h"
 #include "ssh.h"
+#include "kitty/kitty_hello.h"       /* KiTTY: Hello-protected keys */
+#include "kitty/kitty_hello_keys.h"
 #include "sshkeygen.h"
 #include "mpint.h"                     /* mp_free, for burn_key_state */
 #include "crypto/ecc.h"                /* ecc_*_point_free, ditto */
@@ -662,6 +664,8 @@ struct MainDlgState {
     bool rsa_strong;
     FingerprintType fptype;
     char **commentptr;                 /* points to key.comment or ssh2key.comment */
+    char *loaded_path;   /* KiTTY: file the key was loaded from (Hello state) */
+    char *hello_saved_path;  /* KiTTY: protected copy written this session */
     ssh2_userkey ssh2key;
     union {
         RSAKey key;
@@ -954,7 +958,61 @@ enum {
      * renumbers every control after it, and external tooling (the QA
      * harness, for one) addresses controls by NUMBER. */
     IDC_ADDCONFIRM,
+    IDC_HELLOPROTECT,  /* KiTTY: born-protected keys (appended, same reason) */
 };
+
+/* KiTTY: the printed secret of a freshly protected key - shown ONCE. */
+static INT_PTR CALLBACK HelloSecretProc(HWND hwnd, UINT msg,
+                                        WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+      case WM_INITDIALOG: {
+        const char *printed = (const char *)lParam;
+        SetDlgItemText(hwnd, IDC_HS_NOTE,
+            "This is the protected key's passphrase. It is shown ONCE - "
+            "KiTTYgen does not keep it.\r\n\r\n"
+            "Print it or store it in a password manager. It opens the key "
+            "in any PuTTY-compatible tool, on any machine, with or without "
+            "Windows Hello, and it is the last resort if Windows Hello and "
+            "the recovery passphrase are both lost.");
+        SetDlgItemText(hwnd, IDC_HS_TEXT, printed);
+        return 1;
+      }
+      case WM_COMMAND:
+        switch (LOWORD(wParam)) {
+          case IDC_HS_COPY: {
+            char *tx = GetDlgItemText_alloc(hwnd, IDC_HS_TEXT);
+            if (tx && OpenClipboard(hwnd)) {
+                size_t len = strlen(tx) + 1;
+                HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, len);
+                EmptyClipboard();
+                if (h) {
+                    void *m = GlobalLock(h);
+                    if (m) {
+                        memcpy(m, tx, len);
+                        GlobalUnlock(h);
+                        SetClipboardData(CF_TEXT, h);
+                    }
+                }
+                CloseClipboard();
+            }
+            burnstr(tx);
+            return 0;
+          }
+          case IDOK:
+          case IDCANCEL:
+            SetDlgItemText(hwnd, IDC_HS_TEXT, "");
+            EndDialog(hwnd, 1);
+            return 0;
+        }
+        return 0;
+      case WM_CLOSE:
+        SetDlgItemText(hwnd, IDC_HS_TEXT, "");
+        EndDialog(hwnd, 1);
+        return 0;
+    }
+    return 0;
+}
 
 static void setupbigedit1(HWND hwnd, RSAKey *key)
 {
@@ -1022,7 +1080,7 @@ static const int gotkey_ids_unconditional[] = {
     IDC_FPSTATIC, IDC_FINGERPRINT,
     IDC_COMMENTSTATIC, IDC_COMMENTEDIT, IDC_ADDCONFIRM,
     IDC_PASSPHRASE1STATIC, IDC_PASSPHRASE1EDIT,
-    IDC_PASSPHRASE2STATIC, IDC_PASSPHRASE2EDIT, 0
+    IDC_PASSPHRASE2STATIC, IDC_PASSPHRASE2EDIT, IDC_HELLOPROTECT, 0
 };
 static const int gotkey_ids_conditional[] = {
     IDC_PKSTATIC, IDC_KEYDISPLAY,
@@ -1399,10 +1457,27 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
         needs_pass = ppk_encrypted_f(filename, &comment);
     else
         needs_pass = import_encrypted(filename, realtype, &comment);
+    /* KiTTY: a Hello-protected file (a .hello sidecar beside it) opens
+     * through Windows Hello first; DENIED or no door here falls to the
+     * typed prompt, where the recovery passphrase and the printed secret
+     * are translated into the file's real passphrase. */
+    bool hello_tried = false;
     do {
         burnstr(passphrase);
         passphrase = NULL;
 
+        if (needs_pass && !hello_tried && realtype == SSH_KEYTYPE_SSH2 &&
+            kageant_hello_has_sidecar(filename_to_str(filename))) {
+            char *hp = NULL;
+            hello_tried = true;
+            if (kageant_hello_unlock(filename_to_str(filename), hwnd,
+                                     &hp, NULL) == KAGEANT_HELLO_OK && hp) {
+                passphrase = hp;
+                goto have_passphrase;
+            }
+            burnstr(hp);
+            /* fall through to the typed prompt */
+        }
         if (needs_pass) {
             int dlgret;
             struct PassphraseProcStruct pps;
@@ -1417,8 +1492,18 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
                 break;
             }
             assert(passphrase != NULL);
+            if (realtype == SSH_KEYTYPE_SSH2 &&
+                kageant_hello_has_sidecar(filename_to_str(filename))) {
+                char *real = kageant_hello_translate(
+                    filename_to_str(filename), passphrase, NULL);
+                if (real) {
+                    burnstr(passphrase);
+                    passphrase = real;
+                }
+            }
         } else
             passphrase = dupstr("");
+      have_passphrase:;
         if (type == SSH_KEYTYPE_SSH1) {
             if (realtype == type)
                 ret = rsa1_load_f(filename, &newkey1, passphrase, &errmsg);
@@ -1451,6 +1536,18 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
          * key data.
          */
         update_ui_after_load(hwnd, state, passphrase, type, &newkey1, newkey2);
+
+        sfree(state->loaded_path);
+        state->loaded_path = dupstr(filename_to_str(filename));
+        /* KiTTY: reflect the loaded file's Hello protection in the checkbox,
+         * so ticking/unticking + Save is the arm/disarm gesture. Only where
+         * the box is live at all. */
+        if (IsWindowEnabled(GetDlgItem(hwnd, IDC_HELLOPROTECT)))
+            CheckDlgButton(hwnd, IDC_HELLOPROTECT,
+                           (realtype == SSH_KEYTYPE_SSH2 &&
+                            kageant_hello_has_sidecar(
+                                filename_to_str(filename))) ?
+                           BST_CHECKED : BST_UNCHECKED);
 
         /*
          * If the user has imported a foreign key
@@ -1812,6 +1909,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
         state->key_exists = false;
         state->ssh2key.key = NULL;     /* KiTTY: snew does not zero */
         state->protkey2 = NULL;        /* KiTTY: ditto */
+        state->loaded_path = NULL;     /* KiTTY: ditto */
+        state->hello_saved_path = NULL; /* KiTTY: ditto */
         SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR) state);
         /* KiTTY: carry the same (portable)/(RESTRICTED)/test-label markers as
          * the config box and kageant - this window holds a freshly generated
@@ -1957,6 +2056,14 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                            IDC_PASSPHRASE1EDIT, 82);
             staticpassedit(&cp, "C&onfirm passphrase:",
                            IDC_PASSPHRASE2STATIC, IDC_PASSPHRASE2EDIT, 82);
+            /* KiTTY: born-protected keys. The passphrase fields then hold
+             * the RECOVERY passphrase; empty = Windows Hello and the
+             * printed secret only, behind a warning at save time. */
+            checkbox(&cp, "Protect with Windows &Hello "
+                     "(passphrase = recovery passphrase)",
+                     IDC_HELLOPROTECT);
+            if (!kageant_hello_offerable())
+                EnableWindow(GetDlgItem(hwnd, IDC_HELLOPROTECT), false);
             endbox(&cp);
             beginbox(&cp, "Actions", IDC_BOX_ACTIONS);
             staticbtn(&cp, "Generate a public/private key pair",
@@ -2381,13 +2488,32 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     break;
                 }
                 burnstr(passphrase2);
+                /* KiTTY: born-protected keys - the file's passphrase becomes
+                 * a random printed secret; what was typed above is the
+                 * recovery passphrase. PPK format only. */
+                bool hello = IsDlgButtonChecked(hwnd, IDC_HELLOPROTECT) ==
+                    BST_CHECKED;
+                if (hello && (type != realtype || !state->ssh2)) {
+                    MessageBox(hwnd, "Windows Hello protection needs the "
+                               "PuTTY PPK format (SSH-2). Save or export "
+                               "without it, or untick the box.",
+                               "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                    burnstr(passphrase);
+                    break;
+                }
                 if (!*passphrase) {
                     int ret;
                     ret = MessageBox(hwnd,
+                                     hello ?
+                                     "No recovery passphrase: if Windows "
+                                     "Hello on this computer is lost, ONLY "
+                                     "the printed secret opens this key. "
+                                     "Store the printout. Continue?" :
                                      "Are you sure you want to save this key\n"
                                      "without a passphrase to protect it?",
                                      "KiTTYgen Warning",
-                                     MB_YESNO | MB_ICONWARNING);
+                                     MB_YESNO | MB_ICONWARNING |
+                                     (hello ? MB_DEFBUTTON2 : 0));
                     if (ret != IDYES) {
                         burnstr(passphrase);
                         break;
@@ -2399,6 +2525,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                 if (fn) {
                     int ret;
                     char *err = NULL;
+                    char *hello_printed = NULL, *hello_container = NULL;
                     FILE *fp = f_open(fn, "r", false);
                     if (fp) {
                         char *buffer;
@@ -2409,6 +2536,40 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                                          MB_YESNO | MB_ICONWARNING);
                         sfree(buffer);
                         if (ret != IDYES) {
+                            burnstr(passphrase);
+                            filename_free(fn);
+                            break;
+                        }
+                    }
+
+                    /* KiTTY: the Hello wrap comes FIRST - a refused or
+                     * cancelled prompt must leave no file behind. */
+                    if (hello) {
+                        unsigned char secret[KITTY_HELLO_SECRET_LEN];
+                        int hret;
+                        if (!kitty_hello_new_secret(secret)) {
+                            MessageBox(hwnd, "The system random generator "
+                                       "failed.", "KiTTYgen Error",
+                                       MB_OK | MB_ICONERROR);
+                            burnstr(passphrase);
+                            filename_free(fn);
+                            break;
+                        }
+                        hello_printed = kitty_hello_secret_text(secret);
+                        hret = kitty_hello_wrap_auto(
+                            hwnd, secret, *passphrase ? passphrase : NULL,
+                            &hello_container, NULL);
+                        smemclr(secret, sizeof(secret));
+                        if (hret != KITTY_HELLO_VERIFIED || !hello_container) {
+                            MessageBox(hwnd,
+                                       hret == KITTY_HELLO_DENIED ?
+                                       "The Windows Hello prompt was "
+                                       "cancelled - the key was NOT saved." :
+                                       "Windows Hello protection failed - "
+                                       "the key was NOT saved.",
+                                       "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                            burnstr(hello_printed);
+                            burnstr(hello_container);
                             burnstr(passphrase);
                             filename_free(fn);
                             break;
@@ -2437,9 +2598,12 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                                     fn, type, &state->ssh2key,
                                     *passphrase ? passphrase : NULL);
                             else {
+                                const char *filepass = hello ? hello_printed :
+                                    (*passphrase ? passphrase : NULL);
                                 err = ppk_params_bad(&save_params,
-                                                     *passphrase != '\0',
-                                                     strlen(passphrase));
+                                                     filepass != NULL,
+                                                     filepass ?
+                                                         strlen(filepass) : 0);
                                 if (err) {
                                     char *newerr = dupcat(
                                         "PPK parameters invalid: ", err);
@@ -2448,8 +2612,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                                     ret = -1;
                                 } else {
                                     ret = ppk_save_f(
-                                        fn, &state->ssh2key,
-                                        *passphrase ? passphrase : NULL,
+                                        fn, &state->ssh2key, filepass,
                                         &save_params);
                                 }
                             }
@@ -2468,8 +2631,73 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         /* upstream's reason when there is one; our title */
                         MessageBox(hwnd, err ? err : "Unable to save key file",
                                    "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                    } else if (hello) {
+                        /* KiTTY: the sidecar is the protected file's doors -
+                         * no sidecar, no protected file. */
+                        if (!kageant_hello_write_sidecar(filename_to_str(fn),
+                                                         hello_container)) {
+                            DeleteFileA(filename_to_str(fn));
+                            MessageBox(hwnd, "Could not write the .hello "
+                                       "sidecar; the key file was removed.",
+                                       "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                        } else {
+                            sfree(state->hello_saved_path);
+                            state->hello_saved_path =
+                                dupstr(filename_to_str(fn));
+                            DialogBoxParam(hinst,
+                                           MAKEINTRESOURCE(IDD_KGHELLOSECRET),
+                                           hwnd, HelloSecretProc,
+                                           (LPARAM)hello_printed);
+                        }
+                    } else if (type == realtype &&
+                               kageant_hello_has_sidecar(
+                                   filename_to_str(fn))) {
+                        /* An UNPROTECTED save over a protected file: the old
+                         * sidecar would lie about the new file. */
+                        char *sc = kageant_hello_sidecar_path(
+                            filename_to_str(fn));
+                        DeleteFileA(sc);
+                        sfree(sc);
+                    }
+                    /* A disarmed save does NOT disarm the OTHER copies of
+                     * this key: the file it was loaded from, and a
+                     * protected copy written earlier in this session, both
+                     * keep their sidecars - and the agent keeps asking
+                     * Windows Hello for them. Surprising enough to say out
+                     * loud. */
+                    if (ret > 0 && !hello) {
+                        const char *others[2];
+                        int no = 0, oi;
+                        if (state->loaded_path &&
+                            stricmp(state->loaded_path,
+                                    filename_to_str(fn)) &&
+                            kageant_hello_has_sidecar(state->loaded_path))
+                            others[no++] = state->loaded_path;
+                        if (state->hello_saved_path &&
+                            stricmp(state->hello_saved_path,
+                                    filename_to_str(fn)) &&
+                            (!state->loaded_path ||
+                             stricmp(state->hello_saved_path,
+                                     state->loaded_path)) &&
+                            kageant_hello_has_sidecar(
+                                state->hello_saved_path))
+                            others[no++] = state->hello_saved_path;
+                        for (oi = 0; oi < no; oi++) {
+                            char *msg = dupprintf(
+                                "Note: this key is still Windows Hello "
+                                "protected at\n\n    %s\n\nThe agent keeps "
+                                "asking Windows Hello for that file (its "
+                                ".hello sidecar still exists). Delete it, "
+                                "or save over it without protection, to "
+                                "disarm it there too.", others[oi]);
+                            MessageBox(hwnd, msg, "KiTTYgen Notice",
+                                       MB_OK | MB_ICONINFORMATION);
+                            sfree(msg);
+                        }
                     }
                     sfree(err);
+                    burnstr(hello_printed);
+                    burnstr(hello_container);
                     filename_free(fn);
                 }
                 burnstr(passphrase);

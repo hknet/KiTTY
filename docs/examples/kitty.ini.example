@@ -1006,6 +1006,12 @@
 ; 0 = do not cache; capped at 300. Default 60.
 ;passphrasecacheseconds=60
 
+; hellocacheseconds: how long the Windows Hello key-unlock stays valid
+; (the derived wrapping key is kept encrypted in memory), so a batch of
+; protected keys and quick successive unlocks need ONE Hello gesture.
+; 0 = every unlock asks again; capped at 300. Default 60.
+;hellocacheseconds=60
+
 ; keylistgeometry / keylistcolumns: the key-list window's remembered
 ; position/size and column widths. kageant writes these itself when the
 ; window is moved, resized or closed - not knobs to edit by hand.

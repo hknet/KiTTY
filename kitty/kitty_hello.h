@@ -184,6 +184,19 @@ char *kitty_hello_owner_tag(void);
 /* A fresh 32-byte secret from the OS CSPRNG (1 = ok, 0 = failed). */
 int kitty_hello_new_secret(unsigned char secret[KITTY_HELLO_SECRET_LEN]);
 
+/* The KEK cache: ONE Hello gesture serves a whole batch of unlocks and,
+ * when the app sets a TTL (seconds; 0 = batch-only), quick successive
+ * ones. The app brackets batches (startup load, multi-key drops) with
+ * begin/end, sets the TTL from its settings, and should call wipe from
+ * a timer at expiry for hygiene (expiry is also checked lazily).
+ * last_was_cached says whether the latest PRF KEK came from the cache
+ * (for honest audit lines). */
+void kitty_hello_batch_begin(void);
+void kitty_hello_batch_end(void);
+void kitty_hello_cache_ttl_set(int seconds);
+void kitty_hello_cache_wipe(void);
+int kitty_hello_last_was_cached(void);
+
 /* Stage + HRESULT of the last PRF operation (find/create/assert), for the
  * apps' audit lines. No secrets. Static text, never NULL. */
 const char *kitty_hello_last_detail(void);

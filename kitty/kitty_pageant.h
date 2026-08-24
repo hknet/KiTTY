@@ -97,6 +97,8 @@ void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
 int  kageant_retry_keys_set(int mode);              /* 0/1/KAGEANT_RETRY_ANYDRIVE */
 int  kageant_unload_on_remove_set(int on);
 int  kageant_passphrase_ttl_set(int seconds);
+int  kageant_hello_ttl(void);      /* Hello KEK cache seconds; default 60 */
+int  kageant_hello_ttl_set(int seconds);
 void kageant_note_pending(const char *path, int encrypted, int slot);
 void kageant_forget_loaded_by_blob(ptrlen blob);   /* removed in View Keys */
 char *kageant_paths_of_blob(ptrlen blob);  /* every file it came from; free it */

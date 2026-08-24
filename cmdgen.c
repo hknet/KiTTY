@@ -15,6 +15,10 @@
 #include "ssh.h"
 #include "sshkeygen.h"
 #include "mpint.h"
+#ifdef _WINDOWS
+#include "kitty/kitty_hello.h"       /* KiTTY: Hello-protected keys */
+#include "kitty/kitty_hello_keys.h"
+#endif
 #include "kitty/kitty_protkey.h"   /* KiTTY (#4): shared protected-key core */
 
 
@@ -155,6 +159,11 @@ void help(void)
            "        specify file containing old key passphrase\n"
            "  --new-passphrase file\n"
            "        specify file containing new key passphrase\n"
+           "  --hello-recovery file\n"
+           "        save the key Hello-protected: its passphrase is a random\n"
+           "        printed secret (written to stdout ONCE), and the .hello\n"
+           "        sidecar carries a recovery door keyed on the passphrase\n"
+           "        in the given file\n"
            "  --random-device device\n"
            "        specify device to read entropy from (e.g. /dev/urandom)\n"
            "  --primes <type>      select prime-generation method:\n"
@@ -288,6 +297,10 @@ int main(int argc, char **argv)
     const PrimeGenerationPolicy *primegen = &primegen_probabilistic;
     bool strong_rsa = false;
     ppk_save_parameters params = ppk_save_default_parameters;
+    /* KiTTY: --hello-recovery <file>: save the key protected, with the
+     * RECOVERY door only (no Windows Hello prompt - the headless half of
+     * the feature). The printed secret goes to stdout ONCE. */
+    char *hello_recovery = NULL;
     FingerprintType fptype = SSH_FPTYPE_DEFAULT;
 
     enable_dit();
@@ -463,6 +476,18 @@ int main(int argc, char **argv)
                         }
                     } else if (!strcmp(opt, "-remove-certificate")) {
                         remove_cert = true;
+                    } else if (!strcmp(opt, "-hello-recovery")) {
+                        if (!val && argc > 1)
+                            --argc, val = *++argv;
+                        if (!val) {
+                            errs = true;
+                            fprintf_prog(stderr, "option `-%s'"
+                                    " expects an argument\n", opt);
+                        } else {
+                            hello_recovery = readpassphrase(val);
+                            if (!hello_recovery)
+                                errs = true;
+                        }
                     } else if (!strcmp(opt, "-reencrypt")) {
                         reencrypt = true;
                     } else if (!strcmp(opt, "-ppk-param") ||
@@ -1313,8 +1338,10 @@ int main(int argc, char **argv)
      * output, because that output format doesn't support encryption
      * in any case.
      */
-    if (!new_passphrase && (change_passphrase ||
-                            (keytype != NOKEYGEN && outtype != TEXT))) {
+    /* KiTTY: a Hello-protected save sets its own passphrase - never ask. */
+    if (!hello_recovery &&
+        !new_passphrase &&
+        (change_passphrase || (keytype != NOKEYGEN && outtype != TEXT))) {
         prompts_t *p = new_prompts();
         SeatPromptResult spr;
 
@@ -1412,10 +1439,65 @@ int main(int argc, char **argv)
                 RETURN(1);
             }
             assert(ssh2key);
-            ret = ppk_save_f(outfilename, ssh2key, new_passphrase, &params);
-            if (!ret) {
-                fprintf_prog(stderr, "unable to save SSH-2 private key\n");
-                RETURN(1);
+#ifdef _WINDOWS
+            if (hello_recovery) {
+                /* KiTTY: a protected key - the file's passphrase is a random
+                 * secret, and the sidecar beside it carries the RECOVERY
+                 * door. Windows Hello doors are added later, on a machine
+                 * that has Hello, by opening the key with this passphrase.
+                 * The printed secret goes to stdout ONCE: it is the file's
+                 * literal passphrase and nothing else stores it. */
+                unsigned char secret[KITTY_HELLO_SECRET_LEN];
+                char *printed, *container;
+                if (new_passphrase) {
+                    fprintf_prog(stderr, "a protected key sets its own "
+                                 "passphrase - do not give one\n");
+                    RETURN(1);
+                }
+                if (!*hello_recovery) {
+                    fprintf_prog(stderr, "the recovery passphrase must not "
+                                 "be empty\n");
+                    RETURN(1);
+                }
+                if (!kitty_hello_new_secret(secret)) {
+                    fprintf_prog(stderr, "the system random generator "
+                                 "failed\n");
+                    RETURN(1);
+                }
+                printed = kitty_hello_secret_text(secret);
+                container = kitty_hello_container_create(NULL, hello_recovery,
+                                                         secret);
+                smemclr(secret, sizeof(secret));
+                if (!printed || !container) {
+                    fprintf_prog(stderr, "could not wrap the key secret\n");
+                    RETURN(1);
+                }
+                ret = ppk_save_f(outfilename, ssh2key, printed, &params);
+                if (!ret) {
+                    fprintf_prog(stderr, "unable to save SSH-2 private "
+                                 "key\n");
+                    RETURN(1);
+                }
+                if (!kageant_hello_write_sidecar(
+                        filename_to_str(outfilename), container)) {
+                    remove(filename_to_str(outfilename));
+                    fprintf_prog(stderr, "unable to write the .hello "
+                                 "sidecar; the key file was removed\n");
+                    RETURN(1);
+                }
+                printf("%s\n", printed);
+                burnstr(printed);
+                burnstr(container);
+            } else
+#endif
+            {
+                ret = ppk_save_f(outfilename, ssh2key, new_passphrase,
+                                 &params);
+                if (!ret) {
+                    fprintf_prog(stderr, "unable to save SSH-2 private "
+                                 "key\n");
+                    RETURN(1);
+                }
             }
         }
         if (outfiletmp) {
@@ -1718,6 +1800,10 @@ int main(int argc, char **argv)
     if (new_passphrase) {
         smemclr(new_passphrase, strlen(new_passphrase));
         sfree(new_passphrase);
+    }
+    if (hello_recovery) {
+        smemclr(hello_recovery, strlen(hello_recovery));
+        sfree(hello_recovery);
     }
 
     if (ssh1key) {

@@ -1114,6 +1114,29 @@ int kageant_passphrase_ttl(void)
            kageant_clamp_ttl(reg_v) : 60;
 }
 
+/* Seconds the Windows Hello KEK cache stays valid after a gesture, so a
+ * batch of protected keys and quick successive unlocks need ONE face.
+ * Same range and default as the passphrase cache (Chromium's device
+ * reauth uses the same 60 s validity window). 0 = every unlock asks. */
+int kageant_hello_ttl(void)
+{
+    char buf[16];
+    int ini_v = -1, reg_v;
+    if (kitty_inilight_read("Agent", "hellocacheseconds",
+                            buf, sizeof(buf))) {
+        int v = atoi(buf);
+        if (v >= 0)
+            ini_v = kageant_clamp_ttl(v);
+    }
+    if (kitty_inilight_registry_authoritative())
+        return kageant_reg_read("HelloCacheSeconds", &reg_v) ?
+               kageant_clamp_ttl(reg_v) : (ini_v >= 0 ? ini_v : 60);
+    if (ini_v >= 0)
+        return ini_v;
+    return kageant_reg_read("HelloCacheSeconds", &reg_v) ?
+           kageant_clamp_ttl(reg_v) : 60;
+}
+
 /* Setters - write THROUGH to both stores so the value is consistent whichever
  * is authoritative and survives export/import. */
 int kageant_quiet_missing_set(int on)
@@ -1152,6 +1175,22 @@ int kageant_passphrase_ttl_set(int seconds)
                         KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
         DWORD v = (DWORD)seconds;
         RegSetValueExA(hk, "PassphraseCacheSeconds", 0, REG_DWORD,
+                       (const BYTE *)&v, sizeof(v));
+        RegCloseKey(hk);
+    }
+    return 1;
+}
+int kageant_hello_ttl_set(int seconds)
+{
+    char buf[16];
+    HKEY hk;
+    seconds = kageant_clamp_ttl(seconds);
+    snprintf(buf, sizeof(buf), "%d", seconds);
+    kitty_inilight_write("Agent", "hellocacheseconds", buf);
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        DWORD v = (DWORD)seconds;
+        RegSetValueExA(hk, "HelloCacheSeconds", 0, REG_DWORD,
                        (const BYTE *)&v, sizeof(v));
         RegCloseKey(hk);
     }
@@ -1895,12 +1934,14 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
             int j;
             before = g_nloaded;
             g_startup_loading = 1;             /* a failure now is a startup one */
+            kitty_hello_batch_begin();  /* one gesture covers the batch */
             /* Deferred where that is possible - see kageant_can_defer. An
              * SSH-1 key asked for deferred is refused outright, so this path
              * used to fail every SSH-1 key on every device arrival. */
             win_add_keyfile(fn, kageant_can_defer(loadpath) ?
                                 true : false);
             g_startup_loading = 0;
+            kitty_hello_batch_end();
             filename_free(fn);
 
             /*
@@ -3077,6 +3118,7 @@ void kageant_load_startup_keys(void)
         char key[32], val[MAX_PATH + 32], abspath[MAX_PATH + 1];
         int i, gap;
         g_startup_loading = 1;
+        kitty_hello_batch_begin();  /* one gesture covers the startup load */
         /* Tolerate gaps in the numbering: a hand-edit that deletes one
          * startupkeyN line must not truncate the rest of the list. Stop only
          * after a run of empty slots (matching the save-side clear scan). */
@@ -3152,6 +3194,7 @@ void kageant_load_startup_keys(void)
                 startup_unchecked++;   /* loaded with nothing to compare */
         }
         g_startup_loading = 0;
+        kitty_hello_batch_end();
         if (g_fp_adopted) {
             g_fp_adopted = 0;
             kageant_save_startup_keys();   /* now the list is complete */
@@ -3175,6 +3218,7 @@ void kageant_load_startup_keys(void)
                                  (BYTE *)buf, &sz) == ERROR_SUCCESS) {
                 buf[sz] = '\0';
                 g_startup_loading = 1;
+                kitty_hello_batch_begin();
                 for (char *p = buf; *p; p += strlen(p) + 1) {
                     int enc = 1;   /* legacy entries had no marker: deferred */
                     int conf = 0;
@@ -3239,6 +3283,7 @@ void kageant_load_startup_keys(void)
                         startup_unchecked++;
                 }
                 g_startup_loading = 0;
+                kitty_hello_batch_end();
                 if (g_fp_adopted) {
                     g_fp_adopted = 0;
                     kageant_save_startup_keys();

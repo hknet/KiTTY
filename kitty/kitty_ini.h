@@ -1025,6 +1025,12 @@ char default_init_file_content[] =
 ; 0 = do not cache; capped at 300. Default 60.\n\
 ;passphrasecacheseconds=60\n\
 \n\
+; hellocacheseconds: how long the Windows Hello key-unlock stays valid\n\
+; (the derived wrapping key is kept encrypted in memory), so a batch of\n\
+; protected keys and quick successive unlocks need ONE Hello gesture.\n\
+; 0 = every unlock asks again; capped at 300. Default 60.\n\
+;hellocacheseconds=60\n\
+\n\
 ; keylistgeometry / keylistcolumns: the key-list window's remembered\n\
 ; position/size and column widths. kageant writes these itself when the\n\
 ; window is moved, resized or closed - not knobs to edit by hand.\n\

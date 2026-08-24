@@ -49,6 +49,7 @@
 #define IDC_SET_AGENTLOGKB 315    /* rotate at (KB) */
 #define IDC_SET_AGENTLOGKEEP 316  /* rotated generations */
 #define IDC_SET_AGENTLOGDAYS 317  /* expunge after (days) */
+#define IDC_SET_HELLOTTL 318      /* Hello KEK cache seconds */
 
 /* KiTTY: the key-details dialog */
 #define IDC_KEYDETAIL_KEY 100
