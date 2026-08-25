@@ -23,6 +23,20 @@ Three checks, two of them fatal:
             tools/gen-kitty-ini-template.py, so the two agree by construction -
             this catches a sample that was never regenerated into the header.
 
+  5. FATAL  a NEW key that its section's row in KITTY-INI.md's "Sections at
+            a glance" table does not name. That table is what a reader scans
+            first, and it went stale silently: the [Agent] row still listed
+            the pre-Hello settings a release after hellocacheseconds shipped.
+  6. FATAL  a NEW key mentioned in NEITHER docs/KITTY-INI.md NOR FEATURES.md.
+            The per-key reference is the annotated example itself (that is
+            what KITTY-INI.md says it is), so this does not ask for a second
+            copy of it - only that a knob is described in prose SOMEWHERE.
+            0.85.1.3-beta shipped hellocacheseconds with neither.
+
+  Both are measured against tools/kitty-ini-doc-baseline.txt, the keys that
+  predate the checks. That file MAY ONLY SHRINK - a new key cannot be added to
+  it, and deleting a line is how a key stops being an exception.
+
   4. FATAL  an ini_params[] key whose value nothing outside its own plumbing
             ever reads - a knob that turns nothing. WEAK on purpose: it sees
             references, not reachability, so a flag read only from dead code
@@ -40,6 +54,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / "docs" / "examples" / "kitty.ini.example"
+GUIDE = ROOT / "docs" / "KITTY-INI.md"
+FEATURES = ROOT / "FEATURES.md"
+DOC_BASELINE = ROOT / "tools" / "kitty-ini-doc-baseline.txt"
 TEMPLATE = ROOT / "kitty" / "kitty_ini.h"
 # Every section kitty.ini has. It used to be four of these, which meant the
 # [Print], [Launcher] and [FontFallback] keys - 14 of them - were documented
@@ -237,7 +254,38 @@ def unread_knobs() -> list[tuple[str, str]]:
     return dead
 
 
+def doc_baseline() -> dict[str, set[tuple[str, str]]]:
+    """The keys each documentation check is allowed to skip, by check name."""
+    out: dict[str, set[tuple[str, str]]] = {"row": set(), "text": set()}
+    if not DOC_BASELINE.exists():
+        return out
+    for line in read_text(DOC_BASELINE).splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) == 3 and parts[0] in out:
+            out[parts[0]].add((parts[1], parts[2]))
+    return out
+
+
+def section_rows() -> dict[str, str]:
+    """The 'Sections at a glance' table: section -> the text of its row."""
+    rows: dict[str, str] = {}
+    for line in read_text(GUIDE).splitlines():
+        m = re.match(r"\|\s*`\[([A-Za-z]+)\]`\s*\|(.*)\|", line)
+        if m:
+            rows[m.group(1)] = m.group(2).lower()
+    return rows
+
+
+def prose_text() -> str:
+    """Everything a reader could learn a setting's meaning from, in prose."""
+    return (read_text(GUIDE) + "\n" + read_text(FEATURES)).lower()
+
+
 def main(verbose: bool = False) -> int:
+
     for path in (EXAMPLE, TEMPLATE):
         if not path.exists():
             print(f"missing {path}", file=sys.stderr)
@@ -289,8 +337,42 @@ def main(verbose: bool = False) -> int:
         for key, var in dead:
             print(f"  {key}  ->  {var}", file=sys.stderr)
 
+    # 5 + 6. documentation of the KEYS THEMSELVES. Only new keys are judged:
+    # everything already undocumented when the checks were added is listed in
+    # tools/kitty-ini-doc-baseline.txt, which may only shrink.
+    baseline = doc_baseline()
+    rows = section_rows()
+    prose = prose_text()
+
+    row_missing = sorted(
+        (s, k) for (s, k) in documented
+        if s in rows and k.lower() not in rows[s] and (s, k) not in baseline["row"])
+    if row_missing:
+        failed = True
+        print(f"{GUIDE.relative_to(ROOT)}: the 'Sections at a glance' row for "
+              f"these sections does not name {len(row_missing)} new key(s):",
+              file=sys.stderr)
+        for section, key in row_missing:
+            print(f"  [{section}] {key}", file=sys.stderr)
+        print("  -> name it in that row, or (only for a key that predates this "
+              "check) add it to tools/kitty-ini-doc-baseline.txt", file=sys.stderr)
+
+    text_missing = sorted(
+        (s, k) for (s, k) in documented
+        if k.lower() not in prose and (s, k) not in baseline["text"])
+    if text_missing:
+        failed = True
+        print(f"{len(text_missing)} new key(s) appear in NEITHER "
+              f"{GUIDE.relative_to(ROOT)} NOR {FEATURES.relative_to(ROOT)} - a "
+              f"knob nobody describes in prose:", file=sys.stderr)
+        for section, key in text_missing:
+            print(f"  [{section}] {key}", file=sys.stderr)
+        print("  -> describe it where it belongs (the guide for how the file "
+              "works, FEATURES.md for what the feature does)", file=sys.stderr)
+
     if failed:
         return 1
+
 
     print(f"OK: {EXAMPLE.relative_to(ROOT)} documents {len(documented)} options; "
           f"{TEMPLATE.relative_to(ROOT)} writes {len(template)}; "
