@@ -22,6 +22,8 @@
 
 #include "kitty_tools.h"     /* existfile/existdirectory, poss, set_env */
 #include "kitty_win.h"       /* OpenFileName */
+#include "kitty_hello_keys.h" /* kageant_hello_has_sidecar */
+#include "ssh.h"             /* the agent protocol, for the "is it loaded?" check */
 /*
  * KiTTY: log a command line that had a password built into it.
  *
@@ -71,6 +73,109 @@ static void debug_logevent_redacted(const char *what, const char *cmd,
 
 
 extern Conf *conf ;          /* the live session configuration (windows/window.c) */
+
+/*
+ * KiTTY: the key file to hand a transfer helper - or NULL.
+ *
+ * A Hello-protected key (a .hello sidecar beside the PPK) is withheld
+ * deliberately. Neither pscp/psftp nor WinSCP knows anything about the
+ * sidecar or its recovery doors, so all a -i / /privatekey= switch buys
+ * is a passphrase prompt that only the never-shown secret would answer -
+ * exactly the text that must not be typed into another program. kageant
+ * unlocks such a key once and serves it over the agent pipe, which every
+ * one of these helpers speaks, so withholding the path is what makes the
+ * transfer work rather than what stops it.
+ */
+/*
+ * Does the agent hold the key in this file? Compares PUBLIC halves, so
+ * it works on a protected key without opening anything: the public half
+ * of a PPK is plaintext even when the private half is encrypted.
+ *
+ * A "no" here is not an error - it is the one thing the user has to fix
+ * before a transfer helper can use a Hello-protected key, so it is worth
+ * saying out loud rather than letting pscp or WinSCP fail with a bare
+ * "server refused our key" that names no cause.
+ */
+static bool kx_agent_holds(const char *keypath)
+{
+    Filename *fn ;
+    strbuf *blob ;
+    char *algorithm = NULL, *comment = NULL ;
+    const char *error = NULL ;
+    bool loaded, found = false ;
+    void *resp = NULL ;
+    int resplen = 0 ;
+
+    if( !agent_exists() ) return false ;
+
+    fn = filename_from_str( keypath ) ;
+    blob = strbuf_new() ;
+    loaded = ppk_loadpub_f( fn, &algorithm, BinarySink_UPCAST(blob),
+                            &comment, &error ) ;
+    filename_free( fn ) ;
+    sfree( algorithm ) ; sfree( comment ) ;
+    if( !loaded ) { strbuf_free( blob ) ; return false ; }
+
+    /* agent_query with a NULL callback is the synchronous form (it reads
+     * the pipe itself and returns no pending query) - aqsync.c's wrapper
+     * would do the same, but it lives in a library kitty.exe does not
+     * link, and its assert would be a crash rather than a failed check. */
+    { strbuf *req = strbuf_new_for_agent_query() ;
+      put_byte( req, SSH2_AGENTC_REQUEST_IDENTITIES ) ;
+      if( agent_query( req, &resp, &resplen, NULL, 0 ) != NULL ) {
+          resp = NULL ; resplen = 0 ;   /* async: not what we asked for */
+      }
+      strbuf_free( req ) ; }
+
+    if( resp != NULL ) {
+        BinarySource src[1] ;
+        BinarySource_BARE_INIT( src, resp, resplen ) ;
+        get_uint32( src ) ;                    /* length field */
+        if( get_byte( src ) == SSH2_AGENT_IDENTITIES_ANSWER ) {
+            size_t nkeys = get_uint32( src ), i ;
+            for( i = 0 ; i < nkeys && !found ; i++ ) {
+                ptrlen b = get_string( src ) ;
+                get_string( src ) ;            /* comment */
+                if( get_err( src ) ) break ;
+                if( ptrlen_eq_ptrlen( b, ptrlen_from_strbuf( blob ) ) )
+                    found = true ;
+            }
+        }
+        sfree( resp ) ;
+    }
+    strbuf_free( blob ) ;
+    return found ;
+}
+
+/*
+ * The line to put in front of a transfer when the session's key is
+ * Hello-protected and the agent does not hold it - NULL when there is
+ * nothing to say. Caller sfrees.
+ */
+static char *kx_hello_agent_note(Conf *c)
+{
+    const char *path = filename_to_str( conf_get_filename( c, CONF_keyfile ) ) ;
+    if( path==NULL || strlen(path)==0 ) return NULL ;
+    if( !kageant_hello_has_sidecar( path ) ) return NULL ;
+    if( kx_agent_holds( path ) ) return NULL ;
+    return dupprintf(
+        "This session's key is protected by Windows Hello, and the agent "
+        "does not hold it.\r\n"
+        "A transfer client cannot open a protected key file itself. Load "
+        "the key in kageant (one Hello) and start the transfer again.\r\n"
+        "Key: %s\r\n\r\n", path ) ;
+}
+
+static const char *kx_helper_keyfile(Conf *c)
+{
+    const char *path = filename_to_str(conf_get_filename(c, CONF_keyfile)) ;
+    if( path==NULL || strlen(path)==0 ) return NULL ;
+    if( kageant_hello_has_sidecar(path) ) {
+        debug_logevent("transfer: key file is Hello-protected, left to the agent: %s", path) ;
+        return NULL ;
+    }
+    return path ;
+}
 
 /* Provided elsewhere in the KiTTY tree (not in a header). */
 char * kitty_current_dir() ;                            /* kitty.c */
@@ -625,8 +730,8 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	if( strlen( conf_get_str(conf,CONF_portknockingoptions)) > 0 ) {
 		bcat( buffer, BC, "-knock " ) ; qcat( buffer, BC, conf_get_str(conf,CONF_portknockingoptions) ) ; bcat( buffer, BC, " " ) ;
 	}
-	if( strlen( filename_to_str(conf_get_filename(conf, CONF_keyfile)) ) > 0 ) {
-		bcat( buffer, BC, "-i " ) ; qcat( buffer, BC, filename_to_str(conf_get_filename(conf, CONF_keyfile)) ) ; bcat( buffer, BC, " " ) ;
+	{ const char *kf = kx_helper_keyfile(conf) ;
+	  if( kf != NULL ) { bcat( buffer, BC, "-i " ) ; qcat( buffer, BC, kf ) ; bcat( buffer, BC, " " ) ; }
 	}
 
 	/* source path (single quoted argument) */
@@ -663,8 +768,11 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	/* Capture output + show it on failure, instead of flashing a console shut
 	 * (so e.g. a server's exit-127 "Cannot initialize SFTP" is readable). */
 	{ char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), "Upload of \"%s\"", filename ? filename : "file" ) ;
-	  char *intro = dupprintf( "Uploading  %s  ->  %s\r\n\r\n", filename ? filename : "file", tgt ) ;
-	  kitty_run_xfer( hwnd, buffer, whatbuf, intro ) ; sfree( intro ) ; }
+	  char *note = kx_hello_agent_note( conf ) ;
+	  char *intro = dupprintf( "%sUploading  %s  ->  %s\r\n\r\n",
+	                           note ? note : "", filename ? filename : "file", tgt ) ;
+	  kitty_run_xfer( hwnd, buffer, whatbuf, intro ) ;
+	  sfree( intro ) ; sfree( note ) ; }
 
 	//debug_log("%s\n",buffer);MessageBox( NULL, buffer, "Info",MB_OK );
 	
@@ -771,8 +879,8 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
     if( strlen( conf_get_str(conf,CONF_portknockingoptions)) > 0 ) {
         bcat( buffer, BC, "-knock " ) ; qcat( buffer, BC, conf_get_str(conf,CONF_portknockingoptions) ) ; bcat( buffer, BC, " " ) ;
     }
-    if( strlen( filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) > 0 ) {
-        bcat( buffer, BC, "-i " ) ; qcat( buffer, BC, filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ; bcat( buffer, BC, " " ) ;
+    { const char *kf = kx_helper_keyfile(conf) ;
+      if( kf != NULL ) { bcat( buffer, BC, "-i " ) ; qcat( buffer, BC, kf ) ; bcat( buffer, BC, " " ) ; }
     }
 
     /* remote source user@host:path (single quoted argument) */
@@ -807,7 +915,9 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
     if( debug_flag ) { debug_logevent( "Get on file: %s", buffer) ; }
     /* Capture output + show on failure (no vanishing console). */
     { char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), "Download of \"%s\"", filename ? filename : "file" ) ;
-      kitty_run_xfer( hwnd, buffer, whatbuf, NULL ) ; }   /* download: no target intro line */
+      char *note = kx_hello_agent_note( conf ) ;
+      kitty_run_xfer( hwnd, buffer, whatbuf, note ) ;    /* no target line, but say it if the key needs loading */
+      sfree( note ) ; }
 
     //debug_log("%s\n",buffer);//MessageBox( NULL, buffer, "Info",MB_OK );
 
@@ -880,8 +990,8 @@ void GetFile( HWND hwnd ) {
                     if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
                         bcat( buffer, sizeof(buffer), "-pw " ) ; qcat( buffer, sizeof(buffer), conf_get_str(conf,CONF_password) ) ; bcat( buffer, sizeof(buffer), " " ) ;
                     }
-                    if( strlen( filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) > 0 ) {
-                        bcat( buffer, sizeof(buffer), "-i " ) ; qcat( buffer, sizeof(buffer), filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) ; bcat( buffer, sizeof(buffer), " " ) ;
+                    { const char *kf = kx_helper_keyfile(conf) ;
+                      if( kf != NULL ) { bcat( buffer, sizeof(buffer), "-i " ) ; qcat( buffer, sizeof(buffer), kf ) ; bcat( buffer, sizeof(buffer), " " ) ; }
                     }
                     /* remote source user@host:path (single quoted argument) */
                     {
@@ -1155,12 +1265,14 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			bcat( cmd, sizeof(cmd), directory ) ;
 			if( directory[strlen(directory)-1]!='/' ) bcat( cmd, sizeof(cmd), "/" ) ;
 		}
-		if( strlen( filename_to_str(conf_get_filename(conf,CONF_keyfile)) ) > 0 ) {
-			if( GetShortPathName( filename_to_str(conf_get_filename(conf,CONF_keyfile)), shortpath, 4095 ) ) {
+		{ const char *kf = kx_helper_keyfile(conf) ;
+		  if( kf != NULL ) {
+			if( GetShortPathName( kf, shortpath, 4095 ) ) {
 				bcat( cmd, sizeof(cmd), " \"/privatekey=" ) ;
 				bcat( cmd, sizeof(cmd), shortpath ) ;
 				bcat( cmd, sizeof(cmd), "\"" ) ;
 			}
+		  }
 		}
 	} else {
 		snprintf( cmd, sizeof(cmd), "\"%s\" %s://", shortpath, proto ) ;
@@ -1300,6 +1412,17 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		bcat( cmd, sizeof(cmd), " Shell=" ) ; rawcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_pscpshell) ) ;
 	}
 	
+	/* WinSCP is a separate program with a window of its own, so there is
+	 * nowhere of ours to write a note into - ask before launching it. */
+	{ char *note = kx_hello_agent_note( conf ) ;
+	  if( note != NULL ) {
+		char *text = dupprintf( "%sStart WinSCP anyway?", note ) ;
+		int go = MessageBox( hwnd, text, "KiTTY - the key is not in the agent",
+		                     MB_OKCANCEL|MB_ICONWARNING ) ;
+		sfree( text ) ; sfree( note ) ;
+		if( go != IDOK ) { memset( cmd, 0, strlen(cmd) ) ; return ; }
+	  }
+	}
 	debug_logevent_redacted2( "Start WinSCP", cmd, pw_at, pw_len, proxy_pw_at, proxy_pw_len ) ;
 	RunCommand( hwnd, cmd ) ;
 	memset(cmd,0,strlen(cmd));

@@ -9,6 +9,13 @@ see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- **File transfers understand Hello-protected keys.** pscp, psftp and
+  WinSCP cannot open a protected key file - only the never-shown secret
+  would, and that is exactly what must not be typed into another program.
+  KiTTY no longer hands them the path; the agent serves such a key
+  instead. If the agent does not hold it yet, the transfer window says so
+  before the transfer runs, and the WinSCP hand-off asks first.
+
 - **A protected key's printout can be a recovery code bound to the
   .hello file** (KRC1-... format) instead of the key's passphrase;
   prompts name every door, and kittygen gains File > New and a doors
