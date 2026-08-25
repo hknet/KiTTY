@@ -71,10 +71,23 @@ void ctlposinit(struct ctlpos *cp, HWND hwnd,
     cp->width -= leftborder + rightborder;
 }
 
+/*
+ * KiTTY: while the panel cache builds a panel in the BACKGROUND, its controls
+ * must never be visible for even one dispatch. They used to be created visible
+ * and hidden immediately afterwards, which is invisible on screen (the dialog's
+ * redraw is off) but not to the mouse: Windows re-evaluates the cursor when a
+ * window appears under the pointer, so every warm-up tick flickered the arrow
+ * to an I-beam or a resize cursor wherever the pointer happened to rest.
+ * Created hidden instead; the show-time ShowWindow makes them visible.
+ */
+bool kitty_cfg_create_hidden = false;
+
 HWND doctl(struct ctlpos *cp, RECT r, const char *wclass, int wstyle,
            int exstyle, const char *wtext, int wid)
 {
     HWND ctl;
+    if (kitty_cfg_create_hidden)
+        wstyle &= ~WS_VISIBLE;
     /*
      * Note nonstandard use of RECT. This is deliberate: by
      * transforming the width and height directly we arrange to

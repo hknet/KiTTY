@@ -864,7 +864,14 @@ static bool kitty_cfg_warmup_step(PortableDialogStuff *pds)
     if (kitty_cfg_active_panel)
         kitty_cfg_panel_shortcuts(pds->dp, kitty_cfg_active_panel, false);
     {
-        struct kitty_cfg_panel *p = kitty_cfg_panel_create(pds, path);
+        /* Created hidden (see kitty_cfg_create_hidden in controls.c): a
+         * control that exists visible for even one dispatch re-points the
+         * mouse cursor if the pointer is over it. */
+        extern bool kitty_cfg_create_hidden;
+        struct kitty_cfg_panel *p;
+        kitty_cfg_create_hidden = true;
+        p = kitty_cfg_panel_create(pds, path);
+        kitty_cfg_create_hidden = false;
         kitty_cfg_panel_show(pds->dp, p, false);
     }
     if (kitty_cfg_active_panel)

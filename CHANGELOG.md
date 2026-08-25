@@ -82,6 +82,13 @@ see [FEATURES.md](FEATURES.md).
   re-adding the key would lose; an entry with a recorded fingerprint accepts
   only a file holding that key.
 
+### Fixed
+
+- **The configuration box no longer flickers the mouse cursor while it
+  opens.** Its background panel build created each control visible for an
+  instant before hiding it, and Windows re-points the cursor whenever a
+  window appears under the pointer.
+
 ## 0.85.1.2-beta — 2026-08-21
 
 ### New
