@@ -27,6 +27,7 @@ one is available.
   - [Command-line key generator (kittygen-cli)](#command-line-key-generator-kittygen-cli)
   - [SSH certificates (user and host)](#ssh-certificates-user-and-host)
   - [kageant — Windows OpenSSH agent integration](#kageant--windows-openssh-agent-integration)
+  - [Windows Hello protected keys](#windows-hello-protected-keys)
   - [kageant — load keys on startup](#kageant--load-keys-on-startup)
   - [kageant — reorder loaded keys](#kageant--reorder-loaded-keys)
   - [Port knocking](#port-knocking)
@@ -289,6 +290,50 @@ kageant (KiTTY's SSH agent) can act as the agent for the **Windows OpenSSH clien
 **How to enable:** right-click the kageant tray icon → **Register as Windows OpenSSH agent**. Untick to remove the managed block again.
 
 (no screenshot)
+
+### Windows Hello protected keys
+
+A private key can be protected by **Windows Hello** instead of a passphrase you
+type. Protection does not re-encrypt your key in place: KiTTY writes a
+*protected copy* whose real passphrase is a long random secret nobody ever
+types, and puts that secret in a small `.hello` file beside the key, wrapped so
+that only your Windows account on that machine can unwrap it. Unlocking is then
+a face, a fingerprint or the PIN.
+
+Every protected key also has a **recovery door**, and KiTTY refuses to create
+one without it — Hello is bound to this machine and this account, so a
+reinstall, a deleted passkey or another PC would otherwise mean the key is
+gone. The door is your choice at protect time: a **printed secret**, which *is*
+the key's passphrase and therefore opens the file in any PuTTY-compatible tool,
+or a **recovery code** that only works together with the `.hello` file, so a
+printout on its own is not a credential. Keep whichever you chose somewhere
+other than the machine holding the key, and copy the `.hello` file whenever you
+copy the key.
+
+Where it works: **kageant** unlocks protected keys when it loads them (one
+gesture covers a whole batch, and a short cache covers quick successive
+unlocks); **kittygen** generates keys born protected, arms or disarms an
+existing key, and lists and edits a key's doors; **kittygen-cli** covers scripts
+with `--hello-recovery`; **KiTTY itself** opens a protected key named in a
+session, showing a prompt card in front of the terminal that is asking, so with
+several windows open it is clear which one wants the authorization. Cancelling
+the gesture falls back to a typed prompt that also accepts the recovery
+passphrase, the recovery code or the printed secret.
+
+File transfers work through the **agent** rather than the file: pscp, psftp and
+WinSCP know nothing about the sidecar, so KiTTY does not hand them a path they
+cannot open — load the key in kageant once and they get it from there. If the
+agent does not hold it yet, the transfer window says so before the transfer
+runs, and the WinSCP hand-off asks first.
+
+**How to enable:** in **kageant**, right-click a loaded key → *Protect with
+Windows Hello…*; in **kittygen**, tick *Protect with Windows Hello* when
+generating, or use *Windows Hello doors…* on a key you already have. From
+**kitty.ini**: `[Agent] hellocacheseconds=` sets how long one gesture keeps
+covering further unlocks (default 60, `0` asks every time), and
+`[Agent] askconfirmation=hello` demands a Hello gesture for key-use
+confirmations rather than a click. Windows Hello must be set up in Windows; on
+a machine without it, protected keys open through their recovery door.
 
 ### kageant — load keys on startup
 
