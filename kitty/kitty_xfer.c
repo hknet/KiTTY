@@ -189,11 +189,14 @@ int SearchPSCP( void ) ;
  * command-injection class). A new console is created (pscp/plink are console
  * tools); `wait` blocks until exit (the old inline system() behaviour) or returns
  * immediately (the old "start" new-window behaviour). Returns 0 on success.
- * NOTE (staged follow-up): the callers still build the command line by unbounded
- * strcat of session fields and only wrap them in "..."; a field containing a
- * double-quote can still inject extra *arguments* (not shell commands), and an
- * over-long field can still overflow buffer[4096]. Bounding (strbuf) + argv
- * quoting is the next step; this change removes the shell/RCE exposure. */
+ * That staged follow-up is DONE, and this note is kept because it says what
+ * the three quoting layers below are for: bcat bounds every append (no
+ * overflow of buffer[4096]), qcat applies Win32 argv quoting to each single
+ * value (no injected extra arguments), rawcat applies WinSCP's rawsettings
+ * rule and urlcat percent-encodes URL userinfo. What is still appended RAW is
+ * deliberate and documented at each site: pscpoptions, winscpoptions and
+ * winscprawsettings are the user writing command line on purpose, and
+ * quoting them would break the feature. */
 static int kitty_run_noshell( char *cmdline, int wait ) {
 	STARTUPINFOA si ; PROCESS_INFORMATION pi ;
 	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;

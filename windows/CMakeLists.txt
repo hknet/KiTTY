@@ -108,6 +108,8 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_startup_shortcut.c  # KiTTY: Startup-folder shortcut (portable autostart)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: THE CryptProtectMemory key-blob wrapper - the agent core (pageant.c) uses this shared copy too now (a unix agent build would need this file added beside it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c    # KiTTY: Windows Hello presence check (confirm-on-use gating)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: Hello-protected keys (sidecar, protect/unlock/enrol)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_ui.c    # KiTTY: the shared printout window
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auditlog.c # KiTTY: the audit log's file sink
@@ -179,6 +181,8 @@ installed_program(puttytel)
 add_executable(puttygen
   puttygen.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: the .hello sidecar
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_ui.c    # KiTTY: the shared printout window
   ${CMAKE_SOURCE_DIR}/callback.c   # KiTTY: kitty_hello.c's nested pump
@@ -207,6 +211,8 @@ installed_program(puttygen)
 add_executable(kittygen_cli
   ${CMAKE_SOURCE_DIR}/cmdgen.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys (container; no UI used here)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: the .hello sidecar writer
   ${CMAKE_SOURCE_DIR}/callback.c   # KiTTY: kitty_hello.c's nested pump (unused here, must link)
   handle-wait.c                    # KiTTY: ditto
@@ -374,6 +380,8 @@ target_link_libraries(test_mpw_params
 add_executable(test_hello_container
   ${CMAKE_SOURCE_DIR}/test/test_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c
   ${CMAKE_SOURCE_DIR}/sshpubk.c)
 # KITTY_HELLO_DIAG unlocks the hands-on diagnostics (selftest, the
@@ -398,6 +406,8 @@ endif()
 add_executable(kitty
   window.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c     # KiTTY: sidecar + translate
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_terminal.c # KiTTY: the terminal's hook glue
   putty.c
@@ -509,6 +519,8 @@ set_target_properties(kitty PROPERTIES WIN32_EXECUTABLE ON)
 add_executable(kitty_portable
   window.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c     # KiTTY: sidecar + translate
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_terminal.c # KiTTY: the terminal's hook glue
   putty.c
@@ -679,6 +691,8 @@ endif()
 add_executable(test_hello_gui
   ${CMAKE_SOURCE_DIR}/test/test_hello_gui.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c
   ${CMAKE_SOURCE_DIR}/sshpubk.c
   test_hello_gui.rc)

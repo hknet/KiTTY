@@ -2623,6 +2623,31 @@ FontSpec *dlg_fontsel_get(dlgcontrol *ctrl, dlgparam *dp)
 }
 
 /*
+ * KiTTY: defer painting for ONE CONTROL, and refuse to do it to a window
+ * that owns itself.
+ *
+ * WM_SETREDRAW(FALSE) strips WS_VISIBLE from the window it is sent to. On a
+ * child control that is harmless - the parent still hit-tests the area and
+ * the control is not a mouse target in its own right. On a TOP-LEVEL window
+ * it is a trap: the window keeps its pixels but leaves hit-testing, so every
+ * click during the update falls THROUGH to whatever is behind, which then
+ * takes the foreground. That was hknet/KiTTY#38, and it cost a day to find,
+ * so the mistake is made unavailable rather than only documented: this
+ * refuses a window with no parent instead of quietly disabling the box.
+ */
+static void kitty_defer_child_paint(HWND child, bool defer)
+{
+    if (!child || !IsWindow(child))
+        return;
+    if (!(GetWindowLongPtr(child, GWL_STYLE) & WS_CHILD)) {
+        assert(false && "WM_SETREDRAW on a top-level window strips WS_VISIBLE "
+               "and stops it taking clicks - defer painting on the children");
+        return;
+    }
+    SendMessage(child, WM_SETREDRAW, defer ? false : true, 0);
+}
+
+/*
  * Bracketing a large set of updates in these two functions will
  * cause the front end (if possible) to delay updating the screen
  * until it's all complete, thus avoiding flicker.
@@ -2631,7 +2656,7 @@ void dlg_update_start(dlgcontrol *ctrl, dlgparam *dp)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     if (c && c->ctrl->type == CTRL_LISTBOX) {
-        SendDlgItemMessage(dp->hwnd, c->base_id+1, WM_SETREDRAW, false, 0);
+        kitty_defer_child_paint(GetDlgItem(dp->hwnd, c->base_id+1), true);
     }
 }
 
@@ -2640,7 +2665,7 @@ void dlg_update_done(dlgcontrol *ctrl, dlgparam *dp)
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     if (c && c->ctrl->type == CTRL_LISTBOX) {
         HWND hw = GetDlgItem(dp->hwnd, c->base_id+1);
-        SendMessage(hw, WM_SETREDRAW, true, 0);
+        kitty_defer_child_paint(hw, false);
         InvalidateRect(hw, NULL, true);
     }
 }

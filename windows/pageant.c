@@ -26,6 +26,7 @@
 #include "pageant-rc.h"
 #include "../kitty/kitty_pageant.h"  /* KiTTY: the kageant additions (split out of this file) */
 #include "../kitty/kitty_authenticode.h"  /* KiTTY: shared verify for New key */
+#include "../kitty/kitty_foreground.h"  /* KiTTY: one place for the foreground dance */
 #include "../kitty/kitty_title.h"     /* KiTTY: shared title-suffix composer */
 #include "../kitty/kitty_inilight.h"  /* KiTTY: portable-layout probe */
 #include "../kitty/kitty_protkey.h"   /* KiTTY: kitty_protkey_available (tray tip) */
@@ -352,20 +353,11 @@ static HWND nonmodal_passphrase_hwnd = NULL;
  */
 static void pageant_force_foreground(HWND hwnd)
 {
-    HWND fgwin = GetForegroundWindow();
-    DWORD fgthread = fgwin ? GetWindowThreadProcessId(fgwin, NULL) : 0;
-    DWORD mythread = GetCurrentThreadId();
-    bool attached = (fgthread && fgthread != mythread &&
-                     AttachThreadInput(mythread, fgthread, TRUE));
-    SetForegroundWindow(hwnd);
-    BringWindowToTop(hwnd);
-    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-    SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-    SetForegroundWindow(hwnd);
-    SetActiveWindow(hwnd);
+    /* The dance itself lives in kitty/kitty_foreground.c now - it was written
+     * out three times over. SetFocus stays here: this one wants the keyboard
+     * caret in the prompt as well as the window in front. */
+    kitty_force_foreground(hwnd);
     SetFocus(hwnd);
-    if (attached)
-        AttachThreadInput(mythread, fgthread, FALSE);
 }
 
 /*
