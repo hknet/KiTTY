@@ -878,9 +878,11 @@ static bool kitty_cfg_warmup_step(PortableDialogStuff *pds)
      * click goes straight THROUGH it to whatever is behind - which then
      * takes the foreground and the box appears to fall to the background by
      * itself. This ran on a 120 ms timer for the whole warm-up, leaving the
-     * box unclickable about a fifth of the first seconds: measured on
-     * 2026-08-25, OFF/ON pairs 10-40 ms apart, ~40 of them, one of which
-     * swallowed the click that made hknet/KiTTY#38.
+     * box unclickable for about 5% of the first seconds: measured on
+     * 2026-08-25 by polling the window style from another process, 32,105
+     * of 602,604 samples, in OFF/ON pairs 10-40 ms apart. Small, and it
+     * still swallowed the click that made hknet/KiTTY#38 - a fifth of the
+     * clicks in that window is not the same as a fifth of the time.
      *
      * It is not needed either: the panel is built with its controls hidden
      * (kitty_cfg_create_hidden), so this step paints nothing to suppress.
