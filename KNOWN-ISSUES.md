@@ -171,6 +171,28 @@ features are working and verified. Known limitations as of this release:
 
 ## Security
 
+- **A Windows Hello protected key can only be opened by Windows Hello - or
+  by its recovery door.** Protection puts the key's real passphrase in a
+  `.hello` file beside it, wrapped so that only this Windows account on this
+  machine can unwrap it. That is the point, and it is also the risk: a
+  reinstalled Windows, a deleted passkey or a different account cannot open
+  the key. Every protected key therefore has a second door, and KiTTY refuses
+  to create one without it - either the printed secret (which IS the key's
+  passphrase, so it opens the file in any PuTTY-compatible tool) or a recovery
+  code that only works together with the `.hello` file. Keep whichever you
+  chose somewhere other than the machine holding the key.
+- **The sidecar is part of the key.** Copying a protected `.ppk` without its
+  `.hello` file leaves a key nobody can open unless the printout is the
+  passphrase kind. Back them up together.
+- **Other programs cannot open a protected key file.** pscp, psftp and WinSCP
+  know nothing about the sidecar, so KiTTY does not hand them the path: load
+  the key in kageant once and they get it from the agent instead. A transfer
+  started without the key in the agent says so rather than failing obscurely.
+- **The Hello gesture is per unlock, with a short cache.** One gesture covers a
+  batch of keys loaded together, and the agent's cache (60 seconds by default,
+  `0` disables it) covers quick successive unlocks; after that the next unlock
+  asks again.
+
 - **The agent-identity check works only in signed builds.** Since 0.84.1.72 a
   KiTTY that is itself Authenticode-signed verifies which process answers its
   agent requests and warns when it is not our signed kageant. A locally built,
@@ -256,6 +278,17 @@ features are working and verified. Known limitations as of this release:
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.85.1.3
+
+- **Windows Hello protected keys are new in this release**, across kageant,
+  KiTTYgen, the terminal and the file-transfer hand-offs. What that means for
+  recovery and for other programs is under **Security** above; the short
+  version is that a protected key always has a second door, and the `.hello`
+  file belongs with the key.
+- **The configuration window dropping behind other windows is fixed**
+  (hknet/KiTTY#38). It could happen while clicking the session list in the
+  first seconds after the box opened.
 
 ## New in 0.85.1.0
 

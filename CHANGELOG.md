@@ -9,6 +9,14 @@ see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- **KiTTY itself opens a Windows Hello protected key.** A session whose
+  key file has a `.hello` sidecar now asks for the Hello gesture when the
+  server accepts the key - the card names the terminal that is asking, so
+  with several windows open it is clear which one wants the
+  authorization. Cancelling, or a machine without Hello, falls back to
+  the prompt, which accepts the recovery passphrase, the recovery code or
+  the printed secret.
+
 - **File transfers understand Hello-protected keys.** pscp, psftp and
   WinSCP cannot open a protected key file - only the never-shown secret
   would, and that is exactly what must not be typed into another program.

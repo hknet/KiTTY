@@ -59,6 +59,20 @@ add_library(guiterminal STATIC
   ldisc.c terminal/lineedit.c config.c dialog.c
   $<TARGET_OBJECTS:logging>)
 
+# KiTTY: the config box's activation trace (windows/dialog.c) - what named the
+# cause of hknet/KiTTY#38, a click falling through the box to the window
+# behind. Kept in the tree for the next window that loses its place, compiled
+# in only when asked for, so a released binary carries none of it. The define
+# belongs on THIS target: dialog.c is part of guiterminal, so setting it over
+# in windows/ reached nothing (found by a check that saw a "trace" build with
+# no trace in it).
+option(KITTY_CFGBOX_ACTIVATION_TRACE
+       "compile the config box's activation trace into the GUI targets" OFF)
+if(KITTY_CFGBOX_ACTIVATION_TRACE)
+  message(STATUS "KITTY_CFGBOX_ACTIVATION_TRACE on: set KITTY_CFGBOX_ACTIVATION_DEBUG=1 at run time to write %TEMP%/kitty_cfgbox_activation.log")
+  target_compile_definitions(guiterminal PRIVATE KITTY_CFGBOX_ACTIVATION_TRACE)
+endif()
+
 add_library(noterminal STATIC
   stubs/no-term.c ldisc.c)
 

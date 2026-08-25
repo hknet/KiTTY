@@ -940,9 +940,14 @@ static int kitty_cfgpos_dbg_enabled(void)
         cached = GetEnvironmentVariableA("KITTY_WINPOS_DEBUG", NULL, 0) ? 1 : 0;
     return cached;
 }
+#ifdef KITTY_CFGBOX_ACTIVATION_TRACE
 /*
- * Off by default; set KITTY_CFGBOX_ACTIVATION_DEBUG=1 to trace the config
- * box's ACTIVATION to %TEMP%\kitty_cfgbox_activation.log.
+ * NOT COMPILED INTO A RELEASE BUILD. Configure with
+ * -DKITTY_CFGBOX_ACTIVATION_TRACE=ON to include it, then set
+ * KITTY_CFGBOX_ACTIVATION_DEBUG=1 at run time to trace the config box's
+ * ACTIVATION to %TEMP%\kitty_cfgbox_activation.log. Two switches on
+ * purpose: the code stays in the tree for the next time a window loses its
+ * place, and a shipped binary carries none of it.
  *
  * Kept in the source deliberately. hknet/KiTTY#38 - the box dropping behind
  * whatever window was behind it - was invisible to every outside measurement
@@ -1025,6 +1030,9 @@ static void kitty_cfgact_dbg(HWND hwnd, WPARAM wParam, LPARAM lParam)
             gpid == GetCurrentProcessId() ? "  <-- ours" : "");
     fclose(fp);
 }
+#else
+#define kitty_cfgact_dbg(hwnd, wp, lp) ((void)0)
+#endif /* KITTY_CFGBOX_ACTIVATION_TRACE */
 
 static void kitty_cfgpos_dbg(const char *fmt, ...)
 {
