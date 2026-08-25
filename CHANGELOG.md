@@ -84,6 +84,13 @@ see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- **The configuration box no longer drops behind the window behind it.**
+  Clicking the session list in the first seconds could send the box to the
+  background: while its panel cache built itself, and around every category
+  switch, the box briefly stopped accepting mouse input at all, so the click
+  went through to whatever was underneath - which then came to the front.
+  (hknet/KiTTY#38)
+
 - **The configuration box no longer flickers the mouse cursor while it
   opens.** Its background panel build created each control visible for an
   instant before hiding it, and Windows re-points the cursor whenever a

@@ -732,8 +732,19 @@ static void kitty_cfg_panel_show(struct dlgparam *dp,
         struct winctrl *c = p->ctrls[i];
         for (int k = 0; k < c->num_ids; k++) {
             HWND item = GetDlgItem(dp->hwnd, c->base_id + k);
-            if (item)
-                ShowWindow(item, show ? SW_SHOW : SW_HIDE);
+            if (item) {
+                /* SetWindowPos(..., SWP_NOREDRAW), not ShowWindow: hiding or
+                 * showing a child invalidates the parent, and it was that
+                 * flicker the caller used to suppress by switching the whole
+                 * DIALOG's redraw off - which cost the box its WS_VISIBLE
+                 * style and, with it, every click that landed during the
+                 * switch (hknet/KiTTY#38). Painting is deferred instead, and
+                 * the caller repaints the panel area once at the end. */
+                SetWindowPos(item, NULL, 0, 0, 0, 0,
+                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                             SWP_NOACTIVATE | SWP_NOREDRAW |
+                             (show ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+            }
         }
         if (show)
             winctrl_add_shortcuts(dp, c);
@@ -860,7 +871,20 @@ static bool kitty_cfg_warmup_step(PortableDialogStuff *pds)
     if (!path)
         return false;
 
-    SendMessage(pds->dp->hwnd, WM_SETREDRAW, false, 0);
+    /*
+     * NO WM_SETREDRAW HERE, and it must stay that way: sent to a TOP-LEVEL
+     * window, WM_SETREDRAW(FALSE) strips WS_VISIBLE from it. The box keeps
+     * its pixels but drops out of hit-testing, so for those milliseconds a
+     * click goes straight THROUGH it to whatever is behind - which then
+     * takes the foreground and the box appears to fall to the background by
+     * itself. This ran on a 120 ms timer for the whole warm-up, leaving the
+     * box unclickable about a fifth of the first seconds: measured on
+     * 2026-08-25, OFF/ON pairs 10-40 ms apart, ~40 of them, one of which
+     * swallowed the click that made hknet/KiTTY#38.
+     *
+     * It is not needed either: the panel is built with its controls hidden
+     * (kitty_cfg_create_hidden), so this step paints nothing to suppress.
+     */
     if (kitty_cfg_active_panel)
         kitty_cfg_panel_shortcuts(pds->dp, kitty_cfg_active_panel, false);
     {
@@ -876,7 +900,6 @@ static bool kitty_cfg_warmup_step(PortableDialogStuff *pds)
     }
     if (kitty_cfg_active_panel)
         kitty_cfg_panel_shortcuts(pds->dp, kitty_cfg_active_panel, true);
-    SendMessage(pds->dp->hwnd, WM_SETREDRAW, true, 0);
     return true;
 }
 
@@ -917,6 +940,92 @@ static int kitty_cfgpos_dbg_enabled(void)
         cached = GetEnvironmentVariableA("KITTY_WINPOS_DEBUG", NULL, 0) ? 1 : 0;
     return cached;
 }
+/*
+ * Off by default; set KITTY_CFGBOX_ACTIVATION_DEBUG=1 to trace the config
+ * box's ACTIVATION to %TEMP%\kitty_cfgbox_activation.log.
+ *
+ * Kept in the source deliberately. hknet/KiTTY#38 - the box dropping behind
+ * whatever window was behind it - was invisible to every outside measurement
+ * and to reasoning alike; it was this trace that showed the box losing
+ * WS_VISIBLE and the click landing on the window underneath. If a window of ours ever seems to lose its place again, turn
+ * this on first: it names the window taking over, its process, where the
+ * cursor was, and what was under it.
+ */
+static int kitty_cfgact_dbg_enabled(void)
+{
+    static int cached = -1;
+    if (cached < 0)
+        cached = GetEnvironmentVariableA(
+            "KITTY_CFGBOX_ACTIVATION_DEBUG", NULL, 0) ? 1 : 0;
+    return cached;
+}
+
+static void kitty_cfgact_dbg(HWND hwnd, WPARAM wParam, LPARAM lParam)
+{
+    char path[MAX_PATH], oc[64] = "", ot[160] = "", fc[64] = "";
+    char gc[64] = "", gt[160] = "", uc[64] = "";
+    HWND other = (HWND)lParam, f, fg, under;
+    DWORD opid = 0, gpid = 0, upid = 0, n;
+    POINT cur = { 0, 0 };
+    RECT box = { 0, 0, 0, 0 };
+    SYSTEMTIME st;
+    FILE *fp;
+
+    if (!kitty_cfgact_dbg_enabled())
+        return;
+    n = GetTempPathA(sizeof(path), path);
+    if (!n || n >= sizeof(path) - 40)
+        return;
+    strcat(path, "kitty_cfgbox_activation.log");
+    fp = fopen(path, "a");
+    if (!fp)
+        return;
+
+    f = GetFocus();
+    if (f) GetClassNameA(f, fc, sizeof(fc));
+    if (other) {
+        GetClassNameA(other, oc, sizeof(oc));
+        GetWindowTextA(other, ot, sizeof(ot));
+        GetWindowThreadProcessId(other, &opid);
+    }
+    /* lParam is NULL whenever the window taking over belongs to another
+     * thread, which is every interesting case - so ask the system who holds
+     * the foreground, and what sits under the mouse. A cursor INSIDE our
+     * rectangle with someone else's window under it means the click fell
+     * through us, which is what #38 turned out to be. */
+    fg = GetForegroundWindow();
+    if (fg) {
+        GetClassNameA(fg, gc, sizeof(gc));
+        GetWindowTextA(fg, gt, sizeof(gt));
+        GetWindowThreadProcessId(fg, &gpid);
+    }
+    GetCursorPos(&cur);
+    GetWindowRect(hwnd, &box);
+    under = WindowFromPoint(cur);
+    if (under) {
+        GetClassNameA(under, uc, sizeof(uc));
+        GetWindowThreadProcessId(under, &upid);
+    }
+    GetLocalTime(&st);
+    fprintf(fp,
+            "%02d:%02d:%02d.%03d  %s  focus=%s(id=%d)  other=%s pid=%lu \"%s\"\n"
+            "                       cursor (%ld,%ld) %s the box; under it: "
+            "%s pid=%lu%s; WS_VISIBLE=%d\n"
+            "                       foreground now: %s pid=%lu \"%s\"%s\n",
+            st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
+            LOWORD(wParam) ? "ACTIVE  " : "INACTIVE",
+            fc, f ? GetDlgCtrlID(f) : -1, oc, (unsigned long)opid, ot,
+            cur.x, cur.y,
+            (cur.x >= box.left && cur.x < box.right &&
+             cur.y >= box.top && cur.y < box.bottom) ? "INSIDE" : "outside",
+            uc, (unsigned long)upid,
+            upid == GetCurrentProcessId() ? " (ours)" : "",
+            (GetWindowLong(hwnd, GWL_STYLE) & WS_VISIBLE) ? 1 : 0,
+            gc, (unsigned long)gpid, gt,
+            gpid == GetCurrentProcessId() ? "  <-- ours" : "");
+    fclose(fp);
+}
+
 static void kitty_cfgpos_dbg(const char *fmt, ...)
 {
     if (!kitty_cfgpos_dbg_enabled()) return;
@@ -1343,6 +1452,11 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         return 0;
       }
 
+      case WM_ACTIVATE:
+        /* Traced only with KITTY_CFGBOX_ACTIVATION_DEBUG set; see
+         * kitty_cfgact_dbg above for why this stayed in the source. */
+        kitty_cfgact_dbg(hwnd, wParam, lParam);
+        return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
       case WM_TIMER:
         if ((UINT_PTR)wParam == KITTY_PANEL_WARMUP_TIMER) {
             if (!kitty_cfg_warmup_step(pds))
@@ -1386,8 +1500,6 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
 
             i = TreeView_GetSelection(((LPNMHDR) lParam)->hwndFrom);
 
-            SendMessage (hwnd, WM_SETREDRAW, false, 0);
-
             item.hItem = i;
             item.pszText = buffer;
             item.cchTextMax = sizeof(buffer);
@@ -1404,7 +1516,6 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
 
                 if (newpanel && newpanel == kitty_cfg_active_panel) {
                     /* Re-selecting the visible panel: nothing to swap. */
-                    SendMessage (hwnd, WM_SETREDRAW, true, 0);
                     SetFocus(((LPNMHDR) lParam)->hwndFrom);
                     return 0;
                 }
@@ -1427,8 +1538,6 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 kitty_cfg_winctrls_refresh(pds->dp,
                                            &pds->ctrltrees[TREE_BASE]);
             }
-
-            SendMessage (hwnd, WM_SETREDRAW, true, 0);
 
             /*
              * Repaint the PANEL, not the whole dialog.
@@ -1467,8 +1576,8 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                     /*
                      * The TREE still has to be repainted, without the erase.
                      *
-                     * Its selection has just moved, and WM_SETREDRAW was off
-                     * while that happened, so the invalidation the control would
+                     * Its selection has just moved while the panel swap
+                     * deferred painting, so the invalidation the control would
                      * normally do for itself was swallowed. Leaving it out left
                      * the old row highlighted as well as the new one - two
                      * selected-looking rows at once. It needs no background
