@@ -19,4 +19,11 @@
  */
 #define KITTY_DEFAULT_SESSION "Default Settings"
 
+/*
+ * How many per-session global hotkeys the launcher can hold at once (the size
+ * of its RegisterHotKey id range). The config box refuses to enable a hotkey
+ * beyond this count, so both sides must share this single definition.
+ */
+#define KITTY_LAUNCHER_HOTKEY_MAX 32
+
 #endif /* KITTY_DEFS_H */

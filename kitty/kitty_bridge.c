@@ -14,7 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "putty.h"
+#include "storage.h"       /* read_setting_s/i: per-session hotkey scan */
 #include "kitty.h"
+#include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION, KITTY_LAUNCHER_HOTKEY_MAX */
 #include "kitty_commun.h"  /* GetCryptSaltFlag, MASKPASS */
 #ifdef MOD_PROXY
 #include "kitty_proxy.h"   /* LoadProxyInfo, GetProxySelectionFlag */
@@ -738,6 +740,173 @@ static int kitty_session_exists(const char *name) {
     return found;
 }
 
+/* ---------------------------------------------------------------------------
+ * Launcher global-hotkey helpers.
+ *
+ * A per-session hotkey is a machine-wide claim, not an ordinary session
+ * setting: RegisterHotKey hands each (modifiers, key) pair to exactly one
+ * window, so two sessions carrying the same spec means one of them silently
+ * never fires. These helpers give every producer of that state (config-box
+ * save, session import, the launcher's registration loop) one shared parser
+ * and one shared way to ask "who else holds this combination?".
+ * ------------------------------------------------------------------------- */
+
+static char *hotkey_trim(char *s) {
+    char *e;
+    while (*s == ' ' || *s == '\t') s++;
+    e = s + strlen(s);
+    while (e > s && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r' || e[-1] == '\n'))
+        *--e = '\0';
+    return s;
+}
+
+/* Parse a spec like "Ctrl+Alt+K" into RegisterHotKey (modifiers, vk).
+ * Non-destructive (works on a copy). Usable specs need at least one modifier
+ * plus A-Z, 0-9 or F1-F24; returns nonzero only for those, so comparing the
+ * parsed pair - never the string - is what detects a conflict ("ctrl+alt+k"
+ * and "Ctrl+Alt+K" are the same claim). */
+int kitty_parse_hotkey_spec(const char *spec, unsigned int *mods, unsigned int *vk)
+{
+    char work[256], *p, *tok, *keytok = NULL;
+    *mods = 0; *vk = 0;
+    if (!spec) return 0;
+    strncpy(work, spec, sizeof(work)-1); work[sizeof(work)-1] = '\0';
+    p = hotkey_trim(work);
+    if (!*p) return 0;
+    for (tok = strtok(p, "+"); tok != NULL; tok = strtok(NULL, "+")) {
+        tok = hotkey_trim(tok);
+        if (!stricmp(tok, "Ctrl") || !stricmp(tok, "Control")) *mods |= MOD_CONTROL;
+        else if (!stricmp(tok, "Shift")) *mods |= MOD_SHIFT;
+        else if (!stricmp(tok, "Alt")) *mods |= MOD_ALT;
+        else if (!stricmp(tok, "Win") || !stricmp(tok, "Windows")) *mods |= MOD_WIN;
+        else keytok = tok;
+    }
+    if (keytok == NULL) return 0;
+    if (strlen(keytok) == 1) {
+        char c = keytok[0];
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) *vk = (unsigned int)c;
+    } else if ((keytok[0] == 'F' || keytok[0] == 'f') &&
+               keytok[1] >= '1' && keytok[1] <= '9') {
+        int n = atoi(keytok + 1);
+        if (n >= 1 && n <= 24) *vk = VK_F1 + n - 1;
+    }
+    return (*mods != 0 && *vk != 0);
+}
+
+/* One saved session's enabled hotkey, read straight from the store (two keys,
+ * not a full conf load - the scans below visit every session). Fills
+ * (mods,vk) and returns nonzero only when the hotkey is enabled AND parses. */
+static int hotkey_of_session(const char *name, unsigned int *mods, unsigned int *vk)
+{
+    settings_r *r = open_settings_r(name);
+    char *spec;
+    int en, ok = 0;
+    if (!r) return 0;
+    en = read_setting_i(r, "LauncherGlobalHotkeyEnabled", 0);
+    spec = read_setting_s(r, "LauncherGlobalHotkey");
+    close_settings_r(r);
+    if (en && spec) ok = kitty_parse_hotkey_spec(spec, mods, vk);
+    if (spec) sfree(spec);
+    return ok;
+}
+
+/* List (", "-separated into `names`, which may be NULL) every saved session
+ * other than `exclude` whose enabled hotkey parses to the same (mods,vk).
+ * Returns the number of matches. */
+int kitty_hotkey_conflict_scan(unsigned int mods, unsigned int vk,
+                               const char *exclude, char *names, int nameslen)
+{
+    struct sesslist sl;
+    int i, n = 0;
+    unsigned int m2, v2;
+    if (names && nameslen > 0) names[0] = '\0';
+    get_sesslist(&sl, true);
+    for (i = 0; i < sl.nsessions; i++) {
+        const char *nm = sl.sessions[i];
+        if (!strcmp(nm, KITTY_DEFAULT_SESSION)) continue;
+        if (exclude && !strcmp(nm, exclude)) continue;
+        if (!hotkey_of_session(nm, &m2, &v2)) continue;
+        if (m2 != mods || v2 != vk) continue;
+        if (names && nameslen > 0) {
+            if (n) strncat(names, ", ", nameslen - strlen(names) - 1);
+            strncat(names, nm, nameslen - strlen(names) - 1);
+        }
+        n++;
+    }
+    get_sesslist(&sl, false);
+    return n;
+}
+
+/* How many saved sessions other than `exclude` hold a usable enabled hotkey.
+ * The config box compares this against KITTY_LAUNCHER_HOTKEY_MAX before
+ * letting another one be enabled. */
+int kitty_hotkey_enabled_count(const char *exclude)
+{
+    struct sesslist sl;
+    int i, n = 0;
+    unsigned int m, v;
+    get_sesslist(&sl, true);
+    for (i = 0; i < sl.nsessions; i++) {
+        const char *nm = sl.sessions[i];
+        if (!strcmp(nm, KITTY_DEFAULT_SESSION)) continue;
+        if (exclude && !strcmp(nm, exclude)) continue;
+        if (hotkey_of_session(nm, &m, &v)) n++;
+    }
+    get_sesslist(&sl, false);
+    return n;
+}
+
+/* Whole-store view for batch operations (import): one line per hotkey held by
+ * more than one session, "spec: name, name, ...". Returns the number of
+ * conflicting hotkeys; the report is truncated silently if buf runs out. */
+int kitty_hotkey_conflict_report(char *buf, int buflen)
+{
+    struct sesslist sl;
+    int i, j, nconf = 0;
+    unsigned int *pm, *pv;
+    unsigned char *has;
+    if (buf && buflen > 0) buf[0] = '\0';
+    get_sesslist(&sl, true);
+    pm = snewn(sl.nsessions, unsigned int);
+    pv = snewn(sl.nsessions, unsigned int);
+    has = snewn(sl.nsessions, unsigned char);
+    for (i = 0; i < sl.nsessions; i++) {
+        has[i] = 0;
+        if (!strcmp(sl.sessions[i], KITTY_DEFAULT_SESSION)) continue;
+        has[i] = (unsigned char)hotkey_of_session(sl.sessions[i], &pm[i], &pv[i]);
+    }
+    for (i = 0; i < sl.nsessions; i++) {
+        int dupes = 0, first_earlier = 0;
+        if (!has[i]) continue;
+        for (j = 0; j < i; j++)
+            if (has[j] && pm[j] == pm[i] && pv[j] == pv[i]) { first_earlier = 1; break; }
+        if (first_earlier) continue;    /* group already reported from j */
+        for (j = i + 1; j < sl.nsessions; j++)
+            if (has[j] && pm[j] == pm[i] && pv[j] == pv[i]) dupes++;
+        if (!dupes) continue;
+        nconf++;
+        if (buf && buflen > 0) {
+            settings_r *r = open_settings_r(sl.sessions[i]);
+            char *spec = r ? read_setting_s(r, "LauncherGlobalHotkey") : NULL;
+            if (r) close_settings_r(r);
+            if (buf[0]) strncat(buf, "\n", buflen - strlen(buf) - 1);
+            strncat(buf, spec ? spec : "?", buflen - strlen(buf) - 1);
+            strncat(buf, ": ", buflen - strlen(buf) - 1);
+            strncat(buf, sl.sessions[i], buflen - strlen(buf) - 1);
+            for (j = i + 1; j < sl.nsessions; j++)
+                if (has[j] && pm[j] == pm[i] && pv[j] == pv[i]) {
+                    strncat(buf, ", ", buflen - strlen(buf) - 1);
+                    strncat(buf, sl.sessions[j], buflen - strlen(buf) - 1);
+                }
+            if (spec) sfree(spec);
+        }
+    }
+    sfree(pm); sfree(pv); sfree(has);
+    get_sesslist(&sl, false);
+    return nconf;
+}
+
 /* Session name a .ktx filename maps to (caller frees), or NULL. */
 static char *kitty_ktx_session_name(const char *filename) {
     const char *ext = ktx_ext();
@@ -1184,6 +1353,36 @@ void kitty_import_sessions(HWND hwnd) {
              counts, dir);
     MessageBoxA(hwnd, msg, "KiTTY session import",
                 MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+    /* Imported sessions bring their hotkeys along, and nothing above checked
+     * those against the store: say NOW if the store ended up with a hotkey
+     * held twice, or with more enabled hotkeys than the launcher has slots -
+     * the alternative is a session whose hotkey silently never fires. */
+    if (n > 0) {
+        char rep[1200];
+        int nc = kitty_hotkey_conflict_report(rep, sizeof(rep));
+        int en = kitty_hotkey_enabled_count(NULL);
+        if (nc > 0 || en > KITTY_LAUNCHER_HOTKEY_MAX) {
+            char warn[1600];
+            warn[0] = '\0';
+            if (nc > 0)
+                snprintf(warn, sizeof(warn),
+                         "After this import, some sessions share a launcher "
+                         "hotkey:\n\n%s\n\nA hotkey works for only one session; "
+                         "the launcher gives it to the first one it finds. Edit "
+                         "the others to resolve this.", rep);
+            if (en > KITTY_LAUNCHER_HOTKEY_MAX) {
+                char t[220];
+                snprintf(t, sizeof(t),
+                         "%s%d sessions now have a hotkey enabled, but the "
+                         "launcher registers at most %d - the rest stay "
+                         "inactive.", warn[0] ? "\n\n" : "",
+                         en, KITTY_LAUNCHER_HOTKEY_MAX);
+                strncat(warn, t, sizeof(warn) - strlen(warn) - 1);
+            }
+            MessageBoxA(hwnd, warn, "KiTTY Launcher hotkey",
+                        MB_OK | MB_ICONWARNING);
+        }
+    }
 }
 
 /* Core import: load every .ktx in dir as a session (no UI). Returns the count

@@ -277,41 +277,13 @@ static void kitty_pscp_remotedir_handler(dlgcontrol *ctrl, dlgparam *dlg,
 }
 
 #ifdef MOD_LAUNCHER
-static char *kitty_cfg_trim(char *s)
-{
-    char *e;
-    while (*s == ' ' || *s == '\t') s++;
-    e = s + strlen(s);
-    while (e > s && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r' || e[-1] == '\n'))
-        *--e = '\0';
-    return s;
-}
-
-static bool kitty_cfg_parse_hotkey(char *spec, UINT *mods, UINT *vk)
-{
-    char *tok, *keytok = NULL;
-    *mods = 0; *vk = 0;
-    spec = kitty_cfg_trim(spec);
-    if (!*spec) return false;
-    for (tok = strtok(spec, "+"); tok != NULL; tok = strtok(NULL, "+")) {
-        tok = kitty_cfg_trim(tok);
-        if (!stricmp(tok, "Ctrl") || !stricmp(tok, "Control")) *mods |= MOD_CONTROL;
-        else if (!stricmp(tok, "Shift")) *mods |= MOD_SHIFT;
-        else if (!stricmp(tok, "Alt")) *mods |= MOD_ALT;
-        else if (!stricmp(tok, "Win") || !stricmp(tok, "Windows")) *mods |= MOD_WIN;
-        else keytok = tok;
-    }
-    if (keytok == NULL) return false;
-    if (strlen(keytok) == 1) {
-        char c = keytok[0];
-        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
-        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) *vk = (UINT)c;
-    } else if ((keytok[0] == 'F' || keytok[0] == 'f') && keytok[1] >= '1' && keytok[1] <= '9') {
-        int n = atoi(keytok + 1);
-        if (n >= 1 && n <= 24) *vk = VK_F1 + n - 1;
-    }
-    return (*mods != 0 && *vk != 0);
-}
+/* Shared launcher-hotkey helpers (kitty_bridge.c; kitty_config.c does not
+ * include kitty.h). The parser is the SAME one the launcher registers with,
+ * so what this file warns about is what the launcher will actually do. */
+extern int kitty_parse_hotkey_spec(const char *spec, unsigned int *mods, unsigned int *vk);
+extern int kitty_hotkey_conflict_scan(unsigned int mods, unsigned int vk,
+                                      const char *exclude, char *names, int nameslen);
+extern int kitty_hotkey_enabled_count(const char *exclude);
 
 /* KiTTY: open the modeless window-title placeholder reference (kitty_win.c).
  * Owned by the active window - the configuration box - so it stacks with it
@@ -329,21 +301,46 @@ static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                                 void *data, int event)
 {
     Conf *conf = (Conf *)data;
-    char work[256];
-    UINT mods, vk;
+    unsigned int mods, vk;
+    char others[512], msg[900];
+    const char *self;
+    int nc;
     (void)ctrl; (void)dlg;
     if (event != EVENT_ACTION) return;
-    strncpy(work, conf_get_str(conf, CONF_launcher_global_hotkey), sizeof(work)-1);
-    work[sizeof(work)-1] = '\0';
-    if (!kitty_cfg_parse_hotkey(work, &mods, &vk)) {
+    if (!kitty_parse_hotkey_spec(conf_get_str(conf, CONF_launcher_global_hotkey),
+                                 &mods, &vk)) {
         MessageBox(NULL, "Enter a hotkey such as Ctrl+Alt+K or Ctrl+Shift+F12.",
                    "KiTTY Launcher hotkey", MB_OK | MB_ICONWARNING);
         return;
     }
+    /* The system-wide probe below cannot see WHICH saved session holds a
+     * hotkey (a running launcher registers them under its own window), but the
+     * store can: name the sessions here, where the collision is being made. */
+    self = conf_get_str(conf, CONF_sessionname);
+    nc = kitty_hotkey_conflict_scan(mods, vk, (self && *self) ? self : NULL,
+                                    others, sizeof(others));
     if (RegisterHotKey(NULL, 0x4B7A, mods | MOD_NOREPEAT, vk)) {
         UnregisterHotKey(NULL, 0x4B7A);
-        MessageBox(NULL, "This hotkey is currently available.\n\nNote: it is only registered while KiTTY Launcher is running.",
-                   "KiTTY Launcher hotkey", MB_OK | MB_ICONINFORMATION);
+        if (nc > 0) {
+            snprintf(msg, sizeof(msg),
+                     "This hotkey is currently available system-wide, but it is "
+                     "already assigned to the saved session%s: %s.\n\n"
+                     "A hotkey works for only one session; the launcher gives "
+                     "it to the first one it finds.",
+                     nc == 1 ? "" : "s", others);
+            MessageBox(NULL, msg, "KiTTY Launcher hotkey", MB_OK | MB_ICONWARNING);
+        } else {
+            MessageBox(NULL, "This hotkey is currently available.\n\nNote: it is only registered while KiTTY Launcher is running.",
+                       "KiTTY Launcher hotkey", MB_OK | MB_ICONINFORMATION);
+        }
+    } else if (nc > 0) {
+        snprintf(msg, sizeof(msg),
+                 "This hotkey is already in use - it is assigned to the saved "
+                 "session%s: %s.\n\n"
+                 "A hotkey works for only one session; the launcher gives it "
+                 "to the first one it finds.",
+                 nc == 1 ? "" : "s", others);
+        MessageBox(NULL, msg, "KiTTY Launcher hotkey", MB_OK | MB_ICONWARNING);
     } else {
         MessageBox(NULL, "This hotkey is already in use or reserved by Windows/another app.\n\nWindows does not expose which application owns a global hotkey.",
                    "KiTTY Launcher hotkey", MB_OK | MB_ICONWARNING);
@@ -4052,6 +4049,43 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     }
                 }
 #endif
+#ifdef MOD_LAUNCHER
+                /* A launcher hotkey is a machine-wide claim, so saving one is
+                 * where a conflict is CREATED - and where it must be said.
+                 * Two cases, decided against the store before the write:
+                 * over the slot limit, the hotkey is disabled and the rest of
+                 * the save goes through (silently keeping a hotkey that can
+                 * never register would be worse); merely duplicated, the save
+                 * is untouched and a warning after it names the other holders
+                 * (the box may hold settings mid-edit - do not rewrite them). */
+                unsigned int hk_mods = 0, hk_vk = 0;
+                int hk_warn = 0;
+                if (ssd->savedsession[0] &&
+                    conf_get_bool(conf, CONF_launcher_global_hotkey_enabled) &&
+                    kitty_parse_hotkey_spec(
+                        conf_get_str(conf, CONF_launcher_global_hotkey),
+                        &hk_mods, &hk_vk)) {
+                    if (kitty_hotkey_enabled_count(ssd->savedsession) >=
+                        KITTY_LAUNCHER_HOTKEY_MAX) {
+                        char m[300];
+                        snprintf(m, sizeof(m),
+                                 "All %d launcher hotkey slots are already in "
+                                 "use, so the hotkey of this session has been "
+                                 "switched off.\n\nDisable another session's "
+                                 "hotkey first, then enable this one again.",
+                                 KITTY_LAUNCHER_HOTKEY_MAX);
+                        MessageBox(GetActiveWindow(), m,
+                                   "KiTTY Launcher hotkey",
+                                   MB_OK | MB_ICONWARNING);
+                        conf_set_bool(conf,
+                                      CONF_launcher_global_hotkey_enabled,
+                                      false);
+                        dlg_refresh(NULL, dlg);
+                    } else {
+                        hk_warn = 1;
+                    }
+                }
+#endif
                 /* Back up the store before OVERWRITING a saved session, so its
                  * previous contents stay recoverable. Blocking on purpose - an
                  * async snapshot could land after the write. Skipped when the
@@ -4082,6 +4116,29 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                      * best-effort broadcast; if no launcher is running, nothing
                      * happens and the next launcher start reads the new settings. */
                     kitty_notify_launcher_sessions_changed();
+#ifdef MOD_LAUNCHER
+                    /* Warn AFTER the save (the save itself is fine and kept)
+                     * when other saved sessions hold this same hotkey. */
+                    if (hk_warn) {
+                        char hk_others[512];
+                        if (kitty_hotkey_conflict_scan(hk_mods, hk_vk,
+                                                       ssd->savedsession,
+                                                       hk_others,
+                                                       sizeof(hk_others)) > 0) {
+                            char *m = dupprintf(
+                                "The hotkey \"%s\" is also assigned to: %s.\n\n"
+                                "A hotkey works for only one session; the "
+                                "launcher gives it to the first one it finds. "
+                                "Edit the others to resolve this.",
+                                conf_get_str(conf, CONF_launcher_global_hotkey),
+                                hk_others);
+                            MessageBox(GetActiveWindow(), m,
+                                       "KiTTY Launcher hotkey",
+                                       MB_OK | MB_ICONWARNING);
+                            sfree(m);
+                        }
+                    }
+#endif
                 }
             }
             get_sesslist(&ssd->sesslist, false);

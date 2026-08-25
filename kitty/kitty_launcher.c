@@ -17,6 +17,11 @@
 #define KLWM_WORKPLACEOFFER	(WM_USER+13)
 /* Posted by the "mode is OFF" notice window when it is clicked. */
 #define KLWM_WORKPLACEREARM	(WM_USER+14)
+/* Posted by LauncherRegisterHotkeys when session hotkeys collided: the balloon
+ * naming winners and losers. Posted rather than shown in place, for the reason
+ * the update balloon is - registration also runs from WM_CREATE, and a balloon
+ * raised inside window creation shows but its click never comes back. */
+#define KLWM_HOTKEYBALLOON	(WM_USER+15)
 /* KiTTY: timer id for the delayed single-left-click tray menu (so a double
  * click - new default window - doesn't pop the menu up first) */
 #define LAUNCHER_TRAYCLICK_TIMER	100
@@ -28,12 +33,15 @@
  * notice's offer to switch the mode back on. */
 #define LAUNCHER_EXITAFTERNOTICE_TIMER	102
 #define LAUNCHER_HOTKEY_BASE	0x4B00
-#define LAUNCHER_HOTKEY_MAX	32
+/* Slot count lives in kitty_defs.h: the config box enforces the same limit
+ * when a hotkey is enabled, and the two sides must not drift apart. */
+#define LAUNCHER_HOTKEY_MAX	KITTY_LAUNCHER_HOTKEY_MAX
 #define KITTY_LAUNCHER_REFRESH_MESSAGE "KiTTYLauncherRefreshSessionsAndHotkeys"
 #ifndef MOD_NOREPEAT
 #define MOD_NOREPEAT 0x4000
 #endif
 int RunSession( HWND hwnd, const char * folder_in, char * session_in ) ;
+static void RunPuTTYAtPanel( HWND hwnd, const char * panel ) ;
 
 /* KiTTY: runtime registry base (windows/storage.c). The launcher must read
  * KiTTY's own hive (Software\9bis.com\KiTTY) -- where sessions actually live --
@@ -87,6 +95,13 @@ struct LauncherHotkey {
 static struct LauncherHotkey LauncherHotkeys[LAUNCHER_HOTKEY_MAX] ;
 static int LauncherHotkeyCount = 0 ;
 static UINT LauncherRefreshMessage = 0 ;
+/* Hotkey-conflict balloon state. The report is remembered so re-registration
+ * (every saved-session refresh re-runs it) balloons only when the conflicts
+ * CHANGED, not on every refresh of an unchanged store. The winner of the first
+ * conflict is kept so a click on the balloon can open the config box on it. */
+static char LauncherHotkeyReport[256] = "" ;
+static char LauncherHotkeyWinner[256] = "" ;
+static int LauncherHotkeyBalloonArmed = 0 ;
 
 // Gestion Hide/UnHide all
 static struct THWin { HWND hwnd ; char name[128] ; } TabWin[100] ;
@@ -706,6 +721,9 @@ static void ShowLauncherUpdateBalloon( void ) {
 			return ;
 		}
 		LauncherUpdateBalloonShown = 1 ;
+		/* This balloon replaces whatever balloon was showing, so a click from
+		 * now on means the update - not a hotkey-conflict notice. */
+		LauncherHotkeyBalloonArmed = 0 ;
 		TrayIcone.uFlags = NIF_INFO | NIF_TIP ;
 		TrayIcone.dwInfoFlags = NIIF_INFO ;
 		TrayIcone.uTimeout = 10000 ;
@@ -721,39 +739,6 @@ static void ShowLauncherUpdateBalloon( void ) {
 	}
 }
 
-static char *launcher_trim( char *s ) {
-	char *e ;
-	while( *s==' ' || *s=='\t' ) s++ ;
-	e = s + strlen(s) ;
-	while( e>s && (e[-1]==' ' || e[-1]=='\t' || e[-1]=='\r' || e[-1]=='\n') ) *--e='\0' ;
-	return s ;
-}
-
-static int launcher_parse_hotkey( char *spec, UINT *mods, UINT *vk ) {
-	char *hotkey, *tok, *keytok = NULL ;
-	*mods = 0 ; *vk = 0 ;
-	hotkey = launcher_trim( spec ) ;
-	if( hotkey[0]=='\0' ) return 0 ;
-	for( tok = strtok( hotkey, "+" ) ; tok != NULL ; tok = strtok( NULL, "+" ) ) {
-		tok = launcher_trim( tok ) ;
-		if( !stricmp(tok,"Ctrl") || !stricmp(tok,"Control") ) *mods |= MOD_CONTROL ;
-		else if( !stricmp(tok,"Shift") ) *mods |= MOD_SHIFT ;
-		else if( !stricmp(tok,"Alt") ) *mods |= MOD_ALT ;
-		else if( !stricmp(tok,"Win") || !stricmp(tok,"Windows") ) *mods |= MOD_WIN ;
-		else keytok = tok ;
-	}
-	if( keytok == NULL ) return 0 ;
-	if( strlen(keytok)==1 ) {
-		char c = keytok[0] ;
-		if( c>='a' && c<='z' ) c = (char)(c-'a'+'A') ;
-		if( (c>='A'&&c<='Z') || (c>='0'&&c<='9') ) *vk = (UINT)c ;
-	} else if( (keytok[0]=='F' || keytok[0]=='f') && keytok[1]>='1' && keytok[1]<='9' ) {
-		int n = atoi( keytok+1 ) ;
-		if( n>=1 && n<=24 ) *vk = VK_F1 + n - 1 ;
-	}
-	return (*mods != 0 && *vk != 0) ;
-}
-
 static void LauncherUnregisterHotkeys( HWND hwnd ) {
 	int i ;
 	for( i=0 ; i<LauncherHotkeyCount ; i++ )
@@ -761,21 +746,51 @@ static void LauncherUnregisterHotkeys( HWND hwnd ) {
 	LauncherHotkeyCount = 0 ;
 }
 
-static void LauncherRegisterHotkeys( HWND hwnd ) {
-	char work[256] ;
-	int i ; UINT mods, vk ;
+/* Register every enabled session hotkey (parser shared with the config box:
+ * kitty_parse_hotkey_spec, kitty_bridge.c). A combination two sessions claim
+ * goes to the FIRST one in enumeration order; that used to happen in silence,
+ * now every session that did NOT get its key - duplicate, slot limit, or the
+ * key being held by another application - lands in a report ballooned from the
+ * tray icon. The report is compared against the previous run's, so a refresh
+ * of an unchanged store stays quiet.
+ *
+ * `notify` says whether a NEW report may balloon: launcher startup and the
+ * tray menu's manual Refresh do, the config box's save/import broadcast does
+ * NOT - the box already put the same fact in front of the user in a
+ * MessageBox, and a balloon seconds later would say it twice. A silent run
+ * leaves the remembered report alone, so the next notifying run still sees
+ * the change and balloons it. */
+static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
+	int i, j ; UINT mods, vk ;
+	char report[256] = "" ;
+	char winner[256] = "" ;
+	int overflow = 0 ;
 	LauncherUnregisterHotkeys( hwnd ) ;
-	for( i=0 ; i<NB_MENU_MAX && LauncherHotkeyCount<LAUNCHER_HOTKEY_MAX ; i++ ) {
+	for( i=0 ; i<NB_MENU_MAX ; i++ ) {
 		Conf *c ;
-		const char *hotkey ;
 		if( SpecialMenu[i] == NULL || SpecialMenu[i][0] == '\0' ) continue ;
 		c = conf_new() ;
 		if( c == NULL ) continue ;
 		if( do_defaults( SpecialMenu[i], c ) &&
-		    conf_get_bool( c, CONF_launcher_global_hotkey_enabled ) ) {
-			hotkey = conf_get_str( c, CONF_launcher_global_hotkey ) ;
-			strncpy( work, hotkey, sizeof(work)-1 ) ; work[sizeof(work)-1]='\0' ;
-			if( launcher_parse_hotkey( work, &mods, &vk ) ) {
+		    conf_get_bool( c, CONF_launcher_global_hotkey_enabled ) &&
+		    kitty_parse_hotkey_spec( conf_get_str( c, CONF_launcher_global_hotkey ), &mods, &vk ) ) {
+			int dup = -1 ;
+			for( j=0 ; j<LauncherHotkeyCount ; j++ )
+				if( LauncherHotkeys[j].modifiers == (mods|MOD_NOREPEAT) && LauncherHotkeys[j].vk == vk ) { dup = j ; break ; }
+			if( dup >= 0 ) {
+				char line[240] ;
+				snprintf( line, sizeof(line), "%s%s: \"%s\" has it, \"%s\" does not.",
+				          report[0] ? "\n" : "",
+				          conf_get_str( c, CONF_launcher_global_hotkey ),
+				          LauncherHotkeys[dup].session, SpecialMenu[i] ) ;
+				strncat( report, line, sizeof(report)-strlen(report)-1 ) ;
+				if( winner[0] == '\0' ) {
+					strncpy( winner, LauncherHotkeys[dup].session, sizeof(winner)-1 ) ;
+					winner[sizeof(winner)-1] = '\0' ;
+				}
+			} else if( LauncherHotkeyCount >= LAUNCHER_HOTKEY_MAX ) {
+				overflow++ ;
+			} else {
 				LauncherHotkeys[LauncherHotkeyCount].id = LAUNCHER_HOTKEY_BASE + LauncherHotkeyCount ;
 				LauncherHotkeys[LauncherHotkeyCount].modifiers = mods | MOD_NOREPEAT ;
 				LauncherHotkeys[LauncherHotkeyCount].vk = vk ;
@@ -786,16 +801,47 @@ static void LauncherRegisterHotkeys( HWND hwnd ) {
 				if( RegisterHotKey( hwnd, LauncherHotkeys[LauncherHotkeyCount].id,
 					LauncherHotkeys[LauncherHotkeyCount].modifiers, LauncherHotkeys[LauncherHotkeyCount].vk ) )
 					LauncherHotkeyCount++ ;
+				else {
+					char line[240] ;
+					snprintf( line, sizeof(line), "%s%s (\"%s\"): held by another application.",
+					          report[0] ? "\n" : "",
+					          conf_get_str( c, CONF_launcher_global_hotkey ),
+					          SpecialMenu[i] ) ;
+					strncat( report, line, sizeof(report)-strlen(report)-1 ) ;
+				}
 			}
 		}
 		conf_free( c ) ;
+	}
+	if( overflow ) {
+		char line[120] ;
+		snprintf( line, sizeof(line), "%s%d more session hotkey%s beyond the %d-slot limit.",
+		          report[0] ? "\n" : "", overflow, overflow==1 ? "" : "s", LAUNCHER_HOTKEY_MAX ) ;
+		strncat( report, line, sizeof(report)-strlen(report)-1 ) ;
+	}
+	if( report[0] ) {
+		if( notify && strcmp( report, LauncherHotkeyReport ) != 0 ) {
+			strncpy( LauncherHotkeyReport, report, sizeof(LauncherHotkeyReport)-1 ) ;
+			LauncherHotkeyReport[sizeof(LauncherHotkeyReport)-1] = '\0' ;
+			strncpy( LauncherHotkeyWinner, winner, sizeof(LauncherHotkeyWinner)-1 ) ;
+			LauncherHotkeyWinner[sizeof(LauncherHotkeyWinner)-1] = '\0' ;
+			PostMessage( hwnd, KLWM_HOTKEYBALLOON, 0, 0 ) ;
+		}
+	} else {
+		/* Conflict-free run: forget the old report so the SAME conflict
+		 * re-created later balloons again, and disarm the balloon click. */
+		LauncherHotkeyReport[0] = '\0' ;
+		LauncherHotkeyWinner[0] = '\0' ;
+		LauncherHotkeyBalloonArmed = 0 ;
 	}
 }
 
 static void LauncherRefreshSessionsAndHotkeys( HWND hwnd ) {
 	if( LauncherConfReload ) InitLauncherRegistry() ;
 	RefreshMenuLauncher() ;
-	LauncherRegisterHotkeys( hwnd ) ;
+	/* Broadcast from the config box after a save or import: whoever caused
+	 * the change was warned in place, so re-register WITHOUT ballooning. */
+	LauncherRegisterHotkeys( hwnd, 0 ) ;
 }
 	
 /* KiTTY: the tray tooltip, built in one place because it now has a part that
@@ -1072,7 +1118,7 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		 * existed, so its expiry timer could not be set against it then. */
 		if( kitty_workplace_holding() && kitty_workplace_minutes_left() )
 			SetTimer( hwnd, LAUNCHER_WORKPLACE_TIMER, 30000, NULL ) ;
-		LauncherRegisterHotkeys( hwnd ) ;
+		LauncherRegisterHotkeys( hwnd, 1 ) ;	/* startup: conflicts balloon */
 		if (IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_HIDE);
 		//SendMessage(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
 		return 1 ;
@@ -1098,6 +1144,24 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 			}
 			break ;
 
+		case KLWM_HOTKEYBALLOON :
+			/* Posted by LauncherRegisterHotkeys: session hotkeys collided.
+			 * Balloon the report; a click on it opens the config box on the
+			 * session that DID get the contested key (see the click below). */
+			if( LauncherHotkeyReport[0] ) {
+				TrayIcone.uFlags = NIF_INFO | NIF_TIP ;
+				TrayIcone.dwInfoFlags = NIIF_WARNING ;
+				TrayIcone.uTimeout = 10000 ;
+				strncpy( TrayIcone.szInfoTitle, "KiTTY session hotkey conflict", sizeof(TrayIcone.szInfoTitle) ) ;
+				TrayIcone.szInfoTitle[sizeof(TrayIcone.szInfoTitle)-1] = '\0' ;
+				strncpy( TrayIcone.szInfo, LauncherHotkeyReport, sizeof(TrayIcone.szInfo) ) ;
+				TrayIcone.szInfo[sizeof(TrayIcone.szInfo)-1] = '\0' ;
+				Shell_NotifyIcon( NIM_MODIFY, &TrayIcone ) ;
+				TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE ;
+				LauncherHotkeyBalloonArmed = 1 ;
+			}
+			break ;
+
 		case KLWM_NOTIFYICON :
 			switch (lParam)	{
 				/* KiTTY: the "update available" balloon is clickable - clicking
@@ -1109,9 +1173,30 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 				 * registered without NIM_SETVERSION, so the notification code
 				 * arrives in lParam like the mouse messages below. */
 				case NIN_BALLOONUSERCLICK :
+					/* Hotkey-conflict balloon first: it arms itself when shown
+					 * and whichever balloon was raised LAST disarmed the other,
+					 * so the flags cannot both claim this click. Clicking it
+					 * opens the config box on the session that kept the key,
+					 * for inspection - via the same last-session remembering
+					 * the box's startup pre-fill already reads. */
+					if( LauncherHotkeyBalloonArmed ) {
+						LauncherHotkeyBalloonArmed = 0 ;
+						if( LauncherHotkeyWinner[0] ) {
+							extern void kitty_set_last_session( const char * ) ;
+							extern void kitty_set_last_folder( const char * ) ;
+							Conf * wc = conf_new() ;
+							if( wc != NULL ) {
+								if( do_defaults( LauncherHotkeyWinner, wc ) )
+									kitty_set_last_folder( conf_get_str( wc, CONF_folder ) ) ;
+								conf_free( wc ) ;
+							}
+							kitty_set_last_session( LauncherHotkeyWinner ) ;
+							RunPuTTYAtPanel( hwnd, "Window/Behaviour" ) ;
+						}
+					}
 					/* The update balloon is the only balloon left: the workplace
 					 * notices are our own window, which handles its own click. */
-					if( LauncherUpdateKnown ) {
+					else if( LauncherUpdateKnown ) {
 						extern void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) ;
 						CheckVersionFromWebSite( hwnd, 0 ) ;
 					}
@@ -1318,7 +1403,9 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 				case IDM_LAUNCHER+7:
 					if( LauncherConfReload ) InitLauncherRegistry() ;
 					RefreshMenuLauncher() ;
-					LauncherRegisterHotkeys( hwnd ) ;
+					/* Manual Refresh is an explicit request for the current
+					 * state, so a changed conflict report balloons here too. */
+					LauncherRegisterHotkeys( hwnd, 1 ) ;
 					/* Keep the launcher visible after an explicit Refresh: users expect
 					 * to continue choosing from the freshly rebuilt session tree rather
 					 * than having the tray menu vanish. TrackPopupMenu has already
@@ -1657,6 +1744,28 @@ void RunPuTTY( HWND hwnd, char * param ) {
 				launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
 				if( mpwmap ) CloseHandle( mpwmap ) ;
 			}
+		}
+}
+
+/* Open a new configuration box exactly like RunPuTTY(hwnd,"") - same restricted
+ * ACL and master-password sharing - but landed on a named panel via -cfgpanel,
+ * the switch the workplace-proxy notice already opens Connection/Proxy with.
+ * The hotkey-conflict balloon uses it for Window/Behaviour, where the hotkey
+ * controls are. Panel paths contain no spaces (window.c's -cfgpanel scan stops
+ * at the first one). */
+static void RunPuTTYAtPanel( HWND hwnd, const char * panel ) {
+	char buffer[4096]="",shortname[1024]="" ;
+	if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) )
+		if( GetShortPathName( buffer, shortname, 1023 ) ) {
+			HANDLE mpwmap = NULL ; char mpwtok[80] = "" ;
+			const char * aclprefix = restricted_acl() ? " -restrict-acl" : "" ;
+			{ extern int kitty_mpw_startup_unlock(void);
+			  extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
+			  kitty_mpw_startup_unlock();
+			  mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
+			snprintf( buffer, sizeof(buffer), "%s%s%s -cfgpanel %s", shortname, aclprefix, mpwtok, panel ) ;
+			launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
+			if( mpwmap ) CloseHandle( mpwmap ) ;
 		}
 }
 

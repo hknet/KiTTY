@@ -5,6 +5,20 @@ and enhanced **PuTTY 0.85** core. Versions below are this port's own `0.85.1.x` 
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.4-beta — unreleased
+
+### New
+
+- **Conflicting session hotkeys are reported instead of silently
+  resolved.** A launcher hotkey is machine-wide, so when two sessions
+  claim the same one only the first gets it. The launcher now says so at
+  startup in a tray balloon naming who won and who lost - clicking it
+  opens the winning session's settings on Window > Behaviour. Saving or
+  importing a session whose hotkey another session already holds warns
+  and names the other holders, "Check hotkey availability" names them
+  too, and enabling a hotkey beyond the launcher's 32 slots is refused
+  with an explanation instead of silently never firing.
+
 ## 0.85.1.3-beta — 2026-08-25
 
 ### New

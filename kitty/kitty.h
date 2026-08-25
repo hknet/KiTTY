@@ -720,4 +720,12 @@ void xyz_updateMenuItems(Terminal *term) ;
 /* IDM_COPYALL was defined a second time here, with the same value as the copy
  * above. Harmless, but it is how the ids that DID disagree got started. */
 
+/* Launcher global-hotkey helpers (kitty_bridge.c), shared by the launcher's
+ * registration loop, the config box and session import. */
+int kitty_parse_hotkey_spec( const char * spec, unsigned int * mods, unsigned int * vk ) ;
+int kitty_hotkey_conflict_scan( unsigned int mods, unsigned int vk,
+                                const char * exclude, char * names, int nameslen ) ;
+int kitty_hotkey_enabled_count( const char * exclude ) ;
+int kitty_hotkey_conflict_report( char * buf, int buflen ) ;
+
 #endif // KITTY_H
