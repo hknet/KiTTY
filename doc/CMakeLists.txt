@@ -107,28 +107,31 @@ if(HALIBUT AND PERL_EXECUTABLE)
     DEPENDS ${manual_sources} ${manual_dependencies})
   list(APPEND doc_outputs ${html_dir}/index.html)
 
-  # Windows help.
+  # Windows help. KiTTY: blurb.but's \cfg{chm-filename} names the output
+  # kitty.chm (what windows/help.c looks for beside the exe), so the OUTPUT
+  # declared here must match or the target never sees its own product.
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/chmextra.but
     "\\cfg{chm-extra-file}{${CMAKE_CURRENT_SOURCE_DIR}/chm.css}{chm.css}\n")
-  add_custom_command(OUTPUT putty.chm
+  add_custom_command(OUTPUT kitty.chm
     COMMAND ${HALIBUT} --chm chmextra.but ${manual_sources}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     DEPENDS ${manual_sources} ${manual_dependencies})
-  list(APPEND doc_outputs putty.chm)
+  list(APPEND doc_outputs kitty.chm)
 
-  # Plain text.
-  add_custom_command(OUTPUT puttydoc.txt
+  # Plain text. (kittydoc.txt: named by blurb.but's \cfg{text-filename}.)
+  add_custom_command(OUTPUT kittydoc.txt
     COMMAND ${HALIBUT} --text ${manual_sources}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     DEPENDS ${manual_sources} ${manual_dependencies})
-  list(APPEND doc_outputs puttydoc.txt)
+  list(APPEND doc_outputs kittydoc.txt)
 
-  # PDF. (We don't ship this; so it's only built on explicit request.)
-  add_custom_command(OUTPUT putty.pdf
+  # PDF. (We don't ship this; so it's only built on explicit request.
+  # kitty.pdf: named by blurb.but's \cfg{pdf-filename}.)
+  add_custom_command(OUTPUT kitty.pdf
     COMMAND ${HALIBUT} --pdf ${manual_sources}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     DEPENDS ${manual_sources} ${manual_dependencies})
-  add_custom_target(pdf DEPENDS putty.pdf)
+  add_custom_target(pdf DEPENDS kitty.pdf)
 endif()
 
 macro(register_manpage title section)

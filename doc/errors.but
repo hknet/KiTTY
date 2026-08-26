@@ -1,6 +1,6 @@
 \C{errors} Common \i{error messages}
 
-This chapter lists a number of common error messages which PuTTY and
+This chapter lists a number of common error messages which KiTTY and
 its associated tools can produce, and explains what they mean in
 more detail.
 
@@ -13,17 +13,17 @@ bug (see \k{feedback}) and we will add documentation for it.
 \H{errors-hostkey-absent} \q{The host key is not cached for this
 server}
 
-This error message occurs when PuTTY connects to a new SSH server.
-Every server identifies itself by means of a host key; once PuTTY
+This error message occurs when KiTTY connects to a new SSH server.
+Every server identifies itself by means of a host key; once KiTTY
 knows the host key for a server, it will be able to detect if a
 malicious attacker redirects your connection to another machine.
 
-If you see this message, it means that PuTTY has not seen this host
+If you see this message, it means that KiTTY has not seen this host
 key before, and has no way of knowing whether it is correct or not.
 You should attempt to verify the host key by other means, such as
 asking the machine's administrator.
 
-If you see this message and you know that your installation of PuTTY
+If you see this message and you know that your installation of KiTTY
 \e{has} connected to the same server before, it may have been
 recently upgraded to SSH protocol version 2. SSH protocols 1 and 2
 use separate host keys, so when you first use \i{SSH-2} with a server
@@ -35,7 +35,7 @@ See \k{gs-hostkey} for more information on host keys.
 \H{errors-hostkey-wrong} \q{WARNING - POTENTIAL SECURITY BREACH!}
 
 This message, followed by \q{The server's host key does not match
-the one PuTTY has cached for this server}, means that PuTTY has
+the one KiTTY has cached for this server}, means that KiTTY has
 connected to the SSH server before, knows what its host key
 \e{should} be, but has found a different one.
 
@@ -58,11 +58,11 @@ See \k{gs-hostkey} for more information on host keys.
 \H{errors-cert-mismatch} \q{This server presented a certified host key
 which was signed by a different certification authority ...}
 
-If you've configured PuTTY to trust at least one
+If you've configured KiTTY to trust at least one
 \I{certificate}certification authority for signing host keys (see
 \k{config-ssh-kex-cert}), then it will ask the SSH server to send it
 any available certified host keys. If the server sends back a
-certified key signed by a \e{different} certification authority, PuTTY
+certified key signed by a \e{different} certification authority, KiTTY
 will present this variant of the host key prompt, preceded by
 \q{WARNING - POTENTIAL SECURITY BREACH!}
 
@@ -73,7 +73,7 @@ certification authority, and hope that you connect anyway.
 
 But it's also possible in some situations that this error might arise
 legitimately. For example, if your organisation's IT department has
-just rolled out a new CA key which you haven't yet entered in PuTTY's
+just rolled out a new CA key which you haven't yet entered in KiTTY's
 configuration, or if your CA configuration involves two overlapping
 domains, or something similar.
 
@@ -84,7 +84,7 @@ really sure you trust the CA), or edit your configuration in some
 other way, or just stop trying to use this server.
 
 If you're convinced that this particular server is legitimate even
-though the CA is not one you trust, PuTTY will let you cache the
+though the CA is not one you trust, KiTTY will let you cache the
 certified host key, treating it in the same way as an uncertified one.
 Then that particular certificate will be accepted for future
 connections to this specific server, even though other certificates
@@ -93,7 +93,7 @@ signed by the same CA will still be rejected.
 \H{errors-ssh-protocol} \q{SSH protocol version 2 required by our
 configuration but remote only provides (old, insecure) SSH-1}
 
-By default, PuTTY only supports connecting to SSH servers that
+By default, KiTTY only supports connecting to SSH servers that
 implement \i{SSH protocol version 2}. If you see this message, the
 server you're trying to connect to only supports the older SSH-1
 protocol.
@@ -103,9 +103,9 @@ change the \q{SSH protocol version} setting (see \k{config-ssh-prot}),
 or use the \c{\-1} command-line option; in any case, you should not
 treat the resulting connection as secure.
 
-You might start seeing this message with new versions of PuTTY (from
+You might start seeing this message with new versions of KiTTY (from
 0.68 onwards) where you didn't before, because it used to be possible
-to configure PuTTY to automatically fall back from SSH-2 to SSH-1.
+to configure KiTTY to automatically fall back from SSH-2 to SSH-1.
 This is no longer supported, to prevent the possibility of a downgrade
 attack.
 
@@ -113,7 +113,7 @@ attack.
 ... below the configured warning threshold}
 
 This occurs when the SSH server does not offer any ciphers which you
-have configured PuTTY to consider strong enough. By default, PuTTY
+have configured KiTTY to consider strong enough. By default, KiTTY
 puts up this warning only for \i{Blowfish}, \ii{single-DES}, and
 \i{Arcfour} encryption.
 
@@ -129,12 +129,12 @@ This message is produced by an \i{OpenSSH} (or \i{Sun SSH}) server if it
 receives more failed authentication attempts than it is willing to
 tolerate.
 
-This can easily happen if you are using Pageant and have a
+This can easily happen if you are using kageant and have a
 large number of keys loaded into it, since these servers count each
 offer of a public key as an authentication attempt. This can be worked
 around by specifying the key that's required for the authentication in
-the PuTTY configuration (see \k{config-ssh-privkey}); PuTTY will ignore
-any other keys Pageant may have, but will ask Pageant to do the
+the KiTTY configuration (see \k{config-ssh-privkey}); KiTTY will ignore
+any other keys kageant may have, but will ask kageant to do the
 authentication, so that you don't have to type your passphrase.
 
 On the server, this can be worked around by disabling public-key
@@ -145,29 +145,29 @@ authentication or (for Sun SSH only) by increasing \c{MaxAuthTries} in
 \q{\ii{Assertion failed}}
 
 Any error beginning with the word \q{Internal} should \e{never}
-occur. If it does, there is a bug in PuTTY by definition; please see
+occur. If it does, there is a bug in KiTTY by definition; please see
 \k{feedback} and report it to us.
 
 Similarly, any error message starting with \q{Assertion failed} is a
-bug in PuTTY. Please report it to us, and include the exact text
+bug in KiTTY. Please report it to us, and include the exact text
 from the error message box.
 
 \H{errors-cant-load-key} \q{Unable to use key file},
 \q{Couldn't load private key}, \q{Couldn't load this key}
 
-Various forms of this error are printed in the PuTTY window, or
-written to the PuTTY Event Log (see \k{using-eventlog}) when trying
-public-key authentication, or given by Pageant when trying to load a
+Various forms of this error are printed in the KiTTY window, or
+written to the KiTTY Event Log (see \k{using-eventlog}) when trying
+public-key authentication, or given by kageant when trying to load a
 private key.
 
 If you see one of these messages, it often indicates that you've tried
-to load a key of an inappropriate type into PuTTY, Plink, PSCP, PSFTP,
-or Pageant.
+to load a key of an inappropriate type into KiTTY, klink, kscp, ksftp,
+or kageant.
 
 You may have tried to load an SSH-2 key in a \q{foreign}
-format (OpenSSH or \cw{ssh.com}) directly into one of the PuTTY tools,
-in which case you need to import it into PuTTY's native format
-(\c{*.PPK}) using PuTTYgen \dash see \k{puttygen-conversions}.
+format (OpenSSH or \cw{ssh.com}) directly into one of the KiTTY tools,
+in which case you need to import it into KiTTY's native format
+(\c{*.PPK}) using kittygen \dash see \k{puttygen-conversions}.
 
 Alternatively, you may have specified a key that's inappropriate for
 the connection you're making. The SSH-2 and the old SSH-1 protocols
@@ -177,21 +177,21 @@ for a SSH-2 connection (or vice versa).
 \H{errors-refused} \q{Server refused our key},
 \q{Server refused our public key}, \q{Key refused}
 
-Various forms of this error are printed in the PuTTY window, or
-written to the PuTTY Event Log (see \k{using-eventlog}) when trying
+Various forms of this error are printed in the KiTTY window, or
+written to the KiTTY Event Log (see \k{using-eventlog}) when trying
 public-key authentication.
 
-If you see one of these messages, it means that PuTTY has sent a
+If you see one of these messages, it means that KiTTY has sent a
 public key to the server and offered to authenticate with it, and
 the server has refused to accept authentication. This usually means
 that the server is not configured to accept this key to authenticate
 this user.
 
-This is almost certainly not a problem with PuTTY. If you see this
+This is almost certainly not a problem with KiTTY. If you see this
 type of message, the first thing you should do is check your
 \e{server} configuration carefully. Common errors include having
 the wrong permissions or ownership set on the public key or the
-user's home directory on the server. Also, read the PuTTY Event Log;
+user's home directory on the server. Also, read the KiTTY Event Log;
 the server may have sent diagnostic messages explaining exactly what
 problem it had with your setup.
 
@@ -200,12 +200,12 @@ setup.
 
 \H{errors-access-denied} \q{Access denied}, \q{Authentication refused}
 
-Various forms of this error are printed in the PuTTY window, or
-written to the PuTTY Event Log (see \k{using-eventlog}) during
+Various forms of this error are printed in the KiTTY window, or
+written to the KiTTY Event Log (see \k{using-eventlog}) during
 authentication.
 
 If you see one of these messages, it means that the server has refused
-all the forms of authentication PuTTY has tried and it has no further
+all the forms of authentication KiTTY has tried and it has no further
 ideas.
 
 It may be worth checking the Event Log for diagnostic messages from
@@ -218,15 +218,15 @@ Upgrade your server, or use the workarounds described in
 
 \H{errors-no-auth} \q{No supported authentication methods available}
 
-This error indicates that PuTTY has run out of ways to authenticate
-you to an SSH server.  This may be because PuTTY has TIS or
+This error indicates that KiTTY has run out of ways to authenticate
+you to an SSH server.  This may be because KiTTY has TIS or
 keyboard-interactive authentication disabled, in which case see
 \k{config-ssh-tis} and \k{config-ssh-ki}.
 
 \H{errors-crc} \q{Incorrect \i{MAC} received on packet} or
 \q{Incorrect \i{CRC} received on packet}
 
-This error occurs when PuTTY decrypts an SSH packet and its checksum
+This error occurs when KiTTY decrypts an SSH packet and its checksum
 is not correct. This probably means something has gone wrong in the
 encryption or decryption process. It's difficult to tell from this
 error message whether the problem is in the client, in the server,
@@ -250,7 +250,7 @@ MAC (Media Access Control) addresses, or with the Apple computer.
 
 \H{errors-garbled} \q{Incoming packet was garbled on decryption}
 
-This error occurs when PuTTY decrypts an SSH packet and the
+This error occurs when KiTTY decrypts an SSH packet and the
 decrypted data makes no sense. This probably means something has
 gone wrong in the encryption or decryption process. It's difficult
 to tell from this error message whether the problem is in the client,
@@ -261,17 +261,17 @@ the setting of \q{Miscomputes SSH-2 encryption keys} (see
 \k{config-ssh-bug-derivekey2}) or \q{Ignores SSH-2 maximum packet
 size} (see \k{config-ssh-bug-maxpkt2}) on the Bugs panel.
 
-\H{errors-x11-proxy} \q{PuTTY X11 proxy: \e{various errors}}
+\H{errors-x11-proxy} \q{KiTTY X11 proxy: \e{various errors}}
 
-This family of errors are reported when PuTTY is doing X forwarding.
+This family of errors are reported when KiTTY is doing X forwarding.
 They are sent back to the X application running on the SSH server,
 which will usually report the error to the user.
 
-When PuTTY enables X forwarding (see \k{using-x-forwarding}) it
+When KiTTY enables X forwarding (see \k{using-x-forwarding}) it
 creates a virtual X display running on the SSH server. This display
-requires authentication to connect to it (this is how PuTTY prevents
-other users on your server machine from connecting through the PuTTY
-proxy to your real X display). PuTTY also sends the server the
+requires authentication to connect to it (this is how KiTTY prevents
+other users on your server machine from connecting through the KiTTY
+proxy to your real X display). KiTTY also sends the server the
 details it needs to enable clients to connect, and the server should
 put this mechanism in place automatically, so your X applications
 should just work.
@@ -286,7 +286,7 @@ forwarded over the SSH connection. However, the second user
 passed on to it, so attempting to run an X application as that user
 often fails with this error.
 
-If this happens, \e{it is not a problem with PuTTY}. You need to
+If this happens, \e{it is not a problem with KiTTY}. You need to
 arrange for your X authentication data to be passed from the user
 you logged in as to the user you used \c{su} to become. How you do
 this depends on your particular system; in fact many modern versions
@@ -307,7 +307,7 @@ network between your client and server goes down and your client
 then tries to send some data, Windows will make several attempts to
 send the data and will then give up and kill the connection. In
 particular, this can occur even if you didn't type anything, if you
-are using SSH-2 and PuTTY attempts a key re-exchange. (See
+are using SSH-2 and KiTTY attempts a key re-exchange. (See
 \k{config-ssh-kex-rekey} for more about key re-exchange.)
 
 (It can also occur if you are using keepalives in your connection.
@@ -316,7 +316,7 @@ them. See \k{config-keepalive} for a discussion of the pros and cons
 of keepalives.)
 
 We are not aware of any reason why this error might occur that would
-represent a bug in PuTTY. The problem is between you, your Windows
+represent a bug in KiTTY. The problem is between you, your Windows
 system, your network and the remote system.
 
 \H{errors-connreset} \q{Network error: Connection reset by peer}
@@ -338,9 +338,9 @@ connection to the network is lost.
 
 \H{errors-connrefused} \q{Network error: Connection refused}
 
-This error means that the network connection PuTTY tried to make to
+This error means that the network connection KiTTY tried to make to
 your server was rejected by the server. Usually this happens because
-the server does not provide the service which PuTTY is trying to
+the server does not provide the service which KiTTY is trying to
 access.
 
 Check that you are connecting with the correct protocol (SSH, Telnet,
@@ -353,7 +353,7 @@ error packet as the real server would have sent.
 
 \H{errors-conntimedout} \q{Network error: Connection timed out}
 
-This error means that the network connection PuTTY tried to make to
+This error means that the network connection KiTTY tried to make to
 your server received no response at all from the server. Usually
 this happens because the server machine is completely isolated from
 the network, or because it is turned off.
@@ -366,8 +366,8 @@ your server.
 connection and contact with the server has been completely lost
 during a connection. (There is a delay of minutes before Unix gives
 up on receiving a reply from the server.) This can occur if you type
-things into PuTTY while the network is down, but it can also occur
-if PuTTY decides of its own accord to send data: due to a repeat key
+things into KiTTY while the network is down, but it can also occur
+if KiTTY decides of its own accord to send data: due to a repeat key
 exchange in SSH-2 (see \k{config-ssh-kex-rekey}) or due to
 keepalives (\k{config-keepalive}).
 
@@ -375,7 +375,7 @@ keepalives (\k{config-keepalive}).
 address}
 
 This means that the operating system rejected the parameters of the
-network connection PuTTY tried to make, usually without actually
+network connection KiTTY tried to make, usually without actually
 trying to connect to anything, because they were simply invalid.
 
 A common way to provoke this error is to accidentally try to connect

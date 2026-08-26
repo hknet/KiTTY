@@ -1,10 +1,10 @@
-\A{authplugin} PuTTY authentication plugin protocol
+\A{authplugin} KiTTY authentication plugin protocol
 
 This appendix contains the specification for the protocol spoken over
-local IPC between PuTTY and an authentication helper plugin.
+local IPC between KiTTY and an authentication helper plugin.
 
 If you already have an authentication plugin and want to configure
-PuTTY to use it, see \k{config-ssh-authplugin} for how to do that.
+KiTTY to use it, see \k{config-ssh-authplugin} for how to do that.
 This appendix is for people writing new authentication plugins.
 
 \H{authplugin-req} Requirements

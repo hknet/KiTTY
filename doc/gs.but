@@ -1,12 +1,12 @@
-\C{gs} Getting started with PuTTY
+\C{gs} Getting started with KiTTY
 
 This chapter gives a quick guide to the simplest types of
-interactive login session using PuTTY.
+interactive login session using KiTTY.
 
 \H{gs-insecure} \ii{Starting a session}
 
-When you start PuTTY, you will see a \i{dialog box}. This dialog box
-allows you to control everything PuTTY can do. See \k{config} for
+When you start KiTTY, you will see a \i{dialog box}. This dialog box
+allows you to control everything KiTTY can do. See \k{config} for
 details of all the things you can control.
 
 You don't usually need to change most of the configuration options.
@@ -39,8 +39,18 @@ administrator should have told you which one. (For example, many
 
 Once you have filled in the \q{Host Name}, \q{Connection type}, and
 possibly \q{Port} settings, you are ready to connect. Press the
-\q{Open} button at the bottom of the dialog box, and PuTTY will
+\q{Open} button at the bottom of the dialog box, and KiTTY will
 begin trying to connect you to the server.
+
+If you connect to the same servers repeatedly, save the settings as a
+\e{saved session} and start it from the list - typing in the
+\q{Saved Sessions} box searches the list as you type, sessions can be
+filed into folders, and the \q{Start} button (or Enter on a
+highlighted entry) opens a session in a new window while keeping this
+dialog open for the next one. See \k{config-saving} for all of it,
+and \k{kitty-features} for the rest of what KiTTY adds - including
+the tray launcher, which starts saved sessions without opening this
+dialog at all.
 
 \H{gs-hostkey} \ii{Verifying the host key} (SSH only)
 
@@ -55,7 +65,7 @@ will probably see a message looking something like this:
 \c You have no guarantee that the server is the computer you think it is.
 \c The server's ssh-ed25519 key fingerprint is:
 \c  ssh-ed25519 255 SHA256:TddlQk20DVs4LRcAsIfDN9pInKpY06D+h4kSHwWAj4w
-\c If you trust this host, press "Accept" to add the key to PuTTY's
+\c If you trust this host, press "Accept" to add the key to KiTTY's
 \c cache and carry on connecting.
 \c If you want to carry on connecting just once, without adding the key
 \c to the cache, press "Connect Once".
@@ -73,11 +83,13 @@ To prevent this attack, each server has a unique identifying code,
 called a \e{host key}. These keys are created in a way that prevents
 one server from forging another server's key. So if you connect to a
 server and it sends you a different host key from the one you were
-expecting, PuTTY can warn you that the server may have been switched
+expecting, KiTTY can warn you that the server may have been switched
 and that a spoofing attack might be in progress.
 
-PuTTY \I{host key cache}records the host key for each server you
-connect to, in the Windows \i{Registry}. Every time you connect to a
+KiTTY \I{host key cache}records the host key for each server you
+connect to, in the Windows \i{Registry} (or, in portable mode, in a
+file beside the program, so the cache travels with a portable copy).
+Every time you connect to a
 server, it checks that the host key presented by the server is the
 same host key as it was the last time you connected. If it is not,
 you will see a stronger warning, and you will have the chance to
@@ -86,7 +98,7 @@ as a password) into it. (See \k{errors-hostkey-wrong} for what that
 looks like.)
 
 However, when you connect to a server you have not connected to
-before, PuTTY has no way of telling whether the host key is the
+before, KiTTY has no way of telling whether the host key is the
 right one or not. So it gives the warning shown above, and asks you
 whether you want to \I{trusting host keys}trust this host key or
 not.
@@ -103,7 +115,7 @@ with letters and numbers that can be confused with each other:
 
 Many servers have more than one host key. If the system administrator
 sends you more than one \I{host key fingerprint}fingerprint, you should
-make sure the one PuTTY shows you is on the list, but it doesn't matter
+make sure the one KiTTY shows you is on the list, but it doesn't matter
 which one it is.
 
 If you don't have any fingerprints that look like the example
@@ -133,10 +145,10 @@ with these. (If, instead, your system administrator has asked you to
 provide, or provided you with, a \q{public key} or \q{key file}, see
 \k{pubkey}.)
 
-PuTTY will display a text window (the \q{\i{terminal window}} \dash it
+KiTTY will display a text window (the \q{\i{terminal window}} \dash it
 will have a black background unless you've changed the defaults), and
 prompt you to type your username and password into that window. (These
-prompts will include the \i{PuTTY icon}, to distinguish them from any
+prompts will include the \i{KiTTY icon}, to distinguish them from any
 text sent by the server in the same window.)
 
 Enter the username and the password, and the server should grant you
@@ -145,7 +157,7 @@ access and begin your session. If you have
 you several chances to get it right.
 
 While you are typing your password, you will not usually see the
-cursor moving in the window, but PuTTY \e{is} registering what you
+cursor moving in the window, but KiTTY \e{is} registering what you
 type, and will send it when you press Return. (It works this way to
 avoid revealing the length of your password to anyone watching your
 screen.)
@@ -154,7 +166,7 @@ If you are using SSH, be careful not to type your username wrongly,
 because you will not have a chance to correct it after you press
 Return; many SSH servers do not permit you to make two login attempts
 using \i{different usernames}. If you type your username wrongly, you
-must close PuTTY and start again.
+must close KiTTY and start again.
 
 If your password is refused but you are sure you have typed it
 correctly, check that Caps Lock is not enabled. Many login servers,
@@ -178,9 +190,9 @@ When you have finished your session, you should log out by typing
 the server's own logout command. This might vary between servers; if
 in doubt, try \c{logout} or \c{exit}, or consult a manual or your
 system administrator. When the server processes your logout command,
-the PuTTY window should close itself automatically.
+the KiTTY window should close itself automatically.
 
-You \e{can} close a PuTTY session using the \i{Close button} in the
+You \e{can} close a KiTTY session using the \i{Close button} in the
 window border, but this might confuse the server - a bit like
 hanging up a telephone unexpectedly in the middle of a conversation.
 We recommend you do not do this unless the server has stopped

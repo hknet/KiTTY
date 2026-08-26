@@ -1,5 +1,5 @@
-\IM{Unix version} Unix version of PuTTY tools
-\IM{Unix version} Linux version of PuTTY tools
+\IM{Unix version} Unix version of KiTTY tools
+\IM{Unix version} Linux version of KiTTY tools
 
 \IM{Unix} Unix
 \IM{Unix} Linux
@@ -69,9 +69,9 @@ from other protocols
 
 \IM{SSH-2}{SSH protocol version 2} SSH-2
 
-\IM{terminal window}{PuTTY window} terminal window
-\IM{terminal window}{PuTTY window} PuTTY terminal window
-\IM{terminal window}{PuTTY window} window, terminal
+\IM{terminal window}{KiTTY window} terminal window
+\IM{terminal window}{KiTTY window} KiTTY terminal window
+\IM{terminal window}{KiTTY window} window, terminal
 
 \IM{copy and paste} copy and paste
 \IM{copy and paste} cut and paste
@@ -124,7 +124,7 @@ from other protocols
 \IM{context menu} right mouse button menu
 
 \IM{Event Log} Event Log
-\IM{Event Log} PuTTY Event Log
+\IM{Event Log} KiTTY Event Log
 \IM{Event Log} Log, Event
 
 \IM{Telnet special commands} Telnet special commands
@@ -191,8 +191,8 @@ sessions from command line
 \IM{saved sessions, loading from command line} command line, loading
 saved sessions from
 
-\IM{putty @sessionname} \c{putty @sessionname}
-\IM{putty @sessionname} \c{@sessionname} command-line argument
+\IM{kitty @sessionname} \c{kitty @sessionname}
+\IM{kitty @sessionname} \c{@sessionname} command-line argument
 
 \IM{protocol selection} protocol selection
 \IM{protocol selection} selecting a protocol
@@ -270,7 +270,7 @@ saved sessions from
 \IM{\-noagent} \c{\-noagent} command-line option
 \IM{\-nc} \c{\-nc} command-line option
 \IM{\-restrict\-acl} \c{\-restrict\-acl} command-line option
-\IM{\-restrict\-putty\-acl} \c{\-restrict\-putty\-acl} Pageant command-line option
+\IM{\-restrict\-kitty\-acl} \c{\-restrict\-kitty\-acl} kageant command-line option
 \IM{\-loghost} \c{\-loghost} command-line option
 \IM{\-hostkey} \c{\-hostkey} command-line option
 \IM{\-sessionlog} \c{\-sessionlog} command-line option
@@ -284,7 +284,7 @@ saved sessions from
 \IM{\-legacy\-stdio\-prompts} \c{\-legacy\-stdio\-prompts} command-line option
 \IM{\-legacy\-charset\-handling} \c{\-legacy\-charset\-handling} command-line option
 
-\IM{\-host\-ca} \c{\-host\-ca} PuTTY command-line option
+\IM{\-host\-ca} \c{\-host\-ca} KiTTY command-line option
 
 \IM{\-sanitise\-stderr} \c{\-sanitise\-stderr} command-line option
 \IM{\-sanitise\-stdout} \c{\-sanitise\-stdout} command-line option
@@ -307,7 +307,7 @@ saved sessions from
 \IM{SSH protocol version} version, of SSH protocol
 
 \IM{PPK} \cw{PPK} file
-\IM{PPK} private key file, PuTTY
+\IM{PPK} private key file, KiTTY
 
 \IM{Argon2} Argon2 passphrase hashing function
 
@@ -317,7 +317,7 @@ saved sessions from
 \IM{PGP key fingerprint} PGP key fingerprint
 \IM{PGP key fingerprint} fingerprint, of PGP key
 
-\IM{verifying new versions} verifying new versions of PuTTY
+\IM{verifying new versions} verifying new versions of KiTTY
 \IM{verifying new versions} new version, verifying
 \IM{verifying new versions} upgraded version, verifying
 
@@ -795,22 +795,22 @@ saved sessions from
 \IM{SFTP} SFTP
 \IM{SFTP} SSH file transfer protocol
 
-\IM{\-unsafe} \c{\-unsafe} PSCP command-line option
-\IM{-ls-PSCP} \c{\-ls} PSCP command-line option
-\IM{-p-PSCP} \c{\-p} PSCP command-line option
-\IM{-q-PSCP} \c{\-q} PSCP command-line option
-\IM{-r-PSCP} \c{\-r} PSCP command-line option
-\IM{-batch-PSCP} \c{\-batch} PSCP command-line option
-\IM{\-sftp} \c{\-sftp} PSCP command-line option
-\IM{\-scp} \c{\-scp} PSCP command-line option
+\IM{\-unsafe} \c{\-unsafe} kscp command-line option
+\IM{-ls-kscp} \c{\-ls} kscp command-line option
+\IM{-p-kscp} \c{\-p} kscp command-line option
+\IM{-q-kscp} \c{\-q} kscp command-line option
+\IM{-r-kscp} \c{\-r} kscp command-line option
+\IM{-batch-kscp} \c{\-batch} kscp command-line option
+\IM{\-sftp} \c{\-sftp} kscp command-line option
+\IM{\-scp} \c{\-scp} kscp command-line option
 
 \IM{return value} return value
 \IM{return value} exit value
 
-\IM{-b-PSFTP} \c{\-b} PSFTP command-line option
-\IM{-bc-PSFTP} \c{\-bc} PSFTP command-line option
-\IM{-be-PSFTP} \c{\-be} PSFTP command-line option
-\IM{-batch-PSFTP} \c{\-batch} PSFTP command-line option
+\IM{-b-ksftp} \c{\-b} ksftp command-line option
+\IM{-bc-ksftp} \c{\-bc} ksftp command-line option
+\IM{-be-ksftp} \c{\-be} ksftp command-line option
+\IM{-batch-ksftp} \c{\-batch} ksftp command-line option
 
 \IM{spaces in filenames} spaces in filenames
 \IM{spaces in filenames} filenames containing spaces
@@ -847,10 +847,10 @@ saved sessions from
 
 \IM{PLINK_PROTOCOL} \c{PLINK_PROTOCOL} environment variable
 
-\IM{-batch-plink} \c{\-batch} Plink command-line option
-\IM{-s-plink} \c{\-s} Plink command-line option
-\IM{-shareexists-plink} \c{\-shareexists} Plink command-line option
-\IM{-no-antispoof-plink} \c{\-no\-antispoof} Plink command-line option
+\IM{-batch-klink} \c{\-batch} klink command-line option
+\IM{-s-klink} \c{\-s} klink command-line option
+\IM{-shareexists-klink} \c{\-shareexists} klink command-line option
+\IM{-no-antispoof-klink} \c{\-no\-antispoof} klink command-line option
 
 \IM{subsystem} subsystem, SSH
 \IM{subsystem} SSH subsystem
@@ -918,18 +918,18 @@ saved sessions from
 \IM{authentication agent} authentication agent
 \IM{authentication agent} agent, authentication
 
-\IM{-t-puttygen} \c{\-t} PuTTYgen command-line option
-\IM{-b-puttygen} \c{\-b} PuTTYgen command-line option
-\IM{--primes-puttygen} \c{\-\-primes} PuTTYgen command-line option
-\IM{--strong-rsa-puttygen} \c{\-\-strong\-rsa} PuTTYgen command-line option
-\IM{--ppk-param-puttygen} \c{\-\-ppk\-param} PuTTYgen command-line option
-\IM{-E-upper-puttygen} \c{\-E} PuTTYgen command-line option
+\IM{-t-kittygen} \c{\-t} kittygen command-line option
+\IM{-b-kittygen} \c{\-b} kittygen command-line option
+\IM{--primes-kittygen} \c{\-\-primes} kittygen command-line option
+\IM{--strong-rsa-kittygen} \c{\-\-strong\-rsa} kittygen command-line option
+\IM{--ppk-param-kittygen} \c{\-\-ppk\-param} kittygen command-line option
+\IM{-E-upper-kittygen} \c{\-E} kittygen command-line option
 
-\IM{-c-pageant} \c{\-c} Pageant command-line option
-\IM{\-\-keylist} \c{\-\-keylist} Pageant command-line option
-\IM{\-\-encrypted} \c{\-\-encrypted} Pageant command-line option
-\IM{\-\-unix} \c{\-\-unix} Pageant command-line option
-\IM{\-\-openssh\-config} \c{\-\-openssh\-config} Pageant command-line option
+\IM{-c-kageant} \c{\-c} kageant command-line option
+\IM{\-\-keylist} \c{\-\-keylist} kageant command-line option
+\IM{\-\-encrypted} \c{\-\-encrypted} kageant command-line option
+\IM{\-\-unix} \c{\-\-unix} kageant command-line option
+\IM{\-\-openssh\-config} \c{\-\-openssh\-config} kageant command-line option
 
 \IM{Windows OpenSSH} Windows OpenSSH
 \IM{Windows OpenSSH} OpenSSH, on Windows
@@ -943,14 +943,14 @@ saved sessions from
 \IM{remember my password} storing passwords
 \IM{remember my password} password, storing
 
-\IM{clean up} clean up after PuTTY
+\IM{clean up} clean up after KiTTY
 \IM{clean up} uninstalling
 
-\IM{version of PuTTY} version, of PuTTY
+\IM{version of PuTTY} version, of KiTTY
 
-\IM{GPG signatures} PGP signatures, of PuTTY binaries
-\IM{GPG signatures} GPG signatures, of PuTTY binaries
-\IM{GPG signatures} signatures, of PuTTY binaries
+\IM{GPG signatures} PGP signatures, of KiTTY binaries
+\IM{GPG signatures} GPG signatures, of KiTTY binaries
+\IM{GPG signatures} signatures, of KiTTY binaries
 
 \IM{logical host name} logical host name
 \IM{logical host name} host name, logical
@@ -976,9 +976,9 @@ saved sessions from
 \IM{proxy logging} diagnostic, proxy
 \IM{proxy logging} standard error, proxy
 
-\IM{PuTTY icon} PuTTY icon
-\IM{PuTTY icon} icon, PuTTY's
-\IM{PuTTY icon} logo, PuTTY's
+\IM{KiTTY icon} KiTTY icon
+\IM{KiTTY icon} icon, KiTTY's
+\IM{KiTTY icon} logo, KiTTY's
 
 \IM{system tray} system tray, Windows
 \IM{system tray} notification area, Windows (aka system tray)
