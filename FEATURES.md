@@ -99,6 +99,8 @@ no folder — the rest are reached through their folder — which is the differe
 you will notice first, because the classic root list shows everything and marks
 the filed ones in brackets.
 
+![Folder navigation mode](docs/features/img/config_folder_nav.jpg)
+
 - **Create a folder:** type the name in the session-name box and press
   **New folder**, which sits beside *Save*. No arming step, and creating a
   folder steps into it.
@@ -200,7 +202,9 @@ The session launcher gives you a quick way to open your saved sessions without d
 
 You can keep individual sessions out of the launcher menu while leaving them in the normal session list: tick **"Hide this session from the launcher"** in the session's **Session** panel.
 
-For favourite sessions, you can assign a **global hotkey** in the session's **Window → Behaviour** panel. The hotkey is registered only while `kitty.exe -launcher` is running; when you save a session, a running launcher is notified and refreshes its registered hotkeys automatically. The same panel includes a check button that tells you whether the combination is currently available or already reserved by Windows/another application.
+For favourite sessions, you can assign a **global hotkey** in the session's **Session → Startup** panel. The hotkey is registered only while `kitty.exe -launcher` is running; when you save a session, a running launcher is notified and refreshes its registered hotkeys automatically. The same panel includes a check button that tells you whether the combination is currently available or already reserved by Windows/another application — and it names any saved session already holding the combination. When two sessions end up claiming one hotkey anyway (an import, say), the launcher balloons at startup naming who won; clicking the balloon opens the winner's settings.
+
+![Global hotkey](docs/features/img/config_hotkey.jpg)
 
 ![Session launcher](docs/features/img/ex_launcher.jpg)
 
@@ -447,15 +451,17 @@ Some days the proxy is not a property of any session — it is a fact about wher
 
 Workplace proxy mode is that switch. Pick one of your named proxies, say how long for, and until it is switched off **every** connection KiTTY makes goes through it — from the configuration box, the launcher, a desktop shortcut, an `ssh://` link or an auto-reconnect — whatever each session stores. **No session is modified**, so there is nothing to undo afterwards.
 
-**Switching it on and off.** *Connection → Proxy* has the switch at the foot of the panel, set apart because it is not a setting of the session in front of you: choose the proxy, choose *Switch off after* (1, 2, 4, 8 or 12 hours, or only when the launcher exits) and press **Switch on**. The launcher's tray menu does the same in one click, using the proxy and duration you chose last. Either place can switch it off again.
+**Switching it on and off.** *Connection → Proxy → Workplace* is the switch's own settings page, separate from the Proxy panel because it is not a setting of the session in front of you: choose the proxy, choose *Switch off after* (1, 2, 4, 8 or 12 hours, or only when the launcher exits) and press **Switch on**. The launcher's tray menu does the same in one click, using the proxy and duration you chose last. Either place can switch it off again.
 
 **How it ends.** The mode is held by the session launcher: switch it off yourself, let the time run out, or stop the launcher — logging off, shutting down or killing it all end the mode, and nothing is left behind to surprise you tomorrow. A launcher that KiTTY started only to hold the mode closes again when the mode ends, unless you set `[Launcher] exitwithworkplace=no`; a launcher you started yourself always stays.
 
 **Seeing it.** A window whose connection really went through the proxy shows a dark green frame and `⇄ workplace proxy` in its title, for as long as that connection lives. This describes the *connection*, not the mode: a window that was already open when you switched the mode on is not going through it and says nothing, and one that is keeps saying so even after the mode ends, because a connection that is already established cannot be re-routed. The launcher's tooltip names the proxy and the time left, and a notice near the clock says when the mode goes on, off, or times out — once each, never on every start. Only the timeout notice offers to switch it back on; if you switched it off yourself, KiTTY assumes you meant it.
 
-**When the proxy stops answering** — usually because you have left the place it belongs to — the failed connection offers to take you to *Connection → Proxy*, where you can switch the mode off or point it somewhere else. It does not switch anything off for you.
+**When the proxy stops answering** — usually because you have left the place it belongs to — the failed connection offers to take you to *Connection → Proxy → Workplace*, where you can switch the mode off or point it somewhere else. It does not switch anything off for you.
 
-**How to enable:** define at least one named proxy (above), then *Connection → Proxy* → **Switch on**, or the launcher's tray menu. The duration notice can be lengthened with `[Launcher] noticeseconds=` in kitty.ini.
+**How to enable:** define at least one named proxy (above), then *Connection → Proxy → Workplace* → **Switch on**, or the launcher's tray menu. The duration notice can be lengthened with `[Launcher] noticeseconds=` in kitty.ini.
+
+![Workplace proxy mode](docs/features/img/config_workplace.jpg)
 
 ### SSH handler (URL/OS integration)
 

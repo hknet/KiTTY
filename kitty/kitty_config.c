@@ -6214,6 +6214,32 @@ static void scb_panel_scripting(struct controlbox *b)
                   HELPCTX(no_help));
         kitty_broadcast_key_controls(b, s);
     }
+
+#ifdef MOD_LAUNCHER
+    /* KiTTY: the Session/Startup panel - how a session can be STARTED from
+     * outside its own window. Holds the launcher global hotkey, moved here
+     * from Window/Behaviour: a machine-wide launch key is a session-startup
+     * concern, and Behaviour had grown past the dialog's command buttons. */
+    if (!GetPuttyFlag()) {
+        ctrl_settitle(b, "Session/Startup",
+                      "Options controlling how this session starts");
+        s = ctrl_getset(b, "Session/Startup", "launcher_hotkey",
+                        "KiTTY Launcher global hotkey");
+        ctrl_checkbox(s, "Enable global hotkey for this session", NO_SHORTCUT,
+                      HELPCTX(no_help), conf_checkbox_handler,
+                      I(CONF_launcher_global_hotkey_enabled));
+        ctrl_editbox(s, "Hotkey:", NO_SHORTCUT, 40,
+                     HELPCTX(no_help), conf_editbox_handler,
+                     I(CONF_launcher_global_hotkey), ED_STR);
+        ctrl_pushbutton(s, "Check hotkey availability", NO_SHORTCUT,
+                        HELPCTX(no_help), kitty_launcher_hotkey_check_handler,
+                        I(0));
+        ctrl_text(s, "Example: Ctrl+Alt+K or Ctrl+Shift+F12. Registered only "
+                     "while KiTTY Launcher is running. The launcher balloons "
+                     "when two sessions claim the same hotkey.",
+                  HELPCTX(no_help));
+    }
+#endif
 }
 
 /* The Terminal panel and its Keyboard/Bell/Features sub-panels. */
@@ -6605,7 +6631,11 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
     ctrl_settitle(b, "Window/Behaviour", str);
     sfree(str);
 
-    s = ctrl_getset(b, "Window/Behaviour", "title",
+    /* KiTTY: the window TITLE gets its own panel, directly after Behaviour
+     * in the tree - Behaviour had collected title, startup, kiosk and
+     * hotkey groups and was pressing against the dialog's command buttons. */
+    ctrl_settitle(b, "Window/Title", "Options controlling the window title");
+    s = ctrl_getset(b, "Window/Title", "title",
                     "Adjust the behaviour of the window title");
     ctrl_editbox(s, "Window title:", 't', 100,
                  HELPCTX(appearance_title),
@@ -6699,24 +6729,6 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
                       conf_checkbox_handler, I(CONF_window_minimizable));
         ctrl_checkbox(s, "Maximize button", NO_SHORTCUT, HELPCTX(no_help),
                       conf_checkbox_handler, I(CONF_window_maximizable));
-    }
-#endif
-
-#ifdef MOD_LAUNCHER
-    if (!GetPuttyFlag()) {
-        s = ctrl_getset(b, "Window/Behaviour", "launcher_hotkey",
-                        "KiTTY Launcher global hotkey");
-        ctrl_checkbox(s, "Enable global hotkey for this session", NO_SHORTCUT,
-                      HELPCTX(no_help), conf_checkbox_handler,
-                      I(CONF_launcher_global_hotkey_enabled));
-        ctrl_editbox(s, "Hotkey:", NO_SHORTCUT, 40,
-                     HELPCTX(no_help), conf_editbox_handler,
-                     I(CONF_launcher_global_hotkey), ED_STR);
-        ctrl_pushbutton(s, "Check hotkey availability", NO_SHORTCUT,
-                        HELPCTX(no_help), kitty_launcher_hotkey_check_handler,
-                        I(0));
-        ctrl_text(s, "Example: Ctrl+Alt+K or Ctrl+Shift+F12. Registered only while KiTTY Launcher is running.",
-                  HELPCTX(no_help));
     }
 #endif
 
@@ -7564,7 +7576,12 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
                 ctrl_alloc(b, sizeof(struct wpmode_data));
             memset(wd, 0, sizeof(*wd));
             kitty_wpmode_active = wd;   /* what the tray-change poll repaints */
-            s = ctrl_getset(b, "Connection/Proxy", "workplace",
+            /* KiTTY: its OWN leaf under Proxy. It is an application-wide
+             * switch, not a session setting, and sharing the Proxy panel
+             * both crowded the panel and made it read like one. */
+            ctrl_settitle(b, "Connection/Proxy/Workplace",
+                          "Workplace proxy mode (application-wide)");
+            s = ctrl_getset(b, "Connection/Proxy/Workplace", "workplace",
                             KITTY_WORKPLACE_BOX_TITLE);
             ctrl_text(s, KITTY_NOT_SESSION_LEAD, HELPCTX(no_help));
             /* The live state, drawn BOLD RED while the mode is on so it is seen
@@ -7583,7 +7600,8 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
             wd->state = ctrl_text(s, KITTY_WORKPLACE_STATE_OFF, HELPCTX(no_help));
             ctrl_text(s, "While it is on, EVERY connection goes through the proxy "
                       "below, whatever each session stores. Nothing is saved into "
-                      "any session, and you can still edit the settings above.",
+                      "any session, and each session's own Proxy panel stays "
+                      "editable.",
                       HELPCTX(no_help));
             /* Label kept to the length of "Named proxy settings:" above: at 60%
              * droplist width the label gets the other 40%, and "Proxy for every

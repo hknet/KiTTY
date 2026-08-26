@@ -7,6 +7,17 @@ see [FEATURES.md](FEATURES.md).
 
 ## 0.85.1.4-beta — unreleased
 
+### Changed
+
+- **Three settings found new homes in the config tree.** The window-title
+  group moved from Window > Behaviour to its own **Window > Title** panel;
+  the launcher global hotkey moved to **Session > Startup** (starting a
+  session from outside its window is a startup concern - the hotkey
+  balloon's click lands there now too); and workplace proxy mode got its
+  own **Connection > Proxy > Workplace** leaf, since it is an
+  application-wide switch, not a setting of the session in front of you.
+  Behaviour and Proxy are correspondingly less crowded.
+
 ### Fixed
 
 - **Config-box panels no longer overflow into the dialog buttons.** The

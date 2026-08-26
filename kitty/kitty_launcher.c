@@ -1191,7 +1191,7 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 								conf_free( wc ) ;
 							}
 							kitty_set_last_session( LauncherHotkeyWinner ) ;
-							RunPuTTYAtPanel( hwnd, "Window/Behaviour" ) ;
+							RunPuTTYAtPanel( hwnd, "Session/Startup" ) ;
 						}
 					}
 					/* The update balloon is the only balloon left: the workplace
@@ -1750,9 +1750,9 @@ void RunPuTTY( HWND hwnd, char * param ) {
 /* Open a new configuration box exactly like RunPuTTY(hwnd,"") - same restricted
  * ACL and master-password sharing - but landed on a named panel via -cfgpanel,
  * the switch the workplace-proxy notice already opens Connection/Proxy with.
- * The hotkey-conflict balloon uses it for Window/Behaviour, where the hotkey
- * controls are. Panel paths contain no spaces (window.c's -cfgpanel scan stops
- * at the first one). */
+ * The hotkey-conflict balloon uses it for Session/Startup, where the hotkey
+ * controls are. Quote the path if it contains spaces (window.c's -cfgpanel
+ * scan understands quotes). */
 static void RunPuTTYAtPanel( HWND hwnd, const char * panel ) {
 	char buffer[4096]="",shortname[1024]="" ;
 	if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) )

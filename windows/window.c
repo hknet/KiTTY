@@ -6206,7 +6206,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 PROCESS_INFORMATION pi;
                 memset(&si, 0, sizeof(si)); si.cb = sizeof(si);
                 memset(&pi, 0, sizeof(pi));
-                sprintf(cmd, "\"%s\" -cfgpanel Connection/Proxy", exe);
+                /* The workplace switch lives on its own leaf now. */
+                sprintf(cmd, "\"%s\" -cfgpanel Connection/Proxy/Workplace", exe);
                 if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL,
                                    &si, &pi)) {
                     CloseHandle(pi.hThread);
