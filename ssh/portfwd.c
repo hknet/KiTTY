@@ -798,10 +798,11 @@ void portfwdmgr_config(PortFwdManager *mgr, Conf *conf)
     for (val = conf_get_str_strs(conf, CONF_portfwd, NULL, &key);
          val != NULL;
          val = conf_get_str_strs(conf, CONF_portfwd, key, &key)) {
-        char *kp, *kp2, *vp, *vp2;
+        const char *kp, *kp2, *vp, *vp2;
         char address_family, type;
         int sport, dport, sserv, dserv;
-        char *sports, *dports, *saddr, *host;
+        const char *sports, *dports;
+        char *saddr, *host;
 
         kp = key;
 
@@ -1117,7 +1118,7 @@ bool portfwdmgr_unlisten(PortFwdManager *mgr, const char *host, int port)
  * dynamically allocated error message string.
  */
 char *portfwdmgr_connect(PortFwdManager *mgr, Channel **chan_ret,
-                         char *hostname, int port, SshChannel *c,
+                         const char *hostname, int port, SshChannel *c,
                          int addressfamily)
 {
     SockAddr *addr;
