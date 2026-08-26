@@ -578,6 +578,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppb_forced(sesskey, "WinNameAlways", conf, CONF_win_name_always);
     gppb_forced(sesskey, "LauncherGlobalHotkeyEnabled", conf, CONF_launcher_global_hotkey_enabled);
     gpps_forced(sesskey, "LauncherGlobalHotkey", conf, CONF_launcher_global_hotkey);
+    gpps_forced(sesskey, "PublicKeyFingerprint", conf, CONF_publickey_fingerprint);
     gpps_forced(sesskey, "WinTitle", conf, CONF_wintitle);
     gppi_forced(sesskey, "TermWidth", conf, CONF_width);
     gppi_forced(sesskey, "TermHeight", conf, CONF_height);

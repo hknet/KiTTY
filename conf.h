@@ -976,6 +976,19 @@ CONF_OPTION(launcher_global_hotkey,
     DEFAULT_STR(""),
     SAVE_KEYWORD("LauncherGlobalHotkey"),
 )
+/*
+ * KiTTY: opt-in pin of the configured private key FILE. When non-empty, the
+ * bare "SHA256:..." fingerprint the key file's public half must match at
+ * connect time; a mismatching file is refused before any passphrase prompt.
+ * Recorded from the config box (Connection/SSH/Auth/Credentials); empty =
+ * feature off. Always the KEY's own blob, never a detached certificate's -
+ * certificates rotate by design.
+ */
+CONF_OPTION(publickey_fingerprint,
+    VALUE_TYPE(STR),
+    DEFAULT_STR(""),
+    SAVE_KEYWORD("PublicKeyFingerprint"),
+)
 CONF_OPTION(width,
     VALUE_TYPE(INT),
     DEFAULT_INT(80),

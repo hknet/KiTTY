@@ -9,6 +9,20 @@ see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- **A session can pin its key file's fingerprint.** On Connection > SSH >
+  Auth > Credentials, "Record fingerprint of the key file" stores the
+  key's SHA256; from then on a connection refuses the file - before any
+  passphrase prompt - if its fingerprint no longer matches, so a swapped
+  or wrong key file is caught instead of interacted with. Empty field =
+  no check. The pin is always over the key itself, never over a detached
+  certificate, so CA-issued certificate renewals do not disturb it. The
+  command-line tools honour the pin of a loaded session too.
+
+- **The Event Log names the key file the fall-back used.** Authenticating
+  from the configured key file (rather than the agent) now logs
+  `Offered public key from file "<path>"` with the key's SHA256
+  fingerprint, matching the agent branch, which already named its key.
+
 - **Conflicting session hotkeys are reported instead of silently
   resolved.** A launcher hotkey is machine-wide, so when two sessions
   claim the same one only the first gets it. The launcher now says so at

@@ -117,6 +117,7 @@ PacketProtocolLayer *ssh2_userauth_new(
     PacketProtocolLayer *successor_layer,
     const char *hostname, int port, const char *fullhostname,
     Filename *keyfile, Filename *detached_cert,
+    const char *publickey_pin,   /* KiTTY: "" = no pin recorded */
     bool show_banner, bool tryagent, bool notrivialauth,
     const char *default_username, bool change_username,
     bool try_ki_auth, bool try_gssapi_auth, bool try_gssapi_kex_auth,

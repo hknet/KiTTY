@@ -85,6 +85,7 @@ struct ssh2_userauth_state {
     bool privatekey_available, privatekey_encrypted;
     char *publickey_algorithm;
     char *publickey_comment;
+    char *publickey_pin;   /* KiTTY: recorded SHA256 the key file must match */
     void *agent_response_to_free;
     ptrlen agent_response;
     BinarySource asrc[1];          /* for reading SSH agent response */
@@ -166,6 +167,7 @@ PacketProtocolLayer *ssh2_userauth_new(
     PacketProtocolLayer *successor_layer,
     const char *hostname, int port, const char *fullhostname,
     Filename *keyfile, Filename *detached_cert_file,
+    const char *publickey_pin,
     bool show_banner, bool tryagent, bool notrivialauth,
     const char *default_username, bool change_username,
     bool try_ki_auth, bool try_gssapi_auth, bool try_gssapi_kex_auth,
@@ -182,6 +184,7 @@ PacketProtocolLayer *ssh2_userauth_new(
     s->fullhostname = dupstr(fullhostname);
     s->keyfile = filename_copy(keyfile);
     s->detached_cert_file = filename_copy(detached_cert_file);
+    s->publickey_pin = dupstr(publickey_pin ? publickey_pin : "");
     s->show_banner = show_banner;
     s->tryagent = tryagent;
     s->notrivialauth = notrivialauth;
@@ -239,6 +242,7 @@ static void ssh2_userauth_free(PacketProtocolLayer *ppl)
         free_prompts(s->cur_prompt);
     sfree(s->publickey_comment);
     sfree(s->publickey_algorithm);
+    sfree(s->publickey_pin);
     if (s->publickey_blob)
         strbuf_free(s->publickey_blob);
     if (s->detached_cert_blob)
@@ -501,6 +505,37 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                 if (!s->privatekey_available)
                     ppl_logevent("Key file contains public key only");
                 s->privatekey_encrypted = ppk_encrypted_f(s->keyfile, NULL);
+                /* KiTTY: opt-in fingerprint pin. A recorded SHA256 means
+                 * "this file must still contain the keypair recorded for
+                 * this session": checked HERE, before any offer and before
+                 * any passphrase prompt, so a swapped or wrong file is
+                 * refused rather than interacted with. Always the key
+                 * file's own blob - a detached certificate substituted
+                 * later rotates by design and is deliberately not what the
+                 * pin is over. The refusal also disarms the agent-match
+                 * preference, which is computed against this same blob. */
+                if (s->publickey_pin[0]) {
+                    char *full = ssh2_fingerprint_blob(
+                        ptrlen_from_strbuf(s->publickey_blob),
+                        SSH_FPTYPE_SHA256);
+                    const char *have = strstr(full, "SHA256:");
+                    const char *want = strstr(s->publickey_pin, "SHA256:");
+                    if (!have) have = full;
+                    if (!want) want = s->publickey_pin;
+                    if (strcmp(have, want) != 0) {
+                        ppl_logevent("Key file \"%s\" REFUSED: fingerprint "
+                                     "%s is not the recorded %s",
+                                     filename_to_str(s->keyfile), have, want);
+                        ppl_printf("Key file \"%s\" refused:\r\n"
+                                   "its fingerprint  %s\r\n"
+                                   "is not this session's recorded  %s\r\n",
+                                   filename_to_str(s->keyfile), have, want);
+                        strbuf_free(s->publickey_blob);
+                        s->publickey_blob = NULL;
+                        s->privatekey_available = false;
+                    }
+                    sfree(full);
+                }
             } else {
                 ppl_logevent("Unable to load key (%s)", error);
                 ppl_printf("Unable to load key file \"%s\" (%s)\r\n",
@@ -1175,7 +1210,21 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                     s, s->pktout, ptrlen_from_asciz(s->publickey_algorithm),
                     ptrlen_from_strbuf(s->publickey_blob));
                 pq_push(s->ppl.out_pq, s->pktout);
-                ppl_logevent("Offered public key");
+                {
+                    /* KiTTY: name the FILE and its key fingerprint. The agent
+                     * branch logs which agent key it is trying; this branch
+                     * said only "Offered public key", so the Event Log never
+                     * recorded which file the fall-back actually used. The
+                     * fingerprint is of the key file's own public blob, even
+                     * when a detached certificate is substituted in the
+                     * packet - the file is what this line identifies. */
+                    char *fp = ssh2_fingerprint_blob(
+                        ptrlen_from_strbuf(s->publickey_blob),
+                        SSH_FPTYPE_SHA256);
+                    ppl_logevent("Offered public key from file \"%s\" (%s)",
+                                 filename_to_str(s->keyfile), fp);
+                    sfree(fp);
+                }
 
                 crMaybeWaitUntilV((pktin = ssh2_userauth_pop(s)) != NULL);
                 if (pktin->type != SSH2_MSG_USERAUTH_PK_OK) {

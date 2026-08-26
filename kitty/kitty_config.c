@@ -10,6 +10,7 @@
 #include "dialog.h"
 #include "storage.h"
 #include "tree234.h"
+#include "ssh.h"     /* KiTTY: ppk_loadpub_f + ssh2_fingerprint_blob (key pin) */
 #ifndef MOD_NOREPEAT
 #define MOD_NOREPEAT 0x4000
 #endif
@@ -284,6 +285,60 @@ extern int kitty_parse_hotkey_spec(const char *spec, unsigned int *mods, unsigne
 extern int kitty_hotkey_conflict_scan(unsigned int mods, unsigned int vk,
                                       const char *exclude, char *names, int nameslen);
 extern int kitty_hotkey_enabled_count(const char *exclude);
+
+#ifdef MOD_PERSO
+/* KiTTY: record the configured key file's SHA256 fingerprint as this
+ * session's pin (CONF_publickey_fingerprint). Reads the PUBLIC half only -
+ * no passphrase is involved. The check itself runs at connect time
+ * (ssh/userauth2-client.c), before any offer or passphrase prompt. */
+static void kitty_keyfile_pin_record_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                             void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    Filename *kf;
+    strbuf *blob;
+    char *alg = NULL, *comment = NULL, *full, *m;
+    const char *error = NULL, *bare;
+    (void)ctrl;
+    if (event != EVENT_ACTION) return;
+    kf = conf_get_filename(conf, CONF_keyfile);
+    if (!kf || filename_is_null(kf)) {
+        MessageBox(GetActiveWindow(),
+                   "Choose a private key file first - the pin records THAT "
+                   "file's fingerprint.",
+                   "KiTTY key fingerprint pin", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    blob = strbuf_new();
+    if (!ppk_loadpub_f(kf, &alg, BinarySink_UPCAST(blob), &comment, &error)) {
+        m = dupprintf("Unable to read the key file's public half:\n\n%s",
+                      error ? error : "unknown error");
+        MessageBox(GetActiveWindow(), m, "KiTTY key fingerprint pin",
+                   MB_OK | MB_ICONWARNING);
+        sfree(m);
+        strbuf_free(blob);
+        return;
+    }
+    full = ssh2_fingerprint_blob(ptrlen_from_strbuf(blob), SSH_FPTYPE_SHA256);
+    /* Store the bare "SHA256:..." token; the connect-time compare accepts
+     * either form, but the field stays short and copyable this way. */
+    bare = strstr(full, "SHA256:");
+    if (!bare) bare = full;
+    conf_set_str(conf, CONF_publickey_fingerprint, bare);
+    dlg_refresh(NULL, dlg);
+    m = dupprintf("Recorded for this session:\n\n%s\n\n"
+                  "Connections will now refuse the key file if its "
+                  "fingerprint changes. Clear the field to switch the check "
+                  "off - and remember to SAVE the session.", full);
+    MessageBox(GetActiveWindow(), m, "KiTTY key fingerprint pin",
+               MB_OK | MB_ICONINFORMATION);
+    sfree(m);
+    sfree(full);
+    sfree(alg);
+    sfree(comment);
+    strbuf_free(blob);
+}
+#endif
 
 /* KiTTY: open the modeless window-title placeholder reference (kitty_win.c).
  * Owned by the active window - the configuration box - so it stacks with it
@@ -7840,6 +7895,18 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                          FILTER_ALL_FILES, false, "Select certificate file",
                          HELPCTX(ssh_auth_cert),
                          conf_filesel_handler, I(CONF_detached_cert));
+#ifdef MOD_PERSO
+            /* KiTTY: opt-in pin of the key FILE. Always the key's own
+             * fingerprint, never the certificate's - certificates rotate by
+             * design and must not break the pin. */
+            ctrl_editbox(s, "Pinned key fingerprint (empty = no check):",
+                         NO_SHORTCUT, 100, HELPCTX(no_help),
+                         conf_editbox_handler, I(CONF_publickey_fingerprint),
+                         ED_STR);
+            ctrl_pushbutton(s, "Record fingerprint of the key file",
+                            NO_SHORTCUT, HELPCTX(no_help),
+                            kitty_keyfile_pin_record_handler, I(0));
+#endif
 
             s = ctrl_getset(b, "Connection/SSH/Auth/Credentials", "plugin",
                             "Plugin to provide authentication responses");

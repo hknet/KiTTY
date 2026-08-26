@@ -386,6 +386,7 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_b_forced(sesskey, "WinNameAlways", conf_get_bool(conf, CONF_win_name_always));
     write_setting_b_forced(sesskey, "LauncherGlobalHotkeyEnabled", conf_get_bool(conf, CONF_launcher_global_hotkey_enabled));
     write_setting_s_forced(sesskey, "LauncherGlobalHotkey", conf_get_str(conf, CONF_launcher_global_hotkey));
+    write_setting_s_forced(sesskey, "PublicKeyFingerprint", conf_get_str(conf, CONF_publickey_fingerprint));
     write_setting_s_forced(sesskey, "WinTitle", conf_get_str(conf, CONF_wintitle));
     write_setting_i_forced(sesskey, "TermWidth", conf_get_int(conf, CONF_width));
     write_setting_i_forced(sesskey, "TermHeight", conf_get_int(conf, CONF_height));

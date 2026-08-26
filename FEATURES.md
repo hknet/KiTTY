@@ -22,6 +22,7 @@ one is available.
   - [URL hyperlinks](#url-hyperlinks)
 - **SSH and network**
   - [Automatic password](#automatic-password)
+  - [Key-file fingerprint pin](#key-file-fingerprint-pin)
   - [Private-key usage confirmation](#private-key-usage-confirmation)
   - [Post-quantum key-exchange warning](#post-quantum-key-exchange-warning)
   - [Command-line key generator (kittygen-cli)](#command-line-key-generator-kittygen-cli)
@@ -272,6 +273,12 @@ KiTTY can log you in automatically to telnet, SSH-1 and SSH-2 servers by storing
 **How to enable:** Configuration > **Connection > Data > Auto-login password**. It is stored with the session and sent automatically at SSH login. Tick **Show password** beside the field to reveal the stored value. As of 0.84.1.38 the password is **encrypted at rest with Windows DPAPI** (tied to your Windows account), rather than stored reversibly; existing/legacy passwords still load and are re-encrypted on the next save. NOTE: a one-time security warning still appears when you set one. DPAPI is machine-bound (it defeats offline/cross-user theft, not same-user malware, and does not move to another PC) — for the strongest security, prefer SSH public-key auth (kageant). In **portable mode** you can additionally protect it with a **master password** for cross-machine portability, which — unlike DPAPI — cannot be recovered if you forget it (see *Portable mode*). You are asked for the master password **once per running KiTTY**: unlocking it once shares it with the session windows KiTTY opens next — from the config box, *New Session*, *Duplicate Session*, or the tray launcher — so you are not prompted again for each window. The unlock is handed only to KiTTY's own child processes (through an inherited handle, wrapped in memory with Windows CryptProtectMemory); the saved files stay master-password-encrypted at rest.
 
 ![Automatic password](docs/features/img/config_password.jpg)
+
+### Key-file fingerprint pin
+
+A session that authenticates with a private key file can record that file's SHA256 fingerprint. From then on, every connection checks the file against the record **before** offering the key or asking for its passphrase: a file whose fingerprint no longer matches — pointed at the wrong key, replaced, or tampered with — is refused with both fingerprints named in the terminal and the Event Log, instead of being interacted with. The check also protects agent use of the configured key, since the agent key to prefer is chosen by matching against the same file. The pin is always over the key itself, never over a detached certificate, so certificate renewals from an SSH CA do not disturb it. The command-line tools (klink, kscp, ksftp) honour the pin of a loaded session too.
+
+**How to enable:** Configuration > **Connection > SSH > Auth > Credentials** > **Record fingerprint of the key file** (reads only the public half — no passphrase involved), then save the session. Clear the **Pinned key fingerprint** field to switch the check off. Empty = no check (the default).
 
 ### Private-key usage confirmation
 
