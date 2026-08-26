@@ -513,6 +513,17 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                         !strcmp(p, "-host_ca") || !strcmp(p, "--host_ca"))) {
                 show_ca_config_box(NULL);
                 exit(0);
+            } else if (!strcmp(p, "-cfgpanel")) {
+                /* KiTTY: already acted on by the WinMain pre-scan
+                 * (windows/window.c), which reads - and blanks it from - the
+                 * ANSI command line. THIS parser works from GetCommandLineW,
+                 * a separate copy the blanking cannot reach, so the option
+                 * has to be known here too or it derails the parse ("unknown
+                 * option") - which is what kept -cfgpanel and
+                 * -demo-config-box from composing for per-panel screenshots.
+                 * Skip it and its argument; the panel is already recorded. */
+                if (arglist->args[arglistpos])
+                    arglistpos++;
             } else if (!strcmp(p, "-demo-config-box")) {
                 if (!arglist->args[arglistpos]) {
                     cmdline_error("%s expects an output filename", p);

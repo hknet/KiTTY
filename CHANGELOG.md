@@ -9,6 +9,14 @@ see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- **KiTTY ships its manual, and Help works.** F1, the config box's Help
+  buttons and the system menu's Help entry now open the user manual when
+  a `kitty.chm` sits beside the executable (a `putty.chm` is accepted
+  too). Nothing is embedded - the binaries stay as small as before, and
+  a portable copy simply carries the file along. The manual is PuTTY's,
+  extended with a generated "KiTTY additions" chapter covering this
+  port's features, kept in step with FEATURES.md automatically.
+
 - **A session can pin its key file's fingerprint.** On Connection > SSH >
   Auth > Credentials, "Record fingerprint of the key file" stores the
   key's SHA256; from then on a connection refuses the file - before any

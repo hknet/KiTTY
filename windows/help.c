@@ -141,6 +141,40 @@ static bool load_chm_resource(void)
     return toret;
 }
 
+/* KiTTY: the shipped form of the manual is a kitty.chm BESIDE the
+ * executable - nothing embedded (the binaries stay small) and nothing
+ * registry-written (a portable copy carries its manual with it). putty.chm
+ * is accepted under its upstream name too, so a manual taken from a PuTTY
+ * installation also works. */
+static bool find_chm_beside_exe(void)
+{
+    static const char *const names[] = { "kitty.chm", "putty.chm" };
+    char exepath[MAX_PATH];
+    char *slash;
+    size_t i;
+
+    if (!GetModuleFileNameA(NULL, exepath, sizeof(exepath) - 1))
+        return false;
+    exepath[sizeof(exepath) - 1] = '\0';
+    slash = strrchr(exepath, '\\');
+    if (!slash)
+        return false;
+    slash[1] = '\0';
+
+    for (i = 0; i < lenof(names); i++) {
+        char *candidate = dupcat(exepath, names[i]);
+        DWORD attrs = GetFileAttributesA(candidate);
+        if (attrs != INVALID_FILE_ATTRIBUTES &&
+            !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+            chm_path = candidate;
+            chm_created_by_us = false;
+            return true;
+        }
+        sfree(candidate);
+    }
+    return false;
+}
+
 static bool find_chm_from_installation(void)
 {
     static const char *const reg_paths[] = {
@@ -186,6 +220,10 @@ void init_help(void)
      * use that as the first choice.
      */
     if (find_chm_resource())
+        return;
+
+    /* KiTTY: then the manual shipped beside the executable. */
+    if (find_chm_beside_exe())
         return;
 
     /*

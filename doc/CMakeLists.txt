@@ -61,6 +61,17 @@ if(HALIBUT AND PERL_EXECUTABLE)
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/licence.pl ${CMAKE_CURRENT_SOURCE_DIR}/../LICENCE)
   set(manual_dependencies ${manual_dependencies} copy_but licence_but)
 
+  # KiTTY: the "KiTTY additions" chapter is GENERATED from FEATURES.md, so the
+  # shipped help covers our features without a second copy of the text to
+  # drift out of date.
+  add_custom_target(kitty_but
+    BYPRODUCTS kitty.but
+    COMMAND ${PERL_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../tools/features2but.pl
+      ${CMAKE_CURRENT_SOURCE_DIR}/../FEATURES.md -o kitty.but
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../tools/features2but.pl
+      ${CMAKE_CURRENT_SOURCE_DIR}/../FEATURES.md)
+  set(manual_dependencies ${manual_dependencies} kitty_but)
+
   set(manual_sources
     ${CMAKE_CURRENT_BINARY_DIR}/copy.but
     ${CMAKE_CURRENT_SOURCE_DIR}/blurb.but
@@ -73,6 +84,7 @@ if(HALIBUT AND PERL_EXECUTABLE)
     ${CMAKE_CURRENT_SOURCE_DIR}/plink.but
     ${CMAKE_CURRENT_SOURCE_DIR}/pubkey.but
     ${CMAKE_CURRENT_SOURCE_DIR}/pageant.but
+    ${CMAKE_CURRENT_BINARY_DIR}/kitty.but
     ${CMAKE_CURRENT_SOURCE_DIR}/errors.but
     ${CMAKE_CURRENT_SOURCE_DIR}/faq.but
     ${CMAKE_CURRENT_SOURCE_DIR}/feedback.but
