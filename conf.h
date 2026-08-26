@@ -1322,8 +1322,11 @@ CONF_OPTION(portfwd,
     /*
      * Subkeys for 'portfwd' can have the following forms:
      *
-     *   [LR]localport
-     *   [LR]localaddr:localport
+     *   [A46]?[LR]localport
+     *   [A46]?[LR]localaddr:localport
+     *
+     * The optional prefix letter [A46] indicates the desired network
+     * address family: IPv4, IPv6, or 'A' for either.
      *
      * Dynamic forwardings are indicated by an 'L' key, and the
      * special value "D". For all other forwardings, the value should
