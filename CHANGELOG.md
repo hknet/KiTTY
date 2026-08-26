@@ -7,6 +7,16 @@ see [FEATURES.md](FEATURES.md).
 
 ## 0.85.1.4-beta — unreleased
 
+### Fixed
+
+- **Config-box panels no longer overflow into the dialog buttons.** The
+  combined "KSCP and WinSCP" page is now two panels (Connection > SSH >
+  KSCP and > WinSCP), and the window-icon settings moved from Appearance
+  to their own Window > Icon panel - each of the crowded pages had grown
+  past the panel area and its last controls sat on top of Start/Open/
+  Cancel. Two clipped labels (the AltGr switch on Terminal > Keyboard,
+  the custom hyperlink regex) are shortened to fit.
+
 ### New
 
 - **KiTTY ships its manual, and Help works.** F1, the config box's Help

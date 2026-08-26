@@ -461,7 +461,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				const char *hint = ( code==127 )
 					? "\r\n\r\nExit 127 = the server could not start the SCP/SFTP "
 					  "subsystem (command not found). Try switching the transfer "
-					  "protocol (Connection -> SSH -> KSCP and WinSCP) between SCP "
+					  "protocol (Connection -> SSH -> WinSCP) between SCP "
 					  "and SFTP, or check the server's sftp-server/scp."
 					: "" ;
 				m = dupprintf( "\r\n==== %s FAILED  (pscp exit code %lu) ====%s\r\n",

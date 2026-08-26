@@ -638,7 +638,15 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
 #endif
 
     if (demo_config_box) {
-        sesslist_demo_mode = true;
+        /* KiTTY: upstream fakes the session list here so a demo shot cannot
+         * leak the user's real sessions. In PORTABLE mode the store is a
+         * prepared fixture - the screenshot pipeline's clean room seeds the
+         * synthetic sessions and folders the picture exists to show - so the
+         * fake would hide exactly that. Registry mode keeps the fake: that
+         * store is the user's. */
+        extern int kitty_storage_is_portable(void);
+        if (!kitty_storage_is_portable())
+            sesslist_demo_mode = true;
         load_open_settings(NULL, conf);
         conf_set_str(conf, CONF_host, "demo-server.example.com");
         do_config(conf);

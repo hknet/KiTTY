@@ -317,17 +317,21 @@ the world's not Linux: I still worry that some servers will be
 confused by that terminal type. But perhaps one day we should switch
 over.)
 
-\S{faq-settings}{Question} Where does PuTTY store its data?
+\S{faq-settings}{Question} Where does KiTTY store its data?
 
-On Windows, PuTTY stores most of its data (saved sessions, SSH host
+On Windows, KiTTY stores most of its data (saved sessions, SSH host
 keys) in the \i{Registry}. The precise location is
 
-\c HKEY_CURRENT_USER\Software\SimonTatham\PuTTY
+\c HKEY_CURRENT_USER\Software\kapper.net\KiTTY
 
 and within that area, saved sessions are stored under \c{Sessions}
-while host keys are stored under \c{SshHostKeys}.
+while host keys are stored under \c{SshHostKeys}. (Settings left
+behind by earlier KiTTY versions under \c{Software\\9bis.com\\KiTTY}
+or by PuTTY under \c{Software\\SimonTatham\\PuTTY} are read as a
+fallback, so they keep working.) In portable mode all of this lives
+in files beside the program instead - see \k{config-file}.
 
-PuTTY also requires a random number seed file, to improve the
+KiTTY also requires a random number seed file, to improve the
 unpredictability of randomly chosen data needed as part of the SSH
 cryptography. This is stored by default in a file called \i\c{PUTTY.RND};
 this is stored by default in the \q{Application Data} directory,
@@ -335,7 +339,7 @@ or failing that, one of a number of fallback locations. If you
 want to change the location of the random number seed file, you can
 put your chosen pathname in the Registry, at
 
-\c HKEY_CURRENT_USER\Software\SimonTatham\PuTTY\RandSeedFile
+\c HKEY_CURRENT_USER\Software\kapper.net\KiTTY\RandSeedFile
 
 You can ask PuTTY to delete all this data; see \k{faq-cleanup}.
 

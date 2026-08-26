@@ -63,11 +63,11 @@ and \q{Speed}; see \k{config-serial} for more details of these.
 \S{config-saving} \ii{Loading and storing saved sessions}
 
 The next part of the Session configuration panel allows you to save
-your preferred PuTTY options so they will appear automatically the
-next time you start PuTTY. It also allows you to create \e{saved
+your preferred KiTTY options so they will appear automatically the
+next time you start KiTTY. It also allows you to create \e{saved
 sessions}, which contain a full set of configuration options plus a
 host name and protocol. A saved session contains all the information
-PuTTY needs to start exactly the session you want.
+KiTTY needs to start exactly the session you want.
 
 \b To save your default settings: first set up the settings the way
 you want them saved. Then come back to the Session panel. Select the
@@ -115,16 +115,65 @@ name in the list box.
 \b To delete a saved session: single-click to select the session
 name in the list box, and then press the \q{Delete} button.
 
+KiTTY extends this panel well beyond the classic behaviour described
+above; the full stories are in the KiTTY additions chapter
+(\k{kitty-features}), but in brief:
+
+\b \e{Two launch buttons.} \q{Open} starts the chosen session in the
+current window (the configuration box closes); \q{Start} - like
+pressing Enter on a highlighted session - starts it in a \e{new}
+window and keeps the box open for launching the next one.
+Double-clicking a session still launches it; with
+\c{dblclick=start} in \c{kitty.ini}'s \c{[ConfigBox]} section the
+double-click behaves like \q{Start}.
+
+\b \e{Search as you type.} Typing in the \q{Saved Sessions} box
+filters the session list live (prefix and word matches rank above
+substring matches). Up/Down moves into the filtered list, Enter
+starts the highlighted session. \e{Ctrl+F} from anywhere in the box
+jumps back to this panel with the search field focused; \e{Ctrl+G}
+does the same but first drops any folder filter, so the search
+covers every saved session. \c{filter=no} in \c{[ConfigBox]}
+restores the classic non-filtering box.
+
+\b \e{Session folders.} Sessions can be filed into folders, chosen
+from a \q{Folder} dropdown that filters the list, with controls to
+create, rename and delete folders (deleting a non-empty folder
+moves its sessions back to the root list). With
+\c{foldernavigation=yes} in \c{[ConfigBox]}, folders appear as rows
+of the list itself instead - stepped into like directories, with a
+\c{..} row leading back.
+
+\b \e{Quick connect.} If the last thing you loaded was \q{Default
+Settings}, the box opens from Default Settings with the cursor
+already in \q{Host Name} and its contents selected, so an address
+can be typed over it and opened with Enter - the right starting
+point when you connect by address rather than from the list. Load
+any other session to leave the mode; \c{loadlastsession=no} in
+\c{[ConfigBox]} makes it permanent.
+
+\b \e{Whole-store export and import.} The \q{Export all...} and
+\q{Import all...} buttons move every saved session (and named proxy
+definitions) as protected \c{.ktx} bundle files - passwords are
+re-protected by the store they arrive in.
+
 Each saved session is independent of the Default Settings
 configuration. If you change your preferences and update Default
 Settings, you must also update every saved session separately.
 
 Saved sessions are stored in the \i{Registry}, at the location
 
-\c HKEY_CURRENT_USER\Software\SimonTatham\PuTTY\Sessions
+\c HKEY_CURRENT_USER\Software\kapper.net\KiTTY\Sessions
 
-If you need to store them in a file, you could try the method
-described in \k{config-file}.
+(KiTTY also reads sessions left behind by earlier KiTTY versions
+under \c{Software\\9bis.com\\KiTTY} and by PuTTY under
+\c{Software\\SimonTatham\\PuTTY}, so an existing configuration is
+picked up rather than lost.)
+
+If you need to store them in files instead of the Registry, use
+KiTTY's portable mode (\c{kitty_portable.exe}, or \c{savemode=dir}
+in \c{kitty.ini}), which keeps every session as a file beside the
+program; \k{config-file} describes the classic manual method.
 
 \S{config-closeonexit} \q{\ii{Close window} on exit}
 
@@ -4165,45 +4214,30 @@ first line.
 
 \H{config-file} \ii{Storing configuration in a file}
 
-PuTTY does not currently support storing its configuration in a file
-instead of the \i{Registry}. However, you can work around this with a
-couple of \i{batch file}s.
+Unlike PuTTY - whose manual used to describe a Registry
+import/export batch-file workaround here - KiTTY supports storing
+its configuration in files natively: \e{portable mode}.
 
-You will need a file called (say) \c{PUTTY.BAT} which imports the
-contents of a file into the Registry, then runs PuTTY, exports the
-contents of the Registry back into the file, and deletes the
-Registry entries. This can all be done using the Regedit command
-line options, so it's all automatic. Here is what you need in
-\c{PUTTY.BAT}:
+In portable mode KiTTY keeps its runtime state next to the
+executable instead of in the \i{Registry}: saved sessions are one
+file each (in a \c{Sessions} directory beside the program), and SSH
+host keys, host CAs, the random seed, recent-session state and the
+update-check cache are file-backed as well. The whole directory can
+be carried on a USB stick or copied between machines.
 
-\c @ECHO OFF
-\c regedit /s putty.reg
-\c regedit /s puttyrnd.reg
-\c start /w putty.exe
-\c regedit /ea new.reg HKEY_CURRENT_USER\Software\SimonTatham\PuTTY
-\c copy new.reg putty.reg
-\c del new.reg
-\c regedit /s puttydel.reg
+To use it, either run the dedicated \c{kitty_portable.exe} (file
+mode by default), or place a \c{kitty.ini} next to \c{kitty.exe}
+containing
 
-This batch file needs two auxiliary files: \c{PUTTYRND.REG} which
-sets up an initial safe location for the \c{PUTTY.RND} random seed
-file, and \c{PUTTYDEL.REG} which destroys everything in the Registry
-once it's been successfully saved back to the file.
+\c [KiTTY]
+\c savemode=dir
 
-Here is \c{PUTTYDEL.REG}:
+Saved passwords in a portable store can be protected with a
+\e{master password} so they survive the move to another machine;
+see the Portability section of the KiTTY additions chapter
+(\k{kitty-features}) for that, and for the details of converting an
+existing store.
 
-\c REGEDIT4
-\c
-\c [-HKEY_CURRENT_USER\Software\SimonTatham\PuTTY]
-
-Here is an example \c{PUTTYRND.REG} file:
-
-\c REGEDIT4
-\c
-\c [HKEY_CURRENT_USER\Software\SimonTatham\PuTTY]
-\c "RandSeedFile"="a:\\putty.rnd"
-
-You should replace \c{a:\\putty.rnd} with the location where you
-want to store your random number data. If the aim is to carry around
-PuTTY and its settings on one USB stick, you probably want to store it
-on the USB stick.
+Note that the command-line tools (\c{klink}, \c{kscp}, \c{ksftp})
+read saved sessions from the Registry only, not from a portable
+store.

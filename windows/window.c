@@ -1466,8 +1466,18 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 int i = 0;
                 char *q = p + strlen("-cfgpanel");
                 while (*q == ' ' || *q == '\t') q++;
-                while (*q && *q != ' ' && *q != '\t' && i < (int)sizeof(panel)-1)
-                    panel[i++] = *q++;
+                if (*q == '"') {
+                    /* Quoted: panel paths can contain spaces
+                     * ("Connection/SSH/Host keys"), and the screenshot
+                     * pipeline addresses every panel by its exact path. */
+                    q++;
+                    while (*q && *q != '"' && i < (int)sizeof(panel)-1)
+                        panel[i++] = *q++;
+                    if (*q == '"') q++;
+                } else {
+                    while (*q && *q != ' ' && *q != '\t' && i < (int)sizeof(panel)-1)
+                        panel[i++] = *q++;
+                }
                 panel[i] = '\0';
                 if (panel[0])
                     kitty_cfgbox_open_on_panel(panel);

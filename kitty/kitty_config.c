@@ -6335,7 +6335,10 @@ static void scb_panel_terminal(struct controlbox *b)
      * Worth having for anyone who wants Alt shortcuts from EITHER Alt key and
      * never composes; it is not a fix for AltGr, it is the off switch. */
     if (!GetPuttyFlag()) {
-        ctrl_checkbox(s, "Disable AltGr: right Alt acts as Alt, not as a character key",
+        /* Short on purpose: the long form clipped at the panel's right edge
+         * (caught by the documentation screenshots); the text below carries
+         * the detail. */
+        ctrl_checkbox(s, "Disable AltGr (acts as plain Alt)",
                       NO_SHORTCUT, HELPCTX(no_help), kitty_checkbox_int_handler,
                       I(CONF_disablealtgr));
         ctrl_text(s, "Off (default): AltGr composes characters on international "
@@ -6762,7 +6765,10 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
         ctrl_checkbox(s, "Use the default regular expression", NO_SHORTCUT,
                       HELPCTX(no_help), kitty_checkbox_int_handler,
                       I(CONF_url_defregex));
-        ctrl_editbox(s, "Custom regular expression:", NO_SHORTCUT, 60,
+        /* Short label: at 60% edit width, "Custom regular expression:"
+         * truncated to "Custom regular" (caught by the documentation
+         * screenshots). */
+        ctrl_editbox(s, "Custom regex:", NO_SHORTCUT, 60,
                      HELPCTX(no_help), conf_editbox_handler,
                      I(CONF_url_regex), ED_STR);
     }
@@ -6791,7 +6797,11 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
                      "that is no longer there - the window is moved onto the "
                      "nearest monitor.", HELPCTX(no_help));
 
-        s = ctrl_getset(b, "Window/Appearance", "icon",
+        /* KiTTY: the icon group gets its OWN panel (as classic KiTTY had) -
+         * appended to Appearance it pushed the panel past the dialog's
+         * command buttons (caught by the documentation screenshots). */
+        ctrl_settitle(b, "Window/Icon", "Define the window icon");
+        s = ctrl_getset(b, "Window/Icon", "icon",
                         "Define the window icon");
         ctrl_editbox(s, "Icon (from internal resources)", NO_SHORTCUT, 40,
                      HELPCTX(no_help), conf_editbox_handler,
@@ -7328,8 +7338,14 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
                 /* We assume the local username is sufficiently stable
                  * to include on the dialog box. */
                 char *user = get_username();
+                /* KiTTY: in demo-screenshot mode a NEUTRAL name - the real
+                 * account name of whoever renders the documentation shots
+                 * must not end up in a published image. */
+                extern Filename *dialog_box_demo_screenshot_filename;
                 char *userlabel = dupprintf("Use system username (%s)",
-                                            user ? user : "");
+                                            dialog_box_demo_screenshot_filename
+                                            ? "user"
+                                            : (user ? user : ""));
                 sfree(user);
                 ctrl_radiobuttons(s, "When username is not specified:", 'n', 4,
                                   HELPCTX(connection_username_from_env),
@@ -8196,26 +8212,16 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
         }
 
 #ifdef MOD_PERSO
-        /* KiTTY: PSCP / WinSCP integration. Backend = StartWinSCP / SendFile. */
+        /* KiTTY: PSCP / WinSCP integration. Backend = StartWinSCP / SendFile.
+         * TWO panels, deliberately: together the controls overflowed the
+         * panel area into the dialog's command buttons (caught by the
+         * documentation screenshots), and the content is genuinely two
+         * topics - kscp transfers and the WinSCP hand-off. */
         if (!GetPuttyFlag()) {
-            ctrl_settitle(b, "Connection/SSH/KSCP and WinSCP",
-                          "KSCP and WinSCP integration");
+            ctrl_settitle(b, "Connection/SSH/KSCP",
+                          "KSCP file-transfer integration");
 
-            s = ctrl_getset(b, "Connection/SSH/KSCP and WinSCP",
-                            "winSCPproto", "General protocol setting");
-            ctrl_radiobuttons(s, "Prefered protocol:", NO_SHORTCUT, 4,
-                              HELPCTX(no_help),
-                              conf_radiobutton_handler,
-                              I(CONF_winscpprot),
-                              "scp",   NO_SHORTCUT, I(0),
-                              "sftp",  NO_SHORTCUT, I(1),
-                              "ftp",   NO_SHORTCUT, I(2),
-                              "ftps",  NO_SHORTCUT, I(3),
-                              "ftpes", NO_SHORTCUT, I(4),
-                              "http",  NO_SHORTCUT, I(5),
-                              "https", NO_SHORTCUT, I(6));
-
-            s = ctrl_getset(b, "Connection/SSH/KSCP and WinSCP",
+            s = ctrl_getset(b, "Connection/SSH/KSCP",
                             "pscp", "KSCP integration");
             g_osc7_track_ctrl = ctrl_checkbox(s,
                           "Track remote directory (OSC 7 shell integration)",
@@ -8240,7 +8246,24 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                           NO_SHORTCUT, HELPCTX(no_help),
                           conf_checkbox_handler, I(CONF_pscp_keep_window));
 
-            s = ctrl_getset(b, "Connection/SSH/KSCP and WinSCP",
+            ctrl_settitle(b, "Connection/SSH/WinSCP",
+                          "WinSCP integration");
+
+            s = ctrl_getset(b, "Connection/SSH/WinSCP",
+                            "winSCPproto", "General protocol setting");
+            ctrl_radiobuttons(s, "Prefered protocol:", NO_SHORTCUT, 4,
+                              HELPCTX(no_help),
+                              conf_radiobutton_handler,
+                              I(CONF_winscpprot),
+                              "scp",   NO_SHORTCUT, I(0),
+                              "sftp",  NO_SHORTCUT, I(1),
+                              "ftp",   NO_SHORTCUT, I(2),
+                              "ftps",  NO_SHORTCUT, I(3),
+                              "ftpes", NO_SHORTCUT, I(4),
+                              "http",  NO_SHORTCUT, I(5),
+                              "https", NO_SHORTCUT, I(6));
+
+            s = ctrl_getset(b, "Connection/SSH/WinSCP",
                             "WinSCP", "WinSCP integration");
             /* Global app setting (kitty.ini [KiTTY] WinSCPPath), not per-session;
              * uses a custom handler rather than conf_filesel_handler. */

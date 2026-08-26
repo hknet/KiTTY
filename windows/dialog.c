@@ -1690,9 +1690,18 @@ bool do_config(Conf *conf)
          * carries the same marker, but there is no terminal yet here.
          * Suffixes composed in kitty/kitty_title.c - one place for all. */
         char *base = dupprintf("%s Configuration", appname);
-        pds->dp->wintitle = kitty_title_compose(
-            base, kitty_storage_is_portable(), restricted_acl(), true);
-        sfree(base);
+        if (dialog_box_demo_screenshot_filename) {
+            /* Demo-screenshot mode exists only to render the box for the
+             * documentation, so the title must be the CANONICAL one - no
+             * (portable), no ACL marker, no test-build label. The clean
+             * room the screenshot pipeline runs in is portable as a
+             * mechanism, not as part of the story the picture tells. */
+            pds->dp->wintitle = base;
+        } else {
+            pds->dp->wintitle = kitty_title_compose(
+                base, kitty_storage_is_portable(), restricted_acl(), true);
+            sfree(base);
+        }
     }
     pds->dp->data = conf;
 
