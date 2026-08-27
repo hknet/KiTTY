@@ -25,6 +25,16 @@ BEGIN
     EDITTEXT IDA_TEXT, 10, 6, 250, 128, ES_READONLY | ES_MULTILINE | ES_CENTER | WS_VSCROLL, WS_EX_STATICEDGE
 END
 
+/*
+ * Size budget for this and every other dialog: 1280 x 660 LOGICAL pixels.
+ * Not the old 800x600 rule - what binds now is DPI scaling. A 1920x1080
+ * laptop at 150% reports 1280x720 logical pixels to an application, less room
+ * than a 1366x768 netbook at 100%, and the taskbar takes about 60 of the
+ * height. Dialog units are no shortcut: their size follows the font, so the
+ * same count is more pixels in a larger one. Measured at each window's
+ * smallest by scripts/qa_window_minsize.ps1; the note in pageant.rc has the
+ * reasoning in full.
+ */
 /* Accelerators used: aco */
 IDD_MAINBOX DIALOG DISCARDABLE 0, 0, 300, 402
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU

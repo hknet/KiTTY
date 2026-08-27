@@ -11,6 +11,31 @@
 
 #include "help.rc2"
 
+/*
+ * HOW BIG A DIALOG MAY BE.
+ *
+ * The old "must fit 800x600" rule is retired: no current machine has that
+ * screen, and it is not what binds any more. DPI SCALING is. A 1920x1080
+ * laptop at 150% - a common Windows 11 default on a 14-inch panel - reports
+ * 1280x720 LOGICAL pixels to an application, which is less room than the
+ * 1366x768 of a decade-old netbook at 100%. The 1080p panel is the smaller
+ * desktop of the two, and it is the one people actually have.
+ *
+ * So the budget is 1280x720 logical, less roughly 60 for the taskbar:
+ *
+ *     width  <= 1280 logical px
+ *     height <=  660 logical px
+ *
+ * LOGICAL, not physical: the same template is bigger in pixels on a scaled
+ * display, so measuring raw pixels on one machine says nothing about whether
+ * it fits on anyone else's. Dialog units are not a shortcut either - their
+ * size follows the font, so the same DLU count is more pixels at Segoe UI 9
+ * than it was at the old 8pt shell font.
+ *
+ * scripts/qa_window_minsize.ps1 measures every window at its SMALLEST against
+ * these numbers, in logical pixels, and fails the build if one does not fit.
+ */
+
 IDI_MAINICON ICON "pageant.ico"
 IDI_TRAYICON ICON "pageants.ico"
 
