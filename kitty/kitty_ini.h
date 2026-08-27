@@ -619,6 +619,18 @@ char default_init_file_content[] =
 ;    opaque anyway. The /transparency command cannot turn it back on either.\n\
 ;transparency=yes\n\
 \n\
+; theme: which colours KiTTY's windows paint in - system, light or dark.\n\
+;    This is one setting for the whole suite: kitty, kageant and kittygen all\n\
+;    read it, so setting it once changes all of them. \"system\" follows the\n\
+;    Windows app-colour setting and changes with it while a window is open.\n\
+;    Dark needs Windows 10 1809 or newer; on anything older every value\n\
+;    behaves as \"light\".\n\
+;    It colours the WINDOWS - the configuration box, the dialogs and the\n\
+;    message boxes. A terminal's own colours are a per-session setting and are\n\
+;    not touched by this: a dark KiTTY still opens whatever colours the session\n\
+;    asks for.\n\
+;theme=system\n\
+\n\
 ; userpasssshnosave: do not keep the username and password KiTTY learned during\n\
 ;    a login in the running session's settings. They are then not carried into\n\
 ;    a duplicated session and cannot be written out if the session is saved.\n\
@@ -937,12 +949,6 @@ char default_init_file_content[] =
 ; default. Hovering the pointer over a notice holds it open regardless.\n\
 ;noticetimeout=8\n\
 \n\
-; theme: which colours the kageant settings dialog paints in - system,\n\
-; light or dark. \"system\" follows the Windows app-colour setting and\n\
-; changes with it while the window is open. Dark needs Windows 10 1809\n\
-; or newer; on anything older every value behaves as \"light\". The other\n\
-; kageant windows are still light whatever this says.\n\
-;theme=system\n\
 \n\
 ; --- IPC access control (all default no). These restrict only requests\n\
 ; that arrive from OTHER programs over the agent protocol (WM_COPYDATA /\n\

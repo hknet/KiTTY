@@ -55,15 +55,18 @@ see [FEATURES.md](FEATURES.md).
 
 ### New
 
-- **kageant has a dark mode.** Every one of its windows follows it - the key
-  list, key details, the agent log and its record view, settings, About, and
-  the message boxes it puts up - set to *Follow the system* (the default,
-  which changes with the Windows app-colour setting while a window is open),
-  *Always light* or *Always dark*. On Windows 11 the title bar takes the
-  window's own colour instead of the system's. Needs Windows 10 1809 or
-  newer; older Windows stays light and the setting is greyed rather than
-  offered. Configuration: kageant key list > Settings... > Agent >
-  **Colour theme**, or `[Agent] theme=` in kitty.ini.
+- **KiTTY has a dark mode.** The configuration box and the dialogs around it,
+  every kittygen window, and all of kageant's - the key list, key details,
+  the agent log and its record view, settings, About and the message boxes -
+  follow one setting: *Follow the system* (the default, which changes with
+  the Windows app-colour setting while a window is open), *Always light* or
+  *Always dark*. One setting for the whole suite, not one per program. On
+  Windows 11 the title bar takes the window's own colour instead of the
+  system's. It colours the windows: a terminal's own colours are a session
+  setting and are left alone. Needs Windows 10 1809 or newer; older Windows
+  stays light and the setting is greyed rather than offered. Configuration:
+  kageant key list > Settings... > Agent > **Colour theme**, or
+  `[KiTTY] theme=` in kitty.ini.
 
 - **KiTTY ships its manual, and Help works.** F1, the config box's Help
   buttons and the system menu's Help entry now open the user manual when
