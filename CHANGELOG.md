@@ -9,6 +9,17 @@ see [FEATURES.md](FEATURES.md).
 
 ### Changed
 
+- **kageant's windows use the system font and a tabbed settings dialog.**
+  Segoe UI 9 replaces the 8pt shell font, which maps to Tahoma and stopped
+  being Windows' system font in 2006. The settings dialog is four tabbed
+  pages - Agent, Security, Removable media, Log - instead of one column tall
+  enough to run off a 1080p laptop screen at 150% scaling, and it reopens on
+  the page you left it on. The agent-log record window now resizes its
+  contents, which its resizable frame had always implied it would.
+  Remembered column widths in the key list and the agent log are pixel counts
+  measured against the old font, so they reset once and the columns size
+  themselves to the new one; a downgrade still finds the old widths.
+
 - **Three settings found new homes in the config tree.** The window-title
   group moved from Window > Behaviour to its own **Window > Title** panel;
   the launcher global hotkey moved to **Session > Startup** (starting a
@@ -20,6 +31,20 @@ see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- **Three kageant settings always read back as 1.** The passphrase cache,
+  the Windows Hello cache and the notice-display timeout were stored
+  correctly and then read back through the registry helper that only
+  handles on/off values, so any value above 1 came back as 1 - a 45-second
+  passphrase cache became a 1-second one. Present since these settings were
+  added.
+
+- **Clearing a number in kageant's settings did nothing.** The fields say
+  what an empty box means, but emptying one and pressing OK left the stored
+  value where it was and the old number came straight back on reopen. An
+  empty box now stores that field's documented default; a box holding
+  something that is not a number still leaves the setting alone, since
+  there is no way to know what was meant.
+
 - **Config-box panels no longer overflow into the dialog buttons.** The
   combined "KSCP and WinSCP" page is now two panels (Connection > SSH >
   KSCP and > WinSCP), and the window-icon settings moved from Appearance
@@ -29,6 +54,16 @@ see [FEATURES.md](FEATURES.md).
   the custom hyperlink regex) are shortened to fit.
 
 ### New
+
+- **kageant has a dark mode.** Every one of its windows follows it - the key
+  list, key details, the agent log and its record view, settings, About, and
+  the message boxes it puts up - set to *Follow the system* (the default,
+  which changes with the Windows app-colour setting while a window is open),
+  *Always light* or *Always dark*. On Windows 11 the title bar takes the
+  window's own colour instead of the system's. Needs Windows 10 1809 or
+  newer; older Windows stays light and the setting is greyed rather than
+  offered. Configuration: kageant key list > Settings... > Agent >
+  **Colour theme**, or `[Agent] theme=` in kitty.ini.
 
 - **KiTTY ships its manual, and Help works.** F1, the config box's Help
   buttons and the system menu's Help entry now open the user manual when

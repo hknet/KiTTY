@@ -31,6 +31,7 @@ one is available.
   - [Windows Hello protected keys](#windows-hello-protected-keys)
   - [kageant — load keys on startup](#kageant--load-keys-on-startup)
   - [kageant — reorder loaded keys](#kageant--reorder-loaded-keys)
+  - [kageant — dark mode](#kageant--dark-mode)
   - [Port knocking](#port-knocking)
   - [Proxy choice](#proxy-choice)
   - [Workplace proxy mode](#workplace-proxy-mode)
@@ -363,6 +364,18 @@ A key that was not there at startup stays on the list and is loaded when its fil
 kageant offers its loaded keys to a server in list order, and the server tries them in turn — so the order matters when you hold several keys (offering the wrong ones first can even hit a server's "too many authentication failures" limit before the right key is reached). The key-list window has **Move Up** / **Move Down** buttons to set that offer order, e.g. to put your most-used key first. The chosen order is saved by key fingerprint and restored on the next start, including when *Load keys on startup* is enabled. Reordering works independently of whether a key is still encrypted/deferred, already protected in memory, or temporarily unprotected for a signing operation.
 
 **How to enable:** in the kageant key-list window, select a key and use the **Move Up** / **Move Down** buttons.
+
+(no screenshot)
+
+### kageant — dark mode
+
+Every kageant window follows a colour theme: the key list, the key details, the agent log and its record view, the settings dialog, About, and the modal message boxes it puts up. The choice is **Follow the system** — the default, which tracks the Windows app-colour setting and changes with it while a window is open — or **Always light**, or **Always dark**. On Windows 11 the title bar is painted in the window's own colour rather than the system's, so it reads as part of the window instead of a band sitting on top of it.
+
+Dark mode needs **Windows 10 1809 or newer**. On anything older every value behaves as *Always light*, and the setting is greyed rather than offered as a choice that could not do anything. Windows never gave Win32 dialogs a supported dark mode, so a few pieces are drawn by hand — the tab strip, the radio buttons, the list column headers — and a selected row in the agent log gives up its colour coding for the system's own highlight colours, which is the one combination certain to stay readable.
+
+The same round moved kageant's windows to **Segoe UI 9**, the Windows system font since Vista, in place of the 8pt shell font — which maps to Tahoma, and stopped being the system font in 2006. The settings dialog became four tabbed pages (*Agent*, *Security*, *Removable media*, *Log*) and reopens on the page you left it on. One consequence worth knowing: remembered column widths in the key list and the agent log are pixel counts measured against the old font, so they reset once and the columns size themselves to the new one.
+
+**How to enable:** in the kageant key-list window, **Settings…** → *Agent* tab → **Colour theme**. From **kitty.ini**: `[Agent] theme=system`, `light` or `dark`.
 
 (no screenshot)
 
