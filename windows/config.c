@@ -205,7 +205,7 @@ void win_setup_config_box(struct controlbox *b, HWND *hwndp, bool has_help,
      * the least we can do is ensure it never makes it to any other
      * platform (at least unless someone fixes it!).
      */
-    s = ctrl_getset(b, "Window/Translation", "tweaks", NULL);
+    s = ctrl_getset(b, "Window/Charset translation", "tweaks", NULL);
     ctrl_checkbox(s, "Caps Lock acts as Cyrillic switch", 's',
                   HELPCTX(translation_cyrillic),
                   conf_checkbox_handler,
@@ -215,7 +215,7 @@ void win_setup_config_box(struct controlbox *b, HWND *hwndp, bool has_help,
      * On Windows we can use but not enumerate translation tables
      * from the operating system. Briefly document this.
      */
-    s = ctrl_getset(b, "Window/Translation", "trans",
+    s = ctrl_getset(b, "Window/Charset translation", "trans",
                     "Character set translation on received data");
     ctrl_text(s, "(Codepages supported by Windows but not listed here, "
               "such as CP866 on many systems, can be entered manually)",
@@ -227,7 +227,7 @@ void win_setup_config_box(struct controlbox *b, HWND *hwndp, bool has_help,
      * characters.
      */
     str = dupprintf("Adjust how %s displays line drawing characters", appname);
-    s = ctrl_getset(b, "Window/Translation", "linedraw", str);
+    s = ctrl_getset(b, "Window/Charset translation", "linedraw", str);
     sfree(str);
     {
         int i;

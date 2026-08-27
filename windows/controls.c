@@ -22,6 +22,10 @@
 
 #include <commctrl.h>
 
+/* KiTTY: a configuration-box control lives either on the dialog (the button
+ * row) or in the panel host (everything in a panel) - windows/dialog.c. */
+HWND kitty_cfg_item(HWND dlg, int id);
+
 /*
  * ROW GEOMETRY, in dialog units, for Segoe UI 9.
  *
@@ -2062,14 +2066,14 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
                 int index, len;
                 char *text;
 
-                index = SendDlgItemMessage(dp->hwnd, c->base_id+1,
+                index = SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1),
                                            CB_GETCURSEL, 0, 0);
-                len = SendDlgItemMessage(dp->hwnd, c->base_id+1,
+                len = SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1),
                                          CB_GETLBTEXTLEN, index, 0);
                 text = snewn(len+1, char);
-                SendDlgItemMessage(dp->hwnd, c->base_id+1, CB_GETLBTEXT,
+                SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), CB_GETLBTEXT,
                                    index, (LPARAM)text);
-                SetDlgItemText(dp->hwnd, c->base_id+1, text);
+                SetWindowText(kitty_cfg_item(dp->hwnd, c->base_id+1), text);
                 sfree(text);
                 ctrl->handler(ctrl, dp, dp->data, EVENT_VALCHANGE);
             } else if (HIWORD(wParam) == CBN_EDITCHANGE) {
@@ -2094,7 +2098,8 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
         if (msg == WM_COMMAND &&
             (HIWORD(wParam) == BN_CLICKED ||
              HIWORD(wParam) == BN_DOUBLECLICKED) &&
-            IsDlgButtonChecked(dp->hwnd, LOWORD(wParam))) {
+            (SendMessage(kitty_cfg_item(dp->hwnd, LOWORD(wParam)),
+                         BM_GETCHECK, 0, 0) == BST_CHECKED)) {
             ctrl->handler(ctrl, dp, dp->data, EVENT_VALCHANGE);
         }
         break;
@@ -2329,10 +2334,15 @@ void dlg_radiobutton_set(dlgcontrol *ctrl, dlgparam *dp, int whichbutton)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     assert(c && c->ctrl->type == CTRL_RADIO);
-    CheckRadioButton(dp->hwnd,
-                     c->base_id + 1,
-                     c->base_id + c->ctrl->radio.nbuttons,
-                     c->base_id + 1 + whichbutton);
+    /* Not CheckRadioButton: it addresses a RANGE of ids on ONE window, and
+     * these controls are children of the panel host now. Same effect, one
+     * button at a time through the lookup. */
+    for (int i = 0; i < c->ctrl->radio.nbuttons; i++) {
+        HWND b = kitty_cfg_item(dp->hwnd, c->base_id + 1 + i);
+        if (b)
+            SendMessage(b, BM_SETCHECK,
+                        (i == whichbutton) ? BST_CHECKED : BST_UNCHECKED, 0);
+    }
 }
 
 int dlg_radiobutton_get(dlgcontrol *ctrl, dlgparam *dp)
@@ -2341,7 +2351,7 @@ int dlg_radiobutton_get(dlgcontrol *ctrl, dlgparam *dp)
     int i;
     assert(c && c->ctrl->type == CTRL_RADIO);
     for (i = 0; i < c->ctrl->radio.nbuttons; i++)
-        if (IsDlgButtonChecked(dp->hwnd, c->base_id + 1 + i))
+        if ((SendMessage(kitty_cfg_item(dp->hwnd, c->base_id + 1 + i), BM_GETCHECK, 0, 0) == BST_CHECKED))
             return i;
     unreachable("no radio button was checked");
 }
@@ -2350,7 +2360,7 @@ void dlg_checkbox_set(dlgcontrol *ctrl, dlgparam *dp, bool checked)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     assert(c && c->ctrl->type == CTRL_CHECKBOX);
-    CheckDlgButton(dp->hwnd, c->base_id, checked);
+    SendMessage(kitty_cfg_item(dp->hwnd, c->base_id), BM_SETCHECK, (WPARAM)(checked), 0);
 }
 
 /* KiTTY: toggle the masking of a password editbox at runtime (for a
@@ -2361,7 +2371,7 @@ void dlg_editbox_set_masked(dlgcontrol *ctrl, dlgparam *dp, bool visible)
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     if (!c || c->ctrl->type != CTRL_EDITBOX)
         return;
-    HWND ed = GetDlgItem(dp->hwnd, c->base_id + 1);
+    HWND ed = kitty_cfg_item(dp->hwnd, c->base_id + 1);
     if (!ed)
         return;
     /* 0x2022 (bullet) is the default Windows password char; 0 = show text. */
@@ -2373,14 +2383,14 @@ bool dlg_checkbox_get(dlgcontrol *ctrl, dlgparam *dp)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     assert(c && c->ctrl->type == CTRL_CHECKBOX);
-    return 0 != IsDlgButtonChecked(dp->hwnd, c->base_id);
+    return 0 != (SendMessage(kitty_cfg_item(dp->hwnd, c->base_id), BM_GETCHECK, 0, 0) == BST_CHECKED);
 }
 
 void dlg_editbox_set(dlgcontrol *ctrl, dlgparam *dp, char const *text)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     assert(c && c->ctrl->type == CTRL_EDITBOX);
-    SetDlgItemText(dp->hwnd, c->base_id+1, text);
+    SetWindowText(kitty_cfg_item(dp->hwnd, c->base_id+1), text);
 }
 
 void dlg_editbox_set_utf8(dlgcontrol *ctrl, dlgparam *dp, char const *text)
@@ -2414,7 +2424,7 @@ void dlg_editbox_select_range(dlgcontrol *ctrl, dlgparam *dp,
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     assert(c && c->ctrl->type == CTRL_EDITBOX);
-    SendDlgItemMessage(dp->hwnd, c->base_id+1, EM_SETSEL, start, start+len);
+    SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), EM_SETSEL, start, start+len);
 }
 
 /* The `listbox' functions can also apply to combo boxes. */
@@ -2428,7 +2438,7 @@ void dlg_listbox_clear(dlgcontrol *ctrl, dlgparam *dp)
              c->ctrl->editbox.has_list)));
     msg = (c->ctrl->type==CTRL_LISTBOX && c->ctrl->listbox.height!=0 ?
            LB_RESETCONTENT : CB_RESETCONTENT);
-    SendDlgItemMessage(dp->hwnd, c->base_id+1, msg, 0, 0);
+    SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), msg, 0, 0);
 }
 
 void dlg_listbox_del(dlgcontrol *ctrl, dlgparam *dp, int index)
@@ -2441,7 +2451,7 @@ void dlg_listbox_del(dlgcontrol *ctrl, dlgparam *dp, int index)
              c->ctrl->editbox.has_list)));
     msg = (c->ctrl->type==CTRL_LISTBOX && c->ctrl->listbox.height!=0 ?
            LB_DELETESTRING : CB_DELETESTRING);
-    SendDlgItemMessage(dp->hwnd, c->base_id+1, msg, index, 0);
+    SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), msg, index, 0);
 }
 
 void dlg_listbox_add(dlgcontrol *ctrl, dlgparam *dp, char const *text)
@@ -2454,7 +2464,7 @@ void dlg_listbox_add(dlgcontrol *ctrl, dlgparam *dp, char const *text)
              c->ctrl->editbox.has_list)));
     msg = (c->ctrl->type==CTRL_LISTBOX && c->ctrl->listbox.height!=0 ?
            LB_ADDSTRING : CB_ADDSTRING);
-    SendDlgItemMessage(dp->hwnd, c->base_id+1, msg, 0, (LPARAM)text);
+    SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), msg, 0, (LPARAM)text);
 }
 
 /*
@@ -2477,8 +2487,8 @@ void dlg_listbox_addwithid(dlgcontrol *ctrl, dlgparam *dp,
            LB_ADDSTRING : CB_ADDSTRING);
     msg2 = (c->ctrl->type==CTRL_LISTBOX && c->ctrl->listbox.height!=0 ?
             LB_SETITEMDATA : CB_SETITEMDATA);
-    index = SendDlgItemMessage(dp->hwnd, c->base_id+1, msg, 0, (LPARAM)text);
-    SendDlgItemMessage(dp->hwnd, c->base_id+1, msg2, index, (LPARAM)id);
+    index = SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), msg, 0, (LPARAM)text);
+    SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), msg2, index, (LPARAM)id);
 }
 
 int dlg_listbox_getid(dlgcontrol *ctrl, dlgparam *dp, int index)
@@ -2492,7 +2502,7 @@ int dlg_listbox_getid(dlgcontrol *ctrl, dlgparam *dp, int index)
     msg = (c->ctrl->type == CTRL_LISTBOX && c->ctrl->listbox.height != 0 ?
            LB_GETITEMDATA : CB_GETITEMDATA);
     return
-        SendDlgItemMessage(dp->hwnd, c->base_id+1, msg, index, 0);
+        SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), msg, index, 0);
 }
 
 /* dlg_listbox_index returns <0 if no single element is selected. */
@@ -2506,13 +2516,13 @@ int dlg_listbox_index(dlgcontrol *ctrl, dlgparam *dp)
              c->ctrl->editbox.has_list)));
     if (c->ctrl->type == CTRL_LISTBOX && c->ctrl->listbox.multisel) {
         assert(c->ctrl->listbox.height != 0); /* not combo box */
-        ret = SendDlgItemMessage(dp->hwnd, c->base_id+1, LB_GETSELCOUNT, 0, 0);
+        ret = SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), LB_GETSELCOUNT, 0, 0);
         if (ret == LB_ERR || ret > 1)
             return -1;
     }
     msg = (c->ctrl->type == CTRL_LISTBOX && c->ctrl->listbox.height != 0 ?
            LB_GETCURSEL : CB_GETCURSEL);
-    ret = SendDlgItemMessage(dp->hwnd, c->base_id+1, msg, 0, 0);
+    ret = SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), msg, 0, 0);
     if (ret == LB_ERR)
         return -1;
     else
@@ -2526,7 +2536,7 @@ bool dlg_listbox_issel(dlgcontrol *ctrl, dlgparam *dp, int index)
            c->ctrl->listbox.multisel &&
            c->ctrl->listbox.height != 0);
     return
-        SendDlgItemMessage(dp->hwnd, c->base_id+1, LB_GETSEL, index, 0);
+        SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), LB_GETSEL, index, 0);
 }
 
 void dlg_listbox_select(dlgcontrol *ctrl, dlgparam *dp, int index)
@@ -2538,14 +2548,14 @@ void dlg_listbox_select(dlgcontrol *ctrl, dlgparam *dp, int index)
             (c->ctrl->type == CTRL_EDITBOX && c->ctrl->editbox.has_list)));
     msg = (c->ctrl->type == CTRL_LISTBOX && c->ctrl->listbox.height != 0 ?
            LB_SETCURSEL : CB_SETCURSEL);
-    SendDlgItemMessage(dp->hwnd, c->base_id+1, msg, index, 0);
+    SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), msg, index, 0);
 }
 
 void dlg_text_set(dlgcontrol *ctrl, dlgparam *dp, char const *text)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     assert(c && c->ctrl->type == CTRL_TEXT);
-    SetDlgItemText(dp->hwnd, c->base_id, text);
+    SetWindowText(kitty_cfg_item(dp->hwnd, c->base_id), text);
 }
 
 /*
@@ -2565,7 +2575,7 @@ void kitty_dlg_combobox_select_all(dlgcontrol *ctrl, dlgparam *dp)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     assert(c && c->ctrl->type == CTRL_EDITBOX && c->ctrl->editbox.has_list);
-    SendDlgItemMessage(dp->hwnd, c->base_id+1, CB_SETEDITSEL, 0,
+    SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), CB_SETEDITSEL, 0,
                        MAKELPARAM(0, -1));
 }
 
@@ -2625,7 +2635,7 @@ void dlg_label_change(dlgcontrol *ctrl, dlgparam *dp, char const *text)
         unreachable("bad control type in label_change");
     }
     if (escaped) {
-        SetDlgItemText(dp->hwnd, id, escaped);
+        SetWindowText(kitty_cfg_item(dp->hwnd, id), escaped);
         sfree(escaped);
     }
 }
@@ -2670,7 +2680,7 @@ void dlg_fontsel_set(dlgcontrol *ctrl, dlgparam *dp, FontSpec *fs)
         buf = dupprintf("Font: %s, %s%d-%s", fs->name, boldstr,
                         (fs->height < 0 ? -fs->height : fs->height),
                         (fs->height < 0 ? "pixel" : "point"));
-    SetDlgItemText(dp->hwnd, c->base_id+1, buf);
+    SetWindowText(kitty_cfg_item(dp->hwnd, c->base_id+1), buf);
     sfree(buf);
 
     dlg_auto_set_fixed_pitch_flag(dp);
@@ -2717,7 +2727,7 @@ void dlg_update_start(dlgcontrol *ctrl, dlgparam *dp)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     if (c && c->ctrl->type == CTRL_LISTBOX) {
-        kitty_defer_child_paint(GetDlgItem(dp->hwnd, c->base_id+1), true);
+        kitty_defer_child_paint(kitty_cfg_item(dp->hwnd, c->base_id+1), true);
     }
 }
 
@@ -2725,7 +2735,7 @@ void dlg_update_done(dlgcontrol *ctrl, dlgparam *dp)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     if (c && c->ctrl->type == CTRL_LISTBOX) {
-        HWND hw = GetDlgItem(dp->hwnd, c->base_id+1);
+        HWND hw = kitty_cfg_item(dp->hwnd, c->base_id+1);
         kitty_defer_child_paint(hw, false);
         InvalidateRect(hw, NULL, true);
     }
@@ -2741,7 +2751,7 @@ static HWND dlg_control_focus_hwnd(dlgcontrol *ctrl, dlgparam *dp)
       case CTRL_EDITBOX: id = c->base_id + 1; break;
       case CTRL_RADIO:
         for (id = c->base_id + ctrl->radio.nbuttons; id > 1; id--)
-            if (IsDlgButtonChecked(dp->hwnd, id))
+            if ((SendMessage(kitty_cfg_item(dp->hwnd, id), BM_GETCHECK, 0, 0) == BST_CHECKED))
                 break;
         /*
          * In the theoretically-unlikely case that no button was
@@ -2756,7 +2766,7 @@ static HWND dlg_control_focus_hwnd(dlgcontrol *ctrl, dlgparam *dp)
       case CTRL_FONTSELECT: id = c->base_id + 2; break;
       default: id = c->base_id; break;
     }
-    return GetDlgItem(dp->hwnd, id);
+    return kitty_cfg_item(dp->hwnd, id);
 }
 
 void dlg_set_focus(dlgcontrol *ctrl, dlgparam *dp)

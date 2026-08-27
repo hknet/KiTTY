@@ -16,6 +16,9 @@
 #define IDD_HOSTKEY      114
 #define IDD_HK_MOREINFO  116
 #define IDD_CA_CONFIG    117
+/* KiTTY: the configuration box's panel host - an embedded child dialog the
+ * panel controls are built into, so Windows clips and scrolls them. */
+#define IDD_PANELHOST    118
 
 #define IDN_LIST        1001
 #define IDN_COPY        1002

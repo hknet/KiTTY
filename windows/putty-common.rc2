@@ -35,6 +35,31 @@ END
  * smallest by scripts/qa_window_minsize.ps1; the note in pageant.rc has the
  * reasoning in full.
  */
+/*
+ * KiTTY: the PANEL HOST - the window every panel's controls are built into.
+ *
+ * An embedded child DIALOG rather than a plain child window, for three
+ * reasons that all matter: MapDialogRect and the dialog base units work on
+ * it, so controls.c lays panels out in dialog units exactly as before;
+ * DS_CONTROL with WS_EX_CONTROLPARENT keeps Tab, the arrow keys and the Alt
+ * mnemonics working across the boundary; and WS_CLIPCHILDREN means WINDOWS
+ * clips the controls to it.
+ *
+ * That last one is the point. A control scrolled past the bottom is cut off
+ * by the host instead of being drawn across the button strip, and scrolling
+ * is one ScrollWindow on the host instead of moving forty controls by hand,
+ * clipping each with a region and repainting them - which is what four
+ * separate rendering faults came out of.
+ *
+ * Sized and positioned at run time; the numbers here are a placeholder.
+ */
+IDD_PANELHOST DIALOGEX DISCARDABLE 0, 0, 10, 10
+STYLE DS_CONTROL | WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN
+EXSTYLE WS_EX_CONTROLPARENT
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+END
+
 /* Accelerators used: aco */
 IDD_MAINBOX DIALOGEX DISCARDABLE 0, 0, 360, 316
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
