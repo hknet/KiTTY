@@ -92,6 +92,11 @@ static HBRUSH kt_ctl_brush;    /* edit/list interiors */
 static LRESULT CALLBACK kt_lv_subclass(HWND lv, UINT msg, WPARAM wParam,
                                        LPARAM lParam, UINT_PTR id,
                                        DWORD_PTR ref);
+/* Attached to every group box; a group box is the one button style that never
+ * sends NM_CUSTOMDRAW, so it has to be painted from the control itself. */
+static LRESULT CALLBACK kt_gb_subclass(HWND btn, UINT msg, WPARAM wParam,
+                                       LPARAM lParam, UINT_PTR id,
+                                       DWORD_PTR ref);
 
 /*
  * Which windows have been themed, and how. A window procedure gets
@@ -253,6 +258,30 @@ bool kitty_theme_dark_for(int pref)
     return kitty_theme_system_is_dark();
 }
 
+/*
+ * The wire form of the preference. One spelling for every store: the
+ * registry value and the kitty.ini key hold the same three words, so a
+ * setting written by one binary reads back identically in the next.
+ */
+int kitty_theme_pref_from_string(const char *s)
+{
+    if (!s)
+        return -1;
+    if (!stricmp(s, "system"))
+        return KITTY_THEME_SYSTEM;
+    if (!stricmp(s, "light"))
+        return KITTY_THEME_LIGHT;
+    if (!stricmp(s, "dark"))
+        return KITTY_THEME_DARK;
+    return -1;
+}
+
+const char *kitty_theme_pref_to_string(int pref)
+{
+    return pref == KITTY_THEME_DARK ? "dark" :
+           pref == KITTY_THEME_LIGHT ? "light" : "system";
+}
+
 COLORREF kitty_theme_text_colour(bool dark)
 {
     return dark ? KT_DARK_TEXT : GetSysColor(COLOR_WINDOWTEXT);
@@ -309,13 +338,32 @@ COLORREF kitty_theme_row_colour(bool dark, bool alternate)
  * classic look, so passing "DarkMode_CFD" to a Windows that has never heard
  * of it costs nothing.
  */
+/*
+ * What a control was last themed as, kept on the control itself.
+ *
+ * Re-theming a control that is already right is not free - it ends in an
+ * InvalidateRect - so a window whose children are re-walked repeatedly
+ * repaints controls that never changed. The configuration box re-walks after
+ * every panel its cache builds, and that showed as a flicker in the category
+ * tree while the box warmed up. 1 and 2 rather than 0 and 1, because a
+ * property that was never set reads as 0.
+ */
+#define KT_PROP_THEMED  "KiTTYThemed"
+#define KT_THEMED_LIGHT ((HANDLE)(ULONG_PTR)1)
+#define KT_THEMED_DARK  ((HANDLE)(ULONG_PTR)2)
+
 static BOOL CALLBACK kt_theme_child(HWND child, LPARAM lp)
 {
     BOOL dark = (BOOL)lp;
     char cls[64];
+    HANDLE want = dark ? KT_THEMED_DARK : KT_THEMED_LIGHT;
 
     if (!GetClassNameA(child, cls, sizeof(cls)))
         return TRUE;
+
+    if (GetPropA(child, KT_PROP_THEMED) == want)
+        return TRUE;
+    SetPropA(child, KT_PROP_THEMED, want);
 
     if (p_AllowDarkModeForWindow)
         p_AllowDarkModeForWindow(child, dark);
@@ -341,6 +389,13 @@ static BOOL CALLBACK kt_theme_child(HWND child, LPARAM lp)
         /* Buttons (which is also every checkbox and group box), static text,
          * the tab strip, list views, scroll bars. */
         p_SetWindowTheme(child, dark ? L"DarkMode_Explorer" : NULL, NULL);
+    }
+
+    if (!stricmp(cls, "Button") &&
+        (GetWindowLong(child, GWL_STYLE) & BS_TYPEMASK) == BS_GROUPBOX) {
+        /* The theme class above reaches a check box but not a group box, and
+         * a group box sends no custom draw for the parent to answer. */
+        SetWindowSubclass(child, kt_gb_subclass, 4, 0);
     }
 
     if (!stricmp(cls, "SysHeader32")) {
@@ -377,8 +432,40 @@ static BOOL CALLBACK kt_theme_child(HWND child, LPARAM lp)
     }
 
     SendMessage(child, WM_THEMECHANGED, 0, 0);
+
+    if (!stricmp(cls, "SysTreeView32")) {
+        /* AFTER the WM_THEMECHANGED above, not with the other per-class work.
+         * A tree view re-reads its theme colours when it gets that message and
+         * throws away whatever was set before it - so setting these earlier
+         * looks right in the code and leaves a white tree on the screen. The
+         * theme class reaches the scroll bars but never the item area, which
+         * is why the colours have to be given at all. The configuration box's
+         * category tree is the one that needs this. The theme class goes on
+         * again for the same reason - it is what darkens the scroll bar. */
+        p_SetWindowTheme(child, dark ? L"DarkMode_Explorer" : NULL, NULL);
+        SendMessage(child, TVM_SETBKCOLOR, 0,
+                    (LPARAM)(dark ? KT_DARK_BACK : GetSysColor(COLOR_WINDOW)));
+        SendMessage(child, TVM_SETTEXTCOLOR, 0,
+                    (LPARAM)(dark ? KT_DARK_TEXT
+                                  : GetSysColor(COLOR_WINDOWTEXT)));
+    }
+
     InvalidateRect(child, NULL, TRUE);
     return TRUE;
+}
+
+/*
+ * Private message: re-theme this window's children. See kitty_theme_apply for
+ * why one pass is not enough, and kitty_theme_refresh for the other caller.
+ */
+#define KT_WM_RETHEME (WM_APP + 0x5C)
+
+void kitty_theme_refresh(HWND dlg)
+{
+    struct kt_window *known = kt_find_window(dlg);
+    if (!known || !kt_usable)
+        return;
+    EnumChildWindows(dlg, kt_theme_child, (LPARAM)known->dark);
 }
 
 void kitty_theme_apply(HWND dlg, bool dark)
@@ -442,6 +529,16 @@ void kitty_theme_apply(HWND dlg, bool dark)
     }
 
     EnumChildWindows(dlg, kt_theme_child, (LPARAM)dark);
+    /*
+     * And again once the dialog has finished starting up. A window is
+     * ACTIVATED before its controls exist, so the pass above can run against
+     * an empty dialog: the background still comes out right, because
+     * WM_CTLCOLOR* answers for children whenever they appear, but everything
+     * that has to be SENT to a control - a theme class, a tree view's own
+     * colours - reaches nothing. That is what left a white category tree in
+     * a dark configuration box. Posted, so it lands after WM_INITDIALOG.
+     */
+    PostMessage(dlg, KT_WM_RETHEME, 0, 0);
 
     InvalidateRect(dlg, NULL, TRUE);
     /* The frame is painted outside WM_PAINT, so an invalidate does not reach
@@ -760,15 +857,20 @@ static void kt_paint_radio(HWND btn, NMCUSTOMDRAW *cd)
     HFONT font, oldfont;
     HPEN pen, oldpen;
     HBRUSH fill, oldbrush;
-    COLORREF ring = enabled ? (checked ? kt_accent_for(true) : KT_DARK_LINE)
-                            : KT_DARK_LINE;
+    /* The unchecked ring is deliberately much lighter than the frame lines
+     * elsewhere: at KT_DARK_LINE on this background it is there but almost
+     * invisible, and a radio nobody can see is a radio nobody can tell the
+     * state of. This is roughly what Windows 11 draws its own with. */
+    COLORREF ring = !enabled ? KT_DARK_LINE
+                    : checked ? kt_accent_for(true)
+                              : RGB(0x9a, 0x9a, 0x9a);
 
     FillRect(cd->hdc, &rc, kt_back_brush);
 
     /* A ring the height of one line, centred vertically, with the label
      * beside it - the proportions the system uses. */
     d = 13 * (rc.bottom - rc.top) / 20;
-    if (d < 10) d = 10;
+    if (d < 12) d = 12;
     if (d > rc.bottom - rc.top) d = rc.bottom - rc.top;
     cx = rc.left + 1 + d / 2;
     cy = (rc.top + rc.bottom) / 2;
@@ -819,6 +921,265 @@ static void kt_paint_radio(HWND btn, NMCUSTOMDRAW *cd)
     }
     if (oldfont)
         SelectObject(cd->hdc, oldfont);
+}
+
+/*
+ * A group box, drawn by hand while dark.
+ *
+ * BS_GROUPBOX is the one button style the dark theme classes do not reach: the
+ * frame keeps its light edge and the caption keeps the system's dark text,
+ * which on this background is very nearly invisible. Nothing can be set to fix
+ * it - the caption is not a WM_CTLCOLORSTATIC - so the control is drawn here,
+ * frame and caption together.
+ *
+ * It is painted from a SUBCLASS on the control rather than from the parent's
+ * custom-draw handler, which is where the radio buttons are done. A group box
+ * does not send NM_CUSTOMDRAW: the radios were proof the notification arrives
+ * and the group boxes stayed dark-on-dark in the same window, which is what
+ * separated the two cases.
+ */
+static void kt_paint_groupbox(HWND btn, HDC dc)
+{
+    RECT rc, fr, tr;
+    bool enabled = IsWindowEnabled(btn) != 0;
+    char label[256];
+    HFONT font, oldfont;
+    HPEN pen, oldpen;
+    HBRUSH oldbrush;
+    SIZE ts;
+
+    GetClientRect(btn, &rc);
+
+    label[0] = '\0';
+    GetWindowTextA(btn, label, sizeof(label));
+
+    font = (HFONT)SendMessage(btn, WM_GETFONT, 0, 0);
+    oldfont = font ? (HFONT)SelectObject(dc, font) : NULL;
+    ts.cx = ts.cy = 0;
+    GetTextExtentPoint32A(dc, label, (int)strlen(label), &ts);
+
+    /* The frame starts halfway down the caption, which is what leaves the
+     * text sitting ON the line rather than above it. */
+    fr = rc;
+    fr.top += ts.cy / 2;
+
+    /*
+     * Erase only the BAND the frame and caption occupy, never the whole
+     * client area. A group box is a sibling of the controls it appears to
+     * contain, and controls.c creates it LAST - so it is ABOVE them in the
+     * z-order, and a full-rectangle fill here paints the panel's own contents
+     * out of existence. The band is the top strip plus a few pixels down each
+     * edge, which is all this control actually draws in.
+     */
+    {
+        RECT b;
+        b = rc; b.bottom = fr.top + 2;                 FillRect(dc, &b, kt_back_brush);
+        b = rc; b.top = fr.top; b.right = rc.left + 2; FillRect(dc, &b, kt_back_brush);
+        b = rc; b.top = fr.top; b.left = rc.right - 2; FillRect(dc, &b, kt_back_brush);
+        b = rc; b.top = rc.bottom - 2;                 FillRect(dc, &b, kt_back_brush);
+    }
+
+    pen = CreatePen(PS_SOLID, 1, KT_DARK_LINE);
+    oldpen = pen ? (HPEN)SelectObject(dc, pen) : NULL;
+    oldbrush = (HBRUSH)SelectObject(dc, GetStockObject(NULL_BRUSH));
+    Rectangle(dc, fr.left, fr.top, fr.right, fr.bottom);
+    SelectObject(dc, oldbrush);
+    if (oldpen) SelectObject(dc, oldpen);
+    if (pen) DeleteObject(pen);
+
+    if (*label) {
+        /* Painted over the frame line, so the caption breaks it. */
+        tr.left = rc.left + 6;
+        tr.top = rc.top;
+        tr.right = tr.left + ts.cx + 6;
+        tr.bottom = rc.top + ts.cy;
+        if (tr.right > rc.right) tr.right = rc.right;
+        FillRect(dc, &tr, kt_back_brush);
+        tr.left += 3;
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, enabled ? KT_DARK_TEXT : KT_DARK_TAB_DIM);
+        DrawTextA(dc, label, -1, &tr,
+                  DT_LEFT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+    }
+
+    if (oldfont)
+        SelectObject(dc, oldfont);
+}
+
+/*
+ * ---------------------------------------------------------------- menu bar
+ *
+ * A menu bar is NON-CLIENT area: there is no colour to set and no
+ * WM_CTLCOLOR for it. SetMenuInfo(MIM_BACKGROUND) is the trap in between - it
+ * darkens the background and leaves Windows drawing the item text in the
+ * system's black, which is worse than leaving the bar alone.
+ *
+ * What works is the message family the shell's own dark windows use. It is
+ * undocumented, in the same way as the uxtheme ordinals at the top of this
+ * file, and it is treated the same way: if the messages never arrive nothing
+ * happens and the bar keeps the light look it has always had.
+ *
+ *   WM_UAHDRAWMENU      the bar's background strip
+ *   WM_UAHDRAWMENUITEM  one top-level entry, with its hot/pushed state
+ *
+ * The reason for these rather than MFT_OWNERDRAW is that Windows keeps the
+ * menu STRINGS: Alt+F and the underlined mnemonics go on working, where an
+ * owner-drawn item stores no string and every mnemonic would have to be
+ * answered by hand in WM_MENUCHAR.
+ *
+ * This reaches the BAR only. The items inside an open drop-down are drawn by
+ * the popup window, which the application does not own and no message here
+ * delivers.
+ */
+#define KT_WM_UAHDRAWMENU     0x0091
+#define KT_WM_UAHDRAWMENUITEM 0x0092
+
+typedef union {
+    struct { DWORD cx, cy; } rgsizeBar[2];
+    struct { DWORD cx, cy; } rgsizePopup[4];
+} KT_UAHMENUITEMMETRICS;
+
+typedef struct {
+    DWORD rgcx[4];
+    DWORD fUpdateMaxWidths : 2;
+} KT_UAHMENUPOPUPMETRICS;
+
+typedef struct {
+    HMENU hmenu;
+    HDC hdc;
+    DWORD dwFlags;
+} KT_UAHMENU;
+
+typedef struct {
+    int iPosition;
+    KT_UAHMENUITEMMETRICS umim;
+    KT_UAHMENUPOPUPMETRICS umpm;
+} KT_UAHMENUITEM;
+
+typedef struct {
+    DRAWITEMSTRUCT dis;    /* first: the item, its DC and its rectangle */
+    KT_UAHMENU um;         /* which menu it belongs to */
+    KT_UAHMENUITEM umi;    /* and where in it */
+} KT_UAHDRAWMENUITEM;
+
+/* The strip the menu bar sits in. */
+static void kt_paint_menubar(HWND w, KT_UAHMENU *pudm)
+{
+    MENUBARINFO mbi;
+    RECT wr, bar;
+
+    memset(&mbi, 0, sizeof(mbi));
+    mbi.cbSize = sizeof(mbi);
+    if (!GetMenuBarInfo(w, OBJID_MENU, 0, &mbi) || !GetWindowRect(w, &wr))
+        return;
+
+    /* rcBar is in SCREEN coordinates and the DC is the window's. */
+    bar = mbi.rcBar;
+    OffsetRect(&bar, -wr.left, -wr.top);
+    /* One pixel more at the bottom: Windows draws a light separator there
+     * which is not part of the bar and would otherwise stay behind. */
+    bar.bottom += 1;
+    FillRect(pudm->hdc, &bar, kt_back_brush);
+}
+
+/* One top-level entry. */
+static void kt_paint_menuitem(KT_UAHDRAWMENUITEM *pudmi)
+{
+    MENUITEMINFOW mii;
+    wchar_t text[128];
+    DRAWITEMSTRUCT *dis = &pudmi->dis;
+    COLORREF fg = KT_DARK_TEXT;
+    HBRUSH back = kt_back_brush;
+    bool temp = false;
+    UINT flags = DT_CENTER | DT_SINGLELINE | DT_VCENTER;
+
+    memset(&mii, 0, sizeof(mii));
+    mii.cbSize = sizeof(mii);
+    mii.fMask = MIIM_STRING | MIIM_STATE;
+    mii.dwTypeData = text;
+    mii.cch = (sizeof(text) / sizeof(text[0])) - 1;
+    text[0] = L'\0';
+    if (!pudmi->um.hmenu ||
+        !GetMenuItemInfoW(pudmi->um.hmenu, (UINT)pudmi->umi.iPosition,
+                          TRUE, &mii))
+        return;
+
+    if (dis->itemState & (ODS_HOTLIGHT | ODS_SELECTED)) {
+        back = CreateSolidBrush(kt_mix(KT_DARK_BACK, KT_DARK_TEXT, 18));
+        temp = back != NULL;
+        if (!temp)
+            back = kt_back_brush;
+    }
+    if (mii.fState & MFS_GRAYED)
+        fg = KT_DARK_TAB_DIM;
+
+    FillRect(dis->hDC, &dis->rcItem, back);
+    if (temp)
+        DeleteObject(back);
+
+    /* ODS_NOACCEL is Windows saying the mnemonic underlines are hidden just
+     * now - they appear the first time Alt is pressed. Honouring it is what
+     * makes a hand-painted bar behave like every other one. */
+    if (dis->itemState & ODS_NOACCEL)
+        flags |= DT_HIDEPREFIX;
+
+    SetBkMode(dis->hDC, TRANSPARENT);
+    SetTextColor(dis->hDC, fg);
+    DrawTextW(dis->hDC, text, -1, &dis->rcItem, flags);
+}
+
+/*
+ * The line UNDER the bar. It is painted with the rest of the frame, outside
+ * any of the messages above, so it is dealt with after the default non-client
+ * paint has run - otherwise a light hairline sits between a dark bar and a
+ * dark client area.
+ */
+static void kt_paint_menubar_line(HWND w)
+{
+    MENUBARINFO mbi;
+    RECT wr, line;
+    HDC dc;
+
+    memset(&mbi, 0, sizeof(mbi));
+    mbi.cbSize = sizeof(mbi);
+    if (!GetMenuBarInfo(w, OBJID_MENU, 0, &mbi) || !GetWindowRect(w, &wr))
+        return;
+    dc = GetWindowDC(w);
+    if (!dc)
+        return;
+    line = mbi.rcBar;
+    OffsetRect(&line, -wr.left, -wr.top);
+    line.top = line.bottom;
+    line.bottom += 1;
+    FillRect(dc, &line, kt_back_brush);
+    ReleaseDC(w, dc);
+}
+
+/*
+ * Sits on each group box. While the parent is dark the control is painted
+ * here; while it is light every message goes straight through, so the classic
+ * look stays exactly the control's own.
+ */
+static LRESULT CALLBACK kt_gb_subclass(HWND btn, UINT msg, WPARAM wParam,
+                                       LPARAM lParam, UINT_PTR id,
+                                       DWORD_PTR ref)
+{
+    (void)id; (void)ref;
+
+    if (kt_is_dark_window(GetParent(btn)) && kt_back_brush) {
+        if (msg == WM_ERASEBKGND)
+            return 1;                  /* WM_PAINT fills it */
+        if (msg == WM_PAINT) {
+            PAINTSTRUCT ps;
+            HDC dc = BeginPaint(btn, &ps);
+            kt_paint_groupbox(btn, dc);
+            EndPaint(btn, &ps);
+            return 0;
+        }
+    }
+    if (msg == WM_NCDESTROY)
+        RemoveWindowSubclass(btn, kt_gb_subclass, 4);
+    return DefSubclassProc(btn, msg, wParam, lParam);
 }
 
 /*
@@ -926,6 +1287,32 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
     (void)id; (void)ref;
 
     switch (msg) {
+      case KT_WM_RETHEME:
+        kitty_theme_refresh(hwnd);
+        return 0;
+
+      /* The menu bar. Answered only while dark, so a light window's bar is
+       * still drawn entirely by Windows. */
+      case KT_WM_UAHDRAWMENU:
+        if (kt_is_dark_window(hwnd) && kt_back_brush && lParam) {
+            kt_paint_menubar(hwnd, (KT_UAHMENU *)lParam);
+            return 0;
+        }
+        break;
+      case KT_WM_UAHDRAWMENUITEM:
+        if (kt_is_dark_window(hwnd) && kt_back_brush && lParam) {
+            kt_paint_menuitem((KT_UAHDRAWMENUITEM *)lParam);
+            return 0;
+        }
+        break;
+      case WM_NCPAINT:
+      case WM_NCACTIVATE:
+        if (kt_is_dark_window(hwnd) && kt_back_brush) {
+            LRESULT r = DefSubclassProc(hwnd, msg, wParam, lParam);
+            kt_paint_menubar_line(hwnd);
+            return r;
+        }
+        break;
       case WM_NOTIFY: {
         NMHDR *nm = (NMHDR *)lParam;
         char cls[64];
@@ -934,12 +1321,11 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
             GetClassNameA(nm->hwndFrom, cls, sizeof(cls)) &&
             !stricmp(cls, "Button")) {
             LONG type = GetWindowLong(nm->hwndFrom, GWL_STYLE) & BS_TYPEMASK;
-            if (type == BS_AUTORADIOBUTTON || type == BS_RADIOBUTTON) {
-                NMCUSTOMDRAW *cd = (NMCUSTOMDRAW *)lParam;
-                if (cd->dwDrawStage == CDDS_PREPAINT) {
-                    kt_paint_radio(nm->hwndFrom, cd);
-                    return CDRF_SKIPDEFAULT;
-                }
+            NMCUSTOMDRAW *cd = (NMCUSTOMDRAW *)lParam;
+            if ((type == BS_AUTORADIOBUTTON || type == BS_RADIOBUTTON) &&
+                cd->dwDrawStage == CDDS_PREPAINT) {
+                kt_paint_radio(nm->hwndFrom, cd);
+                return CDRF_SKIPDEFAULT;
             }
         }
         break;
@@ -1002,6 +1388,40 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
  */
 static bool (*kt_want_dark)(void);
 
+/*
+ * The window classes the hook treats as our dialogs. "#32770" is every window
+ * built from a dialog template; the rest are registered by the application,
+ * because a dialog given a class of its own - KiTTY's configuration box - is
+ * not #32770 and would otherwise be passed over. Kept small and explicit: the
+ * terminal window is ours too, and its colours are its session's business.
+ */
+#define KT_MAX_CLASSES 8
+static char kt_classes[KT_MAX_CLASSES][64] = { "#32770" };
+static int kt_nclasses = 1;
+
+void kitty_theme_hook_class(const char *classname)
+{
+    int i;
+    if (!classname || !*classname || kt_nclasses >= KT_MAX_CLASSES)
+        return;
+    for (i = 0; i < kt_nclasses; i++)
+        if (!stricmp(kt_classes[i], classname))
+            return;
+    strncpy(kt_classes[kt_nclasses], classname,
+            sizeof(kt_classes[0]) - 1);
+    kt_classes[kt_nclasses][sizeof(kt_classes[0]) - 1] = '\0';
+    kt_nclasses++;
+}
+
+static bool kt_is_dialog_class(const char *cls)
+{
+    int i;
+    for (i = 0; i < kt_nclasses; i++)
+        if (!strcmp(kt_classes[i], cls))
+            return true;
+    return false;
+}
+
 static LRESULT CALLBACK kt_cbt_proc(int code, WPARAM wParam, LPARAM lParam)
 {
     if (code == HCBT_ACTIVATE) {
@@ -1012,8 +1432,7 @@ static LRESULT CALLBACK kt_cbt_proc(int code, WPARAM wParam, LPARAM lParam)
          * exist, which both the message-box test and the child theming
          * need. */
         if (w && GetClassNameA(w, cls, sizeof(cls)) &&
-            !strcmp(cls, "#32770") &&
-            true) {
+            kt_is_dialog_class(cls)) {
             bool dark = kt_want_dark ? kt_want_dark() : false;
             bool msgbox = kt_looks_like_messagebox(w);
             /* Ours, or a message box. A file dialog is this window class too,

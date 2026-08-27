@@ -66,4 +66,9 @@ void PopUpSystemMenu( HWND hwnd, int npos  ) ;
 
 // Affiche une bulle tooltip
 HWND CreateToolTip(int toolID, HWND hDlg, PTSTR pszText) ;
+
+// KiTTY: the application-wide colour theme, [KiTTY] theme. kitty_theme_app_dark
+// is the resolver handed to kitty_theme_hook_dialogs() in WinMain.
+int kitty_theme_app_pref( void ) ;
+bool kitty_theme_app_dark( void ) ;
 #endif

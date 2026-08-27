@@ -2,6 +2,7 @@
 #include "kitty_authenticode.h"   /* shared Authenticode trust + CN gate */
 #include "kitty_notice.h"          /* near-the-clock warning window */
 #include "kitty_rc_additions.h"   /* IDD_UPDATEBOX, IDC_UPD_TEXT, IDC_UPD_UPDATE */
+#include "kitty_theme.h"           /* the app-wide colour theme */
 #include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
 #include <wintrust.h>  /* in-app updater: Authenticode trust verification */
 #include <softpub.h>   /* WINTRUST_ACTION_GENERIC_VERIFY_V2 */
@@ -1859,4 +1860,37 @@ static void kitty_agent_serving_check(unsigned long server_pid, int transport)
 void kitty_install_agent_check(void)
 {
     agent_serving_check_hook = kitty_agent_serving_check;
+}
+
+/*
+ * KiTTY: the application-wide colour theme, [KiTTY] theme in kitty.ini and the
+ * value of the same name in the registry. It is read through ReadParameterN,
+ * which is what makes portable mode, the session hive and the read-only flag
+ * apply to it exactly as they do to every other global setting; the satellite
+ * binaries reach the same value through kitty/kitty_theme_pref.c.
+ *
+ * Handed to the theme module at startup, so it is asked once per dialog rather
+ * than frozen at whatever it meant when KiTTY started - which is what lets
+ * "follow the system" change with the system while a window is open.
+ */
+int ReadParameterN(const char *key, const char *name,
+                   char *value, size_t size);   /* kitty.c */
+#ifndef INIT_SECTION
+#define INIT_SECTION "KiTTY"
+#endif
+
+int kitty_theme_app_pref(void)
+{
+    char buf[32];
+    int v;
+    buf[0] = '\0';
+    if (!ReadParameterN(INIT_SECTION, "theme", buf, sizeof(buf)))
+        return KITTY_THEME_SYSTEM;
+    v = kitty_theme_pref_from_string(buf);
+    return v >= 0 ? v : KITTY_THEME_SYSTEM;
+}
+
+bool kitty_theme_app_dark(void)
+{
+    return kitty_theme_dark_for(kitty_theme_app_pref());
 }

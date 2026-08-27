@@ -283,15 +283,42 @@ static int      g_nblobs = 0;
 static int kageant_reg_read(const char *name, int *val_out);
 static void kageant_reg_write(const char *name, int on);
 
-/* KiTTY: -noload (clean slate). One switch turns the whole startup-keys
- * mechanism off for this run: kageant_startup_get() reports it disabled
- * (so nothing loads and the implicit save-on-add/remove snapshots skip),
- * and kageant_save_startup_keys() refuses outright as a belt-and-braces
- * guard - a clean-slate run must never rewrite the stored list with its
- * own (empty) key set. */
+/* KiTTY: -noload (clean slate). It turns the startup-keys mechanism off for
+ * THIS RUN, in exactly two places: the startup load is skipped where that
+ * decision is made (windows/pageant.c), and kageant_save_startup_keys()
+ * refuses outright - a clean-slate run must never rewrite the stored list
+ * with its own (empty) key set.
+ *
+ * It deliberately does NOT reach kageant_startup_get(), which answers for the
+ * STORED setting. It used to, and the cost was a settings dialog and a tray
+ * checkmark that reported the option as off while the stored value said on:
+ * a dialog lying about the thing it is editing, one careless OK away from
+ * writing the lie back. The save sites that gate on the getter are still safe
+ * because the refusal above is the one that matters. */
 static int g_noload = 0;
 void kageant_noload_set(void) { g_noload = 1; }
 int kageant_noload(void) { return g_noload; }
+
+/*
+ * Two questions that used to be one, separated because the answers differ:
+ *
+ *   kageant_startup_get()     what is STORED. For anything that DISPLAYS or
+ *                             EDITS the setting - the settings dialog, the
+ *                             tray checkmark, the toggle that writes it back.
+ *   kageant_startup_active()  whether the mechanism runs THIS TIME. For
+ *                             anything that BEHAVES differently: loading at
+ *                             startup, re-snapshotting the list, and the
+ *                             prompt about a key outside the portable folder,
+ *                             which must not appear during a clean-slate run.
+ *
+ * Answering both from the getter made the dialog report the option as off
+ * while the store said on. Answering both from this one puts an interactive
+ * prompt in front of a run that asked for no interaction.
+ */
+int kageant_startup_active(void)
+{
+    return !g_noload && kageant_startup_get();
+}
 
 /* KiTTY: the ini key is loadkeysonstartup. It was loadonstartup, which read
  * as "start the agent" - the thing the tray item next to it actually does -
@@ -322,10 +349,16 @@ static int kageant_startup_read_ini(void)
     return val;
 }
 
+/*
+ * The STORED setting, and only that. -noload is a property of THIS RUN, not
+ * of the configuration: reporting 0 for it here made the settings dialog and
+ * the tray checkmark say the option was off while the stored value said on,
+ * which is a dialog lying about what it is editing. The suppression belongs
+ * at the single place that decides whether to load at startup, and that is
+ * where it now lives (windows/pageant.c, the kageant_load_startup_keys call).
+ */
 int kageant_startup_get(void)
 {
-    if (g_noload)
-        return 0;
     int ini_val = kageant_startup_read_ini(), reg_val;
     if (kitty_inilight_registry_authoritative())
         return kageant_reg_read(KAGEANT_REG_STARTUP, &reg_val) ? reg_val :
@@ -1179,42 +1212,8 @@ int kageant_retry_keys_set(int mode)
     kageant_reg_write_dword("RetryKeys", mode);
     return 1;
 }
-/* [Agent] theme - THREE-valued, so it takes the same value-preserving DWORD
- * route as retrykeys above rather than the boolean helpers. Default 0
- * (follow the system), which is also what every Windows too old to have a
- * system preference resolves to. */
-int kageant_theme_get(void)
-{
-    char buf[16];
-    int ini_v = -1, reg_v;
-    if (kitty_inilight_read("Agent", "theme", buf, sizeof(buf))) {
-        if (!stricmp(buf, "system")) ini_v = KITTY_THEME_SYSTEM;
-        else if (!stricmp(buf, "light")) ini_v = KITTY_THEME_LIGHT;
-        else if (!stricmp(buf, "dark")) ini_v = KITTY_THEME_DARK;
-    }
-    if (kitty_inilight_registry_authoritative()) {
-        if (kageant_reg_read_dword("Theme", &reg_v))
-            return (reg_v >= KITTY_THEME_SYSTEM && reg_v <= KITTY_THEME_DARK)
-                ? reg_v : KITTY_THEME_SYSTEM;
-        return ini_v >= 0 ? ini_v : KITTY_THEME_SYSTEM;
-    }
-    if (ini_v >= 0)
-        return ini_v;
-    if (kageant_reg_read_dword("Theme", &reg_v))
-        return (reg_v >= KITTY_THEME_SYSTEM && reg_v <= KITTY_THEME_DARK)
-            ? reg_v : KITTY_THEME_SYSTEM;
-    return KITTY_THEME_SYSTEM;
-}
-int kageant_theme_set(int pref)
-{
-    if (pref < KITTY_THEME_SYSTEM || pref > KITTY_THEME_DARK)
-        pref = KITTY_THEME_SYSTEM;
-    kitty_inilight_write("Agent", "theme",
-                         pref == KITTY_THEME_DARK ? "dark" :
-                         pref == KITTY_THEME_LIGHT ? "light" : "system");
-    kageant_reg_write_dword("Theme", pref);
-    return 1;
-}
+/* The colour theme is application-wide and lives in kitty_theme_pref.c, not
+ * here: kittygen and kitty read the same setting. */
 /* The settings dialog's last page. Window state, so registry only - a
  * portable install that never writes the registry simply always opens on the
  * first page, which is what the window geometry already does. */
@@ -1493,7 +1492,7 @@ void kageant_forget_loaded_by_blob(ptrlen blob)
         sfree(fp);
     }
 
-    if (removed && kageant_startup_get())
+    if (removed && kageant_startup_active())
         kageant_save_startup_keys();
     /* KiTTY: removing a key can take a HELD-BACK entry with it (they are
      * matched on the stored fingerprint above), so the tooltip's warning line
@@ -2861,7 +2860,7 @@ void kageant_track_keypath(const char *path, int encrypted)
         if (!stricmp(g_loaded_keypaths[i], abspath))
             return;
 
-    if (!g_startup_loading && kageant_startup_get() &&
+    if (!g_startup_loading && kageant_startup_active() &&
         !kitty_inilight_registry_authoritative()) {
         char dir[MAX_PATH + 1];
         if (kageant_inidir(dir, sizeof(dir)) &&
@@ -2938,7 +2937,7 @@ void kageant_track_keypath(const char *path, int encrypted)
     g_loaded_blobs[g_nloaded] = kageant_pubblob(abspath);
     g_nloaded++;
     g_nblobs = g_nloaded;
-    if (!g_startup_loading && kageant_startup_get())
+    if (!g_startup_loading && kageant_startup_active())
         kageant_save_startup_keys();
 }
 
@@ -3981,7 +3980,7 @@ int kageant_startup_replace_path(const char *oldpath, const char *newpath,
         g_loaded_keypaths[i] = dupstr(abspath);
         if (encrypted >= 0)
             g_loaded_encrypted[i] = encrypted ? 1 : 0;
-        if (kageant_startup_get())
+        if (kageant_startup_active())
             kageant_save_startup_keys();
         return 1;
     }
@@ -4026,7 +4025,7 @@ int kageant_startup_forget_path(const char *path)
         break;
     }
     if (done) {
-        if (kageant_startup_get())
+        if (kageant_startup_active())
             kageant_save_startup_keys();
         kageant_refresh_tray_tip();
     }

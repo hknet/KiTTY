@@ -16,6 +16,7 @@
 #include "storage.h"
 #include "dialog.h"
 #include "licence.h"
+#include "../kitty/kitty_theme.h"   /* KiTTY: dark mode for the dialogs */
 
 #include <commctrl.h>
 #include <commdlg.h>
@@ -814,6 +815,10 @@ static struct kitty_cfg_panel *kitty_cfg_panel_create(
 
     sgrowarray(kitty_cfg_panels, kitty_cfg_panelsize, kitty_cfg_npanels);
     kitty_cfg_panels[kitty_cfg_npanels++] = p;
+    /* These controls did not exist when the box was themed, so nothing that
+     * has to be SENT to a control has reached them: without this a cached
+     * panel comes up in the classic colours the first time it is shown. */
+    kitty_theme_refresh(pds->dp->hwnd);
     return p;
 }
 

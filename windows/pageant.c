@@ -35,6 +35,7 @@
 #include "../kitty/kitty_hello_ui.h"   /* KiTTY: the shared printout window */
 #include "../kitty/kitty_auditlog.h"  /* KiTTY: the audit log's file sink */
 #include "../kitty/kitty_theme.h"     /* KiTTY: dark mode for the dialogs */
+#include "../kitty/kitty_theme_pref.h" /* KiTTY: the app-wide theme setting */
 
 #include <shellapi.h>
 
@@ -2555,7 +2556,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                 if (sel >= 0 && sel <= 2) {
                     pageant_set_key_confirm(
                         ptrlen_from_strbuf(keydetail_blob), sel);
-                    if (kageant_startup_get())
+                    if (kageant_startup_active())
                         kageant_save_startup_keys();
                     keylist_update();
                 }
@@ -3680,17 +3681,6 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
  * install.
  */
 /*
- * The one place that turns the stored preference into a yes or no. Handed to
- * the theme module at startup, which calls it for every dialog that appears -
- * so "follow the system" is re-evaluated per window rather than frozen at
- * whatever it meant when kageant started.
- */
-static bool kageant_theme_dark(void)
-{
-    return kitty_theme_dark_for(kageant_theme_get());
-}
-
-/*
  * The four pages, as lists of control IDs. One flat template holds every
  * control (see the note on IDD_KEYSETTINGS in pageant.rc); switching page is
  * showing one list and hiding the other three.
@@ -3762,7 +3752,7 @@ static void keysettings_apply_theme(HWND hwnd)
 {
     int sel = (int)SendDlgItemMessage(hwnd, IDC_SET_THEME, CB_GETCURSEL, 0, 0);
     if (sel < KITTY_THEME_SYSTEM || sel > KITTY_THEME_DARK)
-        sel = kageant_theme_get();
+        sel = kitty_theme_pref_get();
     kitty_theme_apply(hwnd, kitty_theme_dark_for(sel));
 }
 
@@ -3941,7 +3931,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 "Always dark",
             };
             size_t t;
-            int cur = kageant_theme_get();
+            int cur = kitty_theme_pref_get();
             for (t = 0; t < lenof(theme_names); t++)
                 SendDlgItemMessage(hwnd, IDC_SET_THEME, CB_ADDSTRING, 0,
                                    (LPARAM)theme_names[t]);
@@ -4004,7 +3994,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 int sel = (int)SendDlgItemMessage(hwnd, IDC_SET_THEME,
                                                   CB_GETCURSEL, 0, 0);
                 if (sel >= KITTY_THEME_SYSTEM && sel <= KITTY_THEME_DARK)
-                    kageant_theme_set(sel);
+                    kitty_theme_pref_set(sel);
             }
             kageant_unload_on_remove_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_UNLOAD) == BST_CHECKED);
@@ -6169,7 +6159,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * details, the agent log, the settings, and the modal message boxes -
      * paints in the chosen theme. Installed before the first window exists,
      * because it works by catching them as they appear. */
-    kitty_theme_hook_dialogs(kageant_theme_dark);
+    kitty_theme_hook_dialogs(kitty_theme_pref_dark);
 
     /*
      * KiTTY: [KiTTY] restrictacl=yes in kitty.ini hardens kageant too.
@@ -6519,8 +6509,13 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     /* KiTTY: if "load keys on startup" is enabled, re-add the remembered keys
      * (encrypted/deferred). Primary instance only - a second invocation just
-     * forwards to the running agent and exits. */
-    if (!already_running && kageant_startup_get()) {
+     * forwards to the running agent and exits.
+     *
+     * kageant_startup_active() and not the plain getter: -noload is a
+     * property of this RUN, and answering it from the getter made the settings
+     * dialog and the tray checkmark report the option as off while the stored
+     * value said on. */
+    if (!already_running && kageant_startup_active()) {
         kageant_load_startup_keys();
         pageant_forget_passphrases();
         kageant_apply_saved_order();   /* restore the user's offer order */

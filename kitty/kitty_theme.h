@@ -32,11 +32,30 @@ bool kitty_theme_system_is_dark(void);
 bool kitty_theme_dark_for(int pref);
 
 /*
+ * The preference's wire form, shared by every store so a value written by one
+ * binary reads back the same in the next. from_string returns -1 for anything
+ * it does not recognise, which is how a caller tells "not set" or "set to
+ * nonsense" from a real choice.
+ */
+int kitty_theme_pref_from_string(const char *s);
+const char *kitty_theme_pref_to_string(int pref);
+
+/*
  * Apply a resolved theme to a dialog and everything in it: the title bar, the
  * per-control themes, and the brushes kitty_theme_ctlcolor() will hand back.
  * Safe to call again on the same window - that is how a live preview works.
  */
 void kitty_theme_apply(HWND dlg, bool dark);
+
+/*
+ * Re-theme the children of a window kitty_theme_apply() has already been
+ * given. A dialog that builds controls after it first appeared - the
+ * configuration box, whose panels are created on demand and cached - has
+ * children the first pass never saw, and everything that must be SENT to a
+ * control (its theme class, a tree view's own colours) reaches only what
+ * existed at the time. Cheap, and safe to call as often as panels are built.
+ */
+void kitty_theme_refresh(HWND dlg);
 
 /*
  * WM_CTLCOLOR* handler. Returns the brush to use (already cast), or NULL when
@@ -107,6 +126,21 @@ void kitty_theme_attach_tabs(HWND tab);
  * themes them itself.
  */
 void kitty_theme_hook_dialogs(bool (*want_dark)(void));
+
+/*
+ * Name another window class the hook should treat as one of our dialogs.
+ *
+ * The hook recognises "#32770", which is every window built from a dialog
+ * template - but a dialog created with a class of its own is not that class,
+ * and KiTTY's configuration box is exactly that. Without this it is skipped
+ * and comes up light inside an otherwise dark application.
+ *
+ * Deliberately an explicit list rather than "any window this process owns":
+ * the terminal is also our window and must keep the colours its session asks
+ * for. Call before the class's first window exists; a name registered twice
+ * is ignored.
+ */
+void kitty_theme_hook_class(const char *classname);
 
 /* Forget the per-window state when a themed dialog is destroyed. */
 void kitty_theme_forget(HWND dlg);

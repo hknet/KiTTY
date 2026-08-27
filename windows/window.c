@@ -334,6 +334,8 @@ int kitty_workplace_query(char *name, int len);   /* kitty/kitty_workplace.c */
 int kitty_workplace_request(int arm, unsigned int minutes);
 #include "../kitty/kitty_notice.h"  /* kitty_notice_show + the notice click
                                      * messages (WM_KITTY_AGENT_UNVERIFIED) */
+#include "../kitty/kitty_theme.h"   /* KiTTY: dark mode for the dialogs */
+bool kitty_theme_app_dark(void);    /* kitty/kitty_win.c: the app-wide setting */
 void kitty_workplace_show_pending_notice(void);
 void kitty_cfgbox_open_on_panel(const char *path);   /* kitty/kitty_config.c */
 /* Posted by that notice when it is clicked: switch workplace proxy mode off. */
@@ -1425,6 +1427,18 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     NETDBG_TS("before InitWinMain");
     InitWinMain();
     NETDBG_TS("after InitWinMain");
+
+    /* KiTTY: from here on every dialog this thread creates - the configuration
+     * box, the auxiliary windows, and the message boxes whose window procedure
+     * lives inside Windows - paints in the chosen theme. It must come after
+     * InitWinMain, which is what makes the setting readable, and before the
+     * first window, so none is created untreated. The TERMINAL is not a dialog
+     * and is deliberately untouched: its colours are its own settings. */
+    kitty_theme_hook_dialogs(kitty_theme_app_dark);
+    /* The configuration box is a dialog with a window class of its own, so it
+     * is not the "#32770" the hook recognises by default and has to be named.
+     * (windows/dialog.c passes this string to ShinyDialogBox.) */
+    kitty_theme_hook_class("PuTTYConfigBox");
 
     /* KiTTY hidden editor (blocnote): SHIFT+F2 / CTRL+SHIFT+F2 / the kitty.ini
      * drag-drop / -edit relaunch KiTTY as "kitty.exe -ed[b] [file]". Intercept

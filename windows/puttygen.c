@@ -23,6 +23,8 @@
 #include "puttygen-rc.h"
 #include "../kitty/kitty_title.h"   /* KiTTY: shared title composer */
 #include "../kitty/kitty_protkey.h" /* KiTTY: in-memory key protection */
+#include "../kitty/kitty_theme.h"      /* KiTTY: dark mode for the dialogs */
+#include "../kitty/kitty_theme_pref.h" /* KiTTY: the app-wide theme setting */
 
 #include <commctrl.h>
 
@@ -3246,6 +3248,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     init_common_controls();
     hinst = inst;
+
+    /*
+     * KiTTY: from here on every dialog this thread creates paints in the
+     * chosen theme - the main window, the passphrase and parameter boxes, and
+     * the message boxes whose window procedure lives inside Windows.
+     * Installed before the first window exists, so none is created untreated.
+     */
+    kitty_theme_hook_dialogs(kitty_theme_pref_dark);
 
     /*
      * See if we can find our Help file.

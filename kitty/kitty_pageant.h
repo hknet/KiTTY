@@ -26,6 +26,9 @@ void kageant_openssh_set(int on);
 int kageant_startup_get(void);
 void kageant_noload_set(void);    /* -noload: clean-slate run */
 int  kageant_noload(void);
+/* The STORED setting (get) versus whether the mechanism runs THIS RUN
+ * (active). Display and edit use the getter; behaviour uses active. */
+int  kageant_startup_active(void);
 void kageant_startup_set(int on);
 int kageant_notify_get(void);          /* default on */
 int kageant_notice_seconds(int fallback);  /* [Agent] noticetimeout */
@@ -115,12 +118,8 @@ int  kageant_unload_on_remove_set(int on);
 int  kageant_passphrase_ttl_set(int seconds);
 int  kageant_hello_ttl(void);      /* Hello KEK cache seconds; default 60 */
 int  kageant_hello_ttl_set(int seconds);
-/* [Agent] theme: which colours the agent's own windows paint in. THREE-valued
- * like retrykeys, so it must not go through the boolean helpers, which
- * collapse to 0/1 at both ends: 0 = follow the system, 1 = always light,
- * 2 = always dark. Ini spellings system / light / dark. Default 0. */
-int  kageant_theme_get(void);
-int  kageant_theme_set(int pref);
+/* The colour theme is application-wide, not the agent's own: kitty_theme_pref.h
+ * declares it, and kittygen and kitty read the same setting. */
 /* Which page of the settings dialog was showing when it was last closed, so
  * it reopens where it was left. Transient WINDOW STATE, not a configuration
  * option: it lives in the registry only and deliberately has no kitty.ini

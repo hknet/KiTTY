@@ -84,6 +84,14 @@ add_dependencies(guiterminal generated_licence_h) # dialog.c uses licence.h
 target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c)
 # KiTTY: shared title-suffix composer ((portable)/(RESTRICTED)/test label).
 target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c)
+# KiTTY: dark mode for the dialogs, the configuration box among them. The
+# theme's STORE is deliberately not here - kitty.exe reads it through its own
+# ReadParameter(), the satellite binaries through kitty_theme_pref.c.
+target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_theme.c)
+# PUBLIC: kitty_theme.c subclasses controls, and SetWindowSubclass lives in
+# comctl32. Declared on the library so every consumer inherits it rather than
+# each executable discovering the missing symbols at link time.
+target_link_libraries(guiterminal PUBLIC comctl32.lib)
 
 # This object awkwardly needs to live in the network library as well
 # as the eventloop library, in case it didn't get pulled in from the
@@ -114,6 +122,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_ui.c    # KiTTY: the shared printout window
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auditlog.c # KiTTY: the audit log's file sink
   ${CMAKE_SOURCE_DIR}/kitty/kitty_theme.c    # KiTTY: dark mode for the dialogs
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_theme_pref.c  # KiTTY: the app-wide theme setting
   pageant.rc)
 add_dependencies(pageant generated_licence_h)
 target_link_libraries(pageant
@@ -191,6 +200,9 @@ add_executable(puttygen
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
   ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c    # KiTTY: shared (portable)/(RESTRICTED)/test-label title composer
   ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: shared CryptProtectMemory key holder (#4)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_theme.c    # KiTTY: dark mode for the dialogs
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_theme_pref.c  # KiTTY: the app-wide theme setting
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_inilight.c # KiTTY: light kitty.ini resolver (kitty_theme_pref.c reads it)
   ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
   noise.c
   no-jump-list.c
@@ -205,6 +217,7 @@ add_executable(puttygen
 add_dependencies(puttygen generated_licence_h)
 target_link_libraries(puttygen
   keygen guimisc crypto utils
+  comctl32.lib   # KiTTY: SetWindowSubclass, for kitty_theme.c's dialog theming
   ${platform_libraries} crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_64.a)  # storage.c password crypto (DPAPI + legacy bcrypt)
 set_target_properties(puttygen PROPERTIES WIN32_EXECUTABLE ON)
 installed_program(puttygen)
