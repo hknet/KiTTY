@@ -57,8 +57,17 @@
 #define DLGWIDTH 168
 #define STATICHEIGHT 9
 #define TITLEHEIGHT 12
-#define CHECKBOXHEIGHT 10
-#define RADIOHEIGHT 10
+#define CHECKBOXHEIGHT 9
+#define RADIOHEIGHT 9
+/*
+ * The gap between STACKED booleans, which is deliberately tighter than
+ * GAPBETWEEN. A checkbox row is height + gap: at the old font that was 8 + 3
+ * = 11 units, and simply carrying the 3 over made it 13 - so the space
+ * between two checkboxes grew by 44% for a font that grew 15%, and a column
+ * of them read as a list of unrelated things. Related switches belong closer
+ * together than separate groups do.
+ */
+#define CHECKBOXGAP 2
 #define EDITHEIGHT 11
 #define LISTHEIGHT 11
 #define LISTINCREMENT 9
@@ -416,7 +425,7 @@ void checkbox(struct ctlpos *cp, const char *text, int id)
     r.top = cp->ypos;
     r.right = cp->width;
     r.bottom = CHECKBOXHEIGHT;
-    cp->ypos += r.bottom + GAPBETWEEN;
+    cp->ypos += r.bottom + CHECKBOXGAP;
     doctl(cp, r, "BUTTON",
           BS_NOTIFY | BS_AUTOCHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 0,
           text, id);

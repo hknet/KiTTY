@@ -6880,7 +6880,7 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
 #endif
 }
 
-/* The Window/Translation, Window/Selection(+Copy) and Window/Colours panels. */
+/* The Window/Charset translation, Window/Selection(+Copy) and Window/Colours panels. */
 static void scb_panel_selection(struct controlbox *b)
 {
     struct charclass_data *ccd;
@@ -6890,24 +6890,24 @@ static void scb_panel_selection(struct controlbox *b)
     char *str;
 
     /*
-     * The Window/Translation panel.
+     * The Window/Charset translation panel.
      */
-    ctrl_settitle(b, "Window/Translation",
+    ctrl_settitle(b, "Window/Charset translation",
                   "Options controlling character set translation");
 
-    s = ctrl_getset(b, "Window/Translation", "trans",
+    s = ctrl_getset(b, "Window/Charset translation", "trans",
                     "Character set translation");
     ctrl_combobox(s, "Remote character set:",
                   'r', 100, HELPCTX(translation_codepage),
                   codepage_handler, P(NULL), P(NULL));
 
-    s = ctrl_getset(b, "Window/Translation", "tweaks", NULL);
+    s = ctrl_getset(b, "Window/Charset translation", "tweaks", NULL);
     ctrl_checkbox(s, "Treat CJK ambiguous characters as wide", 'w',
                   HELPCTX(translation_cjk_ambig_wide),
                   conf_checkbox_handler, I(CONF_cjk_ambig_wide));
 
     str = dupprintf("Adjust how %s handles line drawing characters", appname);
-    s = ctrl_getset(b, "Window/Translation", "linedraw", str);
+    s = ctrl_getset(b, "Window/Charset translation", "linedraw", str);
     sfree(str);
     ctrl_radiobuttons(
         s, "Handling of line drawing characters:", NO_SHORTCUT,1,

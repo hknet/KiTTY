@@ -746,6 +746,9 @@ struct kitty_cfg_panel {
 static struct kitty_cfg_panel **kitty_cfg_panels = NULL;
 static size_t kitty_cfg_npanels = 0, kitty_cfg_panelsize = 0;
 static struct kitty_cfg_panel *kitty_cfg_active_panel = NULL;
+/* Top of the fixed button strip, in client pixels - the floor of the panel
+ * area. Set once the row exists, because it moves with cb_extra_du. */
+static int kitty_cfg_buttonrow_top = 0;
 
 static struct kitty_cfg_panel *kitty_cfg_panel_find(const char *path)
 {
@@ -807,7 +810,6 @@ static void kitty_cfg_panel_rect(HWND hwnd, RECT *out)
 {
     RECT dlu = { 100, 13, 3 + CFGBOX_SCROLLGUTTER_DU, 0 };
     RECT client;
-    HWND buttons;
 
     MapDialogRect(hwnd, &dlu);
     GetClientRect(hwnd, &client);
@@ -816,16 +818,19 @@ static void kitty_cfg_panel_rect(HWND hwnd, RECT *out)
     out->right = client.right - dlu.right;
     out->bottom = client.bottom;
 
-    /* The button row is the floor. Its top is found from the window rather
-     * than recomputed, because it moves with cb_extra_du. */
-    buttons = GetDlgItem(hwnd, IDOK);
-    if (buttons) {
-        RECT br;
-        GetWindowRect(buttons, &br);
-        MapWindowPoints(NULL, hwnd, (POINT *)&br, 2);
-        if (br.top > out->top)
-            out->bottom = br.top - 4;
-    }
+    /*
+     * The button row is the floor, and it is taken from the layout constant,
+     * NOT by looking a button up.
+     *
+     * GetDlgItem(hwnd, IDOK) was the obvious way to find it and it is wrong:
+     * this box's buttons are built by ctrl_pushbutton and get generated ids
+     * (1010 and up, plus IDCANCEL), so there is no control with id 1. The
+     * lookup returned NULL, the floor silently stayed at the bottom of the
+     * window, and nothing was clipped above the buttons at all - which is the
+     * whole point of this rectangle.
+     */
+    if (kitty_cfg_buttonrow_top > out->top)
+        out->bottom = kitty_cfg_buttonrow_top - 4;
 }
 
 /* How tall a panel's contents are: the lowest bottom edge of any of its
@@ -865,11 +870,12 @@ static int kitty_cfg_panel_measure(HWND hwnd, struct kitty_cfg_panel *p)
  * would mean re-parenting every control, and every dlg_* call in the codebase
  * looks its control up with GetDlgItem(dp->hwnd, id).
  *
- * So the clipping is done by hand, and by whole controls: a control is shown
- * only while it lies ENTIRELY inside the area. Half a control is not clipped
- * to the boundary, it is drawn across it, so "mostly visible" is not an
- * option here - scrolling reveals a row at a time, which is also easier to
- * read than a row sliced in half.
+ * So the clipping is done by hand, with a WINDOW REGION on any control that
+ * straddles the boundary. A half-scrolled row is then drawn as half a row,
+ * cut exactly at the edge - not hidden (which made rows vanish while still
+ * half visible) and not left to paint across the button strip below. That
+ * strip is a fixed area of its own and must never be scrolled into, whatever
+ * the panel is doing.
  */
 static void kitty_cfg_panel_clip(HWND hwnd, struct kitty_cfg_panel *p)
 {
@@ -883,19 +889,39 @@ static void kitty_cfg_panel_clip(HWND hwnd, struct kitty_cfg_panel *p)
         for (int k = 0; k < c->num_ids; k++) {
             HWND item = GetDlgItem(hwnd, c->base_id + k);
             RECT r;
-            bool inside;
             if (!item || !GetWindowRect(item, &r))
                 continue;
             MapWindowPoints(NULL, hwnd, (POINT *)&r, 2);
-            inside = (r.top >= area.top - 1 && r.bottom <= area.bottom + 1);
-            /* Focus must not be left on something invisible: it would take
-             * the keyboard somewhere the reader cannot see. */
-            if (!inside && GetFocus() == item)
-                SetFocus(GetDlgItem(hwnd, IDCX_TREEVIEW));
+
+            if (r.bottom <= area.top || r.top >= area.bottom) {
+                /* Wholly outside. Hidden - and the keyboard must not be left
+                 * on it, or focus goes somewhere the reader cannot see. */
+                if (GetFocus() == item)
+                    SetFocus(GetDlgItem(hwnd, IDCX_TREEVIEW));
+                SetWindowPos(item, NULL, 0, 0, 0, 0,
+                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                             SWP_NOACTIVATE | SWP_NOREDRAW | SWP_HIDEWINDOW);
+                continue;
+            }
+
+            if (r.top < area.top || r.bottom > area.bottom) {
+                /* Straddling: cut it at the boundary. The region is in the
+                 * control's OWN coordinates, and SetWindowRgn takes ownership
+                 * of it - it must not be deleted here. */
+                int top = (area.top > r.top ? area.top : r.top) - r.top;
+                int bot = (area.bottom < r.bottom ? area.bottom : r.bottom)
+                          - r.top;
+                HRGN rgn = CreateRectRgn(0, top, r.right - r.left, bot);
+                if (rgn)
+                    SetWindowRgn(item, rgn, FALSE);
+            } else {
+                /* Fully inside: no region, so it draws exactly as it would on
+                 * a panel that never scrolls. */
+                SetWindowRgn(item, NULL, FALSE);
+            }
             SetWindowPos(item, NULL, 0, 0, 0, 0,
                          SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
-                         SWP_NOACTIVATE | SWP_NOREDRAW |
-                         (inside ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+                         SWP_NOACTIVATE | SWP_NOREDRAW | SWP_SHOWWINDOW);
         }
     }
 }
@@ -931,6 +957,16 @@ static void kitty_cfg_panel_scroll_to(HWND hwnd, struct kitty_cfg_panel *p,
             if (!item || !GetWindowRect(item, &r))
                 continue;
             MapWindowPoints(NULL, hwnd, (POINT *)&r, 2);
+            /*
+             * NOT SWP_NOREDRAW. Suppressing the redraw looks like the way to
+             * stop the flicker, and it leaves the pixels a control has moved
+             * AWAY from on the screen - the ghosted duplicate rows and stray
+             * glyph fragments that made the first attempt unusable. Windows
+             * invalidates both the old and the new rectangle when it is
+             * allowed to; the flicker is dealt with by WS_CLIPCHILDREN on the
+             * dialog instead, which stops the background being painted under
+             * the controls in the first place.
+             */
             if (dwp)
                 dwp = DeferWindowPos(dwp, item, NULL,
                                      r.left, r.top - delta, 0, 0,
@@ -947,7 +983,19 @@ static void kitty_cfg_panel_scroll_to(HWND hwnd, struct kitty_cfg_panel *p,
     p->scroll_y = newy;
     SetScrollPos(GetDlgItem(hwnd, IDCX_PANELSCROLL), SB_CTL, newy, TRUE);
     kitty_cfg_panel_clip(hwnd, p);
-    InvalidateRect(hwnd, &area, TRUE);
+    /*
+     * ONE repaint, of the panel area only, children included, done now rather
+     * than left for the next idle - a scroll that paints late reads as a
+     * stutter.
+     *
+     * RDW_ERASE, not RDW_NOERASE: the background a control has just moved
+     * AWAY from has to be repainted, or its old pixels stay on screen as
+     * artefacts. The flash that erasing would normally cause is handled by
+     * WS_CLIPCHILDREN on the dialog (set in WM_INITDIALOG), which stops the
+     * erase from painting under the controls themselves.
+     */
+    RedrawWindow(hwnd, &area, NULL,
+                 RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
 }
 
 /*
@@ -1496,6 +1544,13 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
       case WM_INITDIALOG: {
         pds_initdialog_start(pds, hwnd);
 
+        /* WS_CLIPCHILDREN: the dialog stops painting the background under its
+         * own controls. Without it every repaint of the panel area erases the
+         * whole rectangle first and the controls draw on top of it, which is
+         * the flash behind a scroll. */
+        SetWindowLong(hwnd, GWL_STYLE,
+                      GetWindowLong(hwnd, GWL_STYLE) | WS_CLIPCHILDREN);
+
         /* KiTTY: the saved-session list height is configurable via kitty.ini
          * [ConfigBox] height (GetConfigBoxHeight(), default 16 = stock fit), and the whole
          * box via [ConfigBox] windowheight. A taller list needs the button row,
@@ -1518,6 +1573,15 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
 
         pds_create_controls(pds, TREE_BASE, IDCX_STDBASE, 3, 3,
                             CFGBOX_BUTTONROW_DU + cb_extra_du, ""); /* buttons row */
+        /* Where that row landed, in pixels: the floor of the panel area, and
+         * the line nothing scrolled may cross - you shall not pass! Taken
+         * from the same units the row was created with, so the two cannot
+         * disagree. */
+        {
+            RECT br = { 0, CFGBOX_BUTTONROW_DU + cb_extra_du, 0, 0 };
+            MapDialogRect(hwnd, &br);
+            kitty_cfg_buttonrow_top = br.top;
+        }
 
         SendMessage(hwnd, WM_SETICON, (WPARAM) ICON_BIG,
                     (LPARAM) LoadIcon(hinst, MAKEINTRESOURCE(IDI_CFGICON)));
