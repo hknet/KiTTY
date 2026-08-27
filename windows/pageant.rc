@@ -57,13 +57,20 @@ END
 
 /* KiTTY: WS_THICKFRAME instead of DS_MODALFRAME - the window is resizable,
  * relaid out in WM_SIZE, with the template size as the minimum. */
-IDD_KEYLIST DIALOG DISCARDABLE 0, 0, 450, 244
+/* This IS the font round the earlier note deferred - alignment was fixed on
+ * the known face first, and Segoe UI 9 comes after it rather than instead of
+ * it. Segoe UI 9, not 10: 10 was what made the earlier attempt fall apart,
+ * because it grows the dialog unit far enough that hand-placed rows stop
+ * lining up at all.
+ *
+ * The row that needed paying for is the confirm row. Its label and radio
+ * buttons were 8 and 10 units tall on tops two units apart, which reads as
+ * one line only while the font is small enough to hide the difference; they
+ * now share one height and one top, with SS_CENTERIMAGE on the label. */
+IDD_KEYLIST DIALOGEX DISCARDABLE 0, 0, 450, 244
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX
 CAPTION "kageant Key List"
-/* Deliberately the 8pt shell font for now: a Segoe UI 10 round exposed
- * alignment problems across the dialogs, and the ruling is fix alignment
- * on the known face FIRST, then revisit the font as its own round. */
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     /* KiTTY: a real ListView in report mode instead of upstream's owner-drawn
      * listbox with pixel-computed pseudo-columns. Extended styles (full-row
@@ -83,11 +90,15 @@ BEGIN
     /* Confirm row, pulled up directly under the key buttons. The Resume
      * button lives here because it re-enables THESE confirmations; it is
      * enabled only while they are suppressed (see WM_TIMER). */
-    LTEXT "Confirm key use:", IDC_KEYLIST_CONFIRM_LABEL, 10, 207, 62, 8
-    AUTORADIOBUTTON "Ever&y use", IDC_KEYLIST_CONFIRM_YES, 76, 206, 60, 10, WS_GROUP
-    AUTORADIOBUTTON "By key co&mment", IDC_KEYLIST_CONFIRM_AUTO, 140, 206, 82, 10
-    AUTORADIOBUTTON "Ne&ver", IDC_KEYLIST_CONFIRM_NO, 226, 206, 46, 10
-    PUSHBUTTON "Stop rejec&ting keys", IDC_KEYLIST_RESUMECONFIRM, 300, 204, 130, 14
+    LTEXT "Confirm key use:", IDC_KEYLIST_CONFIRM_LABEL, 10, 204, 66, 14,
+        SS_CENTERIMAGE
+    AUTORADIOBUTTON "Ever&y use", IDC_KEYLIST_CONFIRM_YES, 80, 204, 62, 14,
+        WS_GROUP
+    AUTORADIOBUTTON "By key co&mment", IDC_KEYLIST_CONFIRM_AUTO,
+        146, 204, 86, 14
+    AUTORADIOBUTTON "Ne&ver", IDC_KEYLIST_CONFIRM_NO, 236, 204, 50, 14
+    PUSHBUTTON "Stop rejec&ting keys", IDC_KEYLIST_RESUMECONFIRM,
+        300, 204, 130, 14
     /* Window / agent actions; New key aligns under Add Key (x=10). */
     PUSHBUTTON "Ne&w key...", IDC_KEYLIST_NEWKEY, 10, 224, 56, 14
     PUSHBUTTON "&Settings...", IDC_KEYLIST_SETTINGS, 72, 224, 56, 14
@@ -107,9 +118,14 @@ BEGIN
      * here that STRETCHES (LEFT|RIGHT|BOTTOM), so it starts narrow and takes
      * every extra pixel the window is given - the Retry button beside it is
      * RIGHT-anchored and simply moves, so the two never meet. */
-    LTEXT "", IDC_KEYLIST_INISTATUS, 275, 172, 52, 8, SS_PATHELLIPSIS
-    LTEXT "&Fingerprint type:", IDC_KEYLIST_FPTYPE_STATIC, 10, 172, 60, 8
-    COMBOBOX IDC_KEYLIST_FPTYPE, 70, 170, 95, 12, CBS_DROPDOWNLIST
+    /* Same row, one height, one top - the combo lands on 14 whatever the
+     * template says, so 14 is what the label and the checkbox beside it take
+     * as well. */
+    LTEXT "", IDC_KEYLIST_INISTATUS, 285, 170, 40, 14,
+        SS_PATHELLIPSIS | SS_CENTERIMAGE
+    LTEXT "&Fingerprint type:", IDC_KEYLIST_FPTYPE_STATIC, 10, 170, 64, 14,
+        SS_CENTERIMAGE
+    COMBOBOX IDC_KEYLIST_FPTYPE, 78, 170, 95, 12, CBS_DROPDOWNLIST
     /* KiTTY: startup entries whose file is absent/broken, shown as rows. The
      * button sits with them: it acts on exactly these rows, says what the
      * checkbox says, and ends at x=430 like every other right-hand control.
@@ -118,133 +134,235 @@ BEGIN
      * as "retrying is unavailable". &k because R (Remove), U (Move Up), Y (Every
      * use) and T (Stop rejecting keys) are all taken in this dialog. */
     AUTOCHECKBOX "Show unavailable keys", IDC_KEYLIST_SHOWUNAVAIL,
-        175, 171, 95, 10
-    PUSHBUTTON "Retry unavailable &keys", IDC_KEYLIST_RETRY, 332, 169, 98, 14
+        182, 170, 100, 14
+    PUSHBUTTON "Retry unavailable &keys", IDC_KEYLIST_RETRY, 326, 170, 104, 14
 END
 
 /* KiTTY: key details. Read-only EDIT controls, not statics, because the
  * point of looking at a fingerprint is usually to copy it and compare it
  * with one somewhere else. Wide enough that a full SHA-256 line fits, and
- * resizable (WS_THICKFRAME) for the ones that still do not. */
-IDD_KEYDETAILS DIALOG DISCARDABLE 0, 0, 420, 252
+ * resizable (WS_THICKFRAME) for the ones that still do not.
+ *
+ * Segoe UI 9. Two consequences of the font, both of which had to be paid
+ * for rather than inherited:
+ *
+ *  - a single-line edit is 11 units tall at this font, not 12, and it draws
+ *    its text at the TOP of whatever box it is given - so a box any taller
+ *    leaves the text hanging against the border. Its label carries the same
+ *    height and SS_CENTERIMAGE, which is what puts the two on one line.
+ *  - the labels are WIDER than they were. "Fingerprints:" and "Confirm each
+ *    use:" both fitted 52 and 62 units in Tahoma 8 and do not in Segoe UI 9,
+ *    so the label column moved out and the edit column moved with it.
+ */
+IDD_KEYDETAILS DIALOGEX DISCARDABLE 0, 0, 420, 252
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION "kageant - key details"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT "Key:", -1, 10, 12, 52, 8
-    EDITTEXT IDC_KEYDETAIL_KEY, 66, 10, 344, 12, ES_READONLY | ES_AUTOHSCROLL
-    LTEXT "State:", -1, 10, 28, 52, 8
-    EDITTEXT IDC_KEYDETAIL_STATE, 66, 26, 344, 12, ES_READONLY | ES_AUTOHSCROLL
-    LTEXT "Fingerprints:", -1, 10, 44, 52, 8
-    EDITTEXT IDC_KEYDETAIL_FPS, 66, 42, 344, 46,
+    LTEXT "Key:", -1, 10, 10, 58, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_KEYDETAIL_KEY, 72, 10, 338, 11, ES_READONLY | ES_AUTOHSCROLL
+    LTEXT "State:", -1, 10, 26, 58, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_KEYDETAIL_STATE, 72, 26, 338, 11,
+        ES_READONLY | ES_AUTOHSCROLL
+    LTEXT "Fingerprints:", -1, 10, 42, 58, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_KEYDETAIL_FPS, 72, 42, 338, 46,
         ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_HSCROLL | WS_VSCROLL
-    LTEXT "Comment:", -1, 10, 94, 52, 8
-    EDITTEXT IDC_KEYDETAIL_COMMENT, 66, 92, 344, 26,
+    LTEXT "Comment:", -1, 10, 92, 58, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_KEYDETAIL_COMMENT, 72, 92, 338, 26,
         ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL
-    LTEXT "Loaded from:", -1, 10, 124, 52, 8
-    EDITTEXT IDC_KEYDETAIL_PATHS, 66, 122, 284, 56,
+    LTEXT "Loaded from:", -1, 10, 122, 58, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_KEYDETAIL_PATHS, 72, 122, 278, 56,
         ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_VSCROLL
     /* KiTTY: re-point a not-loaded entry whose file is absent or will not
      * parse. Never shown on a mismatch - Accept below owns that case. */
     PUSHBUTTON "&Locate...", IDC_KEYDETAIL_LOCATE, 356, 122, 54, 14
-    LTEXT "Lifetime:", IDC_KEYDETAIL_LIFETIME_LBL, 10, 184, 52, 8
-    EDITTEXT IDC_KEYDETAIL_LIFETIME, 66, 182, 344, 12,
+    LTEXT "Lifetime:", IDC_KEYDETAIL_LIFETIME_LBL, 10, 182, 58, 11,
+        SS_CENTERIMAGE
+    EDITTEXT IDC_KEYDETAIL_LIFETIME, 72, 182, 338, 11,
         ES_READONLY | ES_AUTOHSCROLL
     AUTOCHECKBOX "Load this key &deferred at startup (passphrase at first use)",
-        IDC_KEYDETAIL_DEFER, 10, 202, 300, 10
+        IDC_KEYDETAIL_DEFER, 10, 200, 300, 12
     /* KiTTY: three-valued (none / ask / ask with Windows Hello), so a
-     * droplist, not a checkbox. */
-    LTEXT "Confir&m each use:", IDC_KEYDETAIL_CONFIRM_LBL, 10, 218, 62, 8
-    COMBOBOX IDC_KEYDETAIL_CONFIRM, 76, 216, 170, 48,
+     * droplist, not a checkbox. The label keeps the COMBO's height, not the
+     * edits' - a combo box sizes its closed height from the font and lands
+     * on 14 here, ignoring whatever the template says. */
+    LTEXT "Confir&m each use:", IDC_KEYDETAIL_CONFIRM_LBL, 10, 216, 68, 14,
+        SS_CENTERIMAGE
+    COMBOBOX IDC_KEYDETAIL_CONFIRM, 82, 216, 164, 48,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     /* KiTTY: the ONLY place a changed key file can be accepted. Shown only for
      * a fingerprint mismatch; the startup path used to ask this in a modal at
      * login, where one click ratified a swap. */
-    PUSHBUTTON "&Accept this key", IDC_KEYDETAIL_ACCEPT, 10, 232, 90, 14
+    PUSHBUTTON "&Accept this key", IDC_KEYDETAIL_ACCEPT, 10, 232, 90, 15
     /* KiTTY: Hello-protected keys. Protect writes a protected COPY of the
      * key (never rewrites the original); Forget drops ONE source path from
      * the startup list (a deleted plaintext original, a retired stick). */
     PUSHBUTTON "&Protect with Windows Hello...", IDC_KEYDETAIL_PROTECT,
-        104, 232, 120, 14
-    PUSHBUTTON "For&get a path...", IDC_KEYDETAIL_FORGET, 228, 232, 70, 14
-    DEFPUSHBUTTON "&Close", IDOK, 360, 232, 50, 14
+        104, 232, 120, 15
+    PUSHBUTTON "For&get a path...", IDC_KEYDETAIL_FORGET, 228, 232, 70, 15
+    DEFPUSHBUTTON "&Close", IDOK, 358, 232, 52, 15
 END
 
 /* KiTTY: the [Agent] settings dialog, reached from the key list window's
  * Settings button. Confirm-key-use stays as the key list's inline radios
- * (design), so it is deliberately not duplicated here. The removable-media
- * options are honoured only from kitty.ini, so they are greyed in a
- * registry-authoritative (non-portable) install. */
-IDD_KEYSETTINGS DIALOG DISCARDABLE 0, 0, 250, 418
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+ * (design), so it is deliberately not duplicated here.
+ *
+ * FOUR PAGES BEHIND ONE TAB STRIP, AND ONE FLAT TEMPLATE: every control on
+ * every page is a direct child of this dialog, laid out at overlapping
+ * coordinates, and KeySettingsProc shows one page's controls while hiding the
+ * rest. The alternative - a child dialog per page - would have moved the
+ * controls off this HWND and broken every GetDlgItem/CheckDlgButton call in
+ * the read and write paths, for no visible gain.
+ *
+ * A hidden page's controls are still REAL WINDOWS: they answer
+ * EnumChildWindows and GetDlgItem exactly as the visible ones do, and only
+ * IsWindowVisible tells them apart. Anything that walks this dialog - a theme
+ * pass, a test harness - has to filter, or it finds four pages' worth of
+ * controls stacked on top of one another.
+ *
+ * DIALOGEX with Segoe UI 9 rather than DIALOG with MS Shell Dlg 8: Segoe UI is
+ * the system UI font from Vista onwards, while MS Shell Dlg maps to Tahoma,
+ * which stopped being the system font in 2006. The dialog-unit base changes
+ * with the font (roughly 7x15 instead of 6x13), so the coordinates below are
+ * NOT comparable with the older templates in this file.
+ *
+ * Mixed rows line up by giving BOTH controls the same height and letting the
+ * static centre inside it (SS_CENTERIMAGE). That height is 11 - the natural
+ * height of one line in an edit box at this font - and it is not a free
+ * choice: a single-line edit draws its text at the TOP of its client area,
+ * never centred, so a box taller than one line leaves the number hanging
+ * against the top border. Measured on a screenshot; the first cut used 14 and
+ * looked exactly like that. The one row that keeps 14 is the theme droplist's
+ * label, because a combo box sizes its closed height from the font, ignores
+ * the template, and lands on 14.
+ */
+IDD_KEYSETTINGS DIALOGEX DISCARDABLE 0, 0, 300, 208
+STYLE DS_MODALFRAME | DS_SHELLFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "kageant - settings"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    GROUPBOX "Agent", -1, 8, 4, 234, 86
+    /* The tab control is the STRIP ONLY - 18 units tall, not the height of a
+     * page - and the page controls sit on the dialog's own background below
+     * it rather than inside the control's pane.
+     *
+     * That is deliberate. SysTabControl32 has no dark theme - no theme class
+     * reaches it - so its pane is painted from the light system face whatever
+     * it is handed, and a full-height tab control would put a white sheet
+     * behind a dark dialog. Only the strip is kept, and in dark mode even the
+     * strip is drawn by hand (kitty_theme_attach_tabs); a pane would have to
+     * be hand-drawn too for no gain, and losing it is closer to the way
+     * Windows 11 draws a tabbed surface anyway.
+     *
+     * 12 units is the height of the tab items themselves at this font. Any
+     * more and the leftover pane shows below them; the measurement is from a
+     * screenshot, not from arithmetic on the font metrics. */
+    CONTROL "", IDC_SET_TABS, "SysTabControl32",
+        TCS_TABS | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+        6, 6, 288, 12
+
+    /* ---- page 0: Agent ---- */
     AUTOCHECKBOX "Register as Windows &OpenSSH agent", IDC_SET_OPENSSH,
-        16, 18, 218, 10
-    AUTOCHECKBOX "&Start kageant at login", IDC_SET_STARTUP, 16, 32, 218, 10
+        16, 28, 268, 12
+    AUTOCHECKBOX "&Start kageant at login", IDC_SET_STARTUP,
+        16, 44, 268, 12
     AUTOCHECKBOX "Load remembered &keys at startup", IDC_SET_LOADKEYS,
-        16, 46, 218, 10
-    AUTOCHECKBOX "&Notify when a key is used", IDC_SET_NOTIFY, 16, 60, 218, 10
-    LTEXT "Notice &display (seconds):", -1, 16, 76, 108, 10
-    EDITTEXT IDC_SET_NOTICESECS, 126, 74, 40, 12, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "(blank = default)", -1, 172, 76, 66, 10
-    GROUPBOX "Security - block other programs over the agent IPC", -1,
-        8, 94, 234, 72
-    AUTOCHECKBOX "&Lock down: refuse ALL key add/remove over IPC",
-        IDC_SET_LOCKDOWN, 16, 108, 220, 10
-    AUTOCHECKBOX "Block &adding keys over IPC", IDC_SET_BLOCKADD,
-        16, 122, 220, 10
-    AUTOCHECKBOX "Block re&moving keys over IPC", IDC_SET_BLOCKREMOVE,
-        16, 136, 220, 10
-    AUTOCHECKBOX "Confirmations require Windows &Hello",
-        IDC_SET_HELLO, 16, 150, 220, 10
-    GROUPBOX "Removable-media keys", -1, 8, 170, 234, 138
-    LTEXT "&Retry startup keys to load, when a drive appears:",
-        -1, 16, 184, 220, 10
-    COMBOBOX IDC_SET_RETRY, 16, 196, 200, 56,
+        16, 60, 268, 12
+    AUTOCHECKBOX "&Notify when a key is used", IDC_SET_NOTIFY,
+        16, 76, 268, 12
+    LTEXT "Notice &display (seconds):", IDC_SET_L_NOTICE,
+        16, 94, 108, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_NOTICESECS, 128, 94, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "blank = each notice's own default", IDC_SET_L_NOTICEHINT,
+        168, 94, 116, 11, SS_CENTERIMAGE
+    LTEXT "&Colour theme:", IDC_SET_L_THEME,
+        16, 114, 108, 14, SS_CENTERIMAGE
+    COMBOBOX IDC_SET_THEME, 128, 114, 100, 80,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    AUTOCHECKBOX "&Unload a key when its media is removed",
-        IDC_SET_UNLOAD, 16, 214, 220, 10
-    AUTOCHECKBOX "Do not &warn about missing startup keys",
-        IDC_SET_QUIET, 16, 228, 220, 10
-    LTEXT "&Passphrase cache (seconds):", -1, 16, 246, 108, 10
-    EDITTEXT IDC_SET_TTL, 126, 244, 40, 12, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "0 = do not cache; default 60, maximum 300 (5 min).",
-        -1, 16, 260, 220, 9
-    LTEXT "Keys that share a passphrase then load with one prompt.",
-        -1, 16, 270, 220, 9
-    /* KiTTY: the Hello KEK cache - one gesture covers a batch; the TTL
-     * mirrors the passphrase cache above. */
-    LTEXT "Windows Hello cach&e (seconds):", -1, 16, 284, 108, 10
-    EDITTEXT IDC_SET_HELLOTTL, 126, 282, 40, 12, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "One Hello covers a batch; 0 = every unlock asks. Max 300.",
-        -1, 16, 296, 220, 9
-    GROUPBOX "Agent log", -1, 8, 312, 234, 84
-    AUTOCHECKBOX "Wr&ite the agent log", IDC_SET_AGENTLOG, 16, 326, 120, 10
-    LTEXT "File (blank = default):", -1, 16, 342, 78, 10
-    EDITTEXT IDC_SET_AGENTLOGPATH, 98, 340, 136, 12, ES_AUTOHSCROLL
-    LTEXT "Rotate at (KB):", -1, 16, 358, 56, 10
-    EDITTEXT IDC_SET_AGENTLOGKB, 76, 356, 40, 12, ES_NUMBER
-    LTEXT "Generations:", -1, 128, 358, 50, 10
-    EDITTEXT IDC_SET_AGENTLOGKEEP, 180, 356, 24, 12, ES_NUMBER
-    LTEXT "E&xpunge rotated logs after (days, 0 = keep):",
-        -1, 16, 374, 162, 10
-    EDITTEXT IDC_SET_AGENTLOGDAYS, 182, 372, 30, 12, ES_NUMBER
+    LTEXT "Dark needs Windows 10 1809 or newer; anything older stays light.",
+        IDC_SET_L_THEMEHINT, 16, 134, 268, 10
+
+    /* ---- page 1: Security ---- */
+    AUTOCHECKBOX "&Lock down: refuse ALL key add/remove over IPC",
+        IDC_SET_LOCKDOWN, 16, 28, 268, 12
+    AUTOCHECKBOX "Block &adding keys over IPC", IDC_SET_BLOCKADD,
+        16, 44, 268, 12
+    AUTOCHECKBOX "Block re&moving keys over IPC", IDC_SET_BLOCKREMOVE,
+        16, 60, 268, 12
+    AUTOCHECKBOX "Confirmations require Windows &Hello", IDC_SET_HELLO,
+        16, 76, 268, 12
+    LTEXT "&Passphrase cache (seconds):", IDC_SET_L_TTL,
+        16, 96, 120, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_TTL, 140, 96, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "0 = do not cache; blank = the default 60; maximum 300 (5 min). Keys that share a passphrase then load with one prompt.",
+        IDC_SET_L_TTLHINT, 16, 114, 268, 20
+    LTEXT "Windows Hello cach&e (seconds):", IDC_SET_L_HELLOTTL,
+        16, 138, 120, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_HELLOTTL, 140, 138, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
+    LTEXT "One Hello covers a batch; 0 = every unlock asks; blank = the default 60. Maximum 300.",
+        IDC_SET_L_HELLOTTLHINT, 16, 156, 268, 10
+
+    /* ---- page 2: Removable media ---- */
+    LTEXT "&Retry startup keys to load, when a drive appears:",
+        IDC_SET_L_RETRY, 16, 28, 268, 10
+    COMBOBOX IDC_SET_RETRY, 16, 42, 220, 80,
+        CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    AUTOCHECKBOX "&Unload a key when its media is removed", IDC_SET_UNLOAD,
+        16, 66, 268, 12
+    AUTOCHECKBOX "Do not &warn about missing startup keys", IDC_SET_QUIET,
+        16, 82, 268, 12
+
+    /* ---- page 3: Log ---- */
+    AUTOCHECKBOX "Wr&ite the agent log", IDC_SET_AGENTLOG,
+        16, 28, 268, 12
+    LTEXT "&File (blank = default):", IDC_SET_L_LOGPATH,
+        16, 46, 88, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_AGENTLOGPATH, 108, 46, 176, 11, ES_AUTOHSCROLL
+    /* Where a blank File box actually puts the log. Filled in at
+     * WM_INITDIALOG - the path depends on whether this install is portable -
+     * because "blank = default" tells nobody where the file is.
+     * SS_PATHELLIPSIS drops the MIDDLE of a path too long to fit, so the file
+     * name survives; plain ellipsis would cut off the part being looked for. */
+    LTEXT "", IDC_SET_L_LOGDEFAULT, 108, 60, 176, 10, SS_PATHELLIPSIS
+    /* Alt+K belongs to "Load remembered &keys at startup" on the first page.
+     * The accelerator check is per DIALOG, not per page, and it is right to
+     * be: Alt+letter reaches a hidden page's control just as well as a
+     * visible one, so the letters have to be unique across all four. */
+    LTEXT "Rota&te at (KB):", IDC_SET_L_LOGKB,
+        16, 78, 60, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_AGENTLOGKB, 80, 78, 36, 11, ES_NUMBER
+    LTEXT "&Generations:", IDC_SET_L_LOGKEEP,
+        132, 78, 52, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_AGENTLOGKEEP, 188, 78, 28, 11, ES_NUMBER
+    LTEXT "E&xpunge rotated logs after (days, 0 = keep):", IDC_SET_L_LOGDAYS,
+        16, 98, 158, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_AGENTLOGDAYS, 178, 98, 32, 11, ES_NUMBER
     LTEXT "The log is evidence, not proof - see the manual.",
-        -1, 16, 386, 220, 9
-    DEFPUSHBUTTON "OK", IDOK, 132, 398, 50, 14
-    PUSHBUTTON "Cancel", IDCANCEL, 190, 398, 50, 14
+        IDC_SET_L_LOGNOTE, 16, 118, 268, 10
+
+    DEFPUSHBUTTON "OK", IDOK, 182, 188, 54, 15
+    PUSHBUTTON "Cancel", IDCANCEL, 240, 188, 54, 15
 END
 
 /* KiTTY: the audit-log viewer - modeless (a log window is left open for an
  * hour, and a modal one would stop the agent answering), resizable, with a
  * live filter. */
-IDD_AUDITVIEW DIALOG DISCARDABLE 0, 0, 460, 260
+/*
+ * Segoe UI 9 rather than MS Shell Dlg 8, which maps to Tahoma. The dialog
+ * units get about 15% larger with the font, and the numbers below were NOT
+ * rescaled to compensate: the window is resizable, remembers its own
+ * geometry, and lays itself out from anchors, so the template size is only
+ * the first size it is ever shown at. What DOES follow from the template is
+ * the minimum size, which grows by the same 15% - which is right, because the
+ * text inside it grew too.
+ *
+ * The toolbar row is unaffected for the same reason it always was: its
+ * heights are snapped at runtime to whatever the font makes a closed combo
+ * box, not taken from these numbers.
+ */
+IDD_AUDITVIEW DIALOGEX DISCARDABLE 0, 0, 460, 260
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION "kageant - agent log"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     /* ONE toolbar row: every control starts at y=6 and the edit and
      * buttons share the same 13-DLU height (a closed combo box sizes
@@ -278,28 +396,37 @@ END
 
 /* KiTTY: one audit record, unfolded - every field on its own line, all of
  * it selectable for copying (fingerprints, the requester's full path). */
-IDD_AUDITDETAIL DIALOG DISCARDABLE 0, 0, 330, 190
+IDD_AUDITDETAIL DIALOGEX DISCARDABLE 0, 0, 330, 190
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION "kageant - agent log record"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
+    /* The window has always had WS_THICKFRAME and never had anything that
+     * responded to it: dragging it larger left the text box and the button
+     * at their template size in the corner. AuditDetailProc anchors them
+     * now - the box takes all four edges, Close rides the bottom right. */
     EDITTEXT IDC_AUDITDETAIL_TEXT, 8, 8, 314, 154,
         ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL
-    DEFPUSHBUTTON "&Close", IDOK, 272, 168, 50, 14
+    DEFPUSHBUTTON "&Close", IDOK, 270, 168, 52, 15
 END
 
 /* Accelerators used: cl */
 /* The text box scrolls if the About text ever outgrows it - cheap
  * insurance whatever the dialog font is. */
-IDD_ABOUT DIALOG DISCARDABLE 140, 40, 270, 136
+/* kageant's OWN About box, not a shared one - kitty and kittygen each carry
+ * their own IDD_ABOUT in their own .rc, so the font here changes this window
+ * and nothing else. */
+IDD_ABOUT DIALOGEX DISCARDABLE 140, 40, 270, 140
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About kageant"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    DEFPUSHBUTTON "&Close", IDOK, 216, 118, 48, 14
-    PUSHBUTTON "View &Licence", IDC_ABOUT_LICENCE, 6, 118, 70, 14
-    PUSHBUTTON "Visit &Web Site", IDC_ABOUT_WEBSITE, 140, 118, 70, 14
-    EDITTEXT IDC_ABOUT_TEXTBOX, 10, 6, 250, 110,
+    /* The three buttons share a row and a height. Close is right-aligned to
+     * the text box's right edge (10 + 250), the other two run from its left. */
+    DEFPUSHBUTTON "&Close", IDOK, 208, 120, 52, 15
+    PUSHBUTTON "View &Licence", IDC_ABOUT_LICENCE, 10, 120, 74, 15
+    PUSHBUTTON "Visit &Web Site", IDC_ABOUT_WEBSITE, 128, 120, 74, 15
+    EDITTEXT IDC_ABOUT_TEXTBOX, 10, 6, 250, 108,
         ES_READONLY | ES_MULTILINE | ES_CENTER | ES_AUTOVSCROLL |
         WS_VSCROLL, WS_EX_STATICEDGE
 END

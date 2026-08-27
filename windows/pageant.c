@@ -34,6 +34,7 @@
 #include "../kitty/kitty_hello_keys.h" /* KiTTY: Hello-protected keys */
 #include "../kitty/kitty_hello_ui.h"   /* KiTTY: the shared printout window */
 #include "../kitty/kitty_auditlog.h"  /* KiTTY: the audit log's file sink */
+#include "../kitty/kitty_theme.h"     /* KiTTY: dark mode for the dialogs */
 
 #include <shellapi.h>
 
@@ -1672,9 +1673,99 @@ static bool keylist_layout_ready = false;
 
 #define KL_GEOM_INIKEY "keylistgeometry"
 #define KL_GEOM_REGVAL "KeyListGeometry"
-#define KL_COLS_INIKEY "keylistcolumns"
-#define KL_COLS_REGVAL "KeyListColumns"
+/*
+ * Column widths are stored in PIXELS, so they only mean anything for the font
+ * that measured them. The move to Segoe UI 9 made every column too narrow at
+ * once - a remembered layout that squeezed the list and put a horizontal
+ * scroll bar under it.
+ *
+ * The name carries a 2 for that reason: the old value is simply not found,
+ * the columns size themselves to the new font once, and the new widths are
+ * stored under the new name. The old value is left where it is rather than
+ * deleted - it costs nothing, and it is what a downgrade would read.
+ */
+#define KL_COLS_INIKEY "keylistcolumns2"
+#define KL_COLS_REGVAL "KeyListColumns2"
 #define KL_NCOLS 7
+
+/*
+ * Give the LAST column whatever width is left over.
+ *
+ * Without this the columns are sized to their content, a full SHA-256
+ * fingerprint is wide, and the total overruns any window narrower than the
+ * sum - so the list carried a horizontal scroll bar and the rightmost column
+ * was cut off, at a width the user never chose.
+ *
+ * Room for a vertical scroll bar is subtracted whether or not one is there:
+ * otherwise adding one row makes the list exactly too wide and a HORIZONTAL
+ * bar appears in response, which is a horrible way to find out.
+ */
+static void keylist_fit_last_column(HWND hlist)
+{
+    RECT rc;
+    int i, used, avail, client, want, guard;
+
+    if (!hlist)
+        return;
+    GetClientRect(hlist, &rc);
+    client = rc.right - rc.left;
+    if (client <= 0)
+        return;
+
+    /* What the comment column should get before anything else is considered
+     * to have a fair share: a quarter of the list, and never less than about
+     * ten characters' worth. Derived from the font, not a pixel constant -
+     * the last one of those was wrong at every scaling factor. */
+    want = client / 4;
+    {
+        HDC dc = GetDC(hlist);
+        HFONT f = (HFONT)SendMessage(hlist, WM_GETFONT, 0, 0);
+        HFONT of = (dc && f) ? (HFONT)SelectObject(dc, f) : NULL;
+        TEXTMETRIC tm;
+        if (dc && GetTextMetrics(dc, &tm) && want < tm.tmAveCharWidth * 12)
+            want = tm.tmAveCharWidth * 12;
+        if (of) SelectObject(dc, of);
+        if (dc) ReleaseDC(hlist, dc);
+    }
+
+    /*
+     * Reclaim from the WIDEST other column when there is not enough left.
+     * Auto-sizing to content makes the fingerprint column enormous - a full
+     * SHA-256 line - and simply handing the leftover to the last column then
+     * gives it nothing, which is a squeezed comment instead of a horizontal
+     * scroll bar. Neither is what was asked for. The widest column is the one
+     * that can spare it, and it is the one whose text is elided gracefully.
+     *
+     * `guard` bounds the loop rather than trusting it to converge: widths are
+     * set through a control that may clamp them, so "keep taking until it
+     * fits" is not a promise this code can make.
+     */
+    for (guard = 0; guard < KL_NCOLS; guard++) {
+        int widest = -1, widest_w = 0, shortfall;
+
+        used = 0;
+        for (i = 0; i < KL_NCOLS - 1; i++) {
+            int w = ListView_GetColumnWidth(hlist, i);
+            used += w;
+            if (w > widest_w) { widest_w = w; widest = i; }
+        }
+        avail = client - used - GetSystemMetrics(SM_CXVSCROLL);
+        shortfall = want - avail;
+        if (shortfall <= 0 || widest < 0)
+            break;
+        /* Never below a third of what it wanted - past that the fingerprint
+         * column stops being readable at all and the scroll bar is kinder. */
+        if (widest_w - shortfall < widest_w / 3)
+            shortfall = widest_w - widest_w / 3;
+        if (shortfall <= 0)
+            break;
+        ListView_SetColumnWidth(hlist, widest, widest_w - shortfall);
+    }
+
+    if (avail < 60)
+        avail = 60;    /* narrower than this and it is not a column */
+    ListView_SetColumnWidth(hlist, KL_NCOLS - 1, avail);
+}
 
 static void keylist_capture_layout(HWND hwnd)
 {
@@ -1698,7 +1789,22 @@ static void keylist_capture_layout(HWND hwnd)
             if (ListView_GetItemCount(hlist) > 0 &&
                 ListView_GetItemRect(hlist, 0, &ir, LVIR_BOUNDS))
                 row_h = ir.bottom - ir.top;
-            if (row_h <= 0) row_h = 18;          /* default-font estimate */
+            if (row_h <= 0) {
+                /* No rows to measure, so the height has to come from the
+                 * FONT. It used to be a flat 18 - a pixel count from the
+                 * 8pt-shell-font era, which is wrong at this font and wrong
+                 * again at every scaling factor, and it decides how small the
+                 * window may be made. */
+                HDC dc = GetDC(hlist);
+                HFONT f = (HFONT)SendMessage(hlist, WM_GETFONT, 0, 0);
+                HFONT of = (dc && f) ? (HFONT)SelectObject(dc, f) : NULL;
+                TEXTMETRIC tm;
+                if (dc && GetTextMetrics(dc, &tm))
+                    row_h = tm.tmHeight + tm.tmExternalLeading + 4;
+                if (of) SelectObject(dc, of);
+                if (dc) ReleaseDC(hlist, dc);
+                if (row_h <= 0) row_h = 18;
+            }
             if (hdr_h <= 0) hdr_h = row_h;
             int want = hdr_h + 8 * row_h + 4;    /* 8 rows + a little slack */
             if (want < list_h)
@@ -1712,6 +1818,8 @@ static void keylist_relayout(HWND hwnd)
 {
     anchored_relayout(hwnd, keylist_anchors, lenof(keylist_anchors),
                       keylist_baserects, keylist_basesize);
+    /* After the list has its new width, not before. */
+    keylist_fit_last_column(GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX));
 }
 
 /* KiTTY: the details dialog resizes too (long fingerprints, long paths).
@@ -3073,8 +3181,10 @@ static bool auditview_layout_ready = false;
  * a vanished display can never strand the window. */
 #define AV_GEOM_INIKEY "agentloggeometry"
 #define AV_GEOM_REGVAL "AgentLogGeometry"
-#define AV_COLS_INIKEY "agentlogcolumns"
-#define AV_COLS_REGVAL "AgentLogColumns"
+/* Pixel widths, measured against the old font - see the note on the key
+ * list's KL_COLS_* above. */
+#define AV_COLS_INIKEY "agentlogcolumns2"
+#define AV_COLS_REGVAL "AgentLogColumns2"
 #define AV_NCOLS 5
 
 static void auditview_save_geometry(HWND hwnd)
@@ -3222,6 +3332,17 @@ static char *auditview_format_record(const char *line)
     return strbuf_to_str(sb);
 }
 
+/* The record window is resizable and had nothing that acted on it. One
+ * modal instance at a time, so statics, as with the other two. */
+static const struct kl_anchor auditdetail_anchors[] = {
+    {IDC_AUDITDETAIL_TEXT,
+     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDOK, KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+};
+static RECT auditdetail_baserects[lenof(auditdetail_anchors)];
+static SIZE auditdetail_basesize, auditdetail_minsize;
+static bool auditdetail_layout_ready = false;
+
 static INT_PTR CALLBACK AuditDetailProc(HWND hwnd, UINT msg,
                                         WPARAM wParam, LPARAM lParam)
 {
@@ -3229,7 +3350,29 @@ static INT_PTR CALLBACK AuditDetailProc(HWND hwnd, UINT msg,
       case WM_INITDIALOG:
         kageant_set_window_icon(hwnd);
         SetDlgItemText(hwnd, IDC_AUDITDETAIL_TEXT, (const char *)lParam);
+        anchored_capture(hwnd, auditdetail_anchors,
+                         lenof(auditdetail_anchors), auditdetail_baserects,
+                         &auditdetail_basesize, &auditdetail_minsize);
+        auditdetail_layout_ready = true;
         return 1;
+      case WM_SIZE:
+        if (auditdetail_layout_ready && wParam != SIZE_MINIMIZED)
+            anchored_relayout(hwnd, auditdetail_anchors,
+                              lenof(auditdetail_anchors),
+                              auditdetail_baserects, auditdetail_basesize);
+        return 0;
+      case WM_GETMINMAXINFO:
+        /* The template size is the floor: below it the button and the box
+         * start overlapping, which is what "resizable" used to look like. */
+        if (auditdetail_layout_ready && auditdetail_minsize.cx) {
+            MINMAXINFO *mmi = (MINMAXINFO *)lParam;
+            mmi->ptMinTrackSize.x = auditdetail_minsize.cx;
+            mmi->ptMinTrackSize.y = auditdetail_minsize.cy;
+        }
+        return 0;
+      case WM_DESTROY:
+        auditdetail_layout_ready = false;
+        return 0;
       case WM_COMMAND:
         if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
             EndDialog(hwnd, 1);
@@ -3403,26 +3546,53 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
                 if (!(hc.dwFlags & HCF_HIGHCONTRASTON) &&
                     cd->nmcd.lItemlParam >= 0 &&
                     cd->nmcd.lItemlParam < audit_nlines) {
+                    /* The MEANING of the line picks the colour; the theme
+                     * decides what that meaning looks like. Literal RGBs here
+                     * are what left this log painting dark green on white
+                     * inside a dark window. */
+                    bool dk = kitty_theme_window_dark(hwnd);
                     const char *l = audit_lines[cd->nmcd.lItemlParam];
+                    /* A SELECTED row is painted in the system highlight
+                     * colour, and a semantic ink chosen to sit on the log's
+                     * own background is close to unreadable on it - dark
+                     * green on selection blue. The selected row gives up its
+                     * colour coding and takes the highlight's own pair, which
+                     * is the one combination guaranteed to be legible.
+                     *
+                     * The control is ASKED whether the row is selected.
+                     * cd->nmcd.uItemState looks like the obvious source and
+                     * is not: at CDDS_ITEMPREPAINT its selection bit does not
+                     * track the list, and reading it painted almost every row
+                     * as selected - measured on a screenshot. */
+                    if (ListView_GetItemState(cd->nmcd.hdr.hwndFrom,
+                                              (int)cd->nmcd.dwItemSpec,
+                                              LVIS_SELECTED) &
+                        LVIS_SELECTED) {
+                        cd->clrText = GetSysColor(COLOR_HIGHLIGHTTEXT);
+                        cd->clrTextBk = GetSysColor(COLOR_HIGHLIGHT);
+                        SetWindowLongPtr(hwnd, DWLP_MSGRESULT, CDRF_NEWFONT);
+                        return 1;
+                    }
                     if (strstr(l, "result=\"denied\"") ||
                         strstr(l, "result=\"blocked\"") ||
                         strstr(l, "result=\"failed\"") ||
                         strstr(l, "result=\"fp-refused\""))
-                        cd->clrText = RGB(178, 0, 0);
+                        cd->clrText = kitty_theme_ink(dk, KITTY_INK_BAD);
                     else if (strstr(l, "unavailable") ||
                              strstr(l, "error") ||
                              strstr(l, "ev=\"logrotate\""))
-                        cd->clrText = KAGEANT_NOTICE_WARN;
+                        cd->clrText = kitty_theme_ink(dk, KITTY_INK_WARN);
                     else if (strstr(l, "ev=\"agent\"") ||
                              strstr(l, "ev=\"retry\""))
-                        cd->clrText = KAGEANT_NOTICE_INFO;
+                        cd->clrText = kitty_theme_ink(dk, KITTY_INK_INFO);
                     else if (strstr(l, "result=\"allowed\"") ||
                              strstr(l, "result=\"loaded\"") ||
                              strstr(l, "result=\"done\""))
-                        cd->clrText = RGB(0, 122, 0);
-                    cd->clrTextBk =
-                        audit_parity[cd->nmcd.lItemlParam]
-                            ? RGB(242, 246, 252) : RGB(255, 255, 255);
+                        cd->clrText = kitty_theme_ink(dk, KITTY_INK_GOOD);
+                    else
+                        cd->clrText = kitty_theme_ink(dk, KITTY_INK_NORMAL);
+                    cd->clrTextBk = kitty_theme_row_colour(
+                        dk, audit_parity[cd->nmcd.lItemlParam] != 0);
                     /* CDRF_NEWFONT, or every colour above is discarded -
                      * the ListView custom-draw gotcha. */
                     res = CDRF_NEWFONT;
@@ -3509,6 +3679,134 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
  * only from kitty.ini, so they are greyed in a registry-authoritative
  * install.
  */
+/*
+ * The one place that turns the stored preference into a yes or no. Handed to
+ * the theme module at startup, which calls it for every dialog that appears -
+ * so "follow the system" is re-evaluated per window rather than frozen at
+ * whatever it meant when kageant started.
+ */
+static bool kageant_theme_dark(void)
+{
+    return kitty_theme_dark_for(kageant_theme_get());
+}
+
+/*
+ * The four pages, as lists of control IDs. One flat template holds every
+ * control (see the note on IDD_KEYSETTINGS in pageant.rc); switching page is
+ * showing one list and hiding the other three.
+ *
+ * A control that is missing from every list would be shown once and then
+ * never hidden, so the tables are the definition of the layout, not a
+ * shortcut - adding a control means adding it here in the same edit.
+ */
+static const int keysettings_page_agent[] = {
+    IDC_SET_OPENSSH, IDC_SET_STARTUP, IDC_SET_LOADKEYS, IDC_SET_NOTIFY,
+    IDC_SET_L_NOTICE, IDC_SET_NOTICESECS, IDC_SET_L_NOTICEHINT,
+    IDC_SET_L_THEME, IDC_SET_THEME, IDC_SET_L_THEMEHINT,
+};
+static const int keysettings_page_security[] = {
+    IDC_SET_LOCKDOWN, IDC_SET_BLOCKADD, IDC_SET_BLOCKREMOVE, IDC_SET_HELLO,
+    IDC_SET_L_TTL, IDC_SET_TTL, IDC_SET_L_TTLHINT,
+    IDC_SET_L_HELLOTTL, IDC_SET_HELLOTTL, IDC_SET_L_HELLOTTLHINT,
+};
+static const int keysettings_page_media[] = {
+    IDC_SET_L_RETRY, IDC_SET_RETRY, IDC_SET_UNLOAD, IDC_SET_QUIET,
+};
+static const int keysettings_page_log[] = {
+    IDC_SET_AGENTLOG,
+    IDC_SET_L_LOGPATH, IDC_SET_AGENTLOGPATH,
+    IDC_SET_L_LOGKB, IDC_SET_AGENTLOGKB,
+    IDC_SET_L_LOGKEEP, IDC_SET_AGENTLOGKEEP,
+    IDC_SET_L_LOGDAYS, IDC_SET_AGENTLOGDAYS,
+    IDC_SET_L_LOGDEFAULT, IDC_SET_L_LOGNOTE,
+};
+
+static const struct keysettings_page {
+    const char *title;
+    const int *ids;
+    int nids;
+} keysettings_pages[] = {
+    {"Agent", keysettings_page_agent, lenof(keysettings_page_agent)},
+    {"Security", keysettings_page_security, lenof(keysettings_page_security)},
+    {"Removable media", keysettings_page_media, lenof(keysettings_page_media)},
+    {"Log", keysettings_page_log, lenof(keysettings_page_log)},
+};
+
+/*
+ * Show one page and hide the rest. Hiding also takes the controls out of the
+ * tab order, which is the whole reason this is ShowWindow rather than moving
+ * them off-screen: an invisible control that still answers Tab would let the
+ * keyboard walk onto a page nobody can see.
+ */
+static void keysettings_show_page(HWND hwnd, int page)
+{
+    size_t p;
+    int i;
+
+    for (p = 0; p < lenof(keysettings_pages); p++) {
+        int show = ((int)p == page) ? SW_SHOW : SW_HIDE;
+        for (i = 0; i < keysettings_pages[p].nids; i++) {
+            HWND c = GetDlgItem(hwnd, keysettings_pages[p].ids[i]);
+            if (c)
+                ShowWindow(c, show);
+        }
+    }
+}
+
+/*
+ * Repaint the dialog in the colours the current selection asks for. Called
+ * once at WM_INITDIALOG and again whenever the theme droplist changes, so the
+ * choice can be seen before it is saved.
+ */
+static void keysettings_apply_theme(HWND hwnd)
+{
+    int sel = (int)SendDlgItemMessage(hwnd, IDC_SET_THEME, CB_GETCURSEL, 0, 0);
+    if (sel < KITTY_THEME_SYSTEM || sel > KITTY_THEME_DARK)
+        sel = kageant_theme_get();
+    kitty_theme_apply(hwnd, kitty_theme_dark_for(sel));
+}
+
+/*
+ * ONE rule for every number on this dialog: an EMPTY box means "put the
+ * documented default back". Not "leave whatever is stored alone", which is
+ * what it used to mean and which made clearing a box a silent no-op - the old
+ * number came straight back on reopen, and a field labelled "blank = default"
+ * was simply lying.
+ *
+ * GetDlgItemInt cannot tell an empty box from an unparseable one, which is
+ * how the two came to be treated the same; the text is read first so they can
+ * be told apart. Text that is present but not a number is the one case that
+ * still leaves the setting alone - there is no way to know what was meant,
+ * and discarding a real setting over a typo would be worse.
+ */
+static int keysettings_number(HWND hwnd, int id, int deflt, int current)
+{
+    char buf[16];
+    BOOL ok = FALSE;
+    UINT v;
+
+    GetDlgItemText(hwnd, id, buf, sizeof(buf));
+    if (!buf[0])
+        return deflt;
+    v = GetDlgItemInt(hwnd, id, &ok, FALSE);
+    return ok ? (int)v : current;
+}
+
+/*
+ * Everything the dialog has to put away, wherever it is leaving from. There
+ * are three exits (OK, Cancel, the close box) and each of them owes all three
+ * of these, which is exactly the shape that ends up with one of them missing
+ * a line.
+ */
+static void keysettings_leave(HWND hwnd)
+{
+    kitty_auxpos_save(hwnd, "kageantSettings");
+    kageant_settings_tab_set(
+        (int)SendDlgItemMessage(hwnd, IDC_SET_TABS, TCM_GETCURSEL, 0, 0));
+    /* The theme state is dropped by the subclass on WM_NCDESTROY, along with
+     * every other themed window's - it is not this dialog's business. */
+}
+
 static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                                         WPARAM wParam, LPARAM lParam)
 {
@@ -3594,17 +3892,100 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             kageant_audit_pathsetting_get(lp, sizeof(lp));
             SetDlgItemText(hwnd, IDC_SET_AGENTLOGPATH, lp);
         }
+        /* Name the file a blank File box means. Resolved live, not written
+         * into the template, because it differs between a portable install
+         * (beside kitty.ini) and a registry one (under %LOCALAPPDATA%). */
+        {
+            char dp[MAX_PATH + 1];
+            char line[MAX_PATH + 32];
+            if (kageant_audit_default_path(dp, sizeof(dp), 0)) {
+                snprintf(line, sizeof(line), "Default: %s", dp);
+                SetDlgItemText(hwnd, IDC_SET_L_LOGDEFAULT, line);
+            }
+        }
         SetDlgItemInt(hwnd, IDC_SET_AGENTLOGKB,
                       kageant_audit_maxkb_get(), FALSE);
         SetDlgItemInt(hwnd, IDC_SET_AGENTLOGKEEP,
                       kageant_audit_keep_get(), FALSE);
         SetDlgItemInt(hwnd, IDC_SET_AGENTLOGDAYS,
                       kageant_audit_expire_get(), FALSE);
+        /* The tab strip, then the page it selects. Built here rather than in
+         * the template because a tab control carries no items of its own. */
+        {
+            size_t p;
+            for (p = 0; p < lenof(keysettings_pages); p++) {
+                TCITEMA ti;
+                memset(&ti, 0, sizeof(ti));
+                ti.mask = TCIF_TEXT;
+                ti.pszText = (char *)keysettings_pages[p].title;
+                SendDlgItemMessage(hwnd, IDC_SET_TABS, TCM_INSERTITEMA,
+                                   (WPARAM)p, (LPARAM)&ti);
+            }
+            /* Reopen on the page it was left on. Out-of-range (the page count
+             * changed since it was stored) falls back to the first. */
+            int page = kageant_settings_tab_get();
+            if (page < 0 || page >= (int)lenof(keysettings_pages))
+                page = 0;
+            SendDlgItemMessage(hwnd, IDC_SET_TABS, TCM_SETCURSEL,
+                               (WPARAM)page, 0);
+            keysettings_show_page(hwnd, page);
+        }
+        /* Colour theme. The droplist index IS the stored value, as with the
+         * retry droplist above. Where dark mode cannot work at all - anything
+         * before Windows 10 1809 - the control is greyed rather than offering
+         * a choice that would do nothing. */
+        {
+            static const char *const theme_names[] = {
+                "Follow the system",
+                "Always light",
+                "Always dark",
+            };
+            size_t t;
+            int cur = kageant_theme_get();
+            for (t = 0; t < lenof(theme_names); t++)
+                SendDlgItemMessage(hwnd, IDC_SET_THEME, CB_ADDSTRING, 0,
+                                   (LPARAM)theme_names[t]);
+            SendDlgItemMessage(hwnd, IDC_SET_THEME, CB_SETCURSEL, cur, 0);
+            if (!kitty_theme_available()) {
+                EnableWindow(GetDlgItem(hwnd, IDC_SET_THEME), FALSE);
+                SetDlgItemText(hwnd, IDC_SET_L_THEMEHINT,
+                               "This Windows has no dark mode for desktop "
+                               "windows; the light theme is the only one.");
+            }
+        }
+        keysettings_apply_theme(hwnd);
         kitty_auxpos_apply(hwnd, "kageantSettings",
                            GetWindow(hwnd, GW_OWNER), 0);
         return 1;
+      case WM_NOTIFY: {
+        NMHDR *nm = (NMHDR *)lParam;
+        if (nm && nm->idFrom == IDC_SET_TABS && nm->code == TCN_SELCHANGE) {
+            keysettings_show_page(
+                hwnd, (int)SendDlgItemMessage(hwnd, IDC_SET_TABS,
+                                              TCM_GETCURSEL, 0, 0));
+            /* The pages overlap, so the area the outgoing page occupied still
+             * carries its pixels until something repaints it. */
+            InvalidateRect(hwnd, NULL, TRUE);
+            return 0;
+        }
+        return 0;
+      }
+      case WM_SETTINGCHANGE:
+        /* Windows announces a light/dark switch this way. It only matters
+         * while the preference is "follow the system", and applying it again
+         * when it is not costs one repaint. */
+        if (lParam && !stricmp((const char *)lParam, "ImmersiveColorSet"))
+            keysettings_apply_theme(hwnd);
+        return 0;
       case WM_COMMAND:
         switch (LOWORD(wParam)) {
+          case IDC_SET_THEME:
+            /* Repaint as soon as the droplist changes, so the choice is
+             * visible before OK writes it. Cancel therefore has to put the
+             * old one back - see IDCANCEL. */
+            if (HIWORD(wParam) == CBN_SELCHANGE)
+                keysettings_apply_theme(hwnd);
+            return 0;
           case IDOK: {
             kageant_notify_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_NOTIFY) == BST_CHECKED);
@@ -3616,22 +3997,30 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 if (sel >= 0 && sel <= KAGEANT_RETRY_ANYDRIVE)
                     kageant_retry_keys_set(sel);
             }
+            /* Only writable while the control is live: on a Windows with no
+             * dark mode the droplist is greyed at "Follow the system", and
+             * writing that would overwrite a preference set elsewhere. */
+            if (IsWindowEnabled(GetDlgItem(hwnd, IDC_SET_THEME))) {
+                int sel = (int)SendDlgItemMessage(hwnd, IDC_SET_THEME,
+                                                  CB_GETCURSEL, 0, 0);
+                if (sel >= KITTY_THEME_SYSTEM && sel <= KITTY_THEME_DARK)
+                    kageant_theme_set(sel);
+            }
             kageant_unload_on_remove_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_UNLOAD) == BST_CHECKED);
             kageant_quiet_missing_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_QUIET) == BST_CHECKED);
             {
-                /* Blank field keeps the current value; the setter clamps. */
-                BOOL ok = FALSE;
-                UINT ttl = GetDlgItemInt(hwnd, IDC_SET_TTL, &ok, FALSE);
-                if (ok)
-                    kageant_passphrase_ttl_set((int)ttl);
-                ok = FALSE;
-                ttl = GetDlgItemInt(hwnd, IDC_SET_HELLOTTL, &ok, FALSE);
-                if (ok) {
-                    kageant_hello_ttl_set((int)ttl);
-                    kitty_hello_cache_ttl_set(kageant_hello_ttl());
-                }
+                /* Blank puts the default back; the setters clamp. */
+                kageant_passphrase_ttl_set(
+                    keysettings_number(hwnd, IDC_SET_TTL,
+                                       KAGEANT_TTL_DEFAULT,
+                                       kageant_passphrase_ttl()));
+                kageant_hello_ttl_set(
+                    keysettings_number(hwnd, IDC_SET_HELLOTTL,
+                                       KAGEANT_TTL_DEFAULT,
+                                       kageant_hello_ttl()));
+                kitty_hello_cache_ttl_set(kageant_hello_ttl());
             }
             /* KiTTY: IPC access control + notice timeout work in either store,
              * so they are always applied (not gated on a kitty.ini). */
@@ -3647,28 +4036,29 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             kageant_blockremove_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_BLOCKREMOVE) == BST_CHECKED);
             {
-                BOOL nok = FALSE;
-                UINT ns = GetDlgItemInt(hwnd, IDC_SET_NOTICESECS, &nok, FALSE);
-                if (nok)
-                    kageant_notice_timeout_set((int)ns);   /* blank = unchanged */
+                /* This field's default IS 0 - "each notice's own timing" -
+                 * and 0 is displayed as an empty box, so it round-trips. */
+                kageant_notice_timeout_set(
+                    keysettings_number(hwnd, IDC_SET_NOTICESECS,
+                                       KAGEANT_NOTICESECS_DEFAULT,
+                                       kageant_notice_timeout_get()));
             }
             /* KiTTY: the agent log's knobs - written as a set (the setter
              * clamps and re-arms the sink), then the on/off switch. */
             {
                 char lp[MAX_PATH + 1];
-                BOOL ok1 = FALSE, ok2 = FALSE, ok3 = FALSE;
-                UINT kb = GetDlgItemInt(hwnd, IDC_SET_AGENTLOGKB,
-                                        &ok1, FALSE);
-                UINT kp = GetDlgItemInt(hwnd, IDC_SET_AGENTLOGKEEP,
-                                        &ok2, FALSE);
-                UINT dy = GetDlgItemInt(hwnd, IDC_SET_AGENTLOGDAYS,
-                                        &ok3, FALSE);
                 GetDlgItemText(hwnd, IDC_SET_AGENTLOGPATH, lp, sizeof(lp));
                 kageant_audit_cfg_set(
                     lp,
-                    ok1 ? (int)kb : kageant_audit_maxkb_get(),
-                    ok2 ? (int)kp : kageant_audit_keep_get(),
-                    ok3 ? (int)dy : kageant_audit_expire_get());
+                    keysettings_number(hwnd, IDC_SET_AGENTLOGKB,
+                                       KAGEANT_AGENTLOG_KB_DEFAULT,
+                                       kageant_audit_maxkb_get()),
+                    keysettings_number(hwnd, IDC_SET_AGENTLOGKEEP,
+                                       KAGEANT_AGENTLOG_KEEP_DEFAULT,
+                                       kageant_audit_keep_get()),
+                    keysettings_number(hwnd, IDC_SET_AGENTLOGDAYS,
+                                       KAGEANT_AGENTLOG_DAYS_DEFAULT,
+                                       kageant_audit_expire_get()));
                 kageant_audit_set(
                     IsDlgButtonChecked(hwnd, IDC_SET_AGENTLOG)
                         == BST_CHECKED);
@@ -3685,18 +4075,18 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             want = IsDlgButtonChecked(hwnd, IDC_SET_LOADKEYS) == BST_CHECKED;
             if (want != (kageant_startup_get() ? 1 : 0))
                 SendMessage(traywindow, WM_COMMAND, IDM_LOAD_KEYS, 0);
-            kitty_auxpos_save(hwnd, "kageantSettings");
+            keysettings_leave(hwnd);
             EndDialog(hwnd, 1);
             return 0;
           }
           case IDCANCEL:
-            kitty_auxpos_save(hwnd, "kageantSettings");
+            keysettings_leave(hwnd);
             EndDialog(hwnd, 0);
             return 0;
         }
         return 0;
       case WM_CLOSE:
-        kitty_auxpos_save(hwnd, "kageantSettings");
+        keysettings_leave(hwnd);
         EndDialog(hwnd, 0);
         return 0;
     }
@@ -3836,6 +4226,10 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                             ListView_SetColumnWidth(hlist, i, cw[i]);
                 }
             }
+            /* Last, after both the defaults and any remembered widths: the
+             * trailing column is not a remembered width, it is whatever is
+             * left. */
+            keylist_fit_last_column(hlist);
         }
 
         /* KiTTY: the show-unavailable toggle, persisted like the rest. */
@@ -5767,9 +6161,15 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     {
         INITCOMMONCONTROLSEX icc;
         icc.dwSize = sizeof(icc);
-        icc.dwICC = ICC_LISTVIEW_CLASSES;
+        icc.dwICC = ICC_LISTVIEW_CLASSES | ICC_TAB_CLASSES;
         InitCommonControlsEx(&icc);
     }
+
+    /* KiTTY: from here on every dialog kageant opens - the key list, the key
+     * details, the agent log, the settings, and the modal message boxes -
+     * paints in the chosen theme. Installed before the first window exists,
+     * because it works by catching them as they appear. */
+    kitty_theme_hook_dialogs(kageant_theme_dark);
 
     /*
      * KiTTY: [KiTTY] restrictacl=yes in kitty.ini hardens kageant too.

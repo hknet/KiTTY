@@ -1,0 +1,114 @@
+/*
+ * kitty_theme.h - dark-mode support for KiTTY's Win32 dialogs.
+ *
+ * Three-valued preference (follow the system / force light / force dark) plus
+ * the plumbing needed to make a plain dialog template honour it. Everything
+ * that is not available on the running Windows degrades to "light", so a
+ * Win7/2008R2 build takes this code and simply never goes dark.
+ */
+#ifndef KITTY_THEME_H
+#define KITTY_THEME_H
+
+#include <windows.h>
+#include <stdbool.h>
+
+/* Preference values. Stored as a DWORD, so the numbering is on the wire. */
+#define KITTY_THEME_SYSTEM 0
+#define KITTY_THEME_LIGHT  1
+#define KITTY_THEME_DARK   2
+
+/*
+ * Is dark mode possible at all here? False on anything before Windows 10
+ * 1809, and on a build where the undocumented uxtheme entry points have
+ * moved. Callers use it to grey the preference control rather than offering
+ * a setting that cannot do anything.
+ */
+bool kitty_theme_available(void);
+
+/* Does the system itself currently ask for dark? (AppsUseLightTheme == 0.) */
+bool kitty_theme_system_is_dark(void);
+
+/* Resolve a preference to the colours actually to be painted. */
+bool kitty_theme_dark_for(int pref);
+
+/*
+ * Apply a resolved theme to a dialog and everything in it: the title bar, the
+ * per-control themes, and the brushes kitty_theme_ctlcolor() will hand back.
+ * Safe to call again on the same window - that is how a live preview works.
+ */
+void kitty_theme_apply(HWND dlg, bool dark);
+
+/*
+ * WM_CTLCOLOR* handler. Returns the brush to use (already cast), or NULL when
+ * the message is not one of ours or the window is not dark - in which case the
+ * dialog proc must fall through to the default handling.
+ */
+HBRUSH kitty_theme_ctlcolor(HWND dlg, UINT msg, WPARAM wParam, LPARAM lParam);
+
+/* The window background brush for a dark window, for WM_ERASEBKGND and for
+ * owner-drawn pieces. NULL when the window is not dark. */
+HBRUSH kitty_theme_backbrush(HWND dlg);
+
+/* Colours a caller needs when it draws something itself (the tab strip). */
+COLORREF kitty_theme_text_colour(bool dark);
+COLORREF kitty_theme_back_colour(bool dark);
+COLORREF kitty_theme_line_colour(bool dark);
+
+/* Is this window currently painted dark? For code that draws its own rows and
+ * has to pick colours - a list view's custom draw cannot ask the brush. */
+bool kitty_theme_window_dark(HWND w);
+
+/*
+ * The meanings a row of text can carry, so the places that colour their own
+ * rows name the MEANING and let this module pick the colour for the theme in
+ * force. The alternative - a literal RGB at each site - is what left the
+ * agent log painting dark green on white inside a dark window.
+ */
+typedef enum {
+    KITTY_INK_NORMAL,
+    KITTY_INK_GOOD,     /* loaded, allowed, done */
+    KITTY_INK_WARN,     /* unavailable, rotated, degraded */
+    KITTY_INK_BAD,      /* denied, blocked, failed */
+    KITTY_INK_INFO      /* agent lifecycle, retries */
+} kitty_ink;
+COLORREF kitty_theme_ink(bool dark, kitty_ink which);
+
+/* A list row's background. `alternate` is the banding every other row. */
+COLORREF kitty_theme_row_colour(bool dark, bool alternate);
+
+/*
+ * Take over the painting of a tab strip.
+ *
+ * SysTabControl32 is the one common control with NO dark theme: handed any
+ * theme class it still paints its strip from the light system face, which
+ * puts a white band across an otherwise dark dialog. This subclasses the
+ * control and draws the strip itself while the window is dark, and passes
+ * everything through unchanged while it is light - so the classic look stays
+ * exactly the control's own and only dark mode is hand-drawn.
+ *
+ * Call it once, after the tabs have been inserted. Calling it again on the
+ * same control is harmless.
+ */
+void kitty_theme_attach_tabs(HWND tab);
+
+/*
+ * Theme EVERY dialog this thread creates, from now on - including the ones
+ * whose window procedure lives inside Windows, which is what makes the modal
+ * message boxes follow the theme without rewriting their call sites.
+ *
+ * `want_dark` is called each time a dialog appears and answers whether it
+ * should be dark. It is passed in rather than read here because this module
+ * has no business knowing where the preference is stored.
+ *
+ * Call once, at startup, before any window exists. Safe to call again.
+ *
+ * The common file dialogs are deliberately NOT touched: they are the same
+ * window class but are full of list views and toolbars, and the shell already
+ * themes them itself.
+ */
+void kitty_theme_hook_dialogs(bool (*want_dark)(void));
+
+/* Forget the per-window state when a themed dialog is destroyed. */
+void kitty_theme_forget(HWND dlg);
+
+#endif /* KITTY_THEME_H */

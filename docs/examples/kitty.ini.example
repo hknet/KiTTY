@@ -918,6 +918,13 @@
 ; default. Hovering the pointer over a notice holds it open regardless.
 ;noticetimeout=8
 
+; theme: which colours the kageant settings dialog paints in - system,
+; light or dark. "system" follows the Windows app-colour setting and
+; changes with it while the window is open. Dark needs Windows 10 1809
+; or newer; on anything older every value behaves as "light". The other
+; kageant windows are still light whatever this says.
+;theme=system
+
 ; --- IPC access control (all default no). These restrict only requests
 ; that arrive from OTHER programs over the agent protocol (WM_COPYDATA /
 ; the named pipe, which is also what the Windows-OpenSSH integration

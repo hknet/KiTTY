@@ -937,6 +937,13 @@ char default_init_file_content[] =
 ; default. Hovering the pointer over a notice holds it open regardless.\n\
 ;noticetimeout=8\n\
 \n\
+; theme: which colours the kageant settings dialog paints in - system,\n\
+; light or dark. \"system\" follows the Windows app-colour setting and\n\
+; changes with it while the window is open. Dark needs Windows 10 1809\n\
+; or newer; on anything older every value behaves as \"light\". The other\n\
+; kageant windows are still light whatever this says.\n\
+;theme=system\n\
+\n\
 ; --- IPC access control (all default no). These restrict only requests\n\
 ; that arrive from OTHER programs over the agent protocol (WM_COPYDATA /\n\
 ; the named pipe, which is also what the Windows-OpenSSH integration\n\

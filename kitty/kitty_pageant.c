@@ -28,6 +28,7 @@
 #include "kitty_hello.h"    /* Windows Hello presence check (confirm gating) */
 #include "kitty_hello_keys.h"  /* Hello-protected keys: the sidecar test */
 #include "kitty_auditlog.h" /* the audit log's file sink */
+#include "kitty_theme.h"    /* KITTY_THEME_* preference values */
 #include "ssh.h"
 
 /* Shim so the moved kageant_do_notify body below stays textually identical
@@ -495,11 +496,11 @@ int kageant_notice_seconds(int fallback)
     if (kitty_inilight_read("Agent", "noticetimeout", buf, sizeof(buf)))
         ini_v = atoi(buf);
     if (kitty_inilight_registry_authoritative())
-        v = kageant_reg_read(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v :
+        v = kageant_reg_read_dword(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v :
             (ini_v > 0 ? ini_v : 0);
     else
         v = (ini_v >= 0) ? ini_v :
-            (kageant_reg_read(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v : 0);
+            (kageant_reg_read_dword(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v : 0);
     if (v <= 0)
         return fallback;
     if (v < 2) v = 2;
@@ -920,16 +921,17 @@ int kageant_audit_set(int on)
 int kageant_audit_maxkb_get(void)
 {
     return kageant_int_setting("agentlogmaxkb", "AgentLogMaxKB",
-                               5120, 16, 1048576);
+                               KAGEANT_AGENTLOG_KB_DEFAULT, 16, 1048576);
 }
 int kageant_audit_keep_get(void)
 {
-    return kageant_int_setting("agentlogkeep", "AgentLogKeep", 3, 1, 99);
+    return kageant_int_setting("agentlogkeep", "AgentLogKeep",
+                               KAGEANT_AGENTLOG_KEEP_DEFAULT, 1, 99);
 }
 int kageant_audit_expire_get(void)
 {
     return kageant_int_setting("agentlogexpiredays", "AgentLogExpireDays",
-                               90, 0, 3650);
+                               KAGEANT_AGENTLOG_DAYS_DEFAULT, 0, 3650);
 }
 int kageant_audit_pathsetting_get(char *buf, size_t len)
 {
@@ -964,41 +966,61 @@ void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
 /* Resolve the log path and (re)configure the sink. Portable installs log
  * beside their kitty.ini; registry-mode installs under
  * %LOCALAPPDATA%\kapper.net\KiTTY; [Agent] auditlogpath overrides both. */
+/*
+ * Where the log goes when [Agent] agentlogpath is not set. Split out of
+ * kageant_audit_setup() so the settings dialog can SHOW this path: the File
+ * box is empty in the default case, and an empty box that says "blank =
+ * default" tells nobody where the file actually is.
+ *
+ * `create` is what separates the two callers. The setup path wants the
+ * directory to exist because it is about to write there; the dialog only
+ * wants the string, and must not create directories as a side effect of
+ * being opened.
+ */
+int kageant_audit_default_path(char *buf, size_t len, int create)
+{
+    const char *ini;
+
+    if (!buf || len == 0)
+        return 0;
+    buf[0] = '\0';
+
+    /* A portable install logs beside its kitty.ini, so the whole install
+     * stays on the stick. */
+    if (!kitty_inilight_registry_authoritative() &&
+        (ini = kitty_inilight_file()) != NULL) {
+        const char *sl = strrchr(ini, '\\');
+        if (sl)
+            snprintf(buf, len, "%.*s\\kageant.log", (int)(sl - ini), ini);
+    }
+    if (!buf[0]) {
+        char base[MAX_PATH + 1];
+        DWORD n = GetEnvironmentVariableA("LOCALAPPDATA", base, sizeof(base));
+        if (n > 0 && n < sizeof(base)) {
+            char dir[MAX_PATH + 1];
+            snprintf(dir, sizeof(dir), "%s\\kapper.net", base);
+            if (create)
+                CreateDirectoryA(dir, NULL);
+            snprintf(dir, sizeof(dir), "%s\\kapper.net\\KiTTY", base);
+            if (create)
+                CreateDirectoryA(dir, NULL);
+            snprintf(buf, len, "%s\\kageant.log", dir);
+        }
+    }
+    return buf[0] != '\0';
+}
+
 void kageant_audit_setup(void)
 {
     char path[MAX_PATH + 1];
     path[0] = '\0';
     if (!kageant_setting_str_get("agentlogpath", "AgentLogPath",
-                                 path, sizeof(path)) || !path[0]) {
-        const char *ini;
-        if (!kitty_inilight_registry_authoritative() &&
-            (ini = kitty_inilight_file()) != NULL) {
-            const char *sl = strrchr(ini, '\\');
-            if (sl)
-                snprintf(path, sizeof(path), "%.*s\\kageant.log",
-                         (int)(sl - ini), ini);
-        }
-        if (!path[0]) {
-            char base[MAX_PATH + 1];
-            DWORD n = GetEnvironmentVariableA("LOCALAPPDATA", base,
-                                              sizeof(base));
-            if (n > 0 && n < sizeof(base)) {
-                char dir[MAX_PATH + 1];
-                snprintf(dir, sizeof(dir), "%s\\kapper.net", base);
-                CreateDirectoryA(dir, NULL);
-                snprintf(dir, sizeof(dir), "%s\\kapper.net\\KiTTY", base);
-                CreateDirectoryA(dir, NULL);
-                snprintf(path, sizeof(path), "%s\\kageant.log", dir);
-            }
-        }
-    }
+                                 path, sizeof(path)) || !path[0])
+        kageant_audit_default_path(path, sizeof(path), 1);
     kitty_audit_configure(
         path[0] ? path : NULL, path[0] ? kageant_audit_get() : 0,
-        kageant_int_setting("agentlogmaxkb", "AgentLogMaxKB",
-                            5120, 16, 1048576),
-        kageant_int_setting("agentlogkeep", "AgentLogKeep", 3, 1, 99),
-        kageant_int_setting("agentlogexpiredays", "AgentLogExpireDays",
-                            90, 0, 3650));
+        kageant_audit_maxkb_get(), kageant_audit_keep_get(),
+        kageant_audit_expire_get());
 }
 
 /* Best-effort requester identity for the log: the exe base name AND its
@@ -1106,12 +1128,12 @@ int kageant_passphrase_ttl(void)
             ini_v = kageant_clamp_ttl(v);
     }
     if (kitty_inilight_registry_authoritative())
-        return kageant_reg_read("PassphraseCacheSeconds", &reg_v) ?
-               kageant_clamp_ttl(reg_v) : (ini_v >= 0 ? ini_v : 60);
+        return kageant_reg_read_dword("PassphraseCacheSeconds", &reg_v) ?
+               kageant_clamp_ttl(reg_v) : (ini_v >= 0 ? ini_v : KAGEANT_TTL_DEFAULT);
     if (ini_v >= 0)
         return ini_v;
-    return kageant_reg_read("PassphraseCacheSeconds", &reg_v) ?
-           kageant_clamp_ttl(reg_v) : 60;
+    return kageant_reg_read_dword("PassphraseCacheSeconds", &reg_v) ?
+           kageant_clamp_ttl(reg_v) : KAGEANT_TTL_DEFAULT;
 }
 
 /* Seconds the Windows Hello KEK cache stays valid after a gesture, so a
@@ -1129,12 +1151,12 @@ int kageant_hello_ttl(void)
             ini_v = kageant_clamp_ttl(v);
     }
     if (kitty_inilight_registry_authoritative())
-        return kageant_reg_read("HelloCacheSeconds", &reg_v) ?
-               kageant_clamp_ttl(reg_v) : (ini_v >= 0 ? ini_v : 60);
+        return kageant_reg_read_dword("HelloCacheSeconds", &reg_v) ?
+               kageant_clamp_ttl(reg_v) : (ini_v >= 0 ? ini_v : KAGEANT_TTL_DEFAULT);
     if (ini_v >= 0)
         return ini_v;
-    return kageant_reg_read("HelloCacheSeconds", &reg_v) ?
-           kageant_clamp_ttl(reg_v) : 60;
+    return kageant_reg_read_dword("HelloCacheSeconds", &reg_v) ?
+           kageant_clamp_ttl(reg_v) : KAGEANT_TTL_DEFAULT;
 }
 
 /* Setters - write THROUGH to both stores so the value is consistent whichever
@@ -1156,6 +1178,58 @@ int kageant_retry_keys_set(int mode)
                          mode ? "yes" : "no");
     kageant_reg_write_dword("RetryKeys", mode);
     return 1;
+}
+/* [Agent] theme - THREE-valued, so it takes the same value-preserving DWORD
+ * route as retrykeys above rather than the boolean helpers. Default 0
+ * (follow the system), which is also what every Windows too old to have a
+ * system preference resolves to. */
+int kageant_theme_get(void)
+{
+    char buf[16];
+    int ini_v = -1, reg_v;
+    if (kitty_inilight_read("Agent", "theme", buf, sizeof(buf))) {
+        if (!stricmp(buf, "system")) ini_v = KITTY_THEME_SYSTEM;
+        else if (!stricmp(buf, "light")) ini_v = KITTY_THEME_LIGHT;
+        else if (!stricmp(buf, "dark")) ini_v = KITTY_THEME_DARK;
+    }
+    if (kitty_inilight_registry_authoritative()) {
+        if (kageant_reg_read_dword("Theme", &reg_v))
+            return (reg_v >= KITTY_THEME_SYSTEM && reg_v <= KITTY_THEME_DARK)
+                ? reg_v : KITTY_THEME_SYSTEM;
+        return ini_v >= 0 ? ini_v : KITTY_THEME_SYSTEM;
+    }
+    if (ini_v >= 0)
+        return ini_v;
+    if (kageant_reg_read_dword("Theme", &reg_v))
+        return (reg_v >= KITTY_THEME_SYSTEM && reg_v <= KITTY_THEME_DARK)
+            ? reg_v : KITTY_THEME_SYSTEM;
+    return KITTY_THEME_SYSTEM;
+}
+int kageant_theme_set(int pref)
+{
+    if (pref < KITTY_THEME_SYSTEM || pref > KITTY_THEME_DARK)
+        pref = KITTY_THEME_SYSTEM;
+    kitty_inilight_write("Agent", "theme",
+                         pref == KITTY_THEME_DARK ? "dark" :
+                         pref == KITTY_THEME_LIGHT ? "light" : "system");
+    kageant_reg_write_dword("Theme", pref);
+    return 1;
+}
+/* The settings dialog's last page. Window state, so registry only - a
+ * portable install that never writes the registry simply always opens on the
+ * first page, which is what the window geometry already does. */
+int kageant_settings_tab_get(void)
+{
+    int v;
+    if (!kageant_reg_read_dword("SettingsTab", &v) || v < 0 || v > 15)
+        return 0;
+    return v;
+}
+void kageant_settings_tab_set(int page)
+{
+    if (page < 0 || page > 15)
+        page = 0;
+    kageant_reg_write_dword("SettingsTab", page);
 }
 int kageant_unload_on_remove_set(int on)
 {
@@ -3519,11 +3593,11 @@ int kageant_notice_timeout_get(void)
     if (kitty_inilight_read("Agent", "noticetimeout", buf, sizeof(buf)))
         ini_v = atoi(buf);
     if (kitty_inilight_registry_authoritative())
-        return kageant_reg_read(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v :
+        return kageant_reg_read_dword(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v :
                (ini_v > 0 ? ini_v : 0);
     if (ini_v >= 0)
         return ini_v;
-    return kageant_reg_read(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v : 0;
+    return kageant_reg_read_dword(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v : 0;
 }
 void kageant_notice_timeout_set(int seconds)
 {

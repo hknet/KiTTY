@@ -62,6 +62,18 @@ int  kageant_startup_loading(void);                 /* a startup load is running
 /* Passphrase cache: 0 = do not cache; capped at KAGEANT_TTL_MAX (5 min - the
  * cache only spans a batch add, so it need not live longer). */
 #define KAGEANT_TTL_MAX 300
+/*
+ * The defaults for every NUMBER the settings dialog can hold. They are here
+ * rather than written out again beside each getter because the dialog needs
+ * them too: an empty box stores the default, so the value has to be nameable
+ * from outside this module. Two copies of "60" that mean the same thing is
+ * how one of them ends up changed alone.
+ */
+#define KAGEANT_TTL_DEFAULT          60
+#define KAGEANT_NOTICESECS_DEFAULT   0     /* 0 = each notice's own timing */
+#define KAGEANT_AGENTLOG_KB_DEFAULT  5120
+#define KAGEANT_AGENTLOG_KEEP_DEFAULT 3
+#define KAGEANT_AGENTLOG_DAYS_DEFAULT 90
 int  kageant_passphrase_ttl(void);                  /* seconds; 0 = no backstop */
 int  kageant_quiet_missing(void);                   /* [Agent] quietmissingkeys */
 /* [Agent] retrykeys is THREE-valued: 0 = never retry, 1 = retry from the
@@ -90,6 +102,10 @@ int  kageant_audit_maxkb_get(void);
 int  kageant_audit_keep_get(void);
 int  kageant_audit_expire_get(void);
 int  kageant_audit_pathsetting_get(char *buf, size_t len);
+/* Where the log goes when no path is configured - so the settings dialog can
+ * say so instead of leaving an empty box. `create` makes the directory; the
+ * dialog passes 0, because opening a dialog must not create directories. */
+int  kageant_audit_default_path(char *buf, size_t len, int create);
 /* write the whole set through to both stores and re-arm the sink;
  * path NULL/"" clears the override back to the default location */
 void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
@@ -99,6 +115,18 @@ int  kageant_unload_on_remove_set(int on);
 int  kageant_passphrase_ttl_set(int seconds);
 int  kageant_hello_ttl(void);      /* Hello KEK cache seconds; default 60 */
 int  kageant_hello_ttl_set(int seconds);
+/* [Agent] theme: which colours the agent's own windows paint in. THREE-valued
+ * like retrykeys, so it must not go through the boolean helpers, which
+ * collapse to 0/1 at both ends: 0 = follow the system, 1 = always light,
+ * 2 = always dark. Ini spellings system / light / dark. Default 0. */
+int  kageant_theme_get(void);
+int  kageant_theme_set(int pref);
+/* Which page of the settings dialog was showing when it was last closed, so
+ * it reopens where it was left. Transient WINDOW STATE, not a configuration
+ * option: it lives in the registry only and deliberately has no kitty.ini
+ * spelling, the same rule the window geometry follows. */
+int  kageant_settings_tab_get(void);
+void kageant_settings_tab_set(int page);
 void kageant_note_pending(const char *path, int encrypted, int slot);
 void kageant_forget_loaded_by_blob(ptrlen blob);   /* removed in View Keys */
 char *kageant_paths_of_blob(ptrlen blob);  /* every file it came from; free it */

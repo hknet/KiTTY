@@ -113,6 +113,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: Hello-protected keys (sidecar, protect/unlock/enrol)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_ui.c    # KiTTY: the shared printout window
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auditlog.c # KiTTY: the audit log's file sink
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_theme.c    # KiTTY: dark mode for the dialogs
   pageant.rc)
 add_dependencies(pageant generated_licence_h)
 target_link_libraries(pageant

@@ -49,6 +49,28 @@
 #define IDC_SET_AGENTLOGKEEP 316  /* rotated generations */
 #define IDC_SET_AGENTLOGDAYS 317  /* expunge after (days) */
 #define IDC_SET_HELLOTTL 318      /* Hello KEK cache seconds */
+#define IDC_SET_TABS 319          /* the settings dialog's tab strip */
+#define IDC_SET_THEME 320         /* colour theme: system / light / dark */
+/*
+ * Every static on this dialog needs an ID of its own now. The pages share one
+ * flat template and are shown and hidden a page at a time, and a control can
+ * only be hidden if it can be named - the shared IDC_STATIC (-1) cannot.
+ */
+#define IDC_SET_L_NOTICE 330
+#define IDC_SET_L_NOTICEHINT 331
+#define IDC_SET_L_THEME 332
+#define IDC_SET_L_THEMEHINT 333
+#define IDC_SET_L_TTL 334
+#define IDC_SET_L_TTLHINT 335
+#define IDC_SET_L_HELLOTTL 336
+#define IDC_SET_L_HELLOTTLHINT 337
+#define IDC_SET_L_RETRY 338
+#define IDC_SET_L_LOGPATH 339
+#define IDC_SET_L_LOGKB 340
+#define IDC_SET_L_LOGKEEP 341
+#define IDC_SET_L_LOGDAYS 342
+#define IDC_SET_L_LOGNOTE 343
+#define IDC_SET_L_LOGDEFAULT 344  /* the resolved path a blank File box means */
 
 /* KiTTY: the key-details dialog */
 #define IDC_KEYDETAIL_KEY 100
