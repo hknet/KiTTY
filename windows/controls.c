@@ -24,7 +24,28 @@
 
 /* KiTTY: a configuration-box control lives either on the dialog (the button
  * row) or in the panel host (everything in a panel) - windows/dialog.c. */
-HWND kitty_cfg_item(HWND dlg, int id);
+/*
+ * KiTTY: the panel host, and the lookup that goes with it.
+ *
+ * Defined HERE rather than in dialog.c because kittygen links controls.c and
+ * not dialog.c: a configuration-box control lives either in the host (any
+ * panel control) or on the dialog itself (the button row), and every binary
+ * that lays controls out needs to be able to ask which.
+ *
+ * NULL in kittygen and in any other user of these helpers, where the lookup
+ * simply falls through to the dialog - which is what it always did.
+ */
+HWND kitty_cfg_panel_host = NULL;
+
+HWND kitty_cfg_item(HWND dlg, int id)
+{
+    HWND h = NULL;
+    if (kitty_cfg_panel_host)
+        h = GetDlgItem(kitty_cfg_panel_host, id);
+    if (!h)
+        h = GetDlgItem(dlg, id);
+    return h;
+}
 
 /*
  * ROW GEOMETRY, in dialog units, for Segoe UI 9.

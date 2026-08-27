@@ -42,8 +42,16 @@ END
  * reasons that all matter: MapDialogRect and the dialog base units work on
  * it, so controls.c lays panels out in dialog units exactly as before;
  * DS_CONTROL with WS_EX_CONTROLPARENT keeps Tab, the arrow keys and the Alt
- * mnemonics working across the boundary; and WS_CLIPCHILDREN means WINDOWS
- * clips the controls to it.
+ * mnemonics working across the boundary; and a child is clipped to its
+ * PARENT'S rectangle by the window manager, which is what keeps a scrolled
+ * control off the button strip.
+ *
+ * Deliberately NOT WS_CLIPCHILDREN. That style stops the host painting the
+ * background UNDER its children, and a static label draws its text
+ * transparently - so the previous text survives beneath it and every scroll
+ * leaves a stack of ghosted labels. Clipping children to the host and
+ * clipping the host's own painting away from them are different things, and
+ * only the first is wanted here.
  *
  * That last one is the point. A control scrolled past the bottom is cut off
  * by the host instead of being drawn across the button strip, and scrolling
@@ -54,7 +62,7 @@ END
  * Sized and positioned at run time; the numbers here are a placeholder.
  */
 IDD_PANELHOST DIALOGEX DISCARDABLE 0, 0, 10, 10
-STYLE DS_CONTROL | WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN
+STYLE DS_CONTROL | WS_CHILD | WS_VISIBLE
 EXSTYLE WS_EX_CONTROLPARENT
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN

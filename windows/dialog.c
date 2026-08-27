@@ -736,11 +736,10 @@ struct kitty_cfg_panel {
      * A panel taller than the area it sits in scrolls; one that fits does
      * not, and its scroll bar is not merely disabled but ABSENT - a control
      * that can do nothing has no business taking up space or catching the
-     * eye. scroll_y is kept per panel, so switching away and back returns to
-     * the same place.
+     * eye. The scroll offset is NOT kept here: it belongs to the host, which
+     * holds every panel's controls at once - see kitty_cfg_scroll_y.
      */
     int content_h;
-    int scroll_y;
 };
 
 static struct kitty_cfg_panel **kitty_cfg_panels = NULL;
@@ -758,17 +757,17 @@ static int kitty_cfg_buttonrow_top = 0;
  * GetDlgItem(dp->hwnd, id) has to go through kitty_cfg_item() instead, which
  * looks in both - the button row is still on the dialog itself.
  */
-static HWND kitty_cfg_panel_host = NULL;
+extern HWND kitty_cfg_panel_host;   /* defined in windows/controls.c */
+HWND kitty_cfg_item(HWND dlg, int id);
 
-HWND kitty_cfg_item(HWND dlg, int id)
-{
-    HWND h = NULL;
-    if (kitty_cfg_panel_host)
-        h = GetDlgItem(kitty_cfg_panel_host, id);
-    if (!h)
-        h = GetDlgItem(dlg, id);
-    return h;
-}
+/*
+ * How far the HOST is scrolled - one number for the window, not one per
+ * panel. Every panel's controls are children of the same host, so
+ * ScrollWindow moves all of them at once: a per-panel offset meant that
+ * scrolling one tall panel left the host displaced, and every panel selected
+ * afterwards had its content pushed out of sight. Switching panels resets it.
+ */
+static int kitty_cfg_scroll_y = 0;
 
 /*
  * The host's own procedure. It owns no controls of its own: its whole job is
@@ -927,13 +926,22 @@ static void kitty_cfg_panel_scroll_to(HWND hwnd, struct kitty_cfg_panel *p,
         newy = 0;
     if (newy > maxy)
         newy = maxy;
-    delta = newy - p->scroll_y;
+    delta = newy - kitty_cfg_scroll_y;
     if (!delta)
         return;
-    p->scroll_y = newy;
-    /* One call. Windows moves every child, clips them to the host and
-     * invalidates exactly what changed. */
-    ScrollWindow(kitty_cfg_panel_host, 0, -delta, NULL, NULL);
+    kitty_cfg_scroll_y = newy;
+    /*
+     * Move the children, then repaint the host WHOLE.
+     *
+     * ScrollWindow on its own blits the client area and moves the children,
+     * which is the fast way and leaves ghosts here: the blit copies the
+     * pixels of the controls too, the controls then redraw at their new
+     * positions, and the copies stay where they were. Repainting everything
+     * costs a panel's worth of drawing per notch and is correct.
+     */
+    ScrollWindowEx(kitty_cfg_panel_host, 0, -delta, NULL, NULL, NULL, NULL,
+                   SW_SCROLLCHILDREN);
+    InvalidateRect(kitty_cfg_panel_host, NULL, TRUE);
     UpdateWindow(kitty_cfg_panel_host);
     SetScrollPos(GetDlgItem(hwnd, IDCX_PANELSCROLL), SB_CTL, newy, TRUE);
 }
@@ -957,16 +965,20 @@ static void kitty_cfg_panel_scrollbar(HWND hwnd, struct kitty_cfg_panel *p)
     }
     kitty_cfg_panel_rect(hwnd, &area);
     areah = area.bottom - area.top;
+    /* Whatever is showing starts at the top: the host carries the offset, so
+     * a new panel would otherwise inherit the last one's. */
+    if (kitty_cfg_scroll_y)
+        kitty_cfg_panel_scroll_to(hwnd, p, 0);
     if (p->content_h <= areah) {
-        if (p->scroll_y)
-            kitty_cfg_panel_scroll_to(hwnd, p, 0);
         ShowWindow(sb, SW_HIDE);
         return;
     }
 
     width = GetSystemMetrics(SM_CXVSCROLL);
-    SetWindowPos(sb, NULL, area.right - width, area.top,
-                 width, areah, SWP_NOZORDER | SWP_NOACTIVATE);
+    /* In the strip the host leaves clear, and ABOVE it in the z-order so a
+     * click can never be swallowed. */
+    SetWindowPos(sb, HWND_TOP, area.right - width, area.top,
+                 width, areah, SWP_NOACTIVATE);
 
     memset(&si, 0, sizeof(si));
     si.cbSize = sizeof(si);
@@ -974,7 +986,7 @@ static void kitty_cfg_panel_scrollbar(HWND hwnd, struct kitty_cfg_panel *p)
     si.nMin = 0;
     si.nMax = p->content_h - 1;
     si.nPage = areah;
-    si.nPos = p->scroll_y;
+    si.nPos = kitty_cfg_scroll_y;
     SetScrollInfo(sb, SB_CTL, &si, TRUE);
     ShowWindow(sb, SW_SHOW);
 }
@@ -1532,16 +1544,27 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
          */
         {
             RECT area;
+            int barw = GetSystemMetrics(SM_CXVSCROLL);
             kitty_cfg_panel_rect(hwnd, &area);
             kitty_cfg_panel_host =
                 CreateDialog(hinst, MAKEINTRESOURCE(IDD_PANELHOST),
                              hwnd, PanelHostProc);
             if (kitty_cfg_panel_host) {
-                /* HWND_BOTTOM: the host must sit behind the tree and the
-                 * buttons, never over them. */
+                /*
+                 * The host stops short of the right edge by the width of a
+                 * scroll bar, so the bar sits BESIDE it and not under it.
+                 * Overlapping them made the bar unclickable: the host is a
+                 * window like any other, it was over the bar, and every click
+                 * went to the host - the wheel still worked, which is exactly
+                 * how it looked from the outside.
+                 *
+                 * The gap is kept whether or not a bar is showing, so no
+                 * panel is re-laid out when one appears.
+                 */
                 SetWindowPos(kitty_cfg_panel_host, HWND_BOTTOM,
                              area.left, area.top,
-                             area.right - area.left, area.bottom - area.top,
+                             (area.right - area.left) - barw,
+                             area.bottom - area.top,
                              SWP_NOACTIVATE);
                 /* The dialog's own font, or panels are laid out in one font
                  * and drawn in another. */
@@ -1777,7 +1800,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             (HWND)lParam == GetDlgItem(hwnd, IDCX_PANELSCROLL)) {
             struct kitty_cfg_panel *p = kitty_cfg_active_panel;
             RECT area;
-            int page, y = p->scroll_y;
+            int page, y = kitty_cfg_scroll_y;
             kitty_cfg_panel_rect(hwnd, &area);
             page = area.bottom - area.top;
             switch (LOWORD(wParam)) {
@@ -1816,7 +1839,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 int delta = GET_WHEEL_DELTA_WPARAM(wParam);
                 kitty_cfg_panel_scroll_to(
                     hwnd, kitty_cfg_active_panel,
-                    kitty_cfg_active_panel->scroll_y - (delta / WHEEL_DELTA) * 48);
+                    kitty_cfg_scroll_y - (delta / WHEEL_DELTA) * 48);
                 return 0;
             }
         }
