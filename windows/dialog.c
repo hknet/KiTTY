@@ -623,10 +623,28 @@ static INT_PTR CALLBACK NullDlgProc(HWND hwnd, UINT msg,
     return 0;
 }
 
+/*
+ * The configuration box's own vertical geometry, in dialog units, kept
+ * together and derived from ONE number so they cannot drift apart.
+ *
+ * CFGBOX_H must match the height of IDD_MAINBOX in windows/putty-common.rc2.
+ * It came down from 402 when the box moved to Segoe UI 9: the same template
+ * is ~15% taller in pixels in that font, which took the window past the
+ * 1280x660 logical budget a 1080p laptop at 150% has. The panels that no
+ * longer fit SCROLL - see kitty_cfg_panel_scrollbar - so the box no longer
+ * has to be as tall as its tallest panel.
+ */
+#define CFGBOX_H             316   /* == IDD_MAINBOX height in the template */
+#define CFGBOX_BUTTONROW_DU  (CFGBOX_H - 17)   /* top of the button row */
+#define CFGBOX_TREE_DU       (CFGBOX_BUTTONROW_DU - 17)  /* tree height */
+/* Width kept clear at the right of every panel for the scroll bar. */
+#define CFGBOX_SCROLLGUTTER_DU 10
+
 enum {
     IDCX_ABOUT = IDC_ABOUT,
     IDCX_TVSTATIC,
     IDCX_TREEVIEW,
+    IDCX_PANELSCROLL,      /* KiTTY: the panel area's scroll bar */
     IDCX_STDBASE,
     IDCX_PANELBASE = IDCX_STDBASE + 32
 };
@@ -710,6 +728,19 @@ struct kitty_cfg_panel {
     int base_id;                    /* this panel's dialog-id block */
     struct winctrl **ctrls;         /* members, in creation order */
     size_t nctrls, ctrlsize;
+    /*
+     * KiTTY: how tall this panel's contents are, and how far it is currently
+     * scrolled - both in pixels, both measured at creation time from the
+     * controls themselves rather than predicted from the layout.
+     *
+     * A panel taller than the area it sits in scrolls; one that fits does
+     * not, and its scroll bar is not merely disabled but ABSENT - a control
+     * that can do nothing has no business taking up space or catching the
+     * eye. scroll_y is kept per panel, so switching away and back returns to
+     * the same place.
+     */
+    int content_h;
+    int scroll_y;
 };
 
 static struct kitty_cfg_panel **kitty_cfg_panels = NULL;
@@ -754,6 +785,216 @@ static void kitty_cfg_panel_show(struct dlgparam *dp,
     }
 }
 
+/*
+ * ------------------------------------------------------------ panel scrolling
+ *
+ * Segoe UI 9 made every row about 15% taller, which took the box past the
+ * height that fits a 1080p laptop at 150% (see the note in
+ * windows/putty-common.rc2). The panel area scrolls instead of the window
+ * growing - and the saved-session list is configurable in rows, so some
+ * panels could outgrow any fixed height anyway.
+ *
+ * The controls are children of the DIALOG, not of a container window, so
+ * there is nothing to scroll: scrolling means moving the panel's own controls
+ * and leaving the tree, the button row and the scroll bar where they are.
+ * That is why every function here works from one panel's ctrls list.
+ */
+
+/* The rectangle a panel's controls live in, in client coordinates. Derived
+ * from the same numbers the panels are laid out with, so the two cannot drift:
+ * left 100 DLU, right border 3, top 13, down to the button row. */
+static void kitty_cfg_panel_rect(HWND hwnd, RECT *out)
+{
+    RECT dlu = { 100, 13, 3 + CFGBOX_SCROLLGUTTER_DU, 0 };
+    RECT client;
+    HWND buttons;
+
+    MapDialogRect(hwnd, &dlu);
+    GetClientRect(hwnd, &client);
+    out->left = dlu.left;
+    out->top = dlu.top;
+    out->right = client.right - dlu.right;
+    out->bottom = client.bottom;
+
+    /* The button row is the floor. Its top is found from the window rather
+     * than recomputed, because it moves with cb_extra_du. */
+    buttons = GetDlgItem(hwnd, IDOK);
+    if (buttons) {
+        RECT br;
+        GetWindowRect(buttons, &br);
+        MapWindowPoints(NULL, hwnd, (POINT *)&br, 2);
+        if (br.top > out->top)
+            out->bottom = br.top - 4;
+    }
+}
+
+/* How tall a panel's contents are: the lowest bottom edge of any of its
+ * controls, measured from the top of the panel area. Measured, not predicted -
+ * a panel's height is the sum of whatever its handlers built. */
+static int kitty_cfg_panel_measure(HWND hwnd, struct kitty_cfg_panel *p)
+{
+    RECT area;
+    int bottom = 0;
+
+    kitty_cfg_panel_rect(hwnd, &area);
+    for (size_t i = 0; i < p->nctrls; i++) {
+        struct winctrl *c = p->ctrls[i];
+        for (int k = 0; k < c->num_ids; k++) {
+            HWND item = GetDlgItem(hwnd, c->base_id + k);
+            RECT r;
+            if (!item || !GetWindowRect(item, &r))
+                continue;
+            MapWindowPoints(NULL, hwnd, (POINT *)&r, 2);
+            if (r.bottom > bottom)
+                bottom = r.bottom;
+        }
+    }
+    if (!bottom)
+        return 0;
+    /* Plus a little air at the foot, so the last control does not sit hard
+     * against the button row when scrolled to the end. */
+    return (bottom - area.top) + p->scroll_y + 4;
+}
+
+/*
+ * Hide whatever has scrolled out of the panel area.
+ *
+ * The panel's controls are children of the DIALOG, so nothing clips them:
+ * scrolled far enough, a control simply carries on drawing over the button
+ * row. There is no container window to clip against - giving the panel one
+ * would mean re-parenting every control, and every dlg_* call in the codebase
+ * looks its control up with GetDlgItem(dp->hwnd, id).
+ *
+ * So the clipping is done by hand, and by whole controls: a control is shown
+ * only while it lies ENTIRELY inside the area. Half a control is not clipped
+ * to the boundary, it is drawn across it, so "mostly visible" is not an
+ * option here - scrolling reveals a row at a time, which is also easier to
+ * read than a row sliced in half.
+ */
+static void kitty_cfg_panel_clip(HWND hwnd, struct kitty_cfg_panel *p)
+{
+    RECT area;
+
+    if (!p)
+        return;
+    kitty_cfg_panel_rect(hwnd, &area);
+    for (size_t i = 0; i < p->nctrls; i++) {
+        struct winctrl *c = p->ctrls[i];
+        for (int k = 0; k < c->num_ids; k++) {
+            HWND item = GetDlgItem(hwnd, c->base_id + k);
+            RECT r;
+            bool inside;
+            if (!item || !GetWindowRect(item, &r))
+                continue;
+            MapWindowPoints(NULL, hwnd, (POINT *)&r, 2);
+            inside = (r.top >= area.top - 1 && r.bottom <= area.bottom + 1);
+            /* Focus must not be left on something invisible: it would take
+             * the keyboard somewhere the reader cannot see. */
+            if (!inside && GetFocus() == item)
+                SetFocus(GetDlgItem(hwnd, IDCX_TREEVIEW));
+            SetWindowPos(item, NULL, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                         SWP_NOACTIVATE | SWP_NOREDRAW |
+                         (inside ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+        }
+    }
+}
+
+/* Move a panel's controls to match a scroll position. */
+static void kitty_cfg_panel_scroll_to(HWND hwnd, struct kitty_cfg_panel *p,
+                                      int newy)
+{
+    RECT area;
+    int maxy, delta;
+    HDWP dwp;
+
+    kitty_cfg_panel_rect(hwnd, &area);
+    maxy = p->content_h - (area.bottom - area.top);
+    if (maxy < 0)
+        maxy = 0;
+    if (newy < 0)
+        newy = 0;
+    if (newy > maxy)
+        newy = maxy;
+    delta = newy - p->scroll_y;
+    if (!delta)
+        return;
+
+    /* One DeferWindowPos batch: moving them one at a time repaints the area
+     * once per control, which reads as a shudder rather than a scroll. */
+    dwp = BeginDeferWindowPos((int)p->nctrls * 2 + 4);
+    for (size_t i = 0; i < p->nctrls; i++) {
+        struct winctrl *c = p->ctrls[i];
+        for (int k = 0; k < c->num_ids; k++) {
+            HWND item = GetDlgItem(hwnd, c->base_id + k);
+            RECT r;
+            if (!item || !GetWindowRect(item, &r))
+                continue;
+            MapWindowPoints(NULL, hwnd, (POINT *)&r, 2);
+            if (dwp)
+                dwp = DeferWindowPos(dwp, item, NULL,
+                                     r.left, r.top - delta, 0, 0,
+                                     SWP_NOSIZE | SWP_NOZORDER |
+                                     SWP_NOACTIVATE);
+            else
+                SetWindowPos(item, NULL, r.left, r.top - delta, 0, 0,
+                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
+    if (dwp)
+        EndDeferWindowPos(dwp);
+
+    p->scroll_y = newy;
+    SetScrollPos(GetDlgItem(hwnd, IDCX_PANELSCROLL), SB_CTL, newy, TRUE);
+    kitty_cfg_panel_clip(hwnd, p);
+    InvalidateRect(hwnd, &area, TRUE);
+}
+
+/*
+ * Fit the scroll bar to the panel now showing: sized and shown when the panel
+ * is taller than the area, hidden outright when it is not.
+ */
+static void kitty_cfg_panel_scrollbar(HWND hwnd, struct kitty_cfg_panel *p)
+{
+    HWND sb = GetDlgItem(hwnd, IDCX_PANELSCROLL);
+    RECT area;
+    int areah, width;
+    SCROLLINFO si;
+
+    if (!sb)
+        return;
+    if (!p) {
+        ShowWindow(sb, SW_HIDE);
+        return;
+    }
+    kitty_cfg_panel_rect(hwnd, &area);
+    areah = area.bottom - area.top;
+    if (p->content_h <= areah) {
+        /* Nothing to scroll: the bar goes away entirely, and any leftover
+         * offset is undone so the panel is not left part-scrolled. */
+        if (p->scroll_y)
+            kitty_cfg_panel_scroll_to(hwnd, p, 0);
+        ShowWindow(sb, SW_HIDE);
+        return;
+    }
+
+    width = GetSystemMetrics(SM_CXVSCROLL);
+    /* In the gutter reserved for it, just outside the panel proper. */
+    SetWindowPos(sb, NULL, area.right + 2, area.top,
+                 width, areah, SWP_NOZORDER | SWP_NOACTIVATE);
+
+    memset(&si, 0, sizeof(si));
+    si.cbSize = sizeof(si);
+    si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
+    si.nMin = 0;
+    si.nMax = p->content_h - 1;
+    si.nPage = areah;
+    si.nPos = p->scroll_y;
+    SetScrollInfo(sb, SB_CTL, &si, TRUE);
+    ShowWindow(sb, SW_SHOW);
+    kitty_cfg_panel_clip(hwnd, p);
+}
+
 /* EVENT_REFRESH for one cached panel, in creation order - the scoped
  * equivalent of what dlg_refresh(NULL) did when only one panel existed. */
 static void kitty_cfg_panel_refresh(struct dlgparam *dp,
@@ -795,7 +1036,15 @@ static struct kitty_cfg_panel *kitty_cfg_panel_create(
     winctrl_init(&scratch);
 
     struct ctlpos cp;
-    ctlposinit(&cp, pds->dp->hwnd, 100, 3, 13);
+    /*
+     * The right border reserves room for the panel scroll bar - ALWAYS, not
+     * only on the panels that need one. The bar appearing would otherwise
+     * overlap the right-hand controls, and making the panel narrower at that
+     * moment would mean re-laying it out and having every control jump
+     * sideways the first time a panel is scrolled. A few units of white space
+     * on the panels that do not scroll is the cheaper of the two.
+     */
+    ctlposinit(&cp, pds->dp->hwnd, 100, 3 + CFGBOX_SCROLLGUTTER_DU, 13);
     int id = p->base_id;
     for (int index = -1; (index = ctrl_find_path(
                               pds->ctrlbox, p->path, index)) >= 0 ;) {
@@ -819,6 +1068,8 @@ static struct kitty_cfg_panel *kitty_cfg_panel_create(
      * has to be SENT to a control has reached them: without this a cached
      * panel comes up in the classic colours the first time it is shown. */
     kitty_theme_refresh(pds->dp->hwnd);
+    /* Measured now, while the controls are at their unscrolled positions. */
+    p->content_h = kitty_cfg_panel_measure(pds->dp->hwnd, p);
     return p;
 }
 
@@ -1266,7 +1517,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         }
 
         pds_create_controls(pds, TREE_BASE, IDCX_STDBASE, 3, 3,
-                            385 + cb_extra_du, ""); /* buttons row (grows w/ height) */
+                            CFGBOX_BUTTONROW_DU + cb_extra_du, ""); /* buttons row */
 
         SendMessage(hwnd, WM_SETICON, (WPARAM) ICON_BIG,
                     (LPARAM) LoadIcon(hinst, MAKEINTRESOURCE(IDI_CFGICON)));
@@ -1336,7 +1587,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             r.left = 3;
             r.right = r.left + 95;
             r.top = 13;
-            r.bottom = r.top + 369 + cb_extra_du; /* KiTTY: taller config box (was
+            r.bottom = r.top + CFGBOX_TREE_DU + cb_extra_du; /* KiTTY: (was
                                        * 219); grows with [ConfigBox] height so
                                        * Bell/Data/Appearance panels aren't cut */
             MapDialogRect(hwnd, &r);
@@ -1447,6 +1698,20 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             dlg_refresh(NULL, pds->dp);    /* and set up control values */
         }
 
+        /* KiTTY: the panel area's scroll bar. Created hidden and sized when a
+         * panel that needs it is shown - see kitty_cfg_panel_scrollbar. It is
+         * a child of the dialog rather than a WS_VSCROLL on the window,
+         * because it scrolls the PANEL AREA and must not run the full height
+         * of a window whose left third is the category tree. */
+        CreateWindowEx(0, "SCROLLBAR", "",
+                       WS_CHILD | SBS_VERT, 0, 0, 0, 0, hwnd,
+                       (HMENU)(ULONG_PTR)IDCX_PANELSCROLL, hinst, NULL);
+        if (kitty_cfg_active_panel) {
+            kitty_cfg_active_panel->content_h =
+                kitty_cfg_panel_measure(hwnd, kitty_cfg_active_panel);
+            kitty_cfg_panel_scrollbar(hwnd, kitty_cfg_active_panel);
+        }
+
         if (dialog_box_demo_screenshot_filename)
             SetTimer(hwnd, DEMO_SCREENSHOT_TIMER_ID, TICKSPERSEC, NULL);
 
@@ -1472,6 +1737,57 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
          * kitty_cfgact_dbg above for why this stayed in the source. */
         kitty_cfgact_dbg(hwnd, wParam, lParam);
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
+
+      /* KiTTY: the panel area's scroll bar. */
+      case WM_VSCROLL:
+        if (kitty_cfg_active_panel &&
+            (HWND)lParam == GetDlgItem(hwnd, IDCX_PANELSCROLL)) {
+            struct kitty_cfg_panel *p = kitty_cfg_active_panel;
+            RECT area;
+            int page, y = p->scroll_y;
+            kitty_cfg_panel_rect(hwnd, &area);
+            page = area.bottom - area.top;
+            switch (LOWORD(wParam)) {
+              case SB_LINEUP:        y -= 16;        break;
+              case SB_LINEDOWN:      y += 16;        break;
+              case SB_PAGEUP:        y -= page;      break;
+              case SB_PAGEDOWN:      y += page;      break;
+              case SB_TOP:           y = 0;          break;
+              case SB_BOTTOM:        y = p->content_h; break;
+              case SB_THUMBTRACK:
+              case SB_THUMBPOSITION: {
+                /* HIWORD(wParam) is 16-bit and a panel can be taller than
+                 * that; ask the bar for the real position instead. */
+                SCROLLINFO si;
+                memset(&si, 0, sizeof(si));
+                si.cbSize = sizeof(si);
+                si.fMask = SIF_TRACKPOS;
+                if (GetScrollInfo((HWND)lParam, SB_CTL, &si))
+                    y = si.nTrackPos;
+                break;
+              }
+              default: return 0;
+            }
+            kitty_cfg_panel_scroll_to(hwnd, p, y);
+            return 0;
+        }
+        return 0;
+
+      case WM_MOUSEWHEEL:
+        /* The wheel scrolls the panel wherever the pointer is, as long as the
+         * panel HAS a scroll bar - a panel that fits does not move under the
+         * wheel, which is what the reader expects. */
+        if (kitty_cfg_active_panel) {
+            HWND sb = GetDlgItem(hwnd, IDCX_PANELSCROLL);
+            if (sb && IsWindowVisible(sb)) {
+                int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+                kitty_cfg_panel_scroll_to(
+                    hwnd, kitty_cfg_active_panel,
+                    kitty_cfg_active_panel->scroll_y - (delta / WHEEL_DELTA) * 48);
+                return 0;
+            }
+        }
+        return 0;
       case WM_TIMER:
         if ((UINT_PTR)wParam == KITTY_PANEL_WARMUP_TIMER) {
             if (!kitty_cfg_warmup_step(pds))
@@ -1543,6 +1859,9 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 else
                     newpanel = kitty_cfg_panel_create(pds, newpath);
                 kitty_cfg_active_panel = newpanel;
+                /* Fit the scroll bar to whatever is showing now - or take it
+                 * away, if this panel fits. */
+                kitty_cfg_panel_scrollbar(hwnd, newpanel);
 
                 /* The shown panel is refreshed every time it appears, and
                  * the button row keeps the refresh it always had. Panels

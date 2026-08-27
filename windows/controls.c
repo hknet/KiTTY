@@ -22,19 +22,47 @@
 
 #include <commctrl.h>
 
+/*
+ * ROW GEOMETRY, in dialog units, for Segoe UI 9.
+ *
+ * This is the single place the configuration box's layout lives: every panel
+ * is built from the helpers below, so these heights decide how every row in
+ * every panel looks. kittygen's main window is built from them too.
+ *
+ * They are NOT the old 8pt shell-font numbers scaled. A dialog unit follows
+ * the font, and the controls do not all follow it the same way, so these were
+ * measured rather than calculated:
+ *
+ *   EDITHEIGHT 11   A single-line edit draws its text at the TOP of its box,
+ *                   never centred in it, so the box has to BE one line. Give
+ *                   it 12 and the text sits against the top border with a gap
+ *                   underneath it.
+ *   COMBOHEIGHT 14  A closed combo sizes itself from the font and IGNORES the
+ *                   height in the template. 14 is what it actually becomes;
+ *                   any other number here only misleads the next reader and
+ *                   misaligns whatever shares its row.
+ *   STATICHEIGHT 9  One line of Segoe UI 9. Where a label shares a row with a
+ *                   taller control it takes THAT control's height plus
+ *                   SS_CENTERIMAGE instead - see staticedit_internal - which
+ *                   is what actually puts a mixed row on one line.
+ *
+ * Change the dialog font and every one of these must be re-measured. The
+ * check is not arithmetic - render a panel and look at it:
+ * kitty.exe -cfgpanel <path> -demo-config-box <file>
+ */
 #define GAPBETWEEN 3
 #define GAPWITHIN 1
 #define GAPXBOX 7
 #define GAPYBOX 4
 #define DLGWIDTH 168
-#define STATICHEIGHT 8
+#define STATICHEIGHT 9
 #define TITLEHEIGHT 12
-#define CHECKBOXHEIGHT 8
-#define RADIOHEIGHT 8
-#define EDITHEIGHT 12
+#define CHECKBOXHEIGHT 10
+#define RADIOHEIGHT 10
+#define EDITHEIGHT 11
 #define LISTHEIGHT 11
-#define LISTINCREMENT 8
-#define COMBOHEIGHT 12
+#define LISTINCREMENT 9
+#define COMBOHEIGHT 14
 #define PUSHBTNHEIGHT 14
 #define PROGBARHEIGHT 14
 
@@ -529,10 +557,12 @@ void staticbtn(struct ctlpos *cp, const char *stext, int sid,
     rwid = cp->width + GAPBETWEEN - rpos;
 
     r.left = GAPBETWEEN;
-    r.top = cp->ypos + (height - STATICHEIGHT) / 2;
+    /* Partner height + SS_CENTERIMAGE: see staticedit_internal. */
+    r.top = cp->ypos;
     r.right = lwid;
-    r.bottom = STATICHEIGHT;
-    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+    r.bottom = height;
+    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE,
+          0, stext, sid);
 
     r.left = rpos;
     r.top = cp->ypos + (height - PUSHBTNHEIGHT) / 2;
@@ -588,10 +618,12 @@ void static2btn(struct ctlpos *cp, const char *stext, int sid,
     rwid2 = cp->width + GAPBETWEEN - rpos2;
 
     r.left = GAPBETWEEN;
-    r.top = cp->ypos + (height - STATICHEIGHT) / 2;
+    /* Partner height + SS_CENTERIMAGE: see staticedit_internal. */
+    r.top = cp->ypos;
     r.right = lwid;
-    r.bottom = STATICHEIGHT;
-    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+    r.bottom = height;
+    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE,
+          0, stext, sid);
 
     r.left = rpos1;
     r.top = cp->ypos + (height - PUSHBTNHEIGHT) / 2;
@@ -629,11 +661,21 @@ static void staticedit_internal(struct ctlpos *cp, const char *stext,
     lwid = rpos - 2 * GAPBETWEEN;
     rwid = cp->width + GAPBETWEEN - rpos;
 
+    /*
+     * The label takes the EDIT's height and SS_CENTERIMAGE, rather than its
+     * own height nudged down by half the difference. Arithmetic centring
+     * places the label's BOX; the text still draws at the top of it, so the
+     * two only look aligned while the numbers happen to agree - and they stop
+     * agreeing the moment the font changes. SS_CENTERIMAGE centres the text
+     * within the box, so giving the box the partner's height puts both on the
+     * same line by construction.
+     */
     r.left = GAPBETWEEN;
-    r.top = cp->ypos + (height - STATICHEIGHT) / 2;
+    r.top = cp->ypos + (height - EDITHEIGHT) / 2;
     r.right = lwid;
-    r.bottom = STATICHEIGHT;
-    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+    r.bottom = EDITHEIGHT;
+    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE,
+          0, stext, sid);
 
     r.left = rpos;
     r.top = cp->ypos + (height - EDITHEIGHT) / 2;
@@ -671,10 +713,12 @@ void staticeditbutton(struct ctlpos *cp, const char *stext,
     bpos = cp->width + GAPBETWEEN - bwid;
 
     r.left = GAPBETWEEN;
-    r.top = cp->ypos + (height - STATICHEIGHT) / 2;
+    /* Partner height + SS_CENTERIMAGE: see staticedit_internal. */
+    r.top = cp->ypos;
     r.right = lwid;
-    r.bottom = STATICHEIGHT;
-    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+    r.bottom = height;
+    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE,
+          0, stext, sid);
 
     r.left = rpos;
     r.top = cp->ypos + (height - EDITHEIGHT) / 2;
@@ -718,11 +762,14 @@ void staticddl(struct ctlpos *cp, const char *stext,
     lwid = rpos - 2 * GAPBETWEEN;
     rwid = cp->width + GAPBETWEEN - rpos;
 
+    /* The label takes the COMBO's height and SS_CENTERIMAGE - see
+     * staticedit_internal for why arithmetic centring is not enough. */
     r.left = GAPBETWEEN;
-    r.top = cp->ypos + (height - STATICHEIGHT) / 2;
+    r.top = cp->ypos + (height - COMBOHEIGHT) / 2;
     r.right = lwid;
-    r.bottom = STATICHEIGHT;
-    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+    r.bottom = COMBOHEIGHT;
+    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE,
+          0, stext, sid);
 
     r.left = rpos;
     r.top = cp->ypos + (height - EDITHEIGHT) / 2;
@@ -751,11 +798,14 @@ void staticcombo(struct ctlpos *cp, const char *stext,
     lwid = rpos - 2 * GAPBETWEEN;
     rwid = cp->width + GAPBETWEEN - rpos;
 
+    /* The label takes the COMBO's height and SS_CENTERIMAGE - see
+     * staticedit_internal for why arithmetic centring is not enough. */
     r.left = GAPBETWEEN;
-    r.top = cp->ypos + (height - STATICHEIGHT) / 2;
+    r.top = cp->ypos + (height - COMBOHEIGHT) / 2;
     r.right = lwid;
-    r.bottom = STATICHEIGHT;
-    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+    r.bottom = COMBOHEIGHT;
+    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE,
+          0, stext, sid);
 
     r.left = rpos;
     r.top = cp->ypos + (height - EDITHEIGHT) / 2;
@@ -905,10 +955,12 @@ void ersatztab(struct ctlpos *cp, const char *stext, int sid, int lid,
     rwid = bigwid + BIGGAP - rpos;
 
     r.left = BIGGAP;
-    r.top = cp->ypos + (height - STATICHEIGHT) / 2;
+    /* Partner height + SS_CENTERIMAGE: see staticedit_internal. */
+    r.top = cp->ypos;
     r.right = lwid;
-    r.bottom = STATICHEIGHT;
-    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+    r.bottom = height;
+    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE,
+          0, stext, sid);
 
     r.left = rpos;
     r.top = cp->ypos + (height - COMBOHEIGHT) / 2;

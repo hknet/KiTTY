@@ -14,10 +14,10 @@
  */
 
 /* Accelerators used: clw */
-IDD_ABOUTBOX DIALOG DISCARDABLE 140, 40, 270, 156
+IDD_ABOUTBOX DIALOGEX DISCARDABLE 140, 40, 270, 156
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About PuTTY"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     DEFPUSHBUTTON "&Close", IDOK, 216, 138, 48, 14
     PUSHBUTTON "View &Licence", IDA_LICENCE, 6, 138, 70, 14
@@ -36,10 +36,10 @@ END
  * reasoning in full.
  */
 /* Accelerators used: aco */
-IDD_MAINBOX DIALOG DISCARDABLE 0, 0, 300, 402
+IDD_MAINBOX DIALOGEX DISCARDABLE 0, 0, 360, 316
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "PuTTY Configuration"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 CLASS "PuTTYConfigBox"
 BEGIN
 END
@@ -47,10 +47,10 @@ END
 /* Accelerators used: co */
 /* KiTTY: larger default + WS_THICKFRAME/WS_MAXIMIZEBOX (resizable; LogProc
  * lays the controls out on WM_SIZE, so the coords here are only the start). */
-IDD_LOGBOX DIALOG DISCARDABLE 100, 20, 460, 220
+IDD_LOGBOX DIALOGEX DISCARDABLE 100, 20, 460, 220
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX
 CAPTION "PuTTY Event Log"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     /* KiTTY: control order here IS the tab order, and logbox_layout() places
      * them left to right in the same order - Close, Copy, Clear - so Tab and
@@ -68,10 +68,10 @@ BEGIN
 END
 
 /* No accelerators used */
-IDD_LICENCEBOX DIALOG DISCARDABLE 50, 50, 326, 239
+IDD_LICENCEBOX DIALOGEX DISCARDABLE 50, 50, 326, 239
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY Licence"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     DEFPUSHBUTTON "OK", IDOK, 148, 219, 44, 14
 
@@ -81,10 +81,10 @@ BEGIN
 END
 
 /* Accelerators used: achio */
-IDD_HOSTKEY DIALOG DISCARDABLE 50, 50, 340, 240
+IDD_HOSTKEY DIALOGEX DISCARDABLE 50, 50, 340, 240
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "PuTTY Security Alert"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 CLASS "PuTTYHostKeyDialog"
 BEGIN
     ICON "", IDC_HK_ICON, 10, 18, 0, 0
@@ -101,20 +101,20 @@ BEGIN
 END
 
 /* Accelerators used: c */
-IDD_HK_MOREINFO DIALOG DISCARDABLE 140, 40, 400, 300
+IDD_HK_MOREINFO DIALOGEX DISCARDABLE 140, 40, 400, 300
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "PuTTY: information about the server's host key"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 CLASS "PuTTYHostKeyMoreInfo"
 BEGIN
     DEFPUSHBUTTON "&Close", IDOK, 176, 130, 48, 14
 END
 
 /* Accelerators used: aco */
-IDD_CA_CONFIG DIALOG DISCARDABLE 0, 0, 350, 260
+IDD_CA_CONFIG DIALOGEX DISCARDABLE 0, 0, 350, 260
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "PuTTY trusted host certification authorities"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 CLASS "PuTTYConfigBox"
 BEGIN
 END
