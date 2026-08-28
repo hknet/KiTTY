@@ -7676,8 +7676,9 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
 }
 
 /* The Connection/SSH panel tree: SSH core, Kex, Host keys, Cipher, Auth
- * (+Credentials/GSSAPI), TTY, X11, Tunnels, Bugs, More bugs, and the
- * KiTTY PSCP/WinSCP panel. Kept as one helper so the shared protocol/
+ * (+Credentials/GSSAPI), TTY, X11, Tunnels, Bugs, and the KiTTY PSCP/WinSCP
+ * panel. Upstream's "More bugs" is folded into Bugs as a second group box:
+ * that split was its answer to height, and this box scrolls. Kept as one helper so the shared protocol/
  * midsession guard structure stays verbatim. */
 static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int protcfginfo)
 {
@@ -8237,30 +8238,16 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                           HELPCTX(ssh_bugs_maxpkt2),
                           sshbug_handler, I(CONF_sshbug_maxpkt2));
 
-            s = ctrl_getset(b, "Connection/SSH/Bugs", "manual",
-                            "Manually enabled workarounds");
-            ctrl_droplist(s, "Discards data sent before its greeting", 'd', 20,
-                          HELPCTX(ssh_bugs_dropstart),
-                          sshbug_handler_manual_only,
-                          I(CONF_sshbug_dropstart));
-            ctrl_droplist(s, "Chokes on PuTTY's full KEXINIT", 'p', 20,
-                          HELPCTX(ssh_bugs_filter_kexinit),
-                          sshbug_handler_manual_only,
-                          I(CONF_sshbug_filter_kexinit));
-
-            ctrl_settitle(b, "Connection/SSH/More bugs",
-                          "Further workarounds for SSH server bugs");
-
-            s = ctrl_getset(b, "Connection/SSH/More bugs", "main",
-                            "Detection of known bugs in SSH servers");
+            s = ctrl_getset(b, "Connection/SSH/Bugs", "more",
+                            "Further detection of known bugs in SSH servers");
             ctrl_droplist(s, "Old RSA/SHA2 cert algorithm naming", 'l', 20,
                           HELPCTX(ssh_bugs_rsa_sha2_cert_userauth),
                           sshbug_handler,
                           I(CONF_sshbug_rsa_sha2_cert_userauth));
-            ctrl_droplist(s, "Requires padding on SSH-2 RSA signatures", 'p', 20,
+            ctrl_droplist(s, "Requires padding on SSH-2 RSA signatures", 'u', 20,
                           HELPCTX(ssh_bugs_rsapad2),
                           sshbug_handler, I(CONF_sshbug_rsapad2));
-            ctrl_droplist(s, "Only supports pre-RFC4419 SSH-2 DH GEX", 'd', 20,
+            ctrl_droplist(s, "Only supports pre-RFC4419 SSH-2 DH GEX", 'f', 20,
                           HELPCTX(ssh_bugs_oldgex2),
                           sshbug_handler, I(CONF_sshbug_oldgex2));
             ctrl_droplist(s, "Miscomputes SSH-2 HMAC keys", 'm', 20,
@@ -8281,6 +8268,17 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
             ctrl_droplist(s, "Chokes on SSH-1 RSA authentication", 'r', 20,
                           HELPCTX(ssh_bugs_rsa1),
                           sshbug_handler, I(CONF_sshbug_rsa1));
+
+            s = ctrl_getset(b, "Connection/SSH/Bugs", "manual",
+                            "Manually enabled workarounds");
+            ctrl_droplist(s, "Discards data sent before its greeting", 'd', 20,
+                          HELPCTX(ssh_bugs_dropstart),
+                          sshbug_handler_manual_only,
+                          I(CONF_sshbug_dropstart));
+            ctrl_droplist(s, "Chokes on PuTTY's full KEXINIT", 'p', 20,
+                          HELPCTX(ssh_bugs_filter_kexinit),
+                          sshbug_handler_manual_only,
+                          I(CONF_sshbug_filter_kexinit));
         }
 
 #ifdef MOD_PERSO
@@ -8545,9 +8543,8 @@ static void scb_panel_zmodem(struct controlbox *b)
                      HELPCTX(no_help),
                      conf_editbox_handler, I(CONF_zdownloaddir), ED_STR);
 
-        ctrl_settitle(b, "Connection/ZModem/rz", "rz path and options");
-        s = ctrl_getset(b, "Connection/ZModem/rz", "receive",
-                        "Receive command");
+        s = ctrl_getset(b, "Connection/ZModem", "receive",
+                        "Receive command (rz)");
         ctrl_filesel(s, "Command rz:", NO_SHORTCUT,
                      FILTER_ALL_FILES, false,
                      "Select command to receive zmodem data",
@@ -8559,9 +8556,8 @@ static void scb_panel_zmodem(struct controlbox *b)
         ctrl_text(s, "Ctrl+X to quit rz before completing",
                   HELPCTX(no_help));
 
-        ctrl_settitle(b, "Connection/ZModem/sz", "sz path and options");
-        s = ctrl_getset(b, "Connection/ZModem/sz", "send",
-                        "Send command");
+        s = ctrl_getset(b, "Connection/ZModem", "send",
+                        "Send command (sz)");
         ctrl_filesel(s, "Command sz:", NO_SHORTCUT,
                      FILTER_ALL_FILES, false,
                      "Select command to send zmodem data",
