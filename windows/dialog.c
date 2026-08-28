@@ -1233,6 +1233,42 @@ static void kitty_cfg_winctrls_refresh(struct dlgparam *dp,
             c->ctrl->handler(c->ctrl, dp, dp->data, EVENT_REFRESH);
 }
 
+/*
+ * Move one panel's windows by dy, without touching anything else in the host.
+ *
+ * A panel is always LAID OUT at its unscrolled position, because ctlposinit
+ * works in the host's client coordinates and knows nothing about scrolling.
+ * That is fine when the host is at the top, and wrong the moment it is not:
+ * the panel being created lands dy pixels below every other child, and the
+ * next reset - which scrolls the whole host back by a blit - carries it that
+ * far past the top, leaving a blank band exactly as tall as the offset was.
+ * A panel can be created while scrolled by either road: switching to one that
+ * has never been shown, or the background warm-up building the rest.
+ *
+ * So the new panel is brought into line with the host as soon as it exists.
+ * Its windows are still hidden at that point, so nothing flickers.
+ */
+static void kitty_cfg_panel_offset(struct kitty_cfg_panel *p, int dy)
+{
+    if (!dy || !kitty_cfg_panel_host)
+        return;
+    for (size_t i = 0; i < p->nctrls; i++) {
+        struct winctrl *c = p->ctrls[i];
+        for (int j = 0; j < c->num_ids; j++) {
+            HWND h = GetDlgItem(kitty_cfg_panel_host, c->base_id + j);
+            RECT r;
+            POINT pt;
+            if (!h)
+                continue;
+            GetWindowRect(h, &r);
+            pt.x = r.left; pt.y = r.top;
+            ScreenToClient(kitty_cfg_panel_host, &pt);
+            SetWindowPos(h, NULL, pt.x, pt.y + dy, 0, 0,
+                         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
+}
+
 /* Create a panel's controls (visible, shortcuts registered - creation IS
  * showing) and record it in the cache. The controls are laid out into a
  * scratch tree, then moved one by one into the shared TREE_PANEL tree; the
@@ -1286,6 +1322,8 @@ static struct kitty_cfg_panel *kitty_cfg_panel_create(
     kitty_theme_refresh(pds->dp->hwnd);
     /* Measured now, while the controls are at their unscrolled positions. */
     p->content_h = kitty_cfg_panel_measure(p);
+    /* ... and only then brought into line with a host that is scrolled. */
+    kitty_cfg_panel_offset(p, -kitty_cfg_scroll_y);
     return p;
 }
 
