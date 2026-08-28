@@ -1108,6 +1108,7 @@ static void kitty_proxyedit_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (event == EVENT_ACTION) {
         Conf *conf = (Conf *)data;
         extern int kitty_proxy_edit_dialog_for(HWND, const char *);
+        extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
         /* Open the editor ON the definition currently chosen in the override
          * droplist this button sits beside - that is almost always the one the
          * user means to edit. The two built-ins are not definitions, so they pass
@@ -1116,14 +1117,12 @@ static void kitty_proxyedit_handler(dlgcontrol *ctrl, dlgparam *dlg,
         if (sel && (!strcmp(sel, KITTY_PROXY_SESSION) ||
                     !strcmp(sel, KITTY_PROXY_NONE)))
             sel = NULL;
-        if (kitty_proxy_edit_dialog_for(GetActiveWindow(), sel)) {
-            dlg_refresh(NULL, dlg);
-            /* A proxy was added / edited / deleted. Back up the config store now
-             * (registry: kitty084.sav + rotation; portable: dated Backups\
-             * folder) - a proxy change on its own may never be followed by
-             * opening a session, which is the other backup trigger. */
-            { extern void SaveRegistryKey(void); SaveRegistryKey(); }
-        }
+        /* The definitions now have a PANEL of their own on the Application tab,
+         * so this button is a way there rather than a second editor. The button
+         * stays where it is: it is an entry point, not a setting that moved,
+         * and someone editing a session's proxy is exactly who wants it. */
+        kitty_proxy_panel_preselect(sel);
+        kitty_cfg_goto_panel("Application/Named proxies");
     }
 }
 
@@ -5823,26 +5822,23 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
      * session already carries CheckUpdateStartup) and is parked for the
      * kitty-settings page. */
     if (!GetPuttyFlag()) {
-        s = ctrl_getset(b, "Session", "kittyapp", "Application");
-        /* On startup, check for a newer release and show a one-line notice in
-         * the terminal when a session opens. */
-        ctrl_checkbox(s, "Check for updates", NO_SHORTCUT,
-                      HELPCTX(no_help), conf_checkbox_handler,
-                      I(CONF_check_update_startup));
-        {
-            extern int GetIniFileFlag(void);   /* kitty_commun.c (SAVEMODE_REG/FILE/DIR) */
-            extern int kitty_has_foreign_sessions(void); /* windows/storage.c */
-            /* Registry-only, and only when there is actually an old 9bis-KiTTY /
-             * stock-PuTTY hive with sessions to reveal (a no-op portable,
-             * pointless on a machine that never had old KiTTY or PuTTY). Last
-             * in the box so that when it is hidden the box still ends cleanly
-             * on the checkbox above, with no gap. */
-            if (GetIniFileFlag() == 0 /* SAVEMODE_REG */ &&
-                kitty_has_foreign_sessions()) {
-                ctrl_checkbox(s, "show / edit / delete old putty/kitty sessions",
-                              NO_SHORTCUT, HELPCTX(no_help),
-                              kitty_showforeign_handler, P(ssd));
-            }
+        extern int GetIniFileFlag(void);   /* kitty_commun.c (SAVEMODE_REG/FILE/DIR) */
+        extern int kitty_has_foreign_sessions(void); /* windows/storage.c */
+        /* Registry-only, and only when there is actually an old 9bis-KiTTY /
+         * stock-PuTTY hive with sessions to reveal (a no-op portable,
+         * pointless on a machine that never had old KiTTY or PuTTY).
+         *
+         * The BOX is created only when this toggle is: "Check for updates"
+         * used to keep it occupied unconditionally and has moved to the
+         * Application tab, so creating it here regardless would leave an empty
+         * frame at the bottom of the Session panel. The toggle stays because
+         * it is bound to the session saver's data, which lives on this panel. */
+        if (GetIniFileFlag() == 0 /* SAVEMODE_REG */ &&
+            kitty_has_foreign_sessions()) {
+            s = ctrl_getset(b, "Session", "kittyapp", "Application");
+            ctrl_checkbox(s, "show / edit / delete old putty/kitty sessions",
+                          NO_SHORTCUT, HELPCTX(no_help),
+                          kitty_showforeign_handler, P(ssd));
         }
     }
 #endif
@@ -7633,9 +7629,9 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
             /* KiTTY: its OWN leaf under Proxy. It is an application-wide
              * switch, not a session setting, and sharing the Proxy panel
              * both crowded the panel and made it read like one. */
-            ctrl_settitle(b, "Connection/Proxy/Workplace",
+            ctrl_settitle(b, "Application/Workplace proxy",
                           "Workplace proxy mode (application-wide)");
-            s = ctrl_getset(b, "Connection/Proxy/Workplace", "workplace",
+            s = ctrl_getset(b, "Application/Workplace proxy", "workplace",
                             KITTY_WORKPLACE_BOX_TITLE);
             ctrl_text(s, KITTY_NOT_SESSION_LEAD, HELPCTX(no_help));
             /* The live state, drawn BOLD RED while the mode is on so it is seen
@@ -8572,6 +8568,46 @@ static void scb_panel_zmodem(struct controlbox *b)
 #endif
 }
 
+/*
+ * The APPLICATION tab's panels (KiTTY, design §9).
+ *
+ * These are settings about the program, not about the session in front of
+ * you, and they are reached through the Session | Application tabs above the
+ * category tree rather than by a root in the session tree. Their paths carry
+ * an "Application/" prefix, which is how the tree build tells the two tabs
+ * apart; the prefix is stripped when the items are inserted, so the tree shows
+ * "Updates" rather than "Application/Updates" under a tab already called
+ * Application.
+ *
+ * NOTE what has NOT changed: "Check for updates" is still
+ * CONF_check_update_startup, saved into each session and read from that
+ * session's conf when its window opens. Moving the control does not make the
+ * setting global - that is a compatibility change (every saved session already
+ * carries CheckUpdateStartup) and belongs to its own piece of work.
+ */
+static void scb_panel_application(struct controlbox *b, bool midsession)
+{
+#ifdef MOD_PERSO
+    struct controlset *s;
+
+    if (midsession || GetPuttyFlag())
+        return;                        /* no application tab mid-session */
+
+    /* The named-proxy editor, which used to be a pop-up window. */
+    kitty_proxy_build_panel(b);
+
+    ctrl_settitle(b, "Application/Updates", "Keeping KiTTY up to date");
+    s = ctrl_getset(b, "Application/Updates", "check", "Update check");
+    /* On startup, check for a newer release and show a one-line notice in the
+     * terminal when a session opens. */
+    ctrl_checkbox(s, "Check for updates", NO_SHORTCUT,
+                  HELPCTX(no_help), conf_checkbox_handler,
+                  I(CONF_check_update_startup));
+#else
+    (void)b; (void)midsession;
+#endif
+}
+
 /* The Comment panel (KiTTY): a free-text note attached to this session. */
 static void scb_panel_comment(struct controlbox *b)
 {
@@ -8607,4 +8643,8 @@ void setup_config_box(struct controlbox *b, bool midsession,
     scb_panel_other_protocols(b, midsession, protocol);
     scb_panel_zmodem(b);
     scb_panel_comment(b);
+    /* LAST: everything above is the Session tab, and the tree build splits the
+     * two on the "Application/" prefix. Keeping them contiguous means the
+     * split is a prefix test rather than a lookup. */
+    scb_panel_application(b, midsession);
 }

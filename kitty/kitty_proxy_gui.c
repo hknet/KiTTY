@@ -15,6 +15,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
+#include "dialog.h"     /* the ctrl_* panel API */
 #include "kitty_proxy.h"
 #include "kitty_rc_additions.h"
 
@@ -405,6 +406,445 @@ static INT_PTR CALLBACK pxe_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
  * button beside the override droplist passes whatever is selected there: if a
  * named proxy is showing, that is overwhelmingly the one the user means to edit,
  * and making them pick it again in a second combo is busywork. */
+
+/* ------------------------------------------------------------------ *
+ * The Application tab's "Named proxies" panel (design §9.3b).
+ *
+ * The same definitions the IDD_PROXYEDIT window edits, as an ordinary config
+ * box panel: it inherits the theme, the font, the panel cache and the panel
+ * area's scrolling instead of being a pop-up that has to be kept in step with
+ * all four by hand.
+ *
+ * WHAT IS EDITED. A named proxy is a set of Proxy* fields stored under a name,
+ * and the store is three calls - LoadProxyInfo, SaveProxyInfo, DeleteProxyInfo.
+ * The panel keeps a scratch Conf holding the definition being edited; the
+ * fields read and write THAT, never the session's own Conf, which is what
+ * dp->data points at and what every other panel edits. That is the whole
+ * reason these handlers exist rather than reusing conf_editbox_handler.
+ *
+ * UNSAVED EDITS. Nothing is written until Save. Switching panels, loading a
+ * session or closing the box therefore discards what was typed, exactly as
+ * closing the old window with Close did. The banner says so rather than
+ * leaving it to be discovered.
+ *
+ * ONE PANEL AT A TIME. The panel's data hangs off a file-static, the way the
+ * workplace-mode panel and the session saver do it: a configuration box builds
+ * one of each panel, and the alternative is threading a pointer through every
+ * handler's context, which is already spoken for by the Conf key each field
+ * edits.
+ */
+
+struct pxpanel_data {
+    Conf *conf;                 /* the definition being edited */
+    char *name;                 /* its name, as picked or typed */
+    dlgcontrol *namebox, *banner, *pwbox;
+    /*
+     * True while the panel is filling its own controls. Refreshing the name
+     * box clears its list, which clears the edit with it, and the control
+     * duly reports that its text changed - which is indistinguishable from
+     * the user emptying the box unless the panel says "that was me". Without
+     * this the name blanked itself the moment a definition was picked.
+     */
+    bool refreshing;
+    /*
+     * Whether the port was typed rather than filled in. An untouched port
+     * follows the type's usual port; once it has been edited it is the user's
+     * and nothing overwrites it.
+     */
+    bool port_typed;
+    bool dirty;                 /* edited since the last Save */
+};
+static struct pxpanel_data *g_pxp = NULL;
+
+/* The value tables above, chosen by which Conf field the control edits. */
+static const int *pxp_vals_for(int key, const char *const **names, int *n)
+{
+    switch (key) {
+      case CONF_proxy_type:
+        *names = pxe_type_names; *n = PXE_NTYPES; return pxe_types;
+      case CONF_proxy_dns:
+        *names = pxe_dns_names;  *n = PXE_NDNS;   return pxe_dns_vals;
+      case CONF_proxy_log_to_term:
+        *names = pxe_log_names;  *n = PXE_NLOG;   return pxe_log_vals;
+      case CONF_proxy_host_kind:
+        *names = pxe_hostis_names; *n = PXE_NHOSTIS; return pxe_hostis_vals;
+    }
+    *names = NULL; *n = 0; return NULL;
+}
+
+static void pxp_say(dlgparam *dlg, const char *what)
+{
+    if (g_pxp && g_pxp->banner)
+        dlg_label_change(g_pxp->banner, dlg, what);
+}
+
+static void pxp_reload(dlgparam *dlg)
+{
+    if (!g_pxp)
+        return;
+    if (g_pxp->conf)
+        conf_free(g_pxp->conf);
+    g_pxp->conf = pxe_new_conf();
+    if (g_pxp->name && g_pxp->name[0])
+        LoadProxyInfo(g_pxp->conf, g_pxp->name);
+    g_pxp->port_typed = false;     /* a freshly loaded port is not typed */
+    g_pxp->dirty = false;
+    g_pxp->refreshing = true;
+    dlg_refresh(NULL, dlg);
+    g_pxp->refreshing = false;
+}
+
+static void pxp_name_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                             void *data, int event)
+{
+    if (!g_pxp)
+        return;
+    if (event == EVENT_REFRESH) {
+        int i;
+        dlg_update_start(ctrl, dlg);
+        dlg_listbox_clear(ctrl, dlg);
+        for (i = 2; i < MAX_PROXY && proxies[i].name; i++)
+            dlg_listbox_add(ctrl, dlg, proxies[i].name);
+        g_pxp->refreshing = true;
+        dlg_editbox_set(ctrl, dlg, g_pxp->name ? g_pxp->name : "");
+        g_pxp->refreshing = false;
+        dlg_update_done(ctrl, dlg);
+    } else if (event == EVENT_VALCHANGE) {
+        char *typed;
+        if (g_pxp->refreshing)
+            return;                 /* the panel filling its own box */
+        typed = dlg_editbox_get(ctrl, dlg);
+        if (!typed[0]) {
+            /* Emptying the box is what CLEARING THE LIST looks like from here,
+             * and it is never what a user means by picking a definition. */
+            sfree(typed);
+            return;
+        }
+        if (g_pxp->name && !strcmp(g_pxp->name, typed)) {
+            sfree(typed);
+            return;                 /* the programmatic set above, not a user */
+        }
+        sfree(g_pxp->name);
+        g_pxp->name = typed;
+        pxp_reload(dlg);
+        pxp_say(dlg, "Editing this definition. Nothing is stored until Save.");
+    }
+}
+
+static void pxp_str_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                            void *data, int event)
+{
+    if (!g_pxp || !g_pxp->conf)
+        return;
+    if (event == EVENT_REFRESH) {
+        g_pxp->refreshing = true;
+        dlg_editbox_set(ctrl, dlg, conf_get_str(g_pxp->conf, ctrl->context.i));
+        g_pxp->refreshing = false;
+    }
+    else if (event == EVENT_VALCHANGE) {
+        char *s = dlg_editbox_get(ctrl, dlg);
+        conf_set_str(g_pxp->conf, ctrl->context.i, s);
+        sfree(s);
+        if (!g_pxp->refreshing)
+            g_pxp->dirty = true;
+    }
+}
+
+static void pxp_int_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                            void *data, int event)
+{
+    if (!g_pxp || !g_pxp->conf)
+        return;
+    if (event == EVENT_REFRESH) {
+        char buf[32];
+        sprintf(buf, "%d", conf_get_int(g_pxp->conf, ctrl->context.i));
+        g_pxp->refreshing = true;
+        dlg_editbox_set(ctrl, dlg, buf);
+        g_pxp->refreshing = false;
+    } else if (event == EVENT_VALCHANGE) {
+        char *s = dlg_editbox_get(ctrl, dlg);
+        conf_set_int(g_pxp->conf, ctrl->context.i, atoi(s));
+        sfree(s);
+        if (!g_pxp->refreshing) {
+            g_pxp->dirty = true;
+            if (ctrl->context.i == CONF_proxy_port)
+                g_pxp->port_typed = true;   /* the user's now; leave it alone */
+        }
+    }
+}
+
+static void pxp_bool_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                             void *data, int event)
+{
+    if (!g_pxp || !g_pxp->conf)
+        return;
+    if (event == EVENT_REFRESH) {
+        g_pxp->refreshing = true;
+        dlg_checkbox_set(ctrl, dlg,
+                         conf_get_bool(g_pxp->conf, ctrl->context.i));
+        g_pxp->refreshing = false;
+    }
+    else if (event == EVENT_VALCHANGE) {
+        conf_set_bool(g_pxp->conf, ctrl->context.i,
+                      dlg_checkbox_get(ctrl, dlg));
+        if (!g_pxp->refreshing)
+            g_pxp->dirty = true;
+    }
+}
+
+static void pxp_list_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                             void *data, int event)
+{
+    const char *const *names;
+    const int *vals;
+    int n, i;
+
+    if (!g_pxp || !g_pxp->conf)
+        return;
+    vals = pxp_vals_for(ctrl->context.i, &names, &n);
+    if (!vals)
+        return;
+    if (event == EVENT_REFRESH) {
+        int cur = conf_get_int(g_pxp->conf, ctrl->context.i);
+        g_pxp->refreshing = true;
+        dlg_update_start(ctrl, dlg);
+        dlg_listbox_clear(ctrl, dlg);
+        for (i = 0; i < n; i++)
+            dlg_listbox_addwithid(ctrl, dlg, names[i], vals[i]);
+        for (i = 0; i < n; i++)
+            if (vals[i] == cur)
+                dlg_listbox_select(ctrl, dlg, i);
+        dlg_update_done(ctrl, dlg);
+        g_pxp->refreshing = false;
+    } else if (event == EVENT_SELCHANGE) {
+        int idx = dlg_listbox_index(ctrl, dlg);
+        if (idx < 0 || idx >= n)
+            return;
+        conf_set_int(g_pxp->conf, ctrl->context.i, vals[idx]);
+        if (g_pxp->refreshing)
+            return;
+        g_pxp->dirty = true;
+        /* A port nobody has typed follows the type: choosing SOCKS 5 fills in
+         * 1080, choosing HTTP fills in 8080. Once the port has been typed it
+         * is the user's and the type stops touching it. */
+        if (ctrl->context.i == CONF_proxy_type && !g_pxp->port_typed) {
+            int want = pxe_default_port(vals[idx]);
+            conf_set_int(g_pxp->conf, CONF_proxy_port, want);
+            g_pxp->refreshing = true;
+            dlg_refresh(NULL, dlg);
+            g_pxp->refreshing = false;
+        }
+    }
+}
+
+static void pxp_save_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                             void *data, int event)
+{
+    int was_empty, want;
+
+    if (event != EVENT_ACTION || !g_pxp || !g_pxp->conf)
+        return;
+    if (!g_pxp->name || !g_pxp->name[0]) {
+        dlg_error_msg(dlg, "Give the proxy a name first.");
+        return;
+    }
+    /* An empty port on a type that has a usual one is filled in rather than
+     * queried. The window asked; a panel that puts up a question box while the
+     * user is looking at a page is worse than one that does the obvious thing
+     * and says so. */
+    want = pxe_default_port(conf_get_int(g_pxp->conf, CONF_proxy_type));
+    if (want > 0 && conf_get_int(g_pxp->conf, CONF_proxy_port) == 0)
+        conf_set_int(g_pxp->conf, CONF_proxy_port, want);
+
+    was_empty = !kitty_has_proxy_definitions();
+    SaveProxyInfo(g_pxp->conf, g_pxp->name);
+    g_pxp->dirty = false;
+    InitProxyList();                /* rescan, so the name list shows it */
+    dlg_refresh(NULL, dlg);
+    if (was_empty && kitty_has_proxy_definitions())
+        dlg_error_msg(dlg,
+            "Proxy defined.\r\n\r\nThe proxy-override droplist appears in the "
+            "Session panel the next time a configuration window is opened.");
+    else
+        pxp_say(dlg, "Saved.");
+}
+
+static void pxp_delete_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                               void *data, int event)
+{
+    if (event != EVENT_ACTION || !g_pxp)
+        return;
+    if (!g_pxp->name || !g_pxp->name[0])
+        return;
+    /* Deletion is the one thing here that cannot be undone by not saving, so
+     * it keeps its confirmation. */
+    {
+        char msg[600];
+        snprintf(msg, sizeof(msg), "Delete the named proxy \"%s\"?",
+                 g_pxp->name);
+        if (MessageBoxA(GetActiveWindow(), msg, "KiTTY named proxy",
+                        MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
+            return;
+    }
+    DeleteProxyInfo(g_pxp->name);
+    InitProxyList();
+    sfree(g_pxp->name);
+    g_pxp->name = dupstr("");
+    pxp_reload(dlg);
+    if (!kitty_has_proxy_definitions())
+        dlg_error_msg(dlg,
+            "The last named proxy was removed.\r\n\r\nThe proxy-override "
+            "droplist disappears from the Session panel the next time a "
+            "configuration window is opened.");
+    else
+        pxp_say(dlg, "Deleted.");
+}
+
+/* "Show password" for the panel's own password box - the same idea as the one
+ * on Connection/Data, kept local because that one's state lives in the config
+ * file this panel does not belong to. */
+static void pxp_showpw_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                               void *data, int event)
+{
+    if (!g_pxp || !g_pxp->pwbox)
+        return;
+    if (event == EVENT_REFRESH) {
+        dlg_checkbox_set(ctrl, dlg, false);
+        dlg_editbox_set_masked(g_pxp->pwbox, dlg, false);
+    } else if (event == EVENT_VALCHANGE) {
+        dlg_editbox_set_masked(g_pxp->pwbox, dlg, dlg_checkbox_get(ctrl, dlg));
+    }
+}
+
+/* Which definition the panel should come up on, set by whoever sends the user
+ * there. Consumed on the panel's next refresh so a later visit is not still
+ * being steered by an old click. */
+static char *g_pxp_want = NULL;
+
+void kitty_proxy_panel_preselect(const char *name)
+{
+    sfree(g_pxp_want);
+    g_pxp_want = (name && name[0]) ? dupstr(name) : NULL;
+    if (g_pxp && g_pxp_want) {
+        sfree(g_pxp->name);
+        g_pxp->name = dupstr(g_pxp_want);
+        if (g_pxp->conf)
+            conf_free(g_pxp->conf);
+        g_pxp->conf = pxe_new_conf();
+        LoadProxyInfo(g_pxp->conf, g_pxp->name);
+    }
+}
+
+/*
+ * "You have unsaved changes" - asked when the user tries to leave the panel
+ * with an edit in hand. Nothing on this panel reaches the store until Save, so
+ * the alternative is losing it silently, which is not a choice an application
+ * setting should make for someone.
+ *
+ * A message box rather than a banner: this is a question whose answer changes
+ * what happens next, and it is asked only when there is actually something to
+ * lose.
+ */
+static bool pxp_may_leave(void)
+{
+    if (!g_pxp || !g_pxp->dirty)
+        return true;
+    if (MessageBoxA(GetActiveWindow(),
+        "This named proxy has changes that have not been saved.\r\n\r\n"
+        "Leave the panel and discard them?",
+        "KiTTY named proxy",
+        MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
+        return false;
+    /*
+     * Discard means DISCARD: drop the edited copy and take the stored
+     * definition back. Leaving the flag set would also mean every later panel
+     * switch asked the same question, because the guard is registered for the
+     * box rather than for whichever panel is showing.
+     */
+    if (g_pxp->conf)
+        conf_free(g_pxp->conf);
+    g_pxp->conf = pxe_new_conf();
+    if (g_pxp->name && g_pxp->name[0])
+        LoadProxyInfo(g_pxp->conf, g_pxp->name);
+    g_pxp->dirty = false;
+    g_pxp->port_typed = false;
+    return true;
+}
+
+void kitty_proxy_build_panel(struct controlbox *b)
+{
+    struct controlset *s;
+    struct pxpanel_data *pd;
+    dlgcontrol *c;
+
+    if (GetPuttyFlag() || !kitty_proxy_editor_available())
+        return;
+
+    pd = (struct pxpanel_data *)ctrl_alloc(b, sizeof(struct pxpanel_data));
+    memset(pd, 0, sizeof(*pd));
+    pd->name = dupstr("");
+    pd->conf = pxe_new_conf();
+    g_pxp = pd;
+
+    {
+        extern void kitty_cfg_set_leave_guard(bool (*fn)(void));
+        kitty_cfg_set_leave_guard(pxp_may_leave);
+    }
+
+    ctrl_settitle(b, "Application/Named proxies",
+                  "Proxy definitions shared by every session");
+
+    s = ctrl_getset(b, "Application/Named proxies", "which", "Definition");
+    pd->namebox = ctrl_combobox(s, "Name (pick one to edit, or type a new one):",
+                                NO_SHORTCUT, 100, HELPCTX(no_help),
+                                pxp_name_handler, P(NULL), P(NULL));
+    ctrl_droplist(s, "Type:", NO_SHORTCUT, 60, HELPCTX(no_help),
+                  pxp_list_handler, I(CONF_proxy_type));
+
+    s = ctrl_getset(b, "Application/Named proxies", "where",
+                    "Proxy / jump host / session name");
+    ctrl_editbox(s, "Name/IP:", NO_SHORTCUT, 70, HELPCTX(no_help),
+                 pxp_str_handler, I(CONF_proxy_host), ED_STR);
+    ctrl_editbox(s, "Port:", NO_SHORTCUT, 30, HELPCTX(no_help),
+                 pxp_int_handler, I(CONF_proxy_port), ED_STR);
+    ctrl_droplist(s, ".. this is ..", NO_SHORTCUT, 70, HELPCTX(no_help),
+                  pxp_list_handler, I(CONF_proxy_host_kind));
+    ctrl_editbox(s, "Username:", NO_SHORTCUT, 70, HELPCTX(no_help),
+                 pxp_str_handler, I(CONF_proxy_username), ED_STR);
+    c = ctrl_editbox(s, "Password:", NO_SHORTCUT, 70, HELPCTX(no_help),
+                     pxp_str_handler, I(CONF_proxy_password), ED_STR);
+    c->editbox.password = true;
+    pd->pwbox = c;
+    ctrl_checkbox(s, "Show password", NO_SHORTCUT, HELPCTX(no_help),
+                  pxp_showpw_handler, P(NULL));
+
+    s = ctrl_getset(b, "Application/Named proxies", "opts", "Options");
+    ctrl_editbox(s, "Command to send (Telnet / Local / SSH execute or "
+                 "subsystem types):", NO_SHORTCUT, 100, HELPCTX(no_help),
+                 pxp_str_handler, I(CONF_proxy_telnet_command), ED_STR);
+    ctrl_editbox(s, "Exclude Hosts/IPs (separate with commas or spaces):",
+                 NO_SHORTCUT, 100, HELPCTX(no_help),
+                 pxp_str_handler, I(CONF_proxy_exclude_list), ED_STR);
+    ctrl_checkbox(s, "Consider proxying local host connections", NO_SHORTCUT,
+                  HELPCTX(no_help), pxp_bool_handler, I(CONF_even_proxy_localhost));
+    ctrl_droplist(s, "DNS lookup at proxy end:", NO_SHORTCUT, 40,
+                  HELPCTX(no_help), pxp_list_handler, I(CONF_proxy_dns));
+    ctrl_droplist(s, "Print proxy diagnostics:", NO_SHORTCUT, 60,
+                  HELPCTX(no_help), pxp_list_handler, I(CONF_proxy_log_to_term));
+
+    s = ctrl_getset(b, "Application/Named proxies", "act", NULL);
+    pd->banner = ctrl_text(s, "Nothing is stored until Save. Leaving this "
+                           "panel discards an unsaved edit.", HELPCTX(no_help));
+    ctrl_columns(s, 2, 50, 50);
+    c = ctrl_pushbutton(s, "Save", NO_SHORTCUT, HELPCTX(no_help),
+                        pxp_save_handler, P(NULL));
+    c->column = 0;
+    c = ctrl_pushbutton(s, "Delete", NO_SHORTCUT, HELPCTX(no_help),
+                        pxp_delete_handler, P(NULL));
+    c->column = 1;
+    ctrl_columns(s, 1, 100);
+}
+
 int kitty_proxy_edit_dialog_for(HWND owner, const char *preselect)
 {
     g_pxe_changed = 0;

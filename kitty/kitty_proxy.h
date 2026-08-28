@@ -12,6 +12,11 @@ int GetProxySelectionFlag() ;
 int kitty_has_proxy_definitions( void ) ;
 int kitty_proxy_choice_shown( void ) ;
 int kitty_proxy_editor_available( void ) ;
+/* The Application tab's "Named proxies" panel (design 9.3b): the same
+ * definitions IDD_PROXYEDIT edits, as an ordinary config-box panel. */
+struct controlbox ;
+void kitty_proxy_build_panel( struct controlbox *b ) ;
+void kitty_proxy_panel_preselect( const char *name ) ;
 void kitty_proxy_resolve_selection( Conf *conf ) ;
 int SaveProxyInfo( Conf *conf, const char *name ) ;
 int DeleteProxyInfo( const char *name ) ;
