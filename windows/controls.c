@@ -37,6 +37,22 @@
  */
 HWND kitty_cfg_panel_host = NULL;
 
+/*
+ * Which WINDOW owns a control id - the host or the dialog.
+ *
+ * For the helpers that take a parent and an id rather than a window, such as
+ * GetDlgItemText_alloc. Handing them the dialog for a panel control returns
+ * nothing at all, which is how a saved session came back with TermWidth=0,
+ * TermHeight=0 and PortNumber=0 while the strings survived: the numbers are
+ * read through that path.
+ */
+HWND kitty_cfg_owner(HWND dlg, int id)
+{
+    if (kitty_cfg_panel_host && GetDlgItem(kitty_cfg_panel_host, id))
+        return kitty_cfg_panel_host;
+    return dlg;
+}
+
 HWND kitty_cfg_item(HWND dlg, int id)
 {
     HWND h = NULL;
@@ -1146,27 +1162,35 @@ void prefslist(struct prefslist *hdl, struct ctlpos *cp, int lines,
 
 /*
  * Helper function for prefslist: move item in list box.
+ *
+ * Every access here goes through kitty_cfg_item rather than naming the
+ * control on the dialog. The panel host owns the panel's controls now, so
+ * GetDlgItem on the dialog - which is what SendDlgItemMessage does - returns
+ * nothing, and a message sent to nothing succeeds silently. That is not a
+ * paint defect that shows up on screen: the Up and Down buttons read a
+ * selection of 0 and moved nothing at all, on every algorithm-order list in
+ * the box.
  */
 static void pl_moveitem(HWND hwnd, int listid, int src, int dst)
 {
     int tlen, val;
     char *txt;
     /* Get the item's data. */
-    tlen = SendDlgItemMessage (hwnd, listid, LB_GETTEXTLEN, src, 0);
+    tlen = SendMessage(kitty_cfg_item(hwnd, listid), LB_GETTEXTLEN, src, 0);
     txt = snewn(tlen+1, char);
-    SendDlgItemMessage (hwnd, listid, LB_GETTEXT, src, (LPARAM) txt);
-    val = SendDlgItemMessage (hwnd, listid, LB_GETITEMDATA, src, 0);
+    SendMessage(kitty_cfg_item(hwnd, listid), LB_GETTEXT, src, (LPARAM) txt);
+    val = SendMessage(kitty_cfg_item(hwnd, listid), LB_GETITEMDATA, src, 0);
     /* Deselect old location. */
-    SendDlgItemMessage (hwnd, listid, LB_SETSEL, false, src);
+    SendMessage(kitty_cfg_item(hwnd, listid), LB_SETSEL, false, src);
     /* Delete it at the old location. */
-    SendDlgItemMessage (hwnd, listid, LB_DELETESTRING, src, 0);
+    SendMessage(kitty_cfg_item(hwnd, listid), LB_DELETESTRING, src, 0);
     /* Insert it at new location. */
-    SendDlgItemMessage (hwnd, listid, LB_INSERTSTRING, dst,
+    SendMessage(kitty_cfg_item(hwnd, listid), LB_INSERTSTRING, dst,
                         (LPARAM) txt);
-    SendDlgItemMessage (hwnd, listid, LB_SETITEMDATA, dst,
+    SendMessage(kitty_cfg_item(hwnd, listid), LB_SETITEMDATA, dst,
                         (LPARAM) val);
     /* Set selection. */
-    SendDlgItemMessage (hwnd, listid, LB_SETCURSEL, dst, 0);
+    SendMessage(kitty_cfg_item(hwnd, listid), LB_SETCURSEL, dst, 0);
     sfree (txt);
 }
 
@@ -1235,7 +1259,7 @@ int handle_prefslist(struct prefslist *hdl,
                  * FIXME: this causes scrollbar glitches if the count of
                  *        listbox contains >= its height. */
                 hdl->dummyitem =
-                    SendDlgItemMessage(hwnd, hdl->listid,
+                    SendMessage(kitty_cfg_item(hwnd, hdl->listid),
                                        LB_ADDSTRING, 0, (LPARAM) "");
 
                 hdl->srcitem = p_LBItemFromPt(dlm->hWnd, dlm->ptCursor, true);
@@ -1245,7 +1269,7 @@ int handle_prefslist(struct prefslist *hdl,
                 ret |= 1; break;
               case DL_CANCELDRAG:
                 p_DrawInsert(hwnd, dlm->hWnd, -1);     /* Clear arrow */
-                SendDlgItemMessage(hwnd, hdl->listid,
+                SendMessage(kitty_cfg_item(hwnd, hdl->listid),
                                    LB_DELETESTRING, hdl->dummyitem, 0);
                 hdl->dragging = false;
                 ret |= 1; break;
@@ -1265,7 +1289,7 @@ int handle_prefslist(struct prefslist *hdl,
                     if (dest > hdl->dummyitem) dest = hdl->dummyitem;
                     p_DrawInsert (hwnd, dlm->hWnd, -1);
                 }
-                SendDlgItemMessage(hwnd, hdl->listid,
+                SendMessage(kitty_cfg_item(hwnd, hdl->listid),
                                    LB_DELETESTRING, hdl->dummyitem, 0);
                 if (hdl->dragging) {
                     hdl->dragging = false;
@@ -1288,13 +1312,13 @@ int handle_prefslist(struct prefslist *hdl,
              (HIWORD(wParam) == BN_DOUBLECLICKED))) {
             /* Move an item up or down the list. */
             /* Get the current selection, if any. */
-            int selection = SendDlgItemMessage (hwnd, hdl->listid, LB_GETCURSEL, 0, 0);
+            int selection = SendMessage(kitty_cfg_item(hwnd, hdl->listid), LB_GETCURSEL, 0, 0);
             if (selection == LB_ERR) {
                 MessageBeep(0);
             } else {
                 int nitems;
                 /* Get the total number of items. */
-                nitems = SendDlgItemMessage (hwnd, hdl->listid, LB_GETCOUNT, 0, 0);
+                nitems = SendMessage(kitty_cfg_item(hwnd, hdl->listid), LB_GETCOUNT, 0, 0);
                 /* Should we do anything? */
                 if (LOWORD(wParam) == hdl->upbid && (selection > 0))
                     pl_moveitem(hwnd, hdl->listid, selection, selection - 1);
@@ -1310,7 +1334,7 @@ int handle_prefslist(struct prefslist *hdl,
     if (array) {
         /* Update array to match the list box. */
         for (i=0; i < maxmemb; i++)
-            array[i] = SendDlgItemMessage (hwnd, hdl->listid, LB_GETITEMDATA,
+            array[i] = SendMessage(kitty_cfg_item(hwnd, hdl->listid), LB_GETITEMDATA,
                                            i, 0);
     }
 
@@ -2185,7 +2209,8 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
               HIWORD(wParam) == BN_DOUBLECLICKED))) {
             Filename *fn_prev = NULL;
             if (!ctrl->fileselect.just_button) {
-                wchar_t *text = GetDlgItemTextW_alloc(dp->hwnd, c->base_id+1);
+                wchar_t *text = GetDlgItemTextW_alloc(
+                    kitty_cfg_owner(dp->hwnd, c->base_id+1), c->base_id+1);
                 if (*text)
                     fn_prev = filename_from_wstr(text);
                 sfree(text);
@@ -2200,7 +2225,7 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
 
             if (fn) {
                 if (!ctrl->fileselect.just_button) {
-                    SetDlgItemTextW(dp->hwnd, c->base_id + 1,
+                    SetWindowTextW(kitty_cfg_item(dp->hwnd, c->base_id + 1),
                                     filename_to_wstr(fn));
                     ctrl->handler(ctrl, dp, dp->data, EVENT_VALCHANGE);
                 } else {
@@ -2414,12 +2439,19 @@ void dlg_editbox_set(dlgcontrol *ctrl, dlgparam *dp, char const *text)
     SetWindowText(kitty_cfg_item(dp->hwnd, c->base_id+1), text);
 }
 
+/*
+ * Through kitty_cfg_item, not SetDlgItemTextW: that names a control on the
+ * window it is handed, and a panel's controls belong to the panel HOST. Setting
+ * text on the dialog therefore reached nothing and failed silently - which is
+ * how a stored auto-login password came back to an empty field even though it
+ * had been decrypted correctly into Conf.
+ */
 void dlg_editbox_set_utf8(dlgcontrol *ctrl, dlgparam *dp, char const *text)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     assert(c && c->ctrl->type == CTRL_EDITBOX);
     wchar_t *wtext = dup_mb_to_wc(CP_UTF8, text);
-    SetDlgItemTextW(dp->hwnd, c->base_id+1, wtext);
+    SetWindowTextW(kitty_cfg_item(dp->hwnd, c->base_id+1), wtext);
     sfree(wtext);
 }
 
@@ -2427,14 +2459,16 @@ char *dlg_editbox_get(dlgcontrol *ctrl, dlgparam *dp)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     assert(c && c->ctrl->type == CTRL_EDITBOX);
-    return GetDlgItemText_alloc(dp->hwnd, c->base_id+1);
+    return GetDlgItemText_alloc(kitty_cfg_owner(dp->hwnd, c->base_id+1),
+                                c->base_id+1);
 }
 
 char *dlg_editbox_get_utf8(dlgcontrol *ctrl, dlgparam *dp)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     assert(c && c->ctrl->type == CTRL_EDITBOX);
-    wchar_t *wtext = GetDlgItemTextW_alloc(dp->hwnd, c->base_id+1);
+    wchar_t *wtext = GetDlgItemTextW_alloc(
+        kitty_cfg_owner(dp->hwnd, c->base_id+1), c->base_id+1);
     char *text = dup_wc_to_mb(CP_UTF8, wtext, "");
     sfree(wtext);
     return text;
@@ -2667,7 +2701,7 @@ void dlg_filesel_set(dlgcontrol *ctrl, dlgparam *dp, Filename *fn)
     assert(c);
     assert(c->ctrl->type == CTRL_FILESELECT);
     assert(!c->ctrl->fileselect.just_button);
-    SetDlgItemTextW(dp->hwnd, c->base_id+1, fn->wpath);
+    SetWindowTextW(kitty_cfg_item(dp->hwnd, c->base_id+1), fn->wpath);
 }
 
 Filename *dlg_filesel_get(dlgcontrol *ctrl, dlgparam *dp)
@@ -2676,7 +2710,8 @@ Filename *dlg_filesel_get(dlgcontrol *ctrl, dlgparam *dp)
     assert(c);
     assert(c->ctrl->type == CTRL_FILESELECT);
     if (!c->ctrl->fileselect.just_button) {
-        wchar_t *tmp = GetDlgItemTextW_alloc(dp->hwnd, c->base_id+1);
+        wchar_t *tmp = GetDlgItemTextW_alloc(
+            kitty_cfg_owner(dp->hwnd, c->base_id+1), c->base_id+1);
         Filename *ret = filename_from_wstr(tmp);
         sfree(tmp);
         return ret;
