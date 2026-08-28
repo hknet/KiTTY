@@ -798,10 +798,22 @@ static INT_PTR CALLBACK NullDlgProc(HWND hwnd, UINT msg,
 #define CFGBOX_TREE_DU       (CFGBOX_BUTTONROW_DU - 17)  /* tree height */
 /* Width kept clear at the right of every panel for the scroll bar. */
 #define CFGBOX_SCROLLGUTTER_DU 10
+/*
+ * The Session | Application tab strip above the category tree (design §9.2).
+ * It replaces the "Category:" static rather than being added to the column,
+ * so the cost to the tree is this height MINUS the static's 10 - and the
+ * panel area, which is where the height budget actually hurts, pays nothing.
+ */
+#define CFGBOX_TABSTRIP_DU 14
 
 enum {
     IDCX_ABOUT = IDC_ABOUT,
-    IDCX_TVSTATIC,
+    /* KiTTY: the Session | Application tab strip, which stands where the
+     * "Category:" static used to and therefore takes over its id rather than
+     * adding one. These ids are not private - the QA harnesses find the
+     * bottom-row buttons by id range - so a new member in the middle would
+     * renumber every control after it. */
+    IDCX_TABSTRIP,
     IDCX_TREEVIEW,
     IDCX_PANELSCROLL,      /* KiTTY: the panel area's scroll bar */
     IDCX_STDBASE,
@@ -1621,6 +1633,10 @@ const char *kitty_cfgbox_wanted_panel(void);         /* kitty_config.c / stub:
 #define KITTY_PANEL_WARMUP_TIMER 8731
 bool kitty_config_select_root_folder(dlgparam *dp); /* kitty_config.c / stub */
 void kitty_config_end_folder_rename(dlgparam *dp);  /* kitty_config.c / stub */
+/* Defined below, with the tree builder it needs: the Ctrl+F jump has to be
+ * able to get back to the Session tab, and the hook that calls it is written
+ * before either exists. */
+static void kitty_cfg_goto_session_panel(void);
 static HHOOK kitty_cfg_kbdhook = NULL;
 static HWND kitty_cfg_hwnd = NULL;
 static HWND kitty_cfg_treeview = NULL;
@@ -1648,15 +1664,231 @@ static LRESULT CALLBACK kitty_cfg_kbd_hookproc(int code, WPARAM wParam,
                 /* Both keys: asking to search ends a pending folder rename, so
                  * the box they focus is one that actually filters. */
                 kitty_config_end_folder_rename(kitty_cfg_dp);
-                if (kitty_cfg_treeview && kitty_cfg_sessionitem)
-                    TreeView_SelectItem(kitty_cfg_treeview,
-                                        kitty_cfg_sessionitem);
+                /* The session list lives on the Session tab, so get there
+                 * first. A stored tree ITEM cannot be used for this any more:
+                 * switching tabs deletes every item in the tree, so the one
+                 * recorded when the box opened may long since have been freed.
+                 * The PATH survives, and finding it also tells us whether the
+                 * right tab is already showing. */
+                kitty_cfg_goto_session_panel();
                 dlg_set_focus_later(ctrl, kitty_cfg_dp);
                 return 1;               /* handled: swallow the keystroke */
             }
         }
     }
     return CallNextHookEx(kitty_cfg_kbdhook, code, wParam, lParam);
+}
+
+/*
+ * Which tab a panel belongs to, and the tree for one of them.
+ *
+ * The split is a prefix test on the path: everything under "Application/" is
+ * the Application tab, everything else is the Session tab. Paths are already
+ * the way panels are addressed everywhere else (the cache is keyed by them,
+ * ctrl_find_path looks them up), so the two trees are one walk with a filter
+ * rather than a second data structure.
+ *
+ * The prefix is STRIPPED when the item is inserted: under a tab already called
+ * Application, a root item repeating the word says nothing. That is why this
+ * cannot simply call the stock loop - it inserts at the path's own depth.
+ */
+#define KITTY_APPTAB_PREFIX "Application/"
+
+/*
+ * A panel that can refuse to be left.
+ *
+ * Every other panel writes straight into the session's Conf, so leaving one is
+ * free and nothing is ever lost. A panel that edits something ELSE - the
+ * named-proxy definitions, which are only written when Save is pressed - has
+ * work in hand that switching away would silently discard. It registers a
+ * guard here; the guard returns false to keep the user where they are.
+ *
+ * Asked BEFORE the change, from TVN_SELCHANGING and TCN_SELCHANGING, because
+ * a tree selection cannot be taken back afterwards: by the time SELCHANGED
+ * arrives the old panel is already going.
+ */
+static bool (*kitty_cfg_leave_guard)(void) = NULL;
+
+void kitty_cfg_set_leave_guard(bool (*fn)(void))
+{
+    kitty_cfg_leave_guard = fn;
+}
+
+static bool kitty_cfg_may_leave(void)
+{
+    return kitty_cfg_leave_guard ? kitty_cfg_leave_guard() : true;
+}
+
+/*
+ * True while the tree is being emptied and refilled.
+ *
+ * Emptying a tree does not simply clear the selection: it MOVES it, item by
+ * item, and every move is an ordinary selection-change notification carrying a
+ * real path. Left alone, a tab switch therefore ran the whole panel machinery
+ * once per session panel - visibly fast-forwarding through the entire tree
+ * before landing where it was going. Nothing about those intermediate
+ * selections is a user's choice, so the handler ignores them outright; the one
+ * selection that matters is made deliberately when the refill is done.
+ */
+static bool kitty_cfg_tree_rebuilding = false;
+
+/*
+ * Where the user was on each tab, so switching back returns there instead of
+ * dropping them at the top. Index 0 is Session, 1 is Application. The strings
+ * are the panels' own paths, which live as long as the dialog does.
+ */
+static const char *kitty_cfg_tab_last[2] = { NULL, NULL };
+
+/* The tree item carrying a given path, or NULL. Walks children and siblings
+ * rather than the visible list: an unexpanded branch is still a place the user
+ * can have been. */
+static HTREEITEM kitty_cfg_find_item(HWND tv, HTREEITEM from, const char *path)
+{
+    HTREEITEM it;
+    for (it = from; it; it = TreeView_GetNextSibling(tv, it)) {
+        TVITEM ti;
+        HTREEITEM kid, hit;
+        memset(&ti, 0, sizeof(ti));
+        ti.mask = TVIF_PARAM;
+        ti.hItem = it;
+        if (TreeView_GetItem(tv, &ti) && ti.lParam &&
+            !strcmp((const char *)ti.lParam, path))
+            return it;
+        kid = TreeView_GetChild(tv, it);
+        if (kid && (hit = kitty_cfg_find_item(tv, kid, path)) != NULL)
+            return hit;
+    }
+    return NULL;
+}
+
+static bool kitty_cfg_path_is_app(const char *path)
+{
+    return !strncmp(path, KITTY_APPTAB_PREFIX, strlen(KITTY_APPTAB_PREFIX));
+}
+
+/* Build the tree for one tab. Returns the first path inserted, or NULL when
+ * the tab has no panels at all - which is a real case: the Application tab is
+ * empty mid-session, and an empty tab must not leave the box showing whatever
+ * the other tab last had. */
+static const char *kitty_cfg_build_tree(PortableDialogStuff *pds,
+                                        struct treeview_faff *faff,
+                                        bool apptab)
+{
+    const char *first = NULL;
+    char *path = NULL;
+    int i;
+
+    /*
+     * Refill with drawing off: switching back to Session re-inserts 44 items,
+     * and each insertion repaints on its own otherwise.
+     *
+     * WM_SETREDRAW is safe HERE and is not elsewhere: on a top-level window it
+     * clears WS_VISIBLE while leaving hit-testing behind, which is how clicks
+     * once fell through the configuration box to whatever was underneath
+     * (hknet/KiTTY#38). This is a child control refilling its own contents,
+     * which is the case the message is for.
+     */
+    kitty_cfg_tree_rebuilding = true;
+    SendMessage(faff->treeview, WM_SETREDRAW, FALSE, 0);
+    TreeView_DeleteAllItems(faff->treeview);
+    memset(faff->lastat, 0, sizeof(faff->lastat));
+
+    for (i = 0; i < pds->ctrlbox->nctrlsets; i++) {
+        struct controlset *cs = pds->ctrlbox->ctrlsets[i];
+        const char *shown;
+        char *c;
+        int j;
+
+        if (!cs->pathname[0])
+            continue;
+        if (kitty_cfg_path_is_app(cs->pathname) != apptab)
+            continue;
+
+        /* Depth is counted within the tab, so the Application tab's own
+         * prefix does not push everything one level in. */
+        shown = cs->pathname;
+        if (apptab)
+            shown += strlen(KITTY_APPTAB_PREFIX);
+
+        j = path ? ctrl_path_compare(shown, path) : 0;
+        if (j == INT_MAX)
+            continue;                  /* same path, nothing to add */
+
+        c = strrchr(shown, '/');
+        if (!c)
+            c = (char *)shown;
+        else
+            c++;
+
+        treeview_insert(faff, j, c, cs->pathname);
+        if (!first)
+            first = cs->pathname;
+        path = (char *)shown;
+    }
+    SendMessage(faff->treeview, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(faff->treeview, NULL, TRUE);
+    kitty_cfg_tree_rebuilding = false;
+    return first;
+}
+
+
+/*
+ * Show the Session tab's first panel, whatever tab is up.
+ *
+ * Used by the Ctrl+F/Ctrl+G jump, which wants the saved-session box on the
+ * Session panel. Needs the dialog's PortableDialogStuff to rebuild the tree,
+ * which the keyboard hook does not have - so the box records it while it is
+ * open, next to the other things the hook uses.
+ */
+static PortableDialogStuff *kitty_cfg_pds = NULL;
+
+void kitty_cfg_goto_panel(const char *path)
+{
+    HWND tv = kitty_cfg_treeview;
+    HWND strip;
+    HTREEITEM want;
+    bool apptab;
+
+    if (!tv || !kitty_cfg_hwnd || !kitty_cfg_pds || !path)
+        return;
+    apptab = kitty_cfg_path_is_app(path);
+    strip = GetDlgItem(kitty_cfg_hwnd, IDCX_TABSTRIP);
+    if (strip && (SendMessage(strip, TCM_GETCURSEL, 0, 0) != 0) != apptab) {
+        struct treeview_faff faff;
+        memset(&faff, 0, sizeof(faff));
+        faff.treeview = tv;
+        SendMessage(strip, TCM_SETCURSEL, apptab ? 1 : 0, 0);
+        kitty_cfg_build_tree(kitty_cfg_pds, &faff, apptab);
+    }
+    want = kitty_cfg_find_item(tv, TreeView_GetRoot(tv), path);
+    if (!want)
+        want = TreeView_GetRoot(tv);
+    if (want)
+        TreeView_SelectItem(tv, want);
+}
+
+/* The Session tab's first panel: where the saved-session box is, and so where
+ * the Ctrl+F/Ctrl+G jump has to land. */
+static void kitty_cfg_goto_session_panel(void)
+{
+    HWND tv = kitty_cfg_treeview;
+    HWND strip;
+
+    if (!tv || !kitty_cfg_hwnd || !kitty_cfg_pds)
+        return;
+    strip = GetDlgItem(kitty_cfg_hwnd, IDCX_TABSTRIP);
+    if (strip && SendMessage(strip, TCM_GETCURSEL, 0, 0) != 0) {
+        struct treeview_faff faff;
+        memset(&faff, 0, sizeof(faff));
+        faff.treeview = tv;
+        SendMessage(strip, TCM_SETCURSEL, 0, 0);
+        kitty_cfg_build_tree(kitty_cfg_pds, &faff, false);
+    }
+    {
+        HTREEITEM want = TreeView_GetRoot(tv);
+        if (want)
+            TreeView_SelectItem(tv, want);
+    }
 }
 
 static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
@@ -1743,6 +1975,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             }
             kitty_cfg_hwnd = NULL;
             kitty_cfg_treeview = NULL;
+            kitty_cfg_pds = NULL;
             kitty_cfg_sessionitem = NULL;
             kitty_cfg_dp = NULL;
         }
@@ -1882,28 +2115,47 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         {
             RECT r;
             WPARAM font;
-            HWND tvstatic;
+            HWND tabstrip;
 
+            /*
+             * The tab strip, where the "Cate&gory:" label used to be. The
+             * label said what the tree is; the tabs say that and which of the
+             * two trees is showing, so keeping both would spend height twice
+             * to say one thing.
+             */
             r.left = 3;
             r.right = r.left + 95;
             r.top = 3;
-            r.bottom = r.top + 10;
+            r.bottom = r.top + CFGBOX_TABSTRIP_DU;
             MapDialogRect(hwnd, &r);
-            tvstatic = CreateWindowEx(0, "STATIC", "Cate&gory:",
-                                      WS_CHILD | WS_VISIBLE,
+            tabstrip = CreateWindowEx(0, WC_TABCONTROL, "",
+                                      WS_CHILD | WS_VISIBLE | WS_TABSTOP |
+                                      TCS_FOCUSNEVER,
                                       r.left, r.top,
                                       r.right - r.left, r.bottom - r.top,
-                                      hwnd, (HMENU) IDCX_TVSTATIC, hinst,
+                                      hwnd, (HMENU) IDCX_TABSTRIP, hinst,
                                       NULL);
             font = SendMessage(hwnd, WM_GETFONT, 0, 0);
-            SendMessage(tvstatic, WM_SETFONT, font, MAKELPARAM(true, 0));
+            SendMessage(tabstrip, WM_SETFONT, font, MAKELPARAM(true, 0));
+            {
+                TCITEM ti;
+                memset(&ti, 0, sizeof(ti));
+                ti.mask = TCIF_TEXT;
+                ti.pszText = (char *)"Session";
+                SendMessage(tabstrip, TCM_INSERTITEM, 0, (LPARAM)&ti);
+                ti.pszText = (char *)"Application";
+                SendMessage(tabstrip, TCM_INSERTITEM, 1, (LPARAM)&ti);
+            }
 
             r.left = 3;
             r.right = r.left + 95;
-            r.top = 13;
-            r.bottom = r.top + CFGBOX_TREE_DU + cb_extra_du; /* KiTTY: (was
-                                       * 219); grows with [ConfigBox] height so
-                                       * Bell/Data/Appearance panels aren't cut */
+            r.top = 3 + CFGBOX_TABSTRIP_DU;
+            r.bottom = r.top + CFGBOX_TREE_DU + cb_extra_du
+                       - (CFGBOX_TABSTRIP_DU - 10); /* KiTTY: (was 219); grows
+                                       * with [ConfigBox] height so
+                                       * Bell/Data/Appearance panels aren't
+                                       * cut, and gives back what the tab
+                                       * strip took from the old label */
             MapDialogRect(hwnd, &r);
             treeview = CreateWindowEx(WS_EX_CLIENTEDGE, WC_TREEVIEW, "",
                                       WS_CHILD | WS_VISIBLE |
@@ -1939,6 +2191,11 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 char *c;
 
                 if (!s->pathname[0])
+                    continue;
+                /* The box opens on the Session tab, so its tree holds the
+                 * session panels only; the Application ones arrive when that
+                 * tab is chosen. */
+                if (kitty_cfg_path_is_app(s->pathname))
                     continue;
                 j = path ? ctrl_path_compare(s->pathname, path) : 0;
                 if (j == INT_MAX)
@@ -1990,6 +2247,31 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
              * jump below is anchored to it; only what we select changes. */
             HTREEITEM hsel = hwanted ? hwanted : hfirst;
             char *selpath = hwanted ? wantedpath : firstpath;
+
+            /*
+             * A wanted panel on the OTHER tab: the loop above only walked the
+             * session paths, so it was never found. Switch the strip, build
+             * that tab's tree, and take the item from there.
+             */
+            if (kitty_cfgbox_wanted_panel() &&
+                kitty_cfg_path_is_app(kitty_cfgbox_wanted_panel())) {
+                HWND strip = GetDlgItem(hwnd, IDCX_TABSTRIP);
+                const char *first_app;
+                SendMessage(strip, TCM_SETCURSEL, 1, 0);
+                first_app = kitty_cfg_build_tree(pds, &tvfaff, true);
+                if (first_app) {
+                    HTREEITEM want = kitty_cfg_find_item(
+                        treeview, TreeView_GetRoot(treeview),
+                        kitty_cfgbox_wanted_panel());
+                    if (!want)
+                        want = TreeView_GetRoot(treeview);
+                    hsel = want;
+                    selpath = (char *)kitty_cfgbox_wanted_panel();
+                    if (!kitty_cfg_find_item(treeview, TreeView_GetRoot(treeview),
+                                             selpath))
+                        selpath = (char *)first_app;
+                }
+            }
             TreeView_SelectItem(treeview, hsel);
 
             /* KiTTY: arm the Ctrl+F session-search jump (first tree item ==
@@ -1999,6 +2281,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 kitty_cfg_hwnd = hwnd;
                 kitty_cfg_dp = pds->dp;
                 kitty_cfg_treeview = treeview;
+                kitty_cfg_pds = pds;
                 kitty_cfg_sessionitem = hfirst;
                 kitty_cfg_kbdhook = SetWindowsHookEx(
                     WH_KEYBOARD, kitty_cfg_kbd_hookproc,
@@ -2166,6 +2449,65 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         return 0;
 
       case WM_NOTIFY:
+        /* Leaving a panel that has unsaved work: both roads out ask first, and
+         * both are vetoable only BEFORE the fact. */
+        if (((LOWORD(wParam) == IDCX_TREEVIEW &&
+              ((LPNMHDR) lParam)->code == TVN_SELCHANGING) ||
+             (LOWORD(wParam) == IDCX_TABSTRIP &&
+              ((LPNMHDR) lParam)->code == TCN_SELCHANGING)) &&
+            pds->initialised && !kitty_cfg_tree_rebuilding) {
+            if (!kitty_cfg_may_leave()) {
+                SetWindowLongPtr(hwnd, DWLP_MSGRESULT, TRUE);  /* veto */
+                return TRUE;
+            }
+        }
+        if (LOWORD(wParam) == IDCX_TABSTRIP &&
+            ((LPNMHDR) lParam)->code == TCN_SELCHANGE) {
+            /*
+             * A tab change rebuilds the tree from the other half of the
+             * ctrlbox and selects its first panel. Everything that makes a
+             * panel change safe - hiding the old one's windows, swapping its
+             * keyboard shortcuts out, creating or showing the new one - is
+             * driven by the TVN_SELCHANGED that the selection below raises, so
+             * this does not repeat any of it.
+             *
+             * The scroll offset is dropped first. It belongs to the panel that
+             * was showing, and the tree is about to stop containing that panel
+             * at all; kitty_cfg_panel_scrollbar would otherwise reset it
+             * against whatever comes up next.
+             */
+            struct treeview_faff faff;
+            HWND tv = GetDlgItem(hwnd, IDCX_TREEVIEW);
+            HWND strip = GetDlgItem(hwnd, IDCX_TABSTRIP);
+            bool apptab = (SendMessage(strip, TCM_GETCURSEL, 0, 0) == 1);
+            const char *first;
+
+            if (kitty_cfg_active_panel) {
+                kitty_cfg_panel_scroll_to(hwnd, kitty_cfg_active_panel, 0);
+                /* Remember where the user was on the tab being LEFT - this
+                 * notification arrives after the tab has already changed, so
+                 * that is the other one. */
+                kitty_cfg_tab_last[apptab ? 0 : 1] =
+                    kitty_cfg_active_panel->path;
+            }
+            memset(&faff, 0, sizeof(faff));
+            faff.treeview = tv;
+            first = kitty_cfg_build_tree(pds, &faff, apptab);
+            if (first) {
+                /* Back to where they were on this tab, if they have been here
+                 * before and that panel still exists; otherwise the top. */
+                HTREEITEM want = NULL;
+                HTREEITEM root = TreeView_GetRoot(tv);
+                const char *last = kitty_cfg_tab_last[apptab ? 1 : 0];
+                if (last)
+                    want = kitty_cfg_find_item(tv, root, last);
+                if (!want)
+                    want = root;
+                if (want)
+                    TreeView_SelectItem(tv, want);
+            }
+            return 0;
+        }
         if (LOWORD(wParam) == IDCX_TREEVIEW &&
             ((LPNMHDR) lParam)->code == TVN_SELCHANGED) {
             /*
@@ -2181,14 +2523,33 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
 
             if (!pds->initialised)
                 return 0;
+            if (kitty_cfg_tree_rebuilding)
+                return 0;              /* see the flag's definition */
 
             i = TreeView_GetSelection(((LPNMHDR) lParam)->hwndFrom);
+            /*
+             * NO SELECTION is a real event, not an impossible one: emptying
+             * the tree raises this notification with the selection already
+             * gone, which is what a tab change does before it refills the
+             * tree. Without this the code below asked for an item that does
+             * not exist, read the lParam that TreeView_GetItem therefore never
+             * wrote, and took whatever was on the stack for a panel path -
+             * hiding the visible panel and building a junk one for a garbage
+             * pointer before the real selection arrived. That was visible as a
+             * flicker on every tab switch, and it was one bad stack value away
+             * from being a crash.
+             */
+            if (!i)
+                return 0;
 
             item.hItem = i;
             item.pszText = buffer;
             item.cchTextMax = sizeof(buffer);
             item.mask = TVIF_TEXT | TVIF_PARAM;
-            TreeView_GetItem(((LPNMHDR) lParam)->hwndFrom, &item);
+            item.lParam = 0;          /* GetItem leaves it alone on failure */
+            if (!TreeView_GetItem(((LPNMHDR) lParam)->hwndFrom, &item) ||
+                !item.lParam)
+                return 0;
             /*
              * KiTTY: swap the visible panel for the selected one - hide,
              * show or create; never destroy. See the panel cache above.
