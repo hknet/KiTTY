@@ -1388,8 +1388,12 @@ void PopUpSystemMenu( HWND hwnd, int npos ) {
  * auto-login password in the configuration dialog (NOT at login time, so the
  * auto-login the user configured is never interrupted). Returns nonzero if the
  * user agrees to store the (reversibly-encrypted) password. */
+/* windows/dialog.c: the window a modal raised from the configuration
+ * box belongs on. kitty_win.c does not include dialog.h. */
+HWND kitty_cfg_modal_owner(void);
+
 int kitty_autopw_warn( void ) {
-	int r = MessageBox( NULL,
+	int r = MessageBox( kitty_cfg_modal_owner(),
 		"You are setting a KiTTY auto-login password.\r\n\r\n"
 		"SECURITY: this password is saved in your session settings in a "
 		"REVERSIBLY-ENCRYPTED form. Anyone with access to this machine or to "
@@ -1893,4 +1897,35 @@ int kitty_theme_app_pref(void)
 bool kitty_theme_app_dark(void)
 {
     return kitty_theme_dark_for(kitty_theme_app_pref());
+}
+
+/*
+ * Whether to look for a new release at startup - an APPLICATION setting, in
+ * kitty.ini as [KiTTY] checkupdate, defaulting to ON.
+ *
+ * It used to be CONF_check_update_startup, stored in every saved session and
+ * read from whichever session opened first, which meant the answer depended on
+ * which host you connected to. The old per-session key is retired on save (see
+ * kitty_retired_keys in windows/storage.c), so it drains out of the store
+ * rather than being migrated: there is nothing to migrate, since the setting
+ * was never per-session in meaning.
+ *
+ * Read through ReadParameterN like the theme, so it works the same in every
+ * save mode and can be answered without a Conf in hand.
+ */
+int WriteParameter(const char *key, const char *name, char *value);  /* kitty.c */
+
+int kitty_check_update_enabled(void)
+{
+    char buf[32];
+    buf[0] = '\0';
+    if (!ReadParameterN(INIT_SECTION, "checkupdate", buf, sizeof(buf)))
+        return 1;                      /* not set: on */
+    return !(!_stricmp(buf, "no") || !_stricmp(buf, "0") ||
+             !_stricmp(buf, "false") || !_stricmp(buf, "off"));
+}
+
+void kitty_set_check_update_enabled(int on)
+{
+    WriteParameter(INIT_SECTION, "checkupdate", on ? "yes" : "no");
 }

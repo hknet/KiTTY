@@ -9,6 +9,14 @@
 
 [ConfigBox]
 
+; applicationpanel: which leaf of the configuration box's APPLICATION tab to
+;    come back to. Written by KiTTY when you leave that tab or close the box,
+;    so the next configuration window opens where you were - among the proxies
+;    if that is what you were setting up. The Session tab is not remembered:
+;    it opens on the session panel, which is what most people came for.
+;    This key lives in the [ConfigBox] section.
+;applicationpanel=Application/Named proxies
+
 ; dblclick: what a double-click on a saved session does
 ;    - open: load it and open it in this window (like the Open button)
 ;    - start: launch it in a new window and keep the configuration box open (like the Start button)
@@ -599,6 +607,29 @@
 ;    panel and the menu entries go, and a session that has a level saved opens
 ;    opaque anyway. The /transparency command cannot turn it back on either.
 ;transparency=yes
+
+; showforeignsessions: also list the sessions kept by an OLDER KiTTY (the
+;    9bis hive) or by stock PuTTY, so they can be opened, edited and deleted
+;    from KiTTY's own saved-session list. Registry save modes only - a portable
+;    store has no foreign hive. Values: auto (the default), yes, or no.
+;    "auto" shows them only while this KiTTY has no sessions of its own, so an
+;    upgrade never opens onto an apparently empty list and the old sessions
+;    retire themselves once you have your own. Set yes to keep them listed for
+;    good, or no to hide them outright. The switch is in the configuration box
+;    under Application > Migration; ticking it records an explicit choice,
+;    which then wins over this key.
+;showforeignsessions=auto
+
+; checkupdate: look for a newer KiTTY release when a session starts, and show
+;    a one-line notice at the top of the terminal when there is one. Default
+;    yes. The check is asynchronous and touches the terminal only once, at the
+;    clean top of a session, so a full-screen program is never corrupted by it.
+;    This is an APPLICATION setting. It used to be stored in every saved
+;    session as CheckUpdateStartup, which meant the answer depended on which
+;    session you happened to open first; that key is now deleted whenever a
+;    session is saved. The switch is in the configuration box under
+;    Application > Updates, beside "Check for updates now".
+;checkupdate=yes
 
 ; theme: which colours KiTTY's windows paint in - system, light or dark.
 ;    This is one setting for the whole suite: kitty, kageant and kittygen all

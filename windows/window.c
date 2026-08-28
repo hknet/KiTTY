@@ -335,6 +335,9 @@ int kitty_workplace_request(int arm, unsigned int minutes);
 #include "../kitty/kitty_notice.h"  /* kitty_notice_show + the notice click
                                      * messages (WM_KITTY_AGENT_UNVERIFIED) */
 #include "../kitty/kitty_theme.h"   /* KiTTY: dark mode for the dialogs */
+/* KiTTY: whether to look for a new release at startup - an application
+ * setting in kitty.ini, not a per-session one (kitty/kitty_win.c). */
+int kitty_check_update_enabled(void);
 bool kitty_theme_app_dark(void);    /* kitty/kitty_win.c: the app-wide setting */
 void kitty_workplace_show_pending_notice(void);
 void kitty_cfgbox_open_on_panel(const char *path);   /* kitty/kitty_config.c */
@@ -552,7 +555,9 @@ static void win_seat_notify_session_started(Seat *seat)
      * The fetch is async (worker thread refreshing a registry cache); only this
      * synchronous, top-of-session render touches the terminal, so a full-screen
      * TUI is never corrupted by a mid-session injection. */
-    if (conf_get_bool(wgs->conf, CONF_check_update_startup)) {
+    /* An application setting now, not a per-session one: see
+     * kitty_check_update_enabled() in kitty/kitty_win.c. */
+    if (kitty_check_update_enabled()) {
         kitty_start_update_check();
         static int update_notice_shown = 0;
         if (!update_notice_shown) {

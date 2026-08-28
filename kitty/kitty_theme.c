@@ -126,8 +126,27 @@ static struct kt_window *kt_find_window(HWND w)
 
 static bool kt_is_dark_window(HWND w)
 {
-    struct kt_window *e = kt_find_window(w);
-    return e && e->dark;
+    int guard;
+    /*
+     * Walk UP to the nearest window the theme knows about.
+     *
+     * A control's parent is not necessarily a window that was ever themed:
+     * the configuration box builds its panels into a child DIALOG (the panel
+     * host), so a group box's parent is that host, and the host is not in
+     * this table. Asking about the immediate parent therefore answered "not
+     * dark" for every panel control that consults its parent - which is how
+     * group-box captions were left drawing the system's near-black text on
+     * the dark background, on every panel.
+     *
+     * The guard is against a parent chain that does not terminate; eight is
+     * far deeper than any dialog here nests.
+     */
+    for (guard = 0; w && guard < 8; w = GetParent(w), guard++) {
+        struct kt_window *e = kt_find_window(w);
+        if (e)
+            return e->dark;
+    }
+    return false;
 }
 
 static void kt_set_dark_window(HWND w, bool dark)
@@ -845,6 +864,85 @@ static bool kt_looks_like_messagebox(HWND w)
  * The glyph is drawn rather than themed for the same reason: if the dark
  * theme class had radio parts to hand out, none of this would be needed.
  */
+/*
+ * The radio glyph, drawn SUPERSAMPLED and scaled down.
+ *
+ * GDI's Ellipse has no anti-aliasing, and a 13-pixel circle drawn with it is
+ * visibly a polygon - at this size it reads as a cog rather than a button.
+ * Drawing it four times too big into a memory bitmap and letting StretchBlt's
+ * halftone mode average it down costs one small bitmap per paint and gives the
+ * smooth edge the system's own control has.
+ *
+ * The scratch bitmap is filled with the panel background first, so the edge
+ * pixels average towards what the glyph actually sits on rather than towards
+ * black.
+ */
+static void kt_draw_radio_glyph(HDC dc, int cx, int cy, int d,
+                                bool checked, COLORREF ring)
+{
+    const int S = 4;                   /* supersampling factor */
+    int big = d * S;
+    HDC mem;
+    HBITMAP bmp, oldbmp;
+    HPEN pen, oldpen;
+    HBRUSH fill, oldbrush, back;
+    RECT all;
+    int old_mode;
+
+    if (d <= 0)
+        return;
+    mem = CreateCompatibleDC(dc);
+    if (!mem)
+        return;
+    bmp = CreateCompatibleBitmap(dc, big, big);
+    if (!bmp) {
+        DeleteDC(mem);
+        return;
+    }
+    oldbmp = (HBITMAP)SelectObject(mem, bmp);
+
+    all.left = 0; all.top = 0; all.right = big; all.bottom = big;
+    back = CreateSolidBrush(KT_DARK_BACK);
+    if (back) {
+        FillRect(mem, &all, back);
+        DeleteObject(back);
+    }
+
+    pen = CreatePen(PS_SOLID, S, ring);
+    fill = CreateSolidBrush(checked ? ring : KT_DARK_CTL);
+    oldpen = pen ? (HPEN)SelectObject(mem, pen) : NULL;
+    oldbrush = fill ? (HBRUSH)SelectObject(mem, fill) : NULL;
+    /* Inset by half the pen so the stroke stays inside the bitmap. */
+    Ellipse(mem, S / 2, S / 2, big - S / 2, big - S / 2);
+    if (checked) {
+        /* Windows 11 draws a filled ring with a hole, not a dot on a disc. */
+        HBRUSH inner = CreateSolidBrush(KT_DARK_BACK);
+        HPEN ipen = CreatePen(PS_SOLID, 1, KT_DARK_BACK);
+        HBRUSH ob = inner ? (HBRUSH)SelectObject(mem, inner) : NULL;
+        HPEN op = ipen ? (HPEN)SelectObject(mem, ipen) : NULL;
+        int r2 = big / 4;
+        if (r2 < S) r2 = S;
+        Ellipse(mem, big / 2 - r2, big / 2 - r2, big / 2 + r2, big / 2 + r2);
+        if (ob) SelectObject(mem, ob);
+        if (op) SelectObject(mem, op);
+        if (inner) DeleteObject(inner);
+        if (ipen) DeleteObject(ipen);
+    }
+    if (oldpen) SelectObject(mem, oldpen);
+    if (oldbrush) SelectObject(mem, oldbrush);
+    if (pen) DeleteObject(pen);
+    if (fill) DeleteObject(fill);
+
+    old_mode = SetStretchBltMode(dc, HALFTONE);
+    SetBrushOrgEx(dc, 0, 0, NULL);
+    StretchBlt(dc, cx - d / 2, cy - d / 2, d, d, mem, 0, 0, big, big, SRCCOPY);
+    SetStretchBltMode(dc, old_mode);
+
+    SelectObject(mem, oldbmp);
+    DeleteObject(bmp);
+    DeleteDC(mem);
+}
+
 static void kt_paint_radio(HWND btn, NMCUSTOMDRAW *cd)
 {
     RECT rc = cd->rc, text;
@@ -855,8 +953,6 @@ static void kt_paint_radio(HWND btn, NMCUSTOMDRAW *cd)
     int d, cx, cy;
     char label[256];
     HFONT font, oldfont;
-    HPEN pen, oldpen;
-    HBRUSH fill, oldbrush;
     /* The unchecked ring is deliberately much lighter than the frame lines
      * elsewhere: at KT_DARK_LINE on this background it is there but almost
      * invisible, and a radio nobody can see is a radio nobody can tell the
@@ -875,33 +971,7 @@ static void kt_paint_radio(HWND btn, NMCUSTOMDRAW *cd)
     cx = rc.left + 1 + d / 2;
     cy = (rc.top + rc.bottom) / 2;
 
-    pen = CreatePen(PS_SOLID, 1, ring);
-    fill = CreateSolidBrush(checked ? ring : KT_DARK_CTL);
-    oldpen = pen ? (HPEN)SelectObject(cd->hdc, pen) : NULL;
-    oldbrush = fill ? (HBRUSH)SelectObject(cd->hdc, fill) : NULL;
-    if (checked) {
-        /* Windows 11 draws a filled ring with a hole, not a dot on a disc. */
-        Ellipse(cd->hdc, cx - d / 2, cy - d / 2, cx + d / 2, cy + d / 2);
-        {
-            HBRUSH inner = CreateSolidBrush(KT_DARK_BACK);
-            HPEN ipen = CreatePen(PS_SOLID, 1, ring);
-            HBRUSH ob = inner ? (HBRUSH)SelectObject(cd->hdc, inner) : NULL;
-            HPEN op = ipen ? (HPEN)SelectObject(cd->hdc, ipen) : NULL;
-            int r2 = d / 4;
-            if (r2 < 2) r2 = 2;
-            Ellipse(cd->hdc, cx - r2, cy - r2, cx + r2, cy + r2);
-            if (ob) SelectObject(cd->hdc, ob);
-            if (op) SelectObject(cd->hdc, op);
-            if (inner) DeleteObject(inner);
-            if (ipen) DeleteObject(ipen);
-        }
-    } else {
-        Ellipse(cd->hdc, cx - d / 2, cy - d / 2, cx + d / 2, cy + d / 2);
-    }
-    if (oldpen) SelectObject(cd->hdc, oldpen);
-    if (oldbrush) SelectObject(cd->hdc, oldbrush);
-    if (pen) DeleteObject(pen);
-    if (fill) DeleteObject(fill);
+    kt_draw_radio_glyph(cd->hdc, cx, cy, d, checked, ring);
 
     label[0] = '\0';
     GetWindowTextA(btn, label, sizeof(label));

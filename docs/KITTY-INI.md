@@ -118,13 +118,54 @@ exe*.
 
 | Section | What it configures |
 |---|---|
-| `[KiTTY]` | The main section: feature switches (hyperlinks, transparency, icons, background image, …), `savemode`, security options (`PortablePasswordProtection`, `readonly`, `restrictacl`), window/title behaviour, scripting, and `theme` (`system`/`light`/`dark` - the colours every KiTTY window paints in, kageant and kittygen included; dark needs Windows 10 1809 or newer). |
+| `[KiTTY]` | The main section: feature switches (hyperlinks, transparency, icons, background image, …), `savemode`, security options (`PortablePasswordProtection`, `readonly`, `restrictacl`), window/title behaviour, scripting, `theme` (`system`/`light`/`dark` - the colours every KiTTY window paints in, kageant and kittygen included; dark needs Windows 10 1809 or newer), and `checkupdate` (look for a new release at startup), and `showforeignsessions` (also list an older KiTTY's or PuTTY's own saved sessions - `auto`/`yes`/`no`, default `auto`). |
 | `[Agent]` | kageant (the SSH agent): `askconfirmation` (`yes`/`auto`/`no`/`hello` - the last one demands a Windows Hello gesture for the confirmation), `messageonkeyusage`, `loadonstartup` + the `startupkeyN` list, `retrykeys` (what to do when a startup key's media returns), the `agentlog*` settings, `hellocacheseconds` (how long one Windows Hello unlock keeps covering further protected keys; `0` asks every time). |
-| `[ConfigBox]` | Configuration-box behaviour: `dblclick` (double-click on a saved session = Open or Start), `defaultsettings` visibility, `loadlastsession` (off = quick connect: open on Default Settings with the caret in Host Name), `foldernavigation` (session folders as ROWS of the saved-session list rather than a drop-down), box height. |
+| `[ConfigBox]` | Configuration-box behaviour: `dblclick` (double-click on a saved session = Open or Start), `defaultsettings` visibility, `loadlastsession` (off = quick connect: open on Default Settings with the caret in Host Name), `foldernavigation` (session folders as ROWS of the saved-session list rather than a drop-down), box height, and `applicationpanel` (the Application tab's leaf, remembered between configuration windows). |
 | `[Shortcuts]` | Keyboard shortcuts for KiTTY menu actions, e.g. `duplicate={CONTROL}N`. |
 | `[Print]` | Text printing: character size, lines per page, characters per line. |
 | `[Launcher]` | The tray launcher, e.g. session-list `reload` on each menu open. |
 | `[FontFallback]` | Missing-glyph font fallback: `active` master switch (default yes), `fallback` font list, `override` Unicode-range pinning, `log`/`logfile` troubleshooting. |
+
+## Old PuTTY and KiTTY sessions — `[KiTTY] showforeignsessions`
+
+A machine that has run stock PuTTY, or an older 9bis KiTTY, keeps those saved
+sessions in registry hives of their own. `showforeignsessions` decides whether
+KiTTY lists them alongside its own, where they can be opened, edited and
+deleted. It applies to registry save modes only; a portable store has no
+foreign hive to read.
+
+* `auto` — the default. List them only while this KiTTY has no sessions of
+  its own, so an upgrade never opens onto an apparently empty list and the old
+  sessions retire themselves once you have your own. This is what KiTTY did
+  before the key existed.
+* `yes` — always list them.
+* `no` — never list them.
+
+The switch is in the configuration box under **Application > Migration**, which
+appears only on a machine that actually has such a hive with sessions in it.
+Ticking it records an explicit choice, and that choice then wins over this key.
+
+The key does not change what happens by default - it exists so the answer can
+be pinned. `yes` suits a machine that will go on using both; `no` suits one
+where the old hive is history and its sessions are noise.
+
+## Update check — `[KiTTY] checkupdate`
+
+`checkupdate=yes` (the default) makes KiTTY look for a newer release when a
+session starts and print a one-line notice at the top of the terminal if there
+is one. The fetch is asynchronous and the terminal is touched once, at the
+clean top of the session, so a full-screen program is never corrupted by it.
+
+It is an **application** setting, and it did not use to be: the answer lived in
+every saved session as `CheckUpdateStartup`, so which session you opened first
+decided whether KiTTY checked. Saving a session now deletes that key, and the
+old values drain out of the store as sessions are touched. Nothing is migrated,
+because there was nothing sensible to migrate from - each session carried its
+own answer.
+
+The switch is in the configuration box under **Application > Updates**, beside
+**Check for updates now**, which runs the check on demand whatever this is set
+to.
 
 ## Quick connect — `[ConfigBox] loadlastsession`
 

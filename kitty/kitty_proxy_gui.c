@@ -500,13 +500,28 @@ static void pxp_name_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (!g_pxp)
         return;
     if (event == EVENT_REFRESH) {
-        int i;
+        int i, row = -1, sel = -1;
         dlg_update_start(ctrl, dlg);
         dlg_listbox_clear(ctrl, dlg);
-        for (i = 2; i < MAX_PROXY && proxies[i].name; i++)
+        for (i = 2; i < MAX_PROXY && proxies[i].name; i++) {
+            row++;
             dlg_listbox_add(ctrl, dlg, proxies[i].name);
+            if (g_pxp->name && !strcmp(proxies[i].name, g_pxp->name))
+                sel = row;
+        }
         g_pxp->refreshing = true;
-        dlg_editbox_set(ctrl, dlg, g_pxp->name ? g_pxp->name : "");
+        /*
+         * SELECT the row, do not merely set the text. Refilling the list left
+         * the combo with nothing selected, and a drop-down shows its
+         * selection - so picking a definition loaded its values while the name
+         * box sat empty until a Tab moved the focus and something put the text
+         * back. A name being typed for a NEW definition matches no row, and
+         * that one really is just text.
+         */
+        if (sel >= 0)
+            dlg_listbox_select(ctrl, dlg, sel);
+        else
+            dlg_editbox_set(ctrl, dlg, g_pxp->name ? g_pxp->name : "");
         g_pxp->refreshing = false;
         dlg_update_done(ctrl, dlg);
     } else if (event == EVENT_VALCHANGE) {
@@ -682,7 +697,7 @@ static void pxp_delete_handler(dlgcontrol *ctrl, dlgparam *dlg,
         char msg[600];
         snprintf(msg, sizeof(msg), "Delete the named proxy \"%s\"?",
                  g_pxp->name);
-        if (MessageBoxA(GetActiveWindow(), msg, "KiTTY named proxy",
+        if (MessageBoxA(kitty_cfg_modal_owner(), msg, "KiTTY named proxy",
                         MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
             return;
     }
@@ -749,7 +764,7 @@ static bool pxp_may_leave(void)
 {
     if (!g_pxp || !g_pxp->dirty)
         return true;
-    if (MessageBoxA(GetActiveWindow(),
+    if (MessageBoxA(kitty_cfg_modal_owner(),
         "This named proxy has changes that have not been saved.\r\n\r\n"
         "Leave the panel and discard them?",
         "KiTTY named proxy",
@@ -770,6 +785,8 @@ static bool pxp_may_leave(void)
     g_pxp->port_typed = false;
     return true;
 }
+
+int GetPuttyFlag(void);   /* kitty_commun.c */
 
 void kitty_proxy_build_panel(struct controlbox *b)
 {

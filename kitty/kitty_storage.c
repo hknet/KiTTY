@@ -120,6 +120,21 @@ int kitty_has_foreign_sessions(void)
     return 0;
 }
 
+/* kitty.c: the kitty.ini reader, and the name of its main section. */
+int ReadParameterN(const char *key, const char *name, char *value, size_t size);
+/* See the note above kitty_get_show_foreign_sessions: libsettings is linked by
+ * the CLI tools, which have no kitty.c and no kitty.ini. */
+__attribute__((weak))
+int ReadParameterN(const char *key, const char *name, char *value, size_t size)
+{
+    (void)key; (void)name; (void)size;
+    if (value) value[0] = '\0';
+    return 0;
+}
+#ifndef INIT_SECTION
+#define INIT_SECTION "KiTTY"
+#endif
+
 int kitty_get_show_foreign_sessions(void)
 {
     if (kitty_show_foreign < 0) {
@@ -131,16 +146,36 @@ int kitty_get_show_foreign_sessions(void)
             /* User has made an explicit choice: honour it. */
             kitty_show_foreign = v ? 1 : 0;
         } else {
-            /* No explicit choice yet: adaptive default.  If the primary hive
-             * has no real sessions of its own, the user almost certainly still
-             * keeps everything in the old 9bis / PuTTY hive, so show those
-             * (otherwise the session list would appear empty).  Once the
-             * primary hive holds real sessions, default to a clean own-hive
-             * view.  Not persisted, so it keeps adapting until the user
-             * toggles the checkbox explicitly. */
-            kitty_show_foreign =
-                (!kitty_root_is_putty() && kitty_primary_session_count() == 0)
-                ? 1 : 0;
+            /*
+             * No stored choice. kitty.ini decides: [KiTTY] showforeignsessions
+             * = auto (the DEFAULT), yes, or no.
+             *
+             * "auto" is the behaviour KiTTY has always had: show the old 9bis
+             * or PuTTY sessions only while this KiTTY has none of its own, so
+             * that someone upgrading does not open onto an apparently empty
+             * list, and stop showing them once there are real sessions here.
+             * The key exists so the answer can be PINNED either way - it is
+             * not there to change what happens by default.
+             */
+            char ini[32];
+            ini[0] = '\0';
+            if (ReadParameterN(INIT_SECTION, "showforeignsessions",
+                               ini, sizeof(ini)) && ini[0]) {
+                if (!_stricmp(ini, "auto"))
+                    kitty_show_foreign =
+                        (!kitty_root_is_putty() &&
+                         kitty_primary_session_count() == 0) ? 1 : 0;
+                else
+                    kitty_show_foreign =
+                        (!_stricmp(ini, "yes") || !_stricmp(ini, "1") ||
+                         !_stricmp(ini, "true") || !_stricmp(ini, "on"))
+                        ? 1 : 0;
+            } else {
+                /* auto: the historical adaptive rule. */
+                kitty_show_foreign =
+                    (!kitty_root_is_putty() &&
+                     kitty_primary_session_count() == 0) ? 1 : 0;
+            }
         }
     }
     return kitty_show_foreign;

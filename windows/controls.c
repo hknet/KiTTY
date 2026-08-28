@@ -19,6 +19,7 @@
 #include "putty.h"
 #include "misc.h"
 #include "dialog.h"
+#include "../kitty/kitty_theme.h"   /* the panel title is drawn by hand */
 
 #include <commctrl.h>
 
@@ -120,8 +121,8 @@ HWND kitty_cfg_item(HWND dlg, int id)
  * together than separate groups do.
  */
 #define CHECKBOXGAP 2
-#define EDITHEIGHT 11
-#define LISTHEIGHT 11
+#define EDITHEIGHT 10
+#define LISTHEIGHT 10
 #define LISTINCREMENT 9
 #define COMBOHEIGHT 14
 #define PUSHBTNHEIGHT 14
@@ -2071,9 +2072,23 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
         HDC hdc = di->hDC;
         RECT r = di->rcItem;
         SIZE s;
+        /*
+         * The panel's title is drawn here rather than by a control, so it has
+         * no WM_CTLCOLOR to answer with and takes the device context's default
+         * ink - black. On a dark panel that is black on near-black: present,
+         * and unreadable. The theme is asked for the colours instead.
+         */
+        bool dark = kitty_theme_window_dark(dp->hwnd);
 
         SetMapMode(hdc, MM_TEXT);      /* ensure logical units == pixels */
 
+        if (dark) {
+            HBRUSH back = kitty_theme_backbrush(dp->hwnd);
+            if (back)
+                FillRect(hdc, &r, back);
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, kitty_theme_text_colour(true));
+        }
         GetTextExtentPoint32(hdc, (char *)c->data,
                              strlen((char *)c->data), &s);
         DrawEdge(hdc, &r, EDGE_ETCHED, BF_ADJUST | BF_RECT);

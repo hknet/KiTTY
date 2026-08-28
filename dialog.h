@@ -740,6 +740,10 @@ void ctrlset_normalise_aligns(struct controlset *s);
  * which every GUI target links - kitty/kitty_config.c is not.
  */
 void kitty_conf_validate(Conf *conf);
+/* KiTTY: the window a modal raised from the configuration box should sit on -
+ * see windows/dialog.c. Never NULL by preference: a MessageBox with no owner
+ * is centred on the screen, away from what the user is looking at. */
+HWND kitty_cfg_modal_owner(void);
 void kitty_conf_ctrlbox_is(struct controlbox *b);
 void kitty_conf_invalid_reset(void);
 void kitty_conf_invalid_session_is(const char *name);

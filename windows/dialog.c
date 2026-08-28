@@ -1014,11 +1014,26 @@ static INT_PTR CALLBACK PanelHostProc(HWND hwnd, UINT msg,
       case WM_NOTIFY:
       case WM_DRAWITEM:
       case WM_MEASUREITEM:
-      case WM_HSCROLL:
-        /* Straight up to the configuration box, unchanged. The handlers there
+      case WM_HSCROLL: {
+        /*
+         * Straight up to the configuration box, unchanged. The handlers there
          * identify controls by id, and the ids are unique across both
-         * windows, so nothing has to be rewritten to understand this. */
-        return SendMessage(GetParent(hwnd), msg, wParam, lParam);
+         * windows, so nothing has to be rewritten to understand this.
+         *
+         * The ANSWER has to come back down, and that is not what returning it
+         * from a dialog procedure does: a DialogProc's return value means
+         * "handled", and the value the sender sees is whatever DWLP_MSGRESULT
+         * holds - zero unless it is set. Custom draw is the case that showed
+         * it. The theme answers NM_CUSTOMDRAW for a radio button with
+         * CDRF_SKIPDEFAULT, which arrived here as zero (CDRF_DODEFAULT), so
+         * the control drew its label a second time over the one the theme had
+         * just drawn: unreadable in dark mode, and invisible in light mode
+         * because nothing custom-draws there.
+         */
+        LRESULT r = SendMessage(GetParent(hwnd), msg, wParam, lParam);
+        SetWindowLongPtr(hwnd, DWLP_MSGRESULT, (LONG_PTR)r);
+        return TRUE;
+      }
       case WM_CTLCOLORSTATIC:
       case WM_CTLCOLORBTN:
       case WM_CTLCOLOREDIT:
@@ -1739,6 +1754,57 @@ static bool kitty_cfg_tree_rebuilding = false;
  */
 static const char *kitty_cfg_tab_last[2] = { NULL, NULL };
 
+/*
+ * The Application tab's leaf, remembered across configuration WINDOWS.
+ *
+ * Only that tab. The Session tab opens where it always has - on the session
+ * panel, which is what most people came for - and moving that would be a
+ * change to something everybody uses. The Application tab has no such obvious
+ * first stop, and someone who was setting up proxies wants to be back among
+ * proxies next time.
+ *
+ * In kitty.ini rather than in memory, because "next time" usually means the
+ * next KiTTY rather than the next window of this one.
+ */
+static bool kitty_cfg_path_is_app(const char *path);   /* defined below */
+
+int WriteParameter(const char *key, const char *name, char *value);   /* kitty.c */
+int ReadParameterN(const char *key, const char *name, char *value, size_t size);
+/*
+ * Weak defaults: this file is in libguiterminal, which stock putty.exe and
+ * pterm link WITHOUT kitty.c. They never reach the code below - there is no
+ * Application tab in those builds - but the symbols still have to resolve.
+ * With kitty.c present its strong definitions win.
+ */
+__attribute__((weak))
+int WriteParameter(const char *key, const char *name, char *value)
+{
+    (void)key; (void)name; (void)value;
+    return 0;
+}
+__attribute__((weak))
+int ReadParameterN(const char *key, const char *name, char *value, size_t size)
+{
+    (void)key; (void)name; (void)size;
+    if (value) value[0] = '\0';
+    return 0;
+}
+
+static void kitty_cfg_remember_app_panel(const char *path)
+{
+    if (path && kitty_cfg_path_is_app(path))
+        WriteParameter("ConfigBox", "applicationpanel", (char *)path);
+}
+
+static const char *kitty_cfg_remembered_app_panel(void)
+{
+    static char buf[256];
+    buf[0] = '\0';
+    if (!ReadParameterN("ConfigBox", "applicationpanel", buf, sizeof(buf)))
+        return NULL;
+    return buf[0] ? buf : NULL;
+}
+
 /* The tree item carrying a given path, or NULL. Walks children and siblings
  * rather than the visible list: an unexpanded branch is still a place the user
  * can have been. */
@@ -1842,6 +1908,25 @@ static const char *kitty_cfg_build_tree(PortableDialogStuff *pds,
  */
 static PortableDialogStuff *kitty_cfg_pds = NULL;
 
+/*
+ * The window a modal raised from the configuration box should sit on.
+ *
+ * MessageBox centres itself on its OWNER, and on the screen when it has none -
+ * which on a wide monitor puts the question somewhere the user is not looking,
+ * and leaves it behind the window that asked it. The box records its own
+ * handle while it is open; anything raised from a panel asks here for it.
+ *
+ * Falls back to the active window rather than to NULL: outside the
+ * configuration box (a session window, the launcher) that is still better than
+ * the middle of the screen.
+ */
+HWND kitty_cfg_modal_owner(void)
+{
+    if (kitty_cfg_hwnd && IsWindow(kitty_cfg_hwnd))
+        return kitty_cfg_hwnd;
+    return GetActiveWindow();
+}
+
 void kitty_cfg_goto_panel(const char *path)
 {
     HWND tv = kitty_cfg_treeview;
@@ -1854,6 +1939,16 @@ void kitty_cfg_goto_panel(const char *path)
     apptab = kitty_cfg_path_is_app(path);
     strip = GetDlgItem(kitty_cfg_hwnd, IDCX_TABSTRIP);
     if (strip && (SendMessage(strip, TCM_GETCURSEL, 0, 0) != 0) != apptab) {
+        /*
+         * Record where the user was on the tab being LEFT, exactly as the tab
+         * strip itself does. Jumping from a session panel to the Application
+         * tab - which is what "Edit named proxies..." does - otherwise lost
+         * the session panel it came from, so going back landed on Session
+         * while switching tabs by hand remembered properly. Same feature, two
+         * roads in, and only one of them was doing the bookkeeping.
+         */
+        if (kitty_cfg_active_panel)
+            kitty_cfg_tab_last[apptab ? 0 : 1] = kitty_cfg_active_panel->path;
         struct treeview_faff faff;
         memset(&faff, 0, sizeof(faff));
         faff.treeview = tv;
@@ -1966,6 +2061,11 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         /* Robust backstop: capture the final position at close, regardless of
          * how the box was moved (WM_EXITSIZEMOVE only fires on interactive drag). */
         kitty_cfgbox_save_pos(hwnd);
+        /* BEFORE the cache is reset: closing while on an Application panel
+         * counts as having been there, and the reset is what forgets which
+         * panel that was. */
+        if (kitty_cfg_active_panel)
+            kitty_cfg_remember_app_panel(kitty_cfg_active_panel->path);
         kitty_cfg_panel_cache_reset();  /* the windows die with the dialog */
         /* KiTTY: tear down the Ctrl+F session-search jump with its dialog. */
         if (kitty_cfg_hwnd == hwnd) {
@@ -2277,6 +2377,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             /* KiTTY: arm the Ctrl+F session-search jump (first tree item ==
              * the Session panel). Only when this dialog's ctrlbox actually
              * registered a session box — stock variants return NULL. */
+            kitty_cfg_hwnd = hwnd;      /* the modal owner, always */
             if (kitty_config_session_filter_ctrl()) {
                 kitty_cfg_hwnd = hwnd;
                 kitty_cfg_dp = pds->dp;
@@ -2489,6 +2590,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                  * that is the other one. */
                 kitty_cfg_tab_last[apptab ? 0 : 1] =
                     kitty_cfg_active_panel->path;
+                kitty_cfg_remember_app_panel(kitty_cfg_active_panel->path);
             }
             memset(&faff, 0, sizeof(faff));
             faff.treeview = tv;
@@ -2499,6 +2601,8 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 HTREEITEM want = NULL;
                 HTREEITEM root = TreeView_GetRoot(tv);
                 const char *last = kitty_cfg_tab_last[apptab ? 1 : 0];
+                if (!last && apptab)
+                    last = kitty_cfg_remembered_app_panel();
                 if (last)
                     want = kitty_cfg_find_item(tv, root, last);
                 if (!want)

@@ -19,6 +19,7 @@
 #include "kitty_workplace.h"  /* workplace proxy mode: query/request the arming */
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION */
 #include "kitty_win.h"   /* SetTextToClipboard */
+#include "kitty_theme.h"   /* the app-wide colour theme, for Application > Config window */
 #endif
 
 #ifdef MOD_PERSO
@@ -323,7 +324,7 @@ static void kitty_keyfile_pin_record_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (!ppk_loadpub_f(kf, &alg, BinarySink_UPCAST(blob), &comment, &error)) {
         m = dupprintf("Unable to read the key file's public half:\n\n%s",
                       error ? error : "unknown error");
-        MessageBox(GetActiveWindow(), m, "KiTTY key fingerprint pin",
+        MessageBox(kitty_cfg_modal_owner(), m, "KiTTY key fingerprint pin",
                    MB_OK | MB_ICONWARNING);
         sfree(m);
         strbuf_free(blob);
@@ -374,7 +375,7 @@ static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (event != EVENT_ACTION) return;
     if (!kitty_parse_hotkey_spec(conf_get_str(conf, CONF_launcher_global_hotkey),
                                  &mods, &vk)) {
-        MessageBox(NULL, "Enter a hotkey such as Ctrl+Alt+K or Ctrl+Shift+F12.",
+        MessageBox(kitty_cfg_modal_owner(), "Enter a hotkey such as Ctrl+Alt+K or Ctrl+Shift+F12.",
                    "KiTTY Launcher hotkey", MB_OK | MB_ICONWARNING);
         return;
     }
@@ -393,9 +394,10 @@ static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
                      "A hotkey works for only one session; the launcher gives "
                      "it to the first one it finds.",
                      nc == 1 ? "" : "s", others);
-            MessageBox(NULL, msg, "KiTTY Launcher hotkey", MB_OK | MB_ICONWARNING);
+            MessageBox(kitty_cfg_modal_owner(), msg, "KiTTY Launcher hotkey",
+                       MB_OK | MB_ICONWARNING);
         } else {
-            MessageBox(NULL, "This hotkey is currently available.\n\nNote: it is only registered while KiTTY Launcher is running.",
+            MessageBox(kitty_cfg_modal_owner(), "This hotkey is currently available.\n\nNote: it is only registered while KiTTY Launcher is running.",
                        "KiTTY Launcher hotkey", MB_OK | MB_ICONINFORMATION);
         }
     } else if (nc > 0) {
@@ -405,9 +407,10 @@ static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  "A hotkey works for only one session; the launcher gives it "
                  "to the first one it finds.",
                  nc == 1 ? "" : "s", others);
-        MessageBox(NULL, msg, "KiTTY Launcher hotkey", MB_OK | MB_ICONWARNING);
+        MessageBox(kitty_cfg_modal_owner(), msg, "KiTTY Launcher hotkey",
+                   MB_OK | MB_ICONWARNING);
     } else {
-        MessageBox(NULL, "This hotkey is already in use or reserved by Windows/another app.\n\nWindows does not expose which application owns a global hotkey.",
+        MessageBox(kitty_cfg_modal_owner(), "This hotkey is already in use or reserved by Windows/another app.\n\nWindows does not expose which application owns a global hotkey.",
                    "KiTTY Launcher hotkey", MB_OK | MB_ICONWARNING);
     }
 }
@@ -1102,6 +1105,18 @@ static void kitty_wpmode_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * open; the editor shows a one-time "reopen the configuration" note in that
  * case (kitty_proxy_gui.c). Making it live is a scoped follow-up (would require
  * rebuilding the whole ctrlbox). */
+/* The update check: an application setting in kitty.ini, so it reads and
+ * writes there rather than through the session's Conf. Immediate - there is no
+ * Save on an application setting, and nothing else in the box would carry it. */
+static void kitty_checkupdate_global_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                             void *data, int event)
+{
+    if (event == EVENT_REFRESH)
+        dlg_checkbox_set(ctrl, dlg, kitty_check_update_enabled() != 0);
+    else if (event == EVENT_VALCHANGE)
+        kitty_set_check_update_enabled(dlg_checkbox_get(ctrl, dlg) ? 1 : 0);
+}
+
 static void kitty_proxyedit_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                     void *data, int event)
 {
@@ -5383,14 +5398,18 @@ static void kitty_showforeign_handler(dlgcontrol *ctrl, dlgparam *dlg,
 {
     struct sessionsaver_data *ssd =
         (struct sessionsaver_data *)ctrl->context.p;
+    if (!ssd)
+        ssd = session_filter_ssd;      /* Application > Migration */
     if (event == EVENT_REFRESH) {
         dlg_checkbox_set(ctrl, dlg, kitty_get_show_foreign_sessions());
     } else if (event == EVENT_VALCHANGE) {
         kitty_set_show_foreign_sessions(dlg_checkbox_get(ctrl, dlg));
         /* re-enumerate so the list shows/hides the foreign sessions at once */
-        get_sesslist(&ssd->sesslist, false);
-        get_sesslist(&ssd->sesslist, true);
-        dlg_refresh(ssd->listbox, dlg);
+        if (ssd) {
+            get_sesslist(&ssd->sesslist, false);
+            get_sesslist(&ssd->sesslist, true);
+            dlg_refresh(ssd->listbox, dlg);
+        }
     }
 }
 
@@ -5493,16 +5512,10 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
     } else {
         ssd->startbutton = NULL;
     }
-    /* KiTTY "Check for updates": col 1 sits between About (col 0, added by
-     * win_setup_config_box) and Start (col 2). KiTTY ships no Help button
-     * (has_help() is false — no embedded CHM), so col 1 is free. */
-    if (!midsession && !GetPuttyFlag()) {
-        /* Short label: the button is only ~20% of the dialog width (one of 5
-         * columns), so "Check for updates" overflows. */
-        c = ctrl_pushbutton(s, "Updates", NO_SHORTCUT,
-                            HELPCTX(no_help), checkupdate_button_handler, P(NULL));
-        c->column = 1;
-    }
+    /* The "Updates" button that used to sit in this row is now "Check for
+     * updates now" on the Application/Updates panel, where the update setting
+     * is. It was abbreviated to one word only because a button in a five-column
+     * row has no space for a sentence; on a panel it can say what it does. */
 #endif
     ssd->cancelbutton = ctrl_pushbutton(s, "Cancel", 'c', HELPCTX(no_help),
                                         sessionsaver_handler, P(ssd));
@@ -5821,26 +5834,10 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
      * stored. Making update-check truly global is a compat change (every saved
      * session already carries CheckUpdateStartup) and is parked for the
      * kitty-settings page. */
-    if (!GetPuttyFlag()) {
-        extern int GetIniFileFlag(void);   /* kitty_commun.c (SAVEMODE_REG/FILE/DIR) */
-        extern int kitty_has_foreign_sessions(void); /* windows/storage.c */
-        /* Registry-only, and only when there is actually an old 9bis-KiTTY /
-         * stock-PuTTY hive with sessions to reveal (a no-op portable,
-         * pointless on a machine that never had old KiTTY or PuTTY).
-         *
-         * The BOX is created only when this toggle is: "Check for updates"
-         * used to keep it occupied unconditionally and has moved to the
-         * Application tab, so creating it here regardless would leave an empty
-         * frame at the bottom of the Session panel. The toggle stays because
-         * it is bound to the session saver's data, which lives on this panel. */
-        if (GetIniFileFlag() == 0 /* SAVEMODE_REG */ &&
-            kitty_has_foreign_sessions()) {
-            s = ctrl_getset(b, "Session", "kittyapp", "Application");
-            ctrl_checkbox(s, "show / edit / delete old putty/kitty sessions",
-                          NO_SHORTCUT, HELPCTX(no_help),
-                          kitty_showforeign_handler, P(ssd));
-        }
-    }
+    /* The old-sessions switch used to sit here, in an "Application" box at
+     * the foot of this panel, because there was nowhere else for it. It is
+     * now Application > Migration - it is about the installation and its
+     * history, not about this session. */
 #endif
 }
 
@@ -7868,6 +7865,11 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                                             HELPCTX(ssh_kex_manual_hostkeys),
                                             manual_hostkey_handler, P(mh));
             mh->addbutton->column = 1;
+            /* Centre it on the FIELD it adds from. Without this the button
+             * lines up with the top of the control beside it - which is the
+             * "Key" label, not the box - and the row reads as two unrelated
+             * things at different heights. */
+            mh->addbutton->align_next_to = mh->keybox;
             ctrl_columns(s, 1, 100);
         }
 
@@ -8568,6 +8570,109 @@ static void scb_panel_zmodem(struct controlbox *b)
 #endif
 }
 
+
+/*
+ * Application > Config window.
+ *
+ * Settings about the configuration box itself. All three are kitty.ini keys,
+ * not session values, so the handlers read and write there directly - there is
+ * no Save on an application setting and no Conf that could carry them.
+ *
+ * ⚠️ NONE of them can take effect in the window you are looking at. The box's
+ * geometry is decided when it is built, and the theme is applied to windows as
+ * they are created; changing either here writes the file and the next
+ * configuration window comes up with it. The panel says so rather than leaving
+ * someone to wonder why nothing moved.
+ */
+static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                       void *data, int event)
+{
+    static const int prefs[] = { KITTY_THEME_SYSTEM, KITTY_THEME_LIGHT,
+                                 KITTY_THEME_DARK };
+    static const char *const names[] = { "Follow Windows", "Light", "Dark" };
+    int i;
+
+    if (event == EVENT_REFRESH) {
+        int cur = kitty_theme_app_pref();
+        dlg_update_start(ctrl, dlg);
+        dlg_listbox_clear(ctrl, dlg);
+        for (i = 0; i < 3; i++)
+            dlg_listbox_addwithid(ctrl, dlg, names[i], prefs[i]);
+        for (i = 0; i < 3; i++)
+            if (prefs[i] == cur)
+                dlg_listbox_select(ctrl, dlg, i);
+        dlg_update_done(ctrl, dlg);
+    } else if (event == EVENT_SELCHANGE) {
+        int idx = dlg_listbox_index(ctrl, dlg);
+        if (idx >= 0 && idx < 3)
+            WriteParameter(INIT_SECTION, "theme",
+                           (char *)kitty_theme_pref_to_string(prefs[idx]));
+    }
+}
+
+/* A number in kitty.ini, edited as text. Empty means "not set" - which is not
+ * the same as zero for either of these keys, so an empty box writes nothing
+ * rather than writing a 0 that would be read back as a real height. */
+static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                     void *data, int event)
+{
+    const char *key = (const char *)ctrl->context.p;
+
+    if (event == EVENT_REFRESH) {
+        char buf[32];
+        buf[0] = '\0';
+        if (!ReadParameterN("ConfigBox", key, buf, sizeof(buf)))
+            buf[0] = '\0';
+        dlg_editbox_set(ctrl, dlg, buf);
+    } else if (event == EVENT_VALCHANGE) {
+        char *s = dlg_editbox_get(ctrl, dlg);
+        if (s[0])
+            WriteParameter("ConfigBox", (char *)key, s);
+        sfree(s);
+    }
+}
+
+static void scb_panel_config_window(struct controlbox *b, bool midsession)
+{
+#ifdef MOD_PERSO
+    struct controlset *s;
+
+    if (midsession || GetPuttyFlag())
+        return;
+
+    ctrl_settitle(b, "Application/Config window",
+                  "The configuration window itself");
+
+    s = ctrl_getset(b, "Application/Config window", "look", "Appearance");
+    ctrl_droplist(s, "Colours:", NO_SHORTCUT, 40, HELPCTX(no_help),
+                  kitty_cfgwin_theme_handler, P(NULL));
+    ctrl_text(s, "One setting for the whole suite - kitty, kageant and "
+              "kittygen all read it. Dark needs Windows 10 1809 or newer.",
+              HELPCTX(no_help));
+    /* Said HERE, beside the control, not only in the note at the foot of the
+     * panel: someone changes the colours and looks at this window to see
+     * whether anything happened. It cannot - the theme is applied to a window
+     * when it is created, and this one already was. */
+    ctrl_text(s, "Changes apply to windows opened afterwards - this "
+              "configuration window keeps the colours it opened with.",
+              HELPCTX(no_help));
+
+    s = ctrl_getset(b, "Application/Config window", "size", "Size");
+    ctrl_editbox(s, "Saved-session list, in rows:", NO_SHORTCUT, 30,
+                 HELPCTX(no_help), kitty_cfgwin_num_handler, P("height"),
+                 ED_STR);
+    ctrl_editbox(s, "Window height, in dialog units (blank = fit the list):",
+                 NO_SHORTCUT, 30, HELPCTX(no_help),
+                 kitty_cfgwin_num_handler, P("windowheight"), ED_STR);
+
+    s = ctrl_getset(b, "Application/Config window", "when", NULL);
+    ctrl_text(s, "These take effect in the NEXT configuration window - this "
+              "one was already built when it opened.", HELPCTX(no_help));
+#else
+    (void)b; (void)midsession;
+#endif
+}
+
 /*
  * The APPLICATION tab's panels (KiTTY, design §9).
  *
@@ -8596,13 +8701,48 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
     /* The named-proxy editor, which used to be a pop-up window. */
     kitty_proxy_build_panel(b);
 
+    scb_panel_config_window(b, midsession);
+
+    /*
+      * Migration: what to do about sessions that belong to an older KiTTY or
+      * to stock PuTTY. Registry-backed installs only - a portable store has no
+      * foreign hive to reveal - and only when such a hive actually holds
+      * sessions, because an empty switch explains nothing.
+      */
+    {
+        extern int GetIniFileFlag(void);              /* kitty_commun.c */
+        extern int kitty_has_foreign_sessions(void);  /* windows/storage.c */
+        if (GetIniFileFlag() == 0 /* SAVEMODE_REG */ &&
+            kitty_has_foreign_sessions()) {
+            ctrl_settitle(b, "Application/Migration",
+                          "Sessions from an older KiTTY or from PuTTY");
+            s = ctrl_getset(b, "Application/Migration", "foreign",
+                            "Old session stores");
+            ctrl_text(s, "This machine has sessions in an old 9bis-KiTTY or "
+                      "PuTTY registry hive. Shown, they appear in the "
+                      "saved-session list and can be opened, edited and "
+                      "deleted from it.", HELPCTX(no_help));
+            ctrl_checkbox(s, "Show / edit / delete old PuTTY or KiTTY sessions",
+                          NO_SHORTCUT, HELPCTX(no_help),
+                          kitty_showforeign_handler, P(NULL));
+            ctrl_text(s, "kitty.ini: [KiTTY] showforeignsessions = auto "
+                      "(the default), yes, or no. Auto shows them only while "
+                      "this KiTTY has no sessions of its own, so they retire "
+                      "themselves once you have your own.",
+                      HELPCTX(no_help));
+        }
+    }
+
     ctrl_settitle(b, "Application/Updates", "Keeping KiTTY up to date");
     s = ctrl_getset(b, "Application/Updates", "check", "Update check");
     /* On startup, check for a newer release and show a one-line notice in the
-     * terminal when a session opens. */
-    ctrl_checkbox(s, "Check for updates", NO_SHORTCUT,
-                  HELPCTX(no_help), conf_checkbox_handler,
-                  I(CONF_check_update_startup));
+     * terminal when a session opens. Edits kitty.ini, not the session. */
+    ctrl_checkbox(s, "Check for updates when KiTTY starts", NO_SHORTCUT,
+                  HELPCTX(no_help), kitty_checkupdate_global_handler, P(NULL));
+    /* The check on demand, next to the switch that decides whether it happens
+     * by itself. */
+    ctrl_pushbutton(s, "Check for updates now", NO_SHORTCUT,
+                    HELPCTX(no_help), checkupdate_button_handler, P(NULL));
 #else
     (void)b; (void)midsession;
 #endif

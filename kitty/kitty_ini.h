@@ -28,6 +28,14 @@ char default_init_file_content[] =
 \n\
 [ConfigBox]\n\
 \n\
+; applicationpanel: which leaf of the configuration box's APPLICATION tab to\n\
+;    come back to. Written by KiTTY when you leave that tab or close the box,\n\
+;    so the next configuration window opens where you were - among the proxies\n\
+;    if that is what you were setting up. The Session tab is not remembered:\n\
+;    it opens on the session panel, which is what most people came for.\n\
+;    This key lives in the [ConfigBox] section.\n\
+;applicationpanel=Application/Named proxies\n\
+\n\
 ; dblclick: what a double-click on a saved session does\n\
 ;    - open: load it and open it in this window (like the Open button)\n\
 ;    - start: launch it in a new window and keep the configuration box open (like the Start button)\n\
@@ -618,6 +626,29 @@ char default_init_file_content[] =
 ;    panel and the menu entries go, and a session that has a level saved opens\n\
 ;    opaque anyway. The /transparency command cannot turn it back on either.\n\
 ;transparency=yes\n\
+\n\
+; showforeignsessions: also list the sessions kept by an OLDER KiTTY (the\n\
+;    9bis hive) or by stock PuTTY, so they can be opened, edited and deleted\n\
+;    from KiTTY's own saved-session list. Registry save modes only - a portable\n\
+;    store has no foreign hive. Values: auto (the default), yes, or no.\n\
+;    \"auto\" shows them only while this KiTTY has no sessions of its own, so an\n\
+;    upgrade never opens onto an apparently empty list and the old sessions\n\
+;    retire themselves once you have your own. Set yes to keep them listed for\n\
+;    good, or no to hide them outright. The switch is in the configuration box\n\
+;    under Application > Migration; ticking it records an explicit choice,\n\
+;    which then wins over this key.\n\
+;showforeignsessions=auto\n\
+\n\
+; checkupdate: look for a newer KiTTY release when a session starts, and show\n\
+;    a one-line notice at the top of the terminal when there is one. Default\n\
+;    yes. The check is asynchronous and touches the terminal only once, at the\n\
+;    clean top of a session, so a full-screen program is never corrupted by it.\n\
+;    This is an APPLICATION setting. It used to be stored in every saved\n\
+;    session as CheckUpdateStartup, which meant the answer depended on which\n\
+;    session you happened to open first; that key is now deleted whenever a\n\
+;    session is saved. The switch is in the configuration box under\n\
+;    Application > Updates, beside \"Check for updates now\".\n\
+;checkupdate=yes\n\
 \n\
 ; theme: which colours KiTTY's windows paint in - system, light or dark.\n\
 ;    This is one setting for the whole suite: kitty, kageant and kittygen all\n\

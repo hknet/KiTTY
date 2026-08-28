@@ -71,4 +71,9 @@ HWND CreateToolTip(int toolID, HWND hDlg, PTSTR pszText) ;
 // is the resolver handed to kitty_theme_hook_dialogs() in WinMain.
 int kitty_theme_app_pref( void ) ;
 bool kitty_theme_app_dark( void ) ;
+// KiTTY: the update check, an application setting in kitty.ini ([KiTTY]
+// checkupdate, default on). It used to be per-session, which meant the answer
+// depended on which session opened first. See kitty_win.c.
+int kitty_check_update_enabled( void ) ;
+void kitty_set_check_update_enabled( int on ) ;
 #endif

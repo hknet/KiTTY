@@ -173,6 +173,12 @@ static const char *const kitty_retired_keys[] = {
      * BOOL meant "warn before syncing" and nothing read it (OSC 52 was never
      * ported), so its value is deliberately not carried across - see conf.h. */
     "OSC52WarnBeforeClipboardSync",
+    /* -> [KiTTY] checkupdate. Whether KiTTY looks for a new release is a
+     * property of the installation, not of a connection; the per-session value
+     * is not migrated because there is nothing sensible to migrate FROM - each
+     * session carried its own answer and the first session opened won. Saving
+     * a session drops the key. */
+    "CheckUpdateStartup",
 };
 
 static void kitty_retire_renamed_keys(settings_w *handle)
