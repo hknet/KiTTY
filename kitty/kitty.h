@@ -728,4 +728,5 @@ int kitty_hotkey_conflict_scan( unsigned int mods, unsigned int vk,
 int kitty_hotkey_enabled_count( const char * exclude ) ;
 int kitty_hotkey_conflict_report( char * buf, int buflen ) ;
 
+
 #endif // KITTY_H

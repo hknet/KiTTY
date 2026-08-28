@@ -217,20 +217,30 @@ static void kitty_autopw_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
 }
 
-/* "Show password" checkbox: unmasks the auto-login password editbox so the user
- * can verify the stored value. g_autopw_ctrl is the password editbox, captured
- * when the Connection/Data panel is built. */
-static dlgcontrol *g_autopw_ctrl = NULL;
+/* "Show password" checkbox: unmasks a password editbox so the user can read
+ * back what is stored. The checkbox's context holds the ADDRESS of the
+ * variable that holds its editbox, not the editbox itself: the panels are
+ * built in whatever order the tree is walked, and a control captured at build
+ * time is null until its own panel has been built. Going through the variable
+ * means the checkbox always finds the field it belongs to, and one handler
+ * serves every password field instead of a copy per panel.
+ *
+ * Always starts masked when a panel is (re)opened, whatever it was last time -
+ * a stored password should not appear on screen because the box happens to
+ * reopen on that panel. */
+static dlgcontrol *g_autopw_ctrl = NULL;    /* Connection/Data auto-login */
+static dlgcontrol *g_proxypw_ctrl = NULL;   /* Connection/Proxy */
 static void kitty_showpw_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                  void *data, int event)
 {
+    dlgcontrol **field = (dlgcontrol **)ctrl->context.p;
+    if (!field || !*field)
+        return;
     if (event == EVENT_REFRESH) {
-        dlg_checkbox_set(ctrl, dlg, false);     /* default masked on (re)open */
-        if (g_autopw_ctrl)
-            dlg_editbox_set_masked(g_autopw_ctrl, dlg, false);
+        dlg_checkbox_set(ctrl, dlg, false);
+        dlg_editbox_set_masked(*field, dlg, false);
     } else if (event == EVENT_VALCHANGE) {
-        if (g_autopw_ctrl)
-            dlg_editbox_set_masked(g_autopw_ctrl, dlg, dlg_checkbox_get(ctrl, dlg));
+        dlg_editbox_set_masked(*field, dlg, dlg_checkbox_get(ctrl, dlg));
     }
 }
 
@@ -1192,6 +1202,15 @@ static void kitty_winscppath_handler(dlgcontrol *ctrl, dlgparam *dlg,
 #define HOST_BOX_TITLE "Host Name (or IP address)"
 #define PORT_BOX_TITLE "Port"
 
+/*
+ * The unrepresentable-value machinery lives in windows/dialog.c, not here.
+ *
+ * It has to: windows/dialog.c is compiled once into the shared GUI library
+ * and linked into putty.exe and pterm.exe as well as kitty.exe, and those do
+ * not link this file. Defining it here left the stock targets with undefined
+ * references to functions dialog.c calls. See kitty_conf_validate there.
+ */
+
 void conf_radiobutton_handler(dlgcontrol *ctrl, dlgparam *dlg,
                               void *data, int event)
 {
@@ -1209,12 +1228,29 @@ void conf_radiobutton_handler(dlgcontrol *ctrl, dlgparam *dlg,
         for (button = 0; button < ctrl->radio.nbuttons; button++)
             if (val == ctrl->radio.buttondata[button].i)
                 break;
-        /* We expected that `break' to happen, in all circumstances. */
-        assert(button < ctrl->radio.nbuttons);
+        if (button >= ctrl->radio.nbuttons) {
+            /* Not a value this setting has an option for; see above. Fall
+             * back to the default, and to the first option if the default is
+             * itself unrepresentable - which it can be, since "Default
+             * Settings" is a stored session and can be just as wrong. */
+            int def = kitty_conf_default_int(ctrl->context.i);
+            for (button = 0; button < ctrl->radio.nbuttons; button++)
+                if (def == ctrl->radio.buttondata[button].i)
+                    break;
+            if (button >= ctrl->radio.nbuttons)
+                button = 0;
+            kitty_conf_invalid_note(ctrl->label);
+            /* Put the corrected value in Conf as well as on the screen, or
+             * the bad one would be written straight back out on the next
+             * save and the file would never heal. */
+            conf_set_int(conf, ctrl->context.i,
+                         ctrl->radio.buttondata[button].i);
+        }
         dlg_radiobutton_set(ctrl, dlg, button);
     } else if (event == EVENT_VALCHANGE) {
         button = dlg_radiobutton_get(ctrl, dlg);
-        assert(button >= 0 && button < ctrl->radio.nbuttons);
+        if (button < 0 || button >= ctrl->radio.nbuttons)
+            return;              /* nothing selected: nothing to store */
         conf_set_int(conf, ctrl->context.i,
                      ctrl->radio.buttondata[button].i);
     }
@@ -2533,7 +2569,20 @@ static bool load_selected_session(
 #endif
     if (maybe_launch)
         *maybe_launch = !isdef;
+    /* Anything the panels cannot represent is noted while they refresh, and
+     * reported once afterwards - one message about the session, rather than
+     * one per setting. */
+    kitty_conf_invalid_reset();
+    kitty_conf_invalid_session_is(ssd->sesslist.sessions[i]);
+    kitty_conf_validate(conf);
     dlg_refresh(NULL, dlg);
+    /* Not reported here. With the panel cache a panel's controls do not exist
+     * until it is first shown, and a handler that never runs cannot notice a
+     * value it cannot represent - so at this moment the only settings checked
+     * are the ones on panels already built. The rest are checked as the
+     * background warm-up builds them, and the box reports when that finishes
+     * (windows/dialog.c). */
+    kitty_conf_invalid_report(dlg, ssd->sesslist.sessions[i]);
     /* Restore the selection, which might have been clobbered by
      * changing the value of the edit box. The listbox API wants a visible row
      * position, not the stable session id used in filtered/search lists. */
@@ -7378,7 +7427,8 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
                 cpw->editbox.password = true;
                 g_autopw_ctrl = cpw;
                 ctrl_checkbox(s, "Show password", NO_SHORTCUT,
-                              HELPCTX(no_help), kitty_showpw_handler, P(NULL));
+                              HELPCTX(no_help), kitty_showpw_handler,
+                              P(&g_autopw_ctrl));
                 ctrl_editbox(s, "Auto-command after login", NO_SHORTCUT,
                              50, HELPCTX(no_help),
                              conf_editbox_handler,
@@ -7545,6 +7595,10 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
                          conf_editbox_handler,
                          I(CONF_proxy_password), ED_STR);
         c->editbox.password = true;
+        g_proxypw_ctrl = c;
+        ctrl_checkbox(s, "Show password", NO_SHORTCUT,
+                      HELPCTX(proxy_auth), kitty_showpw_handler,
+                      P(&g_proxypw_ctrl));
         ctrl_editbox(s, "Command to send to proxy (for some types)", 'm', 100,
                      HELPCTX(proxy_command),
                      conf_editbox_handler,

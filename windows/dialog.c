@@ -77,6 +77,9 @@ static PortableDialogStuff *pds_new(size_t nctrltrees)
     for (size_t i = 0; i < pds->nctrltrees; i++) {
         winctrl_init(&pds->ctrltrees[i]);
         dp_add_tree(pds->dp, &pds->ctrltrees[i]);
+    /* The control box describes every panel whether or not its windows have
+     * been built, so it is what a whole-session check has to work from. */
+    kitty_conf_ctrlbox_is(pds->ctrlbox);
     }
 
     pds->dp->errtitle = dupprintf("%s Error", appname);
@@ -86,8 +89,164 @@ static PortableDialogStuff *pds_new(size_t nctrltrees)
     return pds;
 }
 
+/*
+ * Settings a loaded session held that no option in the box can represent.
+ *
+ * A session is just text on disk: a hand edit, a file written by a newer
+ * build, a truncated write, and a setting ends up holding a number that is
+ * not one of the values it can take. Upstream asserts on that and the whole
+ * application goes down over one bad line. Nothing about a bad value in a
+ * file justifies losing the session the user was working in, so instead the
+ * value is replaced with the default, the replacement is recorded, and the
+ * load says what it had to change.
+ *
+ * The check lives here rather than in the loader because this is where the
+ * legal values are KNOWN - they are the buttons of the group. The loader sees
+ * only a name and a number and has no way to tell a wrong one from a right
+ * one. The consequence is that a session loaded from the command line, which
+ * never builds the panels, is not checked until its configuration box is
+ * opened.
+ */
+int kitty_conf_default_int(int key);
+
+static char *kitty_invalid_settings = NULL;   /* comma-separated, or NULL */
+static int kitty_invalid_count = 0;
+static char *kitty_invalid_session = NULL;    /* whose session it was */
+
+void kitty_conf_invalid_note(const char *what)
+{
+    char *old = kitty_invalid_settings;
+    if (!what || !*what)
+        what = "(unnamed setting)";
+    kitty_invalid_count++;
+    if (kitty_invalid_count > 12)     /* a wholly corrupt file, not a list */
+        return;
+    kitty_invalid_settings = old ? dupcat(old, ", ", what) : dupstr(what);
+    sfree(old);
+}
+
+void kitty_conf_invalid_reset(void)
+{
+    sfree(kitty_invalid_settings);
+    kitty_invalid_settings = NULL;
+    kitty_invalid_count = 0;
+}
+
+void kitty_conf_invalid_session_is(const char *name)
+{
+    sfree(kitty_invalid_session);
+    kitty_invalid_session = dupstr(name ? name : "");
+}
+
+void kitty_conf_invalid_report(dlgparam *dlg, const char *session)
+{
+    char *msg;
+    if (!kitty_invalid_settings)
+        return;
+    if (!session)
+        session = kitty_invalid_session;
+    msg = dupprintf(
+        "Session \"%s\" contains %d setting%s this version cannot "
+        "represent:\n\n%s%s\n\nThe default%s been used instead. Saving "
+        "the session will store the corrected value%s.",
+        session ? session : "", kitty_invalid_count,
+        kitty_invalid_count == 1 ? "" : "s", kitty_invalid_settings,
+        kitty_invalid_count > 12 ? ", ..." : "",
+        kitty_invalid_count == 1 ? " has" : "s have",
+        kitty_invalid_count == 1 ? "" : "s");
+    dlg_error_msg(dlg, msg);
+    sfree(msg);
+    kitty_conf_invalid_reset();
+}
+
+/*
+ * Check a whole loaded session against what the controls can actually hold.
+ *
+ * This walks the abstract control box rather than the built panels, and that
+ * is the entire point: with the panel cache, a panel's WINDOWS do not exist
+ * until it is first shown, so a handler-based check only ever sees the panels
+ * somebody happened to visit. A session with a bad value on an unvisited
+ * panel would then be written straight back out, still bad, having been
+ * neither corrected nor reported. The control box, in contrast, describes
+ * every panel from the moment the box is built, buttons and all.
+ *
+ * The fallback in conf_radiobutton_handler stays where it is. This pass is
+ * the one that finds everything; that one is the guarantee that nothing gets
+ * through even so.
+ */
+static struct controlbox *kitty_conf_ctrlbox = NULL;
+
+void kitty_conf_ctrlbox_is(struct controlbox *b)
+{
+    kitty_conf_ctrlbox = b;
+}
+
+void kitty_conf_validate(Conf *conf)
+{
+    size_t si, ci;
+    int button;
+
+    if (!kitty_conf_ctrlbox || !conf)
+        return;
+
+    for (si = 0; si < kitty_conf_ctrlbox->nctrlsets; si++) {
+        struct controlset *s = kitty_conf_ctrlbox->ctrlsets[si];
+        for (ci = 0; ci < s->ncontrols; ci++) {
+            dlgcontrol *ctrl = s->ctrls[ci];
+            int val;
+
+            if (ctrl->type != CTRL_RADIO ||
+                ctrl->handler != conf_radiobutton_handler)
+                continue;
+
+            val = conf_get_int(conf, ctrl->context.i);
+            for (button = 0; button < ctrl->radio.nbuttons; button++)
+                if (val == ctrl->radio.buttondata[button].i)
+                    break;
+            if (button < ctrl->radio.nbuttons)
+                continue;                      /* a value it can hold */
+
+            button = 0;
+            {
+                int def = kitty_conf_default_int(ctrl->context.i);
+                int b;
+                for (b = 0; b < ctrl->radio.nbuttons; b++)
+                    if (def == ctrl->radio.buttondata[b].i) {
+                        button = b;
+                        break;
+                    }
+            }
+            kitty_conf_invalid_note(ctrl->label);
+            conf_set_int(conf, ctrl->context.i,
+                         ctrl->radio.buttondata[button].i);
+        }
+    }
+}
+
+/*
+ * The value this setting would have in a session that never mentioned it.
+ * do_defaults(NULL) is the application's own idea of a default, so a site
+ * that has customised "Default Settings" gets ITS value rather than the
+ * built-in one, which is what a user expects the word to mean. Built once and
+ * kept: it is read on an error path and does not change while the program
+ * runs.
+ */
+int kitty_conf_default_int(int key)
+{
+    static Conf *defaults = NULL;
+    if (!defaults) {
+        defaults = conf_new();
+        do_defaults(NULL, defaults);
+    }
+    return conf_get_int(defaults, key);
+}
+
 static void pds_free(PortableDialogStuff *pds)
 {
+    /* Before the box goes, or the session check would be left pointing at
+     * freed memory - and it is called from a load, which can happen in the
+     * next configuration box this process opens. */
+    kitty_conf_ctrlbox_is(NULL);
     ctrl_free_box(pds->ctrlbox);
 
     dp_cleanup(pds->dp);
@@ -769,6 +928,65 @@ HWND kitty_cfg_item(HWND dlg, int id);
  */
 static int kitty_cfg_scroll_y = 0;
 
+/* Pixels one wheel notch scrolls: the user's own "lines to scroll" setting,
+ * times a text line. SPI_GETWHEELSCROLLLINES returns WHEEL_PAGESCROLL when
+ * they have asked for a page at a time. */
+static int kitty_cfg_wheel_lines(void)
+{
+    UINT lines = 3;
+    SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &lines, 0);
+    if (lines == WHEEL_PAGESCROLL)
+        return 240;
+    if (lines < 1)
+        lines = 1;
+    return (int)lines * 16;
+}
+
+/*
+ * The category tree's wheel, one item at a time.
+ *
+ * Left to itself the tree jumps three rows per notch and ignores anything
+ * smaller, so a trackpad's stream of tiny deltas moves it not at all and then
+ * all at once. Same cure as the panel: keep the remainder, and move in single
+ * rows - a row is the finest step a tree view has, its scroll bar counting
+ * items rather than pixels.
+ */
+static void kitty_cfg_tree_wheel(HWND tv, WPARAM wParam)
+{
+    static int remainder = 0;
+    UINT lines = 3;
+    int items, i;
+
+    SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &lines, 0);
+    if (lines == WHEEL_PAGESCROLL)
+        lines = (UINT)TreeView_GetVisibleCount(tv);
+    if (lines < 1)
+        lines = 1;
+
+    remainder += GET_WHEEL_DELTA_WPARAM(wParam) * (int)lines;
+    items = remainder / WHEEL_DELTA;
+    remainder -= items * WHEEL_DELTA;
+
+    for (i = 0; i < (items < 0 ? -items : items); i++)
+        SendMessage(tv, WM_VSCROLL,
+                    MAKEWPARAM(items > 0 ? SB_LINEUP : SB_LINEDOWN, 0), 0);
+}
+
+static WNDPROC kitty_cfg_tree_oldproc = NULL;
+
+static LRESULT CALLBACK KittyCfgTreeProc(HWND hwnd, UINT msg,
+                                         WPARAM wParam, LPARAM lParam)
+{
+    /* Only when the tree has the focus does Windows deliver the wheel here;
+     * pointing at it without clicking goes to the box, which forwards. Both
+     * roads have to end in the same place or the two feel different. */
+    if (msg == WM_MOUSEWHEEL) {
+        kitty_cfg_tree_wheel(hwnd, wParam);
+        return 0;
+    }
+    return CallWindowProc(kitty_cfg_tree_oldproc, hwnd, msg, wParam, lParam);
+}
+
 /*
  * The host's own procedure. It owns no controls of its own: its whole job is
  * to be a window that clips and scrolls, and to hand everything its children
@@ -931,17 +1149,19 @@ static void kitty_cfg_panel_scroll_to(HWND hwnd, struct kitty_cfg_panel *p,
         return;
     kitty_cfg_scroll_y = newy;
     /*
-     * Move the children, then repaint the host WHOLE.
+     * BLIT, do not repaint everything.
      *
-     * ScrollWindow on its own blits the client area and moves the children,
-     * which is the fast way and leaves ghosts here: the blit copies the
-     * pixels of the controls too, the controls then redraw at their new
-     * positions, and the copies stay where they were. Repainting everything
-     * costs a panel's worth of drawing per notch and is correct.
+     * Repainting the whole host on every notch is correct and flickers
+     * horribly - a panel's worth of drawing per wheel click. ScrollWindowEx
+     * moves the children and copies the pixels that are still good, leaving
+     * only the newly uncovered strip to draw.
+     *
+     * That blit ghosted while the host had WS_CLIPCHILDREN, because the strip
+     * could not be erased under the controls. Without that style it is both
+     * correct and cheap, which is why the two changes belong together.
      */
     ScrollWindowEx(kitty_cfg_panel_host, 0, -delta, NULL, NULL, NULL, NULL,
-                   SW_SCROLLCHILDREN);
-    InvalidateRect(kitty_cfg_panel_host, NULL, TRUE);
+                   SW_SCROLLCHILDREN | SW_INVALIDATE | SW_ERASE);
     UpdateWindow(kitty_cfg_panel_host);
     SetScrollPos(GetDlgItem(hwnd, IDCX_PANELSCROLL), SB_CTL, newy, TRUE);
 }
@@ -1658,6 +1878,9 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                                       NULL);
             font = SendMessage(hwnd, WM_GETFONT, 0, 0);
             SendMessage(treeview, WM_SETFONT, font, MAKELPARAM(true, 0));
+            /* One item per step under the wheel; see KittyCfgTreeProc. */
+            kitty_cfg_tree_oldproc = (WNDPROC)SetWindowLongPtr(
+                treeview, GWLP_WNDPROC, (LONG_PTR)KittyCfgTreeProc);
             tvfaff.treeview = treeview;
             memset(tvfaff.lastat, 0, sizeof(tvfaff.lastat));
         }
@@ -1829,25 +2052,61 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         }
         return 0;
 
-      case WM_MOUSEWHEEL:
+      case WM_MOUSEWHEEL: {
+        /* Point at the tree and the wheel moves the TREE, whether or not it
+         * has the focus. Windows sends the wheel to the focused window, so
+         * without this the tree only ever scrolls after a click. */
+        POINT wpt;
+        HWND tv = GetDlgItem(hwnd, IDCX_TREEVIEW);
+        wpt.x = (short)LOWORD(lParam);
+        wpt.y = (short)HIWORD(lParam);
+        if (tv) {
+            RECT tr;
+            GetWindowRect(tv, &tr);
+            if (PtInRect(&tr, wpt)) {
+                kitty_cfg_tree_wheel(tv, wParam);
+                return 0;
+            }
+        }
+      }
         /* The wheel scrolls the panel wherever the pointer is, as long as the
          * panel HAS a scroll bar - a panel that fits does not move under the
          * wheel, which is what the reader expects. */
         if (kitty_cfg_active_panel) {
             HWND sb = GetDlgItem(hwnd, IDCX_PANELSCROLL);
             if (sb && IsWindowVisible(sb)) {
-                int delta = GET_WHEEL_DELTA_WPARAM(wParam);
-                kitty_cfg_panel_scroll_to(
-                    hwnd, kitty_cfg_active_panel,
-                    kitty_cfg_scroll_y - (delta / WHEEL_DELTA) * 48);
+                /*
+                 * The remainder is KEPT. A mouse wheel sends WHEEL_DELTA per
+                 * notch, but a trackpad sends a continuous stream of much
+                 * smaller values: dividing each one by WHEEL_DELTA throws
+                 * nearly all of them away, so the panel sits still and then
+                 * jumps - "it is not scrolling, it is hopping". Accumulating
+                 * turns the same stream into smooth movement, and a real
+                 * notch still moves exactly one step.
+                 */
+                static int wheel_remainder = 0;
+                int step = kitty_cfg_wheel_lines();
+                int amount;
+                wheel_remainder += GET_WHEEL_DELTA_WPARAM(wParam) * step;
+                amount = wheel_remainder / WHEEL_DELTA;
+                wheel_remainder -= amount * WHEEL_DELTA;
+                if (amount)
+                    kitty_cfg_panel_scroll_to(hwnd, kitty_cfg_active_panel,
+                                              kitty_cfg_scroll_y - amount);
                 return 0;
             }
         }
         return 0;
       case WM_TIMER:
         if ((UINT_PTR)wParam == KITTY_PANEL_WARMUP_TIMER) {
-            if (!kitty_cfg_warmup_step(pds))
+            if (!kitty_cfg_warmup_step(pds)) {
                 KillTimer(hwnd, KITTY_PANEL_WARMUP_TIMER);
+                /* Every panel exists now, so every setting has been through a
+                 * handler that knows what it may hold. Anything unrepresentable
+                 * found on the way is reported here - once, for the session as
+                 * a whole. */
+                kitty_conf_invalid_report(pds->dp, NULL);
+            }
             return 0;
         }
         if ((UINT_PTR)wParam == KITTY_WORKPLACE_POLL_TIMER) {

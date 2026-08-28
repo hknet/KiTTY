@@ -729,3 +729,20 @@ int ctrl_path_compare(const char *p1, const char *p2);
  * form a backwards linked list.
  */
 void ctrlset_normalise_aligns(struct controlset *s);
+
+/*
+ * KiTTY: settings a loaded session held that no option in the box can
+ * represent - a hand-edited file, one written by a newer build, a truncated
+ * write. kitty_conf_validate checks a whole session against the control box
+ * and replaces anything unrepresentable with the default; the report then
+ * names what was replaced. A bad value is survived and explained instead of
+ * taking the application down on an assertion. Defined in windows/dialog.c,
+ * which every GUI target links - kitty/kitty_config.c is not.
+ */
+void kitty_conf_validate(Conf *conf);
+void kitty_conf_ctrlbox_is(struct controlbox *b);
+void kitty_conf_invalid_reset(void);
+void kitty_conf_invalid_session_is(const char *name);
+void kitty_conf_invalid_report(dlgparam *dlg, const char *session);
+void kitty_conf_invalid_note(const char *what);
+int kitty_conf_default_int(int key);
