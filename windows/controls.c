@@ -91,7 +91,18 @@ HWND kitty_cfg_item(HWND dlg, int id)
  * check is not arithmetic - render a panel and look at it:
  * kitty.exe -cfgpanel <path> -demo-config-box <file>
  */
-#define GAPBETWEEN 3
+/*
+ * The gap between rows. Two, not three, for the same reason CHECKBOXGAP is
+ * two: at the old 8pt font a row was height + gap, and carrying the old gap
+ * over to a font whose rows are ~15% taller spends the increase twice - once
+ * on the row and again on the space after it. Every panel read as a list of
+ * unrelated lines rather than a form.
+ *
+ * This is the one constant that moves EVERY panel, so it is also the one to
+ * re-check by eye after changing: kitty.exe -cfgpanel <path>
+ * -demo-config-box <file>, and compare against the same panel before.
+ */
+#define GAPBETWEEN 2
 #define GAPWITHIN 1
 #define GAPXBOX 7
 #define GAPYBOX 4
@@ -2509,6 +2520,46 @@ void dlg_listbox_del(dlgcontrol *ctrl, dlgparam *dp, int index)
     SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), msg, index, 0);
 }
 
+/*
+ * Let a drop-down's LIST be wider than the box itself.
+ *
+ * A combo box drops a list exactly as wide as the control unless told
+ * otherwise, so an entry longer than the field is simply cut off - and there
+ * is nowhere else to read it: the list is not a tooltip and hovering shows
+ * nothing. The panels have several of these ("as globally configured
+ * (kitty.ini: namedproxy=)" is the one that prompted this), and the fix is one
+ * message per item added.
+ *
+ * Measured with the control's own font, because the box is Segoe UI 9 and the
+ * device context's default is not.
+ */
+static void kitty_combo_fit_dropdown(HWND combo, const char *text)
+{
+    HDC dc;
+    HFONT font, old = NULL;
+    SIZE sz;
+    int cur, want;
+
+    if (!combo || !text)
+        return;
+    dc = GetDC(combo);
+    if (!dc)
+        return;
+    font = (HFONT)SendMessage(combo, WM_GETFONT, 0, 0);
+    if (font)
+        old = (HFONT)SelectObject(dc, font);
+    if (GetTextExtentPoint32(dc, text, (int)strlen(text), &sz)) {
+        cur = (int)SendMessage(combo, CB_GETDROPPEDWIDTH, 0, 0);
+        /* Room for the scroll bar the list may need, and a little air. */
+        want = sz.cx + GetSystemMetrics(SM_CXVSCROLL) + 8;
+        if (want > cur)
+            SendMessage(combo, CB_SETDROPPEDWIDTH, want, 0);
+    }
+    if (old)
+        SelectObject(dc, old);
+    ReleaseDC(combo, dc);
+}
+
 void dlg_listbox_add(dlgcontrol *ctrl, dlgparam *dp, char const *text)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
@@ -2520,6 +2571,8 @@ void dlg_listbox_add(dlgcontrol *ctrl, dlgparam *dp, char const *text)
     msg = (c->ctrl->type==CTRL_LISTBOX && c->ctrl->listbox.height!=0 ?
            LB_ADDSTRING : CB_ADDSTRING);
     SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), msg, 0, (LPARAM)text);
+    if (msg == CB_ADDSTRING)
+        kitty_combo_fit_dropdown(kitty_cfg_item(dp->hwnd, c->base_id+1), text);
 }
 
 /*
@@ -2544,6 +2597,8 @@ void dlg_listbox_addwithid(dlgcontrol *ctrl, dlgparam *dp,
             LB_SETITEMDATA : CB_SETITEMDATA);
     index = SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), msg, 0, (LPARAM)text);
     SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), msg2, index, (LPARAM)id);
+    if (msg == CB_ADDSTRING)
+        kitty_combo_fit_dropdown(kitty_cfg_item(dp->hwnd, c->base_id+1), text);
 }
 
 int dlg_listbox_getid(dlgcontrol *ctrl, dlgparam *dp, int index)
