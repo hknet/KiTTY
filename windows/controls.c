@@ -47,9 +47,29 @@ HWND kitty_cfg_panel_host = NULL;
  * TermHeight=0 and PortNumber=0 while the strings survived: the numbers are
  * read through that path.
  */
+/*
+ * ...but ONLY for the dialog the host belongs to.
+ *
+ * kitty_cfg_panel_host is one global, and other dialogs are built from the
+ * same portable control layer with the SAME id base (IDCX_PANELBASE): the
+ * host-CA pop-up is one. Consulting the host for whoever asks therefore sent
+ * that pop-up's lookups into the configuration box's panel, and its refresh
+ * wrote its values into the box's controls - a stray "22" from the Session
+ * panel's port field appearing on the CA panel, and the pop-up's own check
+ * boxes left unset because the writes went elsewhere.
+ *
+ * The host is only ever a child of the configuration box, so that parent test
+ * is exactly the question "is this dialog the one that owns it".
+ */
+static bool kitty_cfg_host_is_for(HWND dlg)
+{
+    return kitty_cfg_panel_host && dlg &&
+        GetParent(kitty_cfg_panel_host) == dlg;
+}
+
 HWND kitty_cfg_owner(HWND dlg, int id)
 {
-    if (kitty_cfg_panel_host && GetDlgItem(kitty_cfg_panel_host, id))
+    if (kitty_cfg_host_is_for(dlg) && GetDlgItem(kitty_cfg_panel_host, id))
         return kitty_cfg_panel_host;
     return dlg;
 }
@@ -57,7 +77,7 @@ HWND kitty_cfg_owner(HWND dlg, int id)
 HWND kitty_cfg_item(HWND dlg, int id)
 {
     HWND h = NULL;
-    if (kitty_cfg_panel_host)
+    if (kitty_cfg_host_is_for(dlg))
         h = GetDlgItem(kitty_cfg_panel_host, id);
     if (!h)
         h = GetDlgItem(dlg, id);

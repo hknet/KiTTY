@@ -809,7 +809,19 @@ void kitty_proxy_build_panel(struct controlbox *b)
     struct pxpanel_data *pd;
     dlgcontrol *c;
 
-    if (GetPuttyFlag() || !kitty_proxy_editor_available())
+    /*
+     * NOT gated on proxyselection.
+     *
+     * This is an APPLICATION panel: it is where the definitions live, and an
+     * application panel does not come and go with a setting. It used to
+     * disappear on proxyselection=no, which is the setting for whether
+     * SESSIONS are offered a chooser - so turning that off took away the only
+     * place the definitions can be edited, and turning it back on again meant
+     * finding the key in kitty.ini. What proxyselection=no still does is
+     * remove the chooser and the Edit button from the session panels, which
+     * is what it is for.
+     */
+    if (GetPuttyFlag())
         return;
 
     pd = (struct pxpanel_data *)ctrl_alloc(b, sizeof(struct pxpanel_data));
@@ -859,9 +871,11 @@ void kitty_proxy_build_panel(struct controlbox *b)
                  pxp_str_handler, I(CONF_proxy_exclude_list), ED_STR);
     ctrl_checkbox(s, "Consider proxying local host connections", NO_SHORTCUT,
                   HELPCTX(no_help), pxp_bool_handler, I(CONF_even_proxy_localhost));
-    ctrl_droplist(s, "DNS lookup at proxy end:", NO_SHORTCUT, 40,
+    /* Short enough that the label and its drop-down share one line: the long
+     * forms pushed the combo onto the next row. */
+    ctrl_droplist(s, "DNS lookup at proxy:", NO_SHORTCUT, 40,
                   HELPCTX(no_help), pxp_list_handler, I(CONF_proxy_dns));
-    ctrl_droplist(s, "Print proxy diagnostics:", NO_SHORTCUT, 60,
+    ctrl_droplist(s, "Print diagnostics:", NO_SHORTCUT, 40,
                   HELPCTX(no_help), pxp_list_handler, I(CONF_proxy_log_to_term));
 
     s = ctrl_getset(b, "Application/Named proxies", "act", NULL);

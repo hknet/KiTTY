@@ -118,7 +118,7 @@ exe*.
 
 | Section | What it configures |
 |---|---|
-| `[KiTTY]` | The main section: feature switches (hyperlinks, transparency, icons, background image, …), `savemode`, security options (`PortablePasswordProtection`, `readonly`, `restrictacl`), window/title behaviour, scripting, `theme` (`system`/`light`/`dark` - the colours every KiTTY window paints in, kageant and kittygen included; dark needs Windows 10 1809 or newer), and `checkupdate` (look for a new release at startup), and `showforeignsessions` (also list an older KiTTY's or PuTTY's own saved sessions - `auto`/`yes`/`no`, default `auto`). |
+| `[KiTTY]` | The main section: feature switches (hyperlinks, transparency, icons, background image, …), `savemode`, security options (`PortablePasswordProtection`, `readonly`, `restrictacl`), window/title behaviour, scripting, `theme` (`system`/`light`/`dark` - the colours every KiTTY window paints in, kageant and kittygen included; dark needs Windows 10 1809 or newer), and `checkupdate` (look for a new release at startup), and `showforeignsessions` (also list an older KiTTY's or PuTTY's own saved sessions - `auto`/`yes`/`no`, default `auto`), and where the helper programs live on this PC: `WinSCPPath`, `rzcommand` and `szcommand`. |
 | `[Agent]` | kageant (the SSH agent): `askconfirmation` (`yes`/`auto`/`no`/`hello` - the last one demands a Windows Hello gesture for the confirmation), `messageonkeyusage`, `loadonstartup` + the `startupkeyN` list, `retrykeys` (what to do when a startup key's media returns), the `agentlog*` settings, `hellocacheseconds` (how long one Windows Hello unlock keeps covering further protected keys; `0` asks every time). |
 | `[ConfigBox]` | Configuration-box behaviour: `dblclick` (double-click on a saved session = Open or Start), `defaultsettings` visibility, `loadlastsession` (off = quick connect: open on Default Settings with the caret in Host Name), `foldernavigation` (session folders as ROWS of the saved-session list rather than a drop-down), box height, `windowheight` and `windowwidth` (the size of the configuration window itself), and `applicationpanel` (the Application tab's leaf, remembered between configuration windows). |
 | `[Shortcuts]` | Keyboard shortcuts for KiTTY menu actions, e.g. `duplicate={CONTROL}N`. |
@@ -212,6 +212,31 @@ smaller than its own minimum.
 `[ConfigBox] height` is a different thing: it is the saved-session list's
 length in ROWS, and because that list is built into the Session panel it takes
 effect in the next configuration window rather than the open one.
+
+## Helper programs — `WinSCPPath`, `rzcommand`, `szcommand`
+
+Where WinSCP and the ZModem helpers (`rz.exe` / `sz.exe` from lrzsz) are
+installed:
+
+```ini
+[KiTTY]
+WinSCPPath=C:\Program Files\WinSCP\WinSCP.exe
+rzcommand=C:\Tools\lrzsz\rz.exe
+szcommand=C:\Tools\lrzsz\sz.exe
+```
+
+These are properties of the machine, not of a connection, so they live here
+and every session shares them. Set them on **Application > External tools**,
+which has a leaf per tool.
+
+Everything else about those tools stays per session, because it describes the
+remote rather than this PC: WinSCP's protocol, SFTP connect string and extra
+options on *Connection > SSH > WinSCP*, and the ZModem options and download
+folder on *Connection > ZModem*.
+
+⚠️ `rzcommand` and `szcommand` used to be per-session settings
+(`rzCommand` / `szCommand` in a saved session). Those values are no longer
+read: set the path once here instead.
 
 ## A minimal example
 

@@ -2583,6 +2583,8 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       int protocol, int protcfginfo);
 
 void setup_ca_config_box(struct controlbox *b);
+void setup_ca_config_box_at(struct controlbox *b, const char *path,
+                            bool standalone);
 
 /* Platforms provide this to be called from config.c */
 void show_ca_config_box(dlgparam *dlg);

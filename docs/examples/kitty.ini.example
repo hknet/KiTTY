@@ -658,8 +658,17 @@
 ;   [Shortcuts] rollup), as does the /winroll command.
 ;winroll=yes
 
-; WinSCPPath: the full path to the winscp.exe binary: 
+; WinSCPPath: the full path to the winscp.exe binary. Set it on
+;    Application > External tools > WinSCP.
 ;WinSCPPath=
+
+; rzcommand, szcommand: the full paths to the ZModem helper programs (rz.exe
+;    and sz.exe from lrzsz). Where they are installed is a property of this PC,
+;    so they live here rather than in each saved session; set them on
+;    Application > External tools > ZModem. Their OPTIONS, and the download
+;    folder, stay per session on Connection > ZModem.
+;rzcommand=
+;szcommand=
 
 ; winscpdir: legacy fallback directory containing WinSCP.exe (prefer WinSCPPath)
 ;winscpdir=

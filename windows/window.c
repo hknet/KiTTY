@@ -272,6 +272,7 @@ void kitty_proxy_record_connection(Conf *resolved);
  * receive data is intercepted in win_seat_output, send is pumped from the
  * message loop. No terminal.c edits. */
 int kitty_zmodem_active(void);
+const char *kitty_zmodem_command(int send);  /* kitty_zmodem.c: rz/sz path */
 int kitty_zmodem_receive(Conf *conf, Backend *backend, LogContext *logctx, Terminal *term);
 int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend, LogContext *logctx, Terminal *term);
 void kitty_zmodem_cancel(void);
@@ -4520,10 +4521,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
              */
             HMENU mp = (HMENU)wParam;
             bool xfer = kitty_zmodem_active();
-            bool has_rz = *filename_to_str(
-                conf_get_filename(wgs->conf, CONF_rzcommand)) != '\0';
-            bool has_sz = *filename_to_str(
-                conf_get_filename(wgs->conf, CONF_szcommand)) != '\0';
+            /* Where rz/sz live is a property of this PC now, not of the
+             * session - kitty.ini [KiTTY] rzcommand / szcommand. */
+            bool has_rz = *kitty_zmodem_command(0) != '\0';
+            bool has_sz = *kitty_zmodem_command(1) != '\0';
             int i, count, at = -1;
 
             DeleteMenu(mp, IDM_XYZSTART,  MF_BYCOMMAND);

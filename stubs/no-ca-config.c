@@ -12,3 +12,9 @@ void setup_ca_config_box(struct controlbox *b)
 {
     unreachable("should never call setup_ca_config_box in this application");
 }
+
+void setup_ca_config_box_at(struct controlbox *b, const char *path,
+                            bool standalone)
+{
+    unreachable("should never call setup_ca_config_box_at in this application");
+}

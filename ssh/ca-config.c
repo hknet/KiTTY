@@ -389,10 +389,33 @@ static void ca_rsa_type_handler(dlgcontrol *ctrl, dlgparam *dp,
     }
 }
 
-void setup_ca_config_box(struct controlbox *b)
+/*
+ * `path` is where the three groups go; `standalone` says whether to build a
+ * Done button beside them.
+ *
+ * Host CA records are store-wide rather than per session, so KiTTY offers
+ * them as a panel of its own configuration box as well as through this
+ * pop-up. A panel uses the box's own buttons and must not add a Done of its
+ * own. Nothing else differs between the two, so they share this instead of
+ * the controls being described twice.
+ */
+void setup_ca_config_box_at(struct controlbox *b, const char *path,
+                            bool standalone)
 {
     struct controlset *s;
     dlgcontrol *c;
+
+    /*
+     * A panel claims no keyboard shortcuts.
+     *
+     * These letters were chosen for a pop-up whose only other control was
+     * Done. Inside the configuration box the button row holds its own - Help
+     * is 'h', which this panel also wanted for "Valid hosts..." - and
+     * winctrl_add_shortcuts asserts when a letter is claimed twice, which is
+     * a crash rather than a glitch. The other KiTTY panels use NO_SHORTCUT
+     * throughout for the same reason.
+     */
+#define CASC(ch) (standalone ? (ch) : NO_SHORTCUT)
 
     /* Internal state for manipulating the host CA system */
     struct ca_state *st = (struct ca_state *)ctrl_alloc_with_free(
@@ -409,20 +432,23 @@ void setup_ca_config_box(struct controlbox *b)
         host_ca_free(hca);
     }
 
-    /* Action area, with the Done button in it */
-    s = ctrl_getset(b, "", "", "");
-    ctrl_columns(s, 5, 20, 20, 20, 20, 20);
-    c = ctrl_pushbutton(s, "Done", 'o', HELPCTX(ssh_kex_cert),
-                        ca_ok_handler, P(st));
-    c->button.iscancel = true;
-    c->column = 4;
+    /* Action area, with the Done button in it - only when this is a window of
+     * its own. As a panel, the configuration box's own buttons close it. */
+    if (standalone) {
+        s = ctrl_getset(b, "", "", "");
+        ctrl_columns(s, 5, 20, 20, 20, 20, 20);
+        c = ctrl_pushbutton(s, "Done", 'o', HELPCTX(ssh_kex_cert),
+                            ca_ok_handler, P(st));
+        c->button.iscancel = true;
+        c->column = 4;
+    }
 
     /* Load/save box, as similar as possible to the main saved sessions one */
-    s = ctrl_getset(b, "Main", "loadsave",
+    s = ctrl_getset(b, path, "loadsave",
                     "Load, save or delete a host CA record");
     ctrl_columns(s, 2, 75, 25);
     c = ctrl_editbox(s, "Name for this CA (shown in log messages)",
-                     'n', 100, HELPCTX(ssh_kex_cert),
+                     CASC('n'), 100, HELPCTX(ssh_kex_cert),
                      ca_name_handler, P(st), P(NULL));
     c->column = 0;
     st->ca_name_edit = c;
@@ -435,20 +461,20 @@ void setup_ca_config_box(struct controlbox *b)
     c->column = 0;
     c->listbox.height = 6;
     st->ca_reclist = c;
-    c = ctrl_pushbutton(s, "Load", 'l', HELPCTX(ssh_kex_cert),
+    c = ctrl_pushbutton(s, "Load", CASC('l'), HELPCTX(ssh_kex_cert),
                         ca_load_handler, P(st));
     c->column = 1;
-    c = ctrl_pushbutton(s, "Save", 'v', HELPCTX(ssh_kex_cert),
+    c = ctrl_pushbutton(s, "Save", CASC('v'), HELPCTX(ssh_kex_cert),
                         ca_save_handler, P(st));
     c->column = 1;
-    c = ctrl_pushbutton(s, "Delete", 'd', HELPCTX(ssh_kex_cert),
+    c = ctrl_pushbutton(s, "Delete", CASC('d'), HELPCTX(ssh_kex_cert),
                         ca_delete_handler, P(st));
     c->column = 1;
 
-    s = ctrl_getset(b, "Main", "pubkey", "Public key for this CA record");
+    s = ctrl_getset(b, path, "pubkey", "Public key for this CA record");
 
     ctrl_columns(s, 2, 75, 25);
-    c = ctrl_editbox(s, "Public key of certification authority", 'k', 100,
+    c = ctrl_editbox(s, "Public key of certification authority", CASC('k'), 100,
                      HELPCTX(ssh_kex_cert), ca_pubkey_edit_handler,
                      P(st), P(NULL));
     c->column = 0;
@@ -464,9 +490,9 @@ void setup_ca_config_box(struct controlbox *b)
     st->ca_pubkey_info = c = ctrl_text(s, " ", HELPCTX(ssh_kex_cert));
     c->text.wrap = false;
 
-    s = ctrl_getset(b, "Main", "options", "What this CA is trusted to do");
+    s = ctrl_getset(b, path, "options", "What this CA is trusted to do");
 
-    c = ctrl_editbox(s, "Valid hosts this key is trusted to certify", 'h', 100,
+    c = ctrl_editbox(s, "Valid hosts this key is trusted to certify", CASC('h'), 100,
                      HELPCTX(ssh_cert_valid_expr), ca_validity_handler,
                      P(st), P(NULL));
     st->ca_validity_edit = c;
@@ -495,4 +521,11 @@ void setup_ca_config_box(struct controlbox *b)
     c->context2 = I(offsetof(ca_options, permit_rsa_sha512));
     st->rsa_type_checkboxes[2] = c;
     ctrl_columns(s, 1, 100);
+#undef CASC
+}
+
+/* The pop-up form: its own groups under "Main", and its own Done button. */
+void setup_ca_config_box(struct controlbox *b)
+{
+    setup_ca_config_box_at(b, "Main", true);
 }

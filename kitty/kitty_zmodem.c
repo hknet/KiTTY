@@ -29,6 +29,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "putty.h"
+#include "kitty.h"      /* ReadParameterN + INIT_SECTION: the rz/sz paths are
+                         * kitty.ini settings, not per-session conf keys */
 
 #define ZM_PIPE_SIZE (64 * 1024)
 
@@ -80,6 +82,36 @@ static kitty_zmodem_state *zm_active = NULL;
 int kitty_zmodem_active(void)
 {
     return (zm_active && zm_active->transfering) ? 1 : 0;
+}
+
+/*
+ * Where rz and sz live on THIS PC: kitty.ini [KiTTY] rzcommand / szcommand,
+ * edited on Application > External tools > ZModem.
+ *
+ * They used to be per-session (CONF_rzcommand / CONF_szcommand), which wrote
+ * the path of a program installed on this machine into every saved session
+ * and made you set it again for each host. The OPTIONS stay per session -
+ * those are arguments for a particular remote, not a property of the install.
+ *
+ * A static buffer per direction; every caller is finished with it before the
+ * next call.
+ */
+const char *kitty_zmodem_command(int send)
+{
+    static char rz[MAX_PATH], sz[MAX_PATH];
+
+    /* Each key spelt out at its own call, not selected by a ternary: the
+     * kitty.ini drift check reads the source for the literal beside the
+     * ReadParameter, and a key it cannot see there is reported as one that
+     * nothing reads. */
+    if (send) {
+        if (!ReadParameterN(INIT_SECTION, "szcommand", sz, MAX_PATH))
+            sz[0] = '\0';
+        return sz;
+    }
+    if (!ReadParameterN(INIT_SECTION, "rzcommand", rz, MAX_PATH))
+        rz[0] = '\0';
+    return rz;
 }
 
 /* handle_free() first, then close the pipe: handle-io.c does not close the
@@ -324,7 +356,7 @@ static int existfile(const char *filename)
  * it the incoming stream. Returns 1 on success. */
 int kitty_zmodem_receive(Conf *conf, Backend *backend, LogContext *logctx, Terminal *term)
 {
-    const char *cmd = filename_to_str(conf_get_filename(conf, CONF_rzcommand));
+    const char *cmd = kitty_zmodem_command(0);
     const char *opts = conf_get_str(conf, CONF_rzoptions);
     const char *dir = conf_get_str(conf, CONF_zdownloaddir);
     kitty_zmodem_state *zm;
@@ -352,7 +384,7 @@ int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend, LogContext *logc
 {
     OPENFILENAME fn;
     static char filenames[32000];
-    const char *cmd = filename_to_str(conf_get_filename(conf, CONF_szcommand));
+    const char *cmd = kitty_zmodem_command(1);
     const char *opts = conf_get_str(conf, CONF_szoptions);
     const char *dir = conf_get_str(conf, CONF_zdownloaddir);
     kitty_zmodem_state *zm;

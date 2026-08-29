@@ -1210,6 +1210,46 @@ static void kitty_winscppath_handler(dlgcontrol *ctrl, dlgparam *dlg,
         filename_free(fn);
     }
 }
+
+/*
+ * The rz and sz helper programs, on Application > External tools > ZModem.
+ *
+ * Same shape as the WinSCP path above and for the same reason: where a helper
+ * is installed is a property of this PC. They were per-session
+ * (CONF_rzcommand / CONF_szcommand), so the path went into every saved
+ * session and had to be set again for each host. ctrl->context.p names the
+ * kitty.ini key.
+ */
+static void kitty_toolpath_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                   void *data, int event)
+{
+    const char *key = (const char *)ctrl->context.p;
+    /* dlg_filesel_set fires a re-entrant EVENT_VALCHANGE, exactly as the
+     * WinSCP handler above documents. */
+    static int refreshing = 0;
+
+    if (event == EVENT_REFRESH) {
+        char buffer[4096];
+        Filename *fn;
+        buffer[0] = '\0';
+        refreshing = 1;
+        if (!ReadParameterN(INIT_SECTION, (char *)key, buffer, sizeof(buffer)))
+            buffer[0] = '\0';
+        fn = filename_from_str(buffer);
+        dlg_filesel_set(ctrl, dlg, fn);
+        filename_free(fn);
+        refreshing = 0;
+    } else if (event == EVENT_VALCHANGE) {
+        Filename *fn;
+        char val[4096];
+        if (refreshing)
+            return;
+        fn = dlg_filesel_get(ctrl, dlg);
+        snprintf(val, sizeof(val), "%s", filename_to_str(fn));
+        WriteParameter(INIT_SECTION, (char *)key, val);
+        filename_free(fn);
+    }
+}
 #endif
 
 #define PRINTER_DISABLED_STRING "None (printing disabled)"
@@ -6011,7 +6051,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
     /* Stock PuTTY's "Close window on exit" comes FIRST so users coming from
      * PuTTY find the familiar control where they expect it; all KiTTY-added
      * per-session options are grouped below it (hknet/KiTTY#11). */
-    ctrl_radiobuttons(s, "Close window on exit:", 'x', 4,
+    ctrl_radiobuttons(s, "Close terminal window on exit:", 'x', 4,
                       HELPCTX(session_coe),
                       conf_radiobutton_handler,
                       I(CONF_close_on_exit),
@@ -8176,15 +8216,9 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
              * WinSCP path and the workplace-proxy box announce it - the
              * shared bold lead line - so it cannot be read as one more
              * session option ([KiTTY] verifyagent; see the handler). */
-            if (!GetPuttyFlag()) {
-                s = ctrl_getset(b, "Connection/SSH/Auth", "kittyapp",
-                                "Unverified SSH agent warning");
-                ctrl_text(s, KITTY_NOT_SESSION_LEAD, HELPCTX(no_help));
-                ctrl_checkbox(s, "Warn when an unverified agent serves "
-                              "the keys", NO_SHORTCUT,
-                              HELPCTX(no_help),
-                              kitty_verifyagent_handler, P(NULL));
-            }
+            /* The unverified-agent warning is on Application > Security now:
+             * it is one switch for the whole application, and it used to need
+             * a bold "not a session setting" line to say so here. */
 #endif
 
             ctrl_settitle(b, "Connection/SSH/Auth/Credentials",
@@ -8552,20 +8586,10 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
 
             s = ctrl_getset(b, "Connection/SSH/WinSCP",
                             "WinSCP", "WinSCP integration");
-            /* Global app setting (kitty.ini [KiTTY] WinSCPPath), not per-session;
-             * uses a custom handler rather than conf_filesel_handler. */
-            ctrl_filesel(s, "WinSCP executable:", NO_SHORTCUT,
-                         FILTER_ALL_FILES, false, "Select WinSCP executable",
-                         HELPCTX(no_help),
-                         kitty_winscppath_handler, P(NULL));
-            /* Say so, in the same words and the same bold as the workplace-proxy
-             * box: this control is on a session's panel but does not belong to
-             * the session, and changing it changes every session at once. Which
-             * is invisible unless it is written down. */
-            ctrl_text(s, KITTY_NOT_SESSION_LEAD, HELPCTX(no_help));
-            ctrl_text(s, "Where WinSCP is installed is a property of this PC, so "
-                         "it is kept in kitty.ini and shared by every session.",
-                      HELPCTX(no_help));
+            /* The executable PATH is on Application > External tools > WinSCP
+             * now. It never belonged here - it is a property of this PC, which
+             * is why it needed a bold "not a session setting" note to itself.
+             * Everything left in this group IS per session. */
             ctrl_editbox(s, "SFTP connect ([user@]hostname[:port])",
                          NO_SHORTCUT, 100,
                          HELPCTX(no_help),
@@ -8762,11 +8786,6 @@ static void scb_panel_zmodem(struct controlbox *b)
 
         s = ctrl_getset(b, "Connection/ZModem", "receive",
                         "Receive command (rz)");
-        ctrl_filesel(s, "Command rz:", NO_SHORTCUT,
-                     FILTER_ALL_FILES, false,
-                     "Select command to receive zmodem data",
-                     HELPCTX(no_help),
-                     conf_filesel_handler, I(CONF_rzcommand));
         ctrl_editbox(s, "Options", NO_SHORTCUT, 50,
                      HELPCTX(no_help),
                      conf_editbox_handler, I(CONF_rzoptions), ED_STR);
@@ -8775,11 +8794,6 @@ static void scb_panel_zmodem(struct controlbox *b)
 
         s = ctrl_getset(b, "Connection/ZModem", "send",
                         "Send command (sz)");
-        ctrl_filesel(s, "Command sz:", NO_SHORTCUT,
-                     FILTER_ALL_FILES, false,
-                     "Select command to send zmodem data",
-                     HELPCTX(no_help),
-                     conf_filesel_handler, I(CONF_szcommand));
         ctrl_editbox(s, "Options", NO_SHORTCUT, 50,
                      HELPCTX(no_help),
                      conf_editbox_handler, I(CONF_szoptions), ED_STR);
@@ -9142,11 +9156,8 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
     if (midsession || GetPuttyFlag())
         return;
 
-    /* The WHEN belongs here, not in a note at the foot: three groups down,
-     * that note is nowhere near the fields it describes. */
     ctrl_settitle(b, "Application/Config window",
-                  "The configuration window itself. Sizes apply as you type, "
-                  "the rest at the next window.");
+                  "This window");
 
     s = ctrl_getset(b, "Application/Config window", "look", "Appearance");
     ctrl_droplist(s, "Colours:", NO_SHORTCUT, 40, HELPCTX(no_help),
@@ -9165,9 +9176,6 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
                   HELPCTX(no_help), kitty_cfgwin_expand_handler, P(NULL));
 
     s = ctrl_getset(b, "Application/Config window", "size", "Size");
-    ctrl_editbox(s, "Session list, in rows (7 or more):", NO_SHORTCUT, 30,
-                 HELPCTX(no_help), kitty_cfgwin_num_handler, P("height"),
-                 ED_STR);
     /* PIXELS. dialog.c multiplies these by the DPI scale and gives the window
      * that size; they are not dialog units, whatever the old label said.
      * Both labels say the same short thing: the width's was long enough to
@@ -9179,15 +9187,151 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
                  NO_SHORTCUT, 30, HELPCTX(no_help),
                  kitty_cfgwin_num_handler, P("windowwidth"), ED_STR);
 
-    s = ctrl_getset(b, "Application/Config window", "sessionpanel",
-                    "Session panel");
-    ctrl_droplist(s, "Show the proxy chooser:", NO_SHORTCUT, 55,
-                  HELPCTX(no_help), kitty_cfgwin_proxysel_handler, P(NULL));
-    /* Said here because "Never" does more than hide one droplist. */
-    ctrl_text(s, "Never also hides the Edit button. Definitions stay on "
-              "Application > Named proxies.", HELPCTX(no_help));
-    ctrl_droplist(s, "Double-click a session to:", NO_SHORTCUT, 55,
-                  HELPCTX(no_help), kitty_cfgwin_dblclick_handler, P(NULL));
+    s = ctrl_getset(b, "Application/Config window", "closing",
+                    "Closing a terminal window");
+    ctrl_checkbox(s, "Come back to this window instead of exiting",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  kitty_cfgwin_noexit_handler, P(NULL));
+    ctrl_text(s, "Any terminal, even one that never connected. Closing this "
+              "window still exits, and nothing comes back at shutdown.",
+              HELPCTX(no_help));
+#else
+    (void)b; (void)midsession;
+#endif
+}
+
+/*
+ * Application > Security, and its Certification authorities leaf.
+ *
+ * Both hold things that are true of the INSTALLATION rather than of one
+ * connection: whether an unverified agent is worth warning about, and which
+ * host CAs this machine trusts. The CA records were always store-wide - see
+ * enum_host_ca_start() - but the only way to reach them was a pop-up launched
+ * from a session's SSH panel, which read as though they belonged to that
+ * session.
+ *
+ * The CA leaf builds the SAME controls as that pop-up, from
+ * setup_ca_config_box_at() in ssh/ca-config.c, without its Done button: the
+ * configuration box has buttons of its own.
+ */
+static void scb_panel_security(struct controlbox *b, bool midsession)
+{
+#ifdef MOD_PERSO
+    struct controlset *s;
+
+    if (midsession || GetPuttyFlag())
+        return;
+
+    ctrl_settitle(b, "Application/Security", "Security");
+    s = ctrl_getset(b, "Application/Security", "agent", "SSH agent");
+    ctrl_checkbox(s, "Warn when an unverified agent serves the keys",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  kitty_verifyagent_handler, P(NULL));
+
+    if (has_ca_config_box) {
+        ctrl_settitle(b, "Application/Security/Certificate Authorities",
+                      "Trusted host Certificate Authorities");
+        /*
+         * Say what the panel is FOR before showing its controls.
+         *
+         * Upstream's version is a pop-up reached from a session's Host keys
+         * panel, where the surrounding context supplies the meaning. Standing
+         * on its own it offers a name, a key and a host expression with no
+         * hint of where any of them come from.
+         */
+        s = ctrl_getset(b, "Application/Security/Certificate Authorities",
+                        "intro", NULL);
+        ctrl_text(s, "A certificate authority signs host keys for a whole "
+                  "estate, so a new server is accepted without anyone "
+                  "checking its fingerprint by hand. The public key below "
+                  "comes from whoever runs that CA.", HELPCTX(ssh_kex_cert));
+        setup_ca_config_box_at(
+            b, "Application/Security/Certificate Authorities", false);
+        s = ctrl_getset(b, "Application/Security/Certificate Authorities",
+                        "hosthelp", NULL);
+        ctrl_text(s, "Valid hosts is an expression rather than a list: a "
+                  "wildcard such as *.example.com, several of them joined "
+                  "with ||, and port:22 to narrow it further. It is what "
+                  "keeps a CA for one estate from vouching for another.",
+                  HELPCTX(ssh_kex_cert));
+    }
+#else
+    (void)b; (void)midsession;
+#endif
+}
+
+/*
+ * Application > External tools.
+ *
+ * Where the helper programs live on THIS PC. A leaf each: they have nothing
+ * to do with one another, and one panel listing every path would be a list
+ * rather than a place to set a tool up.
+ *
+ * Present whether or not the feature is switched on - an application panel
+ * that comes and goes with a setting is how someone loses the only place that
+ * setting can be changed from.
+ */
+static void scb_panel_external_tools(struct controlbox *b, bool midsession)
+{
+#ifdef MOD_PERSO
+    struct controlset *s;
+
+    if (midsession || GetPuttyFlag())
+        return;
+
+    ctrl_settitle(b, "Application/External tools", "Helper programs");
+    s = ctrl_getset(b, "Application/External tools", "intro", NULL);
+    ctrl_text(s, "Where these are installed is a property of this PC, so they "
+              "are kept in kitty.ini and shared by every session.",
+              HELPCTX(no_help));
+
+    ctrl_settitle(b, "Application/External tools/WinSCP", "WinSCP");
+    s = ctrl_getset(b, "Application/External tools/WinSCP", "path", "Executable");
+    ctrl_filesel(s, "WinSCP executable:", NO_SHORTCUT,
+                 FILTER_ALL_FILES, false, "Select WinSCP executable",
+                 HELPCTX(no_help), kitty_winscppath_handler, P(NULL));
+    ctrl_text(s, "The other WinSCP settings belong to a session and stay on "
+              "Connection > SSH > WinSCP.", HELPCTX(no_help));
+
+    ctrl_settitle(b, "Application/External tools/ZModem", "ZModem");
+    s = ctrl_getset(b, "Application/External tools/ZModem", "cmds", "Helper programs");
+    ctrl_filesel(s, "Receive command (rz):", NO_SHORTCUT,
+                 FILTER_ALL_FILES, false,
+                 "Select command to receive zmodem data",
+                 HELPCTX(no_help), kitty_toolpath_handler, P("rzcommand"));
+    ctrl_filesel(s, "Send command (sz):", NO_SHORTCUT,
+                 FILTER_ALL_FILES, false,
+                 "Select command to send zmodem data",
+                 HELPCTX(no_help), kitty_toolpath_handler, P("szcommand"));
+    ctrl_text(s, "Their options, and the download folder, belong to a session "
+              "and stay on Connection > ZModem.", HELPCTX(no_help));
+#else
+    (void)b; (void)midsession;
+#endif
+}
+
+/*
+ * Application > Session parameter.
+ *
+ * The saved-session list and what it offers, kept apart from the window that
+ * happens to draw it: Config window is about the window - its colours, its
+ * size, its tree - and these are about sessions. They were together while
+ * there was only one panel to put them on.
+ */
+static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
+{
+#ifdef MOD_PERSO
+    struct controlset *s;
+
+    if (midsession || GetPuttyFlag())
+        return;
+
+    ctrl_settitle(b, "Application/Session parameter", "The session list");
+
+    s = ctrl_getset(b, "Application/Session parameter", "list", "The list");
+    ctrl_editbox(s, "Length, in rows (7 or more):", NO_SHORTCUT, 30,
+                 HELPCTX(no_help), kitty_cfgwin_num_handler, P("height"),
+                 ED_STR);
     ctrl_checkbox(s, "Show \"Default Settings\" in the list",
                   NO_SHORTCUT, HELPCTX(no_help),
                   kitty_cfgwin_flag_handler, P("defaultsettings"));
@@ -9199,18 +9343,23 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
     ctrl_checkbox(s, "Search the list as you type",
                   NO_SHORTCUT, HELPCTX(no_help),
                   kitty_cfgwin_flag_handler, P("filter"));
+
+    s = ctrl_getset(b, "Application/Session parameter", "opening", "Opening");
     ctrl_checkbox(s, "Open on the last used session (off = quick connect)",
                   NO_SHORTCUT, HELPCTX(no_help),
                   kitty_cfgwin_flag_handler, P("loadlastsession"));
-
-    s = ctrl_getset(b, "Application/Config window", "closing",
-                    "Closing a terminal window");
-    ctrl_checkbox(s, "Come back to this window instead of exiting",
-                  NO_SHORTCUT, HELPCTX(no_help),
-                  kitty_cfgwin_noexit_handler, P(NULL));
-    ctrl_text(s, "Any terminal, even one that never connected. Closing this "
-              "window still exits, and nothing comes back at shutdown.",
+    ctrl_text(s, "Quick connect starts every KiTTY on Default Settings with the "
+              "cursor already in Host Name: type an address and press Enter.",
               HELPCTX(no_help));
+    ctrl_droplist(s, "Double-click a session to:", NO_SHORTCUT, 55,
+                  HELPCTX(no_help), kitty_cfgwin_dblclick_handler, P(NULL));
+
+    s = ctrl_getset(b, "Application/Session parameter", "proxy", "Proxy");
+    ctrl_droplist(s, "Show the proxy chooser:", NO_SHORTCUT, 55,
+                  HELPCTX(no_help), kitty_cfgwin_proxysel_handler, P(NULL));
+    /* Said here because "Never" does more than hide one droplist. */
+    ctrl_text(s, "Never also hides the Edit button. Definitions stay on "
+              "Application > Named proxies.", HELPCTX(no_help));
 #else
     (void)b; (void)midsession;
 #endif
@@ -9245,6 +9394,9 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
     kitty_proxy_build_panel(b);
 
     scb_panel_config_window(b, midsession);
+    scb_panel_session_parameter(b, midsession);
+    scb_panel_external_tools(b, midsession);
+    scb_panel_security(b, midsession);
 
     /*
       * Migration: what to do about sessions that belong to an older KiTTY or
