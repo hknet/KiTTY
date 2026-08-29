@@ -36,6 +36,7 @@
 #include "../kitty/kitty_auditlog.h"  /* KiTTY: the audit log's file sink */
 #include "../kitty/kitty_theme.h"     /* KiTTY: dark mode for the dialogs */
 #include "../kitty/kitty_theme_pref.h" /* KiTTY: the app-wide theme setting */
+#include "../kitty/kitty_anchor.h"    /* KiTTY: edge anchoring for the resizable windows */
 
 #include <shellapi.h>
 
@@ -1578,64 +1579,7 @@ static void prompt_add_keyfile(bool encrypted)
  * work area, the same rule the terminal windows follow, so a monitor that
  * no longer exists cannot strand the window off-screen.
  */
-#define KL_ANCH_LEFT   1
-#define KL_ANCH_TOP    2
-#define KL_ANCH_RIGHT  4
-#define KL_ANCH_BOTTOM 8
-struct kl_anchor { int id; unsigned anchor; };
-
-/* Capture the current client size, each anchored control's rect, and the
- * window size (= the minimum) as the baseline WM_SIZE re-places against. */
-static void anchored_capture(HWND hwnd, const struct kl_anchor *anchors,
-                             size_t n, RECT *rects, SIZE *basesize,
-                             SIZE *minsize)
-{
-    RECT rc;
-    GetClientRect(hwnd, &rc);
-    basesize->cx = rc.right - rc.left;
-    basesize->cy = rc.bottom - rc.top;
-    for (size_t i = 0; i < n; i++) {
-        HWND c = GetDlgItem(hwnd, anchors[i].id);
-        RECT r = {0, 0, 0, 0};
-        if (c) {
-            GetWindowRect(c, &r);
-            MapWindowPoints(NULL, hwnd, (POINT *)&r, 2);
-        }
-        rects[i] = r;
-    }
-    GetWindowRect(hwnd, &rc);
-    minsize->cx = rc.right - rc.left;
-    minsize->cy = rc.bottom - rc.top;
-}
-
-static void anchored_relayout(HWND hwnd, const struct kl_anchor *anchors,
-                              size_t n, const RECT *rects, SIZE basesize)
-{
-    RECT rc;
-    GetClientRect(hwnd, &rc);
-    int dx = (rc.right - rc.left) - basesize.cx;
-    int dy = (rc.bottom - rc.top) - basesize.cy;
-    HDWP hdwp = BeginDeferWindowPos((int)n);
-    for (size_t i = 0; i < n; i++) {
-        HWND c = GetDlgItem(hwnd, anchors[i].id);
-        if (!c)
-            continue;                  /* e.g. Help destroyed when no help */
-        unsigned a = anchors[i].anchor;
-        RECT r = rects[i];
-        int x = r.left +
-            (((a & KL_ANCH_RIGHT) && !(a & KL_ANCH_LEFT)) ? dx : 0);
-        int y = r.top +
-            (((a & KL_ANCH_BOTTOM) && !(a & KL_ANCH_TOP)) ? dy : 0);
-        int w = (r.right - r.left) +
-            (((a & KL_ANCH_LEFT) && (a & KL_ANCH_RIGHT)) ? dx : 0);
-        int h = (r.bottom - r.top) +
-            (((a & KL_ANCH_TOP) && (a & KL_ANCH_BOTTOM)) ? dy : 0);
-        hdwp = DeferWindowPos(hdwp, c, NULL, x, y, w, h,
-                              SWP_NOZORDER | SWP_NOACTIVATE);
-    }
-    EndDeferWindowPos(hdwp);
-    InvalidateRect(hwnd, NULL, true);
-}
+/* The anchor machinery itself is shared - see kitty/kitty_anchor.{c,h}. */
 
 static const struct kl_anchor keylist_anchors[] = {
     {IDC_KEYLIST_LISTBOX,

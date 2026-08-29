@@ -88,6 +88,9 @@ target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c)
 # theme's STORE is deliberately not here - kitty.exe reads it through its own
 # ReadParameter(), the satellite binaries through kitty_theme_pref.c.
 target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_theme.c)
+# KiTTY: edge anchoring for resizable dialogs - the configuration box's outer
+# furniture here, kageant's three windows in the pageant target below.
+target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_anchor.c)
 # PUBLIC: kitty_theme.c subclasses controls, and SetWindowSubclass lives in
 # comctl32. Declared on the library so every consumer inherits it rather than
 # each executable discovering the missing symbols at link time.
@@ -109,6 +112,7 @@ add_executable(pageant
   help.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
   ${CMAKE_SOURCE_DIR}/kitty/kitty_pageant.c   # KiTTY: kageant additions (split out of pageant.c)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_anchor.c    # KiTTY: edge anchoring for the resizable windows
   ${CMAKE_SOURCE_DIR}/kitty/kitty_authenticode.c  # KiTTY: shared verify for the New key launcher
   ${CMAKE_SOURCE_DIR}/kitty/kitty_notice.c    # KiTTY: shared near-the-clock notice window (replaces tray balloons)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c     # KiTTY: shared title-suffix composer
