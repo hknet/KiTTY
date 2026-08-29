@@ -122,12 +122,13 @@ char default_init_file_content[] =
 ;   nothing in the GUI can then create or edit a definition.\n\
 ;proxyselection=auto\n\
 \n\
-; windowheight: force the configuration window to an explicit height, in pixels\n\
-;    (scaled for your display DPI). Default 0 = off, so the window is sized from\n\
-;    [ConfigBox] height instead. This is a blunt override - it resizes only the\n\
-;    outer window, not the inner controls - so [ConfigBox] height is usually what\n\
-;    you want. Set a pixel value, e.g. 800, to force it.\n\
+; windowheight, windowwidth: the size of the configuration window, in pixels\n\
+;    (scaled for your display DPI). Default 0 = whatever the window's own layout\n\
+;    asks for. The window can also be dragged to a new size, and that writes\n\
+;    these two keys - the drag and the fields on Application > Config window are\n\
+;    one setting, not two.\n\
 ;windowheight=0\n\
+;windowwidth=0\n\
 \n\
 \n\
 \n\

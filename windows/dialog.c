@@ -17,6 +17,7 @@
 #include "dialog.h"
 #include "licence.h"
 #include "../kitty/kitty_theme.h"   /* KiTTY: dark mode for the dialogs */
+#include "../kitty/kitty_anchor.h"  /* KiTTY: the resizable configuration box */
 
 #include <commctrl.h>
 #include <commdlg.h>
@@ -1196,8 +1197,15 @@ static void kitty_cfg_panel_scroll_to(HWND hwnd, struct kitty_cfg_panel *p,
 /*
  * Fit the scroll bar to the panel now showing: shown when the panel is taller
  * than the host, and ABSENT - not merely disabled - when it is not.
+ *
+ * `keeppos` is for the one caller that is not a panel SWITCH: resizing the box
+ * re-fits the same panel's bar, and sending that panel back to the top on
+ * every WM_SIZE would yank it out from under the reader mid-drag. It keeps the
+ * offset instead, clamped to what is left to see now the area has changed
+ * size.
  */
-static void kitty_cfg_panel_scrollbar(HWND hwnd, struct kitty_cfg_panel *p)
+static void kitty_cfg_panel_scrollbar(HWND hwnd, struct kitty_cfg_panel *p,
+                                      bool keeppos)
 {
     HWND sb = GetDlgItem(hwnd, IDCX_PANELSCROLL);
     RECT area;
@@ -1214,8 +1222,10 @@ static void kitty_cfg_panel_scrollbar(HWND hwnd, struct kitty_cfg_panel *p)
     areah = area.bottom - area.top;
     /* Whatever is showing starts at the top: the host carries the offset, so
      * a new panel would otherwise inherit the last one's. */
-    if (kitty_cfg_scroll_y)
+    if (kitty_cfg_scroll_y && !keeppos)
         kitty_cfg_panel_scroll_to(hwnd, p, 0);
+    else if (kitty_cfg_scroll_y)
+        kitty_cfg_panel_scroll_to(hwnd, p, kitty_cfg_scroll_y);
     if (p->content_h <= areah) {
         ShowWindow(sb, SW_HIDE);
         return;
@@ -1236,6 +1246,120 @@ static void kitty_cfg_panel_scrollbar(HWND hwnd, struct kitty_cfg_panel *p)
     si.nPos = kitty_cfg_scroll_y;
     SetScrollInfo(sb, SB_CTL, &si, TRUE);
     ShowWindow(sb, SW_SHOW);
+}
+
+/*
+ * KiTTY: the resizable configuration box (design/TASK_ui_modernisation.md §3
+ * and §11, stage A - the OUTER furniture).
+ *
+ * The template has no relayout pass at all, so this adds the one thing that
+ * was missing: a baseline captured once, at the size the template produced,
+ * and a WM_SIZE that re-places the outer furniture against it. Everything
+ * that used to grow the window by a hand-computed fudge at creation time
+ * (cb_extra_du) now goes through the same road - the box is created at the
+ * template size, and the size that was configured is applied afterwards as a
+ * resize. One layout path instead of two that could disagree.
+ *
+ * What is anchored: the category tree (rides the bottom edge, so it gets
+ * taller), the panel host (all four edges - the scroll-bar gutter at its
+ * right is a constant, and anchoring both sides preserves it), and every
+ * control in the button row (rides the bottom edge). The tab strip sits at
+ * the top left and does not move.
+ *
+ * What is NOT anchored: the panel scroll bar, which is placed from the panel
+ * area every time it is fitted and so needs no baseline of its own; and the
+ * panel CONTENTS, which keep the width they were laid out at and clip. Making
+ * those reflow is stage B - it means re-running each panel's layout, hidden
+ * cached panels included, and refusing to do so to a panel holding unsaved
+ * edits (the named-proxy editor is the one that has any).
+ */
+static bool kitty_cfg_layout_ready = false;
+static struct kl_anchor_win *kitty_cfg_anchors = NULL;
+static RECT *kitty_cfg_anchor_rects = NULL;
+static size_t kitty_cfg_nanchors = 0;
+static size_t kitty_cfg_anchorsize = 0;
+static SIZE kitty_cfg_basesize, kitty_cfg_minsize;
+/* The box's size when the current drag began. What makes a move-only drag
+ * distinguishable from a resize - see kitty_cfgbox_save_size. */
+static SIZE kitty_cfg_dragsize;
+/* The button row's top at baseline; the live value is this plus the growth,
+ * and kitty_cfg_panel_rect reads the live one. */
+static int kitty_cfg_buttonrow_top_base = 0;
+
+static void kitty_cfg_anchor_add(HWND w, unsigned anchor)
+{
+    if (!w)
+        return;
+    sgrowarray(kitty_cfg_anchors, kitty_cfg_anchorsize, kitty_cfg_nanchors);
+    kitty_cfg_anchors[kitty_cfg_nanchors].hwnd = w;
+    kitty_cfg_anchors[kitty_cfg_nanchors].anchor = anchor;
+    kitty_cfg_nanchors++;
+}
+
+static void kitty_cfg_layout_free(void)
+{
+    sfree(kitty_cfg_anchors);
+    sfree(kitty_cfg_anchor_rects);
+    kitty_cfg_anchors = NULL;
+    kitty_cfg_anchor_rects = NULL;
+    kitty_cfg_nanchors = kitty_cfg_anchorsize = 0;
+    kitty_cfg_layout_ready = false;
+}
+
+/*
+ * Called at the end of the creation phase, while the box is still exactly the
+ * size the template asked for: that size becomes both the baseline the
+ * relayout measures growth from and the minimum the box may be dragged to.
+ */
+static void kitty_cfg_layout_capture(PortableDialogStuff *pds, HWND hwnd)
+{
+    struct winctrl *c;
+
+    kitty_cfg_layout_free();
+
+    kitty_cfg_anchor_add(GetDlgItem(hwnd, IDCX_TREEVIEW),
+                         KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_BOTTOM);
+    kitty_cfg_anchor_add(kitty_cfg_panel_host,
+                         KL_ANCH_LEFT | KL_ANCH_TOP |
+                         KL_ANCH_RIGHT | KL_ANCH_BOTTOM);
+    /*
+     * The button row, walked rather than tabulated: this box hands its
+     * controls generated ids (it has no control 1 - see kitty_cfg_panel_rect),
+     * so there is no id table to anchor against and GetDlgItem(hwnd, IDOK)
+     * finds nothing. The winctrls tree is where the row's real ids are.
+     */
+    for (int i = 0;
+         (c = winctrl_findbyindex(&pds->ctrltrees[TREE_BASE], i)) != NULL; i++)
+        for (int k = 0; k < c->num_ids; k++)
+            kitty_cfg_anchor_add(GetDlgItem(hwnd, c->base_id + k),
+                                 KL_ANCH_LEFT | KL_ANCH_BOTTOM);
+
+    kitty_cfg_anchor_rects = snewn(kitty_cfg_nanchors, RECT);
+    anchored_capture_windows(hwnd, kitty_cfg_anchors, kitty_cfg_nanchors,
+                             kitty_cfg_anchor_rects, &kitty_cfg_basesize,
+                             &kitty_cfg_minsize);
+    kitty_cfg_buttonrow_top_base = kitty_cfg_buttonrow_top;
+    kitty_cfg_dragsize = kitty_cfg_minsize;   /* no drag in progress */
+    kitty_cfg_layout_ready = true;
+}
+
+static void kitty_cfg_layout_relayout(HWND hwnd)
+{
+    RECT rc;
+
+    if (!kitty_cfg_layout_ready)
+        return;                 /* WM_SIZE can arrive before there is a layout */
+    GetClientRect(hwnd, &rc);
+    anchored_relayout_windows(hwnd, kitty_cfg_anchors, kitty_cfg_nanchors,
+                              kitty_cfg_anchor_rects, kitty_cfg_basesize);
+    /* The floor the panel area and the scrolling both measure against moved
+     * with the button row, and has to be told so. */
+    kitty_cfg_buttonrow_top = kitty_cfg_buttonrow_top_base +
+        ((rc.bottom - rc.top) - kitty_cfg_basesize.cy);
+    /* The visible panel now has more (or less) area to be seen in. Keep where
+     * the reader had scrolled to; the bar clamps it. */
+    if (kitty_cfg_active_panel)
+        kitty_cfg_panel_scrollbar(hwnd, kitty_cfg_active_panel, true);
 }
 
 /* EVENT_REFRESH for one cached panel, in creation order - the scoped
@@ -1609,6 +1733,56 @@ static void kitty_cfgbox_save_pos(HWND hwnd)
         kitty_cfgpos_dbg("SAVE FAILED RegCreateKeyEx HKCU\\%s", base);
     }
 }
+/*
+ * Remember how big the user dragged the box.
+ *
+ * It is stored as [ConfigBox] windowheight/windowwidth - the same two keys the
+ * fields on Application > Config window edit - so that dragging the window and
+ * typing a size are one setting rather than two that can disagree. The values
+ * are LOGICAL pixels, because that is what those keys have always meant and
+ * what makes them portable between a scaled display and an unscaled one.
+ *
+ * The store itself is KiTTY's, and this file compiles into the stock variants
+ * too, so it goes out through an accessor with a do-nothing stub.
+ */
+void kitty_cfgbox_store_size(int w, int h);   /* kitty_config.c / stub */
+
+static void kitty_cfgbox_save_size(HWND hwnd)
+{
+    RECT r;
+    HDC hdc;
+    double sx, sy;
+
+    /* Not while minimised or maximised: neither is a size the user chose for
+     * the window to have, and storing one would make it the size the NEXT box
+     * opens at. */
+    if (!hwnd || IsIconic(hwnd) || IsZoomed(hwnd) || !GetWindowRect(hwnd, &r))
+        return;
+    /*
+     * ONLY when the drag that just ended actually changed the size.
+     *
+     * WM_EXITSIZEMOVE ends a MOVE as readily as a resize. Without this,
+     * dragging the box across the screen writes windowheight/windowwidth for
+     * the first time - silently turning someone who had no explicit size into
+     * someone who has one, and an explicit windowheight is exactly what stops
+     * [ConfigBox] height growing the window from then on. Moving a window is
+     * not asking for its size to be remembered.
+     */
+    if ((r.right - r.left) == kitty_cfg_dragsize.cx &&
+        (r.bottom - r.top) == kitty_cfg_dragsize.cy)
+        return;
+    hdc = GetDC(hwnd);
+    if (!hdc)
+        return;
+    sx = GetDeviceCaps(hdc, LOGPIXELSX) / 96.0;
+    sy = GetDeviceCaps(hdc, LOGPIXELSY) / 96.0;
+    ReleaseDC(hwnd, hdc);
+    if (sx <= 0 || sy <= 0)
+        return;
+    kitty_cfgbox_store_size((int)((r.right - r.left) / sx),
+                            (int)((r.bottom - r.top) / sy));
+}
+
 static int kitty_cfgbox_restore_pos(HWND hwnd)
 {
     char base[600];
@@ -1657,6 +1831,46 @@ static HWND kitty_cfg_hwnd = NULL;
 static HWND kitty_cfg_treeview = NULL;
 static HTREEITEM kitty_cfg_sessionitem = NULL;
 static dlgparam *kitty_cfg_dp = NULL;
+
+/*
+ * The other direction from kitty_cfgbox_save_size: a size was TYPED on
+ * Application > Config window, so the box that panel lives in takes it now
+ * rather than the next one. Called from that panel's handler.
+ */
+void kitty_cfgbox_apply_size(void)
+{
+    extern int GetConfigBoxWindowHeight(void);
+    extern int GetConfigBoxWindowWidth(void);
+    RECT r;
+    HDC hdc;
+    int w, h;
+    double sx, sy;
+
+    if (!kitty_cfg_hwnd || !kitty_cfg_layout_ready ||
+        IsIconic(kitty_cfg_hwnd) || IsZoomed(kitty_cfg_hwnd) ||
+        !GetWindowRect(kitty_cfg_hwnd, &r))
+        return;
+    hdc = GetDC(kitty_cfg_hwnd);
+    if (!hdc)
+        return;
+    sx = GetDeviceCaps(hdc, LOGPIXELSX) / 96.0;
+    sy = GetDeviceCaps(hdc, LOGPIXELSY) / 96.0;
+    ReleaseDC(kitty_cfg_hwnd, hdc);
+
+    w = GetConfigBoxWindowWidth();
+    h = GetConfigBoxWindowHeight();
+    /* A blank field means "not set", not "zero wide": keep what the window
+     * has. Half-typed numbers arrive here too - "8" on the way to "800" - so
+     * the same floor a drag is held to applies, and the box stops at its
+     * minimum rather than collapsing while the number is still being typed. */
+    w = w > 0 ? (int)(w * sx) : (r.right - r.left);
+    h = h > 0 ? (int)(h * sy) : (r.bottom - r.top);
+    if (w < kitty_cfg_minsize.cx) w = kitty_cfg_minsize.cx;
+    if (h < kitty_cfg_minsize.cy) h = kitty_cfg_minsize.cy;
+    if (w != r.right - r.left || h != r.bottom - r.top)
+        SetWindowPos(kitty_cfg_hwnd, NULL, 0, 0, w, h,
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
 
 static LRESULT CALLBACK kitty_cfg_kbd_hookproc(int code, WPARAM wParam,
                                                LPARAM lParam)
@@ -2054,8 +2268,52 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         }
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
       }
+      /*
+       * KiTTY: the resizable box. WM_SIZE re-places the outer furniture
+       * against the baseline captured at the end of creation; the guard
+       * inside kitty_cfg_layout_relayout is what lets this message arrive
+       * during creation, before there is anything to place.
+       */
+      case WM_SIZE:
+        if (wParam != SIZE_MINIMIZED)
+            kitty_cfg_layout_relayout(hwnd);
+        return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
+      case WM_GETMINMAXINFO:
+        /* The template size is the floor. Without this the box can be dragged
+         * to nothing, the growth goes negative, and every anchored control is
+         * placed at a negative size - which is also what
+         * scripts/qa_window_minsize.ps1 asks every window to do. */
+        if (kitty_cfg_layout_ready) {
+            MINMAXINFO *mmi = (MINMAXINFO *)lParam;
+            mmi->ptMinTrackSize.x = kitty_cfg_minsize.cx;
+            mmi->ptMinTrackSize.y = kitty_cfg_minsize.cy;
+            return 0;
+        }
+        return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
+      case WM_ENTERSIZEMOVE: {
+        /* The size to compare against when the drag ends: a drag that only
+         * MOVED the box must not be taken for a request to remember a size. */
+        RECT r;
+        if (GetWindowRect(hwnd, &r)) {
+            kitty_cfg_dragsize.cx = r.right - r.left;
+            kitty_cfg_dragsize.cy = r.bottom - r.top;
+        }
+        return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
+      }
       case WM_EXITSIZEMOVE:
         kitty_cfgbox_save_pos(hwnd);   /* remember where the user dragged it */
+        kitty_cfgbox_save_size(hwnd);  /* ... and how big they dragged it */
+        /*
+         * If the size fields are the thing on screen, they are now stale: the
+         * drag wrote the very setting they display. Refreshing the panel is
+         * how they are made to agree, and it is confined to that one panel
+         * because EVENT_REFRESH overwrites what a control holds - which on a
+         * panel with unsaved edits (the named-proxy editor) would throw them
+         * away.
+         */
+        if (kitty_cfg_active_panel && kitty_cfg_dp &&
+            !strcmp(kitty_cfg_active_panel->path, "Application/Config window"))
+            kitty_cfg_panel_refresh(kitty_cfg_dp, kitty_cfg_active_panel);
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
       case WM_DESTROY:
         /* Robust backstop: capture the final position at close, regardless of
@@ -2067,6 +2325,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         if (kitty_cfg_active_panel)
             kitty_cfg_remember_app_panel(kitty_cfg_active_panel->path);
         kitty_cfg_panel_cache_reset();  /* the windows die with the dialog */
+        kitty_cfg_layout_free();        /* so does the layout baseline */
         /* KiTTY: tear down the Ctrl+F session-search jump with its dialog. */
         if (kitty_cfg_hwnd == hwnd) {
             if (kitty_cfg_kbdhook) {
@@ -2095,11 +2354,19 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
          * left the old panel's text showing through the new panel's boxes.
          */
 
-        /* KiTTY: the saved-session list height is configurable via kitty.ini
-         * [ConfigBox] height (GetConfigBoxHeight(), default 16 = stock fit), and the whole
-         * box via [ConfigBox] windowheight. A taller list needs the button row,
-         * the treeview and the window itself to grow to match; cb_extra_du is
-         * that growth in dialog units (0 at/below the stock-fit height). */
+        /*
+         * KiTTY: the saved-session list height is configurable via kitty.ini
+         * [ConfigBox] height (GetConfigBoxHeight(), default 16 = stock fit).
+         * A taller list needs a taller window; cb_extra_du is how much taller,
+         * in dialog units (0 at or below the stock-fit height).
+         *
+         * It is no longer built INTO the layout. Everything below is created
+         * at the template size, and this - like [ConfigBox] windowheight, and
+         * like a drag of the window's own edge - is applied afterwards as a
+         * resize, which the WM_SIZE relayout then follows. There is one layout
+         * path now, so the creation-time geometry and the resize-time geometry
+         * cannot disagree with each other.
+         */
         int cb_extra_du = 0;
         {
             extern int GetConfigBoxHeight(void);
@@ -2116,13 +2383,13 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         }
 
         pds_create_controls(pds, TREE_BASE, IDCX_STDBASE, 3, 3,
-                            CFGBOX_BUTTONROW_DU + cb_extra_du, ""); /* buttons row */
+                            CFGBOX_BUTTONROW_DU, "");   /* buttons row */
         /* Where that row landed, in pixels: the floor of the panel area, and
          * the line nothing scrolled may cross - you shall not pass! Taken
          * from the same units the row was created with, so the two cannot
-         * disagree. */
+         * disagree. Kept up to date by the relayout as the row moves. */
         {
-            RECT br = { 0, CFGBOX_BUTTONROW_DU + cb_extra_du, 0, 0 };
+            RECT br = { 0, CFGBOX_BUTTONROW_DU, 0, 0 };
             MapDialogRect(hwnd, &br);
             kitty_cfg_buttonrow_top = br.top;
         }
@@ -2169,45 +2436,10 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         SendMessage(hwnd, WM_SETICON, (WPARAM) ICON_BIG,
                     (LPARAM) LoadIcon(hinst, MAKEINTRESOURCE(IDI_CFGICON)));
 
-        /* KiTTY: grow the window to fit a taller list, or to an explicit
-         * windowheight (px, DPI-scaled). Done before centring so the box is
-         * placed at its final size. */
-        {
-            extern int GetConfigBoxWindowHeight(void);
-            RECT wr;
-            GetWindowRect(hwnd, &wr);
-            int cur_h = wr.bottom - wr.top, want_h = cur_h;
-            int wh = GetConfigBoxWindowHeight();
-            if (wh > 0) {
-                HDC hdc = GetDC(hwnd);
-                double sy = GetDeviceCaps(hdc, LOGPIXELSY) / 96.0;
-                ReleaseDC(hwnd, hdc);
-                want_h = (int)(wh * sy);
-            } else if (cb_extra_du > 0) {
-                RECT er = { 0, 0, 0, cb_extra_du };
-                MapDialogRect(hwnd, &er);
-                want_h = cur_h + er.bottom;
-            }
-            if (want_h != cur_h)
-                SetWindowPos(hwnd, NULL, 0, 0, wr.right - wr.left, want_h,
-                             SWP_NOMOVE | SWP_NOZORDER);
-        }
-
-        /* KiTTY: restore the remembered config-box position; centre if none/off-screen. */
-        if (!kitty_cfgbox_restore_pos(hwnd))
-            centre_window(hwnd);
-
-        /* KiTTY: bring the startup configuration dialog to the front; it can
-         * otherwise open behind already-open windows. The TOPMOST->NOTOPMOST
-         * toggle forces it to the top of the Z-order even when Windows denies
-         * SetForegroundWindow (foreground lock); SetForegroundWindow then also
-         * activates it when the process has the foreground privilege. */
-        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-        SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-        SetForegroundWindow(hwnd);
-        BringWindowToTop(hwnd);
+        /* The sizing, the placement and the foreground dance all used to sit
+         * here. They now follow the tree, because the tree is the last piece
+         * of outer furniture and the layout baseline cannot be captured until
+         * every piece of it exists. */
 
         /*
          * Create the tree view.
@@ -2250,12 +2482,12 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             r.left = 3;
             r.right = r.left + 95;
             r.top = 3 + CFGBOX_TABSTRIP_DU;
-            r.bottom = r.top + CFGBOX_TREE_DU + cb_extra_du
-                       - (CFGBOX_TABSTRIP_DU - 10); /* KiTTY: (was 219); grows
-                                       * with [ConfigBox] height so
-                                       * Bell/Data/Appearance panels aren't
-                                       * cut, and gives back what the tab
-                                       * strip took from the old label */
+            r.bottom = r.top + CFGBOX_TREE_DU
+                       - (CFGBOX_TABSTRIP_DU - 10); /* KiTTY: (was 219); gives
+                                       * back what the tab strip took from the
+                                       * old label. The tree rides the bottom
+                                       * edge, so a taller box - however it got
+                                       * that way - grows it from here. */
             MapDialogRect(hwnd, &r);
             treeview = CreateWindowEx(WS_EX_CLIENTEDGE, WC_TREEVIEW, "",
                                       WS_CHILD | WS_VISIBLE |
@@ -2274,6 +2506,67 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             tvfaff.treeview = treeview;
             memset(tvfaff.lastat, 0, sizeof(tvfaff.lastat));
         }
+
+        /*
+         * KiTTY: the outer furniture is complete and still exactly the size
+         * the template asked for. Capture that as the baseline - and as the
+         * smallest the box may be dragged to - before anything resizes it.
+         */
+        kitty_cfg_layout_capture(pds, hwnd);
+
+        /*
+         * KiTTY: the configured size, applied as a RESIZE now that
+         * there is a layout to follow it: an explicit [ConfigBox]
+         * windowheight/windowwidth (pixels, DPI-scaled) if either is set,
+         * otherwise the extra height a taller saved-session list needs.
+         * Before placing the box, so it is placed at its final size.
+         */
+        {
+            extern int GetConfigBoxWindowHeight(void);
+            extern int GetConfigBoxWindowWidth(void);
+            RECT wr;
+            GetWindowRect(hwnd, &wr);
+            int cur_w = wr.right - wr.left, cur_h = wr.bottom - wr.top;
+            int want_w = cur_w, want_h = cur_h;
+            int wh = GetConfigBoxWindowHeight(), ww = GetConfigBoxWindowWidth();
+            HDC hdc = GetDC(hwnd);
+            double sx = GetDeviceCaps(hdc, LOGPIXELSX) / 96.0;
+            double sy = GetDeviceCaps(hdc, LOGPIXELSY) / 96.0;
+            ReleaseDC(hwnd, hdc);
+            if (wh > 0)
+                want_h = (int)(wh * sy);
+            else if (cb_extra_du > 0) {
+                RECT er = { 0, 0, 0, cb_extra_du };
+                MapDialogRect(hwnd, &er);
+                want_h = cur_h + er.bottom;
+            }
+            if (ww > 0)
+                want_w = (int)(ww * sx);
+            /* Never below the template: the same floor WM_GETMINMAXINFO
+             * enforces for a drag, applied to a stored value that might
+             * predate a font change or come from a larger display. */
+            if (want_w < kitty_cfg_minsize.cx) want_w = kitty_cfg_minsize.cx;
+            if (want_h < kitty_cfg_minsize.cy) want_h = kitty_cfg_minsize.cy;
+            if (want_w != cur_w || want_h != cur_h)
+                SetWindowPos(hwnd, NULL, 0, 0, want_w, want_h,
+                             SWP_NOMOVE | SWP_NOZORDER);
+        }
+
+        /* KiTTY: restore the remembered config-box position; centre if none/off-screen. */
+        if (!kitty_cfgbox_restore_pos(hwnd))
+            centre_window(hwnd);
+
+        /* KiTTY: bring the startup configuration dialog to the front; it can
+         * otherwise open behind already-open windows. The TOPMOST->NOTOPMOST
+         * toggle forces it to the top of the Z-order even when Windows denies
+         * SetForegroundWindow (foreground lock); SetForegroundWindow then also
+         * activates it when the process has the foreground privilege. */
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+        SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+        SetForegroundWindow(hwnd);
+        BringWindowToTop(hwnd);
 
         /*
          * Set up the tree view contents.
@@ -2410,7 +2703,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         if (kitty_cfg_active_panel) {
             kitty_cfg_active_panel->content_h =
                 kitty_cfg_panel_measure(kitty_cfg_active_panel);
-            kitty_cfg_panel_scrollbar(hwnd, kitty_cfg_active_panel);
+            kitty_cfg_panel_scrollbar(hwnd, kitty_cfg_active_panel, false);
         }
 
         if (dialog_box_demo_screenshot_filename)
@@ -2679,7 +2972,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 kitty_cfg_active_panel = newpanel;
                 /* Fit the scroll bar to whatever is showing now - or take it
                  * away, if this panel fits. */
-                kitty_cfg_panel_scrollbar(hwnd, newpanel);
+                kitty_cfg_panel_scrollbar(hwnd, newpanel, false);
 
                 /* The shown panel is refreshed every time it appears, and
                  * the button row keeps the refresh it always had. Panels

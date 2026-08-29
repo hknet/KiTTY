@@ -103,12 +103,13 @@
 ;   nothing in the GUI can then create or edit a definition.
 ;proxyselection=auto
 
-; windowheight: force the configuration window to an explicit height, in pixels
-;    (scaled for your display DPI). Default 0 = off, so the window is sized from
-;    [ConfigBox] height instead. This is a blunt override - it resizes only the
-;    outer window, not the inner controls - so [ConfigBox] height is usually what
-;    you want. Set a pixel value, e.g. 800, to force it.
+; windowheight, windowwidth: the size of the configuration window, in pixels
+;    (scaled for your display DPI). Default 0 = whatever the window's own layout
+;    asks for. The window can also be dragged to a new size, and that writes
+;    these two keys - the drag and the fields on Application > Config window are
+;    one setting, not two.
 ;windowheight=0
+;windowwidth=0
 
 
 

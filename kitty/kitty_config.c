@@ -8689,6 +8689,34 @@ static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
  */
 static int cfgwin_refreshing = 0;
 
+/*
+ * The box was dragged to a new size: store it as the same two keys the fields
+ * below edit, so the drag and the fields are one setting. Called from
+ * windows/dialog.c on WM_EXITSIZEMOVE (stubbed out for the stock variants,
+ * whose box does not resize).
+ *
+ * Both the file and the running program, for the reason spelt out in the
+ * VALCHANGE arm below: EVENT_REFRESH answers from the running values, so
+ * writing only the file leaves the fields showing the old size.
+ */
+void kitty_cfgbox_store_size(int w, int h)
+{
+    extern void SetConfigBoxWindowHeight(const int num);  /* kitty.c */
+    extern void SetConfigBoxWindowWidth(const int num);   /* kitty.c */
+    char buf[32];
+
+    if (w > 0) {
+        sprintf(buf, "%d", w);
+        WriteParameter("ConfigBox", "windowwidth", buf);
+        SetConfigBoxWindowWidth(w);
+    }
+    if (h > 0) {
+        sprintf(buf, "%d", h);
+        WriteParameter("ConfigBox", "windowheight", buf);
+        SetConfigBoxWindowHeight(h);
+    }
+}
+
 static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                      void *data, int event)
 {
@@ -8697,9 +8725,11 @@ static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (event == EVENT_REFRESH) {
         extern int GetConfigBoxHeight(void);        /* kitty.c: rows */
         extern int GetConfigBoxWindowHeight(void);  /* kitty.c: pixels, 0 = fit */
+        extern int GetConfigBoxWindowWidth(void);   /* kitty.c: pixels, 0 = fit */
         char buf[32];
-        int v = !strcmp(key, "height") ? GetConfigBoxHeight()
-                                       : GetConfigBoxWindowHeight();
+        int v = !strcmp(key, "height")      ? GetConfigBoxHeight()
+              : !strcmp(key, "windowwidth") ? GetConfigBoxWindowWidth()
+                                            : GetConfigBoxWindowHeight();
         buf[0] = '\0';
         if (v > 0)
             sprintf(buf, "%d", v);
@@ -8720,6 +8750,7 @@ static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
          * because neither key does anything until the next window is built. */
         extern void SetConfigBoxHeight(const int num);        /* kitty.c */
         extern void SetConfigBoxWindowHeight(const int num);  /* kitty.c */
+        extern void SetConfigBoxWindowWidth(const int num);   /* kitty.c */
         char *s = dlg_editbox_get(ctrl, dlg);
         if (s[0]) {
             WriteParameter("ConfigBox", (char *)key, s);
@@ -8735,8 +8766,17 @@ static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
              */
             if (!strcmp(key, "height"))
                 SetConfigBoxHeight(atoi(s));
+            else if (!strcmp(key, "windowwidth"))
+                SetConfigBoxWindowWidth(atoi(s));
             else
                 SetConfigBoxWindowHeight(atoi(s));
+            /* The two window sizes are live: this box resizes itself to the
+             * number as it is typed. The list length is not - it is built into
+             * the Session panel's layout, which already exists. */
+            if (strcmp(key, "height")) {
+                extern void kitty_cfgbox_apply_size(void);  /* windows/dialog.c */
+                kitty_cfgbox_apply_size();
+            }
         }
         sfree(s);
     }
@@ -8771,16 +8811,21 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
     ctrl_editbox(s, "Saved-session list, in rows:", NO_SHORTCUT, 30,
                  HELPCTX(no_help), kitty_cfgwin_num_handler, P("height"),
                  ED_STR);
-    /* PIXELS. dialog.c multiplies this by the DPI scale and gives the window
-     * that height; it is not in dialog units, whatever the old label said. */
+    /* PIXELS. dialog.c multiplies these by the DPI scale and gives the window
+     * that size; they are not dialog units, whatever the old label said. */
     ctrl_editbox(s, "Window height, in pixels (blank = fit the list):",
                  NO_SHORTCUT, 30, HELPCTX(no_help),
                  kitty_cfgwin_num_handler, P("windowheight"), ED_STR);
+    ctrl_editbox(s, "Window width, in pixels (blank = the standard width):",
+                 NO_SHORTCUT, 30, HELPCTX(no_help),
+                 kitty_cfgwin_num_handler, P("windowwidth"), ED_STR);
 
     s = ctrl_getset(b, "Application/Config window", "when", NULL);
-    ctrl_text(s, "The two sizes take effect in the NEXT configuration window: "
-              "this one laid its list, buttons and tree out for the height it "
-              "opened with.", HELPCTX(no_help));
+    ctrl_text(s, "The window can also be dragged to a new size, which fills "
+              "these two boxes in - the drag and the numbers are one setting. "
+              "The list length is the exception: it is built into the Session "
+              "panel, so it takes effect in the next configuration window.",
+              HELPCTX(no_help));
 #else
     (void)b; (void)midsession;
 #endif

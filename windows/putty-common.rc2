@@ -69,8 +69,13 @@ BEGIN
 END
 
 /* Accelerators used: aco */
+/* KiTTY: WS_THICKFRAME in place of DS_MODALFRAME - the box resizes. The two
+ * are alternatives, not additions: DS_MODALFRAME asks for the fixed dialog
+ * border, and one window cannot have that border and a sizing one at once.
+ * windows/dialog.c does the relayout, and floors the size at this template's
+ * own, so the box can never be dragged smaller than it opens. */
 IDD_MAINBOX DIALOGEX DISCARDABLE 0, 0, 360, 316
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+STYLE WS_THICKFRAME | WS_MAXIMIZEBOX | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "PuTTY Configuration"
 FONT 9, "Segoe UI", 400, 0, 0x1
 CLASS "PuTTYConfigBox"

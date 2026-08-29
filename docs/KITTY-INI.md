@@ -120,7 +120,7 @@ exe*.
 |---|---|
 | `[KiTTY]` | The main section: feature switches (hyperlinks, transparency, icons, background image, …), `savemode`, security options (`PortablePasswordProtection`, `readonly`, `restrictacl`), window/title behaviour, scripting, `theme` (`system`/`light`/`dark` - the colours every KiTTY window paints in, kageant and kittygen included; dark needs Windows 10 1809 or newer), and `checkupdate` (look for a new release at startup), and `showforeignsessions` (also list an older KiTTY's or PuTTY's own saved sessions - `auto`/`yes`/`no`, default `auto`). |
 | `[Agent]` | kageant (the SSH agent): `askconfirmation` (`yes`/`auto`/`no`/`hello` - the last one demands a Windows Hello gesture for the confirmation), `messageonkeyusage`, `loadonstartup` + the `startupkeyN` list, `retrykeys` (what to do when a startup key's media returns), the `agentlog*` settings, `hellocacheseconds` (how long one Windows Hello unlock keeps covering further protected keys; `0` asks every time). |
-| `[ConfigBox]` | Configuration-box behaviour: `dblclick` (double-click on a saved session = Open or Start), `defaultsettings` visibility, `loadlastsession` (off = quick connect: open on Default Settings with the caret in Host Name), `foldernavigation` (session folders as ROWS of the saved-session list rather than a drop-down), box height, and `applicationpanel` (the Application tab's leaf, remembered between configuration windows). |
+| `[ConfigBox]` | Configuration-box behaviour: `dblclick` (double-click on a saved session = Open or Start), `defaultsettings` visibility, `loadlastsession` (off = quick connect: open on Default Settings with the caret in Host Name), `foldernavigation` (session folders as ROWS of the saved-session list rather than a drop-down), box height, `windowheight` and `windowwidth` (the size of the configuration window itself), and `applicationpanel` (the Application tab's leaf, remembered between configuration windows). |
 | `[Shortcuts]` | Keyboard shortcuts for KiTTY menu actions, e.g. `duplicate={CONTROL}N`. |
 | `[Print]` | Text printing: character size, lines per page, characters per line. |
 | `[Launcher]` | The tray launcher, e.g. session-list `reload` on each menu open. |
@@ -187,6 +187,31 @@ Settings" once**. KiTTY remembers it like any other session and comes up in
 quick connect from then on, until you load a different session. Typing an
 address into an unsaved session records nothing, so the mode survives
 connecting — it is left by loading a session, not by switching a setting back.
+
+## The size of the configuration window — `[ConfigBox] windowheight`, `windowwidth`
+
+The configuration window can be dragged to whatever size suits you, and it
+opens at that size next time. The two keys are where that size is kept, in
+pixels:
+
+```ini
+[ConfigBox]
+windowheight=800
+windowwidth=520
+```
+
+They are the same setting as the two fields on **Application > Config
+window** — dragging the window fills those fields in, and typing a number into
+them resizes the window you are looking at. Leave a key out (or set it to 0)
+and that dimension is whatever the window's own layout asks for.
+
+The numbers are *logical* pixels, so the same file gives the same apparent size
+on a display scaled to 150% as on one at 100%. Neither can make the window
+smaller than its own minimum.
+
+`[ConfigBox] height` is a different thing: it is the saved-session list's
+length in ROWS, and because that list is built into the Session panel it takes
+effect in the next configuration window rather than the open one.
 
 ## A minimal example
 

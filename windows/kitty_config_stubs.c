@@ -18,6 +18,11 @@
 
 int GetConfigBoxHeight(void)       { return 16; } /* == stock-fit rows -> extra_rows 0 */
 int GetConfigBoxWindowHeight(void) { return 0; }  /* no explicit window-height override */
+int GetConfigBoxWindowWidth(void)  { return 0; }  /* nor an explicit width */
+
+/* The stock box is not resizable, so it is never dragged to a new size and
+ * there is nothing to remember. */
+void kitty_cfgbox_store_size(int w, int h) { (void)w; (void)h; }
 int kitty_proxy_choice_shown(void) { return 0; }  /* no Proxy-choice droplist row */
 
 /* Inline-first security prompts: 1 = keep the confirmation MODAL, i.e. the

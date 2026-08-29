@@ -321,6 +321,14 @@ static int ConfigBoxWindowHeight = 0 ;
 int GetConfigBoxWindowHeight(void) { return ConfigBoxWindowHeight ; }
 void SetConfigBoxWindowHeight( const int num ) { ConfigBoxWindowHeight = num ; }
 
+// Largeur de la fenetre de la boite de configuration (0 = celle du gabarit).
+// Written by dragging the box's own edge as well as by the field on
+// Application > Config window: the drag and the field are one setting, so the
+// field cannot come to disagree with the window it describes.
+static int ConfigBoxWindowWidth = 0 ;
+int GetConfigBoxWindowWidth(void) { return ConfigBoxWindowWidth ; }
+void SetConfigBoxWindowWidth( const int num ) { ConfigBoxWindowWidth = num ; }
+
 // [ConfigBox] noexit=yes: when a window that ran a connected session closes,
 // spawn a fresh instance (= the config box) so you land back in the session
 // picker. Gated on is_backend_first_connected at exit (windows/window.c), so a
@@ -3237,6 +3245,7 @@ static const IniParam ini_params[] = {
 	INIP_KW( "ConfigBox", 1, "loadlastsession",	1, 0, IGN,	&LoadLastSessionFlag, NULL ),
 	INIP_NUM( "ConfigBox", 1, "height",		IGN,		&ConfigBoxHeight, NULL ),
 	INIP_NUM( "ConfigBox", 1, "windowheight",	IGN,		&ConfigBoxWindowHeight, NULL ),
+	INIP_NUM( "ConfigBox", 1, "windowwidth",	IGN,		&ConfigBoxWindowWidth, NULL ),
 	INIP_NUM( "Print", 1, "height",			IGN,		&PrintCharSize, NULL ),
 	INIP_NUM( "Print", 1, "maxline",		IGN,		&PrintMaxLinePerPage, NULL ),
 	INIP_NUM( "Print", 1, "maxchar",		IGN,		&PrintMaxCharPerLine, NULL ),
