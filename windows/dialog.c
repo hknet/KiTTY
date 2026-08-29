@@ -914,6 +914,10 @@ struct kitty_cfg_panel {
     int content_h;
 };
 
+/* A panel has just been laid out: place any controls it positions itself.
+ * kitty_config.c, stubbed to nothing for the stock variants. */
+void kitty_config_panel_placed(const char *path);
+
 static struct kitty_cfg_panel **kitty_cfg_panels = NULL;
 static size_t kitty_cfg_npanels = 0, kitty_cfg_panelsize = 0;
 static struct kitty_cfg_panel *kitty_cfg_active_panel = NULL;
@@ -1425,16 +1429,13 @@ static void kitty_cfg_panel_offset(struct kitty_cfg_panel *p, int dy)
  * scratch tree, then moved one by one into the shared TREE_PANEL tree; the
  * drain preserves creation order because winctrl_findbyindex walks the byid
  * tree and ids ascend as they are handed out. */
-static struct kitty_cfg_panel *kitty_cfg_panel_create(
-    PortableDialogStuff *pds, const char *path)
+/* Lay a panel's controls out into the host. `p` arrives with its path and its
+ * id block already decided and no controls; it leaves built. Split out of
+ * kitty_cfg_panel_create so that a panel can be laid out a SECOND time,
+ * into the same id block, without becoming a new entry in the cache. */
+static void kitty_cfg_panel_build(PortableDialogStuff *pds,
+                                  struct kitty_cfg_panel *p)
 {
-    struct kitty_cfg_panel *p = snew(struct kitty_cfg_panel);
-    p->path = dupstr(path);
-    p->base_id = IDCX_PANELBASE +
-        (int)kitty_cfg_npanels * KITTY_PANEL_ID_STRIDE;
-    p->ctrls = NULL;
-    p->nctrls = p->ctrlsize = 0;
-
     struct winctrls scratch;
     winctrl_init(&scratch);
 
@@ -1465,17 +1466,171 @@ static struct kitty_cfg_panel *kitty_cfg_panel_create(
     }
     winctrl_cleanup(&scratch);
 
-    sgrowarray(kitty_cfg_panels, kitty_cfg_panelsize, kitty_cfg_npanels);
-    kitty_cfg_panels[kitty_cfg_npanels++] = p;
     /* These controls did not exist when the box was themed, so nothing that
      * has to be SENT to a control has reached them: without this a cached
      * panel comes up in the classic colours the first time it is shown. */
     kitty_theme_refresh(pds->dp->hwnd);
+    /*
+     * KiTTY: snap every label sitting beside a drop-down onto the middle of
+     * it.
+     *
+     * This cannot be done from the layout. A combo box IGNORES the height it
+     * is created with and sizes itself from the font - 23px where the 14
+     * dialog units it was given come to 19 - so a label built to the same
+     * nominal height as the combo beside it ends up 2px high, on every
+     * drop-down row in the box. The numbers only exist once Windows has made
+     * the controls, so the correction belongs here, after they exist. (The
+     * same reasoning produced the row-aligner in kageant's key-list window.)
+     *
+     * Matched on CLASS rather than on control type: every helper that puts a
+     * label beside a combo lays them out as consecutive ids, and the pair is
+     * exactly "a STATIC then a COMBOBOX". That covers drop-down lists and
+     * editable combos without either of them having to be enumerated here.
+     */
+    for (size_t i = 0; i < p->nctrls; i++) {
+        struct winctrl *c = p->ctrls[i];
+        HWND lbl, cmb;
+        RECT lr, cr;
+        char cls[32];
+
+        if (c->num_ids < 2)
+            continue;
+        lbl = GetDlgItem(kitty_cfg_panel_host, c->base_id);
+        cmb = GetDlgItem(kitty_cfg_panel_host, c->base_id + 1);
+        if (!lbl || !cmb)
+            continue;
+        if (!GetClassNameA(lbl, cls, sizeof(cls)) || stricmp(cls, "STATIC"))
+            continue;
+        if (!GetClassNameA(cmb, cls, sizeof(cls)) || stricmp(cls, "COMBOBOX"))
+            continue;
+        if (!GetWindowRect(lbl, &lr) || !GetWindowRect(cmb, &cr))
+            continue;
+        /* Only a row: a label ABOVE its combo (the full-width form) is not
+         * one, and must not be dragged down into it. */
+        if (lr.top >= cr.bottom || lr.bottom <= cr.top)
+            continue;
+        {
+            int dy = ((cr.top + cr.bottom) - (lr.top + lr.bottom)) / 2;
+            POINT pt;
+            if (!dy)
+                continue;
+            pt.x = lr.left; pt.y = lr.top + dy;
+            ScreenToClient(kitty_cfg_panel_host, &pt);
+            SetWindowPos(lbl, NULL, pt.x, pt.y, 0, 0,
+                         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
+    /*
+     * KiTTY: panels that place some of their own controls get to do it here,
+     * after the generic layout and BEFORE the panel is measured - the buttons
+     * beside the saved-session list are moved, so where they end up decides
+     * how tall this panel is. Stubbed to nothing in the stock variants.
+     */
+    kitty_config_panel_placed(p->path);
     /* Measured now, while the controls are at their unscrolled positions. */
     p->content_h = kitty_cfg_panel_measure(p);
     /* ... and only then brought into line with a host that is scrolled. */
     kitty_cfg_panel_offset(p, -kitty_cfg_scroll_y);
+}
+
+static struct kitty_cfg_panel *kitty_cfg_panel_create(
+    PortableDialogStuff *pds, const char *path)
+{
+    struct kitty_cfg_panel *p = snew(struct kitty_cfg_panel);
+    p->path = dupstr(path);
+    p->base_id = IDCX_PANELBASE +
+        (int)kitty_cfg_npanels * KITTY_PANEL_ID_STRIDE;
+    p->ctrls = NULL;
+    p->nctrls = p->ctrlsize = 0;
+    sgrowarray(kitty_cfg_panels, kitty_cfg_panelsize, kitty_cfg_npanels);
+    kitty_cfg_panels[kitty_cfg_npanels++] = p;
+    kitty_cfg_panel_build(pds, p);
     return p;
+}
+
+/*
+ * Throw one cached panel away, windows and all, so the next visit builds it
+ * again from the current settings.
+ *
+ * This is the primitive a LAYOUT change needs, as opposed to a value change:
+ * a panel's geometry is fixed when winctrl_layout runs, so a setting that
+ * decides how big a control is - the saved-session list's row count is the
+ * one that does - cannot be applied by refreshing the panel. It has to be
+ * laid out again.
+ *
+ * ⛔ NOT for the panel the user is looking at, and NOT for a panel holding
+ * edits that have not been stored. Rebuilding destroys the windows, so
+ * anything typed into them and not yet written is gone. Every Application
+ * panel writes as it is touched, and the session panels are backed by conf,
+ * so the one that matters is the named-proxy editor, which edits records and
+ * keeps a dirty flag. The caller is refused if either applies rather than
+ * being trusted to remember.
+ */
+static void kitty_cfg_panel_shortcuts(struct dlgparam *dp,
+                                      struct kitty_cfg_panel *p, bool add);
+
+static bool kitty_cfg_panel_relayout(PortableDialogStuff *pds,
+                                     const char *path)
+{
+    struct kitty_cfg_panel *p = kitty_cfg_panel_find(path);
+
+    if (!p || !kitty_cfg_panel_host || !pds || !pds->dp)
+        return false;
+    /* Not the one on screen: its controls would vanish and come back under
+     * the reader, and whatever had the focus would be destroyed with them. */
+    if (p == kitty_cfg_active_panel)
+        return false;
+
+    for (size_t i = 0; i < p->nctrls; i++) {
+        struct winctrl *c = p->ctrls[i];
+        for (int k = 0; k < c->num_ids; k++) {
+            HWND item = kitty_cfg_item(pds->dp->hwnd, c->base_id + k);
+            if (item)
+                DestroyWindow(item);
+        }
+        /*
+         * The shortcuts left with kitty_cfg_panel_show(false) when this panel
+         * was hidden, so there are none to withdraw here - but the winctrl
+         * belongs to the SHARED tree and has to leave it, or pds_free later
+         * frees a structure whose windows are long gone.
+         */
+        winctrl_remove(&pds->ctrltrees[TREE_PANEL], c);
+        sfree(c->data);
+        sfree(c);
+    }
+    p->nctrls = 0;                  /* the array itself is reused */
+
+    /*
+     * The SAME cache slot and the SAME id block.
+     *
+     * base_id is derived from the panel's index in the cache, so the entry
+     * must not move and must not be removed: taking it out and letting the
+     * next create hand out an id block by index would give the rebuilt panel
+     * a block another panel is already using. Rebuilding in place keeps every
+     * id exactly where it was, which also means the harnesses that find these
+     * controls by id are unaffected.
+     */
+    {
+        /*
+         * The same two precautions the background warm-up takes, and for the
+         * same reasons: controls are created HIDDEN, because one that exists
+         * visible for even a single dispatch re-points the mouse cursor if
+         * the pointer is over it; and the visible panel's keyboard shortcuts
+         * are parked for the duration, because laying a panel out registers
+         * its shortcuts and the same letter claimed twice trips
+         * winctrl_add_shortcuts' assert - which is a crash, not a glitch.
+         */
+        extern bool kitty_cfg_create_hidden;
+        if (kitty_cfg_active_panel)
+            kitty_cfg_panel_shortcuts(pds->dp, kitty_cfg_active_panel, false);
+        kitty_cfg_create_hidden = true;
+        kitty_cfg_panel_build(pds, p);
+        kitty_cfg_create_hidden = false;
+        kitty_cfg_panel_show(pds->dp, p, false);
+        if (kitty_cfg_active_panel)
+            kitty_cfg_panel_shortcuts(pds->dp, kitty_cfg_active_panel, true);
+    }
+    return true;
 }
 
 /* Shortcut registration alone, without touching window visibility - the
@@ -1863,13 +2018,36 @@ void kitty_cfgbox_apply_size(void)
      * has. Half-typed numbers arrive here too - "8" on the way to "800" - so
      * the same floor a drag is held to applies, and the box stops at its
      * minimum rather than collapsing while the number is still being typed. */
-    w = w > 0 ? (int)(w * sx) : (r.right - r.left);
-    h = h > 0 ? (int)(h * sy) : (r.bottom - r.top);
-    if (w < kitty_cfg_minsize.cx) w = kitty_cfg_minsize.cx;
-    if (h < kitty_cfg_minsize.cy) h = kitty_cfg_minsize.cy;
-    if (w != r.right - r.left || h != r.bottom - r.top)
-        SetWindowPos(kitty_cfg_hwnd, NULL, 0, 0, w, h,
-                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    {
+        int askedw = w, askedh = h;        /* 0 = not set at all */
+        int clampedw = 0, clampedh = 0;
+
+        w = askedw > 0 ? (int)(askedw * sx) : (r.right - r.left);
+        h = askedh > 0 ? (int)(askedh * sy) : (r.bottom - r.top);
+        if (w < kitty_cfg_minsize.cx) { w = kitty_cfg_minsize.cx; clampedw = 1; }
+        if (h < kitty_cfg_minsize.cy) { h = kitty_cfg_minsize.cy; clampedh = 1; }
+        if (w != r.right - r.left || h != r.bottom - r.top)
+            SetWindowPos(kitty_cfg_hwnd, NULL, 0, 0, w, h,
+                         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        /*
+         * Say what was actually applied - but ONLY for a dimension that was
+         * both asked for and refused.
+         *
+         * The box cannot go below the size its own template produced, so a
+         * smaller number is clamped, and a field still holding that number
+         * reads as the setting being ignored. Writing the real size back puts
+         * the two into agreement. Only this side knows the minimum, which is
+         * why the correction happens here rather than where it was typed.
+         *
+         * Writing BOTH would be a different bug: typing a height would pin
+         * the width as well, turning "no width set" into a stored one behind
+         * the user's back - the same mistake as a move-only drag recording a
+         * size.
+         */
+        if (clampedw || clampedh)
+            kitty_cfgbox_store_size(clampedw ? (int)(w / sx) : 0,
+                                    clampedh ? (int)(h / sy) : 0);
+    }
 }
 
 static LRESULT CALLBACK kitty_cfg_kbd_hookproc(int code, WPARAM wParam,
@@ -2121,6 +2299,56 @@ static const char *kitty_cfg_build_tree(PortableDialogStuff *pds,
  * open, next to the other things the hook uses.
  */
 static PortableDialogStuff *kitty_cfg_pds = NULL;
+
+/*
+ * A setting that decides a control's SIZE has changed, so the panel holding
+ * that control has to be laid out again - refreshing it would only re-read
+ * values into controls that are already the wrong shape. Today that is the
+ * saved-session list's row count ([ConfigBox] height) and the Session panel.
+ *
+ * Safe from the Config window panel because the Session panel is a different
+ * one: a panel cannot be rebuilt while it is the one on screen, and this is
+ * only ever reached from a field on another panel.
+ */
+void kitty_cfgbox_relayout_panel(const char *path)
+{
+    if (kitty_cfg_pds && path)
+        (void)kitty_cfg_panel_relayout(kitty_cfg_pds, path);
+}
+
+/*
+ * The window a control was built into, found from the dlgcontrol itself.
+ *
+ * The panel that declares a control owns what it wants done with it; this
+ * owns the lookup, which is the only part needing the winctrls trees. Used by
+ * the saved-session panel to spread its button column down the list beside
+ * it - see kitty_config_session_distribute().
+ */
+HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl)
+{
+    struct winctrl *c;
+
+    if (!ctrl || !kitty_cfg_pds || !kitty_cfg_panel_host)
+        return NULL;
+    c = winctrl_findbyctrl(&kitty_cfg_pds->ctrltrees[TREE_PANEL], ctrl);
+    if (!c)
+        return NULL;
+    /*
+     * The FIRST id that has a window, not base_id.
+     *
+     * A winctrl reserves a block of ids and does not necessarily use all of
+     * them: a list box declared with no label still accounts for the label,
+     * so base_id names a static that was never created and GetDlgItem on it
+     * answers NULL - which is how the saved-session list came back as "no
+     * such window" while its dlgcontrol was perfectly valid.
+     */
+    for (int k = 0; k < c->num_ids; k++) {
+        HWND h = GetDlgItem(kitty_cfg_panel_host, c->base_id + k);
+        if (h)
+            return h;
+    }
+    return NULL;
+}
 
 /*
  * The window a modal raised from the configuration box should sit on.

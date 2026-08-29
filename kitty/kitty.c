@@ -3238,14 +3238,45 @@ static const IniParam ini_params[] = {
 #ifdef MOD_BACKGROUNDIMAGE
 	INIP_KW( INIT_SECTION, 0, "shrinkbitmap",	1, 0, 0,	NULL, SetShrinkBitmapEnable ),
 #endif
-	INIP_KW( "ConfigBox", 1, "noexit",		1, IGN, IGN,	&ConfigBoxNoExitFlag, NULL ),
-	INIP_KW( "ConfigBox", 1, "filter",		IGN, 0, IGN,	&SessionFilterFlag, NULL ),
-	INIP_KW( "ConfigBox", 1, "defaultsettings",	IGN, 0, IGN,	&DefaultSettingsFlag, NULL ),
-	INIP_KW( "ConfigBox", 1, "foldernavigation",	1, 0, IGN,	&FolderNavigationFlag, NULL ),
-	INIP_KW( "ConfigBox", 1, "loadlastsession",	1, 0, IGN,	&LoadLastSessionFlag, NULL ),
-	INIP_NUM( "ConfigBox", 1, "height",		IGN,		&ConfigBoxHeight, NULL ),
-	INIP_NUM( "ConfigBox", 1, "windowheight",	IGN,		&ConfigBoxWindowHeight, NULL ),
-	INIP_NUM( "ConfigBox", 1, "windowwidth",	IGN,		&ConfigBoxWindowWidth, NULL ),
+	/* Symmetrical and registry-aware for the same reason as the four below:
+	 * Application > Config window offers it as a checkbox now. */
+	INIP_KW( "ConfigBox", 0, "noexit",		1, 0, IGN,	&ConfigBoxNoExitFlag, NULL ),
+	/*
+	 * The Session-panel group on Application > Config window edits these
+	 * four, which forces two things on them.
+	 *
+	 * SYMMETRICAL. "filter" and "defaultsettings" used to be one-way (yes =
+	 * IGN, i.e. leave the current value alone), because only "no" was ever
+	 * useful from a hand-written file. A checkbox that can be cleared and
+	 * not set again is a lie, so "yes" now states the default rather than
+	 * meaning nothing. No existing file changes behaviour: the value "yes"
+	 * writes the same 1 those flags already start at.
+	 *
+	 * READ THE WAY THEY ARE WRITTEN (0 = ReadParameterN). A panel writes
+	 * through WriteParameter, which in registry mode stores under the hive
+	 * in use; reading them with readINI would put the value somewhere it is
+	 * never looked for. See the note on the three size keys below.
+	 */
+	INIP_KW( "ConfigBox", 0, "filter",		1, 0, IGN,	&SessionFilterFlag, NULL ),
+	INIP_KW( "ConfigBox", 0, "defaultsettings",	1, 0, IGN,	&DefaultSettingsFlag, NULL ),
+	INIP_KW( "ConfigBox", 0, "foldernavigation",	1, 0, IGN,	&FolderNavigationFlag, NULL ),
+	INIP_KW( "ConfigBox", 0, "loadlastsession",	1, 0, IGN,	&LoadLastSessionFlag, NULL ),
+	/*
+	 * READ THE WAY THEY ARE WRITTEN (0 = ReadParameterN, registry then ini).
+	 *
+	 * These three are the only kitty.ini keys the configuration box writes
+	 * back by itself, through WriteParameter - which in registry mode stores
+	 * them under the hive in use, not in kitty.ini. Reading them with
+	 * readINI meant an installed copy wrote the number to the registry and
+	 * then looked for it in a file that never had it, so the field took the
+	 * value, the panel redisplayed it from the running program, and the next
+	 * start came up at the default again with nothing to show for it.
+	 * Portable mode is unaffected: with savemode=dir, ReadParameterN reads
+	 * kitty.ini and nothing else.
+	 */
+	INIP_NUM( "ConfigBox", 0, "height",		IGN,		&ConfigBoxHeight, NULL ),
+	INIP_NUM( "ConfigBox", 0, "windowheight",	IGN,		&ConfigBoxWindowHeight, NULL ),
+	INIP_NUM( "ConfigBox", 0, "windowwidth",	IGN,		&ConfigBoxWindowWidth, NULL ),
 	INIP_NUM( "Print", 1, "height",			IGN,		&PrintCharSize, NULL ),
 	INIP_NUM( "Print", 1, "maxline",		IGN,		&PrintMaxLinePerPage, NULL ),
 	INIP_NUM( "Print", 1, "maxchar",		IGN,		&PrintMaxCharPerLine, NULL ),
@@ -3473,14 +3504,19 @@ void LoadParameters( void ) {
 			WinSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( WinSCPPath, buffer ) ;
 		}
 	}
-	if( readINI( KittyIniFile, "ConfigBox", "dblclick", buffer, sizeof(buffer) ) ) {
-		if( !strcmp(buffer,"open") ) { SetDblClickFlag(0) ; }
-		if( !strcmp(buffer,"start") ) { SetDblClickFlag(1) ; }
+	/* ReadParameter, not readINI: the Session-panel group on Application >
+	 * Config window edits this, and a panel writes through WriteParameter -
+	 * which in registry mode does not write the file. */
+	if( ReadParameter( "ConfigBox", "dblclick", buffer ) ) {
+		if( !stricmp(buffer,"open") ) { SetDblClickFlag(0) ; }
+		if( !stricmp(buffer,"start") ) { SetDblClickFlag(1) ; }
 	}
 	/* How many levels of the config-box Category tree to auto-expand. Default
 	 * (unset / all / full) = fully expanded; a number 1..N expands only that
 	 * deep (1 = top categories only, like stock PuTTY). */
-	if( readINI( KittyIniFile, "ConfigBox", "categoryexpand", buffer, sizeof(buffer) ) ) {
+	/* ReadParameter, not readINI: Application > Config window edits it, and a
+	 * panel writes through WriteParameter - the registry in registry mode. */
+	if( ReadParameter( "ConfigBox", "categoryexpand", buffer ) ) {
 		extern int kitty_category_expand_depth ;
 		if( strlen(buffer)==0 || !stricmp(buffer,"all") || !stricmp(buffer,"full") || !stricmp(buffer,"max") || !stricmp(buffer,"yes") )
 			kitty_category_expand_depth = 99 ;

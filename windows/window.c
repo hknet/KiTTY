@@ -374,6 +374,11 @@ extern int is_backend_first_connected; /* kitty_commun.c */
 #ifdef MOD_PERSO
 int  GetConfigBoxNoExitFlag(void);     /* kitty.c: [ConfigBox] noexit */
 void kitty_respawn_config_box(void);   /* kitty_win.c */
+/* A terminal window has been created in this process. Decides whether
+ * [ConfigBox] noexit brings the configuration window back when it closes;
+ * see the respawn at the foot of the message loop for why it is this and
+ * not "the backend connected". */
+static bool kitty_terminal_window_created = false;
 #endif
 #endif
 
@@ -1685,6 +1690,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             modalfatalbox("Unable to create terminal window: %s",
                           win_strerror(GetLastError()));
         }
+#ifdef MOD_PERSO
+        /* KiTTY: a terminal window has existed in this process. What
+         * [ConfigBox] noexit is about - see the respawn at the foot of the
+         * message loop. */
+        kitty_terminal_window_created = true;
+#endif
         /* KiTTY: Hello-protected key files (userauth hooks). The window
          * anchors the prompt card and names this instance on it. */
         kitty_hello_terminal_init(wgs->term_hwnd);
@@ -2325,12 +2336,28 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
   finished:
 #if defined(MOD_PERSO) && defined(MOD_RECONNECT)
-    /* KiTTY [ConfigBox] noexit=yes: when a window that actually ran a
-     * connected session closes, spawn a fresh instance (which starts at the
-     * config box) so the user lands back in the session picker. Gating on
-     * is_backend_first_connected fixes classic KiTTY's bug of respawning on
-     * config-box exit too; skipped during system shutdown/logoff. */
-    if (GetConfigBoxNoExitFlag() && is_backend_first_connected &&
+    /*
+     * KiTTY [ConfigBox] noexit=yes: when a TERMINAL window closes, spawn a
+     * fresh instance (which starts at the config box) so the user lands back
+     * in the session picker instead of at an empty desktop.
+     *
+     * The gate is "a terminal window existed", not "the backend connected".
+     * It used to be the latter, which meant the one case where coming back is
+     * most useful - a connection that never came up, a mistyped host - was
+     * exactly the case that dropped the user out of KiTTY altogether and made
+     * them start it again by hand.
+     *
+     * That does not reopen the loop the old gate was there to close. A
+     * dismissed configuration box never reaches this point at all: all three
+     * do_config() callers in windows/putty.c call cleanup_exit() the moment it
+     * returns false, so the message loop below is only ever entered once a
+     * terminal window exists. The flag says so explicitly rather than leaving
+     * it to be re-derived from the control flow.
+     *
+     * Still skipped while Windows is shutting down or logging off: respawning
+     * then fights the shutdown.
+     */
+    if (GetConfigBoxNoExitFlag() && kitty_terminal_window_created &&
         !GetSystemMetrics(SM_SHUTTINGDOWN))
         kitty_respawn_config_box();
 #endif

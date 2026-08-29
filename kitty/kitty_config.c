@@ -2054,7 +2054,6 @@ struct sessionsaver_data {
     dlgcontrol *createbutton, *delfolderbutton; /* KiTTY folder mgmt */
     dlgcontrol *commentbox;      /* KiTTY: read-only comment of selected session */
     dlgcontrol *exportbutton, *importbutton; /* KiTTY: whole-store export/import */
-    int cb_top_spacers, cb_bot_spacers; /* height-scaled button distribution */
 #endif
     struct sesslist sesslist;
     bool midsession;
@@ -2118,6 +2117,176 @@ struct sessionsaver_data {
     char *loaded_from;
 #endif
 };
+
+#ifdef MOD_PERSO
+/*
+ * KiTTY: the saved-session panel of the config box that is open, or NULL.
+ *
+ * Set as that panel's controls are declared and cleared with the dialog, the
+ * same contract as kitty_cfg_session_filter_ctrl below - so it cannot dangle.
+ * What needs it is the button column beside the session list: those buttons
+ * are POSITIONED after the layout runs rather than spaced by blank rows, and
+ * the placement has to be redone whenever the list's row count changes.
+ */
+static struct sessionsaver_data *kitty_session_ssd = NULL;
+
+/* The saved-session list's length in rows, clamped to something usable. */
+int kitty_config_session_rows(void)
+{
+    extern int GetConfigBoxHeight(void);       /* kitty.c: [ConfigBox] height */
+    int rows = GetConfigBoxHeight();
+    if (rows < 7) rows = 7;
+    if (rows > 60) rows = 60;
+    return rows;
+}
+#endif
+
+#ifdef MOD_PERSO
+/*
+ * Spread the buttons beside the saved-session list down the height of that
+ * list, measured from the list itself once everything has been laid out.
+ *
+ * Three groups, and the rule is the same at any height: Load sits at the top,
+ * Export/Import sit flush with the foot, and Delete + Del folder are centred
+ * in what is left between them. Nothing here depends on the row count, the
+ * font or the DPI - it reads the rectangles Windows actually produced.
+ *
+ * Called from windows/dialog.c after the panel is laid out and BEFORE it is
+ * measured, since moving these buttons is what decides how tall the panel is.
+ */
+void kitty_config_session_distribute(void)
+{
+    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);   /* windows/dialog.c */
+    struct sessionsaver_data *ssd = kitty_session_ssd;
+    dlgcontrol *top[1], *mid[2], *bot[2];
+    int ntop = 0, nmid = 0, nbot = 0;
+    HWND hlist;
+    RECT lr, br;
+    int listtop, listbot, bh, gap, y, i;
+
+    if (!ssd || !ssd->listbox)
+        return;
+    hlist = kitty_cfg_ctrl_hwnd(ssd->listbox);
+    if (!hlist || !GetWindowRect(hlist, &lr))
+        return;
+
+    if (ssd->loadbutton)      top[ntop++] = ssd->loadbutton;
+    if (ssd->delbutton)       mid[nmid++] = ssd->delbutton;
+    if (ssd->delfolderbutton) mid[nmid++] = ssd->delfolderbutton;
+    if (ssd->exportbutton)    bot[nbot++] = ssd->exportbutton;
+    if (ssd->importbutton)    bot[nbot++] = ssd->importbutton;
+    if (!ntop && !nmid && !nbot)
+        return;                        /* mid-session, or PuTTY mode */
+
+    /*
+     * A button's height, and the gap the LAYOUT puts between two stacked
+     * ones - both measured, neither guessed.
+     *
+     * The gap is read from the two buttons as the layout left them, before
+     * anything here moves them: they are still stacked in declaration order
+     * at this point, so the distance between the first two IS the engine's
+     * own spacing. A constant would be wrong at the next font size, and a
+     * fraction of the button height was wrong immediately - bh/3 came out at
+     * 8 where the layout uses 4, which made the column half again as tall as
+     * it needed to be and pushed it further past the foot of a short list
+     * than the arrangement it replaced.
+     */
+    {
+        dlgcontrol *first = ntop ? top[0] : (nmid ? mid[0] : bot[0]);
+        dlgcontrol *second = (ntop && nmid) ? mid[0]
+                           : (nmid > 1)     ? mid[1]
+                           : (nmid && nbot) ? bot[0]
+                           : (nbot > 1)     ? bot[1] : NULL;
+        HWND h1 = kitty_cfg_ctrl_hwnd(first);
+        if (!h1 || !GetWindowRect(h1, &br))
+            return;
+        bh = br.bottom - br.top;
+        if (bh <= 0)
+            return;
+        gap = bh / 3;                          /* only if there is no second */
+        if (second) {
+            HWND h2 = kitty_cfg_ctrl_hwnd(second);
+            RECT r2;
+            if (h2 && GetWindowRect(h2, &r2) && r2.top > br.bottom)
+                gap = (int)(r2.top - br.bottom);
+        }
+        if (gap < 2) gap = 2;
+    }
+
+    listtop = lr.top;
+    listbot = lr.bottom;
+
+    /* Positions are set in the panel host's client coordinates. */
+    #define KCS_MOVE(ctrl, ytop)                                            \
+        do {                                                                \
+            HWND h = kitty_cfg_ctrl_hwnd(ctrl);                             \
+            RECT r;                                                         \
+            POINT pt;                                                       \
+            if (h && GetWindowRect(h, &r)) {                                \
+                pt.x = r.left; pt.y = (ytop);                               \
+                ScreenToClient(GetParent(h), &pt);                          \
+                SetWindowPos(h, NULL, pt.x, pt.y, 0, 0,                     \
+                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);   \
+            }                                                               \
+        } while (0)
+
+    {
+        int nall = ntop + nmid + nbot;
+        int stack = nall * bh + (nall - 1) * gap;   /* all of them, touching */
+
+        if (listbot - listtop < stack) {
+            /*
+             * Too short for the buttons that have to go beside it - five of
+             * them need more than a very small list is tall. Stack them from
+             * the top and let the column run past the list's foot: they
+             * OVERLAP each other otherwise, which is the one outcome that is
+             * unreadable rather than merely untidy. (The row count has a
+             * floor, but a floor in ROWS cannot know the button height at
+             * this font and DPI, so the check belongs here where both are
+             * measured.)
+             */
+            y = listtop;
+            for (i = 0; i < ntop; i++, y += bh + gap) KCS_MOVE(top[i], y);
+            for (i = 0; i < nmid; i++, y += bh + gap) KCS_MOVE(mid[i], y);
+            for (i = 0; i < nbot; i++, y += bh + gap) KCS_MOVE(bot[i], y);
+        } else {
+            int above, below, block, start;
+
+            for (i = 0, y = listtop; i < ntop; i++, y += bh + gap)
+                KCS_MOVE(top[i], y);
+
+            for (i = 0, y = listbot - (nbot * bh + (nbot - 1) * gap);
+                 i < nbot; i++, y += bh + gap)
+                KCS_MOVE(bot[i], y);
+
+            if (nmid) {
+                above = listtop + (ntop ? ntop * (bh + gap) : 0);
+                below = listbot - (nbot ? nbot * bh + (nbot - 1) * gap + gap
+                                        : 0);
+                block = nmid * bh + (nmid - 1) * gap;
+                start = above + ((below - above) - block) / 3;  /* upper-centre */
+                /* Clamped against BOTH neighbours, in that order: the bottom
+                 * group is flush with the list foot and must not be walked
+                 * into, and the top one is fixed. */
+                if (start + block > below)
+                    start = below - block;
+                if (start < above)
+                    start = above;
+                for (i = 0, y = start; i < nmid; i++, y += bh + gap)
+                    KCS_MOVE(mid[i], y);
+            }
+        }
+    }
+    #undef KCS_MOVE
+}
+
+/* windows/dialog.c calls this once per panel, as soon as it is laid out. */
+void kitty_config_panel_placed(const char *path)
+{
+    if (path && !strcmp(path, "Session"))
+        kitty_config_session_distribute();
+}
+#endif
 
 /* KiTTY: the Session panel's name/search box of the current config dialog.
  * windows/dialog.c's Ctrl+F jump focuses it (and selects its content) from
@@ -5728,28 +5897,28 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
                                 HELPCTX(session_saved),
                                 sessionsaver_handler, P(ssd));
     ssd->listbox->column = 0;
-    /* KiTTY: the saved-session list height is user-configurable via kitty.ini
-     * [ConfigBox] height (GetConfigBoxHeight(), default 21). The column-1
-     * buttons are distributed down that height — Load at the top, Delete +
-     * Del folder in the upper-centre, Export/Import at the bottom — using blank
-     * ctrl_text spacer rows whose COUNT scales with the height so the layout
-     * holds at any configured size. Calibrated at height 16 (2 spacers each
-     * side); each extra list row adds ~1 spacer, split between the two gaps. */
-    {
-        extern int GetConfigBoxHeight(void);   /* kitty.c: [ConfigBox] height */
-        int cbh = GetConfigBoxHeight();
-        if (cbh < 7) cbh = 7;                  /* keep a usable minimum */
-        ssd->listbox->listbox.height = cbh;
-        ssd->cb_top_spacers = (cbh - 12) > 0 ? (cbh - 12) / 2 : 0;
-        ssd->cb_bot_spacers = (cbh - 12) > 0 ? (cbh - 12) - ssd->cb_top_spacers : 0;
-    }
+    /*
+     * KiTTY: the saved-session list height is user-configurable via kitty.ini
+     * [ConfigBox] height (GetConfigBoxHeight()). The buttons beside it are
+     * spread down that height AFTER the layout has run, by
+     * kitty_config_session_distribute() - Load at the top, Delete and Del
+     * folder in the upper-centre, Export/Import flush with the foot.
+     *
+     * They used to be spaced by blank ctrl_text rows whose COUNT was computed
+     * from the height here. That worked, and it welded the row count into the
+     * CONTROLBOX: the number of controls in this set depended on it, so the
+     * setting could not be changed without building the whole box again -
+     * which is why it only ever took effect in the next window. Measuring the
+     * list and placing five buttons against it costs nothing, holds at any
+     * height, font and DPI, and can be redone whenever the number changes.
+     */
+    kitty_session_ssd = ssd;
+    ssd->listbox->listbox.height = kitty_config_session_rows();
     if (!midsession) {
         ssd->loadbutton = ctrl_pushbutton(s, "Load", 'l',       /* top */
                                           HELPCTX(session_saved),
                                           sessionsaver_handler, P(ssd));
         ssd->loadbutton->column = 1;
-        for (int k = 0; k < ssd->cb_top_spacers; k++)
-            ctrl_text(s, "", HELPCTX(no_help))->column = 1;
         ssd->delbutton = ctrl_pushbutton(s, "Delete", 'd',      /* upper-centre */
                                          HELPCTX(session_saved),
                                          sessionsaver_handler, P(ssd));
@@ -5771,8 +5940,6 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
                                                HELPCTX(session_saved),
                                                sessionsaver_handler, P(ssd));
         ssd->delfolderbutton->column = 1;      /* upper-centre, just under Delete */
-        for (int k = 0; k < ssd->cb_bot_spacers; k++)
-            ctrl_text(s, "", HELPCTX(no_help))->column = 1;   /* anchor bottom group */
         /* Whole-store move (portable/new-PC): export every saved session to a
          * folder as protected .ktx files, or import .ktx files back. Bottom of
          * the column so Import's foot lines up with the listbox bottom. Store
@@ -8676,6 +8843,160 @@ static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
 }
 
 /*
+ * The Session-panel group on Application > Config window.
+ *
+ * These settings were all kitty.ini-only until now, and they share a shape:
+ * each decides what the configuration window PUTS IN the Session panel, and
+ * each is read when the panel's controls are declared - so a change lands in
+ * the next configuration window, not this one. Said once at the foot of the
+ * group rather than on every control.
+ *
+ * ctrl->context.p names the key, exactly as the number fields above do.
+ */
+/* kitty.c owns these; declared here because this file has no header for them
+ * and an implicit declaration disagrees with the const-qualified real one. */
+extern int  GetSessionFilterFlag(void);
+extern void SetSessionFilterFlag(const int flag);
+extern int  GetDefaultSettingsFlag(void);
+extern void SetDefaultSettingsFlag(const int flag);
+extern int  GetFolderNavigationFlag(void);
+extern void SetFolderNavigationFlag(const int flag);
+extern int  GetLoadLastSessionFlag(void);
+extern void SetLoadLastSessionFlag(const int flag);
+extern int  GetDblClickFlag(void);
+extern void SetDblClickFlag(const int flag);
+
+static void kitty_cfgwin_flag_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                      void *data, int event)
+{
+    const char *key = (const char *)ctrl->context.p;
+    int cur;
+
+    if (!strcmp(key, "filter"))              cur = GetSessionFilterFlag();
+    else if (!strcmp(key, "defaultsettings")) cur = GetDefaultSettingsFlag();
+    else if (!strcmp(key, "foldernavigation")) cur = GetFolderNavigationFlag();
+    else                                      cur = GetLoadLastSessionFlag();
+
+    if (event == EVENT_REFRESH) {
+        dlg_checkbox_set(ctrl, dlg, cur != 0);
+    } else if (event == EVENT_VALCHANGE) {
+        int on = dlg_checkbox_get(ctrl, dlg) ? 1 : 0;
+        WriteParameter("ConfigBox", (char *)key, on ? "yes" : "no");
+        /* The running value too - EVENT_REFRESH answers from it, so writing
+         * only the file leaves the box redisplaying the old state the moment
+         * the panel is left and re-entered. */
+        if (!strcmp(key, "filter"))               SetSessionFilterFlag(on);
+        else if (!strcmp(key, "defaultsettings")) SetDefaultSettingsFlag(on);
+        else if (!strcmp(key, "foldernavigation")) SetFolderNavigationFlag(on);
+        else                                       SetLoadLastSessionFlag(on);
+    }
+}
+
+/* Two droplists in the same group: the named-proxy chooser's visibility, and
+ * what a double click on a saved session does. */
+static void kitty_cfgwin_proxysel_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                          void *data, int event)
+{
+    static const int vals[] = { 0, 1, -1 };            /* auto, yes, no */
+    static const char *const names[] = {
+        "Only once a named proxy exists", "Always", "Never" };
+    static const char *const keys[] = { "auto", "yes", "no" };
+    int i;
+
+    if (event == EVENT_REFRESH) {
+        int cur = GetProxySelectionFlag();
+        dlg_update_start(ctrl, dlg);
+        dlg_listbox_clear(ctrl, dlg);
+        for (i = 0; i < 3; i++)
+            dlg_listbox_addwithid(ctrl, dlg, names[i], vals[i]);
+        for (i = 0; i < 3; i++)
+            if (vals[i] == cur)
+                dlg_listbox_select(ctrl, dlg, i);
+        dlg_update_done(ctrl, dlg);
+    } else if (event == EVENT_SELCHANGE) {
+        int idx = dlg_listbox_index(ctrl, dlg);
+        if (idx >= 0 && idx < 3) {
+            WriteParameter("ConfigBox", "proxyselection", (char *)keys[idx]);
+            SetProxySelectionFlag(vals[idx]);
+        }
+    }
+}
+
+/* How deep the category tree comes up expanded. Stored as "all" or a depth. */
+static void kitty_cfgwin_expand_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                        void *data, int event)
+{
+    extern int kitty_category_expand_depth;             /* windows/dialog.c */
+    static const char *const names[] = {
+        "Everything", "Top categories only", "Two levels", "Three levels" };
+    static const char *const keys[] = { "all", "1", "2", "3" };
+    static const int depths[] = { 99, 1, 2, 3 };
+    int i;
+
+    if (event == EVENT_REFRESH) {
+        int cur = kitty_category_expand_depth;
+        dlg_update_start(ctrl, dlg);
+        dlg_listbox_clear(ctrl, dlg);
+        for (i = 0; i < 4; i++)
+            dlg_listbox_addwithid(ctrl, dlg, names[i], depths[i]);
+        /* Anything deeper than the offered list is "everything" as far as
+         * this box is concerned - it is what the user sees. */
+        dlg_listbox_select(ctrl, dlg, 0);
+        for (i = 1; i < 4; i++)
+            if (depths[i] == cur)
+                dlg_listbox_select(ctrl, dlg, i);
+        dlg_update_done(ctrl, dlg);
+    } else if (event == EVENT_SELCHANGE) {
+        int idx = dlg_listbox_index(ctrl, dlg);
+        if (idx >= 0 && idx < 4) {
+            WriteParameter("ConfigBox", "categoryexpand", (char *)keys[idx]);
+            kitty_category_expand_depth = depths[idx];
+        }
+    }
+}
+
+/* Respawning the picker when a connected window closes. */
+static void kitty_cfgwin_noexit_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                        void *data, int event)
+{
+    extern int  GetConfigBoxNoExitFlag(void);           /* kitty.c */
+    extern void SetConfigBoxNoExitFlag(const int flag);
+
+    if (event == EVENT_REFRESH) {
+        dlg_checkbox_set(ctrl, dlg, GetConfigBoxNoExitFlag() != 0);
+    } else if (event == EVENT_VALCHANGE) {
+        int on = dlg_checkbox_get(ctrl, dlg) ? 1 : 0;
+        WriteParameter("ConfigBox", "noexit", on ? "yes" : "no");
+        SetConfigBoxNoExitFlag(on);
+    }
+}
+
+static void kitty_cfgwin_dblclick_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                          void *data, int event)
+{
+    static const char *const names[] = { "Open it in this window",
+                                         "Start it in a new window" };
+    static const char *const keys[] = { "open", "start" };
+    int i;
+
+    if (event == EVENT_REFRESH) {
+        int cur = GetDblClickFlag() ? 1 : 0;
+        dlg_update_start(ctrl, dlg);
+        dlg_listbox_clear(ctrl, dlg);
+        for (i = 0; i < 2; i++)
+            dlg_listbox_addwithid(ctrl, dlg, names[i], i);
+        dlg_listbox_select(ctrl, dlg, cur);
+        dlg_update_done(ctrl, dlg);
+    } else if (event == EVENT_SELCHANGE) {
+        int idx = dlg_listbox_index(ctrl, dlg);
+        if (idx >= 0 && idx < 2) {
+            WriteParameter("ConfigBox", "dblclick", (char *)keys[idx]);
+            SetDblClickFlag(idx);
+        }
+    }
+}
+
+/*
  * A number in kitty.ini, edited as text.
  *
  * It shows the value IN FORCE, not the file's text: both keys have a working
@@ -8753,7 +9074,25 @@ static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
         extern void SetConfigBoxWindowWidth(const int num);   /* kitty.c */
         char *s = dlg_editbox_get(ctrl, dlg);
         if (s[0]) {
-            WriteParameter("ConfigBox", (char *)key, s);
+            /*
+             * Store what will actually be USED, not what was typed.
+             *
+             * A number the box then clamps is not the setting: leaving it in
+             * the file means the field redisplays a size the window never
+             * had, and the user is left looking for the reason nothing
+             * happened. The row count has a floor of 7; the window sizes have
+             * the box's own minimum, which only dialog.c knows, so it reports
+             * back what it applied.
+             */
+            char applied[32];
+            const char *store = s;         /* NEVER reassign s - it is freed */
+            if (!strcmp(key, "height")) {
+                int v = atoi(s);
+                if (v < 7) v = 7;
+                sprintf(applied, "%d", v);
+                store = applied;
+            }
+            WriteParameter("ConfigBox", (char *)key, (char *)store);
             /*
              * And into the RUNNING program, not only the file.
              *
@@ -8765,15 +9104,28 @@ static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * field refusing to take the change.
              */
             if (!strcmp(key, "height"))
-                SetConfigBoxHeight(atoi(s));
+                SetConfigBoxHeight(atoi(store));   /* the clamped one */
             else if (!strcmp(key, "windowwidth"))
                 SetConfigBoxWindowWidth(atoi(s));
             else
                 SetConfigBoxWindowHeight(atoi(s));
-            /* The two window sizes are live: this box resizes itself to the
-             * number as it is typed. The list length is not - it is built into
-             * the Session panel's layout, which already exists. */
-            if (strcmp(key, "height")) {
+            if (!strcmp(key, "height")) {
+                /*
+                 * Live, now that the button column is placed from the list's
+                 * measured rectangle instead of being spaced by a computed
+                 * number of blank rows: the row count no longer decides how
+                 * many CONTROLS the set holds, so it is a property the panel
+                 * can simply be laid out again with.
+                 *
+                 * Two steps, and both are needed - the control carries the
+                 * height, and the panel carries the control.
+                 */
+                extern void kitty_cfgbox_relayout_panel(const char *path);
+                if (kitty_session_ssd && kitty_session_ssd->listbox)
+                    kitty_session_ssd->listbox->listbox.height =
+                        kitty_config_session_rows();
+                kitty_cfgbox_relayout_panel("Session");
+            } else {
                 extern void kitty_cfgbox_apply_size(void);  /* windows/dialog.c */
                 kitty_cfgbox_apply_size();
             }
@@ -8790,8 +9142,11 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
     if (midsession || GetPuttyFlag())
         return;
 
+    /* The WHEN belongs here, not in a note at the foot: three groups down,
+     * that note is nowhere near the fields it describes. */
     ctrl_settitle(b, "Application/Config window",
-                  "The configuration window itself");
+                  "The configuration window itself. Sizes apply as you type, "
+                  "the rest at the next window.");
 
     s = ctrl_getset(b, "Application/Config window", "look", "Appearance");
     ctrl_droplist(s, "Colours:", NO_SHORTCUT, 40, HELPCTX(no_help),
@@ -8806,25 +9161,55 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
     ctrl_text(s, "Changes apply to windows opened afterwards - this "
               "configuration window keeps the colours it opened with.",
               HELPCTX(no_help));
+    ctrl_droplist(s, "Category tree opens showing:", NO_SHORTCUT, 55,
+                  HELPCTX(no_help), kitty_cfgwin_expand_handler, P(NULL));
 
     s = ctrl_getset(b, "Application/Config window", "size", "Size");
-    ctrl_editbox(s, "Saved-session list, in rows:", NO_SHORTCUT, 30,
+    ctrl_editbox(s, "Session list, in rows (7 or more):", NO_SHORTCUT, 30,
                  HELPCTX(no_help), kitty_cfgwin_num_handler, P("height"),
                  ED_STR);
     /* PIXELS. dialog.c multiplies these by the DPI scale and gives the window
-     * that size; they are not dialog units, whatever the old label said. */
-    ctrl_editbox(s, "Window height, in pixels (blank = fit the list):",
+     * that size; they are not dialog units, whatever the old label said.
+     * Both labels say the same short thing: the width's was long enough to
+     * run under its own edit box at this font. */
+    ctrl_editbox(s, "Window height, in pixels (blank = default):",
                  NO_SHORTCUT, 30, HELPCTX(no_help),
                  kitty_cfgwin_num_handler, P("windowheight"), ED_STR);
-    ctrl_editbox(s, "Window width, in pixels (blank = the standard width):",
+    ctrl_editbox(s, "Window width, in pixels (blank = default):",
                  NO_SHORTCUT, 30, HELPCTX(no_help),
                  kitty_cfgwin_num_handler, P("windowwidth"), ED_STR);
 
-    s = ctrl_getset(b, "Application/Config window", "when", NULL);
-    ctrl_text(s, "The window can also be dragged to a new size, which fills "
-              "these two boxes in - the drag and the numbers are one setting. "
-              "The list length is the exception: it is built into the Session "
-              "panel, so it takes effect in the next configuration window.",
+    s = ctrl_getset(b, "Application/Config window", "sessionpanel",
+                    "Session panel");
+    ctrl_droplist(s, "Show the proxy chooser:", NO_SHORTCUT, 55,
+                  HELPCTX(no_help), kitty_cfgwin_proxysel_handler, P(NULL));
+    /* Said here because "Never" does more than hide one droplist. */
+    ctrl_text(s, "Never also hides the Edit button. Definitions stay on "
+              "Application > Named proxies.", HELPCTX(no_help));
+    ctrl_droplist(s, "Double-click a session to:", NO_SHORTCUT, 55,
+                  HELPCTX(no_help), kitty_cfgwin_dblclick_handler, P(NULL));
+    ctrl_checkbox(s, "Show \"Default Settings\" in the list",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  kitty_cfgwin_flag_handler, P("defaultsettings"));
+    ctrl_text(s, "Quick connect needs it: loading Default Settings is how you "
+              "get back to that mode.", HELPCTX(no_help));
+    ctrl_checkbox(s, "Show folders as rows, not a drop-down",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  kitty_cfgwin_flag_handler, P("foldernavigation"));
+    ctrl_checkbox(s, "Search the list as you type",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  kitty_cfgwin_flag_handler, P("filter"));
+    ctrl_checkbox(s, "Open on the last used session (off = quick connect)",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  kitty_cfgwin_flag_handler, P("loadlastsession"));
+
+    s = ctrl_getset(b, "Application/Config window", "closing",
+                    "Closing a terminal window");
+    ctrl_checkbox(s, "Come back to this window instead of exiting",
+                  NO_SHORTCUT, HELPCTX(no_help),
+                  kitty_cfgwin_noexit_handler, P(NULL));
+    ctrl_text(s, "Any terminal, even one that never connected. Closing this "
+              "window still exits, and nothing comes back at shutdown.",
               HELPCTX(no_help));
 #else
     (void)b; (void)midsession;

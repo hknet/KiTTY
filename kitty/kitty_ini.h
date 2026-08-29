@@ -107,10 +107,12 @@ char default_init_file_content[] =
 ;    of inheriting whatever was used before.\n\
 ;loadlastsession=yes\n\
 \n\
-; noexit: if yes, closing a window that ran a connected session starts a fresh\n\
-;    instance showing the configuration box, so you land back in the session\n\
-;    picker. A window that never connected (e.g. the config box itself was\n\
-;    cancelled) exits normally, and nothing respawns during system shutdown.\n\
+; noexit: if yes, closing a TERMINAL window starts a fresh instance showing the\n\
+;    configuration box, so you land back in the session picker instead of at an\n\
+;    empty desktop. That includes a terminal whose connection never came up - a\n\
+;    mistyped host is when coming back is most useful. Closing the\n\
+;    configuration box itself still exits, and nothing respawns during system\n\
+;    shutdown or logoff.\n\
 ;noexit=no\n\
 \n\
 ; proxyselection: show the named-proxy chooser in the Session panel.\n\
