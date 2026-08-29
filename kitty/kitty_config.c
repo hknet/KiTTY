@@ -20,6 +20,7 @@
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION */
 #include "kitty_win.h"   /* SetTextToClipboard */
 #include "kitty_theme.h"   /* the app-wide colour theme, for Application > Config window */
+#include "kitty_storage.h" /* the one-time old-sessions notice bits */
 #endif
 
 #ifdef MOD_PERSO
@@ -5393,6 +5394,23 @@ static void checkupdate_button_handler(dlgcontrol *ctrl, dlgparam *dp,
  * list immediately. The flag lives in the registry (windows/storage.c). */
 int  kitty_get_show_foreign_sessions(void);   /* windows/storage.c */
 void kitty_set_show_foreign_sessions(int on); /* windows/storage.c */
+/*
+ * The line under the saved-session list, and the button beside it.
+ *
+ * It exists for one reason: the list is showing sessions the user did not
+ * create in this KiTTY, and nothing else on the panel says so. The button is
+ * the same jump the proxy panel uses - the setting lives on one panel only,
+ * and this is a pointer to it, not a second copy of it.
+ */
+static void kitty_foreignnotice_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                        void *data, int event)
+{
+    extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
+    (void)ctrl; (void)dlg; (void)data;
+    if (event == EVENT_ACTION)
+        kitty_cfg_goto_panel("Application/Migration");
+}
+
 static void kitty_showforeign_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                       void *data, int event)
 {
@@ -5777,6 +5795,40 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
 #endif
     ctrl_columns(s, 1, 100);
 #ifdef MOD_PERSO
+    /*
+     * KiTTY: why the list has sessions in it that were never created here.
+     *
+     * Shown ONCE - the bit is cleared as the control is built, so the next
+     * configuration window comes up without the row and everything below it
+     * moves back up. Registry modes only, and only while there is an old hive
+     * to explain, which is the same gate the Migration panel is under.
+     */
+    if (!midsession && !GetPuttyFlag() &&
+        kitty_foreign_notice_pending(KITTY_FOREIGN_NOTICE_LIST)) {
+        extern int GetIniFileFlag(void);              /* kitty_commun.c */
+        extern int kitty_has_foreign_sessions(void);  /* windows/storage.c */
+        if (GetIniFileFlag() == 0 /* SAVEMODE_REG */ &&
+            kitty_has_foreign_sessions() &&
+            kitty_get_show_foreign_sessions()) {
+            dlgcontrol *nt, *nb;
+            ctrl_columns(s, 2, 74, 26);
+            /* PAST TENSE. The bit that puts this line here may have been
+             * armed on an earlier run, so by the time anyone reads it they
+             * may well have sessions of their own - present tense would then
+             * be plainly untrue about the list they are looking at. */
+            nt = ctrl_text(s, "This list also holds sessions from an older "
+                           "KiTTY or from PuTTY, because this KiTTY had none "
+                           "of its own when it first ran.", HELPCTX(no_help));
+            nt->column = 0;
+            nb = ctrl_pushbutton(s, "Old sessions...", NO_SHORTCUT,
+                                 HELPCTX(no_help),
+                                 kitty_foreignnotice_handler, P(NULL));
+            nb->column = 1;
+            nb->align_next_to = nt;
+            ctrl_columns(s, 1, 100);
+            kitty_foreign_notice_clear(KITTY_FOREIGN_NOTICE_LIST);
+        }
+    }
     /* KiTTY: read-only display of the selected session's comment, below the list.
      * Empty comments show a clear placeholder directly inside the field. */
     if (!GetPuttyFlag()) {
@@ -8604,30 +8656,88 @@ static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
         dlg_update_done(ctrl, dlg);
     } else if (event == EVENT_SELCHANGE) {
         int idx = dlg_listbox_index(ctrl, dlg);
-        if (idx >= 0 && idx < 3)
+        if (idx >= 0 && idx < 3) {
             WriteParameter(INIT_SECTION, "theme",
                            (char *)kitty_theme_pref_to_string(prefs[idx]));
+            /*
+             * And show it, here, now.
+             *
+             * The colours DID change without a restart - on the next
+             * activation, because the CBT hook re-themes a window whose
+             * remembered darkness no longer matches. So the setting looked
+             * inert until you clicked away and back. This is that same call,
+             * made at the moment the choice is made; the theme reads the file
+             * we have just written. Other open windows follow when they are
+             * next activated, which is the behaviour that was already there.
+             */
+            kitty_theme_apply(kitty_cfg_modal_owner(), kitty_theme_app_dark());
+        }
     }
 }
 
-/* A number in kitty.ini, edited as text. Empty means "not set" - which is not
- * the same as zero for either of these keys, so an empty box writes nothing
- * rather than writing a 0 that would be read back as a real height. */
+/*
+ * A number in kitty.ini, edited as text.
+ *
+ * It shows the value IN FORCE, not the file's text: both keys have a working
+ * default, and an empty box next to a box that plainly has a height reads as
+ * "nothing is set here" when something is. The one number that is still shown
+ * blank is windowheight = 0, which is not a height at all - it means "however
+ * tall the list makes it".
+ *
+ * An empty box therefore writes nothing rather than writing a 0 that would be
+ * read back as a real height.
+ */
+static int cfgwin_refreshing = 0;
+
 static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                      void *data, int event)
 {
     const char *key = (const char *)ctrl->context.p;
 
     if (event == EVENT_REFRESH) {
+        extern int GetConfigBoxHeight(void);        /* kitty.c: rows */
+        extern int GetConfigBoxWindowHeight(void);  /* kitty.c: pixels, 0 = fit */
         char buf[32];
+        int v = !strcmp(key, "height") ? GetConfigBoxHeight()
+                                       : GetConfigBoxWindowHeight();
         buf[0] = '\0';
-        if (!ReadParameterN("ConfigBox", key, buf, sizeof(buf)))
-            buf[0] = '\0';
+        if (v > 0)
+            sprintf(buf, "%d", v);
+        /*
+         * dlg_editbox_set fires EVENT_VALCHANGE, and there is no re-entry
+         * guard inside it. Unguarded, every refresh of this panel wrote the
+         * number straight back - which would PIN the default into kitty.ini
+         * for someone who had never set it, purely because they opened the
+         * panel and looked at it.
+         */
+        cfgwin_refreshing = 1;
         dlg_editbox_set(ctrl, dlg, buf);
-    } else if (event == EVENT_VALCHANGE) {
+        cfgwin_refreshing = 0;
+    } else if (event == EVENT_VALCHANGE && !cfgwin_refreshing) {
+        /* Written as it is typed, like every other application setting here:
+         * there is no Save on this panel. Half-typed numbers reach the file
+         * and are immediately replaced by the next keystroke - harmless,
+         * because neither key does anything until the next window is built. */
+        extern void SetConfigBoxHeight(const int num);        /* kitty.c */
+        extern void SetConfigBoxWindowHeight(const int num);  /* kitty.c */
         char *s = dlg_editbox_get(ctrl, dlg);
-        if (s[0])
+        if (s[0]) {
             WriteParameter("ConfigBox", (char *)key, s);
+            /*
+             * And into the RUNNING program, not only the file.
+             *
+             * EVENT_REFRESH above answers from these two, because they are
+             * what the box is actually built from. Writing the file alone
+             * left them disagreeing: the number was stored, the next window
+             * came up the new size - and this panel snapped back to the old
+             * value as soon as it was left and re-entered, which reads as the
+             * field refusing to take the change.
+             */
+            if (!strcmp(key, "height"))
+                SetConfigBoxHeight(atoi(s));
+            else
+                SetConfigBoxWindowHeight(atoi(s));
+        }
         sfree(s);
     }
 }
@@ -8661,13 +8771,16 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
     ctrl_editbox(s, "Saved-session list, in rows:", NO_SHORTCUT, 30,
                  HELPCTX(no_help), kitty_cfgwin_num_handler, P("height"),
                  ED_STR);
-    ctrl_editbox(s, "Window height, in dialog units (blank = fit the list):",
+    /* PIXELS. dialog.c multiplies this by the DPI scale and gives the window
+     * that height; it is not in dialog units, whatever the old label said. */
+    ctrl_editbox(s, "Window height, in pixels (blank = fit the list):",
                  NO_SHORTCUT, 30, HELPCTX(no_help),
                  kitty_cfgwin_num_handler, P("windowheight"), ED_STR);
 
     s = ctrl_getset(b, "Application/Config window", "when", NULL);
-    ctrl_text(s, "These take effect in the NEXT configuration window - this "
-              "one was already built when it opened.", HELPCTX(no_help));
+    ctrl_text(s, "The two sizes take effect in the NEXT configuration window: "
+              "this one laid its list, buttons and tree out for the height it "
+              "opened with.", HELPCTX(no_help));
 #else
     (void)b; (void)midsession;
 #endif

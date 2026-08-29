@@ -24,4 +24,8 @@ void kitty_notice_hide(void);
  * clipboard balloon, +72 the workplace-disarm notice in window.c.) */
 #define WM_KITTY_AGENT_UNVERIFIED (WM_APP + 73)
 
+/* Clicking the "also showing your old sessions" notice posts this; window.c
+ * answers with a configuration window on Application/Migration. */
+#define WM_KITTY_FOREIGN_SESSIONS (WM_APP + 74)
+
 #endif

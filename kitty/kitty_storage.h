@@ -33,6 +33,18 @@ struct ksf_item;
 /* ---- runtime registry root + derived key names ---- */
 int kitty_root_is_putty(void);
 int kitty_get_show_foreign_sessions(void);  /* fallback hives visible? */
+void kitty_set_show_foreign_sessions(int on);
+
+/*
+ * The one-time notice that "auto" has answered the old-sessions question.
+ * Two places show it and neither waits for the other: the box at startup and
+ * the line under the saved-session list. Each clears its OWN bit once it has
+ * been seen, so whichever comes first does not rob the other.
+ */
+#define KITTY_FOREIGN_NOTICE_STARTUP 1
+#define KITTY_FOREIGN_NOTICE_LIST    2
+int kitty_foreign_notice_pending(int bits);
+void kitty_foreign_notice_clear(int bits);
 const char *kitty_registry_base(void);   /* base hive, no suffix */
 const char *kitty_reg_sessions(void);    /* <base>\Sessions */
 const char *kitty_reg_jumplist(void);    /* <base>\Jumplist */

@@ -334,6 +334,7 @@ int kitty_workplace_query(char *name, int len);   /* kitty/kitty_workplace.c */
 int kitty_workplace_request(int arm, unsigned int minutes);
 #include "../kitty/kitty_notice.h"  /* kitty_notice_show + the notice click
                                      * messages (WM_KITTY_AGENT_UNVERIFIED) */
+#include "../kitty/kitty_storage.h" /* the one-time old-sessions notice bits */
 #include "../kitty/kitty_theme.h"   /* KiTTY: dark mode for the dialogs */
 /* KiTTY: whether to look for a new release at startup - an application
  * setting in kitty.ini, not a per-session one (kitty/kitty_win.c). */
@@ -557,6 +558,32 @@ static void win_seat_notify_session_started(Seat *seat)
      * TUI is never corrupted by a mid-session injection. */
     /* An application setting now, not a per-session one: see
      * kitty_check_update_enabled() in kitty/kitty_win.c. */
+    /*
+     * KiTTY: the saved-session list is showing an older KiTTY's or PuTTY's
+     * sessions, decided by "auto" on some earlier start. Say so ONCE.
+     *
+     * Here rather than only in the configuration box, because someone who
+     * starts straight into a session - from the launcher, from a shortcut -
+     * never looks at that list and would never be told. The bit is cleared as
+     * the notice goes up, so the box's own line can still do its half.
+     */
+    {
+        static int foreign_notice_shown = 0;
+        if (!foreign_notice_shown &&
+            kitty_foreign_notice_pending(KITTY_FOREIGN_NOTICE_STARTUP)) {
+            foreign_notice_shown = 1;
+            kitty_foreign_notice_clear(KITTY_FOREIGN_NOTICE_STARTUP);
+            kitty_notice_show(
+                "KiTTY is also showing your old sessions",
+                "This KiTTY had no saved sessions of its own, so its session "
+                "list also holds the ones an older KiTTY or PuTTY left in the "
+                "registry - they can be opened, edited and deleted from it. "
+                "That answer is now recorded and will not change on its own. "
+                "Click here to see it, or to switch the old sessions off.",
+                RGB(0, 100, 0), 20, wgs->term_hwnd,
+                WM_KITTY_FOREIGN_SESSIONS);
+        }
+    }
     if (kitty_check_update_enabled()) {
         kitty_start_update_check();
         static int update_notice_shown = 0;
@@ -6227,6 +6254,31 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 memset(&pi, 0, sizeof(pi));
                 /* The workplace switch lives on its own leaf now. */
                 sprintf(cmd, "\"%s\" -cfgpanel \"Application/Workplace proxy\"", exe);
+                if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL,
+                                   &si, &pi)) {
+                    CloseHandle(pi.hThread);
+                    CloseHandle(pi.hProcess);
+                }
+            }
+        }
+        return 0;
+      case WM_KITTY_FOREIGN_SESSIONS:
+        /*
+         * The "also showing your old sessions" notice was clicked. Same shape
+         * as the two below: put the user in front of the setting rather than
+         * changing it for them, in a NEW window - the Application tab is not
+         * built mid-session, so Change Settings would open on a box that does
+         * not contain what they clicked for.
+         */
+        {
+            char exe[MAX_PATH], cmd[MAX_PATH + 64];
+            DWORD n = GetModuleFileNameA(NULL, exe, sizeof(exe));
+            if (n && n < sizeof(exe)) {
+                STARTUPINFOA si;
+                PROCESS_INFORMATION pi;
+                memset(&si, 0, sizeof(si)); si.cb = sizeof(si);
+                memset(&pi, 0, sizeof(pi));
+                sprintf(cmd, "\"%s\" -cfgpanel \"Application/Migration\"", exe);
                 if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL,
                                    &si, &pi)) {
                     CloseHandle(pi.hThread);

@@ -60,9 +60,9 @@ int kitty_root_is_putty(void)
 
 /* KiTTY: whether the saved-session list also shows (and lets you delete)
  * sessions from the read-only fallback hives (old 9bis KiTTY + stock PuTTY).
- * Default OFF, so by default KiTTY only shows/deletes its own hive and can never
- * touch a stock-PuTTY session without the user opting in. Persisted as a DWORD
- * under the base hive; toggled by a checkbox in the config dialog. */
+ * Persisted as a DWORD under the base hive, written either by the checkbox in
+ * the configuration box or - once, on the start that first meets an old hive -
+ * by the adaptive rule below. */
 static int kitty_show_foreign = -1;   /* -1 = not yet read */
 int kitty_portable_store_state_string(const char *key, const char *value);
 int kitty_portable_load_state_string(const char *key, char *buf, int buflen);
@@ -120,6 +120,67 @@ int kitty_has_foreign_sessions(void)
     return 0;
 }
 
+/* Write the answer where the checkbox writes it, so the two are one setting
+ * and not two that happen to agree. */
+static void kitty_dword_store(const char *name, DWORD v)
+{
+    HKEY hk;
+    if (store_is_file()) {
+        kitty_portable_store_state_dword(name, v);
+        return;
+    }
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        RegSetValueExA(hk, name, 0, REG_DWORD, (const BYTE *)&v, sizeof(v));
+        RegCloseKey(hk);
+    }
+}
+
+static DWORD kitty_dword_load(const char *name)
+{
+    DWORD v = 0, sz = sizeof(v);
+    if (store_is_file()) {
+        if (!kitty_portable_load_state_dword(name, &v))
+            v = 0;
+        return v;
+    }
+    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, name,
+                     RRF_RT_REG_DWORD, NULL, &v, &sz) != ERROR_SUCCESS)
+        v = 0;
+    return v;
+}
+
+static void kitty_persist_show_foreign(int on)
+{
+    kitty_dword_store("ShowForeignSessions", (DWORD)(on ? 1 : 0));
+}
+
+/*
+ * The one-time notice. Held as BITS rather than a flag because the two places
+ * that show it are shown at different moments and often on different runs: a
+ * user who never opens the configuration box should still be told, and one who
+ * dismissed the startup box should still find the line where the sessions are.
+ */
+#define KITTY_FOREIGN_NOTICE_VALUE "ForeignSessionsNotice"
+
+static void kitty_foreign_notice_write(DWORD bits)
+{
+    kitty_dword_store(KITTY_FOREIGN_NOTICE_VALUE, bits);
+}
+
+int kitty_foreign_notice_pending(int bits)
+{
+    return (kitty_dword_load(KITTY_FOREIGN_NOTICE_VALUE) & (DWORD)bits) ? 1 : 0;
+}
+
+void kitty_foreign_notice_clear(int bits)
+{
+    DWORD v = kitty_dword_load(KITTY_FOREIGN_NOTICE_VALUE);
+    if (!(v & (DWORD)bits))
+        return;
+    kitty_dword_store(KITTY_FOREIGN_NOTICE_VALUE, v & ~(DWORD)bits);
+}
+
 /* kitty.c: the kitty.ini reader, and the name of its main section. */
 int ReadParameterN(const char *key, const char *name, char *value, size_t size);
 /* See the note above kitty_get_show_foreign_sessions: libsettings is linked by
@@ -171,10 +232,26 @@ int kitty_get_show_foreign_sessions(void)
                          !_stricmp(ini, "true") || !_stricmp(ini, "on"))
                         ? 1 : 0;
             } else {
-                /* auto: the historical adaptive rule. */
+                /*
+                 * auto: the historical adaptive rule - but ANSWERED ONCE
+                 * rather than asked again on every start. Re-deciding meant
+                 * the session list could change on its own: save your first
+                 * session here and the old hive's sessions were gone at the
+                 * next launch, with nothing to connect the two events.
+                 *
+                 * Only when there is actually an old hive with sessions in it
+                 * is anything written down. On a machine that never ran PuTTY
+                 * there is no question to answer, and the answer would be a
+                 * registry value recording a decision about nothing.
+                 */
                 kitty_show_foreign =
                     (!kitty_root_is_putty() &&
                      kitty_primary_session_count() == 0) ? 1 : 0;
+                if (kitty_show_foreign && kitty_has_foreign_sessions()) {
+                    kitty_persist_show_foreign(1);
+                    kitty_foreign_notice_write(KITTY_FOREIGN_NOTICE_STARTUP |
+                                               KITTY_FOREIGN_NOTICE_LIST);
+                }
             }
         }
     }
@@ -183,18 +260,7 @@ int kitty_get_show_foreign_sessions(void)
 void kitty_set_show_foreign_sessions(int on)
 {
     kitty_show_foreign = on ? 1 : 0;
-    if (store_is_file()) {
-        kitty_portable_store_state_dword("ShowForeignSessions", (DWORD)kitty_show_foreign);
-        return;
-    }
-    HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        DWORD v = (DWORD)kitty_show_foreign;
-        RegSetValueExA(hk, "ShowForeignSessions", 0, REG_DWORD,
-                       (const BYTE *)&v, sizeof(v));
-        RegCloseKey(hk);
-    }
+    kitty_persist_show_foreign(kitty_show_foreign);
 }
 
 /* KiTTY: remember the last session loaded in the config box, so it can be
