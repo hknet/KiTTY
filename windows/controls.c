@@ -236,8 +236,28 @@ void bartitle(struct ctlpos *cp, const char *name, int id)
 void beginbox(struct ctlpos *cp, const char *name, int idbox)
 {
     cp->boxystart = cp->ypos;
+    /*
+     * A captionless frame is drawn half a caption higher than a named one,
+     * so that its top line lands where a caption's middle would - otherwise
+     * the same content sits lower in a box with no title than in a box with
+     * one.
+     *
+     * That half line is BOUGHT from below, not taken from above. Taking it
+     * (boxystart -= STATICHEIGHT/2) put the frame STATICHEIGHT/2 = 4 units
+     * up while only GAPBETWEEN = 2 separates one element from the next, so
+     * every captionless box was drawn 2 units inside whatever preceded it:
+     * into the panel title on Logging, Features, Behaviour, SSH Auth, TTY,
+     * SUPDUP and Comment, and into the box above it on Session, where the
+     * two frames met exactly. It was always wrong and never visible - a
+     * light theme draws the title's etched edge and the frame in the same
+     * grey, so the two read as one line. A dark theme fills the title and
+     * leaves the frame in the system 3D colour, and the overlap shows.
+     *
+     * Spending the space instead keeps the frame's distance from its own
+     * contents exactly as it was, and moves only the frame's top edge.
+     */
     if (!name)
-        cp->boxystart -= STATICHEIGHT / 2;
+        cp->ypos += STATICHEIGHT / 2;
     if (name)
         cp->ypos += STATICHEIGHT;
     cp->ypos += GAPYBOX;
@@ -834,7 +854,11 @@ void staticddl(struct ctlpos *cp, const char *stext,
           0, stext, sid);
 
     r.left = rpos;
-    r.top = cp->ypos + (height - EDITHEIGHT) / 2;
+    /* COMBOHEIGHT, not EDITHEIGHT: this row holds a COMBO. Centring it as
+     * though it were an edit box put it (COMBOHEIGHT-EDITHEIGHT)/2 = 1 unit
+     * lower than the label centred beside it, which is the label-sits-high
+     * look on every drop-down row in the box. */
+    r.top = cp->ypos + (height - COMBOHEIGHT) / 2;
     r.right = rwid;
     r.bottom = COMBOHEIGHT*4;
     doctl(cp, r, "COMBOBOX",
@@ -870,7 +894,9 @@ void staticcombo(struct ctlpos *cp, const char *stext,
           0, stext, sid);
 
     r.left = rpos;
-    r.top = cp->ypos + (height - EDITHEIGHT) / 2;
+    /* COMBOHEIGHT, not EDITHEIGHT - see staticddl. An editable combo is still
+     * a combo. */
+    r.top = cp->ypos + (height - COMBOHEIGHT) / 2;
     r.right = rwid;
     r.bottom = COMBOHEIGHT*10;
     doctl(cp, r, "COMBOBOX",
