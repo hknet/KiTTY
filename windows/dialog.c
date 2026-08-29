@@ -918,6 +918,12 @@ struct kitty_cfg_panel {
  * kitty_config.c, stubbed to nothing for the stock variants. */
 void kitty_config_panel_placed(const char *path);
 
+/* Does the named-proxy panel hold an edit the store has not got? The width
+ * reflow rebuilds panels by destroying their controls, so it leaves that one
+ * alone while this is true. kitty_proxy_gui.c; false in the stock variants,
+ * which have no such panel. */
+bool kitty_proxy_panel_dirty(void);
+
 static struct kitty_cfg_panel **kitty_cfg_panels = NULL;
 static size_t kitty_cfg_npanels = 0, kitty_cfg_panelsize = 0;
 static struct kitty_cfg_panel *kitty_cfg_active_panel = NULL;
@@ -1065,10 +1071,18 @@ static struct kitty_cfg_panel *kitty_cfg_panel_find(const char *path)
     return NULL;
 }
 
-/* Show or hide a cached panel's windows, and swap its shortcuts in or out of
- * the dlgparam table with it. */
-static void kitty_cfg_panel_show(struct dlgparam *dp,
-                                 struct kitty_cfg_panel *p, bool show)
+/*
+ * Show or hide a cached panel's WINDOWS. Nothing else - in particular not the
+ * shortcuts, which is why this is separate from kitty_cfg_panel_show below.
+ *
+ * Laying a panel out REGISTERS its shortcuts as a side effect, so a freshly
+ * rebuilt panel already holds its letters and must be made visible without
+ * claiming them a second time. Doing that through panel_show tripped
+ * winctrl_add_shortcuts' assert (`!dp->shortcuts[s]`, controls.c) and took
+ * the box down with it.
+ */
+static void kitty_cfg_panel_windows(struct dlgparam *dp,
+                                    struct kitty_cfg_panel *p, bool show)
 {
     for (size_t i = 0; i < p->nctrls; i++) {
         struct winctrl *c = p->ctrls[i];
@@ -1088,10 +1102,20 @@ static void kitty_cfg_panel_show(struct dlgparam *dp,
                              (show ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
             }
         }
+    }
+}
+
+/* Show or hide a cached panel's windows, and swap its shortcuts in or out of
+ * the dlgparam table with it. The pairing every panel SWITCH wants. */
+static void kitty_cfg_panel_show(struct dlgparam *dp,
+                                 struct kitty_cfg_panel *p, bool show)
+{
+    kitty_cfg_panel_windows(dp, p, show);
+    for (size_t i = 0; i < p->nctrls; i++) {
         if (show)
-            winctrl_add_shortcuts(dp, c);
+            winctrl_add_shortcuts(dp, p->ctrls[i]);
         else
-            winctrl_rem_shortcuts(dp, c);
+            winctrl_rem_shortcuts(dp, p->ctrls[i]);
     }
 }
 
@@ -1569,17 +1593,59 @@ static struct kitty_cfg_panel *kitty_cfg_panel_create(
 static void kitty_cfg_panel_shortcuts(struct dlgparam *dp,
                                       struct kitty_cfg_panel *p, bool add);
 
-static bool kitty_cfg_panel_relayout(PortableDialogStuff *pds,
-                                     const char *path)
+/*
+ * Lay one cached panel out again.
+ *
+ * `visible` says the panel is the one on screen, which the caller must know
+ * because the two cases differ in what has to be put back afterwards: a
+ * hidden panel is rebuilt hidden and that is all, while the one on screen
+ * has to be shown again, refreshed so its controls carry values rather than
+ * the blanks they are created with, and have its focus and scroll position
+ * restored. Rebuilding the visible panel is only for a WIDTH change, where
+ * leaving it alone means leaving it clipped.
+ */
+static bool kitty_cfg_panel_relayout_ex(PortableDialogStuff *pds,
+                                        struct kitty_cfg_panel *p,
+                                        bool visible)
 {
-    struct kitty_cfg_panel *p = kitty_cfg_panel_find(path);
+    int focus_index = -1;
+    int scroll_was = kitty_cfg_scroll_y;
 
     if (!p || !kitty_cfg_panel_host || !pds || !pds->dp)
         return false;
-    /* Not the one on screen: its controls would vanish and come back under
-     * the reader, and whatever had the focus would be destroyed with them. */
-    if (p == kitty_cfg_active_panel)
+    if ((p == kitty_cfg_active_panel) != visible)
+        return false;                  /* the caller has them the wrong way round */
+    /*
+     * The named-proxy editor is the one panel holding something the store has
+     * not got. Destroying its controls would throw the edit away without
+     * asking, so it keeps the width it has until it is saved or left - a
+     * clipped panel is recoverable, a discarded edit is not.
+     */
+    if (kitty_proxy_panel_dirty() && !strcmp(p->path, "Application/Named proxies"))
         return false;
+
+    if (visible) {
+        /* Which control had the focus, as an INDEX into this panel - the
+         * windows themselves are about to stop existing. */
+        HWND focus = GetFocus();
+        for (size_t i = 0; i < p->nctrls && focus; i++) {
+            struct winctrl *c = p->ctrls[i];
+            for (int k = 0; k < c->num_ids; k++)
+                if (kitty_cfg_item(pds->dp->hwnd, c->base_id + k) == focus) {
+                    focus_index = (int)i;
+                    break;
+                }
+            if (focus_index >= 0)
+                break;
+        }
+        /* Its shortcuts ARE registered - it is showing - so withdraw them
+         * before the rebuild registers them again. */
+        kitty_cfg_panel_shortcuts(pds->dp, p, false);
+        /* Back to the top while the controls are replaced: the host carries
+         * the scroll offset and the new controls are laid out unscrolled. */
+        if (kitty_cfg_scroll_y)
+            kitty_cfg_panel_scroll_to(pds->dp->hwnd, p, 0);
+    }
 
     for (size_t i = 0; i < p->nctrls; i++) {
         struct winctrl *c = p->ctrls[i];
@@ -1621,16 +1687,49 @@ static bool kitty_cfg_panel_relayout(PortableDialogStuff *pds,
          * winctrl_add_shortcuts' assert - which is a crash, not a glitch.
          */
         extern bool kitty_cfg_create_hidden;
-        if (kitty_cfg_active_panel)
+        if (!visible && kitty_cfg_active_panel)
             kitty_cfg_panel_shortcuts(pds->dp, kitty_cfg_active_panel, false);
         kitty_cfg_create_hidden = true;
         kitty_cfg_panel_build(pds, p);
         kitty_cfg_create_hidden = false;
-        kitty_cfg_panel_show(pds->dp, p, false);
-        if (kitty_cfg_active_panel)
-            kitty_cfg_panel_shortcuts(pds->dp, kitty_cfg_active_panel, true);
+        if (!visible) {
+            kitty_cfg_panel_show(pds->dp, p, false);
+            if (kitty_cfg_active_panel)
+                kitty_cfg_panel_shortcuts(pds->dp, kitty_cfg_active_panel, true);
+        }
+    }
+
+    if (visible) {
+        /*
+         * Put back everything the rebuild took away: show the windows, then
+         * fill them - a control is created EMPTY, and only EVENT_REFRESH puts
+         * the setting into it. Skipping that would leave the reader looking
+         * at a panel of blanks.
+         *
+         * WINDOWS ONLY. Laying the panel out has already registered its
+         * shortcuts; going through panel_show would claim the same letters a
+         * second time and trip winctrl_add_shortcuts' assert.
+         */
+        kitty_cfg_panel_windows(pds->dp, p, true);
+        kitty_cfg_panel_refresh(pds->dp, p);
+        kitty_cfg_panel_scrollbar(pds->dp->hwnd, p, false);
+        if (scroll_was)
+            kitty_cfg_panel_scroll_to(pds->dp->hwnd, p, scroll_was);
+        if (focus_index >= 0 && (size_t)focus_index < p->nctrls) {
+            HWND h = kitty_cfg_item(pds->dp->hwnd,
+                                    p->ctrls[focus_index]->base_id);
+            if (h)
+                SetFocus(h);
+        }
+        InvalidateRect(kitty_cfg_panel_host, NULL, TRUE);
     }
     return true;
+}
+
+static bool kitty_cfg_panel_relayout(PortableDialogStuff *pds,
+                                     const char *path)
+{
+    return kitty_cfg_panel_relayout_ex(pds, kitty_cfg_panel_find(path), false);
 }
 
 /* Shortcut registration alone, without touching window visibility - the
@@ -2528,7 +2627,27 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         }
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
       }
-      case WM_EXITSIZEMOVE:
+      case WM_EXITSIZEMOVE: {
+        /*
+         * A WIDTH change means every panel has to be laid out again.
+         *
+         * A panel's controls are positioned when the panel is BUILT, from the
+         * host's width at that moment, so widening the box moves the host and
+         * leaves the contents at their old width - clipped, and obviously so.
+         * Height needs none of this: the panel area scrolls.
+         *
+         * At the END of the drag, not per WM_SIZE: re-laying 44 panels out on
+         * every mouse-move would be unusable. The cached-but-hidden panels are
+         * done too, or the first visit after a resize shows the old width.
+         */
+        RECT now;
+        if (kitty_cfg_layout_ready && GetWindowRect(hwnd, &now) &&
+            (now.right - now.left) != kitty_cfg_dragsize.cx && kitty_cfg_pds) {
+            for (size_t i = 0; i < kitty_cfg_npanels; i++)
+                kitty_cfg_panel_relayout_ex(
+                    kitty_cfg_pds, kitty_cfg_panels[i],
+                    kitty_cfg_panels[i] == kitty_cfg_active_panel);
+        }
         kitty_cfgbox_save_pos(hwnd);   /* remember where the user dragged it */
         kitty_cfgbox_save_size(hwnd);  /* ... and how big they dragged it */
         /*
@@ -2542,6 +2661,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         if (kitty_cfg_active_panel && kitty_cfg_dp &&
             !strcmp(kitty_cfg_active_panel->path, "Application/Config window"))
             kitty_cfg_panel_refresh(kitty_cfg_dp, kitty_cfg_active_panel);
+      }
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
       case WM_DESTROY:
         /* Robust backstop: capture the final position at close, regardless of

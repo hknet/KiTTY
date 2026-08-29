@@ -760,6 +760,21 @@ void kitty_proxy_panel_preselect(const char *name)
  * what happens next, and it is asked only when there is actually something to
  * lose.
  */
+/*
+ * Is there an unsaved edit on this panel?
+ *
+ * Asked by the config box's width reflow, which lays a panel out again by
+ * DESTROYING its controls - so it must not touch this one while it holds
+ * something the store has not got. Unlike pxp_may_leave() this asks nothing
+ * and changes nothing: a window being dragged is not the moment to interrupt
+ * with a question, and the reflow can leave this one panel clipped until it
+ * is saved or left.
+ */
+bool kitty_proxy_panel_dirty(void)
+{
+    return g_pxp && g_pxp->dirty;
+}
+
 static bool pxp_may_leave(void)
 {
     if (!g_pxp || !g_pxp->dirty)

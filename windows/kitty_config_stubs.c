@@ -27,6 +27,9 @@ void kitty_cfgbox_store_size(int w, int h) { (void)w; (void)h; }
 /* No panel in the stock box places any of its own controls: the saved-session
  * button column is a KiTTY arrangement. */
 void kitty_config_panel_placed(const char *path) { (void)path; }
+
+/* No named-proxy panel here, so nothing on it can be unsaved. */
+bool kitty_proxy_panel_dirty(void) { return false; }
 int kitty_proxy_choice_shown(void) { return 0; }  /* no Proxy-choice droplist row */
 
 /* Inline-first security prompts: 1 = keep the confirmation MODAL, i.e. the
