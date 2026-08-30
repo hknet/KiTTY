@@ -157,6 +157,23 @@ To convert everything in one go, use **Export all…** followed by **Import all�
 
 (no screenshot)
 
+### Importing old sessions
+
+**Application > Migration** lists the sessions in the old KiTTY (`9bis.com`) and PuTTY registry hives and copies the ones you select into KiTTY's own store. The panel appears only when such a hive actually holds sessions.
+
+- **The old store is never changed.** An import takes a copy; the original stays where it is, and you can import it again.
+- **An existing name is never overwritten.** The copy is called `work (PuTTY)` or `work (old KiTTY)`, numbered if that name is taken as well.
+- **Settings this version no longer has are not carried over**, and the import names them when it finishes.
+
+Two settings are left behind deliberately:
+
+- `OSC52WarnBeforeClipboardSync` meant "warn before a host writes to the clipboard", so its usual value of *off* meant hosts could write to it silently. This version asks once per session instead, and carrying the old value across would switch remote clipboard writes on for every session you import.
+- `CheckUpdateStartup` belongs to the installation now (`[KiTTY] checkupdate` in `kitty.ini`), not to a session.
+
+`SaveWindowPos` **is** carried over. It is called `SetWindowPos` now, and a session that still has the old name is read through it — on import and on an ordinary load. A pinned position that is off-screen is moved onto the nearest monitor, so an old session cannot put a window out of reach.
+
+(no screenshot)
+
 ### Shortcuts for pre-defined commands
 
 KiTTY lets you define your own list of pre-defined commands that appear in a dedicated **User Command** submenu of the KiTTY menu — the one you get by right-clicking the title bar, or by holding Ctrl and right-clicking anywhere inside the window. The submenu is only shown once at least one command is defined, so an empty `Commands` key means no menu entry at all. Each command you define is automatically assigned a keyboard shortcut (Ctrl+Shift+A, Ctrl+Shift+B, and so on, in the order the store lists them — the menu label tells you which letter a command got), so you can fire frequently used commands instantly. You can add as many commands as you like, and define them globally, per saved session, or per session folder. If the shortcuts ever clash with another program running inside the window (for example Midnight Commander), you can turn them off by adding `shortcuts=no` under a `[KiTTY]` section in your `kitty.ini` file.
@@ -421,7 +438,7 @@ Instead of copying every public key into `authorized_keys` on every server, a **
 
 **How to enable:** for your own key, **kittygen** > `Key` > **Add certificate to key** (the certificate is then carried inside the `.ppk`), or keep it as a separate file and point Configuration > **Connection > SSH > Auth > Credentials** > *"Certificate to use with the private key (optional)"* at it — the second is easier when certificates are short-lived, since renewing one is then a file drop with no key handling. From a script, `kittygen-cli --certificate <file>` does the same, and `kittygen-cli -O cert-info` prints what a certificate asserts. To trust a CA that signs **host** keys, use Configuration > **Connection > SSH > Host keys** > *Configure host CAs* (stored per user, and portable-mode friendly). On the command line, `-i <key.ppk> -cert <certificate>` works for `kitty.exe`, `klink.exe`, `kscp.exe` and `ksftp.exe`.
 
-**[Full how-to, including the OpenSSH server side →](docs/SSH-CERTIFICATES.md)** — certifying a key step by step, `TrustedUserCAKeys` / `AuthorizedPrincipalsFile`, host certificates, a throwaway local lab to try it all safely, and what the common failures mean.
+**[Full how-to, including the OpenSSH server side →](https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/SSH-CERTIFICATES.md)** — certifying a key step by step, `TrustedUserCAKeys` / `AuthorizedPrincipalsFile`, host certificates, a throwaway local lab to try it all safely, and what the common failures mean.
 
 (no screenshot)
 
@@ -725,6 +742,83 @@ This option only takes effect when **Shift/Ctrl/Alt with the arrow keys** is set
 **xterm-style bitmap** — KiTTY's default. In the *"Ctrl toggles application mode"*
 setting the arrow-key modifiers aren't encoded, so no word-navigation remapping is
 possible.
+
+(no screenshot)
+
+### Warning when an unverified agent serves your keys
+
+An SSH agent holds your private keys and signs with them on request, and any program can offer to be that agent: it is a named pipe, and whoever gets there first answers. A program that puts itself in that position sees every key request KiTTY makes.
+
+A signed KiTTY checks who is answering, and warns you when the agent is not a signed build it recognises. That is not a claim that the agent is malicious — a self-built kageant, or another agent you chose, is unverified too — it is KiTTY telling you *who* it is about to hand a signing request to, at the moment it matters.
+
+Turn the warning off if you deliberately use an agent that cannot be verified and are tired of being asked; leave it on otherwise.
+
+**How to enable:** **Application > Security**, *"Warn when an unverified agent serves the keys"*. Stored per installation (`[KiTTY] verifyagent` in `kitty.ini`), not per session.
+
+(no screenshot)
+
+### Where the helper programs live
+
+KiTTY drives three programs it does not contain: **WinSCP** for a graphical file transfer of the session you are on, and **rz** / **sz** for ZModem transfers inside the terminal.
+
+Where those are installed is a property of the PC, not of a connection — the same session opened on your laptop and on a colleague's machine should not need two different paths. So the paths live in `kitty.ini` and are shared by every session, and the settings that *are* per session — which WinSCP mode to use, where downloads go — stay on the session's own panels.
+
+**How to enable:** **Application > External tools**, then the WinSCP and ZModem leaves under it.
+
+(no screenshot)
+
+### A note on a session
+
+A saved session can carry a free-text note: what the machine is for, who owns it, the change ticket that had you connect to it — the sentence you would otherwise keep in a file beside the session list.
+
+It is stored with the session like any other setting, so it travels through **Export all / Import all** and survives a rename. It is never sent to the host, and KiTTY itself shows it only here, on this panel: it is a note for you, not a label the session list displays.
+
+**How to enable:** **Comment** at the foot of the configuration tree.
+
+(no screenshot)
+
+### AltGr sends Alt
+
+On an international keyboard layout, **AltGr** is how you type the characters printed on the front of the keys — on a German layout `AltGr+Q` gives `@`, `AltGr+E` gives `€`. Windows produces those by treating AltGr as Ctrl+Alt, which is also how a terminal application sees a plain `Alt+key`. Programs inside the terminal therefore cannot tell "I typed a euro sign" from "I pressed Alt+E".
+
+KiTTY lets you choose which of the two you get:
+
+- **Off (the default):** AltGr composes characters, as the layout intends. `AltGr+Q` sends `@`.
+- **On:** `AltGr+key` is delivered as `Alt+key`, so an application that binds Alt shortcuts — Midnight Commander, Emacs, a TUI with an Alt-driven menu — sees them.
+
+Turn it on only if you need those shortcuts and do not need the layout's extra characters in the same session; the two cannot both work, which is why this is a switch and not a mode KiTTY can guess.
+
+This is **not** the same as *"AltGr acts as Compose key"* on the same panel. That is PuTTY's own Compose feature, where AltGr followed by two more keystrokes builds one character (Compose, `a`, `'` → `á`); it does not change what a single AltGr keypress sends.
+
+**How to enable:** **Terminal > Keyboard**, *"AltGr sends Alt"*.
+
+(no screenshot)
+
+### A fixed window position
+
+A session can open its window at a position you choose, instead of wherever Windows puts it. It is the companion to *Remember window position* — that one follows the window around as you move it, this one pins it.
+
+Both can be set, and then the fixed position wins: an explicit instruction beats a convenience. That order matters if you use both, because a remembered position silently stops having any effect once a fixed one is set.
+
+**A position that no longer exists cannot strand a window.** Monitors get unplugged and resolutions change, and a position saved against a screen that is no longer there would otherwise open the window somewhere you cannot reach it. KiTTY checks the pinned spot against the monitors you have now and moves the window onto the nearest one if it does not fit on any of them.
+
+**How to enable:** **Window > Appearance**, *Window position*; the remembering variant is **Window > Behaviour**, *Remember window position*.
+
+(no screenshot)
+
+### Typing into a session from outside (/command)
+
+One KiTTY can type a line into another's session, as if you had typed it at the keyboard — and a trailing Return means the far end *runs* it. That is what makes a session scriptable from outside: `kitty.exe -sendcmd`, or the `/command` control message, says one thing to twenty servers at once.
+
+It is dangerous for the same reason it is useful: the twenty include whatever production session happens to be open. So a window listens only when it has been armed, and only to messages meant for it.
+
+- **Per session:** *"Accept broadcast messages for this session"* on **Session > Scripting**. Off by default.
+- **Per PC:** `sendcmdmode=yes` under `[KiTTY]` in `kitty.ini` sets the state windows start in. The window menu's **Tools > "Accept broadcast"** flips the window you are looking at, and the two are the same switch seen from two places.
+- **Which KiTTYs hear each other:** the **broadcast key** on the same panel. An installation gets its own generated key, so a portable KiTTY on a USB stick does not type into the sessions of the copy installed on the machine. Give several sessions a key of their own and only those answer — that is how a broadcast is aimed at three servers instead of all of them.
+
+**None of this is a security boundary, and it is not meant to be.** Anything running under your account can post the same message, and could reach your session by other means regardless. What these settings decide is *when your terminals accept it* — they keep a broadcast off the wrong terminal, not an attacker off your machine.
+
+**How to enable:** **Session > Scripting**, plus `sendcmdmode=yes` in `kitty.ini` if you want windows to start armed.
 
 (no screenshot)
 

@@ -17,6 +17,7 @@
 #include <string.h>
 #include "dialog.h"     /* the ctrl_* panel API */
 #include "kitty_proxy.h"
+#include "kitty_text.h"   /* the words the panels show */
 #include "kitty_rc_additions.h"
 
 /* Type combo order -> CONF_proxy_type. The SSH types make a named proxy a
@@ -836,56 +837,54 @@ void kitty_proxy_build_panel(struct controlbox *b)
     }
 
     ctrl_settitle(b, "Application/Named proxies",
-                  "Proxy definitions shared by every session");
+                  KT_NAMED_PROXIES_PROXY_DEFINITIONS_SHARED_BY_EVERY);
 
-    s = ctrl_getset(b, "Application/Named proxies", "which", "Definition");
-    pd->namebox = ctrl_combobox(s, "Name (pick one to edit, or type a new one):",
-                                NO_SHORTCUT, 100, HELPCTX(no_help),
+    s = ctrl_getset(b, "Application/Named proxies", "which", KT_NAMED_PROXIES_DEFINITION);
+    pd->namebox = ctrl_combobox(s, KT_NAMED_PROXIES_NAME_PICK_ONE_TO_EDIT,
+                                NO_SHORTCUT, 100, HELPCTX(kitty_named_proxies),
                                 pxp_name_handler, P(NULL), P(NULL));
-    ctrl_droplist(s, "Type:", NO_SHORTCUT, 60, HELPCTX(no_help),
+    ctrl_droplist(s, KT_NAMED_PROXIES_TYPE, NO_SHORTCUT, 60, HELPCTX(kitty_named_proxies),
                   pxp_list_handler, I(CONF_proxy_type));
 
     s = ctrl_getset(b, "Application/Named proxies", "where",
-                    "Proxy / jump host / session name");
-    ctrl_editbox(s, "Name/IP:", NO_SHORTCUT, 70, HELPCTX(no_help),
+                    KT_NAMED_PROXIES_PROXY_JUMP_HOST_SESSION_NAME);
+    ctrl_editbox(s, KT_NAMED_PROXIES_NAME_IP, NO_SHORTCUT, 70, HELPCTX(kitty_named_proxies),
                  pxp_str_handler, I(CONF_proxy_host), ED_STR);
-    ctrl_editbox(s, "Port:", NO_SHORTCUT, 30, HELPCTX(no_help),
+    ctrl_editbox(s, KT_NAMED_PROXIES_PORT, NO_SHORTCUT, 30, HELPCTX(kitty_named_proxies),
                  pxp_int_handler, I(CONF_proxy_port), ED_STR);
-    ctrl_droplist(s, ".. this is ..", NO_SHORTCUT, 70, HELPCTX(no_help),
+    ctrl_droplist(s, KT_NAMED_PROXIES_THIS, NO_SHORTCUT, 70, HELPCTX(kitty_named_proxies),
                   pxp_list_handler, I(CONF_proxy_host_kind));
-    ctrl_editbox(s, "Username:", NO_SHORTCUT, 70, HELPCTX(no_help),
+    ctrl_editbox(s, KT_NAMED_PROXIES_USERNAME, NO_SHORTCUT, 70, HELPCTX(kitty_named_proxies),
                  pxp_str_handler, I(CONF_proxy_username), ED_STR);
-    c = ctrl_editbox(s, "Password:", NO_SHORTCUT, 70, HELPCTX(no_help),
+    c = ctrl_editbox(s, KT_NAMED_PROXIES_PASSWORD, NO_SHORTCUT, 70, HELPCTX(kitty_named_proxies),
                      pxp_str_handler, I(CONF_proxy_password), ED_STR);
     c->editbox.password = true;
     pd->pwbox = c;
-    ctrl_checkbox(s, "Show password", NO_SHORTCUT, HELPCTX(no_help),
+    ctrl_checkbox(s, KT_DATA_SHOW_PASSWORD, NO_SHORTCUT, HELPCTX(kitty_named_proxies),
                   pxp_showpw_handler, P(NULL));
 
-    s = ctrl_getset(b, "Application/Named proxies", "opts", "Options");
-    ctrl_editbox(s, "Command to send (Telnet / Local / SSH execute or "
-                 "subsystem types):", NO_SHORTCUT, 100, HELPCTX(no_help),
+    s = ctrl_getset(b, "Application/Named proxies", "opts", KT_ZMODEM_OPTIONS);
+    ctrl_editbox(s, KT_NAMED_PROXIES_COMMAND_TO_SEND_TELNET_LOCAL, NO_SHORTCUT, 100, HELPCTX(kitty_named_proxies),
                  pxp_str_handler, I(CONF_proxy_telnet_command), ED_STR);
-    ctrl_editbox(s, "Exclude Hosts/IPs (separate with commas or spaces):",
-                 NO_SHORTCUT, 100, HELPCTX(no_help),
+    ctrl_editbox(s, KT_NAMED_PROXIES_EXCLUDE_HOSTS_IPS_SEPARATE,
+                 NO_SHORTCUT, 100, HELPCTX(kitty_named_proxies),
                  pxp_str_handler, I(CONF_proxy_exclude_list), ED_STR);
-    ctrl_checkbox(s, "Consider proxying local host connections", NO_SHORTCUT,
-                  HELPCTX(no_help), pxp_bool_handler, I(CONF_even_proxy_localhost));
+    ctrl_checkbox(s, KT_PROXY_CONSIDER_PROXYING_LOCAL_HOST_CONNECTIONS, NO_SHORTCUT,
+                  HELPCTX(kitty_named_proxies), pxp_bool_handler, I(CONF_even_proxy_localhost));
     /* Short enough that the label and its drop-down share one line: the long
      * forms pushed the combo onto the next row. */
-    ctrl_droplist(s, "DNS lookup at proxy:", NO_SHORTCUT, 40,
-                  HELPCTX(no_help), pxp_list_handler, I(CONF_proxy_dns));
-    ctrl_droplist(s, "Print diagnostics:", NO_SHORTCUT, 40,
-                  HELPCTX(no_help), pxp_list_handler, I(CONF_proxy_log_to_term));
+    ctrl_droplist(s, KT_NAMED_PROXIES_DNS_LOOKUP_AT_PROXY, NO_SHORTCUT, 40,
+                  HELPCTX(kitty_named_proxies), pxp_list_handler, I(CONF_proxy_dns));
+    ctrl_droplist(s, KT_NAMED_PROXIES_PRINT_DIAGNOSTICS, NO_SHORTCUT, 40,
+                  HELPCTX(kitty_named_proxies), pxp_list_handler, I(CONF_proxy_log_to_term));
 
     s = ctrl_getset(b, "Application/Named proxies", "act", NULL);
-    pd->banner = ctrl_text(s, "Nothing is stored until Save. Leaving this "
-                           "panel discards an unsaved edit.", HELPCTX(no_help));
+    pd->banner = ctrl_text(s, KT_NAMED_PROXIES_NOTHING_IS_STORED_UNTIL_SAVE, HELPCTX(kitty_named_proxies));
     ctrl_columns(s, 2, 50, 50);
-    c = ctrl_pushbutton(s, "Save", NO_SHORTCUT, HELPCTX(no_help),
+    c = ctrl_pushbutton(s, KT_SESSION_SAVE, NO_SHORTCUT, HELPCTX(kitty_named_proxies),
                         pxp_save_handler, P(NULL));
     c->column = 0;
-    c = ctrl_pushbutton(s, "Delete", NO_SHORTCUT, HELPCTX(no_help),
+    c = ctrl_pushbutton(s, KT_SESSION_DELETE, NO_SHORTCUT, HELPCTX(kitty_named_proxies),
                         pxp_delete_handler, P(NULL));
     c->column = 1;
     ctrl_columns(s, 1, 100);

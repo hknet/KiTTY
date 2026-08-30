@@ -8,7 +8,11 @@
 #   - images are dropped (Halibut has no image support; the screenshots stay
 #     in FEATURES.md / on the website),
 #   - tables are rendered verbatim as code paragraphs,
-#   - internal #anchor links keep their text and lose the link,
+#   - internal #anchor links keep their text and lose the link, AND SO DO
+#     REPO-RELATIVE ONES (docs/FOO.md), because the CHM travels without the
+#     repo beside it. A document that has to be REACHABLE from the Help button
+#     must therefore be linked by its absolute published URL: that becomes a
+#     real link, while a relative one degrades silently to plain text,
 #   - the FEATURES.md table of contents block is skipped (the manual has its
 #     own contents).
 #

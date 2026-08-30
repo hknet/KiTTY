@@ -15,6 +15,45 @@ typedef const char *HelpCtx;
 
 #define WINHELP_CTX_no_help NULL
 
+/*
+ * KiTTY's own topics. Each names a section of the "KiTTY additions" chapter,
+ * which is GENERATED from FEATURES.md (tools/features2but.pl): the id is
+ * "kitty-feat-" plus the heading, lowercased, with runs of non-alphanumerics
+ * turned into "-". So the explanation lives in FEATURES.md and the Help button
+ * on a control opens it - there is no second copy of the text.
+ *
+ * Renaming a heading there changes the id and breaks the Help button with no
+ * error at all, which is what the help-topic check in the QA gate exists to
+ * catch - it also fails a panel whose every control is no_help.
+ */
+#define WINHELP_CTX_kitty_import_sessions "kitty-feat-importing-old-sessions"
+#define WINHELP_CTX_kitty_logging_stamps "kitty-feat-session-logging-with-timestamps"
+#define WINHELP_CTX_kitty_host_cas "kitty-feat-ssh-certificates-user-and-host"
+#define WINHELP_CTX_kitty_workplace "kitty-feat-workplace-proxy-mode"
+#define WINHELP_CTX_kitty_launcher "kitty-feat-session-launcher"
+#define WINHELP_CTX_kitty_winscp "kitty-feat-pscp-exe-and-winscp-integration"
+#define WINHELP_CTX_kitty_theme "kitty-feat-dark-mode"
+#define WINHELP_CTX_kitty_altgr "kitty-feat-altgr-sends-alt"
+#define WINHELP_CTX_kitty_winpos "kitty-feat-a-fixed-window-position"
+#define WINHELP_CTX_kitty_sendcmd "kitty-feat-typing-into-a-session-from-outside-command"
+#define WINHELP_CTX_kitty_transparency "kitty-feat-transparency"
+#define WINHELP_CTX_kitty_hyperlinks "kitty-feat-url-hyperlinks"
+#define WINHELP_CTX_kitty_icon "kitty-feat-an-icon-for-each-session"
+#define WINHELP_CTX_kitty_bgimage "kitty-feat-background-image"
+#define WINHELP_CTX_kitty_osc52 "kitty-feat-the-remote-clipboard-osc-52-osc-5522-far2l"
+#define WINHELP_CTX_kitty_zmodem "kitty-feat-zmodem-file-transfer"
+#define WINHELP_CTX_kitty_verifyagent "kitty-feat-warning-when-an-unverified-agent-serves-your-keys"
+#define WINHELP_CTX_kitty_helper_paths "kitty-feat-where-the-helper-programs-live"
+#define WINHELP_CTX_kitty_folders "kitty-feat-sessions-filter-folders"
+#define WINHELP_CTX_kitty_quickconnect "kitty-feat-quick-connect-type-a-host-instead-of-picking-a-session"
+#define WINHELP_CTX_kitty_updater "kitty-feat-in-app-updater-check-for-updates"
+#define WINHELP_CTX_kitty_comment "kitty-feat-a-note-on-a-session"
+#define WINHELP_CTX_kitty_named_proxies "kitty-feat-proxy-choice"
+
+/* An upstream topic that no upstream control points at: it is what answers
+ * "what IS this protocol", which the SUPDUP panel is asked and could not say. */
+#define WINHELP_CTX_using_supdup "using-supdup"
+
 #define WINHELP_CTX_session_hostname "config-hostname"
 #define WINHELP_CTX_session_saved "config-saving"
 #define WINHELP_CTX_session_coe "config-closeonexit"
