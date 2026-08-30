@@ -32,13 +32,13 @@ static const char *pxe_type_names[] =
       "SSH jump host (invoke a subsystem)" };
 #define PXE_NTYPES ((int)(sizeof(pxe_types)/sizeof(pxe_types[0])))
 
-/* DNS-at-proxy combo -> CONF_proxy_dns (No/Auto/Yes, mirroring the Proxy panel). */
-static const int   pxe_dns_vals[]  = { FORCE_OFF, AUTO, FORCE_ON };
-static const char *pxe_dns_names[] = { "No", "Auto", "Yes" };
+/* DNS-at-proxy combo -> CONF_proxy_dns (auto = at the proxy for far hosts, local = here, proxy = always there). */
+static const int   pxe_dns_vals[]  = { AUTO, FORCE_OFF, FORCE_ON };
+static const char *pxe_dns_names[] = { "auto", "local", "proxy" };
 #define PXE_NDNS ((int)(sizeof(pxe_dns_vals)/sizeof(pxe_dns_vals[0])))
 /* Proxy-diagnostics combo -> CONF_proxy_log_to_term. */
 static const int   pxe_log_vals[]  = { FORCE_OFF, FORCE_ON, AUTO };
-static const char *pxe_log_names[] = { "No", "Yes", "Only until session starts" };
+static const char *pxe_log_names[] = { "never", "always", "connect only" };
 #define PXE_NLOG ((int)(sizeof(pxe_log_vals)/sizeof(pxe_log_vals[0])))
 
 /*
@@ -717,7 +717,7 @@ static void pxp_delete_handler(dlgcontrol *ctrl, dlgparam *dlg,
 }
 
 /* "Show password" for the panel's own password box - the same idea as the one
- * on Connection/Data, kept local because that one's state lives in the config
+ * on Connection/Login, kept local because that one's state lives in the config
  * file this panel does not belong to. */
 static void pxp_showpw_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                void *data, int event)
@@ -871,12 +871,19 @@ void kitty_proxy_build_panel(struct controlbox *b)
                  pxp_str_handler, I(CONF_proxy_exclude_list), ED_STR);
     ctrl_checkbox(s, KT_PROXY_CONSIDER_PROXYING_LOCAL_HOST_CONNECTIONS, NO_SHORTCUT,
                   HELPCTX(kitty_named_proxies), pxp_bool_handler, I(CONF_even_proxy_localhost));
-    /* Short enough that the label and its drop-down share one line: the long
-     * forms pushed the combo onto the next row. */
-    ctrl_droplist(s, KT_NAMED_PROXIES_DNS_LOOKUP_AT_PROXY, NO_SHORTCUT, 40,
-                  HELPCTX(kitty_named_proxies), pxp_list_handler, I(CONF_proxy_dns));
-    ctrl_droplist(s, KT_NAMED_PROXIES_PRINT_DIAGNOSTICS, NO_SHORTCUT, 40,
-                  HELPCTX(kitty_named_proxies), pxp_list_handler, I(CONF_proxy_log_to_term));
+    /* DNS lookup and Diagnostics side by side, half the panel each - two
+     * short labels with their drop-downs right beside them, one line for
+     * what used to take two. */
+    ctrl_columns(s, 2, 50, 50);
+    c = ctrl_droplist(s, KT_NAMED_PROXIES_DNS_LOOKUP_AT_PROXY, NO_SHORTCUT, 55,
+                      HELPCTX(kitty_named_proxies), pxp_list_handler,
+                      I(CONF_proxy_dns));
+    c->column = 0;
+    c = ctrl_droplist(s, KT_NAMED_PROXIES_PRINT_DIAGNOSTICS, NO_SHORTCUT, 55,
+                      HELPCTX(kitty_named_proxies), pxp_list_handler,
+                      I(CONF_proxy_log_to_term));
+    c->column = 1;
+    ctrl_columns(s, 1, 100);
 
     s = ctrl_getset(b, "Application/Named proxies", "act", NULL);
     pd->banner = ctrl_text(s, KT_NAMED_PROXIES_NOTHING_IS_STORED_UNTIL_SAVE, HELPCTX(kitty_named_proxies));
@@ -907,61 +914,3 @@ int kitty_proxy_edit_dialog(HWND owner)
     return kitty_proxy_edit_dialog_for(owner, NULL);
 }
 
-/* ---- "Load named proxy pre-sets": pick one definition ---- */
-
-static char g_pxp_picked[512];
-
-static INT_PTR CALLBACK pxp_dlgproc(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-    switch (msg) {
-      case WM_INITDIALOG: {
-        HWND cb = GetDlgItem(hdlg, IDC_PXP_LIST);
-        for (int i = 2; i < MAX_PROXY && proxies[i].name; i++)
-            SendMessageA(cb, CB_ADDSTRING, 0, (LPARAM)proxies[i].name);
-        /* Preselect the one named on the way in (the session's current choice),
-         * else the first, so OK always means something. */
-        int sel = 0;
-        if (g_pxp_picked[0]) {
-            int f = (int)SendMessageA(cb, CB_FINDSTRINGEXACT, (WPARAM)-1,
-                                      (LPARAM)g_pxp_picked);
-            if (f != CB_ERR) sel = f;
-        }
-        SendMessage(cb, CB_SETCURSEL, sel, 0);
-        return TRUE;
-      }
-      case WM_COMMAND:
-        if (LOWORD(wParam) == IDOK) {
-            HWND cb = GetDlgItem(hdlg, IDC_PXP_LIST);
-            int sel = (int)SendMessage(cb, CB_GETCURSEL, 0, 0);
-            g_pxp_picked[0] = '\0';
-            if (sel != CB_ERR)
-                SendMessageA(cb, CB_GETLBTEXT, sel, (LPARAM)g_pxp_picked);
-            EndDialog(hdlg, g_pxp_picked[0] ? IDOK : IDCANCEL);
-            return TRUE;
-        } else if (LOWORD(wParam) == IDCANCEL) {
-            EndDialog(hdlg, IDCANCEL);
-            return TRUE;
-        }
-        break;
-    }
-    return FALSE;
-}
-
-/* 1 and the chosen name in out[] when the user picked one and pressed OK.
- * out may carry a name on the way in, which is preselected. */
-int kitty_proxy_pick_dialog(HWND owner, char *out, int len)
-{
-    INT_PTR r;
-    InitProxyList();
-    if (!proxies[2].name)
-        return 0;                      /* nothing to pick */
-    g_pxp_picked[0] = '\0';
-    if (out && len > 0 && out[0] && strlen(out) < sizeof(g_pxp_picked))
-        strcpy(g_pxp_picked, out);
-    r = DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_PROXYPICK),
-                   owner, pxp_dlgproc);
-    if (r != IDOK || !g_pxp_picked[0] || (int)strlen(g_pxp_picked) >= len)
-        return 0;
-    strcpy(out, g_pxp_picked);
-    return 1;
-}

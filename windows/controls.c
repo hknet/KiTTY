@@ -192,6 +192,16 @@ void ctlposinit(struct ctlpos *cp, HWND hwnd,
  */
 bool kitty_cfg_create_hidden = false;
 
+/*
+ * KiTTY: while a config-box panel is laid out WIDER than the template,
+ * basew_du holds the content width (in dialog units) the same panel would
+ * have at the template size, and fullw_du the content width it is being
+ * laid out at now. Zero when the box is at the template size, so the rule
+ * below stays out of the way there.
+ */
+int kitty_cfg_btn_basew_du = 0;
+int kitty_cfg_btn_fullw_du = 0;
+
 HWND doctl(struct ctlpos *cp, RECT r, const char *wclass, int wstyle,
            int exstyle, const char *wtext, int wid)
 {
@@ -203,6 +213,30 @@ HWND doctl(struct ctlpos *cp, RECT r, const char *wclass, int wstyle,
      * transforming the width and height directly we arrange to
      * have all supposedly same-sized controls really same-sized.
      */
+
+    /*
+     * KiTTY: a push button does not grow with the panel. When a panel is
+     * laid out wider than the template, only a button spanning the FULL
+     * content width keeps following it; every other push button is held at
+     * the width the template layout gives it - a Save button half the box
+     * wide is not a bigger target, just a stranger one. A button sitting on
+     * the panel's right edge gives the difference back on its left side, so
+     * it stays right-aligned at its natural width.
+     */
+    if (kitty_cfg_btn_basew_du > 0 &&
+        kitty_cfg_btn_fullw_du > kitty_cfg_btn_basew_du &&
+        !strcmp(wclass, "BUTTON") &&
+        (wstyle & 0xF) <= BS_DEFPUSHBUTTON) {
+        bool fullwidth = r.right >= kitty_cfg_btn_fullw_du - 4;
+        if (!fullwidth) {
+            int neww = MulDiv(r.right, kitty_cfg_btn_basew_du,
+                              kitty_cfg_btn_fullw_du);
+            if (cp->xoff + r.left + r.right >=
+                kitty_cfg_btn_fullw_du + GAPBETWEEN - 4)
+                r.left += r.right - neww;   /* right edge stays put */
+            r.right = neww;
+        }
+    }
 
     r.left += cp->xoff;
     MapDialogRect(cp->hwnd, &r);

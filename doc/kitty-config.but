@@ -109,6 +109,16 @@ cannot produce an unusable name.
 
 \H{kitty-cfg-scripting} The Scripting panel
 
+\S{kitty-cfg-loginscript} \q{Login script}
+
+A list of expect/send pairs - wait for this text, then send that -
+carried out when the session opens. It is stored in the session, so it
+travels with it; \c{-loginscript} loads one from a file on the command
+line, and the button beneath the box fills the box from a file so what
+is saved is what you can see.
+
+\H{kitty-cfg-broadcast} The Broadcast panel
+
 \S{kitty-cfg-sendcmd} \q{Accept broadcast messages for this session}
 
 One KiTTY can type a line into another's session, as if it had been
@@ -151,14 +161,6 @@ account can post the same message, and could reach your session by
 other means regardless. What these settings decide is \e{when your
 terminals accept it} - they keep a broadcast off the wrong terminal,
 not an attacker off your machine.
-
-\S{kitty-cfg-loginscript} \q{Login script}
-
-A list of expect/send pairs - wait for this text, then send that -
-carried out when the session opens. It is stored in the session, so it
-travels with it; \c{-loginscript} loads one from a file on the command
-line, and the button beneath the box fills the box from a file so what
-is saved is what you can see.
 
 \H{kitty-cfg-startup} The Startup panel
 

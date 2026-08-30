@@ -604,12 +604,6 @@
  * separate small window rather than a droplist on the Proxy panel, so choosing a
  * template is a deliberate act and does not sit among the session's own
  * settings looking like one of them. */
-#ifndef IDD_PROXYPICK
-#define IDD_PROXYPICK 148
-#endif
-#ifndef IDC_PXP_LIST
-#define IDC_PXP_LIST 1277
-#endif
 #ifndef WM_KITTY_CLIPBALLOON
 #define WM_KITTY_CLIPBALLOON (WM_APP + 71)
 #endif

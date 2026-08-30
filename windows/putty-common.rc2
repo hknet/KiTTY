@@ -79,7 +79,7 @@ END
  * has neither a minimise nor a maximise box, and this box is full of controls
  * with help topics. The maximise box was no loss either: the shared dialog
  * proc answers SIZE_MAXIMIZED with force_normal(), so it snapped back. */
-IDD_MAINBOX DIALOGEX DISCARDABLE 0, 0, 360, 316
+IDD_MAINBOX DIALOGEX DISCARDABLE 0, 0, 360, 320
 STYLE WS_THICKFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "PuTTY Configuration"
 FONT 9, "Segoe UI", 400, 0, 0x1

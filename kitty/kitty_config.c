@@ -233,7 +233,7 @@ static void kitty_autopw_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * Always starts masked when a panel is (re)opened, whatever it was last time -
  * a stored password should not appear on screen because the box happens to
  * reopen on that panel. */
-static dlgcontrol *g_autopw_ctrl = NULL;    /* Connection/Data auto-login */
+static dlgcontrol *g_autopw_ctrl = NULL;    /* Connection/Login auto-login */
 static dlgcontrol *g_proxypw_ctrl = NULL;   /* Connection/Proxy */
 static void kitty_showpw_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                  void *data, int event)
@@ -654,7 +654,18 @@ static void kitty_proxy_handler(dlgcontrol *ctrl, dlgparam *dlg,
  *
  * Nothing is stored until the session is saved, hence the wording "this window".
  */
-struct pxload_data { char *name; dlgcontrol *list; };
+struct pxload_data {
+    char *name;
+    dlgcontrol *list;
+    dlgcontrol *button;
+    /* the pin: where the LAYOUT put the loader (recorded on the first pin
+     * after a build), so a later resize can move it down OR back up */
+    int natural_y[3], natural_bottom, have_natural;
+};
+
+/* The live box's pre-set loader, for the pin below; set whenever the Proxy
+ * panel is built, so it never outlives the controls it names. */
+static struct pxload_data *kitty_pxload_active = NULL;
 
 /*
  * Map a row of the load droplist back to a proxy name.
@@ -683,28 +694,12 @@ static const char *kitty_pxload_name_at(int row)
     return NULL;
 }
 
-static void kitty_pxload_handler(dlgcontrol *ctrl, dlgparam *dlg,
-                                 void *data, int event)
+/* Confirm and write one pre-set into the live Conf. Shared by the panel's
+ * inline loader below; nothing is stored until the session is saved. */
+static void kitty_pxload_apply(dlgparam *dlg, Conf *conf, const char *picked)
 {
-    Conf *conf = (Conf *)data;
-    char picked[512] = "";
     extern int kitty_confirm_box(HWND owner, const char *caption,
                                  const char *text, const char *warn_red); /* kitty_win.c */
-
-    if (event != EVENT_ACTION)          /* one button, nothing else */
-        return;
-
-    /* Choose the template in a window of its own. Preselect the session's
-     * remembered choice when it names one, so the common case is OK, OK. */
-    {
-        const char *cur = conf_get_str(conf, CONF_proxyselection);
-        if (cur && cur[0] && strcmp(cur, KITTY_PROXY_NONE) &&
-            strcmp(cur, KITTY_PROXY_SESSION) && strlen(cur) < sizeof(picked))
-            strcpy(picked, cur);
-    }
-    if (!kitty_proxy_pick_dialog(GetActiveWindow(), picked, sizeof(picked)))
-        return;                         /* cancelled - nothing touched */
-
     {
         char *q = dupprintf(
             "Load the named proxy \"%s\" into this configuration window?\n\n"
@@ -733,6 +728,49 @@ static void kitty_pxload_handler(dlgcontrol *ctrl, dlgparam *dlg,
          * "use what the session says". */
         conf_set_str(conf, CONF_proxyselection, KITTY_PROXY_SESSION);
         dlg_refresh(NULL, dlg);         /* repaint the proxy fields we just wrote */
+    }
+}
+
+/* The panel's own pre-set chooser: a droplist and a Load button at the FOOT
+ * of the Proxy panel. It replaced a button that opened a separate picker
+ * window - one more window for a one-row choice, and a window the theming
+ * never reached. The droplist refills on every EVENT_REFRESH, so a pre-set
+ * added or renamed in the Named-proxies editor is there when the user comes
+ * back. */
+static void kitty_pxload_inline_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                        void *data, int event)
+{
+    struct pxload_data *pd = (struct pxload_data *)ctrl->context.p;
+    Conf *conf = (Conf *)data;
+
+    if (ctrl == pd->list) {
+        if (event == EVENT_REFRESH) {
+            const char *cur = conf_get_str(conf, CONF_proxyselection);
+            int i, sel = 0, n = 0;
+            dlg_update_start(ctrl, dlg);
+            dlg_listbox_clear(ctrl, dlg);
+            for (i = 0; i < MAX_PROXY && proxies[i].name; i++) {
+                if (!strcmp(proxies[i].name, KITTY_PROXY_NONE) ||
+                    !strcmp(proxies[i].name, KITTY_PROXY_SESSION))
+                    continue;
+                dlg_listbox_add(ctrl, dlg, proxies[i].name);
+                if (cur && !strcmp(cur, proxies[i].name))
+                    sel = n;
+                n++;
+            }
+            if (n)
+                dlg_listbox_select(ctrl, dlg, sel);
+            dlg_update_done(ctrl, dlg);
+        }
+        return;
+    }
+
+    if (event != EVENT_ACTION)          /* the Load button */
+        return;
+    {
+        const char *name = kitty_pxload_name_at(dlg_listbox_index(pd->list, dlg));
+        if (name)
+            kitty_pxload_apply(dlg, conf, name);
     }
 }
 
@@ -2096,7 +2134,6 @@ struct sessionsaver_data {
     dlgcontrol *folderlist;      /* KiTTY: editable session-folder combo */
     dlgcontrol *createbutton, *delfolderbutton; /* KiTTY folder mgmt */
     dlgcontrol *commentbox;      /* KiTTY: read-only comment of selected session */
-    dlgcontrol *exportbutton, *importbutton; /* KiTTY: whole-store export/import */
 #endif
     struct sesslist sesslist;
     bool midsession;
@@ -2216,8 +2253,6 @@ void kitty_config_session_distribute(void)
     if (ssd->loadbutton)      top[ntop++] = ssd->loadbutton;
     if (ssd->delbutton)       mid[nmid++] = ssd->delbutton;
     if (ssd->delfolderbutton) mid[nmid++] = ssd->delfolderbutton;
-    if (ssd->exportbutton)    bot[nbot++] = ssd->exportbutton;
-    if (ssd->importbutton)    bot[nbot++] = ssd->importbutton;
     if (!ntop && !nmid && !nbot)
         return;                        /* mid-session, or PuTTY mode */
 
@@ -2323,11 +2358,83 @@ void kitty_config_session_distribute(void)
     #undef KCS_MOVE
 }
 
+/*
+ * Pin the Proxy panel's pre-set loader to the BOTTOM of the panel area. Being
+ * the last content element puts it after everything; "at the bottom" means
+ * the bottom EDGE, however tall the box is. Called after the panel's layout
+ * and again on every dialog resize, because the area's bottom moves and a
+ * pinned thing follows the edge it is pinned to.
+ */
+void kitty_config_proxy_pin_presets(void)
+{
+    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);   /* windows/dialog.c */
+    extern HWND kitty_cfg_panel_host;                    /* windows/controls.c */
+    struct pxload_data *pd = kitty_pxload_active;
+    HWND host = kitty_cfg_panel_host, hw[3];
+    RECT hostr, gr;
+    int i, delta;
+
+    if (!pd || !pd->list || !host)
+        return;
+    hw[0] = FindWindowExA(host, NULL, "Button", KT_PROXY_NAMED_PROXY_PRE_SETS);
+    hw[1] = kitty_cfg_ctrl_hwnd(pd->list);
+    hw[2] = pd->button ? kitty_cfg_ctrl_hwnd(pd->button) : NULL;
+    if (!hw[1])
+        return;
+
+    /* Where the LAYOUT put the loader, recorded once per build: the floor it
+     * may never rise above, so a shrunk box gets it back where the layout
+     * had it rather than under the edge. */
+    if (!pd->have_natural) {
+        pd->natural_bottom = 0;
+        for (i = 0; i < 3; i++) {
+            POINT p;
+            pd->natural_y[i] = 0;
+            if (hw[i] && GetWindowRect(hw[i], &gr)) {
+                p.x = 0; p.y = gr.top;
+                ScreenToClient(host, &p);
+                pd->natural_y[i] = p.y;
+                p.x = 0; p.y = gr.bottom;
+                ScreenToClient(host, &p);
+                if (p.y > pd->natural_bottom)
+                    pd->natural_bottom = p.y;
+            }
+        }
+        pd->have_natural = 1;
+    }
+
+    GetClientRect(host, &hostr);
+    delta = (hostr.bottom - 4) - pd->natural_bottom;
+    if (delta < 0)
+        delta = 0;              /* never above the layout's own position */
+    for (i = 0; i < 3; i++) {
+        if (!hw[i])
+            continue;
+        if (GetWindowRect(hw[i], &gr)) {
+            POINT p = { gr.left, 0 };
+            ScreenToClient(host, &p);
+            SetWindowPos(hw[i], NULL, p.x, pd->natural_y[i] + delta, 0, 0,
+                         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
+}
+
+void kitty_config_footer_pin(const char *path);   /* defined below */
+
 /* windows/dialog.c calls this once per panel, as soon as it is laid out. */
 void kitty_config_panel_placed(const char *path)
 {
     if (path && !strcmp(path, "Session"))
         kitty_config_session_distribute();
+    else if (path && !strcmp(path, "Connection/Proxy")) {
+        /* A fresh layout means fresh natural positions - a rebuild at a new
+         * width moved everything, so yesterday's floor is nobody's floor. */
+        if (kitty_pxload_active)
+            kitty_pxload_active->have_natural = 0;
+        kitty_config_proxy_pin_presets();
+    }
+    if (path)
+        kitty_config_footer_pin(path);  /* the app panels' footer, likewise */
 }
 #endif
 
@@ -4641,24 +4748,6 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 dlg_refresh(ssd->folderlist, dlg);
                 dlg_refresh(ssd->listbox, dlg);
             }
-        } else if (!ssd->midsession &&
-                   ssd->exportbutton && ctrl == ssd->exportbutton) {
-            /* Whole-store export: pick a folder, write each saved session as a
-             * protected .ktx (see kitty_bridge.c). GetActiveWindow() is the
-             * config box, the owner for the folder picker + result dialog. */
-            extern void kitty_export_all_sessions(HWND);
-            kitty_export_all_sessions(GetActiveWindow());
-        } else if (!ssd->midsession &&
-                   ssd->importbutton && ctrl == ssd->importbutton) {
-            /* Whole-store import: pick .ktx files, load+save each as a session
-             * (re-protected for this backend), then refresh the list so the
-             * imported sessions show up immediately. */
-            extern void kitty_import_sessions(HWND);
-            kitty_import_sessions(GetActiveWindow());
-            get_sesslist(&ssd->sesslist, false);
-            get_sesslist(&ssd->sesslist, true);
-            dlg_refresh(ssd->listbox, dlg);
-            kitty_notify_launcher_sessions_changed();
 #endif
         } else if (ctrl == ssd->okbutton) {
 #ifdef MOD_PERSO
@@ -5779,16 +5868,21 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
      * specific add-ons can put extra buttons alongside Open and Cancel. */
 
     /*
-     * The Session panel.
+     * The Session panel. Titled like every other panel - it was the one
+     * panel with no title element, which read as an omission next to the
+     * rest.
      */
     str = dupprintf("Basic options for your %s session", appname);
+    ctrl_settitle(b, "Session", str);
+    sfree(str);
 
     if (!midsession) {
         struct hostport *hp = (struct hostport *)
             ctrl_alloc(b, sizeof(struct hostport));
         memset(hp, 0, sizeof(*hp));
 
-        s = ctrl_getset(b, "Session", "hostport", str);
+        s = ctrl_getset(b, "Session", "hostport",
+                        KT_SESSION_SPECIFY_THE_DESTINATION);
         ctrl_columns(s, 2, 75, 25);
         c = ctrl_editbox(s, HOST_BOX_TITLE, 'n', 100,
                          HELPCTX(session_hostname),
@@ -5849,7 +5943,6 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
 
         ctrl_columns(s, 1, 100);
     }
-    sfree(str);
 
     /*
      * The Load/Save panel is available even in mid-session.
@@ -6007,24 +6100,13 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
                                                HELPCTX(session_saved),
                                                sessionsaver_handler, P(ssd));
         ssd->delfolderbutton->column = 1;      /* upper-centre, just under Delete */
-        /* Whole-store move (portable/new-PC): export every saved session to a
-         * folder as protected .ktx files, or import .ktx files back. Bottom of
-         * the column so Import's foot lines up with the listbox bottom. Store
-         * management, not a per-connection action (cf. "Export current"). */
-        ssd->exportbutton = ctrl_pushbutton(s, KT_SESSION_EXPORT_ALL, NO_SHORTCUT,
-                                            HELPCTX(session_saved),
-                                            sessionsaver_handler, P(ssd));
-        ssd->exportbutton->column = 1;         /* bottom */
-        ssd->importbutton = ctrl_pushbutton(s, KT_SESSION_IMPORT_ALL, NO_SHORTCUT,
-                                            HELPCTX(session_saved),
-                                            sessionsaver_handler, P(ssd));
-        ssd->importbutton->column = 1;         /* bottom */
+        /* The whole-store Export all / Import all buttons used to sit at the
+         * foot of this column; they are store management, not session
+         * editing, and live on Application > Migration now. */
     } else {
         /* Defensive only: setup_config_box already memsets ssd to 0. */
         ssd->createbutton = NULL;
         ssd->delfolderbutton = NULL;
-        ssd->exportbutton = NULL;
-        ssd->importbutton = NULL;
     }
 #endif
     ctrl_columns(s, 1, 100);
@@ -6507,20 +6589,13 @@ static void scb_panel_scripting(struct controlbox *b)
         ctrl_checkbox(s, KT_SCRIPTING_USE_CONDITIONS_FROM_FILE, NO_SHORTCUT,
                       HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
                       I(CONF_script_cond_use));
-        /* ---- receiving broadcasts: the BOTTOM of this page --------------
-         * Its own group box, after the script-file one. A ctrl_text(KT_SCRIPTING_TEXT) spacer
-         * does NOT separate them: it lands in whichever group `s` currently
-         * points at and merely stretches that box downwards.
-         */
-        /* An UNTITLED set between the two boxes: a set with a NULL title draws
-         * no frame, so a blank line in it is space BETWEEN the boxes. Putting
-         * the blank line in either box only stretches that box - which is what
-         * the first attempt did, and it looked like one taller block rather
-         * than two separated ones. */
-        s = ctrl_getset(b, "Session/Scripting", "bcastgap", NULL);
-        ctrl_text(s, KT_SCRIPTING_TEXT, HELPCTX(no_help));
-
-        s = ctrl_getset(b, "Session/Scripting", "broadcast",
+        /* ---- receiving broadcasts: its own leaf under Session -----------
+         * Scripting drives THIS session from a file; a broadcast is another
+         * window typing into it. Separate concerns, separate panels - and
+         * Scripting was carrying both boxes on one tall page. */
+        ctrl_settitle(b, "Session/Broadcast",
+                      KT_BROADCAST_OPTIONS_CONTROLLING_BROADCASTS);
+        s = ctrl_getset(b, "Session/Broadcast", "broadcast",
                         KT_SCRIPTING_ACCEPT_BROADCASTS_FROM_OTHER_KITTY);
         ctrl_checkbox(s, KT_SCRIPTING_ACCEPT_BROADCAST_MESSAGES, NO_SHORTCUT,
                       HELPCTX(kitty_sendcmd), conf_checkbox_handler,
@@ -6687,7 +6762,11 @@ static void scb_panel_terminal(struct controlbox *b)
     }
 #endif
 
-    s = ctrl_getset(b, "Terminal/Keyboard", "appkeypad",
+    /* KiTTY: the application-keypad pair is its own leaf, which gives the
+     * key-mapping block above the room the extra rows need. */
+    ctrl_settitle(b, "Terminal/Keyboard/Application keypad",
+                  KT_KEYBOARD_OPTIONS_CONTROLLING_THE_APPLICATION_KEYPAD);
+    s = ctrl_getset(b, "Terminal/Keyboard/Application keypad", "appkeypad",
                     KT_KEYBOARD_APPLICATION_KEYPAD_SETTINGS);
     ctrl_radiobuttons(s, KT_KEYBOARD_INITIAL_STATE_OF_CURSOR_KEYS, 'r', 3,
                       HELPCTX(keyboard_appcursor),
@@ -7107,7 +7186,11 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
          * different panel, doing the opposite thing. The checkbox now also
          * gates the pin: it was ignored entirely, so coordinates >= 0 pinned
          * the window whether or not the box was ticked (window.c). */
-        s = ctrl_getset(b, "Window/Appearance", "position",
+        /* Its own leaf: fixed coordinates are a placement concern, not a
+         * looks one, and Appearance was full. */
+        ctrl_settitle(b, "Window/Appearance/Position",
+                      KT_APPEARANCE_OPTIONS_CONTROLLING_WHERE_THE_WINDOW);
+        s = ctrl_getset(b, "Window/Appearance/Position", "position",
                         KT_APPEARANCE_WHERE_THE_WINDOW_OPENS);
         ctrl_checkbox(s, KT_APPEARANCE_OPEN_THE_WINDOW, NO_SHORTCUT,
                       HELPCTX(kitty_winpos), conf_checkbox_handler,
@@ -7503,9 +7586,14 @@ static void scb_panel_selection(struct controlbox *b)
     }
 #endif
 
+    /* KiTTY: the adjust block is its own leaf under Colours - the general
+     * switches and the palette editor are different errands, and together
+     * they made one tall panel. */
     str = dupprintf("Adjust the precise colours %s displays", appname);
-    s = ctrl_getset(b, "Window/Colours", "adjust", str);
+    ctrl_settitle(b, "Window/Colours/Precise colours", str);
     sfree(str);
+    s = ctrl_getset(b, "Window/Colours/Precise colours", "adjust",
+                    KT_COLOURS_PRECISE_COLOURS);
     ctrl_text(s, KT_COLOURS_SELECT_A_COLOUR,
               HELPCTX(colours_config));
     ctrl_columns(s, 2, 67, 33);
@@ -7531,12 +7619,13 @@ static void scb_panel_selection(struct controlbox *b)
     ctrl_columns(s, 1, 100);
 }
 
-/* The Connection panel and Connection/Data sub-panel (network utilities
+/* The Connection panel and Connection/Login sub-panel (network utilities
  * only: the whole body is guarded by protocol >= 0). */
 static void scb_panel_connection(struct controlbox *b, bool midsession, int protocol)
 {
     struct environ_data *ed;
     struct controlset *s;
+    dlgcontrol *c;
 
     /*
      * The Connection panel. This doesn't show up if we're in a
@@ -7599,19 +7688,20 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
             }
 #endif
 
+            /* One block for the three fields that prepare a connection
+             * before it authenticates - three single-field frames each
+             * repeating its field's own words were furniture, not
+             * structure. */
+            s = ctrl_getset(b, "Connection", "authopts",
+                            KT_CONNECTION_CONNECTION_PREPARATION);
             {
                 const char *label = backend_vt_from_proto(PROT_SSH) ?
                     "Logical name of remote host (e.g. for SSH key lookup):" :
                     "Logical name of remote host:";
-                s = ctrl_getset(b, "Connection", "identity",
-                                KT_CONNECTION_LOGICAL_NAME_OF_REMOTE_HOST);
                 ctrl_editbox(s, label, 'm', 100,
                              HELPCTX(connection_loghost),
                              conf_editbox_handler, I(CONF_loghost), ED_STR);
             }
-
-            s = ctrl_getset(b, "Connection", "hooks",
-                            KT_CONNECTION_COMMAND_TO_RUN_AT_CONNECTION);
             ctrl_editbox(s, KT_CONNECTION_COMMAND_TO_RUN_BEFORE_CONNECTION, 'b', 100,
                          HELPCTX(connection_pre_hook),
                          conf_editbox_handler, I(CONF_pre_connect_command), ED_STR);
@@ -7620,9 +7710,7 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
             /* KiTTY: port-knocking sequence. Backend = kitty_port_knock() /
              * ManagePortKnocking(), fired from start_backend() before connect. */
             if (!GetPuttyFlag()) {
-                s = ctrl_getset(b, "Connection", "PortKnocking",
-                                KT_CONNECTION_PORT_KNOCKING_SEQUENCE);
-                ctrl_editbox(s, KT_CONNECTION_SEQUENCE, NO_SHORTCUT, 100,
+                ctrl_editbox(s, KT_CONNECTION_PORT_KNOCKING_SEQUENCE, NO_SHORTCUT, 100,
                              HELPCTX(kitty_knocking), conf_editbox_handler,
                              I(CONF_portknockingoptions), ED_STR);
                 ctrl_text(s, KT_CONNECTION_A_COMMA_SEPARATED_LIST, HELPCTX(kitty_knocking));
@@ -7633,13 +7721,13 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
         }
 
         /*
-         * A sub-panel Connection/Data, containing options that
+         * A sub-panel Connection/Login, containing options that
          * decide on data to send to the server.
          */
         if (!midsession) {
-            ctrl_settitle(b, "Connection/Data", KT_DATA_DATA_TO_SEND);
+            ctrl_settitle(b, "Connection/Login", KT_LOGIN_OPTIONS_CONTROLLING_THE_LOGIN);
 
-            s = ctrl_getset(b, "Connection/Data", "login",
+            s = ctrl_getset(b, "Connection/Login", "login",
                             KT_DATA_LOGIN_DETAILS);
             ctrl_editbox(s, KT_DATA_AUTO_LOGIN_USERNAME, 'u', 50,
                          HELPCTX(connection_username),
@@ -7722,7 +7810,12 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
             }
 #endif
 
-            s = ctrl_getset(b, "Connection/Data", "term",
+            /* KiTTY: terminal identification and the environment block each
+             * get a leaf under Data - the login settings alone fill the
+             * parent panel. */
+            ctrl_settitle(b, "Connection/Login/Terminal details",
+                          KT_DATA_TERMINAL_DETAILS_SENT);
+            s = ctrl_getset(b, "Connection/Login/Terminal details", "term",
                             KT_DATA_TERMINAL_DETAILS);
             ctrl_editbox(s, KT_DATA_TERMINAL_TYPE_STRING, 't', 50,
                          HELPCTX(connection_termtype),
@@ -7731,7 +7824,9 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
                          HELPCTX(connection_termspeed),
                          conf_editbox_handler, I(CONF_termspeed), ED_STR);
 
-            s = ctrl_getset(b, "Connection/Data", "env",
+            ctrl_settitle(b, "Connection/Login/Environment",
+                          KT_DATA_ENVIRONMENT_VARIABLES_SENT);
+            s = ctrl_getset(b, "Connection/Login/Environment", "env",
                             KT_DATA_ENVIRONMENT_VARIABLES);
             ctrl_columns(s, 2, 80, 20);
             ed = (struct environ_data *)
@@ -7753,10 +7848,21 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
                                             environ_handler, P(ed));
             ed->rembutton->column = 1;
             ctrl_columns(s, 1, 100);
+            /* A header row over the list's two columns, in the columns'
+             * own proportions - the listbox control has no header of its
+             * own. */
+            ctrl_columns(s, 2, 30, 70);
+            c = ctrl_text(s, KT_DATA_HEADER_NAME, HELPCTX(telnet_environ));
+            c->column = 0;
+            c = ctrl_text(s, KT_DATA_HEADER_CONTENT, HELPCTX(telnet_environ));
+            c->column = 1;
+            ctrl_columns(s, 1, 100);
             ed->listbox = ctrl_listbox(s, NULL, NO_SHORTCUT,
                                        HELPCTX(telnet_environ),
                                        environ_handler, P(ed));
-            ed->listbox->listbox.height = 3;
+            /* On its own leaf the list is the panel's point: give it real
+             * room rather than the three rows it had in Data's corner. */
+            ed->listbox->listbox.height = 9;
             ed->listbox->listbox.ncols = 2;
             ed->listbox->listbox.percentages = snewn(2, int);
             ed->listbox->listbox.percentages[0] = 30;
@@ -7794,14 +7900,6 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
         s = ctrl_getset(b, "Connection/Proxy", "basics",
                         KT_PROXY_THIS_SESSION_S_OWN_PROXY);
 #ifdef MOD_PERSO
-        /* KiTTY: adopt a template into THIS session. One button, inside the
-         * session's own settings because that is what it writes; it opens a
-         * small window to choose the template, then confirms. It replaced a
-         * droplist plus "Load into this window" sitting above the session's
-         * fields, which read as though the droplist were one of them. */
-        if (!GetPuttyFlag() && kitty_has_proxy_definitions())
-            ctrl_pushbutton(s, KT_PROXY_LOAD_NAMED_PROXY_PRE_SETS, NO_SHORTCUT,
-                            HELPCTX(kitty_proxy_buttons), kitty_pxload_handler, P(NULL));
         /* KiTTY: the §6b notice used to be a three-line paragraph HERE, added
          * only while the mode was armed. Two things were wrong with it and both
          * came from the same mistake - it was built at panel-construction time:
@@ -7875,6 +7973,31 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
             ctrl_text(s, KT_SCRIPTING_TEXT, HELPCTX(no_help));
 #endif
 #ifdef MOD_PERSO
+        /* KiTTY: the pre-set loader, at the FOOT of the panel. It adopts a
+         * template into this session, so it is not one of the session's own
+         * fields above - it is something the user reaches for on purpose.
+         * kitty_config_proxy_pin_presets() keeps it on the panel area's
+         * bottom edge. */
+        if (!GetPuttyFlag() && kitty_has_proxy_definitions()) {
+            struct pxload_data *pd = (struct pxload_data *)
+                ctrl_alloc(b, sizeof(struct pxload_data));
+            memset(pd, 0, sizeof(*pd));
+            s = ctrl_getset(b, "Connection/Proxy", "loadnamed",
+                            KT_PROXY_NAMED_PROXY_PRE_SETS);
+            ctrl_columns(s, 2, 75, 25);
+            pd->list = ctrl_droplist(s, NULL, NO_SHORTCUT, 100,
+                                     HELPCTX(kitty_proxy_buttons),
+                                     kitty_pxload_inline_handler, P(pd));
+            pd->list->column = 0;
+            pd->button = ctrl_pushbutton(s, KT_PROXY_LOAD, NO_SHORTCUT,
+                                         HELPCTX(kitty_proxy_buttons),
+                                         kitty_pxload_inline_handler, P(pd));
+            pd->button->column = 1;
+            ctrl_columns(s, 1, 100);
+            kitty_pxload_active = pd;
+        }
+#endif
+#ifdef MOD_PERSO
         /* KiTTY: workplace proxy mode, LAST on the panel and in a box of its own.
          * Everything above it is this session's configuration; this is not. It is
          * an application-wide switch that overrides every session at once, and
@@ -7892,7 +8015,9 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
                           KT_WORKPLACE_PROXY_WORKPLACE_PROXY_MODE_APPLICATION_WIDE);
             s = ctrl_getset(b, "Application/Workplace proxy", "workplace",
                             KITTY_WORKPLACE_BOX_TITLE);
-            ctrl_text(s, KITTY_NOT_SESSION_LEAD, HELPCTX(kitty_workplace));
+            /* The "not a setting of this session" lead is gone: on the
+             * Application tab that is what EVERY panel is, so the sentence
+             * said nothing here any more. */
             /* The live state, drawn BOLD RED while the mode is on so it is seen
              * rather than read: this is the one line on the panel that says
              * something is overriding every session right now.
@@ -8012,155 +8137,6 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                               KT_SSH_2, '2', I(3),
                               KT_SSH_1_INSECURE, '1', I(0));
         }
-
-        /*
-         * The Connection/SSH/Kex panel. (Owing to repeat key
-         * exchange, much of this is meaningful in mid-session _if_
-         * we're using SSH-2 and are not a connection-sharing
-         * downstream, or haven't decided yet.)
-         */
-        if (protcfginfo != 1 && protcfginfo != -1) {
-            ctrl_settitle(b, "Connection/SSH/Kex",
-                          KT_KEX_OPTIONS_CONTROLLING_SSH_KEY_EXCHANGE);
-
-            s = ctrl_getset(b, "Connection/SSH/Kex", "main",
-                            KT_KEX_KEY_EXCHANGE_ALGORITHM_OPTIONS);
-            c = ctrl_draglist(s, KT_KEX_ALGORITHM_SELECTION_POLICY, 's',
-                              HELPCTX(ssh_kexlist),
-                              kexlist_handler, P(NULL));
-            c->listbox.height = KEX_MAX;   /* tall enough to show every algorithm */
-            ctrl_checkbox(s, KT_KEX_WARN_IF_KEY_EXCHANGE, 'q', HELPCTX(ssh_kexlist),
-                          conf_checkbox_handler,
-                          I(CONF_ssh_warn_pre_quantum));
-#ifndef NO_GSSAPI
-            ctrl_checkbox(s, KT_KEX_ATTEMPT_GSSAPI_KEY_EXCHANGE,
-                          'k', HELPCTX(ssh_gssapi),
-                          conf_checkbox_handler,
-                          I(CONF_try_gssapi_kex));
-#endif
-
-            s = ctrl_getset(b, "Connection/SSH/Kex", "repeat",
-                            KT_KEX_OPTIONS_CONTROLLING_KEY_RE_EXCHANGE);
-
-            ctrl_editbox(s, KT_KEX_MAX_MINUTES_BEFORE_REKEY_0, 't', 20,
-                         HELPCTX(ssh_kex_repeat),
-                         conf_editbox_handler,
-                         I(CONF_ssh_rekey_time),
-                         ED_INT);
-#ifndef NO_GSSAPI
-            ctrl_editbox(s, KT_KEX_MINUTES_BETWEEN_GSS_CHECKS_0, NO_SHORTCUT, 20,
-                         HELPCTX(ssh_kex_repeat),
-                         conf_editbox_handler,
-                         I(CONF_gssapirekey),
-                         ED_INT);
-#endif
-            ctrl_editbox(s, KT_KEX_MAX_DATA_BEFORE_REKEY_0, 'x', 20,
-                         HELPCTX(ssh_kex_repeat),
-                         conf_editbox_handler,
-                         I(CONF_ssh_rekey_data),
-                         ED_STR);
-            ctrl_text(s, KT_KEX_USE_1M_FOR_1_MEGABYTE,
-                      HELPCTX(ssh_kex_repeat));
-        }
-
-        /*
-         * The 'Connection/SSH/Host keys' panel.
-         */
-        if (protcfginfo != 1 && protcfginfo != -1) {
-            ctrl_settitle(b, "Connection/SSH/Host keys",
-                          KT_HOST_KEYS_OPTIONS_CONTROLLING_SSH_HOST_KEYS);
-
-            s = ctrl_getset(b, "Connection/SSH/Host keys", "main",
-                            KT_HOST_KEYS_HOST_KEY_ALGORITHM_PREFERENCE);
-            c = ctrl_draglist(s, KT_KEX_ALGORITHM_SELECTION_POLICY, 's',
-                              HELPCTX(ssh_hklist),
-                              hklist_handler, P(NULL));
-            c->listbox.height = HK_MAX;    /* tall enough to show every algorithm */
-
-            ctrl_checkbox(s, KT_HOST_KEYS_PREFER_ALGORITHMS_FOR_WHICH,
-                          'p', HELPCTX(ssh_hk_known), conf_checkbox_handler,
-                          I(CONF_ssh_prefer_known_hostkeys));
-        }
-
-        /*
-         * Manual host key configuration is irrelevant mid-session,
-         * as we enforce that the host key for rekeys is the
-         * same as that used at the start of the session.
-         */
-        if (!midsession) {
-            s = ctrl_getset(b, "Connection/SSH/Host keys", "hostkeys",
-                            KT_HOST_KEYS_MANUALLY_CONFIGURE_HOST_KEYS);
-
-            ctrl_columns(s, 2, 75, 25);
-            c = ctrl_text(s, KT_HOST_KEYS_HOST_KEYS_OR_FINGERPRINTS,
-                          HELPCTX(ssh_kex_manual_hostkeys));
-            c->column = 0;
-            /* You want to select from the list, _then_ hit Remove. So
-             * tab order should be that way round. */
-            mh = (struct manual_hostkey_data *)
-                ctrl_alloc(b,sizeof(struct manual_hostkey_data));
-            mh->rembutton = ctrl_pushbutton(s, KT_DATA_REMOVE, 'r',
-                                            HELPCTX(ssh_kex_manual_hostkeys),
-                                            manual_hostkey_handler, P(mh));
-            mh->rembutton->column = 1;
-            mh->rembutton->delay_taborder = true;
-            mh->listbox = ctrl_listbox(s, NULL, NO_SHORTCUT,
-                                       HELPCTX(ssh_kex_manual_hostkeys),
-                                       manual_hostkey_handler, P(mh));
-            /* This list box can't be very tall, because there's not
-             * much room in the pane on Windows at least. This makes
-             * it become really unhelpful if a horizontal scrollbar
-             * appears, so we suppress that. */
-            mh->listbox->listbox.height = 2;
-            mh->listbox->listbox.hscroll = false;
-            ctrl_tabdelay(s, mh->rembutton);
-            mh->keybox = ctrl_editbox(s, KT_HOST_KEYS_KEY, 'k', 80,
-                                      HELPCTX(ssh_kex_manual_hostkeys),
-                                      manual_hostkey_handler, P(mh), P(NULL));
-            mh->keybox->column = 0;
-            mh->addbutton = ctrl_pushbutton(s, KT_HOST_KEYS_ADD_KEY, 'y',
-                                            HELPCTX(ssh_kex_manual_hostkeys),
-                                            manual_hostkey_handler, P(mh));
-            mh->addbutton->column = 1;
-            /* Centre it on the FIELD it adds from. Without this the button
-             * lines up with the top of the control beside it - which is the
-             * "Key" label, not the box - and the row reads as two unrelated
-             * things at different heights. */
-            mh->addbutton->align_next_to = mh->keybox;
-            ctrl_columns(s, 1, 100);
-        }
-
-        /*
-         * But there's no reason not to forbid access to the host CA
-         * configuration box, which is common across sessions in any
-         * case.
-         */
-        s = ctrl_getset(b, "Connection/SSH/Host keys", "ca",
-                        KT_HOST_KEYS_CONFIGURE_TRUSTED_CERTIFICATION_AUTHORITIES);
-        c = ctrl_pushbutton(s, KT_HOST_KEYS_CONFIGURE_HOST_CAS, NO_SHORTCUT,
-                            HELPCTX(ssh_kex_cert),
-                            host_ca_button_handler, I(0));
-
-        if (!midsession || !(protcfginfo == 1 || protcfginfo == -1)) {
-            /*
-             * The Connection/SSH/Cipher panel.
-             */
-            ctrl_settitle(b, "Connection/SSH/Cipher",
-                          KT_CIPHER_OPTIONS_CONTROLLING_SSH_ENCRYPTION);
-
-            s = ctrl_getset(b, "Connection/SSH/Cipher",
-                            "encryption", KT_CIPHER_ENCRYPTION_OPTIONS);
-            c = ctrl_draglist(s, KT_CIPHER_ENCRYPTION_CIPHER_SELECTION_POLICY, 's',
-                              HELPCTX(ssh_ciphers),
-                              cipherlist_handler, P(NULL));
-            c->listbox.height = CIPHER_MAX;  /* tall enough to show every cipher */
-
-            ctrl_checkbox(s, KT_CIPHER_ENABLE_LEGACY_USE_OF_SINGLE, 'i',
-                          HELPCTX(ssh_ciphers),
-                          conf_checkbox_handler,
-                          I(CONF_ssh2_des_cbc));
-        }
-
         if (!midsession) {
 
             /*
@@ -8309,6 +8285,157 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                              I(CONF_ssh_gss_custom));
             }
 #endif
+        }
+
+
+        /*
+         * The Connection/SSH/Kex panel. (Owing to repeat key
+         * exchange, much of this is meaningful in mid-session _if_
+         * we're using SSH-2 and are not a connection-sharing
+         * downstream, or haven't decided yet.)
+         */
+        if (protcfginfo != 1 && protcfginfo != -1) {
+            ctrl_settitle(b, "Connection/SSH/Kex",
+                          KT_KEX_OPTIONS_CONTROLLING_SSH_KEY_EXCHANGE);
+
+            s = ctrl_getset(b, "Connection/SSH/Kex", "main",
+                            KT_KEX_KEY_EXCHANGE_ALGORITHM_OPTIONS);
+            c = ctrl_draglist(s, KT_KEX_ALGORITHM_SELECTION_POLICY, 's',
+                              HELPCTX(ssh_kexlist),
+                              kexlist_handler, P(NULL));
+            /* 6 rows like the cipher list, not one per algorithm - the list
+             * scrolls, and the panel stops paying for a dozen rows. */
+            c->listbox.height = 6;
+            ctrl_checkbox(s, KT_KEX_WARN_IF_KEY_EXCHANGE, 'q', HELPCTX(ssh_kexlist),
+                          conf_checkbox_handler,
+                          I(CONF_ssh_warn_pre_quantum));
+#ifndef NO_GSSAPI
+            ctrl_checkbox(s, KT_KEX_ATTEMPT_GSSAPI_KEY_EXCHANGE,
+                          'k', HELPCTX(ssh_gssapi),
+                          conf_checkbox_handler,
+                          I(CONF_try_gssapi_kex));
+#endif
+
+            s = ctrl_getset(b, "Connection/SSH/Kex", "repeat",
+                            KT_KEX_OPTIONS_CONTROLLING_KEY_RE_EXCHANGE);
+
+            ctrl_editbox(s, KT_KEX_MAX_MINUTES_BEFORE_REKEY_0, 't', 20,
+                         HELPCTX(ssh_kex_repeat),
+                         conf_editbox_handler,
+                         I(CONF_ssh_rekey_time),
+                         ED_INT);
+#ifndef NO_GSSAPI
+            ctrl_editbox(s, KT_KEX_MINUTES_BETWEEN_GSS_CHECKS_0, NO_SHORTCUT, 20,
+                         HELPCTX(ssh_kex_repeat),
+                         conf_editbox_handler,
+                         I(CONF_gssapirekey),
+                         ED_INT);
+#endif
+            ctrl_editbox(s, KT_KEX_MAX_DATA_BEFORE_REKEY_0, 'x', 20,
+                         HELPCTX(ssh_kex_repeat),
+                         conf_editbox_handler,
+                         I(CONF_ssh_rekey_data),
+                         ED_STR);
+            ctrl_text(s, KT_KEX_USE_1M_FOR_1_MEGABYTE,
+                      HELPCTX(ssh_kex_repeat));
+        }
+
+        /*
+         * The 'Connection/SSH/Host keys' panel.
+         */
+        if (protcfginfo != 1 && protcfginfo != -1) {
+            ctrl_settitle(b, "Connection/SSH/Host keys",
+                          KT_HOST_KEYS_OPTIONS_CONTROLLING_SSH_HOST_KEYS);
+
+            s = ctrl_getset(b, "Connection/SSH/Host keys", "main",
+                            KT_HOST_KEYS_HOST_KEY_ALGORITHM_PREFERENCE);
+            c = ctrl_draglist(s, KT_KEX_ALGORITHM_SELECTION_POLICY, 's',
+                              HELPCTX(ssh_hklist),
+                              hklist_handler, P(NULL));
+            c->listbox.height = HK_MAX;    /* tall enough to show every algorithm */
+
+            ctrl_checkbox(s, KT_HOST_KEYS_PREFER_ALGORITHMS_FOR_WHICH,
+                          'p', HELPCTX(ssh_hk_known), conf_checkbox_handler,
+                          I(CONF_ssh_prefer_known_hostkeys));
+        }
+
+        /*
+         * Manual host key configuration is irrelevant mid-session,
+         * as we enforce that the host key for rekeys is the
+         * same as that used at the start of the session.
+         */
+        if (!midsession) {
+            s = ctrl_getset(b, "Connection/SSH/Host keys", "hostkeys",
+                            KT_HOST_KEYS_MANUALLY_CONFIGURE_HOST_KEYS);
+
+            ctrl_columns(s, 2, 75, 25);
+            c = ctrl_text(s, KT_HOST_KEYS_HOST_KEYS_OR_FINGERPRINTS,
+                          HELPCTX(ssh_kex_manual_hostkeys));
+            c->column = 0;
+            /* You want to select from the list, _then_ hit Remove. So
+             * tab order should be that way round. */
+            mh = (struct manual_hostkey_data *)
+                ctrl_alloc(b,sizeof(struct manual_hostkey_data));
+            mh->rembutton = ctrl_pushbutton(s, KT_DATA_REMOVE, 'r',
+                                            HELPCTX(ssh_kex_manual_hostkeys),
+                                            manual_hostkey_handler, P(mh));
+            mh->rembutton->column = 1;
+            mh->rembutton->delay_taborder = true;
+            mh->listbox = ctrl_listbox(s, NULL, NO_SHORTCUT,
+                                       HELPCTX(ssh_kex_manual_hostkeys),
+                                       manual_hostkey_handler, P(mh));
+            /* This list box can't be very tall, because there's not
+             * much room in the pane on Windows at least. This makes
+             * it become really unhelpful if a horizontal scrollbar
+             * appears, so we suppress that. */
+            mh->listbox->listbox.height = 2;
+            mh->listbox->listbox.hscroll = false;
+            ctrl_tabdelay(s, mh->rembutton);
+            mh->keybox = ctrl_editbox(s, KT_HOST_KEYS_KEY, 'k', 80,
+                                      HELPCTX(ssh_kex_manual_hostkeys),
+                                      manual_hostkey_handler, P(mh), P(NULL));
+            mh->keybox->column = 0;
+            mh->addbutton = ctrl_pushbutton(s, KT_HOST_KEYS_ADD_KEY, 'y',
+                                            HELPCTX(ssh_kex_manual_hostkeys),
+                                            manual_hostkey_handler, P(mh));
+            mh->addbutton->column = 1;
+            /* Centre it on the FIELD it adds from. Without this the button
+             * lines up with the top of the control beside it - which is the
+             * "Key" label, not the box - and the row reads as two unrelated
+             * things at different heights. */
+            mh->addbutton->align_next_to = mh->keybox;
+            ctrl_columns(s, 1, 100);
+        }
+
+        /*
+         * But there's no reason not to forbid access to the host CA
+         * configuration box, which is common across sessions in any
+         * case.
+         */
+        s = ctrl_getset(b, "Connection/SSH/Host keys", "ca",
+                        KT_HOST_KEYS_CONFIGURE_TRUSTED_CERTIFICATION_AUTHORITIES);
+        c = ctrl_pushbutton(s, KT_HOST_KEYS_CONFIGURE_HOST_CAS, NO_SHORTCUT,
+                            HELPCTX(ssh_kex_cert),
+                            host_ca_button_handler, I(0));
+
+        if (!midsession || !(protcfginfo == 1 || protcfginfo == -1)) {
+            /*
+             * The Connection/SSH/Cipher panel.
+             */
+            ctrl_settitle(b, "Connection/SSH/Cipher",
+                          KT_CIPHER_OPTIONS_CONTROLLING_SSH_ENCRYPTION);
+
+            s = ctrl_getset(b, "Connection/SSH/Cipher",
+                            "encryption", KT_CIPHER_ENCRYPTION_OPTIONS);
+            c = ctrl_draglist(s, KT_CIPHER_ENCRYPTION_CIPHER_SELECTION_POLICY, 's',
+                              HELPCTX(ssh_ciphers),
+                              cipherlist_handler, P(NULL));
+            c->listbox.height = CIPHER_MAX;  /* tall enough to show every cipher */
+
+            ctrl_checkbox(s, KT_CIPHER_ENABLE_LEGACY_USE_OF_SINGLE, 'i',
+                          HELPCTX(ssh_ciphers),
+                          conf_checkbox_handler,
+                          I(CONF_ssh2_des_cbc));
         }
 
         if (!midsession) {
@@ -9012,6 +9139,82 @@ static int cfgwin_refreshing = 0;
  * VALCHANGE arm below: EVENT_REFRESH answers from the running values, so
  * writing only the file leaves the fields showing the old size.
  */
+/* ---- remembered collapsed categories --------------------------------------
+ *
+ * categoryexpand says how the tree opens by DEFAULT; a node the user has
+ * collapsed stays collapsed on the next opening regardless, and one they
+ * re-expanded is forgotten again. Stored as [ConfigBox] collapsed, a
+ * comma-separated list of tree PATHS ("Connection/Login") - any expandable
+ * node, not just the top level.
+ */
+#define CFGTREE_COLLAPSED_MAX 32
+static char *cfgtree_collapsed[CFGTREE_COLLAPSED_MAX];
+static int cfgtree_ncollapsed = 0;
+static int cfgtree_collapsed_loaded = 0;
+
+static int cfgtree_collapsed_find(const char *name)
+{
+    for (int i = 0; i < cfgtree_ncollapsed; i++)
+        if (!strcmp(cfgtree_collapsed[i], name))
+            return i;
+    return -1;
+}
+
+void kitty_cfgtree_collapsed_load(void)
+{
+    char buf[1024] = "";
+    if (cfgtree_collapsed_loaded)
+        return;
+    cfgtree_collapsed_loaded = 1;
+    if (!ReadParameterN("ConfigBox", "collapsed", buf, sizeof(buf)))
+        return;
+    for (char *p = buf; *p; ) {
+        char *q = strchr(p, ',');
+        if (q) *q = '\0';
+        while (*p == ' ') p++;
+        if (*p && cfgtree_ncollapsed < CFGTREE_COLLAPSED_MAX &&
+            cfgtree_collapsed_find(p) < 0)
+            cfgtree_collapsed[cfgtree_ncollapsed++] = dupstr(p);
+        if (!q) break;
+        p = q + 1;
+    }
+}
+
+int kitty_cfgtree_is_collapsed(const char *name)
+{
+    kitty_cfgtree_collapsed_load();
+    return cfgtree_collapsed_find(name) >= 0;
+}
+
+void kitty_cfgtree_set_collapsed(const char *name, int collapsed)
+{
+    int i;
+    kitty_cfgtree_collapsed_load();
+    i = cfgtree_collapsed_find(name);
+    if (collapsed && i < 0 && cfgtree_ncollapsed < CFGTREE_COLLAPSED_MAX)
+        cfgtree_collapsed[cfgtree_ncollapsed++] = dupstr(name);
+    else if (!collapsed && i >= 0) {
+        sfree(cfgtree_collapsed[i]);
+        cfgtree_collapsed[i] = cfgtree_collapsed[--cfgtree_ncollapsed];
+    }
+}
+
+void kitty_cfgtree_collapsed_save(void)
+{
+    char buf[1024] = "";
+    size_t used = 0;
+    if (!cfgtree_collapsed_loaded)
+        return;                        /* nothing was ever read or changed */
+    for (int i = 0; i < cfgtree_ncollapsed; i++) {
+        size_t n = strlen(cfgtree_collapsed[i]);
+        if (used + n + 2 >= sizeof(buf)) break;
+        if (used) buf[used++] = ',';
+        memcpy(buf + used, cfgtree_collapsed[i], n + 1);
+        used += n;
+    }
+    WriteParameter("ConfigBox", "collapsed", buf);
+}
+
 void kitty_cfgbox_store_size(int w, int h)
 {
     extern void SetConfigBoxWindowHeight(const int num);  /* kitty.c */
@@ -9208,12 +9411,18 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
      * Hello, encrypted memory for secrets - and because someone who has read
      * the line once needs somewhere to turn it off. */
     s = ctrl_getset(b, "Application/Security", "thiswindows",
-                    KT_SECURITY_THIS_WINDOWS);
-    ctrl_checkbox(s, KT_SECURITY_SAY_WHAT_THIS_WINDOWS_CANNOT_DO,
+                    KT_SECURITY_WINDOWS_SUPPORTED_FEATURES);
+    ctrl_checkbox(s, KT_SECURITY_NOTIFY_UNSUPPORTED_LIBS,
                   NO_SHORTCUT, HELPCTX(kitty_missing_features),
                   kitty_warnfeatures_handler, P(NULL));
-    ctrl_text(s, KT_SECURITY_MISSING_FEATURES_HINT,
-              HELPCTX(kitty_missing_features));
+    ctrl_text(s, KT_SECURITY_MISSING_CAN_LIMIT, HELPCTX(kitty_missing_features));
+    ctrl_text(s, KT_SECURITY_LIMIT_HELLO,  HELPCTX(kitty_missing_features));
+    ctrl_text(s, KT_SECURITY_LIMIT_DARK,   HELPCTX(kitty_missing_features));
+    ctrl_text(s, KT_SECURITY_LIMIT_DPI,    HELPCTX(kitty_missing_features));
+    ctrl_text(s, KT_SECURITY_LIMIT_MEMENC, HELPCTX(kitty_missing_features));
+    ctrl_text(s, KT_SECURITY_LIMIT_SSO,    HELPCTX(kitty_missing_features));
+    ctrl_text(s, KT_SECURITY_LIMIT_IPV6,   HELPCTX(kitty_missing_features));
+    ctrl_text(s, KT_SECURITY_EVENTLOG_ALWAYS, HELPCTX(kitty_missing_features));
 
     if (has_ca_config_box) {
         ctrl_settitle(b, "Application/Security/Certificate Authorities",
@@ -9231,10 +9440,9 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
         ctrl_text(s, KT_CERTIFICATE_AUTHORITIES_A_CERTIFICATE_AUTHORITY_SIGNS_HOST, HELPCTX(kitty_host_cas));
         setup_ca_config_box_at(
             b, "Application/Security/Certificate Authorities", false);
-        s = ctrl_getset(b, "Application/Security/Certificate Authorities",
-                        "hosthelp", NULL);
-        ctrl_text(s, KT_CERTIFICATE_AUTHORITIES_VALID_HOSTS_IS_AN_EXPRESSION,
-                  HELPCTX(kitty_host_cas));
+        /* No trailing note about the Valid-hosts expression: dangling under
+         * the whole editor it explained nothing in particular, and the help
+         * carries the expression syntax in full. */
     }
 #else
     (void)b; (void)midsession;
@@ -9488,6 +9696,93 @@ static void kitty_import_action_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * One helper rather than a line copied into each panel, so it can be reworded
  * or dropped in one place.
  */
+/* Application > Migration: the whole-store Export all / Import all pair
+ * (context 0 = export, 1 = import). The work lives in kitty_bridge.c; the
+ * import refresh reaches the Session panel's list through the same ssd the
+ * button distribution uses. */
+static void kitty_storexfer_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                    void *data, int event)
+{
+    extern void kitty_export_all_sessions(HWND);
+    extern void kitty_import_sessions(HWND);
+    (void)data;
+    if (event != EVENT_ACTION)
+        return;
+    if (ctrl->context.i == 0) {
+        kitty_export_all_sessions(GetActiveWindow());
+    } else {
+        struct sessionsaver_data *ssd = kitty_session_ssd;
+        kitty_import_sessions(GetActiveWindow());
+        if (ssd && ssd->listbox) {
+            get_sesslist(&ssd->sesslist, false);
+            get_sesslist(&ssd->sesslist, true);
+            dlg_refresh(ssd->listbox, dlg);
+        }
+        kitty_notify_launcher_sessions_changed();
+    }
+}
+
+/* The "saved as you change them" footers, pinned to the BOTTOM of their
+ * panels the way the Proxy pre-set loader is: recorded here as they are
+ * created, moved by kitty_config_footer_pin after each layout and by
+ * kitty_config_pin_bottoms on every resize. */
+#define APP_FOOTER_MAX 12
+static struct app_footer_pin {
+    const char *path;
+    dlgcontrol *ctrl;
+    int natural_y, have_natural;
+} app_footers[APP_FOOTER_MAX];
+static int n_app_footers = 0;
+
+static void kitty_footer_pin_one(struct app_footer_pin *f)
+{
+    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);   /* windows/dialog.c */
+    extern HWND kitty_cfg_panel_host;                    /* windows/controls.c */
+    HWND host = kitty_cfg_panel_host, w;
+    RECT hostr, gr;
+    POINT p;
+    int y;
+
+    if (!host || !f->ctrl || !(w = kitty_cfg_ctrl_hwnd(f->ctrl)))
+        return;
+    if (!GetWindowRect(w, &gr))
+        return;
+    if (!f->have_natural) {
+        p.x = 0; p.y = gr.top;
+        ScreenToClient(host, &p);
+        f->natural_y = p.y;
+        f->have_natural = 1;
+    }
+    GetClientRect(host, &hostr);
+    y = hostr.bottom - 4 - (gr.bottom - gr.top);
+    if (y < f->natural_y)
+        y = f->natural_y;       /* never above where the layout put it */
+    p.x = gr.left; p.y = 0;
+    ScreenToClient(host, &p);
+    SetWindowPos(w, NULL, p.x, y, 0, 0,
+                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+/* After one panel's layout: fresh natural position, then pin. */
+void kitty_config_footer_pin(const char *path)
+{
+    for (int i = 0; i < n_app_footers; i++) {
+        if (!strcmp(app_footers[i].path, path)) {
+            app_footers[i].have_natural = 0;
+            kitty_footer_pin_one(&app_footers[i]);
+            return;
+        }
+    }
+}
+
+/* On every resize: everything pinned to the panel area's bottom edge. */
+void kitty_config_pin_bottoms(void)
+{
+    kitty_config_proxy_pin_presets();
+    for (int i = 0; i < n_app_footers; i++)
+        kitty_footer_pin_one(&app_footers[i]);
+}
+
 static void scb_app_footer(struct controlbox *b, const char *path)
 {
     struct controlset *s;
@@ -9502,8 +9797,16 @@ static void scb_app_footer(struct controlbox *b, const char *path)
         return;
 
     s = ctrl_getset(b, path, "footer", NULL);
-    ctrl_text(s, KT_APP_SAVED_LIVE,
-              HELPCTX(kitty_folders));
+    {
+        dlgcontrol *c = ctrl_text(s, KT_APP_SAVED_LIVE,
+                                  HELPCTX(kitty_folders));
+        if (n_app_footers < APP_FOOTER_MAX) {
+            app_footers[n_app_footers].path = path;
+            app_footers[n_app_footers].ctrl = c;
+            app_footers[n_app_footers].have_natural = 0;
+            n_app_footers++;
+        }
+    }
 }
 
 static void scb_panel_application(struct controlbox *b, bool midsession)
@@ -9523,17 +9826,34 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
     scb_panel_security(b, midsession);
 
     /*
-      * Migration: what to do about sessions that belong to an older KiTTY or
-      * to stock PuTTY. Registry-backed installs only - a portable store has no
-      * foreign hive to reveal - and only when such a hive actually holds
-      * sessions, because an empty switch explains nothing.
+      * Migration: moving sessions between installations. The whole-store
+      * Export all / Import all pair leads, because it concerns every install;
+      * the foreign-hive blocks below it appear only on registry-backed
+      * installs whose old hives actually hold sessions - a portable store has
+      * no foreign hive to reveal, and an empty switch explains nothing.
       */
     {
         extern int GetIniFileFlag(void);              /* kitty_commun.c */
         extern int kitty_has_foreign_sessions(void);  /* windows/storage.c */
+        ctrl_settitle(b, "Application/Migration", KT_MIG_TITLE);
+        s = ctrl_getset(b, "Application/Migration", "storexfer",
+                        KT_MIG_STORE_GROUP);
+        ctrl_columns(s, 2, 50, 50);
+        {
+            dlgcontrol *c2;
+            c2 = ctrl_pushbutton(s, KT_SESSION_EXPORT_ALL, NO_SHORTCUT,
+                                 HELPCTX(session_saved),
+                                 kitty_storexfer_handler, I(0));
+            c2->column = 0;
+            c2 = ctrl_pushbutton(s, KT_SESSION_IMPORT_ALL, NO_SHORTCUT,
+                                 HELPCTX(session_saved),
+                                 kitty_storexfer_handler, I(1));
+            c2->column = 1;
+        }
+        ctrl_columns(s, 1, 100);
+
         if (GetIniFileFlag() == 0 /* SAVEMODE_REG */ &&
             kitty_has_foreign_sessions()) {
-            ctrl_settitle(b, "Application/Migration", KT_MIG_TITLE);
             s = ctrl_getset(b, "Application/Migration", "foreign",
                             KT_MIG_OLD_GROUP);
             ctrl_text(s, KT_MIG_OLD_INTRO, HELPCTX(kitty_import_sessions));
@@ -9585,6 +9905,7 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
      * in this list - they hold an edit until Save and each says so itself.
      */
     {
+        n_app_footers = 0;      /* fresh box, fresh registrations */
         static const char *const saved_as_changed[] = {
             "Application/Config window",
             "Application/Session parameter",

@@ -132,6 +132,12 @@ char default_init_file_content[] =
 ;windowheight=0\n\
 ;windowwidth=0\n\
 \n\
+; collapsed: which top-level Category-tree entries the user has collapsed, as\n\
+;    a comma-separated list of their names. Written by the configuration\n\
+;    window itself; a collapsed category stays collapsed on the next opening\n\
+;    whatever categoryexpand's default says, and re-expanding it forgets it.\n\
+;collapsed=\n\
+\n\
 \n\
 \n\
 [KiTTY]\n\
@@ -167,7 +173,7 @@ char default_init_file_content[] =
 ;bcdelay=0\n\
 \n\
 ; commanddelay: delay in SECONDS between two lines of the automatic start\n\
-;    command script (Connection/Data/Command setting). 0.05 = 50 ms; minimum\n\
+;    command script (Connection/Login/Command setting). 0.05 = 50 ms; minimum\n\
 ;    enforced 0.005.\n\
 ;commanddelay=0.05\n\
 \n\

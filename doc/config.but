@@ -1931,6 +1931,18 @@ be replaced by the host name and port number you want to connect to,
 similar to specifying a proxy command; see \k{config-proxy-command} for
 the full syntax.
 
+For example, a wake-on-LAN wake-up before connecting:
+
+\c wolcmd.exe 00:11:22:33:44:55
+
+or a port-knocking sequence aimed at the session's own host:
+
+\c knock.exe %host 7000 8000 9000
+
+(\c{%user} and \c{%pass} are deliberately not available here - a
+command line is visible to every process on the machine, so
+credentials must never travel in one.)
+
 The results of running the program will be logged in KiTTY's Event
 Log. So if it terminates with an error message, the Event Log will
 show the message.

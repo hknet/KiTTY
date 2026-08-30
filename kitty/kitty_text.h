@@ -15,6 +15,7 @@
 
 /* ---- Application > Migration ---- */
 
+#define KT_MIG_STORE_GROUP "Move this KiTTY's sessions between computers"
 #define KT_MIG_TITLE       "Sessions from an older KiTTY or from PuTTY"
 
 #define KT_MIG_OLD_GROUP   "Old session stores"
@@ -65,6 +66,7 @@
 #define KT_SESSION_THIS_LIST_ALSO_HOLDS_SESSIONS     "This list also holds sessions from an older KiTTY or " \
         "from PuTTY."
 #define KT_SESSION_OLD_SESSIONS                      "Old sessions..."
+#define KT_SESSION_SPECIFY_THE_DESTINATION           "Specify the destination you want to connect to"
 #define KT_SESSION_CLOSE_TERMINAL_WINDOW_ON_EXIT     "Close terminal window on exit:"
 #define KT_SESSION_ALWAYS                            "Always"
 #define KT_SESSION_NEVER                             "Never"
@@ -123,6 +125,9 @@
 #define KT_SCRIPTING_EXCEPT_FOR_FIRST_COMMAND        "Except for first command"
 #define KT_SCRIPTING_USE_CONDITIONS_FROM_FILE        "Use conditions from file"
 #define KT_SCRIPTING_TEXT                            " "
+
+/* Session/Broadcast */
+#define KT_BROADCAST_OPTIONS_CONTROLLING_BROADCASTS  "Options controlling broadcasts between KiTTY windows"
 #define KT_SCRIPTING_ACCEPT_BROADCASTS_FROM_OTHER_KITTY "Accept broadcasts from other KiTTY windows"
 #define KT_SCRIPTING_ACCEPT_BROADCAST_MESSAGES       "Accept broadcast messages for this session"
 #define KT_SCRIPTING_ANOTHER_KITTY_CAN_TYPE_INTO     "Another KiTTY can type into this session (/command). " \
@@ -186,6 +191,7 @@
 #define KT_KEYBOARD_OFF_DEFAULT_ALTGR_COMPOSES_CHARACTERS "Off: AltGr types @ and other layout characters. On: it " \
         "sends Alt+key."
 #define KT_KEYBOARD_APPLICATION_KEYPAD_SETTINGS      "Application keypad settings:"
+#define KT_KEYBOARD_OPTIONS_CONTROLLING_THE_APPLICATION_KEYPAD "Options controlling the application keypad"
 #define KT_KEYBOARD_INITIAL_STATE_OF_CURSOR_KEYS     "Initial state of cursor keys:"
 #define KT_KEYBOARD_NORMAL                           "Normal"
 #define KT_KEYBOARD_APPLICATION                      "Application"
@@ -296,6 +302,7 @@
 
 /* Window/Appearance */
 #define KT_APPEARANCE_WHERE_THE_WINDOW_OPENS         "Where the window opens"
+#define KT_APPEARANCE_OPTIONS_CONTROLLING_WHERE_THE_WINDOW "Options controlling where the window opens"
 #define KT_APPEARANCE_OPEN_THE_WINDOW                "Open the window at a fixed position"
 #define KT_APPEARANCE_TOP                            "Top:"
 #define KT_APPEARANCE_LEFT                           "Left:"
@@ -409,6 +416,7 @@
 #define KT_COLOURS_THE_COLOUR                        "The colour"
 #define KT_COLOURS_COLOUR_UNDERLINED_TEXT            "Colour underlined text"
 #define KT_COLOURS_COLOUR_SELECTED_TEXT              "Colour selected text"
+#define KT_COLOURS_PRECISE_COLOURS                   "Precise colours"
 #define KT_COLOURS_SELECT_A_COLOUR                   "Select a colour from the list, and then click the" \
         " Modify button to change its appearance."
 #define KT_COLOURS_SELECT_A_COLOUR_TO_ADJUST         "Select a colour to adjust:"
@@ -432,17 +440,16 @@
 #define KT_CONNECTION_RECONNECT_OPTIONS              "Reconnect options"
 #define KT_CONNECTION_ATTEMPT_TO_RECONNECT_ON_SYSTEM "Attempt to reconnect on system wakeup"
 #define KT_CONNECTION_ATTEMPT_TO_RECONNECT_ON_CONNECTION "Attempt to reconnect on connection failure"
-#define KT_CONNECTION_LOGICAL_NAME_OF_REMOTE_HOST    "Logical name of remote host"
-#define KT_CONNECTION_COMMAND_TO_RUN_AT_CONNECTION   "Command to run at connection event"
-#define KT_CONNECTION_COMMAND_TO_RUN_BEFORE_CONNECTION "Command to run before connection"
-#define KT_CONNECTION_PORT_KNOCKING_SEQUENCE         "Port knocking sequence"
-#define KT_CONNECTION_SEQUENCE                       "Sequence:"
+#define KT_CONNECTION_CONNECTION_PREPARATION         "Connection preparation"
+#define KT_CONNECTION_COMMAND_TO_RUN_BEFORE_CONNECTION "Command to run before connection:"
+#define KT_CONNECTION_PORT_KNOCKING_SEQUENCE         "Port knocking sequence:"
 #define KT_CONNECTION_A_COMMA_SEPARATED_LIST         "A comma-separated list of port:protocol knocks. " \
         "Protocols are tcp and udp; use s for a pause between " \
         "knocks."
 #define KT_CONNECTION_EXAMPLE_2001_TCP_1_S           "Example:  2001:tcp, 1:s, 2002:udp"
 
 /* Connection/Data */
+#define KT_LOGIN_OPTIONS_CONTROLLING_THE_LOGIN       "Options controlling the login"
 #define KT_DATA_DATA_TO_SEND                         "Data to send to the server"
 #define KT_DATA_LOGIN_DETAILS                        "Login details"
 #define KT_DATA_AUTO_LOGIN_USERNAME                  "Auto-login username"
@@ -455,6 +462,10 @@
         " send-text, one per line):"
 #define KT_DATA_LOAD_SCRIPT_FROM_FILE                "Load script from file..."
 #define KT_DATA_TERMINAL_DETAILS                     "Terminal details"
+#define KT_DATA_TERMINAL_DETAILS_SENT                "Terminal details sent to the server"
+#define KT_DATA_ENVIRONMENT_VARIABLES_SENT           "Environment variables sent to the server"
+#define KT_DATA_HEADER_NAME                          "Name"
+#define KT_DATA_HEADER_CONTENT                       "Content"
 #define KT_DATA_TERMINAL_TYPE_STRING                 "Terminal-type string"
 #define KT_DATA_TERMINAL_SPEEDS                      "Terminal speeds"
 #define KT_DATA_ENVIRONMENT_VARIABLES                "Environment variables"
@@ -468,7 +479,8 @@
 #define KT_PROXY_NAMED_PROXIES_PROXY_TEMPLATES       "Named proxies (proxy templates)"
 #define KT_PROXY_EDIT_NAMED_PROXIES                  "Edit named proxies..."
 #define KT_PROXY_THIS_SESSION_S_OWN_PROXY            "This session's own proxy"
-#define KT_PROXY_LOAD_NAMED_PROXY_PRE_SETS           "Load named proxy pre-sets..."
+#define KT_PROXY_NAMED_PROXY_PRE_SETS                "Named proxy pre-sets"
+#define KT_PROXY_LOAD                                "Load"
 #define KT_PROXY_PROXY_TYPE                          "Proxy type:"
 #define KT_PROXY_PROXY_HOSTNAME                      "Proxy hostname"
 #define KT_PROXY_PORT                                "Port"
@@ -708,7 +720,7 @@
 /* Application/Config window */
 #define KT_CONFIG_WINDOW_THIS_WINDOW                 "This window"
 #define KT_CONFIG_WINDOW_APPEARANCE                  "Appearance"
-#define KT_CONFIG_WINDOW_COLOURS                     "Colours:"
+#define KT_CONFIG_WINDOW_COLOURS                     "Colour theme:"
 #define KT_CONFIG_WINDOW_ONE_SETTING_FOR_THE_WHOLE   "One setting for the whole suite - kitty, kageant and " \
         "kittygen all read it. Dark needs Windows 10 1809 or newer."
 #define KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED "Changes apply to windows opened afterwards - this " \
@@ -724,18 +736,23 @@
 
 /* Application/Security */
 #define KT_SECURITY_SECURITY                         "Security"
-#define KT_SECURITY_SSH_AGENT                        "SSH agent"
-#define KT_SECURITY_WARN_WHEN_AN_UNVERIFIED_AGENT    "Warn when an unverified agent serves the keys"
-#define KT_SECURITY_THIS_WINDOWS                     "This version of Windows"
-#define KT_SECURITY_SAY_WHAT_THIS_WINDOWS_CANNOT_DO  "Say in the terminal what this Windows cannot do"
-#define KT_SECURITY_MISSING_FEATURES_HINT            "The Event Log lists it either way."
+#define KT_SECURITY_SSH_AGENT                        "SSH key authentication"
+#define KT_SECURITY_WARN_WHEN_AN_UNVERIFIED_AGENT    "Warn if an unknown agent serves our SSH keys"
+#define KT_SECURITY_WINDOWS_SUPPORTED_FEATURES       "Windows: supported features"
+#define KT_SECURITY_NOTIFY_UNSUPPORTED_LIBS          "Notify in the terminal window about missing Windows library features"
+#define KT_SECURITY_MISSING_CAN_LIMIT                "Missing libraries can limit:"
+#define KT_SECURITY_LIMIT_HELLO                      "  -  Windows Hello key protection and confirmations"
+#define KT_SECURITY_LIMIT_DARK                       "  -  dark mode and themed dialogs"
+#define KT_SECURITY_LIMIT_DPI                        "  -  per-monitor DPI scaling"
+#define KT_SECURITY_LIMIT_MEMENC                     "  -  secrets encrypted in memory"
+#define KT_SECURITY_LIMIT_SSO                        "  -  GSSAPI/Kerberos single sign-on"
+#define KT_SECURITY_LIMIT_IPV6                       "  -  IPv6 name resolution"
+#define KT_SECURITY_EVENTLOG_ALWAYS                  "Event Log always reports missing Windows library features."
 
 /* Application/Security/Certificate Authorities */
 #define KT_CERTIFICATE_AUTHORITIES_TRUSTED_HOST_CERTIFICATE_AUTHORITIES "Trusted host Certificate Authorities"
 #define KT_CERTIFICATE_AUTHORITIES_A_CERTIFICATE_AUTHORITY_SIGNS_HOST "A CA signs host keys, so a new server needs no " \
         "fingerprint check."
-#define KT_CERTIFICATE_AUTHORITIES_VALID_HOSTS_IS_AN_EXPRESSION "An expression, not a list: *.example.com, joined " \
-        "with ||, and port:22."
 
 /* Application/External tools */
 #define KT_EXTERNAL_TOOLS_HELPER_PROGRAMS            "Helper programs"
@@ -802,8 +819,8 @@
 #define KT_NAMED_PROXIES_COMMAND_TO_SEND_TELNET_LOCAL "Command to send (Telnet / Local / SSH execute or " \
         "subsystem types):"
 #define KT_NAMED_PROXIES_EXCLUDE_HOSTS_IPS_SEPARATE  "Exclude Hosts/IPs (separate with commas or spaces):"
-#define KT_NAMED_PROXIES_DNS_LOOKUP_AT_PROXY         "DNS lookup at proxy:"
-#define KT_NAMED_PROXIES_PRINT_DIAGNOSTICS           "Print diagnostics:"
+#define KT_NAMED_PROXIES_DNS_LOOKUP_AT_PROXY         "DNS lookup"
+#define KT_NAMED_PROXIES_PRINT_DIAGNOSTICS           "Diagnostics"
 #define KT_NAMED_PROXIES_NOTHING_IS_STORED_UNTIL_SAVE "Nothing is stored until Save. Leaving this " \
         "panel discards an unsaved edit."
 

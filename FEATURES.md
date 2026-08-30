@@ -55,6 +55,7 @@ one is available.
   - [Quick start of a duplicate session](#quick-start-of-a-duplicate-session)
   - [Window title placeholders](#window-title-placeholders)
   - [Background image](#background-image)
+  - [The configuration window remembers how you use it](#the-configuration-window-remembers-how-you-use-it)
 - **Other features**
   - [Automatic saving](#automatic-saving)
   - [pscp.exe and WinSCP integration](#pscpexe-and-winscp-integration)
@@ -232,7 +233,7 @@ KiTTY can automatically respond to a server's login prompts using a simple chall
 
 The script is stored with the session and protected at rest, the same way a stored password is, but the configuration box shows and edits it in the clear: one entry per line, expected text and reply alternating.
 
-**How to enable:** Configuration > **Connection > Data**, *Login script*: type the lines directly, or use **Load from file** to read an existing script in. You can also launch with **`kitty.exe -loginscript <file>`**. It runs on connect, on **Restart Session**, and on every automatic reconnect.
+**How to enable:** Configuration > **Connection > Login**, *Login script*: type the lines directly, or use **Load from file** to read an existing script in. You can also launch with **`kitty.exe -loginscript <file>`**. It runs on connect, on **Restart Session**, and on every automatic reconnect.
 
 ⚠️ This and the **rutty** scripting under *Session → Scripting* both watch what the server sends. If you configure both, KiTTY warns you and runs the login script first; prefer one or the other per session.
 
@@ -292,7 +293,7 @@ During an already-authenticated session (a rekey) the running program owns the t
 
 KiTTY can log you in automatically to telnet, SSH-1 and SSH-2 servers by storing a password alongside the session. For SSH connections the password is supplied during authentication; for telnet it is sent once the connection comes up, just as if you typed it, and you can even send several lines (for example a login name, a password, and a command) by separating them with `\n`. Because the stored value is tied to the host, a password cannot be saved in a session that has an empty hostname.
 
-**How to enable:** Configuration > **Connection > Data > Auto-login password**. It is stored with the session and sent automatically at SSH login. Tick **Show password** beside the field to reveal the stored value. As of 0.84.1.38 the password is **encrypted at rest with Windows DPAPI** (tied to your Windows account), rather than stored reversibly; existing/legacy passwords still load and are re-encrypted on the next save. NOTE: a one-time security warning still appears when you set one. DPAPI is machine-bound (it defeats offline/cross-user theft, not same-user malware, and does not move to another PC) — for the strongest security, prefer SSH public-key auth (kageant). In **portable mode** you can additionally protect it with a **master password** for cross-machine portability, which — unlike DPAPI — cannot be recovered if you forget it (see *Portable mode*). You are asked for the master password **once per running KiTTY**: unlocking it once shares it with the session windows KiTTY opens next — from the config box, *New Session*, *Duplicate Session*, or the tray launcher — so you are not prompted again for each window. The unlock is handed only to KiTTY's own child processes (through an inherited handle, wrapped in memory with Windows CryptProtectMemory); the saved files stay master-password-encrypted at rest.
+**How to enable:** Configuration > **Connection > Login > Auto-login password**. It is stored with the session and sent automatically at SSH login. Tick **Show password** beside the field to reveal the stored value. As of 0.84.1.38 the password is **encrypted at rest with Windows DPAPI** (tied to your Windows account), rather than stored reversibly; existing/legacy passwords still load and are re-encrypted on the next save. NOTE: a one-time security warning still appears when you set one. DPAPI is machine-bound (it defeats offline/cross-user theft, not same-user malware, and does not move to another PC) — for the strongest security, prefer SSH public-key auth (kageant). In **portable mode** you can additionally protect it with a **master password** for cross-machine portability, which — unlike DPAPI — cannot be recovered if you forget it (see *Portable mode*). You are asked for the master password **once per running KiTTY**: unlocking it once shares it with the session windows KiTTY opens next — from the config box, *New Session*, *Duplicate Session*, or the tray launcher — so you are not prompted again for each window. The unlock is handed only to KiTTY's own child processes (through an inherited handle, wrapped in memory with Windows CryptProtectMemory); the saved files stay master-password-encrypted at rest.
 
 ![Automatic password](docs/features/img/config_password.jpg)
 
@@ -527,7 +528,7 @@ KiTTY can send a command to the server automatically as soon as a Telnet or SSH 
 
 Three `kitty.ini` `[KiTTY]` settings fine-tune the timing: **initdelay** — seconds before the first automatic send after the connection opens (default 2.0); **commanddelay** — seconds between two lines of the command script (default 0.05 = 50 ms); and **bcdelay** — milliseconds between each *character*, default 0 = off. `bcdelay` is the one to reach for when a host drops characters that arrive too fast (serial consoles, slow embedded devices): set e.g. `bcdelay=3` and it paces every automatic keyboard send — autocommand, login scripts, user commands, and the send-text boxes.
 
-**How to enable:** Configuration > **Connection > Data > Auto-command**: a command sent to the server automatically right after login. The delay before the first send is `initdelay` (seconds, default 2.0) in the kitty.ini `[KiTTY]` section — raise it for hosts that are slow to present their prompt; the delay between subsequent lines is `commanddelay`.
+**How to enable:** Configuration > **Connection > Login > Auto-command**: a command sent to the server automatically right after login. The delay before the first send is `initdelay` (seconds, default 2.0) in the kitty.ini `[KiTTY]` section — raise it for hosts that are slow to present their prompt; the delay between subsequent lines is `commanddelay`.
 
 ![Automatic command](docs/features/img/config_autocommand.jpg)
 
@@ -633,10 +634,10 @@ refusal is written to that window's Event Log with the reason:
    portable copy on a stick and an installed one cannot type into each other by
    accident. Set your own with `[KiTTY] sendcmdgroup=<text>`, or per session.
 4. **The session accepts broadcasts.** Off per session, ticked in
-   **Session > Scripting**, or from the terminal's **Tools > Accept broadcast**
+   **Session > Broadcast**, or from the terminal's **Tools > Accept broadcast**
    for the current window.
 
-**Session > Scripting** also shows the key this session listens for, with
+**Session > Broadcast** also shows the key this session listens for, with
 **Copy** (it is long, and its whole purpose is to be carried to another session)
 and **Clear** (back to the installation's own). A line under the field says where
 the key came from: generated for this installation, taken from kitty.ini, or set
@@ -654,7 +655,7 @@ the line meant for three lab boxes landing in the production session left open
 behind them — and to keep the feature off until you ask for it.
 
 **How to enable:** `[KiTTY] sendcmdmode=yes` in kitty.ini, then tick **Accept
-broadcast messages for this session** in **Session > Scripting** (or **Tools >
+broadcast messages for this session** in **Session > Broadcast** (or **Tools >
 Accept broadcast** in a running window). Send with `kitty.exe -sendcmd "<text>"`,
 `kitty.exe -sendcmdkey <key> -sendcmd "<text>"`, or `/command <text>`.
 
@@ -814,7 +815,27 @@ Both can be set, and then the fixed position wins: an explicit instruction beats
 
 **A position that no longer exists cannot strand a window.** Monitors get unplugged and resolutions change, and a position saved against a screen that is no longer there would otherwise open the window somewhere you cannot reach it. KiTTY checks the pinned spot against the monitors you have now and moves the window onto the nearest one if it does not fit on any of them.
 
-**How to enable:** **Window > Appearance**, *Window position*; the remembering variant is **Window > Behaviour**, *Remember window position*.
+**How to enable:** **Window > Appearance > Position**; the remembering variant is **Window > Behaviour**, *Remember window position*.
+
+(no screenshot)
+
+### The configuration window remembers how you use it
+
+Four behaviours of the configuration window itself:
+
+- **The Category tree keeps your folds.** Any category you collapse stays
+  collapsed the next time the window opens, whatever the `categoryexpand`
+  default says; expand it again and it is forgotten.
+- **The loaded session's name is always in sight**, right-aligned in the
+  title strip above the panel, so you know whose settings you are looking at
+  wherever you are in the tree.
+- **Help never answers with a beep.** The context-help click (the `?` in the
+  title bar) on a spot with no topic of its own opens the manual at the
+  current panel's topic instead. The help window opens as an ordinary window,
+  not pinned in front of the configuration box, so the two sit side by side.
+- **Named proxy pre-sets load from the Proxy panel itself** — a chooser and a
+  Load button at the foot of **Connection > Proxy**, replacing the separate
+  picker window.
 
 (no screenshot)
 
@@ -824,13 +845,13 @@ One KiTTY can type a line into another's session, as if you had typed it at the 
 
 It is dangerous for the same reason it is useful: the twenty include whatever production session happens to be open. So a window listens only when it has been armed, and only to messages meant for it.
 
-- **Per session:** *"Accept broadcast messages for this session"* on **Session > Scripting**. Off by default.
+- **Per session:** *"Accept broadcast messages for this session"* on **Session > Broadcast**. Off by default.
 - **Per PC:** `sendcmdmode=yes` under `[KiTTY]` in `kitty.ini` sets the state windows start in. The window menu's **Tools > "Accept broadcast"** flips the window you are looking at, and the two are the same switch seen from two places.
 - **Which KiTTYs hear each other:** the **broadcast key** on the same panel. An installation gets its own generated key, so a portable KiTTY on a USB stick does not type into the sessions of the copy installed on the machine. Give several sessions a key of their own and only those answer — that is how a broadcast is aimed at three servers instead of all of them.
 
 **None of this is a security boundary, and it is not meant to be.** Anything running under your account can post the same message, and could reach your session by other means regardless. What these settings decide is *when your terminals accept it* — they keep a broadcast off the wrong terminal, not an attacker off your machine.
 
-**How to enable:** **Session > Scripting**, plus `sendcmdmode=yes` in `kitty.ini` if you want windows to start armed.
+**How to enable:** **Session > Broadcast**, plus `sendcmdmode=yes` in `kitty.ini` if you want windows to start armed.
 
 (no screenshot)
 

@@ -259,6 +259,11 @@ static void pds_free(PortableDialogStuff *pds)
     sfree(pds);
 }
 
+/* The active config-box panel's own help topic, for the WM_HELP fallback
+ * below; NULL when hwnd is not the config box or the panel carries none.
+ * Implemented after the panel cache it reads. */
+static const char *kitty_cfg_panel_helpctx(HWND hwnd);
+
 static INT_PTR pds_default_dlgproc(PortableDialogStuff *pds, HWND hwnd,
                                    UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -289,8 +294,14 @@ static INT_PTR pds_default_dlgproc(PortableDialogStuff *pds, HWND hwnd,
       }
       case WM_HELP:
         if (!winctrl_context_help(pds->dp,
-                                  hwnd, ((LPHELPINFO)lParam)->iCtrlId))
-            MessageBeep(0);
+                                  hwnd, ((LPHELPINFO)lParam)->iCtrlId)) {
+            /* KiTTY: a spot with no context of its own opens the manual
+             * anyway - at the current panel's topic when the config box is
+             * the window asking. A beep answered "where is the help" with a
+             * noise. */
+            const char *ctx = kitty_cfg_panel_helpctx(hwnd);
+            launch_help(hwnd, ctx);
+        }
         break;
       case WM_CLOSE:
         quit_help(hwnd);
@@ -794,7 +805,7 @@ static INT_PTR CALLBACK NullDlgProc(HWND hwnd, UINT msg,
  * longer fit SCROLL - see kitty_cfg_panel_scrollbar - so the box no longer
  * has to be as tall as its tallest panel.
  */
-#define CFGBOX_H             316   /* == IDD_MAINBOX height in the template */
+#define CFGBOX_H             320   /* == IDD_MAINBOX height in the template */
 #define CFGBOX_BUTTONROW_DU  (CFGBOX_H - 17)   /* top of the button row */
 #define CFGBOX_TREE_DU       (CFGBOX_BUTTONROW_DU - 17)  /* tree height */
 /* Width kept clear at the right of every panel for the scroll bar. */
@@ -832,12 +843,17 @@ struct treeview_faff {
  * link kitty.c, still resolve it and simply keep the full-expansion default. */
 int kitty_category_expand_depth = 99;
 
+/* KiTTY: the tree's display names live in one table, so a translation can
+ * change what is SHOWN while every path stays the identifier it is. */
+#include "../kitty/kitty_tree_text.h"
+
 static HTREEITEM treeview_insert(struct treeview_faff *faff,
                                  int level, char *text, char *path)
 {
     TVINSERTSTRUCT ins;
     int i;
     HTREEITEM newitem;
+    text = (char *)kitty_tree_label(text);
     ins.hParent = (level > 0 ? faff->lastat[level - 1] : TVI_ROOT);
     ins.hInsertAfter = faff->lastat[level];
 #if _WIN32_IE >= 0x0400 && defined NONAMELESSUNION
@@ -1137,10 +1153,13 @@ static void kitty_cfg_panel_show(struct dlgparam *dp,
  * of that code exists any more.
  */
 
-/* The panel area, in the DIALOG's client coordinates: where the host sits. */
+/* The panel area, in the DIALOG's client coordinates: where the host sits.
+ * Its top clears the tab-strip band, which the session-name label shares -
+ * the panels moved DOWN when that label arrived (the template grew by the
+ * same amount, so no panel lost any height). */
 static void kitty_cfg_panel_rect(HWND hwnd, RECT *out)
 {
-    RECT dlu = { 100, 13, 3, 0 };
+    RECT dlu = { 100, 3 + CFGBOX_TABSTRIP_DU, 3, 0 };
     RECT client;
 
     MapDialogRect(hwnd, &dlu);
@@ -1296,10 +1315,10 @@ static void kitty_cfg_panel_scrollbar(HWND hwnd, struct kitty_cfg_panel *p,
  *
  * What is NOT anchored: the panel scroll bar, which is placed from the panel
  * area every time it is fitted and so needs no baseline of its own; and the
- * panel CONTENTS, which keep the width they were laid out at and clip. Making
- * those reflow is stage B - it means re-running each panel's layout, hidden
- * cached panels included, and refusing to do so to a panel holding unsaved
- * edits (the named-proxy editor is the one that has any).
+ * panel CONTENTS, which are not moved but REBUILT - a width change at the end
+ * of a drag re-runs every cached panel's layout (kitty_cfg_panel_relayout_ex),
+ * hidden panels included, refusing only a panel holding unsaved edits (the
+ * named-proxy editor is the one that has any).
  */
 static bool kitty_cfg_layout_ready = false;
 static struct kl_anchor_win *kitty_cfg_anchors = NULL;
@@ -1307,6 +1326,10 @@ static RECT *kitty_cfg_anchor_rects = NULL;
 static size_t kitty_cfg_nanchors = 0;
 static size_t kitty_cfg_anchorsize = 0;
 static SIZE kitty_cfg_basesize, kitty_cfg_minsize;
+/* The loaded session's name, on the tab strip's row over the panel area;
+ * created with the strip, text kept current by
+ * kitty_cfg_session_label_update below. */
+static HWND kitty_cfg_session_label = NULL;
 /* The box's size when the current drag began. What makes a move-only drag
  * distinguishable from a resize - see kitty_cfgbox_save_size. */
 static SIZE kitty_cfg_dragsize;
@@ -1350,6 +1373,10 @@ static void kitty_cfg_layout_capture(PortableDialogStuff *pds, HWND hwnd)
     kitty_cfg_anchor_add(kitty_cfg_panel_host,
                          KL_ANCH_LEFT | KL_ANCH_TOP |
                          KL_ANCH_RIGHT | KL_ANCH_BOTTOM);
+    /* The session-name label spans the panel area's width on the strip's
+     * row, so it keeps centring as the box is widened. */
+    kitty_cfg_anchor_add(kitty_cfg_session_label,
+                         KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT);
     /*
      * The button row, walked rather than tabulated: this box hands its
      * controls generated ids (it has no control 1 - see kitty_cfg_panel_rect),
@@ -1388,6 +1415,13 @@ static void kitty_cfg_layout_relayout(HWND hwnd)
      * the reader had scrolled to; the bar clamps it. */
     if (kitty_cfg_active_panel)
         kitty_cfg_panel_scrollbar(hwnd, kitty_cfg_active_panel, true);
+    /* Everything pinned to the panel area's bottom edge - the Proxy panel's
+     * pre-set loader and the application panels' footers - follows the edge,
+     * which just moved. (Stubbed to nothing in the stock variants.) */
+    {
+        extern void kitty_config_pin_bottoms(void);
+        kitty_config_pin_bottoms();
+    }
 }
 
 /* EVENT_REFRESH for one cached panel, in creation order - the scoped
@@ -1473,11 +1507,35 @@ static void kitty_cfg_panel_build(PortableDialogStuff *pds,
      * on the panels that do not scroll is the cheaper of the two.
      */
     ctlposinit(&cp, kitty_cfg_panel_host, 0, CFGBOX_SCROLLGUTTER_DU, 0);
+    /*
+     * Tell doctl's push-button rule how wide this panel WOULD be at the
+     * template size: a push button is held at that width unless it spans the
+     * full content width (only those stretch). Zero - rule inactive - while
+     * the box is at the template size or the baseline is not captured yet,
+     * so the template-size layout is exactly what it always was.
+     */
+    {
+        extern int kitty_cfg_btn_basew_du, kitty_cfg_btn_fullw_du;
+        RECT dlgrc;
+        kitty_cfg_btn_fullw_du = cp.width;
+        kitty_cfg_btn_basew_du = 0;
+        if (kitty_cfg_layout_ready && cp.dlu4inpix > 0 &&
+            GetClientRect(pds->dp->hwnd, &dlgrc)) {
+            int grow_px = (dlgrc.right - dlgrc.left) - kitty_cfg_basesize.cx;
+            if (grow_px > 0)
+                kitty_cfg_btn_basew_du =
+                    cp.width - (grow_px * 4) / cp.dlu4inpix;
+        }
+    }
     int id = p->base_id;
     for (int index = -1; (index = ctrl_find_path(
                               pds->ctrlbox, p->path, index)) >= 0 ;) {
         struct controlset *s = pds->ctrlbox->ctrlsets[index];
         winctrl_layout(pds->dp, &scratch, &cp, s, &id);
+    }
+    {
+        extern int kitty_cfg_btn_basew_du;
+        kitty_cfg_btn_basew_du = 0;   /* other dialogs lay out untouched */
     }
     assert(id - p->base_id <= KITTY_PANEL_ID_STRIDE);
 
@@ -2069,6 +2127,29 @@ dlgcontrol *kitty_config_session_filter_ctrl(void); /* kitty_config.c / stub */
 bool kitty_red_caption(const char *text);  /* kitty_config.c / stub */
 bool kitty_bold_caption(const char *text);           /* kitty_config.c / stub */
 void kitty_cfgbox_workplace_poll(dlgparam *dp);      /* kitty_config.c / stub */
+
+/* KiTTY: the loaded session's name, on the tab strip's row and centred over
+ * the panel area. However deep in the tree the reader goes, whose settings
+ * these are stays in sight - it is dialog furniture, so it never scrolls.
+ * Text kept current alongside the one-second poll: a Load is the only thing
+ * that changes it, and the poll already exists. */
+static void kitty_cfg_session_label_update(struct dlgparam *dp)
+{
+    char buf[256], want[256];
+    const char *sn;
+    if (!kitty_cfg_session_label || !dp || !dp->data)
+        return;
+    sn = conf_get_str((Conf *)dp->data, CONF_sessionname);
+    if (sn && *sn)
+        _snprintf(want, sizeof(want) - 1, "Currently loaded session: %s", sn);
+    else
+        strcpy(want, "No session has been loaded yet");
+    want[sizeof(want) - 1] = '\0';
+    buf[0] = '\0';
+    GetWindowTextA(kitty_cfg_session_label, buf, sizeof(buf));
+    if (strcmp(buf, want))
+        SetWindowTextA(kitty_cfg_session_label, want);
+}
 const char *kitty_cfgbox_wanted_panel(void);         /* kitty_config.c / stub:
                                                       * panel path to open on,
                                                       * or NULL for the first */
@@ -2082,6 +2163,22 @@ void kitty_config_end_folder_rename(dlgparam *dp);  /* kitty_config.c / stub */
 static void kitty_cfg_goto_session_panel(void);
 static HHOOK kitty_cfg_kbdhook = NULL;
 static HWND kitty_cfg_hwnd = NULL;
+
+/* The active panel's own help topic: the first control on it that carries
+ * one (no_help is NULL, so those skip themselves). NULL when the asking
+ * window is not the config box, which sends the WM_HELP fallback to the
+ * manual's front page instead. */
+static const char *kitty_cfg_panel_helpctx(HWND hwnd)
+{
+    if (hwnd != kitty_cfg_hwnd || !kitty_cfg_active_panel)
+        return NULL;
+    for (size_t i = 0; i < kitty_cfg_active_panel->nctrls; i++) {
+        struct winctrl *c = kitty_cfg_active_panel->ctrls[i];
+        if (c->ctrl && c->ctrl->helpctx)
+            return c->ctrl->helpctx;
+    }
+    return NULL;
+}
 static HWND kitty_cfg_treeview = NULL;
 static HTREEITEM kitty_cfg_sessionitem = NULL;
 static dlgparam *kitty_cfg_dp = NULL;
@@ -2327,6 +2424,51 @@ static bool kitty_cfg_path_is_app(const char *path)
  * the tab has no panels at all - which is a real case: the Application tab is
  * empty mid-session, and an empty tab must not leave the box showing whatever
  * the other tab last had. */
+/* Remembered collapsed categories (kitty_config.c): a node the user collapsed
+ * stays collapsed on the next opening, whatever categoryexpand's default
+ * says; re-expanding forgets it again. EVERY expandable node, keyed by the
+ * PATH each tree item already carries in its lParam - the path is the
+ * identifier, so a display rename cannot orphan a remembered fold. */
+extern void kitty_cfgtree_set_collapsed(const char *name, int collapsed);
+extern int kitty_cfgtree_is_collapsed(const char *name);
+extern void kitty_cfgtree_collapsed_save(void);
+
+static void kitty_cfg_tree_walk_collapsed(HWND tree, HTREEITEM it, bool apply)
+{
+    for (; it; it = TreeView_GetNextSibling(tree, it)) {
+        TVITEM tvi;
+        tvi.mask = TVIF_PARAM | TVIF_STATE | TVIF_HANDLE | TVIF_CHILDREN;
+        tvi.hItem = it;
+        tvi.stateMask = TVIS_EXPANDED;
+        if (TreeView_GetItem(tree, &tvi) && tvi.cChildren > 0 && tvi.lParam) {
+            const char *path = (const char *)tvi.lParam;
+            if (apply) {
+                if (kitty_cfgtree_is_collapsed(path))
+                    TreeView_Expand(tree, it, TVE_COLLAPSE);
+            } else {
+                kitty_cfgtree_set_collapsed(path,
+                                            !(tvi.state & TVIS_EXPANDED));
+            }
+        }
+        kitty_cfg_tree_walk_collapsed(tree, TreeView_GetChild(tree, it),
+                                      apply);
+    }
+}
+
+/* Read the current expand state of every expandable node into the remembered
+ * set. Called wherever the tree's items are about to go away - the tab-switch
+ * rebuild empties the tree, and WM_DESTROY takes the window with it. */
+static void kitty_cfg_tree_remember_collapsed(HWND tree)
+{
+    if (tree)
+        kitty_cfg_tree_walk_collapsed(tree, TreeView_GetRoot(tree), false);
+}
+
+static void kitty_cfg_tree_apply_collapsed(HWND tree)
+{
+    kitty_cfg_tree_walk_collapsed(tree, TreeView_GetRoot(tree), true);
+}
+
 static const char *kitty_cfg_build_tree(PortableDialogStuff *pds,
                                         struct treeview_faff *faff,
                                         bool apptab)
@@ -2346,6 +2488,8 @@ static const char *kitty_cfg_build_tree(PortableDialogStuff *pds,
      * which is the case the message is for.
      */
     kitty_cfg_tree_rebuilding = true;
+    /* The rebuild is about to throw the items away; keep their expand state. */
+    kitty_cfg_tree_remember_collapsed(faff->treeview);
     SendMessage(faff->treeview, WM_SETREDRAW, FALSE, 0);
     TreeView_DeleteAllItems(faff->treeview);
     memset(faff->lastat, 0, sizeof(faff->lastat));
@@ -2382,6 +2526,8 @@ static const char *kitty_cfg_build_tree(PortableDialogStuff *pds,
             first = cs->pathname;
         path = (char *)shown;
     }
+    /* A remembered collapse beats categoryexpand's default. */
+    kitty_cfg_tree_apply_collapsed(faff->treeview);
     SendMessage(faff->treeview, WM_SETREDRAW, TRUE, 0);
     InvalidateRect(faff->treeview, NULL, TRUE);
     kitty_cfg_tree_rebuilding = false;
@@ -2664,6 +2810,10 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
       }
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
       case WM_DESTROY:
+        /* The tree dies with the dialog: keep its expand state first, and
+         * write the remembered collapses back. */
+        kitty_cfg_tree_remember_collapsed(kitty_cfg_treeview);
+        kitty_cfgtree_collapsed_save();
         /* Robust backstop: capture the final position at close, regardless of
          * how the box was moved (WM_EXITSIZEMOVE only fires on interactive drag). */
         kitty_cfgbox_save_pos(hwnd);
@@ -2682,6 +2832,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             }
             kitty_cfg_hwnd = NULL;
             kitty_cfg_treeview = NULL;
+            kitty_cfg_session_label = NULL;
             kitty_cfg_pds = NULL;
             kitty_cfg_sessionitem = NULL;
             kitty_cfg_dp = NULL;
@@ -2825,6 +2976,30 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 SendMessage(tabstrip, TCM_INSERTITEM, 0, (LPARAM)&ti);
                 ti.pszText = (char *)"Application";
                 SendMessage(tabstrip, TCM_INSERTITEM, 1, (LPARAM)&ti);
+            }
+
+            /* The session-name label shares the strip's row; see
+             * kitty_cfg_session_label_update for what it shows. Centred over
+             * the panel area, which is where the settings it names are. */
+            {
+                RECT area, band;
+                kitty_cfg_panel_rect(hwnd, &area);
+                band.left = 0; band.top = 3;
+                band.right = 4; band.bottom = 3 + CFGBOX_TABSTRIP_DU;
+                MapDialogRect(hwnd, &band);
+                /* Never into the panel area below: the label ends where the
+                 * panels begin, or it sits on the first panel's title. */
+                if (band.bottom > area.top - 1)
+                    band.bottom = area.top - 1;
+                kitty_cfg_session_label = CreateWindowEx(
+                    0, "STATIC", "",
+                    WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE,
+                    area.left, band.top,
+                    area.right - area.left, band.bottom - band.top,
+                    hwnd, (HMENU) NULL, hinst, NULL);
+                SendMessage(kitty_cfg_session_label, WM_SETFONT, font,
+                            MAKELPARAM(true, 0));
+                kitty_cfg_session_label_update(pds->dp);
             }
 
             r.left = 3;
@@ -2979,6 +3154,12 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
 
                 path = s->pathname;
             }
+
+            /* A remembered collapse beats categoryexpand's default. (A wanted
+             * panel inside a collapsed category still gets there: selecting
+             * it below expands its parent chain, which is the explicit
+             * navigation case.) */
+            kitty_cfg_tree_apply_collapsed(tvfaff.treeview);
 
             /*
              * Put the treeview selection on to the first panel in the
@@ -3174,6 +3355,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         }
         if ((UINT_PTR)wParam == KITTY_WORKPLACE_POLL_TIMER) {
             kitty_cfgbox_workplace_poll(pds->dp);
+            kitty_cfg_session_label_update(pds->dp);
             return 0;
         }
         if (dialog_box_demo_screenshot_filename &&

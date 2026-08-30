@@ -113,6 +113,13 @@
 ;windowheight=0
 ;windowwidth=0
 
+; collapsed: which Category-tree entries the user has collapsed, as a
+;    comma-separated list of their paths (e.g. Session,Connection/Login).
+;    Written by the configuration window itself; a collapsed entry stays
+;    collapsed on the next opening whatever categoryexpand's default says,
+;    and re-expanding it forgets it.
+;collapsed=
+
 
 
 [KiTTY]
@@ -148,7 +155,7 @@
 ;bcdelay=0
 
 ; commanddelay: delay in SECONDS between two lines of the automatic start
-;    command script (Connection/Data/Command setting). 0.05 = 50 ms; minimum
+;    command script (Connection/Login/Command setting). 0.05 = 50 ms; minimum
 ;    enforced 0.005.
 ;commanddelay=0.05
 

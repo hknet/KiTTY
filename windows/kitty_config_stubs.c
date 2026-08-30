@@ -67,3 +67,16 @@ struct dlgparam;
 bool kitty_config_select_root_folder(struct dlgparam *dp) { (void)dp; return false; }
 /* Likewise: no folder rows in the stock variants, so no rename to end. */
 void kitty_config_end_folder_rename(struct dlgparam *dp) { (void)dp; }
+
+/* The stock variants remember no collapsed Category-tree entries: nothing is
+ * ever recorded, nothing is ever collapsed, and saving writes nowhere. */
+void kitty_cfgtree_set_collapsed(const char *name, int collapsed)
+{ (void)name; (void)collapsed; }
+int kitty_cfgtree_is_collapsed(const char *name) { (void)name; return 0; }
+void kitty_cfgtree_collapsed_save(void) { }
+
+/* The stock variants have no named-proxy pre-set loader to pin. */
+void kitty_config_proxy_pin_presets(void) { }
+
+/* ...and nothing pinned to the panel bottom at all. */
+void kitty_config_pin_bottoms(void) { }

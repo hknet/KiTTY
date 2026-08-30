@@ -36,7 +36,6 @@ int kitty_proxy_host_kind( const char *name ) ;   /* one of the three above */
 int kitty_named_proxy_default_hostname( void ) ;  /* the global, 0/1 */
 
 int kitty_proxy_edit_dialog( HWND owner ) ;   /* kitty_proxy_gui.c */
-int kitty_proxy_pick_dialog( HWND owner, char *out, int len ) ;   /* kitty_proxy_gui.c */
 void SetProxySelectionFlag( const int flag ) ;
 int LoadProxyInfo( Conf * conf, const char * name ) ;
 void InitProxyList(void) ;

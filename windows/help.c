@@ -266,13 +266,21 @@ void launch_help(HWND hwnd, const char *topic)
     if (!chm_path)
         return;
 
+    /*
+     * The viewer is deliberately NOT given the calling window: with the
+     * caller as owner the help stays on top of it, and reading the manual
+     * next to the configuration box means juggling windows. Launched
+     * unowned it is an ordinary top-level window that can sit behind.
+     * (quit_help's HH_CLOSE_ALL never needed the owner.)
+     */
+    (void)hwnd;
     if (topic) {
         char *fname = dupprintf(
             "%s::/%s.html>main", chm_path, topic);
-        p_HtmlHelpA(hwnd, fname, HH_DISPLAY_TOPIC, 0);
+        p_HtmlHelpA(NULL, fname, HH_DISPLAY_TOPIC, 0);
         sfree(fname);
     } else {
-        p_HtmlHelpA(hwnd, chm_path, HH_DISPLAY_TOPIC, 0);
+        p_HtmlHelpA(NULL, chm_path, HH_DISPLAY_TOPIC, 0);
     }
     requested_help = true;
 }

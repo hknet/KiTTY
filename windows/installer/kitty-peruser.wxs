@@ -61,6 +61,8 @@
       <Component><File Source="kitty_pterm.exe" /></Component>
       <Component><File Source="kitty_tel.exe" /></Component>
       <Component><File Source="kitty.ini.example" /></Component>
+      <!-- the manual: windows/help.c looks for kitty.chm beside the exe -->
+      <Component><File Source="kitty.chm" /></Component>
     </ComponentGroup>
 
     <!-- Start-Menu shortcuts (non-advertised; icon = target exe; stable AUMID) -->
