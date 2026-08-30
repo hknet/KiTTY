@@ -38,6 +38,7 @@
 #include "kitty_workplace.h"
 #include "kitty_notice.h"
 
+#include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 #define KWP_MAGIC   0x5057494Bu   /* "KIWP" */
 #define KWP_VERSION 1
 
@@ -123,7 +124,7 @@ static int kwp_holder_is_ours(DWORD pid)
     h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
     if (!h)
         return 0;
-    if (QueryFullProcessImageNameA(h, 0, theirs, &sz) && sz > 0) {
+    if (kitty_process_image_path(h, theirs, sz) && sz > 0) {
         theirs[sz] = '\0';
         if ((slash = strrchr(theirs, '\\')) != NULL) {
             *slash = '\0';

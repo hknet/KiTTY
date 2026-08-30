@@ -1,5 +1,6 @@
 #include "kitty_registry.h"
 
+#include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 char * itoa (int __val, char *__s, int __radix) ;
 /* kitty_tools.c; declared locally because this file deliberately includes
  * only kitty_registry.h (see the MigrateOldKittyHive rationale below). */
@@ -716,7 +717,7 @@ BOOL RegCleanPuTTY( void ) {
 void KittyCliReport( const char *title, const char *text, int warn ) {
 	HANDLE h ;
 	DWORD written ;
-	int attached = AttachConsole( ATTACH_PARENT_PROCESS ) ? 1 : 0 ;
+	int attached = kitty_attach_parent_console() ? 1 : 0 ;
 
 	h = CreateFileA( "CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
 			 NULL, OPEN_EXISTING, 0, NULL ) ;
@@ -746,7 +747,7 @@ static int CliConfirm( const char *title, const char *text ) {
 	HANDLE hout, hin ;
 	DWORD written, nread = 0 ;
 	char answer[16] ;
-	int attached = AttachConsole( ATTACH_PARENT_PROCESS ) ? 1 : 0 ;
+	int attached = kitty_attach_parent_console() ? 1 : 0 ;
 	int yes = 0 ;
 
 	hout = CreateFileA( "CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,

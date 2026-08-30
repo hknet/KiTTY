@@ -15,6 +15,7 @@
 
 #include "putty.h"
 #include "network.h"
+#include "../kitty/kitty_oldwin.h"  /* KiTTY: record a fallback we had to take */
 #include "kitty_perf.h"
 #include "tree234.h"
 #include "ssh.h"
@@ -292,6 +293,12 @@ void sk_init(void)
             GET_WINDOWS_FUNCTION_NO_TYPECHECK(wship6_module, getnameinfo);
         } else {
         }
+        /* KiTTY: say which of the three ways this went. Without getaddrinfo
+         * names resolve through gethostbyname, which is IPv4 only - and a host
+         * reachable only over IPv6 then looks simply unreachable, with nothing
+         * anywhere saying why. */
+        kitty_api_record("ws2_32.dll", "getaddrinfo", KITTY_API_OPTIONAL,
+                         "IPv6 name resolution", p_getaddrinfo != NULL);
     }
     GET_WINDOWS_FUNCTION(winsock2_module, WSAAddressToStringA);
 #endif

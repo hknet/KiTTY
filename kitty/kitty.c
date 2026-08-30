@@ -21,6 +21,7 @@
 
 // Include specifiques Windows (windows.h doit imperativement etre declare en premier)
 #include <windows.h>
+#include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include <psapi.h>
 #include <iphlpapi.h>
 
@@ -2609,7 +2610,8 @@ int GetPortFwdState( const int port, const DWORD pid ) {
 
 	if( hLib ) {
 		pGetExtendedTcpTable = (DWORD (WINAPI *)(PVOID,PDWORD,BOOL,ULONG,TCP_TABLE_CLASS,ULONG)) 
-		GetProcAddress(hLib, "GetExtendedTcpTable") ;
+		kitty_api_from(hLib, "iphlpapi.dll", "GetExtendedTcpTable", KITTY_API_OPTIONAL,
+                                  "naming the program that owns a TCP port") ;
 		dwResult = pGetExtendedTcpTable(NULL, &size, 0, AF_INET, TCP_TABLE_OWNER_PID_LISTENER, 0) ;
 		pTCPInfo = (MIB_TCPTABLE_OWNER_PID*)malloc(size) ;
 		dwResult = pGetExtendedTcpTable(pTCPInfo, &size, 0, AF_INET, TCP_TABLE_OWNER_PID_LISTENER, 0) ;
@@ -2683,7 +2685,8 @@ int ShowPortfwd( HWND hwnd, Conf * conf ) {
 
 	if( hLib ) {
 		pGetExtendedTcpTable = (DWORD (WINAPI *)(PVOID,PDWORD,BOOL,ULONG,TCP_TABLE_CLASS,ULONG))
-		GetProcAddress(hLib, "GetExtendedTcpTable");
+		kitty_api_from(hLib, "iphlpapi.dll", "GetExtendedTcpTable", KITTY_API_OPTIONAL,
+                                  "naming the program that owns a TCP port");
 	}
 	dwResult = pGetExtendedTcpTable(NULL, &size, 0, AF_INET, TCP_TABLE_OWNER_PID_LISTENER, 0);
 	pTCPInfo = (MIB_TCPTABLE_OWNER_PID*)malloc(size);

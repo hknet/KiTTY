@@ -384,6 +384,14 @@ char default_init_file_content[] =
 ;    Connection -> SSH -> Auth (an application-wide setting, not per session).\n\
 ;verifyagent=yes\n\
 \n\
+; warnmissingfeatures: on a Windows too old for something KiTTY offers - dark\n\
+;    mode, Windows Hello, per-monitor DPI - one line in the terminal names what\n\
+;    is unavailable, so a feature that never happens is not mistaken for a\n\
+;    setting that will not stick. Set no once you have read it: the answer is a\n\
+;    property of the machine and will not change. The full list goes to the\n\
+;    Event Log either way. Also a checkbox: Application -> Security.\n\
+;warnmissingfeatures=yes\n\
+\n\
 ; WorkplaceProxy / WorkplaceMinutes: the workplace-proxy-mode droplists'\n\
 ;    remembered LAST selection (which proxy, for how long), shared between\n\
 ;    the config box and the launcher menu so both offer the same thing next\n\

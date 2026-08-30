@@ -1,6 +1,11 @@
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_sources_from_current_dir(utils
+  # KiTTY: the runtime lookup of APIs newer than the oldest Windows we load on,
+  # and the record of what was missing. In `utils` because EVERY binary links
+  # that - including the command-line tools, which is what lets network.c and
+  # gss.c report a fallback they took without breaking klink/kscp/ksftp.
+  ../kitty/kitty_oldwin.c
   utils/agent_mutex_name.c
   utils/agent_named_pipe_name.c
   utils/arm_arch_queries.c
@@ -88,6 +93,13 @@ target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c)
 # theme's STORE is deliberately not here - kitty.exe reads it through its own
 # ReadParameter(), the satellite binaries through kitty_theme_pref.c.
 target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_theme.c)
+# KiTTY: kitty_theme.c resolves the dark-mode entry points through
+# kitty_oldwin.c, so the library carries it too. Without that, pterm - which
+# ships as kitty_pterm.exe and links guiterminal, but does not list the KiTTY
+# sources itself - fails to link. The executables list it as well; a static
+# library member is only pulled in for a symbol nothing else defines, so the
+# duplicate costs nothing.
+target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c)
 # KiTTY: edge anchoring for resizable dialogs - the configuration box's outer
 # furniture here, kageant's three windows in the pageant target below.
 target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_anchor.c)
@@ -112,6 +124,7 @@ add_executable(pageant
   help.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
   ${CMAKE_SOURCE_DIR}/kitty/kitty_pageant.c   # KiTTY: kageant additions (split out of pageant.c)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_anchor.c    # KiTTY: edge anchoring for the resizable windows
   ${CMAKE_SOURCE_DIR}/kitty/kitty_authenticode.c  # KiTTY: shared verify for the New key launcher
   ${CMAKE_SOURCE_DIR}/kitty/kitty_notice.c    # KiTTY: shared near-the-clock notice window (replaces tray balloons)
@@ -195,6 +208,7 @@ installed_program(puttytel)
 add_executable(puttygen
   puttygen.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: the .hello sidecar
@@ -229,6 +243,7 @@ installed_program(puttygen)
 add_executable(kittygen_cli
   ${CMAKE_SOURCE_DIR}/cmdgen.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys (container; no UI used here)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: the .hello sidecar writer
@@ -398,6 +413,7 @@ target_link_libraries(test_mpw_params
 add_executable(test_hello_container
   ${CMAKE_SOURCE_DIR}/test/test_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c
@@ -424,6 +440,7 @@ endif()
 add_executable(kitty
   window.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c     # KiTTY: sidecar + translate
@@ -538,6 +555,7 @@ set_target_properties(kitty PROPERTIES WIN32_EXECUTABLE ON)
 add_executable(kitty_portable
   window.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c     # KiTTY: sidecar + translate
@@ -711,6 +729,7 @@ endif()
 add_executable(test_hello_gui
   ${CMAKE_SOURCE_DIR}/test/test_hello_gui.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c

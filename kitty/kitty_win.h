@@ -12,6 +12,12 @@ void GetOSInfo( char * version ) ;
 // Rendu inline (non modal) des erreurs de connexion dans le terminal (upstream cyd01/KiTTY #548)
 void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal) ;
 
+/* One line in the terminal, and the whole list in the Event Log, naming what
+ * this version of Windows is too old to provide. Once per process; silent when
+ * nothing is missing, and switched off with [KiTTY] warnmissingfeatures=no.
+ * See kitty_oldwin.h. */
+void kitty_report_missing_features(Terminal *term) ;
+
 // Corps des commandes du menu systeme (window.c WM_COMMAND) sans dependance aux statics de window.c
 void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up) ;
 void kitty_menu_toggle_alwaysontop(HWND term_hwnd, Conf *conf) ;

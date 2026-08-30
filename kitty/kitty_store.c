@@ -4,6 +4,7 @@
 #include "kitty_store.h"
 #include "kitty_commun.h"
 #include "kitty_tools.h"
+#include "kitty_oldwin.h"   /* record what an older Windows does not have */
 
 
 #ifndef snewn
@@ -186,7 +187,8 @@ char* joinPath(char* pcDest, char* pcMain, char* pcSuf) {
 	HMODULE userenv_module = LoadLibrary("USERENV.DLL");
 
 	if (userenv_module) {
-	    p_ExpandESforUser = (p_ExpandESforUser_t) GetProcAddress(shell32_module, "ExpandEnvironmentStringsForUserA");
+	    p_ExpandESforUser = (p_ExpandESforUser_t) kitty_api_from(shell32_module, "shell32.dll", "ExpandEnvironmentStringsForUserA", KITTY_API_OPTIONAL,
+                                  "expanding %USERPROFILE% for the logged-on user");
 		
 		if (p_ExpandESforUser) {
 

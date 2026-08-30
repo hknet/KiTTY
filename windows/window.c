@@ -2192,6 +2192,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     start_backend(wgs);
     NETDBG_TS("win: after start_backend");
 
+#ifdef MOD_PERSO
+    /* KiTTY: name whatever this Windows was too old to provide - once, in the
+     * terminal and in the Event Log. HERE rather than inside start_backend,
+     * which is also the reconnect path: the answer is a property of the
+     * machine and does not change between one connection and the next. */
+    kitty_report_missing_features(wgs->term);
+#endif
+
     /*
      * Set up the initial input locale.
      */

@@ -25,6 +25,7 @@
 
 #include "kitty.h"
 #include "kitty_workplace.h"   /* the frame's resting state while the mode is on */
+#include "kitty_oldwin.h"   /* record what an older Windows does not have */
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
 void kitty_refresh_title(void);        /* windows/window.c */
@@ -687,7 +688,8 @@ static void osc52_set_frame_colour(HWND hwnd, COLORREF colour)
     if (!tried) {
         HMODULE m = LoadLibraryA("dwmapi.dll");
         if (m)
-            fn = (dwm_set_fn)GetProcAddress(m, "DwmSetWindowAttribute");
+            fn = (dwm_set_fn)kitty_api_from(m, "dwmapi.dll", "DwmSetWindowAttribute", KITTY_API_OPTIONAL,
+                                  "dark title bars");
         tried = true;
     }
     if (!fn || !hwnd)

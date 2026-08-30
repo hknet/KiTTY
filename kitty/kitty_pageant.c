@@ -31,6 +31,7 @@
 #include "kitty_theme.h"    /* KITTY_THEME_* preference values */
 #include "ssh.h"
 
+#include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 /* Shim so the moved kageant_do_notify body below stays textually identical
  * to its pageant.c original: reach pageant.c's static tray-window handle
  * through the accessor it exports for us. */
@@ -1070,7 +1071,7 @@ static void kageant_req_name(unsigned long pid, char *base_out, size_t bsz,
     if (h) {
         char path[MAX_PATH + 1];
         DWORD n = sizeof(path);
-        if (QueryFullProcessImageNameA(h, 0, path, &n) && path[0]) {
+        if (kitty_process_image_path(h, path, n) && path[0]) {
             const char *base = strrchr(path, '\\');
             snprintf(base_out, bsz, "%s", base ? base + 1 : path);
             snprintf(path_out, psz, "%s", path);
@@ -2337,7 +2338,7 @@ void kageant_do_identities_asked(unsigned long pid)
                                (DWORD)pid);
         if (h) {
             DWORD n = sizeof(path);
-            if (QueryFullProcessImageNameA(h, 0, path, &n) && path[0]) {
+            if (kitty_process_image_path(h, path, n) && path[0]) {
                 const char *base = strrchr(path, '\\');
                 snprintf(who, sizeof(who), " %s", base ? base + 1 : path);
             }
@@ -2585,13 +2586,13 @@ void kageant_key_set_lifetime(ptrlen pubblob, unsigned seconds)
         }
         g_lifetimes[g_nlifetimes++].blob = strbuf_dup(pubblob);
     }
-    g_lifetimes[i].expiry = GetTickCount64() + (ULONGLONG)seconds * 1000;
+    g_lifetimes[i].expiry = kitty_tick_count64() + (ULONGLONG)seconds * 1000;
     g_lifetimes[i].set_seconds = seconds;
 }
 
 int kageant_expire_due_keys(void)
 {
-    ULONGLONG now = GetTickCount64();
+    ULONGLONG now = kitty_tick_count64();
     int w = 0, i, ndue = 0;
     strbuf **due = NULL;
     /* Pop every due entry off the table FIRST: deleting the key calls back
@@ -2621,7 +2622,7 @@ int kageant_expire_due_keys(void)
 int kageant_key_lifetime_get(ptrlen pubblob, unsigned *set_seconds,
                              unsigned *remaining_seconds)
 {
-    ULONGLONG now = GetTickCount64();
+    ULONGLONG now = kitty_tick_count64();
     for (int i = 0; i < g_nlifetimes; i++) {
         if (g_lifetimes[i].blob->len == pubblob.len &&
             !memcmp(g_lifetimes[i].blob->s, pubblob.ptr, pubblob.len)) {
@@ -3654,7 +3655,7 @@ void kageant_do_mutation_notice(int op, const char *comment)
                                (DWORD)pageant_external_pid);
         char path[MAX_PATH];
         DWORD sz = sizeof(path);
-        if (h && QueryFullProcessImageNameA(h, 0, path, &sz)) {
+        if (h && kitty_process_image_path(h, path, sz)) {
             const char *base = strrchr(path, '\\');
             snprintf(proc, sizeof(proc), " by %s (pid %lu)",
                      base ? base + 1 : path, pageant_external_pid);

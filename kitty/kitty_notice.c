@@ -32,6 +32,7 @@
 #include <string.h>
 
 #include "kitty_notice.h"
+#include "kitty_oldwin.h"   /* record what an older Windows does not have */
 
 #define NOTICE_CLASS   "KiTTYNoticeWindow"
 #define NOTICE_TIMER   1
@@ -84,7 +85,8 @@ static UINT notice_dpi_for_monitor(HMONITOR mon)
     if (!tried) {
         HMODULE m = LoadLibraryA("shcore.dll");
         if (m)
-            fn = (getdpi_fn)GetProcAddress(m, "GetDpiForMonitor");
+            fn = (getdpi_fn)kitty_api_from(m, "shcore.dll", "GetDpiForMonitor", KITTY_API_OPTIONAL,
+                                  "per-monitor DPI scaling");
         tried = 1;
     }
     if (fn && mon && SUCCEEDED(fn(mon, 0 /* MDT_EFFECTIVE_DPI */, &x, &y)))

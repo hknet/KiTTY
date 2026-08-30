@@ -9,6 +9,7 @@
 #include "ssh/pgssapi.h"
 #include "ssh/gss.h"
 #include "ssh/gssc.h"
+#include "../kitty/kitty_oldwin.h"  /* KiTTY: record a library that is not there */
 
 #include "misc.h"
 
@@ -207,6 +208,14 @@ struct ssh_gss_liblist *ssh_gss_setup(Conf *conf)
 
     /* Microsoft SSPI Implementation */
     module = load_system32_dll("secur32.dll");
+    /* KiTTY: SSPI is what gives single sign-on without a third-party Kerberos.
+     * When it is absent GSSAPI authentication fails in a way that reads as a
+     * server problem, so the reason is recorded (kitty_oldwin.h) and reported
+     * with everything else this Windows could not provide. */
+    kitty_api_record("secur32.dll", "AcquireCredentialsHandleA",
+                     KITTY_API_OPTIONAL,
+                     "GSSAPI/Kerberos single sign-on (Windows SSPI)",
+                     module != NULL);
     if (module) {
         struct ssh_gss_library *lib =
             &list->libraries[list->nlibraries++];

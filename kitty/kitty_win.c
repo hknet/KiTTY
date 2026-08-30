@@ -3,6 +3,7 @@
 #include "kitty_notice.h"          /* near-the-clock warning window */
 #include "kitty_rc_additions.h"   /* IDD_UPDATEBOX, IDC_UPD_TEXT, IDC_UPD_UPDATE */
 #include "kitty_theme.h"           /* the app-wide colour theme */
+#include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 #include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
 #include <wintrust.h>  /* in-app updater: Authenticode trust verification */
 #include <softpub.h>   /* WINTRUST_ACTION_GENERIC_VERIFY_V2 */
@@ -1148,7 +1149,8 @@ static void kitty_caption_tint( HWND hwnd, int on ) {
 	static int inited = 0 ;
 	if( !inited ) {
 		HMODULE dwm = LoadLibraryA( "dwmapi.dll" ) ;
-		if( dwm ) dwmswa = (dwmswa_t)GetProcAddress( dwm, "DwmSetWindowAttribute" ) ;
+		if( dwm ) dwmswa = (dwmswa_t)kitty_api_from(dwm, "dwmapi.dll", "DwmSetWindowAttribute", KITTY_API_OPTIONAL,
+                                  "dark title bars") ;
 		inited = 1 ;
 	}
 	if( dwmswa ) {
@@ -1786,6 +1788,62 @@ void kitty_menu_toggle_hyperlink(HWND hwnd)
  * ------------------------------------------------------------------ */
 extern int ReadParameter(const char *key, const char *name, char *value);
 
+/* ------------------------------------------------------------------
+ * What this Windows could not do.
+ *
+ * Every optional API KiTTY resolves at runtime is recorded with the feature
+ * it powers (kitty_oldwin.c). On a Windows old enough to lack some of them
+ * those features simply never happen - and "it did nothing" is the worst way
+ * to learn that dark mode, or Windows Hello, is missing because of the
+ * operating system rather than because of a setting.
+ *
+ * So it is said twice: in full in the Event Log, where someone diagnosing
+ * looks, and as ONE line in the terminal, where someone who is not
+ * diagnosing will actually see it. The line is switched off with
+ * [KiTTY] warnmissingfeatures=no - a fact about the machine does not change,
+ * so whoever has read it once can stop being told.
+ *
+ * Once per process, which is once per terminal window, and never again on a
+ * reconnect - unlike start_backend, which runs for every reconnect too.
+ * ------------------------------------------------------------------ */
+void kitty_report_missing_features(Terminal *term)
+{
+    static int done = 0;
+    char *full, *brief, cfg[16];
+
+    if (done)
+        return;
+    done = 1;
+
+    full = kitty_oldwin_degraded();
+    if (!full)
+        return;                        /* this Windows has everything */
+
+    /* The Event Log gets it whole, and gets it whatever the setting says:
+     * switching the notice off is about not being interrupted, not about
+     * hiding the answer from whoever goes looking for it. */
+    debug_logevent("%s", full);
+    sfree(full);
+
+    if (ReadParameter("KiTTY", "warnmissingfeatures", cfg) &&
+        !stricmp(cfg, "no"))
+        return;
+
+    brief = kitty_oldwin_degraded_brief();
+    if (brief && term) {
+        /* Yellow "NOTE:" with the body in the terminal's own colours - the
+         * shape of the post-quantum advisory, one step below its red, because
+         * this is information rather than a warning. */
+        char *line = dupprintf(
+            "\r\n\x1b[1;33mNOTE:\x1b[0m this version of Windows cannot do: "
+            "%s. Everything else works as usual. Silence this with "
+            "warnmissingfeatures=no in kitty.ini.\r\n", brief);
+        term_data(term, line, strlen(line));
+        sfree(line);
+    }
+    sfree(brief);
+}
+
 static void kitty_agent_serving_check(unsigned long server_pid, int transport)
 {
     static int done = 0;
@@ -1822,7 +1880,7 @@ static void kitty_agent_serving_check(unsigned long server_pid, int transport)
         done = 1;                      /* cannot inspect: stay quiet */
         return;
     }
-    gotpath = QueryFullProcessImageNameA(h, 0, srv, &sz);
+    gotpath = kitty_process_image_path(h, srv, sz);
     CloseHandle(h);
     if (!gotpath) {
         done = 1;

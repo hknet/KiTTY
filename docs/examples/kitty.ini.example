@@ -365,6 +365,14 @@
 ;    Connection -> SSH -> Auth (an application-wide setting, not per session).
 ;verifyagent=yes
 
+; warnmissingfeatures: on a Windows too old for something KiTTY offers - dark
+;    mode, Windows Hello, per-monitor DPI - one line in the terminal names what
+;    is unavailable, so a feature that never happens is not mistaken for a
+;    setting that will not stick. Set no once you have read it: the answer is a
+;    property of the machine and will not change. The full list goes to the
+;    Event Log either way. Also a checkbox: Application -> Security.
+;warnmissingfeatures=yes
+
 ; WorkplaceProxy / WorkplaceMinutes: the workplace-proxy-mode droplists'
 ;    remembered LAST selection (which proxy, for how long), shared between
 ;    the config box and the launcher menu so both offer the same thing next

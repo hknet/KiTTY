@@ -37,6 +37,7 @@
 #include <commctrl.h>   /* SetWindowSubclass + the tab-control messages */
 
 #include "kitty_theme.h"
+#include "kitty_oldwin.h"   /* record what an older Windows does not have */
 
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
@@ -182,7 +183,8 @@ static bool kt_build_at_least(DWORD want)
 
     if (!nt)
         return false;
-    p = (fn_RtlGetVersion)(void *)GetProcAddress(nt, "RtlGetVersion");
+    p = (fn_RtlGetVersion)(void *)kitty_api_from(nt, "ntdll.dll", "RtlGetVersion", KITTY_API_OPTIONAL,
+                                  "detecting the Windows version");
     if (!p)
         return false;
     memset(&vi, 0, sizeof(vi));
@@ -218,10 +220,20 @@ static void kt_init(void)
     p_RefreshImmersiveColorPolicyState =
         (fn_RefreshImmersiveColorPolicyState)(void *)
         GetProcAddress(ux, MAKEINTRESOURCEA(104));
+    /* Recorded by hand: an ordinal has no name for kitty_api_from() to resolve,
+     * but a Windows without these still owes the user an answer for why dark
+     * mode did nothing. One entry for the three - they arrived together and go
+     * missing together. */
+    kitty_api_record("uxtheme.dll", "#133/#135/#104", KITTY_API_OPTIONAL,
+                     "dark mode",
+                     p_AllowDarkModeForWindow && p_SetPreferredAppMode &&
+                     p_RefreshImmersiveColorPolicyState);
     p_SetWindowTheme = (fn_SetWindowTheme)(void *)
-        GetProcAddress(ux, "SetWindowTheme");
+        kitty_api_from(ux, "uxtheme.dll", "SetWindowTheme", KITTY_API_OPTIONAL,
+                                  "dark scroll bars and controls");
     p_DwmSetWindowAttribute = (fn_DwmSetWindowAttribute)(void *)
-        GetProcAddress(dwm, "DwmSetWindowAttribute");
+        kitty_api_from(dwm, "dwmapi.dll", "DwmSetWindowAttribute", KITTY_API_OPTIONAL,
+                                  "dark title bars");
 
     if (!p_AllowDarkModeForWindow || !p_SetPreferredAppMode ||
         !p_SetWindowTheme || !p_DwmSetWindowAttribute)
@@ -656,7 +668,8 @@ static COLORREF kt_accent_for(bool dark)
         asked = true;
         if (dwm) {
             fn_DwmGetColorizationColor p = (fn_DwmGetColorizationColor)(void *)
-                GetProcAddress(dwm, "DwmGetColorizationColor");
+                kitty_api_from(dwm, "dwmapi.dll", "DwmGetColorizationColor", KITTY_API_OPTIONAL,
+                                  "matching the desktop's accent colour");
             DWORD argb = 0;
             BOOL opaque = FALSE;
             if (p && SUCCEEDED(p(&argb, &opaque))) {

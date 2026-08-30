@@ -37,6 +37,7 @@
 #include "../kitty/kitty_theme.h"     /* KiTTY: dark mode for the dialogs */
 #include "../kitty/kitty_theme_pref.h" /* KiTTY: the app-wide theme setting */
 #include "../kitty/kitty_anchor.h"    /* KiTTY: edge anchoring for the resizable windows */
+#include "../kitty/kitty_oldwin.h"   /* KiTTY: APIs newer than the oldest Windows we load on */
 
 #include <shellapi.h>
 
@@ -6026,7 +6027,7 @@ static void show_cmdline_help(void)
     bool attached = false, opened = false;
     if (h == NULL || h == INVALID_HANDLE_VALUE) {
         /* No redirection. If the caller has a console, print on it. */
-        if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        if (kitty_attach_parent_console()) {
             attached = true;
             h = CreateFile("CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE,
                            NULL, OPEN_EXISTING, 0, NULL);

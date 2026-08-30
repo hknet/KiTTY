@@ -34,6 +34,7 @@
 #include "kitty_foreground.h"
 
 /* Shorten the ABI mouthfuls locally. */
+#include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 typedef __x_ABI_CWindows_CSecurity_CCredentials_CUI_CIUserConsentVerifierStatics
     HelloStatics;
 typedef __FIAsyncOperation_1_UserConsentVerifierAvailability  HelloAvailOp;
@@ -92,13 +93,17 @@ static int hello_combase_load(void)
         HMODULE m = LoadLibraryW(L"combase.dll");
         if (m) {
             fnRoInitialize = (pRoInitialize_t)
-                GetProcAddress(m, "RoInitialize");
+                kitty_api_from(m, "combase.dll", "RoInitialize", KITTY_API_OPTIONAL,
+                                  "Windows Hello");
             fnRoGetActivationFactory = (pRoGetActivationFactory_t)
-                GetProcAddress(m, "RoGetActivationFactory");
+                kitty_api_from(m, "combase.dll", "RoGetActivationFactory", KITTY_API_OPTIONAL,
+                                  "Windows Hello");
             fnWindowsCreateString = (pWindowsCreateString_t)
-                GetProcAddress(m, "WindowsCreateString");
+                kitty_api_from(m, "combase.dll", "WindowsCreateString", KITTY_API_OPTIONAL,
+                                  "Windows Hello");
             fnWindowsDeleteString = (pWindowsDeleteString_t)
-                GetProcAddress(m, "WindowsDeleteString");
+                kitty_api_from(m, "combase.dll", "WindowsDeleteString", KITTY_API_OPTIONAL,
+                                  "Windows Hello");
         }
     }
     g_combase_state = (fnRoInitialize && fnRoGetActivationFactory &&
@@ -1219,26 +1224,35 @@ static khw_api *khw_load(void)
         pWebAuthNGetApiVersionNumber_t ver = NULL;
         if (dll) {
             ver = (pWebAuthNGetApiVersionNumber_t)
-                GetProcAddress(dll, "WebAuthNGetApiVersionNumber");
+                kitty_api_from(dll, "webauthn.dll", "WebAuthNGetApiVersionNumber", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
             api.MakeCredential = (pWebAuthNMakeCredential_t)
-                GetProcAddress(dll, "WebAuthNAuthenticatorMakeCredential");
+                kitty_api_from(dll, "webauthn.dll", "WebAuthNAuthenticatorMakeCredential", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
             api.GetAssertion = (pWebAuthNGetAssertion_t)
-                GetProcAddress(dll, "WebAuthNAuthenticatorGetAssertion");
+                kitty_api_from(dll, "webauthn.dll", "WebAuthNAuthenticatorGetAssertion", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
             api.FreeAttestation = (pWebAuthNFreeAttestation_t)
-                GetProcAddress(dll, "WebAuthNFreeCredentialAttestation");
+                kitty_api_from(dll, "webauthn.dll", "WebAuthNFreeCredentialAttestation", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
             api.FreeAssertion = (pWebAuthNFreeAssertion_t)
-                GetProcAddress(dll, "WebAuthNFreeAssertion");
+                kitty_api_from(dll, "webauthn.dll", "WebAuthNFreeAssertion", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
             api.IsUVPAA = (pWebAuthNIsUVPAA_t)
-                GetProcAddress(dll,
-                    "WebAuthNIsUserVerifyingPlatformAuthenticatorAvailable");
+                kitty_api_from(dll, "webauthn.dll", "WebAuthNIsUserVerifyingPlatformAuthenticatorAvailable", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
             api.GetList = (pWebAuthNGetList_t)
-                GetProcAddress(dll, "WebAuthNGetPlatformCredentialList");
+                kitty_api_from(dll, "webauthn.dll", "WebAuthNGetPlatformCredentialList", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
             api.FreeList = (pWebAuthNFreeList_t)
-                GetProcAddress(dll, "WebAuthNFreePlatformCredentialList");
+                kitty_api_from(dll, "webauthn.dll", "WebAuthNFreePlatformCredentialList", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
             api.DeleteCred = (pWebAuthNDeleteCred_t)
-                GetProcAddress(dll, "WebAuthNDeletePlatformCredential");
+                kitty_api_from(dll, "webauthn.dll", "WebAuthNDeletePlatformCredential", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
             api.ErrorName = (pWebAuthNGetErrorName_t)
-                GetProcAddress(dll, "WebAuthNGetErrorName");
+                kitty_api_from(dll, "webauthn.dll", "WebAuthNGetErrorName", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
         }
         api.apiver = ver ? ver() : 0;
         api.state = (api.MakeCredential && api.GetAssertion &&
@@ -1469,26 +1483,33 @@ static void khw_ui_load(void)
         HMODULE dwm = LoadLibraryW(L"dwmapi.dll");
         if (dwm) {
             khw_ui.SetAttr = (pDwmSetAttr_t)
-                GetProcAddress(dwm, "DwmSetWindowAttribute");
+                kitty_api_from(dwm, "dwmapi.dll", "DwmSetWindowAttribute", KITTY_API_OPTIONAL,
+                                  "dark title bars");
             khw_ui.Extend = (pDwmExtend_t)
-                GetProcAddress(dwm, "DwmExtendFrameIntoClientArea");
+                kitty_api_from(dwm, "dwmapi.dll", "DwmExtendFrameIntoClientArea", KITTY_API_OPTIONAL,
+                                  "the glass frame on KiTTY dialogs");
             khw_ui.Color = (pDwmColor_t)
-                GetProcAddress(dwm, "DwmGetColorizationColor");
+                kitty_api_from(dwm, "dwmapi.dll", "DwmGetColorizationColor", KITTY_API_OPTIONAL,
+                                  "matching the desktop's accent colour");
         }
     }
     {
         HMODULE ux = LoadLibraryW(L"uxtheme.dll");
         if (ux) {
             khw_ui.OpenTheme = (pOpenTheme_t)
-                GetProcAddress(ux, "OpenThemeData");
+                kitty_api_from(ux, "uxtheme.dll", "OpenThemeData", KITTY_API_OPTIONAL,
+                                  "themed text in KiTTY dialogs");
             khw_ui.CloseTheme = (pCloseTheme_t)
-                GetProcAddress(ux, "CloseThemeData");
+                kitty_api_from(ux, "uxtheme.dll", "CloseThemeData", KITTY_API_OPTIONAL,
+                                  "themed text in KiTTY dialogs");
             khw_ui.DrawTextEx = (pDrawThemeTextEx_t)
-                GetProcAddress(ux, "DrawThemeTextEx");
+                kitty_api_from(ux, "uxtheme.dll", "DrawThemeTextEx", KITTY_API_OPTIONAL,
+                                  "themed text in KiTTY dialogs");
         }
     }
     khw_ui.DpiForWindow = (pGetDpiForWindow_t)
-        GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow");
+        kitty_api_from(GetModuleHandleW(L"user32.dll"), "user32.dll", "GetDpiForWindow", KITTY_API_OPTIONAL,
+                                  "per-monitor DPI scaling");
 }
 
 /*
@@ -1945,7 +1966,7 @@ static struct {
     int protected_ok;
     int batch_depth;
     int ttl_seconds;
-    ULONGLONG expiry;            /* GetTickCount64() deadline; 0 = none */
+    ULONGLONG expiry;            /* kitty_tick_count64() deadline; 0 = none */
     pCryptMem_t protect, unprotect;
     int fns_loaded;
 } khw_kekcache;
@@ -1958,9 +1979,11 @@ static void khw_kekcache_fns(void)
         khw_kekcache.fns_loaded = 1;
         if (m) {
             khw_kekcache.protect = (pCryptMem_t)
-                GetProcAddress(m, "CryptProtectMemory");
+                kitty_api_from(m, "crypt32.dll", "CryptProtectMemory", KITTY_API_OPTIONAL,
+                                  "keeping secrets encrypted in memory");
             khw_kekcache.unprotect = (pCryptMem_t)
-                GetProcAddress(m, "CryptUnprotectMemory");
+                kitty_api_from(m, "crypt32.dll", "CryptUnprotectMemory", KITTY_API_OPTIONAL,
+                                  "keeping secrets encrypted in memory");
         }
     }
 }
@@ -2019,7 +2042,7 @@ static int khw_kekcache_get(const unsigned char *credid, size_t credidlen,
         return 0;
     if (khw_kekcache.batch_depth == 0 &&
         (khw_kekcache.expiry == 0 ||
-         GetTickCount64() > khw_kekcache.expiry)) {
+         kitty_tick_count64() > khw_kekcache.expiry)) {
         kitty_hello_cache_wipe();
         return 0;
     }
@@ -2044,7 +2067,7 @@ static void khw_kekcache_put(const unsigned char *credid, size_t credidlen,
         khw_kekcache.protected_ok = 1;
     khw_credid_hash(credid, credidlen, khw_kekcache.credid_hash);
     khw_kekcache.expiry = khw_kekcache.ttl_seconds > 0 ?
-        GetTickCount64() + (ULONGLONG)khw_kekcache.ttl_seconds * 1000 : 0;
+        kitty_tick_count64() + (ULONGLONG)khw_kekcache.ttl_seconds * 1000 : 0;
     khw_kekcache.valid = 1;
 }
 
@@ -2141,9 +2164,11 @@ int kitty_hello_webauthn_list(char **out)
         return -1;
     }
     fnGetList = (pGetList_t)
-        GetProcAddress(dll, "WebAuthNGetPlatformCredentialList");
+        kitty_api_from(dll, "webauthn.dll", "WebAuthNGetPlatformCredentialList", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
     fnFreeList = (pFreeList_t)
-        GetProcAddress(dll, "WebAuthNFreePlatformCredentialList");
+        kitty_api_from(dll, "webauthn.dll", "WebAuthNFreePlatformCredentialList", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
     if (!fnGetList || !fnFreeList) {
         *out = dupstr("platform credential list API unavailable");
         return -1;
@@ -2219,19 +2244,26 @@ int kitty_hello_webauthn_probe_ex(const WCHAR *rp_id, int prf_mode,
         return KITTY_HELLO_UNAVAILABLE;
     }
     fnVer = (pWebAuthNGetApiVersionNumber_t)
-        GetProcAddress(dll, "WebAuthNGetApiVersionNumber");
+        kitty_api_from(dll, "webauthn.dll", "WebAuthNGetApiVersionNumber", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
     fnMake = (pWebAuthNMakeCredential_t)
-        GetProcAddress(dll, "WebAuthNAuthenticatorMakeCredential");
+        kitty_api_from(dll, "webauthn.dll", "WebAuthNAuthenticatorMakeCredential", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
     fnGetAssertion = (pWebAuthNGetAssertion_t)
-        GetProcAddress(dll, "WebAuthNAuthenticatorGetAssertion");
+        kitty_api_from(dll, "webauthn.dll", "WebAuthNAuthenticatorGetAssertion", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
     fnFreeAtt = (pWebAuthNFreeAttestation_t)
-        GetProcAddress(dll, "WebAuthNFreeCredentialAttestation");
+        kitty_api_from(dll, "webauthn.dll", "WebAuthNFreeCredentialAttestation", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
     fnFreeAssertion = (pWebAuthNFreeAssertion_t)
-        GetProcAddress(dll, "WebAuthNFreeAssertion");
+        kitty_api_from(dll, "webauthn.dll", "WebAuthNFreeAssertion", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
     fnDelete = (pWebAuthNDeleteCred_t)
-        GetProcAddress(dll, "WebAuthNDeletePlatformCredential");
+        kitty_api_from(dll, "webauthn.dll", "WebAuthNDeletePlatformCredential", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
     fnErrName = (pWebAuthNGetErrorName_t)
-        GetProcAddress(dll, "WebAuthNGetErrorName");
+        kitty_api_from(dll, "webauthn.dll", "WebAuthNGetErrorName", KITTY_API_OPTIONAL,
+                                  "Windows Hello protected keys");
     if (!fnVer || !fnMake || !fnGetAssertion || !fnFreeAtt ||
         !fnFreeAssertion) {
         *msg = dupstr("webauthn.dll lacks required exports");
