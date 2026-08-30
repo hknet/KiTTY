@@ -1,0 +1,960 @@
+\C{kitty-config} KiTTY's own configuration options
+
+This chapter documents the settings KiTTY adds to PuTTY's configuration
+box. Everything upstream PuTTY offers is described in
+\k{config}; what follows is the fork's own, panel by panel, in the
+order the panels appear.
+
+Settings that belong to a \e{saved session} are stored with that session
+and travel with it through \q{Export all} / \q{Import all}. Settings
+that belong to the \e{installation} are stored once for this copy of
+KiTTY, in \c{kitty.ini} or in the registry, and apply to every session;
+those live on the \q{Application} tab (\k{kitty-cfg-application}) and
+each one says so.
+
+\H{kitty-cfg-session} The Session panel
+
+\S{kitty-cfg-folders} \ii{Session folders}
+
+A saved session can be filed in a \e{folder}, so a list of two hundred
+machines becomes a handful of groups. The folder is a property of the
+session: set it when you save, and the session appears under that name
+in the list.
+
+The list shows folders as a drop-down by default, and can show them as
+rows instead - see \k{kitty-cfg-sessionlist}. \q{Default} is the folder
+a session gets when you do not choose one; it is not a special folder
+beyond that.
+
+Deleting a folder does not delete the sessions in it. They return to
+\q{Default}, because a session that belongs to nothing cannot be
+listed.
+
+\S{kitty-cfg-proxy-override} \q{Proxy override options}
+
+Picks one of the named proxy definitions (\k{kitty-cfg-named-proxies})
+for this session, without copying its settings into the session. The
+session records \e{which} definition it uses, so changing the
+definition changes every session that names it - a jump host that moves
+to a new address is edited once.
+
+\q{None} uses the session's own \q{Connection > Proxy} settings as
+usual. The droplist appears only when at least one definition exists,
+and can be hidden entirely (\k{kitty-cfg-sessionlist}).
+
+\S{kitty-cfg-old-sessions} \q{Old sessions}
+
+Shown only when this machine has sessions in an older KiTTY's registry
+hive (\c{9bis.com}) or in PuTTY's, and this KiTTY had none of its own
+when it first ran. Those sessions are listed alongside your own and can
+be opened, edited and deleted; the button opens
+\k{kitty-cfg-migration}, where they can be imported properly.
+
+The behaviour is controlled by \c{showforeignsessions} in
+\c{kitty.ini}: \c{auto} (the default) shows them only while this KiTTY
+has no sessions of its own, so they retire themselves once you have
+your own; \c{yes} and \c{no} settle it either way.
+
+\S{kitty-cfg-hide-launcher} \q{Hide this session from the launcher}
+
+Keeps this session out of the KiTTY Launcher's tray menu
+(\k{kitty-cfg-launcher-hotkey}). The session is otherwise unchanged: it
+still appears in the configuration box and still opens from the command
+line. Use it for the sessions that exist as building blocks - a jump
+host, a template - rather than as somewhere you connect.
+
+\H{kitty-cfg-logging} The Logging panel
+
+PuTTY's own logging options are described in \k{config-logging}. KiTTY
+adds a timestamp for each logged line, and rotation.
+
+\S{kitty-cfg-log-timestamp} \q{Timestamp (strftime format)}
+
+Written at the start of every logged line. The value is a
+\i{strftime} pattern, so the layout is yours: \c{%Y-%m-%d %H:%M:%S }
+gives \c{2026-08-12 15:31:55 }, and \c{%d.%m.%Y %H:%M:%S: } gives
+\c{12.08.2026 15:31:55: }. In addition to the standard strftime codes,
+\c{%f} inserts \i{milliseconds}.
+
+Leave the field empty and no timestamps are written, so logs look
+exactly as they did before.
+
+Timestamps apply to the session logs - \q{Printable output} and \q{All
+session output}. The SSH packet and raw-data logs are deliberately left
+alone: they already timestamp every record in their own format, which
+other tools parse.
+
+The button under the field fills in a working pattern when the field is
+empty and clears it when it is not, so the feature can be tried and
+undone without knowing strftime. Its label says which it will do.
+
+\S{kitty-cfg-log-rotation} \q{Automatic logrotation}
+
+Starts a new log file every N seconds, so a session that runs for a
+week becomes a series of manageable files instead of one that grows
+without limit. \c{0} switches it off.
+
+\b This works only if the \e{file name} changes with time. Put \c{&T}
+in it, as in \c{kitty_&H_&T.log}.
+
+\b If the name has no time-varying code, KiTTY \e{declines} to rotate
+and says so in the Event Log, because reopening the same name would
+overwrite the log rather than rotate it.
+
+The log file name's own substitutions are \c{&H} host name, \c{&P}
+port, \c{&Y} \c{&M} \c{&D} year/month/day, \c{&T} time as HHMMSS, and
+\c{&&} for a literal \c{&}. Characters that are illegal in a Windows
+file name are replaced automatically, so an IPv6 address in \c{&H}
+cannot produce an unusable name.
+
+\H{kitty-cfg-scripting} The Scripting panel
+
+\S{kitty-cfg-sendcmd} \q{Accept broadcast messages for this session}
+
+One KiTTY can type a line into another's session, as if it had been
+typed at the keyboard - and a trailing Return means the far end
+\e{runs} it. That is what makes a session scriptable from outside:
+\c{kitty.exe -sendcmd}, or the \c{/command} control message, says one
+thing to twenty servers at once.
+
+It is dangerous for exactly the reason it is useful: the twenty include
+whatever production session happens to be open. So a window listens
+only when it has been armed, and only to messages meant for it:
+
+\b \e{Per session}: this checkbox. Off by default.
+
+\b \e{Per installation}: \c{sendcmdmode=yes} under \c{[KiTTY]} in
+\c{kitty.ini} sets the state windows start in. The window menu's
+\q{Tools > Accept broadcast} flips the window you are looking at; it is
+the same switch seen from two places, so the configuration box shows
+what the menu did and the other way round.
+
+\b \e{Which KiTTYs hear each other}: the broadcast key below.
+
+\S{kitty-cfg-broadcast-key} \q{Broadcast key}
+
+Decides who a broadcast reaches. Each installation gets its own
+generated key, so a portable KiTTY on a USB stick does not type into
+the sessions of the copy installed on the same machine.
+
+Give several sessions a key of their own and only those answer, even
+when the installation's key would have matched: that is how a broadcast
+is aimed at three servers instead of at everything on the desktop. The
+field is an ordinary text box because the value exists to be copied
+elsewhere; \q{Copy} puts it on the clipboard and \q{Clear} returns the
+session to the installation's key.
+
+\S{kitty-cfg-not-security} What the broadcast gate is not
+
+\e{None of this is a security boundary.} Anything running under your
+account can post the same message, and could reach your session by
+other means regardless. What these settings decide is \e{when your
+terminals accept it} - they keep a broadcast off the wrong terminal,
+not an attacker off your machine.
+
+\S{kitty-cfg-loginscript} \q{Login script}
+
+A list of expect/send pairs - wait for this text, then send that -
+carried out when the session opens. It is stored in the session, so it
+travels with it; \c{-loginscript} loads one from a file on the command
+line, and the button beneath the box fills the box from a file so what
+is saved is what you can see.
+
+\H{kitty-cfg-startup} The Startup panel
+
+\S{kitty-cfg-launcher-hotkey} \q{Enable global hotkey for this session}
+
+Opens this session from anywhere on the desktop with one key
+combination, for example \c{Ctrl+Alt+K} or \c{Ctrl+Shift+F12}.
+
+The hotkey is registered machine-wide, so it works while another
+program has the focus - and it works only while \e{KiTTY Launcher} is
+running, because the launcher is what holds the registration. If two
+sessions claim the same combination the launcher says so with a
+balloon, and the first registration wins.
+
+\H{kitty-cfg-keyboard} The Keyboard panel
+
+\S{kitty-cfg-altgr} \q{AltGr sends Alt}
+
+On an international layout, \i{AltGr} is how the characters printed on
+the front of the keys are typed: on a German layout \c{AltGr+Q} gives
+\c{@} and \c{AltGr+E} gives a euro sign. Windows produces those by
+treating AltGr as Ctrl+Alt, which is also how a terminal application
+sees a plain \c{Alt+key}. A program inside the terminal therefore
+cannot tell \q{I typed a euro sign} from \q{I pressed Alt+E}.
+
+This setting chooses which of the two KiTTY sends:
+
+\b \e{Off} (the default): AltGr composes characters, as the layout
+intends. \c{AltGr+Q} sends \c{@}.
+
+\b \e{On}: \c{AltGr+key} is delivered as \c{Alt+key}, so a program that
+binds Alt shortcuts - Midnight Commander, Emacs, a menu driven by Alt -
+sees them.
+
+Turn it on only if you need those shortcuts and do not need the
+layout's extra characters in the same session. The two cannot both
+work, which is why this is a switch and not something KiTTY can decide
+for you.
+
+It is \e{not} the same as \q{AltGr acts as Compose key} on the same
+panel (\k{config-compose}), which is PuTTY's own Compose feature: there
+AltGr followed by two more keystrokes builds one character, and a
+single AltGr keypress is unaffected.
+
+\S{kitty-cfg-wordnav} \q{Word navigation (Left/Right arrows)}
+
+Which modifier sends the escape sequence a shell binds to
+\e{backward-word} / \e{forward-word}. PuTTY emits it on \c{Alt+Left} and
+\c{Alt+Right}; KiTTY can send it on \c{Ctrl} instead, or on both.
+
+This takes effect only when \q{Shift/Ctrl/Alt with the arrow keys}
+(\k{config-sharrow}) is set to \e{xterm-style bitmap}, KiTTY's default.
+In \q{Ctrl toggles application mode} the arrow-key modifiers are not
+encoded at all, so there is nothing to remap.
+
+\H{kitty-cfg-window} The Window panels
+
+\S{kitty-cfg-winpos} \q{Open the window at a fixed position}
+
+Opens this session's window where you say, instead of where Windows
+would put it. Top and Left are in screen pixels.
+
+It is the companion to \q{Remember window position} (\k{kitty-cfg-winpos-remember}):
+that one follows the window as you move it, this one pins it. Both can
+be set, and then the fixed position wins - an explicit instruction
+beats a convenience. That order matters if you use both, because the
+remembered position silently stops having any effect once a fixed one
+is set.
+
+A position that no longer exists cannot strand a window. Monitors are
+unplugged and resolutions change, and a position saved against a screen
+that is no longer there would otherwise open the window where you
+cannot reach it; KiTTY checks the pinned spot against the monitors you
+have now and moves the window onto the nearest one if it fits on none
+of them.
+
+\S{kitty-cfg-transparency} \q{Transparency}
+
+Makes the whole window translucent, so what is behind it shows through.
+The value runs from \c{0} (opaque) to \c{255} (invisible), and \c{-1}
+disables transparency completely.
+
+Transparency is a window property, not a terminal one: it dims the
+text along with the background, so a high value costs legibility. If
+what you wanted was a picture behind readable text, use a background
+image instead (\k{kitty-cfg-bgimage}).
+
+\S{kitty-cfg-icon} \q{Window icon}
+
+Gives this session its own icon, so a taskbar full of terminals can be
+told apart at a glance - production red, staging blue, and so on.
+
+\q{Icon (from internal resources)} takes the number of one of the icons
+built into KiTTY. \q{External icon file} takes a path to an \c{.ico}
+file, which wins over the internal number when both are set. The icon
+applies to the window, the taskbar and the tray.
+
+\S{kitty-cfg-bgimage} \ii{Background image}
+
+Draws a picture, or a colour gradient, behind the terminal text.
+
+\b \q{Background Style} chooses between no image, an image, and the
+gradient forms.
+
+\b \q{Image file} takes the picture; a value of the form \c{#RRGGBB} is
+read as a colour for the gradient styles instead of a file name.
+
+\b \q{Opacity} decides how strongly the image shows through the
+terminal background. A \e{negative} value with an image selected
+produces a gradient over the image.
+
+\b \q{Slideshow} changes the picture every N seconds, cycling through
+the images in the same directory as the one named.
+
+\b \q{Image placement} positions the picture - centred, tiled,
+stretched, or at the absolute Left/Top given below it - and the last
+setting says whether those coordinates are relative to the window or to
+the desktop, which is what keeps a tiled desktop image aligned across
+several windows.
+
+Text is drawn over the image with the terminal's own colours, so a busy
+picture at a high opacity is unreadable; that is a matter of taste, not
+a limit KiTTY imposes.
+
+\S{kitty-cfg-hyperlinks} \ii{Hyperlinks} in the terminal
+
+KiTTY finds URLs in the terminal output and makes them clickable.
+
+\b \q{Require Ctrl key to click hyperlinks} keeps ordinary clicking as
+selection, which is what you want if you select text with the mouse
+more often than you follow links.
+
+\b \q{Underline hyperlinks} and \q{Show hand cursor when hovering}
+control how a link announces itself.
+
+\b \q{Use the default browser} opens the link with whatever Windows is
+configured to use; clear it and name another program in \q{Other
+browser} to send links somewhere specific.
+
+\b \q{Use the default regular expression} uses KiTTY's own pattern for
+what a URL looks like. Clear it to supply your own in \q{Custom regex}
+- useful for making ticket numbers or host names clickable.
+
+The pattern decides what KiTTY treats as a link, and therefore what it
+will hand to the browser. A pattern that matches more than URLs is a
+way to hand arbitrary text to a program, so keep custom patterns
+narrow.
+
+\H{kitty-cfg-remote-clipboard} The Remote clipboard panels
+
+A program on the far end can ask the terminal to put something on your
+\i{clipboard} (\i{OSC 52}), and can ask to read it back. That is
+genuinely useful over SSH - \c{tmux} and \c{neovim} copy this way - and
+it is also a remote program touching a local resource, so KiTTY makes
+both directions a policy rather than a fact.
+
+\S{kitty-cfg-osc52-writes} \q{Writes - host sets your clipboard}
+
+\b \e{Deny}: the request is ignored.
+
+\b \e{Ask once per session}: the default. The first copy asks; the
+answer then stands for the rest of the session, so tmux or neovim costs
+one dialog and nothing afterwards.
+
+\b \e{Allow}: writes are accepted silently, which is how terminals
+without a policy behave.
+
+Asking once per session is affordable precisely because it is not per
+request. A prompt on every copy is the failure mode other terminals
+have: their users report the warnings are annoying enough that everyone
+turns them off, which leaves them with \e{Allow} and no thought given
+to it.
+
+\S{kitty-cfg-osc52-reads} \q{Reads - host asks for your clipboard}
+
+The other direction, and the more sensitive one: your clipboard holds
+whatever you last copied, which may be a password. The default is
+\e{Deny}, and the only other setting is \e{Ask} - there is deliberately
+no \q{Allow}, because a standing permission to read the clipboard is
+not something a terminal setting should be able to grant silently.
+
+\q{Only while this window has focus} refuses both directions while you
+are working in another program, so a background session cannot act on
+a clipboard you are using elsewhere.
+
+\S{kitty-cfg-osc52-far2l} \q{far2l shared clipboard}
+
+The far2l extension carries the same two operations for far2l's own
+protocol. It follows the same policy values, and the focus rule above
+covers it too - which is why that setting is named for the clipboard
+rather than for OSC 52.
+
+\S{kitty-cfg-osc52-limits} The Limits panel
+
+Bounds on what a granted permission allows, so \q{Allow} does not mean
+\q{unlimited}.
+
+\b \q{Largest payload} caps one clipboard write, in megabytes.
+
+\b \q{Most writes per second} rate-limits a program that copies in a
+loop. \c{0} removes the limit.
+
+\b \q{Grant offered} - in minutes and in requests - is how long an
+answer of \q{yes} lasts. The grant ends at whichever runs out first.
+
+\b \q{Shortest gap between reads} and \q{Most reads per window} bound
+the read direction in the same way.
+
+\b \q{Unanswered prompt expires} closes a question nobody answered, so
+a session left alone does not sit with a permission dialog open, and
+\q{Most prompts per ten seconds} stops a program from producing
+dialogs faster than you can dismiss them.
+
+\S{kitty-cfg-osc52-notices} The Notices panel
+
+How KiTTY tells you a permission is live or has just been used. A
+permission you have forgotten about is the thing that makes a standing
+grant risky, so these are visible by design:
+
+\b \q{Mark while a permission is live} puts a marker in the title bar
+for as long as the grant lasts, and \q{Also mark a standing Allow}
+extends that to a permission that came from the setting rather than
+from a question you answered.
+
+\b \q{Mark when the host actually uses it} shows a marker at the moment
+of a read or write, and the field below it says for how long.
+
+\b \q{Tint the title bar and border} colours the window frame instead
+of writing in the title. Windows 11 only - earlier versions do not
+offer the colours.
+
+\b \q{Show tray notifications} raises a balloon as well, for the case
+where the window is not on screen.
+
+\H{kitty-cfg-transfers} File transfer panels
+
+\S{kitty-cfg-kscp} The KSCP panel
+
+Drag-and-drop uploads, and the \q{Start WinSCP} menu item, need to know
+\e{where} on the far end to put a file.
+
+\b \q{Track remote directory (OSC 7 shell integration)} sends them to
+the shell's current directory instead of your home directory. KiTTY
+reads that directory from the standard \i{OSC 7} sequence your shell
+emits at every prompt (\c{ESC ] 7 ; file://host/path BEL}), validated
+strictly as data: an absolute path, a whitelisted character set, never
+executed. Two lines in your shell startup enable it; see the
+\c{osc7-shell-integration} example shipped with KiTTY.
+
+\b \q{Fixed remote upload directory} sends every upload to one place
+instead. It is mutually exclusive with tracking above.
+
+\b \q{KSCP options} are the flags handed to \c{kscp}; the default
+\c{-r} is what makes a dropped folder upload recursively.
+
+\b \q{Keep the transfer window open after success} leaves the transfer
+window up so you can read what happened. Failures stay up regardless.
+
+This replaced an older \q{send file to the current directory} feature
+that worked by scanning the window title, which is a remote-code-execution
+hole (CVE-2024-23749 in another terminal). Sessions that used it are
+migrated to OSC 7 automatically.
+
+\S{kitty-cfg-winscp-session} The WinSCP panel
+
+What to hand \i{WinSCP} when it is started for this session.
+
+\b \q{Preferred protocol} chooses SFTP or SCP.
+
+\b \q{SFTP connect} overrides the target, as \c{[user@]hostname[:port]},
+for the case where the file-transfer host is not the session's host.
+
+\b \q{WinSCP additional options} and \q{additional rawsettings} are
+passed to WinSCP verbatim - the second is WinSCP's own \c{-rawsettings}
+mechanism, for settings it has no command-line switch for.
+
+\b \q{Shell} names the remote shell to use, in SCP mode only.
+
+Where WinSCP is \e{installed} is not here: that is a property of the PC
+and lives on \k{kitty-cfg-external-tools}.
+
+\S{kitty-cfg-zmodem-session} The ZModem panel
+
+\i{ZModem} transfers files through the terminal session itself, with no
+second connection - which is what makes it work through a jump host
+where SCP does not.
+
+The session settings are the options handed to \c{rz} (receive) and
+\c{sz} (send), and the folder downloads are written to. \c{Ctrl+X}
+aborts a transfer that has begun. The \e{paths} to \c{rz} and \c{sz}
+are per PC and live on \k{kitty-cfg-external-tools}.
+
+\H{kitty-cfg-knocking} \ii{Port knocking}
+
+A sequence of connection attempts that a firewall watches for, and
+opens the real port only after seeing it. KiTTY performs the sequence
+before connecting, so the session opens without a separate tool.
+
+The field is a comma-separated list of \c{port:protocol} knocks.
+Protocols are \c{tcp} and \c{udp}, and \c{s} is a pause rather than a
+knock, so
+
+\c 2001:tcp, 1:s, 2002:udp
+
+knocks 2001 over TCP, waits a second, then knocks 2002 over UDP.
+
+\H{kitty-cfg-comment} The Comment panel
+
+A free-text note stored with the saved session: what the machine is
+for, who owns it, the change that had you connect to it.
+
+It travels with the session through \q{Export all} / \q{Import all} and
+survives a rename. It is never sent to the host, and KiTTY shows it
+only on this panel - it is a note for you, not a label the session list
+displays.
+
+\H{kitty-cfg-application} The Application tab
+
+The configuration box has two tabs. \q{Session} holds everything that
+belongs to the session you are editing; \q{Application} holds the
+settings that belong to this \e{installation} of KiTTY and apply to
+every session it opens.
+
+The split exists because those settings had nowhere else to live. A
+named proxy, the path to WinSCP, or whether KiTTY checks for updates
+were never properties of a connection, and keeping them among the
+session settings meant saving a session to change something that had
+nothing to do with it.
+
+Application settings are saved as you change them - there is no
+\q{Apply} for them - except on the two panels that hold an edit until
+you press \q{Save}, which say so themselves: \k{kitty-cfg-named-proxies}
+and \k{kitty-cfg-host-cas}.
+
+\S{kitty-cfg-named-proxies} \ii{Named proxies}
+
+A named proxy is a proxy or jump host defined once and used by name in
+any number of sessions (\k{kitty-cfg-proxy-override}). Change the
+definition - a jump host moves, a password rotates - and every session
+that names it follows, because the sessions record the name, not the
+settings.
+
+\b \q{Name} picks the definition to edit, or takes a new name to create
+one.
+
+\b \q{Type} is the proxy protocol. Besides SOCKS, HTTP, Telnet and a
+local command, the three SSH types make the definition a reusable
+\e{jump host}: port forwarding, executing a command, or invoking a
+subsystem.
+
+\b \q{Name/IP} and \q{Port} are the proxy itself. A port you have not
+typed follows the type - choosing SOCKS 5 fills in 1080, HTTP 3128, SSH
+22 - and once you type one, the type stops touching it.
+
+\b \q{.. this is ..} settles what the host field means. PuTTY has
+always tried it as the name of a \e{saved session} first and only then
+as a hostname, which is convenient and is also how a jump host that
+happens to share a name with a saved session silently drags that whole
+session's configuration - including its own proxy - into your
+connection. Say which one it is here, per definition, or leave it at
+the first entry to follow \c{namedproxy} in \c{kitty.ini}.
+
+\b \q{Username} and \q{Password} are the proxy's own credentials.
+\q{Show password} reveals what you typed. The password is stored
+protected at rest, like a session's.
+
+\b \q{Command to send} is the remote command or subsystem for the
+Telnet, Local and SSH execute/subsystem types.
+
+\b \q{Exclude Hosts/IPs} lists destinations that bypass the proxy, and
+\q{Consider proxying local host connections} decides whether
+\c{localhost} goes through it.
+
+\b \q{DNS lookup at proxy} says who resolves the name, and \q{Print
+diagnostics} whether the proxy negotiation is shown in the terminal.
+
+Nothing on this panel reaches the store until \q{Save}, and leaving the
+panel with an unsaved edit asks first. \q{Delete} removes the
+definition after confirming; sessions that named it fall back to their
+own proxy settings.
+
+\S{kitty-cfg-config-window} The Config window panel
+
+Settings of the configuration window itself.
+
+\b \q{Colours} is the light/dark theme, and it is \e{one setting for
+the whole suite}: \c{kitty}, \c{kageant} and \c{kittygen} all read it.
+Dark mode needs Windows 10 1809 or newer, which is where Windows gained
+the dark control themes it is built on. A change applies to windows
+opened afterwards - this window keeps the colours it opened with,
+because a theme is applied to a window when it is created.
+
+\b \q{Category tree opens showing} sets how much of the tree is
+expanded when the box opens: the top level only, or everything.
+
+\b \q{Window height} and \q{Window width}, in pixels, open the box at a
+size of your choosing; blank means the default. They take effect on the
+window that is already open as well, and dragging the window's edge
+writes them back, so the size you leave it at is the size it returns
+with.
+
+\b \q{Come back to this window instead of exiting} makes closing a
+terminal return to the configuration box rather than end the program.
+It applies to any terminal, even one that never connected. Closing the
+configuration window itself still exits, and nothing comes back at
+shutdown.
+
+\S{kitty-cfg-sessionlist} The Session parameter panel
+
+How the saved-session list behaves.
+
+\b \q{Length, in rows} is how many sessions the list shows at once,
+seven or more. It is built into the panel's layout, so it takes effect
+the next time a configuration box is opened.
+
+\b \q{Show \q{Default Settings} in the list} keeps the defaults entry
+visible. Quick connect needs it: loading \q{Default Settings} is how
+you get back to that mode.
+
+\b \q{Show folders as rows, not a drop-down} lists the folders in the
+session list itself instead of in a drop-down above it, which is worth
+it once you have more than a handful.
+
+\b \q{Search the list as you type} filters the list from the keyboard.
+
+\b \q{Open on the last used session} starts each KiTTY on the session
+you used last. Off, KiTTY starts in \e{quick connect}: every window
+opens on \q{Default Settings} with the cursor already in \q{Host Name},
+so you type an address and press Enter.
+
+\b \q{Double-click a session to} chooses what a double-click in the
+list does - load the session, or open it.
+
+\b \q{Show the proxy chooser} controls whether sessions are offered the
+named-proxy droplist at all. \q{Never} also hides the \q{Edit} button
+beside it; the definitions themselves stay on
+\k{kitty-cfg-named-proxies}, so turning the chooser off does not take
+away the only place they can be edited.
+
+\S{kitty-cfg-external-tools} The External tools panel
+
+KiTTY drives three programs it does not contain: \i{WinSCP} for a
+graphical file transfer of the session you are on, and \c{rz} / \c{sz}
+for ZModem transfers inside the terminal.
+
+Where those are installed is a property of this PC, not of a
+connection - the same session opened on your laptop and on a
+colleague's machine should not need two different paths - so the paths
+are kept in \c{kitty.ini} and shared by every session. The settings
+that \e{are} per session stay on the session's own panels:
+\k{kitty-cfg-winscp-session} and \k{kitty-cfg-zmodem-session}.
+
+\S{kitty-cfg-security} The Security panel
+
+\q{Warn when an unverified agent serves the keys}.
+
+An SSH agent holds your private keys and signs with them on request,
+and any program can offer to be that agent: it is a named pipe, and
+whoever gets there first answers. A program in that position sees every
+key request KiTTY makes.
+
+A signed KiTTY checks who is answering and warns when the agent is not
+a signed build it recognises. That is not a claim that the agent is
+malicious - a self-built \c{kageant}, or another agent you chose, is
+unverified too - it is KiTTY telling you \e{who} it is about to hand a
+signing request to, at the moment it matters.
+
+Turn the warning off if you deliberately use an agent that cannot be
+verified. It is stored per installation, as \c{verifyagent} in
+\c{kitty.ini}.
+
+\S{kitty-cfg-missing-features} \q{Say in the terminal what this Windows cannot do}
+
+KiTTY runs on old versions of Windows deliberately. The features that need a
+recent one - dark mode, Windows Hello, per-monitor DPI scaling, keeping
+secrets encrypted in memory - are looked for while it starts rather than
+demanded of the loader, so a Windows without them still runs KiTTY. Those
+features simply do not happen.
+
+That creates a bad failure: a feature which quietly never works looks exactly
+like a setting that will not stick. So KiTTY says which ones they are.
+
+\b One line in the terminal when a session opens, naming the features that are
+unavailable. This checkbox is what turns that line off, and it is worth
+turning off once you have read it - the answer is a property of the machine
+and will not change.
+
+\b The full list in the \i{Event Log}: each missing entry point and the DLL it
+was expected in, beside the feature it powers. This is written whether the
+checkbox is set or not. The checkbox governs the interruption, not the record.
+
+It reports what was \e{looked up and not found}, so it also covers the things
+that are not about age: a machine without \c{secur32.dll} loses GSSAPI single
+sign-on, and one whose Winsock has no \c{getaddrinfo} resolves names over IPv4
+only - which otherwise shows up as a host that is simply unreachable.
+
+Stored per installation, as \c{warnmissingfeatures} in \c{kitty.ini}.
+
+\S{kitty-cfg-host-cas} The Certificate Authorities panel
+
+A \i{certificate authority} signs host keys for a whole estate, so a
+new or rebuilt server is accepted without anyone checking its
+fingerprint by hand - \q{the host key is not cached} stops happening
+every time a machine is replaced.
+
+\b \q{Name} identifies the CA record.
+
+\b The public key is the CA's own, from whoever runs it.
+
+\b \q{Valid hosts} is an \e{expression}, not a list: a wildcard such as
+\c{*.example.com}, several of them joined with \c{||}, and \c{port:22}
+to narrow it further. It is what keeps a CA for one estate from
+vouching for hosts in another, so it is worth being precise here rather
+than writing \c{*}.
+
+Records are stored per user and work in portable mode. Nothing is
+stored until \q{Save}. The full how-to, including the OpenSSH server
+side, is at
+\W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/SSH-CERTIFICATES.md}{docs/SSH-CERTIFICATES.md}.
+
+\S{kitty-cfg-workplace} The Workplace proxy panel
+
+One switch that sends \e{every} connection through a chosen proxy,
+whatever each session stores - for the laptop that is behind a
+corporate proxy at the office and directly on the network at home.
+
+\b \q{Proxy for everything} names the definition to use
+(\k{kitty-cfg-named-proxies}).
+
+\b \q{Switch off after} disarms it again by itself, so an evening at
+home does not start with twenty sessions failing through a proxy that
+is not there.
+
+\b \q{Switch on} arms it. While it is on, every connection uses that
+proxy.
+
+\e{No session is changed.} The mode is an override, not an edit: each
+session's own Proxy panel stays exactly as it was and stays editable,
+and switching the mode off returns every session to its own settings.
+
+\S{kitty-cfg-migration} The Migration panel
+
+Lists the sessions found in an older KiTTY's registry hive
+(\c{9bis.com}) or in PuTTY's, and imports the ones you select into
+KiTTY's own store. The panel appears only when such a hive holds
+sessions.
+
+\b \q{Show / edit / delete old PuTTY or KiTTY sessions} makes those
+sessions visible in the saved-session list, where they can be opened,
+edited and deleted. See \k{kitty-cfg-old-sessions} for the
+\c{showforeignsessions} setting behind it.
+
+\b The list shows every session in both hives with the store it came
+from. Pick one or more and press \q{Import the selected sessions}.
+
+An import \e{copies}:
+
+\b The old store is never changed. The original stays where it was, and
+the same session can be imported again.
+
+\b An existing name is never overwritten. The copy is called
+\c{work (PuTTY)} or \c{work (old KiTTY)}, numbered if that name is
+taken as well.
+
+\b Settings this version no longer has are not carried over, and the
+import names them when it finishes.
+
+A session is imported by being \e{loaded and saved}, not by copying its
+registry key, so what arrives is a session of KiTTY's own in KiTTY's
+own formats - an old KiTTY's stored password, in particular, is decoded
+on the way in and re-protected on the way out.
+
+Two settings are deliberately left behind:
+
+\b \c{OSC52WarnBeforeClipboardSync} meant \q{warn before a host writes
+to the clipboard}, so its usual value of \e{off} meant hosts could
+write to it silently. This version asks once per session instead
+(\k{kitty-cfg-osc52-writes}), and honouring the old value would switch
+remote clipboard writes on for every session you import.
+
+\b \c{CheckUpdateStartup} belongs to the installation now
+(\k{kitty-cfg-updates}), not to a session.
+
+\c{SaveWindowPos} \e{is} carried over: it is called \c{SetWindowPos}
+now, and a session that still has the old name is read through it, on
+an import and on an ordinary load. A pinned position that is off-screen
+is moved onto the nearest monitor (\k{kitty-cfg-winpos}), so an old
+session cannot put a window out of reach.
+
+\S{kitty-cfg-updates} The Updates panel
+
+\b \q{Check for updates when KiTTY starts} looks for a newer release
+and shows a one-line notice in the terminal when a session opens. It is
+a property of the installation - \c{checkupdate} in \c{kitty.ini} - not
+of a session.
+
+\b \q{Check for updates now} asks immediately and reports either way,
+which is also how you confirm the check can reach the network at all.
+
+\H{kitty-cfg-more-session} Further session settings
+
+\S{kitty-cfg-save-on-exit} \q{Save settings on exit}
+
+Writes this session back to the store when its window closes, so a
+change made through \q{Change Settings} during the session is kept
+without saving by hand. Off by default: with it on, a change you made
+to try something out is saved as well.
+
+\S{kitty-cfg-scriptfile} Running a script file
+
+A script file drives the far end line by line, waiting for the machine
+to be ready between lines. It is the RuTTY mechanism, and it is the
+right tool when the same sequence must be typed into many hosts.
+
+\b \q{Run the script on connect} and \q{Script file} say what to run,
+and when.
+
+\b \q{Wait for a prompt before each line}, with \q{Wait-for text},
+sends the next line only after the host has printed that text - which
+is what makes a script survive a slow login or a busy machine, instead
+of typing into a prompt that is not ready.
+
+\b \q{Halt-on text} stops the script when the host prints something
+that means it must not continue.
+
+\b \q{Line delay}, \q{Character delay} and \q{Timeout} pace the typing:
+the first two for hosts that drop input sent too fast, the last to give
+up rather than wait for ever.
+
+\b \q{Start of condition/comment line} is the character that introduces
+a comment or a condition in the file, and \q{Use conditions from file}
+turns those conditions on.
+
+\b \q{CR/LF translation} and \q{Except for first command} decide what
+line ending each line is sent with - some hosts need one, some the
+other, and a login prompt sometimes differs from the shell behind it.
+
+\S{kitty-cfg-autologin} \q{Auto-login password} and \q{Auto-command}
+
+The password KiTTY sends when the host asks for one, and a command it
+sends once the shell is there.
+
+The password is stored \e{protected at rest}: DPAPI in registry mode,
+or under the store's master password in a portable store. It is not
+kept in the clear, and \q{Show password} is the only way to see it
+again.
+
+An automatic password is a convenience with a cost: anything that can
+read your account can ask KiTTY to use it, and a host you did not
+expect will be sent it just the same. Prefer key authentication where
+you can, and keep automatic passwords for machines where a key is not
+possible.
+
+\q{Auto-command after login} is sent once, after authentication. It is
+the place for \c{sudo -i} or attaching to a \c{tmux} session, not for a
+sequence - use a script file (\k{kitty-cfg-scriptfile}) for that.
+
+\S{kitty-cfg-antiidle} \q{Anti-idle string}
+
+Text KiTTY sends to the host at intervals to stop an idle session being
+closed by a firewall or an idle timeout on the far end. It is sent as
+if typed, so choose something harmless - a space and a backspace, or a
+newline at a shell prompt.
+
+It is not the same as PuTTY's keepalives (\k{config-keepalive}), which
+send protocol-level packets the far end never shows to a program. Use
+keepalives first; an anti-idle string is for the case where the thing
+timing you out is watching the \e{session}, not the connection.
+
+\S{kitty-cfg-reconnect} \q{Attempt to reconnect}
+
+\b \q{... on system wakeup} re-opens the session after the machine
+resumes from sleep, where the connection is dead but the window is
+still there.
+
+\b \q{... on connection failure} re-opens it after the connection drops
+for another reason.
+
+A reconnect re-runs the session's automation - the login script, the
+auto-command - because the far end is a fresh session that has none of
+the earlier state.
+
+KiTTY does \e{not} re-dial after an authentication failure. A password
+or key the server rejected will be rejected again, and retrying it is
+how an account gets locked out.
+
+\S{kitty-cfg-keypin} \q{Pinned key fingerprint}
+
+A session that authenticates with a private key file can record that
+file's SHA256 fingerprint. Every connection then checks the file
+against the record \e{before} offering the key or asking for its
+passphrase, so a file that has been replaced or pointed somewhere else
+is refused - with both fingerprints named in the terminal and the Event
+Log - rather than used.
+
+\q{Record fingerprint of the key file} fills the field in from the key
+you have configured; it reads only the public half, so no passphrase is
+involved. Clearing the field switches the check off, which is the
+default.
+
+The pin is always over the key itself, never over a detached
+certificate, so renewing a certificate from an SSH CA does not disturb
+it. The command-line tools honour the pin of a session they load.
+
+\S{kitty-cfg-named-proxy-buttons} \q{Edit named proxies} and \q{Load named proxy pre-sets}
+
+Two ways into the named-proxy definitions from a session's own Proxy
+panel. \q{Edit named proxies} opens the panel where they live
+(\k{kitty-cfg-named-proxies}). \q{Load named proxy pre-sets} copies one
+definition's settings \e{into this session}, which is the opposite of
+choosing it by name (\k{kitty-cfg-proxy-override}): the session then
+has its own copy and stops following the definition.
+
+\S{kitty-cfg-dynports} \q{Print dynamic ports in window title}
+
+Shows the local ports of dynamic (SOCKS) forwardings in the window
+title, so a session set up as a tunnel says which port it is listening
+on without looking it up in the Event Log.
+
+\H{kitty-cfg-more-terminal} Further terminal and window settings
+
+\S{kitty-cfg-printclip} \q{Print to clipboard instead of printer}
+
+Sends what the host prints (\k{config-printing}) to the Windows
+clipboard instead of to a printer. It is the practical form of
+terminal printing: a host that emits a report to \q{the printer} hands
+it to you to paste somewhere.
+
+\S{kitty-cfg-crlf} \q{Enter key sends CR LF}
+
+Makes the Enter key send both characters instead of the one the
+terminal setting calls for. Some hosts, and some line-based programs,
+expect the pair; on a normal Unix host this is not wanted.
+
+\S{kitty-cfg-fgbell} \q{Put window in foreground on bell}
+
+Brings the window to the front when the host rings the bell
+(\k{config-bell}), so a long job that finishes with a bell fetches your
+attention rather than waiting for you to look.
+
+\S{kitty-cfg-nofocusrep} \q{Disable focus reporting}
+
+Stops KiTTY telling the host when the window gains or loses focus.
+Programs that use it - editors that redraw or save on focus change -
+stop doing so; the reason to turn it off is a program that misbehaves
+on the reports, or leaks them as stray characters at the prompt.
+
+\S{kitty-cfg-wheel} \q{Lines scrolled per wheel turn}
+
+How far one notch of the mouse wheel scrolls the terminal. The system
+default is three.
+
+\S{kitty-cfg-behaviour} Window behaviour
+
+\b \q{Send to tray on startup}, \q{Maximize on startup} and \q{Full
+screen on startup} decide the state the window opens in. Sending to the
+tray at startup is how a session that exists to hold a tunnel stays out
+of the way.
+
+\b \q{Switch KiTTY windows with Ctrl + TAB} moves between KiTTY windows
+from the keyboard. Turn it off if a program inside the terminal wants
+\c{Ctrl+Tab} for itself.
+
+\b \q{System menu (off hides all buttons)} and \q{Allow closing (also
+disables the X and Alt+F4)} remove the window's own controls. They are
+for a KiTTY embedded in something else, or on a kiosk, where the window
+must not be closed or moved by whoever is using it - not a security
+measure, since the process can still be ended.
+
+\b \q{Minimize button} and \q{Maximize button} take away those buttons
+individually.
+
+\S{kitty-cfg-winpos-remember} \q{Remember window position (per monitor layout)}
+
+Re-opens each session where you last left its window. The position is
+remembered \e{per monitor layout}, so docking a laptop - or unplugging
+a screen - does not drag windows onto a monitor that is no longer
+there: each arrangement of screens keeps its own set of positions.
+
+A fixed position (\k{kitty-cfg-winpos}) wins over this, because it is
+an explicit instruction rather than a convenience.
+
+\S{kitty-cfg-clipcmd} Running the clipboard as a command
+
+The window menu can run what is on the clipboard as a command in the
+session. It saves pasting a long command line into a shell, and it is
+also a way to run something you have not read, so it is guarded:
+
+\b \q{Confirm before running the clipboard as a command} shows what is
+about to be sent and waits for your answer. Leave it on.
+
+\b \q{Show a tray notification after running a clipboard command}
+reports afterwards, for the case where the window is not on screen.
+
+\S{kitty-cfg-colour-extra} \q{Colour underlined text} and \q{Colour selected text}
+
+Give underlined text, and the current selection, colours of their own
+rather than the terminal's defaults. Both are set on the same panel as
+the rest of the palette (\k{config-colours}).

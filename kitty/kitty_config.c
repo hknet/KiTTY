@@ -23,6 +23,7 @@
 #include "kitty_storage.h" /* the one-time old-sessions notice bits */
 #include "kitty_migrate.h" /* Application > Migration: the session importer */
 #include "kitty_text.h"    /* the words the panels show */
+#include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #endif
 
 #ifdef MOD_PERSO
@@ -3139,7 +3140,8 @@ static void kitty_root_folder_cannot_delete(dlgparam *dlg)
     typedef int (WINAPI *MessageBoxTimeoutA_t)(HWND,LPCSTR,LPCSTR,UINT,WORD,DWORD);
     HMODULE user32 = GetModuleHandleA("user32.dll");
     MessageBoxTimeoutA_t msgbox_timeout = user32 ?
-        (MessageBoxTimeoutA_t)GetProcAddress(user32, "MessageBoxTimeoutA") : NULL;
+        (MessageBoxTimeoutA_t)kitty_api_from(user32, "user32.dll", "MessageBoxTimeoutA", KITTY_API_OPTIONAL,
+                                  "message boxes that close themselves") : NULL;
     if (msgbox_timeout)
         msgbox_timeout(dlg->hwnd, "root folder can't be deleted", "KiTTY",
                        MB_OK | MB_ICONINFORMATION, 0, 5000);
@@ -5663,6 +5665,29 @@ static void kitty_verifyagent_handler(dlgcontrol *ctrl, dlgparam *dlg,
                        dlg_checkbox_get(ctrl, dlg) ? "yes" : "no");
     }
 }
+
+/* KiTTY: [KiTTY] warnmissingfeatures - the one line a session prints naming
+ * what this version of Windows cannot provide (kitty_win.c,
+ * kitty_report_missing_features). Global, like the switch above, and read
+ * when a window opens: a change reaches the windows opened after it. The
+ * Event Log entry is written whatever this says - the checkbox governs the
+ * interruption, not the record. */
+static void kitty_warnfeatures_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                       void *data, int event)
+{
+    (void)data;
+    if (event == EVENT_REFRESH) {
+        char cfg[16];
+        int say = 1;
+        if (ReadParameterN(INIT_SECTION, "warnmissingfeatures", cfg,
+                           sizeof(cfg)) && !stricmp(cfg, "no"))
+            say = 0;
+        dlg_checkbox_set(ctrl, dlg, say);
+    } else if (event == EVENT_VALCHANGE) {
+        WriteParameter(INIT_SECTION, "warnmissingfeatures",
+                       dlg_checkbox_get(ctrl, dlg) ? "yes" : "no");
+    }
+}
 #endif
 
 
@@ -5919,7 +5944,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
         memset(pcd, 0, sizeof(*pcd));
         pxchoice_state = pcd;          /* so a session load can reset it */
         dlgcontrol *pc = ctrl_droplist(s, KT_SESSION_PROXY_OVERRIDE_OPTIONS, NO_SHORTCUT, 100,
-                                       HELPCTX(session_saved),
+                                       HELPCTX(kitty_proxy_override),
                                        kitty_proxy_handler, P(pcd));
         pc->column = 0;
         if (!midsession) {
@@ -6025,10 +6050,10 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
              * armed on an earlier run, so by the time anyone reads it they
              * may well have sessions of their own - present tense would then
              * be plainly untrue about the list they are looking at. */
-            nt = ctrl_text(s, KT_SESSION_THIS_LIST_ALSO_HOLDS_SESSIONS, HELPCTX(kitty_import_sessions));
+            nt = ctrl_text(s, KT_SESSION_THIS_LIST_ALSO_HOLDS_SESSIONS, HELPCTX(kitty_old_sessions));
             nt->column = 0;
             nb = ctrl_pushbutton(s, KT_SESSION_OLD_SESSIONS, NO_SHORTCUT,
-                                 HELPCTX(kitty_import_sessions),
+                                 HELPCTX(kitty_old_sessions),
                                  kitty_foreignnotice_handler, P(NULL));
             nb->column = 1;
             nb->align_next_to = nt;
@@ -6072,11 +6097,11 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
          * merely to keep the coordinates. An unnamed session and "Default
          * Settings" are deliberately never written. */
         ctrl_checkbox(s, KT_SESSION_SAVE_SETTINGS_ON_EXIT, NO_SHORTCUT,
-                      HELPCTX(no_help), conf_checkbox_handler,
+                      HELPCTX(kitty_save_on_exit), conf_checkbox_handler,
                       I(CONF_saveonexit));
         /* KiTTY: exclude this session from the kitty -launcher tray menu. */
         ctrl_checkbox(s, KT_SESSION_HIDE_THIS_SESSION, NO_SHORTCUT,
-                      HELPCTX(no_help), conf_checkbox_handler,
+                      HELPCTX(kitty_hide_launcher), conf_checkbox_handler,
                       I(CONF_launcherhide));
     }
 
@@ -6203,19 +6228,19 @@ static void scb_panel_logging(struct controlbox *b, bool midsession, int protoco
          * label-less ctrl_editbox is a bare edit box, so all three are
          * EDITHEIGHT boxes on the same row and their text lines up. */
         ctrl_columns(s, 3, 52, 24, 24);
-        c = ctrl_text(s, KT_LOGGING_AUTOMATIC_LOGROTATION_EVERY, HELPCTX(kitty_logging_stamps));
+        c = ctrl_text(s, KT_LOGGING_AUTOMATIC_LOGROTATION_EVERY, HELPCTX(kitty_log_rotation));
         c->column = 0;
         c->text.wrap = false;
         c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
                          HELPCTX(kitty_logging_stamps),
                          conf_editbox_handler, I(CONF_logtimerotation), ED_INT);
         c->column = 1;
-        c = ctrl_text(s, KT_LOGGING_SEC, HELPCTX(kitty_logging_stamps));
+        c = ctrl_text(s, KT_LOGGING_SEC, HELPCTX(kitty_log_rotation));
         c->column = 2;
         c->text.wrap = false;
         ctrl_columns(s, 1, 100);
         ctrl_text(s, KT_LOGGING_0_OFF_THE_LOG_FILE,
-                  HELPCTX(kitty_logging_stamps));
+                  HELPCTX(kitty_log_rotation));
         ctrl_editbox(s, KT_LOGGING_TIMESTAMP_STRFTIME_FORMAT, NO_SHORTCUT, 100,
                      HELPCTX(kitty_logging_stamps),
                      conf_editbox_handler, I(CONF_logtimestamp), ED_STR);
@@ -6360,7 +6385,7 @@ void kitty_broadcast_key_controls(struct controlbox *b, struct controlset *s)
      * two controls start at different heights - the box sits under its label
      * while the button starts at the top of the row - and the button appears to
      * float above the field. */
-    ctrl_text(s, KT_LOGGING_BROADCAST_KEY, HELPCTX(no_help));
+    ctrl_text(s, KT_LOGGING_BROADCAST_KEY, HELPCTX(kitty_broadcast_key));
     ctrl_columns(s, 3, 60, 20, 20);
     c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
                      HELPCTX(no_help), kitty_bkey_box_handler,
@@ -6368,10 +6393,10 @@ void kitty_broadcast_key_controls(struct controlbox *b, struct controlset *s)
     c->column = 0;
     st->box = c;
     c = ctrl_pushbutton(s, KT_LOGGING_COPY, NO_SHORTCUT,
-                        HELPCTX(no_help), kitty_bkey_copy_handler, P(st));
+                        HELPCTX(kitty_broadcast_key), kitty_bkey_copy_handler, P(st));
     c->column = 1;
     c = ctrl_pushbutton(s, KT_LOGGING_CLEAR, NO_SHORTCUT,
-                        HELPCTX(no_help), kitty_bkey_clear_handler, P(st));
+                        HELPCTX(kitty_broadcast_key), kitty_bkey_clear_handler, P(st));
     c->column = 2;
     ctrl_columns(s, 1, 100);
     /* WHERE the value in front of the user came from. Three states, decided
@@ -6441,35 +6466,35 @@ static void scb_panel_scripting(struct controlbox *b)
         s = ctrl_getset(b, "Session/Scripting", "main",
                         KT_SCRIPTING_SEND_A_SCRIPT_FILE);
         ctrl_checkbox(s, KT_SCRIPTING_RUN_THE_SCRIPT_ON_CONNECT, NO_SHORTCUT,
-                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
                       I(CONF_script_mode));
         ctrl_filesel(s, KT_SCRIPTING_SCRIPT_FILE, NO_SHORTCUT,
                      FILTER_ALL_FILES, false, KT_SCRIPTING_SELECT_SCRIPT_FILE,
-                     HELPCTX(no_help),
+                     HELPCTX(kitty_scriptfile),
                      conf_filesel_handler, I(CONF_scriptfile));
         ctrl_checkbox(s, KT_SCRIPTING_WAIT_FOR_A_PROMPT_BEFORE, NO_SHORTCUT,
-                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
                       I(CONF_script_enable));
         ctrl_editbox(s, KT_SCRIPTING_WAIT_FOR_TEXT, NO_SHORTCUT, 60,
-                     HELPCTX(no_help), conf_editbox_handler,
+                     HELPCTX(kitty_scriptfile), conf_editbox_handler,
                      I(CONF_script_waitfor), ED_STR);
         ctrl_editbox(s, KT_SCRIPTING_HALT_ON_TEXT, NO_SHORTCUT, 60,
-                     HELPCTX(no_help), conf_editbox_handler,
+                     HELPCTX(kitty_scriptfile), conf_editbox_handler,
                      I(CONF_script_halton), ED_STR);
         ctrl_editbox(s, KT_SCRIPTING_LINE_DELAY_MS, NO_SHORTCUT, 30,
-                     HELPCTX(no_help), conf_editbox_handler,
+                     HELPCTX(kitty_scriptfile), conf_editbox_handler,
                      I(CONF_script_line_delay), ED_INT);
         ctrl_editbox(s, KT_SCRIPTING_TIMEOUT_S, NO_SHORTCUT, 30,
-                     HELPCTX(no_help), conf_editbox_handler,
+                     HELPCTX(kitty_scriptfile), conf_editbox_handler,
                      I(CONF_script_timeout), ED_INT);
         ctrl_editbox(s, KT_SCRIPTING_CHARACTER_DELAY_MS, NO_SHORTCUT, 30,
-                     HELPCTX(no_help), conf_editbox_handler,
+                     HELPCTX(kitty_scriptfile), conf_editbox_handler,
                      I(CONF_script_char_delay), ED_INT);
         ctrl_editbox(s, KT_SCRIPTING_START_OF_CONDITION_COMMENT_LINE, NO_SHORTCUT, 30,
-                     HELPCTX(no_help), conf_editbox_handler,
+                     HELPCTX(kitty_scriptfile), conf_editbox_handler,
                      I(CONF_script_cond_line), ED_STR);
         ctrl_radiobuttons(s, KT_SCRIPTING_CR_LF_TRANSLATION, NO_SHORTCUT, 4,
-                          HELPCTX(no_help), conf_radiobutton_handler,
+                          HELPCTX(kitty_scriptfile), conf_radiobutton_handler,
                           I(CONF_script_crlf),
                           KT_SCRIPTING_OFF,   NO_SHORTCUT, I(0),   /* SCRIPT_OFF  */
                           "no LF", NO_SHORTCUT, I(1),   /* SCRIPT_NOLF */
@@ -6477,10 +6502,10 @@ static void scb_panel_scripting(struct controlbox *b)
                           "Rec",   NO_SHORTCUT, I(3)); 
  /* SCRIPT_REC  */
         ctrl_checkbox(s, KT_SCRIPTING_EXCEPT_FOR_FIRST_COMMAND, NO_SHORTCUT,
-                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
                       I(CONF_script_except));
         ctrl_checkbox(s, KT_SCRIPTING_USE_CONDITIONS_FROM_FILE, NO_SHORTCUT,
-                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
                       I(CONF_script_cond_use));
         /* ---- receiving broadcasts: the BOTTOM of this page --------------
          * Its own group box, after the script-file one. A ctrl_text(KT_SCRIPTING_TEXT) spacer
@@ -6586,7 +6611,7 @@ static void scb_panel_terminal(struct controlbox *b)
 #ifdef MOD_PRINTCLIP
     if (!GetPuttyFlag()) {
         ctrl_checkbox(s, KT_TERMINAL_PRINT_TO_CLIPBOARD_INSTEAD, NO_SHORTCUT,
-                      HELPCTX(no_help), kitty_printclip_handler,
+                      HELPCTX(kitty_printclip), kitty_printclip_handler,
                       I(CONF_printclip));
     }
 #endif
@@ -6627,7 +6652,7 @@ static void scb_panel_terminal(struct controlbox *b)
                       KT_KEYBOARD_CTRL_TOGGLES_APP_MODE, I(SHARROW_APPLICATION),
                       KT_KEYBOARD_XTERM_STYLE_BITMAP, I(SHARROW_BITMAP));
     ctrl_radiobuttons(s, KT_KEYBOARD_WORD_NAVIGATION_LEFT_RIGHT_ARROWS, 'v', 3,
-                      HELPCTX(no_help),
+                      HELPCTX(kitty_wordnav),
                       conf_radiobutton_handler,
                       I(CONF_word_nav_modifier),
                       KT_KEYBOARD_ALT, I(WORDNAV_ALT),
@@ -6636,7 +6661,7 @@ static void scb_panel_terminal(struct controlbox *b)
 #ifdef MOD_PERSO
     if (!GetPuttyFlag())
         ctrl_checkbox(s, KT_KEYBOARD_ENTER_KEY_SENDS_CR_LF, NO_SHORTCUT,
-                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      HELPCTX(kitty_crlf), kitty_checkbox_int_handler,
                       I(CONF_enter_sends_crlf));
 #endif
 #ifdef MOD_DISABLEALTGR
@@ -6690,7 +6715,7 @@ static void scb_panel_terminal(struct controlbox *b)
 #ifdef MOD_PERSO
     if (!GetPuttyFlag()) {
         ctrl_checkbox(s, KT_BELL_PUT_WINDOW_IN_FOREGROUND, NO_SHORTCUT,
-                      HELPCTX(no_help), conf_checkbox_handler,
+                      HELPCTX(kitty_fgbell), conf_checkbox_handler,
                       I(CONF_foreground_on_bell));
     }
 #endif
@@ -6774,7 +6799,7 @@ static void scb_panel_terminal(struct controlbox *b)
 #ifdef MOD_PERSO
     if (!GetPuttyFlag())
         ctrl_checkbox(s, KT_FEATURES_DISABLE_FOCUS_REPORTING, NO_SHORTCUT,
-                      HELPCTX(no_help), conf_checkbox_handler,
+                      HELPCTX(kitty_nofocusrep), conf_checkbox_handler,
                       I(CONF_no_focus_rep));
 #endif
 }
@@ -6825,7 +6850,7 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
 #ifdef MOD_PERSO
     if (!GetPuttyFlag()) {
         ctrl_editbox(s, KT_WINDOW_LINES_SCROLLED_PER_WHEEL_TURN, NO_SHORTCUT, 50,
-                     HELPCTX(no_help),
+                     HELPCTX(kitty_wheel),
                      conf_editbox_handler, I(CONF_scrolllines), ED_INT);
         /* Lines of their own rather than a longer label: an editbox label is a
          * static, laid out once at the width of its first text, so anything
@@ -6957,13 +6982,13 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
         /* All three are INT keys, so they need kitty_checkbox_int_handler:
          * conf_checkbox_handler asserts in conf_get_bool on a non-BOOL key. */
         ctrl_checkbox(s, KT_BEHAVIOUR_SEND_TO_TRAY_ON_STARTUP, NO_SHORTCUT,
-                      HELPCTX(no_help),
+                      HELPCTX(kitty_behaviour),
                       kitty_checkbox_int_handler, I(CONF_sendtotray));
         ctrl_checkbox(s, KT_BEHAVIOUR_MAXIMIZE_ON_STARTUP, NO_SHORTCUT,
-                      HELPCTX(no_help),
+                      HELPCTX(kitty_behaviour),
                       kitty_checkbox_int_handler, I(CONF_maximize));
         ctrl_checkbox(s, KT_BEHAVIOUR_FULL_SCREEN_ON_STARTUP, NO_SHORTCUT,
-                      HELPCTX(no_help),
+                      HELPCTX(kitty_behaviour),
                       kitty_checkbox_int_handler, I(CONF_fullscreen));
         /* KiTTY: Ctrl+Tab between windows. Two gates, as in classic KiTTY:
          * [KiTTY] ctrltab (or -noctrltab) decides whether the feature exists at
@@ -6974,7 +6999,7 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
          * matching classic (0.76b windows/config.c). */
         if (!midsession && GetCtrlTabFlag())
             ctrl_checkbox(s, KT_BEHAVIOUR_SWITCH_KITTY_WINDOWS_WITH_CTRL, NO_SHORTCUT,
-                          HELPCTX(no_help),
+                          HELPCTX(kitty_behaviour),
                           kitty_checkbox_int_handler, I(CONF_ctrl_tab_switch));
         /* KiTTY: where a window OPENS is window behaviour, not a property of
          * the connection - this used to sit on the Session panel, among the
@@ -6984,7 +7009,7 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
          * where it belonged on that layout instead of stranding it off-screen;
          * it deliberately does not restore a maximised or minimised state. */
         ctrl_checkbox(s, KT_BEHAVIOUR_REMEMBER_WINDOW_POSITION_PER_MONITOR, NO_SHORTCUT,
-                      HELPCTX(no_help), conf_checkbox_handler,
+                      HELPCTX(kitty_winpos_remember), conf_checkbox_handler,
                       I(CONF_remember_winpos));
     }
 
@@ -7007,14 +7032,14 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
          * dlg_enable() to grey the other three, the label is the only place left
          * to say it. */
         ctrl_checkbox(s, KT_BEHAVIOUR_SYSTEM_MENU_OFF_HIDES_ALL,
-                      NO_SHORTCUT, HELPCTX(no_help),
+                      NO_SHORTCUT, HELPCTX(kitty_behaviour),
                       conf_checkbox_handler, I(CONF_window_has_sysmenu));
         ctrl_checkbox(s, KT_BEHAVIOUR_ALLOW_CLOSING_ALSO_DISABLES,
-                      NO_SHORTCUT, HELPCTX(no_help),
+                      NO_SHORTCUT, HELPCTX(kitty_behaviour),
                       conf_checkbox_handler, I(CONF_window_closable));
-        ctrl_checkbox(s, KT_BEHAVIOUR_MINIMIZE_BUTTON, NO_SHORTCUT, HELPCTX(no_help),
+        ctrl_checkbox(s, KT_BEHAVIOUR_MINIMIZE_BUTTON, NO_SHORTCUT, HELPCTX(kitty_behaviour),
                       conf_checkbox_handler, I(CONF_window_minimizable));
-        ctrl_checkbox(s, KT_BEHAVIOUR_MAXIMIZE_BUTTON, NO_SHORTCUT, HELPCTX(no_help),
+        ctrl_checkbox(s, KT_BEHAVIOUR_MAXIMIZE_BUTTON, NO_SHORTCUT, HELPCTX(kitty_behaviour),
                       conf_checkbox_handler, I(CONF_window_maximizable));
     }
 #endif
@@ -7249,10 +7274,10 @@ static void scb_panel_selection(struct controlbox *b)
     s = ctrl_getset(b, "Window/Selection", "runclipcmd",
                     KT_SELECTION_RUNNING_THE_CLIPBOARD);
     ctrl_checkbox(s, KT_SELECTION_CONFIRM_BEFORE_RUNNING_THE_CLIPBOARD,
-                  NO_SHORTCUT, HELPCTX(no_help),
+                  NO_SHORTCUT, HELPCTX(kitty_clipcmd),
                   conf_checkbox_handler, I(CONF_runcmdconfirm));
     ctrl_checkbox(s, KT_SELECTION_SHOW_A_TRAY_NOTIFICATION_AFTER,
-                  NO_SHORTCUT, HELPCTX(no_help),
+                  NO_SHORTCUT, HELPCTX(kitty_clipcmd),
                   conf_checkbox_handler, I(CONF_runcmdnotify));
 
     /*
@@ -7470,10 +7495,10 @@ static void scb_panel_selection(struct controlbox *b)
      * deferred (slots exist + are editable). */
     if (!GetPuttyFlag()) {
         ctrl_checkbox(s, KT_COLOURS_COLOUR_UNDERLINED_TEXT, NO_SHORTCUT,
-                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      HELPCTX(kitty_colour_extra), kitty_checkbox_int_handler,
                       I(CONF_under_colour));
         ctrl_checkbox(s, KT_COLOURS_COLOUR_SELECTED_TEXT, NO_SHORTCUT,
-                      HELPCTX(no_help), kitty_checkbox_int_handler,
+                      HELPCTX(kitty_colour_extra), kitty_checkbox_int_handler,
                       I(CONF_sel_colour));
     }
 #endif
@@ -7529,7 +7554,7 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
 #ifdef MOD_PERSO
         if (!GetPuttyFlag()) {
             ctrl_editbox(s, KT_CONNECTION_ANTI_IDLE_STRING, NO_SHORTCUT, 50,
-                         HELPCTX(no_help), conf_editbox_handler,
+                         HELPCTX(kitty_antiidle), conf_editbox_handler,
                          I(CONF_antiidle), ED_STR);
         }
 #endif
@@ -7564,11 +7589,11 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
                 s = ctrl_getset(b, "Connection", "reconnect",
                                 KT_CONNECTION_RECONNECT_OPTIONS);
                 ctrl_checkbox(s, KT_CONNECTION_ATTEMPT_TO_RECONNECT_ON_SYSTEM,
-                              NO_SHORTCUT, HELPCTX(no_help),
+                              NO_SHORTCUT, HELPCTX(kitty_reconnect),
                               kitty_checkbox_int_handler,
                               I(CONF_wakeup_reconnect));
                 ctrl_checkbox(s, KT_CONNECTION_ATTEMPT_TO_RECONNECT_ON_CONNECTION,
-                              NO_SHORTCUT, HELPCTX(no_help),
+                              NO_SHORTCUT, HELPCTX(kitty_reconnect),
                               kitty_checkbox_int_handler,
                               I(CONF_failure_reconnect));
             }
@@ -7598,11 +7623,11 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
                 s = ctrl_getset(b, "Connection", "PortKnocking",
                                 KT_CONNECTION_PORT_KNOCKING_SEQUENCE);
                 ctrl_editbox(s, KT_CONNECTION_SEQUENCE, NO_SHORTCUT, 100,
-                             HELPCTX(no_help), conf_editbox_handler,
+                             HELPCTX(kitty_knocking), conf_editbox_handler,
                              I(CONF_portknockingoptions), ED_STR);
-                ctrl_text(s, KT_CONNECTION_A_COMMA_SEPARATED_LIST, HELPCTX(no_help));
+                ctrl_text(s, KT_CONNECTION_A_COMMA_SEPARATED_LIST, HELPCTX(kitty_knocking));
                 ctrl_text(s, KT_CONNECTION_EXAMPLE_2001_TCP_1_S,
-                          HELPCTX(no_help));
+                          HELPCTX(kitty_knocking));
             }
 #endif
         }
@@ -7654,15 +7679,15 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
             if (!GetPuttyFlag()) {
                 dlgcontrol *cpw;
                 cpw = ctrl_editbox(s, KT_DATA_AUTO_LOGIN_PASSWORD, NO_SHORTCUT, 50,
-                                   HELPCTX(no_help), kitty_autopw_handler,
+                                   HELPCTX(kitty_autologin), kitty_autopw_handler,
                                    I(CONF_password), ED_STR);
                 cpw->editbox.password = true;
                 g_autopw_ctrl = cpw;
                 ctrl_checkbox(s, KT_DATA_SHOW_PASSWORD, NO_SHORTCUT,
-                              HELPCTX(no_help), kitty_showpw_handler,
+                              HELPCTX(kitty_autologin), kitty_showpw_handler,
                               P(&g_autopw_ctrl));
                 ctrl_editbox(s, KT_DATA_AUTO_COMMAND_AFTER_LOGIN, NO_SHORTCUT,
-                             50, HELPCTX(no_help),
+                             50, HELPCTX(kitty_autologin),
                              conf_editbox_handler,
                              I(CONF_autocommand), ED_STR);
                 /*
@@ -7685,14 +7710,14 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
                 g_loginscript_ctrl =
                     ctrl_editbox_multiline(s, KT_DATA_LOGIN_SCRIPT_WAIT,
                                            NO_SHORTCUT, 8, false,
-                                           HELPCTX(no_help),
+                                           HELPCTX(kitty_loginscript),
                                            kitty_loginscript_handler,
                                            I(CONF_scriptfilecontent), ED_STR);
                 /* Replaces classic's picker, which read a file into the session
                  * and cleared itself. This only fills the box - what gets saved
                  * is what you can see and edit above. */
                 ctrl_pushbutton(s, KT_DATA_LOAD_SCRIPT_FROM_FILE, NO_SHORTCUT,
-                                HELPCTX(no_help),
+                                HELPCTX(kitty_loginscript),
                                 kitty_loginscript_load_handler, I(0));
             }
 #endif
@@ -7763,7 +7788,7 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
             s = ctrl_getset(b, "Connection/Proxy", "editnamed",
                             KT_PROXY_NAMED_PROXIES_PROXY_TEMPLATES);
             ctrl_pushbutton(s, KT_PROXY_EDIT_NAMED_PROXIES, NO_SHORTCUT,
-                            HELPCTX(no_help), kitty_proxyedit_handler, P(NULL));
+                            HELPCTX(kitty_proxy_buttons), kitty_proxyedit_handler, P(NULL));
         }
 #endif
         s = ctrl_getset(b, "Connection/Proxy", "basics",
@@ -7776,7 +7801,7 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
          * fields, which read as though the droplist were one of them. */
         if (!GetPuttyFlag() && kitty_has_proxy_definitions())
             ctrl_pushbutton(s, KT_PROXY_LOAD_NAMED_PROXY_PRE_SETS, NO_SHORTCUT,
-                            HELPCTX(no_help), kitty_pxload_handler, P(NULL));
+                            HELPCTX(kitty_proxy_buttons), kitty_pxload_handler, P(NULL));
         /* KiTTY: the §6b notice used to be a three-line paragraph HERE, added
          * only while the mode was armed. Two things were wrong with it and both
          * came from the same mistake - it was built at panel-construction time:
@@ -8212,11 +8237,11 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
              * fingerprint, never the certificate's - certificates rotate by
              * design and must not break the pin. */
             ctrl_editbox(s, KT_CREDENTIALS_PINNED_KEY_FINGERPRINT_EMPTY_NO,
-                         NO_SHORTCUT, 100, HELPCTX(no_help),
+                         NO_SHORTCUT, 100, HELPCTX(kitty_keypin),
                          conf_editbox_handler, I(CONF_publickey_fingerprint),
                          ED_STR);
             ctrl_pushbutton(s, KT_CREDENTIALS_RECORD_FINGERPRINT_OF_THE_KEY,
-                            NO_SHORTCUT, HELPCTX(no_help),
+                            NO_SHORTCUT, HELPCTX(kitty_keypin),
                             kitty_keyfile_pin_record_handler, I(0));
 #endif
 
@@ -8379,7 +8404,7 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
 #ifdef MOD_PERSO
         if (!GetPuttyFlag())
             ctrl_checkbox(s, KT_TUNNELS_PRINT_DYNAMIC_PORTS_IN_WINDOW, NO_SHORTCUT,
-                          HELPCTX(no_help), conf_checkbox_handler,
+                          HELPCTX(kitty_dynports), conf_checkbox_handler,
                           I(CONF_ssh_tunnel_print_in_title));
 #endif
 
@@ -8541,7 +8566,7 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
             s = ctrl_getset(b, "Connection/SSH/WinSCP",
                             "winSCPproto", KT_WINSCP_GENERAL_PROTOCOL_SETTING);
             ctrl_radiobuttons(s, KT_WINSCP_PREFERED_PROTOCOL, NO_SHORTCUT, 4,
-                              HELPCTX(kitty_winscp),
+                              HELPCTX(kitty_winscp_session),
                               conf_radiobutton_handler,
                               I(CONF_winscpprot),
                               KT_WINSCP_SCP,   NO_SHORTCUT, I(0),
@@ -8563,13 +8588,13 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                          HELPCTX(kitty_winscp),
                          conf_editbox_handler, I(CONF_sftpconnect), ED_STR);
             ctrl_editbox(s, KT_WINSCP_WINSCP_ADDITIONAL_OPTIONS, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_winscp),
+                         HELPCTX(kitty_winscp_session),
                          conf_editbox_handler, I(CONF_winscpoptions), ED_STR);
             ctrl_editbox(s, KT_WINSCP_WINSCP_ADDITIONAL_RAWSETTINGS, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_winscp),
+                         HELPCTX(kitty_winscp_session),
                          conf_editbox_handler, I(CONF_winscprawsettings), ED_STR);
             ctrl_editbox(s, KT_WINSCP_SHELL_SCP_MODE_ONLY, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_winscp),
+                         HELPCTX(kitty_winscp_session),
                          conf_editbox_handler, I(CONF_pscpshell), ED_STR);
         }
 #endif
@@ -9124,7 +9149,7 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
     ctrl_text(s, KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED,
               HELPCTX(kitty_theme));
     ctrl_droplist(s, KT_CONFIG_WINDOW_CATEGORY_TREE_OPENS_SHOWING, NO_SHORTCUT, 55,
-                  HELPCTX(no_help), kitty_cfgwin_expand_handler, P(NULL));
+                  HELPCTX(kitty_theme), kitty_cfgwin_expand_handler, P(NULL));
 
     s = ctrl_getset(b, "Application/Config window", "size", KT_CONFIG_WINDOW_SIZE);
     /* PIXELS. dialog.c multiplies these by the DPI scale and gives the window
@@ -9132,16 +9157,16 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
      * Both labels say the same short thing: the width's was long enough to
      * run under its own edit box at this font. */
     ctrl_editbox(s, KT_CONFIG_WINDOW_WINDOW_HEIGHT_IN_PIXELS_BLANK,
-                 NO_SHORTCUT, 30, HELPCTX(no_help),
+                 NO_SHORTCUT, 30, HELPCTX(kitty_theme),
                  kitty_cfgwin_num_handler, P("windowheight"), ED_STR);
     ctrl_editbox(s, KT_CONFIG_WINDOW_WINDOW_WIDTH_IN_PIXELS_BLANK,
-                 NO_SHORTCUT, 30, HELPCTX(no_help),
+                 NO_SHORTCUT, 30, HELPCTX(kitty_theme),
                  kitty_cfgwin_num_handler, P("windowwidth"), ED_STR);
 
     s = ctrl_getset(b, "Application/Config window", "closing",
                     KT_CONFIG_WINDOW_CLOSING_A_TERMINAL_WINDOW);
     ctrl_checkbox(s, KT_CONFIG_WINDOW_COME_BACK_TO_THIS_WINDOW,
-                  NO_SHORTCUT, HELPCTX(no_help),
+                  NO_SHORTCUT, HELPCTX(kitty_theme),
                   kitty_cfgwin_noexit_handler, P(NULL));
     ctrl_text(s, KT_CONFIG_WINDOW_ANY_TERMINAL_EVEN_ONE,
               HELPCTX(no_help));
@@ -9177,6 +9202,18 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
     ctrl_checkbox(s, KT_SECURITY_WARN_WHEN_AN_UNVERIFIED_AGENT,
                   NO_SHORTCUT, HELPCTX(kitty_verifyagent),
                   kitty_verifyagent_handler, P(NULL));
+
+    /* What this Windows is too old to provide. On the Security panel because
+     * most of what goes missing on an old system protects something - Windows
+     * Hello, encrypted memory for secrets - and because someone who has read
+     * the line once needs somewhere to turn it off. */
+    s = ctrl_getset(b, "Application/Security", "thiswindows",
+                    KT_SECURITY_THIS_WINDOWS);
+    ctrl_checkbox(s, KT_SECURITY_SAY_WHAT_THIS_WINDOWS_CANNOT_DO,
+                  NO_SHORTCUT, HELPCTX(kitty_missing_features),
+                  kitty_warnfeatures_handler, P(NULL));
+    ctrl_text(s, KT_SECURITY_MISSING_FEATURES_HINT,
+              HELPCTX(kitty_missing_features));
 
     if (has_ca_config_box) {
         ctrl_settitle(b, "Application/Security/Certificate Authorities",

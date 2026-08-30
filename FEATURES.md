@@ -745,6 +745,18 @@ possible.
 
 (no screenshot)
 
+### When this Windows is too old for something
+
+KiTTY runs on old Windows on purpose, and the features that need a modern one — dark mode, Windows Hello, per-monitor DPI, encrypted memory for secrets — are looked up while it starts rather than demanded of the loader. A Windows that does not have them still runs KiTTY; those features simply do not happen.
+
+The failure mode that creates is a bad one: a feature that quietly never works looks exactly like a setting that will not stick. So KiTTY says which ones they are — **one line in the terminal when a session opens**, naming what is unavailable, and the **full list in the Event Log**, with the API and DLL behind each, for whoever is diagnosing.
+
+The line is worth reading once and not thereafter, since the answer is a property of the machine. `warnmissingfeatures=no` under `[KiTTY]` in `kitty.ini` — or the checkbox on **Application > Security** — stops it. The Event Log entry is written either way.
+
+**How to enable:** on by default. **Application > Security**, *"Say what this Windows cannot do"*.
+
+(no screenshot)
+
 ### Warning when an unverified agent serves your keys
 
 An SSH agent holds your private keys and signs with them on request, and any program can offer to be that agent: it is a named pipe, and whoever gets there first answers. A program that puts itself in that position sees every key request KiTTY makes.

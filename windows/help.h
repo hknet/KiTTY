@@ -16,42 +16,71 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_no_help NULL
 
 /*
- * KiTTY's own topics. Each names a section of the "KiTTY additions" chapter,
- * which is GENERATED from FEATURES.md (tools/features2but.pl): the id is
- * "kitty-feat-" plus the heading, lowercased, with runs of non-alphanumerics
- * turned into "-". So the explanation lives in FEATURES.md and the Help button
- * on a control opens it - there is no second copy of the text.
+ * KiTTY's own topics. Each names a section of doc/kitty-config.but, the
+ * reference chapter for the settings this fork adds - written by hand and
+ * ordered like the panels, the same way upstream documents its own.
  *
- * Renaming a heading there changes the id and breaks the Help button with no
- * error at all, which is what the help-topic check in the QA gate exists to
- * catch - it also fails a panel whose every control is no_help.
+ * Not FEATURES.md: that generates the "KiTTY additions" chapter, which is a
+ * feature overview. A control's Help button has to answer "what does THIS
+ * setting do, and what happens if I change it", which is a different document.
+ *
+ * A topic that names no section opens nothing, with no build error - and so
+ * does a control left on no_help. The help-topic check in the QA gate fails on
+ * both, and on a panel where every control is no_help.
  */
-#define WINHELP_CTX_kitty_import_sessions "kitty-feat-importing-old-sessions"
-#define WINHELP_CTX_kitty_logging_stamps "kitty-feat-session-logging-with-timestamps"
-#define WINHELP_CTX_kitty_host_cas "kitty-feat-ssh-certificates-user-and-host"
-#define WINHELP_CTX_kitty_workplace "kitty-feat-workplace-proxy-mode"
-#define WINHELP_CTX_kitty_launcher "kitty-feat-session-launcher"
-#define WINHELP_CTX_kitty_winscp "kitty-feat-pscp-exe-and-winscp-integration"
-#define WINHELP_CTX_kitty_theme "kitty-feat-dark-mode"
-#define WINHELP_CTX_kitty_altgr "kitty-feat-altgr-sends-alt"
-#define WINHELP_CTX_kitty_winpos "kitty-feat-a-fixed-window-position"
-#define WINHELP_CTX_kitty_sendcmd "kitty-feat-typing-into-a-session-from-outside-command"
-#define WINHELP_CTX_kitty_transparency "kitty-feat-transparency"
-#define WINHELP_CTX_kitty_hyperlinks "kitty-feat-url-hyperlinks"
-#define WINHELP_CTX_kitty_icon "kitty-feat-an-icon-for-each-session"
-#define WINHELP_CTX_kitty_bgimage "kitty-feat-background-image"
-#define WINHELP_CTX_kitty_osc52 "kitty-feat-the-remote-clipboard-osc-52-osc-5522-far2l"
-#define WINHELP_CTX_kitty_zmodem "kitty-feat-zmodem-file-transfer"
-#define WINHELP_CTX_kitty_verifyagent "kitty-feat-warning-when-an-unverified-agent-serves-your-keys"
-#define WINHELP_CTX_kitty_helper_paths "kitty-feat-where-the-helper-programs-live"
-#define WINHELP_CTX_kitty_folders "kitty-feat-sessions-filter-folders"
-#define WINHELP_CTX_kitty_quickconnect "kitty-feat-quick-connect-type-a-host-instead-of-picking-a-session"
-#define WINHELP_CTX_kitty_updater "kitty-feat-in-app-updater-check-for-updates"
-#define WINHELP_CTX_kitty_comment "kitty-feat-a-note-on-a-session"
-#define WINHELP_CTX_kitty_named_proxies "kitty-feat-proxy-choice"
+#define WINHELP_CTX_kitty_import_sessions    "kitty-cfg-migration"
+#define WINHELP_CTX_kitty_logging_stamps     "kitty-cfg-log-timestamp"
+#define WINHELP_CTX_kitty_host_cas           "kitty-cfg-host-cas"
+#define WINHELP_CTX_kitty_workplace          "kitty-cfg-workplace"
+#define WINHELP_CTX_kitty_launcher           "kitty-cfg-launcher-hotkey"
+#define WINHELP_CTX_kitty_winscp             "kitty-cfg-kscp"
+#define WINHELP_CTX_kitty_theme              "kitty-cfg-config-window"
+#define WINHELP_CTX_kitty_altgr              "kitty-cfg-altgr"
+#define WINHELP_CTX_kitty_winpos             "kitty-cfg-winpos"
+#define WINHELP_CTX_kitty_sendcmd            "kitty-cfg-sendcmd"
+#define WINHELP_CTX_kitty_transparency       "kitty-cfg-transparency"
+#define WINHELP_CTX_kitty_hyperlinks         "kitty-cfg-hyperlinks"
+#define WINHELP_CTX_kitty_icon               "kitty-cfg-icon"
+#define WINHELP_CTX_kitty_bgimage            "kitty-cfg-bgimage"
+#define WINHELP_CTX_kitty_osc52              "kitty-cfg-remote-clipboard"
+#define WINHELP_CTX_kitty_zmodem             "kitty-cfg-zmodem-session"
+#define WINHELP_CTX_kitty_verifyagent        "kitty-cfg-security"
+#define WINHELP_CTX_kitty_missing_features   "kitty-cfg-missing-features"
+#define WINHELP_CTX_kitty_helper_paths       "kitty-cfg-external-tools"
+#define WINHELP_CTX_kitty_folders            "kitty-cfg-sessionlist"
+#define WINHELP_CTX_kitty_quickconnect       "kitty-cfg-sessionlist"
+#define WINHELP_CTX_kitty_updater            "kitty-cfg-updates"
+#define WINHELP_CTX_kitty_comment            "kitty-cfg-comment"
+#define WINHELP_CTX_kitty_named_proxies      "kitty-cfg-named-proxies"
+#define WINHELP_CTX_kitty_save_on_exit       "kitty-cfg-save-on-exit"
+#define WINHELP_CTX_kitty_hide_launcher      "kitty-cfg-hide-launcher"
+#define WINHELP_CTX_kitty_scriptfile         "kitty-cfg-scriptfile"
+#define WINHELP_CTX_kitty_autologin          "kitty-cfg-autologin"
+#define WINHELP_CTX_kitty_antiidle           "kitty-cfg-antiidle"
+#define WINHELP_CTX_kitty_reconnect          "kitty-cfg-reconnect"
+#define WINHELP_CTX_kitty_keypin             "kitty-cfg-keypin"
+#define WINHELP_CTX_kitty_proxy_buttons      "kitty-cfg-named-proxy-buttons"
+#define WINHELP_CTX_kitty_dynports           "kitty-cfg-dynports"
+#define WINHELP_CTX_kitty_printclip          "kitty-cfg-printclip"
+#define WINHELP_CTX_kitty_crlf               "kitty-cfg-crlf"
+#define WINHELP_CTX_kitty_fgbell             "kitty-cfg-fgbell"
+#define WINHELP_CTX_kitty_nofocusrep         "kitty-cfg-nofocusrep"
+#define WINHELP_CTX_kitty_wheel              "kitty-cfg-wheel"
+#define WINHELP_CTX_kitty_behaviour          "kitty-cfg-behaviour"
+#define WINHELP_CTX_kitty_winpos_remember    "kitty-cfg-winpos-remember"
+#define WINHELP_CTX_kitty_clipcmd            "kitty-cfg-clipcmd"
+#define WINHELP_CTX_kitty_colour_extra       "kitty-cfg-colour-extra"
+#define WINHELP_CTX_kitty_wordnav            "kitty-cfg-wordnav"
+#define WINHELP_CTX_kitty_knocking           "kitty-cfg-knocking"
+#define WINHELP_CTX_kitty_winscp_session     "kitty-cfg-winscp-session"
+#define WINHELP_CTX_kitty_log_rotation       "kitty-cfg-log-rotation"
+#define WINHELP_CTX_kitty_broadcast_key      "kitty-cfg-broadcast-key"
+#define WINHELP_CTX_kitty_loginscript        "kitty-cfg-loginscript"
+#define WINHELP_CTX_kitty_old_sessions       "kitty-cfg-old-sessions"
+#define WINHELP_CTX_kitty_proxy_override     "kitty-cfg-proxy-override"
 
-/* An upstream topic that no upstream control points at: it is what answers
- * "what IS this protocol", which the SUPDUP panel is asked and could not say. */
+/* An upstream topic no upstream control points at: it answers "what IS this
+ * protocol", which the SUPDUP panel is asked and could not say. */
 #define WINHELP_CTX_using_supdup "using-supdup"
 
 #define WINHELP_CTX_session_hostname "config-hostname"

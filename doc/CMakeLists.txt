@@ -79,6 +79,12 @@ if(HALIBUT AND PERL_EXECUTABLE)
     ${CMAKE_CURRENT_SOURCE_DIR}/gs.but
     ${CMAKE_CURRENT_SOURCE_DIR}/using.but
     ${CMAKE_CURRENT_SOURCE_DIR}/config.but
+    # KiTTY: the settings the fork ADDS to that configuration box, documented
+    # the same way and in the same order as the panels. Written by hand, unlike
+    # kitty.but below, which is generated from FEATURES.md: this is the
+    # reference the Help button on a control opens, that one is the feature
+    # overview.
+    ${CMAKE_CURRENT_SOURCE_DIR}/kitty-config.but
     ${CMAKE_CURRENT_SOURCE_DIR}/pscp.but
     ${CMAKE_CURRENT_SOURCE_DIR}/psftp.but
     ${CMAKE_CURRENT_SOURCE_DIR}/plink.but

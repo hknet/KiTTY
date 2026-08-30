@@ -726,6 +726,9 @@
 #define KT_SECURITY_SECURITY                         "Security"
 #define KT_SECURITY_SSH_AGENT                        "SSH agent"
 #define KT_SECURITY_WARN_WHEN_AN_UNVERIFIED_AGENT    "Warn when an unverified agent serves the keys"
+#define KT_SECURITY_THIS_WINDOWS                     "This version of Windows"
+#define KT_SECURITY_SAY_WHAT_THIS_WINDOWS_CANNOT_DO  "Say in the terminal what this Windows cannot do"
+#define KT_SECURITY_MISSING_FEATURES_HINT            "The Event Log lists it either way."
 
 /* Application/Security/Certificate Authorities */
 #define KT_CERTIFICATE_AUTHORITIES_TRUSTED_HOST_CERTIFICATE_AUTHORITIES "Trusted host Certificate Authorities"
