@@ -158,37 +158,67 @@ void write_setting_i(settings_w *handle, const char *key, int value)
     }
 }
 
-/* KiTTY: settings that have been RENAMED. The new name is written by the
- * ordinary save; the old one is removed here, so a session stops carrying both.
- * Reading still accepts the old name (kitty_settings_load.c), which is what
- * makes this safe: a session written by an older KiTTY - or by classic KiTTY -
- * keeps working until it happens to be saved, and migrates at that moment.
+/* KiTTY: settings that have been RENAMED or replaced. The new name is written
+ * by the ordinary save; the old one is removed there, so a session stops
+ * carrying both. Where `now` names a setting AND the value still means the same
+ * thing, the old name is READ as a fallback (kitty_setting_legacy_name below) -
+ * that is what makes the removal safe: a session written by an older KiTTY, or
+ * by classic KiTTY, keeps its value, and migrates the moment it is saved.
  *
- * Deliberately NOT done while LOADING a session: a read path that writes fails
- * on read-only media or a locked-down hive, and would fire for "Default
- * Settings" and for plink/pscp merely loading a session in passing. */
-static const char *const kitty_retired_keys[] = {
-    "SaveWindowPos",   /* -> SetWindowPos: it pins a position, it saves nothing */
-    /* -> OSC52Clipboard. Note this one is a REPLACEMENT, not a rename: the old
-     * BOOL meant "warn before syncing" and nothing read it (OSC 52 was never
-     * ported), so its value is deliberately not carried across - see conf.h. */
-    "OSC52WarnBeforeClipboardSync",
-    /* -> [KiTTY] checkupdate. Whether KiTTY looks for a new release is a
-     * property of the installation, not of a connection; the per-session value
-     * is not migrated because there is nothing sensible to migrate FROM - each
-     * session carried its own answer and the first session opened won. Saving
-     * a session drops the key. */
-    "CheckUpdateStartup",
+ * A replacement whose value does NOT mean the same thing has `migrates` false:
+ * the old key is still dropped on save, but nothing reads it, and the session
+ * importer names it as a value it could not carry over.
+ *
+ * Retiring is deliberately NOT done while LOADING a session: a read path that
+ * writes fails on read-only media or a locked-down hive, and would fire for
+ * "Default Settings" and for plink/pscp merely loading a session in passing. */
+const struct kitty_retired_key kitty_retired_keys[] = {
+    /* A rename only: it pins a position, it saves none. An out-of-reach or
+     * unset coordinate is already handled where the pin is applied
+     * (kitty_apply_window_pos: a pin needs x >= 0 and y >= 0, and is clamped
+     * onto the nearest monitor), so carrying the flag across cannot put a
+     * window where its owner cannot get at it. */
+    { "SaveWindowPos", "SetWindowPos", true },
+    /* A REPLACEMENT, not a rename. The old BOOL meant "warn before syncing",
+     * so its default of false meant "sync silently", and honouring it would
+     * quietly switch remote clipboard writes on for every session imported
+     * from classic KiTTY - see conf.h. */
+    { "OSC52WarnBeforeClipboardSync", "OSC52Clipboard", false,
+      "off there meant hosts could write to your clipboard without asking" },
+    /* Whether KiTTY looks for a new release is a property of the installation,
+     * not of a connection, so it is [KiTTY] checkupdate in kitty.ini now. There
+     * is nothing sensible to migrate FROM: each session carried its own answer
+     * and the first session opened won. */
+    { "CheckUpdateStartup", "kitty.ini [KiTTY] checkupdate", false,
+      "it belongs to the installation now, not to a session" },
 };
+
+const struct kitty_retired_key *kitty_retired_key_table(size_t *n)
+{
+    *n = lenof(kitty_retired_keys);
+    return kitty_retired_keys;
+}
+
+/* The name a setting used to have, if reading it under that name still means
+ * what it means now; NULL otherwise. */
+static const char *kitty_setting_legacy_name(const char *key)
+{
+    size_t i;
+    for (i = 0; i < lenof(kitty_retired_keys); i++)
+        if (kitty_retired_keys[i].migrates &&
+            !strcmp(kitty_retired_keys[i].now, key))
+            return kitty_retired_keys[i].was;
+    return NULL;
+}
 
 static void kitty_retire_renamed_keys(settings_w *handle)
 {
     size_t i;
     for (i = 0; i < lenof(kitty_retired_keys); i++) {
         if (handle->is_file)
-            ksf_list_del(&handle->items, kitty_retired_keys[i]);
+            ksf_list_del(&handle->items, kitty_retired_keys[i].was);
         else if (handle->sesskey)
-            RegDeleteValueA(handle->sesskey, kitty_retired_keys[i]);
+            RegDeleteValueA(handle->sesskey, kitty_retired_keys[i].was);
     }
 }
 
@@ -208,9 +238,7 @@ void close_settings_w(settings_w *handle)
     sfree(handle);
 }
 
-#define KSEC_HIVE_PRIMARY  0   /* our own kapper.net hive (or PuTTY base if KiClassName=PuTTY) */
-#define KSEC_HIVE_OLDKITTY 1   /* read-only fallback: old 9bis KiTTY (legacy-encrypted passwords) */
-#define KSEC_HIVE_PUTTY    2   /* read-only fallback: stock PuTTY (only our own cleartext can live here) */
+/* KSEC_HIVE_*: kitty_storage.h, so the importer names the same hives. */
 struct settings_r {
     HKEY sesskey;
     int src_hive;
@@ -265,8 +293,45 @@ settings_r *open_settings_r(const char *sessionname)
 }
 
 
+/*
+ * KiTTY: open a session from ONE named hive, bypassing the precedence chain.
+ *
+ * open_settings_r() answers "which session does this name mean", and for the
+ * session importer that is the wrong question twice over: a foreign session
+ * shadowed by a same-named session of our own is exactly the case the importer
+ * has to handle, and the src_hive it records is what makes an old-KiTTY
+ * password decrypt on the way in.
+ */
+settings_r *kitty_open_settings_r_hive(const char *sessionname, int hive)
+{
+    const char *path;
+    if (!sessionname || !*sessionname || store_is_file())
+        return NULL;
+    if (hive == KSEC_HIVE_OLDKITTY)
+        path = OLD_KITTY_HIVE_SESSIONS;
+    else if (hive == KSEC_HIVE_PUTTY)
+        path = PUTTY_HIVE_SESSIONS;
+    else
+        return NULL;
+
+    strbuf *sb = strbuf_new();
+    escape_registry_key(sessionname, sb);
+    HKEY sesskey = open_regkey_ro(HKEY_CURRENT_USER, path, sb->s);
+    strbuf_free(sb);
+    if (!sesskey)
+        return NULL;
+
+    settings_r *handle = snew(settings_r);
+    handle->sesskey = sesskey;
+    handle->src_hive = hive;
+    handle->is_file = 0;
+    handle->items = NULL;
+    return handle;
+}
+
 char *read_setting_s(settings_r *handle, const char *key)
 {
+    kitty_read_watch_note(key);
     if (!handle)
         return NULL;
     char *raw;
@@ -275,6 +340,20 @@ char *read_setting_s(settings_r *handle, const char *key)
         raw = v ? dupstr(v) : NULL;
     } else {
         raw = get_reg_sz(handle->sesskey, key);
+    }
+    if (!raw) {
+        /* Not there under the name it has now: a session written before the
+         * rename still has it under the old one. */
+        const char *was = kitty_setting_legacy_name(key);
+        if (was) {
+            kitty_read_watch_note(was);
+            if (handle->is_file) {
+                const char *v = ksf_list_get(handle->items, was);
+                raw = v ? dupstr(v) : NULL;
+            } else {
+                raw = get_reg_sz(handle->sesskey, was);
+            }
+        }
     }
     int slot = kitty_secret_slot(key);
     if (slot >= 0 && raw) {
@@ -315,17 +394,29 @@ char *read_setting_s(settings_r *handle, const char *key)
 
 int read_setting_i(settings_r *handle, const char *key, int defvalue)
 {
+    kitty_read_watch_note(key);
     if (!handle)
         return defvalue;
+    /* Missing under the current name, the old one is tried: see
+     * kitty_retired_keys. */
+    const char *was = kitty_setting_legacy_name(key);
     if (handle->is_file) {
         const char *v = ksf_list_get(handle->items, key);
+        if (!v && was) {
+            kitty_read_watch_note(was);
+            v = ksf_list_get(handle->items, was);
+        }
         return v ? atoi(v) : defvalue;
     }
     DWORD val;
-    if (!get_reg_dword(handle->sesskey, key, &val))
-        return defvalue;
-    else
+    if (get_reg_dword(handle->sesskey, key, &val))
         return val;
+    if (was) {
+        kitty_read_watch_note(was);
+        if (get_reg_dword(handle->sesskey, was, &val))
+            return val;
+    }
+    return defvalue;
 }
 
 FontSpec *read_setting_fontspec(settings_r *handle, const char *name)

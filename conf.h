@@ -1546,9 +1546,11 @@ CONF_OPTION(logtimestamp, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("LogTim
 CONF_OPTION(autocommandout, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("AutocommandOut"),)
 CONF_OPTION(logtimerotation, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("LogTimeRotation"),)
 /* KiTTY: pins the window to CONF_xpos/ypos - it sets a position, it saves
- * none. Stored as "SaveWindowPos" up to 0.84.1.67; the old name is still READ
- * (kitty_settings_load.c) and is dropped from a session the next time that
- * session is saved (windows/storage.c, kitty_retired_keys). */
+ * none. Stored as "SaveWindowPos" up to 0.84.1.67; a session that still has
+ * the old name is read through it (windows/storage.c, kitty_retired_keys),
+ * and the stale key is dropped the next time that session is saved. Carrying
+ * the flag across cannot strand a window: a pin is applied only for x >= 0 and
+ * y >= 0, and is clamped onto the nearest monitor (kitty_apply_window_pos). */
 CONF_OPTION(set_windowpos, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("SetWindowPos"),)
 CONF_OPTION(foreground_on_bell, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("ForegroundOnBell"),)
 CONF_OPTION(ctrl_tab_switch, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("CtrlTabSwitch"),)

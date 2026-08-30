@@ -16,6 +16,13 @@
 #define OLD_KITTY_HIVE_SESSIONS "Software\\9bis.com\\KiTTY\\Sessions"
 #define PUTTY_HIVE_SESSIONS     "Software\\SimonTatham\\PuTTY\\Sessions"
 
+/* Which of those a session was read from. Recorded on the open handle, because
+ * the at-rest format differs per hive: an old-KiTTY password is legacy-encrypted
+ * and nothing else is. */
+#define KSEC_HIVE_PRIMARY  0   /* our own kapper.net hive (or PuTTY base if KiClassName=PuTTY) */
+#define KSEC_HIVE_OLDKITTY 1   /* read-only fallback: old 9bis KiTTY (legacy-encrypted passwords) */
+#define KSEC_HIVE_PUTTY    2   /* read-only fallback: stock PuTTY (only our own cleartext can live here) */
+
 /* Marker prefix of a DPAPI-wrapped stored secret (see ksec_protect_*). */
 #define KITTY_SECRET_DPAPI_MARK "DPAPI1:"
 
@@ -50,6 +57,31 @@ const char *kitty_reg_sessions(void);    /* <base>\Sessions */
 const char *kitty_reg_jumplist(void);    /* <base>\Jumplist */
 const char *kitty_reg_hostcas(void);     /* <base>\SshHostCAs */
 const char *kitty_reg_hostkeys(void);    /* <base>\SshHostKeys */
+
+/* ---- the read watch (session importer) ----
+ * While a callback is set, every setting name read from a session is passed to
+ * it. Set it around one load and clear it again; it is not re-entrant and is
+ * meant for a single-threaded import, not for general instrumentation. */
+void kitty_set_read_watch(void (*cb)(const char *key));
+void kitty_read_watch_note(const char *key);   /* called by the read path */
+
+/* Open a session from ONE hive, ignoring the precedence chain (windows/storage.c).
+ * hive is KSEC_HIVE_OLDKITTY / KSEC_HIVE_PUTTY as kitty_migrate.h re-exports them. */
+settings_r *kitty_open_settings_r_hive(const char *sessionname, int hive);
+
+/*
+ * Settings that were renamed or replaced. `was` is dropped from a session the
+ * next time it is saved; `now` names what took its place. When `migrates` is
+ * true the value still means the same thing, so reading `now` falls back to
+ * `was` and an old session keeps its setting. When it is false the value is
+ * deliberately not carried over, and the session importer says so.
+ */
+struct kitty_retired_key {
+    const char *was;
+    const char *now;
+    bool migrates;
+};
+const struct kitty_retired_key *kitty_retired_key_table(size_t *n);
 
 /* ---- portable file backend (fork-native flat .ini/dir format) ---- */
 int store_is_file(void);                 /* portable mode active? */

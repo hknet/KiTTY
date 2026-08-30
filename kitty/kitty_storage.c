@@ -69,6 +69,32 @@ int kitty_portable_load_state_string(const char *key, char *buf, int buflen);
 int kitty_portable_store_state_dword(const char *key, DWORD value);
 int kitty_portable_load_state_dword(const char *key, DWORD *value);
 
+/*
+ * The read watch: while it is armed, every setting name the loader asks a
+ * session for is reported to the watcher.
+ *
+ * It exists for the session importer, which has to say which values it could
+ * NOT carry over. Asking the loader what it read is the only answer that
+ * cannot go stale: the alternative is a hand-kept list of settings this base
+ * no longer has, which is wrong the first time one is added or renamed.
+ *
+ * The callback lives behind a setter because storage.c is compiled into the
+ * settings library that every binary links, while the importer is in the GUI
+ * targets only - a direct call would not link for puttygen.
+ */
+static void (*kitty_read_watch_cb)(const char *key) = NULL;
+
+void kitty_set_read_watch(void (*cb)(const char *key))
+{
+    kitty_read_watch_cb = cb;
+}
+
+void kitty_read_watch_note(const char *key)
+{
+    if (kitty_read_watch_cb && key)
+        kitty_read_watch_cb(key);
+}
+
 /* Count real sessions in the primary hive (excluding "Default Settings"), so we
  * can decide the adaptive default for ShowForeignSessions. */
 static int kitty_primary_session_count(void)

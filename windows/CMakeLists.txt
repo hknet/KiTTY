@@ -476,6 +476,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_bridge.c
   ${KITTY_DIR}/kitty_settings_forced.c
   ${KITTY_DIR}/kitty_settings_load.c
+  ${KITTY_DIR}/kitty_migrate.c
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c
   ${KITTY_DIR}/kitty_rutty.c
@@ -577,6 +578,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_bridge.c
   ${KITTY_DIR}/kitty_settings_forced.c
   ${KITTY_DIR}/kitty_settings_load.c
+  ${KITTY_DIR}/kitty_migrate.c
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c
   ${KITTY_DIR}/kitty_rutty.c
