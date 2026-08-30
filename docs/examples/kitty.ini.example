@@ -113,11 +113,11 @@
 ;windowheight=0
 ;windowwidth=0
 
-; collapsed: which Category-tree entries the user has collapsed, as a
-;    comma-separated list of their paths (e.g. Session,Connection/Login).
-;    Written by the configuration window itself; a collapsed entry stays
-;    collapsed on the next opening whatever categoryexpand's default says,
-;    and re-expanding it forgets it.
+; collapsed: the Category-tree folds the user changed by hand, as a
+;    comma-separated list of paths - a bare path stays collapsed, a path
+;    prefixed with + stays expanded, both beating categoryexpand's default.
+;    Written by the configuration window itself; putting a fold back to the
+;    default forgets it.
 ;collapsed=
 
 

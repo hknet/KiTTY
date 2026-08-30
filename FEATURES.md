@@ -823,9 +823,9 @@ Both can be set, and then the fixed position wins: an explicit instruction beats
 
 Four behaviours of the configuration window itself:
 
-- **The Category tree keeps your folds.** Any category you collapse stays
-  collapsed the next time the window opens, whatever the `categoryexpand`
-  default says; expand it again and it is forgotten.
+- **The Category tree keeps your folds.** Any category you fold - closed or
+  open - stays that way the next time the window opens, whatever the
+  `categoryexpand` default says; putting it back to the default forgets it.
 - **The loaded session's name is always in sight**, right-aligned in the
   title strip above the panel, so you know whose settings you are looking at
   wherever you are in the tree.

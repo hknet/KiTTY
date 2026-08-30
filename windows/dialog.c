@@ -1023,6 +1023,23 @@ static LRESULT CALLBACK KittyCfgTreeProc(HWND hwnd, UINT msg,
         kitty_cfg_tree_wheel(hwnd, wParam);
         return 0;
     }
+    /* Ctrl+Home / Ctrl+End work like plain Home / End (which stay as they
+     * are): the tree control ignores the Ctrl-modified pair, and fingers
+     * trained on editors expect both spellings to reach the ends. Forwarded
+     * as the unmodified key rather than reimplemented, so the two can never
+     * behave differently. */
+    if (msg == WM_KEYDOWN && (wParam == VK_HOME || wParam == VK_END) &&
+        (GetKeyState(VK_CONTROL) & 0x8000)) {
+        LRESULT r;
+        BYTE ks[256];
+        GetKeyboardState(ks);
+        ks[VK_CONTROL] &= 0x7f;        /* deliver it Ctrl-less */
+        SetKeyboardState(ks);
+        r = CallWindowProc(kitty_cfg_tree_oldproc, hwnd, msg, wParam, lParam);
+        ks[VK_CONTROL] |= 0x80;
+        SetKeyboardState(ks);
+        return r;
+    }
     return CallWindowProc(kitty_cfg_tree_oldproc, hwnd, msg, wParam, lParam);
 }
 
@@ -2143,7 +2160,11 @@ static void kitty_cfg_session_label_update(struct dlgparam *dp)
     if (sn && *sn)
         _snprintf(want, sizeof(want) - 1, "Currently loaded session: %s", sn);
     else
-        strcpy(want, "No session has been loaded yet");
+        /* No loaded session IS quick connect - the dedicated mode
+         * (loadlastsession=no) and the ad-hoc route (loading Default
+         * Settings) both land in exactly this state, and there is no third
+         * way to be here. */
+        strcpy(want, "Quick Connect Mode active");
     want[sizeof(want) - 1] = '\0';
     buf[0] = '\0';
     GetWindowTextA(kitty_cfg_session_label, buf, sizeof(buf));
@@ -2424,16 +2445,19 @@ static bool kitty_cfg_path_is_app(const char *path)
  * the tab has no panels at all - which is a real case: the Application tab is
  * empty mid-session, and an empty tab must not leave the box showing whatever
  * the other tab last had. */
-/* Remembered collapsed categories (kitty_config.c): a node the user collapsed
- * stays collapsed on the next opening, whatever categoryexpand's default
- * says; re-expanding forgets it again. EVERY expandable node, keyed by the
- * PATH each tree item already carries in its lParam - the path is the
- * identifier, so a display rename cannot orphan a remembered fold. */
-extern void kitty_cfgtree_set_collapsed(const char *name, int collapsed);
-extern int kitty_cfgtree_is_collapsed(const char *name);
-extern void kitty_cfgtree_collapsed_save(void);
+/* Remembered category folds (kitty_config.c): what the user changed BY HAND
+ * beats categoryexpand's default in BOTH directions - a collapsed node stays
+ * collapsed, an explicitly expanded one stays expanded. Only the deviations
+ * are stored, keyed by the PATH each tree item already carries in its lParam
+ * - the path is the identifier, so a display rename cannot orphan a
+ * remembered fold. */
+extern void kitty_cfgtree_set_fold(const char *path, int expanded,
+                                   int default_expanded);
+extern int kitty_cfgtree_get_fold(const char *path);
+extern void kitty_cfgtree_folds_save(void);
 
-static void kitty_cfg_tree_walk_collapsed(HWND tree, HTREEITEM it, bool apply)
+static void kitty_cfg_tree_walk_folds(HWND tree, HTREEITEM it,
+                                      int level, bool apply)
 {
     for (; it; it = TreeView_GetNextSibling(tree, it)) {
         TVITEM tvi;
@@ -2442,31 +2466,38 @@ static void kitty_cfg_tree_walk_collapsed(HWND tree, HTREEITEM it, bool apply)
         tvi.stateMask = TVIS_EXPANDED;
         if (TreeView_GetItem(tree, &tvi) && tvi.cChildren > 0 && tvi.lParam) {
             const char *path = (const char *)tvi.lParam;
+            /* What categoryexpand would do to this node: its CHILDREN sit
+             * one level down, and treeview_insert expands a parent while
+             * their level is within the configured depth. */
+            int def_expanded = (level + 1 <= kitty_category_expand_depth);
             if (apply) {
-                if (kitty_cfgtree_is_collapsed(path))
+                int o = kitty_cfgtree_get_fold(path);
+                if (o == 0)
                     TreeView_Expand(tree, it, TVE_COLLAPSE);
+                else if (o == 1)
+                    TreeView_Expand(tree, it, TVE_EXPAND);
             } else {
-                kitty_cfgtree_set_collapsed(path,
-                                            !(tvi.state & TVIS_EXPANDED));
+                kitty_cfgtree_set_fold(path, !!(tvi.state & TVIS_EXPANDED),
+                                       def_expanded);
             }
         }
-        kitty_cfg_tree_walk_collapsed(tree, TreeView_GetChild(tree, it),
-                                      apply);
+        kitty_cfg_tree_walk_folds(tree, TreeView_GetChild(tree, it),
+                                  level + 1, apply);
     }
 }
 
-/* Read the current expand state of every expandable node into the remembered
+/* Read the current fold state of every expandable node into the remembered
  * set. Called wherever the tree's items are about to go away - the tab-switch
  * rebuild empties the tree, and WM_DESTROY takes the window with it. */
 static void kitty_cfg_tree_remember_collapsed(HWND tree)
 {
     if (tree)
-        kitty_cfg_tree_walk_collapsed(tree, TreeView_GetRoot(tree), false);
+        kitty_cfg_tree_walk_folds(tree, TreeView_GetRoot(tree), 0, false);
 }
 
 static void kitty_cfg_tree_apply_collapsed(HWND tree)
 {
-    kitty_cfg_tree_walk_collapsed(tree, TreeView_GetRoot(tree), true);
+    kitty_cfg_tree_walk_folds(tree, TreeView_GetRoot(tree), 0, true);
 }
 
 static const char *kitty_cfg_build_tree(PortableDialogStuff *pds,
@@ -2813,7 +2844,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         /* The tree dies with the dialog: keep its expand state first, and
          * write the remembered collapses back. */
         kitty_cfg_tree_remember_collapsed(kitty_cfg_treeview);
-        kitty_cfgtree_collapsed_save();
+        kitty_cfgtree_folds_save();
         /* Robust backstop: capture the final position at close, regardless of
          * how the box was moved (WM_EXITSIZEMOVE only fires on interactive drag). */
         kitty_cfgbox_save_pos(hwnd);
@@ -3384,6 +3415,19 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 SetWindowLongPtr(hwnd, DWLP_MSGRESULT, TRUE);  /* veto */
                 return TRUE;
             }
+        }
+        /* A DOUBLE-CLICK on a tab header is a jump: the Session tab's goes to
+         * the Session leaf, the Application tab's to Workplace proxy - the
+         * two panels each tab most often exists to reach. A double-click on
+         * the already-selected tab raises no TCN_SELCHANGE, so without this
+         * it did nothing at all. */
+        if (LOWORD(wParam) == IDCX_TABSTRIP &&
+            ((LPNMHDR) lParam)->code == NM_DBLCLK) {
+            HWND strip = GetDlgItem(hwnd, IDCX_TABSTRIP);
+            bool apptab = (SendMessage(strip, TCM_GETCURSEL, 0, 0) == 1);
+            kitty_cfg_goto_panel(apptab ? "Application/Workplace proxy"
+                                        : "Session");
+            return 0;
         }
         if (LOWORD(wParam) == IDCX_TABSTRIP &&
             ((LPNMHDR) lParam)->code == TCN_SELCHANGE) {

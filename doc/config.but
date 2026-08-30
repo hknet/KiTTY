@@ -1200,21 +1200,27 @@ modify the title of the window in mid-session (unless this is disabled -
 see \k{config-features-retitle}); the title string set here
 is therefore only the \e{initial} window title.
 
-As well as the \e{window} title, there is also an \c{xterm}
-sequence to modify the \I{icon title}title of the window's \e{icon}.
-This makes sense in a windowing system where the window becomes an
-icon when minimised, such as Windows 3.1 or most X Window System
-setups; but in the Windows 95-like user interface it isn't as
-applicable.
+A window actually carries \e{two} captions, and a host can set them
+independently. The second one is what X11 calls the \I{icon
+title}\e{icon name} - historically the text under a minimised window's
+desktop icon, and on today's Windows the text a \i{minimised} window
+shows on its \e{taskbar button} and in that button's tooltip. The
+escape sequences hosts send still distinguish the two: OSC 2 sets the
+window title, OSC 1 the icon title, and OSC 0 sets both at once.
 
-By default, KiTTY only uses the server-supplied \e{window} title, and
-ignores the icon title entirely. If for some reason you want to see
-both titles, check the box marked \q{Separate window and icon titles}.
-If you do this, KiTTY's window title and Taskbar \I{window caption}caption will
-change into the server-supplied icon title if you \i{minimise} the KiTTY
-window, and change back to the server-supplied window title if you
-restore it. (If the server has not bothered to supply a window or
-icon title, none of this will happen.)
+By default KiTTY treats them as one: it uses the server-supplied
+\e{window} title everywhere and ignores the icon title. Tick \q{Host
+may set window and taskbar titles separately} and the two come apart:
+while the window is open you see the window title, and when you
+\i{minimise} it, the taskbar button switches to whatever the host last
+sent as the icon title, switching back on restore. \e{How to see it}:
+with the box ticked, run
+
+\c printf '\033]1;short\007\033]2;a much longer window title\007'
+
+in the session, then minimise the window - the taskbar button reads
+\c{short}. (If the host never sends an icon title, nothing changes and
+the two captions stay identical.)
 
 \S{config-warnonclose} \q{Warn before \i{closing window}}
 
@@ -2940,6 +2946,11 @@ alternatively just \cw{C}}, or \cq{A && (B || C)} (\q{\cw{A}, and also
 at least one of \cw{B} and \cw{C}}), to make it clear.
 
 \S2{config-ssh-cert-rsa-hash} RSA signature types in certificates
+
+This choice exists only for RSA: an RSA key can sign with any of
+several hash functions (\cw{ssh-rsa} with SHA-1, \cw{rsa-sha2-256},
+\cw{rsa-sha2-512}), whereas an Ed25519 or ECDSA key has exactly one
+signature form, so for those there is nothing to configure.
 
 RSA keys can be used to generate signatures with a choice of secure
 hash function. Typically, any version of OpenSSH new enough to support

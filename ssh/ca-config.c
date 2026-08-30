@@ -496,9 +496,18 @@ void setup_ca_config_box_at(struct controlbox *b, const char *path,
                      HELPCTX(ssh_cert_valid_expr), ca_validity_handler,
                      P(st), P(NULL));
     st->ca_validity_edit = c;
+    /* KiTTY: what the field above takes, right under it - the one line that
+     * stops "*" being the first thing anyone types. The full syntax is in
+     * the help behind the same context. */
+    ctrl_text(s, "An expression, not a list: *.example.com, joined "
+              "with ||, and port:22.",
+              HELPCTX(ssh_cert_valid_expr));
 
-    ctrl_columns(s, 4, 44, 18, 18, 18);
-    c = ctrl_text(s, "Signature types (RSA keys only):",
+    /* KiTTY: label shortened so the row never wraps - the WHY of the RSA
+     * scope is in the help behind the row. The checkboxes sit further right
+     * than upstream put them, which is what gives the label its room. */
+    ctrl_columns(s, 4, 42, 20, 19, 19);
+    c = ctrl_text(s, "Signature types (RSA only):",
                   HELPCTX(ssh_cert_rsa_hash));
     c->column = 0;
     dlgcontrol *sigtypelabel = c;

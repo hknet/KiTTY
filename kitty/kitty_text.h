@@ -22,13 +22,11 @@
 #define KT_MIG_OLD_INTRO   "This machine has sessions in an old 9bis-KiTTY " \
                            "or PuTTY registry hive."
 #define KT_MIG_SHOW_BOX    "Show / edit / delete old PuTTY or KiTTY sessions"
-#define KT_MIG_SHOW_INI    "kitty.ini: [KiTTY] showforeignsessions = auto, " \
-                           "yes or no."
 
 #define KT_MIG_IMP_GROUP   "Import into this KiTTY"
 #define KT_MIG_IMP_INTRO   "An import copies. The old store is left as it is."
-#define KT_MIG_IMP_BUTTON  "Import the selected sessions"
-#define KT_MIG_IMP_PICK    "Pick one or more sessions above."
+#define KT_MIG_IMP_BUTTON  "Import selected Sessions"
+#define KT_MIG_IMP_NOSEL   "Nothing was selected."
 #define KT_MIG_IMP_DONE    "Imported. The copies are in the session list."
 #define KT_MIG_IMP_NONE    "Nothing was imported."
 
@@ -266,7 +264,7 @@
 #define KT_TITLE_ADJUST_THE_BEHAVIOUR                "Adjust the behaviour of the window title"
 #define KT_TITLE_WINDOW_TITLE                        "Window title:"
 #define KT_TITLE_PLACEHOLDERS_H_S                    "Placeholders (%h, %s, ...)"
-#define KT_TITLE_SEPARATE_WINDOW_AND_ICON_TITLES     "Separate window and icon titles"
+#define KT_TITLE_SEPARATE_WINDOW_AND_ICON_TITLES     "Host may set window and taskbar titles separately"
 
 /* Window/Behaviour */
 #define KT_BEHAVIOUR_WARN_BEFORE_CLOSING_WINDOW      "Warn before closing window"
@@ -299,6 +297,7 @@
 #define KT_HYPERLINKS_SELECT_BROWSER_EXECUTABLE      "Select browser executable"
 #define KT_HYPERLINKS_USE_THE_DEFAULT_REGULAR_EXPRESSION "Use the default regular expression"
 #define KT_HYPERLINKS_CUSTOM_REGEX                   "Custom regex:"
+#define KT_HYPERLINKS_RESET_REGEX                    "Reset to KiTTY default"
 
 /* Window/Appearance */
 #define KT_APPEARANCE_WHERE_THE_WINDOW_OPENS         "Where the window opens"
@@ -720,7 +719,7 @@
 /* Application/Config window */
 #define KT_CONFIG_WINDOW_THIS_WINDOW                 "This window"
 #define KT_CONFIG_WINDOW_APPEARANCE                  "Appearance"
-#define KT_CONFIG_WINDOW_COLOURS                     "Colour theme:"
+#define KT_CONFIG_WINDOW_COLOURS                     "Choose the default Appearance:"
 #define KT_CONFIG_WINDOW_ONE_SETTING_FOR_THE_WHOLE   "One setting for the whole suite - kitty, kageant and " \
         "kittygen all read it. Dark needs Windows 10 1809 or newer."
 #define KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED "Changes apply to windows opened afterwards - this " \
@@ -739,7 +738,7 @@
 #define KT_SECURITY_SSH_AGENT                        "SSH key authentication"
 #define KT_SECURITY_WARN_WHEN_AN_UNVERIFIED_AGENT    "Warn if an unknown agent serves our SSH keys"
 #define KT_SECURITY_WINDOWS_SUPPORTED_FEATURES       "Windows: supported features"
-#define KT_SECURITY_NOTIFY_UNSUPPORTED_LIBS          "Notify in the terminal window about missing Windows library features"
+#define KT_SECURITY_NOTIFY_UNSUPPORTED_LIBS          "Notify the terminal about missing Windows library features"
 #define KT_SECURITY_MISSING_CAN_LIMIT                "Missing libraries can limit:"
 #define KT_SECURITY_LIMIT_HELLO                      "  -  Windows Hello key protection and confirmations"
 #define KT_SECURITY_LIMIT_DARK                       "  -  dark mode and themed dialogs"

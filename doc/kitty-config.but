@@ -141,6 +141,34 @@ what the menu did and the other way round.
 
 \b \e{Which KiTTYs hear each other}: the broadcast key below.
 
+\e{Sending} is done from the command line:
+
+\c kitty.exe -sendcmd "df -h"
+\c kitty.exe -sendcmdkey mygroup -sendcmd "df -h"
+
+The first form broadcasts with this installation's own key, the second
+aims the broadcast at sessions carrying the key \c{mygroup}
+(\c{-sendcmdkey} may stand on either side of \c{-sendcmd}). The
+sending KiTTY delivers the line and exits; a trailing meaning of
+\q{run it} comes from the receiving shell seeing Return.
+
+\e{Why a broadcast can look like it does nothing}: THREE locks must
+all be open before any window types a line, and each exists so that no
+single mistake can reach a production session -
+
+\b the installation's master switch, \cw{sendcmdmode=yes} under
+\cw{[KiTTY]} in \c{kitty.ini} - without it no window of this install
+accepts anything;
+
+\b the per-window arming - this checkbox, or \q{Tools > Accept
+broadcast} on the window itself;
+
+\b the key match - the broadcast's key (default: the sender
+installation's own) must equal the key each receiving session listens
+for. A portable stick and an installed KiTTY have \e{different}
+generated keys, so they do not hear each other until you give them a
+common key.
+
 \S{kitty-cfg-broadcast-key} \q{Broadcast key}
 
 Decides who a broadcast reaches. Each installation gets its own
@@ -710,11 +738,17 @@ sessions.
 
 \b \q{Show / edit / delete old PuTTY or KiTTY sessions} makes those
 sessions visible in the saved-session list, where they can be opened,
-edited and deleted. See \k{kitty-cfg-old-sessions} for the
-\c{showforeignsessions} setting behind it.
+edited and deleted. The setting behind the checkbox
+(\c{showforeignsessions} in \c{kitty.ini}) actually has \e{three}
+states, one more than a checkbox can show: until you touch the box it
+stands on \c{auto}, which shows the old sessions only while this KiTTY
+has none of its own, so they retire themselves once you do. Ticking or
+clearing the box replaces \c{auto} with a firm \c{yes} or \c{no} - to
+get \c{auto} back, edit the ini line. See also
+\k{kitty-cfg-old-sessions}.
 
 \b The list shows every session in both hives with the store it came
-from. Pick one or more and press \q{Import the selected sessions}.
+from. Pick one or more and press \q{Import selected Sessions}.
 
 An import \e{copies}:
 
@@ -771,32 +805,86 @@ to try something out is saved as well.
 
 \S{kitty-cfg-scriptfile} Running a script file
 
-A script file drives the far end line by line, waiting for the machine
-to be ready between lines. It is the RuTTY mechanism, and it is the
-right tool when the same sequence must be typed into many hosts.
+A script file is a plain text file whose lines are typed into the
+session for you, one after another, as if you typed them - the RuTTY
+mechanism, and the right tool when the same sequence must go into many
+hosts. \e{Everything on this panel acts only while a script is
+running}: without a script, none of these fields does anything.
 
-\b \q{Run the script on connect} and \q{Script file} say what to run,
-and when.
+A script \e{starts} in one of two ways: automatically when the session
+connects, if \q{Run the script on connect} is ticked and \q{Script
+file} names the file; or on demand in a live session from the system
+menu, \q{Tools > Send recorded script}, which asks for the file. Only
+one script runs at a time, and every start, stop and timeout is
+reported in the Event Log.
 
-\b \q{Wait for a prompt before each line}, with \q{Wait-for text},
-sends the next line only after the host has printed that text - which
-is what makes a script survive a slow login or a busy machine, instead
-of typing into a prompt that is not ready.
+The simplest possible script is just the commands, one per line:
 
-\b \q{Halt-on text} stops the script when the host prints something
-that means it must not continue.
+\c uname -a
+\c df -h
+\c exit
 
-\b \q{Line delay}, \q{Character delay} and \q{Timeout} pace the typing:
-the first two for hosts that drop input sent too fast, the last to give
-up rather than wait for ever.
+Sent like that, lines go out on a timer alone. The panel's real value
+is making the script \e{wait for the host}:
 
-\b \q{Start of condition/comment line} is the character that introduces
-a comment or a condition in the file, and \q{Use conditions from file}
-turns those conditions on.
+\b \q{Wait for a prompt before sending} is the master switch for
+waiting. With it on, the next line is sent only after the host's
+output \e{ends with} the \q{Wait-for text} - your prompt's tail, for
+example \c{$\_} or \c{>\_} (note the trailing space most prompts
+have). This is what lets a script survive a slow login or a command
+that takes a minute: nothing is typed into a prompt that is not there
+yet.
 
-\b \q{CR/LF translation} and \q{Except for first command} decide what
-line ending each line is sent with - some hosts need one, some the
-other, and a login prompt sometimes differs from the shell behind it.
+\b \q{Except for first command} belongs to that switch: the FIRST line
+is sent immediately, without waiting for a prompt first. Use it when
+the host greets you with something that is not your prompt - a menu, a
+\q{press enter to continue} - and the first line is what answers it.
+
+\b \q{Halt-on text}: if the host's output ever contains this text
+while the script runs, the script \e{stops at once} and says so in the
+Event Log. It is the emergency brake - set it to the failure word your
+commands produce, e.g. \c{denied} or \c{No such file}, and a script
+cannot keep typing into a session where step three already failed.
+Leave it empty and nothing stops the script early.
+
+\b \q{Timeout} bounds every wait: if the wait-for text has not arrived
+after this many seconds, the script gives up entirely (\q{script
+timeout !} in the Event Log) rather than hang for ever. \q{Line delay}
+and \q{Character delay} pace the typing itself, for hosts that drop
+input sent faster than a human types.
+
+A line's wait can also be set \e{from inside the file}, per line:
+
+\b \q{Start of condition/comment line} names one character, \c{:} by
+default. With \q{Use conditions from file} OFF, every line starting
+with it is simply a \e{comment} and is skipped.
+
+\b With \q{Use conditions from file} ON, a line starting with that
+character is a \e{condition}: it names the wait-for text for the
+\e{next line only}, overriding the global \q{Wait-for text} for that
+one line. A line starting with the character \e{doubled} (\c{::}) is a
+comment. Lines with no condition of their own still use the global
+wait-for text, and \q{Halt-on text} stays armed throughout - the
+switch adds per-line conditions, it disables nothing.
+
+\c :login:
+\c root
+\c :assword:
+\c wrong-example
+\c :$
+\c uname -a
+
+\b \q{CR/LF translation} decides the line ending each line is sent
+with - \q{Off} sends the file's own endings, \q{no LF} strips the
+linefeed, \q{CR} sends carriage return only (what most interactive
+hosts expect), \q{Rec} the recorded form.
+
+A worked example ships as
+\W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/examples/logon-script.ksh}{docs/examples/logon-script.ksh}.
+The whole engine can be disabled machine-wide with \cw{[KiTTY]
+scriptmode=no} in \c{kitty.ini}; the \e{login script} on
+\e{Connection > Login} is a different, simpler mechanism
+(\k{kitty-cfg-loginscript}) that needs none of this panel.
 
 \S{kitty-cfg-autologin} \q{Auto-login password} and \q{Auto-command}
 

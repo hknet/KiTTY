@@ -778,13 +778,16 @@ bool kitty_proxy_panel_dirty(void)
 
 static bool pxp_may_leave(void)
 {
+    extern int kitty_confirm_box(HWND owner, const char *caption,
+                                 const char *text, const char *warn_red); /* kitty_win.c */
     if (!g_pxp || !g_pxp->dirty)
         return true;
-    if (MessageBoxA(kitty_cfg_modal_owner(),
-        "This named proxy has changes that have not been saved.\r\n\r\n"
-        "Leave the panel and discard them?",
+    /* The suite's own confirm box (No is its default too), not MessageBox -
+     * the one window that asked in the system's old face. */
+    if (!kitty_confirm_box(kitty_cfg_modal_owner(),
         "KiTTY named proxy",
-        MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
+        "This named proxy has changes that have not been saved.\r\n\r\n"
+        "Leave the panel and discard them?", NULL))
         return false;
     /*
      * Discard means DISCARD: drop the edited copy and take the stored
@@ -886,7 +889,10 @@ void kitty_proxy_build_panel(struct controlbox *b)
     ctrl_columns(s, 1, 100);
 
     s = ctrl_getset(b, "Application/Named proxies", "act", NULL);
-    pd->banner = ctrl_text(s, KT_NAMED_PROXIES_NOTHING_IS_STORED_UNTIL_SAVE, HELPCTX(kitty_named_proxies));
+    /* Blank until it has something to SAY: the standing "nothing is stored
+     * until Save" line was redundant next to the panel's own leave warning.
+     * The control stays - it is where pxp_say() answers Save and Delete. */
+    pd->banner = ctrl_text(s, " ", HELPCTX(kitty_named_proxies));
     ctrl_columns(s, 2, 50, 50);
     c = ctrl_pushbutton(s, KT_SESSION_SAVE, NO_SHORTCUT, HELPCTX(kitty_named_proxies),
                         pxp_save_handler, P(NULL));

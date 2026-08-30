@@ -1,6 +1,6 @@
 :: Example KiTTY logon script (RuTTY engine).
 ::
-:: Configure it under Configuration > Connection > Scripting ("Script file",
+:: Configure it under Configuration > Session > Scripting ("Script file",
 :: with "Run the script on connect"), or run it on demand from a live session
 :: via the system menu > Tools > Send recorded script.
 ::

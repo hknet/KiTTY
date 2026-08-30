@@ -132,10 +132,11 @@ char default_init_file_content[] =
 ;windowheight=0\n\
 ;windowwidth=0\n\
 \n\
-; collapsed: which top-level Category-tree entries the user has collapsed, as\n\
-;    a comma-separated list of their names. Written by the configuration\n\
-;    window itself; a collapsed category stays collapsed on the next opening\n\
-;    whatever categoryexpand's default says, and re-expanding it forgets it.\n\
+; collapsed: the Category-tree folds the user changed by hand, as a\n\
+;    comma-separated list of paths - a bare path stays collapsed, a path\n\
+;    prefixed with + stays expanded, both beating categoryexpand's default.\n\
+;    Written by the configuration window itself; putting a fold back to the\n\
+;    default forgets it.\n\
 ;collapsed=\n\
 \n\
 \n\

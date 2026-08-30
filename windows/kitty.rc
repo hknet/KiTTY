@@ -300,10 +300,10 @@ END
  * field (Window > Behaviour). Modeless on purpose - the list stays on screen
  * while the title is being typed, which a message box cannot do. Filled at
  * runtime by kitty_show_title_placeholders() in kitty/kitty_win.c. */
-IDD_TITLEVARS DIALOG DISCARDABLE 0, 0, 300, 168
+IDD_TITLEVARS DIALOGEX DISCARDABLE 0, 0, 300, 168
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX
 CAPTION "Window title placeholders"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "Double-click a placeholder (or select one and press Copy) to put it on the clipboard, then paste it into the Window title field.", -1, 7, 5, 286, 18
     LISTBOX         IDC_TITLEVARS_LIST, 7, 26, 286, 112, LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT | LBS_NOTIFY | WS_VSCROLL | WS_TABSTOP
@@ -369,10 +369,10 @@ END
  * a starting point: kitty_confirm_box() grows both text controls to fit and moves
  * the buttons down. "No" is the DEFAULT - this is asked when something is about to
  * be overwritten, so a reflex Return must not confirm it. */
-IDD_CONFIRMBOX DIALOG DISCARDABLE 0, 0, 280, 116
+IDD_CONFIRMBOX DIALOGEX DISCARDABLE 0, 0, 280, 116
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_CONFIRM_TEXT, 10, 9, 260, 56
     LTEXT           "", IDC_CONFIRM_WARN, 10, 70, 260, 16

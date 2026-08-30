@@ -375,12 +375,17 @@ static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
     char others[512], msg[900];
     const char *self;
     int nc;
+    /* The suite's own info box, not MessageBox - same face as every other
+     * KiTTY window. */
+    extern void kitty_info_box(HWND, const char *, const char *,
+                               const char *); /* kitty_win.c */
     (void)ctrl; (void)dlg;
     if (event != EVENT_ACTION) return;
     if (!kitty_parse_hotkey_spec(conf_get_str(conf, CONF_launcher_global_hotkey),
                                  &mods, &vk)) {
-        MessageBox(kitty_cfg_modal_owner(), "Enter a hotkey such as Ctrl+Alt+K or Ctrl+Shift+F12.",
-                   "KiTTY Launcher hotkey", MB_OK | MB_ICONWARNING);
+        kitty_info_box(kitty_cfg_modal_owner(), "KiTTY Launcher hotkey",
+                       "Enter a hotkey such as Ctrl+Alt+K or Ctrl+Shift+F12.",
+                       NULL);
         return;
     }
     /* The system-wide probe below cannot see WHICH saved session holds a
@@ -398,11 +403,12 @@ static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
                      "A hotkey works for only one session; the launcher gives "
                      "it to the first one it finds.",
                      nc == 1 ? "" : "s", others);
-            MessageBox(kitty_cfg_modal_owner(), msg, "KiTTY Launcher hotkey",
-                       MB_OK | MB_ICONWARNING);
+            kitty_info_box(kitty_cfg_modal_owner(), "KiTTY Launcher hotkey",
+                           msg, NULL);
         } else {
-            MessageBox(kitty_cfg_modal_owner(), "This hotkey is currently available.\n\nNote: it is only registered while KiTTY Launcher is running.",
-                       "KiTTY Launcher hotkey", MB_OK | MB_ICONINFORMATION);
+            kitty_info_box(kitty_cfg_modal_owner(), "KiTTY Launcher hotkey",
+                           "This hotkey is currently available.\n\nNote: it is only registered while KiTTY Launcher is running.",
+                           NULL);
         }
     } else if (nc > 0) {
         snprintf(msg, sizeof(msg),
@@ -411,11 +417,12 @@ static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  "A hotkey works for only one session; the launcher gives it "
                  "to the first one it finds.",
                  nc == 1 ? "" : "s", others);
-        MessageBox(kitty_cfg_modal_owner(), msg, "KiTTY Launcher hotkey",
-                   MB_OK | MB_ICONWARNING);
+        kitty_info_box(kitty_cfg_modal_owner(), "KiTTY Launcher hotkey",
+                       msg, NULL);
     } else {
-        MessageBox(kitty_cfg_modal_owner(), "This hotkey is already in use or reserved by Windows/another app.\n\nWindows does not expose which application owns a global hotkey.",
-                   "KiTTY Launcher hotkey", MB_OK | MB_ICONWARNING);
+        kitty_info_box(kitty_cfg_modal_owner(), "KiTTY Launcher hotkey",
+                       "This hotkey is already in use or reserved by Windows/another app.\n\nWindows does not expose which application owns a global hotkey.",
+                       NULL);
     }
 }
 #endif
@@ -6557,6 +6564,11 @@ static void scb_panel_scripting(struct controlbox *b)
         ctrl_checkbox(s, KT_SCRIPTING_WAIT_FOR_A_PROMPT_BEFORE, NO_SHORTCUT,
                       HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
                       I(CONF_script_enable));
+        /* Belongs to the WAIT feature above, not to CR/LF where it used to
+         * sit: it skips the wait for the FIRST line only. */
+        ctrl_checkbox(s, KT_SCRIPTING_EXCEPT_FOR_FIRST_COMMAND, NO_SHORTCUT,
+                      HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
+                      I(CONF_script_except));
         ctrl_editbox(s, KT_SCRIPTING_WAIT_FOR_TEXT, NO_SHORTCUT, 60,
                      HELPCTX(kitty_scriptfile), conf_editbox_handler,
                      I(CONF_script_waitfor), ED_STR);
@@ -6583,9 +6595,6 @@ static void scb_panel_scripting(struct controlbox *b)
                           "CR",    NO_SHORTCUT, I(2),   /* SCRIPT_CR   */
                           "Rec",   NO_SHORTCUT, I(3)); 
  /* SCRIPT_REC  */
-        ctrl_checkbox(s, KT_SCRIPTING_EXCEPT_FOR_FIRST_COMMAND, NO_SHORTCUT,
-                      HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
-                      I(CONF_script_except));
         ctrl_checkbox(s, KT_SCRIPTING_USE_CONDITIONS_FROM_FILE, NO_SHORTCUT,
                       HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
                       I(CONF_script_cond_use));
@@ -6885,6 +6894,29 @@ static void scb_panel_terminal(struct controlbox *b)
 
 /* The Window panel and its Appearance/Behaviour sub-panels, plus the
  * KiTTY Transparency/Hyperlinks/position+icon/Background-image panels. */
+/* Window/Hyperlinks: put KiTTY's shipped URL pattern back into the
+ * custom-regex field. Confirmed first - the button OVERWRITES whatever the
+ * field holds, and a hand-built regex is real work. Written to the conf and
+ * then refreshed into the field, so the display and the store agree. */
+static void kitty_urlregex_reset_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                         void *data, int event)
+{
+    extern const char *urlhack_default_regex;   /* kitty/url/urlhack.c */
+    extern int kitty_confirm_box(HWND owner, const char *caption,
+                                 const char *text, const char *warn_red); /* kitty_win.c */
+    Conf *conf = (Conf *)data;
+    if (event != EVENT_ACTION)
+        return;
+    if (!kitty_confirm_box(GetActiveWindow(),
+                           "Reset the URL regular expression?",
+                           "The custom regular expression is REPLACED by "
+                           "KiTTY's default pattern.\n\n"
+                           "Whatever the field holds now is lost.", NULL))
+        return;
+    conf_set_str(conf, CONF_url_regex, urlhack_default_regex);
+    dlg_refresh(NULL, dlg);
+}
+
 static void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
 {
     const struct BackendVtable *backvt;
@@ -7168,12 +7200,21 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
         ctrl_checkbox(s, KT_HYPERLINKS_USE_THE_DEFAULT_REGULAR_EXPRESSION, NO_SHORTCUT,
                       HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
                       I(CONF_url_defregex));
-        /* Short label: at 60% edit width, "Custom regular expression:"
-         * truncated to "Custom regular" (caught by the documentation
-         * screenshots). */
-        ctrl_editbox(s, KT_HYPERLINKS_CUSTOM_REGEX, NO_SHORTCUT, 60,
+        /* Short label + a wide field: a regex deserves the room. */
+        ctrl_editbox(s, KT_HYPERLINKS_CUSTOM_REGEX, NO_SHORTCUT, 80,
                      HELPCTX(kitty_hyperlinks), conf_editbox_handler,
                      I(CONF_url_regex), ED_STR);
+        /* Reset the field to KiTTY's shipped pattern - behind a
+         * confirmation, because it OVERWRITES whatever is typed there. */
+        {
+            dlgcontrol *rc;
+            ctrl_columns(s, 2, 60, 40);
+            rc = ctrl_pushbutton(s, KT_HYPERLINKS_RESET_REGEX, NO_SHORTCUT,
+                                 HELPCTX(kitty_hyperlinks),
+                                 kitty_urlregex_reset_handler, I(0));
+            rc->column = 1;
+            ctrl_columns(s, 1, 100);
+        }
     }
 
     /*
@@ -8728,8 +8769,8 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
     }
 }
 
-/* The Connection/Serial, Telnet, Rlogin and SUPDUP panels. */
-static void scb_panel_other_protocols(struct controlbox *b, bool midsession, int protocol)
+/* The Connection/Serial panel. */
+static void scb_panel_serial(struct controlbox *b, bool midsession, int protocol)
 {
     struct controlset *s;
 
@@ -8780,54 +8821,13 @@ static void scb_panel_other_protocols(struct controlbox *b, bool midsession, int
                       I(ser_vt->serial_flow_mask));
     }
 
-    if (DISPLAY_RECONFIGURABLE_PROTOCOL(PROT_TELNET)) {
-        /*
-         * The Connection/Telnet panel.
-         */
-        ctrl_settitle(b, "Connection/Telnet",
-                      KT_TELNET_OPTIONS_CONTROLLING_TELNET_CONNECTIONS);
+}
 
-        s = ctrl_getset(b, "Connection/Telnet", "protocol",
-                        KT_TELNET_TELNET_PROTOCOL_ADJUSTMENTS);
-
-        if (!midsession) {
-            ctrl_radiobuttons(s, KT_TELNET_HANDLING_OF_OLD_ENVIRON_AMBIGUITY,
-                              NO_SHORTCUT, 2,
-                              HELPCTX(telnet_oldenviron),
-                              conf_radiobutton_bool_handler,
-                              I(CONF_rfc_environ),
-                              KT_TELNET_BSD_COMMONPLACE, 'b', I(false),
-                              KT_TELNET_RFC_1408_UNUSUAL, 'f', I(true));
-            ctrl_radiobuttons(s, KT_TELNET_TELNET_NEGOTIATION_MODE, 't', 2,
-                              HELPCTX(telnet_passive),
-                              conf_radiobutton_bool_handler,
-                              I(CONF_passive_telnet),
-                              KT_TELNET_PASSIVE, I(true), KT_TELNET_ACTIVE, I(false));
-        }
-        ctrl_checkbox(s, KT_TELNET_KEYBOARD_SENDS_TELNET_SPECIAL_COMMANDS, 'k',
-                      HELPCTX(telnet_specialkeys),
-                      conf_checkbox_handler,
-                      I(CONF_telnet_keyboard));
-        ctrl_checkbox(s, KT_TELNET_RETURN_KEY_SENDS_TELNET_NEW,
-                      'm', HELPCTX(telnet_newline),
-                      conf_checkbox_handler,
-                      I(CONF_telnet_newline));
-    }
-
-    if (DISPLAY_NON_RECONFIGURABLE_PROTOCOL(PROT_RLOGIN)) {
-        /*
-         * The Connection/Rlogin panel.
-         */
-        ctrl_settitle(b, "Connection/Rlogin",
-                      KT_RLOGIN_OPTIONS_CONTROLLING_RLOGIN_CONNECTIONS);
-
-        s = ctrl_getset(b, "Connection/Rlogin", "data",
-                        KT_DATA_DATA_TO_SEND);
-        ctrl_editbox(s, KT_RLOGIN_LOCAL_USERNAME, 'l', 50,
-                     HELPCTX(rlogin_localuser),
-                     conf_editbox_handler, I(CONF_localusername), ED_STR);
-
-    }
+/* The Connection/SUPDUP, Rlogin and Telnet panels - the rarely used
+ * protocols, so they close the Connection subtree after ZModem. */
+static void scb_panel_other_protocols(struct controlbox *b, bool midsession, int protocol)
+{
+    struct controlset *s;
 
     if (DISPLAY_NON_RECONFIGURABLE_PROTOCOL(PROT_SUPDUP)) {
         /*
@@ -8871,6 +8871,55 @@ static void scb_panel_other_protocols(struct controlbox *b, bool midsession, int
                       conf_checkbox_handler,
                       I(CONF_supdup_scroll));
     }
+    if (DISPLAY_NON_RECONFIGURABLE_PROTOCOL(PROT_RLOGIN)) {
+        /*
+         * The Connection/Rlogin panel.
+         */
+        ctrl_settitle(b, "Connection/Rlogin",
+                      KT_RLOGIN_OPTIONS_CONTROLLING_RLOGIN_CONNECTIONS);
+
+        s = ctrl_getset(b, "Connection/Rlogin", "data",
+                        KT_DATA_DATA_TO_SEND);
+        ctrl_editbox(s, KT_RLOGIN_LOCAL_USERNAME, 'l', 50,
+                     HELPCTX(rlogin_localuser),
+                     conf_editbox_handler, I(CONF_localusername), ED_STR);
+
+    }
+
+    if (DISPLAY_RECONFIGURABLE_PROTOCOL(PROT_TELNET)) {
+        /*
+         * The Connection/Telnet panel.
+         */
+        ctrl_settitle(b, "Connection/Telnet",
+                      KT_TELNET_OPTIONS_CONTROLLING_TELNET_CONNECTIONS);
+
+        s = ctrl_getset(b, "Connection/Telnet", "protocol",
+                        KT_TELNET_TELNET_PROTOCOL_ADJUSTMENTS);
+
+        if (!midsession) {
+            ctrl_radiobuttons(s, KT_TELNET_HANDLING_OF_OLD_ENVIRON_AMBIGUITY,
+                              NO_SHORTCUT, 2,
+                              HELPCTX(telnet_oldenviron),
+                              conf_radiobutton_bool_handler,
+                              I(CONF_rfc_environ),
+                              KT_TELNET_BSD_COMMONPLACE, 'b', I(false),
+                              KT_TELNET_RFC_1408_UNUSUAL, 'f', I(true));
+            ctrl_radiobuttons(s, KT_TELNET_TELNET_NEGOTIATION_MODE, 't', 2,
+                              HELPCTX(telnet_passive),
+                              conf_radiobutton_bool_handler,
+                              I(CONF_passive_telnet),
+                              KT_TELNET_PASSIVE, I(true), KT_TELNET_ACTIVE, I(false));
+        }
+        ctrl_checkbox(s, KT_TELNET_KEYBOARD_SENDS_TELNET_SPECIAL_COMMANDS, 'k',
+                      HELPCTX(telnet_specialkeys),
+                      conf_checkbox_handler,
+                      I(CONF_telnet_keyboard));
+        ctrl_checkbox(s, KT_TELNET_RETURN_KEY_SENDS_TELNET_NEW,
+                      'm', HELPCTX(telnet_newline),
+                      conf_checkbox_handler,
+                      I(CONF_telnet_newline));
+    }
+
 }
 
 /* The Connection/ZModem panels (KiTTY). */
@@ -9139,77 +9188,101 @@ static int cfgwin_refreshing = 0;
  * VALCHANGE arm below: EVENT_REFRESH answers from the running values, so
  * writing only the file leaves the fields showing the old size.
  */
-/* ---- remembered collapsed categories --------------------------------------
+/* ---- remembered category folds --------------------------------------------
  *
- * categoryexpand says how the tree opens by DEFAULT; a node the user has
- * collapsed stays collapsed on the next opening regardless, and one they
- * re-expanded is forgotten again. Stored as [ConfigBox] collapsed, a
- * comma-separated list of tree PATHS ("Connection/Login") - any expandable
- * node, not just the top level.
+ * categoryexpand says how the tree opens by DEFAULT; what the user changed
+ * BY HAND wins over it in BOTH directions - a collapsed node stays collapsed
+ * and an explicitly expanded one stays expanded, whatever the default says.
+ * Only the DEVIATIONS are stored, so changing categoryexpand still moves
+ * every node the user never touched.
+ *
+ * Stored as [ConfigBox] collapsed, a comma-separated list of tree PATHS
+ * ("Connection/Login"): a bare path is a collapse override, a path prefixed
+ * with '+' an expand override. (Values written before the expand side
+ * existed were bare collapse paths and read unchanged.)
  */
-#define CFGTREE_COLLAPSED_MAX 32
-static char *cfgtree_collapsed[CFGTREE_COLLAPSED_MAX];
-static int cfgtree_ncollapsed = 0;
-static int cfgtree_collapsed_loaded = 0;
+#define CFGTREE_FOLDS_MAX 48
+static char *cfgtree_folds[CFGTREE_FOLDS_MAX];   /* "path" or "+path" */
+static int cfgtree_nfolds = 0;
+static int cfgtree_folds_loaded = 0;
 
-static int cfgtree_collapsed_find(const char *name)
+static int cfgtree_fold_find(const char *path)
 {
-    for (int i = 0; i < cfgtree_ncollapsed; i++)
-        if (!strcmp(cfgtree_collapsed[i], name))
+    for (int i = 0; i < cfgtree_nfolds; i++) {
+        const char *e = cfgtree_folds[i];
+        if (*e == '+') e++;
+        if (!strcmp(e, path))
             return i;
+    }
     return -1;
 }
 
-void kitty_cfgtree_collapsed_load(void)
+static void cfgtree_folds_load(void)
 {
-    char buf[1024] = "";
-    if (cfgtree_collapsed_loaded)
+    char buf[2048] = "";
+    if (cfgtree_folds_loaded)
         return;
-    cfgtree_collapsed_loaded = 1;
+    cfgtree_folds_loaded = 1;
     if (!ReadParameterN("ConfigBox", "collapsed", buf, sizeof(buf)))
         return;
     for (char *p = buf; *p; ) {
         char *q = strchr(p, ',');
         if (q) *q = '\0';
         while (*p == ' ') p++;
-        if (*p && cfgtree_ncollapsed < CFGTREE_COLLAPSED_MAX &&
-            cfgtree_collapsed_find(p) < 0)
-            cfgtree_collapsed[cfgtree_ncollapsed++] = dupstr(p);
+        if (*p && cfgtree_nfolds < CFGTREE_FOLDS_MAX &&
+            cfgtree_fold_find(*p == '+' ? p + 1 : p) < 0)
+            cfgtree_folds[cfgtree_nfolds++] = dupstr(p);
         if (!q) break;
         p = q + 1;
     }
 }
 
-int kitty_cfgtree_is_collapsed(const char *name)
-{
-    kitty_cfgtree_collapsed_load();
-    return cfgtree_collapsed_find(name) >= 0;
-}
-
-void kitty_cfgtree_set_collapsed(const char *name, int collapsed)
+/* -1 = no override recorded, 0 = keep it collapsed, 1 = keep it expanded. */
+int kitty_cfgtree_get_fold(const char *path)
 {
     int i;
-    kitty_cfgtree_collapsed_load();
-    i = cfgtree_collapsed_find(name);
-    if (collapsed && i < 0 && cfgtree_ncollapsed < CFGTREE_COLLAPSED_MAX)
-        cfgtree_collapsed[cfgtree_ncollapsed++] = dupstr(name);
-    else if (!collapsed && i >= 0) {
-        sfree(cfgtree_collapsed[i]);
-        cfgtree_collapsed[i] = cfgtree_collapsed[--cfgtree_ncollapsed];
+    cfgtree_folds_load();
+    i = cfgtree_fold_find(path);
+    if (i < 0)
+        return -1;
+    return cfgtree_folds[i][0] == '+' ? 1 : 0;
+}
+
+/* Record what the user's tree shows: a state matching the DEFAULT clears any
+ * override, a deviation stores one in its direction. */
+void kitty_cfgtree_set_fold(const char *path, int expanded,
+                            int default_expanded)
+{
+    int i;
+    cfgtree_folds_load();
+    i = cfgtree_fold_find(path);
+    if (!!expanded == !!default_expanded) {
+        if (i >= 0) {
+            sfree(cfgtree_folds[i]);
+            cfgtree_folds[i] = cfgtree_folds[--cfgtree_nfolds];
+        }
+        return;
+    }
+    if (i >= 0) {
+        sfree(cfgtree_folds[i]);
+        cfgtree_folds[i] = expanded ? dupcat("+", path) : dupstr(path);
+    } else if (cfgtree_nfolds < CFGTREE_FOLDS_MAX) {
+        cfgtree_folds[cfgtree_nfolds++] =
+            expanded ? dupcat("+", path) : dupstr(path);
     }
 }
 
-void kitty_cfgtree_collapsed_save(void)
+void kitty_cfgtree_folds_save(void)
 {
-    char buf[1024] = "";
+    char buf[2048] = "";
     size_t used = 0;
-    if (!cfgtree_collapsed_loaded)
+    if (!cfgtree_folds_loaded)
         return;                        /* nothing was ever read or changed */
-    for (int i = 0; i < cfgtree_ncollapsed; i++) {
-        size_t n = strlen(cfgtree_collapsed[i]);
+    for (int i = 0; i < cfgtree_nfolds; i++) {
+        size_t n = strlen(cfgtree_folds[i]);
         if (used + n + 2 >= sizeof(buf)) break;
         if (used) buf[used++] = ',';
-        memcpy(buf + used, cfgtree_collapsed[i], n + 1);
+        memcpy(buf + used, cfgtree_folds[i], n + 1);
         used += n;
     }
     WriteParameter("ConfigBox", "collapsed", buf);
@@ -9651,7 +9724,7 @@ static void kitty_import_action_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (!done && !failed) {
         strbuf_free(names);
         kitty_namelist_clear(&dropped);
-        import_say(im, dlg, KT_MIG_IMP_PICK);
+        import_say(im, dlg, KT_MIG_IMP_NOSEL);
         return;
     }
 
@@ -9730,7 +9803,10 @@ static void kitty_storexfer_handler(dlgcontrol *ctrl, dlgparam *dlg,
 static struct app_footer_pin {
     const char *path;
     dlgcontrol *ctrl;
-    int natural_y, have_natural;
+    /* recorded from the fresh layout: the text's top, the frame's top
+     * relative to it, and the pair's lowest edge - all in host client
+     * coordinates, all the pin's later moves are computed from these */
+    int natural_y, natural_box_dy, natural_lowest, have_natural;
 } app_footers[APP_FOOTER_MAX];
 static int n_app_footers = 0;
 
@@ -9738,25 +9814,59 @@ static void kitty_footer_pin_one(struct app_footer_pin *f)
 {
     extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);   /* windows/dialog.c */
     extern HWND kitty_cfg_panel_host;                    /* windows/controls.c */
-    HWND host = kitty_cfg_panel_host, w;
-    RECT hostr, gr;
+    HWND host = kitty_cfg_panel_host, w, boxw = NULL;
+    RECT hostr, gr, br;
     POINT p;
-    int y;
+    int y, id;
+    char cls[16];
 
     if (!host || !f->ctrl || !(w = kitty_cfg_ctrl_hwnd(f->ctrl)))
         return;
     if (!GetWindowRect(w, &gr))
         return;
+    /* The set's GROUP BOX travels with its text, or pinning leaves an empty
+     * frame at the layout position - which is exactly what the first version
+     * did. The box's id sits directly below the text's, and only a real
+     * group box is accepted for it. */
+    id = GetDlgCtrlID(w);
+    if (id > 0 && (boxw = GetDlgItem(host, id - 1)) != NULL) {
+        if (!GetClassNameA(boxw, cls, sizeof(cls)) || stricmp(cls, "Button") ||
+            !(GetWindowLong(boxw, GWL_STYLE) & BS_GROUPBOX) ||
+            !GetWindowRect(boxw, &br))
+            boxw = NULL;
+    }
     if (!f->have_natural) {
-        p.x = 0; p.y = gr.top;
-        ScreenToClient(host, &p);
-        f->natural_y = p.y;
+        POINT t = { 0, gr.top }, lb = { 0, gr.bottom };
+        ScreenToClient(host, &t);
+        ScreenToClient(host, &lb);
+        f->natural_y = t.y;
+        f->natural_box_dy = 0;
+        f->natural_lowest = lb.y;
+        if (boxw) {
+            POINT bt = { 0, br.top }, bb = { 0, br.bottom };
+            ScreenToClient(host, &bt);
+            ScreenToClient(host, &bb);
+            f->natural_box_dy = bt.y - t.y;
+            if (bb.y > f->natural_lowest)
+                f->natural_lowest = bb.y;
+        }
         f->have_natural = 1;
     }
     GetClientRect(host, &hostr);
-    y = hostr.bottom - 4 - (gr.bottom - gr.top);
-    if (y < f->natural_y)
-        y = f->natural_y;       /* never above where the layout put it */
+    /* One delta for text and frame together, anchored on the pair's LOWEST
+     * edge - the frame closes below the text, and it is the frame that must
+     * not cross the panel's bottom. Never negative: the pin only ever hands
+     * back what extra height the panel has, it does not push the layout up. */
+    y = (hostr.bottom - 4) - f->natural_lowest;
+    if (y < 0)
+        y = 0;
+    y += f->natural_y;
+    if (boxw) {
+        p.x = br.left; p.y = 0;
+        ScreenToClient(host, &p);
+        SetWindowPos(boxw, NULL, p.x, y + f->natural_box_dy, 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
     p.x = gr.left; p.y = 0;
     ScreenToClient(host, &p);
     SetWindowPos(w, NULL, p.x, y, 0, 0,
@@ -9859,7 +9969,6 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
             ctrl_text(s, KT_MIG_OLD_INTRO, HELPCTX(kitty_import_sessions));
             ctrl_checkbox(s, KT_MIG_SHOW_BOX, NO_SHORTCUT, HELPCTX(kitty_import_sessions),
                           kitty_showforeign_handler, P(NULL));
-            ctrl_text(s, KT_MIG_SHOW_INI, HELPCTX(kitty_import_sessions));
 
             {
                 struct import_data *im = (struct import_data *)
@@ -9878,10 +9987,20 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
                 im->listbox->listbox.percentages = snewn(2, int);
                 im->listbox->listbox.percentages[0] = 70;
                 im->listbox->listbox.percentages[1] = 30;
-                ctrl_pushbutton(s, KT_MIG_IMP_BUTTON, NO_SHORTCUT,
-                                HELPCTX(kitty_import_sessions),
-                                kitty_import_action_handler, P(im));
-                im->banner = ctrl_text(s, KT_MIG_IMP_PICK,
+                /* Button at its natural width against the panel's right
+                 * border - a full-width action bar it is not. The banner
+                 * starts blank; it exists to carry the import's RESULT
+                 * (import_say), not an instruction nobody needed. */
+                {
+                    dlgcontrol *bc;
+                    ctrl_columns(s, 2, 55, 45);
+                    bc = ctrl_pushbutton(s, KT_MIG_IMP_BUTTON, NO_SHORTCUT,
+                                         HELPCTX(kitty_import_sessions),
+                                         kitty_import_action_handler, P(im));
+                    bc->column = 1;
+                    ctrl_columns(s, 1, 100);
+                }
+                im->banner = ctrl_text(s, " ",
                                        HELPCTX(kitty_import_sessions));
             }
         }
@@ -9932,11 +10051,12 @@ static void scb_panel_comment(struct controlbox *b)
 
     /*
      * The Comment panel (KiTTY): a free-text note attached to this session.
-     * Top-level category, created last, to match upstream KiTTY's layout.
+     * The FIRST leaf under Session - the note about a session leads its
+     * subtree. (Classic KiTTY had it as a top-level category.)
      */
     if (!GetPuttyFlag()) {
-        ctrl_settitle(b, "Comment", KT_COMMENT_COMMENT_FOR_THIS_SESSION);
-        s = ctrl_getset(b, "Comment", "main", NULL);
+        ctrl_settitle(b, "Session/Comment", KT_COMMENT_COMMENT_FOR_THIS_SESSION);
+        s = ctrl_getset(b, "Session/Comment", "main", NULL);
         /* Multiline (~5 lines). Newlines round-trip to storage: REG_SZ holds
          * CRLF directly, and file/dir mode mungestr()-encodes control chars. */
         ctrl_editbox_multiline(s, KT_COMMENT_SESSION_COMMENT, NO_SHORTCUT, 5, false,
@@ -9949,17 +10069,21 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       int protocol, int protcfginfo)
 {
     scb_panel_session(b, midsession);
+    /* Comment FIRST under Session, so a note about the session is the first
+     * thing its subtree offers. */
+    scb_panel_comment(b);
     scb_panel_logging(b, midsession, protocol);
     scb_panel_scripting(b);
     scb_panel_terminal(b);
     scb_panel_window(b, midsession, protocol);
     scb_panel_selection(b);
     scb_panel_connection(b, midsession, protocol);
-    scb_panel_proxy(b, midsession);
     scb_panel_ssh(b, midsession, protocol, protcfginfo);
-    scb_panel_other_protocols(b, midsession, protocol);
+    scb_panel_serial(b, midsession, protocol);
+    /* Proxy just before ZModem; the rare protocols close the subtree. */
+    scb_panel_proxy(b, midsession);
     scb_panel_zmodem(b);
-    scb_panel_comment(b);
+    scb_panel_other_protocols(b, midsession, protocol);
     /* LAST: everything above is the Session tab, and the tree build splits the
      * two on the "Application/" prefix. Keeping them contiguous means the
      * split is a prefix test rather than a lookup. */

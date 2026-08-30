@@ -21,7 +21,7 @@ typedef struct {
 static const KittyTreeLabel kitty_tree_labels[] = {
     { "Appearance",              "Appearance" },
     { "Application",             "Application" },
-    { "Application keypad",      "Application keypad" },
+    { "Application keypad",      "App Keypad/Cursor" },
     { "Auth",                    "Auth" },
     { "Back.&Image",             "Back.&Image" },
     { "Behaviour",               "Behaviour" },

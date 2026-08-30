@@ -1025,6 +1025,7 @@ typedef struct {
 	const char *caption ;
 	const char *text ;
 	const char *warn ;   /* NULL/"" = no red line, and that row collapses */
+	int info ;           /* 1 = one OK button instead of Yes/No */
 } kitty_confirm_t ;
 
 /* Grow one text control to fit its text at the DIALOG's font, offset by extra_dy,
@@ -1059,6 +1060,13 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 		int d1, d2, dh, id ;
 		cf = (const kitty_confirm_t *)lp ;
 		if( cf && cf->caption ) SetWindowTextA( h, cf->caption ) ;
+		if( cf && cf->info ) {
+			/* Info mode: one OK where Yes/No stand. The No button is the
+			 * template's default, so relabelling THAT one keeps Return
+			 * meaning "acknowledged". */
+			ShowWindow( GetDlgItem( h, IDYES ), SW_HIDE ) ;
+			SetDlgItemTextA( h, IDNO, "OK" ) ;
+		}
 		SetDlgItemTextA( h, IDC_CONFIRM_TEXT, cf && cf->text ? cf->text : "" ) ;
 		SetDlgItemTextA( h, IDC_CONFIRM_WARN, cf && cf->warn ? cf->warn : "" ) ;
 		d1 = kitty_fit_text( h, IDC_CONFIRM_TEXT, cf ? cf->text : NULL, 0 ) ;
@@ -1108,9 +1116,19 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 int kitty_confirm_box( HWND owner, const char *caption, const char *text,
                        const char *warn_red ) {
 	kitty_confirm_t cf ;
-	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ;
+	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ; cf.info = 0 ;
 	return DialogBoxParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_CONFIRMBOX),
 		owner, kitty_confirm_dlgproc, (LPARAM)&cf ) == 1 ;
+}
+
+/* The same themed box carrying an announcement rather than a question: one
+ * OK, no choice. What MessageBox did, in the suite's own dress. */
+void kitty_info_box( HWND owner, const char *caption, const char *text,
+                     const char *warn_red ) {
+	kitty_confirm_t cf ;
+	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ; cf.info = 1 ;
+	DialogBoxParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_CONFIRMBOX),
+		owner, kitty_confirm_dlgproc, (LPARAM)&cf ) ;
 }
 
 /* Show the modeless "update available / up to date" popup over `owner`. It is a
@@ -1713,6 +1731,19 @@ static INT_PTR CALLBACK TitleVarsProc(HWND hwnd, UINT msg,
                                0, (LPARAM)line);
         }
         SendDlgItemMessage(hwnd, IDC_TITLEVARS_LIST, LB_SETCURSEL, 0, 0);
+        /* The window wears KiTTY's icon like every other KiTTY window - it
+         * had none, which also left a blank in the taskbar. */
+        {
+#ifndef IDI_MAINICON
+#define IDI_MAINICON 200   /* windows/putty-rc.h; not included here */
+#endif
+            HICON ic = LoadIcon(GetModuleHandle(NULL),
+                                MAKEINTRESOURCE(IDI_MAINICON));
+            if (ic) {
+                SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)ic);
+                SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)ic);
+            }
+        }
         kitty_auxpos_apply(hwnd, "TitleVars", GetWindow(hwnd, GW_OWNER), 1);
         return 1;
       }
