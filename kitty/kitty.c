@@ -45,7 +45,6 @@ extern const char *kitty_reg_sessions( void ) ;   /* <base>\Sessions */
 extern const char *kitty_reg_hostkeys( void ) ;   /* <base>\SshHostKeys */
 extern int kitty_root_is_putty( void ) ;          /* is the hive in use PuTTY-s? */
 
-#include "MD5check.h"
 /*************************************************
 ** FIN DE LA DEFINITION DES INCLUDES
 *************************************************/

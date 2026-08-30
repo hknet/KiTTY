@@ -7,9 +7,10 @@
 
 /*
  * 0.84 port: use the self-contained, source-available V8 regex backend
- * (re_lib/regexp.c) instead of the prebuilt POSIX libregex_64.a.  The prebuilt
+ * (re_lib/regexp.c) instead of a prebuilt POSIX regex archive.  The prebuilt
  * lib mis-compiled the URL pattern (regcomp returned re_nsub==0, regexec
  * faulted); the V8 backend is built from source so the ABI is self-consistent.
+ * The unused archive has since been deleted from the tree.
  */
 #include "re_lib/regexp.h"
 

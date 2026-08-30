@@ -1,5 +1,14 @@
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# KiTTY: the prebuilt archives under kitty/libs/ ship in both widths
+# (bcrypt/libjpeg as *_64.a and *_32.a); pick by the pointer size the
+# toolchain targets.
+if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+  set(KITTY_LIBS_BITS 32)
+else()
+  set(KITTY_LIBS_BITS 64)
+endif()
+
 add_sources_from_current_dir(utils
   # KiTTY: the runtime lookup of APIs newer than the oldest Windows we load on,
   # and the record of what was missing. In `utils` because EVERY binary links
@@ -68,7 +77,7 @@ target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c)
 # CryptUnprotectData in crypt32) and decrypts legacy old-KiTTY passwords via the
 # bcrypt archive. PUBLIC so every consumer (CLI tools incl.) links them; the
 # bcrypt include dir lets storage.c see nbcrypt.h.
-target_link_libraries(settings PUBLIC crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_64.a)
+target_link_libraries(settings PUBLIC crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_${KITTY_LIBS_BITS}.a)
 add_sources_from_current_dir(network
   network.c handle-socket.c named-pipe-client.c named-pipe-server.c local-proxy.c x11.c)
 add_sources_from_current_dir(sshcommon
@@ -236,7 +245,7 @@ add_dependencies(puttygen generated_licence_h)
 target_link_libraries(puttygen
   keygen guimisc crypto utils
   comctl32.lib   # KiTTY: SetWindowSubclass, for kitty_theme.c's dialog theming
-  ${platform_libraries} crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_64.a)  # storage.c password crypto (DPAPI + legacy bcrypt)
+  ${platform_libraries} crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_${KITTY_LIBS_BITS}.a)  # storage.c password crypto (DPAPI + legacy bcrypt)
 set_target_properties(puttygen PROPERTIES WIN32_EXECUTABLE ON)
 installed_program(puttygen)
 
@@ -264,7 +273,7 @@ add_executable(kittygen_cli
 add_dependencies(kittygen_cli generated_licence_h)
 target_link_libraries(kittygen_cli
   keygen console crypto utils
-  ${platform_libraries} crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_64.a)  # storage.c password crypto (DPAPI + legacy bcrypt)
+  ${platform_libraries} crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_${KITTY_LIBS_BITS}.a)  # storage.c password crypto (DPAPI + legacy bcrypt)
 # console subsystem - no WIN32_EXECUTABLE
 installed_program(kittygen_cli)
 
@@ -325,8 +334,7 @@ add_executable(test_storage_roundtrip
   no-jump-list.c
   ${CMAKE_SOURCE_DIR}/sshrand.c)
 target_include_directories(test_storage_roundtrip PRIVATE
-  ${CMAKE_SOURCE_DIR}/kitty ${CMAKE_SOURCE_DIR}/kitty/base64
-  ${CMAKE_SOURCE_DIR}/kitty/bcrypt ${CMAKE_SOURCE_DIR}/kitty/md5)
+  ${CMAKE_SOURCE_DIR}/kitty ${CMAKE_SOURCE_DIR}/kitty/bcrypt)
 # MOD_PERSO + MASTER_PASSWORD because the .ktx reader is KiTTY code and uses the
 # compiled-in constant on its legacy decode path. Matching the shipping targets
 # here matters: a test built with different defines would exercise a different
@@ -335,7 +343,7 @@ target_compile_definitions(test_storage_roundtrip PRIVATE
   MOD_PERSO MASTER_PASSWORD="kitty")
 target_link_libraries(test_storage_roundtrip
   crypto utils settings ${platform_libraries}
-  crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_64.a)
+  crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_${KITTY_LIBS_BITS}.a)
 
 add_executable(test_lineedit
   ${CMAKE_SOURCE_DIR}/test/test_lineedit.c
@@ -537,13 +545,12 @@ if(KITTY_PERF)
   target_compile_definitions(network PRIVATE KITTY_PERF)
 endif()
 target_include_directories(kitty PRIVATE
-  ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
+  ${KITTY_DIR} ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt
   ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)
 target_link_libraries(kitty
   guiterminal guimisc eventloop sshclient otherbackends settings network crypto utils
-  ${KITTY_DIR}/libs/libjpeg_64.a
-  ${KITTY_DIR}/libs/base64_64.a ${KITTY_DIR}/libs/bcrypt_64.a
-  ${KITTY_DIR}/libs/MD5check_64.a
+  ${KITTY_DIR}/libs/libjpeg_${KITTY_LIBS_BITS}.a
+  ${KITTY_DIR}/libs/bcrypt_${KITTY_LIBS_BITS}.a
   ${platform_libraries} wininet wintrust crypt32 msi version
   uuid.lib)   # KiTTY: CLSID_ShellLink GUIDs (kitty_startup_shortcut.c, launcher autostart)
 set_target_properties(kitty PROPERTIES WIN32_EXECUTABLE ON)
@@ -636,13 +643,12 @@ if(KITTY_NETDEBUG)
 endif()
 
 target_include_directories(kitty_portable PRIVATE
-  ${KITTY_DIR} ${KITTY_DIR}/base64 ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt ${KITTY_DIR}/md5
+  ${KITTY_DIR} ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt
   ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)
 target_link_libraries(kitty_portable
   guiterminal guimisc eventloop sshclient otherbackends settings network crypto utils
-  ${KITTY_DIR}/libs/libjpeg_64.a
-  ${KITTY_DIR}/libs/base64_64.a ${KITTY_DIR}/libs/bcrypt_64.a
-  ${KITTY_DIR}/libs/MD5check_64.a
+  ${KITTY_DIR}/libs/libjpeg_${KITTY_LIBS_BITS}.a
+  ${KITTY_DIR}/libs/bcrypt_${KITTY_LIBS_BITS}.a
   ${platform_libraries} wininet wintrust crypt32 msi version
   uuid.lib)   # KiTTY: CLSID_ShellLink GUIDs (kitty_startup_shortcut.c, launcher autostart)
 set_target_properties(kitty_portable PROPERTIES WIN32_EXECUTABLE ON)

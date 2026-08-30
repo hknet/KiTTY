@@ -331,7 +331,6 @@ void SetInitCurrentFolder( const char * name ) ;
 void set_sshver( const char * vers ) ;
 int ResizeWinList( HWND hwnd, int width, int height ) ;
 int SendCommandAllWindows( HWND hwnd, char * cmd ) ;
-int decode64 (char *buffer) ;
 void RunCommand( HWND hwnd, const char * cmd ) ;
 void timestamp_change_filename( void ) ;
 int InternalCommand( HWND hwnd, char * st ) ;
