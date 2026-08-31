@@ -525,6 +525,16 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * Skip it and its argument; the panel is already recorded. */
                 if (arglist->args[arglistpos])
                     arglistpos++;
+#ifdef KITTY_TEST_BUILD_LABEL
+            /* Review tooling exists in TEST BUILDS only - a release knows
+             * neither the flag nor the code. */
+            } else if (!strcmp(p, "-demo-templates")) {
+                /* KiTTY: page through every template dialog as authored,
+                 * for spacing review (kitty_win.c). */
+                extern void kitty_demo_templates(void);
+                kitty_demo_templates();
+                exit(0);
+#endif
             } else if (!strcmp(p, "-demo-config-box")) {
                 if (!arglist->args[arglistpos]) {
                     cmdline_error("%s expects an output filename", p);

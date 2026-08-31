@@ -83,8 +83,8 @@ CAPTION "About KiTTY"
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "KiTTY", IDA_VERSION, 7, 7, 216, 12
-    LTEXT           "KiTTY is a fork of PuTTY developed by Cyd for 9bis.com.\nCopyright 2005-2024 9bis.com. Thanks to all contributors.", -1, 7, 24, 216, 40
-    PUSHBUTTON      "Visit www.9bis.net/kitty", IDC_WEBPAGE, 60, 68, 110, 14
+    LTEXT           "KiTTY is a fork of PuTTY, continued by kapper.net.\nInspired by the KiTTY by Cyril Dupont (9bis.com) - thanks to all contributors.", -1, 7, 24, 216, 40
+    PUSHBUTTON      "Visit github.com/hknet/KiTTY", IDC_WEBPAGE, 55, 68, 120, 14
     DEFPUSHBUTTON   "OK", IDOK, 90, 96, 50, 16
 END
 
@@ -92,7 +92,7 @@ END
  * in kitty/kitty_mpw_gui.c. The template is laid out for the wordy first-time
  * setup; when merely unlocking, the prompt area is shrunk and the confirm row
  * hidden at runtime. */
-IDD_MASTERPW DIALOGEX DISCARDABLE 0, 0, 230, 184
+IDD_MASTERPW DIALOGEX DISCARDABLE 0, 0, 230, 181
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY master password"
 FONT 9, "Segoe UI", 400, 0, 0x1
@@ -100,10 +100,10 @@ BEGIN
     LTEXT           "", IDC_MPW_PROMPT, 7, 7, 216, 104
     LTEXT           "Master password:", IDC_MPW_EDIT_LBL, 7, 113, 216, 8
     EDITTEXT        IDC_MPW_EDIT, 7, 123, 216, 12, ES_PASSWORD | ES_AUTOHSCROLL
-    LTEXT           "Confirm master password:", IDC_MPW_CONFIRM_LBL, 7, 138, 216, 8
-    EDITTEXT        IDC_MPW_CONFIRM, 7, 148, 216, 12, ES_PASSWORD | ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "OK", IDOK, 116, 165, 50, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 173, 165, 50, 14
+    LTEXT           "Confirm master password:", IDC_MPW_CONFIRM_LBL, 7, 137, 216, 8
+    EDITTEXT        IDC_MPW_CONFIRM, 7, 147, 216, 12, ES_PASSWORD | ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK", IDOK, 116, 162, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 173, 162, 50, 14
 END
 
 /* Legacy->protected password migration consent (portable saves; user decision
@@ -148,16 +148,16 @@ END
 
 /* Export summary: shows the bundle password once, with a Copy button - this is
  * the moment the user wants to stash it. Handled by kitty/kitty_bridge.c. */
-IDD_EXPORTDONE DIALOGEX DISCARDABLE 0, 0, 268, 128
+IDD_EXPORTDONE DIALOGEX DISCARDABLE 0, 0, 268, 123
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY session export"
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_EXPD_TEXT, 7, 7, 254, 62
-    LTEXT           "Export password:", IDC_EXPD_PWLBL, 7, 73, 254, 8
-    EDITTEXT        IDC_EXPD_PW, 7, 83, 190, 12, ES_AUTOHSCROLL | ES_READONLY
-    PUSHBUTTON      "&Copy", IDC_EXPD_COPY, 203, 83, 58, 12
-    DEFPUSHBUTTON   "OK", IDOK, 211, 107, 50, 14
+    LTEXT           "Export password:", IDC_EXPD_PWLBL, 7, 72, 254, 8
+    EDITTEXT        IDC_EXPD_PW, 7, 82, 190, 12, ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON      "&Copy", IDC_EXPD_COPY, 203, 82, 58, 12
+    DEFPUSHBUTTON   "OK", IDOK, 211, 102, 50, 14
 END
 
 /* Import password prompt. Raised only when the bundle really carries
@@ -178,16 +178,16 @@ BEGIN
 END
 
 /* Master-password migration notice. Handled by kitty/kitty_bridge.c. */
-IDD_MPWMOVED DIALOGEX DISCARDABLE 0, 0, 300, 182
+IDD_MPWMOVED DIALOGEX DISCARDABLE 0, 0, 300, 178
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY master password"
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_MPWM_TEXT, 7, 7, 286, 114
-    EDITTEXT        IDC_MPWM_PATH, 7, 124, 286, 12, ES_AUTOHSCROLL | ES_READONLY
-    PUSHBUTTON      "&Copy path", IDC_MPWM_COPY, 7, 143, 70, 14
-    PUSHBUTTON      "&Open folder", IDC_MPWM_OPEN, 83, 143, 70, 14
-    DEFPUSHBUTTON   "OK", IDOK, 243, 161, 50, 14
+    EDITTEXT        IDC_MPWM_PATH, 7, 123, 286, 12, ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON      "&Copy path", IDC_MPWM_COPY, 7, 140, 70, 14
+    PUSHBUTTON      "&Open folder", IDC_MPWM_OPEN, 83, 140, 70, 14
+    DEFPUSHBUTTON   "OK", IDOK, 243, 157, 50, 14
 END
 
 /* "Update available / up to date" popup (kitty/kitty_win.c). A real (modeless)
@@ -195,7 +195,7 @@ END
  * every other KiTTY window. The message area + window are grown to fit the text
  * at runtime; buttons: OK (info case) OR Update now + Later (update case), the
  * unused ones hidden. OK and Later share the same slot (only one is ever shown). */
-IDD_UPDATEBOX DIALOGEX DISCARDABLE 0, 0, 244, 86
+IDD_UPDATEBOX DIALOGEX DISCARDABLE 0, 0, 244, 82
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY Update"
 FONT 9, "Segoe UI", 400, 0, 0x1
@@ -205,10 +205,11 @@ BEGIN
      * release's GitHub page (rendered notes). Sized to keep the original box
      * dimensions; the other buttons stay put. OK and Later share the far-right
      * slot (only one is ever shown). */
-    PUSHBUTTON      "&Release notes", IDC_UPD_NOTES, 10, 66, 66, 14
-    DEFPUSHBUTTON   "OK", IDOK, 190, 66, 44, 14
-    PUSHBUTTON      "&Update now", IDC_UPD_UPDATE, 128, 66, 58, 14
-    PUSHBUTTON      "&Later", IDCANCEL, 190, 66, 44, 14
+    /* Declared left to right so the Tab order matches the row. */
+    PUSHBUTTON      "&Release notes", IDC_UPD_NOTES, 10, 62, 66, 14
+    PUSHBUTTON      "&Update now", IDC_UPD_UPDATE, 128, 62, 58, 14
+    DEFPUSHBUTTON   "OK", IDOK, 190, 62, 44, 14
+    PUSHBUTTON      "&Later", IDCANCEL, 190, 62, 44, 14
 END
 
 /* KiTTY send-text input boxes: [Shortcuts] input (single line, default
@@ -282,7 +283,7 @@ END
  *    worse than either, because the code falls back to "just this request"
  *    anyway and the user cannot see that.
  */
-IDD_OSC52READ DIALOGEX DISCARDABLE 0, 0, 300, 246
+IDD_OSC52READ DIALOGEX DISCARDABLE 0, 0, 300, 231
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY - a server wants to read your clipboard"
 FONT 9, "Segoe UI", 400, 0, 0x1
@@ -290,18 +291,18 @@ BEGIN
     LTEXT           "", IDC_O52_WHAT, 7, 7, 286, 18
     LTEXT           "", IDC_O52_WHERE, 7, 27, 286, 8
     LTEXT           "", IDC_O52_CLAIM, 7, 37, 286, 8
-    LTEXT           "", IDC_O52_SUMMARY, 7, 50, 218, 18
-    PUSHBUTTON      "&View...", IDC_O52_VIEW, 235, 50, 58, 14
-    EDITTEXT        IDC_O52_PREVIEW, 7, 72, 286, 52, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | NOT WS_VISIBLE
-    LTEXT           "Apply this decision to:", IDC_O52_APPLYLBL, 7, 130, 286, 8
-    AUTORADIOBUTTON "just this &request", IDC_O52_ONCE, 14, 142, 279, 10, WS_GROUP | WS_TABSTOP
-    AUTORADIOBUTTON "", IDC_O52_MINUTES, 14, 154, 279, 10
-    AUTORADIOBUTTON "", IDC_O52_REQUESTS, 14, 166, 279, 10
-    AUTORADIOBUTTON "the rest of this terminal &session", IDC_O52_SESSION, 14, 178, 279, 10
-    AUTOCHECKBOX    "Always &deny for this host (saved in the session)", IDC_O52_ALWAYSDENY, 7, 194, 286, 10, WS_GROUP
-    LTEXT           "", IDC_O52_COUNTDOWN, 7, 227, 170, 8
-    PUSHBUTTON      "&Allow", IDC_O52_ALLOW, 183, 224, 52, 14
-    DEFPUSHBUTTON   "Deny", IDCANCEL, 241, 224, 52, 14
+    LTEXT           "", IDC_O52_SUMMARY, 7, 48, 218, 18
+    PUSHBUTTON      "&View...", IDC_O52_VIEW, 235, 48, 58, 14
+    EDITTEXT        IDC_O52_PREVIEW, 7, 69, 286, 52, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | NOT WS_VISIBLE
+    LTEXT           "Apply this decision to:", IDC_O52_APPLYLBL, 7, 125, 286, 8
+    AUTORADIOBUTTON "just this &request", IDC_O52_ONCE, 14, 136, 279, 10, WS_GROUP | WS_TABSTOP
+    AUTORADIOBUTTON "", IDC_O52_MINUTES, 14, 148, 279, 10
+    AUTORADIOBUTTON "", IDC_O52_REQUESTS, 14, 160, 279, 10
+    AUTORADIOBUTTON "the rest of this terminal &session", IDC_O52_SESSION, 14, 172, 279, 10
+    AUTOCHECKBOX    "Always &deny for this host (saved in the session)", IDC_O52_ALWAYSDENY, 7, 186, 286, 10, WS_GROUP
+    LTEXT           "", IDC_O52_COUNTDOWN, 7, 212, 170, 8
+    PUSHBUTTON      "&Allow", IDC_O52_ALLOW, 183, 209, 52, 14
+    DEFPUSHBUTTON   "Deny", IDCANCEL, 241, 209, 52, 14
 END
 
 /* Generic notice: a caption, a block of text, and OK. A real dialog rather than a
@@ -309,28 +310,28 @@ END
  * starting point, kitty_notice_box() expands it at the dialog's font. NOT a DPI
  * matter: a MessageBox is drawn by Windows and scales correctly (see the corrected
  * note in kitty_win.c). */
-IDD_NOTICEBOX DIALOGEX DISCARDABLE 0, 0, 260, 92
+IDD_NOTICEBOX DIALOGEX DISCARDABLE 0, 0, 260, 90
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY"
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_NOTICE_TEXT, 10, 9, 240, 56
-    DEFPUSHBUTTON   "OK", IDOK, 206, 72, 44, 14
+    DEFPUSHBUTTON   "OK", IDOK, 206, 70, 44, 14
 END
 
 /* Yes/No confirmation, with an optional second line drawn in RED. Heights here are
  * a starting point: kitty_confirm_box() grows both text controls to fit and moves
  * the buttons down. "No" is the DEFAULT - this is asked when something is about to
  * be overwritten, so a reflex Return must not confirm it. */
-IDD_CONFIRMBOX DIALOGEX DISCARDABLE 0, 0, 280, 116
+IDD_CONFIRMBOX DIALOGEX DISCARDABLE 0, 0, 280, 111
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY"
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_CONFIRM_TEXT, 10, 9, 260, 56
-    LTEXT           "", IDC_CONFIRM_WARN, 10, 70, 260, 16
-    PUSHBUTTON      "&Yes", IDYES, 166, 94, 50, 14
-    DEFPUSHBUTTON   "&No", IDNO, 220, 94, 50, 14
+    LTEXT           "", IDC_CONFIRM_WARN, 10, 68, 260, 16
+    PUSHBUTTON      "&Yes", IDYES, 166, 89, 50, 14
+    DEFPUSHBUTTON   "&No", IDNO, 220, 89, 50, 14
 END
 
 IDD_INFOBOX DIALOGEX DISCARDABLE 0, 0, 350, 28
@@ -345,13 +346,13 @@ END
  * readable while commands are typed into the send-text box (the old modal
  * MessageBox blocked exactly that box). Text is filled in at runtime from the
  * internal_commands[] table; handled by HelpBoxProc in kitty/kitty_commands.c. */
-IDD_HELPBOX DIALOGEX DISCARDABLE 0, 0, 330, 240
+IDD_HELPBOX DIALOGEX DISCARDABLE 0, 0, 330, 238
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX | WS_MAXIMIZEBOX
 CAPTION "KiTTY internal commands"
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     EDITTEXT        IDC_HELPTEXT, 3, 3, 324, 214, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL
-    DEFPUSHBUTTON   "Close", IDCANCEL, 274, 222, 52, 14
+    DEFPUSHBUTTON   "Close", IDCANCEL, 274, 220, 52, 14
 END
 
 #ifndef NO_MANIFESTS

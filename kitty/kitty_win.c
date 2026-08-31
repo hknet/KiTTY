@@ -3,6 +3,7 @@
 #include "kitty_notice.h"          /* near-the-clock warning window */
 #include "kitty_rc_additions.h"   /* IDD_UPDATEBOX, IDC_UPD_TEXT, IDC_UPD_UPDATE */
 #include "kitty_theme.h"           /* the app-wide colour theme */
+#include "../windows/putty-rc.h"   /* -demo-templates: the shared dialog ids */
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 #include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
 #include <wintrust.h>  /* in-app updater: Authenticode trust verification */
@@ -1201,6 +1202,76 @@ void kitty_info_box( HWND owner, const char *caption, const char *text,
 	cf.info = 1 ; cf.defyes = 0 ;
 	kitty_confirm_run( owner, &cf ) ;
 }
+
+#ifdef KITTY_TEST_BUILD_LABEL
+/*
+ * -demo-templates: page through every template dialog AS AUTHORED - real
+ * resource, real font, no dlgproc filling anything in - so template spacing
+ * can be reviewed by eye without arranging each window's live trigger
+ * (a changed host key, a passphrase save, an update offer...). Esc, Enter or
+ * closing advances to the next; the caption names the template. Review
+ * tooling, reached only via the explicit command-line flag.
+ */
+static INT_PTR CALLBACK kitty_demo_tpl_proc( HWND h, UINT msg, WPARAM wp,
+                                             LPARAM lp ) {
+	switch( msg ) {
+	  case WM_INITDIALOG:
+		if( lp ) SetWindowTextA( h, (const char *)lp ) ;
+		return TRUE ;
+	  case WM_COMMAND:
+		switch( LOWORD(wp) ) {
+		  case IDOK: case IDCANCEL: case IDYES: case IDNO:
+			EndDialog( h, 0 ) ; return TRUE ;
+		}
+		return FALSE ;
+	  case WM_CLOSE: EndDialog( h, 0 ) ; return TRUE ;
+	}
+	return FALSE ;
+}
+
+void kitty_demo_templates( void ) {
+	static const struct { const char *name ; int id ; } tpls[] = {
+		{ "IDD_HOSTKEY (security alert)",   IDD_HOSTKEY },
+		{ "IDD_HK_MOREINFO",                IDD_HK_MOREINFO },
+		{ "IDD_CONFIRMBOX (confirm/info)",  IDD_CONFIRMBOX },
+		{ "IDD_NOTICEBOX",                  IDD_NOTICEBOX },
+		{ "IDD_INFOBOX",                    IDD_INFOBOX },
+		{ "IDD_LOGBOX (event log)",         IDD_LOGBOX },
+		{ "IDD_ABOUTBOX",                   IDD_ABOUTBOX },
+		{ "IDD_LICENCEBOX",                 IDD_LICENCEBOX },
+		{ "IDD_KITTYABOUT",                 IDD_KITTYABOUT },
+		{ "IDD_TITLEVARS",                  IDD_TITLEVARS },
+		{ "IDD_UPDATEBOX",                  IDD_UPDATEBOX },
+		{ "IDD_INPUTBOX",                   IDD_INPUTBOX },
+		{ "IDD_INPUTBOXMULTI",              IDD_INPUTBOXMULTI },
+		{ "IDD_INPUTBOXPW",                 IDD_INPUTBOXPW },
+		{ "IDD_MASTERPW",                   IDD_MASTERPW },
+		{ "IDD_EXPORTPW",                   IDD_EXPORTPW },
+		{ "IDD_EXPORTDONE",                 IDD_EXPORTDONE },
+		{ "IDD_IMPORTPW",                   IDD_IMPORTPW },
+		{ "IDD_MPWMOVED",                   IDD_MPWMOVED },
+		{ "IDD_MIGRATEWARN",                IDD_MIGRATEWARN },
+		{ "IDD_OSC52READ",                  IDD_OSC52READ },
+		{ "IDD_HELPBOX",                    IDD_HELPBOX },
+	} ;
+	size_t i ;
+	/* IDD_HOSTKEY names a window CLASS that ShinyDialogBox normally
+	 * registers; a bare DefDlgProc registration is all the gallery needs. */
+	{
+		WNDCLASSA wc ;
+		memset( &wc, 0, sizeof(wc) ) ;
+		wc.lpfnWndProc = DefDlgProcA ;
+		wc.cbWndExtra = DLGWINDOWEXTRA ;
+		wc.hInstance = GetModuleHandle(NULL) ;
+		wc.lpszClassName = "PuTTYHostKeyDialog" ;
+		RegisterClassA( &wc ) ;   /* already registered = fine */
+	}
+	for( i = 0 ; i < sizeof(tpls)/sizeof(tpls[0]) ; i++ )
+		DialogBoxParamA( GetModuleHandle(NULL),
+			MAKEINTRESOURCEA( tpls[i].id ), NULL,
+			kitty_demo_tpl_proc, (LPARAM)tpls[i].name ) ;
+}
+#endif /* KITTY_TEST_BUILD_LABEL */
 
 /* Show the modeless "update available / up to date" popup over `owner`. It is a
  * real dialog (IDD_UPDATEBOX) so the dialog manager gives it the shell font at

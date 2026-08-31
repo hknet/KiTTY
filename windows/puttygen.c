@@ -3238,6 +3238,28 @@ static NORETURN void opt_error(const char *fmt, ...)
     exit(1);
 }
 
+#ifdef KITTY_TEST_BUILD_LABEL
+/* -demo-templates: shows a template dialog as authored (no dlgproc fills
+ * anything); caption names the template, Esc/Enter/close advances. */
+static INT_PTR CALLBACK kittygen_demo_tpl_proc(HWND h, UINT msg, WPARAM wp,
+                                               LPARAM lp)
+{
+    switch (msg) {
+      case WM_INITDIALOG:
+        if (lp) SetWindowTextA(h, (const char *)lp);
+        return 1;
+      case WM_COMMAND:
+        switch (LOWORD(wp)) {
+          case IDOK: case IDCANCEL: case IDYES: case IDNO:
+            EndDialog(h, 0); return 1;
+        }
+        return 0;
+      case WM_CLOSE: EndDialog(h, 0); return 1;
+    }
+    return 0;
+}
+#endif /* KITTY_TEST_BUILD_LABEL */
+
 int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 {
     int ret;
@@ -3406,6 +3428,28 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 }
             }
             sfree(val);
+#ifdef KITTY_TEST_BUILD_LABEL
+        /* Review tooling: test builds only, like kitty.exe's twin flag. */
+        } else if (match_opt("-demo-templates")) {
+            /* KiTTY: page through this binary's template dialogs as
+             * authored, for spacing review - same idea as kitty.exe's
+             * -demo-templates. Esc/Enter/close advances. */
+            static const struct { const char *name; int id; } tpls[] = {
+                { "201 (main window)",        201 },
+                { "210 (licence prompt?)",    210 },
+                { "213 (about)",              213 },
+                { "214 (licence)",            214 },
+                { "215 (passphrase prompt)",  215 },
+                { "216 (parameters)",         216 },
+                { "IDD_KGHELLODOORS",         IDD_KGHELLODOORS },
+            };
+            for (size_t ti = 0; ti < lenof(tpls); ti++)
+                DialogBoxParamA(GetModuleHandle(NULL),
+                                MAKEINTRESOURCEA(tpls[ti].id), NULL,
+                                kittygen_demo_tpl_proc,
+                                (LPARAM)tpls[ti].name);
+            exit(0);
+#endif
         } else if (match_optval("-demo-screenshot")) {
             demo_screenshot_filename = cmdline_arg_to_filename(valarg);
             cmdline_demo_keystr = PTRLEN_LITERAL(

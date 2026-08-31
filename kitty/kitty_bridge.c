@@ -332,7 +332,7 @@ static INT_PTR CALLBACK KittyAboutProc(HWND hwnd, UINT msg,
             EndDialog(hwnd, 0);
             return 0;
           case IDC_WEBPAGE:
-            ShellExecute(hwnd, "open", "https://www.9bis.net/kitty",
+            ShellExecute(hwnd, "open", "https://github.com/hknet/KiTTY",
                          NULL, NULL, SW_SHOWNORMAL);
             return 0;
         }

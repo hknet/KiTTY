@@ -4088,10 +4088,17 @@ static const char *process_seatdialogtext(
              *end = item + text->nitems; item < end; item++) {
         switch (item->type) {
           case SDT_PARA:
-            put_fmt(dlg_text, "%s\r\n\r\n", item->text);
+            /* KiTTY: single-spaced. Upstream put a blank line after every
+             * paragraph, and since most of them are one sentence the whole
+             * dialog read double-spaced, plainly so at high DPI. The air is
+             * reserved for SDT_DISPLAY below. */
+            put_fmt(dlg_text, "%s\r\n", item->text);
             break;
           case SDT_DISPLAY:
-            put_fmt(dlg_text, "%s\r\n\r\n", item->text);
+            /* The lines a user must visually isolate and compare - the
+             * host:port and the fingerprint - keep a blank line on BOTH
+             * sides, which the tighter paragraphs no longer provide. */
+            put_fmt(dlg_text, "\r\n%s\r\n\r\n", item->text);
             break;
           case SDT_SCARY_HEADING:
             assert(scary_heading != NULL && "only expect a scary heading if "
@@ -4212,7 +4219,11 @@ static INT_PTR HostKeyDialogProc(HWND hwnd, UINT msg,
 
         ShowWindow(hwnd, SW_SHOWNORMAL);
 
-        return 1;
+        /* Focus starts on Cancel, the guaranteed-safe answer. This used to
+         * be an accident of declaration order; the buttons are now declared
+         * left-to-right for the Tab order, so the safety is stated here. */
+        SetFocus(GetDlgItem(hwnd, IDCANCEL));
+        return 0;
       }
       case WM_CTLCOLORSTATIC: {
         HDC hdc = (HDC)wParam;
