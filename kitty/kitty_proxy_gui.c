@@ -19,6 +19,7 @@
 #include "kitty_proxy.h"
 #include "kitty_text.h"   /* the words the panels show */
 #include "kitty_rc_additions.h"
+#include "kitty_msgbox.h"   /* themed MessageBox routing */
 
 /* Type combo order -> CONF_proxy_type. The SSH types make a named proxy a
  * reusable jump host (the command field is the remote command/subsystem for
@@ -76,107 +77,6 @@ static int pxe_default_port(int proxy_type)
     }
 }
 
-static void pxe_combo_fill(HWND hdlg, int id, const char *const *names, int n)
-{
-    HWND cb = GetDlgItem(hdlg, id);
-    for (int i = 0; i < n; i++) SendMessageA(cb, CB_ADDSTRING, 0, (LPARAM)names[i]);
-}
-static void pxe_combo_select_val(HWND hdlg, int id, const int *vals, int n, int val)
-{
-    int sel = 0;
-    for (int i = 0; i < n; i++) if (vals[i] == val) sel = i;
-    SendMessage(GetDlgItem(hdlg, id), CB_SETCURSEL, sel, 0);
-}
-static int pxe_combo_get_val(HWND hdlg, int id, const int *vals, int n)
-{
-    int sel = (int)SendMessage(GetDlgItem(hdlg, id), CB_GETCURSEL, 0, 0);
-    if (sel < 0 || sel >= n) sel = 0;
-    return vals[sel];
-}
-
-static int g_pxe_changed;   /* set when a definition was saved or deleted */
-/*
- * The port WE last filled in from the type, or 0.
- *
- * Needed because arrowing through the type list with the keyboard sends a
- * selection change for every entry passed over: the first one (SOCKS 4) filled
- * 1080, and every later type then found a non-empty box and left it alone, so
- * the user landed on "SSH jump host" holding a SOCKS port they never typed
- *. A port we put there may be replaced; a port the user
- * typed never is, and the two are only distinguishable by remembering ours.
- */
-static int g_pxe_autoport;
-/* Definition to open the editor ON, or NULL for defaults. Set by
- * kitty_proxy_edit_dialog_for() and consumed in WM_INITDIALOG. */
-static char *g_pxe_preselect = NULL;
-
-static void pxe_fill_names(HWND hdlg)
-{
-    HWND cb = GetDlgItem(hdlg, IDC_PXE_NAME);
-    SendMessage(cb, CB_RESETCONTENT, 0, 0);
-    for (int i = 2; i < MAX_PROXY && proxies[i].name; i++)
-        SendMessageA(cb, CB_ADDSTRING, 0, (LPARAM)proxies[i].name);
-}
-
-/* Warn (once, at the top) if any definition still has an unencrypted password;
- * blank when all are protected or in explicit legacy mode. */
-static void pxe_update_banner(HWND hdlg)
-{
-    SetDlgItemTextA(hdlg, IDC_PXE_BANNER,
-        kitty_proxy_any_plaintext_password()
-        ? "Some proxies have an unencrypted password \x97 open each and Save to protect it."
-        : "");
-}
-
-static void pxe_conf_to_fields(HWND hdlg, Conf *conf)
-{
-    int t = conf_get_int(conf, CONF_proxy_type), sel = 0;
-    for (int i = 0; i < PXE_NTYPES; i++)
-        if (pxe_types[i] == t) sel = i;
-    SendMessage(GetDlgItem(hdlg, IDC_PXE_TYPE), CB_SETCURSEL, sel, 0);
-    SetDlgItemTextA(hdlg, IDC_PXE_HOST, conf_get_str(conf, CONF_proxy_host));
-    { int pp = conf_get_int(conf, CONF_proxy_port);
-      if (pp > 0) SetDlgItemInt(hdlg, IDC_PXE_PORT, pp, FALSE);
-      else SetDlgItemTextA(hdlg, IDC_PXE_PORT, ""); }   /* 0 -> blank (new proxy) */
-    SetDlgItemTextA(hdlg, IDC_PXE_USER, conf_get_str(conf, CONF_proxy_username));
-    SetDlgItemTextA(hdlg, IDC_PXE_PASS, conf_get_str(conf, CONF_proxy_password));
-    SetDlgItemTextA(hdlg, IDC_PXE_COMMAND, conf_get_str(conf, CONF_proxy_telnet_command));
-    SetDlgItemTextA(hdlg, IDC_PXE_EXCLUDE, conf_get_str(conf, CONF_proxy_exclude_list));
-    CheckDlgButton(hdlg, IDC_PXE_LOCALHOST,
-                   conf_get_bool(conf, CONF_even_proxy_localhost) ? BST_CHECKED : BST_UNCHECKED);
-    pxe_combo_select_val(hdlg, IDC_PXE_DNS, pxe_dns_vals, PXE_NDNS,
-                         conf_get_int(conf, CONF_proxy_dns));
-    pxe_combo_select_val(hdlg, IDC_PXE_LOGTOTERM, pxe_log_vals, PXE_NLOG,
-                         conf_get_int(conf, CONF_proxy_log_to_term));
-    pxe_combo_select_val(hdlg, IDC_PXE_HOSTIS, pxe_hostis_vals, PXE_NHOSTIS,
-                         conf_get_int(conf, CONF_proxy_host_kind));
-    /* Whatever port is showing now came from the definition, not from us. */
-    g_pxe_autoport = 0;
-}
-
-static void pxe_fields_to_conf(HWND hdlg, Conf *conf)
-{
-    char buf[4096];
-    int sel = (int)SendMessage(GetDlgItem(hdlg, IDC_PXE_TYPE), CB_GETCURSEL, 0, 0);
-    if (sel < 0 || sel >= PXE_NTYPES) sel = 0;
-    conf_set_int(conf, CONF_proxy_type, pxe_types[sel]);
-    GetDlgItemTextA(hdlg, IDC_PXE_HOST, buf, sizeof(buf)); conf_set_str(conf, CONF_proxy_host, buf);
-    conf_set_int(conf, CONF_proxy_port, GetDlgItemInt(hdlg, IDC_PXE_PORT, NULL, FALSE));
-    GetDlgItemTextA(hdlg, IDC_PXE_USER, buf, sizeof(buf)); conf_set_str(conf, CONF_proxy_username, buf);
-    GetDlgItemTextA(hdlg, IDC_PXE_PASS, buf, sizeof(buf)); conf_set_str(conf, CONF_proxy_password, buf);
-    GetDlgItemTextA(hdlg, IDC_PXE_COMMAND, buf, sizeof(buf)); conf_set_str(conf, CONF_proxy_telnet_command, buf);
-    GetDlgItemTextA(hdlg, IDC_PXE_EXCLUDE, buf, sizeof(buf)); conf_set_str(conf, CONF_proxy_exclude_list, buf);
-    conf_set_bool(conf, CONF_even_proxy_localhost,
-                  IsDlgButtonChecked(hdlg, IDC_PXE_LOCALHOST) == BST_CHECKED);
-    conf_set_int(conf, CONF_proxy_dns,
-                 pxe_combo_get_val(hdlg, IDC_PXE_DNS, pxe_dns_vals, PXE_NDNS));
-    conf_set_int(conf, CONF_proxy_log_to_term,
-                 pxe_combo_get_val(hdlg, IDC_PXE_LOGTOTERM, pxe_log_vals, PXE_NLOG));
-    conf_set_int(conf, CONF_proxy_host_kind,
-                 pxe_combo_get_val(hdlg, IDC_PXE_HOSTIS, pxe_hostis_vals, PXE_NHOSTIS));
-}
-
-/* A fresh conf with valid defaults for the proxy fields we don't expose. */
 static Conf *pxe_new_conf(void)
 {
     Conf *conf = conf_new();
@@ -195,226 +95,12 @@ static Conf *pxe_new_conf(void)
     return conf;
 }
 
-static void pxe_load_named(HWND hdlg, const char *name)
-{
-    Conf *conf = pxe_new_conf();
-    if (name && name[0])
-        LoadProxyInfo(conf, name);   /* overlays the definition's Proxy* fields */
-    pxe_conf_to_fields(hdlg, conf);
-    conf_free(conf);
-}
-
-/* Whether the Session-panel Proxy-choice row exists is decided when the config
- * box is built, so in "auto" mode crossing 0<->1 named proxies only takes effect
- * on the next config-box open. Tell the user once, when it matters (auto mode
- * only; "yes"/"no" have a fixed row). appearing=1: first proxy just added;
- * appearing=0: last proxy just removed. */
-static void pxe_note_reopen(HWND hdlg, int appearing)
-{
-    if (GetProxySelectionFlag() != 0)    /* only "auto" shows/hides by count */
-        return;
-    MessageBoxA(hdlg, appearing
-        ? "Proxy defined.\r\n\r\nThe proxy-override droplist will appear in the "
-          "Session panel the next time a configuration window is opened - start "
-          "a new KiTTY, or use the system-menu \"Change Settings...\" of a running "
-          "session (that just reopens the config box; it does NOT disconnect or "
-          "affect the live session)."
-        : "The last named proxy was removed.\r\n\r\nThe proxy-override droplist "
-          "will disappear from the Session panel the next time a configuration "
-          "window is opened - start a new KiTTY, or use the system-menu \"Change "
-          "Settings...\" of a running session (that just reopens the config box; "
-          "it does NOT disconnect or affect the live session).",
-        "KiTTY named proxy", MB_OK | MB_ICONINFORMATION);
-}
-
-static INT_PTR CALLBACK pxe_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
-{
-    switch (msg) {
-      case WM_INITDIALOG: {
-        HWND tc = GetDlgItem(hdlg, IDC_PXE_TYPE);
-        for (int i = 0; i < PXE_NTYPES; i++)
-            SendMessageA(tc, CB_ADDSTRING, 0, (LPARAM)pxe_type_names[i]);
-        pxe_combo_fill(hdlg, IDC_PXE_DNS, pxe_dns_names, PXE_NDNS);
-        pxe_combo_fill(hdlg, IDC_PXE_LOGTOTERM, pxe_log_names, PXE_NLOG);
-        pxe_combo_fill(hdlg, IDC_PXE_HOSTIS, pxe_hostis_names, PXE_NHOSTIS);
-        pxe_fill_names(hdlg);
-        /* Open on the definition the caller named - normally the one selected in
-         * the override droplist that the Edit button sits beside. Built-ins are
-         * not definitions, so the caller passes NULL for those. */
-        if (g_pxe_preselect) {
-            HWND cb = GetDlgItem(hdlg, IDC_PXE_NAME);
-            int idx = (int)SendMessageA(cb, CB_FINDSTRINGEXACT,
-                                        (WPARAM)-1, (LPARAM)g_pxe_preselect);
-            if (idx != CB_ERR) {
-                SendMessage(cb, CB_SETCURSEL, idx, 0);
-                pxe_load_named(hdlg, g_pxe_preselect);
-            } else {
-                pxe_load_named(hdlg, NULL);
-            }
-        } else {
-            pxe_load_named(hdlg, NULL);   /* defaults (incl. command / DNS / diagnostics) */
-        }
-        pxe_update_banner(hdlg);
-        SetForegroundWindow(hdlg);
-        return TRUE;
-      }
-
-      case WM_COMMAND:
-        switch (LOWORD(wp)) {
-          case IDC_PXE_TYPE:
-            /* KiTTY: picking a type fills in that type's usual port, but only
-             * into an EMPTY box - a port somebody typed is never overwritten.
-             * An unset port used to travel all the way to the connection as
-             * port 0 and surface as "Cannot assign requested address", which
-             * reads as a network fault rather than a blank field. */
-            if (HIWORD(wp) == CBN_SELCHANGE) {
-                BOOL ok = FALSE;
-                UINT cur = GetDlgItemInt(hdlg, IDC_PXE_PORT, &ok, FALSE);
-                /* Empty, or still showing the port we filled in ourselves. */
-                if (!ok || cur == 0 || (g_pxe_autoport && (int)cur == g_pxe_autoport)) {
-                    int sel = (int)SendMessage(GetDlgItem(hdlg, IDC_PXE_TYPE),
-                                               CB_GETCURSEL, 0, 0);
-                    int port = pxe_default_port(sel >= 0 && sel < PXE_NTYPES
-                                                ? pxe_types[sel] : PROXY_NONE);
-                    if (port > 0) {
-                        SetDlgItemInt(hdlg, IDC_PXE_PORT, port, FALSE);
-                        g_pxe_autoport = port;
-                    }
-                }
-            }
-            return TRUE;
-
-          case IDC_PXE_NAME:
-            if (HIWORD(wp) == CBN_SELCHANGE) {
-                HWND cb = GetDlgItem(hdlg, IDC_PXE_NAME);
-                int idx = (int)SendMessage(cb, CB_GETCURSEL, 0, 0);
-                if (idx >= 0) {
-                    char name[512];
-                    SendMessageA(cb, CB_GETLBTEXT, idx, (LPARAM)name);
-                    pxe_load_named(hdlg, name);
-                }
-            }
-            return TRUE;
-
-          case IDC_PXE_SHOWPW: {
-            BOOL show = (IsDlgButtonChecked(hdlg, IDC_PXE_SHOWPW) == BST_CHECKED);
-            HWND pw = GetDlgItem(hdlg, IDC_PXE_PASS);
-            SendMessage(pw, EM_SETPASSWORDCHAR, show ? 0 : (WPARAM)'*', 0);
-            InvalidateRect(pw, NULL, TRUE);
-            return TRUE;
-          }
-
-          case IDC_PXE_SAVE: {
-            char name[512];
-            GetDlgItemTextA(hdlg, IDC_PXE_NAME, name, sizeof(name));
-            /* trim trailing/leading spaces */
-            char *p = name; while (*p == ' ') p++;
-            size_t l = strlen(p); while (l && p[l-1] == ' ') p[--l] = '\0';
-            if (!p[0]) {
-                MessageBoxA(hdlg, "Please enter a name for the proxy.", "KiTTY",
-                            MB_OK | MB_ICONINFORMATION);
-                return TRUE;
-            }
-            if (!strcmp(p, KITTY_PROXY_SESSION) || !strcmp(p, KITTY_PROXY_NONE)) {
-                MessageBoxA(hdlg, "That name is reserved.", "KiTTY",
-                            MB_OK | MB_ICONWARNING);
-                return TRUE;
-            }
-            /* KiTTY: a type that connects somewhere needs a port, and leaving
-             * the box empty is easy to do. Ask rather than saving a definition
-             * that can only fail later, at connect time, as a network error. */
-            {
-                int tsel = (int)SendMessage(GetDlgItem(hdlg, IDC_PXE_TYPE),
-                                            CB_GETCURSEL, 0, 0);
-                int ttype = (tsel >= 0 && tsel < PXE_NTYPES)
-                            ? pxe_types[tsel] : PROXY_NONE;
-                int want = pxe_default_port(ttype);
-                BOOL ok = FALSE;
-                UINT port = GetDlgItemInt(hdlg, IDC_PXE_PORT, &ok, FALSE);
-                if (want > 0 && (!ok || port == 0)) {
-                    char q[256];
-                    snprintf(q, sizeof(q),
-                             "This proxy has no port. Use the usual port %d for "
-                             "this type?\n\nChoose No to go back and type one.",
-                             want);
-                    if (MessageBoxA(hdlg, q, "KiTTY",
-                                    MB_YESNO | MB_ICONQUESTION) != IDYES) {
-                        SetFocus(GetDlgItem(hdlg, IDC_PXE_PORT));
-                        return TRUE;
-                    }
-                    SetDlgItemInt(hdlg, IDC_PXE_PORT, want, FALSE);
-                }
-            }
-            int was_empty = !kitty_has_proxy_definitions();
-            Conf *conf = pxe_new_conf();
-            LoadProxyInfo(conf, p);        /* preserve unexposed fields when editing */
-            pxe_fields_to_conf(hdlg, conf);
-            SaveProxyInfo(conf, p);
-            conf_free(conf);
-            g_pxe_changed = 1;
-            InitProxyList();               /* rescan so the combo reflects it */
-            pxe_fill_names(hdlg);
-            pxe_update_banner(hdlg);       /* saving this one may clear the warning */
-            if (was_empty && kitty_has_proxy_definitions())
-                pxe_note_reopen(hdlg, 1);  /* 0->1: Session-panel row needs a reopen */
-            int idx = (int)SendMessageA(GetDlgItem(hdlg, IDC_PXE_NAME),
-                                        CB_FINDSTRINGEXACT, (WPARAM)-1, (LPARAM)p);
-            if (idx >= 0)
-                SendMessage(GetDlgItem(hdlg, IDC_PXE_NAME), CB_SETCURSEL, idx, 0);
-            else
-                SetDlgItemTextA(hdlg, IDC_PXE_NAME, p);
-            return TRUE;
-          }
-
-          case IDC_PXE_DELETE: {
-            char name[512];
-            GetDlgItemTextA(hdlg, IDC_PXE_NAME, name, sizeof(name));
-            if (!name[0]) return TRUE;
-            char msg[600];
-            snprintf(msg, sizeof(msg), "Delete the named proxy \"%s\"?", name);
-            if (MessageBoxA(hdlg, msg, "KiTTY named proxy",
-                            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
-                return TRUE;
-            DeleteProxyInfo(name);
-            g_pxe_changed = 1;
-            InitProxyList();
-            pxe_fill_names(hdlg);
-            pxe_update_banner(hdlg);
-            if (!kitty_has_proxy_definitions())
-                pxe_note_reopen(hdlg, 0);  /* 1->0: Session-panel row needs a reopen */
-            SetDlgItemTextA(hdlg, IDC_PXE_NAME, "");
-            pxe_load_named(hdlg, NULL);    /* clear fields to defaults */
-            return TRUE;
-          }
-
-          case IDCANCEL:
-            EndDialog(hdlg, g_pxe_changed);
-            return TRUE;
-        }
-        break;
-
-      case WM_CLOSE:
-        EndDialog(hdlg, g_pxe_changed);
-        return TRUE;
-    }
-    return FALSE;
-}
-
-/* Launch the editor. Returns 1 if any definition was created/edited/deleted, so
- * the caller can rescan/refresh the config box's proxy droplist.
- *
- * `preselect` is the definition to open on, or NULL to start on defaults. The Edit
- * button beside the override droplist passes whatever is selected there: if a
- * named proxy is showing, that is overwhelmingly the one the user means to edit,
- * and making them pick it again in a second combo is busywork. */
-
 /* ------------------------------------------------------------------ *
  * The Application tab's "Named proxies" panel (design §9.3b).
  *
- * The same definitions the IDD_PROXYEDIT window edits, as an ordinary config
- * box panel: it inherits the theme, the font, the panel cache and the panel
- * area's scrolling instead of being a pop-up that has to be kept in step with
- * all four by hand.
+ * An ordinary config box panel: it inherits the theme, the font, the panel
+ * cache and the panel area's scrolling. It replaced a pop-up editor
+ * (IDD_PROXYEDIT) that had to be kept in step with all four by hand.
  *
  * WHAT IS EDITED. A named proxy is a set of Proxy* fields stored under a name,
  * and the store is three calls - LoadProxyInfo, SaveProxyInfo, DeleteProxyInfo.
@@ -434,7 +120,6 @@ static INT_PTR CALLBACK pxe_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
  * handler's context, which is already spoken for by the Conf key each field
  * edits.
  */
-
 struct pxpanel_data {
     Conf *conf;                 /* the definition being edited */
     char *name;                 /* its name, as picked or typed */
@@ -455,6 +140,7 @@ struct pxpanel_data {
     bool port_typed;
     bool dirty;                 /* edited since the last Save */
 };
+
 static struct pxpanel_data *g_pxp = NULL;
 
 /* The value tables above, chosen by which Conf field the control edits. */
@@ -903,20 +589,4 @@ void kitty_proxy_build_panel(struct controlbox *b)
     ctrl_columns(s, 1, 100);
 }
 
-int kitty_proxy_edit_dialog_for(HWND owner, const char *preselect)
-{
-    g_pxe_changed = 0;
-    InitProxyList();
-    sfree(g_pxe_preselect);
-    g_pxe_preselect = (preselect && *preselect) ? dupstr(preselect) : NULL;
-    DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_PROXYEDIT), owner, pxe_dlgproc);
-    sfree(g_pxe_preselect);
-    g_pxe_preselect = NULL;
-    return g_pxe_changed;
-}
-
-int kitty_proxy_edit_dialog(HWND owner)
-{
-    return kitty_proxy_edit_dialog_for(owner, NULL);
-}
 

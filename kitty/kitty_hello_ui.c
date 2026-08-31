@@ -93,8 +93,8 @@ static const DLGTEMPLATE *hui_build_printout(struct hui_tpl *t)
     hui_put_w(t, 0);                   /* no menu */
     hui_put_w(t, 0);                   /* default window class */
     hui_put_wstr(t, L"");              /* title set at WM_INITDIALOG */
-    hui_put_w(t, 8);                   /* font size */
-    hui_put_wstr(t, L"MS Shell Dlg");
+    hui_put_w(t, 9);                   /* font size */
+    hui_put_wstr(t, L"Segoe UI");      /* like every converted RC template */
 
     hui_item(t, SS_LEFT, 10, 10, 340, 56, HUI_ID_NOTE, 0x82, L"");
     hui_item(t, ES_READONLY | ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP,

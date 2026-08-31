@@ -13,7 +13,7 @@ int kitty_has_proxy_definitions( void ) ;
 int kitty_proxy_choice_shown( void ) ;
 int kitty_proxy_editor_available( void ) ;
 /* The Application tab's "Named proxies" panel (design 9.3b): the same
- * definitions IDD_PROXYEDIT edits, as an ordinary config-box panel. */
+ * named-proxy definitions, as an ordinary config-box panel. */
 struct controlbox ;
 void kitty_proxy_build_panel( struct controlbox *b ) ;
 void kitty_proxy_panel_preselect( const char *name ) ;
@@ -35,7 +35,6 @@ int kitty_proxies_dir_collisions( const char *dir ) ;
 int kitty_proxy_host_kind( const char *name ) ;   /* one of the three above */
 int kitty_named_proxy_default_hostname( void ) ;  /* the global, 0/1 */
 
-int kitty_proxy_edit_dialog( HWND owner ) ;   /* kitty_proxy_gui.c */
 void SetProxySelectionFlag( const int flag ) ;
 int LoadProxyInfo( Conf * conf, const char * name ) ;
 void InitProxyList(void) ;

@@ -26,6 +26,7 @@
 #include "kitty.h"
 #include "kitty_workplace.h"   /* the frame's resting state while the mode is on */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
+#include "kitty_msgbox.h"   /* themed MessageBox routing */
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
 void kitty_refresh_title(void);        /* windows/window.c */

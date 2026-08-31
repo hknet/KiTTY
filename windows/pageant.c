@@ -4069,6 +4069,42 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
          * (registry gained the third state), so nothing is hidden here. */
         /* KiTTY: the layout baseline for resizing - captured now, after the
          * ini-mode rows above may have shrunk the template. */
+        /*
+         * THE ROW-ALIGNER, exactly as in the audit-log window: a closed
+         * combo sizes itself from the font whatever the template says, and
+         * the template's 14-DLU row only happens to equal that at 96 DPI.
+         * At 200% the combo comes out shorter than the row and top-anchored,
+         * ~9px above the label and checkbox beside it. So here too the
+         * combo's natural height IS the row and everything else on it is
+         * snapped to that top and height. It MUST run before
+         * keylist_capture_layout: the anchors replay captured rects on
+         * every resize, so rects captured before the snap would scatter
+         * the row again the first time the window is resized - which is
+         * exactly what happened on 2026-08-31.
+         */
+        {
+            static const int row_ids[] = {
+                IDC_KEYLIST_FPTYPE_STATIC, IDC_KEYLIST_SHOWUNAVAIL,
+                IDC_KEYLIST_RETRY, IDC_KEYLIST_INISTATUS,
+            };
+            HWND combo = GetDlgItem(hwnd, IDC_KEYLIST_FPTYPE);
+            RECT cr;
+            size_t ri;
+            GetWindowRect(combo, &cr);
+            MapWindowPoints(NULL, hwnd, (POINT *)&cr, 2);
+            for (ri = 0; ri < lenof(row_ids); ri++) {
+                HWND c = GetDlgItem(hwnd, row_ids[ri]);
+                RECT r;
+                if (!c)
+                    continue;
+                GetWindowRect(c, &r);
+                MapWindowPoints(NULL, hwnd, (POINT *)&r, 2);
+                SetWindowPos(c, NULL, r.left, cr.top,
+                             r.right - r.left, cr.bottom - cr.top,
+                             SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+        }
+
         keylist_capture_layout(hwnd);
 
         /*

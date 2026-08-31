@@ -806,7 +806,7 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 	char tmpdir[MAX_PATH]="", tmpbase[MAX_PATH]="", tmpfile[MAX_PATH]="" ;
 	if( !GetTempPathA( sizeof(tmpdir), tmpdir ) ||
 	    !GetTempFileNameA( tmpdir, "kty", 0, tmpbase ) ) {
-		MessageBox( owner, "Could not create a temporary installer path; aborting the update.",
+		kitty_message_box( owner, "Could not create a temporary installer path; aborting the update.",
 			"KiTTY Update", MB_OK|MB_ICONERROR ) ;
 		return ;
 	}
@@ -817,7 +817,7 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 	int dok = kitty_download_to_file( asseturl, tmpfile ) ;
 	SetCursor( oldc ) ;
 	if( !dok ) {
-		MessageBox( owner, "Download failed. Opening the download page instead.",
+		kitty_message_box( owner, "Download failed. Opening the download page instead.",
 			"KiTTY Update", MB_OK|MB_ICONERROR ) ;
 		ShellExecute( owner, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
 		return ;
@@ -828,7 +828,7 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 		NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ;
 	if( updguard == INVALID_HANDLE_VALUE ) {
 		DeleteFileA( tmpfile ) ;
-		MessageBox( owner, "Could not secure the downloaded installer; aborting the update.",
+		kitty_message_box( owner, "Could not secure the downloaded installer; aborting the update.",
 			"KiTTY Update", MB_OK|MB_ICONERROR ) ;
 		return ;
 	}
@@ -836,7 +836,7 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 	if( !kitty_authenticode_verify( tmpfile ) ) {
 		CloseHandle( updguard ) ;
 		DeleteFileA( tmpfile ) ;
-		MessageBox( owner, "The downloaded installer FAILED signature verification "
+		kitty_message_box( owner, "The downloaded installer FAILED signature verification "
 			"and was NOT run; it has been deleted.\n\nPlease install KiTTY only "
 			"from the official release page.",
 			"KiTTY Update - signature rejected", MB_OK|MB_ICONERROR ) ;
@@ -845,7 +845,7 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 	if( !kitty_run_installer( owner, itype, tmpfile ) ) {
 		CloseHandle( updguard ) ;
 		DeleteFileA( tmpfile ) ;
-		MessageBox( owner, "Could not start the verified installer. The downloaded file has been deleted.",
+		kitty_message_box( owner, "Could not start the verified installer. The downloaded file has been deleted.",
 			"KiTTY Update", MB_OK|MB_ICONERROR ) ;
 		return ;
 	}
@@ -1026,6 +1026,8 @@ typedef struct {
 	const char *text ;
 	const char *warn ;   /* NULL/"" = no red line, and that row collapses */
 	int info ;           /* 1 = one OK button instead of Yes/No */
+	int defyes ;         /* 1 = Yes is the default (close-confirm keeps
+	                      * Enter meaning close); everything else stays No */
 } kitty_confirm_t ;
 
 /* Grow one text control to fit its text at the DIALOG's font, offset by extra_dy,
@@ -1087,7 +1089,13 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			  SetWindowPos( h, NULL, 0, 0, wr.right-wr.left,
 				(wr.bottom-wr.top)+dh, SWP_NOMOVE|SWP_NOZORDER ) ; }
 		}
-		SetFocus( GetDlgItem( h, IDNO ) ) ;
+		if( cf && cf->defyes && !cf->info ) {
+			SendMessage( h, DM_SETDEFID, IDYES, 0 ) ;
+			SendDlgItemMessage( h, IDNO, BM_SETSTYLE, BS_PUSHBUTTON, TRUE ) ;
+			SendDlgItemMessage( h, IDYES, BM_SETSTYLE, BS_DEFPUSHBUTTON, TRUE ) ;
+			SetFocus( GetDlgItem( h, IDYES ) ) ;
+		} else
+			SetFocus( GetDlgItem( h, IDNO ) ) ;
 		return FALSE ;                     /* focus set here, not by the manager */
 	  }
 	  case WM_CTLCOLORSTATIC:
@@ -1102,6 +1110,12 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 	  case WM_COMMAND:
 		switch( LOWORD(wp) ) {
 		  case IDYES: EndDialog( h, 1 ) ; return TRUE ;
+		  case IDOK:
+			/* Only the info dress has an OK to press (drivers that used to
+			 * answer a MessageBox send IDOK); on a real question OK must
+			 * not silently mean Yes. */
+			if( cf && cf->info ) { EndDialog( h, 0 ) ; return TRUE ; }
+			return FALSE ;
 		  case IDNO:
 		  case IDCANCEL: EndDialog( h, 0 ) ; return TRUE ;
 		}
@@ -1111,14 +1125,71 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 	return FALSE ;
 }
 
+/* If the dialog cannot be created at all (-1: out of resources, or so early or
+ * so broken that no template loads), fall back to a plain MessageBox with the
+ * same words - a fatal error must never pass unshown. */
+static INT_PTR kitty_confirm_run( HWND owner, const kitty_confirm_t *cf ) {
+	INT_PTR r = DialogBoxParamA( GetModuleHandle(NULL),
+		MAKEINTRESOURCEA(IDD_CONFIRMBOX), owner, kitty_confirm_dlgproc,
+		(LPARAM)cf ) ;
+	if( r == -1 ) {
+		char *joined = NULL ;
+		const char *body = cf->text ? cf->text : "" ;
+		if( cf->warn && cf->warn[0] ) {
+			joined = malloc( strlen(body) + strlen(cf->warn) + 3 ) ;
+			if( joined ) sprintf( joined, "%s\n\n%s", body, cf->warn ) ;
+		}
+		r = ( MessageBoxA( owner, joined ? joined : body, cf->caption,
+			cf->info ? (MB_OK|MB_ICONINFORMATION)
+			         : (MB_YESNO|MB_ICONWARNING|
+			            (cf->defyes ? MB_DEFBUTTON1 : MB_DEFBUTTON2)) )
+			== IDYES ) ? 1 : 0 ;
+		if( joined ) free( joined ) ;
+	}
+	return r ;
+}
+
 /* True only if Yes was pressed. No, Escape and closing the box all mean no, which
  * is the safe reading of every one of them. */
 int kitty_confirm_box( HWND owner, const char *caption, const char *text,
                        const char *warn_red ) {
 	kitty_confirm_t cf ;
-	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ; cf.info = 0 ;
-	return DialogBoxParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_CONFIRMBOX),
-		owner, kitty_confirm_dlgproc, (LPARAM)&cf ) == 1 ;
+	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ;
+	cf.info = 0 ; cf.defyes = 0 ;
+	return kitty_confirm_run( owner, &cf ) == 1 ;
+}
+
+/* The same question with Yes as the default: for confirmations where Enter has
+ * always meant "go ahead" (closing a window) and must keep meaning that. */
+int kitty_confirm_box_yes( HWND owner, const char *caption, const char *text,
+                           const char *warn_red ) {
+	kitty_confirm_t cf ;
+	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ;
+	cf.info = 0 ; cf.defyes = 1 ;
+	return kitty_confirm_run( owner, &cf ) == 1 ;
+}
+
+/* The MessageBox shapes the suite actually uses, in the themed dress: MB_OK
+ * becomes the info box, MB_YESNO the confirm box with the site's own default
+ * button kept. Anything else - a three-way choice, a system-modal fatal - is
+ * not imitated and goes to the real MessageBox unchanged. Call sites reach
+ * this through kitty_msgbox.h without being edited. */
+int kitty_message_box( HWND owner, const char *text, const char *caption,
+                       unsigned type ) {
+	unsigned btns = type & MB_TYPEMASK ;
+	if( !(type & (MB_SYSTEMMODAL|MB_TASKMODAL)) ) {
+		if( btns == MB_OK ) {
+			kitty_info_box( owner, caption, text, NULL ) ;
+			return IDOK ;
+		}
+		if( btns == MB_YESNO ) {
+			int yes = ( (type & MB_DEFMASK) == MB_DEFBUTTON2 )
+				? kitty_confirm_box( owner, caption, text, NULL )
+				: kitty_confirm_box_yes( owner, caption, text, NULL ) ;
+			return yes ? IDYES : IDNO ;
+		}
+	}
+	return MessageBoxA( owner, text, caption, type ) ;
 }
 
 /* The same themed box carrying an announcement rather than a question: one
@@ -1126,9 +1197,9 @@ int kitty_confirm_box( HWND owner, const char *caption, const char *text,
 void kitty_info_box( HWND owner, const char *caption, const char *text,
                      const char *warn_red ) {
 	kitty_confirm_t cf ;
-	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ; cf.info = 1 ;
-	DialogBoxParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_CONFIRMBOX),
-		owner, kitty_confirm_dlgproc, (LPARAM)&cf ) ;
+	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ;
+	cf.info = 1 ; cf.defyes = 0 ;
+	kitty_confirm_run( owner, &cf ) ;
 }
 
 /* Show the modeless "update available / up to date" popup over `owner`. It is a
@@ -1413,7 +1484,7 @@ void PopUpSystemMenu( HWND hwnd, int npos ) {
 HWND kitty_cfg_modal_owner(void);
 
 int kitty_autopw_warn( void ) {
-	int r = MessageBox( kitty_cfg_modal_owner(),
+	int r = kitty_message_box( kitty_cfg_modal_owner(),
 		"You are setting a KiTTY auto-login password.\r\n\r\n"
 		"SECURITY: this password is saved in your session settings in a "
 		"REVERSIBLY-ENCRYPTED form. Anyone with access to this machine or to "

@@ -24,6 +24,7 @@
 #include "kitty_win.h"       /* OpenFileName */
 #include "kitty_hello_keys.h" /* kageant_hello_has_sidecar */
 #include "ssh.h"             /* the agent protocol, for the "is it loaded?" check */
+#include "kitty_msgbox.h"   /* themed MessageBox routing */
 /*
  * KiTTY: log a command line that had a password built into it.
  *

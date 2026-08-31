@@ -24,6 +24,7 @@
 #include "kitty_migrate.h" /* Application > Migration: the session importer */
 #include "kitty_text.h"    /* the words the panels show */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
+#include "kitty_msgbox.h"   /* themed MessageBox routing */
 #endif
 
 #ifdef MOD_PERSO
@@ -1171,7 +1172,6 @@ static void kitty_proxyedit_handler(dlgcontrol *ctrl, dlgparam *dlg,
 {
     if (event == EVENT_ACTION) {
         Conf *conf = (Conf *)data;
-        extern int kitty_proxy_edit_dialog_for(HWND, const char *);
         extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
         /* Open the editor ON the definition currently chosen in the override
          * droplist this button sits beside - that is almost always the one the

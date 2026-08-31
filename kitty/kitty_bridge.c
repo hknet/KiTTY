@@ -21,6 +21,7 @@
 #ifdef MOD_PROXY
 #include "kitty_proxy.h"   /* LoadProxyInfo, GetProxySelectionFlag */
 #include "kitty_workplace.h"   /* workplace proxy mode: is an arming held? */
+#include "kitty_msgbox.h"   /* themed MessageBox routing */
 void debug_logevent( const char *fmt, ... ) ;   /* kitty_win.c */
 #endif
 

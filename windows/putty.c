@@ -1,5 +1,6 @@
 #include "putty.h"
 #include "storage.h"
+#include "../kitty/kitty_msgbox.h"   /* themed MessageBox routing */
 
 #ifdef MOD_PERSO
 /* KiTTY helpers (putty.c does not include kitty.h) */

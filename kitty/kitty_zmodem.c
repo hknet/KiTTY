@@ -31,6 +31,7 @@
 #include "putty.h"
 #include "kitty.h"      /* ReadParameterN + INIT_SECTION: the rz/sz paths are
                          * kitty.ini settings, not per-session conf keys */
+#include "kitty_msgbox.h"   /* themed MessageBox routing */
 
 #define ZM_PIPE_SIZE (64 * 1024)
 

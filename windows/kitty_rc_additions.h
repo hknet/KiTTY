@@ -70,60 +70,9 @@
 #define IDC_MIG_NOASK 1104
 #endif
 /* Named-proxy editor dialog (cyd01/KiTTY#11) + its controls. */
-#ifndef IDD_PROXYEDIT
-#define IDD_PROXYEDIT 133
-#endif
-#ifndef IDC_PXE_NAME
-#define IDC_PXE_NAME 1200
-#endif
-#ifndef IDC_PXE_TYPE
-#define IDC_PXE_TYPE 1201
-#endif
-#ifndef IDC_PXE_HOST
-#define IDC_PXE_HOST 1202
-#endif
-#ifndef IDC_PXE_PORT
-#define IDC_PXE_PORT 1203
-#endif
-#ifndef IDC_PXE_USER
-#define IDC_PXE_USER 1204
-#endif
-#ifndef IDC_PXE_PASS
-#define IDC_PXE_PASS 1205
-#endif
-#ifndef IDC_PXE_SHOWPW
-#define IDC_PXE_SHOWPW 1206
-#endif
-#ifndef IDC_PXE_EXCLUDE
-#define IDC_PXE_EXCLUDE 1207
-#endif
-#ifndef IDC_PXE_SAVE
-#define IDC_PXE_SAVE 1208
-#endif
-#ifndef IDC_PXE_DELETE
-#define IDC_PXE_DELETE 1209
-#endif
-#ifndef IDC_PXE_BANNER
-#define IDC_PXE_BANNER 1210
-#endif
-#ifndef IDC_PXE_COMMAND
-#define IDC_PXE_COMMAND 1211
-#endif
-#ifndef IDC_PXE_LOCALHOST
-#define IDC_PXE_LOCALHOST 1212
-#endif
-#ifndef IDC_PXE_DNS
-#define IDC_PXE_DNS 1213
-#endif
 /* What this proxy says its Host field IS: follow the global setting, a hostname,
  * or possibly the title of a saved session. Stored per definition as
  * ProxyHostIs; see conf.h CONF_proxy_host_kind. */
-#ifndef IDC_PXE_HOSTIS
-#define IDC_PXE_HOSTIS 1278
-#endif
-#ifndef IDC_PXE_LOGTOTERM
-#define IDC_PXE_LOGTOTERM 1214
-#endif
 /* "Update available / up to date" popup (kitty/kitty_win.c). A real dialog so
  * the dialog manager gives it the shell font at the right DPI, like every other
  * KiTTY dialog. */

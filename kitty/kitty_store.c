@@ -5,6 +5,7 @@
 #include "kitty_commun.h"
 #include "kitty_tools.h"
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
+#include "kitty_msgbox.h"   /* themed MessageBox routing */
 
 
 #ifndef snewn

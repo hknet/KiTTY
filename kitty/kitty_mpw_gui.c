@@ -19,6 +19,7 @@
 #include <windows.h>
 #include <string.h>
 #include "kitty_rc_additions.h"   /* IDD_MASTERPW, IDC_MPW_* */
+#include "kitty_msgbox.h"   /* themed MessageBox routing */
 
 extern void kitty_set_master_pw_prompt(char *(*fn)(int creating));
 

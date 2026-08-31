@@ -240,6 +240,7 @@ add_executable(puttygen
   ${CMAKE_SOURCE_DIR}/sshpubk.c
   ${CMAKE_SOURCE_DIR}/sshrand.c
   controls.c
+  kitty_msgbox_stub.c   # KiTTY: controls.c routes MessageBox; no themed boxes here
   puttygen.rc)
 add_dependencies(puttygen generated_licence_h)
 target_link_libraries(puttygen

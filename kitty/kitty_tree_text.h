@@ -23,7 +23,7 @@ static const KittyTreeLabel kitty_tree_labels[] = {
     { "Application",             "Application" },
     { "Application keypad",      "App Keypad/Cursor" },
     { "Auth",                    "Auth" },
-    { "Back.&Image",             "Back.&Image" },
+    { "Back.&Image",             "Background & Image" },
     { "Behaviour",               "Behaviour" },
     { "Bell",                    "Bell" },
     { "Broadcast",               "Broadcast" },

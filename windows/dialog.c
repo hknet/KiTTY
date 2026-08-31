@@ -1620,6 +1620,90 @@ static void kitty_cfg_panel_build(PortableDialogStuff *pds,
         }
     }
     /*
+     * KiTTY: then centre every ROW on itself, buttons included. An EDIT or
+     * COMBOBOX re-sizes itself to the font once created, while a push
+     * button keeps its template height, so a row mixing them comes out of
+     * the layout top-aligned with the buttons hanging below the field -
+     * a pixel-line at 96 DPI, plainly crooked at 200% (the Broadcast key
+     * row, 2026-08-31). The label/combo snap above reaches only a STATIC
+     * and COMBOBOX inside ONE control; this pass works across controls
+     * sharing a row. Anything taller than 20 dialog units - list boxes,
+     * multi-line texts - takes no part: a button beside a tall list is
+     * placed, not centred. Nor does a group box, which FRAMES rows without
+     * being on one.
+     */
+    {
+        struct { HWND h; RECT r; size_t row; } *rows = NULL;
+        size_t nrows = 0, rowsize = 0;
+        RECT du = { 0, 0, 4, 20 };
+        MapDialogRect(kitty_cfg_panel_host, &du); /* du.bottom: 20 DLU in px */
+        for (size_t i = 0; i < p->nctrls; i++) {
+            struct winctrl *c = p->ctrls[i];
+            for (int k = 0; k < c->num_ids; k++) {
+                HWND h = GetDlgItem(kitty_cfg_panel_host, c->base_id + k);
+                RECT r;
+                char cls[32];
+                if (!h || !GetWindowRect(h, &r))
+                    continue;
+                if (r.bottom - r.top <= 0 || r.bottom - r.top > du.bottom)
+                    continue;
+                if (GetClassNameA(h, cls, sizeof(cls)) &&
+                    !stricmp(cls, "Button") &&
+                    (GetWindowLongPtr(h, GWL_STYLE) & 0xF) == BS_GROUPBOX)
+                    continue;
+                sgrowarray(rows, rowsize, nrows);
+                rows[nrows].h = h;
+                rows[nrows].r = r;
+                rows[nrows].row = nrows;
+                nrows++;
+            }
+        }
+        /* Same row = vertical spans overlapping by more than half the
+         * shorter control. Labels propagate until stable, so a row is the
+         * transitive closure and a chain of overlaps stays one row. */
+        for (bool changed = true; changed; ) {
+            changed = false;
+            for (size_t i = 0; i < nrows; i++) {
+                for (size_t j = i + 1; j < nrows; j++) {
+                    int ov = (int)(min(rows[i].r.bottom, rows[j].r.bottom) -
+                                   max(rows[i].r.top, rows[j].r.top));
+                    int hi = (int)(rows[i].r.bottom - rows[i].r.top);
+                    int hj = (int)(rows[j].r.bottom - rows[j].r.top);
+                    if (ov * 2 > (hi < hj ? hi : hj) &&
+                        rows[i].row != rows[j].row) {
+                        size_t m = rows[i].row < rows[j].row ?
+                                   rows[i].row : rows[j].row;
+                        rows[i].row = rows[j].row = m;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        for (size_t i = 0; i < nrows; i++) {
+            LONG top = rows[i].r.top, bottom = rows[i].r.bottom;
+            for (size_t j = 0; j < nrows; j++) {
+                if (rows[j].row != rows[i].row)
+                    continue;
+                if (rows[j].r.top < top) top = rows[j].r.top;
+                if (rows[j].r.bottom > bottom) bottom = rows[j].r.bottom;
+            }
+            {
+                int h = (int)(rows[i].r.bottom - rows[i].r.top);
+                int dy = (int)((top + bottom) / 2 -
+                               (rows[i].r.top + rows[i].r.bottom) / 2);
+                POINT pt;
+                if (!dy)
+                    continue;
+                pt.x = rows[i].r.left; pt.y = rows[i].r.top + dy;
+                ScreenToClient(kitty_cfg_panel_host, &pt);
+                SetWindowPos(rows[i].h, NULL, pt.x, pt.y, 0, 0,
+                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                (void)h;
+            }
+        }
+        sfree(rows);
+    }
+    /*
      * KiTTY: panels that place some of their own controls get to do it here,
      * after the generic layout and BEFORE the panel is measured - the buttons
      * beside the saved-session list are moved, so where they end up decides
@@ -4811,12 +4895,13 @@ SeatPromptResult win_seat_confirm_weak_crypto_primitive(
     strbuf *dlg_text = strbuf_new();
     const char *dlg_title = process_seatdialogtext(dlg_text, NULL, text);
 
-    int mbret = MessageBox(NULL, dlg_text->s, dlg_title,
-                           MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
+    extern int kitty_confirm_box(HWND owner, const char *caption,
+                                 const char *text, const char *warn_red);
+    int confirmed = kitty_confirm_box(NULL, dlg_title, dlg_text->s, NULL);
     socket_reselect_all();
     strbuf_free(dlg_text);
 
-    if (mbret == IDYES)
+    if (confirmed)
         return SPR_OK;
     else
         return SPR_USER_ABORT;
@@ -4847,12 +4932,13 @@ SeatPromptResult win_seat_confirm_weak_cached_hostkey(
     strbuf *dlg_text = strbuf_new();
     const char *dlg_title = process_seatdialogtext(dlg_text, NULL, text);
 
-    int mbret = MessageBox(NULL, dlg_text->s, dlg_title,
-                           MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
+    extern int kitty_confirm_box(HWND owner, const char *caption,
+                                 const char *text, const char *warn_red);
+    int confirmed = kitty_confirm_box(NULL, dlg_title, dlg_text->s, NULL);
     socket_reselect_all();
     strbuf_free(dlg_text);
 
-    if (mbret == IDYES)
+    if (confirmed)
         return SPR_OK;
     else
         return SPR_USER_ABORT;
@@ -4932,7 +5018,11 @@ void old_keyfile_warning(void)
     msg = dupprintf(message, appname);
     title = dupprintf(mbtitle, appname);
 
-    MessageBox(NULL, msg, title, MB_OK);
+    {
+        extern void kitty_info_box(HWND owner, const char *caption,
+                                   const char *text, const char *warn_red);
+        kitty_info_box(NULL, title, msg, NULL);
+    }
 
     socket_reselect_all();
 

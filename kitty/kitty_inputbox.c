@@ -22,6 +22,7 @@ extern const char *kitty_reg_sessions( void ) ;
 #include "kitty_commun.h"
 #include "kitty_crypt.h"
 #include "kitty_registry.h"
+#include "kitty_msgbox.h"   /* themed MessageBox routing */
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */
 extern Conf *conf ;                     /* active-seat global (window.c) */

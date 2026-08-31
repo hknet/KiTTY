@@ -15,6 +15,7 @@
  */
 
 #include <stdbool.h>   /* kitty_config_select_root_folder returns bool */
+#include <windows.h>   /* the themed-box stubs fall back to MessageBoxA */
 
 int GetConfigBoxHeight(void)       { return 16; } /* == stock-fit rows -> extra_rows 0 */
 int GetConfigBoxWindowHeight(void) { return 0; }  /* no explicit window-height override */
@@ -80,3 +81,35 @@ void kitty_config_proxy_pin_presets(void) { }
 
 /* ...and nothing pinned to the panel bottom at all. */
 void kitty_config_pin_bottoms(void) { }
+
+/* The stock variants carry no KiTTY theme engine and no IDD_CONFIRMBOX
+ * template, so the themed boxes window.c now calls degrade to the classic
+ * MessageBox with the same words and the same defaults. */
+void kitty_info_box(HWND owner, const char *caption, const char *text,
+                    const char *warn_red)
+{
+    (void)warn_red;
+    MessageBoxA(owner, text, caption, MB_OK | MB_ICONERROR);
+}
+int kitty_confirm_box(HWND owner, const char *caption, const char *text,
+                      const char *warn_red)
+{
+    (void)warn_red;
+    return MessageBoxA(owner, text, caption,
+                       MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES;
+}
+int kitty_confirm_box_yes(HWND owner, const char *caption, const char *text,
+                          const char *warn_red)
+{
+    (void)warn_red;
+    return MessageBoxA(owner, text, caption,
+                       MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON1) == IDYES;
+}
+
+/* The stock variants have no themed boxes at all, so the routed MessageBox
+ * calls in shared files (windows/controls.c) stay real MessageBoxes here. */
+int kitty_message_box(HWND owner, const char *text, const char *caption,
+                      unsigned type)
+{
+    return MessageBoxA(owner, text, caption, type);
+}

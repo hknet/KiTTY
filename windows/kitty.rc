@@ -77,10 +77,10 @@ IDI_NOCON ICON "kitty_icons/nocon.ico"
 #include "putty-common.rc2"
 
 /* KiTTY-specific About dialog (handled by KittyAboutProc in kitty_bridge.c) */
-IDD_KITTYABOUT DIALOG DISCARDABLE 0, 0, 230, 120
+IDD_KITTYABOUT DIALOGEX DISCARDABLE 0, 0, 230, 120
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About KiTTY"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "KiTTY", IDA_VERSION, 7, 7, 216, 12
     LTEXT           "KiTTY is a fork of PuTTY developed by Cyd for 9bis.com.\nCopyright 2005-2024 9bis.com. Thanks to all contributors.", -1, 7, 24, 216, 40
@@ -92,10 +92,10 @@ END
  * in kitty/kitty_mpw_gui.c. The template is laid out for the wordy first-time
  * setup; when merely unlocking, the prompt area is shrunk and the confirm row
  * hidden at runtime. */
-IDD_MASTERPW DIALOG DISCARDABLE 0, 0, 230, 184
+IDD_MASTERPW DIALOGEX DISCARDABLE 0, 0, 230, 184
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY master password"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_MPW_PROMPT, 7, 7, 216, 104
     LTEXT           "Master password:", IDC_MPW_EDIT_LBL, 7, 113, 216, 8
@@ -109,10 +109,10 @@ END
 /* Legacy->protected password migration consent (portable saves; user decision
  * 2026-07: default-on warning, opt-out via kitty.ini WarnLegacyPasswordUpgrade).
  * Handled by gui_legacy_migrate_warn() in kitty/kitty_mpw_gui.c. */
-IDD_MIGRATEWARN DIALOG DISCARDABLE 0, 0, 260, 102
+IDD_MIGRATEWARN DIALOGEX DISCARDABLE 0, 0, 260, 102
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY password protection"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "This session file contains a password stored in the old unprotected format. Saving will re-encrypt it in the new protected format, which old KiTTY releases (0.76 and earlier) cannot read. Do not copy the file back to an old release afterwards.", -1, 7, 7, 246, 34
     LTEXT           "Re-encrypt the stored password now? (No keeps it in the old form.)", -1, 7, 45, 246, 10
@@ -127,10 +127,10 @@ END
  * password, and the store's master password is never touched. The password is
  * readable while typing (Show password), so there is deliberately no confirm
  * field. */
-IDD_EXPORTPW DIALOG DISCARDABLE 0, 0, 268, 150
+IDD_EXPORTPW DIALOGEX DISCARDABLE 0, 0, 268, 150
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Export sessions"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "Choose how the exported session files are protected. This password belongs to the exported files only: it is not your master password, and nothing about the sessions saved here is changed.", -1, 7, 7, 254, 26
     AUTORADIOBUTTON "Protect with a &password (can be imported on any PC)", IDC_EXP_MODEPW, 7, 38, 254, 10, WS_GROUP | WS_TABSTOP
@@ -148,10 +148,10 @@ END
 
 /* Export summary: shows the bundle password once, with a Copy button - this is
  * the moment the user wants to stash it. Handled by kitty/kitty_bridge.c. */
-IDD_EXPORTDONE DIALOG DISCARDABLE 0, 0, 268, 128
+IDD_EXPORTDONE DIALOGEX DISCARDABLE 0, 0, 268, 128
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY session export"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_EXPD_TEXT, 7, 7, 254, 62
     LTEXT           "Export password:", IDC_EXPD_PWLBL, 7, 73, 254, 8
@@ -164,10 +164,10 @@ END
  * password-protected values (a DPAPI bundle must never see this dialog), and
  * asked once per import, not per file. IDC_IMP_PROMPT is filled in at runtime
  * so a wrong password can re-ask in place. Handled by kitty/kitty_bridge.c. */
-IDD_IMPORTPW DIALOG DISCARDABLE 0, 0, 268, 96
+IDD_IMPORTPW DIALOGEX DISCARDABLE 0, 0, 268, 96
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Import sessions"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_IMP_PROMPT, 7, 7, 254, 26
     LTEXT           "Import password:", -1, 7, 38, 254, 8
@@ -178,10 +178,10 @@ BEGIN
 END
 
 /* Master-password migration notice. Handled by kitty/kitty_bridge.c. */
-IDD_MPWMOVED DIALOG DISCARDABLE 0, 0, 300, 182
+IDD_MPWMOVED DIALOGEX DISCARDABLE 0, 0, 300, 182
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY master password"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_MPWM_TEXT, 7, 7, 286, 114
     EDITTEXT        IDC_MPWM_PATH, 7, 124, 286, 12, ES_AUTOHSCROLL | ES_READONLY
@@ -190,62 +190,15 @@ BEGIN
     DEFPUSHBUTTON   "OK", IDOK, 243, 161, 50, 14
 END
 
-/* Named-proxy editor (cyd01/KiTTY#11). Handled by kitty/kitty_proxy_gui.c.
- * Pick a definition from the combo to edit it, or type a new name; Save writes
- * it, Delete removes it (after a confirm). The banner LTEXT warns when a stored
- * password is still plaintext (Phase B). */
-IDD_PROXYEDIT DIALOG DISCARDABLE 0, 0, 300, 322
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTY named proxy definitions"
-FONT 8, "MS Shell Dlg"
-BEGIN
-    GROUPBOX        "Definition", -1, 7, 7, 286, 62
-    LTEXT           "Name (pick one to edit, or type a new name):", -1, 17, 19, 266, 8
-    COMBOBOX        IDC_PXE_NAME, 17, 29, 266, 120, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Type:", -1, 17, 50, 25, 8
-    COMBOBOX        IDC_PXE_TYPE, 48, 48, 160, 130, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-
-    /* The group is 18du taller than it was: the "what the Host field IS" row
-     * sits under Host/Port, and everything below it moved down to match. */
-    GROUPBOX        "Proxy / jump host / Sessionname", -1, 7, 75, 286, 86
-    LTEXT           "Name/IP:", -1, 17, 90, 42, 8
-    EDITTEXT        IDC_PXE_HOST, 64, 88, 150, 12, ES_AUTOHSCROLL
-    LTEXT           "Port:", -1, 222, 90, 18, 8
-    EDITTEXT        IDC_PXE_PORT, 244, 88, 39, 12, ES_AUTOHSCROLL | ES_NUMBER
-    LTEXT           ".. this is ..", -1, 17, 108, 44, 8
-    COMBOBOX        IDC_PXE_HOSTIS, 64, 106, 219, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Username:", -1, 17, 126, 42, 8
-    EDITTEXT        IDC_PXE_USER, 64, 124, 219, 12, ES_AUTOHSCROLL
-    LTEXT           "Password:", -1, 17, 144, 42, 8
-    EDITTEXT        IDC_PXE_PASS, 64, 142, 150, 12, ES_PASSWORD | ES_AUTOHSCROLL
-    AUTOCHECKBOX    "S&how", IDC_PXE_SHOWPW, 222, 143, 45, 10
-
-    GROUPBOX        "Options", -1, 7, 167, 286, 114
-    LTEXT           "Command to send (Telnet / Local / SSH execute-subsystem types):", -1, 17, 179, 266, 8
-    EDITTEXT        IDC_PXE_COMMAND, 17, 189, 266, 12, ES_AUTOHSCROLL
-    LTEXT           "Exclude Hosts/IPs (separate with commas or spaces):", -1, 17, 207, 266, 8
-    EDITTEXT        IDC_PXE_EXCLUDE, 17, 217, 266, 12, ES_AUTOHSCROLL
-    AUTOCHECKBOX    "Consider proxying local host connections", IDC_PXE_LOCALHOST, 17, 235, 266, 10
-    LTEXT           "DNS lookup at proxy end:", -1, 17, 251, 88, 8
-    COMBOBOX        IDC_PXE_DNS, 110, 249, 80, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Print proxy diagnostics:", -1, 17, 267, 88, 8
-    COMBOBOX        IDC_PXE_LOGTOTERM, 110, 265, 173, 90, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-
-    LTEXT           "", IDC_PXE_BANNER, 7, 285, 286, 16
-    DEFPUSHBUTTON   "&Save", IDC_PXE_SAVE, 128, 300, 52, 15
-    PUSHBUTTON      "&Delete", IDC_PXE_DELETE, 185, 300, 52, 15
-    PUSHBUTTON      "Close", IDCANCEL, 241, 300, 52, 15
-END
-
 /* "Update available / up to date" popup (kitty/kitty_win.c). A real (modeless)
  * dialog so the dialog manager applies the shell font at the correct DPI, like
  * every other KiTTY window. The message area + window are grown to fit the text
  * at runtime; buttons: OK (info case) OR Update now + Later (update case), the
  * unused ones hidden. OK and Later share the same slot (only one is ever shown). */
-IDD_UPDATEBOX DIALOG DISCARDABLE 0, 0, 244, 86
+IDD_UPDATEBOX DIALOGEX DISCARDABLE 0, 0, 244, 86
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY Update"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_UPD_TEXT, 10, 9, 224, 44
     /* KiTTY: bottom-left, shown only when an update is available - opens that
@@ -265,20 +218,20 @@ END
  * kitty/kitty.c. The 0.76 originals were ordinals 117-120; 117 collides
  * with PuTTY 0.84's IDD_CA_CONFIG, so they were renumbered (see
  * kitty_rc_additions.h). */
-IDD_INPUTBOX DIALOG DISCARDABLE 0, 0, 248, 50
+IDD_INPUTBOX DIALOGEX DISCARDABLE 0, 0, 248, 50
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY text input"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "Text to send to the terminal:", -1, 7, 7, 184, 13
     EDITTEXT        IDC_RESULT, 7, 20, 184, 14, ES_AUTOHSCROLL
     DEFPUSHBUTTON   "OK", IDOK, 198, 20, 42, 14
 END
 
-IDD_INPUTBOXMULTI DIALOG DISCARDABLE 0, 0, 248, 100
+IDD_INPUTBOXMULTI DIALOGEX DISCARDABLE 0, 0, 248, 100
 STYLE DS_CENTER | WS_SYSMENU | WS_CAPTION | WS_BORDER | WS_SIZEBOX
 CAPTION "KiTTY text input"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "Text to send (Shift+Return):", -1, 7, 6, 104, 8
     EDITTEXT        IDC_RESULT, 7, 20, 232, 74, ES_AUTOHSCROLL | ES_AUTOVSCROLL | ES_MULTILINE | ES_WANTRETURN | WS_HSCROLL | WS_VSCROLL
@@ -286,10 +239,10 @@ BEGIN
     PUSHBUTTON      "Cancel", IDCANCEL, 165, 3, 42, 14
 END
 
-IDD_INPUTBOXPW DIALOG DISCARDABLE 0, 0, 248, 50
+IDD_INPUTBOXPW DIALOGEX DISCARDABLE 0, 0, 248, 50
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY text input"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "Password to send to the terminal:", -1, 7, 7, 184, 13
     EDITTEXT        IDC_RESULT, 7, 20, 184, 14, ES_AUTOHSCROLL | ES_PASSWORD
@@ -329,10 +282,10 @@ END
  *    worse than either, because the code falls back to "just this request"
  *    anyway and the user cannot see that.
  */
-IDD_OSC52READ DIALOG DISCARDABLE 0, 0, 300, 246
+IDD_OSC52READ DIALOGEX DISCARDABLE 0, 0, 300, 246
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY - a server wants to read your clipboard"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_O52_WHAT, 7, 7, 286, 18
     LTEXT           "", IDC_O52_WHERE, 7, 27, 286, 8
@@ -356,10 +309,10 @@ END
  * starting point, kitty_notice_box() expands it at the dialog's font. NOT a DPI
  * matter: a MessageBox is drawn by Windows and scales correctly (see the corrected
  * note in kitty_win.c). */
-IDD_NOTICEBOX DIALOG DISCARDABLE 0, 0, 260, 92
+IDD_NOTICEBOX DIALOGEX DISCARDABLE 0, 0, 260, 92
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "KiTTY"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_NOTICE_TEXT, 10, 9, 240, 56
     DEFPUSHBUTTON   "OK", IDOK, 206, 72, 44, 14
@@ -380,10 +333,10 @@ BEGIN
     DEFPUSHBUTTON   "&No", IDNO, 220, 94, 50, 14
 END
 
-IDD_INFOBOX DIALOG DISCARDABLE 0, 0, 350, 28
+IDD_INFOBOX DIALOGEX DISCARDABLE 0, 0, 350, 28
 STYLE WS_DLGFRAME | DS_CENTER | WS_POPUP | WS_VISIBLE
 CAPTION "KiTTY"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_RESULT, 7, 10, 336, 14
 END
@@ -392,10 +345,10 @@ END
  * readable while commands are typed into the send-text box (the old modal
  * MessageBox blocked exactly that box). Text is filled in at runtime from the
  * internal_commands[] table; handled by HelpBoxProc in kitty/kitty_commands.c. */
-IDD_HELPBOX DIALOG DISCARDABLE 0, 0, 330, 240
+IDD_HELPBOX DIALOGEX DISCARDABLE 0, 0, 330, 240
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX | WS_MAXIMIZEBOX
 CAPTION "KiTTY internal commands"
-FONT 8, "MS Shell Dlg"
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     EDITTEXT        IDC_HELPTEXT, 3, 3, 324, 214, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL
     DEFPUSHBUTTON   "Close", IDCANCEL, 274, 222, 52, 14

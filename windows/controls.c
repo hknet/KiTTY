@@ -22,6 +22,7 @@
 #include "../kitty/kitty_theme.h"   /* the panel title is drawn by hand */
 
 #include <commctrl.h>
+#include "../kitty/kitty_msgbox.h"   /* themed MessageBox routing */
 
 /* KiTTY: a configuration-box control lives either on the dialog (the button
  * row) or in the panel host (everything in a panel) - windows/dialog.c. */

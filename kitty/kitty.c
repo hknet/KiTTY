@@ -36,6 +36,7 @@
 #include "kitty_win.h"
 #include "kitty_launcher.h"
 #include "winfont_fallback.h"
+#include "kitty_msgbox.h"   /* themed MessageBox routing */
 
 /* The hive this process is ACTUALLY using. Not TEXT(PUTTY_REG_POS): that is the
  * compile-time DEFAULT, and with kitty.ini's KiClassName=PuTTY the two differ -

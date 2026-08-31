@@ -898,7 +898,7 @@ static void start_backend(WinGuiSeat *wgs)
             return;                    /* NOT exit(0): the window stays up */
         }
 #endif
-        MessageBox(NULL, msg, str, MB_ICONERROR | MB_OK);
+        kitty_info_box(NULL, str, msg, NULL);
         sfree(str);
         sfree(msg);
         exit(0);
@@ -1073,6 +1073,10 @@ static void kitty_apply_close_button(WinGuiSeat *wgs, HWND hwnd)
 int kitty_clipboard_balloon_action(void);
 void kitty_osc52_state_changed(Terminal *term);
 void kitty_notice_box(HWND owner, const char *caption, const char *text); /* kitty_win.c */
+void kitty_info_box(HWND owner, const char *caption, const char *text,
+                    const char *warn_red);                     /* kitty_win.c */
+int kitty_confirm_box_yes(HWND owner, const char *caption, const char *text,
+                          const char *warn_red);               /* kitty_win.c */
 
 /*
  * KiTTY: the clipboard markers on the window title, as icons.
@@ -1584,8 +1588,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     hr = CoInitialize(NULL);
     if (hr != S_OK && hr != S_FALSE) {
         char *str = dupprintf("%s Fatal Error", appname);
-        MessageBox(NULL, "Failed to initialize COM subsystem",
-                   str, MB_OK | MB_ICONEXCLAMATION);
+        kitty_info_box(NULL, str, "Failed to initialize COM subsystem", NULL);
         sfree(str);
         return 1;
     }
@@ -2956,7 +2959,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
 #endif
     char *title = dupprintf("%s Fatal Error", appname);
     show_mouseptr(wgs, true);
-    MessageBox(wgs->term_hwnd, msg, title, MB_ICONERROR | MB_OK);
+    kitty_info_box(wgs->term_hwnd, title, msg, NULL);
     sfree(title);
 
     bool coe_force = (conf_get_int(wgs->conf, CONF_close_on_exit) == FORCE_ON);
@@ -3001,7 +3004,7 @@ static void win_seat_nonfatal(Seat *seat, const char *msg)
 #endif
     char *title = dupprintf("%s Error", appname);
     show_mouseptr(wgs, true);
-    MessageBox(wgs->term_hwnd, msg, title, MB_ICONERROR | MB_OK);
+    kitty_info_box(wgs->term_hwnd, title, msg, NULL);
     sfree(title);
 }
 
@@ -3027,7 +3030,7 @@ void cmdline_error(const char *fmt, ...)
     message = dupvprintf(fmt, ap);
     va_end(ap);
     title = dupprintf("%s Command Line Error", appname);
-    MessageBox(find_window_for_msgbox(), message, title, MB_ICONERROR | MB_OK);
+    kitty_info_box(find_window_for_msgbox(), title, message, NULL);
     sfree(message);
     sfree(title);
     exit(1);
@@ -4023,8 +4026,8 @@ static void exit_callback(void *vctx)
                     sfree(line);
                 } else
 #endif
-                MessageBox(wgs->term_hwnd, "Connection closed by remote host",
-                           appname, MB_OK | MB_ICONINFORMATION);
+                kitty_info_box(wgs->term_hwnd, appname,
+                               "Connection closed by remote host", NULL);
             }
         }
     }
@@ -4377,9 +4380,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                         additional ? additional : "");
         if (wgs->session_closed ||
             !conf_get_bool(wgs->conf, CONF_warn_on_close) ||
-            MessageBox(hwnd, msg, title,
-                       MB_ICONWARNING | MB_OKCANCEL | MB_DEFBUTTON1)
-            == IDOK)
+            kitty_confirm_box_yes(hwnd, title, msg, NULL))
             DestroyWindow(hwnd);
         sfree(title);
         sfree(msg);
@@ -4612,15 +4613,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                  * the configuration box while it is still happening is not a way
                  * to stop it - so the click IS the fix, behind one confirmation.
                  */
-                if (MessageBox(hwnd,
-                               "A server has been changing your clipboard "
-                               "repeatedly.\n\n"
-                               "Stop it changing your clipboard at all for the "
-                               "rest of this session?\n\n"
-                               "You can turn it back on under "
-                               "Window > Selection, \"Remote clipboard writes\".",
-                               "KiTTY - block this server's clipboard writes?",
-                               MB_YESNO | MB_ICONWARNING) == IDYES) {
+                if (kitty_confirm_box_yes(hwnd,
+                        "KiTTY - block this server's clipboard writes?",
+                        "A server has been changing your clipboard "
+                        "repeatedly.\n\n"
+                        "Stop it changing your clipboard at all for the "
+                        "rest of this session?\n\n"
+                        "You can turn it back on under "
+                        "Window > Selection, \"Remote clipboard writes\".",
+                        NULL)) {
                     if (wgs->term)
                         wgs->term->osc52_allowed = OSC52_CLIPBOARD_DENY;
                     /* the live Conf too, so Change Settings shows the truth and
@@ -5097,9 +5098,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           case IDM_SCRIPTSEND: {
             char fn[4096];
             if (!kitty_script_enabled()) {
-                MessageBox(wgs->term_hwnd, "RuTTY scripting is disabled"
-                           " ([KiTTY] scriptmode=no in kitty.ini).",
-                           "KiTTY", MB_OK | MB_ICONINFORMATION);
+                kitty_info_box(wgs->term_hwnd, "KiTTY",
+                               "RuTTY scripting is disabled"
+                               " ([KiTTY] scriptmode=no in kitty.ini).", NULL);
                 break;
             }
             if (wgs->backend && !kitty_script_active() &&
@@ -8735,9 +8736,8 @@ static void process_clipdata(WinGuiSeat *wgs, HGLOBAL clipdata, bool unicode)
                     " the configured pastesize limit of %d.\n\n"
                     "Paste it anyway?",
                     (unsigned long)clipboard_length, limit);
-            if (MessageBox(wgs->term_hwnd, msg, "KiTTY paste",
-                           MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2)
-                    != IDYES) {
+            if (!kitty_confirm_box(wgs->term_hwnd, "KiTTY paste", msg,
+                                   NULL)) {
                 sfree(clipboard_contents);
                 return;
             }
@@ -8790,6 +8790,8 @@ void modalfatalbox(const char *fmt, ...)
     va_end(ap);
     show_mouseptr(NULL, true);
     title = dupprintf("%s Fatal Error", appname);
+    /* Deliberately still a raw MessageBox: it must be MB_SYSTEMMODAL and must
+     * work when the process is too broken to load a dialog template. */
     MessageBox(find_window_for_msgbox(), message, title,
                MB_SYSTEMMODAL | MB_ICONERROR | MB_OK);
     sfree(message);
@@ -8810,7 +8812,7 @@ void nonfatal(const char *fmt, ...)
     va_end(ap);
     show_mouseptr(NULL, true);
     title = dupprintf("%s Error", appname);
-    MessageBox(find_window_for_msgbox(), message, title, MB_ICONERROR | MB_OK);
+    kitty_info_box(find_window_for_msgbox(), title, message, NULL);
     sfree(message);
     sfree(title);
 }
