@@ -33,6 +33,8 @@ Current release — **[KiTTY 0.85.1.4-beta](https://github.com/hknet/KiTTY/relea
 | **[Installer — system-wide](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.4-beta/KiTTY-0.85.1.4-beta-x64-system.msi)** | All users, into `Program Files` (requires admin). |
 | **[Portable ZIP](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.4-beta/kitty-0.85.1.4-beta.zip)** | No install — run from a folder or USB stick. Includes `kitty_portable.exe` and all command-line tools. Executables are **not** UPX-packed (antivirus-friendly). |
 | **[Portable ZIP (UPX)](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.4-beta/kitty-0.85.1.4-beta-upx.zip)** | Same contents with `kitty.exe`/`kitty_portable.exe` UPX-packed for the smallest download. Some antivirus engines dislike UPX — if in doubt, take the standard ZIP. |
+| **[Portable ZIP — 32-bit](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.4-beta/kitty-0.85.1.4-beta-32bit.zip)** | The same suite built for 32-bit Windows — for systems a 64-bit binary cannot reach. |
+| **[ISO image](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.4-beta/kitty-0.85.1.4-beta.iso)** | Both builds (64-bit and 32-bit) as plain files on one ISO — mount it into a virtual machine, no network or install needed. |
 
 Both installers add Start-Menu + Desktop shortcuts and an Add/Remove-Programs entry, and uninstall
 cleanly. Every download is checksummed (`SHA256SUMS` in the ZIP), and all executables are
