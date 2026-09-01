@@ -5,9 +5,154 @@ and enhanced **PuTTY 0.85** core. Versions below are this port's own `0.85.1.x` 
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.4-beta — unreleased
+## 0.85.1.4-beta — 2026-09-01
+
+### New
+
+- **The configuration window is redesigned.** It draws in Segoe UI 9 instead
+  of the 8pt shell font of 2006, it is resizable - drag an edge and the
+  category tree, the panel area and the buttons follow, and the size is
+  remembered - and a panel taller than the window scrolls instead of
+  clipping. A **Session | Application** tab strip above the category tree
+  separates the settings of the connection in front of you from the settings
+  of the program: updates, migration, security, the named proxies and the
+  configuration window's own behaviour now have panels of their own instead
+  of hiding on session pages. The tree remembers which categories you keep
+  folded, each tab reopens on the panel it was left on, Ctrl+Home/End walk
+  the tree, double-clicking a tab header jumps to that tab's home panel, and
+  the title row always says which saved session is currently loaded. Every
+  panel carries a title line, and every panel's Help button opens the manual
+  at the section that explains it - KiTTY's own settings are documented
+  there panel by panel now, not only the inherited PuTTY ones.
+
+- **Sessions can be imported from an old KiTTY or PuTTY.** The new
+  Application > Migration panel lists the sessions found in the old registry
+  hives and imports the ones you pick; the old stores are read, never
+  touched. An import loads and re-saves rather than copying registry keys,
+  so an old KiTTY's password format is decoded by the one code path that
+  knows it, and settings that changed their name since are still found under
+  the old one. Values that cannot be carried over are reported by name. A
+  first start that finds an old hive also shows those sessions in the
+  saved-session list once, says so, and leaves the choice as a setting.
+
+- **The Certificate Authorities editor is a panel now.** CA records were
+  always store-wide, but the only way to reach them was a button on a
+  session's SSH panel; they now live under Application > Security together
+  with the unverified-agent warning, and the panel lists which features of
+  this Windows version KiTTY can and cannot use.
+
+- **KiTTY runs on old Windows again, and says what it cannot do there.**
+  Windows APIs newer than a system are looked up at runtime instead of being
+  imported statically - a static import the OS lacks used to make the loader
+  refuse the whole binary. Each missing API has a fallback, every lookup is
+  recorded with the feature it powers, and a session on such a system prints
+  one line naming what this Windows cannot do, with the details in the Event
+  Log. Switched off with `[KiTTY] warnmissingfeatures=no` or the checkbox on
+  Application > Security. kageant serves its agent pipe on such a system
+  too - a pipe flag the OS does not know is dropped on exactly the error
+  that names it, while the access control that actually protects the pipe
+  stays - and where in-memory key protection does not exist at all, its
+  warning says so instead of suspecting interference. Modern conveniences
+  (Windows Hello, dark mode, per-monitor DPI) were always resolved
+  dynamically and simply sit out.
+
+- **A crash leaves a note - attach it to your issue report.** Every
+  program in the suite writes `kitty_crash.log` beside its executable
+  when it dies: which program and version, which Windows, the exception
+  code, and where it happened as module plus offset, with a scan of the
+  stack for return addresses. That is exactly what a useful bug report
+  needs, so if you file an issue about a crash, please attach the file.
+  It is safe to share: it contains no session content, no key or password
+  material and no paths - module names are recorded as bare file names so
+  not even your Windows user name appears. Runs from read-only media
+  write the log to the temp directory instead. Diagnostic only; nothing
+  changes while the program is healthy.
+
+- **A 32-bit build.** Every program in the suite also builds for 32-bit
+  Windows, shipped as its own download (ZIP only) for systems a 64-bit
+  binary cannot reach; an ISO is also provided for easy VM mounting.
+
+- **KiTTY has a dark mode.** The configuration box and the dialogs around it,
+  every kittygen window, and all of kageant's - the key list, key details,
+  the agent log and its record view, settings, About and the message boxes -
+  follow one setting: *Follow the system* (the default, which changes with
+  the Windows app-colour setting while a window is open), *Always light* or
+  *Always dark*. One setting for the whole suite, not one per program. On
+  Windows 11 the title bar takes the window's own colour instead of the
+  system's. It colours the windows: a terminal's own colours are a session
+  setting and are left alone. Needs Windows 10 1809 or newer; older Windows
+  stays light and the setting is greyed rather than offered. Configuration:
+  kageant key list > Settings... > Agent > **Colour theme**, or
+  `[KiTTY] theme=` in kitty.ini.
+
+- **KiTTY ships its manual, and Help works.** F1, the config box's Help
+  buttons and the system menu's Help entry now open the user manual when
+  a `kitty.chm` sits beside the executable (a `putty.chm` is accepted
+  too). Nothing is embedded - the binaries stay as small as before; the
+  installer and the portable ZIP both ship the file, and a portable copy
+  simply carries it along. The manual is PuTTY's,
+  extended with a generated "KiTTY additions" chapter covering this
+  port's features, kept in step with FEATURES.md automatically.
+
+- **A session can pin its key file's fingerprint.** On Connection > SSH >
+  Auth > Credentials, "Record fingerprint of the key file" stores the
+  key's SHA256; from then on a connection refuses the file - before any
+  passphrase prompt - if its fingerprint no longer matches, so a swapped
+  or wrong key file is caught instead of interacted with. Empty field =
+  no check. The pin is always over the key itself, never over a detached
+  certificate, so CA-issued certificate renewals do not disturb it. The
+  command-line tools honour the pin of a loaded session too.
+
+- **The Event Log names the key file the fall-back used.** Authenticating
+  from the configured key file (rather than the agent) now logs
+  `Offered public key from file "<path>"` with the key's SHA256
+  fingerprint, matching the agent branch, which already named its key.
+
+- **Conflicting session hotkeys are reported instead of silently
+  resolved.** A launcher hotkey is machine-wide, so when two sessions
+  claim the same one only the first gets it. The launcher now says so at
+  startup in a tray balloon naming who won and who lost - clicking it
+  opens the winning session's settings on Window > Behaviour. Saving or
+  importing a session whose hotkey another session already holds warns
+  and names the other holders, "Check hotkey availability" names them
+  too, and enabling a hotkey beyond the launcher's 32 slots is refused
+  with an explanation instead of silently never firing.
 
 ### Changed
+
+- **Every message box in the suite is KiTTY's own.** The stock white
+  MessageBox is replaced by themed info and confirm boxes in Segoe UI 9
+  across the terminal, the config box, kittygen and kageant, so dark mode
+  reaches the last dialogs that used to flash light. The one exception is
+  deliberate: the box reporting a fatal error stays a raw system-modal
+  MessageBox, so the last message can always be delivered. Security alerts
+  read better too - single-spaced paragraphs with the host and fingerprint
+  lines kept set off, buttons in visual order, and the host-key alert's
+  initial focus rests on Cancel.
+
+- **The panels are reorganised.** Bugs and More bugs are one panel again, as
+  are ZModem and its rz/sz children; Connection > Data is renamed
+  Connection > Login and its subtree is reordered; Comment leads the Session
+  subtree; and crowded pages gave rise to new leaves - Session > Broadcast,
+  Window > Colours > Precise colours, Connection > Login > Terminal details
+  and > Environment, Terminal > Keyboard > Application keypad,
+  Window > Appearance > Position. The named-proxy editor stops being a
+  pop-up: the same definitions are an ordinary panel under Application, so
+  they inherit the theme, the font and the scrolling, and "Edit named
+  proxies..." jumps there carrying the selected definition. Nothing is
+  written until Save, and leaving with an unsaved edit asks first.
+
+- **Rows sit closer together, drop-downs open wide enough to read.** The row
+  and gap geometry carried over from the old 8pt font added its increase
+  twice under the taller one; the gaps are re-measured for Segoe UI 9,
+  in the config box and in the template dialogs alike. A combo box's list
+  now opens as wide as its longest entry instead of cutting it off at the
+  control's width.
+
+- **The About box states what KiTTY is.** A fork of PuTTY, continued by
+  kapper.net, inspired by the KiTTY by Cyril Dupont (9bis.com) - and its
+  button leads to this project's own repository rather than upstream's
+  page.
 
 - **kageant's windows use the system font and a tabbed settings dialog.**
   Segoe UI 9 replaces the 8pt shell font, which maps to Tahoma and stopped
@@ -53,52 +198,46 @@ see [FEATURES.md](FEATURES.md).
   Cancel. Two clipped labels (the AltGr switch on Terminal > Keyboard,
   the custom hyperlink regex) are shortened to fit.
 
-### New
+- **Saving a session no longer loses its numbers, and loaded secrets show
+  up.** The panel rework had left several code paths addressing a panel's
+  controls on the window that no longer held them, silently finding
+  nothing: edit boxes read back empty - which dropped every numeric value
+  when a session was saved - the algorithm-order Up and Down buttons moved
+  nothing, and a stored auto-login password and the file-selector fields
+  stayed blank after a load. Every path resolves the owning window first
+  now.
 
-- **KiTTY has a dark mode.** The configuration box and the dialogs around it,
-  every kittygen window, and all of kageant's - the key list, key details,
-  the agent log and its record view, settings, About and the message boxes -
-  follow one setting: *Follow the system* (the default, which changes with
-  the Windows app-colour setting while a window is open), *Always light* or
-  *Always dark*. One setting for the whole suite, not one per program. On
-  Windows 11 the title bar takes the window's own colour instead of the
-  system's. It colours the windows: a terminal's own colours are a session
-  setting and are left alone. Needs Windows 10 1809 or newer; older Windows
-  stays light and the setting is greyed rather than offered. Configuration:
-  kageant key list > Settings... > Agent > **Colour theme**, or
-  `[KiTTY] theme=` in kitty.ini.
+- **A wrong value in a saved session no longer takes the application
+  down.** A session file can hold a number no radio group offers, and the
+  configuration box asserted on it. A loaded session is now checked
+  against the full panel description; each unrepresentable value is
+  replaced by its default and reported once by name, and saving writes the
+  corrected value so the file heals.
 
-- **KiTTY ships its manual, and Help works.** F1, the config box's Help
-  buttons and the system menu's Help entry now open the user manual when
-  a `kitty.chm` sits beside the executable (a `putty.chm` is accepted
-  too). Nothing is embedded - the binaries stay as small as before, and
-  a portable copy simply carries the file along. The manual is PuTTY's,
-  extended with a generated "KiTTY additions" chapter covering this
-  port's features, kept in step with FEATURES.md automatically.
+- **The configuration window's own settings are read from where they are
+  written.** Eight of its settings existed only as kitty.ini keys, and on
+  an installed copy they were saved into the registry and then looked for
+  in the file - stored and never seen again. They are panel settings now
+  (Application > Config window), read the way they are written.
 
-- **A session can pin its key file's fingerprint.** On Connection > SSH >
-  Auth > Credentials, "Record fingerprint of the key file" stores the
-  key's SHA256; from then on a connection refuses the file - before any
-  passphrase prompt - if its fingerprint no longer matches, so a swapped
-  or wrong key file is caught instead of interacted with. Empty field =
-  no check. The pin is always over the key itself, never over a detached
-  certificate, so CA-issued certificate renewals do not disturb it. The
-  command-line tools honour the pin of a loaded session too.
+- **A configuration box holding a loaded session says so consistently.**
+  Opened at startup with a session already loaded - the last-session
+  start, or a click on the hotkey balloon - the saved-session name box
+  sat empty while the label above said a session was loaded, and Save
+  warned about overwriting the very session in force. The box now shows
+  the loaded name, the list highlights it, and saving back to it stops
+  asking.
 
-- **The Event Log names the key file the fall-back used.** Authenticating
-  from the configured key file (rather than the agent) now logs
-  `Offered public key from file "<path>"` with the key's SHA256
-  fingerprint, matching the agent branch, which already named its key.
+- **The category tree's selected row stays visible.** Windows paints an
+  unfocused tree selection as a faint grey band, and after any
+  programmatic jump - a balloon click, a tab double-click - the tree is
+  exactly that. The selected row keeps its full highlight colour whether
+  or not the tree has focus, in both themes.
 
-- **Conflicting session hotkeys are reported instead of silently
-  resolved.** A launcher hotkey is machine-wide, so when two sessions
-  claim the same one only the first gets it. The launcher now says so at
-  startup in a tray balloon naming who won and who lost - clicking it
-  opens the winning session's settings on Window > Behaviour. Saving or
-  importing a session whose hotkey another session already holds warns
-  and names the other holders, "Check hotkey availability" names them
-  too, and enabling a hotkey beyond the launcher's 32 slots is refused
-  with an explanation instead of silently never firing.
+- **kitty_tel and kitty_pterm no longer offer an empty Application tab.**
+  Their configuration boxes are built from the stock panel set, which has
+  no application-wide panels; the tab strip only offers Application where
+  such panels exist.
 
 ## 0.85.1.3-beta — 2026-08-25
 

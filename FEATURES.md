@@ -758,6 +758,24 @@ The line is worth reading once and not thereafter, since the answer is a propert
 
 (no screenshot)
 
+### A crash leaves a note worth attaching to a bug report
+
+When any program in the suite dies of a crash, it writes `kitty_crash.log` beside its executable (or into the temp directory when the program runs from read-only media): which program and version, which Windows, the exception code, and where it happened as module plus offset, with a scan of the stack for return addresses. That is what a useful crash report needs, so **if you file an issue about a crash, please attach the file**.
+
+It is safe to share. The log contains no session content, no key or password material and no paths — module names are recorded as bare file names, so not even your Windows user name appears in it. If nothing is writable at all, no log is written and the crash proceeds as it would have anyway; nothing about this changes a healthy program.
+
+**How to enable:** always on. There is nothing to configure.
+
+(no screenshot)
+
+### A 32-bit build
+
+Every program in the suite is also built for 32-bit Windows and ships as its own download — a ZIP, plus an ISO of both builds for mounting into a virtual machine. It is the build for systems a 64-bit binary cannot reach; on 64-bit Windows the regular packages are the ones to use.
+
+**How to enable:** download the `-32bit` package instead.
+
+(no screenshot)
+
 ### Warning when an unverified agent serves your keys
 
 An SSH agent holds your private keys and signs with them on request, and any program can offer to be that agent: it is a named pipe, and whoever gets there first answers. A program that puts itself in that position sees every key request KiTTY makes.

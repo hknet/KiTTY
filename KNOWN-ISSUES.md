@@ -1,4 +1,4 @@
-# KiTTY 0.85.1.3 — Known issues & limitations
+# KiTTY 0.85.1.4 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -10,12 +10,12 @@ features are working and verified. Known limitations as of this release:
 
 ## Functional limitations
 
-- **Workplace proxy mode lives only as long as the launcher holding it.** That is
+- **Workplace proxy mode lives only as long as the launcher is holding it.** That is
   the design — logging off, rebooting or killing the launcher ends the mode, so
   it cannot be left switched on by accident — but it does mean the mode does not
-  survive a restart. The next start says once that it is not active and offers
+  survive a restart. The next start displays once that it is not active and offers
   nothing further; switching it on again is one click, in the tray menu or on the
-  Proxy panel.
+  Proxy panel in the application tree.
 - **Connections already open keep the proxy they connected through.** Switching
   the mode on does not re-route a running session, and switching it off does not
   take the proxy away from one: an established connection cannot be re-routed.
@@ -40,11 +40,11 @@ features are working and verified. Known limitations as of this release:
   release will let the proxy editor own those settings directly. Since 0.84.1.69
   the proxy at least **says which of the two its Name/IP means** (the
   *.. this is ..* setting beside it), so that is no longer decided by whether a
-  session happens to share the name.
+  session happens to share the name accidentially.
 - **`/size` and `/wintitle` are application-wide, not per session.** They are
   runtime toggles rather than session settings, so `/save` does not store them —
   persist them with `[KiTTY] size=yes` / `wintitle=no` in kitty.ini. Making the
-  title decorations per-session is still owed.
+  title decorations per-session is still on the TODO-list.
 - **A brand-new release is noticed one launch late.** The startup update check
   runs on a worker thread and only refreshes a cached answer, so the notice about
   a release published since your last start appears on the *next* start. *Check
@@ -72,8 +72,9 @@ features are working and verified. Known limitations as of this release:
   reaching into something you use for passwords. **Sessions saved before this
   release keep whatever they had**, including Allow; only sessions created from
   now on start at Ask. Set it to **Deny** if you would rather no host touched
-  your clipboard at all, or back to **Allow** for the old behaviour. Only **text** travels this way; the sequence
-  carries nothing else, so images and other clipboard formats are unaffected.
+  your clipboard at all, or back to **Allow** for the old behaviour.
+  Only **text** travels this way; the sequence carries nothing else, so images
+  and other clipboard formats are unaffected.
   As with far2l, answering **OK** to an **Ask** prompt grants access for the rest
   of that session rather than re-prompting per payload; changing any setting in
   the configuration box makes it ask again. A payload too large to fit, or one
@@ -87,8 +88,8 @@ features are working and verified. Known limitations as of this release:
   permitted only by answering the prompt, and only for as long as that answer
   says: one request, a number of minutes, a number of requests, or the rest of
   the session, the last of which asks a second time before it takes effect. No
-  permission to read is ever written to disk. Every limit is a setting in the same
-  panel.
+  permission to read is ever written to disk. Every limit is a setting in the
+  same panel.
 - **No remote clipboard access at all while the window has no keyboard focus.**
   *Only while this window has focus* (Window → Selection → Remote clipboard)
   defaults to on and covers reads **and writes**, across all three protocols. An
@@ -109,11 +110,12 @@ features are working and verified. Known limitations as of this release:
   recorded in the Event Log instead of vanishing. If copying large selections in a
   far2l session appeared to do nothing before, that was this. Whether non-text
   formats (images) round-trip is not yet verified.
-- **OSC 5522 (kitty's clipboard protocol): reads work, writes do not.** Reads go
-  through the same permission control and the same limits as OSC 52 reads above —
-  it is one permission, reachable two ways, not two settings. Because this protocol
-  can identify the program asking, a program that sends a password and a name can
-  be approved once and then not asked about again for as long as that answer lasts;
+- **OSC 5522 (the other kitty's clipboard protocol): reads work, writes do not.**
+  Reads go through the same permission control and the same limits as OSC 52 reads
+  above — it is one permission, reachable two ways, not two settings.
+  Because this protocol can identify the program asking, a program that sends
+  a password and a name can be approved once and then not asked about again
+  for as long as that answer lasts;
   those approvals are never written to disk. Writes (`type=write`, `wdata`,
   `walias`) answer **ENOSYS**, so a program falls back to OSC 52 for text. Paste
   events (`CSI ? 5522 h`) are not implemented, and the mode is ignored rather than
@@ -259,7 +261,7 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.85.1.3-beta @ 2026-08-25`.
+- **Version string:** binaries report `0.85.1.4-beta @ 2026-09-01`.
 - **`kittygen.exe` and `kittygen-cli.exe` are two programs with two command
   lines.** The window one takes only `-t`, `-b`, `-E`, `-primes`, `-strong-rsa`,
   `-ppk-param`, `-restrict-acl` and `-pgpfp`; `-C`, `-q`, `-o`, `-l` and
@@ -278,6 +280,28 @@ features are working and verified. Known limitations as of this release:
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
+
+## New in 0.85.1.4
+
+- **The configuration window is redesigned** - system font, resizable, a
+  Session | Application tab split, and panels that scroll when they must.
+  Settings about the program (updates, migration, security, named proxies,
+  the window's own behaviour) live on the Application tab now; the
+  [CHANGELOG](CHANGELOG.md) lists what moved where. A panel is built once
+  and kept, with the rest prepared in the background, so switching
+  categories no longer rebuilds every control on the page - the cost the
+  0.85.1.0 notes described is gone.
+- **Sessions can be imported from an old KiTTY or PuTTY** on
+  Application > Migration. The old stores are read, never written; values
+  that cannot be carried over are reported by name.
+- **On an old Windows the binaries load again and report what is missing.**
+  APIs the system lacks are looked up at runtime with fallbacks, and a
+  session prints one line naming the features this Windows cannot power,
+  details in the Event Log (`[KiTTY] warnmissingfeatures=no` silences it).
+- **A 32-bit package is new.** Same suite, built for 32-bit Windows.
+- **Every message box follows the theme now.** The last stock white dialogs
+  are replaced by KiTTY's own; only the fatal-error box deliberately stays
+  a raw system MessageBox so the last message always gets through.
 
 ## New in 0.85.1.3
 
