@@ -77,6 +77,14 @@ COLORREF kitty_theme_line_colour(bool dark);
  * has to pick colours - a list view's custom draw cannot ask the brush. */
 bool kitty_theme_window_dark(HWND w);
 
+/* Config-box category tree: paint the selected row in full highlight colour
+ * even when the tree is unfocused (dialog.c forwards NM_CUSTOMDRAW here).
+ * Guarded: the tree custom-draw types need commctrl.h, which not every
+ * includer of this header pulls in. */
+#ifdef NM_CUSTOMDRAW
+LRESULT kitty_theme_tree_customdraw(LPNMTVCUSTOMDRAW cd);
+#endif
+
 /*
  * The meanings a row of text can carry, so the places that colour their own
  * rows name the MEANING and let this module pick the colour for the theme in

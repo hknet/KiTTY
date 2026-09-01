@@ -3840,7 +3840,17 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * Done here rather than at panel-build time because setup_config_box()
              * has no Conf to read; this is the first place the name is available.
              */
-            if (ssd->midsession && !ssd->savedsession[0]) {
+            /* No longer midsession-only: the STARTUP box can hold a loaded
+             * session too - the hotkey-conflict balloon opens it that way,
+             * and loadlastsession does at every start. The session label
+             * reads CONF_sessionname and said "loaded" while this box sat
+             * empty and Save escalated to an overwrite warning about the
+             * very session in force - two truths at once. One source:
+             * the box shows the loaded name, the
+             * list highlight follows it (the listbox refresh selects by
+             * this field), and Save-back-to-it stops warning because
+             * loaded_from now equals the box. */
+            if (!ssd->savedsession[0]) {
                 const char *sn = conf_get_str(conf, CONF_sessionname);
                 if (sn && *sn) {
                     sfree(ssd->savedsession);
@@ -9444,8 +9454,6 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
     ctrl_checkbox(s, KT_CONFIG_WINDOW_COME_BACK_TO_THIS_WINDOW,
                   NO_SHORTCUT, HELPCTX(kitty_theme),
                   kitty_cfgwin_noexit_handler, P(NULL));
-    ctrl_text(s, KT_CONFIG_WINDOW_ANY_TERMINAL_EVEN_ONE,
-              HELPCTX(no_help));
 #else
     (void)b; (void)midsession;
 #endif

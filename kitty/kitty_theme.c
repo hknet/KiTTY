@@ -629,6 +629,44 @@ HBRUSH kitty_theme_ctlcolor(HWND dlg, UINT msg, WPARAM wParam, LPARAM lParam)
  */
 #define KT_TAB_ACCENT_H 2                        /* the marker bar, in pixels */
 #define KT_DARK_TAB_DIM RGB(0xb0, 0xb0, 0xb0)    /* unselected label, dark */
+
+/*
+ * The category tree's selected row, drawn in FULL highlight colour whether
+ * or not the tree has keyboard focus.
+ *
+ * Windows paints an unfocused tree selection as a faint grey band - all but
+ * invisible at a glance, and the box navigates the tree programmatically all
+ * the time (the hotkey-conflict balloon, tab double-clicks, jump buttons),
+ * always leaving the tree unfocused. The user is left hunting for a light
+ * grey background to answer "where am I".
+ *
+ * The trick: at item prepaint, CLEAR the selected/focus state bits and give
+ * the item our own colours instead. A themed tree ignores clrTextBk for a
+ * row it is drawing as selected, so letting it think the row is ordinary is
+ * what makes the colours stick. CDRF_NEWFONT, or they are discarded.
+ */
+LRESULT kitty_theme_tree_customdraw(LPNMTVCUSTOMDRAW cd)
+{
+    switch (cd->nmcd.dwDrawStage) {
+      case CDDS_PREPAINT:
+        return CDRF_NOTIFYITEMDRAW;
+      case CDDS_ITEMPREPAINT:
+        if (cd->nmcd.uItemState & CDIS_SELECTED) {
+            bool dark = kitty_theme_window_dark(cd->nmcd.hdr.hwndFrom);
+            cd->nmcd.uItemState &= ~(CDIS_SELECTED | CDIS_FOCUS);
+            if (dark) {
+                cd->clrTextBk = RGB(0x26, 0x4f, 0x78);
+                cd->clrText = KT_DARK_TEXT;
+            } else {
+                cd->clrTextBk = GetSysColor(COLOR_HIGHLIGHT);
+                cd->clrText = GetSysColor(COLOR_HIGHLIGHTTEXT);
+            }
+            return CDRF_NEWFONT;
+        }
+        return CDRF_DODEFAULT;
+    }
+    return CDRF_DODEFAULT;
+}
 #define KT_LIGHT_TAB_DIM RGB(0x60, 0x60, 0x60)   /* unselected label, light */
 #define KT_FALLBACK_ACCENT RGB(0x00, 0x67, 0xc0) /* Windows 11's own default */
 

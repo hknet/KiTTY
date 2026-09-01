@@ -22,6 +22,7 @@
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shellapi.h>
+#include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
 
 #ifdef MSVC4
 #define TVINSERTSTRUCT  TV_INSERTSTRUCT
@@ -3089,8 +3090,26 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 ti.mask = TCIF_TEXT;
                 ti.pszText = (char *)"Session";
                 SendMessage(tabstrip, TCM_INSERTITEM, 0, (LPARAM)&ti);
-                ti.pszText = (char *)"Application";
-                SendMessage(tabstrip, TCM_INSERTITEM, 1, (LPARAM)&ti);
+                /* Only when Application panels EXIST. The stock variants
+                 * (kitty_tel, kitty_pterm, putty) build their box from the
+                 * stock config.c, which has no Application/* paths - the tab
+                 * offered a completely empty tree there. Every consumer
+                 * compares TCM_GETCURSEL against 1, so a one-tab strip
+                 * degrades all of them to "Session" correctly. */
+                {
+                    bool have_app = false;
+                    for (int i = 0; i < pds->ctrlbox->nctrlsets; i++) {
+                        const char *pn = pds->ctrlbox->ctrlsets[i]->pathname;
+                        if (pn && !strncmp(pn, "Application", 11)) {
+                            have_app = true;
+                            break;
+                        }
+                    }
+                    if (have_app) {
+                        ti.pszText = (char *)"Application";
+                        SendMessage(tabstrip, TCM_INSERTITEM, 1, (LPARAM)&ti);
+                    }
+                }
             }
 
             /* The session-name label shares the strip's row; see
@@ -3562,6 +3581,17 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                     TreeView_SelectItem(tv, want);
             }
             return 0;
+        }
+        if (LOWORD(wParam) == IDCX_TREEVIEW &&
+            ((LPNMHDR) lParam)->code == NM_CUSTOMDRAW) {
+            /* KiTTY: the selected row stays fully highlighted while the tree
+             * is unfocused - which after any programmatic jump it always is.
+             * A dlgproc hands a notify result back via DWLP_MSGRESULT. */
+            extern LRESULT kitty_theme_tree_customdraw(LPNMTVCUSTOMDRAW cd);
+            SetWindowLongPtr(hwnd, DWLP_MSGRESULT,
+                             kitty_theme_tree_customdraw(
+                                 (LPNMTVCUSTOMDRAW)lParam));
+            return 1;
         }
         if (LOWORD(wParam) == IDCX_TREEVIEW &&
             ((LPNMHDR) lParam)->code == TVN_SELCHANGED) {

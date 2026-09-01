@@ -728,10 +728,8 @@
 #define KT_CONFIG_WINDOW_SIZE                        "Size"
 #define KT_CONFIG_WINDOW_WINDOW_HEIGHT_IN_PIXELS_BLANK "Window height, in pixels (blank = default):"
 #define KT_CONFIG_WINDOW_WINDOW_WIDTH_IN_PIXELS_BLANK "Window width, in pixels (blank = default):"
-#define KT_CONFIG_WINDOW_CLOSING_A_TERMINAL_WINDOW   "Closing a terminal window"
-#define KT_CONFIG_WINDOW_COME_BACK_TO_THIS_WINDOW    "Come back to this window instead of exiting"
-#define KT_CONFIG_WINDOW_ANY_TERMINAL_EVEN_ONE       "Any terminal, even one that never connected. Closing this " \
-        "window still exits, and nothing comes back at shutdown."
+#define KT_CONFIG_WINDOW_CLOSING_A_TERMINAL_WINDOW   "Terminal window exit"
+#define KT_CONFIG_WINDOW_COME_BACK_TO_THIS_WINDOW    "always start a new KiTTY after the terminal window closes"
 
 /* Application/Security */
 #define KT_SECURITY_SECURITY                         "Security"

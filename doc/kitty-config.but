@@ -590,11 +590,13 @@ window that is already open as well, and dragging the window's edge
 writes them back, so the size you leave it at is the size it returns
 with.
 
-\b \q{Come back to this window instead of exiting} makes closing a
-terminal return to the configuration box rather than end the program.
-It applies to any terminal, even one that never connected. Closing the
-configuration window itself still exits, and nothing comes back at
-shutdown.
+\b \q{always start a new KiTTY after the terminal window closes} makes
+closing a terminal return to the configuration box rather than end the
+program. It applies to any terminal, even one that never connected -
+including one opened from the saved-session list or the Start button, so
+closing such a terminal brings up a fresh configuration window rather
+than exiting. Closing the configuration window itself still exits, and
+nothing comes back at shutdown.
 
 \S{kitty-cfg-sessionlist} The Session parameter panel
 
