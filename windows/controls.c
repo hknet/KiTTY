@@ -228,7 +228,16 @@ HWND doctl(struct ctlpos *cp, RECT r, const char *wclass, int wstyle,
         kitty_cfg_btn_fullw_du > kitty_cfg_btn_basew_du &&
         !strcmp(wclass, "BUTTON") &&
         (wstyle & 0xF) <= BS_DEFPUSHBUTTON) {
-        bool fullwidth = r.right >= kitty_cfg_btn_fullw_du - 4;
+        /* Full width includes full width INSIDE A GROUP BOX: beginbox()
+         * insets its ctlpos by 2*GAPXBOX, so a button spanning the whole
+         * box measures that much under the panel's width and used to be
+         * clamped - the workplace Switch-on button stopped following the
+         * window. The allowance is exactly the box inset, so a button in
+         * a 50% column stays held at its template width (cp->width would
+         * NOT do: a column's ctlpos is its own "container" and would set
+         * the session list's Delete/Del folder growing again). */
+        bool fullwidth =
+            r.right >= kitty_cfg_btn_fullw_du - 2 * GAPXBOX - 4;
         if (!fullwidth) {
             int neww = MulDiv(r.right, kitty_cfg_btn_basew_du,
                               kitty_cfg_btn_fullw_du);
