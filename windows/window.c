@@ -344,6 +344,7 @@ int kitty_check_update_enabled(void);
 bool kitty_theme_app_dark(void);    /* kitty/kitty_win.c: the app-wide setting */
 void kitty_workplace_show_pending_notice(void);
 void kitty_cfgbox_open_on_panel(const char *path);   /* kitty/kitty_config.c */
+void kitty_cfgbox_open_loaded(void);                 /* kitty/kitty_config.c */
 /* Posted by that notice when it is clicked: switch workplace proxy mode off. */
 #define WM_KITTY_WORKPLACE_DISARM (WM_APP + 72)
 #define TIMER_AUTOCOMMAND 8702
@@ -1539,6 +1540,18 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 if (panel[0])
                     kitty_cfgbox_open_on_panel(panel);
                 /* blank the option out so the ordinary parser never sees it */
+                while (p < q) *p++ = ' ';
+            }
+        }
+        /* KiTTY: "-cfgloaded" marks the session this box restores at startup
+         * as deliberately loaded - the launcher's hotkey-conflict balloon
+         * sets it, so fixing the hotkey it named saves back without the
+         * overwrite warning. Stripped here like -cfgpanel above. */
+        {
+            char *p = strstr(cl, "-cfgloaded");
+            if (p) {
+                char *q = p + strlen("-cfgloaded");
+                kitty_cfgbox_open_loaded();
                 while (p < q) *p++ = ' ';
             }
         }

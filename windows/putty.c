@@ -526,6 +526,9 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * Skip it and its argument; the panel is already recorded. */
                 if (arglist->args[arglistpos])
                     arglistpos++;
+            } else if (!strcmp(p, "-cfgloaded")) {
+                /* KiTTY: same story as -cfgpanel above, no argument. The
+                 * pre-scan already recorded it; just don't derail. */
 #ifdef KITTY_TEST_BUILD_LABEL
             /* Review tooling exists in TEST BUILDS only - a release knows
              * neither the flag nor the code. */

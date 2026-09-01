@@ -41,7 +41,7 @@
 #define MOD_NOREPEAT 0x4000
 #endif
 int RunSession( HWND hwnd, const char * folder_in, char * session_in ) ;
-static void RunPuTTYAtPanel( HWND hwnd, const char * panel ) ;
+static void RunPuTTYAtPanel( HWND hwnd, const char * panel, int mark_loaded ) ;
 
 /* KiTTY: runtime registry base (windows/storage.c). The launcher must read
  * KiTTY's own hive (Software\9bis.com\KiTTY) -- where sessions actually live --
@@ -1191,7 +1191,7 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 								conf_free( wc ) ;
 							}
 							kitty_set_last_session( LauncherHotkeyWinner ) ;
-							RunPuTTYAtPanel( hwnd, "Session/Startup" ) ;
+							RunPuTTYAtPanel( hwnd, "Session/Startup", 1 ) ;
 						}
 					}
 					/* The update balloon is the only balloon left: the workplace
@@ -1753,7 +1753,7 @@ void RunPuTTY( HWND hwnd, char * param ) {
  * The hotkey-conflict balloon uses it for Session/Startup, where the hotkey
  * controls are. Quote the path if it contains spaces (window.c's -cfgpanel
  * scan understands quotes). */
-static void RunPuTTYAtPanel( HWND hwnd, const char * panel ) {
+static void RunPuTTYAtPanel( HWND hwnd, const char * panel, int mark_loaded ) {
 	char buffer[4096]="",shortname[1024]="" ;
 	if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) )
 		if( GetShortPathName( buffer, shortname, 1023 ) ) {
@@ -1763,7 +1763,11 @@ static void RunPuTTYAtPanel( HWND hwnd, const char * panel ) {
 			  extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
 			  kitty_mpw_startup_unlock();
 			  mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
-			snprintf( buffer, sizeof(buffer), "%s%s%s -cfgpanel %s", shortname, aclprefix, mpwtok, panel ) ;
+			/* mark_loaded: the balloon named a session and pre-set it as the
+			 * last one, so the box treats the restore as a deliberate load
+			 * and Save does not raise the overwrite warning about it. */
+			snprintf( buffer, sizeof(buffer), "%s%s%s -cfgpanel %s%s", shortname, aclprefix, mpwtok, panel,
+			          mark_loaded ? " -cfgloaded" : "" ) ;
 			launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
 			if( mpwmap ) CloseHandle( mpwmap ) ;
 		}
