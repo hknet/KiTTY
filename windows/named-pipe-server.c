@@ -100,6 +100,26 @@ static bool create_named_pipe(NamedPipeServerSocket *ps, bool first_instance)
         /* lpSecurityAttributes */
         &sa);
 
+#ifdef PIPE_REJECT_REMOTE_CLIENTS
+    /* KiTTY: PIPE_REJECT_REMOTE_CLIENTS is Vista+; XP answers the whole call
+     * with ERROR_INVALID_PARAMETER (error 87), which took kageant's agent
+     * pipe down entirely. Retry without the flag there. The DACL in `sa` is
+     * the real access control on every Windows; the flag is defence in depth
+     * that XP simply does not offer. */
+    if (ps->pipehandle == INVALID_HANDLE_VALUE &&
+        GetLastError() == ERROR_INVALID_PARAMETER) {
+        ps->pipehandle = CreateNamedPipe(
+            ps->pipename,
+            PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED |
+            (first_instance ? FILE_FLAG_FIRST_PIPE_INSTANCE : 0),
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+            PIPE_UNLIMITED_INSTANCES,
+            4096, 4096,
+            0,
+            &sa);
+    }
+#endif
+
     return ps->pipehandle != INVALID_HANDLE_VALUE;
 }
 

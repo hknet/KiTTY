@@ -27,6 +27,7 @@
 #include "../kitty/kitty_theme_pref.h" /* KiTTY: the app-wide theme setting */
 
 #include <commctrl.h>
+#include "../kitty/kitty_notice.h"   /* the themed startup notice */
 
 #ifdef MSVC4
 #define ICON_BIG        1
@@ -844,25 +845,8 @@ static void protect_current_ssh2_key(struct MainDlgState *state)
 
     KittyProtKey *pk = kitty_protkey_from_key(k);
     if (!pk) {
-        /* Cleartext mode - warn once per process instead of degrading
-         * silently: on any normal Windows the probe passes, so this firing
-         * means a stripped/emulated system or a hooked crypt API. Gated on
-         * the probe, not on the NULL alone, so an out-of-memory blip cannot
-         * masquerade as a missing protection. */
-        if (!kitty_protkey_available()) {
-            static bool warned = false;
-            if (!warned) {
-                warned = true;
-                MessageBox(NULL,
-                           "Windows' CryptProtectMemory is not working in "
-                           "this process, so this key is held in PLAIN "
-                           "memory while the window is open. On a normal "
-                           "Windows this never happens - something is "
-                           "stripping or hooking the crypt API.",
-                           "KiTTYgen: key not memory-protected",
-                           MB_ICONWARNING | MB_OK);
-            }
-        }
+        /* Cleartext mode. The user already heard about it: the startup
+         * notice (WM_INITDIALOG above) says so before any key exists. */
         return;                        /* crypt API unavailable */
     }
 
@@ -2039,6 +2023,27 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
 
     switch (msg) {
       case WM_INITDIALOG:
+        /* KiTTY: say it at STARTUP when in-memory key protection is off -
+         * a user with a crypto problem deserves to know before generating a
+         * key, not after. Wording follows the CAUSE: an old Windows simply
+         * lacks the API; on a modern one a failing probe means interference.
+         * Replaces the old after-generation MessageBox. */
+        if (!kitty_protkey_available()) {
+            extern int kitty_protkey_absent(void);
+            char kpn_text[512];
+            snprintf(kpn_text, sizeof(kpn_text),
+                     "Windows' CryptProtectMemory is not available on this "
+                     "system, so generated and loaded private keys are held "
+                     "in PLAIN memory while KiTTYgen runs. %s",
+                     kitty_protkey_absent() ?
+                     "On this version of Windows the protection does not "
+                     "exist." :
+                     "On a normal Windows this never happens - something is "
+                     "stripping or hooking the crypt API, which is itself "
+                     "worth investigating.");
+            kitty_notice_show("KiTTYgen: keys will not be memory-protected",
+                              kpn_text, RGB(190, 110, 0), 15, hwnd, 0);
+        }
         if (has_help())
             SetWindowLongPtr(hwnd, GWL_EXSTYLE,
                              GetWindowLongPtr(hwnd, GWL_EXSTYLE) |

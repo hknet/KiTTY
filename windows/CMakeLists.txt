@@ -134,6 +134,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
   ${CMAKE_SOURCE_DIR}/kitty/kitty_pageant.c   # KiTTY: kageant additions (split out of pageant.c)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_anchor.c    # KiTTY: edge anchoring for the resizable windows
   ${CMAKE_SOURCE_DIR}/kitty/kitty_authenticode.c  # KiTTY: shared verify for the New key launcher
   ${CMAKE_SOURCE_DIR}/kitty/kitty_notice.c    # KiTTY: shared near-the-clock notice window (replaces tray balloons)
@@ -164,13 +165,16 @@ target_link_libraries(pageant
 set_target_properties(pageant PROPERTIES WIN32_EXECUTABLE ON)
 installed_program(pageant)
 
-add_sources_from_current_dir(plink no-jump-list.c nohelp.c plink.rc)
+add_sources_from_current_dir(plink no-jump-list.c nohelp.c plink.rc
+  ../kitty/kitty_crashlog.c)
 add_dependencies(plink generated_licence_h)
 
-add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc)
+add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
+  ../kitty/kitty_crashlog.c)
 add_dependencies(pscp generated_licence_h)
 
-add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc)
+add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc
+  ../kitty/kitty_crashlog.c)
 add_dependencies(psftp generated_licence_h)
 
 add_sources_from_current_dir(psocks nohelp.c)
@@ -193,6 +197,7 @@ set_target_properties(putty PROPERTIES WIN32_EXECUTABLE ON)
 installed_program(putty)
 
 add_executable(puttytel
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c
   window.c
   ${CMAKE_SOURCE_DIR}/stubs/no-hello-keys.c  # KiTTY: no key auth here
   putty.c
@@ -218,6 +223,7 @@ add_executable(puttygen
   puttygen.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: the .hello sidecar
@@ -241,6 +247,7 @@ add_executable(puttygen
   ${CMAKE_SOURCE_DIR}/sshrand.c
   controls.c
   kitty_msgbox_stub.c   # KiTTY: controls.c routes MessageBox; no themed boxes here
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_notice.c   # KiTTY: the themed startup notice (key protection)
   puttygen.rc)
 add_dependencies(puttygen generated_licence_h)
 target_link_libraries(puttygen
@@ -254,6 +261,7 @@ add_executable(kittygen_cli
   ${CMAKE_SOURCE_DIR}/cmdgen.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys (container; no UI used here)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: the .hello sidecar writer
@@ -281,6 +289,7 @@ installed_program(kittygen_cli)
 
 if(HAVE_CONPTY)
   add_executable(pterm
+    ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c
     window.c
     ${CMAKE_SOURCE_DIR}/stubs/no-hello-keys.c  # KiTTY: no key auth here
     pterm.c
@@ -423,6 +432,7 @@ add_executable(test_hello_container
   ${CMAKE_SOURCE_DIR}/test/test_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c
@@ -450,6 +460,7 @@ add_executable(kitty
   window.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c     # KiTTY: sidecar + translate
@@ -494,6 +505,7 @@ add_executable(kitty
   ${KITTY_DIR}/blocnote/notepad.c
   ${KITTY_DIR}/blocnote/notepad.rc
   ${KITTY_DIR}/kitty_win.c
+  ${KITTY_DIR}/kitty_crashlog.c   # KiTTY: crash log; per-target on purpose, see the other listings
   ${KITTY_DIR}/kitty_authenticode.c   # KiTTY: shared Authenticode trust + CN gate
   ${KITTY_DIR}/winfont_fallback.c
   ${KITTY_DIR}/url/urlhack.c
@@ -522,7 +534,7 @@ target_compile_definitions(kitty-be-list PRIVATE MOD_ADB=1)
 set_source_files_properties(${KITTY_DIR}/blocnote/notepad.c PROPERTIES COMPILE_DEFINITIONS NOMAIN)
 set_source_files_properties(${KITTY_DIR}/blocnote/notepad.rc PROPERTIES COMPILE_DEFINITIONS NOTEPAD_EMBEDDED)
 add_dependencies(kitty generated_licence_h)
-target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.85.1.3" BUILD_TIME="2026-08-25")
+target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.85.1.4" BUILD_TIME="2026-09-01")
 target_compile_options(kitty PRIVATE -fcommon)
 if(KITTY_PERF)
   # The SAME timers in upstream's own binary. guiterminal already carries the
@@ -564,6 +576,7 @@ add_executable(kitty_portable
   window.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c     # KiTTY: sidecar + translate
@@ -596,6 +609,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/blocnote/notepad.c
   ${KITTY_DIR}/blocnote/notepad.rc
   ${KITTY_DIR}/kitty_win.c
+  ${KITTY_DIR}/kitty_crashlog.c   # KiTTY: crash log; per-target on purpose, see the other listings
   ${KITTY_DIR}/kitty_authenticode.c   # KiTTY: shared Authenticode trust + CN gate
   ${KITTY_DIR}/winfont_fallback.c
   ${KITTY_DIR}/url/urlhack.c
@@ -620,7 +634,7 @@ add_executable(kitty_portable
 be_list(kitty_portable KiTTY SSH SERIAL OTHERBACKENDS)
 target_compile_definitions(kitty_portable-be-list PRIVATE MOD_ADB=1)
 add_dependencies(kitty_portable generated_licence_h)
-target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.85.1.3" BUILD_TIME="2026-08-25")
+target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.85.1.4" BUILD_TIME="2026-09-01")
 target_compile_options(kitty_portable PRIVATE -fcommon)
 
 set(KITTY_TEST_BUILD_LABEL "" CACHE STRING "Visible label for ad-hoc KiTTY test/debug builds (shown in About boxes); leave empty for releases")
@@ -737,6 +751,7 @@ add_executable(test_hello_gui
   ${CMAKE_SOURCE_DIR}/test/test_hello_gui.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c

@@ -24,6 +24,7 @@
 #include "storage.h"
 #include "../kitty/kitty_b64.h"
 #include "../kitty/kitty_mpw.h"
+#include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
 
 /* KiTTY storage API surface (fork style: declared extern by callers) */
 void kitty_set_storage_mode(int mode);

@@ -32,6 +32,7 @@
 #include "ssh.h"
 
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
+#include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 /* Shim so the moved kageant_do_notify body below stays textually identical
  * to its pageant.c original: reach pageant.c's static tray-window handle
  * through the accessor it exports for us. */
@@ -3921,14 +3922,23 @@ void kageant_warn_unprotected_memory(void)
     if (warned || kitty_protkey_available())
         return;
     warned = 1;
-    kitty_notice_show(
-        "kageant: keys are NOT memory-protected",
-        "Windows' CryptProtectMemory is not working in this process, so "
-        "private keys are held in PLAIN memory while loaded. On a normal "
-        "Windows this never happens - something is stripping or hooking the "
-        "crypt API, which is itself worth investigating.",
-        KAGEANT_NOTICE_WARN, kageant_notice_seconds(15),
-        traywindow, KAGEANT_WM_NOTICE_CLICK);
+    {
+        extern int kitty_protkey_absent(void);
+        char kwu_text[512];
+        snprintf(kwu_text, sizeof(kwu_text),
+                 "Windows' CryptProtectMemory is not working in this "
+                 "process, so private keys are held in PLAIN memory while "
+                 "loaded. %s",
+                 kitty_protkey_absent() ?
+                 "On this version of Windows the protection does not "
+                 "exist." :
+                 "On a normal Windows this never happens - something is "
+                 "stripping or hooking the crypt API, which is itself "
+                 "worth investigating.");
+        kitty_notice_show("kageant: keys are NOT memory-protected", kwu_text,
+                          KAGEANT_NOTICE_WARN, kageant_notice_seconds(15),
+                          traywindow, KAGEANT_WM_NOTICE_CLICK);
+    }
 }
 
 void kageant_do_notify(const char *comment, const char *fingerprint)

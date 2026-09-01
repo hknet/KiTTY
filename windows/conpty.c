@@ -10,6 +10,7 @@
 
 #include <windows.h>
 #include <consoleapi.h>
+#include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
 
 typedef struct ConPTY ConPTY;
 struct ConPTY {

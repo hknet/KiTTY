@@ -168,6 +168,7 @@ int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 
 #include <shlobj.h>
 #include <shobjidl.h>   /* IFileOpenDialog (Common Item Dialog folder picker) */
+#include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 int OpenDirName( HWND hFrame, char * dirname ) {
 	dirname[0] = '\0' ;
 	/* Modern Common Item Dialog folder picker (Vista+): the full Explorer window

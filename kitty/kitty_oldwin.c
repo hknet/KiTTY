@@ -36,6 +36,12 @@ static void kapi_note(const char *dll, const char *symbol, int need,
             return;                    /* already recorded; resolve once */
     if (kapi_count >= KAPI_MAX)
         return;
+    /* Never store a NULL description: BOTH report builders format it with
+     * %s / compare it with strcmp, and the first NULL to arrive took the
+     * process down on XP - twice, once per report, because the first fix
+     * guarded one consumer instead of the source. */
+    if (!feature)
+        feature = "(unnamed)";
     kapi_notes[kapi_count].dll = dll;
     kapi_notes[kapi_count].symbol = symbol;
     kapi_notes[kapi_count].feature = feature;
@@ -106,6 +112,15 @@ static char *kapi_report(int need)
     return strbuf_to_str(sb);
 }
 
+/* A NULL feature description must never reach strcmp/printf: one did, and
+ * the degraded-features line took the whole process down on XP - inside
+ * msvcrt, in the report about the degradation. Normalized here so every
+ * consumer below can trust the field. */
+static const char *kapi_feature_of(int i)
+{
+    return kapi_notes[i].feature ? kapi_notes[i].feature : "(unnamed)";
+}
+
 char *kitty_oldwin_required_missing(void) { return kapi_report(KITTY_API_REQUIRED); }
 char *kitty_oldwin_degraded(void)         { return kapi_report(KITTY_API_OPTIONAL); }
 
@@ -126,7 +141,7 @@ char *kitty_oldwin_degraded_brief(void)
         for (j = 0; j < i; j++)
             if (!kapi_notes[j].found &&
                 kapi_notes[j].need == KITTY_API_OPTIONAL &&
-                !strcmp(kapi_notes[j].feature, kapi_notes[i].feature))
+                !strcmp(kapi_feature_of(j), kapi_feature_of(i)))
                 break;
         if (j < i)
             continue;                  /* this feature is already named */
@@ -134,7 +149,7 @@ char *kitty_oldwin_degraded_brief(void)
             sb = strbuf_new();
         else
             put_dataz(sb, ", ");
-        put_dataz(sb, kapi_notes[i].feature);
+        put_dataz(sb, kapi_feature_of(i));
     }
     return sb ? strbuf_to_str(sb) : NULL;
 }
@@ -267,4 +282,222 @@ BOOL kitty_attach_parent_console(void)
     if (!p_AttachConsole)
         return FALSE;                  /* pre-XP: no parent console to attach */
     return p_AttachConsole(ATTACH_PARENT_PROCESS);
+}
+
+/* ---- registry APIs newer than XP (see kitty_oldwin_reg.h) ---------------
+ *
+ * OPTIONAL and silent, like GetTickCount64: the fallbacks are exact for
+ * every shape this codebase uses (subkey non-NULL; flags exactly one of
+ * RRF_RT_REG_SZ / _DWORD / _BINARY), so nothing is lost and the user is
+ * told nothing. The NULL-subkey and multi-type-mask variants are
+ * deliberately not emulated - no caller has them, and an unemulated case
+ * failing loudly beats one working differently.
+ */
+typedef LSTATUS (WINAPI *regdeltree_t)(HKEY, LPCSTR);
+typedef LSTATUS (WINAPI *reggetvalue_t)(HKEY, LPCSTR, LPCSTR, DWORD,
+                                        LPDWORD, PVOID, LPDWORD);
+static regdeltree_t p_RegDeleteTreeA;
+static reggetvalue_t p_RegGetValueA;
+static int reg_resolved;
+
+static void reg_resolve(void)
+{
+    if (reg_resolved)
+        return;
+    p_RegDeleteTreeA = (regdeltree_t)
+        kitty_api("advapi32.dll", "RegDeleteTreeA", KITTY_API_OPTIONAL,
+                  "one-call registry subtree deletion");
+    p_RegGetValueA = (reggetvalue_t)
+        kitty_api("advapi32.dll", "RegGetValueA", KITTY_API_OPTIONAL,
+                  "typed registry reads");
+    reg_resolved = 1;
+}
+
+static LSTATUS reg_deltree_fallback(HKEY key, LPCSTR subkey)
+{
+    HKEY sub;
+    LSTATUS st = RegOpenKeyExA(key, subkey, 0,
+                               KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE, &sub);
+    if (st != ERROR_SUCCESS)
+        return st;
+    /* Always index 0, re-enumerated after each delete: deleting shifts the
+     * enumeration under an index that walks forward. Values never block a
+     * RegDeleteKey; only subkeys do. */
+    for (;;) {
+        char name[256];
+        DWORD cch = sizeof(name);
+        st = RegEnumKeyExA(sub, 0, name, &cch, NULL, NULL, NULL, NULL);
+        if (st == ERROR_NO_MORE_ITEMS) {
+            st = ERROR_SUCCESS;
+            break;
+        }
+        if (st != ERROR_SUCCESS)
+            break;
+        st = reg_deltree_fallback(sub, name);
+        if (st != ERROR_SUCCESS)
+            break;
+    }
+    RegCloseKey(sub);
+    if (st == ERROR_SUCCESS)
+        st = RegDeleteKeyA(key, subkey);
+    return st;
+}
+
+LSTATUS kitty_oldwin_RegDeleteTreeA(HKEY key, LPCSTR subkey)
+{
+    reg_resolve();
+    if (p_RegDeleteTreeA)
+        return p_RegDeleteTreeA(key, subkey);
+    if (!subkey || !*subkey)
+        return ERROR_CALL_NOT_IMPLEMENTED;   /* no caller passes this */
+    return reg_deltree_fallback(key, subkey);
+}
+
+LSTATUS kitty_oldwin_RegGetValueA(HKEY key, LPCSTR subkey, LPCSTR value,
+                                  DWORD flags, LPDWORD ptype, PVOID data,
+                                  LPDWORD psize)
+{
+    HKEY sub = key;
+    DWORD type = REG_NONE, cb;
+    LSTATUS st;
+    DWORD want = 0;
+
+    reg_resolve();
+    if (p_RegGetValueA)
+        return p_RegGetValueA(key, subkey, value, flags, ptype, data, psize);
+
+    if (flags == RRF_RT_REG_SZ)          want = REG_SZ;
+    else if (flags == RRF_RT_REG_DWORD)  want = REG_DWORD;
+    else if (flags == RRF_RT_REG_BINARY) want = REG_BINARY;
+    else return ERROR_CALL_NOT_IMPLEMENTED;   /* shape nobody uses */
+
+    if (subkey && *subkey) {
+        st = RegOpenKeyExA(key, subkey, 0, KEY_QUERY_VALUE, &sub);
+        if (st != ERROR_SUCCESS)
+            return st;
+    }
+    cb = psize ? *psize : 0;
+    st = RegQueryValueExA(sub, value, NULL, &type, (LPBYTE)data, &cb);
+    if (st == ERROR_SUCCESS || st == ERROR_MORE_DATA) {
+        if (type != want) {
+            st = ERROR_UNSUPPORTED_TYPE;
+        } else if (st == ERROR_SUCCESS && data) {
+            if (want == REG_DWORD && cb != sizeof(DWORD)) {
+                st = ERROR_UNSUPPORTED_TYPE;
+            } else if (want == REG_SZ) {
+                /* RegGetValue GUARANTEES termination; QueryValueEx does
+                 * not. Terminate in place, or refuse if the buffer is
+                 * exactly full of non-NUL bytes. */
+                char *s = (char *)data;
+                if (cb == 0 || s[cb - 1] != '\0') {
+                    if (psize && cb < *psize) {
+                        s[cb] = '\0';
+                        cb++;
+                    } else {
+                        st = ERROR_MORE_DATA;
+                    }
+                }
+            }
+        }
+    }
+    if (ptype)
+        *ptype = type;
+    if (psize)
+        *psize = cb;
+    if (sub != key)
+        RegCloseKey(sub);
+    return st;
+}
+
+/* conpty.c's spawn plumbing. Never reached where the APIs are absent -
+ * conpty availability (CreatePseudoConsole, itself runtime-resolved) is
+ * checked before any spawn - so the fallback only exists to keep the
+ * LOADER from refusing pterm on XP. */
+typedef BOOL (WINAPI *initptal_t)(LPPROC_THREAD_ATTRIBUTE_LIST, DWORD,
+                                  DWORD, PSIZE_T);
+typedef BOOL (WINAPI *updpta_t)(LPPROC_THREAD_ATTRIBUTE_LIST, DWORD,
+                                DWORD_PTR, PVOID, SIZE_T, PVOID, PSIZE_T);
+static initptal_t p_InitializeProcThreadAttributeList;
+static updpta_t p_UpdateProcThreadAttribute;
+static int ptal_resolved;
+
+static void ptal_resolve(void)
+{
+    if (ptal_resolved)
+        return;
+    p_InitializeProcThreadAttributeList = (initptal_t)
+        kitty_api("kernel32.dll", "InitializeProcThreadAttributeList",
+                  KITTY_API_OPTIONAL, "ConPTY process spawning");
+    p_UpdateProcThreadAttribute = (updpta_t)
+        kitty_api("kernel32.dll", "UpdateProcThreadAttribute",
+                  KITTY_API_OPTIONAL, "ConPTY process spawning");
+    ptal_resolved = 1;
+}
+
+BOOL kitty_oldwin_InitializeProcThreadAttributeList(
+    LPPROC_THREAD_ATTRIBUTE_LIST list, DWORD count, DWORD flags, PSIZE_T size)
+{
+    ptal_resolve();
+    if (p_InitializeProcThreadAttributeList)
+        return p_InitializeProcThreadAttributeList(list, count, flags, size);
+    SetLastError(ERROR_PROC_NOT_FOUND);
+    return FALSE;
+}
+
+BOOL kitty_oldwin_UpdateProcThreadAttribute(
+    LPPROC_THREAD_ATTRIBUTE_LIST list, DWORD flags, DWORD_PTR attr,
+    PVOID value, SIZE_T cb, PVOID prev, PSIZE_T rsize)
+{
+    ptal_resolve();
+    if (p_UpdateProcThreadAttribute)
+        return p_UpdateProcThreadAttribute(list, flags, attr, value, cb,
+                                           prev, rsize);
+    SetLastError(ERROR_PROC_NOT_FOUND);
+    return FALSE;
+}
+
+/* Vista+: who is serving a named pipe. The agent client's unknown-agent
+ * check is the one caller, and it is observational - so the fallback just
+ * says "cannot tell" and the check is skipped. NOT silent-exact like the
+ * registry wrappers: losing the observation is a real (small) degradation,
+ * so it goes through the OPTIONAL notes and shows up in the degraded
+ * report. */
+typedef BOOL (WINAPI *getpipesrvpid_t)(HANDLE, PULONG);
+static getpipesrvpid_t p_GetNamedPipeServerProcessId;
+static int pipepid_resolved;
+
+BOOL kitty_oldwin_GetNamedPipeServerProcessId(HANDLE pipe, PULONG pid)
+{
+    if (!pipepid_resolved) {
+        p_GetNamedPipeServerProcessId = (getpipesrvpid_t)
+            kitty_api("kernel32.dll", "GetNamedPipeServerProcessId",
+                      KITTY_API_OPTIONAL,
+                      "identifying which process serves the SSH agent pipe");
+        pipepid_resolved = 1;
+    }
+    if (p_GetNamedPipeServerProcessId)
+        return p_GetNamedPipeServerProcessId(pipe, pid);
+    SetLastError(ERROR_PROC_NOT_FOUND);
+    return FALSE;
+}
+
+/* Vista+: register for Restart-Manager relaunch after an MSI upgrade. On XP
+ * there is no Restart Manager, so there is nothing to register with and
+ * nothing is lost - silent, per the exact-fallback bar. */
+typedef HRESULT (WINAPI *regapprestart_t)(PCWSTR, DWORD);
+static regapprestart_t p_RegisterApplicationRestart;
+static int appra_resolved;
+
+HRESULT kitty_oldwin_RegisterApplicationRestart(PCWSTR cmdline, DWORD flags)
+{
+    if (!appra_resolved) {
+        p_RegisterApplicationRestart = (regapprestart_t)
+            kitty_api("kernel32.dll", "RegisterApplicationRestart",
+                      KITTY_API_OPTIONAL,
+                      "automatic restart after an in-place upgrade");
+        appra_resolved = 1;
+    }
+    if (p_RegisterApplicationRestart)
+        return p_RegisterApplicationRestart(cmdline, flags);
+    return E_NOTIMPL;
 }

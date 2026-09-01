@@ -15,6 +15,7 @@
 #include "kitty_theme.h"
 #include "kitty_theme_pref.h"
 #include "kitty_inilight.h"
+#include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 
 /* The consolidated KiTTY hive, and the same value name kitty.exe writes. */
 #define KITTY_THEME_REG_BASE  "Software\\kapper.net\\KiTTY"

@@ -28,6 +28,8 @@ struct ssh_key;
  * kitty_protkey_from_key() call will return NULL and keys stay in plain
  * memory - the callers use this to WARN instead of degrading silently. */
 int kitty_protkey_available(void);
+/* 1 = the crypt API is ABSENT (old Windows) - not merely failing. */
+int kitty_protkey_absent(void);
 
 /* Serialise + encrypt `key`. Does NOT take ownership of `key` (caller still
  * frees it). Returns NULL if the crypt API is unavailable. */

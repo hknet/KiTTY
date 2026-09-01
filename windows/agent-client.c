@@ -13,6 +13,7 @@
 #include "cryptoapi.h"
 
 #include "../kitty/kitty_authenticode.h"   /* KiTTY: serving-agent check hook */
+#include "../kitty/kitty_oldwin_reg.h"   /* XP: pipe-server pid via oldwin */
 
 /* KiTTY: installed by kitty.exe only (NULL in console tools). Called with the
  * serving agent's pid after a query is answered - observational, never gates

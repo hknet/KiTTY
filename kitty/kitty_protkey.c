@@ -52,6 +52,19 @@ int kitty_protkey_available(void)
     return cached;
 }
 
+int kitty_protkey_absent(void)
+{
+#ifdef _WINDOWS
+    /* The API cannot even be resolved - the honest reading on pre-Vista
+     * Windows, where CryptProtectMemory simply does not exist. Distinct
+     * from kitty_protkey_available()==0 with the symbol present, which
+     * means something is interfering on a Windows that HAS it. */
+    return !(got_crypt() && p_CryptProtectMemory && p_CryptUnprotectMemory);
+#else
+    return 1;
+#endif
+}
+
 KittyProtKey *kitty_protkey_from_key(ssh_key *key)
 {
     strbuf *plain = strbuf_new_nm();

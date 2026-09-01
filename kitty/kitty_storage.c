@@ -26,6 +26,7 @@
 #include "kitty_defs.h"   /* KITTY_DEFAULT_SESSION (dependency-free) */
 #include "kitty_b64.h"    /* ksec_b64_encode/decode (at-rest secret codec) */
 #include "kitty_storage.h"
+#include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 
 /*
  * KiTTY: the registry root is chosen at RUNTIME (kitty.ini KiClassName).

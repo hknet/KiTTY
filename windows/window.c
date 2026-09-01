@@ -31,6 +31,7 @@
 #include <commctrl.h>
 #include <richedit.h>
 #include <mmsystem.h>
+#include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
 
 /* From MSDN: In the WM_SYSCOMMAND message, the four low-order bits of
  * wParam are used by Windows, and should be masked off, so we shouldn't

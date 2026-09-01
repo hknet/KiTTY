@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <windows.h>
+#include "kitty_msgbox.h"   /* themed MessageBox routing */
 
 /* The registry hive chosen AT RUNTIME (kitty_set_registry_root, driven by
  * kitty.ini KiClassName). Named proxies used the compile-time PUTTY_REG_POS

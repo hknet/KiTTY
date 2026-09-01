@@ -42,6 +42,10 @@
 #include <shellapi.h>
 
 #include <aclapi.h>
+/* XP: post-XP APIs via oldwin. NOT inside the DEBUG_IPC block below - the
+ * add-after-the-last-include reflex put it there once, where it compiled to
+ * nothing and left RegisterApplicationRestart a raw loader-killing import. */
+#include "../kitty/kitty_oldwin_reg.h"
 #ifdef DEBUG_IPC
 #define _WIN32_WINNT 0x0500            /* for ConvertSidToStringSid */
 #include <sddl.h>
