@@ -394,6 +394,7 @@ void TranslateShortcuts( char * st ) ;
 void InitShortcuts( void ) ;
 int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) ;
 char * GetKittyIniFile(void) ;
+char * GetKittySavFile(void) ;
 // Recupere une entree d'une session ( retourne 1 si existe )
 int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) ;
 // Sauve les coordonnees de la fenetre

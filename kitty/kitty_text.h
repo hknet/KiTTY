@@ -777,6 +777,36 @@
 #define KT_ZMODEM_THEIR_OPTIONS_AND_THE_DOWNLOAD     "Their options, and the download folder, belong to a session " \
         "and stay on Connection > ZModem."
 
+/* Application/KiTTY Settings */
+#define KT_KSET_TITLE                                "KiTTY Settings"
+#define KT_KSET_INTRO_WHOLE                          "Settings of this KiTTY as a whole, not of a session."
+#define KT_KSET_INTRO_WHERE                          "Each leaf says where its values are kept."
+
+/* Application/KiTTY Settings/Storage & backups */
+#define KT_KSET_STORAGE_TITLE                        "Where settings are kept"
+#define KT_KSET_STORAGE_THIS_KITTY                   "This KiTTY"
+#define KT_KSET_STORAGE_STORE_REGISTRY               "Settings store: registry (HKCU\\%s)"
+#define KT_KSET_STORAGE_STORE_SAV                    "Settings store: registry, loaded from a .sav file at start " \
+        "(savemode=file)"
+#define KT_KSET_STORAGE_STORE_FOLDER                 "Settings store: folder (%s)"
+#define KT_KSET_STORAGE_INI                          "Configuration file: %s"
+#define KT_KSET_STORAGE_INI_NONE                     "Configuration file: none (conf=no)"
+#define KT_KSET_STORAGE_READONLY                     "KiTTY is running read-only (readonly=yes) - the configuration " \
+        "file and the backups are not written."
+#define KT_KSET_STORAGE_NOCONF                       "KiTTY is running without a configuration file (conf=no)."
+#define KT_KSET_BACKUPS                              "Backups"
+#define KT_KSET_BACKUPS_REG                          "Registry backups to keep (0 = none):"
+#define KT_KSET_BACKUPS_DIR                          "Folder-store backups to keep (0 = none):"
+#define KT_KSET_BACKUPS_REG_SHOWN                    "Registry backups to keep: %d"
+#define KT_KSET_BACKUPS_DIR_SHOWN                    "Folder-store backups to keep: %d"
+#define KT_KSET_BACKUPS_SAV_PATH                     "Backup file base path: %s"
+#define KT_KSET_BACKUPS_DIR_PATH                     "Backup folder: %s\\Backups"
+#define KT_KSET_HARDENING                            "Hardening"
+#define KT_KSET_RESTRICTACL_ON                       "Restricted process ACL (restrictacl): on"
+#define KT_KSET_RESTRICTACL_OFF                      "Restricted process ACL (restrictacl): off"
+#define KT_KSET_RESTRICTACL_NOTE                     "Read from kitty.ini only, never the registry. Edit the file " \
+        "to change it."
+
 /* Application/Session parameter */
 #define KT_SESSION_PARAMETER_THE_SESSION_LIST        "The session list"
 #define KT_SESSION_PARAMETER_THE_LIST                "The list"

@@ -642,6 +642,48 @@ are kept in \c{kitty.ini} and shared by every session. The settings
 that \e{are} per session stay on the session's own panels:
 \k{kitty-cfg-winscp-session} and \k{kitty-cfg-zmodem-session}.
 
+\S{kitty-cfg-kitty-settings} The KiTTY Settings tree
+
+Settings of this KiTTY as a whole - not of any session - that had no
+panel before and could only be changed by editing \c{kitty.ini} or the
+registry by hand. One leaf per concern.
+
+Each leaf writes to the store this KiTTY reads from: the registry on an
+installed copy, \c{kitty.ini} in a folder store (\c{savemode=dir}). The
+precedence rules between the two are set out at the top of
+\c{kitty.ini.example}.
+
+Two keys are deliberately not editable here. \c{restrictacl} is shown
+read-only on \k{kitty-cfg-storage}, because it is honoured from
+\c{kitty.ini} alone. \c{conf=no} forbids every write KiTTY would make to
+its configuration, so a settings window must not offer it.
+
+\S{kitty-cfg-storage} The Storage & backups panel
+
+\b \q{This KiTTY} reports where the settings live - the registry hive,
+or the folder of a folder store - and which configuration file is in
+use. When KiTTY runs read-only (\c{readonly=yes}) or without a
+configuration file (\c{conf=no}) the panel says so and offers no
+fields: the backups are not written in either state, so a count would
+change nothing.
+
+\b \q{Registry backups to keep} is how many timestamped \c{.sav}
+exports of the hive an installed copy keeps; in a folder store the
+field is \q{Folder-store backups to keep} instead, the number of copies
+kept in the store's \c{Backups} folder. Only the count for the store in
+use is offered - the other mode's key (\c{savbackupcount} or
+\c{portablebackupcount} in \c{kitty.ini}) does nothing here. 0 turns
+that backup off, 50 is the most kept. A backup is written when the
+configuration box is committed with \q{Open}, when \q{Change Settings}
+is applied, and before a session is overwritten or deleted. The path
+the backups are written to is shown; it follows the \c{sav} key in
+\c{kitty.ini}.
+
+\b \q{Hardening} shows whether the restricted process ACL is on. That
+switch is read from \c{kitty.ini} only - never the registry, so a stale
+registry value can never cancel it - which is why it is not editable
+here.
+
 \S{kitty-cfg-security} The Security panel
 
 \q{Warn when an unverified agent serves the keys}.

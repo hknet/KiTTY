@@ -214,7 +214,10 @@ char default_init_file_content[] =
 ;    empty and the tray menu could not group by folder.\n\
 ;    It does NOT make an old subdirectory tree readable: sessions inside\n\
 ;    subdirectories are not listed at all, so on a normal store turning it on\n\
-;    only stops folders being found.\n\
+;    only stops folders being found. The key is INERT for now; if you carry\n\
+;    an old store whose sessions live in subdirectories, they are not shown\n\
+;    until a migration for that layout exists - move the session files up\n\
+;    into Sessions\\ in the meantime.\n\
 ;browsedirectory=\n\
 \n\
 ; Folders: the list of session folders, written by KiTTY whenever you add or\n\

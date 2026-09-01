@@ -48,6 +48,8 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_verifyagent        "kitty-cfg-security"
 #define WINHELP_CTX_kitty_missing_features   "kitty-cfg-missing-features"
 #define WINHELP_CTX_kitty_helper_paths       "kitty-cfg-external-tools"
+#define WINHELP_CTX_kitty_settings_tree      "kitty-cfg-kitty-settings"
+#define WINHELP_CTX_kitty_storage            "kitty-cfg-storage"
 #define WINHELP_CTX_kitty_folders            "kitty-cfg-sessionlist"
 #define WINHELP_CTX_kitty_quickconnect       "kitty-cfg-sessionlist"
 #define WINHELP_CTX_kitty_updater            "kitty-cfg-updates"

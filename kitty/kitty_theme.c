@@ -645,6 +645,8 @@ HBRUSH kitty_theme_ctlcolor(HWND dlg, UINT msg, WPARAM wParam, LPARAM lParam)
  * row it is drawing as selected, so letting it think the row is ordinary is
  * what makes the colours stick. CDRF_NEWFONT, or they are discarded.
  */
+static bool kt_show_focus(HWND ctl);   /* defined with the tab strip below */
+
 LRESULT kitty_theme_tree_customdraw(LPNMTVCUSTOMDRAW cd)
 {
     switch (cd->nmcd.dwDrawStage) {
@@ -661,9 +663,25 @@ LRESULT kitty_theme_tree_customdraw(LPNMTVCUSTOMDRAW cd)
                 cd->clrTextBk = GetSysColor(COLOR_HIGHLIGHT);
                 cd->clrText = GetSysColor(COLOR_HIGHLIGHTTEXT);
             }
-            return CDRF_NEWFONT;
+            /* Clearing CDIS_FOCUS above also took away the dotted frame
+             * Windows draws on the focused row - so the selected row looked
+             * the same whether or not the tree had the keyboard. Drawn back
+             * by hand after the row, while the tree has the focus and
+             * Windows is showing focus cues: colour says "selected", the
+             * frame says "the keys act here". */
+            return CDRF_NEWFONT |
+                (kt_show_focus(cd->nmcd.hdr.hwndFrom) ? CDRF_NOTIFYPOSTPAINT : 0);
         }
         return CDRF_DODEFAULT;
+      case CDDS_ITEMPOSTPAINT: {
+        HWND tree = cd->nmcd.hdr.hwndFrom;
+        HTREEITEM item = (HTREEITEM)cd->nmcd.dwItemSpec;
+        RECT r;
+        if (item == TreeView_GetSelection(tree) &&
+            TreeView_GetItemRect(tree, item, &r, TRUE))
+            DrawFocusRect(cd->nmcd.hdc, &r);
+        return CDRF_DODEFAULT;
+      }
     }
     return CDRF_DODEFAULT;
 }
@@ -733,6 +751,21 @@ static COLORREF kt_accent_for(bool dark)
     return c;
 }
 
+/*
+ * Whether a control should SHOW that it has the keyboard focus: it has it,
+ * and Windows is currently showing focus cues at all (it hides them until
+ * the keyboard is used - WM_QUERYUISTATE carries that state down from the
+ * dialog). The hand-drawn strip and the always-highlighted tree both
+ * replace the control's own painting, and neither said where the focus
+ * was; with the arrow keys and Tab there was nothing to see.
+ */
+static bool kt_show_focus(HWND ctl)
+{
+    if (GetFocus() != ctl)
+        return false;
+    return !(SendMessage(ctl, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS);
+}
+
 static void kt_paint_tabs(HWND tab, HDC dc, bool dark)
 {
     RECT rc, ir;
@@ -741,6 +774,7 @@ static void kt_paint_tabs(HWND tab, HDC dc, bool dark)
     int oldbk;
     COLORREF back, selfill, text, dim;
     HBRUSH backbr, selbr, accentbr;
+    bool focus = kt_show_focus(tab);
 
     back    = dark ? KT_DARK_BACK : GetSysColor(COLOR_BTNFACE);
     selfill = dark ? KT_DARK_CTL  : GetSysColor(COLOR_WINDOW);
@@ -780,7 +814,9 @@ static void kt_paint_tabs(HWND tab, HDC dc, bool dark)
         if (i == sel) {
             RECT bar = ir;
             FillRect(dc, &ir, selbr);
-            bar.top = bar.bottom - KT_TAB_ACCENT_H;
+            /* With the keyboard focus here the marker bar is one pixel
+             * heavier, and the label gets the standard dotted frame. */
+            bar.top = bar.bottom - KT_TAB_ACCENT_H - (focus ? 1 : 0);
             FillRect(dc, &bar, accentbr);
             SetTextColor(dc, text);
         } else {
@@ -789,6 +825,12 @@ static void kt_paint_tabs(HWND tab, HDC dc, bool dark)
 
         DrawTextA(dc, label, -1, &ir,
                   DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        if (i == sel && focus) {
+            RECT f = ir;
+            InflateRect(&f, -3, -2);
+            f.bottom -= KT_TAB_ACCENT_H + 1;
+            DrawFocusRect(dc, &f);
+        }
     }
 
     SetBkMode(dc, oldbk);
@@ -825,9 +867,14 @@ static LRESULT CALLBACK kt_tab_subclass(HWND hwnd, UINT msg, WPARAM wParam,
       }
       case TCM_SETCURSEL:
       case WM_LBUTTONDOWN:
-      case WM_KEYDOWN: {
+      case WM_KEYDOWN:
+      case WM_SETFOCUS:
+      case WM_KILLFOCUS:
+      case WM_UPDATEUISTATE: {
         /* The control moves the selection without knowing the marker moved
-         * with it, and would repaint only the two items it thinks changed. */
+         * with it, and would repaint only the two items it thinks changed.
+         * Focus coming or going, and Windows starting to show focus cues,
+         * change the painting too. */
         LRESULT r = DefSubclassProc(hwnd, msg, wParam, lParam);
         InvalidateRect(hwnd, NULL, FALSE);
         return r;

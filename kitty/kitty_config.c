@@ -9667,6 +9667,166 @@ static void scb_panel_external_tools(struct controlbox *b, bool midsession)
 }
 
 /*
+ * Application > KiTTY Settings.
+ *
+ * The program-wide settings that had no panel: read from kitty.ini or the
+ * registry at startup, changeable only by editing one of those by hand. A
+ * subtree, one leaf per concern. Every leaf writes to the store this KiTTY
+ * READS from - the registry on an installed copy, kitty.ini in a folder
+ * store - through WriteParameter, so a change lands where the next read
+ * looks for it.
+ *
+ * Storage & backups is the first leaf, and it opens with the STATUS of the
+ * store: which store, which file, and whether anything can be written at
+ * all. readonly=yes and conf=no used to be surfaced in exactly one place, a
+ * message box on the hide-Default-Settings action; this is where someone
+ * looking for their settings will read it. In either state the leaf builds
+ * no edit fields - a field that writes nothing is worse than a line saying
+ * why - and its values are shown as text instead.
+ */
+static void scb_app_footer(struct controlbox *b, const char *path);
+
+/* The backup counts are read at BACKUP time through ReadParameterN
+ * (SaveRegistryKeyEx and SavePortableDirBackup in kitty.c), never cached at
+ * startup: the store IS the running value, so the refresh reads the same
+ * key the change wrote. Default 5, the backup code's own. */
+static int kitty_kset_backupcount(const char *key)
+{
+    char buf[32];
+    if (ReadParameterN(INIT_SECTION, key, buf, sizeof(buf)))
+        return atoi(buf);
+    return 5;
+}
+
+/* ctrl->context.p names the key. */
+static void kitty_kset_backupcount_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                           void *data, int event)
+{
+    const char *key = (const char *)ctrl->context.p;
+    char buf[32];
+
+    if (event == EVENT_REFRESH) {
+        sprintf(buf, "%d", kitty_kset_backupcount(key));
+        /* dlg_editbox_set fires EVENT_VALCHANGE: unguarded, showing the
+         * default would write it. */
+        cfgwin_refreshing = 1;
+        dlg_editbox_set(ctrl, dlg, buf);
+        cfgwin_refreshing = 0;
+    } else if (event == EVENT_VALCHANGE && !cfgwin_refreshing) {
+        char *s = dlg_editbox_get(ctrl, dlg);
+        if (s[0]) {
+            /* Stored as it will be USED: the backup code treats anything
+             * below 1 as off and caps at 50. */
+            int v = atoi(s);
+            if (v < 0) v = 0;
+            if (v > 50) v = 50;
+            sprintf(buf, "%d", v);
+            WriteParameter(INIT_SECTION, (char *)key, buf);
+        }
+        sfree(s);
+    }
+}
+
+static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
+{
+#ifdef MOD_PERSO
+    extern int GetIniFileFlag(void);           /* kitty_commun.c */
+    extern int GetReadOnlyFlag(void);          /* kitty_commun.c */
+    extern int GetNoKittyFileFlag(void);       /* kitty.c */
+    extern char *GetKittyIniFile(void);        /* kitty.c */
+    extern char *GetKittySavFile(void);        /* kitty.c */
+    extern char *ConfigDirectory;              /* kitty.c: the folder store */
+    /* kitty_commun.c's values, which this file has no header for */
+    enum { KSET_SAVEMODE_REG = 0, KSET_SAVEMODE_FILE = 1, KSET_SAVEMODE_DIR = 2 };
+    static const char *const storage = "Application/KiTTY Settings/Storage & backups";
+    struct controlset *s;
+    char line[1400];
+    const char *ini = GetKittyIniFile();
+    const char *sav = GetKittySavFile();
+    int mode = GetIniFileFlag();
+    bool locked = GetReadOnlyFlag() || GetNoKittyFileFlag();
+
+    if (midsession || GetPuttyFlag())
+        return;
+
+    ctrl_settitle(b, "Application/KiTTY Settings", KT_KSET_TITLE);
+    s = ctrl_getset(b, "Application/KiTTY Settings", "intro", NULL);
+    ctrl_text(s, KT_KSET_INTRO_WHOLE, HELPCTX(kitty_settings_tree));
+    ctrl_text(s, KT_KSET_INTRO_WHERE, HELPCTX(kitty_settings_tree));
+
+    ctrl_settitle(b, storage, KT_KSET_STORAGE_TITLE);
+
+    /* The status: store, file, and whether writes are possible. ctrl_text
+     * copies its string, so a line built here need not outlive the call. */
+    s = ctrl_getset(b, storage, "status", KT_KSET_STORAGE_THIS_KITTY);
+    if (mode == KSET_SAVEMODE_DIR)
+        snprintf(line, sizeof(line), KT_KSET_STORAGE_STORE_FOLDER,
+                 ConfigDirectory ? ConfigDirectory : "");
+    else if (mode == KSET_SAVEMODE_FILE)
+        snprintf(line, sizeof(line), "%s", KT_KSET_STORAGE_STORE_SAV);
+    else
+        snprintf(line, sizeof(line), KT_KSET_STORAGE_STORE_REGISTRY,
+                 kitty_registry_base());
+    ctrl_text(s, line, HELPCTX(kitty_storage));
+    if (GetNoKittyFileFlag() || !ini || !ini[0])
+        snprintf(line, sizeof(line), "%s", KT_KSET_STORAGE_INI_NONE);
+    else
+        snprintf(line, sizeof(line), KT_KSET_STORAGE_INI, ini);
+    ctrl_text(s, line, HELPCTX(kitty_storage));
+    if (GetReadOnlyFlag())
+        ctrl_text(s, KT_KSET_STORAGE_READONLY, HELPCTX(kitty_storage));
+    if (GetNoKittyFileFlag())
+        ctrl_text(s, KT_KSET_STORAGE_NOCONF, HELPCTX(kitty_storage));
+
+    /* The backups: the ONE count this store mode reads - a folder store
+     * keeps portablebackupcount copies of itself, the registry modes keep
+     * savbackupcount .sav exports - editable when a write can land, shown as
+     * text when not. The other mode's key would be a field that does
+     * nothing here, which is the confusion this tree exists to remove. */
+    s = ctrl_getset(b, storage, "backups", KT_KSET_BACKUPS);
+    {
+        const bool dir = (mode == KSET_SAVEMODE_DIR);
+        const char *key = dir ? "portablebackupcount" : "savbackupcount";
+        if (!locked) {
+            ctrl_editbox(s, dir ? KT_KSET_BACKUPS_DIR : KT_KSET_BACKUPS_REG,
+                         NO_SHORTCUT, 20, HELPCTX(kitty_storage),
+                         kitty_kset_backupcount_handler, P((char *)key), ED_STR);
+        } else {
+            snprintf(line, sizeof(line),
+                     dir ? KT_KSET_BACKUPS_DIR_SHOWN : KT_KSET_BACKUPS_REG_SHOWN,
+                     kitty_kset_backupcount(key));
+            ctrl_text(s, line, HELPCTX(kitty_storage));
+        }
+    }
+    /* Where they go. A folder store copies itself under its own Backups
+     * folder; the registry modes export the hive to timestamped files
+     * beside the sav path. */
+    if (mode == KSET_SAVEMODE_DIR)
+        snprintf(line, sizeof(line), KT_KSET_BACKUPS_DIR_PATH,
+                 ConfigDirectory ? ConfigDirectory : "");
+    else
+        snprintf(line, sizeof(line), KT_KSET_BACKUPS_SAV_PATH,
+                 sav ? sav : "");
+    ctrl_text(s, line, HELPCTX(kitty_storage));
+
+    /* restrictacl: display only, on purpose. It is the one key read from
+     * kitty.ini alone so that a stale registry value can never cancel a
+     * hardening switch, and a control here would write to the registry. */
+    s = ctrl_getset(b, storage, "hardening", KT_KSET_HARDENING);
+    ctrl_text(s, restricted_acl() ? KT_KSET_RESTRICTACL_ON
+                                  : KT_KSET_RESTRICTACL_OFF,
+              HELPCTX(kitty_storage));
+    ctrl_text(s, KT_KSET_RESTRICTACL_NOTE, HELPCTX(kitty_storage));
+
+    /* No footer here by hand: the Application builder adds the
+     * saved-as-you-change-them line to every panel with an editable control,
+     * which when nothing can be written this panel has none of. */
+#else
+    (void)b; (void)midsession;
+#endif
+}
+
+/*
  * Application > Session parameter.
  *
  * The saved-session list and what it offers, kept apart from the window that
@@ -10024,12 +10184,19 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
     if (midsession || GetPuttyFlag())
         return;                        /* no application tab mid-session */
 
+    /* Fresh box, fresh footer registrations. At the top, before anything is
+     * built: a reset placed beside the footer pass at the end once wiped a
+     * registration a panel had made while building itself - the line was
+     * created, never pinned, and sat wherever the layout had left it. */
+    n_app_footers = 0;
+
     /* The named-proxy editor, which used to be a pop-up window. */
     kitty_proxy_build_panel(b);
 
     scb_panel_config_window(b, midsession);
     scb_panel_session_parameter(b, midsession);
     scb_panel_external_tools(b, midsession);
+    scb_panel_kitty_settings(b, midsession);
     scb_panel_security(b, midsession);
 
     /*
@@ -10120,21 +10287,59 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
      * anyone to expect. Named proxies and the CA editor are deliberately not
      * in this list - they hold an edit until Save and each says so itself.
      */
+    /*
+     * Which panels get it is not a list but a RULE: any Application panel
+     * with a SETTING on it - an edit box, check box, radio, list, file or
+     * font chooser; not text, not a push button (an action, not a value),
+     * not a layout pseudo-control. A panel of text alone
+     * (an intro page, or Storage & backups when nothing can be written), or
+     * of buttons alone (Migration in a folder store), would carry a claim
+     * about nothing. The two panels that hold an edit until Save are named
+     * out, since for them the line would be false rather than empty.
+     */
     {
-        n_app_footers = 0;      /* fresh box, fresh registrations */
-        static const char *const saved_as_changed[] = {
-            "Application/Config window",
-            "Application/Session parameter",
-            "Application/External tools",
-            "Application/External tools/WinSCP",
-            "Application/External tools/ZModem",
-            "Application/Security",
-            "Application/Workplace proxy",
-            "Application/Migration",
-            "Application/Updates",
+        static const char *const holds_until_save[] = {
+            "Application/Named proxies",
+            "Application/Security/Certificate Authorities",
         };
-        for (size_t i = 0; i < lenof(saved_as_changed); i++)
-            scb_app_footer(b, saved_as_changed[i]);
+        for (size_t i = 0; i < b->nctrlsets; i++) {
+            const char *path = b->ctrlsets[i]->pathname;
+            bool editable = false, seen = false, excluded = false;
+            if (strncmp(path, "Application/", 12))
+                continue;
+            /* one visit per panel: skip a path already handled */
+            for (size_t j = 0; j < i; j++)
+                if (!strcmp(b->ctrlsets[j]->pathname, path)) { seen = true; break; }
+            if (seen)
+                continue;
+            for (size_t k = 0; k < lenof(holds_until_save); k++)
+                if (!strcmp(path, holds_until_save[k])) { excluded = true; break; }
+            if (excluded)
+                continue;
+            for (size_t j = i; j < b->nctrlsets && !editable; j++) {
+                struct controlset *cs = b->ctrlsets[j];
+                if (strcmp(cs->pathname, path))
+                    continue;
+                for (size_t c = 0; c < cs->ncontrols; c++) {
+                    /* A positive list: text, buttons AND the layout
+                     * pseudo-controls (ctrl_columns, tab-order hints) are
+                     * not settings. */
+                    switch (cs->ctrls[c]->type) {
+                      case CTRL_EDITBOX: case CTRL_RADIO: case CTRL_CHECKBOX:
+                      case CTRL_LISTBOX: case CTRL_FILESELECT:
+                      case CTRL_FONTSELECT:
+                        editable = true;
+                        break;
+                      default:
+                        break;
+                    }
+                    if (editable)
+                        break;
+                }
+            }
+            if (editable)
+                scb_app_footer(b, path);
+        }
     }
 #else
     (void)b; (void)midsession;

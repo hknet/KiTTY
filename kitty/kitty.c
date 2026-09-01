@@ -435,6 +435,7 @@ char InitialDirectory[4096]="" ;
 static char * KittyIniFile = NULL ;
 char * GetKittyIniFile(void) { return KittyIniFile ; }
 static char * KittySavFile = NULL ;
+char * GetKittySavFile(void) { return KittySavFile ; }
 
 // Nom de la classe de l'application
 char KiTTYClassName[128] = "" ;

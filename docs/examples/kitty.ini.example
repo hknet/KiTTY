@@ -6,6 +6,22 @@
 ; installed MSI folders unless you intentionally want a live config there.
 ;
 ; Values shown here mirror KiTTY built-in defaults where practical.
+;
+; WHERE SETTINGS ACTUALLY COME FROM - read this before debugging a value
+; that "does not stick":
+;
+;   * An INSTALLED KiTTY (savemode=registry, the default for kitty.exe)
+;     reads most settings REGISTRY FIRST, and this file only fills in keys
+;     the registry does not hold. A value KiTTY has once written to the
+;     registry therefore silently beats the same key edited here.
+;   * Exception: restrictacl is read from this file ONLY - deliberately,
+;     so a stale registry value can never cancel a hardening switch (see
+;     that key below).
+;   * Escape: savemode itself is ALWAYS read from this file, never from
+;     the registry. Set savemode=dir here and THIS FOLDER becomes the
+;     whole store - sessions and settings alike - and the registry is not
+;     consulted at all. That is how you make a copied kitty.exe
+;     self-contained; it is what kitty_portable.exe does by default.
 
 [ConfigBox]
 
@@ -195,7 +211,10 @@
 ;    empty and the tray menu could not group by folder.
 ;    It does NOT make an old subdirectory tree readable: sessions inside
 ;    subdirectories are not listed at all, so on a normal store turning it on
-;    only stops folders being found.
+;    only stops folders being found. The key is INERT for now; if you carry
+;    an old store whose sessions live in subdirectories, they are not shown
+;    until a migration for that layout exists - move the session files up
+;    into Sessions\ in the meantime.
 ;browsedirectory=
 
 ; Folders: the list of session folders, written by KiTTY whenever you add or
