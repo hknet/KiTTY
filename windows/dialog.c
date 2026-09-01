@@ -301,6 +301,18 @@ static INT_PTR pds_default_dlgproc(PortableDialogStuff *pds, HWND hwnd,
              * the window asking. A beep answered "where is the help" with a
              * noise. */
             const char *ctx = kitty_cfg_panel_helpctx(hwnd);
+            /* The TAB STRIP is the one such spot that is not part of the
+             * panel: answering with the active leaf's topic misdescribed
+             * what was pointed at. The tab-split chapter is what explains
+             * the Session and Application headers. Identified by class -
+             * the strip's id lives in an enum declared further down. */
+            {
+                HWND item = (HWND)((LPHELPINFO)lParam)->hItemHandle;
+                char cls[32];
+                if (item && GetClassNameA(item, cls, sizeof(cls)) &&
+                    !strcmp(cls, "SysTabControl32"))
+                    ctx = WINHELP_CTX_kitty_application_tab;
+            }
             launch_help(hwnd, ctx);
         }
         break;
@@ -799,14 +811,16 @@ static INT_PTR CALLBACK NullDlgProc(HWND hwnd, UINT msg,
  * The configuration box's own vertical geometry, in dialog units, kept
  * together and derived from ONE number so they cannot drift apart.
  *
- * CFGBOX_H must match the height of IDD_MAINBOX in windows/putty-common.rc2.
- * It came down from 402 when the box moved to Segoe UI 9: the same template
- * is ~15% taller in pixels in that font, which took the window past the
- * 1280x660 logical budget a 1080p laptop at 150% has. The panels that no
- * longer fit SCROLL - see kitty_cfg_panel_scrollbar - so the box no longer
- * has to be as tall as its tallest panel.
+ * CFGBOX_H is KITTY_CFGBOX_H_DU from kitty/kitty_defs.h - the SAME macro the
+ * IDD_MAINBOX line in windows/putty-common.rc2 is written with, so template
+ * and layout cannot drift apart. It came down from 402 when the box moved to
+ * Segoe UI 9: the same template is ~15% taller in pixels in that font, which
+ * took the window past the 1280x660 logical budget a 1080p laptop at 150%
+ * has. The panels that no longer fit SCROLL - see kitty_cfg_panel_scrollbar -
+ * so the box no longer has to be as tall as its tallest panel.
  */
-#define CFGBOX_H             320   /* == IDD_MAINBOX height in the template */
+#include "../kitty/kitty_defs.h"
+#define CFGBOX_H             KITTY_CFGBOX_H_DU
 #define CFGBOX_BUTTONROW_DU  (CFGBOX_H - 17)   /* top of the button row */
 #define CFGBOX_TREE_DU       (CFGBOX_BUTTONROW_DU - 17)  /* tree height */
 /* Width kept clear at the right of every panel for the scroll bar. */
@@ -2761,8 +2775,34 @@ void kitty_cfg_goto_panel(const char *path)
     want = kitty_cfg_find_item(tv, TreeView_GetRoot(tv), path);
     if (!want)
         want = TreeView_GetRoot(tv);
-    if (want)
+    if (want) {
         TreeView_SelectItem(tv, want);
+        /* A programmatic jump may land on a row scrolled out of the tree -
+         * the selection must be SEEN to explain the panel change. */
+        TreeView_EnsureVisible(tv, want);
+    }
+}
+
+/*
+ * The tab strip's double-click jump lives in a SUBCLASS of the strip: a tab
+ * control never sends NM_DBLCLK, so the WM_NOTIFY handler this jump was
+ * first written as waited for a message that cannot arrive, and the feature
+ * shipped dead. The first click of the pair has already switched tabs when
+ * it landed on the unselected header, so by WM_LBUTTONDBLCLK the current
+ * selection IS the tab that was double-clicked.
+ */
+static WNDPROC kitty_cfg_tab_oldproc = NULL;
+
+static LRESULT CALLBACK KittyCfgTabProc(HWND hwnd, UINT msg,
+                                        WPARAM wParam, LPARAM lParam)
+{
+    if (msg == WM_LBUTTONDBLCLK) {
+        bool apptab = (SendMessage(hwnd, TCM_GETCURSEL, 0, 0) == 1);
+        kitty_cfg_goto_panel(apptab ? "Application/Workplace proxy"
+                                    : "Session");
+        return 0;
+    }
+    return CallWindowProc(kitty_cfg_tab_oldproc, hwnd, msg, wParam, lParam);
 }
 
 /* The Session tab's first panel: where the saved-session box is, and so where
@@ -2784,8 +2824,10 @@ static void kitty_cfg_goto_session_panel(void)
     }
     {
         HTREEITEM want = TreeView_GetRoot(tv);
-        if (want)
+        if (want) {
             TreeView_SelectItem(tv, want);
+            TreeView_EnsureVisible(tv, want);
+        }
     }
 }
 
@@ -3084,6 +3126,10 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                                       NULL);
             font = SendMessage(hwnd, WM_GETFONT, 0, 0);
             SendMessage(tabstrip, WM_SETFONT, font, MAKELPARAM(true, 0));
+            /* Double-click on a header jumps to that tab's home panel; see
+             * KittyCfgTabProc for why this cannot be done via WM_NOTIFY. */
+            kitty_cfg_tab_oldproc = (WNDPROC)SetWindowLongPtr(
+                tabstrip, GWLP_WNDPROC, (LONG_PTR)KittyCfgTabProc);
             {
                 TCITEM ti;
                 memset(&ti, 0, sizeof(ti));
@@ -3329,6 +3375,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 }
             }
             TreeView_SelectItem(treeview, hsel);
+            TreeView_EnsureVisible(treeview, hsel);
 
             /* KiTTY: arm the Ctrl+F session-search jump (first tree item ==
              * the Session panel). Only when this dialog's ctrlbox actually
@@ -3519,19 +3566,9 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 return TRUE;
             }
         }
-        /* A DOUBLE-CLICK on a tab header is a jump: the Session tab's goes to
-         * the Session leaf, the Application tab's to Workplace proxy - the
-         * two panels each tab most often exists to reach. A double-click on
-         * the already-selected tab raises no TCN_SELCHANGE, so without this
-         * it did nothing at all. */
-        if (LOWORD(wParam) == IDCX_TABSTRIP &&
-            ((LPNMHDR) lParam)->code == NM_DBLCLK) {
-            HWND strip = GetDlgItem(hwnd, IDCX_TABSTRIP);
-            bool apptab = (SendMessage(strip, TCM_GETCURSEL, 0, 0) == 1);
-            kitty_cfg_goto_panel(apptab ? "Application/Workplace proxy"
-                                        : "Session");
-            return 0;
-        }
+        /* The tab-header double-click jump is handled in KittyCfgTabProc,
+         * the strip's subclass - a tab control never sends NM_DBLCLK, so a
+         * WM_NOTIFY branch here waited for a message that cannot arrive. */
         if (LOWORD(wParam) == IDCX_TABSTRIP &&
             ((LPNMHDR) lParam)->code == TCN_SELCHANGE) {
             /*
@@ -3577,8 +3614,10 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                     want = kitty_cfg_find_item(tv, root, last);
                 if (!want)
                     want = root;
-                if (want)
+                if (want) {
                     TreeView_SelectItem(tv, want);
+                    TreeView_EnsureVisible(tv, want);
+                }
             }
             return 0;
         }

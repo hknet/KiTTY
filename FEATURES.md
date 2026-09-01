@@ -219,7 +219,7 @@ The session launcher gives you a quick way to open your saved sessions without d
 
 **How to enable:** Run **`kitty.exe -launcher`** to open the tray launcher listing your saved sessions.
 
-You can keep individual sessions out of the launcher menu while leaving them in the normal session list: tick **"Hide this session from the launcher"** in the session's **Session** panel.
+You can keep individual sessions out of the launcher menu while leaving them in the normal session list: tick **"Hide this session from the launcher"** on the session's **Session > Startup** panel (Launcher configuration).
 
 For favourite sessions, you can assign a **global hotkey** in the session's **Session → Startup** panel. The hotkey is registered only while `kitty.exe -launcher` is running; when you save a session, a running launcher is notified and refreshes its registered hotkeys automatically. The same panel includes a check button that tells you whether the combination is currently available or already reserved by Windows/another application — and it names any saved session already holding the combination. When two sessions end up claiming one hotkey anyway (an import, say), the launcher balloons at startup naming who won; clicking the balloon opens the winner's settings.
 

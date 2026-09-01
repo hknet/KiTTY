@@ -26,4 +26,31 @@
  */
 #define KITTY_LAUNCHER_HOTKEY_MAX 32
 
+/*
+ * The saved-session list's length in rows ([ConfigBox] height): one clamp,
+ * shared by the live setter, the panel builder and the panel's own label
+ * text. The floor is what still holds the button column beside the list
+ * (Load, Delete, Del folder - Export/Import live on Application/Migration);
+ * the ceiling only keeps a typo from asking for a window taller than any
+ * screen.
+ */
+#define KITTY_CFG_SESSION_ROWS_MIN 6
+#define KITTY_CFG_SESSION_ROWS_MAX 60
+
+/*
+ * The configuration window's template height in dialog units - its MINIMUM,
+ * since windows/dialog.c floors every resize at the template. ONE definition
+ * for the two places that must agree: the IDD_MAINBOX line in
+ * windows/putty-common.rc2 and the layout constants in windows/dialog.c
+ * (CFGBOX_H), which place the button row and the tree against this height.
+ * 320 -> 306 once the Session panel gave a comment line back and the
+ * proxy-choice row became conditional on named proxies existing.
+ */
+#define KITTY_CFGBOX_H_DU 278
+
+/* Two-step stringification, so a macro's VALUE lands in a string literal
+ * (KITTY_STR(KITTY_CFG_SESSION_ROWS_MIN) -> "6"). */
+#define KITTY_STR_(x) #x
+#define KITTY_STR(x) KITTY_STR_(x)
+
 #endif /* KITTY_DEFS_H */

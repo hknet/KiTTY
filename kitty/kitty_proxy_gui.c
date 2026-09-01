@@ -528,15 +528,15 @@ void kitty_proxy_build_panel(struct controlbox *b)
     ctrl_settitle(b, "Application/Named proxies",
                   KT_NAMED_PROXIES_PROXY_DEFINITIONS_SHARED_BY_EVERY);
 
+    /* ONE box, "Definition": every control on this panel describes the proxy
+     * being edited, so the which/where/options split said nothing - three
+     * frames' worth of height for no information. */
     s = ctrl_getset(b, "Application/Named proxies", "which", KT_NAMED_PROXIES_DEFINITION);
     pd->namebox = ctrl_combobox(s, KT_NAMED_PROXIES_NAME_PICK_ONE_TO_EDIT,
                                 NO_SHORTCUT, 100, HELPCTX(kitty_named_proxies),
                                 pxp_name_handler, P(NULL), P(NULL));
     ctrl_droplist(s, KT_NAMED_PROXIES_TYPE, NO_SHORTCUT, 60, HELPCTX(kitty_named_proxies),
                   pxp_list_handler, I(CONF_proxy_type));
-
-    s = ctrl_getset(b, "Application/Named proxies", "where",
-                    KT_NAMED_PROXIES_PROXY_JUMP_HOST_SESSION_NAME);
     ctrl_editbox(s, KT_NAMED_PROXIES_NAME_IP, NO_SHORTCUT, 70, HELPCTX(kitty_named_proxies),
                  pxp_str_handler, I(CONF_proxy_host), ED_STR);
     ctrl_editbox(s, KT_NAMED_PROXIES_PORT, NO_SHORTCUT, 30, HELPCTX(kitty_named_proxies),
@@ -545,14 +545,24 @@ void kitty_proxy_build_panel(struct controlbox *b)
                   pxp_list_handler, I(CONF_proxy_host_kind));
     ctrl_editbox(s, KT_NAMED_PROXIES_USERNAME, NO_SHORTCUT, 70, HELPCTX(kitty_named_proxies),
                  pxp_str_handler, I(CONF_proxy_username), ED_STR);
-    c = ctrl_editbox(s, KT_NAMED_PROXIES_PASSWORD, NO_SHORTCUT, 70, HELPCTX(kitty_named_proxies),
+    /* The password edit is SHORTENED - the right edge only - and "show"
+     * sits beside it, which frees the row the Show-password checkbox used
+     * to take for the status line below the box. The arithmetic keeps the
+     * edit's LEFT edge aligned with the Username edit above: that row is
+     * label 30 / edit 70 of the full width, so in a 75-wide column the
+     * label must be 30/75 = 40%, leaving the edit 60 - both edits then
+     * start at exactly 30% of the panel. */
+    ctrl_columns(s, 2, 75, 25);
+    c = ctrl_editbox(s, KT_NAMED_PROXIES_PASSWORD, NO_SHORTCUT, 60, HELPCTX(kitty_named_proxies),
                      pxp_str_handler, I(CONF_proxy_password), ED_STR);
     c->editbox.password = true;
+    c->column = 0;
     pd->pwbox = c;
-    ctrl_checkbox(s, KT_DATA_SHOW_PASSWORD, NO_SHORTCUT, HELPCTX(kitty_named_proxies),
-                  pxp_showpw_handler, P(NULL));
-
-    s = ctrl_getset(b, "Application/Named proxies", "opts", KT_ZMODEM_OPTIONS);
+    c = ctrl_checkbox(s, KT_NAMED_PROXIES_SHOW, NO_SHORTCUT, HELPCTX(kitty_named_proxies),
+                      pxp_showpw_handler, P(NULL));
+    c->column = 1;
+    c->align_next_to = pd->pwbox;
+    ctrl_columns(s, 1, 100);
     ctrl_editbox(s, KT_NAMED_PROXIES_COMMAND_TO_SEND_TELNET_LOCAL, NO_SHORTCUT, 100, HELPCTX(kitty_named_proxies),
                  pxp_str_handler, I(CONF_proxy_telnet_command), ED_STR);
     ctrl_editbox(s, KT_NAMED_PROXIES_EXCLUDE_HOSTS_IPS_SEPARATE,
@@ -573,12 +583,6 @@ void kitty_proxy_build_panel(struct controlbox *b)
                       I(CONF_proxy_log_to_term));
     c->column = 1;
     ctrl_columns(s, 1, 100);
-
-    s = ctrl_getset(b, "Application/Named proxies", "act", NULL);
-    /* Blank until it has something to SAY: the standing "nothing is stored
-     * until Save" line was redundant next to the panel's own leave warning.
-     * The control stays - it is where pxp_say() answers Save and Delete. */
-    pd->banner = ctrl_text(s, " ", HELPCTX(kitty_named_proxies));
     ctrl_columns(s, 2, 50, 50);
     c = ctrl_pushbutton(s, KT_SESSION_SAVE, NO_SHORTCUT, HELPCTX(kitty_named_proxies),
                         pxp_save_handler, P(NULL));
@@ -587,6 +591,12 @@ void kitty_proxy_build_panel(struct controlbox *b)
                         pxp_delete_handler, P(NULL));
     c->column = 1;
     ctrl_columns(s, 1, 100);
+    /* BELOW the Definition box, frameless (an empty boxname draws no box):
+     * blank until it has something to SAY - it is where pxp_say() answers
+     * Save and Delete. The row it needs is the one the password/show merge
+     * freed above, so the panel still fits the window's minimum height. */
+    s = ctrl_getset(b, "Application/Named proxies", "", NULL);
+    pd->banner = ctrl_text(s, " ", HELPCTX(kitty_named_proxies));
 }
 
 

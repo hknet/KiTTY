@@ -32,6 +32,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_logging_stamps     "kitty-cfg-log-timestamp"
 #define WINHELP_CTX_kitty_host_cas           "kitty-cfg-host-cas"
 #define WINHELP_CTX_kitty_workplace          "kitty-cfg-workplace"
+#define WINHELP_CTX_kitty_application_tab    "kitty-cfg-application"
 #define WINHELP_CTX_kitty_launcher           "kitty-cfg-launcher-hotkey"
 #define WINHELP_CTX_kitty_winscp             "kitty-cfg-kscp"
 #define WINHELP_CTX_kitty_theme              "kitty-cfg-config-window"

@@ -13,6 +13,8 @@
 #ifndef KITTY_TEXT_H
 #define KITTY_TEXT_H
 
+#include "kitty_defs.h"  /* limits that appear inside label text (KITTY_STR) */
+
 /* ---- Application > Migration ---- */
 
 #define KT_MIG_STORE_GROUP "Move this KiTTY's sessions between computers"
@@ -139,6 +141,7 @@
 #define KT_STARTUP_HOTKEY                            "Hotkey:"
 #define KT_STARTUP_CHECK_HOTKEY_AVAILABILITY         "Check hotkey availability"
 #define KT_STARTUP_EXAMPLE_CTRL_ALT_K                "Example: Ctrl+Alt+K. Works while KiTTY Launcher runs."
+#define KT_STARTUP_LAUNCHER_CONFIGURATION            "Launcher configuration"
 
 /* Terminal */
 #define KT_TERMINAL_OPTIONS_CONTROLLING_THE_TERMINAL_EMULATION "Options controlling the terminal emulation"
@@ -502,6 +505,7 @@
 #define KT_WORKPLACE_PROXY_PROXY_FOR_EVERYTHING      "Proxy for everything:"
 #define KT_WORKPLACE_PROXY_SWITCH_OFF_AFTER          "Switch off after:"
 #define KT_WORKPLACE_PROXY_SWITCH                    "Switch on"
+#define KT_WORKPLACE_PROXY_NEEDS_NAMED               "Named proxies need to be configured first."
 
 /* Connection/SSH */
 #define KT_SSH_OPTIONS_CONTROLLING_SSH_CONNECTIONS   "Options controlling SSH connections"
@@ -776,7 +780,8 @@
 /* Application/Session parameter */
 #define KT_SESSION_PARAMETER_THE_SESSION_LIST        "The session list"
 #define KT_SESSION_PARAMETER_THE_LIST                "The list"
-#define KT_SESSION_PARAMETER_LENGTH_IN_ROWS_7        "Length, in rows (7 or more):"
+#define KT_SESSION_PARAMETER_LENGTH_IN_ROWS_7        "Length, in rows (" \
+        KITTY_STR(KITTY_CFG_SESSION_ROWS_MIN) " or more):"
 #define KT_SESSION_PARAMETER_SHOW_DEFAULT_SETTINGS   "Show \"Default Settings\" in the list"
 #define KT_SESSION_PARAMETER_QUICK_CONNECT_NEEDS_IT_LOADING "Quick connect needs it: loading Default Settings is how you " \
         "get back to that mode."
@@ -803,11 +808,11 @@
 #define KT_COMMENT_SESSION_COMMENT                   "Session comment"
 
 /* Application/Named proxies */
-#define KT_NAMED_PROXIES_PROXY_DEFINITIONS_SHARED_BY_EVERY "Proxy definitions shared by every session"
+#define KT_NAMED_PROXIES_PROXY_DEFINITIONS_SHARED_BY_EVERY "Proxy Definitions"
 #define KT_NAMED_PROXIES_DEFINITION                  "Definition"
+#define KT_NAMED_PROXIES_SHOW                        "show"
 #define KT_NAMED_PROXIES_NAME_PICK_ONE_TO_EDIT       "Name (pick one to edit, or type a new one):"
 #define KT_NAMED_PROXIES_TYPE                        "Type:"
-#define KT_NAMED_PROXIES_PROXY_JUMP_HOST_SESSION_NAME "Proxy / jump host / session name"
 #define KT_NAMED_PROXIES_NAME_IP                     "Name/IP:"
 #define KT_NAMED_PROXIES_PORT                        "Port:"
 #define KT_NAMED_PROXIES_THIS                        ".. this is .."

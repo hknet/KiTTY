@@ -55,14 +55,6 @@ The behaviour is controlled by \c{showforeignsessions} in
 has no sessions of its own, so they retire themselves once you have
 your own; \c{yes} and \c{no} settle it either way.
 
-\S{kitty-cfg-hide-launcher} \q{Hide this session from the launcher}
-
-Keeps this session out of the KiTTY Launcher's tray menu
-(\k{kitty-cfg-launcher-hotkey}). The session is otherwise unchanged: it
-still appears in the configuration box and still opens from the command
-line. Use it for the sessions that exist as building blocks - a jump
-host, a template - rather than as somewhere you connect.
-
 \H{kitty-cfg-logging} The Logging panel
 
 PuTTY's own logging options are described in \k{config-logging}. KiTTY
@@ -202,6 +194,14 @@ program has the focus - and it works only while \e{KiTTY Launcher} is
 running, because the launcher is what holds the registration. If two
 sessions claim the same combination the launcher says so with a
 balloon, and the first registration wins.
+
+\S{kitty-cfg-hide-launcher} \q{Hide this session from the launcher}
+
+Keeps this session out of the KiTTY Launcher's tray menu
+(\k{kitty-cfg-launcher-hotkey}). The session is otherwise unchanged: it
+still appears in the configuration box and still opens from the command
+line. Use it for the sessions that exist as building blocks - a jump
+host, a template - rather than as somewhere you connect.
 
 \H{kitty-cfg-keyboard} The Keyboard panel
 
@@ -603,8 +603,7 @@ nothing comes back at shutdown.
 How the saved-session list behaves.
 
 \b \q{Length, in rows} is how many sessions the list shows at once,
-seven or more. It is built into the panel's layout, so it takes effect
-the next time a configuration box is opened.
+six or more. It takes effect at once, in the window you type it in.
 
 \b \q{Show \q{Default Settings} in the list} keeps the defaults entry
 visible. Quick connect needs it: loading \q{Default Settings} is how

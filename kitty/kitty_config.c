@@ -816,6 +816,9 @@ struct wpmode_data {
      *. */
     bool picked;
     dlgcontrol *list; dlgcontrol *hours; dlgcontrol *button; dlgcontrol *state;
+    /* One line under the state: blank while proxies exist, otherwise it says
+     * named proxies have to be configured first (the controls grey with it). */
+    dlgcontrol *noproxy;
 };
 
 /* The live state line. The ON wording is matched by windows/dialog.c and drawn
@@ -925,6 +928,44 @@ static void kitty_wpmode_state_label(struct wpmode_data *wd, dlgparam *dlg)
     }
 }
 
+/* Enable or grey one workplace control, label included: a droplist is more
+ * than one window, so every id the control owns is walked. Resolution goes
+ * through kitty_cfg_item - the panel host owns these windows, so a bare
+ * GetDlgItem on the dialog finds nothing. */
+static void kitty_wpmode_enable_ctrl(dlgcontrol *ctrl, dlgparam *dlg, bool on)
+{
+    extern HWND kitty_cfg_item(HWND dlg, int id);
+    int i;
+    if (!ctrl || !dlg)
+        return;
+    for (i = 0; i < dlg->nctrltrees; i++) {
+        struct winctrl *c = winctrl_findbyctrl(dlg->controltrees[i], ctrl);
+        if (c) {
+            for (int k = 0; k < c->num_ids; k++) {
+                HWND h = kitty_cfg_item(dlg->hwnd, c->base_id + k);
+                if (h)
+                    EnableWindow(h, on);
+            }
+            return;
+        }
+    }
+}
+
+/* The leaf is always in the tree; without a named proxy defined its controls
+ * grey out and the info line says what to do about it. Live in both
+ * directions - saving the first proxy on Named proxies ungreys it, deleting
+ * the last one greys it again (the poll watches the count). */
+static void kitty_wpmode_grey(struct wpmode_data *wd, dlgparam *dlg)
+{
+    bool have = kitty_has_proxy_definitions();
+    if (wd->noproxy)
+        dlg_label_change(wd->noproxy, dlg, have ? " " :
+                         KT_WORKPLACE_PROXY_NEEDS_NAMED);
+    kitty_wpmode_enable_ctrl(wd->list, dlg, have);
+    kitty_wpmode_enable_ctrl(wd->hours, dlg, have);
+    kitty_wpmode_enable_ctrl(wd->button, dlg, have);
+}
+
 /* The workplace controls of the config box that is open, so the poll below can
  * find them. One config box at a time; cleared when its panel is rebuilt. */
 static struct wpmode_data *kitty_wpmode_active = NULL;
@@ -950,6 +991,25 @@ void kitty_cfgbox_open_on_panel(const char *path)
 const char *kitty_cfgbox_wanted_panel(void)
 {
     return kitty_cfgbox_panel[0] ? kitty_cfgbox_panel : NULL;
+}
+
+/*
+ * Whether the session this box restores at startup counts as DELIBERATELY
+ * loaded ("-cfgloaded", set beside -cfgpanel by the launcher's
+ * hotkey-conflict balloon, which names a session and opens it for fixing).
+ *
+ * The distinction matters to the overwrite guard: an ordinary fresh box
+ * restores the last session merely for convenience, so saving over it still
+ * warns - typing a new session's settings into a fresh box must not
+ * silently destroy the restored one. A balloon click IS a load in the
+ * user's mind: warning about the very session it named makes the fix it
+ * asked for look destructive.
+ */
+static int kitty_cfgbox_loaded_deliberate = 0;
+
+void kitty_cfgbox_open_loaded(void)
+{
+    kitty_cfgbox_loaded_deliberate = 1;
 }
 
 static void kitty_wpmode_button_label(dlgcontrol *ctrl, dlgparam *dlg)
@@ -983,9 +1043,9 @@ static void kitty_wpmode_button_label(dlgcontrol *ctrl, dlgparam *dlg)
  */
 void kitty_cfgbox_workplace_poll(dlgparam *dlg)
 {
-    static int last = -1;
+    static int last = -1, last_have = -1;
     char armed[256];
-    int now;
+    int now, have;
     struct wpmode_data *wd = kitty_wpmode_active;
     /* Opening the config box is one of the ways KiTTY gets started, so it is
      * also one of the places that owes the "the mode is not active any more"
@@ -995,13 +1055,16 @@ void kitty_cfgbox_workplace_poll(dlgparam *dlg)
     if (!wd || !dlg)
         return;
     now = kitty_workplace_query(armed, sizeof(armed)) ? 1 : 0;
-    if (now == last)
+    have = kitty_has_proxy_definitions() ? 1 : 0;
+    if (now == last && have == last_have)
         return;
     last = now;
+    last_have = have;
     if (!kitty_dlg_ctrl_present(wd->button, dlg))
         return;                         /* another panel is showing */
     kitty_wpmode_button_label(wd->button, dlg);
     kitty_wpmode_state_label(wd, dlg);
+    kitty_wpmode_grey(wd, dlg);
     /* The droplist carries state too - it marks the proxy the mode is using
      * "(in use)" - so it has to follow a change made from the tray as well, or
      * it would go on pointing at a proxy that is no longer in use. */
@@ -1117,6 +1180,7 @@ static void kitty_wpmode_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (event == EVENT_REFRESH) {           /* the button and the state line */
         kitty_wpmode_button_label(ctrl, dlg);
         kitty_wpmode_state_label(wd, dlg);
+        kitty_wpmode_grey(wd, dlg);
         return;
     }
     if (event != EVENT_ACTION)
@@ -2222,8 +2286,8 @@ int kitty_config_session_rows(void)
 {
     extern int GetConfigBoxHeight(void);       /* kitty.c: [ConfigBox] height */
     int rows = GetConfigBoxHeight();
-    if (rows < 7) rows = 7;
-    if (rows > 60) rows = 60;
+    if (rows < KITTY_CFG_SESSION_ROWS_MIN) rows = KITTY_CFG_SESSION_ROWS_MIN;
+    if (rows > KITTY_CFG_SESSION_ROWS_MAX) rows = KITTY_CFG_SESSION_ROWS_MAX;
     return rows;
 }
 #endif
@@ -2233,9 +2297,9 @@ int kitty_config_session_rows(void)
  * Spread the buttons beside the saved-session list down the height of that
  * list, measured from the list itself once everything has been laid out.
  *
- * Three groups, and the rule is the same at any height: Load sits at the top,
- * Export/Import sit flush with the foot, and Delete + Del folder are centred
- * in what is left between them. Nothing here depends on the row count, the
+ * The rule is the same at any height: Load sits at the top and Delete +
+ * Del folder are centred in what is left below it (Export/Import moved to
+ * Application/Migration). Nothing here depends on the row count, the
  * font or the DPI - it reads the rectangles Windows actually produced.
  *
  * Called from windows/dialog.c after the panel is laid out and BEFORE it is
@@ -3855,6 +3919,13 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 if (sn && *sn) {
                     sfree(ssd->savedsession);
                     ssd->savedsession = dupstr(sn);
+                    /* -cfgloaded (the hotkey balloon): the restored session
+                     * is the one the box was opened to fix, so treat it as
+                     * loaded and let Save write it back without the
+                     * overwrite warning. An ordinary fresh box leaves
+                     * loaded_from NULL on purpose - see the guard. */
+                    if (kitty_cfgbox_loaded_deliberate && !ssd->loaded_from)
+                        ssd->loaded_from = dupstr(sn);
                 }
             }
             ssd->suppress_edit_valchange++;
@@ -6079,14 +6150,14 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
      * [ConfigBox] height (GetConfigBoxHeight()). The buttons beside it are
      * spread down that height AFTER the layout has run, by
      * kitty_config_session_distribute() - Load at the top, Delete and Del
-     * folder in the upper-centre, Export/Import flush with the foot.
+     * folder centred below it (Export/Import live on Application/Migration).
      *
      * They used to be spaced by blank ctrl_text rows whose COUNT was computed
      * from the height here. That worked, and it welded the row count into the
      * CONTROLBOX: the number of controls in this set depended on it, so the
      * setting could not be changed without building the whole box again -
      * which is why it only ever took effect in the next window. Measuring the
-     * list and placing five buttons against it costs nothing, holds at any
+     * list and placing the buttons against it costs nothing, holds at any
      * height, font and DPI, and can be redone whenever the number changes.
      */
     kitty_session_ssd = ssd;
@@ -6164,7 +6235,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
      * Empty comments show a clear placeholder directly inside the field. */
     if (!GetPuttyFlag()) {
         ssd->commentbox = ctrl_editbox_multiline(
-            s, NULL, NO_SHORTCUT, 3, true,
+            s, NULL, NO_SHORTCUT, 2, true,
             HELPCTX(session_saved), sessionsaver_handler, P(ssd), P(NULL));
     } else {
         ssd->commentbox = NULL;
@@ -6198,10 +6269,8 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
         ctrl_checkbox(s, KT_SESSION_SAVE_SETTINGS_ON_EXIT, NO_SHORTCUT,
                       HELPCTX(kitty_save_on_exit), conf_checkbox_handler,
                       I(CONF_saveonexit));
-        /* KiTTY: exclude this session from the kitty -launcher tray menu. */
-        ctrl_checkbox(s, KT_SESSION_HIDE_THIS_SESSION, NO_SHORTCUT,
-                      HELPCTX(kitty_hide_launcher), conf_checkbox_handler,
-                      I(CONF_launcherhide));
+        /* "Hide this session from the launcher" lives on Session/Startup
+         * (Launcher configuration), with the rest of the launcher settings. */
     }
 
     /* KiTTY: settings about the APPLICATION rather than this connection, in
@@ -6647,6 +6716,14 @@ static void scb_panel_scripting(struct controlbox *b)
                         I(0));
         ctrl_text(s, KT_STARTUP_EXAMPLE_CTRL_ALT_K,
                   HELPCTX(kitty_launcher));
+        s = ctrl_getset(b, "Session/Startup", "launcher_config",
+                        KT_STARTUP_LAUNCHER_CONFIGURATION);
+        /* KiTTY: exclude this session from the kitty -launcher tray menu.
+         * Moved here from the Session panel - it configures the launcher's
+         * view of the session, not the session itself. */
+        ctrl_checkbox(s, KT_SESSION_HIDE_THIS_SESSION, NO_SHORTCUT,
+                      HELPCTX(kitty_hide_launcher), conf_checkbox_handler,
+                      I(CONF_launcherhide));
     }
 #endif
 }
@@ -8054,7 +8131,11 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
          * an application-wide switch that overrides every session at once, and
          * putting it between the preset loader and the session's own fields (where
          * it first sat) read as though it were part of them. */
-        if (!GetPuttyFlag() && kitty_has_proxy_definitions()) {
+        /* The leaf is ALWAYS in the tree now. Without a named proxy the
+         * controls grey out and the info line under the state says so -
+         * a leaf that comes and goes with the proxy count read as a bug,
+         * and gave no hint where the feature had gone. */
+        if (!GetPuttyFlag()) {
             struct wpmode_data *wd = (struct wpmode_data *)
                 ctrl_alloc(b, sizeof(struct wpmode_data));
             memset(wd, 0, sizeof(*wd));
@@ -8085,6 +8166,11 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
             wd->state = ctrl_text(s, KITTY_WORKPLACE_STATE_OFF, HELPCTX(kitty_workplace));
             ctrl_text(s, KT_WORKPLACE_PROXY_WHILE_IT_IS_ON_EVERY,
                       HELPCTX(kitty_workplace));
+            /* Relabelled in place like the state line above, so both wordings
+             * must stay one line at panel width. */
+            wd->noproxy = ctrl_text(s, kitty_has_proxy_definitions() ? " " :
+                                    KT_WORKPLACE_PROXY_NEEDS_NAMED,
+                                    HELPCTX(kitty_workplace));
             /* Label kept to the length of "Named proxy settings:" above: at 60%
              * droplist width the label gets the other 40%, and "Proxy for every
              * connection:" was clipped to "Proxy for every" - the same squeeze
@@ -9152,8 +9238,8 @@ static void kitty_cfgwin_noexit_handler(dlgcontrol *ctrl, dlgparam *dlg,
 static void kitty_cfgwin_dblclick_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                           void *data, int event)
 {
-    static const char *const names[] = { "Open it in this window",
-                                         "Start it in a new window" };
+    static const char *const names[] = { "Open Terminal and close Config",
+                                         "Start Terminal in new window" };
     static const char *const keys[] = { "open", "start" };
     int i;
 
@@ -9358,7 +9444,9 @@ static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * A number the box then clamps is not the setting: leaving it in
              * the file means the field redisplays a size the window never
              * had, and the user is left looking for the reason nothing
-             * happened. The row count has a floor of 7; the window sizes have
+             * happened. The row count has KITTY_CFG_SESSION_ROWS_MIN as its
+             * floor (kitty_defs.h, shared with kitty_config_session_rows and
+             * the label text); the window sizes have
              * the box's own minimum, which only dialog.c knows, so it reports
              * back what it applied.
              */
@@ -9366,7 +9454,8 @@ static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
             const char *store = s;         /* NEVER reassign s - it is freed */
             if (!strcmp(key, "height")) {
                 int v = atoi(s);
-                if (v < 7) v = 7;
+                if (v < KITTY_CFG_SESSION_ROWS_MIN)
+                    v = KITTY_CFG_SESSION_ROWS_MIN;
                 sprintf(applied, "%d", v);
                 store = applied;
             }
