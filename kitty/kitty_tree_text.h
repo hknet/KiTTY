@@ -54,6 +54,7 @@ static const KittyTreeLabel kitty_tree_labels[] = {
     { "Keyboard",                "Keyboard" },
     { "Keys & Mouse",            "Keys & Mouse" },
     { "KiTTY Settings",          "KiTTY Settings" },
+    { "KiTTY storage",           "KiTTY storage" },
     { "Launcher",                "Launcher" },
     { "Limits",                  "Limits" },
     { "Logging",                 "Logging" },

@@ -541,6 +541,9 @@
  * ordinary wording of a confirmation understates. */
 #ifndef IDD_CONFIRMBOX
 #define IDD_CONFIRMBOX 147
+/* Make a portable copy: how the copy's passwords are protected. Same
+ * control ids as IDD_EXPORTPW - one dialog proc serves both. */
+#define IDD_STOREMOVEPW 148
 #endif
 #ifndef IDC_CONFIRM_TEXT
 #define IDC_CONFIRM_TEXT 1275

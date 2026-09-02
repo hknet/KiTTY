@@ -972,6 +972,9 @@ int kitty_portable_password_dpapi(void)
  * only) stays read-compatible; all new writes are MPW2. */
 #define KSEC_MPW2_MARK   "MPW2:"
 #define KSEC_MPW_VERIFY  "KiTTY-MPW-verify"
+/* For a store minted elsewhere (a portable copy): the token its verifier
+ * must decrypt to. */
+const char *kitty_mpw_verify_token(void) { return KSEC_MPW_VERIFY; }
 static void (*g_mpw_derive)(const char *, const unsigned char *, int, unsigned char *) = NULL;
 static char *(*g_mpw_protect)(const char *, const unsigned char *) = NULL;
 static int  (*g_mpw_unprotect)(const char *, const unsigned char *, char **) = NULL;

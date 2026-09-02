@@ -3697,7 +3697,8 @@ void kitty_netdbg_ts( const char *msg ) {
  * the worst case is asking a question rather than swallowing one. */
 int kitty_cli_do_and_exit( void ) {
 	static const char * const batch[] = {
-		"-importdir", "-exportall", "-mungestr", "-sendcmd", "-edit", "-ed", "-edb",
+		"-importdir", "-exportall", "-portablecopy", "-takefolder",
+		"-mungestr", "-sendcmd", "-edit", "-ed", "-edb",
 		"-fileassoc", "-sshhandler", "-cleanup", "-pgpfp",
 		/* Deliberately NOT "-h"/"-?": this scan has no notion of quoting, so a
 		 * one-letter token is far too easy to hit inside a session name or a

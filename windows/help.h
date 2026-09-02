@@ -29,6 +29,7 @@ typedef const char *HelpCtx;
  * both, and on a panel where every control is no_help.
  */
 #define WINHELP_CTX_kitty_import_sessions    "kitty-cfg-migration"
+#define WINHELP_CTX_kitty_ini_migration      "kitty-cfg-ini-migration"
 #define WINHELP_CTX_kitty_logging_stamps     "kitty-cfg-log-timestamp"
 #define WINHELP_CTX_kitty_host_cas           "kitty-cfg-host-cas"
 #define WINHELP_CTX_kitty_workplace          "kitty-cfg-workplace"

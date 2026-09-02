@@ -9,6 +9,7 @@ extern char *SetSessPath(const char *);
 extern int  GetDirectoryBrowseFlag(void);
 extern void load_open_settings_forced(char *filename, Conf *conf); /* kitty_settings_load.c */
 extern char *kitty_cli_loginscript; /* kitty_bridge.c: -loginscript, consumed post-create */
+#include "../kitty/kitty_storemove.h"
 /* -exportall <dir> / -importdir <dir>: whole-store move; stashed here and run
  * just before the config box (storage backend is initialised by then), then
  * exit. kitty_export_all_to_dir/kitty_import_dir are the no-UI cores. */
@@ -17,6 +18,11 @@ int  kitty_import_dir(const char *dir, int *failOut, int *proxyOut,
                       int *skippedOut, int overwrite);
 static char *kitty_cli_exportdir = NULL;
 static char *kitty_cli_importdir = NULL;
+/* -portablecopy <dir> / -takefolder <dir>: the two moves of
+ * kitty_storemove.c, driven without their dialogs; the password rules
+ * of -exportall / -importdir apply. */
+static char *kitty_cli_portablecopy = NULL;
+static char *kitty_cli_takefolder = NULL;
 /* Bundle transport protection for the do-and-exit paths above. The password is
  * taken from a FILE, never from argv: a command-line password is visible in the
  * process list, in Task Manager and in shell history. (A password sitting in a
@@ -329,6 +335,18 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                     cmdline_error("option \"%s\" requires a directory argument", p);
                 sfree(kitty_cli_importdir);
                 kitty_cli_importdir =
+                    dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
+            } else if (!strcmp(p, "-portablecopy")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires a directory argument", p);
+                sfree(kitty_cli_portablecopy);
+                kitty_cli_portablecopy =
+                    dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
+            } else if (!strcmp(p, "-takefolder")) {
+                if (!arglist->args[arglistpos])
+                    cmdline_error("option \"%s\" requires a directory argument", p);
+                sfree(kitty_cli_takefolder);
+                kitty_cli_takefolder =
                     dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
             } else if (!strcmp(p, "-bundlepwfile")) {
                 if (!arglist->args[arglistpos])
@@ -649,6 +667,49 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         MessageBoxA(NULL, msg, "KiTTY session import",
                     MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
         cleanup_exit(fail ? 1 : 0);
+    }
+    /* Whole-store moves between the registry and a folder (do-and-exit),
+     * the command-line form of Application > Migration > KiTTY.ini
+     * migration. Same password rules as above: the copy's master password
+     * comes from -bundlepwfile, or -bundlethispc chooses DPAPI. */
+    if (kitty_cli_portablecopy) {
+        struct ksm_result r;
+        char msg[2048];
+        if (!kitty_cli_bundlepw && !kitty_cli_bundle_thispc) {
+            MessageBoxA(NULL,
+                "Say how the copy's passwords should be protected:\n\n"
+                "  -bundlepwfile <file>   its master password (first line of "
+                "the file)\n"
+                "  -bundlethispc          no password; readable by this Windows "
+                "account on this PC only\n\n"
+                "Nothing was copied.",
+                "Make a portable copy", MB_OK | MB_ICONWARNING);
+            cleanup_exit(1);
+        }
+        kitty_portable_copy_core(kitty_cli_portablecopy,
+                                 kitty_cli_bundle_thispc ? NULL : kitty_cli_bundlepw,
+                                 kitty_cli_bundle_thispc, &r, msg, sizeof(msg));
+        MessageBoxA(NULL, msg, "Make a portable copy",
+                    MB_OK | (r.fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+        cleanup_exit(r.fail ? 1 : 0);
+    }
+    if (kitty_cli_takefolder) {
+        struct ksm_result r;
+        char msg[2048];
+        if (kitty_take_folder_needs_password(kitty_cli_takefolder) &&
+            !kitty_cli_bundlepw) {
+            MessageBoxA(NULL,
+                "This folder store has a master password. Supply it with:\n\n"
+                "  -bundlepwfile <file>   (the password on the first line)\n\n"
+                "Nothing was taken.",
+                "Take a folder store into this registry", MB_OK | MB_ICONWARNING);
+            cleanup_exit(1);
+        }
+        kitty_take_folder_core(kitty_cli_takefolder, kitty_cli_bundlepw, 1,
+                               &r, msg, sizeof(msg));
+        MessageBoxA(NULL, msg, "Take a folder store into this registry",
+                    MB_OK | (r.fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+        cleanup_exit(r.fail ? 1 : 0);
     }
 #endif
 

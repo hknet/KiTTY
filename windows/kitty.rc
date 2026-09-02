@@ -146,6 +146,25 @@ BEGIN
     PUSHBUTTON      "Cancel", IDCANCEL, 211, 129, 50, 14
 END
 
+/* Make a portable copy (Application > Migration > KiTTY storage): the
+ * same controls as IDD_EXPORTPW, driven by the same dialog proc, but here the
+ * password becomes the copy's master password. */
+IDD_STOREMOVEPW DIALOGEX DISCARDABLE 0, 0, 268, 150
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Make a portable copy"
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "Choose how the passwords saved in the copy are protected. Nothing about this KiTTY changes.", -1, 7, 7, 254, 26
+    AUTORADIOBUTTON "Protect with a &master password (the copy asks for it once per start, works on any PC)", IDC_EXP_MODEPW, 7, 38, 254, 10, WS_GROUP | WS_TABSTOP
+    LTEXT           "Master password (at least 5 characters):", IDC_EXP_PASS_LBL, 18, 54, 243, 8
+    EDITTEXT        IDC_EXP_PASS, 18, 64, 243, 12, ES_PASSWORD | ES_AUTOHSCROLL
+    AUTOCHECKBOX    "&Show password", IDC_EXP_SHOWPW, 18, 80, 243, 10
+    AUTORADIOBUTTON "Protect for &this PC only (no password)", IDC_EXP_MODEDPAPI, 7, 96, 254, 10
+    LTEXT           "The copy can then read its passwords only under THIS Windows account on THIS PC. A moved or synced copy cannot.", IDC_EXP_DPAPIWARN, 18, 108, 243, 18, WS_GROUP
+    DEFPUSHBUTTON   "&Copy", IDOK, 154, 129, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 211, 129, 50, 14
+END
+
 /* Export summary: shows the bundle password once, with a Copy button - this is
  * the moment the user wants to stash it. Handled by kitty/kitty_bridge.c. */
 IDD_EXPORTDONE DIALOGEX DISCARDABLE 0, 0, 268, 123

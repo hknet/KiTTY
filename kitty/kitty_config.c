@@ -10580,6 +10580,30 @@ static void kitty_import_action_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * (context 0 = export, 1 = import). The work lives in kitty_bridge.c; the
  * import refresh reaches the Session panel's list through the same ssd the
  * button distribution uses. */
+/* Application > Migration > KiTTY storage: the two store moves of
+ * kitty_storemove.c. Taking a folder store in changes the session list. */
+static void kitty_inimig_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                 void *data, int event)
+{
+    extern void kitty_make_portable_copy(HWND);
+    extern void kitty_take_folder_store(HWND);
+    (void)data;
+    if (event != EVENT_ACTION)
+        return;
+    if (ctrl->context.i == 0) {
+        kitty_make_portable_copy(GetActiveWindow());
+    } else {
+        struct sessionsaver_data *ssd = kitty_session_ssd;
+        kitty_take_folder_store(GetActiveWindow());
+        if (ssd && ssd->listbox) {
+            get_sesslist(&ssd->sesslist, false);
+            get_sesslist(&ssd->sesslist, true);
+            dlg_refresh(ssd->listbox, dlg);
+        }
+        kitty_notify_launcher_sessions_changed();
+    }
+}
+
 static void kitty_storexfer_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                     void *data, int event)
 {
@@ -10819,6 +10843,36 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
                 im->banner = ctrl_text(s, " ",
                                        HELPCTX(kitty_import_sessions));
             }
+        }
+    }
+
+    /* Application > Migration > KiTTY storage: registry <-> folder
+     * store, both ways. "Take ... into this registry" makes no sense for a
+     * copy that already runs from a folder, so only the registry-mode copy
+     * offers it. */
+    {
+        const char *p = "Application/Migration/KiTTY storage";
+        dlgcontrol *bc;
+        extern int GetIniFileFlag(void);
+        ctrl_settitle(b, p, KT_INIMIG_TITLE);
+        s = ctrl_getset(b, p, "copy", KT_INIMIG_OUT_GROUP);
+        ctrl_text(s, KT_INIMIG_OUT_INTRO, HELPCTX(kitty_ini_migration));
+        ctrl_columns(s, 2, 55, 45);
+        bc = ctrl_pushbutton(s, KT_INIMIG_OUT_BUTTON, NO_SHORTCUT,
+                             HELPCTX(kitty_ini_migration),
+                             kitty_inimig_handler, I(0));
+        bc->column = 1;
+        ctrl_columns(s, 1, 100);
+        if (GetIniFileFlag() != 2 /* SAVEMODE_DIR */) {
+            s = ctrl_getset(b, p, "take", KT_INIMIG_IN_GROUP);
+            ctrl_text(s, KT_INIMIG_IN_INTRO, HELPCTX(kitty_ini_migration));
+            ctrl_text(s, KT_INIMIG_IN_NOTE, HELPCTX(kitty_ini_migration));
+            ctrl_columns(s, 2, 55, 45);
+            bc = ctrl_pushbutton(s, KT_INIMIG_IN_BUTTON, NO_SHORTCUT,
+                                 HELPCTX(kitty_ini_migration),
+                                 kitty_inimig_handler, I(1));
+            bc->column = 1;
+            ctrl_columns(s, 1, 100);
         }
     }
 

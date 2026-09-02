@@ -504,6 +504,7 @@ extern int  kitty_bundle_wrap_failed(void);
 
 static char *g_exp_result;      /* collected UTF-8 password (malloc'd) or NULL */
 static int   g_exp_dpapi;       /* user chose "this PC only" */
+static int   g_exp_template = IDD_EXPORTPW; /* dialog template in use */
 
 /* Read an edit control as a malloc'd UTF-8 string; the wide buffer is scrubbed
  * before release. (Same approach as the master-password prompt: the password
@@ -613,7 +614,7 @@ static int kitty_ask_export_password(HWND hwnd, char **pwOut, int *dpapiOut)
     INT_PTR r;
     g_exp_result = NULL;
     g_exp_dpapi = 0;
-    r = DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_EXPORTPW),
+    r = DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(g_exp_template),
                    hwnd, exportpw_dlgproc);
     if (r != IDOK) {
         if (g_exp_result) {
@@ -627,6 +628,18 @@ static int kitty_ask_export_password(HWND hwnd, char **pwOut, int *dpapiOut)
     *dpapiOut = g_exp_dpapi;
     g_exp_result = NULL;
     return 1;
+}
+
+/* The same question for a portable copy of the store (kitty_storemove.c):
+ * same controls, its own words - there the password IS the copy's master
+ * password, the opposite of what the export dialog says. */
+int kitty_ask_store_password(HWND hwnd, char **pwOut, int *dpapiOut)
+{
+    int r;
+    g_exp_template = IDD_STOREMOVEPW;
+    r = kitty_ask_export_password(hwnd, pwOut, dpapiOut);
+    g_exp_template = IDD_EXPORTPW;
+    return r;
 }
 
 /* ---- export summary (shows the password once, with Copy) ---- */
@@ -1268,7 +1281,7 @@ static int kitty_ask_import_password(HWND hwnd, const char *sample, char **pwOut
 /* Work out how this bundle is protected and obtain what is needed to open it.
  * 1 = go ahead (*pwOut is the bundle password, or NULL when none is needed),
  * 0 = abandon the import without touching anything. */
-static int kitty_unlock_import_bundle(HWND hwnd, const char *dir, char **pwOut)
+int kitty_unlock_import_bundle(HWND hwnd, const char *dir, char **pwOut)
 {
     char *mpw2 = NULL, *dpapi = NULL, *pat, *sub;
     int ok = 1;

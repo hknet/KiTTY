@@ -1065,6 +1065,58 @@ an import and on an ordinary load. A pinned position that is off-screen
 is moved onto the nearest monitor (\k{kitty-cfg-winpos}), so an old
 session cannot put a window out of reach.
 
+\S{kitty-cfg-ini-migration} The KiTTY storage panel
+
+Moves a whole store between the registry and a folder. Neither action
+touches the store it reads from.
+
+\dt \e{Make a portable copy}
+
+\dd Pick a folder. KiTTY writes into it a copy of \c{kitty.exe} and the
+companion programs beside it (kageant, kittygen, klink, kscp, ksftp, the
+help file), a \c{kitty.ini} holding every application setting of this
+KiTTY plus \c{savemode=dir}, and the store: \c{Sessions\\}, \c{Proxies\\}
+and \c{SshHostKeys\\}. Run \c{kitty.exe} from that folder and it uses
+those files and never the registry - on a USB stick, in a synced folder,
+on another PC. The folder must be writable; KiTTY checks by writing a
+file there, not by looking at the path, so a per-user installation
+folder is accepted.
+
+\lcont{
+
+Saved passwords are re-protected for the copy. You choose how: with a
+\e{master password}, which the copy asks for once per start and which
+works wherever the folder goes (the default, and the choice for a
+synced folder), or \e{for this PC only}, which needs no password but
+leaves the copy's passwords unreadable under any other Windows account
+or on any other PC. The registry's own passwords stay as they are.
+
+If the folder already holds a store, files of the same name are
+overwritten and the rest stay.
+
+}
+
+\dt \e{Take a folder store into this registry}
+
+\dd Pick the folder of a portable store. Its sessions, named proxies
+and host keys are taken into the registry, and the settings of its
+\c{kitty.ini} are written to the registry as well; they apply after a
+restart. If the store is protected with a master password, KiTTY asks
+for it once. Entries that already exist in the registry are overwritten
+or kept, as you answer. The folder is left as it is. This action is
+offered only while KiTTY itself saves to the registry.
+
+\lcont{
+
+The take-in is a \e{merge}: what the folder holds replaces the
+registry's version, what it does not hold stays as it was. Sessions,
+proxies and host keys the registry had and the folder has not are
+kept, and so is every setting the folder's \c{kitty.ini} does not
+mention. Nothing is cleared first, so after the take-in the registry
+holds the folder's store on top of what it held before.
+
+}
+
 \S{kitty-cfg-updates} The Updates panel
 
 \b \q{Check for updates when KiTTY starts} looks for a newer release

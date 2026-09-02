@@ -32,6 +32,16 @@
 #define KT_MIG_IMP_DONE    "Imported. The copies are in the session list."
 #define KT_MIG_IMP_NONE    "Nothing was imported."
 
+/* Application > Migration > KiTTY storage (kitty_storemove.c) */
+#define KT_INIMIG_TITLE      "KiTTY storage"
+#define KT_INIMIG_OUT_GROUP  "Make a portable copy"
+#define KT_INIMIG_OUT_INTRO  "Copies kitty.exe, its companions, all sessions, named proxies, host keys and settings into a folder of your choice. That copy runs from the folder with its own kitty.ini. The registry stays as it is."
+#define KT_INIMIG_OUT_BUTTON "Make a portable copy..."
+#define KT_INIMIG_IN_GROUP   "Take a folder store into this registry"
+#define KT_INIMIG_IN_INTRO   "Takes the sessions, named proxies, host keys and settings of a folder store into the registry. The folder is left as it is."
+#define KT_INIMIG_IN_BUTTON  "Take a folder store..."
+#define KT_INIMIG_IN_NOTE    "The folder is merged into the registry: what it holds replaces, what it lacks stays."
+
 #define KT_MIG_BOX_TITLE   "KiTTY session import"
 #define KT_MIG_BOX_OK      "Imported %d session%s: %s."
 #define KT_MIG_BOX_FAILED  "\r\n%d session%s could not be read."

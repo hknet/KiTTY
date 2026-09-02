@@ -512,6 +512,7 @@ add_executable(kitty
   ${KITTY_DIR}/url/re_lib/regexp.c
   ${KITTY_DIR}/kitty_url.c
   ${KITTY_DIR}/kitty_bridge.c
+  ${KITTY_DIR}/kitty_storemove.c
   ${KITTY_DIR}/kitty_settings_forced.c
   ${KITTY_DIR}/kitty_settings_load.c
   ${KITTY_DIR}/kitty_migrate.c
@@ -616,6 +617,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/url/re_lib/regexp.c
   ${KITTY_DIR}/kitty_url.c
   ${KITTY_DIR}/kitty_bridge.c
+  ${KITTY_DIR}/kitty_storemove.c
   ${KITTY_DIR}/kitty_settings_forced.c
   ${KITTY_DIR}/kitty_settings_load.c
   ${KITTY_DIR}/kitty_migrate.c

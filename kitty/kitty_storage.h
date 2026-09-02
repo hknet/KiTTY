@@ -57,6 +57,7 @@ const char *kitty_reg_sessions(void);    /* <base>\Sessions */
 const char *kitty_reg_jumplist(void);    /* <base>\Jumplist */
 const char *kitty_reg_hostcas(void);     /* <base>\SshHostCAs */
 const char *kitty_reg_hostkeys(void);    /* <base>\SshHostKeys */
+const char *kitty_mpw_verify_token(void); /* master-password verifier plaintext */
 
 /* ---- the read watch (session importer) ----
  * While a callback is set, every setting name read from a session is passed to
