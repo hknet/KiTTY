@@ -11,6 +11,6 @@
 #define APPNAME "KiTTYgen-cli"
 #define APPDESC "KiTTY command-line SSH key generation utility"
 
-200 ICON "puttygen.ico"
+200 ICON "kitty_pp_keygen.ico"
 
 #include "version.rc2"

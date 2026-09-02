@@ -4,8 +4,8 @@
 #define APPNAME "KiTTYtel"
 #define APPDESC "Telnet and Rlogin client"
 
-IDI_MAINICON ICON "kitty_icons/icon_0.ico"
-IDI_CFGICON ICON "puttycfg.ico"
+IDI_MAINICON ICON "kitty_pp_windows.ico"
+IDI_CFGICON ICON "kitty_pp_windows.ico"
 
 #include "help.rc2"
 #include "putty-common.rc2"

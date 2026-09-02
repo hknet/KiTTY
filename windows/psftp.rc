@@ -3,6 +3,6 @@
 #define APPNAME "ksftp"
 #define APPDESC "Command-line interactive SFTP client"
 
-200 ICON "pscp.ico"
+200 ICON "kitty_pp_transfer.ico"
 
 #include "version.rc2"

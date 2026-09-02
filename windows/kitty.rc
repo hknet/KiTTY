@@ -9,8 +9,8 @@
 #define APPNAME "KiTTY"
 #define APPDESC "SSH, Telnet, Rlogin, and SUPDUP client"
 
-IDI_MAINICON ICON "putty.ico"
-IDI_CFGICON ICON "puttycfg.ico"
+IDI_MAINICON ICON "kitty_pp_windows.ico"
+IDI_CFGICON ICON "kitty_pp_windows.ico"
 
 /* KiTTY per-session icon set */
 IDI_MAINICON_0 ICON "kitty_icons/icon_0.ico"
@@ -68,9 +68,9 @@ IDI_NOCON ICON "kitty_icons/nocon.ico"
 // Session-launcher icons (kitty.exe -launcher). 9901/9902 match
 // IDI_PUTTY_LAUNCH / IDI_BLACKBALL in kitty_launcher.c; without them the
 // launcher's tray + window icon are blank. 9901 uses the main KiTTY app icon
-// (same as IDI_MAINICON / putty.ico) so the launcher matches the rest of the
+// (same as IDI_MAINICON / kitty_pp_windows.ico) so the launcher matches the rest of the
 // suite; 9902 is the -oldicon fallback.
-9901 ICON "putty.ico"
+9901 ICON "kitty_pp_windows.ico"
 9902 ICON "kitty_icons/icon_0.ico"
 
 #include "help.rc2"

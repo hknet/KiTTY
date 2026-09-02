@@ -23,7 +23,7 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of KiTTY is already installed." />
     <MediaTemplate EmbedCab="yes" />
     <Icon Id="kitty.ico" SourceFile="kitty.exe" />
-    <Icon Id="klaunch.ico" SourceFile="putty.ico" />
+    <Icon Id="klaunch.ico" SourceFile="kitty_pp_windows.ico" />
     <Property Id="ARPPRODUCTICON" Value="kitty.ico" />
 
     <!-- KiTTY: close any running KiTTY before the file phase so an in-place

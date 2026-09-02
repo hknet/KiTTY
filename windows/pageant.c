@@ -255,6 +255,42 @@ static char *find_kittygen(void)
  * CreateDialog/DialogBox get no icon of their own and show the generic
  * Windows default; the tray app has one, so use it. LR_SHARED handles are
  * managed by the system - no DestroyIcon needed. */
+/* KiTTY: the tray icon sits on the TASKBAR, whose colour follows the system
+ * theme (SystemUsesLightTheme), not the app's theme preference - a dark app
+ * on a light taskbar still needs the dark glyph. Resource 201 is the dark
+ * glyph for a light taskbar, 202 the white glyph for a dark one (the .ico
+ * files are named for the taskbar, not for the glyph). Plain RegOpenKeyEx:
+ * RegGetValue would kill the process in the loader on old Windows. */
+static HICON kageant_tray_icon(void)
+{
+    HKEY k;
+    DWORD v = 1, sz = sizeof(v), type = 0;
+    int dark_taskbar = 0;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER,
+                      "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                      0, KEY_READ, &k) == ERROR_SUCCESS) {
+        if (RegQueryValueExA(k, "SystemUsesLightTheme", NULL, &type,
+                             (BYTE *)&v, &sz) == ERROR_SUCCESS &&
+            type == REG_DWORD)
+            dark_taskbar = (v == 0);
+        RegCloseKey(k);
+    }
+    return LoadIcon(hinst, MAKEINTRESOURCE(dark_taskbar ? 202 : 201));
+}
+
+/* Swap the tray glyph after the taskbar changed colour. */
+static void kageant_tray_retheme(HWND hwnd)
+{
+    NOTIFYICONDATA tnid;
+    memset(&tnid, 0, sizeof(tnid));
+    tnid.cbSize = sizeof(NOTIFYICONDATA);
+    tnid.hWnd = hwnd;
+    tnid.uID = 1;
+    tnid.uFlags = NIF_ICON;
+    tnid.hIcon = kageant_tray_icon();
+    Shell_NotifyIcon(NIM_MODIFY, &tnid);
+}
+
 static void kageant_set_window_icon(HWND hwnd)
 {
     HICON big = (HICON)LoadImage(hinst, MAKEINTRESOURCE(IDI_MAINICON),
@@ -4894,7 +4930,7 @@ static BOOL AddTrayIcon(HWND hwnd)
     tnid.uID = 1;              /* unique within this systray use */
     tnid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     tnid.uCallbackMessage = WM_SYSTRAY;
-    tnid.hIcon = hicon = LoadIcon(hinst, MAKEINTRESOURCE(201));
+    tnid.hIcon = hicon = kageant_tray_icon();
     /* KiTTY: extra tooltip lines for the agent's state - ini store,
      * portable layout, restricted ACL. The agent holds the keys, so "is the
      * lockdown actually on?" is worth answering without opening anything.
@@ -5422,6 +5458,11 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
     static bool trayignoreup;
 
     switch (message) {
+      case WM_SETTINGCHANGE:
+        /* The taskbar switched colour: the glyph on it must follow. */
+        if (lParam && !stricmp((const char *)lParam, "ImmersiveColorSet"))
+            kageant_tray_retheme(hwnd);
+        break;
       case WM_CREATE:
         msgTaskbarCreated = RegisterWindowMessage(_T("TaskbarCreated"));
         break;

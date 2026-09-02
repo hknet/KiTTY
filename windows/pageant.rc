@@ -36,8 +36,12 @@
  * these numbers, in logical pixels, and fails the build if one does not fit.
  */
 
-IDI_MAINICON ICON "pageant.ico"
-IDI_TRAYICON ICON "pageants.ico"
+IDI_MAINICON ICON "kitty_pp_agent.ico"
+/* Tray glyphs, named for the TASKBAR they sit on: 201 (IDI_TRAYICON) is
+ * the dark glyph for a light taskbar, 202 the white glyph for a dark
+ * one. kageant_tray_icon() picks by SystemUsesLightTheme. */
+IDI_TRAYICON ICON "kitty_pp_tray_light.ico"
+202 ICON "kitty_pp_tray_dark.ico"
 
 /* The passphrase boxes, in Segoe UI 9 like the rest of kageant. The
  * dialog-unit base is larger with this font, so these are not the old

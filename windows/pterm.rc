@@ -4,8 +4,8 @@
 #define APPNAME "kitty_pterm"
 #define APPDESC "KiTTY terminal for Windows command prompts"
 
-IDI_MAINICON ICON "pterm.ico"
-IDI_CFGICON ICON "ptermcfg.ico"
+IDI_MAINICON ICON "kitty_pp_windows.ico"
+IDI_CFGICON ICON "kitty_pp_windows.ico"
 
 #include "help.rc2"
 #include "putty-common.rc2"

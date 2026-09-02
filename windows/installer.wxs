@@ -605,7 +605,7 @@ https://msdn.microsoft.com/en-us/library/windows/desktop/dd391569(v=vs.85).aspx
         http://www.codeproject.com/Articles/43564/WiX-Tricks says that
         for some weird reason the Id of this icon has to end in .exe.
     -->
-    <Icon Id="installericon.exe" SourceFile="puttyins.ico" />
+    <Icon Id="installericon.exe" SourceFile="kitty_pp_windows.ico" />
     <Property Id="ARPPRODUCTICON" Value="installericon.exe" />
 
   </Product>
