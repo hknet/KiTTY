@@ -5,6 +5,77 @@ and enhanced **PuTTY 0.85** core. Versions below are this port's own `0.85.1.x` 
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.5-beta — 2026-09-02
+
+### New
+
+- **Every setting of the program has a panel now.** Application > **KiTTY++
+  Settings** holds one leaf per concern - Storage & Backup, Appearance, Keys &
+  Mouse (with a Shortcuts leaf), Automation, Features & Printing, Reconnect &
+  Prompts, Transfers & Tools (WinSCP, ZModem), Launcher, System - and the
+  Security branch gained Passwords, Client Identity and Clipboard. Each leaf
+  says where its values are kept, and a change is saved as you make it; the
+  footer of every panel says so. Before this, most of these values could only
+  be changed by editing `kitty.ini` or the registry by hand.
+
+- **A portable copy from the configuration window.** Application > Migration
+  > **KiTTY storage** writes `kitty.exe` with its companion programs, a
+  `kitty.ini` holding every setting plus `savemode=dir`, and the sessions,
+  named proxies and host keys into a folder you pick, with the saved passwords
+  re-protected for the copy under a master password you choose or for this PC
+  only. Run `kitty.exe` from that folder and it never touches the registry.
+  The reverse, **Take a folder store into this registry**, merges a folder
+  store back. Both also run from the command line (`-portablecopy`,
+  `-takefolder`).
+
+- **Windows integration from the configuration window.** KiTTY++ Settings >
+  **System** shows which program opens `telnet://`, `ssh://`, `kitty://` and
+  `putty://` links and `.ktx` session files, and offers three buttons that each
+  ask before writing: register this program, register and take over entries
+  other programs own (backed up first), and unregister.
+
+- **kageant re-encrypts keys after idle.** A decrypted key goes back to its
+  encrypted state a set time after it was decrypted or last signed; the next
+  use asks for the passphrase again. Settings > Security carries the mode -
+  off, a default for keys without their own setting, or enforced for every key
+  - and the time; a key's own time lives in its key details and travels with
+  its startup entry. `use` re-encrypts right after each signature.
+
+- **A session note at login.** A session's Comment is printed into the
+  terminal, framed, once the login has succeeded; the new checkbox on the
+  Comment panel (on by default) switches it off per session.
+
+- **The KiTTY++ icon set.** Every delivered program carries its own icon:
+  the main icon for kitty, kitty_portable, the launcher and klink, a transfer
+  badge for kscp and ksftp, a key for kittygen, an agent badge for kageant,
+  whose tray glyph follows the taskbar's colour.
+
+- **`-backupnow`** writes the store backup on demand; **Ctrl+A** selects all in
+  every edit box of the suite, the public-key box of kittygen included.
+
+### Changed
+
+- The client version string set on Security > Client Identity is now the whole
+  SSH banner token instead of being appended to "PuTTY", and a preview under
+  the field shows what the server is told.
+- A new session's function-key mode defaults to Xterm 216+.
+- The file-copy helper path is no longer written back to the store by the
+  startup search: a cleared field stays cleared and the helper is found afresh
+  each start.
+- kageant's settings pages and kittygen's window use the configuration
+  window's row spacing, kittygen's window fits its layout, and the settings
+  dialog has F1 help and a manual section of its own.
+- README states the Windows floor: XP through the 32-bit ZIP, Vista / Server
+  2008 for the 64-bit builds, Windows 10 and 11 tested.
+
+### Fixed
+
+- A registry backup (`kitty*.sav`) lost every value that spans lines - a
+  two-line session Comment vanished from the backup and a restore deleted it.
+  Such values are written as `hex(1)` now, which `reg import` restores
+  exactly.
+- The tray icon of kageant no longer stays the light glyph on a dark taskbar.
+
 ## 0.85.1.4-beta — 2026-09-01
 
 ### New

@@ -56,6 +56,10 @@ Sessions in and out of this machine (see docs/KITTY-PORTABLE.md)\r\n\
 * -importdir <dir>: read sessions back in from such a directory\r\n\
 * -bundlepwfile <file>: the bundle's password, read from a file\r\n\
 * -bundlethispc: bind the exported bundle to this computer\r\n\
+* -portablecopy <dir>: copy this KiTTY and its whole store into a folder\r\n\
+    as a portable copy (-bundlepwfile = the copy's master password)\r\n\
+* -takefolder <dir>: take a folder store into this registry (a merge)\r\n\
+* -backupnow: write the store backup (kitty*.sav / Backups\\) and quit\r\n\
 \r\n\
 Windows integration\r\n\
 \r\n\

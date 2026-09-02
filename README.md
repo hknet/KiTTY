@@ -73,7 +73,12 @@ verified — reports welcome.
 - **Transfers / backends:** ZModem send/receive, WinSCP & **kscp** file transfer with
   **directory-aware uploads** (OSC 7 — see the callout below), **adb** (Android) backend.
 - **Terminal:** font resize, protect, print, negative/B&W colours, clear/restart log, far2l extensions.
-- **Storage:** registry **or** portable file/dir storage (`kitty_portable.exe`), `kitty.ini` configuration.
+- **Storage:** registry **or** portable file/dir storage (`kitty_portable.exe`), `kitty.ini` configuration,
+  and a **portable copy** made from the configuration window (Migration > KiTTY storage) - or a folder
+  store taken back into the registry.
+- **KiTTY++ Settings:** every setting of the program itself has a panel (Application > KiTTY++ Settings),
+  saved as you change it - including a **System** leaf that registers the `ssh://` / `telnet://` /
+  `kitty://` links and `.ktx` files with Windows.
 - Plus the standard PuTTY tools, renamed KiTTY-style: `klink`, `kscp`, `ksftp`, `kageant`, `kittygen`.
 - `kittygen-cli.exe` — a console-mode CLI key generator (generate, convert, fingerprint) for use in scripts and pipelines. Run `kittygen-cli --help` for options.
 - **Quick-Connect or Last-Session Mode:** set "loadlastsession=yes/no" and either get fast load the last session or your cursor set to the hostname to enter for a quick connection.

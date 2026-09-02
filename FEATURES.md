@@ -56,6 +56,9 @@ one is available.
   - [Window title placeholders](#window-title-placeholders)
   - [Background image](#background-image)
   - [The configuration window remembers how you use it](#the-configuration-window-remembers-how-you-use-it)
+  - [The KiTTY++ Settings tree](#the-kitty-settings-tree)
+  - [A portable copy, and back into the registry](#a-portable-copy-and-back-into-the-registry)
+  - [A session note at login](#a-session-note-at-login)
 - **Other features**
   - [Automatic saving](#automatic-saving)
   - [pscp.exe and WinSCP integration](#pscpexe-and-winscp-integration)
@@ -864,6 +867,57 @@ Four behaviours of the configuration window itself:
 - **Named proxy pre-sets load from the Proxy panel itself** — a chooser and a
   Load button at the foot of **Connection > Proxy**, replacing the separate
   picker window.
+
+(no screenshot)
+
+### The KiTTY++ Settings tree
+
+Every setting of the program itself - not of a session - has a panel now,
+under **Application > KiTTY++ Settings**: where settings are kept and how many
+backups are held (*Storage & Backup*), the colour theme, title bar, icons and
+font fallback (*Appearance*), keys and mouse with a *Shortcuts* leaf, typing
+automation and broadcast (*Automation*), *Features & Printing*, the
+auto-reconnect master switch and in-line confirmations (*Reconnect & Prompts*),
+file-transfer helpers (*Transfers & Tools* with *WinSCP* and *ZModem*), the
+*Launcher*, and *System*. Each leaf says where its values are kept, and every
+change is saved as you make it - the footer line on each panel says so. Before
+this, most of these could only be changed by editing `kitty.ini` or the
+registry by hand.
+
+**System** shows which program Windows hands `telnet://`, `ssh://`, `kitty://`,
+`putty://` links and `.ktx` session files to - this KiTTY++, another KiTTY, some
+other program, or nobody - and offers three buttons that each ask before
+writing: register this program, register and take over entries other programs
+own (each backed up to a `.reg` file first), and unregister. They do what
+`-sshhandler` and `-fileassoc` do from the command line.
+
+(no screenshot)
+
+### A portable copy, and back into the registry
+
+**Application > Migration > KiTTY storage** moves a whole store between the
+registry and a folder. **Make a portable copy** writes `kitty.exe` with its
+companion programs, a `kitty.ini` holding every setting plus `savemode=dir`,
+and the sessions, named proxies and host keys into a folder you pick; the
+saved passwords are re-protected for the copy under a master password you
+choose (asked once per start; the copy works wherever the folder goes) or for
+this PC only. Run `kitty.exe` from that folder and it uses those files and
+never the registry - on a stick, in a synced folder, on another PC. The
+registry stays as it is. **Take a folder store into this registry** does the
+reverse, as a merge: what the folder holds replaces the registry's version,
+what it does not hold stays. From the command line: `-portablecopy <dir>` and
+`-takefolder <dir>`, with `-bundlepwfile` / `-bundlethispc` for the password
+choice.
+
+(no screenshot)
+
+### A session note at login
+
+The **Comment** a session carries (Session > Comment) can be printed into the
+terminal once the login has succeeded, framed as a *KiTTY++ session note* -
+what the machine is for, who owns it, what to remember before typing. The
+checkbox *Notify the user at login* on the Comment panel is on by default;
+untick it for a session whose note is for your eyes only.
 
 (no screenshot)
 
