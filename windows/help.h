@@ -50,6 +50,12 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_helper_paths       "kitty-cfg-external-tools"
 #define WINHELP_CTX_kitty_settings_tree      "kitty-cfg-kitty-settings"
 #define WINHELP_CTX_kitty_storage            "kitty-cfg-storage"
+#define WINHELP_CTX_kitty_kset_terminal      "kitty-cfg-kset-terminal"
+#define WINHELP_CTX_kitty_kset_shortcuts     "kitty-cfg-kset-shortcuts"
+#define WINHELP_CTX_kitty_kset_automation    "kitty-cfg-kset-automation"
+#define WINHELP_CTX_kitty_kset_window        "kitty-cfg-kset-window"
+#define WINHELP_CTX_kitty_kset_connection    "kitty-cfg-kset-connection"
+#define WINHELP_CTX_kitty_kset_launcher      "kitty-cfg-kset-launcher"
 #define WINHELP_CTX_kitty_folders            "kitty-cfg-sessionlist"
 #define WINHELP_CTX_kitty_quickconnect       "kitty-cfg-sessionlist"
 #define WINHELP_CTX_kitty_updater            "kitty-cfg-updates"
@@ -183,7 +189,10 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_ssh_kexlist "config-ssh-kex-order"
 #define WINHELP_CTX_ssh_hklist "config-ssh-hostkey-order"
 #define WINHELP_CTX_ssh_hk_known "config-ssh-prefer-known-hostkeys"
-#define WINHELP_CTX_ssh_gssapi_kex_delegation "config-ssh-kex-gssapi-delegation"
+/* The manual has no config-ssh-kex-gssapi-delegation section (upstream
+ * names one that was never written); the kex delegation checkbox is
+ * described under the GSSAPI key exchange section. */
+#define WINHELP_CTX_ssh_gssapi_kex_delegation "config-ssh-gssapi-kex"
 #define WINHELP_CTX_ssh_kex_repeat "config-ssh-kex-rekey"
 #define WINHELP_CTX_ssh_kex_manual_hostkeys "config-ssh-kex-manual-hostkeys"
 #define WINHELP_CTX_ssh_kex_cert "config-ssh-kex-cert"

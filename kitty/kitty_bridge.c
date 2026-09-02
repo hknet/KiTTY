@@ -62,6 +62,8 @@ void set_sshver(const char *vers) {
     strncpy(sshver, vers, sizeof(sshver) - 1);
     sshver[sizeof(sshver) - 1] = '\0';
 }
+/* What the banner currently carries - the settings tree shows and edits it. */
+const char *get_sshver(void) { return sshver; }
 
 /* save_open_settings_forced now implemented in kitty_settings_forced.c */
 

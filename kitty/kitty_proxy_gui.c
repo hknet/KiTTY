@@ -493,6 +493,34 @@ static bool pxp_may_leave(void)
 
 int GetPuttyFlag(void);   /* kitty_commun.c */
 
+/* [KiTTY] namedproxy: "sessionorhostname" (the default) or "hostname". */
+static void pxp_hostfield_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                  void *data, int event)
+{
+    extern int kitty_named_proxy_default_hostname(void);       /* kitty.c */
+    extern void SetNamedProxyHostnameOnly(const int);           /* kitty.c */
+    extern int WriteParameter(const char *, const char *, char *);
+    static const char *const names[] = {
+        KT_NAMED_PROXIES_HOSTFIELD_SESSION, KT_NAMED_PROXIES_HOSTFIELD_HOST };
+    static const char *const stored[] = { "sessionorhostname", "hostname" };
+    (void)data;
+    if (event == EVENT_REFRESH) {
+        int cur = kitty_named_proxy_default_hostname() ? 1 : 0, i;
+        dlg_update_start(ctrl, dlg);
+        dlg_listbox_clear(ctrl, dlg);
+        for (i = 0; i < 2; i++)
+            dlg_listbox_addwithid(ctrl, dlg, names[i], i);
+        dlg_listbox_select(ctrl, dlg, cur);
+        dlg_update_done(ctrl, dlg);
+    } else if (event == EVENT_SELCHANGE) {
+        int idx = dlg_listbox_index(ctrl, dlg);
+        if (idx == 0 || idx == 1) {
+            WriteParameter("KiTTY", "namedproxy", (char *)stored[idx]);
+            SetNamedProxyHostnameOnly(idx);
+        }
+    }
+}
+
 void kitty_proxy_build_panel(struct controlbox *b)
 {
     struct controlset *s;
@@ -597,6 +625,17 @@ void kitty_proxy_build_panel(struct controlbox *b)
      * freed above, so the panel still fits the window's minimum height. */
     s = ctrl_getset(b, "Application/Named proxies", "", NULL);
     pd->banner = ctrl_text(s, " ", HELPCTX(kitty_named_proxies));
+
+    /* The one global of this feature: how a definition's Host field is read
+     * when the definition itself does not say ([KiTTY] namedproxy). It is
+     * what the "..this is.." droplist's "as globally configured" entry
+     * means, so it lives beside the definitions rather than in the settings
+     * tree. Written the moment it is chosen, like every application setting;
+     * the leave guard above is about the definition, not this. */
+    s = ctrl_getset(b, "Application/Named proxies", "hostfield", NULL);
+    ctrl_droplist(s, KT_NAMED_PROXIES_HOSTFIELD, NO_SHORTCUT, 55,
+                  HELPCTX(kitty_named_proxies), pxp_hostfield_handler, P(NULL));
+    ctrl_text(s, KT_NAMED_PROXIES_HOSTFIELD_NOTE, HELPCTX(kitty_named_proxies));
 }
 
 

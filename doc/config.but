@@ -1033,7 +1033,7 @@ right in all situations.
 You may also find you need to disable Arabic text shaping;
 see \k{config-features-shaping}.
 
-\S{config-features-bracketed paste} Disabling \i{bracketed paste} mode
+\S{config-features-bracketed-paste} Disabling \i{bracketed paste} mode
 
 By default, when you paste text into the terminal window, it's sent to
 the server as terminal input, exactly as if you'd typed the same text

@@ -437,6 +437,20 @@ char * GetKittyIniFile(void) { return KittyIniFile ; }
 static char * KittySavFile = NULL ;
 char * GetKittySavFile(void) { return KittySavFile ; }
 
+/* Running values the settings tree (Application > KiTTY Settings) reads and
+ * writes beside the store, so a change shows again when the panel is
+ * revisited and takes effect where the program reads the value live. */
+char * GetIconFile(void) { return IconFile ; }
+void SetIconFile( const char * path ) {
+	if( IconFile != NULL ) { free( IconFile ) ; IconFile = NULL ; }
+	if( path && path[0] ) { IconFile = (char*) malloc( strlen(path)+1 ) ; strcpy( IconFile, path ) ; }
+}
+void SetPSCPPath( const char * path ) {
+	if( PSCPPath != NULL ) { free( PSCPPath ) ; PSCPPath = NULL ; }
+	if( path && path[0] ) { PSCPPath = (char*) malloc( strlen(path)+1 ) ; strcpy( PSCPPath, path ) ; }
+}
+void SetTransparencyEnabled( const int flag ) { SetTransparencyIni( flag ) ; }
+
 // Nom de la classe de l'application
 char KiTTYClassName[128] = "" ;
 
@@ -3200,7 +3214,7 @@ static const IniParam ini_params[] = {
 	/* conf=no: do NOT auto-create kitty.ini/kitty.sav */
 	INIP_KW( INIT_SECTION, 0, "conf",		IGN, 1, IGN,	&NoKittyFileFlag, NULL ),
 	INIP_NUM( INIT_SECTION, 0, "cryptsalt",		IGN,		NULL, SetCryptSaltFlag ),
-	INIP_KW( INIT_SECTION, 0, "ctrltab",		IGN, 0, IGN,	NULL, SetCtrlTabFlag ),
+	INIP_KW( INIT_SECTION, 0, "ctrltab",		1, 0, IGN,	NULL, SetCtrlTabFlag ),   /* symmetrical: a checkbox */
 	INIP_KW( INIT_SECTION, 0, "hyperlink",		1, 0, IGN,	&HyperlinkFlag, NULL ),
 	INIP_NUM( INIT_SECTION, 0, "internaldelay",	1,		&internal_delay, NULL ),
 	INIP_KW( INIT_SECTION, 0, "mouseshortcuts",	1, 0, IGN,	&MouseShortcutsFlag, NULL ),
@@ -3217,12 +3231,12 @@ static const IniParam ini_params[] = {
 	 * neighbours - see the comment on SetRestrictAclFlag. */
 	INIP_KW( INIT_SECTION, 1, "restrictacl",	1, IGN, IGN,	NULL, SetRestrictAclFlag ),
 	INIP_KW( INIT_SECTION, 0, "shortcuts",		1, 0, IGN,	&ShortcutsFlag, NULL ),
-	INIP_KW( INIT_SECTION, 0, "size",		1, IGN, IGN,	&SizeFlag, NULL ),
+	INIP_KW( INIT_SECTION, 0, "size",		1, 0, IGN,	&SizeFlag, NULL ),      /* symmetrical: a checkbox */
 	INIP_NUM( INIT_SECTION, 0, "slidedelay",	IGN,		&ImageSlideDelay, NULL ),
 	INIP_KW( INIT_SECTION, 0, "userpasssshnosave",	1, 0, IGN,	NULL, SetUserPassSSHNoSave ),
 	INIP_KW( INIT_SECTION, 0, "winroll",		1, 0, IGN,	&WinrolFlag, NULL ),
-	/* wintitle=no disables the title decorations; there is no way back on */
-	INIP_KW( INIT_SECTION, 0, "wintitle",		IGN, 0, IGN,	&TitleBarFlag, NULL ),
+	/* wintitle: symmetrical since the settings tree offers it as a checkbox */
+	INIP_KW( INIT_SECTION, 0, "wintitle",		1, 0, IGN,	&TitleBarFlag, NULL ),
 #ifdef MOD_PROXY
 	/* proxyselection: yes = always, no = never, auto (or anything else) = when defined */
 	INIP_KW( "ConfigBox", 0, "proxyselection",	1, -1, 0,	NULL, SetProxySelectionFlag ),
@@ -3231,7 +3245,9 @@ static const IniParam ini_params[] = {
 	INIP_KW( INIT_SECTION, 0, "zmodem",		1, 0, IGN,	NULL, SetZModemFlag ),
 #endif
 #ifdef MOD_RECONNECT
-	INIP_KW( INIT_SECTION, 0, "autoreconnect",	IGN, 0, IGN,	&AutoreconnectFlag, NULL ),
+	/* SYMMETRICAL since the settings tree offers it as a checkbox: yes states
+	 * the default rather than meaning nothing (same as the ConfigBox keys). */
+	INIP_KW( INIT_SECTION, 0, "autoreconnect",	1, 0, IGN,	&AutoreconnectFlag, NULL ),
 	INIP_NUM( INIT_SECTION, 0, "ReconnectDelay",	1,		&ReconnectDelay, NULL ),
 #endif
 	INIP_KW( INIT_SECTION, 0, "scriptmode",		1, 0, IGN,	NULL, kitty_script_set_enabled ),
@@ -3543,6 +3559,17 @@ void LoadParameters( void ) {
 	readINI( KittyIniFile, "FontFallback", "logfile", fbLogFile, sizeof(fbLogFile) ) ;
 	winfb_config_set( fbList, fbOvr, fbLog, fbLogFile ) ;
 	}
+}
+
+/* The settings tree changed the [FontFallback] fallback list: hand it over
+ * together with the three keys it does not edit, read again from the file
+ * (they are file-only, and winfb_config_set takes all four at once). */
+void kitty_fontfallback_apply_list( const char * list ) {
+	char fbOvr[2048]="", fbLog[64]="", fbLogFile[MAX_PATH]="" ;
+	readINI( KittyIniFile, "FontFallback", "override", fbOvr, sizeof(fbOvr) ) ;
+	readINI( KittyIniFile, "FontFallback", "log", fbLog, sizeof(fbLog) ) ;
+	readINI( KittyIniFile, "FontFallback", "logfile", fbLogFile, sizeof(fbLogFile) ) ;
+	winfb_config_set( list ? list : "", fbOvr, fbLog, fbLogFile ) ;
 }
 
 // Initialisation de noms de fichiers de configuration kitty.ini et kitty.sav

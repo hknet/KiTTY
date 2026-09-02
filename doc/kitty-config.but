@@ -472,6 +472,11 @@ and lives on \k{kitty-cfg-external-tools}.
 
 \S{kitty-cfg-zmodem-session} The ZModem panel
 
+The panel opens with the global switch, \q{Enable ZModem transfers in
+every session}: off, the Tools menu loses its ZModem entries and the
+session settings below are not shown until the switch is on again and
+the configuration window reopened.
+
 \i{ZModem} transfers files through the terminal session itself, with no
 second connection - which is what makes it work through a jump host
 where SCP does not.
@@ -530,6 +535,13 @@ any number of sessions (\k{kitty-cfg-proxy-override}). Change the
 definition - a jump host moves, a password rotates - and every session
 that names it follows, because the sessions record the name, not the
 settings.
+
+Below the definition, \q{Host field default} is the global default for
+how a definition's Host is read when the definition itself leaves it at
+\q{as globally configured}: a saved session's name first and then
+a host name, which is what PuTTY has always done, or a host name only,
+which stops a jump host that happens to share a saved session's name
+from dragging that session's settings in.
 
 \b \q{Name} picks the definition to edit, or takes a new name to create
 one.
@@ -629,11 +641,137 @@ beside it; the definitions themselves stay on
 \k{kitty-cfg-named-proxies}, so turning the chooser off does not take
 away the only place they can be edited.
 
-\S{kitty-cfg-external-tools} The External tools panel
+\S{kitty-cfg-kset-terminal} The Terminal windows panel
 
-KiTTY drives three programs it does not contain: \i{WinSCP} for a
-graphical file transfer of the session you are on, and \c{rz} / \c{sz}
-for ZModem transfers inside the terminal.
+What every terminal window this KiTTY opens does, whichever session it
+runs.
+
+\b \q{Mouse chords} are the two clicks KiTTY takes for itself:
+Ctrl+Shift+left-click duplicates the session, Ctrl+middle-click sends
+the window to the tray. Off, both reach the host, which a program that
+wants middle-click paste or mouse reporting will thank you for.
+
+\b \q{Offer the hyperlink feature} makes the Hyperlinks panel and the
+clickable links available at all.
+
+\b \q{Function-key mode for sessions that do not set one} is the
+default a session's Keyboard panel starts from. \q{Xterm 216+} is the
+one modern hosts expect: with it Shift+F1 to F12 mean F13 to F24.
+
+\b \q{Warn before pasting more than this many characters} names the
+count and asks before a large paste goes to the shell; 0 switches the
+warning off.
+
+\b \q{Extra tracing in the Event Log} logs session lookups, the
+automatic command, key remappings and the helper command lines. The
+password in those lines is blanked; host, user and paths are not.
+
+\S{kitty-cfg-kset-shortcuts} The Shortcuts panel
+
+\q{Keyboard shortcuts in the terminal window} is the master switch for
+KiTTY's own key combinations in a terminal - the predefined
+Ctrl+Shift+letter commands and the combinations that type text. Switch
+it off when a full-screen program in the terminal needs those keys. The
+configuration box's own shortcuts and the per-session global hotkey are
+not affected.
+
+The key combinations defined in \c{kitty.ini} are listed below the
+switch; an editor for them is planned.
+
+\S{kitty-cfg-kset-automation} The Automation panel
+
+How KiTTY paces itself when it types for you.
+
+\b \q{Wait before the auto-command starts typing} is the pause after
+the terminal opens, in seconds, before the login script and the
+automatic command begin.
+
+\b \q{Pause between typed characters} slows every automatic send by
+this many milliseconds per character, for hosts that drop input that
+arrives too fast. \q{Pause between typed lines and around modifier
+keys} does the same per line and per synthesised Ctrl, Shift or Alt.
+\q{Pause between auto-command lines} is the gap between the lines of
+the automatic command, in seconds.
+
+\b \q{Script engine} enables sending a script file line by line; off,
+the menu entry refuses and the session auto-script does not run. \q{File
+filter for script files} is the pattern the file dialog opens with.
+
+\b \q{New windows accept broadcast text} arms every new window for the
+\c{/command} and \c{-sendcmd} broadcasts; each window can still be
+toggled from its Tools menu. The broadcast group key shown beneath is
+generated for this install, so two installs on one desktop cannot type
+into each other by accident.
+
+\S{kitty-cfg-kset-window} The Window & display panel
+
+\b \q{Decorate the window title} enables the size suffix and the
+PROTECTED and ONTOP markers; \q{Show the terminal size in the title}
+adds the live \c{[24x80]}; \q{Double-click the title bar rolls the
+window up} is the roll-up feature.
+
+\b \q{Features offered} switches whole features on or off for every
+session: Ctrl+Tab window switching, window transparency and background
+images. Off, the matching panels and menu entries disappear from the
+next configuration window. The slideshow interval is the fallback for a
+session that sets none, and \q{Resample a large image for Stretch+}
+trades a little repaint time for a cleaner downscale. \q{Icon file} is
+where the window icons are read from.
+
+\b \q{Printing} sets the line pitch, the lines per page and where a long
+line wraps. \q{Font fallback} is the master switch for drawing missing
+characters from other fonts, and the list of fonts tried first. These
+two groups are kept in \c{kitty.ini} whatever the store mode.
+
+\S{kitty-cfg-kset-connection} The Connections panel
+
+\b \q{Reconnect automatically when the link drops} is the master switch
+for every session's reconnect boxes on its Connection panel; with it
+off those boxes are not offered. \q{Wait between reconnect attempts}
+is the retry pause, in seconds.
+
+\b \q{Longest allowed chain of jump hosts} stops a proxy chain that
+loops back on itself. \q{Forget the login name and password a session
+learned} keeps what KiTTY saw during a login out of duplicated and
+saved sessions.
+
+\b \q{Confirmations} chooses, for connection errors and for the three
+host-key questions, between a pop-up box and a prompt inside the
+terminal. The in-terminal prompts take a typed \q{yes}; the changed-key
+one asks separately, with the word \q{confirmed}, before it replaces a
+stored key.
+
+\b \q{Client version string} is what KiTTY announces to the SSH server
+in its banner. Some servers reject a non-standard client; a current
+OpenSSH string makes KiTTY look like one. It does not choose the
+protocol.
+
+\S{kitty-cfg-kset-launcher} The Launcher panel
+
+The launcher is a separate program and reads these when it starts.
+
+\b \q{Rebuild the session list each time the menu opens} shows sessions
+saved since the launcher started. \q{A second launcher} says whether a
+launcher started while one is running exits, the default, or starts
+anyway.
+
+\b \q{Close a launcher that workplace mode started when the mode ends}
+applies only to a launcher the mode started by itself; one you started
+stays. The notice duration is how long the workplace mode notice stays
+on screen.
+
+\S{kitty-cfg-external-tools} The Transfers & tools panel
+
+KiTTY drives programs it does not contain: \i{WinSCP} for a graphical
+file transfer of the session you are on, \c{kscp} for drag-and-drop
+uploads and the Send and Get file commands, \c{rz} and \c{sz} for
+ZModem transfers inside the terminal, and the Cygwin helper.
+
+\b \q{File-copy helper} is normally found by KiTTY itself at startup,
+since \c{kscp.exe} ships beside it; set it only to force a particular
+binary. \q{Port for file transfers} follows the session's port unless
+you pin one. The download folder is where received files land; the
+remote upload folder is where drag-and-drop uploads go.
 
 Where those are installed is a property of this PC, not of a
 connection - the same session opened on your laptop and on a
@@ -973,6 +1111,10 @@ for another reason.
 A reconnect re-runs the session's automation - the login script, the
 auto-command - because the far end is a fresh session that has none of
 the earlier state.
+
+Both boxes sit behind a global master switch, \q{Reconnect
+automatically when the link drops} on \k{kitty-cfg-kset-connection};
+with it off the panel says so instead of offering them.
 
 KiTTY does \e{not} re-dial after an authentication failure. A password
 or key the server rejected will be rejected again, and retrying it is

@@ -74,6 +74,7 @@ void SetShrinkBitmapEnable( int v ) {
 	if( v ) ShrinkBitmapEnable = 1 ;
 	else ShrinkBitmapEnable = 0 ;
 }
+int GetShrinkBitmapEnable( void ) { return ShrinkBitmapEnable ; }
 	
 
 //

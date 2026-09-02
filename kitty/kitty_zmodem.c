@@ -87,7 +87,7 @@ int kitty_zmodem_active(void)
 
 /*
  * Where rz and sz live on THIS PC: kitty.ini [KiTTY] rzcommand / szcommand,
- * edited on Application > External tools > ZModem.
+ * edited on Application > KiTTY Settings > Transfers & tools > ZModem.
  *
  * They used to be per-session (CONF_rzcommand / CONF_szcommand), which wrote
  * the path of a program installed on this machine into every saved session

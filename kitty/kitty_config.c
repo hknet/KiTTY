@@ -1324,7 +1324,8 @@ static void kitty_winscppath_handler(dlgcontrol *ctrl, dlgparam *dlg,
 }
 
 /*
- * The rz and sz helper programs, on Application > External tools > ZModem.
+ * The rz and sz helper programs, on Application > KiTTY Settings >
+ * Transfers & tools > ZModem.
  *
  * Same shape as the WinSCP path above and for the same reason: where a helper
  * is installed is a property of this PC. They were per-session
@@ -7802,17 +7803,26 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
 #ifdef MOD_RECONNECT
             /* KiTTY auto-reconnect (INT keys -> kitty_checkbox_int_handler;
              * engine wired separately). Gated by GetAutoreconnectFlag(). */
-            if (!GetPuttyFlag() && GetAutoreconnectFlag()) {
+            if (!GetPuttyFlag()) {
                 s = ctrl_getset(b, "Connection", "reconnect",
                                 KT_CONNECTION_RECONNECT_OPTIONS);
-                ctrl_checkbox(s, KT_CONNECTION_ATTEMPT_TO_RECONNECT_ON_SYSTEM,
-                              NO_SHORTCUT, HELPCTX(kitty_reconnect),
-                              kitty_checkbox_int_handler,
-                              I(CONF_wakeup_reconnect));
-                ctrl_checkbox(s, KT_CONNECTION_ATTEMPT_TO_RECONNECT_ON_CONNECTION,
-                              NO_SHORTCUT, HELPCTX(kitty_reconnect),
-                              kitty_checkbox_int_handler,
-                              I(CONF_failure_reconnect));
+                if (GetAutoreconnectFlag()) {
+                    ctrl_checkbox(s, KT_CONNECTION_ATTEMPT_TO_RECONNECT_ON_SYSTEM,
+                                  NO_SHORTCUT, HELPCTX(kitty_reconnect),
+                                  kitty_checkbox_int_handler,
+                                  I(CONF_wakeup_reconnect));
+                    ctrl_checkbox(s, KT_CONNECTION_ATTEMPT_TO_RECONNECT_ON_CONNECTION,
+                                  NO_SHORTCUT, HELPCTX(kitty_reconnect),
+                                  kitty_checkbox_int_handler,
+                                  I(CONF_failure_reconnect));
+                    ctrl_text(s, KT_CONNECTION_RECONNECT_GLOBAL_NOTE,
+                              HELPCTX(kitty_reconnect));
+                } else {
+                    /* The master switch is off: say where it is rather than
+                     * leave the group out and the feature unfindable. */
+                    ctrl_text(s, KT_CONNECTION_RECONNECT_GLOBAL_OFF,
+                              HELPCTX(kitty_reconnect));
+                }
             }
 #endif
 
@@ -8843,7 +8853,7 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
 
             s = ctrl_getset(b, "Connection/SSH/WinSCP",
                             "WinSCP", KT_WINSCP_WINSCP_INTEGRATION);
-            /* The executable PATH is on Application > External tools > WinSCP
+            /* The executable PATH is on KiTTY Settings > Transfers & tools > WinSCP
              * now. It never belonged here - it is a property of this PC, which
              * is why it needed a bold "not a session setting" note to itself.
              * Everything left in this group IS per session. */
@@ -9018,16 +9028,36 @@ static void scb_panel_other_protocols(struct controlbox *b, bool midsession, int
 
 }
 
+/* The settings tree's table-driven handler, defined further down with the
+ * KiTTY Settings leaves; the ZModem panel borrows it for the global switch. */
+struct kset_key;
+static const struct kset_key *kset_find(const char *key);
+static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);
+
 /* The Connection/ZModem panels (KiTTY). */
 static void scb_panel_zmodem(struct controlbox *b)
 {
 #ifdef MOD_ZMODEM
     struct controlset *s;
 
-    /* The Connection/ZModem panels (KiTTY). Backend = kitty_zmodem_*. */
-    if ((!GetPuttyFlag()) && GetZModemFlag()) {
+    /* The panel is ALWAYS there, and opens with the global switch
+     * ([KiTTY] zmodem): the switch used to hide the very panel it would sit
+     * on, which left no place to turn it back on. With the switch off the
+     * session settings below are not built - they are declared into the
+     * controlbox once, so the next configuration window shows them. */
+    if (!GetPuttyFlag()) {
         ctrl_settitle(b, "Connection/ZModem",
                       KT_ZMODEM_OPTIONS_CONTROLLING_Z_MODEM_TRANSFERS);
+        s = ctrl_getset(b, "Connection/ZModem", "global", NULL);
+        ctrl_checkbox(s, KT_ZMODEM_GLOBAL_ENABLE, NO_SHORTCUT,
+                      HELPCTX(kitty_zmodem), kitty_kset_handler,
+                      P((void *)kset_find("zmodem")));
+        if (!GetZModemFlag())
+            ctrl_text(s, KT_ZMODEM_GLOBAL_OFF_NOTE, HELPCTX(kitty_zmodem));
+    }
+
+    /* The Connection/ZModem panels (KiTTY). Backend = kitty_zmodem_*. */
+    if ((!GetPuttyFlag()) && GetZModemFlag()) {
         s = ctrl_getset(b, "Connection/ZModem", "download",
                         KT_ZMODEM_DOWNLOAD_FOLDER);
         ctrl_editbox(s, KT_ZMODEM_LOCATION, NO_SHORTCUT, 100,
@@ -9620,7 +9650,7 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
 }
 
 /*
- * Application > External tools.
+ * KiTTY Settings > Transfers & tools (formerly Application > External tools).
  *
  * Where the helper programs live on THIS PC. A leaf each: they have nothing
  * to do with one another, and one panel listing every path would be a list
@@ -9630,41 +9660,9 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
  * that comes and goes with a setting is how someone loses the only place that
  * setting can be changed from.
  */
-static void scb_panel_external_tools(struct controlbox *b, bool midsession)
-{
-#ifdef MOD_PERSO
-    struct controlset *s;
-
-    if (midsession || GetPuttyFlag())
-        return;
-
-    ctrl_settitle(b, "Application/External tools", KT_EXTERNAL_TOOLS_HELPER_PROGRAMS);
-    s = ctrl_getset(b, "Application/External tools", "intro", NULL);
-    ctrl_text(s, KT_EXTERNAL_TOOLS_WHERE_THESE_ARE_INSTALLED,
-              HELPCTX(kitty_helper_paths));
-
-    ctrl_settitle(b, "Application/External tools/WinSCP", KT_WINSCP_WINSCP);
-    s = ctrl_getset(b, "Application/External tools/WinSCP", "path", KT_WINSCP_EXECUTABLE);
-    ctrl_filesel(s, KT_WINSCP_WINSCP_EXECUTABLE, NO_SHORTCUT,
-                 FILTER_ALL_FILES, false, KT_WINSCP_SELECT_WINSCP_EXECUTABLE,
-                 HELPCTX(kitty_winscp), kitty_winscppath_handler, P(NULL));
-    ctrl_text(s, KT_WINSCP_THE_OTHER_WINSCP_SETTINGS_BELONG, HELPCTX(kitty_winscp));
-
-    ctrl_settitle(b, "Application/External tools/ZModem", KT_ZMODEM_ZMODEM);
-    s = ctrl_getset(b, "Application/External tools/ZModem", "cmds", KT_EXTERNAL_TOOLS_HELPER_PROGRAMS);
-    ctrl_filesel(s, KT_ZMODEM_RECEIVE_COMMAND_RZ_2, NO_SHORTCUT,
-                 FILTER_ALL_FILES, false,
-                 KT_ZMODEM_SELECT_COMMAND_TO_RECEIVE_ZMODEM,
-                 HELPCTX(kitty_zmodem), kitty_toolpath_handler, P("rzcommand"));
-    ctrl_filesel(s, KT_ZMODEM_SEND_COMMAND_SZ_2, NO_SHORTCUT,
-                 FILTER_ALL_FILES, false,
-                 KT_ZMODEM_SELECT_COMMAND_TO_SEND_ZMODEM,
-                 HELPCTX(kitty_zmodem), kitty_toolpath_handler, P("szcommand"));
-    ctrl_text(s, KT_ZMODEM_THEIR_OPTIONS_AND_THE_DOWNLOAD, HELPCTX(kitty_zmodem));
-#else
-    (void)b; (void)midsession;
-#endif
-}
+/* (The former "External tools" builder: its WinSCP and ZModem leaves are
+ * now built under KiTTY Settings > Transfers & tools, in
+ * scb_panel_kitty_settings_leaves.) */
 
 /*
  * Application > KiTTY Settings.
@@ -9727,6 +9725,518 @@ static void kitty_kset_backupcount_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
 }
 
+/*
+ * ---- The plain global keys of the settings tree -------------------------
+ *
+ * One table row per key: where it is stored, what kind of control shows it,
+ * and how the RUNNING program is told. An Application panel has no Save, so
+ * the store and the running value must change together or the panel snaps
+ * back to the old value on its next refresh. A row with no running-value
+ * hook is a key the program reads from the store at the moment of use, so
+ * the store IS the running value.
+ *
+ * file_only rows are read and written in kitty.ini whatever the store mode:
+ * the [Print] keys because their registry names would collide with the
+ * config box's own (WriteParameter drops the section, so [Print] height and
+ * [ConfigBox] height would be ONE registry value), and [FontFallback]
+ * because its list is file-only and splitting one feature over two stores
+ * helps nobody.
+ */
+enum kset_kind { KSET_BOOL, KSET_INT, KSET_SECS, KSET_TEXT, KSET_CHOICE, KSET_FILE };
+struct kset_choice { const char *name; const char *stored; int value; };
+struct kset_key {
+    const char *section, *key;
+    enum kset_kind kind;
+    bool file_only;
+    int (*get)(void);              /* running value, or... */
+    void (*set)(int);
+    int *var;                      /* ...the variable itself */
+    int min, max;                  /* KSET_INT: clamp; KSET_SECS: min, in ms */
+    int dflt;                      /* shown when neither store nor program answers */
+    const char *(*get_str)(void);  /* KSET_TEXT / KSET_FILE running value */
+    void (*set_str)(const char *);
+    const struct kset_choice *choices;
+    int nchoices;
+};
+
+/* kitty.c, kitty_commun.c, kitty_bridge.c, kitty_image.c, winfont_fallback.c,
+ * kitty_win.c: the running values. Declared here because this file has no
+ * header for them. */
+extern int  GetShortcutsFlag(void);            extern void SetShortcutsFlag(const int);
+extern int  GetMouseShortcutsFlag(void);       extern void SetMouseShortcutsFlag(const int);
+extern int  GetHyperlinkFlag(void);            extern void SetHyperlinkFlag(const int);
+extern int  GetFunkeysDefault(void);           extern void SetFunkeysDefault(const int);
+extern int  GetPasteSize(void);                extern void SetPasteSize(const int);
+extern int  debug_flag;
+extern int  init_delay, autocommand_delay, between_char_delay, internal_delay;
+extern int  kitty_script_enabled(void);        extern void kitty_script_set_enabled(int);
+extern int  kitty_broadcast_default(void);     extern void kitty_broadcast_set_enabled(int);
+extern int  GetTitleBarFlag(void);             extern void SetTitleBarFlag(const int);
+extern int  GetSizeFlag(void);                 extern void SetSizeFlag(const int);
+extern int  GetWinrolFlag(void);               extern void SetWinrolFlag(const int);
+extern int  GetCtrlTabFlag(void);              extern void SetCtrlTabFlag(const int);
+extern int  GetTransparencyFlag(void);         extern void SetTransparencyEnabled(const int);
+extern int  GetBackgroundImageFlag(void);      extern void SetBackgroundImageFlag(const int);
+extern int  ImageSlideDelay;
+extern int  GetShrinkBitmapEnable(void);       extern void SetShrinkBitmapEnable(int);
+extern char *GetIconFile(void);                extern void SetIconFile(const char *);
+extern int  PrintCharSize, PrintMaxLinePerPage, PrintMaxCharPerLine;
+extern int  GetFontFallbackFlag(void);         extern void SetFontFallbackFlag(int);
+extern void kitty_fontfallback_apply_list(const char *);
+extern int  GetAutoreconnectFlag(void);        extern void SetAutoreconnectFlag(const int);
+extern int  GetReconnectDelay(void);           extern void SetReconnectDelay(const int);
+extern int  GetProxyChainMax(void);            extern void SetProxyChainMax(const int);
+extern int  GetUserPassSSHNoSave(void);        extern void SetUserPassSSHNoSave(const int);
+extern int  GetModalErrorsFlag(void);          extern void SetModalErrorsFlag(const int);
+extern int  GetModalNewHostKeyConfirmationFlag(void);
+extern void SetModalNewHostKeyConfirmationFlag(const int);
+extern int  GetModalChangedHostKeyConfirmationFlag(void);
+extern void SetModalChangedHostKeyConfirmationFlag(const int);
+extern int  GetModalWeakKeyConfirmationFlag(void);
+extern void SetModalWeakKeyConfirmationFlag(const int);
+extern const char *get_sshver(void);           extern void set_sshver(const char *);
+extern int  GetZModemFlag(void);               extern void SetZModemFlag(const int);
+extern char *PSCPPath;                         extern void SetPSCPPath(const char *);
+extern int  readINI(const char *, const char *, const char *, char *, size_t);
+extern int  writeINI(const char *, const char *, const char *, const char *);
+extern char *GetKittyIniFile(void);
+extern int  GetReadOnlyFlag(void);
+
+static const char *kset_get_iconfile(void) { return GetIconFile(); }
+static const char *kset_get_pscppath(void) { return PSCPPath; }
+static void kset_set_debug(int v) { debug_flag = v; }
+static int  kset_get_debug(void) { return debug_flag; }
+
+static const struct kset_choice kset_prompt_choices[] = {
+    { KT_KSET_CH_POPUP, "yes", 1 }, { KT_KSET_CH_TERMINAL, "no", 0 } };
+static const struct kset_choice kset_funkeys_choices[] = {
+    { KT_KSET_FK_DEFAULT,  "",         -1 },
+    { KT_KSET_FK_TILDE,    "tilde",    FUNKY_TILDE },
+    { KT_KSET_FK_LINUX,    "linux",    FUNKY_LINUX },
+    { KT_KSET_FK_XTERMR6,  "xtermr6",  FUNKY_XTERM },
+    { KT_KSET_FK_VT400,    "vt400",    FUNKY_VT400 },
+    { KT_KSET_FK_VT100P,   "vt100p",   FUNKY_VT100P },
+    { KT_KSET_FK_SCO,      "sco",      FUNKY_SCO },
+    { KT_KSET_FK_XTERM216, "xterm216", FUNKY_XTERM_216 } };
+static const struct kset_choice kset_second_launcher_choices[] = {
+    { KT_KSET_LA_SECOND_EXITS, "yes", 1 }, { KT_KSET_LA_SECOND_STARTS, "no", 0 } };
+static const struct kset_choice kset_pwprot_choices[] = {
+    { KT_KSET_STORAGE_PWPROT_MASTER, "master", 0 },
+    { KT_KSET_STORAGE_PWPROT_DPAPI,  "dpapi",  1 },
+    { KT_KSET_STORAGE_PWPROT_LEGACY, "legacy", 2 } };
+
+static const struct kset_key kset_keys[] = {
+    /* Terminal windows + Shortcuts */
+    { INIT_SECTION, "shortcuts",      KSET_BOOL, false, GetShortcutsFlag, SetShortcutsFlag, NULL, 0, 0, 1 },
+    { INIT_SECTION, "mouseshortcuts", KSET_BOOL, false, GetMouseShortcutsFlag, SetMouseShortcutsFlag, NULL, 0, 0, 1 },
+    { INIT_SECTION, "hyperlink",      KSET_BOOL, false, GetHyperlinkFlag, SetHyperlinkFlag, NULL, 0, 0, 1 },
+    { INIT_SECTION, "funkeys",        KSET_CHOICE, false, GetFunkeysDefault, SetFunkeysDefault, NULL, 0, 0, -1,
+      NULL, NULL, kset_funkeys_choices, lenof(kset_funkeys_choices) },
+    { INIT_SECTION, "pastesize",      KSET_INT, false, GetPasteSize, SetPasteSize, NULL, 0, 100000000, 5120 },
+    { INIT_SECTION, "debug",          KSET_BOOL, false, kset_get_debug, kset_set_debug, NULL, 0, 0, 0 },
+    /* Automation */
+    { INIT_SECTION, "initdelay",      KSET_SECS, false, NULL, NULL, &init_delay, 0, 0, 2000 },
+    { INIT_SECTION, "bcdelay",        KSET_INT, false, NULL, NULL, &between_char_delay, 0, 10000, 0 },
+    { INIT_SECTION, "internaldelay",  KSET_INT, false, NULL, NULL, &internal_delay, 1, 10000, 10 },
+    { INIT_SECTION, "commanddelay",   KSET_SECS, false, NULL, NULL, &autocommand_delay, 5, 0, 50 },
+    { INIT_SECTION, "scriptmode",     KSET_BOOL, false, kitty_script_enabled, kitty_script_set_enabled, NULL, 0, 0, 1 },
+    { INIT_SECTION, "scriptfilefilter", KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
+    { INIT_SECTION, "sendcmdmode",    KSET_BOOL, false, kitty_broadcast_default, kitty_broadcast_set_enabled, NULL, 0, 0, 0 },
+    /* Window & display */
+    { INIT_SECTION, "wintitle",       KSET_BOOL, false, GetTitleBarFlag, SetTitleBarFlag, NULL, 0, 0, 1 },
+    { INIT_SECTION, "size",           KSET_BOOL, false, GetSizeFlag, SetSizeFlag, NULL, 0, 0, 0 },
+    { INIT_SECTION, "winroll",        KSET_BOOL, false, GetWinrolFlag, SetWinrolFlag, NULL, 0, 0, 1 },
+    { INIT_SECTION, "ctrltab",        KSET_BOOL, false, GetCtrlTabFlag, SetCtrlTabFlag, NULL, 0, 0, 1 },
+    { INIT_SECTION, "transparency",   KSET_BOOL, false, GetTransparencyFlag, SetTransparencyEnabled, NULL, 0, 0, 1 },
+    { INIT_SECTION, "bgimage",        KSET_BOOL, false, GetBackgroundImageFlag, SetBackgroundImageFlag, NULL, 0, 0, 0 },
+    { INIT_SECTION, "slidedelay",     KSET_INT, false, NULL, NULL, &ImageSlideDelay, 0, 86400, 0 },
+    { INIT_SECTION, "shrinkbitmap",   KSET_BOOL, false, GetShrinkBitmapEnable, SetShrinkBitmapEnable, NULL, 0, 0, 1 },
+    { INIT_SECTION, "iconfile",       KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0, kset_get_iconfile, SetIconFile },
+    { "Print", "height",              KSET_INT, true, NULL, NULL, &PrintCharSize, 1, 10000, 100 },
+    { "Print", "maxline",             KSET_INT, true, NULL, NULL, &PrintMaxLinePerPage, 1, 1000, 60 },
+    { "Print", "maxchar",             KSET_INT, true, NULL, NULL, &PrintMaxCharPerLine, 1, 1000, 85 },
+    { "FontFallback", "active",       KSET_BOOL, true, GetFontFallbackFlag, SetFontFallbackFlag, NULL, 0, 0, 1 },
+    { "FontFallback", "fallback",     KSET_TEXT, true, NULL, NULL, NULL, 0, 0, 0, NULL, kitty_fontfallback_apply_list },
+    /* Connection & reconnect */
+    { INIT_SECTION, "autoreconnect",  KSET_BOOL, false, GetAutoreconnectFlag, SetAutoreconnectFlag, NULL, 0, 0, 1 },
+    { INIT_SECTION, "ReconnectDelay", KSET_INT, false, GetReconnectDelay, SetReconnectDelay, NULL, 1, 3600, 5 },
+    { INIT_SECTION, "proxychainmax",  KSET_INT, false, GetProxyChainMax, SetProxyChainMax, NULL, 1, 100, 5 },
+    { INIT_SECTION, "userpasssshnosave", KSET_BOOL, false, GetUserPassSSHNoSave, SetUserPassSSHNoSave, NULL, 0, 0, 0 },
+    { INIT_SECTION, "modalerrors",    KSET_BOOL, false, GetModalErrorsFlag, SetModalErrorsFlag, NULL, 0, 0, 0 },
+    { INIT_SECTION, "modalnewhostkeyconfirmation", KSET_CHOICE, false,
+      GetModalNewHostKeyConfirmationFlag, SetModalNewHostKeyConfirmationFlag, NULL, 0, 0, 1,
+      NULL, NULL, kset_prompt_choices, lenof(kset_prompt_choices) },
+    { INIT_SECTION, "modalchangedhostkeyconfirmation", KSET_CHOICE, false,
+      GetModalChangedHostKeyConfirmationFlag, SetModalChangedHostKeyConfirmationFlag, NULL, 0, 0, 1,
+      NULL, NULL, kset_prompt_choices, lenof(kset_prompt_choices) },
+    { INIT_SECTION, "modalweakkeyconfirmation", KSET_CHOICE, false,
+      GetModalWeakKeyConfirmationFlag, SetModalWeakKeyConfirmationFlag, NULL, 0, 0, 1,
+      NULL, NULL, kset_prompt_choices, lenof(kset_prompt_choices) },
+    { INIT_SECTION, "sshversion",     KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0, get_sshver, set_sshver },
+    /* Transfers & tools */
+    { INIT_SECTION, "PSCPPath",       KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0, kset_get_pscppath, SetPSCPPath },
+    { INIT_SECTION, "pscpport",       KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
+    { INIT_SECTION, "downloaddir",    KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
+    { INIT_SECTION, "uploaddir",      KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
+    { INIT_SECTION, "CtHelperPath",   KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0 },
+    /* Launcher: a separate process reads these from the store when it starts */
+    { "Launcher", "reload",           KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
+    { "Launcher", "alreadyRunCheck",  KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 1,
+      NULL, NULL, kset_second_launcher_choices, lenof(kset_second_launcher_choices) },
+    { "Launcher", "exitwithworkplace", KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
+    { "Launcher", "noticeseconds",    KSET_INT, false, NULL, NULL, NULL, 1, 600, 15 },
+    /* Connection > ZModem: the global switch (the panel borrows the handler) */
+    { INIT_SECTION, "zmodem",         KSET_BOOL, false, GetZModemFlag, SetZModemFlag, NULL, 0, 0, 1 },
+    /* Storage & backups: the folder-store password policy, read at save time */
+    { INIT_SECTION, "PortablePasswordProtection", KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
+      NULL, NULL, kset_pwprot_choices, lenof(kset_pwprot_choices) },
+    { INIT_SECTION, "WarnLegacyPasswordUpgrade", KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
+};
+
+static const struct kset_key *kset_find(const char *key)
+{
+    for (size_t i = 0; i < lenof(kset_keys); i++)
+        if (!strcmp(kset_keys[i].key, key))
+            return &kset_keys[i];
+    return NULL;
+}
+#define KSET(key) P((void *)kset_find(key))
+
+static int kset_read(const struct kset_key *k, char *buf, size_t size)
+{
+    buf[0] = '\0';
+    if (k->file_only) {
+        const char *ini = GetKittyIniFile();
+        return ini && ini[0] && readINI(ini, k->section, k->key, buf, size) && buf[0];
+    }
+    return ReadParameterN(k->section, k->key, buf, size) != 0;
+}
+
+static void kset_write(const struct kset_key *k, const char *text)
+{
+    if (k->file_only) {
+        const char *ini = GetKittyIniFile();
+        if (ini && ini[0] && !GetReadOnlyFlag())
+            writeINI(ini, k->section, k->key, text);
+    } else {
+        WriteParameter(k->section, (char *)k->key, (char *)text);
+    }
+}
+
+/* The running value, or the store, or the default - in that order. */
+static int kset_get_int(const struct kset_key *k)
+{
+    char buf[64];
+    if (k->get) return k->get();
+    if (k->var) return *k->var < k->min ? k->min : *k->var;   /* -1 = unset shows as the floor */
+    if (kset_read(k, buf, sizeof(buf))) {
+        if (k->kind == KSET_BOOL)
+            return !stricmp(buf, "yes") ? 1 : !stricmp(buf, "no") ? 0 : k->dflt;
+        return atoi(buf);
+    }
+    return k->dflt;
+}
+
+static void kset_set_int(const struct kset_key *k, int v)
+{
+    if (k->set) k->set(v);
+    else if (k->var) *k->var = v;
+}
+
+static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    const struct kset_key *k = (const struct kset_key *)ctrl->context.p;
+    char buf[4096];
+
+    if (!k)
+        return;
+    if (event == EVENT_REFRESH) {
+        cfgwin_refreshing = 1;      /* dlg_*_set fires VALCHANGE - never write a refresh */
+        switch (k->kind) {
+          case KSET_BOOL:
+            dlg_checkbox_set(ctrl, dlg, kset_get_int(k) != 0);
+            break;
+          case KSET_INT:
+            sprintf(buf, "%d", kset_get_int(k));
+            dlg_editbox_set(ctrl, dlg, buf);
+            break;
+          case KSET_SECS:
+            sprintf(buf, "%g", kset_get_int(k) / 1000.0);
+            dlg_editbox_set(ctrl, dlg, buf);
+            break;
+          case KSET_TEXT:
+            if (k->get_str && k->get_str())
+                snprintf(buf, sizeof(buf), "%s", k->get_str());
+            else
+                kset_read(k, buf, sizeof(buf));
+            dlg_editbox_set(ctrl, dlg, buf);
+            break;
+          case KSET_FILE: {
+            Filename *fn;
+            if (k->get_str && k->get_str())
+                snprintf(buf, sizeof(buf), "%s", k->get_str());
+            else
+                kset_read(k, buf, sizeof(buf));
+            fn = filename_from_str(buf);
+            dlg_filesel_set(ctrl, dlg, fn);
+            filename_free(fn);
+            break;
+          }
+          case KSET_CHOICE: {
+            int cur = -2, i;
+            if (k->get || k->var) {
+                cur = kset_get_int(k);
+            } else {
+                /* no running value: match the stored text, else the default */
+                cur = k->dflt;
+                if (kset_read(k, buf, sizeof(buf)))
+                    for (i = 0; i < k->nchoices; i++)
+                        if (!stricmp(buf, k->choices[i].stored)) { cur = k->choices[i].value; break; }
+            }
+            dlg_update_start(ctrl, dlg);
+            dlg_listbox_clear(ctrl, dlg);
+            for (i = 0; i < k->nchoices; i++)
+                dlg_listbox_addwithid(ctrl, dlg, k->choices[i].name, k->choices[i].value);
+            for (i = 0; i < k->nchoices; i++)
+                if (k->choices[i].value == cur) { dlg_listbox_select(ctrl, dlg, i); break; }
+            dlg_update_done(ctrl, dlg);
+            break;
+          }
+        }
+        cfgwin_refreshing = 0;
+    } else if (event == EVENT_VALCHANGE && !cfgwin_refreshing) {
+        switch (k->kind) {
+          case KSET_BOOL: {
+            int on = dlg_checkbox_get(ctrl, dlg) ? 1 : 0;
+            kset_write(k, on ? "yes" : "no");
+            kset_set_int(k, on);
+            break;
+          }
+          case KSET_INT: {
+            char *s = dlg_editbox_get(ctrl, dlg);
+            if (s[0]) {
+                /* stored as it will be USED: clamped to what the code accepts */
+                int v = atoi(s);
+                if (v < k->min) v = k->min;
+                if (k->max > 0 && v > k->max) v = k->max;
+                sprintf(buf, "%d", v);
+                kset_write(k, buf);
+                kset_set_int(k, v);
+            }
+            sfree(s);
+            break;
+          }
+          case KSET_SECS: {
+            char *s = dlg_editbox_get(ctrl, dlg);
+            if (s[0]) {
+                double secs = atof(s);
+                int ms = (int)(secs * 1000.0 + 0.5);
+                if (ms < k->min) ms = k->min;
+                sprintf(buf, "%g", ms / 1000.0);
+                kset_write(k, buf);
+                kset_set_int(k, ms);
+            }
+            sfree(s);
+            break;
+          }
+          case KSET_TEXT: {
+            char *s = dlg_editbox_get(ctrl, dlg);
+            kset_write(k, s);
+            if (k->set_str) k->set_str(s);
+            sfree(s);
+            break;
+          }
+          case KSET_FILE: {
+            Filename *fn = dlg_filesel_get(ctrl, dlg);
+            snprintf(buf, sizeof(buf), "%s", filename_to_str(fn));
+            kset_write(k, buf);
+            if (k->set_str) k->set_str(buf);
+            filename_free(fn);
+            break;
+          }
+          case KSET_CHOICE:
+            break;              /* droplists report EVENT_SELCHANGE */
+        }
+    } else if (event == EVENT_SELCHANGE && k->kind == KSET_CHOICE && !cfgwin_refreshing) {
+        int idx = dlg_listbox_index(ctrl, dlg);
+        if (idx >= 0 && idx < k->nchoices) {
+            kset_write(k, k->choices[idx].stored);
+            kset_set_int(k, k->choices[idx].value);
+        }
+    }
+}
+
+/* A control per kind, so the leaf builders read as a list of settings. */
+#define KSET_CHECKBOX(s, label, key, hc) \
+    ctrl_checkbox(s, label, NO_SHORTCUT, HELPCTX(hc), kitty_kset_handler, KSET(key))
+#define KSET_NUMBER(s, label, key, hc) \
+    ctrl_editbox(s, label, NO_SHORTCUT, 25, HELPCTX(hc), kitty_kset_handler, KSET(key), ED_STR)
+#define KSET_TEXTBOX(s, label, key, hc) \
+    ctrl_editbox(s, label, NO_SHORTCUT, 100, HELPCTX(hc), kitty_kset_handler, KSET(key), ED_STR)
+#define KSET_DROPLIST(s, label, key, hc) \
+    ctrl_droplist(s, label, NO_SHORTCUT, 55, HELPCTX(hc), kitty_kset_handler, KSET(key))
+#define KSET_FILESEL(s, label, title, key, hc) \
+    ctrl_filesel(s, label, NO_SHORTCUT, FILTER_ALL_FILES, false, title, HELPCTX(hc), kitty_kset_handler, KSET(key))
+
+/* Where the whole subtree lives. */
+#define KSET_PATH(leaf) "Application/KiTTY Settings/" leaf
+
+static void scb_panel_kitty_settings_leaves(struct controlbox *b)
+{
+    struct controlset *s;
+    char line[1400];
+    char buf[4096];
+
+    /* ---- Terminal windows, and its Shortcuts leaf ---- */
+    ctrl_settitle(b, KSET_PATH("Terminal windows"), KT_KSET_TW_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Terminal windows"), "behaviour", KT_KSET_TW_BEHAVIOUR);
+    KSET_CHECKBOX(s, KT_KSET_TW_MOUSECHORDS, "mouseshortcuts", kitty_kset_terminal);
+    ctrl_text(s, KT_KSET_TW_MOUSECHORDS_NOTE, HELPCTX(kitty_kset_terminal));
+    KSET_CHECKBOX(s, KT_KSET_TW_HYPERLINK, "hyperlink", kitty_kset_terminal);
+    KSET_DROPLIST(s, KT_KSET_TW_FUNKEYS, "funkeys", kitty_kset_terminal);
+    ctrl_text(s, KT_KSET_TW_FUNKEYS_NOTE, HELPCTX(kitty_kset_terminal));
+    KSET_NUMBER(s, KT_KSET_TW_PASTESIZE, "pastesize", kitty_kset_terminal);
+    KSET_CHECKBOX(s, KT_KSET_TW_DEBUG, "debug", kitty_kset_terminal);
+
+    ctrl_settitle(b, KSET_PATH("Terminal windows/Shortcuts"), KT_KSET_SC_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Terminal windows/Shortcuts"), "switch", NULL);
+    KSET_CHECKBOX(s, KT_KSET_SC_ENABLE, "shortcuts", kitty_kset_shortcuts);
+    ctrl_text(s, KT_KSET_SC_FUTURE, HELPCTX(kitty_kset_shortcuts));
+    /* What the [Shortcuts] list line defines today, shown so the leaf already
+     * says what is in force: one key combination per word of the list. */
+    s = ctrl_getset(b, KSET_PATH("Terminal windows/Shortcuts"), "defined", KT_KSET_SC_DEFINED);
+    if (ReadParameterN("Shortcuts", "list", buf, sizeof(buf)) && buf[0]) {
+        char *p = buf, *q;
+        int n = 0;
+        while (*p) {
+            char val[512];
+            while (*p == ' ') p++;
+            if (!*p) break;
+            q = p;
+            while (*q && *q != ' ') q++;
+            if (*q) *q++ = '\0';
+            val[0] = '\0';
+            ReadParameterN("Shortcuts", p, val, sizeof(val));
+            snprintf(line, sizeof(line), "%s = %s", p, val);
+            ctrl_text(s, line, HELPCTX(kitty_kset_shortcuts));
+            n++;
+            p = q;
+        }
+        if (!n)
+            ctrl_text(s, KT_KSET_SC_NONE, HELPCTX(kitty_kset_shortcuts));
+    } else {
+        ctrl_text(s, KT_KSET_SC_NONE, HELPCTX(kitty_kset_shortcuts));
+    }
+
+    /* ---- Automation ---- */
+    ctrl_settitle(b, KSET_PATH("Automation"), KT_KSET_AU_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Automation"), "pacing", KT_KSET_AU_PACING);
+    KSET_NUMBER(s, KT_KSET_AU_INITDELAY, "initdelay", kitty_kset_automation);
+    KSET_NUMBER(s, KT_KSET_AU_BCDELAY, "bcdelay", kitty_kset_automation);
+    KSET_NUMBER(s, KT_KSET_AU_INTERNALDELAY, "internaldelay", kitty_kset_automation);
+    KSET_NUMBER(s, KT_KSET_AU_COMMANDDELAY, "commanddelay", kitty_kset_automation);
+    s = ctrl_getset(b, KSET_PATH("Automation"), "scripts", KT_KSET_AU_SCRIPTS);
+    KSET_CHECKBOX(s, KT_KSET_AU_SCRIPTMODE, "scriptmode", kitty_kset_automation);
+    KSET_TEXTBOX(s, KT_KSET_AU_SCRIPTFILTER, "scriptfilefilter", kitty_kset_automation);
+    s = ctrl_getset(b, KSET_PATH("Automation"), "broadcast", KT_KSET_AU_BROADCAST);
+    KSET_CHECKBOX(s, KT_KSET_AU_SENDCMD, "sendcmdmode", kitty_kset_automation);
+    buf[0] = '\0';
+    ReadParameterN(INIT_SECTION, "sendcmdgroup", buf, sizeof(buf));
+    snprintf(line, sizeof(line), KT_KSET_AU_GROUP, buf);
+    ctrl_text(s, line, HELPCTX(kitty_kset_automation));
+    ctrl_text(s, KT_KSET_AU_GROUP_NOTE, HELPCTX(kitty_kset_automation));
+
+    /* ---- Window & display ---- */
+    ctrl_settitle(b, KSET_PATH("Window & display"), KT_KSET_WD_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Window & display"), "titlebar", KT_KSET_WD_TITLEBAR);
+    KSET_CHECKBOX(s, KT_KSET_WD_WINTITLE, "wintitle", kitty_kset_window);
+    KSET_CHECKBOX(s, KT_KSET_WD_SIZE, "size", kitty_kset_window);
+    KSET_CHECKBOX(s, KT_KSET_WD_WINROLL, "winroll", kitty_kset_window);
+    s = ctrl_getset(b, KSET_PATH("Window & display"), "features", KT_KSET_WD_FEATURES);
+    KSET_CHECKBOX(s, KT_KSET_WD_CTRLTAB, "ctrltab", kitty_kset_window);
+    KSET_CHECKBOX(s, KT_KSET_WD_TRANSPARENCY, "transparency", kitty_kset_window);
+    KSET_CHECKBOX(s, KT_KSET_WD_BGIMAGE, "bgimage", kitty_kset_window);
+    KSET_NUMBER(s, KT_KSET_WD_SLIDEDELAY, "slidedelay", kitty_kset_window);
+    KSET_CHECKBOX(s, KT_KSET_WD_SHRINK, "shrinkbitmap", kitty_kset_window);
+    KSET_FILESEL(s, KT_KSET_WD_ICONFILE, KT_KSET_WD_ICONFILE_SELECT, "iconfile", kitty_kset_window);
+    s = ctrl_getset(b, KSET_PATH("Window & display"), "printing", KT_KSET_WD_PRINTING);
+    KSET_NUMBER(s, KT_KSET_WD_PRINT_PITCH, "height", kitty_kset_window);
+    KSET_NUMBER(s, KT_KSET_WD_PRINT_LINES, "maxline", kitty_kset_window);
+    KSET_NUMBER(s, KT_KSET_WD_PRINT_CHARS, "maxchar", kitty_kset_window);
+    s = ctrl_getset(b, KSET_PATH("Window & display"), "fontfb", KT_KSET_WD_FONTFB);
+    KSET_CHECKBOX(s, KT_KSET_WD_FONTFB_ACTIVE, "active", kitty_kset_window);
+    KSET_TEXTBOX(s, KT_KSET_WD_FONTFB_LIST, "fallback", kitty_kset_window);
+    ctrl_text(s, KT_KSET_WD_FONTFB_LIST_NOTE, HELPCTX(kitty_kset_window));
+    ctrl_text(s, KT_KSET_WD_FILEONLY, HELPCTX(kitty_kset_window));
+
+    /* ---- Connection & reconnect ---- */
+    ctrl_settitle(b, KSET_PATH("Connections"), KT_KSET_CN_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Connections"), "reconnect", KT_KSET_CN_RECONNECT);
+    KSET_CHECKBOX(s, KT_KSET_CN_AUTORECONNECT, "autoreconnect", kitty_kset_connection);
+    ctrl_text(s, KT_KSET_CN_AUTORECONNECT_NOTE, HELPCTX(kitty_kset_connection));
+    KSET_NUMBER(s, KT_KSET_CN_DELAY, "ReconnectDelay", kitty_kset_connection);
+    s = ctrl_getset(b, KSET_PATH("Connections"), "limits", KT_KSET_CN_LIMITS);
+    KSET_NUMBER(s, KT_KSET_CN_CHAINMAX, "proxychainmax", kitty_kset_connection);
+    KSET_CHECKBOX(s, KT_KSET_CN_NOSAVE, "userpasssshnosave", kitty_kset_connection);
+    s = ctrl_getset(b, KSET_PATH("Connections"), "confirm", KT_KSET_CN_CONFIRM);
+    KSET_CHECKBOX(s, KT_KSET_CN_MODALERRORS, "modalerrors", kitty_kset_connection);
+    KSET_DROPLIST(s, KT_KSET_CN_NEWKEY, "modalnewhostkeyconfirmation", kitty_kset_connection);
+    KSET_DROPLIST(s, KT_KSET_CN_CHANGEDKEY, "modalchangedhostkeyconfirmation", kitty_kset_connection);
+    KSET_DROPLIST(s, KT_KSET_CN_WEAKKEY, "modalweakkeyconfirmation", kitty_kset_connection);
+    s = ctrl_getset(b, KSET_PATH("Connections"), "identity", KT_KSET_CN_IDENTITY);
+    KSET_TEXTBOX(s, KT_KSET_CN_SSHVERSION, "sshversion", kitty_kset_connection);
+    ctrl_text(s, KT_KSET_CN_SSHVERSION_NOTE, HELPCTX(kitty_kset_connection));
+
+    /* ---- Transfers & tools: the helper programs, with WinSCP and ZModem
+     * as leaves of their own (they were "External tools") ---- */
+    ctrl_settitle(b, KSET_PATH("Transfers & tools"), KT_KSET_TT_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Transfers & tools"), "intro", NULL);
+    ctrl_text(s, KT_EXTERNAL_TOOLS_WHERE_THESE_ARE_INSTALLED, HELPCTX(kitty_helper_paths));
+    s = ctrl_getset(b, KSET_PATH("Transfers & tools"), "kscp", KT_KSET_TT_KSCP);
+    KSET_FILESEL(s, KT_KSET_TT_PSCPPATH, KT_KSET_TT_PSCPPATH_SELECT, "PSCPPath", kitty_helper_paths);
+    ctrl_text(s, KT_KSET_TT_PSCPPATH_NOTE, HELPCTX(kitty_helper_paths));
+    KSET_TEXTBOX(s, KT_KSET_TT_PSCPPORT, "pscpport", kitty_helper_paths);
+    KSET_TEXTBOX(s, KT_KSET_TT_DOWNLOADDIR, "downloaddir", kitty_helper_paths);
+    KSET_TEXTBOX(s, KT_KSET_TT_UPLOADDIR, "uploaddir", kitty_helper_paths);
+    s = ctrl_getset(b, KSET_PATH("Transfers & tools"), "cygwin", KT_KSET_TT_CYGWIN);
+    KSET_FILESEL(s, KT_KSET_TT_CTHELPER, KT_KSET_TT_CTHELPER_SELECT, "CtHelperPath", kitty_helper_paths);
+
+    ctrl_settitle(b, KSET_PATH("Transfers & tools/WinSCP"), KT_WINSCP_WINSCP);
+    s = ctrl_getset(b, KSET_PATH("Transfers & tools/WinSCP"), "path", KT_WINSCP_EXECUTABLE);
+    ctrl_filesel(s, KT_WINSCP_WINSCP_EXECUTABLE, NO_SHORTCUT,
+                 FILTER_ALL_FILES, false, KT_WINSCP_SELECT_WINSCP_EXECUTABLE,
+                 HELPCTX(kitty_winscp), kitty_winscppath_handler, P(NULL));
+    ctrl_text(s, KT_WINSCP_THE_OTHER_WINSCP_SETTINGS_BELONG, HELPCTX(kitty_winscp));
+
+    ctrl_settitle(b, KSET_PATH("Transfers & tools/ZModem"), KT_ZMODEM_ZMODEM);
+    s = ctrl_getset(b, KSET_PATH("Transfers & tools/ZModem"), "cmds", KT_EXTERNAL_TOOLS_HELPER_PROGRAMS);
+    ctrl_filesel(s, KT_ZMODEM_RECEIVE_COMMAND_RZ_2, NO_SHORTCUT,
+                 FILTER_ALL_FILES, false,
+                 KT_ZMODEM_SELECT_COMMAND_TO_RECEIVE_ZMODEM,
+                 HELPCTX(kitty_zmodem), kitty_toolpath_handler, P("rzcommand"));
+    ctrl_filesel(s, KT_ZMODEM_SEND_COMMAND_SZ_2, NO_SHORTCUT,
+                 FILTER_ALL_FILES, false,
+                 KT_ZMODEM_SELECT_COMMAND_TO_SEND_ZMODEM,
+                 HELPCTX(kitty_zmodem), kitty_toolpath_handler, P("szcommand"));
+    ctrl_text(s, KT_ZMODEM_THEIR_OPTIONS_AND_THE_DOWNLOAD, HELPCTX(kitty_zmodem));
+
+    /* ---- Launcher ---- */
+    ctrl_settitle(b, KSET_PATH("Launcher"), KT_KSET_LA_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Launcher"), "menu", KT_KSET_LA_MENU);
+    KSET_CHECKBOX(s, KT_KSET_LA_RELOAD, "reload", kitty_kset_launcher);
+    KSET_DROPLIST(s, KT_KSET_LA_SECOND, "alreadyRunCheck", kitty_kset_launcher);
+    s = ctrl_getset(b, KSET_PATH("Launcher"), "workplace", KT_KSET_LA_WORKPLACE);
+    KSET_CHECKBOX(s, KT_KSET_LA_EXITWITH, "exitwithworkplace", kitty_kset_launcher);
+    KSET_NUMBER(s, KT_KSET_LA_NOTICE, "noticeseconds", kitty_kset_launcher);
+    s = ctrl_getset(b, KSET_PATH("Launcher"), "class", NULL);
+    buf[0] = '\0';
+    if (!ReadParameterN("Launcher", "classname", buf, sizeof(buf)) || !buf[0])
+        strcpy(buf, "KiTTYLauncher");
+    snprintf(line, sizeof(line), KT_KSET_LA_CLASSNAME, buf);
+    ctrl_text(s, line, HELPCTX(kitty_kset_launcher));
+    ctrl_text(s, KT_KSET_LA_READ_AT_START, HELPCTX(kitty_kset_launcher));
+}
+
 static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
 {
 #ifdef MOD_PERSO
@@ -9740,7 +10250,7 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     enum { KSET_SAVEMODE_REG = 0, KSET_SAVEMODE_FILE = 1, KSET_SAVEMODE_DIR = 2 };
     static const char *const storage = "Application/KiTTY Settings/Storage & backups";
     struct controlset *s;
-    char line[1400];
+    char line[1400], buf[4096];
     const char *ini = GetKittyIniFile();
     const char *sav = GetKittySavFile();
     int mode = GetIniFileFlag();
@@ -9818,9 +10328,38 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
               HELPCTX(kitty_storage));
     ctrl_text(s, KT_KSET_RESTRICTACL_NOTE, HELPCTX(kitty_storage));
 
+    /* The rest of what the store is: which hive, which session-file
+     * extension, which legacy salt - display only, each would move or
+     * strand data if edited here - and the folder store's password policy,
+     * which is read at save time and so needs no running value. */
+    s = ctrl_getset(b, storage, "identity", NULL);
+    buf[0] = '\0';
+    ReadParameterN(INIT_SECTION, "KiClassName", buf, sizeof(buf));
+    snprintf(line, sizeof(line), KT_KSET_STORAGE_KICLASS,
+             buf[0] ? buf : KT_KSET_STORAGE_KICLASS_DEFAULT);
+    ctrl_text(s, line, HELPCTX(kitty_storage));
+    buf[0] = '\0';
+    ReadParameterN(INIT_SECTION, "fileextension", buf, sizeof(buf));
+    snprintf(line, sizeof(line), KT_KSET_STORAGE_FILEEXT, buf[0] ? buf : ".ktx");
+    ctrl_text(s, line, HELPCTX(kitty_storage));
+    buf[0] = '\0';
+    ReadParameterN(INIT_SECTION, "cryptsalt", buf, sizeof(buf));
+    snprintf(line, sizeof(line), KT_KSET_STORAGE_CRYPTSALT, buf[0] ? buf : "1");
+    ctrl_text(s, line, HELPCTX(kitty_storage));
+    if (mode == KSET_SAVEMODE_DIR) {
+        s = ctrl_getset(b, storage, "passwords", KT_KSET_STORAGE_PWGROUP);
+        if (!locked) {
+            KSET_DROPLIST(s, KT_KSET_STORAGE_PWPROT, "PortablePasswordProtection", kitty_storage);
+            ctrl_text(s, KT_KSET_STORAGE_PWPROT_NOTE, HELPCTX(kitty_storage));
+            KSET_CHECKBOX(s, KT_KSET_STORAGE_WARNLEGACY, "WarnLegacyPasswordUpgrade", kitty_storage);
+        }
+    }
+
     /* No footer here by hand: the Application builder adds the
      * saved-as-you-change-them line to every panel with an editable control,
      * which when nothing can be written this panel has none of. */
+
+    scb_panel_kitty_settings_leaves(b);
 #else
     (void)b; (void)midsession;
 #endif
@@ -10195,8 +10734,7 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
 
     scb_panel_config_window(b, midsession);
     scb_panel_session_parameter(b, midsession);
-    scb_panel_external_tools(b, midsession);
-    scb_panel_kitty_settings(b, midsession);
+    scb_panel_kitty_settings(b, midsession);   /* includes Transfers & tools */
     scb_panel_security(b, midsession);
 
     /*
