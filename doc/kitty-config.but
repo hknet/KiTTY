@@ -822,6 +822,35 @@ installations on one machine should each keep a launcher of their own;
 give one of them a different name in its \c{kitty.ini}. Everything else
 leaves it alone.
 
+\S{kitty-cfg-system} The System panel
+
+What Windows hands to this KiTTY++, and the buttons that register it.
+
+\q{Registered with Windows} lists the four link types - \c{telnet://},
+\c{ssh://}, \c{kitty://} and \c{putty://} - and the session-file
+extension (\c{.ktx} unless \c{fileextension} in \c{kitty.ini} says
+otherwise), each with the program that opens it today: \e{this KiTTY++},
+another KiTTY with its path, the program's name, or \e{not registered}.
+\c{putty://} is optional and is registered only from the command line
+(\c{-sshhandler -puttyurl}).
+
+Three buttons change the registration, and each asks before it writes.
+\q{Register this KiTTY++} writes the entries for \c{telnet://},
+\c{ssh://}, \c{kitty://} and the extension, pointing at this program:
+for all users of this machine when the program may write there (the
+machine-wide installation asks for administrator rights), for your
+account otherwise. An entry another program owns is left alone and
+reported. \q{Register and take over from other programs} replaces those
+entries too; each setting replaced is exported to a \c{.reg} file first,
+and the report names the command that puts it back. \q{Unregister}
+removes the entries that point at a KiTTY - any KiTTY, so an entry left
+by a copy that no longer exists goes too - and exports each first; entries
+other programs own are not touched. A portable copy asks once more before
+writing, because the entries stay behind when the copy is removed.
+
+The same work is available from the command line as \c{-sshhandler} and
+\c{-fileassoc}, with \c{-uninstall} to remove the entries again.
+
 \S{kitty-cfg-external-tools} The Transfers & Tools panel
 
 KiTTY drives programs it does not contain: \i{WinSCP} for a graphical
@@ -844,7 +873,7 @@ else on this tab. The settings that \e{are} per session stay on the
 session's own panels:
 \k{kitty-cfg-winscp-session} and \k{kitty-cfg-zmodem-session}.
 
-\S{kitty-cfg-kitty-settings} The KiTTY Settings tree
+\S{kitty-cfg-kitty-settings} The KiTTY++ Settings tree
 
 Settings of this KiTTY as a whole - not of any session - that had no
 panel before and could only be changed by editing \c{kitty.ini} or the

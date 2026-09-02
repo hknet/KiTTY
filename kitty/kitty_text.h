@@ -787,12 +787,27 @@
 #define KT_ZMODEM_THEIR_OPTIONS_AND_THE_DOWNLOAD     "Their options, and the download folder, belong to a session " \
         "and stay on Connection > ZModem."
 
-/* Application/KiTTY Settings */
-#define KT_KSET_TITLE                                "KiTTY Settings"
+/* Application/KiTTY++ Settings */
+#define KT_KSET_TITLE                                "KiTTY++ Settings"
 #define KT_KSET_INTRO_WHOLE                          "Settings of this KiTTY as a whole, not of a session."
 #define KT_KSET_INTRO_WHERE                          "Each leaf says where its values are kept."
 
-/* Application/KiTTY Settings/Storage & Backup */
+/* Application/KiTTY++ Settings/System */
+#define KT_SYSTEM_TITLE                              "Windows integration"
+#define KT_SYSTEM_STATE_GROUP                        "Registered with Windows"
+#define KT_SYSTEM_REGISTER_GROUP                     "Change the registration"
+#define KT_SYSTEM_NOTE                               "Written to the registry: for all users when administrator rights are given, for your account otherwise. Each button asks before it writes."
+#define KT_SYSTEM_REGISTER_LINE                      "Point telnet://, ssh://, kitty:// and the session files at this KiTTY++. An entry another program owns stays as it is."
+#define KT_SYSTEM_REGISTER                           "Register this KiTTY++..."
+#define KT_SYSTEM_TAKEOVER_LINE                      "The same, and entries other programs own are replaced too (each is backed up to a .reg file first)."
+#define KT_SYSTEM_TAKEOVER                           "Register and take over from other programs..."
+#define KT_SYSTEM_UNREGISTER_LINE                    "Remove the entries that point at a KiTTY. Other programs' entries are not touched."
+#define KT_SYSTEM_UNREGISTER                         "Unregister..."
+#define KT_SYSTEM_REGISTER_Q                         "Point telnet://, ssh://, kitty:// and the session files at this KiTTY++?\n\nEntries other programs own are left alone and reported."
+#define KT_SYSTEM_TAKEOVER_Q                         "Point telnet://, ssh://, kitty:// and the session files at this KiTTY++, replacing entries other programs own?\n\nEach replaced setting is exported to a .reg file first, and the report names the command that puts it back."
+#define KT_SYSTEM_UNREGISTER_Q                       "Remove the telnet://, ssh://, kitty:// and session-file entries that point at a KiTTY?\n\nEach is exported to a .reg file first. Entries other programs own are not touched."
+
+/* Application/KiTTY++ Settings/Storage & Backup */
 #define KT_KSET_STORAGE_TITLE                        "Where settings are kept"
 #define KT_KSET_STORAGE_THIS_KITTY                   "This KiTTY"
 #define KT_KSET_STORAGE_STORE_REGISTRY               "Settings store: registry (HKCU\\%s)"
@@ -828,7 +843,7 @@
 #define KT_KSET_STORAGE_PWPROT_NOTE                  "Passwords already stored are not re-encrypted by this change."
 #define KT_KSET_STORAGE_WARNLEGACY                   "Warn before re-encrypting an old-format password"
 
-/* Application/KiTTY Settings/Terminal windows (+ Shortcuts) */
+/* Application/KiTTY++ Settings/Terminal windows (+ Shortcuts) */
 #define KT_KSET_TW_TITLE                             "Keys and mouse"
 #define KT_KSET_TW_BEHAVIOUR                         "Behaviour"
 #define KT_KSET_TW_MOUSECHORDS                       "Mouse chords (duplicate session, send to tray)"
@@ -857,7 +872,7 @@
 #define KT_KSET_FK_SCO                               "SCO"
 #define KT_KSET_FK_XTERM216                          "Xterm 216+ (KiTTY's default)"
 
-/* Application/KiTTY Settings/Automation */
+/* Application/KiTTY++ Settings/Automation */
 #define KT_KSET_AU_TITLE                             "Automatic input: pacing, scripts, broadcast"
 #define KT_KSET_AU_PACING                            "Pacing"
 #define KT_KSET_AU_INITDELAY                         "Wait before auto-typing starts, seconds:"
@@ -881,7 +896,7 @@
         "derived from where this copy is installed, so a second installation gets a different one; give both " \
         "the same sendcmdgroup in kitty.ini to join them."
 
-/* Application/KiTTY Settings/Window & display */
+/* Application/KiTTY++ Settings/Window & display */
 #define KT_KSET_WD_TITLE                             "Features and printing"
 #define KT_KSET_WD_TITLEBAR                          "Title bar"
 #define KT_KSET_WD_WINTITLE                          "Decorate the window title (size, PROTECTED, ONTOP)"
@@ -911,7 +926,7 @@
         "log keys."
 #define KT_KSET_WD_FILEONLY                          "Kept in kitty.ini whatever the store mode."
 
-/* Application/KiTTY Settings/Connection & reconnect */
+/* Application/KiTTY++ Settings/Connection & reconnect */
 #define KT_KSET_CN_TITLE                             "Auto-Reconnect-Option and In-Line-Confirmations"
 #define KT_PXFWD_TITLE                               "Proxy forwards"
 #define KT_PXFWD_CHAINS                              "Jump-host chains"
@@ -944,7 +959,7 @@
         "session's SSH panel."
 #define KT_KSET_CN_SSHVERSION_PREVIEW                "The server is told: %s"
 
-/* Application/KiTTY Settings/Transfers & Tools */
+/* Application/KiTTY++ Settings/Transfers & Tools */
 #define KT_KSET_TT_TITLE                             "Helper programs and transfers"
 #define KT_KSET_TT_KSCP                              "File copy (kscp)"
 #define KT_KSET_TT_PSCPPATH                          "File-copy helper (kscp.exe or pscp.exe):"
@@ -960,7 +975,7 @@
 #define KT_KSET_TT_CTHELPER                          "Cygwin helper (cthelper.exe):"
 #define KT_KSET_TT_CTHELPER_SELECT                   "Select cthelper.exe"
 
-/* Application/KiTTY Settings/Launcher */
+/* Application/KiTTY++ Settings/Launcher */
 #define KT_KSET_LA_TITLE                             "The launcher"
 #define KT_KSET_LA_MENU                              "Menu"
 #define KT_KSET_LA_RELOAD                            "Rebuild the session list each time the menu opens"

@@ -716,7 +716,17 @@ BOOL RegCleanPuTTY( void ) {
  * actually looking. A message box is the fallback for when there is no console
  * at all - started from Explorer, a shortcut or the installer - and not the
  * normal path: a switch typed at a prompt should answer at that prompt. */
+/* KiTTY: set while the configuration box drives a registration - the report
+ * and the question then always come as boxes, never on whatever console the
+ * terminal happens to have been started from. */
+static int g_report_gui = 0 ;
+
 void KittyCliReport( const char *title, const char *text, int warn ) {
+	if( g_report_gui ) {
+		MessageBoxA( NULL, text, title,
+			     MB_OK | (warn ? MB_ICONWARNING : MB_ICONINFORMATION) ) ;
+		return ;
+	}
 	HANDLE h ;
 	DWORD written ;
 	int attached = kitty_attach_parent_console() ? 1 : 0 ;
@@ -746,6 +756,9 @@ void KittyCliReport( const char *title, const char *text, int warn ) {
  * explicit yes; anything else, including a closed console or an unreadable
  * input, is a no, because the caller is about to write to the registry. */
 static int CliConfirm( const char *title, const char *text ) {
+	if( g_report_gui )
+		return MessageBoxA( NULL, text, title,
+				    MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 ) == IDYES ;
 	HANDLE hout, hin ;
 	DWORD written, nread = 0 ;
 	char answer[16] ;
@@ -1487,3 +1500,96 @@ Windows Registry Editor Version 5.00
 [-HKEY_CLASSES_ROOT\.ktx]
 
 ******/
+
+/* ---- KiTTY++ Settings > System: the shell integration's state ----------- */
+
+/* The program a "shell\open\command" line runs: its full path, unquoted. */
+static void CommandProgramPath( const char *command, char *out, size_t outlen ) {
+	const char *p = command, *end ;
+	size_t n ;
+	out[0] = '\0' ;
+	while( *p == ' ' ) p++ ;
+	if( *p == '"' ) { p++ ; end = strchr( p, '"' ) ; }
+	else            { end = strchr( p, ' ' ) ; }
+	if( !end ) end = p + strlen(p) ;
+	n = (size_t)(end - p) ;
+	if( n == 0 || n >= outlen ) return ;
+	memcpy( out, p, n ) ;
+	out[n] = '\0' ;
+}
+
+/* One state line for a handler command: what the System leaf shows. */
+static void IntegrationLine( const char *what, int had, const char *command,
+			     const char *self, char *out, size_t outlen, int *ours ) {
+	char prog[MAX_PATH], base[MAX_PATH] ;
+	if( !had ) { snprintf( out, outlen, "%s  not registered", what ) ; return ; }
+	CommandProgramPath( command, prog, sizeof(prog) ) ;
+	UrlHandlerProgram( command, base, sizeof(base) ) ;
+	if( prog[0] && !stricmp( prog, self ) ) {
+		snprintf( out, outlen, "%s  this KiTTY++", what ) ;
+		(*ours)++ ;
+	} else if( base[0] && !stricmp( base, "kitty.exe" ) ) {
+		snprintf( out, outlen, "%s  another KiTTY: %s", what, prog ) ;
+	} else {
+		snprintf( out, outlen, "%s  %s", what, base[0] ? base : command ) ;
+	}
+}
+
+int kitty_shell_integration_state( char lines[5][256] ) {
+	static const char *const protos[] = { "telnet", "ssh", "kitty", "putty" } ;
+	char self[1024], cmd[1024], progid[256], ext[15] ;
+	DWORD sz ;
+	int i, had, ours = 0 ;
+	GetModuleFileName( NULL, (LPTSTR)self, sizeof(self) ) ;
+	for( i = 0 ; i < 4 ; i++ ) {
+		char what[24] ;
+		snprintf( what, sizeof(what), "%s://", protos[i] ) ;
+		had = UrlHandlerCurrentCommand( protos[i], cmd, sizeof(cmd) ) ;
+		IntegrationLine( what, had, cmd, self, lines[i], 256, &ours ) ;
+	}
+	if( strlen( FileExtension ) > 0 ) snprintf( ext, sizeof(ext), "%s", FileExtension ) ;
+	else snprintf( ext, sizeof(ext), ".ktx" ) ;
+	sz = sizeof(progid) ; progid[0] = '\0' ;
+	had = ( RegGetValueA( HKEY_CLASSES_ROOT, ext, NULL, RRF_RT_REG_SZ, NULL,
+			      progid, &sz ) == ERROR_SUCCESS && progid[0] ) ;
+	if( had && !stricmp( progid, "kitty.connect.1" ) ) {
+		char key[300] ;
+		snprintf( key, sizeof(key), "kitty.connect.1\\shell\\open\\command" ) ;
+		sz = sizeof(cmd) ; cmd[0] = '\0' ;
+		had = ( RegGetValueA( HKEY_CLASSES_ROOT, key, NULL, RRF_RT_REG_SZ, NULL,
+				      cmd, &sz ) == ERROR_SUCCESS && cmd[0] ) ;
+		IntegrationLine( ext, had, cmd, self, lines[4], 256, &ours ) ;
+	} else if( had ) {
+		snprintf( lines[4], 256, "%s  %s", ext, progid ) ;
+	} else {
+		snprintf( lines[4], 256, "%s  not registered", ext ) ;
+	}
+	/* putty:// is optional; the count says how many of the four that matter
+	 * point at this exe. */
+	{
+		int required = 0 ;
+		for( i = 0 ; i < 5 ; i++ )
+			if( i != 3 && strstr( lines[i], "  this KiTTY++" ) ) required++ ;
+		return required ;
+	}
+}
+
+/* The System leaf's buttons: the same work as -sshhandler / -fileassoc, with
+ * boxes instead of console output. force = take protocols and the extension
+ * over from other programs (their settings are exported first, the report
+ * names the undo). */
+void kitty_shell_integration_register( int force ) {
+	g_report_gui = 1 ;
+	CreateSSHHandler( force, 0, 0, 0 ) ;
+	CreateFileAssoc( force, 0, 0 ) ;
+	g_report_gui = 0 ;
+}
+
+/* The leaf's third button: -sshhandler -uninstall + -fileassoc -uninstall,
+ * reports in boxes. Only entries pointing at a KiTTY are removed. */
+void kitty_shell_integration_unregister( void ) {
+	g_report_gui = 1 ;
+	RemoveSSHHandler( ) ;
+	RemoveFileAssoc( ) ;
+	g_report_gui = 0 ;
+}

@@ -703,13 +703,13 @@ char default_init_file_content[] =
 ;winroll=yes\n\
 \n\
 ; WinSCPPath: the full path to the winscp.exe binary. Set it on\n\
-;    Application > KiTTY Settings > Transfers & Tools >WinSCP.\n\
+;    Application > KiTTY++ Settings > Transfers & Tools >WinSCP.\n\
 ;WinSCPPath=\n\
 \n\
 ; rzcommand, szcommand: the full paths to the ZModem helper programs (rz.exe\n\
 ;    and sz.exe from lrzsz). Where they are installed is a property of this PC,\n\
 ;    so they live here rather than in each saved session; set them on\n\
-;    Application > KiTTY Settings > Transfers & Tools >ZModem. Their OPTIONS, and the download\n\
+;    Application > KiTTY++ Settings > Transfers & Tools >ZModem. Their OPTIONS, and the download\n\
 ;    folder, stay per session on Connection > ZModem.\n\
 ;rzcommand=\n\
 ;szcommand=\n\

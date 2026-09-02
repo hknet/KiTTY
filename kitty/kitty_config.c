@@ -1324,7 +1324,7 @@ static void kitty_winscppath_handler(dlgcontrol *ctrl, dlgparam *dlg,
 }
 
 /*
- * The rz and sz helper programs, on Application > KiTTY Settings >
+ * The rz and sz helper programs, on Application > KiTTY++ Settings >
  * Transfers & Tools > ZModem.
  *
  * Same shape as the WinSCP path above and for the same reason: where a helper
@@ -6213,7 +6213,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
     /* KiTTY: settings about the APPLICATION rather than this connection, in
      * their own box so they stop reading as session options. They ended up on
      * the Session panel because there is nowhere else for app-wide settings
-     * yet; the KiTTY Settings tree is their home now, and both are genuinely
+     * yet; the KiTTY++ Settings tree is their home now, and both are genuinely
      * global: "Check for updates" is the [KiTTY] checkupdate key
      * (kitty_check_update_enabled), no longer CONF_check_update_startup. */
     /* The old-sessions switch used to sit here, in an "Application" box at
@@ -8774,7 +8774,7 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
 
             s = ctrl_getset(b, "Connection/SSH/WinSCP",
                             "WinSCP", KT_WINSCP_WINSCP_INTEGRATION);
-            /* The executable PATH is on KiTTY Settings > Transfers & Tools > WinSCP
+            /* The executable PATH is on KiTTY++ Settings > Transfers & Tools > WinSCP
              * now. It never belonged here - it is a property of this PC, which
              * is why it needed a bold "not a session setting" note to itself.
              * Everything left in this group IS per session. */
@@ -8950,7 +8950,7 @@ static void scb_panel_other_protocols(struct controlbox *b, bool midsession, int
 }
 
 /* The settings tree's table-driven handler, defined further down with the
- * KiTTY Settings leaves; the ZModem panel borrows it for the global switch. */
+ * KiTTY++ Settings leaves; the ZModem panel borrows it for the global switch. */
 struct kset_key;
 static const struct kset_key *kset_find(const char *key);
 static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);
@@ -9465,7 +9465,7 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
                   KT_CONFIG_WINDOW_THIS_WINDOW);
 
     /* The colour theme is NOT here any more: it is one setting for the whole
-     * suite, and sits on KiTTY Settings > Appearance. */
+     * suite, and sits on KiTTY++ Settings > Appearance. */
     s = ctrl_getset(b, "Application/Config Window", "look", KT_CONFIG_WINDOW_CATEGORY_TREE);
     ctrl_droplist(s, KT_CONFIG_WINDOW_CATEGORY_TREE_OPENS_SHOWING, NO_SHORTCUT, 55,
                   HELPCTX(kitty_theme), kitty_cfgwin_expand_handler, P(NULL));
@@ -9568,7 +9568,7 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
     ctrl_settitle(b, "Application/Security/Passwords", KT_PASSWORDS_TITLE);
     s = ctrl_getset(b, "Application/Security/Passwords", "typed", KT_PASSWORDS_TYPED);
     /* The settings tree's handler and table (declared above scb_panel_zmodem,
-     * defined with the KiTTY Settings leaves further down). */
+     * defined with the KiTTY++ Settings leaves further down). */
     ctrl_checkbox(s, KT_KSET_CN_NOSAVE, NO_SHORTCUT, HELPCTX(kitty_passwords),
                   kitty_kset_handler, P((void *)kset_find("userpasssshnosave")));
     ctrl_text(s, KT_PASSWORDS_TYPED_DEFAULT, HELPCTX(kitty_passwords));
@@ -9598,7 +9598,7 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
 }
 
 /*
- * KiTTY Settings > Transfers & Tools (formerly Application > External tools).
+ * KiTTY++ Settings > Transfers & Tools (formerly Application > External tools).
  *
  * Where the helper programs live on THIS PC. A leaf each: they have nothing
  * to do with one another, and one panel listing every path would be a list
@@ -9609,11 +9609,11 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
  * setting can be changed from.
  */
 /* (The former "External tools" builder: its WinSCP and ZModem leaves are
- * now built under KiTTY Settings > Transfers & Tools, in
+ * now built under KiTTY++ Settings > Transfers & Tools, in
  * scb_panel_kitty_settings_leaves.) */
 
 /*
- * Application > KiTTY Settings.
+ * Application > KiTTY++ Settings.
  *
  * The program-wide settings that had no panel: read from kitty.ini or the
  * registry at startup, changeable only by editing one of those by hand. A
@@ -10045,7 +10045,42 @@ static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int 
     ctrl_filesel(s, label, NO_SHORTCUT, FILTER_ALL_FILES, false, title, HELPCTX(hc), kitty_kset_handler, KSET(key))
 
 /* Where the whole subtree lives. */
-#define KSET_PATH(leaf) "Application/KiTTY Settings/" leaf
+#define KSET_PATH(leaf) "Application/KiTTY++ Settings/" leaf
+
+/* KiTTY++ Settings > System: what Windows hands to this program, and the
+ * buttons that register it. The five lines are rebuilt after every click. */
+static dlgcontrol *ksys_lines[5];
+static void ksys_refresh(dlgparam *dlg)
+{
+    extern int kitty_shell_integration_state(char lines[5][256]);
+    char lines[5][256];
+    int i;
+    kitty_shell_integration_state(lines);
+    for (i = 0; i < 5; i++)
+        if (ksys_lines[i])
+            dlg_label_change(ksys_lines[i], dlg, lines[i]);
+}
+static void kitty_system_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                 void *data, int event)
+{
+    extern void kitty_shell_integration_register(int force);
+    extern void kitty_shell_integration_unregister(void);
+    const char *q;
+    (void)data;
+    if (event != EVENT_ACTION)
+        return;
+    /* Every button asks first: the first cut registered on a bare click. */
+    q = ctrl->context.i == 2 ? KT_SYSTEM_UNREGISTER_Q :
+        ctrl->context.i == 1 ? KT_SYSTEM_TAKEOVER_Q : KT_SYSTEM_REGISTER_Q;
+    if (MessageBoxA(GetActiveWindow(), q, KT_SYSTEM_TITLE,
+                    MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES)
+        return;
+    if (ctrl->context.i == 2)
+        kitty_shell_integration_unregister();
+    else
+        kitty_shell_integration_register(ctrl->context.i == 1);
+    ksys_refresh(dlg);
+}
 
 static void scb_panel_kitty_settings_leaves(struct controlbox *b)
 {
@@ -10239,6 +10274,34 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
      * two installations' launchers from taking each other for "already
      * running", is set by hand in kitty.ini for that one purpose, and a
      * line reporting it told nobody anything. The help explains it. */
+
+    /* ---- System: the Windows shell integration ---- */
+    {
+        extern int kitty_shell_integration_state(char lines[5][256]);
+        char lines[5][256];
+        dlgcontrol *bc;
+        int i;
+        kitty_shell_integration_state(lines);
+        ctrl_settitle(b, KSET_PATH("System"), KT_SYSTEM_TITLE);
+        s = ctrl_getset(b, KSET_PATH("System"), "state", KT_SYSTEM_STATE_GROUP);
+        for (i = 0; i < 5; i++)
+            ksys_lines[i] = ctrl_text(s, lines[i], HELPCTX(kitty_system));
+        s = ctrl_getset(b, KSET_PATH("System"), "register", KT_SYSTEM_REGISTER_GROUP);
+        ctrl_text(s, KT_SYSTEM_NOTE, HELPCTX(kitty_system));
+        /* One full-width button per action, each under the line that says
+         * what it does: two side by side were too narrow for their words,
+         * and told nobody how they differed. */
+        ctrl_text(s, KT_SYSTEM_REGISTER_LINE, HELPCTX(kitty_system));
+        bc = ctrl_pushbutton(s, KT_SYSTEM_REGISTER, NO_SHORTCUT,
+                             HELPCTX(kitty_system), kitty_system_handler, I(0));
+        ctrl_text(s, KT_SYSTEM_TAKEOVER_LINE, HELPCTX(kitty_system));
+        bc = ctrl_pushbutton(s, KT_SYSTEM_TAKEOVER, NO_SHORTCUT,
+                             HELPCTX(kitty_system), kitty_system_handler, I(1));
+        ctrl_text(s, KT_SYSTEM_UNREGISTER_LINE, HELPCTX(kitty_system));
+        bc = ctrl_pushbutton(s, KT_SYSTEM_UNREGISTER, NO_SHORTCUT,
+                             HELPCTX(kitty_system), kitty_system_handler, I(2));
+        (void)bc;
+    }
 }
 
 static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
@@ -10252,7 +10315,7 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     extern char *ConfigDirectory;              /* kitty.c: the folder store */
     /* kitty_commun.c's values, which this file has no header for */
     enum { KSET_SAVEMODE_REG = 0, KSET_SAVEMODE_FILE = 1, KSET_SAVEMODE_DIR = 2 };
-    static const char *const storage = "Application/KiTTY Settings/Storage & Backup";
+    static const char *const storage = "Application/KiTTY++ Settings/Storage & Backup";
     struct controlset *s;
     char line[1400], buf[4096];
     const char *ini = GetKittyIniFile();
@@ -10263,8 +10326,8 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     if (midsession || GetPuttyFlag())
         return;
 
-    ctrl_settitle(b, "Application/KiTTY Settings", KT_KSET_TITLE);
-    s = ctrl_getset(b, "Application/KiTTY Settings", "intro", NULL);
+    ctrl_settitle(b, "Application/KiTTY++ Settings", KT_KSET_TITLE);
+    s = ctrl_getset(b, "Application/KiTTY++ Settings", "intro", NULL);
     ctrl_text(s, KT_KSET_INTRO_WHOLE, HELPCTX(kitty_settings_tree));
     ctrl_text(s, KT_KSET_INTRO_WHERE, HELPCTX(kitty_settings_tree));
 

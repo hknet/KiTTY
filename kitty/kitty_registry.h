@@ -83,6 +83,16 @@ void RemoveSSHHandler( void ) ;
 // for administrator rights, assume_yes = skip the portable copy's question
 void CreateFileAssoc( int force, int peruser, int assume_yes ) ;
 
+// KiTTY++ Settings > System: five state lines (telnet://, ssh://, kitty://,
+// putty://, the session-file extension) - "this KiTTY++", another KiTTY, the
+// program that has it, or "not registered". Returns how many of the four
+// required ones point at this exe.
+int kitty_shell_integration_state( char lines[5][256] ) ;
+// The leaf's buttons: register (leave other programs' entries alone) or take
+// over (force); reports in boxes.
+void kitty_shell_integration_register( int force ) ;
+void kitty_shell_integration_unregister( void ) ;
+
 // KiTTY: -fileassoc -uninstall. Removes the association only while it is ours
 void RemoveFileAssoc( void ) ;
 
