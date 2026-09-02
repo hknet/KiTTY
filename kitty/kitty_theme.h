@@ -153,4 +153,27 @@ void kitty_theme_hook_class(const char *classname);
 /* Forget the per-window state when a themed dialog is destroyed. */
 void kitty_theme_forget(HWND dlg);
 
+/*
+ * THE ROW-ALIGNER, once for every window in the suite.
+ *
+ * A template cannot line a label up with the field beside it: a closed
+ * combo sizes itself from the font whatever height it is given, an edit
+ * box draws its text at the top of whatever height it is given, and
+ * dialog units round differently per control class - at 200% the
+ * difference is a visible step. So the FIELD's real rectangle is the
+ * row, and every other control of the row (labels with SS_CENTERIMAGE,
+ * checkboxes, buttons - they centre their content anyway) is moved to
+ * that top and height. Call it in WM_INITDIALOG, BEFORE any layout
+ * capture that resizes replay (anchors would scatter the row again).
+ *
+ * ids: the other controls of the row, terminated by 0. A missing id is
+ * skipped, so one table serves a template whose rows vary by mode.
+ */
+void kitty_theme_align_row(HWND dlg, int field_id, const int *ids);
+
+/* Several rows at once: {field, {labels..., 0}} entries, n of them. */
+struct kitty_theme_row { int field; int ids[6]; };
+void kitty_theme_align_rows(HWND dlg, const struct kitty_theme_row *rows,
+                            size_t n);
+
 #endif /* KITTY_THEME_H */

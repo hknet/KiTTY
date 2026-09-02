@@ -23,6 +23,9 @@ static char *kitty_cli_importdir = NULL;
  * of -exportall / -importdir apply. */
 static char *kitty_cli_portablecopy = NULL;
 static char *kitty_cli_takefolder = NULL;
+/* -backupnow: write the store backup (kitty*.sav / Backups\) and exit -
+ * the same backup the config box makes, on demand for scripts. */
+static int kitty_cli_backupnow = 0;
 /* Bundle transport protection for the do-and-exit paths above. The password is
  * taken from a FILE, never from argv: a command-line password is visible in the
  * process list, in Task Manager and in shell history. (A password sitting in a
@@ -336,6 +339,8 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 sfree(kitty_cli_importdir);
                 kitty_cli_importdir =
                     dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
+            } else if (!strcmp(p, "-backupnow")) {
+                kitty_cli_backupnow = 1;
             } else if (!strcmp(p, "-portablecopy")) {
                 if (!arglist->args[arglistpos])
                     cmdline_error("option \"%s\" requires a directory argument", p);
@@ -672,6 +677,16 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
      * the command-line form of Application > Migration > KiTTY.ini
      * migration. Same password rules as above: the copy's master password
      * comes from -bundlepwfile, or -bundlethispc chooses DPAPI. */
+    if (kitty_cli_backupnow) {
+        extern void SaveRegistryKeyNow(void);
+        extern char *GetKittySavFile(void);
+        char msg[600];
+        SaveRegistryKeyNow();
+        snprintf(msg, sizeof(msg), "Backup written beside:\n%s",
+                 GetKittySavFile() ? GetKittySavFile() : "(no backup target)");
+        MessageBoxA(NULL, msg, "KiTTY backup", MB_OK | MB_ICONINFORMATION);
+        cleanup_exit(0);
+    }
     if (kitty_cli_portablecopy) {
         struct ksm_result r;
         char msg[2048];

@@ -6213,16 +6213,9 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
     /* KiTTY: settings about the APPLICATION rather than this connection, in
      * their own box so they stop reading as session options. They ended up on
      * the Session panel because there is nowhere else for app-wide settings
-     * yet; the planned kitty-settings page is their proper home.
-     *
-     * NOTE the two are not alike underneath: the foreign-session toggle is
-     * genuinely global (straight to storage, immediate effect), while
-     * "Check for updates" is still CONF_check_update_startup - saved into each
-     * session and read from the session's conf when its window opens. Hence the
-     * neutral "Application" title rather than a claim about how they are
-     * stored. Making update-check truly global is a compat change (every saved
-     * session already carries CheckUpdateStartup) and is parked for the
-     * kitty-settings page. */
+     * yet; the KiTTY Settings tree is their home now, and both are genuinely
+     * global: "Check for updates" is the [KiTTY] checkupdate key
+     * (kitty_check_update_enabled), no longer CONF_check_update_startup. */
     /* The old-sessions switch used to sit here, in an "Application" box at
      * the foot of this panel, because there was nowhere else for it. It is
      * now Application > Migration - it is about the installation and its
@@ -10439,11 +10432,10 @@ static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
  * "Updates" rather than "Application/Updates" under a tab already called
  * Application.
  *
- * NOTE what has NOT changed: "Check for updates" is still
- * CONF_check_update_startup, saved into each session and read from that
- * session's conf when its window opens. Moving the control does not make the
- * setting global - that is a compatibility change (every saved session already
- * carries CheckUpdateStartup) and belongs to its own piece of work.
+ * "Check for updates" is the [KiTTY] checkupdate key
+ * (kitty_check_update_enabled in kitty_win.c); the CONF_check_update_startup
+ * option only remains so that saved sessions carrying CheckUpdateStartup
+ * still load.
  */
 /*
  * Application > Migration: the sessions in the old hives, and Import.
@@ -10978,6 +10970,10 @@ static void scb_panel_comment(struct controlbox *b)
         ctrl_editbox_multiline(s, KT_COMMENT_SESSION_COMMENT, NO_SHORTCUT, 5, false,
                                HELPCTX(kitty_comment), conf_editbox_handler,
                                I(CONF_comment), ED_STR);
+        /* Printed into the terminal, framed, once the session is up
+         * (post-auth for SSH) - see kitty_print_session_comment. */
+        ctrl_checkbox(s, KT_COMMENT_NOTIFY, NO_SHORTCUT, HELPCTX(kitty_comment),
+                      conf_checkbox_handler, I(CONF_comment_notify));
     }
 }
 

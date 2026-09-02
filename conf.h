@@ -1555,6 +1555,8 @@ CONF_OPTION(set_windowpos, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("
 CONF_OPTION(foreground_on_bell, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("ForegroundOnBell"),)
 CONF_OPTION(ctrl_tab_switch, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("CtrlTabSwitch"),)
 CONF_OPTION(comment, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Comment"),)
+/* KiTTY: print the Comment into the terminal once the session is up. */
+CONF_OPTION(comment_notify, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("CommentNotify"),)
 CONF_OPTION(launcherhide, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("LauncherHide"),) /* KiTTY: exclude from kitty -launcher */
 /* KiTTY (classic parity): which of the window's own buttons exist.
  *

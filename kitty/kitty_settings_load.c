@@ -885,6 +885,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 #endif
     gppi_forced(sesskey, "CtrlTabSwitch", conf, CONF_ctrl_tab_switch);
     gpps_forced(sesskey, "Comment", conf, CONF_comment );
+    gppb_forced(sesskey, "CommentNotify", conf, CONF_comment_notify );
     gppb_forced(sesskey, "SCPAutoPwd", conf, CONF_scp_auto_pwd); /* 0.84: BOOL */
     gppb_forced(sesskey, "RunCmdConfirm", conf, CONF_runcmdconfirm);
     gppb_forced(sesskey, "RunCmdNotify", conf, CONF_runcmdnotify);

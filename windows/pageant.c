@@ -3433,24 +3433,9 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
         {
             static const int row_ids[] = {
                 IDC_AUDIT_FILTER_LBL, IDC_AUDIT_FILTER, IDC_AUDIT_APP_LBL,
-                IDC_AUDIT_ENABLE, IDC_AUDIT_REFRESH, IDOK,
+                IDC_AUDIT_ENABLE, IDC_AUDIT_REFRESH, IDOK, 0
             };
-            HWND combo = GetDlgItem(hwnd, IDC_AUDIT_REQFILTER);
-            RECT cr;
-            size_t ri;
-            GetWindowRect(combo, &cr);
-            MapWindowPoints(NULL, hwnd, (POINT *)&cr, 2);
-            for (ri = 0; ri < lenof(row_ids); ri++) {
-                HWND c = GetDlgItem(hwnd, row_ids[ri]);
-                RECT r;
-                if (!c)
-                    continue;
-                GetWindowRect(c, &r);
-                MapWindowPoints(NULL, hwnd, (POINT *)&r, 2);
-                SetWindowPos(c, NULL, r.left, cr.top,
-                             r.right - r.left, cr.bottom - cr.top,
-                             SWP_NOZORDER | SWP_NOACTIVATE);
-            }
+            kitty_theme_align_row(hwnd, IDC_AUDIT_REQFILTER, row_ids);
         }
         {
             bool have_cols = auditview_restore_columns(hlist);
@@ -3782,6 +3767,23 @@ static void keysettings_leave(HWND hwnd)
      * every other themed window's - it is not this dialog's business. */
 }
 
+/* The settings pages' label-and-field rows - all four pages at once,
+ * hidden pages' controls being real windows (kitty_theme_align_rows). */
+static void keysettings_align_rows(HWND hwnd)
+{
+    static const struct kitty_theme_row rows[] = {
+        { IDC_SET_NOTICESECS,   { IDC_SET_L_NOTICE, IDC_SET_L_NOTICEHINT, 0 } },
+        { IDC_SET_THEME,        { IDC_SET_L_THEME, 0 } },
+        { IDC_SET_TTL,          { IDC_SET_L_TTL, 0 } },
+        { IDC_SET_HELLOTTL,     { IDC_SET_L_HELLOTTL, 0 } },
+        { IDC_SET_AGENTLOGPATH, { IDC_SET_L_LOGPATH, 0 } },
+        { IDC_SET_AGENTLOGKB,   { IDC_SET_L_LOGKB, 0 } },
+        { IDC_SET_AGENTLOGKEEP, { IDC_SET_L_LOGKEEP, 0 } },
+        { IDC_SET_AGENTLOGDAYS, { IDC_SET_L_LOGDAYS, 0 } },
+    };
+    kitty_theme_align_rows(hwnd, rows, lenof(rows));
+}
+
 static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                                         WPARAM wParam, LPARAM lParam)
 {
@@ -3884,6 +3886,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                       kageant_audit_keep_get(), FALSE);
         SetDlgItemInt(hwnd, IDC_SET_AGENTLOGDAYS,
                       kageant_audit_expire_get(), FALSE);
+        keysettings_align_rows(hwnd);
         /* The tab strip, then the page it selects. Built here rather than in
          * the template because a tab control carries no items of its own. */
         {
@@ -4125,24 +4128,9 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
         {
             static const int row_ids[] = {
                 IDC_KEYLIST_FPTYPE_STATIC, IDC_KEYLIST_SHOWUNAVAIL,
-                IDC_KEYLIST_RETRY, IDC_KEYLIST_INISTATUS,
+                IDC_KEYLIST_RETRY, IDC_KEYLIST_INISTATUS, 0
             };
-            HWND combo = GetDlgItem(hwnd, IDC_KEYLIST_FPTYPE);
-            RECT cr;
-            size_t ri;
-            GetWindowRect(combo, &cr);
-            MapWindowPoints(NULL, hwnd, (POINT *)&cr, 2);
-            for (ri = 0; ri < lenof(row_ids); ri++) {
-                HWND c = GetDlgItem(hwnd, row_ids[ri]);
-                RECT r;
-                if (!c)
-                    continue;
-                GetWindowRect(c, &r);
-                MapWindowPoints(NULL, hwnd, (POINT *)&r, 2);
-                SetWindowPos(c, NULL, r.left, cr.top,
-                             r.right - r.left, cr.bottom - cr.top,
-                             SWP_NOZORDER | SWP_NOACTIVATE);
-            }
+            kitty_theme_align_row(hwnd, IDC_KEYLIST_FPTYPE, row_ids);
         }
 
         keylist_capture_layout(hwnd);

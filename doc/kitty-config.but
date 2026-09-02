@@ -510,6 +510,12 @@ survives a rename. It is never sent to the host, and KiTTY shows it
 only on this panel - it is a note for you, not a label the session list
 displays.
 
+\q{Notify the user at login} (on by default) prints the note into the
+terminal, framed as a KiTTY++ session note, once the session is up -
+for SSH after the login has succeeded, so it sits at the clean top of
+the session and never inside a prompt. Untick it for a session whose
+note is for your eyes only.
+
 \H{kitty-cfg-application} The Application tab
 
 The configuration box has two tabs. \q{Session} holds everything that

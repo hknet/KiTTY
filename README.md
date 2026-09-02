@@ -40,6 +40,15 @@ Both installers add Start-Menu + Desktop shortcuts and an Add/Remove-Programs en
 cleanly. Every download is checksummed (`SHA256SUMS` in the ZIP), and all executables are
 Authenticode-signed.
 
+### Windows versions
+
+The floor is Windows XP: the 32-bit ZIP runs there (SSH and Telnet sessions verified in a
+virtual machine), because every API the suite needs beyond XP is loaded dynamically with a
+fallback instead of being imported, so an old system starts rather than dying in the loader.
+The 64-bit builds need a 64-bit Windows from Vista / Server 2008 on. Day-to-day testing and
+the QA gate run on Windows 10 and Windows 11; versions in between should run but are not
+verified — reports welcome.
+
 ---
 
 ## What's included (KiTTY++ features on PuTTY 0.85)

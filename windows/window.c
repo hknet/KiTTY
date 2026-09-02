@@ -242,6 +242,7 @@ void kitty_url_config(Conf *conf);
 int kitty_url_rescan(Terminal *term);
 int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor);
 void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal);
+void kitty_print_session_comment(Terminal *term, Conf *conf);   /* kitty_win.c: framed Comment at session start */
 void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up);
 void kitty_sync_transparency_menu(HMENU menu, Conf *conf, UINT id_up,
                                   UINT id_down, UINT id_anchor);
@@ -558,6 +559,8 @@ static void win_seat_notify_session_started(Seat *seat)
     /* KiTTY: SSH session is (re)connected post-auth - restore the normal
      * window icon so a prior SetConnBreakIcon() drop no longer shows. */
     kitty_restore_icon(wgs->term_hwnd, wgs->conf);
+    /* KiTTY: the session's Comment, if its panel asks for it. */
+    kitty_print_session_comment(wgs->term, wgs->conf);
 #ifdef MOD_PERSO
     /* KiTTY: kick off the async update check once per process, and (once) show a
      * cached "update available" notice here at the clean top of the session.

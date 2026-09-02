@@ -1650,6 +1650,34 @@ return hwndToolTips ;
  * '...: ""') is trimmed.  The caller keeps the seat-side consequences
  * (mouse pointer, session close / titlebar marker).
  */
+/* KiTTY: the session's Comment, framed, at the clean top of the session
+ * (called from the post-auth session-started notification). Only when the
+ * Comment panel's "Notify the user at login" is on and there is a note. */
+void kitty_print_session_comment(Terminal *term, Conf *conf)
+{
+    const char *c = conf ? conf_get_str(conf, CONF_comment) : NULL;
+    char *body, *line;
+    size_t bl = 0;
+    const char *p;
+    if (!term || !c || !c[0] || !conf_get_bool(conf, CONF_comment_notify))
+        return;
+    body = snewn(strlen(c) * 2 + 1, char);
+    for (p = c; *p; p++) {
+        if (*p == '\r') continue;
+        else if (*p == '\n') { body[bl++] = '\r'; body[bl++] = '\n'; }
+        else body[bl++] = *p;
+    }
+    body[bl] = 0;
+    line = dupprintf(
+        "\r\n\x1b[1;36m-------------------- KiTTY++ session note "
+        "--------------------\x1b[0m\r\n%s\r\n"
+        "\x1b[1;36m---------------------------------------------"
+        "-----------------\x1b[0m\r\n", body);
+    term_data(term, line, strlen(line));
+    sfree(line);
+    sfree(body);
+}
+
 void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal)
 {
     size_t mlen = msg ? strlen(msg) : 0;

@@ -1023,6 +1023,7 @@
 /* Comment */
 #define KT_COMMENT_COMMENT_FOR_THIS_SESSION          "Comment for this session"
 #define KT_COMMENT_SESSION_COMMENT                   "Session comment"
+#define KT_COMMENT_NOTIFY                            "Notify the user at login"
 
 /* Application/Named Proxies */
 #define KT_NAMED_PROXIES_PROXY_DEFINITIONS_SHARED_BY_EVERY "Proxy Definitions"

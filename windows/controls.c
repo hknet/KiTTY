@@ -147,6 +147,12 @@ HWND kitty_cfg_item(HWND dlg, int id)
 #define LISTINCREMENT 9
 #define COMBOHEIGHT 14
 #define PUSHBTNHEIGHT 14
+/* A button that shares a row with a label (staticbtn, static2btn): the
+ * 23 px Windows standard at Segoe UI 9 is 12 units, and 14 made those
+ * rows 16 units apart - a visible spread next to 11-unit checkbox rows
+ * (kittygen's Actions box, 2026-09-02). The free-standing buttons of a
+ * dialog's bottom row keep PUSHBTNHEIGHT. */
+#define STATICBTNHEIGHT 12
 #define PROGBARHEIGHT 14
 
 DECL_WINDOWS_FUNCTION(static, void, InitCommonControls, (void));
@@ -693,8 +699,8 @@ void paneltitle(struct ctlpos *cp, int id)
 void staticbtn(struct ctlpos *cp, const char *stext, int sid,
                const char *btext, int bid)
 {
-    const int height = (PUSHBTNHEIGHT > STATICHEIGHT ?
-                        PUSHBTNHEIGHT : STATICHEIGHT);
+    const int height = (STATICBTNHEIGHT > STATICHEIGHT ?
+                        STATICBTNHEIGHT : STATICHEIGHT);
     RECT r;
     int lwid, rwid, rpos;
 
@@ -711,9 +717,9 @@ void staticbtn(struct ctlpos *cp, const char *stext, int sid,
           0, stext, sid);
 
     r.left = rpos;
-    r.top = cp->ypos + (height - PUSHBTNHEIGHT) / 2;
+    r.top = cp->ypos + (height - STATICBTNHEIGHT) / 2;
     r.right = rwid;
-    r.bottom = PUSHBTNHEIGHT;
+    r.bottom = STATICBTNHEIGHT;
     doctl(cp, r, "BUTTON",
           BS_NOTIFY | WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
           0, btext, bid);
@@ -752,8 +758,8 @@ void button(struct ctlpos *cp, const char *btext, int bid, bool defbtn)
 void static2btn(struct ctlpos *cp, const char *stext, int sid,
                 const char *btext1, int bid1, const char *btext2, int bid2)
 {
-    const int height = (PUSHBTNHEIGHT > STATICHEIGHT ?
-                        PUSHBTNHEIGHT : STATICHEIGHT);
+    const int height = (STATICBTNHEIGHT > STATICHEIGHT ?
+                        STATICBTNHEIGHT : STATICHEIGHT);
     RECT r;
     int lwid, rwid1, rwid2, rpos1, rpos2;
 
@@ -772,17 +778,17 @@ void static2btn(struct ctlpos *cp, const char *stext, int sid,
           0, stext, sid);
 
     r.left = rpos1;
-    r.top = cp->ypos + (height - PUSHBTNHEIGHT) / 2;
+    r.top = cp->ypos + (height - STATICBTNHEIGHT) / 2;
     r.right = rwid1;
-    r.bottom = PUSHBTNHEIGHT;
+    r.bottom = STATICBTNHEIGHT;
     doctl(cp, r, "BUTTON",
           BS_NOTIFY | WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
           0, btext1, bid1);
 
     r.left = rpos2;
-    r.top = cp->ypos + (height - PUSHBTNHEIGHT) / 2;
+    r.top = cp->ypos + (height - STATICBTNHEIGHT) / 2;
     r.right = rwid2;
-    r.bottom = PUSHBTNHEIGHT;
+    r.bottom = STATICBTNHEIGHT;
     doctl(cp, r, "BUTTON",
           BS_NOTIFY | WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
           0, btext2, bid2);

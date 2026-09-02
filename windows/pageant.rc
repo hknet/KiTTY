@@ -273,7 +273,7 @@ END
  * label, because a combo box sizes its closed height from the font, ignores
  * the template, and lands on 14.
  */
-IDD_KEYSETTINGS DIALOGEX DISCARDABLE 0, 0, 300, 208
+IDD_KEYSETTINGS DIALOGEX DISCARDABLE 0, 0, 300, 168
 STYLE DS_MODALFRAME | DS_SHELLFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "kageant - settings"
 FONT 9, "Segoe UI", 400, 0, 0x1
@@ -297,87 +297,91 @@ BEGIN
         TCS_TABS | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
         6, 6, 288, 12
 
+    /* Rows: 11 units apart with 10-unit checkboxes - the config box's own
+     * pitch (44 px at 200%, where one vertical unit is 4 px; the first cut
+     * used 16/12 and read as spread out next to it). A field starts 4 units after its label's text ends,
+     * not in a fixed 108-unit column. */
     /* ---- page 0: Agent ---- */
     AUTOCHECKBOX "Register as Windows &OpenSSH agent", IDC_SET_OPENSSH,
-        16, 28, 268, 12
+        16, 28, 268, 10
     AUTOCHECKBOX "&Start kageant at login", IDC_SET_STARTUP,
-        16, 44, 268, 12
+        16, 39, 268, 10
     AUTOCHECKBOX "Load remembered &keys at startup", IDC_SET_LOADKEYS,
-        16, 60, 268, 12
+        16, 50, 268, 10
     AUTOCHECKBOX "&Notify when a key is used", IDC_SET_NOTIFY,
-        16, 76, 268, 12
+        16, 61, 268, 10
     LTEXT "Notice &display (seconds):", IDC_SET_L_NOTICE,
-        16, 94, 108, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_NOTICESECS, 128, 94, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
+        16, 76, 86, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_NOTICESECS, 106, 76, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "blank = each notice's own default", IDC_SET_L_NOTICEHINT,
-        168, 94, 116, 11, SS_CENTERIMAGE
+        146, 76, 138, 11, SS_CENTERIMAGE
     LTEXT "&Colour theme:", IDC_SET_L_THEME,
-        16, 114, 108, 14, SS_CENTERIMAGE
-    COMBOBOX IDC_SET_THEME, 128, 114, 100, 80,
+        16, 91, 50, 14, SS_CENTERIMAGE
+    COMBOBOX IDC_SET_THEME, 70, 91, 100, 80,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT "Dark needs Windows 10 1809 or newer; anything older stays light.",
-        IDC_SET_L_THEMEHINT, 16, 134, 268, 10
+        IDC_SET_L_THEMEHINT, 16, 109, 268, 10
 
     /* ---- page 1: Security ---- */
     AUTOCHECKBOX "&Lock down: refuse ALL key add/remove over IPC",
-        IDC_SET_LOCKDOWN, 16, 28, 268, 12
+        IDC_SET_LOCKDOWN, 16, 28, 268, 10
     AUTOCHECKBOX "Block &adding keys over IPC", IDC_SET_BLOCKADD,
-        16, 44, 268, 12
+        16, 39, 268, 10
     AUTOCHECKBOX "Block re&moving keys over IPC", IDC_SET_BLOCKREMOVE,
-        16, 60, 268, 12
+        16, 50, 268, 10
     AUTOCHECKBOX "Confirmations require Windows &Hello", IDC_SET_HELLO,
-        16, 76, 268, 12
+        16, 61, 268, 10
     LTEXT "&Passphrase cache (seconds):", IDC_SET_L_TTL,
-        16, 96, 120, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_TTL, 140, 96, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
+        16, 76, 96, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_TTL, 116, 76, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "0 = do not cache; blank = the default 60; maximum 300 (5 min). Keys that share a passphrase then load with one prompt.",
-        IDC_SET_L_TTLHINT, 16, 114, 268, 20
+        IDC_SET_L_TTLHINT, 16, 90, 268, 20
     LTEXT "Windows Hello cach&e (seconds):", IDC_SET_L_HELLOTTL,
-        16, 138, 120, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_HELLOTTL, 140, 138, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
+        16, 112, 108, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_HELLOTTL, 128, 112, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "One Hello covers a batch; 0 = every unlock asks; blank = the default 60. Maximum 300.",
-        IDC_SET_L_HELLOTTLHINT, 16, 156, 268, 10
+        IDC_SET_L_HELLOTTLHINT, 16, 128, 268, 10
 
     /* ---- page 2: Removable media ---- */
     LTEXT "&Retry startup keys to load, when a drive appears:",
         IDC_SET_L_RETRY, 16, 28, 268, 10
-    COMBOBOX IDC_SET_RETRY, 16, 42, 220, 80,
+    COMBOBOX IDC_SET_RETRY, 16, 40, 220, 80,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     AUTOCHECKBOX "&Unload a key when its media is removed", IDC_SET_UNLOAD,
-        16, 66, 268, 12
+        16, 58, 268, 10
     AUTOCHECKBOX "Do not &warn about missing startup keys", IDC_SET_QUIET,
-        16, 82, 268, 12
+        16, 69, 268, 10
 
     /* ---- page 3: Log ---- */
     AUTOCHECKBOX "Wr&ite the agent log", IDC_SET_AGENTLOG,
-        16, 28, 268, 12
+        16, 28, 268, 10
     LTEXT "&File (blank = default):", IDC_SET_L_LOGPATH,
-        16, 46, 88, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_AGENTLOGPATH, 108, 46, 176, 11, ES_AUTOHSCROLL
+        16, 42, 74, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_AGENTLOGPATH, 94, 42, 190, 11, ES_AUTOHSCROLL
     /* Where a blank File box actually puts the log. Filled in at
      * WM_INITDIALOG - the path depends on whether this install is portable -
      * because "blank = default" tells nobody where the file is.
      * SS_PATHELLIPSIS drops the MIDDLE of a path too long to fit, so the file
      * name survives; plain ellipsis would cut off the part being looked for. */
-    LTEXT "", IDC_SET_L_LOGDEFAULT, 108, 60, 176, 10, SS_PATHELLIPSIS
+    LTEXT "", IDC_SET_L_LOGDEFAULT, 94, 55, 190, 10, SS_PATHELLIPSIS
     /* Alt+K belongs to "Load remembered &keys at startup" on the first page.
      * The accelerator check is per DIALOG, not per page, and it is right to
      * be: Alt+letter reaches a hidden page's control just as well as a
      * visible one, so the letters have to be unique across all four. */
     LTEXT "Rota&te at (KB):", IDC_SET_L_LOGKB,
-        16, 78, 60, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_AGENTLOGKB, 80, 78, 36, 11, ES_NUMBER
+        16, 70, 48, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_AGENTLOGKB, 68, 70, 36, 11, ES_NUMBER
     LTEXT "&Generations:", IDC_SET_L_LOGKEEP,
-        132, 78, 52, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_AGENTLOGKEEP, 188, 78, 28, 11, ES_NUMBER
+        112, 70, 44, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_AGENTLOGKEEP, 160, 70, 28, 11, ES_NUMBER
     LTEXT "E&xpunge rotated logs after (days, 0 = keep):", IDC_SET_L_LOGDAYS,
-        16, 98, 158, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_AGENTLOGDAYS, 178, 98, 32, 11, ES_NUMBER
+        16, 86, 152, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_AGENTLOGDAYS, 172, 86, 32, 11, ES_NUMBER
     LTEXT "The log is evidence, not proof - see the manual.",
-        IDC_SET_L_LOGNOTE, 16, 118, 268, 10
+        IDC_SET_L_LOGNOTE, 16, 102, 268, 10
 
-    DEFPUSHBUTTON "OK", IDOK, 182, 188, 54, 15
-    PUSHBUTTON "Cancel", IDCANCEL, 240, 188, 54, 15
+    DEFPUSHBUTTON "OK", IDOK, 182, 148, 54, 15
+    PUSHBUTTON "Cancel", IDCANCEL, 240, 148, 54, 15
 END
 
 /* KiTTY: the audit-log viewer - modeless (a log window is left open for an

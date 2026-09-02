@@ -2291,6 +2291,22 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             ymax = ymax > cp2.ypos ? ymax : cp2.ypos;
             cp.ypos = ymax;
             endbox(&cp);
+        /* KiTTY: the window's height follows the layout, not the template.
+         * The template's 309 units were measured for the old row heights;
+         * every later change to a row (the Actions buttons, 2026-09-02)
+         * left a blank band above the bottom edge. cp.ypos is the first
+         * free unit below the last box; one bottom border of the same 4
+         * units the layout started with closes the window. */
+        {
+            RECT want = { 0, 0, 0, cp.ypos + 4 };
+            RECT wr, cr;
+            MapDialogRect(hwnd, &want);
+            GetWindowRect(hwnd, &wr);
+            GetClientRect(hwnd, &cr);
+            SetWindowPos(hwnd, NULL, 0, 0, wr.right - wr.left,
+                         (wr.bottom - wr.top) - cr.bottom + want.bottom,
+                         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
         }
         struct InitialParams *params = (struct InitialParams *)lParam;
         ui_set_key_type(hwnd, state, params->keybutton);

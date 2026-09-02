@@ -1160,6 +1160,110 @@ static int kitty_reg_import( const char *filename ) {
  * back with the wrong type, dropped anything past a fixed 1 KB, and could
  * overflow that buffer on a long value name. reg.exe gets all of it right and
  * produces a genuine .reg the user can read or import by hand. */
+/* reg.exe writes a REG_SZ that holds a line break as a quoted string broken
+ * across several lines, and reg.exe import then SKIPS that value: a two-line
+ * session Comment vanished from every backup, and restoring an untouched
+ * hive deleted it. Rewrite such values as hex(1) - the UTF-16LE bytes, the
+ * form reg import restores exactly. The file is UTF-16LE with a BOM; every
+ * other line is copied through untouched. */
+static int kitty_reg_line_is_value( const wchar_t *l, size_t n, size_t *valstart ) {
+	size_t i ;
+	if( n < 3 ) return 0 ;
+	if( l[0] == L'@' ) { if( n >= 3 && l[1] == L'=' && l[2] == L'"' ) { *valstart = 3 ; return 1 ; } return 0 ; }
+	if( l[0] != L'"' ) return 0 ;
+	for( i = 1 ; i + 2 < n ; i++ ) {
+		if( l[i] == L'\\' ) { i++ ; continue ; }            /* escaped char in the name */
+		if( l[i] == L'"' && l[i+1] == L'=' && l[i+2] == L'"' ) { *valstart = i + 3 ; return 1 ; }
+		if( l[i] == L'"' ) return 0 ;                        /* "name"=dword:... */
+	}
+	return 0 ;
+}
+/* Does this line END the quoted value (last char an unescaped quote)? */
+static int kitty_reg_line_closes( const wchar_t *l, size_t n, size_t from ) {
+	size_t bs = 0, i ;
+	if( n <= from || l[n-1] != L'"' ) return 0 ;
+	for( i = n - 1 ; i > from && l[i-1] == L'\\' ; i-- ) bs++ ;
+	return ( bs % 2 ) == 0 ;
+}
+static void kitty_reg_fix_multiline( const char *filename ) {
+	FILE *fp ; long size ; unsigned char *buf ; wchar_t *w, *out ; size_t n, pos, o = 0, cap ; int changed = 0 ;
+	if( ( fp = fopen( filename, "rb" ) ) == NULL ) return ;
+	fseek( fp, 0, SEEK_END ) ; size = ftell( fp ) ; fseek( fp, 0, SEEK_SET ) ;
+	if( size < 4 ) { fclose( fp ) ; return ; }
+	buf = (unsigned char *)malloc( size + 2 ) ;
+	if( buf == NULL ) { fclose( fp ) ; return ; }
+	if( fread( buf, 1, size, fp ) != (size_t)size ) { fclose( fp ) ; free( buf ) ; return ; }
+	fclose( fp ) ;
+	if( buf[0] != 0xFF || buf[1] != 0xFE ) { free( buf ) ; return ; }   /* not reg.exe's Unicode file */
+	w = (wchar_t *)( buf + 2 ) ; n = ( size - 2 ) / 2 ;
+	cap = n * 6 + 64 ; out = (wchar_t *)malloc( cap * sizeof(wchar_t) ) ;
+	if( out == NULL ) { free( buf ) ; return ; }
+	pos = 0 ;
+	while( pos < n ) {
+		size_t ls = pos, le, vs ;
+		while( pos < n && w[pos] != L'\n' ) pos++ ;
+		le = pos ; if( pos < n ) pos++ ;                     /* past the \n */
+		while( le > ls && ( w[le-1] == L'\r' ) ) le-- ;      /* line without its ending */
+		if( kitty_reg_line_is_value( w + ls, le - ls, &vs ) && !kitty_reg_line_closes( w + ls, le - ls, vs ) ) {
+			/* The value runs on: collect its lines until one closes it. */
+			size_t vcap = 1024, vlen = 0, i ; wchar_t *val = (wchar_t *)malloc( vcap * sizeof(wchar_t) ) ;
+			size_t seg_s = ls + vs, seg_e = le ; int closed = 0 ;
+			if( val == NULL ) break ;
+			for( ; ; ) {
+				for( i = seg_s ; i < seg_e ; i++ ) {
+					if( vlen + 4 > vcap ) { vcap *= 2 ; val = (wchar_t *)realloc( val, vcap * sizeof(wchar_t) ) ; }
+					if( w[i] == L'\\' && i + 1 < seg_e ) { val[vlen++] = w[i+1] ; i++ ; }   /* \\ and \" */
+					else val[vlen++] = w[i] ;
+				}
+				if( closed || pos >= n ) break ;
+				/* the original line break belongs to the value */
+				if( vlen + 4 > vcap ) { vcap *= 2 ; val = (wchar_t *)realloc( val, vcap * sizeof(wchar_t) ) ; }
+				val[vlen++] = L'\r' ; val[vlen++] = L'\n' ;
+				seg_s = pos ;
+				while( pos < n && w[pos] != L'\n' ) pos++ ;
+				seg_e = pos ; if( pos < n ) pos++ ;
+				while( seg_e > seg_s && w[seg_e-1] == L'\r' ) seg_e-- ;
+				if( kitty_reg_line_closes( w + seg_s, seg_e - seg_s, 0 ) ) { closed = 1 ; seg_e-- ; }
+			}
+			if( closed ) {
+				/* "name"=hex(1):xx,00,...,00,00 with reg's own line continuation */
+				static const wchar_t hexd[] = L"0123456789abcdef" ;
+				size_t need = vs + 8 + ( vlen + 1 ) * 2 * 3 + ( ( vlen + 1 ) / 8 ) * 4 + 16 ;
+				int col = 0 ;
+				if( o + need > cap ) { cap = ( o + need ) * 2 ; out = (wchar_t *)realloc( out, cap * sizeof(wchar_t) ) ; }
+				memcpy( out + o, w + ls, ( vs - 1 ) * sizeof(wchar_t) ) ; o += vs - 1 ;   /* "name"= */
+				memcpy( out + o, L"hex(1):", 7 * sizeof(wchar_t) ) ; o += 7 ;
+				for( i = 0 ; i <= vlen ; i++ ) {
+					unsigned c = ( i < vlen ) ? (unsigned)val[i] : 0u ;
+					unsigned bytes[2] = { c & 0xFF, ( c >> 8 ) & 0xFF } ;
+					int k ;
+					for( k = 0 ; k < 2 ; k++ ) {
+						if( i > 0 || k > 0 ) { out[o++] = L',' ; if( ++col == 25 ) { out[o++] = L'\\' ; out[o++] = L'\r' ; out[o++] = L'\n' ; out[o++] = L' ' ; out[o++] = L' ' ; col = 0 ; } }
+						out[o++] = hexd[ bytes[k] >> 4 ] ; out[o++] = hexd[ bytes[k] & 15 ] ;
+					}
+				}
+				out[o++] = L'\r' ; out[o++] = L'\n' ;
+				changed = 1 ;
+				free( val ) ;
+				continue ;
+			}
+			free( val ) ;
+			/* never closed: copy the rest through untouched */
+			if( o + ( n - ls ) > cap ) { cap = o + ( n - ls ) + 16 ; out = (wchar_t *)realloc( out, cap * sizeof(wchar_t) ) ; }
+			memcpy( out + o, w + ls, ( n - ls ) * sizeof(wchar_t) ) ; o += n - ls ; pos = n ;
+			continue ;
+		}
+		if( o + ( pos - ls ) > cap ) { cap = ( o + ( pos - ls ) ) * 2 ; out = (wchar_t *)realloc( out, cap * sizeof(wchar_t) ) ; }
+		memcpy( out + o, w + ls, ( pos - ls ) * sizeof(wchar_t) ) ; o += pos - ls ;
+	}
+	free( buf ) ;
+	if( changed && ( fp = fopen( filename, "wb" ) ) != NULL ) {
+		fwrite( "\xFF\xFE", 1, 2, fp ) ;
+		fwrite( out, sizeof(wchar_t), o, fp ) ;
+		fclose( fp ) ;
+	}
+	free( out ) ;
+}
 void SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) {
 	char hive[4096] ;
 	const char * root ;
@@ -1169,7 +1273,7 @@ void SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename )
 	snprintf( hive, sizeof(hive), "%s\\%s", root, TEXT(lpSubKey) ) ;
 	/* reg.exe /y overwrites, but a stale file must not survive a failed export. */
 	unlink( filename ) ;
-	kitty_reg_tool( "export", hive, filename ) ;
+	if( kitty_reg_tool( "export", hive, filename ) ) kitty_reg_fix_multiline( filename ) ;
 	}
 
 static int portable_backup_copy_tree( const char *src, const char *dst ) {
@@ -3697,7 +3801,7 @@ void kitty_netdbg_ts( const char *msg ) {
  * the worst case is asking a question rather than swallowing one. */
 int kitty_cli_do_and_exit( void ) {
 	static const char * const batch[] = {
-		"-importdir", "-exportall", "-portablecopy", "-takefolder",
+		"-importdir", "-exportall", "-portablecopy", "-takefolder", "-backupnow",
 		"-mungestr", "-sendcmd", "-edit", "-ed", "-edb",
 		"-fileassoc", "-sshhandler", "-cleanup", "-pgpfp",
 		/* Deliberately NOT "-h"/"-?": this scan has no notion of quoting, so a

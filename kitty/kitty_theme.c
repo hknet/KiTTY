@@ -98,6 +98,12 @@ static LRESULT CALLBACK kt_lv_subclass(HWND lv, UINT msg, WPARAM wParam,
 static LRESULT CALLBACK kt_gb_subclass(HWND btn, UINT msg, WPARAM wParam,
                                        LPARAM lParam, UINT_PTR id,
                                        DWORD_PTR ref);
+/* Ctrl+A in an edit box selects everything: Windows gives a multi-line
+ * edit no such key at all, and the public-key box of kittygen is exactly
+ * where one wants it. Every edit of every dialog gets this, light or dark. */
+static LRESULT CALLBACK kt_edit_subclass(HWND edit, UINT msg, WPARAM wParam,
+                                         LPARAM lParam, UINT_PTR id,
+                                         DWORD_PTR ref);
 
 /*
  * Which windows have been themed, and how. A window procedure gets
@@ -398,6 +404,9 @@ static BOOL CALLBACK kt_theme_child(HWND child, LPARAM lp)
 
     if (p_AllowDarkModeForWindow)
         p_AllowDarkModeForWindow(child, dark);
+
+    if (!stricmp(cls, "Edit"))
+        SetWindowSubclass(child, kt_edit_subclass, 5, 0);   /* Ctrl+A */
 
     if (!stricmp(cls, "Edit") || !stricmp(cls, "ComboBox")) {
         /*
@@ -1328,6 +1337,19 @@ static void kt_paint_menubar_line(HWND w)
  * here; while it is light every message goes straight through, so the classic
  * look stays exactly the control's own.
  */
+static LRESULT CALLBACK kt_edit_subclass(HWND edit, UINT msg, WPARAM wParam,
+                                         LPARAM lParam, UINT_PTR id,
+                                         DWORD_PTR ref)
+{
+    if (msg == WM_CHAR && wParam == 1) {          /* Ctrl+A */
+        SendMessage(edit, EM_SETSEL, 0, (LPARAM)-1);
+        return 0;
+    }
+    if (msg == WM_NCDESTROY)
+        RemoveWindowSubclass(edit, kt_edit_subclass, id);
+    return DefSubclassProc(edit, msg, wParam, lParam);
+}
+
 static LRESULT CALLBACK kt_gb_subclass(HWND btn, UINT msg, WPARAM wParam,
                                        LPARAM lParam, UINT_PTR id,
                                        DWORD_PTR ref)
@@ -1643,4 +1665,31 @@ void kitty_theme_hook_dialogs(bool (*want_dark)(void))
      * thread. */
     kt_cbt_hook = SetWindowsHookEx(WH_CBT, kt_cbt_proc, NULL,
                                    GetCurrentThreadId());
+}
+
+/* ---- the row aligner (see kitty_theme.h) --------------------------------- */
+void kitty_theme_align_row(HWND dlg, int field_id, const int *ids)
+{
+    HWND f = GetDlgItem(dlg, field_id);
+    RECT fr;
+    if (!f || !ids) return;
+    GetWindowRect(f, &fr);
+    MapWindowPoints(NULL, dlg, (POINT *)&fr, 2);
+    for (; *ids; ids++) {
+        HWND c = GetDlgItem(dlg, *ids);
+        RECT r;
+        if (!c) continue;
+        GetWindowRect(c, &r);
+        MapWindowPoints(NULL, dlg, (POINT *)&r, 2);
+        SetWindowPos(c, NULL, r.left, fr.top, r.right - r.left,
+                     fr.bottom - fr.top, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+}
+
+void kitty_theme_align_rows(HWND dlg, const struct kitty_theme_row *rows,
+                            size_t n)
+{
+    size_t i;
+    for (i = 0; i < n; i++)
+        kitty_theme_align_row(dlg, rows[i].field, rows[i].ids);
 }
