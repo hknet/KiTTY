@@ -1449,6 +1449,8 @@ bool platform_dit_available(void);
  * PuTTY version number formatted as an SSH version string.
  */
 extern char sshver[40];   /* KiTTY: mutable, overridable via set_sshver() */
+extern bool sshver_overridden;   /* KiTTY: set_sshver() replaced sshver */
+bool sshver_is_override(void);   /* KiTTY: set -> the string IS the software token */
 
 /*
  * Gross hack: pscp will try to start SFTP but fall back to scp1 if

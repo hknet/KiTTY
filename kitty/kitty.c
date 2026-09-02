@@ -143,7 +143,10 @@ void SetNamedProxyHostnameOnly( const int flag ) { NamedProxyHostnameOnly = flag
  * lists, spelled as the panel spells them (cyd01/KiTTY#556 - see the comment on
  * the load hook in windows/putty.c for why anyone wants this).
  * NOTE: the ini parser matches keys case-SENSITIVELY, so this is "funkeys". */
-static int FunkeysDefault = -1 ;
+/* What a NEW session's Keyboard panel starts with. Xterm 216+ is the mode
+ * every modern host expects (Shift+F1..F12 = F13..F24); PuTTY's ESC[n~ is
+ * still one choice away, and a saved session always keeps its own mode. */
+static int FunkeysDefault = FUNKY_XTERM_216 ;
 int GetFunkeysDefault( void ) { return FunkeysDefault ; }
 void SetFunkeysDefault( const int t ) { FunkeysDefault = t ; }
 
@@ -325,7 +328,7 @@ void SetConfigBoxWindowHeight( const int num ) { ConfigBoxWindowHeight = num ; }
 
 // Largeur de la fenetre de la boite de configuration (0 = celle du gabarit).
 // Written by dragging the box's own edge as well as by the field on
-// Application > Config window: the drag and the field are one setting, so the
+// Application > Config Window: the drag and the field are one setting, so the
 // field cannot come to disagree with the window it describes.
 static int ConfigBoxWindowWidth = 0 ;
 int GetConfigBoxWindowWidth(void) { return ConfigBoxWindowWidth ; }
@@ -3260,10 +3263,10 @@ static const IniParam ini_params[] = {
 	INIP_KW( INIT_SECTION, 0, "shrinkbitmap",	1, 0, 0,	NULL, SetShrinkBitmapEnable ),
 #endif
 	/* Symmetrical and registry-aware for the same reason as the four below:
-	 * Application > Config window offers it as a checkbox now. */
+	 * Application > Config Window offers it as a checkbox now. */
 	INIP_KW( "ConfigBox", 0, "noexit",		1, 0, IGN,	&ConfigBoxNoExitFlag, NULL ),
 	/*
-	 * The Session-panel group on Application > Config window edits these
+	 * The Session-panel group on Application > Config Window edits these
 	 * four, which forces two things on them.
 	 *
 	 * SYMMETRICAL. "filter" and "defaultsettings" used to be one-way (yes =
@@ -3526,7 +3529,7 @@ void LoadParameters( void ) {
 		}
 	}
 	/* ReadParameter, not readINI: the Session-panel group on Application >
-	 * Config window edits this, and a panel writes through WriteParameter -
+	 * Config Window edits this, and a panel writes through WriteParameter -
 	 * which in registry mode does not write the file. */
 	if( ReadParameter( "ConfigBox", "dblclick", buffer ) ) {
 		if( !stricmp(buffer,"open") ) { SetDblClickFlag(0) ; }
@@ -3535,7 +3538,7 @@ void LoadParameters( void ) {
 	/* How many levels of the config-box Category tree to auto-expand. Default
 	 * (unset / all / full) = fully expanded; a number 1..N expands only that
 	 * deep (1 = top categories only, like stock PuTTY). */
-	/* ReadParameter, not readINI: Application > Config window edits it, and a
+	/* ReadParameter, not readINI: Application > Config Window edits it, and a
 	 * panel writes through WriteParameter - the registry in registry mode. */
 	if( ReadParameter( "ConfigBox", "categoryexpand", buffer ) ) {
 		extern int kitty_category_expand_depth ;

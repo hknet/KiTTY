@@ -1156,7 +1156,7 @@ int SearchCtHelper( void ) {
 		else { DelParameter( INIT_SECTION, "CtHelperPath" ) ; }
 	}
 	snprintf( buffer, sizeof(buffer), "%s\\cthelper.exe", InitialDirectory ) ;
-	if( adopt_tool_path_if_exists( &CtHelperPath, buffer, "CtHelperPath", "CTHELPER_PATH" ) ) return 1 ;
+	if( adopt_tool_path_if_exists( &CtHelperPath, buffer, NULL, "CTHELPER_PATH" ) ) return 1 ;
 	return 0 ;
 }
 	
@@ -1448,24 +1448,24 @@ int SearchPSCP( void ) {
 	if( ReadParameterN( INIT_SECTION, "pscpdir", buffer, sizeof(buffer) ) ) {
 		buffer[4076]='\0';
 		strcat( buffer, "\\" ) ; strcat( buffer, ki ) ;
-		if( adopt_tool_path_if_exists( &PSCPPath, buffer, "PSCPPath", NULL ) ) return 1 ;
+		if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
 		else {
 			ReadParameterN( INIT_SECTION, "pscpdir", buffer, sizeof(buffer) ) ;
 			buffer[4076]='\0';
 			strcat( buffer, "\\" ) ; strcat( buffer, pu ) ;
-			if( adopt_tool_path_if_exists( &PSCPPath, buffer, "PSCPPath", NULL ) ) return 1 ;
+			if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
 		}
 	}
 	// kscp dans le meme repertoire
 	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, ki ) ;
-	if( adopt_tool_path_if_exists( &PSCPPath, buffer, "PSCPPath", NULL ) ) return 1 ;
+	if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
 	// pscp dans le repertoire normal de PuTTY
 	snprintf( buffer, sizeof(buffer), "%s\\PuTTY\\%s", getenv("ProgramFiles"), pu ) ;
-	if( adopt_tool_path_if_exists( &PSCPPath, buffer, "PSCPPath", NULL ) ) return 1 ;
+	if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
 
 	// pscp dans le meme repertoire
 	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, pu ) ;
-	if( adopt_tool_path_if_exists( &PSCPPath, buffer, "PSCPPath", NULL ) ) return 1 ;
+	if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
 
 	return 0 ;
 }

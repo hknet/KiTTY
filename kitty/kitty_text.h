@@ -478,7 +478,7 @@
 
 /* Connection/Proxy */
 #define KT_PROXY_OPTIONS_CONTROLLING_PROXY_USAGE     "Options controlling proxy usage"
-#define KT_PROXY_NAMED_PROXIES_PROXY_TEMPLATES       "Named proxies (proxy templates)"
+#define KT_PROXY_NAMED_PROXIES_PROXY_TEMPLATES       "Named Proxies (proxy templates)"
 #define KT_PROXY_EDIT_NAMED_PROXIES                  "Edit named proxies..."
 #define KT_PROXY_THIS_SESSION_S_OWN_PROXY            "This session's own proxy"
 #define KT_PROXY_NAMED_PROXY_PRE_SETS                "Named proxy pre-sets"
@@ -487,7 +487,7 @@
 #define KT_PROXY_PROXY_HOSTNAME                      "Proxy hostname"
 #define KT_PROXY_PORT                                "Port"
 #define KT_PROXY_EXCLUDE_HOSTS_IPS                   "Exclude Hosts/IPs"
-#define KT_PROXY_CONSIDER_PROXYING_LOCAL_HOST_CONNECTIONS "Consider proxying local host connections"
+#define KT_PROXY_CONSIDER_PROXYING_LOCAL_HOST_CONNECTIONS "Consider proxying localhost connections"
 #define KT_PROXY_DO_DNS_NAME_LOOKUP                  "Do DNS name lookup at proxy end:"
 #define KT_PROXY_NO                                  "No"
 #define KT_PROXY_YES                                 "Yes"
@@ -498,14 +498,14 @@
         "in the terminal window"
 #define KT_PROXY_ONLY_UNTIL_SESSION_STARTS           "Only until session starts"
 
-/* Application/Workplace proxy */
+/* Application/Workplace Proxy */
 #define KT_WORKPLACE_PROXY_WORKPLACE_PROXY_MODE_APPLICATION_WIDE "Workplace proxy mode (application-wide)"
 #define KT_WORKPLACE_PROXY_WHILE_IT_IS_ON_EVERY      "While on, EVERY connection uses the proxy below. No " \
         "session is changed."
 #define KT_WORKPLACE_PROXY_PROXY_FOR_EVERYTHING      "Proxy for everything:"
 #define KT_WORKPLACE_PROXY_SWITCH_OFF_AFTER          "Switch off after:"
 #define KT_WORKPLACE_PROXY_SWITCH                    "Switch on"
-#define KT_WORKPLACE_PROXY_NEEDS_NAMED               "Named proxies need to be configured first."
+#define KT_WORKPLACE_PROXY_NEEDS_NAMED               "Named Proxies need to be configured first."
 
 /* Connection/SSH */
 #define KT_SSH_OPTIONS_CONTROLLING_SSH_CONNECTIONS   "Options controlling SSH connections"
@@ -720,9 +720,11 @@
 #define KT_ZMODEM_CTRL_X_TO_QUIT_RZ                  "Ctrl+X to quit rz before completing"
 #define KT_ZMODEM_SEND_COMMAND_SZ                    "Send command (sz)"
 
-/* Application/Config window */
+/* Application/Config Window */
 #define KT_CONFIG_WINDOW_THIS_WINDOW                 "This window"
-#define KT_CONFIG_WINDOW_APPEARANCE                  "Appearance"
+#define KT_CONFIG_WINDOW_CATEGORY_TREE               "Category tree"
+#define KT_APPEARANCE_TITLE                          "Appearance"
+#define KT_APPEARANCE_COLOURS                        "Colours"
 #define KT_CONFIG_WINDOW_COLOURS                     "Choose the default Appearance:"
 #define KT_CONFIG_WINDOW_ONE_SETTING_FOR_THE_WHOLE   "One setting for the whole suite - kitty, kageant and " \
         "kittygen all read it. Dark needs Windows 10 1809 or newer."
@@ -757,8 +759,6 @@
 
 /* Application/External tools */
 #define KT_EXTERNAL_TOOLS_HELPER_PROGRAMS            "Helper programs"
-#define KT_EXTERNAL_TOOLS_WHERE_THESE_ARE_INSTALLED  "Where these are installed is a property of this PC, so they " \
-        "are kept in kitty.ini and shared by every session."
 
 /* Application/External tools/WinSCP */
 #define KT_WINSCP_WINSCP                             "WinSCP"
@@ -782,7 +782,7 @@
 #define KT_KSET_INTRO_WHOLE                          "Settings of this KiTTY as a whole, not of a session."
 #define KT_KSET_INTRO_WHERE                          "Each leaf says where its values are kept."
 
-/* Application/KiTTY Settings/Storage & backups */
+/* Application/KiTTY Settings/Storage & Backup */
 #define KT_KSET_STORAGE_TITLE                        "Where settings are kept"
 #define KT_KSET_STORAGE_THIS_KITTY                   "This KiTTY"
 #define KT_KSET_STORAGE_STORE_REGISTRY               "Settings store: registry (HKCU\\%s)"
@@ -819,58 +819,74 @@
 #define KT_KSET_STORAGE_WARNLEGACY                   "Warn before re-encrypting an old-format password"
 
 /* Application/KiTTY Settings/Terminal windows (+ Shortcuts) */
-#define KT_KSET_TW_TITLE                             "Every terminal window"
+#define KT_KSET_TW_TITLE                             "Keys and mouse"
 #define KT_KSET_TW_BEHAVIOUR                         "Behaviour"
 #define KT_KSET_TW_MOUSECHORDS                       "Mouse chords (duplicate session, send to tray)"
 #define KT_KSET_TW_MOUSECHORDS_NOTE                  "Ctrl+Shift+click duplicates, Ctrl+middle-click sends to the tray."
-#define KT_KSET_TW_HYPERLINK                         "Offer the hyperlink feature"
-#define KT_KSET_TW_FUNKEYS                           "Default function-key mode:"
-#define KT_KSET_TW_FUNKEYS_NOTE                      "For sessions whose Keyboard panel does not set one."
-#define KT_KSET_TW_PASTESIZE                         "Large-paste warning, characters (0 = never):"
+#define KT_KSET_TW_HYPERLINK                         "Hyperlinks in the terminal"
+#define KT_KSET_TW_FUNKEYS                           "Function keys of a new session:"
+#define KT_KSET_TW_FUNKEYS_NOTE                      "What the Keyboard panel of a new session starts with; a " \
+        "session's own choice always wins."
+#define KT_KSET_TW_PASTESIZE                         "Warn before pasting more than this many characters (0 = never):"
+#define KT_CLIPBOARD_TITLE                           "Clipboard"
+#define KT_CLIPBOARD_PASTE                           "Large pastes"
+#define KT_CLIPBOARD_PASTE_WHAT                      "A paste above the limit is held back and asked about first, so " \
+        "a stray Enter cannot flood the shell."
+#define KT_CLIPBOARD_PASTE_SCOPE                     "There is no per-session setting for this."
 #define KT_KSET_TW_DEBUG                             "Extra tracing in the Event Log"
 #define KT_KSET_SC_TITLE                             "Keyboard shortcuts"
 #define KT_KSET_SC_ENABLE                            "Keyboard shortcuts in the terminal window"
 #define KT_KSET_SC_FUTURE                            "The Shortcut-Editor will be available in the future."
 #define KT_KSET_SC_DEFINED                           "Key combinations that type text"
 #define KT_KSET_SC_NONE                              "None defined."
-#define KT_KSET_FK_DEFAULT                           "Keyboard panel default"
 #define KT_KSET_FK_TILDE                             "ESC[n~"
 #define KT_KSET_FK_LINUX                             "Linux"
 #define KT_KSET_FK_XTERMR6                           "Xterm R6"
 #define KT_KSET_FK_VT400                             "VT400"
 #define KT_KSET_FK_VT100P                            "VT100+"
 #define KT_KSET_FK_SCO                               "SCO"
-#define KT_KSET_FK_XTERM216                          "Xterm 216+"
+#define KT_KSET_FK_XTERM216                          "Xterm 216+ (KiTTY's default)"
 
 /* Application/KiTTY Settings/Automation */
-#define KT_KSET_AU_TITLE                             "Typing for you"
+#define KT_KSET_AU_TITLE                             "Automatic input: pacing, scripts, broadcast"
 #define KT_KSET_AU_PACING                            "Pacing"
 #define KT_KSET_AU_INITDELAY                         "Wait before auto-typing starts, seconds:"
 #define KT_KSET_AU_BCDELAY                           "Pause per typed character, ms (0 = off):"
 #define KT_KSET_AU_INTERNALDELAY                     "Pause per typed line and modifier key, ms:"
 #define KT_KSET_AU_COMMANDDELAY                      "Pause between auto-command lines, seconds:"
-#define KT_KSET_AU_SCRIPTS                           "Scripts"
-#define KT_KSET_AU_SCRIPTMODE                        "Script engine (send a script file)"
-#define KT_KSET_AU_SCRIPTFILTER                      "File filter for script files:"
+#define KT_KSET_AU_SCRIPTS                           "Scripts typed into the terminal"
+#define KT_KSET_AU_SCRIPTMODE                        "Script engine (types a script file into the terminal, line " \
+        "by line)"
+#define KT_KSET_AU_SCRIPTFILTER                      "File types offered by \"Send a script file\":"
+#define KT_KSET_AU_SCRIPTFILTER_NOTE                 "A Windows file-dialog filter: Description|*.ext;*.ext|... " \
+        "Blank = scripts (*.ksh, *.sh), SQL files and all files."
 #define KT_KSET_AU_BROADCAST                         "Broadcast"
-#define KT_KSET_AU_SENDCMD                           "New windows accept broadcast text"
-#define KT_KSET_AU_GROUP                             "Broadcast group key: %s"
-#define KT_KSET_AU_GROUP_NOTE                        "Generated for this install; edit the file to join or split " \
-        "installs."
+#define KT_KSET_AU_DIAGNOSTICS                       "Diagnostics"
+#define KT_KSET_AU_SENDCMD                           "Enable \"Accept broadcast\" on application level"
+#define KT_KSET_AU_SENDCMD_NOTE                      "A broadcast (/command, kitty -sendcmd) types its text into " \
+        "every window that accepts it. Tools > Accept broadcast switches one window either way."
+#define KT_KSET_AU_GROUP                             "Group key of this KiTTY: %s"
+#define KT_KSET_AU_GROUP_INI                         "Group key of this KiTTY: %s (set by sendcmdgroup in kitty.ini)"
+#define KT_KSET_AU_GROUP_NOTE                        "Only KiTTYs with the same key hear each other. The key is " \
+        "derived from where this copy is installed, so a second installation gets a different one; give both " \
+        "the same sendcmdgroup in kitty.ini to join them."
 
 /* Application/KiTTY Settings/Window & display */
-#define KT_KSET_WD_TITLE                             "Windows on screen"
+#define KT_KSET_WD_TITLE                             "Features and printing"
 #define KT_KSET_WD_TITLEBAR                          "Title bar"
 #define KT_KSET_WD_WINTITLE                          "Decorate the window title (size, PROTECTED, ONTOP)"
 #define KT_KSET_WD_SIZE                              "Show the terminal size in the title"
 #define KT_KSET_WD_WINROLL                           "Double-click the title bar rolls the window up"
-#define KT_KSET_WD_FEATURES                          "Features offered"
-#define KT_KSET_WD_CTRLTAB                           "Offer Ctrl+Tab window switching"
-#define KT_KSET_WD_TRANSPARENCY                      "Offer window transparency"
-#define KT_KSET_WD_BGIMAGE                           "Offer background images"
+#define KT_KSET_WD_FEATURES                          "Features"
+#define KT_KSET_WD_CTRLTAB                           "Ctrl+Tab window switching"
+#define KT_KSET_WD_TRANSPARENCY                      "Window transparency"
+#define KT_KSET_WD_BGIMAGE                           "Background images"
+#define KT_KSET_WD_ICONS                             "Icons"
 #define KT_KSET_WD_SLIDEDELAY                        "Slideshow interval fallback, seconds (0 = none):"
 #define KT_KSET_WD_SHRINK                            "Resample a large image for Stretch+"
-#define KT_KSET_WD_ICONFILE                          "Icon file:"
+#define KT_KSET_WD_ICONFILE                          "Icon library for session icons (.exe, .dll or .icl):"
+#define KT_KSET_WD_ICONFILE_NOTE                     "A session's Window > Icon panel picks one of its icons for " \
+        "the terminal window. Read at the next start; blank = kitty.dll beside kitty.exe, else kitty.exe."
 #define KT_KSET_WD_ICONFILE_SELECT                   "Select the icon file"
 #define KT_KSET_WD_PRINTING                          "Printing"
 #define KT_KSET_WD_PRINT_PITCH                       "Line pitch, printer units:"
@@ -879,19 +895,31 @@
 #define KT_KSET_WD_FONTFB                            "Font fallback"
 #define KT_KSET_WD_FONTFB_ACTIVE                     "Draw missing characters from fallback fonts"
 #define KT_KSET_WD_FONTFB_LIST                       "Fonts to try first (comma-separated):"
-#define KT_KSET_WD_FONTFB_LIST_NOTE                  "A leading ! replaces the built-in list."
-#define KT_KSET_WD_FILEONLY                          "Printing and font fallback are kept in kitty.ini in every " \
-        "store mode."
+#define KT_KSET_WD_FONTFB_LIST_NOTE                  "Font names as Windows shows them, e.g. Symbols Nerd Font Mono, " \
+        "JetBrains Mono. A leading ! replaces the built-in list instead of preceding it."
+#define KT_KSET_WD_FONTFB_FILEONLY                   "Kept in kitty.ini in every store mode, with its override and " \
+        "log keys."
+#define KT_KSET_WD_FILEONLY                          "Kept in kitty.ini whatever the store mode."
 
 /* Application/KiTTY Settings/Connection & reconnect */
-#define KT_KSET_CN_TITLE                             "Connections"
+#define KT_KSET_CN_TITLE                             "Auto-Reconnect-Option and In-Line-Confirmations"
+#define KT_PXFWD_TITLE                               "Proxy forwards"
+#define KT_PXFWD_CHAINS                              "Jump-host chains"
+#define KT_PXFWD_NOTE                                "A named proxy may itself go through a named proxy. This caps " \
+        "how long such a chain may get before the connection is refused."
 #define KT_KSET_CN_RECONNECT                         "Reconnect"
 #define KT_KSET_CN_AUTORECONNECT                     "Reconnect automatically when the link drops"
 #define KT_KSET_CN_AUTORECONNECT_NOTE                "Master switch for every session's reconnect boxes."
 #define KT_KSET_CN_DELAY                             "Wait between reconnect attempts, seconds:"
 #define KT_KSET_CN_LIMITS                            "Limits"
 #define KT_KSET_CN_CHAINMAX                          "Longest allowed chain of jump hosts:"
-#define KT_KSET_CN_NOSAVE                            "Forget the login name and password a session learned"
+#define KT_KSET_CN_NOSAVE                            "Do not keep a typed login name and password in the session"
+#define KT_PASSWORDS_TITLE                           "Passwords"
+#define KT_PASSWORDS_TYPED                           "A login you typed"
+#define KT_PASSWORDS_TYPED_DEFAULT                   "Unticked (the default): after a login, the name and password " \
+        "you typed stay in the running session."
+#define KT_PASSWORDS_TYPED_CONSEQUENCE               "A duplicate session logs in with them, and Save in the terminal " \
+        "window's Change Settings writes them into the saved session."
 #define KT_KSET_CN_CONFIRM                           "Confirmations"
 #define KT_KSET_CN_MODALERRORS                       "Connection errors as pop-up boxes, not in the terminal"
 #define KT_KSET_CN_NEWKEY                            "Unknown host key:"
@@ -899,16 +927,22 @@
 #define KT_KSET_CN_WEAKKEY                           "Weak key or algorithm:"
 #define KT_KSET_CH_POPUP                             "Pop-up box"
 #define KT_KSET_CH_TERMINAL                          "Prompt in the terminal"
-#define KT_KSET_CN_IDENTITY                          "Identity"
+#define KT_CLIENT_IDENTITY_TITLE                     "Client identity"
+#define KT_CLIENT_IDENTITY_BANNER                    "SSH banner"
 #define KT_KSET_CN_SSHVERSION                        "Client version string (what the server is told):"
-#define KT_KSET_CN_SSHVERSION_NOTE                   "Not the protocol selector - that is a session's SSH panel."
+#define KT_KSET_CN_SSHVERSION_NOTE                   "Blank = KiTTY's own. Not the protocol selector - that is a " \
+        "session's SSH panel."
+#define KT_KSET_CN_SSHVERSION_PREVIEW                "The server is told: %s"
 
-/* Application/KiTTY Settings/Transfers & tools */
+/* Application/KiTTY Settings/Transfers & Tools */
 #define KT_KSET_TT_TITLE                             "Helper programs and transfers"
 #define KT_KSET_TT_KSCP                              "File copy (kscp)"
 #define KT_KSET_TT_PSCPPATH                          "File-copy helper (kscp.exe or pscp.exe):"
 #define KT_KSET_TT_PSCPPATH_SELECT                   "Select the file-copy helper"
-#define KT_KSET_TT_PSCPPATH_NOTE                     "Blank: KiTTY finds it by itself at startup."
+#define KT_KSET_TT_PSCPPATH_NOTE                     "Blank = KiTTY finds it at each start (kscp.exe beside it, then " \
+        "PuTTY's pscp.exe) and stores nothing. Set it only to force one binary."
+#define KT_KSET_TT_PSCPPATH_FOUND                    "Found at this start: %s"
+#define KT_KSET_TT_PSCPPATH_NONE                     "nothing - no kscp.exe or pscp.exe in the usual places"
 #define KT_KSET_TT_PSCPPORT                          "Port for file transfers (* = the session's port):"
 #define KT_KSET_TT_DOWNLOADDIR                       "Download folder:"
 #define KT_KSET_TT_UPLOADDIR                         "Remote upload folder:"
@@ -926,22 +960,29 @@
 #define KT_KSET_LA_WORKPLACE                         "Workplace proxy mode"
 #define KT_KSET_LA_EXITWITH                          "Workplace mode closes the launcher it started"
 #define KT_KSET_LA_NOTICE                            "Workplace notice stays on screen, seconds:"
-#define KT_KSET_LA_CLASSNAME                         "Window class: %s"
-#define KT_KSET_LA_READ_AT_START                     "The launcher reads these when it starts."
+#define KT_KSET_LA_READ_AT_START                     "The launcher is a separate program: a change here applies " \
+        "the next time it starts."
 
 /* The three panel side-jobs of the settings tree */
-#define KT_CONNECTION_RECONNECT_GLOBAL_NOTE          "A global master switch gates this: KiTTY Settings > " \
-        "Connections."
-#define KT_CONNECTION_RECONNECT_GLOBAL_OFF           "Reconnect is switched off for every session: KiTTY Settings > " \
-        "Connections."
+#define KT_CONNECTION_RECONNECT_GLOBAL_OFF           "Switched off for every session, on Application > KiTTY " \
+        "Settings > Reconnect & Prompts."
 #define KT_ZMODEM_GLOBAL_ENABLE                      "Enable ZModem transfers in every session"
 #define KT_ZMODEM_GLOBAL_OFF_NOTE                    "Switch it on and reopen the configuration window for the " \
         "settings."
+#define KT_NAMED_PROXIES_DEFAULTS_TITLE              "Defaults for the proxy Host field"
+#define KT_NAMED_PROXIES_HOSTFIELD_GROUP             "What the Host field of a named proxy means"
+#define KT_NAMED_PROXIES_HOSTFIELD_INTRO             "It can hold a host name, or the name of a saved session whose " \
+        "settings then make the jump connection. Each definition chooses on its \"..this is..\" line; " \
+        "\"as globally configured\" uses this default:"
 #define KT_NAMED_PROXIES_HOSTFIELD                   "Host field default:"
-#define KT_NAMED_PROXIES_HOSTFIELD_NOTE              "For a definition whose \"..this is..\" says \"as globally " \
-        "configured\"."
 #define KT_NAMED_PROXIES_HOSTFIELD_SESSION           "session name, then host name"
 #define KT_NAMED_PROXIES_HOSTFIELD_HOST              "host name only"
+#define KT_NAMED_PROXIES_HOSTFIELD_SESSION_MEANS     "Session name, then host name: if a saved session of that name " \
+        "exists, its settings - its own proxy included - make the jump; otherwise the field is a host name. " \
+        "PuTTY's classic rule."
+#define KT_NAMED_PROXIES_HOSTFIELD_HOST_MEANS        "Host name only: always a host name. Safer - a jump host that " \
+        "happens to share a saved session's name cannot pull that session's settings in."
+#define KT_NAMED_PROXIES_HOSTFIELD_OVERRIDE          "A definition that chooses for itself ignores this default."
 
 /* Application/Session parameter */
 #define KT_SESSION_PARAMETER_THE_SESSION_LIST        "The session list"
@@ -961,7 +1002,7 @@
 #define KT_SESSION_PARAMETER_PROXY                   "Proxy"
 #define KT_SESSION_PARAMETER_SHOW_THE_PROXY_CHOOSER  "Show the proxy chooser:"
 #define KT_SESSION_PARAMETER_NEVER_ALSO_HIDES_THE_EDIT "Never also hides the Edit button. Definitions stay on " \
-        "Application > Named proxies."
+        "Application > Named Proxies."
 
 /* Application/Updates */
 #define KT_UPDATES_KEEPING_KITTY_UP_TO_DATE          "Keeping KiTTY up to date"
@@ -973,7 +1014,7 @@
 #define KT_COMMENT_COMMENT_FOR_THIS_SESSION          "Comment for this session"
 #define KT_COMMENT_SESSION_COMMENT                   "Session comment"
 
-/* Application/Named proxies */
+/* Application/Named Proxies */
 #define KT_NAMED_PROXIES_PROXY_DEFINITIONS_SHARED_BY_EVERY "Proxy Definitions"
 #define KT_NAMED_PROXIES_DEFINITION                  "Definition"
 #define KT_NAMED_PROXIES_SHOW                        "show"

@@ -34,7 +34,7 @@ char default_init_file_content[] =
 ;    if that is what you were setting up. The Session tab is not remembered:\n\
 ;    it opens on the session panel, which is what most people came for.\n\
 ;    This key lives in the [ConfigBox] section.\n\
-;applicationpanel=Application/Named proxies\n\
+;applicationpanel=Application/Named Proxies\n\
 \n\
 ; dblclick: what a double-click on a saved session does\n\
 ;    - open: load it and open it in this window (like the Open button)\n\
@@ -127,7 +127,7 @@ char default_init_file_content[] =
 ; windowheight, windowwidth: the size of the configuration window, in pixels\n\
 ;    (scaled for your display DPI). Default 0 = whatever the window's own layout\n\
 ;    asks for. The window can also be dragged to a new size, and that writes\n\
-;    these two keys - the drag and the fields on Application > Config window are\n\
+;    these two keys - the drag and the fields on Application > Config Window are\n\
 ;    one setting, not two.\n\
 ;windowheight=0\n\
 ;windowwidth=0\n\
@@ -380,9 +380,9 @@ char default_init_file_content[] =
 ;    A proxy entry that says for itself overrides this.\n\
 ;namedproxy=sessionorhostname\n\
 \n\
-; funkeys: the default function-key mode for sessions that do not carry one,\n\
+; funkeys: the function-key mode a NEW session starts with (default xterm216),\n\
 ;    spelled as the Keyboard panel spells the modes: tilde, linux, xtermr6,\n\
-;    vt400, vt100p, sco, xterm216. \"xterm216\" is the one worth setting - it\n\
+;    vt400, vt100p, sco, xterm216. xterm216 is the built-in default - it\n\
 ;    is the only mode in which Shift+F1..F12 mean F13..F24 the way terminfo\n\
 ;    and every modern host expect.\n\
 ;funkeys=xterm216\n\
@@ -412,8 +412,8 @@ char default_init_file_content[] =
 \n\
 ; PSCPPath: the full path to the file-copy helper - kscp.exe, or PuTTY's\n\
 ;    pscp.exe - used by drag-and-drop upload and the Send/Get file commands.\n\
-;    You do not normally set this: KiTTY looks for the tool at startup and\n\
-;    writes what it found back here. It searches, in order:\n\
+;    You do not normally set this: KiTTY looks for the tool at every start\n\
+;    and stores NOTHING - an empty key stays empty. It searches, in order:\n\
 ;      1. this key, if it still points at a file that exists\n\
 ;      2. the pscpdir directory, kscp.exe first, then pscp.exe\n\
 ;      3. kscp.exe beside kitty.exe - the usual answer, since kscp ships\n\
@@ -621,10 +621,12 @@ char default_init_file_content[] =
 ;    default; set no to get the plain fast stretch back.\n\
 ;shrinkbitmap=no\n\
 \n\
-; sshversion: the client version string KiTTY announces to the SSH server.\n\
-;    Default (unset): PuTTY-KiTTY - KiTTY's own identifier. Some servers reject a\n\
-;    non-standard client-version string; set this to a common OpenSSH banner so\n\
-;    KiTTY looks like a stock client. Use a current OpenSSH version, e.g.:\n\
+; sshversion: the software token of the banner KiTTY announces to an SSH\n\
+;    server. Unset, the banner is the one the PuTTY base sends, e.g.\n\
+;    SSH-2.0-PuTTY_Release_0.85. Set, the banner becomes SSH-2.0-<this value>\n\
+;    exactly - some servers reject a non-standard client, and a current\n\
+;    OpenSSH string makes KiTTY look like a stock client, e.g.:\n\
+;    Application > Security > Client Identity shows the resulting banner.\n\
 ;sshversion=OpenSSH_10.0\n\
 \n\
 ; transparency: offer the window-transparency controls. On by default, and\n\
@@ -683,11 +685,16 @@ char default_init_file_content[] =
 ;    asks for.\n\
 ;theme=system\n\
 \n\
-; userpasssshnosave: do not keep the username and password KiTTY learned during\n\
-;    a login in the running session's settings. They are then not carried into\n\
-;    a duplicated session and cannot be written out if the session is saved.\n\
-;    Default no. It does not remove or ignore a password you deliberately\n\
-;    stored in a saved session - that one is still used to log in.\n\
+; userpasssshnosave: what happens to a login you TYPE. By default (no) the\n\
+;    user name and password typed at a login prompt are copied into the\n\
+;    running session's settings, as if entered on its Login panel - so a\n\
+;    \"Duplicate session\" logs in with them without asking, and \"Change\n\
+;    Settings\" > Save in the terminal window writes them into the saved\n\
+;    session (the password protected like any stored one, but stored without\n\
+;    you having asked). yes leaves the settings untouched: a duplicate asks\n\
+;    again and a later Save writes only what the Login panel held. A password\n\
+;    stored on the Login panel on purpose is not affected and is still used.\n\
+;    Also a checkbox: Application > Security > Passwords.\n\
 ;userpasssshnosave=no\n\
 \n\
 ; winroll: double-click the title bar to roll the window up into the title bar\n\
@@ -696,13 +703,13 @@ char default_init_file_content[] =
 ;winroll=yes\n\
 \n\
 ; WinSCPPath: the full path to the winscp.exe binary. Set it on\n\
-;    Application > External tools > WinSCP.\n\
+;    Application > KiTTY Settings > Transfers & Tools >WinSCP.\n\
 ;WinSCPPath=\n\
 \n\
 ; rzcommand, szcommand: the full paths to the ZModem helper programs (rz.exe\n\
 ;    and sz.exe from lrzsz). Where they are installed is a property of this PC,\n\
 ;    so they live here rather than in each saved session; set them on\n\
-;    Application > External tools > ZModem. Their OPTIONS, and the download\n\
+;    Application > KiTTY Settings > Transfers & Tools >ZModem. Their OPTIONS, and the download\n\
 ;    folder, stay per session on Connection > ZModem.\n\
 ;rzcommand=\n\
 ;szcommand=\n\

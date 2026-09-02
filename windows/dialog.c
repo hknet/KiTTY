@@ -1795,7 +1795,7 @@ static bool kitty_cfg_panel_relayout_ex(PortableDialogStuff *pds,
      * asking, so it keeps the width it has until it is saved or left - a
      * clipped panel is recoverable, a discarded edit is not.
      */
-    if (kitty_proxy_panel_dirty() && !strcmp(p->path, "Application/Named proxies"))
+    if (kitty_proxy_panel_dirty() && !strcmp(p->path, "Application/Named Proxies"))
         return false;
 
     if (visible) {
@@ -2165,7 +2165,7 @@ static void kitty_cfgbox_save_pos(HWND hwnd)
  * Remember how big the user dragged the box.
  *
  * It is stored as [ConfigBox] windowheight/windowwidth - the same two keys the
- * fields on Application > Config window edit - so that dragging the window and
+ * fields on Application > Config Window edit - so that dragging the window and
  * typing a size are one setting rather than two that can disagree. The values
  * are LOGICAL pixels, because that is what those keys have always meant and
  * what makes them portable between a scaled display and an unscaled one.
@@ -2305,7 +2305,7 @@ static dlgparam *kitty_cfg_dp = NULL;
 
 /*
  * The other direction from kitty_cfgbox_save_size: a size was TYPED on
- * Application > Config window, so the box that panel lives in takes it now
+ * Application > Config Window, so the box that panel lives in takes it now
  * rather than the next one. Called from that panel's handler.
  */
 void kitty_cfgbox_apply_size(void)
@@ -2681,7 +2681,7 @@ static PortableDialogStuff *kitty_cfg_pds = NULL;
  * values into controls that are already the wrong shape. Today that is the
  * saved-session list's row count ([ConfigBox] height) and the Session panel.
  *
- * Safe from the Config window panel because the Session panel is a different
+ * Safe from the Config Window panel because the Session panel is a different
  * one: a panel cannot be rebuilt while it is the one on screen, and this is
  * only ever reached from a field on another panel.
  */
@@ -2798,7 +2798,7 @@ static LRESULT CALLBACK KittyCfgTabProc(HWND hwnd, UINT msg,
 {
     if (msg == WM_LBUTTONDBLCLK) {
         bool apptab = (SendMessage(hwnd, TCM_GETCURSEL, 0, 0) == 1);
-        kitty_cfg_goto_panel(apptab ? "Application/Workplace proxy"
+        kitty_cfg_goto_panel(apptab ? "Application/Workplace Proxy"
                                     : "Session");
         return 0;
     }
@@ -2963,7 +2963,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
          * away.
          */
         if (kitty_cfg_active_panel && kitty_cfg_dp &&
-            !strcmp(kitty_cfg_active_panel->path, "Application/Config window"))
+            !strcmp(kitty_cfg_active_panel->path, "Application/Config Window"))
             kitty_cfg_panel_refresh(kitty_cfg_dp, kitty_cfg_active_panel);
       }
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);

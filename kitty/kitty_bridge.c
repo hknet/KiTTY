@@ -57,13 +57,31 @@ int force_reconf = 1;
 /* Override the SSH client version string (kitty.ini 'sshversion').
  * sshver is a mutable char[40] in utils/version.c (see ssh.h). */
 extern char sshver[40];
+extern bool sshver_overridden;          /* utils/version.c, beside sshver */
+static char sshver_builtin[40];
 void set_sshver(const char *vers) {
     if (!vers) return;
+    if (!sshver_builtin[0])
+        strncpy(sshver_builtin, sshver, sizeof(sshver_builtin) - 1);
+    if (!vers[0]) {
+        /* Cleared: back to the built-in token, banner as upstream sends it. */
+        strncpy(sshver, sshver_builtin, sizeof(sshver) - 1);
+        sshver_overridden = false;
+        return;
+    }
     strncpy(sshver, vers, sizeof(sshver) - 1);
     sshver[sizeof(sshver) - 1] = '\0';
+    sshver_overridden = true;
 }
-/* What the banner currently carries - the settings tree shows and edits it. */
-const char *get_sshver(void) { return sshver; }
+/* What the banner currently carries - the settings tree shows and edits it.
+ * When overridden the string IS the whole software token (ssh/verstring.c
+ * drops the implementation name before it). */
+const char *get_sshver(void) { return sshver_overridden ? sshver : ""; }
+/* The banner exactly as a server will receive it, for the settings tree's
+ * preview line: the verstring code's own recipe, minus the packet framing. */
+void kitty_ssh_banner_preview(char *buf, size_t size) {
+    snprintf(buf, size, "SSH-2.0-%s%s", sshver_overridden ? "" : "PuTTY", sshver);
+}
 
 /* save_open_settings_forced now implemented in kitty_settings_forced.c */
 

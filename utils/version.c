@@ -18,6 +18,12 @@ const char ver[] = TEXTVER;
  * overridden via kitty.ini 'sshversion'. Fixed 40-byte buffer keeps the static
  * assert below valid (sizeof == 40). */
 char sshver[40] = SSHVER;
+/* KiTTY: true once set_sshver() replaced it - the string is then the whole
+ * software token of the banner, and the implementation name is dropped
+ * (ssh/verstring.c). Here, beside sshver, so that every program that links
+ * the version string links the flag. */
+bool sshver_overridden = false;
+bool sshver_is_override(void) { return sshver_overridden; }
 
 /*
  * SSH local version string MUST be under 40 characters. Here's a

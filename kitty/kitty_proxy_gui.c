@@ -55,7 +55,7 @@ static const char *pxe_log_names[] = { "never", "always", "connect only" };
  */
 static const int   pxe_hostis_vals[]  = { -1, 1, 0 };
 static const char *pxe_hostis_names[] = {
-    "as globally configured (kitty.ini: namedproxy=)",
+    "as globally configured (see Defaults)",
     "a hostname or IP-address",
     "possibly the name of a saved session (PuTTY's old rule)" };
 #define PXE_NHOSTIS ((int)(sizeof(pxe_hostis_vals)/sizeof(pxe_hostis_vals[0])))
@@ -96,7 +96,7 @@ static Conf *pxe_new_conf(void)
 }
 
 /* ------------------------------------------------------------------ *
- * The Application tab's "Named proxies" panel (design §9.3b).
+ * The Application tab's "Named Proxies" panel (design §9.3b).
  *
  * An ordinary config box panel: it inherits the theme, the font, the panel
  * cache and the panel area's scrolling. It replaced a pop-up editor
@@ -553,13 +553,13 @@ void kitty_proxy_build_panel(struct controlbox *b)
         kitty_cfg_set_leave_guard(pxp_may_leave);
     }
 
-    ctrl_settitle(b, "Application/Named proxies",
+    ctrl_settitle(b, "Application/Named Proxies",
                   KT_NAMED_PROXIES_PROXY_DEFINITIONS_SHARED_BY_EVERY);
 
     /* ONE box, "Definition": every control on this panel describes the proxy
      * being edited, so the which/where/options split said nothing - three
      * frames' worth of height for no information. */
-    s = ctrl_getset(b, "Application/Named proxies", "which", KT_NAMED_PROXIES_DEFINITION);
+    s = ctrl_getset(b, "Application/Named Proxies", "which", KT_NAMED_PROXIES_DEFINITION);
     pd->namebox = ctrl_combobox(s, KT_NAMED_PROXIES_NAME_PICK_ONE_TO_EDIT,
                                 NO_SHORTCUT, 100, HELPCTX(kitty_named_proxies),
                                 pxp_name_handler, P(NULL), P(NULL));
@@ -623,19 +623,23 @@ void kitty_proxy_build_panel(struct controlbox *b)
      * blank until it has something to SAY - it is where pxp_say() answers
      * Save and Delete. The row it needs is the one the password/show merge
      * freed above, so the panel still fits the window's minimum height. */
-    s = ctrl_getset(b, "Application/Named proxies", "", NULL);
+    s = ctrl_getset(b, "Application/Named Proxies", "", NULL);
     pd->banner = ctrl_text(s, " ", HELPCTX(kitty_named_proxies));
 
-    /* The one global of this feature: how a definition's Host field is read
-     * when the definition itself does not say ([KiTTY] namedproxy). It is
-     * what the "..this is.." droplist's "as globally configured" entry
-     * means, so it lives beside the definitions rather than in the settings
-     * tree. Written the moment it is chosen, like every application setting;
-     * the leave guard above is about the definition, not this. */
-    s = ctrl_getset(b, "Application/Named proxies", "hostfield", NULL);
+    /* The one global of this feature, on a leaf of its own under the
+     * definitions: how a definition's Host field is read when the definition
+     * itself says "as globally configured" ([KiTTY] namedproxy). Written the
+     * moment it is chosen, like every application setting; the leave guard
+     * above is about a definition, not this leaf. */
+    ctrl_settitle(b, "Application/Named Proxies/Defaults", KT_NAMED_PROXIES_DEFAULTS_TITLE);
+    s = ctrl_getset(b, "Application/Named Proxies/Defaults", "hostfield",
+                    KT_NAMED_PROXIES_HOSTFIELD_GROUP);
+    ctrl_text(s, KT_NAMED_PROXIES_HOSTFIELD_INTRO, HELPCTX(kitty_named_proxies));
     ctrl_droplist(s, KT_NAMED_PROXIES_HOSTFIELD, NO_SHORTCUT, 55,
                   HELPCTX(kitty_named_proxies), pxp_hostfield_handler, P(NULL));
-    ctrl_text(s, KT_NAMED_PROXIES_HOSTFIELD_NOTE, HELPCTX(kitty_named_proxies));
+    ctrl_text(s, KT_NAMED_PROXIES_HOSTFIELD_SESSION_MEANS, HELPCTX(kitty_named_proxies));
+    ctrl_text(s, KT_NAMED_PROXIES_HOSTFIELD_HOST_MEANS, HELPCTX(kitty_named_proxies));
+    ctrl_text(s, KT_NAMED_PROXIES_HOSTFIELD_OVERRIDE, HELPCTX(kitty_named_proxies));
 }
 
 

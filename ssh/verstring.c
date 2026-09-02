@@ -169,10 +169,14 @@ static void ssh_verstring_send(struct ssh_verstring_state *s)
     /*
      * Construct our outgoing version string.
      */
+    /* KiTTY: a configured client version string ([KiTTY] sshversion) IS the
+     * software token, not a suffix to it - "SSH-2.0-OpenSSH_10.0", which is
+     * what the setting exists to produce. Left unset, the banner is the
+     * implementation name plus the built-in version as upstream sends it. */
     s->our_vstring = dupprintf(
         "%.*s%s-%s%s",
         (int)s->prefix_wanted.len, (const char *)s->prefix_wanted.ptr,
-        s->our_protoversion, s->impl_name, sshver);
+        s->our_protoversion, sshver_is_override() ? "" : s->impl_name, sshver);
     sv_pos = s->prefix_wanted.len + strlen(s->our_protoversion) + 1;
 
     /* Convert minus signs and spaces in the software version string

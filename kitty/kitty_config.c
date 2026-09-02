@@ -19,7 +19,7 @@
 #include "kitty_workplace.h"  /* workplace proxy mode: query/request the arming */
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION */
 #include "kitty_win.h"   /* SetTextToClipboard */
-#include "kitty_theme.h"   /* the app-wide colour theme, for Application > Config window */
+#include "kitty_theme.h"   /* the app-wide colour theme, for Application > Config Window */
 #include "kitty_storage.h" /* the one-time old-sessions notice bits */
 #include "kitty_migrate.h" /* Application > Migration: the session importer */
 #include "kitty_text.h"    /* the words the panels show */
@@ -953,7 +953,7 @@ static void kitty_wpmode_enable_ctrl(dlgcontrol *ctrl, dlgparam *dlg, bool on)
 
 /* The leaf is always in the tree; without a named proxy defined its controls
  * grey out and the info line says what to do about it. Live in both
- * directions - saving the first proxy on Named proxies ungreys it, deleting
+ * directions - saving the first proxy on Named Proxies ungreys it, deleting
  * the last one greys it again (the poll watches the count). */
 static void kitty_wpmode_grey(struct wpmode_data *wd, dlgparam *dlg)
 {
@@ -1250,7 +1250,7 @@ static void kitty_proxyedit_handler(dlgcontrol *ctrl, dlgparam *dlg,
          * stays where it is: it is an entry point, not a setting that moved,
          * and someone editing a session's proxy is exactly who wants it. */
         kitty_proxy_panel_preselect(sel);
-        kitty_cfg_goto_panel("Application/Named proxies");
+        kitty_cfg_goto_panel("Application/Named Proxies");
     }
 }
 
@@ -1325,7 +1325,7 @@ static void kitty_winscppath_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
 /*
  * The rz and sz helper programs, on Application > KiTTY Settings >
- * Transfers & tools > ZModem.
+ * Transfers & Tools > ZModem.
  *
  * Same shape as the WinSCP path above and for the same reason: where a helper
  * is installed is a property of this PC. They were per-session
@@ -2430,66 +2430,9 @@ void kitty_config_session_distribute(void)
     #undef KCS_MOVE
 }
 
-/*
- * Pin the Proxy panel's pre-set loader to the BOTTOM of the panel area. Being
- * the last content element puts it after everything; "at the bottom" means
- * the bottom EDGE, however tall the box is. Called after the panel's layout
- * and again on every dialog resize, because the area's bottom moves and a
- * pinned thing follows the edge it is pinned to.
- */
-void kitty_config_proxy_pin_presets(void)
-{
-    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);   /* windows/dialog.c */
-    extern HWND kitty_cfg_panel_host;                    /* windows/controls.c */
-    struct pxload_data *pd = kitty_pxload_active;
-    HWND host = kitty_cfg_panel_host, hw[3];
-    RECT hostr, gr;
-    int i, delta;
-
-    if (!pd || !pd->list || !host)
-        return;
-    hw[0] = FindWindowExA(host, NULL, "Button", KT_PROXY_NAMED_PROXY_PRE_SETS);
-    hw[1] = kitty_cfg_ctrl_hwnd(pd->list);
-    hw[2] = pd->button ? kitty_cfg_ctrl_hwnd(pd->button) : NULL;
-    if (!hw[1])
-        return;
-
-    /* Where the LAYOUT put the loader, recorded once per build: the floor it
-     * may never rise above, so a shrunk box gets it back where the layout
-     * had it rather than under the edge. */
-    if (!pd->have_natural) {
-        pd->natural_bottom = 0;
-        for (i = 0; i < 3; i++) {
-            POINT p;
-            pd->natural_y[i] = 0;
-            if (hw[i] && GetWindowRect(hw[i], &gr)) {
-                p.x = 0; p.y = gr.top;
-                ScreenToClient(host, &p);
-                pd->natural_y[i] = p.y;
-                p.x = 0; p.y = gr.bottom;
-                ScreenToClient(host, &p);
-                if (p.y > pd->natural_bottom)
-                    pd->natural_bottom = p.y;
-            }
-        }
-        pd->have_natural = 1;
-    }
-
-    GetClientRect(host, &hostr);
-    delta = (hostr.bottom - 4) - pd->natural_bottom;
-    if (delta < 0)
-        delta = 0;              /* never above the layout's own position */
-    for (i = 0; i < 3; i++) {
-        if (!hw[i])
-            continue;
-        if (GetWindowRect(hw[i], &gr)) {
-            POINT p = { gr.left, 0 };
-            ScreenToClient(host, &p);
-            SetWindowPos(hw[i], NULL, p.x, pd->natural_y[i] + delta, 0, 0,
-                         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-        }
-    }
-}
+/* (The Proxy panel's pre-set loader used to be pinned to the BOTTOM of the
+ * panel area, which left a blank band between the session's own fields and
+ * the loader. It follows the layout now, directly under them.) */
 
 void kitty_config_footer_pin(const char *path);   /* defined below */
 
@@ -2498,13 +2441,6 @@ void kitty_config_panel_placed(const char *path)
 {
     if (path && !strcmp(path, "Session"))
         kitty_config_session_distribute();
-    else if (path && !strcmp(path, "Connection/Proxy")) {
-        /* A fresh layout means fresh natural positions - a rebuild at a new
-         * width moved everything, so yesterday's floor is nobody's floor. */
-        if (kitty_pxload_active)
-            kitty_pxload_active->have_natural = 0;
-        kitty_config_proxy_pin_presets();
-    }
     if (path)
         kitty_config_footer_pin(path);  /* the app panels' footer, likewise */
 }
@@ -7815,11 +7751,12 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
                                   NO_SHORTCUT, HELPCTX(kitty_reconnect),
                                   kitty_checkbox_int_handler,
                                   I(CONF_failure_reconnect));
-                    ctrl_text(s, KT_CONNECTION_RECONNECT_GLOBAL_NOTE,
-                              HELPCTX(kitty_reconnect));
                 } else {
-                    /* The master switch is off: say where it is rather than
-                     * leave the group out and the feature unfindable. */
+                    /* The master switch is off (it is on by default): one
+                     * short line saying so and where it is, rather than
+                     * leaving the group out and the feature unfindable.
+                     * With the switch on, nothing - the boxes speak for
+                     * themselves. */
                     ctrl_text(s, KT_CONNECTION_RECONNECT_GLOBAL_OFF,
                               HELPCTX(kitty_reconnect));
                 }
@@ -8104,18 +8041,9 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
                           KT_PROXY_YES, I(FORCE_ON),
                           KT_PROXY_ONLY_UNTIL_SESSION_STARTS, I(AUTO));
 #ifdef MOD_PERSO
-        /* A blank line at the foot of the session's own settings, so the
-         * application-wide box below does not sit flush against them and read as
-         * a continuation of the same thing. */
-        if (!GetPuttyFlag() && kitty_has_proxy_definitions())
-            ctrl_text(s, KT_SCRIPTING_TEXT, HELPCTX(no_help));
-#endif
-#ifdef MOD_PERSO
-        /* KiTTY: the pre-set loader, at the FOOT of the panel. It adopts a
-         * template into this session, so it is not one of the session's own
-         * fields above - it is something the user reaches for on purpose.
-         * kitty_config_proxy_pin_presets() keeps it on the panel area's
-         * bottom edge. */
+        /* KiTTY: the pre-set loader, after the session's own fields. It
+         * adopts a template into this session, so it is not one of those
+         * fields - it is something the user reaches for on purpose. */
         if (!GetPuttyFlag() && kitty_has_proxy_definitions()) {
             struct pxload_data *pd = (struct pxload_data *)
                 ctrl_alloc(b, sizeof(struct pxload_data));
@@ -8153,9 +8081,9 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
             /* KiTTY: its OWN leaf under Proxy. It is an application-wide
              * switch, not a session setting, and sharing the Proxy panel
              * both crowded the panel and made it read like one. */
-            ctrl_settitle(b, "Application/Workplace proxy",
+            ctrl_settitle(b, "Application/Workplace Proxy",
                           KT_WORKPLACE_PROXY_WORKPLACE_PROXY_MODE_APPLICATION_WIDE);
-            s = ctrl_getset(b, "Application/Workplace proxy", "workplace",
+            s = ctrl_getset(b, "Application/Workplace Proxy", "workplace",
                             KITTY_WORKPLACE_BOX_TITLE);
             /* The "not a setting of this session" lead is gone: on the
              * Application tab that is what EVERY panel is, so the sentence
@@ -8853,7 +8781,7 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
 
             s = ctrl_getset(b, "Connection/SSH/WinSCP",
                             "WinSCP", KT_WINSCP_WINSCP_INTEGRATION);
-            /* The executable PATH is on KiTTY Settings > Transfers & tools > WinSCP
+            /* The executable PATH is on KiTTY Settings > Transfers & Tools > WinSCP
              * now. It never belonged here - it is a property of this PC, which
              * is why it needed a bold "not a session setting" note to itself.
              * Everything left in this group IS per session. */
@@ -9033,6 +8961,7 @@ static void scb_panel_other_protocols(struct controlbox *b, bool midsession, int
 struct kset_key;
 static const struct kset_key *kset_find(const char *key);
 static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);
+static dlgcontrol *kset_sshver_preview;     /* the banner line, Security > Client Identity */
 
 /* The Connection/ZModem panels (KiTTY). */
 static void scb_panel_zmodem(struct controlbox *b)
@@ -9085,7 +9014,7 @@ static void scb_panel_zmodem(struct controlbox *b)
 
 
 /*
- * Application > Config window.
+ * Application > Config Window.
  *
  * Settings about the configuration box itself. All three are kitty.ini keys,
  * not session values, so the handlers read and write there directly - there is
@@ -9137,7 +9066,7 @@ static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
 }
 
 /*
- * The Session-panel group on Application > Config window.
+ * The Session-panel group on Application > Config Window.
  *
  * These settings were all kitty.ini-only until now, and they share a shape:
  * each decides what the configuration window PUTS IN the Session panel, and
@@ -9539,24 +9468,16 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
     if (midsession || GetPuttyFlag())
         return;
 
-    ctrl_settitle(b, "Application/Config window",
+    ctrl_settitle(b, "Application/Config Window",
                   KT_CONFIG_WINDOW_THIS_WINDOW);
 
-    s = ctrl_getset(b, "Application/Config window", "look", KT_CONFIG_WINDOW_APPEARANCE);
-    ctrl_droplist(s, KT_CONFIG_WINDOW_COLOURS, NO_SHORTCUT, 40, HELPCTX(kitty_theme),
-                  kitty_cfgwin_theme_handler, P(NULL));
-    ctrl_text(s, KT_CONFIG_WINDOW_ONE_SETTING_FOR_THE_WHOLE,
-              HELPCTX(kitty_theme));
-    /* Said HERE, beside the control, not only in the note at the foot of the
-     * panel: someone changes the colours and looks at this window to see
-     * whether anything happened. It cannot - the theme is applied to a window
-     * when it is created, and this one already was. */
-    ctrl_text(s, KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED,
-              HELPCTX(kitty_theme));
+    /* The colour theme is NOT here any more: it is one setting for the whole
+     * suite, and sits on KiTTY Settings > Appearance. */
+    s = ctrl_getset(b, "Application/Config Window", "look", KT_CONFIG_WINDOW_CATEGORY_TREE);
     ctrl_droplist(s, KT_CONFIG_WINDOW_CATEGORY_TREE_OPENS_SHOWING, NO_SHORTCUT, 55,
                   HELPCTX(kitty_theme), kitty_cfgwin_expand_handler, P(NULL));
 
-    s = ctrl_getset(b, "Application/Config window", "size", KT_CONFIG_WINDOW_SIZE);
+    s = ctrl_getset(b, "Application/Config Window", "size", KT_CONFIG_WINDOW_SIZE);
     /* PIXELS. dialog.c multiplies these by the DPI scale and gives the window
      * that size; they are not dialog units, whatever the old label said.
      * Both labels say the same short thing: the width's was long enough to
@@ -9568,7 +9489,7 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
                  NO_SHORTCUT, 30, HELPCTX(kitty_theme),
                  kitty_cfgwin_num_handler, P("windowwidth"), ED_STR);
 
-    s = ctrl_getset(b, "Application/Config window", "closing",
+    s = ctrl_getset(b, "Application/Config Window", "closing",
                     KT_CONFIG_WINDOW_CLOSING_A_TERMINAL_WINDOW);
     ctrl_checkbox(s, KT_CONFIG_WINDOW_COME_BACK_TO_THIS_WINDOW,
                   NO_SHORTCUT, HELPCTX(kitty_theme),
@@ -9644,13 +9565,47 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
          * the whole editor it explained nothing in particular, and the help
          * carries the expression syntax in full. */
     }
+
+    /* Security > Passwords: what happens to a login you TYPE. After a
+     * login the name and password go into the running session's settings
+     * (SetUsernameInConfig / SetPasswordInConfig in kitty.c), which a
+     * duplicate inherits and a mid-session Save writes out. The switch
+     * stops that; a password stored on the Login panel on purpose is not
+     * touched by it. */
+    ctrl_settitle(b, "Application/Security/Passwords", KT_PASSWORDS_TITLE);
+    s = ctrl_getset(b, "Application/Security/Passwords", "typed", KT_PASSWORDS_TYPED);
+    /* The settings tree's handler and table (declared above scb_panel_zmodem,
+     * defined with the KiTTY Settings leaves further down). */
+    ctrl_checkbox(s, KT_KSET_CN_NOSAVE, NO_SHORTCUT, HELPCTX(kitty_passwords),
+                  kitty_kset_handler, P((void *)kset_find("userpasssshnosave")));
+    ctrl_text(s, KT_PASSWORDS_TYPED_DEFAULT, HELPCTX(kitty_passwords));
+    ctrl_text(s, KT_PASSWORDS_TYPED_CONSEQUENCE, HELPCTX(kitty_passwords));
+
+    /* Security > Client Identity: what KiTTY tells an SSH server it is. The
+     * whole banner follows the field as it is typed - the field edits one
+     * token, and only the full string says what that token does. */
+    ctrl_settitle(b, "Application/Security/Client Identity", KT_CLIENT_IDENTITY_TITLE);
+    s = ctrl_getset(b, "Application/Security/Client Identity", "banner", KT_CLIENT_IDENTITY_BANNER);
+    ctrl_editbox(s, KT_KSET_CN_SSHVERSION, NO_SHORTCUT, 100, HELPCTX(kitty_client_identity),
+                 kitty_kset_handler, P((void *)kset_find("sshversion")), ED_STR);
+    kset_sshver_preview = ctrl_text(s, " ", HELPCTX(kitty_client_identity));
+    ctrl_text(s, KT_KSET_CN_SSHVERSION_NOTE, HELPCTX(kitty_client_identity));
+
+    /* Security > Clipboard: the large-paste guard. One global key
+     * ([KiTTY] pastesize) - there is no per-session form of it. */
+    ctrl_settitle(b, "Application/Security/Clipboard", KT_CLIPBOARD_TITLE);
+    s = ctrl_getset(b, "Application/Security/Clipboard", "paste", KT_CLIPBOARD_PASTE);
+    ctrl_editbox(s, KT_KSET_TW_PASTESIZE, NO_SHORTCUT, 25, HELPCTX(kitty_clipboard),
+                 kitty_kset_handler, P((void *)kset_find("pastesize")), ED_STR);
+    ctrl_text(s, KT_CLIPBOARD_PASTE_WHAT, HELPCTX(kitty_clipboard));
+    ctrl_text(s, KT_CLIPBOARD_PASTE_SCOPE, HELPCTX(kitty_clipboard));
 #else
     (void)b; (void)midsession;
 #endif
 }
 
 /*
- * KiTTY Settings > Transfers & tools (formerly Application > External tools).
+ * KiTTY Settings > Transfers & Tools (formerly Application > External tools).
  *
  * Where the helper programs live on THIS PC. A leaf each: they have nothing
  * to do with one another, and one panel listing every path would be a list
@@ -9661,7 +9616,7 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
  * setting can be changed from.
  */
 /* (The former "External tools" builder: its WinSCP and ZModem leaves are
- * now built under KiTTY Settings > Transfers & tools, in
+ * now built under KiTTY Settings > Transfers & Tools, in
  * scb_panel_kitty_settings_leaves.) */
 
 /*
@@ -9674,7 +9629,7 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
  * store - through WriteParameter, so a change lands where the next read
  * looks for it.
  *
- * Storage & backups is the first leaf, and it opens with the STATUS of the
+ * Storage & Backup is the first leaf, and it opens with the STATUS of the
  * store: which store, which file, and whether anything can be written at
  * all. readonly=yes and conf=no used to be surfaced in exactly one place, a
  * message box on the hide-Default-Settings action; this is where someone
@@ -9803,21 +9758,19 @@ extern char *GetKittyIniFile(void);
 extern int  GetReadOnlyFlag(void);
 
 static const char *kset_get_iconfile(void) { return GetIconFile(); }
-static const char *kset_get_pscppath(void) { return PSCPPath; }
 static void kset_set_debug(int v) { debug_flag = v; }
 static int  kset_get_debug(void) { return debug_flag; }
 
 static const struct kset_choice kset_prompt_choices[] = {
     { KT_KSET_CH_POPUP, "yes", 1 }, { KT_KSET_CH_TERMINAL, "no", 0 } };
 static const struct kset_choice kset_funkeys_choices[] = {
-    { KT_KSET_FK_DEFAULT,  "",         -1 },
+    { KT_KSET_FK_XTERM216, "xterm216", FUNKY_XTERM_216 },   /* the built-in default */
     { KT_KSET_FK_TILDE,    "tilde",    FUNKY_TILDE },
     { KT_KSET_FK_LINUX,    "linux",    FUNKY_LINUX },
     { KT_KSET_FK_XTERMR6,  "xtermr6",  FUNKY_XTERM },
     { KT_KSET_FK_VT400,    "vt400",    FUNKY_VT400 },
     { KT_KSET_FK_VT100P,   "vt100p",   FUNKY_VT100P },
-    { KT_KSET_FK_SCO,      "sco",      FUNKY_SCO },
-    { KT_KSET_FK_XTERM216, "xterm216", FUNKY_XTERM_216 } };
+    { KT_KSET_FK_SCO,      "sco",      FUNKY_SCO } };
 static const struct kset_choice kset_second_launcher_choices[] = {
     { KT_KSET_LA_SECOND_EXITS, "yes", 1 }, { KT_KSET_LA_SECOND_STARTS, "no", 0 } };
 static const struct kset_choice kset_pwprot_choices[] = {
@@ -9830,7 +9783,7 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, "shortcuts",      KSET_BOOL, false, GetShortcutsFlag, SetShortcutsFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, "mouseshortcuts", KSET_BOOL, false, GetMouseShortcutsFlag, SetMouseShortcutsFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, "hyperlink",      KSET_BOOL, false, GetHyperlinkFlag, SetHyperlinkFlag, NULL, 0, 0, 1 },
-    { INIT_SECTION, "funkeys",        KSET_CHOICE, false, GetFunkeysDefault, SetFunkeysDefault, NULL, 0, 0, -1,
+    { INIT_SECTION, "funkeys",        KSET_CHOICE, false, GetFunkeysDefault, SetFunkeysDefault, NULL, 0, 0, FUNKY_XTERM_216,
       NULL, NULL, kset_funkeys_choices, lenof(kset_funkeys_choices) },
     { INIT_SECTION, "pastesize",      KSET_INT, false, GetPasteSize, SetPasteSize, NULL, 0, 100000000, 5120 },
     { INIT_SECTION, "debug",          KSET_BOOL, false, kset_get_debug, kset_set_debug, NULL, 0, 0, 0 },
@@ -9873,8 +9826,11 @@ static const struct kset_key kset_keys[] = {
       GetModalWeakKeyConfirmationFlag, SetModalWeakKeyConfirmationFlag, NULL, 0, 0, 1,
       NULL, NULL, kset_prompt_choices, lenof(kset_prompt_choices) },
     { INIT_SECTION, "sshversion",     KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0, get_sshver, set_sshver },
-    /* Transfers & tools */
-    { INIT_SECTION, "PSCPPath",       KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0, kset_get_pscppath, SetPSCPPath },
+    /* Transfers & Tools */
+    /* Shown from the STORE, not the running value: the startup search fills
+     * PSCPPath in memory with what it found, and showing that here made a
+     * cleared field look as if the path had come back. */
+    { INIT_SECTION, "PSCPPath",       KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0, NULL, SetPSCPPath },
     { INIT_SECTION, "pscpport",       KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
     { INIT_SECTION, "downloaddir",    KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
     { INIT_SECTION, "uploaddir",      KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
@@ -9887,11 +9843,24 @@ static const struct kset_key kset_keys[] = {
     { "Launcher", "noticeseconds",    KSET_INT, false, NULL, NULL, NULL, 1, 600, 15 },
     /* Connection > ZModem: the global switch (the panel borrows the handler) */
     { INIT_SECTION, "zmodem",         KSET_BOOL, false, GetZModemFlag, SetZModemFlag, NULL, 0, 0, 1 },
-    /* Storage & backups: the folder-store password policy, read at save time */
+    /* Storage & Backup: the folder-store password policy, read at save time */
     { INIT_SECTION, "PortablePasswordProtection", KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
       NULL, NULL, kset_pwprot_choices, lenof(kset_pwprot_choices) },
     { INIT_SECTION, "WarnLegacyPasswordUpgrade", KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
 };
+
+/* The banner preview under the client-version field (Connections leaf). */
+static dlgcontrol *kset_sshver_preview = NULL;
+extern void kitty_ssh_banner_preview(char *buf, size_t size);   /* kitty_bridge.c */
+static void kset_show_banner(dlgparam *dlg)
+{
+    char banner[128], line[200];
+    if (!kset_sshver_preview)
+        return;
+    kitty_ssh_banner_preview(banner, sizeof(banner));
+    snprintf(line, sizeof(line), KT_KSET_CN_SSHVERSION_PREVIEW, banner);
+    dlg_label_change(kset_sshver_preview, dlg, line);
+}
 
 static const struct kset_key *kset_find(const char *key)
 {
@@ -9970,6 +9939,8 @@ static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int 
             else
                 kset_read(k, buf, sizeof(buf));
             dlg_editbox_set(ctrl, dlg, buf);
+            if (!strcmp(k->key, "sshversion"))
+                kset_show_banner(dlg);
             break;
           case KSET_FILE: {
             Filename *fn;
@@ -10044,6 +10015,8 @@ static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int 
             kset_write(k, s);
             if (k->set_str) k->set_str(s);
             sfree(s);
+            if (!strcmp(k->key, "sshversion"))
+                kset_show_banner(dlg);
             break;
           }
           case KSET_FILE: {
@@ -10087,24 +10060,34 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     char line[1400];
     char buf[4096];
 
-    /* ---- Terminal windows, and its Shortcuts leaf ---- */
-    ctrl_settitle(b, KSET_PATH("Terminal windows"), KT_KSET_TW_TITLE);
-    s = ctrl_getset(b, KSET_PATH("Terminal windows"), "behaviour", KT_KSET_TW_BEHAVIOUR);
+    /* ---- Appearance: the colour theme of every window of the suite ---- */
+    ctrl_settitle(b, KSET_PATH("Appearance"), KT_APPEARANCE_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Appearance"), "colours", KT_APPEARANCE_COLOURS);
+    ctrl_droplist(s, KT_CONFIG_WINDOW_COLOURS, NO_SHORTCUT, 40, HELPCTX(kitty_appearance),
+                  kitty_cfgwin_theme_handler, P(NULL));
+    ctrl_text(s, KT_CONFIG_WINDOW_ONE_SETTING_FOR_THE_WHOLE, HELPCTX(kitty_appearance));
+    /* Said beside the control: someone changes the colours and looks at
+     * this window to see whether anything happened. It cannot - a theme is
+     * applied to a window when it is created, and this one already was. */
+    ctrl_text(s, KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED, HELPCTX(kitty_appearance));
+
+    /* ---- Keys & Mouse, and its Shortcuts leaf ---- */
+    ctrl_settitle(b, KSET_PATH("Keys & Mouse"), KT_KSET_TW_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Keys & Mouse"), "behaviour", KT_KSET_TW_BEHAVIOUR);
     KSET_CHECKBOX(s, KT_KSET_TW_MOUSECHORDS, "mouseshortcuts", kitty_kset_terminal);
     ctrl_text(s, KT_KSET_TW_MOUSECHORDS_NOTE, HELPCTX(kitty_kset_terminal));
-    KSET_CHECKBOX(s, KT_KSET_TW_HYPERLINK, "hyperlink", kitty_kset_terminal);
-    KSET_DROPLIST(s, KT_KSET_TW_FUNKEYS, "funkeys", kitty_kset_terminal);
+    /* Narrower droplist than the macro's: the label needs the room. */
+    ctrl_droplist(s, KT_KSET_TW_FUNKEYS, NO_SHORTCUT, 40, HELPCTX(kitty_kset_terminal),
+                  kitty_kset_handler, KSET("funkeys"));
     ctrl_text(s, KT_KSET_TW_FUNKEYS_NOTE, HELPCTX(kitty_kset_terminal));
-    KSET_NUMBER(s, KT_KSET_TW_PASTESIZE, "pastesize", kitty_kset_terminal);
-    KSET_CHECKBOX(s, KT_KSET_TW_DEBUG, "debug", kitty_kset_terminal);
 
-    ctrl_settitle(b, KSET_PATH("Terminal windows/Shortcuts"), KT_KSET_SC_TITLE);
-    s = ctrl_getset(b, KSET_PATH("Terminal windows/Shortcuts"), "switch", NULL);
+    ctrl_settitle(b, KSET_PATH("Keys & Mouse/Shortcuts"), KT_KSET_SC_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Keys & Mouse/Shortcuts"), "switch", NULL);
     KSET_CHECKBOX(s, KT_KSET_SC_ENABLE, "shortcuts", kitty_kset_shortcuts);
     ctrl_text(s, KT_KSET_SC_FUTURE, HELPCTX(kitty_kset_shortcuts));
     /* What the [Shortcuts] list line defines today, shown so the leaf already
      * says what is in force: one key combination per word of the list. */
-    s = ctrl_getset(b, KSET_PATH("Terminal windows/Shortcuts"), "defined", KT_KSET_SC_DEFINED);
+    s = ctrl_getset(b, KSET_PATH("Keys & Mouse/Shortcuts"), "defined", KT_KSET_SC_DEFINED);
     if (ReadParameterN("Shortcuts", "list", buf, sizeof(buf)) && buf[0]) {
         char *p = buf, *q;
         int n = 0;
@@ -10138,78 +10121,107 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     s = ctrl_getset(b, KSET_PATH("Automation"), "scripts", KT_KSET_AU_SCRIPTS);
     KSET_CHECKBOX(s, KT_KSET_AU_SCRIPTMODE, "scriptmode", kitty_kset_automation);
     KSET_TEXTBOX(s, KT_KSET_AU_SCRIPTFILTER, "scriptfilefilter", kitty_kset_automation);
+    ctrl_text(s, KT_KSET_AU_SCRIPTFILTER_NOTE, HELPCTX(kitty_kset_automation));
     s = ctrl_getset(b, KSET_PATH("Automation"), "broadcast", KT_KSET_AU_BROADCAST);
     KSET_CHECKBOX(s, KT_KSET_AU_SENDCMD, "sendcmdmode", kitty_kset_automation);
-    buf[0] = '\0';
-    ReadParameterN(INIT_SECTION, "sendcmdgroup", buf, sizeof(buf));
-    snprintf(line, sizeof(line), KT_KSET_AU_GROUP, buf);
-    ctrl_text(s, line, HELPCTX(kitty_kset_automation));
+    ctrl_text(s, KT_KSET_AU_SENDCMD_NOTE, HELPCTX(kitty_kset_automation));
+    /* The group key as the program actually uses it: derived from the
+     * install unless kitty.ini overrides it (kitty.c, the broadcast gate). */
+    {
+        extern const char *kitty_broadcast_group(void);
+        extern int kitty_broadcast_group_from_ini(void);
+        const char *key = kitty_broadcast_group();
+        snprintf(line, sizeof(line),
+                 kitty_broadcast_group_from_ini() ? KT_KSET_AU_GROUP_INI : KT_KSET_AU_GROUP,
+                 key ? key : "");
+        ctrl_text(s, line, HELPCTX(kitty_kset_automation));
+    }
     ctrl_text(s, KT_KSET_AU_GROUP_NOTE, HELPCTX(kitty_kset_automation));
+    /* What the tracing switch traces is mostly this leaf's business: the
+     * auto-command, key remaps, the helper command lines. */
+    s = ctrl_getset(b, KSET_PATH("Automation"), "diag", KT_KSET_AU_DIAGNOSTICS);
+    KSET_CHECKBOX(s, KT_KSET_TW_DEBUG, "debug", kitty_kset_automation);
 
-    /* ---- Window & display ---- */
-    ctrl_settitle(b, KSET_PATH("Window & display"), KT_KSET_WD_TITLE);
-    s = ctrl_getset(b, KSET_PATH("Window & display"), "titlebar", KT_KSET_WD_TITLEBAR);
+    /* ---- Features & Printing; the title bar, icons and font fallback
+     * groups are how the windows LOOK and go to Appearance (ctrl_getset
+     * appends to that panel wherever it is called from) ---- */
+    ctrl_settitle(b, KSET_PATH("Features & Printing"), KT_KSET_WD_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Appearance"), "titlebar", KT_KSET_WD_TITLEBAR);
     KSET_CHECKBOX(s, KT_KSET_WD_WINTITLE, "wintitle", kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_WD_SIZE, "size", kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_WD_WINROLL, "winroll", kitty_kset_window);
-    s = ctrl_getset(b, KSET_PATH("Window & display"), "features", KT_KSET_WD_FEATURES);
+    s = ctrl_getset(b, KSET_PATH("Features & Printing"), "features", KT_KSET_WD_FEATURES);
     KSET_CHECKBOX(s, KT_KSET_WD_CTRLTAB, "ctrltab", kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_WD_TRANSPARENCY, "transparency", kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_WD_BGIMAGE, "bgimage", kitty_kset_window);
+    KSET_CHECKBOX(s, KT_KSET_TW_HYPERLINK, "hyperlink", kitty_kset_window);
     KSET_NUMBER(s, KT_KSET_WD_SLIDEDELAY, "slidedelay", kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_WD_SHRINK, "shrinkbitmap", kitty_kset_window);
+    /* Not a feature: the library the per-session icon numbers index into
+     * (kitty.c loads it at startup, kitty.dll or the exe when unset). */
+    s = ctrl_getset(b, KSET_PATH("Appearance"), "icons", KT_KSET_WD_ICONS);
     KSET_FILESEL(s, KT_KSET_WD_ICONFILE, KT_KSET_WD_ICONFILE_SELECT, "iconfile", kitty_kset_window);
-    s = ctrl_getset(b, KSET_PATH("Window & display"), "printing", KT_KSET_WD_PRINTING);
+    ctrl_text(s, KT_KSET_WD_ICONFILE_NOTE, HELPCTX(kitty_kset_window));
+    s = ctrl_getset(b, KSET_PATH("Features & Printing"), "printing", KT_KSET_WD_PRINTING);
     KSET_NUMBER(s, KT_KSET_WD_PRINT_PITCH, "height", kitty_kset_window);
     KSET_NUMBER(s, KT_KSET_WD_PRINT_LINES, "maxline", kitty_kset_window);
     KSET_NUMBER(s, KT_KSET_WD_PRINT_CHARS, "maxchar", kitty_kset_window);
-    s = ctrl_getset(b, KSET_PATH("Window & display"), "fontfb", KT_KSET_WD_FONTFB);
-    KSET_CHECKBOX(s, KT_KSET_WD_FONTFB_ACTIVE, "active", kitty_kset_window);
-    KSET_TEXTBOX(s, KT_KSET_WD_FONTFB_LIST, "fallback", kitty_kset_window);
-    ctrl_text(s, KT_KSET_WD_FONTFB_LIST_NOTE, HELPCTX(kitty_kset_window));
     ctrl_text(s, KT_KSET_WD_FILEONLY, HELPCTX(kitty_kset_window));
+    s = ctrl_getset(b, KSET_PATH("Appearance"), "fontfb", KT_KSET_WD_FONTFB);
+    KSET_CHECKBOX(s, KT_KSET_WD_FONTFB_ACTIVE, "active", kitty_appearance);
+    KSET_TEXTBOX(s, KT_KSET_WD_FONTFB_LIST, "fallback", kitty_appearance);
+    ctrl_text(s, KT_KSET_WD_FONTFB_LIST_NOTE, HELPCTX(kitty_appearance));
+    ctrl_text(s, KT_KSET_WD_FONTFB_FILEONLY, HELPCTX(kitty_appearance));
 
     /* ---- Connection & reconnect ---- */
-    ctrl_settitle(b, KSET_PATH("Connections"), KT_KSET_CN_TITLE);
-    s = ctrl_getset(b, KSET_PATH("Connections"), "reconnect", KT_KSET_CN_RECONNECT);
+    ctrl_settitle(b, KSET_PATH("Reconnect & Prompts"), KT_KSET_CN_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Reconnect & Prompts"), "reconnect", KT_KSET_CN_RECONNECT);
     KSET_CHECKBOX(s, KT_KSET_CN_AUTORECONNECT, "autoreconnect", kitty_kset_connection);
     ctrl_text(s, KT_KSET_CN_AUTORECONNECT_NOTE, HELPCTX(kitty_kset_connection));
     KSET_NUMBER(s, KT_KSET_CN_DELAY, "ReconnectDelay", kitty_kset_connection);
-    s = ctrl_getset(b, KSET_PATH("Connections"), "limits", KT_KSET_CN_LIMITS);
-    KSET_NUMBER(s, KT_KSET_CN_CHAINMAX, "proxychainmax", kitty_kset_connection);
-    KSET_CHECKBOX(s, KT_KSET_CN_NOSAVE, "userpasssshnosave", kitty_kset_connection);
-    s = ctrl_getset(b, KSET_PATH("Connections"), "confirm", KT_KSET_CN_CONFIRM);
+    s = ctrl_getset(b, KSET_PATH("Reconnect & Prompts"), "confirm", KT_KSET_CN_CONFIRM);
     KSET_CHECKBOX(s, KT_KSET_CN_MODALERRORS, "modalerrors", kitty_kset_connection);
     KSET_DROPLIST(s, KT_KSET_CN_NEWKEY, "modalnewhostkeyconfirmation", kitty_kset_connection);
     KSET_DROPLIST(s, KT_KSET_CN_CHANGEDKEY, "modalchangedhostkeyconfirmation", kitty_kset_connection);
     KSET_DROPLIST(s, KT_KSET_CN_WEAKKEY, "modalweakkeyconfirmation", kitty_kset_connection);
-    s = ctrl_getset(b, KSET_PATH("Connections"), "identity", KT_KSET_CN_IDENTITY);
-    KSET_TEXTBOX(s, KT_KSET_CN_SSHVERSION, "sshversion", kitty_kset_connection);
-    ctrl_text(s, KT_KSET_CN_SSHVERSION_NOTE, HELPCTX(kitty_kset_connection));
 
-    /* ---- Transfers & tools: the helper programs, with WinSCP and ZModem
+    /* ---- Named Proxies > Proxy-Forwards: the jump-host chain limit is a
+     * named-proxy matter, so it lives under that panel ---- */
+    ctrl_settitle(b, "Application/Named Proxies/Proxy-Forwards", KT_PXFWD_TITLE);
+    s = ctrl_getset(b, "Application/Named Proxies/Proxy-Forwards", "chains", KT_PXFWD_CHAINS);
+    KSET_NUMBER(s, KT_KSET_CN_CHAINMAX, "proxychainmax", kitty_proxy_forwards);
+    ctrl_text(s, KT_PXFWD_NOTE, HELPCTX(kitty_proxy_forwards));
+
+    /* ---- Transfers & Tools: the helper programs, with WinSCP and ZModem
      * as leaves of their own (they were "External tools") ---- */
-    ctrl_settitle(b, KSET_PATH("Transfers & tools"), KT_KSET_TT_TITLE);
-    s = ctrl_getset(b, KSET_PATH("Transfers & tools"), "intro", NULL);
-    ctrl_text(s, KT_EXTERNAL_TOOLS_WHERE_THESE_ARE_INSTALLED, HELPCTX(kitty_helper_paths));
-    s = ctrl_getset(b, KSET_PATH("Transfers & tools"), "kscp", KT_KSET_TT_KSCP);
+    ctrl_settitle(b, KSET_PATH("Transfers & Tools"), KT_KSET_TT_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Transfers & Tools"), "kscp", KT_KSET_TT_KSCP);
     KSET_FILESEL(s, KT_KSET_TT_PSCPPATH, KT_KSET_TT_PSCPPATH_SELECT, "PSCPPath", kitty_helper_paths);
     ctrl_text(s, KT_KSET_TT_PSCPPATH_NOTE, HELPCTX(kitty_helper_paths));
+    /* What the search found at this start, so a blank field still tells
+     * the reader which binary is in use. */
+    buf[0] = '\0';
+    ReadParameterN(INIT_SECTION, "PSCPPath", buf, sizeof(buf));
+    if (!buf[0]) {
+        snprintf(line, sizeof(line), KT_KSET_TT_PSCPPATH_FOUND,
+                 PSCPPath && PSCPPath[0] ? PSCPPath : KT_KSET_TT_PSCPPATH_NONE);
+        ctrl_text(s, line, HELPCTX(kitty_helper_paths));
+    }
     KSET_TEXTBOX(s, KT_KSET_TT_PSCPPORT, "pscpport", kitty_helper_paths);
     KSET_TEXTBOX(s, KT_KSET_TT_DOWNLOADDIR, "downloaddir", kitty_helper_paths);
     KSET_TEXTBOX(s, KT_KSET_TT_UPLOADDIR, "uploaddir", kitty_helper_paths);
-    s = ctrl_getset(b, KSET_PATH("Transfers & tools"), "cygwin", KT_KSET_TT_CYGWIN);
+    s = ctrl_getset(b, KSET_PATH("Transfers & Tools"), "cygwin", KT_KSET_TT_CYGWIN);
     KSET_FILESEL(s, KT_KSET_TT_CTHELPER, KT_KSET_TT_CTHELPER_SELECT, "CtHelperPath", kitty_helper_paths);
 
-    ctrl_settitle(b, KSET_PATH("Transfers & tools/WinSCP"), KT_WINSCP_WINSCP);
-    s = ctrl_getset(b, KSET_PATH("Transfers & tools/WinSCP"), "path", KT_WINSCP_EXECUTABLE);
+    ctrl_settitle(b, KSET_PATH("Transfers & Tools/WinSCP"), KT_WINSCP_WINSCP);
+    s = ctrl_getset(b, KSET_PATH("Transfers & Tools/WinSCP"), "path", KT_WINSCP_EXECUTABLE);
     ctrl_filesel(s, KT_WINSCP_WINSCP_EXECUTABLE, NO_SHORTCUT,
                  FILTER_ALL_FILES, false, KT_WINSCP_SELECT_WINSCP_EXECUTABLE,
                  HELPCTX(kitty_winscp), kitty_winscppath_handler, P(NULL));
     ctrl_text(s, KT_WINSCP_THE_OTHER_WINSCP_SETTINGS_BELONG, HELPCTX(kitty_winscp));
 
-    ctrl_settitle(b, KSET_PATH("Transfers & tools/ZModem"), KT_ZMODEM_ZMODEM);
-    s = ctrl_getset(b, KSET_PATH("Transfers & tools/ZModem"), "cmds", KT_EXTERNAL_TOOLS_HELPER_PROGRAMS);
+    ctrl_settitle(b, KSET_PATH("Transfers & Tools/ZModem"), KT_ZMODEM_ZMODEM);
+    s = ctrl_getset(b, KSET_PATH("Transfers & Tools/ZModem"), "cmds", KT_EXTERNAL_TOOLS_HELPER_PROGRAMS);
     ctrl_filesel(s, KT_ZMODEM_RECEIVE_COMMAND_RZ_2, NO_SHORTCUT,
                  FILTER_ALL_FILES, false,
                  KT_ZMODEM_SELECT_COMMAND_TO_RECEIVE_ZMODEM,
@@ -10222,19 +10234,18 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
 
     /* ---- Launcher ---- */
     ctrl_settitle(b, KSET_PATH("Launcher"), KT_KSET_LA_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Launcher"), "intro", NULL);
+    ctrl_text(s, KT_KSET_LA_READ_AT_START, HELPCTX(kitty_kset_launcher));
     s = ctrl_getset(b, KSET_PATH("Launcher"), "menu", KT_KSET_LA_MENU);
     KSET_CHECKBOX(s, KT_KSET_LA_RELOAD, "reload", kitty_kset_launcher);
     KSET_DROPLIST(s, KT_KSET_LA_SECOND, "alreadyRunCheck", kitty_kset_launcher);
     s = ctrl_getset(b, KSET_PATH("Launcher"), "workplace", KT_KSET_LA_WORKPLACE);
     KSET_CHECKBOX(s, KT_KSET_LA_EXITWITH, "exitwithworkplace", kitty_kset_launcher);
     KSET_NUMBER(s, KT_KSET_LA_NOTICE, "noticeseconds", kitty_kset_launcher);
-    s = ctrl_getset(b, KSET_PATH("Launcher"), "class", NULL);
-    buf[0] = '\0';
-    if (!ReadParameterN("Launcher", "classname", buf, sizeof(buf)) || !buf[0])
-        strcpy(buf, "KiTTYLauncher");
-    snprintf(line, sizeof(line), KT_KSET_LA_CLASSNAME, buf);
-    ctrl_text(s, line, HELPCTX(kitty_kset_launcher));
-    ctrl_text(s, KT_KSET_LA_READ_AT_START, HELPCTX(kitty_kset_launcher));
+    /* [Launcher] classname is deliberately NOT shown: it exists only to keep
+     * two installations' launchers from taking each other for "already
+     * running", is set by hand in kitty.ini for that one purpose, and a
+     * line reporting it told nobody anything. The help explains it. */
 }
 
 static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
@@ -10248,7 +10259,7 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     extern char *ConfigDirectory;              /* kitty.c: the folder store */
     /* kitty_commun.c's values, which this file has no header for */
     enum { KSET_SAVEMODE_REG = 0, KSET_SAVEMODE_FILE = 1, KSET_SAVEMODE_DIR = 2 };
-    static const char *const storage = "Application/KiTTY Settings/Storage & backups";
+    static const char *const storage = "Application/KiTTY Settings/Storage & Backup";
     struct controlset *s;
     char line[1400], buf[4096];
     const char *ini = GetKittyIniFile();
@@ -10366,10 +10377,10 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
 }
 
 /*
- * Application > Session parameter.
+ * Application > Config Window > Session panel (was "Session parameter").
  *
  * The saved-session list and what it offers, kept apart from the window that
- * happens to draw it: Config window is about the window - its colours, its
+ * happens to draw it: Config Window is about the window - its colours, its
  * size, its tree - and these are about sessions. They were together while
  * there was only one panel to put them on.
  */
@@ -10381,9 +10392,9 @@ static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
     if (midsession || GetPuttyFlag())
         return;
 
-    ctrl_settitle(b, "Application/Session parameter", KT_SESSION_PARAMETER_THE_SESSION_LIST);
+    ctrl_settitle(b, "Application/Config Window/Session Panel", KT_SESSION_PARAMETER_THE_SESSION_LIST);
 
-    s = ctrl_getset(b, "Application/Session parameter", "list", KT_SESSION_PARAMETER_THE_LIST);
+    s = ctrl_getset(b, "Application/Config Window/Session Panel", "list", KT_SESSION_PARAMETER_THE_LIST);
     ctrl_editbox(s, KT_SESSION_PARAMETER_LENGTH_IN_ROWS_7, NO_SHORTCUT, 30,
                  HELPCTX(kitty_folders), kitty_cfgwin_num_handler, P("height"),
                  ED_STR);
@@ -10398,7 +10409,7 @@ static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
                   NO_SHORTCUT, HELPCTX(kitty_folders),
                   kitty_cfgwin_flag_handler, P("filter"));
 
-    s = ctrl_getset(b, "Application/Session parameter", "opening", KT_SESSION_PARAMETER_OPENING);
+    s = ctrl_getset(b, "Application/Config Window/Session Panel", "opening", KT_SESSION_PARAMETER_OPENING);
     ctrl_checkbox(s, KT_SESSION_PARAMETER_OPEN_ON_THE_LAST_USED,
                   NO_SHORTCUT, HELPCTX(kitty_quickconnect),
                   kitty_cfgwin_flag_handler, P("loadlastsession"));
@@ -10407,7 +10418,7 @@ static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
     ctrl_droplist(s, KT_SESSION_PARAMETER_DOUBLE_CLICK_A_SESSION, NO_SHORTCUT, 55,
                   HELPCTX(kitty_quickconnect), kitty_cfgwin_dblclick_handler, P(NULL));
 
-    s = ctrl_getset(b, "Application/Session parameter", "proxy", KT_SESSION_PARAMETER_PROXY);
+    s = ctrl_getset(b, "Application/Config Window/Session Panel", "proxy", KT_SESSION_PARAMETER_PROXY);
     ctrl_droplist(s, KT_SESSION_PARAMETER_SHOW_THE_PROXY_CHOOSER, NO_SHORTCUT, 55,
                   HELPCTX(kitty_named_proxies), kitty_cfgwin_proxysel_handler, P(NULL));
     /* Said here because "Never" does more than hide one droplist. */
@@ -10561,7 +10572,7 @@ static void kitty_import_action_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
 /*
  * The line every Application panel ends with, EXCEPT the two that are not
- * true of: Named proxies and the CA editor both hold an edit until Save.
+ * true of: Named Proxies and the CA editor both hold an edit until Save.
  * One helper rather than a line copied into each panel, so it can be reworded
  * or dropped in one place.
  */
@@ -10595,7 +10606,10 @@ static void kitty_storexfer_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * panels the way the Proxy pre-set loader is: recorded here as they are
  * created, moved by kitty_config_footer_pin after each layout and by
  * kitty_config_pin_bottoms on every resize. */
-#define APP_FOOTER_MAX 12
+/* One entry per Application panel that carries the footer. Sized from the
+ * box when it is built (one slot per control set is a safe upper bound):
+ * a fixed array of 12 once dropped the thirteenth panel's entry silently,
+ * and that footer sat wherever the layout had left it. */
 static struct app_footer_pin {
     const char *path;
     dlgcontrol *ctrl;
@@ -10603,8 +10617,8 @@ static struct app_footer_pin {
      * relative to it, and the pair's lowest edge - all in host client
      * coordinates, all the pin's later moves are computed from these */
     int natural_y, natural_box_dy, natural_lowest, have_natural;
-} app_footers[APP_FOOTER_MAX];
-static int n_app_footers = 0;
+} *app_footers = NULL;
+static int n_app_footers = 0, app_footers_cap = 0;
 
 static void kitty_footer_pin_one(struct app_footer_pin *f)
 {
@@ -10684,7 +10698,6 @@ void kitty_config_footer_pin(const char *path)
 /* On every resize: everything pinned to the panel area's bottom edge. */
 void kitty_config_pin_bottoms(void)
 {
-    kitty_config_proxy_pin_presets();
     for (int i = 0; i < n_app_footers; i++)
         kitty_footer_pin_one(&app_footers[i]);
 }
@@ -10706,7 +10719,7 @@ static void scb_app_footer(struct controlbox *b, const char *path)
     {
         dlgcontrol *c = ctrl_text(s, KT_APP_SAVED_LIVE,
                                   HELPCTX(kitty_folders));
-        if (n_app_footers < APP_FOOTER_MAX) {
+        if (n_app_footers < app_footers_cap) {
             app_footers[n_app_footers].path = path;
             app_footers[n_app_footers].ctrl = c;
             app_footers[n_app_footers].have_natural = 0;
@@ -10726,7 +10739,8 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
     /* Fresh box, fresh footer registrations. At the top, before anything is
      * built: a reset placed beside the footer pass at the end once wiped a
      * registration a panel had made while building itself - the line was
-     * created, never pinned, and sat wherever the layout had left it. */
+     * created, never pinned, and sat wherever the layout had left it.
+     * The table is sized once the panels exist, in the footer pass. */
     n_app_footers = 0;
 
     /* The named-proxy editor, which used to be a pop-up window. */
@@ -10734,7 +10748,7 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
 
     scb_panel_config_window(b, midsession);
     scb_panel_session_parameter(b, midsession);
-    scb_panel_kitty_settings(b, midsession);   /* includes Transfers & tools */
+    scb_panel_kitty_settings(b, midsession);   /* includes Transfers & Tools */
     scb_panel_security(b, midsession);
 
     /*
@@ -10822,7 +10836,7 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
     /*
      * Last, so the line ends each panel: an application setting takes effect
      * where it is changed, which a session panel's OK/Apply does not lead
-     * anyone to expect. Named proxies and the CA editor are deliberately not
+     * anyone to expect. Named Proxies and the CA editor are deliberately not
      * in this list - they hold an edit until Save and each says so itself.
      */
     /*
@@ -10830,16 +10844,24 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
      * with a SETTING on it - an edit box, check box, radio, list, file or
      * font chooser; not text, not a push button (an action, not a value),
      * not a layout pseudo-control. A panel of text alone
-     * (an intro page, or Storage & backups when nothing can be written), or
+     * (an intro page, or Storage & Backup when nothing can be written), or
      * of buttons alone (Migration in a folder store), would carry a claim
      * about nothing. The two panels that hold an edit until Save are named
      * out, since for them the line would be false rather than empty.
      */
     {
         static const char *const holds_until_save[] = {
-            "Application/Named proxies",
+            "Application/Named Proxies",
             "Application/Security/Certificate Authorities",
         };
+        /* One slot per control set is more than one per panel, and the box
+         * that decides the count is the one being built - no constant to
+         * outgrow. The previous box's table goes with the previous box. */
+        sfree(app_footers);
+        app_footers_cap = (int)b->nctrlsets;
+        app_footers = snewn(app_footers_cap > 0 ? app_footers_cap : 1,
+                            struct app_footer_pin);
+        n_app_footers = 0;
         for (size_t i = 0; i < b->nctrlsets; i++) {
             const char *path = b->ctrlsets[i]->pathname;
             bool editable = false, seen = false, excluded = false;
