@@ -271,6 +271,8 @@ struct PageantSignOp {
                                      * CREATION - pageant_external_pid is
                                      * back to 0 by the time the deferred
                                      * coroutine runs. 0 = unknown. */
+    strbuf *pubblob;                /* KiTTY: the stored key's public blob, for
+                                     * the idle re-encrypt bookkeeping */
     bool signed_ok;                 /* KiTTY: did it actually sign? (coroutine
                                      * state: a local would not survive a yield) */
     strbuf *data_to_sign;
@@ -923,6 +925,7 @@ static void signop_free(PageantAsyncOp *pao)
     signop_unlink(so);
     strbuf_free(so->data_to_sign);
     sfree(so->keyfp);
+    if (so->pubblob) strbuf_free(so->pubblob);
     sfree(so->comment);
     sfree(so);
 }
@@ -964,6 +967,8 @@ ptrlen pageant_dlgid_pubblob(PageantClientDialogId *dlgid)
  * allowed nonzero when the key signed, zero when the user or a policy refused.
  * Identified by the public blob because that is what a row is keyed on; a
  * comment is not unique and is often empty. NULL everywhere but the GUI. */
+/* KiTTY: a key just signed - the idle re-encrypt timer's "last use". */
+void (*kageant_keysigned_hook)(ptrlen pubblob) = NULL;
 void (*kageant_keyuse_hook)(const char *fingerprint, const char *comment,
                             int allowed, unsigned long req_pid) = NULL;
 
@@ -1147,6 +1152,8 @@ static void signop_coroutine(PageantAsyncOp *pao)
 
     /* KiTTY: a key was just used to authenticate -- let the GUI agent nudge. */
     so->signed_ok = true;
+    if (kageant_keysigned_hook && so->pubblob)
+        kageant_keysigned_hook(ptrlen_from_strbuf(so->pubblob));
     if (kageant_notify_hook)
         kageant_notify_hook(so->comment, so->keyfp);
 
@@ -1606,6 +1613,7 @@ static PageantAsyncOp *pageant_make_op(
          * findpubkey2() has just matched them for us. */
         so->keyfp = ssh2_fingerprint_blob(pub->sort.full_pub,
                                           SSH_FPTYPE_SHA256);
+        so->pubblob = strbuf_dup(pub->sort.full_pub);
         so->req_pid = pageant_external_pid;   /* valid NOW, 0 later */
         so->signed_ok = false;
         so->pkr.prev = so->pkr.next = NULL;
@@ -2342,6 +2350,21 @@ void pageant_delete_all(void)
 {
     remove_all_keys(1);
     remove_all_keys(2);
+}
+
+/* KiTTY: every SSH-2 key that is decrypted right now AND could be
+ * re-encrypted (has its encrypted file in memory) - the idle re-encrypt
+ * timer's population. */
+void pageant_foreach_decrypted_reencryptable(void (*fn)(ptrlen, void *),
+                                             void *ctx)
+{
+    PageantPublicKey *pub;
+    for (int i = 0; (pub = index234(pubkeytree, i)) != NULL; i++) {
+        PageantPrivateKey *priv = pub_to_priv(pub);
+        if (priv->sort.ssh_version == 2 && priv->encrypted_key_file &&
+            (priv->skey || priv->protected_skey))
+            fn(pub->sort.full_pub, ctx);
+    }
 }
 
 void pageant_reencrypt_all(void)

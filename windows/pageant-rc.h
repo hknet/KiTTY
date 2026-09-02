@@ -64,6 +64,10 @@
 #define IDC_SET_L_TTLHINT 335
 #define IDC_SET_L_HELLOTTL 336
 #define IDC_SET_L_HELLOTTLHINT 337
+#define IDC_SET_AUTOENCMODE 345   /* re-encrypt after idle: Off / Default / Enforced */
+#define IDC_SET_AUTOENC 346       /* ... and the time */
+#define IDC_SET_L_AUTOENC 347
+#define IDC_SET_L_AUTOENCHINT 348
 #define IDC_SET_L_RETRY 338
 #define IDC_SET_L_LOGPATH 339
 #define IDC_SET_L_LOGKB 340
@@ -88,6 +92,9 @@
 #define IDC_KEYDETAIL_CONFIRM_LBL 112  /* label of the confirm-mode droplist */
 #define IDC_KEYDETAIL_PROTECT 113   /* protect with Windows Hello (a COPY) */
 #define IDC_KEYDETAIL_FORGET 114    /* forget one source path of this key */
+#define IDC_KEYDETAIL_AUTOENC 115   /* re-encrypt after idle: this key's own value */
+#define IDC_KEYDETAIL_AUTOENC_LBL 116
+#define IDC_KEYDETAIL_AUTOENC_NOTE 117 /* agent default / enforced line */
 
 /* KiTTY: the Hello-protect dialog */
 #define IDC_HP_SRC 100

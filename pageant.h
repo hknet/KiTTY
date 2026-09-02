@@ -128,6 +128,8 @@ bool pageant_delete_ssh2_key_by_blob(ptrlen blob);
  * 2 = ask with a Windows Hello presence check. More than two states, so
  * nothing on the way to or from storage may pass it through a bool. */
 int pageant_get_key_confirm(ptrlen blob);
+void pageant_foreach_decrypted_reencryptable(void (*fn)(ptrlen, void *),
+                                             void *ctx);   /* KiTTY */
 bool pageant_set_key_confirm(ptrlen blob, int mode);
 
 /* KiTTY: notice hook for key-set mutations arriving over an EXTERNAL

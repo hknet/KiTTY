@@ -247,6 +247,7 @@ typedef struct {
     char path[MAX_PATH + 1];
     int  encrypted;
     int  confirm;     /* stored ,confirm marker (per-key confirm-on-use) */
+    int  autoenc;     /* stored ,autoencrypt= value; -1 = agent default */
     int  failed;      /* the file was there and would not load: stop retrying */
     int  slot;        /* where it sat in the startup list - see below */
     char fp[160];     /* stored fingerprint, "" if the entry had none */
@@ -688,6 +689,24 @@ static int kageant_confirm_of_loaded(int li)
     return 0;
 }
 
+static const char *kageant_autoenc_token(int value, char *buf, size_t len);
+static int kageant_autoenc_of_loaded(int li)
+{
+    if (li < g_nblobs && g_loaded_blobs[li])
+        return kageant_idle_get_key(ptrlen_from_strbuf(g_loaded_blobs[li]));
+    return -1;
+}
+static void kageant_apply_autoenc_by_path(const char *abspath, int value)
+{
+    int i;
+    for (i = g_nloaded - 1; i >= 0; i--)
+        if (!stricmp(g_loaded_keypaths[i], abspath)) {
+            if (i < g_nblobs && g_loaded_blobs[i])
+                kageant_idle_set_key(ptrlen_from_strbuf(g_loaded_blobs[i]), value);
+            return;
+        }
+}
+
 static void kageant_apply_confirm_by_path(const char *abspath, int mode)
 {
     int i;
@@ -755,17 +774,20 @@ void kageant_save_startup_keys(void)
             while (li < g_nloaded || p < g_npending) {
                 const char *path, *fp = NULL;
                 char *fp_owned = NULL;
-                int enc, conf;
+                char aebuf[40];
+                int enc, conf, ae;
                 if (p < g_npending && g_pending[p].slot <= n) {
                     path = g_pending[p].path;
                     enc  = g_pending[p].encrypted;
                     conf = g_pending[p].confirm;
+                    ae   = g_pending[p].autoenc;
                     fp   = g_pending[p].fp[0] ? g_pending[p].fp : NULL;
                     p++;
                 } else if (li < g_nloaded) {
                     path = g_loaded_keypaths[li];
                     enc  = g_loaded_encrypted[li];
                     conf = kageant_confirm_of_loaded(li);
+                    ae   = kageant_autoenc_of_loaded(li);
                     /* Computed from the blob captured when the key loaded, so
                      * it costs no file access and cannot disagree with what is
                      * actually in the agent. */
@@ -776,14 +798,16 @@ void kageant_save_startup_keys(void)
                     path = g_pending[p].path;
                     enc  = g_pending[p].encrypted;
                     conf = g_pending[p].confirm;
+                    ae   = g_pending[p].autoenc;
                     fp   = g_pending[p].fp[0] ? g_pending[p].fp : NULL;
                     p++;
                 }
                 kageant_store_form(path, store, sizeof(store));
                 snprintf(key, sizeof(key), "startupkey%d", ++n);
-                snprintf(val, sizeof(val), "%s%s%s%s%s", store,
+                snprintf(val, sizeof(val), "%s%s%s%s%s%s", store,
                          enc ? ",encrypted" : "",
                          kageant_confirm_token(conf),
+                         kageant_autoenc_token(ae, aebuf, sizeof(aebuf)),
                          fp ? "," : "", fp ? fp : "");
                 WritePrivateProfileStringA("Agent", key, val, f);
                 sfree(fp_owned);
@@ -803,19 +827,25 @@ void kageant_save_startup_keys(void)
         for (i = 0; i < g_nloaded; i++) {
             char *fp = (i < g_nblobs) ? kageant_fp_of_blob(g_loaded_blobs[i])
                                       : NULL;
-            entries[i] = dupprintf("%s,%s%s%s%s", g_loaded_keypaths[i],
+            char aebuf[40];
+            entries[i] = dupprintf("%s,%s%s%s%s%s", g_loaded_keypaths[i],
                                    g_loaded_encrypted[i] ? "encrypted" : "plain",
                                    kageant_confirm_token(
                                        kageant_confirm_of_loaded(i)),
+                                   kageant_autoenc_token(
+                                       kageant_autoenc_of_loaded(i),
+                                       aebuf, sizeof(aebuf)),
                                    fp ? "," : "", fp ? fp : "");
             sfree(fp);
             total += strlen(entries[i]) + 1;
         }
         for (i = 0; i < g_npending; i++) {
+            char aebuf[40];
             entries[g_nloaded + i] = dupprintf(
-                "%s,%s%s%s%s", g_pending[i].path,
+                "%s,%s%s%s%s%s", g_pending[i].path,
                 g_pending[i].encrypted ? "encrypted" : "plain",
                 kageant_confirm_token(g_pending[i].confirm),
+                kageant_autoenc_token(g_pending[i].autoenc, aebuf, sizeof(aebuf)),
                 g_pending[i].fp[0] ? "," : "",
                 g_pending[i].fp[0] ? g_pending[i].fp : "");
             total += strlen(entries[g_nloaded + i]) + 1;
@@ -1271,6 +1301,228 @@ int kageant_hello_ttl_set(int seconds)
     }
     return 1;
 }
+
+/* ---- re-encrypt keys after idle (see kitty_pageant.h) ------------------ */
+
+static int kageant_autoenc_clamp(int v)
+{
+    if (v == KAGEANT_AUTOENC_USE || v <= 0) return v <= 0 ? 0 : v;
+    if (v < KAGEANT_AUTOENC_MIN) return KAGEANT_AUTOENC_MIN;
+    if (v > KAGEANT_AUTOENC_MAX) return KAGEANT_AUTOENC_MAX;
+    return v;
+}
+
+int kageant_autoenc_parse(const char *text)
+{
+    char *end;
+    long v;
+    int unit = 1;
+    while (text && (*text == ' ' || *text == '\t')) text++;
+    if (!text || !*text) return -1;
+    if (!stricmp(text, "use")) return KAGEANT_AUTOENC_USE;
+    if (!stricmp(text, "off") || !stricmp(text, "no") || !stricmp(text, "0")) return 0;
+    v = strtol(text, &end, 10);
+    if (end == text || v < 0) return -1;
+    while (*end == ' ') end++;
+    switch (tolower((unsigned char)*end)) {
+      case '\0': case 's': unit = 1; break;
+      case 'm': unit = 60; break;
+      case 'h': unit = 3600; break;
+      case 'd': unit = 86400; break;
+      case 'w': unit = 7 * 86400; break;
+      default: return -1;
+    }
+    if (v > KAGEANT_AUTOENC_MAX / unit) v = KAGEANT_AUTOENC_MAX / unit;
+    return kageant_autoenc_clamp((int)(v * unit));
+}
+
+void kageant_autoenc_format(int seconds, char *buf, size_t len)
+{
+    if (seconds == KAGEANT_AUTOENC_USE) snprintf(buf, len, "use");
+    else if (seconds <= 0) snprintf(buf, len, "off");
+    else if (seconds % 86400 == 0) snprintf(buf, len, "%d d", seconds / 86400);
+    else if (seconds % 3600 == 0) snprintf(buf, len, "%d h", seconds / 3600);
+    else if (seconds % 60 == 0) snprintf(buf, len, "%d m", seconds / 60);
+    else snprintf(buf, len, "%d s", seconds);
+}
+
+/* Stored as a MODE WORD + a value, never a boolean pair (the confirm-mode
+ * tri-state trap): [Agent] autoencryptmode = off | default | enforce,
+ * autoencryptseconds = number | use; registry AutoEncryptMode /
+ * AutoEncryptSeconds DWORDs. Read: registry first where it is authoritative,
+ * else the ini, as every other agent setting does. */
+static int kageant_autoenc_mode_parse(const char *t)
+{
+    if (!stricmp(t, "enforce") || !stricmp(t, "enforced")) return 2;
+    if (!stricmp(t, "default") || !stricmp(t, "yes")) return 1;
+    return 0;
+}
+int kageant_autoenc_mode(void)
+{
+    char buf[16];
+    int ini_v = -1, reg_v;
+    if (kitty_inilight_read("Agent", "autoencryptmode", buf, sizeof(buf)))
+        ini_v = kageant_autoenc_mode_parse(buf);
+    if (kitty_inilight_registry_authoritative())
+        return kageant_reg_read_dword("AutoEncryptMode", &reg_v) ?
+               (reg_v >= 0 && reg_v <= 2 ? reg_v : 0) : (ini_v >= 0 ? ini_v : 0);
+    if (ini_v >= 0) return ini_v;
+    return kageant_reg_read_dword("AutoEncryptMode", &reg_v) ?
+           (reg_v >= 0 && reg_v <= 2 ? reg_v : 0) : 0;
+}
+int kageant_autoenc_mode_set(int mode)
+{
+    static const char *const words[] = { "off", "default", "enforce" };
+    if (mode < 0 || mode > 2) mode = 0;
+    kitty_inilight_write("Agent", "autoencryptmode", words[mode]);
+    kageant_reg_write_dword("AutoEncryptMode", mode);
+    return 1;
+}
+int kageant_autoenc_seconds(void)
+{
+    char buf[32];
+    int ini_v = -1, reg_v;
+    if (kitty_inilight_read("Agent", "autoencryptseconds", buf, sizeof(buf)))
+        ini_v = kageant_autoenc_parse(buf);
+    if (kitty_inilight_registry_authoritative())
+        return kageant_reg_read_dword("AutoEncryptSeconds", &reg_v) ?
+               kageant_autoenc_clamp(reg_v) : (ini_v >= 0 ? ini_v : 600);
+    if (ini_v >= 0) return ini_v;
+    return kageant_reg_read_dword("AutoEncryptSeconds", &reg_v) ?
+           kageant_autoenc_clamp(reg_v) : 600;
+}
+int kageant_autoenc_seconds_set(int seconds)
+{
+    char buf[32];
+    seconds = kageant_autoenc_clamp(seconds);
+    if (seconds == KAGEANT_AUTOENC_USE) snprintf(buf, sizeof(buf), "use");
+    else snprintf(buf, sizeof(buf), "%d", seconds);
+    kitty_inilight_write("Agent", "autoencryptseconds", buf);
+    kageant_reg_write_dword("AutoEncryptSeconds", seconds);
+    return 1;
+}
+
+/* One row per key that is (or was) decrypted, or carries its own value.
+ * last_use = 0 means "not decrypted as far as we know": the stamp is set
+ * when the key is first SEEN decrypted (kageant_idle_seen, from the tick)
+ * and on every signature, and cleared when it re-encrypts. */
+typedef struct { strbuf *blob; ULONGLONG last_use; int own; } KageantIdle;
+static KageantIdle *g_idle = NULL;
+static int g_nidle = 0, g_idle_cap = 0;
+
+static int kageant_idle_find(ptrlen blob, int create)
+{
+    int i;
+    for (i = 0; i < g_nidle; i++)
+        if (g_idle[i].blob->len == blob.len &&
+            !memcmp(g_idle[i].blob->s, blob.ptr, blob.len))
+            return i;
+    if (!create) return -1;
+    if (g_nidle >= g_idle_cap) {
+        g_idle_cap = g_idle_cap ? g_idle_cap * 2 : 8;
+        g_idle = sresize(g_idle, g_idle_cap, KageantIdle);
+    }
+    g_idle[g_nidle].blob = strbuf_dup(blob);
+    g_idle[g_nidle].last_use = 0;
+    g_idle[g_nidle].own = -1;
+    return g_nidle++;
+}
+
+void kageant_idle_note_use(ptrlen blob)
+{
+    int i = kageant_idle_find(blob, 1);
+    g_idle[i].last_use = kitty_tick_count64();
+    if (!g_idle[i].last_use) g_idle[i].last_use = 1;
+}
+
+int kageant_idle_get_key(ptrlen blob)
+{
+    int i = kageant_idle_find(blob, 0);
+    return i < 0 ? -1 : g_idle[i].own;
+}
+
+void kageant_idle_set_key(ptrlen blob, int value)
+{
+    int i = kageant_idle_find(blob, 1);
+    g_idle[i].own = value < 0 ? -1 : kageant_autoenc_clamp(value);
+}
+
+int kageant_idle_effective(ptrlen blob)
+{
+    int mode = kageant_autoenc_mode();
+    int i = kageant_idle_find(blob, 0);
+    int own = i < 0 ? -1 : g_idle[i].own;
+    if (mode == 2) return kageant_autoenc_seconds();     /* enforced */
+    if (own >= 0) return own;                             /* the key's own */
+    return mode == 1 ? kageant_autoenc_seconds() : 0;     /* default / off */
+}
+
+void kageant_idle_forget(ptrlen blob)
+{
+    int i = kageant_idle_find(blob, 0);
+    if (i < 0) return;
+    strbuf_free(g_idle[i].blob);
+    memmove(&g_idle[i], &g_idle[i + 1], (g_nidle - i - 1) * sizeof(*g_idle));
+    g_nidle--;
+}
+
+/* The 1-second heartbeat: a key whose last use is older than its effective
+ * idle time goes back to encrypted (the core keeps the encrypted copy in
+ * memory, so this costs no file access); "use" means at the next tick after
+ * a signature. A key the core cannot re-encrypt (no encrypted copy, SSH-1)
+ * simply stays as it is, and its stamp is cleared so it is not retried
+ * every second. */
+/* A key that is decrypted and has no stamp yet just BECAME decrypted (loaded
+ * in the clear, or its passphrase was entered): the clock starts now, not at
+ * its first signature - a key that is unlocked and then never used must lock
+ * too. Seen within one tick of the decryption. */
+static void kageant_idle_seen(ptrlen blob, void *ctx)
+{
+    int i = kageant_idle_find(blob, 1);
+    (void)ctx;
+    if (!g_idle[i].last_use) {
+        g_idle[i].last_use = kitty_tick_count64();
+        if (!g_idle[i].last_use) g_idle[i].last_use = 1;
+    }
+}
+
+int kageant_idle_tick(void)
+{
+    ULONGLONG now = kitty_tick_count64();
+    int i, n = 0;
+    pageant_foreach_decrypted_reencryptable(kageant_idle_seen, NULL);
+    for (i = 0; i < g_nidle; i++) {
+        int secs;
+        if (!g_idle[i].last_use) continue;
+        secs = kageant_idle_effective(ptrlen_from_strbuf(g_idle[i].blob));
+        if (secs <= 0) continue;
+        if (secs != KAGEANT_AUTOENC_USE &&
+            now - g_idle[i].last_use < (ULONGLONG)secs * 1000)
+            continue;
+        g_idle[i].last_use = 0;
+        if (pageant_reencrypt_ssh2_key_by_blob(ptrlen_from_strbuf(g_idle[i].blob)))
+            n++;
+    }
+    return n;
+}
+
+extern void (*kageant_keysigned_hook)(ptrlen pubblob);   /* pageant.c */
+void kageant_idle_install(void)
+{
+    kageant_keysigned_hook = kageant_idle_note_use;
+}
+
+/* The stored-entry token for a per-key value: ",autoencrypt=<seconds|use|off>",
+ * "" for "agent default". The ONLY writer, like kageant_confirm_token. */
+static const char *kageant_autoenc_token(int value, char *buf, size_t len)
+{
+    if (value < 0) return "";
+    if (value == KAGEANT_AUTOENC_USE) snprintf(buf, len, ",autoencrypt=use");
+    else snprintf(buf, len, ",autoencrypt=%d", value);
+    return buf;
+}
+static int kageant_autoenc_of_loaded(int li);
+static void kageant_apply_autoenc_by_path(const char *abspath, int value);
 
 /*
  * ---- key identity: the fingerprint stored beside each startup entry --------
@@ -1867,6 +2119,7 @@ static void kageant_park_unloaded(const char *path, int encrypted, int confirm,
         return;
     n = g_npending - 1;
     g_pending[n].confirm = confirm;
+    g_pending[n].autoenc = -1;
     if (fp && *fp)
         snprintf(g_pending[n].fp, sizeof(g_pending[0].fp), "%s", fp);
     g_pending[n].mismatch = mismatch ? 1 : 0;
@@ -2096,6 +2349,9 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
             if (g_pending[i].confirm)
                 kageant_apply_confirm_by_path(g_pending[i].path,
                                               g_pending[i].confirm);
+            if (g_pending[i].autoenc >= 0)
+                kageant_apply_autoenc_by_path(g_pending[i].path,
+                                              g_pending[i].autoenc);
             loaded_any = 1;
             loaded_n++;
         }
@@ -2198,6 +2454,8 @@ int kageant_accept_pending_key(const char *path)
 
     if (g_pending[i].confirm)
         kageant_apply_confirm_by_path(path, g_pending[i].confirm);
+    if (g_pending[i].autoenc >= 0)
+        kageant_apply_autoenc_by_path(path, g_pending[i].autoenc);
 
     /*
      * Off the pending list - the key is loaded now, so it belongs to the loaded
@@ -2270,6 +2528,8 @@ int kageant_locate_pending_key(const char *oldpath, const char *newpath)
 
     if (g_pending[i].confirm)
         kageant_apply_confirm_by_path(newpath, g_pending[i].confirm);
+    if (g_pending[i].autoenc >= 0)
+        kageant_apply_autoenc_by_path(newpath, g_pending[i].autoenc);
 
     /*
      * Off the pending list - and every other UNREACHABLE entry recording the
@@ -2764,6 +3024,7 @@ static void kageant_entry_strip(char *entry)
             return;
         if (!stricmp(c + 1, "encrypted") || !stricmp(c + 1, "plain") ||
             !stricmp(c + 1, "confirm") || !stricmp(c + 1, "helloconfirm") ||
+            !strnicmp(c + 1, "autoencrypt=", 12) ||
             strstr(c + 1, "SHA256:"))
             *c = '\0';
         else
@@ -3173,6 +3434,7 @@ static int kageant_entry_is_phantom(const char *path)
 {
     return !stricmp(path, "plain") || !stricmp(path, "encrypted") ||
            !stricmp(path, "confirm") || !stricmp(path, "helloconfirm") ||
+           !strnicmp(path, "autoencrypt=", 12) ||
            !strnicmp(path, "SHA256:", 7);
 }
 
@@ -3198,7 +3460,7 @@ void kageant_load_startup_keys(void)
          * startupkeyN line must not truncate the rest of the list. Stop only
          * after a run of empty slots (matching the save-side clear scan). */
         for (i = 1, gap = 0; gap < 8; i++) {
-            int enc = 0, conf = 0;
+            int enc = 0, conf = 0, ae = -1;
             char *c;
             char fp[160];
             fp[0] = '\0';
@@ -3215,6 +3477,7 @@ void kageant_load_startup_keys(void)
                 else if (!stricmp(c + 1, "plain")) { enc = 0; *c = '\0'; }
                 else if (!stricmp(c + 1, "confirm")) { conf = 1; *c = '\0'; }
                 else if (!stricmp(c + 1, "helloconfirm")) { conf = 2; *c = '\0'; }
+                else if (!strnicmp(c + 1, "autoencrypt=", 12)) { ae = kageant_autoenc_parse(c + 13); *c = '\0'; }
                 else if (strstr(c + 1, "SHA256:")) {
                     /* Bare "SHA256:..." as written now, and the longer
                      * "alg bits SHA256:..." that a build in between wrote -
@@ -3236,6 +3499,7 @@ void kageant_load_startup_keys(void)
                 kageant_note_pending(abspath, enc, g_nloaded + g_npending);
                 if (g_npending > 0) {
                     g_pending[g_npending - 1].confirm = conf;
+                    g_pending[g_npending - 1].autoenc = ae;
                     if (fp[0])
                         snprintf(g_pending[g_npending - 1].fp,
                                  sizeof(g_pending[0].fp), "%s", fp);
@@ -3251,10 +3515,13 @@ void kageant_load_startup_keys(void)
                 if (v != 1) {
                     kageant_park_unloaded(abspath, enc, conf, fp, v == 0);
                     if (v == 0) startup_mismatch++;
+                    if (g_npending > 0) g_pending[g_npending - 1].autoenc = ae;
                     continue;
                 }
                 if (conf)
                     kageant_apply_confirm_by_path(abspath, conf);
+                if (ae >= 0)
+                    kageant_apply_autoenc_by_path(abspath, ae);
             }
             /* Write the list out afterwards if anything changed - the common
              * case on the first run after an upgrade is an entry that had no
@@ -3296,7 +3563,7 @@ void kageant_load_startup_keys(void)
                 kitty_hello_batch_begin();
                 for (char *p = buf; *p; p += strlen(p) + 1) {
                     int enc = 1;   /* legacy entries had no marker: deferred */
-                    int conf = 0;
+                    int conf = 0, ae = -1;
 
                     char fp[160];
                     char *c;
@@ -3319,6 +3586,7 @@ void kageant_load_startup_keys(void)
                         else if (!stricmp(c + 1, "plain")) { enc = 0; *c = '\0'; }
                         else if (!stricmp(c + 1, "confirm")) { conf = 1; *c = '\0'; }
                         else if (!stricmp(c + 1, "helloconfirm")) { conf = 2; *c = '\0'; }
+                        else if (!strnicmp(c + 1, "autoencrypt=", 12)) { ae = kageant_autoenc_parse(c + 13); *c = '\0'; }
                         else if (strstr(c + 1, "SHA256:")) {
                             snprintf(fp, sizeof(fp), "%s",
                                      strstr(c + 1, "SHA256:"));
@@ -3336,6 +3604,7 @@ void kageant_load_startup_keys(void)
                                              g_nloaded + g_npending);
                         if (g_npending > 0) {
                             g_pending[g_npending - 1].confirm = conf;
+                            g_pending[g_npending - 1].autoenc = ae;
                             if (fp[0])
                                 snprintf(g_pending[g_npending - 1].fp,
                                          sizeof(g_pending[0].fp), "%s", fp);
@@ -3347,10 +3616,13 @@ void kageant_load_startup_keys(void)
                         if (v != 1) {
                             kageant_park_unloaded(entry, enc, conf, fp, v == 0);
                             if (v == 0) startup_mismatch++;
+                            if (g_npending > 0) g_pending[g_npending - 1].autoenc = ae;
                             continue;
                         }
                         if (conf)
                             kageant_apply_confirm_by_path(entry, conf);
+                        if (ae >= 0)
+                            kageant_apply_autoenc_by_path(entry, ae);
                     }
                     if (!fp[0])
                         g_fp_adopted = 1;   /* see the ini branch above */

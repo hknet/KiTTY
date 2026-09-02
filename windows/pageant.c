@@ -1825,6 +1825,9 @@ static const struct kl_anchor keydetail_anchors[] = {
     {IDC_KEYDETAIL_DEFER,   KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYDETAIL_CONFIRM_LBL, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYDETAIL_CONFIRM, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_AUTOENC_LBL, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_AUTOENC, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_AUTOENC_NOTE, KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
     {IDOK,                  KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
 };
 static RECT keydetail_baserects[lenof(keydetail_anchors)];
@@ -2266,6 +2269,25 @@ static int kageant_hello_add_offer(const char *src, char **newpath_out)
     }
 }
 
+static void keydetail_autoenc_refresh(HWND hwnd, int pending)
+{
+    char t[24], note[96];
+    int mode = kageant_autoenc_mode();
+    int own = (keydetail_blob && keydetail_blob->len) ?
+              kageant_idle_get_key(ptrlen_from_strbuf(keydetail_blob)) : -1;
+    if (own >= 0) kageant_autoenc_format(own, t, sizeof(t)); else t[0] = '\0';
+    SetDlgItemTextA(hwnd, IDC_KEYDETAIL_AUTOENC, t);
+    kageant_autoenc_format(kageant_autoenc_seconds(), t, sizeof(t));
+    if (mode == 2)
+        snprintf(note, sizeof(note), "Enforced by the agent setting: %s", t);
+    else if (mode == 1)
+        snprintf(note, sizeof(note), "blank = the agent default (%s)", t);
+    else
+        snprintf(note, sizeof(note), "blank = off (no agent default)");
+    SetDlgItemTextA(hwnd, IDC_KEYDETAIL_AUTOENC_NOTE, note);
+    EnableWindow(GetDlgItem(hwnd, IDC_KEYDETAIL_AUTOENC), !pending && mode != 2);
+}
+
 static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                                        WPARAM wParam, LPARAM lParam)
 {
@@ -2427,6 +2449,10 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             EnableWindow(GetDlgItem(hwnd, IDC_KEYDETAIL_CONFIRM),
                          !disp->pending);
         }
+        /* KiTTY: this key's own idle re-encrypt time. Blank = the agent's
+         * default; the note says what that is right now, or that the agent
+         * setting is enforced (then the field is greyed and ignored). */
+        keydetail_autoenc_refresh(hwnd, disp->pending);
 
         /* KiTTY: accepting a changed key file. Only ever offered for a row
          * that IS a mismatch - this is the one place a new fingerprint can be
@@ -2528,6 +2554,26 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                         keypath,
                         IsDlgButtonChecked(hwnd, IDC_KEYDETAIL_DEFER) ==
                             BST_CHECKED);
+            }
+            return 0;
+          case IDC_KEYDETAIL_AUTOENC:
+            /* KiTTY: the key's own idle re-encrypt time, applied when the
+             * field is left: blank = agent default, garbage = unchanged. */
+            if (HIWORD(wParam) == EN_KILLFOCUS &&
+                keydetail_blob && keydetail_blob->len &&
+                IsWindowEnabled(GetDlgItem(hwnd, IDC_KEYDETAIL_AUTOENC))) {
+                char t[32];
+                int v;
+                GetDlgItemTextA(hwnd, IDC_KEYDETAIL_AUTOENC, t, sizeof(t));
+                v = t[0] ? kageant_autoenc_parse(t) : -1;
+                if (t[0] && v < 0) {
+                    keydetail_autoenc_refresh(hwnd, 0);   /* put the old one back */
+                    return 0;
+                }
+                kageant_idle_set_key(ptrlen_from_strbuf(keydetail_blob), v);
+                if (kageant_startup_active())
+                    kageant_save_startup_keys();
+                keydetail_autoenc_refresh(hwnd, 0);
             }
             return 0;
           case IDC_KEYDETAIL_CONFIRM:
@@ -3668,6 +3714,7 @@ static const int keysettings_page_security[] = {
     IDC_SET_LOCKDOWN, IDC_SET_BLOCKADD, IDC_SET_BLOCKREMOVE, IDC_SET_HELLO,
     IDC_SET_L_TTL, IDC_SET_TTL, IDC_SET_L_TTLHINT,
     IDC_SET_L_HELLOTTL, IDC_SET_HELLOTTL, IDC_SET_L_HELLOTTLHINT,
+    IDC_SET_L_AUTOENC, IDC_SET_AUTOENCMODE, IDC_SET_AUTOENC, IDC_SET_L_AUTOENCHINT,
 };
 static const int keysettings_page_media[] = {
     IDC_SET_L_RETRY, IDC_SET_RETRY, IDC_SET_UNLOAD, IDC_SET_QUIET,
@@ -3776,6 +3823,7 @@ static void keysettings_align_rows(HWND hwnd)
         { IDC_SET_THEME,        { IDC_SET_L_THEME, 0 } },
         { IDC_SET_TTL,          { IDC_SET_L_TTL, 0 } },
         { IDC_SET_HELLOTTL,     { IDC_SET_L_HELLOTTL, 0 } },
+        { IDC_SET_AUTOENCMODE,  { IDC_SET_L_AUTOENC, IDC_SET_AUTOENC, 0 } },
         { IDC_SET_AGENTLOGPATH, { IDC_SET_L_LOGPATH, 0 } },
         { IDC_SET_AGENTLOGKB,   { IDC_SET_L_LOGKB, 0 } },
         { IDC_SET_AGENTLOGKEEP, { IDC_SET_L_LOGKEEP, 0 } },
@@ -3833,6 +3881,44 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
         SendDlgItemMessage(hwnd, IDC_SET_TTL, EM_SETLIMITTEXT, 3, 0);
         SetDlgItemInt(hwnd, IDC_SET_HELLOTTL, kageant_hello_ttl(), FALSE);
         SendDlgItemMessage(hwnd, IDC_SET_HELLOTTL, EM_SETLIMITTEXT, 3, 0);
+        /* Re-encrypt keys after idle: mode + time. The time field is live
+         * only while a mode uses it. */
+        {
+            static const char *const modes[] = {
+                "Off",
+                "Default for keys without their own setting",
+                "Enforced for every key",
+            };
+            char t[24];
+            int m, mode = kageant_autoenc_mode();
+            for (m = 0; m < (int)lenof(modes); m++)
+                SendDlgItemMessage(hwnd, IDC_SET_AUTOENCMODE, CB_ADDSTRING,
+                                   0, (LPARAM)modes[m]);
+            SendDlgItemMessage(hwnd, IDC_SET_AUTOENCMODE, CB_SETCURSEL, mode, 0);
+            /* The closed box is as wide as the row allows; the OPEN list is
+             * widened to its longest entry, so nothing is cut off. */
+            {
+                HWND cb = GetDlgItem(hwnd, IDC_SET_AUTOENCMODE);
+                HDC dc = GetDC(cb);
+                HFONT f = (HFONT)SendMessage(cb, WM_GETFONT, 0, 0);
+                HGDIOBJ old = f ? SelectObject(dc, f) : NULL;
+                int widest = 0;
+                for (m = 0; m < (int)lenof(modes); m++) {
+                    SIZE sz;
+                    if (GetTextExtentPoint32A(dc, modes[m], (int)strlen(modes[m]), &sz) &&
+                        sz.cx > widest)
+                        widest = sz.cx;
+                }
+                if (old) SelectObject(dc, old);
+                ReleaseDC(cb, dc);
+                SendMessage(cb, CB_SETDROPPEDWIDTH,
+                            widest + GetSystemMetrics(SM_CXVSCROLL) + 12, 0);
+            }
+            kageant_autoenc_format(kageant_autoenc_seconds(), t, sizeof(t));
+            SetDlgItemTextA(hwnd, IDC_SET_AUTOENC, t);
+            SendDlgItemMessage(hwnd, IDC_SET_AUTOENC, EM_SETLIMITTEXT, 12, 0);
+            EnableWindow(GetDlgItem(hwnd, IDC_SET_AUTOENC), mode != 0);
+        }
         /* Hello gating: greyed (and shown unticked) when Windows Hello has
          * no credential to check against - the availability probe is the
          * system's own answer. A remembered "yes" is preserved in the
@@ -3948,6 +4034,16 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
         }
         return 0;
       }
+      case WM_HELP: {
+        /* F1: the idle re-encrypt row has its own section, the rest of the
+         * dialog the Settings section. */
+        int id = ((LPHELPINFO)lParam)->iCtrlId;
+        launch_help(hwnd, (id == IDC_SET_AUTOENC || id == IDC_SET_AUTOENCMODE ||
+                           id == IDC_SET_L_AUTOENC || id == IDC_SET_L_AUTOENCHINT) ?
+                          WINHELP_CTX_pageant_autoencrypt :
+                          WINHELP_CTX_pageant_settings);
+        return 0;
+      }
       case WM_SETTINGCHANGE:
         /* Windows announces a light/dark switch this way. It only matters
          * while the preference is "follow the system", and applying it again
@@ -3957,6 +4053,12 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
         return 0;
       case WM_COMMAND:
         switch (LOWORD(wParam)) {
+          case IDC_SET_AUTOENCMODE:
+            if (HIWORD(wParam) == CBN_SELCHANGE)
+                EnableWindow(GetDlgItem(hwnd, IDC_SET_AUTOENC),
+                             SendDlgItemMessage(hwnd, IDC_SET_AUTOENCMODE,
+                                                CB_GETCURSEL, 0, 0) != 0);
+            return 0;
           case IDC_SET_THEME:
             /* Repaint as soon as the droplist changes, so the choice is
              * visible before OK writes it. Cancel therefore has to put the
@@ -3999,6 +4101,19 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                                        KAGEANT_TTL_DEFAULT,
                                        kageant_hello_ttl()));
                 kitty_hello_cache_ttl_set(kageant_hello_ttl());
+            }
+            {
+                char t[32];
+                int mode = (int)SendDlgItemMessage(hwnd, IDC_SET_AUTOENCMODE,
+                                                   CB_GETCURSEL, 0, 0);
+                int v;
+                GetDlgItemTextA(hwnd, IDC_SET_AUTOENC, t, sizeof(t));
+                v = kageant_autoenc_parse(t);
+                /* Garbage keeps the old value; blank means the default. */
+                if (v < 0) v = t[0] ? kageant_autoenc_seconds() : 600;
+                if (v == 0) v = kageant_autoenc_seconds();   /* "off" is the mode's job */
+                kageant_autoenc_seconds_set(v);
+                kageant_autoenc_mode_set(mode >= 0 && mode <= 2 ? mode : 0);
             }
             /* KiTTY: IPC access control + notice timeout work in either store,
              * so they are always applied (not gated on a kitty.ini). */
@@ -5413,6 +5528,18 @@ void kageant_refresh_tray_tip(void)
         sfree(tip);
         tip = dupstr(merged);
     }
+    /* KiTTY: an enforced idle re-encrypt is a hard policy - visible here
+     * like the other ones, so a greyed field in key details has its answer. */
+    if (kageant_autoenc_mode() == 2) {
+        const char *rest = strstr(tip, "\r\n");
+        char merged[256], t[24];
+        kageant_autoenc_format(kageant_autoenc_seconds(), t, sizeof(t));
+        snprintf(merged, sizeof(merged), "%.*s\r\nidle re-encrypt enforced: %s%s",
+                 rest ? (int)(rest - tip) : (int)strlen(tip), tip, t,
+                 rest ? rest : "");
+        sfree(tip);
+        tip = dupstr(merged);
+    }
     held = kageant_mismatch_count();
     if (held > 0) {
         char line[64];
@@ -5635,7 +5762,9 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
         }
         /* KiTTY: remove any ssh-add -t keys whose lifetime has run out. */
         if (wParam == TID_KEY_LIFETIME) {
-            if (kageant_expire_due_keys())
+            int changed = kageant_expire_due_keys();
+            changed += kageant_idle_tick();    /* re-encrypt keys after idle */
+            if (changed)
                 keylist_update();          /* refresh the window if it is open */
             else
                 keylist_tick_lifetimes();  /* live countdown column */
@@ -6599,6 +6728,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY: a 1-second heartbeat to expire ssh-add -t keys. Cheap, and only
      * the primary instance (which owns traywindow) runs it. */
     SetTimer(traywindow, TID_KEY_LIFETIME, 1000, NULL);
+    kageant_idle_install();      /* the idle re-encrypt rides the same tick */
 
     /* Accelerators used: nsvkxaol */
     systray_menu = CreatePopupMenu();

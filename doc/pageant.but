@@ -140,6 +140,34 @@ You can apply this to keys you added using the \q{Add Key} button,
 or to keys you added remotely using agent forwarding (see
 \k{pageant-forward}); it makes no difference.
 
+\S{pageant-mainwin-settings} The \q{Settings} button
+
+The \q{Settings} button opens kageant's own settings, on four pages.
+Everything here is saved as soon as you press OK; it belongs to this
+installation of kageant, not to any key.
+
+\b \q{Agent}: whether kageant registers itself as the Windows OpenSSH
+agent, starts at login, reloads the remembered keys at startup, and
+shows a notice when a key is used; the notice display time; the colour
+theme.
+
+\b \q{Security}: the IPC policy (refuse all key adds and removes over
+the pipe, or only adds, or only removes), whether confirmations demand
+a Windows Hello gesture, how long a typed passphrase and a Windows
+Hello unlock are kept for a batch of keys, and \q{Re-encrypt keys
+after idle} - the mode and the time after which an unused key goes
+back to its encrypted state (\k{pageant-autoencrypt}).
+
+\b \q{Removable media}: what to do with startup keys whose drive was
+absent at login and appears later, whether a key is unloaded when its
+media is removed, and whether missing startup keys are reported.
+
+\b \q{Log}: the agent log - whether it is written, where, and how it
+is rotated and expunged.
+
+Press F1 on any page for this section; on the idle row it opens the
+idle section.
+
 \H{pageant-cmdline} The kageant command line
 
 kageant can be made to do things automatically when it starts up, by
@@ -387,6 +415,32 @@ box. As far as I know this is a deliberate defensive measure by
 Windows, against malicious software. So make sure you click in the
 prompt window before typing your passphrase, or else the passphrase
 might be sent to somewhere you didn't want to trust with it!
+
+\H{pageant-autoencrypt} Re-encrypting keys after idle
+
+A decrypted key stays usable until kageant stops. \q{Re-encrypt keys
+after idle}, on the Security page of the settings, puts a key back into
+its encrypted state once the given time has passed since it was
+decrypted or last signed, whichever is later; the next use asks for
+the passphrase and the clock starts again. kageant
+keeps the encrypted copy in memory, so nothing is read from disk and
+the key stays listed. Only keys that have a passphrase take part.
+
+The setting has a mode and a time. \q{Off} runs no agent timer; a key
+can still carry its own time in its key details. \q{Default for keys
+without their own setting} applies the time to every key that has no
+value of its own, and a key's own value wins for that key. \q{Enforced
+for every key} applies the time to every key and ignores the per-key
+values, for a site or a network whose rules demand it; key details
+then show the field greyed with the enforced value, and the tray tip
+says so.
+
+The time is seconds, or a number with \c{m}, \c{h} or \c{d} (\c{10m},
+\c{2h}, \c{1d}), from 30 seconds to 7 days. The word \c{use} means
+right after each signature, so every use costs the passphrase; a login
+that signs twice in one handshake then asks twice. In \c{kitty.ini}
+these are \c{autoencryptmode} and \c{autoencryptseconds} in the
+\c{[Agent]} section; a key's own value travels on its startup entry.
 
 \H{pageant-security} Security considerations
 

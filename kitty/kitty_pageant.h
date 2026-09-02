@@ -118,6 +118,30 @@ int  kageant_unload_on_remove_set(int on);
 int  kageant_passphrase_ttl_set(int seconds);
 int  kageant_hello_ttl(void);      /* Hello KEK cache seconds; default 60 */
 int  kageant_hello_ttl_set(int seconds);
+
+/* Re-encrypt keys after idle (design/TASK_kageant_autoreencrypt.md).
+ * Mode: 0 off (a key's own value still applies), 1 default for keys without
+ * their own value, 2 enforced for every key. Seconds: KAGEANT_AUTOENC_USE
+ * (1) = right after each use, else 30 s .. 7 d. A per-key value of -1 means
+ * "agent default", 0 = off for this key. */
+#define KAGEANT_AUTOENC_USE 1
+#define KAGEANT_AUTOENC_MIN 30
+#define KAGEANT_AUTOENC_MAX (7 * 86400)
+int  kageant_autoenc_mode(void);
+int  kageant_autoenc_mode_set(int mode);
+int  kageant_autoenc_seconds(void);
+int  kageant_autoenc_seconds_set(int seconds);
+/* "10m", "2 h", "1d", "use", "off", bare seconds -> value (-1 = no parse). */
+int  kageant_autoenc_parse(const char *text);
+/* value -> "use" / "off" / "10 m" / "2 h" / "45 s" (buf >= 24). */
+void kageant_autoenc_format(int seconds, char *buf, size_t len);
+void kageant_idle_note_use(ptrlen pubblob);            /* a signature happened */
+int  kageant_idle_get_key(ptrlen pubblob);             /* own value or -1 */
+void kageant_idle_set_key(ptrlen pubblob, int value);  /* -1 = agent default */
+int  kageant_idle_effective(ptrlen pubblob);           /* resolved seconds, 0 = none */
+int  kageant_idle_tick(void);                          /* re-encrypt due keys; count */
+void kageant_idle_forget(ptrlen pubblob);              /* key removed */
+void kageant_idle_install(void);                       /* hook the agent core */
 /* The colour theme is application-wide, not the agent's own: kitty_theme_pref.h
  * declares it, and kittygen and kitty read the same setting. */
 /* Which page of the settings dialog was showing when it was last closed, so

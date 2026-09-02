@@ -191,7 +191,7 @@ END
  *    use:" both fitted 52 and 62 units in Tahoma 8 and do not in Segoe UI 9,
  *    so the label column moved out and the edit column moved with it.
  */
-IDD_KEYDETAILS DIALOGEX DISCARDABLE 0, 0, 420, 252
+IDD_KEYDETAILS DIALOGEX DISCARDABLE 0, 0, 420, 270
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION "kageant - key details"
 FONT 9, "Segoe UI", 400, 0, 0x1
@@ -230,14 +230,20 @@ BEGIN
     /* KiTTY: the ONLY place a changed key file can be accepted. Shown only for
      * a fingerprint mismatch; the startup path used to ask this in a modal at
      * login, where one click ratified a swap. */
-    PUSHBUTTON "&Accept this key", IDC_KEYDETAIL_ACCEPT, 10, 232, 90, 15
+    /* KiTTY: this key's own idle re-encrypt time; blank = the agent's
+     * default; greyed while the agent setting is enforced. */
+    LTEXT "Re-encr&ypt after idle:", IDC_KEYDETAIL_AUTOENC_LBL, 10, 232, 78, 11,
+        SS_CENTERIMAGE
+    EDITTEXT IDC_KEYDETAIL_AUTOENC, 92, 232, 48, 11, ES_AUTOHSCROLL
+    LTEXT "", IDC_KEYDETAIL_AUTOENC_NOTE, 146, 232, 264, 11, SS_CENTERIMAGE
+    PUSHBUTTON "&Accept this key", IDC_KEYDETAIL_ACCEPT, 10, 250, 90, 15
     /* KiTTY: Hello-protected keys. Protect writes a protected COPY of the
      * key (never rewrites the original); Forget drops ONE source path from
      * the startup list (a deleted plaintext original, a retired stick). */
     PUSHBUTTON "&Protect with Windows Hello...", IDC_KEYDETAIL_PROTECT,
-        104, 232, 120, 15
-    PUSHBUTTON "For&get a path...", IDC_KEYDETAIL_FORGET, 228, 232, 70, 15
-    DEFPUSHBUTTON "&Close", IDOK, 358, 232, 52, 15
+        104, 250, 120, 15
+    PUSHBUTTON "For&get a path...", IDC_KEYDETAIL_FORGET, 228, 250, 70, 15
+    DEFPUSHBUTTON "&Close", IDOK, 358, 250, 52, 15
 END
 
 /* KiTTY: the [Agent] settings dialog, reached from the key list window's
@@ -273,7 +279,7 @@ END
  * label, because a combo box sizes its closed height from the font, ignores
  * the template, and lands on 14.
  */
-IDD_KEYSETTINGS DIALOGEX DISCARDABLE 0, 0, 300, 168
+IDD_KEYSETTINGS DIALOGEX DISCARDABLE 0, 0, 300, 202
 STYLE DS_MODALFRAME | DS_SHELLFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "kageant - settings"
 FONT 9, "Segoe UI", 400, 0, 0x1
@@ -341,6 +347,15 @@ BEGIN
     EDITTEXT IDC_SET_HELLOTTL, 128, 112, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT "One Hello covers a batch; 0 = every unlock asks; blank = the default 60. Maximum 300.",
         IDC_SET_L_HELLOTTLHINT, 16, 128, 268, 10
+    /* Re-encrypt keys after idle: a MODE (off / default for keys without
+     * their own value / enforced for every key) and a time. */
+    LTEXT "Re-encr&ypt keys after idle:", IDC_SET_L_AUTOENC,
+        16, 144, 94, 14, SS_CENTERIMAGE
+    COMBOBOX IDC_SET_AUTOENCMODE, 112, 144, 118, 60,
+        CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    EDITTEXT IDC_SET_AUTOENC, 236, 144, 48, 11, ES_AUTOHSCROLL
+    LTEXT "Seconds, or 10m / 2h / 1d; \"use\" = right after each use. 30 s to 7 d.",
+        IDC_SET_L_AUTOENCHINT, 16, 162, 268, 10
 
     /* ---- page 2: Removable media ---- */
     LTEXT "&Retry startup keys to load, when a drive appears:",
@@ -380,8 +395,8 @@ BEGIN
     LTEXT "The log is evidence, not proof - see the manual.",
         IDC_SET_L_LOGNOTE, 16, 102, 268, 10
 
-    DEFPUSHBUTTON "OK", IDOK, 182, 148, 54, 15
-    PUSHBUTTON "Cancel", IDCANCEL, 240, 148, 54, 15
+    DEFPUSHBUTTON "OK", IDOK, 182, 182, 54, 15
+    PUSHBUTTON "Cancel", IDCANCEL, 240, 182, 54, 15
 END
 
 /* KiTTY: the audit-log viewer - modeless (a log window is left open for an

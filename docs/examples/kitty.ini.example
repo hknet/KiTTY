@@ -1109,6 +1109,20 @@
 ; 0 = every unlock asks again; capped at 300. Default 60.
 ;hellocacheseconds=60
 
+; autoencryptmode / autoencryptseconds: re-encrypt keys after idle. A key
+; goes back to its encrypted state autoencryptseconds after it was decrypted
+; or last signed, whichever is later (the passphrase is asked at the next
+; use, then the clock restarts);
+; the encrypted copy is kept in memory, no file is re-read. Only keys with
+; a passphrase take part. autoencryptmode: off = no agent timer (a key's
+; own value in its key details still applies); default = the time below
+; applies to keys without their own value; enforce = the time below applies
+; to EVERY key and the per-key values are ignored, for a site or a network
+; whose rules demand it. autoencryptseconds: seconds, or 10m / 2h / 1d, or
+; "use" = right after each signature. 30 s to 7 d. Default off, 600.
+;autoencryptmode=off
+;autoencryptseconds=600
+
 ; keylistgeometry / keylistcolumns: the key-list window's remembered
 ; position/size and column widths. kageant writes these itself when the
 ; window is moved, resized or closed - not knobs to edit by hand.

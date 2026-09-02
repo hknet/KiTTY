@@ -365,6 +365,16 @@ covering further unlocks (default 60, `0` asks every time), and
 confirmations rather than a click. Windows Hello must be set up in Windows; on
 a machine without it, protected keys open through their recovery door.
 
+**Re-encrypt keys after idle** (kageant): a decrypted key goes back to its
+encrypted state a set time after it was decrypted or last signed, whichever
+is later; the next use asks for the passphrase and the clock restarts. The encrypted copy stays in memory, so
+no file is re-read and the key stays listed. Settings, Security page: the
+mode - *Off*, *Default for keys without their own setting*, or *Enforced for
+every key* (per-key values ignored, for a site whose rules demand it) - and the
+time; a key's own time lives in its key details. From **kitty.ini**:
+`[Agent] autoencryptmode=off|default|enforce` and `autoencryptseconds=` (seconds,
+`10m`, `2h`, `1d`, or `use` for right after each signature; 30 s to 7 d).
+
 ### kageant — load keys on startup
 
 kageant can remember the keys you load and re-add them automatically at the next login, added **encrypted/deferred** (the passphrase is only requested the first time a key is actually used). After a passphrase-protected SSH-2 key is first used, kageant returns the long-lived in-memory key state to a Windows `CryptProtectMemory`-protected private blob and only unprotects/deserializes it temporarily for signing. Normally added SSH-2 keys use the same protected steady state. It auto-tracks the file paths of the keys you load; enabling the option also installs an autostart entry so kageant starts at login — replacing the need for a hand-made Startup shortcut. Only key-file *paths* are stored, never passphrases or key material.
