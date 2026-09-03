@@ -189,7 +189,7 @@ struct WinGuiSeat {
     int compose_char;
     WPARAM compose_keycode;
 
-    HDC wintw_hdc;
+    struct KittyPainter *painter;      /* paint.h: the drawing primitives */
 
     bool resizing;
     bool need_backend_resize;

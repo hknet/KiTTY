@@ -181,6 +181,7 @@ add_sources_from_current_dir(psocks nohelp.c)
 
 add_executable(putty
   window.c
+  paint-gdi.c
   ${CMAKE_SOURCE_DIR}/stubs/no-hello-keys.c  # KiTTY feature: kitty.exe only
   putty.c
   help.c
@@ -199,6 +200,7 @@ installed_program(putty)
 add_executable(puttytel
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c
   window.c
+  paint-gdi.c
   ${CMAKE_SOURCE_DIR}/stubs/no-hello-keys.c  # KiTTY: no key auth here
   putty.c
   help.c
@@ -291,6 +293,7 @@ if(HAVE_CONPTY)
   add_executable(pterm
     ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c
     window.c
+    paint-gdi.c
     ${CMAKE_SOURCE_DIR}/stubs/no-hello-keys.c  # KiTTY: no key auth here
     pterm.c
     help.c
@@ -458,6 +461,7 @@ endif()
 
 add_executable(kitty
   window.c
+  paint-gdi.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
@@ -579,6 +583,7 @@ set_target_properties(kitty PROPERTIES WIN32_EXECUTABLE ON)
 # registry. Produces build-*/kitty_portable.exe.
 add_executable(kitty_portable
   window.c
+  paint-gdi.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)

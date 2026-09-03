@@ -21,6 +21,7 @@
 #include "putty-rc.h"
 #include "security-api.h"
 #include "win-gui-seat.h"
+#include "paint.h"
 #include "tree234.h"
 
 #ifdef NO_MULTIMON
@@ -452,6 +453,8 @@ struct WinGuiSeatListNode wgslisthead = {
     (((wch) >= 0x180B && (wch) <= 0x180D) || /* MONGOLIAN FREE VARIATION SELECTOR */ \
      ((wch) >= 0xFE00 && (wch) <= 0xFE0F)) /* VARIATION SELECTOR 1-16 */
 
+static HDC make_hdc(WinGuiSeat *wgs);
+static void free_hdc(WinGuiSeat *wgs, HDC hdc);
 static bool wintw_setup_draw_ctx(TermWin *);
 static void wintw_draw_text(TermWin *, int x, int y, wchar_t *text, int len,
                             unsigned long attrs, int lattrs, truecolour tc);
@@ -1703,6 +1706,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             modalfatalbox("Unable to create terminal window: %s",
                           win_strerror(GetLastError()));
         }
+        /* The window's painter (paint.h): GDI, the one every build has. */
+        wgs->painter = kitty_painter_gdi_new(wgs->term_hwnd, &wgs->pal);
 #ifdef MOD_PERSO
         /* KiTTY: a terminal window has existed in this process. What
          * [ConfigBox] noexit is about - see the respawn at the foot of the
@@ -2392,6 +2397,8 @@ static void wgs_cleanup(WinGuiSeat *wgs)
     sfree(wgs->logpal);
     if (wgs->pal)
         DeleteObject(wgs->pal);
+    if (wgs->painter)
+        kitty_painter_free(wgs->painter);
     wgs_unlink(wgs);
     sfree(wgs);
 }
@@ -3071,101 +3078,8 @@ static void wintw_palette_get_overrides(TermWin *tw, Terminal *term)
     }
 }
 
-/*
- * This is a wrapper to ExtTextOut() to force Windows to display
- * the precise glyphs we give it. Otherwise it would do its own
- * bidi and Arabic shaping, and we would end up uncertain which
- * characters it had put where.
- */
-static void exact_textout(HDC hdc, int x, int y, CONST RECT *lprc,
-                          unsigned short *lpString, UINT cbCount,
-                          CONST INT *lpDx, bool opaque)
-{
-#if HAVE_GCP_RESULTSW
-    GCP_RESULTSW gcpr;
-#else
-    /*
-     * If building against old enough headers that the GCP_RESULTSW
-     * type isn't available, we can make do with GCP_RESULTS proper:
-     * the differences aren't important to us (the only variable-width
-     * string parameter is one we don't use anyway).
-     */
-    GCP_RESULTS gcpr;
-#endif
-    char *buffer = snewn(cbCount*2+2, char);
-    char *classbuffer = snewn(cbCount, char);
-    memset(&gcpr, 0, sizeof(gcpr));
-    memset(buffer, 0, cbCount*2+2);
-    memset(classbuffer, GCPCLASS_NEUTRAL, cbCount);
-
-    gcpr.lStructSize = sizeof(gcpr);
-    gcpr.lpGlyphs = (void *)buffer;
-    gcpr.lpClass = (void *)classbuffer;
-    gcpr.nGlyphs = cbCount;
-    GetCharacterPlacementW(hdc, lpString, cbCount, 0, &gcpr,
-                           FLI_MASK | GCP_CLASSIN | GCP_DIACRITIC);
-
-    ExtTextOut(hdc, x, y,
-               ETO_GLYPH_INDEX | ETO_CLIPPED | (opaque ? ETO_OPAQUE : 0),
-               lprc, buffer, cbCount, lpDx);
-}
-
-/*
- * The exact_textout() wrapper, unfortunately, destroys the useful
- * Windows `font linking' behaviour: automatic handling of Unicode
- * code points not supported in this font by falling back to a font
- * which does contain them. Therefore, we adopt a multi-layered
- * approach: for any potentially-bidi text, we use exact_textout(),
- * and for everything else we use a simple ExtTextOut as we did
- * before exact_textout() was introduced.
- */
-static void general_textout(
-    WinGuiSeat *wgs, HDC hdc, int x, int y, CONST RECT *lprc,
-    unsigned short *lpString, UINT cbCount, CONST INT *lpDx, bool opaque)
-{
-    int i, j, xp, xn;
-    int bkmode = 0;
-    bool got_bkmode = false;
-
-    xp = xn = x;
-
-    for (i = 0; i < (int)cbCount ;) {
-        bool rtl = is_rtl(lpString[i]);
-
-        xn += lpDx[i];
-
-        for (j = i+1; j < (int)cbCount; j++) {
-            if (rtl != is_rtl(lpString[j]))
-                break;
-            xn += lpDx[j];
-        }
-
-        /*
-         * Now [i,j) indicates a maximal substring of lpString
-         * which should be displayed using the same textout
-         * function.
-         */
-        if (rtl) {
-            exact_textout(hdc, xp, y, lprc, lpString+i, j-i,
-                          wgs->font_varpitch ? NULL : lpDx+i, opaque);
-        } else {
-            ExtTextOutW(hdc, xp, y, ETO_CLIPPED | (opaque ? ETO_OPAQUE : 0),
-                        lprc, lpString+i, j-i,
-                        wgs->font_varpitch ? NULL : lpDx+i);
-        }
-
-        i = j;
-        xp = xn;
-
-        bkmode = GetBkMode(hdc);
-        got_bkmode = true;
-        SetBkMode(hdc, TRANSPARENT);
-        opaque = false;
-    }
-
-    if (got_bkmode)
-        SetBkMode(hdc, bkmode);
-}
+/* The text-run helpers that used to sit here (exact_textout, the RTL-aware
+ * general_textout) are the GDI painter's now: windows/paint-gdi.c. */
 
 static int get_font_width(WinGuiSeat *wgs, HDC hdc, const TEXTMETRIC *tm)
 {
@@ -4051,27 +3965,6 @@ static void conf_cache_data(WinGuiSeat *wgs)
 
 static const int clips_system[] = { CLIP_SYSTEM };
 
-static HDC make_hdc(WinGuiSeat *wgs)
-{
-    HDC hdc;
-
-    if (!wgs->term_hwnd)
-        return NULL;
-
-    hdc = GetDC(wgs->term_hwnd);
-    if (!hdc)
-        return NULL;
-
-    SelectPalette(hdc, wgs->pal, false);
-    return hdc;
-}
-
-static void free_hdc(WinGuiSeat *wgs, HDC hdc)
-{
-    assert(wgs->term_hwnd);
-    SelectPalette(hdc, GetStockObject(DEFAULT_PALETTE), false);
-    ReleaseDC(wgs->term_hwnd, hdc);
-}
 
 static void wm_size_resize_term(WinGuiSeat *wgs, LPARAM lParam)
 {
@@ -5551,15 +5444,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * current terminal appearance so that WM_PAINT becomes
          * completely trivial. However, this should do for now.
          */
-        assert(!wgs->wintw_hdc);
-        wgs->wintw_hdc = hdc;
+        kp_begin(wgs->painter, hdc);
         term_paint(wgs->term,
                    (p.rcPaint.left-wgs->offset_width)/wgs->font_width,
                    (p.rcPaint.top-wgs->offset_height)/wgs->font_height,
                    (p.rcPaint.right-wgs->offset_width-1)/wgs->font_width,
                    (p.rcPaint.bottom-wgs->offset_height-1)/wgs->font_height,
                    !wgs->term->window_update_pending);
-        wgs->wintw_hdc = NULL;
 
         if (p.fErase ||
             p.rcPaint.left  < wgs->offset_width  ||
@@ -5568,41 +5459,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                 wgs->font_width*wgs->term->cols) ||
             p.rcPaint.bottom>= (wgs->offset_height +
                                 wgs->font_height*wgs->term->rows)) {
-            HBRUSH fillcolour, oldbrush;
-            HPEN   edge, oldpen;
-            fillcolour = CreateSolidBrush (
-                wgs->colours[ATTR_DEFBG>>ATTR_BGSHIFT]);
-            oldbrush = SelectObject(hdc, fillcolour);
-            edge = CreatePen(PS_SOLID, 0,
-                             wgs->colours[ATTR_DEFBG>>ATTR_BGSHIFT]);
-            oldpen = SelectObject(hdc, edge);
-
-            /*
-             * Jordan Russell reports that this apparently
-             * ineffectual IntersectClipRect() call masks a
-             * Windows NT/2K bug causing strange display
-             * problems when the PuTTY window is taller than
-             * the primary monitor. It seems harmless enough...
-             */
-            IntersectClipRect(hdc,
-                              p.rcPaint.left, p.rcPaint.top,
-                              p.rcPaint.right, p.rcPaint.bottom);
-
-            ExcludeClipRect(
-                hdc, wgs->offset_width, wgs->offset_height,
-                wgs->offset_width+wgs->font_width*wgs->term->cols,
-                wgs->offset_height+wgs->font_height*wgs->term->rows);
-
-            Rectangle(hdc, p.rcPaint.left, p.rcPaint.top,
-                      p.rcPaint.right, p.rcPaint.bottom);
-
-            /* SelectClipRgn(hdc, NULL); */
-
-            SelectObject(hdc, oldbrush);
-            DeleteObject(fillcolour);
-            SelectObject(hdc, oldpen);
-            DeleteObject(edge);
+            RECT keep;
+            keep.left = wgs->offset_width;
+            keep.top = wgs->offset_height;
+            keep.right = wgs->offset_width+wgs->font_width*wgs->term->cols;
+            keep.bottom = wgs->offset_height+wgs->font_height*wgs->term->rows;
+            kp_fill_outside(wgs->painter, &p.rcPaint, &keep,
+                            wgs->colours[ATTR_DEFBG>>ATTR_BGSHIFT]);
         }
+        kp_end(wgs->painter);
         SelectObject(hdc, GetStockObject(SYSTEM_FONT));
         SelectObject(hdc, GetStockObject(WHITE_PEN));
         EndPaint(hwnd, &p);
@@ -6517,11 +6382,8 @@ static void draw_horizontal_line_on_text(
     if (!(0 <= y && y < wgs->font_height))
         return;
 
-    HPEN oldpen = SelectObject(wgs->wintw_hdc, CreatePen(PS_SOLID, 0, colour));
-    MoveToEx(wgs->wintw_hdc, line_box.left, line_box.top + y, NULL);
-    LineTo(wgs->wintw_hdc, line_box.right, line_box.top + y);
-    oldpen = SelectObject(wgs->wintw_hdc, oldpen);
-    DeleteObject(oldpen);
+    kp_line(wgs->painter, line_box.left, line_box.top + y,
+            line_box.right, line_box.top + y, colour);
 }
 
 /*
@@ -6724,13 +6586,6 @@ static void do_text_internal(
                  GetBValue(fg) * 2 / 3);
     }
 
-    SelectObject(wgs->wintw_hdc, wgs->fonts[nfont]);
-    SetTextColor(wgs->wintw_hdc, fg);
-    SetBkColor(wgs->wintw_hdc, bg);
-    if (attr & TATTR_COMBINING)
-        SetBkMode(wgs->wintw_hdc, TRANSPARENT);
-    else
-        SetBkMode(wgs->wintw_hdc, OPAQUE);
     line_box.left = x;
     line_box.top = y;
     line_box.right = x + char_width * len;
@@ -6767,7 +6622,6 @@ static void do_text_internal(
          * generally reasonable results.
          */
         xoffset = char_width / 2;
-        SetTextAlign(wgs->wintw_hdc, TA_TOP | TA_CENTER | TA_NOUPDATECP);
         use_lpDx = false;
         maxlen = 1;
     } else {
@@ -6776,10 +6630,12 @@ static void do_text_internal(
          * in the normal way.
          */
         xoffset = 0;
-        SetTextAlign(wgs->wintw_hdc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
         use_lpDx = true;
         maxlen = len;
     }
+    /* Font, colours, background mode and alignment for the runs below. */
+    kp_style(wgs->painter, wgs->fonts[nfont], fg, bg,
+             !(attr & TATTR_COMBINING), wgs->font_varpitch);
 
     opaque = true;                     /* start by erasing the rectangle */
 #ifdef MOD_BACKGROUNDIMAGE
@@ -6804,11 +6660,9 @@ static void do_text_internal(
             bgloc.y = line_box.top;
             /* backgrounddc holds the image in screen coordinates */
             ClientToScreen(wgs->term_hwnd, &bgloc);
-            BitBlt(wgs->wintw_hdc, line_box.left, line_box.top,
-                   line_box.right - line_box.left,
-                   line_box.bottom - line_box.top,
-                   backgrounddc, bgloc.x, bgloc.y, SRCCOPY);
-            SetBkMode(wgs->wintw_hdc, TRANSPARENT);
+            kp_blit_background(wgs->painter, &line_box,
+                               backgrounddc, bgloc.x, bgloc.y);
+            kp_opaque(wgs->painter, false);
             opaque = false;            /* don't ETO_OPAQUE over the image */
         }
     }
@@ -6885,18 +6739,15 @@ static void do_text_internal(
             if (nlen <= 0)
                 goto out;                /* Eeek! */
 
-            ExtTextOutW(
-                wgs->wintw_hdc, x + xoffset,
-                y - wgs->font_height * (lattr == LATTR_BOT) + text_adjust,
-                ETO_CLIPPED | (opaque ? ETO_OPAQUE : 0),
-                &line_box, wbuf, nlen, (use_lpDx ? lpDx : NULL));
+            kp_text_w(wgs->painter, x + xoffset,
+                      y - wgs->font_height * (lattr == LATTR_BOT) + text_adjust,
+                      &line_box, opaque, wbuf, nlen, (use_lpDx ? lpDx : NULL));
             if (wgs->bold_font_mode == BOLD_SHADOW && (attr & ATTR_BOLD)) {
-                SetBkMode(wgs->wintw_hdc, TRANSPARENT);
-                ExtTextOutW(
-                    wgs->wintw_hdc, x + xoffset - 1,
-                    y - wgs->font_height * (lattr == LATTR_BOT) + text_adjust,
-                    ETO_CLIPPED, &line_box, wbuf, nlen,
-                    (use_lpDx ? lpDx : NULL));
+                kp_opaque(wgs->painter, false);
+                kp_text_w(wgs->painter, x + xoffset - 1,
+                          y - wgs->font_height * (lattr == LATTR_BOT) + text_adjust,
+                          &line_box, false, wbuf, nlen,
+                          (use_lpDx ? lpDx : NULL));
             }
 
             lpDx[0] = -1;
@@ -6905,13 +6756,11 @@ static void do_text_internal(
             for (size_t i = 0; i < len; i++)
                 cbuf[i] = text[i] & 0xFF;
 
-            ExtTextOut(
-                wgs->wintw_hdc, x + xoffset,
-                y - wgs->font_height * (lattr == LATTR_BOT) + text_adjust,
-                ETO_CLIPPED | (opaque ? ETO_OPAQUE : 0),
-                &line_box, cbuf, len, (use_lpDx ? lpDx : NULL));
+            kp_text_a(wgs->painter, x + xoffset,
+                      y - wgs->font_height * (lattr == LATTR_BOT) + text_adjust,
+                      &line_box, opaque, cbuf, len, (use_lpDx ? lpDx : NULL));
             if (wgs->bold_font_mode == BOLD_SHADOW && (attr & ATTR_BOLD)) {
-                SetBkMode(wgs->wintw_hdc, TRANSPARENT);
+                kp_opaque(wgs->painter, false);
 
                 /* GRR: This draws the character outside its box and
                  * can leave 'droppings' even with the clip box! I
@@ -6922,11 +6771,10 @@ static void do_text_internal(
                  * or -1 for this shift depending on if the leftmost
                  * column is blank...
                  */
-                ExtTextOut(
-                    wgs->wintw_hdc, x + xoffset - 1,
-                    y - wgs->font_height * (lattr == LATTR_BOT) + text_adjust,
-                    ETO_CLIPPED, &line_box, cbuf, len,
-                    (use_lpDx ? lpDx : NULL));
+                kp_text_a(wgs->painter, x + xoffset - 1,
+                          y - wgs->font_height * (lattr == LATTR_BOT) + text_adjust,
+                          &line_box, false, cbuf, len,
+                          (use_lpDx ? lpDx : NULL));
             }
         } else {
             /* And 'normal' unicode characters */
@@ -6943,9 +6791,14 @@ static void do_text_internal(
              * linking exactly as before. */
             WinFB_Run fb_runs[WINFB_MAX_RUNS];
             int fb_nruns = winfb_split(wbuf, len, fb_runs, WINFB_MAX_RUNS);
-            if (fb_nruns > 1 || (fb_nruns == 1 && fb_runs[0].slot >= 0)) {
+            /* The fallback module draws with GDI itself; a painter with no
+             * DC (a GPU renderer) has its own fallback, so its runs go the
+             * ordinary way below. */
+            HDC fb_hdc = kp_hdc(wgs->painter);
+            if (fb_hdc &&
+                (fb_nruns > 1 || (fb_nruns == 1 && fb_runs[0].slot >= 0))) {
                 winfb_draw_runs(
-                    wgs->wintw_hdc, x + xoffset,
+                    fb_hdc, x + xoffset,
                     y - wgs->font_height * (lattr==LATTR_BOT) + text_adjust,
                     &line_box, wbuf, len, (use_lpDx ? lpDx : NULL),
                     fb_runs, fb_nruns,
@@ -6955,20 +6808,19 @@ static void do_text_internal(
             } else
 #endif
             /* print Glyphs as they are, without Windows' Shaping*/
-            general_textout(
-                wgs, wgs->wintw_hdc, x + xoffset,
+            kp_text_general(
+                wgs->painter, x + xoffset,
                 y - wgs->font_height * (lattr==LATTR_BOT) + text_adjust,
-                &line_box, wbuf, len, lpDx,
-                opaque && !(attr & TATTR_COMBINING));
+                &line_box, opaque && !(attr & TATTR_COMBINING),
+                wgs->font_varpitch, wbuf, len, lpDx);
 
             /* And the shadow bold hack. */
             if (wgs->bold_font_mode == BOLD_SHADOW && (attr & ATTR_BOLD)) {
-                SetBkMode(wgs->wintw_hdc, TRANSPARENT);
-                ExtTextOutW(
-                    wgs->wintw_hdc, x + xoffset - 1,
-                    y - wgs->font_height * (lattr == LATTR_BOT) + text_adjust,
-                    ETO_CLIPPED, &line_box, wbuf, len,
-                    (use_lpDx ? lpDx : NULL));
+                kp_opaque(wgs->painter, false);
+                kp_text_w(wgs->painter, x + xoffset - 1,
+                          y - wgs->font_height * (lattr == LATTR_BOT) + text_adjust,
+                          &line_box, false, wbuf, len,
+                          (use_lpDx ? lpDx : NULL));
             }
         }
 
@@ -6976,7 +6828,7 @@ static void do_text_internal(
          * If we're looping round again, stop erasing the background
          * rectangle.
          */
-        SetBkMode(wgs->wintw_hdc, TRANSPARENT);
+        kp_opaque(wgs->painter, false);
         opaque = false;
     }
 
@@ -7098,17 +6950,12 @@ static void wintw_draw_cursor(
 
     if ((attr & ATTR_PASCURS) &&
         (ctype == CURSOR_BLOCK || wgs->term->big_cursor)) {
-        POINT pts[5];
-        HPEN oldpen;
-        pts[0].x = pts[1].x = pts[4].x = x;
-        pts[2].x = pts[3].x = x + char_width - 1;
-        pts[0].y = pts[3].y = pts[4].y = y;
-        pts[1].y = pts[2].y = y + wgs->font_height - 1;
-        oldpen = SelectObject(wgs->wintw_hdc,
-                              CreatePen(PS_SOLID, 0, wgs->colours[261]));
-        Polyline(wgs->wintw_hdc, pts, 5);
-        oldpen = SelectObject(wgs->wintw_hdc, oldpen);
-        DeleteObject(oldpen);
+        RECT r;
+        r.left = x;
+        r.right = x + char_width - 1;
+        r.top = y;
+        r.bottom = y + wgs->font_height - 1;
+        kp_rect_outline(wgs->painter, &r, wgs->colours[261]);
     } else if ((attr & (ATTR_ACTCURS | ATTR_PASCURS)) &&
                ctype != CURSOR_BLOCK) {
         int startx, starty, dx, dy, length, i;
@@ -7129,18 +6976,13 @@ static void wintw_draw_cursor(
             length = wgs->font_height;
         }
         if (attr & ATTR_ACTCURS) {
-            HPEN oldpen;
-            oldpen =
-                SelectObject(wgs->wintw_hdc,
-                             CreatePen(PS_SOLID, 0, wgs->colours[261]));
-            MoveToEx(wgs->wintw_hdc, startx, starty, NULL);
-            LineTo(wgs->wintw_hdc, startx + dx * length, starty + dy * length);
-            oldpen = SelectObject(wgs->wintw_hdc, oldpen);
-            DeleteObject(oldpen);
+            kp_line(wgs->painter, startx, starty,
+                    startx + dx * length, starty + dy * length,
+                    wgs->colours[261]);
         } else {
             for (i = 0; i < length; i++) {
                 if (i % 2 == 0) {
-                    SetPixel(wgs->wintw_hdc, startx, starty,
+                    kp_pixel(wgs->painter, startx, starty,
                              wgs->colours[261]);
                 }
                 startx += dx;
@@ -7159,8 +7001,8 @@ static void wintw_draw_trust_sigil(TermWin *tw, int x, int y)
     x += wgs->offset_width;
     y += wgs->offset_height;
 
-    DrawIconEx(wgs->wintw_hdc, x, y, trust_icon,
-               wgs->font_width * 2, wgs->font_height, 0, NULL, DI_NORMAL);
+    kp_icon(wgs->painter, x, y, trust_icon,
+            wgs->font_width * 2, wgs->font_height);
 }
 
 /* This function gets the actual width of a character in the normal font.
@@ -7193,31 +7035,25 @@ static int wintw_char_width(TermWin *tw, int uc)
         if ((uc&~CSET_MASK) >= ' ' && (uc&~CSET_MASK)<= '~')
             return 1;
 
+        HFONT font;
         if ( (uc & CSET_MASK) == CSET_ACP ) {
-            SelectObject(wgs->wintw_hdc, wgs->fonts[FONT_NORMAL]);
+            font = wgs->fonts[FONT_NORMAL];
         } else if ( (uc & CSET_MASK) == CSET_OEMCP ) {
             another_font(wgs, FONT_OEM);
             if (!wgs->fonts[FONT_OEM]) return 0;
 
-            SelectObject(wgs->wintw_hdc, wgs->fonts[FONT_OEM]);
+            font = wgs->fonts[FONT_OEM];
         } else
             return 0;
 
-        if (GetCharWidth32(wgs->wintw_hdc, uc & ~CSET_MASK,
-                           uc & ~CSET_MASK, &ibuf) != 1 &&
-            GetCharWidth(wgs->wintw_hdc, uc & ~CSET_MASK,
-                         uc & ~CSET_MASK, &ibuf) != 1)
+        if (!kp_char_width(wgs->painter, font, uc & ~CSET_MASK, false, &ibuf))
             return 0;
     } else {
         /* Speedup, I know of no font where ascii is the wrong width */
         if (uc >= ' ' && uc <= '~') return 1;
 
-        SelectObject(wgs->wintw_hdc, wgs->fonts[FONT_NORMAL]);
-        if (GetCharWidth32W(wgs->wintw_hdc, uc, uc, &ibuf) == 1)
-            /* Okay that one worked */ ;
-        else if (GetCharWidthW(wgs->wintw_hdc, uc, uc, &ibuf) == 1)
-            /* This should work on 9x too, but it's "less accurate" */ ;
-        else
+        if (!kp_char_width(wgs->painter, wgs->fonts[FONT_NORMAL], uc, true,
+                           &ibuf))
             return 0;
     }
 
@@ -8127,8 +7963,7 @@ static void wintw_set_scrollbar(TermWin *tw, int total, int start, int page)
 static bool wintw_setup_draw_ctx(TermWin *tw)
 {
     WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
-    assert(!wgs->wintw_hdc);
-    wgs->wintw_hdc = make_hdc(wgs);
+    bool ok = wgs->term_hwnd && kp_begin(wgs->painter, NULL);
 #ifdef MOD_PERSO
     /* Keep URL link regions current at paint time: content changes always
      * repaint, so one scan per repaint burst keeps hover/click hit-tests and
@@ -8136,21 +7971,43 @@ static bool wintw_setup_draw_ctx(TermWin *tw)
      * mouse-move path only hit-tests), so it must run even with underlining
      * off; repainting the changed rows only matters when underlines are
      * drawn. */
-    if (wgs->wintw_hdc && GetHyperlinkFlag()) {
+    if (ok && GetHyperlinkFlag()) {
         if (kitty_url_rescan(wgs->term) &&
             conf_get_int(wgs->conf, CONF_url_underline))
             kitty_url_invalidate_dirty_rows(wgs);
     }
 #endif
-    return wgs->wintw_hdc != NULL;
+    return ok;
 }
 
 static void wintw_free_draw_ctx(TermWin *tw)
 {
     WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
-    assert(wgs->wintw_hdc);
-    free_hdc(wgs, wgs->wintw_hdc);
-    wgs->wintw_hdc = NULL;
+    kp_end(wgs->painter);
+}
+
+/* A DC on the terminal window for measuring and palette work, outside a
+ * paint (painting itself goes through the painter, paint.h). */
+static HDC make_hdc(WinGuiSeat *wgs)
+{
+    HDC hdc;
+
+    if (!wgs->term_hwnd)
+        return NULL;
+
+    hdc = GetDC(wgs->term_hwnd);
+    if (!hdc)
+        return NULL;
+
+    SelectPalette(hdc, wgs->pal, false);
+    return hdc;
+}
+
+static void free_hdc(WinGuiSeat *wgs, HDC hdc)
+{
+    assert(wgs->term_hwnd);
+    SelectPalette(hdc, GetStockObject(DEFAULT_PALETTE), false);
+    ReleaseDC(wgs->term_hwnd, hdc);
 }
 
 /*
