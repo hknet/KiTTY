@@ -1069,6 +1069,16 @@ static void signop_coroutine(PageantAsyncOp *pao)
         signop_unlink(so);
     }
 
+    /* KiTTY: the cleartext can be gone again by now - re-encrypted while
+     * this request waited - and signing with nothing is a crash, not a
+     * refusal. Say so instead. */
+    if (!so->priv->skey && !so->priv->protected_skey) {
+        response = strbuf_new();
+        failure(so->pao.info->pc, so->pao.reqid, response,
+                so->failure_type, "key was re-encrypted before it could sign");
+        goto respond;
+    }
+
     ssh_key *sign_key = so->priv->skey;
     if (!sign_key && so->priv->protected_skey) {
         temp_skey = kitty_protkey_to_temp_key(so->priv->protected_skey);
@@ -1143,6 +1153,19 @@ static void signop_coroutine(PageantAsyncOp *pao)
                     so->failure_type,
                     "key deleted while confirmation was pending");
             goto respond;
+        }
+        /* The key survived, but its cleartext may not have (an idle
+         * re-encrypt while the box was up): a legacy cleartext key's
+         * sign_key was priv->skey itself and is dangling then. Look again. */
+        if (!temp_skey) {
+            if (!so->priv->skey) {
+                response = strbuf_new();
+                failure(so->pao.info->pc, so->pao.reqid, response,
+                        so->failure_type,
+                        "key re-encrypted while confirmation was pending");
+                goto respond;
+            }
+            sign_key = so->priv->skey;
         }
     }
 
@@ -1353,6 +1376,14 @@ static bool reencrypt_key(PageantPublicKey *pub)
          */
         return false;
     }
+
+    /* KiTTY: a sign request that asked for this key's passphrase is linked
+     * to the key until it resumes; taking the cleartext away in between
+     * left it signing with nothing (an idle re-encrypt tick landing between
+     * the decryption and the resume: a crash, seen 2026-09-04). Not now;
+     * the caller tries again later. */
+    if (priv->blocked_requests.next != &priv->blocked_requests)
+        return false;
 
     /* Only actually free usable decrypted/protected material if it exists.
      * But we return success regardless, so that 'please ensure this key

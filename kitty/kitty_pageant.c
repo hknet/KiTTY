@@ -1527,9 +1527,12 @@ int kageant_idle_tick(void)
         if (secs != KAGEANT_AUTOENC_USE &&
             now - g_idle[i].last_use < (ULONGLONG)secs * 1000)
             continue;
-        g_idle[i].last_use = 0;
-        if (pageant_reencrypt_ssh2_key_by_blob(ptrlen_from_strbuf(g_idle[i].blob)))
+        /* Refused (a sign request is pending on the key): keep the entry
+         * and try again next tick. */
+        if (pageant_reencrypt_ssh2_key_by_blob(ptrlen_from_strbuf(g_idle[i].blob))) {
+            g_idle[i].last_use = 0;
             n++;
+        }
     }
     return n;
 }
