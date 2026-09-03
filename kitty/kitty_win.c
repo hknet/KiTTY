@@ -1619,6 +1619,10 @@ void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up)
     t += up ? 10 : -10;
     if (t < 0) t = 0; if (t > 254) t = 254;
     conf_set_int(conf, CONF_transparencynumber, t);
+    {
+        void kitty_painter_before_layering(HWND);   /* window.c */
+        kitty_painter_before_layering(term_hwnd);
+    }
     SetWindowLongPtr(term_hwnd, GWL_EXSTYLE,
         GetWindowLongPtr(term_hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
     SetLayeredWindowAttributes(term_hwnd, 0, (BYTE)(255 - t), LWA_ALPHA);
