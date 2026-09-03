@@ -537,6 +537,10 @@ set_source_files_properties(${KITTY_DIR}/blocnote/notepad.rc PROPERTIES COMPILE_
 add_dependencies(kitty generated_licence_h)
 target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.85.1.5" BUILD_TIME="2026-09-03")
 target_compile_options(kitty PRIVATE -fcommon)
+if(KITTY_O2_HOT_O3)
+  # The paint path stays at -O3 in an -O2 build (see the top-level option).
+  set_source_files_properties(window.c PROPERTIES COMPILE_OPTIONS "-O3")
+endif()
 if(KITTY_PERF)
   # The SAME timers in upstream's own binary. guiterminal already carries the
   # define, so putty.exe's terminal.c is instrumented either way - it just needs

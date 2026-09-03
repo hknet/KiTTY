@@ -5,6 +5,23 @@ set(CMAKE_C_STANDARD 99)
 
 include(cmake/setup.cmake)
 
+# KiTTY: build at -O2 with -O3 kept on the code that carries the hot loops:
+# the terminal (guiterminal: terminal.c, bidi.c, the line editor), the
+# utilities and charset conversion the character path runs through, the
+# crypto (per packet on every SSH byte), and the window's paint path
+# (windows/window.c). -O3's extra inlining and unrolling pay off there; in
+# the dialogs, the settings readers and the agent they only add code.
+# Measured 2026-09-03: pinning terminal.c alone left bulk output 30 %
+# slower, because the loop is wider than one file. The -O2 is set here,
+# before any subdirectory, so every target sees it; the -O3 goes on as a
+# per-target / per-source option below, which the compiler applies after
+# the -O2, so the last one wins.
+option(KITTY_O2_HOT_O3
+       "-O2 everywhere except the terminal, utils, charset, crypto and window.c, which stay at -O3" OFF)
+if(KITTY_O2_HOT_O3)
+  string(REPLACE "-O3" "-O2" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+endif()
+
 # Scan the docs directory first, so that when we start calling
 # installed_program(), we'll know if we have man pages available
 add_subdirectory(doc)
@@ -234,6 +251,17 @@ endforeach()
 # here instead.
 if(platform STREQUAL unix)
   target_link_libraries(utils charset)
+endif()
+
+# KiTTY: the -O3 half of KITTY_O2_HOT_O3 (see the option near the top).
+# Here, after every subdirectory, because charset is defined by the
+# platform tree; window.c gets its own -O3 in windows/.
+if(KITTY_O2_HOT_O3)
+  foreach(hot guiterminal utils charset crypto)
+    if(TARGET ${hot})
+      target_compile_options(${hot} PRIVATE -O3)
+    endif()
+  endforeach()
 endif()
 
 # KiTTY: keep the two kitty.ini templates honest at BUILD time rather than at
