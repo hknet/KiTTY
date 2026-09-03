@@ -20,7 +20,6 @@ void kitty_proxy_panel_preselect( const char *name ) ;
 void kitty_proxy_resolve_selection( Conf *conf ) ;
 int SaveProxyInfo( Conf *conf, const char *name ) ;
 int DeleteProxyInfo( const char *name ) ;
-int kitty_proxy_any_plaintext_password( void ) ;
 void kitty_migrate_old_proxies( void ) ;
 int kitty_export_proxies_to_dir( const char *dir ) ;   /* Piece 7 */
 int kitty_import_proxies_from_dir( const char *dir, int overwrite, int *skippedOut ) ;

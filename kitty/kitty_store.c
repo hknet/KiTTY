@@ -400,39 +400,6 @@ char * SetSessPath( const char * dec ) {
 	while( pst[0]=='\\' ) pst++ ;
 	return pst ;
 }
-	
-char * SetInitialSessPath( void ) { return strcpy( sesspath, initialsesspath ) ; }
-
-char * GetSessPath( void ) {
-	return sesspath ;
-}
-
-bool SessPathIsInitial( void ) {
-	if( !strcmp( sesspath, initialsesspath ) ) { return true ; }
-	else { return false ; }
-}
-
-bool IsThereDefaultSessionFile( void ) {
-	bool t=false;
-	char *buf = (char*)malloc(strlen(sesspath)+strlen("Default%%20Settings")+strlen(FileExtension)+2) ;
-	if( !strcmp(FileExtension,"") ) {
-		sprintf(buf,"%s\\Default%%20Settings%s",sesspath,FileExtension) ;
-	} else {
-		sprintf(buf,"%s\\Default%%20Settings",sesspath) ;
-	}
-	t = existfile(buf) ;
-	free(buf) ;
-	return t;
-}
-
-int CreateFolderInPath( const char * d ) {
-	char buf[2 * MAX_PATH] ;
-	int res = 0 ;
-	snprintf( buf, sizeof(buf), "%s\\%s", sesspath, d ) ;
-	res = createPath( buf ) ;
-	if( !res ) { MessageBox(NULL,KT_STORE_MKDIR_FAILED, KT_CAP_ERROR, MB_OK|MB_ICONERROR); }
-	return res ;
-}
 
 HSettingsItem SettingsNewItem( const char * name, const char * value ) {
 	if( name==NULL ) return NULL ; 
@@ -456,8 +423,6 @@ HSettingsList SettingsInit() {
 	list->last = NULL ;
 	return list ;
 }
-
-HSettingsList PortableSettings ;
 
 void SettingsDelItem( HSettingsList list, const char * key ) {
 	if( list != NULL ) {
@@ -531,49 +496,6 @@ void SettingsFree( HSettingsList list ) {
 		list->num = 0 ;
 		free( list ) ;
 	}
-}
-
-char * SettingsKey( HSettingsList list, const char * key ) {
-	if( list != NULL ) {
-		HSettingsItem current = list->first ;
-		while( current != NULL ) {
-			if( current->name != NULL ) {
-				if( !strcmp( current->name, key ) ) return current->value ;
-			}
-			current = current->pNext ;
-		}
-	}
-	return NULL ;
-}
-
-char * SettingsKey_str( HSettingsList list, const char * key ) {
-	if( list != NULL ) {
-		HSettingsItem current = list->first ;
-		while( current != NULL ) {
-			if( current->name != NULL ) {
-				if( !strcmp( current->name, key ) ) {
-					return dupstr( current->value ) ;
-				}
-			}
-			current = current->pNext ;
-		}
-	}
-	return NULL ;
-}
-
-int SettingsKey_int( HSettingsList list, const char * key, const int defvalue ) {
-	if( list != NULL ) {
-		HSettingsItem current = list->first ;
-		while( current != NULL ) {
-			if( current->name != NULL ) {
-				if( !strcmp( current->name, key ) ) {
-					return atoi( current->value ) ;
-				}
-			}
-			current = current->pNext ;
-		}
-	}
-	return defvalue ;
 }
 
 void SettingsLoad( HSettingsList list, const char * filename ) {
@@ -657,72 +579,6 @@ void SettingsLoad( HSettingsList list, const char * filename ) {
 		errorShow( KT_STORE_SESSION_READ_FAILED, filename ) ;
 	}
 }
-
-void SettingsSave( HSettingsList list, const char * filename ) {
-	FILE * fp ;
-	char buffer[4096] ;
-	
-	if( (fp=fopen(filename,"wb")) != NULL ) {
-		if( list != NULL ) {
-			HSettingsItem current = list->first ;
-			while( current != NULL ) {
-				if( current->name != NULL ) {
-					if( current->value == NULL ) {
-						snprintf( buffer, sizeof(buffer), "%s\\\\\n", current->value ) ;
-					} else {
-						char * p = (char*) malloc( 3*strlen(current->value)+1 ) ;
-						mungestr( current->value, p ) ;
-						snprintf( buffer, sizeof(buffer), "%s\\%s\\\n", current->name, p ) ;
-						free( p ) ;
-					}
-					fputs( buffer, fp ) ;
-					fflush( fp ) ;
-				}
-				current = current->pNext ;
-			}
-		}
-		fclose(fp);
-	} else {
-		errorShow( KT_STORE_SESSION_WRITE_FAILED, filename ) ;
-	}
-}
-
-
-/*
-void SettingsPrint( HSettingsList list ) {
-	if( list != NULL ) {
-		debug_log( "->filename=%s\n", list->filename ) ;
-		debug_log( "->num=%d\n", list->num ) ;
-		debug_log( "->first=%ld\n", list->first ) ;
-		debug_log( "->last=%ld\n", list->last ) ;
-		HSettingsItem current = list->first ;
-		while( current != NULL ) {
-			if( current->name !=NULL ) {
-				if( current->value !=NULL ) { debug_log( "%s=%s\n", current->name, current->value ) ;
-				} else { debug_log( "%s=NULL\n", current->name ) ;
-				}
-			}
-			debug_log("	current=%ld\n", current );
-			if( current->pPrevious == NULL ) { debug_log( "	previous=NULL\n" ) ; }
-			else { debug_log( "	previous=%ld\n", current->pPrevious ) ; }
-			if( current->pNext == NULL ) { debug_log( "	next=NULL\n" ) ; }
-			else { debug_log( "	next=%ld\n", current->pNext ) ; }
-			current = current->pNext ;
-		}
-	}
-	debug_log( "NULL\n\n" ) ;
-}
-
-void SettingTest( void ) {
-	PortableSettings = SettingsInit() ;
-	SettingsPrint( PortableSettings ) ;
-	SettingsLoad( PortableSettings, "Ken" ) ;
-	SettingsPrint( PortableSettings ) ;
-	SettingsFree( PortableSettings ) ;
-	debug_log( "FIN\n\n" ) ;
-
-}
-*/
 
 bool ReadPortableValue(const char *buffer, const char * name, char * value, const int maxlen) {
 	bool test = false ;

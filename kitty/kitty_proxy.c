@@ -431,37 +431,6 @@ void kitty_migrate_old_proxies( void ) {
 	RegTestOrCreateDWORD( HKEY_CURRENT_USER, kitty_registry_base(), "ProxiesMigrated", 1 ) ;
 }
 
-/* True if any named proxy definition still has a NON-empty, UNENCRYPTED password
- * at rest (raw value present but unmarked). The editor uses this to warn the
- * user to open+save such proxies to protect them. Suppressed in explicit legacy
- * mode, where plaintext is the chosen policy (hknet/KiTTY#11, Phase B). */
-int kitty_proxy_any_plaintext_password( void ) {
-	if( kitty_portable_password_legacy() ) return 0 ;
-	for( int i = 2 ; i < MAX_PROXY && proxies[i].name ; i++ ) {
-		char raw[4096] = "" ; int got = 0 ;
-		if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
-			char sub[2048] ; char *m = (char*)malloc(4*strlen(proxies[i].name)+1) ; mungestr( proxies[i].name, m ) ;
-			snprintf( sub, sizeof(sub), "%s\\Proxies\\%s", kitty_registry_base(), m ) ; free( m ) ;
-			got = ( GetValueDataN( HKEY_CURRENT_USER, sub, "ProxyPassword", raw, sizeof(raw) ) != NULL ) ;
-		} else if( IniFileFlag == SAVEMODE_DIR ) {
-			char fullpath[2048] ; char *fn = (char*)malloc(4*strlen(proxies[i].name)+1) ; mungestr( proxies[i].name, fn ) ;
-			snprintf( fullpath, sizeof(fullpath), "%s\\Proxies\\%s", ConfigDirectory, fn ) ; free( fn ) ;
-			FILE *fp = fopen( fullpath, "r" ) ;
-			if( fp ) {
-				char line[4096], buf2[4096] ;
-				/* pass the raw fgets line (newline included) to ReadPortableValue,
-				 * which relies on the trailing delimiter+newline (as LoadProxyInfo does). */
-				while( fgets( line, sizeof(line), fp ) != NULL ) {
-					if( ReadPortableValue( line, "ProxyPassword", buf2, sizeof(buf2) ) ) { snprintf( raw, sizeof(raw), "%s", buf2 ) ; got = 1 ; break ; }
-				}
-				fclose( fp ) ;
-			}
-		}
-		if( got && raw[0] && !kitty_secret_is_marked( raw ) ) return 1 ;
-	}
-	return 0 ;
-}
-
 /* ---- Piece 7: carry named proxies in the whole-store export/import bundle ----
  * Definitions are written under <dir>\Proxies\<munged> as portable "key\value\"
  * files with the password wrapped MPW2 (self-contained salt, machine-independent

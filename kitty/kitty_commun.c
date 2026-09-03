@@ -27,8 +27,6 @@ int IniFileFlag = SAVEMODE_DIR ;
 int IniFileFlag = SAVEMODE_REG ;
 #endif
 int GetIniFileFlag(void) { return IniFileFlag ; }
-void SetIniFileFlag( const int flag ) { IniFileFlag = flag ; }
-void SwitchIniFileFlag(void) { if( IniFileFlag == SAVEMODE_REG ) { IniFileFlag = SAVEMODE_DIR ; } else if ( IniFileFlag == SAVEMODE_DIR ) { IniFileFlag = SAVEMODE_REG ; } }
 
 /*
  * Folders as SUBDIRECTORIES under Sessions\, for savemode=dir. Off by default
@@ -381,8 +379,6 @@ int IsPasswordInConf(void) {
 	memset(bufpass,0,strlen(bufpass));
 	return len ;
 }
-
-void CleanPassword( char * p ) { memset(p,0,strlen(p)); }
 
 // Extention pour les fichiers de session en mode portable (peut être ktx)
 char FileExtension[15] = "" ;

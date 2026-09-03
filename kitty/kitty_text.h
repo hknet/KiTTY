@@ -1139,7 +1139,6 @@
 #define KT_CAP_OSC52_SESSION                         "KiTTY - allow for the whole session?"
 
 /* Tray-menu and system-menu items (kitty.c, kitty_launcher.c, kitty_specialmenu.c) */
-#define KT_MENU_RESTORE                              "&Restore"
 #define KT_MENU_HIDE_ALL                             "&Hide all"
 #define KT_MENU_UNHIDE_ALL                           "&Unhide all"
 #define KT_MENU_WINDOW_UNIQUE                        "&Window unique"
@@ -1640,7 +1639,6 @@
 #define KT_WINFEAT_DARK_TITLEBARS                    "dark title bars"
 #define KT_WINFEAT_ACCENT                            "matching the desktop's accent colour"
 #define KT_WINFEAT_DPI                               "per-monitor DPI scaling"
-#define KT_WINFEAT_BG_ALPHA                          "background image transparency"
 
 /* ---- Batch 5: kageant (agent) and kittygen (key generator), Windows Hello ---- */
 
@@ -2854,13 +2852,11 @@
 #define KT_STORE_ERR_DIRECTORY                       "Directory: "
 #define KT_STORE_ERR_CODE                            "Error code: "
 #define KT_STORE_MKDIR_FAILED_BANG                   "Unable to create directory !"
-#define KT_STORE_MKDIR_FAILED                        "Unable to create directory"
 #define KT_STORE_SESSDIR_FAILED                      "Unable to create sessions directory !"
 #define KT_STORE_EXPAND_ENV_FAILED                   "Unable to ExpandEnvironmentStrings for session path"
 #define KT_STORE_EXPAND_ENV_USER_FAILED              "Unable to ExpandEnvironmentStringsForUser for session path"
 #define KT_STORE_CONF_READ_FAILED                    "Unable to read configuration file, falling back to defaults"
 #define KT_STORE_SESSION_READ_FAILED                 "Unable to read session file"
-#define KT_STORE_SESSION_WRITE_FAILED                "Unable to write session file"
 
 /* ---- Batch 6: resource scripts ---- */
 /* Dialog templates in windows/kitty.rc, pageant.rc, puttygen.rc and

@@ -47,8 +47,6 @@ struct SettingsList {
 } ;
 typedef struct SettingsList SettingsList, *HSettingsList;
 
-extern HSettingsList PortableSettings ;
-
 HSettingsItem SettingsNewItem( const char * name, const char * value ) ;
 void SettingsFreeItem( HSettingsItem item ) ;
 
@@ -56,17 +54,9 @@ HSettingsList SettingsInit() ;
 void SettingsDelItem( HSettingsList list, const char * key ) ;
 void SettingsAddItem( HSettingsList list, const char * name, const char * value ) ;
 void SettingsFree( HSettingsList list ) ;
-char * SettingsKey( HSettingsList list, const char * key ) ;
-char * SettingsKey_str( HSettingsList list, const char * key ) ;
-int SettingsKey_int( HSettingsList list, const char * key, const int defvalue ) ;
 
 void SettingsLoad( HSettingsList list, const char * filename ) ;
-void SettingsSave( HSettingsList list, const char * filename ) ;
 
 int loadPath() ;
-char * SetInitialSessPath( void ) ;
-char * GetSessPath( void ) ;
-bool SessPathIsInitial( void ) ;
-bool IsThereDefaultSessionFile( void ) ;
 
 bool ReadPortableValue(const char *buffer, const char * name, char * value, const int maxlen) ;

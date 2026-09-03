@@ -2134,12 +2134,6 @@ int kitty_hello_prf_kek(HWND owner, const unsigned char *credid,
 
 #ifdef KITTY_HELLO_DIAG
 
-int kitty_hello_webauthn_probe(char **msg)
-{
-    return kitty_hello_webauthn_probe_ex(KHW_RP_ID, KITTY_HELLO_PRF_ENABLE,
-                                         0, msg);
-}
-
 /* Enumerate the credentials that actually live in the PLATFORM (NGC)
  * store - no UI, no Hello prompt. Diagnostic: distinguishes "passkeys
  * work in the browser" from "passkeys are created in Windows' own

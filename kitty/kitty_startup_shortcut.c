@@ -59,11 +59,6 @@ int kitty_startup_shortcut_exists(const char *name)
     return shortcut_exists_in(name, 0);
 }
 
-int kitty_startup_shortcut_exists_common(const char *name)
-{
-    return shortcut_exists_in(name, 1);
-}
-
 /* Compare two exe paths, normalising 8.3/long form first (an MSI target may
  * be stored short while GetModuleFileName returns the long path). */
 static int same_exe_path(const char *a, const char *b)

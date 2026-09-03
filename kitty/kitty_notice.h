@@ -15,7 +15,6 @@
  */
 void kitty_notice_show(const char *title, const char *text, COLORREF accent,
                        int seconds, HWND click_hwnd, unsigned int click_msg);
-void kitty_notice_hide(void);
 
 /* Clicking the "SSH agent not verified" notice (kitty_win.c) posts this to
  * the terminal window; window.c answers by opening a configuration window

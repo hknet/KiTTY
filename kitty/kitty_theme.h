@@ -70,8 +70,6 @@ HBRUSH kitty_theme_backbrush(HWND dlg);
 
 /* Colours a caller needs when it draws something itself (the tab strip). */
 COLORREF kitty_theme_text_colour(bool dark);
-COLORREF kitty_theme_back_colour(bool dark);
-COLORREF kitty_theme_line_colour(bool dark);
 
 /* Is this window currently painted dark? For code that draws its own rows and
  * has to pick colours - a list view's custom draw cannot ask the brush. */

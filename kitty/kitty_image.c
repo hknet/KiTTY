@@ -39,10 +39,6 @@ int stricmp(const char *s1, const char *s2) ;
 int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) ;
 int get_param( const char * val ) ;
 
-int return_offset_height(void) ;
-int return_offset_width(void) ;
-int return_font_height(void) ;
-int return_font_width(void) ;
 COLORREF return_colours258(void) ;
 
 
@@ -621,29 +617,6 @@ static HBITMAP CreateDIBSectionWithFileMapping(HDC dc, int width, int height, HA
 
 /******************************/
 
-void init_dc_blend(void) {
-    //HMODULE * msimg32_dll = LoadLibrary("msimg32.dll");
-    HMODULE msimg32_dll = LoadLibrary("msimg32.dll");
-    
-    if(msimg32_dll) 
-        pAlphaBlend = (BOOL (WINAPI *)( HDC, int, int, int, int, HDC, int, int, int, int, BLENDFUNCTION ))
-                      kitty_api_from(msimg32_dll, "msimg32.dll", "AlphaBlend", KITTY_API_OPTIONAL,
-                                  KT_WINFEAT_BG_ALPHA);
-    
-    if(pAlphaBlend) {
-    	HDC hdc = GetDC(MainHwnd);
-    	
-    	// Create one pixel size bitmap for use in color_blend.
-        if( colorinpixeldc !=NULL ) { DeleteDC(colorinpixeldc ) ; } colorinpixeldc = CreateCompatibleDC(hdc);
-        if( colorinpixelbm!=NULL ) { DeleteObject(colorinpixelbm) ; } colorinpixelbm = CreateCompatibleBitmap(hdc, 1, 1);
-        SelectObject(colorinpixeldc, colorinpixelbm);
-        colorinpixel = 0;
-        SetPixelV(colorinpixeldc, 0, 0, colorinpixel);
-        
-        ReleaseDC(MainHwnd, hdc);
-    }
-}
-
 void color_blend(
     HDC destDc, int x, int y, int width, int height, 
     COLORREF alphacolor, int opacity)
@@ -1098,209 +1071,6 @@ BOOL load_bg_bmp()
     return TRUE;
 }
 
-void paint_term_edges(Terminal*term, HDC hdc, LONG paint_left, LONG paint_top, LONG paint_right, LONG paint_bottom) 
-{
-    if(backgrounddc == 0)
-        load_bg_bmp();
-
-    if(backgrounddc)
-    {
-        LONG topLeftX = paint_left;
-        LONG topLeftY = paint_top;
-        LONG width = (paint_right - paint_left);
-        LONG height = (paint_bottom - paint_top);
-        HDC srcdc = backgroundblenddc;
-        POINT srcTopLeft;
-        RECT size_now;
-        srcTopLeft.x = topLeftX;
-        srcTopLeft.y = topLeftY;
-		
-        if(!bBgRelToTerm)
-            ClientToScreen(MainHwnd, &srcTopLeft);
-
-        if(!srcdc)
-            srcdc = backgrounddc;
-
-	if(resizing)
-	{
-	    GetClientRect(MainHwnd, &size_now);
-	    if(size_now.bottom > size_before.bottom || size_now.right > size_before.right)
-	    {
-	    	// Draw on full area on resize.
-	        BitBlt(hdc, topLeftX, topLeftY, width, height, srcdc, srcTopLeft.x, srcTopLeft.y, SRCCOPY);
-	        
-	        return;
-            }
-	}
-//debug_log("1: %d %d %d %d\n",size_before.top,size_before.bottom,size_before.left,size_before.right) ;
-//debug_log("2: %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %d\n",topLeftX,topLeftY,width,height,srcTopLeft.x,srcTopLeft.y,size_now.top,size_now.bottom,size_now.left,size_now.right,resizing) ;
-	
-        // Draw top edge
-        BitBlt(
-            hdc, topLeftX, topLeftY, width, return_offset_height(),
-            srcdc, srcTopLeft.x, srcTopLeft.y, SRCCOPY
-        );
-        // Draw left edge
-        BitBlt(
-            hdc, topLeftX, topLeftY+1, return_offset_width(), height-2,
-            srcdc, srcTopLeft.x, srcTopLeft.y+1, SRCCOPY
-        );
-        // Draw right edge (extra width for clean resizing)
-        BitBlt(
-            hdc, topLeftX+width-1, topLeftY+1, return_offset_width(), height-2,
-            srcdc, srcTopLeft.x+width-1, srcTopLeft.y+1, SRCCOPY
-        );
-        // Draw bottom edge (extra height for clean resizing)
-        BitBlt(
-            hdc, topLeftX, topLeftY+height-1, width, return_offset_height(),
-            srcdc, srcTopLeft.x, srcTopLeft.y+height-1, SRCCOPY
-        );
-    }
-    else
-    {
-        HBRUSH bgbrush, oldbrush;
-        HPEN edge, oldpen;
-        //COLORREF backgroundcolor = colours[258];
-	COLORREF backgroundcolor = return_colours258() ;
-        
-        bgbrush = CreateSolidBrush(backgroundcolor);
-        edge = CreatePen(PS_SOLID, 0, backgroundcolor);
-        
-        oldbrush = SelectObject(hdc, bgbrush);
-        oldpen = SelectObject(hdc, edge);
-
-        /*
-         * Jordan Russell reports that this apparently
-         * ineffectual IntersectClipRect() call masks a
-         * Windows NT/2K bug causing strange display
-         * problems when the PuTTY window is taller than
-         * the primary monitor. It seems harmless enough...
-         */
-        IntersectClipRect(hdc,
-        	paint_left, paint_top,
-        	paint_right, paint_bottom);
-	
-        ExcludeClipRect(hdc, 
-        	return_offset_width(), return_offset_height(),
-        	return_offset_width()+return_font_width()*(term->cols),
-        	return_offset_height()+return_font_height()*(term->rows));
-
-//debug_log("3: %d %d %d %d %d %d %d\n",resizing,paint_left, paint_top, paint_right, paint_bottom,offset_width,offset_height ) ;
-//debug_log("4: %d %d %d %d\n",size_before.top,size_before.bottom,size_before.left,size_before.right) ;
-//debug_log("5: %d %d %d %d %d %d\n",paint_top,paint_bottom,paint_left,paint_right,term->cols,term->rows);
-
-        Rectangle(hdc, paint_left, paint_top,
-            paint_right, paint_bottom);
-
-        SelectObject(hdc, oldpen);
-        DeleteObject(edge);
-        SelectObject(hdc, oldbrush);
-        DeleteObject(bgbrush);
-    }
-}
-
-/*
-void original_paint_term_edges(HDC hdc, LONG paint_left, LONG paint_top, LONG paint_right, LONG paint_bottom) 
-{
-    if(backgrounddc == 0)
-        load_bg_bmp();
-
-    if(backgrounddc)
-    {
-        LONG topLeftX = paint_left;
-        LONG topLeftY = paint_top;
-        LONG width = (paint_right - paint_left);
-        LONG height = (paint_bottom - paint_top);
-        HDC srcdc = backgroundblenddc;
-        POINT srcTopLeft;
-        RECT size_now;
-        srcTopLeft.x = topLeftX;
-        srcTopLeft.y = topLeftY;
-		
-        if(!bBgRelToTerm)
-            ClientToScreen(hwnd, &srcTopLeft);
-
-        if(!srcdc)
-            srcdc = backgrounddc;
-
-	if(resizing)
-	{
-	    GetClientRect(hwnd, &size_now);
-	    if(size_now.bottom > size_before.bottom || size_now.right > size_before.right)
-	    {
-	    	// Draw on full area on resize.
-	        BitBlt(hdc, topLeftX, topLeftY, width, height, srcdc, srcTopLeft.x, srcTopLeft.y, SRCCOPY);
-	        
-	        return;
-            }
-	}
-//debug_log("1: %d %d %d %d\n",size_before.top,size_before.bottom,size_before.left,size_before.right) ;
-//debug_log("2: %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld %d\n",topLeftX,topLeftY,width,height,srcTopLeft.x,srcTopLeft.y,size_now.top,size_now.bottom,size_now.left,size_now.right,resizing) ;
-	
-        // Draw top edge
-        BitBlt(
-            hdc, topLeftX, topLeftY, width, offset_height,
-            srcdc, srcTopLeft.x, srcTopLeft.y, SRCCOPY
-        );
-        // Draw left edge
-        BitBlt(
-            hdc, topLeftX, topLeftY+1, offset_width, height-2,
-            srcdc, srcTopLeft.x, srcTopLeft.y+1, SRCCOPY
-        );
-        // Draw right edge (extra width for clean resizing)
-        BitBlt(
-            hdc, topLeftX+width-1, topLeftY+1, offset_width, height-2,
-            srcdc, srcTopLeft.x+width-1, srcTopLeft.y+1, SRCCOPY
-        );
-        // Draw bottom edge (extra height for clean resizing)
-        BitBlt(
-            hdc, topLeftX, topLeftY+height-1, width, offset_height,
-            srcdc, srcTopLeft.x, srcTopLeft.y+height-1, SRCCOPY
-        );
-    }
-    else
-    {
-        HBRUSH bgbrush, oldbrush;
-        HPEN edge, oldpen;
-        COLORREF backgroundcolor = colours[258];
-        
-        bgbrush = CreateSolidBrush(backgroundcolor);
-        edge = CreatePen(PS_SOLID, 0, backgroundcolor);
-        
-        oldbrush = SelectObject(hdc, bgbrush);
-        oldpen = SelectObject(hdc, edge);
-
-        //
-        // * Jordan Russell reports that this apparently
-        // * ineffectual IntersectClipRect() call masks a
-        // * Windows NT/2K bug causing strange display
-        // * problems when the PuTTY window is taller than
-        // * the primary monitor. It seems harmless enough...
-	
-        IntersectClipRect(hdc,
-        	paint_left, paint_top,
-        	paint_right, paint_bottom);
-	
-        ExcludeClipRect(hdc, 
-        	offset_width, offset_height,
-        	offset_width+font_width*(term->cols),
-        	offset_height+font_height*(term->rows));
-
-//debug_log("3: %d %d %d %d %d %d %d\n",resizing,paint_left, paint_top, paint_right, paint_bottom,offset_width,offset_height ) ;
-//debug_log("4: %d %d %d %d\n",size_before.top,size_before.bottom,size_before.left,size_before.right) ;
-//debug_log("5: %d %d %d %d %d %d\n",paint_top,paint_bottom,paint_left,paint_right,term->cols,term->rows);
-
-        Rectangle(hdc, paint_left, paint_top,
-            paint_right, paint_bottom);
-
-        SelectObject(hdc, oldpen);
-        DeleteObject(edge);
-        SelectObject(hdc, oldbrush);
-        DeleteObject(bgbrush);
-    }
-}
-*/
-
 void clean_bg(void) {
 	DeleteDC(textdc);textdc=NULL;
 	DeleteObject(textbm);textbm=NULL;
@@ -1330,24 +1100,6 @@ void RedrawBackground( HWND hwnd ) {
 	}
 
 #endif
-
-HBITMAP HWND_to_HBITMAP(HWND hWnd)
-{
-  RECT    r;
-  HDC     hdcMem, hdcScr;
-  HBITMAP hbmMem, hbmOld;
- 
-  GetWindowRect(hWnd, &r);
-  hdcScr = GetWindowDC(hWnd);
-  hdcMem = CreateCompatibleDC(hdcScr);
-  hbmMem = CreateCompatibleBitmap(hdcScr, r.right -= r.left, r.bottom -= r.top) ;
-  hbmOld = (HBITMAP)SelectObject(hdcMem, hbmMem);
-  BitBlt(hdcMem, 0, 0, r.right, r.bottom, hdcScr, 0, 0, SRCCOPY);
-  SelectObject(hdcMem, hbmOld);
-  ReleaseDC(hWnd, hdcScr);
-  DeleteDC(hdcMem);
-  return hbmMem;
-}
 
 BOOL HBITMAP_to_JPG(HBITMAP hbm, LPCTSTR jpgfile, int quality)
 {
@@ -1432,14 +1184,6 @@ BOOL HBITMAP_to_JPG(HBITMAP hbm, LPCTSTR jpgfile, int quality)
   return 1;
 }
 
-void MakeScreenShot() {
-HBITMAP hbm = HWND_to_HBITMAP(GetDesktopWindow());
-   if(hbm) {
-    HBITMAP_to_JPG(hbm, "screenshot.jpg", 85) ;
-    DeleteObject(hbm);
-  }
-}
-
 int screenCapturePart(int x, int y, int w, int h, LPCSTR fname,int quality) {
     int return_code = 0 ;
     HDC hdcSource = GetDC(NULL);
@@ -1472,12 +1216,4 @@ int screenCaptureClientRect( HWND hwnd, LPCSTR fname, int quality ) {
 	ClientToScreen(hwnd,&p);
 	rc.left=p.x;rc.top=p.y;
 	return screenCapturePart(rc.left,rc.top,rc.right,rc.bottom,fname,quality) ;
-}
-int screenCaptureWinRect( HWND hwnd, LPCSTR fname, int quality ) {
-	RECT r;
-	GetWindowRect(hwnd, &r);
-	return screenCapturePart(r.left,r.top,r.right-r.left,r.bottom-r.top,fname,quality) ;
-}
-int screenCaptureAll( LPCSTR fname, int quality ) {
-	return screenCapturePart(0,0,GetSystemMetrics(SM_CXSCREEN),GetSystemMetrics (SM_CYSCREEN),fname,quality) ;
 }

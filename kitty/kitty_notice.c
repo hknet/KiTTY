@@ -389,9 +389,3 @@ void kitty_notice_show(const char *title, const char *text, COLORREF accent,
     UpdateWindow(hwnd);
     SetTimer(hwnd, NOTICE_TIMER, (UINT)(st->seconds * 1000), NULL);
 }
-
-void kitty_notice_hide(void)
-{
-    if (notice_hwnd && IsWindow(notice_hwnd))
-        notice_close(notice_hwnd);
-}

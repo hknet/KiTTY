@@ -98,7 +98,6 @@ extern int ImageSlideDelay ;
 // Flag pour la protection contre les saisies malheureuses
 // extern int ProtectFlag ; 
 int GetProtectFlag(void) ;
-void SetProtectFlag( const int flag ) ;
 
 // Flag de definition de la visibilite d'une fenetres
 // extern int VisibleFlag ;
@@ -160,13 +159,10 @@ void kitty_script_set_enabled( int on ) ;
 // Flag pour le fonctionnement en mode "portable" (gestion par fichiers), defini dans kitty_commun.c
 extern int IniFileFlag ;
 int GetIniFileFlag(void) ;
-void SetIniFileFlag( const int flag ) ;
-void SwitchIniFileFlag(void) ;
 
 // Flag permettant la gestion de l'arborscence (dossier=folder) dans le cas d'un savemode=dir, defini dans kitty_commun.c
 //extern int DirectoryBrowseFlag ;
 int GetDirectoryBrowseFlag(void) ;
-void SetDirectoryBrowseFlag( const int flag ) ;
 
 // Renvoi automatiquement dans le tray (pour les tunnel), fonctionne avec le l'option -send-to-tray
 //extern int AutoSendToTray ;
@@ -176,7 +172,6 @@ void SetAutoSendToTray( const int flag ) ;
 // Flag de gestion de la Transparence
 // extern int TransparencyFlag ;
 int GetTransparencyFlag(void) ;
-void SetTransparencyFlag( const int flag ) ;
 
 #ifdef MOD_ZMODEM
 // Flag pour inhiber les fonctions ZMODEM
@@ -188,7 +183,6 @@ void SetZModemFlag( const int flag ) ;
 // Flag pour ne pas creer les fichiers kitty.ini et kitty.sav
 // extern int NoKittyFileFlag ;
 int GetNoKittyFileFlag(void) ;
-void SetNoKittyFileFlag( const int flag ) ;
 
 // Hauteur de la boite de configuration
 // extern int ConfigBoxHeight ;
@@ -203,7 +197,6 @@ void SetConfigBoxWindowHeight( const int num ) ;
 // Hauteur de la fenetre pour la fonction winrol
 // extern int WinHeight ;
 int GetWinHeight(void) ;
-void SetWinHeight( const int num ) ;
 // Flag pour inhiber le Winrol
 // extern int WinrolFlag = 1 
 int GetWinrolFlag(void) ;
@@ -284,12 +277,8 @@ NOTIFYICONDATA TrayIcone ;
 
 // La librairie dans laquelle chercher les icones (fichier defini dans kitty.ini, sinon kitty.dll s'il existe, sinon kitty.exe)
 // extern HINSTANCE hInstIcons ;
-HINSTANCE GethInstIcons(void) ;
-void SethInstIcons( const HINSTANCE h ) ;
 
 extern int debug_flag ;
-
-extern int PORT ;
 
 // Declaration de prototypes de fonction
 void InitFolderList( void ) ;
@@ -300,8 +289,6 @@ void routine_server( void * st ) ;
 void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) ;
 int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance,LPSTR lpCmdLine, int nCmdShow) ;
 void InitWinMain( void ) ;
-char * getcwd (char * buf, int size);
-int chdir(const char *path); 
 void ShowInputBox( HINSTANCE hInstance, HWND hwnd ) ;   /* modeless single-line box */
 char * InputBoxMultiline( HINSTANCE hInstance, HWND hwnd ) ;
 char * InputBoxPassword( HINSTANCE hInstance, HWND hwnd ) ;
@@ -310,29 +297,20 @@ void GetAndSendLine( HWND hwnd ) ;
 void GetAndSendMultiLine( HWND hwnd ) ;
 void routine_inputbox( void * phwnd ) ;
 void routine_inputbox_multiline( void * phwnd ) ;
-void routine_inputbox_password( void * phwnd ) ;
-char *itoa(int value, char *string, int radix);
 void GetAndSendLinePassword( HWND hwnd ) ;
-int unlink(const char *pathname);
 void RunScriptFile( HWND hwnd, const char * filename ) ;
-void InfoBoxSetText( HWND hwnd, char * st ) ;
 void ReadInitScript( const char * filename ) ;
 int ReadParameterN( const char * key, const char * name, char * value, size_t size ) ;
 int ReadParameter( const char * key, const char * name, char * value ) ; /* compat: value >= 4096 octets; preferer ReadParameterN */
 int WriteParameter( const char * key, const char * name, char * value ) ;
 int DelParameter( const char * key, const char * name ) ;
 void GetSessionFolderName( const char * session_in, char * folder ) ;
-int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) ;
-void print_log( const char *fmt, ...) ;
-char * SetInitialSessPath( void ) ;
 char * SetSessPath( const char * dec ) ;
 void CleanFolderName( char * folder ) ;
-void SetInitCurrentFolder( const char * name ) ;
 void set_sshver( const char * vers ) ;
 int ResizeWinList( HWND hwnd, int width, int height ) ;
 int SendCommandAllWindows( HWND hwnd, char * cmd ) ;
 void RunCommand( HWND hwnd, const char * cmd ) ;
-void timestamp_change_filename( void ) ;
 int InternalCommand( HWND hwnd, char * st ) ;
 void load_open_settings_forced(char *filename, Conf *conf) ;
 void save_open_settings_forced(char *filename, Conf *conf) ;
@@ -398,7 +376,6 @@ char * GetKittySavFile(void) ;
 // Recupere une entree d'une session ( retourne 1 si existe )
 int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) ;
 // Sauve les coordonnees de la fenetre
-void SaveWindowCoord( Conf * conf ) ;
 // Decompte le nombre de fenetre de la meme classe que KiTTY
 int WindowsCount( HWND hwnd ) ;
 HWND InfoBox( HINSTANCE hInstance, HWND hwnd ) ;
@@ -413,15 +390,12 @@ void SendAutoCommand( HWND hwnd, const char * cmd ) ;
 int NextBgImage( HWND hwnd ) ;
 int PreviousBgImage( HWND hwnd ) ;
 void ManageSpecialCommand( HWND hwnd, int menunum ) ;
-int fileno(FILE *stream) ;
 // Sauvegarde de la cle de registre
 void SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) ;
 void ManageProtect( HWND hwnd, TermWin *tw, char * title ) ;
 void ManagePrint( HWND hwnd ) ;
 // Gere l'option always visible
 void ManageVisible( HWND hwnd, TermWin *tw, char * title ) ;
-// Sauvegarde de la cle de registre
-void SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) ;
 void SaveRegistryKey( void ) ;
 void SaveRegistryKeyNow( void ) ;
 void ManageWinrol( HWND hwnd, int resize_action ) ;
@@ -456,20 +430,14 @@ void RunCmd( HWND hwnd ) ;
 int SearchCtHelper( void ) ;
 int SearchWinSCP( void ) ;
 int SearchPSCP( void ) ;
-void StartNewSession( HWND hwnd, char * directory, char * host, char * user ) ;
 void urlhack_launch_url(const char* app, const char *url) ;
 int GetPortFwdState( const int port, const DWORD pid ) ;
 int ShowPortfwd( HWND hwnd, Conf * conf ) ;
 void OnDropFiles(HWND hwnd, HDROP hDropInfo) ;
 // Affiche un menu dans le systeme Tray
-void DisplaySystemTrayMenu( HWND hwnd ) ;
 // Recupere les coordonnees de la fenetre
-void GetWindowCoord( HWND hwnd ) ;
 // Gestion du script au lancement
 void ManageInitScript( const char * input_str, const int len ) ;
-void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) ;
-void GotoInitialDirectory( void ) ;
-void GotoConfigDirectory( void ) ;
 
 char * get_param_str( const char * val ) ;
 
@@ -493,8 +461,6 @@ void ManageShortcutsFlag( HWND hwnd ) ;
 #ifdef MOD_LAUNCHER
 void InitLauncherRegistry( void ) ;
 #endif
-
-int getpid(void) ;
 
 // Definition de la section du fichier de configuration
 #ifdef MOD_PERSO

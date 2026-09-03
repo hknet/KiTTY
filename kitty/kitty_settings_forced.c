@@ -552,7 +552,6 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_b_forced(sesskey, "SetWindowPos", conf_get_bool(conf, CONF_set_windowpos));
     write_setting_b_forced(sesskey, "ForegroundOnBell", conf_get_bool(conf, CONF_foreground_on_bell));
 
-#ifndef MOD_NOPASSWORD
     {
         /* Backend-scoped protection (TASK_dpapi_mpw_backend_policy §2b): a
          * .ktx export is a portable file, so the password gets the same
@@ -565,7 +564,6 @@ void save_open_settings_forced(char *filename, Conf *conf) {
         write_setting_s_forced(sesskey, "Password", blob ? blob : "");
         if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
     }
-#endif
     write_setting_i_forced(sesskey, "CtrlTabSwitch", conf_get_int(conf, CONF_ctrl_tab_switch));
     write_setting_s_forced(sesskey, "Comment", conf_get_str(conf, CONF_comment));
     write_setting_b_forced(sesskey, "CommentNotify", conf_get_bool(conf, CONF_comment_notify));

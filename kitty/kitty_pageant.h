@@ -42,8 +42,6 @@ void kageant_confirm_set(int on);
 int kageant_confirm_mode(void);
 void kageant_confirm_set_mode(int mode);   /* key-list radios: yes/auto/no */
 const char *kageant_ini_status(void);  /* ini path when authoritative, else NULL */
-int kageant_ini_present(void);         /* a kitty.ini exists to read/write at all
-                                        * (any mode) - gates the ini-only options */
 /* string settings following the same store precedence as the toggles
  * (key-list window geometry + column widths live here) */
 int kageant_setting_str_get(const char *inikey, const char *regname,
@@ -140,7 +138,6 @@ int  kageant_idle_get_key(ptrlen pubblob);             /* own value or -1 */
 void kageant_idle_set_key(ptrlen pubblob, int value);  /* -1 = agent default */
 int  kageant_idle_effective(ptrlen pubblob);           /* resolved seconds, 0 = none */
 int  kageant_idle_tick(void);                          /* re-encrypt due keys; count */
-void kageant_idle_forget(ptrlen pubblob);              /* key removed */
 void kageant_idle_install(void);                       /* hook the agent core */
 /* The colour theme is application-wide, not the agent's own: kitty_theme_pref.h
  * declares it, and kittygen and kitty read the same setting. */
@@ -166,11 +163,6 @@ char *kageant_paths_of_blob_annotated(ptrlen blob);/* details' Loaded-from text 
 int kageant_pending_count(void);
 int kageant_pending_get(int i, const char **path, int *encrypted,
                         const char **fp, int *failed);
-/* does the file at `path` still hold the key `stored` describes?
- * 1 = yes, 0 = a different key, -1 = cannot tell. NOT used to gate loading any
- * more - the load paths compare the key the agent ended up with, so the file is
- * read once (kageant_verify_loaded). */
-int kageant_fp_matches(const char *path, const char *stored);
 /* refused because the file at that path is not the key we recorded */
 int kageant_pending_mismatch(int i);
 int kageant_mismatch_count(void);

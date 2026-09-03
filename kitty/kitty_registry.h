@@ -104,8 +104,6 @@ void InitRegistryAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName
 // Permet d'initialiser toutes les sessions avec des valeurs contenu dans un fichier kitty.ses.updt
 void InitAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char * filename ) ;
 
-// Exporte une clé de registre dans un fichier au format PuTTY (  name\value\ )
 void mungestr( const char *in, char *out ) ;
-int ExportSubKeyToFile( HKEY hkey, const char *subkey, const char *keyname, const char *maindir, const char *subdir ) ;
 
 #endif

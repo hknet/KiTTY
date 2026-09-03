@@ -325,16 +325,6 @@ COLORREF kitty_theme_text_colour(bool dark)
     return dark ? KT_DARK_TEXT : GetSysColor(COLOR_WINDOWTEXT);
 }
 
-COLORREF kitty_theme_back_colour(bool dark)
-{
-    return dark ? KT_DARK_BACK : GetSysColor(COLOR_BTNFACE);
-}
-
-COLORREF kitty_theme_line_colour(bool dark)
-{
-    return dark ? KT_DARK_LINE : GetSysColor(COLOR_BTNSHADOW);
-}
-
 bool kitty_theme_window_dark(HWND w)
 {
     return kt_is_dark_window(w);

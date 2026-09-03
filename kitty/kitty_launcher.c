@@ -366,26 +366,6 @@ void RefreshMenuLauncher( void ) {
 	MenuLauncher = InitLauncherMenu( "Launcher" ) ;
 }
 	
-// Nettoie les noms de folder en remplaçant les "/" par des "\" et les " \ " par des " \"
-// Deplace dans kitty_commun.c
-/*
-void CleanFolderName( char * folder ) {
-	int i, j ;
-	if( folder == NULL ) return ;
-	if( strlen( folder ) == 0 ) return ;
-	for( i=0 ; i<strlen(folder) ; i++ ) if( folder[i]=='/' ) folder[i]='\\' ;
-	for( i=0 ; i<(strlen(folder)-1) ; i++ ) 
-		if( folder[i]=='\\' ) 
-			while( folder[i+1]==' ' ) for( j=i+1 ; j<strlen(folder) ; j++ ) folder[j]=folder[j+1] ;
-	for( i=(strlen(folder)-1) ; i>0 ; i-- )
-		if( folder[i]=='\\' )
-			while( folder[i-1]==' ' ) {
-				for( j=i-1 ; j<strlen(folder) ; j++ ) folder[j]=folder[j+1] ;
-				i-- ;
-				}
-	}
-*/
-
 // Supprime une arborescence   ==> deplace dans kitty_commun.c
 /*
 void DelDir( const char * directory ) {
@@ -609,42 +589,6 @@ int RefreshWinList( HWND hwnd ) {
 	return NbWin ;
 }
 	
-void GoNext( HWND hwnd ) {
-	int i ;
-	if( RefreshWinList( hwnd ) > 1 ) 
-	for( i=0 ; i<NbWin ; i++ ) {
-		if( hwnd == TabWin[i].hwnd ) {
-			ManageHideOne( hwnd ) ;
-			if( i == (NbWin-1) ) {
-				ManageUnHideOne( TabWin[0].hwnd ) ;
-				SetFocus( TabWin[0].hwnd ) ;
-			} else {
-				ManageUnHideOne( TabWin[i+1].hwnd ) ;
-				SetFocus( TabWin[i+1].hwnd ) ;
-			}
-			break ;
-		}
-	}
-}
-
-void GoPrevious( HWND hwnd ) {
-	int i ;
-	if( RefreshWinList( hwnd ) > 1 ) 
-	for( i=0 ; i<NbWin ; i++ ) {
-		if( hwnd == TabWin[i].hwnd ) {
-			ManageHideOne( hwnd ) ;
-			if( i == 0 ) {
-				ManageUnHideOne( TabWin[NbWin-1].hwnd ) ;
-				SetFocus( TabWin[NbWin-1].hwnd ) ;
-			} else {
-				ManageUnHideOne( TabWin[i-1].hwnd ) ;
-				SetFocus( TabWin[i-1].hwnd ) ;
-			}
-			break ;
-		}
-	}
-}
-
 void ManageHideAll( HWND hwnd ) {
 	int i ;
 	if( RefreshWinList( hwnd ) > 0 ) {
@@ -676,14 +620,6 @@ void ManageGoPrevious( HWND hwnd ) {
 	ManageHideOne( TabWin[CurrentVisibleWin].hwnd ) ;
 	CurrentVisibleWin-- ;
 	if( CurrentVisibleWin<0 ) CurrentVisibleWin=NbWin-1 ;
-	ManageUnHideOne( TabWin[CurrentVisibleWin].hwnd ) ;
-}
-	
-void ManageGo( const int n ) {
-	if( CurrentVisibleWin == -1 ) return ;
-	if( (n<0)||(n>=100) ) return ;
-	ManageHideOne( TabWin[CurrentVisibleWin].hwnd ) ;
-	CurrentVisibleWin = n ;
 	ManageUnHideOne( TabWin[CurrentVisibleWin].hwnd ) ;
 }
 	

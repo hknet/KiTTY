@@ -24,11 +24,6 @@ int kitty_startup_shortcut_set(const char *name, const char *target,
 /* 1 when "<per-user Startup>\<name>.lnk" exists (for a menu checkmark). */
 int kitty_startup_shortcut_exists(const char *name);
 
-/* 1 when "<all-users Startup>\<name>.lnk" exists - e.g. the shortcut the
- * KiTTY installer places for the launcher. Read-only; the caller cannot
- * remove an all-users shortcut without elevation. */
-int kitty_startup_shortcut_exists_common(const char *name);
-
 /* Read the target exe path of the .lnk at lnkpath into out (used by the
  * kageant autostart-conflict scan). Returns 1 when a target was read. */
 int kitty_startup_shortcut_target(const char *lnkpath, char *out, size_t len);

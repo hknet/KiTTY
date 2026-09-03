@@ -75,7 +75,6 @@ extern int IniFileFlag ;
 // Flag permettant la gestion de l'arborscence (dossier=folder) dans le cas d'un savemode=dir, defini dans kitty_commun.c
 extern int DirectoryBrowseFlag ;
 int GetDirectoryBrowseFlag(void) { return DirectoryBrowseFlag ; }
-void SetDirectoryBrowseFlag( const int flag ) { DirectoryBrowseFlag = flag ; }
 
 
 #define SI_INIT 0
@@ -172,7 +171,6 @@ static int TransparencyFlag = 1 ;
 static int TransparencyAllowed = 1 ;
 int GetTransparencyFlag(void) { return TransparencyFlag ; }
 int GetTransparencyAllowed(void) { return TransparencyAllowed ; }
-void SetTransparencyFlag( const int flag ) { TransparencyFlag = flag ; }
 static void SetTransparencyIni( const int flag ) {
 	TransparencyFlag = flag ; TransparencyAllowed = flag ;
 }
@@ -183,7 +181,6 @@ char * ScriptFileContent = NULL ;
 // Flag pour la protection contre les saisies malheureuses
 static int ProtectFlag = 0 ; 
 int GetProtectFlag(void) { return ProtectFlag ; }
-void SetProtectFlag( const int flag ) { ProtectFlag = flag ; }
 
 // Flags de definition du mode de sauvegarde
 #ifndef SAVEMODE_REG
@@ -262,8 +259,6 @@ void SetMouseShortcutsFlag( const int flag ) { MouseShortcutsFlag  = flag ; }
 
 // La librairie dans laquelle chercher les icones (fichier defini dans kitty.ini, sinon kitty.dll s'il existe, sinon kitty.exe)
 static HINSTANCE hInstIcons =  NULL ;
-HINSTANCE GethInstIcons(void) { return hInstIcons ; }
-void SethInstIcons( const HINSTANCE h ) { hInstIcons = h ; }
 
 // Fichier contenant les icones à charger
 static char * IconFile = NULL ;
@@ -287,7 +282,6 @@ void SetTitleBarFlag( const int flag ) { TitleBarFlag = flag ; }
 // Hauteur de la fenetre pour la fonction WinHeight
 static int WinHeight = -1 ;
 int GetWinHeight(void) { return WinHeight ; }
-void SetWinHeight( const int num ) { WinHeight = num ; }
 // Flag pour inhiber le Winrol
 static int WinrolFlag = 1 ;
 int GetWinrolFlag(void) { return WinrolFlag ; }
@@ -315,7 +309,6 @@ void SetAutoSendToTray( const int flag ) { AutoSendToTray = flag ; }
 // Flag pour ne pas creer les fichiers kitty.ini et kitty.sav
 static int NoKittyFileFlag = 0 ;
 int GetNoKittyFileFlag(void) { return NoKittyFileFlag ; }
-void SetNoKittyFileFlag( const int flag ) { NoKittyFileFlag = flag ; }
 
 // Hauteur de la boite de configuration (visible saved-session rows; 16 = stock fit)
 static int ConfigBoxHeight = 16 ;
@@ -524,16 +517,6 @@ void debug_log( const char *fmt, ... ) {
 	va_end( ap ) ;
 }
 
-// Procedure d'affichage d'un message
-void debug_msg( const char *fmt, ... ) {
-	char buffer[4096]="" ;
-	va_list ap;
-	va_start( ap, fmt ) ;
-	vsprintf( buffer, fmt, ap ) ;
-	MessageBox( NULL, buffer, "Debug", MB_OK ) ;
-	va_end( ap ) ;
-}
-
 char *dupvprintf(const char *fmt, va_list ap) ;
 	
 // Procedure de recuperation de la valeur d'un flag
@@ -556,15 +539,6 @@ int get_param( const char * val ) {
 	// else if( !stricmp( val, "SESSIONFILTER" ) ) return SessionFilterFlag ;
 	return 0 ;
 	}
-
-#ifdef MOD_BACKGROUNDIMAGE
-	/* Le patch Background image ne marche plus bien sur la version PuTTY 0.61
-		- il est en erreur lorsqu'on passe par la config box
-		- il est ok lorsqu'on demarrer par -load ou par duplicate session
-	   On le desactive dans la config box (fin du fichier WINCFG.C)
-	*/
-void DisableBackgroundImage( void ) { SetBackgroundImageFlag(0) ; }
-#endif
 
 // Procedure de recuperation de la valeur d'une chaine
 char * get_param_str( const char * val ) {
@@ -2222,22 +2196,6 @@ void ManageProtect( HWND hwnd, TermWin *tw, char * title ) {
 	}
 }
 
-// Affiche un menu dans le systeme Tray
-void DisplaySystemTrayMenu( HWND hwnd ) {
-	HMENU menu ;
-	POINT pt;
-
-	menu = CreatePopupMenu () ;
-	AppendMenu( menu, MF_ENABLED, IDM_FROMTRAY, KT_MENU_RESTORE ) ;
-	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
-	AppendMenu( menu, MF_ENABLED, IDM_ABOUT, KT_MENU_ABOUT ) ;
-	AppendMenu( menu, MF_ENABLED, IDM_QUIT, KT_MENU_EXIT ) ;
-		
-	SetForegroundWindow( hwnd ) ;
-	GetCursorPos (&pt);
-	TrackPopupMenu (menu, TPM_LEFTALIGN, pt.x, pt.y, 0, hwnd, NULL);
-	}
-	
 // Gere l'envoi dans le System Tray
 int ManageToTray( HWND hwnd ) {
 	//SendMessage(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
@@ -2310,11 +2268,6 @@ void ManageShortcutsFlag( HWND hwnd ) {
 			CheckMenuItem( m, (UINT)IDM_SHORTCUTSTOGGLE, MF_BYCOMMAND|MF_UNCHECKED ) ;
 		}
 	}
-}
-	
-// Gere la demande de relance de l'application
-void ManageRestart( HWND hwnd ) {
-	SendMessage( hwnd, WM_COMMAND, IDM_RESTART, 0 ) ;
 }
 
 // Lance une configbox avec les paramètres courants (mais sans hostname)
@@ -2418,51 +2371,6 @@ void OpenAndSendScriptFile( HWND hwnd ) {
     if( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='|' ) strcat( buffer, "|" ) ;
     if( OpenFileName( hwnd, filename, KT_CAP_OPEN_FILE, buffer ) ) {
         RunScriptFile( hwnd, filename ) ;
-    }
-}
-
-// Get window coodinates
-void GetWindowCoord( HWND hwnd ) {
-    RECT rc ;
-    GetWindowRect( hwnd, &rc ) ;
-
-    conf_set_int(conf,CONF_xpos,rc.left);
-    conf_set_int(conf,CONF_ypos,rc.top);
-
-    conf_set_int(conf,CONF_windowstate,IsZoomed( hwnd ));
-}
-
-// Save window coordinates
-void SaveWindowCoord( Conf * conf ) {
-    char key[1024], session[1024] ;
-    if( conf_get_bool(conf,CONF_saveonexit) )
-    if( conf_get_str(conf,CONF_sessionname)!= NULL )
-    if( strlen( conf_get_str(conf,CONF_sessionname) ) > 0 ) {
-        if( IniFileFlag == SAVEMODE_REG ) {
-            mungestr( conf_get_str(conf,CONF_sessionname), session ) ;
-            snprintf( key, sizeof(key), "%s\\%s", kitty_reg_sessions(), session ) ;
-            RegTestOrCreateDWORD( HKEY_CURRENT_USER, key, "TermXPos", conf_get_int(conf,CONF_xpos) ) ;
-            RegTestOrCreateDWORD( HKEY_CURRENT_USER, key, "TermYPos", conf_get_int(conf,CONF_ypos) ) ;
-            RegTestOrCreateDWORD( HKEY_CURRENT_USER, key, "TermWidth", conf_get_int(conf,CONF_width) ) ;
-            RegTestOrCreateDWORD( HKEY_CURRENT_USER, key, "TermHeight", conf_get_int(conf,CONF_height) ) ;
-            RegTestOrCreateDWORD( HKEY_CURRENT_USER, key, "WindowState", conf_get_int(conf,CONF_windowstate) ) ;
-            RegTestOrCreateDWORD( HKEY_CURRENT_USER, key, "TransparencyValue", conf_get_int(conf,CONF_transparencynumber) ) ;
-        } else { 
-            int xpos=conf_get_int(conf,CONF_xpos)
-                , ypos=conf_get_int(conf,CONF_ypos)
-                , width=conf_get_int(conf,CONF_width)
-                , height=conf_get_int(conf,CONF_height)
-                , windowstate=conf_get_int(conf,CONF_windowstate)
-                , transparency=conf_get_int(conf,CONF_transparencynumber);
-            load_settings( conf_get_str(conf,CONF_sessionname), conf ) ;
-            conf_set_int(conf,CONF_xpos,xpos) ; 
-            conf_set_int(conf,CONF_ypos,ypos) ; 
-            conf_set_int(conf,CONF_width,width) ;
-            conf_set_int(conf,CONF_height,height) ;
-            conf_set_int(conf,CONF_windowstate,windowstate) ; 
-            conf_set_int(conf,CONF_transparencynumber,transparency) ; 
-            save_settings( conf_get_str(conf,CONF_sessionname), conf ) ;
-        }
     }
 }
 
@@ -2674,9 +2582,6 @@ void GetInitialDirectory( char * InitialDirectory ) {
 	
 	SetConfigDirectory( InitialDirectory ) ;
 }
-	
-void GotoInitialDirectory( void ) { chdir( InitialDirectory ) ; }
-void GotoConfigDirectory( void ) { if( ConfigDirectory!=NULL ) chdir( ConfigDirectory ) ; }
 
 /* The User-Command special menu (ReadSpecialMenu / InitSpecialMenu /
  * ManageSpecialCommand) lives in kitty_specialmenu.c. */
@@ -2911,53 +2816,6 @@ static void kitty_save_current_session( HWND hwnd, const char * newname ) {
 
 
 
-	
-// Appel d'une DLL
-/*
-typedef int (CALLBACK* LPFNDLLFUNC1)(int,char**); 
-int calldll( HWND hwnd, char * filename, char * functionname ) {
-	int return_code = 0 ;
-	char buffer[1024] ;
-	HMODULE lphDLL ;               // Handle to DLL
-	LPFNDLLFUNC1 lpfnDllFunc1 ;    // Function pointer
-	
-	lphDLL = LoadLibrary( TEXT(filename) ) ;
-	if( lphDLL == NULL ) {
-		//print_error( "Unable to load library %s\n", filename ) ;
-		snprintf( buffer, sizeof(buffer), "Unable to load library %s\n", filename ) ;
-		MessageBox( hwnd, buffer, KT_CAP_ERROR , MB_OK|MB_ICONERROR ) ;
-		return -1 ;
-		}
-		
-	if( !( lpfnDllFunc1 = (LPFNDLLFUNC1) GetProcAddress( lphDLL, TEXT(functionname) ) ) ) {
-		//print_error( "Unable to load function %s from library %s (%d)\n", functionname, filename, GetLastError() );
-		snprintf( buffer, sizeof(buffer),"Unable to load function %s from library %s (%d)\n", functionname, filename, (int)GetLastError() ) ;
-		MessageBox( hwnd, buffer, KT_CAP_ERROR , MB_OK|MB_ICONERROR ) ;
-		FreeLibrary( lphDLL ) ;
-		return -1 ;
-		}
-	
-	char **tab ;
-	tab=(char**)malloc( 10*sizeof(char* ) ) ;
-	int i ;
-	for(i=0;i<10;i++) tab[i]=(char*)malloc(256) ;
-	strcpy( tab[0], "pscp.exe" ) ; 
-	strcpy( tab[1], "-2" ) ;
-	strcpy( tab[2], "-scp" ) ;
-	strcpy( tab[3], "c:\\tmp\\putty.exe" ) ;
-	strcpy( tab[4], "xxxxxx@xxxxxx.xxx.xx:." ) ;
-	int tabn = 5 ;
-		
-	return_code = (lpfnDllFunc1) ( tabn, tab ) ;
-	
-	for(i=0;i<10;i++) free(tab[i]) ;
-	free(tab);
-	
-	FreeLibrary( lphDLL ) ;
-	
-	return return_code ;
-	}
-*/
 
 // Gestion du script au lancement
 void ManageInitScript( const char * input_str, const int len ) {
@@ -2989,31 +2847,6 @@ void ManageInitScript( const char * input_str, const int len ) {
 	}
 		
 	free( st ) ;
-}
-	
-void ReadAutoCommandFromFile( const char * filename ) {
-	FILE *fp ;
-	long l;
-	int n;
-	char *pst, * buffer = NULL ;
-	if( existfile( filename ) ) {
-		l=filesize(filename) ;
-		buffer=(char*)malloc(5*l+1);
-		buffer[0]='\0' ;
-		pst = buffer ;
-		if( ( fp = fopen( filename,"rb") ) != NULL ) {
-			while( fgets( pst, 1024, fp ) != NULL ) {
-				pst = buffer + strlen(buffer) ;
-			}
-			fclose( fp ) ;
-		}
-	}
-	if( buffer == NULL ) return ;
-	while( (n=poss("\r",buffer))>0 ) { del(buffer,n,1) ; }
-	str_rtrim( buffer, "\n" ) ;
-	while( (n=poss("\n",buffer))>0 ) { buffer[n-1]='n' ; insert(buffer,"\\",n) ; }
-	conf_set_str(conf, CONF_autocommand, buffer );
-	free(buffer);
 }
 
 /* At-rest protection for the login script: the same chokepoint saved passwords
@@ -4204,13 +4037,6 @@ void InitWinMain( void ) {
 	NETDBG_TS("InitWinMain: return");
 }
 
-
-/* Pour compilation 64bits */
-/*
-void bzero (void *s, size_t n){ memset (s, 0, n); }
-void bcopy (const void *src, void *dest, size_t n){ memcpy (dest, src, n); }
-int bcmp (const void *s1, const void *s2, size_t n){ return memcmp (s1, s2, n); }
-*/
 
 
 

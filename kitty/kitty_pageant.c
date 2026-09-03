@@ -618,16 +618,6 @@ const char *kageant_ini_status(void)
                                                    : kitty_inilight_file();
 }
 
-/* A kitty.ini exists somewhere the resolver can reach (next to the exe,
- * KITTY_INI_FILE, or %APPDATA%\KiTTY) - so there is a place to store the
- * ini-only [Agent] options, whatever the session's mode. NOT the same as
- * kageant_ini_status(), which is non-NULL only when the ini is ALSO the
- * authoritative store; here we just need a file to write to. */
-int kageant_ini_present(void)
-{
-    return kitty_inilight_file() != NULL;
-}
-
 /* Directory holding the resolved authoritative ini (no trailing separator);
  * 0 when there is none. */
 static int kageant_inidir(char *out, size_t outlen)
@@ -1458,15 +1448,6 @@ int kageant_idle_effective(ptrlen blob)
     return mode == 1 ? kageant_autoenc_seconds() : 0;     /* default / off */
 }
 
-void kageant_idle_forget(ptrlen blob)
-{
-    int i = kageant_idle_find(blob, 0);
-    if (i < 0) return;
-    strbuf_free(g_idle[i].blob);
-    memmove(&g_idle[i], &g_idle[i + 1], (g_nidle - i - 1) * sizeof(*g_idle));
-    g_nidle--;
-}
-
 /* The 1-second heartbeat: a key whose last use is older than its effective
  * idle time goes back to encrypted (the core keeps the encrypted copy in
  * memory, so this costs no file access); "use" means at the next tick after
@@ -1781,37 +1762,6 @@ void kageant_forget_loaded_by_blob(ptrlen blob)
  * dismissed and will return at every start is one people learn to click
  * through, which is worse than not warning at all.
  */
-/*
- * KiTTY: does the file at `path` still hold the key `stored` describes?
- *
- *   1  = yes
- *   0  = no, it is a different key
- *  -1  = cannot tell (unreadable, or no fingerprint could be computed)
- *
- * The comparison lives here alone so the two callers cannot drift: the startup
- * loader, which may ask the user about a mismatch, and the device-arrival
- * retry, which must never ask and simply refuses.
- */
-int kageant_fp_matches(const char *path, const char *stored)
-{
-    strbuf *blob;
-    char *actual;
-    int same;
-
-    if (!stored || !*stored)
-        return -1;                      /* nothing to compare against */
-    blob = kageant_pubblob(path);
-    if (!blob)
-        return -1;
-    actual = kageant_fp_of_blob(blob);
-    strbuf_free(blob);
-    if (!actual)
-        return -1;
-    same = !strcmp(actual, stored);
-    sfree(actual);
-    return same ? 1 : 0;
-}
-
 /*
  * Is the key we are now holding for `path` the one recorded for it?
  *

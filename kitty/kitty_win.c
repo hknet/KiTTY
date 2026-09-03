@@ -1520,30 +1520,6 @@ bool IsPathAbsolute( const char * path ) {
 	return test ;
 }
 
-void PopUpSystemMenu( HWND hwnd, int npos ) {
-	RECT rc ;
-	GetWindowRect( hwnd, &rc ) ;
-	HMENU m = GetSystemMenu( hwnd, FALSE) ;
-	TrackPopupMenu( m, 0, rc.left, rc.top, 0, hwnd, NULL) ;
-
-	if( npos>0 ) {
-	int nb = GetMenuItemCount(m), i;
-	MENUITEMINFO mi ;
-	mi.cbSize = sizeof(MENUITEMINFO) ;
-	for( i=0; i<nb; i++ ) {
-		mi.dwTypeData  = NULL ;
-		GetMenuItemInfoA( m, i, TRUE, &mi);
-		char *txt = (char*)malloc(mi.cch+1);
-		mi.dwTypeData  = txt ;
-		mi.cch=	mi.cch+1;
-		GetMenuItemInfoA( m, i, FALSE, &mi);
-		MessageBox(NULL,txt,"info",MB_OK);
-		free(txt);
-	}
-	}
-
-}
-
 /* KiTTY auto-login password consent. Shown the first time the user sets an
  * auto-login password in the configuration dialog (NOT at login time, so the
  * auto-login the user configured is never interrupted). Returns nonzero if the
@@ -1559,74 +1535,6 @@ int kitty_autopw_warn( void ) {
 		MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 ) ;
 	return (r == IDYES) ;
 }
-
-// Description:
-//   Creates a tooltip for an item in a dialog box. 
-// Parameters:
-//   idTool - identifier of an dialog box item.
-//   nDlg - window handle of the dialog box.
-//   pszText - string to use as the tooltip text.
-// Returns:
-//   The handle to the tooltip.
-//
-HWND CreateToolTip(int toolID, HWND hDlg, PTSTR pszText)
-{
-    if (!toolID || !hDlg || !pszText)
-    {
-        return FALSE;
-    }
-    // Get the window of the tool.
-    HWND hwndTool = GetDlgItem(hDlg, toolID);
-    
-    // Create the tooltip. g_hInst is the global instance handle.
-    HWND hwndTip = CreateWindowEx(0, TOOLTIPS_CLASS, NULL,
-                              WS_POPUP |TTS_ALWAYSTIP | TTS_BALLOON,
-                              CW_USEDEFAULT, CW_USEDEFAULT,
-                              CW_USEDEFAULT, CW_USEDEFAULT,
-                              hDlg, NULL, 
-                              hinst /*g_hInst*/, NULL);
-    
-   if (!hwndTool || !hwndTip)
-   {
-       return (HWND)NULL;
-   }                              
-                              
-    // Associate the tooltip with the tool.
-    TOOLINFO toolInfo = { 0 };
-    toolInfo.cbSize = sizeof(toolInfo);
-    toolInfo.hwnd = hDlg;
-    toolInfo.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
-    toolInfo.uId = (UINT_PTR)hwndTool;
-    toolInfo.lpszText = pszText;
-    SendMessage(hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
-
-    return hwndTip;
-}
-/*
-HWND CreateToolTip2(int toolID, HWND hDlg, PTSTR pszText) {
-    HWND hwndToolTips = CreateWindow(TOOLTIPS_CLASS, NULL, 
-                            WS_POPUP | TTS_NOPREFIX | TTS_BALLOON, 
-                            0, 0, 0, 0, NULL, NULL, GetModuleHandle(NULL), NULL);
-    if (hwndToolTips)
-{
-    TOOLINFO ti;
-
-    ti.cbSize   = sizeof(ti);
-    ti.uFlags   = TTF_TRANSPARENT | TTF_CENTERTIP;
-    ti.hwnd     = hDlg;
-    ti.uId      = toolID;
-    ti.hinst    = NULL;
-    ti.lpszText = pszText;
-
-    GetClientRect(hwnd, &ti.rect);
-
-    SendMessage(hwndToolTips, TTM_ADDTOOL, 0, (LPARAM) &ti );
-
-}
-return hwndToolTips ;
-}
-*/
-
 
 /*
  * Shared renderer for the non-modal connection-error paths in

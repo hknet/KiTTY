@@ -290,14 +290,6 @@ int kitty_hello_kek_selftest_ex(int nohost, char **msg);
  * binary's selftest mode). Never enabled inside the agent. */
 void kitty_hello_trace_enable(void);
 
-/* Probe the OTHER Hello-gated KEK source: the platform authenticator's
- * WebAuthn hmac-secret/PRF extension (the passkey path, which has no
- * WHfB gate). Creates a throwaway platform credential, runs two PRF
- * assertions with a fixed salt (a Hello prompt each), compares the
- * secrets and DELETES the credential. VERIFIED = deterministic 32-byte
- * secret, viable as a KEK. msg says what happened (caller sfree). */
-int kitty_hello_webauthn_probe(char **msg);
-
 /* Diagnostic variants of the probe: choose the RP id and how (whether)
  * the PRF capability is requested at creation. PRF_NONE creates and
  * deletes a credential without any PRF request - it discriminates

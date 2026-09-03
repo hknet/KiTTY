@@ -30,8 +30,6 @@ void SetModalWeakKeyConfirmationFlag( const int flag ) ;
 
 // Flag pour le fonctionnement en mode "portable" (gestion par fichiers)
 int GetIniFileFlag(void) ;
-void SetIniFileFlag( const int flag ) ;
-void SwitchIniFileFlag(void) ;
 
 // Flag permettant de desactiver la sauvegarde automatique des informations de connexion (user/password) Ã  la connexion SSH
 // extern int UserPassSSHNoSave ;
@@ -102,7 +100,6 @@ void unmungestr( const char *in, char *out, int outlen ) ;
 void MASKPASS( const int mode, char * password ) ;
 void GetPasswordInConfig( char * p ) ;
 int IsPasswordInConf(void) ;
-void CleanPassword( char * p ) ;
 
 int _rmdir(const char *) ;
 

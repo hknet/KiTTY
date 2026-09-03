@@ -9369,20 +9369,8 @@ void resize(int height, int width) {
 }
 
 #ifdef MOD_BACKGROUNDIMAGE
-/* Geometry/colour accessors required by kitty_image.c, served from the
+/* Colour accessor required by kitty_image.c, served from the
  * active WinGuiSeat (KiTTY is effectively single-window). */
-int return_offset_height(void) {
-    return kitty_active_wgs ? kitty_active_wgs->offset_height : 0;
-}
-int return_offset_width(void) {
-    return kitty_active_wgs ? kitty_active_wgs->offset_width : 0;
-}
-int return_font_height(void) {
-    return kitty_active_wgs ? kitty_active_wgs->font_height : 0;
-}
-int return_font_width(void) {
-    return kitty_active_wgs ? kitty_active_wgs->font_width : 0;
-}
 COLORREF return_colours258(void) {
     /* 258 = ATTR_DEFBG index in KiTTY's colour table = default background. */
     return kitty_active_wgs ? kitty_active_wgs->colours[258] : RGB(0,0,0);

@@ -1059,7 +1059,6 @@ void kitty_clear_bundle_context(void)
     g_bundle_wrap_failed = 0;
     g_bundle_import = 0;
 }
-int kitty_bundle_passphrase_active(void) { return g_bundle_pass != NULL; }
 int kitty_bundle_wrap_failed(void) { return g_bundle_wrap_failed; }
 
 void kitty_set_master_passphrase(const char *pass)

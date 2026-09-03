@@ -121,7 +121,6 @@ static const char *kapi_feature_of(int i)
     return kapi_notes[i].feature ? kapi_notes[i].feature : KT_OLDWIN_UNNAMED;
 }
 
-char *kitty_oldwin_required_missing(void) { return kapi_report(KITTY_API_REQUIRED); }
 char *kitty_oldwin_degraded(void)         { return kapi_report(KITTY_API_OPTIONAL); }
 
 char *kitty_oldwin_degraded_brief(void)

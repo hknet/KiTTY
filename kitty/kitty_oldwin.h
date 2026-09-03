@@ -29,9 +29,8 @@
  *   KITTY_API_OPTIONAL  the caller has a fallback, or the feature simply
  *                       stays off. Recorded, reported in the Event Log, and
  *                       never shown to the user as an error.
- *   KITTY_API_REQUIRED  KiTTY cannot run without it. Recorded, and named in
- *                       the message kitty_oldwin_required_missing() builds,
- *                       which the startup path shows before giving up.
+ *   KITTY_API_REQUIRED  KiTTY cannot run without it. Recorded; no lookup
+ *                       asks for this level today.
  *
  * `feature` is the words the user reads: "Windows Hello", "dark mode", "the
  * agent-verification check". Keep it a NOUN PHRASE - it is printed as
@@ -68,18 +67,12 @@ void kitty_api_record(const char *dll, const char *symbol, int need,
  * What was missing, as text the caller owns (sfree it), or NULL when nothing
  * was.
  *
- * _required_missing() is the "this Windows is too old" message: it names each
- * missing API, what it was for, and the Windows release that introduced the
- * newest of them. Ask for it at startup and, if it is not NULL, show it and
- * stop - the alternative is failing later in a way nobody can act on.
- *
- * _degraded() is the milder list: features that switched themselves off. It
+ * _degraded() is the list of features that switched themselves off. It
  * belongs in the Event Log, not in a box.
  *
- * Both only know about lookups that have actually happened, so ask AFTER the
+ * It only knows about lookups that have actually happened, so ask AFTER the
  * startup path has resolved what it needs.
  */
-char *kitty_oldwin_required_missing(void);
 char *kitty_oldwin_degraded(void);
 
 /*

@@ -1,18 +1,5 @@
 #include "kitty_tools.h"
 
-char *stristr (const char *meule_de_foin, const char *aiguille) {
-	char *c1, *c2, *res = NULL ; int i ;
-	c1=(char*)malloc( strlen(meule_de_foin) + 1 ) ; strcpy( c1, meule_de_foin ) ;
-	c2=(char*)malloc( strlen(aiguille) + 1 ) ; strcpy( c2, aiguille ) ;
-	if( strlen(c1)>0 ) {for( i=0; i<strlen(c1); i++ ) c1[i]=toupper( c1[i] ) ;}
-	if( strlen(c2)>0 ) {for( i=0; i<strlen(c2); i++ ) c2[i]=toupper( c2[i] ) ;}
-	res=strstr(c1,c2);
-	if( res!=NULL ) res = (char*)(meule_de_foin+( res-c1 )) ;
-	free( c2 ) ;
-	free( c1 ) ;
-	return res ;
-}
-
 /* Supprime en place les caracteres de fin appartenant a `set` (right-trim).
    Remplace les boucles while(strlen...) recopiees partout; sans danger sur
    une chaine vide (n'indexe jamais s[-1]). Retourne s. */
@@ -71,16 +58,6 @@ int poss( const char * c, const char * ch ) {
 	free( ch1 ) ;
 	free( c1 ) ;
 	return res ; 
-}
-	
-/* Fonction permettant de retrouver la position d'une chaîne de caracteres dans une chaine a partir d'une position donnee */
-int posi( const char * c, const char * ch, const int ipos ) {
-	int res ;
-	if( ( c == NULL ) || ( ch == NULL ) ) return -1 ;
-	if( ( ipos <= 0 ) || ( (size_t) ipos > strlen( ch ) ) ) return 0 ;
-	res = poss( c, ch + ( ipos - 1 ) ) ;
-	if( res > 0 ) return res + ( ipos -1 ) ;
-	else return 0 ;
 }
 
 // Teste l'existance d'un fichier
@@ -149,17 +126,6 @@ int StringList_Add( char **list, const char * name ) {
 	return 1 ;
 }
 
-// Test si une chaine existe dans une liste de chaines
-int StringList_Exist( const char **list, const char * name ) {
-	int i = 0 ;
-	while( list[i] != NULL ) {
-		if( strlen( list[i] ) > 0 )
-			if( !strcmp( list[i], name ) ) return 1 ;
-		i++ ;
-	}
-	return 0 ;
-}
-	
 // Supprime une chaine d'une liste de chaines
 void StringList_Del( char **list, const char * name ) {
 	int i = 0 ;
@@ -204,20 +170,6 @@ int set_env( char * name, char * value ) {
 	sprintf( buffer,"%s=%s", name, value ) ; 
 	res = putenv( (const char *) buffer ) ;
 	free( buffer ) ;
-	return res ;
-}
-
-int add_env( char * name, char * value ) {
-	int res = 0 ;
-	char * npst = getenv( name ), * vpst = NULL ;
-	if( npst==NULL ) { 
-		res = set_env( name, value ) ; 
-	} else {
-		vpst = (char*) malloc( strlen(npst)+strlen(value)+20 ) ; 
-		sprintf( vpst, "%s=%s;%s", name, npst, value ) ;
-		res = set_env( name, vpst ) ;
-		free( vpst ) ;
-	}
 	return res ;
 }
 

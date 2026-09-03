@@ -223,9 +223,6 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
      * garbage -> Duplicate-Session / open-new-with-current auto-login sent a
      * corrupted password (even for ASCII). Runtime conf is plaintext (see
      * window.c get_userpass_input), so just pass it through. */
-#ifdef MOD_NOPASSWORD
-    conf_set_str(newconf, CONF_password, "");
-#endif
 
     if (remotepath != NULL) {
         char *buf = (char*)malloc(strlen(remotepath) + 5);

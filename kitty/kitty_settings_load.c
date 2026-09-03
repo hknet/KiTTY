@@ -851,7 +851,6 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     if (!conf_get_bool(conf, CONF_set_windowpos))
         gppb_forced(sesskey, "SaveWindowPos", conf, CONF_set_windowpos);
     gppb_forced(sesskey, "ForegroundOnBell", conf, CONF_foreground_on_bell );
-#ifndef MOD_NOPASSWORD
     gpps_forced(sesskey, "Password", conf, CONF_password ) ;
     if( strlen(conf_get_str(conf, CONF_password))>0 ) {
 	extern char *kitty_secret_decode_imported(const char *, const char *, const char *, int) ;
@@ -874,9 +873,6 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	conf_set_str( conf, CONF_password, pt ? pt : "" ) ;
 	if( pt ) { memset(pt,0,strlen(pt)) ; free(pt) ; }
     }
-#else
-	conf_set_str( conf, CONF_password, "" ) ;
-#endif
     gppi_forced(sesskey, "CtrlTabSwitch", conf, CONF_ctrl_tab_switch);
     gpps_forced(sesskey, "Comment", conf, CONF_comment );
     gppb_forced(sesskey, "CommentNotify", conf, CONF_comment_notify );
