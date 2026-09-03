@@ -2657,6 +2657,7 @@ static void sessionsaver_data_free(void *ssdv)
 
 #ifdef MOD_PERSO
 char *kitty_read_session_folder(const char *sessionname);   /* windows/storage.c */
+char *kitty_read_session_folder_cached(const char *sessionname);   /* the list loops */
 
 /*
  * KiTTY folder navigation ([ConfigBox] foldernavigation=yes, hknet/KiTTY#26).
@@ -2763,14 +2764,14 @@ static bool kitty_session_on_level(struct sessionsaver_data *ssd, int i)
      * the list's first refresh), so filtering by it shows the session's
      * neighbours - which is the level the user is actually looking at. */
     if (!kitty_at_root_level()) {
-        fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
+        fld = kitty_read_session_folder_cached(ssd->sesslist.sessions[i]);
         ok = (fld && !strcmp(fld, CurrentFolder));
         sfree(fld);
         return ok;
     }
     if (!kitty_folder_rows_active(ssd))
         return true;                 /* classic root list: everything shows */
-    fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
+    fld = kitty_read_session_folder_cached(ssd->sesslist.sessions[i]);
     ok = (!fld || !*fld || !strcmp(fld, "Default"));
     sfree(fld);
     return ok;
@@ -3011,6 +3012,7 @@ static bool sessionsaver_resolve_launch_target(
  * empty string if nothing is selected or the session has no comment. */
 char *kitty_read_session_comment(const char *sessionname);  /* windows/storage.c */
 char *kitty_read_session_folder(const char *sessionname);   /* windows/storage.c */
+char *kitty_read_session_folder_cached(const char *sessionname);   /* the list loops */
 static int sessionsaver_selected_session_index(struct sessionsaver_data *ssd, dlgparam *dlg)
 {
     int i = dlg_listbox_index(ssd->listbox, dlg);
@@ -3125,7 +3127,7 @@ static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
             ssd->folderrows[n++] = dupstr(FolderList[i]);
 
     for (i = 0; i < ssd->sesslist.nsessions && n < cap; i++) {
-        char *fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
+        char *fld = kitty_read_session_folder_cached(ssd->sesslist.sessions[i]);
         if (kitty_folder_row_visible(fld, filter)) {
             int j, seen = 0;
             for (j = 0; j < n; j++)
@@ -3314,7 +3316,7 @@ static int sessionsaver_folder_member_count_of(struct sessionsaver_data *ssd,
         char *fld;
         if (!strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION))
             continue;                      /* belongs to no folder; see above */
-        fld = kitty_read_session_folder(ssd->sesslist.sessions[i]);
+        fld = kitty_read_session_folder_cached(ssd->sesslist.sessions[i]);
         if (fld && !strcmp(fld, folder))
             n++;
         sfree(fld);
@@ -3347,7 +3349,7 @@ static int sessionsaver_move_folder_sessions(struct sessionsaver_data *ssd,
         const char *sess = ssd->sesslist.sessions[i];
         bool isdef = !strcmp(sess, KITTY_DEFAULT_SESSION);
         const char *dest = isdef ? "Default" : to;
-        char *fld = kitty_read_session_folder(sess);
+        char *fld = kitty_read_session_folder_cached(sess);
         int match = (fld && !strcmp(fld, from));
         char *errmsg = NULL;
         settings_w *w;

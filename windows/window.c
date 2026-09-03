@@ -2612,7 +2612,7 @@ static void update_savedsess_menu(WinGuiSeat *wgs)
      * where an item sits in the menu does not affect what it opens.
      */
     {
-        extern char *kitty_read_session_folder(const char *sessionname);
+        extern char *kitty_read_session_folder_cached(const char *sessionname);
 #define KITTY_MENU_FOLDERS_MAX 64
         HMENU fmenu[KITTY_MENU_FOLDERS_MAX];
         char *fname[KITTY_MENU_FOLDERS_MAX];
@@ -2622,7 +2622,7 @@ static void update_savedsess_menu(WinGuiSeat *wgs)
 
         /* skip sesslist.sessions[0] == Default Settings */
         for (i = 1; i < limit; i++) {
-            char *fld = kitty_read_session_folder(sesslist.sessions[i]);
+            char *fld = kitty_read_session_folder_cached(sesslist.sessions[i]);
             bool filed = (fld && *fld && strcmp(fld, "Default") != 0);
             int slot = -1;
             if (filed) {

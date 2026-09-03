@@ -475,7 +475,18 @@ void kitty_session_folder_cache_clear(void)
     kitty_folder_cache.n = 0;
 }
 
+/* The direct read: what the mid-session save asks, because a session may
+ * have been moved from another window since this one launched, and the
+ * store is the truth. */
 char *kitty_read_session_folder(const char *sessionname)
+{
+    if (sessionname && !strcmp(sessionname, KITTY_DEFAULT_SESSION))
+        return NULL;
+    return kitty_read_session_value_direct(sessionname, "Folder", 0);
+}
+
+/* The cached read, for the list refresh loops only (see above). */
+char *kitty_read_session_folder_cached(const char *sessionname)
 {
     int i;
     char *v;
