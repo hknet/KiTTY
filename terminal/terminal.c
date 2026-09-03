@@ -1388,6 +1388,14 @@ static void term_timer(void *ctx, unsigned long now)
     if (term->window_update_cooldown &&
         now == term->window_update_cooldown_end) {
         term->window_update_cooldown = false;
+#ifdef MOD_PERSO
+        /* Nothing arrived during the cooldown: the burst is over, give the
+         * fine timer period back. */
+        if (!term->window_update_pending) {
+            void kitty_timer_fine(int);
+            kitty_timer_fine(0);
+        }
+#endif
     }
 
     if (term->window_update_pending)
@@ -1396,8 +1404,9 @@ static void term_timer(void *ctx, unsigned long now)
 
 #ifdef MOD_PERSO
 /*
- * KiTTY: the update cooldown as an EXPERIMENT knob, from the environment
- * (no setting yet). A window update is followed by a cooldown during which
+ * KiTTY: the update cooldown, as a frame pace (the setting below) with
+ * the environment knobs of the 2026-09-03 experiments kept for measuring.
+ * A window update is followed by a cooldown during which
  * further output does not trigger another; the frame rate during a burst is
  * therefore one update per (paint + cooldown). Measured 2026-09-03: with the
  * stock 20 ms - which the Windows timer rounds up to its 15.6 ms tick - the
@@ -1431,31 +1440,51 @@ static double kitty_fine_ms(void)
  *                             itself just cost, but never under n ms - so
  *                             painting never takes more than half the
  *                             time, whatever the window size. */
+/* The frame pace: [KiTTY] framepace=N, default 16 - while output streams
+ * in, the window repaints every N ms with the paint's own cost counted
+ * in, but never so often that painting takes more than half the time.
+ * 0 = PuTTY's fixed cooldown. The experiment knob KITTY_UPDATE_PACE_MS
+ * still overrides the setting. Read once. */
+static int kitty_framepace_ms(void)
+{
+    static int pace = -1;
+    if (pace < 0) {
+        int env = kitty_env_ms("KITTY_UPDATE_PACE_MS");
+        int GetFramePace(void);            /* kitty.c: the [KiTTY] key */
+        pace = env > 0 ? env : GetFramePace();
+        if (pace < 0) pace = 0;
+        if (pace > 1000) pace = 1000;
+    }
+    return pace;
+}
+
+/* The pending cooldown's deadline on the fine clock, checked from the
+ * input path (term_out) so a burst ends its own cooldown on time. One
+ * terminal window per process is the normal case; a second seat in the
+ * same process (a proxy) shares the value, at worst a frame early. */
+static double kitty_cooldown_deadline_ms = 0;
+
 static unsigned long kitty_update_cooldown(double took_ms)
 {
-    static int delay = -1, pace = -1, minms = -1;
+    static int delay = -1, minms = -1;
+    int pace = kitty_framepace_ms();
     double d;
     if (delay < 0) {
         delay = kitty_env_ms("KITTY_UPDATE_DELAY_MS");
-        pace = kitty_env_ms("KITTY_UPDATE_PACE_MS");
         minms = kitty_env_ms("KITTY_UPDATE_MIN_MS");
     }
-    if (pace > 0 && minms > 0) {
-        /* Both: frames every `pace` ms while the update is cheap enough,
-         * and never a cooldown shorter than the update itself (painting
-         * at most half the time), whichever is longer; floor minms. */
+    if (pace > 0) {
+        /* Frames every `pace` ms while the update is cheap enough, and
+         * never a cooldown shorter than the update itself (painting at
+         * most half the time), whichever is longer. */
         d = pace - took_ms;
         if (d < took_ms) d = took_ms;
-        if (d < minms) d = minms;
+        if (minms > 0 && d < minms) d = minms;
+        if (d < 1) d = 1;
         return (unsigned long)(d * TICKSPERSEC / 1000 + 0.5);
     }
     if (minms > 0) {
         d = took_ms > minms ? took_ms : minms;
-        return (unsigned long)(d * TICKSPERSEC / 1000 + 0.5);
-    }
-    if (pace > 0) {
-        d = pace - took_ms;
-        if (d < 1) d = 1;
         return (unsigned long)(d * TICKSPERSEC / 1000 + 0.5);
     }
     if (delay > 0)
@@ -1472,10 +1501,18 @@ static void term_update_callback(void *ctx)
     if (!term->window_update_cooldown) {
 #ifdef MOD_PERSO
         double t0 = kitty_fine_ms();
+        void kitty_timer_fine(int);        /* kitty.c: 1 ms timer period */
         term_update(term);
         term->window_update_cooldown = true;
-        term->window_update_cooldown_end = schedule_timer(
-            kitty_update_cooldown(kitty_fine_ms() - t0), term_timer, term);
+        /* The cooldown timer must fire when asked, not on the next 15.6 ms
+         * clock step: hold the fine period while a cooldown is pending. */
+        if (kitty_framepace_ms() > 0)
+            kitty_timer_fine(1);
+        {
+            unsigned long cd = kitty_update_cooldown(kitty_fine_ms() - t0);
+            kitty_cooldown_deadline_ms = kitty_fine_ms() + cd;
+            term->window_update_cooldown_end = schedule_timer(cd, term_timer, term);
+        }
 #else
         term_update(term);
         term->window_update_cooldown = true;
@@ -5771,6 +5808,9 @@ static void term_out(Terminal *term, bool called_from_term_data)
     int unget;
     const unsigned char *chars;
     size_t nchars_got = 0, nchars_used = 0;
+#ifdef MOD_PERSO
+    int pace_n = 0;
+#endif
 
     /*
      * During drag-selects, we do not process terminal input, because
@@ -5819,6 +5859,29 @@ static void term_out(Terminal *term, bool called_from_term_data)
              */
             if (term->win_resize_pending != WIN_RESIZE_NO)
                 break;
+
+#ifdef MOD_PERSO
+            /* KiTTY frame pace: during a burst the cooldown ends HERE, on
+             * the fine clock, not when a Windows timer gets round to it
+             * (15.6 ms steps, and Windows 11 grants a finer tick only to a
+             * window in front). Once the deadline has passed: cooldown
+             * over, the update queued, the rest of this input queued
+             * behind it, and out - the paint gets its turn. Leaving data
+             * behind is what the resize case above does too: the unused
+             * part of the chunk is not consumed. */
+            if (++pace_n >= 256) {
+                pace_n = 0;
+                if (term->window_update_cooldown &&
+                    term->window_update_pending &&
+                    kitty_cooldown_deadline_ms > 0 &&
+                    kitty_fine_ms() >= kitty_cooldown_deadline_ms) {
+                    term->window_update_cooldown = false;
+                    queue_toplevel_callback(term_update_callback, term);
+                    queue_toplevel_callback(term_out_cb, term);
+                    break;
+                }
+            }
+#endif
 
             if (nchars_got == nchars_used) {
                 /* Delete the previous chunk from the bufchain */

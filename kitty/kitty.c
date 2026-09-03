@@ -155,6 +155,9 @@ void SetFunkeysDefault( const int t ) { FunkeysDefault = t ; }
 // the feature available by default and let kitty.ini "hyperlink" disable it.
 int HyperlinkFlag = 1 ;
 int GetHyperlinkFlag(void) { return HyperlinkFlag ; }
+/* [KiTTY] framepace: ms between window repaints while output streams in;
+ * the value and its getter live in windows/kitty_pace.c with the clock. */
+extern int FramePaceMs ;
 void SetHyperlinkFlag( const int flag ) { HyperlinkFlag = flag ; }
 
 // Flag de gestion de la Transparence
@@ -3152,6 +3155,7 @@ static const IniParam ini_params[] = {
 	INIP_KW( INIT_SECTION, 0, "bgimage",		1, 0, IGN,	NULL, SetBackgroundImageFlag ),
 #endif
 	INIP_NUM( INIT_SECTION, 0, "bcdelay",		IGN,		&between_char_delay, NULL ),
+	INIP_NUM( INIT_SECTION, 0, "framepace",	IGN,		&FramePaceMs, NULL ),
 	/* conf=no: do NOT auto-create kitty.ini/kitty.sav */
 	INIP_KW( INIT_SECTION, 0, "conf",		IGN, 1, IGN,	&NoKittyFileFlag, NULL ),
 	INIP_NUM( INIT_SECTION, 0, "cryptsalt",		IGN,		NULL, SetCryptSaltFlag ),
@@ -4089,3 +4093,4 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) ;
 
 // Envoi d'une commande à l'écran
 void SendAutoCommand( HWND hwnd, const char * cmd ) ;
+

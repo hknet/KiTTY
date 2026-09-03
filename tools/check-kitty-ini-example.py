@@ -201,7 +201,10 @@ def unread_knobs() -> list[tuple[str, str]]:
         r'INIP_(?:KW|NUM)\s*\(\s*(?:INIT_SECTION|"[^"]+")\s*,\s*\d+\s*,\s*'
         r'"([^"]+)"[^)]*?,\s*(&\w+|NULL)\s*,\s*(\w+)\s*\)', kitty_c)
 
-    sources = list((ROOT / "kitty").glob("*.c")) + list((ROOT / "windows").glob("*.c"))
+    # terminal/ too: the terminal core consults a [KiTTY] key through its
+    # getter (framepace, terminal.c) - a knob read there is not dead.
+    sources = (list((ROOT / "kitty").glob("*.c")) + list((ROOT / "windows").glob("*.c"))
+               + list((ROOT / "terminal").glob("*.c")))
     texts = {p: read_text(p) for p in sources}
     all_text = "\n".join(texts.values())
 

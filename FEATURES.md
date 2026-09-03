@@ -991,6 +991,10 @@ KiTTY can display a picture behind your terminal text, giving each session windo
 
 The terminal window is painted with GDI, as every Windows program was, or on request with Direct2D and DirectWrite, which draw on the graphics card. The GPU path makes a full repaint of a large window several times cheaper, so paging through output in a maximised window keeps up with the display, and it brings DirectWrite's text rendering. `renderer=d2d` in the `[KiTTY]` section of kitty.ini switches it on; `gdi` (the default) is what every build and every Windows has. Direct2D needs Windows 8.1 or newer and a window without transparency; where it cannot be used the window silently stays on GDI. Text looks slightly different between the two renderers (glyph placement, ClearType). A character the chosen font lacks is borrowed from the fallback fonts on both paths: the `[FontFallback]` list first, then Windows' own fallback (monochrome, no colour emoji yet). Switching transparency on in a Direct2D window hands the window back to GDI, since a translucent window cannot be painted by the GPU path.
 
+### Frame pacing
+
+While output streams in, the window is repainted on a pace rather than after a fixed pause: `framepace=16` in the `[KiTTY]` section of kitty.ini (the default) aims at one repaint every 16 ms, the paint's own cost counted in, and never lets painting take more than half the time, so a large window on a slow machine paces itself down instead of stalling. The pace is kept from inside the input processing rather than left to a Windows timer, whose 15.6 ms steps would otherwise decide the frame rate, so a burst never holds a repaint back. `framepace=0` restores PuTTY's fixed 20 ms cooldown.
+
 ---
 
 ## Other features

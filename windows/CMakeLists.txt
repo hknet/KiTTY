@@ -33,6 +33,7 @@ add_sources_from_current_dir(utils
   utils/get_system_dir.c
   utils/get_username.c
   utils/gui-timing.c
+  kitty_pace.c
   utils/interprocess_mutex.c
   utils/is_console_handle.c
   utils/load_system32_dll.c
