@@ -462,6 +462,7 @@ endif()
 add_executable(kitty
   window.c
   paint-gdi.c
+  paint-d2d.c                                       # KiTTY: the Direct2D painter, [KiTTY] renderer=d2d
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
@@ -584,6 +585,7 @@ set_target_properties(kitty PROPERTIES WIN32_EXECUTABLE ON)
 add_executable(kitty_portable
   window.c
   paint-gdi.c
+  paint-d2d.c                                       # KiTTY: the Direct2D painter, [KiTTY] renderer=d2d
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)

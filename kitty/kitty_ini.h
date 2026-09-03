@@ -281,6 +281,12 @@ char default_init_file_content[] =
 ; hyperlink: enable/disable the hyperlink feature\n\
 ;hyperlink=yes\n\
 \n\
+; renderer: how the terminal window is painted. gdi (the default) is what\n\
+; every Windows has; d2d paints with Direct2D and DirectWrite on the GPU\n\
+; (Windows 8.1 or newer, a window without transparency; anything else\n\
+; falls back to gdi). Text rendering differs slightly between the two.\n\
+;renderer=gdi\n\
+\n\
 ; iconfile: point to a file where internal icons are located\n\
 ;iconfile=kitty.exe\n\
 \n\

@@ -28,6 +28,11 @@ typedef struct KittyPainterVtable {
      * whatever it needs until end(). Returns false if it cannot draw now. */
     bool (*begin)(KittyPainter *p, HDC given);
     void (*end)(KittyPainter *p);
+    /* The client area changed size (WM_SIZE); a painter with its own
+     * surfaces re-creates them. GDI has nothing to do. */
+    void (*resize)(KittyPainter *p, int width, int height);
+    /* Free the painter and everything it holds. */
+    void (*destroy)(KittyPainter *p);
 
     /* Text state for the runs that follow: font, colours, whether the run's
      * background is filled (opaque) and whether glyphs are centred in their
@@ -91,11 +96,18 @@ struct KittyPainter {
 /* The GDI painter: what the window always had. `pal` points at the window's
  * palette handle, read at every frame (it can be created later). */
 KittyPainter *kitty_painter_gdi_new(HWND hwnd, HPALETTE *pal);
-void kitty_painter_free(KittyPainter *p);
+
+/* The Direct2D + DirectWrite painter (paint-d2d.c, KiTTY targets only):
+ * NULL when the machine cannot provide it, and the caller stays on GDI.
+ * font_quality is the session's FQ_* setting (the antialiasing mode). */
+KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality);
+
+#define kitty_painter_free(p)            ((p)->vt->destroy(p))
 
 /* Convenience wrappers so call sites read as drawing, not as tables. */
 #define kp_begin(p, dc)                  ((p)->vt->begin((p), (dc)))
 #define kp_end(p)                        ((p)->vt->end(p))
+#define kp_resize(p, w, h)               ((p)->vt->resize((p), (w), (h)))
 #define kp_style(p, f, fg, bg, op, ce)   ((p)->vt->style((p), (f), (fg), (bg), (op), (ce)))
 #define kp_opaque(p, op)                 ((p)->vt->opaque((p), (op)))
 #define kp_text_w(p, x, y, c, op, s, n, dx)   ((p)->vt->text_w((p), (x), (y), (c), (op), (s), (n), (dx)))

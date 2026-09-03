@@ -1706,8 +1706,34 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             modalfatalbox("Unable to create terminal window: %s",
                           win_strerror(GetLastError()));
         }
-        /* The window's painter (paint.h): GDI, the one every build has. */
-        wgs->painter = kitty_painter_gdi_new(wgs->term_hwnd, &wgs->pal);
+        /* The window's painter (paint.h): GDI, the one every build has;
+         * KiTTY offers Direct2D on request ([KiTTY] renderer=d2d) for a
+         * window without transparency, and falls back to GDI when the
+         * machine cannot provide it. */
+        wgs->painter = NULL;
+#ifdef MOD_PERSO
+        {
+            char renderer[16] = "";
+            int ReadParameterN(const char *, const char *, char *, size_t);
+            ReadParameterN("KiTTY", "renderer", renderer, sizeof(renderer));
+            if (!stricmp(renderer, "d2d")) {
+                /* Layered (translucent) windows stay on GDI: a flip
+                 * swap chain and SetLayeredWindowAttributes do not mix.
+                 * kitty_apply_transparency: layered iff the feature is
+                 * on and the level is above 0. */
+                if (!(GetTransparencyFlag() &&
+                      conf_get_int(wgs->conf, CONF_transparencynumber) > 0))
+                    wgs->painter = kitty_painter_d2d_new(
+                        wgs->term_hwnd,
+                        conf_get_int(wgs->conf, CONF_font_quality));
+                else    /* by design: transparency stays on GDI */
+                    SetPropA(wgs->term_hwnd, "KiTTY.renderer.fail",
+                             (HANDLE)200);
+            }
+        }
+#endif
+        if (!wgs->painter)
+            wgs->painter = kitty_painter_gdi_new(wgs->term_hwnd, &wgs->pal);
 #ifdef MOD_PERSO
         /* KiTTY: a terminal window has existed in this process. What
          * [ConfigBox] noexit is about - see the respawn at the foot of the
@@ -5641,6 +5667,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         sys_cursor_update(wgs);
         break;
       case WM_SIZE:
+        /* The painter's surfaces follow the client area (a GPU painter
+         * re-creates its swap chain buffers; GDI has nothing to do). */
+        if (wgs->painter)
+            kp_resize(wgs->painter, LOWORD(lParam), HIWORD(lParam));
         resize_action = conf_get_int(wgs->conf, CONF_resize_action);
 #ifdef MOD_PERSO
         /* #554: once a host (mRemoteNG) has reparented us, our font DPI may be

@@ -289,9 +289,22 @@ static HDC gdi_hdc(KittyPainter *p)
     return ((GdiPainter *)p)->hdc;
 }
 
+static void gdi_resize(KittyPainter *p, int w, int h)
+{
+    (void)p; (void)w; (void)h;         /* the window IS the surface */
+}
+
+static void gdi_destroy(KittyPainter *p)
+{
+    RemovePropA(((GdiPainter *)p)->hwnd, "KiTTY.renderer");
+    sfree(p);
+}
+
 static const KittyPainterVtable gdi_vt = {
     .begin = gdi_begin,
     .end = gdi_end,
+    .resize = gdi_resize,
+    .destroy = gdi_destroy,
     .style = gdi_style,
     .opaque = gdi_opaque,
     .text_w = gdi_text_w,
@@ -314,10 +327,8 @@ KittyPainter *kitty_painter_gdi_new(HWND hwnd, HPALETTE *pal)
     g->p.vt = &gdi_vt;
     g->hwnd = hwnd;
     g->pal = pal;
+    /* Which painter the window has (paint-d2d.c sets 2 or 3); read by
+     * the renderer QA harness across processes. */
+    SetPropA(hwnd, "KiTTY.renderer", (HANDLE)1);
     return &g->p;
-}
-
-void kitty_painter_free(KittyPainter *p)
-{
-    sfree(p);
 }

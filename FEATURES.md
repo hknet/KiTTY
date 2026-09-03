@@ -987,6 +987,10 @@ KiTTY can display a picture behind your terminal text, giving each session windo
 
 ![Background image](docs/features/img/ex_background.jpg)
 
+### Terminal renderer (Direct2D)
+
+The terminal window is painted with GDI, as every Windows program was, or on request with Direct2D and DirectWrite, which draw on the graphics card. The GPU path makes a full repaint of a large window several times cheaper, so paging through output in a maximised window keeps up with the display, and it brings DirectWrite's text rendering. `renderer=d2d` in the `[KiTTY]` section of kitty.ini switches it on; `gdi` (the default) is what every build and every Windows has. Direct2D needs Windows 8.1 or newer and a window without transparency; where it cannot be used the window silently stays on GDI. Text looks slightly different between the two renderers (glyph placement, ClearType), and a character the chosen font lacks shows as the font's missing-glyph box on the Direct2D path rather than being borrowed from another font.
+
 ---
 
 ## Other features

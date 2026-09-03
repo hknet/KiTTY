@@ -278,6 +278,12 @@
 ; hyperlink: enable/disable the hyperlink feature
 ;hyperlink=yes
 
+; renderer: how the terminal window is painted. gdi (the default) is what
+; every Windows has; d2d paints with Direct2D and DirectWrite on the GPU
+; (Windows 8.1 or newer, a window without transparency; anything else
+; falls back to gdi). Text rendering differs slightly between the two.
+;renderer=gdi
+
 ; iconfile: point to a file where internal icons are located
 ;iconfile=kitty.exe
 
