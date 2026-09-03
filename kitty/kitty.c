@@ -155,9 +155,6 @@ void SetFunkeysDefault( const int t ) { FunkeysDefault = t ; }
 // the feature available by default and let kitty.ini "hyperlink" disable it.
 int HyperlinkFlag = 1 ;
 int GetHyperlinkFlag(void) { return HyperlinkFlag ; }
-/* [KiTTY] framepace: ms between window repaints while output streams in;
- * the value and its getter live in windows/kitty_pace.c with the clock. */
-extern int FramePaceMs ;
 void SetHyperlinkFlag( const int flag ) { HyperlinkFlag = flag ; }
 
 // Flag de gestion de la Transparence
@@ -3155,7 +3152,6 @@ static const IniParam ini_params[] = {
 	INIP_KW( INIT_SECTION, 0, "bgimage",		1, 0, IGN,	NULL, SetBackgroundImageFlag ),
 #endif
 	INIP_NUM( INIT_SECTION, 0, "bcdelay",		IGN,		&between_char_delay, NULL ),
-	INIP_NUM( INIT_SECTION, 0, "framepace",	IGN,		&FramePaceMs, NULL ),
 	/* conf=no: do NOT auto-create kitty.ini/kitty.sav */
 	INIP_KW( INIT_SECTION, 0, "conf",		IGN, 1, IGN,	&NoKittyFileFlag, NULL ),
 	INIP_NUM( INIT_SECTION, 0, "cryptsalt",		IGN,		NULL, SetCryptSaltFlag ),
@@ -3668,17 +3664,13 @@ void InitWinMain( void ) {
 	{ extern void kitty_install_agent_check(void); kitty_install_agent_check(); }
 	srand(time(NULL));
 
-	/* EXPERIMENT (2026-09-03, no setting yet): KITTY_TIMER_1MS=1 in the
-	 * environment asks Windows for a 1 ms timer tick (timeBeginPeriod), so
-	 * the window-update cooldown timer fires when asked rather than on the
-	 * next 15.6 ms tick. winmm.dll is loaded by hand: nothing else links it. */
-	if( getenv("KITTY_TIMER_1MS") != NULL ) {
-		HMODULE winmm = LoadLibraryA("winmm.dll");
-		if( winmm != NULL ) {
-			typedef UINT (WINAPI *tbp_t)(UINT);
-			tbp_t tbp = (tbp_t) GetProcAddress(winmm, "timeBeginPeriod");
-			if( tbp != NULL ) tbp(1);
-		}
+	/* [KiTTY] framepace: auto (the default), a number of milliseconds, or 0
+	 * for PuTTY's fixed cooldown - the pacing itself is windows/kitty_pace.c. */
+	{
+		char framepace[16] = "" ;
+		void kitty_pace_set_setting( const char * ) ;
+		ReadParameterN( "KiTTY", "framepace", framepace, sizeof(framepace) ) ;
+		kitty_pace_set_setting( framepace ) ;
 	}
 	
 	if( existfile("kitty.log") ) { unlink( "kitty.log" ) ; }

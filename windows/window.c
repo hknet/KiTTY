@@ -368,6 +368,7 @@ extern int AntiIdleSeconds;   /* KiTTY: [KiTTY] antiidledelay, in seconds */
  * once and never again. When picking an id, grep windows/*.h too, not just the
  * .c files and kitty.h (which has its own unused TIMER_LOGROTATION 8707). */
 #define TIMER_LOGROTATION 8713
+#define TIMER_MODALPUMP   8714   /* KiTTY: pending work during a move or a menu */
 #endif
 #ifdef MOD_RECONNECT
 #define TIMER_RECONNECT 8705
@@ -1734,6 +1735,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #endif
         if (!wgs->painter)
             wgs->painter = kitty_painter_gdi_new(wgs->term_hwnd, &wgs->pal);
+#ifdef MOD_PERSO
+        {
+            /* the display's ready signal, if this painter has one, for the
+             * frame pacing (windows/kitty_pace.c) */
+            void kitty_pace_set_frame_signal(HANDLE);
+            kitty_pace_set_frame_signal(kp_frame_signal(wgs->painter));
+        }
+#endif
 #ifdef MOD_PERSO
         /* KiTTY: a terminal window has existed in this process. What
          * [ConfigBox] noexit is about - see the respawn at the foot of the
@@ -4088,6 +4097,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         return 0;
       case WM_TIMER:
 #ifdef MOD_PERSO
+        if ((UINT_PTR)wParam == TIMER_MODALPUMP) {
+            /* inside a modal loop: due timers first (the window-update
+             * cooldown among them), then the callbacks they and the
+             * network left pending */
+            void gui_timing_pump(void);
+            void kitty_pace_frame_pump(void);
+            gui_timing_pump();
+            kitty_pace_frame_pump();
+            run_toplevel_callbacks();
+            return 0;
+        }
         if ((UINT_PTR)wParam == TIMER_CLIPACTIVITY) {
             /* The clipboard activity marker has run its few seconds. Take it
              * down: refreshing the title re-reads term_clipboard_activity(),
@@ -5519,14 +5539,33 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         wgs->caret_x = wgs->caret_y = -1; /* ensure caret replaced next time */
         term_update(wgs->term);
         break;
+#ifdef MOD_PERSO
+      case WM_ENTERMENULOOP:
+        SetTimer(hwnd, TIMER_MODALPUMP, 16, NULL);
+        break;
+      case WM_EXITMENULOOP:
+        KillTimer(hwnd, TIMER_MODALPUMP);
+        break;
+#endif
       case WM_ENTERSIZEMOVE:
         EnableSizeTip(true);
         wgs->resizing = true;
         wgs->need_backend_resize = false;
+#ifdef MOD_PERSO
+        /* Windows' own loop owns the thread until the move ends; ours,
+         * where network data is digested and the window updated, is
+         * parked - the cursor blinks (a timer message) while `top` stands
+         * still. A timer message the modal loop does deliver pumps the
+         * pending work meanwhile. */
+        SetTimer(hwnd, TIMER_MODALPUMP, 16, NULL);
+#endif
         break;
       case WM_EXITSIZEMOVE:
         EnableSizeTip(false);
         wgs->resizing = false;
+#ifdef MOD_PERSO
+        KillTimer(hwnd, TIMER_MODALPUMP);
+#endif
         if (wgs->need_backend_resize) {
             term_size(wgs->term, conf_get_int(wgs->conf, CONF_height),
                       conf_get_int(wgs->conf, CONF_width),
@@ -9287,6 +9326,8 @@ void kitty_painter_before_layering(HWND term_hwnd)
     if (!wgs || !wgs->painter || wgs->term_hwnd != term_hwnd)
         return;
     if ((ULONG_PTR)GetPropA(term_hwnd, "KiTTY.renderer") > 1) {
+        void kitty_pace_set_frame_signal(HANDLE);
+        kitty_pace_set_frame_signal(NULL);
         kitty_painter_free(wgs->painter);
         wgs->painter = kitty_painter_gdi_new(term_hwnd, &wgs->pal);
         InvalidateRect(term_hwnd, NULL, true);

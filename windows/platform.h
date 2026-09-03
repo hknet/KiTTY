@@ -218,15 +218,12 @@ void centre_window(HWND hwnd);
 
 int get_caret_blink_time(void);
 
-#ifdef MOD_PERSO
-/* KiTTY: a millisecond clock that moves every millisecond. GetTickCount
- * steps 15.6 ms, so a 12 ms window-update cooldown waited one or two
- * steps (kitty.c: kitty_tickcount, QueryPerformanceCounter). */
+/* KiTTY: a millisecond clock that moves every millisecond, for every
+ * target - the timing module is built once for all of them. GetTickCount
+ * steps 15.6 ms, so a 12 ms timer waited one or two steps
+ * (windows/kitty_pace.c: kitty_tickcount, QueryPerformanceCounter). */
 unsigned long kitty_tickcount(void);
 #define GETTICKCOUNT kitty_tickcount
-#else
-#define GETTICKCOUNT GetTickCount
-#endif
 #define CURSORBLINK get_caret_blink_time()
 #define TICKSPERSEC 1000               /* GetTickCount returns milliseconds */
 

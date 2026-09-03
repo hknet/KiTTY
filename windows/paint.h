@@ -87,6 +87,10 @@ typedef struct KittyPainterVtable {
      * that has none. The escape hatch for the one caller that still draws
      * with GDI directly (the font-fallback module's per-font runs). */
     HDC (*hdc)(KittyPainter *p);
+    /* A handle the display signals when it is ready for the next frame
+     * (Direct2D: the swap chain's frame-latency waitable object), or NULL
+     * for a painter that has none (GDI). The frame pacing waits on it. */
+    HANDLE (*frame_signal)(KittyPainter *p);
 } KittyPainterVtable;
 
 struct KittyPainter {
@@ -122,5 +126,6 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality);
 #define kp_fill_outside(p, pr, kr, c)    ((p)->vt->fill_outside((p), (pr), (kr), (c)))
 #define kp_char_width(p, f, ch, w, out)  ((p)->vt->char_width((p), (f), (ch), (w), (out)))
 #define kp_hdc(p)                        ((p)->vt->hdc(p))
+#define kp_frame_signal(p)               ((p)->vt->frame_signal(p))
 
 #endif /* PUTTY_WINDOWS_PAINT_H */

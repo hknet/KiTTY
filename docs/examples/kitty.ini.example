@@ -284,13 +284,17 @@
 ; falls back to gdi). Text rendering differs slightly between the two.
 ;renderer=gdi
 
-; framepace: while output streams in, how often the window is repainted,
-; in milliseconds (default 16, one frame of a 60 Hz display). The paint's
-; own cost counts towards it, and painting never takes more than half the
-; time, so a big window on a slow renderer paces itself down. The pace is
-; kept while output is processed, not left to a Windows timer, so a burst
-; never holds a repaint back. 0 = the fixed 20 ms cooldown PuTTY has.
-;framepace=16
+; framepace: how often the window may repaint while output streams in.
+;    auto (the default): one frame per display refresh, whatever the display
+;    does - 60, 100, 144 Hz - never more often than every 16 ms; a Direct2D
+;    window takes the display's own ready signal for it, a GDI window paces
+;    on a timer. On battery every second refresh, with Energy Saver on
+;    every third or fourth. A
+;    number is a fixed cap in milliseconds, not scaled for power (33 = at
+;    most 30 frames a second). 0 = the fixed 20 ms cooldown PuTTY has.
+;    Painting never takes more than half the time in any case, so a large
+;    window on a slow machine paces itself down instead of stalling.
+;framepace=auto
 
 ; iconfile: point to a file where internal icons are located
 ;iconfile=kitty.exe

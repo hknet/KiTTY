@@ -300,6 +300,12 @@ static void gdi_destroy(KittyPainter *p)
     sfree(p);
 }
 
+static HANDLE gdi_frame_signal(KittyPainter *p)
+{
+    (void)p;
+    return NULL;                       /* GDI has no display signal */
+}
+
 static const KittyPainterVtable gdi_vt = {
     .begin = gdi_begin,
     .end = gdi_end,
@@ -318,6 +324,7 @@ static const KittyPainterVtable gdi_vt = {
     .fill_outside = gdi_fill_outside,
     .char_width = gdi_char_width,
     .hdc = gdi_hdc,
+    .frame_signal = gdi_frame_signal,
 };
 
 KittyPainter *kitty_painter_gdi_new(HWND hwnd, HPALETTE *pal)

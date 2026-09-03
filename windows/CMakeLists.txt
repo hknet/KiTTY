@@ -60,7 +60,7 @@ if(NOT HAVE_STRTOUMAX)
   add_sources_from_current_dir(utils utils/strtoumax.c)
 endif()
 add_sources_from_current_dir(eventloop
-  cliloop.c handle-wait.c)
+  cliloop.c handle-wait.c kitty_pace_frame.c)
 add_sources_from_current_dir(console
   select-cli.c nohelp.c console.c)
 add_sources_from_current_dir(settings

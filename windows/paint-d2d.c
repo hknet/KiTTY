@@ -36,6 +36,7 @@
 #include <initguid.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
+#include <dxgi1_3.h>
 #include <d2d1_1.h>
 #include <dwrite.h>
 #include <dwrite_2.h>
@@ -157,6 +158,9 @@ typedef struct D2DPainter {
     ID3D11Device *d3d;
     ID3D11DeviceContext *d3dctx;
     IDXGISwapChain1 *swap;
+    HANDLE frame_ready;                /* the swap chain's frame-latency waitable object */
+    RECT dirty;                        /* what this frame touched, for Present1 */
+    bool dirty_any;
     ID2D1Factory1 *factory;
     ID2D1Device *device;
     ID2D1DeviceContext *dc;
@@ -206,8 +210,26 @@ static D2D1_RECT_F rectf(int l, int t, int r, int b)
     return f;
 }
 
+/* Every drawing call widens the frame's dirty rectangle; Present1 hands it
+ * to the compositor so only that much of the window is recomposed. */
+static void touch(D2DPainter *d, int l, int t, int r, int b)
+{
+    if (r <= l || b <= t)
+        return;
+    if (!d->dirty_any) {
+        d->dirty.left = l; d->dirty.top = t; d->dirty.right = r; d->dirty.bottom = b;
+        d->dirty_any = true;
+    } else {
+        if (l < d->dirty.left) d->dirty.left = l;
+        if (t < d->dirty.top) d->dirty.top = t;
+        if (r > d->dirty.right) d->dirty.right = r;
+        if (b > d->dirty.bottom) d->dirty.bottom = b;
+    }
+}
+
 static void fill(D2DPainter *d, int l, int t, int r, int b, COLORREF c)
 {
+    touch(d, l, t, r, b);
     D2D1_COLOR_F col = colour_of(c);
     D2D1_RECT_F rc = rectf(l, t, r, b);
     if (r <= l || b <= t)
@@ -262,6 +284,8 @@ static bool create_targets(D2DPainter *d, int w, int h)
     if (FAILED(hr))
         return false;
     d->width = w; d->height = h;
+    d->dirty.left = 0; d->dirty.top = 0; d->dirty.right = w; d->dirty.bottom = h;
+    d->dirty_any = true;
 
     /* A fresh canvas is black until the terminal repaints into it. */
     ID2D1DeviceContext_SetTarget(d->dc, (struct ID2D1Image *)d->canvas);
@@ -281,7 +305,8 @@ static void d2d_resize(KittyPainter *p, int w, int h)
     if (w == d->width && h == d->height)
         return;
     release_targets(d);
-    IDXGISwapChain1_ResizeBuffers(d->swap, 0, w, h, DXGI_FORMAT_UNKNOWN, 0);
+    IDXGISwapChain1_ResizeBuffers(d->swap, 0, w, h, DXGI_FORMAT_UNKNOWN,
+                                 d->frame_ready ? DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT : 0);
     create_targets(d, w, h);
 }
 
@@ -318,9 +343,15 @@ static void d2d_end(KittyPainter *p)
     }
     d->in_frame = false;
 
-    /* The canvas to the back buffer, and up. Present with no vsync wait:
-     * the terminal's own update pacing decides the frame rate, and a wait
-     * here would stall the thread that also reads the network. */
+    /* Nothing drawn: nothing to present, and the frame slot stays free. */
+    if (!d->dirty_any)
+        return;
+
+    /* The canvas to the back buffer, and up, telling the compositor which
+     * rectangle changed so it recomposes only that. The ready signal was
+     * waited on before this frame was started (the pacing), so Present
+     * does not block; what little it waits is measured and taken off the
+     * paint cost (windows/kitty_pace.c). */
     all = rectf(0, 0, d->width, d->height);
     ID2D1DeviceContext_SetTarget(d->dc, (struct ID2D1Image *)d->target);
     ID2D1RenderTarget_BeginDraw((ID2D1RenderTarget *)d->dc);
@@ -329,7 +360,26 @@ static void d2d_end(KittyPainter *p)
                                  D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
                                  &all);
     ID2D1RenderTarget_EndDraw((ID2D1RenderTarget *)d->dc, NULL, NULL);
-    IDXGISwapChain1_Present(d->swap, 0, 0);
+    {
+        extern double kitty_present_wait_ms;
+        DXGI_PRESENT_PARAMETERS pp;
+        RECT dr = d->dirty;
+        LARGE_INTEGER f, a, b;
+        if (dr.left < 0) dr.left = 0;
+        if (dr.top < 0) dr.top = 0;
+        if (dr.right > d->width) dr.right = d->width;
+        if (dr.bottom > d->height) dr.bottom = d->height;
+        memset(&pp, 0, sizeof(pp));
+        pp.DirtyRectsCount = 1;
+        pp.pDirtyRects = &dr;
+        QueryPerformanceFrequency(&f);
+        QueryPerformanceCounter(&a);
+        if (FAILED(IDXGISwapChain1_Present1(d->swap, 0, 0, &pp)))
+            IDXGISwapChain1_Present(d->swap, 0, 0);
+        QueryPerformanceCounter(&b);
+        kitty_present_wait_ms += (b.QuadPart - a.QuadPart) * 1000.0 / f.QuadPart;
+    }
+    d->dirty_any = false;
     ID2D1DeviceContext_SetTarget(d->dc, NULL);
 }
 
@@ -567,6 +617,7 @@ static void draw_run(D2DPainter *d, int x, int y, const RECT *clip,
 
     if (n <= 0)
         return;
+    touch(d, clip->left, clip->top, clip->right, clip->bottom);
     ID2D1RenderTarget_PushAxisAlignedClip((ID2D1RenderTarget *)d->dc, &clipf,
                                           D2D1_ANTIALIAS_MODE_ALIASED);
     if (opaque || d->opaque)
@@ -767,6 +818,7 @@ static void d2d_blit_background(KittyPainter *p, const RECT *dst,
         fill(d, dst->left, dst->top, dst->right, dst->bottom, d->bg);
         return;
     }
+    touch(d, dst->left, dst->top, dst->right, dst->bottom);
     ID2D1RenderTarget_DrawBitmap((ID2D1RenderTarget *)d->dc, d->bgbmp, &r, 1.0f,
                                  D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
                                  &r);
@@ -805,6 +857,7 @@ static void d2d_icon(KittyPainter *p, int x, int y, HICON ic, int w, int h)
     }
     if (!bmp)
         return;
+    touch(d, x, y, x + w, y + h);
     r = rectf(x, y, x + w, y + h);
     ID2D1RenderTarget_DrawBitmap((ID2D1RenderTarget *)d->dc, bmp, &r, 1.0f,
                                  D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
@@ -828,6 +881,8 @@ static void d2d_line(KittyPainter *p, int x0, int y0, int x1, int y1,
         D2D1_POINT_2F a, b;
         D2D1_COLOR_F col = colour_of(c);
         a.x = x0 + 0.5f; a.y = y0 + 0.5f; b.x = x1 + 0.5f; b.y = y1 + 0.5f;
+        touch(d, x0 < x1 ? x0 : x1, y0 < y1 ? y0 : y1,
+              (x0 > x1 ? x0 : x1) + 1, (y0 > y1 ? y0 : y1) + 1);
         ID2D1SolidColorBrush_SetColor(d->brush, &col);
         ID2D1RenderTarget_DrawLine((ID2D1RenderTarget *)d->dc, a, b,
                                    (ID2D1Brush *)d->brush, 1.0f, NULL);
@@ -888,6 +943,11 @@ static HDC d2d_hdc(KittyPainter *p)
 static void d2d_destroy(D2DPainter *d);
 static void d2d_destroy_p(KittyPainter *p) { d2d_destroy((D2DPainter *)p); }
 
+static HANDLE d2d_frame_signal(KittyPainter *p)
+{
+    return ((D2DPainter *)p)->frame_ready;
+}
+
 static const KittyPainterVtable d2d_vt = {
     .begin = d2d_begin,
     .end = d2d_end,
@@ -906,6 +966,7 @@ static const KittyPainterVtable d2d_vt = {
     .fill_outside = d2d_fill_outside,
     .char_width = d2d_char_width,
     .hdc = d2d_hdc,
+    .frame_signal = d2d_frame_signal,
 };
 
 /* ---- creation ------------------------------------------------------ */
@@ -918,6 +979,7 @@ static void d2d_destroy(D2DPainter *d)
         if (d->fbfaces[i].face) IDWriteFontFace_Release(d->fbfaces[i].face);
     if (d->fallback) IUnknown_Release((IUnknown *)d->fallback);
     if (d->bgbmp) ID2D1Bitmap_Release(d->bgbmp);
+    if (d->frame_ready) CloseHandle(d->frame_ready);
     for (i = 0; i < d->nicons; i++)
         if (d->icons[i].bmp) ID2D1Bitmap_Release(d->icons[i].bmp);
     if (d->sysfonts) IUnknown_Release((IUnknown *)d->sysfonts);
@@ -1021,10 +1083,29 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality)
     sd.Scaling = DXGI_SCALING_NONE;
     sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
     sd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+    /* The frame-latency waitable object: the compositor signals it when
+     * it is ready for the next frame - the display's own pace, which the
+     * frame pacing waits on instead of guessing at vblanks. Windows 8.1. */
+    sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
     hr = IDXGIFactory2_CreateSwapChainForHwnd(
         dxgifactory, (IUnknown *)d->d3d, hwnd, &sd, NULL, NULL, &d->swap);
+    if (FAILED(hr)) {
+        sd.Flags = 0;                 /* a runtime without it: no signal */
+        hr = IDXGIFactory2_CreateSwapChainForHwnd(
+            dxgifactory, (IUnknown *)d->d3d, hwnd, &sd, NULL, NULL, &d->swap);
+    }
     if (FAILED(hr))
         { failstep = 10; goto fail; }
+    if (sd.Flags) {
+        IDXGISwapChain2 *sc2 = NULL;
+        if (SUCCEEDED(IUnknown_QueryInterface((IUnknown *)d->swap,
+                                              &IID_IDXGISwapChain2,
+                                              (void **)&sc2))) {
+            IDXGISwapChain2_SetMaximumFrameLatency(sc2, 1);
+            d->frame_ready = IDXGISwapChain2_GetFrameLatencyWaitableObject(sc2);
+            IUnknown_Release((IUnknown *)sc2);
+        }
+    }
 
     if (FAILED(ID2D1RenderTarget_CreateSolidColorBrush(
                    (ID2D1RenderTarget *)d->dc, &black, NULL, &d->brush)))
