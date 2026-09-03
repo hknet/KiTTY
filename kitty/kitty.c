@@ -3663,6 +3663,19 @@ void InitWinMain( void ) {
 	/* KiTTY: install the client-side serving-agent check (security). */
 	{ extern void kitty_install_agent_check(void); kitty_install_agent_check(); }
 	srand(time(NULL));
+
+	/* EXPERIMENT (2026-09-03, no setting yet): KITTY_TIMER_1MS=1 in the
+	 * environment asks Windows for a 1 ms timer tick (timeBeginPeriod), so
+	 * the window-update cooldown timer fires when asked rather than on the
+	 * next 15.6 ms tick. winmm.dll is loaded by hand: nothing else links it. */
+	if( getenv("KITTY_TIMER_1MS") != NULL ) {
+		HMODULE winmm = LoadLibraryA("winmm.dll");
+		if( winmm != NULL ) {
+			typedef UINT (WINAPI *tbp_t)(UINT);
+			tbp_t tbp = (tbp_t) GetProcAddress(winmm, "timeBeginPeriod");
+			if( tbp != NULL ) tbp(1);
+		}
+	}
 	
 	if( existfile("kitty.log") ) { unlink( "kitty.log" ) ; }
 	

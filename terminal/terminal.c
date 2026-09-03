@@ -1394,16 +1394,94 @@ static void term_timer(void *ctx, unsigned long now)
         term_update_callback(term);
 }
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: the update cooldown as an EXPERIMENT knob, from the environment
+ * (no setting yet). A window update is followed by a cooldown during which
+ * further output does not trigger another; the frame rate during a burst is
+ * therefore one update per (paint + cooldown). Measured 2026-09-03: with the
+ * stock 20 ms - which the Windows timer rounds up to its 15.6 ms tick - the
+ * screen got ~30 frames a second in a normal window and ~21 maximised.
+ *   KITTY_UPDATE_DELAY_MS=n   the cooldown, in ms (stock: 20)
+ *   KITTY_UPDATE_PACE_MS=n    pace instead: cooldown = n minus what the
+ *                             update itself took, so frames land every n ms
+ *                             whatever a paint costs (floor 1 ms)
+ */
+static int kitty_env_ms(const char *name)
+{
+    const char *e = getenv(name);
+    int v = e ? atoi(e) : 0;
+    return v > 0 ? v : 0;
+}
+/* A fine clock for the paint's own duration: GETTICKCOUNT is the 15.6 ms
+ * system tick, useless for a 5 ms paint. Windows only, like MOD_PERSO. */
+static double kitty_fine_ms(void)
+{
+    static double per_ms = 0;
+    LARGE_INTEGER c;
+    if (per_ms == 0) {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        per_ms = f.QuadPart / 1000.0;
+    }
+    QueryPerformanceCounter(&c);
+    return c.QuadPart / per_ms;
+}
+/*   KITTY_UPDATE_MIN_MS=n     duty rule: the cooldown is what the update
+ *                             itself just cost, but never under n ms - so
+ *                             painting never takes more than half the
+ *                             time, whatever the window size. */
+static unsigned long kitty_update_cooldown(double took_ms)
+{
+    static int delay = -1, pace = -1, minms = -1;
+    double d;
+    if (delay < 0) {
+        delay = kitty_env_ms("KITTY_UPDATE_DELAY_MS");
+        pace = kitty_env_ms("KITTY_UPDATE_PACE_MS");
+        minms = kitty_env_ms("KITTY_UPDATE_MIN_MS");
+    }
+    if (pace > 0 && minms > 0) {
+        /* Both: frames every `pace` ms while the update is cheap enough,
+         * and never a cooldown shorter than the update itself (painting
+         * at most half the time), whichever is longer; floor minms. */
+        d = pace - took_ms;
+        if (d < took_ms) d = took_ms;
+        if (d < minms) d = minms;
+        return (unsigned long)(d * TICKSPERSEC / 1000 + 0.5);
+    }
+    if (minms > 0) {
+        d = took_ms > minms ? took_ms : minms;
+        return (unsigned long)(d * TICKSPERSEC / 1000 + 0.5);
+    }
+    if (pace > 0) {
+        d = pace - took_ms;
+        if (d < 1) d = 1;
+        return (unsigned long)(d * TICKSPERSEC / 1000 + 0.5);
+    }
+    if (delay > 0)
+        return (unsigned long)delay * TICKSPERSEC / 1000;
+    return UPDATE_DELAY;
+}
+#endif
+
 static void term_update_callback(void *ctx)
 {
     Terminal *term = (Terminal *)ctx;
     if (!term->window_update_pending)
         return;
     if (!term->window_update_cooldown) {
+#ifdef MOD_PERSO
+        double t0 = kitty_fine_ms();
+        term_update(term);
+        term->window_update_cooldown = true;
+        term->window_update_cooldown_end = schedule_timer(
+            kitty_update_cooldown(kitty_fine_ms() - t0), term_timer, term);
+#else
         term_update(term);
         term->window_update_cooldown = true;
         term->window_update_cooldown_end = schedule_timer(
             UPDATE_DELAY, term_timer, term);
+#endif
     }
 }
 
