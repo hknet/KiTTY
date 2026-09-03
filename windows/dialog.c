@@ -30,6 +30,17 @@
 #define ICON_BIG        1
 #endif
 
+/* The configuration box's icon. A build whose config icon is the same
+ * picture as its main icon embeds it only once, under IDI_MAINICON, so a
+ * missing IDI_CFGICON falls back to that rather than to a blank. */
+static HICON cfgbox_icon(HINSTANCE inst)
+{
+    HICON ic = LoadIcon(inst, MAKEINTRESOURCE(IDI_CFGICON));
+    if (!ic)
+        ic = LoadIcon(inst, MAKEINTRESOURCE(IDI_MAINICON));
+    return ic;
+}
+
 typedef struct PortableDialogStuff {
     /*
      * These are the various bits of data required to handle a dialog
@@ -3091,7 +3102,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         }
 
         SendMessage(hwnd, WM_SETICON, (WPARAM) ICON_BIG,
-                    (LPARAM) LoadIcon(hinst, MAKEINTRESOURCE(IDI_CFGICON)));
+                    (LPARAM) cfgbox_icon(hinst));
 
         /* The sizing, the placement and the foreground dance all used to sit
          * here. They now follow the tree, because the tree is the last piece
@@ -5120,7 +5131,7 @@ static INT_PTR CAConfigProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
         pds_initdialog_start(pds, hwnd);
 
         SendMessage(hwnd, WM_SETICON, (WPARAM) ICON_BIG,
-                    (LPARAM) LoadIcon(hinst, MAKEINTRESOURCE(IDI_CFGICON)));
+                    (LPARAM) cfgbox_icon(hinst));
 
         centre_window(hwnd);
 

@@ -9,8 +9,15 @@
 #define APPNAME "KiTTY"
 #define APPDESC "SSH, Telnet, Rlogin, and SUPDUP client"
 
+/* The application icon is embedded ONCE. It used to be embedded five times
+ * (IDI_MAINICON, IDI_CFGICON, IDI_MAINICON_0, 9901, 9902 - the same 168 KB
+ * file under five ids; windres does not dedupe), which was three quarters of
+ * the exe's resource section. IDI_CFGICON is not embedded: dialog.c falls
+ * back to IDI_MAINICON when it is missing. 9901/9902 are aliases of
+ * IDI_MAINICON in kitty_rc_additions.h. IDI_MAINICON_0 stays a separate
+ * copy because the per-session set 1..50 must keep its numbering (an
+ * external icon DLL may supply it) and id 1 is also the icon Explorer shows. */
 IDI_MAINICON ICON "kitty_pp_windows.ico"
-IDI_CFGICON ICON "kitty_pp_windows.ico"
 
 /* KiTTY per-session icon set */
 IDI_MAINICON_0 ICON "kitty_icons/icon_0.ico"
@@ -65,13 +72,9 @@ IDI_MAINICON_48 ICON "kitty_icons/icon_48.ico"
 IDI_MAINICON_49 ICON "kitty_icons/icon_49.ico"
 IDI_NOCON ICON "kitty_icons/nocon.ico"
 
-// Session-launcher icons (kitty.exe -launcher). 9901/9902 match
-// IDI_PUTTY_LAUNCH / IDI_BLACKBALL in kitty_launcher.c; without them the
-// launcher's tray + window icon are blank. 9901 uses the main KiTTY app icon
-// (same as IDI_MAINICON / kitty_pp_windows.ico) so the launcher matches the rest of the
-// suite; 9902 is the -oldicon fallback.
-9901 ICON "kitty_pp_windows.ico"
-9902 ICON "kitty_icons/icon_0.ico"
+// Session-launcher icons (kitty.exe -launcher): IDI_PUTTY_LAUNCH and
+// IDI_BLACKBALL (the -oldicon fallback) are both IDI_MAINICON now, see
+// kitty_rc_additions.h - the launcher wears the same icon as the suite.
 
 #include "help.rc2"
 #include "putty-common.rc2"

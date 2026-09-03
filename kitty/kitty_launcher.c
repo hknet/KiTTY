@@ -1,11 +1,9 @@
 #ifdef MOD_LAUNCHER
 
-// define recupere de WIN_RES.H
+/* IDI_PUTTY_LAUNCH / IDI_BLACKBALL come from kitty_rc_additions.h (via
+ * kitty.h); both are the application icon, IDI_MAINICON. */
 #ifndef IDI_PUTTY_LAUNCH
-#define IDI_PUTTY_LAUNCH 9901
-#endif
-#ifndef IDI_BLACKBALL
-#define IDI_BLACKBALL 9902
+#error "kitty_launcher.c needs kitty_rc_additions.h for IDI_PUTTY_LAUNCH"
 #endif
 
 #define KLWM_NOTIFYICON		(WM_USER+2)

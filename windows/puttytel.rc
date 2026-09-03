@@ -5,7 +5,7 @@
 #define APPDESC "Telnet and Rlogin client"
 
 IDI_MAINICON ICON "kitty_pp_windows.ico"
-IDI_CFGICON ICON "kitty_pp_windows.ico"
+/* IDI_CFGICON is the same file; dialog.c falls back to IDI_MAINICON. */
 
 #include "help.rc2"
 #include "putty-common.rc2"

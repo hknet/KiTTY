@@ -88,8 +88,14 @@
 #ifndef IDC_UPD_NOTES
 #define IDC_UPD_NOTES 1222
 #endif
+/* The launcher's two icon ids (IDI_PUTTY_LAUNCH, and IDI_BLACKBALL for
+ * -oldicon) are the application icon: the same file used to be embedded
+ * under each id separately, 168 KB a copy. */
+#ifndef IDI_MAINICON
+#define IDI_MAINICON 200   /* windows/putty-rc.h, when not included first */
+#endif
 #ifndef IDI_BLACKBALL
-#define IDI_BLACKBALL 9902
+#define IDI_BLACKBALL IDI_MAINICON
 #endif
 #ifndef IDI_EDITICON
 #define IDI_EDITICON 9903
@@ -254,7 +260,7 @@
 #define IDI_NUCLEAR 9906
 #endif
 #ifndef IDI_PUTTY_LAUNCH
-#define IDI_PUTTY_LAUNCH 9901
+#define IDI_PUTTY_LAUNCH IDI_MAINICON
 #endif
 #endif /* KITTY_RC_ADDITIONS_H */
 #ifndef IDM_VISIBLE
