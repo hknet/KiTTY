@@ -1,4 +1,4 @@
-# KiTTY 0.85.1.4 — Known issues & limitations
+# KiTTY 0.85.1.5 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -261,7 +261,7 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.85.1.4-beta @ 2026-09-01`.
+- **Version string:** binaries report `0.85.1.5-beta @ 2026-09-03`.
 - **`kittygen.exe` and `kittygen-cli.exe` are two programs with two command
   lines.** The window one takes only `-t`, `-b`, `-E`, `-primes`, `-strong-rsa`,
   `-ppk-param`, `-restrict-acl` and `-pgpfp`; `-C`, `-q`, `-o`, `-l` and
