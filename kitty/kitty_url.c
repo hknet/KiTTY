@@ -45,6 +45,14 @@ static unsigned char *kitty_url_prevmask = NULL;
 static unsigned char *kitty_url_dirtyrow = NULL;
 static int kitty_url_mask_rows = 0, kitty_url_mask_cols = 0;
 
+/* A fingerprint of the text the last scan saw. A repaint whose text is the
+ * same as last time - a focus change, another window uncovering ours, a
+ * forced redraw - keeps the regions it already has instead of scanning
+ * again; the regex and the per-cell diff are the expensive part of a paint
+ * on a link-rich screen. Cleared when the regular expression changes. */
+static unsigned long long kitty_url_last_hash = 0;
+static int kitty_url_last_valid = 0;
+
 void kitty_url_init(void)
 {
     if (!kitty_url_inited) {
@@ -59,6 +67,7 @@ void kitty_url_config(Conf *conf)
     const char *re;
     if (!kitty_url_inited)
         return;
+    kitty_url_last_valid = 0;          /* a new expression must rescan */
     re = conf_get_str(conf, CONF_url_regex);
     if (re == NULL || strlen(re) == 0)
         re = "@" "NO REGEX--"; /* harmless placeholder, matches nothing */
@@ -76,9 +85,12 @@ void kitty_url_config(Conf *conf)
 int kitty_url_rescan(Terminal *term)
 {
     int i, j, any = 0;
+    unsigned long long hash = 1469598103934665603ULL;   /* FNV-1a */
     if (!kitty_url_inited || term == NULL)
         return 0;
     urlhack_reset();
+    hash = (hash ^ (unsigned long long)term->rows) * 1099511628211ULL;
+    hash = (hash ^ (unsigned long long)term->cols) * 1099511628211ULL;
     for (i = 0; i < term->rows; i++) {
         termline *lp = term_get_line(term, term->disptop + i);
         if (!lp)
@@ -89,9 +101,21 @@ int kitty_url_rescan(Terminal *term)
             if (c < 0x20 || c == 0x7F)
                 c = ' ';
             urlhack_putchar((char)c);
+            hash = (hash ^ c) * 1099511628211ULL;
         }
         term_release_line(lp);
     }
+    urlhack_putchar('\0');             /* the scan reads up to this */
+
+    if (kitty_url_last_valid && hash == kitty_url_last_hash &&
+        kitty_url_mask_rows == term->rows && kitty_url_mask_cols == term->cols) {
+        /* Same text as the last scan: the regions and the mask still hold. */
+        if (kitty_url_dirtyrow)
+            memset(kitty_url_dirtyrow, 0, term->rows);
+        return 0;
+    }
+    kitty_url_last_hash = hash;
+    kitty_url_last_valid = 1;
     urlhack_go_find_me_some_hyperlinks(term->cols);
 
     /*
@@ -248,5 +272,11 @@ int kitty_url_cell_in_link(int col, int row)
 {
     if (!kitty_url_inited)
         return 0;
-    return urlhack_is_in_link_region(col, row);
+    /* The per-cell mask of the last scan (after the swap in kitty_url_rescan
+     * the current scan sits in prevmask). Asked for every cell of every text
+     * run on every paint, so this is a lookup, not a walk over the regions. */
+    if (kitty_url_prevmask && row >= 0 && row < kitty_url_mask_rows &&
+        col >= 0 && col < kitty_url_mask_cols)
+        return kitty_url_prevmask[row * kitty_url_mask_cols + col] ? 1 : 0;
+    return urlhack_is_in_link_region(col, row) ? 1 : 0;
 }

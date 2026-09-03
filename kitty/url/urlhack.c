@@ -246,8 +246,12 @@ void urlhack_putchar(char ch)
 
 void urlhack_reset()
 {
-    memset(window_text, '\0', window_text_len);
+    /* The scan reads the text up to its terminating NUL, which the scraper
+     * writes after the last character (urlhack_putchar('\0')), so nothing
+     * beyond it needs clearing: this used to memset the whole buffer (150 KB)
+     * on every repaint. */
     window_text_current_pos = 0;
+    window_text[0] = '\0';
 }
 
 static void rtfm(char *error)
