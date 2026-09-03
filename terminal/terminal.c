@@ -5864,11 +5864,12 @@ static void term_out(Terminal *term, bool called_from_term_data)
             /* KiTTY frame pace: during a burst the cooldown ends HERE, on
              * the fine clock, not when a Windows timer gets round to it
              * (15.6 ms steps, and Windows 11 grants a finer tick only to a
-             * window in front). Once the deadline has passed: cooldown
-             * over, the update queued, the rest of this input queued
-             * behind it, and out - the paint gets its turn. Leaving data
-             * behind is what the resize case above does too: the unused
-             * part of the chunk is not consumed. */
+             * window in front). Once the deadline has passed the update
+             * runs right here, between two characters - no different from
+             * the chunk boundary it used to wait for - and the input goes
+             * on. Not by leaving the rest of the chunk to a callback: that
+             * put the backend over its backlog limit and froze the socket
+             * for a message round trip per frame. */
             if (++pace_n >= 256) {
                 pace_n = 0;
                 if (term->window_update_cooldown &&
@@ -5876,9 +5877,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
                     kitty_cooldown_deadline_ms > 0 &&
                     kitty_fine_ms() >= kitty_cooldown_deadline_ms) {
                     term->window_update_cooldown = false;
-                    queue_toplevel_callback(term_update_callback, term);
-                    queue_toplevel_callback(term_out_cb, term);
-                    break;
+                    term_update_callback(term);
                 }
             }
 #endif
