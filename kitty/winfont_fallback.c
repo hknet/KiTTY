@@ -791,3 +791,13 @@ void winfb_draw_runs(HDC hdc, int x, int y, const RECT *line_box,
     /* restore bkmode for the caller */
     SetBkMode(hdc, orig_bkmode);
 }
+
+int winfb_slot_count(void)
+{
+    return g_initialised ? g_n_slots : 0;
+}
+
+const char *winfb_slot_name(int i)
+{
+    return (i >= 0 && i < g_n_slots) ? g_slots[i].name : "";
+}

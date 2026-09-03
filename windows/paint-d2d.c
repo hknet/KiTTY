@@ -21,9 +21,11 @@
  * the flip-model swap chain, and PrintWindow's PW_RENDERFULLCONTENT for the
  * harnesses that capture the window.
  *
- * Not yet (see design/TASK_gpu_renderer.md): DirectWrite font fallback for
- * glyphs the primary font lacks (they draw as the font's missing-glyph box
- * here; the GDI painter has Windows' font linking), right-to-left shaping
+ * Glyphs the primary font lacks come from the configured fallback list
+ * ([FontFallback] in kitty.ini - the list the GDI painter's module uses)
+ * and then from Windows' own DirectWrite fallback, monochrome.
+ *
+ * Not yet (see design/TASK_gpu_renderer.md): right-to-left shaping
  * (runs are placed glyph by glyph like the GDI exact_textout path, without
  * the reordering GetCharacterPlacement did), and a native background image.
  */
@@ -35,6 +37,7 @@
 #include <dxgi1_2.h>
 #include <d2d1_1.h>
 #include <dwrite.h>
+#include <dwrite_2.h>
 #include "paint.h"
 
 typedef HRESULT (WINAPI *D3D11CreateDevice_t)(
@@ -54,8 +57,96 @@ typedef struct D2DFont {
     float ascent;                      /* GDI's tmAscent: the baseline */
     float units_per_em;
     bool underline;                    /* lfUnderline: GDI draws it, we must */
+    WCHAR family[LF_FACESIZE];         /* for the fallback lookups */
+    DWRITE_FONT_WEIGHT weight;
+    DWRITE_FONT_STYLE style;
     float ul_top, ul_height;           /* pixels below the top of the cell */
 } D2DFont;
+
+
+/* A face found for glyphs the primary font lacks, keyed by family + weight
+ * + style; `face` NULL = the family is not installed (cached so the lookup
+ * is not repeated). */
+typedef struct D2DFace {
+    WCHAR family[LF_FACESIZE];
+    DWRITE_FONT_WEIGHT weight;
+    DWRITE_FONT_STYLE style;
+    IDWriteFontFace *face;
+} D2DFace;
+#define D2D_FB_CACHE 16
+/* code point + primary font -> fallback face, direct-mapped */
+typedef struct D2DFbEnt { UINT32 cp; short font; short face; bool valid; } D2DFbEnt;
+#define D2D_FB_MAP 1024
+
+/* The configured fallback list ([FontFallback] in kitty.ini), owned by the
+ * GDI fallback module; the same names serve here. */
+int winfb_slot_count(void);
+const char *winfb_slot_name(int i);
+
+/* IDWriteFontFallback::MapCharacters reads its text through this
+ * interface; one code point at a time is all it is asked here. */
+typedef struct CpSource {
+    const IDWriteTextAnalysisSourceVtbl *lpVtbl;
+    const WCHAR *text;
+    UINT32 len;
+} CpSource;
+static HRESULT STDMETHODCALLTYPE src_qi(IDWriteTextAnalysisSource *t,
+                                        REFIID riid, void **out)
+{
+    if (IsEqualIID(riid, &IID_IUnknown) ||
+        IsEqualIID(riid, &IID_IDWriteTextAnalysisSource)) {
+        *out = t;
+        return S_OK;
+    }
+    *out = NULL;
+    return E_NOINTERFACE;
+}
+static ULONG STDMETHODCALLTYPE src_ref(IDWriteTextAnalysisSource *t)
+{
+    return 1;                            /* lives on the caller's stack */
+}
+static HRESULT STDMETHODCALLTYPE src_at(IDWriteTextAnalysisSource *t,
+                                        UINT32 pos, const WCHAR **text,
+                                        UINT32 *n)
+{
+    CpSource *s = (CpSource *)t;
+    if (pos < s->len) { *text = s->text + pos; *n = s->len - pos; }
+    else { *text = NULL; *n = 0; }
+    return S_OK;
+}
+static HRESULT STDMETHODCALLTYPE src_before(IDWriteTextAnalysisSource *t,
+                                            UINT32 pos, const WCHAR **text,
+                                            UINT32 *n)
+{
+    CpSource *s = (CpSource *)t;
+    if (pos > s->len) pos = s->len;
+    *text = pos ? s->text : NULL; *n = pos;
+    return S_OK;
+}
+static DWRITE_READING_DIRECTION STDMETHODCALLTYPE src_dir(
+    IDWriteTextAnalysisSource *t)
+{
+    return DWRITE_READING_DIRECTION_LEFT_TO_RIGHT;
+}
+static HRESULT STDMETHODCALLTYPE src_locale(IDWriteTextAnalysisSource *t,
+                                            UINT32 pos, UINT32 *n,
+                                            const WCHAR **locale)
+{
+    CpSource *s = (CpSource *)t;
+    *n = pos < s->len ? s->len - pos : 0; *locale = L"en-us";
+    return S_OK;
+}
+static HRESULT STDMETHODCALLTYPE src_numsub(IDWriteTextAnalysisSource *t,
+                                            UINT32 pos, UINT32 *n,
+                                            IDWriteNumberSubstitution **sub)
+{
+    CpSource *s = (CpSource *)t;
+    *n = pos < s->len ? s->len - pos : 0; *sub = NULL;
+    return S_OK;
+}
+static const IDWriteTextAnalysisSourceVtbl src_vt = {
+    src_qi, src_ref, src_ref, src_at, src_before, src_dir, src_locale, src_numsub
+};
 
 typedef struct D2DPainter {
     KittyPainter p;
@@ -82,6 +173,12 @@ typedef struct D2DPainter {
     bool opaque, centre;
     D2DFont fonts[D2D_FONT_CACHE];
     int nfonts;
+    /* font fallback */
+    IDWriteFontFallback *fallback;     /* Windows' own (DirectWrite 2), or NULL */
+    IDWriteFontCollection *sysfonts;
+    D2DFace fbfaces[D2D_FB_CACHE];
+    int nfb;
+    D2DFbEnt fbmap[D2D_FB_MAP];
 } D2DPainter;
 
 static D2D1_COLOR_F colour_of(COLORREF c)
@@ -148,7 +245,9 @@ static bool create_targets(D2DPainter *d, int w, int h)
     if (FAILED(hr))
         return false;
 
-    props.bitmapOptions = D2D1_BITMAP_OPTIONS_TARGET;
+    /* GDI_COMPATIBLE: the interop DC (icon, background blit) needs it. */
+    props.bitmapOptions = D2D1_BITMAP_OPTIONS_TARGET |
+        D2D1_BITMAP_OPTIONS_GDI_COMPATIBLE;
     size.width = w; size.height = h;
     hr = d->dc->lpVtbl->CreateBitmap(d->dc, size, NULL, 0, &props,
                                          &d->canvas);
@@ -251,6 +350,10 @@ static D2DFont *font_of(D2DPainter *d, HFONT hfont)
     IDWriteFont_Release(font);
     f->hfont = hfont;
     f->underline = lf.lfUnderline != 0;
+    wcsncpy(f->family, lf.lfFaceName, LF_FACESIZE - 1);
+    f->weight = lf.lfWeight >= FW_BOLD ? DWRITE_FONT_WEIGHT_BOLD
+                                       : DWRITE_FONT_WEIGHT_NORMAL;
+    f->style = lf.lfItalic ? DWRITE_FONT_STYLE_ITALIC : DWRITE_FONT_STYLE_NORMAL;
     IDWriteFontFace_GetMetrics(f->face, &fm);
     f->units_per_em = (float)fm.designUnitsPerEm;
     /* The em size in pixels: a negative lfHeight IS the em height; a
@@ -298,6 +401,141 @@ static void d2d_opaque(KittyPainter *p, bool opaque)
     ((D2DPainter *)p)->opaque = opaque;
 }
 
+
+/* ---- font fallback ------------------------------------------------- */
+
+static bool face_has(IDWriteFontFace *face, UINT32 cp)
+{
+    UINT16 g = 0;
+    return face && SUCCEEDED(IDWriteFontFace_GetGlyphIndices(face, &cp, 1, &g))
+        && g != 0;
+}
+
+/* The cache slot for a family (installed or not); -1 = cache full. */
+static int face_of_family_w(D2DPainter *d, const WCHAR *family,
+                            DWRITE_FONT_WEIGHT weight, DWRITE_FONT_STYLE style,
+                            IDWriteFont *ready)
+{
+    int i;
+    D2DFace *f;
+    for (i = 0; i < d->nfb; i++)
+        if (!_wcsicmp(d->fbfaces[i].family, family) &&
+            d->fbfaces[i].weight == weight && d->fbfaces[i].style == style)
+            return i;
+    if (d->nfb >= D2D_FB_CACHE)
+        return -1;
+    f = &d->fbfaces[d->nfb];
+    memset(f, 0, sizeof(*f));
+    wcsncpy(f->family, family, LF_FACESIZE - 1);
+    f->weight = weight; f->style = style;
+    if (ready) {
+        IDWriteFont_CreateFontFace(ready, &f->face);
+    } else if (d->sysfonts) {
+        UINT32 idx = 0;
+        BOOL exists = FALSE;
+        IDWriteFontFamily *fam = NULL;
+        IDWriteFont *font = NULL;
+        if (SUCCEEDED(IDWriteFontCollection_FindFamilyName(
+                          d->sysfonts, family, &idx, &exists)) && exists &&
+            SUCCEEDED(IDWriteFontCollection_GetFontFamily(d->sysfonts, idx, &fam))) {
+            if (SUCCEEDED(IDWriteFontFamily_GetFirstMatchingFont(
+                              fam, weight, DWRITE_FONT_STRETCH_NORMAL, style,
+                              &font))) {
+                IDWriteFont_CreateFontFace(font, &f->face);
+                IDWriteFont_Release(font);
+            }
+            IDWriteFontFamily_Release(fam);
+        }
+    }
+    return d->nfb++;
+}
+
+static int face_of_family(D2DPainter *d, const char *family,
+                          DWRITE_FONT_WEIGHT weight, DWRITE_FONT_STYLE style)
+{
+    WCHAR w[LF_FACESIZE];
+    if (!family || !*family ||
+        !MultiByteToWideChar(CP_ACP, 0, family, -1, w, LF_FACESIZE))
+        return -1;
+    return face_of_family_w(d, w, weight, style, NULL);
+}
+
+/* Windows' own choice for a code point the primary font lacks. */
+static int system_fallback(D2DPainter *d, D2DFont *pf, UINT32 cp)
+{
+    WCHAR u[2];
+    UINT32 nu = 0, mapped = 0;
+    FLOAT scale = 1;
+    IDWriteFont *font = NULL;
+    IDWriteFontFamily *fam = NULL;
+    IDWriteLocalizedStrings *names = NULL;
+    WCHAR family[LF_FACESIZE];
+    CpSource src;
+    int idx = -1;
+
+    if (cp >= 0x10000) {
+        u[nu++] = (WCHAR)(0xD800 + ((cp - 0x10000) >> 10));
+        u[nu++] = (WCHAR)(0xDC00 + ((cp - 0x10000) & 0x3FF));
+    } else
+        u[nu++] = (WCHAR)cp;
+    src.lpVtbl = &src_vt; src.text = u; src.len = nu;
+    if (FAILED(IDWriteFontFallback_MapCharacters(
+                   d->fallback, (IDWriteTextAnalysisSource *)&src, 0, nu,
+                   d->sysfonts, pf->family, pf->weight, pf->style,
+                   DWRITE_FONT_STRETCH_NORMAL, &mapped, &font, &scale)) ||
+        !font)
+        return -1;
+    if (SUCCEEDED(IDWriteFont_GetFontFamily(font, &fam))) {
+        if (SUCCEEDED(IDWriteFontFamily_GetFamilyNames(fam, &names))) {
+            if (SUCCEEDED(IDWriteLocalizedStrings_GetString(
+                              names, 0, family, LF_FACESIZE)))
+                idx = face_of_family_w(d, family, pf->weight, pf->style, font);
+            IDWriteLocalizedStrings_Release(names);
+        }
+        IDWriteFontFamily_Release(fam);
+    }
+    IDWriteFont_Release(font);
+    return idx;
+}
+
+/* Which fallback face draws `cp` for the primary font `pf`: the configured
+ * list in order, then Windows' fallback; -1 = none (the primary's box). */
+static int resolve_face(D2DPainter *d, D2DFont *pf, UINT32 cp)
+{
+    short fontidx = (short)(pf - d->fonts);
+    D2DFbEnt *e = &d->fbmap[(cp * 2654435761u + (unsigned)fontidx * 40503u)
+                            % D2D_FB_MAP];
+    int i, found = -1, n = winfb_slot_count();
+
+    if (e->valid && e->cp == cp && e->font == fontidx)
+        return e->face;
+    for (i = 0; i < n && found < 0; i++) {
+        int fx = face_of_family(d, winfb_slot_name(i), pf->weight, pf->style);
+        if (fx >= 0 && face_has(d->fbfaces[fx].face, cp))
+            found = fx;
+    }
+    if (found < 0 && d->fallback && d->sysfonts)
+        found = system_fallback(d, pf, cp);
+    e->valid = true; e->cp = cp; e->font = fontidx; e->face = (short)found;
+    return found;
+}
+
+static void draw_glyphs(D2DPainter *d, IDWriteFontFace *face, float emsize,
+                        const UINT16 *gi, const float *adv, int n,
+                        D2D1_POINT_2F origin)
+{
+    DWRITE_GLYPH_RUN run;
+    memset(&run, 0, sizeof(run));
+    run.fontFace = face;
+    run.fontEmSize = emsize;
+    run.glyphCount = n;
+    run.glyphIndices = gi;
+    run.glyphAdvances = adv;
+    ID2D1RenderTarget_DrawGlyphRun((ID2D1RenderTarget *)d->dc, origin, &run,
+                                   (ID2D1Brush *)d->brush,
+                                   DWRITE_MEASURING_MODE_GDI_CLASSIC);
+}
+
 /* One run: UTF-16 in, glyphs out, the advances per code POINT (a surrogate
  * pair's two units carry 0 and the width in `dx`, as do variation
  * selectors; summing per code point keeps the cell grid exact). */
@@ -310,7 +548,6 @@ static void draw_run(D2DPainter *d, int x, int y, const RECT *clip,
     int ncp = 0, i;
     D2D1_RECT_F clipf = rectf(clip->left, clip->top, clip->right, clip->bottom);
     D2D1_COLOR_F col;
-    DWRITE_GLYPH_RUN run;
     D2D1_POINT_2F origin;
     float total = 0;
 
@@ -350,19 +587,50 @@ static void draw_run(D2DPainter *d, int x, int y, const RECT *clip,
     for (i = 0; i < ncp; i++)
         total += adv[i];
 
-    memset(&run, 0, sizeof(run));
-    run.fontFace = d->font->face;
-    run.fontEmSize = d->font->emsize;
-    run.glyphCount = ncp;
-    run.glyphIndices = gi;
-    run.glyphAdvances = adv;
     origin.x = (float)x - (d->centre ? total / 2 : 0);
     origin.y = (float)y + d->font->ascent;
     col = colour_of(d->fg);
     ID2D1SolidColorBrush_SetColor(d->brush, &col);
-    ID2D1RenderTarget_DrawGlyphRun((ID2D1RenderTarget *)d->dc, origin, &run,
-                                   (ID2D1Brush *)d->brush,
-                                   DWRITE_MEASURING_MODE_GDI_CLASSIC);
+    {
+        /* Glyphs the primary face lacks (index 0) come from a fallback
+         * face; consecutive code points sharing a face draw as one run,
+         * each on its own cell advances, so the grid stays the terminal's. */
+        short fi[512];
+        bool any = false;
+        for (i = 0; i < ncp; i++) {
+            fi[i] = -1;
+            if (gi[i] == 0 && cps[i] > 0x20 && cps[i] != 0xFFFD) {
+                fi[i] = (short)resolve_face(d, d->font, cps[i]);
+                if (fi[i] >= 0)
+                    any = true;
+            }
+        }
+        if (!any) {
+            draw_glyphs(d, d->font->face, d->font->emsize, gi, adv, ncp, origin);
+        } else {
+            D2D1_POINT_2F at = origin;
+            int s0 = 0;
+            while (s0 < ncp) {
+                int s1 = s0 + 1;
+                while (s1 < ncp && fi[s1] == fi[s0])
+                    s1++;
+                if (fi[s0] < 0) {
+                    draw_glyphs(d, d->font->face, d->font->emsize,
+                                gi + s0, adv + s0, s1 - s0, at);
+                } else {
+                    UINT16 fgi[512];
+                    D2DFace *ff = &d->fbfaces[fi[s0]];
+                    if (SUCCEEDED(IDWriteFontFace_GetGlyphIndices(
+                                      ff->face, cps + s0, s1 - s0, fgi)))
+                        draw_glyphs(d, ff->face, d->font->emsize,
+                                    fgi, adv + s0, s1 - s0, at);
+                }
+                for (i = s0; i < s1; i++)
+                    at.x += adv[i];
+                s0 = s1;
+            }
+        }
+    }
     if (d->font->underline) {
         D2D1_RECT_F ul = rectf(origin.x, (float)y + d->font->ul_top,
                                origin.x + total,
@@ -550,8 +818,12 @@ static const KittyPainterVtable d2d_vt = {
 
 static void d2d_destroy(D2DPainter *d)
 {
-    RemovePropA(d->hwnd, "KiTTY.renderer");
     int i;
+    RemovePropA(d->hwnd, "KiTTY.renderer");
+    for (i = 0; i < d->nfb; i++)
+        if (d->fbfaces[i].face) IDWriteFontFace_Release(d->fbfaces[i].face);
+    if (d->fallback) IUnknown_Release((IUnknown *)d->fallback);
+    if (d->sysfonts) IUnknown_Release((IUnknown *)d->sysfonts);
     for (i = 0; i < d->nfonts; i++)
         if (d->fonts[i].face)
             IDWriteFontFace_Release(d->fonts[i].face);
@@ -666,6 +938,18 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality)
         { failstep = 12; goto fail; }
     if (FAILED(IDWriteFactory_GetGdiInterop(d->dw, &d->gdi)))
         { failstep = 13; goto fail; }
+    {
+        /* Windows' own font fallback (DirectWrite 2, Windows 8.1); without
+         * it only the configured [FontFallback] list serves. Not fatal. */
+        IDWriteFactory2 *dw2 = NULL;
+        if (SUCCEEDED(IUnknown_QueryInterface((IUnknown *)d->dw,
+                                              &IID_IDWriteFactory2,
+                                              (void **)&dw2))) {
+            IDWriteFactory2_GetSystemFontFallback(dw2, &d->fallback);
+            IUnknown_Release((IUnknown *)dw2);
+        }
+        IDWriteFactory_GetSystemFontCollection(d->dw, &d->sysfonts, FALSE);
+    }
     if (!create_targets(d, sd.Width, sd.Height))
         { failstep = 14; goto fail; }
 

@@ -85,4 +85,10 @@ void winfb_draw_runs(HDC hdc, int x, int y, const RECT *line_box,
                      bool opaque,
                      bool bold, bool italic, bool underline);
 
+/* The configured slot list, for a painter with its own text engine
+ * (windows/paint-d2d.c): how many fallback fonts are configured, and the
+ * name of each in order. Empty until winfb_reinit_from_config ran. */
+int winfb_slot_count(void);
+const char *winfb_slot_name(int i);
+
 #endif /* WINFONT_FALLBACK_H */

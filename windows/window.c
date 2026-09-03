@@ -9286,6 +9286,15 @@ void kitty_apply_transparency(WinGuiSeat *wgs)
     int t = conf_get_int(wgs->conf, CONF_transparencynumber);
     if (t <= 0) return;                 /* opaque / disabled */
     if (t > 254) t = 254;
+    /* A Direct2D window cannot be layered (its swap chain and
+     * SetLayeredWindowAttributes do not mix): hand it back to GDI first.
+     * The painter says what it is through the window property. */
+    if (wgs->painter &&
+        (ULONG_PTR)GetPropA(wgs->term_hwnd, "KiTTY.renderer") > 1) {
+        kitty_painter_free(wgs->painter);
+        wgs->painter = kitty_painter_gdi_new(wgs->term_hwnd, &wgs->pal);
+        InvalidateRect(wgs->term_hwnd, NULL, true);
+    }
     SetWindowLongPtr(wgs->term_hwnd, GWL_EXSTYLE,
                      GetWindowLongPtr(wgs->term_hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
     SetLayeredWindowAttributes(wgs->term_hwnd, 0, (BYTE)(255 - t), LWA_ALPHA);
