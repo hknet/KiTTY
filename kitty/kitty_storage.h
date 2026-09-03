@@ -26,6 +26,11 @@
 /* Marker prefix of a DPAPI-wrapped stored secret (see ksec_protect_*). */
 #define KITTY_SECRET_DPAPI_MARK "DPAPI1:"
 
+/* Forget the cached session -> folder answers (kitty_read_session_folder).
+ * Call after re-reading the session list from the store or writing a
+ * session's Folder value; the cache also expires by itself after 2 s. */
+void kitty_session_folder_cache_clear(void);
+
 /* Marker prefix of a password deliberately supplied in the CLEAR by an external
  * provisioning script, e.g. Password\PLAIN:hunter2\ in a rolled-out .ktx. It is
  * an input format only: KiTTY recognises it on import and never writes it, and

@@ -449,8 +449,37 @@ char *kitty_read_session_comment(const char *sessionname)
     return kitty_read_session_value_direct(sessionname, "Comment", 0);
 }
 
+/*
+ * The folder of a session, cached. The session list asks for it several
+ * times per refresh for EVERY saved session (the level filter, the folder
+ * rows and the selection's position each ask), and a refresh happens on
+ * every keystroke in the filter box - with a few hundred sessions that was
+ * hundreds of registry opens per keystroke. The cache answers the repeats.
+ * It is cleared wherever the list is re-read from the store or a folder
+ * value is written (kitty_config.c), and it expires by itself after two
+ * seconds, so nothing writing behind our back is shown stale for longer.
+ */
+static struct {
+    char **names, **folders;           /* folders[i] NULL: no folder */
+    int n, cap;
+    DWORD stamp;                       /* when the oldest entry went in */
+} kitty_folder_cache;
+
+void kitty_session_folder_cache_clear(void)
+{
+    int i;
+    for (i = 0; i < kitty_folder_cache.n; i++) {
+        sfree(kitty_folder_cache.names[i]);
+        sfree(kitty_folder_cache.folders[i]);
+    }
+    kitty_folder_cache.n = 0;
+}
+
 char *kitty_read_session_folder(const char *sessionname)
 {
+    int i;
+    char *v;
+    DWORD now;
     /* Default Settings is in no folder - it is shown at every level - so a
      * stored value on it is answered as "none" rather than passed on. Without
      * this it reaches the folder-list rebuild, which resurrects folders that
@@ -459,7 +488,29 @@ char *kitty_read_session_folder(const char *sessionname)
      * is the same rule for the paths that read the store directly. */
     if (sessionname && !strcmp(sessionname, KITTY_DEFAULT_SESSION))
         return NULL;
-    return kitty_read_session_value_direct(sessionname, "Folder", 0);
+    if (!sessionname)
+        return kitty_read_session_value_direct(sessionname, "Folder", 0);
+
+    now = GetTickCount();
+    if (kitty_folder_cache.n && now - kitty_folder_cache.stamp > 2000)
+        kitty_session_folder_cache_clear();
+    for (i = 0; i < kitty_folder_cache.n; i++)
+        if (!strcmp(kitty_folder_cache.names[i], sessionname))
+            return kitty_folder_cache.folders[i] ?
+                dupstr(kitty_folder_cache.folders[i]) : NULL;
+
+    v = kitty_read_session_value_direct(sessionname, "Folder", 0);
+    if (kitty_folder_cache.n == kitty_folder_cache.cap) {
+        kitty_folder_cache.cap = kitty_folder_cache.cap ? kitty_folder_cache.cap * 2 : 64;
+        kitty_folder_cache.names = sresize(kitty_folder_cache.names, kitty_folder_cache.cap, char *);
+        kitty_folder_cache.folders = sresize(kitty_folder_cache.folders, kitty_folder_cache.cap, char *);
+    }
+    if (kitty_folder_cache.n == 0)
+        kitty_folder_cache.stamp = now;
+    kitty_folder_cache.names[kitty_folder_cache.n] = dupstr(sessionname);
+    kitty_folder_cache.folders[kitty_folder_cache.n] = v ? dupstr(v) : NULL;
+    kitty_folder_cache.n++;
+    return v;
 }
 
 /* KiTTY: which hive does a session live in? 0 = our (primary kapper.net) hive,

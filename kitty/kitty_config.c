@@ -1029,14 +1029,21 @@ void kitty_cfgbox_workplace_poll(dlgparam *dlg)
     char armed[256];
     int now, have;
     struct wpmode_data *wd = kitty_wpmode_active;
+    now = kitty_workplace_query(armed, sizeof(armed)) ? 1 : 0;
     /* Opening the config box is one of the ways KiTTY gets started, so it is
      * also one of the places that owes the "the mode is not active any more"
-     * notice when the launcher went away without saying so. Cheap and
-     * self-clearing: it fires at most once, whichever path reaches it first. */
-    kitty_workplace_show_pending_notice();
-    if (!wd || !dlg)
+     * notice when the launcher went away without saying so. Self-clearing:
+     * it fires at most once, whichever path reaches it first. Asked only
+     * when the mode is NOT held and that is news (the first tick, or the
+     * holder just went away): while it is held nothing can be owed, and
+     * asking every second meant a registry read per second for the life
+     * of the box. */
+    if (now == 0 && last != 0)
+        kitty_workplace_show_pending_notice();
+    if (!wd || !dlg) {
+        last = now;
         return;
-    now = kitty_workplace_query(armed, sizeof(armed)) ? 1 : 0;
+    }
     have = kitty_has_proxy_definitions() ? 1 : 0;
     if (now == last && have == last_have)
         return;
@@ -3362,6 +3369,7 @@ static int sessionsaver_move_folder_sessions(struct sessionsaver_data *ssd,
         }
         write_setting_s(w, "Folder", dest);
         close_settings_w(w);
+        kitty_session_folder_cache_clear();
         if (!isdef)
             moved++;
     }
@@ -3544,6 +3552,7 @@ static void sessionsaver_offer_hide_default(struct sessionsaver_data *ssd,
     SetDefaultSettingsFlag(0);           /* take effect without a restart */
     get_sesslist(&ssd->sesslist, false);
     get_sesslist(&ssd->sesslist, true);
+    kitty_session_folder_cache_clear();
     dlg_refresh(ssd->listbox, dlg);
 }
 
@@ -4545,6 +4554,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             }
             get_sesslist(&ssd->sesslist, false);
             get_sesslist(&ssd->sesslist, true);
+            kitty_session_folder_cache_clear();
             dlg_refresh(ssd->editbox, dlg);
             /* KiTTY: remember the just-saved session so the listbox refresh
              * auto-selects it (with the correct visible index, even when a
@@ -4583,6 +4593,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 del_settings(ssd->sesslist.sessions[i]);
                 get_sesslist(&ssd->sesslist, false);
                 get_sesslist(&ssd->sesslist, true);
+                kitty_session_folder_cache_clear();
                 dlg_refresh(ssd->listbox, dlg);
             }
 #ifdef MOD_PERSO
@@ -5689,6 +5700,7 @@ static void kitty_showforeign_handler(dlgcontrol *ctrl, dlgparam *dlg,
         if (ssd) {
             get_sesslist(&ssd->sesslist, false);
             get_sesslist(&ssd->sesslist, true);
+            kitty_session_folder_cache_clear();
             dlg_refresh(ssd->listbox, dlg);
         }
     }
@@ -5928,6 +5940,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
     else
         ctrl_columns(s, 2, 75, 25);
     get_sesslist(&ssd->sesslist, true);
+    kitty_session_folder_cache_clear();
     ssd->editbox = ctrl_editbox(s, NULL, 'e', 100,
                                 HELPCTX(session_saved),
                                 sessionsaver_handler, P(ssd), P(NULL));
@@ -8976,6 +8989,7 @@ static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
         if (idx >= 0 && idx < 3) {
             WriteParameter(INIT_SECTION, "theme",
                            (char *)kitty_theme_pref_to_string(prefs[idx]));
+            kitty_theme_app_pref_forget();   /* the cached answer is stale */
             /*
              * And show it, here, now.
              *
@@ -10529,6 +10543,7 @@ static void kitty_import_action_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (done && session_filter_ssd) {
         get_sesslist(&session_filter_ssd->sesslist, false);
         get_sesslist(&session_filter_ssd->sesslist, true);
+        kitty_session_folder_cache_clear();
         dlg_refresh(session_filter_ssd->listbox, dlg);
     }
 
@@ -10587,6 +10602,7 @@ static void kitty_inimig_handler(dlgcontrol *ctrl, dlgparam *dlg,
         if (ssd && ssd->listbox) {
             get_sesslist(&ssd->sesslist, false);
             get_sesslist(&ssd->sesslist, true);
+            kitty_session_folder_cache_clear();
             dlg_refresh(ssd->listbox, dlg);
         }
         kitty_notify_launcher_sessions_changed();
@@ -10609,6 +10625,7 @@ static void kitty_storexfer_handler(dlgcontrol *ctrl, dlgparam *dlg,
         if (ssd && ssd->listbox) {
             get_sesslist(&ssd->sesslist, false);
             get_sesslist(&ssd->sesslist, true);
+            kitty_session_folder_cache_clear();
             dlg_refresh(ssd->listbox, dlg);
         }
         kitty_notify_launcher_sessions_changed();
