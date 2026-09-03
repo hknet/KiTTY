@@ -10,9 +10,10 @@
  * with the terminal's own per-cell advances, so the grid is the terminal's;
  * fonts come from the window's HFONTs through the GDI interop, and the
  * baseline from GDI's own metrics for the same font, so text sits where GDI
- * put it. The trust sigil and the background-image blit go through the GDI
- * interop of the device context (a DC on the canvas), which keeps them
- * exact until a native form is worth having.
+ * put it. The background image is a client-sized copy of the image
+ * module's DC kept as a Direct2D bitmap; the trust icon is rendered once
+ * into a DIB and kept the same way. No GDI interop on the canvas: the
+ * interop DC broke the frame (everything black) when tried.
  *
  * Everything is bound at run time (d3d11.dll, d2d1.dll, dwrite.dll): a build
  * that also runs on old Windows must not import them, and a machine that
@@ -179,7 +180,14 @@ typedef struct D2DPainter {
     D2DFace fbfaces[D2D_FB_CACHE];
     int nfb;
     D2DFbEnt fbmap[D2D_FB_MAP];
+    /* the background image, client-sized, and what it was copied from */
+    ID2D1Bitmap *bgbmp;
+    HDC bgsrc;
+    int bgoffx, bgoffy, bggen, bgw, bgh;
+    struct { HICON icon; int w, h; ID2D1Bitmap *bmp; } icons[4];
+    int nicons;
 } D2DPainter;
+#define D2D_ICON_CACHE 4
 
 static D2D1_COLOR_F colour_of(COLORREF c)
 {
@@ -301,7 +309,13 @@ static void d2d_end(KittyPainter *p)
     D2D1_RECT_F all;
     if (!d->in_frame)
         return;
-    ID2D1RenderTarget_EndDraw((ID2D1RenderTarget *)d->dc, NULL, NULL);
+    {
+        HRESULT hr = ID2D1RenderTarget_EndDraw((ID2D1RenderTarget *)d->dc,
+                                               NULL, NULL);
+        /* A failed frame leaves its code on the window for the harness. */
+        if (FAILED(hr))
+            SetPropA(d->hwnd, "KiTTY.renderer.hr", (HANDLE)(ULONG_PTR)(DWORD)hr);
+    }
     d->in_frame = false;
 
     /* The canvas to the back buffer, and up. Present with no vsync wait:
@@ -668,53 +682,133 @@ static void d2d_text_general(KittyPainter *p, int x, int y, const RECT *clip,
     draw_run((D2DPainter *)p, x, y, clip, opaque, s, n, varpitch ? NULL : dx);
 }
 
-/* ---- the GDI interop: a DC on the canvas for what has no D2D form ---- */
+/* ---- bitmaps from GDI: the background image and the trust icon ------ */
 
-static HDC interop_dc(D2DPainter *d, ID2D1GdiInteropRenderTarget **out)
+/* A 32bpp top-down DIB to draw into with GDI, then upload. */
+static bool dib_begin(int w, int h, HDC *mem, HBITMAP *dib, HGDIOBJ *old,
+                      void **bits)
 {
-    HDC hdc = NULL;
-    if (FAILED(IUnknown_QueryInterface((IUnknown *)
-                   d->dc, &IID_ID2D1GdiInteropRenderTarget, (void **)out)))
-        return NULL;
-    if (FAILED(ID2D1GdiInteropRenderTarget_GetDC(
-                   *out, D2D1_DC_INITIALIZE_MODE_COPY, &hdc))) {
-        ID2D1GdiInteropRenderTarget_Release(*out);
-        *out = NULL;
-        return NULL;
+    BITMAPINFO bi;
+    memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bi.bmiHeader.biWidth = w;
+    bi.bmiHeader.biHeight = -h;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    *mem = CreateCompatibleDC(NULL);
+    if (!*mem)
+        return false;
+    *dib = CreateDIBSection(*mem, &bi, DIB_RGB_COLORS, bits, NULL, 0);
+    if (!*dib) {
+        DeleteDC(*mem);
+        return false;
     }
-    return hdc;
+    *old = SelectObject(*mem, *dib);
+    memset(*bits, 0, (size_t)w * h * 4);
+    return true;
 }
 
-static void interop_done(ID2D1GdiInteropRenderTarget *it, const RECT *r)
+static ID2D1Bitmap *dib_upload(D2DPainter *d, const void *bits, int w, int h,
+                               bool alpha)
 {
-    ID2D1GdiInteropRenderTarget_ReleaseDC(it, r);
-    ID2D1GdiInteropRenderTarget_Release(it);
+    D2D1_BITMAP_PROPERTIES props;
+    D2D1_SIZE_U size;
+    ID2D1Bitmap *bmp = NULL;
+    memset(&props, 0, sizeof(props));
+    props.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    props.pixelFormat.alphaMode = alpha ? D2D1_ALPHA_MODE_PREMULTIPLIED
+                                        : D2D1_ALPHA_MODE_IGNORE;
+    props.dpiX = 96; props.dpiY = 96;
+    size.width = w; size.height = h;
+    if (FAILED(ID2D1RenderTarget_CreateBitmap((ID2D1RenderTarget *)d->dc, size,
+                                              bits, (UINT32)w * 4, &props,
+                                              &bmp)))
+        return NULL;
+    return bmp;
 }
 
+static void dib_end(HDC mem, HBITMAP dib, HGDIOBJ old)
+{
+    SelectObject(mem, old);
+    DeleteObject(dib);
+    DeleteDC(mem);
+}
+
+/* The image module's DC holds the image in SCREEN coordinates and is
+ * rebuilt when the image or the window changes (kitty_bg_generation).
+ * One client-sized copy of it lives on the GPU; a run draws its cells
+ * from that copy. */
+extern int kitty_bg_generation;
 static void d2d_blit_background(KittyPainter *p, const RECT *dst,
                                 HDC src, int sx, int sy)
 {
     D2DPainter *d = (D2DPainter *)p;
-    ID2D1GdiInteropRenderTarget *it;
-    HDC hdc = interop_dc(d, &it);
-    if (!hdc)
+    int offx = sx - dst->left, offy = sy - dst->top;
+    D2D1_RECT_F r = rectf(dst->left, dst->top, dst->right, dst->bottom);
+
+    if (d->bgbmp && (d->bgsrc != src || d->bgoffx != offx || d->bgoffy != offy
+                     || d->bggen != kitty_bg_generation
+                     || d->bgw != d->width || d->bgh != d->height)) {
+        ID2D1Bitmap_Release(d->bgbmp);
+        d->bgbmp = NULL;
+    }
+    if (!d->bgbmp) {
+        HDC mem; HBITMAP dib; HGDIOBJ old; void *bits;
+        if (dib_begin(d->width, d->height, &mem, &dib, &old, &bits)) {
+            BitBlt(mem, 0, 0, d->width, d->height, src, offx, offy, SRCCOPY);
+            d->bgbmp = dib_upload(d, bits, d->width, d->height, false);
+            dib_end(mem, dib, old);
+        }
+        d->bgsrc = src; d->bgoffx = offx; d->bgoffy = offy;
+        d->bggen = kitty_bg_generation; d->bgw = d->width; d->bgh = d->height;
+    }
+    if (!d->bgbmp) {
+        fill(d, dst->left, dst->top, dst->right, dst->bottom, d->bg);
         return;
-    BitBlt(hdc, dst->left, dst->top, dst->right - dst->left,
-           dst->bottom - dst->top, src, sx, sy, SRCCOPY);
-    interop_done(it, dst);
+    }
+    ID2D1RenderTarget_DrawBitmap((ID2D1RenderTarget *)d->dc, d->bgbmp, &r, 1.0f,
+                                 D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+                                 &r);
 }
 
+/* The trust sigil: DrawIconEx into a 32bpp DIB (alpha kept), premultiplied
+ * for Direct2D, cached per icon and size. */
 static void d2d_icon(KittyPainter *p, int x, int y, HICON ic, int w, int h)
 {
     D2DPainter *d = (D2DPainter *)p;
-    ID2D1GdiInteropRenderTarget *it;
-    RECT r;
-    HDC hdc = interop_dc(d, &it);
-    if (!hdc)
+    int i;
+    ID2D1Bitmap *bmp = NULL;
+    D2D1_RECT_F r;
+    for (i = 0; i < d->nicons; i++)
+        if (d->icons[i].icon == ic && d->icons[i].w == w && d->icons[i].h == h)
+            bmp = d->icons[i].bmp;
+    if (!bmp && d->nicons < D2D_ICON_CACHE && w > 0 && h > 0) {
+        HDC mem; HBITMAP dib; HGDIOBJ old; void *bits;
+        if (dib_begin(w, h, &mem, &dib, &old, &bits)) {
+            unsigned char *px = bits;
+            int n;
+            DrawIconEx(mem, 0, 0, ic, w, h, 0, NULL, DI_NORMAL);
+            GdiFlush();
+            for (n = 0; n < w * h; n++, px += 4) {
+                unsigned a = px[3];
+                px[0] = (unsigned char)(px[0] * a / 255);
+                px[1] = (unsigned char)(px[1] * a / 255);
+                px[2] = (unsigned char)(px[2] * a / 255);
+            }
+            bmp = dib_upload(d, bits, w, h, true);
+            dib_end(mem, dib, old);
+        }
+        d->icons[d->nicons].icon = ic; d->icons[d->nicons].w = w;
+        d->icons[d->nicons].h = h; d->icons[d->nicons].bmp = bmp;
+        d->nicons++;
+    }
+    if (!bmp)
         return;
-    DrawIconEx(hdc, x, y, ic, w, h, 0, NULL, DI_NORMAL);
-    r.left = x; r.top = y; r.right = x + w; r.bottom = y + h;
-    interop_done(it, &r);
+    r = rectf(x, y, x + w, y + h);
+    ID2D1RenderTarget_DrawBitmap((ID2D1RenderTarget *)d->dc, bmp, &r, 1.0f,
+                                 D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+                                 NULL);
 }
 
 /* ---- lines, points, fills ------------------------------------------ */
@@ -823,6 +917,9 @@ static void d2d_destroy(D2DPainter *d)
     for (i = 0; i < d->nfb; i++)
         if (d->fbfaces[i].face) IDWriteFontFace_Release(d->fbfaces[i].face);
     if (d->fallback) IUnknown_Release((IUnknown *)d->fallback);
+    if (d->bgbmp) ID2D1Bitmap_Release(d->bgbmp);
+    for (i = 0; i < d->nicons; i++)
+        if (d->icons[i].bmp) ID2D1Bitmap_Release(d->icons[i].bmp);
     if (d->sysfonts) IUnknown_Release((IUnknown *)d->sysfonts);
     for (i = 0; i < d->nfonts; i++)
         if (d->fonts[i].face)

@@ -52,6 +52,9 @@ COLORREF colorinpixel;
 HDC colorinpixeldc = NULL ;
 HBITMAP colorinpixelbm = NULL;
 HDC backgrounddc = NULL ;
+/* Bumped whenever the image DC is rebuilt or redrawn, so a painter that
+ * keeps its own copy of it (windows/paint-d2d.c) knows to refresh. */
+int kitty_bg_generation = 0 ;
 HBITMAP backgroundbm = NULL ;
 HDC backgroundblenddc = NULL ;
 HBITMAP backgroundblendbm = NULL;
@@ -919,6 +922,7 @@ BOOL load_bg_bmp()
     }
 
     hdcPrimary = GetDC(MainHwnd);
+    kitty_bg_generation++ ;
     deskWidth = GetDeviceCaps(hdcPrimary, HORZRES);
     deskHeight = GetDeviceCaps(hdcPrimary, VERTRES);
 
@@ -1084,6 +1088,7 @@ void clean_bg(void) {
 	}
 
 void RedrawBackground( HWND hwnd ) {
+	kitty_bg_generation++ ;
 	if(
 		1 && // On inhibe cette fonction a cause du probleme de fuite memoire due a l'image de fond !!!  , mais probleme de rafraichissement ?
 		(get_param("BACKGROUNDIMAGE"))&&(!get_param("PUTTY"))&&(conf_get_int(conf,CONF_bg_type) != 0) ) 
