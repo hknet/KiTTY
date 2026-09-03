@@ -5734,6 +5734,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #endif
         term_notify_minimised(wgs->term, wParam == SIZE_MINIMIZED);
 #ifdef MOD_PERSO
+        {
+            /* frame pacing: a minimised window paints once a second at
+             * most; restored, the cooldown it was holding ends now */
+            void kitty_pace_set_hidden(bool);
+            void term_kitty_shown(Terminal *);
+            kitty_pace_set_hidden(wParam == SIZE_MINIMIZED);
+            if (wParam != SIZE_MINIMIZED)
+                term_kitty_shown(wgs->term);
+        }
+#endif
+#ifdef MOD_PERSO
         /* KiTTY feature: when minimised and SendToTray active, hide to tray */
         if (wParam == SIZE_MINIMIZED && GetAutoSendToTray()) {
             kitty_send_to_tray(hwnd);

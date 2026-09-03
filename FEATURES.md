@@ -993,7 +993,7 @@ The terminal window is painted with GDI, as every Windows program was, or on req
 
 ### Frame pacing
 
-While output streams in, the window repaints on a pace instead of after a fixed pause. A Direct2D window (`renderer=d2d`) lets the display set that pace: the swap chain tells the terminal when the compositor is ready for the next frame, so frames land one per refresh of whatever display the window is on, 60, 100 or 144 Hz, without the terminal guessing at timings. A GDI window has no such signal and paces on a timer instead. `framepace=auto` in the `[KiTTY]` section of kitty.ini, the default, means one frame per refresh but never more often than every 16 ms; on battery the pace halves and with Energy Saver on it drops to a quarter, since every frame costs power. A number instead of `auto` is a fixed cap in milliseconds that is not scaled, and `framepace=0` restores PuTTY's fixed 20 ms cooldown. In every case the paint's own cost is counted in and painting never takes more than half the time, so a large window on a slow machine paces itself down instead of stalling.
+While output streams in, the window repaints on a pace instead of after a fixed pause. A Direct2D window (`renderer=d2d`) lets the display set that pace: the swap chain tells the terminal when the compositor is ready for the next frame, so frames land one per refresh of whatever display the window is on, 60, 100 or 144 Hz, without the terminal guessing at timings. A GDI window has no such signal and paces on a timer instead. `framepace=auto` in the `[KiTTY]` section of kitty.ini, the default, means one frame per refresh, at 60 Hz as at 144, and every second refresh while Energy Saver is on, the one explicit request for less that Windows passes on to applications; plain battery is left to Windows, which already lowers what the hardware supports, the refresh rate included. A number instead of `auto` is a fixed cap in milliseconds that both renderers honour, and `framepace=0` restores PuTTY's fixed 20 ms cooldown. A minimised window paints at most once a second, and the moment it is restored Windows' own repaint shows the current screen. In every case the paint's own cost is counted in and painting never takes more than half the time, so a large window on a slow machine paces itself down instead of stalling.
 
 What makes the timer side exact: every KiTTY timer runs on a high-resolution waitable timer where Windows has one (Windows 10 1803 and later), on a millisecond clock, instead of the 15.6 ms steps of the classic Windows timer that decided the frame rate before. Older Windows falls back to the classic timer and the old behaviour, so nothing changes for a machine that cannot do better.
 
@@ -1001,8 +1001,8 @@ What a given window gets, decided at start-up, never by a build:
 
 | Renderer | Windows | What paces the frames |
 |---|---|---|
-| Direct2D | 8.1 and later | the compositor's ready signal: one frame per display refresh, capped by `framepace` |
-| GDI | 10 version 1803 and later | the exact waitable timer at the `framepace` interval |
+| Direct2D | 8.1 and later | the compositor's ready signal: one frame per display refresh; a `framepace` number caps it |
+| GDI | 10 version 1803 and later | the exact waitable timer at one refresh period as the desktop reports it (16 ms if it cannot); a `framepace` number replaces that |
 | GDI | Vista to 10 before 1803 | a waitable timer on the 15.6 ms clock interrupt: the pace, rounded up to the next step |
 | GDI | XP, and the 32-bit build there | the classic timer window, as PuTTY has always used |
 

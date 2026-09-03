@@ -1418,15 +1418,29 @@ static double kitty_fine_ms(void)
 }
 unsigned long kitty_pace_cooldown_ms(double now_ms, double paint_ms);
 bool kitty_pace_wait_frame(void (*cb)(void *), void *ctx);
-static double kitty_last_paint_start;      /* the pace is counted from here */
+bool kitty_pace_signal_allowed(double now_ms);
 
 /* The display is ready for the next frame (Direct2D): end the cooldown and
- * paint if there is anything to paint - unless the pace (a cap above the
- * refresh rate, framepace=33 say) has not passed yet, in which case the
- * timer already scheduled takes it from here. */
+ * paint if there is anything to paint - unless the cooldown's floor (the
+ * duty rule, or a framepace cap above the refresh rate) has not passed
+ * yet, in which case the timer already scheduled takes it from here. */
 static void term_frame_ready(void *ctx)
 {
     Terminal *term = (Terminal *)ctx;
+    if (!term->window_update_cooldown)
+        return;
+    if (!kitty_pace_signal_allowed(kitty_fine_ms()))
+        return;
+    term->window_update_cooldown = false;
+    if (term->window_update_pending)
+        term_update_callback(term);
+}
+
+/* The window was restored from minimised (windows/window.c): whatever
+ * cooldown a hidden window was holding is over; WM_PAINT has already drawn
+ * the current model, and the next output paints on the normal pace. */
+void term_kitty_shown(Terminal *term)
+{
     if (!term->window_update_cooldown)
         return;
     term->window_update_cooldown = false;
@@ -1444,17 +1458,15 @@ static void term_update_callback(void *ctx)
 #ifdef MOD_PERSO
         double t0 = kitty_fine_ms(), t1;
         unsigned long cd;
-        kitty_last_paint_start = t0;
         term_update(term);
         t1 = kitty_fine_ms();
         term->window_update_cooldown = true;
         cd = kitty_pace_cooldown_ms(t1, t1 - t0);
-        /* With a display signal the timer is only the pace cap (or, at
-         * 1 s, the backstop for an occluded window whose compositor never
-         * asks); the signal ends the cooldown. Without one the timer is
-         * the pace. */
-        if (kitty_pace_wait_frame(term_frame_ready, term) && cd < 1000)
-            cd = (cd > 20) ? cd : 1000;
+        /* The timer is the pace (GDI) or the cap and the backstop (Direct2D:
+         * the display signal ends the cooldown at each refresh it is
+         * allowed to; a hidden window's compositor never asks, and the
+         * 1 s cooldown for it comes from kitty_pace_cooldown_ms). */
+        kitty_pace_wait_frame(term_frame_ready, term);
         term->window_update_cooldown_end = schedule_timer(cd, term_timer, term);
 #else
         term_update(term);

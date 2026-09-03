@@ -18,6 +18,7 @@
  */
 
 #include "putty.h"
+#include <dwmapi.h>
 
 /* The millisecond clock behind GETTICKCOUNT (windows/platform.h): the
  * performance counter, so timers wait what they were asked and not the
@@ -66,29 +67,85 @@ void kitty_pace_set_setting(const char *value)
     }
 }
 
-/* auto follows the power state, polled at most once a second: on battery
- * half the frames, with Energy Saver on a quarter. An explicit number is
- * the user's word and is not scaled. */
-static int effective_pace_ms(void)
+/* The display's refresh period as DWM reports it, re-read every 250 ms
+ * so a panel Windows slows down on battery is followed; 0 when it cannot
+ * say. Only the period is used - never where in the cycle we are. */
+typedef HRESULT (WINAPI *DwmTiming_t)(HWND, DWM_TIMING_INFO *);
+static double refresh_period_ms(void)
+{
+    static DwmTiming_t fn = NULL;
+    static bool tried = false;
+    static double asked = -1e9, period = 0;
+    double t = now_ms();
+    if (!tried) {
+        HMODULE dwm = LoadLibraryA("dwmapi.dll");
+        tried = true;
+        if (dwm)
+            fn = (DwmTiming_t)GetProcAddress(dwm, "DwmGetCompositionTimingInfo");
+    }
+    if (!fn)
+        return 0;
+    if (t - asked > 250) {
+        DWM_TIMING_INFO ti;
+        memset(&ti, 0, sizeof(ti));
+        ti.cbSize = sizeof(ti);
+        asked = t;
+        period = 0;
+        if (SUCCEEDED(fn(NULL, &ti)) && ti.qpcRefreshPeriod > 0)
+            period = ti.qpcRefreshPeriod / qpc_per_ms();
+        if (period < 4 || period > 50)          /* 20..250 Hz, else nonsense */
+            period = 0;
+    }
+    return period;
+}
+
+/* Energy Saver, polled at most once a second: the one explicit "less,
+ * please" the user gives. Plain battery is left alone - Windows already
+ * lowered what the hardware supports, the refresh rate included. */
+static bool energy_saver(void)
 {
     static double polled = -1e9;
-    static int auto_pace = 16;
-    double t;
-    if (pace_setting != PACE_AUTO)
-        return pace_setting;
-    t = now_ms();
+    static bool saver = false;
+    double t = now_ms();
     if (t - polled > 1000) {
         SYSTEM_POWER_STATUS sps;
         polled = t;
-        auto_pace = 16;
-        if (GetSystemPowerStatus(&sps)) {
-            if (sps.SystemStatusFlag & 1)          /* Energy Saver */
-                auto_pace = 50;
-            else if (sps.ACLineStatus == 0)        /* on battery */
-                auto_pace = 33;
-        }
+        saver = GetSystemPowerStatus(&sps) && (sps.SystemStatusFlag & 1);
     }
-    return auto_pace;
+    return saver;
+}
+
+/* The pace in force, in ms: auto = one refresh period (16 when unknown),
+ * two with Energy Saver on; a number as given; 0 = the fixed cooldown. */
+static int effective_pace_ms(void)
+{
+    double period;
+    if (pace_setting != PACE_AUTO)
+        return pace_setting;
+    period = refresh_period_ms();
+    if (period <= 0)
+        period = 16;
+    if (energy_saver())
+        period *= 2;
+    return (int)(period + 0.5);
+}
+
+/* A minimised window paints at most once a second (windows/window.c says
+ * when); WM_PAINT draws the current model the moment it is restored. */
+static bool window_hidden;
+void kitty_pace_set_hidden(bool hidden)
+{
+    window_hidden = hidden;
+}
+
+/* For the display signal (Direct2D): may a frame go now? The signal comes
+ * once per refresh whatever the setting; it is honoured when the last
+ * paint's cooldown floor has passed - the paint itself (duty) for auto,
+ * the full cap for a number or Energy Saver. */
+static double last_paint_end, signal_floor_ms;
+bool kitty_pace_signal_allowed(double now)
+{
+    return now - last_paint_end >= signal_floor_ms;
 }
 
 /* The pace in force, for the frame-signal wait (windows/kitty_pace_frame.c,
@@ -121,6 +178,14 @@ unsigned long kitty_pace_cooldown_ms(double now, double paint_ms)
     d = pace - paint_ms;
     if (d < paint_ms) d = paint_ms;
     if (d < 1) d = 1;
+    /* what the display signal has to respect before it may end this
+     * cooldown early: with auto only the duty floor (the compositor's
+     * cadence IS the pace); otherwise the cap */
+    last_paint_end = now;
+    signal_floor_ms = (pace_setting == PACE_AUTO && !energy_saver())
+        ? (paint_ms > 1 ? paint_ms : 1) : d;
+    if (window_hidden)
+        d = 1000;                                 /* nobody is looking */
     target = now + d;
 
     d = target - now;

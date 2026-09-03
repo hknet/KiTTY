@@ -289,12 +289,12 @@ char default_init_file_content[] =
 \n\
 ; framepace: how often the window may repaint while output streams in.\n\
 ;    auto (the default): one frame per display refresh, whatever the display\n\
-;    does - 60, 100, 144 Hz - never more often than every 16 ms; a Direct2D\n\
-;    window takes the display's own ready signal for it, a GDI window paces\n\
-;    on a timer. On battery every second refresh, with Energy Saver on\n\
-;    every third or fourth. A\n\
-;    number is a fixed cap in milliseconds, not scaled for power (33 = at\n\
-;    most 30 frames a second). 0 = the fixed 20 ms cooldown PuTTY has.\n\
+;    does - 60, 100, 144 Hz; a Direct2D window takes the display's own\n\
+;    ready signal for it, a GDI window paces on a timer at the refresh\n\
+;    period. With Energy Saver on, every second refresh. A number is a\n\
+;    fixed cap in milliseconds on either renderer (33 = at most 30 frames a\n\
+;    second). 0 = the fixed 20 ms cooldown PuTTY has. A minimised window\n\
+;    paints at most once a second.\n\
 ;    Painting never takes more than half the time in any case, so a large\n\
 ;    window on a slow machine paces itself down instead of stalling.\n\
 ;framepace=auto\n\
