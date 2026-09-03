@@ -13,6 +13,13 @@
  * Fail-closed: every error path returns 0 (reject). */
 int kitty_authenticode_verify(const char *path);
 
+/* The same gate WITHOUT the online revocation check: chain, validity and
+ * the publisher-CN pin only, from what the machine already holds, so it
+ * never waits for a CRL server. For checks that only INFORM (the "which
+ * agent answers us" notice); a gate that lets code RUN - the updater, the
+ * sibling launcher - keeps kitty_authenticode_verify(). */
+int kitty_authenticode_verify_offline(const char *path);
+
 /* The PE fixed-file-version of `path` into *ms/*ls (dwFileVersionMS /
  * dwFileVersionLS). 1 on success, 0 on failure. */
 int kitty_file_version(const char *path, unsigned long *ms, unsigned long *ls);

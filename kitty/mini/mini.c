@@ -391,10 +391,12 @@ int storeINI( SINI * Ini, const char * filename ) {
 static char * mini_filename = NULL ;
 static time_t mini_mtime = 0 ;
 static SINI * mini_Ini = NULL ;
-	
+static time_t mini_last_stat = 0 ;   /* when the file's date was last looked at */
+
 int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) {
 	int return_code = 0 ;
 	struct stat buf ;
+	time_t now ;
 
 	//SINI * Ini = NULL ;
 	SSECTION * Section = NULL ;
@@ -403,13 +405,20 @@ int readINI( const char * filename, const char * section, const char * key, char
 	if( strlen(filename)<=0 ) return 0 ;
 	if( section==NULL ) return 0 ;
 	if( strlen(section)<=0 ) return 0 ;
-	
-	if( mini_filename != NULL ) // On compare la date du fichier en mémoire avec celle du fichier sur dique
-	if( stat(filename, &buf) != -1 ) {
-		if( buf.st_mtime > mini_mtime ) {
-			free( mini_filename ) ;
-			mini_filename = NULL ;
-			mini_mtime = 0 ;
+
+	/* The file's date is compared with the copy in memory, so an edit by
+	 * hand is picked up - but at most once a second: this reader answers
+	 * every parameter lookup, and a stat() per lookup was a file-system
+	 * call on paths that ask hundreds of times. */
+	now = time( NULL ) ;
+	if( mini_filename != NULL && now != mini_last_stat ) {
+		mini_last_stat = now ;
+		if( stat(filename, &buf) != -1 ) {
+			if( buf.st_mtime > mini_mtime ) {
+				free( mini_filename ) ;
+				mini_filename = NULL ;
+				mini_mtime = 0 ;
+			}
 		}
 	}
 	

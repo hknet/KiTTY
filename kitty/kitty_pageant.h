@@ -203,6 +203,13 @@ void kageant_media_gone(void);                      /* on device removal */
 extern void (*kageant_key_lifetime_hook)(ptrlen pubblob, unsigned seconds);
 void kageant_key_set_lifetime(ptrlen pubblob, unsigned seconds);
 int  kageant_expire_due_keys(void);
+/* The heartbeat runs only while there is something for it to do (a pending
+ * lifetime, a key on the idle list, or the idle policy on). The frontend
+ * asks kageant_tick_wanted() after every tick and disarms the timer when it
+ * says no; it installs kageant_tick_arm_hook so the agent side can ask for
+ * the timer back when one of those becomes true again. */
+int  kageant_tick_wanted(void);
+extern void (*kageant_tick_arm_hook)(void);
 int  kageant_key_lifetime_get(ptrlen pubblob, unsigned *set_seconds,
                               unsigned *remaining_seconds);
 int  kageant_lifetime_count(void);

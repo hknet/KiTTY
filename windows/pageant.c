@@ -82,6 +82,28 @@
 static HWND traywindow;
 static HWND keylist;
 static HWND aboutbox;
+
+/* KiTTY: the one-second heartbeat (TID_KEY_LIFETIME) is armed only while the
+ * agent side has something for it to do - a pending ssh-add -t lifetime, a
+ * key on the idle re-encrypt list, or the idle policy switched on. Asked
+ * after every tick, and by the agent side (kageant_tick_arm_hook) whenever
+ * one of those becomes true again; an agent with nothing to time does not
+ * wake up once a second. */
+static bool kageant_tick_armed = false;
+static void kageant_tick_sync(void)
+{
+    if (!traywindow)
+        return;
+    if (kageant_tick_wanted()) {
+        if (!kageant_tick_armed) {
+            SetTimer(traywindow, TID_KEY_LIFETIME, 1000, NULL);
+            kageant_tick_armed = true;
+        }
+    } else if (kageant_tick_armed) {
+        KillTimer(traywindow, TID_KEY_LIFETIME);
+        kageant_tick_armed = false;
+    }
+}
 static HMENU systray_menu, session_menu;
 static bool already_running;
 static FingerprintType fptype = SSH_FPTYPE_DEFAULT;
@@ -5669,6 +5691,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                 keylist_update();          /* refresh the window if it is open */
             else
                 keylist_tick_lifetimes();  /* live countdown column */
+            kageant_tick_sync();           /* nothing left to time: stop */
         }
         break;
       case WM_SYSTRAY2:
@@ -6564,9 +6587,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY: if the in-memory key protection is not working, say so NOW,
      * once - and the tray tip above carries it for as long as it holds. */
     kageant_warn_unprotected_memory();
-    /* KiTTY: a 1-second heartbeat to expire ssh-add -t keys. Cheap, and only
-     * the primary instance (which owns traywindow) runs it. */
-    SetTimer(traywindow, TID_KEY_LIFETIME, 1000, NULL);
+    /* KiTTY: the 1-second heartbeat that expires ssh-add -t keys and
+     * re-encrypts idle ones. Only the primary instance (which owns
+     * traywindow) runs it, and only while there is something to time - see
+     * kageant_tick_sync. */
+    kageant_tick_arm_hook = kageant_tick_sync;
+    kageant_tick_sync();
     kageant_idle_install();      /* the idle re-encrypt rides the same tick */
 
     /* Accelerators used: nsvkxaol */

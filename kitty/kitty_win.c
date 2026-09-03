@@ -1938,13 +1938,81 @@ void kitty_report_missing_features(Terminal *term)
     sfree(brief);
 }
 
+/*
+ * The agent check's work, on a worker thread: two signature verifications
+ * (this binary, then the program serving the agent pipe), each a
+ * WinVerifyTrust call. They used to run inside the first agent query, on the
+ * UI thread, with an online revocation check, so a machine without a route
+ * to the CRL servers sat in that call for seconds before its first key
+ * login could continue. Verification is cache-only here
+ * (kitty_authenticode_verify_offline): the publisher-CN pin is the gate for
+ * this notice, and a revoked certificate of ours is a release matter, not
+ * something a client's agent check can settle. The verdict travels back as
+ * WM_KITTY_AGENT_CHECKED; the notice itself is shown by the UI thread.
+ */
+struct agent_check_job { unsigned long server_pid; };
+
+static DWORD WINAPI kitty_agent_check_thread(LPVOID arg)
+{
+    struct agent_check_job *job = (struct agent_check_job *)arg;
+    unsigned long pid = job->server_pid;
+    char self[MAX_PATH], srv[MAX_PATH];
+    HANDLE h;
+    int gotpath;
+    HWND GetMainHwnd(void);
+
+    sfree(job);
+    if (GetModuleFileNameA(NULL, self, sizeof(self)) == 0)
+        return 0;
+    /* An unsigned build cannot honestly insist the agent be signed. */
+    if (!kitty_authenticode_verify_offline(self))
+        return 0;
+    h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, (DWORD)pid);
+    if (!h)
+        return 0;                      /* cannot inspect: stay quiet */
+    gotpath = kitty_process_image_path(h, srv, sizeof(srv));
+    CloseHandle(h);
+    if (!gotpath)
+        return 0;
+    if (kitty_authenticode_verify_offline(srv))
+        return 0;                      /* genuine KiTTY/kageant - all good */
+    {
+        const char *base = strrchr(srv, '\\');
+        char *name = dupstr(base ? base + 1 : srv);
+        HWND main = GetMainHwnd();
+        if (!main || !PostMessage(main, WM_KITTY_AGENT_CHECKED, 0, (LPARAM)name))
+            sfree(name);
+    }
+    return 0;
+}
+
+/* WM_KITTY_AGENT_CHECKED, on the UI thread. `name` is the serving program's
+ * file name from the worker (freed here). */
+void kitty_agent_unverified_notice(char *name)
+{
+    /* Say WHO is speaking (this terminal, not the agent) before saying
+     * what was found - an anonymous amber box reads as "something says
+     * my key is compromised" and confuses more than it warns. And say
+     * what is actually at stake: the program SERVES the keys, so it can
+     * see and sign with them - that is not the same as "your key
+     * material leaked", which the first wording implied. Clicking the
+     * notice lands on the setting that turns the warning off, for
+     * people who run another agent on purpose. */
+    HWND GetMainHwnd(void);
+    char *msg = dupprintf(KT_WIN_AGENT_UNVERIFIED, name);
+    kitty_notice_show(KT_CAP_AGENT_UNVERIFIED, msg,
+                      RGB(190, 110, 0), 15,
+                      GetMainHwnd(), WM_KITTY_AGENT_UNVERIFIED);
+    sfree(msg);
+    sfree(name);
+}
+
 static void kitty_agent_serving_check(unsigned long server_pid, int transport)
 {
     static int done = 0;
-    char self[MAX_PATH], srv[MAX_PATH], cfg[16];
-    HANDLE h;
-    DWORD sz = sizeof(srv);
-    int gotpath;
+    char cfg[16];
+    struct agent_check_job *job;
+    HANDLE t;
     (void)transport;
 
     if (done)
@@ -1956,54 +2024,17 @@ static void kitty_agent_serving_check(unsigned long server_pid, int transport)
         return;
     }
 
-    if (GetModuleFileNameA(NULL, self, sizeof(self)) == 0)
-        return;                        /* try again on the next query */
-
-    /* An unsigned build cannot honestly insist the agent be signed. */
-    if (!kitty_authenticode_verify(self)) {
-        done = 1;
-        return;
-    }
-
     if (server_pid == 0)
         return;                        /* unknown this time; retry later */
 
-    h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
-                    (DWORD)server_pid);
-    if (!h) {
-        done = 1;                      /* cannot inspect: stay quiet */
-        return;
-    }
-    gotpath = kitty_process_image_path(h, srv, sz);
-    CloseHandle(h);
-    if (!gotpath) {
-        done = 1;
-        return;
-    }
-
     done = 1;
-    if (kitty_authenticode_verify(srv))
-        return;                        /* genuine KiTTY/kageant - all good */
-
-    {
-        /* Say WHO is speaking (this terminal, not the agent) before saying
-         * what was found - an anonymous amber box reads as "something says
-         * my key is compromised" and confuses more than it warns. And say
-         * what is actually at stake: the program SERVES the keys, so it can
-         * see and sign with them - that is not the same as "your key
-         * material leaked", which the first wording implied. Clicking the
-         * notice lands on the setting that turns the warning off, for
-         * people who run another agent on purpose. */
-        HWND GetMainHwnd(void);
-        const char *base = strrchr(srv, '\\');
-        char *msg = dupprintf(
-            KT_WIN_AGENT_UNVERIFIED,
-            base ? base + 1 : srv);
-        kitty_notice_show(KT_CAP_AGENT_UNVERIFIED, msg,
-                          RGB(190, 110, 0), 15,
-                          GetMainHwnd(), WM_KITTY_AGENT_UNVERIFIED);
-        sfree(msg);
-    }
+    job = snew(struct agent_check_job);
+    job->server_pid = server_pid;
+    t = CreateThread(NULL, 0, kitty_agent_check_thread, job, 0, NULL);
+    if (t)
+        CloseHandle(t);
+    else
+        sfree(job);
 }
 
 void kitty_install_agent_check(void)
@@ -2028,15 +2059,35 @@ int ReadParameterN(const char *key, const char *name,
 #define INIT_SECTION "KiTTY"
 #endif
 
+/* Remembered for two seconds: the theme hook asks on every activation of
+ * every dialog-class window, which is a store read (and a stat of kitty.ini)
+ * per click-to-focus. The Application panel's setter forgets it at once
+ * (kitty_theme_app_pref_forget), so a change applies to the next dialog. */
+static int kitty_theme_pref_cached = -1;
+static DWORD kitty_theme_pref_stamp = 0;
+
+void kitty_theme_app_pref_forget(void)
+{
+    kitty_theme_pref_cached = -1;
+}
+
 int kitty_theme_app_pref(void)
 {
     char buf[32];
     int v;
+    DWORD now = GetTickCount();
+    if (kitty_theme_pref_cached >= 0 && now - kitty_theme_pref_stamp < 2000)
+        return kitty_theme_pref_cached;
     buf[0] = '\0';
-    if (!ReadParameterN(INIT_SECTION, "theme", buf, sizeof(buf)))
-        return KITTY_THEME_SYSTEM;
-    v = kitty_theme_pref_from_string(buf);
-    return v >= 0 ? v : KITTY_THEME_SYSTEM;
+    v = KITTY_THEME_SYSTEM;
+    if (ReadParameterN(INIT_SECTION, "theme", buf, sizeof(buf))) {
+        v = kitty_theme_pref_from_string(buf);
+        if (v < 0)
+            v = KITTY_THEME_SYSTEM;
+    }
+    kitty_theme_pref_cached = v;
+    kitty_theme_pref_stamp = now;
+    return v;
 }
 
 bool kitty_theme_app_dark(void)

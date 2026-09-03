@@ -21,10 +21,10 @@ char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, c
     DWORD lpType, dwDataSize = cstMaxRegLength;
 
   //Receptionne la valeur de réception lecture clé registre
-	unsigned char * lpData ;
+	/* On the stack: this is the read behind every ReadParameter, and a
+	 * malloc/free pair per call added up on the paths that ask often. */
+	unsigned char lpData[ cstMaxRegLength + 1 ] ; // +1 for forced NUL
 	if( rValue == NULL || rsize == 0 ) { return NULL ; }
-	lpData = (unsigned char*) malloc( cstMaxRegLength + 1 ); // +1 for forced NUL
-	if( lpData == NULL ) { return NULL ; }
 
     rValue[0] = '\0';
   //Lecture de la clé registre si ok passe à la suite...
@@ -62,12 +62,11 @@ char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, c
           }
         }//end switch
       }//end if
-      else { RegCloseKey(hkKey); free(lpData); return NULL ; }
-       free(lpData); // libère la mémoire
+      else { RegCloseKey(hkKey); return NULL ; }
        RegCloseKey(hkKey);
 
     }//end if
-    else { free(lpData); return NULL ; }
+    else { return NULL ; }
     return rValue;
   }//end function
 

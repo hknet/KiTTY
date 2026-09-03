@@ -27,4 +27,11 @@ void kitty_notice_show(const char *title, const char *text, COLORREF accent,
  * answers with a configuration window on Application/Migration. */
 #define WM_KITTY_FOREIGN_SESSIONS (WM_APP + 74)
 
+/* The agent check runs its signature verifications on a worker thread
+ * (kitty_win.c); when the serving program is not ours the thread posts this
+ * to the terminal window with the program's file name in lParam (a dupstr,
+ * the receiver frees it), and window.c shows the notice from the UI thread. */
+#define WM_KITTY_AGENT_CHECKED (WM_APP + 75)
+void kitty_agent_unverified_notice(char *name);   /* kitty/kitty_win.c */
+
 #endif

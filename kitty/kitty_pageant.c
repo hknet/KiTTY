@@ -563,7 +563,19 @@ static int kageant_mode_to_reg(int m)
            m == KAGEANT_CONFIRM_NO  ? 2 : 0;
 }
 
-int kageant_confirm_mode(void)
+/*
+ * The confirm mode is asked for on EVERY signature request, and reading it
+ * is an ini parse (GetPrivateProfileString, twice with the store-mode probe)
+ * plus a registry query. The answer is remembered for two seconds: a
+ * forwarding storm or an ssh-add loop asks hundreds of times a second and
+ * gets one read; a change through the settings dialog invalidates at once
+ * (kageant_confirm_set_mode), and an edit of the file by hand is seen within
+ * two seconds.
+ */
+static int kageant_confirm_mode_cached = -1;
+static DWORD kageant_confirm_mode_stamp = 0;
+
+static int kageant_confirm_mode_read(void)
 {
     char buf[32];
     int ini_mode = -1, reg_val;
@@ -582,6 +594,17 @@ int kageant_confirm_mode(void)
         return ini_mode;
     return kageant_reg_read_dword(KAGEANT_REG_CONFIRM, &reg_val) ?
            kageant_reg_to_mode(reg_val) : KAGEANT_CONFIRM_AUTO;
+}
+
+int kageant_confirm_mode(void)
+{
+    DWORD now = GetTickCount();
+    if (kageant_confirm_mode_cached >= 0 &&
+        now - kageant_confirm_mode_stamp < 2000)
+        return kageant_confirm_mode_cached;
+    kageant_confirm_mode_cached = kageant_confirm_mode_read();
+    kageant_confirm_mode_stamp = now;
+    return kageant_confirm_mode_cached;
 }
 
 /* The tray checkbox is two-state: checked = YES, unchecked = AUTO (or NO). */
@@ -607,6 +630,7 @@ void kageant_confirm_set_mode(int mode)
     kitty_inilight_write("Agent", "askconfirmation", s);
     /* _dword, not the boolean writer: it would store "no" (2) as 1. */
     kageant_reg_write_dword(KAGEANT_REG_CONFIRM, kageant_mode_to_reg(mode));
+    kageant_confirm_mode_cached = -1;      /* the next request re-reads */
 }
 
 /* KiTTY: "kitty.ini mode" indicator for the key-list window and the tray
@@ -1348,7 +1372,24 @@ static int kageant_autoenc_mode_parse(const char *t)
     if (!stricmp(t, "default") || !stricmp(t, "yes")) return 1;
     return 0;
 }
+/* Remembered for two seconds like the confirm mode: the heartbeat asks it
+ * to decide whether it is still needed, and the setter forgets it. */
+static int kageant_autoenc_mode_cached = -1;
+static DWORD kageant_autoenc_mode_stamp = 0;
+static int kageant_autoenc_mode_read(void);
+
 int kageant_autoenc_mode(void)
+{
+    DWORD now = GetTickCount();
+    if (kageant_autoenc_mode_cached >= 0 &&
+        now - kageant_autoenc_mode_stamp < 2000)
+        return kageant_autoenc_mode_cached;
+    kageant_autoenc_mode_cached = kageant_autoenc_mode_read();
+    kageant_autoenc_mode_stamp = now;
+    return kageant_autoenc_mode_cached;
+}
+
+static int kageant_autoenc_mode_read(void)
 {
     char buf[16];
     int ini_v = -1, reg_v;
@@ -1367,6 +1408,9 @@ int kageant_autoenc_mode_set(int mode)
     if (mode < 0 || mode > 2) mode = 0;
     kitty_inilight_write("Agent", "autoencryptmode", words[mode]);
     kageant_reg_write_dword("AutoEncryptMode", mode);
+    kageant_autoenc_mode_cached = -1;
+    if (kageant_tick_arm_hook)
+        kageant_tick_arm_hook();           /* the heartbeat may be needed now */
     return 1;
 }
 int kageant_autoenc_seconds(void)
@@ -1436,6 +1480,8 @@ void kageant_idle_set_key(ptrlen blob, int value)
 {
     int i = kageant_idle_find(blob, 1);
     g_idle[i].own = value < 0 ? -1 : kageant_autoenc_clamp(value);
+    if (kageant_tick_arm_hook)
+        kageant_tick_arm_hook();           /* a key on the idle list: tick */
 }
 
 int kageant_idle_effective(ptrlen blob)
@@ -2777,6 +2823,24 @@ void kageant_key_set_lifetime(ptrlen pubblob, unsigned seconds)
     }
     g_lifetimes[i].expiry = kitty_tick_count64() + (ULONGLONG)seconds * 1000;
     g_lifetimes[i].set_seconds = seconds;
+    if (kageant_tick_arm_hook)
+        kageant_tick_arm_hook();           /* something to expire: tick */
+}
+
+/*
+ * The one-second heartbeat (TrayWndProc) exists for three things: expiring
+ * ssh-add -t keys, re-encrypting idle keys, and the countdown column of the
+ * key list. None of them has any work while no lifetime is pending, no key
+ * is on the idle list and the idle policy is off - which is the common
+ * state - so the frontend arms the timer only while this says so, and the
+ * places that can make it true again (a lifetime arrives, the idle policy
+ * is switched on, a key gets its own idle value) call the arm hook.
+ */
+void (*kageant_tick_arm_hook)(void) = NULL;
+
+int kageant_tick_wanted(void)
+{
+    return g_nlifetimes > 0 || g_nidle > 0 || kageant_autoenc_mode() != 0;
 }
 
 int kageant_expire_due_keys(void)
@@ -3726,7 +3790,7 @@ extern int (*kageant_confirm_hook)(const char *comment, int key_confirm);
  * both add and remove; blockipcadd / blockipcremove block one direction.
  * Read from the ini where authoritative, else the registry, same shape as
  * the other kageant settings. Enforced only for EXTERNAL requests. */
-static int kageant_policy_get(const char *inikey, const char *regname)
+static int kageant_policy_read(const char *inikey, const char *regname)
 {
     char buf[32];
     int ini_val = -1, reg_val;
@@ -3742,6 +3806,37 @@ static int kageant_policy_get(const char *inikey, const char *regname)
     return kageant_reg_read(regname, &reg_val) ? reg_val : 0;
 }
 
+/* Remembered for two seconds per policy, like the confirm mode: these are
+ * asked on every external add/remove request. A write through
+ * kageant_policy_set forgets all three at once. */
+static struct { const char *inikey; int value; DWORD stamp; } kageant_policy_cache[3];
+
+static int kageant_policy_get(const char *inikey, const char *regname)
+{
+    DWORD now = GetTickCount();
+    int i, slot = -1;
+    for (i = 0; i < 3; i++) {
+        if (kageant_policy_cache[i].inikey &&
+            !strcmp(kageant_policy_cache[i].inikey, inikey)) {
+            if (now - kageant_policy_cache[i].stamp < 2000)
+                return kageant_policy_cache[i].value;
+            slot = i;
+            break;
+        }
+        if (!kageant_policy_cache[i].inikey && slot < 0)
+            slot = i;
+    }
+    {
+        int v = kageant_policy_read(inikey, regname);
+        if (slot >= 0) {
+            kageant_policy_cache[slot].inikey = inikey;
+            kageant_policy_cache[slot].value = v;
+            kageant_policy_cache[slot].stamp = now;
+        }
+        return v;
+    }
+}
+
 int kageant_lockdown_get(void)
 {
     return kageant_policy_get("lockdownmode", "LockdownMode");
@@ -3753,6 +3848,7 @@ static void kageant_policy_set(const char *inikey, const char *regname, int on)
 {
     kitty_inilight_write("Agent", inikey, on ? "yes" : "no");
     kageant_reg_write(regname, on ? 1 : 0);
+    memset(kageant_policy_cache, 0, sizeof(kageant_policy_cache));
 }
 void kageant_lockdown_set(int on)
 {

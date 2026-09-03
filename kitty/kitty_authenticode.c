@@ -15,7 +15,7 @@
 /* Our signing identity - the one place the publisher CN is written. */
 #define KITTY_PUBLISHER_CN "KAPPER NETWORK-COMMUNICATIONS GmbH"
 
-int kitty_authenticode_verify(const char *path)
+static int authenticode_verify_ex(const char *path, int online_revocation)
 {
     wchar_t wpath[MAX_PATH];
     if (MultiByteToWideChar(CP_ACP, 0, path, -1, wpath, MAX_PATH) == 0)
@@ -29,7 +29,15 @@ int kitty_authenticode_verify(const char *path)
     WINTRUST_DATA wd; memset(&wd, 0, sizeof(wd));
     wd.cbStruct = sizeof(wd);
     wd.dwUIChoice = WTD_UI_NONE;
-    wd.fdwRevocationChecks = WTD_REVOKE_WHOLECHAIN;
+    if (online_revocation) {
+        wd.fdwRevocationChecks = WTD_REVOKE_WHOLECHAIN;
+    } else {
+        /* No revocation fetch: nothing leaves the machine and nothing waits
+         * for a CRL server. The chain and the publisher-CN pin below still
+         * decide; see the header for which callers may use this. */
+        wd.fdwRevocationChecks = WTD_REVOKE_NONE;
+        wd.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL;
+    }
     wd.dwUnionChoice = WTD_CHOICE_FILE;
     wd.pFile = &fi;
     wd.dwStateAction = WTD_STATEACTION_VERIFY;
@@ -75,6 +83,16 @@ int kitty_authenticode_verify(const char *path)
     if (hMsg != NULL) CryptMsgClose(hMsg);
     if (hStore != NULL) CertCloseStore(hStore, 0);
     return matched;
+}
+
+int kitty_authenticode_verify(const char *path)
+{
+    return authenticode_verify_ex(path, 1);
+}
+
+int kitty_authenticode_verify_offline(const char *path)
+{
+    return authenticode_verify_ex(path, 0);
 }
 
 int kitty_file_version(const char *path, unsigned long *ms, unsigned long *ls)

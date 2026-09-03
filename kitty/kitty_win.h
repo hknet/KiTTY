@@ -71,6 +71,7 @@ bool IsPathAbsolute( const char * path ) ;
 // KiTTY: the application-wide colour theme, [KiTTY] theme. kitty_theme_app_dark
 // is the resolver handed to kitty_theme_hook_dialogs() in WinMain.
 int kitty_theme_app_pref( void ) ;
+void kitty_theme_app_pref_forget( void ) ;   /* after writing [KiTTY] theme */
 bool kitty_theme_app_dark( void ) ;
 // KiTTY: the update check, an application setting in kitty.ini ([KiTTY]
 // checkupdate, default on). It used to be per-session, which meant the answer
