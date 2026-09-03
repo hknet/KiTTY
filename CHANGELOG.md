@@ -5,6 +5,8 @@ and enhanced **PuTTY 0.85** core. Versions below are this port's own `0.85.1.x` 
 known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
 see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.6-beta — 2026-09-03
+
 ## 0.85.1.5-beta — 2026-09-03
 
 ### New
