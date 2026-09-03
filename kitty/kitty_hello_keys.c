@@ -23,6 +23,7 @@
 #include "ssh.h"
 #include "kitty_hello.h"
 #include "kitty_hello_keys.h"
+#include "kitty_text.h"     /* shared wordings */
 
 char *kageant_hello_sidecar_path(const char *keypath)
 {
@@ -263,19 +264,16 @@ int kageant_hello_protect_ex(HWND owner, const char *srcpath,
     else
         rpass = recovery_pass ? recovery_pass : srcpass;
     if (!(recovery_pass && !*recovery_pass) && (!rpass || !*rpass)) {
-        *err_out = dupstr("a recovery passphrase is required: the key's "
-                          "own passphrase is empty, so it cannot serve as "
-                          "one");
+        *err_out = dupstr(KT_HELLO_ERR_NEED_RECOVERY);
         return KAGEANT_HELLO_ERROR;
     }
     if (GetFileAttributesA(destpath) != INVALID_FILE_ATTRIBUTES) {
-        *err_out = dupprintf("%s already exists - not overwriting it",
+        *err_out = dupprintf(KT_HELLO_ERR_EXISTS_FMT,
                              destpath);
         return KAGEANT_HELLO_ERROR;
     }
     if (!kageant_hello_offerable()) {
-        *err_out = dupstr("Windows Hello key protection is not available "
-                          "on this machine");
+        *err_out = dupstr(KT_HELLO_ERR_UNAVAILABLE_HERE);
         return KAGEANT_HELLO_ERROR;
     }
 
@@ -284,20 +282,20 @@ int kageant_hello_protect_ex(HWND owner, const char *srcpath,
                      &loaderr);
     filename_free(srcfn);
     if (!key || key == SSH2_WRONG_PASSPHRASE) {
-        *err_out = dupprintf("could not load %s: %s", srcpath,
+        *err_out = dupprintf(KT_HELLO_ERR_LOAD_FMT, srcpath,
                              key == SSH2_WRONG_PASSPHRASE ?
-                             "wrong passphrase" :
-                             (loaderr ? loaderr : "unknown error"));
+                             KT_HELLO_ERR_WRONG_PASSPHRASE :
+                             (loaderr ? loaderr : KT_MSG_UNKNOWN_ERROR));
         return KAGEANT_HELLO_ERROR;
     }
 
     if (!kitty_hello_new_secret(secret)) {
-        *err_out = dupstr("the system random generator failed");
+        *err_out = dupstr(KT_HELLO_ERR_RANDOM);
         goto out;
     }
     printed = kitty_hello_secret_text(secret);
     if (!printed) {
-        *err_out = dupstr("out of memory");
+        *err_out = dupstr(KT_HELLO_ERR_OOM);
         goto out;
     }
 
@@ -308,7 +306,7 @@ int kageant_hello_protect_ex(HWND owner, const char *srcpath,
         unsigned char codebuf[KITTY_HELLO_SECRET_LEN];
         char *withcode;
         if (!kitty_hello_new_secret(codebuf)) {
-            *err_out = dupstr("the system random generator failed");
+            *err_out = dupstr(KT_HELLO_ERR_RANDOM);
             goto out;
         }
         handout = kitty_hello_code_text(codebuf);   /* KRC1-..., its own
@@ -317,7 +315,7 @@ int kageant_hello_protect_ex(HWND owner, const char *srcpath,
         withcode = handout ? kitty_hello_container_append_recovery(
                                  container, handout, secret) : NULL;
         if (!withcode) {
-            *err_out = dupstr("could not add the recovery-code door");
+            *err_out = dupstr(KT_HELLO_ERR_CODE_DOOR);
             goto out;
         }
         burnstr(container);
@@ -325,10 +323,10 @@ int kageant_hello_protect_ex(HWND owner, const char *srcpath,
     }
     if (hret != KITTY_HELLO_VERIFIED || !container) {
         *err_out = dupstr(hret == KITTY_HELLO_DENIED ?
-                          "the Windows Hello prompt was cancelled" :
+                          KT_HELLO_ERR_CANCELLED :
                           hret == KITTY_HELLO_UNAVAILABLE ?
-                          "Windows Hello key protection is not available" :
-                          "wrapping the secret failed");
+                          KT_HELLO_ERR_UNAVAILABLE :
+                          KT_HELLO_ERR_WRAP_FAILED);
         ret = hret == KITTY_HELLO_DENIED ? KAGEANT_HELLO_DENIED
                                          : KAGEANT_HELLO_ERROR;
         goto out;
@@ -337,14 +335,14 @@ int kageant_hello_protect_ex(HWND owner, const char *srcpath,
     dstfn = filename_from_str(destpath);
     if (!ppk_save_f(dstfn, key, printed, &ppk_save_default_parameters)) {
         filename_free(dstfn);
-        *err_out = dupprintf("could not write %s", destpath);
+        *err_out = dupprintf(KT_HELLO_ERR_WRITE_FMT, destpath);
         goto out;
     }
     filename_free(dstfn);
     if (!kageant_hello_write_sidecar(destpath, container)) {
         char *sc = kageant_hello_sidecar_path(destpath);
         DeleteFileA(destpath);      /* no protected copy without its door */
-        *err_out = dupprintf("could not write %s", sc);
+        *err_out = dupprintf(KT_HELLO_ERR_WRITE_FMT, sc);
         sfree(sc);
         goto out;
     }
@@ -381,13 +379,13 @@ int kageant_hello_enrol(HWND owner, const char *keypath,
 
     *err_out = NULL;
     if (kitty_hello_secret_from_text(passphrase, secret) != 1) {
-        *err_out = dupstr("that is not this key's secret");
+        *err_out = dupstr(KT_HELLO_ERR_NOT_SECRET);
         return KAGEANT_HELLO_ERROR;
     }
     c = kageant_hello_read_sidecar(keypath);
     if (!c) {
         smemclr(secret, sizeof(secret));
-        *err_out = dupstr("the key has no readable .hello sidecar");
+        *err_out = dupstr(KT_HELLO_ERR_NO_SIDECAR);
         return KAGEANT_HELLO_ERROR;
     }
     hret = kitty_hello_enrol_auto(owner, c, secret, &c2);
@@ -398,15 +396,14 @@ int kageant_hello_enrol(HWND owner, const char *keypath,
         } else if (kageant_hello_write_sidecar(keypath, c2)) {
             ret = KAGEANT_HELLO_OK;
         } else {
-            *err_out = dupstr("could not rewrite the .hello sidecar");
+            *err_out = dupstr(KT_HELLO_ERR_SIDECAR_REWRITE);
         }
     } else {
         *err_out = dupstr(hret == KITTY_HELLO_DENIED ?
-                          "the Windows Hello prompt was cancelled" :
+                          KT_HELLO_ERR_CANCELLED :
                           hret == KITTY_HELLO_UNAVAILABLE ?
-                          "Windows Hello (passkey) protection is not "
-                          "available on this machine" :
-                          "adding this account's Hello door failed");
+                          KT_HELLO_ERR_PASSKEY_UNAVAILABLE :
+                          KT_HELLO_ERR_ENROL_FAILED);
         ret = hret == KITTY_HELLO_DENIED ? KAGEANT_HELLO_DENIED
                                          : KAGEANT_HELLO_ERROR;
     }

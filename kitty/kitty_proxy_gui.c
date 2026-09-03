@@ -28,18 +28,18 @@ static const int   pxe_types[] =
     { PROXY_NONE, PROXY_SOCKS4, PROXY_SOCKS5, PROXY_HTTP, PROXY_TELNET, PROXY_CMD,
       PROXY_SSH_TCPIP, PROXY_SSH_EXEC, PROXY_SSH_SUBSYSTEM };
 static const char *pxe_type_names[] =
-    { "None", "SOCKS 4", "SOCKS 5", "HTTP", "Telnet", "Local (command)",
-      "SSH jump host (port forwarding)", "SSH jump host (execute a command)",
-      "SSH jump host (invoke a subsystem)" };
+    { KT_LOGGING_NONE, KT_PROXY_TYPE_SOCKS4, KT_PROXY_TYPE_SOCKS5, KT_PROXYGUI_TYPE_HTTP, KT_PROXYGUI_TYPE_TELNET, KT_PROXYGUI_TYPE_LOCAL,
+      KT_PROXYGUI_TYPE_SSH_TCPIP, KT_PROXYGUI_TYPE_SSH_EXEC,
+      KT_PROXYGUI_TYPE_SSH_SUBSYSTEM };
 #define PXE_NTYPES ((int)(sizeof(pxe_types)/sizeof(pxe_types[0])))
 
 /* DNS-at-proxy combo -> CONF_proxy_dns (auto = at the proxy for far hosts, local = here, proxy = always there). */
 static const int   pxe_dns_vals[]  = { AUTO, FORCE_OFF, FORCE_ON };
-static const char *pxe_dns_names[] = { "auto", "local", "proxy" };
+static const char *pxe_dns_names[] = { KT_PROXYGUI_DNS_AUTO, KT_PROXYGUI_DNS_LOCAL, KT_PROXYGUI_DNS_PROXY };
 #define PXE_NDNS ((int)(sizeof(pxe_dns_vals)/sizeof(pxe_dns_vals[0])))
 /* Proxy-diagnostics combo -> CONF_proxy_log_to_term. */
 static const int   pxe_log_vals[]  = { FORCE_OFF, FORCE_ON, AUTO };
-static const char *pxe_log_names[] = { "never", "always", "connect only" };
+static const char *pxe_log_names[] = { KT_PROXYGUI_LOG_NEVER, KT_PROXYGUI_LOG_ALWAYS, KT_PROXYGUI_LOG_CONNECT_ONLY };
 #define PXE_NLOG ((int)(sizeof(pxe_log_vals)/sizeof(pxe_log_vals[0])))
 
 /*
@@ -55,9 +55,9 @@ static const char *pxe_log_names[] = { "never", "always", "connect only" };
  */
 static const int   pxe_hostis_vals[]  = { -1, 1, 0 };
 static const char *pxe_hostis_names[] = {
-    "as globally configured (see Defaults)",
-    "a hostname or IP-address",
-    "possibly the name of a saved session (PuTTY's old rule)" };
+    KT_PROXYGUI_HOSTIS_GLOBAL,
+    KT_PROXYGUI_HOSTIS_HOSTNAME,
+    KT_PROXYGUI_HOSTIS_SESSION };
 #define PXE_NHOSTIS ((int)(sizeof(pxe_hostis_vals)/sizeof(pxe_hostis_vals[0])))
 
 /* The port a proxy of this type normally listens on, or 0 where the question
@@ -229,7 +229,7 @@ static void pxp_name_handler(dlgcontrol *ctrl, dlgparam *dlg,
         sfree(g_pxp->name);
         g_pxp->name = typed;
         pxp_reload(dlg);
-        pxp_say(dlg, "Editing this definition. Nothing is stored until Save.");
+        pxp_say(dlg, KT_PROXYGUI_EDITING);
     }
 }
 
@@ -347,7 +347,7 @@ static void pxp_save_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (event != EVENT_ACTION || !g_pxp || !g_pxp->conf)
         return;
     if (!g_pxp->name || !g_pxp->name[0]) {
-        dlg_error_msg(dlg, "Give the proxy a name first.");
+        dlg_error_msg(dlg, KT_PROXYGUI_NAME_FIRST);
         return;
     }
     /* An empty port on a type that has a usual one is filled in rather than
@@ -365,10 +365,9 @@ static void pxp_save_handler(dlgcontrol *ctrl, dlgparam *dlg,
     dlg_refresh(NULL, dlg);
     if (was_empty && kitty_has_proxy_definitions())
         dlg_error_msg(dlg,
-            "Proxy defined.\r\n\r\nThe proxy-override droplist appears in the "
-            "Session panel the next time a configuration window is opened.");
+            KT_PROXYGUI_DEFINED);
     else
-        pxp_say(dlg, "Saved.");
+        pxp_say(dlg, KT_PROXYGUI_SAVED);
 }
 
 static void pxp_delete_handler(dlgcontrol *ctrl, dlgparam *dlg,
@@ -382,9 +381,9 @@ static void pxp_delete_handler(dlgcontrol *ctrl, dlgparam *dlg,
      * it keeps its confirmation. */
     {
         char msg[600];
-        snprintf(msg, sizeof(msg), "Delete the named proxy \"%s\"?",
+        snprintf(msg, sizeof(msg), KT_PROXYGUI_DELETE_Q,
                  g_pxp->name);
-        if (MessageBoxA(kitty_cfg_modal_owner(), msg, "KiTTY named proxy",
+        if (MessageBoxA(kitty_cfg_modal_owner(), msg, KT_CAP_NAMED_PROXY,
                         MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
             return;
     }
@@ -395,11 +394,9 @@ static void pxp_delete_handler(dlgcontrol *ctrl, dlgparam *dlg,
     pxp_reload(dlg);
     if (!kitty_has_proxy_definitions())
         dlg_error_msg(dlg,
-            "The last named proxy was removed.\r\n\r\nThe proxy-override "
-            "droplist disappears from the Session panel the next time a "
-            "configuration window is opened.");
+            KT_PROXYGUI_LAST_REMOVED);
     else
-        pxp_say(dlg, "Deleted.");
+        pxp_say(dlg, KT_PROXYGUI_DELETED);
 }
 
 /* "Show password" for the panel's own password box - the same idea as the one
@@ -471,9 +468,8 @@ static bool pxp_may_leave(void)
     /* The suite's own confirm box (No is its default too), not MessageBox -
      * the one window that asked in the system's old face. */
     if (!kitty_confirm_box(kitty_cfg_modal_owner(),
-        "KiTTY named proxy",
-        "This named proxy has changes that have not been saved.\r\n\r\n"
-        "Leave the panel and discard them?", NULL))
+        KT_CAP_NAMED_PROXY,
+        KT_PROXYGUI_UNSAVED_Q, NULL))
         return false;
     /*
      * Discard means DISCARD: drop the edited copy and take the stored

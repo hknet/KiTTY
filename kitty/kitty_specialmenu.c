@@ -23,6 +23,7 @@ extern const char *kitty_registry_base( void ) ;
 #include "kitty_commun.h"    /* ConfigDirectory, mungestr/unmungestr */
 #include "kitty_registry.h"  /* MAX_VALUE_NAME */
 #include "kitty_tools.h"     /* str_rtrim */
+#include "kitty_text.h"      /* the menu wording */
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */
 void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
@@ -209,7 +210,7 @@ void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) {
 		}
 
 	if( GetMenuItemCount( menu ) > 0 )
-		AppendMenu( m, MF_POPUP, (UINT_PTR)menu, "&User Command" ) ;
+		AppendMenu( m, MF_POPUP, (UINT_PTR)menu, KT_MENU_USER_COMMAND ) ;
 
 	}
 

@@ -28,6 +28,7 @@
 
 #include <commctrl.h>
 #include "../kitty/kitty_notice.h"   /* the themed startup notice */
+#include "../kitty/kitty_text.h"     /* KiTTY: shared captions and menu words */
 
 #ifdef MSVC4
 #define ICON_BIG        1
@@ -54,7 +55,7 @@ void modalfatalbox(const char *fmt, ...)
     va_start(ap, fmt);
     stuff = dupvprintf(fmt, ap);
     va_end(ap);
-    MessageBox(NULL, stuff, "KiTTYgen Fatal Error",
+    MessageBox(NULL, stuff, KT_CAP_KITTYGEN_FATAL,
                MB_SYSTEMMODAL | MB_ICONERROR | MB_OK);
     sfree(stuff);
     exit(1);
@@ -71,7 +72,7 @@ void nonfatal(const char *fmt, ...)
     va_start(ap, fmt);
     stuff = dupvprintf(fmt, ap);
     va_end(ap);
-    MessageBox(NULL, stuff, "KiTTYgen Error",
+    MessageBox(NULL, stuff, KT_CAP_KITTYGEN_ERROR,
                MB_SYSTEMMODAL | MB_ICONERROR | MB_OK);
     sfree(stuff);
 }
@@ -248,8 +249,7 @@ static INT_PTR CALLBACK PassphraseProc(HWND hwnd, UINT msg,
         passphrase = p->passphrase;
         if (p->hello)
             SetDlgItemText(hwnd, 100,
-                "Enter the recovery passphrase, the recovery code, or the "
-                "printed secret:");
+                KT_KGEN_PASS_PROMPT_HELLO);
         if (p->comment)
             SetDlgItemText(hwnd, 101, p->comment);
         burnstr(*passphrase);
@@ -391,7 +391,7 @@ static INT_PTR CALLBACK PPKParamsProc(HWND hwnd, UINT msg,
              * length, so make one up. */
             char *err = ppk_params_bad(&pp->params, true, 64);
             if (err) {
-                MessageBox(hwnd, err, "Save parameters invalid",
+                MessageBox(hwnd, err, KT_CAP_KGEN_SAVE_PARAMS_INVALID,
                            MB_OK | MB_ICONERROR);
             } else {
                 EndDialog(hwnd, 1);
@@ -986,15 +986,15 @@ static void hello_doors_fill(HWND hwnd, struct hello_doors_ctx *c)
         c->w_of_item[i] = -1;
     if (!cont) {
         SendMessage(list, LB_ADDSTRING, 0,
-                    (LPARAM)"(no readable .hello sidecar)");
+                    (LPARAM)KT_KGEN_DOORS_NO_SIDECAR);
         return;
     }
     mine = kitty_hello_container_my_w(cont);
     for (i = 0; i < kitty_hello_container_w_count(cont); i++) {
         char *owner = kitty_hello_container_w_owner(cont, i);
-        char *line = dupprintf("Windows Hello: %s%s",
-                               owner ? owner : "(untagged)",
-                               i == mine ? "  - this computer" : "");
+        char *line = dupprintf(KT_KGEN_DOORS_HELLO_FMT,
+                               owner ? owner : KT_KGEN_DOORS_UNTAGGED,
+                               i == mine ? KT_KGEN_DOORS_THIS_COMPUTER : "");
         SendMessage(list, LB_ADDSTRING, 0, (LPARAM)line);
         if (item < (int)lenof(c->w_of_item))
             c->w_of_item[item] = i;
@@ -1004,18 +1004,18 @@ static void hello_doors_fill(HWND hwnd, struct hello_doors_ctx *c)
     }
     if (kitty_hello_container_has_hello(cont)) {
         SendMessage(list, LB_ADDSTRING, 0,
-                    (LPARAM)"Windows Hello (KeyCredentialManager)");
+                    (LPARAM)KT_KGEN_DOORS_KCM);
         item++;
     }
     for (i = 0; i < kitty_hello_container_r_count(cont); i++) {
         SendMessage(list, LB_ADDSTRING, 0,
                     kitty_hello_container_r_is_code(cont, i) == 1 ?
-                    (LPARAM)"Recovery code (printout, bound to this file)" :
-                    (LPARAM)"Recovery passphrase");
+                    (LPARAM)KT_KGEN_DOORS_RECOVERY_CODE :
+                    (LPARAM)KT_KGEN_DOORS_RECOVERY_PASS);
         item++;
     }
     SendMessage(list, LB_ADDSTRING, 0,
-                (LPARAM)"Printed secret (the key's passphrase itself)");
+                (LPARAM)KT_KGEN_DOORS_PRINTED);
     sfree(cont);
 }
 
@@ -1042,17 +1042,11 @@ static INT_PTR CALLBACK HelloDoorsProc(HWND hwnd, UINT msg,
                      c->w_of_item[sel] : -1;
             char *cont, *newcont;
             if (wi < 0) {
-                MessageBox(hwnd, "Only a machine's Windows Hello entry can "
-                           "be removed here. The recovery passphrase is the "
-                           "safety net, and the printed secret is the file's "
-                           "own passphrase.", "KiTTYgen",
+                MessageBox(hwnd, KT_KGEN_DOORS_ONLY_HELLO, KT_CAP_KITTYGEN,
                            MB_OK | MB_ICONINFORMATION);
                 return 0;
             }
-            if (MessageBox(hwnd, "Remove this Windows Hello entry? The "
-                           "machine it belongs to can then open the key "
-                           "only with the recovery passphrase or the "
-                           "printed secret.", "KiTTYgen - remove a door",
+            if (MessageBox(hwnd, KT_KGEN_DOORS_REMOVE_Q, KT_CAP_KGEN_REMOVE_DOOR,
                            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2)
                     != IDYES)
                 return 0;
@@ -1062,11 +1056,9 @@ static INT_PTR CALLBACK HelloDoorsProc(HWND hwnd, UINT msg,
                 hello_doors_fill(hwnd, c);
             } else {
                 MessageBox(hwnd, newcont ?
-                           "Could not rewrite the .hello sidecar." :
-                           "Refused: a sidecar never loses its last door. "
-                           "Disarm the key instead (save it without "
-                           "protection).",
-                           "KiTTYgen", MB_OK | MB_ICONWARNING);
+                           KT_KGEN_DOORS_REWRITE_FAILED :
+                           KT_KGEN_DOORS_LAST_DOOR,
+                           KT_CAP_KITTYGEN, MB_OK | MB_ICONWARNING);
             }
             sfree(cont);
             burnstr(newcont);
@@ -1077,8 +1069,8 @@ static INT_PTR CALLBACK HelloDoorsProc(HWND hwnd, UINT msg,
             char *passphrase = NULL, *real = NULL, *err = NULL;
             int r;
             if (cont && kitty_hello_container_my_w(cont) >= 0) {
-                MessageBox(hwnd, "This computer is already enrolled.",
-                           "KiTTYgen", MB_OK | MB_ICONINFORMATION);
+                MessageBox(hwnd, KT_KGEN_DOORS_ALREADY,
+                           KT_CAP_KITTYGEN, MB_OK | MB_ICONINFORMATION);
                 sfree(cont);
                 return 0;
             }
@@ -1097,9 +1089,8 @@ static INT_PTR CALLBACK HelloDoorsProc(HWND hwnd, UINT msg,
             real = kageant_hello_translate(c->path, passphrase, NULL);
             burnstr(passphrase);
             if (!real) {
-                MessageBox(hwnd, "That opened no door - it is neither the "
-                           "recovery passphrase nor the printed secret.",
-                           "KiTTYgen", MB_OK | MB_ICONERROR);
+                MessageBox(hwnd, KT_KGEN_DOORS_NO_DOOR,
+                           KT_CAP_KITTYGEN, MB_OK | MB_ICONERROR);
                 return 0;
             }
             r = kageant_hello_enrol(hwnd, c->path, real, &err);
@@ -1107,9 +1098,9 @@ static INT_PTR CALLBACK HelloDoorsProc(HWND hwnd, UINT msg,
             if (r == KAGEANT_HELLO_OK) {
                 hello_doors_fill(hwnd, c);
             } else {
-                char *msg = dupprintf("Windows Hello was not added:\n\n%s",
-                                      err ? err : "unknown error");
-                MessageBox(hwnd, msg, "KiTTYgen", MB_OK | MB_ICONWARNING);
+                char *msg = dupprintf(KT_KGEN_HELLO_NOT_ADDED_FMT,
+                                      err ? err : KT_MSG_UNKNOWN_ERROR);
+                MessageBox(hwnd, msg, KT_CAP_KITTYGEN, MB_OK | MB_ICONWARNING);
                 sfree(msg);
             }
             sfree(err);
@@ -1565,7 +1556,7 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
         !import_possible(type)) {
         char *msg = dupprintf("Couldn't load private key (%s)",
                               key_type_to_str(type));
-        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
         return;
@@ -1658,7 +1649,7 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
         sfree(comment);
     if (ret == 0) {
         char *msg = dupprintf("Couldn't load private key (%s)", errmsg);
-        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
     } else if (ret == 1) {
@@ -1696,7 +1687,7 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
                     "use the \"Save private key\" command to\n"
                     "save it in PuTTY's own format.",
                     key_type_to_str(realtype));
-            MessageBox(NULL, msg, "KiTTYgen Notice",
+            MessageBox(NULL, msg, KT_CAP_KGEN_NOTICE,
                        MB_OK | MB_ICONINFORMATION);
         }
     }
@@ -1711,7 +1702,7 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
         type != SSH_KEYTYPE_SSH2_PUBLIC_OPENSSH) {
         char *msg = dupprintf("Couldn't load certificate (%s)",
                               key_type_to_str(type));
-        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
         return;
@@ -1724,7 +1715,7 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
     if (!ppk_loadpub_f(filename, &algname, BinarySink_UPCAST(pub), &comment,
                        &error)) {
         char *msg = dupprintf("Couldn't load certificate (%s)", error);
-        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
         strbuf_free(pub);
@@ -1737,7 +1728,7 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
     if (!alg) {
         char *msg = dupprintf("Couldn't load certificate (unsupported "
                               "algorithm name '%s')", algname);
-        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
         sfree(algname);
@@ -1765,7 +1756,7 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
 
     if (!match) {
         char *msg = dupprintf("Certificate is for a different public key");
-        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
         strbuf_free(pub);
@@ -1776,8 +1767,8 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
      * materialise it for just this extraction. Abort on failure. */
     ssh_key *livekey = materialise_ssh2_key(state);
     if (!livekey) {
-        char *msg = dupprintf("Unable to decrypt the in-memory private key");
-        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
+        char *msg = dupprintf(KT_KGEN_DECRYPT_FAILED);
+        message_box(hwnd, msg, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
         strbuf_free(pub);
@@ -1793,7 +1784,7 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
 
     if (!newkey) {
         char *msg = dupprintf("Couldn't combine certificate with key");
-        message_box(hwnd, msg, "KiTTYgen Error", MB_OK | MB_ICONERROR,
+        message_box(hwnd, msg, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR,
                     false, HELPCTXID(errors_cantloadkey));
         sfree(msg);
         return;
@@ -1818,8 +1809,8 @@ void remove_certificate(HWND hwnd, struct MainDlgState *state)
      * work on the materialised real key, not the public stand-in. */
     ssh_key *livekey = materialise_ssh2_key(state);
     if (!livekey) {
-        MessageBox(hwnd, "Unable to decrypt the in-memory private key",
-                   "KiTTYgen Error", MB_OK | MB_ICONERROR);
+        MessageBox(hwnd, KT_KGEN_DECRYPT_FAILED,
+                   KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
         return;
     }
     ssh_key *newkey = ssh_key_clone(ssh_key_base_key(livekey));
@@ -2032,16 +2023,11 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             extern int kitty_protkey_absent(void);
             char kpn_text[512];
             snprintf(kpn_text, sizeof(kpn_text),
-                     "Windows' CryptProtectMemory is not available on this "
-                     "system, so generated and loaded private keys are held "
-                     "in PLAIN memory while KiTTYgen runs. %s",
+                     KT_KGEN_PROTKEY_WARN_FMT,
                      kitty_protkey_absent() ?
-                     "On this version of Windows the protection does not "
-                     "exist." :
-                     "On a normal Windows this never happens - something is "
-                     "stripping or hooking the crypt API, which is itself "
-                     "worth investigating.");
-            kitty_notice_show("KiTTYgen: keys will not be memory-protected",
+                     KT_PROTKEY_ABSENT_REASON :
+                     KT_PROTKEY_HOOKED_REASON);
+            kitty_notice_show(KT_KGEN_NOTICE_UNPROTECTED,
                               kpn_text, RGB(190, 110, 0), 15, hwnd, 0);
         }
         if (has_help())
@@ -2071,7 +2057,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
          * private key, so "am I restricted?" matters here too. */
         {
             extern int kitty_storage_is_portable(void);
-            char *t = kitty_title_compose("KiTTY Key Generator",
+            char *t = kitty_title_compose(KT_CAP_KGEN_TITLE,
                                           kitty_storage_is_portable(),
                                           restricted_acl(), 1);
             SetWindowText(hwnd, t);
@@ -2083,13 +2069,13 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             menu = CreateMenu();
 
             menu1 = CreateMenu();
-            AppendMenu(menu1, MF_ENABLED, IDC_KGNEW, "&New (clear)");
+            AppendMenu(menu1, MF_ENABLED, IDC_KGNEW, KT_KGEN_MENU_NEW);
             AppendMenu(menu1, MF_SEPARATOR, 0, 0);
             AppendMenu(menu1, MF_ENABLED, IDC_LOAD, "&Load private key");
             AppendMenu(menu1, MF_ENABLED, IDC_SAVEPUB, "Save p&ublic key");
             AppendMenu(menu1, MF_ENABLED, IDC_SAVE, "&Save private key");
             AppendMenu(menu1, MF_SEPARATOR, 0, 0);
-            AppendMenu(menu1, MF_ENABLED, IDC_QUIT, "E&xit");
+            AppendMenu(menu1, MF_ENABLED, IDC_QUIT, KT_MENU_EXIT);
             AppendMenu(menu, MF_POPUP | MF_ENABLED, (UINT_PTR) menu1, "&File");
             state->filemenu = menu1;
 
@@ -2101,7 +2087,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             AppendMenu(menu1, MF_ENABLED, IDC_REMCERT,
                        "Remove certificate from key");
             AppendMenu(menu1, MF_ENABLED, IDC_HELLODOORS,
-                       "Windows Hello &doors...");
+                       KT_KGEN_MENU_HELLO_DOORS);
             AppendMenu(menu1, MF_SEPARATOR, 0, 0);
             AppendMenu(menu1, MF_ENABLED, IDC_KEYSSH1, "SSH-&1 key (RSA)");
             AppendMenu(menu1, MF_ENABLED, IDC_KEYSSH2RSA, "SSH-2 &RSA key");
@@ -2143,10 +2129,10 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             state->cvtmenu = menu1;
 
             menu1 = CreateMenu();
-            AppendMenu(menu1, MF_ENABLED, IDC_ABOUT, "&About");
+            AppendMenu(menu1, MF_ENABLED, IDC_ABOUT, KT_MENU_ABOUT);
             if (has_help())
-                AppendMenu(menu1, MF_ENABLED, IDC_GIVEHELP, "&Help");
-            AppendMenu(menu, MF_POPUP | MF_ENABLED, (UINT_PTR) menu1, "&Help");
+                AppendMenu(menu1, MF_ENABLED, IDC_GIVEHELP, KT_MENU_HELP);
+            AppendMenu(menu, MF_POPUP | MF_ENABLED, (UINT_PTR) menu1, KT_MENU_HELP);
 
             SetMenu(hwnd, menu);
         }
@@ -2206,9 +2192,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
              * button appends it, and the tip below says what it means. */
             staticeditbutton(&cp, "Key &comment:", IDC_COMMENTSTATIC,
                              IDC_COMMENTEDIT, 82,
-                             "Add confirmation", IDC_ADDCONFIRM, 28);
-            statictext(&cp, "Tip: include the word \"confirmation\" in the "
-                       "comment so kageant asks before each use.", 1,
+                             KT_KGEN_ADD_CONFIRMATION, IDC_ADDCONFIRM, 28);
+            statictext(&cp, KT_KGEN_CONFIRMATION_TIP, 1,
                        IDC_COMMENTHINT);
             staticpassedit(&cp, "Key p&assphrase:", IDC_PASSPHRASE1STATIC,
                            IDC_PASSPHRASE1EDIT, 82);
@@ -2217,11 +2202,9 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             /* KiTTY: born-protected keys. The passphrase fields then hold
              * the RECOVERY passphrase; empty = Windows Hello and the
              * printed secret only, behind a warning at save time. */
-            checkbox(&cp, "Protect with Windows &Hello "
-                     "(passphrase = recovery passphrase)",
+            checkbox(&cp, KT_KGEN_HELLO_CHECKBOX,
                      IDC_HELLOPROTECT);
-            checkbox(&cp, "Printout is a recover&y code bound to the "
-                     ".hello file, not the key's passphrase",
+            checkbox(&cp, KT_KGEN_SIDEBOUND_CHECKBOX,
                      IDC_KGSIDEBOUND);
             if (!kageant_hello_offerable())
                 EnableWindow(GetDlgItem(hwnd, IDC_HELLOPROTECT), false);
@@ -2536,7 +2519,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         "KiTTYgen will not generate a key smaller than 256"
                         " bits.\nKey length reset to default %d. Continue?",
                         DEFAULT_KEY_BITS);
-                    int ret = MessageBox(hwnd, message, "KiTTYgen Warning",
+                    int ret = MessageBox(hwnd, message, KT_CAP_KITTYGEN_WARNING,
                                          MB_ICONWARNING | MB_OKCANCEL);
                     sfree(message);
                     if (ret != IDOK)
@@ -2548,7 +2531,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     char *message = dupprintf(
                         "Keys shorter than %d bits are not recommended. "
                         "Really generate this key?", DEFAULT_KEY_BITS);
-                    int ret = MessageBox(hwnd, message, "KiTTYgen Warning",
+                    int ret = MessageBox(hwnd, message, KT_CAP_KITTYGEN_WARNING,
                                          MB_ICONWARNING | MB_OKCANCEL);
                     sfree(message);
                     if (ret != IDOK)
@@ -2651,7 +2634,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                             " format", (state->ssh2 ? 2 : 1),
                             (state->ssh2 ? 1 : 2));
                     MessageBox(hwnd, msg,
-                               "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                               KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                     break;
                 }
 
@@ -2660,7 +2643,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                 if (strcmp(passphrase, passphrase2)) {
                     MessageBox(hwnd,
                                "The two passphrases given do not match.",
-                               "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                               KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                     burnstr(passphrase);
                     burnstr(passphrase2);
                     break;
@@ -2674,10 +2657,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                 bool sidebound = hello &&
                     IsDlgButtonChecked(hwnd, IDC_KGSIDEBOUND) == BST_CHECKED;
                 if (hello && (type != realtype || !state->ssh2)) {
-                    MessageBox(hwnd, "Windows Hello protection needs the "
-                               "PuTTY PPK format (SSH-2). Save or export "
-                               "without it, or untick the box.",
-                               "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                    MessageBox(hwnd, KT_KGEN_HELLO_NEEDS_PPK,
+                               KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                     burnstr(passphrase);
                     break;
                 }
@@ -2685,13 +2666,10 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     int ret;
                     ret = MessageBox(hwnd,
                                      hello ?
-                                     "No recovery passphrase: if Windows "
-                                     "Hello on this computer is lost, ONLY "
-                                     "the printed secret opens this key. "
-                                     "Store the printout. Continue?" :
+                                     KT_HELLO_ONLY_WARN_Q :
                                      "Are you sure you want to save this key\n"
                                      "without a passphrase to protect it?",
-                                     "KiTTYgen Warning",
+                                     KT_CAP_KITTYGEN_WARNING,
                                      MB_YESNO | MB_ICONWARNING |
                                      (hello ? MB_DEFBUTTON2 : 0));
                     if (ret != IDYES) {
@@ -2713,7 +2691,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         fclose(fp);
                         buffer = dupprintf("Overwrite existing file\n%s?",
                                            filename_to_str(fn));
-                        ret = MessageBox(hwnd, buffer, "KiTTYgen Warning",
+                        ret = MessageBox(hwnd, buffer, KT_CAP_KITTYGEN_WARNING,
                                          MB_YESNO | MB_ICONWARNING);
                         sfree(buffer);
                         if (ret != IDYES) {
@@ -2729,8 +2707,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         unsigned char secret[KITTY_HELLO_SECRET_LEN];
                         int hret;
                         if (!kitty_hello_new_secret(secret)) {
-                            MessageBox(hwnd, "The system random generator "
-                                       "failed.", "KiTTYgen Error",
+                            MessageBox(hwnd, KT_KGEN_RANDOM_FAILED, KT_CAP_KITTYGEN_ERROR,
                                        MB_OK | MB_ICONERROR);
                             burnstr(passphrase);
                             filename_free(fn);
@@ -2768,11 +2745,9 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         if (hret != KITTY_HELLO_VERIFIED || !hello_container) {
                             MessageBox(hwnd,
                                        hret == KITTY_HELLO_DENIED ?
-                                       "The Windows Hello prompt was "
-                                       "cancelled - the key was NOT saved." :
-                                       "Windows Hello protection failed - "
-                                       "the key was NOT saved.",
-                                       "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                                       KT_KGEN_HELLO_CANCELLED_NOT_SAVED :
+                                       KT_KGEN_HELLO_FAILED_NOT_SAVED,
+                                       KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                             burnstr(hello_printed);
                             burnstr(hello_container);
                             burnstr(passphrase);
@@ -2791,9 +2766,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                          * the stand-in back and releases the live key. */
                         ssh_key *livekey = materialise_ssh2_key(state);
                         if (!livekey) {
-                            MessageBox(hwnd, "Unable to decrypt the "
-                                       "in-memory private key",
-                                       "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                            MessageBox(hwnd, KT_KGEN_DECRYPT_FAILED,
+                                       KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                             ret = 1;   /* error already reported */
                         } else {
                             ssh_key *standin = state->ssh2key.key;
@@ -2811,7 +2785,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                                                          strlen(filepass) : 0);
                                 if (err) {
                                     char *newerr = dupcat(
-                                        "PPK parameters invalid: ", err);
+                                        KT_KGEN_PPK_PARAMS_INVALID, err);
                                     sfree(err);
                                     err = newerr;
                                     ret = -1;
@@ -2835,16 +2809,15 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     if (ret <= 0) {
                         /* upstream's reason when there is one; our title */
                         MessageBox(hwnd, err ? err : "Unable to save key file",
-                                   "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                                   KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                     } else if (hello) {
                         /* KiTTY: the sidecar is the protected file's doors -
                          * no sidecar, no protected file. */
                         if (!kageant_hello_write_sidecar(filename_to_str(fn),
                                                          hello_container)) {
                             DeleteFileA(filename_to_str(fn));
-                            MessageBox(hwnd, "Could not write the .hello "
-                                       "sidecar; the key file was removed.",
-                                       "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                            MessageBox(hwnd, KT_KGEN_SIDECAR_WRITE_FAILED,
+                                       KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                         } else {
                             sfree(state->hello_saved_path);
                             state->hello_saved_path =
@@ -2889,13 +2862,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                             others[no++] = state->hello_saved_path;
                         for (oi = 0; oi < no; oi++) {
                             char *msg = dupprintf(
-                                "Note: this key is still Windows Hello "
-                                "protected at\n\n    %s\n\nThe agent keeps "
-                                "asking Windows Hello for that file (its "
-                                ".hello sidecar still exists). Delete it, "
-                                "or save over it without protection, to "
-                                "disarm it there too.", others[oi]);
-                            MessageBox(hwnd, msg, "KiTTYgen Notice",
+                                KT_KGEN_STILL_PROTECTED_FMT, others[oi]);
+                            MessageBox(hwnd, msg, KT_CAP_KGEN_NOTICE,
                                        MB_OK | MB_ICONINFORMATION);
                             sfree(msg);
                         }
@@ -2926,7 +2894,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         fclose(fp);
                         buffer = dupprintf("Overwrite existing file\n%s?",
                                            filename_to_str(fn));
-                        ret = MessageBox(hwnd, buffer, "KiTTYgen Warning",
+                        ret = MessageBox(hwnd, buffer, KT_CAP_KITTYGEN_WARNING,
                                          MB_YESNO | MB_ICONWARNING);
                         sfree(buffer);
                         if (ret != IDYES) {
@@ -2937,7 +2905,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     fp = f_open(fn, "w", false);
                     if (!fp) {
                         MessageBox(hwnd, "Unable to open key file",
-                                   "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                                   KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                     } else {
                         if (state->ssh2) {
                             strbuf *blob = strbuf_new();
@@ -2952,7 +2920,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         }
                         if (fclose(fp) < 0) {
                             MessageBox(hwnd, "Unable to save key file",
-                                       "KiTTYgen Error", MB_OK | MB_ICONERROR);
+                                       KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                         }
                     }
                     filename_free(fn);
@@ -2991,9 +2959,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                 (struct MainDlgState *) GetWindowLongPtr(hwnd, GWLP_USERDATA);
             if (!state->loaded_path ||
                 !kageant_hello_has_sidecar(state->loaded_path)) {
-                MessageBox(hwnd, "Load a Windows Hello protected key first "
-                           "(a .ppk with a .hello file beside it).",
-                           "KiTTYgen", MB_OK | MB_ICONINFORMATION);
+                MessageBox(hwnd, KT_KGEN_LOAD_HELLO_FIRST,
+                           KT_CAP_KITTYGEN, MB_OK | MB_ICONINFORMATION);
                 break;
             }
             {
@@ -3254,7 +3221,7 @@ static NORETURN void opt_error(const char *fmt, ...)
     char *msg = dupvprintf(fmt, ap);
     va_end(ap);
 
-    MessageBox(NULL, msg, "KiTTYgen command line error", MB_ICONERROR | MB_OK);
+    MessageBox(NULL, msg, KT_CAP_KGEN_CMDLINE_ERROR, MB_ICONERROR | MB_OK);
 
     exit(1);
 }

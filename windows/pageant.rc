@@ -8,6 +8,7 @@
 #define APPDESC "kageant (KiTTY SSH authentication agent)"
 
 #include "pageant-rc.h"
+#include "../kitty/kitty_text.h"
 
 #include "help.rc2"
 
@@ -52,35 +53,35 @@ IDI_TRAYICON ICON "kitty_pp_tray_light.ico"
  * on one line at the old width. */
 IDD_LOAD_PASSPHRASE DIALOGEX DISCARDABLE 0, 0, 240, 74
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "kageant: Loading Encrypted Key"
+CAPTION KT_RC_LOAD_PASSPHRASE_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    CTEXT "Enter passphrase to load key", IDC_PASSPHRASE_STATIC1,
+    CTEXT KT_RC_LOAD_PASSPHRASE_PROMPT, IDC_PASSPHRASE_STATIC1,
         10, 8, 220, 9
     CTEXT "", IDC_PASSPHRASE_FINGERPRINT, 10, 22, 220, 9
     EDITTEXT IDC_PASSPHRASE_EDITBOX, 10, 36, 220, 11,
         ES_PASSWORD | ES_AUTOHSCROLL
     DEFPUSHBUTTON "O&K", IDOK, 128, 54, 48, 14
-    PUSHBUTTON "&Cancel", IDCANCEL, 182, 54, 48, 14
+    PUSHBUTTON KT_XFER_BTN_CANCEL, IDCANCEL, 182, 54, 48, 14
 END
 
 IDD_ONDEMAND_PASSPHRASE DIALOGEX DISCARDABLE 0, 0, 300, 96
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "kageant: Decrypting Stored Key"
+CAPTION KT_RC_ONDEMAND_PASSPHRASE_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    CTEXT "A client of kageant wants to use the following encrypted key:",
+    CTEXT KT_RC_ONDEMAND_PASSPHRASE_LINE1,
         IDC_PASSPHRASE_STATIC1, 10, 8, 280, 9
     CTEXT "", IDC_PASSPHRASE_FINGERPRINT, 10, 21, 280, 9
-    CTEXT "If you intended this, click in this box to make sure it has",
+    CTEXT KT_RC_ONDEMAND_PASSPHRASE_LINE2,
         IDC_PASSPHRASE_STATIC2, 10, 36, 280, 9
-    CTEXT "input focus, then enter the passphrase to decrypt the key.",
+    CTEXT KT_RC_ONDEMAND_PASSPHRASE_LINE3,
         IDC_PASSPHRASE_STATIC3, 10, 46, 280, 9
     EDITTEXT IDC_PASSPHRASE_EDITBOX, 10, 60, 280, 11,
         ES_PASSWORD | ES_AUTOHSCROLL
     DEFPUSHBUTTON "O&K", IDOK, 128, 78, 48, 14
-    PUSHBUTTON "&Cancel", IDCANCEL, 182, 78, 48, 14
-    PUSHBUTTON "&Help", IDHELP, 236, 78, 54, 14
+    PUSHBUTTON KT_XFER_BTN_CANCEL, IDCANCEL, 182, 78, 48, 14
+    PUSHBUTTON KT_MENU_HELP, IDHELP, 236, 78, 54, 14
 END
 
 /* KiTTY: ListView styles for the key list; the winres headers do not
@@ -106,7 +107,7 @@ END
  * now share one height and one top, with SS_CENTERIMAGE on the label. */
 IDD_KEYLIST DIALOGEX DISCARDABLE 0, 0, 450, 244
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX
-CAPTION "kageant Key List"
+CAPTION KT_CAP_KA_KEY_LIST
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     /* KiTTY: a real ListView in report mode instead of upstream's owner-drawn
@@ -116,41 +117,41 @@ BEGIN
         LVS_REPORT | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,
         10, 10, 420, 155
     PUSHBUTTON "&Add Key", IDC_KEYLIST_ADDKEY, 10, 187, 60, 14
-    PUSHBUTTON "Add Key (&encrypted)", IDC_KEYLIST_ADDKEY_ENC, 75, 187, 80, 14
-    PUSHBUTTON "Move &Up", IDC_KEYLIST_MOVEUP, 170, 187, 55, 14
-    PUSHBUTTON "Move D&own", IDC_KEYLIST_MOVEDOWN, 230, 187, 55, 14
+    PUSHBUTTON KT_RC_KEYLIST_ADDKEY_ENC, IDC_KEYLIST_ADDKEY_ENC, 75, 187, 80, 14
+    PUSHBUTTON KT_RC_KEYLIST_MOVEUP, IDC_KEYLIST_MOVEUP, 170, 187, 55, 14
+    PUSHBUTTON KT_RC_KEYLIST_MOVEDOWN, IDC_KEYLIST_MOVEDOWN, 230, 187, 55, 14
     /* Right-hand buttons END at x=430, the ListView's right edge (10 + 420).
      * They are RIGHT-anchored, so lining them up at the template size lines
      * them up at every size. */
-    PUSHBUTTON "Re-e&ncrypt", IDC_KEYLIST_REENCRYPT, 305, 187, 60, 14
+    PUSHBUTTON KT_KAKEYS_BTN_REENCRYPT, IDC_KEYLIST_REENCRYPT, 305, 187, 60, 14
     PUSHBUTTON "&Remove", IDC_KEYLIST_REMOVE, 370, 187, 60, 14
     /* Confirm row, pulled up directly under the key buttons. The Resume
      * button lives here because it re-enables THESE confirmations; it is
      * enabled only while they are suppressed (see WM_TIMER). */
-    LTEXT "Confirm key use:", IDC_KEYLIST_CONFIRM_LABEL, 10, 204, 66, 14,
+    LTEXT KT_RC_KEYLIST_CONFIRM_LABEL, IDC_KEYLIST_CONFIRM_LABEL, 10, 204, 66, 14,
         SS_CENTERIMAGE
-    AUTORADIOBUTTON "Ever&y use", IDC_KEYLIST_CONFIRM_YES, 80, 204, 62, 14,
+    AUTORADIOBUTTON KT_RC_KEYLIST_CONFIRM_YES, IDC_KEYLIST_CONFIRM_YES, 80, 204, 62, 14,
         WS_GROUP
-    AUTORADIOBUTTON "By key co&mment", IDC_KEYLIST_CONFIRM_AUTO,
+    AUTORADIOBUTTON KT_RC_KEYLIST_CONFIRM_AUTO, IDC_KEYLIST_CONFIRM_AUTO,
         146, 204, 86, 14
     AUTORADIOBUTTON "Ne&ver", IDC_KEYLIST_CONFIRM_NO, 236, 204, 50, 14
-    PUSHBUTTON "Stop rejec&ting keys", IDC_KEYLIST_RESUMECONFIRM,
+    PUSHBUTTON KT_RC_KEYLIST_RESUMECONFIRM, IDC_KEYLIST_RESUMECONFIRM,
         300, 204, 130, 14
     /* Window / agent actions; New key aligns under Add Key (x=10). */
-    PUSHBUTTON "Ne&w key...", IDC_KEYLIST_NEWKEY, 10, 224, 56, 14
+    PUSHBUTTON KT_RC_KEYLIST_NEWKEY, IDC_KEYLIST_NEWKEY, 10, 224, 56, 14
     PUSHBUTTON "&Settings...", IDC_KEYLIST_SETTINGS, 72, 224, 56, 14
     /* a&gent, not &agent: A belongs to "&Add Key". With the letter on two
      * controls Alt+A went to THIS one and pressed it (measured 2026-08-12) -
      * the duplicate silently stole the key from Add Key. */
-    PUSHBUTTON "Stop a&gent", IDC_KEYLIST_STOPAGENT, 134, 224, 62, 14
+    PUSHBUTTON KT_RC_KEYLIST_STOPAGENT, IDC_KEYLIST_STOPAGENT, 134, 224, 62, 14
     PUSHBUTTON "A&bout", IDC_KEYLIST_ABOUT, 202, 224, 46, 14
-    PUSHBUTTON "&Help", IDC_KEYLIST_HELP, 254, 224, 44, 14
+    PUSHBUTTON KT_MENU_HELP, IDC_KEYLIST_HELP, 254, 224, 44, 14
     /* KiTTY: straight into the audit-log viewer - RIGHT-anchored, left of
      * Close (which ends at 430, the ListView's right edge). */
     /* &l: g belongs to "Stop a&gent" - the accelerator check caught the
      * collision at build time, which is exactly its job. */
     PUSHBUTTON "Agent &log...", IDC_KEYLIST_AUDITLOG, 318, 224, 56, 14
-    DEFPUSHBUTTON "&Close", IDOK, 380, 224, 50, 14
+    DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 380, 224, 50, 14
     /* The ini-path line rides beside "Show unavailable keys". It is the one control
      * here that STRETCHES (LEFT|RIGHT|BOTTOM), so it starts narrow and takes
      * every extra pixel the window is given - the Retry button beside it is
@@ -160,7 +161,7 @@ BEGIN
      * as well. */
     LTEXT "", IDC_KEYLIST_INISTATUS, 285, 170, 40, 14,
         SS_PATHELLIPSIS | SS_CENTERIMAGE
-    LTEXT "&Fingerprint type:", IDC_KEYLIST_FPTYPE_STATIC, 10, 170, 64, 14,
+    LTEXT KT_RC_KEYLIST_FPTYPE_LABEL, IDC_KEYLIST_FPTYPE_STATIC, 10, 170, 64, 14,
         SS_CENTERIMAGE
     COMBOBOX IDC_KEYLIST_FPTYPE, 78, 170, 95, 12, CBS_DROPDOWNLIST
     /* KiTTY: startup entries whose file is absent/broken, shown as rows. The
@@ -170,9 +171,9 @@ BEGIN
      * honestly. The trailing "keys" is what stops "Retry unavailable" being read
      * as "retrying is unavailable". &k because R (Remove), U (Move Up), Y (Every
      * use) and T (Stop rejecting keys) are all taken in this dialog. */
-    AUTOCHECKBOX "Show unavailable keys", IDC_KEYLIST_SHOWUNAVAIL,
+    AUTOCHECKBOX KT_RC_KEYLIST_SHOWUNAVAIL, IDC_KEYLIST_SHOWUNAVAIL,
         182, 170, 100, 14
-    PUSHBUTTON "Retry unavailable &keys", IDC_KEYLIST_RETRY, 326, 170, 104, 14
+    PUSHBUTTON KT_RC_KEYLIST_RETRY, IDC_KEYLIST_RETRY, 326, 170, 104, 14
 END
 
 /* KiTTY: key details. Read-only EDIT controls, not statics, because the
@@ -193,37 +194,37 @@ END
  */
 IDD_KEYDETAILS DIALOGEX DISCARDABLE 0, 0, 420, 270
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
-CAPTION "kageant - key details"
+CAPTION KT_CAP_KA_KEY_DETAILS
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT "Key:", -1, 10, 10, 58, 11, SS_CENTERIMAGE
+    LTEXT KT_RC_KEYDETAILS_KEY, -1, 10, 10, 58, 11, SS_CENTERIMAGE
     EDITTEXT IDC_KEYDETAIL_KEY, 72, 10, 338, 11, ES_READONLY | ES_AUTOHSCROLL
-    LTEXT "State:", -1, 10, 26, 58, 11, SS_CENTERIMAGE
+    LTEXT KT_RC_KEYDETAILS_STATE, -1, 10, 26, 58, 11, SS_CENTERIMAGE
     EDITTEXT IDC_KEYDETAIL_STATE, 72, 26, 338, 11,
         ES_READONLY | ES_AUTOHSCROLL
-    LTEXT "Fingerprints:", -1, 10, 42, 58, 11, SS_CENTERIMAGE
+    LTEXT KT_RC_KEYDETAILS_FINGERPRINTS, -1, 10, 42, 58, 11, SS_CENTERIMAGE
     EDITTEXT IDC_KEYDETAIL_FPS, 72, 42, 338, 46,
         ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_HSCROLL | WS_VSCROLL
-    LTEXT "Comment:", -1, 10, 92, 58, 11, SS_CENTERIMAGE
+    LTEXT KT_RC_KEYDETAILS_COMMENT, -1, 10, 92, 58, 11, SS_CENTERIMAGE
     EDITTEXT IDC_KEYDETAIL_COMMENT, 72, 92, 338, 26,
         ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL
-    LTEXT "Loaded from:", -1, 10, 122, 58, 11, SS_CENTERIMAGE
+    LTEXT KT_RC_KEYDETAILS_LOADED_FROM, -1, 10, 122, 58, 11, SS_CENTERIMAGE
     EDITTEXT IDC_KEYDETAIL_PATHS, 72, 122, 278, 56,
         ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_VSCROLL
     /* KiTTY: re-point a not-loaded entry whose file is absent or will not
      * parse. Never shown on a mismatch - Accept below owns that case. */
-    PUSHBUTTON "&Locate...", IDC_KEYDETAIL_LOCATE, 356, 122, 54, 14
-    LTEXT "Lifetime:", IDC_KEYDETAIL_LIFETIME_LBL, 10, 182, 58, 11,
+    PUSHBUTTON KT_RC_KEYDETAILS_LOCATE, IDC_KEYDETAIL_LOCATE, 356, 122, 54, 14
+    LTEXT KT_RC_KEYDETAILS_LIFETIME, IDC_KEYDETAIL_LIFETIME_LBL, 10, 182, 58, 11,
         SS_CENTERIMAGE
     EDITTEXT IDC_KEYDETAIL_LIFETIME, 72, 182, 338, 11,
         ES_READONLY | ES_AUTOHSCROLL
-    AUTOCHECKBOX "Load this key &deferred at startup (passphrase at first use)",
+    AUTOCHECKBOX KT_RC_KEYDETAILS_DEFER,
         IDC_KEYDETAIL_DEFER, 10, 200, 300, 12
     /* KiTTY: three-valued (none / ask / ask with Windows Hello), so a
      * droplist, not a checkbox. The label keeps the COMBO's height, not the
      * edits' - a combo box sizes its closed height from the font and lands
      * on 14 here, ignoring whatever the template says. */
-    LTEXT "Confir&m each use:", IDC_KEYDETAIL_CONFIRM_LBL, 10, 216, 68, 14,
+    LTEXT KT_RC_KEYDETAILS_CONFIRM_LABEL, IDC_KEYDETAIL_CONFIRM_LBL, 10, 216, 68, 14,
         SS_CENTERIMAGE
     COMBOBOX IDC_KEYDETAIL_CONFIRM, 82, 216, 164, 48,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
@@ -232,18 +233,18 @@ BEGIN
      * login, where one click ratified a swap. */
     /* KiTTY: this key's own idle re-encrypt time; blank = the agent's
      * default; greyed while the agent setting is enforced. */
-    LTEXT "Re-encr&ypt after idle:", IDC_KEYDETAIL_AUTOENC_LBL, 10, 232, 78, 11,
+    LTEXT KT_RC_KEYDETAILS_AUTOENC_LABEL, IDC_KEYDETAIL_AUTOENC_LBL, 10, 232, 78, 11,
         SS_CENTERIMAGE
     EDITTEXT IDC_KEYDETAIL_AUTOENC, 92, 232, 48, 11, ES_AUTOHSCROLL
     LTEXT "", IDC_KEYDETAIL_AUTOENC_NOTE, 146, 232, 264, 11, SS_CENTERIMAGE
-    PUSHBUTTON "&Accept this key", IDC_KEYDETAIL_ACCEPT, 10, 250, 90, 15
+    PUSHBUTTON KT_RC_KEYDETAILS_ACCEPT, IDC_KEYDETAIL_ACCEPT, 10, 250, 90, 15
     /* KiTTY: Hello-protected keys. Protect writes a protected COPY of the
      * key (never rewrites the original); Forget drops ONE source path from
      * the startup list (a deleted plaintext original, a retired stick). */
-    PUSHBUTTON "&Protect with Windows Hello...", IDC_KEYDETAIL_PROTECT,
+    PUSHBUTTON KT_RC_KEYDETAILS_PROTECT, IDC_KEYDETAIL_PROTECT,
         104, 250, 120, 15
-    PUSHBUTTON "For&get a path...", IDC_KEYDETAIL_FORGET, 228, 250, 70, 15
-    DEFPUSHBUTTON "&Close", IDOK, 358, 250, 52, 15
+    PUSHBUTTON KT_RC_KEYDETAILS_FORGET, IDC_KEYDETAIL_FORGET, 228, 250, 70, 15
+    DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 358, 250, 52, 15
 END
 
 /* KiTTY: the [Agent] settings dialog, reached from the key list window's
@@ -281,7 +282,7 @@ END
  */
 IDD_KEYSETTINGS DIALOGEX DISCARDABLE 0, 0, 300, 202
 STYLE DS_MODALFRAME | DS_SHELLFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "kageant - settings"
+CAPTION KT_CAP_KA_SETTINGS
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     /* The tab control is the STRIP ONLY - 18 units tall, not the height of a
@@ -308,69 +309,69 @@ BEGIN
      * used 16/12 and read as spread out next to it). A field starts 4 units after its label's text ends,
      * not in a fixed 108-unit column. */
     /* ---- page 0: Agent ---- */
-    AUTOCHECKBOX "Register as Windows &OpenSSH agent", IDC_SET_OPENSSH,
+    AUTOCHECKBOX KT_KA_MENU_OPENSSH, IDC_SET_OPENSSH,
         16, 28, 268, 10
-    AUTOCHECKBOX "&Start kageant at login", IDC_SET_STARTUP,
+    AUTOCHECKBOX KT_KA_MENU_START_AT_LOGIN, IDC_SET_STARTUP,
         16, 39, 268, 10
     AUTOCHECKBOX "Load remembered &keys at startup", IDC_SET_LOADKEYS,
         16, 50, 268, 10
-    AUTOCHECKBOX "&Notify when a key is used", IDC_SET_NOTIFY,
+    AUTOCHECKBOX KT_KA_MENU_NOTIFY, IDC_SET_NOTIFY,
         16, 61, 268, 10
-    LTEXT "Notice &display (seconds):", IDC_SET_L_NOTICE,
+    LTEXT KT_RC_KEYSETTINGS_NOTICE_LABEL, IDC_SET_L_NOTICE,
         16, 76, 86, 11, SS_CENTERIMAGE
     EDITTEXT IDC_SET_NOTICESECS, 106, 76, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "blank = each notice's own default", IDC_SET_L_NOTICEHINT,
+    LTEXT KT_RC_KEYSETTINGS_NOTICE_HINT, IDC_SET_L_NOTICEHINT,
         146, 76, 138, 11, SS_CENTERIMAGE
-    LTEXT "&Colour theme:", IDC_SET_L_THEME,
+    LTEXT KT_RC_KEYSETTINGS_THEME_LABEL, IDC_SET_L_THEME,
         16, 91, 50, 14, SS_CENTERIMAGE
     COMBOBOX IDC_SET_THEME, 70, 91, 100, 80,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT "Dark needs Windows 10 1809 or newer; anything older stays light.",
+    LTEXT KT_RC_KEYSETTINGS_THEME_HINT,
         IDC_SET_L_THEMEHINT, 16, 109, 268, 10
 
     /* ---- page 1: Security ---- */
-    AUTOCHECKBOX "&Lock down: refuse ALL key add/remove over IPC",
+    AUTOCHECKBOX KT_RC_KEYSETTINGS_LOCKDOWN,
         IDC_SET_LOCKDOWN, 16, 28, 268, 10
-    AUTOCHECKBOX "Block &adding keys over IPC", IDC_SET_BLOCKADD,
+    AUTOCHECKBOX KT_RC_KEYSETTINGS_BLOCKADD, IDC_SET_BLOCKADD,
         16, 39, 268, 10
-    AUTOCHECKBOX "Block re&moving keys over IPC", IDC_SET_BLOCKREMOVE,
+    AUTOCHECKBOX KT_RC_KEYSETTINGS_BLOCKREMOVE, IDC_SET_BLOCKREMOVE,
         16, 50, 268, 10
-    AUTOCHECKBOX "Confirmations require Windows &Hello", IDC_SET_HELLO,
+    AUTOCHECKBOX KT_RC_KEYSETTINGS_HELLO, IDC_SET_HELLO,
         16, 61, 268, 10
-    LTEXT "&Passphrase cache (seconds):", IDC_SET_L_TTL,
+    LTEXT KT_RC_KEYSETTINGS_TTL_LABEL, IDC_SET_L_TTL,
         16, 76, 96, 11, SS_CENTERIMAGE
     EDITTEXT IDC_SET_TTL, 116, 76, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "0 = do not cache; blank = the default 60; maximum 300 (5 min). Keys that share a passphrase then load with one prompt.",
+    LTEXT KT_RC_KEYSETTINGS_TTL_HINT,
         IDC_SET_L_TTLHINT, 16, 90, 268, 20
-    LTEXT "Windows Hello cach&e (seconds):", IDC_SET_L_HELLOTTL,
+    LTEXT KT_RC_KEYSETTINGS_HELLOTTL_LABEL, IDC_SET_L_HELLOTTL,
         16, 112, 108, 11, SS_CENTERIMAGE
     EDITTEXT IDC_SET_HELLOTTL, 128, 112, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
-    LTEXT "One Hello covers a batch; 0 = every unlock asks; blank = the default 60. Maximum 300.",
+    LTEXT KT_RC_KEYSETTINGS_HELLOTTL_HINT,
         IDC_SET_L_HELLOTTLHINT, 16, 128, 268, 10
     /* Re-encrypt keys after idle: a MODE (off / default for keys without
      * their own value / enforced for every key) and a time. */
-    LTEXT "Re-encr&ypt keys after idle:", IDC_SET_L_AUTOENC,
+    LTEXT KT_RC_KEYSETTINGS_AUTOENC_LABEL, IDC_SET_L_AUTOENC,
         16, 144, 94, 14, SS_CENTERIMAGE
     COMBOBOX IDC_SET_AUTOENCMODE, 112, 144, 118, 60,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     EDITTEXT IDC_SET_AUTOENC, 236, 144, 48, 11, ES_AUTOHSCROLL
-    LTEXT "Seconds, or 10m / 2h / 1d; \"use\" = right after each use. 30 s to 7 d.",
+    LTEXT KT_RC_KEYSETTINGS_AUTOENC_HINT,
         IDC_SET_L_AUTOENCHINT, 16, 162, 268, 10
 
     /* ---- page 2: Removable media ---- */
-    LTEXT "&Retry startup keys to load, when a drive appears:",
+    LTEXT KT_RC_KEYSETTINGS_RETRY_LABEL,
         IDC_SET_L_RETRY, 16, 28, 268, 10
     COMBOBOX IDC_SET_RETRY, 16, 40, 220, 80,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    AUTOCHECKBOX "&Unload a key when its media is removed", IDC_SET_UNLOAD,
+    AUTOCHECKBOX KT_RC_KEYSETTINGS_UNLOAD, IDC_SET_UNLOAD,
         16, 58, 268, 10
-    AUTOCHECKBOX "Do not &warn about missing startup keys", IDC_SET_QUIET,
+    AUTOCHECKBOX KT_RC_KEYSETTINGS_QUIET, IDC_SET_QUIET,
         16, 69, 268, 10
 
     /* ---- page 3: Log ---- */
-    AUTOCHECKBOX "Wr&ite the agent log", IDC_SET_AGENTLOG,
+    AUTOCHECKBOX KT_RC_KEYSETTINGS_AGENTLOG, IDC_SET_AGENTLOG,
         16, 28, 268, 10
-    LTEXT "&File (blank = default):", IDC_SET_L_LOGPATH,
+    LTEXT KT_RC_KEYSETTINGS_LOGPATH_LABEL, IDC_SET_L_LOGPATH,
         16, 42, 74, 11, SS_CENTERIMAGE
     EDITTEXT IDC_SET_AGENTLOGPATH, 94, 42, 190, 11, ES_AUTOHSCROLL
     /* Where a blank File box actually puts the log. Filled in at
@@ -383,20 +384,20 @@ BEGIN
      * The accelerator check is per DIALOG, not per page, and it is right to
      * be: Alt+letter reaches a hidden page's control just as well as a
      * visible one, so the letters have to be unique across all four. */
-    LTEXT "Rota&te at (KB):", IDC_SET_L_LOGKB,
+    LTEXT KT_RC_KEYSETTINGS_LOGKB_LABEL, IDC_SET_L_LOGKB,
         16, 70, 48, 11, SS_CENTERIMAGE
     EDITTEXT IDC_SET_AGENTLOGKB, 68, 70, 36, 11, ES_NUMBER
-    LTEXT "&Generations:", IDC_SET_L_LOGKEEP,
+    LTEXT KT_RC_KEYSETTINGS_LOGKEEP_LABEL, IDC_SET_L_LOGKEEP,
         112, 70, 44, 11, SS_CENTERIMAGE
     EDITTEXT IDC_SET_AGENTLOGKEEP, 160, 70, 28, 11, ES_NUMBER
-    LTEXT "E&xpunge rotated logs after (days, 0 = keep):", IDC_SET_L_LOGDAYS,
+    LTEXT KT_RC_KEYSETTINGS_LOGDAYS_LABEL, IDC_SET_L_LOGDAYS,
         16, 86, 152, 11, SS_CENTERIMAGE
     EDITTEXT IDC_SET_AGENTLOGDAYS, 172, 86, 32, 11, ES_NUMBER
-    LTEXT "The log is evidence, not proof - see the manual.",
+    LTEXT KT_RC_KEYSETTINGS_LOGNOTE,
         IDC_SET_L_LOGNOTE, 16, 102, 268, 10
 
-    DEFPUSHBUTTON "OK", IDOK, 182, 182, 54, 15
-    PUSHBUTTON "Cancel", IDCANCEL, 240, 182, 54, 15
+    DEFPUSHBUTTON KT_WIN_OK, IDOK, 182, 182, 54, 15
+    PUSHBUTTON KT_KITTY_CANCEL, IDCANCEL, 240, 182, 54, 15
 END
 
 /* KiTTY: the audit-log viewer - modeless (a log window is left open for an
@@ -417,7 +418,7 @@ END
  */
 IDD_AUDITVIEW DIALOGEX DISCARDABLE 0, 0, 460, 260
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
-CAPTION "kageant - agent log"
+CAPTION KT_CAP_KA_AGENT_LOG
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     /* ONE toolbar row: every control starts at y=6 and the edit and
@@ -430,14 +431,14 @@ BEGIN
      * pixel top and height (the combo's natural height - see the
      * row-aligner in AuditViewProc). Dialog-unit rounding cannot deliver
      * that; measured screenshots kept proving it. */
-    LTEXT "&Filter:", IDC_AUDIT_FILTER_LBL, 8, 6, 22, 14, SS_CENTERIMAGE
+    LTEXT KT_RC_AUDITVIEW_FILTER_LABEL, IDC_AUDIT_FILTER_LBL, 8, 6, 22, 14, SS_CENTERIMAGE
     EDITTEXT IDC_AUDIT_FILTER, 32, 6, 110, 14, ES_AUTOHSCROLL
-    LTEXT "&App:", IDC_AUDIT_APP_LBL, 150, 6, 18, 14, SS_CENTERIMAGE
+    LTEXT KT_RC_AUDITVIEW_APP_LABEL, IDC_AUDIT_APP_LBL, 150, 6, 18, 14, SS_CENTERIMAGE
     COMBOBOX IDC_AUDIT_REQFILTER, 170, 6, 90, 90,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    AUTOCHECKBOX "&Logging", IDC_AUDIT_ENABLE, 268, 6, 44, 14
-    PUSHBUTTON "&Refresh", IDC_AUDIT_REFRESH, 352, 6, 46, 14
-    DEFPUSHBUTTON "&Close", IDOK, 404, 6, 48, 14
+    AUTOCHECKBOX KT_RC_AUDITVIEW_ENABLE, IDC_AUDIT_ENABLE, 268, 6, 44, 14
+    PUSHBUTTON KT_MENU_REFRESH, IDC_AUDIT_REFRESH, 352, 6, 46, 14
+    DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 404, 6, 48, 14
     CONTROL "", IDC_AUDIT_LIST, "SysListView32",
         LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_BORDER |
         WS_TABSTOP, 8, 24, 444, 178
@@ -454,7 +455,7 @@ END
  * it selectable for copying (fingerprints, the requester's full path). */
 IDD_AUDITDETAIL DIALOGEX DISCARDABLE 0, 0, 330, 190
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
-CAPTION "kageant - agent log record"
+CAPTION KT_RC_AUDITDETAIL_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     /* The window has always had WS_THICKFRAME and never had anything that
@@ -463,7 +464,7 @@ BEGIN
      * now - the box takes all four edges, Close rides the bottom right. */
     EDITTEXT IDC_AUDITDETAIL_TEXT, 8, 8, 314, 154,
         ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL
-    DEFPUSHBUTTON "&Close", IDOK, 270, 168, 52, 15
+    DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 270, 168, 52, 15
 END
 
 /* Accelerators used: cl */
@@ -474,14 +475,14 @@ END
  * and nothing else. */
 IDD_ABOUT DIALOGEX DISCARDABLE 140, 40, 270, 140
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "About kageant"
+CAPTION KT_RC_ABOUT_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     /* The three buttons share a row and a height. Close is right-aligned to
      * the text box's right edge (10 + 250), the other two run from its left. */
-    DEFPUSHBUTTON "&Close", IDOK, 208, 120, 52, 15
-    PUSHBUTTON "View &Licence", IDC_ABOUT_LICENCE, 10, 120, 74, 15
-    PUSHBUTTON "Visit &Web Site", IDC_ABOUT_WEBSITE, 128, 120, 74, 15
+    DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 208, 120, 52, 15
+    PUSHBUTTON KT_RC_ABOUT_LICENCE, IDC_ABOUT_LICENCE, 10, 120, 74, 15
+    PUSHBUTTON KT_RC_ABOUT_WEBSITE, IDC_ABOUT_WEBSITE, 128, 120, 74, 15
     EDITTEXT IDC_ABOUT_TEXTBOX, 10, 6, 250, 108,
         ES_READONLY | ES_MULTILINE | ES_CENTER | ES_AUTOVSCROLL |
         WS_VSCROLL, WS_EX_STATICEDGE
@@ -490,10 +491,10 @@ END
 /* No accelerators used */
 IDD_LICENCE DIALOGEX DISCARDABLE 50, 50, 326, 239
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTY Licence"
+CAPTION KT_RC_LICENCE_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    DEFPUSHBUTTON "OK", IDOK, 141, 219, 48, 14
+    DEFPUSHBUTTON KT_WIN_OK, IDOK, 141, 219, 48, 14
 
     /* KiTTY: WS_VSCROLL - our licence text is longer than upstream's and
      * could not be scrolled without it */
@@ -517,35 +518,35 @@ END
  * does not fit in 60 units of this font. */
 IDD_HELLOPROTECT DIALOGEX DISCARDABLE 0, 0, 420, 322
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "kageant - protect a key with Windows Hello"
+CAPTION KT_RC_HELLOPROTECT_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT "Key file:", -1, 10, 10, 80, 11, SS_CENTERIMAGE
+    LTEXT KT_RC_HELLOPROTECT_KEYFILE, -1, 10, 10, 80, 11, SS_CENTERIMAGE
     EDITTEXT IDC_HP_SRC, 94, 10, 316, 11, ES_READONLY | ES_AUTOHSCROLL
-    LTEXT "Protected copy:", -1, 10, 26, 80, 11, SS_CENTERIMAGE
+    LTEXT KT_RC_HELLOPROTECT_DEST, -1, 10, 26, 80, 11, SS_CENTERIMAGE
     EDITTEXT IDC_HP_DEST, 94, 26, 246, 11, ES_AUTOHSCROLL
-    PUSHBUTTON "&Browse...", IDC_HP_BROWSE, 346, 25, 64, 14
-    LTEXT "Current passphrase:", IDC_HP_SRCPASS_LBL, 10, 44, 80, 11,
+    PUSHBUTTON KT_RC_HELLOPROTECT_BROWSE, IDC_HP_BROWSE, 346, 25, 64, 14
+    LTEXT KT_RC_HELLOPROTECT_SRCPASS, IDC_HP_SRCPASS_LBL, 10, 44, 80, 11,
         SS_CENTERIMAGE
     EDITTEXT IDC_HP_SRCPASS, 94, 44, 220, 11, ES_PASSWORD | ES_AUTOHSCROLL
-    AUTOCHECKBOX "&Use the current passphrase as the recovery passphrase",
+    AUTOCHECKBOX KT_RC_HELLOPROTECT_USESRCPASS,
         IDC_HP_USESRCPASS, 94, 60, 310, 11
-    LTEXT "Recovery passphrase:", IDC_HP_RECPASS_LBL, 10, 76, 80, 11,
+    LTEXT KT_RC_HELLOPROTECT_RECPASS, IDC_HP_RECPASS_LBL, 10, 76, 80, 11,
         SS_CENTERIMAGE
     EDITTEXT IDC_HP_RECPASS, 94, 76, 220, 11, ES_PASSWORD | ES_AUTOHSCROLL
-    LTEXT "Confirm:", IDC_HP_RECPASS2_LBL, 10, 92, 80, 11, SS_CENTERIMAGE
+    LTEXT KT_RC_HELLOPROTECT_RECPASS2, IDC_HP_RECPASS2_LBL, 10, 92, 80, 11, SS_CENTERIMAGE
     EDITTEXT IDC_HP_RECPASS2, 94, 92, 220, 11, ES_PASSWORD | ES_AUTOHSCROLL
-    AUTOCHECKBOX "&No recovery passphrase - Windows Hello and the printed secret only",
+    AUTOCHECKBOX KT_RC_HELLOPROTECT_HELLOONLY,
         IDC_HP_HELLOONLY, 94, 110, 310, 11
-    AUTOCHECKBOX "&Replace this key's startup entry with the protected copy",
+    AUTOCHECKBOX KT_RC_HELLOPROTECT_REPLACE,
         IDC_HP_REPLACE, 94, 125, 310, 11
-    AUTOCHECKBOX "Printout is a recover&y code bound to the .hello file (not",
+    AUTOCHECKBOX KT_RC_HELLOPROTECT_SIDEBOUND,
         IDC_HP_SIDEBOUND, 94, 140, 310, 11
-    LTEXT "the key's passphrase - it opens nothing without the file)",
+    LTEXT KT_RC_HELLOPROTECT_SIDEBOUND2,
         -1, 106, 153, 298, 9
     LTEXT "", IDC_HP_WARN, 10, 168, 400, 128
-    PUSHBUTTON "&Open folder", IDC_HP_OPENFOLDER, 10, 300, 70, 14
+    PUSHBUTTON KT_RC_MPWMOVED_OPEN_FOLDER, IDC_HP_OPENFOLDER, 10, 300, 70, 14
     DEFPUSHBUTTON "&Protect", IDOK, 286, 300, 58, 14
-    PUSHBUTTON "&Cancel", IDCANCEL, 350, 300, 60, 14
+    PUSHBUTTON KT_XFER_BTN_CANCEL, IDCANCEL, 350, 300, 60, 14
 END
 

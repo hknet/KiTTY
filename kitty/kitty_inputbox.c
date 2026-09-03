@@ -23,6 +23,7 @@ extern const char *kitty_reg_sessions( void ) ;
 #include "kitty_crypt.h"
 #include "kitty_registry.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
+#include "kitty_text.h"     /* the words this box shows */
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */
 extern Conf *conf ;                     /* active-seat global (window.c) */
@@ -80,9 +81,9 @@ static LRESULT CALLBACK InputCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 		case WM_INITDIALOG:
 			/* Advertise the internal-command console this box doubles as. */
 			if( IniFileFlag == SAVEMODE_DIR ) {
-				SetWindowText(hwnd,"Text input (portable mode) - /help = KiTTY commands");
+				SetWindowText(hwnd,KT_INPUTBOX_TITLE_PORTABLE);
 			} else {
-				SetWindowText(hwnd,"Text input - /help = KiTTY commands");
+				SetWindowText(hwnd,KT_INPUTBOX_TITLE);
 			}
 			handle = GetDlgItem(hwnd,IDC_RESULT);
 			if( InputBoxResult == NULL ) SetWindowText(handle,"") ;
@@ -192,14 +193,14 @@ BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 				snprintf( key_name, sizeof(key_name), "%s\\%s", kitty_reg_sessions(), conf_get_str(conf,CONF_sessionname) ) ;
 				if( GetValueDataN(HKEY_CURRENT_USER, key_name, "Notes", buffer, sizeof(buffer)) != NULL ) {
 					if( GetWindowTextLength(hwnd) > 0 ) 
-						if( MessageBox(hwnd, "Are you sure you want to load Notes\nand erase this edit box ?","Load Warning", MB_YESNO|MB_ICONWARNING ) != IDYES ) break ;
+						if( MessageBox(hwnd, KT_INPUTBOX_LOAD_NOTES_Q,KT_CAP_LOAD_WARNING, MB_YESNO|MB_ICONWARNING ) != IDYES ) break ;
 					SetWindowText( hwnd, buffer ) ;
 					}
 				}
 			else if( (wParam==VK_F3) && (GetKeyState( VK_SHIFT )& 0x8000) ) { // Sauve une Notes
 				GetSessionField( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), "Notes", buffer ) ;
 				if( strlen( buffer ) > 0 ) 
-					if( MessageBox(hwnd, "Are you sure you want to save Edit box\ninto Notes registry ?","Save Warning", MB_YESNO|MB_ICONWARNING ) != IDYES ) break ;
+					if( MessageBox(hwnd, KT_INPUTBOX_SAVE_NOTES_Q,KT_CAP_SAVE_WARNING, MB_YESNO|MB_ICONWARNING ) != IDYES ) break ;
 				GetWindowText( hwnd, buffer, 4096 ) ;
 				snprintf( key_name, sizeof(key_name), "%s\\%s", kitty_reg_sessions(), conf_get_str(conf,CONF_sessionname) ) ;
 				RegTestOrCreate( HKEY_CURRENT_USER, key_name, "Notes", buffer ) ;
@@ -231,8 +232,8 @@ static LRESULT CALLBACK InputMultilineCallBack (HWND hwnd, UINT message, WPARAM 
 			 * conf value can hold an unexpanded %%-placeholder template. */
 			buffer[0] = '\0' ;
 			if( (MainHwnd==NULL) || (GetWindowText( MainHwnd, buffer, 900 )<=0) || (buffer[0]=='\0') )
-				strcpy( buffer, "KiTTY" ) ;
-			strcat( buffer, " - Text input" ) ;
+				strcpy( buffer, KT_CAP_KITTY ) ;
+			strcat( buffer, KT_INPUTBOX_TITLE_SUFFIX ) ;
 			SetWindowText( hwnd, buffer ) ;
 			free(buffer);
 			handle = GetDlgItem(hwnd,IDC_RESULT) ;

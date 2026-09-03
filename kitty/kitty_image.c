@@ -14,6 +14,7 @@
 
 #include "kitty_image.h"
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
+#include "kitty_text.h"     /* the feature name in the old-Windows report */
 
 extern Conf *conf ;// extern Config cfg;
 //extern int offset_width, offset_height ;
@@ -627,7 +628,7 @@ void init_dc_blend(void) {
     if(msimg32_dll) 
         pAlphaBlend = (BOOL (WINAPI *)( HDC, int, int, int, int, HDC, int, int, int, int, BLENDFUNCTION ))
                       kitty_api_from(msimg32_dll, "msimg32.dll", "AlphaBlend", KITTY_API_OPTIONAL,
-                                  "background image transparency");
+                                  KT_WINFEAT_BG_ALPHA);
     
     if(pAlphaBlend) {
     	HDC hdc = GetDC(MainHwnd);

@@ -23,6 +23,7 @@
 #include "mpint.h"
 #include "misc.h"
 #include "kitty_hello.h"
+#include "kitty_text.h"     /* the owners-list wordings */
 
 /* ====================================================================
  * The wrapped-secret container. Pure crypto on in-tree primitives - no
@@ -819,13 +820,13 @@ char *kitty_hello_container_owners_text(const char *container)
         char *o = kitty_hello_container_w_owner(container, i);
         if (i)
             put_dataz(sb, ", ");
-        put_dataz(sb, o ? o : "(untagged)");
+        put_dataz(sb, o ? o : KT_HELLOC_UNTAGGED);
         sfree(o);
     }
     if (kitty_hello_container_has_hello(container)) {
         if (n)
             put_dataz(sb, ", ");
-        put_dataz(sb, "(Windows Hello key credential)");
+        put_dataz(sb, KT_HELLOC_HELLO_CRED);
     }
     return strbuf_to_str(sb);
 }

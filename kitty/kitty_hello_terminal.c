@@ -14,6 +14,7 @@
 #include "putty.h"
 #include "kitty_hello.h"
 #include "kitty_hello_keys.h"
+#include "kitty_text.h"     /* the anchor card's context line */
 
 extern char *(*kitty_hello_keyfile_unlock_hook)(const char *path);
 extern char *(*kitty_hello_keyfile_translate_hook)(const char *path,
@@ -33,8 +34,8 @@ static void kht_set_context(const char *path)
     for (q = path; *q; q++)
         if (*q == '\\' || *q == '/')
             base = q + 1;
-    snprintf(line, sizeof(line), "%s  -  key %s",
-             title[0] ? title : "KiTTY", base);
+    snprintf(line, sizeof(line), KT_HELLO_CONTEXT_LINE_FMT,
+             title[0] ? title : KT_CAP_KITTY, base);
     kitty_hello_set_context(line, kht_window);
 }
 

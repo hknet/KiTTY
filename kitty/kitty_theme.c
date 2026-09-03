@@ -38,6 +38,7 @@
 
 #include "kitty_theme.h"
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
+#include "kitty_text.h"     /* the feature names in the old-Windows report */
 
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
@@ -190,7 +191,7 @@ static bool kt_build_at_least(DWORD want)
     if (!nt)
         return false;
     p = (fn_RtlGetVersion)(void *)kitty_api_from(nt, "ntdll.dll", "RtlGetVersion", KITTY_API_OPTIONAL,
-                                  "detecting the Windows version");
+                                  KT_WINFEAT_WINVER);
     if (!p)
         return false;
     memset(&vi, 0, sizeof(vi));
@@ -231,15 +232,15 @@ static void kt_init(void)
      * mode did nothing. One entry for the three - they arrived together and go
      * missing together. */
     kitty_api_record("uxtheme.dll", "#133/#135/#104", KITTY_API_OPTIONAL,
-                     "dark mode",
+                     KT_WINFEAT_DARK_MODE,
                      p_AllowDarkModeForWindow && p_SetPreferredAppMode &&
                      p_RefreshImmersiveColorPolicyState);
     p_SetWindowTheme = (fn_SetWindowTheme)(void *)
         kitty_api_from(ux, "uxtheme.dll", "SetWindowTheme", KITTY_API_OPTIONAL,
-                                  "dark scroll bars and controls");
+                                  KT_WINFEAT_DARK_CONTROLS);
     p_DwmSetWindowAttribute = (fn_DwmSetWindowAttribute)(void *)
         kitty_api_from(dwm, "dwmapi.dll", "DwmSetWindowAttribute", KITTY_API_OPTIONAL,
-                                  "dark title bars");
+                                  KT_WINFEAT_DARK_TITLEBARS);
 
     if (!p_AllowDarkModeForWindow || !p_SetPreferredAppMode ||
         !p_SetWindowTheme || !p_DwmSetWindowAttribute)
@@ -734,7 +735,7 @@ static COLORREF kt_accent_for(bool dark)
         if (dwm) {
             fn_DwmGetColorizationColor p = (fn_DwmGetColorizationColor)(void *)
                 kitty_api_from(dwm, "dwmapi.dll", "DwmGetColorizationColor", KITTY_API_OPTIONAL,
-                                  "matching the desktop's accent colour");
+                                  KT_WINFEAT_ACCENT);
             DWORD argb = 0;
             BOOL opaque = FALSE;
             if (p && SUCCEEDED(p(&argb, &opaque))) {

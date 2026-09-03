@@ -35,6 +35,7 @@
 
 /* Shorten the ABI mouthfuls locally. */
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
+#include "kitty_text.h"     /* shared captions and feature names */
 typedef __x_ABI_CWindows_CSecurity_CCredentials_CUI_CIUserConsentVerifierStatics
     HelloStatics;
 typedef __FIAsyncOperation_1_UserConsentVerifierAvailability  HelloAvailOp;
@@ -94,16 +95,16 @@ static int hello_combase_load(void)
         if (m) {
             fnRoInitialize = (pRoInitialize_t)
                 kitty_api_from(m, "combase.dll", "RoInitialize", KITTY_API_OPTIONAL,
-                                  "Windows Hello");
+                                  KT_CAP_HELLO);
             fnRoGetActivationFactory = (pRoGetActivationFactory_t)
                 kitty_api_from(m, "combase.dll", "RoGetActivationFactory", KITTY_API_OPTIONAL,
-                                  "Windows Hello");
+                                  KT_CAP_HELLO);
             fnWindowsCreateString = (pWindowsCreateString_t)
                 kitty_api_from(m, "combase.dll", "WindowsCreateString", KITTY_API_OPTIONAL,
-                                  "Windows Hello");
+                                  KT_CAP_HELLO);
             fnWindowsDeleteString = (pWindowsDeleteString_t)
                 kitty_api_from(m, "combase.dll", "WindowsDeleteString", KITTY_API_OPTIONAL,
-                                  "Windows Hello");
+                                  KT_CAP_HELLO);
         }
     }
     g_combase_state = (fnRoInitialize && fnRoGetActivationFactory &&
@@ -1225,34 +1226,34 @@ static khw_api *khw_load(void)
         if (dll) {
             ver = (pWebAuthNGetApiVersionNumber_t)
                 kitty_api_from(dll, "webauthn.dll", "WebAuthNGetApiVersionNumber", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
             api.MakeCredential = (pWebAuthNMakeCredential_t)
                 kitty_api_from(dll, "webauthn.dll", "WebAuthNAuthenticatorMakeCredential", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
             api.GetAssertion = (pWebAuthNGetAssertion_t)
                 kitty_api_from(dll, "webauthn.dll", "WebAuthNAuthenticatorGetAssertion", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
             api.FreeAttestation = (pWebAuthNFreeAttestation_t)
                 kitty_api_from(dll, "webauthn.dll", "WebAuthNFreeCredentialAttestation", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
             api.FreeAssertion = (pWebAuthNFreeAssertion_t)
                 kitty_api_from(dll, "webauthn.dll", "WebAuthNFreeAssertion", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
             api.IsUVPAA = (pWebAuthNIsUVPAA_t)
                 kitty_api_from(dll, "webauthn.dll", "WebAuthNIsUserVerifyingPlatformAuthenticatorAvailable", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
             api.GetList = (pWebAuthNGetList_t)
                 kitty_api_from(dll, "webauthn.dll", "WebAuthNGetPlatformCredentialList", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
             api.FreeList = (pWebAuthNFreeList_t)
                 kitty_api_from(dll, "webauthn.dll", "WebAuthNFreePlatformCredentialList", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
             api.DeleteCred = (pWebAuthNDeleteCred_t)
                 kitty_api_from(dll, "webauthn.dll", "WebAuthNDeletePlatformCredential", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
             api.ErrorName = (pWebAuthNGetErrorName_t)
                 kitty_api_from(dll, "webauthn.dll", "WebAuthNGetErrorName", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
         }
         api.apiver = ver ? ver() : 0;
         api.state = (api.MakeCredential && api.GetAssertion &&
@@ -2165,10 +2166,10 @@ int kitty_hello_webauthn_list(char **out)
     }
     fnGetList = (pGetList_t)
         kitty_api_from(dll, "webauthn.dll", "WebAuthNGetPlatformCredentialList", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
     fnFreeList = (pFreeList_t)
         kitty_api_from(dll, "webauthn.dll", "WebAuthNFreePlatformCredentialList", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
     if (!fnGetList || !fnFreeList) {
         *out = dupstr("platform credential list API unavailable");
         return -1;
@@ -2245,25 +2246,25 @@ int kitty_hello_webauthn_probe_ex(const WCHAR *rp_id, int prf_mode,
     }
     fnVer = (pWebAuthNGetApiVersionNumber_t)
         kitty_api_from(dll, "webauthn.dll", "WebAuthNGetApiVersionNumber", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
     fnMake = (pWebAuthNMakeCredential_t)
         kitty_api_from(dll, "webauthn.dll", "WebAuthNAuthenticatorMakeCredential", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
     fnGetAssertion = (pWebAuthNGetAssertion_t)
         kitty_api_from(dll, "webauthn.dll", "WebAuthNAuthenticatorGetAssertion", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
     fnFreeAtt = (pWebAuthNFreeAttestation_t)
         kitty_api_from(dll, "webauthn.dll", "WebAuthNFreeCredentialAttestation", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
     fnFreeAssertion = (pWebAuthNFreeAssertion_t)
         kitty_api_from(dll, "webauthn.dll", "WebAuthNFreeAssertion", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
     fnDelete = (pWebAuthNDeleteCred_t)
         kitty_api_from(dll, "webauthn.dll", "WebAuthNDeletePlatformCredential", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
     fnErrName = (pWebAuthNGetErrorName_t)
         kitty_api_from(dll, "webauthn.dll", "WebAuthNGetErrorName", KITTY_API_OPTIONAL,
-                                  "Windows Hello protected keys");
+                                  KT_CAP_HELLO_KEYS);
     if (!fnVer || !fnMake || !fnGetAssertion || !fnFreeAtt ||
         !fnFreeAssertion) {
         *msg = dupstr("webauthn.dll lacks required exports");

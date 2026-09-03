@@ -32,6 +32,7 @@
 #include "kitty.h"      /* ReadParameterN + INIT_SECTION: the rz/sz paths are
                          * kitty.ini settings, not per-session conf keys */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
+#include "kitty_text.h"     /* shared captions and wordings */
 
 #define ZM_PIPE_SIZE (64 * 1024)
 
@@ -182,7 +183,7 @@ static void zm_log_errline(kitty_zmodem_state *zm)
         return;
     zm->errline[zm->errlen] = '\0';
     if (zm->logctx && !strstr(zm->errline, "BPS:")) {
-        char *msg = dupprintf("ZModem helper: %s", zm->errline);
+        char *msg = dupprintf(KT_ZM_HELPER_LOG, zm->errline);
         logevent(zm->logctx, msg);
         sfree(msg);
     }
@@ -365,14 +366,14 @@ int kitty_zmodem_receive(Conf *conf, Backend *backend, LogContext *logctx, Termi
     if (kitty_zmodem_active()) return 0;
     if (!existfile(cmd)) {
         char b[1024];
-        _snprintf(b, sizeof(b) - 1, "Unable to find ZModem receive program:\n%s",
-                  cmd ? cmd : "(unset)");
-        MessageBox(NULL, b, "KiTTY ZModem", MB_OK | MB_ICONERROR);
+        _snprintf(b, sizeof(b) - 1, KT_ZM_RZ_NOT_FOUND,
+                  cmd ? cmd : KT_ZM_UNSET);
+        MessageBox(NULL, b, KT_CAP_ZMODEM, MB_OK | MB_ICONERROR);
         return 0;
     }
     zm = zm_spawn(cmd, opts, dir, backend, logctx, term);
     if (!zm) {
-        MessageBox(NULL, "Unable to start ZModem receive.", "KiTTY ZModem",
+        MessageBox(NULL, KT_ZM_RZ_START_FAILED, KT_CAP_ZMODEM,
                    MB_OK | MB_ICONERROR);
         return 0;
     }
@@ -396,9 +397,9 @@ int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend, LogContext *logc
     if (kitty_zmodem_active()) return 0;
     if (!existfile(cmd)) {
         char b[1024];
-        _snprintf(b, sizeof(b) - 1, "Unable to find ZModem send program:\n%s",
-                  cmd ? cmd : "(unset)");
-        MessageBox(NULL, b, "KiTTY ZModem", MB_OK | MB_ICONERROR);
+        _snprintf(b, sizeof(b) - 1, KT_ZM_SZ_NOT_FOUND,
+                  cmd ? cmd : KT_ZM_UNSET);
+        MessageBox(NULL, b, KT_CAP_ZMODEM, MB_OK | MB_ICONERROR);
         return 0;
     }
 
@@ -408,7 +409,7 @@ int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend, LogContext *logc
     fn.hwndOwner = owner;
     fn.lpstrFile = filenames;
     fn.nMaxFile = sizeof(filenames) - 1;
-    fn.lpstrTitle = "Select file(s) to send by ZModem...";
+    fn.lpstrTitle = KT_ZM_SELECT_FILES;
     fn.Flags = OFN_ALLOWMULTISELECT | OFN_EXPLORER | OFN_FILEMUSTEXIST |
                OFN_HIDEREADONLY | OFN_PATHMUSTEXIST;
     if (!GetOpenFileName(&fn))
@@ -468,7 +469,7 @@ int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend, LogContext *logc
      */
     zm = zm_spawn(cmd, params, senddir[0] ? senddir : dir, backend, logctx, term);
     if (!zm) {
-        MessageBox(NULL, "Unable to start ZModem send.", "KiTTY ZModem",
+        MessageBox(NULL, KT_ZM_SZ_START_FAILED, KT_CAP_ZMODEM,
                    MB_OK | MB_ICONERROR);
         return 0;
     }

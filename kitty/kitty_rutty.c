@@ -29,6 +29,7 @@
 #include <limits.h>
 
 #include "putty.h"
+#include "kitty_text.h"     /* the Event Log wordings */
 
 #define script_line_size 4096
 #define script_cond_size 256
@@ -315,7 +316,7 @@ static void script_timeout(void *ctx, unsigned long now)
     ScriptData *s = (ScriptData *)ctx;
     if (labs((long)(now - s->latest)) < 50) {
         script_stop_internal(s);
-        logevent(NULL, "script timeout !");
+        logevent(NULL, KT_RUTTY_TIMEOUT);
     }
 }
 
@@ -379,7 +380,7 @@ int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile)
     /* script_sendfile: read whole file */
     fp = f_open(scriptfile, "rb", false);
     if (fp == NULL) {
-        logevent(NULL, "script file not found");
+        logevent(NULL, KT_RUTTY_FILE_NOT_FOUND);
         return false;
     }
     s->runs = true;
@@ -392,13 +393,13 @@ int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile)
     s->nextnextline = s->filebuffer = snewn(fsize + 1, char);
     s->filebuffer_end = &s->filebuffer[fsize];
     if (fread(s->filebuffer, sizeof(char), fsize, fp) != (size_t)fsize) {
-        logevent(NULL, "script file read failed");
+        logevent(NULL, KT_RUTTY_READ_FAILED);
         fclose(fp);
         script_stop_internal(s);
         return false;
     }
     fclose(fp);
-    logevent(NULL, "sending script to host ...");
+    logevent(NULL, KT_RUTTY_SENDING);
 
     script_getline(s);
     script_chkline(s);
@@ -443,7 +444,7 @@ void kitty_script_remote(const void *vdata, size_t len)
                 script_cond_chk(s->halton, s->halton_c,
                                 s->remotedata, s->remotedata_c)) {
                 script_stop_internal(s);
-                logevent(NULL, "script halted");
+                logevent(NULL, KT_RUTTY_HALTED);
                 return;
             }
             /* waitfor (prompt to send the next line) */

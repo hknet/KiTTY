@@ -20,6 +20,7 @@
 #include <string.h>
 #include "kitty_rc_additions.h"   /* IDD_MASTERPW, IDC_MPW_* */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
+#include "kitty_text.h"     /* shared captions */
 
 extern void kitty_set_master_pw_prompt(char *(*fn)(int creating));
 
@@ -62,20 +63,8 @@ static INT_PTR CALLBACK mpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
     switch (msg) {
       case WM_INITDIALOG:
         SetDlgItemTextA(hdlg, IDC_MPW_PROMPT, g_first_time ?
-            "Set a master password. It encrypts the passwords saved in your "
-            "portable session files, and they stay usable when you copy the "
-            "files to another PC.\r\n\r\n"
-            "If you lose the master password, the protected passwords CANNOT "
-            "be recovered.\r\n\r\n"
-            "If you cancel, saved passwords are protected with Windows DPAPI "
-            "instead: only this Windows account on this machine can read them "
-            "(a roaming domain profile may also work on other machines).\r\n\r\n"
-            "For unattended/automation setups: -masterpwfile <file> supplies "
-            "the master password without a prompt, and kitty.ini "
-            "PortablePasswordProtection can settle the choice permanently - "
-            "'dpapi' to always use DPAPI and never ask again, 'legacy' for "
-            "unprotected storage (see kitty.ini.example)." :
-            "Enter your master password to unlock the saved session password.");
+            KT_MPW_PROMPT_SET :
+            KT_MPW_PROMPT_UNLOCK);
         if (!g_first_time) {
             /* Unlock mode: the prompt is one line, so reclaim most of the
              * setup-sized prompt area, then drop the confirm row, moving the
@@ -114,8 +103,8 @@ static INT_PTR CALLBACK mpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
           case IDOK: {
             char *p1 = utf8_from_edit(hdlg, IDC_MPW_EDIT);
             if (!p1 || !p1[0]) {
-                MessageBoxA(hdlg, "Please enter a master password.",
-                            "KiTTY", MB_OK | MB_ICONINFORMATION);
+                MessageBoxA(hdlg, KT_MPW_EMPTY,
+                            KT_CAP_KITTY, MB_OK | MB_ICONINFORMATION);
                 if (p1) free(p1);
                 SetFocus(GetDlgItem(hdlg, IDC_MPW_EDIT));
                 return TRUE;
@@ -125,8 +114,8 @@ static INT_PTR CALLBACK mpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
                 int mismatch = (!p2 || strcmp(p1, p2) != 0);
                 if (p2) { SecureZeroMemory(p2, strlen(p2)); free(p2); }
                 if (mismatch) {
-                    MessageBoxA(hdlg, "The two master passwords do not match.",
-                                "KiTTY", MB_OK | MB_ICONWARNING);
+                    MessageBoxA(hdlg, KT_MPW_MISMATCH,
+                                KT_CAP_KITTY, MB_OK | MB_ICONWARNING);
                     SecureZeroMemory(p1, strlen(p1)); free(p1);
                     SetDlgItemTextA(hdlg, IDC_MPW_CONFIRM, "");
                     SetFocus(GetDlgItem(hdlg, IDC_MPW_CONFIRM));

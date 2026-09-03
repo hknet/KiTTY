@@ -38,6 +38,7 @@
 #include "winfont_fallback.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
+#include "kitty_text.h"   /* shared captions and wordings (also for the .c files included below) */
 
 /* The hive this process is ACTUALLY using. Not TEXT(PUTTY_REG_POS): that is the
  * compile-time DEFAULT, and with kitty.ini's KiClassName=PuTTY the two differ -
@@ -956,12 +957,12 @@ void SaveFolderList( void ) {
 // Renomme une Cle de registre
 void RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) { // hdlg boite d'information
 	if( RegTestKey( hMainKey, lpDestKey ) ) {
-		if( hdlg != NULL ) InfoBoxSetText( hdlg, "Cleaning backup registry" ) ;
+		if( hdlg != NULL ) InfoBoxSetText( hdlg, KT_MAIN_INFO_CLEANING_BACKUP ) ;
 		RegDelTree( hMainKey, lpDestKey ) ;
 		}
-	if( hdlg != NULL ) InfoBoxSetText( hdlg, "Saving registry" ) ;
+	if( hdlg != NULL ) InfoBoxSetText( hdlg, KT_MAIN_INFO_SAVING_REGISTRY ) ;
 	kitty_RegCopyTree( hMainKey, lpSubKey, lpDestKey ) ;
-	if( hdlg != NULL ) InfoBoxSetText( hdlg, "Preparing local registry" ) ;
+	if( hdlg != NULL ) InfoBoxSetText( hdlg, KT_MAIN_INFO_PREPARING_REGISTRY ) ;
 	RegDelTree( hMainKey, lpSubKey ) ;
 	}
 
@@ -1042,7 +1043,7 @@ void CreateDefaultIniFile( void ) {
 		if( !existfile( KittyIniFile ) ) {
 			CreateIniFile( KittyIniFile ) ;
 		}
-		if( !existfile( KittyIniFile ) ) { MessageBox( NULL, "Unable to create configuration file !", "Error", MB_OK|MB_ICONERROR ) ; }
+		if( !existfile( KittyIniFile ) ) { MessageBox( NULL, KT_MAIN_INI_CREATE_FAILED, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ; }
 	}
 }
 
@@ -1663,7 +1664,7 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 	{	unsigned char bom[2] ;
 		if( ( fread( bom, 1, 2, fp ) == 2 ) && ( bom[0] == 0xFF ) && ( bom[1] == 0xFE ) ) {
 			fclose( fp ) ;
-			if( hdlg != NULL ) InfoBoxSetText( hdlg, "Loading saved sessions." ) ;
+			if( hdlg != NULL ) InfoBoxSetText( hdlg, KT_MAIN_INFO_LOADING_SESSIONS ) ;
 			kitty_reg_import( savpath ) ;
 			return ;
 			}
@@ -1681,7 +1682,7 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 				strcpy( PasswordConf, GetInputBoxResult() ) ;
 				decryptstring( GetCryptSaltFlag(), buffer, PasswordConf ) ;
 				if( strcmp( buffer, "Windows Registry Editor Version 5.00" ) ) {
-					MessageBox( NULL, "Wrong password", "Error", MB_OK|MB_ICONERROR ) ;
+					MessageBox( NULL, KT_MAIN_WRONG_PASSWORD, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
 					exit(1) ;
 					}
 				/* Decrypt-only: the configuration password is retired, so the
@@ -1701,7 +1702,7 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 			if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(KeyName), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) 
 				{
 					if( hdlg != NULL ) {
-						snprintf( buffer, sizeof(buffer), "Loading %s", KeyName ) ;
+						snprintf( buffer, sizeof(buffer), KT_MAIN_INFO_LOADING_KEY, KeyName ) ;
 						InfoBoxSetText( hdlg, buffer ) ;
 						}
 					RegCreateKey( HKEY_CURRENT_USER, TEXT(KeyName), &hKey ) ; 
@@ -1725,7 +1726,7 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 				RegSetValueEx( hKey, TEXT( ValueName ), 0, REG_DWORD, (LPBYTE)&dwData, sizeof(DWORD) ) ;
 				}
 			else { // erreur
-				MessageBox( NULL, "Unknown value type", "Error", MB_OK|MB_ICONERROR ); 
+				MessageBox( NULL, KT_MAIN_SAV_UNKNOWN_TYPE, KT_CAP_ERROR, MB_OK|MB_ICONERROR );
 				exit( 1 ) ;
 				}
 			}
@@ -1754,11 +1755,11 @@ void routine_server( void * st ) {
 	lphDLL = LoadLibrary( TEXT( buffer ) ) ;
 	//lphDLL = LoadLibrary( TEXT("kchat.dll") ) ;
 	if( lphDLL == NULL ) {
-		MessageBox( MainHwnd, "Unable to load library kchat.dll", "Error", MB_OK|MB_ICONERROR ) ;
+		MessageBox( MainHwnd, KT_MAIN_KCHAT_LIB_FAILED, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
 		return ;
 		}
 	if( !( lpfnDllFunc1 = (LPFNDLLFUNC1) GetProcAddress( lphDLL, TEXT("main_m1") ) ) ) {
-		MessageBox( NULL, "Unable to load main chat function from library kchat.dll", "Error", MB_OK|MB_ICONERROR  );
+		MessageBox( NULL, KT_MAIN_KCHAT_FUNC_FAILED, KT_CAP_ERROR, MB_OK|MB_ICONERROR  );
 		FreeLibrary( lphDLL ) ;
 		return ;
 		}
@@ -2227,10 +2228,10 @@ void DisplaySystemTrayMenu( HWND hwnd ) {
 	POINT pt;
 
 	menu = CreatePopupMenu () ;
-	AppendMenu( menu, MF_ENABLED, IDM_FROMTRAY, "&Restore" ) ;
+	AppendMenu( menu, MF_ENABLED, IDM_FROMTRAY, KT_MENU_RESTORE ) ;
 	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
-	AppendMenu( menu, MF_ENABLED, IDM_ABOUT, "&About" ) ;
-	AppendMenu( menu, MF_ENABLED, IDM_QUIT, "E&xit" ) ;
+	AppendMenu( menu, MF_ENABLED, IDM_ABOUT, KT_MENU_ABOUT ) ;
+	AppendMenu( menu, MF_ENABLED, IDM_QUIT, KT_MENU_EXIT ) ;
 		
 	SetForegroundWindow( hwnd ) ;
 	GetCursorPos (&pt);
@@ -2415,7 +2416,7 @@ void OpenAndSendScriptFile( HWND hwnd ) {
         strcpy( buffer, "Script files (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|" ) ;
     }
     if( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='|' ) strcat( buffer, "|" ) ;
-    if( OpenFileName( hwnd, filename, "Open file...", buffer ) ) {
+    if( OpenFileName( hwnd, filename, KT_CAP_OPEN_FILE, buffer ) ) {
         RunScriptFile( hwnd, filename ) ;
     }
 }
@@ -2734,7 +2735,7 @@ int GetPortFwdState( const int port, const DWORD pid ) {
 	if( hLib ) {
 		pGetExtendedTcpTable = (DWORD (WINAPI *)(PVOID,PDWORD,BOOL,ULONG,TCP_TABLE_CLASS,ULONG)) 
 		kitty_api_from(hLib, "iphlpapi.dll", "GetExtendedTcpTable", KITTY_API_OPTIONAL,
-                                  "naming the program that owns a TCP port") ;
+                                  KT_WINFEAT_TCP_PORT_OWNER) ;
 		dwResult = pGetExtendedTcpTable(NULL, &size, 0, AF_INET, TCP_TABLE_OWNER_PID_LISTENER, 0) ;
 		pTCPInfo = (MIB_TCPTABLE_OWNER_PID*)malloc(size) ;
 		dwResult = pGetExtendedTcpTable(pTCPInfo, &size, 0, AF_INET, TCP_TABLE_OWNER_PID_LISTENER, 0) ;
@@ -2855,8 +2856,8 @@ int ShowPortfwd( HWND hwnd, Conf * conf ) {
 	
 	if( hLib ) { FreeLibrary( hLib ) ; }
 	*/
-	strcat( pf, "\n[C] Listening in the current process\n[X] Listening in another process\n[-] No Listening\n" );
-	MessageBox( NULL, pf, "Port forwarding", MB_OK ) ;
+	strcat( pf, KT_MAIN_PORTFWD_LEGEND );
+	MessageBox( NULL, pf, KT_CAP_PORT_FORWARDING, MB_OK ) ;
 	return SetTextToClipboard( pf ) ;
 }
 	
@@ -2871,7 +2872,7 @@ void SaveCurrentSetting( HWND hwnd ) {
 	}
 	strcat( buffer, "All files (*.*)|*.*|" ) ;
 	if( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='|' ) strcat( buffer, "|" ) ;
-	if( SaveFileName( hwnd, filename, "Save file...", buffer ) ) {
+	if( SaveFileName( hwnd, filename, KT_CAP_SAVE_FILE, buffer ) ) {
 		save_open_settings_forced( filename, conf ) ;
 		}
 	}
@@ -2893,7 +2894,7 @@ static void kitty_save_current_session( HWND hwnd, const char * newname ) {
 	if( strlen( conf_get_str(conf,CONF_folder) ) == 0 ) conf_set_str( conf, CONF_folder, "Default" ) ;
 	errmsg = save_settings( conf_get_str(conf,CONF_sessionname), conf ) ;
 	if( errmsg != NULL ) {
-		MessageBox( hwnd, errmsg, "Save session", MB_OK|MB_ICONERROR ) ;
+		MessageBox( hwnd, errmsg, KT_CAP_SAVE_SESSION, MB_OK|MB_ICONERROR ) ;
 		sfree( errmsg ) ;
 		return ;
 	}
@@ -2902,8 +2903,8 @@ static void kitty_save_current_session( HWND hwnd, const char * newname ) {
 		UINT msg = RegisterWindowMessageA( "KiTTYLauncherRefreshSessionsAndHotkeys" ) ;
 		if( msg ) PostMessageA( HWND_BROADCAST, msg, 0, 0 ) ;
 	}
-	snprintf( buffer, sizeof(buffer), "Settings saved to session\n-%s-", conf_get_str(conf,CONF_sessionname) ) ;
-	MessageBox( hwnd, buffer, "Save session", MB_OK|MB_ICONINFORMATION ) ;
+	snprintf( buffer, sizeof(buffer), KT_MAIN_SESSION_SAVED, conf_get_str(conf,CONF_sessionname) ) ;
+	MessageBox( hwnd, buffer, KT_CAP_SAVE_SESSION, MB_OK|MB_ICONINFORMATION ) ;
 }
 
 #include "kitty_commands.c"
@@ -2924,14 +2925,14 @@ int calldll( HWND hwnd, char * filename, char * functionname ) {
 	if( lphDLL == NULL ) {
 		//print_error( "Unable to load library %s\n", filename ) ;
 		snprintf( buffer, sizeof(buffer), "Unable to load library %s\n", filename ) ;
-		MessageBox( hwnd, buffer, "Error" , MB_OK|MB_ICONERROR ) ;
+		MessageBox( hwnd, buffer, KT_CAP_ERROR , MB_OK|MB_ICONERROR ) ;
 		return -1 ;
 		}
 		
 	if( !( lpfnDllFunc1 = (LPFNDLLFUNC1) GetProcAddress( lphDLL, TEXT(functionname) ) ) ) {
 		//print_error( "Unable to load function %s from library %s (%d)\n", functionname, filename, GetLastError() );
 		snprintf( buffer, sizeof(buffer),"Unable to load function %s from library %s (%d)\n", functionname, filename, (int)GetLastError() ) ;
-		MessageBox( hwnd, buffer, "Error" , MB_OK|MB_ICONERROR ) ;
+		MessageBox( hwnd, buffer, KT_CAP_ERROR , MB_OK|MB_ICONERROR ) ;
 		FreeLibrary( lphDLL ) ;
 		return -1 ;
 		}
@@ -3525,31 +3526,22 @@ void LoadParameters( void ) {
 					char root[8] ; snprintf( root, sizeof(root), "%c:\\", buffer[0] ) ;
 					if( GetDriveType( root ) <= DRIVE_NO_ROOT_DIR )
 						snprintf( diag, sizeof(diag),
-							"Drive %c: is not available, so this looks like a "
-							"disconnected disk rather than a missing folder.", buffer[0] ) ;
+							KT_MAIN_CFGDIR_DIAG_DRIVE, buffer[0] ) ;
 					else if( parent[0] && existdirectory( parent ) )
 						snprintf( diag, sizeof(diag),
-							"The folder above it does exist, so only the last part "
-							"of the path is missing - a typo or a rename." ) ;
+							KT_MAIN_CFGDIR_DIAG_PARENT ) ;
 					else
 						snprintf( diag, sizeof(diag),
-							"Neither it nor the folder above it exists." ) ;
+							KT_MAIN_CFGDIR_DIAG_NEITHER ) ;
 				} else {
 					snprintf( diag, sizeof(diag),
-						"KiTTY has not created or removed anything here - it only "
-						"looked." ) ;
+						KT_MAIN_CFGDIR_DIAG_LOOKED ) ;
 				}
 				snprintf( msg, sizeof(msg),
-					"kitty.ini points configdir at a directory that is not there:\n\n"
-					"    %s\n\n"
-					"%s\n\n"
-					"Start anyway, as if configdir had not been set?\n\n"
-					"Yes  -  start now; whatever is kept in that directory is not listed.\n"
-					"No   -  quit, so you can fix the path in kitty.ini first.",
+					KT_MAIN_CFGDIR_MISSING,
 					buffer, diag ) ;
-				if( !kitty_confirm_box( NULL, "KiTTY: configdir not found", msg,
-					"KiTTY has not written to or removed that directory - this "
-					"check runs before anything is opened." ) ) {
+				if( !kitty_confirm_box( NULL, KT_CAP_CFGDIR_NOT_FOUND, msg,
+					KT_MAIN_CFGDIR_WARN ) ) {
 					exit( 0 ) ;
 				}
 			}
@@ -3992,20 +3984,13 @@ void InitWinMain( void ) {
 			if( !declined ) {
 				char question[1200] ;
 				snprintf( question, sizeof(question),
-					"KiTTY previously ran in file mode (savemode=file in kitty.ini) and "
-					"set your registry sessions aside at:\n\n"
-					"    HKEY_CURRENT_USER\\%s\n\n"
-					"It is now starting in normal (registry) mode. Put those sessions "
-					"back?\n\n"
-					"The sessions currently in the registry are the working copy of "
-					"kitty.sav and are kept in that file, so nothing is lost either way.\n\n"
-					"Answer No and they stay set aside; you will not be asked again.",
+					KT_MAIN_RESTORE_QUESTION,
 					kitty_reg_park ) ;
 				if( MessageBox( NULL, question,
-					"KiTTY - restore your registry sessions?",
+					KT_CAP_RESTORE_REG_SESSIONS,
 					MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1 ) == IDYES ) {
 					HWND hdlg = InfoBox( hinst, NULL ) ;
-					InfoBoxSetText( hdlg, "Restoring registry sessions." ) ;
+					InfoBoxSetText( hdlg, KT_MAIN_INFO_RESTORING ) ;
 					/* Copies the parked tree over the working copy and removes
 					 * the parked key, so the question cannot come back. */
 					RegRenameTree( hdlg, HKEY_CURRENT_USER, kitty_reg_park, kitty_reg_live ) ;
@@ -4036,14 +4021,14 @@ void InitWinMain( void ) {
 			if( havesav ) {
 				char *savedptr = KittySavFile ;
 				KittySavFile = newestsav ;   /* LoadRegistryKey reads the global */
-				InfoBoxSetText( hdlg, "Initializing registry." ) ;
-				InfoBoxSetText( hdlg, "Loading saved sessions from file." ) ;
+				InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
+				InfoBoxSetText( hdlg, KT_MAIN_INFO_LOADING_FROM_FILE ) ;
 				LoadRegistryKey( hdlg ) ;
 				InfoBoxClose( hdlg ) ;
 				KittySavFile = savedptr ;
 			} else { // Sinon on regarde si il y a la cle de PuTTY et on la recupere
-				InfoBoxSetText( hdlg, "Initializing registry." ) ;
-				InfoBoxSetText( hdlg, "First time running. Loading saved sessions from PuTTY registry." ) ;
+				InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
+				InfoBoxSetText( hdlg, KT_MAIN_INFO_FIRST_RUN_PUTTY ) ;
 				/* Copy DIRECTLY rather than through TestRegKeyOrCopyFromPuTTY():
 				 * that helper first tests whether our key exists and does
 				 * nothing if it does - and the migration markers above have
@@ -4065,8 +4050,8 @@ void InitWinMain( void ) {
 	} else if( IniFileFlag == SAVEMODE_FILE ){ // Mode de sauvegarde fichier
 		if( !RegTestKey( HKEY_CURRENT_USER, kitty_reg_live ) ) { // la cle de registre n'existe pas
 			HWND hdlg = InfoBox( hinst, NULL ) ;
-			InfoBoxSetText( hdlg, "Initializing registry." ) ;
-			InfoBoxSetText( hdlg, "Loading saved sessions from file." ) ;
+			InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
+			InfoBoxSetText( hdlg, KT_MAIN_INFO_LOADING_FROM_FILE ) ;
 			LoadRegistryKey( hdlg ) ;
 			InfoBoxClose( hdlg ) ;
 			}
@@ -4074,7 +4059,7 @@ void InitWinMain( void ) {
 		else { // la cle de registre existe deja
 			if( WindowsCount( MainHwnd ) == 1 ) { // Si c'est le 1er kitty on sauvegarde la cle de registre avant de charger le fichier kitty.sav
 				HWND hdlg = InfoBox( hinst, NULL ) ;
-				InfoBoxSetText( hdlg, "Initializing registry." ) ;
+				InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
 				/* File mode owns the registry view: kitty.sav is loaded INTO
 				 * PUTTY_REG_POS, so whatever is there now has to move aside.
 				 *
@@ -4097,22 +4082,15 @@ void InitWinMain( void ) {
 					if( !kitty_cli_do_and_exit() ) {
 						char notice[1200] ;
 						snprintf( notice, sizeof(notice),
-							"KiTTY is starting in file mode (savemode=file in kitty.ini), "
-							"which keeps its sessions in kitty.sav and uses the registry "
-							"as its working copy.\n\n"
-							"Your existing registry sessions have been SET ASIDE, not "
-							"deleted. They are at:\n\n"
-							"    HKEY_CURRENT_USER\\%s\n\n"
-							"Start KiTTY without savemode=file and it will offer to put "
-							"them back.",
+							KT_MAIN_SET_ASIDE_NOTICE,
 							kitty_reg_park ) ;
 						MessageBox( NULL, notice,
-							"KiTTY - your registry sessions were set aside",
+							KT_CAP_REG_SESSIONS_SET_ASIDE,
 							MB_OK | MB_ICONINFORMATION ) ;
 						}
 					hdlg = InfoBox( hinst, NULL ) ;
 					}
-				InfoBoxSetText( hdlg, "Loading saved sessions." ) ;
+				InfoBoxSetText( hdlg, KT_MAIN_INFO_LOADING_SESSIONS ) ;
 				LoadRegistryKey( hdlg ) ;
 				InfoBoxClose( hdlg ) ;
 				}
@@ -4203,7 +4181,7 @@ void InitWinMain( void ) {
 	NETDBG_TS("after icon-dll init");
 	// Teste la presence d'une note et l'affiche
 	if( GetValueData( HKEY_CURRENT_USER, kitty_registry_base(), "Notes", buffer ) )
-		{ if( strlen( buffer ) > 0 ) MessageBox( NULL, buffer, "Notes", MB_OK ) ; }
+		{ if( strlen( buffer ) > 0 ) MessageBox( NULL, buffer, KT_CAP_NOTES, MB_OK ) ; }
 		
 	// Genere un fichier (4096ko max) d'initialisation de toute les Sessions
 	snprintf( buffer, sizeof(buffer), "%s\\%s.ses.updt", InitialDirectory, appname ) ;

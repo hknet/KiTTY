@@ -10,6 +10,7 @@
 #include "putty.h"
 #include <windows.h>
 #include "kitty_oldwin.h"
+#include "kitty_text.h"     /* the report wordings and feature names */
 
 /* ------------------------------------------------------------ resolving -- */
 
@@ -41,7 +42,7 @@ static void kapi_note(const char *dll, const char *symbol, int need,
      * process down on XP - twice, once per report, because the first fix
      * guarded one consumer instead of the source. */
     if (!feature)
-        feature = "(unnamed)";
+        feature = KT_OLDWIN_UNNAMED;
     kapi_notes[kapi_count].dll = dll;
     kapi_notes[kapi_count].symbol = symbol;
     kapi_notes[kapi_count].feature = feature;
@@ -98,17 +99,16 @@ static char *kapi_report(int need)
         if (!sb) {
             sb = strbuf_new();
             put_dataz(sb, need == KITTY_API_REQUIRED
-                      ? "This version of Windows is too old to run KiTTY.\r\n\r\n"
-                        "It is missing:"
-                      : "Not available on this version of Windows:");
+                      ? KT_OLDWIN_TOO_OLD
+                      : KT_OLDWIN_NOT_AVAILABLE);
         }
-        put_fmt(sb, "\r\n    %s - needs %s from %s", kapi_notes[i].feature,
+        put_fmt(sb, KT_OLDWIN_ITEM, kapi_notes[i].feature,
                 kapi_notes[i].symbol, kapi_notes[i].dll);
     }
     if (!sb)
         return NULL;
     if (need == KITTY_API_REQUIRED)
-        put_dataz(sb, "\r\n\r\nKiTTY needs Windows XP or newer.");
+        put_dataz(sb, KT_OLDWIN_NEEDS_XP);
     return strbuf_to_str(sb);
 }
 
@@ -118,7 +118,7 @@ static char *kapi_report(int need)
  * consumer below can trust the field. */
 static const char *kapi_feature_of(int i)
 {
-    return kapi_notes[i].feature ? kapi_notes[i].feature : "(unnamed)";
+    return kapi_notes[i].feature ? kapi_notes[i].feature : KT_OLDWIN_UNNAMED;
 }
 
 char *kitty_oldwin_required_missing(void) { return kapi_report(KITTY_API_REQUIRED); }
@@ -183,7 +183,7 @@ static void tick_resolve(void)
      * callers measure, so nothing is lost and the user is told nothing. */
     p_GetTickCount64 = (gettickcount64_t)
         kitty_api("kernel32.dll", "GetTickCount64", KITTY_API_OPTIONAL,
-                  "a 64-bit millisecond clock");
+                  KT_WINFEAT_TICK64);
     tick_resolved = 1;
 }
 
@@ -226,12 +226,12 @@ static void path_resolve(void)
         return;
     p_QueryFullProcessImageNameA = (queryfullprocessimagenamea_t)
         kitty_api("kernel32.dll", "QueryFullProcessImageNameA",
-                  KITTY_API_OPTIONAL, "naming the program behind a process");
+                  KITTY_API_OPTIONAL, KT_WINFEAT_PROCESS_NAME);
     if (!p_QueryFullProcessImageNameA)
         p_GetModuleFileNameExA = (getmodulefilenameexa_t)
             kitty_api("psapi.dll", "GetModuleFileNameExA",
                       KITTY_API_OPTIONAL,
-                      "naming the program behind a process (older Windows)");
+                      KT_WINFEAT_PROCESS_NAME_OLD);
     path_resolved = 1;
 }
 
@@ -276,7 +276,7 @@ BOOL kitty_attach_parent_console(void)
     if (!resolved) {
         p_AttachConsole = (attachconsole_t)
             kitty_api("kernel32.dll", "AttachConsole", KITTY_API_OPTIONAL,
-                      "printing to the console that started KiTTY");
+                      KT_WINFEAT_CONSOLE);
         resolved = 1;
     }
     if (!p_AttachConsole)
@@ -306,10 +306,10 @@ static void reg_resolve(void)
         return;
     p_RegDeleteTreeA = (regdeltree_t)
         kitty_api("advapi32.dll", "RegDeleteTreeA", KITTY_API_OPTIONAL,
-                  "one-call registry subtree deletion");
+                  KT_WINFEAT_REG_DELTREE);
     p_RegGetValueA = (reggetvalue_t)
         kitty_api("advapi32.dll", "RegGetValueA", KITTY_API_OPTIONAL,
-                  "typed registry reads");
+                  KT_WINFEAT_REG_GETVALUE);
     reg_resolved = 1;
 }
 
@@ -427,10 +427,10 @@ static void ptal_resolve(void)
         return;
     p_InitializeProcThreadAttributeList = (initptal_t)
         kitty_api("kernel32.dll", "InitializeProcThreadAttributeList",
-                  KITTY_API_OPTIONAL, "ConPTY process spawning");
+                  KITTY_API_OPTIONAL, KT_WINFEAT_CONPTY);
     p_UpdateProcThreadAttribute = (updpta_t)
         kitty_api("kernel32.dll", "UpdateProcThreadAttribute",
-                  KITTY_API_OPTIONAL, "ConPTY process spawning");
+                  KITTY_API_OPTIONAL, KT_WINFEAT_CONPTY);
     ptal_resolved = 1;
 }
 
@@ -472,7 +472,7 @@ BOOL kitty_oldwin_GetNamedPipeServerProcessId(HANDLE pipe, PULONG pid)
         p_GetNamedPipeServerProcessId = (getpipesrvpid_t)
             kitty_api("kernel32.dll", "GetNamedPipeServerProcessId",
                       KITTY_API_OPTIONAL,
-                      "identifying which process serves the SSH agent pipe");
+                      KT_WINFEAT_AGENT_PIPE);
         pipepid_resolved = 1;
     }
     if (p_GetNamedPipeServerProcessId)
@@ -494,7 +494,7 @@ HRESULT kitty_oldwin_RegisterApplicationRestart(PCWSTR cmdline, DWORD flags)
         p_RegisterApplicationRestart = (regapprestart_t)
             kitty_api("kernel32.dll", "RegisterApplicationRestart",
                       KITTY_API_OPTIONAL,
-                      "automatic restart after an in-place upgrade");
+                      KT_WINFEAT_RESTART);
         appra_resolved = 1;
     }
     if (p_RegisterApplicationRestart)

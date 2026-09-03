@@ -5,6 +5,7 @@
  */
 #include "rcstuff.h"
 #include "putty-rc.h"
+#include "../kitty/kitty_text.h"
 
 #define APPNAME "KiTTY"
 #define APPDESC "SSH, Telnet, Rlogin, and SUPDUP client"
@@ -82,13 +83,13 @@ IDI_NOCON ICON "kitty_icons/nocon.ico"
 /* KiTTY-specific About dialog (handled by KittyAboutProc in kitty_bridge.c) */
 IDD_KITTYABOUT DIALOGEX DISCARDABLE 0, 0, 230, 120
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "About KiTTY"
+CAPTION KT_RC_KITTYABOUT_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT           "KiTTY", IDA_VERSION, 7, 7, 216, 12
-    LTEXT           "KiTTY is a fork of PuTTY, continued by kapper.net.\nInspired by the KiTTY by Cyril Dupont (9bis.com) - thanks to all contributors.", -1, 7, 24, 216, 40
-    PUSHBUTTON      "Visit github.com/hknet/KiTTY", IDC_WEBPAGE, 55, 68, 120, 14
-    DEFPUSHBUTTON   "OK", IDOK, 90, 96, 50, 16
+    LTEXT           KT_CAP_KITTY, IDA_VERSION, 7, 7, 216, 12
+    LTEXT           KT_RC_KITTYABOUT_BLURB, -1, 7, 24, 216, 40
+    PUSHBUTTON      KT_RC_KITTYABOUT_WEBPAGE, IDC_WEBPAGE, 55, 68, 120, 14
+    DEFPUSHBUTTON   KT_WIN_OK, IDOK, 90, 96, 50, 16
 END
 
 /* Master-password prompt (DPAPI Phase 2). Handled by gui_master_pw_prompt()
@@ -97,16 +98,16 @@ END
  * hidden at runtime. */
 IDD_MASTERPW DIALOGEX DISCARDABLE 0, 0, 230, 181
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTY master password"
+CAPTION KT_RC_MASTERPW_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_MPW_PROMPT, 7, 7, 216, 104
-    LTEXT           "Master password:", IDC_MPW_EDIT_LBL, 7, 113, 216, 8
+    LTEXT           KT_RC_MASTERPW_LABEL, IDC_MPW_EDIT_LBL, 7, 113, 216, 8
     EDITTEXT        IDC_MPW_EDIT, 7, 123, 216, 12, ES_PASSWORD | ES_AUTOHSCROLL
-    LTEXT           "Confirm master password:", IDC_MPW_CONFIRM_LBL, 7, 137, 216, 8
+    LTEXT           KT_RC_MASTERPW_CONFIRM_LABEL, IDC_MPW_CONFIRM_LBL, 7, 137, 216, 8
     EDITTEXT        IDC_MPW_CONFIRM, 7, 147, 216, 12, ES_PASSWORD | ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "OK", IDOK, 116, 162, 50, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 173, 162, 50, 14
+    DEFPUSHBUTTON   KT_WIN_OK, IDOK, 116, 162, 50, 14
+    PUSHBUTTON      KT_KITTY_CANCEL, IDCANCEL, 173, 162, 50, 14
 END
 
 /* Legacy->protected password migration consent (portable saves; user decision
@@ -114,12 +115,12 @@ END
  * Handled by gui_legacy_migrate_warn() in kitty/kitty_mpw_gui.c. */
 IDD_MIGRATEWARN DIALOGEX DISCARDABLE 0, 0, 260, 102
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTY password protection"
+CAPTION KT_RC_MIGRATEWARN_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT           "This session file contains a password stored in the old unprotected format. Saving will re-encrypt it in the new protected format, which old KiTTY releases (0.76 and earlier) cannot read. Do not copy the file back to an old release afterwards.", -1, 7, 7, 246, 34
-    LTEXT           "Re-encrypt the stored password now? (No keeps it in the old form.)", -1, 7, 45, 246, 10
-    AUTOCHECKBOX    "Don't show this warning again", IDC_MIG_NOASK, 7, 61, 246, 10
+    LTEXT           KT_RC_MIGRATEWARN_TEXT, -1, 7, 7, 246, 34
+    LTEXT           KT_RC_MIGRATEWARN_QUESTION, -1, 7, 45, 246, 10
+    AUTOCHECKBOX    KT_RC_MIGRATEWARN_NOASK, IDC_MIG_NOASK, 7, 61, 246, 10
     DEFPUSHBUTTON   "&Yes", IDOK, 146, 81, 50, 14
     PUSHBUTTON      "&No", IDCANCEL, 203, 81, 50, 14
 END
@@ -132,21 +133,21 @@ END
  * field. */
 IDD_EXPORTPW DIALOGEX DISCARDABLE 0, 0, 268, 150
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Export sessions"
+CAPTION KT_RC_EXPORTPW_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT           "Choose how the exported session files are protected. This password belongs to the exported files only: it is not your master password, and nothing about the sessions saved here is changed.", -1, 7, 7, 254, 26
-    AUTORADIOBUTTON "Protect with a &password (can be imported on any PC)", IDC_EXP_MODEPW, 7, 38, 254, 10, WS_GROUP | WS_TABSTOP
-    LTEXT           "Password (at least 5 characters):", IDC_EXP_PASS_LBL, 18, 54, 243, 8
+    LTEXT           KT_RC_EXPORTPW_INTRO, -1, 7, 7, 254, 26
+    AUTORADIOBUTTON KT_RC_EXPORTPW_MODEPW, IDC_EXP_MODEPW, 7, 38, 254, 10, WS_GROUP | WS_TABSTOP
+    LTEXT           KT_RC_EXPORTPW_PASS_LABEL, IDC_EXP_PASS_LBL, 18, 54, 243, 8
     EDITTEXT        IDC_EXP_PASS, 18, 64, 243, 12, ES_PASSWORD | ES_AUTOHSCROLL
     AUTOCHECKBOX    "&Show password", IDC_EXP_SHOWPW, 18, 80, 243, 10
-    AUTORADIOBUTTON "Protect for &this PC only (no password)", IDC_EXP_MODEDPAPI, 7, 96, 254, 10
+    AUTORADIOBUTTON KT_RC_EXPORTPW_MODEDPAPI, IDC_EXP_MODEDPAPI, 7, 96, 254, 10
     /* WS_GROUP closes the radio group that starts at IDC_EXP_MODEPW; the
      * selection itself is driven explicitly in the dialog proc, because the
      * password controls sit between the two radios. */
-    LTEXT           "The exported files can then only be imported with THIS Windows account on THIS PC. Copying them to another PC will not work.", IDC_EXP_DPAPIWARN, 18, 108, 243, 18, WS_GROUP
-    DEFPUSHBUTTON   "&Export", IDOK, 154, 129, 50, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 211, 129, 50, 14
+    LTEXT           KT_RC_EXPORTPW_DPAPIWARN, IDC_EXP_DPAPIWARN, 18, 108, 243, 18, WS_GROUP
+    DEFPUSHBUTTON   KT_RC_EXPORTPW_EXPORT, IDOK, 154, 129, 50, 14
+    PUSHBUTTON      KT_KITTY_CANCEL, IDCANCEL, 211, 129, 50, 14
 END
 
 /* Make a portable copy (Application > Migration > KiTTY storage): the
@@ -154,32 +155,32 @@ END
  * password becomes the copy's master password. */
 IDD_STOREMOVEPW DIALOGEX DISCARDABLE 0, 0, 268, 150
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Make a portable copy"
+CAPTION KT_INIMIG_OUT_GROUP
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT           "Choose how the passwords saved in the copy are protected. Nothing about this KiTTY changes.", -1, 7, 7, 254, 26
-    AUTORADIOBUTTON "Protect with a &master password (the copy asks for it once per start, works on any PC)", IDC_EXP_MODEPW, 7, 38, 254, 10, WS_GROUP | WS_TABSTOP
-    LTEXT           "Master password (at least 5 characters):", IDC_EXP_PASS_LBL, 18, 54, 243, 8
+    LTEXT           KT_RC_STOREMOVEPW_INTRO, -1, 7, 7, 254, 26
+    AUTORADIOBUTTON KT_RC_STOREMOVEPW_MODEPW, IDC_EXP_MODEPW, 7, 38, 254, 10, WS_GROUP | WS_TABSTOP
+    LTEXT           KT_RC_STOREMOVEPW_PASS_LABEL, IDC_EXP_PASS_LBL, 18, 54, 243, 8
     EDITTEXT        IDC_EXP_PASS, 18, 64, 243, 12, ES_PASSWORD | ES_AUTOHSCROLL
     AUTOCHECKBOX    "&Show password", IDC_EXP_SHOWPW, 18, 80, 243, 10
-    AUTORADIOBUTTON "Protect for &this PC only (no password)", IDC_EXP_MODEDPAPI, 7, 96, 254, 10
-    LTEXT           "The copy can then read its passwords only under THIS Windows account on THIS PC. A moved or synced copy cannot.", IDC_EXP_DPAPIWARN, 18, 108, 243, 18, WS_GROUP
+    AUTORADIOBUTTON KT_RC_EXPORTPW_MODEDPAPI, IDC_EXP_MODEDPAPI, 7, 96, 254, 10
+    LTEXT           KT_RC_STOREMOVEPW_DPAPIWARN, IDC_EXP_DPAPIWARN, 18, 108, 243, 18, WS_GROUP
     DEFPUSHBUTTON   "&Copy", IDOK, 154, 129, 50, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 211, 129, 50, 14
+    PUSHBUTTON      KT_KITTY_CANCEL, IDCANCEL, 211, 129, 50, 14
 END
 
 /* Export summary: shows the bundle password once, with a Copy button - this is
  * the moment the user wants to stash it. Handled by kitty/kitty_bridge.c. */
 IDD_EXPORTDONE DIALOGEX DISCARDABLE 0, 0, 268, 123
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTY session export"
+CAPTION KT_CAP_SESSION_EXPORT
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_EXPD_TEXT, 7, 7, 254, 62
-    LTEXT           "Export password:", IDC_EXPD_PWLBL, 7, 72, 254, 8
+    LTEXT           KT_RC_EXPORTDONE_PW_LABEL, IDC_EXPD_PWLBL, 7, 72, 254, 8
     EDITTEXT        IDC_EXPD_PW, 7, 82, 190, 12, ES_AUTOHSCROLL | ES_READONLY
     PUSHBUTTON      "&Copy", IDC_EXPD_COPY, 203, 82, 58, 12
-    DEFPUSHBUTTON   "OK", IDOK, 211, 102, 50, 14
+    DEFPUSHBUTTON   KT_WIN_OK, IDOK, 211, 102, 50, 14
 END
 
 /* Import password prompt. Raised only when the bundle really carries
@@ -188,28 +189,28 @@ END
  * so a wrong password can re-ask in place. Handled by kitty/kitty_bridge.c. */
 IDD_IMPORTPW DIALOGEX DISCARDABLE 0, 0, 268, 96
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Import sessions"
+CAPTION KT_RC_IMPORTPW_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_IMP_PROMPT, 7, 7, 254, 26
-    LTEXT           "Import password:", -1, 7, 38, 254, 8
+    LTEXT           KT_RC_IMPORTPW_PASS_LABEL, -1, 7, 38, 254, 8
     EDITTEXT        IDC_IMP_PASS, 7, 48, 254, 12, ES_PASSWORD | ES_AUTOHSCROLL
     AUTOCHECKBOX    "&Show password", IDC_IMP_SHOWPW, 7, 64, 254, 10
-    DEFPUSHBUTTON   "&Import", IDOK, 154, 75, 50, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 211, 75, 50, 14
+    DEFPUSHBUTTON   KT_RC_IMPORTPW_IMPORT, IDOK, 154, 75, 50, 14
+    PUSHBUTTON      KT_KITTY_CANCEL, IDCANCEL, 211, 75, 50, 14
 END
 
 /* Master-password migration notice. Handled by kitty/kitty_bridge.c. */
 IDD_MPWMOVED DIALOGEX DISCARDABLE 0, 0, 300, 178
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTY master password"
+CAPTION KT_RC_MASTERPW_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_MPWM_TEXT, 7, 7, 286, 114
     EDITTEXT        IDC_MPWM_PATH, 7, 123, 286, 12, ES_AUTOHSCROLL | ES_READONLY
-    PUSHBUTTON      "&Copy path", IDC_MPWM_COPY, 7, 140, 70, 14
-    PUSHBUTTON      "&Open folder", IDC_MPWM_OPEN, 83, 140, 70, 14
-    DEFPUSHBUTTON   "OK", IDOK, 243, 157, 50, 14
+    PUSHBUTTON      KT_RC_MPWMOVED_COPY_PATH, IDC_MPWM_COPY, 7, 140, 70, 14
+    PUSHBUTTON      KT_RC_MPWMOVED_OPEN_FOLDER, IDC_MPWM_OPEN, 83, 140, 70, 14
+    DEFPUSHBUTTON   KT_WIN_OK, IDOK, 243, 157, 50, 14
 END
 
 /* "Update available / up to date" popup (kitty/kitty_win.c). A real (modeless)
@@ -219,7 +220,7 @@ END
  * unused ones hidden. OK and Later share the same slot (only one is ever shown). */
 IDD_UPDATEBOX DIALOGEX DISCARDABLE 0, 0, 244, 82
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTY Update"
+CAPTION KT_CAP_UPDATE
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_UPD_TEXT, 10, 9, 224, 44
@@ -228,10 +229,10 @@ BEGIN
      * dimensions; the other buttons stay put. OK and Later share the far-right
      * slot (only one is ever shown). */
     /* Declared left to right so the Tab order matches the row. */
-    PUSHBUTTON      "&Release notes", IDC_UPD_NOTES, 10, 62, 66, 14
-    PUSHBUTTON      "&Update now", IDC_UPD_UPDATE, 128, 62, 58, 14
-    DEFPUSHBUTTON   "OK", IDOK, 190, 62, 44, 14
-    PUSHBUTTON      "&Later", IDCANCEL, 190, 62, 44, 14
+    PUSHBUTTON      KT_RC_UPDATEBOX_NOTES, IDC_UPD_NOTES, 10, 62, 66, 14
+    PUSHBUTTON      KT_RC_UPDATEBOX_UPDATE, IDC_UPD_UPDATE, 128, 62, 58, 14
+    DEFPUSHBUTTON   KT_WIN_OK, IDOK, 190, 62, 44, 14
+    PUSHBUTTON      KT_RC_UPDATEBOX_LATER, IDCANCEL, 190, 62, 44, 14
 END
 
 /* KiTTY send-text input boxes: [Shortcuts] input (single line, default
@@ -243,33 +244,33 @@ END
  * kitty_rc_additions.h). */
 IDD_INPUTBOX DIALOGEX DISCARDABLE 0, 0, 248, 50
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTY text input"
+CAPTION KT_RC_INPUTBOX_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT           "Text to send to the terminal:", -1, 7, 7, 184, 13
+    LTEXT           KT_RC_INPUTBOX_PROMPT, -1, 7, 7, 184, 13
     EDITTEXT        IDC_RESULT, 7, 20, 184, 14, ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "OK", IDOK, 198, 20, 42, 14
+    DEFPUSHBUTTON   KT_WIN_OK, IDOK, 198, 20, 42, 14
 END
 
 IDD_INPUTBOXMULTI DIALOGEX DISCARDABLE 0, 0, 248, 100
 STYLE DS_CENTER | WS_SYSMENU | WS_CAPTION | WS_BORDER | WS_SIZEBOX
-CAPTION "KiTTY text input"
+CAPTION KT_RC_INPUTBOX_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT           "Text to send (Shift+Return):", -1, 7, 6, 104, 8
+    LTEXT           KT_RC_INPUTBOXMULTI_PROMPT, -1, 7, 6, 104, 8
     EDITTEXT        IDC_RESULT, 7, 20, 232, 74, ES_AUTOHSCROLL | ES_AUTOVSCROLL | ES_MULTILINE | ES_WANTRETURN | WS_HSCROLL | WS_VSCROLL
-    PUSHBUTTON      "OK", IDB_OK, 115, 3, 42, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 165, 3, 42, 14
+    PUSHBUTTON      KT_WIN_OK, IDB_OK, 115, 3, 42, 14
+    PUSHBUTTON      KT_KITTY_CANCEL, IDCANCEL, 165, 3, 42, 14
 END
 
 IDD_INPUTBOXPW DIALOGEX DISCARDABLE 0, 0, 248, 50
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTY text input"
+CAPTION KT_RC_INPUTBOX_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT           "Password to send to the terminal:", -1, 7, 7, 184, 13
+    LTEXT           KT_RC_INPUTBOXPW_PROMPT, -1, 7, 7, 184, 13
     EDITTEXT        IDC_RESULT, 7, 20, 184, 14, ES_AUTOHSCROLL | ES_PASSWORD
-    DEFPUSHBUTTON   "OK", IDOK, 198, 20, 42, 14
+    DEFPUSHBUTTON   KT_WIN_OK, IDOK, 198, 20, 42, 14
 END
 
 /* Window-title placeholders: a modeless reference opened from the Window title
@@ -278,10 +279,10 @@ END
  * runtime by kitty_show_title_placeholders() in kitty/kitty_win.c. */
 IDD_TITLEVARS DIALOGEX DISCARDABLE 0, 0, 300, 168
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX
-CAPTION "Window title placeholders"
+CAPTION KT_RC_TITLEVARS_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT           "Double-click a placeholder (or select one and press Copy) to put it on the clipboard, then paste it into the Window title field.", -1, 7, 5, 286, 18
+    LTEXT           KT_RC_TITLEVARS_INTRO, -1, 7, 5, 286, 18
     LISTBOX         IDC_TITLEVARS_LIST, 7, 26, 286, 112, LBS_HASSTRINGS | LBS_NOINTEGRALHEIGHT | LBS_NOTIFY | WS_VSCROLL | WS_TABSTOP
     PUSHBUTTON      "&Copy", IDC_TITLEVARS_COPY, 186, 146, 50, 14
     DEFPUSHBUTTON   "Close", IDCANCEL, 243, 146, 50, 14
@@ -307,24 +308,24 @@ END
  */
 IDD_OSC52READ DIALOGEX DISCARDABLE 0, 0, 300, 231
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTY - a server wants to read your clipboard"
+CAPTION KT_RC_OSC52READ_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_O52_WHAT, 7, 7, 286, 18
     LTEXT           "", IDC_O52_WHERE, 7, 27, 286, 8
     LTEXT           "", IDC_O52_CLAIM, 7, 37, 286, 8
     LTEXT           "", IDC_O52_SUMMARY, 7, 48, 218, 18
-    PUSHBUTTON      "&View...", IDC_O52_VIEW, 235, 48, 58, 14
+    PUSHBUTTON      KT_RC_OSC52READ_VIEW, IDC_O52_VIEW, 235, 48, 58, 14
     EDITTEXT        IDC_O52_PREVIEW, 7, 69, 286, 52, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | NOT WS_VISIBLE
-    LTEXT           "Apply this decision to:", IDC_O52_APPLYLBL, 7, 125, 286, 8
-    AUTORADIOBUTTON "just this &request", IDC_O52_ONCE, 14, 136, 279, 10, WS_GROUP | WS_TABSTOP
+    LTEXT           KT_RC_OSC52READ_APPLY_LABEL, IDC_O52_APPLYLBL, 7, 125, 286, 8
+    AUTORADIOBUTTON KT_RC_OSC52READ_ONCE, IDC_O52_ONCE, 14, 136, 279, 10, WS_GROUP | WS_TABSTOP
     AUTORADIOBUTTON "", IDC_O52_MINUTES, 14, 148, 279, 10
     AUTORADIOBUTTON "", IDC_O52_REQUESTS, 14, 160, 279, 10
-    AUTORADIOBUTTON "the rest of this terminal &session", IDC_O52_SESSION, 14, 172, 279, 10
-    AUTOCHECKBOX    "Always &deny for this host (saved in the session)", IDC_O52_ALWAYSDENY, 7, 186, 286, 10, WS_GROUP
+    AUTORADIOBUTTON KT_RC_OSC52READ_SESSION, IDC_O52_SESSION, 14, 172, 279, 10
+    AUTOCHECKBOX    KT_RC_OSC52READ_ALWAYSDENY, IDC_O52_ALWAYSDENY, 7, 186, 286, 10, WS_GROUP
     LTEXT           "", IDC_O52_COUNTDOWN, 7, 212, 170, 8
     PUSHBUTTON      "&Allow", IDC_O52_ALLOW, 183, 209, 52, 14
-    DEFPUSHBUTTON   "Deny", IDCANCEL, 241, 209, 52, 14
+    DEFPUSHBUTTON   KT_REMOTE_CLIPBOARD_DENY, IDCANCEL, 241, 209, 52, 14
 END
 
 /* Generic notice: a caption, a block of text, and OK. A real dialog rather than a
@@ -334,11 +335,11 @@ END
  * note in kitty_win.c). */
 IDD_NOTICEBOX DIALOGEX DISCARDABLE 0, 0, 260, 90
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTY"
+CAPTION KT_CAP_KITTY
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_NOTICE_TEXT, 10, 9, 240, 56
-    DEFPUSHBUTTON   "OK", IDOK, 206, 70, 44, 14
+    DEFPUSHBUTTON   KT_WIN_OK, IDOK, 206, 70, 44, 14
 END
 
 /* Yes/No confirmation, with an optional second line drawn in RED. Heights here are
@@ -347,7 +348,7 @@ END
  * be overwritten, so a reflex Return must not confirm it. */
 IDD_CONFIRMBOX DIALOGEX DISCARDABLE 0, 0, 280, 111
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTY"
+CAPTION KT_CAP_KITTY
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_CONFIRM_TEXT, 10, 9, 260, 56
@@ -358,7 +359,7 @@ END
 
 IDD_INFOBOX DIALOGEX DISCARDABLE 0, 0, 350, 28
 STYLE WS_DLGFRAME | DS_CENTER | WS_POPUP | WS_VISIBLE
-CAPTION "KiTTY"
+CAPTION KT_CAP_KITTY
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_RESULT, 7, 10, 336, 14
@@ -370,7 +371,7 @@ END
  * internal_commands[] table; handled by HelpBoxProc in kitty/kitty_commands.c. */
 IDD_HELPBOX DIALOGEX DISCARDABLE 0, 0, 330, 238
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX | WS_MAXIMIZEBOX
-CAPTION "KiTTY internal commands"
+CAPTION KT_RC_HELPBOX_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     EDITTEXT        IDC_HELPTEXT, 3, 3, 324, 214, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL

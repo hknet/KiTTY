@@ -7,6 +7,9 @@
 #include <assert.h>
 #include <stdlib.h>
 #include "putty.h"
+#ifdef MOD_PERSO
+#include "kitty/kitty_text.h"   /* KiTTY: the -masterpwfile diagnostics */
+#endif
 
 /*
  * Some command-line parameters need to be saved up until after
@@ -815,19 +818,17 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
          * rather than pick a winner. kitty.ini is read at startup (InitWinMain),
          * before the command line, so the mode is already known here. */
         if (kitty_portable_password_dpapi()) {
-            cmdline_error("-masterpwfile conflicts with PortablePasswordProtection=dpapi"
-                          " in kitty.ini: that store protects passwords with Windows"
-                          " DPAPI and has no master password. Remove one of the two.");
+            cmdline_error(KT_CLI_MPWFILE_CONFLICT);
         }
         Filename *fn = cmdline_arg_to_filename(nextarg);
         FILE *fp = f_open(fn, "r", false);
         if (!fp) {
-            cmdline_error("unable to open master-password file '%s'", value);
+            cmdline_error(KT_CLI_MPWFILE_OPEN_FAILED, value);
         } else {
             char *mpw = chomp(fgetline(fp));
             fclose(fp);
             if (!mpw)
-                cmdline_error("unable to read a master password from file '%s'",
+                cmdline_error(KT_CLI_MPWFILE_READ_FAILED,
                               value);
             else {
                 kitty_set_master_passphrase(mpw);

@@ -32,6 +32,7 @@
 #include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
 #include "kitty_commun.h"  /* GetCryptSaltFlag */
 #include "kitty_crypt.h"   /* decryptstring */
+#include "kitty_text.h"    /* shared captions */
 
 /* CryptFileFlag lives in kitty_bridge.c (same as the write side). */
 extern int CryptFileFlag;
@@ -216,23 +217,16 @@ static void ktx_warn_encrypted_once( void ) {
 	 * at all - started from Explorer, a shortcut or the installer.
 	 */
 	KittyCliReport(
-		"KiTTY - encrypted configuration files are deprecated",
-		"This file was written by an older KiTTY with \"encrypted configuration "
-		"files\" switched on. It has been read normally.\n\n"
-		"That option is gone. It scrambled the file with a key built into every "
-		"copy of KiTTY, so anyone with KiTTY could unscramble it - it protected "
-		"nothing. KiTTY still READS these files, but no longer writes them, and "
-		"anything you export from now on will be plain.\n\n"
-		"Saved passwords are unaffected: those are protected properly, with "
-		"Windows DPAPI or your master password.", 0 ) ;
+		KT_CAP_KTX_ENCRYPTED_DEPRECATED,
+		KT_SETTINGS_KTX_ENCRYPTED_DEPRECATED, 0 ) ;
 }
 
 void load_open_settings_forced(char *filename, Conf *conf) {
 	FILE *sesskey ;
 	if( (sesskey=fopen(filename,"r")) == NULL ) {
 		char buffer[1024] ;
-		snprintf(buffer,sizeof(buffer),"File %s not found !",filename);
-		MessageBox(NULL, buffer, "Error", MB_OK|MB_ICONERROR) ; return ;
+		snprintf(buffer,sizeof(buffer),KT_SETTINGS_FILE_NOT_FOUND,filename);
+		MessageBox(NULL, buffer, KT_CAP_ERROR, MB_OK|MB_ICONERROR) ; return ;
 		}
 	Conf * confDef ;
 	confDef = conf_new() ;

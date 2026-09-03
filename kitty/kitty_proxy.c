@@ -10,6 +10,7 @@
 #include <dirent.h>
 #include <windows.h>
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
+#include "kitty_text.h"     /* shared captions */
 
 /* The registry hive chosen AT RUNTIME (kitty_set_registry_root, driven by
  * kitty.ini KiClassName). Named proxies used the compile-time PUTTY_REG_POS
@@ -124,7 +125,7 @@ void InitProxyList(void) {
 		DIR * dir ;
 		struct dirent * de ;
 		snprintf( fullpath, sizeof(fullpath), "%s\\Proxies", ConfigDirectory ) ;
-		if(!MakeDir( fullpath ) ) { MessageBox(NULL,"Unable to create the proxy definitions directory","Error",MB_OK|MB_ICONERROR); }
+		if(!MakeDir( fullpath ) ) { MessageBox(NULL,KT_PROXYDEF_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR); }
 		if( (dir=opendir(fullpath)) != NULL ) {
 			while( (de=readdir(dir)) != NULL )
 			if( j>=MAX_PROXY ) break; /* SECURITY: bound proxies[] */

@@ -38,6 +38,7 @@ static Filename *xlatlognam(const Filename *s,
 
 #ifdef MOD_PERSO
 #include <sys/time.h>                  /* gettimeofday, for the %f expansion */
+#include "kitty/kitty_text.h"          /* KiTTY: the Event Log wordings below */
 
 /*
  * KiTTY: expand the LogTimestamp pattern (Session > Logging).
@@ -336,9 +337,7 @@ void logfile_rotate(LogContext *ctx)
         return;
 
     if (!logfile_name_varies(ctx)) {
-        logevent(ctx, "Log rotation skipped: the log file name does not "
-                 "change with time (use &T, or &Y&M&D, in it) - rotating "
-                 "into the same name would overwrite the log");
+        logevent(ctx, KT_LOG_ROTATION_SKIPPED);
         return;
     }
 
@@ -391,9 +390,7 @@ static void kitty_log_timestamp(LogContext *ctx)
      */
     if (!ctx->ts_warned) {
         ctx->ts_warned = true;
-        logevent(ctx, "Log timestamp: that strftime pattern produces nothing, "
-                 "so lines are not being stamped - check the format in "
-                 "Session > Logging");
+        logevent(ctx, KT_LOG_TIMESTAMP_EMPTY);
     }
 }
 #endif

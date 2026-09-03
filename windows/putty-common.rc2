@@ -83,6 +83,7 @@ END
  * definition it shares with windows/dialog.c, whose button-row and tree
  * layout constants are derived from the same number. */
 #include "../kitty/kitty_defs.h"
+#include "../kitty/kitty_text.h"
 IDD_MAINBOX DIALOGEX DISCARDABLE 0, 0, 360, KITTY_CFGBOX_H_DU
 STYLE WS_THICKFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "PuTTY Configuration"
@@ -117,7 +118,7 @@ END
 /* No accelerators used */
 IDD_LICENCEBOX DIALOGEX DISCARDABLE 50, 50, 326, 236
 STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "KiTTY Licence"
+CAPTION KT_RC_LICENCE_CAPTION
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     DEFPUSHBUTTON "OK", IDOK, 148, 216, 44, 14

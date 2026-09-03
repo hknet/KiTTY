@@ -6,6 +6,7 @@
 #include "kitty_tools.h"
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
+#include "kitty_text.h"     /* shared captions */
 
 
 #ifndef snewn
@@ -82,10 +83,10 @@ DWORD errorShow(const char* pcErrText, const char* pcErrParam) {
 	erChyba = GetLastError();		
 	ltoa(erChyba, pcBuf, 10);
 
-	strcpy(pcHlaska, "Error: ");
+	strcpy(pcHlaska, KT_STORE_ERR_PREFIX);
 	strcat(pcHlaska, pcErrText);
 	strcat(pcHlaska, "\n");
-	strcat(pcHlaska, "Directory: ");
+	strcat(pcHlaska, KT_STORE_ERR_DIRECTORY);
 	char currpath[2*MAX_PATH];
 	GetCurrentDirectory( (MAX_PATH*2), currpath);
 	strcat(pcHlaska, currpath);
@@ -95,14 +96,14 @@ DWORD errorShow(const char* pcErrText, const char* pcErrParam) {
 		strcat(pcHlaska, pcErrParam);
 		strcat(pcHlaska, "\n");
 	}
-    strcat(pcHlaska, "Error code: ");
+    strcat(pcHlaska, KT_STORE_ERR_CODE);
 	strcat(pcHlaska, pcBuf);
 
     /* JK: get parent-window and show */
     hwRodic = GetActiveWindow();
     if (hwRodic != NULL) { hwRodic = GetLastActivePopup(hwRodic);}
   
-	if (MessageBox(hwRodic, pcHlaska, "Error", MB_OK|MB_APPLMODAL|MB_ICONEXCLAMATION) == 0) {
+	if (MessageBox(hwRodic, pcHlaska, KT_CAP_ERROR, MB_OK|MB_APPLMODAL|MB_ICONEXCLAMATION) == 0) {
         /* JK: this is really bad -> just ignore */
 	sfree(pcHlaska);
         return 0;
@@ -152,7 +153,7 @@ int createPath(char* dir) {
 	}
 	
 	*p = '\0';
-	if( !createPath(dir) ) { MessageBox(NULL,"Unable to create directory !","Error",MB_OK|MB_ICONERROR) ; }
+	if( !createPath(dir) ) { MessageBox(NULL,KT_STORE_MKDIR_FAILED_BANG,KT_CAP_ERROR,MB_OK|MB_ICONERROR) ; }
 	*p = '\\';
 	++p;
 	/* what if it already exists */
@@ -175,7 +176,7 @@ char* joinPath(char* pcDest, char* pcMain, char* pcSuf) {
 	/* at first ExpandEnvironmentStrings */
 	if (0 == ExpandEnvironmentStrings(pcSuf, pcBuf, MAX_PATH)) {
 		/* JK: failure -> revert back - but it ussualy won't work, so report error to user! */
-		errorShow("Unable to ExpandEnvironmentStrings for session path", pcSuf);
+		errorShow(KT_STORE_EXPAND_ENV_FAILED, pcSuf);
 		strncpy(pcBuf, pcSuf, strlen(pcSuf));
 	}
 	/* now ExpandEnvironmentStringsForUser - only on win2000Pro and above */
@@ -197,7 +198,7 @@ char* joinPath(char* pcDest, char* pcMain, char* pcSuf) {
 
 			if (0 == (p_ExpandESforUser(NULL, pcSuf, pcBuf,	MAX_PATH))) {
 	    		*//* JK: failure -> revert back - but it ussualy won't work, so report error to user! *//*
-				errorShow("Unable to ExpandEnvironmentStringsForUser for session path", pcBuf);
+				errorShow(KT_STORE_EXPAND_ENV_USER_FAILED, pcBuf);
 				strncpy(pcSuf, pcBuf, strlen(pcSuf));
 			}
 		}
@@ -288,7 +289,7 @@ int loadPath() {
 	if(get_param("INIFILE")==SAVEMODE_DIR)
 	if( !existdirectory(sesspath) ) {
 		if( !MakeDir(sesspath) ) {
-			MessageBox( NULL, "Unable to create sessions directory !", "Error", MB_OK|MB_ICONERROR ) ;
+			MessageBox( NULL, KT_STORE_SESSDIR_FAILED, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
 		}
 	}
 
@@ -301,7 +302,7 @@ int loadPath() {
 
 		if (!ReadFile(hFile, fileCont, fileSize, &bytesRead, NULL))
 		{
-			errorShow("Unable to read configuration file, falling back to defaults", NULL);
+			errorShow(KT_STORE_CONF_READ_FAILED, NULL);
 			/* JK: default values are already there and clean-up at end */
 		}
 		else {
@@ -429,7 +430,7 @@ int CreateFolderInPath( const char * d ) {
 	int res = 0 ;
 	snprintf( buf, sizeof(buf), "%s\\%s", sesspath, d ) ;
 	res = createPath( buf ) ;
-	if( !res ) { MessageBox(NULL,"Unable to create directory", "Error", MB_OK|MB_ICONERROR); }
+	if( !res ) { MessageBox(NULL,KT_STORE_MKDIR_FAILED, KT_CAP_ERROR, MB_OK|MB_ICONERROR); }
 	return res ;
 }
 
@@ -653,7 +654,7 @@ void SettingsLoad( HSettingsList list, const char * filename ) {
 #undef KTX_ENSURE
 	} else {
 		//if( strcmp(filename,"Default%20Settings") ) MessageBox(NULL,"Unable to open session file", "Error", MB_OK);
-		errorShow( "Unable to read session file", filename ) ;
+		errorShow( KT_STORE_SESSION_READ_FAILED, filename ) ;
 	}
 }
 
@@ -682,7 +683,7 @@ void SettingsSave( HSettingsList list, const char * filename ) {
 		}
 		fclose(fp);
 	} else {
-		errorShow( "Unable to write session file", filename ) ;
+		errorShow( KT_STORE_SESSION_WRITE_FAILED, filename ) ;
 	}
 }
 

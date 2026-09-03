@@ -37,6 +37,7 @@
 #include "kitty_mpw.h"
 #include "kitty_b64.h"
 #include "kitty_proxy.h"
+#include "kitty_text.h"     /* the words the boxes show */
 
 /* kitty.c */
 int WriteParameter(const char *key, const char *name, char *value);
@@ -56,8 +57,6 @@ void kitty_clear_bundle_context(void);
 int  kitty_bundle_wrap_failed(void);
 const char *kitty_mpw_verify_token(void);
 
-#define KSM_TITLE_OUT "Make a portable copy"
-#define KSM_TITLE_IN  "Take a folder store into this registry"
 #define KSM_INI       "kitty.ini"
 /* the bundle extension follows the store's fileextension setting */
 #define KSM_BUNDLE_EXT (FileExtension[0] ? FileExtension : ".ktx")
@@ -600,25 +599,18 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
     r->programs = ksm_copy_programs(dir, &r->fail);
 
     snprintf(msg, msglen,
-             "Everything is in\n%s\n\n"
-             "Run kitty.exe from there: that copy uses the files in this "
-             "folder and not the registry. This KiTTY and its settings are "
-             "unchanged.\n\n"
-             "%d session%s, %d prox%s, %d host key%s, %d setting%s and "
-             "%d program file%s copied.",
+             KT_STOREMOVE_COPY_DONE,
              dir, r->sessions, r->sessions == 1 ? "" : "s",
              r->proxies, r->proxies == 1 ? "y" : "ies",
              r->hostkeys, r->hostkeys == 1 ? "" : "s",
              r->settings, r->settings == 1 ? "" : "s",
              r->programs, r->programs == 1 ? "" : "s");
     if (!dpapi)
-        ksm_cat(msg, msglen, "\n\nThe copy unlocks with the master password "
-                "you just entered.");
+        ksm_cat(msg, msglen, KT_STOREMOVE_COPY_MPW);
     else
-        ksm_cat(msg, msglen, "\n\nIts passwords are readable by this Windows "
-                "account on this PC only.");
+        ksm_cat(msg, msglen, KT_STOREMOVE_COPY_DPAPI);
     if (r->fail > 0) {
-        snprintf(t, sizeof(t), "\n\n%d item%s could not be written.",
+        snprintf(t, sizeof(t), KT_STOREMOVE_COPY_FAILED,
                  r->fail, r->fail == 1 ? "" : "s");
         ksm_cat(msg, msglen, t);
     }
@@ -646,8 +638,7 @@ int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
 
     stage = ksm_stage_folder_store(dir);
     if (!stage) {
-        snprintf(msg, msglen, "No temporary folder could be created; nothing "
-                 "was taken.");
+        snprintf(msg, msglen, KT_STOREMOVE_NO_TEMP);
         sfree(ini);
         return ++r->fail;
     }
@@ -666,23 +657,21 @@ int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
     if (ksm_file_exists(ini)) r->settings = ksm_globals_from_ini(ini, &r->fail);
 
     snprintf(msg, msglen,
-             "Taken from\n%s\n\n"
-             "%d session%s, %d prox%s, %d host key%s, %d setting%s.",
+             KT_STOREMOVE_TAKEN,
              dir, r->sessions, r->sessions == 1 ? "" : "s",
              r->proxies, r->proxies == 1 ? "y" : "ies",
              r->hostkeys, r->hostkeys == 1 ? "" : "s",
              r->settings, r->settings == 1 ? "" : "s");
     if (r->skipped > 0) {
-        snprintf(t, sizeof(t), "\n%d kept as already present.", r->skipped);
+        snprintf(t, sizeof(t), KT_STOREMOVE_TAKEN_KEPT, r->skipped);
         ksm_cat(msg, msglen, t);
     }
     if (r->fail > 0) {
-        snprintf(t, sizeof(t), "\n%d item%s could not be taken.",
+        snprintf(t, sizeof(t), KT_STOREMOVE_TAKEN_FAILED,
                  r->fail, r->fail == 1 ? "" : "s");
         ksm_cat(msg, msglen, t);
     }
-    ksm_cat(msg, msglen, "\n\nSaved passwords were re-protected for the store "
-            "in use. Settings apply after a restart.");
+    ksm_cat(msg, msglen, KT_STOREMOVE_TAKEN_REPROTECTED);
     sfree(ini);
     return r->fail;
 }
@@ -703,17 +692,16 @@ void kitty_make_portable_copy(HWND hwnd)
 
     if (!ksm_probe_writable(dir)) {
         snprintf(msg, sizeof(msg),
-                 "Nothing can be written to\n%s\n\nChoose another folder.", dir);
-        MessageBoxA(hwnd, msg, KSM_TITLE_OUT, MB_OK | MB_ICONWARNING);
+                 KT_STOREMOVE_NOT_WRITABLE, dir);
+        MessageBoxA(hwnd, msg, KT_STOREMOVE_TITLE_OUT, MB_OK | MB_ICONWARNING);
         return;
     }
     sessdir = dupprintf("%s\\Sessions", dir);
     ini = dupprintf("%s\\" KSM_INI, dir);
     if (ksm_dir_exists(sessdir) || ksm_file_exists(ini)) {
         snprintf(msg, sizeof(msg),
-                 "%s\n\nalready holds a KiTTY store. Files of the same name "
-                 "are overwritten, others stay.\n\nContinue?", dir);
-        if (MessageBoxA(hwnd, msg, KSM_TITLE_OUT,
+                 KT_STOREMOVE_ALREADY_STORE_Q, dir);
+        if (MessageBoxA(hwnd, msg, KT_STOREMOVE_TITLE_OUT,
                         MB_YESNO | MB_ICONQUESTION) != IDYES) {
             sfree(sessdir); sfree(ini); return;
         }
@@ -724,7 +712,7 @@ void kitty_make_portable_copy(HWND hwnd)
 
     kitty_portable_copy_core(dir, pw, dpapi, &r, msg, sizeof(msg));
     ksm_wipe(&pw);
-    MessageBoxA(hwnd, msg, KSM_TITLE_OUT,
+    MessageBoxA(hwnd, msg, KT_STOREMOVE_TITLE_OUT,
                 MB_OK | (r.fail ? MB_ICONWARNING : MB_ICONINFORMATION));
 }
 
@@ -744,23 +732,16 @@ void kitty_take_folder_store(HWND hwnd)
     ini = dupprintf("%s\\" KSM_INI, dir);
     if (!ksm_dir_exists(sessdir) && !ksm_file_exists(ini)) {
         snprintf(msg, sizeof(msg),
-                 "%s\n\nholds no KiTTY folder store: neither a Sessions "
-                 "folder nor a " KSM_INI ".", dir);
-        MessageBoxA(hwnd, msg, KSM_TITLE_IN, MB_OK | MB_ICONWARNING);
+                 KT_STOREMOVE_NO_STORE_PREFIX KSM_INI ".", dir);
+        MessageBoxA(hwnd, msg, KT_STOREMOVE_TITLE_IN, MB_OK | MB_ICONWARNING);
         sfree(sessdir); sfree(ini); return;
     }
     sfree(sessdir);
     sfree(ini);
     {
         int a = MessageBoxA(hwnd,
-            "Sessions, named proxies, host keys and settings of the folder "
-            "are taken into the registry. The folder stays as it is.\n"
-            "Whatever the folder does not hold stays in the registry as it "
-            "is.\n\n"
-            "Yes  -  entries of the same name are overwritten\n"
-            "No  -  entries of the same name are kept\n"
-            "Cancel  -  do nothing",
-            KSM_TITLE_IN, MB_YESNOCANCEL | MB_ICONQUESTION);
+            KT_STOREMOVE_TAKE_Q,
+            KT_STOREMOVE_TITLE_IN, MB_YESNOCANCEL | MB_ICONQUESTION);
         if (a == IDCANCEL) return;
         overwrite = (a == IDYES);
     }
@@ -776,6 +757,6 @@ void kitty_take_folder_store(HWND hwnd)
 
     kitty_take_folder_core(dir, pw, overwrite, &r, msg, sizeof(msg));
     ksm_wipe(&pw);
-    MessageBoxA(hwnd, msg, KSM_TITLE_IN,
+    MessageBoxA(hwnd, msg, KT_STOREMOVE_TITLE_IN,
                 MB_OK | (r.fail ? MB_ICONWARNING : MB_ICONINFORMATION));
 }

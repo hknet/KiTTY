@@ -25,6 +25,7 @@
 #include "kitty_hello_keys.h" /* kageant_hello_has_sidecar */
 #include "ssh.h"             /* the agent protocol, for the "is it loaded?" check */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
+#include "kitty_text.h"     /* shared captions and wordings */
 /*
  * KiTTY: log a command line that had a password built into it.
  *
@@ -160,11 +161,7 @@ static char *kx_hello_agent_note(Conf *c)
     if( !kageant_hello_has_sidecar( path ) ) return NULL ;
     if( kx_agent_holds( path ) ) return NULL ;
     return dupprintf(
-        "This session's key is protected by Windows Hello, and the agent "
-        "does not hold it.\r\n"
-        "A transfer client cannot open a protected key file itself. Load "
-        "the key in kageant (one Hello) and start the transfer again.\r\n"
-        "Key: %s\r\n\r\n", path ) ;
+        KT_XFER_HELLO_NOTE, path ) ;
 }
 
 static const char *kx_helper_keyfile(Conf *c)
@@ -402,7 +399,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			0,0,0,0, hwnd, (HMENU)(UINT_PTR)KTX_ID_EDIT, GetModuleHandle(NULL), NULL ) ;
 		/* DPI-aware fonts are applied below, once both controls exist. */
 		SendMessage( w->edit, EM_LIMITTEXT, (WPARAM)0x200000, 0 ) ;
-		w->closebtn = CreateWindow( "BUTTON", "&Cancel",
+		w->closebtn = CreateWindow( "BUTTON", KT_XFER_BTN_CANCEL,
 			WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON,
 			0,0,0,0, hwnd, (HMENU)(UINT_PTR)KTX_ID_CLOSE, GetModuleHandle(NULL), NULL ) ;
 			{ HDC hdc = GetDC( hwnd ) ; int dpi = GetDeviceCaps( hdc, LOGPIXELSX ) ;
@@ -439,15 +436,15 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		DWORD code = (DWORD)wp ;
 		if( !w ) return 0 ;
 		w->done = 1 ;
-		const char *what = w->what ? w->what : "Transfer" ;
+		const char *what = w->what ? w->what : KT_XFER_TRANSFER ;
 		if( code == 0 && !w->cancelled ) {
-			char *m = dupprintf( "%s complete.", what ) ;
-			kitty_tray_balloon_async( w->parent, "KiTTY transfer", m ) ;
+			char *m = dupprintf( KT_XFER_COMPLETE, what ) ;
+			kitty_tray_balloon_async( w->parent, KT_CAP_XFER, m ) ;
 			sfree( m ) ;
 			if( conf && conf_get_bool( conf, CONF_pscp_keep_window ) ) {
-				char *t = dupprintf( "\r\n==== %s complete ====\r\n", what ) ;
+				char *t = dupprintf( KT_XFER_COMPLETE_LINE, what ) ;
 				ktx_feed( w, t, (int)strlen(t) ) ; sfree( t ) ;
-				SetWindowTextA( w->closebtn, "&Close" ) ;
+				SetWindowTextA( w->closebtn, KT_XFER_BTN_CLOSE ) ;
 				EnableWindow( w->closebtn, TRUE ) ;
 				SetForegroundWindow( hwnd ) ; SetFocus( w->closebtn ) ;
 			} else {
@@ -456,22 +453,19 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		} else {
 			char *m ;
 			if( w->cancelled ) {
-				m = dupprintf( "\r\n==== %s cancelled ====\r\n", what ) ;
-				SetWindowTextA( hwnd, "KiTTY transfer - cancelled" ) ;
+				m = dupprintf( KT_XFER_CANCELLED_LINE, what ) ;
+				SetWindowTextA( hwnd, KT_CAP_XFER_CANCELLED ) ;
 			} else {
 				const char *hint = ( code==127 )
-					? "\r\n\r\nExit 127 = the server could not start the SCP/SFTP "
-					  "subsystem (command not found). Try switching the transfer "
-					  "protocol (Connection -> SSH -> WinSCP) between SCP "
-					  "and SFTP, or check the server's sftp-server/scp."
+					? KT_XFER_HINT_127
 					: "" ;
-				m = dupprintf( "\r\n==== %s FAILED  (pscp exit code %lu) ====%s\r\n",
+				m = dupprintf( KT_XFER_FAILED_LINE,
 				               what, (unsigned long)code, hint ) ;
-				char *t = dupprintf( "KiTTY transfer - FAILED (exit %lu)", (unsigned long)code ) ;
+				char *t = dupprintf( KT_XFER_FAILED_TITLE, (unsigned long)code ) ;
 				SetWindowTextA( hwnd, t ) ; sfree( t ) ;
 			}
 			ktx_feed( w, m, (int)strlen(m) ) ; sfree( m ) ;
-			SetWindowTextA( w->closebtn, "&Close" ) ;
+			SetWindowTextA( w->closebtn, KT_XFER_BTN_CLOSE ) ;
 			EnableWindow( w->closebtn, TRUE ) ;
 			SetForegroundWindow( hwnd ) ;
 			SetFocus( w->closebtn ) ;
@@ -485,7 +479,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			} else if( !w->cancelled ) {
 				w->cancelled = 1 ;               /* running -> button is "Cancel": kill pscp */
 				if( w->proc ) TerminateProcess( w->proc, 2 ) ;
-				SetWindowTextA( w->closebtn, "Stopping..." ) ;
+				SetWindowTextA( w->closebtn, KT_XFER_BTN_STOPPING ) ;
 				EnableWindow( w->closebtn, FALSE ) ;
 			}
 			return 0 ;
@@ -496,7 +490,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			if( !w->cancelled ) {
 				w->cancelled = 1 ;
 				if( w->proc ) TerminateProcess( w->proc, 2 ) ;
-				SetWindowTextA( w->closebtn, "Stopping..." ) ;
+				SetWindowTextA( w->closebtn, KT_XFER_BTN_STOPPING ) ;
 				EnableWindow( w->closebtn, FALSE ) ;
 			}
 			return 0 ;
@@ -545,8 +539,8 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	if( !CreateProcessA( NULL, cmdline, NULL, NULL, TRUE,
 	                     CREATE_NO_WINDOW, NULL, NULL, &si, &pi ) ) {
 		CloseHandle( rd ) ; CloseHandle( wr ) ;
-		MessageBox( NULL, "Could not launch the transfer client (pscp).",
-		            "KiTTY transfer", MB_OK|MB_ICONERROR ) ;
+		MessageBox( NULL, KT_XFER_LAUNCH_FAILED,
+		            KT_CAP_XFER, MB_OK|MB_ICONERROR ) ;
 		return -1 ;
 	}
 	CloseHandle( wr ) ; CloseHandle( pi.hThread ) ;
@@ -554,8 +548,8 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	if( !w ) { CloseHandle( pi.hProcess ) ; CloseHandle( rd ) ; return -1 ; }
 	memset( w, 0, sizeof(*w) ) ;
 	w->parent = parent ; w->proc = pi.hProcess ; w->rd = rd ;
-	w->what = dupstr( what ? what : "Transfer" ) ;
-	char *title = dupprintf( "KiTTY transfer - %s", w->what ) ;
+	w->what = dupstr( what ? what : KT_XFER_TRANSFER ) ;
+	char *title = dupprintf( KT_XFER_WINDOW_TITLE, w->what ) ;
 	int dpi0 = 96 ;
 	{ HDC pdc = GetDC( parent ) ; if( pdc ) { dpi0 = GetDeviceCaps( pdc, LOGPIXELSX ) ; ReleaseDC( parent, pdc ) ; } }
 	HWND hwnd = CreateWindow( "KiTTYxferwin", title,
@@ -771,10 +765,10 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	debug_logevent_redacted( "Run", buffer, pw_at, pw_len ) ;
 	/* Capture output + show it on failure, instead of flashing a console shut
 	 * (so e.g. a server's exit-127 "Cannot initialize SFTP" is readable). */
-	{ char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), "Upload of \"%s\"", filename ? filename : "file" ) ;
+	{ char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), KT_XFER_UPLOAD_OF, filename ? filename : KT_XFER_FILE ) ;
 	  char *note = kx_hello_agent_note( conf ) ;
-	  char *intro = dupprintf( "%sUploading  %s  ->  %s\r\n\r\n",
-	                           note ? note : "", filename ? filename : "file", tgt ) ;
+	  char *intro = dupprintf( KT_XFER_UPLOADING,
+	                           note ? note : "", filename ? filename : KT_XFER_FILE, tgt ) ;
 	  kitty_run_xfer( hwnd, buffer, whatbuf, intro ) ;
 	  sfree( intro ) ; sfree( note ) ; }
 
@@ -816,11 +810,11 @@ void SendFile( HWND hwnd ) {
 	char filename[32768] ;
 
 	if( conf_get_int(conf,CONF_protocol) != PROT_SSH ) {
-		MessageBox( hwnd, "This function is only available with SSH connections.", "Error", MB_OK|MB_ICONERROR ) ;
+		MessageBox( hwnd, KT_MSG_SSH_ONLY, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
 		return ;
 		}
 
-	if( OpenFileName( hwnd, filename, "Send file...", "All files (*.*)|*.*|" ) ) 
+	if( OpenFileName( hwnd, filename, KT_CAP_SEND_FILE, "All files (*.*)|*.*|" ) )
 		if( strlen( filename ) > 0 ) {
 			SendFileList( hwnd, filename ) ;
 		}
@@ -918,7 +912,7 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
 
     if( debug_flag ) { debug_logevent( "Get on file: %s", buffer) ; }
     /* Capture output + show on failure (no vanishing console). */
-    { char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), "Download of \"%s\"", filename ? filename : "file" ) ;
+    { char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), KT_XFER_DOWNLOAD_OF, filename ? filename : KT_XFER_FILE ) ;
       char *note = kx_hello_agent_note( conf ) ;
       kitty_run_xfer( hwnd, buffer, whatbuf, note ) ;    /* no target line, but say it if the key needs loading */
       sfree( note ) ; }
@@ -935,7 +929,7 @@ void GetFile( HWND hwnd ) {
     int p;
 
     if( conf_get_int(conf,CONF_protocol) != PROT_SSH ) {
-        MessageBox( hwnd, "This function is only available with SSH connections.", "Error", MB_OK|MB_ICONERROR ) ;
+        MessageBox( hwnd, KT_MSG_SSH_ONLY, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
         return ;
     }
 
@@ -1022,7 +1016,7 @@ void GetFile( HWND hwnd ) {
     if( strlen( buffer ) > 0 ) {
         chdir( InitialDirectory ) ;
         if( debug_flag ) { debug_logevent("Get file: %s", buffer) ; }
-        if( kitty_run_noshell( buffer, 0 ) ) { MessageBox( NULL, buffer, "Transfer problem", MB_OK|MB_ICONERROR  ) ; }
+        if( kitty_run_noshell( buffer, 0 ) ) { MessageBox( NULL, buffer, KT_CAP_TRANSFER_PROBLEM, MB_OK|MB_ICONERROR  ) ; }
         //if( !system( buffer ) ) unlink( "kitty.log" ) ;
     }
 }
@@ -1052,8 +1046,8 @@ void RunCmd( HWND hwnd ) {
         if( conf_get_bool( conf, CONF_runcmdconfirm ) ) {
             char prompt[4096+160] ;
             snprintf( prompt, sizeof(prompt),
-                "Run this command from the clipboard?\n\n%s", buffer ) ;
-            if( MessageBox( hwnd, prompt, "KiTTY - run clipboard command",
+                KT_XFER_RUN_CLIP_PROMPT, buffer ) ;
+            if( MessageBox( hwnd, prompt, KT_CAP_RUN_CLIP_CMD,
                     MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2 ) != IDYES ) return ;
         }
         chdir( InitialDirectory ) ;
@@ -1068,8 +1062,8 @@ void RunCmd( HWND hwnd ) {
         }
         if( conf_get_bool( conf, CONF_runcmdnotify ) ) {
             char note[4096+64] ;
-            snprintf( note, sizeof(note), "Ran clipboard command:\n%s", buffer ) ;
-            kitty_tray_balloon_async( hwnd, "KiTTY", note ) ;
+            snprintf( note, sizeof(note), KT_XFER_RAN_CLIP, buffer ) ;
+            kitty_tray_balloon_async( hwnd, KT_CAP_KITTY, note ) ;
         }
     }
 }
@@ -1420,8 +1414,8 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	 * nowhere of ours to write a note into - ask before launching it. */
 	{ char *note = kx_hello_agent_note( conf ) ;
 	  if( note != NULL ) {
-		char *text = dupprintf( "%sStart WinSCP anyway?", note ) ;
-		int go = MessageBox( hwnd, text, "KiTTY - the key is not in the agent",
+		char *text = dupprintf( KT_XFER_START_WINSCP_ANYWAY, note ) ;
+		int go = MessageBox( hwnd, text, KT_CAP_KEY_NOT_IN_AGENT,
 		                     MB_OKCANCEL|MB_ICONWARNING ) ;
 		sfree( text ) ; sfree( note ) ;
 		if( go != IDOK ) { memset( cmd, 0, strlen(cmd) ) ; return ; }
@@ -1504,7 +1498,7 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
 
 void OnDropFiles(HWND hwnd, HDROP hDropInfo) {
 	if( conf_get_int(conf,CONF_protocol) != PROT_SSH ) {
-		MessageBox( hwnd, "This function is only available with SSH connections.", "Error", MB_OK|MB_ICONERROR ) ;
+		MessageBox( hwnd, KT_MSG_SSH_ONLY, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
 		return ;
 	}
 	/* Drag-drop always uses the normal path now. The former "Send file in

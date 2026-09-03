@@ -14,6 +14,7 @@
 #include "terminal.h"
 #include "kitty_perf.h"
 #ifdef MOD_PERSO
+#include "../kitty/kitty_text.h"   /* KiTTY: shared captions */
 char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf);
 void kitty_set_remote_cwd(const char *osc7);   /* OSC 7 cwd tracking (kitty.c) */
 
@@ -83,6 +84,7 @@ static void clip_note_activity(Terminal *term, int dir);
 #ifdef MOD_FAR2L
 #include "cdecode.h"
 #include "cencode.h"
+#include "../kitty/kitty_text.h"   /* KiTTY: the far2l clipboard prompt's words */
 #endif
 
 #define VT52_PLUS
@@ -3409,7 +3411,7 @@ static void far2l_process_payload(Terminal *term)
         /* Rate-limited and shared with the OSC paths: a host that keeps sending
          * oversize payloads must not be able to fill the Event Log with our own
          * writing, which the first version of this line allowed. */
-        clip_payload_dropped(term, "A far2l clipboard payload",
+        clip_payload_dropped(term, KT_CLIP_WHAT_FAR2L,
                              term->clip_allowed != 0);
 #endif
         return;
@@ -3495,8 +3497,8 @@ static void far2l_process_payload(Terminal *term)
             reply_size = 2; reply = snewn(reply_size, char);
 #ifdef _WINDOWS
             if (clip_allowed_eff == 2) {     /* ask once, then latch */
-                int status = MessageBox(NULL, "Allow far2l clipboard sync?",
-                                        "KiTTY", MB_OKCANCEL);
+                int status = MessageBox(NULL, KT_CLIP_FAR2L_ALLOW_Q,
+                                        KT_CAP_KITTY, MB_OKCANCEL);
                 term->clip_allowed = (status == IDOK) ? 1 : 0;
             }
             reply[0] = (clip_allowed_eff == 1) ? 1 : (char)-1;
@@ -3783,12 +3785,11 @@ static void clip_payload_dropped(Terminal *term, const char *what, bool enabled)
         now - term->clip_dropped_logged >= CLIP_DROP_LOG_GAP) {
         char *msg;
         if (term->clip_dropped_quiet > 0)
-            msg = dupprintf("%s was too large and was dropped; %d further "
-                            "payload%s also dropped", what,
+            msg = dupprintf(KT_CLIP_LOG_DROPPED_MORE, what,
                             term->clip_dropped_quiet,
                             term->clip_dropped_quiet == 1 ? "" : "s");
         else
-            msg = dupprintf("%s was too large and was dropped", what);
+            msg = dupprintf(KT_CLIP_LOG_DROPPED, what);
         logevent(term->logctx, msg);
         sfree(msg);
         term->clip_dropped_quiet = 0;
@@ -3812,11 +3813,8 @@ static void clip_payload_dropped(Terminal *term, const char *what, bool enabled)
      * which, and a notification that quietly stands for an unknown number of
      * events is worse than one that admits it. Clicking it opens the log.
      */
-    kitty_osc52_notify(term, "KiTTY clipboard",
-                       "Too much data arrived for the clipboard in one go, so it "
-                       "was not copied. Nothing was pasted in part.\n"
-                       "Click here for the Event Log, which lists every one of "
-                       "these (this notice is rate-limited).",
+    kitty_osc52_notify(term, KT_CAP_CLIPBOARD,
+                       KT_CLIP_NOTICE_TOO_MUCH,
                        CLIP_BALLOON_LOG);
 }
 
@@ -3875,12 +3873,10 @@ static void clip_note_activity(Terminal *term, int dir)
          now - term->clip_notified_last >= CLIP_NOTIFY_GAP)) {
         term->clip_notified_last = now;
         kitty_osc52_notify(
-            term, "KiTTY clipboard",
+            term, KT_CAP_CLIPBOARD,
             (dir & CLIP_ACT_READ)
-            ? "A server has read your clipboard.\n"
-              "Shown here because this window has no title bar to mark."
-            : "A server has changed your clipboard.\n"
-              "Shown here because this window has no title bar to mark.",
+            ? KT_CLIP_NOTICE_READ_NOTITLE
+            : KT_CLIP_NOTICE_WRITE_NOTITLE,
             CLIP_BALLOON_LOG);
     }
 }
@@ -3919,13 +3915,10 @@ static void clip_write_throttled(Terminal *term)
         now - term->clip_write_logged >= CLIP_DROP_LOG_GAP) {
         char *msg;
         if (term->clip_write_quiet > 0)
-            msg = dupprintf("Remote clipboard write ignored: more than the "
-                            "permitted number in one second; %d further write%s "
-                            "also ignored", term->clip_write_quiet,
+            msg = dupprintf(KT_CLIP_LOG_WRITE_RATE_MORE, term->clip_write_quiet,
                             term->clip_write_quiet == 1 ? "" : "s");
         else
-            msg = dupprintf("Remote clipboard write ignored: more than the "
-                            "permitted number in one second");
+            msg = dupprintf(KT_CLIP_LOG_WRITE_RATE);
         logevent(term->logctx, msg);
         sfree(msg);
         term->clip_write_quiet = 0;
@@ -3940,10 +3933,8 @@ static void clip_write_throttled(Terminal *term)
         now - term->clip_notified_last < CLIP_NOTIFY_GAP)
         return;
     term->clip_notified_last = now;
-    kitty_osc52_notify(term, "KiTTY clipboard",
-                       "A server is repeatedly changing your clipboard. The extra "
-                       "changes are being ignored.\n"
-                       "Click here to stop this server changing it at all.",
+    kitty_osc52_notify(term, KT_CAP_CLIPBOARD,
+                       KT_CLIP_NOTICE_WRITE_REPEATED,
                        CLIP_BALLOON_BLOCK_WRITES);
 }
 
@@ -3992,8 +3983,8 @@ static void osc52_read_forget_decision(Terminal *term)
     if (was_granting) {
         kitty_osc52_state_changed(term);
         if (conf_get_bool(term->conf, CONF_clipboard_notify))
-            kitty_osc52_notify(term, "KiTTY clipboard",
-                               "Permission to read the clipboard has expired.",
+            kitty_osc52_notify(term, KT_CAP_CLIPBOARD,
+                               KT_CLIP_NOTICE_READ_EXPIRED,
                                CLIP_BALLOON_LOG);
     }
 }
@@ -4021,14 +4012,13 @@ static void osc52_read_refuse(Terminal *term, const char *why, bool tell_user)
             /* mention what was swallowed rather than pretending it did not
              * happen: "one refusal" and "four hundred refusals" are different
              * events and the log has to be able to say which this was */
-            char *msg = dupprintf("Clipboard read refused (%s); %d further "
-                                  "request%s also refused",
+            char *msg = dupprintf(KT_CLIP_LOG_READ_REFUSED_MORE,
                                   why, term->osc52_read_refused_quiet,
                                   term->osc52_read_refused_quiet == 1 ? "" : "s");
             logevent(term->logctx, msg);
             sfree(msg);
         } else {
-            char *msg = dupprintf("Clipboard read refused (%s)", why);
+            char *msg = dupprintf(KT_CLIP_LOG_READ_REFUSED, why);
             logevent(term->logctx, msg);
             sfree(msg);
         }
@@ -4045,11 +4035,8 @@ static void osc52_read_refuse(Terminal *term, const char *why, bool tell_user)
         if (tell_user &&
             conf_get_int(term->conf, CONF_osc52_clipboard_read) == OSC52_READ_ASK &&
             conf_get_bool(term->conf, CONF_clipboard_notify))
-            kitty_osc52_notify(term, "KiTTY clipboard",
-                               "A server asked to read your clipboard. "
-                               "It was refused.\n"
-                               "Click here for the Event Log (this notice is "
-                               "rate-limited).",
+            kitty_osc52_notify(term, KT_CAP_CLIPBOARD,
+                               KT_CLIP_NOTICE_READ_REFUSED,
                                CLIP_BALLOON_LOG);
     } else {
         term->osc52_read_refused_quiet++;
@@ -4084,8 +4071,7 @@ static void osc52_read_send(Terminal *term, const wchar_t *clip, int clip_len)
     term->osc52_read_served++;
     term->osc52_read_last_served = (unsigned long)time(NULL);
     clip_note_activity(term, CLIP_ACT_READ);
-    msg = dupprintf("Clipboard sent to the server on request "
-                    "(%d character%s; %d read%s served in this window)",
+    msg = dupprintf(KT_CLIP_LOG_READ_SENT,
                     clip_len, clip_len == 1 ? "" : "s",
                     term->osc52_read_served,
                     term->osc52_read_served == 1 ? "" : "s");
@@ -4214,7 +4200,7 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
 
     /* 1. The setting says no. Nothing else is even looked at. */
     if (conf_get_int(term->conf, CONF_osc52_clipboard_read) != OSC52_READ_ASK) {
-        osc52_read_refuse(term, "reads are set to Deny", false);
+        osc52_read_refuse(term, KT_CLIP_WHY_DENY_SETTING, false);
         return false;
     }
 
@@ -4229,7 +4215,7 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
     if (conf_get_bool(term->conf, CONF_clipboard_require_focus) && !term->has_focus) {
         if (term->osc52_read_decision > 0)
             kitty_osc52_state_changed(term);   /* show it as paused */
-        osc52_read_refuse(term, "window not focused", false);
+        osc52_read_refuse(term, KT_CLIP_WHY_NO_FOCUS, false);
         return false;
     }
 
@@ -4239,7 +4225,7 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
     if (term->osc52_read_decision < 0 && !osc52_read_decision_expired(term)) {
         if (term->osc52_read_remaining > 0)
             term->osc52_read_remaining--;
-        osc52_read_refuse(term, "refused earlier, and that still applies", false);
+        osc52_read_refuse(term, KT_CLIP_WHY_REFUSED_EARLIER, false);
         return false;
     }
     if (osc52_read_decision_expired(term))
@@ -4272,15 +4258,13 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
          * merely chatty must not lose its approval and start prompting again. */
         if (interval > 0 && term->osc52_read_last_served != 0 &&
             now - term->osc52_read_last_served < (unsigned long)interval) {
-            osc52_read_refuse(term, "approved program asked again sooner than "
-                              "the minimum gap allows", false);
+            osc52_read_refuse(term, KT_CLIP_WHY_PROGRAM_TOO_SOON, false);
             return false;
         }
         if (max_served > 0 && term->osc52_read_served >= max_served) {
             osc5522_pw_forget(term, pw);
-            logevent(term->logctx, "Clipboard approval withdrawn: the limit on "
-                     "reads served in this window was reached");
-            osc52_read_refuse(term, "approved program reached the read limit", true);
+            logevent(term->logctx, KT_CLIP_LOG_APPROVAL_WITHDRAWN);
+            osc52_read_refuse(term, KT_CLIP_WHY_PROGRAM_LIMIT, true);
             return false;
         }
         clip = kitty_osc52_get_clipboard(&clip_len);
@@ -4320,14 +4304,12 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
          * request asks again - once, because the count then starts over.
          */
         if (max_served > 0 && term->osc52_read_served >= max_served) {
-            logevent(term->logctx, "Clipboard permission withdrawn: the limit on "
-                     "reads served in this window was reached");
+            logevent(term->logctx, KT_CLIP_LOG_PERMISSION_WITHDRAWN);
             osc52_read_forget_decision(term);
         } else if (interval > 0 && term->osc52_read_last_served != 0 &&
                    now - term->osc52_read_last_served < (unsigned long)interval) {
             /* refuse this one; the grant stands and the user is not asked */
-            osc52_read_refuse(term, "asked again sooner than the minimum gap "
-                              "allows", false);
+            osc52_read_refuse(term, KT_CLIP_WHY_TOO_SOON, false);
             return false;
         } else {
             if (term->osc52_read_remaining > 0)
@@ -4348,7 +4330,7 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
      * already open for this window means the next request is refused, not
      * stacked behind it. */
     if (term->osc52_read_asking) {
-        osc52_read_refuse(term, "a clipboard dialog is already open", false);
+        osc52_read_refuse(term, KT_CLIP_WHY_DIALOG_OPEN, false);
         *err = "EBUSY";
         return false;
     }
@@ -4359,7 +4341,7 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
         term->osc52_read_prompts = 0;
     }
     if (dialog_cap > 0 && term->osc52_read_prompts >= dialog_cap) {
-        osc52_read_refuse(term, "asking repeatedly; not prompting again yet", true);
+        osc52_read_refuse(term, KT_CLIP_WHY_ASKING_REPEATEDLY, true);
         *err = "EBUSY";
         return false;
     }
@@ -4375,8 +4357,7 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
              * about this request, so it is refused WITH a reason rather than in
              * the silence an empty clipboard gets - otherwise a request that
              * lands at the wrong moment vanishes without trace. */
-            osc52_read_refuse(term, "the clipboard was not available (another "
-                              "program has it open); not asking this time", true);
+            osc52_read_refuse(term, KT_CLIP_WHY_UNAVAILABLE, true);
             *err = "EBUSY";
             return false;
         }
@@ -4407,16 +4388,14 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
             if (kitty_osc52_save_deny_for_host(term)) {
                 conf_set_int(term->conf, CONF_osc52_clipboard_read,
                              OSC52_READ_DENY);
-                logevent(term->logctx, "Clipboard reads set to Deny for this "
-                         "host, and saved in the session");
+                logevent(term->logctx, KT_CLIP_LOG_DENY_SAVED);
             } else {
                 /* There is nowhere to write it: someone typed a hostname into
                  * the config box and connected. Say so (the dialog does) and let
                  * the refusal stand for the rest of this window - we do not
                  * invent an invisible host list, because an unseen permission
                  * record is the thing this design exists to avoid. */
-                logevent(term->logctx, "Clipboard reads refused for the rest of "
-                         "this session; no saved session to store it in");
+                logevent(term->logctx, KT_CLIP_LOG_DENY_UNSAVED);
                 allowed = false;
                 grant = OSC52_GRANT_SESSION;
             }
@@ -4478,15 +4457,14 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
         if (!allowed) {
             smemclr(clip, clip_len * sizeof(wchar_t));
             sfree(clip);
-            osc52_read_refuse(term, "the user said no", false);
+            osc52_read_refuse(term, KT_CLIP_WHY_USER_NO, false);
             return false;
         }
         if (term->osc52_read_decision > 0) {
             kitty_osc52_state_changed(term);
             if (conf_get_bool(term->conf, CONF_clipboard_notify))
-                kitty_osc52_notify(term, "KiTTY clipboard",
-                                   "This server may now read your clipboard. "
-                                   "The title bar shows it while that lasts.",
+                kitty_osc52_notify(term, KT_CAP_CLIPBOARD,
+                                   KT_CLIP_NOTICE_READ_GRANTED,
                                    CLIP_BALLOON_LOG);
         }
         /*
@@ -4819,10 +4797,9 @@ static void osc5522_read(Terminal *term, const char *meta,
         term->osc52_read_served++;
         term->osc52_read_last_served = (unsigned long)time(NULL);
         clip_note_activity(term, CLIP_ACT_READ);
-        msg = dupprintf("Clipboard sent to the server on request over OSC 5522 "
-                        "(%d character%s%s%s; %d read%s served in this window)",
+        msg = dupprintf(KT_CLIP_LOG_READ_SENT_5522,
                         clip_len, clip_len == 1 ? "" : "s",
-                        name ? ", program calls itself " : "", name ? name : "",
+                        name ? KT_CLIP_LOG_PROGRAM_CALLS_ITSELF : "", name ? name : "",
                         term->osc52_read_served,
                         term->osc52_read_served == 1 ? "" : "s");
         logevent(term->logctx, msg);
@@ -4903,7 +4880,7 @@ static void osc5522_process(Terminal *term)
          */
         if (term->osc_str_overflow) {
             clip_payload_dropped(
-                term, "A clipboard request (OSC 5522)",
+                term, KT_CLIP_WHAT_OSC5522,
                 conf_get_int(term->conf, CONF_osc52_clipboard_read) ==
                 OSC52_READ_ASK);
             char ebusy[64];
@@ -5000,7 +4977,7 @@ static void osc52_set_clipboard(Terminal *term)
      * simply appeared not to work, with nothing anywhere to say why.
      */
     if (term->osc_str_overflow) {
-        clip_payload_dropped(term, "A remote clipboard write (OSC 52)",
+        clip_payload_dropped(term, KT_CLIP_WHAT_OSC52,
                              term->osc52_allowed != OSC52_CLIPBOARD_DENY);
         return;
     }
@@ -5036,7 +5013,7 @@ static void osc52_set_clipboard(Terminal *term)
      * clipboard was wrong regardless.
      */
     if (pdlen == 0) {
-        logevent(term->logctx, "Remote clipboard write ignored: empty payload");
+        logevent(term->logctx, KT_CLIP_LOG_WRITE_EMPTY);
         return;
     }
 
@@ -5056,8 +5033,7 @@ static void osc52_set_clipboard(Terminal *term)
      * clipboard write when focus comes back is worse than not doing it.
      */
     if (conf_get_bool(term->conf, CONF_clipboard_require_focus) && !term->has_focus) {
-        logevent(term->logctx, "Remote clipboard write ignored: "
-                 "the window does not have focus");
+        logevent(term->logctx, KT_CLIP_LOG_WRITE_NO_FOCUS);
         return;
     }
 
@@ -5065,9 +5041,8 @@ static void osc52_set_clipboard(Terminal *term)
 #ifdef _WINDOWS
         int status = MessageBox(
             NULL,
-            "The server wants to put text on your clipboard.\n\n"
-            "Allow it for the rest of this session?",
-            "KiTTY", MB_OKCANCEL | MB_ICONQUESTION);
+            KT_CLIP_WRITE_ALLOW_Q,
+            KT_CAP_KITTY, MB_OKCANCEL | MB_ICONQUESTION);
         /* Latch either way: asking once per payload would let any host raise a
          * dialog as often as it liked. */
         term->osc52_allowed = (status == IDOK ?

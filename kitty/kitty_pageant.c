@@ -33,6 +33,7 @@
 
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
+#include "kitty_text.h"     /* shared captions */
 /* Shim so the moved kageant_do_notify body below stays textually identical
  * to its pageant.c original: reach pageant.c's static tray-window handle
  * through the accessor it exports for us. */
@@ -2033,7 +2034,7 @@ char *kageant_paths_of_blob(ptrlen blob)
             if (g_pending[i].fp[0] && !strcmp(g_pending[i].fp, fp)) {
                 if (n++) put_dataz(out, "\n    ");
                 put_dataz(out, g_pending[i].path);
-                put_dataz(out, "   (not reachable right now)");
+                put_dataz(out, KT_KA_PATH_NOT_REACHABLE);
             }
         }
         sfree(fp);
@@ -2606,20 +2607,16 @@ void kageant_do_identities_asked(unsigned long pid)
             CloseHandle(h);
         }
         if (!who[0])
-            snprintf(who, sizeof(who), " a program (pid %lu)", pid);
+            snprintf(who, sizeof(who), KT_KA_WHO_PROGRAM_FMT, pid);
     }
 
     snprintf(text, sizeof(text),
              held == 1 ?
-             "Something%s just asked for your keys, and one of them is NOT "
-             "loaded: the file is not the key recorded for it. If that login "
-             "fails, this is why. Click to see it." :
-             "Something%s just asked for your keys, and %d of them are NOT "
-             "loaded: the files are not the keys recorded for them. If a login "
-             "fails, this is why. Click to see them.",
+             KT_KA_HELD_BACK_ONE_FMT :
+             KT_KA_HELD_BACK_MANY_FMT,
              who, held);
 
-    kitty_notice_show("kageant: a key is being held back", text,
+    kitty_notice_show(KT_KA_NOTICE_HELD_BACK, text,
                       KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
                       traywindow, KAGEANT_WM_NOTICE_CLICK);
     announced_for = held;
@@ -2677,15 +2674,11 @@ void kageant_note_verify_problem(int mismatch_new, int unchecked,
     if (mismatch_new > 0) {
         snprintf(text, sizeof(text),
                  mismatch_new == 1 ?
-                 "A key file was NOT loaded: it is not the key recorded for "
-                 "that path. Click to see which - its State in the key list "
-                 "reads \"mismatch\"." :
-                 "%d key files were NOT loaded: they are not the keys recorded "
-                 "for those paths. Click to see which - their State in the key "
-                 "list reads \"mismatch\".",
+                 KT_KA_VERIFY_MISMATCH_ONE :
+                 KT_KA_VERIFY_MISMATCH_MANY_FMT,
                  mismatch_new);
         if (traywindow)
-            kitty_notice_show("kageant: key file changed", text,
+            kitty_notice_show(KT_KA_NOTICE_KEY_FILE_CHANGED, text,
                               KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
                               traywindow, KAGEANT_WM_NOTICE_CLICK);
     }
@@ -2693,15 +2686,11 @@ void kageant_note_verify_problem(int mismatch_new, int unchecked,
     if (unchecked > 0) {
         snprintf(text, sizeof(text),
                  unchecked == 1 ?
-                 "A key was loaded with no fingerprint on record, so nothing "
-                 "could be checked. Its fingerprint is recorded now and it "
-                 "will be checked from here on." :
-                 "%d keys were loaded with no fingerprint on record, so "
-                 "nothing could be checked. Their fingerprints are recorded "
-                 "now and they will be checked from here on.",
+                 KT_KA_VERIFY_UNCHECKED_ONE :
+                 KT_KA_VERIFY_UNCHECKED_MANY_FMT,
                  unchecked);
         if (traywindow)
-            kitty_notice_show("kageant: keys loaded unverified", text,
+            kitty_notice_show(KT_KA_NOTICE_LOADED_UNVERIFIED, text,
                               KAGEANT_NOTICE_INFO, kageant_notice_seconds(10),
                               traywindow, KAGEANT_WM_NOTICE_CLICK);
     }
@@ -2709,17 +2698,11 @@ void kageant_note_verify_problem(int mismatch_new, int unchecked,
     if (nofp_newdrive > 0) {
         snprintf(text, sizeof(text),
                  nofp_newdrive == 1 ?
-                 "A file matching a startup key's path appeared on the new "
-                 "drive, but that key has no fingerprint on record to check "
-                 "it against, so it was NOT loaded. Load the key once from "
-                 "its recorded path (or Add Key) to record one." :
-                 "%d files matching startup keys' paths appeared on the new "
-                 "drive, but those keys have no fingerprints on record to "
-                 "check them against, so they were NOT loaded. Load each key "
-                 "once from its recorded path (or Add Key) to record one.",
+                 KT_KA_VERIFY_NOFP_ONE :
+                 KT_KA_VERIFY_NOFP_MANY_FMT,
                  nofp_newdrive);
         if (traywindow)
-            kitty_notice_show("kageant: key on a new drive not loaded", text,
+            kitty_notice_show(KT_KA_NOTICE_NEW_DRIVE_NOT_LOADED, text,
                               KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
                               traywindow, KAGEANT_WM_NOTICE_CLICK);
     }
@@ -2747,10 +2730,8 @@ void kageant_note_retry_result(int loaded, int refused, int absent,
 
     if (!loaded && !refused && !absent && !broken) {
         if (traywindow)
-            kitty_notice_show("kageant: nothing to retry",
-                              "No key is waiting to be loaded. Every "
-                              "remembered key is either loaded already or "
-                              "not in the startup list.",
+            kitty_notice_show(KT_KA_NOTICE_NOTHING_TO_RETRY,
+                              KT_KA_RETRY_NOTHING,
                               KAGEANT_NOTICE_INFO, kageant_notice_seconds(8),
                               traywindow, KAGEANT_WM_NOTICE_CLICK);
         return;
@@ -2758,31 +2739,28 @@ void kageant_note_retry_result(int loaded, int refused, int absent,
 
     if (loaded > 0)
         n += snprintf(text + n, sizeof(text) - n,
-                      "%d key%s loaded.%s ", loaded, loaded == 1 ? "" : "s",
+                      KT_KA_RETRY_LOADED_FMT, loaded, loaded == 1 ? "" : "s",
                       unchecked > 0 ?
-                      " There was no fingerprint on record for some of them,"
-                      " so nothing could be checked this once - what loaded"
-                      " is the baseline from here on." : "");
+                      KT_KA_RETRY_UNCHECKED_CLAUSE : "");
     if (refused > 0)
         n += snprintf(text + n, sizeof(text) - n,
-                      "%d refused: the file is not the key recorded for that "
-                      "path. ", refused);
+                      KT_KA_RETRY_REFUSED_FMT, refused);
     if (absent > 0)
         n += snprintf(text + n, sizeof(text) - n,
-                      "%d still not there. ", absent);
+                      KT_KA_RETRY_ABSENT_FMT, absent);
     if (broken > 0)
         n += snprintf(text + n, sizeof(text) - n,
-                      "%d could not be read as a key. ", broken);
+                      KT_KA_RETRY_BROKEN_FMT, broken);
     /* All four clauses together come to well under sizeof(text), but snprintf
      * returns what it WANTED to write, so an offset walked past the end would
      * turn the size argument negative and enormous. */
     if (n < 0 || n > (int)sizeof(text) - 1)
         n = (int)sizeof(text) - 1;
-    snprintf(text + n, sizeof(text) - n, "Click to see which.");
+    snprintf(text + n, sizeof(text) - n, KT_KA_RETRY_CLICK);
 
     if (traywindow)
-        kitty_notice_show(warn ? "kageant: keys not loaded"
-                               : "kageant: retry finished", text,
+        kitty_notice_show(warn ? KT_KA_NOTICE_KEYS_NOT_LOADED
+                               : KT_KA_NOTICE_RETRY_FINISHED, text,
                           warn ? KAGEANT_NOTICE_WARN : KAGEANT_NOTICE_INFO,
                           kageant_notice_seconds(warn ? 12 : 8),
                           traywindow, KAGEANT_WM_NOTICE_CLICK);
@@ -3130,18 +3108,10 @@ void kageant_track_keypath(const char *path, int encrypted)
             !kageant_path_under(dir, abspath)) {
             int needs_pass = kageant_key_needs_pass(abspath);
             char *prompt = dupprintf(
-                "This key is outside the portable install folder:\n\n"
-                "    %s\n\n"
-                "Copy it into the portable keys folder so it travels with this "
-                "install, or reference it where it is (it will then load only on "
-                "this machine)?%s\n\n"
-                "Yes = Copy into %s\\keys\n"
-                "No = Reference where it is\n"
-                "Cancel = Do not add it to the startup list",
+                KT_KA_PORTABLE_KEY_Q_FMT,
                 abspath,
                 needs_pass ? "" :
-                "\n\nWARNING: this key has no passphrase - copying it onto "
-                "portable media lets anyone holding the media use it.",
+                KT_KA_PORTABLE_KEY_NOPASS_WARN,
                 dir);
             /* Default NO - reference the key where it is. Copying a private key
              * is the answer that cannot be undone by changing your mind later,
@@ -3149,7 +3119,7 @@ void kageant_track_keypath(const char *path, int encrypted)
              * a key deliberately kept on a stick, which the user does not want
              * duplicated onto every machine they plug into. */
             int choice = MessageBox(NULL, prompt,
-                "kageant - add key to startup",
+                KT_CAP_KA_ADD_KEY_TO_STARTUP,
                 MB_ICONQUESTION | MB_YESNOCANCEL | MB_DEFBUTTON2);
             sfree(prompt);
             if (choice == IDCANCEL)
@@ -3180,9 +3150,7 @@ void kageant_track_keypath(const char *path, int encrypted)
                         if (!stricmp(g_loaded_keypaths[i], abspath))
                             return;
                 } else {
-                    MessageBox(NULL, "Could not copy the key into the portable "
-                        "folder; it will be referenced at its current location "
-                        "instead.", "kageant", MB_ICONWARNING | MB_OK);
+                    MessageBox(NULL, KT_KA_PORTABLE_COPY_FAILED, KT_CAP_KAGEANT, MB_ICONWARNING | MB_OK);
                 }
             }
         }
@@ -3283,7 +3251,7 @@ static int kageant_scan_run(HKEY root, const char *myexe, char *desc, size_t len
          * conflict (e.g. a system-installed kageant vs this portable one). */
         kageant_cmd_to_exe(data, exe, sizeof(exe));
         if (kageant_is_agent_exe(exe) && stricmp(exe, myexe) != 0) {
-            snprintf(desc, len, "%s  ->  %s\n(%s\\...\\CurrentVersion\\Run)",
+            snprintf(desc, len, KT_KA_AUTOSTART_RUN_DESC_FMT,
                      name, exe, root == HKEY_CURRENT_USER ? "HKCU" : "HKLM");
             found = 1;
             break;
@@ -3310,8 +3278,8 @@ static int kageant_scan_startup(int common, const char *myexe,
         snprintf(lnk, sizeof(lnk), "%s\\%s", dir, fd.cFileName);
         if (kitty_startup_shortcut_target(lnk, target, sizeof(target)) &&
             kageant_is_agent_exe(target) && stricmp(target, myexe) != 0) {
-            snprintf(desc, len, "%s  ->  %s\n(%s Startup folder)",
-                     fd.cFileName, target, common ? "all-users" : "your");
+            snprintf(desc, len, KT_KA_AUTOSTART_SHORTCUT_DESC_FMT,
+                     fd.cFileName, target, common ? KT_KA_AUTOSTART_ALL_USERS : KT_KA_AUTOSTART_YOUR);
             found = 1;
             break;
         }
@@ -3664,18 +3632,17 @@ void kageant_notify_startup_missing(void)
     char text[256];
     if (kageant_retry_keys())
         snprintf(text, sizeof(text),
-                 "%d startup key%s not reachable right now. They will be "
-                 "loaded as soon as the drive they are on is back.",
+                 KT_KA_STARTUP_MISSING_RETRY_FMT,
                  g_startup_missing, g_startup_missing == 1 ? " is" : "s are");
     else
         snprintf(text, sizeof(text),
-                 "%d startup key%s could not be found and %s skipped.",
+                 KT_KA_STARTUP_MISSING_FMT,
                  g_startup_missing, g_startup_missing == 1 ? "" : "s",
                  g_startup_missing == 1 ? "was" : "were");
     /* KiTTY: our own notice window instead of a tray balloon. Amber = a
      * warning (a key did not load); 10s - longer than key-use info, since a
      * missing key is something to act on; click opens View Keys. */
-    kitty_notice_show("kageant: startup keys", text, KAGEANT_NOTICE_WARN,
+    kitty_notice_show(KT_KA_NOTICE_STARTUP_KEYS, text, KAGEANT_NOTICE_WARN,
                       kageant_notice_seconds(10), traywindow,
                       KAGEANT_WM_NOTICE_CLICK);
 }
@@ -3930,26 +3897,26 @@ void kageant_do_mutation_notice(int op, const char *comment)
         DWORD sz = sizeof(path);
         if (h && kitty_process_image_path(h, path, sz)) {
             const char *base = strrchr(path, '\\');
-            snprintf(proc, sizeof(proc), " by %s (pid %lu)",
+            snprintf(proc, sizeof(proc), KT_KA_BY_PROGRAM_PID_FMT,
                      base ? base + 1 : path, pageant_external_pid);
         } else {
-            snprintf(proc, sizeof(proc), " by pid %lu", pageant_external_pid);
+            snprintf(proc, sizeof(proc), KT_KA_BY_PID_FMT, pageant_external_pid);
         }
         if (h)
             CloseHandle(h);
     }
 
-    title = op == KAGEANT_MUT_ADD    ? "kageant - key added" :
-            op == KAGEANT_MUT_REMOVE ? "kageant - key removed" :
-                                       "kageant - ALL keys removed";
+    title = op == KAGEANT_MUT_ADD    ? KT_KA_NOTICE_KEY_ADDED :
+            op == KAGEANT_MUT_REMOVE ? KT_KA_NOTICE_KEY_REMOVED :
+                                       KT_KA_NOTICE_ALL_KEYS_REMOVED;
     if (op == KAGEANT_MUT_REMOVE_ALL)
-        text = dupprintf("All keys were removed from the agent%s.", proc);
+        text = dupprintf(KT_KA_ALL_KEYS_REMOVED_FMT, proc);
     else
         text = dupprintf("%s%s:\n%s",
                          op == KAGEANT_MUT_ADD
-                             ? "A key was added to the agent"
-                             : "A key was removed from the agent",
-                         proc, comment && *comment ? comment : "(no comment)");
+                             ? KT_KA_KEY_ADDED_TEXT
+                             : KT_KA_KEY_REMOVED_TEXT,
+                         proc, comment && *comment ? comment : KT_KA_NO_COMMENT);
     kitty_notice_show(title, text,
                       op == KAGEANT_MUT_ADD ? KAGEANT_NOTICE_INFO
                                             : KAGEANT_NOTICE_WARN,
@@ -4033,8 +4000,8 @@ int kageant_do_confirm(const char *comment, int key_confirm)
         int hr, allowed;
 
         g_confirm_active = 1;
-        msg = dupprintf("Allow this use of the SSH key \"%s\"?",
-                        comment && *comment ? comment : "(unnamed key)");
+        msg = dupprintf(KT_KA_HELLO_ALLOW_USE_FMT,
+                        comment && *comment ? comment : KT_KA_UNNAMED_KEY);
         hr = kitty_hello_verify(traywindow, msg);
         sfree(msg);
         g_confirm_active = 0;
@@ -4048,14 +4015,10 @@ int kageant_do_confirm(const char *comment, int key_confirm)
                                                           "hello-error", 0);
         if (!allowed && hr != KITTY_HELLO_DENIED && traywindow)
             kitty_notice_show(
-                "kageant: key use DENIED",
+                KT_KA_NOTICE_USE_DENIED,
                 hr == KITTY_HELLO_UNAVAILABLE ?
-                "A key use was denied: it requires a Windows Hello check, "
-                "and Hello is not available in this session (no Hello "
-                "credential, policy, or a remote desktop). The request was "
-                "REFUSED - it is never downgraded to a plain click." :
-                "A key use was denied: the Windows Hello check could not "
-                "be carried out.",
+                KT_KA_USE_DENIED_UNAVAILABLE :
+                KT_KA_USE_DENIED_ERROR,
                 KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
                 traywindow, KAGEANT_WM_NOTICE_CLICK);
         return allowed;
@@ -4064,14 +4027,9 @@ int kageant_do_confirm(const char *comment, int key_confirm)
     g_confirm_active = 1;
     {
         char *msg = dupprintf(
-            "A remote session is requesting to authenticate with the SSH key:"
-            "\n\n    %s\n\n"
-            "Yes - allow this one use.\n"
-            "No - deny this one use.\n"
-            "Cancel - deny this AND stop asking: all further requests are "
-            "denied silently until you open the kageant key list.",
-            comment && *comment ? comment : "(unnamed key)");
-        int r = MessageBox(NULL, msg, "Confirm SSH key usage",
+            KT_KA_CONFIRM_USE_FMT,
+            comment && *comment ? comment : KT_KA_UNNAMED_KEY);
+        int r = MessageBox(NULL, msg, KT_CAP_KA_CONFIRM_KEY_USAGE,
                            MB_ICONQUESTION | MB_YESNOCANCEL | MB_SYSTEMMODAL |
                            MB_DEFBUTTON2);   /* default No */
         sfree(msg);
@@ -4086,10 +4044,8 @@ int kageant_do_confirm(const char *comment, int key_confirm)
             g_confirm_suppress = 1;
             if (kageant_notify_get() && traywindow)
                 kitty_notice_show(
-                    "kageant: confirmations blocked",
-                    "Key-use confirmations are now being denied silently. "
-                    "Click this notice, the tray \"Resume\" item, or the "
-                    "key list's Resume button to allow them again.",
+                    KT_KA_NOTICE_CONFIRM_BLOCKED,
+                    KT_KA_CONFIRM_BLOCKED_TEXT,
                     KAGEANT_NOTICE_WARN, kageant_notice_seconds(10),
                     traywindow, KAGEANT_WM_NOTICE_CLICK);
             return 0;
@@ -4198,16 +4154,11 @@ void kageant_warn_unprotected_memory(void)
         extern int kitty_protkey_absent(void);
         char kwu_text[512];
         snprintf(kwu_text, sizeof(kwu_text),
-                 "Windows' CryptProtectMemory is not working in this "
-                 "process, so private keys are held in PLAIN memory while "
-                 "loaded. %s",
+                 KT_KA_PROTKEY_WARN_FMT,
                  kitty_protkey_absent() ?
-                 "On this version of Windows the protection does not "
-                 "exist." :
-                 "On a normal Windows this never happens - something is "
-                 "stripping or hooking the crypt API, which is itself "
-                 "worth investigating.");
-        kitty_notice_show("kageant: keys are NOT memory-protected", kwu_text,
+                 KT_PROTKEY_ABSENT_REASON :
+                 KT_PROTKEY_HOOKED_REASON);
+        kitty_notice_show(KT_KA_NOTICE_UNPROTECTED, kwu_text,
                           KAGEANT_NOTICE_WARN, kageant_notice_seconds(15),
                           traywindow, KAGEANT_WM_NOTICE_CLICK);
     }
@@ -4221,11 +4172,11 @@ void kageant_do_notify(const char *comment, const char *fingerprint)
      * balloon durations and often suppresses them). Blue = kageant info; 5s;
      * click opens View Keys. */
     char text[512];
-    snprintf(text, sizeof(text), "A key was used to authenticate:\n%s%s%s",
-             (comment && *comment) ? comment : "(unnamed key)",
+    snprintf(text, sizeof(text), KT_KA_KEY_USED_FMT,
+             (comment && *comment) ? comment : KT_KA_UNNAMED_KEY,
              (fingerprint && *fingerprint) ? "\n" : "",
              (fingerprint && *fingerprint) ? fingerprint : "");
-    kitty_notice_show("kageant: SSH key used", text, KAGEANT_NOTICE_INFO,
+    kitty_notice_show(KT_KA_NOTICE_KEY_USED, text, KAGEANT_NOTICE_INFO,
                       kageant_notice_seconds(5), traywindow,
                       KAGEANT_WM_NOTICE_CLICK);
 }
@@ -4362,12 +4313,12 @@ char *kageant_paths_of_blob_annotated(ptrlen blob)
             memcmp(g_loaded_blobs[i]->s, blob.ptr, blob.len))
             continue;
         if (kageant_hello_has_sidecar(g_loaded_keypaths[i])) {
-            how = "Windows Hello protected";
+            how = KT_KAKEYS_FILE_HELLO;
         } else {
             Filename *fn = filename_from_str(g_loaded_keypaths[i]);
             char *cmt = NULL;
-            how = ppk_encrypted_f(fn, &cmt) ? "passphrase" :
-                  "UNPROTECTED - no passphrase";
+            how = ppk_encrypted_f(fn, &cmt) ? KT_KAKEYS_FILE_PASSPHRASE :
+                  KT_KAKEYS_FILE_UNPROTECTED;
             filename_free(fn);
             sfree(cmt);
         }

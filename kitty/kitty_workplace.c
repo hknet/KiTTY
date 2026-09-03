@@ -37,6 +37,7 @@
 
 #include "kitty_workplace.h"
 #include "kitty_notice.h"
+#include "kitty_text.h"     /* the notice wording */
 
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 #define KWP_MAGIC   0x5057494Bu   /* "KIWP" */
@@ -355,9 +356,8 @@ void kitty_workplace_show_pending_notice(void)
     /* No click action: the mode stopped because the thing holding it went away,
      * and somebody who wants it back knows where the switch is. Offering to
      * switch it on here would be guessing that they do. */
-    kitty_notice_show("Workplace proxy mode is not active",
-                      "It ended when the launcher holding it stopped. "
-                      "Connections use each session's own proxy settings.",
+    kitty_notice_show(KT_CAP_WORKPLACE_INACTIVE,
+                      KT_WORKPLACE_INACTIVE_TEXT,
                       RGB(0, 100, 0), 15, NULL, 0);
 }
 

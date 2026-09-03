@@ -27,6 +27,7 @@
 #include "kitty_workplace.h"   /* the frame's resting state while the mode is on */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
+#include "kitty_text.h"     /* shared captions and wordings */
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
 void kitty_refresh_title(void);        /* windows/window.c */
@@ -210,10 +211,10 @@ static char *osc52_mask_summary(const wchar_t *clip, int clip_len)
         sfree(u);
     }
 
-    put_fmt(sb, "It would send %d character%s on %d line%s, starting \"%s\"...",
+    put_fmt(sb, KT_OSC52_SUMMARY,
             clip_len, clip_len == 1 ? "" : "s",
             lines, lines == 1 ? "" : "s", head);
-    put_dataz(sb, "\r\nThe rest is hidden until you press View.");
+    put_dataz(sb, KT_OSC52_SUMMARY_HIDDEN);
     smemclr(head, sizeof(head));
     ret = strbuf_to_str(sb);
     return ret;
@@ -226,8 +227,8 @@ static char *osc52_where(Terminal *term)
     const char *sess = conf_get_str(term->conf, CONF_sessionname);
     const char *host = conf_get_str(term->conf, CONF_host);
     if (sess && *sess)
-        return dupprintf("Session \"%s\" (%s)", sess, host && *host ? host : "?");
-    return dupprintf("Unsaved session to %s", host && *host ? host : "?");
+        return dupprintf(KT_OSC52_WHERE_SESSION, sess, host && *host ? host : "?");
+    return dupprintf(KT_OSC52_WHERE_UNSAVED, host && *host ? host : "?");
 }
 
 static void osc52_set_countdown(HWND hwnd, struct osc52_ask *ask)
@@ -240,7 +241,7 @@ static void osc52_set_countdown(HWND hwnd, struct osc52_ask *ask)
     /* Say what the timeout DOES, not just that there is one: "no decision" is
      * the honest description, because a timeout is not the user saying no - it is
      * the user saying nothing, and nothing gets remembered. */
-    s = dupprintf("No answer in %d s = refused, and nothing remembered.",
+    s = dupprintf(KT_OSC52_COUNTDOWN,
                   ask->seconds_left);
     SetDlgItemText(hwnd, IDC_O52_COUNTDOWN, s);
     sfree(s);
@@ -260,8 +261,7 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
         SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)ask);
 
         SetDlgItemText(hwnd, IDC_O52_WHAT,
-                       "This server wants to READ your clipboard and send the "
-                       "contents back to it. Your clipboard may hold a password.");
+                       KT_OSC52_WHAT);
 
         s = osc52_where(ask->term);
         SetDlgItemText(hwnd, IDC_O52_WHERE, s);
@@ -282,15 +282,14 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
                     buf[j++] = (char)c;
             }
             buf[j] = '\0';
-            s = dupprintf("A program calling itself \"%s\"", buf);
+            s = dupprintf(KT_OSC52_CLAIM, buf);
             SetDlgItemText(hwnd, IDC_O52_CLAIM, s);
             sfree(s);
         } else {
             /* An OSC 52 read carries no identity at all, and saying so is worth
              * a line: it is why "remember this program" is not on offer. */
             SetDlgItemText(hwnd, IDC_O52_CLAIM,
-                           "The request does not say which program sent it, and "
-                           "cannot.");
+                           KT_OSC52_NO_CLAIM);
         }
 
         s = osc52_mask_summary(ask->clip, ask->clip_len);
@@ -302,13 +301,13 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
          * dialog cannot claim ten minutes while the setting says five. */
         mins = conf_get_int(ask->term->conf, CONF_osc52_read_minutes);
         if (mins <= 0) mins = 10;
-        s = dupprintf("the next %d &minute%s", mins, mins == 1 ? "" : "s");
+        s = dupprintf(KT_OSC52_MINUTES, mins, mins == 1 ? "" : "s");
         SetDlgItemText(hwnd, IDC_O52_MINUTES, s);
         sfree(s);
 
         reqs = conf_get_int(ask->term->conf, CONF_osc52_read_requests);
         if (reqs <= 0) reqs = 25;
-        s = dupprintf("the next %d re&quests", reqs);
+        s = dupprintf(KT_OSC52_REQUESTS, reqs);
         SetDlgItemText(hwnd, IDC_O52_REQUESTS, s);
         sfree(s);
 
@@ -391,15 +390,8 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
              */
             if (ask->allowed && ask->grant == OSC52_GRANT_SESSION) {
                 if (MessageBox(hwnd,
-                               "For the rest of this session, this server may "
-                               "read your clipboard whenever it asks - not once, "
-                               "but every time.\n\n"
-                               "That includes anything you copy later, such as a "
-                               "password from your password manager. It still "
-                               "stops while the window has no focus, and there is "
-                               "still a limit on how often it is handed over.\n\n"
-                               "Allow that?",
-                               "KiTTY - allow for the whole session?",
+                               KT_OSC52_SESSION_CONFIRM,
+                               KT_CAP_OSC52_SESSION,
                                MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
                     return TRUE;       /* back to the dialog, nothing decided */
             }
@@ -690,7 +682,7 @@ static void osc52_set_frame_colour(HWND hwnd, COLORREF colour)
         HMODULE m = LoadLibraryA("dwmapi.dll");
         if (m)
             fn = (dwm_set_fn)kitty_api_from(m, "dwmapi.dll", "DwmSetWindowAttribute", KITTY_API_OPTIONAL,
-                                  "dark title bars");
+                                  KT_WINFEAT_DARK_TITLEBARS);
         tried = true;
     }
     if (!fn || !hwnd)

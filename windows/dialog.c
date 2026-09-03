@@ -18,6 +18,7 @@
 #include "licence.h"
 #include "../kitty/kitty_theme.h"   /* KiTTY: dark mode for the dialogs */
 #include "../kitty/kitty_anchor.h"  /* KiTTY: the resizable configuration box */
+#include "../kitty/kitty_text.h"    /* KiTTY: the words the dialogs show */
 
 #include <commctrl.h>
 #include <commdlg.h>
@@ -130,7 +131,7 @@ void kitty_conf_invalid_note(const char *what)
 {
     char *old = kitty_invalid_settings;
     if (!what || !*what)
-        what = "(unnamed setting)";
+        what = KT_DLG_UNNAMED_SETTING;
     kitty_invalid_count++;
     if (kitty_invalid_count > 12)     /* a wholly corrupt file, not a list */
         return;
@@ -159,9 +160,7 @@ void kitty_conf_invalid_report(dlgparam *dlg, const char *session)
     if (!session)
         session = kitty_invalid_session;
     msg = dupprintf(
-        "Session \"%s\" contains %d setting%s this version cannot "
-        "represent:\n\n%s%s\n\nThe default%s been used instead. Saving "
-        "the session will store the corrected value%s.",
+        KT_DLG_INVALID_SETTINGS,
         session ? session : "", kitty_invalid_count,
         kitty_invalid_count == 1 ? "" : "s", kitty_invalid_settings,
         kitty_invalid_count > 12 ? ", ..." : "",
@@ -717,13 +716,12 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
 #ifdef MOD_NETDEBUG
         /* Debug build marker so this exe is distinguishable from a normal build. */
         const char *netdbg =
-            "\r\n*** NETDEBUG BUILD - event log is teed to "
-            "%USERPROFILE%\\kitty_netdebug.log ***";
+            KT_DLG_ABOUT_NETDEBUG;
 #else
         const char *netdbg = "";
 #endif
 #ifdef KITTY_TEST_BUILD_LABEL
-        const char *testbuild = "\r\n*** TEST BUILD: " KITTY_TEST_BUILD_LABEL " ***";
+        const char *testbuild = KT_DLG_ABOUT_TESTBUILD;
 #else
         const char *testbuild = "";
 #endif
@@ -735,29 +733,24 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
          * this cannot drift from what is actually in force. It means "this
          * process's ACL is locked down", nothing broader. */
         const char *aclnote = restricted_acl() ?
-            "\r\n\r\nRunning with a restricted process ACL: other programs "
-            "under your account cannot open this process." : "";
+            KT_DLG_ABOUT_RESTRICTED : "";
         /* far2l attribution is unconditional: dialog.c compiles into a shared
          * lib that does not carry the per-target MOD_FAR2L define, and KiTTY
          * always ships the far2l extensions, so the credit is always accurate. */
         /* UTF-8 source: real (c) (\xc2\xa9) and em-dash (\xe2\x80\x94) rather than
          * CP1252 bytes, set as Unicode below so they render on any system codepage. */
         char *text = dupprintf(
-            "%s\r\n\r\n%s%s%s%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s"
-            "\r\n\r\n%s",
+            KT_DLG_ABOUT_FMT,
             appname, ver, netdbg, testbuild, aclnote, buildinfo_text,
-            "This PuTTY 0.85 port \xc2\xa9 KAPPER NETWORK-COMMUNICATIONS GmbH "
-            "\xe2\x80\x94 https://github.com/hknet/KiTTY",
-            "KiTTY \xc2\xa9 2007-2013 Cyril Dupont \xe2\x80\x94 https://www.9bis.net/kitty/",
-            "Based on PuTTY \xc2\xa9 " SHORT_COPYRIGHT_DETAILS ". All rights reserved.",
-            "far2l terminal extensions from putty4far2l "
-            "(Ivan Sorokin, unxed, Ivan Shatsky); far2l \xe2\x80\x94 elfmz.",
+            KT_DLG_ABOUT_PORT,
+            KT_DLG_ABOUT_KITTY,
+            KT_DLG_ABOUT_PUTTY,
+            KT_DLG_ABOUT_FAR2L,
             /* Session > Scripting is the RuTTY patch, carried forward like the
              * far2l extensions above - and unconditional for the same reason
              * given there: this file compiles into a shared lib that carries no
              * per-target MOD_ define, and every KiTTY build ships the engine. */
-            "Session scripting from the RuTTY patch \xc2\xa9 2013-2014 "
-            "Ernst Dijk.");
+            KT_DLG_ABOUT_RUTTY);
         sfree(buildinfo_text);
         {
             int wn = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
@@ -2268,13 +2261,13 @@ static void kitty_cfg_session_label_update(struct dlgparam *dp)
         return;
     sn = conf_get_str((Conf *)dp->data, CONF_sessionname);
     if (sn && *sn)
-        _snprintf(want, sizeof(want) - 1, "Currently loaded session: %s", sn);
+        _snprintf(want, sizeof(want) - 1, KT_DLG_LOADED_SESSION, sn);
     else
         /* No loaded session IS quick connect - the dedicated mode
          * (loadlastsession=no) and the ad-hoc route (loading Default
          * Settings) both land in exactly this state, and there is no third
          * way to be here. */
-        strcpy(want, "Quick Connect Mode active");
+        strcpy(want, KT_DLG_QUICK_CONNECT_ACTIVE);
     want[sizeof(want) - 1] = '\0';
     buf[0] = '\0';
     GetWindowTextA(kitty_cfg_session_label, buf, sizeof(buf));
@@ -3145,7 +3138,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 TCITEM ti;
                 memset(&ti, 0, sizeof(ti));
                 ti.mask = TCIF_TEXT;
-                ti.pszText = (char *)"Session";
+                ti.pszText = (char *)KT_DLG_TAB_SESSION;
                 SendMessage(tabstrip, TCM_INSERTITEM, 0, (LPARAM)&ti);
                 /* Only when Application panels EXIST. The stock variants
                  * (kitty_tel, kitty_pterm, putty) build their box from the
@@ -3163,7 +3156,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                         }
                     }
                     if (have_app) {
-                        ti.pszText = (char *)"Application";
+                        ti.pszText = (char *)KT_DLG_TAB_APPLICATION;
                         SendMessage(tabstrip, TCM_INSERTITEM, 1, (LPARAM)&ti);
                     }
                 }
@@ -3834,10 +3827,10 @@ void kitty_dlg_mark_quickconnect(dlgparam *dp, int on)
         const char *stamp = strstr(dp->wintitle, "  *** ");
         char *t;
         if (stamp)
-            t = dupprintf("%.*s - quick connect%s",
+            t = dupprintf(KT_TITLE_QUICK_CONNECT_STAMPED,
                           (int)(stamp - dp->wintitle), dp->wintitle, stamp);
         else
-            t = dupprintf("%s - quick connect", dp->wintitle);
+            t = dupprintf(KT_TITLE_QUICK_CONNECT, dp->wintitle);
         SetWindowText(dp->hwnd, t);
         sfree(t);
     } else {
@@ -4586,10 +4579,10 @@ static void kitty_inline_confirm_done(void *vctx)
     } else if (resp && c->store_on_yes && kitty_response_is_word(resp, "once")) {
         /* New host key only: connect this once without caching it (parity with
          * the modal "Connect Once"). */
-        kitty_term_puts(c->term, "Connecting once; the key was not cached.\r\n");
+        kitty_term_puts(c->term, KT_DLG_CONNECT_ONCE);
         spr = SPR_OK;
     } else {
-        kitty_term_puts(c->term, "Connection abandoned.\r\n");
+        kitty_term_puts(c->term, KT_DLG_ABANDONED);
         spr = SPR_USER_ABORT;
     }
 
@@ -4710,27 +4703,11 @@ static bool kitty_session_is_live(WinGuiSeat *wgs)
 #define KCH_HL  "\033[1;31m"
 #define KCH_RST "\033[0m"
 
-static const char KCH_ACK_INTRO[] =
-    "\nThe host key for this server has " KCH_HL "CHANGED" KCH_RST " since it was "
-    "last cached. This can mean the server was legitimately rebuilt - or that the "
-    "connection is being intercepted (a man-in-the-middle attack).\n";
-static const char KCH_ACK_PROMPT[] =
-    "Type \"yes\" to accept the new key for THIS connection, or anything else "
-    "to abandon: ";
-static const char KCH_REPLACE_INTRO[] =
-    "\nReplace the stored host key with this new one for future connections?\n"
-    KCH_HL "SECURITY WARNING" KCH_RST ": KiTTY cannot confirm that this new key "
-    "genuinely belongs to the server. A plain SSH host key is trusted on first "
-    "use, with no authority to verify it against. Replace the stored key ONLY if "
-    "you are certain, by some independent means (e.g. a fingerprint obtained "
-    "out-of-band), that the new key is genuine.\n";
-static const char KCH_REPLACE_PROMPT[] =
-    "Type \"confirmed\" to replace the stored key, \"no\" or Enter to keep the "
-    "old key, or Ctrl-C to abandon: ";
-static const char KCH_RETRY_INTRO[] =
-    "\nPlease answer with a whole word: \"confirmed\" to replace the stored key, "
-    "or \"no\" (or Enter) to keep the old key and connect once. A plain \"yes\" "
-    "is intentionally not enough to replace a changed key.\n";
+static const char KCH_ACK_INTRO[] = KT_DLG_CHANGED_ACK_INTRO;
+static const char KCH_ACK_PROMPT[] = KT_DLG_CHANGED_ACK_PROMPT;
+static const char KCH_REPLACE_INTRO[] = KT_DLG_CHANGED_REPLACE_INTRO;
+static const char KCH_REPLACE_PROMPT[] = KT_DLG_CHANGED_REPLACE_PROMPT;
+static const char KCH_RETRY_INTRO[] = KT_DLG_CHANGED_RETRY_INTRO;
 
 static void kitty_inline_changed_done(void *vctx);   /* fwd */
 
@@ -4796,15 +4773,14 @@ static void kitty_inline_changed_dispatch(void *vctx)
 static void kitty_changed_store_and_connect(struct kitty_inline_confirm_ctx *c)
 {
     store_host_key(c->seat, c->host, c->port, c->keytype, c->keystr);
-    kitty_term_puts(c->term, "\r\nStored host key replaced. Continuing.\r\n");
+    kitty_term_puts(c->term, KT_DLG_KEY_REPLACED);
     kitty_inline_finish(c, SPR_OK);
 }
 
 static void kitty_changed_connect_once(struct kitty_inline_confirm_ctx *c)
 {
     kitty_term_wrapped(c->term,
-                    "\nKeeping the previously stored key; continuing this once "
-                    "(you will be asked again next time).\n");
+                    KT_DLG_KEY_KEPT_ONCE);
     kitty_inline_finish(c, SPR_OK);
 }
 
@@ -4825,7 +4801,7 @@ static void kitty_inline_changed_done(void *vctx)
         /* Acknowledge the change (gate to connect at all). A non-"yes" answer
          * (including Ctrl-C/Ctrl-D, which make ok false) abandons. */
         if (!is_yes) {
-            kitty_term_puts(c->term, "\r\nConnection abandoned.\r\n");
+            kitty_term_puts(c->term, KT_DLG_ABANDONED_NL);
             kitty_inline_finish(c, SPR_USER_ABORT);
             return;
         }
@@ -4843,7 +4819,7 @@ static void kitty_inline_changed_done(void *vctx)
          *                         accidentally skip the decision
          * Abandon and decline both terminate, so the loop can never spin. */
         if (!ok) {
-            kitty_term_puts(c->term, "\r\nConnection abandoned.\r\n");
+            kitty_term_puts(c->term, KT_DLG_ABANDONED_NL);
             kitty_inline_finish(c, SPR_USER_ABORT);
             return;
         }
@@ -4915,8 +4891,7 @@ SeatPromptResult win_seat_confirm_ssh_host_key(
                  * terminal). Surface the details and abort. */
                 return kitty_inline_confirm(
                     wgs, text, NULL,
-                    "Host key confirmation cannot be shown during an active "
-                    "session. Connection abandoned.\r\n",
+                    KT_DLG_HOSTKEY_LIVE_ABANDONED,
                     false, NULL, 0, NULL, NULL, callback, cbctx);
             }
             if (changed) {
@@ -4930,9 +4905,7 @@ SeatPromptResult win_seat_confirm_ssh_host_key(
              * without caching the key (parity with the modal Connect Once). */
             return kitty_inline_confirm(
                 wgs, text,
-                "Are you sure you want to continue connecting "
-                "(type \"yes\" to accept and cache the key, \"once\" to connect "
-                "without caching, anything else to cancel)? ",
+                KT_DLG_HOSTKEY_NEW_PROMPT,
                 NULL, true /* store on yes */, host, port, keytype, keystr,
                 callback, cbctx);
         }
@@ -4971,14 +4944,12 @@ SeatPromptResult win_seat_confirm_weak_crypto_primitive(
         if (kitty_session_is_live(wgs)) {
             return kitty_inline_confirm(
                 wgs, text, NULL,
-                "Weak-algorithm confirmation cannot be shown during an active "
-                "session. Connection abandoned.\r\n",
+                KT_DLG_WEAKALG_LIVE_ABANDONED,
                 false, NULL, 0, NULL, NULL, callback, ctx);
         }
         return kitty_inline_confirm(
             wgs, text,
-            "To accept the risk and continue, type \"yes\" "
-            "(anything else cancels): ",
+            KT_DLG_WEAK_ACCEPT_PROMPT,
             NULL, false /* nothing to store */, NULL, 0, NULL, NULL,
             callback, ctx);
     }
@@ -5008,14 +4979,12 @@ SeatPromptResult win_seat_confirm_weak_cached_hostkey(
         if (kitty_session_is_live(wgs)) {
             return kitty_inline_confirm(
                 wgs, text, NULL,
-                "Weak-key confirmation cannot be shown during an active "
-                "session. Connection abandoned.\r\n",
+                KT_DLG_WEAKKEY_LIVE_ABANDONED,
                 false, NULL, 0, NULL, NULL, callback, ctx);
         }
         return kitty_inline_confirm(
             wgs, text,
-            "To accept the risk and continue, type \"yes\" "
-            "(anything else cancels): ",
+            KT_DLG_WEAK_ACCEPT_PROMPT,
             NULL, false /* nothing to store */, NULL, 0, NULL, NULL,
             callback, ctx);
     }

@@ -22,6 +22,7 @@
 #include "kitty_proxy.h"   /* LoadProxyInfo, GetProxySelectionFlag */
 #include "kitty_workplace.h"   /* workplace proxy mode: is an arming held? */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
+#include "kitty_text.h"     /* shared captions */
 void debug_logevent( const char *fmt, ... ) ;   /* kitty_win.c */
 #endif
 
@@ -338,10 +339,10 @@ static INT_PTR CALLBACK KittyAboutProc(HWND hwnd, UINT msg,
     switch (msg) {
       case WM_INITDIALOG:
 #ifdef KITTY_TEST_BUILD_LABEL
-        snprintf( buffer, sizeof(buffer), "KiTTY - %s\r\nTEST BUILD: %s", BuildVersionTime,
+        snprintf( buffer, sizeof(buffer), KT_BRIDGE_ABOUT_VERSION_TEST, BuildVersionTime,
                 KITTY_TEST_BUILD_LABEL);
 #else
-        snprintf( buffer, sizeof(buffer), "KiTTY - %s", BuildVersionTime);
+        snprintf( buffer, sizeof(buffer), KT_BRIDGE_ABOUT_VERSION, BuildVersionTime);
 #endif
         SetDlgItemText(hwnd, IDA_VERSION, buffer);
         return 1;
@@ -421,7 +422,7 @@ void kitty_export_settings(HWND hwnd, Conf *conf) {
     }
     strcat(buffer, "All files (*.*)|*.*|");
     if (buffer[strlen(buffer)-1] != '|') strcat(buffer, "|");
-    if (SaveFileName(hwnd, filename, "Save file...", buffer)) {
+    if (SaveFileName(hwnd, filename, KT_CAP_SAVE_FILE, buffer)) {
         save_open_settings_forced(filename, conf);
     }
 }
@@ -579,12 +580,8 @@ static INT_PTR CALLBACK exportpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM 
             p = exp_utf8_from_edit(hdlg, IDC_EXP_PASS);
             if (!p || (int)strlen(p) < KITTY_EXPORT_PW_MIN) {
                 MessageBoxA(hdlg,
-                    "Please enter an export password of at least "
-                    "5 characters.\n\n"
-                    "If you do not want a password, choose \"Protect for this "
-                    "PC only\" instead - those files can then only be imported "
-                    "with this Windows account on this PC.",
-                    "KiTTY session export", MB_OK | MB_ICONINFORMATION);
+                    KT_BRIDGE_EXPORT_PW_SHORT,
+                    KT_CAP_SESSION_EXPORT, MB_OK | MB_ICONINFORMATION);
                 if (p) { SecureZeroMemory(p, strlen(p)); free(p); }
                 SetFocus(GetDlgItem(hdlg, IDC_EXP_PASS));
                 return TRUE;
@@ -719,11 +716,8 @@ void kitty_export_all_sessions(HWND hwnd) {
         if (h != INVALID_HANDLE_VALUE) {
             FindClose(h);
             if (MessageBoxA(hwnd,
-                    "This folder already contains exported session files.\n\n"
-                    "Export into an empty or new folder so old and new sessions "
-                    "are not mixed (use the \"New Folder\" button in the picker).\n\n"
-                    "Export here anyway?",
-                    "KiTTY session export", MB_YESNO | MB_ICONWARNING) != IDYES)
+                    KT_BRIDGE_EXPORT_FOLDER_USED,
+                    KT_CAP_SESSION_EXPORT, MB_YESNO | MB_ICONWARNING) != IDYES)
                 return;
         }
     }
@@ -746,14 +740,11 @@ void kitty_export_all_sessions(HWND hwnd) {
     }
 
     snprintf(msg, sizeof(msg),
-             "Exported %d session%s (%d failed) to:\n%s\n\n%s",
+             KT_BRIDGE_EXPORTED,
              n, n == 1 ? "" : "s", fail, dir,
              dpapi
-               ? "These sessions can only be imported with THIS Windows "
-                 "account on THIS PC."
-               : "This password is required to import these sessions - on ANY "
-                 "PC, including this one. It is not your master password, and "
-                 "nothing here was changed.");
+               ? KT_BRIDGE_EXPORTED_DPAPI
+               : KT_BRIDGE_EXPORTED_PW);
     g_expd_text = msg;
     g_expd_pw = bundlepw;
     DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_EXPORTDONE),
@@ -1002,17 +993,7 @@ static INT_PTR CALLBACK mpwmoved_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM 
     switch (msg) {
       case WM_INITDIALOG:
         SetDlgItemTextA(hdlg, IDC_MPWM_TEXT,
-            "This portable KiTTY kept its master password in the Windows "
-            "registry of this PC. It has now been moved into a Security folder "
-            "next to your sessions, so this copy works the same way on any PC.\r\n"
-            "\r\n"
-            "If you use other portable copies of KiTTY that share this master "
-            "password, copy this Security folder into each of them as well - "
-            "without it they cannot open their saved passwords on another PC.\r\n"
-            "\r\n"
-            "If you never knowingly set a master password: earlier versions "
-            "quietly turned the password you typed when exporting sessions into "
-            "one. That is most likely what this is.");
+            KT_BRIDGE_MPW_MOVED);
         SetDlgItemTextA(hdlg, IDC_MPWM_PATH, g_mpwm_path ? g_mpwm_path : "");
         SetForegroundWindow(hdlg);
         return TRUE;
@@ -1245,14 +1226,12 @@ static int kitty_ask_import_password(HWND hwnd, const char *sample, char **pwOut
         char again[200];
         if (tries == 0) {
             g_imp_prompt =
-                "These sessions are password-protected.\n\nEnter the import "
-                "password - the one that was shown when they were exported. "
-                "It is not your master password.";
+                KT_BRIDGE_IMPORT_PW_PROMPT;
         } else {
             snprintf(again, sizeof(again),
-                     "That password did not open these files.%s",
-                     left == 1 ? " This is the last try."
-                               : " Two tries left.");
+                     KT_BRIDGE_IMPORT_PW_WRONG,
+                     left == 1 ? KT_BRIDGE_IMPORT_PW_LAST
+                               : KT_BRIDGE_IMPORT_PW_TWO);
             g_imp_prompt = again;
         }
         g_imp_result = NULL;
@@ -1270,11 +1249,8 @@ static int kitty_ask_import_password(HWND hwnd, const char *sample, char **pwOut
         imp_wipe(&g_imp_result);
     }
     MessageBoxA(hwnd,
-        "That password does not open these sessions, so nothing was "
-        "imported.\n\n"
-        "The import password is the one that was shown when the files were "
-        "exported - not your master password.",
-        "KiTTY session import", MB_OK | MB_ICONWARNING);
+        KT_BRIDGE_IMPORT_PW_FAILED,
+        KT_CAP_SESSION_IMPORT, MB_OK | MB_ICONWARNING);
     return 0;
 }
 
@@ -1306,13 +1282,8 @@ int kitty_unlock_import_bundle(HWND hwnd, const char *dir, char **pwOut)
         imp_wipe(&plain);
         if (rv != 1) {
             MessageBoxA(hwnd,
-                "These sessions were exported with \"this PC only\" "
-                "protection, and this is not the Windows account or the PC "
-                "they were exported from, so their saved passwords cannot be "
-                "read.\n\n"
-                "Nothing was imported. Export them again with a password to "
-                "move them to another PC.",
-                "KiTTY session import", MB_OK | MB_ICONWARNING);
+                KT_BRIDGE_IMPORT_DPAPI_FOREIGN,
+                KT_CAP_SESSION_IMPORT, MB_OK | MB_ICONWARNING);
             ok = 0;
         }
     }
@@ -1355,13 +1326,9 @@ void kitty_import_sessions(HWND hwnd) {
         if (collide > 0) {
             char q[440];
             snprintf(q, sizeof(q),
-                "Some sessions or proxy definitions in this folder already exist "
-                "here (%d in total).\n\n"
-                "Yes  -  overwrite all matching sessions and proxies\n"
-                "No  -  import only new sessions and proxies\n"
-                "Cancel  -  do nothing",
+                KT_BRIDGE_IMPORT_COLLIDE,
                 collide);
-            int r = MessageBoxA(hwnd, q, "KiTTY session import",
+            int r = MessageBoxA(hwnd, q, KT_CAP_SESSION_IMPORT,
                                 MB_YESNOCANCEL | MB_ICONQUESTION);
             if (r == IDCANCEL) { imp_wipe(&bundlepw); return; }
             overwrite = (r == IDYES) ? 1 : 0;
@@ -1376,16 +1343,14 @@ void kitty_import_sessions(HWND hwnd) {
     n = kitty_import_dir(dir, &fail, &prox, &skipped, overwrite);
     kitty_clear_bundle_context();
     imp_wipe(&bundlepw);
-    snprintf(counts, sizeof(counts), "Imported %d session%s and %d prox%s",
+    snprintf(counts, sizeof(counts), KT_BRIDGE_IMPORTED_COUNTS,
              n, n == 1 ? "" : "s", prox, prox == 1 ? "y" : "ies");
-    if (skipped > 0) { char t[80]; snprintf(t, sizeof(t), ", %d kept (already existed)", skipped); strncat(counts, t, sizeof(counts)-strlen(counts)-1); }
-    if (fail > 0)    { char t[48]; snprintf(t, sizeof(t), ", %d failed", fail); strncat(counts, t, sizeof(counts)-strlen(counts)-1); }
+    if (skipped > 0) { char t[80]; snprintf(t, sizeof(t), KT_BRIDGE_IMPORTED_KEPT, skipped); strncat(counts, t, sizeof(counts)-strlen(counts)-1); }
+    if (fail > 0)    { char t[48]; snprintf(t, sizeof(t), KT_BRIDGE_IMPORTED_FAILED, fail); strncat(counts, t, sizeof(counts)-strlen(counts)-1); }
     snprintf(msg, sizeof(msg),
-             "%s from:\n%s\n\n"
-             "Saved passwords were re-protected for this storage backend "
-             "(registry: Windows DPAPI; portable files: master password).",
+             KT_BRIDGE_IMPORTED_FROM,
              counts, dir);
-    MessageBoxA(hwnd, msg, "KiTTY session import",
+    MessageBoxA(hwnd, msg, KT_CAP_SESSION_IMPORT,
                 MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
     /* Imported sessions bring their hotkeys along, and nothing above checked
      * those against the store: say NOW if the store ended up with a hotkey
@@ -1400,20 +1365,15 @@ void kitty_import_sessions(HWND hwnd) {
             warn[0] = '\0';
             if (nc > 0)
                 snprintf(warn, sizeof(warn),
-                         "After this import, some sessions share a launcher "
-                         "hotkey:\n\n%s\n\nA hotkey works for only one session; "
-                         "the launcher gives it to the first one it finds. Edit "
-                         "the others to resolve this.", rep);
+                         KT_BRIDGE_IMPORT_HOTKEY_SHARED, rep);
             if (en > KITTY_LAUNCHER_HOTKEY_MAX) {
                 char t[220];
                 snprintf(t, sizeof(t),
-                         "%s%d sessions now have a hotkey enabled, but the "
-                         "launcher registers at most %d - the rest stay "
-                         "inactive.", warn[0] ? "\n\n" : "",
+                         KT_BRIDGE_IMPORT_HOTKEY_LIMIT, warn[0] ? "\n\n" : "",
                          en, KITTY_LAUNCHER_HOTKEY_MAX);
                 strncat(warn, t, sizeof(warn) - strlen(warn) - 1);
             }
-            MessageBoxA(hwnd, warn, "KiTTY Launcher hotkey",
+            MessageBoxA(hwnd, warn, KT_CAP_LAUNCHER_HOTKEY,
                         MB_OK | MB_ICONWARNING);
         }
     }

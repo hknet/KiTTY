@@ -3,6 +3,7 @@
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
+#include "kitty_text.h"     /* shared captions */
 char * itoa (int __val, char *__s, int __radix) ;
 /* kitty_tools.c; declared locally because this file deliberately includes
  * only kitty_registry.h (see the MigrateOldKittyHive rationale below). */
@@ -167,7 +168,7 @@ void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTST
 				snprintf( buffer, sizeof(buffer), "%s\\%s", lpSubKey, achKey ) ;
 				GetValueDataN( hMainKey, buffer, name, previousvalue, sizeof(previousvalue) ) ;
 				if( (oldvalue==NULL) || ( !strcmp(previousvalue,oldvalue)) )
-					MessageBox(NULL,achKey,"Info",MB_OK);
+					MessageBox(NULL,achKey,KT_CAP_INFO,MB_OK);
 					//RegTestOrCreate( hMainKey, buffer, name, value ) ;
 			}
 		}
@@ -772,7 +773,7 @@ static int CliConfirm( const char *title, const char *text ) {
 	if( hout != INVALID_HANDLE_VALUE && hin != INVALID_HANDLE_VALUE ) {
 		WriteFile( hout, "\r\n", 2, &written, NULL ) ;   /* clear of the prompt */
 		WriteFile( hout, text, (DWORD)strlen(text), &written, NULL ) ;
-		WriteFile( hout, "\r\nWrite these registry entries? [y/N] ", 38, &written, NULL ) ;
+		WriteFile( hout, KT_REG_CLI_CONFIRM_PROMPT, 38, &written, NULL ) ;
 		if( ReadFile( hin, answer, sizeof(answer)-1, &nread, NULL ) && nread > 0 ) {
 			answer[nread] = '\0' ;
 			yes = ( answer[0] == 'y' || answer[0] == 'Y' ) ;
@@ -915,12 +916,9 @@ static int ClassRegTarget( const char *path, const char *relaunch,
 	if( !assume_yes && GetIniFileFlag() != SAVEMODE_REG ) {
 		char question[2048] ;
 		snprintf( question, sizeof(question),
-			"This is a portable KiTTY. Registering %s writes to this "
-			"machine's registry, pointing at:\r\n\r\n    %s\r\n\r\n"
-			"Those entries stay behind when this copy is removed, and then "
-			"point at nothing.", what, path ) ;
+			KT_REG_PORTABLE_QUESTION, what, path ) ;
 		if( !CliConfirm( title, question ) ) {
-			KittyCliReport( title, "Nothing was registered.", 0 ) ;
+			KittyCliReport( title, KT_REG_NOTHING_REGISTERED, 0 ) ;
 			return 0 ;
 		}
 	}
@@ -957,10 +955,7 @@ static int ClassRegTarget( const char *path, const char *relaunch,
 			return 0 ;   /* the elevated copy did the work and reported */
 		}
 		KittyCliReport( title,
-			"This is the machine-wide installation of KiTTY, so this belongs "
-			"to the whole machine - and that was refused or cancelled.\r\n"
-			"Re-run from an administrator prompt, or add -user to register "
-			"for your account only.", 1 ) ;
+			KT_REG_ELEVATION_REFUSED, 1 ) ;
 		return 0 ;
 	}
 	*root = HKEY_CURRENT_USER ;
@@ -1033,15 +1028,15 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 
 	if( !ClassRegTarget( path, "-sshhandler", force ? " -force" : "",
 			     peruser, assume_yes,
-			     "the telnet://, ssh:// and kitty:// handlers",
-			     "KiTTY URL handlers", &root ) )
+			     KT_REG_URL_WHAT,
+			     KT_CAP_URL_HANDLERS, &root ) )
 		return ;
 	prefix = "Software\\Classes\\" ;
 
-	len = snprintf( report, sizeof(report), "%s\r\nRegistering: %s\r\n\r\n",
+	len = snprintf( report, sizeof(report), KT_REG_URL_REPORT_HEAD,
 			root == HKEY_LOCAL_MACHINE ?
-			"For all users of this machine (HKEY_LOCAL_MACHINE)." :
-			"For your account only (HKEY_CURRENT_USER)." , path ) ;
+			KT_REG_FOR_ALL_USERS :
+			KT_REG_FOR_YOUR_ACCOUNT , path ) ;
 
 	for( i = 0 ; i < (int)(sizeof(protos)/sizeof(protos[0])) ; i++ ) {
 		int had ;
@@ -1057,7 +1052,7 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 
 		if( had && !strcmp( prev, cmd ) ) {
 			len += snprintf( report+len, sizeof(report)-len,
-					 "%s://  already registered for this KiTTY\r\n",
+					 KT_REG_URL_ALREADY,
 					 protos[i].proto ) ;
 			written++ ;
 			continue ;
@@ -1066,9 +1061,8 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 			char prog[MAX_PATH] ;
 			UrlHandlerProgram( prev, prog, sizeof(prog) ) ;
 			len += snprintf( report+len, sizeof(report)-len,
-					 "%s://  LEFT ALONE, currently opened by %s\r\n"
-					 "           %s\r\n",
-					 protos[i].proto, prog[0] ? prog : "another program", prev ) ;
+					 KT_REG_URL_LEFT_ALONE,
+					 protos[i].proto, prog[0] ? prog : KT_REG_ANOTHER_PROGRAM, prev ) ;
 			kept++ ;
 			continue ;
 		}
@@ -1086,7 +1080,7 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 		if( !UrlHandlerWrite( root, prefix, protos[i].proto,
 				      protos[i].friendly, path, cmd ) ) {
 			len += snprintf( report+len, sizeof(report)-len,
-					 "%s://  COULD NOT BE WRITTEN\r\n", protos[i].proto ) ;
+					 KT_REG_URL_NOT_WRITTEN, protos[i].proto ) ;
 			continue ;
 		}
 		written++ ;
@@ -1095,42 +1089,37 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 			UrlHandlerProgram( prev, prog, sizeof(prog) ) ;
 			replaced++ ;
 			len += snprintf( report+len, sizeof(report)-len,
-					 "%s://  taken over from %s\r\n           %s\r\n",
-					 protos[i].proto, prog[0] ? prog : "another program", prev ) ;
+					 KT_REG_URL_TAKEN_OVER,
+					 protos[i].proto, prog[0] ? prog : KT_REG_ANOTHER_PROGRAM, prev ) ;
 			if( mine && backup[0] )
 				len += snprintf( report+len, sizeof(report)-len,
-					 "           to undo:  reg import \"%s\"\r\n", backup ) ;
+					 KT_REG_URL_UNDO_IMPORT, backup ) ;
 			else if( mine )
 				len += snprintf( report+len, sizeof(report)-len,
-					 "           (the old setting could NOT be backed up)\r\n" ) ;
+					 KT_REG_URL_NO_BACKUP ) ;
 			else
 				len += snprintf( report+len, sizeof(report)-len,
-					 "           to undo:  reg delete \"%s\\%s%s\" /f\r\n"
-					 "           (%s was not changed - deleting the entry above "
-					 "lets %s open %s:// links again)\r\n",
+					 KT_REG_URL_UNDO_DELETE,
 					 root == HKEY_LOCAL_MACHINE ? "HKLM" : "HKCU",
 					 prefix, protos[i].proto,
 					 root == HKEY_LOCAL_MACHINE ?
-						"the registration for your account" :
-						"the registration for all users of this machine",
-					 prog[0] ? prog : "the previous program", protos[i].proto ) ;
+						KT_REG_URL_REG_YOUR_ACCOUNT :
+						KT_REG_URL_REG_ALL_USERS,
+					 prog[0] ? prog : KT_REG_PREVIOUS_PROGRAM, protos[i].proto ) ;
 		} else {
 			len += snprintf( report+len, sizeof(report)-len,
-					 "%s://  registered\r\n", protos[i].proto ) ;
+					 KT_REG_URL_REGISTERED, protos[i].proto ) ;
 		}
 		if( len >= sizeof(report) ) break ;   /* report full; stop appending */
 	}
 
 	if( kept && len < sizeof(report) )
 		snprintf( report+len, sizeof(report)-len,
-			  "\r\n%d left untouched because %s already opened by another "
-			  "program. Add -force to take %s over as well; the setting "
-			  "replaced is exported to a .reg file first, and the report then "
-			  "names the command that puts it back.",
+			  KT_REG_URL_KEPT_NOTE,
 			  kept, kept == 1 ? "it is" : "they are",
 			  kept == 1 ? "it" : "them" ) ;
 
-	KittyCliReport( "KiTTY URL handlers", report, written == n ? 0 : 1 ) ;
+	KittyCliReport( KT_CAP_URL_HANDLERS, report, written == n ? 0 : 1 ) ;
 	(void)replaced ;
 }
 
@@ -1144,16 +1133,15 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 void RemoveSSHHandler( void ) {
 	static const char *protos[] = { "telnet", "ssh", "kitty", "putty" } ;
 	static const struct { HKEY root ; const char *label ; } hives[] = {
-		{ HKEY_CURRENT_USER,  "your account" },
-		{ HKEY_LOCAL_MACHINE, "all users" },
+		{ HKEY_CURRENT_USER,  KT_REG_YOUR_ACCOUNT },
+		{ HKEY_LOCAL_MACHINE, KT_REG_ALL_USERS },
 	} ;
 	char report[4096], key[512], cur[1024], backup[MAX_PATH], prog[MAX_PATH] ;
 	size_t len ;
 	int i, h, removed = 0, kept = 0 ;
 
 	len = snprintf( report, sizeof(report),
-			"Removing KiTTY's telnet://, ssh://, kitty:// and putty:// "
-			"handlers.\r\n\r\n" ) ;
+			KT_REG_URL_REMOVING ) ;
 
 	for( h = 0 ; h < (int)(sizeof(hives)/sizeof(hives[0])) ; h++ ) {
 		for( i = 0 ; i < (int)(sizeof(protos)/sizeof(protos[0])) ; i++ ) {
@@ -1175,9 +1163,9 @@ void RemoveSSHHandler( void ) {
 			if( strnicmp( prog, "kitty", 5 ) != 0 ) {
 				if( cur[0] ) {
 					len += snprintf( report+len, sizeof(report)-len,
-						 "%s:// (%s)  LEFT ALONE, opened by %s\r\n",
+						 KT_REG_URL_RM_LEFT_ALONE,
 						 protos[i], hives[h].label,
-						 prog[0] ? prog : "another program" ) ;
+						 prog[0] ? prog : KT_REG_ANOTHER_PROGRAM ) ;
 					kept++ ;
 				}
 				continue ;
@@ -1189,16 +1177,16 @@ void RemoveSSHHandler( void ) {
 			if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS ) {
 				removed++ ;
 				len += snprintf( report+len, sizeof(report)-len,
-					 "%s:// (%s)  removed\r\n", protos[i], hives[h].label ) ;
+					 KT_REG_URL_REMOVED, protos[i], hives[h].label ) ;
 				if( backup[0] )
 					len += snprintf( report+len, sizeof(report)-len,
-						 "           to undo:  reg import \"%s\"\r\n", backup ) ;
+						 KT_REG_URL_UNDO_IMPORT, backup ) ;
 			} else {
 				len += snprintf( report+len, sizeof(report)-len,
-					 "%s:// (%s)  could not be removed%s\r\n",
+					 KT_REG_URL_NOT_REMOVED,
 					 protos[i], hives[h].label,
 					 hives[h].root == HKEY_LOCAL_MACHINE ?
-					 " - needs administrator rights" : "" ) ;
+					 KT_REG_NEEDS_ADMIN : "" ) ;
 			}
 			if( len >= sizeof(report) ) break ;
 		}
@@ -1206,10 +1194,10 @@ void RemoveSSHHandler( void ) {
 
 	if( !removed && len < sizeof(report) )
 		snprintf( report+len, sizeof(report)-len,
-			  "Nothing of KiTTY's was registered%s.",
-			  kept ? " (the handlers above belong to other programs)" : "" ) ;
+			  KT_REG_URL_NOTHING_REGISTERED,
+			  kept ? KT_REG_URL_OTHERS : "" ) ;
 
-	KittyCliReport( "KiTTY URL handlers", report, removed ? 0 : 1 ) ;
+	KittyCliReport( KT_CAP_URL_HANDLERS, report, removed ? 0 : 1 ) ;
 }
 
 // Creation de l'association de fichiers *.ktx
@@ -1233,10 +1221,10 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 
 	GetModuleFileName( NULL, (LPTSTR)path, 1024 ) ;
 
-	snprintf( buffer, sizeof(buffer), "the %s file association", ext ) ;
+	snprintf( buffer, sizeof(buffer), KT_REG_ASSOC_WHAT, ext ) ;
 	if( !ClassRegTarget( path, "-fileassoc", force ? " -force" : "",
 			     peruser, assume_yes, buffer,
-			     "KiTTY file association", &root ) )
+			     KT_CAP_FILE_ASSOC, &root ) )
 		return ;
 
 	/* Who owns the extension today? Its default value is the ProgID that
@@ -1246,18 +1234,15 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 			  cur, &sz ) == ERROR_SUCCESS && cur[0] )
 		had = 1 ;
 
-	len = snprintf( report, sizeof(report), "%s\r\nAssociating %s with: %s\r\n\r\n",
+	len = snprintf( report, sizeof(report), KT_REG_ASSOC_REPORT_HEAD,
 			root == HKEY_LOCAL_MACHINE ?
-			"For all users of this machine (HKEY_LOCAL_MACHINE)." :
-			"For your account only (HKEY_CURRENT_USER).", ext, path ) ;
+			KT_REG_FOR_ALL_USERS :
+			KT_REG_FOR_YOUR_ACCOUNT, ext, path ) ;
 
 	if( had && strcmp( cur, "kitty.connect.1" ) != 0 && !force ) {
 		snprintf( report+len, sizeof(report)-len,
-			  "%s  LEFT ALONE, currently opened by \"%s\"\r\n\r\n"
-			  "Add -force to take it over; the current setting is exported to "
-			  "a .reg file first and this report then names the command that "
-			  "restores it.", ext, cur ) ;
-		KittyCliReport( "KiTTY file association", report, 1 ) ;
+			  KT_REG_ASSOC_LEFT_ALONE, ext, cur ) ;
+		KittyCliReport( KT_CAP_FILE_ASSOC, report, 1 ) ;
 		return ;
 	}
 
@@ -1284,8 +1269,8 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 	snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1\\shell\\open\\command" ) ;
 	if( !RegTestOrCreate( root, key, "", buffer) ) {
 		snprintf( report+len, sizeof(report)-len,
-			  "The registration could NOT be written." ) ;
-		KittyCliReport( "KiTTY file association", report, 1 ) ;
+			  KT_REG_ASSOC_NOT_WRITTEN ) ;
+		KittyCliReport( KT_CAP_FILE_ASSOC, report, 1 ) ;
 		return ;
 	}
 	// Création de l'association de fichiers
@@ -1297,27 +1282,25 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 
 	if( had && strcmp( cur, "kitty.connect.1" ) != 0 ) {
 		len += snprintf( report+len, sizeof(report)-len,
-				 "%s  taken over from \"%s\"\r\n", ext, cur ) ;
+				 KT_REG_ASSOC_TAKEN_OVER, ext, cur ) ;
 		if( mine && backup[0] )
 			snprintf( report+len, sizeof(report)-len,
-				  "     to undo:  reg import \"%s\"\r\n", backup ) ;
+				  KT_REG_ASSOC_UNDO_IMPORT, backup ) ;
 		else if( mine )
 			snprintf( report+len, sizeof(report)-len,
-				  "     (the old setting could NOT be backed up)\r\n" ) ;
+				  KT_REG_ASSOC_NO_BACKUP ) ;
 		else
 			snprintf( report+len, sizeof(report)-len,
-				  "     to undo:  reg delete \"%s\\Software\\Classes\\%s\" /f\r\n"
-				  "     (%s was not changed - deleting the entry above lets "
-				  "\"%s\" open %s files again)\r\n",
+				  KT_REG_ASSOC_UNDO_DELETE,
 				  root == HKEY_LOCAL_MACHINE ? "HKLM" : "HKCU", ext,
 				  root == HKEY_LOCAL_MACHINE ?
-					"the association for your account" :
-					"the association for all users of this machine",
+					KT_REG_ASSOC_YOUR_ACCOUNT :
+					KT_REG_ASSOC_ALL_USERS,
 				  cur, ext ) ;
 	} else {
-		snprintf( report+len, sizeof(report)-len, "%s  associated\r\n", ext ) ;
+		snprintf( report+len, sizeof(report)-len, KT_REG_ASSOC_DONE, ext ) ;
 	}
-	KittyCliReport( "KiTTY file association", report, 0 ) ;
+	KittyCliReport( KT_CAP_FILE_ASSOC, report, 0 ) ;
 }
 
 /* KiTTY (-fileassoc -uninstall): give the extension back. Only removed when it
@@ -1325,8 +1308,8 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
  * here, so the removal can be undone. */
 void RemoveFileAssoc( void ) {
 	static const struct { HKEY root ; const char *label ; } hives[] = {
-		{ HKEY_CURRENT_USER,  "your account" },
-		{ HKEY_LOCAL_MACHINE, "all users" },
+		{ HKEY_CURRENT_USER,  KT_REG_YOUR_ACCOUNT },
+		{ HKEY_LOCAL_MACHINE, KT_REG_ALL_USERS },
 	} ;
 	char ext[15], key[256], cur[512], backup[MAX_PATH], report[2048] ;
 	size_t len ;
@@ -1336,7 +1319,7 @@ void RemoveFileAssoc( void ) {
 	if( strlen( FileExtension ) > 0 ) { snprintf( ext, sizeof(ext), "%s", FileExtension ) ; } else { snprintf( ext, sizeof(ext), "%s", ".ktx") ; }
 
 	len = snprintf( report, sizeof(report),
-			"Removing KiTTY's %s file association.\r\n\r\n", ext ) ;
+			KT_REG_ASSOC_REMOVING, ext ) ;
 
 	for( h = 0 ; h < (int)(sizeof(hives)/sizeof(hives[0])) ; h++ ) {
 		snprintf( key, sizeof(key), "Software\\Classes\\%s", ext ) ;
@@ -1345,7 +1328,7 @@ void RemoveFileAssoc( void ) {
 				  cur, &sz ) == ERROR_SUCCESS && cur[0] ) {
 			if( strcmp( cur, "kitty.connect.1" ) != 0 ) {
 				len += snprintf( report+len, sizeof(report)-len,
-					 "%s (%s)  LEFT ALONE, opened by \"%s\"\r\n",
+					 KT_REG_ASSOC_RM_LEFT_ALONE,
 					 ext, hives[h].label, cur ) ;
 				continue ;
 			}
@@ -1355,28 +1338,28 @@ void RemoveFileAssoc( void ) {
 			if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS ) {
 				removed++ ;
 				len += snprintf( report+len, sizeof(report)-len,
-					 "%s (%s)  removed\r\n", ext, hives[h].label ) ;
+					 KT_REG_ASSOC_REMOVED, ext, hives[h].label ) ;
 				if( backup[0] )
 					len += snprintf( report+len, sizeof(report)-len,
-						 "     to undo:  reg import \"%s\"\r\n", backup ) ;
+						 KT_REG_ASSOC_UNDO_IMPORT, backup ) ;
 			} else {
 				len += snprintf( report+len, sizeof(report)-len,
-					 "%s (%s)  could not be removed%s\r\n", ext, hives[h].label,
+					 KT_REG_ASSOC_NOT_REMOVED, ext, hives[h].label,
 					 hives[h].root == HKEY_LOCAL_MACHINE ?
-					 " - needs administrator rights" : "" ) ;
+					 KT_REG_NEEDS_ADMIN : "" ) ;
 			}
 		}
 		snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1" ) ;
 		if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS && len < sizeof(report) )
 			len += snprintf( report+len, sizeof(report)-len,
-				 "kitty.connect.1 (%s)  removed\r\n", hives[h].label ) ;
+				 KT_REG_PROGID_REMOVED, hives[h].label ) ;
 	}
 
 	if( !removed && len < sizeof(report) )
 		snprintf( report+len, sizeof(report)-len,
-			  "Nothing of KiTTY's was associated." ) ;
+			  KT_REG_ASSOC_NOTHING ) ;
 
-	KittyCliReport( "KiTTY file association", report, removed ? 0 : 1 ) ;
+	KittyCliReport( KT_CAP_FILE_ASSOC, report, removed ? 0 : 1 ) ;
 }
 	
 // Check for KiTTY registry key. If not, copy from PuTTY one
@@ -1522,14 +1505,14 @@ static void CommandProgramPath( const char *command, char *out, size_t outlen ) 
 static void IntegrationLine( const char *what, int had, const char *command,
 			     const char *self, char *out, size_t outlen, int *ours ) {
 	char prog[MAX_PATH], base[MAX_PATH] ;
-	if( !had ) { snprintf( out, outlen, "%s  not registered", what ) ; return ; }
+	if( !had ) { snprintf( out, outlen, KT_REG_STATE_NOT_REGISTERED, what ) ; return ; }
 	CommandProgramPath( command, prog, sizeof(prog) ) ;
 	UrlHandlerProgram( command, base, sizeof(base) ) ;
 	if( prog[0] && !stricmp( prog, self ) ) {
 		snprintf( out, outlen, "%s  this KiTTY++", what ) ;
 		(*ours)++ ;
 	} else if( base[0] && !stricmp( base, "kitty.exe" ) ) {
-		snprintf( out, outlen, "%s  another KiTTY: %s", what, prog ) ;
+		snprintf( out, outlen, KT_REG_STATE_OTHER_KITTY, what, prog ) ;
 	} else {
 		snprintf( out, outlen, "%s  %s", what, base[0] ? base : command ) ;
 	}
@@ -1562,7 +1545,7 @@ int kitty_shell_integration_state( char lines[5][256] ) {
 	} else if( had ) {
 		snprintf( lines[4], 256, "%s  %s", ext, progid ) ;
 	} else {
-		snprintf( lines[4], 256, "%s  not registered", ext ) ;
+		snprintf( lines[4], 256, KT_REG_STATE_NOT_REGISTERED, ext ) ;
 	}
 	/* putty:// is optional; the count says how many of the four that matter
 	 * point at this exe. */

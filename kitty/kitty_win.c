@@ -5,6 +5,7 @@
 #include "kitty_theme.h"           /* the app-wide colour theme */
 #include "../windows/putty-rc.h"   /* -demo-templates: the shared dialog ids */
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
+#include "kitty_text.h"     /* shared captions */
 #include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
 #include <wintrust.h>  /* in-app updater: Authenticode trust verification */
 #include <softpub.h>   /* WINTRUST_ACTION_GENERIC_VERIFY_V2 */
@@ -208,7 +209,7 @@ int OpenDirName( HWND hFrame, char * dirname ) {
 		memset( &bi, 0, sizeof(bi) ) ;
 		bi.hwndOwner = hFrame ;
 		bi.pszDisplayName = Buffer ;
-		bi.lpszTitle = "Select a folder..." ;
+		bi.lpszTitle = KT_CAP_SELECT_FOLDER ;
 		bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE ;
 		if( (il = SHBrowseForFolder( &bi )) != NULL ) {
 			SHGetPathFromIDList( il, Result ) ;
@@ -329,18 +330,18 @@ int PrintText( const char * Text ) {
                   			TextOut(pd.hDC,100, Index2*PrintCharSize, LinePrint, strlen(LinePrint)) ;
                	  			EndPage(pd.hDC) ;
                   			EndDoc(pd.hDC) ;
-                  			szMessage = "Print successful";
+                  			szMessage = KT_WIN_PRINT_OK;
 					free( LinePrint ) ;
               				}
               			else { return_code = 1 ;  /* Chaine vide */ }
 				}
 			else { // Problème StartDoc
-				szMessage = "ERROR Type 1" ;
+				szMessage = KT_WIN_PRINT_ERR1 ;
 				return_code = 2 ;
 				}
 			}
 		else { // Probleme pd.hDC
-			szMessage = "ERROR Type 2." ;
+			szMessage = KT_WIN_PRINT_ERR2 ;
 			return_code = 3 ;
 			}
 		}
@@ -348,7 +349,7 @@ int PrintText( const char * Text ) {
 		//szMessage = "Impression annulée par l'utilisateur" ;
 		return_code = 4 ;
 		}
-	if (szMessage) { MessageBox (NULL, szMessage, "Print report", MB_OK) ; }
+	if (szMessage) { MessageBox (NULL, szMessage, KT_CAP_PRINT_REPORT, MB_OK) ; }
 	
 	return return_code ;
 	}
@@ -771,9 +772,8 @@ int kitty_update_notice( char *buf, int n ) {
 	/* UTF-8 source text (incl. a real "->" arrow); window.c renders it via
 	 * term_data_wide(), which encodes to the terminal's charset (no mojibake). */
 	snprintf( buf, n,
-		"\r\n[KiTTY] An update is available: %s (you have %s)%s.\r\n"
-		"        System menu \xe2\x86\x92 Check for updates to install it.\r\n\r\n",
-		latest, curnum, beta ? " (beta)" : "" ) ;
+		KT_UPD_TERM_NOTICE,
+		latest, curnum, beta ? KT_UPD_BETA_SUFFIX : "" ) ;
 	return 1 ;
 }
 
@@ -808,8 +808,8 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 	char tmpdir[MAX_PATH]="", tmpbase[MAX_PATH]="", tmpfile[MAX_PATH]="" ;
 	if( !GetTempPathA( sizeof(tmpdir), tmpdir ) ||
 	    !GetTempFileNameA( tmpdir, "kty", 0, tmpbase ) ) {
-		kitty_message_box( owner, "Could not create a temporary installer path; aborting the update.",
-			"KiTTY Update", MB_OK|MB_ICONERROR ) ;
+		kitty_message_box( owner, KT_UPD_TMP_FAILED,
+			KT_CAP_UPDATE, MB_OK|MB_ICONERROR ) ;
 		return ;
 	}
 	DeleteFileA( tmpbase ) ;
@@ -819,8 +819,8 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 	int dok = kitty_download_to_file( asseturl, tmpfile ) ;
 	SetCursor( oldc ) ;
 	if( !dok ) {
-		kitty_message_box( owner, "Download failed. Opening the download page instead.",
-			"KiTTY Update", MB_OK|MB_ICONERROR ) ;
+		kitty_message_box( owner, KT_UPD_DOWNLOAD_FAILED,
+			KT_CAP_UPDATE, MB_OK|MB_ICONERROR ) ;
 		ShellExecute( owner, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
 		return ;
 	}
@@ -830,25 +830,23 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 		NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ;
 	if( updguard == INVALID_HANDLE_VALUE ) {
 		DeleteFileA( tmpfile ) ;
-		kitty_message_box( owner, "Could not secure the downloaded installer; aborting the update.",
-			"KiTTY Update", MB_OK|MB_ICONERROR ) ;
+		kitty_message_box( owner, KT_UPD_SECURE_FAILED,
+			KT_CAP_UPDATE, MB_OK|MB_ICONERROR ) ;
 		return ;
 	}
 	/* SECURITY GATE: reject anything not genuinely KAPPER-signed. */
 	if( !kitty_authenticode_verify( tmpfile ) ) {
 		CloseHandle( updguard ) ;
 		DeleteFileA( tmpfile ) ;
-		kitty_message_box( owner, "The downloaded installer FAILED signature verification "
-			"and was NOT run; it has been deleted.\n\nPlease install KiTTY only "
-			"from the official release page.",
-			"KiTTY Update - signature rejected", MB_OK|MB_ICONERROR ) ;
+		kitty_message_box( owner, KT_UPD_SIG_REJECTED,
+			KT_CAP_UPDATE_SIG_REJECTED, MB_OK|MB_ICONERROR ) ;
 		return ;
 	}
 	if( !kitty_run_installer( owner, itype, tmpfile ) ) {
 		CloseHandle( updguard ) ;
 		DeleteFileA( tmpfile ) ;
-		kitty_message_box( owner, "Could not start the verified installer. The downloaded file has been deleted.",
-			"KiTTY Update", MB_OK|MB_ICONERROR ) ;
+		kitty_message_box( owner, KT_UPD_INSTALLER_FAILED,
+			KT_CAP_UPDATE, MB_OK|MB_ICONERROR ) ;
 		return ;
 	}
 	/* keep the verified bytes locked while msiexec reads them (released on exit). */
@@ -1069,7 +1067,7 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			 * template's default, so relabelling THAT one keeps Return
 			 * meaning "acknowledged". */
 			ShowWindow( GetDlgItem( h, IDYES ), SW_HIDE ) ;
-			SetDlgItemTextA( h, IDNO, "OK" ) ;
+			SetDlgItemTextA( h, IDNO, KT_WIN_OK ) ;
 		}
 		SetDlgItemTextA( h, IDC_CONFIRM_TEXT, cf && cf->text ? cf->text : "" ) ;
 		SetDlgItemTextA( h, IDC_CONFIRM_WARN, cf && cf->warn ? cf->warn : "" ) ;
@@ -1311,7 +1309,7 @@ static void kitty_caption_tint( HWND hwnd, int on ) {
 	if( !inited ) {
 		HMODULE dwm = LoadLibraryA( "dwmapi.dll" ) ;
 		if( dwm ) dwmswa = (dwmswa_t)kitty_api_from(dwm, "dwmapi.dll", "DwmSetWindowAttribute", KITTY_API_OPTIONAL,
-                                  "dark title bars") ;
+                                  KT_WINFEAT_DARK_TITLEBARS) ;
 		inited = 1 ;
 	}
 	if( dwmswa ) {
@@ -1455,23 +1453,22 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 				if( itype==KITTY_INST_PORTABLE || !haveasset ) {
 					/* Portable copy or no matching asset: offer the download page. */
 					snprintf( msg, sizeof(msg),
-						"An update is available.\r\n\r\nInstalled: %s\r\nLatest:    %s%s\r\n\r\n%s",
-						curnum, latestnum, stable_taking_beta ? "  (BETA)" : "",
+						KT_UPD_AVAILABLE_HEAD,
+						curnum, latestnum, stable_taking_beta ? KT_UPD_BETA_MARK : "",
 						(itype==KITTY_INST_PORTABLE)
-						  ? "Portable copy - auto-install is disabled. Open the download page?"
-						  : "The matching installer wasn't found. Open the download page?" ) ;
+						  ? KT_UPD_PORTABLE_OPEN_PAGE
+						  : KT_UPD_NO_ASSET_OPEN_PAGE ) ;
 					kitty_show_update_popup( hwnd, msg, KUP_ACT_OPENPAGE, KITTY_RELEASES_URL, itype, notesurl ) ;
 					return ;
 				}
 				/* MSI install path. If a stable build is offered a beta, say so in
 				 * the text (the "Update now" button is the explicit opt-in). */
 				snprintf( msg, sizeof(msg),
-					"An update is available.\r\n\r\nInstalled: %s\r\nLatest:    %s%s\r\n\r\n%s"
-					"KiTTY will close and reconnect during the upgrade; the installer's "
-					"signature is verified before it runs.",
-					curnum, latestnum, stable_taking_beta ? "  (BETA)" : "",
+					KT_UPD_AVAILABLE_HEAD
+					KT_UPD_AVAILABLE_MSI_TAIL,
+					curnum, latestnum, stable_taking_beta ? KT_UPD_BETA_MARK : "",
 					stable_taking_beta
-					  ? "You are on a STABLE release and the newest build is a BETA (less tested). "
+					  ? KT_UPD_STABLE_TAKING_BETA
 					  : "" ) ;
 				kitty_show_update_popup( hwnd, msg, KUP_ACT_MSI, asseturl, itype, notesurl ) ;
 				return ;
@@ -1480,12 +1477,12 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 				 * box at all). Elsewhere (config box), a non-modal auto-dismiss box. */
 				if( is_terminal ) {
 					char note[256] ;
-					snprintf( note, sizeof(note), "KiTTY - up to date (%s%s is the latest)",
+					snprintf( note, sizeof(note), KT_UPD_UP_TO_DATE_TITLE,
 						curnum, cur_is_beta ? "-beta" : "" ) ;
 					kitty_title_notice( hwnd, note, 5000 ) ;
 				} else {
 					snprintf( msg, sizeof(msg),
-						"You are running the latest version.\r\n\r\nInstalled: %s\r\nLatest:    %s",
+						KT_UPD_UP_TO_DATE,
 						curnum, latestnum ) ;
 					kitty_show_update_popup( hwnd, msg, KUP_ACT_NONE, NULL, 0, NULL ) ;
 				}
@@ -1557,16 +1554,8 @@ HWND kitty_cfg_modal_owner(void);
 
 int kitty_autopw_warn( void ) {
 	int r = kitty_message_box( kitty_cfg_modal_owner(),
-		"You are setting a KiTTY auto-login password.\r\n\r\n"
-		"SECURITY: this password is saved in your session settings in a "
-		"REVERSIBLY-ENCRYPTED form. Anyone with access to this machine or to "
-		"your saved configuration can recover the plain-text password.\r\n\r\n"
-		"SSH public-key authentication is significantly more secure and is the "
-		"recommended way to log in automatically. Use a stored password only for "
-		"legacy hosts (such as network devices) that genuinely cannot accept key "
-		"authentication.\r\n\r\n"
-		"Store this auto-login password?",
-		"KiTTY auto-login password",
+		KT_WIN_AUTOPW_WARN,
+		KT_CAP_AUTOPW,
 		MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 ) ;
 	return (r == IDYES) ;
 }
@@ -1669,10 +1658,7 @@ void kitty_print_session_comment(Terminal *term, Conf *conf)
     }
     body[bl] = 0;
     line = dupprintf(
-        "\r\n\x1b[1;36m-------------------- KiTTY++ session note "
-        "--------------------\x1b[0m\r\n%s\r\n"
-        "\x1b[1;36m---------------------------------------------"
-        "-----------------\x1b[0m\r\n", body);
+        KT_WIN_SESSION_NOTE_FRAME, body);
     term_data(term, line, strlen(line));
     sfree(line);
     sfree(body);
@@ -1699,7 +1685,7 @@ void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal)
     }
     line = dupprintf("\r\n\x1b[1;3%cm%s %s:\x1b[0m %s\r\n",
                      fatal ? '1' : '3', appname,
-                     fatal ? "Fatal Error" : "Error", body);
+                     fatal ? KT_WIN_FATAL_ERROR : KT_CAP_ERROR, body);
     term_data(term, line, strlen(line));
     sfree(line);
     sfree(body);
@@ -1784,8 +1770,8 @@ void kitty_sync_transparency_menu(HMENU menu, Conf *conf, UINT id_up,
         }
     } else {
         /* each insert goes before the anchor, which shifts down by one */
-        InsertMenu(menu, anchor, MF_BYPOSITION, id_up, "Transparency &+");
-        InsertMenu(menu, anchor + 1, MF_BYPOSITION, id_down, "Transparency &-");
+        InsertMenu(menu, anchor, MF_BYPOSITION, id_up, KT_SYSMENU_TRANSPARENCY_UP);
+        InsertMenu(menu, anchor + 1, MF_BYPOSITION, id_down, KT_SYSMENU_TRANSPARENCY_DOWN);
         InsertMenu(menu, anchor + 2, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
     }
 }
@@ -1845,14 +1831,14 @@ void kitty_menu_reposition(HWND term_hwnd, Conf *conf, int x, int y)
  * run through a printf-style expansion first, so the clipboard has to hand over
  * exactly what must be pasted. */
 static const struct { const char *code, *desc; } kitty_title_vars[] = {
-    { "%%h", "Hostname (the configured host if none is known yet)" },
-    { "%%s", "Saved session name" },
-    { "%%u", "Username configured for the session" },
-    { "%%p", "Port number" },
-    { "%%P", "Protocol name, e.g. SSH" },
-    { "%%f", "Folder the saved session lives in" },
-    { "%%l", "Local forwarded ports (blank if none)" },
-    { "%%d", "Dynamic/SOCKS forwarded ports (blank if none)" },
+    { "%%h", KT_WIN_TITLEVAR_H },
+    { "%%s", KT_WIN_TITLEVAR_S },
+    { "%%u", KT_WIN_TITLEVAR_U },
+    { "%%p", KT_WIN_TITLEVAR_P },
+    { "%%P", KT_WIN_TITLEVAR_PROTO },
+    { "%%f", KT_WIN_TITLEVAR_F },
+    { "%%l", KT_WIN_TITLEVAR_L },
+    { "%%d", KT_WIN_TITLEVAR_D },
 };
 
 static HWND kitty_titlevars_dlg = NULL;
@@ -2037,9 +2023,7 @@ void kitty_report_missing_features(Terminal *term)
          * shape of the post-quantum advisory, one step below its red, because
          * this is information rather than a warning. */
         char *line = dupprintf(
-            "\r\n\x1b[1;33mNOTE:\x1b[0m this version of Windows cannot do: "
-            "%s. Everything else works as usual. Silence this with "
-            "warnmissingfeatures=no in kitty.ini.\r\n", brief);
+            KT_WIN_MISSING_FEATURES_LINE, brief);
         term_data(term, line, strlen(line));
         sfree(line);
     }
@@ -2105,16 +2089,9 @@ static void kitty_agent_serving_check(unsigned long server_pid, int transport)
         HWND GetMainHwnd(void);
         const char *base = strrchr(srv, '\\');
         char *msg = dupprintf(
-            "This KiTTY terminal window checked which program answers its "
-            "SSH agent requests. The answer came from an unverified "
-            "program:\n\n%s\n\nThat program sees, and can sign with, every "
-            "key this session uses. That is expected if you chose to run "
-            "stock Pageant, the Windows OpenSSH agent or another agent - "
-            "click this notice to open the setting that turns the warning "
-            "off. If you did not choose that agent, find out what that "
-            "program is before trusting this session.",
+            KT_WIN_AGENT_UNVERIFIED,
             base ? base + 1 : srv);
-        kitty_notice_show("KiTTY: SSH agent not verified", msg,
+        kitty_notice_show(KT_CAP_AGENT_UNVERIFIED, msg,
                           RGB(190, 110, 0), 15,
                           GetMainHwnd(), WM_KITTY_AGENT_UNVERIFIED);
         sfree(msg);

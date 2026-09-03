@@ -149,14 +149,14 @@ static void kitty_loginscript_load_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (event != EVENT_ACTION)
         return;
     if (!g_loginscript_ctrl) {
-        dlg_error_msg(dlg, "The login script box is not available.");
+        dlg_error_msg(dlg, KT_CFG_LOGINSCRIPT_NO_BOX);
         return;
     }
     {
         char path[4096];
         path[0] = '\0';
         if (!OpenFileName(GetActiveWindow(), path,
-                          "Select a login script file",
+                          KT_CFG_LOGINSCRIPT_SELECT,
                           "Script files (*.txt;*.ksc)|*.txt;*.ksc|All files (*.*)|*.*|"))
             return;                       /* cancelled */
         {
@@ -164,7 +164,7 @@ static void kitty_loginscript_load_handler(dlgcontrol *ctrl, dlgparam *dlg,
             strbuf *sb;
             char line[4096];
             if (!fp) {
-                dlg_error_msg(dlg, "That file could not be opened.");
+                dlg_error_msg(dlg, KT_CFG_LOGINSCRIPT_OPEN_FAILED);
                 return;
             }
             sb = strbuf_new_nm();
@@ -320,16 +320,15 @@ static void kitty_keyfile_pin_record_handler(dlgcontrol *ctrl, dlgparam *dlg,
     kf = conf_get_filename(conf, CONF_keyfile);
     if (!kf || filename_is_null(kf)) {
         MessageBox(GetActiveWindow(),
-                   "Choose a private key file first - the pin records THAT "
-                   "file's fingerprint.",
-                   "KiTTY key fingerprint pin", MB_OK | MB_ICONWARNING);
+                   KT_CFG_PIN_CHOOSE_KEY_FIRST,
+                   KT_CAP_KEY_FINGERPRINT_PIN, MB_OK | MB_ICONWARNING);
         return;
     }
     blob = strbuf_new();
     if (!ppk_loadpub_f(kf, &alg, BinarySink_UPCAST(blob), &comment, &error)) {
-        m = dupprintf("Unable to read the key file's public half:\n\n%s",
-                      error ? error : "unknown error");
-        MessageBox(kitty_cfg_modal_owner(), m, "KiTTY key fingerprint pin",
+        m = dupprintf(KT_CFG_PIN_READ_FAILED,
+                      error ? error : KT_MSG_UNKNOWN_ERROR);
+        MessageBox(kitty_cfg_modal_owner(), m, KT_CAP_KEY_FINGERPRINT_PIN,
                    MB_OK | MB_ICONWARNING);
         sfree(m);
         strbuf_free(blob);
@@ -342,11 +341,8 @@ static void kitty_keyfile_pin_record_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (!bare) bare = full;
     conf_set_str(conf, CONF_publickey_fingerprint, bare);
     dlg_refresh(NULL, dlg);
-    m = dupprintf("Recorded for this session:\n\n%s\n\n"
-                  "Connections will now refuse the key file if its "
-                  "fingerprint changes. Clear the field to switch the check "
-                  "off - and remember to SAVE the session.", full);
-    MessageBox(GetActiveWindow(), m, "KiTTY key fingerprint pin",
+    m = dupprintf(KT_CFG_PIN_RECORDED, full);
+    MessageBox(GetActiveWindow(), m, KT_CAP_KEY_FINGERPRINT_PIN,
                MB_OK | MB_ICONINFORMATION);
     sfree(m);
     sfree(full);
@@ -384,8 +380,8 @@ static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (event != EVENT_ACTION) return;
     if (!kitty_parse_hotkey_spec(conf_get_str(conf, CONF_launcher_global_hotkey),
                                  &mods, &vk)) {
-        kitty_info_box(kitty_cfg_modal_owner(), "KiTTY Launcher hotkey",
-                       "Enter a hotkey such as Ctrl+Alt+K or Ctrl+Shift+F12.",
+        kitty_info_box(kitty_cfg_modal_owner(), KT_CAP_LAUNCHER_HOTKEY,
+                       KT_CFG_HOTKEY_ENTER,
                        NULL);
         return;
     }
@@ -399,30 +395,24 @@ static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
         UnregisterHotKey(NULL, 0x4B7A);
         if (nc > 0) {
             snprintf(msg, sizeof(msg),
-                     "This hotkey is currently available system-wide, but it is "
-                     "already assigned to the saved session%s: %s.\n\n"
-                     "A hotkey works for only one session; the launcher gives "
-                     "it to the first one it finds.",
+                     KT_CFG_HOTKEY_FREE_BUT_SAVED,
                      nc == 1 ? "" : "s", others);
-            kitty_info_box(kitty_cfg_modal_owner(), "KiTTY Launcher hotkey",
+            kitty_info_box(kitty_cfg_modal_owner(), KT_CAP_LAUNCHER_HOTKEY,
                            msg, NULL);
         } else {
-            kitty_info_box(kitty_cfg_modal_owner(), "KiTTY Launcher hotkey",
-                           "This hotkey is currently available.\n\nNote: it is only registered while KiTTY Launcher is running.",
+            kitty_info_box(kitty_cfg_modal_owner(), KT_CAP_LAUNCHER_HOTKEY,
+                           KT_CFG_HOTKEY_FREE,
                            NULL);
         }
     } else if (nc > 0) {
         snprintf(msg, sizeof(msg),
-                 "This hotkey is already in use - it is assigned to the saved "
-                 "session%s: %s.\n\n"
-                 "A hotkey works for only one session; the launcher gives it "
-                 "to the first one it finds.",
+                 KT_CFG_HOTKEY_IN_USE_SAVED,
                  nc == 1 ? "" : "s", others);
-        kitty_info_box(kitty_cfg_modal_owner(), "KiTTY Launcher hotkey",
+        kitty_info_box(kitty_cfg_modal_owner(), KT_CAP_LAUNCHER_HOTKEY,
                        msg, NULL);
     } else {
-        kitty_info_box(kitty_cfg_modal_owner(), "KiTTY Launcher hotkey",
-                       "This hotkey is already in use or reserved by Windows/another app.\n\nWindows does not expose which application owns a global hotkey.",
+        kitty_info_box(kitty_cfg_modal_owner(), KT_CAP_LAUNCHER_HOTKEY,
+                       KT_CFG_HOTKEY_IN_USE_SYSTEM,
                        NULL);
     }
 }
@@ -465,7 +455,6 @@ static const char *kitty_proxy_neutral(Conf *conf)
  */
 /* The two captions, named so that windows/dialog.c can recognise the active one
  * and draw it BOLD without knowing anything else about this control. */
-#define KITTY_PROXY_LABEL_IDLE   "Proxy override options:"
 #define KITTY_PROXY_LABEL_ACTIVE "PROXY OVERRIDE ACTIVE:"
 
 /* The line-spacing label. Unlike the captions above, this one does not change
@@ -550,7 +539,7 @@ static const char *kitty_proxy_override_label(Conf *conf)
     const char *cur = conf_get_str(conf, CONF_proxyselection);
 
     if (!cur || !*cur)
-        return KITTY_PROXY_LABEL_IDLE;
+        return KT_SESSION_PROXY_LABEL_IDLE;
 
     /*
      * Compare EFFECTS, not strings.
@@ -568,10 +557,10 @@ static const char *kitty_proxy_override_label(Conf *conf)
      *   a named proxy           -> always an override.
      */
     if (!strcmp(cur, KITTY_PROXY_SESSION))
-        return KITTY_PROXY_LABEL_IDLE;
+        return KT_SESSION_PROXY_LABEL_IDLE;
     if (!strcmp(cur, KITTY_PROXY_NONE))
         return kitty_session_has_proxy(conf) ? KITTY_PROXY_LABEL_ACTIVE
-                                             : KITTY_PROXY_LABEL_IDLE;
+                                             : KT_SESSION_PROXY_LABEL_IDLE;
     return KITTY_PROXY_LABEL_ACTIVE;
 }
 
@@ -710,22 +699,15 @@ static void kitty_pxload_apply(dlgparam *dlg, Conf *conf, const char *picked)
                                  const char *text, const char *warn_red); /* kitty_win.c */
     {
         char *q = dupprintf(
-            "Load the named proxy \"%s\" into this configuration window?\n\n"
-            "It REPLACES this session's own proxy settings - type, host, port, "
-            "exclude list, DNS setting, and the proxy USERNAME AND PASSWORD. "
-            "If \"%s\" has no password stored, the one this session currently "
-            "holds is cleared.\n\n"
-            "Nothing is written to the saved session until you press Save.",
+            KT_CFG_PXLOAD_Q,
             picked, picked);
         /* The one case where the above is not the whole truth. */
         const char *warn =
             conf_get_bool(conf, CONF_saveonexit)
-            ? "This session has \"Save settings on exit\" enabled, so this WILL be "
-              "saved over your stored proxy settings when the session ends, even if "
-              "you never press Save."
+            ? KT_CFG_PXLOAD_SAVEONEXIT_WARN
             : NULL;
         bool go = kitty_confirm_box(GetActiveWindow(),
-                                    "Load named proxy settings?", q, warn);
+                                    KT_CAP_LOAD_NAMED_PROXY, q, warn);
         sfree(q);
         if (!go)
             return;                     /* nothing touched at all */
@@ -834,12 +816,12 @@ struct wpmode_data {
  * ends only when it is switched off or the launcher exits, which is still a
  * bounded promise because the launcher dies with the logon. */
 static const struct { const char *label; unsigned int minutes; } wpmode_spans[] = {
-    { "1 hour",                        60 },
-    { "2 hours",                      120 },
-    { "4 hours",                      240 },
-    { "8 hours",                      480 },
-    { "12 hours",                     720 },
-    { "Only when the launcher exits",    0 },
+    { KT_CFG_WPMODE_1H,                60 },
+    { KT_CFG_WPMODE_2H,               120 },
+    { KT_CFG_WPMODE_4H,               240 },
+    { KT_CFG_WPMODE_8H,               480 },
+    { KT_CFG_WPMODE_12H,              720 },
+    { KT_CFG_WPMODE_LAUNCHER_EXIT,       0 },
 };
 
 /*
@@ -1020,12 +1002,12 @@ static void kitty_wpmode_button_label(dlgcontrol *ctrl, dlgparam *dlg)
          * only what pressing it does and how long the mode has left. */
         char *s;
         kitty_workplace_left_text(left, sizeof(left));
-        s = left[0] ? dupprintf("Switch off now (%s left)", left)
-                    : dupstr("Switch off now");
+        s = left[0] ? dupprintf(KT_CFG_WPMODE_SWITCH_OFF_LEFT, left)
+                    : dupstr(KT_CFG_WPMODE_SWITCH_OFF);
         dlg_label_change(ctrl, dlg, s);
         sfree(s);
     } else {
-        dlg_label_change(ctrl, dlg, "Switch on");
+        dlg_label_change(ctrl, dlg, KT_WORKPLACE_PROXY_SWITCH);
     }
 }
 
@@ -1107,9 +1089,9 @@ static void kitty_wpmode_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     !strcmp(proxies[i].name, KITTY_PROXY_SESSION))
                     continue;
                 if (armed[0] && !strcmp(armed, proxies[i].name))
-                    tag = "  (in use)";
+                    tag = KT_CFG_WPMODE_TAG_IN_USE;
                 else if (remembered[0] && !strcmp(remembered, proxies[i].name))
-                    tag = "  (last used)";
+                    tag = KT_CFG_WPMODE_TAG_LAST_USED;
                 if (*tag) {
                     char *label = dupprintf("%s%s", proxies[i].name, tag);
                     dlg_listbox_add(ctrl, dlg, label);
@@ -1190,8 +1172,7 @@ static void kitty_wpmode_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (kitty_workplace_query(armed, sizeof(armed))) {
         /* On: ask the launcher to let go. */
         if (!kitty_workplace_request(0, 0))
-            dlg_error_msg(dlg, "The launcher did not switch workplace proxy mode "
-                          "off. Closing the launcher also switches it off.");
+            dlg_error_msg(dlg, KT_CFG_WPMODE_OFF_FAILED);
     } else {
         char m[32];
         if (!wd->name || !wd->name[0]) {
@@ -1205,8 +1186,7 @@ static void kitty_wpmode_handler(dlgcontrol *ctrl, dlgparam *dlg,
         WriteParameter(INIT_SECTION, "WorkplaceMinutes", m);
         if (!kitty_workplace_request(1, wd->minutes) &&
             !kitty_workplace_start_launcher(wd->name, wd->minutes))
-            dlg_error_msg(dlg, "Could not switch workplace proxy mode on: the "
-                          "launcher, which holds the mode, did not start.");
+            dlg_error_msg(dlg, KT_CFG_WPMODE_ON_FAILED);
     }
     dlg_refresh(NULL, dlg);
 }
@@ -1585,7 +1565,7 @@ static void config_host_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * This label text is carefully chosen to contain an n,
              * since that's the shortcut for the host name control.
              */
-            dlg_label_change(ctrl, dlg, "Serial line");
+            dlg_label_change(ctrl, dlg, KT_CFG_SERIAL_LINE);
             dlg_editbox_set(ctrl, dlg, conf_get_str(conf, CONF_serline));
         } else {
             dlg_label_change(ctrl, dlg, HOST_BOX_TITLE);
@@ -1618,7 +1598,7 @@ static void config_port_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * This label text is carefully chosen to contain a p,
              * since that's the shortcut for the port control.
              */
-            dlg_label_change(ctrl, dlg, "Speed");
+            dlg_label_change(ctrl, dlg, KT_CFG_SPEED);
             snprintf( buf, sizeof(buf), "%d", conf_get_int(conf, CONF_serspeed));
         } else {
             dlg_label_change(ctrl, dlg, PORT_BOX_TITLE);
@@ -2146,9 +2126,9 @@ static void sshbug_handler(dlgcontrol *ctrl, dlgparam *dlg,
         int oldconf = conf_get_int(conf, ctrl->context.i);
         dlg_update_start(ctrl, dlg);
         dlg_listbox_clear(ctrl, dlg);
-        dlg_listbox_addwithid(ctrl, dlg, "Auto", AUTO);
-        dlg_listbox_addwithid(ctrl, dlg, "Off", FORCE_OFF);
-        dlg_listbox_addwithid(ctrl, dlg, "On", FORCE_ON);
+        dlg_listbox_addwithid(ctrl, dlg, KT_TERMINAL_AUTO, AUTO);
+        dlg_listbox_addwithid(ctrl, dlg, KT_SCRIPTING_OFF, FORCE_OFF);
+        dlg_listbox_addwithid(ctrl, dlg, KT_CFG_SSHBUG_ON, FORCE_ON);
         switch (oldconf) {
           case AUTO:      dlg_listbox_select(ctrl, dlg, 0); break;
           case FORCE_OFF: dlg_listbox_select(ctrl, dlg, 1); break;
@@ -2179,8 +2159,8 @@ static void sshbug_handler_manual_only(dlgcontrol *ctrl, dlgparam *dlg,
         int oldconf = conf_get_int(conf, ctrl->context.i);
         dlg_update_start(ctrl, dlg);
         dlg_listbox_clear(ctrl, dlg);
-        dlg_listbox_addwithid(ctrl, dlg, "Off", FORCE_OFF);
-        dlg_listbox_addwithid(ctrl, dlg, "On", FORCE_ON);
+        dlg_listbox_addwithid(ctrl, dlg, KT_SCRIPTING_OFF, FORCE_OFF);
+        dlg_listbox_addwithid(ctrl, dlg, KT_CFG_SSHBUG_ON, FORCE_ON);
         switch (oldconf) {
           case FORCE_OFF: dlg_listbox_select(ctrl, dlg, 0); break;
           case FORCE_ON:  dlg_listbox_select(ctrl, dlg, 1); break;
@@ -3039,14 +3019,14 @@ static void update_comment_display(struct sessionsaver_data *ssd, dlgparam *dlg)
         return;
     i = sessionsaver_selected_session_index(ssd, dlg);
     if (i < 0 || i >= ssd->sesslist.nsessions) {
-        dlg_editbox_set(ssd->commentbox, dlg, "Select a session to see its comment");
+        dlg_editbox_set(ssd->commentbox, dlg, KT_CFG_COMMENT_SELECT);
         return;
     }
     /* Read "Comment" directly, scanning all hives for a non-empty value, so
      * comments authored by an older KiTTY (held only in the 9bis hive) show
      * even before the session is re-saved into the new hive. */
     c = kitty_read_session_comment(ssd->sesslist.sessions[i]);
-    dlg_editbox_set(ssd->commentbox, dlg, (c && *c) ? c : "(no comment stored for this session)");
+    dlg_editbox_set(ssd->commentbox, dlg, (c && *c) ? c : KT_CFG_COMMENT_NONE);
     sfree(c);
 }
 
@@ -3258,10 +3238,10 @@ static void kitty_root_folder_cannot_delete(dlgparam *dlg)
         (MessageBoxTimeoutA_t)kitty_api_from(user32, "user32.dll", "MessageBoxTimeoutA", KITTY_API_OPTIONAL,
                                   "message boxes that close themselves") : NULL;
     if (msgbox_timeout)
-        msgbox_timeout(dlg->hwnd, "root folder can't be deleted", "KiTTY",
+        msgbox_timeout(dlg->hwnd, KT_CFG_ROOT_FOLDER_CANT_DELETE, KT_CAP_KITTY,
                        MB_OK | MB_ICONINFORMATION, 0, 5000);
     else
-        MessageBoxA(dlg->hwnd, "root folder can't be deleted", "KiTTY",
+        MessageBoxA(dlg->hwnd, KT_CFG_ROOT_FOLDER_CANT_DELETE, KT_CAP_KITTY,
                     MB_OK | MB_ICONINFORMATION);
 }
 
@@ -3374,8 +3354,8 @@ static int sessionsaver_move_folder_sessions(struct sessionsaver_data *ssd,
         if (!w) {
             char msg[512];
             snprintf(msg, sizeof(msg),
-                     "Could not update session \"%s\":\n%s", sess,
-                     errmsg ? errmsg : "unknown error");
+                     KT_CFG_SESSION_UPDATE_FAILED, sess,
+                     errmsg ? errmsg : KT_MSG_UNKNOWN_ERROR);
             sfree(errmsg);
             dlg_error_msg(dlg, msg);
             return -1;
@@ -3446,11 +3426,11 @@ static bool sessionsaver_rename_folder(struct sessionsaver_data *ssd,
     if (!strcmp(folder, old))
         return false;                    /* nothing typed: not an error */
     if (kitty_folder_name_reserved(folder)) {
-        dlg_error_msg(dlg, "That name is reserved for the root session list.");
+        dlg_error_msg(dlg, KT_CFG_FOLDER_NAME_RESERVED_ROOT);
         return false;
     }
     if (stricmp(folder, old) && sessionsaver_folder_exists(folder)) {
-        dlg_error_msg(dlg, "A folder of that name already exists.");
+        dlg_error_msg(dlg, KT_CFG_FOLDER_EXISTS);
         return false;
     }
     if (sessionsaver_move_folder_sessions(ssd, dlg, old, folder) < 0)
@@ -3490,15 +3470,11 @@ static bool sessionsaver_confirm_empty_folder(struct sessionsaver_data *ssd,
     char msg[512];
     if (n == 1)
         snprintf(msg, sizeof(msg),
-                 "\"%s\" contains one session.\n\n"
-                 "Delete the folder and move the session to the root list?\n"
-                 "The session itself is kept.", CurrentFolder);
+                 KT_CFG_FOLDER_DELETE_ONE, CurrentFolder);
     else
         snprintf(msg, sizeof(msg),
-                 "\"%s\" contains %d sessions.\n\n"
-                 "Delete the folder and move the sessions to the root list?\n"
-                 "The sessions themselves are kept.", CurrentFolder, n);
-    if (MessageBoxA(dlg->hwnd, msg, "KiTTY",
+                 KT_CFG_FOLDER_DELETE_MANY, CurrentFolder, n);
+    if (MessageBoxA(dlg->hwnd, msg, KT_CAP_KITTY,
                     MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES)
         return false;
     return sessionsaver_move_folder_sessions(ssd, dlg, CurrentFolder,
@@ -3541,45 +3517,27 @@ static void sessionsaver_offer_hide_default(struct sessionsaver_data *ssd,
      * cannot be persisted, so do not offer a choice we can't honour. */
     if (GetNoKittyFileFlag() || !ini || !ini[0] || GetReadOnlyFlag()) {
         snprintf(msg, sizeof(msg),
-                 "\"%s\" cannot be deleted - it is the template every new "
-                 "session starts from.\n\n"
-                 "It can normally be hidden from this list, but %s, so that "
-                 "setting cannot be saved right now.",
+                 KT_CFG_DEFAULT_CANT_DELETE_NOSAVE,
                  KITTY_DEFAULT_SESSION,
-                 GetReadOnlyFlag() ? "KiTTY is running read-only"
-                                   : "this KiTTY is running without a "
-                                     "configuration file");
-        MessageBoxA(dlg->hwnd, msg, "KiTTY", MB_OK | MB_ICONINFORMATION);
+                 GetReadOnlyFlag() ? KT_CFG_DEFAULT_READONLY
+                                   : KT_CFG_DEFAULT_NO_CONF);
+        MessageBoxA(dlg->hwnd, msg, KT_CAP_KITTY, MB_OK | MB_ICONINFORMATION);
         return;
     }
 
     snprintf(msg, sizeof(msg),
-             "\"%s\" cannot be deleted - it is the template every new session "
-             "starts from.\n\n"
-             "It can be hidden from this list instead. The template itself "
-             "keeps working; it simply stops taking up a row.\n\n"
-             "Note it is also the way into quick connect - loading it once "
-             "puts the caret in Host Name so you can type an address instead "
-             "of picking a session. With the row hidden you would reach that "
-             "by setting [ConfigBox] loadlastsession=no instead.\n\n"
-             "Hide it?\n\n"
-             "To show it again later you have to edit the configuration file "
-             "by hand and set:\n"
-             "    [ConfigBox]\n"
-             "    defaultsettings=yes\n\n"
-             "Configuration file:\n%s",
+             KT_CFG_DEFAULT_HIDE_Q,
              KITTY_DEFAULT_SESSION, ini);
 
-    if (MessageBoxA(dlg->hwnd, msg, "KiTTY",
+    if (MessageBoxA(dlg->hwnd, msg, KT_CAP_KITTY,
                     MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES)
         return;                          /* No = keep showing it */
 
     CreateDefaultIniFile();              /* no-op when it already exists */
     if (!writeINI(ini, "ConfigBox", "defaultsettings", "no")) {
         snprintf(msg, sizeof(msg),
-                 "Could not write to the configuration file:\n%s\n\n"
-                 "\"%s\" is still shown.", ini, KITTY_DEFAULT_SESSION);
-        MessageBoxA(dlg->hwnd, msg, "KiTTY", MB_OK | MB_ICONERROR);
+                 KT_CFG_DEFAULT_WRITE_FAILED, ini, KITTY_DEFAULT_SESSION);
+        MessageBoxA(dlg->hwnd, msg, KT_CAP_KITTY, MB_OK | MB_ICONERROR);
         return;
     }
 
@@ -3641,7 +3599,7 @@ static void sessionsaver_update_save_button(struct sessionsaver_data *ssd,
      * something else. Compared by POINTER against the last literal used, as the
      * folder button does, so a redraw is issued only when it actually changes. */
     {
-        const char *label = ssd->selected_folder ? "Rename" : "Save";
+        const char *label = ssd->selected_folder ? KT_CFG_RENAME : KT_SESSION_SAVE;
         if (ssd->save_button_label != label) {
             dlg_label_change(ssd->savebutton, dlg, label);
             ssd->save_button_label = label;
@@ -3661,7 +3619,7 @@ static void sessionsaver_update_folder_button(struct sessionsaver_data *ssd,
     if (kitty_folder_rows_on()) {
         /* One meaning, one label: the button acts on whatever is in the name
          * box when it is pressed. Nothing to announce. */
-        label = "New folder";
+        label = KT_SESSION_NEW_FOLDER;
         if (ssd->folder_button_label != label) {
             dlg_label_change(ssd->createbutton, dlg, label);
             ssd->folder_button_label = label;
@@ -3671,7 +3629,7 @@ static void sessionsaver_update_folder_button(struct sessionsaver_data *ssd,
     /* Keep these SHORT: the button shares a 75/25 row with the combo, and
      * anything longer than "New folder" overflows its width. */
     label = (ssd->folder_action == KITTY_FOLDER_ACTION_NEW) ?
-        "New folder" : "Rename";
+        KT_SESSION_NEW_FOLDER : KT_CFG_RENAME;
     if (ssd->folder_button_label == label)
         return;                      /* both are literals; no repaint needed */
     dlg_label_change(ssd->createbutton, dlg, label);
@@ -3751,11 +3709,11 @@ static void sessionsaver_create_named_folder(struct sessionsaver_data *ssd,
         return;
     }
     if (kitty_folder_name_reserved(folder)) {
-        dlg_error_msg(dlg, "That name is reserved for the root session list.");
+        dlg_error_msg(dlg, KT_CFG_FOLDER_NAME_RESERVED_ROOT);
         return;
     }
     if (sessionsaver_folder_exists(folder)) {
-        dlg_error_msg(dlg, "A folder of that name already exists.");
+        dlg_error_msg(dlg, KT_CFG_FOLDER_EXISTS);
         return;
     }
     InitFolderList();
@@ -4487,26 +4445,12 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     if (victim) {
                         close_settings_r(victim);
                         char *q = target_from_highlight ? dupprintf(
-                            "Replace the saved session \"%s\"?\n\n"
-                            "The name box is empty, so the highlighted entry in "
-                            "the session list is the target. Its settings are "
-                            "about to be overwritten with the ones currently in "
-                            "this dialog - host name, port, protocol and "
-                            "everything else.\n\n"
-                            "Type a name in the box to save under a different "
-                            "one.",
+                            KT_CFG_OVERWRITE_HIGHLIGHT_Q,
                             ssd->savedsession) : dupprintf(
-                            "Replace the saved session \"%s\"?\n\n"
-                            "You did not load it, so its settings are about to "
-                            "be overwritten with the ones currently in this "
-                            "dialog - host name, port, protocol and everything "
-                            "else.\n\n"
-                            "Clicking a name in the session list only fills in "
-                            "the name; it does not load that session. Use Load "
-                            "first if you meant to edit it.",
+                            KT_CFG_OVERWRITE_UNLOADED_Q,
                             ssd->savedsession);
                         bool go = kitty_dlg_confirm(
-                            dlg, "Overwrite saved session?", q);
+                            dlg, KT_CAP_OVERWRITE_SESSION, q);
                         sfree(q);
                         if (!go)
                             return;
@@ -4533,13 +4477,10 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                         KITTY_LAUNCHER_HOTKEY_MAX) {
                         char m[300];
                         snprintf(m, sizeof(m),
-                                 "All %d launcher hotkey slots are already in "
-                                 "use, so the hotkey of this session has been "
-                                 "switched off.\n\nDisable another session's "
-                                 "hotkey first, then enable this one again.",
+                                 KT_CFG_HOTKEY_SLOTS_FULL,
                                  KITTY_LAUNCHER_HOTKEY_MAX);
                         MessageBox(GetActiveWindow(), m,
-                                   "KiTTY Launcher hotkey",
+                                   KT_CAP_LAUNCHER_HOTKEY,
                                    MB_OK | MB_ICONWARNING);
                         conf_set_bool(conf,
                                       CONF_launcher_global_hotkey_enabled,
@@ -4590,14 +4531,11 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                                        hk_others,
                                                        sizeof(hk_others)) > 0) {
                             char *m = dupprintf(
-                                "The hotkey \"%s\" is also assigned to: %s.\n\n"
-                                "A hotkey works for only one session; the "
-                                "launcher gives it to the first one it finds. "
-                                "Edit the others to resolve this.",
+                                KT_CFG_HOTKEY_ALSO_ASSIGNED,
                                 conf_get_str(conf, CONF_launcher_global_hotkey),
                                 hk_others);
                             MessageBox(GetActiveWindow(), m,
-                                       "KiTTY Launcher hotkey",
+                                       KT_CAP_LAUNCHER_HOTKEY,
                                        MB_OK | MB_ICONWARNING);
                             sfree(m);
                         }
@@ -4695,9 +4633,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     /* NOT the full reserved-name check: that one also refuses
                      * the current label, which would block re-casing it
                      * ("Alle Sessions" -> "alle sessions"). */
-                    dlg_error_msg(dlg, "That name is reserved.");
+                    dlg_error_msg(dlg, KT_CFG_FOLDER_NAME_RESERVED);
                 } else if (sessionsaver_folder_exists(label)) {
-                    dlg_error_msg(dlg, "A folder of that name already exists.");
+                    dlg_error_msg(dlg, KT_CFG_FOLDER_EXISTS);
                 } else {
                     WriteParameter(INIT_SECTION, "RootFolderLabel", label);
                     sfree(ssd->newfolder);
@@ -4717,7 +4655,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 if (!folder[0]) {
                     dlg_beep(dlg);
                 } else if (kitty_folder_name_reserved(folder)) {
-                    dlg_error_msg(dlg, "That name is reserved for the root session list.");
+                    dlg_error_msg(dlg, KT_CFG_FOLDER_NAME_RESERVED_ROOT);
                 } else {
                     InitFolderList();
                     StringList_Add(FolderList, folder);
@@ -5061,8 +4999,8 @@ static void ttymodes_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  val != NULL;
                  val = conf_get_str_strs(conf, CONF_ttymodes, key, &key)) {
                 char *disp = dupprintf("%s\t%s", key,
-                                       (val[0] == 'A') ? "(auto)" :
-                                       ((val[0] == 'N') ? "(don't send)"
+                                       (val[0] == 'A') ? KT_CFG_TTYMODE_AUTO :
+                                       ((val[0] == 'N') ? KT_CFG_TTYMODE_DONT_SEND
                                                         : val+1));
                 dlg_listbox_add(ctrl, dlg, disp);
                 sfree(disp);
@@ -5280,7 +5218,7 @@ static void portfwd_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
             src = dlg_editbox_get(pfd->sourcebox, dlg);
             if (!*src) {
-                dlg_error_msg(dlg, "You need to specify a source port number");
+                dlg_error_msg(dlg, KT_CFG_PORTFWD_NEED_SOURCE);
                 sfree(src);
                 return;
             }
@@ -5288,8 +5226,7 @@ static void portfwd_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 val = dlg_editbox_get(pfd->destbox, dlg);
                 if (!*val || !host_strchr(val, ':')) {
                     dlg_error_msg(dlg,
-                                  "You need to specify a destination address\n"
-                                  "in the form \"host.name:port\"");
+                                  KT_CFG_PORTFWD_NEED_DEST);
                     sfree(src);
                     sfree(val);
                     return;
@@ -5303,7 +5240,7 @@ static void portfwd_handler(dlgcontrol *ctrl, dlgparam *dlg,
             sfree(src);
 
             if (conf_get_str_str_opt(conf, CONF_portfwd, key)) {
-                dlg_error_msg(dlg, "Specified forwarding already exists");
+                dlg_error_msg(dlg, KT_CFG_PORTFWD_EXISTS);
             } else {
                 conf_set_str_str(conf, CONF_portfwd, key, val);
             }
@@ -5397,17 +5334,16 @@ static void manual_hostkey_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
             key = dlg_editbox_get(mh->keybox, dlg);
             if (!*key) {
-                dlg_error_msg(dlg, "You need to specify a host key or "
-                              "fingerprint");
+                dlg_error_msg(dlg, KT_CFG_HOSTKEY_NEED_KEY);
                 sfree(key);
                 return;
             }
 
             if (!validate_manual_hostkey(key)) {
-                dlg_error_msg(dlg, "Host key is not in a valid format");
+                dlg_error_msg(dlg, KT_CFG_HOSTKEY_INVALID);
             } else if (conf_get_str_str_opt(conf, CONF_ssh_manual_hostkeys,
                                             key)) {
-                dlg_error_msg(dlg, "Specified host key is already listed");
+                dlg_error_msg(dlg, KT_CFG_HOSTKEY_LISTED);
             } else {
                 conf_set_str_str(conf, CONF_ssh_manual_hostkeys, key, "");
             }
@@ -5446,7 +5382,7 @@ static void clipboard_selector_handler(dlgcontrol *ctrl, dlgparam *dlg,
         const char *name;
         int id;
     } options[] = {
-        {"No action", CLIPUI_NONE},
+        {KT_CFG_CLIP_NO_ACTION, CLIPUI_NONE},
         {CLIPNAME_IMPLICIT, CLIPUI_IMPLICIT},
         {CLIPNAME_EXPLICIT, CLIPUI_EXPLICIT},
     };
@@ -5541,11 +5477,11 @@ static void serial_parity_handler(dlgcontrol *ctrl, dlgparam *dlg,
         const char *name;
         int val;
     } parities[] = {
-        {"None", SER_PAR_NONE},
-        {"Odd", SER_PAR_ODD},
-        {"Even", SER_PAR_EVEN},
-        {"Mark", SER_PAR_MARK},
-        {"Space", SER_PAR_SPACE},
+        {KT_LOGGING_NONE, SER_PAR_NONE},
+        {KT_CFG_PARITY_ODD, SER_PAR_ODD},
+        {KT_CFG_PARITY_EVEN, SER_PAR_EVEN},
+        {KT_CFG_PARITY_MARK, SER_PAR_MARK},
+        {KT_CFG_PARITY_SPACE, SER_PAR_SPACE},
     };
     int mask = ctrl->context.i;
     int i, j;
@@ -5596,10 +5532,10 @@ static void serial_flow_handler(dlgcontrol *ctrl, dlgparam *dlg,
         const char *name;
         int val;
     } flows[] = {
-        {"None", SER_FLOW_NONE},
-        {"XON/XOFF", SER_FLOW_XONXOFF},
-        {"RTS/CTS", SER_FLOW_RTSCTS},
-        {"DSR/DTR", SER_FLOW_DSRDTR},
+        {KT_LOGGING_NONE, SER_FLOW_NONE},
+        {KT_CFG_FLOW_XONXOFF, SER_FLOW_XONXOFF},
+        {KT_CFG_FLOW_RTSCTS, SER_FLOW_RTSCTS},
+        {KT_CFG_FLOW_DSRDTR, SER_FLOW_DSRDTR},
     };
     int mask = ctrl->context.i;
     int i, j;
@@ -5667,19 +5603,19 @@ void proxy_type_handler(dlgcontrol *ctrl, dlgparam *dlg,
             current_index++;                                    \
         } while (0)
 
-        ADD(PROXY_NONE, "None");
-        ADD(PROXY_SOCKS5, "SOCKS 5");
-        ADD(PROXY_SOCKS4, "SOCKS 4");
-        ADD(PROXY_HTTP, "HTTP CONNECT");
+        ADD(PROXY_NONE, KT_LOGGING_NONE);
+        ADD(PROXY_SOCKS5, KT_PROXY_TYPE_SOCKS5);
+        ADD(PROXY_SOCKS4, KT_PROXY_TYPE_SOCKS4);
+        ADD(PROXY_HTTP, KT_CFG_PROXY_TYPE_HTTP_CONNECT);
         if (ssh_proxy_supported) {
-            ADD(PROXY_SSH_TCPIP, "SSH to proxy and use port forwarding");
-            ADD(PROXY_SSH_EXEC, "SSH to proxy and execute a command");
-            ADD(PROXY_SSH_SUBSYSTEM, "SSH to proxy and invoke a subsystem");
+            ADD(PROXY_SSH_TCPIP, KT_CFG_PROXY_TYPE_SSH_TCPIP);
+            ADD(PROXY_SSH_EXEC, KT_CFG_PROXY_TYPE_SSH_EXEC);
+            ADD(PROXY_SSH_SUBSYSTEM, KT_CFG_PROXY_TYPE_SSH_SUBSYSTEM);
         }
         if (ctrl->context.i & PROXY_UI_FLAG_LOCAL) {
-            ADD(PROXY_CMD, "Local (run a subprogram to connect)");
+            ADD(PROXY_CMD, KT_CFG_PROXY_TYPE_LOCAL);
         }
-        ADD(PROXY_TELNET, "'Telnet' (send an ad-hoc command)");
+        ADD(PROXY_TELNET, KT_CFG_PROXY_TYPE_TELNET);
 
 #undef ADD
 
@@ -5863,7 +5799,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
     s = ctrl_getset(b, "", "", "");
     ctrl_columns(s, 5, 20, 20, 20, 20, 20);
     ssd->okbutton = ctrl_pushbutton(s,
-                                    (midsession ? "Apply" : "Open"),
+                                    (midsession ? KT_CFG_BTN_APPLY : KT_CFG_BTN_OPEN),
                                     (char)(midsession ? 'a' : 'o'),
                                     HELPCTX(no_help),
                                     sessionsaver_handler, P(ssd));
@@ -5897,7 +5833,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
      * panel with no title element, which read as an omission next to the
      * rest.
      */
-    str = dupprintf("Basic options for your %s session", appname);
+    str = dupprintf(KT_CFG_SESSION_TITLE_FMT, appname);
     ctrl_settitle(b, "Session", str);
     sfree(str);
 
@@ -5951,7 +5887,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
         /* UI design assumes there exists at least one droplist entry */
         assert(backends[c->radio.nbuttons]);
 
-        c->radio.buttons[c->radio.nbuttons] = dupstr("Other:");
+        c->radio.buttons[c->radio.nbuttons] = dupstr(KT_CFG_PROTO_OTHER);
         c->radio.shortcuts[c->radio.nbuttons] = 't';
         c->radio.buttondata[c->radio.nbuttons] = I(-1);
         c->radio.nbuttons++;
@@ -5973,8 +5909,8 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
      * The Load/Save panel is available even in mid-session.
      */
     s = ctrl_getset(b, "Session", "savedsessions",
-                    midsession ? "Save the current session settings" :
-                    "Load, save or delete a stored session");
+                    midsession ? KT_CFG_SESSION_SAVE_CURRENT :
+                    KT_CFG_SESSION_LOAD_SAVE_DELETE);
     /* KiTTY folder navigation: the name box shares its row with Save AND with
      * New folder, because the combo that used to carry folder creation is gone.
      * Three columns only in that mode, so the classic layout is untouched.
@@ -6242,8 +6178,8 @@ static void logtimestamp_button_handler(dlgcontrol *ctrl, dlgparam *dlg,
     bool empty = (!cur || !*cur);
 
     if (event == EVENT_REFRESH) {
-        dlg_label_change(ctrl, dlg, empty ? "Use a default timestamp"
-                                          : "Clear the timestamp");
+        dlg_label_change(ctrl, dlg, empty ? KT_LOGGING_USE_A_DEFAULT_TIMESTAMP
+                                          : KT_CFG_LOG_CLEAR_TIMESTAMP);
     } else if (event == EVENT_ACTION) {
         conf_set_str(conf, CONF_logtimestamp,
                      empty ? KITTY_LOGTIMESTAMP_DEFAULT : "");
@@ -6276,8 +6212,8 @@ static void scb_panel_logging(struct controlbox *b, bool midsession, int protoco
         const char *sshlogname, *sshrawlogname;
         if ((midsession && protocol == PROT_SSH) ||
             (!midsession && backend_vt_from_proto(PROT_SSH))) {
-            sshlogname = "SSH packets";
-            sshrawlogname = "SSH packets and raw data";
+            sshlogname = KT_CFG_LOG_SSH_PACKETS;
+            sshrawlogname = KT_CFG_LOG_SSH_PACKETS_RAW;
         } else {
             sshlogname = NULL;         /* this will disable both buttons */
             sshrawlogname = NULL;      /* this will just placate optimisers */
@@ -6441,13 +6377,13 @@ static void kitty_bkey_update_prov(struct kitty_bkey_state *st,
     own = conf_get_str(conf, CONF_kitty_broadcast_key);
     if (own && *own)
         dlg_label_change(st->prov, dp,
-                         "Custom key for this session - Clear restores the default.");
+                         KT_CFG_BROADCAST_KEY_CUSTOM);
     else if (kitty_broadcast_group_from_ini())
         dlg_label_change(st->prov, dp,
-                         "Default key, set as sendcmdgroup in your kitty.ini file.");
+                         KT_CFG_BROADCAST_KEY_INI);
     else
         dlg_label_change(st->prov, dp,
-                         "Default key, generated for this KiTTY installation here.");
+                         KT_LOGGING_DEFAULT_KEY_GENERATED);
 }
 
 /* Put the key on the clipboard. The field is ordinary and selectable, but the
@@ -6600,9 +6536,9 @@ static void scb_panel_scripting(struct controlbox *b)
                           HELPCTX(kitty_scriptfile), conf_radiobutton_handler,
                           I(CONF_script_crlf),
                           KT_SCRIPTING_OFF,   NO_SHORTCUT, I(0),   /* SCRIPT_OFF  */
-                          "no LF", NO_SHORTCUT, I(1),   /* SCRIPT_NOLF */
-                          "CR",    NO_SHORTCUT, I(2),   /* SCRIPT_CR   */
-                          "Rec",   NO_SHORTCUT, I(3)); 
+                          KT_CFG_SCRIPT_NOLF, NO_SHORTCUT, I(1),   /* SCRIPT_NOLF */
+                          KT_CFG_SCRIPT_CR,    NO_SHORTCUT, I(2),   /* SCRIPT_CR   */
+                          KT_CFG_SCRIPT_REC,   NO_SHORTCUT, I(3));
  /* SCRIPT_REC  */
         ctrl_checkbox(s, KT_SCRIPTING_USE_CONDITIONS_FROM_FILE, NO_SHORTCUT,
                       HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
@@ -6925,10 +6861,8 @@ static void kitty_urlregex_reset_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (event != EVENT_ACTION)
         return;
     if (!kitty_confirm_box(GetActiveWindow(),
-                           "Reset the URL regular expression?",
-                           "The custom regular expression is REPLACED by "
-                           "KiTTY's default pattern.\n\n"
-                           "Whatever the field holds now is lost.", NULL))
+                           KT_CAP_RESET_URL_REGEX,
+                           KT_CFG_RESET_URL_REGEX_Q, NULL))
         return;
     conf_set_str(conf, CONF_url_regex, urlhack_default_regex);
     dlg_refresh(NULL, dlg);
@@ -6945,7 +6879,7 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
     /*
      * The Window panel.
      */
-    str = dupprintf("Options controlling %s's window", appname);
+    str = dupprintf(KT_CFG_WINDOW_TITLE_FMT, appname);
     ctrl_settitle(b, "Window", str);
     sfree(str);
 
@@ -7014,7 +6948,7 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
     /*
      * The Window/Appearance panel.
      */
-    str = dupprintf("Configure the appearance of %s's window", appname);
+    str = dupprintf(KT_CFG_APPEARANCE_TITLE_FMT, appname);
     ctrl_settitle(b, "Window/Appearance", str);
     sfree(str);
 
@@ -7067,7 +7001,7 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
     /*
      * The Window/Behaviour panel.
      */
-    str = dupprintf("Configure the behaviour of %s's window", appname);
+    str = dupprintf(KT_CFG_BEHAVIOUR_TITLE_FMT, appname);
     ctrl_settitle(b, "Window/Behaviour", str);
     sfree(str);
 
@@ -7278,7 +7212,7 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
 #ifdef MOD_BACKGROUNDIMAGE
     /* The Window/Back.&Image panel (KiTTY). Engine: kitty_image.c. */
     if (!GetPuttyFlag() && GetBackgroundImageFlag()) {
-        str = dupprintf("Configure the background of %s's window", appname);
+        str = dupprintf(KT_CFG_BACKIMAGE_TITLE_FMT, appname);
         ctrl_settitle(b, "Window/Back.&Image", str);
         sfree(str);
 
@@ -7356,7 +7290,7 @@ static void scb_panel_selection(struct controlbox *b)
                   HELPCTX(translation_cjk_ambig_wide),
                   conf_checkbox_handler, I(CONF_cjk_ambig_wide));
 
-    str = dupprintf("Adjust how %s handles line drawing characters", appname);
+    str = dupprintf(KT_CFG_LINEDRAW_TITLE_FMT, appname);
     s = ctrl_getset(b, "Window/Charset translation", "linedraw", str);
     sfree(str);
     ctrl_radiobuttons(
@@ -7393,17 +7327,17 @@ static void scb_panel_selection(struct controlbox *b)
 
     s = ctrl_getset(b, "Window/Selection", "clipboards",
                     KT_SELECTION_ASSIGN_COPY_PASTE_ACTIONS);
-    ctrl_checkbox(s, "Auto-copy selected text to "
+    ctrl_checkbox(s, KT_CFG_AUTOCOPY_SELECTED_TEXT_TO
                   CLIPNAME_EXPLICIT_OBJECT,
                   NO_SHORTCUT, HELPCTX(selection_autocopy),
                   conf_checkbox_handler, I(CONF_mouseautocopy));
-    clipboard_control(s, "Mouse paste action:", NO_SHORTCUT, 60,
+    clipboard_control(s, KT_CFG_MOUSE_PASTE_ACTION, NO_SHORTCUT, 60,
                       HELPCTX(selection_clipactions),
                       CONF_mousepaste, CONF_mousepaste_custom);
-    clipboard_control(s, "{Ctrl,Shift} + Ins:", NO_SHORTCUT, 60,
+    clipboard_control(s, KT_CFG_CTRL_SHIFT_INS, NO_SHORTCUT, 60,
                       HELPCTX(selection_clipactions),
                       CONF_ctrlshiftins, CONF_ctrlshiftins_custom);
-    clipboard_control(s, "Ctrl + Shift + {C,V}:", NO_SHORTCUT, 60,
+    clipboard_control(s, KT_CFG_CTRL_SHIFT_CV, NO_SHORTCUT, 60,
                       HELPCTX(selection_clipactions),
                       CONF_ctrlshiftcv, CONF_ctrlshiftcv_custom);
     s = ctrl_getset(b, "Window/Selection", "paste",
@@ -7647,7 +7581,7 @@ static void scb_panel_selection(struct controlbox *b)
     /* KiTTY: the adjust block is its own leaf under Colours - the general
      * switches and the palette editor are different errands, and together
      * they made one tall panel. */
-    str = dupprintf("Adjust the precise colours %s displays", appname);
+    str = dupprintf(KT_CFG_PRECISE_COLOURS_TITLE_FMT, appname);
     ctrl_settitle(b, "Window/Colours/Precise colours", str);
     sfree(str);
     s = ctrl_getset(b, "Window/Colours/Precise colours", "adjust",
@@ -7764,8 +7698,8 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
                             KT_CONNECTION_CONNECTION_PREPARATION);
             {
                 const char *label = backend_vt_from_proto(PROT_SSH) ?
-                    "Logical name of remote host (e.g. for SSH key lookup):" :
-                    "Logical name of remote host:";
+                    KT_CFG_LOGHOST_SSH :
+                    KT_CFG_LOGHOST;
                 ctrl_editbox(s, label, 'm', 100,
                              HELPCTX(connection_loghost),
                              conf_editbox_handler, I(CONF_loghost), ED_STR);
@@ -7816,7 +7750,7 @@ static void scb_panel_connection(struct controlbox *b, bool midsession, int prot
                  * account name of whoever renders the documentation shots
                  * must not end up in a published image. */
                 extern Filename *dialog_box_demo_screenshot_filename;
-                char *userlabel = dupprintf("Use system username (%s)",
+                char *userlabel = dupprintf(KT_CFG_USE_SYSTEM_USERNAME,
                                             dialog_box_demo_screenshot_filename
                                             ? "user"
                                             : (user ? user : ""));
@@ -9024,7 +8958,7 @@ static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
 {
     static const int prefs[] = { KITTY_THEME_SYSTEM, KITTY_THEME_LIGHT,
                                  KITTY_THEME_DARK };
-    static const char *const names[] = { "Follow Windows", "Light", "Dark" };
+    static const char *const names[] = { KT_CFG_THEME_FOLLOW_WINDOWS, KT_CFG_THEME_LIGHT, KT_CFG_THEME_DARK };
     int i;
 
     if (event == EVENT_REFRESH) {
@@ -9115,7 +9049,7 @@ static void kitty_cfgwin_proxysel_handler(dlgcontrol *ctrl, dlgparam *dlg,
 {
     static const int vals[] = { 0, 1, -1 };            /* auto, yes, no */
     static const char *const names[] = {
-        "Only once a named proxy exists", "Always", "Never" };
+        KT_CFG_PROXYCHOOSER_ONCE_DEFINED, KT_SESSION_ALWAYS, KT_SESSION_NEVER };
     static const char *const keys[] = { "auto", "yes", "no" };
     int i;
 
@@ -9144,7 +9078,7 @@ static void kitty_cfgwin_expand_handler(dlgcontrol *ctrl, dlgparam *dlg,
 {
     extern int kitty_category_expand_depth;             /* windows/dialog.c */
     static const char *const names[] = {
-        "Everything", "Top categories only", "Two levels", "Three levels" };
+        KT_CFG_TREE_EVERYTHING, KT_CFG_TREE_TOP_ONLY, KT_CFG_TREE_TWO_LEVELS, KT_CFG_TREE_THREE_LEVELS };
     static const char *const keys[] = { "all", "1", "2", "3" };
     static const int depths[] = { 99, 1, 2, 3 };
     int i;
@@ -9190,8 +9124,8 @@ static void kitty_cfgwin_noexit_handler(dlgcontrol *ctrl, dlgparam *dlg,
 static void kitty_cfgwin_dblclick_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                           void *data, int event)
 {
-    static const char *const names[] = { "Open Terminal and close Config",
-                                         "Start Terminal in new window" };
+    static const char *const names[] = { KT_CFG_DBLCLICK_OPEN_CLOSE,
+                                         KT_CFG_DBLCLICK_START_NEW };
     static const char *const keys[] = { "open", "start" };
     int i;
 

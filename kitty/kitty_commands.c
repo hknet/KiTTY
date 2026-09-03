@@ -114,9 +114,9 @@ static int cmd_refresh( HWND hwnd, char * arg ) {
 static int cmd_init( HWND hwnd, char * arg ) {
 	char buffer[4096] ;
 	(void)arg ;
-	snprintf( buffer, sizeof(buffer),"ConfigDirectory=%s\nIniFileFlag=%d\nDirectoryBrowseFlag=%d\nInitialDirectory=%s\nKittyIniFile=%s\nKittySavFile=%s\nKiTTYClassName=%s\n"
+	snprintf( buffer, sizeof(buffer),KT_CMD_INIT_INFO
 		,ConfigDirectory,IniFileFlag,DirectoryBrowseFlag,InitialDirectory,KittyIniFile,KittySavFile,KiTTYClassName ) ;
-	MessageBox(hwnd,buffer,"Configuration infomations",MB_OK);
+	MessageBox(hwnd,buffer,KT_CAP_CONFIG_INFO,MB_OK);
 	return 1 ;
 }
 
@@ -124,10 +124,10 @@ static int cmd_session( HWND hwnd, char * arg ) {
 	(void)arg ;
 	if( strlen( conf_get_str(conf,CONF_sessionname) ) > 0 ) {
 		char buffer[1024] ;
-		snprintf( buffer, sizeof(buffer), "Your session name is\n-%s-", conf_get_str(conf,CONF_sessionname) ) ;
-		MessageBox( hwnd, buffer, "Session name", MB_OK|MB_ICONWARNING ) ;
+		snprintf( buffer, sizeof(buffer), KT_CMD_SESSION_NAME_IS, conf_get_str(conf,CONF_sessionname) ) ;
+		MessageBox( hwnd, buffer, KT_CAP_SESSION_NAME, MB_OK|MB_ICONWARNING ) ;
 	} else
-		MessageBox( hwnd, "No session name.", "Session name", MB_OK|MB_ICONWARNING ) ;
+		MessageBox( hwnd, KT_CMD_NO_SESSION_NAME, KT_CAP_SESSION_NAME, MB_OK|MB_ICONWARNING ) ;
 	return 1 ;
 }
 
@@ -135,12 +135,12 @@ static int cmd_urlregex( HWND hwnd, char * arg ) {
 	char b[1024] ;
 	(void)hwnd ; (void)arg ;
 	snprintf(b,sizeof(b),"%d: %s",conf_get_int(conf,CONF_url_defregex),conf_get_str(conf,CONF_url_regex));
-	MessageBox( NULL, b, "URL regex", MB_OK ) ;
+	MessageBox( NULL, b, KT_CAP_URL_REGEX, MB_OK ) ;
 	return 1 ;
 }
 
 static int cmd_message( HWND hwnd, char * arg ) {
-	MessageBox( hwnd, arg, "Info", MB_OK ) ;
+	MessageBox( hwnd, arg, KT_CAP_INFO, MB_OK ) ;
 	return 1 ;
 }
 
@@ -153,9 +153,8 @@ static int cmd_save( HWND hwnd, char * arg ) {
 	if( strlen( conf_get_str(conf,CONF_sessionname) ) > 0 ) {
 		kitty_save_current_session( hwnd, NULL ) ;
 	} else {
-		MessageBox( hwnd, "No saved session is associated with this window.\n"
-		            "Use  /savenew <name>  to create one.",
-		            "Save session", MB_OK|MB_ICONINFORMATION ) ;
+		MessageBox( hwnd, KT_CMD_SAVE_NO_SESSION,
+		            KT_CAP_SAVE_SESSION, MB_OK|MB_ICONINFORMATION ) ;
 	}
 	return 1 ;
 }
@@ -176,13 +175,13 @@ static int cmd_savemode( HWND hwnd, char * arg ) {
 	IniFileFlag++ ; if( IniFileFlag>SAVEMODE_DIR ) IniFileFlag = 0 ;
 	if( IniFileFlag == SAVEMODE_REG )  {
 		delINI( KittyIniFile, INIT_SECTION, "savemode" ) ;
-		MessageBox( NULL, "Savemode is \"registry\"", "Info", MB_OK ) ;
+		MessageBox( NULL, KT_CMD_SAVEMODE_REGISTRY, KT_CAP_INFO, MB_OK ) ;
 	} else if( IniFileFlag == SAVEMODE_FILE ) {
 		if(!NoKittyFileFlag) writeINI( KittyIniFile, INIT_SECTION, "savemode", "file" ) ;
-		MessageBox( NULL, "Savemode is \"file\"", "Info", MB_OK ) ;
+		MessageBox( NULL, KT_CMD_SAVEMODE_FILE, KT_CAP_INFO, MB_OK ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		delINI( KittyIniFile, INIT_SECTION, "savemode" ) ;
-		MessageBox( NULL, "Savemode is \"dir\"", "Info", MB_OK ) ;
+		MessageBox( NULL, KT_CMD_SAVEMODE_DIR, KT_CAP_INFO, MB_OK ) ;
 	}
 	return 1 ;
 }
@@ -220,14 +219,9 @@ static int cmd_delreg( HWND hwnd, char * arg ) {
 	char question[1024] ;
 	(void)arg ;
 	snprintf( question, sizeof(question),
-		"Delete KiTTY's registry hive?\n\n"
-		"    HKEY_CURRENT_USER\\%s\n\n"
-		"This removes every saved session, named proxy, cached host key and "
-		"setting stored there. It cannot be undone from inside KiTTY - the most "
-		"recent backup is your .sav file.\n\n"
-		"Delete it?",
+		KT_CMD_DELREG_QUESTION,
 		kitty_registry_base() ) ;
-	if( MessageBox( hwnd, question, "KiTTY - delete the registry hive",
+	if( MessageBox( hwnd, question, KT_CAP_DELETE_HIVE,
 	                MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 ) != IDYES )
 		return 1 ;
 	RegDelTree( HKEY_CURRENT_USER, kitty_registry_base() ) ;
@@ -251,10 +245,8 @@ static int cmd_copytoputty( HWND hwnd, char * arg ) {
 	 * would delete the sessions and then copy the emptied key over itself -
 	 * total loss, from a command that reads like a backup. */
 	if( kitty_root_is_putty() ) {
-		MessageBox( hwnd, "This KiTTY is already using PuTTY's registry hive "
-			"(KiClassName=PuTTY), so there is nothing to copy: the source and the "
-			"destination are the same key. Nothing was changed.",
-			"KiTTY - copy to PuTTY", MB_OK | MB_ICONINFORMATION ) ;
+		MessageBox( hwnd, KT_CMD_COPYTOPUTTY_SAME_HIVE,
+			KT_CAP_COPY_TO_PUTTY, MB_OK | MB_ICONINFORMATION ) ;
 		return 1 ;
 	}
 	RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Sessions" ) ;
@@ -271,10 +263,8 @@ static int cmd_copytokitty( HWND hwnd, char * arg ) {
 	/* Same trap the other way round: with KiClassName=PuTTY the destination
 	 * IS the source, and a tree copied onto itself is at best pointless. */
 	if( kitty_root_is_putty() ) {
-		MessageBox( hwnd, "This KiTTY is already using PuTTY's registry hive "
-			"(KiClassName=PuTTY): its sessions ARE PuTTY's sessions, so there is "
-			"nothing to copy. Nothing was changed.",
-			"KiTTY - copy from PuTTY", MB_OK | MB_ICONINFORMATION ) ;
+		MessageBox( hwnd, KT_CMD_COPYTOKITTY_SAME_HIVE,
+			KT_CAP_COPY_FROM_PUTTY, MB_OK | MB_ICONINFORMATION ) ;
 		return 1 ;
 	}
 	kitty_RegCopyTree( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY", kitty_registry_base() ) ;
@@ -299,14 +289,8 @@ static int cmd_switchcrypt( HWND hwnd, char * arg ) {
 	/* kitty_notice_box, not MessageBox: a real dialog, so the dialog manager
 	 * gives it the shell font at the right DPI and it grows to fit the text -
 	 * the same treatment every other KiTTY dialog gets. */
-	kitty_notice_box( hwnd, "KiTTY - this setting has been removed",
-		"Encrypted configuration files are no longer written.\n\n"
-		"This setting used to scramble exported .ktx files with a key built "
-		"into every copy of KiTTY, so anyone with KiTTY could unscramble them. "
-		"It protected nothing, and it is gone.\n\n"
-		"Existing encrypted .ktx files are still read normally. Saved passwords "
-		"are unaffected - those are protected properly, with Windows DPAPI or "
-		"your master password." ) ;
+	kitty_notice_box( hwnd, KT_CAP_SETTING_REMOVED,
+		KT_CMD_SWITCHCRYPT_REMOVED ) ;
 	return 1 ;
 }
 
@@ -332,18 +316,8 @@ static int cmd_loadinitscript( HWND hwnd, char * arg ) {
 	    conf_get_int( conf, CONF_script_mode ) == 1 ) {
 		Filename *sf = conf_get_filename( conf, CONF_scriptfile ) ;
 		if( sf && filename_to_str(sf)[0] )
-			kitty_notice_box( hwnd, "KiTTY - a rutty script is also configured",
-				"A login script has just been loaded, and this session also has "
-				"a rutty script.\n\n"
-				"They are separate features. At CONNECT they are sequenced - the "
-				"login script gets you in, then the rutty script sends its file. "
-				"Loading one by hand mid-session skips that ordering, so if the "
-				"rutty script is already running the two will now be watching "
-				"the same output and both sending.\n\n"
-				"You can see them here:\n"
-				"    Session > Scripting        - the rutty script file\n"
-				"    Connection > Data          - the login script\n\n"
-				"Nothing has been stopped; this is only a warning." ) ;
+			kitty_notice_box( hwnd, KT_CAP_RUTTY_ALSO,
+				KT_CMD_RUTTY_ALSO_TEXT ) ;
 	}
 	return 1 ;
 }
@@ -444,13 +418,13 @@ static int cmd_passwd( HWND hwnd, char * arg ) {
 		char bufpass[4096], buffer[4096] ;
 		strcpy( bufpass, conf_get_str(conf,CONF_password) ) ;
 		/* plaintext at runtime; do NOT MASKPASS */
-		snprintf( buffer, sizeof(buffer), "Your password is\n-%s-", bufpass ) ;
+		snprintf( buffer, sizeof(buffer), KT_CMD_PASSWORD_IS, bufpass ) ;
 		SetTextToClipboard( bufpass ) ;
 		memset(bufpass,0,strlen(bufpass));
-		MessageBox( hwnd, buffer, "Password", MB_OK|MB_ICONWARNING ) ;
+		MessageBox( hwnd, buffer, KT_CAP_PASSWORD, MB_OK|MB_ICONWARNING ) ;
 		memset(buffer,0,strlen(buffer));
 	} else
-		MessageBox( hwnd, "No password.", "Password", MB_OK|MB_ICONWARNING ) ;
+		MessageBox( hwnd, KT_CMD_NO_PASSWORD, KT_CAP_PASSWORD, MB_OK|MB_ICONWARNING ) ;
 	return 1 ;
 }
 
@@ -464,11 +438,11 @@ static int cmd_screenshot( HWND hwnd, char * arg ) {
 
 /* ---- The command table ---- */
 
-#define CAT_WINDOW	"Window & title (runtime toggles - persist via kitty.ini [KiTTY] size= / wintitle=)"
-#define CAT_INFO	"Info"
-#define CAT_STORE	"Settings & storage"
-#define CAT_ALLWIN	"All KiTTY windows"
-#define CAT_DIAG	"Behaviour & diagnostics"
+#define CAT_WINDOW	KT_CMD_CAT_WINDOW
+#define CAT_INFO	KT_CMD_CAT_INFO
+#define CAT_STORE	KT_CMD_CAT_STORE
+#define CAT_ALLWIN	KT_CMD_CAT_ALLWIN
+#define CAT_DIAG	KT_CMD_CAT_DIAG
 
 static const struct InternalCmdDef {
 	const char * name ;
@@ -478,56 +452,56 @@ static const struct InternalCmdDef {
 	const char * help ;	/* the /help one-liner */
 	IntCmdHandler handler ;
 } internal_commands[] = {
-	{ "/size",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "toggle the [rows x cols] title suffix",			cmd_size },
-	{ "/wintitle",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "toggle the title decorations",				cmd_wintitle },
-	{ "/title",		IC_ARG_REQUIRED, "<text>", CAT_WINDOW, "set the window title",					cmd_title },
-	{ "/transparency",	IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "toggle window transparency",				cmd_transparency },
-	{ "/backgroundimage",	IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "toggle the background image feature",			cmd_backgroundimage },
-	{ "/hyperlink",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "toggle clickable URLs",					cmd_hyperlink },
-	{ "/winroll",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "toggle title-bar double-click roll-up",			cmd_winroll },
-	{ "/redraw",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "repaint the window",					cmd_redraw },
-	{ "/refresh",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, "refresh the background image",				cmd_refresh },
+	{ "/size",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, KT_CMD_HELP_SIZE,			cmd_size },
+	{ "/wintitle",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, KT_CMD_HELP_WINTITLE,				cmd_wintitle },
+	{ "/title",		IC_ARG_REQUIRED, "<text>", CAT_WINDOW, KT_CMD_HELP_TITLE,					cmd_title },
+	{ "/transparency",	IC_ARG_NONE,	 NULL,	   CAT_WINDOW, KT_CMD_HELP_TRANSPARENCY,				cmd_transparency },
+	{ "/backgroundimage",	IC_ARG_NONE,	 NULL,	   CAT_WINDOW, KT_CMD_HELP_BACKGROUNDIMAGE,			cmd_backgroundimage },
+	{ "/hyperlink",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, KT_CMD_HELP_HYPERLINK,					cmd_hyperlink },
+	{ "/winroll",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, KT_CMD_HELP_WINROLL,			cmd_winroll },
+	{ "/redraw",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, KT_CMD_HELP_REDRAW,					cmd_redraw },
+	{ "/refresh",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, KT_CMD_HELP_REFRESH,				cmd_refresh },
 
-	{ "/init",		IC_ARG_NONE,	 NULL,	   CAT_INFO,   "show configuration paths",				cmd_init },
-	{ "/session",		IC_ARG_NONE,	 NULL,	   CAT_INFO,   "show the session name",					cmd_session },
-	{ "/urlregex",		IC_ARG_NONE,	 NULL,	   CAT_INFO,   "show the URL detection regex",				cmd_urlregex },
-	{ "/message",		IC_ARG_REQUIRED, "<text>", CAT_INFO,   "show a message box",					cmd_message },
-	{ "/help",		IC_ARG_NONE,	 NULL,	   CAT_INFO,   "show this list",					cmd_help },
+	{ "/init",		IC_ARG_NONE,	 NULL,	   CAT_INFO,   KT_CMD_HELP_INIT,				cmd_init },
+	{ "/session",		IC_ARG_NONE,	 NULL,	   CAT_INFO,   KT_CMD_HELP_SESSION,					cmd_session },
+	{ "/urlregex",		IC_ARG_NONE,	 NULL,	   CAT_INFO,   KT_CMD_HELP_URLREGEX,				cmd_urlregex },
+	{ "/message",		IC_ARG_REQUIRED, "<text>", CAT_INFO,   KT_CMD_HELP_MESSAGE,					cmd_message },
+	{ "/help",		IC_ARG_NONE,	 NULL,	   CAT_INFO,   KT_CMD_HELP_HELP,					cmd_help },
 
-	{ "/save",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  "save the live settings to this window's saved session",	cmd_save },
-	{ "/savenew",		IC_ARG_REQUIRED, "<name>", CAT_STORE,  "save as a NEW session and switch this window to it",	cmd_savenew },
-	{ "/savektx",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  "export the settings to a .ktx connection file",		cmd_savektx },
-	{ "/savemode",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  "cycle the save mode (registry / file / dir)",		cmd_savemode },
-	{ "/savereg",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  "export the KiTTY registry to kitty.sav",		cmd_savereg },
-	{ "/loadreg",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  "import the KiTTY registry from kitty.sav",		cmd_loadreg },
-	{ "/delreg",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  "DELETE the whole KiTTY registry",			cmd_delreg },
-	{ "/savesessions",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "export the saved sessions to kitty.ses",		cmd_savesessions },
-	{ "/copytoputty",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "copy the sessions to stock PuTTY (replaces its sessions)", cmd_copytoputty },
-	{ "/copytokitty",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "copy stock PuTTY's sessions into KiTTY",		cmd_copytokitty },
-	{ "/switchcrypt",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  "(removed) encrypted config files are no longer written",	cmd_switchcrypt },
-	{ "/delfolder",		IC_ARG_REQUIRED, "<name>", CAT_STORE,  "delete a session folder",				cmd_delfolder },
-	{ "/loadinitscript",	IC_ARG_OPTIONAL, "[file]", CAT_STORE,  "(re)load the init script",				cmd_loadinitscript },
+	{ "/save",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_SAVE,	cmd_save },
+	{ "/savenew",		IC_ARG_REQUIRED, "<name>", CAT_STORE,  KT_CMD_HELP_SAVENEW,	cmd_savenew },
+	{ "/savektx",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_SAVEKTX,		cmd_savektx },
+	{ "/savemode",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_SAVEMODE,		cmd_savemode },
+	{ "/savereg",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_SAVEREG,		cmd_savereg },
+	{ "/loadreg",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_LOADREG,		cmd_loadreg },
+	{ "/delreg",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_DELREG,			cmd_delreg },
+	{ "/savesessions",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_SAVESESSIONS,		cmd_savesessions },
+	{ "/copytoputty",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_COPYTOPUTTY, cmd_copytoputty },
+	{ "/copytokitty",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_COPYTOKITTY,		cmd_copytokitty },
+	{ "/switchcrypt",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_SWITCHCRYPT,	cmd_switchcrypt },
+	{ "/delfolder",		IC_ARG_REQUIRED, "<name>", CAT_STORE,  KT_CMD_HELP_DELFOLDER,				cmd_delfolder },
+	{ "/loadinitscript",	IC_ARG_OPTIONAL, "[file]", CAT_STORE,  KT_CMD_HELP_LOADINITSCRIPT,				cmd_loadinitscript },
 
-	{ "/command",		IC_ARG_REQUIRED, "<text>", CAT_ALLWIN, "run a command or send text in ALL windows",		cmd_command },
-	{ "/sizeall",		IC_ARG_NONE,	 NULL,	   CAT_ALLWIN, "resize all windows to this window's size",		cmd_sizeall },
+	{ "/command",		IC_ARG_REQUIRED, "<text>", CAT_ALLWIN, KT_CMD_HELP_COMMAND,		cmd_command },
+	{ "/sizeall",		IC_ARG_NONE,	 NULL,	   CAT_ALLWIN, KT_CMD_HELP_SIZEALL,		cmd_sizeall },
 
-	{ "/shortcuts",		IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "reload the [Shortcuts] key bindings",			cmd_shortcuts },
-	{ "/noshortcuts",	IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "disable the keyboard-shortcut layer",			cmd_noshortcuts },
-	{ "/nomouseshortcuts",	IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "disable the mouse-shortcut layer",			cmd_nomouseshortcuts },
-	{ "/bcdelay",		IC_ARG_OPTIONAL, "[ms]",   CAT_DIAG,   "between-character send delay",				cmd_bcdelay },
-	{ "/PrintCharSize",	IC_ARG_REQUIRED, "<n>",	   CAT_DIAG,   "printing font size",					cmd_printcharsize },
-	{ "/PrintMaxLinePerPage", IC_ARG_REQUIRED, "<n>",  CAT_DIAG,   "printing lines per page",				cmd_printmaxline },
-	{ "/PrintMaxCharPerLine", IC_ARG_REQUIRED, "<n>",  CAT_DIAG,   "printing characters per line",				cmd_printmaxchar },
+	{ "/shortcuts",		IC_ARG_NONE,	 NULL,	   CAT_DIAG,   KT_CMD_HELP_SHORTCUTS,			cmd_shortcuts },
+	{ "/noshortcuts",	IC_ARG_NONE,	 NULL,	   CAT_DIAG,   KT_CMD_HELP_NOSHORTCUTS,			cmd_noshortcuts },
+	{ "/nomouseshortcuts",	IC_ARG_NONE,	 NULL,	   CAT_DIAG,   KT_CMD_HELP_NOMOUSESHORTCUTS,			cmd_nomouseshortcuts },
+	{ "/bcdelay",		IC_ARG_OPTIONAL, "[ms]",   CAT_DIAG,   KT_CMD_HELP_BCDELAY,				cmd_bcdelay },
+	{ "/PrintCharSize",	IC_ARG_REQUIRED, "<n>",	   CAT_DIAG,   KT_CMD_HELP_PRINTCHARSIZE,					cmd_printcharsize },
+	{ "/PrintMaxLinePerPage", IC_ARG_REQUIRED, "<n>",  CAT_DIAG,   KT_CMD_HELP_PRINTMAXLINE,				cmd_printmaxline },
+	{ "/PrintMaxCharPerLine", IC_ARG_REQUIRED, "<n>",  CAT_DIAG,   KT_CMD_HELP_PRINTMAXCHAR,				cmd_printmaxchar },
 #ifdef MOD_ZMODEM
-	{ "/zmodem",		IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "toggle the ZModem file-transfer feature",		cmd_zmodem },
+	{ "/zmodem",		IC_ARG_NONE,	 NULL,	   CAT_DIAG,   KT_CMD_HELP_ZMODEM,		cmd_zmodem },
 #endif
-	{ "/fileassoc",		IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "register the .ktx file association",			cmd_fileassoc },
+	{ "/fileassoc",		IC_ARG_NONE,	 NULL,	   CAT_DIAG,   KT_CMD_HELP_FILEASSOC,			cmd_fileassoc },
 #ifdef MOD_LAUNCHER
-	{ "/initlauncher",	IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "(re)create the launcher registry key",			cmd_initlauncher },
+	{ "/initlauncher",	IC_ARG_NONE,	 NULL,	   CAT_DIAG,   KT_CMD_HELP_INITLAUNCHER,			cmd_initlauncher },
 #endif
-	{ "/debug",		IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "toggle debug mode",					cmd_debug },
-	{ "/passwd",		IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "show + copy the session password (debug mode only)",	cmd_passwd },
-	{ "/screenshot",	IC_ARG_NONE,	 NULL,	   CAT_DIAG,   "save a screenshot of the terminal",			cmd_screenshot },
+	{ "/debug",		IC_ARG_NONE,	 NULL,	   CAT_DIAG,   KT_CMD_HELP_DEBUG,					cmd_debug },
+	{ "/passwd",		IC_ARG_NONE,	 NULL,	   CAT_DIAG,   KT_CMD_HELP_PASSWD,	cmd_passwd },
+	{ "/screenshot",	IC_ARG_NONE,	 NULL,	   CAT_DIAG,   KT_CMD_HELP_SCREENSHOT,			cmd_screenshot },
 } ;
 
 /* /help: generated from the table, grouped by category. Shown in a modeless,

@@ -38,6 +38,7 @@
 #include "../kitty/kitty_theme_pref.h" /* KiTTY: the app-wide theme setting */
 #include "../kitty/kitty_anchor.h"    /* KiTTY: edge anchoring for the resizable windows */
 #include "../kitty/kitty_oldwin.h"   /* KiTTY: APIs newer than the oldest Windows we load on */
+#include "../kitty/kitty_text.h"     /* KiTTY: shared captions and menu words */
 
 #include <shellapi.h>
 
@@ -97,13 +98,8 @@ static bool kageant_kitty_launch_allowed(HWND owner)
     if (putty_path && kitty_verify_sibling(putty_path))
         return true;
     MessageBox(owner,
-               "The kitty.exe next to kageant could not be verified as a "
-               "genuine, matching KiTTY build - its signature or version "
-               "did not check out.\n\n"
-               "It may have been replaced with something else. Because a "
-               "terminal started from here would get access to the agent's "
-               "keys, kageant will not start it.",
-               "kageant - session launch blocked",MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR);
+               KT_KA_LAUNCH_BLOCKED,
+               KT_CAP_KA_LAUNCH_BLOCKED,MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR);
     return false;
 }
 
@@ -177,7 +173,7 @@ void modalfatalbox(const char *fmt, ...)
     va_start(ap, fmt);
     buf = dupvprintf(fmt, ap);
     va_end(ap);
-    MessageBox(traywindow, buf, "kageant Fatal Error",
+    MessageBox(traywindow, buf, KT_CAP_KA_FATAL,
                MB_SYSTEMMODAL | MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
     sfree(buf);
     exit(1);
@@ -434,7 +430,7 @@ static void kageant_hello_random(void *buf, size_t size)
         unsigned char chunk[KITTY_HELLO_SECRET_LEN];
         size_t n = size < sizeof(chunk) ? size : sizeof(chunk);
         if (!kitty_hello_new_secret(chunk))
-            modalfatalbox("The system random number generator failed");
+            modalfatalbox(KT_KA_RANDOM_FAILED);
         memcpy(p, chunk, n);
         smemclr(chunk, sizeof(chunk));
         p += n;
@@ -453,14 +449,8 @@ static void kageant_hello_offer_enrol(HWND owner, const char *path,
         return;
     if (kageant_hello_enrolled_here(path) == 1)
         return;
-    msg = dupprintf(
-        "The recovery passphrase opened this Windows Hello protected key:\n\n"
-        "    %s\n\n"
-        "Add Windows Hello on this computer and account as a way to open "
-        "it, so the passphrase is not needed here next time?\n\n"
-        "(The file's .hello sidecar gets one more entry. Other computers "
-        "and accounts keep theirs.)", path);
-    r = MessageBox(owner, msg, "kageant - add Windows Hello here",
+    msg = dupprintf(KT_KA_HELLO_ENROL_OFFER_FMT, path);
+    r = MessageBox(owner, msg, KT_CAP_KA_HELLO_ADD_HERE,
                    MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON1);
     sfree(msg);
     if (r != IDYES)
@@ -472,9 +462,9 @@ static void kageant_hello_offer_enrol(HWND owner, const char *path,
                 r == KAGEANT_HELLO_DENIED ? "denied" : "failed",
                 "detail", kitty_hello_last_detail(), (const char *)NULL);
     if (r != KAGEANT_HELLO_OK) {
-        msg = dupprintf("Windows Hello was not added for this key:\n\n%s",
-                        err ? err : "unknown error");
-        MessageBox(owner, msg, "kageant", MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+        msg = dupprintf(KT_KA_HELLO_NOT_ADDED_FMT,
+                        err ? err : KT_MSG_UNKNOWN_ERROR);
+        MessageBox(owner, msg, KT_CAP_KAGEANT, MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
         sfree(msg);
     }
     sfree(err);
@@ -636,12 +626,10 @@ static INT_PTR CALLBACK PassphraseProc(HWND hwnd, UINT msg,
         if (p->hello_path) {
             if (p->modal)
                 SetDlgItemText(hwnd, IDC_PASSPHRASE_STATIC1,
-                               "Enter the passphrase, the RECOVERY "
-                               "passphrase or the printed secret:");
+                               KT_KA_PASS_PROMPT_HELLO_MODAL);
             else
                 SetDlgItemText(hwnd, IDC_PASSPHRASE_STATIC3,
-                               "input focus, then enter the passphrase, "
-                               "RECOVERY passphrase or printed secret.");
+                               KT_KA_PASS_PROMPT_HELLO_NONMODAL);
         }
         burnstr(p->passphrase);
         p->passphrase = dupstr("");
@@ -700,11 +688,8 @@ void old_keyfile_warning(void)
     if (kageant_startup_loading()) {
         if (traywindow)
             kitty_notice_show(
-                "kageant: a remembered key uses the old file format",
-                "A key in the startup list is an SSH-2 key in the old PPK "
-                "format, which is not fully tamperproof and may stop being "
-                "supported. Load it into KiTTYgen and save it again to "
-                "convert it.",
+                KT_KA_NOTICE_OLD_FORMAT,
+                KT_KA_OLD_FORMAT_TEXT,
                 KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
                 traywindow, KAGEANT_WM_NOTICE_CLICK);
         return;
@@ -850,16 +835,16 @@ static void keylist_update_callback(
      */
     if (ext_flags & LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY) {
         disp->state = KEYSTATE_ENCRYPTED;
-        put_dataz(disp->info, "encrypted");
+        put_dataz(disp->info, KT_KAKEYS_STATE_ENCRYPTED);
     } else if (ext_flags & LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE) {
         disp->state = KEYSTATE_REENCRYPTABLE;
-        put_dataz(disp->info, "re-encryptable");
+        put_dataz(disp->info, KT_KAKEYS_STATE_REENCRYPTABLE);
 
         /* At least one key can be re-encrypted */
         ctx->enable_reencrypt_controls = true;
     } else {
         disp->state = KEYSTATE_LOADED;
-        put_dataz(disp->info, "loaded");
+        put_dataz(disp->info, KT_KAKEYS_STATE_LOADED);
     }
 
     /* KiTTY: the Lifetime column - a countdown for an ssh-add -t key,
@@ -872,7 +857,7 @@ static void keylist_update_callback(
             kageant_fmt_seconds(rem_s, buf, sizeof(buf));
             put_dataz(disp->expires, buf);
         } else {
-            put_dataz(disp->expires, "unlimited");
+            put_dataz(disp->expires, KT_KAKEYS_LIFETIME_UNLIMITED);
         }
     }
 
@@ -890,8 +875,8 @@ static void keylist_update_callback(
     ListView_SetItemText(ctx->hlist, row, 3, disp->info->s);
     ListView_SetItemText(ctx->hlist, row, 4, disp->expires->s);
     ListView_SetItemText(ctx->hlist, row, 5,
-                         disp->confirm == 2 ? "Hello" :
-                         disp->confirm     ? "required" : "");
+                         disp->confirm == 2 ? KT_KAKEYS_CONFIRM_HELLO :
+                         disp->confirm     ? KT_KAKEYS_CONFIRM_REQUIRED : "");
     ListView_SetItemText(ctx->hlist, row, 6, disp->comment->s);
     ctx->index++;
 }
@@ -1160,7 +1145,7 @@ static void keylist_refresh_actionbtn(HWND dlg)
     HWND hlist = GetDlgItem(dlg, IDC_KEYLIST_LISTBOX);
     int mode = keylist_button_target(hlist);
     HWND btn = GetDlgItem(dlg, IDC_KEYLIST_REENCRYPT);
-    SetWindowText(btn, mode == KLBTN_DECRYPT ? "&Decrypt" : "Re-e&ncrypt");
+    SetWindowText(btn, mode == KLBTN_DECRYPT ? KT_KAKEYS_BTN_DECRYPT : KT_KAKEYS_BTN_REENCRYPT);
     EnableWindow(btn, mode != KLBTN_NONE);
 }
 
@@ -1236,7 +1221,7 @@ void keylist_update(void)
             struct keylist_display_data *disp =
                 snew(struct keylist_display_data);
             disp->alg = strbuf_new();
-            put_dataz(disp->alg, "(not loaded)");
+            put_dataz(disp->alg, KT_KAKEYS_ALG_NOT_LOADED);
             disp->bits = strbuf_new();
             disp->hash = strbuf_new();
             if (fp && *fp)
@@ -1251,8 +1236,8 @@ void keylist_update(void)
              * look for that word. Not "fingerprint mismatch" - the State
              * column is 66du and would show "fingerpri...", which says
              * nothing. The details dialog carries the full sentence. */
-            put_dataz(disp->info, mism ? "mismatch" :
-                      failed ? "failed" : "missing");
+            put_dataz(disp->info, mism ? KT_KAKEYS_STATE_MISMATCH :
+                      failed ? KT_KAKEYS_STATE_FAILED : KT_KAKEYS_STATE_MISSING);
             disp->expires = strbuf_new();  /* not in the agent: no lifetime */
             disp->blob = strbuf_new();
             disp->state = mism ? KEYSTATE_MISMATCH :
@@ -1369,12 +1354,8 @@ void win_add_keyfile(Filename *filename, bool encrypted)
                 return;
             }
             if (r < 0) {
-                char *m = dupprintf(
-                    "The key was NOT added:\n\n    %s\n\n"
-                    "You asked for Windows Hello protection and it did not "
-                    "complete, so the file was not loaded unprotected. Add "
-                    "it again and answer No to load it as it is.", p);
-                MessageBox(hello_owner_window(), m, "kageant - not added",
+                char *m = dupprintf(KT_KA_HELLO_NOT_ADDED_UNPROTECTED_FMT, p);
+                MessageBox(hello_owner_window(), m, KT_CAP_KA_NOT_ADDED,
                            MB_ICONWARNING | MB_OK);
                 sfree(m);
                 return;
@@ -1433,29 +1414,23 @@ void win_add_keyfile(Filename *filename, bool encrypted)
                 /* Cancelled (or refused) Hello: the typed doors remain -
                  * recovery passphrase / printed secret - at the ordinary
                  * prompt below, which says so. */
-                char *e2 = dupprintf("Windows Hello was cancelled - enter "
-                                     "the recovery passphrase or the "
-                                     "printed secret for %s", err);
+                char *e2 = dupprintf(KT_KA_HELLO_CANCELLED_PROMPT_FMT, err);
                 sfree(err);
                 err = e2;
             } else if (r == KAGEANT_HELLO_NODOOR) {
                 char *msg = dupprintf(
-                    "%s\n\nwas protected with Windows Hello by: %s\n\n"
-                    "This computer and account cannot open it with Hello. "
-                    "Enter the recovery passphrase or the printed secret "
-                    "at the next prompt; the passphrase then also offers "
-                    "to add Windows Hello here.",
-                    hp, owners ? owners : "(unknown)");
+                    KT_KA_HELLO_ELSEWHERE_ADD_FMT,
+                    hp, owners ? owners : KT_KA_UNKNOWN_OWNER);
                 /* A modal here during the startup load would take the
                  * agent off the air (see the error path below): notice
                  * instead, box only for the user's own add. */
                 if (kageant_startup_loading() && traywindow)
-                    kitty_notice_show("kageant: Windows Hello key from elsewhere",
+                    kitty_notice_show(KT_KA_NOTICE_HELLO_ELSEWHERE,
                                       msg, KAGEANT_NOTICE_WARN,
                                       kageant_notice_seconds(12), traywindow, 0);
                 else
                     MessageBox(hello_owner_window(), msg,
-                               "kageant - Windows Hello key from elsewhere",
+                               KT_CAP_KA_HELLO_ELSEWHERE,
                                MB_ICONINFORMATION | MB_OK);
                 sfree(msg);
             }
@@ -1547,13 +1522,9 @@ void win_add_keyfile(Filename *filename, bool encrypted)
              * Remove there drops it from the startup list - the same call this
              * box made. Clicking the notice opens that window.
              */
-            char *msg = dupprintf(
-                "%s\n\n%s\n\n"
-                "It is still in the key list, and kageant will try it again at "
-                "the next start. Click to open the list, where Remove drops it "
-                "for good.", err, path);
+            char *msg = dupprintf(KT_KA_STARTUP_KEY_FAILED_FMT, err, path);
             if (traywindow)
-                kitty_notice_show("kageant: a remembered key did not load",
+                kitty_notice_show(KT_KA_NOTICE_STARTUP_KEY_FAILED,
                                   msg, KAGEANT_NOTICE_WARN,
                                   kageant_notice_seconds(12), traywindow,
                                   KAGEANT_WM_NOTICE_CLICK);
@@ -1849,21 +1820,21 @@ static void keydetail_show_lifetime(HWND hwnd)
 {
     unsigned set_s, rem_s;
     if (!keydetail_blob || !keydetail_blob->len) {
-        SetDlgItemText(hwnd, IDC_KEYDETAIL_LIFETIME, "not loaded");
+        SetDlgItemText(hwnd, IDC_KEYDETAIL_LIFETIME, KT_KAKEYS_LIFETIME_NOT_LOADED);
     } else if (kageant_key_lifetime_get(ptrlen_from_strbuf(keydetail_blob),
                                         &set_s, &rem_s)) {
         char setbuf[32], rembuf[32], line[96];
         kageant_fmt_seconds(set_s, setbuf, sizeof(setbuf));
         kageant_fmt_seconds(rem_s, rembuf, sizeof(rembuf));
-        snprintf(line, sizeof(line), "set to %s - %s remaining",
+        snprintf(line, sizeof(line), KT_KAKEYS_LIFETIME_SET_FMT,
                  setbuf, rembuf);
         SetDlgItemText(hwnd, IDC_KEYDETAIL_LIFETIME, line);
     } else {
         /* No entry: either never had a lifetime, or it just ran out
          * while this dialog was open and the key is gone. */
         SetDlgItemText(hwnd, IDC_KEYDETAIL_LIFETIME,
-                       keydetail_had_lifetime ? "expired - key removed"
-                                              : "unlimited");
+                       keydetail_had_lifetime ? KT_KAKEYS_LIFETIME_EXPIRED
+                                              : KT_KAKEYS_LIFETIME_UNLIMITED);
     }
 }
 
@@ -1969,22 +1940,12 @@ static void hello_protect_explain(HWND hwnd, struct hello_protect_ctx *c)
 {
     int hello_only = IsDlgButtonChecked(hwnd, IDC_HP_HELLOONLY) == BST_CHECKED;
     char *text = dupprintf(
-        "%s"
-        "The original is not changed and keeps working as it does today. "
-        "The protected copy is the same key with a random secret as its "
-        "passphrase: Windows Hello opens it here, %s and the printed "
-        "secret (shown once, next) is that passphrase itself - it opens "
-        "the key in any PuTTY tool.\r\n\r\n"
-        "Delete the original yourself once the copy works; \"Forget a "
-        "path\" drops it from this key's list.",
+        KT_KA_HP_EXPLAIN_FMT,
         c->src_encrypted ? "" :
-        "This key has NO passphrase. Keeping the original beside the "
-        "protected copy defeats the protection for whoever holds both "
-        "files.\r\n\r\n",
+        KT_KA_HP_NO_PASSPHRASE,
         hello_only ?
-        "NO recovery passphrase: lose Windows Hello here (new PC, "
-        "re-enrolment, TPM reset) and ONLY the printout opens it -" :
-        "the recovery passphrase opens it anywhere,");
+        KT_KA_HP_HELLO_ONLY_CLAUSE :
+        KT_KA_HP_RECOVERY_CLAUSE);
     SetDlgItemText(hwnd, IDC_HP_WARN, text);
     sfree(text);
 }
@@ -2049,7 +2010,7 @@ static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
           case IDC_HP_BROWSE: {
             char *cur = GetDlgItemText_alloc(hwnd, IDC_HP_DEST);
             Filename *initial = filename_from_str(cur);
-            Filename *fn = request_file(hwnd, "Save the protected copy as",
+            Filename *fn = request_file(hwnd, KT_KA_HP_SAVE_AS,
                                         initial, true, NULL, false,
                                         FILTER_KEY_FILES);
             filename_free(initial);
@@ -2079,20 +2040,17 @@ static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
             const char *problem = NULL;
 
             if (!dest || !*dest)
-                problem = "Name the protected copy.";
+                problem = KT_KA_HP_NEED_NAME;
             else if (!stricmp(dest, c->src))
-                problem = "The protected copy must be a different file - "
-                          "the original is never rewritten.";
+                problem = KT_KA_HP_SAME_FILE;
             else if (GetFileAttributesA(dest) != INVALID_FILE_ATTRIBUTES)
-                problem = "That file already exists. Choose another name; "
-                          "nothing is overwritten.";
+                problem = KT_KA_HP_EXISTS;
             else if (c->src_encrypted && (!srcpass || !*srcpass))
-                problem = "Enter the key's current passphrase.";
+                problem = KT_KA_HP_NEED_SRCPASS;
             else if (!hello_only && !use_src && (!rec || !*rec))
-                problem = "Enter a recovery passphrase - it is the only way "
-                          "to open the key where Windows Hello cannot.";
+                problem = KT_KA_HP_NEED_RECPASS;
             else if (!hello_only && !use_src && strcmp(rec, rec2))
-                problem = "The recovery passphrases do not match.";
+                problem = KT_KA_HP_RECPASS_MISMATCH;
             /* The current passphrase is checked HERE, not after the
              * dialog is gone: a typo must be correctable in place. One
              * real load attempt (an Argon2 run for a v3 PPK - noticeable
@@ -2103,7 +2061,7 @@ static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
                 ssh2_userkey *k = ppk_load_f(sf, srcpass, &lerr);
                 filename_free(sf);
                 if (k == SSH2_WRONG_PASSPHRASE) {
-                    problem = "That is not this key's current passphrase.";
+                    problem = KT_KA_HP_WRONG_SRCPASS;
                 } else if (k) {
                     ssh_key_free(k->key);
                     sfree(k->comment);
@@ -2113,7 +2071,7 @@ static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
                  * error message. */
             }
             if (problem) {
-                MessageBox(hwnd, problem, "kageant", MB_ICONWARNING | MB_OK);
+                MessageBox(hwnd, problem, KT_CAP_KAGEANT, MB_ICONWARNING | MB_OK);
                 sfree(dest);
                 burnstr(srcpass);
                 burnstr(rec);
@@ -2122,10 +2080,8 @@ static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
             }
             if (hello_only &&
                 MessageBox(hwnd,
-                           "No recovery passphrase: if Windows Hello on this "
-                           "computer is lost, ONLY the printed secret opens "
-                           "this key. Store the printout. Continue?",
-                           "kageant - Windows Hello only",
+                           KT_HELLO_ONLY_WARN_Q,
+                           KT_CAP_KA_HELLO_ONLY,
                            MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) != IDYES) {
                 sfree(dest);
                 burnstr(srcpass);
@@ -2210,9 +2166,9 @@ static char *kageant_hello_protect_flow(HWND owner, const char *src,
         result = c.dest;
         c.dest = NULL;
     } else {
-        char *msg = dupprintf("The key was not protected:\n\n%s",
-                              err ? err : "unknown error");
-        MessageBox(owner, msg, "kageant - not protected",
+        char *msg = dupprintf(KT_KA_NOT_PROTECTED_FMT,
+                              err ? err : KT_MSG_UNKNOWN_ERROR);
+        MessageBox(owner, msg, KT_CAP_KA_NOT_PROTECTED,
                    MB_ICONWARNING | MB_OK);
         sfree(msg);
     }
@@ -2236,13 +2192,9 @@ static int kageant_hello_add_offer(const char *src, char **newpath_out)
         return 0;
     if (!kageant_hello_offerable())
         return 0;
-    msg = dupprintf(
-        "This key has no passphrase:\n\n    %s\n\n"
-        "Protect it with Windows Hello now? A protected COPY is written "
-        "beside it (the original is not changed) and the startup list "
-        "remembers the copy.", src);
+    msg = dupprintf(KT_KA_PROTECT_OFFER_FMT, src);
     r = MessageBox(hello_owner_window(), msg,
-                   "kageant - protect this key?",
+                   KT_CAP_KA_PROTECT_KEY_Q,
                    MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON2);
     sfree(msg);
     if (r != IDYES)
@@ -2256,11 +2208,8 @@ static int kageant_hello_add_offer(const char *src, char **newpath_out)
          * silently kill the whole add, nor quietly load the key
          * unprotected. */
         r = MessageBox(hello_owner_window(),
-                       "The key was not protected.\n\n"
-                       "Yes = try protecting it again\n"
-                       "No = load it UNPROTECTED\n"
-                       "Cancel = do not add it at all",
-                       "kageant - protect this key?",
+                       KT_KA_PROTECT_RETRY_Q,
+                       KT_CAP_KA_PROTECT_KEY_Q,
                        MB_ICONQUESTION | MB_YESNOCANCEL | MB_DEFBUTTON1);
         if (r == IDNO)
             return 0;
@@ -2279,11 +2228,11 @@ static void keydetail_autoenc_refresh(HWND hwnd, int pending)
     SetDlgItemTextA(hwnd, IDC_KEYDETAIL_AUTOENC, t);
     kageant_autoenc_format(kageant_autoenc_seconds(), t, sizeof(t));
     if (mode == 2)
-        snprintf(note, sizeof(note), "Enforced by the agent setting: %s", t);
+        snprintf(note, sizeof(note), KT_KAKEYS_AUTOENC_ENFORCED_FMT, t);
     else if (mode == 1)
-        snprintf(note, sizeof(note), "blank = the agent default (%s)", t);
+        snprintf(note, sizeof(note), KT_KAKEYS_AUTOENC_DEFAULT_FMT, t);
     else
-        snprintf(note, sizeof(note), "blank = off (no agent default)");
+        snprintf(note, sizeof(note), KT_KAKEYS_AUTOENC_OFF);
     SetDlgItemTextA(hwnd, IDC_KEYDETAIL_AUTOENC_NOTE, note);
     EnableWindow(GetDlgItem(hwnd, IDC_KEYDETAIL_AUTOENC), !pending && mode != 2);
 }
@@ -2298,7 +2247,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
 
         kageant_set_window_icon(hwnd);
         {
-            char *t = kitty_title_compose("kageant - key details",
+            char *t = kitty_title_compose(KT_CAP_KA_KEY_DETAILS,
                                           kitty_inilight_portable(),
                                           restricted_acl(), false);
             SetWindowText(hwnd, t);
@@ -2315,34 +2264,26 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
 
         SetDlgItemText(hwnd, IDC_KEYDETAIL_STATE,
                        disp->state == KEYSTATE_ENCRYPTED ?
-                           "encrypted - the passphrase is asked for at "
-                           "first use" :
+                           KT_KAKEYS_DETAIL_ENCRYPTED :
                        disp->state == KEYSTATE_REENCRYPTABLE ?
-                           "loaded, and the key file it came from is "
-                           "encrypted" :
+                           KT_KAKEYS_DETAIL_REENCRYPTABLE :
                        disp->state == KEYSTATE_MISSING ?
-                           "not loaded - the key file is not reachable "
-                           "(absent media, or a path that no longer exists)" :
+                           KT_KAKEYS_DETAIL_MISSING :
                        disp->state == KEYSTATE_FAILED ?
-                           "not loaded - the file is present but would not "
-                           "load" :
+                           KT_KAKEYS_DETAIL_FAILED :
                        disp->state == KEYSTATE_MISMATCH ?
-                           "NOT loaded - the file at this path is not the key "
-                           "recorded for it. Either you replaced it, or "
-                           "something else did. If you replaced it, use "
-                           "\"Accept this key\" below; until then it stays "
-                           "refused at every start and every re-plug." :
-                           "loaded and ready to use");
+                           KT_KAKEYS_DETAIL_MISMATCH :
+                           KT_KAKEYS_DETAIL_LOADED);
 
         {
             /* All fingerprint forms at once, SHA-256 first; certificate
              * forms exist only for keys that carry a certificate. */
             static const struct { FingerprintType t; const char *label; }
             fporder[] = {
-                {SSH_FPTYPE_SHA256, "SHA-256:  "},
-                {SSH_FPTYPE_MD5, "MD5:  "},
-                {SSH_FPTYPE_SHA256_CERT, "SHA-256 incl. certificate:  "},
-                {SSH_FPTYPE_MD5_CERT, "MD5 incl. certificate:  "},
+                {SSH_FPTYPE_SHA256, KT_KAKEYS_FP_SHA256},
+                {SSH_FPTYPE_MD5, KT_KAKEYS_FP_MD5},
+                {SSH_FPTYPE_SHA256_CERT, KT_KAKEYS_FP_SHA256_CERT},
+                {SSH_FPTYPE_MD5_CERT, KT_KAKEYS_FP_MD5_CERT},
             };
             strbuf *sb = strbuf_new();
             for (size_t i = 0; i < lenof(fporder); i++) {
@@ -2356,7 +2297,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             /* A not-loaded entry has no live key to fingerprint; show what
              * the startup list recorded when it was last saved, if anything. */
             if (!sb->len && disp->hash->len) {
-                put_dataz(sb, "recorded at last save:  ");
+                put_dataz(sb, KT_KAKEYS_FP_RECORDED);
                 put_dataz(sb, disp->hash->s);
             }
             SetDlgItemText(hwnd, IDC_KEYDETAIL_FPS, sb->s);
@@ -2390,9 +2331,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                 sfree(paths);
             } else {
                 SetDlgItemText(hwnd, IDC_KEYDETAIL_PATHS,
-                               "not known - this key was added by another "
-                               "program, or by a build that did not record "
-                               "it");
+                               KT_KAKEYS_PATHS_UNKNOWN);
             }
         }
 
@@ -2435,9 +2374,9 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
          * anything boolean the Hello mode would silently become "ask". */
         {
             static const char *const confirm_modes[] = {
-                "no",
-                "ask before each use",
-                "ask with Windows Hello",
+                KT_KAKEYS_CONFIRM_NO,
+                KT_KAKEYS_CONFIRM_ASK,
+                KT_KAKEYS_CONFIRM_ASK_HELLO,
             };
             int cm;
             for (cm = 0; cm < (int)lenof(confirm_modes); cm++)
@@ -2613,23 +2552,16 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             actual = kageant_fp_of_file(keypath);
             if (!actual) {
                 MessageBox(hwnd,
-                           "The key file cannot be read right now, so there is "
-                           "nothing to accept. Check the file is reachable and "
-                           "try again.",
-                           "kageant - cannot read that file",
+                           KT_KAKEYS_CANNOT_READ_FILE,
+                           KT_CAP_KA_CANNOT_READ_FILE,
                            MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 return 0;
             }
             msg = dupprintf(
-                "Accept the key that is in this file NOW, and remember it?\n\n"
-                "    %s\n\n"
-                "Recorded before:  %s\n"
-                "In the file now:  %s\n\n"
-                "Only do this if YOU replaced the key. Accepting means this "
-                "file is loaded now and trusted at every future start.",
+                KT_KAKEYS_ACCEPT_Q_FMT,
                 keypath, keydetail_stored_fp[0] ? keydetail_stored_fp :
-                                                  "(none)", actual);
-            r = MessageBox(hwnd, msg, "kageant - accept this changed key?",
+                                                  KT_KAKEYS_FP_NONE, actual);
+            r = MessageBox(hwnd, msg, KT_CAP_KA_ACCEPT_CHANGED_Q,
                            MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
             sfree(msg);
             sfree(actual);
@@ -2641,21 +2573,18 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
              * Hello presence check on top of the Yes. FAIL CLOSED: an
              * unavailable Hello refuses, never downgrades to the click. */
             if (kageant_hello_get() &&
-                kitty_hello_verify(hwnd, "Accept the changed key file and "
-                                   "trust it from now on?")
+                kitty_hello_verify(hwnd, KT_KAKEYS_ACCEPT_HELLO_Q)
                     != KITTY_HELLO_VERIFIED) {
                 MessageBox(hwnd,
-                           "The Windows Hello check did not verify, so the "
-                           "key was NOT accepted and nothing was changed.",
-                           "kageant - not accepted", MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                           KT_KAKEYS_ACCEPT_HELLO_FAILED,
+                           KT_CAP_KA_NOT_ACCEPTED, MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 return 0;
             }
 
             if (!kageant_accept_pending_key(keypath)) {
                 MessageBox(hwnd,
-                           "The key could not be loaded, so nothing was "
-                           "changed and the entry stays refused.",
-                           "kageant - not accepted", MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                           KT_KAKEYS_ACCEPT_LOAD_FAILED,
+                           KT_CAP_KA_NOT_ACCEPTED, MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 keylist_update();
                 return 0;
             }
@@ -2676,14 +2605,12 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             newpath = kageant_hello_protect_flow(hwnd, keypath, &replaced);
             if (newpath) {
                 char *msg = dupprintf(
-                    "Protected copy written:\n\n    %s\n    %s.hello\n\n%s\n\n"
-                    "The original stays where it is:\n\n    %s",
+                    KT_KAKEYS_PROTECTED_FMT,
                     newpath, newpath,
-                    replaced ? "The startup list now names the protected "
-                               "copy instead of the original." :
-                               "The startup list was not changed.",
+                    replaced ? KT_KAKEYS_STARTUP_REPLACED :
+                               KT_KAKEYS_STARTUP_UNCHANGED,
                     keypath);
-                MessageBox(hwnd, msg, "kageant - key protected",
+                MessageBox(hwnd, msg, KT_CAP_KA_KEY_PROTECTED,
                            MB_ICONINFORMATION | MB_OK);
                 sfree(msg);
                 sfree(newpath);
@@ -2728,16 +2655,11 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                     }
                     idx++;
                     msg = dupprintf(
-                        "Forget this path (%d of %d)?\n\n    %s\n\n%s"
-                        "The startup list stops naming this file. The file "
-                        "itself is not touched.", idx, total, p,
+                        KT_KAKEYS_FORGET_Q_FMT, idx, total, p,
                         total == 1 ?
-                        "THIS IS THE KEY'S ONLY STARTUP ENTRY. Forgetting it "
-                        "means the key is no longer loaded at startup (it "
-                        "stays loaded now). To take the key out of the agent "
-                        "use Remove instead.\n\n" :
-                        "The key stays loaded and its other paths stay.\n\n");
-                    r = MessageBox(hwnd, msg, "kageant - forget a path",
+                        KT_KAKEYS_FORGET_ONLY_ENTRY :
+                        KT_KAKEYS_FORGET_OTHERS);
+                    r = MessageBox(hwnd, msg, KT_CAP_KA_FORGET_PATH,
                                    MB_ICONQUESTION | MB_YESNOCANCEL |
                                    MB_DEFBUTTON2);
                     sfree(msg);
@@ -2775,7 +2697,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
 
             if (!keypath)
                 return 0;
-            fn = request_file(hwnd, "Locate the key file", NULL, false,
+            fn = request_file(hwnd, KT_KAKEYS_LOCATE_TITLE, NULL, false,
                               NULL, false, FILTER_KEY_FILES);
             if (!fn)
                 return 0;
@@ -2795,13 +2717,9 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             }
             MessageBox(hwnd,
                        r == 0 ?
-                       "That file holds a DIFFERENT key, not the one recorded "
-                       "for this entry - nothing was changed. Add Key loads "
-                       "it as a new key; this button only re-points the entry "
-                       "at its own key." :
-                       "No key could be loaded from that file, so nothing "
-                       "was changed.",
-                       "kageant - not re-pointed", MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                       KT_KAKEYS_LOCATE_DIFFERENT :
+                       KT_KAKEYS_LOCATE_UNLOADABLE,
+                       KT_CAP_KA_NOT_REPOINTED, MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
             sfree(newpath);
             keylist_update();
             return 0;
@@ -3349,8 +3267,7 @@ static char *auditview_format_record(const char *line)
             /* The machine tokens stay machine tokens in the FILE; the
              * unfolded view is where they get their sentence. */
             if (!strncmp(vstart, "fp-refused", 10))
-                put_dataz(sb, "   (key refused: the file is not the key "
-                          "recorded for it - fingerprint mismatch)");
+                put_dataz(sb, KT_KALOG_FP_REFUSED_NOTE);
             if (*p == '"')
                 p++;
         } else {
@@ -3427,7 +3344,7 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
         LVCOLUMN col;
         kageant_set_window_icon(hwnd);
         {
-            char *t = kitty_title_compose("kageant - agent log",
+            char *t = kitty_title_compose(KT_CAP_KA_AGENT_LOG,
                                           kitty_inilight_portable(),
                                           restricted_acl(), false);
             SetWindowText(hwnd, t);
@@ -3437,27 +3354,27 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
             hlist, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
         memset(&col, 0, sizeof(col));
         col.mask = LVCF_TEXT | LVCF_WIDTH;
-        col.pszText = "Time";    col.cx = 125;
+        col.pszText = KT_KALOG_COL_TIME;    col.cx = 125;
         ListView_InsertColumn(hlist, 0, &col);
-        col.pszText = "Event";   col.cx = 70;
+        col.pszText = KT_KALOG_COL_EVENT;   col.cx = 70;
         ListView_InsertColumn(hlist, 1, &col);
-        col.pszText = "Result";  col.cx = 75;
+        col.pszText = KT_KALOG_COL_RESULT;  col.cx = 75;
         ListView_InsertColumn(hlist, 2, &col);
-        col.pszText = "Key";       col.cx = 170;
+        col.pszText = KT_KALOG_COL_KEY;       col.cx = 170;
         ListView_InsertColumn(hlist, 3, &col);
-        col.pszText = "Requester"; col.cx = 130;
+        col.pszText = KT_KALOG_COL_REQUESTER; col.cx = 130;
         ListView_InsertColumn(hlist, 4, &col);
 
         CheckDlgButton(hwnd, IDC_AUDIT_ENABLE,
                        kageant_audit_get() ? BST_CHECKED : BST_UNCHECKED);
         SetDlgItemText(hwnd, IDC_AUDIT_PATH,
                        *kitty_audit_path() ? kitty_audit_path()
-                                           : "(no log path resolved)");
+                                           : KT_KALOG_NO_PATH);
         auditview_load();
         {
             int i;
             SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER, CB_ADDSTRING, 0,
-                               (LPARAM)"(all apps)");
+                               (LPARAM)KT_KALOG_ALL_APPS);
             for (i = 0; i < audit_nreqs; i++)
                 SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER, CB_ADDSTRING,
                                    0, (LPARAM)audit_reqs[i]);
@@ -3631,7 +3548,7 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
                 IsDlgButtonChecked(hwnd, IDC_AUDIT_ENABLE) == BST_CHECKED);
             SetDlgItemText(hwnd, IDC_AUDIT_PATH,
                            *kitty_audit_path() ? kitty_audit_path()
-                                               : "(no log path resolved)");
+                                               : KT_KALOG_NO_PATH);
             return 0;
           case IDC_AUDIT_REQFILTER:
             if (HIWORD(wParam) == CBN_SELCHANGE)
@@ -3649,7 +3566,7 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
                 SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER,
                                    CB_RESETCONTENT, 0, 0);
                 SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER, CB_ADDSTRING,
-                                   0, (LPARAM)"(all apps)");
+                                   0, (LPARAM)KT_KALOG_ALL_APPS);
                 for (i = 0; i < audit_nreqs; i++) {
                     SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER,
                                        CB_ADDSTRING, 0,
@@ -3733,10 +3650,10 @@ static const struct keysettings_page {
     const int *ids;
     int nids;
 } keysettings_pages[] = {
-    {"Agent", keysettings_page_agent, lenof(keysettings_page_agent)},
-    {"Security", keysettings_page_security, lenof(keysettings_page_security)},
-    {"Removable media", keysettings_page_media, lenof(keysettings_page_media)},
-    {"Log", keysettings_page_log, lenof(keysettings_page_log)},
+    {KT_KASET_TAB_AGENT, keysettings_page_agent, lenof(keysettings_page_agent)},
+    {KT_KASET_TAB_SECURITY, keysettings_page_security, lenof(keysettings_page_security)},
+    {KT_KASET_TAB_MEDIA, keysettings_page_media, lenof(keysettings_page_media)},
+    {KT_KASET_TAB_LOG, keysettings_page_log, lenof(keysettings_page_log)},
 };
 
 /*
@@ -3839,7 +3756,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
       case WM_INITDIALOG:
         kageant_set_window_icon(hwnd);
         {
-            char *t = kitty_title_compose("kageant - settings",
+            char *t = kitty_title_compose(KT_CAP_KA_SETTINGS,
                                           kitty_inilight_portable(),
                                           restricted_acl(), false);
             SetWindowText(hwnd, t);
@@ -3861,9 +3778,9 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
              * state collapses to "yes" silently.
              */
             static const char *const retry_modes[] = {
-                "never",
-                "from their stored drive and path",
-                "from their stored path on any drive",
+                KT_KASET_RETRY_NEVER,
+                KT_KASET_RETRY_DRIVE,
+                KT_KASET_RETRY_ANYDRIVE,
             };
             int rm, cur = kageant_retry_keys();
             for (rm = 0; rm < (int)lenof(retry_modes); rm++)
@@ -3885,9 +3802,9 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
          * only while a mode uses it. */
         {
             static const char *const modes[] = {
-                "Off",
-                "Default for keys without their own setting",
-                "Enforced for every key",
+                KT_KASET_AUTOENC_OFF,
+                KT_KASET_AUTOENC_DEFAULT,
+                KT_KASET_AUTOENC_ENFORCED,
             };
             char t[24];
             int m, mode = kageant_autoenc_mode();
@@ -3931,8 +3848,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             EnableWindow(GetDlgItem(hwnd, IDC_SET_HELLO), avail == 1);
             if (avail != 1)
                 SetDlgItemText(hwnd, IDC_SET_HELLO,
-                               "Confirmations require Windows Hello "
-                               "(not set up on this system)");
+                               KT_KASET_HELLO_UNAVAILABLE);
         }
         CheckDlgButton(hwnd, IDC_SET_LOCKDOWN,
             kageant_lockdown_get() ? BST_CHECKED : BST_UNCHECKED);
@@ -3962,7 +3878,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             char dp[MAX_PATH + 1];
             char line[MAX_PATH + 32];
             if (kageant_audit_default_path(dp, sizeof(dp), 0)) {
-                snprintf(line, sizeof(line), "Default: %s", dp);
+                snprintf(line, sizeof(line), KT_KASET_LOG_DEFAULT_FMT, dp);
                 SetDlgItemText(hwnd, IDC_SET_L_LOGDEFAULT, line);
             }
         }
@@ -4000,9 +3916,9 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
          * a choice that would do nothing. */
         {
             static const char *const theme_names[] = {
-                "Follow the system",
-                "Always light",
-                "Always dark",
+                KT_KASET_THEME_SYSTEM,
+                KT_KASET_THEME_LIGHT,
+                KT_KASET_THEME_DARK,
             };
             size_t t;
             int cur = kitty_theme_pref_get();
@@ -4013,8 +3929,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             if (!kitty_theme_available()) {
                 EnableWindow(GetDlgItem(hwnd, IDC_SET_THEME), FALSE);
                 SetDlgItemText(hwnd, IDC_SET_L_THEMEHINT,
-                               "This Windows has no dark mode for desktop "
-                               "windows; the light theme is the only one.");
+                               KT_KASET_THEME_UNAVAILABLE);
             }
         }
         keysettings_apply_theme(hwnd);
@@ -4217,7 +4132,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
          * process holding the keys, so portable/restricted get answered
          * here. Suffixes composed in kitty/kitty_title.c - one place. */
         {
-            char *t = kitty_title_compose("kageant Key List",
+            char *t = kitty_title_compose(KT_CAP_KA_KEY_LIST,
                                           kitty_inilight_portable(),
                                           restricted_acl(), false);
             SetWindowText(hwnd, t);
@@ -4294,15 +4209,15 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
         {
             static const struct { const char *title; int du; int fmt; }
             cols[] = {
-                {"Algorithm", 62, LVCFMT_LEFT},
-                {"Bits", 24, LVCFMT_RIGHT},
-                {"Fingerprint", 154, LVCFMT_LEFT},
+                {KT_KAKEYS_COL_ALGORITHM, 62, LVCFMT_LEFT},
+                {KT_KAKEYS_COL_BITS, 24, LVCFMT_RIGHT},
+                {KT_KAKEYS_COL_FINGERPRINT, 154, LVCFMT_LEFT},
                 /* KiTTY: wide enough for "mismatch" - the fingerprint beside
                  * it is elided anyway, this word is the one to read. */
-                {"State", 66, LVCFMT_LEFT},
-                {"Lifetime", 40, LVCFMT_RIGHT},
-                {"Confirm", 44, LVCFMT_LEFT},
-                {"Comment", 104, LVCFMT_LEFT},
+                {KT_KAKEYS_COL_STATE, 66, LVCFMT_LEFT},
+                {KT_KAKEYS_COL_LIFETIME, 40, LVCFMT_RIGHT},
+                {KT_KAKEYS_COL_CONFIRM, 44, LVCFMT_LEFT},
+                {KT_KAKEYS_COL_COMMENT, 104, LVCFMT_LEFT},
             };
             HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
             ListView_SetExtendedListViewStyle(
@@ -4381,7 +4296,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                                            IDC_KEYLIST_CONFIRM_AUTO);
         }
         if (kageant_ini_status()) {
-            char *inimsg = dupprintf("Settings file (kitty.ini mode): %s",
+            char *inimsg = dupprintf(KT_KAKEYS_INI_STATUS_FMT,
                                      kageant_ini_status());
             SetDlgItemText(hwnd, IDC_KEYLIST_INISTATUS, inimsg);
             sfree(inimsg);
@@ -4699,10 +4614,8 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 {
                     char *msg = dupprintf(
                         numSelected == 1 ?
-                        "Remove the selected key from the agent?\n\n"
-                        "It will also stop being loaded at startup." :
-                        "Remove the %d selected keys from the agent?\n\n"
-                        "They will also stop being loaded at startup.",
+                        KT_KAKEYS_REMOVE_ONE_Q :
+                        KT_KAKEYS_REMOVE_MANY_Q_FMT,
                         numSelected);
                     int r = MessageBox(hwnd, msg, APPNAME,
                                        MB_YESNO | MB_ICONQUESTION |
@@ -4853,8 +4766,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 char *g = find_kittygen();
                 if (!g) {
                     MessageBox(hwnd,
-                        "The KiTTY key generator (kittygen) was not found "
-                        "next to kageant.", APPNAME,
+                        KT_KA_KITTYGEN_MISSING, APPNAME,
                        MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONINFORMATION);
                 } else {
                     /* Verify, but let the user override a failure: they can
@@ -4865,13 +4777,8 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                     int go = 1;
                     if (!kitty_verify_sibling(g)) {
                         int r = MessageBox(hwnd,
-                            "The key generator next to kageant could not be "
-                            "verified as a genuine, matching KiTTY build - its "
-                            "signature or version did not check out.\n\n"
-                            "It may simply be a different version, or it may "
-                            "have been replaced with something else.\n\n"
-                            "Start it anyway?",
-                            "kageant - key generator not verified",
+                            KT_KA_KITTYGEN_UNVERIFIED_Q,
+                            KT_CAP_KA_KEYGEN_UNVERIFIED,
                             MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
                         go = (r == IDYES);
                     }
@@ -4908,10 +4815,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             if (HIWORD(wParam) == BN_CLICKED ||
                 HIWORD(wParam) == BN_DOUBLECLICKED) {
                 if (MessageBox(hwnd,
-                        "Stop the kageant agent?\n\n"
-                        "Every loaded key is unloaded, and any program using "
-                        "the agent (PuTTY sessions, ssh, WinSCP...) loses "
-                        "access until kageant is started again.",
+                        KT_KA_STOP_AGENT_Q,
                         APPNAME, MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2)
                     == IDYES) {
                     /* Drive the same exit path as the tray menu's Exit. */
@@ -5041,8 +4945,8 @@ static BOOL AddTrayIcon(HWND hwnd)
     {
         char *tip = kitty_title_compose_sep(
             kageant_ini_status()
-                ? "kageant (KiTTY authentication agent)\r\n(kitty.ini mode)"
-                : "kageant (KiTTY authentication agent)",
+                ? KT_KA_TIP_INI
+                : KT_KA_TIP,
             "\r\n", kitty_inilight_portable(), restricted_acl(), false);
         strncpy(tnid.szTip, tip, sizeof(tnid.szTip) - 1);
         tnid.szTip[sizeof(tnid.szTip) - 1] = '\0';
@@ -5500,8 +5404,8 @@ void kageant_refresh_tray_tip(void)
 
     tip = kitty_title_compose_sep(
         kageant_ini_status()
-            ? "kageant (KiTTY authentication agent)\r\n(kitty.ini mode)"
-            : "kageant (KiTTY authentication agent)",
+            ? KT_KA_TIP_INI
+            : KT_KA_TIP,
         "\r\n", kitty_inilight_portable(), restricted_acl(), false);
 
     /*
@@ -5522,7 +5426,7 @@ void kageant_refresh_tray_tip(void)
     if (!kitty_protkey_available()) {
         const char *rest = strstr(tip, "\r\n");
         char merged[256];
-        snprintf(merged, sizeof(merged), "%.*s\r\nkeys UNPROTECTED in memory%s",
+        snprintf(merged, sizeof(merged), KT_KA_TIP_UNPROTECTED_FMT,
                  rest ? (int)(rest - tip) : (int)strlen(tip), tip,
                  rest ? rest : "");
         sfree(tip);
@@ -5534,7 +5438,7 @@ void kageant_refresh_tray_tip(void)
         const char *rest = strstr(tip, "\r\n");
         char merged[256], t[24];
         kageant_autoenc_format(kageant_autoenc_seconds(), t, sizeof(t));
-        snprintf(merged, sizeof(merged), "%.*s\r\nidle re-encrypt enforced: %s%s",
+        snprintf(merged, sizeof(merged), KT_KA_TIP_AUTOENC_FMT,
                  rest ? (int)(rest - tip) : (int)strlen(tip), tip, t,
                  rest ? rest : "");
         sfree(tip);
@@ -5545,8 +5449,8 @@ void kageant_refresh_tray_tip(void)
         char line[64];
         const char *rest = strstr(tip, "\r\n");
         snprintf(line, sizeof(line),
-                 held == 1 ? "1 key NOT loaded - fingerprint mismatch"
-                           : "%d keys NOT loaded - fingerprint mismatch",
+                 held == 1 ? KT_KA_TIP_MISMATCH_ONE
+                           : KT_KA_TIP_MISMATCH_MANY_FMT,
                  held);
         snprintf(tnid.szTip, sizeof(tnid.szTip), "%.*s\r\n%s%s",
                  rest ? (int)(rest - tip) : (int)strlen(tip), tip,
@@ -5657,11 +5561,9 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
              * the typed prompt: recovery passphrase or printed secret. */
             if (r == KAGEANT_HELLO_NODOOR && traywindow) {
                 char *msg = dupprintf(
-                    "%s\n\nwas protected with Windows Hello by: %s\n\n"
-                    "This computer and account cannot open it with Hello. "
-                    "Enter the recovery passphrase or the printed secret.",
-                    path, owners ? owners : "(unknown)");
-                kitty_notice_show("kageant: Windows Hello key from elsewhere",
+                    KT_KA_HELLO_ELSEWHERE_USE_FMT,
+                    path, owners ? owners : KT_KA_UNKNOWN_OWNER);
+                kitty_notice_show(KT_KA_NOTICE_HELLO_ELSEWHERE,
                                   msg, KAGEANT_NOTICE_WARN,
                                   kageant_notice_seconds(12), traywindow, 0);
                 sfree(msg);
@@ -5669,9 +5571,8 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             {
                 char *c2 = dupprintf(
                     r == KAGEANT_HELLO_DENIED ?
-                    "Windows Hello was cancelled - recovery passphrase or "
-                    "printed secret for %s" :
-                    "recovery passphrase or printed secret for %s",
+                    KT_KA_HELLO_CANCELLED_USE_FMT :
+                    KT_KA_HELLO_RECOVERY_USE_FMT,
                     comment ? comment : "");
                 if (!ask_passphrase_dialog(dlgid, c2))
                     pageant_passphrase_request_refused(dlgid);
@@ -5811,8 +5712,8 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
 
             if ((INT_PTR)ShellExecute(hwnd, NULL, putty_path, cmdline,
                                       _T(""), SW_SHOW) <= 32) {
-                MessageBox(NULL, "Unable to execute KiTTY!",
-                           "Error",MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR);
+                MessageBox(NULL, KT_MSG_EXEC_KITTY_FAILED,
+                           KT_CAP_ERROR,MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR);
             }
             break;
           }
@@ -5892,9 +5793,8 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
              * consent; we only ever touch our own managed block. */
             int on = !kageant_openssh_get();
             if (on && !should_have_security()) {
-                MessageBox(NULL, "Cannot register as the Windows OpenSSH agent: "
-                           "this kageant has no named-pipe listener.",
-                           "kageant", MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                MessageBox(NULL, KT_KA_OPENSSH_NO_PIPE,
+                           KT_CAP_KAGEANT, MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 break;
             }
             kageant_openssh_set(on);
@@ -5904,11 +5804,8 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             if (on) {
                 char *cfg = kageant_ssh_path("config");
                 char *msg = dupprintf(
-                    "kageant is now the Windows OpenSSH agent.\n\n"
-                    "Added an \"Include kageant.conf\" block to:\n%s\n\n"
-                    "(A one-time .kageant.bak backup was saved. Untick this "
-                    "item to remove the block again.)", cfg ? cfg : "~/.ssh/config");
-                MessageBox(NULL, msg, "kageant", MB_ICONINFORMATION |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                    KT_KA_OPENSSH_REGISTERED_FMT, cfg ? cfg : "~/.ssh/config");
+                MessageBox(NULL, msg, KT_CAP_KAGEANT, MB_ICONINFORMATION |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 sfree(msg); sfree(cfg);
             }
             break;
@@ -5927,19 +5824,8 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             if (on) {
                 char cdesc[512];
                 if (kageant_autostart_conflict(cdesc, sizeof(cdesc))) {
-                    char *w = dupprintf(
-                        "Another SSH agent is already set to start at login:\n\n"
-                        "    %s\n\n"
-                        "If you add this kageant too, BOTH start at login and "
-                        "only one wins (single-instance) - the other exits "
-                        "without loading its keys, and which wins is a race.\n\n"
-                        "Add this kageant to autostart anyway?\n\n"
-                        "Choose No to leave autostart unchanged. To make THIS "
-                        "kageant your login agent, disable the other one in "
-                        "Settings > Apps > Startup (that stops it starting, for "
-                        "both Run entries and Startup shortcuts) or delete its "
-                        "Run-registry value / Startup shortcut.", cdesc);
-                    int r = MessageBox(NULL, w, "kageant - autostart conflict",
+                    char *w = dupprintf(KT_KA_AUTOSTART_CONFLICT_FMT, cdesc);
+                    int r = MessageBox(NULL, w, KT_CAP_KA_AUTOSTART_CONFLICT,
                                        MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
                     sfree(w);
                     if (r != IDYES)
@@ -5956,26 +5842,12 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                           MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
             if (on) {
                 char *msg = portable ? dupprintf(
-                    "kageant will load your current %d key(s) at startup, added "
-                    "encrypted (passphrase asked on first use).\n\n"
-                    "The key list is saved to kitty.ini so it travels with this "
-                    "portable install (keys inside the install folder are stored "
-                    "relative to it; a key added from elsewhere prompts to be "
-                    "copied in or referenced).\n\n"
-                    "A login shortcut to this kageant was placed in your Startup "
-                    "folder (no registry entry). It is machine-local and pinned "
-                    "to the current path, so it does not follow the stick to "
-                    "another machine or drive letter - disable this here to "
-                    "remove it.",
+                    KT_KA_AUTOSTART_PORTABLE_FMT,
                     kageant_nloaded())
                   : dupprintf(
-                    "kageant will load your current %d key(s) at login, added "
-                    "encrypted (passphrase asked on first use).\n\n"
-                    "An autostart entry was added (HKCU ...\\Run\\%s), so you can "
-                    "remove any manual kageant Startup shortcut. Newly added keys "
-                    "are remembered automatically while this stays enabled.",
+                    KT_KA_AUTOSTART_REGISTRY_FMT,
                     kageant_nloaded(), KAGEANT_RUN_NAME);
-                MessageBox(NULL, msg, "kageant", MB_ICONINFORMATION |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                MessageBox(NULL, msg, KT_CAP_KAGEANT, MB_ICONINFORMATION |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 sfree(msg);
             }
             break;
@@ -6041,7 +5913,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                 strcat(param, mii.dwTypeData);
                 if ((INT_PTR)ShellExecute(hwnd, NULL, putty_path, param,
                                           _T(""), SW_SHOW) <= 32) {
-                    MessageBox(NULL, "Unable to execute KiTTY!", "Error",
+                    MessageBox(NULL, KT_MSG_EXEC_KITTY_FAILED, KT_CAP_ERROR,
                               MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR);
                 }
             }
@@ -6170,7 +6042,7 @@ static NORETURN void opt_error(const char *fmt, ...)
     char *msg = dupvprintf(fmt, ap);
     va_end(ap);
 
-    MessageBox(NULL, msg, "kageant command line error", MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+    MessageBox(NULL, msg, KT_CAP_KA_CMDLINE_ERROR, MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
 
     exit(1);
 }
@@ -6182,40 +6054,7 @@ static NORETURN void opt_error(const char *fmt, ...)
  * same way the command-line errors do. */
 static void show_cmdline_help(void)
 {
-    static const char help[] =
-        "kageant - the KiTTY SSH authentication agent\n"
-        "\n"
-        "Usage:  kageant [options] [keyfile ...]\n"
-        "\n"
-        "Key files named on the command line are loaded at startup.\n"
-        "\n"
-        "-encrypted, -no-decrypt\n"
-        "        load the key files that follow deferred: the\n"
-        "        passphrase is asked at first use\n"
-        "-keylist\n"
-        "        open the key list window at startup\n"
-        "-noload\n"
-        "        clean slate: do not load the stored startup keys (no\n"
-        "        passphrase prompts) and leave the stored list untouched;\n"
-        "        key files named on the command line still load\n"
-        "-c command [args ...]\n"
-        "        run the command once the agent is up; everything\n"
-        "        after -c is the command line\n"
-        "-openssh-config FILE\n"
-        "        write an OpenSSH client config file pointing ssh at\n"
-        "        this agent's named pipe\n"
-        "-unix PATH\n"
-        "        also serve an AF_UNIX agent socket at PATH\n"
-        "-restrict-acl\n"
-        "        restrict the ACL of the kageant process\n"
-        "-restrict-putty-acl\n"
-        "        pass -restrict-acl on to KiTTY sessions started\n"
-        "        from the tray menu\n"
-        "-pgpfp\n"
-        "        show the PGP fingerprints of the PuTTY release keys\n"
-        "        (deprecated)\n"
-        "-h, -help, --help\n"
-        "        this summary\n";
+    static const char help[] = KT_KA_CLI_HELP;
 
     /* A redirected stdout (`kageant -h > file`, a pipe) is inherited even
      * by a GUI-subsystem exe - and it must be looked at BEFORE any
@@ -6246,7 +6085,7 @@ static void show_cmdline_help(void)
     if (attached)
         FreeConsole();
 
-    MessageBox(NULL, help, "kageant command line",
+    MessageBox(NULL, help, KT_CAP_KA_CMDLINE,
                MB_ICONINFORMATION |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
 }
 
@@ -6339,7 +6178,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             MessageBox(NULL,
                        "Unable to access security APIs. kageant will\n"
                        "not run, in case it causes a security breach.",
-                       "kageant Fatal Error", MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                       KT_CAP_KA_FATAL, MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
             return 1;
         }
     }
@@ -6457,7 +6296,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         mutex = lock_interprocess_mutex(mutexname, &err);
         sfree(mutexname);
         if (!mutex) {
-            MessageBox(NULL, err, "kageant Error", MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+            MessageBox(NULL, err, KT_CAP_KA_ERROR, MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
             return 1;
         }
     }
@@ -6542,7 +6381,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 char *err = dupprintf("Unable to open named pipe at %s "
                                       "for SSH agent:\n%s", pipename,
                                       sk_socket_error(sock));
-                MessageBox(NULL, err, "kageant Error", MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                MessageBox(NULL, err, KT_CAP_KA_ERROR, MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 return 1;
             }
             pageant_listener_got_socket(pl, sock);
@@ -6557,7 +6396,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                     char *err = dupprintf(
                         "Unable to write OpenSSH config file to %s",
                         filename_to_str(openssh_config_file));
-                    MessageBox(NULL, err, "kageant Error",
+                    MessageBox(NULL, err, KT_CAP_KA_ERROR,
                                MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                     return 1;
                 }
@@ -6592,7 +6431,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 char *err = dupprintf("Unable to open AF_UNIX socket at %s "
                                       "for SSH agent:\n%s", unixsocket,
                                       sk_socket_error(sock));
-                MessageBox(NULL, err, "kageant Error", MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                MessageBox(NULL, err, KT_CAP_KA_ERROR, MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
                 return 1;
             }
             pageant_listener_got_socket(pl, sock);
@@ -6753,38 +6592,38 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY: opt-in Windows OpenSSH integration (default off). */
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_openssh_get() ? MF_CHECKED : MF_UNCHECKED),
-               IDM_OPENSSH_INTEGRATION, "Register as Windows &OpenSSH agent");
+               IDM_OPENSSH_INTEGRATION, KT_KA_MENU_OPENSSH);
     /* KiTTY: two separate things, one each. "Start at login" is an artifact
      * (Run entry or Startup shortcut, verified to be THIS kageant); "load
      * remembered keys" is a stored flag. They used to share one command, so
      * neither could be had without the other. */
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_autostart_active() ? MF_CHECKED : MF_UNCHECKED),
-               IDM_LOAD_ON_STARTUP, "&Start kageant at login");
+               IDM_LOAD_ON_STARTUP, KT_KA_MENU_START_AT_LOGIN);
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_startup_get() ? MF_CHECKED : MF_UNCHECKED),
-               IDM_LOAD_KEYS, "&Load remembered keys at startup");
+               IDM_LOAD_KEYS, KT_KA_MENU_LOAD_KEYS);
     /* KiTTY: opt-in (default on) tray balloon when a key is used to sign. */
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_notify_get() ? MF_CHECKED : MF_UNCHECKED),
-               IDM_NOTIFY_KEYUSE, "&Notify when a key is used");
+               IDM_NOTIFY_KEYUSE, KT_KA_MENU_NOTIFY);
     /* KiTTY: opt-in (default off) yes/no prompt before any key may sign
      * (classic [Agent] askconfirmation; per-key comment opt-in still works). */
     AppendMenu(systray_menu, MF_ENABLED |
                (kageant_confirm_get() ? MF_CHECKED : MF_UNCHECKED),
-               IDM_CONFIRM_KEYUSE, "Ask &confirmation before each key use");
+               IDM_CONFIRM_KEYUSE, KT_KA_MENU_CONFIRM);
     AppendMenu(systray_menu, MF_ENABLED,
-               IDM_RESUME_CONFIRM, "Res&ume key-use confirmations");
+               IDM_RESUME_CONFIRM, KT_KA_MENU_RESUME);
     /* KiTTY: the same [Agent] settings dialog the key list window opens,
      * reachable straight from the tray. */
-    AppendMenu(systray_menu, MF_ENABLED, IDM_SETTINGS, "Settin&gs...");
-    AppendMenu(systray_menu, MF_ENABLED, IDM_AUDITLOG, "Agent lo&g...");
+    AppendMenu(systray_menu, MF_ENABLED, IDM_SETTINGS, KT_KA_MENU_SETTINGS);
+    AppendMenu(systray_menu, MF_ENABLED, IDM_AUDITLOG, KT_KA_MENU_AGENT_LOG);
     AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
     if (has_help())
-        AppendMenu(systray_menu, MF_ENABLED, IDM_HELP, "&Help");
-    AppendMenu(systray_menu, MF_ENABLED, IDM_ABOUT, "&About");
+        AppendMenu(systray_menu, MF_ENABLED, IDM_HELP, KT_MENU_HELP);
+    AppendMenu(systray_menu, MF_ENABLED, IDM_ABOUT, KT_MENU_ABOUT);
     AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
-    AppendMenu(systray_menu, MF_ENABLED, IDM_CLOSE, "E&xit");
+    AppendMenu(systray_menu, MF_ENABLED, IDM_CLOSE, KT_MENU_EXIT);
     initial_menuitems_count = GetMenuItemCount(session_menu);
 
     /* Set the default menu item. */

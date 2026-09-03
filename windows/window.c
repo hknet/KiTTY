@@ -54,6 +54,7 @@
 #define IDM_PASTE     0x01A0
 #define IDM_CHECKUPDATE 0x01B0  /* check GitHub releases for a newer KiTTY */
 #ifdef MOD_PERSO
+#include "../kitty/kitty_text.h"   /* KiTTY: shared captions and menu words */
 /* kitty.c: types a string into this session (the WM_COPYDATA broadcast). */
 void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
 int  kitty_broadcast_default( void ) ;        /* kitty.c: [KiTTY] sendcmdmode */
@@ -585,12 +586,8 @@ static void win_seat_notify_session_started(Seat *seat)
             foreign_notice_shown = 1;
             kitty_foreign_notice_clear(KITTY_FOREIGN_NOTICE_STARTUP);
             kitty_notice_show(
-                "KiTTY is also showing your old sessions",
-                "This KiTTY had no saved sessions of its own, so its session "
-                "list also holds the ones an older KiTTY or PuTTY left in the "
-                "registry - they can be opened, edited and deleted from it. "
-                "That answer is now recorded and will not change on its own. "
-                "Click here to see it, or to switch the old sessions off.",
+                KT_TWIN_OLDSESS_TITLE,
+                KT_TWIN_OLDSESS_TEXT,
                 RGB(0, 100, 0), 20, wgs->term_hwnd,
                 WM_KITTY_FOREIGN_SESSIONS);
         }
@@ -826,7 +823,7 @@ static void start_backend(WinGuiSeat *wgs)
             wgs->session_closed = true;
             queue_toplevel_callback(close_session, wgs);
             lp_eventlog(&wgs->logpolicy,
-                        "Unable to connect, trying to reconnect...");
+                        KT_TWIN_LOG_CONNECT_FAILED_RECONNECT);
             if (wgs->reconnect_tries < 1000) {
                 wgs->reconnect_tries++;
                 SetTimer(wgs->term_hwnd, TIMER_RECONNECT,
@@ -854,13 +851,8 @@ static void start_backend(WinGuiSeat *wgs)
                 extern int kitty_confirm_box(HWND owner, const char *caption,
                                              const char *text, const char *warn_red);
                 char *q = dupprintf(
-                    "%s\n\n"
-                    "Workplace proxy mode is on, so this connection was made "
-                    "through the proxy \"%s\" rather than through this session's "
-                    "own settings.\n\n"
-                    "Switch workplace proxy mode off? Connections would then use "
-                    "each session's own proxy settings again.", msg, wp);
-                if (kitty_confirm_box(NULL, "Connection failed", q, NULL))
+                    KT_TWIN_WORKPLACE_FAILED_Q, msg, wp);
+                if (kitty_confirm_box(NULL, KT_CAP_CONNECTION_FAILED, q, NULL))
                     kitty_workplace_request(0, 0);
                 sfree(q);
                 sfree(str);
@@ -1181,7 +1173,7 @@ static wchar_t *kitty_clip_decorate_wide(WinGuiSeat *wgs, wchar_t *name)
      * DWM renders the caption monochrome and a coloured glyph arrives as a black
      * blob: the title carries the shape, the frame tint carries the colour. */
     if (wgs->workplace_proxied)
-        lead = L"⇄ workplace proxy";
+        lead = KT_TITLE_WORKPLACE_LEAD;
     if (!front && !tail && !lead)
         return name;
 
@@ -1246,10 +1238,10 @@ static void close_session(void *vctx)
      * state suffix at the end, so the connection name stays in the first few
      * characters and survives taskbar truncation. */
     if (wgs->error_close) {
-        newtitle = dupprintf("\xe2\x9a\xa0 %s (disconnected)", base ? base : appname);
+        newtitle = dupprintf(KT_TITLE_DISCONNECTED, base ? base : appname);
         title_cp = CP_UTF8;
     } else if (base) {
-        newtitle = dupprintf("%s (inactive)", base);
+        newtitle = dupprintf(KT_TITLE_INACTIVE, base);
         title_cp = CP_UTF8;
     } else
 #endif
@@ -1298,7 +1290,7 @@ static void close_and_restart(void *vctx)
     SetSSHConnected(0);
     close_session(wgs);          /* frees ldisc+backend, nulls wgs->backend, sets session_closed */
     if (!wgs->backend) {         /* always true after close_session */
-        lp_eventlog(&wgs->logpolicy, "----- Session restarted -----");
+        lp_eventlog(&wgs->logpolicy, KT_TWIN_LOG_SESSION_RESTARTED);
         term_pwron(wgs->term, false);
         start_backend(wgs);      /* may MessageBox+exit(0) on connect fail (inherited) */
     }
@@ -2057,10 +2049,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             /* AppendMenu(m, MF_ENABLED, IDM_NEWSESS, "Ne&w Session..."); */
             AppendMenu(m, MF_ENABLED, IDM_DUPSESS, "&Duplicate Session");
 #ifdef MOD_PERSO
-            AppendMenu(m, MF_ENABLED, IDM_NEWDUPSESS, "&Inherit New Session...");
+            AppendMenu(m, MF_ENABLED, IDM_NEWDUPSESS, KT_SYSMENU_INHERIT_NEW_SESSION);
 #endif
 #ifdef MOD_RECONNECT
-            AppendMenu(m, MF_ENABLED, IDM_RESTARTSESSION, "Close+&Restart");
+            AppendMenu(m, MF_ENABLED, IDM_RESTARTSESSION, KT_SYSMENU_CLOSE_RESTART);
 #endif
             AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)wgs->savedsess_menu,
                        "Sa&ved Sessions");
@@ -2088,40 +2080,40 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
              * keeps that in step if the session value changes later. */
             if (GetTransparencyFlag()
                 && conf_get_int(wgs->conf, CONF_transparencynumber) != -1) {
-                AppendMenu(winmenu, MF_ENABLED, IDM_TRANSPARUP,   "Transparency &+");
-                AppendMenu(winmenu, MF_ENABLED, IDM_TRANSPARDOWN, "Transparency &-");
+                AppendMenu(winmenu, MF_ENABLED, IDM_TRANSPARUP,   KT_SYSMENU_TRANSPARENCY_UP);
+                AppendMenu(winmenu, MF_ENABLED, IDM_TRANSPARDOWN, KT_SYSMENU_TRANSPARENCY_DOWN);
                 AppendMenu(winmenu, MF_SEPARATOR, 0, 0);
             }
-            AppendMenu(winmenu, MF_ENABLED, IDM_FONTUP,       "Font &Up");
-            AppendMenu(winmenu, MF_ENABLED, IDM_FONTDOWN,     "Font &Down");
+            AppendMenu(winmenu, MF_ENABLED, IDM_FONTUP,       KT_SYSMENU_FONT_UP);
+            AppendMenu(winmenu, MF_ENABLED, IDM_FONTDOWN,     KT_SYSMENU_FONT_DOWN);
             AppendMenu(winmenu, MF_SEPARATOR, 0, 0);
-            AppendMenu(winmenu, MF_ENABLED, IDM_FONTNEGATIVE, "Invert co&lours");
-            AppendMenu(winmenu, MF_ENABLED, IDM_FONTBLACKANDWHITE, "&Black on white");
+            AppendMenu(winmenu, MF_ENABLED, IDM_FONTNEGATIVE, KT_SYSMENU_INVERT_COLOURS);
+            AppendMenu(winmenu, MF_ENABLED, IDM_FONTBLACKANDWHITE, KT_SYSMENU_BLACK_ON_WHITE);
             AppendMenu(winmenu, MF_SEPARATOR, 0, 0);
-            AppendMenu(winmenu, MF_ENABLED, IDM_VISIBLE,      "Always On &Top");
-            AppendMenu(winmenu, MF_ENABLED, IDM_WINROL,       "Roll-u&p");
-            AppendMenu(winmenu, MF_ENABLED, IDM_TOTRAY,       "Send to tra&y");
-            AppendMenu(winmenu, MF_ENABLED, IDM_PROTECT,      "Prote&ct");
-            AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)winmenu, "&Window");
+            AppendMenu(winmenu, MF_ENABLED, IDM_VISIBLE,      KT_SYSMENU_ALWAYS_ON_TOP);
+            AppendMenu(winmenu, MF_ENABLED, IDM_WINROL,       KT_SYSMENU_ROLLUP);
+            AppendMenu(winmenu, MF_ENABLED, IDM_TOTRAY,       KT_SYSMENU_SEND_TO_TRAY);
+            AppendMenu(winmenu, MF_ENABLED, IDM_PROTECT,      KT_SYSMENU_PROTECT);
+            AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)winmenu, KT_SYSMENU_WINDOW);
 
             /* ---- "Tools" submenu: transfer & integration ---- */
             toolmenu = CreatePopupMenu();
-            AppendMenu(toolmenu, MF_ENABLED, IDM_SHOWPORTFWD, "Port forwar&dings");
+            AppendMenu(toolmenu, MF_ENABLED, IDM_SHOWPORTFWD, KT_SYSMENU_PORT_FORWARDINGS);
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
-            AppendMenu(toolmenu, MF_ENABLED, IDM_WINSCP, "Start Win&SCP");
-            AppendMenu(toolmenu, MF_ENABLED, IDM_PSCP, "Send file (&pscp)");
+            AppendMenu(toolmenu, MF_ENABLED, IDM_WINSCP, KT_SYSMENU_START_WINSCP);
+            AppendMenu(toolmenu, MF_ENABLED, IDM_PSCP, KT_SYSMENU_SEND_FILE_PSCP);
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
-            AppendMenu(toolmenu, MF_ENABLED, IDM_MNOTEPAD, "Open &mNotepad");
-            AppendMenu(toolmenu, MF_ENABLED, IDM_MNOTEPAD_CLIP, "Open mNotepad with clip&board");
+            AppendMenu(toolmenu, MF_ENABLED, IDM_MNOTEPAD, KT_SYSMENU_OPEN_MNOTEPAD);
+            AppendMenu(toolmenu, MF_ENABLED, IDM_MNOTEPAD_CLIP, KT_SYSMENU_OPEN_MNOTEPAD_CLIP);
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
             {
                 int sa = kitty_script_active();
                 AppendMenu(toolmenu, sa ? MF_GRAYED : MF_ENABLED,
-                           IDM_SCRIPTSEND, "Send &recorded script");
+                           IDM_SCRIPTSEND, KT_SYSMENU_SCRIPT_SEND);
                 AppendMenu(toolmenu, sa ? MF_ENABLED : MF_GRAYED,
-                           IDM_SCRIPTHALT, "S&top script");
+                           IDM_SCRIPTHALT, KT_SYSMENU_SCRIPT_STOP);
                 AppendMenu(toolmenu, MF_ENABLED,
-                           IDM_SCRIPTFILE2, "Send scr&ipt file");
+                           IDM_SCRIPTFILE2, KT_SYSMENU_SCRIPT_FILE);
             }
 #ifdef MOD_ZMODEM
             /*
@@ -2143,22 +2135,22 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
              * window is open. */
 #endif
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
-            AppendMenu(toolmenu, MF_ENABLED, IDM_PRINT,        "Print clip&board");
+            AppendMenu(toolmenu, MF_ENABLED, IDM_PRINT,        KT_SYSMENU_PRINT_CLIPBOARD);
             /* Both log items are re-labelled and enabled/greyed in
              * WM_INITMENUPOPUP: whether there is a log at all, and whether
              * clearing or rotating is what will happen, are only known when
              * the menu is opened. */
-            AppendMenu(toolmenu, MF_ENABLED, IDM_OPENLOGFILE,  "&Open log file");
-            AppendMenu(toolmenu, MF_ENABLED, IDM_CLEARLOGFILE, "Clear log fil&e");
+            AppendMenu(toolmenu, MF_ENABLED, IDM_OPENLOGFILE,  KT_SYSMENU_OPEN_LOG_FILE);
+            AppendMenu(toolmenu, MF_ENABLED, IDM_CLEARLOGFILE, KT_SYSMENU_CLEAR_LOG_FILE);
             /* "Export current settings" exports the RUNNING session, a per-
              * connection action, so it belongs on the terminal menu. Whole-store
              * "Export all" / "Import" live in the config box (Session panel),
              * reachable at launch without a connection. */
-            AppendMenu(toolmenu, MF_ENABLED, IDM_EXPORTSETTINGS, "Export &current settings");
+            AppendMenu(toolmenu, MF_ENABLED, IDM_EXPORTSETTINGS, KT_SYSMENU_EXPORT_SETTINGS);
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
-            AppendMenu(toolmenu, MF_ENABLED, IDM_SHORTCUTSTOGGLE, "Shortcut&s");
+            AppendMenu(toolmenu, MF_ENABLED, IDM_SHORTCUTSTOGGLE, KT_SYSMENU_SHORTCUTS);
             AppendMenu(toolmenu, MF_ENABLED | (GetHyperlinkFlag() ? MF_CHECKED : 0),
-                       IDM_HYPERLINKTOGGLE, "Hyper&links");
+                       IDM_HYPERLINKTOGGLE, KT_SYSMENU_HYPERLINKS);
             /* Armed windows are visibly armed: the check mark is the only way to
              * tell, before typing arrives, which of your windows will accept it. */
             /* Named like the ZModem entries above: the menu says WHERE the
@@ -2169,8 +2161,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(toolmenu, MF_ENABLED |
                        (conf_get_bool(wgs->conf, CONF_kitty_accept_broadcast) ? MF_CHECKED : 0),
                        IDM_BROADCASTTOGGLE,
-                       "Accept &broadcast (Session > Scripting)");
-            AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)toolmenu, "&Tools");
+                       KT_SYSMENU_ACCEPT_BROADCAST);
+            AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)toolmenu, KT_SYSMENU_TOOLS);
 
             /* KiTTY "Shortcuts for predefined commands": read the registry
              * Commands keys into SpecialMenu[] and add a "&User Command"
@@ -2182,7 +2174,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                             conf_get_str(wgs->conf, CONF_sessionname));
 
             AppendMenu(m, MF_SEPARATOR, 0, 0);
-            AppendMenu(m, MF_ENABLED, IDM_QUIT, "E&xit");
+            AppendMenu(m, MF_ENABLED, IDM_QUIT, KT_MENU_EXIT);
 #endif
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             if (has_help())
@@ -2191,7 +2183,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_ABOUT, str);
             sfree(str);
 #ifdef MOD_PERSO
-            AppendMenu(m, MF_ENABLED, IDM_CHECKUPDATE, "Check for &updates...");
+            AppendMenu(m, MF_ENABLED, IDM_CHECKUPDATE, KT_SYSMENU_CHECK_UPDATES);
 #endif
         }
     }
@@ -2637,7 +2629,7 @@ static void update_savedsess_menu(WinGuiSeat *wgs)
 
         if (sesslist.nsessions <= 1)
             AppendMenu(wgs->savedsess_menu, MF_GRAYED, IDM_SAVED_MIN,
-                       "(No sessions)");
+                       KT_SYSMENU_NO_SESSIONS);
         return;
     }
 #undef KITTY_MENU_FOLDERS_MAX
@@ -2878,9 +2870,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
              * when I clicked something". */
             if (kitty_eventlog_is_open()) {
                 kitty_coe_pending_exit = 0;
-                logevent(wgs->logctx, "Session ended; window kept open while "
-                         "the Event Log is open (it closes when you close the "
-                         "log)");
+                logevent(wgs->logctx, KT_TWIN_LOG_ENDED_LOG_OPEN);
                 return;
             }
             kitty_on_window_closing(wgs, wgs->term_hwnd);
@@ -2922,7 +2912,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
          * again once the session is back. */
         wgs->error_close = true;
         queue_toplevel_callback(close_session, wgs);
-        lp_eventlog(&wgs->logpolicy, "Lost connection, trying to reconnect...");
+        lp_eventlog(&wgs->logpolicy, KT_TWIN_LOG_LOST_RECONNECT);
         if (wgs->reconnect_tries < 1000) {
             wgs->reconnect_tries++;
             SetTimer(wgs->term_hwnd, TIMER_RECONNECT,
@@ -2950,10 +2940,8 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
         if (!wgs->ever_authenticated && wgs->workplace_proxied &&
             kitty_workplace_query(wp, sizeof(wp))) {
             char *note = dupprintf(
-                "This connection went through \"%s\" because workplace proxy "
-                "mode is on, and it did not come up. If you have left the place "
-                "that proxy belongs to, click here to switch the mode off.", wp);
-            kitty_notice_show("Workplace proxy mode is on", note,
+                KT_TWIN_WORKPLACE_NOTICE_TEXT, wp);
+            kitty_notice_show(KT_TWIN_WORKPLACE_NOTICE_TITLE, note,
                               RGB(0, 100, 0), 20, wgs->term_hwnd,
                               WM_KITTY_WORKPLACE_DISARM);
             sfree(note);
@@ -2986,8 +2974,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
     if (coe_force && kitty_eventlog_is_open()) {
         coe_force = false;
         kitty_coe_pending_exit = 1;   /* close once the log is dismissed */
-        logevent(wgs->logctx, "Connection closed; window kept open while the "
-                 "Event Log is open (it closes when you close the log)");
+        logevent(wgs->logctx, KT_TWIN_LOG_CLOSED_LOG_OPEN);
     }
 #endif
     if (coe_force) {
@@ -4010,8 +3997,7 @@ static void exit_callback(void *vctx)
         if (coe_close && kitty_eventlog_is_open()) {
             coe_close = false;
             kitty_coe_pending_exit = 0;   /* close once the log is dismissed */
-            logevent(wgs->logctx, "Session ended; window kept open while the "
-                     "Event Log is open (it closes when you close the log)");
+            logevent(wgs->logctx, KT_TWIN_LOG_ENDED_LOG_OPEN);
         }
 #endif
         if (coe_close) {
@@ -4037,7 +4023,7 @@ static void exit_callback(void *vctx)
                  * branch). PuTTY-compat mode keeps the classic box. */
                 if (!GetPuttyFlag() && !GetModalErrorsFlag() && wgs->term) {
                     char *line = dupprintf(
-                        "\r\n\x1b[1;33m%s:\x1b[0m Connection closed by remote host\r\n",
+                        KT_TWIN_CLOSED_BY_HOST_INLINE,
                         appname);
                     term_data(wgs->term, line, strlen(line));
                     sfree(line);
@@ -4262,15 +4248,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 if (++wgs->script_defer_ticks <= 40) {          /* ~60s */
                     if (wgs->script_defer_ticks == 1)
                         lp_eventlog(&wgs->logpolicy,
-                            "Rutty script (Session > Scripting) is waiting for "
-                            "the login script (Connection > Data) to finish");
+                            KT_TWIN_LOG_RUTTY_WAITING);
                     SetTimer(hwnd, TIMER_SCRIPT, 1500, NULL);
                     return 0;
                 }
                 lp_eventlog(&wgs->logpolicy,
-                    "Login script (Connection > Data) has not finished; starting "
-                    "the rutty script (Session > Scripting) anyway - if the "
-                    "automation misbehaves, that is why");
+                    KT_TWIN_LOG_RUTTY_STARTING);
             }
             /* This tick takes over the start (normally the exhaustion hook in
              * win_seat_output gets there first and this timer is disarmed);
@@ -4306,7 +4289,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             KillTimer(hwnd, TIMER_RECONNECT);
             if (wgs && !wgs->backend) {
                 lp_eventlog(&wgs->logpolicy,
-                            "No backend connection, reconnecting...");
+                            KT_TWIN_LOG_NO_BACKEND_RECONNECT);
                 PostMessage(hwnd, WM_COMMAND, IDM_RESTART, 0);
             }
             return 0;
@@ -4326,7 +4309,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
               case PBT_APMQUERYSUSPENDFAILED:
                 if (wgs->session_closed && !wgs->backend) {
                     lp_eventlog(&wgs->logpolicy,
-                                "Woken up from suspend, trying to reconnect...");
+                                KT_TWIN_LOG_WAKEUP_RECONNECT);
                     SetTimer(wgs->term_hwnd, TIMER_RECONNECT,
                              GetReconnectDelay()*1000, NULL);
                 }
@@ -4334,7 +4317,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
               case PBT_APMSUSPEND:
                 if (!wgs->session_closed && wgs->backend) {
                     lp_eventlog(&wgs->logpolicy,
-                                "Suspend detected, disconnecting cleanly...");
+                                KT_TWIN_LOG_SUSPEND_DISCONNECT);
                     wgs->session_closed = true;
                     queue_toplevel_callback(close_session, wgs);
                 }
@@ -4437,8 +4420,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
              * sent it. Refused rather than obeyed, and SAID so - this whole
              * feature spent two releases broken precisely because it failed
              * silently. */
-            logevent(wgs->logctx, "broadcast refused: sender did not identify "
-                     "its group (pre-0.85 format)");
+            logevent(wgs->logctx, KT_TWIN_LOG_BC_REFUSED_NOGROUP);
             return 0;
         }
 
@@ -4460,8 +4442,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             /* MASTER first: [KiTTY] sendcmdmode=no means the feature is
              * inert on this install, whatever a session says. */
             if (!kitty_broadcast_default()) {
-                logevent(wgs->logctx, "broadcast refused: disabled on this "
-                         "install ([KiTTY] sendcmdmode=no in kitty.ini)");
+                logevent(wgs->logctx, KT_TWIN_LOG_BC_REFUSED_DISABLED);
                 sfree(buf);
                 return 0;
             }
@@ -4472,8 +4453,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             if (strcmp(buf, mygroup) != 0) {
                 /* Another KiTTY install - the portable copy on a stick talking
                  * to the laptop's windows, typically. Not ours to obey. */
-                char *m = dupprintf("broadcast refused: from another KiTTY "
-                                    "install (group '%s', ours is '%s')",
+                char *m = dupprintf(KT_TWIN_LOG_BC_REFUSED_OTHER_INSTALL,
                                     buf, mygroup);
                 logevent(wgs->logctx, m);
                 sfree(m);
@@ -4481,15 +4461,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 return 0;
             }
             if (!kitty_broadcast_armed(wgs)) {
-                logevent(wgs->logctx, "broadcast refused: this session does not "
-                         "accept broadcasts (Session > Scripting, or the "
-                         "Tools > Accept broadcast toggle)");
+                logevent(wgs->logctx, KT_TWIN_LOG_BC_REFUSED_SESSION);
                 sfree(buf);
                 return 0;
             }
             {
-                char *m = dupprintf("broadcast accepted (%d bytes), typing it "
-                                    "into this session", (int)strlen(text));
+                char *m = dupprintf(KT_TWIN_LOG_BC_ACCEPTED, (int)strlen(text));
                 logevent(wgs->logctx, m);
                 sfree(m);
             }
@@ -4530,7 +4507,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 ModifyMenu(mp, IDM_CLEARLOGFILE, MF_BYCOMMAND | MF_STRING,
                            IDM_CLEARLOGFILE,
                            logfile_name_varies(wgs->logctx) ?
-                           "Start a new log file &now" : "Clear log fil&e");
+                           KT_SYSMENU_NEW_LOG_FILE : KT_SYSMENU_CLEAR_LOG_FILE);
         }
 #ifdef MOD_ZMODEM
         if (GetZModemFlag()) {
@@ -4572,15 +4549,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 if (has_rz)
                     InsertMenu(mp, at++, MF_BYPOSITION | MF_STRING |
                                (xfer ? (MF_DISABLED | MF_GRAYED) : MF_ENABLED),
-                               IDM_XYZSTART, "&ZModem Receive");
+                               IDM_XYZSTART, KT_SYSMENU_ZMODEM_RECEIVE);
                 if (has_sz)
                     InsertMenu(mp, at++, MF_BYPOSITION | MF_STRING |
                                (xfer ? (MF_DISABLED | MF_GRAYED) : MF_ENABLED),
-                               IDM_XYZUPLOAD, "ZModem &Upload");
+                               IDM_XYZUPLOAD, KT_SYSMENU_ZMODEM_UPLOAD);
                 /* Abort belongs with them, and is live only during a transfer. */
                 InsertMenu(mp, at++, MF_BYPOSITION | MF_STRING |
                            (xfer ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)),
-                           IDM_XYZABORT, "ZModem &Abort");
+                           IDM_XYZABORT, KT_SYSMENU_ZMODEM_ABORT);
             }
         }
 #endif
@@ -4631,13 +4608,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                  * to stop it - so the click IS the fix, behind one confirmation.
                  */
                 if (kitty_confirm_box_yes(hwnd,
-                        "KiTTY - block this server's clipboard writes?",
-                        "A server has been changing your clipboard "
-                        "repeatedly.\n\n"
-                        "Stop it changing your clipboard at all for the "
-                        "rest of this session?\n\n"
-                        "You can turn it back on under "
-                        "Window > Selection, \"Remote clipboard writes\".",
+                        KT_CAP_BLOCK_CLIP_WRITES,
+                        KT_TWIN_BLOCK_CLIP_WRITES_Q,
                         NULL)) {
                     if (wgs->term)
                         wgs->term->osc52_allowed = OSC52_CLIPBOARD_DENY;
@@ -4649,8 +4621,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                         wgs->term->clip_allowed = 0;
                     conf_set_int(wgs->conf, CONF_shared_clipboard,
                                  SHARED_CLIPBOARD_DISABLED);
-                    logevent(wgs->logctx, "Remote clipboard writes blocked for "
-                             "this session at the user's request");
+                    logevent(wgs->logctx, KT_TWIN_LOG_CLIP_WRITES_BLOCKED);
                 } else {
                     showeventlog(hwnd);
                 }
@@ -5115,14 +5086,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           case IDM_SCRIPTSEND: {
             char fn[4096];
             if (!kitty_script_enabled()) {
-                kitty_info_box(wgs->term_hwnd, "KiTTY",
-                               "RuTTY scripting is disabled"
-                               " ([KiTTY] scriptmode=no in kitty.ini).", NULL);
+                kitty_info_box(wgs->term_hwnd, KT_CAP_KITTY,
+                               KT_TWIN_SCRIPT_DISABLED, NULL);
                 break;
             }
             if (wgs->backend && !kitty_script_active() &&
-                OpenFileName(wgs->term_hwnd, fn, "Send script file...",
-                    "Script files (*.ksh,*.sh)|*.ksh;*.sh|All files (*.*)|*.*|")) {
+                OpenFileName(wgs->term_hwnd, fn, KT_TWIN_SCRIPT_FILE_TITLE,
+                    KT_TWIN_SCRIPT_FILE_FILTER)) {
                 Filename *sf = filename_from_str(fn);
                 kitty_script_send_file(wgs->conf, wgs->backend, sf);
                 filename_free(sf);
@@ -5131,7 +5101,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           }
           case IDM_SCRIPTHALT:
             kitty_script_stop();
-            lp_eventlog(&wgs->logpolicy, "script stopped");
+            lp_eventlog(&wgs->logpolicy, KT_TWIN_LOG_SCRIPT_STOPPED);
             break;
           case IDM_SCRIPTFILE2:
             OpenAndSendScriptFile(wgs->term_hwnd);
@@ -5246,8 +5216,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             conf_set_bool(wgs->conf, CONF_kitty_accept_broadcast, on != 0);
             CheckMenuItem(GetSystemMenu(hwnd, FALSE), IDM_BROADCASTTOGGLE,
                           MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
-            logevent(wgs->logctx, on ? "broadcasts accepted for this window"
-                                     : "broadcasts refused for this window");
+            logevent(wgs->logctx, on ? KT_TWIN_LOG_BC_WINDOW_ON
+                                     : KT_TWIN_LOG_BC_WINDOW_OFF);
             break;
           }
           case IDM_HYPERLINKTOGGLE:
@@ -6086,7 +6056,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             wParam != VK_RIGHT && wParam != VK_DOWN &&
             !(wParam >= VK_F1 && wParam <= VK_F16)) {
             lp_eventlog(&wgs->logpolicy,
-                        "No connection on key pressed, trying to reconnect...");
+                        KT_TWIN_LOG_KEY_RECONNECT);
             PostMessage(hwnd, WM_COMMAND, IDM_RESTART, 0);
             return 0;
         }
@@ -8035,18 +8005,18 @@ static char *kitty_decorate_title(WinGuiSeat *wgs, const char *title)
     sb = strbuf_new();
     put_dataz(sb, title);
     if (GetSizeFlag() && wgs->term && !IsZoomed(wgs->term_hwnd))
-        put_fmt(sb, " [%dx%d]", wgs->term->rows, wgs->term->cols);
+        put_fmt(sb, KT_TITLE_SIZE, wgs->term->rows, wgs->term->cols);
     if (GetProtectFlag())
-        put_dataz(sb, " (PROTECTED)");
+        put_dataz(sb, KT_TITLE_PROTECTED);
     if (conf_get_bool(wgs->conf, CONF_alwaysontop))
-        put_dataz(sb, " (ONTOP)");
+        put_dataz(sb, KT_TITLE_ONTOP);
     /* KiTTY: this process runs with the restricted ACL (-restrict-acl, "&R"
      * from a parent, or [KiTTY] restrictacl=yes). Unlike its neighbours the
      * state cannot change after startup, so it needs no kitty_refresh_title()
      * plumbing - but it is worth showing, because a restrictacl= line in the
      * wrong kitty.ini leaves the user believing they are hardened in silence. */
     if (restricted_acl())
-        put_dataz(sb, " (RESTRICTED)");
+        put_dataz(sb, KT_TITLE_RESTRICTED);
     /*
      * KiTTY: a clipboard permission is live. Agreeing to be read once is not
      * agreeing to be read invisibly from then on, so while the permission lasts it
@@ -8749,11 +8719,9 @@ static void process_clipdata(WinGuiSeat *wgs, HGLOBAL clipdata, bool unicode)
         int limit = GetPasteSize();
         if (limit > 0 && clipboard_length > (size_t)limit) {
             char msg[160];
-            sprintf(msg, "The clipboard holds %lu characters, more than"
-                    " the configured pastesize limit of %d.\n\n"
-                    "Paste it anyway?",
+            sprintf(msg, KT_TWIN_PASTE_LIMIT_Q,
                     (unsigned long)clipboard_length, limit);
-            if (!kitty_confirm_box(wgs->term_hwnd, "KiTTY paste", msg,
+            if (!kitty_confirm_box(wgs->term_hwnd, KT_CAP_PASTE, msg,
                                    NULL)) {
                 sfree(clipboard_contents);
                 return;

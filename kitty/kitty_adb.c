@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "putty.h"
+#include "kitty_text.h"     /* the connection-error wordings */
 
 #define ADB_MAX_BACKLOG 4096
 
@@ -92,7 +93,7 @@ static void do_fatal(Adb *adb, const char *data, int len)
     char *d = snewn(len + 1, char);
     memcpy(d, data, len);
     d[len] = '\0';
-    seat_connection_fatal(adb->seat, "adb failure message: '%s'", d);
+    seat_connection_fatal(adb->seat, KT_ADB_FAILURE, d);
     sfree(d);
 }
 
@@ -128,7 +129,7 @@ static void adb_receive(Plug *plug, int urgent, const char *data, size_t len)
             handle_fail(adb, data, len);
         } else {
             seat_connection_fatal(adb->seat, "%s",
-                                  "Bad response after initial send");
+                                  KT_ADB_BAD_HELLO);
         }
     } else if (adb->state == STATE_ASKED_FOR_SHELL) {
         if (data[0] == 'O') {              /* OKAY */
@@ -137,7 +138,7 @@ static void adb_receive(Plug *plug, int urgent, const char *data, size_t len)
             handle_fail(adb, data, len);
         } else {
             seat_connection_fatal(adb->seat, "%s",
-                                  "Bad response waiting for shell start");
+                                  KT_ADB_BAD_SHELL);
         }
     } else if (adb->state == STATE_WAITING_FOR_ERROR_MESSAGE) {
         do_fatal(adb, data, len);

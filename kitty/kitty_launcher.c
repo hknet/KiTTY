@@ -250,8 +250,8 @@ HMENU InitLauncherMenu( char * Key ) {
 		/* KiTTY: clickable, like the balloon. This was a greyed label stating
 		 * that an update exists and leaving the user to find the terminal's
 		 * "Check for updates" themselves; it now opens that same updater. */
-		snprintf( upmsg, sizeof(upmsg), "Update available: KiTTY %s%s - install...",
-		          LauncherUpdateLatest, LauncherUpdateBeta ? " (beta)" : "" ) ;
+		snprintf( upmsg, sizeof(upmsg), KT_MENU_UPDATE_AVAILABLE,
+		          LauncherUpdateLatest, LauncherUpdateBeta ? KT_UPD_BETA_SUFFIX : "" ) ;
 		AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+9, upmsg ) ;
 		AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 	}
@@ -260,13 +260,13 @@ HMENU InitLauncherMenu( char * Key ) {
 	DestroyMenu( HideMenu ) ;
 	HideMenu = CreatePopupMenu() ;
 	if( !IsUnique ) {
-		AppendMenu( HideMenu, MF_ENABLED, IDM_LAUNCHER+3, "&Hide all" ) ;
-		AppendMenu( HideMenu, MF_ENABLED, IDM_LAUNCHER+4, "&Unhide all" ) ;
+		AppendMenu( HideMenu, MF_ENABLED, IDM_LAUNCHER+3, KT_MENU_HIDE_ALL ) ;
+		AppendMenu( HideMenu, MF_ENABLED, IDM_LAUNCHER+4, KT_MENU_UNHIDE_ALL ) ;
 		//AppendMenu( HideMenu, MF_ENABLED, IDM_LAUNCHER+5, "&Refresh list" ) ;
-		AppendMenu( HideMenu, MF_ENABLED, IDM_LAUNCHER+6, "&Window unique" ) ;
+		AppendMenu( HideMenu, MF_ENABLED, IDM_LAUNCHER+6, KT_MENU_WINDOW_UNIQUE ) ;
 		CheckMenuItem( HideMenu, IDM_LAUNCHER+6, MF_BYCOMMAND | MF_UNCHECKED) ;
 	} else {
-		AppendMenu( HideMenu, MF_ENABLED, IDM_LAUNCHER+6, "&Window unique" ) ;
+		AppendMenu( HideMenu, MF_ENABLED, IDM_LAUNCHER+6, KT_MENU_WINDOW_UNIQUE ) ;
 		CheckMenuItem( HideMenu, IDM_LAUNCHER+6, MF_BYCOMMAND | MF_CHECKED) ;
 	}
 	//AppendMenu( HideMenu, MF_ENABLED, IDM_GONEXT, "&Next" ) ;
@@ -284,12 +284,12 @@ HMENU InitLauncherMenu( char * Key ) {
 	}
 
 	
-	AppendMenu( menu, MF_POPUP, (UINT_PTR)HideMenu, "&Opened sessions" ) ;
+	AppendMenu( menu, MF_POPUP, (UINT_PTR)HideMenu, KT_MENU_OPENED_SESSIONS ) ;
 	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
-	
-	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+7, "&Refresh" ) ;
-	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+1, "&Configuration" ) ;
-	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+2, "&TTY-ed" ) ;
+
+	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+7, KT_MENU_REFRESH ) ;
+	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+1, KT_MENU_CONFIGURATION ) ;
+	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+2, KT_MENU_TTYED ) ;
 	/* KiTTY: workplace proxy mode. While it is on, ONE item that says which
 	 * proxy everything is going through and switches it off; while it is off, a
 	 * submenu of the named proxies to switch it on with, the remembered one
@@ -304,11 +304,11 @@ HMENU InitLauncherMenu( char * Key ) {
 			kitty_workplace_left_text( left, sizeof(left) ) ;
 			if( left[0] )
 				snprintf( item, sizeof(item),
-					"&Workplace proxy ON: \"%.200s\" for another %s - switch off now",
+					KT_MENU_WORKPLACE_ON_LEFT,
 					LauncherWorkplaceProxy, left ) ;
 			else
 				snprintf( item, sizeof(item),
-					"&Workplace proxy ON: every connection uses \"%.200s\" - switch off",
+					KT_MENU_WORKPLACE_ON,
 					LauncherWorkplaceProxy ) ;
 			AppendMenu( menu, MF_ENABLED, IDM_WORKPLACE, item ) ;
 		} else {
@@ -324,7 +324,7 @@ HMENU InitLauncherMenu( char * Key ) {
 				 * with this proxy". */
 				char item[320] ;
 				if( have_remembered && !strcmp( remembered, proxies[i].name ) )
-					snprintf( item, sizeof(item), "%.250s (last used)", proxies[i].name ) ;
+					snprintf( item, sizeof(item), KT_MENU_WORKPLACE_LAST_USED, proxies[i].name ) ;
 				else
 					snprintf( item, sizeof(item), "%.250s", proxies[i].name ) ;
 				AppendMenu( wpmenu, MF_ENABLED, IDM_WORKPLACE+1+(i-2), item ) ;
@@ -332,12 +332,12 @@ HMENU InitLauncherMenu( char * Key ) {
 			}
 			if( n > 0 ) {
 				AppendMenu( menu, MF_POPUP, (UINT_PTR)wpmenu,
-					"&Workplace proxy mode (off) - use one proxy for everything" ) ;
+					KT_MENU_WORKPLACE_OFF ) ;
 			} else {
 				/* No named proxies: say why rather than offer an empty submenu. */
 				DestroyMenu( wpmenu ) ;
 				AppendMenu( menu, MF_GRAYED, 0,
-					"Workplace proxy mode (needs a named proxy)" ) ;
+					KT_MENU_WORKPLACE_NEEDS_PROXY ) ;
 			}
 		}
 		AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
@@ -352,10 +352,10 @@ HMENU InitLauncherMenu( char * Key ) {
 	           ( kitty_startup_shortcut_points_to("KiTTY Launcher", 0, mx)
 	             || kitty_startup_shortcut_points_to("KiTTY Launcher", 1, mx) ) ;
 	  AppendMenu( menu, MF_ENABLED | (on ? MF_CHECKED : MF_UNCHECKED),
-	              IDM_LAUNCHER+8, "Start &at login" ) ; }
+	              IDM_LAUNCHER+8, KT_MENU_START_AT_LOGIN ) ; }
 	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
-	AppendMenu( menu, MF_ENABLED, IDM_ABOUT, "&About" ) ;
-	AppendMenu( menu, MF_ENABLED, IDM_QUIT, "E&xit" ) ;
+	AppendMenu( menu, MF_ENABLED, IDM_ABOUT, KT_MENU_ABOUT ) ;
+	AppendMenu( menu, MF_ENABLED, IDM_QUIT, KT_MENU_EXIT ) ;
 
 	return menu ;
 }
@@ -422,7 +422,7 @@ void InitLauncherDir( const char * directory ) {
 	}
 	if( !MakeDir( buffer ) ) { 
 		//MessageBox(NULL,buffer,"Error",MB_OK|MB_ICONERROR); 
-		MessageBox(NULL,"Unable to create the menu launcher directory","Error",MB_OK|MB_ICONERROR); 
+		MessageBox(NULL,KT_MSG_LAUNCHER_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR); 
 	}
 	if( (dir=opendir(fullpath)) != NULL ) {
 		while( (de=readdir(dir)) != NULL ) 
@@ -502,7 +502,7 @@ void InitLauncherRegistry( void ) {
 		FILE * fp ;
 		snprintf( fullpath, sizeof(fullpath), "%s\\Launcher", ConfigDirectory ) ;
 		DelDir( fullpath ) ;
-		if(!MakeDir( fullpath ) ) { MessageBox(NULL,"Unable to create the menu launcher directory","Error",MB_OK|MB_ICONERROR); }
+		if(!MakeDir( fullpath ) ) { MessageBox(NULL,KT_MSG_LAUNCHER_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR); }
 		snprintf( fullpath, sizeof(fullpath), "%s\\Sessions", ConfigDirectory ) ;
 		if( (dir=opendir(fullpath)) != NULL ) {
 			while( (de=readdir(dir)) != NULL ) 
@@ -531,7 +531,7 @@ void InitLauncherRegistry( void ) {
 		char fullpath[MAX_VALUE_NAME] ;
 		snprintf( fullpath, sizeof(fullpath), "%s\\Launcher", ConfigDirectory ) ;
 		DelDir( fullpath ) ;
-		if( !MakeDir( fullpath ) ) { MessageBox(NULL,"Unable to create the menu launcher directory","Error",MB_OK|MB_ICONERROR); }
+		if( !MakeDir( fullpath ) ) { MessageBox(NULL,KT_MSG_LAUNCHER_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR); }
 		InitLauncherDir( "" ) ;
 	}
 }
@@ -703,16 +703,16 @@ static void ShowLauncherUpdateBalloon( void ) {
 		strncpy( LauncherUpdateLatest, ulatest, sizeof(LauncherUpdateLatest)-1 ) ;
 		LauncherUpdateLatest[sizeof(LauncherUpdateLatest)-1] = '\0' ;
 		snprintf( umsg, sizeof(umsg),
-			"KiTTY %s is available%s.\nClick here to install it.",
-			ulatest, ubeta ? " (beta)" : "" ) ;
+			KT_LAUNCHER_UPDATE_BALLOON,
+			ulatest, ubeta ? KT_UPD_BETA_SUFFIX : "" ) ;
 		/* Tooltip and menu entry are refreshed on every call; the BALLOON is
 		 * raised once. This function runs twice per launcher run - once on the
 		 * cached answer, once when the async check returns - and used to pop a
 		 * second balloon for the same news. */
 		if( LauncherUpdateBalloonShown ) {
 			snprintf( TrayIcone.szTip, sizeof(TrayIcone.szTip),
-			          "KiTTY Launcher - update %s%s available",
-			          ulatest, ubeta ? " beta" : "" ) ;
+			          KT_LAUNCHER_TIP_UPDATE,
+			          ulatest, ubeta ? KT_UPD_BETA_WORD : "" ) ;
 			TrayIcone.uFlags = NIF_TIP ;
 			Shell_NotifyIcon( NIM_MODIFY, &TrayIcone ) ;
 			TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE ;
@@ -726,9 +726,9 @@ static void ShowLauncherUpdateBalloon( void ) {
 		TrayIcone.dwInfoFlags = NIIF_INFO ;
 		TrayIcone.uTimeout = 10000 ;
 		snprintf( TrayIcone.szTip, sizeof(TrayIcone.szTip),
-		          "KiTTY Launcher - update %s%s available",
-		          ulatest, ubeta ? " beta" : "" ) ;
-		strncpy( TrayIcone.szInfoTitle, "KiTTY update available", sizeof(TrayIcone.szInfoTitle) ) ;
+		          KT_LAUNCHER_TIP_UPDATE,
+		          ulatest, ubeta ? KT_UPD_BETA_WORD : "" ) ;
+		strncpy( TrayIcone.szInfoTitle, KT_CAP_UPDATE_AVAILABLE, sizeof(TrayIcone.szInfoTitle) ) ;
 		TrayIcone.szInfoTitle[sizeof(TrayIcone.szInfoTitle)-1] = '\0' ;
 		strncpy( TrayIcone.szInfo, umsg, sizeof(TrayIcone.szInfo) ) ;
 		TrayIcone.szInfo[sizeof(TrayIcone.szInfo)-1] = '\0' ;
@@ -777,7 +777,7 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 				if( LauncherHotkeys[j].modifiers == (mods|MOD_NOREPEAT) && LauncherHotkeys[j].vk == vk ) { dup = j ; break ; }
 			if( dup >= 0 ) {
 				char line[240] ;
-				snprintf( line, sizeof(line), "%s%s: \"%s\" has it, \"%s\" does not.",
+				snprintf( line, sizeof(line), KT_LAUNCHER_HOTKEY_DUP,
 				          report[0] ? "\n" : "",
 				          conf_get_str( c, CONF_launcher_global_hotkey ),
 				          LauncherHotkeys[dup].session, SpecialMenu[i] ) ;
@@ -801,7 +801,7 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 					LauncherHotkeyCount++ ;
 				else {
 					char line[240] ;
-					snprintf( line, sizeof(line), "%s%s (\"%s\"): held by another application.",
+					snprintf( line, sizeof(line), KT_LAUNCHER_HOTKEY_HELD,
 					          report[0] ? "\n" : "",
 					          conf_get_str( c, CONF_launcher_global_hotkey ),
 					          SpecialMenu[i] ) ;
@@ -813,7 +813,7 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 	}
 	if( overflow ) {
 		char line[120] ;
-		snprintf( line, sizeof(line), "%s%d more session hotkey%s beyond the %d-slot limit.",
+		snprintf( line, sizeof(line), KT_LAUNCHER_HOTKEY_OVERFLOW,
 		          report[0] ? "\n" : "", overflow, overflow==1 ? "" : "s", LAUNCHER_HOTKEY_MAX ) ;
 		strncat( report, line, sizeof(report)-strlen(report)-1 ) ;
 	}
@@ -849,18 +849,18 @@ static void LauncherRefreshSessionsAndHotkeys( HWND hwnd ) {
  * NIM_MODIFY on an unregistered icon simply fails. */
 static void LauncherSetTrayTip( void ) {
 #ifdef MOD_PORTABLE
-	strcpy( TrayIcone.szTip, "KiTTY Launcher\r\n(portable)" ) ;
+	strcpy( TrayIcone.szTip, KT_LAUNCHER_TIP_PORTABLE ) ;
 #else
-	strcpy( TrayIcone.szTip, "KiTTY Launcher" ) ;
+	strcpy( TrayIcone.szTip, KT_CAP_LAUNCHER ) ;
 #endif
 	/* KiTTY: say so when this launcher - and so every session it starts, via
 	 * the "&R" prefix - runs with the restricted ACL. */
-	if( restricted_acl() ) strcat( TrayIcone.szTip, "\r\n(RESTRICTED)" ) ;
+	if( restricted_acl() ) strcat( TrayIcone.szTip, KT_LAUNCHER_TIP_RESTRICTED ) ;
 	if( kitty_workplace_holding() && LauncherWorkplaceProxy[0] ) {
 		char line[220], left[64] ;
 		kitty_workplace_left_text( left, sizeof(left) ) ;
-		snprintf( line, sizeof(line), "\r\nWorkplace proxy: %.100s%s%s",
-			LauncherWorkplaceProxy, left[0] ? "\r\nSwitches off in " : "", left ) ;
+		snprintf( line, sizeof(line), KT_LAUNCHER_TIP_WORKPLACE,
+			LauncherWorkplaceProxy, left[0] ? KT_LAUNCHER_TIP_SWITCHES_OFF : "", left ) ;
 		if( strlen(TrayIcone.szTip) + strlen(line) < sizeof(TrayIcone.szTip) )
 			strcat( TrayIcone.szTip, line ) ;
 	}
@@ -923,25 +923,18 @@ static void LauncherWorkplaceBalloon( int on, int by_timeout ) {
 		kitty_workplace_left_text( left, sizeof(left) ) ;
 		if( left[0] )
 			snprintf( msg, sizeof(msg),
-				"Every connection now uses the proxy \"%.200s\", whatever each "
-				"session says. Switches off in %s, or when this launcher stops.",
+				KT_LAUNCHER_WP_ON_LEFT,
 				LauncherWorkplaceProxy, left ) ;
 		else
 			snprintf( msg, sizeof(msg),
-				"Every connection now uses the proxy \"%.200s\", whatever each "
-				"session says. It stays on until you switch it off or this "
-				"launcher stops.", LauncherWorkplaceProxy ) ;
+				KT_LAUNCHER_WP_ON, LauncherWorkplaceProxy ) ;
 	}
 	else if( by_timeout )
 		snprintf( msg, sizeof(msg),
-			"The time you set for workplace proxy mode has run out, so it is off. "
-			"New connections use each session's own proxy settings again. Click "
-			"here to switch it on again with \"%.200s\".", LauncherRearmProxy ) ;
+			KT_LAUNCHER_WP_TIMEOUT, LauncherRearmProxy ) ;
 	else
 		snprintf( msg, sizeof(msg),
-			"Workplace proxy mode is off. New connections use each session's own "
-			"proxy settings again; connections already open keep the proxy they "
-			"connected through." ) ;
+			KT_LAUNCHER_WP_OFF ) ;
 	/* Our own window, not a tray balloon: it carries the mode's colour and a
 	 * duration we choose, and it is not silently swallowed by focus assist the
 	 * way balloons are. The tray tooltip and menu still say the same thing, so
@@ -952,9 +945,9 @@ static void LauncherWorkplaceBalloon( int on, int by_timeout ) {
 	 * user switched it off themselves they have said what they want, and a
 	 * one-click undo in front of them invites the opposite; a timeout is the
 	 * case where the mode ended without them deciding anything. */
-	kitty_notice_show( on ? "Workplace proxy mode is ON"
-	                      : (by_timeout ? "Workplace proxy mode has timed out"
-	                                    : "Workplace proxy mode is OFF"),
+	kitty_notice_show( on ? KT_CAP_WORKPLACE_ON
+	                      : (by_timeout ? KT_CAP_WORKPLACE_TIMEOUT
+	                                    : KT_CAP_WORKPLACE_OFF),
 	                   msg, WORKPLACE_GREEN, LauncherNoticeSeconds(),
 	                   (!on && by_timeout) ? MainHwnd : NULL,
 	                   (!on && by_timeout) ? KLWM_WORKPLACEREARM : 0 ) ;
@@ -1150,7 +1143,7 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 				TrayIcone.uFlags = NIF_INFO | NIF_TIP ;
 				TrayIcone.dwInfoFlags = NIIF_WARNING ;
 				TrayIcone.uTimeout = 10000 ;
-				strncpy( TrayIcone.szInfoTitle, "KiTTY session hotkey conflict", sizeof(TrayIcone.szInfoTitle) ) ;
+				strncpy( TrayIcone.szInfoTitle, KT_CAP_HOTKEY_CONFLICT, sizeof(TrayIcone.szInfoTitle) ) ;
 				TrayIcone.szInfoTitle[sizeof(TrayIcone.szInfoTitle)-1] = '\0' ;
 				strncpy( TrayIcone.szInfo, LauncherHotkeyReport, sizeof(TrayIcone.szInfo) ) ;
 				TrayIcone.szInfo[sizeof(TrayIcone.szInfo)-1] = '\0' ;
@@ -1301,14 +1294,11 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 					 * as Unicode regardless of the system ANSI codepage, so the
 					 * earlier mojibake (Â© / "a\200\224") cannot recur. */
 					const char *ab =
-						"KiTTY Launcher " BUILD_VERSION "\r\n"
+						KT_LAUNCHER_ABOUT_PREFIX BUILD_VERSION "\r\n"
 #ifdef KITTY_TEST_BUILD_LABEL
-						"TEST BUILD: " KITTY_TEST_BUILD_LABEL "\r\n"
+						KT_LAUNCHER_ABOUT_TESTBUILD KITTY_TEST_BUILD_LABEL "\r\n"
 #endif
-						"\r\nQuick-launch for your saved KiTTY sessions, from the system tray.\r\n"
-						"Part of the KiTTY suite \xe2\x80\x94 a fork of PuTTY 0.84.\r\n\r\n"
-						"\xc2\xa9 KAPPER NETWORK-COMMUNICATIONS GmbH\r\n"
-						"Based on KiTTY by Cyril Dupont and PuTTY by Simon Tatham." ;
+						KT_LAUNCHER_ABOUT_BODY ;
 					WCHAR wab[512] ;
 					MultiByteToWideChar( CP_UTF8, 0, ab, -1, wab, 512 ) ;
 					/* Modal, no sound (plain MB_OK, no MB_ICON* asterisk). MessageBoxW
@@ -1367,23 +1357,12 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 							kitty_startup_shortcut_set("KiTTY Launcher", NULL, NULL, NULL, NULL, 0) ;
 						} else if( kitty_startup_shortcut_points_to("KiTTY Launcher", 1, exe) ) {
 							MessageBox( hwnd,
-							    "This KiTTY already starts at login for all users "
-							    "(an all-users Startup shortcut, usually placed by "
-							    "the installer). To stop it, disable it in Settings "
-									    "> Apps > Startup (that leaves the shortcut in place "
-									    "but prevents it running); deleting the shortcut "
-									    "itself needs administrator access to the all-users "
-									    "Startup folder.",
-							    "KiTTY Launcher", MB_ICONINFORMATION | MB_OK ) ;
+							    KT_LAUNCHER_STARTUP_ALLUSERS,
+							    KT_CAP_LAUNCHER, MB_ICONINFORMATION | MB_OK ) ;
 						} else if( kitty_startup_shortcut_exists("KiTTY Launcher") ) {
 							MessageBox( hwnd,
-							    "A \"KiTTY Launcher\" startup shortcut for a different "
-							    "KiTTY already exists in your Startup folder, so none "
-							    "was added.\n\nDelete it from your Startup folder "
-									    "(open shell:startup) first if you want THIS KiTTY to "
-									    "start at login - disabling it in Settings does not "
-									    "remove the file, and its name would still clash.",
-							    "KiTTY Launcher", MB_ICONINFORMATION | MB_OK ) ;
+							    KT_LAUNCHER_STARTUP_OTHER_KITTY,
+							    KT_CAP_LAUNCHER, MB_ICONINFORMATION | MB_OK ) ;
 						} else {
 							snprintf( dir, sizeof(dir), "%s", exe ) ;
 							slash = strrchr( dir, '\\' ) ; if( slash ) *slash = '\0' ;

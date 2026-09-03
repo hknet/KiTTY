@@ -12,6 +12,7 @@
 
 #include "putty.h"
 #include "kitty_hello_ui.h"
+#include "kitty_text.h"     /* the printout window's wordings */
 
 #define HUI_ID_NOTE 100
 #define HUI_ID_TEXT 101
@@ -117,23 +118,13 @@ static INT_PTR CALLBACK hui_printout_proc(HWND hwnd, UINT msg,
         char *note, *title;
         s = (struct hui_show *)lParam;
         SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)s);
-        title = dupprintf("%s - the key's %s", s->appname,
-                          s->sidebound ? "recovery code" : "printed secret");
+        title = dupprintf(KT_HELLO_UI_TITLE_FMT, s->appname,
+                          s->sidebound ? KT_HELLO_UI_RECOVERY_CODE : KT_HELLO_UI_PRINTED_SECRET);
         SetWindowTextA(hwnd, title);
         sfree(title);
         note = dupprintf(s->sidebound ?
-            "This is the key's RECOVERY CODE. It is shown ONCE - %s does "
-            "not keep it.\r\n\r\n"
-            "It opens the key only TOGETHER with the .hello file, in KiTTY "
-            "tools. Keep the printout AND back up the .hello file: without "
-            "the file the code is worthless, and the key file's own "
-            "passphrase is written nowhere." :
-            "This is the protected key's passphrase. It is shown ONCE - %s "
-            "does not keep it.\r\n\r\n"
-            "Print it or store it in a password manager. It opens the key "
-            "in any PuTTY-compatible tool, on any machine, with or without "
-            "Windows Hello, and it is the last resort if Windows Hello and "
-            "the recovery doors are all lost.", s->appname);
+            KT_HELLO_UI_NOTE_CODE_FMT :
+            KT_HELLO_UI_NOTE_SECRET_FMT, s->appname);
         SetDlgItemTextA(hwnd, HUI_ID_NOTE, note);
         sfree(note);
         SetDlgItemTextA(hwnd, HUI_ID_TEXT, s->text);
@@ -166,9 +157,8 @@ static INT_PTR CALLBACK hui_printout_proc(HWND hwnd, UINT msg,
             return 0;
           case IDCANCEL: {
             /* X and Esc are NOT a quiet "stored it". */
-            char *q = dupprintf("Have you stored the printout? It will "
-                                "NEVER be shown again.");
-            char *cap = dupprintf("%s - printout not stored?", s->appname);
+            char *q = dupprintf(KT_HELLO_UI_NOT_STORED_Q);
+            char *cap = dupprintf(KT_HELLO_UI_NOT_STORED_CAP_FMT, s->appname);
             int r = MessageBoxA(hwnd, q, cap,
                                 MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
             sfree(q);

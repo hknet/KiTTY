@@ -10,6 +10,7 @@ extern int  GetDirectoryBrowseFlag(void);
 extern void load_open_settings_forced(char *filename, Conf *conf); /* kitty_settings_load.c */
 extern char *kitty_cli_loginscript; /* kitty_bridge.c: -loginscript, consumed post-create */
 #include "../kitty/kitty_storemove.h"
+#include "../kitty/kitty_text.h"   /* shared captions + command-line wordings */
 /* -exportall <dir> / -importdir <dir>: whole-store move; stashed here and run
  * just before the config box (storage backend is initialised by then), then
  * exit. kitty_export_all_to_dir/kitty_import_dir are the no-UI cores. */
@@ -184,7 +185,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * (launcher-mpw-sharing). Consume it BEFORE any later -load so the
                  * session's stored password decrypts without a prompt. */
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 { extern void kitty_mpw_consume_handle_str(const char *);
                   kitty_mpw_consume_handle_str(
                       cmdline_arg_to_str(arglist->args[arglistpos++])); }
@@ -202,13 +203,13 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * line, this is an ordinary switch, so -restrict-acl and
                  * -mpwkey can travel with it. */
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 {
                     const char *v = cmdline_arg_to_str(arglist->args[arglistpos++]);
                     HANDLE filemap;
                     unsigned cpsize;
                     if (sscanf(v, "%p:%u", &filemap, &cpsize) != 2) {
-                        cmdline_error("bad argument \"%s\" to option \"%s\"", v, p);
+                        cmdline_error(KT_CLI_BAD_ARG, v, p);
                     } else {
                         void *cp = MapViewOfFile(filemap, FILE_MAP_READ, 0, 0,
                                                  cpsize);
@@ -216,8 +217,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                             BinarySource src[1];
                             BinarySource_BARE_INIT(src, cp, cpsize);
                             if (!conf_deserialise(conf, src))
-                                modalfatalbox("Serialised configuration data "
-                                              "was invalid");
+                                modalfatalbox(KT_CLI_CONFMAP_INVALID);
                             UnmapViewOfFile(cp);
                         }
                         CloseHandle(filemap);
@@ -247,7 +247,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                   SetCtrlTabFlag(0); }
             } else if (!strcmp(p, "-xpos")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 int x = atoi(cmdline_arg_to_str(arglist->args[arglistpos++]));
                 if (x >= 0) {
                     conf_set_int(conf, CONF_xpos, x);
@@ -257,7 +257,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 }
             } else if (!strcmp(p, "-ypos")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 int y = atoi(cmdline_arg_to_str(arglist->args[arglistpos++]));
                 if (y >= 0) {
                     conf_set_int(conf, CONF_ypos, y);
@@ -272,7 +272,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * Remote4Support forks. The reparent itself happens in window.c
                  * right after the window is created. */
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 {
                     extern HWND kitty_hwnd_parent;
                     const char *hv = cmdline_arg_to_str(arglist->args[arglistpos++]);
@@ -281,35 +281,35 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 }
             } else if (!strcmp(p, "-title")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 conf_set_str(conf, CONF_wintitle,
                              cmdline_arg_to_str(arglist->args[arglistpos++]));
             } else if (!strcmp(p, "-folder")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 const char *fld = cmdline_arg_to_str(arglist->args[arglistpos++]);
                 conf_set_str(conf, CONF_folder, fld);
                 if (GetDirectoryBrowseFlag()) SetSessPath(fld);
             } else if (!strcmp(p, "-cmd")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 conf_set_str(conf, CONF_autocommand,
                              cmdline_arg_to_str(arglist->args[arglistpos++]));
             } else if (!strcmp(p, "-codepage")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 conf_set_str(conf, CONF_line_codepage,
                              cmdline_arg_to_str(arglist->args[arglistpos++]));
             } else if (!strcmp(p, "-rcmd")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 /* CONF_remote_cmd is STR_AMBI; conf_set_str is safe (conf.c
                  * asserts STR||STR_AMBI, stores utf8=false). */
                 conf_set_str(conf, CONF_remote_cmd,
                              cmdline_arg_to_str(arglist->args[arglistpos++]));
             } else if (!strcmp(p, "-log")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 Filename *fn = cmdline_arg_to_filename(arglist->args[arglistpos++]);
                 conf_set_filename(conf, CONF_logfilename, fn);
                 filename_free(fn);                    /* conf_set_filename copies */
@@ -318,7 +318,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 conf_set_bool(conf, CONF_logflush, true);
             } else if (!strcmp(p, "-kload") || !strcmp(p, "-loadfile")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 /* Load a KiTTY .ktx session file into conf (read-side of the
                  * forced settings; load_open_settings_forced takes char*). */
                 char *kf = dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
@@ -329,13 +329,13 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 sfree(kf);
             } else if (!strcmp(p, "-exportall")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires a directory argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_DIR, p);
                 sfree(kitty_cli_exportdir);
                 kitty_cli_exportdir =
                     dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
             } else if (!strcmp(p, "-importdir")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires a directory argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_DIR, p);
                 sfree(kitty_cli_importdir);
                 kitty_cli_importdir =
                     dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
@@ -343,29 +343,29 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 kitty_cli_backupnow = 1;
             } else if (!strcmp(p, "-portablecopy")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires a directory argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_DIR, p);
                 sfree(kitty_cli_portablecopy);
                 kitty_cli_portablecopy =
                     dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
             } else if (!strcmp(p, "-takefolder")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires a directory argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_DIR, p);
                 sfree(kitty_cli_takefolder);
                 kitty_cli_takefolder =
                     dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
             } else if (!strcmp(p, "-bundlepwfile")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires a file argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_FILE, p);
                 {
                     const char *path = cmdline_arg_to_str(arglist->args[arglistpos++]);
                     FILE *fp = fopen(path, "r");
                     if (!fp)
-                        cmdline_error("unable to open bundle-password file '%s'", path);
+                        cmdline_error(KT_CLI_BUNDLEPW_OPEN_FAILED, path);
                     else {
                         char *pw = chomp(fgetline(fp));
                         fclose(fp);
                         if (!pw || !pw[0])
-                            cmdline_error("unable to read a password from file '%s'", path);
+                            cmdline_error(KT_CLI_BUNDLEPW_READ_FAILED, path);
                         else {
                             sfree(kitty_cli_bundlepw);
                             kitty_cli_bundlepw = pw;
@@ -378,7 +378,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 kitty_cli_bundle_thispc = true;
             } else if (!strcmp(p, "-loginscript")) {
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 /* Defer: ReadInitScript writes the GLOBAL conf, which is NULL
                  * until kitty_set_active_seat. Stash the path; window.c runs it
                  * from a post-window-create hook. */
@@ -390,7 +390,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * overrides the kitty.ini KiClassName default) but before the
                  * window is created, so it takes effect on the class. */
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 const char *cn = cmdline_arg_to_str(arglist->args[arglistpos++]);
                 if (cn && *cn) {
                     strncpy(KiTTYClassName, cn, 127);
@@ -400,7 +400,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
             } else if (!strcmp(p, "-mungestr")) {
                 /* Utility: print the munged form of a string and quit. */
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 const char *in = cmdline_arg_to_str(arglist->args[arglistpos++]);
                 char *b = snewn(4 * strlen(in) + 1, char);
                 mungestr(in, b);
@@ -415,13 +415,13 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * read when the broadcast is sent. */
                 extern void kitty_broadcast_set_send_key(const char *k);
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 kitty_broadcast_set_send_key(
                     cmdline_arg_to_str(arglist->args[arglistpos++]));
             } else if (!strcmp(p, "-sendcmd")) {
                 /* Send a command to all running KiTTY windows, then quit. */
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 char *cmd = dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
                 if (strlen(cmd) > 0)
                     SendCommandAllWindows(NULL, cmd);
@@ -430,13 +430,13 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
             } else if (!strcmp(p, "-edit")) {
                 /* Open the KiTTY session-file editor on a file, then quit. */
                 if (!arglist->args[arglistpos])
-                    cmdline_error("option \"%s\" requires an argument", p);
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 char *ef = dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
                 if (existfile(ef))
                     RunPuttyEd(NULL, ef);
                 else
-                    MessageBox(NULL, "Unable to find requested file",
-                               "Error", MB_OK | MB_ICONERROR);
+                    MessageBox(NULL, KT_CLI_EDIT_FILE_NOT_FOUND,
+                               KT_CAP_ERROR, MB_OK | MB_ICONERROR);
                 sfree(ef);
                 cleanup_exit(0);
             } else if (!strcmp(p, "-fileassoc")) {
@@ -469,13 +469,8 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * dozen switches and no -help is a program whose switches
                  * only their author knows. */
                 char *help = dupprintf(
-                    "%s %s\r\n"
-                    "\r\nUsage: kitty.exe [options] [user@]host[:port]"
-                    "\r\n       kitty.exe [options] -load <saved session>"
-                    "\r\n       kitty.exe ssh://[user@]host[:port]"
-                    "\r\n       kitty.exe kitty://<saved session>"
-                    "\r\n%s", appname, BUILD_VERSION, GetHelpMessage());
-                KittyCliReport("KiTTY command line", help, 0);
+                    KT_CLI_HELP_FMT, appname, BUILD_VERSION, GetHelpMessage());
+                KittyCliReport(KT_CAP_CLI, help, 0);
                 sfree(help);
                 cleanup_exit(0);
             } else if (!strcmp(p, "-sshhandler")) {
@@ -622,13 +617,8 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
          * store as a side effect. Say what to pass instead of doing that. */
         if (!kitty_cli_bundlepw && !kitty_cli_bundle_thispc) {
             MessageBoxA(NULL,
-                "Say how the exported sessions should be protected:\n\n"
-                "  -bundlepwfile <file>   password (first line of the file);\n"
-                "                         the bundle then imports on any PC\n"
-                "  -bundlethispc          no password; the bundle imports only\n"
-                "                         with this Windows account on this PC\n\n"
-                "Nothing was exported.",
-                "KiTTY session export", MB_OK | MB_ICONWARNING);
+                KT_CLI_EXPORT_NEEDS_PROTECTION,
+                KT_CAP_SESSION_EXPORT, MB_OK | MB_ICONWARNING);
             cleanup_exit(1);
         }
         if (kitty_cli_bundle_thispc) kitty_set_bundle_dpapi_only(1);
@@ -636,13 +626,12 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         n = kitty_export_all_to_dir(kitty_cli_exportdir, &fail);
         wrapfailed = kitty_bundle_wrap_failed();
         kitty_clear_bundle_context();
-        snprintf(msg, sizeof(msg), "Exported %d session(s), %d failed, to:\n%s%s",
+        snprintf(msg, sizeof(msg), KT_CLI_EXPORT_DONE,
                  n, fail, kitty_cli_exportdir,
                  (kitty_cli_bundle_thispc || wrapfailed)
-                   ? "\n\nThese sessions can only be imported with this Windows "
-                     "account on this PC."
+                   ? KT_CLI_EXPORT_THISPC_NOTE
                    : "");
-        MessageBoxA(NULL, msg, "KiTTY session export",
+        MessageBoxA(NULL, msg, KT_CAP_SESSION_EXPORT,
                     MB_OK | ((fail || wrapfailed) ? MB_ICONWARNING : MB_ICONINFORMATION));
         cleanup_exit(fail ? 1 : 0);
     }
@@ -654,11 +643,8 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
          * exists for scripts. Refuse with the switch name instead. */
         if (kitty_bundle_needs_password(kitty_cli_importdir) && !kitty_cli_bundlepw) {
             MessageBoxA(NULL,
-                "These exported sessions are password-protected. Supply the "
-                "import password with:\n\n"
-                "  -bundlepwfile <file>   (the password on the first line)\n\n"
-                "Nothing was imported.",
-                "KiTTY session import", MB_OK | MB_ICONWARNING);
+                KT_CLI_IMPORT_NEEDS_PASSWORD,
+                KT_CAP_SESSION_IMPORT, MB_OK | MB_ICONWARNING);
             cleanup_exit(1);
         }
         if (kitty_cli_bundlepw) {
@@ -667,9 +653,9 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         }
         n = kitty_import_dir(kitty_cli_importdir, &fail, &prox, NULL, 1);
         kitty_clear_bundle_context();
-        snprintf(msg, sizeof(msg), "Imported %d session(s), %d prox(ies), %d failed, from:\n%s",
+        snprintf(msg, sizeof(msg), KT_CLI_IMPORT_DONE,
                  n, prox, fail, kitty_cli_importdir);
-        MessageBoxA(NULL, msg, "KiTTY session import",
+        MessageBoxA(NULL, msg, KT_CAP_SESSION_IMPORT,
                     MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
         cleanup_exit(fail ? 1 : 0);
     }
@@ -682,9 +668,9 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         extern char *GetKittySavFile(void);
         char msg[600];
         SaveRegistryKeyNow();
-        snprintf(msg, sizeof(msg), "Backup written beside:\n%s",
-                 GetKittySavFile() ? GetKittySavFile() : "(no backup target)");
-        MessageBoxA(NULL, msg, "KiTTY backup", MB_OK | MB_ICONINFORMATION);
+        snprintf(msg, sizeof(msg), KT_CLI_BACKUP_DONE,
+                 GetKittySavFile() ? GetKittySavFile() : KT_CLI_BACKUP_NO_TARGET);
+        MessageBoxA(NULL, msg, KT_CAP_BACKUP, MB_OK | MB_ICONINFORMATION);
         cleanup_exit(0);
     }
     if (kitty_cli_portablecopy) {
@@ -692,19 +678,14 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         char msg[2048];
         if (!kitty_cli_bundlepw && !kitty_cli_bundle_thispc) {
             MessageBoxA(NULL,
-                "Say how the copy's passwords should be protected:\n\n"
-                "  -bundlepwfile <file>   its master password (first line of "
-                "the file)\n"
-                "  -bundlethispc          no password; readable by this Windows "
-                "account on this PC only\n\n"
-                "Nothing was copied.",
-                "Make a portable copy", MB_OK | MB_ICONWARNING);
+                KT_CLI_PORTABLECOPY_NEEDS_PROTECTION,
+                KT_CAP_PORTABLE_COPY, MB_OK | MB_ICONWARNING);
             cleanup_exit(1);
         }
         kitty_portable_copy_core(kitty_cli_portablecopy,
                                  kitty_cli_bundle_thispc ? NULL : kitty_cli_bundlepw,
                                  kitty_cli_bundle_thispc, &r, msg, sizeof(msg));
-        MessageBoxA(NULL, msg, "Make a portable copy",
+        MessageBoxA(NULL, msg, KT_CAP_PORTABLE_COPY,
                     MB_OK | (r.fail ? MB_ICONWARNING : MB_ICONINFORMATION));
         cleanup_exit(r.fail ? 1 : 0);
     }
@@ -714,15 +695,13 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         if (kitty_take_folder_needs_password(kitty_cli_takefolder) &&
             !kitty_cli_bundlepw) {
             MessageBoxA(NULL,
-                "This folder store has a master password. Supply it with:\n\n"
-                "  -bundlepwfile <file>   (the password on the first line)\n\n"
-                "Nothing was taken.",
-                "Take a folder store into this registry", MB_OK | MB_ICONWARNING);
+                KT_CLI_TAKEFOLDER_NEEDS_PASSWORD,
+                KT_CAP_TAKE_FOLDER, MB_OK | MB_ICONWARNING);
             cleanup_exit(1);
         }
         kitty_take_folder_core(kitty_cli_takefolder, kitty_cli_bundlepw, 1,
                                &r, msg, sizeof(msg));
-        MessageBoxA(NULL, msg, "Take a folder store into this registry",
+        MessageBoxA(NULL, msg, KT_CAP_TAKE_FOLDER,
                     MB_OK | (r.fail ? MB_ICONWARNING : MB_ICONINFORMATION));
         cleanup_exit(r.fail ? 1 : 0);
     }
