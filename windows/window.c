@@ -6736,12 +6736,15 @@ static void do_text_internal(
         if (backgrounddc && bg == wgs->colours[258] &&
             line_box.right > line_box.left) {
             POINT bgloc;
+            extern int kitty_bg_origin_x, kitty_bg_origin_y;
             bgloc.x = line_box.left;
             bgloc.y = line_box.top;
-            /* backgrounddc holds the image in screen coordinates */
+            /* backgrounddc holds the image in screen coordinates of the
+             * virtual desktop, whose origin need not be (0,0) */
             ClientToScreen(wgs->term_hwnd, &bgloc);
-            kp_blit_background(wgs->painter, &line_box,
-                               backgrounddc, bgloc.x, bgloc.y);
+            kp_blit_background(wgs->painter, &line_box, backgrounddc,
+                               bgloc.x - kitty_bg_origin_x,
+                               bgloc.y - kitty_bg_origin_y);
             kp_opaque(wgs->painter, false);
             opaque = false;            /* don't ETO_OPAQUE over the image */
         }

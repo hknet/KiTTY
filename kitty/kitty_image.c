@@ -52,6 +52,10 @@ COLORREF colorinpixel;
 HDC colorinpixeldc = NULL ;
 HBITMAP colorinpixelbm = NULL;
 HDC backgrounddc = NULL ;
+/* Where the image DC's (0,0) sits on screen: the virtual desktop's origin
+ * (SM_XVIRTUALSCREEN / SM_YVIRTUALSCREEN, negative with a monitor left of or
+ * above the primary). A consumer with screen coordinates subtracts it. */
+int kitty_bg_origin_x = 0, kitty_bg_origin_y = 0 ;
 /* Bumped whenever the image DC is rebuilt or redrawn, so a painter that
  * keeps its own copy of it (windows/paint-d2d.c) knows to refresh. */
 int kitty_bg_generation = 0 ;
@@ -923,13 +927,23 @@ BOOL load_bg_bmp()
 
     hdcPrimary = GetDC(MainHwnd);
     kitty_bg_generation++ ;
-    deskWidth = GetDeviceCaps(hdcPrimary, HORZRES);
-    deskHeight = GetDeviceCaps(hdcPrimary, VERTRES);
+    /* The whole virtual desktop, every monitor: a window on a second screen
+     * or straddling the primary's edge is otherwise beyond the image. */
+    deskWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    deskHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    kitty_bg_origin_x = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    kitty_bg_origin_y = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    if( deskWidth <= 0 || deskHeight <= 0 ) {
+        deskWidth = GetDeviceCaps(hdcPrimary, HORZRES);
+        deskHeight = GetDeviceCaps(hdcPrimary, VERTRES);
+        kitty_bg_origin_x = kitty_bg_origin_y = 0 ;
+    }
 
 
 	// Securite pour ne pas depacer les limites de l'ecran principal
 	if( (bBgRelToTerm == 0) 
-		&&((clientRect.right>deskWidth)||(clientRect.bottom>deskHeight)) ) {
+		&&((clientRect.right>kitty_bg_origin_x+deskWidth)||(clientRect.bottom>kitty_bg_origin_y+deskHeight)
+		   ||(clientRect.left<kitty_bg_origin_x)||(clientRect.top<kitty_bg_origin_y)) ) {
 		//DeleteObject(rawImage); rawImage = NULL ;
 		bBgRelToTerm = 1 ;
 		}
