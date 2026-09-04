@@ -876,7 +876,7 @@ Every setting of the program itself - not of a session - has a panel now,
 under **Application > KiTTY++ Settings**: where settings are kept and how many
 backups are held (*Storage & Backup*), the colour theme, title bar, icons and
 font fallback (*Appearance*), keys and mouse with a *Shortcuts* leaf, typing
-automation and broadcast (*Automation*), *Features & Printing*, the
+automation and broadcast (*Automation*), *Terminal & Printing* (the renderer, the frame pacing, the feature switches, printing), the
 auto-reconnect master switch and in-line confirmations (*Reconnect & Prompts*),
 file-transfer helpers (*Transfers & Tools* with *WinSCP* and *ZModem*), the
 *Launcher*, and *System*. Each leaf says where its values are kept, and every

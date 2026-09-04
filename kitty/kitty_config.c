@@ -9706,6 +9706,54 @@ static int  kset_get_debug(void) { return debug_flag; }
 
 static const struct kset_choice kset_prompt_choices[] = {
     { KT_KSET_CH_POPUP, "yes", 1 }, { KT_KSET_CH_TERMINAL, "no", 0 } };
+
+/* Terminal & Printing: the renderer and the frame pacing ([KiTTY] renderer /
+ * framepace, read when a window is created / at startup). */
+static const struct kset_choice kset_renderer_choices[] = {
+    { KT_KSET_WD_RENDERER_GDI, "gdi", 0 }, { KT_KSET_WD_RENDERER_D2D, "d2d", 1 } };
+static const struct kset_choice kset_framepace_choices[] = {
+    { KT_KSET_WD_FP_AUTO, "auto", -1 }, { KT_KSET_WD_FP_30, "33", 33 },
+    { KT_KSET_WD_FP_20, "50", 50 },     { KT_KSET_WD_FP_FIXED, "0", 0 } };
+
+/* Direct2D needs Windows 8.1 (6.3); read from ntdll, which tells the truth
+ * to a process whose manifest claims less. */
+static bool kset_d2d_supported(void)
+{
+    typedef LONG (WINAPI *fn_RtlGetVersion)(PRTL_OSVERSIONINFOW);
+    static int known = -1;
+    if (known < 0) {
+        HMODULE nt = GetModuleHandleA("ntdll.dll");
+        fn_RtlGetVersion p = nt ? (fn_RtlGetVersion)(void *)GetProcAddress(nt, "RtlGetVersion") : NULL;
+        RTL_OSVERSIONINFOW vi;
+        known = 0;
+        memset(&vi, 0, sizeof(vi));
+        vi.dwOSVersionInfoSize = sizeof(vi);
+        if (p && p(&vi) == 0)
+            known = (vi.dwMajorVersion > 6 ||
+                     (vi.dwMajorVersion == 6 && vi.dwMinorVersion >= 3)) ? 1 : 0;
+    }
+    return known == 1;
+}
+
+/* The transparency checkbox of the same panel: Direct2D clears and greys it
+ * (a translucent window cannot be painted by the GPU path; with both on,
+ * GDI wins - the note on the panel and kitty.ini.example say so). */
+static dlgcontrol *kset_transparency_ctrl;
+static void kset_set_framepace(int v)
+{
+    char buf[16];
+    void kitty_pace_set_setting(const char *);
+    if (v < 0) strcpy(buf, "auto"); else sprintf(buf, "%d", v);
+    kitty_pace_set_setting(buf);
+}
+static void kset_set_renderer(int v)
+{
+    if (v == 1) {
+        /* the store-aware writer every [KiTTY] switch goes through */
+        SetTransparencyEnabled(0);
+        WriteParameter(INIT_SECTION, "transparency", "no");
+    }
+}
 static const struct kset_choice kset_funkeys_choices[] = {
     { KT_KSET_FK_XTERM216, "xterm216", FUNKY_XTERM_216 },   /* the built-in default */
     { KT_KSET_FK_TILDE,    "tilde",    FUNKY_TILDE },
@@ -9744,6 +9792,10 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, "winroll",        KSET_BOOL, false, GetWinrolFlag, SetWinrolFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, "ctrltab",        KSET_BOOL, false, GetCtrlTabFlag, SetCtrlTabFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, "transparency",   KSET_BOOL, false, GetTransparencyFlag, SetTransparencyEnabled, NULL, 0, 0, 1 },
+    { INIT_SECTION, "renderer",       KSET_CHOICE, false, NULL, kset_set_renderer, NULL, 0, 0, 0,
+      NULL, NULL, kset_renderer_choices, lenof(kset_renderer_choices) },
+    { INIT_SECTION, "framepace",      KSET_CHOICE, false, NULL, kset_set_framepace, NULL, 0, 0, -1,
+      NULL, NULL, kset_framepace_choices, lenof(kset_framepace_choices) },
     { INIT_SECTION, "bgimage",        KSET_BOOL, false, GetBackgroundImageFlag, SetBackgroundImageFlag, NULL, 0, 0, 0 },
     { INIT_SECTION, "slidedelay",     KSET_INT, false, NULL, NULL, &ImageSlideDelay, 0, 86400, 0 },
     { INIT_SECTION, "shrinkbitmap",   KSET_BOOL, false, GetShrinkBitmapEnable, SetShrinkBitmapEnable, NULL, 0, 0, 1 },
@@ -9909,11 +9961,21 @@ static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int 
             }
             dlg_update_start(ctrl, dlg);
             dlg_listbox_clear(ctrl, dlg);
-            for (i = 0; i < k->nchoices; i++)
-                dlg_listbox_addwithid(ctrl, dlg, k->choices[i].name, k->choices[i].value);
+            for (i = 0; i < k->nchoices; i++) {
+                const char *name = k->choices[i].name;
+                /* Direct2D on a Windows below 8.1: offered, named as such,
+                 * and refused when picked (a plain combo box cannot grey
+                 * one entry) */
+                if (!strcmp(k->key, "renderer") && k->choices[i].value == 1 &&
+                    !kset_d2d_supported())
+                    name = KT_KSET_WD_RENDERER_D2D_OLD;
+                dlg_listbox_addwithid(ctrl, dlg, name, k->choices[i].value);
+            }
             for (i = 0; i < k->nchoices; i++)
                 if (k->choices[i].value == cur) { dlg_listbox_select(ctrl, dlg, i); break; }
             dlg_update_done(ctrl, dlg);
+            if (!strcmp(k->key, "renderer"))
+                kitty_wpmode_enable_ctrl(kset_transparency_ctrl, dlg, cur != 1);
             break;
           }
         }
@@ -9976,8 +10038,25 @@ static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int 
     } else if (event == EVENT_SELCHANGE && k->kind == KSET_CHOICE && !cfgwin_refreshing) {
         int idx = dlg_listbox_index(ctrl, dlg);
         if (idx >= 0 && idx < k->nchoices) {
+            if (!strcmp(k->key, "renderer") && k->choices[idx].value == 1 &&
+                !kset_d2d_supported()) {
+                /* snap back to GDI: nothing stored */
+                cfgwin_refreshing = 1;
+                dlg_listbox_select(ctrl, dlg, 0);
+                cfgwin_refreshing = 0;
+                return;
+            }
             kset_write(k, k->choices[idx].stored);
             kset_set_int(k, k->choices[idx].value);
+            if (!strcmp(k->key, "renderer")) {
+                bool d2d = k->choices[idx].value == 1;
+                if (d2d && kset_transparency_ctrl) {
+                    cfgwin_refreshing = 1;
+                    dlg_checkbox_set(kset_transparency_ctrl, dlg, false);
+                    cfgwin_refreshing = 0;
+                }
+                kitty_wpmode_enable_ctrl(kset_transparency_ctrl, dlg, !d2d);
+            }
         }
     }
 }
@@ -10123,14 +10202,18 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     /* ---- Features & Printing; the title bar, icons and font fallback
      * groups are how the windows LOOK and go to Appearance (ctrl_getset
      * appends to that panel wherever it is called from) ---- */
-    ctrl_settitle(b, KSET_PATH("Features & Printing"), KT_KSET_WD_TITLE);
+    ctrl_settitle(b, KSET_PATH("Terminal & Printing"), KT_KSET_WD_TITLE);
     s = ctrl_getset(b, KSET_PATH("Appearance"), "titlebar", KT_KSET_WD_TITLEBAR);
     KSET_CHECKBOX(s, KT_KSET_WD_WINTITLE, "wintitle", kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_WD_SIZE, "size", kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_WD_WINROLL, "winroll", kitty_kset_window);
-    s = ctrl_getset(b, KSET_PATH("Features & Printing"), "features", KT_KSET_WD_FEATURES);
+    s = ctrl_getset(b, KSET_PATH("Terminal & Printing"), "features", KT_KSET_WD_FEATURES);
+    KSET_DROPLIST(s, KT_KSET_WD_RENDERER, "renderer", kitty_kset_window);
+    KSET_DROPLIST(s, KT_KSET_WD_FRAMEPACE, "framepace", kitty_kset_window);
+    ctrl_text(s, KT_KSET_WD_RENDERER_NOTE, HELPCTX(kitty_kset_window));
     KSET_CHECKBOX(s, KT_KSET_WD_CTRLTAB, "ctrltab", kitty_kset_window);
-    KSET_CHECKBOX(s, KT_KSET_WD_TRANSPARENCY, "transparency", kitty_kset_window);
+    kset_transparency_ctrl =
+        KSET_CHECKBOX(s, KT_KSET_WD_TRANSPARENCY, "transparency", kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_WD_BGIMAGE, "bgimage", kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_TW_HYPERLINK, "hyperlink", kitty_kset_window);
     KSET_NUMBER(s, KT_KSET_WD_SLIDEDELAY, "slidedelay", kitty_kset_window);
@@ -10140,7 +10223,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     s = ctrl_getset(b, KSET_PATH("Appearance"), "icons", KT_KSET_WD_ICONS);
     KSET_FILESEL(s, KT_KSET_WD_ICONFILE, KT_KSET_WD_ICONFILE_SELECT, "iconfile", kitty_kset_window);
     ctrl_text(s, KT_KSET_WD_ICONFILE_NOTE, HELPCTX(kitty_kset_window));
-    s = ctrl_getset(b, KSET_PATH("Features & Printing"), "printing", KT_KSET_WD_PRINTING);
+    s = ctrl_getset(b, KSET_PATH("Terminal & Printing"), "printing", KT_KSET_WD_PRINTING);
     KSET_NUMBER(s, KT_KSET_WD_PRINT_PITCH, "height", kitty_kset_window);
     KSET_NUMBER(s, KT_KSET_WD_PRINT_LINES, "maxline", kitty_kset_window);
     KSET_NUMBER(s, KT_KSET_WD_PRINT_CHARS, "maxchar", kitty_kset_window);

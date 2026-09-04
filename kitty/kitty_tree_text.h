@@ -44,7 +44,7 @@ static const KittyTreeLabel kitty_tree_labels[] = {
     { "Environment",             "Environment" },
     { "Defaults",                "Defaults" },
     { "Features",                "Features" },
-    { "Features & Printing",     "Features & Printing" },
+    { "Terminal & Printing",     "Terminal & Printing" },
     { "GSSAPI",                  "GSSAPI" },
     { "Host keys",               "Host keys" },
     { "Hyperlinks",              "Hyperlinks" },

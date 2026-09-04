@@ -285,6 +285,9 @@ char default_init_file_content[] =
 ; every Windows has; d2d paints with Direct2D and DirectWrite on the GPU\n\
 ; (Windows 8.1 or newer, a window without transparency; anything else\n\
 ; falls back to gdi). Text rendering differs slightly between the two.\n\
+;    Direct2D cannot paint a translucent window: with transparency=yes and\n\
+;    renderer=d2d both set, GDI wins. Also on the configuration window,\n\
+;    Application > KiTTY++ Settings > Terminal & Printing.\n\
 ;renderer=gdi\n\
 \n\
 ; framepace: how often the window may repaint while output streams in.\n\
@@ -666,6 +669,8 @@ char default_init_file_content[] =
 ;    Set no and transparency is off everywhere, not merely out of reach: the\n\
 ;    panel and the menu entries go, and a session that has a level saved opens\n\
 ;    opaque anyway. The /transparency command cannot turn it back on either.\n\
+;    A translucent window cannot be painted by Direct2D: with both this and\n\
+;    renderer=d2d enabled, GDI wins.\n\
 ;transparency=yes\n\
 \n\
 ; showforeignsessions: also list the sessions kept by an OLDER KiTTY (the\n\

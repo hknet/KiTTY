@@ -775,14 +775,24 @@ panel then says the key came from there.
 automatic command, key remappings and the helper command lines. The
 password in those lines is blanked; host, user and paths are not.
 
-\S{kitty-cfg-kset-window} The Features & Printing panel
+\S{kitty-cfg-kset-window} The Terminal & Printing panel
 
-\b \q{Features} enables or disables Ctrl+Tab window switching, window
-transparency, background images and hyperlinks in the terminal. A
-disabled feature's panels and menu entries disappear from the next
-configuration window. The slideshow interval is the fallback for a
-session that sets none, and \q{Resample a large image for Stretch+}
-trades a little repaint time for a cleaner downscale.
+\b \q{Terminal Features} starts with how the terminal window is painted.
+\q{Renderer} is GDI, which every Windows has, or Direct2D, which draws on
+the graphics card and needs Windows 8.1 or newer; on an older Windows the
+entry says so and cannot be chosen. Direct2D cannot paint a translucent
+window, so choosing it clears and greys \q{Window transparency}; with
+both enabled, GDI wins. \q{Frame pacing} is how often the window repaints
+while output streams in: \q{Follow the display} means one frame per
+refresh of whatever display the window is on, \q{30fps} and \q{20fps}
+cap it, and \q{PuTTY's fixed (20ms)} is the pause PuTTY always had. Both
+apply to terminal windows opened afterwards. The checkboxes enable or
+disable Ctrl+Tab window switching, window transparency, background images
+and hyperlinks in the terminal; a disabled feature's panels and menu
+entries disappear from the next configuration window. The slideshow
+interval is the fallback for a session that sets none, and \q{Resample a
+large image for Stretch+} trades a little repaint time for a cleaner
+downscale.
 
 \b \q{Printing} sets the line pitch, the lines per page and where a long
 line wraps. These three are kept in \c{kitty.ini} whatever the store
