@@ -780,9 +780,11 @@ password in those lines is blanked; host, user and paths are not.
 \b \q{Terminal Features} starts with how the terminal window is painted.
 \q{Renderer} is GDI, which every Windows has, or Direct2D, which draws on
 the graphics card and needs Windows 8.1 or newer; on an older Windows the
-entry says so and cannot be chosen. Direct2D cannot paint a translucent
-window, so choosing it clears and greys \q{Window transparency}; with
-both enabled, GDI wins. \q{Frame pacing} is how often the window repaints
+entry says so and cannot be chosen. Direct2D works with \q{Window
+transparency} too: a window that may be dimmed presents through the
+desktop's copy of the window (the blit model), which the dimming applies
+to, and an opaque window uses the faster flip model. \q{Frame pacing} is
+how often the window repaints
 while output streams in: \q{Follow the display} means one frame per
 refresh of whatever display the window is on, \q{30fps} and \q{20fps}
 cap it, and \q{PuTTY's fixed (20ms)} is the pause PuTTY always had. Both

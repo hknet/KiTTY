@@ -41,6 +41,7 @@
 #include <dwrite.h>
 #include <dwrite_2.h>
 #include "paint.h"
+#include "../kitty/kitty_text.h"    /* KiTTY: the renderer badge's word */
 
 typedef HRESULT (WINAPI *D3D11CreateDevice_t)(
     IDXGIAdapter *, D3D_DRIVER_TYPE, HMODULE, UINT, const D3D_FEATURE_LEVEL *,
@@ -154,6 +155,7 @@ typedef struct D2DPainter {
     KittyPainter p;
     HWND hwnd;
     bool warp;                  /* the device is WARP, the software rasteriser */
+    bool blit;                  /* blit-model swap chain: the window may be layered */
     HMODULE d3d11dll, d2d1dll, dwritedll;
     ID3D11Device *d3d;
     ID3D11DeviceContext *d3dctx;
@@ -171,6 +173,15 @@ typedef struct D2DPainter {
     IDWriteGdiInterop *gdi;
     int width, height;
     bool in_frame;
+    int pend_w, pend_h;                /* a resize that arrived mid-frame, applied at its end */
+    /* The renderer badge: "D2D" in the top-right corner for the first
+     * seconds of the window, so whoever opted in can see the opt-in took
+     * (a silent fall-back to GDI shows no badge). Drawn onto the back
+     * buffer, never into the canvas, so the picture underneath stays. */
+    DWORD badge_t0;                    /* GetTickCount at creation */
+    IDWriteTextFormat *badge_fmt;
+    WCHAR badge_text[16];
+    float badge_w, badge_h, badge_margin;
     D2D1_TEXT_ANTIALIAS_MODE textaa;
     /* the current style */
     D2DFont *font;
@@ -295,19 +306,178 @@ static bool create_targets(D2DPainter *d, int w, int h)
     return true;
 }
 
+/*
+ * The resize itself. Three things here each showed as "the window went
+ * black after a resize" (reported 2026-09-04):
+ *  - the new canvas starts black and only the strip Windows invalidated
+ *    got repainted into it: the old canvas is copied into the new one
+ *    first, and the whole client area is invalidated so the terminal
+ *    repaints everything at the new size;
+ *  - ResizeBuffers refuses while anything still references a back buffer
+ *    (Direct2D can hold one past the release until the device flushes):
+ *    the D3D context is flushed first and the result is checked, and a
+ *    failure is recorded on the window (KiTTY.renderer.hr) and retried;
+ *  - a resize that arrives mid-frame used to be dropped for good; it is
+ *    now kept and applied when the frame ends.
+ */
+static void do_resize(D2DPainter *d, int w, int h)
+{
+    ID2D1Bitmap1 *old = d->canvas;
+    int oldw = d->width, oldh = d->height;
+    UINT flags = d->frame_ready ? DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT : 0;
+    HRESULT hr;
+
+    ID2D1DeviceContext_SetTarget(d->dc, NULL);
+    if (d->target) { IUnknown_Release((IUnknown *)d->target); d->target = NULL; }
+    d->canvas = NULL;                  /* kept in `old` until copied */
+    ID3D11DeviceContext_Flush(d->d3dctx);
+    hr = IDXGISwapChain1_ResizeBuffers(d->swap, 0, w, h, DXGI_FORMAT_UNKNOWN, flags);
+    if (FAILED(hr)) {
+        SetPropA(d->hwnd, "KiTTY.renderer.hr", (HANDLE)(ULONG_PTR)(DWORD)hr);
+        ID3D11DeviceContext_Flush(d->d3dctx);
+        hr = IDXGISwapChain1_ResizeBuffers(d->swap, 0, w, h, DXGI_FORMAT_UNKNOWN, flags);
+    }
+    if (SUCCEEDED(hr) && create_targets(d, w, h) && old) {
+        /* what was on screen, at the new size's top-left, until the
+         * repaint lands: no black flash during a live resize */
+        D2D1_RECT_F src = rectf(0, 0, oldw < w ? oldw : w, oldh < h ? oldh : h);
+        ID2D1DeviceContext_SetTarget(d->dc, (struct ID2D1Image *)d->canvas);
+        ID2D1RenderTarget_BeginDraw((ID2D1RenderTarget *)d->dc);
+        ID2D1RenderTarget_DrawBitmap((ID2D1RenderTarget *)d->dc, (ID2D1Bitmap *)old,
+                                     &src, 1.0f,
+                                     D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+                                     &src);
+        ID2D1RenderTarget_EndDraw((ID2D1RenderTarget *)d->dc, NULL, NULL);
+        ID2D1DeviceContext_SetTarget(d->dc, NULL);
+    }
+    if (old) IUnknown_Release((IUnknown *)old);
+    InvalidateRect(d->hwnd, NULL, FALSE);
+}
+
 static void d2d_resize(KittyPainter *p, int w, int h)
 {
     D2DPainter *d = (D2DPainter *)p;
-    if (!d->swap || d->in_frame)
+    if (!d->swap)
         return;
     if (w < 1 || h < 1)
         return;
+    if (d->in_frame) {
+        d->pend_w = w; d->pend_h = h;
+        return;
+    }
     if (w == d->width && h == d->height)
         return;
-    release_targets(d);
-    IDXGISwapChain1_ResizeBuffers(d->swap, 0, w, h, DXGI_FORMAT_UNKNOWN,
-                                 d->frame_ready ? DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT : 0);
-    create_targets(d, w, h);
+    do_resize(d, w, h);
+}
+
+/* ---- the renderer badge -------------------------------------------- */
+
+#define BADGE_SHOW_MS   3000           /* visible this long ... */
+#define BADGE_FADE_MS   1000           /* ... fading over the last part of it */
+#define BADGE_TIMER_ID  0x44324400     /* 'D2D', clear of the window's small ids */
+
+static RECT badge_rect(D2DPainter *d)
+{
+    RECT r;
+    r.right = (LONG)(d->width - d->badge_margin);
+    r.left = (LONG)(r.right - d->badge_w);
+    r.top = (LONG)d->badge_margin;
+    r.bottom = (LONG)(r.top + d->badge_h);
+    return r;
+}
+
+/* Every timer tick while the badge shows: repaint its corner so the fade
+ * progresses even when the terminal itself has nothing to draw. The last
+ * tick, after the badge's time, repaints the corner once more without it. */
+static void CALLBACK badge_tick(HWND hwnd, UINT msg, UINT_PTR id, DWORD now)
+{
+    D2DPainter *d = (D2DPainter *)GetPropA(hwnd, "KiTTY.painter.d2d");
+    RECT r;
+    (void)msg; (void)now;
+    if (!d || !d->badge_fmt) { KillTimer(hwnd, id); return; }
+    r = badge_rect(d);
+    InflateRect(&r, 2, 2);
+    if (GetTickCount() - d->badge_t0 > BADGE_SHOW_MS)
+        KillTimer(hwnd, id);
+    InvalidateRect(hwnd, &r, FALSE);
+}
+
+static void badge_init(D2DPainter *d)
+{
+    HDC hdc = GetDC(d->hwnd);
+    float scale = hdc ? GetDeviceCaps(hdc, LOGPIXELSY) / 96.0f : 1.0f;
+    IDWriteTextLayout *layout = NULL;
+    DWRITE_TEXT_METRICS m;
+    int n;
+    if (hdc) ReleaseDC(d->hwnd, hdc);
+    n = MultiByteToWideChar(CP_ACP, 0, KT_D2D_BADGE, -1, d->badge_text,
+                            (int)(sizeof(d->badge_text) / sizeof(WCHAR)));
+    if (n <= 0) return;
+    if (FAILED(IDWriteFactory_CreateTextFormat(
+                   d->dw, L"Segoe UI", NULL, DWRITE_FONT_WEIGHT_BOLD,
+                   DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+                   13.0f * scale, L"en-us", &d->badge_fmt)))
+        return;
+    IDWriteTextFormat_SetTextAlignment(d->badge_fmt, DWRITE_TEXT_ALIGNMENT_CENTER);
+    IDWriteTextFormat_SetParagraphAlignment(d->badge_fmt, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+    if (FAILED(IDWriteFactory_CreateTextLayout(d->dw, d->badge_text, n - 1,
+                                               d->badge_fmt, 1000.0f, 100.0f,
+                                               &layout)))
+        { IDWriteTextFormat_Release(d->badge_fmt); d->badge_fmt = NULL; return; }
+    IDWriteTextLayout_GetMetrics(layout, &m);
+    IDWriteTextLayout_Release(layout);
+    d->badge_w = m.width + 16.0f * scale;
+    d->badge_h = m.height + 6.0f * scale;
+    d->badge_margin = 10.0f * scale;
+    d->badge_t0 = GetTickCount();
+    SetPropA(d->hwnd, "KiTTY.painter.d2d", (HANDLE)d);
+    /* 16 ms: a fade redrawn ten times a second reads as steps (noted
+     * 2026-09-04); at display rate it is a fade. The corner is small. */
+    SetTimer(d->hwnd, BADGE_TIMER_ID, 16, badge_tick);
+}
+
+static void badge_free(D2DPainter *d)
+{
+    KillTimer(d->hwnd, BADGE_TIMER_ID);
+    RemovePropA(d->hwnd, "KiTTY.painter.d2d");
+    if (d->badge_fmt) { IDWriteTextFormat_Release(d->badge_fmt); d->badge_fmt = NULL; }
+}
+
+/* Onto the back buffer, after the canvas went there. Opaque for two
+ * seconds, then fades; nothing at all once its time is up. */
+static void badge_draw(D2DPainter *d)
+{
+    DWORD t = GetTickCount() - d->badge_t0;
+    float a;
+    RECT r;
+    D2D1_ROUNDED_RECT rr;
+    D2D1_COLOR_F col;
+    if (!d->badge_fmt || t >= BADGE_SHOW_MS)
+        return;
+    a = t > BADGE_SHOW_MS - BADGE_FADE_MS ? (BADGE_SHOW_MS - t) / (float)BADGE_FADE_MS : 1.0f;
+    r = badge_rect(d);
+    rr.rect = rectf(r.left, r.top, r.right, r.bottom);
+    rr.radiusX = rr.radiusY = d->badge_h / 2.0f;
+    ID2D1RenderTarget_SetAntialiasMode((ID2D1RenderTarget *)d->dc,
+                                       D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    col.r = 0.10f; col.g = 0.45f; col.b = 0.80f; col.a = 0.85f * a;   /* a blue pill */
+    ID2D1SolidColorBrush_SetColor(d->brush, &col);
+    ID2D1RenderTarget_FillRoundedRectangle((ID2D1RenderTarget *)d->dc, &rr,
+                                           (ID2D1Brush *)d->brush);
+    col.r = col.g = col.b = 1.0f; col.a = a;                             /* white word */
+    ID2D1SolidColorBrush_SetColor(d->brush, &col);
+    ID2D1RenderTarget_DrawText((ID2D1RenderTarget *)d->dc, d->badge_text,
+                               (UINT32)wcslen(d->badge_text), d->badge_fmt,
+                               &rr.rect, (ID2D1Brush *)d->brush,
+                               D2D1_DRAW_TEXT_OPTIONS_NONE,
+                               DWRITE_MEASURING_MODE_NATURAL);
+    ID2D1RenderTarget_SetAntialiasMode((ID2D1RenderTarget *)d->dc,
+                                       D2D1_ANTIALIAS_MODE_ALIASED);
+    /* the present's dirty rectangle must cover the corner too */
+    if (r.left < d->dirty.left) d->dirty.left = r.left;
+    if (r.top < d->dirty.top) d->dirty.top = r.top;
+    if (r.right > d->dirty.right) d->dirty.right = r.right;
+    if (r.bottom > d->dirty.bottom) d->dirty.bottom = r.bottom;
 }
 
 /* ---- frames -------------------------------------------------------- */
@@ -343,9 +513,17 @@ static void d2d_end(KittyPainter *p)
     }
     d->in_frame = false;
 
-    /* Nothing drawn: nothing to present, and the frame slot stays free. */
-    if (!d->dirty_any)
+    /* Nothing drawn: nothing to present, and the frame slot stays free -
+     * but a resize that arrived during the frame is still owed. */
+    if (!d->dirty_any) {
+        if (d->pend_w) {
+            int w = d->pend_w, h = d->pend_h;
+            d->pend_w = d->pend_h = 0;
+            if (w != d->width || h != d->height)
+                do_resize(d, w, h);
+        }
         return;
+    }
 
     /* The canvas to the back buffer, and up, telling the compositor which
      * rectangle changed so it recomposes only that. The ready signal was
@@ -359,6 +537,7 @@ static void d2d_end(KittyPainter *p)
                                  (ID2D1Bitmap *)d->canvas, &all, 1.0f,
                                  D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
                                  &all);
+    badge_draw(d);
     ID2D1RenderTarget_EndDraw((ID2D1RenderTarget *)d->dc, NULL, NULL);
     {
         extern double kitty_present_wait_ms;
@@ -374,13 +553,20 @@ static void d2d_end(KittyPainter *p)
         pp.pDirtyRects = &dr;
         QueryPerformanceFrequency(&f);
         QueryPerformanceCounter(&a);
-        if (FAILED(IDXGISwapChain1_Present1(d->swap, 0, 0, &pp)))
+        /* dirty rectangles are a flip-model notion; the blit model presents whole */
+        if (d->blit || FAILED(IDXGISwapChain1_Present1(d->swap, 0, 0, &pp)))
             IDXGISwapChain1_Present(d->swap, 0, 0);
         QueryPerformanceCounter(&b);
         kitty_present_wait_ms += (b.QuadPart - a.QuadPart) * 1000.0 / f.QuadPart;
     }
     d->dirty_any = false;
     ID2D1DeviceContext_SetTarget(d->dc, NULL);
+    if (d->pend_w) {
+        int w = d->pend_w, h = d->pend_h;
+        d->pend_w = d->pend_h = 0;
+        if (w != d->width || h != d->height)
+            do_resize(d, w, h);
+    }
 }
 
 /* ---- fonts --------------------------------------------------------- */
@@ -975,6 +1161,7 @@ static void d2d_destroy(D2DPainter *d)
 {
     int i;
     RemovePropA(d->hwnd, "KiTTY.renderer");
+    badge_free(d);
     for (i = 0; i < d->nfb; i++)
         if (d->fbfaces[i].face) IDWriteFontFace_Release(d->fbfaces[i].face);
     if (d->fallback) IUnknown_Release((IUnknown *)d->fallback);
@@ -1002,7 +1189,7 @@ static void d2d_destroy(D2DPainter *d)
     sfree(d);
 }
 
-KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality)
+KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality, bool layerable)
 {
     D2DPainter *d = snew(D2DPainter);
     D3D11CreateDevice_t pD3D11CreateDevice;
@@ -1020,6 +1207,7 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality)
     memset(d, 0, sizeof(*d));
     d->p.vt = &d2d_vt;
     d->hwnd = hwnd;
+    d->blit = layerable;
     switch (font_quality) {
       case FQ_NONANTIALIASED: d->textaa = D2D1_TEXT_ANTIALIAS_MODE_ALIASED; break;
       case FQ_ANTIALIASED:    d->textaa = D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE; break;
@@ -1087,9 +1275,25 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality)
      * it is ready for the next frame - the display's own pace, which the
      * frame pacing waits on instead of guessing at vblanks. Windows 8.1. */
     sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+    if (d->blit) {
+        /* A window that is, or may become, layered (window transparency):
+         * the flip model presents past the window's redirection surface,
+         * which is the very thing SetLayeredWindowAttributes dims - so the
+         * dimming never shows. The blit model copies each frame INTO that
+         * surface, and the layered alpha applies as it does for GDI. Costs
+         * the flip model's present path and its frame-latency signal (the
+         * pacing then runs without one, as on a runtime that lacks it);
+         * the persistent canvas makes the undefined back buffer harmless.
+         * The composition route (design/TASK_gpu_transparency_dcomp.md)
+         * is the one that keeps the flip model. */
+        sd.BufferCount = 1;
+        sd.Scaling = DXGI_SCALING_STRETCH;   /* NONE is flip-model only */
+        sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+        sd.Flags = 0;
+    }
     hr = IDXGIFactory2_CreateSwapChainForHwnd(
         dxgifactory, (IUnknown *)d->d3d, hwnd, &sd, NULL, NULL, &d->swap);
-    if (FAILED(hr)) {
+    if (FAILED(hr) && sd.Flags) {
         sd.Flags = 0;                 /* a runtime without it: no signal */
         hr = IDXGIFactory2_CreateSwapChainForHwnd(
             dxgifactory, (IUnknown *)d->d3d, hwnd, &sd, NULL, NULL, &d->swap);
@@ -1138,6 +1342,10 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality)
      * harness reads it across processes): 1 GDI, 2 Direct2D on the GPU,
      * 3 Direct2D on WARP. */
     SetPropA(hwnd, "KiTTY.renderer", (HANDLE)(ULONG_PTR)(d->warp ? 3 : 2));
+    /* ... and whether it survives the window turning layered: the
+     * transparency code asks before it sets WS_EX_LAYERED. */
+    SetPropA(hwnd, "KiTTY.renderer.blit", (HANDLE)(ULONG_PTR)(d->blit ? 1 : 0));
+    badge_init(d);
     return &d->p;
 
   fail:

@@ -9974,8 +9974,6 @@ static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int 
             for (i = 0; i < k->nchoices; i++)
                 if (k->choices[i].value == cur) { dlg_listbox_select(ctrl, dlg, i); break; }
             dlg_update_done(ctrl, dlg);
-            if (!strcmp(k->key, "renderer"))
-                kitty_wpmode_enable_ctrl(kset_transparency_ctrl, dlg, cur != 1);
             break;
           }
         }
@@ -10048,15 +10046,10 @@ static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int 
             }
             kset_write(k, k->choices[idx].stored);
             kset_set_int(k, k->choices[idx].value);
-            if (!strcmp(k->key, "renderer")) {
-                bool d2d = k->choices[idx].value == 1;
-                if (d2d && kset_transparency_ctrl) {
-                    cfgwin_refreshing = 1;
-                    dlg_checkbox_set(kset_transparency_ctrl, dlg, false);
-                    cfgwin_refreshing = 0;
-                }
-                kitty_wpmode_enable_ctrl(kset_transparency_ctrl, dlg, !d2d);
-            }
+            /* Direct2D and window transparency no longer exclude each
+             * other (a layerable window gets the blit-model swap chain,
+             * paint-d2d.c), so the renderer choice leaves the
+             * transparency checkbox alone. */
         }
     }
 }

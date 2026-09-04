@@ -103,8 +103,10 @@ KittyPainter *kitty_painter_gdi_new(HWND hwnd, HPALETTE *pal);
 
 /* The Direct2D + DirectWrite painter (paint-d2d.c, KiTTY targets only):
  * NULL when the machine cannot provide it, and the caller stays on GDI.
- * font_quality is the session's FQ_* setting (the antialiasing mode). */
-KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality);
+ * font_quality is the session's FQ_* setting (the antialiasing mode).
+ * layerable: the window may be made layered (window transparency), so the
+ * swap chain must present through the redirection surface (blit model). */
+KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality, bool layerable);
 
 #define kitty_painter_free(p)            ((p)->vt->destroy(p))
 

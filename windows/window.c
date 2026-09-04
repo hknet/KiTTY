@@ -1708,9 +1708,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                           win_strerror(GetLastError()));
         }
         /* The window's painter (paint.h): GDI, the one every build has;
-         * KiTTY offers Direct2D on request ([KiTTY] renderer=d2d) for a
-         * window without transparency, and falls back to GDI when the
-         * machine cannot provide it. */
+         * KiTTY offers Direct2D on request ([KiTTY] renderer=d2d) and
+         * falls back to GDI when the machine cannot provide it. */
         wgs->painter = NULL;
 #ifdef MOD_PERSO
         {
@@ -1718,18 +1717,17 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             int ReadParameterN(const char *, const char *, char *, size_t);
             ReadParameterN("KiTTY", "renderer", renderer, sizeof(renderer));
             if (!stricmp(renderer, "d2d")) {
-                /* Layered (translucent) windows stay on GDI: a flip
-                 * swap chain and SetLayeredWindowAttributes do not mix.
-                 * kitty_apply_transparency: layered iff the feature is
-                 * on and the level is above 0. */
-                if (!(GetTransparencyFlag() &&
-                      conf_get_int(wgs->conf, CONF_transparencynumber) > 0))
-                    wgs->painter = kitty_painter_d2d_new(
-                        wgs->term_hwnd,
-                        conf_get_int(wgs->conf, CONF_font_quality));
-                else    /* by design: transparency stays on GDI */
-                    SetPropA(wgs->term_hwnd, "KiTTY.renderer.fail",
-                             (HANDLE)200);
+                /* A window that opens dimmed (kitty_apply_transparency:
+                 * layered iff the feature is on and the level is above 0)
+                 * gets the blit-model swap chain, which the layered alpha
+                 * applies to (paint-d2d.c). An opaque window keeps the
+                 * flip model; if the menu dims it later,
+                 * kitty_painter_before_layering re-creates the painter. */
+                bool layerable = GetTransparencyFlag() &&
+                    conf_get_int(wgs->conf, CONF_transparencynumber) > 0;
+                wgs->painter = kitty_painter_d2d_new(
+                    wgs->term_hwnd,
+                    conf_get_int(wgs->conf, CONF_font_quality), layerable);
             }
         }
 #endif
@@ -9330,20 +9328,28 @@ COLORREF return_colours258(void) {
  * THIS seat's window. No global conf/term/hwnd -- fully per-WinGuiSeat,
  * compatible with multiple simultaneous seats (e.g. sshproxy).
  * Value 0 = opaque (default, no effect); 1..254 = increasing translucency. */
-/* A Direct2D window cannot be layered (its swap chain and
- * SetLayeredWindowAttributes do not mix): before a window is made layered
- * it gets the GDI painter back. The painter says what it is through the
- * window property; the seat hangs off the window. */
+/* A Direct2D window on the FLIP-model swap chain cannot be layered (the
+ * chain and SetLayeredWindowAttributes do not mix): before such a window
+ * is made layered its painter is re-created on the blit-model swap chain
+ * (paint-d2d.c), which the layered alpha applies to - and only if that
+ * fails does it get the GDI painter back. A Direct2D window already on
+ * the blit model keeps its painter. The painter says what it is through
+ * the window properties; the seat hangs off the window. */
 void kitty_painter_before_layering(HWND term_hwnd)
 {
     WinGuiSeat *wgs = (WinGuiSeat *)GetWindowLongPtr(term_hwnd, GWLP_USERDATA);
     if (!wgs || !wgs->painter || wgs->term_hwnd != term_hwnd)
         return;
-    if ((ULONG_PTR)GetPropA(term_hwnd, "KiTTY.renderer") > 1) {
+    if ((ULONG_PTR)GetPropA(term_hwnd, "KiTTY.renderer") > 1 &&
+        !GetPropA(term_hwnd, "KiTTY.renderer.blit")) {
         void kitty_pace_set_frame_signal(HANDLE);
         kitty_pace_set_frame_signal(NULL);
         kitty_painter_free(wgs->painter);
-        wgs->painter = kitty_painter_gdi_new(term_hwnd, &wgs->pal);
+        wgs->painter = kitty_painter_d2d_new(
+            term_hwnd, conf_get_int(wgs->conf, CONF_font_quality), true);
+        if (!wgs->painter)
+            wgs->painter = kitty_painter_gdi_new(term_hwnd, &wgs->pal);
+        kitty_pace_set_frame_signal(kp_frame_signal(wgs->painter));
         InvalidateRect(term_hwnd, NULL, true);
     }
 }
