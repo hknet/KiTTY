@@ -1,11 +1,72 @@
 # KiTTY changelog
 
-KiTTY is basically the full KiTTY feature set forward-ported onto a modern, security-patched
-and enhanced **PuTTY 0.85** core. Versions below are this port's own `0.85.1.x` line. For current
-known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list
-see [FEATURES.md](FEATURES.md).
+KiTTY is basically the full KiTTY feature set forward-ported and then some really serious speed enhancements and features onto a modern, security-patched **PuTTY 0.85** core. Versions below are this port's own `0.85.1.x` line. For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.6-beta — 2026-09-03
+## 0.85.1.6-beta — 2026-09-04
+
+### New
+
+- **A Direct2D renderer for the terminal window, opt-in.** `renderer=d2d` in
+  the `[KiTTY]` section of kitty.ini, or the new Renderer choice on
+  Application > KiTTY++ Settings > **Terminal & Printing**, paints the
+  terminal with Direct2D and DirectWrite on the graphics card instead of GDI.
+  A full repaint of a maximised window costs a fifth of what it did, so paging
+  through output keeps up with the display. It needs Windows 8.1 or newer and
+  a window without transparency; anywhere else the window silently stays on
+  GDI, which remains the default. Characters the font lacks come from the
+  fallback fonts on both paths, the background image and the trust sigil are
+  drawn natively, and switching transparency on hands a Direct2D window back
+  to GDI. Text is rasterised by DirectWrite there, so it looks slightly
+  different from GDI's (but see for yourself).
+
+- **Frame pacing that follows the display.** While output streams in, the
+  window now repaints on a pace instead of after a fixed pause. A Direct2D
+  window takes the compositor's own ready signal, one frame per refresh of
+  whatever display it is on; a GDI window paces on an exact timer at the
+  refresh period. `framepace` in kitty.ini, or Frame pacing on the same
+  panel, is `auto` (the default), a cap in milliseconds, or `0` for the fixed
+  20 ms cooldown PuTTY always had. With Energy Saver on, every second refresh;
+  a minimised window paints at most once a second and is current the moment
+  it is restored. Underneath, every timer of the program runs on a
+  high-resolution timer on a millisecond clock where Windows has one
+  (Windows 10 1803 and later), instead of the 15.6 ms steps that decided the
+  frame rate before.
+
+- **Output keeps reaching the screen while a window is moved or a menu is
+  open.** Windows runs its own loop during those and the terminal used to
+  stand still until the mouse button was released; the pending work is now
+  pumped meanwhile.
+
+- **Terminal & Printing panel.** The Features & Printing leaf is renamed and
+  carries the Renderer and Frame pacing choices at the top of its Terminal
+  Features section. Choosing Direct2D clears and greys the window
+  transparency switch; on a Windows below 8.1 the Direct2D entry says so and
+  cannot be chosen.
+
+### Changed
+
+- **The programs are smaller.** The application icon is embedded once per
+  executable instead of once per size, and dead code that no build used is
+  gone: kitty.exe lost about a fifth of its size.
+- **Less work on the hot paths.** The hyperlink scan is skipped when the text
+  did not change, the signature check of an SSH agent runs off the paint
+  path with a cache, the configuration window reads the store far less often
+  while its session list refreshes, and the timer that kageant kept ticking
+  is armed only when something is waiting on it.
+- **The background image covers the whole virtual desktop**, every monitor,
+  not only the primary display: a window on a second screen or straddling
+  the primary's edge showed the image only partly.
+- Every user-facing string of the suite lives in one header now, the
+  groundwork for translations.
+
+### Fixed
+
+- **kageant could crash while a sign request waited for its passphrase.**
+  With re-encrypt-after-idle set to `use`, the idle tick could re-encrypt a
+  key between the passphrase dialog decrypting it and the sign operation
+  resuming, which then signed with nothing. The re-encrypt now waits for a
+  key with sign requests pending, and a sign operation that finds its key
+  gone answers the client with a message instead.
 
 ## 0.85.1.5-beta — 2026-09-03
 
