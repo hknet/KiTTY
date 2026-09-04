@@ -25,6 +25,13 @@
 #include <shellapi.h>
 #include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
 
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
+/* Posted to the configuration box by its WM_DPICHANGED: re-lay every cached
+ * panel out once the system has rescaled the box's own controls. */
+#define WM_KITTY_CFG_DPI_RELAYOUT (WM_APP + 0x0D91)
+
 #ifdef MSVC4
 #define TVINSERTSTRUCT  TV_INSERTSTRUCT
 #define TVITEM          TV_ITEM
@@ -1425,6 +1432,21 @@ static SIZE kitty_cfg_dragsize;
 /* The button row's top at baseline; the live value is this plus the growth,
  * and kitty_cfg_panel_rect reads the live one. */
 static int kitty_cfg_buttonrow_top_base = 0;
+/* The DPI the baseline was captured at. A Windows scaling change while the
+ * box is open rescales the baseline by new/old (WM_DPICHANGED below);
+ * without that the size limits and the anchors stayed in the old pixels. */
+static UINT kitty_cfg_dpi = 0;
+
+static UINT kitty_cfg_window_dpi(HWND hwnd)
+{
+    HDC hdc = GetDC(hwnd);
+    UINT dpi = 96;
+    if (hdc) {
+        dpi = (UINT)GetDeviceCaps(hdc, LOGPIXELSY);   /* per-monitor for a PMv2 window */
+        ReleaseDC(hwnd, hdc);
+    }
+    return dpi ? dpi : 96;
+}
 
 static void kitty_cfg_anchor_add(HWND w, unsigned anchor)
 {
@@ -1484,7 +1506,43 @@ static void kitty_cfg_layout_capture(PortableDialogStuff *pds, HWND hwnd)
                              &kitty_cfg_minsize);
     kitty_cfg_buttonrow_top_base = kitty_cfg_buttonrow_top;
     kitty_cfg_dragsize = kitty_cfg_minsize;   /* no drag in progress */
+    kitty_cfg_dpi = kitty_cfg_window_dpi(hwnd);
     kitty_cfg_layout_ready = true;
+}
+
+/*
+ * A Windows scaling change while the box is open (WM_DPICHANGED, the new
+ * DPI in wParam). The system rescales the box's own controls and fonts (the
+ * per-monitor-v2 dialog behaviour), but the baseline this file measures
+ * against - the template size that is also the minimum, the anchor
+ * rectangles, the button row's top - is pixels captured at the old DPI:
+ * after 200% -> 300% the contents grew and the box still refused to be
+ * dragged past its 200% minimum. So the baseline is scaled by new/old, the
+ * box takes the rectangle Windows suggests, and the cached panels are laid
+ * out again at the new DPI once the system's own rescale has run.
+ */
+static void kitty_cfg_layout_rescale(HWND hwnd, UINT newdpi)
+{
+    double f;
+    size_t i;
+
+    if (!kitty_cfg_layout_ready || !newdpi || !kitty_cfg_dpi || newdpi == kitty_cfg_dpi)
+        return;
+    f = (double)newdpi / (double)kitty_cfg_dpi;
+    kitty_cfg_basesize.cx = (LONG)(kitty_cfg_basesize.cx * f + 0.5);
+    kitty_cfg_basesize.cy = (LONG)(kitty_cfg_basesize.cy * f + 0.5);
+    kitty_cfg_minsize.cx = (LONG)(kitty_cfg_minsize.cx * f + 0.5);
+    kitty_cfg_minsize.cy = (LONG)(kitty_cfg_minsize.cy * f + 0.5);
+    kitty_cfg_buttonrow_top_base = (int)(kitty_cfg_buttonrow_top_base * f + 0.5);
+    for (i = 0; i < kitty_cfg_nanchors; i++) {
+        RECT *r = &kitty_cfg_anchor_rects[i];
+        r->left = (LONG)(r->left * f + 0.5);
+        r->top = (LONG)(r->top * f + 0.5);
+        r->right = (LONG)(r->right * f + 0.5);
+        r->bottom = (LONG)(r->bottom * f + 0.5);
+    }
+    kitty_cfg_dpi = newdpi;
+    (void)hwnd;
 }
 
 static void kitty_cfg_layout_relayout(HWND hwnd)
@@ -2978,6 +3036,32 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             return 0;
         }
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
+      case WM_DPICHANGED: {
+        /* Scale the baseline FIRST, then let the default handling rescale
+         * the controls and take the suggested rectangle (its WM_SIZE runs
+         * the relayout against the new baseline); the cached panels follow
+         * once that has happened, from the posted message below. */
+        const RECT *sug = (const RECT *)lParam;
+        kitty_cfg_layout_rescale(hwnd, LOWORD(wParam));
+        if (sug) {
+            SetWindowPos(hwnd, NULL, sug->left, sug->top,
+                         sug->right - sug->left, sug->bottom - sug->top,
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+            kitty_cfg_dragsize.cx = sug->right - sug->left;
+            kitty_cfg_dragsize.cy = sug->bottom - sug->top;
+        }
+        PostMessage(hwnd, WM_KITTY_CFG_DPI_RELAYOUT, 0, 0);
+        return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
+      }
+      case WM_KITTY_CFG_DPI_RELAYOUT:
+        /* Every cached panel at the new DPI - the same pass a width drag
+         * ends with (WM_EXITSIZEMOVE), without the size bookkeeping. */
+        if (kitty_cfg_layout_ready && kitty_cfg_pds)
+            for (size_t i = 0; i < kitty_cfg_npanels; i++)
+                kitty_cfg_panel_relayout_ex(
+                    kitty_cfg_pds, kitty_cfg_panels[i],
+                    kitty_cfg_panels[i] == kitty_cfg_active_panel);
+        return 0;
       case WM_ENTERSIZEMOVE: {
         /* The size to compare against when the drag ends: a drag that only
          * MOVED the box must not be taken for a request to remember a size. */
