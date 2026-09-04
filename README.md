@@ -11,13 +11,13 @@ PuTTY core (≈1,200 upstream commits newer than KiTTY's original 0.76b base).
 
 *(click an image to enlarge)*
 
-The configuration dialog (start KiTTY with no session):
-
-<a href="screenshots/config.png"><img src="screenshots/config.png" width="420" alt="KiTTY configuration dialog"></a>
-
 A terminal session with a clickable, underlined hyperlink:
 
 <a href="screenshots/terminal.png"><img src="screenshots/terminal.png" width="600" alt="KiTTY terminal with a clickable, underlined URL"></a>
+
+The configuration of the GPU-Renderer
+
+<img width="420" alt="KiTTY++ GPU-Renderer" src="https://github.com/user-attachments/assets/b1bdcae0-ea23-4458-a77f-d393c2210fca" />
 
 ---
 
