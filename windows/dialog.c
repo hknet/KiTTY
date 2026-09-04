@@ -1115,6 +1115,59 @@ static INT_PTR CALLBACK PanelHostProc(HWND hwnd, UINT msg,
     return 0;
 }
 
+/*
+ * Present the host's NEW picture in one blit - the freeze frame.
+ *
+ * A panel switch used to erase the host on screen and let the new panel's
+ * controls paint over the erase, and the display showed the erased host for
+ * as long as that took (50-85 ms): a blank flash per switch, a strobe when
+ * arrow-keying down the tree (reported 2026-09-04; measured by
+ * scripts/qa_cfgbox_flicker.ps1 - a double-buffered host made it worse, a
+ * clip-children host is out for the group-box reason above).
+ *
+ * So the screen keeps the OLD picture while the swap happens (the hide and
+ * show defer painting), the host and its visible children render into a
+ * memory bitmap through WM_PRINT - the same path the pixel harnesses use to
+ * photograph the box, so every control here is known to answer it - and the
+ * bitmap goes to the screen in one BitBlt. Then the host is validated, so
+ * nothing repaints what is already right. Hidden panels are not printed:
+ * WM_PRINT with PRF_CHILDREN walks visible children only.
+ *
+ * false = could not (no DC, no bitmap, PrintWindow refused): the caller
+ * falls back to the erase-and-repaint it always had.
+ */
+static bool kitty_cfg_host_present(HWND host)
+{
+    RECT rc;
+    HDC wdc, mdc = NULL;
+    HBITMAP bmp = NULL, old;
+    bool ok = false;
+
+    if (!host || !IsWindowVisible(host) || !GetClientRect(host, &rc))
+        return false;
+    if (rc.right <= 0 || rc.bottom <= 0)
+        return false;
+    wdc = GetDC(host);
+    if (!wdc)
+        return false;
+    mdc = CreateCompatibleDC(wdc);
+    bmp = CreateCompatibleBitmap(wdc, rc.right, rc.bottom);
+    if (mdc && bmp) {
+        old = SelectObject(mdc, bmp);
+        if (PrintWindow(host, mdc, PW_CLIENTONLY)) {
+            BitBlt(wdc, 0, 0, rc.right, rc.bottom, mdc, 0, 0, SRCCOPY);
+            RedrawWindow(host, NULL, NULL,
+                         RDW_VALIDATE | RDW_NOERASE | RDW_ALLCHILDREN);
+            ok = true;
+        }
+        SelectObject(mdc, old);
+    }
+    if (bmp) DeleteObject(bmp);
+    if (mdc) DeleteDC(mdc);
+    ReleaseDC(host, wdc);
+    return ok;
+}
+
 static struct kitty_cfg_panel *kitty_cfg_panel_find(const char *path)
 {
     for (size_t i = 0; i < kitty_cfg_npanels; i++)
@@ -3070,6 +3123,17 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                              hwnd, PanelHostProc);
             if (kitty_cfg_panel_host) {
                 /*
+                 * NO WS_EX_COMPOSITED on the host either. Tried 2026-09-04
+                 * against the panel-switch flash (a switch erases the host
+                 * and the new panel's controls paint over the erase, which
+                 * the eye sees as a blank flash per switch): measured with
+                 * scripts/qa_cfgbox_flicker.ps1, the double-buffered host
+                 * flashed on 16 of 30 switches instead of 10, and the
+                 * longest blank grew from 49 to 83 ms. The flash is the
+                 * switch's own duration between erase and finished paint;
+                 * shortening the switch is the remedy, not another style.
+                 */
+                /*
                  * The host stops short of the right edge by the width of a
                  * scroll bar, so the bar sits BESIDE it and not under it.
                  * Overlapping them made the bar unclickable: the host is a
@@ -3745,10 +3809,60 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                      * erase then wipes and redraws underneath them.
                      * RDW_UPDATENOW | RDW_ALLCHILDREN does the erase and every
                      * child in a single synchronous pass before returning.
+                     *
+                     * The panel HOST is presented as a freeze frame instead
+                     * (kitty_cfg_host_present: rendered off screen, one blit,
+                     * no erase on screen), and the erase-and-repaint pass
+                     * covers only what is right of the tree OUTSIDE the host -
+                     * the scroll bar, the button strip. If the freeze frame
+                     * cannot be made, the host joins the pass as before.
                      */
-                    RedrawWindow(hwnd, &client, NULL,
-                                 RDW_ERASE | RDW_INVALIDATE |
-                                 RDW_UPDATENOW | RDW_ALLCHILDREN);
+                    {
+                        RECT hostrc;
+                        bool frozen = false;
+                        /* [ConfigBox] switchpaint=erase: the old road, on
+                         * purpose - the flicker harness measures both on
+                         * one binary, and support can ask for it if a
+                         * control ever misrenders through WM_PRINT. */
+                        char switchpaint[16] = "";
+                        ReadParameterN("ConfigBox", "switchpaint",
+                                       switchpaint, sizeof(switchpaint));
+                        if (kitty_cfg_panel_host &&
+                            stricmp(switchpaint, "erase") != 0 &&
+                            GetWindowRect(kitty_cfg_panel_host, &hostrc)) {
+                            MapWindowPoints(NULL, hwnd, (LPPOINT)&hostrc, 2);
+                            frozen = kitty_cfg_host_present(kitty_cfg_panel_host);
+                        }
+                        if (frozen) {
+                            /* Outside the host only the scroll-bar GUTTER
+                             * can have changed (the bar came or went): the
+                             * strip between the host's right edge and the
+                             * panel area's. The button row and the strip
+                             * above the panel are the same as before the
+                             * switch, and erasing them was the flash that
+                             * remained after the freeze frame (reported
+                             * 2026-09-04) - the host harness never sampled
+                             * them. */
+                            RECT gutter, area;
+                            kitty_cfg_panel_rect(hwnd, &area);
+                            gutter.left = hostrc.right;
+                            gutter.top = hostrc.top;
+                            gutter.right = area.right;
+                            gutter.bottom = hostrc.bottom;
+                            if (gutter.right > gutter.left)
+                                RedrawWindow(hwnd, &gutter, NULL,
+                                             RDW_ERASE | RDW_INVALIDATE |
+                                             RDW_UPDATENOW | RDW_ALLCHILDREN);
+                        } else {
+                            RedrawWindow(hwnd, &client, NULL,
+                                         RDW_ERASE | RDW_INVALIDATE |
+                                         RDW_UPDATENOW | RDW_ALLCHILDREN);
+                        }
+                        /* Which road this switch took, for the flicker
+                         * harness (qa_cfgbox_flicker.ps1): 1 freeze frame,
+                         * 2 the erase-and-repaint fallback. */
+                        SetPropA(hwnd, "KiTTY.cfg.switch", (HANDLE)(ULONG_PTR)(frozen ? 1 : 2));
+                    }
                     /*
                      * The TREE still has to be repainted, without the erase.
                      *

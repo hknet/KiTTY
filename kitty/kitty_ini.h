@@ -36,6 +36,13 @@ char default_init_file_content[] =
 ;    This key lives in the [ConfigBox] section.\n\
 ;applicationpanel=Application/Named Proxies\n\
 \n\
+; switchpaint: how a category switch paints the panel area. The default\n\
+;    renders the new panel off screen and shows it in one step (no flash).\n\
+;    \"erase\" paints it the old way - erase, then every control - which\n\
+;    shows a blank flash per switch; a diagnostic, for the case that a\n\
+;    control misrenders through the off-screen path.\n\
+;switchpaint=erase\n\
+\n\
 ; dblclick: what a double-click on a saved session does\n\
 ;    - open: load it and open it in this window (like the Open button)\n\
 ;    - start: launch it in a new window and keep the configuration box open (like the Start button)\n\

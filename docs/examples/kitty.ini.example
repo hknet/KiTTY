@@ -33,6 +33,13 @@
 ;    This key lives in the [ConfigBox] section.
 ;applicationpanel=Application/Named Proxies
 
+; switchpaint: how a category switch paints the panel area. The default
+;    renders the new panel off screen and shows it in one step (no flash).
+;    "erase" paints it the old way - erase, then every control - which
+;    shows a blank flash per switch; a diagnostic, for the case that a
+;    control misrenders through the off-screen path.
+;switchpaint=erase
+
 ; dblclick: what a double-click on a saved session does
 ;    - open: load it and open it in this window (like the Open button)
 ;    - start: launch it in a new window and keep the configuration box open (like the Start button)
