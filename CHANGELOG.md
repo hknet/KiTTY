@@ -2,6 +2,52 @@
 
 KiTTY is basically the full KiTTY feature set forward-ported and then some really serious speed enhancements and features onto a modern, security-patched **PuTTY 0.85** core. Versions below are this port's own `0.85.1.x` line. For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.7-beta — 2026-09-04
+
+### New
+
+- **Direct2D and window transparency go together now.** A translucent
+  window, or one that is dimmed from the menu later, runs the Direct2D
+  renderer on a blit-model swap chain, which the window's layered alpha
+  applies to; the flip model stays with opaque windows. The Terminal &
+  Printing leaf no longer greys the transparency switch when Direct2D is
+  chosen, and choosing transparency no longer hands a Direct2D window back
+  to GDI.
+- **A renderer badge.** A Direct2D window shows a small "D2D" pill in its
+  top-right corner for the first three seconds and fades it out, so an
+  opt-in that silently fell back to GDI is visible at a glance: no badge, no
+  GPU.
+- **The configuration window follows a Windows scaling change while it is
+  open.** Its minimum size, anchors and every cached panel are rescaled with
+  the display; before, the contents grew or shrank and the window kept the
+  old size limits.
+- **Category switches in the configuration window no longer flash.** The new
+  panel is rendered off screen and shown in one step; only the scroll-bar
+  gutter is repainted on screen. Measured over 49 switches: the blank frames
+  went from 8 to 0 and a switch got faster (median 112 to 77 ms).
+  `switchpaint=erase` in the `[ConfigBox]` section of kitty.ini restores the
+  old way, for diagnosis.
+- **Windows XP, verified.** Every program of the 32-bit build - kitty,
+  kitty_portable, kitty_tel, klink, kscp, ksftp, kageant, kittygen,
+  kittygen-cli, kitty_pterm - was started on a Windows XP SP3 machine by an
+  automated smoke run: all load and run, the configuration windows render,
+  klink and kitty completed a Telnet session and an SSH session with
+  public-key authentication, and the session shows the note naming what this
+  Windows cannot do. kitty_pterm reports the missing pseudo-console API and
+  exits cleanly, which is the expected answer there.
+
+### Fixed
+
+- **A Direct2D window could go black after a resize.** The fresh canvas
+  started black and only the newly exposed strip was repainted; the buffer
+  resize could be refused while a reference was still held, unnoticed; and a
+  resize arriving mid-frame was dropped. The old picture is now carried into
+  the new canvas, the whole client area repainted, the buffer resize checked
+  and retried, and a mid-frame resize applied when the frame ends.
+- **Demo screenshots on a system without DWM (Windows XP) were empty.** The
+  fallback took the window size from the desktop's device context, which
+  answers 0 by 0 there; the window's own rectangle is used now.
+
 ## 0.85.1.6-beta — 2026-09-04
 
 ### New

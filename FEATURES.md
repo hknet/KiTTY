@@ -989,7 +989,7 @@ KiTTY can display a picture behind your terminal text, giving each session windo
 
 ### Terminal renderer (Direct2D)
 
-The terminal window is painted with GDI, as every Windows program was, or on request with Direct2D and DirectWrite, which draw on the graphics card. The GPU path makes a full repaint of a large window several times cheaper, so paging through output in a maximised window keeps up with the display, and it brings DirectWrite's text rendering. `renderer=d2d` in the `[KiTTY]` section of kitty.ini switches it on; `gdi` (the default) is what every build and every Windows has. Direct2D needs Windows 8.1 or newer and a window without transparency; where it cannot be used the window silently stays on GDI. Text looks slightly different between the two renderers (glyph placement, ClearType). A character the chosen font lacks is borrowed from the fallback fonts on both paths: the `[FontFallback]` list first, then Windows' own fallback (monochrome, no colour emoji yet). Switching transparency on in a Direct2D window hands the window back to GDI, since a translucent window cannot be painted by the GPU path.
+The terminal window is painted with GDI, as every Windows program was, or on request with Direct2D and DirectWrite, which draw on the graphics card. The GPU path makes a full repaint of a large window several times cheaper, so paging through output in a maximised window keeps up with the display, and it brings DirectWrite's text rendering. `renderer=d2d` in the `[KiTTY]` section of kitty.ini switches it on; `gdi` (the default) is what every build and every Windows has. Direct2D needs Windows 8.1 or newer; where it cannot be used the window silently stays on GDI. A window that is on Direct2D says so: a small "D2D" pill in its top-right corner for the first three seconds, then it fades. Text looks slightly different between the two renderers (glyph placement, ClearType). A character the chosen font lacks is borrowed from the fallback fonts on both paths: the `[FontFallback]` list first, then Windows' own fallback (monochrome, no colour emoji yet). Window transparency works with Direct2D too: a translucent window, or one dimmed from the menu later, presents through the blit-model swap chain, which the window's transparency applies to, while an opaque window keeps the faster flip model.
 
 ### Frame pacing
 
@@ -1002,6 +1002,7 @@ What a given window gets, decided at start-up, never by a build:
 | Renderer | Windows | What paces the frames |
 |---|---|---|
 | Direct2D | 8.1 and later | the compositor's ready signal: one frame per display refresh; a `framepace` number caps it |
+| Direct2D, translucent window | 8.1 and later | the blit-model chain has no compositor signal: the exact timer, as the GDI row below for the same Windows |
 | GDI | 10 version 1803 and later | the exact waitable timer at one refresh period as the desktop reports it (16 ms if it cannot); a `framepace` number replaces that |
 | GDI | Vista to 10 before 1803 | a waitable timer on the 15.6 ms clock interrupt: the pace, rounded up to the next step |
 | GDI | XP, and the 32-bit build there | the classic timer window, as PuTTY has always used |

@@ -8,6 +8,6 @@
  * default stuff used for local development runs of 'make'.
  */
 
-#define TEXTVER "0.85.1.6-beta (KiTTY, PuTTY 0.85 base)"
+#define TEXTVER "0.85.1.7-beta (KiTTY, PuTTY 0.85 base)"
 #define SSHVER "_Release_0.85"
-#define BINARY_VERSION 0,85,1,6
+#define BINARY_VERSION 0,85,1,7

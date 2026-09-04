@@ -1,4 +1,4 @@
-# KiTTY 0.85.1.6 — Known issues & limitations
+# KiTTY 0.85.1.7 — Known issues & limitations
 
 The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
@@ -149,14 +149,16 @@ features are working and verified. Known limitations as of this release:
   covers the whole virtual desktop; that this reaches a second monitor has
   been verified in code but not yet on a multi-monitor desk.
 - **The Direct2D (GPU) renderer is opt-in and new.** `renderer=d2d` needs
-  Windows 8.1 or newer and a window without transparency; a translucent window
-  stays on GDI, and switching transparency on hands a Direct2D window back to
-  GDI. DirectWrite rasterises the text, so it looks slightly different from
-  GDI's, and right-to-left text is placed glyph by glyph without the
-  reordering GDI applies. Untested so far on this path: the trust sigil on
-  screen, a DPI change while the window is open, the 32-bit build, and a
-  machine that has only the software (WARP) Direct3D device. Report what you
-  see; GDI is one setting away if things don't work for you.
+  Windows 8.1 or newer. A translucent window runs it on the blit-model swap
+  chain, which costs the flip model's present path and the compositor's frame
+  signal (the pacing then runs on the timer); the badge in the top-right
+  corner says whether a window is on Direct2D at all. DirectWrite rasterises
+  the text, so it looks slightly different from GDI's, and right-to-left text
+  is placed glyph by glyph without the reordering GDI applies. Untested so
+  far on this path: the trust sigil on screen, a DPI change of the terminal
+  window while it is open, and a machine that has only the software (WARP)
+  Direct3D device. Report what you see; GDI is one setting away if things
+  don't work for you.
 - **Font fallback renders monochrome**, on both renderers. Missing-glyph
   fallback draws with plain GDI or a plain DirectWrite glyph run, so emoji and
   other colour glyphs taken from a fallback font come out as monochrome
@@ -273,7 +275,7 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.85.1.6-beta @ 2026-09-04`.
+- **Version string:** binaries report `0.85.1.7-beta @ 2026-09-04`.
 - **`kittygen.exe` and `kittygen-cli.exe` are two programs with two command
   lines.** The window one takes only `-t`, `-b`, `-E`, `-primes`, `-strong-rsa`,
   `-ppk-param`, `-restrict-acl` and `-pgpfp`; `-C`, `-q`, `-o`, `-l` and

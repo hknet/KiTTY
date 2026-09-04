@@ -39,14 +39,20 @@ char *save_screenshot(HWND hwnd, Filename *outfile)
         y = wr.top;
         w = wr.right - wr.left;
         h = wr.bottom - wr.top;
+    } else if (GetWindowRect(hwnd, &wr)) {
+        /* KiTTY: no DWM (Windows XP, or composition off) - the window's own
+         * rectangle, which has no shadow to exclude there anyway. The
+         * upstream fallback read the size off the desktop DC's current
+         * bitmap, and on XP that answers 0 by 0: every demo screenshot of
+         * the XP smoke run was a 54-byte header with no pixels, and
+         * GetDIBits refused the empty request with error 87. */
+        x = wr.left;
+        y = wr.top;
+        w = wr.right - wr.left;
+        h = wr.bottom - wr.top;
     } else {
-        BITMAP bmhdr;
-        memset(&bmhdr, 0, sizeof(bmhdr));
-        GetObject(GetCurrentObject(dcWindow, OBJ_BITMAP),
-                  sizeof(bmhdr), &bmhdr);
-        x = y = 0;
-        w = bmhdr.bmWidth;
-        h = bmhdr.bmHeight;
+        err = dupprintf("GetWindowRect: %s", win_strerror(GetLastError()));
+        goto out;
     }
 
     dcSave = CreateCompatibleDC(dcWindow);
@@ -63,7 +69,8 @@ char *save_screenshot(HWND hwnd, Filename *outfile)
         goto out;
     }
 
-    if (!SelectObject(dcSave, bmSave)) {
+    HGDIOBJ bmOld = SelectObject(dcSave, bmSave);
+    if (!bmOld) {
         err = dupprintf("SelectObject: %s", win_strerror(GetLastError()));
         goto out;
     }
@@ -72,6 +79,13 @@ char *save_screenshot(HWND hwnd, Filename *outfile)
         err = dupprintf("BitBlt: %s", win_strerror(GetLastError()));
         goto out;
     }
+
+    /* KiTTY: deselect the bitmap before reading it back. GetDIBits is
+     * documented to require that the bitmap is not selected into any DC;
+     * modern Windows tolerates it, Windows XP refuses with error 87 (found
+     * by the XP smoke run: every demo screenshot there was a header-only
+     * file). */
+    SelectObject(dcSave, bmOld);
 
     BITMAPINFO bmInfo;
     memset(&bmInfo, 0, sizeof(bmInfo));
