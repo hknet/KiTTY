@@ -155,6 +155,14 @@ parallel-target approach, and the constraints to know before editing shared file
 
 ---
 
+## Related Projects
+
+If you got a related project to this KiTTY++ please notify the repo and will link you here:
+
+- **QuickPutty** (https://github.com/wiesl/QuickPutty) by friend of this repo @wiesl
+
+---
+
 ## Credits & licence
 
 - **PuTTY** © [Simon Tatham](https://github.com/sgtatham) and the PuTTY team — the upstream
