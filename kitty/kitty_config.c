@@ -953,6 +953,25 @@ static void kitty_wpmode_grey(struct wpmode_data *wd, dlgparam *dlg)
 static struct wpmode_data *kitty_wpmode_active = NULL;
 
 /*
+ * KiTTY: Storage & Backup > KiTTY.ini - a read-only view of the configuration
+ * file that follows the file on disk, with the shipped example beside it for
+ * copying (design/TASK_kitty_ini_view.md). One instance per configuration
+ * box; the pointer is what the once-a-second poll and the fill hook use.
+ */
+struct iniview_data {
+    dlgcontrol *show;                  /* "Show:" droplist */
+    dlgcontrol *view;                  /* the read-only box - the panel's FILL control */
+    dlgcontrol *editbtn;
+    char ini_path[MAX_PATH * 2];       /* "" when KiTTY runs without a file */
+    char example_path[MAX_PATH * 2];   /* "" when not installed beside the exe */
+    int showing;                       /* 0 = kitty.ini, 1 = the example */
+    FILETIME shown_write;              /* last-write time of the text on screen */
+    bool shown_valid;
+};
+static struct iniview_data *kitty_iniview_active = NULL;
+static void kitty_iniview_poll(dlgparam *dlg);
+
+/*
  * Which panel the config box should open on, instead of Session.
  *
  * Set by "kitty.exe -cfgpanel Connection/Proxy" (windows/window.c parses it),
@@ -1029,6 +1048,7 @@ void kitty_cfgbox_workplace_poll(dlgparam *dlg)
     char armed[256];
     int now, have;
     struct wpmode_data *wd = kitty_wpmode_active;
+    kitty_iniview_poll(dlg);           /* the kitty.ini view follows its file */
     now = kitty_workplace_query(armed, sizeof(armed)) ? 1 : 0;
     /* Opening the config box is one of the ways KiTTY gets started, so it is
      * also one of the places that owes the "the mode is not active any more"
@@ -2426,6 +2446,11 @@ dlgcontrol *kitty_config_panel_fill_ctrl(const char *path)
 {
     if (path && !strcmp(path, "Session") && kitty_session_ssd)
         return kitty_session_ssd->listbox;
+    /* The kitty.ini view: a file is as long as it is, so the box gets the
+     * height the window has to give. */
+    if (path && kitty_iniview_active && kitty_iniview_active->view &&
+        !strcmp(path, "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini"))
+        return kitty_iniview_active->view;
     return NULL;
 }
 
@@ -2435,11 +2460,39 @@ dlgcontrol *kitty_config_panel_fill_ctrl(const char *path)
 
 void kitty_config_footer_pin(const char *path);   /* defined below */
 
+/* The kitty.ini view's Edit button: flush with the view's right edge. The
+ * layout gives it a column that widens with the window and leaves the button
+ * at the column's left, which reads as "somewhere right-ish". Placed after
+ * the layout, from the rectangles Windows produced, like the session-list
+ * buttons. */
+static void kitty_iniview_place(void)
+{
+    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);      /* windows/dialog.c */
+    struct iniview_data *iv = kitty_iniview_active;
+    HWND hview, hbtn;
+    RECT vr, br;
+    POINT pt;
+
+    if (!iv || !iv->view || !iv->editbtn)
+        return;
+    hview = kitty_cfg_ctrl_hwnd(iv->view);
+    hbtn = kitty_cfg_ctrl_hwnd(iv->editbtn);
+    if (!hview || !hbtn || !GetWindowRect(hview, &vr) || !GetWindowRect(hbtn, &br))
+        return;
+    pt.x = vr.right - (br.right - br.left);
+    pt.y = br.top;
+    ScreenToClient(GetParent(hbtn), &pt);
+    SetWindowPos(hbtn, NULL, pt.x, pt.y, 0, 0,
+                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 /* windows/dialog.c calls this once per panel, as soon as it is laid out. */
 void kitty_config_panel_placed(const char *path)
 {
     if (path && !strcmp(path, "Session"))
         kitty_config_session_distribute();
+    if (path && !strcmp(path, "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini"))
+        kitty_iniview_place();
     if (path)
         kitty_config_footer_pin(path);  /* the app panels' footer, likewise */
 }
@@ -10424,6 +10477,240 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     }
 }
 
+/* ---- Storage & Backup > KiTTY.ini ------------------------------------- */
+
+/* The file the view is showing, "" when there is none. */
+static const char *iniview_path(const struct iniview_data *iv)
+{
+    return iv->showing ? iv->example_path : iv->ini_path;
+}
+
+/* Is this line's key one whose value must not be shown? A user may put a
+ * secret into kitty.ini by hand, and a screenshot of this panel must be safe
+ * to share. Comment lines (the example is all comments) are shown as they
+ * are; only a live "key=value" is masked - and only when the key ENDS with
+ * the word: "passphrasecacheseconds" is a number and
+ * "PortablePasswordProtection" a mode, and a substring test hid both. */
+static bool iniview_key_is_secret(const char *line, size_t keylen)
+{
+    static const char *const words[] = { "password", "passphrase", "secret", "token" };
+    char key[128];
+    size_t i, w;
+    while (keylen > 0 && (line[keylen - 1] == ' ' || line[keylen - 1] == '\t'))
+        keylen--;                      /* "key = value" spacing */
+    if (keylen == 0 || keylen >= sizeof(key))
+        return false;
+    for (i = 0; i < keylen; i++)
+        key[i] = (char)tolower((unsigned char)line[i]);
+    key[keylen] = '\0';
+    for (w = 0; w < lenof(words); w++) {
+        size_t wl = strlen(words[w]);
+        if (keylen >= wl && !strcmp(key + keylen - wl, words[w]))
+            return true;
+    }
+    return false;
+}
+
+/* The file's text for the edit box: CRLF line ends (a LF-only file shows as
+ * one line otherwise), secrets masked. Caller frees. */
+static char *iniview_read(const char *path, FILETIME *written, bool *ok)
+{
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    FILE *fp;
+    long len;
+    char *raw, *p, *end;
+    strbuf *out;
+
+    *ok = false;
+    memset(written, 0, sizeof(*written));
+    if (!path || !path[0])
+        return dupstr(KT_INIVIEW_NO_FILE);
+    if (GetFileAttributesExA(path, GetFileExInfoStandard, &fad))
+        *written = fad.ftLastWriteTime;
+    fp = fopen(path, "rb");
+    if (!fp)
+        return dupstr(KT_INIVIEW_NOT_FOUND);
+    fseek(fp, 0, SEEK_END);
+    len = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    if (len < 0) len = 0;
+    raw = snewn((size_t)len + 1, char);
+    len = (long)fread(raw, 1, (size_t)len, fp);
+    fclose(fp);
+    raw[len] = '\0';
+    *ok = true;
+
+    out = strbuf_new();
+    p = raw;
+    while (*p) {
+        end = strchr(p, '\n');
+        size_t n = end ? (size_t)(end - p) : strlen(p);
+        size_t body = n;
+        const char *eq;
+        if (body && p[body - 1] == '\r')
+            body--;
+        eq = memchr(p, '=', body);
+        if (eq && p[0] != ';' && p[0] != '#' &&
+            iniview_key_is_secret(p, (size_t)(eq - p))) {
+            put_data(out, p, (size_t)(eq - p) + 1);
+            put_dataz(out, KT_INIVIEW_MASK);
+        } else {
+            put_data(out, p, body);
+        }
+        put_datapl(out, PTRLEN_LITERAL("\r\n"));
+        if (!end)
+            break;
+        p = end + 1;
+    }
+    smemclr(raw, (size_t)len);
+    sfree(raw);
+    return strbuf_to_str(out);
+}
+
+static void iniview_load(struct iniview_data *iv, dlgparam *dlg, bool keep_scroll)
+{
+    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);      /* windows/dialog.c */
+    HWND h = kitty_cfg_ctrl_hwnd(iv->view);
+    int first = 0;
+    char *text;
+
+    if (h && keep_scroll)
+        first = (int)SendMessage(h, EM_GETFIRSTVISIBLELINE, 0, 0);
+    text = iniview_read(iniview_path(iv), &iv->shown_write, &iv->shown_valid);
+    dlg_editbox_set(iv->view, dlg, text);
+    smemclr(text, strlen(text));
+    sfree(text);
+    if (h && keep_scroll && first > 0)
+        SendMessage(h, EM_LINESCROLL, 0, first);
+}
+
+/* Once a second while the leaf is on screen: a changed last-write time
+ * replaces the text, keeping the scroll position. A stat per second, no
+ * change notification to own and close. */
+static void kitty_iniview_poll(dlgparam *dlg)
+{
+    struct iniview_data *iv = kitty_iniview_active;
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    const char *path;
+
+    if (!iv || !iv->view || !dlg || !dlg_is_visible(iv->view, dlg))
+        return;
+    path = iniview_path(iv);
+    if (!path[0])
+        return;
+    if (!GetFileAttributesExA(path, GetFileExInfoStandard, &fad)) {
+        if (iv->shown_valid)              /* the file went away */
+            iniview_load(iv, dlg, false);
+        return;
+    }
+    if (!iv->shown_valid ||
+        CompareFileTime(&fad.ftLastWriteTime, &iv->shown_write) != 0)
+        iniview_load(iv, dlg, true);
+}
+
+static void kitty_iniview_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                  void *data, int event)
+{
+    struct iniview_data *iv = (struct iniview_data *)ctrl->context.p;
+
+    if (ctrl == iv->show) {
+        if (event == EVENT_REFRESH) {
+            dlg_update_start(ctrl, dlg);
+            dlg_listbox_clear(ctrl, dlg);
+            dlg_listbox_addwithid(ctrl, dlg, KT_INIVIEW_SHOW_INI, 0);
+            if (iv->example_path[0])
+                dlg_listbox_addwithid(ctrl, dlg, KT_INIVIEW_SHOW_EXAMPLE, 1);
+            dlg_listbox_select(ctrl, dlg, iv->showing);
+            dlg_update_done(ctrl, dlg);
+        } else if (event == EVENT_SELCHANGE) {
+            int i = dlg_listbox_index(ctrl, dlg);
+            iv->showing = (i > 0 && iv->example_path[0]) ? 1 : 0;
+            iniview_load(iv, dlg, false);
+        }
+    } else if (ctrl == iv->view) {
+        if (event == EVENT_REFRESH)
+            iniview_load(iv, dlg, false);
+        /* EVENT_VALCHANGE: the box is read-only; dlg_editbox_set fires it,
+         * and there is nothing to store. */
+    } else if (ctrl == iv->editbtn && event == EVENT_ACTION) {
+        if (!iv->ini_path[0]) {
+            MessageBoxA(dlg->hwnd, KT_INIVIEW_NO_FILE, KT_CAP_KITTY,
+                        MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+        if (MessageBoxA(dlg->hwnd, KT_INIVIEW_EDIT_WARN, KT_CAP_KITTY,
+                        MB_OKCANCEL | MB_ICONWARNING) != IDOK)
+            return;
+        /* The user's editor, never a write of our own. "edit" is the verb an
+         * .ini file registers; "open" is the fallback for a machine that
+         * has none. */
+        if ((INT_PTR)ShellExecuteA(dlg->hwnd, "edit", iv->ini_path, NULL,
+                                   NULL, SW_SHOWNORMAL) <= 32)
+            ShellExecuteA(dlg->hwnd, "open", iv->ini_path, NULL, NULL,
+                          SW_SHOWNORMAL);
+    }
+}
+
+/* The leaf itself. `ini` is GetKittyIniFile() as the caller has it. */
+static void scb_panel_iniview(struct controlbox *b, const char *ini)
+{
+    static const char *const path =
+        "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini";
+    extern int GetNoKittyFileFlag(void);                    /* kitty.c */
+    struct iniview_data *iv;
+    struct controlset *s;
+    dlgcontrol *c;
+    char line[MAX_PATH * 2 + 64];
+
+    iv = (struct iniview_data *)ctrl_alloc(b, sizeof(*iv));
+    memset(iv, 0, sizeof(*iv));
+    kitty_iniview_active = iv;
+    if (ini && ini[0] && !GetNoKittyFileFlag())
+        snprintf(iv->ini_path, sizeof(iv->ini_path), "%s", ini);
+    /* The example ships beside the executable (MSI and ZIP alike). */
+    {
+        char exe[MAX_PATH];
+        char *bs;
+        if (GetModuleFileNameA(NULL, exe, sizeof(exe)) &&
+            (bs = strrchr(exe, '\\')) != NULL) {
+            *bs = '\0';
+            snprintf(iv->example_path, sizeof(iv->example_path),
+                     "%s\\kitty.ini.example", exe);
+            if (!existfile(iv->example_path))
+                iv->example_path[0] = '\0';
+        }
+    }
+
+    ctrl_settitle(b, path, KT_INIVIEW_TITLE);
+    s = ctrl_getset(b, path, "show", NULL);
+    iv->show = ctrl_droplist(s, KT_INIVIEW_SHOW, NO_SHORTCUT, 60,
+                             HELPCTX(kitty_ini_view), kitty_iniview_handler,
+                             P(iv));
+    /* One path line, the configuration file's: a full path wraps to two or
+     * three rows at this font, and the panel has to fit the window's minimum
+     * with the view still showing something. The example's place is said by
+     * its dropdown entry (it ships beside kitty.exe); its absence is said
+     * here, because then the dropdown has only one entry and no reason. */
+    snprintf(line, sizeof(line), KT_INIVIEW_PATH_INI,
+             iv->ini_path[0] ? iv->ini_path : KT_INIVIEW_NONE);
+    ctrl_text(s, line, HELPCTX(kitty_ini_view));
+    if (!iv->example_path[0])
+        ctrl_text(s, KT_INIVIEW_NO_EXAMPLE, HELPCTX(kitty_ini_view));
+
+    /* Four rows is the FLOOR: the fill hook grows the box to the window. */
+    s = ctrl_getset(b, path, "view", NULL);
+    iv->view = ctrl_editbox_multiline(s, NULL, NO_SHORTCUT, 4, true,
+                                      HELPCTX(kitty_ini_view),
+                                      kitty_iniview_handler, P(iv), P(NULL));
+    ctrl_text(s, KT_INIVIEW_TAKES_EFFECT, HELPCTX(kitty_ini_view));
+    ctrl_columns(s, 2, 70, 30);
+    c = ctrl_pushbutton(s, KT_INIVIEW_EDIT, NO_SHORTCUT,
+                        HELPCTX(kitty_ini_view), kitty_iniview_handler, P(iv));
+    c->column = 1;
+    iv->editbtn = c;
+    ctrl_columns(s, 1, 100);
+}
+
 static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
 {
 #ifdef MOD_PERSO
@@ -10545,6 +10832,9 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     /* No footer here by hand: the Application builder adds the
      * saved-as-you-change-them line to every panel with an editable control,
      * which when nothing can be written this panel has none of. */
+
+    /* Storage & Backup > KiTTY.ini: the file itself, read-only. */
+    scb_panel_iniview(b, ini);
 
     scb_panel_kitty_settings_leaves(b);
 #else
@@ -11115,6 +11405,10 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
                 continue;
             for (size_t k = 0; k < lenof(holds_until_save); k++)
                 if (!strcmp(path, holds_until_save[k])) { excluded = true; break; }
+            /* The kitty.ini VIEW has a droplist and a box, but it stores
+             * nothing: "saved as you change them" would be false there. */
+            if (!strcmp(path, "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini"))
+                excluded = true;
             if (excluded)
                 continue;
             for (size_t j = i; j < b->nctrlsets && !editable; j++) {

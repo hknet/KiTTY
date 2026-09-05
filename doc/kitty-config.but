@@ -935,6 +935,27 @@ switch is read from \c{kitty.ini} only - never the registry, so a stale
 registry value can never cancel it - which is why it is not editable
 here.
 
+\S{kitty-cfg-ini-view} The KiTTY.ini leaf (under Storage & Backup)
+
+The configuration file as it is on disk, read-only. Text can be selected
+and copied; the view follows the file, so an edit made elsewhere shows
+within a second. \q{Show} switches between this installation's
+\c{kitty.ini} and \c{kitty.ini.example}, the shipped reference with
+every key described, when that file is installed beside \c{kitty.exe} -
+copy a setting from the one, paste it into the other.
+
+\q{Edit kitty.ini} opens the file in the editor Windows has for \c{.ini}
+files - always kitty.ini, whichever of the two the view is showing -
+after a warning: kitty.ini is read when KiTTY starts, so a change takes
+effect in the next KiTTY you start, not in the one you are looking at,
+and a line KiTTY cannot read is ignored without a message. KiTTY never
+writes the file from this panel.
+
+The value of any key whose name ends in \c{password}, \c{passphrase},
+\c{secret} or \c{token} is shown as \c{********}. KiTTY itself keeps no
+secret in kitty.ini; the mask is for what a hand may have put there,
+so that a screenshot of this panel is safe to share.
+
 \S{kitty-cfg-security} The Security panel
 
 \q{Warn when an unverified agent serves the keys}.

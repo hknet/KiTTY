@@ -824,6 +824,23 @@
 #define KT_KSET_STORAGE_READONLY                     "KiTTY is running read-only (readonly=yes) - the configuration " \
         "file and the backups are not written."
 #define KT_KSET_STORAGE_NOCONF                       "KiTTY is running without a configuration file (conf=no)."
+
+/* Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini (the view) */
+#define KT_INIVIEW_TITLE                             "kitty.ini"
+#define KT_INIVIEW_SHOW                              "Show:"
+#define KT_INIVIEW_SHOW_INI                          "kitty.ini (this installation)"
+#define KT_INIVIEW_SHOW_EXAMPLE                      "kitty.ini.example (shipped reference)"
+#define KT_INIVIEW_PATH_INI                          "kitty.ini: %s"
+#define KT_INIVIEW_NONE                              "(none)"
+#define KT_INIVIEW_NO_EXAMPLE                        "kitty.ini.example is not installed beside kitty.exe."
+#define KT_INIVIEW_NO_FILE                           "KiTTY is running without a configuration file."
+#define KT_INIVIEW_NOT_FOUND                         "(the file does not exist)"
+#define KT_INIVIEW_MASK                              "********"
+#define KT_INIVIEW_TAKES_EFFECT                      "kitty.ini is read when KiTTY starts. A change takes effect in " \
+        "the next KiTTY you start, not in this one."
+#define KT_INIVIEW_EDIT                              "Edit kitty.ini..."
+#define KT_INIVIEW_EDIT_WARN                         "You are about to edit kitty.ini directly. Changes take effect in " \
+        "the next KiTTY you start. A line KiTTY cannot read is ignored without a message. Continue?"
 #define KT_KSET_BACKUPS                              "Backups"
 #define KT_KSET_BACKUPS_REG                          "Registry backups to keep (0 = none):"
 #define KT_KSET_BACKUPS_DIR                          "Folder-store backups to keep (0 = none):"

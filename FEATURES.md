@@ -874,7 +874,10 @@ Four behaviours of the configuration window itself:
 
 Every setting of the program itself - not of a session - has a panel now,
 under **Application > KiTTY++ Settings**: where settings are kept and how many
-backups are held (*Storage & Backup*), the colour theme, title bar, icons and
+backups are held (*Storage & Backup*, with a *KiTTY.ini* leaf that shows the
+configuration file read-only, follows it on disk, offers the shipped
+kitty.ini.example beside it for copying, and hands editing to your editor
+with a warning), the colour theme, title bar, icons and
 font fallback (*Appearance*), keys and mouse with a *Shortcuts* leaf, typing
 automation and broadcast (*Automation*), *Terminal & Printing* (the renderer, the frame pacing, the feature switches, printing), the
 auto-reconnect master switch and in-line confirmations (*Reconnect & Prompts*),

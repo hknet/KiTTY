@@ -14,6 +14,11 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some reall
   and the new "Background" leaf (transparency and background image
   together) live under Appearance, and Title and Icon are one leaf,
   "Title & Icon", at the end of the list.
+- **A KiTTY.ini leaf under Storage & Backup.** The configuration file,
+  read-only and following the file on disk, with the shipped
+  kitty.ini.example one dropdown away for copying settings across; Edit
+  opens it in your editor after a warning that changes take effect in the
+  next KiTTY. Values of password-like keys are masked in the view.
 - **No Application tab, for administrators.** `[ConfigBox]
   applicationsettings=no` in kitty.ini removes the tab and its panels from
   the configuration window; jumps to them open the Session tab. There is no

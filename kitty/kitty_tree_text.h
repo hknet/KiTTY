@@ -81,6 +81,7 @@ static const KittyTreeLabel kitty_tree_labels[] = {
     { "Shortcuts",               "Shortcuts" },
     { "Startup",                 "Startup" },
     { "Storage & Backup",       "Storage & Backup" },
+    { "KiTTY.ini",               "KiTTY.ini" },
     { "TTY",                     "TTY" },
     { "Telnet",                  "Telnet" },
     { "Terminal",                "Terminal" },
