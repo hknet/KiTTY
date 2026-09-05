@@ -165,6 +165,8 @@ To convert everything in one go, use **Export allâ€¦** followed by **Import allâ
 
 **Application > Migration** lists the sessions in the old KiTTY (`9bis.com`) and PuTTY registry hives and copies the ones you select into KiTTY's own store. The panel appears only when such a hive actually holds sessions.
 
+**Application > Migration > old KiTTY Folders** does the same for sessions kept in files: point it at a folder (a portable KiTTY, a copied `Sessions` directory), press Scan, and every session file in it and its subfolders is listed with its path and state. Pick the target folder (`KiTTYimport` is offered) and import the selected rows; nothing is overwritten - a taken name becomes "name (folder)" - and a password this KiTTY cannot decode is left out rather than blocking the session.
+
 - **The old store is never changed.** An import takes a copy; the original stays where it is, and you can import it again.
 - **An existing name is never overwritten.** The copy is called `work (PuTTY)` or `work (old KiTTY)`, numbered if that name is taken as well.
 - **Settings this version no longer has are not carried over**, and the import names them when it finishes.

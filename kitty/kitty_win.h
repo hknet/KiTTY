@@ -33,6 +33,8 @@ void kitty_menu_toggle_hyperlink(HWND hwnd) ;
 BOOL IsWow64() ; // Test si on est en Windows 64 bits
 int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
 int OpenDirName( HWND hFrame, char * dirname ) ;
+/* Centre a modal dialog over its owner (WM_INITDIALOG, after final size). */
+void kitty_centre_on_owner( HWND dlg ) ;
 int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
 	
 // Centre un dialog au milieu de la fenetre parent

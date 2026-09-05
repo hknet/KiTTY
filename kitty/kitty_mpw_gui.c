@@ -26,6 +26,7 @@ extern void kitty_set_master_pw_prompt(char *(*fn)(int creating));
 
 static int   g_first_time;   /* show + require the confirm field */
 static char *g_result;       /* collected UTF-8 passphrase (malloc'd) or NULL */
+static const char *g_prompt_override;  /* an import asking for ANOTHER store's password */
 
 /* Read an edit control as a malloc'd UTF-8 string (matches the UTF-8 password
  * store). The wide buffer is scrubbed before release. */
@@ -62,9 +63,9 @@ static INT_PTR CALLBACK mpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
 {
     switch (msg) {
       case WM_INITDIALOG:
-        SetDlgItemTextA(hdlg, IDC_MPW_PROMPT, g_first_time ?
-            KT_MPW_PROMPT_SET :
-            KT_MPW_PROMPT_UNLOCK);
+        SetDlgItemTextA(hdlg, IDC_MPW_PROMPT,
+            g_prompt_override ? g_prompt_override :
+            g_first_time ? KT_MPW_PROMPT_SET : KT_MPW_PROMPT_UNLOCK);
         if (!g_first_time) {
             /* Unlock mode: the prompt is one line, so reclaim most of the
              * setup-sized prompt area, then drop the confirm row, moving the
@@ -96,6 +97,10 @@ static INT_PTR CALLBACK mpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
         }
         SetForegroundWindow(hdlg);
         SetFocus(GetDlgItem(hdlg, IDC_MPW_EDIT));
+        {
+            extern void kitty_centre_on_owner(HWND dlg);  /* kitty_win.c */
+            kitty_centre_on_owner(hdlg);              /* over the asking window */
+        }
         return FALSE;                             /* we set focus ourselves */
 
       case WM_COMMAND:
@@ -154,6 +159,29 @@ static char *gui_master_pw_prompt(int creating)
                    owner, mpw_dlgproc) != IDOK) {
         if (g_result) { free(g_result); g_result = NULL; }
     }
+    res = g_result;
+    g_result = NULL;
+    return res;
+}
+
+/*
+ * The same dialog, asked by the folder IMPORT for the master password of the
+ * store being imported. Only the widget is shared: the answer goes back to the
+ * import, which keeps and uses it itself - nothing here touches this store's
+ * unlock state. malloc'd UTF-8, or NULL if cancelled.
+ */
+char *kitty_mpw_gui_ask_import(HWND owner, const char *prompt)
+{
+    char *res;
+    if (!owner) owner = GetActiveWindow();
+    g_first_time = 0;
+    g_prompt_override = prompt;
+    g_result = NULL;
+    if (DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_MASTERPW),
+                   owner, mpw_dlgproc) != IDOK) {
+        if (g_result) { free(g_result); g_result = NULL; }
+    }
+    g_prompt_override = NULL;
     res = g_result;
     g_result = NULL;
     return res;

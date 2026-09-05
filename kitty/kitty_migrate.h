@@ -63,4 +63,56 @@ char *kitty_import_foreign_session(const char *name, int hive,
 /* The import NAMES what it left behind; why a particular setting is not
  * carried over is in the manual, not in a string here. */
 
+/*
+ * Sessions in FILES: a folder tree holding an old KiTTY's (or a copied)
+ * Sessions directory - design/TASK_old_kitty_folders_import.md. Works in
+ * either store mode: the copy is saved by the ordinary save path.
+ */
+enum {
+    KFS_READY = 0,        /* imports as it is */
+    KFS_PASSWORD,         /* imports, but the stored password cannot be decoded here */
+    KFS_PASSWORD_MPW,     /* imports; the password is under a master password
+                             (that store's, not asked for - see the design note) */
+    KFS_UNREADABLE        /* the file did not parse as a session */
+};
+struct kitty_folder_scan_item {
+    char *name;           /* the session name (the file name, unmunged) */
+    char *path;           /* full path of the file */
+    char *folder;         /* target folder the user assigned (owned) */
+    int state;            /* KFS_* */
+};
+struct kitty_folder_scan {
+    struct kitty_folder_scan_item *items;
+    int n;
+    size_t alloc;         /* size_t: sgrowarray takes its address */
+    int files_seen, dirs_seen;
+    bool hit_depth, hit_count;   /* which limit stopped the walk, if any */
+};
+#define KFS_MAX_DEPTH 8
+#define KFS_MAX_FILES 5000
+struct kitty_folder_scan *kitty_scan_folder_store(const char *root,
+                                                  const char *default_folder);
+void kitty_folder_scan_free(struct kitty_folder_scan *s);
+/* Does a session of this name exist in OUR store (registry key or file,
+ * whichever this KiTTY runs)? */
+bool kitty_own_session_exists(const char *name);
+/* The name an import into `folder` gets: the name itself if free, else
+ * "name (folder)", else "name (folder 2)" and up. `taken` are names this run
+ * has already handed out (so two files of one name do not collide on disk).
+ * Caller frees; NULL if nothing is free. */
+char *kitty_import_folder_target_name(const char *name, const char *folder,
+                                      const struct kitty_namelist *taken);
+/* Import one session file into our store under `target` in `folder`.
+ * *password_lost is set when the source had a password this KiTTY could not
+ * decode (the session is saved without it). Returns false if the file could
+ * not be read or the save failed. */
+bool kitty_import_file_session(const char *path, const char *target,
+                               const char *folder, const char *store_pass,
+                               struct kitty_namelist *dropped,
+                               bool *password_lost);
+/* Does `pass` open the master-password value in this session file? The
+ * import's own check, before it asks again; false when the file has no MPW2
+ * value at all. */
+bool kitty_import_store_pass_fits(const char *path, const char *pass);
+
 #endif /* KITTY_MIGRATE_H */

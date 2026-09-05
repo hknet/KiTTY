@@ -59,6 +59,7 @@ static const KittyTreeLabel kitty_tree_labels[] = {
     { "Logging",                 "Logging" },
     { "Login",                   "Login" },
     { "Migration",               "Migration" },
+    { "old KiTTY Folders",       "old KiTTY Folders" },
     { "More bugs",               "More bugs" },
     { "Named Proxies",           "Named Proxies" },
     { "Notices",                 "Notices" },

@@ -14,6 +14,12 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some reall
   and the new "Background" leaf (transparency and background image
   together) live under Appearance, and Title and Icon are one leaf,
   "Title & Icon", at the end of the list.
+- **Import an old KiTTY folder store.** Migration > old KiTTY Folders scans
+  a folder and its subfolders for session files, lists them with path and
+  state, and imports the selected ones into a folder of your naming
+  (KiTTYimport by default). Nothing is overwritten: a taken name becomes
+  "name (folder)". A password this KiTTY cannot decode is left out and
+  said so; the session still arrives.
 - **A KiTTY.ini leaf under Storage & Backup.** The configuration file,
   read-only and following the file on disk, with the shipped
   kitty.ini.example one dropdown away for copying settings across; Edit

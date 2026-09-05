@@ -720,6 +720,13 @@ Application keypad mode can be turned on and off by the server,
 depending on the application. KiTTY allows you to configure the
 initial state.
 
+The third setting, \q{NetHack}, is neither of these: the keypad keys
+1-9 then send the letters the game NetHack uses as movement commands
+(\cw{hjklyubn}, and \c{.} for 5), with Shift and Ctrl giving the
+game's "keep moving" variants. It is for that game and its relatives,
+which read single letters rather than cursor sequences; for anything
+else, choose Normal or Application. Details in \k{config-nethack}.
+
 You can also disable application keypad mode completely, using the
 \q{Features} configuration panel; see
 \k{config-features-application}.

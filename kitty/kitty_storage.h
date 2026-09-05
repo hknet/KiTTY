@@ -74,6 +74,22 @@ void kitty_read_watch_note(const char *key);   /* called by the read path */
 /* Open a session from ONE hive, ignoring the precedence chain (windows/storage.c).
  * hive is KSEC_HIVE_OLDKITTY / KSEC_HIVE_PUTTY as kitty_migrate.h re-exports them. */
 settings_r *kitty_open_settings_r_hive(const char *sessionname, int hive);
+/* A read handle over ONE session file at any path - a folder-store import's
+ * way in. Both on-disk formats, legacy password conversion included, via
+ * ksf_load. NULL if the file cannot be read or parsed. */
+settings_r *kitty_open_settings_r_file(const char *path);
+/* The same over an already-parsed (and possibly rewritten) list; the list is
+ * owned by the handle from then on. */
+settings_r *kitty_open_settings_r_items(struct ksf_item *items);
+/* Import from another store: open one MPW2 value with a given passphrase.
+ * Pure - this store's unlock state is not consulted or changed. */
+char *kitty_mpw2_unprotect_with_passphrase(const char *stored, const char *passphrase);
+int kitty_secret_is_mpw(const char *stored);     /* 2 = MPW2, 1 = MPW1, 0 = no */
+/* Walk a parsed file's keys, in file order (the import asks which keys the
+ * loader never read). */
+void ksf_list_foreach(struct ksf_item *h,
+                      void (*fn)(const char *key, const char *val, void *ctx),
+                      void *ctx);
 
 /*
  * Settings that were renamed or replaced. `was` is dropped from a session the
@@ -86,6 +102,7 @@ struct kitty_retired_key {
     const char *was;
     const char *now;
     bool migrates;
+    const char *why;      /* for a non-migrating key: the one-line reason (may be NULL) */
 };
 const struct kitty_retired_key *kitty_retired_key_table(size_t *n);
 

@@ -191,6 +191,21 @@ const struct kitty_retired_key kitty_retired_keys[] = {
      * and the first session opened won. */
     { "CheckUpdateStartup", "kitty.ini [KiTTY] checkupdate", false,
       "it belongs to the installation now, not to a session" },
+    /* Classic KiTTY's name for the RuTTY script file; the value means the
+     * same, so it is read under the old name and migrates on save. The .ktx
+     * loader had this fallback by hand; the folder import showed the ordinary
+     * loader lacked it. */
+    { "ScriptFileName", "Scriptfile", true },
+    /* Classic wrote this first in every session file as a "this is a session"
+     * marker (value 1). It is not a setting; nothing reads it here, and an
+     * empty `now` tells the importers not to report it either. */
+    { "Present", "", false, "a marker classic KiTTY wrote into every session file, not a setting" },
+    /* TuTTY's single switch for the window's caption buttons. Not ported as
+     * such: the Window buttons group on Window > Behaviour has one option per
+     * button instead, and the old value's meaning cannot be mapped onto them
+     * one to one. */
+    { "DisableBottomButtons", "Window buttons (Window > Behaviour)", false,
+      "replaced by the four Window-buttons options, which it does not map onto" },
 };
 
 const struct kitty_retired_key *kitty_retired_key_table(size_t *n)
@@ -326,6 +341,34 @@ settings_r *kitty_open_settings_r_hive(const char *sessionname, int hive)
     handle->src_hive = hive;
     handle->is_file = 0;
     handle->items = NULL;
+    return handle;
+}
+
+settings_r *kitty_open_settings_r_items(struct ksf_item *items)
+{
+    if (!items)
+        return NULL;
+    settings_r *handle = snew(settings_r);
+    handle->sesskey = NULL;
+    handle->src_hive = KSEC_HIVE_PRIMARY;
+    handle->is_file = 1;
+    handle->items = items;             /* owned from here; freed on close */
+    return handle;
+}
+
+settings_r *kitty_open_settings_r_file(const char *path)
+{
+    struct ksf_item *items;
+    if (!path || !*path)
+        return NULL;
+    items = ksf_load(path);
+    if (!items)
+        return NULL;
+    settings_r *handle = snew(settings_r);
+    handle->sesskey = NULL;
+    handle->src_hive = KSEC_HIVE_PRIMARY;
+    handle->is_file = 1;
+    handle->items = items;
     return handle;
 }
 

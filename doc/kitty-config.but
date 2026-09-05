@@ -1124,7 +1124,8 @@ registry key, so what arrives is a session of KiTTY's own in KiTTY's
 own formats - an old KiTTY's stored password, in particular, is decoded
 on the way in and re-protected on the way out.
 
-Two settings are deliberately left behind:
+Three settings are deliberately left behind, and the import names them
+when it finishes; a fourth key, \c{Present}, is dropped silently:
 
 \b \c{OSC52WarnBeforeClipboardSync} meant \q{warn before a host writes
 to the clipboard}, so its usual value of \e{off} meant hosts could
@@ -1135,11 +1136,56 @@ remote clipboard writes on for every session you import.
 \b \c{CheckUpdateStartup} belongs to the installation now
 (\k{kitty-cfg-updates}), not to a session.
 
-\c{SaveWindowPos} \e{is} carried over: it is called \c{SetWindowPos}
-now, and a session that still has the old name is read through it, on
-an import and on an ordinary load. A pinned position that is off-screen
+\b \c{Present} is not a setting: an old KiTTY wrote it, with the value
+1, as the first line of every session file to mark the file as a
+session. Nothing reads it, and the import does not mention it.
+
+\b \c{DisableBottomButtons} was one switch for the window's caption
+buttons, from the TuTTY patches an old KiTTY carried. This version has
+one option per button instead (\k{kitty-cfg-behaviour}), and the old
+value does not map onto them; set the buttons you want there.
+
+\c{SaveWindowPos} and \c{ScriptFileName} \e{are} carried over: they are
+called \c{SetWindowPos} and \c{Scriptfile} now, and a session that still
+has an old name is read through it, on an import and on an ordinary load. A pinned position that is off-screen
 is moved onto the nearest monitor (\k{kitty-cfg-winpos}), so an old
 session cannot put a window out of reach.
+
+\S{kitty-cfg-migration-folders} The old KiTTY Folders leaf
+
+Imports sessions that live in \e{files}: a portable KiTTY on a stick, a
+copied \c{Sessions} directory, a colleague's KiTTY folder. Choose the
+folder and press \q{Scan}; the folder and its subfolders are searched
+(eight levels deep, up to five thousand files - the result line says so
+if either limit stopped the search; hidden and system folders are not
+entered). Every session file found is listed with its full path.
+
+The \q{Folder} column says where each copy will be filed. A file that
+carries a folder of its own keeps it; an old KiTTY kept its folders as
+subdirectories of \c{Sessions}, and a file found there gets that
+directory's name (\c{prod\\db} two levels down); everything else gets
+the folder in \q{Import into folder} - one of your existing folders, or
+a new name typed in; \q{KiTTYimport} is offered. To change rows, select
+them, choose or type a folder, press \q{Assign to selected}; then
+\q{Import selected}. The source folder is never written.
+
+Nothing is overwritten. A name that exists already - or that another
+file in the same scan claimed - is saved as \q{name (folder)}, with a
+counter if that is taken too; the \q{Saved as} column shows the name a
+row will get. A \q{Default Settings} file is imported the same way, as
+\q{Default Settings (KiTTYimport)}: an ordinary session.
+
+The \q{State} column says \q{ready}, \q{already exists} (it will get the
+suffixed name), \q{under a master password (asked at import)},
+\q{password cannot be deciphered}, or \q{unreadable}. A password under
+the other store's master password is asked for \e{once}, when you press
+\q{Import selected}: type that store's master password and every such
+session of the scan is unlocked with it; cancel, or answer wrongly three
+times, and those sessions are imported \e{without} their passwords. An
+old KiTTY encrypted the stored password with a key derived from the host
+name, and a password protected on another machine cannot be decrypted on
+this one; such a session is imported without its password too - type it
+once and save. An unreadable file is listed and skipped.
 
 \S{kitty-cfg-ini-migration} The KiTTY storage panel
 

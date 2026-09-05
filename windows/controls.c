@@ -1068,7 +1068,7 @@ static void multiline_editbox(struct ctlpos *cp, const char *stext,
  * A list box with a static labelling it.
  */
 void listbox(struct ctlpos *cp, const char *stext,
-             int sid, int lid, int lines, bool multi)
+             int sid, int lid, int lines, bool multi, bool ownerdraw)
 {
     RECT r;
 
@@ -1089,8 +1089,107 @@ void listbox(struct ctlpos *cp, const char *stext,
     doctl(cp, r, "LISTBOX",
           WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL |
           LBS_NOTIFY | LBS_HASSTRINGS | LBS_USETABSTOPS |
-          (multi ? LBS_MULTIPLESEL : 0),
+          (multi ? LBS_MULTIPLESEL : 0) |
+          (ownerdraw ? LBS_OWNERDRAWFIXED : 0),
           WS_EX_CLIENTEDGE, "", lid);
+    if (ownerdraw) {
+        /* KiTTY: an owner-drawn list gets the SYSTEM font's row height unless
+         * told otherwise, and the dialog's font is not the system font (nor
+         * its size at 200%). Measure the control's own font and set it, so
+         * WM_MEASUREITEM - which arrives before the control is registered
+         * and could not be answered - is not needed. */
+        HWND h = GetDlgItem(cp->hwnd, lid);
+        HFONT f = (HFONT)SendMessage(h, WM_GETFONT, 0, 0);
+        HDC hdc = GetDC(h);
+        if (hdc) {
+            TEXTMETRIC tm;
+            HFONT old = f ? SelectObject(hdc, f) : NULL;
+            if (GetTextMetrics(hdc, &tm))
+                SendMessage(h, LB_SETITEMHEIGHT, 0, tm.tmHeight + 2);
+            if (old) SelectObject(hdc, old);
+            ReleaseDC(h, hdc);
+        }
+    }
+}
+
+/*
+ * KiTTY: draw one row of a header-row list (dlgcontrol.listbox.headerrow).
+ * Row 0 is the column header: its own background, never shown selected.
+ * Every row is laid out with TabbedTextOut on the SAME tab positions, so the
+ * header and the data align by construction - a plain listbox draws them
+ * with the same tab stops too, but cannot colour one row.
+ */
+static void kitty_draw_header_list_item(struct dlgparam *dp, dlgcontrol *ctrl,
+                                        LPDRAWITEMSTRUCT di)
+{
+    HDC hdc = di->hDC;
+    RECT r = di->rcItem;
+    bool dark = kitty_theme_window_dark(dp->hwnd);
+    bool header = (di->itemID == 0);
+    bool selected = !header && (di->itemState & ODS_SELECTED);
+    COLORREF back, ink;
+    int len, ntabs = 0, *tabs = NULL;
+    char *text;
+
+    if (di->itemID == (UINT)-1)
+        return;                        /* an empty list's focus rectangle */
+    if (header)
+        back = dark ? kitty_theme_row_colour(true, true) : GetSysColor(COLOR_BTNFACE);
+    else if (selected)
+        back = GetSysColor(COLOR_HIGHLIGHT);
+    else
+        back = dark ? kitty_theme_row_colour(true, false) : GetSysColor(COLOR_WINDOW);
+    ink = selected ? GetSysColor(COLOR_HIGHLIGHTTEXT)
+        : dark ? kitty_theme_text_colour(true) : GetSysColor(COLOR_WINDOWTEXT);
+    {
+        HBRUSH b = CreateSolidBrush(back);
+        FillRect(hdc, &r, b);
+        DeleteObject(b);
+    }
+    len = (int)SendMessage(di->hwndItem, LB_GETTEXTLEN, di->itemID, 0);
+    if (len < 0)
+        return;
+    text = snewn(len + 1, char);
+    SendMessage(di->hwndItem, LB_GETTEXT, di->itemID, (LPARAM)text);
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, ink);
+    if (ctrl->listbox.ncols > 1) {
+        /*
+         * One CLIPPED cell per column, not a tabbed line: a tab stop is a
+         * minimum, so a cell longer than its column pushed everything after
+         * it to the NEXT stop and the rows stopped lining up. Clipping keeps
+         * every column where the header says it is; a long value is cut at
+         * the column's edge, which is what a list view does too.
+         */
+        int width = r.right - r.left, percent = 0, i, x = r.left;
+        char *p = text;
+        for (i = 0; i < ctrl->listbox.ncols && p; i++) {
+            char *tab = strchr(p, '\t');
+            int right;
+            RECT cell;
+            if (i == ctrl->listbox.ncols - 1)
+                right = r.right;
+            else {
+                percent += ctrl->listbox.percentages[i];
+                right = r.left + width * percent / 100;
+            }
+            if (tab) *tab = '\0';
+            cell = r;
+            cell.left = x + 2;
+            cell.right = right - 2;
+            if (cell.right > cell.left)
+                ExtTextOut(hdc, cell.left, r.top + 1, ETO_CLIPPED, &cell,
+                           p, (UINT)strlen(p), NULL);
+            x = right;
+            p = tab ? tab + 1 : NULL;
+        }
+    } else {
+        ExtTextOut(hdc, r.left + 2, r.top + 1, ETO_CLIPPED, &r, text, len, NULL);
+    }
+    if (!header && (di->itemState & ODS_FOCUS))
+        DrawFocusRect(hdc, &r);
+    (void)ntabs; (void)tabs;
+    sfree(text);
 }
 
 /*
@@ -1949,7 +2048,8 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
             } else {
                 /* Ordinary list. */
                 listbox(&pos, escaped, base_id, base_id+1,
-                        ctrl->listbox.height, ctrl->listbox.multisel);
+                        ctrl->listbox.height, ctrl->listbox.multisel,
+                        ctrl->listbox.headerrow);
             }
             if (ctrl->listbox.ncols) {
                 /*
@@ -2159,6 +2259,13 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
     }
     if (!c)
         return false;                  /* we have nothing to do */
+
+    if (msg == WM_DRAWITEM && c->ctrl && c->ctrl->type == CTRL_LISTBOX &&
+        c->ctrl->listbox.headerrow) {
+        /* KiTTY: a row of a header-row list. */
+        kitty_draw_header_list_item(dp, c->ctrl, (LPDRAWITEMSTRUCT)lParam);
+        return true;
+    }
 
     if (msg == WM_DRAWITEM) {
         /*

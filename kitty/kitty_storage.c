@@ -686,6 +686,13 @@ void ksf_list_del(struct ksf_item **h, const char *key)
         pp = &it->next;
     }
 }
+void ksf_list_foreach(struct ksf_item *h,
+                      void (*fn)(const char *key, const char *val, void *ctx),
+                      void *ctx)
+{
+    for (; h; h = h->next)
+        fn(h->key, h->val, ctx);
+}
 void ksf_list_free(struct ksf_item *h)
 {
     while (h) {
@@ -1064,6 +1071,50 @@ static char *(*g_mpw_prompt)(int creating) = NULL; /* GUI/console prompt */
  * passphrase (-masterpwfile) or an already-unlocked store still works. */
 static int   g_mpw_defer = 0;
 void kitty_set_defer_mpw_prompt(int on) { g_mpw_defer = on; }
+/*
+ * For an IMPORT from another store: open one "MPW2:<salt>.<payload>" value
+ * with a passphrase given explicitly. Pure - derives against the value's own
+ * embedded salt and checks the envelope's HMAC; touches none of this store's
+ * state (no unlock, no prompt, no cache, no decline latch). The import owns
+ * its own passphrase and its own asking; this store's crypto path stays
+ * exactly as it was. malloc'd plaintext, or NULL (wrong passphrase, not an
+ * MPW2 value, or the MPW crypto not linked in this tool).
+ */
+char *kitty_mpw2_unprotect_with_passphrase(const char *stored, const char *passphrase)
+{
+    const char *p, *dot;
+    char *sb, *m1 = NULL, *pt = NULL, *res = NULL;
+    unsigned char *salt = NULL;
+    unsigned char key[KSEC_MPW_KEYLEN];
+    int sn = 0;
+
+    if (!stored || !passphrase || !*passphrase || !g_mpw_derive || !g_mpw_unprotect)
+        return NULL;
+    if (strncmp(stored, KSEC_MPW2_MARK, strlen(KSEC_MPW2_MARK)) != 0)
+        return NULL;
+    p = stored + strlen(KSEC_MPW2_MARK);
+    dot = strchr(p, '.');
+    if (!dot || dot == p)
+        return NULL;
+    sb = malloc((size_t)(dot - p) + 1);
+    if (!sb) return NULL;
+    memcpy(sb, p, dot - p); sb[dot - p] = '\0';
+    salt = ksec_b64_decode(sb, &sn);
+    free(sb);
+    if (!salt || sn != KSEC_MPW_SALTLEN) { free(salt); return NULL; }
+    m1 = malloc(strlen(KSEC_MPW_MARK) + strlen(dot + 1) + 1);
+    if (m1) {
+        sprintf(m1, "%s%s", KSEC_MPW_MARK, dot + 1);
+        g_mpw_derive(passphrase, salt, KSEC_MPW_SALTLEN, key);
+        if (g_mpw_unprotect(m1, key, &pt) == 1 && pt)
+            res = ksec_dup(pt);
+        if (pt) { memset(pt, 0, strlen(pt)); sfree(pt); }
+        SecureZeroMemory(key, sizeof(key));
+        free(m1);
+    }
+    free(salt);
+    return res;
+}
 static unsigned char g_mpw_salt[KSEC_MPW_SALTLEN]; /* store salt, cached at unlock */
 static int   g_mpw_salt_valid = 0;
 /* one-slot cache for a FOREIGN salt (imported MPW2 from another store), so a
@@ -1278,6 +1329,12 @@ static int mpw_ensure_unlocked(int creating)
     }
     kitty_pwdebug("mpw unlock FAILED: first_time=%d supplied=%d prompt=%d declined=%d",
                   first_time, from_supplied, g_mpw_prompt != NULL, g_mpw_declined);
+    /* Three wrong answers end the asking for this run, exactly as a cancel
+     * does: without this, every further value asked three more times - a
+     * store of forty sessions became a hundred and twenty prompts. A fresh
+     * hand-started action clears it (kitty_mpw_allow_prompt_again). */
+    if (!from_supplied && g_mpw_prompt)
+        g_mpw_declined = 1;
     SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key));
     return 0;
 }
@@ -1349,6 +1406,11 @@ static int mpw_unprotect_with_salt(const char *m1blob,
         if (*outp) { sfree(*outp); *outp = NULL; }
         SecureZeroMemory(key, sizeof(key));
     }
+    /* Three wrong answers end the asking for this run, as a cancel does -
+     * otherwise every further value of the same store asked three more
+     * times. A hand-started action clears it (kitty_mpw_allow_prompt_again). */
+    if (!from_supplied)
+        g_mpw_declined = 1;
     return 0;
 }
 
@@ -1746,6 +1808,17 @@ static int ksec_value_is_mpw(const char *v)
 {
     return v && (!strncmp(v, KSEC_MPW_MARK,  strlen(KSEC_MPW_MARK)) ||
                  !strncmp(v, KSEC_MPW2_MARK, strlen(KSEC_MPW2_MARK)));
+}
+/* For the folder import: is this stored value under a master password?
+ * 2 = MPW2 (self-contained: the salt is embedded, so THAT store's master
+ * password unlocks it here), 1 = MPW1 (needs its store's salt - not
+ * decodable from a foreign folder), 0 = no. */
+int kitty_secret_is_mpw(const char *stored)
+{
+    if (!stored) return 0;
+    if (!strncmp(stored, KSEC_MPW2_MARK, strlen(KSEC_MPW2_MARK))) return 2;
+    if (!strncmp(stored, KSEC_MPW_MARK, strlen(KSEC_MPW_MARK))) return 1;
+    return 0;
 }
 
 /* Registry: every session (and named proxy) is a subkey holding at most two

@@ -351,6 +351,14 @@ struct dlgcontrol {
              * right-hand side.
              */
             bool hscroll;
+            /*
+             * KiTTY: the first row is a COLUMN HEADER - drawn in a distinct
+             * colour, never selectable - and the rows are owner-drawn so the
+             * header and the data share the same tab positions. The Windows
+             * layout honours it (LBS_OWNERDRAWFIXED); other front ends may
+             * ignore it and show the header as an ordinary row.
+             */
+            bool headerrow;
         } listbox;
         struct { /* for CTRL_FILESELECT */
             char shortcut;

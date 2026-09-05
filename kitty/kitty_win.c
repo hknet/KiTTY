@@ -1055,6 +1055,35 @@ static int kitty_fit_text( HWND dlg, int ctlid, const char *text, int extra_dy )
 	return dh ;
 }
 
+/*
+ * Put a modal dialog over the window that raised it. DS_CENTER in a template
+ * centres on the SCREEN and ignores the owner, so a confirmation raised from
+ * the configuration box on a wide monitor landed mid-screen while the box sat
+ * at one side. Called from WM_INITDIALOG, after the dialog has its final
+ * size. Does nothing without a visible owner (the template's own placement
+ * then stands); the result is kept inside the owner's monitor.
+ */
+void kitty_centre_on_owner( HWND dlg ) {
+	HWND owner = GetWindow( dlg, GW_OWNER ) ;
+	RECT o, d, wa ;
+	MONITORINFO mi ;
+	int x, y, w, hgt ;
+	if( !owner || !IsWindowVisible( owner ) || IsIconic( owner ) ) return ;
+	if( !GetWindowRect( owner, &o ) || !GetWindowRect( dlg, &d ) ) return ;
+	w = d.right - d.left ; hgt = d.bottom - d.top ;
+	x = o.left + ((o.right - o.left) - w) / 2 ;
+	y = o.top + ((o.bottom - o.top) - hgt) / 2 ;
+	mi.cbSize = sizeof(mi) ;
+	if( GetMonitorInfo( MonitorFromWindow( owner, MONITOR_DEFAULTTONEAREST ), &mi ) ) {
+		wa = mi.rcWork ;
+		if( x + w > wa.right ) x = wa.right - w ;
+		if( y + hgt > wa.bottom ) y = wa.bottom - hgt ;
+		if( x < wa.left ) x = wa.left ;
+		if( y < wa.top ) y = wa.top ;
+	}
+	SetWindowPos( dlg, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE ) ;
+}
+
 static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
 	static const kitty_confirm_t *cf = NULL ;
 	switch( msg ) {
@@ -1096,6 +1125,7 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			SetFocus( GetDlgItem( h, IDYES ) ) ;
 		} else
 			SetFocus( GetDlgItem( h, IDNO ) ) ;
+		kitty_centre_on_owner( h ) ;       /* over the window that asked, not mid-screen */
 		return FALSE ;                     /* focus set here, not by the manager */
 	  }
 	  case WM_CTLCOLORSTATIC:

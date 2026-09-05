@@ -972,6 +972,22 @@ static struct iniview_data *kitty_iniview_active = NULL;
 static void kitty_iniview_poll(dlgparam *dlg);
 
 /*
+ * KiTTY: Migration > old KiTTY Folders - sessions in FILES, imported from a
+ * folder tree (design/TASK_old_kitty_folders_import.md). The engine is
+ * kitty_migrate.c; this is the panel's state for one configuration box.
+ */
+struct migf_data {
+    dlgcontrol *folderbox;             /* the folder to scan */
+    dlgcontrol *target;                /* editable combo: the folder imports go to */
+    dlgcontrol *listbox;               /* Session | Path | Target | State - the FILL control */
+    dlgcontrol *banner;                /* the result line */
+    struct kitty_folder_scan *found;   /* the last scan, or NULL */
+    char root[MAX_PATH * 2];
+    char folder[256];                  /* the target folder as typed/chosen */
+};
+static struct migf_data *kitty_migf_active = NULL;
+
+/*
  * Which panel the config box should open on, instead of Session.
  *
  * Set by "kitty.exe -cfgpanel Connection/Proxy" (windows/window.c parses it),
@@ -2451,6 +2467,10 @@ dlgcontrol *kitty_config_panel_fill_ctrl(const char *path)
     if (path && kitty_iniview_active && kitty_iniview_active->view &&
         !strcmp(path, "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini"))
         return kitty_iniview_active->view;
+    /* The folder-import list: a scan may find hundreds of files. */
+    if (path && kitty_migf_active && kitty_migf_active->listbox &&
+        !strcmp(path, "Application/Migration/old KiTTY Folders"))
+        return kitty_migf_active->listbox;
     return NULL;
 }
 
@@ -3312,10 +3332,10 @@ static void kitty_root_folder_cannot_delete(dlgparam *dlg)
         (MessageBoxTimeoutA_t)kitty_api_from(user32, "user32.dll", "MessageBoxTimeoutA", KITTY_API_OPTIONAL,
                                   "message boxes that close themselves") : NULL;
     if (msgbox_timeout)
-        msgbox_timeout(dlg->hwnd, KT_CFG_ROOT_FOLDER_CANT_DELETE, KT_CAP_KITTY,
+        msgbox_timeout(kitty_cfg_modal_owner(), KT_CFG_ROOT_FOLDER_CANT_DELETE, KT_CAP_KITTY,
                        MB_OK | MB_ICONINFORMATION, 0, 5000);
     else
-        MessageBoxA(dlg->hwnd, KT_CFG_ROOT_FOLDER_CANT_DELETE, KT_CAP_KITTY,
+        MessageBoxA(kitty_cfg_modal_owner(), KT_CFG_ROOT_FOLDER_CANT_DELETE, KT_CAP_KITTY,
                     MB_OK | MB_ICONINFORMATION);
 }
 
@@ -3549,7 +3569,7 @@ static bool sessionsaver_confirm_empty_folder(struct sessionsaver_data *ssd,
     else
         snprintf(msg, sizeof(msg),
                  KT_CFG_FOLDER_DELETE_MANY, CurrentFolder, n);
-    if (MessageBoxA(dlg->hwnd, msg, KT_CAP_KITTY,
+    if (MessageBoxA(kitty_cfg_modal_owner(), msg, KT_CAP_KITTY,
                     MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES)
         return false;
     return sessionsaver_move_folder_sessions(ssd, dlg, CurrentFolder,
@@ -3596,7 +3616,7 @@ static void sessionsaver_offer_hide_default(struct sessionsaver_data *ssd,
                  KITTY_DEFAULT_SESSION,
                  GetReadOnlyFlag() ? KT_CFG_DEFAULT_READONLY
                                    : KT_CFG_DEFAULT_NO_CONF);
-        MessageBoxA(dlg->hwnd, msg, KT_CAP_KITTY, MB_OK | MB_ICONINFORMATION);
+        MessageBoxA(kitty_cfg_modal_owner(), msg, KT_CAP_KITTY, MB_OK | MB_ICONINFORMATION);
         return;
     }
 
@@ -3604,7 +3624,7 @@ static void sessionsaver_offer_hide_default(struct sessionsaver_data *ssd,
              KT_CFG_DEFAULT_HIDE_Q,
              KITTY_DEFAULT_SESSION, ini);
 
-    if (MessageBoxA(dlg->hwnd, msg, KT_CAP_KITTY,
+    if (MessageBoxA(kitty_cfg_modal_owner(), msg, KT_CAP_KITTY,
                     MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES)
         return;                          /* No = keep showing it */
 
@@ -3612,7 +3632,7 @@ static void sessionsaver_offer_hide_default(struct sessionsaver_data *ssd,
     if (!writeINI(ini, "ConfigBox", "defaultsettings", "no")) {
         snprintf(msg, sizeof(msg),
                  KT_CFG_DEFAULT_WRITE_FAILED, ini, KITTY_DEFAULT_SESSION);
-        MessageBoxA(dlg->hwnd, msg, KT_CAP_KITTY, MB_OK | MB_ICONERROR);
+        MessageBoxA(kitty_cfg_modal_owner(), msg, KT_CAP_KITTY, MB_OK | MB_ICONERROR);
         return;
     }
 
@@ -10634,11 +10654,11 @@ static void kitty_iniview_handler(dlgcontrol *ctrl, dlgparam *dlg,
          * and there is nothing to store. */
     } else if (ctrl == iv->editbtn && event == EVENT_ACTION) {
         if (!iv->ini_path[0]) {
-            MessageBoxA(dlg->hwnd, KT_INIVIEW_NO_FILE, KT_CAP_KITTY,
+            MessageBoxA(kitty_cfg_modal_owner(), KT_INIVIEW_NO_FILE, KT_CAP_KITTY,
                         MB_OK | MB_ICONINFORMATION);
             return;
         }
-        if (MessageBoxA(dlg->hwnd, KT_INIVIEW_EDIT_WARN, KT_CAP_KITTY,
+        if (MessageBoxA(kitty_cfg_modal_owner(), KT_INIVIEW_EDIT_WARN, KT_CAP_KITTY,
                         MB_OKCANCEL | MB_ICONWARNING) != IDOK)
             return;
         /* The user's editor, never a write of our own. "edit" is the verb an
@@ -11220,6 +11240,388 @@ static void scb_app_footer(struct controlbox *b, const char *path)
     }
 }
 
+/* ---- Migration > old KiTTY Folders ------------------------------------ */
+
+static int migf_refreshing = 0;        /* dlg_editbox_set fires VALCHANGE */
+
+/* The folder typed or chosen as the target, cleaned the way the Session
+ * panel cleans a new folder name; KiTTYimport when the field is empty. */
+static char *migf_target_folder(struct migf_data *m, dlgparam *dlg)
+{
+    char *t = m->target ? dlg_editbox_get(m->target, dlg) : NULL;
+    char folder[256];
+    snprintf(folder, sizeof(folder), "%s", (t && *t) ? t : KT_MIGF_DEFAULT_FOLDER);
+    sfree(t);
+    CleanFolderName(folder);
+    if (!folder[0])
+        snprintf(folder, sizeof(folder), "%s", KT_MIGF_DEFAULT_FOLDER);
+    return dupstr(folder);
+}
+
+/* Session | Path | Target | State, one row per file found. The target name
+ * is worked out here, row by row, exactly as the import will hand it out -
+ * names this list already claimed count as taken - so the column says what
+ * WILL happen. */
+static void migf_fill_list(struct migf_data *m, dlgparam *dlg)
+{
+    struct kitty_namelist taken;
+    int i;
+
+    if (!m->listbox)
+        return;
+    memset(&taken, 0, sizeof(taken));
+    dlg_update_start(m->listbox, dlg);
+    dlg_listbox_clear(m->listbox, dlg);
+    /* Row 0 is the column header (listbox.headerrow): id -1, so every
+     * loop over selected rows skips it. */
+    dlg_listbox_addwithid(m->listbox, dlg, KT_MIGF_COL_HEAD, -1);
+    for (i = 0; m->found && i < m->found->n; i++) {
+        struct kitty_folder_scan_item *it = &m->found->items[i];
+        char *target = kitty_import_folder_target_name(it->name, it->folder, &taken);
+        const char *state =
+            it->state == KFS_UNREADABLE    ? KT_MIGF_ST_UNREADABLE :
+            it->state == KFS_PASSWORD      ? KT_MIGF_ST_PASSWORD :
+            it->state == KFS_PASSWORD_MPW  ? KT_MIGF_ST_MPW :
+            (target && strcmp(target, it->name)) ? KT_MIGF_ST_EXISTS : KT_MIGF_ST_READY;
+        /* Path LAST, and relative to the scanned folder: the tab stops align
+         * the three short columns, and the one of any length runs off the
+         * end where it pushes nothing. */
+        const char *rel = it->path;
+        size_t rootlen = strlen(m->root);
+        if (rootlen && !_strnicmp(rel, m->root, rootlen) && rel[rootlen] == '\\')
+            rel += rootlen + 1;
+        char *row = dupprintf("%s\t%s\t%s\t%s\t%s", it->name, state,
+                              it->folder, target ? target : "", rel);
+        dlg_listbox_addwithid(m->listbox, dlg, row, i);
+        sfree(row);
+        if (target && it->state != KFS_UNREADABLE)
+            kitty_namelist_add(&taken, target);
+        sfree(target);
+    }
+    dlg_update_done(m->listbox, dlg);
+    kitty_namelist_clear(&taken);
+}
+
+static void migf_say(struct migf_data *m, dlgparam *dlg, const char *what)
+{
+    if (m->banner)
+        dlg_label_change(m->banner, dlg, what);
+}
+
+static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                               void *data, int event)
+{
+    extern int existdirectory(const char *filename);   /* kitty_tools.c */
+    struct migf_data *m = (struct migf_data *)ctrl->context.p;
+    int which = ctrl->context2.i;      /* 0 folder box, 1 browse, 2 scan,
+                                          3 target combo, 4 assign, 5 list,
+                                          6 import */
+    if (!m)
+        return;
+
+    switch (which) {
+      case 0:                          /* the folder to scan */
+        if (event == EVENT_REFRESH) {
+            migf_refreshing = 1;
+            dlg_editbox_set(ctrl, dlg, m->root);
+            migf_refreshing = 0;
+        } else if (event == EVENT_VALCHANGE && !migf_refreshing) {
+            char *s = dlg_editbox_get(ctrl, dlg);
+            snprintf(m->root, sizeof(m->root), "%s", s);
+            sfree(s);
+        }
+        break;
+
+      case 1:                          /* Browse... */
+        if (event == EVENT_ACTION) {
+            char dir[MAX_PATH * 2];
+            if (OpenDirName(dlg->hwnd, dir) && dir[0]) {
+                snprintf(m->root, sizeof(m->root), "%s", dir);
+                if (m->folderbox)
+                    dlg_refresh(m->folderbox, dlg);
+            }
+        }
+        break;
+
+      case 2:                          /* Scan */
+        if (event == EVENT_ACTION) {
+            char *folder;
+            strbuf *line;
+            if (!m->root[0]) { migf_say(m, dlg, KT_MIGF_NO_FOLDER); break; }
+            if (!existdirectory(m->root)) { migf_say(m, dlg, KT_MIGF_NOT_A_DIR); break; }
+            folder = migf_target_folder(m, dlg);
+            kitty_folder_scan_free(m->found);
+            m->found = kitty_scan_folder_store(m->root, folder);
+            sfree(folder);
+            migf_fill_list(m, dlg);
+            line = strbuf_new();
+            if (m->found->n)
+                put_fmt(line, KT_MIGF_FOUND, m->found->n, m->found->n == 1 ? "" : "s",
+                        m->found->dirs_seen, m->found->dirs_seen == 1 ? "" : "s");
+            else
+                put_dataz(line, KT_MIGF_FOUND_NONE);
+            if (m->found->hit_depth)
+                put_fmt(line, KT_MIGF_LIMIT_DEPTH, KFS_MAX_DEPTH);
+            if (m->found->hit_count)
+                put_fmt(line, KT_MIGF_LIMIT_COUNT, KFS_MAX_FILES);
+            migf_say(m, dlg, line->s);
+            strbuf_free(line);
+        }
+        break;
+
+      case 3:                          /* Import into folder: */
+        if (event == EVENT_REFRESH) {
+            extern char **FolderList;
+            int i;
+            dlg_update_start(ctrl, dlg);
+            dlg_listbox_clear(ctrl, dlg);
+            dlg_listbox_add(ctrl, dlg, KT_MIGF_DEFAULT_FOLDER);
+            for (i = 0; FolderList && FolderList[i]; i++)
+                if (FolderList[i][0] && strcmp(FolderList[i], KT_MIGF_DEFAULT_FOLDER))
+                    dlg_listbox_add(ctrl, dlg, FolderList[i]);
+            /* What the user typed or picked survives a refresh; only a box
+             * that never had a value shows the default. */
+            if (!m->folder[0])
+                snprintf(m->folder, sizeof(m->folder), "%s", KT_MIGF_DEFAULT_FOLDER);
+            migf_refreshing = 1;
+            dlg_editbox_set(ctrl, dlg, m->folder);
+            migf_refreshing = 0;
+            dlg_update_done(ctrl, dlg);
+        } else if ((event == EVENT_VALCHANGE || event == EVENT_SELCHANGE) &&
+                   !migf_refreshing) {
+            char *s = dlg_editbox_get(ctrl, dlg);
+            snprintf(m->folder, sizeof(m->folder), "%s", s);
+            sfree(s);
+        }
+        break;
+
+      case 4:                          /* Assign to selected */
+        if (event == EVENT_ACTION) {
+            char *folder;
+            int i, n = 0;
+            if (!m->found || !m->listbox) { migf_say(m, dlg, KT_MIGF_NOSEL); break; }
+            folder = migf_target_folder(m, dlg);
+            /* Rows = the header + one per file: the loop runs over ROWS. */
+            for (i = 0; i <= m->found->n; i++) {
+                int id;
+                if (!dlg_listbox_issel(m->listbox, dlg, i))
+                    continue;
+                id = dlg_listbox_getid(m->listbox, dlg, i);
+                if (id < 0 || id >= m->found->n)
+                    continue;
+                sfree(m->found->items[id].folder);
+                m->found->items[id].folder = dupstr(folder);
+                n++;
+            }
+            sfree(folder);
+            migf_fill_list(m, dlg);
+            migf_say(m, dlg, n ? KT_MIGF_ASSIGNED : KT_MIGF_NOSEL);
+        }
+        break;
+
+      case 5:                          /* the list */
+        if (event == EVENT_REFRESH) {
+            migf_fill_list(m, dlg);
+        } else if (event == EVENT_SELCHANGE) {
+            /* The header row cannot be selected: a click on it (or a
+             * select-all) is undone at once. */
+            extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);
+            HWND h = kitty_cfg_ctrl_hwnd(ctrl);
+            if (h && SendMessage(h, LB_GETSEL, 0, 0) > 0)
+                SendMessage(h, LB_SETSEL, FALSE, 0);
+        }
+        break;
+
+      case 6:                          /* Import selected */
+        if (event == EVENT_ACTION) {
+            struct kitty_namelist dropped, taken;
+            strbuf *names;
+            char *store_pass = NULL;   /* the source store's master password, or NULL */
+            int i, done = 0, failed = 0, nopw = 0;
+
+            if (!m->found || !m->listbox) { migf_say(m, dlg, KT_MIGF_NOSEL); break; }
+            memset(&dropped, 0, sizeof(dropped));
+            memset(&taken, 0, sizeof(taken));
+            /*
+             * The source store's master password, asked ONCE per import and
+             * only when a selected row needs it. The import's own asking and
+             * the import's own key: our store's unlock is not touched. Three
+             * tries against the first such file; cancel or three misses and
+             * those sessions import without their passwords.
+             */
+            {
+                extern char *kitty_mpw_gui_ask_import(HWND owner, const char *prompt);
+                const char *probe = NULL;
+                for (i = 0; i <= m->found->n && !probe; i++) {
+                    int id;
+                    if (!dlg_listbox_issel(m->listbox, dlg, i))
+                        continue;
+                    id = dlg_listbox_getid(m->listbox, dlg, i);
+                    if (id >= 0 && id < m->found->n &&
+                        m->found->items[id].state == KFS_PASSWORD_MPW)
+                        probe = m->found->items[id].path;
+                }
+                store_pass = NULL;
+                for (int tries = 0; probe && tries < 3 && !store_pass; tries++) {
+                    char *p = kitty_mpw_gui_ask_import(dlg->hwnd, KT_MIGF_MPW_PROMPT);
+                    if (!p)
+                        break;                       /* cancelled: import without */
+                    if (kitty_import_store_pass_fits(probe, p))
+                        store_pass = p;
+                    else {
+                        memset(p, 0, strlen(p));
+                        free(p);
+                    }
+                }
+            }
+            names = strbuf_new();
+            for (i = 0; i <= m->found->n; i++) {   /* rows: header + files */
+                struct kitty_folder_scan_item *it;
+                char *target;
+                bool lost = false;
+                int id;
+                if (!dlg_listbox_issel(m->listbox, dlg, i))
+                    continue;
+                id = dlg_listbox_getid(m->listbox, dlg, i);
+                if (id < 0 || id >= m->found->n)
+                    continue;
+                it = &m->found->items[id];
+                if (it->state == KFS_UNREADABLE) { failed++; continue; }
+                target = kitty_import_folder_target_name(it->name, it->folder, &taken);
+                if (!target || !kitty_import_file_session(it->path, target, it->folder,
+                                                          store_pass, &dropped, &lost)) {
+                    sfree(target);
+                    failed++;
+                    continue;
+                }
+                kitty_namelist_add(&taken, target);
+                if (done)
+                    put_dataz(names, ", ");
+                put_dataz(names, target);
+                sfree(target);
+                done++;
+                if (lost)
+                    nopw++;
+            }
+            if (!done && !failed) {
+                strbuf_free(names);
+                kitty_namelist_clear(&dropped);
+                kitty_namelist_clear(&taken);
+                migf_say(m, dlg, KT_MIGF_NOSEL);
+                break;
+            }
+            if (done) {
+                /* The Session panel is out of date now: the list has new rows,
+                 * the folder combo (or the folder rows) a new folder, and the
+                 * name box may name a session that no longer sits where it
+                 * did. The same three refreshes a folder change makes; the
+                 * launcher is told as well. */
+                struct sessionsaver_data *ssd = kitty_session_ssd;
+                InitFolderList();
+                if (ssd && ssd->listbox) {
+                    get_sesslist(&ssd->sesslist, false);
+                    get_sesslist(&ssd->sesslist, true);
+                    kitty_session_folder_cache_clear();
+                    if (ssd->editbox)    dlg_refresh(ssd->editbox, dlg);
+                    if (ssd->folderlist) dlg_refresh(ssd->folderlist, dlg);
+                    dlg_refresh(ssd->listbox, dlg);
+                }
+                kitty_notify_launcher_sessions_changed();
+                if (m->target)
+                    dlg_refresh(m->target, dlg);
+            }
+            {
+                strbuf *msg = strbuf_new();
+                if (done)
+                    put_fmt(msg, KT_MIGF_BOX_OK, done, done == 1 ? "" : "s", names->s);
+                if (nopw)
+                    put_fmt(msg, KT_MIGF_BOX_NOPW, nopw);
+                if (failed)
+                    put_fmt(msg, KT_MIGF_BOX_FAILED, failed, failed == 1 ? "" : "s");
+                if (dropped.n) {
+                    char *list = kitty_namelist_join(&dropped, ", ");
+                    put_fmt(msg, KT_MIG_BOX_DROPPED, list);
+                    put_dataz(msg, KT_MIG_BOX_SEEHELP);
+                    sfree(list);
+                }
+                MessageBoxA(kitty_cfg_modal_owner(), msg->s, KT_MIGF_BOX_TITLE,
+                            MB_OK | MB_ICONINFORMATION);
+                strbuf_free(msg);
+            }
+            migf_fill_list(m, dlg);    /* "already exists" is true now */
+            migf_say(m, dlg, done ? KT_MIGF_DONE : KT_MIGF_NONE);
+            strbuf_free(names);
+            kitty_namelist_clear(&dropped);
+            kitty_namelist_clear(&taken);
+            if (store_pass) { memset(store_pass, 0, strlen(store_pass)); free(store_pass); }
+        }
+        break;
+    }
+}
+
+static void scb_panel_folder_import(struct controlbox *b)
+{
+    static const char *const path = "Application/Migration/old KiTTY Folders";
+    struct migf_data *m;
+    struct controlset *s;
+    dlgcontrol *c;
+
+    m = (struct migf_data *)ctrl_alloc(b, sizeof(*m));
+    memset(m, 0, sizeof(*m));
+    kitty_migf_active = m;
+
+    ctrl_settitle(b, path, KT_MIGF_TITLE);
+
+    s = ctrl_getset(b, path, "scan", KT_MIGF_SCAN_GROUP);
+    ctrl_text(s, KT_MIGF_SCAN_INTRO, HELPCTX(kitty_import_folders));
+    m->folderbox = ctrl_editbox(s, KT_MIGF_FOLDER, NO_SHORTCUT, 100,
+                                HELPCTX(kitty_import_folders),
+                                kitty_migf_handler, P(m), I(0));
+    ctrl_columns(s, 2, 50, 50);
+    c = ctrl_pushbutton(s, KT_MIGF_BROWSE, NO_SHORTCUT, HELPCTX(kitty_import_folders),
+                        kitty_migf_handler, P(m));
+    c->context2 = I(1); c->column = 0;
+    c = ctrl_pushbutton(s, KT_MIGF_SCAN, NO_SHORTCUT, HELPCTX(kitty_import_folders),
+                        kitty_migf_handler, P(m));
+    c->context2 = I(2); c->column = 1;
+    ctrl_columns(s, 1, 100);
+
+    s = ctrl_getset(b, path, "target", KT_MIGF_TARGET_GROUP);
+    m->target = ctrl_combobox(s, KT_MIGF_TARGET, NO_SHORTCUT, 60,
+                              HELPCTX(kitty_import_folders),
+                              kitty_migf_handler, P(m), I(3));
+    ctrl_text(s, KT_MIGF_TARGET_NOTE, HELPCTX(kitty_import_folders));
+    ctrl_columns(s, 2, 50, 50);
+    c = ctrl_pushbutton(s, KT_MIGF_ASSIGN, NO_SHORTCUT, HELPCTX(kitty_import_folders),
+                        kitty_migf_handler, P(m));
+    c->context2 = I(4); c->column = 1;
+    ctrl_columns(s, 1, 100);
+
+    s = ctrl_getset(b, path, "list", KT_MIGF_LIST_GROUP);
+    m->listbox = ctrl_listbox(s, NULL, NO_SHORTCUT, HELPCTX(kitty_import_folders),
+                              kitty_migf_handler, P(m));
+    m->listbox->context2 = I(5);
+    m->listbox->listbox.height = 6;    /* the floor; the fill hook grows it */
+    m->listbox->listbox.multisel = 1;
+    m->listbox->listbox.headerrow = true;   /* row 0 = the column header */
+    m->listbox->listbox.ncols = 5;
+    m->listbox->listbox.percentages = snewn(5, int);
+    m->listbox->listbox.percentages[0] = 20;   /* Session */
+    m->listbox->listbox.percentages[1] = 20;   /* State */
+    m->listbox->listbox.percentages[2] = 14;   /* Folder */
+    m->listbox->listbox.percentages[3] = 22;   /* Saved as */
+    m->listbox->listbox.percentages[4] = 24;   /* Path */
+    /* The result line and the button share one row, directly under the
+     * list: a line of its own put the button a full row further down. */
+    ctrl_columns(s, 2, 60, 40);
+    m->banner = ctrl_text(s, " ", HELPCTX(kitty_import_folders));
+    m->banner->column = 0;
+    c = ctrl_pushbutton(s, KT_MIGF_IMPORT, NO_SHORTCUT, HELPCTX(kitty_import_folders),
+                        kitty_migf_handler, P(m));
+    c->context2 = I(6); c->column = 1;
+    ctrl_columns(s, 1, 100);
+}
+
 static void scb_panel_application(struct controlbox *b, bool midsession)
 {
 #ifdef MOD_PERSO
@@ -11353,6 +11755,9 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
         }
     }
 
+    /* Migration > old KiTTY Folders: sessions kept in files. */
+    scb_panel_folder_import(b);
+
     ctrl_settitle(b, "Application/Updates", KT_UPDATES_KEEPING_KITTY_UP_TO_DATE);
     s = ctrl_getset(b, "Application/Updates", "check", KT_UPDATES_UPDATE_CHECK);
     /* On startup, check for a newer release and show a one-line notice in the
@@ -11408,6 +11813,9 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
             /* The kitty.ini VIEW has a droplist and a box, but it stores
              * nothing: "saved as you change them" would be false there. */
             if (!strcmp(path, "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini"))
+                excluded = true;
+            /* The folder import: its fields drive an action, they store nothing. */
+            if (!strcmp(path, "Application/Migration/old KiTTY Folders"))
                 excluded = true;
             if (excluded)
                 continue;
