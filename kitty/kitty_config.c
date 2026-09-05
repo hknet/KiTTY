@@ -2417,6 +2417,18 @@ void kitty_config_session_distribute(void)
     #undef KCS_MOVE
 }
 
+/* windows/dialog.c asks, per panel: which control takes the height the panel
+ * area has left below the layout? Only the Session panel has one - the
+ * saved-session list, so the list is as long as the box is tall and the
+ * panel never ends in a blank foot. The row-count setting is the list's
+ * FLOOR, the least it may be, and what the minimum window height fits. */
+dlgcontrol *kitty_config_panel_fill_ctrl(const char *path)
+{
+    if (path && !strcmp(path, "Session") && kitty_session_ssd)
+        return kitty_session_ssd->listbox;
+    return NULL;
+}
+
 /* (The Proxy panel's pre-set loader used to be pinned to the BOTTOM of the
  * panel area, which left a blank band between the session's own fields and
  * the loader. It follows the layout now, directly under them.) */
@@ -6130,36 +6142,12 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
     }
 #endif
 
-    s = ctrl_getset(b, "Session", "otheropts", NULL);
-    /* Stock PuTTY's "Close window on exit" comes FIRST so users coming from
-     * PuTTY find the familiar control where they expect it; all KiTTY-added
-     * per-session options are grouped below it (hknet/KiTTY#11). */
-    ctrl_radiobuttons(s, KT_SESSION_CLOSE_TERMINAL_WINDOW_ON_EXIT, 'x', 4,
-                      HELPCTX(session_coe),
-                      conf_radiobutton_handler,
-                      I(CONF_close_on_exit),
-                      KT_SESSION_ALWAYS, I(FORCE_ON),
-                      KT_SESSION_NEVER, I(FORCE_OFF),
-                      KT_SESSION_ONLY_ON_CLEAN_EXIT, I(AUTO));
+    /* "Close window on exit" and "Save settings on exit" are on Window >
+     * Behaviour ("Closing the window" / "Remembering"): both decide what the
+     * WINDOW does when its session ends, and the closing hook in window.c
+     * treats "Save settings on exit" and "Remember window position" as a
+     * pair. "Hide this session from the launcher" is on Session/Startup. */
 #ifdef MOD_PERSO
-    if (!GetPuttyFlag()) {
-        /* KiTTY: writes this session back when its window closes - the settings
-         * as they stand at that moment, so a font or colour changed mid-session
-         * survives, plus the window's size, position and maximised state.
-         *
-         * It stays on the SESSION panel: it saves the whole session, which is a
-         * session concern, not window behaviour (only "Remember window
-         * position" moved to Window > Behaviour). Its implementation had been
-         * lost in the port - the box did nothing at all - and classic KiTTY's
-         * version rewrote the session through load_settings()+save_settings()
-         * merely to keep the coordinates. An unnamed session and "Default
-         * Settings" are deliberately never written. */
-        ctrl_checkbox(s, KT_SESSION_SAVE_SETTINGS_ON_EXIT, NO_SHORTCUT,
-                      HELPCTX(kitty_save_on_exit), conf_checkbox_handler,
-                      I(CONF_saveonexit));
-        /* "Hide this session from the launcher" lives on Session/Startup
-         * (Launcher configuration), with the rest of the launcher settings. */
-    }
 
     /* KiTTY: settings about the APPLICATION rather than this connection, in
      * their own box so they stop reading as session options. They ended up on
@@ -6883,6 +6871,73 @@ static void kitty_urlregex_reset_handler(dlgcontrol *ctrl, dlgparam *dlg,
     dlg_refresh(NULL, dlg);
 }
 
+/* KiTTY: does the Background leaf (transparency + background image) exist? */
+static bool scb_background_leaf_wanted(void)
+{
+    if (GetTransparencyFlag())
+        return true;
+#ifdef MOD_BACKGROUNDIMAGE
+    if (GetBackgroundImageFlag())
+        return true;
+#endif
+    return false;
+}
+
+/*
+ * KiTTY: the Window branch of the Category tree, in display order.
+ *
+ * A leaf appears in the tree where its title set is created, so the order of
+ * the whole branch is decided here and nowhere else; the panel functions below
+ * only add their control sets to these paths. Paths are IDENTIFIERS - the
+ * settings code, remembered panels, help and the QA harnesses key on them -
+ * and kitty_tree_text.h holds what the tree shows: "Window/Selection" reads
+ * "Copy & Paste", "Window/Title" reads "Title & Icon". A leaf whose feature
+ * is switched off is not created at all.
+ */
+static void scb_window_tree(struct controlbox *b)
+{
+    char *str;
+
+    str = dupprintf(KT_CFG_APPEARANCE_TITLE_FMT, appname);
+    ctrl_settitle(b, "Window/Appearance", str);
+    sfree(str);
+#ifdef MOD_PERSO
+    if (!GetPuttyFlag())
+        ctrl_settitle(b, "Window/Appearance/Position",
+                      KT_APPEARANCE_OPTIONS_CONTROLLING_WHERE_THE_WINDOW);
+#endif
+    ctrl_settitle(b, "Window/Appearance/Colours",
+                  KT_COLOURS_OPTIONS_CONTROLLING_USE_OF_COLOURS);
+    str = dupprintf(KT_CFG_PRECISE_COLOURS_TITLE_FMT, appname);
+    ctrl_settitle(b, "Window/Appearance/Colours/Precise colours", str);
+    sfree(str);
+#ifdef MOD_PERSO
+    if (!GetPuttyFlag() && scb_background_leaf_wanted())
+        ctrl_settitle(b, "Window/Appearance/Background", KT_BACKGROUND_TITLE);
+#endif
+    str = dupprintf(KT_CFG_BEHAVIOUR_TITLE_FMT, appname);
+    ctrl_settitle(b, "Window/Behaviour", str);
+    sfree(str);
+    ctrl_settitle(b, "Window/Selection",
+                  KT_SELECTION_OPTIONS_CONTROLLING_COPY_AND_PASTE);
+    ctrl_settitle(b, "Window/Selection/Copy",
+                  KT_COPY_CLASSES_OF_CHARACTER_THAT_GROUP);
+    ctrl_settitle(b, "Window/Selection/Remote clipboard",
+                  KT_REMOTE_CLIPBOARD_WHAT_A_REMOTE_HOST_MAY);
+    ctrl_settitle(b, "Window/Selection/Remote clipboard/Limits",
+                  KT_LIMITS_BOUNDS_ON_WHAT_A_PERMITTED);
+    ctrl_settitle(b, "Window/Selection/Remote clipboard/Notices",
+                  KT_NOTICES_BEING_TOLD_ABOUT_REMOTE_CLIPBOARD);
+#ifdef MOD_PERSO
+    if (!GetPuttyFlag())
+        ctrl_settitle(b, "Window/Hyperlinks",
+                      KT_HYPERLINKS_OPTIONS_CONTROLLING_CLICKABLE_URL_HYPERLINKS);
+#endif
+    ctrl_settitle(b, "Window/Charset translation",
+                  KT_CHARSET_TRANSLATION_OPTIONS_CONTROLLING_CHARACTER_SET_TRANSLATION);
+    ctrl_settitle(b, "Window/Title", KT_TITLE_WINDOW_TITLE_AND_ICON_OPTIONS);
+}
+
 static void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
 {
     const struct BackendVtable *backvt;
@@ -6897,6 +6952,7 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
     str = dupprintf(KT_CFG_WINDOW_TITLE_FMT, appname);
     ctrl_settitle(b, "Window", str);
     sfree(str);
+    scb_window_tree(b);          /* every Window leaf, in display order */
 
     backvt = backend_vt_from_proto(protocol);
     if (backvt)
@@ -6963,10 +7019,6 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
     /*
      * The Window/Appearance panel.
      */
-    str = dupprintf(KT_CFG_APPEARANCE_TITLE_FMT, appname);
-    ctrl_settitle(b, "Window/Appearance", str);
-    sfree(str);
-
     s = ctrl_getset(b, "Window/Appearance", "cursor",
                     KT_APPEARANCE_ADJUST_THE_USE);
     ctrl_radiobuttons(s, KT_APPEARANCE_CURSOR_APPEARANCE, NO_SHORTCUT, 3,
@@ -7016,14 +7068,50 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
     /*
      * The Window/Behaviour panel.
      */
-    str = dupprintf(KT_CFG_BEHAVIOUR_TITLE_FMT, appname);
-    ctrl_settitle(b, "Window/Behaviour", str);
-    sfree(str);
+    /* First what the window does when its session ends, then what it
+     * remembers - the pair kitty_on_window_closing() acts on - then the
+     * Windows-convention switches. "Close window on exit" is stock PuTTY's
+     * and used to sit on the Session panel; a dropped link is re-dialled by
+     * auto-reconnect before this setting is consulted, so it decides only
+     * what happens once the session has ENDED. */
+    s = ctrl_getset(b, "Window/Behaviour", "closing",
+                    KT_BEHAVIOUR_CLOSING_THE_WINDOW);
+    ctrl_radiobuttons(s, KT_SESSION_CLOSE_TERMINAL_WINDOW_ON_EXIT, 'x', 4,
+                      HELPCTX(session_coe),
+                      conf_radiobutton_handler,
+                      I(CONF_close_on_exit),
+                      KT_SESSION_ALWAYS, I(FORCE_ON),
+                      KT_SESSION_NEVER, I(FORCE_OFF),
+                      KT_SESSION_ONLY_ON_CLEAN_EXIT, I(AUTO));
+    ctrl_checkbox(s, KT_BEHAVIOUR_WARN_BEFORE_CLOSING_WINDOW, 'w',
+                  HELPCTX(behaviour_closewarn),
+                  conf_checkbox_handler, I(CONF_warn_on_close));
+#ifdef MOD_PERSO
+    if (!GetPuttyFlag()) {
+        s = ctrl_getset(b, "Window/Behaviour", "remember",
+                        KT_BEHAVIOUR_REMEMBERING);
+        /* KiTTY: where a window OPENS is window behaviour, not a property of
+         * the connection. Classic KiTTY's equivalent ("Save position and size
+         * on exit") lived in this panel too. Ours remembers the position per
+         * monitor LAYOUT, so docking or unplugging a screen restores the window
+         * where it belonged on that layout instead of stranding it off-screen;
+         * it deliberately does not restore a maximised or minimised state. */
+        ctrl_checkbox(s, KT_BEHAVIOUR_REMEMBER_WINDOW_POSITION_PER_MONITOR, NO_SHORTCUT,
+                      HELPCTX(kitty_winpos_remember), conf_checkbox_handler,
+                      I(CONF_remember_winpos));
+        /* KiTTY: writes this session back when its window closes - the settings
+         * as they stand at that moment, so a font or colour changed mid-session
+         * survives, plus the window's size, position and maximised state. An
+         * unnamed session and "Default Settings" are deliberately never
+         * written. */
+        ctrl_checkbox(s, KT_SESSION_SAVE_SETTINGS_ON_EXIT, NO_SHORTCUT,
+                      HELPCTX(kitty_save_on_exit), conf_checkbox_handler,
+                      I(CONF_saveonexit));
+    }
+#endif
 
-    /* KiTTY: the window TITLE gets its own panel, directly after Behaviour
-     * in the tree - Behaviour had collected title, startup, kiosk and
-     * hotkey groups and was pressing against the dialog's command buttons. */
-    ctrl_settitle(b, "Window/Title", KT_TITLE_OPTIONS_CONTROLLING_THE_WINDOW_TITLE);
+    /* The Window/Title panel ("Title & Icon" in the tree): the title group,
+     * then the icon group - both are about how the window is told apart. */
     s = ctrl_getset(b, "Window/Title", "title",
                     KT_TITLE_ADJUST_THE_BEHAVIOUR);
     ctrl_editbox(s, KT_TITLE_WINDOW_TITLE, 't', 100,
@@ -7045,9 +7133,6 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
                   I(CHECKBOX_INVERT | CONF_win_name_always));
 
     s = ctrl_getset(b, "Window/Behaviour", "main", NULL);
-    ctrl_checkbox(s, KT_BEHAVIOUR_WARN_BEFORE_CLOSING_WINDOW, 'w',
-                  HELPCTX(behaviour_closewarn),
-                  conf_checkbox_handler, I(CONF_warn_on_close));
 #ifdef MOD_PERSO
     /* KiTTY startup window state. All three are honoured in window.c (maximize
      * and fullscreen at the ShowWindow, send-to-tray once the session is up),
@@ -7078,16 +7163,6 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
             ctrl_checkbox(s, KT_BEHAVIOUR_SWITCH_KITTY_WINDOWS_WITH_CTRL, NO_SHORTCUT,
                           HELPCTX(kitty_behaviour),
                           kitty_checkbox_int_handler, I(CONF_ctrl_tab_switch));
-        /* KiTTY: where a window OPENS is window behaviour, not a property of
-         * the connection - this used to sit on the Session panel, among the
-         * host and port. Classic KiTTY's equivalent ("Save position and size on
-         * exit") lived in this panel too. Ours remembers the position per
-         * monitor LAYOUT, so docking or unplugging a screen restores the window
-         * where it belonged on that layout instead of stranding it off-screen;
-         * it deliberately does not restore a maximised or minimised state. */
-        ctrl_checkbox(s, KT_BEHAVIOUR_REMEMBER_WINDOW_POSITION_PER_MONITOR, NO_SHORTCUT,
-                      HELPCTX(kitty_winpos_remember), conf_checkbox_handler,
-                      I(CONF_remember_winpos));
     }
 
     /*
@@ -7123,12 +7198,10 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
 
 #ifdef MOD_PERSO
     /*
-     * The Window/Transparency panel (KiTTY).
+     * The Window/Appearance/Background leaf, first group: transparency (KiTTY).
      */
     if (!GetPuttyFlag() && GetTransparencyFlag()) {
-        ctrl_settitle(b, "Window/Transparency",
-                      KT_TRANSPARENCY_OPTIONS_CONTROLLING_TRANSPARENCY);
-        s = ctrl_getset(b, "Window/Transparency", "bg_transparency",
+        s = ctrl_getset(b, "Window/Appearance/Background", "bg_transparency",
                         KT_TRANSPARENCY_TRANSPARENCY_SETTING);
         ctrl_editbox(s, KT_TRANSPARENCY_TRANSPARENCY, NO_SHORTCUT, 20,
                      HELPCTX(kitty_transparency),
@@ -7143,8 +7216,6 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
      * The Window/Hyperlinks panel (KiTTY).
      */
     if (!GetPuttyFlag()) {
-        ctrl_settitle(b, "Window/Hyperlinks",
-                      KT_HYPERLINKS_OPTIONS_CONTROLLING_CLICKABLE_URL_HYPERLINKS);
         s = ctrl_getset(b, "Window/Hyperlinks", "main",
                         KT_HYPERLINKS_HYPERLINK_BEHAVIOUR);
         ctrl_checkbox(s, KT_HYPERLINKS_REQUIRE_CTRL_KEY_TO_CLICK, NO_SHORTCUT,
@@ -7195,8 +7266,6 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
          * the window whether or not the box was ticked (window.c). */
         /* Its own leaf: fixed coordinates are a placement concern, not a
          * looks one, and Appearance was full. */
-        ctrl_settitle(b, "Window/Appearance/Position",
-                      KT_APPEARANCE_OPTIONS_CONTROLLING_WHERE_THE_WINDOW);
         s = ctrl_getset(b, "Window/Appearance/Position", "position",
                         KT_APPEARANCE_WHERE_THE_WINDOW_OPENS);
         ctrl_checkbox(s, KT_APPEARANCE_OPEN_THE_WINDOW, NO_SHORTCUT,
@@ -7208,11 +7277,10 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
                      conf_editbox_handler, I(CONF_xpos), ED_INT);
         ctrl_text(s, KT_APPEARANCE_A_FIXED_POSITION_WINS_OVER, HELPCTX(kitty_winpos));
 
-        /* KiTTY: the icon group gets its OWN panel (as classic KiTTY had) -
-         * appended to Appearance it pushed the panel past the dialog's
-         * command buttons (caught by the documentation screenshots). */
-        ctrl_settitle(b, "Window/Icon", KT_ICON_DEFINE_THE_WINDOW_ICON);
-        s = ctrl_getset(b, "Window/Icon", "icon",
+        /* KiTTY: the icon group shares the "Title & Icon" leaf with the
+         * window title (appended to Appearance it once pushed that panel
+         * past the dialog's command buttons). */
+        s = ctrl_getset(b, "Window/Title", "icon",
                         KT_ICON_DEFINE_THE_WINDOW_ICON);
         ctrl_editbox(s, KT_ICON_ICON_FROM_INTERNAL_RESOURCES, NO_SHORTCUT, 40,
                      HELPCTX(kitty_icon), conf_editbox_handler,
@@ -7225,13 +7293,9 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
 #endif
 
 #ifdef MOD_BACKGROUNDIMAGE
-    /* The Window/Back.&Image panel (KiTTY). Engine: kitty_image.c. */
+    /* The Background leaf's image groups (KiTTY). Engine: kitty_image.c. */
     if (!GetPuttyFlag() && GetBackgroundImageFlag()) {
-        str = dupprintf(KT_CFG_BACKIMAGE_TITLE_FMT, appname);
-        ctrl_settitle(b, "Window/Back.&Image", str);
-        sfree(str);
-
-        s = ctrl_getset(b, "Window/Back.&Image", "bg_style",
+        s = ctrl_getset(b, "Window/Appearance/Background", "bg_style",
                         KT_BACK_IMAGE_BACKGROUND_SETTINGS);
         ctrl_radiobuttons(s, KT_BACK_IMAGE_BACKGROUND_STYLE, NO_SHORTCUT, 3,
                           HELPCTX(kitty_bgimage),
@@ -7240,7 +7304,7 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
                           KT_BACK_IMAGE_DESKTOP, NO_SHORTCUT, I(1),
                           KT_BACK_IMAGE_IMAGE, NO_SHORTCUT, I(2));
 
-        s = ctrl_getset(b, "Window/Back.&Image", "bg_wp_img_settings",
+        s = ctrl_getset(b, "Window/Appearance/Background", "bg_wp_img_settings",
                         KT_BACK_IMAGE_DESKTOP_AND_IMAGE_SETTINGS);
         ctrl_editbox(s, KT_BACK_IMAGE_OPACITY_NEGATIVE_WITH_IMAGE,
                      NO_SHORTCUT, 20, HELPCTX(kitty_bgimage), conf_editbox_handler,
@@ -7249,7 +7313,7 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
                      HELPCTX(kitty_bgimage), conf_editbox_handler,
                      I(CONF_bg_slideshow), ED_INT);
 
-        s = ctrl_getset(b, "Window/Back.&Image", "bg_img_settings",
+        s = ctrl_getset(b, "Window/Appearance/Background", "bg_img_settings",
                         KT_BACK_IMAGE_IMAGE_SETTINGS);
         ctrl_filesel(s, KT_BACK_IMAGE_IMAGE_FILE_OR_RRGGBB, NO_SHORTCUT,
                      FILTER_ALL_FILES, false, KT_BACK_IMAGE_SELECT_BACKGROUND_IMAGE_FILE,
@@ -7279,7 +7343,8 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
 #endif
 }
 
-/* The Window/Charset translation, Window/Selection(+Copy) and Window/Colours panels. */
+/* The Window/Charset translation, Window/Selection (Copy & Paste, with its
+ * Character classes and Remote clipboard leaves) and Colours panels. */
 static void scb_panel_selection(struct controlbox *b)
 {
     struct charclass_data *ccd;
@@ -7291,9 +7356,6 @@ static void scb_panel_selection(struct controlbox *b)
     /*
      * The Window/Charset translation panel.
      */
-    ctrl_settitle(b, "Window/Charset translation",
-                  KT_CHARSET_TRANSLATION_OPTIONS_CONTROLLING_CHARACTER_SET_TRANSLATION);
-
     s = ctrl_getset(b, "Window/Charset translation", "trans",
                     KT_CHARSET_TRANSLATION_CHARACTER_SET_TRANSLATION);
     ctrl_combobox(s, KT_CHARSET_TRANSLATION_REMOTE_CHARACTER_SET,
@@ -7324,8 +7386,6 @@ static void scb_panel_selection(struct controlbox *b)
     /*
      * The Window/Selection panel.
      */
-    ctrl_settitle(b, "Window/Selection", KT_SELECTION_OPTIONS_CONTROLLING_COPY_AND_PASTE);
-
     s = ctrl_getset(b, "Window/Selection", "mouse",
                     KT_SELECTION_CONTROL_USE_OF_MOUSE);
     ctrl_checkbox(s, KT_SELECTION_SHIFT_OVERRIDES_APPLICATION_S_USE, 'p',
@@ -7361,6 +7421,12 @@ static void scb_panel_selection(struct controlbox *b)
                   NO_SHORTCUT, HELPCTX(selection_pastectrl),
                   conf_checkbox_handler, I(CONF_paste_controls));
 
+    /* "Formatting of copied characters" (the RTF box) is Windows-side, in
+     * windows/config.c; the set is made here so it sits above the
+     * clipboard-command group instead of at the foot of the panel. */
+    ctrl_getset(b, "Window/Selection", "format",
+                KT_COPY_FORMATTING_OF_COPIED_CHARACTERS);
+
     s = ctrl_getset(b, "Window/Selection", "runclipcmd",
                     KT_SELECTION_RUNNING_THE_CLIPBOARD);
     ctrl_checkbox(s, KT_SELECTION_CONFIRM_BEFORE_RUNNING_THE_CLIPBOARD,
@@ -7380,9 +7446,6 @@ static void scb_panel_selection(struct controlbox *b)
      * by the question each answers - may the host do it, how much of it, and do
      * I get told - which also keeps every label short enough to read.
      */
-    ctrl_settitle(b, "Window/Selection/Remote clipboard",
-                  KT_REMOTE_CLIPBOARD_WHAT_A_REMOTE_HOST_MAY);
-
     s = ctrl_getset(b, "Window/Selection/Remote clipboard", "policy",
                     KT_REMOTE_CLIPBOARD_PERMISSIONS);
 #ifdef MOD_FAR2L
@@ -7436,9 +7499,6 @@ static void scb_panel_selection(struct controlbox *b)
     /*
      * The Window/Selection/Remote clipboard/Limits panel.
      */
-    ctrl_settitle(b, "Window/Selection/Remote clipboard/Limits",
-                  KT_LIMITS_BOUNDS_ON_WHAT_A_PERMITTED);
-
     s = ctrl_getset(b, "Window/Selection/Remote clipboard/Limits", "size",
                     KT_LIMITS_ANY_PROTOCOL_OSC_52_OSC);
     /* One ceiling for OSC 52 and far2l both. Clamped in code (CLIP_MAX_MB_CAP):
@@ -7488,9 +7548,6 @@ static void scb_panel_selection(struct controlbox *b)
     /*
      * The Window/Selection/Remote clipboard/Notices panel.
      */
-    ctrl_settitle(b, "Window/Selection/Remote clipboard/Notices",
-                  KT_NOTICES_BEING_TOLD_ABOUT_REMOTE_CLIPBOARD);
-
     s = ctrl_getset(b, "Window/Selection/Remote clipboard/Notices", "title",
                     KT_NOTICES_TITLE_BAR);
     /* The two markers answer different questions: permission says what COULD
@@ -7526,13 +7583,12 @@ static void scb_panel_selection(struct controlbox *b)
                   conf_checkbox_handler, I(CONF_clipboard_notify));
 
     /*
-     * The Window/Selection/Copy panel.
+     * The Window/Selection/Copy panel ("Character classes" in the tree): the
+     * class list alone - the RTF box moved up to the Copy & Paste panel.
      */
-    ctrl_settitle(b, "Window/Selection/Copy",
-                  KT_COPY_OPTIONS_CONTROLLING_COPYING_FROM_TERMINAL);
-
     s = ctrl_getset(b, "Window/Selection/Copy", "charclass",
                     KT_COPY_CLASSES_OF_CHARACTER_THAT_GROUP);
+    ctrl_text(s, KT_COPY_CLASSES_EXPLAIN, HELPCTX(copy_charclasses));
     ccd = (struct charclass_data *)
         ctrl_alloc(b, sizeof(struct charclass_data));
     ccd->listbox = ctrl_listbox(s, KT_COPY_CHARACTER_CLASSES, 'e',
@@ -7559,9 +7615,7 @@ static void scb_panel_selection(struct controlbox *b)
     /*
      * The Window/Colours panel.
      */
-    ctrl_settitle(b, "Window/Colours", KT_COLOURS_OPTIONS_CONTROLLING_USE_OF_COLOURS);
-
-    s = ctrl_getset(b, "Window/Colours", "general",
+    s = ctrl_getset(b, "Window/Appearance/Colours", "general",
                     KT_COLOURS_GENERAL_OPTIONS_FOR_COLOUR_USAGE);
     ctrl_checkbox(s, KT_COLOURS_ALLOW_TERMINAL_TO_SPECIFY_ANSI, 'i',
                   HELPCTX(colours_ansi),
@@ -7596,10 +7650,7 @@ static void scb_panel_selection(struct controlbox *b)
     /* KiTTY: the adjust block is its own leaf under Colours - the general
      * switches and the palette editor are different errands, and together
      * they made one tall panel. */
-    str = dupprintf(KT_CFG_PRECISE_COLOURS_TITLE_FMT, appname);
-    ctrl_settitle(b, "Window/Colours/Precise colours", str);
-    sfree(str);
-    s = ctrl_getset(b, "Window/Colours/Precise colours", "adjust",
+    s = ctrl_getset(b, "Window/Appearance/Colours/Precise colours", "adjust",
                     KT_COLOURS_PRECISE_COLOURS);
     ctrl_text(s, KT_COLOURS_SELECT_A_COLOUR,
               HELPCTX(colours_config));

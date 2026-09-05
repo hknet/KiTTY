@@ -45,8 +45,16 @@
  * (CFGBOX_H), which place the button row and the tree against this height.
  * 320 -> 306 once the Session panel gave a comment line back and the
  * proxy-choice row became conditional on named proxies existing.
+ * 278 -> 216 when the on-exit block (a captionless box holding the
+ * close-on-exit radio line and the save-on-exit checkbox: 8 + 21 + 11 + 6
+ * units by the windows/controls.c constants) moved to Window > Behaviour,
+ * and the Session panel in folder-rows navigation (no folder dropdown, one
+ * combo row = 16 units less) became the layout the minimum is fitted to,
+ * with the list at its six-row floor. The list then grows into any height
+ * the box has to spare (kitty_cfg_panel_fill); every other panel scrolls
+ * when it does not fit.
  */
-#define KITTY_CFGBOX_H_DU 278
+#define KITTY_CFGBOX_H_DU 216
 
 /* Two-step stringification, so a macro's VALUE lands in a string literal
  * (KITTY_STR(KITTY_CFG_SESSION_ROWS_MIN) -> "6"). */

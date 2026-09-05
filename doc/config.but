@@ -177,12 +177,17 @@ program; \k{config-file} describes the classic manual method.
 
 \S{config-closeonexit} \q{\ii{Close window} on exit}
 
-Finally in the Session panel, there is an option labelled \q{Close
-window on exit}. This controls whether the KiTTY \i{terminal window}
-disappears as soon as the session inside it terminates. If you are
-likely to want to copy and paste text out of the session after it
-has terminated, or restart the session, you should arrange for this
-option to be off.
+On the Window > Behaviour panel, under \q{Closing the window}, there
+is an option labelled \q{Close window on exit}. This controls whether
+the KiTTY \i{terminal window} disappears as soon as the session inside
+it terminates. If you are likely to want to copy and paste text out of
+the session after it has terminated, or restart the session, you
+should arrange for this option to be off.
+
+When automatic reconnection is on (\k{kitty-cfg-reconnect}), a dropped
+link is re-dialled before this setting is consulted; it decides what
+happens once the session has ended, and a closed window has nothing
+left to restart.
 
 \q{Close window on exit} has three settings. \q{Always} means always
 close the window on exit; \q{Never} means never close on exit
@@ -1186,41 +1191,11 @@ it to zero, or increase it further.
 \H{config-behaviour} The Behaviour panel
 
 The Behaviour configuration panel allows you to control aspects of
-the behaviour of \I{KiTTY window}KiTTY's window.
-
-\S{config-title} Controlling the \i{window title}
-
-The \q{Window title} edit box allows you to set the title of the
-KiTTY window. By default the window title will contain the \i{host name}
-followed by \q{KiTTY}, for example \c{server1.example.com - KiTTY}.
-If you want a different window title, this is where to set it.
-
-KiTTY allows the server to send \c{xterm} \i{control sequence}s which
-modify the title of the window in mid-session (unless this is disabled -
-see \k{config-features-retitle}); the title string set here
-is therefore only the \e{initial} window title.
-
-A window actually carries \e{two} captions, and a host can set them
-independently. The second one is what X11 calls the \I{icon
-title}\e{icon name} - historically the text under a minimised window's
-desktop icon, and on today's Windows the text a \i{minimised} window
-shows on its \e{taskbar button} and in that button's tooltip. The
-escape sequences hosts send still distinguish the two: OSC 2 sets the
-window title, OSC 1 the icon title, and OSC 0 sets both at once.
-
-By default KiTTY treats them as one: it uses the server-supplied
-\e{window} title everywhere and ignores the icon title. Tick \q{Host
-may set window and taskbar titles separately} and the two come apart:
-while the window is open you see the window title, and when you
-\i{minimise} it, the taskbar button switches to whatever the host last
-sent as the icon title, switching back on restore. \e{How to see it}:
-with the box ticked, run
-
-\c printf '\033]1;short\007\033]2;a much longer window title\007'
-
-in the session, then minimise the window - the taskbar button reads
-\c{short}. (If the host never sends an icon title, nothing changes and
-the two captions stay identical.)
+the behaviour of \I{KiTTY window}KiTTY's window. Its first group,
+\q{Closing the window}, holds \q{Close window on exit}
+(\k{config-closeonexit}) and the warning below; \q{Remembering} holds
+\q{Remember window position} (\k{kitty-cfg-winpos-remember}) and
+\q{Save settings on exit} (\k{kitty-cfg-save-on-exit}).
 
 \S{config-warnonclose} \q{Warn before \i{closing window}}
 
@@ -1428,9 +1403,9 @@ puts KiTTY into a hybrid mode in which it understands the VT100-style
 control sequences that change the meaning of the ASCII lower case
 letters, \e{and} understands UTF-8.
 
-\H{config-selection} The Selection panel
+\H{config-selection} The Copy & Paste panel
 
-The Selection panel allows you to control the way \i{copy and paste}
+The Copy & Paste panel allows you to control the way \i{copy and paste}
 work in the KiTTY window.
 
 \S{config-mouse} Changing the actions of the mouse buttons
@@ -1591,10 +1566,22 @@ the clipboard is sent to the session uncensored. This might be useful
 if you are deliberately using control character pasting as a simple
 form of scripting, for instance.
 
-\H{config-selection-copy} The Copy panel
+\S{config-rtfcopy} Copying in \i{Rich Text Format}
 
-The Copy configuration panel controls behaviour specifically related to
-copying from the terminal window to the clipboard.
+If you enable \q{Copy to clipboard in RTF as well as plain text},
+KiTTY will write formatting information to the clipboard as well as
+the actual text you copy. The effect of this is
+that if you paste into (say) a word processor, the text will appear
+in the word processor in the same \i{font}, \i{colour}, and style
+(e.g. bold, underline) KiTTY was using to display it.
+
+This option can easily be inconvenient, so by default it is
+disabled.
+
+\H{config-selection-copy} The Character classes panel
+
+These classes decide which characters can be combined to words;
+selecting words in the terminal is steered by them.
 
 \S{config-charclasses} Character classes
 
@@ -1635,18 +1622,6 @@ sent by the server. This configuration option controls the
 terminal (see \k{reset-terminal}). However, if you modify this
 option in mid-session using \q{Change Settings}, it will take effect
 immediately.
-
-\S{config-rtfcopy} Copying in \i{Rich Text Format}
-
-If you enable \q{Copy to clipboard in RTF as well as plain text},
-KiTTY will write formatting information to the clipboard as well as
-the actual text you copy. The effect of this is
-that if you paste into (say) a word processor, the text will appear
-in the word processor in the same \i{font}, \i{colour}, and style
-(e.g. bold, underline) KiTTY was using to display it.
-
-This option can easily be inconvenient, so by default it is
-disabled.
 
 \H{config-colours} The Colours panel
 
@@ -1751,6 +1726,46 @@ and can also be used if the server asks specifically to use them. (Note
 that \q{Default Bold Background} is \e{not} the background colour used for
 bold text; it is only used if the server specifically asks for a bold
 background.)
+
+\H{config-title-icon} The Title & Icon panel
+
+The Title & Icon panel is the last in the Window list. It holds the
+window title, described here, and the per-session window icon, which
+is KiTTY's own and described in \k{kitty-cfg-icon}.
+
+\S{config-title} Controlling the \i{window title}
+
+The \q{Window title} edit box allows you to set the title of the
+KiTTY window. By default the window title will contain the \i{host name}
+followed by \q{KiTTY}, for example \c{server1.example.com - KiTTY}.
+If you want a different window title, this is where to set it.
+
+KiTTY allows the server to send \c{xterm} \i{control sequence}s which
+modify the title of the window in mid-session (unless this is disabled -
+see \k{config-features-retitle}); the title string set here
+is therefore only the \e{initial} window title.
+
+A window actually carries \e{two} captions, and a host can set them
+independently. The second one is what X11 calls the \I{icon
+title}\e{icon name} - historically the text under a minimised window's
+desktop icon, and on today's Windows the text a \i{minimised} window
+shows on its \e{taskbar button} and in that button's tooltip. The
+escape sequences hosts send still distinguish the two: OSC 2 sets the
+window title, OSC 1 the icon title, and OSC 0 sets both at once.
+
+By default KiTTY treats them as one: it uses the server-supplied
+\e{window} title everywhere and ignores the icon title. Tick \q{Host
+may set window and taskbar titles separately} and the two come apart:
+while the window is open you see the window title, and when you
+\i{minimise} it, the taskbar button switches to whatever the host last
+sent as the icon title, switching back on restore. \e{How to see it}:
+with the box ticked, run
+
+\c printf '\033]1;short\007\033]2;a much longer window title\007'
+
+in the session, then minimise the window - the taskbar button reads
+\c{short}. (If the host never sends an icon title, nothing changes and
+the two captions stay identical.)
 
 \H{config-connection} The Connection panel
 

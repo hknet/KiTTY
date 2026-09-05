@@ -270,7 +270,7 @@ void win_setup_config_box(struct controlbox *b, HWND *hwndp, bool has_help,
     /*
      * RTF paste is Windows-specific.
      */
-    s = ctrl_getset(b, "Window/Selection/Copy", "format",
+    s = ctrl_getset(b, "Window/Selection", "format",
                     "Formatting of copied characters");
     ctrl_checkbox(s, "Copy to clipboard in RTF as well as plain text", 'f',
                   HELPCTX(copy_rtf),
@@ -302,7 +302,7 @@ void win_setup_config_box(struct controlbox *b, HWND *hwndp, bool has_help,
     /*
      * Logical palettes don't even make sense anywhere except Windows.
      */
-    s = ctrl_getset(b, "Window/Colours", "general",
+    s = ctrl_getset(b, "Window/Appearance/Colours", "general",
                     "General options for colour usage");
     ctrl_checkbox(s, "Attempt to use logical palettes", 'l',
                   HELPCTX(colours_logpal),

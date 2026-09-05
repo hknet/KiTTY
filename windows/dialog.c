@@ -959,6 +959,11 @@ struct kitty_cfg_panel {
 /* A panel has just been laid out: place any controls it positions itself.
  * kitty_config.c, stubbed to nothing for the stock variants. */
 void kitty_config_panel_placed(const char *path);
+/* The ONE control of a panel that takes whatever height the panel area has
+ * left below the layout (the saved-session list), or NULL. kitty_config.c,
+ * NULL in the stock variants. */
+dlgcontrol *kitty_config_panel_fill_ctrl(const char *path);
+HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);   /* defined further down */
 
 /* Does the named-proxy panel hold an edit the store has not got? The width
  * reflow rebuilds panels by destroying their controls, so it leaves that one
@@ -1298,6 +1303,76 @@ static int kitty_cfg_panel_measure(struct kitty_cfg_panel *p)
     return bottom ? bottom + 4 : 0;   /* a little air at the foot */
 }
 
+/*
+ * KiTTY: a panel that names a fill control gets the panel area's spare height
+ * poured into it - the saved-session list grows until the panel ends where
+ * the area does, instead of leaving a blank foot under a short list. Run
+ * after the generic layout and BEFORE the panel is measured, so what is
+ * measured is the filled panel. Everything below the control moves down by
+ * the same amount, and a frame spanning it (its group box) grows with it;
+ * what sits beside it (the button column) is left to
+ * kitty_config_panel_placed, which places it against the list as it now is.
+ * A panel taller than the area is left alone: it scrolls.
+ */
+static void kitty_cfg_panel_fill(struct kitty_cfg_panel *p)
+{
+    dlgcontrol *fill = kitty_config_panel_fill_ctrl(p->path);
+    HWND hfill;
+    RECT host, lr;
+    int natural, delta;
+
+    if (!fill || !kitty_cfg_panel_host)
+        return;
+    hfill = kitty_cfg_ctrl_hwnd(fill);
+    if (!hfill || !GetWindowRect(hfill, &lr))
+        return;
+    MapWindowPoints(NULL, kitty_cfg_panel_host, (POINT *)&lr, 2);
+    GetClientRect(kitty_cfg_panel_host, &host);
+    natural = kitty_cfg_panel_measure(p);
+    delta = (host.bottom - host.top) - natural;
+    if (delta <= 0)
+        return;
+
+    for (size_t i = 0; i < p->nctrls; i++) {
+        struct winctrl *c = p->ctrls[i];
+        for (int k = 0; k < c->num_ids; k++) {
+            HWND item = GetDlgItem(kitty_cfg_panel_host, c->base_id + k);
+            RECT r;
+            if (!item || !GetWindowRect(item, &r))
+                continue;
+            MapWindowPoints(NULL, kitty_cfg_panel_host, (POINT *)&r, 2);
+            if (item == hfill || (r.top < lr.top && r.bottom > lr.bottom)) {
+                /* the list itself, or a frame around it: taller */
+                SetWindowPos(item, NULL, 0, 0, r.right - r.left,
+                             r.bottom - r.top + delta,
+                             SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            } else if (r.top >= lr.bottom) {
+                /* below the list: down by the same amount */
+                SetWindowPos(item, NULL, r.left, r.top + delta, 0, 0,
+                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+        }
+    }
+}
+
+/* Relayout only the panels that have a fill control - what a HEIGHT change
+ * of the box calls for (a width change relays every panel out). */
+static bool kitty_cfg_panel_relayout_ex(PortableDialogStuff *pds,
+                                        struct kitty_cfg_panel *p,
+                                        bool visible);
+static PortableDialogStuff *kitty_cfg_pds;
+static bool kitty_cfg_layout_ready;
+static void kitty_cfg_relayout_fill_panels(void)
+{
+    if (!kitty_cfg_layout_ready || !kitty_cfg_pds)
+        return;
+    for (size_t i = 0; i < kitty_cfg_npanels; i++)
+        if (kitty_config_panel_fill_ctrl(kitty_cfg_panels[i]->path))
+            kitty_cfg_panel_relayout_ex(
+                kitty_cfg_pds, kitty_cfg_panels[i],
+                kitty_cfg_panels[i] == kitty_cfg_active_panel);
+}
+
 /* Scroll the host to a position, clamped to what there is to see. */
 static void kitty_cfg_panel_scroll_to(HWND hwnd, struct kitty_cfg_panel *p,
                                       int newy)
@@ -1417,6 +1492,7 @@ static void kitty_cfg_panel_scrollbar(HWND hwnd, struct kitty_cfg_panel *p,
  * named-proxy editor is the one that has any).
  */
 static bool kitty_cfg_layout_ready = false;
+static bool kitty_cfg_in_sizemove = false;   /* between WM_ENTER/EXITSIZEMOVE */
 static struct kl_anchor_win *kitty_cfg_anchors = NULL;
 static RECT *kitty_cfg_anchor_rects = NULL;
 static size_t kitty_cfg_nanchors = 0;
@@ -1839,6 +1915,7 @@ static void kitty_cfg_panel_build(PortableDialogStuff *pds,
      * beside the saved-session list are moved, so where they end up decides
      * how tall this panel is. Stubbed to nothing in the stock variants.
      */
+    kitty_cfg_panel_fill(p);          /* the spare height, if any, first */
     kitty_config_panel_placed(p->path);
     /* Measured now, while the controls are at their unscrolled positions. */
     p->content_h = kitty_cfg_panel_measure(p);
@@ -3021,8 +3098,15 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
        * during creation, before there is anything to place.
        */
       case WM_SIZE:
-        if (wParam != SIZE_MINIMIZED)
+        if (wParam != SIZE_MINIMIZED) {
             kitty_cfg_layout_relayout(hwnd);
+            /* A size change outside a drag - maximise, restore, a size the
+             * program set - is final at once, so the fill panels follow now;
+             * inside a drag they wait for WM_EXITSIZEMOVE, one rebuild per
+             * mouse-move being unusable. */
+            if (!kitty_cfg_in_sizemove)
+                kitty_cfg_relayout_fill_panels();
+        }
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
       case WM_GETMINMAXINFO:
         /* The template size is the floor. Without this the box can be dragged
@@ -3070,9 +3154,11 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             kitty_cfg_dragsize.cx = r.right - r.left;
             kitty_cfg_dragsize.cy = r.bottom - r.top;
         }
+        kitty_cfg_in_sizemove = true;
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
       }
       case WM_EXITSIZEMOVE: {
+        kitty_cfg_in_sizemove = false;
         /*
          * A WIDTH change means every panel has to be laid out again.
          *
@@ -3092,6 +3178,10 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 kitty_cfg_panel_relayout_ex(
                     kitty_cfg_pds, kitty_cfg_panels[i],
                     kitty_cfg_panels[i] == kitty_cfg_active_panel);
+        } else if (kitty_cfg_layout_ready && GetWindowRect(hwnd, &now) &&
+                   (now.bottom - now.top) != kitty_cfg_dragsize.cy) {
+            /* Height alone: only the panels with a fill control care. */
+            kitty_cfg_relayout_fill_panels();
         }
         kitty_cfgbox_save_pos(hwnd);   /* remember where the user dragged it */
         kitty_cfgbox_save_size(hwnd);  /* ... and how big they dragged it */

@@ -2,6 +2,24 @@
 
 KiTTY is basically the full KiTTY feature set forward-ported and then some really serious speed enhancements and features onto a modern, security-patched **PuTTY 0.85** core. Versions below are this port's own `0.85.1.x` line. For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.8-beta — unreleased
+
+### Changed
+
+- **The Window settings are regrouped.** "Close window on exit" and "Save
+  settings on exit" moved from the Session panel to Window > Behaviour, in
+  the groups "Closing the window" and "Remembering". Selection is now
+  "Copy & Paste", directly under Behaviour, and carries the RTF option;
+  the character-class list has its own "Character classes" leaf. Colours
+  and the new "Background" leaf (transparency and background image
+  together) live under Appearance, and Title and Icon are one leaf,
+  "Title & Icon", at the end of the list.
+- **The saved-session list fills the window.** It grows into whatever height
+  the configuration window has, so the Session panel no longer ends in a
+  blank band; the row count in `[ConfigBox] height` is now its least
+  height. The window's minimum came down with the two controls that left
+  the Session panel.
+
 ## 0.85.1.7-beta — 2026-09-04
 
 ### New

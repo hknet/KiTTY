@@ -273,13 +273,15 @@
 #define KT_APPEARANCE_GAP_BETWEEN_TEXT_AND_WINDOW    "Gap between text and window edge:"
 
 /* Window/Title */
-#define KT_TITLE_OPTIONS_CONTROLLING_THE_WINDOW_TITLE "Options controlling the window title"
+#define KT_TITLE_WINDOW_TITLE_AND_ICON_OPTIONS       "Window Title and Icon Options"
 #define KT_TITLE_ADJUST_THE_BEHAVIOUR                "Adjust the behaviour of the window title"
 #define KT_TITLE_WINDOW_TITLE                        "Window title:"
 #define KT_TITLE_PLACEHOLDERS_H_S                    "Placeholders (%h, %s, ...)"
 #define KT_TITLE_SEPARATE_WINDOW_AND_ICON_TITLES     "Host may set window and taskbar titles separately"
 
 /* Window/Behaviour */
+#define KT_BEHAVIOUR_CLOSING_THE_WINDOW              "Closing the window"
+#define KT_BEHAVIOUR_REMEMBERING                     "Remembering"
 #define KT_BEHAVIOUR_WARN_BEFORE_CLOSING_WINDOW      "Warn before closing window"
 #define KT_BEHAVIOUR_SEND_TO_TRAY_ON_STARTUP         "Send to tray on startup"
 #define KT_BEHAVIOUR_MAXIMIZE_ON_STARTUP             "Maximize on startup"
@@ -293,7 +295,7 @@
 #define KT_BEHAVIOUR_MAXIMIZE_BUTTON                 "Maximize button"
 
 /* Window/Transparency */
-#define KT_TRANSPARENCY_OPTIONS_CONTROLLING_TRANSPARENCY "Options controlling transparency"
+#define KT_BACKGROUND_TITLE                          "Background, Pictures and More"
 #define KT_TRANSPARENCY_TRANSPARENCY_SETTING         "Transparency setting"
 #define KT_TRANSPARENCY_TRANSPARENCY                 "Transparency:"
 #define KT_TRANSPARENCY_FROM_0_VISIBLE_TO_255        "from 0 (visible) to 255 (transparent)"
@@ -411,7 +413,9 @@
 #define KT_NOTICES_SHOW_TRAY_NOTIFICATIONS_FOR_CLIPBOARD "Show tray notifications for clipboard events"
 
 /* Window/Selection/Copy */
-#define KT_COPY_OPTIONS_CONTROLLING_COPYING_FROM_TERMINAL "Options controlling copying from terminal to clipboard"
+#define KT_COPY_CLASSES_EXPLAIN                      "These Classes decide which characters can be combined to words. " \
+        "Selecting words in the Terminal is steered by these Classes."
+#define KT_COPY_FORMATTING_OF_COPIED_CHARACTERS      "Formatting of copied characters"
 #define KT_COPY_CLASSES_OF_CHARACTER_THAT_GROUP      "Classes of character that group together"
 #define KT_COPY_CHARACTER_CLASSES                    "Character classes:"
 #define KT_COPY_SET_TO_CLASS                         "Set to class"
@@ -2654,7 +2658,6 @@
 #define KT_CFG_WINDOW_TITLE_FMT                      "Options controlling %s's window"
 #define KT_CFG_APPEARANCE_TITLE_FMT                  "Configure the appearance of %s's window"
 #define KT_CFG_BEHAVIOUR_TITLE_FMT                   "Configure the behaviour of %s's window"
-#define KT_CFG_BACKIMAGE_TITLE_FMT                   "Configure the background of %s's window"
 #define KT_CFG_LINEDRAW_TITLE_FMT                    "Adjust how %s handles line drawing characters"
 #define KT_CFG_PRECISE_COLOURS_TITLE_FMT             "Adjust the precise colours %s displays"
 

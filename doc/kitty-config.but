@@ -267,7 +267,9 @@ of them.
 
 \S{kitty-cfg-transparency} \q{Transparency}
 
-Makes the whole window translucent, so what is behind it shows through.
+On Window > Appearance > Background, together with the background
+image. Makes the whole window translucent, so what is behind it shows
+through.
 The value runs from \c{0} (opaque) to \c{255} (invisible), and \c{-1}
 disables transparency completely.
 
@@ -278,7 +280,7 @@ image instead (\k{kitty-cfg-bgimage}).
 
 \S{kitty-cfg-icon} \q{Window icon}
 
-Gives this session its own icon, so a taskbar full of terminals can be
+On Window > Title & Icon. Gives this session its own icon, so a taskbar full of terminals can be
 told apart at a glance - production red, staging blue, and so on.
 
 \q{Icon (from internal resources)} takes the number of one of the icons
@@ -669,7 +671,7 @@ the window up} is the roll-up feature.
 
 \b \q{Icons} names the library the session icons are taken from: an
 \c{.exe}, \c{.dll} or \c{.icl} holding icon resources. A session's
-Window > Icon panel picks one of them by number for its terminal
+Window > Title & Icon panel picks one of them by number for its terminal
 window; the configuration box and the other tools keep their own. It is
 loaded when KiTTY starts, so a change shows in the next start. Blank
 means \c{kitty.dll} beside \c{kitty.exe} if there is one, otherwise
@@ -1176,13 +1178,6 @@ which is also how you confirm the check can reach the network at all.
 
 \H{kitty-cfg-more-session} Further session settings
 
-\S{kitty-cfg-save-on-exit} \q{Save settings on exit}
-
-Writes this session back to the store when its window closes, so a
-change made through \q{Change Settings} during the session is kept
-without saving by hand. Off by default: with it on, a change you made
-to try something out is saved as well.
-
 \S{kitty-cfg-scriptfile} Running a script file
 
 A script file is a plain text file whose lines are typed into the
@@ -1388,6 +1383,10 @@ default is three.
 
 \S{kitty-cfg-behaviour} Window behaviour
 
+\b \q{Closing the window} holds PuTTY's \q{Close window on exit}
+(\k{config-closeonexit}) and \q{Warn before closing window}
+(\k{config-warnonclose}).
+
 \b \q{Send to tray on startup}, \q{Maximize on startup} and \q{Full
 screen on startup} decide the state the window opens in. Sending to the
 tray at startup is how a session that exists to hold a tunnel stays out
@@ -1415,6 +1414,15 @@ there: each arrangement of screens keeps its own set of positions.
 
 A fixed position (\k{kitty-cfg-winpos}) wins over this, because it is
 an explicit instruction rather than a convenience.
+
+\S{kitty-cfg-save-on-exit} \q{Save settings on exit}
+
+Writes this session back to the store when its window closes, so a
+change made through \q{Change Settings} during the session is kept
+without saving by hand. Off by default: with it on, a change you made
+to try something out is saved as well. It sits beside \q{Remember
+window position} under \q{Remembering} on Window > Behaviour: the one
+keeps the window's place, the other keeps everything else.
 
 \S{kitty-cfg-clipcmd} Running the clipboard as a command
 

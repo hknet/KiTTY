@@ -680,7 +680,7 @@ Accept broadcast** in a running window). Send with `kitty.exe -sendcmd "<text>"`
 
 KiTTY lets you assign a distinct window icon to each saved session, so you can tell your terminals apart at a glance in the taskbar and on screen. You can pick from a large set of built-in icons (more than fifty, ranging from PuTTY-style logos to numbered and cartoon icons) or point to your own .ico file. There's even a "random icon" option that picks a different one for you each time.
 
-**How to enable:** Configuration > **Window > Icon**: choose a per-session icon (from the embedded icon set or a .ico file).
+**How to enable:** Configuration > **Window > Title & Icon**: choose a per-session icon (from the embedded icon set or a .ico file).
 
 ![An icon for each session](docs/features/img/config_icon.jpg)
 
@@ -696,7 +696,7 @@ When you run long background batches or just keep KiTTY open to maintain SSH tun
 
 KiTTY lets you make a terminal window see-through, so you can watch what's happening behind it while you work. You set how transparent the window is, and you can fine-tune the level on the fly using the numeric keypad: **CTRL +** (or **CTRL+UP**) makes the window more opaque, while **CTRL -** (or **CTRL+DOWN**) makes it more transparent. The setting can be defined separately for each session. Note that transparency may interfere with certain window-management or screen-capture tools, so leave it off if you rely on those.
 
-**How to enable:** Configuration > **Window > Transparency** (set the level), and the system-menu **Transparency +/-** items to adjust it live. `0` is fully opaque and is the default for a new session; `255` is as see-through as it goes. Set a session to `-1` to lock it opaque — the menu entries are then not offered and the keyboard shortcuts decline, which is what you want when an accidental **CTRL+DOWN** must never dim that window. `transparency=no` in the kitty.ini `[KiTTY]` section removes the feature altogether, for every session.
+**How to enable:** Configuration > **Window > Appearance > Background** (set the level), and the system-menu **Transparency +/-** items to adjust it live. `0` is fully opaque and is the default for a new session; `255` is as see-through as it goes. Set a session to `-1` to lock it opaque — the menu entries are then not offered and the keyboard shortcuts decline, which is what you want when an accidental **CTRL+DOWN** must never dim that window. `transparency=no` in the kitty.ini `[KiTTY]` section removes the feature altogether, for every session.
 
 ![Transparency](docs/features/img/config_transparency.jpg)
 
@@ -983,7 +983,7 @@ For full details and examples, see [`docs/window-title-placeholders.md`](docs/wi
 
 KiTTY can display a picture behind your terminal text, giving each session window a custom backdrop. It supports BMP and JPEG images, and you can adjust how strongly the image shows through with an opacity setting or rotate through several pictures as a slideshow. This feature grows out of the covidimus patch integrated into KiTTY.
 
-**How to enable:** Add `bgimage=yes` to `[KiTTY]` in kitty.ini (the key is `bgimage`, not `backgroundimage`), then configure **Window > Back.Image** (image file, opacity, slideshow).
+**How to enable:** Add `bgimage=yes` to `[KiTTY]` in kitty.ini (the key is `bgimage`, not `backgroundimage`), then configure **Window > Appearance > Background** (image file, opacity, slideshow).
 
 ![Background image](docs/features/img/ex_background.jpg)
 
@@ -1039,7 +1039,7 @@ When a connection drops, is closed by the remote host, or the server reports a n
 
 KiTTY can run the current Windows clipboard contents as a local command with the **Ctrl+F5** shortcut — handy for sending a prepared command line straight into execution. Because that runs whatever happens to be on the clipboard, KiTTY shows a **confirmation prompt** (displaying the command) before running it and a **tray notification** after launch, so nothing runs unexpectedly.
 
-**How to enable:** the shortcut is built in; the two safeguards are on by default and toggled per session in **Window → Selection** ("Running the clipboard as a local command").
+**How to enable:** the shortcut is built in; the two safeguards are on by default and toggled per session in **Window → Copy & Paste** ("Running the clipboard as a local command").
 
 (no screenshot)
 
@@ -1077,7 +1077,7 @@ Three protections apply to every clipboard protocol at once:
 
 **A remote `far2l` session shares the clipboard both ways** on its own protocol, under the same focus rule and the same size ceiling.
 
-**How to enable:** **Window → Selection → Remote clipboard** for the three permissions and the focus rule; **→ Limits** for the numbers; **→ Notices** for the title and tray markers.
+**How to enable:** **Window → Copy & Paste → Remote clipboard** for the three permissions and the focus rule; **→ Limits** for the numbers; **→ Notices** for the title and tray markers.
 
 (no screenshot)
 
