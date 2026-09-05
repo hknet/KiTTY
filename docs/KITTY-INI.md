@@ -120,7 +120,7 @@ exe*.
 |---|---|
 | `[KiTTY]` | The main section: feature switches (hyperlinks, transparency, icons, background image, …), `savemode`, security options (`PortablePasswordProtection`, `readonly`, `restrictacl`), window/title behaviour, scripting, `theme` (`system`/`light`/`dark` - the colours every KiTTY window paints in, kageant and kittygen included; dark needs Windows 10 1809 or newer), and `checkupdate` (look for a new release at startup), and `showforeignsessions` (also list an older KiTTY's or PuTTY's own saved sessions - `auto`/`yes`/`no`, default `auto`), and where the helper programs live on this PC: `WinSCPPath`, `rzcommand` and `szcommand`, and `warnmissingfeatures` (name in the terminal whatever this version of Windows is too old to provide), and `renderer` (`gdi` or `d2d`: how the terminal window is painted - see Terminal renderer in FEATURES.md), and `framepace` (`auto`, a number of milliseconds, or 0: how often the window may repaint while output streams in - see Frame pacing in FEATURES.md). |
 | `[Agent]` | kageant (the SSH agent): `askconfirmation` (`yes`/`auto`/`no`/`hello` - the last one demands a Windows Hello gesture for the confirmation), `messageonkeyusage`, `loadonstartup` + the `startupkeyN` list, `retrykeys` (what to do when a startup key's media returns), the `agentlog*` settings, `hellocacheseconds` (how long one Windows Hello unlock keeps covering further protected keys; `0` asks every time), `autoencryptmode` + `autoencryptseconds` (re-encrypt keys after idle: `off` / `default` for keys without their own value / `enforce` for every key, and the time - seconds, `10m`, `2h`, `1d`, or `use` for right after each signature). |
-| `[ConfigBox]` | Configuration-box behaviour: `dblclick` (double-click on a saved session = Open or Start), `defaultsettings` visibility, `loadlastsession` (off = quick connect: open on Default Settings with the caret in Host Name), `foldernavigation` (session folders as ROWS of the saved-session list rather than a drop-down), box height, `windowheight` and `windowwidth` (the size of the configuration window itself), `applicationpanel` (the Application tab's leaf, remembered between configuration windows), `switchpaint` (`erase` = paint a panel switch the old way, erase then repaint on screen, instead of the freeze frame; a diagnostic), and `collapsed` (the Category-tree folds the user changed by hand, by path - written by the window itself; they beat the categoryexpand default in both directions). |
+| `[ConfigBox]` | Configuration-box behaviour: `dblclick` (double-click on a saved session = Open or Start), `defaultsettings` visibility, `loadlastsession` (off = quick connect: open on Default Settings with the caret in Host Name), `foldernavigation` (session folders as ROWS of the saved-session list rather than a drop-down), box height, `windowheight` and `windowwidth` (the size of the configuration window itself), `fixedsizewindow` (lock that size: no resize frame, size fields read-only), `applicationsettings` (`no` = no Application tab at all; kitty.ini only), `applicationpanel` (the Application tab's leaf, remembered between configuration windows), `switchpaint` (`erase` = paint a panel switch the old way, erase then repaint on screen, instead of the freeze frame; a diagnostic), and `collapsed` (the Category-tree folds the user changed by hand, by path - written by the window itself; they beat the categoryexpand default in both directions). |
 | `[Shortcuts]` | Keyboard shortcuts for KiTTY menu actions, e.g. `duplicate={CONTROL}N`. |
 | `[Print]` | Text printing: character size, lines per page, characters per line. |
 | `[Launcher]` | The tray launcher, e.g. session-list `reload` on each menu open. |
@@ -209,9 +209,31 @@ The numbers are *logical* pixels, so the same file gives the same apparent size
 on a display scaled to 150% as on one at 100%. Neither can make the window
 smaller than its own minimum.
 
+`fixedsizewindow=yes` locks the size: the window loses its resize frame, and
+the two fields on **Application > Config Window** refuse
+edits until the **Lock window size** box there is cleared again. With no size
+set, the window keeps the size its own layout gives it.
+
 `[ConfigBox] height` is a different thing: it is the saved-session list's
 length in ROWS, and because that list is built into the Session panel it takes
 effect in the next configuration window rather than the open one.
+
+## No Application tab — `[ConfigBox] applicationsettings`
+
+```ini
+[ConfigBox]
+applicationsettings=no
+```
+
+Removes the **Application** tab from the configuration window: none of its
+panels is built, `-cfgpanel Application/...` and the buttons that jump there
+("Edit named proxies", the workplace-proxy notice) open the Session tab
+instead. There is deliberately no checkbox for it - a switch that keeps users
+out of the application settings cannot live among them - so it is set here,
+and an administrator who also denies write access to kitty.ini has closed the
+door. `[KiTTY] readonly=yes` is not a substitute: it stops the file being
+written, but the tab still shows and edits there are accepted on screen and
+dropped. Default `yes`.
 
 ## Helper programs — `WinSCPPath`, `rzcommand`, `szcommand`
 

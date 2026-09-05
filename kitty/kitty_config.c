@@ -8066,7 +8066,10 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
          * controls grey out and the info line under the state says so -
          * a leaf that comes and goes with the proxy count read as a bug,
          * and gave no hint where the feature had gone. */
-        if (!GetPuttyFlag()) {
+        extern int GetConfigBoxApplicationSettingsFlag(void);  /* kitty.c */
+        /* An Application leaf, so [ConfigBox] applicationsettings=no
+         * takes it away with the rest of that tab. */
+        if (!GetPuttyFlag() && GetConfigBoxApplicationSettingsFlag()) {
             struct wpmode_data *wd = (struct wpmode_data *)
                 ctrl_alloc(b, sizeof(struct wpmode_data));
             memset(wd, 0, sizeof(*wd));
@@ -9188,6 +9191,33 @@ static void kitty_cfgwin_noexit_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
 }
 
+/* [ConfigBox] fixedsizewindow: the box keeps its size. dialog.c reads the
+ * flag through kitty_cfgbox_size_locked() (it compiles into the stock
+ * variants too, where a stub answers 0) and re-fits the frame when the box
+ * is ticked, so the change shows in the window it was made in. */
+int kitty_cfgbox_size_locked(void)
+{
+    extern int GetConfigBoxFixedSizeFlag(void);            /* kitty.c */
+    return GetConfigBoxFixedSizeFlag() != 0;
+}
+
+static void kitty_cfgwin_fixedsize_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                           void *data, int event)
+{
+    extern int  GetConfigBoxFixedSizeFlag(void);           /* kitty.c */
+    extern void SetConfigBoxFixedSizeFlag(const int flag);
+    extern void kitty_cfgbox_apply_fixed_size(void);       /* windows/dialog.c */
+
+    if (event == EVENT_REFRESH) {
+        dlg_checkbox_set(ctrl, dlg, GetConfigBoxFixedSizeFlag() != 0);
+    } else if (event == EVENT_VALCHANGE) {
+        int on = dlg_checkbox_get(ctrl, dlg) ? 1 : 0;
+        WriteParameter("ConfigBox", "fixedsizewindow", on ? "yes" : "no");
+        SetConfigBoxFixedSizeFlag(on);
+        kitty_cfgbox_apply_fixed_size();
+    }
+}
+
 static void kitty_cfgwin_dblclick_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                           void *data, int event)
 {
@@ -9389,7 +9419,15 @@ static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
         extern void SetConfigBoxHeight(const int num);        /* kitty.c */
         extern void SetConfigBoxWindowHeight(const int num);  /* kitty.c */
         extern void SetConfigBoxWindowWidth(const int num);   /* kitty.c */
-        char *s = dlg_editbox_get(ctrl, dlg);
+        char *s;
+        /* "Lock window size": the two window fields refuse edits - the typed
+         * text is put back to the stored value at once. This box has no way
+         * to grey a control, so refusing is how read-only is shown. */
+        if (strcmp(key, "height") != 0 && kitty_cfgbox_size_locked()) {
+            kitty_cfgwin_num_handler(ctrl, dlg, data, EVENT_REFRESH);
+            return;
+        }
+        s = dlg_editbox_get(ctrl, dlg);
         if (s[0]) {
             /*
              * Store what will actually be USED, not what was typed.
@@ -9468,7 +9506,9 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
     /* The colour theme is NOT here any more: it is one setting for the whole
      * suite, and sits on KiTTY++ Settings > Appearance. */
     s = ctrl_getset(b, "Application/Config Window", "look", KT_CONFIG_WINDOW_CATEGORY_TREE);
-    ctrl_droplist(s, KT_CONFIG_WINDOW_CATEGORY_TREE_OPENS_SHOWING, NO_SHORTCUT, 55,
+    /* The percentage is the LIST's share of the line: 30 leaves the label
+     * its room and makes the list as narrow as its two short entries allow. */
+    ctrl_droplist(s, KT_CONFIG_WINDOW_CATEGORY_TREE_OPENS_SHOWING, NO_SHORTCUT, 30,
                   HELPCTX(kitty_theme), kitty_cfgwin_expand_handler, P(NULL));
 
     s = ctrl_getset(b, "Application/Config Window", "size", KT_CONFIG_WINDOW_SIZE);
@@ -9482,6 +9522,9 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
     ctrl_editbox(s, KT_CONFIG_WINDOW_WINDOW_WIDTH_IN_PIXELS_BLANK,
                  NO_SHORTCUT, 30, HELPCTX(kitty_theme),
                  kitty_cfgwin_num_handler, P("windowwidth"), ED_STR);
+    ctrl_checkbox(s, KT_CONFIG_WINDOW_LOCK_WINDOW_SIZE, NO_SHORTCUT,
+                  HELPCTX(kitty_theme), kitty_cfgwin_fixedsize_handler,
+                  P(NULL));
 
     s = ctrl_getset(b, "Application/Config Window", "closing",
                     KT_CONFIG_WINDOW_CLOSING_A_TERMINAL_WINDOW);
@@ -10894,6 +10937,15 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
 
     if (midsession || GetPuttyFlag())
         return;                        /* no application tab mid-session */
+    {
+        /* [ConfigBox] applicationsettings=no: no Application tab at all. The
+         * tab strip already degrades to one tab when no Application/ path
+         * exists (it is how the stock variants behave), and the jumps to
+         * those panels check the strip before going. */
+        extern int GetConfigBoxApplicationSettingsFlag(void);   /* kitty.c */
+        if (!GetConfigBoxApplicationSettingsFlag())
+            return;
+    }
 
     /* Fresh box, fresh footer registrations. At the top, before anything is
      * built: a reset placed beside the footer pass at the end once wiped a

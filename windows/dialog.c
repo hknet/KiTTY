@@ -1493,6 +1493,7 @@ static void kitty_cfg_panel_scrollbar(HWND hwnd, struct kitty_cfg_panel *p,
  */
 static bool kitty_cfg_layout_ready = false;
 static bool kitty_cfg_in_sizemove = false;   /* between WM_ENTER/EXITSIZEMOVE */
+static bool kitty_cfg_lock_bypass = false;   /* a resize the size lock lets through */
 static struct kl_anchor_win *kitty_cfg_anchors = NULL;
 static RECT *kitty_cfg_anchor_rects = NULL;
 static size_t kitty_cfg_nanchors = 0;
@@ -2366,6 +2367,54 @@ static void kitty_cfgbox_save_pos(HWND hwnd)
  * too, so it goes out through an accessor with a do-nothing stub.
  */
 void kitty_cfgbox_store_size(int w, int h);   /* kitty_config.c / stub */
+int kitty_cfgbox_size_locked(void);           /* kitty_config.c / stub: 0 */
+
+/*
+ * [ConfigBox] fixedsizewindow: fit the frame to the flag. Locked, the box
+ * loses its resize frame (it never had a maximise box), and WM_GETMINMAXINFO pins
+ * both track sizes to the size it has; unlocked, the template's frame comes
+ * back. Called once the box has its final opening size, and again from the
+ * panel whenever the checkbox changes - with SWP_FRAMECHANGED, so the new
+ * frame is drawn without waiting for the next move.
+ */
+static HWND kitty_cfg_hwnd_for_lock = NULL;
+void kitty_cfgbox_apply_fixed_size(void)
+{
+    HWND hwnd = kitty_cfg_hwnd_for_lock;
+    LONG_PTR style, want;
+    RECT before, after, outer;
+    if (!hwnd)
+        return;
+    style = GetWindowLongPtr(hwnd, GWL_STYLE);
+    want = kitty_cfgbox_size_locked()
+         ? (style & ~(LONG_PTR)WS_THICKFRAME)
+         : (style | WS_THICKFRAME);
+    if (want == style)
+        return;                        /* the frame already matches */
+    /*
+     * The frame changes thickness, so the CLIENT area would change size
+     * inside the same outer rectangle - and every panel is laid out to the
+     * client width it was built at. Rather than lay 40-odd panels out again
+     * (the DPI change's road), keep the client exactly as it was: measure
+     * what the frame took or gave, and move the outer edge by that much.
+     * Nothing inside moves, so nothing inside needs measuring.
+     */
+    GetClientRect(hwnd, &before);
+    SetWindowLongPtr(hwnd, GWL_STYLE, want);
+    SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
+                 SWP_FRAMECHANGED);
+    GetClientRect(hwnd, &after);
+    if ((after.right != before.right || after.bottom != before.bottom) &&
+        GetWindowRect(hwnd, &outer)) {
+        kitty_cfg_lock_bypass = true;
+        SetWindowPos(hwnd, NULL, 0, 0,
+                     (outer.right - outer.left) - (after.right - before.right),
+                     (outer.bottom - outer.top) - (after.bottom - before.bottom),
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        kitty_cfg_lock_bypass = false;
+    }
+}
 
 static void kitty_cfgbox_save_size(HWND hwnd)
 {
@@ -2513,6 +2562,8 @@ void kitty_cfgbox_apply_size(void)
         IsIconic(kitty_cfg_hwnd) || IsZoomed(kitty_cfg_hwnd) ||
         !GetWindowRect(kitty_cfg_hwnd, &r))
         return;
+    if (kitty_cfgbox_size_locked())
+        return;                        /* the fields refuse edits anyway */
     hdc = GetDC(kitty_cfg_hwnd);
     if (!hdc)
         return;
@@ -2947,6 +2998,10 @@ void kitty_cfg_goto_panel(const char *path)
         return;
     apptab = kitty_cfg_path_is_app(path);
     strip = GetDlgItem(kitty_cfg_hwnd, IDCX_TABSTRIP);
+    /* No Application tab (applicationsettings=no, or a stock variant): a
+     * jump to one of its panels has nowhere to go, so it goes nowhere. */
+    if (apptab && strip && SendMessage(strip, TCM_GETITEMCOUNT, 0, 0) < 2)
+        return;
     if (strip && (SendMessage(strip, TCM_GETCURSEL, 0, 0) != 0) != apptab) {
         /*
          * Record where the user was on the tab being LEFT, exactly as the tab
@@ -3097,6 +3152,21 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
        * inside kitty_cfg_layout_relayout is what lets this message arrive
        * during creation, before there is anything to place.
        */
+      case WM_WINDOWPOSCHANGING:
+        /* Locked size: a resize from ANY quarter is turned into a move.
+         * WM_GETMINMAXINFO only governs interactive sizing; a SetWindowPos
+         * from another program (or a harness) never asks it. The one resize
+         * allowed through is the DPI change's, which sets the bypass. */
+        if (kitty_cfg_layout_ready && kitty_cfgbox_size_locked() &&
+            !kitty_cfg_lock_bypass) {
+            WINDOWPOS *wp = (WINDOWPOS *)lParam;
+            RECT cur;
+            if (wp && !(wp->flags & SWP_NOSIZE) && GetWindowRect(hwnd, &cur)) {
+                wp->cx = cur.right - cur.left;
+                wp->cy = cur.bottom - cur.top;
+            }
+        }
+        return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
       case WM_SIZE:
         if (wParam != SIZE_MINIMIZED) {
             kitty_cfg_layout_relayout(hwnd);
@@ -3115,8 +3185,17 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
          * scripts/qa_window_minsize.ps1 asks every window to do. */
         if (kitty_cfg_layout_ready) {
             MINMAXINFO *mmi = (MINMAXINFO *)lParam;
+            RECT lr;
             mmi->ptMinTrackSize.x = kitty_cfg_minsize.cx;
             mmi->ptMinTrackSize.y = kitty_cfg_minsize.cy;
+            /* Locked: the size it has is the only size it may have. (Asked
+             * on a SetWindowPos too, so the bypass applies here as well.) */
+            if (kitty_cfgbox_size_locked() && !kitty_cfg_lock_bypass &&
+                GetWindowRect(hwnd, &lr)) {
+                mmi->ptMinTrackSize.x = mmi->ptMaxTrackSize.x = lr.right - lr.left;
+                mmi->ptMinTrackSize.y = mmi->ptMaxTrackSize.y = lr.bottom - lr.top;
+                mmi->ptMaxSize = mmi->ptMaxTrackSize;
+            }
             return 0;
         }
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
@@ -3128,9 +3207,11 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         const RECT *sug = (const RECT *)lParam;
         kitty_cfg_layout_rescale(hwnd, LOWORD(wParam));
         if (sug) {
+            kitty_cfg_lock_bypass = true;   /* the one resize a lock allows */
             SetWindowPos(hwnd, NULL, sug->left, sug->top,
                          sug->right - sug->left, sug->bottom - sug->top,
                          SWP_NOZORDER | SWP_NOACTIVATE);
+            kitty_cfg_lock_bypass = false;
             kitty_cfg_dragsize.cx = sug->right - sug->left;
             kitty_cfg_dragsize.cy = sug->bottom - sug->top;
         }
@@ -3213,6 +3294,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             kitty_cfg_remember_app_panel(kitty_cfg_active_panel->path);
         kitty_cfg_panel_cache_reset();  /* the windows die with the dialog */
         kitty_cfg_layout_free();        /* so does the layout baseline */
+        kitty_cfg_hwnd_for_lock = NULL;
         /* KiTTY: tear down the Ctrl+F session-search jump with its dialog. */
         if (kitty_cfg_hwnd == hwnd) {
             if (kitty_cfg_kbdhook) {
@@ -3492,10 +3574,17 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
              * predate a font change or come from a larger display. */
             if (want_w < kitty_cfg_minsize.cx) want_w = kitty_cfg_minsize.cx;
             if (want_h < kitty_cfg_minsize.cy) want_h = kitty_cfg_minsize.cy;
-            if (want_w != cur_w || want_h != cur_h)
+            if (want_w != cur_w || want_h != cur_h) {
+                kitty_cfg_lock_bypass = true;   /* the configured size IS the lock */
                 SetWindowPos(hwnd, NULL, 0, 0, want_w, want_h,
                              SWP_NOMOVE | SWP_NOZORDER);
+                kitty_cfg_lock_bypass = false;
+            }
         }
+        /* KiTTY: [ConfigBox] fixedsizewindow - the frame follows the flag,
+         * now that the box has the size it is to keep. */
+        kitty_cfg_hwnd_for_lock = hwnd;
+        kitty_cfgbox_apply_fixed_size();
 
         /* KiTTY: restore the remembered config-box position; centre if none/off-screen. */
         if (!kitty_cfgbox_restore_pos(hwnd))
@@ -3598,7 +3687,9 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
              * that tab's tree, and take the item from there.
              */
             if (kitty_cfgbox_wanted_panel() &&
-                kitty_cfg_path_is_app(kitty_cfgbox_wanted_panel())) {
+                kitty_cfg_path_is_app(kitty_cfgbox_wanted_panel()) &&
+                SendMessage(GetDlgItem(hwnd, IDCX_TABSTRIP),
+                            TCM_GETITEMCOUNT, 0, 0) >= 2) {
                 HWND strip = GetDlgItem(hwnd, IDCX_TABSTRIP);
                 const char *first_app;
                 SendMessage(strip, TCM_SETCURSEL, 1, 0);

@@ -337,6 +337,22 @@ static int ConfigBoxNoExitFlag = 0 ;
 int GetConfigBoxNoExitFlag(void) { return ConfigBoxNoExitFlag ; }
 void SetConfigBoxNoExitFlag( const int flag ) { ConfigBoxNoExitFlag = flag ; }
 
+/* [ConfigBox] fixedsizewindow=yes: the configuration window keeps the size it
+ * has - no resize frame, and the two size fields on
+ * Application > Config Window refuse edits - so a size chosen for a kiosk or
+ * a shared machine stays chosen. */
+static int ConfigBoxFixedSizeFlag = 0 ;
+int GetConfigBoxFixedSizeFlag(void) { return ConfigBoxFixedSizeFlag ; }
+void SetConfigBoxFixedSizeFlag( const int flag ) { ConfigBoxFixedSizeFlag = flag ; }
+
+/* [ConfigBox] applicationsettings=no: the configuration box has no
+ * Application tab - none of its panels is built, and every jump to one lands
+ * on the Session tab. kitty.ini only, no control: it exists so an
+ * administrator can keep users out of the application-wide settings, which
+ * is exactly what a control on one of those panels could not do. */
+static int ConfigBoxApplicationSettingsFlag = 1 ;
+int GetConfigBoxApplicationSettingsFlag(void) { return ConfigBoxApplicationSettingsFlag ; }
+
 // Flag pour inhiber la gestion du CTRL+TAB
 static int CtrlTabFlag = 1 ;
 int GetCtrlTabFlag(void) { return CtrlTabFlag  ; }
@@ -3203,6 +3219,8 @@ static const IniParam ini_params[] = {
 	/* Symmetrical and registry-aware for the same reason as the four below:
 	 * Application > Config Window offers it as a checkbox now. */
 	INIP_KW( "ConfigBox", 0, "noexit",		1, 0, IGN,	&ConfigBoxNoExitFlag, NULL ),
+	INIP_KW( "ConfigBox", 0, "fixedsizewindow",	1, 0, IGN,	&ConfigBoxFixedSizeFlag, NULL ),
+	INIP_KW( "ConfigBox", 0, "applicationsettings",	1, 0, IGN,	&ConfigBoxApplicationSettingsFlag, NULL ),
 	/*
 	 * The Session-panel group on Application > Config Window edits these
 	 * four, which forces two things on them.

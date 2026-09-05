@@ -139,6 +139,17 @@ char default_init_file_content[] =
 ;windowheight=0\n\
 ;windowwidth=0\n\
 \n\
+; fixedsizewindow: with yes, the configuration window keeps the size it has -\n\
+;    no resize frame - and the two size fields on Application > Config Window\n\
+;    refuse edits (\"Lock window size\" there is this key).\n\
+;fixedsizewindow=no\n\
+\n\
+; applicationsettings: with no, the configuration window has no Application\n\
+;    tab - none of its panels exists, and every jump to one lands on the\n\
+;    Session tab. For administrators: set it here (there is no checkbox for\n\
+;    it, on purpose) and deny users write access to this file.\n\
+;applicationsettings=yes\n\
+\n\
 ; collapsed: the Category-tree folds the user changed by hand, as a\n\
 ;    comma-separated list of paths - a bare path stays collapsed, a path\n\
 ;    prefixed with + stays expanded, both beating categoryexpand's default.\n\

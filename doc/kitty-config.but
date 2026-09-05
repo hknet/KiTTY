@@ -604,7 +604,7 @@ Settings of the configuration window itself. The light/dark colours
 are not here: they are one setting for the whole suite, on
 \k{kitty-cfg-appearance}.
 
-\b \q{Category tree opens showing} sets how much of the tree is
+\b \q{Levels of the trees to open} sets how much of the tree is
 expanded when the box opens: the top level only, or everything.
 
 \b \q{Window height} and \q{Window width}, in pixels, open the box at a
@@ -612,6 +612,10 @@ size of your choosing; blank means the default. They take effect on the
 window that is already open as well, and dragging the window's edge
 writes them back, so the size you leave it at is the size it returns
 with.
+
+\b \q{Lock window size} keeps the window at the size it has: the resize
+frame goes, and the two size fields refuse edits until the box is
+cleared again (\c{fixedsizewindow} in \c{kitty.ini}).
 
 \b \q{always start a new KiTTY after the terminal window closes} makes
 closing a terminal return to the configuration box rather than end the
@@ -625,16 +629,18 @@ nothing comes back at shutdown.
 
 How the saved-session list behaves.
 
-\b \q{Length, in rows} is how many sessions the list shows at once,
-six or more. It takes effect at once, in the window you type it in.
+\b \q{Least length, in rows} is the fewest sessions the list shows at
+once, six or more; the list grows past it to fill whatever height the
+configuration window has, so a taller window shows more sessions. It
+takes effect at once, in the window you type it in.
 
 \b \q{Show \q{Default Settings} in the list} keeps the defaults entry
 visible. Quick connect needs it: loading \q{Default Settings} is how
 you get back to that mode.
 
-\b \q{Show folders as rows, not a drop-down} lists the folders in the
-session list itself instead of in a drop-down above it, which is worth
-it once you have more than a handful.
+\b \q{Foldernavigation in the List} lists the folders in the session
+list itself instead of in a drop-down above it, which is worth it once
+you have more than a handful.
 
 \b \q{Search the list as you type} filters the list from the keyboard.
 

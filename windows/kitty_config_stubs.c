@@ -24,6 +24,7 @@ int GetConfigBoxWindowWidth(void)  { return 0; }  /* nor an explicit width */
 /* The stock box is not resizable, so it is never dragged to a new size and
  * there is nothing to remember. */
 void kitty_cfgbox_store_size(int w, int h) { (void)w; (void)h; }
+int kitty_cfgbox_size_locked(void) { return 0; }   /* no [ConfigBox] fixedsizewindow */
 
 /* No panel in the stock box places any of its own controls: the saved-session
  * button column is a KiTTY arrangement. */

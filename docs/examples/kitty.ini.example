@@ -136,6 +136,17 @@
 ;windowheight=0
 ;windowwidth=0
 
+; fixedsizewindow: with yes, the configuration window keeps the size it has -
+;    no resize frame - and the two size fields on Application > Config Window
+;    refuse edits ("Lock window size" there is this key).
+;fixedsizewindow=no
+
+; applicationsettings: with no, the configuration window has no Application
+;    tab - none of its panels exists, and every jump to one lands on the
+;    Session tab. For administrators: set it here (there is no checkbox for
+;    it, on purpose) and deny users write access to this file.
+;applicationsettings=yes
+
 ; collapsed: the Category-tree folds the user changed by hand, as a
 ;    comma-separated list of paths - a bare path stays collapsed, a path
 ;    prefixed with + stays expanded, both beating categoryexpand's default.

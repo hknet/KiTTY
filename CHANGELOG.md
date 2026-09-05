@@ -14,6 +14,18 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some reall
   and the new "Background" leaf (transparency and background image
   together) live under Appearance, and Title and Icon are one leaf,
   "Title & Icon", at the end of the list.
+- **No Application tab, for administrators.** `[ConfigBox]
+  applicationsettings=no` in kitty.ini removes the tab and its panels from
+  the configuration window; jumps to them open the Session tab. There is no
+  checkbox for it, on purpose.
+- **Lock window size.** A box on Application > Config Window (`[ConfigBox]
+  fixedsizewindow`) keeps the configuration window at the size it has: no
+  resize frame, and the two size fields refuse edits while it is ticked.
+- **Application panels reworded.** Config Window: "Tree Navigation",
+  "Levels of the trees to open", "Terminal Window on Exit"; Session Panel:
+  "The List-View settings", "Least length, in rows" (the list grows past
+  it), "Foldernavigation in the List", "Load Last Session /
+  Quick-Connect-Mode".
 - **The saved-session list fills the window.** It grows into whatever height
   the configuration window has, so the Session panel no longer ends in a
   blank band; the row count in `[ConfigBox] height` is now its least

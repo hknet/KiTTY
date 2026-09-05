@@ -736,7 +736,7 @@
 
 /* Application/Config Window */
 #define KT_CONFIG_WINDOW_THIS_WINDOW                 "This window"
-#define KT_CONFIG_WINDOW_CATEGORY_TREE               "Category tree"
+#define KT_CONFIG_WINDOW_CATEGORY_TREE               "Tree Navigation"
 #define KT_APPEARANCE_TITLE                          "Appearance"
 #define KT_APPEARANCE_COLOURS                        "Colours"
 #define KT_CONFIG_WINDOW_COLOURS                     "Choose the default Appearance:"
@@ -744,11 +744,12 @@
         "kittygen all read it. Dark needs Windows 10 1809 or newer."
 #define KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED "Changes apply to windows opened afterwards - this " \
         "configuration window keeps the colours it opened with."
-#define KT_CONFIG_WINDOW_CATEGORY_TREE_OPENS_SHOWING "Category tree opens showing:"
+#define KT_CONFIG_WINDOW_CATEGORY_TREE_OPENS_SHOWING "Levels of the trees to open:"
 #define KT_CONFIG_WINDOW_SIZE                        "Size"
 #define KT_CONFIG_WINDOW_WINDOW_HEIGHT_IN_PIXELS_BLANK "Window height, in pixels (blank = default):"
 #define KT_CONFIG_WINDOW_WINDOW_WIDTH_IN_PIXELS_BLANK "Window width, in pixels (blank = default):"
-#define KT_CONFIG_WINDOW_CLOSING_A_TERMINAL_WINDOW   "Terminal window exit"
+#define KT_CONFIG_WINDOW_LOCK_WINDOW_SIZE            "Lock window size"
+#define KT_CONFIG_WINDOW_CLOSING_A_TERMINAL_WINDOW   "Terminal Window on Exit"
 #define KT_CONFIG_WINDOW_COME_BACK_TO_THIS_WINDOW    "always start a new KiTTY after the terminal window closes"
 
 /* Application/Security */
@@ -1025,16 +1026,16 @@
 #define KT_NAMED_PROXIES_HOSTFIELD_OVERRIDE          "A definition that chooses for itself ignores this default."
 
 /* Application/Session parameter */
-#define KT_SESSION_PARAMETER_THE_SESSION_LIST        "The session list"
-#define KT_SESSION_PARAMETER_THE_LIST                "The list"
-#define KT_SESSION_PARAMETER_LENGTH_IN_ROWS_7        "Length, in rows (" \
+#define KT_SESSION_PARAMETER_THE_SESSION_LIST        "The Session Panel"
+#define KT_SESSION_PARAMETER_THE_LIST                "The List-View settings"
+#define KT_SESSION_PARAMETER_LENGTH_IN_ROWS_7        "Least length, in rows (" \
         KITTY_STR(KITTY_CFG_SESSION_ROWS_MIN) " or more):"
 #define KT_SESSION_PARAMETER_SHOW_DEFAULT_SETTINGS   "Show \"Default Settings\" in the list"
 #define KT_SESSION_PARAMETER_QUICK_CONNECT_NEEDS_IT_LOADING "Quick connect needs it: loading Default Settings is how you " \
         "get back to that mode."
-#define KT_SESSION_PARAMETER_SHOW_FOLDERS_AS_ROWS_NOT "Show folders as rows, not a drop-down"
+#define KT_SESSION_PARAMETER_SHOW_FOLDERS_AS_ROWS_NOT "Foldernavigation in the List"
 #define KT_SESSION_PARAMETER_SEARCH_THE_LIST_AS_YOU  "Search the list as you type"
-#define KT_SESSION_PARAMETER_OPENING                 "Opening"
+#define KT_SESSION_PARAMETER_OPENING                 "Load Last Session / Quick-Connect-Mode"
 #define KT_SESSION_PARAMETER_OPEN_ON_THE_LAST_USED   "Open on the last used session (off = quick connect)"
 #define KT_SESSION_PARAMETER_QUICK_CONNECT_STARTS_EVERY_KITTY "Quick connect starts every KiTTY on Default Settings with the " \
         "cursor already in Host Name: type an address and press Enter."
