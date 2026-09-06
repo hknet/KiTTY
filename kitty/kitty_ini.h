@@ -265,9 +265,6 @@ char default_init_file_content[] =
 ;    setting.\n\
 ;cryptsalt=1\n\
 \n\
-; CtHelperPath: the full path to the cthelper.exe binary (Wrapper for Cygwin feature)\n\
-;CtHelperPath=\n\
-\n\
 ; ctrltab: allow Ctrl+Tab to switch between open KiTTY windows. This is the\n\
 ;    master switch only - it does not turn the feature on by itself. Each\n\
 ;    session also has its own \"Switch KiTTY windows with Ctrl + TAB\" box in\n\

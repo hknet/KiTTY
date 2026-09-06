@@ -237,8 +237,6 @@ void SetQuickConnectMode( const int flag ) ;
 int GetDblClickFlag(void) ;
 void SetDblClickFlag( const int flag ) ;
 
-// Chemin vers le programme cthelper.exe
-extern char * CtHelperPath ;
 
 // Chemin vers le programme WinSCP
 extern char * WinSCPPath ;
@@ -427,7 +425,6 @@ void SendFileList( HWND hwnd, char * filelist ) ;
 void GetOneFile( HWND hwnd, char * directory, const char * filename ) ;
 void GetFile( HWND hwnd ) ;
 void RunCmd( HWND hwnd ) ;
-int SearchCtHelper( void ) ;
 int SearchWinSCP( void ) ;
 int SearchPSCP( void ) ;
 void urlhack_launch_url(const char* app, const char *url) ;

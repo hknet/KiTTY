@@ -432,8 +432,6 @@ int ImageSlideDelay = - 1 ;
 int AntiIdleSeconds = 180 ;
 char AntiIdleStr[128] = "" ;  // Ex: " \x08"   => Fait un espace et le retire tout de suite
 
-// Chemin vers le programme cthelper.exe
-char * CtHelperPath = NULL ;
 
 // Chemin vers le programme WinSCP
 char * WinSCPPath = NULL ;
@@ -3599,9 +3597,6 @@ void WriteCountUpAndPath( void ) {
 	// Positionne la version du binaire
 	WriteParameter( INIT_SECTION, "Build", BuildVersionTime ) ;
 	
-	// Recherche cthelper.exe s'il existe
-	SearchCtHelper() ;
-		
 	// Recherche pscp s'il existe
 	SearchPSCP() ;
 	

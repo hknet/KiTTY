@@ -11442,7 +11442,6 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, "pscpport",       KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
     { INIT_SECTION, "downloaddir",    KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
     { INIT_SECTION, "uploaddir",      KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
-    { INIT_SECTION, "CtHelperPath",   KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0 },
     /* Launcher: a separate process reads these from the store when it starts */
     { "Launcher", "reload",           KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
     { "Launcher", "alreadyRunCheck",  KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 1,
@@ -11895,8 +11894,6 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_TEXTBOX(s, KT_KSET_TT_PSCPPORT, "pscpport", kitty_helper_paths);
     KSET_TEXTBOX(s, KT_KSET_TT_DOWNLOADDIR, "downloaddir", kitty_helper_paths);
     KSET_TEXTBOX(s, KT_KSET_TT_UPLOADDIR, "uploaddir", kitty_helper_paths);
-    s = ctrl_getset(b, KSET_PATH("Transfers & Tools"), "cygwin", KT_KSET_TT_CYGWIN);
-    KSET_FILESEL(s, KT_KSET_TT_CTHELPER, KT_KSET_TT_CTHELPER_SELECT, "CtHelperPath", kitty_helper_paths);
 
     ctrl_settitle(b, KSET_PATH("Transfers & Tools/WinSCP"), KT_WINSCP_WINSCP);
     s = ctrl_getset(b, KSET_PATH("Transfers & Tools/WinSCP"), "path", KT_WINSCP_EXECUTABLE);

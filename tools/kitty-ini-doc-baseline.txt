@@ -27,7 +27,6 @@ row ConfigBox filter
 row ConfigBox noexit
 row ConfigBox proxyselection
 row ConfigBox windowheight
-row KiTTY CtHelperPath
 row KiTTY Folders
 row KiTTY KiClassName
 row KiTTY PSCPPath
@@ -147,7 +146,6 @@ text Agent startupkey1
 text Agent unloadonremove
 text ConfigBox categoryexpand
 text ConfigBox windowheight
-text KiTTY CtHelperPath
 text KiTTY PSCPPath
 text KiTTY ReconnectDelay
 text KiTTY WarnLegacyPasswordUpgrade

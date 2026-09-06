@@ -4,7 +4,7 @@
  * capture, cancel button, success tray balloon), the injection-hardened
  * pscp command builders (SendOneFile/SendFileList/SendFile,
  * GetOneFile/GetFile, RunCmd), external-tool path discovery
- * (SearchCtHelper/SearchWinSCP/SearchPSCP), StartWinSCP, and the
+ * (SearchWinSCP/SearchPSCP), StartWinSCP, and the
  * pscp-upload drag-and-drop handlers. Compiled into the same targets as
  * kitty.c (kitty + kitty_portable), so behaviour is unchanged.
  */
@@ -1120,7 +1120,6 @@ dt() { printf "\033]0;__dt:"$(hostname)":"${USER}":"`pwd`"\007" ; }
  * hardened host:user:path splitter for __dt/__wt) went in the ini hygiene
  * sweep: nothing set or consumed them anymore. */
 
-// Recherche le chemin vers le programme cthelper.exe
 /* If `candidate` names an existing file, adopt it as the tool path *out
  * (freeing any previous value), optionally export it to environment `envname`,
  * optionally persist it under kitty.ini/registry key `param`, and return 1;
@@ -1139,21 +1138,6 @@ static int adopt_tool_path_if_exists( char **out, const char *candidate,
 	return 1 ;
 }
 
-int SearchCtHelper( void ) {
-	char buffer[4096] ;
-	if( CtHelperPath!=NULL ) {
-		free(CtHelperPath) ;
-		CtHelperPath=NULL ;
-	}
-	if( ReadParameterN( INIT_SECTION, "CtHelperPath", buffer, sizeof(buffer) ) != 0 ) {
-		if( adopt_tool_path_if_exists( &CtHelperPath, buffer, NULL, "CTHELPER_PATH" ) ) return 1 ;
-		else { DelParameter( INIT_SECTION, "CtHelperPath" ) ; }
-	}
-	snprintf( buffer, sizeof(buffer), "%s\\cthelper.exe", InitialDirectory ) ;
-	if( adopt_tool_path_if_exists( &CtHelperPath, buffer, NULL, "CTHELPER_PATH" ) ) return 1 ;
-	return 0 ;
-}
-	
 static int set_winscp_path_if_exists(const char *path)
 {
 	if( path != NULL && path[0] && existfile(path) ) {

@@ -1008,8 +1008,8 @@ behind: uncheck and check again from the new place.
 
 KiTTY drives programs it does not contain: \i{WinSCP} for a graphical
 file transfer of the session you are on, \c{kscp} for drag-and-drop
-uploads and the Send and Get file commands, \c{rz} and \c{sz} for
-ZModem transfers inside the terminal, and the Cygwin helper.
+uploads and the Send and Get file commands, and \c{rz} and \c{sz} for
+ZModem transfers inside the terminal.
 
 \b \q{File-copy helper} is normally found by KiTTY itself at every
 start, since \c{kscp.exe} ships beside it, and what it finds is not

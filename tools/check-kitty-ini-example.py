@@ -79,10 +79,6 @@ ALLOW_UNDOCUMENTED = {
 ALLOW_DEAD_KNOBS: set[str] = set()
 
 ALLOW_TEMPLATE_UNREAD = {
-    # The template documents cygterm, but nothing in the built sources reads the
-    # key: the cygterm support under kitty/cthelper/ is not wired into this
-    # port's CMake build, so the option has no effect wherever it is set.
-    ("KiTTY", "cygterm"),
     # Real keys the literal scan cannot see, because the name is built at
     # runtime or hidden behind a macro rather than written out at the call:
     #   kageant_policy_get("lockdownmode", ...)   kitty/kitty_pageant.c

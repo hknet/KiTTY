@@ -1132,7 +1132,7 @@ KiTTY lets you send text straight from the terminal screen to a printer. Use the
 
 ### Start Cygwin or cmd.exe inside KiTTY
 
-KiTTY can host a local shell right inside its terminal window, so you can run a Cygwin session, the Windows `cmd.exe` prompt, or even PowerShell without leaving KiTTY. This is handled by a small helper called `cygtermd.exe`, which you place in your Cygwin `/bin` directory (or alongside `kitty.exe` together with `cygwin1.dll` if you don't have a full Cygwin install). When launching `cmd.exe` this way, remember to pick the matching code page in the Translation settings (or via the `-codepage` option), and you can combine cygtermd with the winpty tool to run `cmd.exe` or PowerShell. With thanks to lars18th for the help.
+KiTTY can host a Cygwin shell inside its terminal window through PuTTY's local-proxy mechanism and the small `cygtermd` helper. The helper is **not shipped**: build it from `contrib/cygtermd` with Cygwin's gcc (its README has the steps) and put `cygtermd.exe` in Cygwin's `/bin`. When launching `cmd.exe` this way, pick the matching code page in the Translation settings (or via the `-codepage` option); combined with the winpty tool it can also run `cmd.exe` or PowerShell. For a plain local command prompt without Cygwin, use the shipped `kitty_pterm.exe` (next section).
 
 **How to enable:** Run a local shell via the cygtermd helper, e.g. `kitty.exe -localproxy "C:\cygwin64\bin\cygtermd.exe /home/%USERNAME% /bin/bash -login" localhost`.
 

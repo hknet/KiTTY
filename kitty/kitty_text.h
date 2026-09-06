@@ -1112,9 +1112,6 @@
 #define KT_KSET_TT_PSCPPORT                          "Port for file transfers (* = the session's port):"
 #define KT_KSET_TT_DOWNLOADDIR                       "Download folder:"
 #define KT_KSET_TT_UPLOADDIR                         "Remote upload folder:"
-#define KT_KSET_TT_CYGWIN                            "Cygwin"
-#define KT_KSET_TT_CTHELPER                          "Cygwin helper (cthelper.exe):"
-#define KT_KSET_TT_CTHELPER_SELECT                   "Select cthelper.exe"
 
 /* Application/KiTTY++ Settings/Launcher */
 #define KT_KSET_LA_TITLE                             "The launcher"
