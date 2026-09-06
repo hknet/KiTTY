@@ -116,6 +116,22 @@ wchar_t *kitty_osc52_get_clipboard(int *len)
  * GDI+, loaded on demand: one conversion is not worth an import an old Windows
  * has to satisfy in the loader.
  */
+/* RtlGenRandom, the documented-stable export underneath CryptGenRandom, present
+ * since XP. PuTTY's own pool asserts unless something has referenced it, which
+ * at paste time nothing need have. */
+BOOLEAN NTAPI SystemFunction036(PVOID, ULONG);
+void kitty_osc52_random(unsigned char *buf, size_t len)
+{
+    if (!SystemFunction036(buf, (ULONG)len)) {
+        /* never happens on a working system; fall back to something that is at
+         * least not constant rather than sending an all-zero token */
+        size_t i;
+        unsigned long t = GetTickCount();
+        for (i = 0; i < len; i++)
+            buf[i] = (unsigned char)((t >> ((i % 4) * 8)) ^ (unsigned char)(i * 37 + 11));
+    }
+}
+
 bool kitty_osc52_clipboard_has_image(void)
 {
     return IsClipboardFormatAvailable(RegisterClipboardFormatW(L"PNG")) ||

@@ -2088,6 +2088,11 @@ void term_set_focus(Terminal *term, bool has_focus);
 /* KiTTY: which OSC 52 clipboard permission is live, for the title marker and the
  * window tint. Returns OSC52_PERM_*; *read/*write say which. */
 int term_osc52_perm_state(Terminal *term, bool *read, bool *write);
+/* KiTTY: is OSC 5522 paste-events mode (private mode 5522) set? And are pastes
+ * still carrying a token (read without a dialog), or has that clock run out?
+ * Both for the title marker; the second also writes the expiry log line once. */
+bool term_osc5522_paste_events(Terminal *term);
+bool term_osc5522_paste_tokens(Terminal *term);
 /* KiTTY: which directions the host has touched the clipboard in recently
  * (CLIP_ACT_* bits), or 0 once that has lapsed. */
 int term_clipboard_activity(Terminal *term);

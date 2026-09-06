@@ -48,6 +48,9 @@ wchar_t *kitty_osc52_get_clipboard_ex(int *len, bool *unavailable);
 unsigned char *kitty_osc52_get_clipboard_png(size_t *len, bool *unavailable);
 /* Is there an image on the clipboard at all? For the type list; no data moves. */
 bool kitty_osc52_clipboard_has_image(void);
+/* Random bytes from the system CSPRNG, for the paste-event token. A seam because
+ * PuTTY's own pool asserts when nothing has referenced it yet. */
+void kitty_osc52_random(unsigned char *buf, size_t len);
 /* OSC 5522 write: put every format of one transaction on the clipboard in ONE
  * open/empty/set/close. text/plain becomes CF_UNICODETEXT, anything else a
  * registered format named by its MIME type. False if the clipboard could not be
@@ -93,6 +96,11 @@ static void clip_note_activity(Terminal *term, int dir);
 /* Drop an OSC 5522 write transaction, wiping its data. Declared here because
  * term_free() sits earlier in the file than the OSC 5522 code. */
 static void osc5522_write_reset(Terminal *term);
+/* Paste-events mode off (and its token gone). `timed`: by the auto-disarm timer,
+ * which is logged, as opposed to a reset or the application clearing it. */
+static void osc5522_paste_disarm(Terminal *term, bool timed);
+static void osc5522_paste_set(Terminal *term, bool state);
+static bool osc5522_paste_event(Terminal *term);
 #endif
 #ifdef MOD_FAR2L
 #include "cdecode.h"
@@ -1398,6 +1406,16 @@ static void term_timer(void *ctx, unsigned long now)
         term->window_update_pending = true;
     }
 
+#ifdef MOD_PERSO
+    /* KiTTY: the paste-events token clock. On the timer rather than only checked
+     * at the next paste, so the title marker changes when the privilege does. */
+    if (term->osc5522_paste_expiry_pending && now == term->osc5522_paste_expiry_tick) {
+        term->osc5522_paste_expiry_pending = false;
+        if (term->osc5522_paste_events)
+            (void)term_osc5522_paste_tokens(term);  /* logs, refreshes the marker */
+    }
+#endif
+
     if (term->window_update_cooldown &&
         now == term->window_update_cooldown_end) {
         term->window_update_cooldown = false;
@@ -1644,6 +1662,12 @@ static void power_on(Terminal *term, bool clear)
     term->win_pointer_shape_pending = true;
     term->win_pointer_shape_raw = false;
     term->bracketed_paste = false;
+#ifdef MOD_PERSO
+    /* KiTTY: a reset clears paste-events mode like every other mode. */
+    if (term->osc5522_paste_events)
+        osc5522_paste_disarm(term, false);
+    term->esc_dollar = false;
+#endif
     term->srm_echo = false;
     {
         int i;
@@ -2354,6 +2378,10 @@ void term_free(Terminal *term)
         sfree(term->osc5522_pw_name[i]);
     }
     osc5522_write_reset(term);
+    if (term->osc5522_paste_pw) {
+        smemclr(term->osc5522_paste_pw, strlen(term->osc5522_paste_pw));
+        sfree(term->osc5522_paste_pw);
+    }
 #endif
     strbuf_free(term->answerback);
 
@@ -3386,18 +3414,13 @@ static void toggle_mode(Terminal *term, int mode, int query, bool state)
           case 2004:                   /* xterm bracketed paste */
             term->bracketed_paste = state ? true : false;
             break;
-            /*
-             * KiTTY: mode 5522, kitty's clipboard-protocol "paste events", is
-             * deliberately NOT implemented, so it falls through to being ignored
-             * like any unknown mode.
-             *
-             * Accepting it and recording it would be a mode that lies: we do not
-             * send paste events, because that means handing the clipboard to the
-             * host on every local paste, which belongs behind the same permission
-             * gate as everything else and has not been designed. This PuTTY has no
-             * DECRQM either, so the specified detection query (CSI ? 5522 $ p)
-             * gets no answer - which reads as "unsupported", and is true.
-             */
+#ifdef MOD_PERSO
+          case 5522:
+            /* KiTTY: kitty's clipboard-protocol paste events. See
+             * osc5522_paste_set() for what the mode does and what bounds it. */
+            osc5522_paste_set(term, state);
+            break;
+#endif
         }
     } else if (query == 0) {
         switch (mode) {
@@ -4369,6 +4392,34 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
         osc52_read_forget_decision(term);
 
     /*
+     * 3a. A paste event's one-time token. The user pressed Paste, and that
+     * keypress is the permission: the application was told the clipboard's
+     * types together with this token, and reads with it once, within seconds,
+     * under the name the spec prescribes ("Paste event"). Single use whether
+     * or not it is still fresh - a token that expired is not tried again. A
+     * stale token falls through to the ordinary rules, which ask.
+     *
+     * Placed after the standing refusal on purpose: "deny this host for ten
+     * minutes" is a decision the user made, and a paste while it stands gets
+     * the text pasted (the event is not sent at all when reads are Deny) or a
+     * refusal, never a silent hand-over.
+     */
+    if (pw && *pw && claim && !strcmp(claim, "Paste event") &&
+        term->osc5522_paste_pw && !strcmp(pw, term->osc5522_paste_pw)) {
+        bool fresh = now <= term->osc5522_paste_pw_until;
+        smemclr(term->osc5522_paste_pw, strlen(term->osc5522_paste_pw));
+        sfree(term->osc5522_paste_pw);
+        term->osc5522_paste_pw = NULL;
+        if (fresh) {
+            if (!clip_read_fetch(want, out, NULL)) {
+                *err = NULL;
+                return false;
+            }
+            return true;
+        }
+    }
+
+    /*
      * 3b. This exact program has been approved before, by name and by the
      * one-time password it was given, and that approval has not expired.
      *
@@ -4677,8 +4728,10 @@ static void osc52_read_clipboard(Terminal *term)
  * different on purpose: it tolerates missing padding, as kitty does, because it
  * cannot report anything and its senders are older and sloppier.)
  *
- * Not built: paste-events mode (CSI ? 5522 h), which hands the clipboard's type
- * list to the host on every local paste. A design decision, not an omission.
+ * And paste-events mode (private mode 5522), further down: while an application
+ * has it set, a local Paste sends the clipboard's type list and a one-time token
+ * instead of the text. Bounded by a token lifetime, a title marker and an
+ * auto-disarm clock (OSC5522PasteMinutes).
  */
 #define OSC5522_CHUNK 4096             /* spec: bytes per chunk BEFORE base64 */
 static bool clip_write_gate(Terminal *term, const char **err);
@@ -5540,6 +5593,190 @@ static void osc5522_write_commit(Terminal *term)
         osc5522_write_fail(term, "EIO", KT_CLIP_LOG_WRITE_5522_FAILED);
     }
     sfree(fmts);
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * OSC 5522 paste events (private mode 5522; kitty 0.44.1, the ancillary spec
+ * "Private Mode for Automatic Paste Notifications").
+ *
+ * An application sets CSI ? 5522 h. From then on a local Paste sends it, instead
+ * of the text, the reply a `.` type-list read would get - OK carrying a one-time
+ * token as pw=, DATA with the MIME list, DONE - and the application reads the
+ * types it wants with that token under the name "Paste event", without a dialog.
+ * That is how an image pastes into a program on the far end.
+ *
+ * Bounds (user decision 2026-09-06): the token is single use and lives
+ * OSC5522PasteTokenSeconds; the mode is shown in the title marker like the other
+ * clipboard permissions; and tokens are issued for OSC5522PasteMinutes after the
+ * mode was set (default 30, 0 = always). After that the mode STAYS SET and the
+ * event still goes out, but without a token, so the application's read meets
+ * the ordinary dialog: a privilege created by a keypress gets a clock, the
+ * feature does not die of it - an application cannot know about a terminal
+ * switching its mode off and would simply stop working. Reads set to Deny
+ * suspend the whole thing: no event, Paste pastes text, as without the mode.
+ */
+/* The token lifetime is the setting OSC5522PasteTokenSeconds (default 10). */
+static unsigned long osc5522_paste_token_secs(Terminal *term)
+{
+    int s = conf_get_int(term->conf, CONF_osc5522_paste_token_secs);
+    return s < 1 ? 1 : (unsigned long)s;
+}
+
+static void osc5522_paste_forget_token(Terminal *term)
+{
+    if (term->osc5522_paste_pw) {
+        smemclr(term->osc5522_paste_pw, strlen(term->osc5522_paste_pw));
+        sfree(term->osc5522_paste_pw);
+        term->osc5522_paste_pw = NULL;
+    }
+    term->osc5522_paste_pw_until = 0;
+}
+
+static void osc5522_paste_disarm(Terminal *term, bool timed)
+{
+    bool was = term->osc5522_paste_events;
+    (void)timed;                  /* the clock no longer clears the mode */
+    term->osc5522_paste_events = false;
+    term->osc5522_paste_tokens_until = 0;
+    term->osc5522_paste_expiry_pending = false;
+    term->osc5522_paste_expiry_logged = false;
+    osc5522_paste_forget_token(term);
+    if (was)
+        kitty_osc52_state_changed(term);
+}
+
+static void osc5522_paste_set(Terminal *term, bool state)
+{
+    int minutes = conf_get_int(term->conf, CONF_osc5522_paste_minutes);
+    if (!state) {
+        if (term->osc5522_paste_events)
+            logevent(term->logctx, KT_CLIP_LOG_PASTE_EVENTS_OFF);
+        osc5522_paste_disarm(term, false);
+        return;
+    }
+    /* Setting it again restarts the clock: the application asked again. */
+    term->osc5522_paste_events = true;
+    term->osc5522_paste_expiry_logged = false;
+    osc5522_paste_forget_token(term);
+    if (minutes > 0) {
+        term->osc5522_paste_tokens_until = (unsigned long)time(NULL) + (unsigned long)minutes * 60;
+        term->osc5522_paste_expiry_tick =
+            schedule_timer(minutes * 60 * TICKSPERSEC, term_timer, term);
+        term->osc5522_paste_expiry_pending = true;
+        {
+            char *msg = dupprintf(KT_CLIP_LOG_PASTE_EVENTS_ON, minutes);
+            logevent(term->logctx, msg);
+            sfree(msg);
+        }
+    } else {
+        term->osc5522_paste_tokens_until = 0;
+        term->osc5522_paste_expiry_pending = false;
+        logevent(term->logctx, KT_CLIP_LOG_PASTE_EVENTS_ON_NOLIMIT);
+    }
+    kitty_osc52_state_changed(term);
+}
+
+/* Is the mode set? Exactly what the application set; the clock does not touch it. */
+bool term_osc5522_paste_events(Terminal *term)
+{
+    return term && term->osc5522_paste_events;
+}
+
+/* Are pastes still carrying a token? The wall clock is judged here, so a machine
+ * that slept through the timer still comes to the same answer on the next paste
+ * or title refresh. The expiry is logged once, whichever path notices first. */
+bool term_osc5522_paste_tokens(Terminal *term)
+{
+    if (!term || !term->osc5522_paste_events)
+        return false;
+    if (term->osc5522_paste_tokens_until == 0)
+        return true;
+    if ((unsigned long)time(NULL) < term->osc5522_paste_tokens_until)
+        return true;
+    if (!term->osc5522_paste_expiry_logged) {
+        char *msg = dupprintf(KT_CLIP_LOG_PASTE_TOKENS_EXPIRED,
+                              conf_get_int(term->conf, CONF_osc5522_paste_minutes));
+        logevent(term->logctx, msg);
+        sfree(msg);
+        term->osc5522_paste_expiry_logged = true;
+        osc5522_paste_forget_token(term);
+        kitty_osc52_state_changed(term);
+    }
+    return false;
+}
+
+/* The event itself. False when it is not sent, so the caller pastes as usual. */
+static bool osc5522_paste_event(Terminal *term)
+{
+    unsigned char raw[16];
+    char *token, *m, *p, *msg;
+    char reply[160];
+    char pwpart[48];
+    wchar_t *clip;
+    int clip_len = 0;
+    bool have_text, have_image;
+    char list[128];
+
+    if (conf_get_int(term->conf, CONF_osc52_clipboard_read) != OSC52_READ_ASK) {
+        logevent(term->logctx, KT_CLIP_LOG_PASTE_EVENT_DENIED);
+        return false;
+    }
+
+    clip = kitty_osc52_get_clipboard(&clip_len);
+    have_text = (clip && clip_len > 0);
+    if (clip) {
+        smemclr(clip, clip_len * sizeof(wchar_t));
+        sfree(clip);
+    }
+    have_image = kitty_osc52_clipboard_has_image();
+
+    /*
+     * The token only while the clock allows. Afterwards the event still goes
+     * out - the application must keep working, and it cannot know about a
+     * clock the protocol does not have - but without pw=, so its read meets the
+     * ordinary permission dialog. pw is optional in the spec ("SHOULD").
+     */
+    osc5522_paste_forget_token(term);
+    if (term_osc5522_paste_tokens(term)) {
+        kitty_osc52_random(raw, sizeof(raw));
+        token = osc5522_b64((const char *)raw, sizeof(raw));
+        smemclr(raw, sizeof(raw));
+        term->osc5522_paste_pw = token;           /* kept in base64, as compared */
+        term->osc5522_paste_pw_until = (unsigned long)time(NULL) + osc5522_paste_token_secs(term);
+        snprintf(pwpart, sizeof(pwpart), ":pw=%s", token);
+    } else {
+        pwpart[0] = '\0';
+    }
+
+    snprintf(list, sizeof(list), "%s%s%s\n",
+             have_text ? "text/plain text/plain;charset=utf-8" : "",
+             have_text && have_image ? " " : "",
+             have_image ? "image/png" : "");
+
+    snprintf(reply, sizeof(reply), "type=read:status=OK%s", pwpart);
+    osc5522_send(term, reply, NULL, 0);
+    if (have_text || have_image) {
+        m = osc5522_b64(".", 1);
+        p = osc5522_b64(list, strlen(list));
+        snprintf(reply, sizeof(reply), "type=read:status=DATA:mime=%s%s", m, pwpart);
+        osc5522_send(term, reply, p, strlen(p));
+        sfree(m);
+        sfree(p);
+    }
+    snprintf(reply, sizeof(reply), "type=read:status=DONE%s", pwpart);
+    osc5522_send(term, reply, NULL, 0);
+
+    msg = dupprintf(KT_CLIP_LOG_PASTE_EVENT_SENT,
+                    (have_text || have_image) ? list : KT_CLIP_LOG_PASTE_EVENT_EMPTY);
+    {
+        char *nl = strchr(msg, '\n');
+        if (nl)
+            *nl = '\0';
+    }
+    logevent(term->logctx, msg);
+    sfree(msg);
+    return true;
 }
 
 static void osc5522_process(Terminal *term)
@@ -6837,6 +7074,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
                     term->esc_nargs = 1;
                     term->esc_args[0] = ARG_DEFAULT;
                     term->esc_query = 0;
+                    term->esc_dollar = false;
                     break;
                   case ']':             /* OSC: xterm escape sequences */
                     /* Compatibility is nasty here, xterm, linux, decterm yuk! */
@@ -7079,6 +7317,17 @@ static void term_out(Terminal *term, bool called_from_term_data)
                         term->esc_args[term->esc_nargs++] = ARG_DEFAULT;
                     term->termstate = SEEN_CSI;
                 } else if (c < '@') {
+#ifdef MOD_PERSO
+                    /* KiTTY: the '$' intermediate of DECRQM (CSI ? Ps $ p) is
+                     * remembered instead of spoiling the query, so the final
+                     * byte can be dispatched on it. Only after '?': a '$' in any
+                     * other position still makes the sequence unrecognised. */
+                    if (c == '$' && term->esc_query == 1 && !term->esc_dollar) {
+                        term->esc_dollar = true;
+                        term->termstate = SEEN_CSI;
+                        break;
+                    }
+#endif
                     if (term->esc_query)
                         term->esc_query = -1;
                     else if (c == '?')
@@ -7089,6 +7338,26 @@ static void term_out(Terminal *term, bool called_from_term_data)
                 } else
 #define CLAMP(arg, lim) ((arg) = ((arg) > (lim)) ? (lim) : (arg))
                     switch (ANSI(c, term->esc_query)) {
+#ifdef MOD_PERSO
+                      case ANSI('p', 1):
+                        /*
+                         * KiTTY: DECRQM for private mode 5522 ONLY (CSI ? 5522
+                         * $ p), the detection query the paste-events spec
+                         * prescribes. Answered CSI ? 5522 ; 1 $ y (set) or ; 2
+                         * (reset). Every other mode keeps today's silence: a
+                         * general DECRQM that answered "not recognised" for
+                         * modes this terminal does implement would be a lie,
+                         * and a truthful one is its own piece of work.
+                         */
+                        if (term->esc_dollar && term->esc_args[0] == 5522) {
+                            char rep[32];
+                            (void)term_osc5522_paste_events(term); /* retire if due */
+                            snprintf(rep, sizeof(rep), "\033[?5522;%d$y",
+                                     term->osc5522_paste_events ? 1 : 2);
+                            kitty_osc52_send_raw(term, rep, strlen(rep));
+                        }
+                        break;
+#endif
                       case 'A':       /* CUU: move up N lines */
                         CLAMP(term->esc_args[0], term->rows);
                         move(term, term->curs.x,
@@ -9619,6 +9888,19 @@ void term_request_copy(Terminal *term, const int *clipboards, int n_clipboards)
 
 void term_request_paste(Terminal *term, int clipboard)
 {
+#ifdef MOD_PERSO
+    /*
+     * KiTTY: with paste-events mode armed, Paste does not paste. The
+     * application is told what is on the clipboard and reads what it wants
+     * itself. Decided HERE rather than in term_do_paste(): a clipboard holding
+     * only an image never reaches term_do_paste at all, and an image is the
+     * case the mode exists for. Falls through to an ordinary paste when the
+     * event cannot be sent (reads set to Deny).
+     */
+    if (clipboard == CLIP_SYSTEM && term_osc5522_paste_events(term) &&
+        osc5522_paste_event(term))
+        return;
+#endif
     switch (clipboard) {
       case CLIP_NULL:
         /* Do nothing: CLIP_NULL never has data in it. */

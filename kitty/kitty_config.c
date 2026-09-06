@@ -8973,6 +8973,17 @@ static void scb_panel_selection(struct controlbox *b)
     ctrl_editbox(s, KT_LIMITS_MOST_PROMPTS_PER_TEN_SECONDS, NO_SHORTCUT, 18,
                  HELPCTX(kitty_osc52), conf_editbox_handler,
                  I(CONF_osc52_read_dialogs), ED_INT);
+    /* OSC 5522 paste events: a privilege an application arms with one mode
+     * switch and a keypress then exercises without a dialog, so it gets a
+     * clock; the mode itself outlives the clock, the reads then ask (user
+     * decision 2026-09-06). */
+    ctrl_text(s, KT_LIMITS_PASTE_EVENTS_TEXT, HELPCTX(kitty_osc52));
+    ctrl_editbox(s, KT_LIMITS_PASTE_EVENTS_DISARM_MINUTES, NO_SHORTCUT, 18,
+                 HELPCTX(kitty_osc52), conf_editbox_handler,
+                 I(CONF_osc5522_paste_minutes), ED_INT);
+    ctrl_editbox(s, KT_LIMITS_PASTE_TOKEN_SECONDS, NO_SHORTCUT, 18,
+                 HELPCTX(kitty_osc52), conf_editbox_handler,
+                 I(CONF_osc5522_paste_token_secs), ED_INT);
 
     /*
      * The Window/Selection/Remote clipboard/Notices panel.

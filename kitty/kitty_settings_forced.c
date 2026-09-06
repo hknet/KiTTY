@@ -586,6 +586,8 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_i_forced(sesskey, "OSC52ReadMax", conf_get_int(conf, CONF_osc52_read_max));
     write_setting_i_forced(sesskey, "OSC52ReadTimeout", conf_get_int(conf, CONF_osc52_read_timeout));
     write_setting_i_forced(sesskey, "OSC52ReadDialogs", conf_get_int(conf, CONF_osc52_read_dialogs));
+    write_setting_i_forced(sesskey, "OSC5522PasteMinutes", conf_get_int(conf, CONF_osc5522_paste_minutes));
+    write_setting_i_forced(sesskey, "OSC5522PasteTokenSeconds", conf_get_int(conf, CONF_osc5522_paste_token_secs));
     write_setting_i_forced(sesskey, "ClipboardMaxMB", conf_get_int(conf, CONF_clipboard_max_mb));
     write_setting_i_forced(sesskey, "ClipboardWritesPerSecond", conf_get_int(conf, CONF_clipboard_writes_per_sec));
     write_setting_b_forced(sesskey, "ClipboardNotify", conf_get_bool(conf, CONF_clipboard_notify));

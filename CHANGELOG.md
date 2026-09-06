@@ -23,6 +23,22 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some reall
   with EINVAL, a read without a reply) rather than decoded with holes in it.
   OSC 52 is unchanged. Verified end to end against kitty's own `kitten
   clipboard` client.
+- **Paste events for the kitty clipboard protocol (private mode 5522).** An
+  application that sets the mode is told, on every Paste, what is on your
+  clipboard, together with a one-time token it can read the content with,
+  without a dialog. That is how an image pastes into a program on the far
+  end. The token is single use and lives ten seconds, and the title bar
+  shows the mode with a diamond after the clipboard glyph. A new setting
+  under Remote clipboard > Limits, "Paste events are read without a dialog
+  for this many minutes" (default 30, 0 = always), puts a clock on the dialog-free
+  reads: after it the mode stays set, a paste still tells the application
+  what is on the clipboard, but the application's read meets the ordinary
+  permission dialog, and the diamond turns hollow. "Paste token valid for,
+  in seconds" (default 10) sets the token's own lifetime. Paste events are sent
+  only while clipboard reads are set to Ask; under Deny a paste pastes text
+  as before. The detection query the specification prescribes, DECRQM for
+  mode 5522, is answered. The manual's "Paste events" section walks through
+  a timeline.
 
 ### Changed
 

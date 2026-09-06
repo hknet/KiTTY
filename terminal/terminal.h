@@ -360,6 +360,22 @@ struct terminal_tag {
     char *osc5522_w_alias[OSC5522_WRITE_MAX_ALIASES];         /* the extra name */
     char *osc5522_w_alias_target[OSC5522_WRITE_MAX_ALIASES];  /* the type it names */
 
+    /* KiTTY OSC 5522 paste events (private mode 5522). While set, a local Paste
+     * sends the application the clipboard's type list plus a one-time token
+     * instead of the text; the application then reads what it wants with that
+     * token and no dialog. Unconditional storage, same ODR reason as above. */
+    bool osc5522_paste_events;            /* the mode is set */
+    unsigned long osc5522_paste_tokens_until; /* wall clock; 0 = tokens always.
+                                           * After it a paste event goes out
+                                           * WITHOUT a token: the mode stays,
+                                           * the reads ask. */
+    unsigned long osc5522_paste_expiry_tick; /* the timer that marks the moment */
+    bool osc5522_paste_expiry_pending;
+    bool osc5522_paste_expiry_logged;     /* the Event Log line, once */
+    char *osc5522_paste_pw;               /* the last event's token, base64 */
+    unsigned long osc5522_paste_pw_until; /* wall clock; single use within this */
+    bool esc_dollar;                      /* CSI intermediate '$' seen (DECRQM) */
+
     /* KiTTY: accounting for "a clipboard payload was too big and was dropped",
      * shared by OSC 52, OSC 5522 and far2l so all three report it the same way.
      * Every one of these events fires at a moment the REMOTE HOST chose, so both

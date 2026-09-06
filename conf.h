@@ -1673,6 +1673,19 @@ CONF_OPTION(osc52_read_timeout, VALUE_TYPE(INT), DEFAULT_INT(60), SAVE_KEYWORD("
 /* KiTTY: most dialogs shown in any ten seconds, so a host cannot use the prompt
  * itself as the attack. Extras are refused without asking. */
 CONF_OPTION(osc52_read_dialogs, VALUE_TYPE(INT), DEFAULT_INT(3), SAVE_KEYWORD("OSC52ReadDialogs"),)
+/* KiTTY: OSC 5522 paste events (private mode 5522, set by the application): for
+ * how many minutes after the application set the mode a paste carries a
+ * one-time token, i.e. is read without a dialog. 0 = always. Once the minutes
+ * are over the mode STAYS SET - the application never learns of a terminal
+ * switching it off and would stop working - but the paste event goes out
+ * without a token, so the application's read meets the ordinary permission
+ * dialog. A standing privilege created by a keypress gets a clock; the feature
+ * itself does not die of it (user decision 2026-09-06). */
+CONF_OPTION(osc5522_paste_minutes, VALUE_TYPE(INT), DEFAULT_INT(30), SAVE_KEYWORD("OSC5522PasteMinutes"),)
+/* KiTTY: how long the one-time token of a paste event stays valid, in seconds.
+ * The application reads once with it, without a dialog; a token older than this
+ * asks. Values below 1 read as 1. */
+CONF_OPTION(osc5522_paste_token_secs, VALUE_TYPE(INT), DEFAULT_INT(10), SAVE_KEYWORD("OSC5522PasteTokenSeconds"),)
 /* KiTTY: most remote clipboard WRITES applied in any one second. 0 = no limit.
  * Default 10. Covers OSC 52 and far2l.
  *

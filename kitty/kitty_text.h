@@ -437,6 +437,10 @@
 #define KT_LIMITS_MOST_READS_PER_WINDOW_0            "Most reads per window (0 = no limit):"
 #define KT_LIMITS_UNANSWERED_PROMPT_EXPIRES_IN_SECONDS "Unanswered prompt expires, in seconds:"
 #define KT_LIMITS_MOST_PROMPTS_PER_TEN_SECONDS       "Most prompts per ten seconds:"
+/* two rows: the editbox label cannot wrap, and the one-line form did not fit */
+#define KT_LIMITS_PASTE_EVENTS_TEXT                  "Paste events are read without a dialog for"
+#define KT_LIMITS_PASTE_EVENTS_DISARM_MINUTES        "this many minutes (0 = always):"
+#define KT_LIMITS_PASTE_TOKEN_SECONDS                "Paste token valid for, in seconds:"
 
 /* Window/Selection/Remote clipboard/Notices */
 #define KT_NOTICES_BEING_TOLD_ABOUT_REMOTE_CLIPBOARD "Being told about remote clipboard use"
@@ -2602,6 +2606,17 @@
 #define KT_CLIP_LOG_PROGRAM_CALLS_ITSELF             ", program calls itself "
 /* the read dialog's preview line when the clipboard holds an image, not text */
 #define KT_CLIP_PREVIEW_IMAGE                        "[PNG image, %lu bytes]"
+/* OSC 5522 paste events (private mode 5522) */
+#define KT_CLIP_LOG_PASTE_EVENTS_ON                  "OSC 5522 paste events enabled by the application, " \
+        "tokens for %d minutes"
+#define KT_CLIP_LOG_PASTE_EVENTS_ON_NOLIMIT          "OSC 5522 paste events enabled by the application"
+#define KT_CLIP_LOG_PASTE_EVENTS_OFF                 "OSC 5522 paste events disabled by the application"
+#define KT_CLIP_LOG_PASTE_TOKENS_EXPIRED             "OSC 5522 paste events: token privilege expired after " \
+        "%d minutes, reads now ask"
+#define KT_CLIP_LOG_PASTE_EVENT_SENT                 "Paste event sent to the application: %s"
+#define KT_CLIP_LOG_PASTE_EVENT_EMPTY                "clipboard empty"
+#define KT_CLIP_LOG_PASTE_EVENT_DENIED               "Paste event not sent: clipboard reads set to Deny, " \
+        "pasted as text"
 #define KT_CLIP_LOG_APPROVAL_WITHDRAWN               "Clipboard approval withdrawn: the limit on " \
         "reads served in this window was reached"
 #define KT_CLIP_LOG_PERMISSION_WITHDRAWN             "Clipboard permission withdrawn: the limit on " \

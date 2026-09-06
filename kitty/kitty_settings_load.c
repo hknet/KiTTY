@@ -904,6 +904,8 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "OSC52ReadMax", conf, CONF_osc52_read_max);
     gppi_forced(sesskey, "OSC52ReadTimeout", conf, CONF_osc52_read_timeout);
     gppi_forced(sesskey, "OSC52ReadDialogs", conf, CONF_osc52_read_dialogs);
+    gppi_forced(sesskey, "OSC5522PasteMinutes", conf, CONF_osc5522_paste_minutes);
+    gppi_forced(sesskey, "OSC5522PasteTokenSeconds", conf, CONF_osc5522_paste_token_secs);
     gppi_forced(sesskey, "ClipboardMaxMB", conf, CONF_clipboard_max_mb);
     gppi_forced(sesskey, "ClipboardWritesPerSecond", conf, CONF_clipboard_writes_per_sec);
     gppb_forced(sesskey, "ClipboardNotify", conf, CONF_clipboard_notify);

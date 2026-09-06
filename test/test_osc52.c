@@ -163,6 +163,17 @@ unsigned char *kitty_osc52_get_clipboard_png(size_t *len, bool *unavailable)
 
 bool kitty_osc52_clipboard_has_image(void) { return stub_png != NULL; }
 
+/* Deterministic "random" for the paste-event token: a counter, so two events
+ * get two different tokens and a test can tell them apart. */
+static unsigned char stub_random_counter = 1;
+void kitty_osc52_random(unsigned char *buf, size_t len)
+{
+    size_t i;
+    for (i = 0; i < len; i++)
+        buf[i] = (unsigned char)(stub_random_counter * 7 + i);
+    stub_random_counter++;
+}
+
 /* The OSC 5522 WRITE seam: what the terminal asked to have put on the clipboard,
  * all formats of one transaction in one call. Recorded, never applied. */
 static int osc52_set_calls;
@@ -259,6 +270,13 @@ static void mock_set_title(TermWin *win, const char *title, int codepage)
     put_dataz(mk->title, title);
 }
 
+/* An ordinary paste request reaching the platform: counted, nothing pasted. */
+static int mock_paste_requests;
+static void mock_clip_request_paste(TermWin *win, int clipboard)
+{
+    mock_paste_requests++;
+}
+
 static void mock_clip_write(TermWin *win, int clipboard, wchar_t *text,
                             int *attrs, truecolour *colours, int len,
                             bool deselect)
@@ -283,6 +301,7 @@ static const TermWinVtable mock_termwin_vt = {
     .palette_set = mock_palette_set,
     .palette_get_overrides = mock_palette_get_overrides,
     .clip_write = mock_clip_write,
+    .clip_request_paste = mock_clip_request_paste,
 };
 
 static Mock *mock_new(void)
@@ -955,6 +974,215 @@ static void test_osc5522(Mock *mk)
         stub_clip = L"secret";
         sfree(pngb64);
     }
+}
+
+/* Pull pw=<token> out of the captured replies. Returns a fresh string or NULL. */
+static char *captured_pw(void)
+{
+    const char *p = strstr(osc52_all, ":pw=");
+    const char *e;
+    if (!p)
+        return NULL;
+    p += 4;
+    e = p;
+    while (*e && *e != ':' && *e != ';' && *e != '\033')
+        e++;
+    return dupprintf("%.*s", (int)(e - p), p);
+}
+
+/*
+ * OSC 5522 paste events (private mode 5522): DECRQM, the event on Paste, the
+ * one-time token, the auto-disarm, the resets.
+ */
+static void test_osc5522_paste_events(Mock *mk)
+{
+    static const unsigned char png[] = {
+        0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 9, 9, 9, 9 };
+    char *pw, *meta;
+    Terminal *term = mk->term;
+
+    read_reset(mk);
+    stub_clip = L"pasted text";
+    stub_png = png;
+    stub_png_len = sizeof(png);
+    conf_set_int(term->conf, CONF_osc5522_paste_minutes, 30);
+
+    /* DECRQM while off: reset (2) */
+    counters_reset();
+    term_data(term, "\033[?5522$p", 9);
+    term_update(term);
+    expect_last(mk, "DECRQM 5522 off", "\033[?5522;2$y");
+    if (osc52_sends != 1)
+        fail("DECRQM 5522 off", "expected exactly one reply");
+
+    /* DECRQM for another mode stays silent, as before */
+    counters_reset();
+    term_data(term, "\033[?2004$p", 9);
+    term_update(term);
+    if (osc52_sends != 0)
+        fail("DECRQM other mode", "a mode this build does not report was answered");
+
+    /* set the mode: DECRQM says set (1), the marker function agrees */
+    counters_reset();
+    term_data(term, "\033[?5522h", 8);
+    term_update(term);
+    if (!term_osc5522_paste_events(term))
+        fail("mode 5522 set", "CSI ? 5522 h did not arm paste events");
+    if (!term->osc5522_paste_tokens_until || !term_osc5522_paste_tokens(term))
+        fail("mode 5522 set", "no token clock was armed with it");
+    counters_reset();
+    term_data(term, "\033[?5522$p", 9);
+    term_update(term);
+    expect_last(mk, "DECRQM 5522 on", "\033[?5522;1$y");
+
+    /* Paste: no text goes to the host, the event goes instead - OK with a token,
+     * the type list naming text and image, DONE */
+    counters_reset();
+    mock_paste_requests = 0;
+    term_request_paste(term, CLIP_SYSTEM);
+    if (mock_paste_requests != 0)
+        fail("paste event", "Paste still pasted");
+    if (osc52_sends != 3)
+        fail("paste event", "expected OK, the type list, DONE");
+    if (!strstr(osc52_all, "type=read:status=OK:pw="))
+        fail("paste event", "the OK packet carries no token");
+    if (!strstr(osc52_all, "status=DATA:mime=Lg==:pw="))
+        fail("paste event", "the DATA packet is not the '.' list with the token");
+    {
+        char *want = b64("text/plain text/plain;charset=utf-8 image/png\n");
+        if (!strstr(osc52_all, want))
+            fail("paste event", "the type list does not name text and image");
+        sfree(want);
+    }
+    pw = captured_pw();
+    if (!pw || !*pw)
+        fail("paste event", "no token could be read back");
+
+    /* the application reads the image with the token: served, NO dialog */
+    meta = dupprintf("type=read:pw=%s:name=UGFzdGUgZXZlbnQ=", pw ? pw : "");
+    feed_5522(mk, meta, "image/png");
+    if (osc52_dialogs != 0)
+        fail("token read", "a paste-event token still raised the dialog");
+    if (osc52_sends != 3 || !strstr(osc52_all, "mime=aW1hZ2UvcG5n"))
+        fail("token read", "the image was not served on the token");
+
+    /* the same token again: single use, so this one asks */
+    osc52_dialog_answer = false;
+    feed_5522(mk, meta, "image/png");
+    if (osc52_dialogs != 1)
+        fail("token reuse", "a used token was accepted a second time");
+    expect_last(mk, "token reuse", "status=EPERM");
+    sfree(meta);
+    sfree(pw);
+
+    /* the wrong name with the right token is no token */
+    counters_reset();
+    term_request_paste(term, CLIP_SYSTEM);
+    pw = captured_pw();
+    meta = dupprintf("type=read:pw=%s:name=ZXZpbA==", pw);   /* "evil" */
+    osc52_dialog_answer = false;
+    feed_5522(mk, meta, "image/png");
+    if (osc52_dialogs != 1)
+        fail("token with another name", "the token worked under a different name");
+    sfree(meta);
+    sfree(pw);
+
+    /* an expired token asks */
+    counters_reset();
+    term_request_paste(term, CLIP_SYSTEM);
+    pw = captured_pw();
+    term->osc5522_paste_pw_until = (unsigned long)time(NULL) - 1;
+    meta = dupprintf("type=read:pw=%s:name=UGFzdGUgZXZlbnQ=", pw);
+    osc52_dialog_answer = false;
+    feed_5522(mk, meta, "image/png");
+    if (osc52_dialogs != 1)
+        fail("expired token", "an expired token was still accepted");
+    sfree(meta);
+    sfree(pw);
+
+    /* two events, two different tokens */
+    counters_reset();
+    term_request_paste(term, CLIP_SYSTEM);
+    pw = captured_pw();
+    counters_reset();
+    term_request_paste(term, CLIP_SYSTEM);
+    meta = captured_pw();
+    if (!pw || !meta || !strcmp(pw, meta))
+        fail("token uniqueness", "two paste events carried the same token");
+    sfree(pw);
+    sfree(meta);
+
+    /* reads set to Deny: no event, an ordinary paste instead */
+    conf_set_int(term->conf, CONF_osc52_clipboard_read, OSC52_READ_DENY);
+    counters_reset();
+    mock_paste_requests = 0;
+    term_request_paste(term, CLIP_SYSTEM);
+    if (osc52_sends != 0 || mock_paste_requests != 1)
+        fail("paste events under Deny", "the event was sent, or the paste did not happen");
+    conf_set_int(term->conf, CONF_osc52_clipboard_read, OSC52_READ_ASK);
+
+    /* the clock runs out: the MODE stays (DECRQM still says set), a paste still
+     * sends the event but WITHOUT a token, and the application's read then
+     * meets the dialog */
+    term->osc5522_paste_tokens_until = (unsigned long)time(NULL) - 1;
+    if (term_osc5522_paste_tokens(term))
+        fail("token clock", "tokens survived their deadline");
+    if (!term_osc5522_paste_events(term))
+        fail("token clock", "the deadline switched the mode off - the application would never recover");
+    counters_reset();
+    term_data(term, "\033[?5522$p", 9);
+    term_update(term);
+    expect_last(mk, "token clock", "\033[?5522;1$y");
+    counters_reset();
+    mock_paste_requests = 0;
+    term_request_paste(term, CLIP_SYSTEM);
+    if (osc52_sends != 3 || mock_paste_requests != 0)
+        fail("token clock", "a paste after the deadline did not send the event");
+    if (strstr(osc52_all, "pw="))
+        fail("token clock", "a paste after the deadline still carried a token");
+    osc52_dialog_answer = true;
+    osc52_dialog_grant = GRANT_ONCE;
+    /* three dialogs were shown above within ten seconds, which is the prompt
+     * ration; this one must not be refused for that reason */
+    term->osc52_read_prompts = 0;
+    term->osc52_read_prompt_window = 0;
+    feed_5522(mk, "type=read:name=UGFzdGUgZXZlbnQ=", "image/png");
+    if (osc52_dialogs != 1 || osc52_sends != 3)
+        fail("token clock", "the read after the deadline was not put to the user, or not served on yes");
+    /* setting the mode again restarts the clock */
+    term_data(term, "\033[?5522h", 8);
+    term_update(term);
+    if (!term_osc5522_paste_tokens(term))
+        fail("token clock", "re-setting the mode did not restart the clock");
+
+    /* 0 minutes = tokens always */
+    conf_set_int(term->conf, CONF_osc5522_paste_minutes, 0);
+    term_data(term, "\033[?5522h", 8);
+    term_update(term);
+    if (!term->osc5522_paste_events || term->osc5522_paste_tokens_until != 0 ||
+        !term_osc5522_paste_tokens(term))
+        fail("no deadline", "0 minutes armed a clock anyway");
+
+    /* the application clears it */
+    term_data(term, "\033[?5522l", 8);
+    term_update(term);
+    if (term->osc5522_paste_events)
+        fail("mode 5522 reset", "CSI ? 5522 l did not clear paste events");
+
+    /* a terminal reset clears it too, and its token */
+    term_data(term, "\033[?5522h", 8);
+    term_update(term);
+    term_request_paste(term, CLIP_SYSTEM);
+    if (!term->osc5522_paste_pw)
+        fail("reset clears mode", "no token to clear (test setup)");
+    term_pwron(term, true);
+    if (term->osc5522_paste_events || term->osc5522_paste_pw)
+        fail("reset clears mode", "RIS left paste events or a token behind");
+
+    conf_set_int(term->conf, CONF_osc5522_paste_minutes, 30);
+    stub_png = NULL;
+    stub_png_len = 0;
+    stub_clip = L"secret";
 }
 
 /* One OSC 5522 write of the given raw base64 chunks for text/plain, judged by its
@@ -1691,6 +1919,7 @@ int main(void)
     test_read_direction(mk);
     test_osc5522(mk);
     test_osc5522_write(mk);
+    test_osc5522_paste_events(mk);
     test_write_focus_rule(mk);
     test_clipboard_write_rate(mk);
     test_far2l_ceiling(mk);

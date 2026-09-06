@@ -1169,6 +1169,18 @@ static wchar_t *kitty_clip_decorate_wide(WinGuiSeat *wgs, wchar_t *name)
                                    (wr ? CLIP_ACT_WRITE : 0),
                                    state == OSC52_PERM_PAUSED, true);
     }
+    /* OSC 5522 paste-events mode: a standing privilege too, shown as a diamond
+     * after the clipboard glyph (solid BMP shape, same reasoning as the
+     * triangles): FILLED while a paste is read without a dialog, HOLLOW once
+     * that clock has run out and the application's reads ask. Same setting as
+     * the other standing markers. */
+    if (conf_get_bool(wgs->conf, CONF_osc52_title_mark) &&
+        term_osc5522_paste_events(wgs->term)) {
+        static wchar_t pastemark[16];
+        wcscpy(pastemark, tail ? tail : L"\U0001F4CB");
+        wcscat(pastemark, term_osc5522_paste_tokens(wgs->term) ? L"\u25C6" : L"\u25C7");
+        tail = pastemark;
+    }
     if (activity)
         front = kitty_clip_icon(activity, false, false);
     /* KiTTY: THIS connection went through workplace proxy mode's proxy. Keyed to

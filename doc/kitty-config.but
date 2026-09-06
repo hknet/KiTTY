@@ -406,6 +406,128 @@ a session left alone does not sit with a permission dialog open, and
 \q{Most prompts per ten seconds} stops a program from producing
 dialogs faster than you can dismiss them.
 
+\b \q{Paste events are read without a dialog for this many minutes}
+bounds the kitty clipboard protocol's paste-events mode, described in
+\k{kitty-cfg-osc52-paste-events}. \c{0} means always.
+
+\b \q{Paste token valid for} is how many seconds the one-time token of
+a paste event stays good for its single read; ten unless changed.
+
+\S{kitty-cfg-osc52-paste-events} Paste events
+
+The kitty clipboard protocol has a mode (private mode 5522) that lets
+a program on the far end receive what you paste in a form other than
+text - an image, say. It is worth knowing exactly what the mode does
+and does not hand over, because it works without a dialog.
+
+Two clocks bound two different things.
+
+\b \e{The mode} is a standing state the application switches on: \q{on
+every Paste, tell me what is on the clipboard}. Nothing is read on the
+strength of the mode alone. The title bar shows the mode with a
+diamond after the clipboard glyph: filled while pastes are read
+without a dialog, hollow once that clock has run out. The clock is the
+number of minutes set under \q{Paste events are read without a dialog
+for this many minutes} (30 unless changed), counted from the moment the application set
+the mode; setting it again restarts the clock. The mode itself stays
+set as long as the application wants it - an application cannot know
+about a terminal switching its mode off and would simply stop pasting
+images - but after the clock a paste event goes out without a token,
+so the application's read meets the ordinary permission dialog, and
+your answer there governs the reads that follow.
+
+\b \e{One paste} is one hand-over. Each time you press Paste while the
+mode is armed, KiTTY sends the application the list of types on the
+clipboard together with a fresh token, and does not paste the text.
+That token authorises exactly one read, within the seconds set under
+\q{Paste token valid for} (ten unless changed). After the read, or
+after that time, the token is dead: a read with a dead token, a reused
+token, or a token under another name goes to the normal permission
+dialog.
+
+An example, the mode set at 12:00 with the default 30 minutes:
+
+\b 12:00 - the application sets the mode. Diamond in the title, the
+disarm clock runs to 12:30.
+
+\b 12:05 - you press Paste with a PNG on the clipboard. The type list
+and token A go out; the text is not pasted.
+
+\b 12:05:02 - the application reads image/png with token A. Served,
+no dialog, token A consumed.
+
+\b 12:05:04 - the application reads again with token A. The dialog
+appears, as for any read.
+
+\b 12:10 - you press Paste again. Token B goes out.
+
+\b 12:10:15 - the application reads with token B. Ten seconds are
+over; the dialog appears.
+
+\b 12:20 - the application asks to read the clipboard on its own,
+without a paste. The dialog appears; the mode grants nothing here.
+
+\b 12:30 - the clock runs out. The diamond turns hollow, a line in the
+Event Log; the mode stays set.
+
+\b 12:31 - you press Paste with a PNG on the clipboard. The type list
+goes out without a token. The application reads image/png; the
+permission dialog appears, and if you allow it the image is served -
+\q{for the next 25 requests} or \q{for the session}, if you choose
+so, covers the pastes that follow.
+
+So the mode never hands over content by itself. While the clock runs,
+every hand-over is one keypress of yours, one token, one read, ten
+seconds. After it, every hand-over is a dialog answer of yours, as for
+any clipboard read.
+
+How the application gets the token is part of the protocol: the
+terminal puts it into the paste event as the \c{pw} field, and the
+application sends it back in its read request, under the name
+\q{Paste event}. The single use is what the protocol demands; the ten
+seconds and the disarm clock are KiTTY's own bounds on top of it.
+
+Paste events are only sent while reads are set to \e{Ask}. Under
+\e{Deny} a paste pastes text, whatever the application has set, and
+the Event Log records that it did.
+
+\S{kitty-cfg-osc52-constants} What is fixed, and why
+
+Beyond the settings above, the kitty clipboard protocol has bounds
+that are built in and not offered as settings. Listed here so that
+nobody has to wonder whether a knob is missing.
+
+\b \e{Remembered program approvals: 8.} A program that identifies
+itself (password and name) and is approved is remembered so it is not
+asked again while its grant lasts. Eight such approvals are kept, the
+oldest making way for a new one. A host cannot make KiTTY allocate by
+sending endless names, and nobody has eight editors polling one
+clipboard.
+
+\b \e{Content types and aliases per write: 64 each.} A write carrying
+more answers \c{EFBIG}. Nobody has 64 formats on a clipboard; the
+bound exists so that a hostile host cannot make KiTTY allocate without
+limit.
+
+\b \e{Largest single packet: 16 KB.} The protocol sends data in chunks
+of 4096 bytes before base64, so no honest packet comes near this. A
+write packet over it answers \c{EINVAL}.
+
+\b \e{Least accepted write: 64 MB.} The specification requires a
+terminal to accept at least this much in one write, so a write is
+allowed the larger of \q{Largest payload} and 64 MB. A setting could
+only break compliance; raising \q{Largest payload} above 64 raises
+this too.
+
+\b \e{Chunk size: 4096 bytes.} Specified by the protocol for the data
+KiTTY sends; a client may chunk its writes however it likes.
+
+Two things are absent on purpose rather than missing. There is no
+separate switch for this protocol: it shares the OSC 52 policy, one
+permission reachable two ways. And there is no \e{Allow} for reads: a
+standing permission to read the clipboard comes from the dialog and
+its grant, never from a setting.
+
 \S{kitty-cfg-osc52-notices} The Notices panel
 
 How KiTTY tells you a permission is live or has just been used. A
