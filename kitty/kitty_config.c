@@ -4569,9 +4569,15 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     (target_from_highlight ||
                      !ssd->loaded_from ||
                      strcmp(ssd->loaded_from, ssd->savedsession) != 0)) {
-                    settings_r *victim = open_settings_r(ssd->savedsession);
-                    if (victim) {
-                        close_settings_r(victim);
+                    /*
+                     * The PRIMARY store only. open_settings_r() walks the
+                     * precedence chain (ours, then the old 9bis KiTTY hive,
+                     * then stock PuTTY), so a name that was free in the list
+                     * - foreign sessions hidden - still answered "exists" for
+                     * a session living only in an old store, and the box
+                     * threatened to replace something Save never touches.
+                     */
+                    if (kitty_own_session_exists(ssd->savedsession)) {
                         char *q = target_from_highlight ? dupprintf(
                             KT_CFG_OVERWRITE_HIGHLIGHT_Q,
                             ssd->savedsession) : dupprintf(
@@ -4582,6 +4588,37 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                         sfree(q);
                         if (!go)
                             return;
+                    } else if (!kitty_root_is_putty() &&
+                               kitty_get_show_foreign_sessions()) {
+                        /*
+                         * Only an old store has the name, and that store is
+                         * shown in the list: the new session is saved beside
+                         * the old one and hides it from now on (loading is
+                         * first-hive-wins). Not a replace - say what it is.
+                         * With foreign sessions hidden the old one is not on
+                         * screen, so nothing is said.
+                         */
+                        const char *where = NULL;
+                        settings_r *f = kitty_open_settings_r_hive(
+                            ssd->savedsession, KSEC_HIVE_OLDKITTY);
+                        if (f) {
+                            where = KT_CFG_HIDE_FOREIGN_OLDKITTY;
+                        } else {
+                            f = kitty_open_settings_r_hive(
+                                ssd->savedsession, KSEC_HIVE_PUTTY);
+                            if (f)
+                                where = KT_CFG_HIDE_FOREIGN_PUTTY;
+                        }
+                        if (f) {
+                            close_settings_r(f);
+                            char *q = dupprintf(KT_CFG_HIDE_FOREIGN_Q,
+                                                ssd->savedsession, where);
+                            bool go = kitty_dlg_confirm(
+                                dlg, KT_CAP_HIDE_FOREIGN_SESSION, q);
+                            sfree(q);
+                            if (!go)
+                                return;
+                        }
                     }
                 }
 #endif

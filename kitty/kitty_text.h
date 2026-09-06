@@ -2775,6 +2775,15 @@
         "Clicking a name in the session list only fills in " \
         "the name; it does not load that session. Use Load " \
         "first if you meant to edit it."
+/* Save: the name is free in OUR store but a shown old store has it - the new
+ * session hides the old one (loading is first-hive-wins); nothing is replaced. */
+#define KT_CAP_HIDE_FOREIGN_SESSION                  "Save session?"
+#define KT_CFG_HIDE_FOREIGN_OLDKITTY                 "old KiTTY"
+#define KT_CFG_HIDE_FOREIGN_PUTTY                    "PuTTY"
+#define KT_CFG_HIDE_FOREIGN_Q                        "Save \"%s\"?\n\n" \
+        "Not in this KiTTY++ store; the %s store has one " \
+        "(shown in the list). The new session hides the old. " \
+        "The old one is not changed."
 
 /* kitty_config.c: Session/Startup - the launcher hotkey */
 #define KT_CFG_HOTKEY_ENTER                          "Enter a hotkey such as Ctrl+Alt+K or Ctrl+Shift+F12."
