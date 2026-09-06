@@ -35,6 +35,24 @@ char *save_screenshot(HWND hwnd, Filename *outfile)
     if (p_DwmGetWindowAttribute &&
         0 <= p_DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS,
                                      &wr, sizeof(wr))) {
+        /* KiTTY: the frame bounds include the caption at the top (which we
+         * want in the shot) but also a one-pixel window border on the left,
+         * right and bottom. On Windows 10 that bottom border row composites
+         * with the desktop showing through, a wallpaper strip along the edge
+         * of every demo screenshot (measured in a Win10 VM: the client's own
+         * last row is clean, the row below it is 1px of border with the
+         * desktop bleeding through). Clamp those three sides to the client
+         * area, whose edges the app paints; keep the top for the caption. */
+        RECT cr;
+        POINT tl;
+        tl.x = 0; tl.y = 0;
+        if (GetClientRect(hwnd, &cr) && ClientToScreen(hwnd, &tl)) {
+            LONG cright = tl.x + (cr.right - cr.left);
+            LONG cbottom = tl.y + (cr.bottom - cr.top);
+            if (wr.left < tl.x) wr.left = tl.x;
+            if (wr.right > cright) wr.right = cright;
+            if (wr.bottom > cbottom) wr.bottom = cbottom;
+        }
         x = wr.left;
         y = wr.top;
         w = wr.right - wr.left;
