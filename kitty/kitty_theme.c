@@ -87,6 +87,7 @@ static fn_DwmSetWindowAttribute p_DwmSetWindowAttribute;
 static fn_SetWindowTheme p_SetWindowTheme;
 
 static HBRUSH kt_back_brush;   /* window background */
+static COLORREF kt_accent_for(bool dark);
 static HBRUSH kt_ctl_brush;    /* edit/list interiors */
 
 /* Attached to every list view; catches the header's custom draw, which is
@@ -460,6 +461,18 @@ static BOOL CALLBACK kt_theme_child(HWND child, LPARAM lp)
         /* Hand-drawn in both themes - see kitty_theme_attach_tabs. Done here
          * so any dialog with a tab strip gets it without having to know. */
         kitty_theme_attach_tabs(child);
+    } else if (!stricmp(cls, PROGRESS_CLASSA)) {
+        /* A themed progress bar ignores PBM_SETBKCOLOR and PBM_SETBARCOLOR
+         * and paints the light theme's white trough whatever the dialog
+         * around it looks like. With the theme taken OFF the control (an
+         * empty class), the classic drawing honours both colours, so while
+         * dark the bar is drawn that way in the accent on the control
+         * shade. The light theme gets its theme class back. */
+        p_SetWindowTheme(child, dark ? L"" : NULL, dark ? L"" : NULL);
+        SendMessage(child, PBM_SETBKCOLOR, 0,
+                    (LPARAM)(dark ? KT_DARK_CTL : CLR_DEFAULT));
+        SendMessage(child, PBM_SETBARCOLOR, 0,
+                    (LPARAM)(dark ? kt_accent_for(true) : CLR_DEFAULT));
     }
 
     SendMessage(child, WM_THEMECHANGED, 0, 0);
@@ -949,18 +962,20 @@ static bool kt_looks_like_messagebox(HWND w)
 }
 
 /*
- * Radio buttons, drawn by hand while dark.
+ * Radio buttons and check boxes, drawn by hand while dark.
  *
- * This is NOT done for check boxes, and the asymmetry is the point:
- * "DarkMode_Explorer" maps the check-box parts, so a check box comes out with
- * white text and a dark glyph on its own. It does not map the radio parts,
- * and a radio button was left drawing BLACK text on the dark dialog -
- * measured on a screenshot, not deduced. Only the control that is actually
- * broken is taken over; a check box keeps the theme's own drawing, which is
- * better than anything reimplemented here and needs no maintenance.
+ * "DarkMode_Explorer" does not map the radio parts at all, and a radio
+ * button was left drawing BLACK text on the dark dialog - measured on a
+ * screenshot, not deduced. It does map the check-box parts, but the label
+ * ink that comes with them is a property of the Windows build: Windows 11
+ * paints it light, Windows 10 keeps the system text colour, and a check box
+ * on Windows 10 was as unreadable as the radio had been (hknet/KiTTY#45).
+ * Leaving the label to the theme was a bet on the OS, so both kinds are now
+ * painted here and the result no longer depends on which Windows runs it.
  *
- * The glyph is drawn rather than themed for the same reason: if the dark
- * theme class had radio parts to hand out, none of this would be needed.
+ * The glyphs are drawn rather than themed for the same reason: if the dark
+ * theme class handed out parts that behaved the same everywhere, none of
+ * this would be needed.
  */
 /*
  * The radio glyph, drawn SUPERSAMPLED and scaled down.
@@ -1041,11 +1056,108 @@ static void kt_draw_radio_glyph(HDC dc, int cx, int cy, int d,
     DeleteDC(mem);
 }
 
-static void kt_paint_radio(HWND btn, NMCUSTOMDRAW *cd)
+/*
+ * The check-box glyph, drawn the same way: a rounded square, filled with the
+ * accent when set, with the mark cut out in the panel background the way
+ * Windows 11 draws its own. state is BST_UNCHECKED, BST_CHECKED or
+ * BST_INDETERMINATE.
+ *
+ * Why this is drawn at all: the dark theme class does have check-box parts,
+ * but only Windows 11 paints the LABEL in light ink with them. Windows 10
+ * keeps the system text colour, which is black, and a black label on this
+ * background is the report in hknet/KiTTY#45. Painting label and glyph here
+ * makes the result the same on every Windows the theme runs on.
+ */
+static void kt_draw_check_glyph(HDC dc, int cx, int cy, int d,
+                                int state, COLORREF ring)
+{
+    const int S = 4;                   /* supersampling factor */
+    int big = d * S;
+    HDC mem;
+    HBITMAP bmp, oldbmp;
+    HPEN pen, oldpen;
+    HBRUSH fill, oldbrush, back;
+    RECT all;
+    int old_mode;
+    bool set = state != BST_UNCHECKED;
+
+    if (d <= 0)
+        return;
+    mem = CreateCompatibleDC(dc);
+    if (!mem)
+        return;
+    bmp = CreateCompatibleBitmap(dc, big, big);
+    if (!bmp) {
+        DeleteDC(mem);
+        return;
+    }
+    oldbmp = (HBITMAP)SelectObject(mem, bmp);
+
+    all.left = 0; all.top = 0; all.right = big; all.bottom = big;
+    back = CreateSolidBrush(KT_DARK_BACK);
+    if (back) {
+        FillRect(mem, &all, back);
+        DeleteObject(back);
+    }
+
+    pen = CreatePen(PS_SOLID, S, ring);
+    fill = CreateSolidBrush(set ? ring : KT_DARK_CTL);
+    oldpen = pen ? (HPEN)SelectObject(mem, pen) : NULL;
+    oldbrush = fill ? (HBRUSH)SelectObject(mem, fill) : NULL;
+    RoundRect(mem, S / 2, S / 2, big - S / 2, big - S / 2, big / 4, big / 4);
+    if (state == BST_CHECKED) {
+        /* The mark: two strokes, round-capped, in the background colour. */
+        LOGBRUSH lb;
+        HPEN mpen, omp;
+        POINT pt[3];
+        lb.lbStyle = BS_SOLID; lb.lbColor = KT_DARK_BACK; lb.lbHatch = 0;
+        mpen = ExtCreatePen(PS_GEOMETRIC | PS_SOLID | PS_ENDCAP_ROUND |
+                            PS_JOIN_ROUND, big / 7 > 1 ? big / 7 : 1,
+                            &lb, 0, NULL);
+        omp = mpen ? (HPEN)SelectObject(mem, mpen) : NULL;
+        pt[0].x = big * 22 / 100; pt[0].y = big * 52 / 100;
+        pt[1].x = big * 42 / 100; pt[1].y = big * 72 / 100;
+        pt[2].x = big * 78 / 100; pt[2].y = big * 30 / 100;
+        Polyline(mem, pt, 3);
+        if (omp) SelectObject(mem, omp);
+        if (mpen) DeleteObject(mpen);
+    } else if (state == BST_INDETERMINATE) {
+        /* The third state: a short bar in the background colour. */
+        HBRUSH bar = CreateSolidBrush(KT_DARK_BACK);
+        RECT b;
+        b.left = big * 25 / 100; b.right = big * 75 / 100;
+        b.top = big * 43 / 100; b.bottom = big * 57 / 100;
+        if (bar) {
+            FillRect(mem, &b, bar);
+            DeleteObject(bar);
+        }
+    }
+    if (oldpen) SelectObject(mem, oldpen);
+    if (oldbrush) SelectObject(mem, oldbrush);
+    if (pen) DeleteObject(pen);
+    if (fill) DeleteObject(fill);
+
+    old_mode = SetStretchBltMode(dc, HALFTONE);
+    SetBrushOrgEx(dc, 0, 0, NULL);
+    StretchBlt(dc, cx - d / 2, cy - d / 2, d, d, mem, 0, 0, big, big, SRCCOPY);
+    SetStretchBltMode(dc, old_mode);
+
+    SelectObject(mem, oldbmp);
+    DeleteObject(bmp);
+    DeleteDC(mem);
+}
+
+/*
+ * Paints a radio button or a check box in full: glyph, label, focus. Called
+ * from the dialog's NM_CUSTOMDRAW at CDDS_PREPAINT, after which the control
+ * draws nothing of its own (CDRF_SKIPDEFAULT).
+ */
+static void kt_paint_toggle(HWND btn, NMCUSTOMDRAW *cd, bool check)
 {
     RECT rc = cd->rc, text;
     LONG st = GetWindowLong(btn, GWL_STYLE);
-    bool checked = SendMessage(btn, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    int state = (int)SendMessage(btn, BM_GETCHECK, 0, 0);
+    bool checked = state != BST_UNCHECKED;
     bool enabled = IsWindowEnabled(btn) != 0;
     bool focus = (cd->uItemState & CDIS_FOCUS) != 0;
     int d, cx, cy;
@@ -1069,7 +1181,10 @@ static void kt_paint_radio(HWND btn, NMCUSTOMDRAW *cd)
     cx = rc.left + 1 + d / 2;
     cy = (rc.top + rc.bottom) / 2;
 
-    kt_draw_radio_glyph(cd->hdc, cx, cy, d, checked, ring);
+    if (check)
+        kt_draw_check_glyph(cd->hdc, cx, cy, d, state, ring);
+    else
+        kt_draw_radio_glyph(cd->hdc, cx, cy, d, checked, ring);
 
     label[0] = '\0';
     GetWindowTextA(btn, label, sizeof(label));
@@ -1503,9 +1618,15 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
             !stricmp(cls, "Button")) {
             LONG type = GetWindowLong(nm->hwndFrom, GWL_STYLE) & BS_TYPEMASK;
             NMCUSTOMDRAW *cd = (NMCUSTOMDRAW *)lParam;
-            if ((type == BS_AUTORADIOBUTTON || type == BS_RADIOBUTTON) &&
+            LONG st = GetWindowLong(nm->hwndFrom, GWL_STYLE);
+            bool radio = type == BS_AUTORADIOBUTTON || type == BS_RADIOBUTTON;
+            bool check = type == BS_AUTOCHECKBOX || type == BS_CHECKBOX ||
+                         type == BS_AUTO3STATE || type == BS_3STATE;
+            /* A push-like toggle is a button and the theme paints it as
+             * one; only the glyph-and-label kinds are painted here. */
+            if ((radio || check) && !(st & BS_PUSHLIKE) &&
                 cd->dwDrawStage == CDDS_PREPAINT) {
-                kt_paint_radio(nm->hwndFrom, cd);
+                kt_paint_toggle(nm->hwndFrom, cd, check);
                 return CDRF_SKIPDEFAULT;
             }
         }

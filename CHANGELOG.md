@@ -105,6 +105,16 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some reall
   height. The window's minimum came down with the two controls that left
   the Session panel.
 
+### Fixed
+
+- **Check-box labels were unreadable in dark mode on Windows 10.** The
+  label ink of a check box was left to the Windows dark theme, which paints
+  it light on Windows 11 and in the standard black on Windows 10. Check
+  boxes are now drawn by KiTTY itself, glyph and label, the way radio
+  buttons already were, so they look the same on every Windows dark mode
+  runs on. Progress bars are drawn in the dark colours too. Refs
+  hknet/KiTTY#45.
+
 ## 0.85.1.7-beta — 2026-09-04
 
 ### New
