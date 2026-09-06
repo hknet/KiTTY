@@ -5,6 +5,7 @@
 #include <assert.h>
 
 #include "putty.h"
+#include "kitty/kitty_hostkey_scan.h"   /* KiTTY: host-key scan type restriction */
 #include "ssh.h"
 #include "bpp.h"
 #include "ppl.h"
@@ -753,6 +754,9 @@ static void ssh2_write_kexinit_lists(
                         continue;
                     if (a->id != preferred_hk[i])
                         continue;
+                    if (kitty_hostkey_scan_only &&
+                        strcmp(a->alg->cache_id, kitty_hostkey_scan_only))
+                        continue;      /* KiTTY: klink -scan -t, one type */
                     alg = ssh2_kexinit_addalg(&kexlists[KEXLIST_HOSTKEY],
                                               a->alg->ssh_id);
                     alg->u.hk.hostkey = a->alg;
@@ -774,6 +778,9 @@ static void ssh2_write_kexinit_lists(
                     continue;          /* already added this one */
                 if (a->id != preferred_hk[i])
                     continue;
+                if (kitty_hostkey_scan_only &&
+                    strcmp(a->alg->cache_id, kitty_hostkey_scan_only))
+                    continue;          /* KiTTY: klink -scan -t, one type */
                 if (conf_get_bool(conf, CONF_ssh_prefer_known_hostkeys) &&
                     have_ssh_host_key(hk_host, hk_port,
                                       a->alg->cache_id)) {
@@ -797,6 +804,9 @@ static void ssh2_write_kexinit_lists(
                     continue;
                 if (a->id != preferred_hk[i])
                     continue;
+                if (kitty_hostkey_scan_only &&
+                    strcmp(a->alg->cache_id, kitty_hostkey_scan_only))
+                    continue;          /* KiTTY: klink -scan -t, one type */
                 alg = ssh2_kexinit_addalg(&kexlists[KEXLIST_HOSTKEY],
                                           a->alg->ssh_id);
                 alg->u.hk.hostkey = a->alg;

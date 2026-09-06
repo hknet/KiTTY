@@ -320,7 +320,7 @@ struct dlgcontrol {
              * items selected, whereas 2 means it expects the user to
              * want to select a large contiguous range at a time.
              */
-            int multisel;
+            int multisel;   /* KiTTY: 2 = extended selection (Windows: arrows select, Shift/Ctrl extend) */
             /*
              * Percentage of the dialog-box width used by the list
              * box. If this is set to 100, the label is on its own
@@ -359,6 +359,10 @@ struct dlgcontrol {
              * ignore it and show the header as an ordinary row.
              */
             bool headerrow;
+            /* KiTTY: a row's ink, asked per row by the Windows owner-draw
+             * (id = the row's addwithid value). Return true to override.
+             * NULL for the default. */
+            bool (*rowink)(dlgcontrol *ctrl, int id, bool dark, unsigned long *rgb);
         } listbox;
         struct { /* for CTRL_FILESELECT */
             char shortcut;
@@ -677,6 +681,9 @@ void dlg_error_msg(dlgparam *dp, const char *msg);
  * Returns true to go ahead.
  */
 bool kitty_dlg_confirm(dlgparam *dp, const char *title, const char *msg);
+/* KiTTY (Windows): the window of a control in THIS dialog (the main box or a
+ * secondary one), or NULL. kitty_cfg_ctrl_hwnd knows the main box only. */
+HWND kitty_dlg_ctrl_hwnd(dlgparam *dp, dlgcontrol *ctrl);
 /*
  * This function signals to the front end that the dialog's
  * processing is completed, and passes an integer value (typically

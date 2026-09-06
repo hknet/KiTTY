@@ -88,6 +88,11 @@ use klink:
 \c   -sanitise-stderr, -sanitise-stdout, -no-sanitise-stderr, -no-sanitise-stdout
 \c             do/don't strip control chars from standard output/error
 \c   -no-antispoof   omit anti-spoofing prompt after authentication
+\c   -scan [-t type,..] host[:port]
+\c             fetch the host's keys, no login; compare with the store
+\c   -knownhosts [host[:port]]
+\c             list the stored host keys
+\c   -json     -scan/-knownhosts output as one JSON array
 \c   -m file   read remote command(s) from file
 \c   -s        remote command is an SSH subsystem (SSH-2 only)
 \c   -N        don't start a shell/command (SSH-2 only)
@@ -321,6 +326,42 @@ channel.
 
 \dd Do not sanitise server data written to klink's standard output
 channel.
+
+\S2{plink-option-scan} \I{-scan-klink}\c{\-scan}, \I{-knownhosts-klink}\c{\-knownhosts}, \I{-json-klink}\c{\-json}: the host keys, from the command line
+
+\c{klink \-scan host[:port]} connects to the host once per key type,
+takes the host key the server presents in the key exchange and drops
+the connection before any authentication - no user name, password or
+key is ever sent. Each key is printed with its type, size, SHA256 and
+MD5 fingerprints and its status against klink's host-key store:
+\c{stored} (the same key is stored for that host and port), \c{new}
+(nothing is stored for that type) or \c{MISMATCH} (a different key is
+stored; its fingerprints are printed too). A type the server does not
+have reads \c{not offered}; a host that does not answer,
+\c{unreachable}.
+
+\c{\-t} names the types to ask for, a comma list of \c{rsa}, \c{dsa},
+\c{ecdsa}, \c{ed25519}, \c{ed448} or the SSH names such as
+\c{ssh-ed25519}; without it every type KiTTY knows is tried. The exit
+code is 2 when any key says MISMATCH, 1 when no key was obtained at all
+or the arguments were wrong, 0 otherwise. A scan never writes the store:
+accepting a key is what a connection does.
+
+\c{klink \-knownhosts} lists what the store holds - for one host (with
+a port, that port only; without, every port stored for that host) or the
+whole store with no argument - with both fingerprints and the two
+stamps, when the key was first seen and last written. Exit code 0 with
+rows, 1 with none. klink uses the registry store; a portable KiTTY's
+folder store is listed on its Host keys panel (\k{kitty-cfg-host-keys}),
+which can also verify the stored keys against the hosts.
+
+\c{\-json} makes either print one JSON array of objects instead of the
+readable lines, for scripts; PowerShell reads it with
+\c{ConvertFrom-Json}. The fields are \c{host}, \c{port}, \c{type},
+\c{bits}, \c{sha256}, \c{md5}, \c{key} (the presented key in the store's
+text form), \c{status}, \c{first_seen}, \c{last_written},
+\c{stored_sha256} and \c{stored_md5} (set on a MISMATCH) and \c{error};
+a field without a value holds \c{-}. Diagnostics go to standard error.
 
 \S2{plink-option-antispoof} \I{-no-antispoof-klink}\c{\-no\-antispoof}: turn off authentication spoofing protection prompt
 

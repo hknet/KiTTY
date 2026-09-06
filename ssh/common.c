@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #include "putty.h"
+#include "kitty/kitty_hostkey_scan.h"   /* KiTTY: host-key scan capture point */
 #include "mpint.h"
 #include "ssh.h"
 #include "storage.h"
@@ -862,6 +863,14 @@ SeatPromptResult verify_ssh_host_key(
     char **fingerprints, int ca_count,
     void (*callback)(void *ctx, SeatPromptResult result), void *ctx)
 {
+    /*
+     * KiTTY: a host-key scan (klink -scan) takes the key here and ends the
+     * connection - before the store is consulted, before anyone is asked,
+     * before authentication. Inert unless a scan armed it.
+     */
+    if (kitty_hostkey_scan_capture(host, port, keytype, keystr, fingerprints))
+        return SPR_USER_ABORT;
+
     /*
      * First, check if the Conf includes a manual specification of the
      * expected host key. If so, that completely supersedes everything

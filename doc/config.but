@@ -2982,6 +2982,29 @@ should be suitable for nearly all cases. For completeness, however,
 you can configure which types of RSA signature KiTTY will accept in a
 certificate from a CA using an RSA key.
 
+\S{config-ssh-kitty-scan} \q{This host's keys} and \q{Scan/Edit} (KiTTY)
+
+The lines under the manual host keys say what the store holds for this
+session's host and port - how many keys, and on the next line their
+types - and \q{Scan/Edit} asks the host what it presents today: one connection per key
+type, ended before any login, so no credentials are sent. The box lists
+every type with its size and fingerprint and a status: \q{stored} (the
+same key is in the store), \q{new} (nothing is stored for that type),
+\q{MISMATCH} in red (a different key is stored), \q{not offered} or
+\q{unreachable}. \q{Accept} stores the selected new key; on a MISMATCH
+it asks once more, naming both fingerprints, because a changed host key
+means either a reinstalled server or somebody between you and it.
+\q{Delete stored} removes the selected rows' stored keys from the store,
+after one question naming them - the way to forget a host's keys from the
+session that uses it, instead of finding them in the full list on
+\k{kitty-cfg-host-keys}; the next connection asks the first-contact
+question afresh. \q{Pin} puts the presented keys' SHA256 fingerprints into this
+session's manual host keys (\k{config-ssh-kex-manual-hostkeys}) - the
+session then accepts exactly those keys, whatever the store says - and
+leaves the store alone. Several rows can be selected for any of the
+three. Nothing is written without a click. The whole store, with the
+same check for every stored key, is on \k{kitty-cfg-host-keys}.
+
 \H{config-ssh-encryption} The Cipher panel
 
 KiTTY supports a variety of different \i{encryption algorithm}s, and

@@ -14,8 +14,34 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some reall
   and the new "Background" leaf (transparency and background image
   together) live under Appearance, and Title and Icon are one leaf,
   "Title & Icon", at the end of the list.
-- **Import an old KiTTY folder store.** Migration > old KiTTY Folders scans
-  a folder and its subfolders for session files, lists them with path and
+- **The stored host keys, listed and verified.** Application > Security >
+  Host keys shows every accepted SSH host key with host, type and bits,
+  SHA256 fingerprint, and two new stamps, first seen and last written,
+  which the store keeps beside each key from now on. A click on the
+  header sorts by that column; the selected key's full details, both
+  fingerprints included, sit under the list, behind a bar that can be
+  dragged to give the details more room. Copy, Delete, and Verify:
+  the host is asked for its current key, in the background and without
+  any login, and the row says OK, MISMATCH (in red), not offered or
+  unreachable. The "Configure host CAs" button on a session's Host keys
+  panel now jumps to Security > Certificate Authorities, where that
+  installation-wide setting lives. That panel also says which keys are
+  stored for the session's host, their types, and has "Scan/Edit": every key type
+  the host presents, against the store, with Accept (a new key is stored;
+  a changed one only after a second question naming both fingerprints)
+  and Delete stored (the selected keys leave the store, one question for
+  the lot); Pin puts the presented fingerprints into the session's manual
+  host keys instead.
+- **klink scans host keys.** `klink -scan [-t type,..] host[:port]` fetches
+  a host's keys without logging in and compares them with the store
+  (stored / new / MISMATCH, exit code 2 on a mismatch); `klink -knownhosts
+  [host[:port]]` lists the stored keys; `-json` gives scripts one JSON
+  array.
+- **The tools on your PATH.** Application > System has a checkbox that
+  puts this KiTTY++'s folder on the user's PATH, so klink, kscp and ksftp
+  are found by name in any newly opened shell.
+- **Import a KiTTY folder store, old or current.** Migration > (old) KiTTY
+  Folders scans a folder and its subfolders for session files, lists them with path and
   state, and imports the selected ones into a folder of your naming
   (KiTTYimport by default). Nothing is overwritten: a taken name becomes
   "name (folder)". A password this KiTTY cannot decode is left out and

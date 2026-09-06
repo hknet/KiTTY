@@ -381,6 +381,8 @@ dlgcontrol *ctrl_listbox(struct controlset *s, const char *label,
     c->listbox.percentwidth = 100;
     c->listbox.ncols = 0;
     c->listbox.percentages = NULL;
+    c->listbox.headerrow = false;      /* KiTTY: never inherit heap garbage */
+    c->listbox.rowink = NULL;
     c->listbox.hscroll = true;
     return c;
 }
@@ -398,6 +400,8 @@ dlgcontrol *ctrl_droplist(struct controlset *s, const char *label,
     c->listbox.percentwidth = percentage;
     c->listbox.ncols = 0;
     c->listbox.percentages = NULL;
+    c->listbox.headerrow = false;      /* KiTTY: never inherit heap garbage */
+    c->listbox.rowink = NULL;
     c->listbox.hscroll = false;
     return c;
 }
@@ -415,6 +419,8 @@ dlgcontrol *ctrl_draglist(struct controlset *s, const char *label,
     c->listbox.percentwidth = 100;
     c->listbox.ncols = 0;
     c->listbox.percentages = NULL;
+    c->listbox.headerrow = false;      /* KiTTY: never inherit heap garbage */
+    c->listbox.rowink = NULL;
     c->listbox.hscroll = false;
     return c;
 }

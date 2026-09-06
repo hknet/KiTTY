@@ -18,6 +18,7 @@ add_library(sshcommon OBJECT
   ../sshrand.c
   transient-hostkey-cache.c
   transport2.c
+  ../kitty/kitty_hostkey_scan_hook.c
   verstring.c
   x11fwd.c
   zlib.c)

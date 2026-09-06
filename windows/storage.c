@@ -821,8 +821,29 @@ void store_host_key(Seat *seat, const char *hostname, int port,
     strbuf *regname = strbuf_new();
     hostkey_regname(regname, hostname, port, keytype);
 
+    /* KiTTY: two stamps beside the key, for the Host keys leaf and klink:
+     * "<name>:first" written once, "<name>:when" on every write - so a row
+     * reads "known since X, key last written Y". Information for the human;
+     * nothing decides on them. ISO local time. */
+    char stamp[32];
+    {
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        snprintf(stamp, sizeof(stamp), "%04d-%02d-%02dT%02d:%02d:%02d",
+                 st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    }
+    char *name_first = dupcat(regname->s, ":first");
+    char *name_when = dupcat(regname->s, ":when");
+
     if (store_is_file()) {
+        char *had;
         portable_write_text_file("SshHostKeys", regname->s, key);
+        had = portable_read_text_file("SshHostKeys", name_first);
+        if (!had)
+            portable_write_text_file("SshHostKeys", name_first, stamp);
+        sfree(had);
+        portable_write_text_file("SshHostKeys", name_when, stamp);
+        sfree(name_first); sfree(name_when);
         strbuf_free(regname);
         return;
     }
@@ -830,10 +851,17 @@ void store_host_key(Seat *seat, const char *hostname, int port,
     HKEY rkey = create_regkey(HKEY_CURRENT_USER,
                               reg_hostkeys_buf);
     if (rkey) {
+        char *had;
         put_reg_sz(rkey, regname->s, key);
+        had = get_reg_sz(rkey, name_first);
+        if (!had)
+            put_reg_sz(rkey, name_first, stamp);
+        sfree(had);
+        put_reg_sz(rkey, name_when, stamp);
         close_regkey(rkey);
     } /* else key does not exist in registry */
 
+    sfree(name_first); sfree(name_when);
     strbuf_free(regname);
 }
 

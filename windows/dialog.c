@@ -260,12 +260,19 @@ int kitty_conf_default_int(int key)
     return conf_get_int(defaults, key);
 }
 
+/* KiTTY: a panel with work running in the background (the Host keys leaf
+ * polls a verification from a thread timer) sets this; it runs before the
+ * box's memory goes, so nothing fires into freed panel state afterwards. */
+void (*kitty_cfg_box_closing_hook)(void) = NULL;
+
 static void pds_free(PortableDialogStuff *pds)
 {
     /* Before the box goes, or the session check would be left pointing at
      * freed memory - and it is called from a load, which can happen in the
      * next configuration box this process opens. */
     kitty_conf_ctrlbox_is(NULL);
+    if (kitty_cfg_box_closing_hook)
+        kitty_cfg_box_closing_hook();
     ctrl_free_box(pds->ctrlbox);
 
     dp_cleanup(pds->dp);
@@ -959,6 +966,10 @@ struct kitty_cfg_panel {
 /* A panel has just been laid out: place any controls it positions itself.
  * kitty_config.c, stubbed to nothing for the stock variants. */
 void kitty_config_panel_placed(const char *path);
+/* KiTTY: a cached panel's windows were just shown or hidden (a panel switch).
+ * For windows a panel made itself, outside the control set - the Host keys
+ * leaf's splitter bar - which must go and come with the panel. */
+void kitty_config_panel_shown(const char *path, bool show);
 /* The ONE control of a panel that takes whatever height the panel area has
  * left below the layout (the saved-session list), or NULL. kitty_config.c,
  * NULL in the stock variants. */
@@ -1220,6 +1231,7 @@ static void kitty_cfg_panel_windows(struct dlgparam *dp,
             }
         }
     }
+    kitty_config_panel_shown(p->path, show);
 }
 
 /* Show or hide a cached panel's windows, and swap its shortcuts in or out of
@@ -1406,6 +1418,11 @@ static void kitty_cfg_panel_scroll_to(HWND hwnd, struct kitty_cfg_panel *p,
      * could not be erased under the controls. Without that style it is both
      * correct and cheap, which is why the two changes belong together.
      */
+    /* Paint what is pending FIRST: a blit copies pixels, and after a resize
+     * or a relayout some of them are not painted yet - the copy then carries
+     * a stale control image along (his 2026-09-06 screenshot: a checkbox
+     * twice after resizing the window on a scrolled panel). */
+    UpdateWindow(kitty_cfg_panel_host);
     ScrollWindowEx(kitty_cfg_panel_host, 0, -delta, NULL, NULL, NULL, NULL,
                    SW_SCROLLCHILDREN | SW_INVALIDATE | SW_ERASE);
     UpdateWindow(kitty_cfg_panel_host);
@@ -1442,8 +1459,13 @@ static void kitty_cfg_panel_scrollbar(HWND hwnd, struct kitty_cfg_panel *p,
      * a new panel would otherwise inherit the last one's. */
     if (kitty_cfg_scroll_y && !keeppos)
         kitty_cfg_panel_scroll_to(hwnd, p, 0);
-    else if (kitty_cfg_scroll_y)
+    else if (kitty_cfg_scroll_y) {
+        /* a resize: the offset is clamped to what is left to see, and the
+         * host is repainted whole - a resize repaints it anyway, and a blit
+         * over a half-painted host is what left fragments behind */
         kitty_cfg_panel_scroll_to(hwnd, p, kitty_cfg_scroll_y);
+        InvalidateRect(kitty_cfg_panel_host, NULL, TRUE);
+    }
     if (p->content_h <= areah) {
         ShowWindow(sb, SW_HIDE);
         return;
@@ -5493,6 +5515,87 @@ static INT_PTR CAConfigProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
       default:
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
     }
+}
+
+/*
+ * KiTTY: a secondary box built from a controlbox, the CA box's shape, for
+ * panel code that needs more room than a panel gives (the host-key scan).
+ * `setup` builds the controls under path "Main"; `closing` runs before the
+ * box's memory goes (as kitty_cfg_box_closing_hook does for the main box -
+ * this box borrows that hook for its lifetime and hands the main box's back).
+ */
+static const char *kitty_aux_caption;
+/* Over the owner, not mid-screen (DS_CENTER templates ignore the owner).
+ * Local: kitty_win.c is not linked into every target that has dialog.c. */
+static void aux_centre_on_owner(HWND hwnd)
+{
+    HWND owner = GetWindow(hwnd, GW_OWNER);
+    RECT o, d;
+    if (!owner || !GetWindowRect(owner, &o) || !GetWindowRect(hwnd, &d)) {
+        centre_window(hwnd);
+        return;
+    }
+    SetWindowPos(hwnd, NULL,
+                 (o.left + o.right) / 2 - (d.right - d.left) / 2,
+                 (o.top + o.bottom) / 2 - (d.bottom - d.top) / 2,
+                 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+static INT_PTR AuxBoxProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
+                          void *ctx)
+{
+    PortableDialogStuff *pds = (PortableDialogStuff *)ctx;
+
+    switch (msg) {
+      case WM_INITDIALOG:
+        pds_initdialog_start(pds, hwnd);
+        SendMessage(hwnd, WM_SETICON, (WPARAM) ICON_BIG,
+                    (LPARAM) cfgbox_icon(hinst));
+        if (kitty_aux_caption)
+            SetWindowTextA(hwnd, kitty_aux_caption);
+        pds_create_controls(pds, 0, IDCX_PANELBASE, 3, 3, 3, "Main");
+        dlg_refresh(NULL, pds->dp);
+        pds_initdialog_finish(pds);
+        /* The template is the CA box's size; this box holds whatever its
+         * setup put in it. Trim the height to the lowest control plus the
+         * same margin the controls start with, then place it. */
+        {
+            RECT wr, cr;
+            int top = INT_MAX, bottom = 0;
+            for (HWND h = GetWindow(hwnd, GW_CHILD); h; h = GetWindow(h, GW_HWNDNEXT)) {
+                RECT r;
+                if (!IsWindowVisible(h) || !GetWindowRect(h, &r)) continue;
+                MapWindowPoints(NULL, hwnd, (POINT *)&r, 2);
+                if (r.top < top) top = r.top;
+                if (r.bottom > bottom) bottom = r.bottom;
+            }
+            if (bottom > 0 && GetWindowRect(hwnd, &wr) && GetClientRect(hwnd, &cr) &&
+                bottom + top < cr.bottom)
+                SetWindowPos(hwnd, NULL, 0, 0, wr.right - wr.left,
+                             (wr.bottom - wr.top) - (cr.bottom - (bottom + top)),
+                             SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        aux_centre_on_owner(hwnd);
+        return 0;
+
+      default:
+        return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
+    }
+}
+
+void kitty_cfg_show_aux_box(void (*setup)(struct controlbox *, void *), void *ctx,
+                            const char *caption, HWND owner, void (*closing)(void))
+{
+    PortableDialogStuff *pds = pds_new(1);
+    void (*saved)(void) = kitty_cfg_box_closing_hook;
+
+    setup(pds->ctrlbox, ctx);
+    kitty_aux_caption = caption;
+    ShinyDialogBox(hinst, MAKEINTRESOURCE(IDD_CA_CONFIG), "PuTTYConfigBox",
+                   owner, AuxBoxProc, pds);
+    kitty_cfg_box_closing_hook = closing;
+    pds_free(pds);
+    kitty_cfg_box_closing_hook = saved;
+    kitty_aux_caption = NULL;
 }
 
 void show_ca_config_box(dlgparam *dp)

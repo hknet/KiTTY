@@ -119,3 +119,5 @@ int kitty_message_box(HWND owner, const char *text, const char *caption,
 /* The template-review gallery (-demo-templates) shows KiTTY's dialog dress;
  * the stock variants have none to review. */
 void kitty_demo_templates(void) { }
+
+void kitty_config_panel_shown(const char *path, bool show) { (void)path; (void)show; }

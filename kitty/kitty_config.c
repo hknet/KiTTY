@@ -19,6 +19,7 @@
 #include "kitty_workplace.h"  /* workplace proxy mode: query/request the arming */
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION */
 #include "kitty_win.h"   /* SetTextToClipboard */
+#include <limits.h>
 #include "kitty_theme.h"   /* the app-wide colour theme, for Application > Config Window */
 #include "kitty_storage.h" /* the one-time old-sessions notice bits */
 #include "kitty_migrate.h" /* Application > Migration: the session importer */
@@ -986,6 +987,31 @@ struct migf_data {
     char folder[256];                  /* the target folder as typed/chosen */
 };
 static struct migf_data *kitty_migf_active = NULL;
+
+/* KiTTY: Security > Host keys - the trust store listed (kitty_hostkeys.c);
+ * the fill hook grows its list, so the state is declared up here. */
+struct kitty_hostkey_list;
+struct kitty_hkv_run;
+struct hk_verdict;
+struct hk_data {
+    dlgcontrol *listbox;
+    dlgcontrol *banner;
+    dlgcontrol *detail;                 /* the selected key, in full */
+    dlgcontrol *verify;
+    struct kitty_hostkey_list *keys;
+    int sort_col;                       /* header column the list is sorted by */
+    bool sort_desc;
+    /* Verify: the run in the background and what it found */
+    struct kitty_hkv_run *run;
+    dlgparam *dlg;
+    UINT_PTR timer;
+    LONG *shown_state;                  /* per job: the state the list shows */
+    struct hk_verdict *verdicts;
+    int nverdicts;
+    size_t verdicts_alloc;
+};
+static struct hk_data *kitty_hk_active = NULL;
+static void hk_place_splitter(struct hk_data *hk);   /* the list/detail boundary, draggable */
 
 /*
  * Which panel the config box should open on, instead of Session.
@@ -2471,6 +2497,10 @@ dlgcontrol *kitty_config_panel_fill_ctrl(const char *path)
     if (path && kitty_migf_active && kitty_migf_active->listbox &&
         !strcmp(path, "Application/Migration/old KiTTY Folders"))
         return kitty_migf_active->listbox;
+    /* The host-key list, likewise. */
+    if (path && kitty_hk_active && kitty_hk_active->listbox &&
+        !strcmp(path, "Application/Security/Host keys"))
+        return kitty_hk_active->listbox;
     return NULL;
 }
 
@@ -2513,6 +2543,8 @@ void kitty_config_panel_placed(const char *path)
         kitty_config_session_distribute();
     if (path && !strcmp(path, "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini"))
         kitty_iniview_place();
+    if (path && !strcmp(path, "Application/Security/Host keys"))
+        hk_place_splitter(kitty_hk_active);
     if (path)
         kitty_config_footer_pin(path);  /* the app panels' footer, likewise */
 }
@@ -5738,6 +5770,1330 @@ static void host_ca_button_handler(dlgcontrol *ctrl, dlgparam *dp,
 }
 
 #ifdef MOD_PERSO
+/* KiTTY: the CA editor is a panel of the Application tab now (Security >
+ * Certificate Authorities) - CAs are stored once per user, not per session -
+ * so the button on the session's Host keys panel JUMPS there instead of
+ * opening upstream's pop-up. */
+static void host_ca_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                 void *data, int event)
+{
+    extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
+    if (event == EVENT_ACTION)
+        kitty_cfg_goto_panel("Application/Security/Certificate Authorities");
+}
+
+/* ---- Security > Host keys: the trust store, listed ----------------------- */
+
+#include "kitty_hostkeys.h"
+#include "kitty_hostkey_verify.h"
+
+/* What Verify found out about one stored key, kept beside the store's own
+ * list (which is re-enumerated on every refresh): matched by host, port and
+ * type. `status` is a column word: OK, MISMATCH, not offered, unreachable,
+ * no klink, klink failed, not stored. */
+struct hk_verdict {
+    char *host; int port; char *keytype;
+    char *status, *sha256, *md5, *error, *when;
+};
+
+static int hk_selected(struct hk_data *hk, dlgparam *dlg, int *idx, int max);
+
+static struct hk_verdict *hk_verdict_find(struct hk_data *hk,
+                                          const struct kitty_hostkey_entry *e)
+{
+    for (int i = 0; i < hk->nverdicts; i++) {
+        struct hk_verdict *v = &hk->verdicts[i];
+        if (v->port == e->port && !strcmp(v->keytype, e->keytype) &&
+            !strcmp(v->host, e->host))
+            return v;
+    }
+    return NULL;
+}
+
+static void hk_verdict_clear(struct hk_verdict *v)
+{
+    sfree(v->status); sfree(v->sha256); sfree(v->md5); sfree(v->error); sfree(v->when);
+    v->status = v->sha256 = v->md5 = v->error = v->when = NULL;
+}
+
+/* The verdict slot for a key, made if absent (its strings cleared). */
+static struct hk_verdict *hk_verdict_slot(struct hk_data *hk,
+                                          const char *host, int port,
+                                          const char *keytype)
+{
+    struct hk_verdict *v;
+    struct kitty_hostkey_entry probe;
+    probe.host = (char *)host; probe.port = port; probe.keytype = (char *)keytype;
+    v = hk_verdict_find(hk, &probe);
+    if (!v) {
+        sgrowarray(hk->verdicts, hk->verdicts_alloc, hk->nverdicts);
+        v = &hk->verdicts[hk->nverdicts++];
+        memset(v, 0, sizeof(*v));
+        v->host = dupstr(host); v->port = port; v->keytype = dupstr(keytype);
+    } else
+        hk_verdict_clear(v);
+    return v;
+}
+
+static void hk_verdict_set(struct hk_verdict *v, const char *status,
+                           const char *sha256, const char *md5,
+                           const char *error, const char *when)
+{
+    hk_verdict_clear(v);
+    v->status = dupstr(status);
+    v->sha256 = dupstr(sha256 ? sha256 : "");
+    v->md5 = dupstr(md5 ? md5 : "");
+    v->error = dupstr(error ? error : "");
+    v->when = dupstr(when ? when : "");
+}
+
+/* An ISO stamp "2026-08-01T09:00:00" -> the date "2026-08-01" (the column)
+ * or "2026-08-01 09:00:00" (the detail); "-" for none. Static buffer. */
+static const char *hk_stamp(const char *iso, bool date_only)
+{
+    static char buf[32];
+    if (!iso || !iso[0])
+        return "-";
+    strncpy(buf, iso, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+    if (date_only && strlen(buf) > 10)
+        buf[10] = '\0';
+    else if (buf[10] == 'T')
+        buf[10] = ' ';
+    return buf;
+}
+
+/* The klink call that repeats a row's check, for the detail box. */
+static char *hk_klink_line(const struct kitty_hostkey_entry *e)
+{
+    return strchr(e->host, ':') ?
+        dupprintf("klink -scan -t %s [%s]:%d", e->type_display, e->host, e->port) :
+        dupprintf("klink -scan -t %s %s:%d", e->type_display, e->host, e->port);
+}
+
+/* The detail box: the selected key in full, or the hint when none is. */
+static void hk_show_detail(struct hk_data *hk, dlgparam *dlg,
+                           const struct kitty_hostkey_entry *e)
+{
+    strbuf *sb;
+    if (!hk->detail)
+        return;
+    sb = strbuf_new();
+    if (!e)
+        put_dataz(sb, KT_HK_DETAIL_NONE);
+    else {
+        struct hk_verdict *v = hk_verdict_find(hk, e);
+        char *klink = hk_klink_line(e);
+        char *first = dupstr(hk_stamp(e->first_seen, false));
+        put_fmt(sb, KT_HK_DETAIL, e->host, e->port, e->type_display, e->bits,
+                e->sha256[0] ? e->sha256 : "-", e->md5[0] ? e->md5 : "-",
+                first, hk_stamp(e->last_written, false));
+        put_fmt(sb, "\r\n" KT_HK_DETAIL_CHECK, klink);
+        if (v && v->status) {
+            char *when = dupstr(hk_stamp(v->when, false));
+            put_fmt(sb, "\r\n" KT_HK_DETAIL_VERIFIED, when, v->status);
+            if (v->sha256[0])
+                put_fmt(sb, "\r\n" KT_HK_DETAIL_PRESENTED, v->sha256, v->md5);
+            if (v->error[0])
+                put_fmt(sb, "\r\n%s", v->error);
+            sfree(when);
+        }
+        sfree(first); sfree(klink);
+    }
+    dlg_editbox_set(hk->detail, dlg, sb->s);
+    strbuf_free(sb);
+}
+
+/* One row's text, the column order of KT_HK_COL_HEAD. Caller frees. */
+static char *hk_row_text(struct hk_data *hk, const struct kitty_hostkey_entry *e)
+{
+    const struct hk_verdict *v = hk_verdict_find(hk, e);
+    /* The column is headed SHA256, so the hash goes in bare; the detail box
+     * and Copy carry the "SHA256:" form. */
+    const char *sha = e->sha256[0] ? e->sha256 : "-";
+    char *first = dupstr(hk_stamp(e->first_seen, true));
+    char *type = e->bits ? dupprintf("%s %d", e->type_display, e->bits) : dupstr(e->type_display);
+    char *row;
+    if (!strncmp(sha, "SHA256:", 7)) sha += 7;
+    row = dupprintf("%s:%d\t%s\t%s\t%s\t%s\t%s", e->host, e->port, type, sha, first,
+                    hk_stamp(e->last_written, true),
+                    v && v->status ? v->status : "-");
+    sfree(first); sfree(type);
+    return row;
+}
+
+/* ---- sorting: the header row is the control -------------------------------- */
+
+static struct hk_data *hk_sort_hk;      /* qsort has no context argument */
+
+static int hk_cmp_str(const char *a, const char *b)
+{
+    int c = stricmp(a ? a : "", b ? b : "");
+    return c ? c : strcmp(a ? a : "", b ? b : "");
+}
+
+static int hk_sort_cmp(const void *av, const void *bv)
+{
+    struct hk_data *hk = hk_sort_hk;
+    const struct kitty_hostkey_entry *a = &hk->keys->items[*(const int *)av];
+    const struct kitty_hostkey_entry *b = &hk->keys->items[*(const int *)bv];
+    int c = 0;
+    switch (hk->sort_col) {
+      case 1: c = hk_cmp_str(a->type_display, b->type_display);
+              if (!c) c = a->bits - b->bits; break;
+      case 2: c = strcmp(a->sha256, b->sha256); break;
+      case 3: c = strcmp(a->first_seen, b->first_seen); break;
+      case 4: c = strcmp(a->last_written, b->last_written); break;
+      case 5: {
+        const struct hk_verdict *va = hk_verdict_find(hk, a), *vb = hk_verdict_find(hk, b);
+        c = hk_cmp_str(va && va->status ? va->status : "", vb && vb->status ? vb->status : "");
+        break;
+      }
+      default: break;
+    }
+    if (!c) c = hk_cmp_str(a->host, b->host);       /* host, port, type: the default */
+    if (!c) c = a->port - b->port;
+    if (!c) c = hk_cmp_str(a->type_display, b->type_display);
+    return hk->sort_desc ? -c : c;
+}
+
+static void hk_fill(struct hk_data *hk, dlgparam *dlg)
+{
+    int i, *order;
+    kitty_hostkeys_free(hk->keys);
+    hk->keys = kitty_hostkeys_enumerate();
+    order = snewn(hk->keys->n + 1, int);
+    for (i = 0; i < hk->keys->n; i++) order[i] = i;
+    hk_sort_hk = hk;
+    qsort(order, hk->keys->n, sizeof(int), hk_sort_cmp);
+    dlg_update_start(hk->listbox, dlg);
+    dlg_listbox_clear(hk->listbox, dlg);
+    dlg_listbox_addwithid(hk->listbox, dlg, KT_HK_COL_HEAD, -1);
+    for (i = 0; i < hk->keys->n; i++) {
+        char *row = hk_row_text(hk, &hk->keys->items[order[i]]);
+        dlg_listbox_addwithid(hk->listbox, dlg, row, order[i]);
+        sfree(row);
+    }
+    dlg_update_done(hk->listbox, dlg);
+    sfree(order);
+    hk_show_detail(hk, dlg, NULL);
+    if (hk->banner && !hk->run) {
+        char *line = dupprintf(KT_HK_COUNT, hk->keys->n, hk->keys->n == 1 ? "" : "s");
+        dlg_label_change(hk->banner, dlg, line);
+        sfree(line);
+    }
+}
+
+/* Rewrite one row in place (a verdict came in) - the selection stays. */
+static void hk_update_row(struct hk_data *hk, int idx)
+{
+    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);
+    HWND h = kitty_cfg_ctrl_hwnd(hk->listbox);
+    int n, r;
+    if (!h || !hk->keys || idx < 0 || idx >= hk->keys->n) return;
+    n = (int)SendMessage(h, LB_GETCOUNT, 0, 0);
+    for (r = 1; r < n; r++) {
+        if ((int)SendMessage(h, LB_GETITEMDATA, r, 0) == idx) {
+            char *row = hk_row_text(hk, &hk->keys->items[idx]);
+            bool sel = SendMessage(h, LB_GETSEL, r, 0) > 0;
+            int top = (int)SendMessage(h, LB_GETTOPINDEX, 0, 0);
+            SendMessage(h, WM_SETREDRAW, FALSE, 0);
+            SendMessage(h, LB_DELETESTRING, r, 0);
+            SendMessage(h, LB_INSERTSTRING, r, (LPARAM)row);
+            SendMessage(h, LB_SETITEMDATA, r, idx);
+            if (sel) SendMessage(h, LB_SETSEL, TRUE, r);
+            SendMessage(h, LB_SETTOPINDEX, top, 0);
+            SendMessage(h, WM_SETREDRAW, TRUE, 0);
+            InvalidateRect(h, NULL, TRUE);
+            sfree(row);
+            break;
+        }
+    }
+}
+
+/* The column under the mouse, for a click on the header row. */
+static int hk_column_at_cursor(struct hk_data *hk)
+{
+    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);
+    HWND h = kitty_cfg_ctrl_hwnd(hk->listbox);
+    POINT pt; RECT r;
+    int width, x, acc = 0, i;
+    if (!h || !GetCursorPos(&pt) || !ScreenToClient(h, &pt) || !GetClientRect(h, &r))
+        return 0;
+    width = r.right - r.left;
+    x = pt.x - r.left;
+    if (width <= 0) return 0;
+    for (i = 0; i < hk->listbox->listbox.ncols - 1; i++) {
+        acc += hk->listbox->listbox.percentages[i];
+        if (x < width * acc / 100) return i;
+    }
+    return hk->listbox->listbox.ncols - 1;
+}
+
+/* The MISMATCH row in red (controls.c asks per row). */
+static bool hk_row_ink(dlgcontrol *ctrl, int id, bool dark, COLORREF *ink)
+{
+    struct hk_data *hk = (struct hk_data *)ctrl->context.p;
+    const struct hk_verdict *v;
+    if (!hk || !hk->keys || id < 0 || id >= hk->keys->n) return false;
+    v = hk_verdict_find(hk, &hk->keys->items[id]);
+    if (!v || !v->status || strcmp(v->status, "MISMATCH")) return false;
+    *ink = dark ? RGB(255, 110, 110) : RGB(192, 0, 0);
+    return true;
+}
+
+/* ---- Verify: klink in the background, judged here ------------------------- */
+
+static void hk_run_stop(struct hk_data *hk)
+{
+    if (hk->timer) { KillTimer(NULL, hk->timer); hk->timer = 0; }
+    if (hk->run) { kitty_hkv_release(hk->run); hk->run = NULL; }
+}
+
+/* A finished job -> its row's verdict. klink's own stored/new/MISMATCH is
+ * about the REGISTRY store; the key text is judged against OUR store. */
+static void hk_judge(struct hk_data *hk, const struct kitty_hkv_job *j)
+{
+    struct hk_verdict *v = hk_verdict_slot(hk, j->host, j->port, j->keytype);
+    const char *status;
+    if (j->key[0]) {
+        int cmp = check_stored_host_key(j->host, j->port, j->keytype, j->key);
+        status = cmp == 0 ? "OK" : cmp == 2 ? "MISMATCH" : "not stored";
+    } else
+        status = j->status;             /* not offered / unreachable / no klink / klink failed */
+    hk_verdict_set(v, status, j->sha256, j->md5, j->error, j->when);
+}
+
+static int hk_index_of(struct hk_data *hk, const char *host, int port, const char *keytype)
+{
+    for (int i = 0; hk->keys && i < hk->keys->n; i++) {
+        const struct kitty_hostkey_entry *e = &hk->keys->items[i];
+        if (e->port == port && !strcmp(e->keytype, keytype) && !strcmp(e->host, host))
+            return i;
+    }
+    return -1;
+}
+
+static struct hk_data *hk_timer_hk;     /* the one run at a time */
+
+static void CALLBACK hk_timer_proc(HWND hwnd, UINT msg, UINT_PTR id, DWORD now)
+{
+    struct hk_data *hk = hk_timer_hk;
+    struct kitty_hkv_job *jobs;
+    int n, i, ok = 0, bad = 0, other = 0, seen = 0;
+    if (!hk || !hk->run || !hk->dlg) return;
+    jobs = kitty_hkv_jobs(hk->run, &n);
+    for (i = 0; i < n; i++) {
+        LONG st = InterlockedCompareExchange(&jobs[i].state, 0, 0);
+        if (st == KHKV_RUNNING && hk->shown_state[i] != KHKV_RUNNING) {
+            struct hk_verdict *v = hk_verdict_slot(hk, jobs[i].host, jobs[i].port, jobs[i].keytype);
+            char *line = dupprintf(KT_HK_VERIFYING, jobs[i].host, jobs[i].port);
+            hk_verdict_set(v, KT_HK_RUNNING, "", "", "", "");
+            hk_update_row(hk, hk_index_of(hk, jobs[i].host, jobs[i].port, jobs[i].keytype));
+            dlg_label_change(hk->banner, hk->dlg, line);
+            sfree(line);
+            hk->shown_state[i] = KHKV_RUNNING;
+        } else if (st == KHKV_DONE && hk->shown_state[i] != KHKV_DONE) {
+            int idx = hk_index_of(hk, jobs[i].host, jobs[i].port, jobs[i].keytype);
+            hk_judge(hk, &jobs[i]);
+            hk_update_row(hk, idx);
+            hk->shown_state[i] = KHKV_DONE;
+            /* the detail follows a selected row's verdict as it lands */
+            {
+                int sel[2];
+                if (hk_selected(hk, hk->dlg, sel, 2) == 1 && sel[0] == idx)
+                    hk_show_detail(hk, hk->dlg, &hk->keys->items[idx]);
+            }
+        }
+        if (st == KHKV_DONE) seen++;
+    }
+    if (seen == n) {
+        for (i = 0; i < hk->nverdicts; i++) {
+            const char *s = hk->verdicts[i].status;
+            if (!s) continue;
+            if (!strcmp(s, "OK")) ok++;
+            else if (!strcmp(s, "MISMATCH")) bad++;
+            else other++;
+        }
+        {
+            char *line = dupprintf(KT_HK_VERIFIED_SUMMARY, n, n == 1 ? "" : "s", ok, bad, other);
+            dlg_label_change(hk->banner, hk->dlg, line);
+            sfree(line);
+        }
+        hk_run_stop(hk);
+    }
+}
+
+/* Start verifying the given entries. */
+static void hk_verify(struct hk_data *hk, dlgparam *dlg, const int *idx, int n)
+{
+    struct kitty_hkv_job *jobs;
+    int i;
+    if (hk->run) { dlg_label_change(hk->banner, dlg, KT_HK_VERIFY_BUSY); return; }
+    if (n <= 0) return;
+    jobs = snewn(n, struct kitty_hkv_job);
+    memset(jobs, 0, n * sizeof(*jobs));
+    for (i = 0; i < n; i++) {
+        const struct kitty_hostkey_entry *e = &hk->keys->items[idx[i]];
+        jobs[i].host = e->host; jobs[i].port = e->port; jobs[i].keytype = e->keytype;
+    }
+    hk->run = kitty_hkv_start(jobs, n);
+    sfree(jobs);
+    if (!hk->run) { dlg_label_change(hk->banner, dlg, KT_HK_VERIFY_NOTHREAD); return; }
+    sfree(hk->shown_state);
+    hk->shown_state = snewn(n, LONG);
+    for (i = 0; i < n; i++) hk->shown_state[i] = KHKV_PENDING;
+    hk->dlg = dlg;
+    hk_timer_hk = hk;
+    hk->timer = SetTimer(NULL, 0, 250, hk_timer_proc);
+    dlg_label_change(hk->banner, dlg, KT_HK_VERIFY_STARTING);
+}
+
+/* The selected entries, in list order. Returns how many; fills idx[]. */
+static int hk_selected(struct hk_data *hk, dlgparam *dlg, int *idx, int max)
+{
+    int i, n = 0;
+    for (i = 0; hk->keys && i <= hk->keys->n && n < max; i++) {
+        int id;
+        if (!dlg_listbox_issel(hk->listbox, dlg, i))
+            continue;
+        id = dlg_listbox_getid(hk->listbox, dlg, i);
+        if (id >= 0 && id < hk->keys->n)
+            idx[n++] = id;
+    }
+    return n;
+}
+
+static void kitty_hk_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    struct hk_data *hk = (struct hk_data *)ctrl->context.p;
+    int which = ctrl->context2.i;          /* 0 list, 1 copy, 2 delete, 3 detail, 4 verify */
+    int idx[4096], n, i;
+
+    if (!hk) return;
+    hk->dlg = dlg;
+    switch (which) {
+      case 0:
+        if (event == EVENT_REFRESH) {
+            hk_fill(hk, dlg);
+        } else if (event == EVENT_SELCHANGE) {
+            extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);
+            HWND h = kitty_cfg_ctrl_hwnd(ctrl);
+            if (h && SendMessage(h, LB_GETSEL, 0, 0) > 0) {
+                /* the header row. A MOUSE click there sorts by that column;
+                 * the arrow keys landing on it (extended selection selects
+                 * the caret row) just step back to the first key. */
+                RECT hr;
+                POINT pt;
+                bool mouse = GetKeyState(VK_LBUTTON) < 0 && GetCursorPos(&pt) &&
+                    ScreenToClient(h, &pt) &&
+                    SendMessage(h, LB_GETITEMRECT, 0, (LPARAM)&hr) != LB_ERR &&
+                    PtInRect(&hr, pt);
+                SendMessage(h, LB_SETSEL, FALSE, 0);
+                if (mouse) {
+                    int col = hk_column_at_cursor(hk);
+                    if (col == hk->sort_col) hk->sort_desc = !hk->sort_desc;
+                    else { hk->sort_col = col; hk->sort_desc = false; }
+                    hk_fill(hk, dlg);
+                    break;
+                }
+                if (SendMessage(h, LB_GETCOUNT, 0, 0) > 1) {
+                    SendMessage(h, LB_SETSEL, TRUE, 1);
+                    SendMessage(h, LB_SETCARETINDEX, 1, 0);
+                }
+            }
+            n = hk_selected(hk, dlg, idx, lenof(idx));
+            hk_show_detail(hk, dlg, n == 1 ? &hk->keys->items[idx[0]] : NULL);
+        }
+        break;
+      case 3:                              /* the detail box: display only */
+        break;
+      case 4:                              /* Verify: the selection, else all */
+        if (event == EVENT_ACTION) {
+            n = hk_selected(hk, dlg, idx, lenof(idx));
+            if (!n)
+                for (n = 0; n < hk->keys->n && n < (int)lenof(idx); n++) idx[n] = n;
+            if (!n) { dlg_label_change(hk->banner, dlg, KT_HK_VERIFY_EMPTY); break; }
+            hk_verify(hk, dlg, idx, n);
+        }
+        break;
+      case 1:                              /* Copy */
+        if (event == EVENT_ACTION) {
+            strbuf *sb;
+            n = hk_selected(hk, dlg, idx, lenof(idx));
+            if (!n) { dlg_label_change(hk->banner, dlg, KT_HK_NOSEL); break; }
+            sb = strbuf_new();
+            for (i = 0; i < n; i++) {
+                const struct kitty_hostkey_entry *e = &hk->keys->items[idx[i]];
+                const struct hk_verdict *v = hk_verdict_find(hk, e);
+                char *line = kitty_hostkey_describe(e);
+                put_fmt(sb, "%s  %s  %s", line,
+                        e->first_seen[0] ? e->first_seen : "-",
+                        e->last_written[0] ? e->last_written : "-");
+                if (v && v->status)
+                    put_fmt(sb, "  %s", v->status);
+                put_dataz(sb, "\r\n");
+                sfree(line);
+            }
+            SetTextToClipboard(sb->s);
+            strbuf_free(sb);
+            {
+                char *msg = dupprintf(KT_HK_COPIED, n, n == 1 ? "" : "s");
+                dlg_label_change(hk->banner, dlg, msg);
+                sfree(msg);
+            }
+        }
+        break;
+      case 2:                              /* Delete */
+        if (event == EVENT_ACTION) {
+            char *q;
+            int done = 0;
+            n = hk_selected(hk, dlg, idx, lenof(idx));
+            if (!n) { dlg_label_change(hk->banner, dlg, KT_HK_NOSEL); break; }
+            if (n == 1) {
+                const struct kitty_hostkey_entry *e = &hk->keys->items[idx[0]];
+                char *hp = dupprintf("%s:%d (%s)", e->host, e->port, e->type_display);
+                q = dupprintf(KT_HK_CONFIRM_DELETE, hp);
+                sfree(hp);
+            } else
+                q = dupprintf(KT_HK_CONFIRM_DELETE_N, n);
+            if (MessageBoxA(kitty_cfg_modal_owner(), q, KT_CAP_KITTY,
+                            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES) {
+                for (i = 0; i < n; i++) {
+                    const struct kitty_hostkey_entry *e = &hk->keys->items[idx[i]];
+                    if (kitty_hostkey_delete(e->host, e->port, e->keytype))
+                        done++;
+                }
+                hk_fill(hk, dlg);
+                {
+                    char *msg = dupprintf(KT_HK_DELETED, done, done == 1 ? "" : "s");
+                    dlg_label_change(hk->banner, dlg, msg);
+                    sfree(msg);
+                }
+            }
+            sfree(q);
+        }
+        break;
+    }
+}
+
+/* The box is closing (windows/dialog.c, before its memory goes): a running
+ * verification keeps its worker thread - it frees the run itself when the
+ * last klink returns - but the timer that polled it stops here, and the
+ * panel state is forgotten. */
+static void hk_box_closing(void)
+{
+    struct hk_data *hk = kitty_hk_active;
+    if (hk) {
+        hk_run_stop(hk);
+        for (int i = 0; i < hk->nverdicts; i++) {
+            hk_verdict_clear(&hk->verdicts[i]);
+            sfree(hk->verdicts[i].host); sfree(hk->verdicts[i].keytype);
+        }
+        sfree(hk->verdicts);
+        sfree(hk->shown_state);
+        kitty_hostkeys_free(hk->keys);
+        hk->verdicts = NULL; hk->keys = NULL; hk->shown_state = NULL;
+        hk->nverdicts = 0; hk->verdicts_alloc = 0;
+    }
+    hk_timer_hk = NULL;
+    kitty_hk_active = NULL;
+}
+
+static void scb_panel_hostkeys(struct controlbox *b)
+{
+    extern void (*kitty_cfg_box_closing_hook)(void);   /* windows/dialog.c */
+    static const char *const path = "Application/Security/Host keys";
+    struct hk_data *hk = (struct hk_data *)ctrl_alloc(b, sizeof(*hk));
+    struct controlset *s;
+    dlgcontrol *c;
+
+    /* A previous box's run keeps its thread; its timer must not reach the
+     * freed panel state. */
+    if (kitty_hk_active && kitty_hk_active->run)
+        hk_run_stop(kitty_hk_active);
+    hk_timer_hk = NULL;
+    memset(hk, 0, sizeof(*hk));
+    kitty_hk_active = hk;
+    kitty_cfg_box_closing_hook = hk_box_closing;
+    ctrl_settitle(b, path, KT_HK_TITLE);
+    s = ctrl_getset(b, path, "keys", KT_HK_GROUP);
+    ctrl_text(s, KT_HK_INTRO, HELPCTX(kitty_host_keys));
+    hk->listbox = ctrl_listbox(s, NULL, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                               kitty_hk_handler, P(hk));
+    hk->listbox->context2 = I(0);
+    hk->listbox->listbox.height = 4;     /* the floor; the fill hook grows it */
+    hk->listbox->listbox.multisel = 2;   /* extended: the arrow keys select */
+    hk->listbox->listbox.headerrow = true;
+    hk->listbox->listbox.rowink = hk_row_ink;
+    hk->listbox->listbox.ncols = 6;
+    hk->listbox->listbox.percentages = snewn(6, int);
+    hk->listbox->listbox.percentages[0] = 26;   /* Host */
+    hk->listbox->listbox.percentages[1] = 20;   /* Type and bits */
+    hk->listbox->listbox.percentages[2] = 16;   /* SHA256 (a prefix; the detail box has it whole) */
+    hk->listbox->listbox.percentages[3] = 11;   /* First seen */
+    hk->listbox->listbox.percentages[4] = 11;   /* Last written */
+    hk->listbox->listbox.percentages[5] = 16;   /* Verified */
+    /* The selected key in full: both fingerprints, both stamps, the klink
+     * call that repeats the check, and the verdict. A read-only edit, so
+     * the text can be selected and copied too. */
+    hk->detail = ctrl_editbox_multiline(s, NULL, NO_SHORTCUT, 6, true,
+                                        HELPCTX(kitty_host_keys),
+                                        kitty_hk_handler, P(hk), P(NULL));
+    hk->detail->context2 = I(3);
+    /* The count / progress / summary line gets the full width: the
+     * verification summary did not fit beside three buttons. */
+    hk->banner = ctrl_text(s, " ", HELPCTX(kitty_host_keys));
+    ctrl_columns(s, 3, 34, 33, 33);
+    c = ctrl_pushbutton(s, KT_HK_COPY, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                        kitty_hk_handler, P(hk));
+    c->context2 = I(1); c->column = 0;
+    c = ctrl_pushbutton(s, KT_HK_DELETE, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                        kitty_hk_handler, P(hk));
+    c->context2 = I(2); c->column = 1;
+    c = ctrl_pushbutton(s, KT_HK_VERIFY, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                        kitty_hk_handler, P(hk));
+    c->context2 = I(4); c->column = 2;
+    hk->verify = c;
+    ctrl_columns(s, 1, 100);
+}
+
+/* ---- the splitter between the list and the detail box ---------------------- */
+
+/*
+ * His ask (2026-09-05): after a Verify the detail box is where the full
+ * fingerprints and the verdict are read, and four visible lines are few. A
+ * thin bar between the list and the box moves the boundary with the mouse:
+ * the list gives what the box gains. The offset is remembered for the
+ * process (the panel is re-laid out on every resize and every visit; the
+ * placement hook puts the boundary back where it was dragged to).
+ */
+static int hk_split_offset = 0;             /* px the boundary was dragged down (+) or up (-) */
+static HWND hk_splitter = NULL;
+static HWND hk_split_above = NULL, hk_split_below = NULL;   /* the list, the detail box */
+static int hk_split_drag_y = -1;            /* screen y at button-down, -1 = not dragging */
+static int hk_split_min_above = 60, hk_split_min_below = 40;
+
+static bool hk_split_rects(RECT *a, RECT *b)
+{
+    HWND parent;
+    if (!hk_split_above || !hk_split_below || !IsWindow(hk_split_above) || !IsWindow(hk_split_below))
+        return false;
+    parent = GetParent(hk_split_above);
+    if (!GetWindowRect(hk_split_above, a) || !GetWindowRect(hk_split_below, b))
+        return false;
+    MapWindowPoints(NULL, parent, (POINT *)a, 2);
+    MapWindowPoints(NULL, parent, (POINT *)b, 2);
+    return true;
+}
+
+/* Put the boundary at anchor + dy (clamped, whole rows). `a`/`b` are the
+ * rects the drag started from, in parent coordinates. Whole rows, because
+ * a list box rounds its height to them anyway: asking for a row-multiple
+ * means the list ends exactly where the box and the bar are put, and a
+ * move that rounds to the row already shown does nothing at all - the
+ * three windows move in ONE deferred pass, so a drag does not flicker
+ * (his report of the first version: "flicker from hell"). */
+static int hk_split_shown_dy = INT_MIN;     /* the dy last applied in this drag */
+static void hk_split_apply(const RECT *a, const RECT *b, int dy)
+{
+    int gap = b->top - a->bottom, ih;
+    HDWP dwp;
+    if (!hk_split_above || !hk_split_below) return;
+    ih = (int)SendMessage(hk_split_above, LB_GETITEMHEIGHT, 0, 0);
+    if (ih > 0) dy = (dy >= 0 ? (dy + ih / 2) / ih : -((-dy + ih / 2) / ih)) * ih;   /* whole rows */
+    if ((a->bottom - a->top) + dy < hk_split_min_above) dy = hk_split_min_above - (a->bottom - a->top);
+    if ((b->bottom - b->top) - dy < hk_split_min_below) dy = (b->bottom - b->top) - hk_split_min_below;
+    if (ih > 0) dy = (dy / ih) * ih;                    /* the clamp must not break the row grid */
+    if (dy == hk_split_shown_dy) return;                /* nothing changed: no repaint */
+    hk_split_shown_dy = dy;
+    dwp = BeginDeferWindowPos(3);
+    if (dwp) dwp = DeferWindowPos(dwp, hk_split_above, NULL, 0, 0, a->right - a->left,
+                                  (a->bottom - a->top) + dy,
+                                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    if (dwp) dwp = DeferWindowPos(dwp, hk_split_below, NULL, b->left, a->bottom + dy + gap,
+                                  b->right - b->left, b->bottom - (a->bottom + dy + gap),
+                                  SWP_NOZORDER | SWP_NOACTIVATE);
+    if (dwp && hk_splitter)
+        dwp = DeferWindowPos(dwp, hk_splitter, HWND_TOP, a->left, a->bottom + dy - 2,
+                             a->right - a->left, gap + 4, SWP_NOACTIVATE);
+    if (dwp) EndDeferWindowPos(dwp);
+}
+
+/* the drag: anchor rects and the offset at button-down */
+static RECT hk_drag_a, hk_drag_b;
+static int hk_drag_off0;
+
+static LRESULT CALLBACK hk_splitter_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+      case WM_SETCURSOR:
+        SetCursor(LoadCursor(NULL, IDC_SIZENS));
+        return TRUE;
+      case WM_LBUTTONDOWN: {
+        POINT pt; GetCursorPos(&pt);
+        if (!hk_split_rects(&hk_drag_a, &hk_drag_b)) return 0;
+        hk_split_drag_y = pt.y;
+        hk_drag_off0 = hk_split_offset;
+        hk_split_shown_dy = INT_MIN;
+        SetCapture(hwnd);
+        return 0;
+      }
+      case WM_MOUSEMOVE:
+        if (hk_split_drag_y >= 0 && (wParam & MK_LBUTTON)) {
+            POINT pt; GetCursorPos(&pt);
+            /* always from the anchor: the total drag, not a delta chain */
+            hk_split_apply(&hk_drag_a, &hk_drag_b, pt.y - hk_split_drag_y);
+            if (hk_split_shown_dy != INT_MIN)
+                hk_split_offset = hk_drag_off0 + hk_split_shown_dy;
+        }
+        return 0;
+      case WM_LBUTTONUP:
+      case WM_CAPTURECHANGED:
+        if (hk_split_drag_y >= 0) { hk_split_drag_y = -1; if (GetCapture() == hwnd) ReleaseCapture(); }
+        return 0;
+      case WM_ERASEBKGND:
+        return 1;
+      case WM_PAINT: {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hwnd, &ps);
+        RECT r; GetClientRect(hwnd, &r);
+        {
+            HBRUSH back = kitty_theme_backbrush(GetParent(hwnd));
+            FillRect(hdc, &r, back ? back : GetSysColorBrush(COLOR_BTNFACE));
+        }
+        /* the grip: three dots in the middle, in the text colour, dimmed */
+        {
+            bool dark = kitty_theme_window_dark(GetParent(hwnd));
+            COLORREF ink = dark ? RGB(150, 150, 150) : GetSysColor(COLOR_GRAYTEXT);
+            int cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+            for (int i = -1; i <= 1; i++) {
+                RECT d = { cx + i * 6 - 1, cy - 1, cx + i * 6 + 1, cy + 1 };
+                HBRUSH b = CreateSolidBrush(ink);
+                FillRect(hdc, &d, b);
+                DeleteObject(b);
+            }
+        }
+        EndPaint(hwnd, &ps);
+        return 0;
+      }
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+/* Called from the placement hook once the leaf is laid out: create or move
+ * the bar into the gap between the list and the detail box, then put the
+ * boundary back where it was last dragged. */
+static void hk_place_splitter(struct hk_data *hk)
+{
+    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);
+    static bool registered = false;
+    HWND above, below, parent;
+    RECT a, b;
+    int want;
+
+    if (!hk || !hk->listbox || !hk->detail) return;
+    above = kitty_cfg_ctrl_hwnd(hk->listbox);
+    below = kitty_cfg_ctrl_hwnd(hk->detail);
+    if (!above || !below) return;
+    hk_split_above = above; hk_split_below = below;
+    parent = GetParent(above);
+    if (!registered) {
+        WNDCLASSA wc;
+        memset(&wc, 0, sizeof(wc));
+        wc.lpfnWndProc = hk_splitter_proc;
+        wc.hInstance = GetModuleHandle(NULL);
+        wc.lpszClassName = "KittySplitter";
+        wc.hCursor = LoadCursor(NULL, IDC_SIZENS);
+        RegisterClassA(&wc);
+        registered = true;
+    }
+    if (hk_splitter && (!IsWindow(hk_splitter) || GetParent(hk_splitter) != parent)) {
+        if (IsWindow(hk_splitter)) DestroyWindow(hk_splitter);
+        hk_splitter = NULL;
+    }
+    if (!hk_split_rects(&a, &b)) return;
+    /* the list's row height bounds the drag: two rows plus the header at least */
+    {
+        int ih = (int)SendMessage(above, LB_GETITEMHEIGHT, 0, 0);
+        if (ih > 0) hk_split_min_above = ih * 3 + 4;
+        hk_split_min_below = ih > 0 ? ih * 2 + 4 : 40;
+    }
+    if (!hk_splitter)
+        hk_splitter = CreateWindowExA(0, "KittySplitter", "", WS_CHILD | WS_VISIBLE,
+                                      a.left, a.bottom - 2, a.right - a.left, (b.top - a.bottom) + 4,
+                                      parent, NULL, GetModuleHandle(NULL), NULL);
+    else
+        SetWindowPos(hk_splitter, HWND_TOP, a.left, a.bottom - 2, a.right - a.left,
+                     (b.top - a.bottom) + 4, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    /* the layout put the boundary at its natural place; re-apply the drag */
+    want = hk_split_offset;
+    hk_split_shown_dy = INT_MIN;
+    if (want) {
+        hk_split_apply(&a, &b, want);
+        hk_split_offset = hk_split_shown_dy != INT_MIN ? hk_split_shown_dy : 0;
+    }
+}
+
+/* A panel switch: the bar is not one of the panel's controls, so the panel
+ * cache does not hide it with them - it has to go and come by itself, or it
+ * lies across the next panel (his report, 2026-09-06: artefacts on whatever
+ * panel followed Host keys). Same SWP_NOREDRAW discipline as the controls. */
+void kitty_config_panel_shown(const char *path, bool show)
+{
+    if (!hk_splitter || !IsWindow(hk_splitter) || !path ||
+        strcmp(path, "Application/Security/Host keys"))
+        return;
+    SetWindowPos(hk_splitter, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW |
+                 (show ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+}
+
+/* ---- Connection > SSH > Host keys: "Scan this host" ------------------------ */
+
+/*
+ * A secondary box (windows/dialog.c, kitty_cfg_show_aux_box) that asks the
+ * session's host for every key type it has - one hidden klink per type in the
+ * background, as Verify does - and lets the user take the answers into the
+ * store: Accept stores a new key, or replaces a differing one after a second
+ * question that names both fingerprints; Decline leaves the store as it is
+ * and, on a MISMATCH, offers to delete the stored key so the next connection
+ * asks afresh. Nothing is written without a click.
+ */
+struct hks_row {
+    const char *keytype;            /* the store's id */
+    char *type_display;
+    int bits;
+    char *sha256, *md5, *key;       /* presented */
+    char *status;                   /* scanning / stored / new / MISMATCH / not offered / unreachable / ... */
+    char *error;
+    char *stored_sha256;            /* what the store holds, for the MISMATCH question; "" when nothing */
+};
+
+struct hks_data {
+    char *host; int port;
+    dlgcontrol *listbox, *detail, *banner, *accept, *decline, *closebtn;
+    struct hks_row *rows; int nrows;
+    struct kitty_hkv_run *run;
+    LONG *shown_state;
+    UINT_PTR timer;
+    dlgparam *dlg;
+    bool changed;                   /* the store was written or a key deleted */
+    Conf *conf;                     /* the session, for Pin (manual host keys) */
+    int pinned;                     /* fingerprints added to the session by Pin */
+};
+static struct hks_data *hks_active;     /* the one box at a time */
+static dlgcontrol *kitty_manual_hk_list;/* the panel's manual-host-key list, refreshed after a Pin */
+
+static void hks_row_set_status(struct hks_row *r, const char *status)
+{
+    sfree(r->status);
+    r->status = dupstr(status);
+}
+
+static char *hks_row_text(const struct hks_row *r)
+{
+    const char *sha = r->sha256 && r->sha256[0] ? r->sha256 : "-";
+    char bits[16];
+    if (!strncmp(sha, "SHA256:", 7)) sha += 7;
+    if (r->bits) sprintf(bits, "%d", r->bits); else strcpy(bits, "-");
+    return dupprintf("%s\t%s\t%s\t%s", r->type_display, bits, sha, r->status);
+}
+
+static void hks_fill(struct hks_data *d, dlgparam *dlg)
+{
+    int i;
+    dlg_update_start(d->listbox, dlg);
+    dlg_listbox_clear(d->listbox, dlg);
+    dlg_listbox_addwithid(d->listbox, dlg, KT_HKS_COL_HEAD, -1);
+    for (i = 0; i < d->nrows; i++) {
+        char *row = hks_row_text(&d->rows[i]);
+        dlg_listbox_addwithid(d->listbox, dlg, row, i);
+        sfree(row);
+    }
+    dlg_update_done(d->listbox, dlg);
+}
+
+static void hks_update_row(struct hks_data *d, int idx)
+{
+    HWND h = kitty_dlg_ctrl_hwnd(d->dlg, d->listbox);
+    int n, r;
+    if (!h || idx < 0 || idx >= d->nrows) return;
+    n = (int)SendMessage(h, LB_GETCOUNT, 0, 0);
+    for (r = 1; r < n; r++) {
+        if ((int)SendMessage(h, LB_GETITEMDATA, r, 0) == idx) {
+            char *row = hks_row_text(&d->rows[idx]);
+            bool sel = SendMessage(h, LB_GETSEL, r, 0) > 0;
+            SendMessage(h, WM_SETREDRAW, FALSE, 0);
+            SendMessage(h, LB_DELETESTRING, r, 0);
+            SendMessage(h, LB_INSERTSTRING, r, (LPARAM)row);
+            SendMessage(h, LB_SETITEMDATA, r, idx);
+            if (sel) SendMessage(h, LB_SETSEL, TRUE, r);
+            SendMessage(h, WM_SETREDRAW, TRUE, 0);
+            InvalidateRect(h, NULL, TRUE);
+            sfree(row);
+            break;
+        }
+    }
+}
+
+static int hks_selected(struct hks_data *d, dlgparam *dlg)
+{
+    int i;
+    for (i = 1; i <= d->nrows; i++)
+        if (dlg_listbox_issel(d->listbox, dlg, i)) {
+            int id = dlg_listbox_getid(d->listbox, dlg, i);
+            if (id >= 0 && id < d->nrows) return id;
+        }
+    return -1;
+}
+
+/* All selected rows, in list order; how many. */
+static int hks_selected_all(struct hks_data *d, dlgparam *dlg, int *idx, int max)
+{
+    int i, n = 0;
+    for (i = 1; i <= d->nrows && n < max; i++)
+        if (dlg_listbox_issel(d->listbox, dlg, i)) {
+            int id = dlg_listbox_getid(d->listbox, dlg, i);
+            if (id >= 0 && id < d->nrows) idx[n++] = id;
+        }
+    return n;
+}
+
+static void hks_show_detail(struct hks_data *d, dlgparam *dlg, int idx)
+{
+    strbuf *sb = strbuf_new();
+    if (idx < 0)
+        put_dataz(sb, KT_HKS_DETAIL_NONE);
+    else {
+        const struct hks_row *r = &d->rows[idx];
+        put_fmt(sb, "%s  %s", r->type_display, r->status);
+        if (r->sha256 && r->sha256[0])
+            put_fmt(sb, "\r\n" KT_HKS_DETAIL_PRESENTED, r->sha256, r->md5);
+        if (r->stored_sha256 && r->stored_sha256[0] && strcmp(r->status, "stored"))
+            put_fmt(sb, "\r\n" KT_HKS_DETAIL_STORED, r->stored_sha256);
+        if (r->error && r->error[0])
+            put_fmt(sb, "\r\n%s", r->error);
+    }
+    dlg_editbox_set(d->detail, dlg, sb->s);
+    strbuf_free(sb);
+}
+
+/* The stored key's SHA256 for this host, port and type, or "". */
+static char *hks_stored_sha256(const struct hks_data *d, const char *keytype)
+{
+    struct kitty_hostkey_list *l = kitty_hostkeys_enumerate();
+    char *out = dupstr("");
+    for (int i = 0; i < l->n; i++) {
+        const struct kitty_hostkey_entry *e = &l->items[i];
+        if (e->port == d->port && !strcmp(e->keytype, keytype) && !strcmp(e->host, d->host)) {
+            sfree(out); out = dupstr(e->sha256); break;
+        }
+    }
+    kitty_hostkeys_free(l);
+    return out;
+}
+
+static bool hks_row_ink(dlgcontrol *ctrl, int id, bool dark, COLORREF *ink)
+{
+    struct hks_data *d = (struct hks_data *)ctrl->context.p;
+    if (!d || id < 0 || id >= d->nrows || !d->rows[id].status) return false;
+    if (strcmp(d->rows[id].status, "MISMATCH")) return false;
+    *ink = dark ? RGB(255, 110, 110) : RGB(192, 0, 0);
+    return true;
+}
+
+static void hks_run_stop(struct hks_data *d)
+{
+    if (d->timer) { KillTimer(NULL, d->timer); d->timer = 0; }
+    if (d->run) { kitty_hkv_release(d->run); d->run = NULL; }
+}
+
+/* A finished job -> its row, judged against THIS store. */
+static void hks_judge(struct hks_data *d, int idx, const struct kitty_hkv_job *j)
+{
+    struct hks_row *r = &d->rows[idx];
+    sfree(r->sha256); sfree(r->md5); sfree(r->key); sfree(r->error);
+    r->sha256 = dupstr(j->sha256); r->md5 = dupstr(j->md5);
+    r->key = dupstr(j->key); r->error = dupstr(j->error);
+    if (j->key[0]) {
+        struct kitty_hostkey_entry e;
+        int cmp = check_stored_host_key(d->host, d->port, r->keytype, j->key);
+        memset(&e, 0, sizeof(e));
+        kitty_hostkey_describe_text(r->keytype, j->key, &e);
+        r->bits = e.bits;
+        sfree(e.keytype); sfree(e.type_display); sfree(e.sha256); sfree(e.md5);
+        hks_row_set_status(r, cmp == 0 ? "stored" : cmp == 1 ? "new" : "MISMATCH");
+    } else
+        hks_row_set_status(r, j->status);
+}
+
+static void CALLBACK hks_timer_proc(HWND hwnd, UINT msg, UINT_PTR id, DWORD now)
+{
+    struct hks_data *d = hks_active;
+    struct kitty_hkv_job *jobs;
+    int n, i, done = 0;
+    if (!d || !d->run || !d->dlg) return;
+    jobs = kitty_hkv_jobs(d->run, &n);
+    for (i = 0; i < n; i++) {
+        LONG st = InterlockedCompareExchange(&jobs[i].state, 0, 0);
+        if (st == KHKV_DONE && d->shown_state[i] != KHKV_DONE) {
+            hks_judge(d, i, &jobs[i]);
+            hks_update_row(d, i);
+            d->shown_state[i] = KHKV_DONE;
+            if (hks_selected(d, d->dlg) == i) hks_show_detail(d, d->dlg, i);
+        }
+        if (st == KHKV_DONE) done++;
+    }
+    if (done == n) {
+        int nnew = 0, nbad = 0, nstored = 0;
+        for (i = 0; i < d->nrows; i++) {
+            if (!strcmp(d->rows[i].status, "new")) nnew++;
+            else if (!strcmp(d->rows[i].status, "MISMATCH")) nbad++;
+            else if (!strcmp(d->rows[i].status, "stored")) nstored++;
+        }
+        {
+            char *line = dupprintf(KT_HKS_DONE, nstored, nnew, nbad);
+            dlg_label_change(d->banner, d->dlg, line);
+            sfree(line);
+        }
+        hks_run_stop(d);
+    } else {
+        char *line = dupprintf(KT_HKS_SCANNING, done, n);
+        dlg_label_change(d->banner, d->dlg, line);
+        sfree(line);
+    }
+}
+
+static void hks_box_closing(void)
+{
+    struct hks_data *d = hks_active;
+    if (d) {
+        hks_run_stop(d);
+        for (int i = 0; i < d->nrows; i++) {
+            struct hks_row *r = &d->rows[i];
+            sfree(r->type_display); sfree(r->sha256); sfree(r->md5); sfree(r->key);
+            sfree(r->status); sfree(r->error); sfree(r->stored_sha256);
+        }
+        sfree(d->rows); d->rows = NULL; d->nrows = 0;
+        sfree(d->shown_state); d->shown_state = NULL;
+    }
+    hks_active = NULL;
+}
+
+static void kitty_hks_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    struct hks_data *d = (struct hks_data *)ctrl->context.p;
+    int which = ctrl->context2.i;      /* 0 list, 1 detail, 2 accept, 3 decline, 4 close, 5 pin */
+    int idx, sel[16], nsel, k;
+
+    if (!d) return;
+    d->dlg = dlg;
+    switch (which) {
+      case 0:
+        if (event == EVENT_REFRESH) {
+            hks_fill(d, dlg);
+            hks_show_detail(d, dlg, -1);
+            if (!d->run && !d->timer) {
+                /* the first refresh starts the scan */
+                struct kitty_hkv_job *jobs = snewn(d->nrows, struct kitty_hkv_job);
+                int i;
+                memset(jobs, 0, d->nrows * sizeof(*jobs));
+                for (i = 0; i < d->nrows; i++) {
+                    jobs[i].host = d->host; jobs[i].port = d->port;
+                    jobs[i].keytype = (char *)d->rows[i].keytype;
+                }
+                d->run = kitty_hkv_start(jobs, d->nrows);
+                sfree(jobs);
+                if (d->run) {
+                    d->shown_state = snewn(d->nrows, LONG);
+                    for (i = 0; i < d->nrows; i++) d->shown_state[i] = KHKV_PENDING;
+                    hks_active = d;
+                    d->timer = SetTimer(NULL, 0, 250, hks_timer_proc);
+                    {
+                        char *line = dupprintf(KT_HKS_SCANNING, 0, d->nrows);
+                        dlg_label_change(d->banner, dlg, line);
+                        sfree(line);
+                    }
+                } else
+                    dlg_label_change(d->banner, dlg, KT_HK_VERIFY_NOTHREAD);
+            }
+        } else if (event == EVENT_SELCHANGE) {
+            HWND h = kitty_dlg_ctrl_hwnd(dlg, ctrl);
+            if (h && SendMessage(h, LB_GETSEL, 0, 0) > 0)
+                SendMessage(h, LB_SETSEL, FALSE, 0);   /* the header row */
+            hks_show_detail(d, dlg, hks_selected(d, dlg));
+        }
+        break;
+      case 1:
+        break;
+      case 2: {                        /* Accept: every selected row */
+        int stored = 0, nokey = 0, left = 0;
+        if (event != EVENT_ACTION) break;
+        nsel = hks_selected_all(d, dlg, sel, lenof(sel));
+        if (!nsel) { dlg_label_change(d->banner, dlg, KT_HKS_SELECT_ROW); break; }
+        for (k = 0; k < nsel; k++) {
+            struct hks_row *r = &d->rows[sel[k]];
+            if (!r->key || !r->key[0]) { nokey++; continue; }
+            if (!strcmp(r->status, "stored")) continue;
+            if (!strcmp(r->status, "MISMATCH")) {
+                /* the man-in-the-middle question: never one click, once per key */
+                char *was = hks_stored_sha256(d, r->keytype);
+                char *q = dupprintf(KT_HKS_CONFIRM_REPLACE, d->host, d->port, r->type_display,
+                                    was[0] ? was : "-", r->sha256);
+                int answer = MessageBoxA(kitty_cfg_modal_owner(), q, KT_CAP_KITTY,
+                                         MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+                sfree(q); sfree(was);
+                if (answer != IDYES) { left++; continue; }
+            }
+            store_host_key(NULL, d->host, d->port, r->keytype, r->key);
+            d->changed = true;
+            hks_row_set_status(r, "stored");
+            sfree(r->stored_sha256); r->stored_sha256 = dupstr(r->sha256);
+            hks_update_row(d, sel[k]);
+            stored++;
+        }
+        if (nsel == 1) hks_show_detail(d, dlg, sel[0]);
+        if (stored) {
+            char *line = left ? dupprintf(KT_HKS_STORED_LEFT, stored, stored == 1 ? "" : "s", left)
+                              : dupprintf(KT_HKS_STORED_N, stored, stored == 1 ? "" : "s");
+            dlg_label_change(d->banner, dlg, line);
+            sfree(line);
+        } else if (nokey == nsel)
+            dlg_label_change(d->banner, dlg, KT_HKS_NOTHING_TO_ACCEPT);
+        else if (left)
+            dlg_label_change(d->banner, dlg, KT_HKS_LEFT);
+        else
+            dlg_label_change(d->banner, dlg, KT_HKS_ALREADY_STORED);
+        break;
+      }
+      case 3: {                        /* Delete stored: the selected rows' stored keys */
+        int nstored = 0, deleted = 0;
+        strbuf *types;
+        if (event != EVENT_ACTION) break;
+        nsel = hks_selected_all(d, dlg, sel, lenof(sel));
+        if (!nsel) { dlg_label_change(d->banner, dlg, KT_HKS_SELECT_ROW); break; }
+        types = strbuf_new();
+        for (k = 0; k < nsel; k++) {
+            struct hks_row *r = &d->rows[sel[k]];
+            if (!r->stored_sha256 || !r->stored_sha256[0]) continue;
+            if (nstored++) put_dataz(types, ", ");
+            put_dataz(types, r->type_display);
+        }
+        if (!nstored) {
+            dlg_label_change(d->banner, dlg, KT_HKS_NONE_STORED);
+            strbuf_free(types);
+            break;
+        }
+        {
+            /* one question for the lot, naming the types */
+            char *q = dupprintf(KT_HKS_CONFIRM_DELETE_N, nstored == 1 ? "" : "s", types->s,
+                                d->host, d->port);
+            int answer = MessageBoxA(kitty_cfg_modal_owner(), q, KT_CAP_KITTY,
+                                     MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
+            sfree(q);
+            if (answer == IDYES) {
+                for (k = 0; k < nsel; k++) {
+                    struct hks_row *r = &d->rows[sel[k]];
+                    if (!r->stored_sha256 || !r->stored_sha256[0]) continue;
+                    if (kitty_hostkey_delete(d->host, d->port, r->keytype)) deleted++;
+                    d->changed = true;
+                    sfree(r->stored_sha256); r->stored_sha256 = dupstr("");
+                    /* what the host presents is now simply unknown to the store */
+                    if (r->key && r->key[0]) hks_row_set_status(r, "new");
+                    hks_update_row(d, sel[k]);
+                }
+            }
+        }
+        strbuf_free(types);
+        if (nsel == 1) hks_show_detail(d, dlg, sel[0]);
+        if (deleted) {
+            char *line = dupprintf(KT_HKS_DELETED_N, deleted, deleted == 1 ? "" : "s");
+            dlg_label_change(d->banner, dlg, line);
+            sfree(line);
+        } else
+            dlg_label_change(d->banner, dlg, KT_HKS_LEFT);
+        break;
+      }
+      case 5: {                        /* Pin: the presented fingerprints into the session's manual keys */
+        int pinned = 0, listed = 0, nokey = 0;
+        if (event != EVENT_ACTION) break;
+        nsel = hks_selected_all(d, dlg, sel, lenof(sel));
+        if (!nsel) { dlg_label_change(d->banner, dlg, KT_HKS_SELECT_ROW); break; }
+        for (k = 0; k < nsel; k++) {
+            struct hks_row *r = &d->rows[sel[k]];
+            char *fp;
+            if (!r->sha256 || !r->sha256[0] || !d->conf) { nokey++; continue; }
+            fp = dupstr(r->sha256);
+            if (!validate_manual_hostkey(fp)) { sfree(fp); nokey++; continue; }
+            if (conf_get_str_str_opt(d->conf, CONF_ssh_manual_hostkeys, fp))
+                listed++;
+            else {
+                conf_set_str_str(d->conf, CONF_ssh_manual_hostkeys, fp, "");
+                pinned++;
+            }
+            sfree(fp);
+        }
+        d->pinned += pinned;
+        if (pinned || listed) {
+            char *line = dupprintf(KT_HKS_PINNED, pinned, pinned == 1 ? "" : "s", listed);
+            dlg_label_change(d->banner, dlg, line);
+            sfree(line);
+        } else
+            dlg_label_change(d->banner, dlg, KT_HKS_PIN_NONE);
+        break;
+      }
+      case 4:                          /* Close */
+        if (event == EVENT_ACTION)
+            dlg_end(dlg, d->changed ? 1 : 0);
+        break;
+    }
+}
+
+/* The box's controls (kitty_cfg_show_aux_box builds path "Main"). */
+static void hks_setup(struct controlbox *b, void *ctx)
+{
+    struct hks_data *d = (struct hks_data *)ctx;
+    struct controlset *s;
+    dlgcontrol *c;
+    char *line;
+
+    s = ctrl_getset(b, "Main", "keys", NULL);
+    line = dupprintf(KT_HKS_INTRO, d->host, d->port);
+    ctrl_text(s, line, HELPCTX(kitty_host_keys));
+    sfree(line);
+    d->listbox = ctrl_listbox(s, NULL, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                              kitty_hks_handler, P(d));
+    d->listbox->context2 = I(0);
+    d->listbox->listbox.height = d->nrows + 1;
+    d->listbox->listbox.multisel = 2;    /* extended: the arrow keys select; issel needs a multi list */
+    d->listbox->listbox.headerrow = true;
+    d->listbox->listbox.rowink = hks_row_ink;
+    d->listbox->listbox.ncols = 4;
+    d->listbox->listbox.percentages = snewn(4, int);
+    d->listbox->listbox.percentages[0] = 30;   /* Type */
+    d->listbox->listbox.percentages[1] = 10;   /* Bits */
+    d->listbox->listbox.percentages[2] = 40;   /* SHA256 */
+    d->listbox->listbox.percentages[3] = 20;   /* Status */
+    d->detail = ctrl_editbox_multiline(s, NULL, NO_SHORTCUT, 4, true,
+                                       HELPCTX(kitty_host_keys),
+                                       kitty_hks_handler, P(d), P(NULL));
+    d->detail->context2 = I(1);
+    d->banner = ctrl_text(s, " ", HELPCTX(kitty_host_keys));
+    ctrl_columns(s, 4, 25, 25, 25, 25);
+    c = ctrl_pushbutton(s, KT_HKS_ACCEPT, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                        kitty_hks_handler, P(d));
+    c->context2 = I(2); c->column = 0; d->accept = c;
+    c = ctrl_pushbutton(s, KT_HKS_DECLINE, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                        kitty_hks_handler, P(d));
+    c->context2 = I(3); c->column = 1; d->decline = c;
+    c = ctrl_pushbutton(s, KT_HKS_PIN, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                        kitty_hks_handler, P(d));
+    c->context2 = I(5); c->column = 2;
+    c = ctrl_pushbutton(s, KT_HKS_CLOSE, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                        kitty_hks_handler, P(d));
+    c->context2 = I(4); c->column = 3; c->button.iscancel = true; d->closebtn = c;
+    ctrl_columns(s, 1, 100);
+}
+
+/* Open the box for host:port. Returns true when the store was changed;
+ * *pinned counts the fingerprints Pin added to the session. */
+static bool kitty_hostkey_scan_box(const char *host, int port, Conf *conf, int *pinned)
+{
+    extern void kitty_cfg_show_aux_box(void (*setup)(struct controlbox *, void *),
+                                       void *ctx, const char *caption, HWND owner,
+                                       void (*closing)(void));   /* windows/dialog.c */
+    struct hks_data d;
+    const char *const *types;
+    int ntypes, i;
+    char *caption;
+    bool changed;
+
+    memset(&d, 0, sizeof(d));
+    d.host = dupstr(host); d.port = port; d.conf = conf;
+    types = kitty_hostkey_scan_types(&ntypes);
+    d.rows = snewn(ntypes, struct hks_row);
+    memset(d.rows, 0, ntypes * sizeof(struct hks_row));
+    d.nrows = ntypes;
+    for (i = 0; i < ntypes; i++) {
+        struct kitty_hostkey_entry e;
+        memset(&e, 0, sizeof(e));
+        kitty_hostkey_describe_text(types[i], "", &e);
+        d.rows[i].keytype = types[i];
+        d.rows[i].type_display = e.type_display; e.type_display = NULL;
+        sfree(e.keytype); sfree(e.sha256); sfree(e.md5);
+        d.rows[i].status = dupstr(KT_HKS_STATUS_SCANNING);
+        d.rows[i].sha256 = dupstr(""); d.rows[i].md5 = dupstr("");
+        d.rows[i].key = dupstr(""); d.rows[i].error = dupstr("");
+        d.rows[i].stored_sha256 = hks_stored_sha256(&d, types[i]);
+    }
+    caption = dupprintf(KT_HKS_CAPTION, host, port);
+    hks_active = &d;
+    kitty_cfg_show_aux_box(hks_setup, &d, caption, kitty_cfg_modal_owner(), hks_box_closing);
+    sfree(caption);
+    changed = d.changed;
+    if (pinned) *pinned = d.pinned;
+    sfree(d.host);
+    return changed;
+}
+
+/* ---- the panel side: the line and the button ---------------------------- */
+
+static dlgcontrol *hkscan_line;         /* "Stored keys for host:port: n" */
+static dlgcontrol *hkscan_types;        /* the types on the next line(s), or blank */
+
+static void hkscan_refresh_line(dlgparam *dlg, Conf *conf)
+{
+    const char *host = conf_get_str(conf, CONF_host);
+    int port = conf_get_int(conf, CONF_port);
+    char *line, *typeline;
+    if (!hkscan_line) return;
+    if (!host || !*host) {
+        line = dupstr(KT_HKSCAN_NO_HOST);
+        typeline = dupstr(" ");
+    } else {
+        struct kitty_hostkey_list *l = kitty_hostkeys_enumerate();
+        strbuf *types = strbuf_new();
+        int n = 0;
+        for (int i = 0; i < l->n; i++) {
+            const struct kitty_hostkey_entry *e = &l->items[i];
+            if (e->port == port && !strcmp(e->host, host)) {
+                if (n++) put_dataz(types, ", ");
+                put_dataz(types, e->type_display);
+            }
+        }
+        line = n ? dupprintf(KT_HKSCAN_STORED, host, port, n)
+                 : dupprintf(KT_HKSCAN_NONE, host, port);
+        typeline = dupstr(n ? types->s : " ");
+        strbuf_free(types);
+        kitty_hostkeys_free(l);
+    }
+    dlg_label_change(hkscan_line, dlg, line);
+    if (hkscan_types) dlg_label_change(hkscan_types, dlg, typeline);
+    sfree(line); sfree(typeline);
+}
+
+static void kitty_hkscan_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        hkscan_refresh_line(dlg, conf);
+    } else if (event == EVENT_ACTION) {
+        const char *host = conf_get_str(conf, CONF_host);
+        if (!host || !*host) {
+            dlg_label_change(hkscan_line, dlg, KT_HKSCAN_NO_HOST);
+            return;
+        }
+        int pinned = 0;
+        kitty_hostkey_scan_box(host, conf_get_int(conf, CONF_port), conf, &pinned);
+        hkscan_refresh_line(dlg, conf);
+        if (pinned && kitty_manual_hk_list)
+            dlg_refresh(kitty_manual_hk_list, dlg);   /* the list above shows the new pins */
+    }
+}
+#endif
+
+#ifdef MOD_PERSO
 void CheckVersionFromWebSite(HWND hwnd, int is_terminal);   /* kitty_win.c: query GitHub releases */
 static void checkupdate_button_handler(dlgcontrol *ctrl, dlgparam *dp,
                                        void *data, int event)
@@ -8534,6 +9890,7 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
              * appears, so we suppress that. */
             mh->listbox->listbox.height = 2;
             mh->listbox->listbox.hscroll = false;
+            kitty_manual_hk_list = mh->listbox;   /* refreshed after a Pin from the scan box */
             ctrl_tabdelay(s, mh->rembutton);
             mh->keybox = ctrl_editbox(s, KT_HOST_KEYS_KEY, 'k', 80,
                                       HELPCTX(ssh_kex_manual_hostkeys),
@@ -8558,9 +9915,47 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
          */
         s = ctrl_getset(b, "Connection/SSH/Host keys", "ca",
                         KT_HOST_KEYS_CONFIGURE_TRUSTED_CERTIFICATION_AUTHORITIES);
+#ifdef MOD_PERSO
+        {
+            /* KiTTY: the CA editor lives on the Application tab; the button
+             * jumps there. Without that tab (applicationsettings=no) there is
+             * nowhere to jump, and the line says where the setting is. */
+            extern int GetConfigBoxApplicationSettingsFlag(void);   /* kitty.c */
+            if (GetPuttyFlag())
+                c = ctrl_pushbutton(s, KT_HOST_KEYS_CONFIGURE_HOST_CAS, NO_SHORTCUT,
+                                    HELPCTX(ssh_kex_cert),
+                                    host_ca_button_handler, I(0));
+            else if (GetConfigBoxApplicationSettingsFlag())
+                c = ctrl_pushbutton(s, KT_HOST_KEYS_CONFIGURE_HOST_CAS, NO_SHORTCUT,
+                                    HELPCTX(ssh_kex_cert),
+                                    host_ca_jump_handler, I(0));
+            else
+                ctrl_text(s, KT_HOST_KEYS_CAS_JUMP, HELPCTX(ssh_kex_cert));
+        }
+#else
         c = ctrl_pushbutton(s, KT_HOST_KEYS_CONFIGURE_HOST_CAS, NO_SHORTCUT,
                             HELPCTX(ssh_kex_cert),
                             host_ca_button_handler, I(0));
+#endif
+
+#ifdef MOD_PERSO
+        /* KiTTY: ask the host for its keys now and take new ones in - the
+         * store's side of this panel (kitty_hostkey_scan_box). */
+        if (!GetPuttyFlag()) {
+            s = ctrl_getset(b, "Connection/SSH/Host keys", "scan", KT_HKSCAN_GROUP);
+            hkscan_line = ctrl_text(s, " ", HELPCTX(kitty_host_keys));
+            /* The types line is laid out for the LONGEST list there can be
+             * (every type KiTTY knows), so it never gets clipped when the
+             * real list wraps onto a second line; the refresh puts the
+             * real text in. */
+            hkscan_types = ctrl_text(s, KT_HKSCAN_TYPES_WORST, HELPCTX(kitty_host_keys));
+            ctrl_columns(s, 3, 34, 33, 33);
+            c = ctrl_pushbutton(s, KT_HKSCAN_BUTTON, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                                kitty_hkscan_handler, P(NULL));
+            c->column = 2;
+            ctrl_columns(s, 1, 100);
+        }
+#endif
 
         if (!midsession || !(protcfginfo == 1 || protcfginfo == -1)) {
             /*
@@ -9709,6 +11104,9 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
                  kitty_kset_handler, P((void *)kset_find("pastesize")), ED_STR);
     ctrl_text(s, KT_CLIPBOARD_PASTE_WHAT, HELPCTX(kitty_clipboard));
     ctrl_text(s, KT_CLIPBOARD_PASTE_SCOPE, HELPCTX(kitty_clipboard));
+
+    /* Security > Host keys: the trust store, listed (kitty_hostkeys.c). */
+    scb_panel_hostkeys(b);
 #else
     (void)b; (void)midsession;
 #endif
@@ -10271,6 +11669,24 @@ static void kitty_system_handler(dlgcontrol *ctrl, dlgparam *dlg,
     ksys_refresh(dlg);
 }
 
+/* System > "Add this KiTTY++ folder to the user PATH" (kitty_userpath.c) */
+bool kitty_userpath_contains_exe_dir(void);
+bool kitty_userpath_set_exe_dir(bool on, char **err);
+static void kitty_syspath_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    if (event == EVENT_REFRESH) {
+        dlg_checkbox_set(ctrl, dlg, kitty_userpath_contains_exe_dir());
+    } else if (event == EVENT_VALCHANGE) {
+        char *err = NULL;
+        if (!kitty_userpath_set_exe_dir(dlg_checkbox_get(ctrl, dlg), &err)) {
+            char *msg = dupprintf(KT_SYSTEM_PATH_FAIL, err);
+            MessageBoxA(kitty_cfg_modal_owner(), msg, KT_SYSTEM_TITLE, MB_OK | MB_ICONERROR);
+            sfree(msg); sfree(err);
+        }
+        dlg_checkbox_set(ctrl, dlg, kitty_userpath_contains_exe_dir());
+    }
+}
+
 static void scb_panel_kitty_settings_leaves(struct controlbox *b)
 {
     struct controlset *s;
@@ -10494,6 +11910,13 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
         bc = ctrl_pushbutton(s, KT_SYSTEM_UNREGISTER, NO_SHORTCUT,
                              HELPCTX(kitty_system), kitty_system_handler, I(2));
         (void)bc;
+        /* The command-line tools reachable from any shell: this folder on
+         * the user's PATH. The box shows the registry's state, not a
+         * setting of ours (kitty_userpath.c). */
+        s = ctrl_getset(b, KSET_PATH("System"), "path", KT_SYSTEM_PATH_GROUP);
+        ctrl_checkbox(s, KT_SYSTEM_PATH_CHECK, NO_SHORTCUT, HELPCTX(kitty_system),
+                      kitty_syspath_handler, P(NULL));
+        ctrl_text(s, KT_SYSTEM_PATH_NOTE, HELPCTX(kitty_system));
     }
 }
 
@@ -11816,6 +13239,9 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
                 excluded = true;
             /* The folder import: its fields drive an action, they store nothing. */
             if (!strcmp(path, "Application/Migration/old KiTTY Folders"))
+                excluded = true;
+            /* The host-key list shows the store; Delete acts at once and says so. */
+            if (!strcmp(path, "Application/Security/Host keys"))
                 excluded = true;
             if (excluded)
                 continue;

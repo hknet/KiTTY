@@ -167,7 +167,9 @@ set_target_properties(pageant PROPERTIES WIN32_EXECUTABLE ON)
 installed_program(pageant)
 
 add_sources_from_current_dir(plink no-jump-list.c nohelp.c plink.rc
-  ../kitty/kitty_crashlog.c)
+  ../kitty/kitty_crashlog.c
+  ../kitty/kitty_hostkeys.c        # KiTTY: klink -knownhosts (the store, listed)
+  ../kitty/kitty_hostkey_scan.c)   # KiTTY: klink -scan (our ssh-keyscan)
 add_dependencies(plink generated_licence_h)
 
 add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
@@ -522,6 +524,9 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_settings_forced.c
   ${KITTY_DIR}/kitty_settings_load.c
   ${KITTY_DIR}/kitty_migrate.c
+  ${KITTY_DIR}/kitty_hostkeys.c
+  ${KITTY_DIR}/kitty_hostkey_verify.c
+  ${KITTY_DIR}/kitty_userpath.c
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c
   ${KITTY_DIR}/kitty_rutty.c
@@ -633,6 +638,9 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_settings_forced.c
   ${KITTY_DIR}/kitty_settings_load.c
   ${KITTY_DIR}/kitty_migrate.c
+  ${KITTY_DIR}/kitty_hostkeys.c
+  ${KITTY_DIR}/kitty_hostkey_verify.c
+  ${KITTY_DIR}/kitty_userpath.c
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c
   ${KITTY_DIR}/kitty_rutty.c

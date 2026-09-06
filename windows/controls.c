@@ -1068,7 +1068,7 @@ static void multiline_editbox(struct ctlpos *cp, const char *stext,
  * A list box with a static labelling it.
  */
 void listbox(struct ctlpos *cp, const char *stext,
-             int sid, int lid, int lines, bool multi, bool ownerdraw)
+             int sid, int lid, int lines, int multi, bool ownerdraw)
 {
     RECT r;
 
@@ -1089,7 +1089,11 @@ void listbox(struct ctlpos *cp, const char *stext,
     doctl(cp, r, "LISTBOX",
           WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL |
           LBS_NOTIFY | LBS_HASSTRINGS | LBS_USETABSTOPS |
-          (multi ? LBS_MULTIPLESEL : 0) |
+          /* KiTTY: multisel 2 = extended selection - the arrow keys SELECT the
+           * row they land on (his report: with LBS_MULTIPLESEL every row had
+           * to be toggled with the space bar to be seen in the detail box),
+           * Shift and Ctrl extend as everywhere in Windows. */
+          (multi == 2 ? LBS_EXTENDEDSEL : multi ? LBS_MULTIPLESEL : 0) |
           (ownerdraw ? LBS_OWNERDRAWFIXED : 0),
           WS_EX_CLIENTEDGE, "", lid);
     if (ownerdraw) {
@@ -1141,6 +1145,11 @@ static void kitty_draw_header_list_item(struct dlgparam *dp, dlgcontrol *ctrl,
         back = dark ? kitty_theme_row_colour(true, false) : GetSysColor(COLOR_WINDOW);
     ink = selected ? GetSysColor(COLOR_HIGHLIGHTTEXT)
         : dark ? kitty_theme_text_colour(true) : GetSysColor(COLOR_WINDOWTEXT);
+    if (!header && !selected && ctrl->listbox.rowink) {
+        unsigned long rgb;
+        if (ctrl->listbox.rowink(ctrl, (int)di->itemData, dark, &rgb))
+            ink = (COLORREF)rgb;
+    }
     {
         HBRUSH b = CreateSolidBrush(back);
         FillRect(hdc, &r, b);
@@ -2590,6 +2599,21 @@ static struct winctrl *dlg_findbyctrl(struct dlgparam *dp, dlgcontrol *ctrl)
         struct winctrl *c = winctrl_findbyctrl(dp->controltrees[i], ctrl);
         if (c)
             return c;
+    }
+    return NULL;
+}
+
+HWND kitty_dlg_ctrl_hwnd(dlgparam *dp, dlgcontrol *ctrl)
+{
+    struct winctrl *c = ctrl && dp ? dlg_findbyctrl(dp, ctrl) : NULL;
+    if (!c)
+        return NULL;
+    /* the first id that has a window - a list with no label reserves an id
+     * for the label it never made */
+    for (int k = 0; k < c->num_ids; k++) {
+        HWND h = kitty_cfg_item(dp->hwnd, c->base_id + k);   /* panel host or the dialog itself */
+        if (h)
+            return h;
     }
     return NULL;
 }

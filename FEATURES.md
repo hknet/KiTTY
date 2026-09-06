@@ -165,7 +165,7 @@ To convert everything in one go, use **Export all…** followed by **Import all�
 
 **Application > Migration** lists the sessions in the old KiTTY (`9bis.com`) and PuTTY registry hives and copies the ones you select into KiTTY's own store. The panel appears only when such a hive actually holds sessions.
 
-**Application > Migration > old KiTTY Folders** does the same for sessions kept in files: point it at a folder (a portable KiTTY, a copied `Sessions` directory), press Scan, and every session file in it and its subfolders is listed with its path and state. Pick the target folder (`KiTTYimport` is offered) and import the selected rows; nothing is overwritten - a taken name becomes "name (folder)" - and a password this KiTTY cannot decode is left out rather than blocking the session.
+**Application > Migration > (old) KiTTY Folders** does the same for sessions kept in files, written by an old KiTTY or by this one: point it at a folder (a portable KiTTY, a copied `Sessions` directory), press Scan, and every session file in it and its subfolders is listed with its path and state. Pick the target folder (`KiTTYimport` is offered) and import the selected rows; nothing is overwritten - a taken name becomes "name (folder)" - and a password this KiTTY cannot decode is left out rather than blocking the session.
 
 - **The old store is never changed.** An import takes a copy; the original stays where it is, and you can import it again.
 - **An existing name is never overwritten.** The copy is called `work (PuTTY)` or `work (old KiTTY)`, numbered if that name is taken as well.
@@ -452,7 +452,7 @@ The full set of key types, output formats, and Argon2 KDF options from upstream 
 
 Instead of copying every public key into `authorized_keys` on every server, a **certification authority** signs your key once and each server is told to trust that CA — with an expiry date and a list of principals attached. The same idea works in the other direction: a server whose host key carries a certificate is trusted from the first connection, so "the host key is not cached" stops happening on every new or rebuilt machine. KiTTY supports both halves.
 
-**How to enable:** for your own key, **kittygen** > `Key` > **Add certificate to key** (the certificate is then carried inside the `.ppk`), or keep it as a separate file and point Configuration > **Connection > SSH > Auth > Credentials** > *"Certificate to use with the private key (optional)"* at it — the second is easier when certificates are short-lived, since renewing one is then a file drop with no key handling. From a script, `kittygen-cli --certificate <file>` does the same, and `kittygen-cli -O cert-info` prints what a certificate asserts. To trust a CA that signs **host** keys, use Configuration > **Connection > SSH > Host keys** > *Configure host CAs* (stored per user, and portable-mode friendly). On the command line, `-i <key.ppk> -cert <certificate>` works for `kitty.exe`, `klink.exe`, `kscp.exe` and `ksftp.exe`.
+**How to enable:** for your own key, **kittygen** > `Key` > **Add certificate to key** (the certificate is then carried inside the `.ppk`), or keep it as a separate file and point Configuration > **Connection > SSH > Auth > Credentials** > *"Certificate to use with the private key (optional)"* at it — the second is easier when certificates are short-lived, since renewing one is then a file drop with no key handling. From a script, `kittygen-cli --certificate <file>` does the same, and `kittygen-cli -O cert-info` prints what a certificate asserts. To trust a CA that signs **host** keys, use Configuration > **Application > Security > Certificate Authorities** (the *Configure host CAs* button on a session's Host keys panel brings you there; stored per user, and portable-mode friendly). The keys themselves are listed on **Application > Security > Host keys**: host, type and bits, SHA256 fingerprint, first seen and last written, sortable by any column, with the selected key's full details underneath, and **Copy**, **Delete** and **Verify** - which asks each host for its current key in the background (through `klink`, no login involved) and marks a **MISMATCH** in red. On a session's **Connection > SSH > Host keys** panel, **Scan/Edit** asks the host for every key type it has and lets you **Accept** a new key (a changed one only after a second question naming both fingerprints), **Delete stored** keys of that host, or **Pin** the presented fingerprints into the session's manual host keys. The same from a shell: `klink -scan [-t type,..] host[:port]` and `klink -knownhosts [host[:port]]`, with `-json` for scripts. On the command line, `-i <key.ppk> -cert <certificate>` works for `kitty.exe`, `klink.exe`, `kscp.exe` and `ksftp.exe`.
 
 **[Full how-to, including the OpenSSH server side →](https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/SSH-CERTIFICATES.md)** — certifying a key step by step, `TrustedUserCAKeys` / `AuthorizedPrincipalsFile`, host certificates, a throwaway local lab to try it all safely, and what the common failures mean.
 
@@ -894,7 +894,9 @@ registry by hand.
 other program, or nobody - and offers three buttons that each ask before
 writing: register this program, register and take over entries other programs
 own (each backed up to a `.reg` file first), and unregister. They do what
-`-sshhandler` and `-fileassoc` do from the command line.
+`-sshhandler` and `-fileassoc` do from the command line. A checkbox, *Add this
+KiTTY++ folder to the user PATH*, makes `klink`, `kscp`, `ksftp` and the other
+tools callable by name from any newly opened shell.
 
 (no screenshot)
 

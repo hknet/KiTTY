@@ -8,6 +8,7 @@
 #include <stdarg.h>
 
 #include "putty.h"
+#include "../kitty/kitty_hostkey_scan.h"   /* KiTTY: -scan / -knownhosts */
 #include "ssh.h"
 #include "storage.h"
 #include "tree234.h"
@@ -178,6 +179,14 @@ static void usage(void)
            "output/error\n");
     printf("  -no-antispoof   omit anti-spoofing prompt after "
            "authentication\n");
+    printf("Host keys (KiTTY; no login, the store is never written):\n");
+    printf("  -scan [-t type,..] host[:port]\n");
+    printf("            fetch the host's keys (rsa,dsa,ecdsa,ed25519,ed448;\n");
+    printf("            all without -t) and compare with the store:\n");
+    printf("            stored / new / MISMATCH; exit 2 on any MISMATCH\n");
+    printf("  -knownhosts [host[:port]]\n");
+    printf("            list the stored host keys (all without a host)\n");
+    printf("  -json     -scan/-knownhosts output as one JSON array\n");
     printf("  -m file   read remote command(s) from file\n");
     printf("  -s        remote command is an SSH subsystem (SSH-2 only)\n");
     printf("  -N        don't start a shell/command (SSH-2 only)\n");
@@ -332,11 +341,41 @@ int main(int argc, char **argv)
     }
     CmdlineArgList *arglist = cmdline_arg_list_from_GetCommandLineW();
     size_t arglistpos = 0;
+    /* KiTTY: -scan / -knownhosts (kitty_hostkey_scan.c) */
+    bool kitty_scan = false, kitty_knownhosts = false, kitty_json = false;
+    const char *kitty_hostspec = NULL, *kitty_types = NULL;
     while (arglist->args[arglistpos]) {
         CmdlineArg *arg = arglist->args[arglistpos++];
         CmdlineArg *nextarg = arglist->args[arglistpos];
         const char *p = cmdline_arg_to_str(arg);
-        int ret = cmdline_process_param(arg, nextarg, 1, conf);
+        int ret;
+        if (!strcmp(p, "-scan")) { kitty_scan = true; continue; }
+        if (!strcmp(p, "-knownhosts")) { kitty_knownhosts = true; continue; }
+        if (!strcmp(p, "-json")) { kitty_json = true; continue; }
+        if (kitty_scan || kitty_knownhosts) {
+            /* In these modes -t is ssh-keyscan's key type, not the pty
+             * flag, and the one bare word is the host. */
+            if (kitty_scan && !strcmp(p, "-t")) {
+                if (!nextarg) {
+                    fprintf(stderr, "klink: option \"-t\" requires an argument\n");
+                    errors = true;
+                } else {
+                    kitty_types = cmdline_arg_to_str(nextarg);
+                    arglistpos++;
+                }
+                continue;
+            }
+            if (*p != '-') {
+                if (kitty_hostspec) {
+                    fprintf(stderr, "klink: only one host for %s\n",
+                            kitty_scan ? "-scan" : "-knownhosts");
+                    errors = true;
+                }
+                kitty_hostspec = p;
+                continue;
+            }
+        }
+        ret = cmdline_process_param(arg, nextarg, 1, conf);
         if (ret == -2) {
             fprintf(stderr,
                     "klink: option \"%s\" requires an argument\n", p);
@@ -396,6 +435,36 @@ int main(int argc, char **argv)
 
     if (errors)
         return 1;
+
+    if (kitty_knownhosts)
+        return kitty_hostkey_knownhosts_main(kitty_hostspec, kitty_json);
+    if (kitty_scan) {
+        char *spec = NULL;
+        if (!kitty_hostspec) {
+            /* the host may have come as an ordinary argument before -scan;
+             * -P is applied late by design, so apply it now */
+            const char *h;
+            cmdline_run_saved(conf);
+            h = conf_get_str(conf, CONF_host);
+            if (!*h) {
+                fprintf(stderr, "klink -scan: no host given\n");
+                return 1;
+            }
+            spec = dupprintf("%s:%d", h, conf_get_int(conf, CONF_port));
+            kitty_hostspec = spec;
+        }
+        sk_init();
+        if (p_WSAEventSelect == NULL) {
+            fprintf(stderr, "Plink requires WinSock 2\n");
+            return 1;
+        }
+        winselcli_setup();
+        {
+            int rc = kitty_hostkey_scan_main(kitty_hostspec, kitty_types, kitty_json);
+            sfree(spec);
+            return rc;
+        }
+    }
 
     if (!cmdline_host_ok(conf)) {
         fprintf(stderr, "klink: no valid host name provided\n"

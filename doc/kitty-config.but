@@ -871,6 +871,15 @@ writing, because the entries stay behind when the copy is removed.
 The same work is available from the command line as \c{-sshhandler} and
 \c{-fileassoc}, with \c{-uninstall} to remove the entries again.
 
+\q{Command-line tools}: the checkbox \q{Add this KiTTY++ folder to the
+user PATH} puts the folder that holds \c{kitty.exe} - and with it
+\c{klink}, \c{kscp}, \c{ksftp}, \c{kageant} and \c{kittygen} - on your
+account's PATH, so a shell opened from then on finds them by name. The
+box shows the state of that PATH entry, not a setting of KiTTY's;
+unchecking removes exactly that entry. Shells already open keep the PATH
+they started with. A portable copy that is moved leaves the old entry
+behind: uncheck and check again from the new place.
+
 \S{kitty-cfg-external-tools} The Transfers & Tools panel
 
 KiTTY drives programs it does not contain: \i{WinSCP} for a graphical
@@ -1066,6 +1075,54 @@ flooding the shell. 0 switches the warning off. It counts characters,
 not lines, and judges only the size. It is one setting for every
 session; there is no per-session form of it.
 
+\S{kitty-cfg-host-keys} The Host keys panel
+
+Every SSH host key this KiTTY has accepted, one row per host, port and
+key type: the type and key size, the start of the SHA256 fingerprint,
+when the key was first seen and last written, and what the last
+\q{Verify} found. A host key belongs to a host and port, not to a
+session: every session that connects there uses the same stored key.
+The stamps exist from this version on; a key stored earlier shows
+\q{-} (in a folder store, the file's date stands in for \q{Last
+written}).
+
+The list is sorted by host, then port, then type. A click on the header
+row sorts by that column; a second click on the same column turns the
+order around.
+
+The box under the list shows the selected key in full: both
+fingerprints, both stamps with their time of day, the \c{klink} command
+that repeats the check from a shell (\k{plink-option-scan}), and the
+result of the last verification. The bar between the list and the box
+can be dragged: the box grows by what the list gives up, and the split
+stays where you put it while the program runs.
+
+\q{Verify} asks each selected host - every host when nothing is
+selected - for the key of the stored type, right now, and compares:
+\q{OK} when the host presents the stored key, \q{MISMATCH}, in red,
+when it presents a different one, \q{not offered} when the host no
+longer has a key of that type, \q{unreachable} when it did not answer.
+The connection stops before any login: nothing is sent but the key
+exchange, and a verification never changes the store. It runs in the
+background, one host after the other, through \c{klink.exe} beside
+\c{kitty.exe}, so the box stays usable. A MISMATCH means either that
+the server's key was changed on purpose - a reinstall - or that
+something sits between you and the server: find out which before you
+connect. When the change is expected, \q{Delete} the stored key and let
+the next connection ask afresh.
+
+\q{Copy} puts the selected rows on the clipboard, one line per key.
+\q{Delete} removes the selected keys after a confirmation; the next
+connection to such a host asks the first-contact question again.
+
+Taking a NEW key in - or replacing one after a reinstall - is done from
+the session's side: \q{Scan/Edit} on Connection > SSH > Host keys
+(\k{config-ssh-kitty-scan}), where a host's stored keys can be deleted too.
+
+The \q{Configure host CAs} button on a session's Host keys panel now
+brings you to \k{kitty-cfg-host-cas} here: certificate authorities, like
+host keys, belong to the installation.
+
 \S{kitty-cfg-workplace} The Workplace Proxy panel
 
 One switch that sends \e{every} connection through a chosen proxy,
@@ -1151,11 +1208,13 @@ has an old name is read through it, on an import and on an ordinary load. A pinn
 is moved onto the nearest monitor (\k{kitty-cfg-winpos}), so an old
 session cannot put a window out of reach.
 
-\S{kitty-cfg-migration-folders} The old KiTTY Folders leaf
+\S{kitty-cfg-migration-folders} The (old) KiTTY Folders leaf
 
-Imports sessions that live in \e{files}: a portable KiTTY on a stick, a
-copied \c{Sessions} directory, a colleague's KiTTY folder. Choose the
-folder and press \q{Scan}; the folder and its subfolders are searched
+Imports sessions that live in \e{files}, whether an old KiTTY or this
+one wrote them: a portable KiTTY on a stick, a copied \c{Sessions}
+directory, a colleague's KiTTY folder. Both file formats are read, and
+each format's password protection is handled (see \q{State} below).
+Choose the folder and press \q{Scan}; the folder and its subfolders are searched
 (eight levels deep, up to five thousand files - the result line says so
 if either limit stopped the search; hidden and system folders are not
 entered). Every session file found is listed with its full path.
