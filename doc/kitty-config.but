@@ -342,10 +342,12 @@ narrow.
 \H{kitty-cfg-remote-clipboard} The Remote clipboard panels
 
 A program on the far end can ask the terminal to put something on your
-\i{clipboard} (\i{OSC 52}), and can ask to read it back. That is
-genuinely useful over SSH - \c{tmux} and \c{neovim} copy this way - and
-it is also a remote program touching a local resource, so KiTTY makes
-both directions a policy rather than a fact.
+\i{clipboard} (\i{OSC 52}, or the kitty clipboard protocol \i{OSC 5522},
+which can also carry images and other content), and can ask to read it
+back. That is genuinely useful over SSH - \c{tmux} and \c{neovim} copy
+this way - and it is also a remote program touching a local resource, so
+KiTTY makes both directions a policy rather than a fact. The settings
+below cover both protocols alike.
 
 \S{kitty-cfg-osc52-writes} \q{Writes - host sets your clipboard}
 

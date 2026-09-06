@@ -88,11 +88,18 @@ static int osc52_state_changes;
 /* Captures the last sequence sent to the host, so the OSC 5522 tests can check
  * the wire format and not merely that something went out. */
 static char osc52_last_send[4096];
+static char osc52_all[262144];     /* every reply of the current feed, concatenated */
+static size_t osc52_all_len;
 static int osc52_last_len;
 
 void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len)
 {
     osc52_sends++;
+    if (osc52_all_len + len < sizeof(osc52_all) - 1) {
+        memcpy(osc52_all + osc52_all_len, data, len);
+        osc52_all_len += len;
+        osc52_all[osc52_all_len] = '\0';
+    }
     osc52_last_len = (int)(len < sizeof(osc52_last_send) - 1
                            ? len : sizeof(osc52_last_send) - 1);
     memcpy(osc52_last_send, data, osc52_last_len);
@@ -103,6 +110,7 @@ void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len)
  * the real one reports separately from "empty", because the read path treats
  * empty as a decision and refuses without prompting. */
 static bool stub_clip_busy = false;
+static void counters_reset(void);
 
 
 wchar_t *kitty_osc52_get_clipboard_ex(int *len, bool *unavailable)
@@ -130,6 +138,62 @@ wchar_t *kitty_osc52_get_clipboard_ex(int *len, bool *unavailable)
 wchar_t *kitty_osc52_get_clipboard(int *len)
 {
     return kitty_osc52_get_clipboard_ex(len, NULL);
+}
+
+/* The image on the stub clipboard, if any. */
+static const unsigned char *stub_png = NULL;
+static size_t stub_png_len = 0;
+
+unsigned char *kitty_osc52_get_clipboard_png(size_t *len, bool *unavailable)
+{
+    unsigned char *out;
+    if (unavailable) *unavailable = false;
+    *len = 0;
+    if (stub_clip_busy) {
+        if (unavailable) *unavailable = true;
+        return NULL;
+    }
+    if (!stub_png)
+        return NULL;
+    out = snewn(stub_png_len, unsigned char);
+    memcpy(out, stub_png, stub_png_len);
+    *len = stub_png_len;
+    return out;
+}
+
+bool kitty_osc52_clipboard_has_image(void) { return stub_png != NULL; }
+
+/* The OSC 5522 WRITE seam: what the terminal asked to have put on the clipboard,
+ * all formats of one transaction in one call. Recorded, never applied. */
+static int osc52_set_calls;
+static int osc52_set_nformats;
+static char osc52_set_mimes[1024];       /* the format names, comma-joined */
+static char osc52_set_text[4096];        /* the bytes of the FIRST format */
+static size_t osc52_set_text_len;
+static size_t osc52_set_first_len;       /* its full length, uncut */
+static bool osc52_set_fail;              /* models "the clipboard could not be set" */
+
+bool kitty_osc52_set_clipboard_formats(const KittyClipFormat *fmts, int n)
+{
+    int i;
+    osc52_set_calls++;
+    if (osc52_set_fail)
+        return false;
+    osc52_set_nformats = n;
+    osc52_set_mimes[0] = '\0';
+    for (i = 0; i < n; i++) {
+        if (i)
+            strcat(osc52_set_mimes, ",");
+        strncat(osc52_set_mimes, fmts[i].mime,
+                sizeof(osc52_set_mimes) - strlen(osc52_set_mimes) - 2);
+    }
+    osc52_set_first_len = n ? fmts[0].len : 0;
+    osc52_set_text_len = osc52_set_first_len < sizeof(osc52_set_text) - 1
+                       ? osc52_set_first_len : sizeof(osc52_set_text) - 1;
+    if (n)
+        memcpy(osc52_set_text, fmts[0].data, osc52_set_text_len);
+    osc52_set_text[osc52_set_text_len] = '\0';
+    return true;
 }
 
 bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
@@ -527,6 +591,13 @@ static void test_read_direction(Mock *mk)
  * ------------------------------------------------------------------------- */
 
 /* base64 of a plain string, for building request payloads. */
+static char *b64_bytes(const unsigned char *p, size_t n)
+{
+    strbuf *sb = strbuf_new();
+    base64_encode_bs(BinarySink_UPCAST(sb), make_ptrlen(p, n), 0);
+    return strbuf_to_str(sb);
+}
+
 static char *b64(const char *s)
 {
     strbuf *sb = strbuf_new();
@@ -542,14 +613,38 @@ static void feed_5522(Mock *mk, const char *meta, const char *plain_payload)
     char *p = plain_payload ? b64(plain_payload) : NULL;
     char *seq = p ? dupprintf("\033]5522;%s;%s\033\\", meta, p)
                   : dupprintf("\033]5522;%s\033\\", meta);
-    osc52_gets = 0;
-    osc52_sends = 0;
-    osc52_dialogs = 0;
-    osc52_last_send[0] = '\0';
+    counters_reset();
     term_data(mk->term, seq, strlen(seq));
     term_update(mk->term);
     sfree(seq);
     sfree(p);
+}
+
+/* Like feed_5522, but the payload goes on the wire AS GIVEN - for the base64
+ * strictness tests, whose whole point is what arrives - and the counters are
+ * NOT reset, so a multi-packet write transaction can be judged as a whole. */
+static void feed_5522_raw(Mock *mk, const char *meta, const char *raw_payload)
+{
+    char *seq = raw_payload ? dupprintf("\033]5522;%s;%s\033\\", meta, raw_payload)
+                            : dupprintf("\033]5522;%s\033\\", meta);
+    term_data(mk->term, seq, strlen(seq));
+    term_update(mk->term);
+    sfree(seq);
+}
+
+static void counters_reset(void)
+{
+    osc52_gets = 0;
+    osc52_sends = 0;
+    osc52_all_len = 0;
+    osc52_all[0] = '\0';
+    osc52_dialogs = 0;
+    osc52_last_send[0] = '\0';
+    osc52_set_calls = 0;
+    osc52_set_nformats = 0;
+    osc52_set_mimes[0] = '\0';
+    osc52_set_text[0] = '\0';
+    osc52_set_text_len = 0;
 }
 
 /* Did any reply contain this substring? Only the LAST is captured, so this is
@@ -630,14 +725,7 @@ static void test_osc5522(Mock *mk)
     feed_5522(mk, "type=read:loc=primary", "text/plain");
     expect_last(mk, "5522 primary selection", "status=ENOSYS");
 
-    /* The write direction is not built, and says so, so a program can fall back
-     * to OSC 52 rather than hang. */
-    read_reset(mk);
-    feed_5522(mk, "type=write", NULL);
-    expect_last(mk, "5522 write", "type=write:status=ENOSYS");
-    read_reset(mk);
-    feed_5522(mk, "type=walias", NULL);
-    expect_last(mk, "5522 walias", "type=walias:status=ENOSYS");
+    /* The write direction has its own tests: test_osc5522_write(). */
 
     /* A request with no type= gets NO reply. Every reply must carry a type=, so
      * answering one whose type we could not read would mean inventing it. */
@@ -699,83 +787,72 @@ static void test_osc5522(Mock *mk)
         fail("5522 one-off answer", "a one-off answer was remembered as an approval");
 
     /*
-     * --- base64 tolerance ---
+     * --- strict base64 on reads ---
      *
-     * These mirror the only part of kitty's own test suite that bears on the read
-     * path (kitty_tests/clipboard.py, which otherwise unit-tests their streaming
-     * decoder and the write direction we do not implement). What it establishes is
-     * that base64 PADDING IS OPTIONAL in practice, whatever the spec says about
-     * it being required - so anything of ours that compares or decodes base64 has
-     * to cope with both spellings.
+     * The specification's "Encoding of payloads" section (added upstream 2026-09):
+     * standard alphabet, padding REQUIRED, and a terminal must not silently drop
+     * invalid characters - line breaks included. An invalid READ is simply
+     * ignored: no reply, no prompt. These replace the earlier tolerance tests,
+     * which pinned the opposite (unpadded accepted) when kitty's decoder was the
+     * only guide; the spec has since said which of the two it means.
      */
-
-    /* An unpadded mime list still parses, so the request is still served.
-     * "text/plain" base64s to "dGV4dC9wbGFpbg==", and the unpadded spelling has
-     * to mean the same thing. */
     read_reset(mk);
     osc52_dialog_answer = true;
     osc52_dialog_grant = GRANT_ONCE;
-    {
-        char *seq = dupprintf("\033]5522;type=read;dGV4dC9wbGFpbg\033\\");
-        osc52_sends = 0; osc52_dialogs = 0; osc52_last_send[0] = '\0';
-        term_data(mk->term, seq, strlen(seq));
-        term_update(mk->term);
-        sfree(seq);
-        if (osc52_sends != 3)
-            fail("5522 unpadded mime list", "an unpadded type list was not served");
-    }
 
-    /*
-     * The same password padded and unpadded is the SAME password. Without this a
-     * client that pads on one request and not the next looks like a different
-     * program and gets prompted about again - which is the exact fatigue the
-     * password mechanism exists to remove.
-     */
+    /* unpadded type list ("text/plain" is dGV4dC9wbGFpbg==): ignored */
+    counters_reset();
+    feed_5522_raw(mk, "type=read", "dGV4dC9wbGFpbg");
+    if (osc52_sends != 0 || osc52_dialogs != 0)
+        fail("5522 unpadded read", "an unpadded type list was not ignored");
+
+    /* characters outside the alphabet: ignored, and nobody asked */
+    counters_reset();
+    feed_5522_raw(mk, "type=read", "!!!not-base64!!!");
+    if (osc52_sends != 0 || osc52_dialogs != 0)
+        fail("5522 malformed payload", "a malformed request was answered or prompted");
+
+    /* a line break inside the payload: the parser keeps it for 5522 (PuTTY
+     * aborts every other OSC on CR/LF) so the validator can refuse it */
+    counters_reset();
+    feed_5522_raw(mk, "type=read", "dGV4dC9w\nbGFpbg==");
+    if (osc52_sends != 0 || osc52_dialogs != 0)
+        fail("5522 newline in payload", "a payload with a line break was not ignored");
+    /* ...and the sequence was consumed whole: the next request works normally */
+    counters_reset();
+    feed_5522(mk, "type=read", "image/png");
+    if (osc52_sends != 2)
+        fail("5522 newline in payload", "the terminal did not recover after it");
+
+    /* an unpadded PASSWORD is not a password we compare: ignored. (The earlier
+     * padding-stripping compare is gone with it - two spellings can no longer
+     * both arrive, so there is nothing to normalise.) */
+    counters_reset();
+    feed_5522_raw(mk, "type=read:pw=cHc:name=bnZpbQ==", "dGV4dC9wbGFpbg==");
+    if (osc52_sends != 0 || osc52_dialogs != 0)
+        fail("5522 unpadded password", "a request with an unpadded password was not ignored");
+
+    /* padding alone is not base64 either */
+    counters_reset();
+    feed_5522_raw(mk, "type=read:pw==:name=bnZpbQ==", "dGV4dC9wbGFpbg==");
+    if (osc52_sends != 0 || osc52_dialogs != 0)
+        fail("5522 empty password", "an all-padding password was not ignored");
+
+    /* an invalid name: ignored */
+    counters_reset();
+    feed_5522_raw(mk, "type=read:pw=cHc=:name=bnZpb!==", "dGV4dC9wbGFpbg==");
+    if (osc52_sends != 0 || osc52_dialogs != 0)
+        fail("5522 invalid name", "a request with an invalid name was not ignored");
+
+    /* and the padded spelling, twice, is still the same program (approval by
+     * password is tested above; this pins that strictness did not break it) */
     read_reset(mk);
     osc52_dialog_answer = true;
     osc52_dialog_grant = GRANT_SESSION;
     feed_5522(mk, "type=read:pw=cHc=:name=bnZpbQ==", "text/plain");
-    if (osc52_dialogs != 1)
-        fail("5522 padding-insensitive password", "the first request did not ask");
-    feed_5522(mk, "type=read:pw=cHc:name=bnZpbQ==", "text/plain");
-    if (osc52_dialogs != 0)
-        fail("5522 padding-insensitive password",
-             "the same password unpadded was treated as a different program");
-
-    /*
-     * A "password" that is nothing but padding is not a password. Tested with a
-     * ONE-OFF answer on purpose: a session-wide answer would create the ordinary
-     * window-wide grant and serve the second request legitimately, which tells us
-     * nothing about whether an approval was recorded. With a one-off answer,
-     * nothing may be remembered by either mechanism, so the second request has to
-     * ask again.
-     */
-    read_reset(mk);
-    osc52_dialog_answer = true;
-    osc52_dialog_grant = GRANT_ONCE;
-    feed_5522(mk, "type=read:pw==:name=bnZpbQ==", "text/plain");
-    if (osc52_dialogs != 1)
-        fail("5522 empty password", "the first request did not ask");
-    feed_5522(mk, "type=read:pw==:name=bnZpbQ==", "text/plain");
-    if (osc52_dialogs != 1)
-        fail("5522 empty password", "an all-padding password became an approval");
-
-    /* Malformed base64 in the payload must fail CLOSED: the type list decodes to
-     * something that matches nothing, so no data is served and nobody is asked. */
-    read_reset(mk);
-    osc52_dialog_answer = true;
-    {
-        char *seq = dupprintf("\033]5522;type=read;!!!not-base64!!!\033\\");
-        osc52_sends = 0; osc52_dialogs = 0;
-        term_data(mk->term, seq, strlen(seq));
-        term_update(mk->term);
-        sfree(seq);
-        if (osc52_dialogs != 0)
-            fail("5522 malformed payload", "a malformed request prompted the user");
-        if (osc52_sends != 2)
-            fail("5522 malformed payload",
-                 "expected OK then DONE with no data for an unmatchable type list");
-    }
+    feed_5522(mk, "type=read:pw=cHc=:name=bnZpbQ==", "text/plain");
+    if (osc52_dialogs != 0 || osc52_sends != 3)
+        fail("5522 strict password compare", "the same padded password was not recognised");
 
     /* A large clipboard is chunked at the size the specification requires, so the
      * transaction is OK + ceil(n/4096) DATA packets + DONE. */
@@ -796,6 +873,387 @@ static void test_osc5522(Mock *mk)
         expect_last(mk, "5522 chunking", "status=DONE");
     }
     stub_clip = L"secret";
+
+    /*
+     * --- images: the read direction serves image/png ---
+     * A PNG on the clipboard goes out as it is; the type list names it; text
+     * and image in one request go out one after the other; a text request
+     * against an image-only clipboard is OK+DONE without a prompt.
+     */
+    {
+        static const unsigned char png[] = {
+            0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4, 5, 6 };
+        char *pngb64 = b64_bytes(png, sizeof(png));
+        stub_png = png;
+        stub_png_len = sizeof(png);
+
+        read_reset(mk);
+        osc52_dialog_answer = true;
+        osc52_dialog_grant = GRANT_ONCE;
+        feed_5522(mk, "type=read", "image/png");
+        if (osc52_dialogs != 1)
+            fail("5522 image read", "the user was not asked");
+        if (osc52_sends != 3)
+            fail("5522 image read", "expected OK, one DATA, DONE");
+        if (!strstr(osc52_all, "status=DATA:mime=aW1hZ2UvcG5n;"))
+            fail("5522 image read", "the DATA packet did not carry mime=image/png");
+        if (!strstr(osc52_all, pngb64))
+            fail("5522 image read", "the DATA packet did not carry the PNG bytes");
+
+        /* the type list names the image */
+        read_reset(mk);
+        feed_5522(mk, "type=read", ".");
+        {
+            char *want = b64("text/plain text/plain;charset=utf-8 image/png\n");
+            if (!strstr(osc52_all, want))
+                fail("5522 type list with image", "image/png missing from the type list");
+            sfree(want);
+        }
+
+        /* text and image in one request: OK, DATA text, DATA image, DONE */
+        read_reset(mk);
+        osc52_dialog_answer = true;
+        osc52_dialog_grant = GRANT_ONCE;
+        feed_5522(mk, "type=read", "text/plain image/png");
+        if (osc52_sends != 4)
+            fail("5522 text+image read", "expected OK, DATA text, DATA image, DONE");
+        if (osc52_dialogs != 1)
+            fail("5522 text+image read", "one request must be one prompt");
+
+        /* image-only clipboard: a text request is OK+DONE without a prompt, an
+         * image request is served */
+        read_reset(mk);              /* read_reset restores stub_clip: clear it AFTER */
+        stub_clip = NULL;
+        feed_5522(mk, "type=read", "text/plain");
+        if (osc52_sends != 2 || osc52_dialogs != 0)
+            fail("5522 text read, image-only clipboard", "expected OK+DONE and no prompt");
+        feed_5522(mk, "type=read", "image/png");
+        if (osc52_sends != 3 || osc52_dialogs != 1)
+            fail("5522 image read, image-only clipboard", "the image was not served");
+        /* the type list then names only the image */
+        feed_5522(mk, "type=read", ".");
+        {
+            char *want = b64("image/png\n");
+            if (!strstr(osc52_all, want))
+                fail("5522 type list, image only", "expected exactly image/png");
+            sfree(want);
+        }
+        /* and OSC 52, which carries text only, sends nothing for an image */
+        read_reset(mk);
+        stub_clip = NULL;
+        osc52_dialog_answer = true;
+        {
+            const char *seq = "\033]52;c;?\007";
+            counters_reset();
+            term_data(mk->term, seq, strlen(seq));
+            term_update(mk->term);
+            if (osc52_sends != 0 || osc52_dialogs != 0)
+                fail("OSC 52 read, image-only clipboard", "text-only protocol acted on an image");
+        }
+        stub_png = NULL;
+        stub_png_len = 0;
+        stub_clip = L"secret";
+        sfree(pngb64);
+    }
+}
+
+/* One OSC 5522 write of the given raw base64 chunks for text/plain, judged by its
+ * single reply. Mirrors kitty's `t(*payloads, expected_status)`. */
+static void w_chunks(Mock *mk, const char *what, const char *const *payloads,
+                     int n, const char *expected)
+{
+    int i;
+    char want[64];
+    counters_reset();
+    feed_5522_raw(mk, "type=write:id=w1", NULL);
+    for (i = 0; i < n; i++)
+        feed_5522_raw(mk, "type=wdata:mime=dGV4dC9wbGFpbg==", payloads[i]);
+    feed_5522_raw(mk, "type=wdata", NULL);
+    if (osc52_sends != 1)
+        fail(what, "expected exactly one reply for the whole transaction");
+    snprintf(want, sizeof(want), "type=write:status=%s:id=w1", expected);
+    expect_last(mk, what, want);
+    if (mk->term->osc5522_w_active)
+        fail(what, "the transaction was left open after its reply");
+}
+
+/* A write with one good chunk in, then one malformed packet: EINVAL against the
+ * write's id, and everything after it ignored. Mirrors kitty's
+ * test_clipboard_malformed_write_packets. */
+static void w_malformed(Mock *mk, const char *what, const char *meta,
+                        const char *raw_payload)
+{
+    counters_reset();
+    feed_5522_raw(mk, "type=write:id=w1", NULL);
+    feed_5522_raw(mk, "type=wdata:mime=dGV4dC9wbGFpbg==", "eHh4");     /* xxx */
+    counters_reset();
+    feed_5522_raw(mk, meta, raw_payload);
+    if (osc52_sends != 1)
+        fail(what, "expected exactly one reply to the malformed packet");
+    expect_last(mk, what, "type=write:status=EINVAL:id=w1");
+    if (mk->term->osc5522_w_active)
+        fail(what, "the transaction survived a malformed packet");
+    counters_reset();
+    feed_5522_raw(mk, "type=wdata:mime=dGV4dC9wbGFpbg==", "eHh4");
+    feed_5522_raw(mk, "type=wdata", NULL);
+    if (osc52_sends != 0 || osc52_set_calls != 0)
+        fail(what, "packets of the aborted write were not ignored");
+}
+
+/*
+ * The OSC 5522 WRITE direction. The protocol cases mirror kitty's own tests
+ * (kitty_tests/clipboard.py: write_too_much_data, invalid_base64,
+ * malformed_write_packets); the gate cases are ours.
+ */
+static void test_osc5522_write(Mock *mk)
+{
+    static const char *const M = "type=wdata:mime=dGV4dC9wbGFpbg==";  /* text/plain */
+
+    read_reset(mk);
+    mk->term->osc52_allowed = OSC52_CLIPBOARD_ALLOW;
+    conf_set_int(mk->term->conf, CONF_clipboard_writes_per_sec, 0);
+    mk->term->has_focus = true;
+    mk->term->osc5522_w_limit_override = 0;
+    osc52_set_fail = false;
+
+    /* The ordinary write: silent until the end, then ONE reply - DONE, status
+     * before id as kitty lays it out - and the clipboard set exactly once. */
+    counters_reset();
+    feed_5522_raw(mk, "type=write:id=w1", NULL);
+    feed_5522_raw(mk, M, "SGVsbG8=");                                /* Hello */
+    if (osc52_sends != 0)
+        fail("5522 write", "a write in progress was answered before its end");
+    feed_5522_raw(mk, "type=wdata", NULL);
+    if (osc52_sends != 1)
+        fail("5522 write", "expected exactly one reply, DONE");
+    expect_last(mk, "5522 write", "type=write:status=DONE:id=w1");
+    if (osc52_set_calls != 1 || osc52_set_nformats != 1)
+        fail("5522 write", "the clipboard was not set exactly once with one format");
+    if (strcmp(osc52_set_text, "Hello") || strcmp(osc52_set_mimes, "text/plain"))
+        fail("5522 write", "what landed was not the payload under its type");
+
+    /* Two types and an alias: all three reach the clipboard in ONE set, the alias
+     * carrying its target's bytes; no id sent, no id echoed. */
+    counters_reset();
+    feed_5522_raw(mk, "type=write", NULL);
+    feed_5522_raw(mk, M, "SGVsbG8=");
+    feed_5522_raw(mk, "type=wdata:mime=aW1hZ2UvcG5n", "iVBORw0KGgo=");  /* image/png */
+    feed_5522_raw(mk, "type=walias:mime=dGV4dC9wbGFpbg==", "dGV4dC9ydGY=");  /* text/rtf -> text/plain */
+    feed_5522_raw(mk, "type=wdata", NULL);
+    expect_last(mk, "5522 write, several types", "type=write:status=DONE");
+    if (strstr(osc52_last_send, "id="))
+        fail("5522 write, several types", "an id was echoed that was never sent");
+    if (osc52_set_calls != 1)
+        fail("5522 write, several types", "the formats did not reach the clipboard in one set");
+    if (strcmp(osc52_set_mimes, "text/plain,image/png,text/rtf")) {
+        printf("   formats set: %s\n", osc52_set_mimes);
+        fail("5522 write, several types", "the types and the alias did not all land");
+    }
+
+    /* Odd chunk boundaries are fine: padding is judged on the concatenation.
+     * "some data" is c29tZSBkYXRh, split as kitty splits it. */
+    {
+        static const char *const three[] = { "c29", "tZSB", "kYXRh" };
+        static const char *const one[] = { "c", "2", "9", "t", "Z", "S", "B", "k", "Y", "X", "R", "h" };
+        w_chunks(mk, "5522 odd chunk boundaries", three, 3, "DONE");
+        if (strcmp(osc52_set_text, "some data"))
+            fail("5522 odd chunk boundaries", "the chunks did not reassemble");
+        w_chunks(mk, "5522 one character per chunk", one, 12, "DONE");
+        if (strcmp(osc52_set_text, "some data"))
+            fail("5522 one character per chunk", "the chunks did not reassemble");
+    }
+
+    /* --- kitty: invalid base64 is REJECTED, not ignored --- */
+    {
+        static const char *const a[] = { "!!!" };
+        static const char *const b[] = { "SGVs!!!bG8=" };
+        static const char *const c[] = { "Z29vZA==", "SGVs!!!bG8=" };       /* good, then bad */
+        static const char *const d[] = { "\nZGF0YSB3aXRoIGEgbmV3bGluZQ==" }; /* a line break */
+        static const char *const e[] = { "SGVsbG8" };                      /* unpadded */
+        static const char *const f[] = { "Z29vZA==", "SGVsbG8" };
+        static const char *const g[] = { "SGVsbG8=", "QQ==" };             /* padded chunk, then more */
+        w_chunks(mk, "5522 invalid characters", a, 1, "EINVAL");
+        w_chunks(mk, "5522 invalid characters mid-chunk", b, 1, "EINVAL");
+        w_chunks(mk, "5522 invalid characters in a later chunk", c, 2, "EINVAL");
+        w_chunks(mk, "5522 line break in a chunk", d, 1, "EINVAL");
+        w_chunks(mk, "5522 unpadded data", e, 1, "EINVAL");
+        w_chunks(mk, "5522 unpadded final chunk", f, 2, "EINVAL");
+        if (osc52_set_calls != 0)
+            fail("5522 invalid base64", "a rejected write reached the clipboard anyway");
+        /* a chunk padded on its own, then more data for the same type, is
+         * accepted - kitty's own EFBIG test sends that shape, and clients built
+         * against a terminal that pads every read chunk pad their writes too */
+        w_chunks(mk, "5522 padded chunk then more", g, 2, "DONE");
+        if (strcmp(osc52_set_text, "HelloA"))
+            fail("5522 padded chunk then more", "the two padded chunks did not concatenate");
+    }
+
+    /* invalid base64 in a METADATA value */
+    counters_reset();
+    feed_5522_raw(mk, "type=write:id=w2", NULL);
+    feed_5522_raw(mk, "type=wdata:mime=dGV4dC9wbGFpbg=!", "eHh4");
+    if (osc52_sends != 1)
+        fail("5522 invalid metadata base64", "expected exactly one reply");
+    expect_last(mk, "5522 invalid metadata base64", "type=write:status=EINVAL:id=w2");
+    if (mk->term->osc5522_w_active)
+        fail("5522 invalid metadata base64", "the transaction was left open");
+
+    /* --- kitty: malformed write packets --- */
+    w_malformed(mk, "5522 alias not base64", "type=walias:mime=dGV4dC9wbGFpbg==", "AAA");
+    w_malformed(mk, "5522 alias not UTF-8", "type=walias:mime=dGV4dC9wbGFpbg==", "/w==");
+    w_malformed(mk, "5522 alias without a type", "type=walias", "dGV4dC9ydGY=");
+    w_malformed(mk, "5522 alias type not base64", "type=walias:mime=AAA", "dGV4dC9ydGY=");
+    w_malformed(mk, "5522 data type not base64", "type=wdata:mime=AAA", "eHh4");
+    w_malformed(mk, "5522 data without a type", "type=wdata", "eHh4");
+
+    /* a malformed READ must not abort the write, and gets no reply itself */
+    counters_reset();
+    feed_5522_raw(mk, "type=write:id=w2", NULL);
+    feed_5522_raw(mk, "type=read:id=r1", "AAA");
+    if (osc52_sends != 0)
+        fail("5522 malformed read during a write", "the malformed read was answered");
+    if (!mk->term->osc5522_w_active)
+        fail("5522 malformed read during a write", "the write was aborted by it");
+    feed_5522_raw(mk, "type=wdata", NULL);
+    expect_last(mk, "5522 malformed read during a write", "type=write:status=DONE:id=w2");
+
+    /* --- kitty: too much data is EFBIG, incrementally, and the rest ignored --- */
+    mk->term->osc5522_w_limit_override = 16;
+    counters_reset();
+    feed_5522_raw(mk, "type=write", NULL);
+    feed_5522_raw(mk, M, "YWFhYWFhYWFhYWFhYWFhYQ==");                  /* 16 x a */
+    if (osc52_sends != 0 || !mk->term->osc5522_w_active)
+        fail("5522 EFBIG", "a write within the limit was answered or dropped");
+    feed_5522_raw(mk, M, "YWFhYQ==");                                  /* 4 more */
+    if (osc52_sends != 1)
+        fail("5522 EFBIG", "expected exactly one reply at the moment the limit passed");
+    expect_last(mk, "5522 EFBIG", "type=write:status=EFBIG");
+    if (mk->term->osc5522_w_active)
+        fail("5522 EFBIG", "the transaction survived EFBIG");
+    counters_reset();
+    feed_5522_raw(mk, M, "YWFhYQ==");
+    feed_5522_raw(mk, "type=wdata", NULL);
+    if (osc52_sends != 0 || osc52_set_calls != 0)
+        fail("5522 EFBIG", "packets of the aborted write were not ignored");
+    mk->term->osc5522_w_limit_override = 0;
+
+    /* The 64 MB floor: ClipboardMaxMB at its smallest (1 MB) must NOT refuse a
+     * 5522 write above 1 MB - the spec makes 64 MB the least a terminal may
+     * accept. Just over 1 MB of 'A's, in 4 KB chunks as the protocol prescribes.
+     * (The setting still bounds OSC 52 exactly as before: test_far2l_ceiling and
+     * the 256 KB case above cover that.) */
+    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 1);
+    {
+        const size_t total_quads = 349526;        /* 1048578 bytes > 1 MB */
+        const size_t per_packet = 1365;           /* 4095 bytes a chunk */
+        char *chunk = snewn(per_packet * 4 + 1, char);
+        size_t sent = 0;
+        counters_reset();
+        feed_5522_raw(mk, "type=write:id=big", NULL);
+        while (sent < total_quads) {
+            size_t n = total_quads - sent;
+            size_t i;
+            if (n > per_packet)
+                n = per_packet;
+            for (i = 0; i < n; i++)
+                memcpy(chunk + i * 4, "QUFB", 4);
+            chunk[n * 4] = '\0';
+            feed_5522_raw(mk, M, chunk);
+            sent += n;
+        }
+        feed_5522_raw(mk, "type=wdata", NULL);
+        sfree(chunk);
+        if (osc52_sends != 1)
+            fail("5522 64 MB floor", "expected exactly one reply");
+        expect_last(mk, "5522 64 MB floor", "type=write:status=DONE:id=big");
+        if (osc52_set_calls != 1 || osc52_set_first_len != total_quads * 3)
+            fail("5522 64 MB floor", "a 1 MB write was refused or cut although the spec floor is 64 MB");
+    }
+    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 16);
+
+    /* --- the gate: it is the OSC 52 write gate, answered out loud --- */
+
+    /* Deny: EPERM at the START, and the rest of the transaction ignored */
+    mk->term->osc52_allowed = OSC52_CLIPBOARD_DENY;
+    counters_reset();
+    feed_5522_raw(mk, "type=write:id=w3", NULL);
+    if (osc52_sends != 1)
+        fail("5522 write when set to Deny", "expected an immediate refusal");
+    expect_last(mk, "5522 write when set to Deny", "type=write:status=EPERM:id=w3");
+    counters_reset();
+    feed_5522_raw(mk, M, "SGVsbG8=");
+    feed_5522_raw(mk, "type=wdata", NULL);
+    if (osc52_sends != 0 || osc52_set_calls != 0)
+        fail("5522 write when set to Deny", "a refused write's packets were not ignored");
+    mk->term->osc52_allowed = OSC52_CLIPBOARD_ALLOW;
+
+    /* no focus: EPERM */
+    mk->term->has_focus = false;
+    counters_reset();
+    feed_5522_raw(mk, "type=write", NULL);
+    expect_last(mk, "5522 write with no focus", "type=write:status=EPERM");
+    mk->term->has_focus = true;
+
+    /* the rate cap: the second write within the second is EBUSY */
+    conf_set_int(mk->term->conf, CONF_clipboard_writes_per_sec, 1);
+    mk->term->clip_write_second = 0;
+    mk->term->clip_write_count = 0;
+    counters_reset();
+    feed_5522_raw(mk, "type=write:id=a", NULL);
+    feed_5522_raw(mk, M, "SGVsbG8=");
+    feed_5522_raw(mk, "type=wdata", NULL);
+    expect_last(mk, "5522 write rate cap", "type=write:status=DONE:id=a");
+    counters_reset();
+    feed_5522_raw(mk, "type=write:id=b", NULL);
+    expect_last(mk, "5522 write rate cap", "type=write:status=EBUSY:id=b");
+    conf_set_int(mk->term->conf, CONF_clipboard_writes_per_sec, 0);
+
+    /* primary selection: ENOSYS */
+    counters_reset();
+    feed_5522_raw(mk, "type=write:loc=primary:id=p", NULL);
+    expect_last(mk, "5522 write to primary", "type=write:status=ENOSYS:id=p");
+
+    /* a packet that does not fit the per-sequence ceiling is EINVAL */
+    {
+        char *huge = snewn(OSC_STR_MAX_5522 + 1024, char);
+        memset(huge, 'A', OSC_STR_MAX_5522 + 1000);
+        huge[OSC_STR_MAX_5522 + 1000] = '\0';
+        counters_reset();
+        feed_5522_raw(mk, "type=write:id=o", NULL);
+        feed_5522_raw(mk, M, huge);
+        expect_last(mk, "5522 oversize packet", "type=write:status=EINVAL:id=o");
+        sfree(huge);
+    }
+
+    /* the clipboard could not be set: EIO, and the host is told */
+    osc52_set_fail = true;
+    counters_reset();
+    feed_5522_raw(mk, "type=write:id=e", NULL);
+    feed_5522_raw(mk, M, "SGVsbG8=");
+    feed_5522_raw(mk, "type=wdata", NULL);
+    expect_last(mk, "5522 clipboard failure", "type=write:status=EIO:id=e");
+    osc52_set_fail = false;
+
+    /* a write that carried nothing completes (DONE) and sets nothing - the same
+     * rule OSC 52 has for an empty payload */
+    counters_reset();
+    feed_5522_raw(mk, "type=write:id=n", NULL);
+    feed_5522_raw(mk, "type=wdata", NULL);
+    expect_last(mk, "5522 empty write", "type=write:status=DONE:id=n");
+    if (osc52_set_calls != 0)
+        fail("5522 empty write", "an empty write touched the clipboard");
+
+    /* a new type=write replaces one in flight, silently */
+    counters_reset();
+    feed_5522_raw(mk, "type=write:id=first", NULL);
+    feed_5522_raw(mk, M, "SGVsbG8=");
+    feed_5522_raw(mk, "type=write:id=second", NULL);
+    if (osc52_sends != 0)
+        fail("5522 write replaces write", "the replaced write was answered");
+    feed_5522_raw(mk, "type=wdata", NULL);
+    expect_last(mk, "5522 write replaces write", "type=write:status=DONE:id=second");
+    if (osc52_set_calls != 0)
+        fail("5522 write replaces write", "the replaced write's data was set anyway");
 }
 
 /*
@@ -1232,6 +1690,7 @@ int main(void)
     /* --- the read permission engine, and the focus rule on writes --- */
     test_read_direction(mk);
     test_osc5522(mk);
+    test_osc5522_write(mk);
     test_write_focus_rule(mk);
     test_clipboard_write_rate(mk);
     test_far2l_ceiling(mk);

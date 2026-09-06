@@ -4,6 +4,26 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some reall
 
 ## 0.85.1.8-beta — unreleased
 
+### New
+
+- **The kitty clipboard protocol (OSC 5522) now writes as well as reads, and
+  carries images both ways.** A program on the far end can put text, an
+  image or any other content type on your clipboard in one transaction; text
+  arrives as ordinary clipboard text, a PNG as the "PNG" format image editors
+  and browsers paste, everything else under its own type name. A program can
+  also read an image off your clipboard: a PNG placed there by a browser or
+  editor goes out as it is, a screenshot is encoded to PNG first, and the
+  clipboard's type list names image/png when one is there. Reads and writes
+  use the OSC 52 permissions (Deny, Ask, Allow, the focus rule, the read
+  dialog), refusals are answered with the protocol's error codes instead of
+  silence, and a write may be up to 64 MB, the least the specification
+  allows, whatever the clipboard size limit is set to for OSC 52. Base64 in
+  OSC 5522 is checked strictly, as the updated specification requires: a
+  request with invalid characters or missing padding is refused (a write
+  with EINVAL, a read without a reply) rather than decoded with holes in it.
+  OSC 52 is unchanged. Verified end to end against kitty's own `kitten
+  clipboard` client.
+
 ### Changed
 
 - **The Window settings are regrouped.** "Close window on exit" and "Save

@@ -2545,8 +2545,10 @@
 #define KT_CLIP_WHAT_OSC52                           "A remote clipboard write (OSC 52)"
 #define KT_CLIP_WHAT_OSC5522                         "A clipboard request (OSC 5522)"
 #define KT_CLIP_FAR2L_ALLOW_Q                        "Allow far2l clipboard sync?"
-#define KT_CLIP_WRITE_ALLOW_Q                        "The server wants to put text on your clipboard.\n\n" \
-        "Allow it for the rest of this session?"
+/* Shared by OSC 52 and OSC 5522 writes. Wording follows Ghostty's clipboard
+ * dialog ("An application is attempting to write to the clipboard."). */
+#define KT_CLIP_WRITE_ALLOW_Q                        "An application is attempting to write to the clipboard.\n\n" \
+        "OK allows similar requests for the rest of this session."
 /* balloon notices */
 #define KT_CLIP_NOTICE_TOO_MUCH                      "Too much data arrived for the clipboard in one go, so it " \
         "was not copied. Nothing was pasted in part.\n" \
@@ -2578,6 +2580,16 @@
 #define KT_CLIP_LOG_WRITE_EMPTY                      "Remote clipboard write ignored: empty payload"
 #define KT_CLIP_LOG_WRITE_NO_FOCUS                   "Remote clipboard write ignored: " \
         "the window does not have focus"
+/* OSC 5522 writes. Phrasing follows kitty's own log lines ("Malformed OSC
+ * 5522 ...", "... aborting the write request"); the protocol status code sent
+ * to the application is appended in brackets. */
+#define KT_CLIP_LOG_WRITE_5522_INVALID               "Malformed OSC 5522 write request, aborting (EINVAL)"
+#define KT_CLIP_LOG_WRITE_5522_TOO_BIG               "Clipboard write request exceeds the size limit (%d MB), " \
+        "aborting (EFBIG)"
+#define KT_CLIP_LOG_WRITE_5522_TOO_BIG_TYPES         "Clipboard write request has too many MIME types or " \
+        "aliases, aborting (EFBIG)"
+#define KT_CLIP_LOG_WRITE_5522_FAILED                "Clipboard write failed: could not open the clipboard (EIO)"
+#define KT_CLIP_LOG_WRITE_5522_SET                   "Clipboard set by OSC 5522 write request: %s, %lu bytes"
 #define KT_CLIP_LOG_READ_REFUSED_MORE                "Clipboard read refused (%s); %d further " \
         "request%s also refused"
 #define KT_CLIP_LOG_READ_REFUSED                     "Clipboard read refused (%s)"
@@ -2585,7 +2597,11 @@
         "(%d character%s; %d read%s served in this window)"
 #define KT_CLIP_LOG_READ_SENT_5522                   "Clipboard sent to the server on request over OSC 5522 " \
         "(%d character%s%s%s; %d read%s served in this window)"
+#define KT_CLIP_LOG_READ_SENT_5522_IMAGE             "Clipboard image sent to the server on request over OSC 5522 " \
+        "(PNG, %lu bytes%s%s; %d read%s served in this window)"
 #define KT_CLIP_LOG_PROGRAM_CALLS_ITSELF             ", program calls itself "
+/* the read dialog's preview line when the clipboard holds an image, not text */
+#define KT_CLIP_PREVIEW_IMAGE                        "[PNG image, %lu bytes]"
 #define KT_CLIP_LOG_APPROVAL_WITHDRAWN               "Clipboard approval withdrawn: the limit on " \
         "reads served in this window was reached"
 #define KT_CLIP_LOG_PERMISSION_WITHDRAWN             "Clipboard permission withdrawn: the limit on " \

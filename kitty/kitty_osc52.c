@@ -22,6 +22,7 @@
 #include "putty-rc.h"          /* dialog resource ids (kitty_rc_additions.h) */
 
 #include <windows.h>
+#include <objbase.h>          /* IStream for the GDI+ PNG encoder */
 
 #include "kitty.h"
 #include "kitty_workplace.h"   /* the frame's resting state while the mode is on */
@@ -103,6 +104,263 @@ wchar_t *kitty_osc52_get_clipboard_ex(int *len, bool *unavailable)
 wchar_t *kitty_osc52_get_clipboard(int *len)
 {
     return kitty_osc52_get_clipboard_ex(len, NULL);
+}
+
+/*
+ * ---- the clipboard as an image, for OSC 5522 reads of image/png ----
+ *
+ * Browsers and image editors put a "PNG" format on the clipboard beside the
+ * bitmap (Chrome, Firefox, Paint.NET, GIMP; kitty's own write does too, under
+ * "PNG" and "image/png"). Those bytes go out as they are. A screenshot
+ * (Print Screen, Snipping Tool) is a bitmap only, so it is encoded to PNG with
+ * GDI+, loaded on demand: one conversion is not worth an import an old Windows
+ * has to satisfy in the loader.
+ */
+bool kitty_osc52_clipboard_has_image(void)
+{
+    return IsClipboardFormatAvailable(RegisterClipboardFormatW(L"PNG")) ||
+           IsClipboardFormatAvailable(RegisterClipboardFormatW(L"image/png")) ||
+           IsClipboardFormatAvailable(CF_BITMAP);
+}
+
+/* The length of the PNG inside a possibly larger allocation: walk the chunks to
+ * IEND. GlobalSize is the block, which is rounded up, and a PNG with trailing
+ * garbage is a PNG some decoders refuse. */
+static size_t kitty_png_length(const unsigned char *p, size_t n)
+{
+    static const unsigned char sig[8] = { 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a };
+    size_t off = 8;
+    if (n < 8 || memcmp(p, sig, 8))
+        return 0;
+    while (off + 12 <= n) {
+        size_t len = ((size_t)p[off] << 24) | ((size_t)p[off + 1] << 16) |
+                     ((size_t)p[off + 2] << 8) | p[off + 3];
+        bool iend = !memcmp(p + off + 4, "IEND", 4);
+        if (len > n - off - 12)
+            return 0;
+        off += 12 + len;
+        if (iend)
+            return off;
+    }
+    return 0;
+}
+
+typedef struct KtGdiplusStartupInput {
+    UINT32 GdiplusVersion;
+    void *DebugEventCallback;
+    BOOL SuppressBackgroundThread;
+    BOOL SuppressExternalCodecs;
+} KtGdiplusStartupInput;
+typedef int (WINAPI *kt_GdiplusStartup)(ULONG_PTR *, const KtGdiplusStartupInput *, void *);
+typedef void (WINAPI *kt_GdiplusShutdown)(ULONG_PTR);
+typedef int (WINAPI *kt_GdipCreateBitmapFromHBITMAP)(HBITMAP, HPALETTE, void **);
+typedef int (WINAPI *kt_GdipSaveImageToStream)(void *, IStream *, const CLSID *, const void *);
+typedef int (WINAPI *kt_GdipDisposeImage)(void *);
+
+static unsigned char *kitty_bitmap_to_png(HBITMAP hbm, size_t *len)
+{
+    static const CLSID png_encoder = { 0x557CF406, 0x1A04, 0x11D3,
+        { 0x9A, 0x73, 0x00, 0x00, 0xF8, 0x1E, 0xF3, 0x2E } };
+    HMODULE gp = LoadLibraryW(L"gdiplus.dll");
+    kt_GdiplusStartup startup;
+    kt_GdiplusShutdown shutdown;
+    kt_GdipCreateBitmapFromHBITMAP from_hbitmap;
+    kt_GdipSaveImageToStream save;
+    kt_GdipDisposeImage dispose;
+    KtGdiplusStartupInput in = { 1, NULL, FALSE, FALSE };
+    ULONG_PTR token = 0;
+    void *bmp = NULL;
+    IStream *stm = NULL;
+    unsigned char *out = NULL;
+
+    *len = 0;
+    if (!gp)
+        return NULL;
+    startup = (kt_GdiplusStartup)GetProcAddress(gp, "GdiplusStartup");
+    shutdown = (kt_GdiplusShutdown)GetProcAddress(gp, "GdiplusShutdown");
+    from_hbitmap = (kt_GdipCreateBitmapFromHBITMAP)GetProcAddress(gp, "GdipCreateBitmapFromHBITMAP");
+    save = (kt_GdipSaveImageToStream)GetProcAddress(gp, "GdipSaveImageToStream");
+    dispose = (kt_GdipDisposeImage)GetProcAddress(gp, "GdipDisposeImage");
+    if (startup && shutdown && from_hbitmap && save && dispose &&
+        startup(&token, &in, NULL) == 0) {
+        if (from_hbitmap(hbm, NULL, &bmp) == 0 && bmp) {
+            if (CreateStreamOnHGlobal(NULL, TRUE, &stm) == S_OK && stm) {
+                if (save(bmp, stm, &png_encoder, NULL) == 0) {
+                    HGLOBAL hg = NULL;
+                    STATSTG st;
+                    if (stm->lpVtbl->Stat(stm, &st, STATFLAG_NONAME) == S_OK &&
+                        GetHGlobalFromStream(stm, &hg) == S_OK && hg) {
+                        size_t n = (size_t)st.cbSize.QuadPart;
+                        const void *p = GlobalLock(hg);
+                        if (p && n) {
+                            out = snewn(n, unsigned char);
+                            memcpy(out, p, n);
+                            *len = n;
+                            GlobalUnlock(hg);
+                        }
+                    }
+                }
+                stm->lpVtbl->Release(stm);
+            }
+            dispose(bmp);
+        }
+        shutdown(token);
+    }
+    FreeLibrary(gp);
+    return out;
+}
+
+unsigned char *kitty_osc52_get_clipboard_png(size_t *len, bool *unavailable)
+{
+    UINT fmts[2];
+    unsigned char *out = NULL;
+    int attempt, i;
+
+    *len = 0;
+    if (unavailable)
+        *unavailable = false;
+    fmts[0] = RegisterClipboardFormatW(L"PNG");
+    fmts[1] = RegisterClipboardFormatW(L"image/png");
+    if (!IsClipboardFormatAvailable(fmts[0]) && !IsClipboardFormatAvailable(fmts[1]) &&
+        !IsClipboardFormatAvailable(CF_BITMAP))
+        return NULL;                      /* no image: nothing to serve */
+    for (attempt = 0; attempt < 10; attempt++) {
+        if (OpenClipboard(NULL))
+            break;
+        Sleep(20);
+    }
+    if (attempt >= 10) {
+        if (unavailable)
+            *unavailable = true;
+        return NULL;
+    }
+    for (i = 0; i < 2 && !out; i++) {
+        HANDLE h = GetClipboardData(fmts[i]);
+        const unsigned char *p;
+        if (h && (p = GlobalLock(h)) != NULL) {
+            size_t n = kitty_png_length(p, GlobalSize(h));
+            if (n) {
+                out = snewn(n, unsigned char);
+                memcpy(out, p, n);
+                *len = n;
+            }
+            GlobalUnlock(h);
+        }
+    }
+    if (!out) {
+        /* CF_BITMAP is synthesised from CF_DIB by Windows, so a screenshot is
+         * reachable this way whichever of the two the producer put there. The
+         * handle is valid only while the clipboard is open, hence the encode
+         * happens here. */
+        HBITMAP hbm = (HBITMAP)GetClipboardData(CF_BITMAP);
+        if (hbm)
+            out = kitty_bitmap_to_png(hbm, len);
+    }
+    CloseClipboard();
+    return out;
+}
+
+/*
+ * OSC 5522 write: every format of one transaction in ONE clipboard open. Two opens
+ * would not do - EmptyClipboard() on the second wipes what the first set, so text
+ * and image would never be on the clipboard together.
+ *
+ * The MIME-to-Windows mapping: text/plain (with or without a charset parameter)
+ * becomes CF_UNICODETEXT, which is what every Windows program pastes; image/png
+ * is also offered as the "PNG" format, the name browsers and image editors
+ * register for exactly these bytes; every other type becomes a registered format
+ * under its own MIME name, so a program that knows the name takes the bytes and
+ * one that does not sees nothing. Windows synthesises CF_TEXT from
+ * CF_UNICODETEXT on its own.
+ *
+ * OpenClipboard is retried (another program is mid-copy about one time in eight
+ * under test - see kitty_osc52_get_clipboard_ex); a failure after that is EIO to
+ * the host, never a silent nothing.
+ */
+static HGLOBAL kitty_clip_hglobal(const void *data, size_t len)
+{
+    HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, len ? len : 1);
+    void *p;
+    if (!h)
+        return NULL;
+    if (!(p = GlobalLock(h))) {
+        GlobalFree(h);
+        return NULL;
+    }
+    if (len)
+        memcpy(p, data, len);
+    GlobalUnlock(h);
+    return h;
+}
+
+static bool kitty_clip_set(UINT fmt, HGLOBAL h)
+{
+    if (!h)
+        return false;
+    if (!SetClipboardData(fmt, h)) {
+        GlobalFree(h);
+        return false;
+    }
+    return true;                        /* the clipboard owns it now */
+}
+
+bool kitty_osc52_set_clipboard_formats(const KittyClipFormat *fmts, int n)
+{
+    int attempt, i, set = 0;
+
+    for (attempt = 0; attempt < 10; attempt++) {
+        if (OpenClipboard(NULL))
+            break;
+        Sleep(20);
+    }
+    if (attempt >= 10)
+        return false;
+    if (!EmptyClipboard()) {
+        CloseClipboard();
+        return false;
+    }
+    for (i = 0; i < n; i++) {
+        const char *mime = fmts[i].mime;
+        if (!strncmp(mime, "text/plain", 10) && (mime[10] == '\0' || mime[10] == ';')) {
+            /* UTF-8 in (the protocol's encoding for text), UTF-16 out, with the
+             * terminating NUL the clipboard convention wants */
+            int cnt = MultiByteToWideChar(CP_UTF8, 0, (LPCCH)fmts[i].data,
+                                          (int)fmts[i].len, NULL, 0);
+            HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, ((size_t)cnt + 1) * sizeof(wchar_t));
+            wchar_t *w;
+            if (h && (w = GlobalLock(h)) != NULL) {
+                if (cnt > 0)
+                    MultiByteToWideChar(CP_UTF8, 0, (LPCCH)fmts[i].data,
+                                        (int)fmts[i].len, w, cnt);
+                w[cnt] = L'\0';
+                GlobalUnlock(h);
+                if (kitty_clip_set(CF_UNICODETEXT, h))
+                    set++;
+            } else if (h) {
+                GlobalFree(h);
+            }
+        } else {
+            /* the format is named by the MIME type itself; names are UTF-8 by
+             * the protocol, and the W variant takes them without a code page */
+            int cnt = MultiByteToWideChar(CP_UTF8, 0, mime, -1, NULL, 0);
+            wchar_t *wname = cnt > 0 ? snewn(cnt, wchar_t) : NULL;
+            UINT fmt = 0;
+            if (wname) {
+                MultiByteToWideChar(CP_UTF8, 0, mime, -1, wname, cnt);
+                fmt = RegisterClipboardFormatW(wname);
+                sfree(wname);
+            }
+            if (fmt && kitty_clip_set(fmt, kitty_clip_hglobal(fmts[i].data, fmts[i].len)))
+                set++;
+            if (!strcmp(mime, "image/png")) {
+                UINT png = RegisterClipboardFormatW(L"PNG");
+                if (png && kitty_clip_set(png, kitty_clip_hglobal(fmts[i].data, fmts[i].len)))
+                    set++;
+            }
+        }
+    }
+    CloseClipboard();
+    return set > 0;
 }
 
 /*

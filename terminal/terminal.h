@@ -82,6 +82,15 @@ typedef enum {
     OSCLIKE_SOS,
 } OscType;
 
+/* One clipboard format of an OSC 5522 write, as handed to the platform seam
+ * kitty_osc52_set_clipboard_formats(): the MIME type names the format, the bytes
+ * are what the host sent for it. */
+typedef struct KittyClipFormat {
+    const char *mime;
+    const void *data;
+    size_t len;
+} KittyClipFormat;
+
 struct terminal_tag {
 
     int compatibility_level;
@@ -213,8 +222,14 @@ struct terminal_tag {
 /* OSC 5522 chunks at 4 KB before base64, so no single sequence of it is ever
  * large - it is the transaction that adds up, not the packet. 16 KB covers a full
  * chunk (5462 bytes once base64'd) plus its metadata several times over, and still
- * refuses anything absurd. */
+ * refuses anything absurd. A write packet that does not fit is a protocol
+ * violation and is answered EINVAL, not a buffer problem. */
 #define OSC_STR_MAX_5522 (16 * 1024)
+/* The spec's floor for a WRITE transaction: a terminal "must accept at least
+ * 64MB of data" before it may answer EFBIG. The user's ClipboardMaxMB still
+ * applies to OSC 52 and far2l unchanged; a 5522 write gets the larger of the two,
+ * because a setting must not make us non-compliant. */
+#define OSC5522_WRITE_MIN_MB 64
 /*
  * The clipboard payload ceiling is a SETTING (ClipboardMaxMB, default 64 MB),
  * shared by OSC 52 and far2l - see conf.h, and clip_ceiling_bytes() in terminal.c,
@@ -321,6 +336,29 @@ struct terminal_tag {
     char *osc5522_pw_name[OSC5522_MAX_APPROVALS];        /* the claimed name */
     unsigned long osc5522_pw_until[OSC5522_MAX_APPROVALS];  /* 0 = rest of session */
     int osc5522_pw_count;
+
+    /* KiTTY OSC 5522 WRITE transaction - the host putting data on the clipboard:
+     * type=write, then wdata chunks per MIME type, then an empty wdata. It arrives
+     * over many sequences, so its state lives here between them. Nothing here
+     * means "failed": an error resets the transaction, and packets that arrive
+     * with no transaction open are ignored, which is the spec's rule for the rest
+     * of a failed write. Unconditional storage, same ODR reason as above. */
+#define OSC5522_WRITE_MAX_TYPES 64    /* distinct MIME types in one write */
+#define OSC5522_WRITE_MAX_ALIASES 64
+    bool osc5522_w_active;
+    char osc5522_w_id[48];            /* from the type=write packet; "" if none */
+    size_t osc5522_w_bytes;           /* decoded bytes so far, all types together */
+    size_t osc5522_w_limit_override;  /* tests only: 0 = the real limit */
+    int osc5522_w_ntypes;
+    struct {
+        char *mime;
+        strbuf *data;                 /* decoded bytes */
+        char carry[4];                /* base64 characters not yet forming a quad */
+        int carry_len;
+    } osc5522_w_type[OSC5522_WRITE_MAX_TYPES];
+    int osc5522_w_naliases;
+    char *osc5522_w_alias[OSC5522_WRITE_MAX_ALIASES];         /* the extra name */
+    char *osc5522_w_alias_target[OSC5522_WRITE_MAX_ALIASES];  /* the type it names */
 
     /* KiTTY: accounting for "a clipboard payload was too big and was dropped",
      * shared by OSC 52, OSC 5522 and far2l so all three report it the same way.

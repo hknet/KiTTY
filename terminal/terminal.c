@@ -43,6 +43,16 @@ wchar_t *kitty_osc52_get_clipboard(int *len);
 /* ...and the variant that distinguishes "empty" from "somebody else has it
  * open", because only one of those is an answer. */
 wchar_t *kitty_osc52_get_clipboard_ex(int *len, bool *unavailable);
+/* The clipboard as PNG bytes: the "PNG" / "image/png" formats as they are, or a
+ * bitmap encoded to PNG. NULL when there is no image. Caller frees. */
+unsigned char *kitty_osc52_get_clipboard_png(size_t *len, bool *unavailable);
+/* Is there an image on the clipboard at all? For the type list; no data moves. */
+bool kitty_osc52_clipboard_has_image(void);
+/* OSC 5522 write: put every format of one transaction on the clipboard in ONE
+ * open/empty/set/close. text/plain becomes CF_UNICODETEXT, anything else a
+ * registered format named by its MIME type. False if the clipboard could not be
+ * set, which the caller reports as EIO. */
+bool kitty_osc52_set_clipboard_formats(const KittyClipFormat *fmts, int n);
 /* Write "always deny for this host" into the saved session. Returns false if
  * there is no saved session to write it into, in which case the caller tells the
  * user rather than inventing a hidden host list behind their back. */
@@ -80,6 +90,9 @@ static void clip_write_throttled(Terminal *term);
 /* "The host just touched the clipboard" - lights the transient activity marker.
  * Declared here because far2l's set path sits earlier in the file. */
 static void clip_note_activity(Terminal *term, int dir);
+/* Drop an OSC 5522 write transaction, wiping its data. Declared here because
+ * term_free() sits earlier in the file than the OSC 5522 code. */
+static void osc5522_write_reset(Terminal *term);
 #endif
 #ifdef MOD_FAR2L
 #include "cdecode.h"
@@ -2340,6 +2353,7 @@ void term_free(Terminal *term)
         }
         sfree(term->osc5522_pw_name[i]);
     }
+    osc5522_write_reset(term);
 #endif
     strbuf_free(term->answerback);
 
@@ -4256,16 +4270,69 @@ static void osc5522_pw_remember(Terminal *term, const char *pw, const char *name
  * pw is the one-time password that goes with it. Together they are what makes
  * "do not ask me about this program again" possible at all.
  */
-static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
-                            wchar_t **out_clip, int *out_len, const char **err)
+/* What a read asks for, and what it gets. OSC 52 asks for text only; OSC 5522
+ * names MIME types, of which text/plain and image/png are the ones served. */
+typedef struct ClipReadWant {
+    bool text;
+    bool image;
+} ClipReadWant;
+typedef struct ClipReadData {
+    wchar_t *text;
+    int text_len;
+    unsigned char *png;
+    size_t png_len;
+} ClipReadData;
+
+static void clip_read_free(ClipReadData *d)
 {
-    wchar_t *clip;
+    if (d->text) {
+        smemclr(d->text, d->text_len * sizeof(wchar_t));
+        sfree(d->text);
+    }
+    if (d->png) {
+        smemclr(d->png, d->png_len);
+        sfree(d->png);
+    }
+    memset(d, 0, sizeof(*d));
+}
+
+/* Fetch what the request wants and the clipboard has. True if anything came
+ * back. *unavailable is set only when NOTHING came back because another program
+ * holds the clipboard - the one case that is not an answer. */
+static bool clip_read_fetch(const ClipReadWant *want, ClipReadData *d,
+                            bool *unavailable)
+{
+    bool u1 = false, u2 = false;
+    memset(d, 0, sizeof(*d));
+    if (want->text) {
+        d->text = kitty_osc52_get_clipboard_ex(&d->text_len, &u1);
+        if (d->text && d->text_len <= 0) {
+            sfree(d->text);
+            d->text = NULL;
+        }
+    }
+    if (want->image) {
+        d->png = kitty_osc52_get_clipboard_png(&d->png_len, &u2);
+        if (d->png && !d->png_len) {
+            sfree(d->png);
+            d->png = NULL;
+        }
+    }
+    if (unavailable)
+        *unavailable = (u1 || u2) && !d->text && !d->png;
+    return d->text || d->png;
+}
+
+static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
+                            const ClipReadWant *want, ClipReadData *out,
+                            const char **err)
+{
+    const wchar_t *clip;
     int clip_len = 0;
     unsigned long now = (unsigned long)time(NULL);
     int interval, max_served, dialog_cap;
 
-    *out_clip = NULL;
-    *out_len = 0;
+    memset(out, 0, sizeof(*out));
     *err = "EPERM";
 
     /* 1. The setting says no. Nothing else is even looked at. */
@@ -4337,14 +4404,10 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
             osc52_read_refuse(term, KT_CLIP_WHY_PROGRAM_LIMIT, true);
             return false;
         }
-        clip = kitty_osc52_get_clipboard(&clip_len);
-        if (!clip || clip_len <= 0) {
-            sfree(clip);
+        if (!clip_read_fetch(want, out, NULL)) {
             *err = NULL;
             return false;
         }
-        *out_clip = clip;
-        *out_len = clip_len;
         return true;
     }
 
@@ -4384,14 +4447,10 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
         } else {
             if (term->osc52_read_remaining > 0)
                 term->osc52_read_remaining--;
-            clip = kitty_osc52_get_clipboard(&clip_len);
-            if (!clip || clip_len <= 0) {
-                sfree(clip);
+            if (!clip_read_fetch(want, out, NULL)) {
                 *err = NULL;
                 return false;
             }
-            *out_clip = clip;
-            *out_len = clip_len;
             return true;
         }
     }
@@ -4419,9 +4478,9 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
     /* 6. Ask. The clipboard is fetched now because the dialog shows a masked
      * summary of it - how much, and the first few characters - and because there
      * is no point asking about an empty clipboard. */
+    bool clip_unavailable = false;
+    bool clip_any = clip_read_fetch(want, out, &clip_unavailable);
     {
-        bool clip_unavailable = false;
-        clip = kitty_osc52_get_clipboard_ex(&clip_len, &clip_unavailable);
         if (clip_unavailable) {
             /* Another program has the clipboard open. That is not a decision
              * about this request, so it is refused WITH a reason rather than in
@@ -4432,10 +4491,9 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
             return false;
         }
     }
-    if (!clip || clip_len <= 0) {
+    if (!clip_any) {
         /* Nothing to send. Refuse in silence and do NOT ask: a dialog about an
          * empty clipboard is a dialog that trains people to click Allow. */
-        sfree(clip);
         *err = NULL;
         return false;
     }
@@ -4445,13 +4503,28 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
         bool always_deny = false;
         bool allowed;
 
+        wchar_t *preview = NULL;
+
         term->osc52_read_asking = true;
         term->osc52_read_prompts++;
         /* claim is NULL on OSC 52, which carries no program name, and the dialog
          * must not imply one. On OSC 5522 it is the name the program chose for
-         * itself, which the dialog words as a claim rather than a fact. */
+         * itself, which the dialog words as a claim rather than a fact.
+         * The dialog previews the clipboard as text; an image gets a one-line
+         * description in its place. */
+        clip = out->text;
+        clip_len = out->text_len;
+        if (!clip) {
+            char *s = dupprintf(KT_CLIP_PREVIEW_IMAGE, (unsigned long)out->png_len);
+            preview = decode_utf8_to_wide_string(s);
+            sfree(s);
+            clip = preview;
+            clip_len = (int)wcslen(preview);
+        }
         allowed = kitty_osc52_read_dialog(term, clip, clip_len, claim,
                                           &grant, &always_deny);
+        sfree(preview);
+        clip = NULL;
         term->osc52_read_asking = false;
 
         if (always_deny) {
@@ -4525,8 +4598,7 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
         }
 
         if (!allowed) {
-            smemclr(clip, clip_len * sizeof(wchar_t));
-            sfree(clip);
+            clip_read_free(out);
             osc52_read_refuse(term, KT_CLIP_WHY_USER_NO, false);
             return false;
         }
@@ -4549,9 +4621,6 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
          */
         if (identifiable)
             osc5522_pw_remember(term, pw, claim, term->osc52_read_until);
-
-        *out_clip = clip;
-        *out_len = clip_len;
         return true;
     }
 }
@@ -4564,15 +4633,14 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
  */
 static void osc52_read_clipboard(Terminal *term)
 {
-    wchar_t *clip = NULL;
-    int clip_len = 0;
+    ClipReadWant want = { true, false };   /* OSC 52 carries text and nothing else */
+    ClipReadData data;
     const char *err = NULL;
 
-    if (!osc52_read_gate(term, NULL, NULL, &clip, &clip_len, &err))
+    if (!osc52_read_gate(term, NULL, NULL, &want, &data, &err))
         return;
-    osc52_read_send(term, clip, clip_len);
-    smemclr(clip, clip_len * sizeof(wchar_t));
-    sfree(clip);
+    osc52_read_send(term, data.text, data.text_len);
+    clip_read_free(&data);
 }
 
 /*
@@ -4594,36 +4662,200 @@ static void osc52_read_clipboard(Terminal *term)
  * error codes instead of silence, and it can describe content types. It is the
  * same permission gate; there is deliberately not a second one.
  *
- * What this does NOT handle: the write direction (`type=write` / `wdata` /
- * `walias`), which answers ENOSYS. Writing text already works over OSC 52, and
- * the 5522 write path is a chunked multi-sequence transaction carrying arbitrary
- * MIME types - a separate piece of work, not a variation on this one.
+ * And the WRITE direction (`type=write` / `wdata` / `walias`), further down: a
+ * chunked multi-sequence transaction that may carry any MIME type, each of which
+ * becomes a clipboard format. It goes through the OSC 52 write gate, so the one
+ * decision "may this host set my clipboard" covers both protocols.
+ *
+ * base64 is validated STRICTLY here (RFC 4648: the standard alphabet, padding
+ * required, nothing after it), as the specification's "Encoding of payloads"
+ * section requires: a terminal must not silently drop invalid characters, which
+ * is what PuTTY's decoder does - it skips line breaks and yields nothing for a bad
+ * group. So nothing reaches that decoder without passing osc5522_b64_valid()
+ * first. An invalid READ is ignored without a reply; an invalid WRITE packet is
+ * answered EINVAL and the transaction discarded - both as specified. (OSC 52 is
+ * different on purpose: it tolerates missing padding, as kitty does, because it
+ * cannot report anything and its senders are older and sloppier.)
+ *
+ * Not built: paste-events mode (CSI ? 5522 h), which hands the clipboard's type
+ * list to the host on every local paste. A design decision, not an omission.
  */
 #define OSC5522_CHUNK 4096             /* spec: bytes per chunk BEFORE base64 */
+static bool clip_write_gate(Terminal *term, const char **err);
 
 /* Pull one plain (not base64) metadata value out of the colon-separated list.
- * Returns false when the key is absent. */
-static bool osc5522_meta(const char *meta, const char *key, char *out, size_t outlen)
+ * 1 = found, 0 = absent, -1 = present but longer than the buffer. The last is
+ * reported rather than truncated: under strict validation a value we could not
+ * hold whole is a value we cannot judge, and a request carrying it is refused or
+ * ignored, never acted on in part. */
+static int osc5522_meta(const char *meta, const char *key, char *out, size_t outlen)
 {
     size_t keylen = strlen(key);
     const char *p = meta;
 
+    out[0] = '\0';
     while (*p) {
         const char *end = strchr(p, ':');
         size_t seglen = end ? (size_t)(end - p) : strlen(p);
         if (seglen > keylen && !memcmp(p, key, keylen) && p[keylen] == '=') {
             size_t vlen = seglen - keylen - 1;
             if (vlen >= outlen)
-                vlen = outlen - 1;
+                return -1;
             memcpy(out, p + keylen + 1, vlen);
             out[vlen] = '\0';
-            return true;
+            return 1;
         }
         if (!end)
             break;
         p = end + 1;
     }
-    return false;
+    return 0;
+}
+
+/* The value of one base64 character, or -1. The standard alphabet only: the
+ * spec names RFC 4648 section 4, so the URL-safe alphabet is not accepted. */
+static int osc5522_b64_val(char c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+/* Decode one complete quad. Returns the number of bytes (1..3), or 0 for a quad
+ * that is not base64: a character outside the alphabet, '=' anywhere but the
+ * last two places, or "=x". *ended is set when the quad carried padding, after
+ * which nothing more may follow for that value. */
+static int osc5522_b64_quad(const char q[4], unsigned char *out, bool *ended)
+{
+    int v[4], i, n = 3;
+    if (q[0] == '=' || q[1] == '=')
+        return 0;
+    if (q[2] == '=') {
+        if (q[3] != '=')
+            return 0;
+        n = 1;
+    } else if (q[3] == '=') {
+        n = 2;
+    }
+    for (i = 0; i < 4; i++) {
+        v[i] = q[i] == '=' ? 0 : osc5522_b64_val(q[i]);
+        if (v[i] < 0)
+            return 0;
+    }
+    out[0] = (unsigned char)((v[0] << 2) | (v[1] >> 4));
+    out[1] = (unsigned char)(((v[1] & 15) << 4) | (v[2] >> 2));
+    out[2] = (unsigned char)(((v[2] & 3) << 6) | v[3]);
+    *ended = (n < 3);
+    return n;
+}
+
+/* Strict RFC 4648 validity of a whole value: length a multiple of four, the
+ * standard alphabet, padding only at the end. The empty string is valid; callers
+ * decide whether empty is meaningful. Whitespace and line breaks are invalid, as
+ * the spec requires - they must not be silently skipped. */
+static bool osc5522_b64_valid(const char *s, size_t len)
+{
+    size_t i;
+    unsigned char scratch[3];
+    bool ended = false;
+    if (len % 4)
+        return false;
+    for (i = 0; i < len; i += 4) {
+        if (ended)
+            return false;              /* data after padding */
+        if (!osc5522_b64_quad(s + i, scratch, &ended))
+            return false;
+    }
+    return true;
+}
+
+/* Decode an already-validated base64 value. Caller frees the strbuf. */
+static strbuf *osc5522_b64_decode(const char *s, size_t len)
+{
+    strbuf *sb = strbuf_new_nm();
+    size_t i;
+    unsigned char out[3];
+    bool ended;
+    for (i = 0; i < len; i += 4)
+        put_data(sb, out, osc5522_b64_quad(s + i, out, &ended));
+    return sb;
+}
+
+/* Is this valid UTF-8 with no control characters? Used on the names a write may
+ * carry - MIME types and their aliases - which become Windows clipboard format
+ * names. kitty rejects an alias list that is not valid UTF-8 with EINVAL, and so
+ * does this; control characters are refused on top because a format name with a
+ * line break in it is never anything but trouble. */
+static bool osc5522_utf8_ok(const char *s, size_t len)
+{
+    size_t i = 0;
+    while (i < len) {
+        unsigned char c = (unsigned char)s[i];
+        int extra, k;
+        if (c < 0x20 || c == 0x7F)
+            return false;
+        if (c < 0x80) { i++; continue; }
+        if ((c & 0xE0) == 0xC0 && c >= 0xC2) extra = 1;
+        else if ((c & 0xF0) == 0xE0) extra = 2;
+        else if ((c & 0xF8) == 0xF0 && c <= 0xF4) extra = 3;
+        else return false;
+        if (i + extra >= len)
+            return false;              /* truncated sequence */
+        for (k = 1; k <= extra; k++)
+            if (((unsigned char)s[i + k] & 0xC0) != 0x80)
+                return false;
+        i += extra + 1;
+    }
+    return true;
+}
+
+/* A single name (a MIME type or an alias): non-empty, bounded, and the above. */
+static bool osc5522_name_ok(const char *s, size_t len)
+{
+    return len > 0 && len <= 255 && osc5522_utf8_ok(s, len);
+}
+
+/* Decode a base64 metadata value that names something (mime=). NULL if it is not
+ * strict base64 or not an acceptable name. Caller frees. */
+static char *osc5522_decode_name(const char *b64)
+{
+    size_t len = strlen(b64);
+    strbuf *sb;
+    char *ret;
+    if (!len || !osc5522_b64_valid(b64, len))
+        return NULL;
+    sb = osc5522_b64_decode(b64, len);
+    if (!osc5522_name_ok(sb->s, sb->len) || strlen(sb->s) != sb->len) {
+        strbuf_free(sb);
+        return NULL;
+    }
+    ret = strbuf_to_str(sb);
+    return ret;
+}
+
+/* The request id, if it is one we may echo. `id` is plain and its character set
+ * is restricted by the spec ([a-zA-Z0-9-_+.]); anything else is NOT echoed,
+ * because it ends up in sequences we generate and must not be able to carry a
+ * separator into them. Returns the id in out ("" if none or unusable). The one
+ * place this is decided, for reads and writes alike - the two used to disagree
+ * about '+' and '.'. */
+static void osc5522_id(const char *meta, char *out, size_t outlen)
+{
+    const char *q;
+    out[0] = '\0';
+    if (osc5522_meta(meta, "id", out, outlen) != 1)
+        goto bad;
+    for (q = out; *q; q++)
+        if (!((*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') ||
+              (*q >= '0' && *q <= '9') ||
+              *q == '-' || *q == '_' || *q == '+' || *q == '.'))
+            goto bad;
+    return;
+  bad:
+    out[0] = '\0';
 }
 
 /* Send one OSC 5522 sequence. payload_b64 may be NULL for a metadata-only reply.
@@ -4690,6 +4922,48 @@ static bool osc5522_want_has_text(const char *want)
     return false;
 }
 
+/* ...and image/png, the one image type served: the Windows clipboard offers a
+ * PNG directly when a browser or image editor put it there, and a bitmap is
+ * encoded to PNG otherwise. Other image types are not offered - a client that
+ * wants one has a PNG to convert from, and one honest type beats a list of
+ * conversions nobody asked for. */
+static bool osc5522_want_has_png(const char *want)
+{
+    const char *p = want;
+    while (*p) {
+        const char *sp = strchr(p, ' ');
+        size_t n = sp ? (size_t)(sp - p) : strlen(p);
+        if (n == 9 && !memcmp(p, "image/png", 9))
+            return true;
+        if (!sp)
+            break;
+        p = sp + 1;
+    }
+    return false;
+}
+
+/* One type's DATA packets, 4096 bytes each before base64. */
+static void osc5522_send_chunks(Terminal *term, const char *idpart,
+                                const char *mime, const char *bytes, size_t total)
+{
+    char *m = osc5522_b64(mime, strlen(mime));
+    char reply[128];
+    size_t off = 0;
+    while (off < total) {
+        size_t n = total - off;
+        char *p;
+        if (n > OSC5522_CHUNK)
+            n = OSC5522_CHUNK;
+        p = osc5522_b64(bytes + off, n);
+        snprintf(reply, sizeof(reply), "type=read%s:status=DATA:mime=%s", idpart, m);
+        osc5522_send(term, reply, p, strlen(p));
+        smemclr(p, strlen(p));
+        sfree(p);
+        off += n;
+    }
+    sfree(m);
+}
+
 static void osc5522_read(Terminal *term, const char *meta,
                          const char *payload, size_t payload_len)
 {
@@ -4701,6 +4975,8 @@ static void osc5522_read(Terminal *term, const char *meta,
     char reply[128];
     char idpart[64];
     strbuf *decoded;
+    ClipReadWant rw;
+    ClipReadData data;
 
     /* `id` is echoed back on every packet of this transaction so a multiplexer can
      * match replies to requests. Plain, and its character set is restricted by the
@@ -4709,17 +4985,30 @@ static void osc5522_read(Terminal *term, const char *meta,
     idpart[0] = '\0';
     {
         char id[48];
-        if (osc5522_meta(meta, "id", id, sizeof(id)) && *id) {
-            const char *q;
-            bool ok = true;
-            for (q = id; *q; q++)
-                if (!((*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') ||
-                      (*q >= '0' && *q <= '9') ||
-                      *q == '-' || *q == '_' || *q == '+' || *q == '.'))
-                    ok = false;
-            if (ok)
-                snprintf(idpart, sizeof(idpart), ":id=%s", id);
-        }
+        osc5522_id(meta, id, sizeof(id));
+        if (*id)
+            snprintf(idpart, sizeof(idpart), ":id=%s", id);
+    }
+
+    /*
+     * STRICT base64 first, before anything is decoded or compared: the payload
+     * (the wanted types), the password and the name. A read that fails it is
+     * IGNORED - no reply - which is what the spec says an invalid read gets, and
+     * what kitty's tests pin ("a malformed read packet must not abort the write
+     * request" is checked below too: this returns before touching anything).
+     * A value too long for its buffer counts as invalid for the same reason.
+     */
+    if (payload && payload_len && !osc5522_b64_valid(payload, payload_len))
+        return;
+    {
+        int rp = osc5522_meta(meta, "pw", pwb64, sizeof(pwb64));
+        int rn = osc5522_meta(meta, "name", nameb64, sizeof(nameb64));
+        if (rp < 0 || rn < 0)
+            return;
+        if (rp > 0 && *pwb64 && !osc5522_b64_valid(pwb64, strlen(pwb64)))
+            return;
+        if (rn > 0 && *nameb64 && !osc5522_b64_valid(nameb64, strlen(nameb64)))
+            return;
     }
 
     /*
@@ -4728,44 +5017,32 @@ static void osc5522_read(Terminal *term, const char *meta,
      * than quietly served from the wrong place - a host asking for the selection
      * and receiving the clipboard would be a worse answer than a refusal.
      */
-    if (osc5522_meta(meta, "loc", loc, sizeof(loc)) && !strcmp(loc, "primary")) {
+    if (osc5522_meta(meta, "loc", loc, sizeof(loc)) == 1 && !strcmp(loc, "primary")) {
         snprintf(reply, sizeof(reply), "type=read%s:status=ENOSYS", idpart);
         osc5522_send(term, reply, NULL, 0);
         return;
     }
 
-    if (osc5522_meta(meta, "pw", pwb64, sizeof(pwb64)) && *pwb64) {
+    if (*pwb64) {
         /*
          * The password is kept in its base64 form for comparison - we never need
          * its plaintext, and not decoding it is one less copy of a credential
-         * lying around.
-         *
-         * Trailing padding is stripped first, because that comparison is a string
-         * compare and base64 padding is optional in practice: kitty's own decoder
-         * accepts "dGl0bGU" as well as "dGl0bGU=". A client that padded its
-         * password on one request and not the next would otherwise look like a
-         * different program and be prompted about again - the exact fatigue this
-         * mechanism exists to remove. Stripping is enough; it cannot merge two
-         * genuinely different passwords, because '=' only ever appears as padding.
+         * lying around. It is compared VERBATIM: base64 is validated strictly
+         * above, so a padded and an unpadded spelling can no longer both arrive,
+         * and there is nothing left to normalise.
          */
-        size_t n = strlen(pwb64);
-        while (n > 0 && pwb64[n - 1] == '=')
-            pwb64[--n] = '\0';
-        if (!*pwb64)
-            goto no_pw;                /* padding only: not a password at all */
         pw = pwb64;
-        if (osc5522_meta(meta, "name", nameb64, sizeof(nameb64)) && *nameb64) {
-            decoded = base64_decode_sb(ptrlen_from_asciz(nameb64));
+        if (*nameb64) {
+            decoded = osc5522_b64_decode(nameb64, strlen(nameb64));
             name = dupstr(decoded->s);
             strbuf_free(decoded);
         }
     }
-  no_pw:
 
     /* The payload is a base64 space-separated list of wanted MIME types, or "."
      * to ask what is available. */
     if (payload && payload_len) {
-        decoded = base64_decode_sb(make_ptrlen(payload, payload_len));
+        decoded = osc5522_b64_decode(payload, payload_len);
         want = dupstr(decoded->s);
         strbuf_free(decoded);
     } else {
@@ -4780,7 +5057,7 @@ static void osc5522_read(Terminal *term, const char *meta,
      * focus rule has no exceptions in it by design.
      */
     if (!strcmp(want, ".")) {
-        bool have_text;
+        bool have_text, have_image;
         if (conf_get_int(term->conf, CONF_osc52_clipboard_read) != OSC52_READ_ASK ||
             (conf_get_bool(term->conf, CONF_clipboard_require_focus) &&
              !term->has_focus)) {
@@ -4795,14 +5072,20 @@ static void osc5522_read(Terminal *term, const char *meta,
             sfree(clip);
             clip = NULL;
         }
+        have_image = kitty_osc52_clipboard_has_image();
         snprintf(reply, sizeof(reply), "type=read%s:status=OK", idpart);
         osc5522_send(term, reply, NULL, 0);
-        if (have_text) {
+        if (have_text || have_image) {
             /* mime= carries "." for this reply and the payload is the space
              * separated list with a trailing newline, matching kitty. */
             char *m = osc5522_b64(".", 1);
-            const char *list = "text/plain text/plain;charset=utf-8\n";
-            char *p = osc5522_b64(list, strlen(list));
+            char list[128];
+            char *p;
+            snprintf(list, sizeof(list), "%s%s%s\n",
+                     have_text ? "text/plain text/plain;charset=utf-8" : "",
+                     have_text && have_image ? " " : "",
+                     have_image ? "image/png" : "");
+            p = osc5522_b64(list, strlen(list));
             snprintf(reply, sizeof(reply),
                      "type=read%s:status=DATA:mime=%s", idpart, m);
             osc5522_send(term, reply, p, strlen(p));
@@ -4817,7 +5100,9 @@ static void osc5522_read(Terminal *term, const char *meta,
     /* A request for actual content. Anything we cannot produce simply gets no data
      * packet - kitty answers an unavailable type that way rather than with a
      * failure, and an error here would be a worse description of what happened. */
-    if (!*want || !osc5522_want_has_text(want)) {
+    rw.text = osc5522_want_has_text(want);
+    rw.image = osc5522_want_has_png(want);
+    if (!*want || (!rw.text && !rw.image)) {
         snprintf(reply, sizeof(reply), "type=read%s:status=OK", idpart);
         osc5522_send(term, reply, NULL, 0);
         snprintf(reply, sizeof(reply), "type=read%s:status=DONE", idpart);
@@ -4825,7 +5110,7 @@ static void osc5522_read(Terminal *term, const char *meta,
         goto out;
     }
 
-    if (!osc52_read_gate(term, name, pw, &clip, &clip_len, &err)) {
+    if (!osc52_read_gate(term, name, pw, &rw, &data, &err)) {
         if (err) {
             snprintf(reply, sizeof(reply), "type=read%s:status=%s", idpart, err);
             osc5522_send(term, reply, NULL, 0);
@@ -4839,46 +5124,45 @@ static void osc5522_read(Terminal *term, const char *meta,
         goto out;
     }
 
-    /* Serve it, chunked at the size the specification requires. */
-    {
-        char *utf8 = encode_wide_string_as_utf8(clip);
-        size_t total = strlen(utf8), off = 0;
-        char *m = osc5522_b64("text/plain", 10);
-        char *msg;
+    /* Serve it, chunked at the size the specification requires: all of one
+     * type, then the next, as the spec orders them. One hand-over however many
+     * types went out - the limits count requests, not formats. */
+    snprintf(reply, sizeof(reply), "type=read%s:status=OK", idpart);
+    osc5522_send(term, reply, NULL, 0);
+    if (data.text) {
+        char *utf8 = encode_wide_string_as_utf8(data.text);
+        osc5522_send_chunks(term, idpart, "text/plain", utf8, strlen(utf8));
+        smemclr(utf8, strlen(utf8));
+        sfree(utf8);
+    }
+    if (data.png)
+        osc5522_send_chunks(term, idpart, "image/png",
+                            (const char *)data.png, data.png_len);
+    snprintf(reply, sizeof(reply), "type=read%s:status=DONE", idpart);
+    osc5522_send(term, reply, NULL, 0);
 
-        snprintf(reply, sizeof(reply), "type=read%s:status=OK", idpart);
-        osc5522_send(term, reply, NULL, 0);
-        while (off < total) {
-            size_t n = total - off;
-            char *p;
-            if (n > OSC5522_CHUNK)
-                n = OSC5522_CHUNK;
-            p = osc5522_b64(utf8 + off, n);
-            snprintf(reply, sizeof(reply),
-                     "type=read%s:status=DATA:mime=%s", idpart, m);
-            osc5522_send(term, reply, p, strlen(p));
-            smemclr(p, strlen(p));
-            sfree(p);
-            off += n;
-        }
-        snprintf(reply, sizeof(reply), "type=read%s:status=DONE", idpart);
-        osc5522_send(term, reply, NULL, 0);
-
-        term->osc52_read_served++;
-        term->osc52_read_last_served = (unsigned long)time(NULL);
-        clip_note_activity(term, CLIP_ACT_READ);
-        msg = dupprintf(KT_CLIP_LOG_READ_SENT_5522,
-                        clip_len, clip_len == 1 ? "" : "s",
-                        name ? KT_CLIP_LOG_PROGRAM_CALLS_ITSELF : "", name ? name : "",
-                        term->osc52_read_served,
-                        term->osc52_read_served == 1 ? "" : "s");
+    term->osc52_read_served++;
+    term->osc52_read_last_served = (unsigned long)time(NULL);
+    clip_note_activity(term, CLIP_ACT_READ);
+    if (data.text) {
+        char *msg = dupprintf(KT_CLIP_LOG_READ_SENT_5522,
+                              data.text_len, data.text_len == 1 ? "" : "s",
+                              name ? KT_CLIP_LOG_PROGRAM_CALLS_ITSELF : "", name ? name : "",
+                              term->osc52_read_served,
+                              term->osc52_read_served == 1 ? "" : "s");
         logevent(term->logctx, msg);
         sfree(msg);
-
-        smemclr(utf8, total);
-        sfree(utf8);
-        sfree(m);
     }
+    if (data.png) {
+        char *msg = dupprintf(KT_CLIP_LOG_READ_SENT_5522_IMAGE,
+                              (unsigned long)data.png_len,
+                              name ? KT_CLIP_LOG_PROGRAM_CALLS_ITSELF : "", name ? name : "",
+                              term->osc52_read_served,
+                              term->osc52_read_served == 1 ? "" : "s");
+        logevent(term->logctx, msg);
+        sfree(msg);
+    }
+    clip_read_free(&data);
 
   out:
     if (clip) {
@@ -4887,6 +5171,375 @@ static void osc5522_read(Terminal *term, const char *meta,
     }
     sfree(name);
     sfree(want);
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * OSC 5522 WRITE direction: the host putting data on the local clipboard.
+ *
+ *   type=write[:id=..][:loc=..]                  open a transaction
+ *   type=wdata:mime=<b64>;<b64 chunk>            data for one MIME type
+ *   type=walias:mime=<b64 target>;<b64 "a b">    extra names for a type's data
+ *   type=wdata                                   end: set the clipboard, DONE
+ *
+ * Replies carry the id of the type=write packet, status first, the way kitty lays
+ * its own out: type=write:status=EINVAL:id=w1. After any error the transaction is
+ * dropped and the rest of its packets are ignored in silence until the next
+ * type=write - the spec's rule, so a client that missed the error is not told
+ * twice. A new type=write replaces whatever was in flight.
+ *
+ * The permission gate is the OSC 52 write gate, applied when the transaction
+ * OPENS rather than when it commits: a refused write should be refused before
+ * 64 MB of it has arrived, the spec allows an error at any time, and the user
+ * decision "may this host set my clipboard" is one decision for both protocols.
+ *
+ * base64 is checked per character as chunks arrive and for padding on the
+ * concatenation of a type's chunks, so a chunk boundary may fall anywhere (kitty
+ * splits at odd offsets in its tests). Decoding is streamed a quad at a time and
+ * only the decoded bytes are kept, so a 64 MB write costs 64 MB, not 64 MB plus
+ * its base64.
+ *
+ * Errors: EINVAL - a malformed packet (bad base64 anywhere, data without a type,
+ * an alias without a target, a name that is not UTF-8), the whole write is
+ * discarded as specified; EFBIG - more than the limit, incrementally, so the
+ * excess is never held; ENOSYS - loc=primary, which Windows has not got; EPERM /
+ * EBUSY - the gate; EIO - the clipboard could not be set.
+ */
+
+/* The most one write may carry, decoded. The spec's 64 MB floor or the user's
+ * ClipboardMaxMB, whichever is larger: the setting may raise it, never lower it
+ * into non-compliance. (The setting stays exactly what it was for OSC 52 and
+ * far2l.) */
+static size_t osc5522_write_limit(Terminal *term)
+{
+    size_t lim = clip_ceiling_bytes(term);
+    size_t floor_bytes = (size_t)OSC5522_WRITE_MIN_MB * 1024 * 1024;
+    if (term->osc5522_w_limit_override)
+        return term->osc5522_w_limit_override;
+    return lim > floor_bytes ? lim : floor_bytes;
+}
+
+static void osc5522_write_reset(Terminal *term)
+{
+    int i;
+    for (i = 0; i < term->osc5522_w_ntypes; i++) {
+        sfree(term->osc5522_w_type[i].mime);
+        if (term->osc5522_w_type[i].data) {
+            /* wiped, not merely freed: what a host puts on a clipboard is as
+             * likely to be a password as anything else */
+            smemclr(term->osc5522_w_type[i].data->u,
+                    term->osc5522_w_type[i].data->len);
+            strbuf_free(term->osc5522_w_type[i].data);
+        }
+        term->osc5522_w_type[i].mime = NULL;
+        term->osc5522_w_type[i].data = NULL;
+    }
+    term->osc5522_w_ntypes = 0;
+    for (i = 0; i < term->osc5522_w_naliases; i++) {
+        sfree(term->osc5522_w_alias[i]);
+        sfree(term->osc5522_w_alias_target[i]);
+        term->osc5522_w_alias[i] = NULL;
+        term->osc5522_w_alias_target[i] = NULL;
+    }
+    term->osc5522_w_naliases = 0;
+    term->osc5522_w_bytes = 0;
+    term->osc5522_w_active = false;
+    term->osc5522_w_id[0] = '\0';
+}
+
+static void osc5522_write_reply(Terminal *term, const char *status)
+{
+    char reply[112];
+    if (term->osc5522_w_id[0])
+        snprintf(reply, sizeof(reply), "type=write:status=%s:id=%s",
+                 status, term->osc5522_w_id);
+    else
+        snprintf(reply, sizeof(reply), "type=write:status=%s", status);
+    osc5522_send(term, reply, NULL, 0);
+}
+
+/* Answer an error and drop the transaction. The Event Log line is optional: the
+ * gate's own refusals have already written theirs. */
+static void osc5522_write_fail(Terminal *term, const char *status,
+                               const char *logline)
+{
+    if (logline)
+        logevent(term->logctx, logline);
+    osc5522_write_reply(term, status);
+    osc5522_write_reset(term);
+}
+
+/* Account for DATA bytes we are about to keep; false (and EFBIG sent) if that
+ * would pass the limit. Only the data counts, as in kitty - the names are bounded
+ * by the type and alias caps (64 each, 255 bytes at most), so they cannot be
+ * used to allocate outside the budget either. */
+static bool osc5522_write_budget(Terminal *term, size_t n)
+{
+    if (term->osc5522_w_bytes + n > osc5522_write_limit(term)) {
+        char *msg = dupprintf(KT_CLIP_LOG_WRITE_5522_TOO_BIG,
+                              (int)(osc5522_write_limit(term) / (1024 * 1024)));
+        osc5522_write_fail(term, "EFBIG", msg);
+        sfree(msg);
+        return false;
+    }
+    term->osc5522_w_bytes += n;
+    return true;
+}
+
+static void osc5522_write_begin(Terminal *term, const char *meta)
+{
+    char loc[32];
+    const char *err = NULL;
+    int r;
+
+    osc5522_write_reset(term);
+    term->osc5522_w_active = true;
+    osc5522_id(meta, term->osc5522_w_id, sizeof(term->osc5522_w_id));
+
+    if (term->osc_str_overflow) {
+        osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+        return;
+    }
+    r = osc5522_meta(meta, "loc", loc, sizeof(loc));
+    if (r < 0) {
+        osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+        return;
+    }
+    /* The primary selection is an X11 thing Windows has not got: ENOSYS rather
+     * than quietly writing the clipboard the client did not ask for. */
+    if (r > 0 && !strcmp(loc, "primary")) {
+        osc5522_write_fail(term, "ENOSYS", NULL);
+        return;
+    }
+    if (!clip_write_gate(term, &err)) {
+        osc5522_write_fail(term, err, NULL);
+        return;
+    }
+}
+
+/* Find or add the accumulator for a MIME type. NULL after EFBIG has been sent. */
+static int osc5522_write_type(Terminal *term, char *mime)
+{
+    int i;
+    for (i = 0; i < term->osc5522_w_ntypes; i++)
+        if (!strcmp(term->osc5522_w_type[i].mime, mime)) {
+            sfree(mime);
+            return i;
+        }
+    if (term->osc5522_w_ntypes >= OSC5522_WRITE_MAX_TYPES) {
+        osc5522_write_fail(term, "EFBIG", KT_CLIP_LOG_WRITE_5522_TOO_BIG_TYPES);
+        sfree(mime);
+        return -1;
+    }
+    i = term->osc5522_w_ntypes++;
+    term->osc5522_w_type[i].mime = mime;
+    term->osc5522_w_type[i].data = strbuf_new_nm();
+    term->osc5522_w_type[i].carry_len = 0;
+    return i;
+}
+
+static void osc5522_write_commit(Terminal *term);
+
+static void osc5522_write_data(Terminal *term, const char *meta,
+                               const char *payload, size_t payload_len)
+{
+    char mimeb64[512];
+    char *mime;
+    int r, ti;
+    size_t i;
+
+    if (!term->osc5522_w_active)
+        return;                        /* no transaction, or a failed one */
+    if (term->osc_str_overflow) {
+        osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+        return;
+    }
+    r = osc5522_meta(meta, "mime", mimeb64, sizeof(mimeb64));
+    if (r < 0) {
+        osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+        return;
+    }
+    if (r == 0 || !*mimeb64) {
+        if (payload_len) {
+            /* data with no type is a packet we cannot file anywhere */
+            osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+            return;
+        }
+        osc5522_write_commit(term);    /* the empty wdata: end of transmission */
+        return;
+    }
+    mime = osc5522_decode_name(mimeb64);
+    if (!mime) {
+        osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+        return;
+    }
+    ti = osc5522_write_type(term, mime);
+    if (ti < 0)
+        return;
+
+    /*
+     * Per character as it arrives: the alphabet, then a quad at a time. A padded
+     * quad followed by more data for the same type is ACCEPTED, as kitty accepts
+     * it (its EFBIG test sends exactly that): the read direction pads every
+     * chunk, so clients built against it pad theirs too, and "the concatenation
+     * must be correctly padded" is read as "must end padded", which the commit
+     * checks. Padding in the wrong place within a quad is still EINVAL.
+     */
+    for (i = 0; i < payload_len; i++) {
+        char c = payload[i];
+        if (c != '=' && osc5522_b64_val(c) < 0) {
+            osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+            return;
+        }
+        term->osc5522_w_type[ti].carry[term->osc5522_w_type[ti].carry_len++] = c;
+        if (term->osc5522_w_type[ti].carry_len == 4) {
+            unsigned char out[3];
+            bool padded;
+            int n = osc5522_b64_quad(term->osc5522_w_type[ti].carry, out, &padded);
+            term->osc5522_w_type[ti].carry_len = 0;
+            if (!n) {
+                osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+                return;
+            }
+            if (!osc5522_write_budget(term, n))
+                return;                /* EFBIG sent, transaction gone */
+            put_data(term->osc5522_w_type[ti].data, out, n);
+        }
+    }
+}
+
+static void osc5522_write_alias(Terminal *term, const char *meta,
+                                const char *payload, size_t payload_len)
+{
+    char mimeb64[512];
+    char *target;
+    strbuf *list;
+    char *p, *end;
+    int r;
+
+    if (!term->osc5522_w_active)
+        return;
+    if (term->osc_str_overflow) {
+        osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+        return;
+    }
+    r = osc5522_meta(meta, "mime", mimeb64, sizeof(mimeb64));
+    if (r <= 0 || !*mimeb64 || !payload_len ||
+        !osc5522_b64_valid(payload, payload_len)) {
+        osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+        return;
+    }
+    target = osc5522_decode_name(mimeb64);
+    if (!target) {
+        osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+        return;
+    }
+    list = osc5522_b64_decode(payload, payload_len);
+    if (strlen(list->s) != list->len ||
+        !osc5522_utf8_ok(list->s, list->len)) {
+        /* an embedded NUL, a control character, or not UTF-8 */
+        strbuf_free(list);
+        sfree(target);
+        osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+        return;
+    }
+    p = list->s;
+    while (*p) {
+        end = strchr(p, ' ');
+        if (end)
+            *end = '\0';
+        if (*p) {
+            int i;
+            if (!osc5522_name_ok(p, strlen(p))) {
+                osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+                goto out;
+            }
+            if (term->osc5522_w_naliases >= OSC5522_WRITE_MAX_ALIASES) {
+                osc5522_write_fail(term, "EFBIG", KT_CLIP_LOG_WRITE_5522_TOO_BIG_TYPES);
+                goto out;
+            }
+            i = term->osc5522_w_naliases++;
+            term->osc5522_w_alias[i] = dupstr(p);
+            term->osc5522_w_alias_target[i] = dupstr(target);
+        }
+        if (!end)
+            break;
+        p = end + 1;
+    }
+  out:
+    strbuf_free(list);
+    sfree(target);
+}
+
+static void osc5522_write_commit(Terminal *term)
+{
+    KittyClipFormat *fmts;
+    int i, j, n = 0;
+    bool ok;
+
+    /* Padding is judged on the CONCATENATION of a type's chunks, so it is only
+     * here, with all of them in, that "not padded" can be told from "not yet". */
+    for (i = 0; i < term->osc5522_w_ntypes; i++)
+        if (term->osc5522_w_type[i].carry_len) {
+            osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
+            return;
+        }
+
+    /* A write that carried nothing sets nothing - the same rule OSC 52 has for
+     * an empty payload: a multiplexer's empty selection must not wipe what the
+     * user copied. It still completed, so DONE. */
+    if (term->osc5522_w_ntypes == 0) {
+        osc5522_write_reply(term, "DONE");
+        osc5522_write_reset(term);
+        return;
+    }
+
+    fmts = snewn(term->osc5522_w_ntypes + term->osc5522_w_naliases, KittyClipFormat);
+    for (i = 0; i < term->osc5522_w_ntypes; i++) {
+        fmts[n].mime = term->osc5522_w_type[i].mime;
+        fmts[n].data = term->osc5522_w_type[i].data->s;
+        fmts[n].len = term->osc5522_w_type[i].data->len;
+        n++;
+    }
+    for (i = 0; i < term->osc5522_w_naliases; i++) {
+        /* an alias is the target's bytes under another name; one whose target
+         * never sent data, or that merely repeats a type's own name, adds nothing */
+        int t = -1;
+        for (j = 0; j < term->osc5522_w_ntypes; j++) {
+            if (!strcmp(term->osc5522_w_type[j].mime, term->osc5522_w_alias_target[i]))
+                t = j;
+            if (!strcmp(term->osc5522_w_type[j].mime, term->osc5522_w_alias[i]))
+                t = -2;
+        }
+        if (t < 0)
+            continue;
+        fmts[n].mime = term->osc5522_w_alias[i];
+        fmts[n].data = term->osc5522_w_type[t].data->s;
+        fmts[n].len = term->osc5522_w_type[t].data->len;
+        n++;
+    }
+
+    ok = kitty_osc52_set_clipboard_formats(fmts, n);
+    if (ok) {
+        strbuf *names = strbuf_new();
+        char *msg;
+        for (i = 0; i < n; i++) {
+            if (i)
+                put_dataz(names, ", ");
+            put_dataz(names, fmts[i].mime);
+        }
+        msg = dupprintf(KT_CLIP_LOG_WRITE_5522_SET, names->s,
+                        (unsigned long)term->osc5522_w_bytes);
+        logevent(term->logctx, msg);
+        sfree(msg);
+        strbuf_free(names);
+        clip_note_activity(term, CLIP_ACT_WRITE);
+        osc5522_write_reply(term, "DONE");
+        osc5522_write_reset(term);
+    } else {
+        osc5522_write_fail(term, "EIO", KT_CLIP_LOG_WRITE_5522_FAILED);
+    }
+    sfree(fmts);
 }
 
 static void osc5522_process(Terminal *term)
@@ -4914,7 +5567,7 @@ static void osc5522_process(Terminal *term)
      * `type=`, so answering a sequence whose type we could not read would mean
      * inventing one. Silence is what a malformed OSC 52 gets too.
      */
-    if (!osc5522_meta(meta, "type", type, sizeof(type)))
+    if (osc5522_meta(meta, "type", type, sizeof(type)) != 1)
         return;
 
     /*
@@ -4929,15 +5582,9 @@ static void osc5522_process(Terminal *term)
      */
     {
         char id[32];
-        if (osc5522_meta(meta, "id", id, sizeof(id)) && *id) {
-            const char *q;
-            for (q = id; *q; q++)      /* plain token only; never echo junk back */
-                if (!((*q >= '0' && *q <= '9') || (*q >= 'a' && *q <= 'z') ||
-                      (*q >= 'A' && *q <= 'Z') || *q == '-' || *q == '_'))
-                    break;
-            if (!*q)
-                snprintf(idpart, sizeof(idpart), ":id=%s", id);
-        }
+        osc5522_id(meta, id, sizeof(id));
+        if (*id)
+            snprintf(idpart, sizeof(idpart), ":id=%s", id);
     }
 
     if (!strcmp(type, "read")) {
@@ -4961,13 +5608,16 @@ static void osc5522_process(Terminal *term)
         osc5522_read(term, meta, payload, payload_len);
         return;
     }
-    if (!strcmp(type, "write") || !strcmp(type, "wdata") ||
-        !strcmp(type, "walias")) {
-        /* Not built. ENOSYS is the honest answer and lets a well-behaved
-         * application fall back to OSC 52, which does carry text writes. */
-        char reply[112];
-        snprintf(reply, sizeof(reply), "type=%s%s:status=ENOSYS", type, idpart);
-        osc5522_send(term, reply, NULL, 0);
+    if (!strcmp(type, "write")) {
+        osc5522_write_begin(term, meta);
+        return;
+    }
+    if (!strcmp(type, "wdata")) {
+        osc5522_write_data(term, meta, payload, payload_len);
+        return;
+    }
+    if (!strcmp(type, "walias")) {
+        osc5522_write_alias(term, meta, payload, payload_len);
         return;
     }
     /* A type we do not implement at all. ENOSYS, reported against the type the
@@ -5003,6 +5653,74 @@ static void osc5522_process(Terminal *term)
  * undiscoverable override of a security decision), and it asked on every single
  * payload rather than latching per session.
  */
+/*
+ * The remote clipboard WRITE gate, shared by OSC 52 and OSC 5522: may this host
+ * set the clipboard right now? Policy (Deny / Ask-once-and-latch / Allow), the
+ * focus rule, then the rate cap - in that order, so a refused or unfocused write
+ * costs nobody any budget. `err`, if wanted, receives the 5522 status a refusal
+ * maps to: EPERM for policy and focus, EBUSY for the cap.
+ */
+static bool clip_write_gate(Terminal *term, const char **err)
+{
+    if (err)
+        *err = "EPERM";
+    if (term->osc52_allowed == OSC52_CLIPBOARD_DENY)
+        return false;
+
+    /*
+     * KiTTY: the focus rule applies to writes as well as reads (decided
+     * 2026-08-02). "KiTTY does not touch your clipboard unless you are looking at
+     * that window" is worth more for being one sentence with no exceptions in it,
+     * and it also means no host can change what you are about to paste at a
+     * moment you were not watching.
+     *
+     * It costs something and the setting exists because of that: a background job
+     * that copies its own output stops working while you are in another window.
+     * Nothing is queued - the sequence is dropped, because replaying a stale
+     * clipboard write when focus comes back is worse than not doing it.
+     */
+    if (conf_get_bool(term->conf, CONF_clipboard_require_focus) && !term->has_focus) {
+        logevent(term->logctx, KT_CLIP_LOG_WRITE_NO_FOCUS);
+        return false;
+    }
+
+    if (term->osc52_allowed == OSC52_CLIPBOARD_ASK) {
+#ifdef _WINDOWS
+        int status = MessageBox(
+            NULL,
+            KT_CLIP_WRITE_ALLOW_Q,
+            KT_CAP_KITTY, MB_OKCANCEL | MB_ICONQUESTION);
+        /* Latch either way: asking once per payload would let any host raise a
+         * dialog as often as it liked. */
+        term->osc52_allowed = (status == IDOK ?
+                               OSC52_CLIPBOARD_ALLOW :
+                               OSC52_CLIPBOARD_DENY);
+#else
+        term->osc52_allowed = OSC52_CLIPBOARD_DENY;
+#endif
+        if (term->osc52_allowed != OSC52_CLIPBOARD_ALLOW)
+            return false;
+        /*
+         * Answering "yes" here is a GRANT with a lifetime - it latches for the rest
+         * of the session - exactly like allowing a read for the session, so the
+         * window has to start showing it. Without this the "(clip write)" marker
+         * did not appear until the session next set its own title, which for a
+         * shell that never sets one is never: the permission was live and invisible,
+         * which is the one thing the marker exists to prevent.
+         */
+        kitty_osc52_state_changed(term);
+    }
+
+    /* Rate cap. Checked after the permission gates and immediately before the
+     * write, so a refused or unfocused write costs nobody any budget. */
+    if (!clip_write_allowed(term)) {
+        if (err)
+            *err = "EBUSY";
+        return false;
+    }
+    return true;
+}
+
 static void osc52_set_clipboard(Terminal *term)
 {
     const char *sep, *pd, *p;
@@ -5087,56 +5805,7 @@ static void osc52_set_clipboard(Terminal *term)
         return;
     }
 
-    if (term->osc52_allowed == OSC52_CLIPBOARD_DENY)
-        return;
-
-    /*
-     * KiTTY: the focus rule applies to writes as well as reads (user decision,
-     * 2026-08-02). "KiTTY does not touch your clipboard unless you are looking at
-     * that window" is worth more for being one sentence with no exceptions in it,
-     * and it also means no host can change what you are about to paste at a
-     * moment you were not watching.
-     *
-     * It costs something and the setting exists because of that: a background job
-     * that copies its own output stops working while you are in another window.
-     * Nothing is queued - the sequence is dropped, because replaying a stale
-     * clipboard write when focus comes back is worse than not doing it.
-     */
-    if (conf_get_bool(term->conf, CONF_clipboard_require_focus) && !term->has_focus) {
-        logevent(term->logctx, KT_CLIP_LOG_WRITE_NO_FOCUS);
-        return;
-    }
-
-    if (term->osc52_allowed == OSC52_CLIPBOARD_ASK) {
-#ifdef _WINDOWS
-        int status = MessageBox(
-            NULL,
-            KT_CLIP_WRITE_ALLOW_Q,
-            KT_CAP_KITTY, MB_OKCANCEL | MB_ICONQUESTION);
-        /* Latch either way: asking once per payload would let any host raise a
-         * dialog as often as it liked. */
-        term->osc52_allowed = (status == IDOK ?
-                               OSC52_CLIPBOARD_ALLOW :
-                               OSC52_CLIPBOARD_DENY);
-#else
-        term->osc52_allowed = OSC52_CLIPBOARD_DENY;
-#endif
-        if (term->osc52_allowed != OSC52_CLIPBOARD_ALLOW)
-            return;
-        /*
-         * Answering "yes" here is a GRANT with a lifetime - it latches for the rest
-         * of the session - exactly like allowing a read for the session, so the
-         * window has to start showing it. Without this the "(clip write)" marker
-         * did not appear until the session next set its own title, which for a
-         * shell that never sets one is never: the permission was live and invisible,
-         * which is the one thing the marker exists to prevent.
-         */
-        kitty_osc52_state_changed(term);
-    }
-
-    /* Rate cap. Checked after the permission gates and immediately before the
-     * write, so a refused or unfocused write costs nobody any budget. */
-    if (!clip_write_allowed(term))
+    if (!clip_write_gate(term, NULL))
         return;
 
     decoded = base64_decode_sb(make_ptrlen(pd, pdlen));
@@ -5266,8 +5935,9 @@ static void do_osc(Terminal *term)
             osc52_set_clipboard(term);
             break;
           case 5522:
-            /* OSC 5522: the kitty clipboard protocol. Reads go through the same
-             * permission gate as OSC 52; writes answer ENOSYS. */
+            /* OSC 5522: the kitty clipboard protocol. Reads and writes both go
+             * through the OSC 52 permission gates; writes may carry any MIME
+             * type. */
             osc5522_process(term);
             break;
 #endif
@@ -7389,7 +8059,10 @@ static void term_out(Terminal *term, bool called_from_term_data)
                          * protocol chunks at 4 KB before base64, so no single
                          * sequence is ever large and it is the transaction that
                          * adds up. A generous 16 KB covers a full chunk plus its
-                         * metadata and still refuses anything absurd. */
+                         * metadata and still refuses anything absurd. The
+                         * transaction's own limit (64 MB at least, see
+                         * osc5522_write_limit) is enforced on the decoded bytes
+                         * as they arrive. */
                         osc_start(term,
                                   term->esc_args[0] == 52 ?
                                       clip_ceiling_bytes(term) :
@@ -7439,6 +8112,25 @@ static void term_out(Terminal *term, bool called_from_term_data)
                  */
 
                 if (c == '\012' || c == '\015') {
+#ifdef MOD_PERSO
+                    /*
+                     * KiTTY: not for OSC 5522. Its specification says a
+                     * terminal must not silently discard a line break inside a
+                     * payload but reject the packet, and kitty's tests send one.
+                     * Aborting the sequence here would discard the whole packet
+                     * unseen and leave the host's write transaction open, so for
+                     * 5522 the character is kept and the strict base64 check
+                     * answers EINVAL. The per-sequence ceiling still bounds a
+                     * sequence that never ends, and ESC not followed by
+                     * backslash still aborts it. The osc_type check is belt
+                     * and braces: DCS/APC/PM/SOS reset esc_args[0] on entry,
+                     * but this must never apply to a far2l APC.
+                     */
+                    if (term->osc_type == OSCLIKE_OSC && term->esc_args[0] == 5522) {
+                        osc_addchar(term, c);
+                        break;
+                    }
+#endif
                     /* CR or LF aborts */
                     term->termstate = TOPLEVEL;
                     break;
