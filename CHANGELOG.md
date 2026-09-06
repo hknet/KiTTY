@@ -42,6 +42,10 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some reall
 
 ### Changed
 
+- **The Cygwin helper (cthelper) is gone.** Its sources were never part of
+  this port's build, nothing launched it, and the "Cygwin helper" path in
+  Application > KiTTY++ Settings > Transfers & Tools set a value nothing
+  read. The setting, its kitty.ini entry and the sources are removed.
 - **The Window settings are regrouped.** "Close window on exit" and "Save
   settings on exit" moved from the Session panel to Window > Behaviour, in
   the groups "Closing the window" and "Remembering". Selection is now
@@ -114,6 +118,12 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some reall
   buttons already were, so they look the same on every Windows dark mode
   runs on. Progress bars are drawn in the dark colours too. Refs
   hknet/KiTTY#45.
+- **Saving a session under a new name could warn about replacing one.** The
+  warning asked the same reader that loads sessions, and that reader falls
+  back to the old KiTTY and PuTTY stores, so a name that was free in the
+  list still counted as taken when an old store had it. The check now looks
+  at the KiTTY++ store only. When the old stores are shown in the list, Save
+  says instead that the new session will hide the old one of that name.
 
 ## 0.85.1.7-beta — 2026-09-04
 
