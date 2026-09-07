@@ -213,7 +213,7 @@ int GetShortcutsFlag(void);
 int GetMouseShortcutsFlag(void);
 int GetCtrlTabFlag(void);
 int GetProtectFlag(void);
-int GetSizeFlag(void);      /* kitty.c: [KiTTY] size - live [rows x cols] title suffix */
+int GetSizeFlag(void);      /* kitty.c: [KiTTY] size - live [cols x rows] title suffix */
 int GetTitleBarFlag(void);  /* kitty.c: [KiTTY] wintitle - title decorations on/off */
 void kitty_refresh_title(void);  /* below: re-apply the title decorations */
 extern char KiTTYClassName[128];
@@ -5856,7 +5856,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
         sys_cursor_update(wgs);
 #ifdef MOD_PERSO
-        /* [KiTTY] size=yes: keep the [rows x cols] title suffix live while
+        /* [KiTTY] size=yes: keep the [cols x rows] title suffix live while
          * resizing (the set-title path dedupes, so this is a no-op unless the
          * decorated title actually changed). */
         if (GetTitleBarFlag() && GetSizeFlag())
@@ -7923,8 +7923,8 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
 
 #ifdef MOD_PERSO
 /* KiTTY [KiTTY] wintitle=yes: decorate every window title with live status
- * markers - the [rows x cols] size suffix ([KiTTY] size=yes, skipped while
- * maximized) and (PROTECTED)/(ONTOP). The raw title is remembered so
+ * markers - the [cols x rows] size suffix ([KiTTY] size=yes, maximised
+ * included) and (PROTECTED)/(ONTOP). The raw title is remembered so
  * kitty_refresh_title() can re-decorate when a state changes (resize, protect
  * or always-on-top toggle). SECURITY: unlike classic KiTTY the title text is
  * never PARSED here - the old __xy title-scan dispatcher stays dead and
@@ -7939,8 +7939,13 @@ static char *kitty_decorate_title(WinGuiSeat *wgs, const char *title)
         return dupstr(title);
     sb = strbuf_new();
     put_dataz(sb, title);
-    if (GetSizeFlag() && wgs->term && !IsZoomed(wgs->term_hwnd))
-        put_fmt(sb, KT_TITLE_SIZE, wgs->term->rows, wgs->term->cols);
+    /* Maximised too: classic KiTTY skipped the suffix while zoomed, and the
+     * revived feature kept that habit (79ef06be1) - but a maximised terminal
+     * has a real size, and it is the one users most want to read off.
+     * Columns first, like PuTTY's own resize tip (sizetip.c), xterm and
+     * everyone else; classic KiTTY printed rows first (2026-09-07). */
+    if (GetSizeFlag() && wgs->term)
+        put_fmt(sb, KT_TITLE_SIZE, wgs->term->cols, wgs->term->rows);
     if (GetProtectFlag())
         put_dataz(sb, KT_TITLE_PROTECTED);
     if (conf_get_bool(wgs->conf, CONF_alwaysontop))

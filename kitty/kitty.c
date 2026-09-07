@@ -263,7 +263,7 @@ static HINSTANCE hInstIcons =  NULL ;
 // Fichier contenant les icones à charger
 static char * IconFile = NULL ;
 
-// [KiTTY] size=yes: append the live terminal size [rows x cols] to the window
+// [KiTTY] size=yes: append the live terminal size [cols x rows] to the window
 // title (not while maximized). Applied by the title decorator in
 // windows/window.c; needs wintitle=yes (TitleBarFlag) like classic KiTTY.
 static int SizeFlag = 0 ;

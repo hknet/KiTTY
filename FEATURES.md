@@ -84,7 +84,7 @@ one is available.
 
 If you manage a large number of saved sessions, KiTTY lets you organize them into folders, for example one folder per machine, per environment, or per type of application. A dropdown in the Session panel lets you pick a folder so the saved-session list shows only the sessions it contains, making a long list far easier to navigate. You can also filter the visible list as you type in the Saved Sessions field; prefix and token matches are ranked before substring matches, and folder names are shown in brackets while searching. The root list shows every session, so there each one that lives in a folder is marked with it in brackets; sessions in no folder are left unmarked.
 
-**How to enable:** Automatic in KiTTY mode: the Session panel shows a **Folder** dropdown that filters the saved-session list to one folder, plus New folder / Delete folder controls. To create a folder, pick the **`<new folder...>`** entry at the top of the dropdown, type the name, and click *New folder*. To rename a folder, select it, type the new name over it, and click *Rename* — the button renames itself to say so. The sessions in it move with it. Deleting a folder that still contains sessions asks first, and moves them to the root list rather than deleting them. Sessions that are in no folder live in the root list, shown as **All sessions (root)** — that is not a folder and cannot be deleted, but you can rename what it is called: select it, type your own name over the label, and the button changes to *Rename* to confirm what will happen. Typing the built-in name back restores it. The new name is cosmetic, so no session or setting is moved or changed by it (it is stored as `RootFolderLabel`, in the registry or in kitty.ini's `[KiTTY]` section depending on your save mode). To search within the active folder filter, type in the Saved Sessions field; Up/Down moves into the filtered list and Enter loads or starts the highlighted visible session. Press **Ctrl+F** anywhere in the config window — from any settings panel, or right after starting a session with Enter — to jump back to the Session panel with the search field focused and its content selected, so just typing starts a new search. **Ctrl+G** does the same but searches *everywhere*: it first drops the folder filter back to the root list, so the search covers every saved session instead of only the selected folder. Nothing is loaded, moved or re-filed by it — only the folder filter changes. The two buttons differ in where the session opens: clicking **Open** opens the chosen session in the current window (the config box closes), while **Start** — like pressing Enter — starts it in a new window and keeps the config box open for launching the next one. If you prefer the classic behaviour where typing never narrows the list, set `filter=no` in the kitty.ini `[ConfigBox]` section.
+**How to enable:** Automatic in KiTTY mode: the Session panel shows a **Folder** dropdown that filters the saved-session list to one folder, plus New folder / Delete folder controls. To create a folder, pick the **`<new folder...>`** entry at the top of the dropdown, type the name, and click *New folder*. To rename a folder, select it, type the new name over it, and click *Rename* — the button renames itself. The sessions in it move with it. Deleting a folder that still contains sessions asks first, and moves them to the root list rather than deleting them. Sessions that are in no folder live in the root list, shown as **All sessions (root)** — that is not a folder and cannot be deleted, but you can rename what it is called: select it, type your own name over the label, and the button changes to *Rename* to confirm what will happen. Typing the built-in name back restores it. The new name is cosmetic, so no session or setting is moved or changed by it (it is stored as `RootFolderLabel`, in the registry or in kitty.ini's `[KiTTY]` section depending on your save mode). To search within the active folder filter, type in the Saved Sessions field; Up/Down moves into the filtered list and Enter loads or starts the highlighted visible session. Press **Ctrl+F** anywhere in the config window — from any settings panel, or right after starting a session with Enter — to jump back to the Session panel with the search field focused and its content selected, so just typing starts a new search. **Ctrl+G** does the same but searches *everywhere*: it first drops the folder filter back to the root list, so the search covers every saved session instead of only the selected folder. Nothing is loaded, moved or re-filed by it — only the folder filter changes. The two buttons differ in where the session opens: clicking **Open** opens the chosen session in the current window (the config box closes), while **Start** — like pressing Enter — starts it in a new window and keeps the config box open for launching the next one. If you prefer the classic behaviour where typing never narrows the list, set `filter=no` in the kitty.ini `[ConfigBox]` section.
 
 ![Sessions filter (folders)](docs/features/img/config_folder.jpg)
 
@@ -149,7 +149,7 @@ By default KiTTY stores its configuration in the Windows registry. In **portable
 
 **Where the master password lives:** in a `Security` folder inside your portable store, next to the sessions — so the whole folder moves to another PC and still works. Before 0.84.1.65 a portable install kept this in the Windows registry of the machine it was set up on, which meant the copied folder could not open its passwords elsewhere; an install in that state is moved over automatically the next time it starts, and KiTTY shows you where the folder is. If you run several portable copies that share one master password, copy that `Security` folder into each of them.
 
-**Turning the master password off — and why KiTTY may keep asking for it.** Switching protection off (`[KiTTY] PortablePasswordProtection=dpapi`) changes what is written **from now on**. It does not rewrite what is already saved: each stored password carries its own marker saying how it was protected, so passwords saved earlier are still master-password-protected and KiTTY still asks for the master password when you open one of those sessions. Each session converts itself the next time it is **saved**, so the prompts fade as you use and re-save your sessions — but a session you rarely save keeps asking indefinitely.
+**Turning the master password off — and why KiTTY may keep asking for it.** Switching protection off (`[KiTTY] PortablePasswordProtection=dpapi`) changes what is written **from now on**. It does not rewrite what is already saved: each stored password carries its own marker label on how it was protected, so passwords saved earlier are still master-password-protected and KiTTY still asks for the master password when you open one of those sessions. Each session converts itself the next time it is **saved**, so the prompts fade as you use and re-save your sessions — but a session you rarely save keeps asking indefinitely.
 
 To convert everything in one go, use **Export all…** followed by **Import all…** into the same store: imported passwords are re-protected by the store they arrive in, which is DPAPI once you have switched. That covers named proxies as well as sessions. Once nothing is left that needs the master password, KiTTY retires it by itself the next time it starts. Delete the exported folder afterwards — while it exists it holds every one of those passwords, protected only by the password you gave the export.
 
@@ -170,6 +170,7 @@ To convert everything in one go, use **Export all…** followed by **Import all�
 - **The old store is never changed.** An import takes a copy; the original stays where it is, and you can import it again.
 - **An existing name is never overwritten.** The copy is called `work (PuTTY)` or `work (old KiTTY)`, numbered if that name is taken as well.
 - **Settings this version no longer has are not carried over**, and the import names them when it finishes.
+- **Saving under a name an old store has** does not touch the old store either. The new session is written to the KiTTY++ store and hides the old one from then on; when the old stores are shown in the list, Save asks first and states exactly that. A name that exists in the KiTTY++ store and was not loaded gets the usual "replace?" question instead.
 
 Two settings are left behind deliberately:
 
@@ -226,7 +227,7 @@ The session launcher gives you a quick way to open your saved sessions without d
 
 You can keep individual sessions out of the launcher menu while leaving them in the normal session list: tick **"Hide this session from the launcher"** on the session's **Session > Startup** panel (Launcher configuration).
 
-For favourite sessions, you can assign a **global hotkey** in the session's **Session → Startup** panel. The hotkey is registered only while `kitty.exe -launcher` is running; when you save a session, a running launcher is notified and refreshes its registered hotkeys automatically. The same panel includes a check button that tells you whether the combination is currently available or already reserved by Windows/another application — and it names any saved session already holding the combination. When two sessions end up claiming one hotkey anyway (an import, say), the launcher balloons at startup naming who won; clicking the balloon opens the winner's settings.
+For favourite sessions, you can assign a **global hotkey** in the session's **Session → Startup** panel. The hotkey is registered only while `kitty.exe -launcher` is running; when you save a session, a running launcher is notified and refreshes its registered hotkeys automatically. The same panel includes a check button that tells you whether the combination is currently available or already reserved by Windows/another application — and it names any saved session already holding the combination. When two sessions end up claiming one hotkey anyway (an import, save), the launcher balloons at startup naming who won; clicking the balloon opens the winner's settings.
 
 ![Global hotkey](docs/features/img/config_hotkey.jpg)
 
@@ -358,8 +359,8 @@ passphrase, the recovery code or the printed secret.
 File transfers work through the **agent** rather than the file: pscp, psftp and
 WinSCP know nothing about the sidecar, so KiTTY does not hand them a path they
 cannot open — load the key in kageant once and they get it from there. If the
-agent does not hold it yet, the transfer window says so before the transfer
-runs, and the WinSCP hand-off asks first.
+agent does not hold it yet, the transfer window reports this before the
+transfer runs, and the WinSCP hand-off asks first.
 
 **How to enable:** in **kageant**, right-click a loaded key → *Protect with
 Windows Hello…*; in **kittygen**, tick *Protect with Windows Hello* when
@@ -1270,7 +1271,7 @@ the port):**
   normally, and nothing respawns during system shutdown.
 - `[KiTTY] scriptmode=no` — master off-switch for the RuTTY script engine (the
   session auto-script and the "Send a script file" menu entry).
-- `[KiTTY] size=yes` — appends the live terminal size `[rows x cols]` to the
+- `[KiTTY] size=yes` — appends the live terminal size `[cols x rows]` to the
   window title, updated as you resize (hidden while maximized).
 - `[KiTTY] wintitle` — KiTTY's title decorations, reimplemented safely: the
   size suffix plus `(PROTECTED)` and `(ONTOP)` status markers, refreshed live
@@ -1281,6 +1282,10 @@ the port):**
 
 **Removed — ignored if present in an old kitty.ini:**
 
+- `[KiTTY] CtHelperPath` — the Cygwin helper (cthelper) it pointed at was
+  never part of this port's build and nothing launched it; the setting and
+  the sources went in 0.85.1.8. A Cygwin shell inside KiTTY++ goes through
+  the cygtermd local-proxy route described above.
 - `[KiTTY] adb`, `capslock`, `maxblinkingtime`, `paste`, `hostkeyextension`,
   `PlinkPath`, `KiPP` — read-but-dead in all 0.84.x builds; the features they
   once toggled either no longer exist or no longer consult them (ADB support is
@@ -1307,7 +1312,7 @@ Everything else in `docs/examples/kitty.ini.example` is verified honored.
 
 ## Credits
 
-KiTTY is developed by **Cyril Dupont** ([cyd01/KiTTY](https://github.com/cyd01/KiTTY/)),
+KiTTY was developed by **Cyril Dupont** ([cyd01/KiTTY](https://github.com/cyd01/KiTTY/)),
 based on **PuTTY** by **Simon Tatham** and contributors. Several features integrate
 third-party patches (RuTTY, the covidimus background-image patch, Patrick Cernko's
 key-confirmation patch, LePuTTY ZModem, and others), credited in their sections above.

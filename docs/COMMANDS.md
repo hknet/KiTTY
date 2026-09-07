@@ -21,7 +21,7 @@ See [FEATURES.md](../FEATURES.md) for the surrounding features (send-text boxes,
 
 ### /size
 
-Toggle the `[rows x cols]` size suffix in the window title. If the title
+Toggle the `[cols x rows]` size suffix in the window title. If the title
 decorations are off entirely (see `/wintitle`), `/size` turns both the
 decorations and the suffix on — "show me the size" always works.
 

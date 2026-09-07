@@ -4594,9 +4594,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                          * Only an old store has the name, and that store is
                          * shown in the list: the new session is saved beside
                          * the old one and hides it from now on (loading is
-                         * first-hive-wins). Not a replace - say what it is.
-                         * With foreign sessions hidden the old one is not on
-                         * screen, so nothing is said.
+                         * first-hive-wins). Not a replace - the prompt
+                         * states what happens. With foreign sessions hidden
+                         * the old one is not on screen, so no prompt.
                          */
                         const char *where = NULL;
                         settings_r *f = kitty_open_settings_r_hive(

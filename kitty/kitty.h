@@ -66,7 +66,7 @@ extern int internal_delay ;
 // Nom de la classe de l'application
 extern char KiTTYClassName[128] ;
 
-// [KiTTY] size: append the live [rows x cols] to the window title
+// [KiTTY] size: append the live [cols x rows] to the window title
 int GetSizeFlag(void) ;
 void SetSizeFlag( const int flag ) ;
 

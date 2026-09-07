@@ -1,27 +1,31 @@
 # KiTTY changelog
 
-KiTTY is basically the full KiTTY feature set forward-ported and then some really serious speed enhancements and features onto a modern, security-patched **PuTTY 0.85** core. Versions below are this port's own `0.85.1.x` line. For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
+KiTTY is basically the full KiTTY feature set forward-ported and then some more and really serious speed enhancements and features onto a modern, security-patched **PuTTY 0.85** core.
+Versions below are this port's own `0.85.1.x` line.
+For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.8-beta — unreleased
+## 0.85.1.8-beta — 2026-09-07
 
 ### New
 
-- **The kitty clipboard protocol (OSC 5522) now writes as well as reads, and
-  carries images both ways.** A program on the far end can put text, an
-  image or any other content type on your clipboard in one transaction; text
-  arrives as ordinary clipboard text, a PNG as the "PNG" format image editors
-  and browsers paste, everything else under its own type name. A program can
-  also read an image off your clipboard: a PNG placed there by a browser or
-  editor goes out as it is, a screenshot is encoded to PNG first, and the
-  clipboard's type list names image/png when one is there. Reads and writes
-  use the OSC 52 permissions (Deny, Ask, Allow, the focus rule, the read
-  dialog), refusals are answered with the protocol's error codes instead of
-  silence, and a write may be up to 64 MB, the least the specification
-  allows, whatever the clipboard size limit is set to for OSC 52. Base64 in
-  OSC 5522 is checked strictly, as the updated specification requires: a
-  request with invalid characters or missing padding is refused (a write
+- **The other kitty's clipboard protocol (OSC 5522) now in this KiTTY++ writes as well as reads, and carries images both ways.**
+  A program on the far end can put text, an image or any other content type on
+  your clipboard in one transaction; text arrives as ordinary clipboard text,
+  a PNG as the "PNG" format image editors and browsers paste, everything else
+  under its own type name.
+  A program can also read an image off your clipboard:
+  a PNG placed there by a browser or editor goes out as it is, a screenshot
+  is encoded to PNG first, and the clipboard's type list names image/png when
+  one is there.
+  Reads and writes use the OSC 52 permissions (Deny, Ask, Allow,
+  the focus rule, the read dialog), refusals are answered with the
+  protocol's error codes instead of silence, and a write may be up to 64 MB,
+  the least the specification allows, whatever the clipboard size limit is
+  set to for OSC 52. Base64 in OSC 5522 is checked strictly, as the updated
+  specification requires:
+  requests with invalid characters or missing padding are refused (a write
   with EINVAL, a read without a reply) rather than decoded with holes in it.
-  OSC 52 is unchanged. Verified end to end against kitty's own `kitten
+  OSC 52 is unchanged. Verified end to end against (other) kitty's own `kitten
   clipboard` client.
 - **Paste events for the kitty clipboard protocol (private mode 5522).** An
   application that sets the mode is told, on every Paste, what is on your
@@ -42,10 +46,11 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some reall
 
 ### Changed
 
-- **The Cygwin helper (cthelper) is gone.** Its sources were never part of
-  this port's build, nothing launched it, and the "Cygwin helper" path in
-  Application > KiTTY++ Settings > Transfers & Tools set a value nothing
-  read. The setting, its kitty.ini entry and the sources are removed.
+- **The Cygwin helper (cthelper) has left the building.** Its sources were
+  never part of this port's build, nothing launched it and the
+  "Cygwin helper" path in Application > KiTTY++ Settings > Transfers & Tools
+  set a value nothing read.
+  The setting, its kitty.ini entry and the sources are removed.
 - **The Window settings are regrouped.** "Close window on exit" and "Save
   settings on exit" moved from the Session panel to Window > Behaviour, in
   the groups "Closing the window" and "Remembering". Selection is now
@@ -62,10 +67,10 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some reall
   fingerprints included, sit under the list, behind a bar that can be
   dragged to give the details more room. Copy, Delete, and Verify:
   the host is asked for its current key, in the background and without
-  any login, and the row says OK, MISMATCH (in red), not offered or
+  any login, and the row reads OK, MISMATCH (in red), not offered or
   unreachable. The "Configure host CAs" button on a session's Host keys
   panel now jumps to Security > Certificate Authorities, where that
-  installation-wide setting lives. That panel also says which keys are
+  installation-wide setting lives. That panel also lists which keys are
   stored for the session's host, their types, and has "Scan/Edit": every key type
   the host presents, against the store, with Accept (a new key is stored;
   a changed one only after a second question naming both fingerprints)
@@ -85,7 +90,7 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some reall
   state, and imports the selected ones into a folder of your naming
   (KiTTYimport by default). Nothing is overwritten: a taken name becomes
   "name (folder)". A password this KiTTY cannot decode is left out and
-  said so; the session still arrives.
+  reported; the session still arrives.
 - **A KiTTY.ini leaf under Storage & Backup.** The configuration file,
   read-only and following the file on disk, with the shipped
   kitty.ini.example one dropdown away for copying settings across; Edit
@@ -123,7 +128,12 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some reall
   back to the old KiTTY and PuTTY stores, so a name that was free in the
   list still counted as taken when an old store had it. The check now looks
   at the KiTTY++ store only. When the old stores are shown in the list, Save
-  says instead that the new session will hide the old one of that name.
+  asks instead whether to hide the old session of that name behind the new one.
+- **The size suffix in the window title (`[KiTTY] size=yes`) stayed off
+  while the window was maximised, and printed rows before columns.** Both
+  habits came from classic KiTTY. A maximised terminal has a size like any
+  other and now shows it, and the order is `[cols x rows]` - 80x24, the
+  way PuTTY's own resize tip, xterm and everyone else write it.
 
 ## 0.85.1.7-beta — 2026-09-04
 

@@ -14,6 +14,24 @@ each one says so.
 
 \H{kitty-cfg-session} The Session panel
 
+\S{kitty-cfg-save-guard} Saving over another session
+
+Clicking a name in the saved-session list only puts that name into the
+box; it does not load the session. So \q{Save} after a click would write
+the settings currently in the dialog - host, port, protocol, everything -
+over a session you never looked at. KiTTY++ asks first, naming the
+session, whenever the target exists in its store and is not the one you
+loaded. \q{Default Settings} is exempt, and so is saving a session you
+loaded and changed.
+
+A second question covers the old stores. When the list shows the
+sessions of an old KiTTY (9bis.com) or of PuTTY (see
+\k{kitty-cfg-migration}) and only one of those has the name you save
+under, nothing is replaced: the new session is written to the KiTTY++
+store and hides the old one from then on, because a name is looked up in
+the KiTTY++ store first. The question states that, and the old session
+is left as it is. With the old stores hidden the question is not asked.
+
 \S{kitty-cfg-folders} \ii{Session folders}
 
 A saved session can be filed in a \e{folder}, so a list of two hundred

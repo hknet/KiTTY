@@ -1388,7 +1388,7 @@
 #define KT_CMD_CAT_STORE                             "Settings & storage"
 #define KT_CMD_CAT_ALLWIN                            "All KiTTY windows"
 #define KT_CMD_CAT_DIAG                              "Behaviour & diagnostics"
-#define KT_CMD_HELP_SIZE                             "toggle the [rows x cols] title suffix"
+#define KT_CMD_HELP_SIZE                             "toggle the [cols x rows] title suffix"
 #define KT_CMD_HELP_WINTITLE                         "toggle the title decorations"
 #define KT_CMD_HELP_TITLE                            "set the window title"
 #define KT_CMD_HELP_TRANSPARENCY                     "toggle window transparency"
