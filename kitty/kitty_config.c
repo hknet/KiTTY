@@ -341,7 +341,10 @@ static void kitty_keyfile_pin_record_handler(dlgcontrol *ctrl, dlgparam *dlg,
     bare = strstr(full, "SHA256:");
     if (!bare) bare = full;
     conf_set_str(conf, CONF_publickey_fingerprint, bare);
-    dlg_refresh(NULL, dlg);
+    /* Only the fingerprint box (the button's context): dlg_refresh(NULL)
+     * redrew every control of the panel, which read as the configuration
+      * window reloading. */
+    dlg_refresh((dlgcontrol *)ctrl->context.p, dlg);
     m = dupprintf(KT_CFG_PIN_RECORDED, full);
     MessageBox(GetActiveWindow(), m, KT_CAP_KEY_FINGERPRINT_PIN,
                MB_OK | MB_ICONINFORMATION);
@@ -5819,6 +5822,27 @@ static void host_ca_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
         kitty_cfg_goto_panel("Application/Security/Certificate Authorities");
 }
 
+/* KiTTY: the WinSCP executable path is an application setting (KiTTY++
+ * Settings > Transfers & Tools > WinSCP); the session's WinSCP panel carries a
+ * button that jumps there. */
+static void winscp_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                       void *data, int event)
+{
+    extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
+    if (event == EVENT_ACTION)
+        kitty_cfg_goto_panel("Application/KiTTY++ Settings/Transfers & Tools/WinSCP");
+}
+
+/* KiTTY: the file-copy helper (kscp path, port, folders) lives on KiTTY++
+ * Settings > Transfers & Tools; the session's KSCP panel jumps there. */
+static void kscp_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                     void *data, int event)
+{
+    extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
+    if (event == EVENT_ACTION)
+        kitty_cfg_goto_panel("Application/KiTTY++ Settings/Transfers & Tools");
+}
+
 /* ---- Security > Host keys: the trust store, listed ----------------------- */
 
 #include "kitty_hostkeys.h"
@@ -6430,7 +6454,7 @@ static bool hk_split_rects(RECT *a, RECT *b)
  * means the list ends exactly where the box and the bar are put, and a
  * move that rounds to the row already shown does nothing at all - the
  * three windows move in ONE deferred pass, so a drag does not flicker
- * (his report of the first version: "flicker from hell"). */
+ * (the first version flickered on every drag). */
 static int hk_split_shown_dy = INT_MIN;     /* the dy last applied in this drag */
 static void hk_split_apply(const RECT *a, const RECT *b, int dy)
 {
@@ -6574,8 +6598,8 @@ static void hk_place_splitter(struct hk_data *hk)
 
 /* A panel switch: the bar is not one of the panel's controls, so the panel
  * cache does not hide it with them - it has to go and come by itself, or it
- * lies across the next panel (his report, 2026-09-06: artefacts on whatever
- * panel followed Host keys). Same SWP_NOREDRAW discipline as the controls. */
+ * lies across the next panel (artefacts on whatever panel followed Host
+ * keys). Same SWP_NOREDRAW discipline as the controls. */
 void kitty_config_panel_shown(const char *path, bool show)
 {
     if (!hk_splitter || !IsWindow(hk_splitter) || !path ||
@@ -9760,13 +9784,16 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
             /* KiTTY: opt-in pin of the key FILE. Always the key's own
              * fingerprint, never the certificate's - certificates rotate by
              * design and must not break the pin. */
-            ctrl_editbox(s, KT_CREDENTIALS_PINNED_KEY_FINGERPRINT_EMPTY_NO,
-                         NO_SHORTCUT, 100, HELPCTX(kitty_keypin),
-                         conf_editbox_handler, I(CONF_publickey_fingerprint),
-                         ED_STR);
-            ctrl_pushbutton(s, KT_CREDENTIALS_RECORD_FINGERPRINT_OF_THE_KEY,
-                            NO_SHORTCUT, HELPCTX(kitty_keypin),
-                            kitty_keyfile_pin_record_handler, I(0));
+            {
+                /* the button refreshes exactly this box after recording */
+                dlgcontrol *fpbox = ctrl_editbox(s, KT_CREDENTIALS_PINNED_KEY_FINGERPRINT_EMPTY_NO,
+                             NO_SHORTCUT, 100, HELPCTX(kitty_keypin),
+                             conf_editbox_handler, I(CONF_publickey_fingerprint),
+                             ED_STR);
+                ctrl_pushbutton(s, KT_CREDENTIALS_RECORD_FINGERPRINT_OF_THE_KEY,
+                                NO_SHORTCUT, HELPCTX(kitty_keypin),
+                                kitty_keyfile_pin_record_handler, P(fpbox));
+            }
 #endif
 
             s = ctrl_getset(b, "Connection/SSH/Auth/Credentials", "plugin",
@@ -10255,6 +10282,21 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
 
             s = ctrl_getset(b, "Connection/SSH/KSCP",
                             "pscp", KT_KSCP_KSCP_INTEGRATION);
+            /* ONE protocol for both tools: kscp goes -scp for scp and -sftp
+             * for everything else (kitty_xfer.c), WinSCP is started with the
+             * choice itself. Stored as WinSCPProtocol, so saved sessions keep
+             * their value. Moved here from the WinSCP panel 2026-09-08. */
+            ctrl_radiobuttons(s, KT_KSCP_PROTOCOL, NO_SHORTCUT, 4,
+                              HELPCTX(kitty_winscp),
+                              conf_radiobutton_handler,
+                              I(CONF_winscpprot),
+                              KT_WINSCP_SCP,   NO_SHORTCUT, I(0),
+                              KT_WINSCP_SFTP,  NO_SHORTCUT, I(1),
+                              KT_WINSCP_FTP,   NO_SHORTCUT, I(2),
+                              KT_WINSCP_FTPS,  NO_SHORTCUT, I(3),
+                              KT_WINSCP_FTPES, NO_SHORTCUT, I(4),
+                              KT_WINSCP_HTTP,  NO_SHORTCUT, I(5),
+                              KT_WINSCP_HTTPS, NO_SHORTCUT, I(6));
             g_osc7_track_ctrl = ctrl_checkbox(s,
                           KT_KSCP_TRACK_REMOTE_DIRECTORY_OSC_7,
                           NO_SHORTCUT, HELPCTX(kitty_winscp),
@@ -10273,23 +10315,35 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
             ctrl_checkbox(s, KT_KSCP_KEEP_THE_TRANSFER_WINDOW_OPEN,
                           NO_SHORTCUT, HELPCTX(kitty_winscp),
                           conf_checkbox_handler, I(CONF_pscp_keep_window));
+            /* The helper's path and port are application settings (KiTTY++
+             * Settings > Transfers & Tools); say so, and offer the way there
+             * when the Application tab exists. */
+            {
+                extern int GetConfigBoxApplicationSettingsFlag(void);   /* kitty.c */
+                dlgcontrol *note, *btn;
+                s = ctrl_getset(b, "Connection/SSH/KSCP", "global", NULL);
+                if (GetConfigBoxApplicationSettingsFlag()) {
+                    ctrl_columns(s, 2, 55, 45);
+                    note = ctrl_text(s, KT_KSCP_HELPER_IS_GLOBAL, HELPCTX(kitty_winscp));
+                    note->column = 0;
+                    btn = ctrl_pushbutton(s, KT_KSCP_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
+                                          HELPCTX(kitty_winscp),
+                                          kscp_global_jump_handler, I(0));
+                    btn->column = 1;
+                    ctrl_columns(s, 1, 100);
+                } else {
+                    ctrl_text(s, KT_KSCP_HELPER_IS_GLOBAL, HELPCTX(kitty_winscp));
+                }
+            }
 
             ctrl_settitle(b, "Connection/SSH/WinSCP",
                           KT_WINSCP_WINSCP_INTEGRATION);
 
+            /* The protocol radios live on the KSCP panel now: CONF_winscpprot drives kscp's -scp/-sftp as well as
+             * this hand-off, and here it read as WinSCP's alone. */
             s = ctrl_getset(b, "Connection/SSH/WinSCP",
                             "winSCPproto", KT_WINSCP_GENERAL_PROTOCOL_SETTING);
-            ctrl_radiobuttons(s, KT_WINSCP_PREFERED_PROTOCOL, NO_SHORTCUT, 4,
-                              HELPCTX(kitty_winscp_session),
-                              conf_radiobutton_handler,
-                              I(CONF_winscpprot),
-                              KT_WINSCP_SCP,   NO_SHORTCUT, I(0),
-                              KT_WINSCP_SFTP,  NO_SHORTCUT, I(1),
-                              KT_WINSCP_FTP,   NO_SHORTCUT, I(2),
-                              KT_WINSCP_FTPS,  NO_SHORTCUT, I(3),
-                              KT_WINSCP_FTPES, NO_SHORTCUT, I(4),
-                              KT_WINSCP_HTTP,  NO_SHORTCUT, I(5),
-                              KT_WINSCP_HTTPS, NO_SHORTCUT, I(6));
+            ctrl_text(s, KT_WINSCP_PROTOCOL_ON_KSCP, HELPCTX(kitty_winscp_session));
 
             s = ctrl_getset(b, "Connection/SSH/WinSCP",
                             "WinSCP", KT_WINSCP_WINSCP_INTEGRATION);
@@ -10299,7 +10353,7 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
              * Everything left in this group IS per session. */
             ctrl_editbox(s, KT_WINSCP_SFTP_CONNECT_USER_HOSTNAME_PORT,
                          NO_SHORTCUT, 100,
-                         HELPCTX(kitty_winscp),
+                         HELPCTX(kitty_winscp_session),   /* the WinSCP panel's topic, not KSCP's */
                          conf_editbox_handler, I(CONF_sftpconnect), ED_STR);
             ctrl_editbox(s, KT_WINSCP_WINSCP_ADDITIONAL_OPTIONS, NO_SHORTCUT, 100,
                          HELPCTX(kitty_winscp_session),
@@ -10310,6 +10364,27 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
             ctrl_editbox(s, KT_WINSCP_SHELL_SCP_MODE_ONLY, NO_SHORTCUT, 100,
                          HELPCTX(kitty_winscp_session),
                          conf_editbox_handler, I(CONF_pscpshell), ED_STR);
+            /* Where the executable path went, and a way there. Without the
+             * Application tab (applicationsettings=no) there is nowhere to
+             * jump, so only the note stays. */
+            {
+                extern int GetConfigBoxApplicationSettingsFlag(void);   /* kitty.c */
+                dlgcontrol *note, *btn;
+                s = ctrl_getset(b, "Connection/SSH/WinSCP", "global", NULL);
+                if (GetConfigBoxApplicationSettingsFlag()) {
+                    ctrl_columns(s, 2, 62, 38);
+                    note = ctrl_text(s, KT_WINSCP_PATH_IS_GLOBAL,
+                                     HELPCTX(kitty_winscp_session));
+                    note->column = 0;
+                    btn = ctrl_pushbutton(s, KT_WINSCP_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
+                                          HELPCTX(kitty_winscp_session),
+                                          winscp_global_jump_handler, I(0));
+                    btn->column = 1;
+                    ctrl_columns(s, 1, 100);
+                } else {
+                    ctrl_text(s, KT_WINSCP_PATH_IS_GLOBAL, HELPCTX(kitty_winscp_session));
+                }
+            }
         }
 #endif
     }
@@ -11314,6 +11389,35 @@ extern char *GetKittyIniFile(void);
 extern int  GetReadOnlyFlag(void);
 
 static const char *kset_get_iconfile(void) { return GetIconFile(); }
+
+/* pscpport: unset has always meant the session's port (kitty_xfer.c), and the
+ * label says "* = the session's port" - so the field shows "*" rather than an
+ * empty box when nothing is set. Writing "*" back is
+ * the same thing spelled out. */
+static const char *kset_get_pscpport(void)
+{
+    static char buf[64];
+    if (!ReadParameterN(INIT_SECTION, "pscpport", buf, sizeof(buf)) || !buf[0])
+        return "*";
+    return buf;
+}
+
+static const struct kset_key *kset_find(const char *key);
+static void kset_write(const struct kset_key *k, const char *text);
+/* "Locate..." beside the download folder: the Explorer folder picker
+ * (OpenDirName, kitty_win.c), the pick written like a typed value and the
+ * box (the button's context) refreshed. */
+static void kset_downloaddir_locate_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                            void *data, int event)
+{
+    char dir[4096];
+    const struct kset_key *k;
+    if (event != EVENT_ACTION) return;
+    if (!OpenDirName(kitty_cfg_modal_owner(), dir) || !dir[0]) return;
+    k = kset_find("downloaddir");
+    if (k) kset_write(k, dir);
+    dlg_refresh((dlgcontrol *)ctrl->context.p, dlg);
+}
 static void kset_set_debug(int v) { debug_flag = v; }
 static int  kset_get_debug(void) { return debug_flag; }
 
@@ -11439,7 +11543,7 @@ static const struct kset_key kset_keys[] = {
      * PSCPPath in memory with what it found, and showing that here made a
      * cleared field look as if the path had come back. */
     { INIT_SECTION, "PSCPPath",       KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0, NULL, SetPSCPPath },
-    { INIT_SECTION, "pscpport",       KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
+    { INIT_SECTION, "pscpport",       KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0, kset_get_pscpport, NULL },
     { INIT_SECTION, "downloaddir",    KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
     { INIT_SECTION, "uploaddir",      KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
     /* Launcher: a separate process reads these from the store when it starts */
@@ -11827,9 +11931,11 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
      * appends to that panel wherever it is called from) ---- */
     ctrl_settitle(b, KSET_PATH("Terminal & Printing"), KT_KSET_WD_TITLE);
     s = ctrl_getset(b, KSET_PATH("Appearance"), "titlebar", KT_KSET_WD_TITLEBAR);
-    KSET_CHECKBOX(s, KT_KSET_WD_WINTITLE, "wintitle", kitty_kset_window);
-    KSET_CHECKBOX(s, KT_KSET_WD_SIZE, "size", kitty_kset_window);
-    KSET_CHECKBOX(s, KT_KSET_WD_WINROLL, "winroll", kitty_kset_window);
+    /* The group moved to Appearance and its help must follow: with the old
+     * context F1 opened "The Terminal & Printing panel". */
+    KSET_CHECKBOX(s, KT_KSET_WD_WINTITLE, "wintitle", kitty_appearance);
+    KSET_CHECKBOX(s, KT_KSET_WD_SIZE, "size", kitty_appearance);
+    KSET_CHECKBOX(s, KT_KSET_WD_WINROLL, "winroll", kitty_appearance);
     s = ctrl_getset(b, KSET_PATH("Terminal & Printing"), "features", KT_KSET_WD_FEATURES);
     KSET_DROPLIST(s, KT_KSET_WD_RENDERER, "renderer", kitty_kset_window);
     KSET_DROPLIST(s, KT_KSET_WD_FRAMEPACE, "framepace", kitty_kset_window);
@@ -11844,8 +11950,8 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     /* Not a feature: the library the per-session icon numbers index into
      * (kitty.c loads it at startup, kitty.dll or the exe when unset). */
     s = ctrl_getset(b, KSET_PATH("Appearance"), "icons", KT_KSET_WD_ICONS);
-    KSET_FILESEL(s, KT_KSET_WD_ICONFILE, KT_KSET_WD_ICONFILE_SELECT, "iconfile", kitty_kset_window);
-    ctrl_text(s, KT_KSET_WD_ICONFILE_NOTE, HELPCTX(kitty_kset_window));
+    KSET_FILESEL(s, KT_KSET_WD_ICONFILE, KT_KSET_WD_ICONFILE_SELECT, "iconfile", kitty_appearance);
+    ctrl_text(s, KT_KSET_WD_ICONFILE_NOTE, HELPCTX(kitty_appearance));
     s = ctrl_getset(b, KSET_PATH("Terminal & Printing"), "printing", KT_KSET_WD_PRINTING);
     KSET_NUMBER(s, KT_KSET_WD_PRINT_PITCH, "height", kitty_kset_window);
     KSET_NUMBER(s, KT_KSET_WD_PRINT_LINES, "maxline", kitty_kset_window);
@@ -11892,15 +11998,29 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
         ctrl_text(s, line, HELPCTX(kitty_helper_paths));
     }
     KSET_TEXTBOX(s, KT_KSET_TT_PSCPPORT, "pscpport", kitty_helper_paths);
-    KSET_TEXTBOX(s, KT_KSET_TT_DOWNLOADDIR, "downloaddir", kitty_helper_paths);
+    {
+        /* The download folder is local: a folder picker beside it (his
+         * request 2026-09-08). The button's context is the box it fills. */
+        dlgcontrol *dd, *loc;
+        ctrl_columns(s, 2, 76, 24);
+        dd = KSET_TEXTBOX(s, KT_KSET_TT_DOWNLOADDIR, "downloaddir", kitty_helper_paths);
+        dd->column = 0;
+        loc = ctrl_pushbutton(s, KT_KSET_TT_LOCATE, NO_SHORTCUT, HELPCTX(kitty_helper_paths),
+                              kset_downloaddir_locate_handler, P(dd));
+        loc->column = 1;
+        ctrl_columns(s, 1, 100);
+    }
     KSET_TEXTBOX(s, KT_KSET_TT_UPLOADDIR, "uploaddir", kitty_helper_paths);
 
     ctrl_settitle(b, KSET_PATH("Transfers & Tools/WinSCP"), KT_WINSCP_WINSCP);
     s = ctrl_getset(b, KSET_PATH("Transfers & Tools/WinSCP"), "path", KT_WINSCP_EXECUTABLE);
     ctrl_filesel(s, KT_WINSCP_WINSCP_EXECUTABLE, NO_SHORTCUT,
                  FILTER_ALL_FILES, false, KT_WINSCP_SELECT_WINSCP_EXECUTABLE,
-                 HELPCTX(kitty_winscp), kitty_winscppath_handler, P(NULL));
-    ctrl_text(s, KT_WINSCP_THE_OTHER_WINSCP_SETTINGS_BELONG, HELPCTX(kitty_winscp));
+                 HELPCTX(kitty_helper_paths), kitty_winscppath_handler, P(NULL));
+    /* kitty_helper_paths = "The Transfers & Tools panel", which describes the
+     * helper programs; kitty_winscp is the KSCP panel's topic (help drift
+     * audit 2026-09-08). */
+    ctrl_text(s, KT_WINSCP_THE_OTHER_WINSCP_SETTINGS_BELONG, HELPCTX(kitty_helper_paths));
 
     ctrl_settitle(b, KSET_PATH("Transfers & Tools/ZModem"), KT_ZMODEM_ZMODEM);
     s = ctrl_getset(b, KSET_PATH("Transfers & Tools/ZModem"), "cmds", KT_EXTERNAL_TOOLS_HELPER_PROGRAMS);

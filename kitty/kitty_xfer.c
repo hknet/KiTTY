@@ -653,6 +653,82 @@ static void urlcat( char *dst, size_t cap, const char *s ) {
 	}
 }
 
+/* ---- passwords for WinSCP travel in FILES, never on its command line -------
+ *
+ * A child's command line is readable by every process of the same user for as
+ * long as the child runs (Task Manager, WMI, ToolHelp), and it lands in
+ * process-audit logs. WinSCP's /passwordsfromfiles switch makes it read the
+ * value of /password, /passphrase "and in general all passwords from all
+ * sources" as the PATH of a file holding the real password - so the session
+ * password in the URL and the proxy/tunnel password in /rawsettings become
+ * paths to files this process writes just before the start and deletes again
+ * after WinSCP has had time to read them (a minute; a stale file from a crash
+ * is swept at the next start). The files live in %TEMP%, which Windows keeps
+ * private to the user - the same protection our own stores have. */
+#define KX_PWFILES_MAX 4
+struct kx_pwfiles { int n ; char path[KX_PWFILES_MAX][MAX_PATH] ; } ;
+static struct kx_pwfiles kx_pw = { 0 } ;
+
+static void kx_pwfiles_sweep( void ) {
+	char tmp[MAX_PATH], pat[MAX_PATH], full[MAX_PATH] ;
+	WIN32_FIND_DATA fd ; HANDLE h ;
+	if( !GetTempPath( sizeof(tmp), tmp ) ) return ;
+	snprintf( pat, sizeof(pat), "%skitty_pw_*.tmp", tmp ) ;
+	if( (h = FindFirstFile( pat, &fd )) == INVALID_HANDLE_VALUE ) return ;
+	do {
+		snprintf( full, sizeof(full), "%s%s", tmp, fd.cFileName ) ;
+		SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ;
+		DeleteFile( full ) ;
+	} while( FindNextFile( h, &fd ) ) ;
+	FindClose( h ) ;
+}
+
+/* Write `secret` to a fresh private temp file; the path (static storage,
+ * valid until the release) or NULL when no file could be made - the caller
+ * then falls back to the plain value, so a transfer never fails for this. */
+static const char *kx_password_file( const char *secret ) {
+	char tmp[MAX_PATH] ; HANDLE h ; DWORD written ; int i ;
+	static unsigned serial = 0 ;
+	if( kx_pw.n >= KX_PWFILES_MAX ) return NULL ;
+	if( !GetTempPath( sizeof(tmp), tmp ) ) return NULL ;
+	for( i = 0 ; i < 16 ; i++ ) {
+		snprintf( kx_pw.path[kx_pw.n], MAX_PATH, "%skitty_pw_%08lx_%u.tmp", tmp,
+		          (unsigned long)GetTickCount() ^ (unsigned long)GetCurrentProcessId(), ++serial ) ;
+		h = CreateFile( kx_pw.path[kx_pw.n], GENERIC_WRITE, 0, NULL, CREATE_NEW,
+		                FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_TEMPORARY, NULL ) ;
+		if( h != INVALID_HANDLE_VALUE ) break ;
+	}
+	if( h == INVALID_HANDLE_VALUE ) return NULL ;
+	if( !WriteFile( h, secret, (DWORD)strlen(secret), &written, NULL ) || written != strlen(secret) ) {
+		CloseHandle( h ) ; DeleteFile( kx_pw.path[kx_pw.n] ) ; return NULL ;
+	}
+	CloseHandle( h ) ;
+	return kx_pw.path[kx_pw.n++] ;
+}
+
+static DWORD WINAPI kx_pwfiles_delete_thread( LPVOID p ) {
+	struct kx_pwfiles *f = (struct kx_pwfiles *)p ; int i ;
+	Sleep( 60000 ) ;
+	for( i = 0 ; i < f->n ; i++ ) { SetFileAttributes( f->path[i], FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( f->path[i] ) ; }
+	free( f ) ;
+	return 0 ;
+}
+
+/* After the start: delete the files in a minute (WinSCP reads them at
+ * startup). `now` deletes at once - the start was cancelled. */
+static void kx_pwfiles_release( int now ) {
+	struct kx_pwfiles *copy ; HANDLE t ; int i ;
+	if( kx_pw.n == 0 ) return ;
+	if( now ) {
+		for( i = 0 ; i < kx_pw.n ; i++ ) { SetFileAttributes( kx_pw.path[i], FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( kx_pw.path[i] ) ; }
+	} else if( (copy = (struct kx_pwfiles *)malloc( sizeof(*copy) )) != NULL ) {
+		*copy = kx_pw ;
+		t = CreateThread( NULL, 0, kx_pwfiles_delete_thread, copy, 0, NULL ) ;
+		if( t ) CloseHandle( t ) ; else { kx_pwfiles_delete_thread( copy ) ; }
+	}
+	kx_pw.n = 0 ;
+}
+
 void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) {
 	char buffer[4096], pscppath[4096]="", pscpport[4096]="22", remotedir[4096]=".",dir[4096], b1[256], tgt[4096] ;
 	size_t pw_at = 0, pw_len = 0 ;   /* KiTTY: where the password lands in buffer */
@@ -1202,8 +1278,11 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	size_t proxy_pw_at = 0, proxy_pw_len = 0 ;  /* ... and the proxy/tunnel one */
 	char cmd[4096], shortpath[1024], buffer[4096], proto[10] ;
 	int raw = 0;
-	
-	if( directory == NULL ) { directory = kitty_current_dir(); } 
+	int pwfiles = 0 ;                /* passwords handed over as files (/passwordsfromfiles) */
+	const char *pf ;
+
+	kx_pwfiles_sweep() ;             /* anything an earlier start left behind */
+	if( directory == NULL ) { directory = kitty_current_dir(); }
 	if( WinSCPPath==NULL ) {
 		if( !SearchWinSCP() ) return ;
 	}
@@ -1231,10 +1310,15 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		} else {
 			urlcat( cmd, sizeof(cmd), user!=NULL ? user : conf_get_str_ambi(conf,CONF_username,NULL) ) ;
 			if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
-				/* plaintext at runtime; do NOT MASKPASS. (Goes into the WinSCP URL -- #535: percent-encode so '@' '/' etc. can't redirect the host.) */
+				/* The URL's password field carries the PATH of a private temp
+				 * file holding the password (/passwordsfromfiles, see above);
+				 * only if no file could be made does the value itself go
+				 * (#535: percent-encoded so '@' '/' etc. can't redirect the host). */
+				pf = kx_password_file( conf_get_str(conf,CONF_password) ) ;
 				bcat( cmd, sizeof(cmd), ":" ) ;
 				pw_at = strlen( cmd ) ;
-				urlcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_password) ) ;
+				if( pf ) { urlcat( cmd, sizeof(cmd), pf ) ; pwfiles++ ; }
+				else urlcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_password) ) ;
 				pw_len = strlen( cmd ) - pw_at ;
 			}
 			bcat( cmd, sizeof(cmd), "@" ) ;
@@ -1260,12 +1344,12 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		snprintf( cmd, sizeof(cmd), "\"%s\" %s://", shortpath, proto ) ;
 		urlcat( cmd, sizeof(cmd), conf_get_str_ambi(conf,CONF_username,NULL) ) ; /* #535: percent-encode userinfo */
 		if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
-			char bufpass[1024] ;
 			bcat( cmd, sizeof(cmd), ":" ) ;
-			snprintf(bufpass,sizeof(bufpass),"%s",conf_get_str(conf,CONF_password)); /* bounded */
-			/* plaintext at runtime; do NOT MASKPASS */
-			urlcat( cmd, sizeof(cmd), bufpass ) ;
-			memset(bufpass,0,strlen(bufpass));
+			pw_at = strlen( cmd ) ;
+			pf = kx_password_file( conf_get_str(conf,CONF_password) ) ;   /* a file, see above */
+			if( pf ) { urlcat( cmd, sizeof(cmd), pf ) ; pwfiles++ ; }
+			else urlcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_password) ) ;
+			pw_len = strlen( cmd ) - pw_at ;
 		}
 		bcat( cmd, sizeof(cmd), "@" ) ;
 		if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) { bcat( cmd, sizeof(cmd), "[" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_host) ) ; bcat( cmd, sizeof(cmd), "]" ) ; }
@@ -1346,7 +1430,9 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 				 * blanks the whole value however it was escaped. */
 				bcat( cmd, sizeof(cmd), " TunnelPasswordPlain=" ) ;
 				proxy_pw_at = strlen( cmd ) ;
-				rawcat( cmd, sizeof(cmd), px_pass ) ;
+				pf = kx_password_file( px_pass ) ;      /* a file - /passwordsfromfiles covers rawsettings too */
+				if( pf ) { rawcat( cmd, sizeof(cmd), pf ) ; pwfiles++ ; }
+				else rawcat( cmd, sizeof(cmd), px_pass ) ;
 				proxy_pw_len = strlen( cmd ) - proxy_pw_at ;
 			}
 		} else if( method > 0 ) {
@@ -1356,9 +1442,11 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			snprintf( buffer, sizeof(buffer), " ProxyPort=%d", px_port ) ; bcat( cmd, sizeof(cmd), buffer ) ;
 			if( px_user && strlen(px_user)>0 ) { bcat( cmd, sizeof(cmd), " ProxyUsername=" ) ; rawcat( cmd, sizeof(cmd), px_user ) ; }
 			if( px_pass && strlen(px_pass)>0 ) {
-				bcat( cmd, sizeof(cmd), " ProxyPassword=" ) ;   /* plaintext at runtime */
+				bcat( cmd, sizeof(cmd), " ProxyPassword=" ) ;
 				proxy_pw_at = strlen( cmd ) ;
-				rawcat( cmd, sizeof(cmd), px_pass ) ;
+				pf = kx_password_file( px_pass ) ;      /* a file, see above */
+				if( pf ) { rawcat( cmd, sizeof(cmd), pf ) ; pwfiles++ ; }
+				else rawcat( cmd, sizeof(cmd), px_pass ) ;
 				proxy_pw_len = strlen( cmd ) - proxy_pw_at ;
 			}
 			/* One PuTTY field, two WinSCP ones: CONF_proxy_telnet_command holds
@@ -1402,12 +1490,17 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		int go = MessageBox( hwnd, text, KT_CAP_KEY_NOT_IN_AGENT,
 		                     MB_OKCANCEL|MB_ICONWARNING ) ;
 		sfree( text ) ; sfree( note ) ;
-		if( go != IDOK ) { memset( cmd, 0, strlen(cmd) ) ; return ; }
+		if( go != IDOK ) { memset( cmd, 0, strlen(cmd) ) ; kx_pwfiles_release( 1 ) ; return ; }
 	  }
 	}
+	/* Every password above went into a file: tell WinSCP so. Without a
+	 * password there is no switch and the command line is what it always was
+	 * (key files and the agent are untouched by this). */
+	if( pwfiles ) bcat( cmd, sizeof(cmd), " /passwordsfromfiles" ) ;
 	debug_logevent_redacted2( "Start WinSCP", cmd, pw_at, pw_len, proxy_pw_at, proxy_pw_len ) ;
 	RunCommand( hwnd, cmd ) ;
 	memset(cmd,0,strlen(cmd));
+	kx_pwfiles_release( 0 ) ;
 }
 
 	

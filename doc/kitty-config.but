@@ -19,9 +19,9 @@ each one says so.
 Clicking a name in the saved-session list only puts that name into the
 box; it does not load the session. So \q{Save} after a click would write
 the settings currently in the dialog - host, port, protocol, everything -
-over a session you never looked at. KiTTY++ asks first, naming the
-session, whenever the target exists in its store and is not the one you
-loaded. \q{Default Settings} is exempt, and so is saving a session you
+over a session you never looked at. KiTTY++ puts up a question first,
+naming the session, whenever the target exists in its store and is not the
+one you loaded. \q{Default Settings} is exempt, and so is saving a session you
 loaded and changed.
 
 A second question covers the old stores. When the list shows the
@@ -30,7 +30,7 @@ sessions of an old KiTTY (9bis.com) or of PuTTY (see
 under, nothing is replaced: the new session is written to the KiTTY++
 store and hides the old one from then on, because a name is looked up in
 the KiTTY++ store first. The question states that, and the old session
-is left as it is. With the old stores hidden the question is not asked.
+is left as it is. With the old stores hidden no question appears.
 
 \S{kitty-cfg-folders} \ii{Session folders}
 
@@ -571,6 +571,12 @@ where the window is not on screen.
 
 \S{kitty-cfg-kscp} The KSCP panel
 
+\b \q{Protocol for file transfers (kscp and WinSCP)} is ONE setting for
+both tools: \c{kscp} runs in SCP mode for \q{scp} and in SFTP mode for
+every other choice; WinSCP is started with the protocol chosen. It used
+to sit on the WinSCP panel, where it read as WinSCP's alone (stored as
+\c{WinSCPProtocol}, so saved sessions keep their value).
+
 Drag-and-drop uploads, and the \q{Start WinSCP} menu item, need to know
 \e{where} on the far end to put a file.
 
@@ -596,11 +602,18 @@ that worked by scanning the window title, which is a remote-code-execution
 hole (CVE-2024-23749 in another terminal). Sessions that used it are
 migrated to OSC 7 automatically.
 
+Where \c{kscp} is, which port it uses and where files land are settings
+of this PC, not of the session: \k{kitty-cfg-external-tools}. The note at
+the foot of the panel says so, and \q{Open global Transfers & Tools Panel}
+beside it takes you there.
+
 \S{kitty-cfg-winscp-session} The WinSCP panel
 
 What to hand \i{WinSCP} when it is started for this session.
 
-\b \q{Preferred protocol} chooses SFTP or SCP.
+\b The protocol is not chosen here any more: \q{Protocol for file
+transfers} on the KSCP panel (\k{kitty-cfg-kscp}) serves WinSCP and
+\c{kscp} alike, and this panel says so.
 
 \b \q{SFTP connect} overrides the target, as \c{[user@]hostname[:port]},
 for the case where the file-transfer host is not the session's host.
@@ -611,8 +624,16 @@ mechanism, for settings it has no command-line switch for.
 
 \b \q{Shell} names the remote shell to use, in SCP mode only.
 
+The session's password, and a proxy or tunnel password, are never put on
+WinSCP's command line: each is written to a private temporary file that
+WinSCP reads (its \c{/passwordsfromfiles} switch) and that KiTTY++ deletes
+a minute after the start. A session that authenticates with a key file or
+the agent hands over no password at all.
+
 Where WinSCP is \e{installed} is not here: that is a property of the PC
-and lives on \k{kitty-cfg-external-tools}.
+and lives on \k{kitty-cfg-external-tools} (the WinSCP leaf below it,
+\c{WinSCPPath} in \c{kitty.ini}). The note at the foot of the panel says
+so, and \q{Open global WinSCP Panel} beside it takes you there.
 
 \S{kitty-cfg-zmodem-session} The ZModem panel
 
@@ -849,6 +870,10 @@ Fonts that are not installed are skipped. Both settings are kept in
 only there, and one feature belongs in one place; the
 \c{[FontFallback]} section of the sample \c{kitty.ini} describes those.
 
+The keys in \c{kitty.ini}: \c{theme} (the colours), \c{wintitle},
+\c{size}, \c{winroll} and \c{iconfile} under \c{[KiTTY]}; \c{active} and
+\c{fallback} under \c{[FontFallback]}.
+
 \S{kitty-cfg-kset-terminal} The Keys & Mouse panel
 
 What the keyboard and the mouse do in a terminal window.
@@ -864,6 +889,9 @@ over it. KiTTY's built-in default is \q{Xterm 216+}, the mode modern
 hosts expect, in which Shift+F1 to F12 mean F13 to F24; stock PuTTY's
 \c{ESC[n~} is the first alternative.
 
+The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{mouseshortcuts} and
+\c{funkeys}.
+
 \S{kitty-cfg-kset-shortcuts} The Shortcuts panel
 
 \q{Keyboard shortcuts in the terminal window} is the master switch for
@@ -875,6 +903,9 @@ not affected.
 
 The key combinations defined in \c{kitty.ini} are listed below the
 switch; an editor for them is planned.
+
+The keys in \c{kitty.ini}: \c{shortcuts} under \c{[KiTTY]} is the
+switch; the combinations themselves are the \c{[Shortcuts]} section.
 
 \S{kitty-cfg-kset-automation} The Automation panel
 
@@ -925,6 +956,11 @@ panel then says the key came from there.
 automatic command, key remappings and the helper command lines. The
 password in those lines is blanked; host, user and paths are not.
 
+The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{initdelay},
+\c{bcdelay}, \c{internaldelay}, \c{commanddelay}, \c{scriptmode},
+\c{scriptfilefilter}, \c{sendcmdmode}, \c{sendcmdgroup} (shown, set by
+hand) and \c{debug}.
+
 \S{kitty-cfg-kset-window} The Terminal & Printing panel
 
 \b \q{Terminal Features} starts with how the terminal window is painted.
@@ -950,6 +986,11 @@ downscale.
 line wraps. These three are kept in \c{kitty.ini} whatever the store
 mode.
 
+The keys in \c{kitty.ini}: \c{renderer}, \c{framepace}, \c{ctrltab},
+\c{transparency}, \c{bgimage}, \c{hyperlink}, \c{slidedelay} and
+\c{shrinkbitmap} under \c{[KiTTY]}; \c{height}, \c{maxline} and
+\c{maxchar} under \c{[Print]}.
+
 \S{kitty-cfg-kset-connection} The Reconnect & Prompts panel
 
 \b \q{Reconnect automatically when the link drops} is the master switch
@@ -962,6 +1003,11 @@ host-key questions, between a pop-up box and a prompt inside the
 terminal. The in-terminal prompts take a typed \q{yes}; the changed-key
 one asks separately, with the word \q{confirmed}, before it replaces a
 stored key.
+
+The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{autoreconnect},
+\c{ReconnectDelay}, \c{modalerrors}, \c{modalnewhostkeyconfirmation},
+\c{modalchangedhostkeyconfirmation}, \c{modalweakkeyconfirmation} and
+\c{proxychainmax}.
 
 \S{kitty-cfg-kset-launcher} The Launcher panel
 
@@ -983,6 +1029,10 @@ is already running. It matters only when two separate KiTTY
 installations on one machine should each keep a launcher of their own;
 give one of them a different name in its \c{kitty.ini}. Everything else
 leaves it alone.
+
+The keys in \c{kitty.ini}, under \c{[Launcher]}: \c{reload},
+\c{alreadyRunCheck}, \c{exitwithworkplace}, \c{noticeseconds} and the
+\c{classname} above.
 
 \S{kitty-cfg-system} The System panel
 
@@ -1022,6 +1072,10 @@ unchecking removes exactly that entry. Shells already open keep the PATH
 they started with. A portable copy that is moved leaves the old entry
 behind: uncheck and check again from the new place.
 
+The only key in \c{kitty.ini} here is \c{fileextension} under
+\c{[KiTTY]}; the registrations themselves live in the Windows registry,
+not in the file.
+
 \S{kitty-cfg-external-tools} The Transfers & Tools panel
 
 KiTTY drives programs it does not contain: \i{WinSCP} for a graphical
@@ -1043,6 +1097,10 @@ are application settings, stored once for this KiTTY like everything
 else on this tab. The settings that \e{are} per session stay on the
 session's own panels:
 \k{kitty-cfg-winscp-session} and \k{kitty-cfg-zmodem-session}.
+
+The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{PSCPPath},
+\c{pscpport}, \c{downloaddir} and \c{uploaddir}; the WinSCP leaf writes
+\c{WinSCPPath}, the ZModem leaf's global switch is \c{zmodem}.
 
 \S{kitty-cfg-kitty-settings} The KiTTY++ Settings tree
 
@@ -1085,6 +1143,12 @@ the backups are written to is shown; it follows the \c{sav} key in
 switch is read from \c{kitty.ini} only - never the registry, so a stale
 registry value can never cancel it - which is why it is not editable
 here.
+
+The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{savemode} and
+\c{KiClassName} (shown), \c{savbackupcount}, \c{portablebackupcount},
+\c{sav}, \c{fileextension}, \c{cryptsalt}, \c{restrictacl} (shown), and
+in a folder store \c{PortablePasswordProtection} and
+\c{WarnLegacyPasswordUpgrade}.
 
 \S{kitty-cfg-ini-view} The KiTTY.ini leaf (under Storage & Backup)
 

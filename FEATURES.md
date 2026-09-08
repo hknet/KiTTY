@@ -170,7 +170,7 @@ To convert everything in one go, use **Export allâ€¦** followed by **Import allâ
 - **The old store is never changed.** An import takes a copy; the original stays where it is, and you can import it again.
 - **An existing name is never overwritten.** The copy is called `work (PuTTY)` or `work (old KiTTY)`, numbered if that name is taken as well.
 - **Settings this version no longer has are not carried over**, and the import names them when it finishes.
-- **Saving under a name an old store has** does not touch the old store either. The new session is written to the KiTTY++ store and hides the old one from then on; when the old stores are shown in the list, Save asks first and states exactly that. A name that exists in the KiTTY++ store and was not loaded gets the usual "replace?" question instead.
+- **Saving under a name an old store has** does not touch the old store either. The new session is written to the KiTTY++ store and hides the old one from then on; when the old stores are shown in the list, Save puts up a question first that states exactly that. A name that exists in the KiTTY++ store and was not loaded gets the usual "replace?" question instead.
 
 Two settings are left behind deliberately:
 

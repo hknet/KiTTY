@@ -1090,7 +1090,7 @@ void listbox(struct ctlpos *cp, const char *stext,
           WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL |
           LBS_NOTIFY | LBS_HASSTRINGS | LBS_USETABSTOPS |
           /* KiTTY: multisel 2 = extended selection - the arrow keys SELECT the
-           * row they land on (his report: with LBS_MULTIPLESEL every row had
+           * row they land on (with LBS_MULTIPLESEL every row had
            * to be toggled with the space bar to be seen in the detail box),
            * Shift and Ctrl extend as everywhere in Windows. */
           (multi == 2 ? LBS_EXTENDEDSEL : multi ? LBS_MULTIPLESEL : 0) |

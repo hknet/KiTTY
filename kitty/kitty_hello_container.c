@@ -632,7 +632,7 @@ int kitty_hello_container_open_recovery(const char *container,
 
 /*
  * The RECOVERY CODE's printed form - deliberately unmistakable for the
- * printed passphrase (his report: the two looked identical and were
+ * printed passphrase (the two looked identical and were
  * mixed up): "KRC1-" prefix, 8 groups of 4 hex (16 random bytes - a
  * KDF-protected door does not need 256 bits), and a 2-hex check group.
  * The parser is as tolerant as the passphrase one (case, dashes,

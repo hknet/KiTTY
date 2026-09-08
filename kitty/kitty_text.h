@@ -130,7 +130,7 @@
 #define KT_LOGGING_LOG_FILE_NAME                     "Log file name:"
 #define KT_LOGGING_SELECT_SESSION_LOG_FILE_NAME      "Select session log file name"
 #define KT_LOGGING_LOG_FILE_NAME_CAN_CONTAIN         "(Log file name can contain &Y, &M, &D for date," \
-        " &T for time, &H for host name, and &P for port number)"
+        " &T for time, &H for host name, and &P for port number. Examples are in the help.)"
 #define KT_LOGGING_WHAT_TO_DO                        "What to do if the log file already exists:"
 #define KT_LOGGING_ALWAYS_OVERWRITE                  "Always overwrite it"
 #define KT_LOGGING_ALWAYS_APPEND_TO_THE_END          "Always append to the end of it"
@@ -716,6 +716,10 @@
 #define KT_WINSCP_WINSCP_INTEGRATION                 "WinSCP integration"
 #define KT_WINSCP_GENERAL_PROTOCOL_SETTING           "General protocol setting"
 #define KT_WINSCP_PREFERED_PROTOCOL                  "Prefered protocol:"
+/* The protocol radios moved to the KSCP panel: the
+ * setting drives kscp's -scp/-sftp AND the WinSCP hand-off. */
+#define KT_KSCP_PROTOCOL                             "Protocol for file transfers (kscp and WinSCP):"
+#define KT_WINSCP_PROTOCOL_ON_KSCP                   "Protocol: as set on Connection > SSH > KSCP."
 #define KT_WINSCP_SCP                                "scp"
 #define KT_WINSCP_SFTP                               "sftp"
 #define KT_WINSCP_FTP                                "ftp"
@@ -823,6 +827,12 @@
 #define KT_WINSCP_SELECT_WINSCP_EXECUTABLE           "Select WinSCP executable"
 #define KT_WINSCP_THE_OTHER_WINSCP_SETTINGS_BELONG   "The other WinSCP settings belong to a session and stay on " \
         "Connection > SSH > WinSCP."
+/* Session > Connection > SSH > WinSCP: the reverse pointer */
+#define KT_WINSCP_PATH_IS_GLOBAL                     "The path to the WinSCP executable is a global setting."
+#define KT_WINSCP_OPEN_GLOBAL_PANEL                  "Open global WinSCP Panel"
+/* Session > Connection > SSH > KSCP: the same pointer for the file-copy helper */
+#define KT_KSCP_HELPER_IS_GLOBAL                     "The path to the File-Copy Helper is a global setting."
+#define KT_KSCP_OPEN_GLOBAL_PANEL                    "Open global Transfers & Tools Panel"
 
 /* Application/External tools/ZModem */
 #define KT_ZMODEM_ZMODEM                             "ZModem"
@@ -836,7 +846,7 @@
 /* Application/KiTTY++ Settings */
 #define KT_KSET_TITLE                                "KiTTY++ Settings"
 #define KT_KSET_INTRO_WHOLE                          "Settings of this KiTTY as a whole, not of a session."
-#define KT_KSET_INTRO_WHERE                          "Each leaf says where its values are kept."
+#define KT_KSET_INTRO_WHERE                          "Each leaf's help also refers to the relevant kitty.ini settings."
 
 /* Application/KiTTY++ Settings/System */
 #define KT_SYSTEM_TITLE                              "Windows integration"
@@ -1111,6 +1121,7 @@
 #define KT_KSET_TT_PSCPPATH_NONE                     "nothing - no kscp.exe or pscp.exe in the usual places"
 #define KT_KSET_TT_PSCPPORT                          "Port for file transfers (* = the session's port):"
 #define KT_KSET_TT_DOWNLOADDIR                       "Download folder:"
+#define KT_KSET_TT_LOCATE                            "Locate..."
 #define KT_KSET_TT_UPLOADDIR                         "Remote upload folder:"
 
 /* Application/KiTTY++ Settings/Launcher */

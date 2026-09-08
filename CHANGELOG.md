@@ -4,6 +4,51 @@ KiTTY is basically the full KiTTY feature set forward-ported and then some more 
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.9-beta — unreleased
+
+### New
+
+- **The session's WinSCP panel says where the executable path went** ("The
+  path to the WinSCP executable is a global setting.") and its "Open global
+  WinSCP Panel" button jumps to KiTTY++ Settings > Transfers & Tools > WinSCP.
+  The session's KSCP panel does the same for the file-copy helper ("The path
+  to the File-Copy Helper is a global setting.", "Open global Transfers & Tools
+  Panel").
+- **"Port for file transfers" shows `*` when nothing is set,** which is what
+  an empty field always meant: the session's port.
+- **"Locate..." beside the download folder** on KiTTY++ Settings > Transfers &
+  Tools opens the Explorer folder picker and fills the field.
+- **The transfer protocol radios moved from the session's WinSCP panel to its
+  KSCP panel,** as "Protocol for file transfers (kscp and WinSCP)": the setting
+  always drove kscp's SCP/SFTP mode as well, and its old home said otherwise.
+  Saved sessions keep their value (the key is still WinSCPProtocol).
+
+### Security
+
+- **A password no longer travels on WinSCP's command line.** "Start WinSCP"
+  used to put the session password into the URL and a proxy or tunnel password
+  into the raw settings, readable by every process of the same user while
+  WinSCP ran. Each password now goes into a private temporary file that WinSCP
+  reads (`/passwordsfromfiles`); KiTTY++ deletes the files a minute after the
+  start and sweeps leftovers at the next one. Key files and the agent are
+  untouched: without a password nothing changes.
+
+### Fixed
+
+- **"Record fingerprint of the key file" redrew the whole configuration panel.**
+  The button refreshed every control after storing the fingerprint, which
+  looked like the window reloading. It now refreshes the fingerprint box alone.
+- **The Logging panel's note on log file names now points to the help,** which
+  carries the `&H`, `&P`, `&Y&M&D` and `&T` substitutions with examples.
+- **F1 on the Appearance panel's title-bar group opened "The Terminal &
+  Printing panel".** The group had moved and kept its old help topic; the icon
+  library field had the same fault. The KiTTY++ Settings > Transfers & Tools >
+  WinSCP leaf and the session's "SFTP connect" field pointed at the KSCP topic
+  instead of their own. All four now open the right page.
+- **Every KiTTY++ Settings leaf's help now names the `kitty.ini` keys it
+  writes,** section included; the tree's own note reads "Each leaf's help also
+  refers to the relevant kitty.ini settings."
+
 ## 0.85.1.8-beta — 2026-09-07
 
 ### New
@@ -124,11 +169,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   runs on. Progress bars are drawn in the dark colours too. Refs
   hknet/KiTTY#45.
 - **Saving a session under a new name could warn about replacing one.** The
-  warning asked the same reader that loads sessions, and that reader falls
+  warning used the same reader that loads sessions, and that reader falls
   back to the old KiTTY and PuTTY stores, so a name that was free in the
   list still counted as taken when an old store had it. The check now looks
   at the KiTTY++ store only. When the old stores are shown in the list, Save
-  asks instead whether to hide the old session of that name behind the new one.
+  puts up a different question instead: hide the old session of that name
+  behind the new one?
 - **The size suffix in the window title (`[KiTTY] size=yes`) stayed off
   while the window was maximised, and printed rows before columns.** Both
   habits came from classic KiTTY. A maximised terminal has a size like any
