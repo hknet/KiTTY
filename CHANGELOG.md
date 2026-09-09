@@ -8,6 +8,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **The terminal answers the xterm colour queries OSC 10, 11 and 12
+  (foreground, background, cursor colour).** vim and neovim use the background
+  reply to pick a light or dark colour scheme. Setting a colour over these
+  sequences is not accepted. The OSC 4 palette reply, and these three, go to
+  the host directly rather than through the local line editor, which could
+  hold the answer back until Return. Refs cyd01/KiTTY#488
 - **Connection > Transfers: one panel for where files go.** The session's
   local download folder (empty = the global Download folder, shown beneath the
   field as "Global: ..."; "Locate..." opens the folder picker), "Always ask

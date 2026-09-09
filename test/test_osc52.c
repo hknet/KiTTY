@@ -1835,6 +1835,75 @@ static void test_write_focus_rule(Mock *mk)
     mk->term->has_focus = true;
 }
 
+/* ---------------------------------------------------------------------------
+ * The xterm colour queries: OSC 4;n;? and OSC 10/11/12;? are answered with
+ * the live colour through the same seam as the clipboard replies, so the
+ * answer cannot be swallowed by local line editing. Set direction: ignored.
+ */
+static void expect_reply(Mock *mk, const char *what, const char *seq,
+                         const char *want)
+{
+    counters_reset();
+    term_data(mk->term, seq, strlen(seq));
+    term_update(mk->term);
+    if (osc52_sends != 1) {
+        fail(what, osc52_sends ? "more than one reply" : "no reply was sent");
+        return;
+    }
+    if (strcmp(osc52_last_send, want) != 0) {
+        printf("   got:  %s\n   want: %s\n", osc52_last_send + 1, want + 1);
+        fail(what, "the reply differs");
+    }
+}
+
+static void expect_silence(Mock *mk, const char *what, const char *seq)
+{
+    counters_reset();
+    term_data(mk->term, seq, strlen(seq));
+    term_update(mk->term);
+    if (osc52_sends != 0)
+        fail(what, "a reply went out where none was due");
+}
+
+static void test_colour_queries(Mock *mk)
+{
+    /* Distinctive colours, so a reply built from the wrong slot shows. */
+    static const struct { int conf; unsigned char r, g, b; } set[] = {
+        { CONF_COLOUR_fg,        0xab, 0xcd, 0xef },
+        { CONF_COLOUR_bg,        0x12, 0x34, 0x56 },
+        { CONF_COLOUR_cursor_bg, 0x0f, 0xf0, 0x80 },
+        { CONF_COLOUR_red,       0xc0, 0x10, 0x20 },
+    };
+    for (size_t i = 0; i < lenof(set); i++) {
+        conf_set_int_int(mk->conf, CONF_colours, set[i].conf*3+0, set[i].r);
+        conf_set_int_int(mk->conf, CONF_colours, set[i].conf*3+1, set[i].g);
+        conf_set_int_int(mk->conf, CONF_colours, set[i].conf*3+2, set[i].b);
+    }
+    term_reconfig(mk->term, mk->conf);
+
+    expect_reply(mk, "OSC 11 background query", "\033]11;?\007",
+                 "\033]11;rgb:1212/3434/5656\007");
+    expect_reply(mk, "OSC 10 foreground query", "\033]10;?\007",
+                 "\033]10;rgb:abab/cdcd/efef\007");
+    expect_reply(mk, "OSC 12 cursor colour query", "\033]12;?\007",
+                 "\033]12;rgb:0f0f/f0f0/8080\007");
+    expect_reply(mk, "OSC 11 query, ST terminator", "\033]11;?\033\\",
+                 "\033]11;rgb:1212/3434/5656\007");
+    expect_reply(mk, "OSC 4 palette query", "\033]4;1;?\007",
+                 "\033]4;1;rgb:c0c0/1010/2020\007");
+
+    /* Setting a colour over these sequences is not accepted, and gets no
+     * reply either. */
+    expect_silence(mk, "OSC 11 set", "\033]11;rgb:ffff/ffff/ffff\007");
+    expect_silence(mk, "OSC 10 set", "\033]10;#ffffff\007");
+    expect_silence(mk, "OSC 4 set", "\033]4;1;rgb:ffff/ffff/ffff\007");
+    expect_silence(mk, "OSC 111 reset", "\033]111\007");
+    expect_silence(mk, "OSC 4 out of range", "\033]4;999;?\007");
+    /* ... and the colour it would have set is unchanged. */
+    expect_reply(mk, "OSC 11 after the refused set", "\033]11;?\007",
+                 "\033]11;rgb:1212/3434/5656\007");
+}
+
 int main(void)
 {
     Mock *mk = mock_new();
@@ -1928,6 +1997,7 @@ int main(void)
     test_clipboard_write_rate(mk);
     test_far2l_ceiling(mk);
     test_far2l_focus(mk);
+    test_colour_queries(mk);
 
     mock_free(mk);
 
@@ -1939,3 +2009,4 @@ int main(void)
     printf("Test suite passed\n");
     return 0;
 }
+

@@ -1089,6 +1089,8 @@ Three protections apply to every clipboard protocol at once:
 
 **How to enable:** **Window → Copy & Paste → Remote clipboard** for the three permissions and the focus rule; **→ Limits** for the numbers; **→ Notices** for the title and tray markers.
 
+**Colour queries.** OSC 10/11/12 colour queries (`ESC ] 11 ; ? BEL` and its siblings) are answered with the session's live colours, as `ESC ] 11 ; rgb:RRRR/GGGG/BBBB BEL`, the way xterm answers them; this is how vim and neovim learn whether the background is dark. OSC 4 palette queries are answered too. Setting colours over these sequences is not accepted.
+
 (no screenshot)
 
 ### Paste size guard

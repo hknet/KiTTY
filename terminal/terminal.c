@@ -6144,6 +6144,7 @@ static void do_osc(Terminal *term)
                 term_schedule_update(term);
             }
             break;
+#ifndef MOD_PERSO
           case 4:
             if (term->ldisc && !strcmp(term->osc_string, "?")) {
                 unsigned index = term->esc_args[1];
@@ -6160,7 +6161,52 @@ static void do_osc(Terminal *term)
                 }
             }
             break;
-#ifdef MOD_PERSO
+#else
+          case 4:
+          case 10:
+          case 11:
+          case 12: {
+            /*
+             * xterm colour queries. OSC 4;n;? asks for palette entry n,
+             * OSC 10;? / 11;? / 12;? for the default foreground, the default
+             * background and the cursor colour. The reply repeats the
+             * request with the colour in place of the "?", as
+             * rgb:RRRR/GGGG/BBBB, which is what vim and neovim read to
+             * choose a light or dark colour scheme.
+             *
+             * Only the query is served. The same sequences with a colour
+             * instead of "?" would SET that colour under remote control, and
+             * are ignored here like every other unknown OSC.
+             *
+             * The reply goes straight to the backend, not through
+             * ldisc_send(): with local line editing on the line discipline
+             * would append it to the line being typed, and with local echo
+             * on it would paint it on this screen first. See
+             * kitty_osc52_send_raw() for the full account.
+             */
+            if (strcmp(term->osc_string, "?") != 0)
+                break;
+            unsigned which = term->esc_args[0];
+            unsigned index =
+                which == 4 ? term->esc_args[1] :
+                which == 10 ? OSC4_COLOUR_fg :
+                which == 11 ? OSC4_COLOUR_bg : OSC4_COLOUR_cursor_bg;
+            if (index >= OSC4_NCOLOURS)
+                break;
+            rgb colour = term->palette[index];
+            char *reply_buf = which == 4 ?
+                dupprintf("\033]4;%u;rgb:%04x/%04x/%04x\007", index,
+                          (unsigned)colour.r * 0x0101,
+                          (unsigned)colour.g * 0x0101,
+                          (unsigned)colour.b * 0x0101) :
+                dupprintf("\033]%u;rgb:%04x/%04x/%04x\007", which,
+                          (unsigned)colour.r * 0x0101,
+                          (unsigned)colour.g * 0x0101,
+                          (unsigned)colour.b * 0x0101);
+            kitty_osc52_send_raw(term, reply_buf, strlen(reply_buf));
+            sfree(reply_buf);
+            break;
+          }
           case 7:
             /* OSC 7: shell reports its working directory as
              * file://hostname/path.  Data-plane only -- the kitty layer
