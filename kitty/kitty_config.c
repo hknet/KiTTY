@@ -787,6 +787,7 @@ static void kitty_pxload_inline_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * its kitty.c accessors next to the code that uses them rather than in a
  * header, and the workplace handler sits above the other copy. */
 int ReadParameterN(const char *key, const char *name, char *value, size_t size); /* kitty.c */
+char *kitty_xfer_download_dir(Conf *cf, char *out, size_t outlen);              /* kitty_xfer.c */
 int WriteParameter(const char *key, const char *name, char *value);              /* kitty.c */
 #ifndef INIT_SECTION
 #define INIT_SECTION "KiTTY"
@@ -1371,6 +1372,54 @@ static void kitty_winscppath_handler(dlgcontrol *ctrl, dlgparam *dlg,
         fn = dlg_filesel_get(ctrl, dlg);
         snprintf(val, sizeof(val), "%s", filename_to_str(fn));
         WriteParameter(INIT_SECTION, "WinSCPPath", val);
+        filename_free(fn);
+    }
+}
+
+/* [KiTTY] FileZillaPath, the same shape as the WinSCP path above: an
+ * application setting, the installer's default location offered as a hint
+ * when nothing is stored, only genuine edits written back. */
+static void kitty_filezillapath_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                        void *data, int event)
+{
+    static int refreshing = 0;
+    if (event == EVENT_REFRESH) {
+        char buffer[4096];
+        buffer[0] = '\0';
+        refreshing = 1;
+        if (ReadParameterN(INIT_SECTION, "FileZillaPath", buffer, sizeof(buffer)) == 0 ||
+            !buffer[0]) {
+            const char *pf = getenv("ProgramFiles");
+            const char *pf86 = getenv("ProgramFiles(x86)");
+            const char *local = getenv("LOCALAPPDATA");
+            buffer[0] = '\0';
+            if (pf) {
+                snprintf(buffer, sizeof(buffer), "%s\\FileZilla FTP Client\\filezilla.exe", pf);
+                if (!existfile(buffer)) buffer[0] = '\0';
+            }
+            if (!buffer[0] && pf86) {
+                snprintf(buffer, sizeof(buffer), "%s\\FileZilla FTP Client\\filezilla.exe", pf86);
+                if (!existfile(buffer)) buffer[0] = '\0';
+            }
+            if (!buffer[0] && local) {
+                snprintf(buffer, sizeof(buffer), "%s\\Programs\\FileZilla FTP Client\\filezilla.exe", local);
+                if (!existfile(buffer)) buffer[0] = '\0';
+            }
+        }
+        {
+            Filename *fn = filename_from_str(buffer);
+            dlg_filesel_set(ctrl, dlg, fn);
+            filename_free(fn);
+        }
+        refreshing = 0;
+    } else if (event == EVENT_VALCHANGE) {
+        Filename *fn;
+        char val[4096];
+        if (refreshing)
+            return;
+        fn = dlg_filesel_get(ctrl, dlg);
+        snprintf(val, sizeof(val), "%s", filename_to_str(fn));
+        WriteParameter(INIT_SECTION, "FileZillaPath", val);
         filename_free(fn);
     }
 }
@@ -5831,6 +5880,14 @@ static void winscp_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
     extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
     if (event == EVENT_ACTION)
         kitty_cfg_goto_panel("Application/KiTTY++ Settings/Transfers & Tools/WinSCP");
+}
+
+static void filezilla_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                          void *data, int event)
+{
+    extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
+    if (event == EVENT_ACTION)
+        kitty_cfg_goto_panel("Application/KiTTY++ Settings/Transfers & Tools/FileZilla");
 }
 
 /* KiTTY: the file-copy helper (kscp path, port, folders) lives on KiTTY++
@@ -10297,17 +10354,10 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                               KT_WINSCP_FTPES, NO_SHORTCUT, I(4),
                               KT_WINSCP_HTTP,  NO_SHORTCUT, I(5),
                               KT_WINSCP_HTTPS, NO_SHORTCUT, I(6));
-            g_osc7_track_ctrl = ctrl_checkbox(s,
-                          KT_KSCP_TRACK_REMOTE_DIRECTORY_OSC_7,
-                          NO_SHORTCUT, HELPCTX(kitty_winscp),
-                          kitty_osc7_track_handler, P(NULL));
-            ctrl_text(s, KT_KSCP_DRAG_DROP_UPLOADS_AND_WINSCP,
-                      HELPCTX(kitty_winscp));
-            g_pscp_remotedir_ctrl = ctrl_editbox(s,
-                         KT_KSCP_FIXED_REMOTE_UPLOAD_DIRECTORY, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_winscp),
-                         kitty_pscp_remotedir_handler, P(NULL), P(NULL));
-            ctrl_text(s, KT_KSCP_ALWAYS_UPLOAD_HERE_INSTEAD_MUTUALLY, HELPCTX(kitty_winscp));
+            /* The remote directory (OSC 7 / fixed) and the download folder
+             * live on Connection > Transfers: they serve ZModem and transfers
+             * over the session too, which are not SSH-only. */
+            ctrl_text(s, KT_KSCP_DIRS_ON_TRANSFERS, HELPCTX(kitty_winscp));
             ctrl_editbox(s, KT_KSCP_KSCP_OPTIONS, NO_SHORTCUT, 100,
                          HELPCTX(kitty_winscp),
                          conf_editbox_handler, I(CONF_pscpoptions), ED_STR);
@@ -10383,6 +10433,42 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                     ctrl_columns(s, 1, 100);
                 } else {
                     ctrl_text(s, KT_WINSCP_PATH_IS_GLOBAL, HELPCTX(kitty_winscp_session));
+                }
+            }
+
+            /* FileZilla beside WinSCP. Target and protocol are the shared
+             * settings; what is FileZilla's own is how the password reaches
+             * it, a user-facing security choice with each consequence stated
+             * (kitty_xfer.c StartFileZilla). */
+            ctrl_settitle(b, "Connection/SSH/FileZilla", KT_FZ_INTEGRATION);
+            s = ctrl_getset(b, "Connection/SSH/FileZilla", "FileZilla", KT_FZ_INTEGRATION);
+            ctrl_text(s, KT_FZ_TARGET_NOTE, HELPCTX(kitty_filezilla_session));
+            ctrl_editbox(s, KT_FZ_ADDITIONAL_OPTIONS, NO_SHORTCUT, 100,
+                         HELPCTX(kitty_filezilla_session),
+                         conf_editbox_handler, I(CONF_filezilla_options), ED_STR);
+            s = ctrl_getset(b, "Connection/SSH/FileZilla", "password", KT_FZ_PASSWORD_GROUP);
+            ctrl_radiobuttons(s, KT_FZ_PASSWORD_HOW, NO_SHORTCUT, 1,
+                              HELPCTX(kitty_filezilla_session),
+                              conf_radiobutton_handler, I(CONF_filezilla_pwmode),
+                              KT_FZ_PW_ASK,     NO_SHORTCUT, I(0),
+                              KT_FZ_PW_TEMPCFG, NO_SHORTCUT, I(1),
+                              KT_FZ_PW_CMDLINE, NO_SHORTCUT, I(2));
+            ctrl_text(s, KT_FZ_KEY_PREFERRED, HELPCTX(kitty_filezilla_session));
+            {
+                extern int GetConfigBoxApplicationSettingsFlag(void);   /* kitty.c */
+                dlgcontrol *note, *btn;
+                s = ctrl_getset(b, "Connection/SSH/FileZilla", "global", NULL);
+                if (GetConfigBoxApplicationSettingsFlag()) {
+                    ctrl_columns(s, 2, 62, 38);
+                    note = ctrl_text(s, KT_FZ_PATH_IS_GLOBAL, HELPCTX(kitty_filezilla_session));
+                    note->column = 0;
+                    btn = ctrl_pushbutton(s, KT_FZ_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
+                                          HELPCTX(kitty_filezilla_session),
+                                          filezilla_global_jump_handler, I(0));
+                    btn->column = 1;
+                    ctrl_columns(s, 1, 100);
+                } else {
+                    ctrl_text(s, KT_FZ_PATH_IS_GLOBAL, HELPCTX(kitty_filezilla_session));
                 }
             }
         }
@@ -10550,6 +10636,86 @@ static const struct kset_key *kset_find(const char *key);
 static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);
 static dlgcontrol *kset_sshver_preview;     /* the banner line, Security > Client Identity */
 
+/* "Locate..." beside the session's local download folder: the folder picker
+ * opens on the folder that applies today, the pick is stored like a typed
+ * value and the box (the button's context) refreshed. */
+extern void kitty_controls_set_dir_picker(int (*)(HWND, char *, const char *, const char *)); /* windows/controls.c */
+
+/* The session's download folder as a folder row (label, box and Locate...
+ * on ONE aligned line - the file-select control with FILTER_FOLDERS), its
+ * Filename mapped to the plain string the setting is. */
+static void xfer_downloaddir_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                     void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        Filename *fn = filename_from_str(conf_get_str(conf, CONF_zdownloaddir));
+        dlg_filesel_set(ctrl, dlg, fn);
+        filename_free(fn);
+    } else if (event == EVENT_VALCHANGE) {
+        Filename *fn = dlg_filesel_get(ctrl, dlg);
+        conf_set_str(conf, CONF_zdownloaddir, filename_to_str(fn));
+        filename_free(fn);
+    }
+}
+
+/* The Connection/Transfers panel (KiTTY++): where received files go, the
+ * remote directory uploads go to, and the permission for transfers the far
+ * end starts. Top level under Connection because ZModem and file transfers
+ * over the session work on telnet and serial sessions too - a destination
+ * shared by them cannot live under SSH. kscp Get file, ZModem and OSC 5113
+ * (kitten transfer) all read these values. */
+static void scb_panel_transfers(struct controlbox *b)
+{
+    struct controlset *s;
+    char gdir[4096], *line;
+
+    if (GetPuttyFlag()) return;
+
+    ctrl_settitle(b, "Connection/Transfers", KT_TRANSFERS_TITLE);
+
+    s = ctrl_getset(b, "Connection/Transfers", "received", KT_TRANSFERS_RECEIVED);
+    kitty_controls_set_dir_picker(OpenDirNameFrom);   /* the row's Locate... */
+    ctrl_filesel(s, KT_TRANSFERS_LOCAL_DOWNLOAD_FOLDER, NO_SHORTCUT,
+                 FILTER_FOLDERS, false, NULL, HELPCTX(kitty_transfers),
+                 xfer_downloaddir_handler, P(NULL));
+    /* The global folder, read when the panel is built, so the value that
+     * already applies is visible before it is overridden. */
+    gdir[0] = '\0';
+    ReadParameterN(INIT_SECTION, "downloaddir", gdir, sizeof(gdir));
+    line = dupprintf(KT_TRANSFERS_GLOBAL_IS, gdir[0] ? gdir : KT_TRANSFERS_GLOBAL_UNSET);
+    ctrl_text(s, line, HELPCTX(kitty_transfers));
+    sfree(line);
+    ctrl_checkbox(s, KT_TRANSFERS_ALWAYS_ASK_DESTINATION, NO_SHORTCUT,
+                  HELPCTX(kitty_transfers),
+                  conf_checkbox_handler, I(CONF_xfer_ask_destination));
+    ctrl_text(s, KT_TRANSFERS_GET_FILE_NOTE, HELPCTX(kitty_transfers));
+
+    /* Moved from the KSCP panel: the two are mutually exclusive, the
+     * handlers keep them so through the captured sibling controls. */
+    s = ctrl_getset(b, "Connection/Transfers", "remote", KT_TRANSFERS_REMOTE_DIR);
+    g_osc7_track_ctrl = ctrl_checkbox(s,
+                  KT_KSCP_TRACK_REMOTE_DIRECTORY_OSC_7,
+                  NO_SHORTCUT, HELPCTX(kitty_transfers),
+                  kitty_osc7_track_handler, P(NULL));
+    ctrl_text(s, KT_KSCP_DRAG_DROP_UPLOADS_AND_WINSCP, HELPCTX(kitty_transfers));
+    g_pscp_remotedir_ctrl = ctrl_editbox(s,
+                 KT_KSCP_FIXED_REMOTE_UPLOAD_DIRECTORY, NO_SHORTCUT, 100,
+                 HELPCTX(kitty_transfers),
+                 kitty_pscp_remotedir_handler, P(NULL), P(NULL));
+    ctrl_text(s, KT_KSCP_ALWAYS_UPLOAD_HERE_INSTEAD_MUTUALLY, HELPCTX(kitty_transfers));
+
+    s = ctrl_getset(b, "Connection/Transfers", "farend", KT_TRANSFERS_FAR_END);
+    ctrl_text(s, KT_TRANSFERS_FAR_END_NOTE, HELPCTX(kitty_transfers));
+    /* Two columns: three abreast cut "Ask once per session" at 200%. */
+    ctrl_radiobuttons(s, NULL, NO_SHORTCUT, 2,
+                      HELPCTX(kitty_transfers),
+                      conf_radiobutton_handler, I(CONF_xfer_permission),
+                      KT_TRANSFERS_PERM_ALWAYS, NO_SHORTCUT, I(0),
+                      KT_TRANSFERS_PERM_FIRST,  NO_SHORTCUT, I(1),
+                      KT_TRANSFERS_PERM_NEVER,  NO_SHORTCUT, I(2));
+}
+
 /* The Connection/ZModem panels (KiTTY). */
 static void scb_panel_zmodem(struct controlbox *b)
 {
@@ -10574,11 +10740,11 @@ static void scb_panel_zmodem(struct controlbox *b)
 
     /* The Connection/ZModem panels (KiTTY). Backend = kitty_zmodem_*. */
     if ((!GetPuttyFlag()) && GetZModemFlag()) {
+        /* The download folder moved to Connection > Transfers, where every
+         * receiving feature reads it (same key, zDownloadDir). */
         s = ctrl_getset(b, "Connection/ZModem", "download",
                         KT_ZMODEM_DOWNLOAD_FOLDER);
-        ctrl_editbox(s, KT_ZMODEM_LOCATION, NO_SHORTCUT, 100,
-                     HELPCTX(kitty_zmodem),
-                     conf_editbox_handler, I(CONF_zdownloaddir), ED_STR);
+        ctrl_text(s, KT_ZMODEM_FOLDER_ON_TRANSFERS, HELPCTX(kitty_zmodem));
 
         s = ctrl_getset(b, "Connection/ZModem", "receive",
                         KT_ZMODEM_RECEIVE_COMMAND_RZ);
@@ -11407,17 +11573,6 @@ static void kset_write(const struct kset_key *k, const char *text);
 /* "Locate..." beside the download folder: the Explorer folder picker
  * (OpenDirName, kitty_win.c), the pick written like a typed value and the
  * box (the button's context) refreshed. */
-static void kset_downloaddir_locate_handler(dlgcontrol *ctrl, dlgparam *dlg,
-                                            void *data, int event)
-{
-    char dir[4096];
-    const struct kset_key *k;
-    if (event != EVENT_ACTION) return;
-    if (!OpenDirName(kitty_cfg_modal_owner(), dir) || !dir[0]) return;
-    k = kset_find("downloaddir");
-    if (k) kset_write(k, dir);
-    dlg_refresh((dlgcontrol *)ctrl->context.p, dlg);
-}
 static void kset_set_debug(int v) { debug_flag = v; }
 static int  kset_get_debug(void) { return debug_flag; }
 
@@ -11544,7 +11699,7 @@ static const struct kset_key kset_keys[] = {
      * cleared field look as if the path had come back. */
     { INIT_SECTION, "PSCPPath",       KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0, NULL, SetPSCPPath },
     { INIT_SECTION, "pscpport",       KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0, kset_get_pscpport, NULL },
-    { INIT_SECTION, "downloaddir",    KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
+    { INIT_SECTION, "downloaddir",    KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0 },   /* a folder row (FILTER_FOLDERS): the handler must drive it as a file-select, not an edit box */
     { INIT_SECTION, "uploaddir",      KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
     /* Launcher: a separate process reads these from the store when it starts */
     { "Launcher", "reload",           KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
@@ -11999,16 +12154,13 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     }
     KSET_TEXTBOX(s, KT_KSET_TT_PSCPPORT, "pscpport", kitty_helper_paths);
     {
-        /* The download folder is local: a folder picker beside it (his
-         * request 2026-09-08). The button's context is the box it fills. */
-        dlgcontrol *dd, *loc;
-        ctrl_columns(s, 2, 76, 24);
-        dd = KSET_TEXTBOX(s, KT_KSET_TT_DOWNLOADDIR, "downloaddir", kitty_helper_paths);
-        dd->column = 0;
-        loc = ctrl_pushbutton(s, KT_KSET_TT_LOCATE, NO_SHORTCUT, HELPCTX(kitty_helper_paths),
-                              kset_downloaddir_locate_handler, P(dd));
-        loc->column = 1;
-        ctrl_columns(s, 1, 100);
+        /* The download folder is local: a folder picker beside it. The
+         * button's context is the box it fills. */
+        kitty_controls_set_dir_picker(OpenDirNameFrom);   /* the row's Locate... */
+        ctrl_filesel(s, KT_KSET_TT_DOWNLOADDIR, NO_SHORTCUT, FILTER_FOLDERS,
+                     false, NULL, HELPCTX(kitty_helper_paths),
+                     kitty_kset_handler, KSET("downloaddir"));
+        ctrl_text(s, KT_KSET_TT_DOWNLOADDIR_NOTE, HELPCTX(kitty_helper_paths));
     }
     KSET_TEXTBOX(s, KT_KSET_TT_UPLOADDIR, "uploaddir", kitty_helper_paths);
 
@@ -12021,6 +12173,13 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
      * helper programs; kitty_winscp is the KSCP panel's topic (help drift
      * audit 2026-09-08). */
     ctrl_text(s, KT_WINSCP_THE_OTHER_WINSCP_SETTINGS_BELONG, HELPCTX(kitty_helper_paths));
+
+    ctrl_settitle(b, KSET_PATH("Transfers & Tools/FileZilla"), KT_FZ_FILEZILLA);
+    s = ctrl_getset(b, KSET_PATH("Transfers & Tools/FileZilla"), "path", KT_WINSCP_EXECUTABLE);
+    ctrl_filesel(s, KT_FZ_EXECUTABLE, NO_SHORTCUT,
+                 FILTER_ALL_FILES, false, KT_FZ_SELECT_EXECUTABLE,
+                 HELPCTX(kitty_helper_paths), kitty_filezillapath_handler, P(NULL));
+    ctrl_text(s, KT_FZ_THE_OTHER_SETTINGS_BELONG, HELPCTX(kitty_helper_paths));
 
     ctrl_settitle(b, KSET_PATH("Transfers & Tools/ZModem"), KT_ZMODEM_ZMODEM);
     s = ctrl_getset(b, KSET_PATH("Transfers & Tools/ZModem"), "cmds", KT_EXTERNAL_TOOLS_HELPER_PROGRAMS);
@@ -13482,6 +13641,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
     scb_panel_serial(b, midsession, protocol);
     /* Proxy just before ZModem; the rare protocols close the subtree. */
     scb_panel_proxy(b, midsession);
+    scb_panel_transfers(b);
     scb_panel_zmodem(b);
     scb_panel_other_protocols(b, midsession, protocol);
     /* LAST: everything above is the Session tab, and the tree build splits the

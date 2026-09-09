@@ -233,6 +233,10 @@ void kitty_osc52_notify(Terminal *term, const char *t, const char *m, int a)
     osc52_notify_action = a;
 }
 void kitty_osc52_state_changed(Terminal *term) { osc52_state_changes++; }
+/* OSC 5113 (kitty/kitty_transfer.c) is not under test here: the terminal
+ * dispatches to these two, so they exist and do nothing. */
+void kitty_transfer_osc(Terminal *term) { (void)term; }
+void kitty_transfer_free(Terminal *term) { (void)term; }
 
 typedef struct Mock {
     Terminal *term;

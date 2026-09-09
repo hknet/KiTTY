@@ -906,6 +906,11 @@ for file in ${*} ; do echo "\033]0;__rv:"${file}"\007" ; done
 }
 */
 void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
+    GetOneFileTo( hwnd, directory, filename, NULL ) ;
+}
+
+/* localdir NULL = the download folder (kitty_xfer_download_dir). */
+void GetOneFileTo( HWND hwnd, char * directory, const char * filename, const char * localdir ) {
     char buffer[4096], pscppath[4096]="", pscpport[4096]="22", dir[4096]=".", b1[256] ;
     int p;
 
@@ -920,11 +925,8 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
 
     if( !GetShortPathName( PSCPPath, pscppath, 4095 ) ) return ;
 
-    if( ReadParameterN( INIT_SECTION, "downloaddir", dir, sizeof(dir) ) ) {
-        if( !existdirectory( dir ) ) { strcpy( dir, InitialDirectory ) ; }
-    }
-
-    if(strlen( dir ) == 0) { strcpy( dir, InitialDirectory ) ; }
+    if( localdir != NULL && localdir[0] && existdirectory( localdir ) ) snprintf( dir, sizeof(dir), "%s", localdir ) ;
+    else kitty_xfer_download_dir( conf, dir, sizeof(dir) ) ;
 
     buffer[0]='\0' ;
     const size_t BC = sizeof(buffer) ;
@@ -998,103 +1000,126 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
     memset(buffer,0,strlen(buffer));
 }
 
-// Get a remote file throught SCP
+/* --- Where received files go ------------------------------------------------
+ * ONE answer for kscp Get file, ZModem receives and file transfers over the
+ * session: the session's local download folder (Connection > Transfers), else
+ * the global Download folder (Transfers & Tools), else the user's Downloads
+ * folder, else the folder KiTTY started in. A configured folder that does not
+ * exist is skipped, not created. Returns the buffer. */
+char * kitty_xfer_download_dir( Conf * cf, char * out, size_t outlen ) {
+    const char * s ;
+    out[0] = '\0' ;
+    if( cf != NULL ) {
+        s = conf_get_str( cf, CONF_zdownloaddir ) ;
+        if( s && s[0] && existdirectory( s ) ) { snprintf( out, outlen, "%s", s ) ; return out ; }
+    }
+    if( ReadParameterN( INIT_SECTION, "downloaddir", out, outlen ) && out[0] && existdirectory( out ) ) return out ;
+    {
+        const char * prof = getenv( "USERPROFILE" ) ;
+        if( prof && prof[0] ) {
+            snprintf( out, outlen, "%s\\Downloads", prof ) ;
+            if( existdirectory( out ) ) return out ;
+        }
+    }
+    snprintf( out, outlen, "%s", InitialDirectory ) ;
+    return out ;
+}
+
+/* Is the helper behind a Tools-menu entry there? 0 = kscp, 1 = WinSCP. The
+ * menu greys an entry whose tool is missing instead of offering a click that
+ * ends in nothing (registry mode) or in a "not found" box. */
+int kitty_xfer_tool_ready( int which ) {
+    if( which == 0 ) {
+        if( PSCPPath == NULL || !existfile( PSCPPath ) ) SearchPSCP() ;
+        return PSCPPath != NULL && existfile( PSCPPath ) ;
+    } else if( which == 1 ) {
+        if( WinSCPPath == NULL || !existfile( WinSCPPath ) ) SearchWinSCP() ;
+        return WinSCPPath != NULL && existfile( WinSCPPath ) ;
+    } else {
+        if( FileZillaPath == NULL || !existfile( FileZillaPath ) ) SearchFileZilla() ;
+        return FileZillaPath != NULL && existfile( FileZillaPath ) ;
+    }
+}
+
+/* Tools > Get file (kscp), and the [Shortcuts] getfile key (Ctrl+F4).
+ *
+ * The remote path is the text on the clipboard: select the file's name or
+ * path in the terminal and it is there. An absolute path (or ~) is taken as
+ * it is; a bare name is joined to the OSC 7 tracked directory when tracking
+ * is on, else kscp resolves it against the login directory. Several lines
+ * mean several files, fetched one after the other. Then the folder picker
+ * opens on the download folder (kitty_xfer_download_dir) and the transfer
+ * runs into the chosen folder, through GetOneFileTo() - so the port,
+ * protocol, key-file and password handling are the ones every kscp download
+ * uses, and "Keep the transfer window open after success" applies.
+ *
+ * A Windows path on the clipboard is refused with a message: it is not a
+ * remote path, and handing "C:\..." to kscp only produces a puzzling error. */
+static int getfile_is_windows_path( const char * s ) {
+    if( strchr( s, '\\' ) != NULL ) return 1 ;
+    if( isalpha( (unsigned char)s[0] ) && s[1] == ':' ) return 1 ;
+    return 0 ;
+}
+
 void GetFile( HWND hwnd ) {
-    char buffer[4096]="", b1[256], *pst ;
-    char dir[4096], pscppath[4096]="", pscpport[4096]="22" ;
-    int p;
+    char * clip = NULL, * line, * next ;
+    char dir[4096], defdir[4096], remote[4096] ;
+    int nfiles = 0 ;
 
     if( conf_get_int(conf,CONF_protocol) != PROT_SSH ) {
         MessageBox( hwnd, KT_MSG_SSH_ONLY, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
         return ;
     }
-
-    if( PSCPPath==NULL ) {
-        if( IniFileFlag == SAVEMODE_REG ) return ;
-        else if( !SearchPSCP() ) return ;
+    if( !kitty_xfer_tool_ready( 0 ) ) {
+        MessageBox( hwnd, KT_XFER_KSCP_NOT_FOUND, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
+        return ;
     }
 
-    if( !existfile( PSCPPath ) ) {
-        if( IniFileFlag == SAVEMODE_REG ) return ;
-        else if( !SearchPSCP() ) return ;
-    }
-
-    if( !GetShortPathName( PSCPPath, pscppath, 4095 ) ) return ;
-
-    if (!IsClipboardFormatAvailable(CF_TEXT)) return ;
-
-    if( OpenClipboard(NULL) ) {
-        HGLOBAL hglb ;
-
-        if( (hglb = GetClipboardData( CF_TEXT ) ) != NULL ) {
-            if( ( pst = GlobalLock( hglb ) ) != NULL ) {
-//sprintf(buffer,"#%s#%d",pst,strlen(pst));MessageBox(hwnd,buffer,"Info",MB_OK);
-                str_rtrim( pst, "\n\r \t" ) ;
-//sprintf(buffer,"#%s#%d",pst,strlen(pst));MessageBox(hwnd,buffer,"Info",MB_OK);
-                strcpy( buffer, "" ) ;
-                if( strlen( pst ) > 0 ) {
-                    if( ReadParameterN( INIT_SECTION, "downloaddir", dir, sizeof(dir) ) ) {
-                        if( !existdirectory( dir ) ) {
-                            strcpy( dir, InitialDirectory ) ;
-                        }
-                    } else if( OpenDirName( hwnd, dir ) ) {
-                        if( !existdirectory( dir ) ) { GlobalUnlock( hglb ) ; CloseClipboard(); return ; }
-                        //strcpy( dir, InitialDirectory ) ;
-                    } else { 
-                        return ; 
-                    }
-                    //else { strcpy( dir, InitialDirectory ) ; }
-
-                    buffer[0]='\0' ;
-                    bcat( buffer, sizeof(buffer), pscppath ) ; bcat( buffer, sizeof(buffer), " " ) ;
-                    if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {   /* raw user options */
-                        bcat( buffer, sizeof(buffer), conf_get_str(conf, CONF_pscpoptions) ) ; bcat( buffer, sizeof(buffer), " " ) ;
-                    }
-                    bcat( buffer, sizeof(buffer), conf_get_int(conf, CONF_winscpprot)==0 ? "-scp " : "-sftp " ) ;
-                    if( conf_get_int(conf,CONF_sshprot) == 3 ) { bcat( buffer, sizeof(buffer), "-2 " ) ; }   // SSH-2 Only
-                    if( ReadParameterN( INIT_SECTION, "pscpport", pscpport, sizeof(pscpport) ) ) {
-                        pscpport[17]='\0';
-                        if( !strcmp( pscpport,"*" ) ) { snprintf( pscpport, sizeof(pscpport), "%d", conf_get_int(conf,CONF_port) ) ; }
-                        bcat( buffer, sizeof(buffer), "-P " ) ; bcat( buffer, sizeof(buffer), pscpport ) ; bcat( buffer, sizeof(buffer), " " ) ;
-                    } else {
-                        if( (p=poss(":",conf_get_str(conf, CONF_sftpconnect) )) > 0 ) snprintf( b1, sizeof(b1), "-P %d ", atoi(conf_get_str(conf, CONF_sftpconnect)+p) ) ;
-                        else sprintf( b1, "-P %d ", conf_get_int(conf, CONF_port) ) ;
-                        bcat( buffer, sizeof(buffer), b1 ) ;
-                    }
-                    if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
-                        bcat( buffer, sizeof(buffer), "-pw " ) ; qcat( buffer, sizeof(buffer), conf_get_str(conf,CONF_password) ) ; bcat( buffer, sizeof(buffer), " " ) ;
-                    }
-                    { const char *kf = kx_helper_keyfile(conf) ;
-                      if( kf != NULL ) { bcat( buffer, sizeof(buffer), "-i " ) ; qcat( buffer, sizeof(buffer), kf ) ; bcat( buffer, sizeof(buffer), " " ) ; }
-                    }
-                    /* remote source user@host:path (single quoted argument) */
-                    {
-                        char src[4096] ; src[0]='\0' ;
-                        if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
-                            snprintf( b1, sizeof(b1), "%s", conf_get_str(conf, CONF_sftpconnect) ) ;
-                            if( (p=poss(":",b1)) > 0 ) { b1[p-1]='\0'; }
-                            bcat( src, sizeof(src), b1 ) ;
-                        } else {
-                            bcat( src, sizeof(src), conf_get_str_ambi(conf,CONF_username,NULL) ) ; bcat( src, sizeof(src), "@" ) ;
-                            if( poss( ":", conf_get_str(conf,CONF_host))>0 ) { bcat(src,sizeof(src),"[") ; bcat(src,sizeof(src),conf_get_str(conf,CONF_host)) ; bcat(src,sizeof(src),"]") ; }
-                            else { bcat( src, sizeof(src), conf_get_str(conf,CONF_host) ) ; }
-                        }
-                        bcat( src, sizeof(src), ":" ) ; bcat( src, sizeof(src), pst ) ;
-                        qcat( buffer, sizeof(buffer), src ) ; bcat( buffer, sizeof(buffer), " " ) ;
-                    }
-                    qcat( buffer, sizeof(buffer), dir ) ;   /* local destination (single quoted argument) */
-                }
-                GlobalUnlock( hglb ) ;
-            }
+    /* Take a private copy of the clipboard text: the picker below pumps
+     * messages, and a locked clipboard across that would be a hold. */
+    if( IsClipboardFormatAvailable(CF_TEXT) && OpenClipboard(NULL) ) {
+        HGLOBAL hglb = GetClipboardData( CF_TEXT ) ;
+        if( hglb != NULL ) {
+            char * pst = GlobalLock( hglb ) ;
+            if( pst != NULL ) { clip = dupstr( pst ) ; GlobalUnlock( hglb ) ; }
         }
-        CloseClipboard();
+        CloseClipboard() ;
     }
-    if( strlen( buffer ) > 0 ) {
-        chdir( InitialDirectory ) ;
-        if( debug_flag ) { debug_logevent("Get file: %s", buffer) ; }
-        if( kitty_run_noshell( buffer, 0 ) ) { MessageBox( NULL, buffer, KT_CAP_TRANSFER_PROBLEM, MB_OK|MB_ICONERROR  ) ; }
-        //if( !system( buffer ) ) unlink( "kitty.log" ) ;
+    if( clip == NULL ) clip = dupstr( "" ) ;
+    str_rtrim( clip, "\n\r \t" ) ;
+    /* leading blanks and blank lines are noise from the selection */
+    line = clip ; while( *line == ' ' || *line == '\t' || *line == '\r' || *line == '\n' ) line++ ;
+    if( *line == '\0' ) {
+        MessageBox( hwnd, KT_XFER_GETFILE_NO_PATH, KT_CAP_ERROR, MB_OK|MB_ICONINFORMATION ) ;
+        sfree( clip ) ; return ;
     }
+    if( getfile_is_windows_path( line ) ) {
+        char * msg = dupprintf( KT_XFER_GETFILE_WINDOWS_PATH, line ) ;
+        MessageBox( hwnd, msg, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
+        sfree( msg ) ; sfree( clip ) ; return ;
+    }
+
+    kitty_xfer_download_dir( conf, defdir, sizeof(defdir) ) ;
+    if( !OpenDirNameFrom( hwnd, dir, defdir, KT_XFER_GETFILE_PICK_TITLE ) || !dir[0] || !existdirectory( dir ) ) {
+        sfree( clip ) ; return ;
+    }
+
+    for( ; line != NULL && *line ; line = next ) {
+        next = strpbrk( line, "\r\n" ) ;
+        if( next ) { *next = '\0' ; next++ ; while( *next == '\r' || *next == '\n' ) next++ ; }
+        str_rtrim( line, " \t" ) ;
+        while( *line == ' ' || *line == '\t' ) line++ ;
+        if( *line == '\0' ) continue ;
+        if( line[0] == '/' || line[0] == '~' || kitty_current_dir() == NULL ) {
+            snprintf( remote, sizeof(remote), "%s", line ) ;
+        } else {
+            snprintf( remote, sizeof(remote), "%s/%s", kitty_current_dir(), line ) ;
+        }
+        GetOneFileTo( hwnd, NULL, remote, dir ) ;
+        nfiles++ ;
+    }
+    sfree( clip ) ;
+    (void)nfiles ;
 }
 
 // Start a locale commande (Internet Explorer for example)
@@ -1504,6 +1529,296 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 }
 
 	
+
+/* ---- FileZilla ---------------------------------------------------------------
+ *
+ * The same hand-off as WinSCP's, for FileZilla (the request behind it is
+ * cyd01/KiTTY#501). FileZilla takes a URL on its command line -
+ * [proto://][user[:password]@]host[:port] - plus --logontype=ask (it asks for
+ * the password itself) and --site=<path> (a Site Manager entry). It has no
+ * /passwordsfromfiles, so the password question is the user's explicit choice
+ * (CONF_filezilla_pwmode), each option with its consequence stated on the panel:
+ *
+ *   0  ask       - user@host:port and --logontype=ask; no secret leaves this
+ *                  process. The default, and what a key-authenticated session
+ *                  gets regardless (no password to hand over).
+ *   1  temp cfg  - a private temporary directory holding an fzdefaults.xml
+ *                  whose <Servers> block carries the credentials (the password
+ *                  base64, which is how FileZilla stores it without its master
+ *                  password). FileZilla finds that file through FZ_DATADIR (its
+ *                  data directory, searched for fzdefaults.xml before the
+ *                  program directory) and lists the entry among the predefined
+ *                  sites, so it is started with --site="1/<name>" ("1/" =
+ *                  predefined, "0/" = the user's own Site Manager). FileZilla's
+ *                  own settings stay in force - fzdefaults.xml only ADDS. The
+ *                  directory is deleted a minute after the start, like the
+ *                  WinSCP password files. (FZ_DATADIR does NOT relocate the
+ *                  settings directory; a sitemanager.xml placed there is never
+ *                  read - "Site does not exist".)
+ *   2  cmd line  - user:password@host:port, percent-encoded. Readable by every
+ *                  process of the same user while FileZilla runs; offered
+ *                  because it is the simplest, and said so on the panel.
+ *
+ * A proxy is not handed over: FileZilla has no per-connection proxy setting,
+ * only its global one. Protocol: the shared "Protocol for file transfers"
+ * setting, mapped to what FileZilla speaks (sftp, ftp, ftps, ftpes; scp and
+ * http have no FileZilla equivalent and become sftp). */
+char * FileZillaPath = NULL ;
+
+static int set_filezilla_path_if_exists( const char *path ) {
+	if( path != NULL && path[0] && existfile( path ) ) {
+		if( FileZillaPath != NULL ) free( FileZillaPath ) ;
+		FileZillaPath = (char*) malloc( strlen(path) + 1 ) ;
+		strcpy( FileZillaPath, path ) ;
+		return 1 ;
+	}
+	return 0 ;
+}
+
+static int probe_filezilla_env_dir( const char *envname, const char *subpath, char *buffer, size_t buflen ) {
+	const char *base = getenv( envname ) ;
+	if( base == NULL || base[0] == '\0' ) return 0 ;
+	snprintf( buffer, buflen, "%s\\%s", base, subpath ) ;
+	return set_filezilla_path_if_exists( buffer ) ;
+}
+
+/* [KiTTY] FileZillaPath first, then the installer's default locations. A stored
+ * path that no longer exists is dropped, as SearchWinSCP does. */
+int SearchFileZilla( void ) {
+	char buffer[4096] ;
+	if( FileZillaPath != NULL ) { free( FileZillaPath ) ; FileZillaPath = NULL ; }
+	if( ReadParameterN( INIT_SECTION, "FileZillaPath", buffer, sizeof(buffer) ) != 0 ) {
+		if( set_filezilla_path_if_exists( buffer ) ) return 1 ;
+		else { DelParameter( INIT_SECTION, "FileZillaPath" ) ; }
+	}
+	if( probe_filezilla_env_dir( "ProgramFiles", "FileZilla FTP Client\\filezilla.exe", buffer, sizeof(buffer) ) ) return 1 ;
+	if( probe_filezilla_env_dir( "ProgramFiles(x86)", "FileZilla FTP Client\\filezilla.exe", buffer, sizeof(buffer) ) ) return 1 ;
+	if( probe_filezilla_env_dir( "LOCALAPPDATA", "Programs\\FileZilla FTP Client\\filezilla.exe", buffer, sizeof(buffer) ) ) return 1 ;
+	snprintf( buffer, sizeof(buffer), "%s\\filezilla.exe", InitialDirectory ) ;
+	if( set_filezilla_path_if_exists( buffer ) ) return 1 ;
+	return 0 ;
+}
+
+/* XML text: the five characters that break an element or an attribute. */
+static void xmlcat( char *dst, size_t cap, const char *s ) {
+	char one[2] = { 0, 0 } ;
+	if( !s ) return ;
+	for( ; *s ; s++ ) {
+		switch( *s ) {
+			case '&':  bcat( dst, cap, "&amp;" ) ; break ;
+			case '<':  bcat( dst, cap, "&lt;" ) ; break ;
+			case '>':  bcat( dst, cap, "&gt;" ) ; break ;
+			case '"':  bcat( dst, cap, "&quot;" ) ; break ;
+			case '\'': bcat( dst, cap, "&apos;" ) ; break ;
+			default:   one[0] = *s ; bcat( dst, cap, one ) ;
+		}
+	}
+}
+
+static void b64cat( char *dst, size_t cap, const char *s ) {
+	char atom[5] = { 0, 0, 0, 0, 0 } ;
+	size_t n = strlen( s ), i ;
+	for( i = 0 ; i < n ; i += 3 ) {
+		base64_encode_atom( (const unsigned char *)s + i, (int)( n - i >= 3 ? 3 : n - i ), atom ) ;
+		bcat( dst, cap, atom ) ;
+	}
+}
+
+/* The temporary data directory of mode 1: made just before the start, removed
+ * a minute later (FileZilla reads fzdefaults.xml at startup). */
+static char kx_fzdir[MAX_PATH] = "" ;
+
+static void kx_fzdir_remove( const char *dir ) {
+	char full[MAX_PATH] ;
+	snprintf( full, sizeof(full), "%s\\fzdefaults.xml", dir ) ;
+	SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( full ) ;
+	snprintf( full, sizeof(full), "%s\\sitemanager.xml", dir ) ;
+	SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( full ) ;
+	snprintf( full, sizeof(full), "%s\\filezilla.xml", dir ) ;
+	SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( full ) ;
+	snprintf( full, sizeof(full), "%s\\recentservers.xml", dir ) ;
+	SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( full ) ;
+	snprintf( full, sizeof(full), "%s\\lockfile", dir ) ;
+	SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( full ) ;
+	RemoveDirectory( dir ) ;
+}
+
+static DWORD WINAPI kx_fzdir_delete_thread( LPVOID p ) {
+	char *dir = (char *)p ;
+	Sleep( 60000 ) ;
+	kx_fzdir_remove( dir ) ;
+	free( dir ) ;
+	return 0 ;
+}
+
+static void kx_fzdir_sweep( void ) {
+	char tmp[MAX_PATH], pat[MAX_PATH], full[MAX_PATH] ;
+	WIN32_FIND_DATA fd ; HANDLE h ;
+	if( !GetTempPath( sizeof(tmp), tmp ) ) return ;
+	snprintf( pat, sizeof(pat), "%skitty_fz_*", tmp ) ;
+	if( (h = FindFirstFile( pat, &fd )) == INVALID_HANDLE_VALUE ) return ;
+	do {
+		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
+			snprintf( full, sizeof(full), "%s%s", tmp, fd.cFileName ) ;
+			kx_fzdir_remove( full ) ;
+		}
+	} while( FindNextFile( h, &fd ) ) ;
+	FindClose( h ) ;
+}
+
+/* Write the Site Manager entry; returns the directory (static) or NULL. */
+static const char *kx_fzdir_make( const char *host, int port, int fzproto,
+                                  const char *user, const char *password ) {
+	char tmp[MAX_PATH], file[MAX_PATH], xml[8192], num[160] ;
+	HANDLE h ; DWORD written ; int i ;
+	static unsigned serial = 0 ;
+	if( !GetTempPath( sizeof(tmp), tmp ) ) return NULL ;
+	for( i = 0 ; i < 16 ; i++ ) {
+		snprintf( kx_fzdir, sizeof(kx_fzdir), "%skitty_fz_%08lx_%u", tmp,
+		          (unsigned long)GetTickCount() ^ (unsigned long)GetCurrentProcessId(), ++serial ) ;
+		if( CreateDirectory( kx_fzdir, NULL ) ) break ;
+	}
+	if( i == 16 ) { kx_fzdir[0] = '\0' ; return NULL ; }
+	xml[0] = '\0' ;
+	bcat( xml, sizeof(xml), "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+	                        "<FileZilla3>\n"
+	                        "\t<Servers>\n\t\t<Server>\n\t\t\t<Host>" ) ;
+	xmlcat( xml, sizeof(xml), host ) ;
+	snprintf( num, sizeof(num), "</Host>\n\t\t\t<Port>%d</Port>\n\t\t\t<Protocol>%d</Protocol>\n", port, fzproto ) ;
+	bcat( xml, sizeof(xml), num ) ;
+	bcat( xml, sizeof(xml), "\t\t\t<Type>0</Type>\n\t\t\t<User>" ) ;
+	xmlcat( xml, sizeof(xml), user ) ;
+	bcat( xml, sizeof(xml), "</User>\n\t\t\t<Pass encoding=\"base64\">" ) ;
+	b64cat( xml, sizeof(xml), password ) ;
+	bcat( xml, sizeof(xml), "</Pass>\n\t\t\t<Logontype>1</Logontype>\n"
+	                        "\t\t\t<EncodingType>Auto</EncodingType>\n"
+	                        "\t\t\t<BypassProxy>0</BypassProxy>\n\t\t\t<Name>" ) ;
+	xmlcat( xml, sizeof(xml), KT_FZ_SITE_NAME ) ;
+	bcat( xml, sizeof(xml), "</Name>\n\t\t\t<SyncBrowsing>0</SyncBrowsing>\n"
+	                        "\t\t\t<DirectoryComparison>0</DirectoryComparison>\n"
+	                        "\t\t</Server>\n\t</Servers>\n</FileZilla3>\n" ) ;
+	snprintf( file, sizeof(file), "%s\\fzdefaults.xml", kx_fzdir ) ;
+	h = CreateFile( file, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_HIDDEN, NULL ) ;
+	if( h == INVALID_HANDLE_VALUE ) { RemoveDirectory( kx_fzdir ) ; kx_fzdir[0] = '\0' ; return NULL ; }
+	if( !WriteFile( h, xml, (DWORD)strlen(xml), &written, NULL ) || written != strlen(xml) ) {
+		CloseHandle( h ) ; kx_fzdir_remove( kx_fzdir ) ; kx_fzdir[0] = '\0' ; return NULL ;
+	}
+	CloseHandle( h ) ;
+	memset( xml, 0, sizeof(xml) ) ;
+	return kx_fzdir ;
+}
+
+static void kx_fzdir_release( int now ) {
+	char *copy ; HANDLE t ;
+	if( kx_fzdir[0] == '\0' ) return ;
+	if( now ) {
+		kx_fzdir_remove( kx_fzdir ) ;
+	} else if( (copy = (char *)malloc( strlen(kx_fzdir) + 1 )) != NULL ) {
+		strcpy( copy, kx_fzdir ) ;
+		t = CreateThread( NULL, 0, kx_fzdir_delete_thread, copy, 0, NULL ) ;
+		if( t ) CloseHandle( t ) ; else kx_fzdir_delete_thread( copy ) ;
+	}
+	kx_fzdir[0] = '\0' ;
+}
+
+/* Tools > Start FileZilla. */
+void StartFileZilla( HWND hwnd ) {
+	char cmd[4096], user[512], host[1024], num[32] ;
+	const char *proto ; int fzproto, port, p ;
+	size_t pw_at = 0, pw_len = 0 ;
+	int mode = conf_get_int( conf, CONF_filezilla_pwmode ) ;
+	const char *pw = conf_get_str( conf, CONF_password ) ;
+	int havepw = ( pw != NULL && pw[0] != '\0' ) ;
+	const char *fzdir = NULL ;
+
+	kx_fzdir_sweep() ;
+	if( !kitty_xfer_tool_ready( 2 ) ) {
+		MessageBox( hwnd, KT_XFER_FILEZILLA_NOT_FOUND, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
+		return ;
+	}
+	/* The REAL path, quoted - not GetShortPathName(): started through its 8.3
+	 * name (C:\PROGRA~1\FILEZI~1\FILEZI~1.EXE) FileZilla exits at once, before
+	 * any window, because it locates its resources from its own module path. */
+
+	/* protocol: FileZilla's names and its Site Manager codes */
+	if( conf_get_int( conf, CONF_protocol ) == PROT_SSH ) {
+		switch( conf_get_int( conf, CONF_winscpprot ) ) {
+			case 2:  proto = "ftp" ;   fzproto = 0 ; break ;
+			case 3:  proto = "ftps" ;  fzproto = 3 ; break ;
+			case 4:  proto = "ftpes" ; fzproto = 4 ; break ;
+			default: proto = "sftp" ;  fzproto = 1 ; break ;
+		}
+		port = conf_get_int( conf, CONF_port ) ;
+	} else {
+		proto = "ftp" ; fzproto = 0 ; port = 21 ;
+	}
+
+	/* target: the WinSCP panel's "SFTP connect" override, else the session */
+	user[0] = '\0' ; host[0] = '\0' ;
+	if( strlen( conf_get_str( conf, CONF_sftpconnect ) ) > 0 ) {
+		char b1[1024] ;
+		snprintf( b1, sizeof(b1), "%s", conf_get_str( conf, CONF_sftpconnect ) ) ;
+		if( (p = poss( "@", b1 )) > 0 ) { b1[p-1] = '\0' ; snprintf( user, sizeof(user), "%s", b1 ) ; snprintf( host, sizeof(host), "%s", b1 + p ) ; }
+		else snprintf( host, sizeof(host), "%s", b1 ) ;
+		if( (p = poss( ":", host )) > 0 && host[p] != '\0' ) { port = atoi( host + p ) ; host[p-1] = '\0' ; }
+		if( user[0] == '\0' ) snprintf( user, sizeof(user), "%s", conf_get_str_ambi( conf, CONF_username, NULL ) ) ;
+	} else {
+		snprintf( user, sizeof(user), "%s", conf_get_str_ambi( conf, CONF_username, NULL ) ) ;
+		snprintf( host, sizeof(host), "%s", conf_get_str( conf, CONF_host ) ) ;
+	}
+
+	snprintf( cmd, sizeof(cmd), "\"%s\"", FileZillaPath ) ;
+	if( havepw && mode == 1 ) {
+		fzdir = kx_fzdir_make( host, port, fzproto, user, pw ) ;
+		if( fzdir == NULL ) mode = 0 ;      /* no directory: fall back to asking, never to the command line */
+	}
+	if( fzdir != NULL ) {
+		bcat( cmd, sizeof(cmd), " --site=\"1/" ) ; bcat( cmd, sizeof(cmd), KT_FZ_SITE_NAME ) ; bcat( cmd, sizeof(cmd), "\"" ) ;
+	} else {
+		bcat( cmd, sizeof(cmd), " " ) ; bcat( cmd, sizeof(cmd), proto ) ; bcat( cmd, sizeof(cmd), "://" ) ;
+		urlcat( cmd, sizeof(cmd), user ) ;
+		if( havepw && mode == 2 ) {
+			bcat( cmd, sizeof(cmd), ":" ) ;
+			pw_at = strlen( cmd ) ;
+			urlcat( cmd, sizeof(cmd), pw ) ;
+			pw_len = strlen( cmd ) - pw_at ;
+		}
+		bcat( cmd, sizeof(cmd), "@" ) ;
+		if( poss( ":", host ) > 0 ) { bcat( cmd, sizeof(cmd), "[" ) ; bcat( cmd, sizeof(cmd), host ) ; bcat( cmd, sizeof(cmd), "]" ) ; }
+		else bcat( cmd, sizeof(cmd), host ) ;
+		snprintf( num, sizeof(num), ":%d", port ) ; bcat( cmd, sizeof(cmd), num ) ;
+		/* With a password: FileZilla asks for it before connecting (ask).
+		 * Without one: interactive - FileZilla connects at once, its SFTP
+		 * engine tries the agent's keys, and a password is asked for only if
+		 * the server still wants one. A bare user@host URL would instead
+		 * stop at an "Enter password" box BEFORE connecting, agent or not. */
+		if( havepw && mode == 0 ) bcat( cmd, sizeof(cmd), " --logontype=ask" ) ;
+		else if( !havepw ) bcat( cmd, sizeof(cmd), " --logontype=interactive" ) ;
+	}
+	if( strlen( conf_get_str( conf, CONF_filezilla_options ) ) > 0 ) {
+		bcat( cmd, sizeof(cmd), " " ) ; bcat( cmd, sizeof(cmd), conf_get_str( conf, CONF_filezilla_options ) ) ;
+	}
+
+	/* A Hello-protected key the agent is not holding: FileZilla has no way to
+	 * take a key file from us, so it can only fail - ask first, as for WinSCP. */
+	{ char *note = kx_hello_agent_note( conf ) ;
+	  if( note != NULL ) {
+		char *text = dupprintf( KT_XFER_START_FILEZILLA_ANYWAY, note ) ;
+		int go = MessageBox( hwnd, text, KT_CAP_KEY_NOT_IN_AGENT, MB_OKCANCEL|MB_ICONWARNING ) ;
+		sfree( text ) ; sfree( note ) ;
+		if( go != IDOK ) { memset( cmd, 0, strlen(cmd) ) ; kx_fzdir_release( 1 ) ; return ; }
+	  }
+	}
+
+	debug_logevent_redacted( "Start FileZilla", cmd, pw_at, pw_len ) ;
+	if( fzdir != NULL ) SetEnvironmentVariable( "FZ_DATADIR", fzdir ) ;
+	RunCommand( hwnd, cmd ) ;
+	if( fzdir != NULL ) SetEnvironmentVariable( "FZ_DATADIR", NULL ) ;
+	memset( cmd, 0, strlen(cmd) ) ;
+	kx_fzdir_release( 0 ) ;
+}
+
+
 // Recherche le chemin vers le programme PSCP
 int SearchPSCP( void ) {
 	char buffer[4096], ki[10]="kscp.exe", pu[10]="pscp.exe" ;

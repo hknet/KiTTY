@@ -118,7 +118,7 @@ exe*.
 
 | Section | What it configures |
 |---|---|
-| `[KiTTY]` | The main section: feature switches (hyperlinks, transparency, icons, background image, …), `savemode`, security options (`PortablePasswordProtection`, `readonly`, `restrictacl`), window/title behaviour, scripting, `theme` (`system`/`light`/`dark` - the colours every KiTTY window paints in, kageant and kittygen included; dark needs Windows 10 1809 or newer), and `checkupdate` (look for a new release at startup), and `showforeignsessions` (also list an older KiTTY's or PuTTY's own saved sessions - `auto`/`yes`/`no`, default `auto`), and where the helper programs live on this PC: `WinSCPPath`, `rzcommand` and `szcommand`, and `warnmissingfeatures` (name in the terminal whatever this version of Windows is too old to provide), and `renderer` (`gdi` or `d2d`: how the terminal window is painted - see Terminal renderer in FEATURES.md), and `framepace` (`auto`, a number of milliseconds, or 0: how often the window may repaint while output streams in - see Frame pacing in FEATURES.md). |
+| `[KiTTY]` | The main section: feature switches (hyperlinks, transparency, icons, background image, …), `savemode`, security options (`PortablePasswordProtection`, `readonly`, `restrictacl`), window/title behaviour, scripting, `theme` (`system`/`light`/`dark` - the colours every KiTTY window paints in, kageant and kittygen included; dark needs Windows 10 1809 or newer), and `checkupdate` (look for a new release at startup), and `showforeignsessions` (also list an older KiTTY's or PuTTY's own saved sessions - `auto`/`yes`/`no`, default `auto`), and where the helper programs live on this PC: `WinSCPPath`, `FileZillaPath`, `rzcommand` and `szcommand`, and `warnmissingfeatures` (name in the terminal whatever this version of Windows is too old to provide), and `renderer` (`gdi` or `d2d`: how the terminal window is painted - see Terminal renderer in FEATURES.md), and `framepace` (`auto`, a number of milliseconds, or 0: how often the window may repaint while output streams in - see Frame pacing in FEATURES.md). |
 | `[Agent]` | kageant (the SSH agent): `askconfirmation` (`yes`/`auto`/`no`/`hello` - the last one demands a Windows Hello gesture for the confirmation), `messageonkeyusage`, `loadonstartup` + the `startupkeyN` list, `retrykeys` (what to do when a startup key's media returns), the `agentlog*` settings, `hellocacheseconds` (how long one Windows Hello unlock keeps covering further protected keys; `0` asks every time), `autoencryptmode` + `autoencryptseconds` (re-encrypt keys after idle: `off` / `default` for keys without their own value / `enforce` for every key, and the time - seconds, `10m`, `2h`, `1d`, or `use` for right after each signature). |
 | `[ConfigBox]` | Configuration-box behaviour: `dblclick` (double-click on a saved session = Open or Start), `defaultsettings` visibility, `loadlastsession` (off = quick connect: open on Default Settings with the caret in Host Name), `foldernavigation` (session folders as ROWS of the saved-session list rather than a drop-down), box height, `windowheight` and `windowwidth` (the size of the configuration window itself), `fixedsizewindow` (lock that size: no resize frame, size fields read-only), `applicationsettings` (`no` = no Application tab at all; kitty.ini only), `applicationpanel` (the Application tab's leaf, remembered between configuration windows), `switchpaint` (`erase` = paint a panel switch the old way, erase then repaint on screen, instead of the freeze frame; a diagnostic), and `collapsed` (the Category-tree folds the user changed by hand, by path - written by the window itself; they beat the categoryexpand default in both directions). |
 | `[Shortcuts]` | Keyboard shortcuts for KiTTY menu actions, e.g. `duplicate={CONTROL}N`. |
@@ -235,26 +235,30 @@ door. `[KiTTY] readonly=yes` is not a substitute: it stops the file being
 written, but the tab still shows and edits there are accepted on screen and
 dropped. Default `yes`.
 
-## Helper programs — `WinSCPPath`, `rzcommand`, `szcommand`
+## Helper programs — `WinSCPPath`, `FileZillaPath`, `rzcommand`, `szcommand`
 
-Where WinSCP and the ZModem helpers (`rz.exe` / `sz.exe` from lrzsz) are
-installed:
+Where WinSCP, FileZilla and the ZModem helpers (`rz.exe` / `sz.exe` from
+lrzsz) are installed:
 
 ```ini
 [KiTTY]
 WinSCPPath=C:\Program Files\WinSCP\WinSCP.exe
+FileZillaPath=C:\Program Files\FileZilla FTP Client\filezilla.exe
 rzcommand=C:\Tools\lrzsz\rz.exe
 szcommand=C:\Tools\lrzsz\sz.exe
 ```
 
 These are properties of the machine, not of a connection, so they live here
-and every session shares them. Set them on **Application > External tools**,
-which has a leaf per tool.
+and every session shares them. Set them on **Application > KiTTY++ Settings >
+Transfers & Tools**, which has a leaf per tool. The Tools menu of a terminal
+offers WinSCP and FileZilla only while the file each path names exists.
 
 Everything else about those tools stays per session, because it describes the
-remote rather than this PC: WinSCP's protocol, SFTP connect string and extra
-options on *Connection > SSH > WinSCP*, and the ZModem options and download
-folder on *Connection > ZModem*.
+remote rather than this PC: the transfer protocol on *Connection > SSH > KSCP*,
+WinSCP's SFTP connect string and extra options on *Connection > SSH > WinSCP*,
+FileZilla's options and password hand-over on *Connection > SSH > FileZilla*,
+the ZModem options on *Connection > ZModem*, and the download folder on
+*Connection > Transfers*.
 
 ⚠️ `rzcommand` and `szcommand` used to be per-session settings
 (`rzCommand` / `szCommand` in a saved session). Those values are no longer

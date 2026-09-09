@@ -66,6 +66,9 @@ bool kitty_osc52_save_deny_for_host(Terminal *term);
  * so has to lead somewhere. */
 void kitty_osc52_notify(Terminal *term, const char *title, const char *msg,
                         int action);
+/* KiTTY OSC 5113 file transfer (kitty/kitty_transfer.c); test builds of this
+ * file stub the two entry points (test/test_osc52.c). */
+#include "../kitty/kitty_transfer.h"
 #endif
 #if defined(MOD_PERSO) || defined(MOD_FAR2L)
 /* Send bytes down to the host. A seam rather than an ldisc_send() here so that the
@@ -2382,6 +2385,8 @@ void term_free(Terminal *term)
         smemclr(term->osc5522_paste_pw, strlen(term->osc5522_paste_pw));
         sfree(term->osc5522_paste_pw);
     }
+    /* KiTTY: OSC 5113 file-transfer sessions (partial files are deleted). */
+    kitty_transfer_free(term);
 #endif
     strbuf_free(term->answerback);
 
@@ -6177,6 +6182,12 @@ static void do_osc(Terminal *term)
              * type. */
             osc5522_process(term);
             break;
+          case 5113:
+            /* OSC 5113: kitty's file-transfer protocol (`kitten transfer` on
+             * the far end). Sessions, files and the permission dialog live
+             * in kitty/kitty_transfer.c. */
+            kitty_transfer_osc(term);
+            break;
 #endif
         }
         break;
@@ -8335,7 +8346,8 @@ static void term_out(Terminal *term, bool called_from_term_data)
                         osc_start(term,
                                   term->esc_args[0] == 52 ?
                                       clip_ceiling_bytes(term) :
-                                  term->esc_args[0] == 5522 ? OSC_STR_MAX_5522 :
+                                  term->esc_args[0] == 5522 ||
+                                  term->esc_args[0] == 5113 ? OSC_STR_MAX_5522 :
                                   OSC_STR_MAX);
 #else
                         osc_start(term, OSC_STR_MAX);

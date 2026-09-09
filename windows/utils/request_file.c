@@ -107,6 +107,7 @@ static bool do_filereq_a(
             "All Files (*.*)\0*\0\0\0";
         of.lpstrDefExt = ".dll";
         break;
+      case FILTER_FOLDERS:   /* KiTTY: the config box opens the folder picker itself */
       case FILTER_ICON_FILES:
         of.lpstrFilter = "Icon Files (*.ico)\0*.ico\0"
             "All Files (*.*)\0*\0\0\0";
@@ -183,6 +184,7 @@ static bool do_filereq_w(
             "All Files (*.*)\0*\0\0\0";
         of.lpstrDefExt = L".dll";
         break;
+      case FILTER_FOLDERS:
       case FILTER_ICON_FILES:
         of.lpstrFilter = L"Icon Files (*.ico)\0*.ico\0"
             "All Files (*.*)\0*\0\0\0";

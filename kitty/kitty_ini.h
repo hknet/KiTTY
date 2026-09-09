@@ -744,6 +744,11 @@ char default_init_file_content[] =
 ;    Application > KiTTY++ Settings > Transfers & Tools >WinSCP.\n\
 ;WinSCPPath=\n\
 \n\
+; FileZillaPath: the full path to filezilla.exe. Set it on\n\
+;    Application > KiTTY++ Settings > Transfers & Tools >FileZilla. The Tools\n\
+;    menu offers \"Start FileZilla\" only while the file exists.\n\
+;FileZillaPath=\n\
+\n\
 ; rzcommand, szcommand: the full paths to the ZModem helper programs (rz.exe\n\
 ;    and sz.exe from lrzsz). Where they are installed is a property of this PC,\n\
 ;    so they live here rather than in each saved session; set them on\n\
@@ -894,7 +899,9 @@ char default_init_file_content[] =
 ;    No default key - it does nothing until you set one here.\n\
 ;fullscreen=\n\
 \n\
-; receive a remote file with pscp.exe: the full path must be selected in clipboard (default is CONTROL+F4)\n\
+; receive a remote file with kscp - the same as Tools > Get file: the remote path\n\
+; (or the file's name, with OSC 7 tracking on) must be on the clipboard, then a\n\
+; folder window opens on the download folder (default is CONTROL+F4)\n\
 ;getfile=\n\
 \n\
 ; change the background image (default is CONTROL+F11)\n\

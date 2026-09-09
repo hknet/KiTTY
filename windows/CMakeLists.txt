@@ -534,6 +534,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_colours.c
   ${KITTY_DIR}/kitty_inputbox.c
   ${KITTY_DIR}/kitty_osc52.c
+  ${KITTY_DIR}/kitty_transfer.c
   ${KITTY_DIR}/kitty_specialmenu.c
   ${KITTY_DIR}/kitty_shortcuts.c
   ${KITTY_DIR}/kitty_xfer.c
@@ -648,6 +649,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_colours.c
   ${KITTY_DIR}/kitty_inputbox.c
   ${KITTY_DIR}/kitty_osc52.c
+  ${KITTY_DIR}/kitty_transfer.c
   ${KITTY_DIR}/kitty_specialmenu.c
   ${KITTY_DIR}/kitty_shortcuts.c
   ${KITTY_DIR}/kitty_xfer.c

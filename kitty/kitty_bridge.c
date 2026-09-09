@@ -287,6 +287,8 @@ void kitty_showportfwd(HWND hwnd, Conf *conf) { ShowPortfwd(hwnd, conf); }
 void kitty_shortcuts_toggle(HWND hwnd) { ManageShortcutsFlag(hwnd); }
 void kitty_start_winscp(HWND hwnd) { StartWinSCP(hwnd, NULL, NULL, NULL); }
 void kitty_send_file(HWND hwnd) { SendFile(hwnd); }
+void kitty_get_file(HWND hwnd) { GetFile(hwnd); }
+void kitty_start_filezilla(HWND hwnd) { StartFileZilla(hwnd); }
 
 /* Per-session icon: the external icon file (CONF_iconefile) if the session
  * names one, otherwise the embedded icon indexed by CONF_icone. */

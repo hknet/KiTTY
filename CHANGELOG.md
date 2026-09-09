@@ -8,12 +8,65 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
-- **The session's WinSCP panel says where the executable path went** ("The
-  path to the WinSCP executable is a global setting.") and its "Open global
-  WinSCP Panel" button jumps to KiTTY++ Settings > Transfers & Tools > WinSCP.
+- **Connection > Transfers: one panel for where files go.** The session's
+  local download folder (empty = the global Download folder, shown beneath the
+  field as "Global: ..."; "Locate..." opens the folder picker), "Always ask
+  where to save a received file", and the permission for transfers the far
+  end starts ("Ask every time" / "Ask once per session" / "Never ask"). The
+  OSC 7 remote-directory tracking and the fixed remote upload directory moved
+  here from the KSCP panel, the download folder from the ZModem panel (same
+  key, sessions keep their value). ZModem, Get file and kitten transfer all
+  read it. A session without a folder now saves into the global Download
+  folder, or your Downloads folder, instead of `C:\`.
+- **Tools > "Get file (kscp)..." is a menu entry now** (Ctrl+F4 did this
+  silently before). The remote path comes from the clipboard: an absolute path
+  is used as it is, a bare name is joined to the OSC 7 tracked directory when
+  tracking is on, several lines are several files. A folder window opens on
+  the download folder, then kscp fetches into the folder you chose. A Windows
+  path on the clipboard is refused with a message. The help walks through it
+  with examples (The Transfers panel).
+- **The Tools menu greys "Start WinSCP", "Send file" and "Get file" while the
+  program behind them cannot be found,** instead of offering a click that ends
+  in nothing.
+- **FileZilla integration beside WinSCP** (Refs cyd01/KiTTY#501): Tools >
+  "Start FileZilla" opens FileZilla on the session's host, user and port, with
+  the shared protocol setting (sftp, ftp, ftps, ftpes). The path lives on
+  KiTTY++ Settings > Transfers & Tools > FileZilla (`FileZillaPath`); the menu
+  entry exists only while that file does. The session's Connection > SSH >
+  FileZilla panel holds the additional options and an explicit choice of how
+  the session password reaches FileZilla, each option stating its consequence:
+  "Ask in FileZilla" (default, no secret leaves KiTTY++), "Temporary
+  configuration" (a private predefined-site file FileZilla reads at start,
+  deleted a minute later; your own sites are untouched), or "Command line"
+  (readable by other processes while FileZilla runs). The panel and the help
+  name the preferred way: an SSH key served by the agent, which needs no
+  password at all - such a session is started with `--logontype=interactive`,
+  so FileZilla connects at once without a password prompt.
+- **File transfers over the session (kitty's OSC 5113, `kitten transfer`).**
+  With `kitten` installed on the host - and only there; no KITTY_WINDOW_ID,
+  no kitty - `kitten transfer report.pdf ~/` saves the file in the session's
+  download folder, `kitten transfer --direction=upload ~/report.pdf .` fetches
+  one from it. Works through jump hosts, nested ssh, telnet and serial lines,
+  because the bytes travel in the terminal stream itself. Whole folders,
+  zlib-compressed files, modification times and the read-only bit come
+  along; links, the password bypass and rsync deltas are refused.
+- **A dialog gates every transfer the far end starts.** "KiTTY file transfer"
+  names the folder files will land in, or lists the paths the host wants to
+  read; Allow / Deny. How often the dialog appears for arriving files follows
+  Connection > Transfers (every time / once per session / never); a request
+  to read files from this PC always shows the dialog. Names from the host are taken as a
+  file name only: `..`, drive letters, backslashes, reserved device names and
+  characters Windows forbids are refused, an existing name gets " (2)"
+  appended, and a transfer that stops leaves no half file behind.
+- **Every file transfer is in the Event Log**: the request, each file with
+  its final path and size, refusals with the reason, and the end or the
+  cancellation of the session.
+
+- **The session's WinSCP panel names where the executable path went** ("The
+  path to the WinSCP executable is a global setting.") and its "Open App
+  Settings" button jumps to KiTTY++ Settings > Transfers & Tools > WinSCP.
   The session's KSCP panel does the same for the file-copy helper ("The path
-  to the File-Copy Helper is a global setting.", "Open global Transfers & Tools
-  Panel").
+  to the File-Copy Helper is a global setting.", "Open App Settings").
 - **"Port for file transfers" shows `*` when nothing is set,** which is what
   an empty field always meant: the session's port.
 - **"Locate..." beside the download folder** on KiTTY++ Settings > Transfers &

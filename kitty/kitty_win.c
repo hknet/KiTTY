@@ -170,14 +170,30 @@ int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 #include <shlobj.h>
 #include <shobjidl.h>   /* IFileOpenDialog (Common Item Dialog folder picker) */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
+#include "kitty_tools.h"        /* existdirectory */
+/* The tree picker's initial selection: SHBrowseForFolder takes it through a
+ * callback, not a field. lParam carries the ANSI path. */
+static int CALLBACK browse_start_folder( HWND hwnd, UINT msg, LPARAM lParam, LPARAM data ) {
+	(void)lParam ;
+	if( msg == BFFM_INITIALIZED && data )
+		SendMessage( hwnd, BFFM_SETSELECTIONA, TRUE, data ) ;
+	return 0 ;
+}
+
 int OpenDirName( HWND hFrame, char * dirname ) {
+	return OpenDirNameFrom( hFrame, dirname, NULL, NULL ) ;
+}
+
+int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const char * title ) {
 	dirname[0] = '\0' ;
+	if( initial && (!initial[0] || !existdirectory( initial )) ) initial = NULL ;
 	/* Modern Common Item Dialog folder picker (Vista+): the full Explorer window
 	 * with an address bar you can paste a path into, type-ahead and favourites -
 	 * not the old tree-only SHBrowseForFolder. Falls back to the tree picker (with
 	 * a New Folder button) if COM or the dialog is unavailable. */
 	static const GUID clsid_fod = {0xDC1C5A9C,0xE88A,0x4dde,{0xA5,0xA1,0x60,0xF8,0x2A,0x20,0xAE,0xF7}} ;
 	static const GUID iid_fod   = {0xd57c7288,0xd4ad,0x4768,{0xbe,0x02,0x9d,0x96,0x95,0x32,0xd9,0x60}} ;
+	static const GUID iid_si    = {0x43826d1e,0xe718,0x42ee,{0xbc,0x55,0xa1,0xe2,0x61,0xc3,0x7b,0xfe}} ;   /* IShellItem */
 	IFileOpenDialog *pfd = NULL ;
 	HRESULT hrInit = CoInitializeEx( NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE ) ;
 	if( SUCCEEDED( CoCreateInstance( &clsid_fod, NULL, CLSCTX_INPROC_SERVER,
@@ -185,7 +201,29 @@ int OpenDirName( HWND hFrame, char * dirname ) {
 		DWORD opts = 0 ;
 		pfd->lpVtbl->GetOptions( pfd, &opts ) ;
 		pfd->lpVtbl->SetOptions( pfd, opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST ) ;
-		pfd->lpVtbl->SetTitle( pfd, L"Select a folder..." ) ;
+		if( title ) {
+			wchar_t wt[256] ;
+			MultiByteToWideChar( CP_ACP, 0, title, -1, wt, 256 ) ; wt[255] = 0 ;
+			pfd->lpVtbl->SetTitle( pfd, wt ) ;
+		} else {
+			pfd->lpVtbl->SetTitle( pfd, L"Select a folder..." ) ;
+		}
+		if( initial ) {
+			/* SHCreateItemFromParsingName is Vista+: resolved at run time so
+			 * the XP build still loads (a static import the OS lacks kills the
+			 * process in the loader). */
+			typedef HRESULT (WINAPI *pfn_scifpn)( PCWSTR, IBindCtx *, REFIID, void ** ) ;
+			HMODULE sh = GetModuleHandleA( "shell32.dll" ) ;
+			pfn_scifpn scifpn = sh ? (pfn_scifpn)GetProcAddress( sh, "SHCreateItemFromParsingName" ) : NULL ;
+			if( scifpn ) {
+				wchar_t wi[4096] ; IShellItem *psi0 = NULL ;
+				MultiByteToWideChar( CP_ACP, 0, initial, -1, wi, 4096 ) ; wi[4095] = 0 ;
+				if( SUCCEEDED( scifpn( wi, NULL, &iid_si, (void**)&psi0 ) ) && psi0 ) {
+					pfd->lpVtbl->SetFolder( pfd, psi0 ) ;
+					psi0->lpVtbl->Release( psi0 ) ;
+				}
+			}
+		}
 		if( SUCCEEDED( pfd->lpVtbl->Show( pfd, hFrame ) ) ) {
 			IShellItem *psi = NULL ;
 			if( SUCCEEDED( pfd->lpVtbl->GetResult( pfd, &psi ) ) && psi ) {
@@ -209,8 +247,9 @@ int OpenDirName( HWND hFrame, char * dirname ) {
 		memset( &bi, 0, sizeof(bi) ) ;
 		bi.hwndOwner = hFrame ;
 		bi.pszDisplayName = Buffer ;
-		bi.lpszTitle = KT_CAP_SELECT_FOLDER ;
+		bi.lpszTitle = title ? title : KT_CAP_SELECT_FOLDER ;
 		bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE ;
+		if( initial ) { bi.lpfn = browse_start_folder ; bi.lParam = (LPARAM)initial ; }
 		if( (il = SHBrowseForFolder( &bi )) != NULL ) {
 			SHGetPathFromIDList( il, Result ) ;
 			GlobalFree( il ) ;

@@ -423,7 +423,18 @@ const struct kitty_proxy_snapshot * kitty_proxy_connection( void ) ;
 void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) ;
 void SendFileList( HWND hwnd, char * filelist ) ;
 void GetOneFile( HWND hwnd, char * directory, const char * filename ) ;
+void GetOneFileTo( HWND hwnd, char * directory, const char * filename, const char * localdir ) ;
 void GetFile( HWND hwnd ) ;
+/* The session's download folder, resolved (Connection > Transfers, else the
+ * global one, else Downloads). kitty_xfer.c */
+char * kitty_xfer_download_dir( Conf * cf, char * out, size_t outlen ) ;
+/* Is the helper there? 0 = kscp, 1 = WinSCP, 2 = FileZilla. kitty_xfer.c */
+int kitty_xfer_tool_ready( int which ) ;
+/* FileZilla hand-off (kitty_xfer.c): the executable path is an application
+ * setting ([KiTTY] FileZillaPath), located like WinSCP's. */
+extern char * FileZillaPath ;
+int SearchFileZilla( void ) ;
+void StartFileZilla( HWND hwnd ) ;
 void RunCmd( HWND hwnd ) ;
 int SearchWinSCP( void ) ;
 int SearchPSCP( void ) ;

@@ -770,10 +770,32 @@
 #define KT_SUPDUP_MORE_PROCESSING                    "**MORE** processing"
 #define KT_SUPDUP_TERMINAL_SCROLLING                 "Terminal scrolling"
 
+/* Connection/Transfers - one destination and one permission model for kscp
+ * Get file, ZModem and file transfers over the session (kitten transfer). */
+#define KT_TRANSFERS_TITLE                           "File Transfer Options"
+#define KT_TRANSFERS_RECEIVED                        "Where received files are saved"
+#define KT_TRANSFERS_LOCAL_DOWNLOAD_FOLDER           "Local download folder (empty = global):"
+#define KT_TRANSFERS_GLOBAL_IS                       "Global: %s"
+#define KT_TRANSFERS_GLOBAL_UNSET                    "(not set - global Downloadsfolder is used)"
+#define KT_TRANSFERS_ALWAYS_ASK_DESTINATION          "Always open Save Dialog"
+#define KT_TRANSFERS_REMOTE_DIR                      "Remote directory for uploads"
+#define KT_TRANSFERS_FAR_END                         "Transfers started by the far end"
+#define KT_TRANSFERS_FAR_END_NOTE                    "File transfers in session (kitten transfer) needs your permission before data moves:"
+#define KT_TRANSFERS_PERM_ALWAYS                     "Ask every time"
+#define KT_TRANSFERS_PERM_FIRST                      "Ask once per session"
+#define KT_TRANSFERS_PERM_NEVER                      "Never ask"
+#define KT_TRANSFERS_GET_FILE_NOTE                   "Tools > Get file (kscp) fetches the path on the clipboard into the download folder."
+#define KT_KSCP_DIRS_ON_TRANSFERS                    "Download folder and remote directory: Connection > Transfers."
+#define KT_ZMODEM_FOLDER_ON_TRANSFERS                "Downloads saves to the folder set on Connection > Transfers."
+#define KT_KSET_TT_DOWNLOADDIR_NOTE                  "Where Get file, ZModem and transfers over the session save, unless the session sets its own folder."
+#define KT_XFER_KSCP_NOT_FOUND                       "kscp was not found. Set its path on KiTTY++ Settings > Transfers & Tools."
+#define KT_XFER_GETFILE_NO_PATH                      "Copy the remote file's name or path to the clipboard first (select it in the terminal)."
+#define KT_XFER_GETFILE_WINDOWS_PATH                 "The clipboard holds a local path, not a remote one:\n\n%s"
+#define KT_XFER_GETFILE_PICK_TITLE                   "Save file to..."
+
 /* Connection/ZModem */
 #define KT_ZMODEM_OPTIONS_CONTROLLING_Z_MODEM_TRANSFERS "Options controlling Z Modem transfers"
 #define KT_ZMODEM_DOWNLOAD_FOLDER                    "Download folder"
-#define KT_ZMODEM_LOCATION                           "Location:"
 #define KT_ZMODEM_RECEIVE_COMMAND_RZ                 "Receive command (rz)"
 #define KT_ZMODEM_OPTIONS                            "Options"
 #define KT_ZMODEM_CTRL_X_TO_QUIT_RZ                  "Ctrl+X to quit rz before completing"
@@ -829,10 +851,31 @@
         "Connection > SSH > WinSCP."
 /* Session > Connection > SSH > WinSCP: the reverse pointer */
 #define KT_WINSCP_PATH_IS_GLOBAL                     "The path to the WinSCP executable is a global setting."
-#define KT_WINSCP_OPEN_GLOBAL_PANEL                  "Open global WinSCP Panel"
+#define KT_WINSCP_OPEN_GLOBAL_PANEL                  "Open App Settings"
+
+/* FileZilla - Connection/SSH/FileZilla and Transfers & Tools/FileZilla */
+#define KT_FZ_INTEGRATION                            "FileZilla integration"
+#define KT_FZ_TARGET_NOTE                            "Target and protocol: as set on Connection > SSH > WinSCP (SFTP connect) and Connection > SSH > KSCP (Protocol)."
+#define KT_FZ_ADDITIONAL_OPTIONS                     "FileZilla additional options"
+#define KT_FZ_PASSWORD_GROUP                         "Session password"
+#define KT_FZ_PASSWORD_HOW                           "How the session password reaches FileZilla:"
+#define KT_FZ_PW_ASK                                 "Ask in FileZilla - no secret leaves KiTTY++"
+#define KT_FZ_PW_TEMPCFG                             "Temporary configuration - a private file, deleted after the start"
+#define KT_FZ_PW_CMDLINE                             "Command line - other processes can read the password while FileZilla runs"
+#define KT_FZ_KEY_PREFERRED                          "Preferred: an SSH key served by the agent (kageant). Then only user, host and port are handed over and FileZilla needs no password."
+#define KT_FZ_PATH_IS_GLOBAL                         "The path to the FileZilla executable is a global setting."
+#define KT_FZ_OPEN_GLOBAL_PANEL                      "Open App Settings"
+#define KT_FZ_FILEZILLA                              "FileZilla"
+#define KT_FZ_EXECUTABLE                             "FileZilla executable:"
+#define KT_FZ_SELECT_EXECUTABLE                      "Select FileZilla executable"
+#define KT_FZ_THE_OTHER_SETTINGS_BELONG              "The other FileZilla settings belong to a session and stay on " \
+        "Connection > SSH > FileZilla. The Tools menu offers FileZilla only while this file exists."
+#define KT_XFER_FILEZILLA_NOT_FOUND                  "FileZilla was not found. Set its path on KiTTY++ Settings > Transfers & Tools > FileZilla."
+#define KT_XFER_START_FILEZILLA_ANYWAY               "%sStart FileZilla anyway?"
+#define KT_FZ_SITE_NAME                              "KiTTY++ session"
 /* Session > Connection > SSH > KSCP: the same pointer for the file-copy helper */
 #define KT_KSCP_HELPER_IS_GLOBAL                     "The path to the File-Copy Helper is a global setting."
-#define KT_KSCP_OPEN_GLOBAL_PANEL                    "Open global Transfers & Tools Panel"
+#define KT_KSCP_OPEN_GLOBAL_PANEL                    "Open App Settings"
 
 /* Application/External tools/ZModem */
 #define KT_ZMODEM_ZMODEM                             "ZModem"
@@ -2472,6 +2515,8 @@
 #define KT_SYSMENU_PORT_FORWARDINGS                  "Port forwar&dings"
 #define KT_SYSMENU_START_WINSCP                      "Start Win&SCP"
 #define KT_SYSMENU_SEND_FILE_PSCP                    "Send file (&pscp)"
+#define KT_SYSMENU_GET_FILE                          "&Get file (kscp)..."
+#define KT_SYSMENU_START_FILEZILLA                   "Start File&Zilla"
 #define KT_SYSMENU_OPEN_MNOTEPAD                     "Open &mNotepad"
 #define KT_SYSMENU_OPEN_MNOTEPAD_CLIP                "Open mNotepad with clip&board"
 #define KT_SYSMENU_SCRIPT_SEND                       "Send &recorded script"

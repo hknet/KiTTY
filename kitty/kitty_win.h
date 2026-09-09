@@ -33,6 +33,9 @@ void kitty_menu_toggle_hyperlink(HWND hwnd) ;
 BOOL IsWow64() ; // Test si on est en Windows 64 bits
 int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
 int OpenDirName( HWND hFrame, char * dirname ) ;
+/* Same picker, opened on `initial` (when that folder exists) with `title`
+ * (NULL = the default caption). */
+int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const char * title ) ;
 /* Centre a modal dialog over its owner (WM_INITDIALOG, after final size). */
 void kitty_centre_on_owner( HWND dlg ) ;
 int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;

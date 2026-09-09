@@ -155,6 +155,12 @@ target_link_libraries(test_wildcard utils ${platform_libraries})
 add_executable(test_osc7
   test/test_osc7.c)
 
+# KiTTY: unit test for the OSC 5113 file-transfer command parser and the
+# file-name rules (self-contained; the code lives in kitty/kitty_transfer.h,
+# shared with kitty/kitty_transfer.c).
+add_executable(test_transfer_parse
+  test/test_transfer_parse.c)
+
 add_executable(test_cert_expr
   utils/cert-expr.c)
 target_compile_definitions(test_cert_expr PRIVATE TEST)

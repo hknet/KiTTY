@@ -18,6 +18,7 @@ typedef enum {
     FILTER_DYNLIB_FILES, /* whatever the host platform uses as shared libs */
     FILTER_SOUND_FILES, /* whatever kind of sound file we can use as bell */
     FILTER_ICON_FILES, /* KiTTY: .ico, for a session's own window icon */
+    FILTER_FOLDERS, /* KiTTY: a folder, not a file - the row's button opens the folder picker */
 } FilereqFilter;
 
 #include "defs.h"

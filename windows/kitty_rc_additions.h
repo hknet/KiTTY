@@ -323,6 +323,12 @@
 #ifndef IDM_PSCP
 #define IDM_PSCP 0xA910
 #endif
+#ifndef IDM_GETFILE
+#define IDM_GETFILE 0xA9A0
+#endif
+#ifndef IDM_FILEZILLA
+#define IDM_FILEZILLA 0xA9B0
+#endif
 #ifndef IDM_QUIT
 #define IDM_QUIT 0xA840
 #endif

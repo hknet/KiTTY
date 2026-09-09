@@ -231,6 +231,9 @@ void ManageSpecialCommand(HWND hwnd, int menunum);
 #endif
 void kitty_start_winscp(HWND);
 void kitty_send_file(HWND);
+void kitty_get_file(HWND);
+void kitty_start_filezilla(HWND);
+int kitty_xfer_tool_ready(int which);   /* kitty_xfer.c: 0 = kscp, 1 = WinSCP, 2 = FileZilla */
 void kitty_export_settings(HWND, Conf*);
 void kitty_dup_session(HWND, Conf*);
 int GetAutoSendToTray(void);
@@ -2150,8 +2153,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             toolmenu = CreatePopupMenu();
             AppendMenu(toolmenu, MF_ENABLED, IDM_SHOWPORTFWD, KT_SYSMENU_PORT_FORWARDINGS);
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
+            /* Enabled or greyed in WM_INITMENUPOPUP: whether the tool behind
+             * each entry exists can change while the window is open. */
             AppendMenu(toolmenu, MF_ENABLED, IDM_WINSCP, KT_SYSMENU_START_WINSCP);
             AppendMenu(toolmenu, MF_ENABLED, IDM_PSCP, KT_SYSMENU_SEND_FILE_PSCP);
+            AppendMenu(toolmenu, MF_ENABLED, IDM_GETFILE, KT_SYSMENU_GET_FILE);
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
             AppendMenu(toolmenu, MF_ENABLED, IDM_MNOTEPAD, KT_SYSMENU_OPEN_MNOTEPAD);
             AppendMenu(toolmenu, MF_ENABLED, IDM_MNOTEPAD_CLIP, KT_SYSMENU_OPEN_MNOTEPAD_CLIP);
@@ -4458,6 +4464,39 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                            logfile_name_varies(wgs->logctx) ?
                            KT_SYSMENU_NEW_LOG_FILE : KT_SYSMENU_CLEAR_LOG_FILE);
         }
+        /* The external-tool entries: greyed when the executable behind them
+         * is not there. A path can be set or broken by Change Settings, so
+         * this is decided each time the menu opens. GetMenuState first: the
+         * probe touches the disk, and only the Tools menu carries them. */
+        {
+            HMENU mp = (HMENU)wParam;
+            if (GetMenuState(mp, IDM_WINSCP, MF_BYCOMMAND) != (UINT)-1) {
+                bool kscp = kitty_xfer_tool_ready(0);
+                bool winscp = kitty_xfer_tool_ready(1);
+                int i, count;
+                EnableMenuItem(mp, IDM_WINSCP, MF_BYCOMMAND |
+                               (winscp ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
+                EnableMenuItem(mp, IDM_PSCP, MF_BYCOMMAND |
+                               (kscp ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
+                EnableMenuItem(mp, IDM_GETFILE, MF_BYCOMMAND |
+                               (kscp ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
+                /* FileZilla is an optional companion: its entry exists only
+                 * while its executable does, directly after "Start WinSCP".
+                 * Delete first, then compute the position (see the ZModem
+                 * block below for why). */
+                DeleteMenu(mp, IDM_FILEZILLA, MF_BYCOMMAND);
+                if (kitty_xfer_tool_ready(2)) {
+                    count = GetMenuItemCount(mp);
+                    for (i = 0; i < count; i++) {
+                        if (GetMenuItemID(mp, i) == IDM_WINSCP) {
+                            InsertMenu(mp, i + 1, MF_BYPOSITION | MF_STRING | MF_ENABLED,
+                                       IDM_FILEZILLA, KT_SYSMENU_START_FILEZILLA);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
 #ifdef MOD_ZMODEM
         if (GetZModemFlag()) {
             /*
@@ -5153,6 +5192,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           case IDM_PSCP:
             kitty_send_file(wgs->term_hwnd);
+            break;
+          case IDM_GETFILE:
+            kitty_get_file(wgs->term_hwnd);
+            break;
+          case IDM_FILEZILLA:
+            kitty_start_filezilla(wgs->term_hwnd);
             break;
           case IDM_EXPORTSETTINGS:
             kitty_export_settings(wgs->term_hwnd, wgs->conf);

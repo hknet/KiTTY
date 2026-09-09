@@ -1500,7 +1500,17 @@ CONF_OPTION(rzcommand, VALUE_TYPE(FILENAME), SAVE_KEYWORD("rzCommand"),)
 CONF_OPTION(rzoptions, VALUE_TYPE(STR), DEFAULT_STR("-e -v"), SAVE_KEYWORD("rzOptions"),)
 CONF_OPTION(szcommand, VALUE_TYPE(FILENAME), SAVE_KEYWORD("szCommand"),)
 CONF_OPTION(szoptions, VALUE_TYPE(STR), DEFAULT_STR("-e -v"), SAVE_KEYWORD("szOptions"),)
-CONF_OPTION(zdownloaddir, VALUE_TYPE(STR), DEFAULT_STR("C:\\"), SAVE_KEYWORD("zDownloadDir"),)
+/* The session's local download folder (Connection > Transfers): where kscp
+ * Get file, ZModem receives and file transfers over the session save. Empty
+ * = the global Download folder (kitty.ini downloaddir). Started life as
+ * ZModem's own folder, hence the keyword; saved sessions keep their value. */
+CONF_OPTION(zdownloaddir, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("zDownloadDir"),)
+/* Open the folder picker for every file the far end sends, instead of
+ * saving straight into the download folder. */
+CONF_OPTION(xfer_ask_destination, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("TransferAskDestination"),)
+/* Permission for transfers the far end starts (OSC 5113, kitten transfer):
+ * 0 = ask every time, 1 = ask once per session, 2 = never ask. */
+CONF_OPTION(xfer_permission, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("TransferPermission"),)
 CONF_OPTION(scp_auto_pwd, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("SCPAutoPwd"),)
 CONF_OPTION(osc7_cwd_tracking, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("OSC7CwdTracking"),)
 CONF_OPTION(pscp_keep_window, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("PSCPKeepWindow"),)
@@ -1519,6 +1529,13 @@ CONF_OPTION(url_hover_cursor, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("Hyp
 CONF_OPTION(url_ctrl_click, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkUseCtrlClick"),)
 CONF_OPTION(windowstate, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("WindowState"),)
 CONF_OPTION(winscpoptions, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("WinSCPOptions"),)
+/* FileZilla hand-off (Connection > SSH > FileZilla). How the session password
+ * reaches FileZilla, each with a stated consequence: 0 = FileZilla asks for it
+ * (only user, host and port are handed over), 1 = a private temporary
+ * FileZilla configuration holds it, 2 = it travels on FileZilla's command line
+ * (readable by other processes of the same user while FileZilla runs). */
+CONF_OPTION(filezilla_pwmode, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("FileZillaPasswordMode"),)
+CONF_OPTION(filezilla_options, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("FileZillaOptions"),)
 /* 0=scp 1=sftp 2=ftp 3=ftps 4=ftpes 5=http 6=https. Defaults to SFTP: OpenSSH
  * deprecated the legacy SCP protocol, and its own scp(1) has spoken SFTP
  * underneath since 9.0, because the old one had the remote SHELL expand paths -

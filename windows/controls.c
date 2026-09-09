@@ -23,6 +23,7 @@
 
 #include <commctrl.h>
 #include "../kitty/kitty_msgbox.h"   /* themed MessageBox routing */
+#include "../kitty/kitty_text.h"     /* KiTTY: the folder row's button label */
 
 /* KiTTY: a configuration-box control lives either on the dialog (the button
  * row) or in the panel host (everything in a panel) - windows/dialog.c. */
@@ -844,6 +845,16 @@ void staticedit(struct ctlpos *cp, const char *stext,
                 int sid, int eid, int percentedit)
 {
     staticedit_internal(cp, stext, sid, eid, percentedit, 0);
+}
+
+/* KiTTY: the folder picker behind FILTER_FOLDERS rows. Registered by the
+ * program that builds such a row (kitty_config.c hands over OpenDirNameFrom);
+ * the stock PuTTY variants share this file, build no folder row and register
+ * nothing - so no link-time dependency on kitty_win.c. */
+static int (*kitty_dir_picker)(HWND, char *, const char *, const char *) = NULL;
+void kitty_controls_set_dir_picker(int (*fn)(HWND, char *, const char *, const char *))
+{
+    kitty_dir_picker = fn;
 }
 
 /* KiTTY: staticedit's row with a pushbutton appended - label, edit and
@@ -2089,8 +2100,12 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
             shortcuts[nshortcuts++] = ctrl->fileselect.shortcut;
             num_ids = 3;
             if (!ctrl->fileselect.just_button) {
+                /* KiTTY: FILTER_FOLDERS is a folder row - same aligned
+                 * label / box / button line, but the button opens the
+                 * folder picker and is labelled as such. */
                 editbutton(&pos, escaped, base_id, base_id+1,
-                           "Browse...", base_id+2);
+                           ctrl->fileselect.filter == FILTER_FOLDERS ?
+                               KT_KSET_TT_LOCATE : "Browse...", base_id+2);
             } else {
                 button(&pos, escaped, base_id+2, false);
             }
@@ -2454,10 +2469,22 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
                 sfree(text);
             }
 
-            Filename *fn = request_file(
-                dp->hwnd, ctrl->fileselect.title, fn_prev,
-                ctrl->fileselect.for_writing, NULL, false,
-                ctrl->fileselect.filter);
+            Filename *fn;
+            if (ctrl->fileselect.filter == FILTER_FOLDERS) {
+                /* KiTTY: a folder row - the shell's folder picker, opened on
+                 * the folder the box names, instead of a file dialog. */
+                char dir[4096];
+                char *prev = fn_prev ? dupstr(filename_to_str(fn_prev)) : NULL;
+                dir[0] = '\0';
+                fn = (kitty_dir_picker &&
+                      kitty_dir_picker(dp->hwnd, dir, prev, ctrl->fileselect.title)
+                      && dir[0]) ? filename_from_str(dir) : NULL;
+                sfree(prev);
+            } else
+                fn = request_file(
+                    dp->hwnd, ctrl->fileselect.title, fn_prev,
+                    ctrl->fileselect.for_writing, NULL, false,
+                    ctrl->fileselect.filter);
             if (fn_prev)
                 filename_free(fn_prev);
 

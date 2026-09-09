@@ -360,8 +360,11 @@ int kitty_zmodem_receive(Conf *conf, Backend *backend, LogContext *logctx, Termi
 {
     const char *cmd = kitty_zmodem_command(0);
     const char *opts = conf_get_str(conf, CONF_rzoptions);
-    const char *dir = conf_get_str(conf, CONF_zdownloaddir);
+    char dir[4096];
     kitty_zmodem_state *zm;
+
+    /* The session's download folder, or the global one (Connection > Transfers). */
+    kitty_xfer_download_dir(conf, dir, sizeof(dir));
 
     if (kitty_zmodem_active()) return 0;
     if (!existfile(cmd)) {
@@ -388,12 +391,13 @@ int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend, LogContext *logc
     static char filenames[32000];
     const char *cmd = kitty_zmodem_command(1);
     const char *opts = conf_get_str(conf, CONF_szoptions);
-    const char *dir = conf_get_str(conf, CONF_zdownloaddir);
+    char dir[4096];
     kitty_zmodem_state *zm;
     char params[32767];
     char *p, *cur;
     char *senddir = "";   /* directory the chosen files live in (see below) */
 
+    kitty_xfer_download_dir(conf, dir, sizeof(dir));   /* where the picker opens */
     if (kitty_zmodem_active()) return 0;
     if (!existfile(cmd)) {
         char b[1024];

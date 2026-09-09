@@ -806,11 +806,13 @@ Turn the warning off if you deliberately use an agent that cannot be verified an
 
 ### Where the helper programs live
 
-KiTTY drives three programs it does not contain: **WinSCP** for a graphical file transfer of the session you are on, and **rz** / **sz** for ZModem transfers inside the terminal.
+KiTTY drives programs it does not contain: **WinSCP** or **FileZilla** for a graphical file transfer of the session you are on (`WinSCPPath`, `FileZillaPath` in `kitty.ini`; the Tools menu offers each only while its executable exists), **kscp** for uploads and *Get file*, and **rz** / **sz** for ZModem transfers inside the terminal.
 
 Where those are installed is a property of the PC, not of a connection — the same session opened on your laptop and on a colleague's machine should not need two different paths. So the paths live in `kitty.ini` and are shared by every session, and the settings that *are* per session — which WinSCP mode to use, where downloads go — stay on the session's own panels.
 
-**How to enable:** **Application > External tools**, then the WinSCP and ZModem leaves under it.
+**How to enable:** **Application > KiTTY++ Settings > Transfers & Tools**, then the WinSCP, FileZilla and ZModem leaves under it. Where files land and whether the far end may start a transfer is per session: **Connection > Transfers** (local download folder, "Always open Save Dialog", permission for transfers started by the far end). **Tools > Get file (kscp)...** fetches the remote path on the clipboard into that folder, after a folder window.
+
+**FileZilla and the password.** FileZilla cannot read a password from a private file the way WinSCP does, so the session's **Connection > SSH > FileZilla** panel offers the choice with each consequence stated: *Ask in FileZilla* (default; only user, host and port are handed over), *Temporary configuration* (a private Site Manager file, deleted a minute after the start) or *Command line* (readable by other processes while FileZilla runs). The preferred way is an SSH key served by the agent, which needs no password at all.
 
 (no screenshot)
 

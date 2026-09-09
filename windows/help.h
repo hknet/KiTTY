@@ -97,6 +97,8 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_loginscript        "kitty-cfg-loginscript"
 #define WINHELP_CTX_kitty_old_sessions       "kitty-cfg-old-sessions"
 #define WINHELP_CTX_kitty_proxy_override     "kitty-cfg-proxy-override"
+#define WINHELP_CTX_kitty_transfers          "kitty-cfg-transfers-panel"
+#define WINHELP_CTX_kitty_filezilla_session  "kitty-cfg-filezilla-session"
 
 /* An upstream topic no upstream control points at: it answers "what IS this
  * protocol", which the SUPDUP panel is asked and could not say. */
