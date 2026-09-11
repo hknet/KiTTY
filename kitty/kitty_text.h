@@ -1329,7 +1329,6 @@
 #define KT_CAP_URL_REGEX                             "URL regex"
 #define KT_CAP_DELETE_HIVE                           "KiTTY - delete the registry hive"
 #define KT_CAP_COPY_TO_PUTTY                         "KiTTY - copy to PuTTY"
-#define KT_CAP_COPY_FROM_PUTTY                       "KiTTY - copy from PuTTY"
 #define KT_CAP_SETTING_REMOVED                       "KiTTY - this setting has been removed"
 #define KT_CAP_RUTTY_ALSO                            "KiTTY - a rutty script is also configured"
 #define KT_CAP_PASSWORD                              KT_PROXY_PASSWORD  /* "Password" - the /passwd box carries the panel's word */
@@ -1435,9 +1434,6 @@
 #define KT_CMD_COPYTOPUTTY_SAME_HIVE                 "This KiTTY is already using PuTTY's registry hive " \
         "(KiClassName=PuTTY), so there is nothing to copy: the source and the " \
         "destination are the same key. Nothing was changed."
-#define KT_CMD_COPYTOKITTY_SAME_HIVE                 "This KiTTY is already using PuTTY's registry hive " \
-        "(KiClassName=PuTTY): its sessions ARE PuTTY's sessions, so there is " \
-        "nothing to copy. Nothing was changed."
 #define KT_CMD_SWITCHCRYPT_REMOVED                   "Encrypted configuration files are no longer written.\n\n" \
         "This setting used to scramble exported .ktx files with a key built " \
         "into every copy of KiTTY, so anyone with KiTTY could unscramble them. " \
@@ -1487,7 +1483,6 @@
 #define KT_CMD_HELP_DELREG                           "DELETE the whole KiTTY registry"
 #define KT_CMD_HELP_SAVESESSIONS                     "export the saved sessions to kitty.ses"
 #define KT_CMD_HELP_COPYTOPUTTY                      "copy the sessions to stock PuTTY (replaces its sessions)"
-#define KT_CMD_HELP_COPYTOKITTY                      "copy stock PuTTY's sessions into KiTTY"
 #define KT_CMD_HELP_SWITCHCRYPT                      "(removed) encrypted config files are no longer written"
 #define KT_CMD_HELP_DELFOLDER                        "delete a session folder"
 #define KT_CMD_HELP_LOADINITSCRIPT                   "(re)load the init script"

@@ -187,6 +187,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   writes,** section included; the tree's own note reads "Each leaf's help also
   refers to the relevant kitty.ini settings."
 
+### Removed
+
+- **The `/copytokitty` console command.** It copied stock PuTTY's whole
+  registry tree over KiTTY's, overwriting same-named entries; the Migration
+  panel imports PuTTY sessions with a proper preview and no overwrite. Its
+  twin `/copytoputty` stays for now.
+
 ## 0.85.1.8-beta — 2026-09-07
 
 ### New

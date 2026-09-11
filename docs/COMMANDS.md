@@ -204,13 +204,6 @@ deleted first** and KiTTY-specific settings are stripped from the copies.
 
 **Persists:** registry (PuTTY's).
 
-### /copytokitty
-
-Copy stock PuTTY's whole registry tree (sessions, host keys) into KiTTY's
-registry location. Existing KiTTY entries with the same names are overwritten.
-
-**Persists:** registry (KiTTY's).
-
 ### /switchcrypt
 
 Switch the variant of the settings-encryption used for stored secrets (the

@@ -258,19 +258,6 @@ static int cmd_copytoputty( HWND hwnd, char * arg ) {
 	return 1 ;
 }
 
-static int cmd_copytokitty( HWND hwnd, char * arg ) {
-	(void)hwnd ; (void)arg ;
-	/* Same trap the other way round: with KiClassName=PuTTY the destination
-	 * IS the source, and a tree copied onto itself is at best pointless. */
-	if( kitty_root_is_putty() ) {
-		MessageBox( hwnd, KT_CMD_COPYTOKITTY_SAME_HIVE,
-			KT_CAP_COPY_FROM_PUTTY, MB_OK | MB_ICONINFORMATION ) ;
-		return 1 ;
-	}
-	kitty_RegCopyTree( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY", kitty_registry_base() ) ;
-	return 1 ;
-}
-
 /*
  * /switchcrypt no longer does anything, and says so rather than disappearing.
  *
@@ -477,7 +464,6 @@ static const struct InternalCmdDef {
 	{ "/delreg",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_DELREG,			cmd_delreg },
 	{ "/savesessions",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_SAVESESSIONS,		cmd_savesessions },
 	{ "/copytoputty",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_COPYTOPUTTY, cmd_copytoputty },
-	{ "/copytokitty",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_COPYTOKITTY,		cmd_copytokitty },
 	{ "/switchcrypt",	IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_SWITCHCRYPT,	cmd_switchcrypt },
 	{ "/delfolder",		IC_ARG_REQUIRED, "<name>", CAT_STORE,  KT_CMD_HELP_DELFOLDER,				cmd_delfolder },
 	{ "/loadinitscript",	IC_ARG_OPTIONAL, "[file]", CAT_STORE,  KT_CMD_HELP_LOADINITSCRIPT,				cmd_loadinitscript },
