@@ -207,7 +207,7 @@ void kitty_shortcuts_toggle(HWND);
 /* KiTTY shortcut/ctrl-tab engine (kitty.c / kitty_commun.c) */
 int GetPuttyFlag(void);
 int GetModalErrorsFlag(void);   /* kitty_commun.c: modal vs inline error surfacing */
-void OnDropFiles(HWND hwnd, HDROP hDropInfo);   /* KiTTY drag-drop pscp upload (kitty_xfer.c) */
+void OnDropFiles(HWND hwnd, HDROP hDropInfo);   /* KiTTY drag-drop kscp upload (kitty_xfer.c) */
 int GetTransparencyFlag(void);
 int GetShortcutsFlag(void);
 int GetMouseShortcutsFlag(void);
@@ -220,6 +220,10 @@ extern char KiTTYClassName[128];
 int ManageShortcuts(Terminal *term, Conf *conf, HWND hwnd,
                     const int *clips_system, int key_num, int shift_flag,
                     int control_flag, int alt_flag, int altgr_flag, int win_flag);
+/* kitty_shortcuts.c: the key bound to a Tools command (0 = none) and
+ * "<menu text>\t<key text>" for its menu item. */
+int GetShortcutKey(int idm);
+const char *ShortcutMenuText(const char *text, int key, char *buf, size_t size);
 /* KiTTY predefined-command shortcuts (User Command menu + Ctrl+Shift+A..Z) */
 void InitSpecialMenu(HMENU m, const char *folder, const char *sessionname);
 void ManageSpecialCommand(HWND hwnd, int menunum);
@@ -234,6 +238,7 @@ void kitty_send_file(HWND);
 void kitty_get_file(HWND);
 void kitty_start_filezilla(HWND);
 int kitty_xfer_tool_ready(int which);   /* kitty_xfer.c: 0 = kscp, 1 = WinSCP, 2 = FileZilla */
+int kitty_xfer_tool_shown(Conf *cf, int which);   /* kitty_xfer.c: the session's Tools menu switches; 3 = Get File */
 void kitty_export_settings(HWND, Conf*);
 void kitty_dup_session(HWND, Conf*);
 int GetAutoSendToTray(void);
@@ -1818,7 +1823,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         SetWindowLong(wgs->term_hwnd, wx - 8, ft.dwHighDateTime);
         SetWindowLong(wgs->term_hwnd, wx - 4, ft.dwLowDateTime);
     }
-    /* KiTTY: accept files dropped on the terminal window (pscp upload). The 0.84
+    /* KiTTY: accept files dropped on the terminal window (kscp upload). The 0.84
      * port had OnDropFiles() defined but never registered the window for drops,
      * so the cursor showed "forbidden". Re-enable it + the WM_DROPFILES handler. */
     DragAcceptFiles(wgs->term_hwnd, TRUE);
@@ -2154,10 +2159,21 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(toolmenu, MF_ENABLED, IDM_SHOWPORTFWD, KT_SYSMENU_PORT_FORWARDINGS);
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
             /* Enabled or greyed in WM_INITMENUPOPUP: whether the tool behind
-             * each entry exists can change while the window is open. */
-            AppendMenu(toolmenu, MF_ENABLED, IDM_WINSCP, KT_SYSMENU_START_WINSCP);
-            AppendMenu(toolmenu, MF_ENABLED, IDM_PSCP, KT_SYSMENU_SEND_FILE_PSCP);
-            AppendMenu(toolmenu, MF_ENABLED, IDM_GETFILE, KT_SYSMENU_GET_FILE);
+             * each entry exists can change while the window is open. The
+             * shortcut after the tab is refreshed there too: the Shortcuts
+             * switch on this menu turns the keys off and on. */
+            {
+                char label[256];
+                AppendMenu(toolmenu, MF_ENABLED, IDM_WINSCP,
+                           ShortcutMenuText(KT_SYSMENU_START_WINSCP,
+                                            GetShortcutKey(IDM_WINSCP), label, sizeof label));
+                AppendMenu(toolmenu, MF_ENABLED, IDM_PSCP,
+                           ShortcutMenuText(KT_SYSMENU_SEND_FILE_PSCP,
+                                            GetShortcutKey(IDM_PSCP), label, sizeof label));
+                AppendMenu(toolmenu, MF_ENABLED, IDM_GETFILE,
+                           ShortcutMenuText(KT_SYSMENU_GET_FILE,
+                                            GetShortcutKey(IDM_GETFILE), label, sizeof label));
+            }
             AppendMenu(toolmenu, MF_SEPARATOR, 0, 0);
             AppendMenu(toolmenu, MF_ENABLED, IDM_MNOTEPAD, KT_SYSMENU_OPEN_MNOTEPAD);
             AppendMenu(toolmenu, MF_ENABLED, IDM_MNOTEPAD_CLIP, KT_SYSMENU_OPEN_MNOTEPAD_CLIP);
@@ -4102,7 +4118,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         break;
 #ifdef MOD_PERSO
       case WM_DROPFILES:
-        /* KiTTY: a file was dropped on the terminal -> pscp upload. */
+        /* KiTTY: a file was dropped on the terminal -> kscp upload. */
         OnDropFiles(hwnd, (HDROP)wParam);
         return 0;
       case MYWM_NOTIFYICON:
@@ -4464,36 +4480,67 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                            logfile_name_varies(wgs->logctx) ?
                            KT_SYSMENU_NEW_LOG_FILE : KT_SYSMENU_CLEAR_LOG_FILE);
         }
-        /* The external-tool entries: greyed when the executable behind them
-         * is not there. A path can be set or broken by Change Settings, so
-         * this is decided each time the menu opens. GetMenuState first: the
-         * probe touches the disk, and only the Tools menu carries them. */
+        /* The external-tool entries are rebuilt every time the Tools menu
+         * opens: the session decides which of the four it shows at all
+         * (Connection > Transfers, "Tools menu"), and one whose executable
+         * is not there is greyed. Both can change while the window is open
+         * (Change Settings), so neither is decided when the menu is built.
+         * The menu is recognised by "Port forwardings", its first entry, which
+         * is always there; the block sits after the separator that follows
+         * it. DELETE FIRST, THEN COMPUTE THE POSITION (see the ZModem block
+         * below for why). The probe touches the disk, so only this menu
+         * pays for it. */
         {
             HMENU mp = (HMENU)wParam;
-            if (GetMenuState(mp, IDM_WINSCP, MF_BYCOMMAND) != (UINT)-1) {
+            if (GetMenuState(mp, IDM_SHOWPORTFWD, MF_BYCOMMAND) != (UINT)-1) {
                 bool kscp = kitty_xfer_tool_ready(0);
                 bool winscp = kitty_xfer_tool_ready(1);
-                int i, count;
-                EnableMenuItem(mp, IDM_WINSCP, MF_BYCOMMAND |
-                               (winscp ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
-                EnableMenuItem(mp, IDM_PSCP, MF_BYCOMMAND |
-                               (kscp ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
-                EnableMenuItem(mp, IDM_GETFILE, MF_BYCOMMAND |
-                               (kscp ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
-                /* FileZilla is an optional companion: its entry exists only
-                 * while its executable does, directly after "Start WinSCP".
-                 * Delete first, then compute the position (see the ZModem
-                 * block below for why). */
+                int i, count, at = -1;
+                char label[256];
+                UINT grey = MF_DISABLED | MF_GRAYED;
+
+                DeleteMenu(mp, IDM_WINSCP,    MF_BYCOMMAND);
                 DeleteMenu(mp, IDM_FILEZILLA, MF_BYCOMMAND);
-                if (kitty_xfer_tool_ready(2)) {
-                    count = GetMenuItemCount(mp);
-                    for (i = 0; i < count; i++) {
-                        if (GetMenuItemID(mp, i) == IDM_WINSCP) {
-                            InsertMenu(mp, i + 1, MF_BYPOSITION | MF_STRING | MF_ENABLED,
-                                       IDM_FILEZILLA, KT_SYSMENU_START_FILEZILLA);
-                            break;
-                        }
+                DeleteMenu(mp, IDM_PSCP,      MF_BYCOMMAND);
+                DeleteMenu(mp, IDM_GETFILE,   MF_BYCOMMAND);
+
+                count = GetMenuItemCount(mp);
+                for (i = 0; i < count; i++) {
+                    if (GetMenuItemID(mp, i) == IDM_SHOWPORTFWD) {
+                        at = i + 2;         /* past the separator under it */
+                        break;
                     }
+                }
+                if (at > count)
+                    at = count;
+                if (at >= 0) {
+                    /* The key after the tab follows the Shortcuts switch. */
+                    if (kitty_xfer_tool_shown(wgs->conf, 1))
+                        InsertMenu(mp, at++, MF_BYPOSITION | MF_STRING |
+                                   (winscp ? MF_ENABLED : grey), IDM_WINSCP,
+                                   ShortcutMenuText(KT_SYSMENU_START_WINSCP,
+                                                    GetShortcutKey(IDM_WINSCP),
+                                                    label, sizeof label));
+                    /* FileZilla is an optional companion: its entry exists
+                     * only while its executable does. */
+                    if (kitty_xfer_tool_shown(wgs->conf, 2) && kitty_xfer_tool_ready(2))
+                        InsertMenu(mp, at++, MF_BYPOSITION | MF_STRING | MF_ENABLED,
+                                   IDM_FILEZILLA,
+                                   ShortcutMenuText(KT_SYSMENU_START_FILEZILLA,
+                                                    GetShortcutKey(IDM_FILEZILLA),
+                                                    label, sizeof label));
+                    if (kitty_xfer_tool_shown(wgs->conf, 0))
+                        InsertMenu(mp, at++, MF_BYPOSITION | MF_STRING |
+                                   (kscp ? MF_ENABLED : grey), IDM_PSCP,
+                                   ShortcutMenuText(KT_SYSMENU_SEND_FILE_PSCP,
+                                                    GetShortcutKey(IDM_PSCP),
+                                                    label, sizeof label));
+                    if (kitty_xfer_tool_shown(wgs->conf, 3))
+                        InsertMenu(mp, at++, MF_BYPOSITION | MF_STRING |
+                                   (kscp ? MF_ENABLED : grey), IDM_GETFILE,
+                                   ShortcutMenuText(KT_SYSMENU_GET_FILE,
+                                                    GetShortcutKey(IDM_GETFILE),
+                                                    label, sizeof label));
                 }
             }
         }

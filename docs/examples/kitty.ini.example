@@ -271,7 +271,7 @@
 ;ctrltab=yes
 
 ; debug: extra tracing in the Event Log - saved-session lookups, the automatic
-;    command, key remappings, the internal editor, and the pscp / WinSCP
+;    command, key remappings, the internal editor, and the kscp / WinSCP
 ;    command lines actually run. The password those command lines carry is
 ;    blanked in the log, but the host, user, paths and switches are not, so
 ;    read a debug log before you send it to anyone.
@@ -281,11 +281,31 @@
 ;    runtime, so it does not have to live in this file.
 ;debug=no
 
-; downloaddir: this is the local directory where files are downloaded with the pscp integration
+; downloaddir: the local folder where received files land - Get File (kscp),
+;    ZModem and transfers over the session - unless the session sets its own
+;    on Connection > Transfers
 ;downloaddir=
 
-; uploaddir: default remote directory used by the pscp upload integration
-;uploaddir=.
+; uploaddir: the local folder files are sent from - the Send File (kscp)
+;    picker opens in it, and a file the far end asks to read over the
+;    session (kitten transfer) is looked up in it - unless the session sets
+;    its own on Connection > Transfers; unset = your Documents folder
+;uploaddir=
+
+; transfernotification: a system notification (tray balloon) when a
+;    transfer finishes - kscp Send File / Get File / drag-and-drop, ZModem
+;    and transfers over the session (kitten transfer), both directions
+;transfernotification=yes
+
+; transfermaxmb: per-file size limit, in MB, for files arriving over the
+;    session (kitten transfer); 0 = no limit; a session can set its own on
+;    Connection > Transfers
+;transfermaxmb=1024
+
+; transferfullpath: may the far end ask for a file by full local path
+;    (/C:/...) over the session (kitten transfer)? no = only names inside
+;    the upload folder; a session can set its own on Connection > Transfers
+;transferfullpath=no
 
 ; fileextension: the extension for session settings files in portable mode
 ;fileextension=.ktx
@@ -876,6 +896,11 @@
 ;    Example:  eventlog={CONTROL}{SHIFT}E
 ;eventlog=
 
+; Start FileZilla (default is SHIFT+F4)
+;    Works only while FileZilla is found (FileZillaPath in [KiTTY]) - the same
+;    condition under which the Tools menu shows the entry.
+;filezilla=
+
 ; Switch font to black on white colors
 ;    No default key - it does nothing until you set one here.
 ;fontblackandwhite=
@@ -896,7 +921,7 @@
 ;    No default key - it does nothing until you set one here.
 ;fullscreen=
 
-; receive a remote file with kscp - the same as Tools > Get file: the remote path
+; receive a remote file with kscp - the same as Tools > Get File (kscp): the remote path
 ; (or the file's name, with OSC 7 tracking on) must be on the clipboard, then a
 ; folder window opens on the download folder (default is CONTROL+F4)
 ;getfile=
@@ -944,7 +969,9 @@
 ; Load a local script and run it remotely (default is CONTROL+F2)
 ;script=
 
-; Send a local file with pscp.exe (default is CONTROL+F3)
+; Send a local file with kscp - the same as Tools > Send File (kscp): a file
+; window opens, the file goes to the remote directory set on Connection >
+; Transfers (default is CONTROL+F3)
 ;sendfile=
 
 ; Show current port forwarding definition (default is SHIFT+F6)

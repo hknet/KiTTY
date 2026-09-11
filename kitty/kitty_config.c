@@ -24,6 +24,7 @@
 #include "kitty_storage.h" /* the one-time old-sessions notice bits */
 #include "kitty_migrate.h" /* Application > Migration: the session importer */
 #include "kitty_text.h"    /* the words the panels show */
+#include "kitty_inikeys.h" /* KI_*: the kitty.ini key names */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #endif
@@ -10328,7 +10329,7 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
         }
 
 #ifdef MOD_PERSO
-        /* KiTTY: PSCP / WinSCP integration. Backend = StartWinSCP / SendFile.
+        /* KiTTY: kscp / WinSCP integration. Backend = StartWinSCP / SendFile.
          * TWO panels, deliberately: together the controls overflowed the
          * panel area into the dialog's command buttons (caught by the
          * documentation screenshots), and the content is genuinely two
@@ -10339,6 +10340,9 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
 
             s = ctrl_getset(b, "Connection/SSH/KSCP",
                             "pscp", KT_KSCP_KSCP_INTEGRATION);
+            /* What the two kscp Tools menu entries do, with their keys. */
+            ctrl_text(s, KT_KSCP_SEND_FILE_LINE, HELPCTX(kitty_winscp));
+            ctrl_text(s, KT_KSCP_GET_FILE_LINE, HELPCTX(kitty_winscp));
             /* ONE protocol for both tools: kscp goes -scp for scp and -sftp
              * for everything else (kitty_xfer.c), WinSCP is started with the
              * choice itself. Stored as WinSCPProtocol, so saved sessions keep
@@ -10644,6 +10648,31 @@ extern void kitty_controls_set_dir_picker(int (*)(HWND, char *, const char *, co
 /* The session's download folder as a folder row (label, box and Locate...
  * on ONE aligned line - the file-select control with FILTER_FOLDERS), its
  * Filename mapped to the plain string the setting is. */
+/* The "Global: ..." line beneath the folder row. Captured so the folder
+ * row's EVENT_REFRESH - sent every time the panel is shown - can restate the
+ * global folder, which the Transfers & Tools leaf may have changed since the
+ * panel was built. */
+static dlgcontrol *g_xfer_global_ctrl = NULL;         /* download */
+static dlgcontrol *g_xfer_global_upload_ctrl = NULL;  /* upload */
+
+static void xfer_global_line(char *buf, size_t len)
+{
+    char gdir[4096];
+    gdir[0] = '\0';
+    ReadParameterN(INIT_SECTION, KI_DOWNLOADDIR, gdir, sizeof(gdir));
+    snprintf(buf, len, KT_TRANSFERS_GLOBAL_IS,
+             gdir[0] ? gdir : KT_TRANSFERS_GLOBAL_UNSET);
+}
+
+static void xfer_global_upload_line(char *buf, size_t len)
+{
+    char gdir[4096];
+    gdir[0] = '\0';
+    ReadParameterN(INIT_SECTION, KI_UPLOADDIR, gdir, sizeof(gdir));
+    snprintf(buf, len, KT_TRANSFERS_GLOBAL_IS,
+             gdir[0] ? gdir : KT_TRANSFERS_GLOBAL_UPLOAD_UNSET);
+}
+
 static void xfer_downloaddir_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                      void *data, int event)
 {
@@ -10652,6 +10681,11 @@ static void xfer_downloaddir_handler(dlgcontrol *ctrl, dlgparam *dlg,
         Filename *fn = filename_from_str(conf_get_str(conf, CONF_zdownloaddir));
         dlg_filesel_set(ctrl, dlg, fn);
         filename_free(fn);
+        if (g_xfer_global_ctrl) {
+            char line[4200];
+            xfer_global_line(line, sizeof(line));
+            dlg_label_change(g_xfer_global_ctrl, dlg, line);
+        }
     } else if (event == EVENT_VALCHANGE) {
         Filename *fn = dlg_filesel_get(ctrl, dlg);
         conf_set_str(conf, CONF_zdownloaddir, filename_to_str(fn));
@@ -10659,61 +10693,196 @@ static void xfer_downloaddir_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
 }
 
-/* The Connection/Transfers panel (KiTTY++): where received files go, the
- * remote directory uploads go to, and the permission for transfers the far
- * end starts. Top level under Connection because ZModem and file transfers
- * over the session work on telnet and serial sessions too - a destination
- * shared by them cannot live under SSH. kscp Get file, ZModem and OSC 5113
- * (kitten transfer) all read these values. */
+/* The upload folder row: the download row's twin, on zUploadDir. */
+static void xfer_uploaddir_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                   void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        Filename *fn = filename_from_str(conf_get_str(conf, CONF_zuploaddir));
+        dlg_filesel_set(ctrl, dlg, fn);
+        filename_free(fn);
+        if (g_xfer_global_upload_ctrl) {
+            char line[4200];
+            xfer_global_upload_line(line, sizeof(line));
+            dlg_label_change(g_xfer_global_upload_ctrl, dlg, line);
+        }
+    } else if (event == EVENT_VALCHANGE) {
+        Filename *fn = dlg_filesel_get(ctrl, dlg);
+        conf_set_str(conf, CONF_zuploaddir, filename_to_str(fn));
+        filename_free(fn);
+    }
+}
+
+/* "Max transfer size (MB)": the box shows the session's own value, or
+ * nothing while the session follows the global default (-1). An emptied
+ * box goes back to the global default; 0 = no limit. */
+/* The global "Max transfer size" line beneath the session field: the folder
+ * rows' "Global: ..." line for [KiTTY] transfermaxmb (empty = 1024, the
+ * default kitty_transfer.c applies; 0 = no limit). */
+static dlgcontrol *g_xfer_global_maxmb_ctrl = NULL;
+
+static void xfer_global_maxmb_line(char *buf, size_t len)
+{
+    char v[64];
+    int mb = 1024;
+    v[0] = '\0';
+    if (ReadParameterN(INIT_SECTION, KI_TRANSFERMAXMB, v, sizeof(v)) && v[0])
+        mb = atoi(v);
+    if (mb <= 0)
+        snprintf(buf, len, "%s", KT_TRANSFERS_GLOBAL_MAX_MB_NONE);
+    else
+        snprintf(buf, len, KT_TRANSFERS_GLOBAL_MAX_MB, mb);
+}
+
+static void xfer_maxmb_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                               void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        char buf[32];
+        int v = conf_get_int(conf, CONF_xfer_max_mb);
+        if (v < 0)
+            buf[0] = '\0';
+        else
+            sprintf(buf, "%d", v);
+        dlg_editbox_set(ctrl, dlg, buf);
+        if (g_xfer_global_maxmb_ctrl) {
+            char line[128];
+            xfer_global_maxmb_line(line, sizeof(line));
+            dlg_label_change(g_xfer_global_maxmb_ctrl, dlg, line);
+        }
+    } else if (event == EVENT_VALCHANGE) {
+        char *s = dlg_editbox_get(ctrl, dlg);
+        char *p = s;
+        while (*p == ' ') p++;
+        if (!*p)
+            conf_set_int(conf, CONF_xfer_max_mb, -1);
+        else {
+            int v = atoi(p);
+            conf_set_int(conf, CONF_xfer_max_mb, v < 0 ? 0 : v);
+        }
+        sfree(s);
+    }
+}
+
+/* "Allow full path Upload-Requests": a checkbox cannot show "not set", so
+ * an untouched session (-1) shows the global default and a click pins the
+ * session to on or off. */
+static int kset_get_int(const struct kset_key *k);
+static void xfer_fullpath_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                  void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        int v = conf_get_int(conf, CONF_xfer_full_path);
+        if (v < 0) {
+            const struct kset_key *k = kset_find(KI_TRANSFERFULLPATH);
+            v = k ? kset_get_int(k) : 0;
+        }
+        dlg_checkbox_set(ctrl, dlg, v != 0);
+    } else if (event == EVENT_VALCHANGE) {
+        conf_set_int(conf, CONF_xfer_full_path, dlg_checkbox_get(ctrl, dlg) ? 1 : 0);
+    }
+}
+
+/* The Connection/Transfers panel (KiTTY++): where received files go and
+ * where files are sent from, the remote directory uploads go to, the
+ * settings for transfers over the session (OSC 5113, kitten transfer) and
+ * which Tools menu entries the session shows. Top level under Connection
+ * because ZModem and file transfers over the session work on telnet and
+ * serial sessions too - a destination shared by them cannot live under
+ * SSH. kscp Get file, Send File, ZModem and kitten transfer all read these
+ * values. One help context per group, so F1 lands on the group's own
+ * paragraph. */
 static void scb_panel_transfers(struct controlbox *b)
 {
     struct controlset *s;
-    char gdir[4096], *line;
+    char line[4200];
 
     if (GetPuttyFlag()) return;
 
     ctrl_settitle(b, "Connection/Transfers", KT_TRANSFERS_TITLE);
 
     s = ctrl_getset(b, "Connection/Transfers", "received", KT_TRANSFERS_RECEIVED);
-    kitty_controls_set_dir_picker(OpenDirNameFrom);   /* the row's Locate... */
+    kitty_controls_set_dir_picker(OpenDirNameFrom);   /* the rows' Locate... */
     ctrl_filesel(s, KT_TRANSFERS_LOCAL_DOWNLOAD_FOLDER, NO_SHORTCUT,
-                 FILTER_FOLDERS, false, NULL, HELPCTX(kitty_transfers),
+                 FILTER_FOLDERS, false, NULL, HELPCTX(kitty_transfers_folders),
                  xfer_downloaddir_handler, P(NULL));
-    /* The global folder, read when the panel is built, so the value that
-     * already applies is visible before it is overridden. */
-    gdir[0] = '\0';
-    ReadParameterN(INIT_SECTION, "downloaddir", gdir, sizeof(gdir));
-    line = dupprintf(KT_TRANSFERS_GLOBAL_IS, gdir[0] ? gdir : KT_TRANSFERS_GLOBAL_UNSET);
-    ctrl_text(s, line, HELPCTX(kitty_transfers));
-    sfree(line);
-    ctrl_checkbox(s, KT_TRANSFERS_ALWAYS_ASK_DESTINATION, NO_SHORTCUT,
-                  HELPCTX(kitty_transfers),
-                  conf_checkbox_handler, I(CONF_xfer_ask_destination));
-    ctrl_text(s, KT_TRANSFERS_GET_FILE_NOTE, HELPCTX(kitty_transfers));
+    /* The global folder, read when the panel is built (the text fixes the
+     * line's height) and again at every EVENT_REFRESH of the folder row
+     * above, so the value that already applies is visible before it is
+     * overridden and stays current when the panel is shown again. */
+    xfer_global_line(line, sizeof(line));
+    g_xfer_global_ctrl = ctrl_text(s, line, HELPCTX(kitty_transfers_folders));
+    /* The upload folder: where Send File opens and where a name the far end
+     * asks to read is looked up. Same shape, same refresh. */
+    ctrl_filesel(s, KT_TRANSFERS_UPLOAD_FOLDER, NO_SHORTCUT,
+                 FILTER_FOLDERS, false, NULL, HELPCTX(kitty_transfers_folders),
+                 xfer_uploaddir_handler, P(NULL));
+    xfer_global_upload_line(line, sizeof(line));
+    g_xfer_global_upload_ctrl = ctrl_text(s, line, HELPCTX(kitty_transfers_folders));
 
     /* Moved from the KSCP panel: the two are mutually exclusive, the
      * handlers keep them so through the captured sibling controls. */
     s = ctrl_getset(b, "Connection/Transfers", "remote", KT_TRANSFERS_REMOTE_DIR);
     g_osc7_track_ctrl = ctrl_checkbox(s,
                   KT_KSCP_TRACK_REMOTE_DIRECTORY_OSC_7,
-                  NO_SHORTCUT, HELPCTX(kitty_transfers),
+                  NO_SHORTCUT, HELPCTX(kitty_transfers_remote),
                   kitty_osc7_track_handler, P(NULL));
-    ctrl_text(s, KT_KSCP_DRAG_DROP_UPLOADS_AND_WINSCP, HELPCTX(kitty_transfers));
+    ctrl_text(s, KT_KSCP_OSC7_NEEDS_SHELL, HELPCTX(kitty_transfers_remote));
+    ctrl_text(s, KT_KSCP_DRAG_DROP_UPLOADS_AND_WINSCP, HELPCTX(kitty_transfers_remote));
     g_pscp_remotedir_ctrl = ctrl_editbox(s,
                  KT_KSCP_FIXED_REMOTE_UPLOAD_DIRECTORY, NO_SHORTCUT, 100,
-                 HELPCTX(kitty_transfers),
+                 HELPCTX(kitty_transfers_remote),
                  kitty_pscp_remotedir_handler, P(NULL), P(NULL));
-    ctrl_text(s, KT_KSCP_ALWAYS_UPLOAD_HERE_INSTEAD_MUTUALLY, HELPCTX(kitty_transfers));
+    ctrl_text(s, KT_KSCP_ALWAYS_UPLOAD_HERE_INSTEAD_MUTUALLY, HELPCTX(kitty_transfers_remote));
 
-    s = ctrl_getset(b, "Connection/Transfers", "farend", KT_TRANSFERS_FAR_END);
-    ctrl_text(s, KT_TRANSFERS_FAR_END_NOTE, HELPCTX(kitty_transfers));
+    /* Transfers over the session (kitten transfer): the permission, the
+     * save dialog, the per-file ceiling for files arriving and the full-path
+     * rule for files leaving. The last two default to the OSC 5113 (kitten)
+     * leaf under Transfers & Tools. */
+    s = ctrl_getset(b, "Connection/Transfers", "kitten", KT_TRANSFERS_KITTEN);
+    ctrl_text(s, KT_TRANSFERS_FAR_END_NOTE, HELPCTX(kitty_transfers_kitten));
     /* Two columns: three abreast cut "Ask once per session" at 200%. */
     ctrl_radiobuttons(s, NULL, NO_SHORTCUT, 2,
-                      HELPCTX(kitty_transfers),
+                      HELPCTX(kitty_transfers_kitten),
                       conf_radiobutton_handler, I(CONF_xfer_permission),
                       KT_TRANSFERS_PERM_ALWAYS, NO_SHORTCUT, I(0),
                       KT_TRANSFERS_PERM_FIRST,  NO_SHORTCUT, I(1),
                       KT_TRANSFERS_PERM_NEVER,  NO_SHORTCUT, I(2));
+    ctrl_checkbox(s, KT_TRANSFERS_ALWAYS_ASK_DESTINATION, NO_SHORTCUT,
+                  HELPCTX(kitty_transfers_kitten),
+                  conf_checkbox_handler, I(CONF_xfer_ask_destination));
+    ctrl_editbox(s, KT_TRANSFERS_MAX_MB, NO_SHORTCUT, 25,
+                 HELPCTX(kitty_transfers_kitten),
+                 xfer_maxmb_handler, P(NULL), P(NULL));
+    /* The global value, read at build time and at every EVENT_REFRESH of
+     * the field above, like the folder rows' lines. */
+    xfer_global_maxmb_line(line, sizeof(line));
+    g_xfer_global_maxmb_ctrl = ctrl_text(s, line, HELPCTX(kitty_transfers_kitten));
+    ctrl_text(s, KT_TRANSFERS_MAX_MB_NOTE, HELPCTX(kitty_transfers_kitten));
+    ctrl_checkbox(s, KT_TRANSFERS_FULL_PATH, NO_SHORTCUT,
+                  HELPCTX(kitty_transfers_kitten),
+                  xfer_fullpath_handler, P(NULL));
+
+    /* Which Tools menu entries this session shows; off = the entry is not
+     * built (window.c, WM_INITMENUPOPUP) and its [Shortcuts] key does
+     * nothing (kitty_shortcuts.c). */
+    s = ctrl_getset(b, "Connection/Transfers", "tools", KT_TRANSFERS_TOOLS_MENU);
+    ctrl_checkbox(s, KT_TRANSFERS_TOOLS_SENDFILE, NO_SHORTCUT,
+                  HELPCTX(kitty_transfers_tools),
+                  conf_checkbox_handler, I(CONF_tools_sendfile));
+    /* F1 on Get File lands on its walk-through, not on the group. */
+    ctrl_checkbox(s, KT_TRANSFERS_TOOLS_GETFILE, NO_SHORTCUT,
+                  HELPCTX(kitty_transfers_getfile),
+                  conf_checkbox_handler, I(CONF_tools_getfile));
+    ctrl_checkbox(s, KT_TRANSFERS_TOOLS_WINSCP, NO_SHORTCUT,
+                  HELPCTX(kitty_transfers_tools),
+                  conf_checkbox_handler, I(CONF_tools_winscp));
+    ctrl_checkbox(s, KT_TRANSFERS_TOOLS_FILEZILLA, NO_SHORTCUT,
+                  HELPCTX(kitty_transfers_tools),
+                  conf_checkbox_handler, I(CONF_tools_filezilla));
 }
 
 /* The Connection/ZModem panels (KiTTY). */
@@ -11389,9 +11558,17 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
      * ([KiTTY] pastesize) - there is no per-session form of it. */
     ctrl_settitle(b, "Application/Security/Clipboard", KT_CLIPBOARD_TITLE);
     s = ctrl_getset(b, "Application/Security/Clipboard", "paste", KT_CLIPBOARD_PASTE);
-    ctrl_editbox(s, KT_KSET_TW_PASTESIZE, NO_SHORTCUT, 25, HELPCTX(kitty_clipboard),
-                 kitty_kset_handler, P((void *)kset_find("pastesize")), ED_STR);
-    ctrl_text(s, KT_CLIPBOARD_PASTE_WHAT, HELPCTX(kitty_clipboard));
+    {
+        /* label + field, then the unit after the field on the same row */
+        dlgcontrol *pc;
+        ctrl_columns(s, 2, 72, 28);
+        pc = ctrl_editbox(s, KT_KSET_TW_PASTESIZE, NO_SHORTCUT, 30, HELPCTX(kitty_clipboard),
+                          kitty_kset_handler, P((void *)kset_find("pastesize")), ED_STR);
+        pc->column = 0;
+        pc = ctrl_text(s, KT_KSET_TW_PASTESIZE_UNIT, HELPCTX(kitty_clipboard));
+        pc->column = 1;
+        ctrl_columns(s, 1, 100);
+    }
     ctrl_text(s, KT_CLIPBOARD_PASTE_SCOPE, HELPCTX(kitty_clipboard));
 
     /* Security > Host keys: the trust store, listed (kitty_hostkeys.c). */
@@ -11699,8 +11876,13 @@ static const struct kset_key kset_keys[] = {
      * cleared field look as if the path had come back. */
     { INIT_SECTION, "PSCPPath",       KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0, NULL, SetPSCPPath },
     { INIT_SECTION, "pscpport",       KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0, kset_get_pscpport, NULL },
-    { INIT_SECTION, "downloaddir",    KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0 },   /* a folder row (FILTER_FOLDERS): the handler must drive it as a file-select, not an edit box */
-    { INIT_SECTION, "uploaddir",      KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
+    { INIT_SECTION, KI_DOWNLOADDIR,   KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0 },   /* a folder row (FILTER_FOLDERS): the handler must drive it as a file-select, not an edit box */
+    { INIT_SECTION, KI_UPLOADDIR,     KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0 },   /* a folder row too: the local Default Upload Folder */
+    { INIT_SECTION, KI_TRANSFERNOTIFICATION, KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
+    /* Transfers & Tools > OSC 5113 (kitten): the global defaults a session
+     * follows until it sets its own (Connection > Transfers) */
+    { INIT_SECTION, KI_TRANSFERMAXMB, KSET_INT, false, NULL, NULL, NULL, 0, 0, 1024 },   /* max 0 = unbounded; 0 = no limit */
+    { INIT_SECTION, KI_TRANSFERFULLPATH, KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
     /* Launcher: a separate process reads these from the store when it starts */
     { "Launcher", "reload",           KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
     { "Launcher", "alreadyRunCheck",  KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 1,
@@ -12159,10 +12341,27 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
         kitty_controls_set_dir_picker(OpenDirNameFrom);   /* the row's Locate... */
         ctrl_filesel(s, KT_KSET_TT_DOWNLOADDIR, NO_SHORTCUT, FILTER_FOLDERS,
                      false, NULL, HELPCTX(kitty_helper_paths),
-                     kitty_kset_handler, KSET("downloaddir"));
+                     kitty_kset_handler, KSET(KI_DOWNLOADDIR));
         ctrl_text(s, KT_KSET_TT_DOWNLOADDIR_NOTE, HELPCTX(kitty_helper_paths));
+        /* The upload folder is local as well: where Send File opens and
+         * where a name the far end asks to read (kitten transfer) is looked
+         * up. Never the remote target of an upload. */
+        ctrl_filesel(s, KT_KSET_TT_UPLOADDIR, NO_SHORTCUT, FILTER_FOLDERS,
+                     false, NULL, HELPCTX(kitty_helper_paths),
+                     kitty_kset_handler, KSET(KI_UPLOADDIR));
+        ctrl_text(s, KT_KSET_TT_UPLOADDIR_NOTE, HELPCTX(kitty_helper_paths));
     }
-    KSET_TEXTBOX(s, KT_KSET_TT_UPLOADDIR, "uploaddir", kitty_helper_paths);
+    KSET_CHECKBOX(s, KT_KSET_TT_NOTIFY, KI_TRANSFERNOTIFICATION, kitty_helper_paths);
+
+    /* The global defaults of the two kitten transfer limits; the session's
+     * OSC 5113 (kitten transfer) group on Connection > Transfers overrides
+     * them per session. */
+    ctrl_settitle(b, KSET_PATH("Transfers & Tools/OSC 5113 (kitten)"), KT_KSET_KITTEN_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Transfers & Tools/OSC 5113 (kitten)"), "defaults", KT_KSET_KITTEN_DEFAULTS);
+    KSET_NUMBER(s, KT_TRANSFERS_MAX_MB, KI_TRANSFERMAXMB, kitty_kset_kitten);
+    ctrl_text(s, KT_KSET_KITTEN_MAX_NOTE, HELPCTX(kitty_kset_kitten));
+    KSET_CHECKBOX(s, KT_TRANSFERS_FULL_PATH, KI_TRANSFERFULLPATH, kitty_kset_kitten);
+    ctrl_text(s, KT_KSET_KITTEN_NOTE, HELPCTX(kitty_kset_kitten));
 
     ctrl_settitle(b, KSET_PATH("Transfers & Tools/WinSCP"), KT_WINSCP_WINSCP);
     s = ctrl_getset(b, KSET_PATH("Transfers & Tools/WinSCP"), "path", KT_WINSCP_EXECUTABLE);
@@ -12191,7 +12390,9 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
                  FILTER_ALL_FILES, false,
                  KT_ZMODEM_SELECT_COMMAND_TO_SEND_ZMODEM,
                  HELPCTX(kitty_zmodem), kitty_toolpath_handler, P("szcommand"));
-    ctrl_text(s, KT_ZMODEM_THEIR_OPTIONS_AND_THE_DOWNLOAD, HELPCTX(kitty_zmodem));
+    /* Two lines, two controls: the panel machinery takes no newline. */
+    ctrl_text(s, KT_ZMODEM_NOTE_OPTIONS, HELPCTX(kitty_zmodem));
+    ctrl_text(s, KT_ZMODEM_NOTE_RECEIVED, HELPCTX(kitty_zmodem));
 
     /* ---- Launcher ---- */
     ctrl_settitle(b, KSET_PATH("Launcher"), KT_KSET_LA_TITLE);

@@ -563,6 +563,43 @@
 #ifndef IDC_CONFIRM_WARN
 #define IDC_CONFIRM_WARN 1276
 #endif
+/* The upload-request dialog (kitty/kitty_transfer.c): the far end asks to
+ * read files from this PC (OSC 5113, files leaving). One line per file with
+ * a checkbox, a count line above the list, "Allow selected" / "Deny". A
+ * resizable template of its own: the confirm box's static text could not
+ * hold a folder's worth of paths. */
+#ifndef IDD_XFERREQ
+#define IDD_XFERREQ 149
+#endif
+#ifndef IDC_XFERREQ_INTRO
+#define IDC_XFERREQ_INTRO 1277
+#endif
+#ifndef IDC_XFERREQ_COUNT
+#define IDC_XFERREQ_COUNT 1278
+#endif
+#ifndef IDC_XFERREQ_LIST
+#define IDC_XFERREQ_LIST 1279
+#endif
+#ifndef IDC_XFERREQ_WARN
+#define IDC_XFERREQ_WARN 1280
+#endif
+/* The download-request dialog (kitty/kitty_transfer.c): the far end wants to
+ * send files to this PC (OSC 5113, files arriving). The request text with the
+ * folder they land in, the red warning line, and three buttons: Allow (IDYES,
+ * the default), "Change folder..." (opens the folder picker; a picked folder
+ * closes the dialog as Allow with that folder), Deny (IDNO; Esc and close). */
+#ifndef IDD_XFERDL
+#define IDD_XFERDL 150
+#endif
+#ifndef IDC_XFERDL_TEXT
+#define IDC_XFERDL_TEXT 1281
+#endif
+#ifndef IDC_XFERDL_WARN
+#define IDC_XFERDL_WARN 1282
+#endif
+#ifndef IDC_XFERDL_CHANGE
+#define IDC_XFERDL_CHANGE 1283
+#endif
 /* "Load named proxy pre-sets" (kitty/kitty_proxy_gui.c): pick one definition,
  * OK, and its fields are copied into the session's own proxy settings. A
  * separate small window rather than a droplist on the Proxy panel, so choosing a

@@ -40,6 +40,9 @@
  * sufficient; the state is explicit (not a hidden global terminal field). */
 typedef struct kitty_zmodem_state {
     int transfering;
+    int send;             /* 1 = sz (files leaving), 0 = rz (files arriving) */
+    char *dir;            /* what the finished-transfer balloon opens: the
+                           * download folder (rz), the upload folder (sz) */
     PROCESS_INFORMATION pi;
     HANDLE read_stdout;   /* we read helper stdout -> send to backend  */
     HANDLE read_stderr;   /* we read helper stderr -> write to terminal */
@@ -146,6 +149,7 @@ void kitty_zmodem_done(void)
     }
     zm->transfering = 0;
     zm_active = NULL;
+    sfree(zm->dir);
     sfree(zm);
 }
 
@@ -251,9 +255,23 @@ static size_t zm_stderr_gotdata(struct handle *h, const void *data,
 static void zm_process_exited(void *vctx)
 {
     kitty_zmodem_state *zm = (kitty_zmodem_state *)vctx;
+    DWORD exitcode = 1;
+    int send;
+    char dir[4096];
     if (zm != zm_active)
         return;
+    /* The exit code is read before the tear-down closes the process handle;
+     * 0 = the helper finished its transfer, which is the one case the
+     * notification ([KiTTY] transfernotification) is for. The folder is
+     * copied out first: the tear-down frees the state. */
+    if (zm->pi.hProcess && !GetExitCodeProcess(zm->pi.hProcess, &exitcode))
+        exitcode = 1;
+    send = zm->send;
+    snprintf(dir, sizeof(dir), "%s", zm->dir ? zm->dir : "");
     kitty_zmodem_done();
+    if (exitcode == 0)
+        kitty_xfer_notify(send ? KT_XFER_WHAT_ZMODEM_SEND : KT_XFER_WHAT_ZMODEM_RECV,
+                          !send, 0, dir);   /* rz does not count its files */
 }
 
 /* Spawn the helper (command + params), wiring its std handles to pipes.
@@ -380,6 +398,8 @@ int kitty_zmodem_receive(Conf *conf, Backend *backend, LogContext *logctx, Termi
                    MB_OK | MB_ICONERROR);
         return 0;
     }
+    zm->send = 0;
+    zm->dir = dupstr(dir);              /* the balloon's click opens it */
     zm_active = zm;
     return 1;
 }
@@ -476,6 +496,12 @@ int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend, LogContext *logc
         MessageBox(NULL, KT_ZM_SZ_START_FAILED, KT_CAP_ZMODEM,
                    MB_OK | MB_ICONERROR);
         return 0;
+    }
+    zm->send = 1;
+    {   /* files leaving: the balloon's click opens the local upload folder */
+        char updir[4096];
+        kitty_xfer_upload_dir(conf, updir, sizeof(updir));
+        zm->dir = dupstr(updir);
     }
     zm_active = zm;
     return 1;

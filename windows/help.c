@@ -250,6 +250,45 @@ bool has_help(void)
     return chm_path != NULL || chm_resource != NULL;
 }
 
+/*
+ * Escape closes the manual. The HTML Help viewer runs on this thread and
+ * takes no keyboard shortcut for closing, so a thread-local keyboard hook
+ * watches for Escape while a viewer window ("HH Parent") is in front and
+ * closes that window; every other key passes through untouched.
+ */
+static HHOOK help_esc_hook = NULL;
+
+static HWND help_viewer_in_front(void)
+{
+    HWND fg = GetForegroundWindow();
+    char cls[32];
+    if (!fg)
+        return NULL;
+    fg = GetAncestor(fg, GA_ROOT);
+    if (!fg || !GetClassNameA(fg, cls, sizeof(cls)))
+        return NULL;
+    return strcmp(cls, "HH Parent") == 0 ? fg : NULL;
+}
+
+static LRESULT CALLBACK help_esc_proc(int code, WPARAM wp, LPARAM lp)
+{
+    if (code == HC_ACTION && wp == VK_ESCAPE && !(lp & 0x80000000)) {
+        HWND viewer = help_viewer_in_front();
+        if (viewer) {
+            PostMessage(viewer, WM_CLOSE, 0, 0);
+            return 1;
+        }
+    }
+    return CallNextHookEx(help_esc_hook, code, wp, lp);
+}
+
+static void help_install_esc_hook(void)
+{
+    if (!help_esc_hook)
+        help_esc_hook = SetWindowsHookEx(WH_KEYBOARD, help_esc_proc, NULL,
+                                         GetCurrentThreadId());
+}
+
 void launch_help(HWND hwnd, const char *topic)
 {
     if (!chm_path && chm_resource) {
@@ -282,6 +321,7 @@ void launch_help(HWND hwnd, const char *topic)
     } else {
         p_HtmlHelpA(NULL, chm_path, HH_DISPLAY_TOPIC, 0);
     }
+    help_install_esc_hook();
     requested_help = true;
 }
 

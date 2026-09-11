@@ -20,6 +20,8 @@
 #include "kitty_commun.h"
 #include "kitty_crypt.h"
 #include "kitty_tools.h"
+#include "kitty_text.h"     /* KT_KEYTEXT_*: the key names shown in menus */
+#include "kitty_inikeys.h"  /* KI_SC_*: the [Shortcuts] key names */
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */
 extern HWND MainHwnd ;                  /* kitty.c: the terminal window */
@@ -187,6 +189,8 @@ void InitShortcuts( void ) {
 		shortcuts_tab.editorclipboard = CONTROLKEY+SHIFTKEY+VK_F2 ;
 	if( !readINI(KittyIniFile,"Shortcuts","winscp",buffer, sizeof(buffer)) || ( (shortcuts_tab.winscp=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.winscp = SHIFTKEY+VK_F3 ;
+	if( !readINI(KittyIniFile,"Shortcuts",KI_SC_FILEZILLA,buffer, sizeof(buffer)) || ( (shortcuts_tab.filezilla=DefineShortcuts(buffer))<0 ) )
+		shortcuts_tab.filezilla = SHIFTKEY+VK_F4 ;
 	if( !readINI(KittyIniFile,"Shortcuts","switchlogmode",buffer, sizeof(buffer)) || ( (shortcuts_tab.switchlogmode=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.switchlogmode = SHIFTKEY+VK_F5 ;
 	if( !readINI(KittyIniFile,"Shortcuts","showportforward",buffer, sizeof(buffer)) || ( (shortcuts_tab.showportforward=DefineShortcuts(buffer))<0 ) )
@@ -294,6 +298,111 @@ void InitShortcuts( void ) {
 	}
 }
 
+/* Menu text for a shortcut code: the inverse of DefineShortcuts, for the keys
+ * it names. Modifiers first, joined with "+", in the order Ctrl, Alt, Shift,
+ * Win, AltGr: "Ctrl+F3", "Shift+F4", "Ctrl+Alt+T". Returns the length
+ * written; 0 with an empty buffer for an unset key (0) and for a key no name
+ * is known for. The modifier values are far enough apart that peeling them
+ * off from the largest down is unambiguous; they are written afterwards, in
+ * the reading order above. */
+int ShortcutKeyText( int key, char * buf, size_t size ) {
+	char name[32] ;
+	int vk, win = 0, altgr = 0, alt = 0, ctrl = 0, shift = 0 ;
+	size_t n = 0 ;
+	if( ( buf == NULL ) || ( size == 0 ) ) return 0 ;
+	buf[0] = '\0' ;
+	if( key <= 0 ) return 0 ;
+	name[0] = '\0' ;
+	if( key >= WINKEY )     { key -= WINKEY ; win = 1 ; }
+	if( key >= ALTGRKEY )   { key -= ALTGRKEY ; altgr = 1 ; }
+	if( key >= ALTKEY )     { key -= ALTKEY ; alt = 1 ; }
+	if( key >= CONTROLKEY ) { key -= CONTROLKEY ; ctrl = 1 ; }
+	if( key >= SHIFTKEY )   { key -= SHIFTKEY ; shift = 1 ; }
+#define KEYTEXT_MOD( on, txt ) \
+	if( on ) { n += (size_t) snprintf( buf + n, ( n < size ) ? size - n : 0, "%s+", txt ) ; }
+	KEYTEXT_MOD( ctrl, KT_KEYTEXT_CTRL )
+	KEYTEXT_MOD( alt, KT_KEYTEXT_ALT )
+	KEYTEXT_MOD( shift, KT_KEYTEXT_SHIFT )
+	KEYTEXT_MOD( win, KT_KEYTEXT_WIN )
+	KEYTEXT_MOD( altgr, KT_KEYTEXT_ALTGR )
+#undef KEYTEXT_MOD
+	vk = key ;
+	if( ( vk >= VK_F1 ) && ( vk <= VK_F12 ) ) {
+		snprintf( name, sizeof(name), KT_KEYTEXT_FKEY, vk - VK_F1 + 1 ) ;
+	} else if( ( vk >= VK_NUMPAD0 ) && ( vk <= VK_NUMPAD9 ) ) {
+		snprintf( name, sizeof(name), KT_KEYTEXT_NUMPAD, vk - VK_NUMPAD0 ) ;
+	} else if( ( ( vk >= 'A' ) && ( vk <= 'Z' ) ) || ( ( vk >= '0' ) && ( vk <= '9' ) ) ) {
+		name[0] = (char) vk ; name[1] = '\0' ;
+	} else {
+		const char * s = NULL ;
+		switch( vk ) {
+			case VK_RETURN:   s = KT_KEYTEXT_ENTER ; break ;
+			case VK_ESCAPE:   s = KT_KEYTEXT_ESC ; break ;
+			case VK_SPACE:    s = KT_KEYTEXT_SPACE ; break ;
+			case VK_SNAPSHOT: s = KT_KEYTEXT_PRINTSCREEN ; break ;
+			case VK_PAUSE:    s = KT_KEYTEXT_PAUSE ; break ;
+			case VK_CANCEL:   s = KT_KEYTEXT_BREAK ; break ;
+			case VK_PRIOR:    s = KT_KEYTEXT_PAGEUP ; break ;
+			case VK_NEXT:     s = KT_KEYTEXT_PAGEDOWN ; break ;
+			case VK_LEFT:     s = KT_KEYTEXT_LEFT ; break ;
+			case VK_RIGHT:    s = KT_KEYTEXT_RIGHT ; break ;
+			case VK_UP:       s = KT_KEYTEXT_UP ; break ;
+			case VK_DOWN:     s = KT_KEYTEXT_DOWN ; break ;
+			case VK_HOME:     s = KT_KEYTEXT_HOME ; break ;
+			case VK_END:      s = KT_KEYTEXT_END ; break ;
+			case VK_BACK:     s = KT_KEYTEXT_BACKSPACE ; break ;
+			case VK_TAB:      s = KT_KEYTEXT_TAB ; break ;
+			case VK_INSERT:   s = KT_KEYTEXT_INSERT ; break ;
+			case VK_DELETE:   s = KT_KEYTEXT_DELETE ; break ;
+			case VK_ATTN:     s = KT_KEYTEXT_ATTN ; break ;
+			case VK_NUMLOCK:  s = KT_KEYTEXT_NUMLOCK ; break ;
+			case VK_SCROLL:   s = KT_KEYTEXT_SCROLLLOCK ; break ;
+			case VK_ADD:      s = KT_KEYTEXT_NUM_ADD ; break ;
+			case VK_SUBTRACT: s = KT_KEYTEXT_NUM_SUBTRACT ; break ;
+			case VK_MULTIPLY: s = KT_KEYTEXT_NUM_MULTIPLY ; break ;
+			case VK_DIVIDE:   s = KT_KEYTEXT_NUM_DIVIDE ; break ;
+			case VK_DECIMAL:  s = KT_KEYTEXT_NUM_DECIMAL ; break ;
+			case VK_OEM_PLUS:   s = KT_KEYTEXT_OEM_PLUS ; break ;
+			case VK_OEM_COMMA:  s = KT_KEYTEXT_OEM_COMMA ; break ;
+			case VK_OEM_MINUS:  s = KT_KEYTEXT_OEM_MINUS ; break ;
+			case VK_OEM_PERIOD: s = KT_KEYTEXT_OEM_PERIOD ; break ;
+			default: break ;
+		}
+		if( s != NULL ) { strncpy( name, s, sizeof(name) - 1 ) ; name[sizeof(name) - 1] = '\0' ; }
+	}
+	if( name[0] == '\0' ) { buf[0] = '\0' ; return 0 ; }
+	n += (size_t) snprintf( buf + n, ( n < size ) ? size - n : 0, "%s", name ) ;
+	if( n >= size ) { buf[0] = '\0' ; return 0 ; }
+	return (int) n ;
+}
+
+/* The shortcut bound to a menu command, for the Tools entries that have one;
+ * 0 for any other command. window.c does not see shortcuts_tab. */
+int GetShortcutKey( int idm ) {
+	switch( idm ) {
+		case IDM_WINSCP:    return shortcuts_tab.winscp ;
+		case IDM_PSCP:      return shortcuts_tab.sendfile ;
+		case IDM_GETFILE:   return shortcuts_tab.getfile ;
+		case IDM_FILEZILLA: return shortcuts_tab.filezilla ;
+		default:            return 0 ;
+	}
+}
+
+/* "<menu text>\t<key text>", the Windows convention for a menu item with a
+ * keyboard shortcut. The key part is left off when the key is unset, has no
+ * name, or when the [KiTTY] shortcuts switch is off - the menu then shows no
+ * key it would not honour. Returns buf. */
+const char * ShortcutMenuText( const char * text, int key, char * buf, size_t size ) {
+	char keytext[64] ;
+	if( ( buf == NULL ) || ( size == 0 ) ) return text ;
+	if( GetShortcutsFlag() && ShortcutKeyText( key, keytext, sizeof(keytext) ) ) {
+		snprintf( buf, size, "%s\t%s", text, keytext ) ;
+	} else {
+		snprintf( buf, size, "%s", text ) ;
+	}
+	return buf ;
+}
+
 int SwitchLogMode(void) ;
 int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) {
 	int key, i ;
@@ -353,8 +462,16 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 		//term_copyall(term,clips_system,lenof(clips_system)) /* Full term clipboard */
 		RunPuttyEd( hwnd, "1" ) ; 
 		return 1 ; 
-	} else if( key == shortcuts_tab.winscp ) {			// Lancement de WinSCP
+	/* The four Tools menu keys below do nothing while the session hides the
+	 * entry (Connection > Transfers, "Tools menu"): the key then reaches the
+	 * terminal as if it were no shortcut. */
+	} else if( ( key == shortcuts_tab.winscp ) && kitty_xfer_tool_shown( conf, 1 ) ) {	// Lancement de WinSCP
 		SendMessage( hwnd, WM_COMMAND, IDM_WINSCP, 0 ) ; return 1 ;
+	} else if( ( key == shortcuts_tab.filezilla ) && kitty_xfer_tool_shown( conf, 2 ) && kitty_xfer_tool_ready( 2 ) ) {
+		/* Bound only while the Tools menu carries "Start FileZilla", which is
+		 * only while its executable exists. Otherwise the key is not a
+		 * shortcut and reaches the terminal as it did before. */
+		StartFileZilla( hwnd ) ; return 1 ;
 	} else if( key == shortcuts_tab.autocommand ) { 		// Rejouer la commande de demarrage
 			RenewPassword( conf ) ; 
 			SetTimer(hwnd, TIMER_AUTOCOMMAND,autocommand_delay, NULL) ;
@@ -377,9 +494,9 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 #endif
 	if( key == shortcuts_tab.script ) 			// Chargement d'un fichier de script
 		{ OpenAndSendScriptFile( hwnd ) ; return 1 ; }
-	else if( key == shortcuts_tab.sendfile ) 		// Envoi d'un fichier par SCP
+	else if( ( key == shortcuts_tab.sendfile ) && kitty_xfer_tool_shown( conf, 0 ) ) 	// Envoi d'un fichier par SCP
 		{ SendMessage( hwnd, WM_COMMAND, IDM_PSCP, 0 ) ; return 1 ; }
-	else if( key == shortcuts_tab.getfile ) 		// Reception d'un fichier par SCP
+	else if( ( key == shortcuts_tab.getfile ) && kitty_xfer_tool_shown( conf, 3 ) ) 	// Reception d'un fichier par SCP
 		{ GetFile( hwnd ) ; return 1 ; }
 	else if( key == shortcuts_tab.command )			// Execution d'une commande locale
 		{ RunCmd( hwnd ) ; return 1 ; }

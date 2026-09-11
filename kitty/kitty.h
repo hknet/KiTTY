@@ -241,7 +241,7 @@ void SetDblClickFlag( const int flag ) ;
 // Chemin vers le programme WinSCP
 extern char * WinSCPPath ;
 
-// Chemin vers le programme pscp.exe
+/* path to the file-copy helper: kscp.exe, or PuTTY's pscp.exe */
 extern char * PSCPPath  ;
 
 // Repertoire de lancement
@@ -341,6 +341,7 @@ struct TShortcuts {
 	int viewer ;
 	int visible ;
 	int winscp ;
+	int filezilla ;
 	int switchlogmode ;
 	int showportforward ;
 	int resetterminal ;
@@ -369,6 +370,11 @@ int DefineShortcuts( char * buf ) ;
 void TranslateShortcuts( char * st ) ;
 void InitShortcuts( void ) ;
 int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) ;
+/* Shortcut code -> "Ctrl+F3" (the inverse of DefineShortcuts); the key bound
+ * to a menu command id; "<menu text>\t<key text>" for a menu item. */
+int ShortcutKeyText( int key, char * buf, size_t size ) ;
+int GetShortcutKey( int idm ) ;
+const char * ShortcutMenuText( const char * text, int key, char * buf, size_t size ) ;
 char * GetKittyIniFile(void) ;
 char * GetKittySavFile(void) ;
 // Recupere une entree d'une session ( retourne 1 si existe )
@@ -428,8 +434,23 @@ void GetFile( HWND hwnd ) ;
 /* The session's download folder, resolved (Connection > Transfers, else the
  * global one, else Downloads). kitty_xfer.c */
 char * kitty_xfer_download_dir( Conf * cf, char * out, size_t outlen ) ;
+/* The session's upload folder, resolved (Connection > Transfers, else the
+ * global Default Upload Folder, else Documents): where Send File opens and
+ * where a plain name the far end asks to read is looked up. kitty_xfer.c */
+char * kitty_xfer_upload_dir( Conf * cf, char * out, size_t outlen ) ;
+/* The tray balloon after a finished transfer, gated by [KiTTY]
+ * transfernotification; `what` fills KT_XFER_COMPLETE. A click on the
+ * balloon opens `path` (a file: selected in Explorer; a folder: opened):
+ * files arriving - the one file, or the folder they landed in; files
+ * leaving - the local upload folder. arriving adds the "saved to" line
+ * (nfiles: 1, the count, or 0 = not counted). kitty_xfer.c */
+void kitty_xfer_notify( const char * what, int arriving, int nfiles, const char * path ) ;
+int kitty_xfer_notify_enabled( void ) ;
 /* Is the helper there? 0 = kscp, 1 = WinSCP, 2 = FileZilla. kitty_xfer.c */
 int kitty_xfer_tool_ready( int which ) ;
+/* Does the session show the Tools menu entry? 0 = Send File, 1 = WinSCP,
+ * 2 = FileZilla, 3 = Get File (Connection > Transfers). kitty_xfer.c */
+int kitty_xfer_tool_shown( Conf * cf, int which ) ;
 /* FileZilla hand-off (kitty_xfer.c): the executable path is an application
  * setting ([KiTTY] FileZillaPath), located like WinSCP's. */
 extern char * FileZillaPath ;

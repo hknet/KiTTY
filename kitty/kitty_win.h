@@ -32,12 +32,19 @@ void kitty_refresh_title(void) ;
 void kitty_menu_toggle_hyperlink(HWND hwnd) ;
 BOOL IsWow64() ; // Test si on est en Windows 64 bits
 int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
+/* The same picker opened in a given folder (NULL or empty = wherever
+ * Windows would open it). */
+int OpenFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) ;
 int OpenDirName( HWND hFrame, char * dirname ) ;
 /* Same picker, opened on `initial` (when that folder exists) with `title`
  * (NULL = the default caption). */
 int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const char * title ) ;
 /* Centre a modal dialog over its owner (WM_INITDIALOG, after final size). */
 void kitty_centre_on_owner( HWND dlg ) ;
+/* Grow one static control to fit `text` at the dialog's font, moved down by
+ * extra_dy; returns the height change in pixels (the caller moves what sits
+ * below and grows the window). Empty text collapses and hides the control. */
+int kitty_fit_text( HWND dlg, int ctlid, const char *text, int extra_dy ) ;
 int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
 	
 // Centre un dialog au milieu de la fenetre parent

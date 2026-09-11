@@ -274,7 +274,7 @@ char default_init_file_content[] =
 ;ctrltab=yes\n\
 \n\
 ; debug: extra tracing in the Event Log - saved-session lookups, the automatic\n\
-;    command, key remappings, the internal editor, and the pscp / WinSCP\n\
+;    command, key remappings, the internal editor, and the kscp / WinSCP\n\
 ;    command lines actually run. The password those command lines carry is\n\
 ;    blanked in the log, but the host, user, paths and switches are not, so\n\
 ;    read a debug log before you send it to anyone.\n\
@@ -284,11 +284,31 @@ char default_init_file_content[] =
 ;    runtime, so it does not have to live in this file.\n\
 ;debug=no\n\
 \n\
-; downloaddir: this is the local directory where files are downloaded with the pscp integration\n\
+; downloaddir: the local folder where received files land - Get File (kscp),\n\
+;    ZModem and transfers over the session - unless the session sets its own\n\
+;    on Connection > Transfers\n\
 ;downloaddir=\n\
 \n\
-; uploaddir: default remote directory used by the pscp upload integration\n\
-;uploaddir=.\n\
+; uploaddir: the local folder files are sent from - the Send File (kscp)\n\
+;    picker opens in it, and a file the far end asks to read over the\n\
+;    session (kitten transfer) is looked up in it - unless the session sets\n\
+;    its own on Connection > Transfers; unset = your Documents folder\n\
+;uploaddir=\n\
+\n\
+; transfernotification: a system notification (tray balloon) when a\n\
+;    transfer finishes - kscp Send File / Get File / drag-and-drop, ZModem\n\
+;    and transfers over the session (kitten transfer), both directions\n\
+;transfernotification=yes\n\
+\n\
+; transfermaxmb: per-file size limit, in MB, for files arriving over the\n\
+;    session (kitten transfer); 0 = no limit; a session can set its own on\n\
+;    Connection > Transfers\n\
+;transfermaxmb=1024\n\
+\n\
+; transferfullpath: may the far end ask for a file by full local path\n\
+;    (/C:/...) over the session (kitten transfer)? no = only names inside\n\
+;    the upload folder; a session can set its own on Connection > Transfers\n\
+;transferfullpath=no\n\
 \n\
 ; fileextension: the extension for session settings files in portable mode\n\
 ;fileextension=.ktx\n\
@@ -879,6 +899,11 @@ char default_init_file_content[] =
 ;    Example:  eventlog={CONTROL}{SHIFT}E\n\
 ;eventlog=\n\
 \n\
+; Start FileZilla (default is SHIFT+F4)\n\
+;    Works only while FileZilla is found (FileZillaPath in [KiTTY]) - the same\n\
+;    condition under which the Tools menu shows the entry.\n\
+;filezilla=\n\
+\n\
 ; Switch font to black on white colors\n\
 ;    No default key - it does nothing until you set one here.\n\
 ;fontblackandwhite=\n\
@@ -899,7 +924,7 @@ char default_init_file_content[] =
 ;    No default key - it does nothing until you set one here.\n\
 ;fullscreen=\n\
 \n\
-; receive a remote file with kscp - the same as Tools > Get file: the remote path\n\
+; receive a remote file with kscp - the same as Tools > Get File (kscp): the remote path\n\
 ; (or the file's name, with OSC 7 tracking on) must be on the clipboard, then a\n\
 ; folder window opens on the download folder (default is CONTROL+F4)\n\
 ;getfile=\n\
@@ -947,7 +972,9 @@ char default_init_file_content[] =
 ; Load a local script and run it remotely (default is CONTROL+F2)\n\
 ;script=\n\
 \n\
-; Send a local file with pscp.exe (default is CONTROL+F3)\n\
+; Send a local file with kscp - the same as Tools > Send File (kscp): a file\n\
+; window opens, the file goes to the remote directory set on Connection >\n\
+; Transfers (default is CONTROL+F3)\n\
 ;sendfile=\n\
 \n\
 ; Show current port forwarding definition (default is SHIFT+F6)\n\

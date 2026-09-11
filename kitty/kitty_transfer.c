@@ -38,10 +38,13 @@
 #include "ssh.h"                 /* ssh_zlib: the RFC 1950 inflater */
 
 #include <windows.h>
+#include <commctrl.h>            /* the upload-request dialog's list view */
 
-#include "kitty.h"               /* kitty_xfer_download_dir */
+#include "kitty.h"               /* kitty_xfer_download_dir, kitty_xfer_upload_dir */
 #include "kitty_win.h"           /* OpenDirNameFrom */
-#include "kitty_transfer_text.h"
+#include "kitty_text.h"          /* KT_XFER_WHAT_KITTEN_* for the notification */
+#include "kitty_inikeys.h"       /* KI_*: the kitty.ini key names */
+#include "kitty_transfer_text.h" /* kitty.h brings kitty_rc_additions.h: IDD_XFERREQ, IDD_XFERDL */
 #define KT5113_PARSE_IMPL
 #include "kitty_transfer.h"
 
@@ -49,12 +52,12 @@ extern HWND MainHwnd;            /* kitty.c: the terminal window */
 /* The suite's themed Yes/No box (kitty_win.c): true when Yes was pressed. */
 int kitty_confirm_box(HWND owner, const char *caption, const char *text,
                       const char *warn_red);
+void kitty_centre_on_owner(HWND dlg);    /* kitty_win.c */
 /* The reply channel (kitty_osc52.c): a complete sequence to the backend. */
 void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len);
 
 #define KT_EXPIRE_SECONDS   (10 * 60)   /* idle session, as the reference does */
 #define KT_MAX_FILES        8192        /* per session, either direction */
-#define KT_FILE_CEILING     ((uint64_t)4 << 30)
 #define KT_CHUNK            4096        /* the spec's chunk size */
 #define KT_CHUNK_ZIP        4000        /* leaves room for the stored-block framing */
 #define KT_SENDBUF_HIGH     (256 * 1024)/* stop pumping while this much is queued */
@@ -76,6 +79,7 @@ struct kt_file {
     char *posix;                        /* final path in /C:/... form, for n= */
     HANDLE h;
     uint64_t written;
+    uint64_t ceiling;                   /* the session's per-file limit, 0 = none */
     int64_t mtime;                      /* ns since the epoch, -1 = none */
     int readonly;
     ssh_decompressor *dec;              /* zlib inbound, else NULL */
@@ -99,6 +103,7 @@ struct kt_send {
     int accepted;
     int in_dialog, cancel_pending, abort_pending;
     wchar_t *dest;
+    uint64_t ceiling;                   /* per-file byte limit, 0 = none */
     time_t last;
     int nfiles, ndone;
     struct kt_file *files;
@@ -106,19 +111,27 @@ struct kt_send {
 };
 
 /* One entry of the listing sent to the far end in a receive session. Data
- * requests are honoured only for names in this list. */
+ * requests are honoured only for names in this list. Built by the walk
+ * BEFORE the dialog (the dialog lists the files), replied after it; a file
+ * left unchecked in the dialog stays listed and is refused when asked for. */
 struct kt_entry {
     char rid[24];                       /* our id for it: the st= of the listing */
+    char spec_fid[KT5113_ID_MAX + 1];   /* the request it answers */
     char *posix;
     wchar_t *local;
     int is_dir;
     uint64_t size;
+    int64_t mtime_ns;
+    int readonly;
+    int denied;                         /* unchecked in the dialog */
+    struct kt_entry *parent;            /* the folder entry it sits in, or NULL */
     struct kt_entry *next;
 };
 
 struct kt_spec {
     char fid[KT5113_ID_MAX + 1];
     char *name;
+    const char *why, *code;             /* refused by the walk: sent after OK */
 };
 
 /* A queued data request: one file, streamed in chunks by the pump. */
@@ -141,7 +154,8 @@ struct kt_recv {
     int nspecs, got;
     struct kt_spec *specs;
     struct kt_entry *entries;
-    int nentries;
+    int nentries, nfiles;               /* nfiles: entries that are not folders */
+    uint64_t total_bytes;               /* of those files, for the dialog */
     uint64_t rid_counter;
     struct kt_req *queue;
     int timer_armed;
@@ -200,6 +214,40 @@ static void kt_log(Terminal *term, char *msg)
 {
     logevent(term->logctx, msg);
     sfree(msg);
+}
+
+/* The two limits with a session value and a global default (Connection >
+ * Transfers, else KiTTY++ Settings > Transfers & Tools > OSC 5113 (kitten)):
+ * a session value below 0 means "the global one". */
+static int kt_global_int(const char *key, int dflt)
+{
+    char v[64] = "";
+    if (ReadParameterN(INIT_SECTION, key, v, sizeof(v)) && v[0]) {
+        if (!stricmp(v, "yes")) return 1;
+        if (!stricmp(v, "no")) return 0;
+        return atoi(v);
+    }
+    return dflt;
+}
+
+/* "Max transfer size (MB)" as a byte count; 0 = no limit. */
+static uint64_t kt_max_bytes(Conf *conf)
+{
+    int mb = conf_get_int(conf, CONF_xfer_max_mb);
+    if (mb < 0)
+        mb = kt_global_int(KI_TRANSFERMAXMB, 1024);
+    if (mb <= 0)
+        return 0;
+    return (uint64_t)mb << 20;
+}
+
+/* "Allow full path Upload-Requests": may a /C:/... spec name a file? */
+static int kt_full_path_allowed(Conf *conf)
+{
+    int v = conf_get_int(conf, CONF_xfer_full_path);
+    if (v < 0)
+        v = kt_global_int(KI_TRANSFERFULLPATH, 0);
+    return v != 0;
 }
 
 static wchar_t *kt_mb_to_wide(int cp, const char *s, int n)
@@ -465,6 +513,133 @@ static int kt_ask(const char *text, const char *warn)
 }
 
 /* ------------------------------------------------------------------------
+ * The download-request dialog (IDD_XFERDL): the request text with the
+ * folder the files land in, the red warning line, Allow / Change folder... /
+ * Deny. "Change folder..." opens the folder picker on the folder shown; a
+ * pick closes the dialog as Allow with that folder, a cancelled picker
+ * returns to the dialog unchanged. The theme engine dresses it like every
+ * other dialog of this module (the CBT hook in kitty_theme.c).
+ * ------------------------------------------------------------------------ */
+
+struct kt_dl_dlg {
+    const char *folder;                 /* the folder shown */
+    char picked[4096];                  /* set by Change folder... */
+    int picked_set;
+};
+
+static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
+{
+    struct kt_dl_dlg *d = (struct kt_dl_dlg *)GetWindowLongPtr(h, GWLP_USERDATA);
+    switch (msg) {
+      case WM_INITDIALOG: {
+        static const int below[] = { IDC_XFERDL_WARN, IDYES, IDC_XFERDL_CHANGE, IDNO, 0 };
+        char *text;
+        int dh, i;
+
+        d = (struct kt_dl_dlg *)lp;
+        SetWindowLongPtr(h, GWLP_USERDATA, lp);
+        SetWindowTextA(h, KT_XFER5113_CAP);
+        text = dupprintf(KT_XFER5113_ASK_SEND, d->folder);
+        SetDlgItemTextA(h, IDC_XFERDL_TEXT, text);
+        SetDlgItemTextA(h, IDC_XFERDL_WARN, KT_XFER5113_ASK_SEND_WARN);
+        SetDlgItemTextA(h, IDYES, KT_XFER5113_BTN_ALLOW);
+        SetDlgItemTextA(h, IDC_XFERDL_CHANGE, KT_XFER5113_BTN_CHANGE_FOLDER);
+        SetDlgItemTextA(h, IDNO, KT_XFER5113_BTN_DENY);
+        /* A long folder path wraps: grow the text to fit, as the confirm box
+         * does, and move the line and the buttons below it down by as much. */
+        dh = kitty_fit_text(h, IDC_XFERDL_TEXT, text, 0);
+        sfree(text);
+        if (dh != 0) {
+            RECT wr;
+            for (i = 0; below[i]; i++) {
+                HWND c = GetDlgItem(h, below[i]);
+                RECT r;
+                if (!c)
+                    continue;
+                GetWindowRect(c, &r);
+                MapWindowPoints(NULL, h, (POINT *)&r, 2);
+                MoveWindow(c, r.left, r.top + dh, r.right - r.left, r.bottom - r.top, TRUE);
+            }
+            GetWindowRect(h, &wr);
+            SetWindowPos(h, NULL, 0, 0, wr.right - wr.left, (wr.bottom - wr.top) + dh,
+                         SWP_NOMOVE | SWP_NOZORDER);
+        }
+        kitty_centre_on_owner(h);
+        SetFocus(GetDlgItem(h, IDYES));     /* Return means Allow */
+        return FALSE;
+      }
+      case WM_CTLCOLORSTATIC:
+        /* the warning line, and only it, is red - as in the confirm box */
+        if ((HWND)lp == GetDlgItem(h, IDC_XFERDL_WARN)) {
+            SetTextColor((HDC)wp, RGB(200, 0, 0));
+            SetBkMode((HDC)wp, TRANSPARENT);
+            return (INT_PTR)GetSysColorBrush(COLOR_3DFACE);
+        }
+        return FALSE;
+      case WM_COMMAND:
+        switch (LOWORD(wp)) {
+          case IDYES:
+            EndDialog(h, 1);
+            return TRUE;
+          case IDC_XFERDL_CHANGE:
+            /* The same picker "Always open Save Dialog" uses, owned by this
+             * dialog and opened on the folder shown. A pick is an Allow into
+             * that folder; Cancel leaves the dialog as it was. */
+            if (d && OpenDirNameFrom(h, d->picked, d->folder, KT_XFER5113_PICK_TITLE) &&
+                d->picked[0]) {
+                d->picked_set = 1;
+                EndDialog(h, 1);
+            }
+            return TRUE;
+          case IDNO:
+          case IDCANCEL:
+            EndDialog(h, 0);
+            return TRUE;
+        }
+        return FALSE;
+      case WM_CLOSE:
+        EndDialog(h, 0);                /* closing means Deny */
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/* The dialog, or - should the template not load at all - the same words in
+ * the confirm box (Allow / Deny, no folder change), never a silent allow.
+ * 1 = allowed, 0 = refused. On a pick from "Change folder..." the folder in
+ * `folder` (len bytes) is replaced by the picked one and *picked is set, so
+ * the caller can skip the "Always open Save Dialog" picker. */
+static int kt_dl_dialog(char *folder, size_t len, int *picked)
+{
+    struct kt_dl_dlg d;
+    INT_PTR r;
+
+    *picked = 0;
+    memset(&d, 0, sizeof(d));
+    d.folder = folder;
+    if (MainHwnd) {
+        ShowWindow(MainHwnd, SW_SHOWNA);
+        SetForegroundWindow(MainHwnd);
+    }
+    r = DialogBoxParamA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_XFERDL),
+                        MainHwnd, kt_dl_dlgproc, (LPARAM)&d);
+    if (r != -1) {
+        if (r == 1 && d.picked_set) {
+            strncpy(folder, d.picked, len - 1);
+            folder[len - 1] = '\0';
+            *picked = 1;
+        }
+        return r == 1;
+    }
+    {
+        char *text = dupprintf(KT_XFER5113_ASK_SEND, folder);
+        int yes = kt_ask(text, KT_XFER5113_ASK_SEND_WARN);
+        sfree(text);
+        return yes;
+    }
+}
+
+/* ------------------------------------------------------------------------
  * Send sessions: files arriving from the far end
  * ------------------------------------------------------------------------ */
 
@@ -594,7 +769,8 @@ static int kt_file_write(struct kt_file *f, const unsigned char *p, size_t n,
 {
     while (n > 0) {
         DWORD chunk = n > (1u << 20) ? (1u << 20) : (DWORD)n, got = 0;
-        if (f->written + chunk > KT_FILE_CEILING) {
+        /* "Max transfer size (MB)": 0 = no limit, really none. */
+        if (f->ceiling && f->written + chunk > f->ceiling) {
             *code = "EFBIG"; *msg = KT_XFER5113_ST_TOO_LARGE;
             return 0;
         }
@@ -725,6 +901,7 @@ static void kt_send_file(struct kt_state *st, const kt5113_cmd *c)
     f->ftype = c->ftype;
     f->refused = 1;
     f->h = INVALID_HANDLE_VALUE;
+    f->ceiling = s->ceiling;
     f->mtime = -1;
     f->adler = 1;
     f->next = s->files;
@@ -850,14 +1027,15 @@ static void kt_send_data(struct kt_state *st, const kt5113_cmd *c, int last)
         kt_ack(term, s, c->fid, "PROGRESS", NULL, (int64_t)f->written);
 }
 
-/* action=send: a new session. The dialog (and the folder picker) run here,
- * before the OK that lets the client continue. */
+/* action=send: a new session. The dialog (and the folder picker, from its
+ * Change folder... or from "Always open Save Dialog") run here, before the
+ * OK that lets the client continue. */
 static void kt_send_begin(struct kt_state *st, const kt5113_cmd *c)
 {
     Terminal *term = st->term;
     struct kt_send *s;
     char folder[4096], *a;
-    int policy, allowed;
+    int policy, allowed, picked = 0;
 
     if (st->send) {
         if (!strcmp(st->send->id, c->id)) {
@@ -875,6 +1053,7 @@ static void kt_send_begin(struct kt_state *st, const kt5113_cmd *c)
     strcpy(s->id, c->id);
     s->quiet = c->quiet;
     s->last = time(NULL);
+    s->ceiling = kt_max_bytes(term->conf);
     st->send = s;                       /* registered before the dialog: commands
                                          * arriving meanwhile must find it */
 
@@ -884,12 +1063,10 @@ static void kt_send_begin(struct kt_state *st, const kt5113_cmd *c)
         allowed = 1;
         kt_log(term, dupprintf(KT_XFER5113_LOG_SEND_AUTO, s->id));
     } else {
-        char *text = dupprintf(KT_XFER5113_ASK_SEND, folder);
         kt_log(term, dupprintf(KT_XFER5113_LOG_SEND_ASK, s->id, folder));
-        s->in_dialog = 1;
-        allowed = kt_ask(text, KT_XFER5113_ASK_SEND_WARN);
+        s->in_dialog = 1;               /* the picker behind Change folder... runs inside */
+        allowed = kt_dl_dialog(folder, sizeof(folder), &picked);
         s->in_dialog = 0;
-        sfree(text);
         if (allowed && policy == 1)
             st->latched = 1;
     }
@@ -915,11 +1092,13 @@ static void kt_send_begin(struct kt_state *st, const kt5113_cmd *c)
         kt_send_free(st);
         return;
     }
-    if (conf_get_bool(term->conf, CONF_xfer_ask_destination)) {
-        char picked[4096];
+    /* "Always open Save Dialog": the picker before the first file, unless
+     * the dialog's Change folder... already produced the folder. */
+    if (conf_get_bool(term->conf, CONF_xfer_ask_destination) && !picked) {
+        char chosen[4096];
         int ok;
         s->in_dialog = 1;
-        ok = OpenDirNameFrom(MainHwnd, picked, folder, KT_XFER5113_PICK_TITLE);
+        ok = OpenDirNameFrom(MainHwnd, chosen, folder, KT_XFER5113_PICK_TITLE);
         s->in_dialog = 0;
         if (st->dead) {
             kt_send_free(st);
@@ -939,7 +1118,7 @@ static void kt_send_begin(struct kt_state *st, const kt5113_cmd *c)
             kt_send_free(st);
             return;
         }
-        strncpy(folder, picked, sizeof(folder) - 1);
+        strncpy(folder, chosen, sizeof(folder) - 1);
         folder[sizeof(folder) - 1] = '\0';
     }
     s->dest = kt_mb_to_wide(CP_ACP, folder, -1);
@@ -979,6 +1158,22 @@ static void kt_send_cmd(struct kt_state *st, const kt5113_cmd *c)
         break;
       case KT5113_AC_FINISH:
         kt_log(term, dupprintf(KT_XFER5113_LOG_FINISHED, s->id, s->ndone));
+        if (s->ndone > 0) {             /* [KiTTY] transfernotification */
+            /* The balloon's click opens the one file that landed, or the
+             * folder of the transfer (the root of everything that landed). */
+            struct kt_file *f;
+            char *path = NULL;
+            if (s->ndone == 1)
+                for (f = s->files; f; f = f->next)
+                    if (f->done && f->final_path) {
+                        path = kt_ansi(f->final_path);
+                        break;
+                    }
+            if (!path && s->dest)
+                path = kt_ansi(s->dest);
+            kitty_xfer_notify(KT_XFER_WHAT_KITTEN_RECV, 1, s->ndone, path);
+            sfree(path);
+        }
         kt_send_free(st);               /* incomplete .part files go with it */
         break;
       case KT5113_AC_FILE:
@@ -1029,10 +1224,12 @@ static void kt_recv_free(struct kt_state *st)
 }
 
 /* A path the far end asks for, as a local path, or NULL when it is not one we
- * would ever open: everything is taken relative to the download folder except
- * the spec's own /C:/... form, which names a drive path outright - and the
- * dialog shows exactly what was resolved. */
-static wchar_t *kt_resolve_spec(Terminal *term, const char *name)
+ * would ever open: everything is taken relative to the UPLOAD folder except
+ * the spec's own /C:/... form, which names a drive path outright and is
+ * honoured only with "Allow full path Upload-Requests" on - refused here,
+ * before any dialog, and *full_refused says so. The dialog shows exactly
+ * what was resolved. */
+static wchar_t *kt_resolve_spec(Terminal *term, const char *name, int *full_refused)
 {
     const char *rel;
     size_t rn;
@@ -1040,14 +1237,21 @@ static wchar_t *kt_resolve_spec(Terminal *term, const char *name)
     int kind = kt5113_spec_classify(name, strlen(name), &rel, &rn, &drive);
     wchar_t *base, *path, *w;
 
+    if (full_refused)
+        *full_refused = 0;
     if (kind == KT5113_SPEC_BAD)
         return NULL;
     if (kind == KT5113_SPEC_DRIVE) {
         wchar_t root[4] = { (wchar_t)drive, L':', L'\\', 0 };
+        if (!kt_full_path_allowed(term->conf)) {
+            if (full_refused)
+                *full_refused = 1;
+            return NULL;
+        }
         base = kt_wdup(root);
     } else {
         char folder[4096];
-        kitty_xfer_download_dir(term->conf, folder, sizeof(folder));
+        kitty_xfer_upload_dir(term->conf, folder, sizeof(folder));
         base = kt_mb_to_wide(CP_ACP, folder, -1);
         if (!base)
             return NULL;
@@ -1072,27 +1276,38 @@ static wchar_t *kt_resolve_spec(Terminal *term, const char *name)
 }
 
 static struct kt_entry *kt_entry_add(struct kt_recv *r, const wchar_t *local,
-                                     int is_dir, uint64_t size)
+                                     int is_dir, uint64_t size,
+                                     const char *spec_fid, struct kt_entry *parent,
+                                     int64_t mtime_ns, int readonly)
 {
     struct kt_entry *e = snew(struct kt_entry), **pp;
     memset(e, 0, sizeof(*e));
     snprintf(e->rid, sizeof(e->rid), "%llu", (unsigned long long)++r->rid_counter);
+    strncpy(e->spec_fid, spec_fid, sizeof(e->spec_fid) - 1);
     e->local = kt_wdup(local);
     e->posix = kt_posix(local);
     e->is_dir = is_dir;
     e->size = size;
+    e->parent = parent;
+    e->mtime_ns = mtime_ns;
+    e->readonly = readonly;
     for (pp = &r->entries; *pp; pp = &(*pp)->next)
         ;
     *pp = e;
     r->nentries++;
+    if (!is_dir) {
+        r->nfiles++;
+        r->total_bytes += size;
+    }
     return e;
 }
 
-/* List one path (recursively for a folder), sending an entry per item.
- * Reparse points - symlinks, junctions - are skipped and never followed.
- * Returns 0 when the per-session ceiling was hit. */
-static int kt_list_dir(struct kt_state *st, const char *spec_fid,
-                       const wchar_t *dir, const char *parent_rid, int depth)
+/* Walk one folder (recursively), an entry per item, BEFORE the dialog - the
+ * dialog lists every file that would leave. Reparse points - symlinks,
+ * junctions - are skipped and never followed. Returns 0 when the per-session
+ * ceiling was hit. */
+static int kt_walk_dir(struct kt_state *st, const char *spec_fid,
+                       const wchar_t *dir, struct kt_entry *parent, int depth)
 {
     struct kt_recv *r = st->recv;
     wchar_t *pattern = kt_wjoin(dir, L"*");
@@ -1114,21 +1329,18 @@ static int kt_list_dir(struct kt_state *st, const char *spec_fid,
         }
         child = kt_wjoin(dir, fd.cFileName);
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            e = kt_entry_add(r, child, 1, 0);
-            kt_entry_reply(st->term, r, spec_fid, e,
-                           kt_filetime_to_ns(&fd.ftLastWriteTime), 0, parent_rid);
-            if (depth < KT_MAX_DEPTH && !kt_list_dir(st, spec_fid, child, e->rid, depth + 1)) {
+            e = kt_entry_add(r, child, 1, 0, spec_fid, parent,
+                             kt_filetime_to_ns(&fd.ftLastWriteTime), 0);
+            if (depth < KT_MAX_DEPTH && !kt_walk_dir(st, spec_fid, child, e, depth + 1)) {
                 sfree(child);
                 FindClose(h);
                 return 0;
             }
         } else {
             uint64_t sz = ((uint64_t)fd.nFileSizeHigh << 32) | fd.nFileSizeLow;
-            e = kt_entry_add(r, child, 0, sz);
-            kt_entry_reply(st->term, r, spec_fid, e,
-                           kt_filetime_to_ns(&fd.ftLastWriteTime),
-                           (fd.dwFileAttributes & FILE_ATTRIBUTE_READONLY) != 0,
-                           parent_rid);
+            kt_entry_add(r, child, 0, sz, spec_fid, parent,
+                         kt_filetime_to_ns(&fd.ftLastWriteTime),
+                         (fd.dwFileAttributes & FILE_ATTRIBUTE_READONLY) != 0);
         }
         sfree(child);
     } while (FindNextFileW(h, &fd));
@@ -1136,51 +1348,78 @@ static int kt_list_dir(struct kt_state *st, const char *spec_fid,
     return 1;
 }
 
-/* After permission: the metadata of everything asked for, then OK with the
- * home folder, as the spec's receive flow prescribes. */
-static void kt_recv_list(struct kt_state *st)
+/* Resolve every spec and walk the folders, before anything is shown or
+ * answered: a spec that cannot be served gets its reason recorded (sent
+ * after the OK, per file - the others continue), everything else becomes
+ * entries the dialog can list. */
+static void kt_recv_prepare(struct kt_state *st)
 {
     Terminal *term = st->term;
     struct kt_recv *r = st->recv;
     int i, stop = 0;
 
     for (i = 0; i < r->got && !stop; i++) {
-        const struct kt_spec *sp = &r->specs[i];
-        wchar_t *local = kt_resolve_spec(term, sp->name);
+        struct kt_spec *sp = &r->specs[i];
+        int full = 0;
+        wchar_t *local = kt_resolve_spec(term, sp->name, &full);
         DWORD attrs = 0;
         WIN32_FILE_ATTRIBUTE_DATA ad;
-        const char *why = NULL, *code = "EINVAL";
 
+        sp->why = NULL;
+        sp->code = "EINVAL";
         if (!local) {
-            why = KT_XFER5113_ST_OUTSIDE;
+            if (full) {
+                sp->why = KT_XFER5113_ST_FULL_PATH; sp->code = "EPERM";
+            } else {
+                sp->why = KT_XFER5113_ST_OUTSIDE;
+            }
         } else if (!GetFileAttributesExW(local, GetFileExInfoStandard, &ad)) {
-            why = KT_XFER5113_ST_NOT_FOUND; code = "ENOENT";
+            sp->why = KT_XFER5113_ST_NOT_FOUND; sp->code = "ENOENT";
         } else if ((attrs = ad.dwFileAttributes) & FILE_ATTRIBUTE_REPARSE_POINT) {
-            why = KT_XFER5113_ST_LINKS; code = "ENOTSUP";
+            sp->why = KT_XFER5113_ST_LINKS; sp->code = "ENOTSUP";
         } else if (attrs & FILE_ATTRIBUTE_DIRECTORY) {
-            struct kt_entry *e = kt_entry_add(r, local, 1, 0);
-            kt_entry_reply(term, r, sp->fid, e, kt_filetime_to_ns(&ad.ftLastWriteTime), 0, NULL);
-            if (!kt_list_dir(st, sp->fid, local, e->rid, 1)) {
-                why = KT_XFER5113_ST_TOO_MANY;
+            struct kt_entry *e = kt_entry_add(r, local, 1, 0, sp->fid, NULL,
+                                              kt_filetime_to_ns(&ad.ftLastWriteTime), 0);
+            if (!kt_walk_dir(st, sp->fid, local, e, 1)) {
+                sp->why = KT_XFER5113_ST_TOO_MANY;
                 stop = 1;
             }
         } else {
             uint64_t sz = ((uint64_t)ad.nFileSizeHigh << 32) | ad.nFileSizeLow;
-            struct kt_entry *e = kt_entry_add(r, local, 0, sz);
-            kt_entry_reply(term, r, sp->fid, e, kt_filetime_to_ns(&ad.ftLastWriteTime),
-                           (attrs & FILE_ATTRIBUTE_READONLY) != 0, NULL);
+            kt_entry_add(r, local, 0, sz, sp->fid, NULL,
+                         kt_filetime_to_ns(&ad.ftLastWriteTime),
+                         (attrs & FILE_ATTRIBUTE_READONLY) != 0);
         }
-        if (why) {
-            kt_err(term, r, sp->fid, code, why);
-            kt_log(term, dupprintf(KT_XFER5113_LOG_RECV_SPEC, r->id, sp->name, why));
-        }
+        if (sp->why)
+            kt_log(term, dupprintf(KT_XFER5113_LOG_RECV_SPEC, r->id, sp->name, sp->why));
         sfree(local);
     }
-    if (r->nentries == 0) {
-        kt_err(term, r, NULL, "ENOENT", KT_XFER5113_ST_NO_FILES);
-        kt_recv_free(st);
-        return;
-    }
+}
+
+/* The per-spec refusals recorded by the walk, each against its own fid. */
+static void kt_recv_send_spec_errors(struct kt_state *st)
+{
+    struct kt_recv *r = st->recv;
+    int i;
+    for (i = 0; i < r->got; i++)
+        if (r->specs[i].why)
+            kt_err(st->term, r, r->specs[i].fid, r->specs[i].code, r->specs[i].why);
+}
+
+/* After permission: the refusals, the metadata of everything walked
+ * (denied files included - they are refused when asked for, so the host
+ * sees a per-file answer), then OK with the home folder, as the spec's
+ * receive flow prescribes. */
+static void kt_recv_list(struct kt_state *st)
+{
+    Terminal *term = st->term;
+    struct kt_recv *r = st->recv;
+    struct kt_entry *e;
+
+    kt_recv_send_spec_errors(st);
+    for (e = r->entries; e; e = e->next)
+        kt_entry_reply(term, r, e->spec_fid, e, e->mtime_ns, e->readonly,
+                       e->parent ? e->parent->rid : NULL);
     {
         const char *prof = getenv("USERPROFILE");
         wchar_t *w = prof && *prof ? kt_mb_to_wide(CP_ACP, prof, -1) : NULL;
@@ -1193,39 +1432,252 @@ static void kt_recv_list(struct kt_state *st)
     kt_log(term, dupprintf(KT_XFER5113_LOG_RECV_OK, r->id, r->nentries));
 }
 
-/* All specs are in: ask, always - whatever the permission setting says. A
- * setting that let the far end read local files without a word would be a
- * hole, so "never ask" applies to files ARRIVING only. */
+/* ------------------------------------------------------------------------
+ * The upload-request dialog (IDD_XFERREQ): one line per file that would
+ * leave, a checkbox in front of each, all checked at open; a count line
+ * above; "Allow selected" / "Deny". Resizable: the list takes whatever the
+ * window grows by. The theme engine dresses it like every other dialog of
+ * this module (the CBT hook in kitty_theme.c), nothing to do here.
+ * ------------------------------------------------------------------------ */
+
+struct kt_req_dlg {
+    struct kt_recv *r;
+    int margin, gap, line_h, btn_h, allow_w, deny_w;   /* pixels, from the template */
+    int min_w, min_h;                                   /* the template's window size */
+    int allowed;
+};
+
+static void kt_size_str(uint64_t n, char *buf, size_t len)
+{
+    if (n < (1u << 10))
+        snprintf(buf, len, KT_XFER5113_SIZE_B, (unsigned long long)n);
+    else if (n < (1u << 20))
+        snprintf(buf, len, KT_XFER5113_SIZE_KB, n / 1024.0);
+    else if (n < (1u << 30))
+        snprintf(buf, len, KT_XFER5113_SIZE_MB, n / (1024.0 * 1024.0));
+    else
+        snprintf(buf, len, KT_XFER5113_SIZE_GB, n / (1024.0 * 1024.0 * 1024.0));
+}
+
+static void kt_req_rect(HWND h, int id, RECT *rc)
+{
+    GetWindowRect(GetDlgItem(h, id), rc);
+    MapWindowPoints(NULL, h, (POINT *)rc, 2);
+}
+
+static void kt_req_layout(HWND h, struct kt_req_dlg *d)
+{
+    RECT rc;
+    int W, H, y, list_h, warn_y, btn_y;
+    HWND list = GetDlgItem(h, IDC_XFERREQ_LIST);
+    GetClientRect(h, &rc);
+    W = rc.right;
+    H = rc.bottom;
+    y = d->margin;
+    MoveWindow(GetDlgItem(h, IDC_XFERREQ_INTRO), d->margin, y, W - 2 * d->margin, d->line_h, TRUE);
+    y += d->line_h + d->gap;
+    MoveWindow(GetDlgItem(h, IDC_XFERREQ_COUNT), d->margin, y, W - 2 * d->margin, d->line_h, TRUE);
+    y += d->line_h + d->gap;
+    btn_y = H - d->margin - d->btn_h;
+    warn_y = btn_y - d->gap - d->line_h;
+    list_h = warn_y - d->gap - y;
+    if (list_h < d->line_h)
+        list_h = d->line_h;
+    MoveWindow(list, d->margin, y, W - 2 * d->margin, list_h, TRUE);
+    MoveWindow(GetDlgItem(h, IDC_XFERREQ_WARN), d->margin, warn_y, W - 2 * d->margin, d->line_h, TRUE);
+    MoveWindow(GetDlgItem(h, IDNO), W - d->margin - d->deny_w, btn_y, d->deny_w, d->btn_h, TRUE);
+    MoveWindow(GetDlgItem(h, IDYES), W - d->margin - d->deny_w - d->gap - d->allow_w, btn_y,
+               d->allow_w, d->btn_h, TRUE);
+    /* the one column fills the list, whatever the width */
+    ListView_SetColumnWidth(list, 0, LVSCW_AUTOSIZE_USEHEADER);
+}
+
+static INT_PTR CALLBACK kt_req_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
+{
+    struct kt_req_dlg *d = (struct kt_req_dlg *)GetWindowLongPtr(h, GWLP_USERDATA);
+    switch (msg) {
+      case WM_INITDIALOG: {
+        RECT a, b, wr;
+        HWND list = GetDlgItem(h, IDC_XFERREQ_LIST);
+        LVCOLUMNW col;
+        struct kt_entry *e;
+        char size[64], *count;
+        int i = 0;
+
+        d = (struct kt_req_dlg *)lp;
+        SetWindowLongPtr(h, GWLP_USERDATA, lp);
+        /* The template's own spacing, in this monitor's pixels. */
+        kt_req_rect(h, IDC_XFERREQ_INTRO, &a);
+        kt_req_rect(h, IDC_XFERREQ_COUNT, &b);
+        d->margin = a.left;
+        d->line_h = a.bottom - a.top;
+        d->gap = b.top - a.bottom;
+        kt_req_rect(h, IDYES, &a);
+        d->allow_w = a.right - a.left;
+        d->btn_h = a.bottom - a.top;
+        kt_req_rect(h, IDNO, &b);
+        d->deny_w = b.right - b.left;
+        GetWindowRect(h, &wr);
+        d->min_w = wr.right - wr.left;
+        d->min_h = wr.bottom - wr.top;
+
+        SetWindowTextA(h, KT_XFER5113_REQ_CAP);
+        SetDlgItemTextA(h, IDC_XFERREQ_INTRO, KT_XFER5113_REQ_INTRO);
+        kt_size_str(d->r->total_bytes, size, sizeof(size));
+        count = dupprintf(KT_XFER5113_REQ_COUNT, d->r->nfiles, size);
+        SetDlgItemTextA(h, IDC_XFERREQ_COUNT, count);
+        sfree(count);
+        SetDlgItemTextA(h, IDC_XFERREQ_WARN, KT_XFER5113_ASK_RECV_WARN);
+        SetDlgItemTextA(h, IDYES, KT_XFER5113_REQ_BTN_ALLOW);
+        SetDlgItemTextA(h, IDNO, KT_XFER5113_REQ_BTN_DENY);
+
+        ListView_SetExtendedListViewStyle(list, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT);
+        memset(&col, 0, sizeof(col));
+        col.mask = LVCF_WIDTH;
+        col.cx = 100;
+        SendMessageW(list, LVM_INSERTCOLUMNW, 0, (LPARAM)&col);
+        /* Wide inserts into a list view of an ANSI dialog: the control is
+         * Unicode whatever its parent is, so every path shows as it is. */
+        for (e = d->r->entries; e; e = e->next) {
+            LVITEMW it;
+            if (e->is_dir)
+                continue;
+            memset(&it, 0, sizeof(it));
+            it.mask = LVIF_TEXT | LVIF_PARAM;
+            it.iItem = i;
+            it.pszText = e->local;
+            it.lParam = (LPARAM)e;
+            if (SendMessageW(list, LVM_INSERTITEMW, 0, (LPARAM)&it) < 0)
+                continue;
+            ListView_SetCheckState(list, i, TRUE);
+            i++;
+        }
+        kt_req_layout(h, d);
+        kitty_centre_on_owner(h);
+        SetFocus(GetDlgItem(h, IDNO));      /* Return means Deny */
+        return FALSE;
+      }
+      case WM_SIZE:
+        if (d)
+            kt_req_layout(h, d);
+        return TRUE;
+      case WM_GETMINMAXINFO:
+        if (d) {
+            MINMAXINFO *mmi = (MINMAXINFO *)lp;
+            mmi->ptMinTrackSize.x = d->min_w;
+            mmi->ptMinTrackSize.y = d->min_h;
+        }
+        return TRUE;
+      case WM_CTLCOLORSTATIC:
+        /* the warning line, and only it, is red - as in the confirm box */
+        if ((HWND)lp == GetDlgItem(h, IDC_XFERREQ_WARN)) {
+            SetTextColor((HDC)wp, RGB(200, 0, 0));
+            SetBkMode((HDC)wp, TRANSPARENT);
+            return (INT_PTR)GetSysColorBrush(COLOR_3DFACE);
+        }
+        return FALSE;
+      case WM_COMMAND:
+        switch (LOWORD(wp)) {
+          case IDYES: {
+            /* Unchecked files stay listed and are refused when asked for.
+             * Nothing checked is a Deny: no file may leave on that click. */
+            HWND list = GetDlgItem(h, IDC_XFERREQ_LIST);
+            int n = ListView_GetItemCount(list), i, checked = 0;
+            for (i = 0; i < n; i++) {
+                LVITEMA it;
+                memset(&it, 0, sizeof(it));
+                it.mask = LVIF_PARAM;
+                it.iItem = i;
+                if (!ListView_GetItem(list, &it) || !it.lParam)
+                    continue;
+                if (ListView_GetCheckState(list, i))
+                    checked++;
+                else
+                    ((struct kt_entry *)it.lParam)->denied = 1;
+            }
+            EndDialog(h, checked > 0 ? 1 : 0);
+            return TRUE;
+          }
+          case IDNO:
+          case IDCANCEL:
+            EndDialog(h, 0);
+            return TRUE;
+        }
+        return FALSE;
+      case WM_CLOSE:
+        EndDialog(h, 0);                /* closing means Deny */
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/* The dialog, or - should the template not load at all - the plain
+ * all-or-nothing question of the confirm box, never a silent allow.
+ * 1 = allowed (denied files marked), 0 = refused. */
+static int kt_req_dialog(struct kt_state *st)
+{
+    struct kt_req_dlg d;
+    INITCOMMONCONTROLSEX icc;
+    INT_PTR r;
+
+    memset(&d, 0, sizeof(d));
+    d.r = st->recv;
+    icc.dwSize = sizeof(icc);
+    icc.dwICC = ICC_LISTVIEW_CLASSES;
+    InitCommonControlsEx(&icc);
+    if (MainHwnd) {
+        ShowWindow(MainHwnd, SW_SHOWNA);
+        SetForegroundWindow(MainHwnd);
+    }
+    r = DialogBoxParamA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_XFERREQ),
+                        MainHwnd, kt_req_dlgproc, (LPARAM)&d);
+    if (r != -1)
+        return r == 1;
+    {
+        strbuf *list = strbuf_new();
+        struct kt_entry *e;
+        char *text;
+        int i = 0, yes;
+        for (e = st->recv->entries; e; e = e->next) {
+            char *a;
+            if (e->is_dir)
+                continue;
+            if (i++ >= KT_DIALOG_LINES) {
+                put_fmt(list, KT_XFER5113_ASK_RECV_MORE, st->recv->nfiles - KT_DIALOG_LINES);
+                break;
+            }
+            a = kt_ansi(e->local);
+            put_fmt(list, "%s\r\n", a);
+            sfree(a);
+        }
+        text = dupprintf(KT_XFER5113_ASK_RECV, list->s);
+        strbuf_free(list);
+        yes = kt_ask(text, KT_XFER5113_ASK_RECV_WARN);
+        sfree(text);
+        return yes;
+    }
+}
+
+/* All specs are in: walk, then ask - always, whatever the permission
+ * setting says. A setting that let the far end read local files without a
+ * word would be a hole, so "never ask" applies to files ARRIVING only. */
 static void kt_recv_ask(struct kt_state *st)
 {
     Terminal *term = st->term;
     struct kt_recv *r = st->recv;
-    strbuf *list = strbuf_new();
-    char *text;
-    int i, allowed;
+    int allowed;
 
-    for (i = 0; i < r->got; i++) {
-        wchar_t *local;
-        if (i >= KT_DIALOG_LINES) {
-            put_fmt(list, KT_XFER5113_ASK_RECV_MORE, r->got - i);
-            break;
-        }
-        local = kt_resolve_spec(term, r->specs[i].name);
-        if (local) {
-            char *a = kt_ansi(local);
-            put_fmt(list, "%s\r\n", a);
-            sfree(a);
-            sfree(local);
-        } else {
-            put_fmt(list, KT_XFER5113_ASK_RECV_BAD "\r\n", r->specs[i].name);
-        }
+    kt_recv_prepare(st);
+    if (r->nentries == 0) {
+        /* nothing a dialog could list: the refusals, then the session */
+        kt_recv_send_spec_errors(st);
+        kt_err(term, r, NULL, "ENOENT", KT_XFER5113_ST_NO_FILES);
+        kt_recv_free(st);
+        return;
     }
-    text = dupprintf(KT_XFER5113_ASK_RECV, list->s);
-    strbuf_free(list);
     r->in_dialog = 1;
-    allowed = kt_ask(text, KT_XFER5113_ASK_RECV_WARN);
+    allowed = kt_req_dialog(st);
     r->in_dialog = 0;
-    sfree(text);
     if (st->dead) {
         kt_recv_free(st);
         kt_state_drop(st);
@@ -1395,6 +1847,12 @@ static void kt_recv_request(struct kt_state *st, const kt5113_cmd *c)
         kt_err(term, r, c->fid, "ENOENT", KT_XFER5113_ST_NOT_LISTED);
         return;
     }
+    if (e->denied) {
+        /* left unchecked in the upload-request dialog: refused per file */
+        kt_err(term, r, c->fid, "EPERM", KT_XFER5113_ST_DENIED);
+        kt_log(term, dupprintf(KT_XFER5113_LOG_RECV_SPEC, r->id, c->name, KT_XFER5113_ST_DENIED));
+        return;
+    }
     if (c->ttype == KT5113_TT_RSYNC) {
         /* the client would send a signature and expect a delta back */
         kt_err(term, r, c->fid, "EINVAL", KT_XFER5113_ST_RSYNC);
@@ -1476,6 +1934,11 @@ static void kt_recv_cmd(struct kt_state *st, const kt5113_cmd *c)
         break;
       case KT5113_AC_FINISH:
         kt_log(term, dupprintf(KT_XFER5113_LOG_RECV_DONE, r->id, r->nsent));
+        if (r->nsent > 0) {             /* [KiTTY] transfernotification */
+            char folder[4096];          /* the click opens the upload folder */
+            kitty_xfer_upload_dir(term->conf, folder, sizeof(folder));
+            kitty_xfer_notify(KT_XFER_WHAT_KITTEN_SEND, 0, 0, folder);
+        }
         kt_recv_free(st);
         break;
       case KT5113_AC_FILE:

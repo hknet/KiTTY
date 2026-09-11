@@ -571,6 +571,12 @@ where the window is not on screen.
 
 \S{kitty-cfg-kscp} The KSCP panel
 
+The two lines at the top name the \q{Tools} menu entries that run
+\c{kscp}: \q{Send File (kscp)} (\c{Ctrl+F3}) sends a local file to the
+remote directory, \q{Get File (kscp)} (\c{Ctrl+F4}) fetches the path on
+the clipboard into the download folder - \k{kitty-cfg-get-file} walks
+through it.
+
 \b \q{Protocol for file transfers (kscp and WinSCP)} is ONE setting for
 both tools: \c{kscp} runs in SCP mode for \q{scp} and in SFTP mode for
 every other choice; WinSCP is started with the protocol chosen. It used
@@ -582,7 +588,23 @@ to sit on the WinSCP panel, where it read as WinSCP's alone (stored as
 
 \b \q{Keep the transfer window open after success} leaves the transfer
 window up so you can read what happened. Failures stay up regardless.
-It applies to uploads and to \q{Get file} alike.
+It applies to uploads and to \q{Get file} alike. Every kscp transfer runs
+in that window, which shows kscp's output as it arrives; when it succeeds
+a tray balloon reports the completion, and the window closes unless this
+box is on.
+
+Sending a file from this PC to the host, with \c{kscp}:
+
+\n Right-click the title bar (or open the window menu) and choose
+\q{Tools} > \q{Send File (kscp)}, or press \c{Ctrl+F3}. A file window
+opens; pick one file; OK.
+
+\n \c{kscp} uploads it to the remote directory in force
+(\k{kitty-cfg-transfers-remote}): the OSC 7 tracked directory, else the
+fixed remote upload directory, else your home directory on the host. The
+transfer window shows the progress. Dropping files on the terminal does the
+same for several files at once. SSH sessions only; the key is \c{sendfile}
+in the \c{[Shortcuts]} section of \c{kitty.ini}.
 
 Where uploads go on the far end (the OSC 7 tracked directory or a fixed
 one) and where received files land on this PC are on
@@ -596,7 +618,9 @@ takes you there.
 
 \S{kitty-cfg-winscp-session} The WinSCP panel
 
-What to hand \i{WinSCP} when it is started for this session.
+What to hand \i{WinSCP} when it is started for this session
+(\q{Tools} > \q{Start WinSCP}, or press \c{Shift+F3}; the key is
+\c{winscp} in the \c{[Shortcuts]} section of \c{kitty.ini}).
 
 \b The protocol is not chosen here any more: \q{Protocol for file
 transfers} on the KSCP panel (\k{kitty-cfg-kscp}) serves WinSCP and
@@ -625,9 +649,11 @@ so, and \q{Open App Settings} beside it takes you there.
 \S{kitty-cfg-filezilla-session} The FileZilla panel
 
 What to hand \i{FileZilla} when it is started for this session
-(\q{Tools} > \q{Start FileZilla}). The entry is in the menu only while
-FileZilla's executable exists where \k{kitty-cfg-external-tools} (its
-FileZilla leaf, \c{FileZillaPath} in \c{kitty.ini}) places it.
+(\q{Tools} > \q{Start FileZilla}, or press \c{Shift+F4}). The entry is in
+the menu, and the key works, only while FileZilla's executable exists where
+\k{kitty-cfg-external-tools} (its FileZilla leaf, \c{FileZillaPath} in
+\c{kitty.ini}) places it. The key is \c{filezilla} in the \c{[Shortcuts]}
+section of \c{kitty.ini}.
 
 \b The target and the protocol are the shared settings: \q{SFTP
 connect} on \k{kitty-cfg-winscp-session} overrides the host, and
@@ -648,16 +674,16 @@ file (\c{FileZillaPasswordMode}):
 FileZilla prompts for the password itself (\c{--logontype=ask}). No secret
 leaves KiTTY++. The default.
 
-\b \q{Temporary configuration}: the credentials are written to a private
+\b \q{Temporary configuration file}: the credentials are written to a private
 temporary file (an \c{fzdefaults.xml} with one predefined site, the
 password in FileZilla's own base64 form) that FileZilla reads at start;
 KiTTY++ deletes it a minute later. Your own FileZilla settings and sites
 stay as they are - the file only adds the one entry.
 
-\b \q{Command line}: the password travels in the URL on FileZilla's
-command line. Every other process of your user can read it for as long
-as FileZilla runs. Offered because it is the simplest; the panel states
-what it costs.
+\b \q{Command line (readable by other processes)}: the password travels
+in the URL on FileZilla's command line. Every other process of your user
+can read it for as long as FileZilla runs. Offered because it is the
+simplest; the label states what it costs.
 
 }
 
@@ -671,14 +697,22 @@ setting only.
 \S{kitty-cfg-transfers-panel} The Transfers panel
 
 One place for what every way of moving a file through this session has
-in common: where received files land on this PC, which directory on the
-far end uploads go to, and whether the far end may start a transfer.
-\q{Get file} (kscp), \i{ZModem} and file transfers over the session
-(\c{kitten transfer}, \k{kitty-cfg-kitten-transfer}) all read it, which
-is why it sits under Connection and not under SSH: ZModem and kitten
-transfer work on telnet and serial sessions too.
+in common: where received files land on this PC and where files are
+sent from, which directory on the far end uploads go to, the settings
+for transfers over the session, and which Tools menu entries the session
+shows. \q{Get file} (kscp), \q{Send File}, \i{ZModem} and file transfers
+over the session (\c{kitten transfer}, \k{kitty-cfg-kitten-transfer}) all
+read it, which is why it sits under Connection and not under SSH: ZModem
+and kitten transfer work on telnet and serial sessions too. Each group
+has its own help topic: F1 on a control opens the group's paragraph.
 
-\S2{kitty-cfg-transfers-received} Where received files are saved
+\S2{kitty-cfg-transfers-folders} Local folders
+
+Two folders on this PC, one per direction. Files \e{arriving} - from
+\q{Get file}, ZModem receive and \c{kitten transfer} - are saved in the
+download folder; files \e{leaving} - the Send File picker, and the file
+a \c{kitten transfer} on the host asks to read - come from the upload
+folder.
 
 \b \q{Local download folder} is this session's folder. Empty, the global
 \q{Download folder} of \k{kitty-cfg-external-tools} applies, and the line
@@ -687,11 +721,14 @@ applies before overriding it. \q{Locate...} opens the Explorer folder
 picker. Stored as \c{zDownloadDir}: it began as ZModem's folder, and a
 session that had one keeps it.
 
-\b \q{Always open Save Dialog} opens the folder picker
-for every file the far end sends (kitten transfer), instead of saving
-straight into the folder above. \q{Get file} always opens the picker,
-prefilled with the folder - the switch governs transfers you did not
-start yourself.
+\b \q{Upload folder} is the same for files leaving: this session's
+folder, else the global \q{Default Upload Folder} of
+\k{kitty-cfg-external-tools} (the \q{Global: ...} line beneath it), else
+your Documents folder. \q{Tools} > \q{Send File (kscp)} opens its file
+window in it, and a plain name the host asks for with \c{kitten transfer
+--direction=upload} (\c{report.pdf}, \c{~/report.pdf}, \c{/report.pdf})
+is looked up in it. It is NOT where an upload lands on the far end: that
+is the remote directory below. Stored as \c{zUploadDir}.
 
 \S2{kitty-cfg-transfers-remote} Remote directory for uploads
 
@@ -703,19 +740,50 @@ the shell's current directory instead of your home directory. KiTTY
 reads that directory from the standard \i{OSC 7} sequence your shell
 emits at every prompt (\c{ESC ] 7 ; file://host/path BEL}), validated
 strictly as data: an absolute path, a whitelisted character set, never
-executed. Two lines in your shell startup enable it; see the
-\c{osc7-shell-integration} example shipped with KiTTY. Stored as
-\c{OSC7CwdTracking}.
+executed. The shell on the host has to emit the sequence; the line
+beneath the checkbox reminds you of that. Stored as \c{OSC7CwdTracking}.
+
+\lcont{
+
+Check first whether your prompt already emits OSC 7 (Starship, oh-my-zsh
+and oh-my-posh themes, \c{ble.sh} and the \c{vte.sh} many distributions
+install do): turn the checkbox on, \c{cd} somewhere, and drop a file on
+the terminal - if it lands in that directory, nothing more is needed. If
+not, add to the shell startup file of the remote account:
+
+bash, in \c{~/.bashrc}:
+
+\c __osc7_cwd() { printf '\033]7;file://%s%s\007' "$HOSTNAME" "$PWD"; }
+\c PROMPT_COMMAND="__osc7_cwd${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+
+zsh, in \c{~/.zshrc}:
+
+\c __osc7_cwd() { printf '\033]7;file://%s%s\007' "$HOST" "$PWD"; }
+\c autoload -Uz add-zsh-hook
+\c add-zsh-hook precmd __osc7_cwd
+
+Reconnect, or re-source the file and \c{cd} once, so KiTTY sees the
+first report.
+
+}
 
 \b \q{Fixed remote upload directory} sends every upload to one place
 instead. It is mutually exclusive with tracking above (\c{PSCPRemoteDir}).
+
+Drag-and-drop: drop files or folders from Explorer onto the terminal
+window of an SSH session and \c{kscp} uploads each one, a folder
+recursively (the \c{-r} in \q{KSCP options}). They land in the first of
+these that applies: the OSC 7 tracked directory, when tracking is on and
+the shell has announced one; the fixed remote upload directory; your home
+directory on the host. A dropped \c{kitty.ini} is not uploaded: it opens in
+the internal editor.
 
 This replaced an older \q{send file to the current directory} feature
 that worked by scanning the window title, which is a remote-code-execution
 hole (CVE-2024-23749 in another terminal). Sessions that used it are
 migrated to OSC 7 automatically.
 
-\S2{kitty-cfg-transfers-farend} Transfers started by the far end
+\S2{kitty-cfg-transfers-kitten} OSC 5113 (kitten transfer)
 
 A program on the host can start a file transfer through the terminal
 itself (\c{kitten transfer}, \k{kitty-cfg-kitten-transfer}). Nothing
@@ -730,7 +798,46 @@ until this terminal closes.
 request to \e{read} files from this PC still shows the dialog, whatever is
 chosen here.
 
+\b \q{Always open Save Dialog} opens the folder picker
+for every file the far end sends, instead of saving
+straight into the download folder. \q{Get file} always opens the picker,
+prefilled with the folder - the switch governs transfers you did not
+start yourself.
+
+\b \q{Max transfer size (MB)} is the limit for one file \e{arriving}:
+a file that grows past it is cut off and refused with \q{File too
+large}, the rest of the transfer continues. \c{0} means no limit at all.
+Empty, the session follows the global default on the
+\q{OSC 5113 (kitten)} leaf (\k{kitty-cfg-kset-kitten}), 1024 MB unless
+changed there; the \q{Global: ...} line beneath the field shows that
+value. Stored as \c{TransferMaxMB}.
+
+\b \q{Allow full path Upload-Requests} decides what a request for a file
+\e{leaving} may name. Off (the default): only names inside the upload
+folder are served; a request written as a full local path
+(\c{/C:/Users/you/file}) is refused for that file, before any dialog,
+and the other files of the request continue. On: a full path is
+resolved and shown in the dialog like every other file. An untouched
+session shows the global default of the \q{OSC 5113 (kitten)} leaf; a
+click pins the session to on or off. Stored as \c{TransferFullPath}.
+
 Stored as \c{TransferPermission} (0, 1, 2) and \c{TransferAskDestination}.
+
+\S2{kitty-cfg-transfers-tools} Terminal Windows Tools Menu
+
+Four checkboxes, one per entry of the \q{Tools} menu (right-click the
+title bar): \q{Send File (kscp)}, \q{Get File (kscp)}, \q{Start WinSCP},
+\q{Start FileZilla}. All on by default. Unchecked, the entry is not
+shown for this session and its key in the \c{[Shortcuts]} section of
+\c{kitty.ini} does nothing - the key reaches the terminal instead.
+\q{Start WinSCP} and \q{Start FileZilla} additionally need the
+executable, as before (\k{kitty-cfg-external-tools}). Stored as
+\c{ToolsMenuSendFile}, \c{ToolsMenuGetFile}, \c{ToolsMenuWinSCP} and
+\c{ToolsMenuFileZilla}.
+
+\q{Tools} > \q{Get File (kscp)} fetches the path on the clipboard into
+the download folder: \k{kitty-cfg-get-file} walks through it, and F1 on
+that checkbox opens it.
 
 \S2{kitty-cfg-get-file} Receiving a file with Get file
 
@@ -753,7 +860,7 @@ Either prints \c{/home/you/reports/report.pdf}.
 clipboard as you release the button.
 
 \n Right-click the title bar (or open the window menu) and choose
-\q{Tools} > \q{Get file (kscp)...}, or press \c{Ctrl+F4}. A folder
+\q{Tools} > \q{Get File (kscp)}, or press \c{Ctrl+F4}. A folder
 window opens on your download folder; keep it or pick another; OK.
 
 \n \c{kscp} fetches the file into that folder. The transfer window shows
@@ -791,22 +898,40 @@ than a direct copy; it is for the cases where there is no direct copy.
 \S2{kitty-cfg-kitten-remote} What the far end needs
 
 The other side is the \c{kitten} program that ships with the kitty
-terminal. It has to be installed on the host whose files you move - the
-host you are logged in to, however many hops away. It does not need kitty
-itself, a graphical session, or the \c{KITTY_WINDOW_ID} variable; the
-plain binary is enough.
+terminal, kitty 0.30 or newer: the \c{kitten} binary exists since 0.28,
+its \c{transfer} command since 0.30. It has to be installed on the host
+whose files you move - the host you are logged in to, however many hops
+away. It does not need kitty itself, a graphical session, or the
+\c{KITTY_WINDOW_ID} variable; the plain binary is enough.
 
-\b Debian, Ubuntu: \c{sudo apt install kitty} (installs \c{kitten} beside it)
+\b Any Linux or macOS, without root: the installer from
+\W{https://sw.kovidgoyal.net/kitty/binary/}\c{sw.kovidgoyal.net}
 
-\b Fedora, RHEL: \c{sudo dnf install kitty}
+\lcont{
 
-\b Arch: \c{sudo pacman -S kitty}
+\c curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin dest=$HOME/kitty-bin launch=n
 
-\b Any Linux or macOS, without root: the kitty release from
-\W{https://sw.kovidgoyal.net/kitty/binary/}\c{sw.kovidgoyal.net} unpacks
-to a folder that contains \c{bin/kitten}; that one file is the whole
-requirement. It is a static executable and can be copied to a machine on
-its own, for example with ZModem (\k{kitty-cfg-zmodem-session}) or kscp.
+leaves \c{~/kitty-bin/kitty.app/bin/kitten}. For your own account keep it
+under your home and put it on your \c{PATH}; for every user on the host
+copy the file, never link it (a link into a home directory is unreadable
+for other users):
+
+\c sudo install -m 755 ~/kitty-bin/kitty.app/bin/kitten /usr/local/bin/kitten
+
+That one file is the whole requirement. It is a static executable and can
+be copied alone to any machine, for example with ZModem
+(\k{kitty-cfg-zmodem-session}) or kscp.
+
+}
+
+\b Debian, Ubuntu: \c{sudo apt install kitty} (installs \c{kitten} beside
+it), where the package is 0.30 or newer - Debian 12 ships 0.26.5, which
+has neither.
+
+\b Fedora, RHEL: \c{sudo dnf install kitty}, where the package is 0.30 or
+newer.
+
+\b Arch: \c{sudo pacman -S kitty}.
 
 \S2{kitty-cfg-kitten-use} Using it
 
@@ -826,32 +951,55 @@ To fetch a file from this PC to the host:
 
 \c kitten transfer --direction=upload ~/report.pdf .
 
-The first path is the file on this PC, named relative to the download
-folder (\c{~/report.pdf} and \c{report.pdf} both mean the download
-folder's \c{report.pdf}; a drive path is written \c{/C:/Users/you/file}).
-The last path is where it goes on the host. \c{--direction=receive} is
-the same thing under kitty's protocol name. A folder is fetched
-recursively.
+The first path is the file on this PC, named relative to the upload
+folder (\k{kitty-cfg-transfers-folders}: \c{~/report.pdf},
+\c{report.pdf} and \c{/report.pdf} all mean the upload folder's
+\c{report.pdf}). A full local path is written \c{/C:/Users/you/file} and
+is served only while \q{Allow full path Upload-Requests} is on
+(\k{kitty-cfg-transfers-kitten}); otherwise that file is refused and
+the others continue. The last path is where it goes on the host.
+\c{--direction=receive} is the same thing under kitty's protocol name.
+A folder is fetched recursively.
 
-\S2{kitty-cfg-kitten-permission} The permission dialog
+\S2{kitty-cfg-kitten-permission} The permission dialogs
 
-Nothing moves until you agree. Before a transfer a dialog titled
-\q{KiTTY file transfer} states what the host wants: \q{The remote host wants
-to send files to this computer} with the folder they will land in, or
-\q{The remote host wants to read these files from this computer} with the
-list of paths. \q{Allow} lets the transfer run; \q{Deny} refuses it and
-\c{kitten} reports \q{Permission denied}. Closing the dialog or pressing
-Return means Deny.
+Nothing moves until you agree. Files \e{arriving} are announced by a
+dialog titled \q{KiTTY++ File Download request}: \q{The remote host wants to send
+files to this computer} with the folder they will land in. \q{Allow}
+(the default) lets the transfer run into that folder; \q{Change
+folder...} opens the folder picker on it, and a folder you pick is an
+Allow into that folder for this transfer (cancelling the picker returns
+to the dialog); \q{Deny} refuses it and \c{kitten} reports
+\q{Permission denied}. Closing the dialog or pressing Escape means Deny.
+
+Files \e{leaving} get a dialog of their own, \q{KiTTY++ File Upload
+request}: one line per file that would leave, with its full local path
+and a checkbox in front of it - all checked when the dialog opens - and
+above the list the number of files and their total size. A requested
+folder is walked before the dialog opens, so every file inside it is
+listed (a very large folder delays the dialog by the walk). Untick a
+file and it stays home. \q{Allow selected} sends the ticked files; each
+unticked one is refused when the host asks for it, and \c{kitten} shows
+\q{Permission denied} for that file. \q{Deny} refuses them all, as does
+closing the dialog or pressing Return. The window can be resized; the
+list grows with it.
 
 How often the dialog appears for files \e{arriving} is set on
-Connection > Transfers (\k{kitty-cfg-transfers-panel}): every time, once per
+Connection > Transfers (\k{kitty-cfg-transfers-kitten}): every time, once per
 terminal session, or never. A request to \e{read} files from this PC
 always shows the dialog, whatever that setting is. \q{Always open Save Dialog} opens the folder picker before the first file of a
-transfer; cancelling it refuses the transfer.
+transfer, unless \q{Change folder...} already chose one; cancelling it
+refuses the transfer. \q{Max transfer size (MB)}
+on the same panel caps one arriving file.
+
+When a transfer has finished, in either direction, a system notification
+(tray balloon) reports it, unless \q{System notification on finished
+up-/download} on \k{kitty-cfg-external-tools} is off.
 
 \S2{kitty-cfg-kitten-refused} What KiTTY++ refuses
 
-\b Any path that would leave the download folder: \c{..} components, a
+\b Any path that would leave the download folder (files arriving) or
+the upload folder (files leaving): \c{..} components, a
 backslash, a drive letter in a file name, characters Windows does not
 allow, reserved device names (\c{CON}, \c{NUL}, \c{COM1}...). The file is
 refused with an error the host shows; the rest of the transfer continues.
@@ -1333,9 +1481,24 @@ written back: an empty field stays empty and means "find it". Set it
 only to force a particular binary. \q{Port for file transfers} follows the session's port unless
 you pin one. The download folder is where received files land - from
 \q{Get file}, ZModem and transfers over the session - unless the
-session sets its own on \k{kitty-cfg-transfers-panel}; the line beneath the
-field shows the folder in force. The remote upload folder is where drag-and-drop uploads
-go.
+session sets its own on \k{kitty-cfg-transfers-folders}; the line beneath the
+field shows the folder in force.
+
+\b \q{Default Upload Folder} is the local folder files are sent
+\e{from}: \q{Tools} > \q{Send File (kscp)} opens its file window there,
+and a plain name the host asks for with \c{kitten transfer
+--direction=upload} is looked up there - unless the session sets its
+own \q{Upload folder} on \k{kitty-cfg-transfers-folders}. Empty = your
+Documents folder. It is not where an upload lands on the far end; that
+is the remote directory of \k{kitty-cfg-transfers-remote}.
+
+\b \q{System notification on finished up-/download} raises a tray
+balloon when a transfer has finished: kscp (Send File, Get File,
+drag-and-drop), ZModem receive and upload, and transfers over the
+session (\c{kitten transfer}) in both directions. A click on the balloon
+opens what arrived - one file selected in Explorer, several files their
+folder - or, after an upload, the local upload folder. On by default;
+there is no per-session form.
 
 Where those are installed is a property of this PC, not of a
 connection - the same session opened on your laptop and on a
@@ -1346,8 +1509,26 @@ session's own panels:
 \k{kitty-cfg-winscp-session} and \k{kitty-cfg-zmodem-session}.
 
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{PSCPPath},
-\c{pscpport}, \c{downloaddir} and \c{uploaddir}; the WinSCP leaf writes
-\c{WinSCPPath}, the ZModem leaf's global switch is \c{zmodem}.
+\c{pscpport}, \c{downloaddir}, \c{uploaddir} and
+\c{transfernotification}; the WinSCP leaf writes \c{WinSCPPath}, the
+FileZilla leaf \c{FileZillaPath}, the ZModem leaf \c{rzcommand} and
+\c{szcommand}, and its global switch is \c{zmodem}; the OSC 5113
+(kitten) leaf writes \c{transfermaxmb} and \c{transferfullpath}.
+
+\S{kitty-cfg-kset-kitten} The OSC 5113 (kitten) panel
+
+The global defaults of the two limits for transfers over the session
+(\c{kitten transfer}, \k{kitty-cfg-kitten-transfer}). Every session
+follows them until it sets its own in the \q{OSC 5113 (kitten
+transfer)} group of \k{kitty-cfg-transfers-kitten}.
+
+\b \q{Max transfer size (MB)}: the limit for one file arriving; \c{0} =
+no limit. Default 1024. Stored as \c{transfermaxmb}.
+
+\b \q{Allow full path Upload-Requests}: may the host ask for a file
+leaving by its full local path (\c{/C:/Users/you/file})? Off by default:
+only names inside the upload folder are served and a full-path request
+is refused for that file. Stored as \c{transferfullpath}.
 
 \S{kitty-cfg-kitty-settings} The KiTTY++ Settings tree
 
@@ -1437,7 +1618,7 @@ Turn the warning off if you deliberately use an agent that cannot be
 verified. It is stored per installation, as \c{verifyagent} in
 \c{kitty.ini}.
 
-\S{kitty-cfg-missing-features} \q{Say in the terminal what this Windows cannot do}
+\S{kitty-cfg-missing-features} \q{Report in the terminal what features this Windows Installation does not support}
 
 KiTTY runs on old versions of Windows deliberately. The features that need a
 recent one - dark mode, Windows Hello, per-monitor DPI scaling, keeping
@@ -1520,8 +1701,9 @@ version; that is a session's SSH panel.
 
 \S{kitty-cfg-clipboard} The Clipboard panel
 
-\q{Warn before pasting more than this many characters} is the
-large-paste guard. When the clipboard holds more than the limit, KiTTY
+\q{Warn before pasting big clipboard content} is the large-paste guard;
+the field beside it is the limit, in characters. When the clipboard
+holds more than the limit, KiTTY
 names the count and the limit and asks before anything is sent, and
 the default answer is No, so a stray Enter cancels the paste instead of
 flooding the shell. 0 switches the warning off. It counts characters,

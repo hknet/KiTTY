@@ -1511,6 +1511,25 @@ CONF_OPTION(xfer_ask_destination, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KE
 /* Permission for transfers the far end starts (OSC 5113, kitten transfer):
  * 0 = ask every time, 1 = ask once per session, 2 = never ask. */
 CONF_OPTION(xfer_permission, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("TransferPermission"),)
+/* The session's local upload folder (Connection > Transfers): where the
+ * Send File picker opens and where a file the far end asks to read
+ * (kitten transfer, files leaving) is looked up. Empty = the global one
+ * (kitty.ini uploaddir), else the user's Documents folder. */
+CONF_OPTION(zuploaddir, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("zUploadDir"),)
+/* Per-file size limit for files arriving over the session (kitten
+ * transfer), in MB. -1 = the global default (kitty.ini transfermaxmb),
+ * 0 = no limit. */
+CONF_OPTION(xfer_max_mb, VALUE_TYPE(INT), DEFAULT_INT(-1), SAVE_KEYWORD("TransferMaxMB"),)
+/* May the far end ask for a file by full local path (/C:/...)? -1 = the
+ * global default (kitty.ini transferfullpath), 0 = only names inside the
+ * upload folder, 1 = a full path is resolved and shown in the dialog. */
+CONF_OPTION(xfer_full_path, VALUE_TYPE(INT), DEFAULT_INT(-1), SAVE_KEYWORD("TransferFullPath"),)
+/* The Tools menu entries this session shows; off = the entry is not shown
+ * and its [Shortcuts] key does nothing. */
+CONF_OPTION(tools_sendfile, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ToolsMenuSendFile"),)
+CONF_OPTION(tools_getfile, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ToolsMenuGetFile"),)
+CONF_OPTION(tools_winscp, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ToolsMenuWinSCP"),)
+CONF_OPTION(tools_filezilla, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ToolsMenuFileZilla"),)
 CONF_OPTION(scp_auto_pwd, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("SCPAutoPwd"),)
 CONF_OPTION(osc7_cwd_tracking, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("OSC7CwdTracking"),)
 CONF_OPTION(pscp_keep_window, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("PSCPKeepWindow"),)

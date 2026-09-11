@@ -436,7 +436,7 @@ char AntiIdleStr[128] = "" ;  // Ex: " \x08"   => Fait un espace et le retire to
 // Chemin vers le programme WinSCP
 char * WinSCPPath = NULL ;
 
-// Chemin vers le programme pscp.exe
+/* path to the file-copy helper: kscp.exe, or PuTTY's pscp.exe */
 char * PSCPPath = NULL ;
 
 // Repertoire de lancement
@@ -574,7 +574,7 @@ char * get_param_str( const char * val ) {
  * A shell with directory reporting emits ESC ] 7 ; file://host/path BEL on
  * every prompt.  do_osc() (terminal.c) hands us the payload; we validate and
  * store the path so kitty_current_dir() can offer it as the default remote
- * target for drag-drop pscp uploads and StartWinSCP.  Opt-in per session
+ * target for drag-drop kscp uploads and StartWinSCP.  Opt-in per session
  * (CONF_osc7_cwd_tracking, default off).  NOTHING is ever executed - this is
  * the safe replacement for the removed __pw/__ws title-scan dispatcher
  * (CVE-2024-23749 RCE), which stays dead. */
@@ -3597,7 +3597,7 @@ void WriteCountUpAndPath( void ) {
 	// Positionne la version du binaire
 	WriteParameter( INIT_SECTION, "Build", BuildVersionTime ) ;
 	
-	// Recherche pscp s'il existe
+	/* find the file-copy helper (kscp) if it is there */
 	SearchPSCP() ;
 	
 	// Recherche WinSCP s'il existe

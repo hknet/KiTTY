@@ -39,7 +39,7 @@ static int osc7_urldecode( char * s ) {
 	*w = '\0' ;
 	return ok ;
 }
-/* Whitelist: a path we are willing to splice into the pscp/WinSCP command
+/* Whitelist: a path we are willing to splice into the kscp/WinSCP command
  * lines.  Must be absolute; ASCII limited to alphanumerics and /._-~ ; raw
  * UTF-8 bytes (>=0x80, never a shell metacharacter) allowed.  Anything else -
  * space, quotes, ;|&$`<>*?()[]{} , controls - rejects the whole path, so we

@@ -9,10 +9,13 @@
 #ifndef KITTY_TRANSFER_TEXT_H
 #define KITTY_TRANSFER_TEXT_H
 
-/* ---- the permission dialog (a themed confirm box; the caption is how a
- * harness finds it) ---- */
-#define KT_XFER5113_CAP              "KiTTY file transfer"
+/* ---- the download-request dialog (files arriving; IDD_XFERDL): the request
+ * text with the folder, the red warning line, Allow / Change folder... / Deny.
+ * The caption is how a harness finds it. Should the template not load, the
+ * same words go through the generic confirm box. ---- */
+#define KT_XFER5113_CAP              "KiTTY++ File Download request"
 #define KT_XFER5113_BTN_ALLOW        "&Allow"
+#define KT_XFER5113_BTN_CHANGE_FOLDER "Change folder..."
 #define KT_XFER5113_BTN_DENY         "&Deny"
 #define KT_XFER5113_ASK_SEND         "The remote host wants to send files to this computer.\r\n\r\n" \
                                      "They will be saved in:\r\n%s"
@@ -20,7 +23,20 @@
 #define KT_XFER5113_ASK_RECV         "The remote host wants to read these files from this computer:\r\n\r\n%s"
 #define KT_XFER5113_ASK_RECV_WARN    "The files leave this computer. Allow only a transfer you started yourself."
 #define KT_XFER5113_ASK_RECV_MORE    "... and %d more"
-#define KT_XFER5113_ASK_RECV_BAD     "%s  (refused: not under the download folder)"
+#define KT_XFER5113_ASK_RECV_BAD     "%s  (refused: not under the upload folder)"
+
+/* ---- the upload-request dialog (files leaving; IDD_XFERREQ): one line per
+ * file with a checkbox, the count line above the list ---- */
+#define KT_XFER5113_REQ_CAP          "KiTTY++ File Upload request"
+#define KT_XFER5113_REQ_INTRO        "The remote host wants to read these files from this computer:"
+#define KT_XFER5113_REQ_COUNT        "%d file(s), %s in total"
+#define KT_XFER5113_REQ_BTN_ALLOW    "Allow &selected"
+#define KT_XFER5113_REQ_BTN_DENY     "&Deny"
+/* the "%s" of KT_XFER5113_REQ_COUNT */
+#define KT_XFER5113_SIZE_B           "%llu bytes"
+#define KT_XFER5113_SIZE_KB          "%.1f KB"
+#define KT_XFER5113_SIZE_MB          "%.1f MB"
+#define KT_XFER5113_SIZE_GB          "%.2f GB"
 
 /* ---- the folder picker ("Always open Save Dialog") ---- */
 #define KT_XFER5113_PICK_TITLE       "Save file to..."
@@ -47,7 +63,9 @@
 #define KT_XFER5113_ST_NO_FILES      "No files found"
 #define KT_XFER5113_ST_READ_FAILED   "Could not read"
 #define KT_XFER5113_ST_NOT_LISTED    "Not a listed file"
-#define KT_XFER5113_ST_OUTSIDE       "Not under the download folder"
+#define KT_XFER5113_ST_OUTSIDE       "Not under the upload folder"
+#define KT_XFER5113_ST_FULL_PATH     "Full path requests are not allowed"
+#define KT_XFER5113_ST_DENIED        "Permission denied"
 #define KT_XFER5113_ST_TOO_BIG_CMD   "Command too large"
 
 /* ---- Event Log ---- */

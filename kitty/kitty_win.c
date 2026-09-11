@@ -95,6 +95,10 @@ BOOL IsWow64() {
 }
 
 int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
+	return OpenFileNameFrom( hFrame, filename, Title, Filter, NULL ) ;
+}
+
+int OpenFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
 	char * szTitle = Title ;
 	char szFilter[4096] ; snprintf( szFilter, sizeof(szFilter), "%s", Filter ) ;
 	// on remplace les caractères '|' par des caractères NULL.
@@ -120,7 +124,8 @@ int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 	//ofn.nMaxFile		= sizeof(szFileName);
 	ofn.nMaxFile		= 4096 ;
 	ofn.lpstrTitle		= szTitle;
-	ofn.Flags		= OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST 
+	ofn.lpstrInitialDir	= ( initialdir && initialdir[0] ) ? initialdir : NULL ;
+	ofn.Flags		= OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST
 				| OFN_HIDEREADONLY | OFN_LONGNAMES
 				| OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_EXTENSIONDIFFERENT | OFN_DONTADDTORECENT
 				;
@@ -1072,7 +1077,7 @@ typedef struct {
 /* Grow one text control to fit its text at the DIALOG's font, offset by extra_dy,
  * and return the height change in pixels. Same measure-then-move approach the
  * notice box uses, so neither hand-rolls DPI scaling. */
-static int kitty_fit_text( HWND dlg, int ctlid, const char *text, int extra_dy ) {
+int kitty_fit_text( HWND dlg, int ctlid, const char *text, int extra_dy ) {
 	HWND c = GetDlgItem( dlg, ctlid ) ;
 	HFONT f = (HFONT)SendMessage( dlg, WM_GETFONT, 0, 0 ) ;
 	RECT r ; int w, cur, dh = 0 ;

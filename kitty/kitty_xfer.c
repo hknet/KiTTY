@@ -1,11 +1,11 @@
 /*
  * KiTTY file-transfer and external-tool integration, moved verbatim out of
- * kitty.c to shrink that monolith: the pscp transfer window (live output
+ * kitty.c to shrink that monolith: the kscp transfer window (live output
  * capture, cancel button, success tray balloon), the injection-hardened
- * pscp command builders (SendOneFile/SendFileList/SendFile,
+ * kscp command builders (SendOneFile/SendFileList/SendFile,
  * GetOneFile/GetFile, RunCmd), external-tool path discovery
  * (SearchWinSCP/SearchPSCP), StartWinSCP, and the
- * pscp-upload drag-and-drop handlers. Compiled into the same targets as
+ * kscp-upload drag-and-drop handlers. Compiled into the same targets as
  * kitty.c (kitty + kitty_portable), so behaviour is unchanged.
  */
 #include <io.h>
@@ -26,10 +26,11 @@
 #include "ssh.h"             /* the agent protocol, for the "is it loaded?" check */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions and wordings */
+#include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 /*
  * KiTTY: log a command line that had a password built into it.
  *
- * The command itself needs the secret - that is how pscp and WinSCP are
+ * The command itself needs the secret - that is how kscp and WinSCP are
  * driven - but the Event Log copy does not, and the Event Log is scrollable,
  * copyable and saveable. Callers record where the secret landed (the buffer
  * length either side of the insertion) and this blanks exactly that span, so
@@ -80,7 +81,7 @@ extern Conf *conf ;          /* the live session configuration (windows/window.c
  * KiTTY: the key file to hand a transfer helper - or NULL.
  *
  * A Hello-protected key (a .hello sidecar beside the PPK) is withheld
- * deliberately. Neither pscp/psftp nor WinSCP knows anything about the
+ * deliberately. Neither kscp nor WinSCP knows anything about the
  * sidecar or its recovery doors, so all a -i / /privatekey= switch buys
  * is a passphrase prompt that only the never-shown secret would answer -
  * exactly the text that must not be typed into another program. kageant
@@ -95,7 +96,7 @@ extern Conf *conf ;          /* the live session configuration (windows/window.c
  *
  * A "no" here is not an error - it is the one thing the user has to fix
  * before a transfer helper can use a Hello-protected key, so it is worth
- * saying out loud rather than letting pscp or WinSCP fail with a bare
+ * saying out loud rather than letting kscp or WinSCP fail with a bare
  * "server refused our key" that names no cause.
  */
 static bool kx_agent_holds(const char *keypath)
@@ -181,10 +182,10 @@ char * kitty_current_dir() ;                            /* kitty.c */
 // Envoi d'un fichier par SCP vers la racine du compte
 int SearchPSCP( void ) ;
 /* KiTTY security: launch a console command line WITHOUT a shell. Replaces
- * system()/"start" for the pscp/plink command builders below, so session fields
+ * system()/"start" for the kscp/klink command builders below, so session fields
  * spliced into the command line cannot inject shell commands - CreateProcess does
  * NOT run cmd.exe, so & | > ` and friends are taken literally (kills the shell
- * command-injection class). A new console is created (pscp/plink are console
+ * command-injection class). A new console is created (kscp/klink are console
  * tools); `wait` blocks until exit (the old inline system() behaviour) or returns
  * immediately (the old "start" new-window behaviour). Returns 0 on success.
  * That staged follow-up is DONE, and this note is kept because it says what
@@ -207,53 +208,139 @@ static int kitty_run_noshell( char *cmdline, int wait ) {
 	return 0 ;
 }
 
-/* Watch a launched transfer process (pscp/plink) on a background thread: wait
+/* Watch a launched transfer process (kscp/klink) on a background thread: wait
  * for it, and on a NON-zero exit pop a dialog with the exit code + a hint. Runs
  * off the GUI thread so a long transfer never freezes KiTTY, and the visible
  * console (CREATE_NEW_CONSOLE below) still shows live progress. Never shows the
  * command line (it carries -pw). */
-/* Transient system-tray balloon (non-modal, auto-dismiss): add a short-lived
- * notify icon on `hwnd`, fire the balloon, keep it alive briefly, then remove
- * it. Used for the file-transfer SUCCESS notice. Safe if hwnd is gone (the
- * Shell_NotifyIcon calls just fail). Runs on the watcher thread (the Sleep is
- * off the GUI thread). */
-static void kitty_tray_balloon( HWND hwnd, const char *title, const char *msg ) {
-	static volatile LONG s_uid = 0xC000 ;
-	NOTIFYICONDATA nid ;
-	memset( &nid, 0, sizeof(nid) ) ;
-	nid.cbSize = sizeof(nid) ;
-	nid.hWnd = hwnd ;
-	nid.uID = (UINT)InterlockedIncrement( &s_uid ) ;
-	nid.uFlags = NIF_ICON | NIF_INFO ;
-	nid.hIcon = LoadIcon( NULL, IDI_INFORMATION ) ;
-	nid.dwInfoFlags = NIIF_INFO ;
-	strncpy( nid.szInfoTitle, title, sizeof(nid.szInfoTitle)-1 ) ;
-	strncpy( nid.szInfo,      msg,   sizeof(nid.szInfo)-1 ) ;
-	if( Shell_NotifyIcon( NIM_ADD, &nid ) ) {
-		Sleep( 8000 ) ;   /* keep the icon present while the balloon is shown */
-		Shell_NotifyIcon( NIM_DELETE, &nid ) ;
+/* Transient system-tray balloon (non-modal, auto-dismiss), clickable: the
+ * balloon thread creates a hidden message-only window that owns the notify
+ * icon, fires the balloon, pumps messages until Windows reports the balloon
+ * gone (NIN_BALLOONTIMEOUT / NIN_BALLOONHIDE) or clicked
+ * (NIN_BALLOONUSERCLICK), or until the 8-second display is over, then removes
+ * the icon and the window - on every exit path, click or not. A click opens
+ * `path`: a file is shown selected in Explorer, a folder is opened; NULL =
+ * a plain balloon that does nothing on a click (the clipboard command's
+ * notice). Used for the file-transfer SUCCESS notice. Runs on its own thread
+ * (the pump must NOT sit on the GUI thread). */
+#define KTX_WM_BALLOON (WM_APP+13)     /* the notify icon's callback message */
+#define KTX_BALLOON_MS 8000
+#ifndef NIN_BALLOONSHOW
+#define NIN_BALLOONSHOW      (WM_USER + 2)
+#endif
+#ifndef NIN_BALLOONHIDE
+#define NIN_BALLOONHIDE      (WM_USER + 3)
+#endif
+#ifndef NIN_BALLOONTIMEOUT
+#define NIN_BALLOONTIMEOUT   (WM_USER + 4)
+#endif
+#ifndef NIN_BALLOONUSERCLICK
+#define NIN_BALLOONUSERCLICK (WM_USER + 5)
+#endif
+struct ktx_balloon { char *title ; char *msg ; char *path ; int done ; } ;
+
+/* What a click opens: the file selected in its folder, or the folder itself.
+ * A path that is gone by the time of the click opens nothing. */
+static void ktx_balloon_open( const char *path ) {
+	if( !path || !path[0] ) return ;
+	if( existdirectory( path ) ) {
+		ShellExecuteA( NULL, "open", path, NULL, NULL, SW_SHOWNORMAL ) ;
+	} else if( existfile( path ) ) {
+		char *args = dupprintf( "/select,\"%s\"", path ) ;
+		ShellExecuteA( NULL, "open", "explorer.exe", args, NULL, SW_SHOWNORMAL ) ;
+		sfree( args ) ;
 	}
 }
 
-/* Fire the success tray balloon on its own short-lived thread (kitty_tray_balloon
- * Sleeps to keep the icon alive, so it must NOT run on the GUI thread). */
-struct ktx_balloon { HWND hwnd ; char *title ; char *msg ; } ;
+static LRESULT CALLBACK ktx_balloon_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ) {
+	struct ktx_balloon *b = (struct ktx_balloon *)GetWindowLongPtr( hwnd, GWLP_USERDATA ) ;
+	if( msg == WM_CREATE ) {
+		SetWindowLongPtr( hwnd, GWLP_USERDATA, (LONG_PTR)((CREATESTRUCT *)lp)->lpCreateParams ) ;
+		return 0 ;
+	}
+	if( msg == KTX_WM_BALLOON && b ) {
+		/* Version-0 icon: lParam is the notification code, as in window.c.
+		 * A left click on the icon during its short life counts as a click. */
+		if( lp == NIN_BALLOONUSERCLICK || lp == WM_LBUTTONUP ) {
+			ktx_balloon_open( b->path ) ;
+			b->done = 1 ;
+		} else if( lp == NIN_BALLOONTIMEOUT || lp == NIN_BALLOONHIDE ) {
+			b->done = 1 ;
+		}
+		return 0 ;
+	}
+	return DefWindowProc( hwnd, msg, wp, lp ) ;
+}
+
+static void kitty_tray_balloon( struct ktx_balloon *b ) {
+	static volatile LONG s_uid = 0xC000 ;
+	static const char *cls = "KiTTYballoonwin" ;
+	NOTIFYICONDATA nid ;
+	HINSTANCE hi = GetModuleHandle( NULL ) ;
+	HWND hwnd ;
+	HRESULT hr ;
+	{	/* one class for every balloon; a second registration fails with
+		 * ERROR_CLASS_ALREADY_EXISTS, which is fine */
+		WNDCLASSA wc ; memset( &wc, 0, sizeof(wc) ) ;
+		wc.lpfnWndProc = ktx_balloon_wndproc ;
+		wc.hInstance = hi ;
+		wc.lpszClassName = cls ;
+		RegisterClassA( &wc ) ;
+	}
+	hr = CoInitializeEx( NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE ) ;
+	hwnd = CreateWindowExA( 0, cls, "", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, hi, b ) ;
+	if( hwnd ) {
+		memset( &nid, 0, sizeof(nid) ) ;
+		nid.cbSize = sizeof(nid) ;
+		nid.hWnd = hwnd ;
+		nid.uID = (UINT)InterlockedIncrement( &s_uid ) ;
+		nid.uFlags = NIF_ICON | NIF_INFO | NIF_MESSAGE ;
+		nid.uCallbackMessage = KTX_WM_BALLOON ;
+		nid.hIcon = LoadIcon( NULL, IDI_INFORMATION ) ;
+		nid.dwInfoFlags = NIIF_INFO ;
+		strncpy( nid.szInfoTitle, b->title, sizeof(nid.szInfoTitle)-1 ) ;
+		strncpy( nid.szInfo,      b->msg,   sizeof(nid.szInfo)-1 ) ;
+		if( Shell_NotifyIcon( NIM_ADD, &nid ) ) {
+			/* Keep the icon while the balloon shows: pump until Windows reports
+			 * it gone or clicked, or until the display time is over. */
+			DWORD start = GetTickCount() ;
+			while( !b->done ) {
+				DWORD spent = GetTickCount() - start ;
+				MSG m ;
+				if( spent >= KTX_BALLOON_MS ) break ;
+				MsgWaitForMultipleObjects( 0, NULL, FALSE, KTX_BALLOON_MS - spent, QS_ALLINPUT ) ;
+				while( PeekMessage( &m, NULL, 0, 0, PM_REMOVE ) ) {
+					TranslateMessage( &m ) ;
+					DispatchMessage( &m ) ;
+				}
+			}
+			Shell_NotifyIcon( NIM_DELETE, &nid ) ;
+		}
+		DestroyWindow( hwnd ) ;
+	}
+	if( SUCCEEDED( hr ) ) CoUninitialize() ;
+}
+
+/* Fire the success tray balloon on its own short-lived thread. */
 static DWORD WINAPI ktx_balloon_thread( LPVOID p ) {
 	struct ktx_balloon *b = (struct ktx_balloon *)p ;
-	kitty_tray_balloon( b->hwnd, b->title, b->msg ) ;
-	sfree( b->title ) ; sfree( b->msg ) ; free( b ) ;
+	kitty_tray_balloon( b ) ;
+	sfree( b->title ) ; sfree( b->msg ) ; sfree( b->path ) ; free( b ) ;
 	return 0 ;
 }
-static void kitty_tray_balloon_async( HWND hwnd, const char *title, const char *msg ) {
+/* path: what a click opens (a file or a folder), NULL = nothing. */
+static void kitty_tray_balloon_async( const char *title, const char *msg, const char *path ) {
 	struct ktx_balloon *b = (struct ktx_balloon *)malloc( sizeof(*b) ) ;
 	if( !b ) return ;
-	b->hwnd = hwnd ; b->title = dupstr(title) ; b->msg = dupstr(msg) ;
+	memset( b, 0, sizeof(*b) ) ;
+	b->title = dupstr(title) ; b->msg = dupstr(msg) ;
+	b->path = ( path && path[0] ) ? dupstr(path) : NULL ;
 	HANDLE t = CreateThread( NULL, 0, ktx_balloon_thread, b, 0, NULL ) ;
-	if( t ) CloseHandle( t ) ; else { sfree(b->title) ; sfree(b->msg) ; free(b) ; }
+	if( t ) CloseHandle( t ) ; else { sfree(b->title) ; sfree(b->msg) ; sfree(b->path) ; free(b) ; }
 }
 
 /* ---- KiTTY file-transfer window -----------------------------------------
- * Runs pscp with its output captured to a pipe (no shell -> injection
+ * Runs kscp with its output captured to a pipe (no shell -> injection
  * hardening preserved) and streams it LIVE into a scrollable window. On
  * SUCCESS the window auto-closes and a tray balloon pops; on FAILURE the
  * window STAYS OPEN showing the full error context (so the user can read /
@@ -269,9 +356,12 @@ struct ktx_win {
 	HANDLE proc, rd, thread ;
 	HFONT font, uifont ;   /* DPI-scaled: monospace output + UI-font button */
 	char *what ;
+	char *open_file, *open_dir ;   /* what the success balloon opens on a click:
+	                                * the file if it exists when done, else the folder */
+	int arriving ;                 /* 1 = a Get (files arriving), 0 = a Send */
 	int done ;
 	int cancelled ;
-	/* mini line-discipline so pscp's \r progress meter overwrites the current
+	/* mini line-discipline so kscp's \r progress meter overwrites the current
 	 * line in place (terminal-style) instead of stacking new lines: */
 	char curline[2048] ;   /* current uncommitted line */
 	int  curcol ;          /* write cursor within curline (\r resets to 0) */
@@ -287,7 +377,7 @@ static void ktx_set_curline( struct ktx_win *w ) {
 	w->curline[w->curlen] = save ;
 }
 
-/* Feed captured pscp bytes through a tiny line-discipline: '\r' returns the
+/* Feed captured kscp bytes through a tiny line-discipline: '\r' returns the
  * cursor to column 0 (so the progress meter overwrites its line in place),
  * '\n' commits the line and starts a new one, tabs expand, other control
  * chars are dropped. Keeps the live transfer readable as one updating line. */
@@ -346,7 +436,7 @@ static DWORD WINAPI ktx_reader_thread( LPVOID param ) {
 #endif
 
 /* (Re)create the transfer window's DPI-scaled fonts and apply them: a scalable
- * monospace font for the pscp output - the old ANSI_FIXED_FONT stock font was a
+ * monospace font for the kscp output - the old ANSI_FIXED_FONT stock font was a
  * fixed 96-dpi bitmap font that rendered tiny on high-DPI displays - and a
  * scalable UI font for the Close/Cancel button. Any previous fonts are freed. */
 static void ktx_apply_fonts( struct ktx_win *w, int dpi ) {
@@ -367,7 +457,11 @@ static void ktx_apply_fonts( struct ktx_win *w, int dpi ) {
 /* Esc closes (or cancels) the transfer window. Key events go to the focused
  * child control - the read-only edit or the Close button - whose default procs
  * ignore Esc, so we subclass both to forward Esc as a WM_CLOSE to the parent
- * (which then either closes a finished transfer or cancels a running one). */
+ * (which then either closes a finished transfer or cancels a running one).
+ * The frame itself holds the focus until a child is clicked (a plain window
+ * gets no focus hand-off at creation, nor when activated again), so the
+ * frame's own procedure handles WM_KEYDOWN the same way and passes the focus
+ * to the button whenever it receives it. */
 static LRESULT CALLBACK ktx_child_subclass( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
 	WNDPROC old = (WNDPROC)GetProp( h, "ktxoldproc" ) ;
 	if( msg == WM_KEYDOWN && wp == VK_ESCAPE ) {
@@ -438,9 +532,12 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		w->done = 1 ;
 		const char *what = w->what ? w->what : KT_XFER_TRANSFER ;
 		if( code == 0 && !w->cancelled ) {
-			char *m = dupprintf( KT_XFER_COMPLETE, what ) ;
-			kitty_tray_balloon_async( w->parent, KT_CAP_XFER, m ) ;
-			sfree( m ) ;
+			/* [KiTTY] transfernotification: a Get File that produced the one
+			 * file opens that file, anything else opens its folder */
+			if( w->open_file && existfile( w->open_file ) )
+				kitty_xfer_notify( what, 1, 1, w->open_file ) ;
+			else
+				kitty_xfer_notify( what, w->arriving, 0, w->open_dir ) ;
 			if( conf && conf_get_bool( conf, CONF_pscp_keep_window ) ) {
 				char *t = dupprintf( KT_XFER_COMPLETE_LINE, what ) ;
 				ktx_feed( w, t, (int)strlen(t) ) ; sfree( t ) ;
@@ -477,13 +574,19 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			if( w->done ) {
 				DestroyWindow( hwnd ) ;          /* finished -> button is "Close" */
 			} else if( !w->cancelled ) {
-				w->cancelled = 1 ;               /* running -> button is "Cancel": kill pscp */
+				w->cancelled = 1 ;               /* running -> button is "Cancel": kill kscp */
 				if( w->proc ) TerminateProcess( w->proc, 2 ) ;
 				SetWindowTextA( w->closebtn, KT_XFER_BTN_STOPPING ) ;
 				EnableWindow( w->closebtn, FALSE ) ;
 			}
 			return 0 ;
 		}
+		break ;
+	  case WM_SETFOCUS:                          /* the frame never keeps the focus */
+		if( w && w->closebtn ) SetFocus( w->closebtn ) ;
+		return 0 ;
+	  case WM_KEYDOWN:                           /* Esc on the frame = Close / Cancel */
+		if( wp == VK_ESCAPE ) { SendMessage( hwnd, WM_CLOSE, 0, 0 ) ; return 0 ; }
 		break ;
 	  case WM_CLOSE:
 		if( w && !w->done ) {                     /* X mid-transfer: cancel, wait for DONE */
@@ -504,6 +607,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			if( w->proc ) CloseHandle( w->proc ) ;
 			if( w->thread ) CloseHandle( w->thread ) ;
 			if( w->what ) sfree( w->what ) ;
+			sfree( w->open_file ) ; sfree( w->open_dir ) ;
 			free( w ) ;
 			SetWindowLongPtr( hwnd, GWLP_USERDATA, 0 ) ;
 		}
@@ -512,8 +616,13 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 	return DefWindowProc( hwnd, msg, wp, lp ) ;
 }
 
-/* Launch pscp into a transfer window (above). No shell. Returns 0 if launched. */
-static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const char *intro ) {
+/* Launch kscp into a transfer window (above). No shell. Returns 0 if launched.
+ * arriving: 1 = a Get (files arriving), 0 = a Send. open_file / open_dir:
+ * what the success balloon opens on a click - the file when it exists once
+ * kscp is done (a Get File of one file), else the folder (the download
+ * folder for a Get, the upload folder for a Send). */
+static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const char *intro,
+                           int arriving, const char *open_file, const char *open_dir ) {
 	static int registered = 0 ;
 	HINSTANCE hi = GetModuleHandle( NULL ) ;
 	if( !registered ) {
@@ -549,6 +658,9 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	memset( w, 0, sizeof(*w) ) ;
 	w->parent = parent ; w->proc = pi.hProcess ; w->rd = rd ;
 	w->what = dupstr( what ? what : KT_XFER_TRANSFER ) ;
+	w->open_file = ( open_file && open_file[0] ) ? dupstr( open_file ) : NULL ;
+	w->open_dir = ( open_dir && open_dir[0] ) ? dupstr( open_dir ) : NULL ;
+	w->arriving = arriving ;
 	char *title = dupprintf( KT_XFER_WINDOW_TITLE, w->what ) ;
 	int dpi0 = 96 ;
 	{ HDC pdc = GetDC( parent ) ; if( pdc ) { dpi0 = GetDeviceCaps( pdc, LOGPIXELSX ) ; ReleaseDC( parent, pdc ) ; } }
@@ -557,9 +669,11 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 		MulDiv(680,dpi0,96), MulDiv(420,dpi0,96),
 		parent, NULL, hi, w ) ;
 	sfree( title ) ;
-	if( !hwnd ) { CloseHandle( pi.hProcess ) ; CloseHandle( rd ) ; sfree( w->what ) ; free( w ) ; return -1 ; }
+	if( !hwnd ) { CloseHandle( pi.hProcess ) ; CloseHandle( rd ) ; sfree( w->what ) ;
+	              sfree( w->open_file ) ; sfree( w->open_dir ) ; free( w ) ; return -1 ; }
 	SetForegroundWindow( hwnd ) ;          /* bring the transfer window to the front */
 	BringWindowToTop( hwnd ) ;
+	SetFocus( w->closebtn ) ;              /* Esc reaches the button, not the bare frame */
 	if( intro && *intro ) {          /* show the target (user@host:dir) up top */
 		int n = GetWindowTextLength( w->edit ) ;
 		SendMessageA( w->edit, EM_SETSEL, n, n ) ;
@@ -572,7 +686,7 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 
 /* Bounded string append: never writes past dst[cap-1], always NUL-terminates,
  * silently truncates rather than overflowing. Replaces the unbounded strcat()s
- * in the pscp/plink command builders. */
+ * in the kscp/klink command builders. */
 static void bcat( char *dst, size_t cap, const char *s ) {
 	if( !s || cap==0 ) return ;
 	size_t dl = strlen(dst) ;
@@ -730,11 +844,11 @@ static void kx_pwfiles_release( int now ) {
 }
 
 void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) {
-	char buffer[4096], pscppath[4096]="", pscpport[4096]="22", remotedir[4096]=".",dir[4096], b1[256], tgt[4096] ;
+	char buffer[4096], pscppath[4096]="", pscpport[4096]="22", remotedir[4096]=".", b1[256], tgt[4096] ;
 	size_t pw_at = 0, pw_len = 0 ;   /* KiTTY: where the password lands in buffer */
 	int p ;
-	
-	if( distantdir == NULL ) { distantdir = kitty_current_dir() ; } 
+
+	if( distantdir == NULL ) { distantdir = kitty_current_dir() ; }
 	if( PSCPPath==NULL ) {
 		if( IniFileFlag == SAVEMODE_REG ) return ;
 		else if( !SearchPSCP() ) return ;
@@ -743,20 +857,18 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 		if( IniFileFlag == SAVEMODE_REG ) return ;
 		else if( !SearchPSCP() ) return ;
 	}
-		
+
 	if( !GetShortPathName( PSCPPath, pscppath, 4095 ) ) return ;
-	
-	if( ReadParameterN( INIT_SECTION, "uploaddir", dir, sizeof(dir) ) ) {
-		if( !existdirectory( dir ) ) 
-			strcpy( dir, InitialDirectory ) ;
-	}
-	if (strlen( dir ) == 0) strcpy( dir, InitialDirectory ) ;
+
+	/* The local upload folder ([KiTTY] uploaddir, the session's zUploadDir)
+	 * is where the Send File picker opens (SendFile below); the file to send
+	 * arrives here already chosen, as directory + filename. */
 
 	if( (distantdir != NULL ) && ( strlen(distantdir)>0 ) ) {
 		strcpy( remotedir, distantdir ) ;
 	} else if( strlen(conf_get_str(conf,CONF_pscpremotedir))>0 ) {
 		/* fixed remote dir sanity check: qcat below already quotes/escapes the
-		 * whole user@host:dir argument (and pscp runs via CreateProcess, no
+		 * whole user@host:dir argument (and kscp runs via CreateProcess, no
 		 * shell), so injection is handled - but reject control characters that a
 		 * quoted argument can't sensibly carry, falling back to the remote home. */
 		const char * rd = conf_get_str(conf,CONF_pscpremotedir) ; const char * q ; int ok = 1 ;
@@ -841,11 +953,13 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	debug_logevent_redacted( "Run", buffer, pw_at, pw_len ) ;
 	/* Capture output + show it on failure, instead of flashing a console shut
 	 * (so e.g. a server's exit-127 "Cannot initialize SFTP" is readable). */
-	{ char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), KT_XFER_UPLOAD_OF, filename ? filename : KT_XFER_FILE ) ;
+	{ char whatbuf[600], updir[4096] ; snprintf( whatbuf, sizeof(whatbuf), KT_XFER_UPLOAD_OF, filename ? filename : KT_XFER_FILE ) ;
 	  char *note = kx_hello_agent_note( conf ) ;
 	  char *intro = dupprintf( KT_XFER_UPLOADING,
 	                           note ? note : "", filename ? filename : KT_XFER_FILE, tgt ) ;
-	  kitty_run_xfer( hwnd, buffer, whatbuf, intro ) ;
+	  /* files leaving: the balloon's click opens the local upload folder */
+	  kitty_xfer_upload_dir( conf, updir, sizeof(updir) ) ;
+	  kitty_run_xfer( hwnd, buffer, whatbuf, intro, 0, NULL, updir ) ;
 	  sfree( intro ) ; sfree( note ) ; }
 
 	//debug_log("%s\n",buffer);MessageBox( NULL, buffer, "Info",MB_OK );
@@ -890,7 +1004,11 @@ void SendFile( HWND hwnd ) {
 		return ;
 		}
 
-	if( OpenFileName( hwnd, filename, KT_CAP_SEND_FILE, "All files (*.*)|*.*|" ) )
+	/* The picker opens in the upload folder (Connection > Transfers, else
+	 * the global one, else Documents). */
+	char updir[4096] ;
+	kitty_xfer_upload_dir( conf, updir, sizeof(updir) ) ;
+	if( OpenFileNameFrom( hwnd, filename, KT_CAP_SEND_FILE, "All files (*.*)|*.*|", updir ) )
 		if( strlen( filename ) > 0 ) {
 			SendFileList( hwnd, filename ) ;
 		}
@@ -992,8 +1110,17 @@ void GetOneFileTo( HWND hwnd, char * directory, const char * filename, const cha
     /* Capture output + show on failure (no vanishing console). */
     { char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), KT_XFER_DOWNLOAD_OF, filename ? filename : KT_XFER_FILE ) ;
       char *note = kx_hello_agent_note( conf ) ;
-      kitty_run_xfer( hwnd, buffer, whatbuf, note ) ;    /* no target line, but say it if the key needs loading */
-      sfree( note ) ; }
+      /* The balloon's click: the file it will have produced (dir + the remote
+       * name's last component) when that exists once kscp is done, else the
+       * folder. A wildcard or a trailing slash names a folder's contents. */
+      char *one = NULL ;
+      if( filename && filename[0] && !strpbrk( filename, "*?" ) && filename[strlen(filename)-1] != '/' ) {
+          const char *base = strrchr( filename, '/' ) ;
+          one = dupprintf( "%s\\%s", dir, base ? base + 1 : filename ) ;
+      }
+      /* no target line, but the note if the key needs loading */
+      kitty_run_xfer( hwnd, buffer, whatbuf, note, 1, one, dir ) ;
+      sfree( one ) ; sfree( note ) ; }
 
     //debug_log("%s\n",buffer);//MessageBox( NULL, buffer, "Info",MB_OK );
 
@@ -1013,7 +1140,7 @@ char * kitty_xfer_download_dir( Conf * cf, char * out, size_t outlen ) {
         s = conf_get_str( cf, CONF_zdownloaddir ) ;
         if( s && s[0] && existdirectory( s ) ) { snprintf( out, outlen, "%s", s ) ; return out ; }
     }
-    if( ReadParameterN( INIT_SECTION, "downloaddir", out, outlen ) && out[0] && existdirectory( out ) ) return out ;
+    if( ReadParameterN( INIT_SECTION, KI_DOWNLOADDIR, out, outlen ) && out[0] && existdirectory( out ) ) return out ;
     {
         const char * prof = getenv( "USERPROFILE" ) ;
         if( prof && prof[0] ) {
@@ -1023,6 +1150,81 @@ char * kitty_xfer_download_dir( Conf * cf, char * out, size_t outlen ) {
     }
     snprintf( out, outlen, "%s", InitialDirectory ) ;
     return out ;
+}
+
+/* The mirror of kitty_xfer_download_dir for files LEAVING this PC: the
+ * session's upload folder (Connection > Transfers), else the global Default
+ * Upload Folder (Transfers & Tools, [KiTTY] uploaddir), else the user's
+ * Documents folder, else the folder KiTTY started in. Where the Send File
+ * picker opens, and where a plain name the far end asks to read (kitten
+ * transfer) is looked up. Never the remote target of an upload. */
+char * kitty_xfer_upload_dir( Conf * cf, char * out, size_t outlen ) {
+    const char * s ;
+    out[0] = '\0' ;
+    if( cf != NULL ) {
+        s = conf_get_str( cf, CONF_zuploaddir ) ;
+        if( s && s[0] && existdirectory( s ) ) { snprintf( out, outlen, "%s", s ) ; return out ; }
+    }
+    if( ReadParameterN( INIT_SECTION, KI_UPLOADDIR, out, outlen ) && out[0] && existdirectory( out ) ) return out ;
+    {
+        const char * prof = getenv( "USERPROFILE" ) ;
+        if( prof && prof[0] ) {
+            snprintf( out, outlen, "%s\\Documents", prof ) ;
+            if( existdirectory( out ) ) return out ;
+        }
+    }
+    snprintf( out, outlen, "%s", InitialDirectory ) ;
+    return out ;
+}
+
+/* [KiTTY] transfernotification (default yes): the tray balloon after a
+ * finished transfer - kscp (Send File, Get File, drag-and-drop), ZModem
+ * receive and upload, kitten transfer arriving and leaving. `what` is the
+ * "%s" of KT_XFER_COMPLETE. A click on the balloon opens `path`: for files
+ * arriving the one file (shown selected in Explorer) or the folder they
+ * landed in; for files leaving the local upload folder. For files arriving
+ * the text gets a second line naming the folder (nfiles: 1 = one file, more
+ * = the count, 0 = not counted); a path that is a file names its folder. */
+int kitty_xfer_notify_enabled( void ) {
+    char v[64] = "" ;
+    if( ReadParameterN( INIT_SECTION, KI_TRANSFERNOTIFICATION, v, sizeof(v) ) && v[0] )
+        return stricmp( v, "no" ) != 0 && stricmp( v, "0" ) != 0 ;
+    return 1 ;
+}
+void kitty_xfer_notify( const char * what, int arriving, int nfiles, const char * path ) {
+    char * m, * done ;
+    if( !kitty_xfer_notify_enabled() ) return ;
+    done = dupprintf( KT_XFER_COMPLETE, what ? what : KT_XFER_TRANSFER ) ;
+    if( arriving && path && path[0] ) {
+        char folder[4096] ;
+        snprintf( folder, sizeof(folder), "%s", path ) ;
+        if( !existdirectory( folder ) ) {          /* a file: its folder */
+            char * bs = strrchr( folder, '\\' ) ;
+            if( bs && bs > folder ) *bs = '\0' ;
+        }
+        if( nfiles == 1 ) m = dupprintf( "%s\r\n" KT_XFER_SAVED_ONE, done, folder ) ;
+        else if( nfiles > 1 ) m = dupprintf( "%s\r\n" KT_XFER_SAVED_MANY, done, nfiles, folder ) ;
+        else m = dupprintf( "%s\r\n" KT_XFER_SAVED_TO, done, folder ) ;
+    } else {
+        m = dupstr( done ) ;
+    }
+    kitty_tray_balloon_async( KT_CAP_XFER, m, path ) ;   /* szInfo truncates a long path */
+    sfree( m ) ; sfree( done ) ;
+}
+
+/* Does this session show the Tools menu entry? 0 = Send File (kscp),
+ * 1 = Start WinSCP, 2 = Start FileZilla, 3 = Get File (kscp) - the same
+ * numbering as kitty_xfer_tool_ready for the first three. Off = the entry is
+ * not built and its [Shortcuts] key falls through to the terminal. */
+int kitty_xfer_tool_shown( Conf * cf, int which ) {
+    if( cf == NULL ) return 1 ;
+    switch( which ) {
+      case 0: return conf_get_bool( cf, CONF_tools_sendfile ) ;
+      case 1: return conf_get_bool( cf, CONF_tools_winscp ) ;
+      case 2: return conf_get_bool( cf, CONF_tools_filezilla ) ;
+      case 3: return conf_get_bool( cf, CONF_tools_getfile ) ;
+    }
+    return 1 ;
 }
 
 /* Is the helper behind a Tools-menu entry there? 0 = kscp, 1 = WinSCP. The
@@ -1164,7 +1366,7 @@ void RunCmd( HWND hwnd ) {
         if( conf_get_bool( conf, CONF_runcmdnotify ) ) {
             char note[4096+64] ;
             snprintf( note, sizeof(note), KT_XFER_RAN_CLIP, buffer ) ;
-            kitty_tray_balloon_async( hwnd, KT_CAP_KITTY, note ) ;
+            kitty_tray_balloon_async( KT_CAP_KITTY, note, NULL ) ;
         }
     }
 }
@@ -1819,7 +2021,9 @@ void StartFileZilla( HWND hwnd ) {
 }
 
 
-// Recherche le chemin vers le programme PSCP
+/* Find the file-copy helper: kscp.exe, else PuTTY's pscp.exe - the PSCPPath
+ * key, the pscpdir folder (kscp.exe then pscp.exe), kscp.exe beside kitty.exe,
+ * pscp.exe in PuTTY's folder, pscp.exe beside kitty.exe. */
 int SearchPSCP( void ) {
 	char buffer[4096], ki[10]="kscp.exe", pu[10]="pscp.exe" ;
 
@@ -1842,14 +2046,14 @@ int SearchPSCP( void ) {
 			if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
 		}
 	}
-	// kscp dans le meme repertoire
+	/* kscp.exe beside kitty.exe - the usual answer */
 	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, ki ) ;
 	if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
-	// pscp dans le repertoire normal de PuTTY
+	/* PuTTY's pscp.exe in PuTTY's usual folder */
 	snprintf( buffer, sizeof(buffer), "%s\\PuTTY\\%s", getenv("ProgramFiles"), pu ) ;
 	if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
 
-	// pscp dans le meme repertoire
+	/* PuTTY's pscp.exe beside kitty.exe */
 	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, pu ) ;
 	if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
 
@@ -1868,7 +2072,7 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
 	if( nb>0 ) for( i = 0; i < nb; i++ ) {
                 taille = DragQueryFile(hDropInfo, i, NULL, 0 ) ;   /* length, excluding NUL */
 		fic = (char*)malloc(taille+2) ;
-                { UINT _g = DragQueryFile( hDropInfo, i, fic, taille+1 ) ; fic[_g] = '\0' ; }  /* force-terminate: DragQueryFile doesn't always NUL-terminate -> a stray byte was reaching pscp ("...pdf\0") */
+                { UINT _g = DragQueryFile( hDropInfo, i, fic, taille+1 ) ; fic[_g] = '\0' ; }  /* force-terminate: DragQueryFile doesn't always NUL-terminate -> a stray byte was reaching kscp ("...pdf\0") */
 		if( !strcmp( fic+strlen(fic)-10,"\\kitty.ini" ) ) { // On charge le fichier de config dans l'editeur interne
 			char buffer[1024]="", shortname[1024]="" ;
 			if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) ) 

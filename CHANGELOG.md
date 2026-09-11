@@ -8,6 +8,75 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **One local upload folder, for kscp and kitten transfer.** The `[KiTTY]`
+  key `uploaddir` was read and never used, and its panel label, help and ini
+  comment called it a remote directory; its code had always checked a local
+  folder. It is now "Default Upload Folder:" on KiTTY++ Settings > Transfers &
+  Tools (with Locate...; empty = your Documents folder), and Connection >
+  Transfers has "Upload folder:" beside the download folder (`zUploadDir`,
+  empty = the global one, shown beneath as "Global: ..."). Tools > Send File
+  (kscp) opens its file window there, and a plain name a
+  `kitten transfer --direction=upload` asks for is looked up there. The
+  remote target of an upload is unchanged (OSC 7 directory, fixed remote
+  directory, home).
+- **Connection > Transfers regrouped, one help topic per group.** "Local
+  folders", "Remote directory for uploads", "OSC 5113 (kitten transfer)" -
+  the permission choice and "Always open Save Dialog" moved into it, joined
+  by "Max transfer size (MB):" (per arriving file, default 1024, 0 = no limit,
+  `TransferMaxMB`) and "Allow full path Upload-Requests" (off: a `/C:/...`
+  request is refused per file before any dialog, the others continue;
+  `TransferFullPath`) - and "Terminal Windows Tools Menu". The 4 GiB
+  constant of kitten transfer is gone: the setting is the only limit. The
+  global defaults of the two live on the new leaf KiTTY++ Settings >
+  Transfers & Tools > OSC 5113 (kitten) (`transfermaxmb`, `transferfullpath`);
+  a "Global: ... MB" line beneath the session field shows the global value.
+  The OSC 7 checkbox carries the note "OSC 7 needs serverside shell support -
+  see help for more details", and the help has the bash and zsh lines. The
+  KSCP panel opens with two lines that name Send File (kscp, Ctrl+F3) and
+  Get File (kscp, Ctrl+F4).
+- **"Terminal Windows Tools Menu" per session**: four checkboxes on
+  Connection > Transfers - Send File (kscp), Get File (kscp), Start WinSCP,
+  Start FileZilla, all on by default. Unchecked, the Tools menu entry is not
+  shown for that session and its `[Shortcuts]` key does nothing
+  (`ToolsMenuSendFile`, `ToolsMenuGetFile`, `ToolsMenuWinSCP`,
+  `ToolsMenuFileZilla`). F1 on Get File opens its walk-through.
+- **A dialog of its own for files leaving over the session**: "KiTTY++ File
+  Upload request" replaces the general confirm box when the host asks to read
+  files. One line per file with its full local path and a checkbox (all
+  checked at open), a requested folder walked before the dialog opens so its
+  files are listed, a count and total-size line, "Allow selected" / "Deny".
+  An unticked file stays listed and is refused when the host asks for it
+  (`Permission denied` for that file); Deny refuses all. Resizable, the list
+  grows with the window. The dialog for files arriving, "KiTTY++ File
+  Download request", is a dialog of its own too: the request text with the
+  folder, the red warning line, and "Allow" (the default) / "Change
+  folder..." / "Deny"; "Change folder..." opens the folder picker on the
+  folder shown and a pick is an Allow into that folder for this transfer
+  (with "Always open Save Dialog" on, the picker then does not open a second
+  time); Esc and closing mean Deny. The kscp transfer window is titled
+  "KiTTY++ transfer - ..." and its failure line names kscp.
+- **System notification on finished up-/download** (`transfernotification`
+  in `[KiTTY]`, default on, KiTTY++ Settings > Transfers & Tools): the tray
+  balloon after a kscp transfer now also follows a ZModem receive or upload
+  and a kitten transfer in either direction, which had none; the switch
+  gates all of them. The balloon is clickable: for files arriving it names
+  where they landed ("1 file saved to D:\Downloads", "3 files saved to
+  D:\Downloads\photos") and a click opens that - one file selected in
+  Explorer, several files their folder; after an upload the click opens the
+  local upload folder.
+- **The ZModem leaf under Transfers & Tools** states where the options and
+  the received files are: "Options for rz/sz are session-specific: Session >
+  Connection > ZModem." and "Received Files are saved to the download folder:
+  Session > Connection > Transfers".
+
+- **The Tools menu shows the keyboard shortcut next to "Start WinSCP", "Send
+  File (kscp)", "Get File (kscp)" and "Start FileZilla"** (Shift+F3, Ctrl+F3,
+  Ctrl+F4, Shift+F4), the way Windows menus do. The key shown is the one set
+  in the `[Shortcuts]` section of `kitty.ini`, and it disappears while
+  Shortcuts is switched off on that menu. "Start FileZilla" has a key of its
+  own now, Shift+F4 (`filezilla` in `[Shortcuts]`), that works only while the
+  menu entry exists. The two file entries were "Send file (pscp)" and "Get
+  file (kscp)..." before.
 - **The terminal answers the xterm colour queries OSC 10, 11 and 12
   (foreground, background, cursor colour).** vim and neovim use the background
   reply to pick a light or dark colour scheme. Setting a colour over these
@@ -16,22 +85,22 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   hold the answer back until Return. Refs cyd01/KiTTY#488
 - **Connection > Transfers: one panel for where files go.** The session's
   local download folder (empty = the global Download folder, shown beneath the
-  field as "Global: ..."; "Locate..." opens the folder picker), "Always ask
-  where to save a received file", and the permission for transfers the far
+  field as "Global: ..."; "Locate..." opens the folder picker), "Always open
+  Save Dialog", and the permission for transfers the far
   end starts ("Ask every time" / "Ask once per session" / "Never ask"). The
   OSC 7 remote-directory tracking and the fixed remote upload directory moved
   here from the KSCP panel, the download folder from the ZModem panel (same
   key, sessions keep their value). ZModem, Get file and kitten transfer all
   read it. A session without a folder now saves into the global Download
   folder, or your Downloads folder, instead of `C:\`.
-- **Tools > "Get file (kscp)..." is a menu entry now** (Ctrl+F4 did this
+- **Tools > "Get File (kscp)" is a menu entry now** (Ctrl+F4 did this
   silently before). The remote path comes from the clipboard: an absolute path
   is used as it is, a bare name is joined to the OSC 7 tracked directory when
   tracking is on, several lines are several files. A folder window opens on
   the download folder, then kscp fetches into the folder you chose. A Windows
   path on the clipboard is refused with a message. The help walks through it
   with examples (The Transfers panel).
-- **The Tools menu greys "Start WinSCP", "Send file" and "Get file" while the
+- **The Tools menu greys "Start WinSCP", "Send File" and "Get File" while the
   program behind them cannot be found,** instead of offering a click that ends
   in nothing.
 - **FileZilla integration beside WinSCP** (Refs cyd01/KiTTY#501): Tools >
@@ -94,6 +163,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **Esc closes the kscp transfer window.** The window kept the keyboard
+  focus on its frame, so Esc reached nothing; it now closes a finished
+  transfer and cancels a running one, as the Close and Cancel buttons do.
 - **"Record fingerprint of the key file" redrew the whole configuration panel.**
   The button refreshed every control after storing the fingerprint, which
   looked like the window reloading. It now refreshes the fingerprint box alone.

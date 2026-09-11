@@ -701,8 +701,11 @@
 /* Connection/SSH/KSCP */
 #define KT_KSCP_KSCP_FILE_TRANSFER_INTEGRATION       "KSCP file-transfer integration"
 #define KT_KSCP_KSCP_INTEGRATION                     "KSCP integration"
+#define KT_KSCP_SEND_FILE_LINE                       "Send File (kscp): Tools menu, Ctrl+F3. Sends a local file to the remote directory below."
+#define KT_KSCP_GET_FILE_LINE                        "Get File (kscp): Tools menu, Ctrl+F4. Fetches the path on the clipboard into the download folder."
 #define KT_KSCP_TRACK_REMOTE_DIRECTORY_OSC_7         "Track remote directory (OSC 7 shell integration)"
-#define KT_KSCP_DRAG_DROP_UPLOADS_AND_WINSCP         "Uploads go to the shell's current directory (OSC 7), " \
+#define KT_KSCP_OSC7_NEEDS_SHELL                     "OSC 7 needs serverside shell support - see help for more details"
+#define KT_KSCP_DRAG_DROP_UPLOADS_AND_WINSCP        "Uploads go to the shell's current directory (OSC 7), " \
         "not your home."
 #define KT_KSCP_FIXED_REMOTE_UPLOAD_DIRECTORY        "Fixed remote upload directory"
 #define KT_KSCP_ALWAYS_UPLOAD_HERE_INSTEAD_MUTUALLY  "Always upload here instead - mutually exclusive with " \
@@ -772,19 +775,30 @@
 
 /* Connection/Transfers - one destination and one permission model for kscp
  * Get file, ZModem and file transfers over the session (kitten transfer). */
-#define KT_TRANSFERS_TITLE                           "File Transfer Options"
-#define KT_TRANSFERS_RECEIVED                        "Where received files are saved"
+#define KT_TRANSFERS_TITLE                           "Transfers"
+#define KT_TRANSFERS_RECEIVED                        "Local folders"
 #define KT_TRANSFERS_LOCAL_DOWNLOAD_FOLDER           "Local download folder (empty = global):"
 #define KT_TRANSFERS_GLOBAL_IS                       "Global: %s"
-#define KT_TRANSFERS_GLOBAL_UNSET                    "(not set - global Downloadsfolder is used)"
+#define KT_TRANSFERS_GLOBAL_UNSET                    "(not set - the global Downloads folder is used)"
+#define KT_TRANSFERS_UPLOAD_FOLDER                   "Upload folder:"
+#define KT_TRANSFERS_GLOBAL_UPLOAD_UNSET             "(not set - your Documents folder is used)"
 #define KT_TRANSFERS_ALWAYS_ASK_DESTINATION          "Always open Save Dialog"
 #define KT_TRANSFERS_REMOTE_DIR                      "Remote directory for uploads"
-#define KT_TRANSFERS_FAR_END                         "Transfers started by the far end"
-#define KT_TRANSFERS_FAR_END_NOTE                    "File transfers in session (kitten transfer) needs your permission before data moves:"
+#define KT_TRANSFERS_KITTEN                          "OSC 5113 (kitten transfer)"
+#define KT_TRANSFERS_FAR_END_NOTE                    "File transfers in session (kitten transfer) need your permission before data moves:"
 #define KT_TRANSFERS_PERM_ALWAYS                     "Ask every time"
 #define KT_TRANSFERS_PERM_FIRST                      "Ask once per session"
 #define KT_TRANSFERS_PERM_NEVER                      "Never ask"
-#define KT_TRANSFERS_GET_FILE_NOTE                   "Tools > Get file (kscp) fetches the path on the clipboard into the download folder."
+#define KT_TRANSFERS_MAX_MB                          "Max transfer size (MB):"
+#define KT_TRANSFERS_MAX_MB_NOTE                     "Per arriving file; 0 = no limit."
+#define KT_TRANSFERS_GLOBAL_MAX_MB                   "Global: %d MB"
+#define KT_TRANSFERS_GLOBAL_MAX_MB_NONE              "Global: no limit"
+#define KT_TRANSFERS_FULL_PATH                       "Allow full path Upload-Requests"
+#define KT_TRANSFERS_TOOLS_MENU                      "Terminal Windows Tools Menu"
+#define KT_TRANSFERS_TOOLS_SENDFILE                  "Send File (kscp)"
+#define KT_TRANSFERS_TOOLS_GETFILE                   "Get File (kscp)"
+#define KT_TRANSFERS_TOOLS_WINSCP                    "Start WinSCP"
+#define KT_TRANSFERS_TOOLS_FILEZILLA                 "Start FileZilla"
 #define KT_KSCP_DIRS_ON_TRANSFERS                    "Download folder and remote directory: Connection > Transfers."
 #define KT_ZMODEM_FOLDER_ON_TRANSFERS                "Downloads saves to the folder set on Connection > Transfers."
 #define KT_KSET_TT_DOWNLOADDIR_NOTE                  "Where Get file, ZModem and transfers over the session save, unless the session sets its own folder."
@@ -824,7 +838,7 @@
 #define KT_SECURITY_SSH_AGENT                        "SSH key authentication"
 #define KT_SECURITY_WARN_WHEN_AN_UNVERIFIED_AGENT    "Warn if an unknown agent serves our SSH keys"
 #define KT_SECURITY_WINDOWS_SUPPORTED_FEATURES       "Windows: supported features"
-#define KT_SECURITY_NOTIFY_UNSUPPORTED_LIBS          "Notify the terminal about missing Windows library features"
+#define KT_SECURITY_NOTIFY_UNSUPPORTED_LIBS          "Report in the terminal what features this Windows Installation does not support"
 #define KT_SECURITY_MISSING_CAN_LIMIT                "Missing libraries can limit:"
 #define KT_SECURITY_LIMIT_HELLO                      "  -  Windows Hello key protection and confirmations"
 #define KT_SECURITY_LIMIT_DARK                       "  -  dark mode and themed dialogs"
@@ -859,9 +873,9 @@
 #define KT_FZ_ADDITIONAL_OPTIONS                     "FileZilla additional options"
 #define KT_FZ_PASSWORD_GROUP                         "Session password"
 #define KT_FZ_PASSWORD_HOW                           "How the session password reaches FileZilla:"
-#define KT_FZ_PW_ASK                                 "Ask in FileZilla - no secret leaves KiTTY++"
-#define KT_FZ_PW_TEMPCFG                             "Temporary configuration - a private file, deleted after the start"
-#define KT_FZ_PW_CMDLINE                             "Command line - other processes can read the password while FileZilla runs"
+#define KT_FZ_PW_ASK                                 "Ask in FileZilla"
+#define KT_FZ_PW_TEMPCFG                             "Temporary configuration file"
+#define KT_FZ_PW_CMDLINE                             "Command line (readable by other processes)"
 #define KT_FZ_KEY_PREFERRED                          "Preferred: an SSH key served by the agent (kageant). Then only user, host and port are handed over and FileZilla needs no password."
 #define KT_FZ_PATH_IS_GLOBAL                         "The path to the FileZilla executable is a global setting."
 #define KT_FZ_OPEN_GLOBAL_PANEL                      "Open App Settings"
@@ -883,8 +897,8 @@
 #define KT_ZMODEM_SELECT_COMMAND_TO_RECEIVE_ZMODEM   "Select command to receive zmodem data"
 #define KT_ZMODEM_SEND_COMMAND_SZ_2                  "Send command (sz):"
 #define KT_ZMODEM_SELECT_COMMAND_TO_SEND_ZMODEM      "Select command to send zmodem data"
-#define KT_ZMODEM_THEIR_OPTIONS_AND_THE_DOWNLOAD     "Their options, and the download folder, belong to a session " \
-        "and stay on Connection > ZModem."
+#define KT_ZMODEM_NOTE_OPTIONS                       "Options for rz/sz are session-specific: Session > Connection > ZModem."
+#define KT_ZMODEM_NOTE_RECEIVED                      "Received Files are saved to the download folder: Session > Connection > Transfers"
 
 /* Application/KiTTY++ Settings */
 #define KT_KSET_TITLE                                "KiTTY++ Settings"
@@ -972,12 +986,11 @@
 #define KT_KSET_TW_FUNKEYS                           "Function keys of a new session:"
 #define KT_KSET_TW_FUNKEYS_NOTE                      "What the Keyboard panel of a new session starts with; a " \
         "session's own choice always wins."
-#define KT_KSET_TW_PASTESIZE                         "Warn before pasting more than this many characters (0 = never):"
+#define KT_KSET_TW_PASTESIZE                         "Warn before pasting big clipboard content. Limit:"
+#define KT_KSET_TW_PASTESIZE_UNIT                    "characters (0 = never)"
 #define KT_CLIPBOARD_TITLE                           "Clipboard"
 #define KT_CLIPBOARD_PASTE                           "Large pastes"
-#define KT_CLIPBOARD_PASTE_WHAT                      "A paste above the limit is held back and asked about first, so " \
-        "a stray Enter cannot flood the shell."
-#define KT_CLIPBOARD_PASTE_SCOPE                     "There is no per-session setting for this."
+#define KT_CLIPBOARD_PASTE_SCOPE                     "There is no per-session limit."
 
 /* Application/Security/Host keys (kitty_hostkeys.c) */
 #define KT_HK_TITLE                                  "Host keys"
@@ -1165,7 +1178,16 @@
 #define KT_KSET_TT_PSCPPORT                          "Port for file transfers (* = the session's port):"
 #define KT_KSET_TT_DOWNLOADDIR                       "Download folder:"
 #define KT_KSET_TT_LOCATE                            "Locate..."
-#define KT_KSET_TT_UPLOADDIR                         "Remote upload folder:"
+#define KT_KSET_TT_UPLOADDIR                         "Default Upload Folder:"
+#define KT_KSET_TT_UPLOADDIR_NOTE                    "Where Send File opens and where a file the far end asks to read is looked up, unless the session sets its own folder."
+#define KT_KSET_TT_NOTIFY                            "System notification on finished up-/download"
+
+/* Application/KiTTY++ Settings/Transfers & Tools/OSC 5113 (kitten) */
+#define KT_KSET_KITTEN_LEAF                          "OSC 5113 (kitten)"
+#define KT_KSET_KITTEN_TITLE                         "Transfers over the session (kitten transfer): global defaults"
+#define KT_KSET_KITTEN_DEFAULTS                      "Defaults for every session"
+#define KT_KSET_KITTEN_MAX_NOTE                      "Per arriving file; 0 = no limit."
+#define KT_KSET_KITTEN_NOTE                          "A session can set its own on Connection > Transfers."
 
 /* Application/KiTTY++ Settings/Launcher */
 #define KT_KSET_LA_TITLE                             "The launcher"
@@ -1323,8 +1345,8 @@
 #define KT_CAP_WORKPLACE_INACTIVE                    "Workplace proxy mode is not active"
 #define KT_CAP_URL_HANDLERS                          "KiTTY URL handlers"
 #define KT_CAP_ZMODEM                                "KiTTY ZModem"
-#define KT_CAP_XFER                                  "KiTTY transfer"
-#define KT_CAP_XFER_CANCELLED                        "KiTTY transfer - cancelled"
+#define KT_CAP_XFER                                  "KiTTY++ transfer"
+#define KT_CAP_XFER_CANCELLED                        "KiTTY++ transfer - cancelled"
 #define KT_CAP_TRANSFER_PROBLEM                      "Transfer problem"
 #define KT_CAP_RUN_CLIP_CMD                          "KiTTY - run clipboard command"
 #define KT_CAP_KEY_NOT_IN_AGENT                      "KiTTY - the key is not in the agent"
@@ -1725,7 +1747,7 @@
 #define KT_REG_STATE_NOT_REGISTERED                  "%s  not registered"
 #define KT_REG_STATE_OTHER_KITTY                     "%s  another KiTTY: %s"
 
-/* kitty_xfer.c: the pscp transfer window, the clipboard command, WinSCP */
+/* kitty_xfer.c: the kscp transfer window, the clipboard command, WinSCP */
 #define KT_XFER_HELLO_NOTE                           "This session's key is protected by Windows Hello, and the agent " \
         "does not hold it.\r\n" \
         "A transfer client cannot open a protected key file itself. Load " \
@@ -1737,16 +1759,27 @@
 #define KT_XFER_BTN_CLOSE                            "&Close"
 #define KT_XFER_BTN_STOPPING                         "Stopping..."
 #define KT_XFER_COMPLETE                             "%s complete."
+/* The balloon's second line for files ARRIVING: where they landed (a click
+ * on the balloon opens it). */
+#define KT_XFER_SAVED_ONE                            "1 file saved to %s"
+#define KT_XFER_SAVED_MANY                           "%d files saved to %s"
+#define KT_XFER_SAVED_TO                             "Files saved to %s"
+/* The "%s" of KT_XFER_COMPLETE for the transfers that have no window of
+ * their own (the transfernotification balloon). */
+#define KT_XFER_WHAT_ZMODEM_RECV                     "ZModem download"
+#define KT_XFER_WHAT_ZMODEM_SEND                     "ZModem upload"
+#define KT_XFER_WHAT_KITTEN_RECV                     "File download (kitten transfer)"
+#define KT_XFER_WHAT_KITTEN_SEND                     "File upload (kitten transfer)"
 #define KT_XFER_COMPLETE_LINE                        "\r\n==== %s complete ====\r\n"
 #define KT_XFER_CANCELLED_LINE                       "\r\n==== %s cancelled ====\r\n"
 #define KT_XFER_HINT_127                             "\r\n\r\nExit 127 = the server could not start the SCP/SFTP " \
         "subsystem (command not found). Try switching the transfer " \
         "protocol (Connection -> SSH -> WinSCP) between SCP " \
         "and SFTP, or check the server's sftp-server/scp."
-#define KT_XFER_FAILED_LINE                          "\r\n==== %s FAILED  (pscp exit code %lu) ====%s\r\n"
-#define KT_XFER_FAILED_TITLE                         "KiTTY transfer - FAILED (exit %lu)"
-#define KT_XFER_LAUNCH_FAILED                        "Could not launch the transfer client (pscp)."
-#define KT_XFER_WINDOW_TITLE                         "KiTTY transfer - %s"
+#define KT_XFER_FAILED_LINE                          "\r\n==== %s FAILED  (kscp exit code %lu) ====%s\r\n"
+#define KT_XFER_FAILED_TITLE                         "KiTTY++ transfer - FAILED (exit %lu)"
+#define KT_XFER_LAUNCH_FAILED                        "Could not launch the transfer client (kscp)."
+#define KT_XFER_WINDOW_TITLE                         "KiTTY++ transfer - %s"
 #define KT_XFER_UPLOAD_OF                            "Upload of \"%s\""
 #define KT_XFER_UPLOADING                            "%sUploading  %s  ->  %s\r\n\r\n"
 #define KT_XFER_DOWNLOAD_OF                          "Download of \"%s\""
@@ -2514,8 +2547,8 @@
 #define KT_SYSMENU_WINDOW                            "&Window"
 #define KT_SYSMENU_PORT_FORWARDINGS                  "Port forwar&dings"
 #define KT_SYSMENU_START_WINSCP                      "Start Win&SCP"
-#define KT_SYSMENU_SEND_FILE_PSCP                    "Send file (&pscp)"
-#define KT_SYSMENU_GET_FILE                          "&Get file (kscp)..."
+#define KT_SYSMENU_SEND_FILE_PSCP                    "Send File (&kscp)"
+#define KT_SYSMENU_GET_FILE                          "&Get File (kscp)"
 #define KT_SYSMENU_START_FILEZILLA                   "Start File&Zilla"
 #define KT_SYSMENU_OPEN_MNOTEPAD                     "Open &mNotepad"
 #define KT_SYSMENU_OPEN_MNOTEPAD_CLIP                "Open mNotepad with clip&board"
@@ -2536,6 +2569,46 @@
 #define KT_SYSMENU_TOOLS                             "&Tools"
 #define KT_SYSMENU_CHECK_UPDATES                     "Check for &updates..."
 #define KT_SYSMENU_NO_SESSIONS                       "(No sessions)"
+
+/* Key names for the shortcut shown after a menu item (kitty_shortcuts.c
+ * ShortcutKeyText): modifiers are joined with "+", e.g. "Ctrl+Alt+T". */
+#define KT_KEYTEXT_CTRL                              "Ctrl"
+#define KT_KEYTEXT_SHIFT                             "Shift"
+#define KT_KEYTEXT_ALT                               "Alt"
+#define KT_KEYTEXT_ALTGR                             "AltGr"
+#define KT_KEYTEXT_WIN                               "Win"
+#define KT_KEYTEXT_FKEY                              "F%d"
+#define KT_KEYTEXT_NUMPAD                            "Num %d"
+#define KT_KEYTEXT_ENTER                             "Enter"
+#define KT_KEYTEXT_ESC                               "Esc"
+#define KT_KEYTEXT_SPACE                             "Space"
+#define KT_KEYTEXT_PRINTSCREEN                       "PrtSc"
+#define KT_KEYTEXT_PAUSE                             "Pause"
+#define KT_KEYTEXT_BREAK                             "Break"
+#define KT_KEYTEXT_PAGEUP                            "PgUp"
+#define KT_KEYTEXT_PAGEDOWN                          "PgDn"
+#define KT_KEYTEXT_LEFT                              "Left"
+#define KT_KEYTEXT_RIGHT                             "Right"
+#define KT_KEYTEXT_UP                                "Up"
+#define KT_KEYTEXT_DOWN                              "Down"
+#define KT_KEYTEXT_HOME                              "Home"
+#define KT_KEYTEXT_END                               "End"
+#define KT_KEYTEXT_BACKSPACE                         "Backspace"
+#define KT_KEYTEXT_TAB                               "Tab"
+#define KT_KEYTEXT_INSERT                            "Ins"
+#define KT_KEYTEXT_DELETE                            "Del"
+#define KT_KEYTEXT_ATTN                              "Attn"
+#define KT_KEYTEXT_NUMLOCK                           "NumLock"
+#define KT_KEYTEXT_SCROLLLOCK                        "ScrollLock"
+#define KT_KEYTEXT_NUM_ADD                           "Num +"
+#define KT_KEYTEXT_NUM_SUBTRACT                      "Num -"
+#define KT_KEYTEXT_NUM_MULTIPLY                      "Num *"
+#define KT_KEYTEXT_NUM_DIVIDE                        "Num /"
+#define KT_KEYTEXT_NUM_DECIMAL                       "Num ."
+#define KT_KEYTEXT_OEM_PLUS                          "+"
+#define KT_KEYTEXT_OEM_COMMA                         ","
+#define KT_KEYTEXT_OEM_MINUS                         "-"
+#define KT_KEYTEXT_OEM_PERIOD                        "."
 
 /* windows/putty.c: command-line diagnostics and the do-and-exit switches */
 #define KT_CLI_BAD_ARG                               "bad argument \"%s\" to option \"%s\""

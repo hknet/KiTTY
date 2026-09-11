@@ -139,13 +139,38 @@ def template_options() -> set[tuple[str, str]]:
     return ini_options(lines)
 
 
+INIKEYS = ROOT / "kitty" / "kitty_inikeys.h"
+
+
+def inikey_macros() -> dict[str, str]:
+    """kitty/kitty_inikeys.h: KI_NAME "key" - a key spelled once, as a macro.
+
+    New code names a key through these rather than as a string literal, so
+    the scan below expands the macros back into the literal the call would
+    have carried; every pattern then matches as before.
+    """
+    if not INIKEYS.exists():
+        return {}
+    return dict(re.findall(r'#define\s+(KI_\w+)\s+"([^"]+)"', read_text(INIKEYS)))
+
+
 def source_options() -> set[tuple[str, str]]:
     opts: set[tuple[str, str]] = set()
     files = list((ROOT / "kitty").glob("*.c")) + list((ROOT / "windows").glob("*.c"))
+    macros = inikey_macros()
     for path in files:
         text = read_text(path)
+        if macros:
+            text = re.sub(r"\bKI_\w+\b",
+                          lambda m: '"%s"' % macros[m.group(0)] if m.group(0) in macros else m.group(0),
+                          text)
         # ReadParameterN is the size-checked variant of the same call.
         for key in re.findall(r'ReadParameterN?\s*\(\s*INIT_SECTION\s*,\s*"([^"]+)"', text):
+            opts.add(("KiTTY", key))
+        # The KiTTY++ Settings table (kitty_config.c): a row per key the
+        # settings tree reads from and writes to the store.
+        #   { INIT_SECTION, "key", KSET_KIND, ...
+        for key in re.findall(r'\{\s*INIT_SECTION\s*,\s*"([^"]+)"\s*,\s*KSET_', text):
             opts.add(("KiTTY", key))
         for m in re.finditer(r'readINI\s*\([^;\n]*?"([^"]+)"\s*,\s*"([^"]+)"', text):
             section, key = m.groups()

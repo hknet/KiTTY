@@ -6,6 +6,7 @@
 #include "rcstuff.h"
 #include "putty-rc.h"
 #include "../kitty/kitty_text.h"
+#include "../kitty/kitty_transfer_text.h"   /* IDD_XFERREQ, IDD_XFERDL: caption and buttons */
 
 #define APPNAME "KiTTY"
 #define APPDESC "SSH, Telnet, Rlogin, and SUPDUP client"
@@ -355,6 +356,48 @@ BEGIN
     LTEXT           "", IDC_CONFIRM_WARN, 10, 68, 260, 16
     PUSHBUTTON      "&Yes", IDYES, 166, 89, 50, 14
     DEFPUSHBUTTON   "&No", IDNO, 220, 89, 50, 14
+END
+
+/* The upload-request dialog (kitty/kitty_transfer.c): the far end asks to
+ * read files from this PC over the session. Resizable (WS_THICKFRAME): the
+ * list grows with the window, the buttons stay at the bottom right, the
+ * two lines above and the red line below keep their height - laid out in
+ * WM_SIZE. One line per file, a checkbox in front of each (LVS_EX_CHECKBOXES,
+ * set at runtime). "Deny" is the DEFAULT: a reflex Return must not let
+ * files leave. */
+IDD_XFERREQ DIALOGEX DISCARDABLE 0, 0, 360, 200
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+CAPTION KT_XFER5113_REQ_CAP
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "", IDC_XFERREQ_INTRO, 10, 9, 340, 10
+    LTEXT           "", IDC_XFERREQ_COUNT, 10, 22, 340, 10
+    CONTROL         "", IDC_XFERREQ_LIST, "SysListView32",
+                    LVS_REPORT | LVS_NOCOLUMNHEADER | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,
+                    10, 36, 340, 120
+    LTEXT           "", IDC_XFERREQ_WARN, 10, 160, 340, 10
+    PUSHBUTTON      KT_XFER5113_REQ_BTN_ALLOW, IDYES, 236, 178, 60, 14
+    DEFPUSHBUTTON   KT_XFER5113_REQ_BTN_DENY, IDNO, 300, 178, 50, 14
+END
+
+/* The download-request dialog (kitty/kitty_transfer.c): the far end wants to
+ * send files to this PC over the session. The request text names the folder
+ * they land in; the text control is a starting height, kt_dl_dlgproc grows
+ * it to fit a long path and moves the red line and the buttons down. "Allow"
+ * is the DEFAULT (nothing leaves this PC; the files land in the folder shown),
+ * "Change folder..." opens the folder picker on that folder and a pick closes
+ * the dialog as Allow with the picked folder, "Deny" also answers Esc and the
+ * close box. SS_NOPREFIX: a folder path may contain '&'. */
+IDD_XFERDL DIALOGEX DISCARDABLE 0, 0, 360, 108
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION KT_XFER5113_CAP
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "", IDC_XFERDL_TEXT, 10, 9, 340, 56, SS_NOPREFIX
+    LTEXT           "", IDC_XFERDL_WARN, 10, 68, 340, 10
+    DEFPUSHBUTTON   KT_XFER5113_BTN_ALLOW, IDYES, 176, 84, 50, 14
+    PUSHBUTTON      KT_XFER5113_BTN_CHANGE_FOLDER, IDC_XFERDL_CHANGE, 230, 84, 66, 14
+    PUSHBUTTON      KT_XFER5113_BTN_DENY, IDNO, 300, 84, 50, 14
 END
 
 IDD_INFOBOX DIALOGEX DISCARDABLE 0, 0, 350, 28
