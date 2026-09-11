@@ -446,6 +446,15 @@ struct dlgcontrol {
              * line, with a horizontal scrollbar if necessary.
              */
             bool wrap;
+            /*
+             * KiTTY: the minimum number of lines the Windows layout
+             * reserves for a wrapped text. The height is otherwise fixed
+             * by the text the control is built with, so a note whose
+             * text is set later (dlg_label_change) and may be longer
+             * than the build text needs room reserved up front. 0 = as
+             * many lines as the build text needs.
+             */
+            int lines;
         } text;
     };
 };

@@ -796,7 +796,11 @@ char default_init_file_content[] =
 \n\
 [Shortcuts]\n\
 \n\
-; This section holds two separate mechanisms that happen to share it.\n\
+; This section holds two separate mechanisms that happen to share it. Both\n\
+; are edited on Application > KiTTY++ Settings > Keys & Mouse > Shortcuts (the\n\
+; actions) and its AutoText leaf (the texts): press the keys in the panel's Key\n\
+; field and Save; the panel writes the lines below in the same syntax, so the\n\
+; file stays hand-editable.\n\
 ;\n\
 ; FIRST: type this text for me. Pick any key combination, and pressing it\n\
 ; types a piece of text into the session instead of reaching the host. It takes\n\
@@ -813,6 +817,8 @@ char default_init_file_content[] =
 ; with spaces.\n\
 ; In the text, \\n presses Enter, \\t is Tab, \\h is Backspace, \\p waits a second,\n\
 ; \\s05 waits five, and \\\\ is a literal backslash.\n\
+; The text is sent followed by Enter unless it already ends in \\n.\n\
+; A text ending in a backslash is sent without the Enter; that backslash is not typed.\n\
 ;list={F5} {CONTROL}{F6}\n\
 \n\
 ; SECOND: the named actions below. These are KiTTY's own functions - roll the\n\
@@ -908,16 +914,17 @@ char default_init_file_content[] =
 ;    No default key - it does nothing until you set one here.\n\
 ;fontblackandwhite=\n\
 \n\
-; Decrease font size\n\
-;    No default key - it does nothing until you set one here.\n\
+; Decrease font size (default is CONTROL+NUMPAD-)\n\
 ;fontdown=\n\
 \n\
 ; Switch font to negative colors\n\
 ;    No default key - it does nothing until you set one here.\n\
 ;fontnegative=\n\
 \n\
-; Increase font size\n\
-;    No default key - it does nothing until you set one here.\n\
+; Font size back to the session's setting (default is CONTROL+NUMPAD0)\n\
+;fontreset=\n\
+\n\
+; Increase font size (default is CONTROL+NUMPAD+)\n\
 ;fontup=\n\
 \n\
 ; Switch to full screen\n\
@@ -982,6 +989,12 @@ char default_init_file_content[] =
 \n\
 ; Enable or disable logging (default is SHIFT+F5)\n\
 ;switchlogmode=\n\
+\n\
+; Transparency: less (default is CONTROL+DOWN) and more (default is CONTROL+UP)\n\
+;    Both do nothing while transparency is off for the session (the\n\
+;    [KiTTY] transparency switch, or a level locked at -1).\n\
+;transparencydown=\n\
+;transparencyup=\n\
 \n\
 ; Send the window to the system tray (default is CONTROL+F6)\n\
 ;tray=\n\

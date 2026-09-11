@@ -580,30 +580,31 @@ void checkbox(struct ctlpos *cp, const char *text, int id)
  * wrapped text (a malloc'ed string containing \ns), and also
  * returns the number of lines required.
  */
-char *staticwrap(struct ctlpos *cp, HWND hwnd, const char *text, int *lines)
+/*
+ * KiTTY: the wrapping itself, for a width in PIXELS and the font of the
+ * window given. staticwrap below feeds it the layout width at build time;
+ * dlg_label_change feeds it the static's own client width at run time, so a
+ * replacement text gets the same line breaks the build text got. max_lines
+ * > 0 stops the wrapping at that many lines and leaves the remainder on the
+ * last one: a static built one line tall keeps showing its text clipped at
+ * the right, where the reader can see that something is missing, rather
+ * than hiding a second line below its bottom edge.
+ */
+static char *staticwrap_px(HWND hwnd, int width, const char *text,
+                           int max_lines, int *lines)
 {
     HDC hdc = GetDC(hwnd);
-    int width, nlines, j;
+    int nlines, j;
     INT *pwidths, nfit;
     SIZE size;
     const char *p;
-    RECT r;
     HFONT oldfont, newfont;
 
     strbuf *sb = strbuf_new();
     p = text;
     pwidths = snewn(1+strlen(text), INT);
 
-    /*
-     * Work out the width the text will need to fit in, by doing
-     * the same adjustment that the `statictext' function itself
-     * will perform.
-     */
     SetMapMode(hdc, MM_TEXT);          /* ensure logical units == pixels */
-    r.left = r.top = r.bottom = 0;
-    r.right = cp->width;
-    MapDialogRect(hwnd, &r);
-    width = r.right;
 
     nlines = 1;
 
@@ -612,10 +613,13 @@ char *staticwrap(struct ctlpos *cp, HWND hwnd, const char *text, int *lines)
      * GetTextExtent*, or silly things will happen.
      */
     newfont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+    if (!newfont && GetParent(hwnd))
+        newfont = (HFONT)SendMessage(GetParent(hwnd), WM_GETFONT, 0, 0);
     oldfont = SelectObject(hdc, newfont);
 
     while (*p) {
-        if (!GetTextExtentExPoint(hdc, p, strlen(p), width,
+        if ((max_lines > 0 && nlines >= max_lines) ||
+            !GetTextExtentExPoint(hdc, p, strlen(p), width,
                                   &nfit, pwidths, &size) ||
             (size_t)nfit >= strlen(p)) {
             /*
@@ -652,13 +656,29 @@ char *staticwrap(struct ctlpos *cp, HWND hwnd, const char *text, int *lines)
     }
 
     SelectObject(hdc, oldfont);
-    ReleaseDC(cp->hwnd, hdc);
+    ReleaseDC(hwnd, hdc);
 
     if (lines) *lines = nlines;
 
     sfree(pwidths);
 
     return strbuf_to_str(sb);
+}
+
+char *staticwrap(struct ctlpos *cp, HWND hwnd, const char *text, int *lines)
+{
+    RECT r;
+
+    /*
+     * Work out the width the text will need to fit in, by doing
+     * the same adjustment that the `statictext' function itself
+     * will perform.
+     */
+    r.left = r.top = r.bottom = 0;
+    r.right = cp->width;
+    MapDialogRect(hwnd, &r);
+
+    return staticwrap_px(hwnd, r.right, text, 0, lines);
 }
 
 /*
@@ -1953,6 +1973,10 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
                 num_ids = 1;
                 wrapped = staticwrap(&pos, cp->hwnd,
                                      ctrl->label, &lines);
+                /* KiTTY: a note whose text is set at run time reserves
+                 * the lines it may need (see text.lines in dialog.h). */
+                if (lines < ctrl->text.lines)
+                    lines = ctrl->text.lines;
                 escaped = shortcut_escape(wrapped, NO_SHORTCUT);
                 statictext(&pos, escaped, lines, base_id);
                 sfree(escaped);
@@ -2930,11 +2954,61 @@ void dlg_listbox_select(dlgcontrol *ctrl, dlgparam *dp, int index)
     SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), msg, index, 0);
 }
 
+/*
+ * KiTTY: put replacement text into a CTRL_TEXT after it was built.
+ *
+ * A wrapped text control is a STATIC with SS_LEFTNOWORDWRAP: it never wraps
+ * by itself, the line breaks are the newlines staticwrap put into the build
+ * text. A plain SetWindowText with the new text therefore showed ONE line
+ * clipped at the right edge, however tall the control was (measured on the
+ * shortcut editor's user-command note: "...that command keeps its me").
+ * So the new text is wrapped the same way, at the width the static has now
+ * and in its own font, into at most the lines its height holds; a control
+ * expected to carry a longer text than it was built with reserves those
+ * lines at build time (text.lines). The unwrapped kind is a single-line
+ * borderless edit box and takes the text as it is.
+ */
+static void kitty_text_settext(struct winctrl *c, HWND h, const char *text,
+                               bool escape)
+{
+    char *wrapped = NULL, *escaped;
+    int width, height, max_lines = 1;
+
+    if (!h)
+        return;
+    if (c->ctrl->text.wrap && !strchr(text, '\n')) {
+        RECT r;
+        HDC hdc;
+        TEXTMETRIC tm;
+        HFONT font, old;
+
+        GetClientRect(h, &r);
+        width = r.right - r.left;
+        height = r.bottom - r.top;
+        hdc = GetDC(h);
+        font = (HFONT)SendMessage(h, WM_GETFONT, 0, 0);
+        old = SelectObject(hdc, font);
+        if (GetTextMetrics(hdc, &tm) && tm.tmHeight > 0)
+            max_lines = (height + tm.tmHeight / 2) / tm.tmHeight;
+        SelectObject(hdc, old);
+        ReleaseDC(h, hdc);
+        if (max_lines < 1)
+            max_lines = 1;
+        if (width > 0)
+            wrapped = staticwrap_px(h, width, text, max_lines, NULL);
+    }
+    escaped = escape ? shortcut_escape(wrapped ? wrapped : text, NO_SHORTCUT)
+                     : NULL;
+    SetWindowText(h, escaped ? escaped : wrapped ? wrapped : text);
+    sfree(escaped);
+    sfree(wrapped);
+}
+
 void dlg_text_set(dlgcontrol *ctrl, dlgparam *dp, char const *text)
 {
     struct winctrl *c = dlg_findbyctrl(dp, ctrl);
     assert(c && c->ctrl->type == CTRL_TEXT);
-    SetWindowText(kitty_cfg_item(dp->hwnd, c->base_id), text);
+    kitty_text_settext(c, kitty_cfg_item(dp->hwnd, c->base_id), text, false);
 }
 
 /*
@@ -2999,17 +3073,18 @@ void dlg_label_change(dlgcontrol *ctrl, dlgparam *dp, char const *text)
         break;
       case CTRL_TEXT:
         /* KiTTY: a text control is a single static (or, when it does not wrap,
-         * one borderless read-only editbox), and SetDlgItemText below changes
-         * either. So a line of explanatory text can state something that MOVES
-         * instead of being fixed when the panel was built and then quietly
-         * lying about the current state. Reaching here used to assert.
+         * one borderless read-only editbox). So a line of explanatory text
+         * can state something that MOVES instead of being fixed when the
+         * panel was built and then quietly lying about the current state.
+         * Reaching here used to assert.
          *
-         * ⚠️ The control's HEIGHT was fixed at layout time from the original
-         * text, so replacement text must occupy the same number of lines -
-         * keep the wordings the same length. */
-        escaped = shortcut_escape(text, NO_SHORTCUT);
-        id = c->base_id;
-        break;
+         * The control's HEIGHT was fixed at layout time from the original
+         * text: kitty_text_settext wraps the new text into that height, and
+         * a control that will carry a longer text than it was built with
+         * says so with text.lines. */
+        kitty_text_settext(c, kitty_cfg_item(dp->hwnd, c->base_id), text,
+                           true);
+        return;
       default:
         unreachable("bad control type in label_change");
     }

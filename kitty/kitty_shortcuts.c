@@ -9,6 +9,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "putty.h"
@@ -179,98 +180,83 @@ void TranslateShortcuts( char * st ) {
 	free(buffer);
 }
 
+/* One row per [Shortcuts] action: its ini key, where its code lives in
+ * shortcuts_tab, the built-in default (0 = no key) and the name the
+ * Shortcuts panel and the help show it under. InitShortcuts reads the
+ * table; the panel lists it, sorted by name, so the order here is free. */
+struct sc_action { const char * key ; size_t offset ; int dflt ; const char * name ; } ;
+#define SC_ACT( field, key, dflt, name ) { key, offsetof(struct TShortcuts, field), dflt, name }
+static const struct sc_action sc_actions[] = {
+	SC_ACT( editor,            KI_SC_EDITOR,            SHIFTKEY+VK_F2,            KT_SC_ACT_EDITOR ),
+	SC_ACT( editorclipboard,   KI_SC_EDITORCLIPBOARD,   CONTROLKEY+SHIFTKEY+VK_F2, KT_SC_ACT_EDITORCLIPBOARD ),
+	SC_ACT( winscp,            KI_SC_WINSCP,            SHIFTKEY+VK_F3,            KT_SC_ACT_WINSCP ),
+	SC_ACT( filezilla,         KI_SC_FILEZILLA,         SHIFTKEY+VK_F4,            KT_SC_ACT_FILEZILLA ),
+	SC_ACT( switchlogmode,     KI_SC_SWITCHLOGMODE,     SHIFTKEY+VK_F5,            KT_SC_ACT_SWITCHLOGMODE ),
+	SC_ACT( showportforward,   KI_SC_SHOWPORTFORWARD,   SHIFTKEY+VK_F6,            KT_SC_ACT_SHOWPORTFORWARD ),
+	SC_ACT( print,             KI_SC_PRINT,             SHIFTKEY+VK_F7,            KT_SC_ACT_PRINT ),
+	SC_ACT( printall,          KI_SC_PRINTALL,          VK_F7,                     KT_SC_ACT_PRINTALL ),
+	SC_ACT( inputm,            KI_SC_INPUTM,            SHIFTKEY+VK_F8,            KT_SC_ACT_INPUTM ),
+#ifdef MOD_BACKGROUNDIMAGE
+	SC_ACT( viewer,            KI_SC_VIEWER,            SHIFTKEY+VK_F11,           KT_SC_ACT_VIEWER ),
+#endif
+	SC_ACT( autocommand,       KI_SC_AUTOCOMMAND,       SHIFTKEY+VK_F12,           KT_SC_ACT_AUTOCOMMAND ),
+	SC_ACT( script,            KI_SC_SCRIPT,            CONTROLKEY+VK_F2,          KT_SC_ACT_SCRIPT ),
+	SC_ACT( sendfile,          KI_SC_SENDFILE,          CONTROLKEY+VK_F3,          KT_SC_ACT_SENDFILE ),
+	SC_ACT( getfile,           KI_SC_GETFILE,           CONTROLKEY+VK_F4,          KT_SC_ACT_GETFILE ),
+	SC_ACT( command,           KI_SC_COMMAND,           CONTROLKEY+VK_F5,          KT_SC_ACT_COMMAND ),
+	SC_ACT( tray,              KI_SC_TRAY,              CONTROLKEY+VK_F6,          KT_SC_ACT_TRAY ),
+	SC_ACT( visible,           KI_SC_VISIBLE,           CONTROLKEY+VK_F7,          KT_SC_ACT_VISIBLE ),
+	SC_ACT( input,             KI_SC_INPUT,             CONTROLKEY+VK_F8,          KT_SC_ACT_INPUT ),
+	SC_ACT( protect,           KI_SC_PROTECT,           CONTROLKEY+VK_F9,          KT_SC_ACT_PROTECT ),
+#ifdef MOD_BACKGROUNDIMAGE
+	SC_ACT( imagechange,       KI_SC_IMAGECHANGE,       CONTROLKEY+VK_F11,         KT_SC_ACT_IMAGECHANGE ),
+#endif
+	SC_ACT( rollup,            KI_SC_ROLLUP,            CONTROLKEY+VK_F12,         KT_SC_ACT_ROLLUP ),
+	SC_ACT( resetterminal,     KI_SC_RESETTERMINAL,     0,                         KT_SC_ACT_RESETTERMINAL ),
+	SC_ACT( duplicate,         KI_SC_DUPLICATE,         CONTROLKEY+ALTKEY+'T',     KT_SC_ACT_DUPLICATE ),
+	SC_ACT( opennew,           KI_SC_OPENNEW,           0,                         KT_SC_ACT_OPENNEW ),
+	SC_ACT( opennewcurrent,    KI_SC_OPENNEWCURRENT,    0,                         KT_SC_ACT_OPENNEWCURRENT ),
+	SC_ACT( changesettings,    KI_SC_CHANGESETTINGS,    0,                         KT_SC_ACT_CHANGESETTINGS ),
+	SC_ACT( clearscrollback,   KI_SC_CLEARSCROLLBACK,   0,                         KT_SC_ACT_CLEARSCROLLBACK ),
+	SC_ACT( clearlogfile,      KI_SC_CLEARLOGFILE,      0,                         KT_SC_ACT_CLEARLOGFILE ),
+	SC_ACT( openlogfile,       KI_SC_OPENLOGFILE,       0,                         KT_SC_ACT_OPENLOGFILE ),
+	SC_ACT( closerestart,      KI_SC_CLOSERESTART,      0,                         KT_SC_ACT_CLOSERESTART ),
+	SC_ACT( eventlog,          KI_SC_EVENTLOG,          0,                         KT_SC_ACT_EVENTLOG ),
+	SC_ACT( fullscreen,        KI_SC_FULLSCREEN,        0,                         KT_SC_ACT_FULLSCREEN ),
+	SC_ACT( fontup,            KI_SC_FONTUP,            CONTROLKEY+VK_ADD,         KT_SC_ACT_FONTUP ),
+	SC_ACT( fontdown,          KI_SC_FONTDOWN,          CONTROLKEY+VK_SUBTRACT,    KT_SC_ACT_FONTDOWN ),
+	SC_ACT( fontreset,         KI_SC_FONTRESET,         CONTROLKEY+VK_NUMPAD0,     KT_SC_ACT_FONTRESET ),
+	SC_ACT( copyall,           KI_SC_COPYALL,           0,                         KT_SC_ACT_COPYALL ),
+	SC_ACT( fontnegative,      KI_SC_FONTNEGATIVE,      0,                         KT_SC_ACT_FONTNEGATIVE ),
+	SC_ACT( fontblackandwhite, KI_SC_FONTBLACKANDWHITE, 0,                         KT_SC_ACT_FONTBLACKANDWHITE ),
+	SC_ACT( keyexchange,       KI_SC_KEYEXCHANGE,       0,                         KT_SC_ACT_KEYEXCHANGE ),
+	SC_ACT( transparencyup,    KI_SC_TRANSPARENCYUP,    CONTROLKEY+VK_UP,          KT_SC_ACT_TRANSPARENCYUP ),
+	SC_ACT( transparencydown,  KI_SC_TRANSPARENCYDOWN,  CONTROLKEY+VK_DOWN,        KT_SC_ACT_TRANSPARENCYDOWN ),
+} ;
+#undef SC_ACT
+#define SC_SLOT( i ) ( (int *) ( (char *) &shortcuts_tab + sc_actions[i].offset ) )
+
+int ShortcutActionCount( void ) { return (int) ( sizeof(sc_actions) / sizeof(sc_actions[0]) ) ; }
+const char * ShortcutActionKey( int i ) { return ( i >= 0 && i < ShortcutActionCount() ) ? sc_actions[i].key : "" ; }
+const char * ShortcutActionName( int i ) { return ( i >= 0 && i < ShortcutActionCount() ) ? sc_actions[i].name : "" ; }
+int ShortcutActionValue( int i ) { return ( i >= 0 && i < ShortcutActionCount() ) ? *SC_SLOT(i) : 0 ; }
+int ShortcutActionDefault( int i ) { return ( i >= 0 && i < ShortcutActionCount() ) ? sc_actions[i].dflt : 0 ; }
+
 // Init shortcuts map at startup
 void InitShortcuts( void ) {
 	char buffer[4096], list[4096], *pl ;
 	int i, t=0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_EDITOR,buffer, sizeof(buffer)) || ( (shortcuts_tab.editor=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.editor = SHIFTKEY+VK_F2 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_EDITORCLIPBOARD,buffer, sizeof(buffer)) || ( (shortcuts_tab.editorclipboard=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.editorclipboard = CONTROLKEY+SHIFTKEY+VK_F2 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_WINSCP,buffer, sizeof(buffer)) || ( (shortcuts_tab.winscp=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.winscp = SHIFTKEY+VK_F3 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_FILEZILLA,buffer, sizeof(buffer)) || ( (shortcuts_tab.filezilla=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.filezilla = SHIFTKEY+VK_F4 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_SWITCHLOGMODE,buffer, sizeof(buffer)) || ( (shortcuts_tab.switchlogmode=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.switchlogmode = SHIFTKEY+VK_F5 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_SHOWPORTFORWARD,buffer, sizeof(buffer)) || ( (shortcuts_tab.showportforward=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.showportforward = SHIFTKEY+VK_F6 ;
-//	if( !IsWow64() ) {
-		if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_PRINT,buffer, sizeof(buffer)) || ( (shortcuts_tab.print=DefineShortcuts(buffer))<0 ) )
-			shortcuts_tab.print = SHIFTKEY+VK_F7 ;
-		if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_PRINTALL,buffer, sizeof(buffer)) || ( (shortcuts_tab.printall=DefineShortcuts(buffer))<0 ) )
-			shortcuts_tab.printall = VK_F7 ;
-//	}
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_INPUTM,buffer, sizeof(buffer)) || ( (shortcuts_tab.inputm=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.inputm = SHIFTKEY+VK_F8 ;
-#ifdef MOD_BACKGROUNDIMAGE
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_VIEWER,buffer, sizeof(buffer)) || ( (shortcuts_tab.viewer=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.viewer = SHIFTKEY+VK_F11 ;
-#endif
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_AUTOCOMMAND,buffer, sizeof(buffer)) || ( (shortcuts_tab.autocommand=DefineShortcuts(buffer))<0 ) ) 
-		shortcuts_tab.autocommand = SHIFTKEY+VK_F12 ;
+	/* An action's key: the kitty.ini value when there is one and it parses
+	 * (an empty value parses to 0 = no key), the default otherwise. */
+	for( i=0 ; i<ShortcutActionCount() ; i++ ) {
+		int * slot = SC_SLOT(i) ;
+		if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,sc_actions[i].key,buffer, sizeof(buffer)) || ( (*slot=DefineShortcuts(buffer))<0 ) )
+			*slot = sc_actions[i].dflt ;
+	}
 
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_SCRIPT,buffer, sizeof(buffer)) || ( (shortcuts_tab.script=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.script = CONTROLKEY+VK_F2 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_SENDFILE,buffer, sizeof(buffer)) || ( (shortcuts_tab.sendfile=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.sendfile = CONTROLKEY+VK_F3 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_GETFILE,buffer, sizeof(buffer)) || ( (shortcuts_tab.getfile=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.getfile = CONTROLKEY+VK_F4 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_COMMAND,buffer, sizeof(buffer)) || ( (shortcuts_tab.command=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.command = CONTROLKEY+VK_F5 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_TRAY,buffer, sizeof(buffer)) || ( (shortcuts_tab.tray=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.tray = CONTROLKEY+VK_F6 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_VISIBLE,buffer, sizeof(buffer)) || ( (shortcuts_tab.visible=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.visible = CONTROLKEY+VK_F7 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_INPUT,buffer, sizeof(buffer)) || ( (shortcuts_tab.input=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.input = CONTROLKEY+VK_F8 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_PROTECT,buffer, sizeof(buffer)) || ( (shortcuts_tab.protect=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.protect = CONTROLKEY+VK_F9 ;
-#ifdef MOD_BACKGROUNDIMAGE
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_IMAGECHANGE,buffer, sizeof(buffer)) || ( (shortcuts_tab.imagechange=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.imagechange = CONTROLKEY+VK_F11 ;
-#endif
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_ROLLUP,buffer, sizeof(buffer)) || ( (shortcuts_tab.rollup=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.rollup = CONTROLKEY+VK_F12 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_RESETTERMINAL,buffer, sizeof(buffer)) || ( (shortcuts_tab.resetterminal=DefineShortcuts(buffer))<0 ) ) 
-		shortcuts_tab.resetterminal = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_DUPLICATE,buffer, sizeof(buffer)) || ( (shortcuts_tab.duplicate=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.duplicate = CONTROLKEY+ALTKEY+84 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_OPENNEW,buffer, sizeof(buffer)) || ( (shortcuts_tab.opennew=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.opennew = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_OPENNEWCURRENT,buffer, sizeof(buffer)) || ( (shortcuts_tab.opennewcurrent=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.opennewcurrent = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_CHANGESETTINGS,buffer, sizeof(buffer)) || ( (shortcuts_tab.changesettings=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.changesettings = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_CLEARSCROLLBACK,buffer, sizeof(buffer)) || ( (shortcuts_tab.clearscrollback=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.clearscrollback = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_CLEARLOGFILE,buffer, sizeof(buffer)) || ( (shortcuts_tab.clearlogfile=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.clearlogfile = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_OPENLOGFILE,buffer, sizeof(buffer)) || ( (shortcuts_tab.openlogfile=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.openlogfile = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_CLOSERESTART,buffer, sizeof(buffer)) || ( (shortcuts_tab.closerestart=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.closerestart = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_EVENTLOG,buffer, sizeof(buffer)) || ( (shortcuts_tab.eventlog=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.eventlog = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_FULLSCREEN,buffer, sizeof(buffer)) || ( (shortcuts_tab.fullscreen=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.fullscreen = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_FONTUP,buffer, sizeof(buffer)) || ( (shortcuts_tab.fontup=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.fontup = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_FONTDOWN,buffer, sizeof(buffer)) || ( (shortcuts_tab.fontdown=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.fontdown = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_COPYALL,buffer, sizeof(buffer)) || ( (shortcuts_tab.copyall=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.copyall = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_FONTNEGATIVE,buffer, sizeof(buffer)) || ( (shortcuts_tab.fontnegative=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.fontnegative = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_FONTBLACKANDWHITE,buffer, sizeof(buffer)) || ( (shortcuts_tab.fontblackandwhite=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.fontblackandwhite = 0 ;
-	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_KEYEXCHANGE,buffer, sizeof(buffer)) || ( (shortcuts_tab.keyexchange=DefineShortcuts(buffer))<0 ) )
-		shortcuts_tab.keyexchange = 0 ;
-
-	
 	if( NbShortCuts>0 ) for( i=0 ; i<NbShortCuts ; i++ ) { if( shortcuts_tab2[i].st!=NULL ) { free(shortcuts_tab2[i].st) ; } }
 	NbShortCuts=0 ;
-	if( ReadParameterN( KI_SECTION_SHORTCUTS, "list", list, sizeof(list) ) ) {
+	if( ReadParameterN( KI_SECTION_SHORTCUTS, KI_SC_LIST, list, sizeof(list) ) ) {
 		pl=list ;
 		while( strlen(pl) > 0 ) {
 			i=0;
@@ -401,6 +387,109 @@ const char * ShortcutMenuText( const char * text, int key, char * buf, size_t si
 		snprintf( buf, size, "%s", text ) ;
 	}
 	return buf ;
+}
+
+/* A code from a virtual key and the modifier flags, composed as
+ * ManageShortcuts composes the pressed key - so what the editor captures
+ * compares equal to what the terminal window will see. */
+int ShortcutKeyCode( int vk, int shift, int control, int alt, int altgr, int win ) {
+	int key = vk ;
+	if( vk <= 0 ) return 0 ;
+	if( alt ) key += ALTKEY ;
+	if( altgr ) key += ALTGRKEY ;
+	if( shift ) key += SHIFTKEY ;
+	if( control ) key += CONTROLKEY ;
+	if( win ) key += WINKEY ;
+	return key ;
+}
+
+/* The kitty.ini spelling of a code - {CONTROL}{SHIFT}{F4}, {ALT}{HOME},
+ * {CONTROL}{ALT}T - the inverse of DefineShortcuts, so a key the editor
+ * saves reads back as the same code and the file stays hand-editable.
+ * Returns the length written; 0 with an empty buffer for an unset key (0)
+ * and for a key DefineShortcuts has no name for. */
+int ShortcutKeySyntax( int key, char * buf, size_t size ) {
+	char name[16] ;
+	int vk, win = 0, altgr = 0, alt = 0, ctrl = 0, shift = 0 ;
+	size_t n = 0 ;
+	if( ( buf == NULL ) || ( size == 0 ) ) return 0 ;
+	buf[0] = '\0' ;
+	if( key <= 0 ) return 0 ;
+	if( key >= WINKEY )     { key -= WINKEY ; win = 1 ; }
+	if( key >= ALTGRKEY )   { key -= ALTGRKEY ; altgr = 1 ; }
+	if( key >= ALTKEY )     { key -= ALTKEY ; alt = 1 ; }
+	if( key >= CONTROLKEY ) { key -= CONTROLKEY ; ctrl = 1 ; }
+	if( key >= SHIFTKEY )   { key -= SHIFTKEY ; shift = 1 ; }
+	vk = key ;
+	name[0] = '\0' ;
+	if( ( vk >= VK_F1 ) && ( vk <= VK_F12 ) ) {
+		snprintf( name, sizeof(name), "{F%d}", vk - VK_F1 + 1 ) ;
+	} else if( ( vk >= VK_NUMPAD0 ) && ( vk <= VK_NUMPAD9 ) ) {
+		snprintf( name, sizeof(name), "{NUMPAD%d}", vk - VK_NUMPAD0 ) ;
+	} else if( ( ( vk >= 'A' ) && ( vk <= 'Z' ) ) || ( ( vk >= '0' ) && ( vk <= '9' ) ) ) {
+		name[0] = (char) vk ; name[1] = '\0' ;
+	} else {
+		const char * s = NULL ;
+		switch( vk ) {
+			case VK_RETURN:     s = "{RETURN}" ; break ;
+			case VK_ESCAPE:     s = "{ESCAPE}" ; break ;
+			case VK_SPACE:      s = "{SPACE}" ; break ;
+			case VK_SNAPSHOT:   s = "{PRINT}" ; break ;
+			case VK_PAUSE:      s = "{PAUSE}" ; break ;
+			case VK_PRIOR:      s = "{PRIOR}" ; break ;
+			case VK_NEXT:       s = "{NEXT}" ; break ;
+			case VK_LEFT:       s = "{LEFT}" ; break ;
+			case VK_RIGHT:      s = "{RIGHT}" ; break ;
+			case VK_UP:         s = "{UP}" ; break ;
+			case VK_DOWN:       s = "{DOWN}" ; break ;
+			case VK_HOME:       s = "{HOME}" ; break ;
+			case VK_END:        s = "{END}" ; break ;
+			case VK_BACK:       s = "{BACK}" ; break ;
+			case VK_TAB:        s = "{TAB}" ; break ;
+			case VK_INSERT:     s = "{INS}" ; break ;
+			case VK_DELETE:     s = "{DEL}" ; break ;
+			case VK_ATTN:       s = "{ATTN}" ; break ;
+			case VK_CANCEL:     s = "{BREAK}" ; break ;
+			case VK_NUMLOCK:    s = "{NUMLOCK}" ; break ;
+			case VK_SCROLL:     s = "{SCROLL}" ; break ;
+			case VK_ADD:        s = "{ADD}" ; break ;
+			case VK_SUBTRACT:   s = "{SUBTRACT}" ; break ;
+			case VK_MULTIPLY:   s = "{MULTIPLY}" ; break ;
+			case VK_DIVIDE:     s = "{DIVIDE}" ; break ;
+			case VK_SEPARATOR:  s = "{SEPARATOR}" ; break ;
+			case VK_DECIMAL:    s = "{DECIMAL}" ; break ;
+			case VK_OEM_PLUS:   s = "{OEM_PLUS}" ; break ;
+			case VK_OEM_COMMA:  s = "{OEM_COMMA}" ; break ;
+			case VK_OEM_MINUS:  s = "{OEM_MINUS}" ; break ;
+			case VK_OEM_PERIOD: s = "{OEM_PERIOD}" ; break ;
+			default: break ;
+		}
+		if( s != NULL ) { strncpy( name, s, sizeof(name) - 1 ) ; name[sizeof(name) - 1] = '\0' ; }
+	}
+	if( name[0] == '\0' ) return 0 ;
+	n = (size_t) snprintf( buf, size, "%s%s%s%s%s%s",
+		ctrl ? "{CONTROL}" : "", alt ? "{ALT}" : "", shift ? "{SHIFT}" : "",
+		win ? "{WIN}" : "", altgr ? "{ALTGR}" : "", name ) ;
+	if( n >= size ) { buf[0] = '\0' ; return 0 ; }
+	return (int) n ;
+}
+
+/* Ctrl+Shift+A..Z is also the predefined user commands' row: the slot
+ * (1..26) such a code takes away from them, 0 for any other code. */
+int ShortcutKeyUserCommand( int key ) {
+	if( ( key >= CONTROLKEY+SHIFTKEY+'A' ) && ( key <= CONTROLKEY+SHIFTKEY+'Z' ) )
+		return key - ( CONTROLKEY+SHIFTKEY+'A' ) + 1 ;
+	return 0 ;
+}
+
+/* Codes no action or typing key may take: the fixed aliases ManageShortcuts
+ * tests by value (Ctrl+Shift+F8 opens the multiline box beside inputm,
+ * Ctrl+Shift+F12 resizes every window) return 1; Alt+F4, which closes the
+ * window before any shortcut sees it, returns 2. */
+int ShortcutKeyReserved( int key ) {
+	if( ( key == CONTROLKEY+SHIFTKEY+VK_F8 ) || ( key == CONTROLKEY+SHIFTKEY+VK_F12 ) ) return 1 ;
+	if( key == ALTKEY+VK_F4 ) return 2 ;
+	return 0 ;
 }
 
 int SwitchLogMode(void) ;
@@ -543,7 +632,16 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 		{ SendMessage( hwnd, WM_COMMAND, IDM_FONTBLACKANDWHITE, 0 ) ; return 1 ; }
 	else if( key == shortcuts_tab.keyexchange )		// Repeat key exchange
 		{ SendMessage( hwnd, WM_COMMAND, IDM_REKEY, 0 ) ; return 1 ; }
-		
+	else if( key == shortcuts_tab.fontreset )		// Font size back to the session's
+		{ ChangeFontSize( term, conf, hwnd, 0 ) ; return 1 ; }
+	/* The two transparency keys do nothing while the session has no
+	 * transparency to change (the feature off, or the level locked at -1):
+	 * the key then reaches the terminal as if it were no shortcut. */
+	else if( ( key == shortcuts_tab.transparencyup ) && TransparencyFlag && ( conf_get_int(conf,CONF_transparencynumber) != -1 ) )
+		{ SendMessage( hwnd, WM_COMMAND, IDM_TRANSPARUP, 0 ) ; return 1 ; }
+	else if( ( key == shortcuts_tab.transparencydown ) && TransparencyFlag && ( conf_get_int(conf,CONF_transparencynumber) != -1 ) )
+		{ SendMessage( hwnd, WM_COMMAND, IDM_TRANSPARDOWN, 0 ) ; return 1 ; }
+
 	else if( key == shortcuts_tab.input ) 			// Fenetre de controle
 		{
 			/* Modeless box: open it directly on the main (UI) thread whose
@@ -557,30 +655,11 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 	else if( GetBackgroundImageFlag() && (key == shortcuts_tab.imagechange) ) 		// Changement d'image de fond
 		{ if( NextBgImage( hwnd ) ) InvalidateRect(hwnd, NULL, TRUE) ; return 1 ; }
 #endif
-/*
-	if( control_flag && shift_flag ) {
-		if(key_num == VK_UP) { SendMessage( hwnd, WM_COMMAND, IDM_FONTUP, 0 ) ; return 1 ; }
-		if(key_num == VK_DOWN) { SendMessage( hwnd, WM_COMMAND, IDM_FONTDOWN, 0 ) ; return 1 ; }
-		if(key_num == VK_LEFT ) {  ChangeFontSize(hwnd,0) ; return 1 ; }
-	}*/
-	if( control_flag && !shift_flag ) {
-		if( TransparencyFlag && (conf_get_int(conf,CONF_transparencynumber)!=-1)&&(key_num == VK_UP) ) // Augmenter l'opacite (diminuer la transparence)
-			{ SendMessage( hwnd, WM_COMMAND, IDM_TRANSPARUP, 0 ) ; return 1 ; }
-		if( TransparencyFlag && (conf_get_int(conf,CONF_transparencynumber)!=-1)&&(key_num == VK_DOWN) ) // Diminuer l'opacite (augmenter la transparence)
-			{ SendMessage( hwnd, WM_COMMAND, IDM_TRANSPARDOWN, 0 ) ; return 1 ; }
-
-		if (key_num == VK_ADD) { SendMessage( hwnd, WM_COMMAND, IDM_FONTUP, 0 ) ; return 1 ; }
-		if (key_num == VK_SUBTRACT) { SendMessage( hwnd, WM_COMMAND, IDM_FONTDOWN, 0 ) ; return 1 ; }
-		if (key_num == VK_NUMPAD0) { ChangeFontSize(term,conf,hwnd,0) ; return 1 ; }
-#ifdef MOD_LAUNCHER
-		/*    ====> Ne fonctionne pas !!!
-		if (key_num == VK_LEFT ) //Fenetre KiTTY precedente
-			{ SendMessage( hwnd, WM_COMMAND, IDM_GOPREVIOUS, 0 ) ; return 1 ; }
-		if (key_num == VK_RIGHT ) //Fenetre KiTTY Suivante
-			{ SendMessage( hwnd, WM_COMMAND, IDM_GONEXT, 0 ) ; return 1 ; }
-		*/
-#endif
-	}
+	/* Ctrl+Up / Ctrl+Down (transparency), Ctrl+Num+ / Ctrl+Num- / Ctrl+Num 0
+	 * (font size) were tested here by value; they are table actions now
+	 * (transparencyup, transparencydown, fontup, fontdown, fontreset) with
+	 * those keys as their defaults, so the editor shows them and a user can
+	 * move or disable them. */
 
 	/* KiTTY predefined-command accelerators: Ctrl+Shift+A..Z fires the Nth
 	 * entry of the User Command menu (kitty_specialmenu.c labels the menu

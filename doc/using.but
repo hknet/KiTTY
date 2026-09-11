@@ -120,7 +120,9 @@ containing items like Minimise, Move, Size and Close.
 
 KiTTY's system menu contains extra program features in addition to
 the Windows standard options. These extra menu commands are
-described below.
+described below. \q{Tools} > \q{Shortcuts} switches KiTTY's keyboard
+shortcuts on or off for this window alone; the combinations themselves
+are set on the Shortcuts panel (\k{kitty-cfg-kset-shortcuts}).
 
 (These options are also available in a \i{context menu} brought up
 by holding Ctrl and clicking with the right mouse button anywhere

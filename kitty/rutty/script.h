@@ -84,11 +84,6 @@ void script_getline(ScriptData * scriptdata);
 //void script_menu(ScriptData * scriptdata);
 
 
-/* script_ahk.c */
-//BOOL script_ahk_send(ScriptData * scriptdata, COPYDATASTRUCT *cds);
-//BOOL script_ahk_set(ScriptData * scriptdata, COPYDATASTRUCT *cds);
-//void script_ahk_out(int mode, char *dat, int siz);
-
 #endif
 
 /* end of file */

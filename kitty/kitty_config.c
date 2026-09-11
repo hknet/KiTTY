@@ -27,6 +27,7 @@
 #include "kitty_inikeys.h" /* KI_*: the kitty.ini key names */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
+#include <commctrl.h>       /* SetWindowSubclass: the shortcut editor's key-capture field */
 #endif
 
 #ifdef MOD_PERSO
@@ -2537,6 +2538,8 @@ void kitty_config_session_distribute(void)
  * saved-session list, so the list is as long as the box is tall and the
  * panel never ends in a blank foot. The row-count setting is the list's
  * FLOOR, the least it may be, and what the minimum window height fits. */
+static dlgcontrol *kitty_sc_fill_ctrl(bool autotext);   /* the shortcut editor, below */
+static void scb_panel_shortcut_editor(struct controlbox *b, const char *path);
 dlgcontrol *kitty_config_panel_fill_ctrl(const char *path)
 {
     if (path && !strcmp(path, "Session") && kitty_session_ssd)
@@ -2554,6 +2557,12 @@ dlgcontrol *kitty_config_panel_fill_ctrl(const char *path)
     if (path && kitty_hk_active && kitty_hk_active->listbox &&
         !strcmp(path, "Application/Security/Host keys"))
         return kitty_hk_active->listbox;
+    /* The shortcut editor's lists: one row per action, one per AutoText
+     * entry, the taller the better. */
+    if (path && !strcmp(path, "Application/KiTTY++ Settings/Keys & Mouse/Shortcuts"))
+        return kitty_sc_fill_ctrl(false);
+    if (path && !strcmp(path, "Application/KiTTY++ Settings/Keys & Mouse/Shortcuts/AutoText"))
+        return kitty_sc_fill_ctrl(true);
     return NULL;
 }
 
@@ -10809,12 +10818,15 @@ static void scb_panel_transfers(struct controlbox *b)
     ctrl_filesel(s, KT_TRANSFERS_LOCAL_DOWNLOAD_FOLDER, NO_SHORTCUT,
                  FILTER_FOLDERS, false, NULL, HELPCTX(kitty_transfers_folders),
                  xfer_downloaddir_handler, P(NULL));
-    /* The global folder, read when the panel is built (the text fixes the
-     * line's height) and again at every EVENT_REFRESH of the folder row
-     * above, so the value that already applies is visible before it is
-     * overridden and stays current when the panel is shown again. */
+    /* The global folder, read when the panel is built and again at every
+     * EVENT_REFRESH of the folder row above, so the value that already
+     * applies is visible before it is overridden and stays current when the
+     * panel is shown again. Two lines reserved: the folder set later may be
+     * longer than the one the line was built with, and the static wraps
+     * only into the height it has. */
     xfer_global_line(line, sizeof(line));
     g_xfer_global_ctrl = ctrl_text(s, line, HELPCTX(kitty_transfers_folders));
+    g_xfer_global_ctrl->text.lines = 2;
     /* The upload folder: where Send File opens and where a name the far end
      * asks to read is looked up. Same shape, same refresh. */
     ctrl_filesel(s, KT_TRANSFERS_UPLOAD_FOLDER, NO_SHORTCUT,
@@ -10822,6 +10834,7 @@ static void scb_panel_transfers(struct controlbox *b)
                  xfer_uploaddir_handler, P(NULL));
     xfer_global_upload_line(line, sizeof(line));
     g_xfer_global_upload_ctrl = ctrl_text(s, line, HELPCTX(kitty_transfers_folders));
+    g_xfer_global_upload_ctrl->text.lines = 2;
 
     /* Moved from the KSCP panel: the two are mutually exclusive, the
      * handlers keep them so through the captured sibling controls. */
@@ -12205,32 +12218,9 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     ctrl_settitle(b, KSET_PATH("Keys & Mouse/Shortcuts"), KT_KSET_SC_TITLE);
     s = ctrl_getset(b, KSET_PATH("Keys & Mouse/Shortcuts"), "switch", NULL);
     KSET_CHECKBOX(s, KT_KSET_SC_ENABLE, KI_SHORTCUTS, kitty_kset_shortcuts);
-    ctrl_text(s, KT_KSET_SC_FUTURE, HELPCTX(kitty_kset_shortcuts));
-    /* What the [Shortcuts] list line defines today, shown so the leaf already
-     * says what is in force: one key combination per word of the list. */
-    s = ctrl_getset(b, KSET_PATH("Keys & Mouse/Shortcuts"), "defined", KT_KSET_SC_DEFINED);
-    if (ReadParameterN(KI_SECTION_SHORTCUTS, "list", buf, sizeof(buf)) && buf[0]) {
-        char *p = buf, *q;
-        int n = 0;
-        while (*p) {
-            char val[512];
-            while (*p == ' ') p++;
-            if (!*p) break;
-            q = p;
-            while (*q && *q != ' ') q++;
-            if (*q) *q++ = '\0';
-            val[0] = '\0';
-            ReadParameterN(KI_SECTION_SHORTCUTS, p, val, sizeof(val));
-            snprintf(line, sizeof(line), "%s = %s", p, val);
-            ctrl_text(s, line, HELPCTX(kitty_kset_shortcuts));
-            n++;
-            p = q;
-        }
-        if (!n)
-            ctrl_text(s, KT_KSET_SC_NONE, HELPCTX(kitty_kset_shortcuts));
-    } else {
-        ctrl_text(s, KT_KSET_SC_NONE, HELPCTX(kitty_kset_shortcuts));
-    }
+    /* The switch decides whether keys fire; the editor below works either
+     * way, its edits go to the file. */
+    scb_panel_shortcut_editor(b, KSET_PATH("Keys & Mouse/Shortcuts"));
 
     /* ---- Automation ---- */
     ctrl_settitle(b, KSET_PATH("Automation"), KT_KSET_AU_TITLE);
@@ -12677,6 +12667,674 @@ static void scb_panel_iniview(struct controlbox *b, const char *ini)
     c->column = 1;
     iv->editbtn = c;
     ctrl_columns(s, 1, 100);
+}
+
+/* ---- Keys & Mouse > Shortcuts: the shortcut editor -------------------------
+ *
+ * Two header-row lists over the [Shortcuts] section of kitty.ini, on two
+ * leaves: every table action with the key it has (an unassigned one shows
+ * an empty Key cell) on Shortcuts, and the AutoText entries - the key
+ * combinations that type a text - on its AutoText sub-leaf.
+ * A click on a row puts its key into the capture field under the list;
+ * Save writes the row back in the {CONTROL}{F4} syntax, Default puts the
+ * built-in key back, Delete and New serve the AutoText list. Every write
+ * goes to kitty.ini and is followed by InitShortcuts(), so the key is live
+ * in every window of this process, then the lists are rebuilt.
+ *
+ * The capture field is a read-only edit subclassed for WM_KEYDOWN: the key
+ * pressed is taken with the modifiers held (the key state, plus the
+ * modifier keys seen as messages, so a posted sequence captures too) and
+ * shown as ShortcutKeyText(); Backspace or Delete clears it. Tab and
+ * Escape keep their dialog meaning, Alt+F4 closes the box: none of the
+ * three can be captured. */
+
+enum { SC_CTX_ALIST, SC_CTX_AKEY, SC_CTX_ASAVE, SC_CTX_ADEFAULT,
+       SC_CTX_TLIST, SC_CTX_TKEY, SC_CTX_TTEXT, SC_CTX_TSAVE, SC_CTX_TDELETE,
+       SC_CTX_TNEW };
+enum { SC_SUBCLASS_ACTIONS = 7, SC_SUBCLASS_TEXTS = 8 };
+
+struct sc_text { char name[64]; char text[512]; int code; };
+#define SC_TEXTS_MAX 64                 /* AutoText rows the editor lists */
+
+struct sc_data {
+    dlgparam *dlg;
+    dlgcontrol *alist, *akey, *asave, *adefault, *anote;
+    dlgcontrol *tlist, *tkey, *ttext, *tsave, *tdelete, *tnew, *tnote;
+    int asel;                       /* the selected action, -1 = none */
+    int acode;                      /* the key in its capture field */
+    int asort_col; bool asort_desc;
+    struct sc_text texts[SC_TEXTS_MAX]; int ntexts;
+    int tsel;                       /* the selected AutoText row, -1 = none / New */
+    int tcode;
+    bool tediting;                  /* a row is selected, or New was pressed */
+    int tsort_col; bool tsort_desc;
+    /* modifier keys seen as key messages by a capture field */
+    int mod_shift, mod_control, mod_alt, mod_altgr, mod_win;
+};
+static struct sc_data *kitty_sc_active;
+
+extern int ShortcutActionCount(void);                  /* kitty_shortcuts.c */
+extern const char *ShortcutActionKey(int i);
+extern const char *ShortcutActionName(int i);
+extern int ShortcutActionValue(int i);
+extern int ShortcutActionDefault(int i);
+extern int ShortcutKeyText(int key, char *buf, size_t size);
+extern int ShortcutKeyCode(int vk, int shift, int control, int alt, int altgr, int win);
+extern int ShortcutKeySyntax(int key, char *buf, size_t size);
+extern int ShortcutKeyUserCommand(int key);
+extern int ShortcutKeyReserved(int key);
+extern int DefineShortcuts(char *buf);
+extern void InitShortcuts(void);
+extern int delINI(const char *filename, const char *section, const char *key);
+
+static dlgcontrol *kitty_sc_fill_ctrl(bool autotext)
+{
+    if (!kitty_sc_active) return NULL;
+    return autotext ? kitty_sc_active->tlist : kitty_sc_active->alist;
+}
+
+static HWND sc_hwnd(dlgcontrol *ctrl)
+{
+    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);   /* windows/dialog.c */
+    return ctrl ? kitty_cfg_ctrl_hwnd(ctrl) : NULL;
+}
+
+static void sc_enable(struct sc_data *sc, dlgcontrol *ctrl, bool on)
+{
+    if (ctrl && sc->dlg)
+        kitty_wpmode_enable_ctrl(ctrl, sc->dlg, on);
+}
+
+static void sc_report(const char *text)
+{
+    extern void kitty_info_box(HWND, const char *, const char *, const char *);
+    kitty_info_box(kitty_cfg_modal_owner(), KT_KSET_TITLE, text, NULL);
+}
+
+/* Is there a kitty.ini a write can land in? Reports why not otherwise. */
+static bool sc_can_write(void)
+{
+    extern int GetReadOnlyFlag(void);
+    extern int GetNoKittyFileFlag(void);
+    const char *ini = GetKittyIniFile();
+    if (GetNoKittyFileFlag() || !ini || !ini[0]) { sc_report(KT_KSET_SC_NO_INI); return false; }
+    if (GetReadOnlyFlag()) { sc_report(KT_KSET_SC_READONLY); return false; }
+    return true;
+}
+
+/* The key text of a code, or the ini spelling when the code has no name
+ * (a numeric AutoText key): the row must show something. */
+static void sc_key_text(int code, const char *fallback, char *buf, size_t size)
+{
+    if (!ShortcutKeyText(code, buf, size))
+        snprintf(buf, size, "%s", fallback ? fallback : "");
+}
+
+/* The collision rule, both lists, both buttons: a code is refused when
+ * another action holds it, an AutoText key holds it (other than the row
+ * being edited), KiTTY keeps it, or it is Alt+F4. True = refused, and the
+ * message has been shown. */
+static bool sc_collides(struct sc_data *sc, int code, int skip_action, int skip_text)
+{
+    char key[64], msg[256];
+    int i;
+    if (!code) return false;
+    sc_key_text(code, NULL, key, sizeof(key));
+    if (ShortcutKeyReserved(code) == 2) { sc_report(KT_KSET_SC_ALTF4); return true; }
+    if (ShortcutKeyReserved(code) == 1) {
+        snprintf(msg, sizeof(msg), KT_KSET_SC_RESERVED, key); sc_report(msg); return true;
+    }
+    for (i = 0; i < ShortcutActionCount(); i++)
+        if (i != skip_action && ShortcutActionValue(i) == code) {
+            snprintf(msg, sizeof(msg), KT_KSET_SC_USED_BY_ACTION, key, ShortcutActionName(i));
+            sc_report(msg); return true;
+        }
+    for (i = 0; i < sc->ntexts; i++)
+        if (i != skip_text && sc->texts[i].code == code) {
+            snprintf(msg, sizeof(msg), KT_KSET_SC_USED_BY_TEXT, key); sc_report(msg); return true;
+        }
+    return false;
+}
+
+/* ---- the actions list ---- */
+
+static struct sc_data *sc_sort_sc;
+static int sc_cmp_action(const void *av, const void *bv)
+{
+    int a = *(const int *)av, b = *(const int *)bv, c = 0;
+    if (sc_sort_sc->asort_col == 1) {
+        char ka[64], kb[64];
+        sc_key_text(ShortcutActionValue(a), NULL, ka, sizeof(ka));
+        sc_key_text(ShortcutActionValue(b), NULL, kb, sizeof(kb));
+        c = stricmp(ka, kb);
+    }
+    if (!c) c = stricmp(ShortcutActionName(a), ShortcutActionName(b));
+    return sc_sort_sc->asort_desc ? -c : c;
+}
+
+static void sc_fill_actions(struct sc_data *sc)
+{
+    int n = ShortcutActionCount(), i, *order;
+    if (!sc->dlg) return;
+    order = snewn(n + 1, int);
+    for (i = 0; i < n; i++) order[i] = i;
+    sc_sort_sc = sc;
+    qsort(order, n, sizeof(int), sc_cmp_action);
+    dlg_update_start(sc->alist, sc->dlg);
+    dlg_listbox_clear(sc->alist, sc->dlg);
+    dlg_listbox_addwithid(sc->alist, sc->dlg, KT_KSET_SC_ACTIONS_HEAD, -1);
+    for (i = 0; i < n; i++) {
+        char key[64], *row;
+        sc_key_text(ShortcutActionValue(order[i]), NULL, key, sizeof(key));
+        row = dupprintf("%s\t%s", ShortcutActionName(order[i]), key);
+        dlg_listbox_addwithid(sc->alist, sc->dlg, row, order[i]);
+        sfree(row);
+        if (order[i] == sc->asel)
+            dlg_listbox_select(sc->alist, sc->dlg, i + 1);
+    }
+    dlg_update_done(sc->alist, sc->dlg);
+    sfree(order);
+}
+
+/* The line under a key field (the actions leaf and the AutoText leaf
+ * have one each): which user-command slot a Ctrl+Shift+letter takes
+ * away; blank for any other key. */
+static void sc_note(struct sc_data *sc, dlgcontrol *note, int code)
+{
+    char key[64], line[256];
+    int slot = ShortcutKeyUserCommand(code);
+    if (!note || !sc->dlg) return;
+    if (slot) {
+        sc_key_text(code, NULL, key, sizeof(key));
+        snprintf(line, sizeof(line), KT_KSET_SC_USERCMD_NOTE, key, slot);
+        dlg_label_change(note, sc->dlg, line);
+    } else {
+        dlg_label_change(note, sc->dlg, " ");
+    }
+}
+
+static void sc_show_action(struct sc_data *sc)
+{
+    char key[64];
+    bool on = sc->asel >= 0;
+    sc_key_text(sc->acode, NULL, key, sizeof(key));
+    dlg_editbox_set(sc->akey, sc->dlg, on ? key : "");
+    sc_enable(sc, sc->akey, on);
+    sc_enable(sc, sc->asave, on);
+    sc_enable(sc, sc->adefault, on);
+    sc_note(sc, sc->anote, sc->acode);
+}
+
+/* Save (actions): the captured key, or the empty value, to kitty.ini. */
+static void sc_save_action(struct sc_data *sc, int code)
+{
+    char syntax[64];
+    if (sc->asel < 0) return;
+    if (sc_collides(sc, code, sc->asel, -1)) return;
+    if (!sc_can_write()) return;
+    syntax[0] = '\0';
+    if (code) ShortcutKeySyntax(code, syntax, sizeof(syntax));
+    writeINI(GetKittyIniFile(), KI_SECTION_SHORTCUTS, ShortcutActionKey(sc->asel), syntax);
+    InitShortcuts();
+    sc->acode = ShortcutActionValue(sc->asel);
+    sc_fill_actions(sc);
+    sc_show_action(sc);
+}
+
+/* ---- the AutoText list ---- */
+
+/* The entries of the [Shortcuts] list line, each with its own line: read
+ * as InitShortcuts reads them, the text raw (the escapes as typed). */
+static void sc_read_texts(struct sc_data *sc)
+{
+    char list[4096], *p, *q;
+    sc->ntexts = 0;
+    if (!ReadParameterN(KI_SECTION_SHORTCUTS, KI_SC_LIST, list, sizeof(list)))
+        return;
+    p = list;
+    while (*p && sc->ntexts < SC_TEXTS_MAX) {
+        struct sc_text *t = &sc->texts[sc->ntexts];
+        while (*p == ' ') p++;
+        if (!*p) break;
+        q = p;
+        while (*q && *q != ' ') q++;
+        if (*q) *q++ = '\0';
+        memset(t, 0, sizeof(*t));
+        snprintf(t->name, sizeof(t->name), "%s", p);
+        if (ReadParameterN(KI_SECTION_SHORTCUTS, t->name, t->text, sizeof(t->text))) {
+            t->code = (t->name[0] >= '0' && t->name[0] <= '9') ? atoi(t->name) : DefineShortcuts(t->name);
+            sc->ntexts++;
+        }
+        p = q;
+    }
+}
+
+/* The list line rewritten with one name taken out and one put in (either
+ * may be NULL). The names of parked entries - in the list, no line of
+ * their own - stay where they were. */
+static void sc_write_list(const char *remove, const char *add)
+{
+    char list[4096], out[4096], *p, *q;
+    bool present = false;
+    out[0] = '\0';
+    if (!ReadParameterN(KI_SECTION_SHORTCUTS, KI_SC_LIST, list, sizeof(list)))
+        list[0] = '\0';
+    p = list;
+    while (*p) {
+        while (*p == ' ') p++;
+        if (!*p) break;
+        q = p;
+        while (*q && *q != ' ') q++;
+        if (*q) *q++ = '\0';
+        if (remove && !strcmp(p, remove)) { p = q; continue; }
+        if (add && !strcmp(p, add)) present = true;
+        if (strlen(out) + strlen(p) + 2 < sizeof(out)) {
+            if (out[0]) strcat(out, " ");
+            strcat(out, p);
+        }
+        p = q;
+    }
+    if (add && !present && strlen(out) + strlen(add) + 2 < sizeof(out)) {
+        if (out[0]) strcat(out, " ");
+        strcat(out, add);
+    }
+    writeINI(GetKittyIniFile(), KI_SECTION_SHORTCUTS, KI_SC_LIST, out);
+}
+
+static int sc_cmp_text(const void *av, const void *bv)
+{
+    const struct sc_text *a = &sc_sort_sc->texts[*(const int *)av];
+    const struct sc_text *b = &sc_sort_sc->texts[*(const int *)bv];
+    int c = 0;
+    if (sc_sort_sc->tsort_col == 1) c = stricmp(a->text, b->text);
+    if (!c) {
+        char ka[64], kb[64];
+        sc_key_text(a->code, a->name, ka, sizeof(ka));
+        sc_key_text(b->code, b->name, kb, sizeof(kb));
+        c = stricmp(ka, kb);
+    }
+    return sc_sort_sc->tsort_desc ? -c : c;
+}
+
+static void sc_fill_texts(struct sc_data *sc)
+{
+    int i, *order;
+    if (!sc->dlg) return;
+    sc_read_texts(sc);
+    order = snewn(sc->ntexts + 1, int);
+    for (i = 0; i < sc->ntexts; i++) order[i] = i;
+    sc_sort_sc = sc;
+    qsort(order, sc->ntexts, sizeof(int), sc_cmp_text);
+    dlg_update_start(sc->tlist, sc->dlg);
+    dlg_listbox_clear(sc->tlist, sc->dlg);
+    dlg_listbox_addwithid(sc->tlist, sc->dlg, KT_KSET_SC_AUTOTEXT_HEAD, -1);
+    for (i = 0; i < sc->ntexts; i++) {
+        char key[64], *row;
+        sc_key_text(sc->texts[order[i]].code, sc->texts[order[i]].name, key, sizeof(key));
+        row = dupprintf("%s\t%s", key, sc->texts[order[i]].text);
+        dlg_listbox_addwithid(sc->tlist, sc->dlg, row, order[i]);
+        sfree(row);
+        if (order[i] == sc->tsel)
+            dlg_listbox_select(sc->tlist, sc->dlg, i + 1);
+    }
+    dlg_update_done(sc->tlist, sc->dlg);
+    sfree(order);
+}
+
+static void sc_show_text(struct sc_data *sc)
+{
+    char key[64];
+    bool row = sc->tsel >= 0 && sc->tsel < sc->ntexts;
+    sc_key_text(sc->tcode, row ? sc->texts[sc->tsel].name : NULL, key, sizeof(key));
+    dlg_editbox_set(sc->tkey, sc->dlg, sc->tediting && sc->tcode ? key : "");
+    dlg_editbox_set(sc->ttext, sc->dlg, row ? sc->texts[sc->tsel].text : "");
+    sc_enable(sc, sc->tkey, sc->tediting);
+    sc_enable(sc, sc->ttext, sc->tediting);
+    sc_enable(sc, sc->tsave, sc->tediting && sc->tcode != 0);
+    sc_enable(sc, sc->tdelete, row);
+    sc_note(sc, sc->tnote, sc->tediting ? sc->tcode : 0);
+}
+
+/* Save (AutoText): the {KEY}=text line, and the key into the list line;
+ * a row whose key changed loses its old line first. */
+static void sc_save_text(struct sc_data *sc)
+{
+    char name[64], *text;
+    const char *old = NULL;
+    int i;
+    if (!sc->tediting || !sc->tcode) return;
+    if (!ShortcutKeySyntax(sc->tcode, name, sizeof(name))) return;
+    text = dlg_editbox_get(sc->ttext, sc->dlg);
+    if (!text || !text[0]) { sfree(text); sc_report(KT_KSET_SC_TEXT_EMPTY); return; }
+    if (sc_collides(sc, sc->tcode, -1, sc->tsel)) { sfree(text); return; }
+    if (!sc_can_write()) { sfree(text); return; }
+    if (sc->tsel >= 0 && sc->tsel < sc->ntexts && strcmp(sc->texts[sc->tsel].name, name))
+        old = sc->texts[sc->tsel].name;
+    if (old) delINI(GetKittyIniFile(), KI_SECTION_SHORTCUTS, old);
+    writeINI(GetKittyIniFile(), KI_SECTION_SHORTCUTS, name, text);
+    sc_write_list(old, name);
+    sfree(text);
+    InitShortcuts();
+    sc_read_texts(sc);
+    sc->tsel = -1;
+    for (i = 0; i < sc->ntexts; i++)
+        if (!strcmp(sc->texts[i].name, name)) sc->tsel = i;
+    sc_fill_texts(sc);
+    sc_show_text(sc);
+}
+
+static void sc_delete_text(struct sc_data *sc)
+{
+    if (sc->tsel < 0 || sc->tsel >= sc->ntexts) return;
+    if (!sc_can_write()) return;
+    delINI(GetKittyIniFile(), KI_SECTION_SHORTCUTS, sc->texts[sc->tsel].name);
+    sc_write_list(sc->texts[sc->tsel].name, NULL);
+    InitShortcuts();
+    sc->tsel = -1; sc->tcode = 0; sc->tediting = false;
+    sc_fill_texts(sc);
+    sc_show_text(sc);
+}
+
+/* ---- the capture field ---- */
+
+/* A modifier key seen as a message: remembered, so a sequence of posted
+ * key messages composes like a held key. Returns true for a modifier. */
+static bool sc_mod_track(struct sc_data *sc, int vk, bool down)
+{
+    int v = down ? 1 : 0;
+    switch (vk) {
+      case VK_SHIFT: case VK_LSHIFT: case VK_RSHIFT:       sc->mod_shift = v; return true;
+      case VK_CONTROL: case VK_LCONTROL: case VK_RCONTROL: sc->mod_control = v; return true;
+      case VK_MENU: case VK_LMENU:                         sc->mod_alt = v; return true;
+      case VK_RMENU:                                       sc->mod_alt = v; sc->mod_altgr = v; return true;
+      case VK_LWIN: case VK_RWIN:                          sc->mod_win = v; return true;
+      default: return false;
+    }
+}
+
+static void sc_capture(struct sc_data *sc, bool actions, int vk, LPARAM lp)
+{
+    char key[64];
+    int shift = sc->mod_shift || (GetKeyState(VK_SHIFT) & 0x8000);
+    int control = sc->mod_control || (GetKeyState(VK_CONTROL) & 0x8000);
+    int alt = sc->mod_alt || (GetKeyState(VK_MENU) & 0x8000) || (lp & (1 << 29));
+    int altgr = sc->mod_altgr || (GetKeyState(VK_RMENU) & 0x8000);
+    int win = sc->mod_win || (GetKeyState(VK_LWIN) & 0x8000) || (GetKeyState(VK_RWIN) & 0x8000);
+    int code;
+    if ((vk == VK_BACK || vk == VK_DELETE) && !shift && !control && !alt && !win) {
+        code = 0;
+    } else {
+        code = ShortcutKeyCode(vk, shift, control, alt, altgr, win);
+        if (!ShortcutKeyText(code, key, sizeof(key)))
+            return;                     /* a key with no name: not one */
+    }
+    if (actions) {
+        if (sc->asel < 0) return;
+        sc->acode = code;
+        sc_show_action(sc);
+    } else {
+        if (!sc->tediting) return;
+        sc->tcode = code;
+        sc_key_text(code, NULL, key, sizeof(key));
+        dlg_editbox_set(sc->tkey, sc->dlg, code ? key : "");
+        sc_enable(sc, sc->tsave, code != 0);
+        sc_note(sc, sc->tnote, code);
+    }
+}
+
+static LRESULT CALLBACK sc_capture_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp,
+                                        UINT_PTR id, DWORD_PTR ref)
+{
+    struct sc_data *sc = (struct sc_data *)ref;
+    bool actions = (id == SC_SUBCLASS_ACTIONS);
+    switch (msg) {
+      case WM_NCDESTROY:
+        RemoveWindowSubclass(h, sc_capture_proc, id);
+        break;
+      case WM_GETDLGCODE: {
+        /* Every key but Tab and Escape, which keep their dialog meaning. */
+        const MSG *m = (const MSG *)lp;
+        if (m && (m->message == WM_KEYDOWN || m->message == WM_SYSKEYDOWN) &&
+            (m->wParam == VK_TAB || m->wParam == VK_ESCAPE))
+            break;
+        return DLGC_WANTALLKEYS | DLGC_WANTCHARS | DLGC_WANTARROWS;
+      }
+      case WM_KILLFOCUS:
+        sc->mod_shift = sc->mod_control = sc->mod_alt = sc->mod_altgr = sc->mod_win = 0;
+        break;
+      case WM_CHAR: case WM_SYSCHAR: case WM_DEADCHAR: case WM_SYSDEADCHAR:
+        return 0;                       /* the field shows key names, not characters */
+      case WM_KEYUP: case WM_SYSKEYUP:
+        sc_mod_track(sc, (int)wp, false);
+        return 0;
+      case WM_KEYDOWN: case WM_SYSKEYDOWN: {
+        int vk = (int)wp;
+        if (sc_mod_track(sc, vk, true))
+            return 0;                   /* a modifier alone shows nothing */
+        if (vk == VK_TAB || vk == VK_ESCAPE)
+            break;
+        if (vk == VK_F4 && (sc->mod_alt || (GetKeyState(VK_MENU) & 0x8000) || (lp & (1 << 29))))
+            break;                      /* Alt+F4 closes the box */
+        sc_capture(sc, actions, vk, lp);
+        return 0;
+      }
+    }
+    return DefSubclassProc(h, msg, wp, lp);
+}
+
+/* The field as built by controls.c is an ordinary edit: made read-only,
+ * given its hint, and subclassed here, once its window exists. */
+static void sc_capture_attach(struct sc_data *sc, dlgcontrol *field, UINT_PTR id)
+{
+    HWND h = sc_hwnd(field), parent;
+    wchar_t hint[128];
+    char cls[16];
+    int base, k;
+    if (!h) return;
+    /* A labelled edit is two windows, and the first one is the label: the
+     * edit is the next id along. */
+    parent = GetParent(h);
+    base = GetDlgCtrlID(h);
+    for (k = 0; k < 3; k++) {
+        HWND c = GetDlgItem(parent, base + k);
+        if (c && GetClassNameA(c, cls, sizeof(cls)) && !stricmp(cls, "Edit")) { h = c; break; }
+    }
+    if (k == 3) return;
+    SendMessage(h, EM_SETREADONLY, TRUE, 0);
+    if (MultiByteToWideChar(CP_ACP, 0, KT_KSET_SC_KEY_HINT, -1, hint, lenof(hint)))
+        SendMessageW(h, EM_SETCUEBANNER, TRUE, (LPARAM)hint);
+    SetWindowSubclass(h, sc_capture_proc, id, (DWORD_PTR)sc);
+}
+
+/* A click on a header-row list: the header sorts (a mouse click there)
+ * or is stepped off (the keyboard landing on it); a row selects. Returns
+ * the row's id, -1 for none. */
+static int sc_list_click(struct sc_data *sc, dlgcontrol *list, int *sort_col, bool *sort_desc, int ncols, const int *pct)
+{
+    HWND h = sc_hwnd(list);
+    int idx = dlg_listbox_index(list, sc->dlg);
+    if (idx == 0 && h) {
+        RECT hr; POINT pt;
+        bool mouse = (GetKeyState(VK_LBUTTON) & 0x8000) && GetCursorPos(&pt) &&
+            ScreenToClient(h, &pt) &&
+            SendMessage(h, LB_GETITEMRECT, 0, (LPARAM)&hr) != LB_ERR &&
+            PtInRect(&hr, pt);
+        if (mouse) {
+            RECT r; int col = 0;
+            if (GetClientRect(h, &r) && r.right > r.left) {
+                int acc = 0, i;
+                for (i = 0; i < ncols - 1; i++) {
+                    acc += pct[i];
+                    if (pt.x < (r.right - r.left) * acc / 100) break;
+                    col = i + 1;
+                }
+            }
+            if (col == *sort_col) *sort_desc = !*sort_desc;
+            else { *sort_col = col; *sort_desc = false; }
+            return -2;                  /* re-sort */
+        }
+        if (SendMessage(h, LB_GETCOUNT, 0, 0) > 1) {
+            SendMessage(h, LB_SETCURSEL, 1, 0);
+            idx = 1;
+        } else {
+            SendMessage(h, LB_SETCURSEL, (WPARAM)-1, 0);
+            return -1;
+        }
+    }
+    if (idx < 0) return -1;
+    return dlg_listbox_getid(list, sc->dlg, idx);
+}
+
+static const int sc_apct[2] = { 62, 38 };
+static const int sc_tpct[2] = { 30, 70 };
+
+static void kitty_sc_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    struct sc_data *sc = (struct sc_data *)ctrl->context.p;
+    int which = ctrl->context2.i;
+    if (!sc) return;
+    sc->dlg = dlg;
+    switch (which) {
+      case SC_CTX_ALIST:
+        if (event == EVENT_REFRESH) {
+            sc_fill_actions(sc);
+            sc_show_action(sc);
+        } else if (event == EVENT_SELCHANGE) {
+            int id = sc_list_click(sc, sc->alist, &sc->asort_col, &sc->asort_desc, 2, sc_apct);
+            if (id == -2) { sc_fill_actions(sc); break; }
+            sc->asel = id;
+            sc->acode = id >= 0 ? ShortcutActionValue(id) : 0;
+            sc_show_action(sc);
+        }
+        break;
+      case SC_CTX_AKEY:
+        if (event == EVENT_REFRESH) sc_capture_attach(sc, ctrl, SC_SUBCLASS_ACTIONS);
+        break;
+      case SC_CTX_ASAVE:
+        if (event == EVENT_ACTION) sc_save_action(sc, sc->acode);
+        break;
+      case SC_CTX_ADEFAULT:
+        if (event == EVENT_ACTION && sc->asel >= 0)
+            sc_save_action(sc, ShortcutActionDefault(sc->asel));
+        break;
+      case SC_CTX_TLIST:
+        if (event == EVENT_REFRESH) {
+            sc_fill_texts(sc);
+            sc_show_text(sc);
+        } else if (event == EVENT_SELCHANGE) {
+            int id = sc_list_click(sc, sc->tlist, &sc->tsort_col, &sc->tsort_desc, 2, sc_tpct);
+            if (id == -2) { sc_fill_texts(sc); break; }
+            sc->tsel = id;
+            sc->tediting = id >= 0;
+            sc->tcode = id >= 0 ? sc->texts[id].code : 0;
+            sc_show_text(sc);
+        }
+        break;
+      case SC_CTX_TKEY:
+        if (event == EVENT_REFRESH) sc_capture_attach(sc, ctrl, SC_SUBCLASS_TEXTS);
+        break;
+      case SC_CTX_TTEXT:
+        break;
+      case SC_CTX_TSAVE:
+        if (event == EVENT_ACTION) sc_save_text(sc);
+        break;
+      case SC_CTX_TDELETE:
+        if (event == EVENT_ACTION) sc_delete_text(sc);
+        break;
+      case SC_CTX_TNEW:
+        if (event == EVENT_ACTION) {
+            HWND h = sc_hwnd(sc->tlist);
+            if (h) SendMessage(h, LB_SETCURSEL, (WPARAM)-1, 0);
+            sc->tsel = -1; sc->tcode = 0; sc->tediting = true;
+            sc_show_text(sc);
+        }
+        break;
+    }
+}
+
+static dlgcontrol *sc_list(struct controlset *s, struct sc_data *sc, int ctx,
+                           const int *pct, HelpCtx helpctx)
+{
+    dlgcontrol *c = ctrl_listbox(s, NULL, NO_SHORTCUT, helpctx,
+                                 kitty_sc_handler, P(sc));
+    c->context2 = I(ctx);
+    c->listbox.height = 4;              /* the floor; each list grows into its leaf's spare height */
+    c->listbox.multisel = 0;
+    c->listbox.headerrow = true;
+    c->listbox.ncols = 2;
+    c->listbox.percentages = snewn(2, int);
+    c->listbox.percentages[0] = pct[0];
+    c->listbox.percentages[1] = pct[1];
+    return c;
+}
+
+static void scb_panel_shortcut_editor(struct controlbox *b, const char *path)
+{
+    struct sc_data *sc = (struct sc_data *)ctrl_alloc(b, sizeof(*sc));
+    struct controlset *s;
+    dlgcontrol *c;
+    char note[256];
+
+    memset(sc, 0, sizeof(*sc));
+    sc->asel = -1; sc->tsel = -1;
+    kitty_sc_active = sc;
+
+    s = ctrl_getset(b, path, "actions", KT_KSET_SC_ACTIONS);
+    sc->alist = sc_list(s, sc, SC_CTX_ALIST, sc_apct, HELPCTX(kitty_kset_shortcuts));
+    ctrl_columns(s, 3, 50, 25, 25);
+    c = ctrl_editbox(s, KT_KSET_SC_KEY, NO_SHORTCUT, 72, HELPCTX(kitty_kset_shortcuts),
+                     kitty_sc_handler, P(sc), P(NULL));
+    c->context2 = I(SC_CTX_AKEY); c->column = 0; sc->akey = c;
+    c = ctrl_pushbutton(s, KT_KSET_SC_SAVE, NO_SHORTCUT, HELPCTX(kitty_kset_shortcuts),
+                        kitty_sc_handler, P(sc));
+    c->context2 = I(SC_CTX_ASAVE); c->column = 1; sc->asave = c;
+    c = ctrl_pushbutton(s, KT_KSET_SC_DEFAULT, NO_SHORTCUT, HELPCTX(kitty_kset_shortcuts),
+                        kitty_sc_handler, P(sc));
+    c->context2 = I(SC_CTX_ADEFAULT); c->column = 2; sc->adefault = c;
+    ctrl_columns(s, 1, 100);
+    /* Built with the longest text it will carry and two lines reserved
+     * either way, so the note set later wraps into the same height; blanked
+     * when the panel shows. */
+    snprintf(note, sizeof(note), KT_KSET_SC_USERCMD_NOTE, "Ctrl+Shift+W", 23);
+    sc->anote = ctrl_text(s, note, HELPCTX(kitty_kset_shortcuts));
+    sc->anote->text.lines = 2;
+
+    /* The AutoText entries on a leaf of their own under Shortcuts, with
+     * their own help page. The same sc_data serves both leaves. The path
+     * is spelt out (not built from `path`) so the help-index audit can
+     * attribute the leaf's controls to it. */
+    ctrl_settitle(b, KSET_PATH("Keys & Mouse/Shortcuts/AutoText"), KT_KSET_SC_AUTOTEXT_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Keys & Mouse/Shortcuts/AutoText"), "autotext", KT_KSET_SC_AUTOTEXT);
+    sc->tlist = sc_list(s, sc, SC_CTX_TLIST, sc_tpct, HELPCTX(kitty_kset_autotext));
+    ctrl_columns(s, 2, 50, 50);
+    c = ctrl_editbox(s, KT_KSET_SC_KEY, NO_SHORTCUT, 72, HELPCTX(kitty_kset_autotext),
+                     kitty_sc_handler, P(sc), P(NULL));
+    c->context2 = I(SC_CTX_TKEY); c->column = 0; sc->tkey = c;
+    ctrl_columns(s, 1, 100);
+    c = ctrl_editbox(s, KT_KSET_SC_TEXT, NO_SHORTCUT, 75, HELPCTX(kitty_kset_autotext),
+                     kitty_sc_handler, P(sc), P(NULL));
+    c->context2 = I(SC_CTX_TTEXT); sc->ttext = c;
+    ctrl_columns(s, 3, 34, 33, 33);
+    c = ctrl_pushbutton(s, KT_KSET_SC_SAVE, NO_SHORTCUT, HELPCTX(kitty_kset_autotext),
+                        kitty_sc_handler, P(sc));
+    c->context2 = I(SC_CTX_TSAVE); c->column = 0; sc->tsave = c;
+    c = ctrl_pushbutton(s, KT_KSET_SC_DELETE, NO_SHORTCUT, HELPCTX(kitty_kset_autotext),
+                        kitty_sc_handler, P(sc));
+    c->context2 = I(SC_CTX_TDELETE); c->column = 1; sc->tdelete = c;
+    c = ctrl_pushbutton(s, KT_KSET_SC_NEW, NO_SHORTCUT, HELPCTX(kitty_kset_autotext),
+                        kitty_sc_handler, P(sc));
+    c->context2 = I(SC_CTX_TNEW); c->column = 2; sc->tnew = c;
+    ctrl_columns(s, 1, 100);
+    /* The send routine's trailing-backslash rule, stated where the text is
+     * typed; the help carries the rest. Two lines reserved: the sentence
+     * wraps at the panel width. */
+    c = ctrl_text(s, KT_KSET_SC_AUTOTEXT_NOTE " " KT_KSET_SC_AUTOTEXT_NOTE_HELP,
+                  HELPCTX(kitty_kset_autotext));
+    c->text.lines = 2;
+    /* The user-command note of the key field, last so that its blank
+     * reservation does not open a gap between the Key and Text rows. */
+    sc->tnote = ctrl_text(s, note, HELPCTX(kitty_kset_autotext));
+    sc->tnote->text.lines = 2;
 }
 
 static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)

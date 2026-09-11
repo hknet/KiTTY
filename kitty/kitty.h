@@ -361,6 +361,9 @@ struct TShortcuts {
 	int fontnegative ;
 	int fontblackandwhite ;
 	int keyexchange ;
+	int fontreset ;
+	int transparencyup ;
+	int transparencydown ;
 	} ;
 extern struct TShortcuts shortcuts_tab ;
 struct TShortcuts2 { int num ; char * st ; } ;
@@ -375,6 +378,23 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 int ShortcutKeyText( int key, char * buf, size_t size ) ;
 int GetShortcutKey( int idm ) ;
 const char * ShortcutMenuText( const char * text, int key, char * buf, size_t size ) ;
+/* The action table behind the Shortcuts panel: one row per [Shortcuts]
+ * action - its ini key, its display name, the key in force, its default. */
+int ShortcutActionCount( void ) ;
+const char * ShortcutActionKey( int i ) ;
+const char * ShortcutActionName( int i ) ;
+int ShortcutActionValue( int i ) ;
+int ShortcutActionDefault( int i ) ;
+/* A shortcut code from a virtual key and the modifier flags, as
+ * ManageShortcuts composes it; the code written back in the kitty.ini
+ * syntax ({CONTROL}{SHIFT}{F4}, the inverse of DefineShortcuts); the
+ * user-command slot (1..26) a Ctrl+Shift+letter code shares, 0 for any other;
+ * whether a code is one KiTTY keeps for itself (1 = a fixed alias, 2 = the
+ * window-closing Alt+F4). */
+int ShortcutKeyCode( int vk, int shift, int control, int alt, int altgr, int win ) ;
+int ShortcutKeySyntax( int key, char * buf, size_t size ) ;
+int ShortcutKeyUserCommand( int key ) ;
+int ShortcutKeyReserved( int key ) ;
 char * GetKittyIniFile(void) ;
 char * GetKittySavFile(void) ;
 // Recupere une entree d'une session ( retourne 1 si existe )

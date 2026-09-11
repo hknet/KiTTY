@@ -1284,17 +1284,180 @@ The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{mouseshortcuts} and
 \S{kitty-cfg-kset-shortcuts} The Shortcuts panel
 
 \q{Keyboard shortcuts in the terminal window} is the master switch for
-KiTTY's own key combinations in a terminal - the predefined
-Ctrl+Shift+letter commands and the combinations that type text. Switch
-it off when a full-screen program in the terminal needs those keys. The
-configuration box's own shortcuts and the per-session global hotkey are
-not affected.
+KiTTY's own key combinations in a terminal - the actions listed below,
+the predefined Ctrl+Shift+letter commands and the AutoText combinations
+of the \q{AutoText} leaf (\k{kitty-cfg-kset-autotext}). Switch it off
+when a full-screen program in the terminal needs those keys; for one
+window at a time, \q{Tools} > \q{Shortcuts} on the window menu flips
+the same switch for that window only. The configuration box's own
+shortcuts and the per-session global hotkey are not affected. The
+switch decides only whether the keys fire: the list below and the
+AutoText leaf can be edited either way.
 
-The key combinations defined in \c{kitty.ini} are listed below the
-switch; an editor for them is planned.
+\q{Shortcuts for KiTTY++ actions} lists every action KiTTY can bind a
+key to - assigned or not; an action without a key shows an empty
+\q{Key} cell and does nothing until it gets one. Click a row and its
+key appears in the \q{Key:} field under the list; press the new
+combination there (modifiers and the key together, as you would use it)
+and the field shows it as \c{Ctrl+Shift+F4}. Backspace or Delete empties
+the field, which is how an action is disabled. \q{Save} stores what the
+field shows; \q{Default} stores the built-in key of the action (an
+action that has none is stored empty). Both are live at once in every
+open window of this KiTTY. The list can be sorted by either column with
+a click on its header.
+
+A combination is refused, here and on the AutoText leaf, when it is
+already used: by another action, by an AutoText key, by one of the keys
+KiTTY keeps for itself (Ctrl+Shift+F8 and Ctrl+Shift+F12), or when it
+is Alt+F4, which closes the window before any shortcut sees it - the
+message names the holder, and \q{Default} is refused the same way when
+the default is taken by a key set elsewhere, so free that key first.
+Ctrl+Shift+letter is allowed; the line under the field then states
+which predefined user command loses its key (it keeps its menu entry).
+
+Shortcuts live in \c{kitty.ini} only, never in the registry and never
+per session: with a read-only \c{kitty.ini} (\c{readonly=yes}) or no
+\c{kitty.ini} at all the buttons report that and store nothing. The file
+stays hand-editable: the panel writes the \c{[Shortcuts]} section in
+the same syntax the example file describes - \c{winscp=\{CONTROL\}\{F4\}},
+\c{list=\{F5\}} with a \c{\{F5\}=uptime\\n} line - so an entry made by
+hand and one made here read the same.
 
 The keys in \c{kitty.ini}: \c{shortcuts} under \c{[KiTTY]} is the
 switch; the combinations themselves are the \c{[Shortcuts]} section.
+
+The actions, by the name the list shows them under, and the key each
+has out of the box (none where no key is named):
+
+\b \q{Always on top} - keep the window above every other; Ctrl+F7.
+
+\b \q{Change Settings} - open the configuration box for this session.
+
+\b \q{Change the background image} - the next image of the background
+folder; Ctrl+F11.
+
+\b \q{Clear scrollback} - discard the lines scrolled off the top.
+
+\b \q{Clear the log file} - empty this session's log file, or start a
+new one when the name carries a date.
+
+\b \q{Close and restart the session} - drop the connection and open it
+again.
+
+\b \q{Copy all to clipboard} - the whole buffer, scrollback included.
+
+\b \q{Duplicate the session} - a second window with these settings;
+Ctrl+Alt+T.
+
+\b \q{Event Log} - show the connection's event log.
+
+\b \q{Font: black and white} - the terminal in black on white.
+
+\b \q{Font: negative} - the terminal colours inverted.
+
+\b \q{Font size: larger} - one point bigger; Ctrl+Num +.
+
+\b \q{Font size: reset} - the size back to the session's setting;
+Ctrl+Num 0.
+
+\b \q{Font size: smaller} - one point smaller; Ctrl+Num -.
+
+\b \q{Full screen} - the terminal over the whole screen, and back.
+
+\b \q{Get File (kscp)} - fetch the remote path on the clipboard into the
+download folder; Ctrl+F4.
+
+\b \q{Image viewer} - switch the background-image viewer on and off;
+Shift+F11.
+
+\b \q{New session} - a fresh configuration box.
+
+\b \q{New session with these settings} - a configuration box carrying
+the current settings.
+
+\b \q{Open the editor} - the built-in text editor, empty; Shift+F2.
+
+\b \q{Open the editor with the clipboard} - the editor loaded with the
+clipboard; Ctrl+Shift+F2.
+
+\b \q{Open the log file} - open this session's log file with whatever
+opens .log files.
+
+\b \q{Print all} - print the whole buffer; F7.
+
+\b \q{Print the screen} - print what the clipboard holds; Shift+F7.
+
+\b \q{Protect the window} - refuse keyboard and mouse input until
+pressed again; Ctrl+F9.
+
+\b \q{Repeat key exchange} - a new SSH key exchange now.
+
+\b \q{Reset the terminal} - the terminal state back to its start.
+
+\b \q{Roll the window up} - into its title bar, and back; Ctrl+F12.
+
+\b \q{Run a command} - run a local command typed in a box; Ctrl+F5.
+
+\b \q{Send a script file} - type a local file's lines into the session;
+Ctrl+F2.
+
+\b \q{Send File (kscp)} - upload a local file with kscp; Ctrl+F3.
+
+\b \q{Send the automatic command} - type the session's automatic command
+again; Shift+F12.
+
+\b \q{Send to all windows} - the one-line box whose text goes to every
+KiTTY window; Ctrl+F8.
+
+\b \q{Send to all windows (mode)} - the multiline box for the same;
+Shift+F8, and Ctrl+Shift+F8 always.
+
+\b \q{Send to the tray} - hide the window in the notification area;
+Ctrl+F6.
+
+\b \q{Show port forwardings} - list the forwardings of this session;
+Shift+F6.
+
+\b \q{Start FileZilla} - FileZilla on this host, while the Tools menu
+offers it; Shift+F4.
+
+\b \q{Start WinSCP} - WinSCP on this host; Shift+F3.
+
+\b \q{Switch the log mode} - session logging on or off; Shift+F5.
+
+\b \q{Transparency: less} - the window more opaque; Ctrl+Down. Does
+nothing while transparency is off for the session.
+
+\b \q{Transparency: more} - the window more see-through; Ctrl+Up. The
+same condition.
+
+\S{kitty-cfg-kset-autotext} The AutoText leaf
+
+\q{AutoText Shortcuts} lists the key combinations that type a text into
+the session instead of reaching the host - the \c{list} line of the
+\c{[Shortcuts]} section and its \c{\{KEY\}=text} lines. Click a row and
+its key and text appear in the fields; \q{New} empties them for a fresh
+entry. Press the combination in the \q{Key:} field (modifiers and the
+key together); Backspace or Delete empties it. \q{Save} stores the entry
+(a text is required); \q{Delete} removes the selected one. Both are live
+at once in every open window of this KiTTY.
+
+\q{Text to type:} takes the same escapes as \c{kitty.ini}: \c{\\n}
+presses Enter, \c{\\t} is Tab, \c{\\h} is Backspace, \c{\\p} waits a
+second, \c{\\s05} waits five, \c{\\\\} is a backslash.
+
+The text is sent followed by Enter, unless it already ends in \c{\\n}.
+A text that ends in a backslash (\c{\\}) is sent without the Enter, and
+the backslash itself is not typed: \c{cd /var/log\\} types the command
+and leaves the cursor on the line.
+
+The master switch for every shortcut, and the actions with their keys,
+are on the Shortcuts panel (\k{kitty-cfg-kset-shortcuts}). A
+combination already used - by an action, by another AutoText entry, by
+one of the keys KiTTY keeps for itself, or Alt+F4 - is refused with the
+holder named. Ctrl+Shift+letter is allowed; the line under the \q{Key:}
+field then states which predefined user command loses its key (it
+keeps its menu entry).
 
 \S{kitty-cfg-kset-automation} The Automation panel
 

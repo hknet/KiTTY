@@ -194,6 +194,11 @@ def source_options() -> set[tuple[str, str]]:
         # kitty_config.c mirrors INIT_SECTION without including kitty.h.
         for m in re.finditer(r'readINI\s*\([^;\n]*?KITTY_INI_SECTION\s*,\s*"([^"]+)"', text):
             opts.add(("KiTTY", m.group(1)))
+        # The [Shortcuts] action table (kitty_shortcuts.c): one SC_ACT row per
+        # action, read in a loop, so the key is not beside a readINI call.
+        #   SC_ACT( field, "key", default, name ),
+        for m in re.finditer(r'SC_ACT\s*\(\s*\w+\s*,\s*"([^"]+)"', text):
+            opts.add(("Shortcuts", m.group(1)))
         # satellite binaries read the ini through kitty_inilight.
         for m in re.finditer(r'kitty_inilight_(?:read|write)\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"', text):
             section, key = m.groups()

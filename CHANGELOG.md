@@ -8,6 +8,23 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **Verify the download with one pasted line.** README-BETA in every ZIP and
+  on the ISO carries the command for Windows 10 and 11 and one for Windows 7
+  to 8.1; Windows XP has no checksum tool, so the README points XP users to
+  verifying on a newer Windows first. The 32-bit package also ships
+  `SHA1SUMS` for tools that know SHA-1 only (Refs hknet/KiTTY#49).
+- **The shortcut editor.** KiTTY++ Settings > Keys & Mouse > Shortcuts lists
+  every `[Shortcuts]` action with its key ("Shortcuts for KiTTY++ actions");
+  its AutoText leaf lists the key combinations that type a text ("AutoText
+  Shortcuts") and states the send rule: the text is followed by Enter unless
+  it ends in `\n`, a trailing backslash sends it without the Enter. Click a
+  row, press the new combination in the Key field, Save - or Default, Delete,
+  New. A combination already in use is refused with the holder named; an
+  empty key disables the action; every save is live in the open windows and
+  lands in kitty.ini in the `{CONTROL}{F4}` syntax. The five keys that were
+  fixed in code are actions with those keys as defaults: `transparencyup`
+  (Ctrl+Up), `transparencydown` (Ctrl+Down), `fontup` (Ctrl+Num+), `fontdown`
+  (Ctrl+Num-) and `fontreset` (Ctrl+Num 0).
 - **One local upload folder, for kscp and kitten transfer.** The `[KiTTY]`
   key `uploaddir` was read and never used, and its panel label, help and ini
   comment called it a remote directory; its code had always checked a local
