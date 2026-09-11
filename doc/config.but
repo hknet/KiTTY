@@ -1123,7 +1123,11 @@ text to KiTTY, the screen will revert to showing the current
 terminal contents. You can disable this behaviour by turning off
 \q{Reset scrollback on display activity}. You can also make the
 screen revert when you press a key, by turning on \q{Reset
-scrollback on keypress}.
+scrollback on keypress}. Resizing the window does \e{not} move the
+view: KiTTY keeps showing the lines you had scrolled to, and only a
+view that was at the bottom follows the bottom. Output arriving within
+a second after a resize, the remote side redrawing for the new size,
+does not reset the view either.
 
 \S{config-erasetoscrollback} \q{Push erased text into scrollback}
 

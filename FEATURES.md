@@ -51,6 +51,7 @@ one is available.
   - [Roll-up](#roll-up)
   - [Always on top](#always-on-top)
   - [Font management](#font-management)
+  - [Scroll position across a resize](#scroll-position-across-a-resize)
   - [Word navigation modifier](#word-navigation-modifier)
   - [Quick start of a duplicate session](#quick-start-of-a-duplicate-session)
   - [Window title placeholders](#window-title-placeholders)
@@ -743,6 +744,10 @@ Terminal fonts pack their lines tightly. **Line spacing** stretches each row to 
 Past 100 %, line-drawing characters no longer join up between rows — the gap between cells is real, and the terminal cannot draw across it. That is why the default is 100 %.
 
 **How to enable:** Configuration > **Window > Appearance** > **Line spacing (100-300 %)**.
+
+### Scroll position across a resize
+
+Resizing the window keeps the scroll position: a view scrolled up into the scrollback goes on showing the same lines after the window grows or shrinks, and only a view that was at the bottom follows the bottom. New output still resets the view only when **Window > Reset scrollback on display activity** is on; output arriving within a second after a resize, the remote side redrawing for the new size, does not reset the view either.
 
 ### Word navigation modifier
 

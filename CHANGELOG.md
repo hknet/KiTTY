@@ -163,6 +163,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **Resizing the window keeps the scroll position.** The view used to jump
+  to the bottom on every resize even while you were reading further up; it
+  now stays on the lines you were looking at, and only a view that was at
+  the bottom follows the bottom. The redraw a remote program sends after a
+  resize does not reset the view either; output arriving later than a
+  second after the resize does, when "Reset scrollback on display
+  activity" is on (Refs cyd01/KiTTY#547).
 - **Esc closes the kscp transfer window.** The window kept the keyboard
   focus on its frame, so Esc reached nothing; it now closes a finished
   transfer and cancels a running one, as the Close and Cancel buttons do.

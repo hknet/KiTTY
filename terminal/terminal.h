@@ -556,6 +556,13 @@ struct terminal_tag {
     int remote_qtitle_action;
     bool rxvt_homeend;
     bool scroll_on_disp;
+#ifdef MOD_PERSO
+    /* Grace period after a resize: while it runs, display activity does
+     * not reset a scrolled-back view even with scroll_on_disp on, so the
+     * redraw the remote side sends for the new size leaves the view put. */
+    bool resize_grace;
+    unsigned long resize_grace_since;
+#endif
     bool scroll_on_key;
     bool xterm_256_colour;
     bool true_colour;

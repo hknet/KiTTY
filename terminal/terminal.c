@@ -1529,7 +1529,18 @@ static void term_schedule_update(Terminal *term)
 static void seen_disp_event(Terminal *term)
 {
     if (term->scroll_on_disp) {
+#ifdef MOD_PERSO
+        /* Output within one second of a resize is the remote side redrawing
+         * for the new size; it must not undo the view term_size() kept. The
+         * tick difference is unsigned, so the test survives tick wraparound. */
+        if (term->resize_grace &&
+            GETTICKCOUNT() - term->resize_grace_since >= TICKSPERSEC)
+            term->resize_grace = false;
+        if (!term->resize_grace)
+            term->disptop = 0;
+#else
         term->disptop = 0;
+#endif
         term->win_scrollbar_update_pending = true;
     }
     term->cblinker = true;
@@ -2327,6 +2338,10 @@ Terminal *term_init(Conf *myconf, struct unicode_data *ucsdata, TermWin *win)
     term->wintitle_codepage = term->icontitle_codepage = DEFAULT_CODEPAGE;
 
     term->win_resize_pending = WIN_RESIZE_NO;
+#ifdef MOD_PERSO
+    term->resize_grace = false;
+    term->resize_grace_since = 0;
+#endif
 
     term->bidi_ctx = bidi_new_context();
 
@@ -2441,6 +2456,10 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
     int i, j, oldrows = term->rows;
     int sblen;
     int save_alt_which = term->alt_which;
+#ifdef MOD_PERSO
+    bool keepview;
+    int viewtop = 0;
+#endif
 
     if (newrows == term->rows && newcols == term->cols &&
         newsavelines == term->savelines)
@@ -2450,6 +2469,20 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
 
     if (newrows < 1) newrows = 1;
     if (newcols < 1) newcols = 1;
+
+#ifdef MOD_PERSO
+    /* A view scrolled back on the main screen must keep showing the same
+     * top line. Remember that line's index in the combined scrollback +
+     * screen list before swap_screen, whose display event resets disptop
+     * when "reset scrollback on display activity" is on. The loops below
+     * only move lines between screen and scrollback, so the index survives
+     * apart from lines dropped off the front. A view at the bottom (disptop
+     * 0) keeps following the bottom; the alternate screen is not tracked
+     * because it is rebuilt below anyway. */
+    keepview = (term->disptop != 0 && !save_alt_which && term->rows != -1);
+    if (keepview)
+        viewtop = count234(term->scrollback) + term->disptop;
+#endif
 
     deselect(term);
     swap_screen(term, 0, false, false);
@@ -2533,6 +2566,9 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
         line = delpos234(term->scrollback, 0);
         sfree(line);
         sblen--;
+#ifdef MOD_PERSO
+        viewtop--;
+#endif
     }
     if (sblen < term->tempsblines)
         term->tempsblines = sblen;
@@ -2609,6 +2645,22 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
     term->savelines = newsavelines;
 
     swap_screen(term, save_alt_which, false, false);
+
+#ifdef MOD_PERSO
+    /* Restore the remembered top line, after the swap_screen above has
+     * had its display event. */
+    if (keepview) {
+        term->disptop = viewtop - sblen;
+        if (term->disptop < -sblen)
+            term->disptop = -sblen;
+        if (term->disptop > 0)
+            term->disptop = 0;
+    }
+    /* Start the grace period during which display activity leaves the
+     * view alone (see seen_disp_event). */
+    term->resize_grace = true;
+    term->resize_grace_since = GETTICKCOUNT();
+#endif
 
     term->win_scrollbar_update_pending = true;
     term_schedule_update(term);
