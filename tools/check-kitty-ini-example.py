@@ -71,6 +71,9 @@ ALLOW_UNDOCUMENTED = {
     ("KiTTY", "KiLic"),
     ("KiTTY", "KiPP"),
     ("KiTTY", "password"),
+    # The launcher's own breadcrumb (was the workplace proxy armed at exit);
+    # written and read by the code alone, not a knob.
+    ("KiTTY", "WorkplaceWasArmed"),
     # Read only to migrate it to [Agent] loadkeysonstartup; not a knob.
     ("Agent", "loadonstartup"),
 }
@@ -80,10 +83,10 @@ ALLOW_DEAD_KNOBS: set[str] = set()
 
 ALLOW_TEMPLATE_UNREAD = {
     # Real keys the literal scan cannot see, because the name is built at
-    # runtime or hidden behind a macro rather than written out at the call:
-    #   kageant_policy_get("lockdownmode", ...)   kitty/kitty_pageant.c
-    #   snprintf(key, ..., "startupkey%d", i)     kitty/kitty_pageant.c
-    #   KL_GEOM_INIKEY / KL_COLS_INIKEY           windows/pageant.c
+    # runtime or read through a helper the scan does not know:
+    #   kageant_policy_get(KI_AGENT_LOCKDOWNMODE, ...)   kitty/kitty_pageant.c
+    #   snprintf(key, ..., "startupkey%d", i)            kitty/kitty_pageant.c
+    #   kageant_setting_str_get(KI_AGENT_KEYLISTGEOMETRY, ...)  windows/pageant.c
     ("Agent", "lockdownmode"),
     ("Agent", "blockipcadd"),
     ("Agent", "blockipcremove"),
@@ -154,16 +157,22 @@ def inikey_macros() -> dict[str, str]:
     return dict(re.findall(r'#define\s+(KI_\w+)\s+"([^"]+)"', read_text(INIKEYS)))
 
 
+def expand_inikeys(text: str, macros: dict[str, str]) -> str:
+    """Put the literal back where a source names a section or key through
+    its KI_* macro (KI_SECTION_PRINT and KI_PRINT_HEIGHT alike)."""
+    if not macros:
+        return text
+    return re.sub(r"\bKI_\w+\b",
+                  lambda m: '"%s"' % macros[m.group(0)] if m.group(0) in macros else m.group(0),
+                  text)
+
+
 def source_options() -> set[tuple[str, str]]:
     opts: set[tuple[str, str]] = set()
     files = list((ROOT / "kitty").glob("*.c")) + list((ROOT / "windows").glob("*.c"))
     macros = inikey_macros()
     for path in files:
-        text = read_text(path)
-        if macros:
-            text = re.sub(r"\bKI_\w+\b",
-                          lambda m: '"%s"' % macros[m.group(0)] if m.group(0) in macros else m.group(0),
-                          text)
+        text = expand_inikeys(read_text(path), macros)
         # ReadParameterN is the size-checked variant of the same call.
         for key in re.findall(r'ReadParameterN?\s*\(\s*INIT_SECTION\s*,\s*"([^"]+)"', text):
             opts.add(("KiTTY", key))
@@ -217,7 +226,7 @@ def unread_knobs() -> list[tuple[str, str]]:
     outside their own plumbing before the key is called dead. Returns
     (key, variable).
     """
-    kitty_c = (ROOT / "kitty" / "kitty.c").read_text(encoding="utf-8", errors="ignore")
+    kitty_c = expand_inikeys(read_text(ROOT / "kitty" / "kitty.c"), inikey_macros())
     rows = re.findall(
         r'INIP_(?:KW|NUM)\s*\(\s*(?:INIT_SECTION|"[^"]+")\s*,\s*\d+\s*,\s*'
         r'"([^"]+)"[^)]*?,\s*(&\w+|NULL)\s*,\s*(\w+)\s*\)', kitty_c)

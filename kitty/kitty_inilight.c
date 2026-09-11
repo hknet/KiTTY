@@ -28,6 +28,7 @@
 #include <string.h>
 
 #include "kitty_inilight.h"
+#include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 
 static char inilight_path[MAX_PATH + 1];
 static char inilight_mainsection[8];    /* "KiTTY" or "PuTTY" */
@@ -147,7 +148,7 @@ int kitty_inilight_registry_authoritative(void)
     char buf[32];
     if (!kitty_inilight_file())
         return 1;
-    GetPrivateProfileStringA(inilight_mainsection, "savemode", "",
+    GetPrivateProfileStringA(inilight_mainsection, KI_SAVEMODE, "",
                              buf, sizeof(buf), inilight_path);
     if (!stricmp(buf, "file") || !stricmp(buf, "dir"))
         return 0;

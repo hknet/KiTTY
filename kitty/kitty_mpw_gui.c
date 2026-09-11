@@ -21,6 +21,7 @@
 #include "kitty_rc_additions.h"   /* IDD_MASTERPW, IDC_MPW_* */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions */
+#include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 
 extern void kitty_set_master_pw_prompt(char *(*fn)(int creating));
 
@@ -231,7 +232,7 @@ static int gui_legacy_migrate_warn(void)
 {
     char buf[16] = "";
     char *ini = get_param_str("INI");
-    if (ini && readINI(ini, "KiTTY", "WarnLegacyPasswordUpgrade",
+    if (ini && readINI(ini, KI_SECTION_KITTY, KI_WARNLEGACYPASSWORDUPGRADE,
                        buf, sizeof(buf)) &&
         (!_stricmp(buf, "no") || !_stricmp(buf, "0")))
         return 1;                       /* warning opted out: migrate silently */
@@ -242,7 +243,7 @@ static int gui_legacy_migrate_warn(void)
     if (DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_MIGRATEWARN),
                    owner, migwarn_dlgproc) == IDOK) {
         if (g_mig_noask && ini)
-            writeINI(ini, "KiTTY", "WarnLegacyPasswordUpgrade", "no");
+            writeINI(ini, KI_SECTION_KITTY, KI_WARNLEGACYPASSWORDUPGRADE, "no");
         return 1;
     }
     return 0;

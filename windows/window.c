@@ -349,6 +349,7 @@ int kitty_workplace_request(int arm, unsigned int minutes);
                                      * messages (WM_KITTY_AGENT_UNVERIFIED) */
 #include "../kitty/kitty_storage.h" /* the one-time old-sessions notice bits */
 #include "../kitty/kitty_theme.h"   /* KiTTY: dark mode for the dialogs */
+#include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 /* KiTTY: whether to look for a new release at startup - an application
  * setting in kitty.ini, not a per-session one (kitty/kitty_win.c). */
 int kitty_check_update_enabled(void);
@@ -1735,7 +1736,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         {
             char renderer[16] = "";
             int ReadParameterN(const char *, const char *, char *, size_t);
-            ReadParameterN("KiTTY", "renderer", renderer, sizeof(renderer));
+            ReadParameterN(KI_SECTION_KITTY, KI_RENDERER, renderer, sizeof(renderer));
             if (!stricmp(renderer, "d2d")) {
                 /* A window that opens dimmed (kitty_apply_transparency:
                  * layered iff the feature is on and the level is above 0)

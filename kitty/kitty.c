@@ -39,6 +39,7 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_text.h"   /* shared captions and wordings (also for the .c files included below) */
+#include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 
 /* The hive this process is ACTUALLY using. Not TEXT(PUTTY_REG_POS): that is the
  * compile-time DEFAULT, and with kitty.ini's KiClassName=PuTTY the two differ -
@@ -630,8 +631,8 @@ void InitFolderList( void ) {
 	FolderList[0] = NULL ;
 	StringList_Add( FolderList, "Default" ) ;
 	//if( GetValueData(HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "Folders", fList) == NULL ) return ;
-	//if( ReadParameter( "KiTTY", "Folders", fList ) == 0 ) return ;
-	ReadParameter( INIT_SECTION, "Folders", fList ) ;
+	//if( ReadParameter( KI_SECTION_KITTY, KI_FOLDERS, fList ) == 0 ) return ;
+	ReadParameter( INIT_SECTION, KI_FOLDERS, fList ) ;
 	if( strlen( fList ) != 0 ) {
 		pst = fList ;
 		while( strlen( pst ) > 0 ) {
@@ -688,7 +689,7 @@ void InitFolderList( void ) {
 				if (retCode == ERROR_SUCCESS) {
 					char nValue[1024] ;
 					snprintf( nValue, sizeof(nValue), "%s\\%s", buffer, achKey ) ;
-					if( GetValueData(HKEY_CURRENT_USER, nValue, "Folder", fList ) != NULL ) {
+					if( GetValueData(HKEY_CURRENT_USER, nValue, KR_FOLDER, fList ) != NULL ) {
 						if( strlen( fList ) > 0 ) 
 							StringList_Add( FolderList, fList ) ;
 						//free( fList ) ; fList = NULL ;
@@ -714,12 +715,12 @@ void InitFolderList( void ) {
 			}
 		}
 	
-	if( readINI( KittyIniFile, "Folder", "new", buffer, sizeof(buffer) ) ) {
+	if( readINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_NEW, buffer, sizeof(buffer) ) ) {
 		if( strlen( buffer ) > 0 ) {
 			for( i=0; i<strlen(buffer); i++ ) if( buffer[i]==',' ) buffer[i]='\0' ;
 			StringList_Add( FolderList, buffer ) ;
 			}
-		delINI( KittyIniFile, "Folder", "new" ) ;
+		delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_NEW ) ;
 		}
 	
 	}
@@ -773,7 +774,7 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 			DWORD lpType ;
 			unsigned char lpData[1024] ;
 			DWORD dwDataSize = 1024 ;
-			if( RegQueryValueEx( hKey, "Folder", 0, &lpType, lpData, &dwDataSize ) == ERROR_SUCCESS ) {
+			if( RegQueryValueEx( hKey, KR_FOLDER, 0, &lpType, lpData, &dwDataSize ) == ERROR_SUCCESS ) {
 				/* SECURITY: RegQueryValueEx may not NUL-terminate; bound + terminate
 				 * before strcpy into the caller's char[1024]. */
 				if( dwDataSize >= sizeof(lpData) ) dwDataSize = sizeof(lpData)-1 ;
@@ -796,7 +797,7 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 						break ;
 					}
 					if( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\\' )
-						if( strstr( buffer, "Folder" ) == buffer ) {
+						if( strstr( buffer, KR_FOLDER ) == buffer ) {
 							if( buffer[6]=='\\' ) strcpy( folder, buffer+7 ) ;
 							{ size_t _fl=strlen(folder); if(_fl>0) folder[_fl-1] = '\0' ; }
 							unmungestr(folder, buffer, MAX_PATH) ;
@@ -875,7 +876,7 @@ void RenewPassword( Conf *conf ) {
 	if( !GetUserPassSSHNoSave() )
 	if( strlen( conf_get_str(conf,CONF_password) ) == 0 ) {
 		char buffer[1024] = "", host[1024], termtype[1024] ;
-		if( GetSessionField( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), "Password", buffer ) ) {
+		if( GetSessionField( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), KR_PASSWORD, buffer ) ) {
 			GetSessionField( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), "HostName", host );
 			GetSessionField( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), "TerminalType", termtype );
 			decryptpassword( GetCryptSaltFlag(), buffer, host, termtype ) ;
@@ -937,7 +938,7 @@ void SaveFolderList( void ) {
 		}
 
 	if( strlen( buffer ) > 0 ) 
-		WriteParameter( INIT_SECTION, "Folders", buffer ) ;
+		WriteParameter( INIT_SECTION, KI_FOLDERS, buffer ) ;
 	}
 
 // Sauvegarde une cle de registre dans un fichier
@@ -964,10 +965,10 @@ void CountUp( void ) {
 	long int n ;
 	int len = 1024 ;
 	
-	if( ReadParameterN( INIT_SECTION, "KiCount", buffer, sizeof(buffer) ) == 0 ) { strcpy( buffer, "0" ) ; }
+	if( ReadParameterN( INIT_SECTION, KI_KICOUNT, buffer, sizeof(buffer) ) == 0 ) { strcpy( buffer, "0" ) ; }
 	n = atol( buffer ) + 1 ;
 	snprintf( buffer, sizeof(buffer), "%ld", n ) ;
-	WriteParameter( INIT_SECTION, "KiCount", buffer) ;
+	WriteParameter( INIT_SECTION, KI_KICOUNT, buffer) ;
 	
 	/*
 	 * KiTTY: KiLastUp, KiLastUH, KiSess, KiVers and KiPath used to be written
@@ -991,17 +992,17 @@ void CountUp( void ) {
 	 * have them; stopping the writes alone would just freeze stale values in place.
 	 */
 
-	if( ReadParameterN( INIT_SECTION, "KiLic", buffer, sizeof(buffer) ) == 0 ) {
+	if( ReadParameterN( INIT_SECTION, KI_KILIC, buffer, sizeof(buffer) ) == 0 ) {
 		strcpy( buffer, "KI67" ) ;
 		license_make_with_first( buffer, 25, 97, 0 )  ;
 		license_form( buffer, '-', 5 ) ;
-		WriteParameter( INIT_SECTION, "KiLic", buffer) ; 
+		WriteParameter( INIT_SECTION, KI_KILIC, buffer) ; 
 		}
 	else if( !license_test( buffer, '-', 97, 0 ) ) {
 		strcpy( buffer, "KI67" ) ;
 		license_make_with_first( buffer, 25, 97, 0 )  ;
 		license_form( buffer, '-', 5 ) ;
-		WriteParameter( INIT_SECTION, "KiLic", buffer) ; 
+		WriteParameter( INIT_SECTION, KI_KILIC, buffer) ; 
 		}
 	}
 
@@ -1104,7 +1105,7 @@ int DelParameter( const char * key, const char * name ) {
 // Test la configuration (mode file ou registry) et charge le fichier kitty.sav si besoin
 void GetSaveMode( void ) {
 	char buffer[256] ;
-	if( readINI( KittyIniFile, INIT_SECTION, "savemode", buffer, sizeof(buffer) ) ) {
+	if( readINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, buffer, sizeof(buffer) ) ) {
 		str_rtrim( buffer, "\n\r \t" ) ;
 		if( !stricmp( buffer, "registry" ) ) IniFileFlag = SAVEMODE_REG ;
 		else if( !stricmp( buffer, "file" ) ) IniFileFlag = SAVEMODE_FILE ;
@@ -1390,7 +1391,7 @@ static void SavePortableDirBackup( void ) {
 	time_t now ;
 	struct tm *tmnow ;
 	if( NoKittyFileFlag || ConfigDirectory == NULL || strlen(ConfigDirectory)==0 ) return ;
-	if( ReadParameterN( INIT_SECTION, "portablebackupcount", buffer, sizeof(buffer) ) ) keep = atoi( buffer ) ;
+	if( ReadParameterN( INIT_SECTION, KI_PORTABLEBACKUPCOUNT, buffer, sizeof(buffer) ) ) keep = atoi( buffer ) ;
 	if( keep <= 0 ) return ;
 	if( keep > 50 ) keep = 50 ;
 	snprintf( root, sizeof(root), "%s\\Backups", ConfigDirectory ) ;
@@ -1507,11 +1508,11 @@ static int sav_find_for_restore( const char *savfile, char *out, size_t outlen )
  * secret lying about. Self-limiting: both deletes are skipped when absent. */
 void RetireConfigPasswordLeftovers( void ) {
 	char buf[4096] ;
-	if( GetValueDataN( HKEY_CURRENT_USER, kitty_registry_base(), "password", buf, sizeof(buf) ) != NULL )
-		RegDelValue( HKEY_CURRENT_USER, kitty_registry_base(), "password" ) ;
+	if( GetValueDataN( HKEY_CURRENT_USER, kitty_registry_base(), KI_PASSWORD, buf, sizeof(buf) ) != NULL )
+		RegDelValue( HKEY_CURRENT_USER, kitty_registry_base(), KI_PASSWORD ) ;
 	if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag()
-	    && readINI( KittyIniFile, INIT_SECTION, "password", buf, sizeof(buf) ) )
-		delINI( KittyIniFile, INIT_SECTION, "password" ) ;
+	    && readINI( KittyIniFile, INIT_SECTION, KI_PASSWORD, buf, sizeof(buf) ) )
+		delINI( KittyIniFile, INIT_SECTION, KI_PASSWORD ) ;
 	memset( buf, 0, sizeof(buf) ) ;
 	}
 
@@ -1535,7 +1536,7 @@ void RetireConfigPasswordLeftovers( void ) {
 void RetireCountUpLeftovers( void ) {
 	/* char* rather than const char*: RegDelValue takes LPTSTR. */
 	static char *const dead[] = {
-		"KiLastUp", "KiLastUH", "KiSess", ";KiSess", "KiVers", "KiPath" } ;
+		KR_KILASTUP, KR_KILASTUH, KR_KISESS, KR_KISESS_COMMENTED, KR_KIVERS, KR_KIPATH } ;
 	char buf[4096] ;
 	size_t i ;
 	for( i = 0 ; i < lenof(dead) ; i++ ) {
@@ -1590,7 +1591,7 @@ static void sav_backup( int async ) {
 	if( NoKittyFileFlag || (KittySavFile==NULL) ) return ;
 	if( strlen(KittySavFile)==0 ) return ;
 
-	if( ReadParameterN( INIT_SECTION, "savbackupcount", kb, sizeof(kb) ) ) keep = atoi( kb ) ;
+	if( ReadParameterN( INIT_SECTION, KI_SAVBACKUPCOUNT, kb, sizeof(kb) ) ) keep = atoi( kb ) ;
 	if( keep <= 0 ) return ;              /* savbackupcount=0 disables the backup */
 	if( keep > 50 ) keep = 50 ;
 	/* Write a FRESH timestamped file now (kittynew-YYYYMMDD-HHMMSS.sav) so its
@@ -1998,7 +1999,7 @@ const char *kitty_broadcast_group( void )
 
 	if( group[0] ) return group ;
 
-	if( ReadParameterN( INIT_SECTION, "sendcmdgroup", buf, sizeof(buf) ) && buf[0] ) {
+	if( ReadParameterN( INIT_SECTION, KI_SENDCMDGROUP, buf, sizeof(buf) ) && buf[0] ) {
 		snprintf( group, sizeof(group), "%s", buf ) ;      /* explicit override */
 		group_from_ini = 1 ;
 		return group ;
@@ -2377,7 +2378,7 @@ void RunScriptFile( HWND hwnd, const char * filename ) {
 
 void OpenAndSendScriptFile( HWND hwnd ) {
     char filename[4096], buffer[4096] ;
-    if( ReadParameterN( INIT_SECTION, "scriptfilefilter", buffer, sizeof(buffer) ) ) {
+    if( ReadParameterN( INIT_SECTION, KI_SCRIPTFILEFILTER, buffer, sizeof(buffer) ) ) {
         buffer[4090]='\0';
     } else { 
         strcpy( buffer, "Script files (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|" ) ;
@@ -3161,64 +3162,64 @@ static void SetRestrictAclFlag( const int flag ) {
 
 static const IniParam ini_params[] = {
 	/* "debug" stays first (historical "A lire en premier"). */
-	INIP_KW( INIT_SECTION, 0, "debug",		1, IGN, IGN,	&debug_flag, NULL ),
+	INIP_KW( INIT_SECTION, 0, KI_DEBUG,		1, IGN, IGN,	&debug_flag, NULL ),
 #ifdef MOD_BACKGROUNDIMAGE
-	INIP_KW( INIT_SECTION, 0, "bgimage",		1, 0, IGN,	NULL, SetBackgroundImageFlag ),
+	INIP_KW( INIT_SECTION, 0, KI_BGIMAGE,		1, 0, IGN,	NULL, SetBackgroundImageFlag ),
 #endif
-	INIP_NUM( INIT_SECTION, 0, "bcdelay",		IGN,		&between_char_delay, NULL ),
+	INIP_NUM( INIT_SECTION, 0, KI_BCDELAY,		IGN,		&between_char_delay, NULL ),
 	/* conf=no: do NOT auto-create kitty.ini/kitty.sav */
-	INIP_KW( INIT_SECTION, 0, "conf",		IGN, 1, IGN,	&NoKittyFileFlag, NULL ),
-	INIP_NUM( INIT_SECTION, 0, "cryptsalt",		IGN,		NULL, SetCryptSaltFlag ),
-	INIP_KW( INIT_SECTION, 0, "ctrltab",		1, 0, IGN,	NULL, SetCtrlTabFlag ),   /* symmetrical: a checkbox */
-	INIP_KW( INIT_SECTION, 0, "hyperlink",		1, 0, IGN,	&HyperlinkFlag, NULL ),
-	INIP_NUM( INIT_SECTION, 0, "internaldelay",	1,		&internal_delay, NULL ),
-	INIP_KW( INIT_SECTION, 0, "mouseshortcuts",	1, 0, IGN,	&MouseShortcutsFlag, NULL ),
+	INIP_KW( INIT_SECTION, 0, KI_CONF,		IGN, 1, IGN,	&NoKittyFileFlag, NULL ),
+	INIP_NUM( INIT_SECTION, 0, KI_CRYPTSALT,		IGN,		NULL, SetCryptSaltFlag ),
+	INIP_KW( INIT_SECTION, 0, KI_CTRLTAB,		1, 0, IGN,	NULL, SetCtrlTabFlag ),   /* symmetrical: a checkbox */
+	INIP_KW( INIT_SECTION, 0, KI_HYPERLINK,		1, 0, IGN,	&HyperlinkFlag, NULL ),
+	INIP_NUM( INIT_SECTION, 0, KI_INTERNALDELAY,	1,		&internal_delay, NULL ),
+	INIP_KW( INIT_SECTION, 0, KI_MOUSESHORTCUTS,	1, 0, IGN,	&MouseShortcutsFlag, NULL ),
 	/* cyd01/KiTTY #548: force classic modal error boxes instead of inline terminal errors */
-	INIP_KW( INIT_SECTION, 0, "modalerrors",	1, 0, IGN,	NULL, SetModalErrorsFlag ),
+	INIP_KW( INIT_SECTION, 0, KI_MODALERRORS,	1, 0, IGN,	NULL, SetModalErrorsFlag ),
 	/* Inline-first security prompts (#548 successor): default yes = classic modal
 	 * box; no = OpenSSH-style in-terminal prompt (typed "yes"). */
-	INIP_KW( INIT_SECTION, 0, "modalnewhostkeyconfirmation",	1, 0, IGN,	NULL, SetModalNewHostKeyConfirmationFlag ),
-	INIP_KW( INIT_SECTION, 0, "modalchangedhostkeyconfirmation",	1, 0, IGN,	NULL, SetModalChangedHostKeyConfirmationFlag ),
-	INIP_KW( INIT_SECTION, 0, "modalweakkeyconfirmation",	1, 0, IGN,	NULL, SetModalWeakKeyConfirmationFlag ),
-	INIP_KW( INIT_SECTION, 0, "readonly",		1, IGN, IGN,	NULL, SetReadOnlyFlag ),
+	INIP_KW( INIT_SECTION, 0, KI_MODALNEWHOSTKEYCONFIRMATION,	1, 0, IGN,	NULL, SetModalNewHostKeyConfirmationFlag ),
+	INIP_KW( INIT_SECTION, 0, KI_MODALCHANGEDHOSTKEYCONFIRMATION,	1, 0, IGN,	NULL, SetModalChangedHostKeyConfirmationFlag ),
+	INIP_KW( INIT_SECTION, 0, KI_MODALWEAKKEYCONFIRMATION,	1, 0, IGN,	NULL, SetModalWeakKeyConfirmationFlag ),
+	INIP_KW( INIT_SECTION, 0, KI_READONLY,		1, IGN, IGN,	NULL, SetReadOnlyFlag ),
 	/* restrictacl=yes: -restrict-acl for every process; no way back off.
 	 * use_readini=1 (kitty.ini ONLY) is deliberate and unlike its [KiTTY]
 	 * neighbours - see the comment on SetRestrictAclFlag. */
-	INIP_KW( INIT_SECTION, 1, "restrictacl",	1, IGN, IGN,	NULL, SetRestrictAclFlag ),
-	INIP_KW( INIT_SECTION, 0, "shortcuts",		1, 0, IGN,	&ShortcutsFlag, NULL ),
-	INIP_KW( INIT_SECTION, 0, "size",		1, 0, IGN,	&SizeFlag, NULL ),      /* symmetrical: a checkbox */
-	INIP_NUM( INIT_SECTION, 0, "slidedelay",	IGN,		&ImageSlideDelay, NULL ),
-	INIP_KW( INIT_SECTION, 0, "userpasssshnosave",	1, 0, IGN,	NULL, SetUserPassSSHNoSave ),
-	INIP_KW( INIT_SECTION, 0, "winroll",		1, 0, IGN,	&WinrolFlag, NULL ),
+	INIP_KW( INIT_SECTION, 1, KI_RESTRICTACL,	1, IGN, IGN,	NULL, SetRestrictAclFlag ),
+	INIP_KW( INIT_SECTION, 0, KI_SHORTCUTS,		1, 0, IGN,	&ShortcutsFlag, NULL ),
+	INIP_KW( INIT_SECTION, 0, KI_SIZE,		1, 0, IGN,	&SizeFlag, NULL ),      /* symmetrical: a checkbox */
+	INIP_NUM( INIT_SECTION, 0, KI_SLIDEDELAY,	IGN,		&ImageSlideDelay, NULL ),
+	INIP_KW( INIT_SECTION, 0, KI_USERPASSSSHNOSAVE,	1, 0, IGN,	NULL, SetUserPassSSHNoSave ),
+	INIP_KW( INIT_SECTION, 0, KI_WINROLL,		1, 0, IGN,	&WinrolFlag, NULL ),
 	/* wintitle: symmetrical since the settings tree offers it as a checkbox */
-	INIP_KW( INIT_SECTION, 0, "wintitle",		1, 0, IGN,	&TitleBarFlag, NULL ),
+	INIP_KW( INIT_SECTION, 0, KI_WINTITLE,		1, 0, IGN,	&TitleBarFlag, NULL ),
 #ifdef MOD_PROXY
 	/* proxyselection: yes = always, no = never, auto (or anything else) = when defined */
-	INIP_KW( "ConfigBox", 0, "proxyselection",	1, -1, 0,	NULL, SetProxySelectionFlag ),
+	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_PROXYSELECTION,	1, -1, 0,	NULL, SetProxySelectionFlag ),
 #endif
 #ifdef MOD_ZMODEM
-	INIP_KW( INIT_SECTION, 0, "zmodem",		1, 0, IGN,	NULL, SetZModemFlag ),
+	INIP_KW( INIT_SECTION, 0, KI_ZMODEM,		1, 0, IGN,	NULL, SetZModemFlag ),
 #endif
 #ifdef MOD_RECONNECT
 	/* SYMMETRICAL since the settings tree offers it as a checkbox: yes states
 	 * the default rather than meaning nothing (same as the ConfigBox keys). */
-	INIP_KW( INIT_SECTION, 0, "autoreconnect",	1, 0, IGN,	&AutoreconnectFlag, NULL ),
-	INIP_NUM( INIT_SECTION, 0, "ReconnectDelay",	1,		&ReconnectDelay, NULL ),
+	INIP_KW( INIT_SECTION, 0, KI_AUTORECONNECT,	1, 0, IGN,	&AutoreconnectFlag, NULL ),
+	INIP_NUM( INIT_SECTION, 0, KI_RECONNECTDELAY,	1,		&ReconnectDelay, NULL ),
 #endif
-	INIP_KW( INIT_SECTION, 0, "scriptmode",		1, 0, IGN,	NULL, kitty_script_set_enabled ),
-	INIP_KW( INIT_SECTION, 0, "sendcmdmode",		1, 0, IGN,	NULL, kitty_broadcast_set_enabled ),
+	INIP_KW( INIT_SECTION, 0, KI_SCRIPTMODE,		1, 0, IGN,	NULL, kitty_script_set_enabled ),
+	INIP_KW( INIT_SECTION, 0, KI_SENDCMDMODE,		1, 0, IGN,	NULL, kitty_broadcast_set_enabled ),
 #ifndef MOD_NOTRANSPARENCY
 	/* transparency: anything but an explicit yes disables */
-	INIP_KW( INIT_SECTION, 0, "transparency",	1, 0, 0,	NULL, SetTransparencyIni ),
+	INIP_KW( INIT_SECTION, 0, KI_TRANSPARENCY,	1, 0, 0,	NULL, SetTransparencyIni ),
 #endif
 #ifdef MOD_BACKGROUNDIMAGE
-	INIP_KW( INIT_SECTION, 0, "shrinkbitmap",	1, 0, 0,	NULL, SetShrinkBitmapEnable ),
+	INIP_KW( INIT_SECTION, 0, KI_SHRINKBITMAP,	1, 0, 0,	NULL, SetShrinkBitmapEnable ),
 #endif
 	/* Symmetrical and registry-aware for the same reason as the four below:
 	 * Application > Config Window offers it as a checkbox now. */
-	INIP_KW( "ConfigBox", 0, "noexit",		1, 0, IGN,	&ConfigBoxNoExitFlag, NULL ),
-	INIP_KW( "ConfigBox", 0, "fixedsizewindow",	1, 0, IGN,	&ConfigBoxFixedSizeFlag, NULL ),
-	INIP_KW( "ConfigBox", 0, "applicationsettings",	1, 0, IGN,	&ConfigBoxApplicationSettingsFlag, NULL ),
+	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_NOEXIT,		1, 0, IGN,	&ConfigBoxNoExitFlag, NULL ),
+	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_FIXEDSIZEWINDOW,	1, 0, IGN,	&ConfigBoxFixedSizeFlag, NULL ),
+	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_APPLICATIONSETTINGS,	1, 0, IGN,	&ConfigBoxApplicationSettingsFlag, NULL ),
 	/*
 	 * The Session-panel group on Application > Config Window edits these
 	 * four, which forces two things on them.
@@ -3235,10 +3236,10 @@ static const IniParam ini_params[] = {
 	 * in use; reading them with readINI would put the value somewhere it is
 	 * never looked for. See the note on the three size keys below.
 	 */
-	INIP_KW( "ConfigBox", 0, "filter",		1, 0, IGN,	&SessionFilterFlag, NULL ),
-	INIP_KW( "ConfigBox", 0, "defaultsettings",	1, 0, IGN,	&DefaultSettingsFlag, NULL ),
-	INIP_KW( "ConfigBox", 0, "foldernavigation",	1, 0, IGN,	&FolderNavigationFlag, NULL ),
-	INIP_KW( "ConfigBox", 0, "loadlastsession",	1, 0, IGN,	&LoadLastSessionFlag, NULL ),
+	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_FILTER,		1, 0, IGN,	&SessionFilterFlag, NULL ),
+	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_DEFAULTSETTINGS,	1, 0, IGN,	&DefaultSettingsFlag, NULL ),
+	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_FOLDERNAVIGATION,	1, 0, IGN,	&FolderNavigationFlag, NULL ),
+	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_LOADLASTSESSION,	1, 0, IGN,	&LoadLastSessionFlag, NULL ),
 	/*
 	 * READ THE WAY THEY ARE WRITTEN (0 = ReadParameterN, registry then ini).
 	 *
@@ -3252,13 +3253,13 @@ static const IniParam ini_params[] = {
 	 * Portable mode is unaffected: with savemode=dir, ReadParameterN reads
 	 * kitty.ini and nothing else.
 	 */
-	INIP_NUM( "ConfigBox", 0, "height",		IGN,		&ConfigBoxHeight, NULL ),
-	INIP_NUM( "ConfigBox", 0, "windowheight",	IGN,		&ConfigBoxWindowHeight, NULL ),
-	INIP_NUM( "ConfigBox", 0, "windowwidth",	IGN,		&ConfigBoxWindowWidth, NULL ),
-	INIP_NUM( "Print", 1, "height",			IGN,		&PrintCharSize, NULL ),
-	INIP_NUM( "Print", 1, "maxline",		IGN,		&PrintMaxLinePerPage, NULL ),
-	INIP_NUM( "Print", 1, "maxchar",		IGN,		&PrintMaxCharPerLine, NULL ),
-	INIP_KW( "FontFallback", 1, "active",		1, 0, IGN,	NULL, SetFontFallbackFlag ),
+	INIP_NUM( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_HEIGHT,		IGN,		&ConfigBoxHeight, NULL ),
+	INIP_NUM( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_WINDOWHEIGHT,	IGN,		&ConfigBoxWindowHeight, NULL ),
+	INIP_NUM( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_WINDOWWIDTH,	IGN,		&ConfigBoxWindowWidth, NULL ),
+	INIP_NUM( KI_SECTION_PRINT, 1, KI_PRINT_HEIGHT,			IGN,		&PrintCharSize, NULL ),
+	INIP_NUM( KI_SECTION_PRINT, 1, KI_PRINT_MAXLINE,		IGN,		&PrintMaxLinePerPage, NULL ),
+	INIP_NUM( KI_SECTION_PRINT, 1, KI_PRINT_MAXCHAR,		IGN,		&PrintMaxCharPerLine, NULL ),
+	INIP_KW( KI_SECTION_FONTFALLBACK, 1, KI_FONTFALLBACK_ACTIVE,		1, 0, IGN,	NULL, SetFontFallbackFlag ),
 } ;
 #undef IGN
 
@@ -3293,8 +3294,8 @@ void LoadParameters( void ) {
 	load_ini_params() ;
 
 	/* The remaining keys have richer semantics and stay hand-written. */
-	if( ReadParameterN( INIT_SECTION, "antiidle", buffer, sizeof(buffer) ) ) { buffer[127]='\0'; strcpy( AntiIdleStr, buffer ) ; }
-	if( ReadParameterN( INIT_SECTION, "antiidledelay", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_ANTIIDLE, buffer, sizeof(buffer) ) ) { buffer[127]='\0'; strcpy( AntiIdleStr, buffer ) ; }
+	if( ReadParameterN( INIT_SECTION, KI_ANTIIDLEDELAY, buffer, sizeof(buffer) ) ) {
 		/* Plain seconds, floored at 5 AND capped at a day. 0 or nonsense
 		 * leaves the default.
 		 *
@@ -3307,15 +3308,15 @@ void LoadParameters( void ) {
 		if( secs > 86400 ) secs = 86400 ;
 		if( secs > 0 ) AntiIdleSeconds = secs < 5 ? 5 : secs ;
 	}
-	if( ReadParameterN( INIT_SECTION, "browsedirectory", buffer, sizeof(buffer) ) ) { 
+	if( ReadParameterN( INIT_SECTION, KI_BROWSEDIRECTORY, buffer, sizeof(buffer) ) ) { 
 		if( !stricmp( buffer, "NO" ) ) { DirectoryBrowseFlag = 0 ; }
 		else if( (!stricmp( buffer, "YES" )) && (IniFileFlag==SAVEMODE_DIR) ) DirectoryBrowseFlag = 1 ;
 	}
-	if( ReadParameterN( INIT_SECTION, "commanddelay", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_COMMANDDELAY, buffer, sizeof(buffer) ) ) {
 		autocommand_delay = (int)(1000*atof( buffer )) ;
 		if(autocommand_delay<5) autocommand_delay = 5 ; 
 	}
-	if( ReadParameterN( INIT_SECTION, "configdir", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_CONFIGDIR, buffer, sizeof(buffer) ) ) {
 		if( strlen( buffer ) > 0 ) {
 			if( existdirectory(buffer) ) { SetConfigDirectory( buffer ) ; }
 			else {
@@ -3396,24 +3397,24 @@ void LoadParameters( void ) {
 			}
 		}
 	}
-	if( ReadParameterN( INIT_SECTION, "iconfile", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_ICONFILE, buffer, sizeof(buffer) ) ) {
 		if( existfile( buffer ) ) {
 			if( IconFile != NULL ) free( IconFile ) ;
 			IconFile = (char*) malloc( strlen(buffer)+1 ) ;
 			strcpy( IconFile, buffer ) ;
 		}
 	}
-	if( ReadParameterN( INIT_SECTION, "initdelay", buffer, sizeof(buffer) ) ) { 
+	if( ReadParameterN( INIT_SECTION, KI_INITDELAY, buffer, sizeof(buffer) ) ) { 
 		init_delay = (int)(1000*atof( buffer )) ;
 		if( init_delay < 0 ) init_delay = 2000 ; 
 	}
-	if( ReadParameterN( INIT_SECTION, "fileextension", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_FILEEXTENSION, buffer, sizeof(buffer) ) ) {
 		if( strlen(buffer) > 0 ) {
 			snprintf( FileExtension, sizeof(FileExtension), "%s%s", (buffer[0]!='.')?".":"", buffer ) ;
 			str_rtrim( FileExtension, " " ) ;
 		}				
 	}
-	if( ReadParameterN( INIT_SECTION, "pastesize", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_PASTESIZE, buffer, sizeof(buffer) ) ) {
 		/* KiTTY: accept 0 as "no warning". The old test was atoi(buffer)>0, so a
 		 * 0 could not turn the check off - harmless while the default WAS 0, and
 		 * wrong the moment it became 5120. Still requires a number, so a stray
@@ -3424,12 +3425,12 @@ void LoadParameters( void ) {
 	}
 	/* NOTE: this parser is CASE-SENSITIVE (strcmp, not stricmp), so the key is
 	 * documented as exactly "proxychainmax". */
-	if( ReadParameterN( INIT_SECTION, "proxychainmax", buffer, sizeof(buffer) ) ) { if( atoi(buffer)>0 ) SetProxyChainMax( atoi(buffer) ) ; }
+	if( ReadParameterN( INIT_SECTION, KI_PROXYCHAINMAX, buffer, sizeof(buffer) ) ) { if( atoi(buffer)>0 ) SetProxyChainMax( atoi(buffer) ) ; }
 	/* [KiTTY] funkeys=<mode>: the function-key mode for sessions that do not
 	 * carry one. Spelled as the Keyboard panel spells the modes; "xterm216" is
 	 * the one worth setting, because it is the only mode in which Shift+F1..F12
 	 * mean F13..F24 the way terminfo and every modern host expect. */
-	if( ReadParameterN( INIT_SECTION, "funkeys", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_FUNKEYS, buffer, sizeof(buffer) ) ) {
 		str_rtrim( buffer, "\n\r \t" ) ;
 		if( !stricmp(buffer,"xterm216") || !stricmp(buffer,"xterm 216+") ) SetFunkeysDefault( FUNKY_XTERM_216 ) ;
 		else if( !stricmp(buffer,"tilde") || !stricmp(buffer,"esc[n~") )   SetFunkeysDefault( FUNKY_TILDE ) ;
@@ -3441,18 +3442,18 @@ void LoadParameters( void ) {
 	}
 	/* Same case-sensitivity note: exactly "namedproxy", value "hostname" or
 	 * "sessionorhostname" (the default). */
-	if( ReadParameterN( INIT_SECTION, "namedproxy", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_NAMEDPROXY, buffer, sizeof(buffer) ) ) {
 		str_rtrim( buffer, "\n\r \t" ) ;
 		if( !stricmp( buffer, "hostname" ) ) SetNamedProxyHostnameOnly( 1 ) ;
 		else if( !stricmp( buffer, "sessionorhostname" ) ) SetNamedProxyHostnameOnly( 0 ) ;
 	}
-	if( ReadParameterN( INIT_SECTION, "PSCPPath", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_PSCPPATH, buffer, sizeof(buffer) ) ) {
 		if( existfile( buffer ) ) { 
 			if( PSCPPath!=NULL) { free(PSCPPath) ; PSCPPath = NULL ; }
 			PSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PSCPPath, buffer ) ;
 		}
 	}
-	if( ReadParameterN( INIT_SECTION, "sav", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_SAV, buffer, sizeof(buffer) ) ) {
 		if( strlen( buffer ) > 0 ) {
 			/* Ignore an inherited legacy default (kitty.sav / kitty084.sav) written
 			 * by an older KiTTY, so the current default (kittynew.sav) takes over
@@ -3466,8 +3467,8 @@ void LoadParameters( void ) {
 			}
 		}
 	}
-	if( ReadParameterN( INIT_SECTION, "sshversion", buffer, sizeof(buffer) ) ) { set_sshver( buffer ) ; }
-	if( ReadParameterN( INIT_SECTION, "WinSCPPath", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_SSHVERSION, buffer, sizeof(buffer) ) ) { set_sshver( buffer ) ; }
+	if( ReadParameterN( INIT_SECTION, KI_WINSCPPATH, buffer, sizeof(buffer) ) ) {
 		if( existfile( buffer ) ) { 
 			if( WinSCPPath!=NULL) { free(WinSCPPath) ; WinSCPPath = NULL ; }
 			WinSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( WinSCPPath, buffer ) ;
@@ -3476,7 +3477,7 @@ void LoadParameters( void ) {
 	/* ReadParameter, not readINI: the Session-panel group on Application >
 	 * Config Window edits this, and a panel writes through WriteParameter -
 	 * which in registry mode does not write the file. */
-	if( ReadParameter( "ConfigBox", "dblclick", buffer ) ) {
+	if( ReadParameter( KI_SECTION_CONFIGBOX, KI_CONFIGBOX_DBLCLICK, buffer ) ) {
 		if( !stricmp(buffer,"open") ) { SetDblClickFlag(0) ; }
 		if( !stricmp(buffer,"start") ) { SetDblClickFlag(1) ; }
 	}
@@ -3485,15 +3486,15 @@ void LoadParameters( void ) {
 	 * deep (1 = top categories only, like stock PuTTY). */
 	/* ReadParameter, not readINI: Application > Config Window edits it, and a
 	 * panel writes through WriteParameter - the registry in registry mode. */
-	if( ReadParameter( "ConfigBox", "categoryexpand", buffer ) ) {
+	if( ReadParameter( KI_SECTION_CONFIGBOX, KI_CONFIGBOX_CATEGORYEXPAND, buffer ) ) {
 		extern int kitty_category_expand_depth ;
 		if( strlen(buffer)==0 || !stricmp(buffer,"all") || !stricmp(buffer,"full") || !stricmp(buffer,"max") || !stricmp(buffer,"yes") )
 			kitty_category_expand_depth = 99 ;
 		else { int d = atoi(buffer) ; kitty_category_expand_depth = (d >= 1) ? d : 99 ; }
 	}
-	if( readINI( KittyIniFile, "Folder", "del", buffer, sizeof(buffer) ) ) {
+	if( readINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_DEL, buffer, sizeof(buffer) ) ) {
 		StringList_Del( FolderList, buffer ) ;
-		delINI( KittyIniFile, "Folder", "del" ) ;
+		delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_DEL ) ;
 	}
 	/* [FontFallback] string settings (kitty/winfont_fallback.c). The
 	 * "active" master switch is handled by the ini_params table above;
@@ -3501,10 +3502,10 @@ void LoadParameters( void ) {
 	 * NB the mini ini parser matches section/key names case-SENSITIVELY. */
 	{
 	char fbList[1024]="", fbOvr[2048]="", fbLog[64]="", fbLogFile[MAX_PATH]="" ;
-	readINI( KittyIniFile, "FontFallback", "fallback", fbList, sizeof(fbList) ) ;
-	readINI( KittyIniFile, "FontFallback", "override", fbOvr, sizeof(fbOvr) ) ;
-	readINI( KittyIniFile, "FontFallback", "log", fbLog, sizeof(fbLog) ) ;
-	readINI( KittyIniFile, "FontFallback", "logfile", fbLogFile, sizeof(fbLogFile) ) ;
+	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_FALLBACK, fbList, sizeof(fbList) ) ;
+	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_OVERRIDE, fbOvr, sizeof(fbOvr) ) ;
+	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOG, fbLog, sizeof(fbLog) ) ;
+	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOGFILE, fbLogFile, sizeof(fbLogFile) ) ;
 	winfb_config_set( fbList, fbOvr, fbLog, fbLogFile ) ;
 	}
 }
@@ -3514,9 +3515,9 @@ void LoadParameters( void ) {
  * (they are file-only, and winfb_config_set takes all four at once). */
 void kitty_fontfallback_apply_list( const char * list ) {
 	char fbOvr[2048]="", fbLog[64]="", fbLogFile[MAX_PATH]="" ;
-	readINI( KittyIniFile, "FontFallback", "override", fbOvr, sizeof(fbOvr) ) ;
-	readINI( KittyIniFile, "FontFallback", "log", fbLog, sizeof(fbLog) ) ;
-	readINI( KittyIniFile, "FontFallback", "logfile", fbLogFile, sizeof(fbLogFile) ) ;
+	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_OVERRIDE, fbOvr, sizeof(fbOvr) ) ;
+	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOG, fbLog, sizeof(fbLog) ) ;
+	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOGFILE, fbLogFile, sizeof(fbLogFile) ) ;
 	winfb_config_set( list ? list : "", fbOvr, fbLog, fbLogFile ) ;
 }
 
@@ -3595,7 +3596,7 @@ void WriteCountUpAndPath( void ) {
 	CountUp() ;
 
 	// Positionne la version du binaire
-	WriteParameter( INIT_SECTION, "Build", BuildVersionTime ) ;
+	WriteParameter( INIT_SECTION, KI_BUILD, BuildVersionTime ) ;
 	
 	/* find the file-copy helper (kscp) if it is there */
 	SearchPSCP() ;
@@ -3682,7 +3683,7 @@ void InitWinMain( void ) {
 	{
 		char framepace[16] = "" ;
 		void kitty_pace_set_setting( const char * ) ;
-		ReadParameterN( "KiTTY", "framepace", framepace, sizeof(framepace) ) ;
+		ReadParameterN( KI_SECTION_KITTY, KI_FRAMEPACE, framepace, sizeof(framepace) ) ;
 		kitty_pace_set_setting( framepace ) ;
 	}
 	
@@ -3715,7 +3716,7 @@ void InitWinMain( void ) {
 	strcpy( KiTTYClassName, appname ) ;
 
 #ifdef MOD_PERSO
-	if( ReadParameterN( INIT_SECTION, "KiClassName", buffer, sizeof(buffer) ) )
+	if( ReadParameterN( INIT_SECTION, KI_KICLASSNAME, buffer, sizeof(buffer) ) )
 		{ if( (strlen(buffer)>0) && (strlen(buffer)<128) ) { buffer[127]='\0'; strcpy( KiTTYClassName, buffer ) ; } }
 	appname = KiTTYClassName ;
 	/* Select the registry hive to match KiClassName: default KiTTY's own
@@ -3832,7 +3833,7 @@ void InitWinMain( void ) {
 			DWORD declined = 0, dwsize = sizeof(DWORD), dwtype = 0 ;
 			HKEY hsave = NULL ;
 			if( RegOpenKeyEx( HKEY_CURRENT_USER, kitty_reg_park, 0, KEY_READ, &hsave ) == ERROR_SUCCESS ) {
-				if( RegQueryValueEx( hsave, "RestoreDeclined", NULL, &dwtype, (LPBYTE)&declined, &dwsize ) != ERROR_SUCCESS )
+				if( RegQueryValueEx( hsave, KR_RESTOREDECLINED, NULL, &dwtype, (LPBYTE)&declined, &dwsize ) != ERROR_SUCCESS )
 					declined = 0 ;
 				RegCloseKey( hsave ) ;
 				}
@@ -3852,7 +3853,7 @@ void InitWinMain( void ) {
 					InfoBoxClose( hdlg ) ;
 					}
 				else {
-					RegTestOrCreateDWORD( HKEY_CURRENT_USER, kitty_reg_park, "RestoreDeclined", 1 ) ;
+					RegTestOrCreateDWORD( HKEY_CURRENT_USER, kitty_reg_park, KR_RESTOREDECLINED, 1 ) ;
 					}
 				}
 			}
@@ -3967,7 +3968,7 @@ void InitWinMain( void ) {
 			kitty_set_session_dir( sesspath ) ;
 			/* Portable at-rest password policy: master (default) or the
 			 * explicit legacy/plaintext compatibility escape hatch. */
-			if( readINI( KittyIniFile, INIT_SECTION, "PortablePasswordProtection", ppmode, sizeof(ppmode) ) )
+			if( readINI( KittyIniFile, INIT_SECTION, KI_PORTABLEPASSWORDPROTECTION, ppmode, sizeof(ppmode) ) )
 				kitty_set_portable_password_protection( ppmode ) ;
 		}
 		/* Test Default Settings */
@@ -4035,7 +4036,7 @@ void InitWinMain( void ) {
 
 	NETDBG_TS("after icon-dll init");
 	// Teste la presence d'une note et l'affiche
-	if( GetValueData( HKEY_CURRENT_USER, kitty_registry_base(), "Notes", buffer ) )
+	if( GetValueData( HKEY_CURRENT_USER, kitty_registry_base(), KR_NOTES, buffer ) )
 		{ if( strlen( buffer ) > 0 ) MessageBox( NULL, buffer, KT_CAP_NOTES, MB_OK ) ; }
 		
 	// Genere un fichier (4096ko max) d'initialisation de toute les Sessions

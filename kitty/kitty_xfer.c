@@ -888,7 +888,7 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	}
 	bcat( buffer, BC, conf_get_int(conf, CONF_winscpprot)==0 ? "-scp " : "-sftp " ) ;
 
-	if( ReadParameterN( INIT_SECTION, "pscpport", pscpport, sizeof(pscpport) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_PSCPPORT, pscpport, sizeof(pscpport) ) ) {
 		pscpport[17]='\0';
 		if( !strcmp( pscpport,"*" ) ) snprintf( pscpport, sizeof(pscpport), "%d", conf_get_int(conf, CONF_port) ) ;
 		bcat( buffer, BC, "-P " ) ; bcat( buffer, BC, pscpport ) ; bcat( buffer, BC, " " ) ;
@@ -1056,7 +1056,7 @@ void GetOneFileTo( HWND hwnd, char * directory, const char * filename, const cha
     }
     bcat( buffer, BC, conf_get_int(conf, CONF_winscpprot)==0 ? "-scp " : "-sftp " ) ;
 
-    if( ReadParameterN( INIT_SECTION, "pscpport", pscpport, sizeof(pscpport) ) ) {
+    if( ReadParameterN( INIT_SECTION, KI_PSCPPORT, pscpport, sizeof(pscpport) ) ) {
         pscpport[17]='\0';
         if( !strcmp( pscpport,"*" ) ) snprintf( pscpport, sizeof(pscpport), "%d", conf_get_int(conf,CONF_port) ) ;
         bcat( buffer, BC, "-P " ) ; bcat( buffer, BC, pscpport ) ; bcat( buffer, BC, " " ) ;
@@ -1446,7 +1446,7 @@ static int set_winscp_path_if_exists(const char *path)
 	if( path != NULL && path[0] && existfile(path) ) {
 		WinSCPPath = (char*) malloc( strlen(path) + 1 ) ;
 		strcpy( WinSCPPath, path ) ;
-		WriteParameter( INIT_SECTION, "WinSCPPath", WinSCPPath ) ;
+		WriteParameter( INIT_SECTION, KI_WINSCPPATH, WinSCPPath ) ;
 		return 1 ;
 	}
 	return 0 ;
@@ -1464,9 +1464,9 @@ static int probe_winscp_env_dir(const char *envname, const char *subpath, char *
 int SearchWinSCP( void ) {
 	char buffer[4096] ;
 	if( WinSCPPath!=NULL) { free(WinSCPPath) ; WinSCPPath = NULL ; }
-	if( ReadParameterN( INIT_SECTION, "WinSCPPath", buffer, sizeof(buffer) ) != 0 ) {
+	if( ReadParameterN( INIT_SECTION, KI_WINSCPPATH, buffer, sizeof(buffer) ) != 0 ) {
 		if( adopt_tool_path_if_exists( &WinSCPPath, buffer, NULL, NULL ) ) return 1 ;
-		else { DelParameter( INIT_SECTION, "WinSCPPath" ) ; }
+		else { DelParameter( INIT_SECTION, KI_WINSCPPATH ) ; }
 	}
 	if( probe_winscp_env_dir("ProgramFiles", "WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
 	if( probe_winscp_env_dir("ProgramFiles(x86)", "WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
@@ -1475,7 +1475,7 @@ int SearchWinSCP( void ) {
 	if( probe_winscp_env_dir("ProgramFiles(x86)", "WinSCP3\\WinSCP3.exe", buffer, sizeof(buffer)) ) return 1 ;
 	snprintf( buffer, sizeof(buffer), "%s\\WinSCP.exe", InitialDirectory ) ;
 	if( set_winscp_path_if_exists(buffer) ) return 1 ;
-	if( ReadParameterN( INIT_SECTION, "winscpdir", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_WINSCPDIR, buffer, sizeof(buffer) ) ) {
 		buffer[4076]='\0';
 		strcat( buffer, "\\" ) ; strcat( buffer, "WinSCP.exe" ) ;
 		if( set_winscp_path_if_exists(buffer) ) return 1 ;
@@ -1789,9 +1789,9 @@ static int probe_filezilla_env_dir( const char *envname, const char *subpath, ch
 int SearchFileZilla( void ) {
 	char buffer[4096] ;
 	if( FileZillaPath != NULL ) { free( FileZillaPath ) ; FileZillaPath = NULL ; }
-	if( ReadParameterN( INIT_SECTION, "FileZillaPath", buffer, sizeof(buffer) ) != 0 ) {
+	if( ReadParameterN( INIT_SECTION, KI_FILEZILLAPATH, buffer, sizeof(buffer) ) != 0 ) {
 		if( set_filezilla_path_if_exists( buffer ) ) return 1 ;
-		else { DelParameter( INIT_SECTION, "FileZillaPath" ) ; }
+		else { DelParameter( INIT_SECTION, KI_FILEZILLAPATH ) ; }
 	}
 	if( probe_filezilla_env_dir( "ProgramFiles", "FileZilla FTP Client\\filezilla.exe", buffer, sizeof(buffer) ) ) return 1 ;
 	if( probe_filezilla_env_dir( "ProgramFiles(x86)", "FileZilla FTP Client\\filezilla.exe", buffer, sizeof(buffer) ) ) return 1 ;
@@ -2029,18 +2029,18 @@ int SearchPSCP( void ) {
 
 	if( PSCPPath!=NULL ) { free(PSCPPath) ; PSCPPath = NULL ; }
 	// Dans la base de registre
-	if( ReadParameterN( INIT_SECTION, "PSCPPath", buffer, sizeof(buffer) ) != 0 ) {
+	if( ReadParameterN( INIT_SECTION, KI_PSCPPATH, buffer, sizeof(buffer) ) != 0 ) {
 		if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
-		else { DelParameter( INIT_SECTION, "PSCPPath" ) ; }
+		else { DelParameter( INIT_SECTION, KI_PSCPPATH ) ; }
 	}
 
 	// Dans le fichier ini
-	if( ReadParameterN( INIT_SECTION, "pscpdir", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( INIT_SECTION, KI_PSCPDIR, buffer, sizeof(buffer) ) ) {
 		buffer[4076]='\0';
 		strcat( buffer, "\\" ) ; strcat( buffer, ki ) ;
 		if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
 		else {
-			ReadParameterN( INIT_SECTION, "pscpdir", buffer, sizeof(buffer) ) ;
+			ReadParameterN( INIT_SECTION, KI_PSCPDIR, buffer, sizeof(buffer) ) ;
 			buffer[4076]='\0';
 			strcat( buffer, "\\" ) ; strcat( buffer, pu ) ;
 			if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;

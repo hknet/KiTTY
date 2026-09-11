@@ -33,6 +33,7 @@
                          * kitty.ini settings, not per-session conf keys */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions and wordings */
+#include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 
 #define ZM_PIPE_SIZE (64 * 1024)
 
@@ -110,11 +111,11 @@ const char *kitty_zmodem_command(int send)
      * ReadParameter, and a key it cannot see there is reported as one that
      * nothing reads. */
     if (send) {
-        if (!ReadParameterN(INIT_SECTION, "szcommand", sz, MAX_PATH))
+        if (!ReadParameterN(INIT_SECTION, KI_SZCOMMAND, sz, MAX_PATH))
             sz[0] = '\0';
         return sz;
     }
-    if (!ReadParameterN(INIT_SECTION, "rzcommand", rz, MAX_PATH))
+    if (!ReadParameterN(INIT_SECTION, KI_RZCOMMAND, rz, MAX_PATH))
         rz[0] = '\0';
     return rz;
 }

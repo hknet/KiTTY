@@ -4,6 +4,7 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_text.h"     /* shared captions */
+#include "kitty_inikeys.h"  /* KI_* and KR_*: the stored value names */
 char * itoa (int __val, char *__s, int __radix) ;
 /* kitty_tools.c; declared locally because this file deliberately includes
  * only kitty_registry.h (see the MigrateOldKittyHive rationale below). */
@@ -363,7 +364,7 @@ void RepairSharrowDefaults( void ) {
 	DWORD idx, len ;
 
 	/* one-time guard: skip if we've already run */
-	if( GetValueDataN( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", "SharrowRepairDone", cur, sizeof(cur) ) != NULL )
+	if( GetValueDataN( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SHARROWREPAIRDONE, cur, sizeof(cur) ) != NULL )
 		return ;
 
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY\\Sessions", 0, KEY_READ, &hSess ) == ERROR_SUCCESS ) {
@@ -388,7 +389,7 @@ void RepairSharrowDefaults( void ) {
 	/* set the marker regardless, so we don't rescan every boot (even if the old
 	 * 9bis hive is gone and nothing could be repaired). RegTestOrCreateDWORD hides
 	 * the RegSetValueEx byte-buffer boilerplate and creates the base key if needed. */
-	RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", "SharrowRepairDone", 1 ) ;
+	RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SHARROWREPAIRDONE, 1 ) ;
 }
 
 /* One-time migration (2026-07-21): the per-session "Send file in current
@@ -407,7 +408,7 @@ void MigrateScpAutoPwd( void ) {
 	DWORD idx, len ;
 
 	/* one-time guard: skip if we've already run */
-	if( GetValueDataN( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", "ScpAutoPwdMigrated", cur, sizeof(cur) ) != NULL )
+	if( GetValueDataN( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SCPAUTOPWDMIGRATED, cur, sizeof(cur) ) != NULL )
 		return ;
 
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY\\Sessions", 0, KEY_READ, &hSess ) == ERROR_SUCCESS ) {
@@ -426,7 +427,7 @@ void MigrateScpAutoPwd( void ) {
 	}
 
 	/* set the marker regardless, so we don't rescan every boot */
-	RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", "ScpAutoPwdMigrated", 1 ) ;
+	RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SCPAUTOPWDMIGRATED, 1 ) ;
 }
 
 // Copie une clé de registre vers une autre
@@ -559,19 +560,19 @@ BOOL RegCleanPuTTY( void ) {
 	FILETIME ftLastWriteTime;      // last write time 
 	char *buffer = NULL ;
 	if( (retCode = RegOpenKeyEx ( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY", 0, KEY_WRITE, &hSubKey)) == ERROR_SUCCESS ) {
-		RegDeleteValue( hSubKey, "Build" ) ;
-		RegDeleteValue( hSubKey, "Folders" ) ;
-		RegDeleteValue( hSubKey, "KiCount" ) ;
-		RegDeleteValue( hSubKey, "KiLastSe" ) ;
-		RegDeleteValue( hSubKey, "KiLastUH" ) ;
-		RegDeleteValue( hSubKey, "KiLastUp" ) ;
-		RegDeleteValue( hSubKey, "KiPath" ) ;
-		RegDeleteValue( hSubKey, "KiSess" ) ;
-		RegDeleteValue( hSubKey, "KiVers" ) ;
-		RegDeleteValue( hSubKey, "CtHelperPath" ) ;
-		RegDeleteValue( hSubKey, "PSCPPath" ) ;
-		RegDeleteValue( hSubKey, "WinSCPPath" ) ;
-		RegDeleteValue( hSubKey, "KiClassName" ) ;
+		RegDeleteValue( hSubKey, KI_BUILD ) ;
+		RegDeleteValue( hSubKey, KI_FOLDERS ) ;
+		RegDeleteValue( hSubKey, KI_KICOUNT ) ;
+		RegDeleteValue( hSubKey, KR_KILASTSE ) ;
+		RegDeleteValue( hSubKey, KR_KILASTUH ) ;
+		RegDeleteValue( hSubKey, KR_KILASTUP ) ;
+		RegDeleteValue( hSubKey, KR_KIPATH ) ;
+		RegDeleteValue( hSubKey, KR_KISESS ) ;
+		RegDeleteValue( hSubKey, KR_KIVERS ) ;
+		RegDeleteValue( hSubKey, KR_CTHELPERPATH ) ;
+		RegDeleteValue( hSubKey, KI_PSCPPATH ) ;
+		RegDeleteValue( hSubKey, KI_WINSCPPATH ) ;
+		RegDeleteValue( hSubKey, KI_KICLASSNAME ) ;
 		RegCloseKey(hSubKey) ;
 		}
 	
@@ -619,7 +620,7 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "Maximize" ) ;
 					RegDeleteValue( hSubKey, "SendToTray" ) ;
 					RegDeleteValue( hSubKey, "SaveOnExit" ) ;
-					RegDeleteValue( hSubKey, "Folder" ) ;
+					RegDeleteValue( hSubKey, KR_FOLDER ) ;
 					RegDeleteValue( hSubKey, "Icone" ) ;
 					RegDeleteValue( hSubKey, "IconeFile" ) ;
 					RegDeleteValue( hSubKey, "WinSCPProtocol" ) ;
@@ -630,12 +631,12 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "WinSCPOptions" ) ;
 					RegDeleteValue( hSubKey, "WinSCPRawSettings" ) ;
 					RegDeleteValue( hSubKey, "InitDelay" ) ;
-					RegDeleteValue( hSubKey, "Password" ) ;
+					RegDeleteValue( hSubKey, KR_PASSWORD ) ;
 					RegDeleteValue( hSubKey, "Autocommand" ) ;
 					RegDeleteValue( hSubKey, "AutocommandOut" ) ;
 					RegDeleteValue( hSubKey, "AntiIdle" ) ;
 					RegDeleteValue( hSubKey, "LogTimestamp" ) ;
-					RegDeleteValue( hSubKey, "Notes" ) ;
+					RegDeleteValue( hSubKey, KR_NOTES ) ;
 					RegDeleteValue( hSubKey, "CygtermCommand" ) ;
 					RegDeleteValue( hSubKey, "CygtermAltMetabit" ) ;
 					RegDeleteValue( hSubKey, "CygtermAutoPath" ) ;
@@ -668,7 +669,7 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "WindowState" ) ;
 					RegDeleteValue( hSubKey, "ForegroundOnBell" ) ;
 					RegDeleteValue( hSubKey, "CtrlTabSwitch" ) ;
-					RegDeleteValue( hSubKey, "Comment" ) ;
+					RegDeleteValue( hSubKey, KR_COMMENT ) ;
 					RegDeleteValue( hSubKey, "LogTimeRotation" ) ;
 					RegDeleteValue( hSubKey, "PortKnocking" ) ;
 					RegDeleteValue( hSubKey, "WindowClosable" ) ;

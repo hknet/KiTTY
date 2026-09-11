@@ -174,13 +174,13 @@ static int cmd_savemode( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	IniFileFlag++ ; if( IniFileFlag>SAVEMODE_DIR ) IniFileFlag = 0 ;
 	if( IniFileFlag == SAVEMODE_REG )  {
-		delINI( KittyIniFile, INIT_SECTION, "savemode" ) ;
+		delINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE ) ;
 		MessageBox( NULL, KT_CMD_SAVEMODE_REGISTRY, KT_CAP_INFO, MB_OK ) ;
 	} else if( IniFileFlag == SAVEMODE_FILE ) {
-		if(!NoKittyFileFlag) writeINI( KittyIniFile, INIT_SECTION, "savemode", "file" ) ;
+		if(!NoKittyFileFlag) writeINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, "file" ) ;
 		MessageBox( NULL, KT_CMD_SAVEMODE_FILE, KT_CAP_INFO, MB_OK ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
-		delINI( KittyIniFile, INIT_SECTION, "savemode" ) ;
+		delINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE ) ;
 		MessageBox( NULL, KT_CMD_SAVEMODE_DIR, KT_CAP_INFO, MB_OK ) ;
 	}
 	return 1 ;

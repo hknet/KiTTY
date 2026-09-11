@@ -183,101 +183,101 @@ void TranslateShortcuts( char * st ) {
 void InitShortcuts( void ) {
 	char buffer[4096], list[4096], *pl ;
 	int i, t=0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","editor",buffer, sizeof(buffer)) || ( (shortcuts_tab.editor=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_EDITOR,buffer, sizeof(buffer)) || ( (shortcuts_tab.editor=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.editor = SHIFTKEY+VK_F2 ;
-	if( !readINI(KittyIniFile,"Shortcuts","editorclipboard",buffer, sizeof(buffer)) || ( (shortcuts_tab.editorclipboard=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_EDITORCLIPBOARD,buffer, sizeof(buffer)) || ( (shortcuts_tab.editorclipboard=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.editorclipboard = CONTROLKEY+SHIFTKEY+VK_F2 ;
-	if( !readINI(KittyIniFile,"Shortcuts","winscp",buffer, sizeof(buffer)) || ( (shortcuts_tab.winscp=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_WINSCP,buffer, sizeof(buffer)) || ( (shortcuts_tab.winscp=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.winscp = SHIFTKEY+VK_F3 ;
-	if( !readINI(KittyIniFile,"Shortcuts",KI_SC_FILEZILLA,buffer, sizeof(buffer)) || ( (shortcuts_tab.filezilla=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_FILEZILLA,buffer, sizeof(buffer)) || ( (shortcuts_tab.filezilla=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.filezilla = SHIFTKEY+VK_F4 ;
-	if( !readINI(KittyIniFile,"Shortcuts","switchlogmode",buffer, sizeof(buffer)) || ( (shortcuts_tab.switchlogmode=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_SWITCHLOGMODE,buffer, sizeof(buffer)) || ( (shortcuts_tab.switchlogmode=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.switchlogmode = SHIFTKEY+VK_F5 ;
-	if( !readINI(KittyIniFile,"Shortcuts","showportforward",buffer, sizeof(buffer)) || ( (shortcuts_tab.showportforward=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_SHOWPORTFORWARD,buffer, sizeof(buffer)) || ( (shortcuts_tab.showportforward=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.showportforward = SHIFTKEY+VK_F6 ;
 //	if( !IsWow64() ) {
-		if( !readINI(KittyIniFile,"Shortcuts","print",buffer, sizeof(buffer)) || ( (shortcuts_tab.print=DefineShortcuts(buffer))<0 ) )
+		if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_PRINT,buffer, sizeof(buffer)) || ( (shortcuts_tab.print=DefineShortcuts(buffer))<0 ) )
 			shortcuts_tab.print = SHIFTKEY+VK_F7 ;
-		if( !readINI(KittyIniFile,"Shortcuts","printall",buffer, sizeof(buffer)) || ( (shortcuts_tab.printall=DefineShortcuts(buffer))<0 ) )
+		if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_PRINTALL,buffer, sizeof(buffer)) || ( (shortcuts_tab.printall=DefineShortcuts(buffer))<0 ) )
 			shortcuts_tab.printall = VK_F7 ;
 //	}
-	if( !readINI(KittyIniFile,"Shortcuts","inputm",buffer, sizeof(buffer)) || ( (shortcuts_tab.inputm=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_INPUTM,buffer, sizeof(buffer)) || ( (shortcuts_tab.inputm=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.inputm = SHIFTKEY+VK_F8 ;
 #ifdef MOD_BACKGROUNDIMAGE
-	if( !readINI(KittyIniFile,"Shortcuts","viewer",buffer, sizeof(buffer)) || ( (shortcuts_tab.viewer=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_VIEWER,buffer, sizeof(buffer)) || ( (shortcuts_tab.viewer=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.viewer = SHIFTKEY+VK_F11 ;
 #endif
-	if( !readINI(KittyIniFile,"Shortcuts","autocommand",buffer, sizeof(buffer)) || ( (shortcuts_tab.autocommand=DefineShortcuts(buffer))<0 ) ) 
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_AUTOCOMMAND,buffer, sizeof(buffer)) || ( (shortcuts_tab.autocommand=DefineShortcuts(buffer))<0 ) ) 
 		shortcuts_tab.autocommand = SHIFTKEY+VK_F12 ;
 
-	if( !readINI(KittyIniFile,"Shortcuts","script",buffer, sizeof(buffer)) || ( (shortcuts_tab.script=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_SCRIPT,buffer, sizeof(buffer)) || ( (shortcuts_tab.script=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.script = CONTROLKEY+VK_F2 ;
-	if( !readINI(KittyIniFile,"Shortcuts","sendfile",buffer, sizeof(buffer)) || ( (shortcuts_tab.sendfile=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_SENDFILE,buffer, sizeof(buffer)) || ( (shortcuts_tab.sendfile=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.sendfile = CONTROLKEY+VK_F3 ;
-	if( !readINI(KittyIniFile,"Shortcuts","getfile",buffer, sizeof(buffer)) || ( (shortcuts_tab.getfile=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_GETFILE,buffer, sizeof(buffer)) || ( (shortcuts_tab.getfile=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.getfile = CONTROLKEY+VK_F4 ;
-	if( !readINI(KittyIniFile,"Shortcuts","command",buffer, sizeof(buffer)) || ( (shortcuts_tab.command=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_COMMAND,buffer, sizeof(buffer)) || ( (shortcuts_tab.command=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.command = CONTROLKEY+VK_F5 ;
-	if( !readINI(KittyIniFile,"Shortcuts","tray",buffer, sizeof(buffer)) || ( (shortcuts_tab.tray=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_TRAY,buffer, sizeof(buffer)) || ( (shortcuts_tab.tray=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.tray = CONTROLKEY+VK_F6 ;
-	if( !readINI(KittyIniFile,"Shortcuts","visible",buffer, sizeof(buffer)) || ( (shortcuts_tab.visible=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_VISIBLE,buffer, sizeof(buffer)) || ( (shortcuts_tab.visible=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.visible = CONTROLKEY+VK_F7 ;
-	if( !readINI(KittyIniFile,"Shortcuts","input",buffer, sizeof(buffer)) || ( (shortcuts_tab.input=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_INPUT,buffer, sizeof(buffer)) || ( (shortcuts_tab.input=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.input = CONTROLKEY+VK_F8 ;
-	if( !readINI(KittyIniFile,"Shortcuts","protect",buffer, sizeof(buffer)) || ( (shortcuts_tab.protect=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_PROTECT,buffer, sizeof(buffer)) || ( (shortcuts_tab.protect=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.protect = CONTROLKEY+VK_F9 ;
 #ifdef MOD_BACKGROUNDIMAGE
-	if( !readINI(KittyIniFile,"Shortcuts","imagechange",buffer, sizeof(buffer)) || ( (shortcuts_tab.imagechange=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_IMAGECHANGE,buffer, sizeof(buffer)) || ( (shortcuts_tab.imagechange=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.imagechange = CONTROLKEY+VK_F11 ;
 #endif
-	if( !readINI(KittyIniFile,"Shortcuts","rollup",buffer, sizeof(buffer)) || ( (shortcuts_tab.rollup=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_ROLLUP,buffer, sizeof(buffer)) || ( (shortcuts_tab.rollup=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.rollup = CONTROLKEY+VK_F12 ;
-	if( !readINI(KittyIniFile,"Shortcuts","resetterminal",buffer, sizeof(buffer)) || ( (shortcuts_tab.resetterminal=DefineShortcuts(buffer))<0 ) ) 
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_RESETTERMINAL,buffer, sizeof(buffer)) || ( (shortcuts_tab.resetterminal=DefineShortcuts(buffer))<0 ) ) 
 		shortcuts_tab.resetterminal = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","duplicate",buffer, sizeof(buffer)) || ( (shortcuts_tab.duplicate=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_DUPLICATE,buffer, sizeof(buffer)) || ( (shortcuts_tab.duplicate=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.duplicate = CONTROLKEY+ALTKEY+84 ;
-	if( !readINI(KittyIniFile,"Shortcuts","opennew",buffer, sizeof(buffer)) || ( (shortcuts_tab.opennew=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_OPENNEW,buffer, sizeof(buffer)) || ( (shortcuts_tab.opennew=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.opennew = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","opennewcurrent",buffer, sizeof(buffer)) || ( (shortcuts_tab.opennewcurrent=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_OPENNEWCURRENT,buffer, sizeof(buffer)) || ( (shortcuts_tab.opennewcurrent=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.opennewcurrent = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","changesettings",buffer, sizeof(buffer)) || ( (shortcuts_tab.changesettings=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_CHANGESETTINGS,buffer, sizeof(buffer)) || ( (shortcuts_tab.changesettings=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.changesettings = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","clearscrollback",buffer, sizeof(buffer)) || ( (shortcuts_tab.clearscrollback=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_CLEARSCROLLBACK,buffer, sizeof(buffer)) || ( (shortcuts_tab.clearscrollback=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.clearscrollback = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","clearlogfile",buffer, sizeof(buffer)) || ( (shortcuts_tab.clearlogfile=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_CLEARLOGFILE,buffer, sizeof(buffer)) || ( (shortcuts_tab.clearlogfile=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.clearlogfile = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","openlogfile",buffer, sizeof(buffer)) || ( (shortcuts_tab.openlogfile=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_OPENLOGFILE,buffer, sizeof(buffer)) || ( (shortcuts_tab.openlogfile=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.openlogfile = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","closerestart",buffer, sizeof(buffer)) || ( (shortcuts_tab.closerestart=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_CLOSERESTART,buffer, sizeof(buffer)) || ( (shortcuts_tab.closerestart=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.closerestart = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","eventlog",buffer, sizeof(buffer)) || ( (shortcuts_tab.eventlog=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_EVENTLOG,buffer, sizeof(buffer)) || ( (shortcuts_tab.eventlog=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.eventlog = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","fullscreen",buffer, sizeof(buffer)) || ( (shortcuts_tab.fullscreen=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_FULLSCREEN,buffer, sizeof(buffer)) || ( (shortcuts_tab.fullscreen=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.fullscreen = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","fontup",buffer, sizeof(buffer)) || ( (shortcuts_tab.fontup=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_FONTUP,buffer, sizeof(buffer)) || ( (shortcuts_tab.fontup=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.fontup = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","fontdown",buffer, sizeof(buffer)) || ( (shortcuts_tab.fontdown=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_FONTDOWN,buffer, sizeof(buffer)) || ( (shortcuts_tab.fontdown=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.fontdown = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","copyall",buffer, sizeof(buffer)) || ( (shortcuts_tab.copyall=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_COPYALL,buffer, sizeof(buffer)) || ( (shortcuts_tab.copyall=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.copyall = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","fontnegative",buffer, sizeof(buffer)) || ( (shortcuts_tab.fontnegative=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_FONTNEGATIVE,buffer, sizeof(buffer)) || ( (shortcuts_tab.fontnegative=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.fontnegative = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","fontblackandwhite",buffer, sizeof(buffer)) || ( (shortcuts_tab.fontblackandwhite=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_FONTBLACKANDWHITE,buffer, sizeof(buffer)) || ( (shortcuts_tab.fontblackandwhite=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.fontblackandwhite = 0 ;
-	if( !readINI(KittyIniFile,"Shortcuts","keyexchange",buffer, sizeof(buffer)) || ( (shortcuts_tab.keyexchange=DefineShortcuts(buffer))<0 ) )
+	if( !readINI(KittyIniFile,KI_SECTION_SHORTCUTS,KI_SC_KEYEXCHANGE,buffer, sizeof(buffer)) || ( (shortcuts_tab.keyexchange=DefineShortcuts(buffer))<0 ) )
 		shortcuts_tab.keyexchange = 0 ;
 
 	
 	if( NbShortCuts>0 ) for( i=0 ; i<NbShortCuts ; i++ ) { if( shortcuts_tab2[i].st!=NULL ) { free(shortcuts_tab2[i].st) ; } }
 	NbShortCuts=0 ;
-	if( ReadParameterN( "Shortcuts", "list", list, sizeof(list) ) ) {
+	if( ReadParameterN( KI_SECTION_SHORTCUTS, "list", list, sizeof(list) ) ) {
 		pl=list ;
 		while( strlen(pl) > 0 ) {
 			i=0;
 			while( (i<strlen(pl))&&(pl[i]!=' ') ) { i++ ; }
 			if( pl[i]==' ' ) { pl[i]='\0' ; t=1 ; }
 			if( strlen(pl)>0 )
-			if( ReadParameterN( "Shortcuts", pl, buffer, sizeof(buffer) ) ) {
+			if( ReadParameterN( KI_SECTION_SHORTCUTS, pl, buffer, sizeof(buffer) ) ) {
 				if( (pl[0]<'0')||(pl[0]>'9') ) {
 					shortcuts_tab2[NbShortCuts].num = DefineShortcuts( pl );
 				} else {

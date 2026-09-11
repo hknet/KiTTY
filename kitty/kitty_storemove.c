@@ -38,6 +38,7 @@
 #include "kitty_b64.h"
 #include "kitty_proxy.h"
 #include "kitty_text.h"     /* the words the boxes show */
+#include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 
 /* kitty.c */
 int WriteParameter(const char *key, const char *name, char *value);
@@ -66,8 +67,8 @@ const char *kitty_mpw_verify_token(void);
 static int ksm_layout_key(const char *name)
 {
     static const char *const skip[] = {
-        "savemode", "configdir", "browsedirectory", "KiClassName", "sav",
-        "conf", "readonly", "PortablePasswordProtection", NULL
+        KI_SAVEMODE, KI_CONFIGDIR, KI_BROWSEDIRECTORY, KI_KICLASSNAME, KI_SAV,
+        KI_CONF, KI_READONLY, KI_PORTABLEPASSWORDPROTECTION, NULL
     };
     int i;
     for (i = 0; skip[i]; i++)
@@ -77,7 +78,8 @@ static int ksm_layout_key(const char *name)
 
 /* kitty.ini sections that live in the file only, whatever the save mode. */
 static const char *const ksm_file_sections[] = {
-    "ConfigBox", "Shortcuts", "Print", "Launcher", "Agent", "FontFallback", NULL
+    KI_SECTION_CONFIGBOX, KI_SECTION_SHORTCUTS, KI_SECTION_PRINT,
+    KI_SECTION_LAUNCHER, KI_SECTION_AGENT, KI_SECTION_FONTFALLBACK, NULL
 };
 
 static void ksm_wipe(char **p)
@@ -592,8 +594,8 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
 
     /* kitty.ini: every global, then the layout of the copy */
     r->settings = ksm_globals_to_ini(ini, &r->fail);
-    WritePrivateProfileStringA(INIT_SECTION, "savemode", "dir", ini);
-    WritePrivateProfileStringA(INIT_SECTION, "PortablePasswordProtection",
+    WritePrivateProfileStringA(INIT_SECTION, KI_SAVEMODE, "dir", ini);
+    WritePrivateProfileStringA(INIT_SECTION, KI_PORTABLEPASSWORDPROTECTION,
                                dpapi ? "dpapi" : "master", ini);
 
     r->programs = ksm_copy_programs(dir, &r->fail);

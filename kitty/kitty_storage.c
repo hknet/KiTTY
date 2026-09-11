@@ -27,6 +27,7 @@
 #include "kitty_b64.h"    /* ksec_b64_encode/decode (at-rest secret codec) */
 #include "kitty_storage.h"
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
+#include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 
 /*
  * KiTTY: the registry root is chosen at RUNTIME (kitty.ini KiClassName).
@@ -179,7 +180,7 @@ static DWORD kitty_dword_load(const char *name)
 
 static void kitty_persist_show_foreign(int on)
 {
-    kitty_dword_store("ShowForeignSessions", (DWORD)(on ? 1 : 0));
+    kitty_dword_store(KR_SHOWFOREIGNSESSIONS, (DWORD)(on ? 1 : 0));
 }
 
 /*
@@ -227,9 +228,9 @@ int kitty_get_show_foreign_sessions(void)
 {
     if (kitty_show_foreign < 0) {
         DWORD v = 0, sz = sizeof(v);
-        if (store_is_file() && kitty_portable_load_state_dword("ShowForeignSessions", &v)) {
+        if (store_is_file() && kitty_portable_load_state_dword(KR_SHOWFOREIGNSESSIONS, &v)) {
             kitty_show_foreign = v ? 1 : 0;
-        } else if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "ShowForeignSessions",
+        } else if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, KR_SHOWFOREIGNSESSIONS,
                          RRF_RT_REG_DWORD, NULL, &v, &sz) == ERROR_SUCCESS) {
             /* User has made an explicit choice: honour it. */
             kitty_show_foreign = v ? 1 : 0;
@@ -247,7 +248,7 @@ int kitty_get_show_foreign_sessions(void)
              */
             char ini[32];
             ini[0] = '\0';
-            if (ReadParameterN(INIT_SECTION, "showforeignsessions",
+            if (ReadParameterN(INIT_SECTION, KI_SHOWFOREIGNSESSIONS,
                                ini, sizeof(ini)) && ini[0]) {
                 if (!_stricmp(ini, "auto"))
                     kitty_show_foreign =
@@ -296,14 +297,14 @@ void kitty_set_show_foreign_sessions(int on)
 void kitty_set_last_session(const char *sessionname)
 {
     if (store_is_file()) {
-        kitty_portable_store_state_string("LastSession", sessionname ? sessionname : "");
+        kitty_portable_store_state_string(KR_LASTSESSION, sessionname ? sessionname : "");
         return;
     }
     HKEY hk;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
                         KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
         const char *v = sessionname ? sessionname : "";
-        RegSetValueExA(hk, "LastSession", 0, REG_SZ,
+        RegSetValueExA(hk, KR_LASTSESSION, 0, REG_SZ,
                        (const BYTE *)v, (DWORD)strlen(v) + 1);
         RegCloseKey(hk);
     }
@@ -314,8 +315,8 @@ int kitty_get_last_session(char *buf, int buflen)
     if (!buf || buflen <= 0) return 0;
     buf[0] = '\0';
     if (store_is_file())
-        return kitty_portable_load_state_string("LastSession", buf, buflen);
-    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "LastSession",
+        return kitty_portable_load_state_string(KR_LASTSESSION, buf, buflen);
+    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, KR_LASTSESSION,
                      RRF_RT_REG_SZ, NULL, buf, &sz) != ERROR_SUCCESS)
         return 0;
     buf[buflen-1] = '\0';
@@ -326,13 +327,13 @@ void kitty_set_last_folder(const char *folder)
 {
     if (!folder || !*folder) folder = "Default";
     if (store_is_file()) {
-        kitty_portable_store_state_string("LastFolder", folder);
+        kitty_portable_store_state_string(KR_LASTFOLDER, folder);
         return;
     }
     HKEY hk;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
                         KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        RegSetValueExA(hk, "LastFolder", 0, REG_SZ,
+        RegSetValueExA(hk, KR_LASTFOLDER, 0, REG_SZ,
                        (const BYTE *)folder, (DWORD)strlen(folder) + 1);
         RegCloseKey(hk);
     }
@@ -343,8 +344,8 @@ int kitty_get_last_folder(char *buf, int buflen)
     if (!buf || buflen <= 0) return 0;
     buf[0] = '\0';
     if (store_is_file())
-        return kitty_portable_load_state_string("LastFolder", buf, buflen);
-    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, "LastFolder",
+        return kitty_portable_load_state_string(KR_LASTFOLDER, buf, buflen);
+    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, KR_LASTFOLDER,
                      RRF_RT_REG_SZ, NULL, buf, &sz) != ERROR_SUCCESS)
         return 0;
     buf[buflen-1] = '\0';
@@ -446,7 +447,7 @@ char *kitty_read_session_comment(const char *sessionname)
      * Comment, keep it empty. Falling back to old hives here made the config
      * dialog show stale comments from migrated/legacy sessions with the same
      * name (e.g. an old 9bis entry overwriting an empty kapper.net comment). */
-    return kitty_read_session_value_direct(sessionname, "Comment", 0);
+    return kitty_read_session_value_direct(sessionname, KR_COMMENT, 0);
 }
 
 /*
@@ -482,7 +483,7 @@ char *kitty_read_session_folder(const char *sessionname)
 {
     if (sessionname && !strcmp(sessionname, KITTY_DEFAULT_SESSION))
         return NULL;
-    return kitty_read_session_value_direct(sessionname, "Folder", 0);
+    return kitty_read_session_value_direct(sessionname, KR_FOLDER, 0);
 }
 
 /* The cached read, for the list refresh loops only (see above). */
@@ -500,7 +501,7 @@ char *kitty_read_session_folder_cached(const char *sessionname)
     if (sessionname && !strcmp(sessionname, KITTY_DEFAULT_SESSION))
         return NULL;
     if (!sessionname)
-        return kitty_read_session_value_direct(sessionname, "Folder", 0);
+        return kitty_read_session_value_direct(sessionname, KR_FOLDER, 0);
 
     now = GetTickCount();
     if (kitty_folder_cache.n && now - kitty_folder_cache.stamp > 2000)
@@ -510,7 +511,7 @@ char *kitty_read_session_folder_cached(const char *sessionname)
             return kitty_folder_cache.folders[i] ?
                 dupstr(kitty_folder_cache.folders[i]) : NULL;
 
-    v = kitty_read_session_value_direct(sessionname, "Folder", 0);
+    v = kitty_read_session_value_direct(sessionname, KR_FOLDER, 0);
     if (kitty_folder_cache.n == kitty_folder_cache.cap) {
         kitty_folder_cache.cap = kitty_folder_cache.cap ? kitty_folder_cache.cap * 2 : 64;
         kitty_folder_cache.names = sresize(kitty_folder_cache.names, kitty_folder_cache.cap, char *);
@@ -722,12 +723,12 @@ static char *ksec_legacy_decrypt_hostterm(const char *stored, const char *host,
                                           const char *term);
 static void ksf_convert_legacy_password(struct ksf_item **head)
 {
-    const char *pw = ksf_list_get(*head, "Password");
+    const char *pw = ksf_list_get(*head, KR_PASSWORD);
     if (!pw || !pw[0]) return;
     char *pt = ksec_legacy_decrypt_hostterm(pw,
         ksf_list_get(*head, "HostName"), ksf_list_get(*head, "TerminalType"));
     if (pt) {
-        ksf_list_set(head, "Password", pt);
+        ksf_list_set(head, KR_PASSWORD, pt);
         memset(pt, 0, strlen(pt));
         free(pt);
     }
@@ -980,7 +981,7 @@ int kitty_portable_load_state_dword(const char *key, DWORD *value)
 int kitty_secret_slot(const char *key)
 {
     if (!key) return -1;
-    if (!strcmp(key, "Password")) return 0;
+    if (!strcmp(key, KR_PASSWORD)) return 0;
     if (!strcmp(key, "ProxyPassword")) return 1;
     return -1;
 }
@@ -1825,7 +1826,7 @@ int kitty_secret_is_mpw(const char *stored)
  * secret values. */
 static int reg_subtree_has_mpw(const char *subpath)
 {
-    static const char *const secrets[] = { "Password", "ProxyPassword" };
+    static const char *const secrets[] = { KR_PASSWORD, "ProxyPassword" };
     char path[2048];
     HKEY h;
     DWORD i;

@@ -24,6 +24,7 @@
 #include <commdlg.h>
 #include <shellapi.h>
 #include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
+#include "../kitty/kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 
 #ifndef WM_DPICHANGED
 #define WM_DPICHANGED 0x02E0
@@ -2766,14 +2767,14 @@ int ReadParameterN(const char *key, const char *name, char *value, size_t size)
 static void kitty_cfg_remember_app_panel(const char *path)
 {
     if (path && kitty_cfg_path_is_app(path))
-        WriteParameter("ConfigBox", "applicationpanel", (char *)path);
+        WriteParameter(KI_SECTION_CONFIGBOX, KI_CONFIGBOX_APPLICATIONPANEL, (char *)path);
 }
 
 static const char *kitty_cfg_remembered_app_panel(void)
 {
     static char buf[256];
     buf[0] = '\0';
-    if (!ReadParameterN("ConfigBox", "applicationpanel", buf, sizeof(buf)))
+    if (!ReadParameterN(KI_SECTION_CONFIGBOX, KI_CONFIGBOX_APPLICATIONPANEL, buf, sizeof(buf)))
         return NULL;
     return buf[0] ? buf : NULL;
 }
@@ -4112,7 +4113,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                          * one binary, and support can ask for it if a
                          * control ever misrenders through WM_PRINT. */
                         char switchpaint[16] = "";
-                        ReadParameterN("ConfigBox", "switchpaint",
+                        ReadParameterN(KI_SECTION_CONFIGBOX, KI_CONFIGBOX_SWITCHPAINT,
                                        switchpaint, sizeof(switchpaint));
                         if (kitty_cfg_panel_host &&
                             stricmp(switchpaint, "erase") != 0 &&

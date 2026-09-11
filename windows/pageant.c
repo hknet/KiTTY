@@ -47,6 +47,7 @@
  * add-after-the-last-include reflex put it there once, where it compiled to
  * nothing and left RegisterApplicationRestart a raw loader-killing import. */
 #include "../kitty/kitty_oldwin_reg.h"
+#include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #ifdef DEBUG_IPC
 #define _WIN32_WINNT 0x0500            /* for ConvertSidToStringSid */
 #include <sddl.h>
@@ -174,7 +175,7 @@ static const char *kageant_sessions_key(void)
     if (key[0])
         return key;                     /* settled on the first call */
     cls[0] = '\0';
-    if (kitty_inilight_read("KiTTY", "KiClassName", cls, sizeof(cls)) &&
+    if (kitty_inilight_read(KI_SECTION_KITTY, KI_KICLASSNAME, cls, sizeof(cls)) &&
         !stricmp(cls, "PuTTY"))
         strcpy(key, "Software\\SimonTatham\\PuTTY\\Sessions");
     else
@@ -1650,7 +1651,6 @@ static SIZE keylist_basesize;      /* client size the base rects refer to */
 static SIZE keylist_minsize;       /* window minimum = the template's size */
 static bool keylist_layout_ready = false;
 
-#define KL_GEOM_INIKEY "keylistgeometry"
 #define KL_GEOM_REGVAL "KeyListGeometry"
 /*
  * Column widths are stored in PIXELS, so they only mean anything for the font
@@ -1663,7 +1663,6 @@ static bool keylist_layout_ready = false;
  * stored under the new name. The old value is left where it is rather than
  * deleted - it costs nothing, and it is what a downgrade would read.
  */
-#define KL_COLS_INIKEY "keylistcolumns2"
 #define KL_COLS_REGVAL "KeyListColumns2"
 #define KL_NCOLS 7
 
@@ -1869,7 +1868,7 @@ static void keylist_save_geometry(HWND hwnd)
         char buf[64];
         sprintf(buf, "%ld,%ld,%ld,%ld", (long)r.left, (long)r.top,
                 (long)(r.right - r.left), (long)(r.bottom - r.top));
-        kageant_setting_str_set(KL_GEOM_INIKEY, KL_GEOM_REGVAL, buf);
+        kageant_setting_str_set(KI_AGENT_KEYLISTGEOMETRY, KL_GEOM_REGVAL, buf);
     }
     HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
     if (hlist) {
@@ -1882,7 +1881,7 @@ static void keylist_save_geometry(HWND hwnd)
                 ListView_GetColumnWidth(hlist, 4),
                 ListView_GetColumnWidth(hlist, 5),
                 ListView_GetColumnWidth(hlist, 6));
-        kageant_setting_str_set(KL_COLS_INIKEY, KL_COLS_REGVAL, cols);
+        kageant_setting_str_set(KI_AGENT_KEYLISTCOLUMNS2, KL_COLS_REGVAL, cols);
     }
 }
 
@@ -1893,7 +1892,7 @@ static bool keylist_restore_geometry(HWND hwnd)
 {
     char buf[64];
     int x, y, w, h;
-    if (!kageant_setting_str_get(KL_GEOM_INIKEY, KL_GEOM_REGVAL,
+    if (!kageant_setting_str_get(KI_AGENT_KEYLISTGEOMETRY, KL_GEOM_REGVAL,
                                  buf, sizeof(buf)))
         return false;
     if (sscanf(buf, "%d,%d,%d,%d", &x, &y, &w, &h) != 4)
@@ -3151,11 +3150,9 @@ static bool auditview_layout_ready = false;
 /* Geometry + column widths persist like the key list's - through the
  * [Agent] settings layer, clamped back onto a live monitor on restore, so
  * a vanished display can never strand the window. */
-#define AV_GEOM_INIKEY "agentloggeometry"
 #define AV_GEOM_REGVAL "AgentLogGeometry"
 /* Pixel widths, measured against the old font - see the note on the key
  * list's KL_COLS_* above. */
-#define AV_COLS_INIKEY "agentlogcolumns2"
 #define AV_COLS_REGVAL "AgentLogColumns2"
 #define AV_NCOLS 5
 
@@ -3169,7 +3166,7 @@ static void auditview_save_geometry(HWND hwnd)
         char buf[64];
         sprintf(buf, "%ld,%ld,%ld,%ld", (long)r.left, (long)r.top,
                 (long)(r.right - r.left), (long)(r.bottom - r.top));
-        kageant_setting_str_set(AV_GEOM_INIKEY, AV_GEOM_REGVAL, buf);
+        kageant_setting_str_set(KI_AGENT_AGENTLOGGEOMETRY, AV_GEOM_REGVAL, buf);
     }
     hlist = GetDlgItem(hwnd, IDC_AUDIT_LIST);
     if (hlist) {
@@ -3180,7 +3177,7 @@ static void auditview_save_geometry(HWND hwnd)
                 ListView_GetColumnWidth(hlist, 2),
                 ListView_GetColumnWidth(hlist, 3),
                 ListView_GetColumnWidth(hlist, 4));
-        kageant_setting_str_set(AV_COLS_INIKEY, AV_COLS_REGVAL, cols);
+        kageant_setting_str_set(KI_AGENT_AGENTLOGCOLUMNS2, AV_COLS_REGVAL, cols);
     }
 }
 
@@ -3188,7 +3185,7 @@ static bool auditview_restore_geometry(HWND hwnd)
 {
     char buf[64];
     int x, y, w, h;
-    if (!kageant_setting_str_get(AV_GEOM_INIKEY, AV_GEOM_REGVAL,
+    if (!kageant_setting_str_get(KI_AGENT_AGENTLOGGEOMETRY, AV_GEOM_REGVAL,
                                  buf, sizeof(buf)))
         return false;
     if (sscanf(buf, "%d,%d,%d,%d", &x, &y, &w, &h) != 4)
@@ -3220,7 +3217,7 @@ static bool auditview_restore_columns(HWND hlist)
 {
     char buf[96];
     int w[AV_NCOLS], i;
-    if (!kageant_setting_str_get(AV_COLS_INIKEY, AV_COLS_REGVAL,
+    if (!kageant_setting_str_get(KI_AGENT_AGENTLOGCOLUMNS2, AV_COLS_REGVAL,
                                  buf, sizeof(buf)))
         return false;
     if (sscanf(buf, "%d,%d,%d,%d,%d",
@@ -4266,7 +4263,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
 
             /* Remembered column widths, if any, override the defaults. */
             char colstr[80];
-            if (kageant_setting_str_get(KL_COLS_INIKEY, KL_COLS_REGVAL,
+            if (kageant_setting_str_get(KI_AGENT_KEYLISTCOLUMNS2, KL_COLS_REGVAL,
                                         colstr, sizeof(colstr))) {
                 int cw[KL_NCOLS];
                 if (sscanf(colstr, "%d,%d,%d,%d,%d,%d,%d",
@@ -4287,7 +4284,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
         {
             char b[16];
             keylist_show_unavail = true;
-            if (kageant_setting_str_get("showunavailablekeys",
+            if (kageant_setting_str_get(KI_AGENT_SHOWUNAVAILABLEKEYS,
                                         "ShowUnavailableKeys",
                                         b, sizeof(b)) && !stricmp(b, "no"))
                 keylist_show_unavail = false;
@@ -4573,7 +4570,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             keylist_show_unavail =
                 IsDlgButtonChecked(hwnd, IDC_KEYLIST_SHOWUNAVAIL) ==
                 BST_CHECKED;
-            kageant_setting_str_set("showunavailablekeys",
+            kageant_setting_str_set(KI_AGENT_SHOWUNAVAILABLEKEYS,
                                     "ShowUnavailableKeys",
                                     keylist_show_unavail ? "yes" : "no");
             keylist_update();
@@ -6188,7 +6185,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      */
     {
         char b[16];
-        if (kitty_inilight_read("KiTTY", "restrictacl", b, sizeof(b)) &&
+        if (kitty_inilight_read(KI_SECTION_KITTY, KI_RESTRICTACL, b, sizeof(b)) &&
             !stricmp(b, "yes"))
             restrict_process_acl();
     }

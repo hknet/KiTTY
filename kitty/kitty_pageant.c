@@ -34,6 +34,7 @@
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_text.h"     /* shared captions */
+#include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 /* Shim so the moved kageant_do_notify body below stays textually identical
  * to its pageant.c original: reach pageant.c's static tray-window handle
  * through the accessor it exports for us. */
@@ -334,20 +335,20 @@ static int kageant_startup_read_ini(void)
 {
     char buf[8];
     int val = -1;
-    if (kitty_inilight_read("Agent", "loadkeysonstartup", buf, sizeof(buf))) {
+    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_LOADKEYSONSTARTUP, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) val = 1;
         else if (!stricmp(buf, "no")) val = 0;
         if (val >= 0)
             return val;
     }
-    if (kitty_inilight_read("Agent", "loadonstartup", buf, sizeof(buf))) {
+    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_LOADONSTARTUP, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) val = 1;
         else if (!stricmp(buf, "no")) val = 0;
         if (val >= 0) {
             /* migrate: write the new name, retire the old one */
-            if (kitty_inilight_write("Agent", "loadkeysonstartup",
+            if (kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_LOADKEYSONSTARTUP,
                                      val ? "yes" : "no"))
-                kitty_inilight_write("Agent", "loadonstartup", "");
+                kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_LOADONSTARTUP, "");
         }
     }
     return val;
@@ -375,7 +376,7 @@ int kageant_startup_get(void)
 void kageant_startup_set(int on)
 {
     if (!kitty_inilight_registry_authoritative() &&
-        kitty_inilight_write("Agent", "loadkeysonstartup", on ? "yes" : "no"))
+        kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_LOADKEYSONSTARTUP, on ? "yes" : "no"))
         return;
     kageant_reg_write(KAGEANT_REG_STARTUP, on);
 }
@@ -464,7 +465,7 @@ int kageant_setting_str_get(const char *inikey, const char *regname,
                             char *buf, size_t len)
 {
     char ini[256];
-    int have_ini = kitty_inilight_read("Agent", inikey, ini, sizeof(ini)) &&
+    int have_ini = kitty_inilight_read(KI_SECTION_AGENT, inikey, ini, sizeof(ini)) &&
         ini[0];
     if (kitty_inilight_registry_authoritative()) {
         if (kageant_reg_read_str(regname, buf, len))
@@ -486,7 +487,7 @@ void kageant_setting_str_set(const char *inikey, const char *regname,
                              const char *value)
 {
     if (!kitty_inilight_registry_authoritative() &&
-        kitty_inilight_write("Agent", inikey, value))
+        kitty_inilight_write(KI_SECTION_AGENT, inikey, value))
         return;
     HKEY hk;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
@@ -503,7 +504,7 @@ int kageant_notify_get(void)
 {
     char buf[32];
     int ini_val = -1, reg_val;
-    if (kitty_inilight_read("Agent", "messageonkeyusage", buf, sizeof(buf))) {
+    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_MESSAGEONKEYUSAGE, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) ini_val = 1;
         else if (!stricmp(buf, "no")) ini_val = 0;
     }
@@ -518,7 +519,7 @@ int kageant_notify_get(void)
 void kageant_notify_set(int on)
 {
     if (!kitty_inilight_registry_authoritative() &&
-        kitty_inilight_write("Agent", "messageonkeyusage", on ? "yes" : "no"))
+        kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_MESSAGEONKEYUSAGE, on ? "yes" : "no"))
         return;
     kageant_reg_write(KAGEANT_REG_NOTIFY, on);
 }
@@ -530,7 +531,7 @@ int kageant_notice_seconds(int fallback)
 {
     char buf[16];
     int ini_v = -1, reg_v, v;
-    if (kitty_inilight_read("Agent", "noticetimeout", buf, sizeof(buf)))
+    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_NOTICETIMEOUT, buf, sizeof(buf)))
         ini_v = atoi(buf);
     if (kitty_inilight_registry_authoritative())
         v = kageant_reg_read_dword(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v :
@@ -579,7 +580,7 @@ static int kageant_confirm_mode_read(void)
 {
     char buf[32];
     int ini_mode = -1, reg_val;
-    if (kitty_inilight_read("Agent", "askconfirmation", buf, sizeof(buf))) {
+    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_ASKCONFIRMATION, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) ini_mode = KAGEANT_CONFIRM_YES;
         else if (!stricmp(buf, "no")) ini_mode = KAGEANT_CONFIRM_NO;
         else if (!stricmp(buf, "auto")) ini_mode = KAGEANT_CONFIRM_AUTO;
@@ -627,7 +628,7 @@ void kageant_confirm_set_mode(int mode)
 {
     const char *s = (mode == KAGEANT_CONFIRM_YES) ? "yes" :
                     (mode == KAGEANT_CONFIRM_NO)  ? "no"  : "auto";
-    kitty_inilight_write("Agent", "askconfirmation", s);
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_ASKCONFIRMATION, s);
     /* _dword, not the boolean writer: it would store "no" (2) as 1. */
     kageant_reg_write_dword(KAGEANT_REG_CONFIRM, kageant_mode_to_reg(mode));
     kageant_confirm_mode_cached = -1;      /* the next request re-reads */
@@ -760,8 +761,8 @@ void kageant_save_startup_keys(void)
         int gap;
         for (i = 1, gap = 0; gap < 8; i++) {          /* clear the old list */
             snprintf(key, sizeof(key), "startupkey%d", i);
-            GetPrivateProfileStringA("Agent", key, "", probe, sizeof(probe), f);
-            if (probe[0]) { WritePrivateProfileStringA("Agent", key, NULL, f); gap = 0; }
+            GetPrivateProfileStringA(KI_SECTION_AGENT, key, "", probe, sizeof(probe), f);
+            if (probe[0]) { WritePrivateProfileStringA(KI_SECTION_AGENT, key, NULL, f); gap = 0; }
             else gap++;
         }
         /*
@@ -824,7 +825,7 @@ void kageant_save_startup_keys(void)
                          kageant_confirm_token(conf),
                          kageant_autoenc_token(ae, aebuf, sizeof(aebuf)),
                          fp ? "," : "", fp ? fp : "");
-                WritePrivateProfileStringA("Agent", key, val, f);
+                WritePrivateProfileStringA(KI_SECTION_AGENT, key, val, f);
                 sfree(fp_owned);
             }
         }
@@ -931,7 +932,7 @@ static int kageant_bool_get(const char *inikey, const char *regname, int def)
 {
     char buf[8];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read("Agent", inikey, buf, sizeof(buf))) {
+    if (kitty_inilight_read(KI_SECTION_AGENT, inikey, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) ini_v = 1;
         else if (!stricmp(buf, "no")) ini_v = 0;
     }
@@ -950,7 +951,7 @@ static int kageant_clamp_ttl(int v)
 
 int kageant_quiet_missing(void)
 {
-    return kageant_bool_get("quietmissingkeys", "QuietMissingKeys", 0);
+    return kageant_bool_get(KI_AGENT_QUIETMISSINGKEYS, "QuietMissingKeys", 0);
 }
 
 /* ---- the AGENT LOG: settings, path resolution and setup ----
@@ -965,7 +966,7 @@ static int kageant_int_setting(const char *inikey, const char *regname,
 {
     char buf[16];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read("Agent", inikey, buf, sizeof(buf))) {
+    if (kitty_inilight_read(KI_SECTION_AGENT, inikey, buf, sizeof(buf))) {
         int v = atoi(buf);
         if (v >= lo && v <= hi)
             ini_v = v;
@@ -985,11 +986,11 @@ static int kageant_int_setting(const char *inikey, const char *regname,
 
 int kageant_audit_get(void)
 {
-    return kageant_bool_get("agentlog", "AgentLog", 1);
+    return kageant_bool_get(KI_AGENT_AGENTLOG, "AgentLog", 1);
 }
 int kageant_audit_set(int on)
 {
-    kitty_inilight_write("Agent", "agentlog", on ? "yes" : "no");
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AGENTLOG, on ? "yes" : "no");
     kageant_reg_write("AgentLog", on ? 1 : 0);
     kageant_audit_setup();
     return 1;
@@ -1000,22 +1001,22 @@ int kageant_audit_set(int on)
  * these two sites are three lines apart and say the same numbers. */
 int kageant_audit_maxkb_get(void)
 {
-    return kageant_int_setting("agentlogmaxkb", "AgentLogMaxKB",
+    return kageant_int_setting(KI_AGENT_AGENTLOGMAXKB, "AgentLogMaxKB",
                                KAGEANT_AGENTLOG_KB_DEFAULT, 16, 1048576);
 }
 int kageant_audit_keep_get(void)
 {
-    return kageant_int_setting("agentlogkeep", "AgentLogKeep",
+    return kageant_int_setting(KI_AGENT_AGENTLOGKEEP, "AgentLogKeep",
                                KAGEANT_AGENTLOG_KEEP_DEFAULT, 1, 99);
 }
 int kageant_audit_expire_get(void)
 {
-    return kageant_int_setting("agentlogexpiredays", "AgentLogExpireDays",
+    return kageant_int_setting(KI_AGENT_AGENTLOGEXPIREDAYS, "AgentLogExpireDays",
                                KAGEANT_AGENTLOG_DAYS_DEFAULT, 0, 3650);
 }
 int kageant_audit_pathsetting_get(char *buf, size_t len)
 {
-    return kageant_setting_str_get("agentlogpath", "AgentLogPath",
+    return kageant_setting_str_get(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
                                    buf, len);
 }
 
@@ -1029,16 +1030,16 @@ void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
     if (keep > 99) keep = 99;
     if (expiredays < 0) expiredays = 0;
     if (expiredays > 3650) expiredays = 3650;
-    kageant_setting_str_set("agentlogpath", "AgentLogPath",
+    kageant_setting_str_set(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
                             path ? path : "");
     snprintf(num, sizeof(num), "%d", maxkb);
-    kitty_inilight_write("Agent", "agentlogmaxkb", num);
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AGENTLOGMAXKB, num);
     kageant_reg_write_dword("AgentLogMaxKB", maxkb);
     snprintf(num, sizeof(num), "%d", keep);
-    kitty_inilight_write("Agent", "agentlogkeep", num);
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AGENTLOGKEEP, num);
     kageant_reg_write_dword("AgentLogKeep", keep);
     snprintf(num, sizeof(num), "%d", expiredays);
-    kitty_inilight_write("Agent", "agentlogexpiredays", num);
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AGENTLOGEXPIREDAYS, num);
     kageant_reg_write_dword("AgentLogExpireDays", expiredays);
     kageant_audit_setup();
 }
@@ -1094,7 +1095,7 @@ void kageant_audit_setup(void)
 {
     char path[MAX_PATH + 1];
     path[0] = '\0';
-    if (!kageant_setting_str_get("agentlogpath", "AgentLogPath",
+    if (!kageant_setting_str_get(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
                                  path, sizeof(path)) || !path[0])
         kageant_audit_default_path(path, sizeof(path), 1);
     kitty_audit_configure(
@@ -1144,11 +1145,11 @@ static void kageant_audit_use(const char *ev, const char *fp,
  * it via its per-key confirm mode without this. Genuinely boolean. */
 int kageant_hello_get(void)
 {
-    return kageant_bool_get("helloconfirm", "HelloConfirm", 0);
+    return kageant_bool_get(KI_AGENT_HELLOCONFIRM, "HelloConfirm", 0);
 }
 int kageant_hello_set(int on)
 {
-    kitty_inilight_write("Agent", "helloconfirm", on ? "yes" : "no");
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_HELLOCONFIRM, on ? "yes" : "no");
     kageant_reg_write("HelloConfirm", on ? 1 : 0);
     return 1;
 }
@@ -1166,7 +1167,7 @@ int kageant_retry_keys(void)
 {
     char buf[24];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read("Agent", "retrykeys", buf, sizeof(buf))) {
+    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_RETRYKEYS, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) ini_v = 1;
         else if (!stricmp(buf, "no")) ini_v = 0;
         else if (!stricmp(buf, "ignoredriveletter")) ini_v = KAGEANT_RETRY_ANYDRIVE;
@@ -1192,7 +1193,7 @@ int kageant_retry_keys(void)
  * back on the pending list so it returns if the media does. */
 int kageant_unload_on_remove(void)
 {
-    return kageant_bool_get("unloadonremove", "UnloadOnRemove", 0);
+    return kageant_bool_get(KI_AGENT_UNLOADONREMOVE, "UnloadOnRemove", 0);
 }
 
 /* Seconds a typed passphrase is cached (encrypted) during a batch add.
@@ -1201,7 +1202,7 @@ int kageant_passphrase_ttl(void)
 {
     char buf[16];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read("Agent", "passphrasecacheseconds",
+    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_PASSPHRASECACHESECONDS,
                             buf, sizeof(buf))) {
         int v = atoi(buf);
         if (v >= 0)
@@ -1224,7 +1225,7 @@ int kageant_hello_ttl(void)
 {
     char buf[16];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read("Agent", "hellocacheseconds",
+    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_HELLOCACHESECONDS,
                             buf, sizeof(buf))) {
         int v = atoi(buf);
         if (v >= 0)
@@ -1243,7 +1244,7 @@ int kageant_hello_ttl(void)
  * is authoritative and survives export/import. */
 int kageant_quiet_missing_set(int on)
 {
-    kitty_inilight_write("Agent", "quietmissingkeys", on ? "yes" : "no");
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_QUIETMISSINGKEYS, on ? "yes" : "no");
     kageant_reg_write("QuietMissingKeys", on ? 1 : 0);
     return 1;
 }
@@ -1253,7 +1254,7 @@ int kageant_retry_keys_set(int mode)
         mode = 1;
     /* Value-preserving on BOTH ends - routed through the boolean pair this
      * would write mode 2 as 1 and the third state could never exist. */
-    kitty_inilight_write("Agent", "retrykeys",
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_RETRYKEYS,
                          mode == KAGEANT_RETRY_ANYDRIVE ? "ignoredriveletter" :
                          mode ? "yes" : "no");
     kageant_reg_write_dword("RetryKeys", mode);
@@ -1279,7 +1280,7 @@ void kageant_settings_tab_set(int page)
 }
 int kageant_unload_on_remove_set(int on)
 {
-    kitty_inilight_write("Agent", "unloadonremove", on ? "yes" : "no");
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_UNLOADONREMOVE, on ? "yes" : "no");
     kageant_reg_write("UnloadOnRemove", on ? 1 : 0);
     return 1;
 }
@@ -1289,7 +1290,7 @@ int kageant_passphrase_ttl_set(int seconds)
     HKEY hk;
     seconds = kageant_clamp_ttl(seconds);
     snprintf(buf, sizeof(buf), "%d", seconds);
-    kitty_inilight_write("Agent", "passphrasecacheseconds", buf);
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_PASSPHRASECACHESECONDS, buf);
     /* kageant_reg_write only stores 0/1, so write this DWORD directly. */
     if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
                         KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
@@ -1306,7 +1307,7 @@ int kageant_hello_ttl_set(int seconds)
     HKEY hk;
     seconds = kageant_clamp_ttl(seconds);
     snprintf(buf, sizeof(buf), "%d", seconds);
-    kitty_inilight_write("Agent", "hellocacheseconds", buf);
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_HELLOCACHESECONDS, buf);
     if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
                         KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
         DWORD v = (DWORD)seconds;
@@ -1393,7 +1394,7 @@ static int kageant_autoenc_mode_read(void)
 {
     char buf[16];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read("Agent", "autoencryptmode", buf, sizeof(buf)))
+    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_AUTOENCRYPTMODE, buf, sizeof(buf)))
         ini_v = kageant_autoenc_mode_parse(buf);
     if (kitty_inilight_registry_authoritative())
         return kageant_reg_read_dword("AutoEncryptMode", &reg_v) ?
@@ -1406,7 +1407,7 @@ int kageant_autoenc_mode_set(int mode)
 {
     static const char *const words[] = { "off", "default", "enforce" };
     if (mode < 0 || mode > 2) mode = 0;
-    kitty_inilight_write("Agent", "autoencryptmode", words[mode]);
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AUTOENCRYPTMODE, words[mode]);
     kageant_reg_write_dword("AutoEncryptMode", mode);
     kageant_autoenc_mode_cached = -1;
     if (kageant_tick_arm_hook)
@@ -1417,7 +1418,7 @@ int kageant_autoenc_seconds(void)
 {
     char buf[32];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read("Agent", "autoencryptseconds", buf, sizeof(buf)))
+    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_AUTOENCRYPTSECONDS, buf, sizeof(buf)))
         ini_v = kageant_autoenc_parse(buf);
     if (kitty_inilight_registry_authoritative())
         return kageant_reg_read_dword("AutoEncryptSeconds", &reg_v) ?
@@ -1432,7 +1433,7 @@ int kageant_autoenc_seconds_set(int seconds)
     seconds = kageant_autoenc_clamp(seconds);
     if (seconds == KAGEANT_AUTOENC_USE) snprintf(buf, sizeof(buf), "use");
     else snprintf(buf, sizeof(buf), "%d", seconds);
-    kitty_inilight_write("Agent", "autoencryptseconds", buf);
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AUTOENCRYPTSECONDS, buf);
     kageant_reg_write_dword("AutoEncryptSeconds", seconds);
     return 1;
 }
@@ -3048,7 +3049,7 @@ void kageant_forget_startup_key(const char *path)
         for (i = 1, gap = 0; gap < 8 && n < cap; i++) {
             char raw[MAX_PATH + 32];
             snprintf(key, sizeof(key), "startupkey%d", i);
-            GetPrivateProfileStringA("Agent", key, "", val, sizeof(val), f);
+            GetPrivateProfileStringA(KI_SECTION_AGENT, key, "", val, sizeof(val), f);
             if (!val[0]) { gap++; continue; }
             gap = 0;
             snprintf(raw, sizeof(raw), "%s", val);      /* keep the ,markers */
@@ -3062,13 +3063,13 @@ void kageant_forget_startup_key(const char *path)
          * is positional, so a shorter list must not leave a stale tail. */
         for (i = 1, gap = 0; gap < 8; i++) {
             snprintf(key, sizeof(key), "startupkey%d", i);
-            GetPrivateProfileStringA("Agent", key, "", val, sizeof(val), f);
-            if (val[0]) { WritePrivateProfileStringA("Agent", key, NULL, f); gap = 0; }
+            GetPrivateProfileStringA(KI_SECTION_AGENT, key, "", val, sizeof(val), f);
+            if (val[0]) { WritePrivateProfileStringA(KI_SECTION_AGENT, key, NULL, f); gap = 0; }
             else gap++;
         }
         for (i = 0; i < n; i++) {
             snprintf(key, sizeof(key), "startupkey%d", i + 1);
-            WritePrivateProfileStringA("Agent", key, keep[i], f);
+            WritePrivateProfileStringA(KI_SECTION_AGENT, key, keep[i], f);
         }
         sfree(keep);
         return;
@@ -3450,7 +3451,7 @@ void kageant_load_startup_keys(void)
             char fp[160];
             fp[0] = '\0';
             snprintf(key, sizeof(key), "startupkey%d", i);
-            GetPrivateProfileStringA("Agent", key, "", val, sizeof(val), f);
+            GetPrivateProfileStringA(KI_SECTION_AGENT, key, "", val, sizeof(val), f);
             if (!val[0]) { gap++; continue; }
             gap = 0;
             /* Trailing tokens, in any order and any of them absent:
@@ -3700,14 +3701,14 @@ void kageant_save_key_order(void)
         for (i = 1, gap = 0; gap < 8; i++) {
             char probe[512];
             snprintf(key, sizeof(key), "keyorder%d", i);
-            GetPrivateProfileStringA("Agent", key, "", probe, sizeof(probe), f);
-            if (probe[0]) { WritePrivateProfileStringA("Agent", key, NULL, f); gap = 0; }
+            GetPrivateProfileStringA(KI_SECTION_AGENT, key, "", probe, sizeof(probe), f);
+            if (probe[0]) { WritePrivateProfileStringA(KI_SECTION_AGENT, key, NULL, f); gap = 0; }
             else gap++;
         }
         i = 0;
         for (char *q = buf; *q; q += strlen(q) + 1) {
             snprintf(key, sizeof(key), "keyorder%d", ++i);
-            WritePrivateProfileStringA("Agent", key, q, f);
+            WritePrivateProfileStringA(KI_SECTION_AGENT, key, q, f);
         }
         sfree(buf);
         return;
@@ -3738,7 +3739,7 @@ void kageant_apply_saved_order(void)
         int n = 0, i, gap;
         for (i = 1, gap = 0; gap < 8; i++) {
             snprintf(key, sizeof(key), "keyorder%d", i);
-            GetPrivateProfileStringA("Agent", key, "", val, sizeof(val), f);
+            GetPrivateProfileStringA(KI_SECTION_AGENT, key, "", val, sizeof(val), f);
             if (!val[0]) { gap++; continue; }
             gap = 0;
             fps = sresize(fps, n + 1, char *);
@@ -3797,7 +3798,7 @@ static int kageant_policy_read(const char *inikey, const char *regname)
 {
     char buf[32];
     int ini_val = -1, reg_val;
-    if (kitty_inilight_read("Agent", inikey, buf, sizeof(buf))) {
+    if (kitty_inilight_read(KI_SECTION_AGENT, inikey, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) ini_val = 1;
         else if (!stricmp(buf, "no")) ini_val = 0;
     }
@@ -3842,36 +3843,36 @@ static int kageant_policy_get(const char *inikey, const char *regname)
 
 int kageant_lockdown_get(void)
 {
-    return kageant_policy_get("lockdownmode", "LockdownMode");
+    return kageant_policy_get(KI_AGENT_LOCKDOWNMODE, "LockdownMode");
 }
 
 /* Write a yes/no policy through to BOTH stores, like the confirm mode, so
  * the value is consistent in either mode and survives export/import. */
 static void kageant_policy_set(const char *inikey, const char *regname, int on)
 {
-    kitty_inilight_write("Agent", inikey, on ? "yes" : "no");
+    kitty_inilight_write(KI_SECTION_AGENT, inikey, on ? "yes" : "no");
     kageant_reg_write(regname, on ? 1 : 0);
     memset(kageant_policy_cache, 0, sizeof(kageant_policy_cache));
 }
 void kageant_lockdown_set(int on)
 {
-    kageant_policy_set("lockdownmode", "LockdownMode", on);
+    kageant_policy_set(KI_AGENT_LOCKDOWNMODE, "LockdownMode", on);
 }
 int  kageant_blockadd_get(void)
 {
-    return kageant_policy_get("blockipcadd", "BlockIpcAdd");
+    return kageant_policy_get(KI_AGENT_BLOCKIPCADD, "BlockIpcAdd");
 }
 void kageant_blockadd_set(int on)
 {
-    kageant_policy_set("blockipcadd", "BlockIpcAdd", on);
+    kageant_policy_set(KI_AGENT_BLOCKIPCADD, "BlockIpcAdd", on);
 }
 int  kageant_blockremove_get(void)
 {
-    return kageant_policy_get("blockipcremove", "BlockIpcRemove");
+    return kageant_policy_get(KI_AGENT_BLOCKIPCREMOVE, "BlockIpcRemove");
 }
 void kageant_blockremove_set(int on)
 {
-    kageant_policy_set("blockipcremove", "BlockIpcRemove", on);
+    kageant_policy_set(KI_AGENT_BLOCKIPCREMOVE, "BlockIpcRemove", on);
 }
 
 /* The raw configured notice display time (0 = unset = per-notice default). */
@@ -3879,7 +3880,7 @@ int kageant_notice_timeout_get(void)
 {
     char buf[16];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read("Agent", "noticetimeout", buf, sizeof(buf)))
+    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_NOTICETIMEOUT, buf, sizeof(buf)))
         ini_v = atoi(buf);
     if (kitty_inilight_registry_authoritative())
         return kageant_reg_read_dword(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v :
@@ -3895,7 +3896,7 @@ void kageant_notice_timeout_set(int seconds)
     if (seconds < 0) seconds = 0;
     if (seconds > 120) seconds = 120;
     snprintf(buf, sizeof(buf), "%d", seconds);
-    kitty_inilight_write("Agent", "noticetimeout", buf);
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_NOTICETIMEOUT, buf);
     /* kageant_reg_write only stores 0/1, so write this DWORD directly. */
     if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
                         KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
@@ -3912,9 +3913,9 @@ int kageant_ipc_blocked(int op)
     if (kageant_lockdown_get())
         blocked = 1;   /* add + remove + remove-all all blocked */
     else if (op == KAGEANT_MUT_ADD)
-        blocked = kageant_policy_get("blockipcadd", "BlockIpcAdd");
+        blocked = kageant_policy_get(KI_AGENT_BLOCKIPCADD, "BlockIpcAdd");
     else   /* remove and remove-all share the one switch */
-        blocked = kageant_policy_get("blockipcremove", "BlockIpcRemove");
+        blocked = kageant_policy_get(KI_AGENT_BLOCKIPCREMOVE, "BlockIpcRemove");
     if (blocked)
         kageant_audit_use(op == KAGEANT_MUT_ADD    ? "add" :
                           op == KAGEANT_MUT_REMOVE ? "remove" : "remove-all",

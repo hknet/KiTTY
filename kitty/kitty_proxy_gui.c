@@ -20,6 +20,7 @@
 #include "kitty_text.h"   /* the words the panels show */
 #include "kitty_rc_additions.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
+#include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 
 /* Type combo order -> CONF_proxy_type. The SSH types make a named proxy a
  * reusable jump host (the command field is the remote command/subsystem for
@@ -511,7 +512,7 @@ static void pxp_hostfield_handler(dlgcontrol *ctrl, dlgparam *dlg,
     } else if (event == EVENT_SELCHANGE) {
         int idx = dlg_listbox_index(ctrl, dlg);
         if (idx == 0 || idx == 1) {
-            WriteParameter("KiTTY", "namedproxy", (char *)stored[idx]);
+            WriteParameter(KI_SECTION_KITTY, KI_NAMEDPROXY, (char *)stored[idx]);
             SetNamedProxyHostnameOnly(idx);
         }
     }

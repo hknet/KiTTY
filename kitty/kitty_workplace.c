@@ -40,6 +40,7 @@
 #include "kitty_text.h"     /* the notice wording */
 
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
+#include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #define KWP_MAGIC   0x5057494Bu   /* "KIWP" */
 #define KWP_VERSION 1
 
@@ -325,22 +326,21 @@ extern int ReadParameterN(const char *key, const char *name, char *value, size_t
 #ifndef INIT_SECTION
 #define INIT_SECTION "KiTTY"
 #endif
-#define KWP_BREADCRUMB "WorkplaceWasArmed"
 
 void kitty_workplace_mark_armed(void)
 {
-    WriteParameter(INIT_SECTION, KWP_BREADCRUMB, "1");
+    WriteParameter(INIT_SECTION, KI_WORKPLACEWASARMED, "1");
 }
 
 void kitty_workplace_notice_settled(void)
 {
-    WriteParameter(INIT_SECTION, KWP_BREADCRUMB, "0");
+    WriteParameter(INIT_SECTION, KI_WORKPLACEWASARMED, "0");
 }
 
 int kitty_workplace_notice_owed(void)
 {
     char buf[16] = "", name[256];
-    if (!ReadParameterN(INIT_SECTION, KWP_BREADCRUMB, buf, sizeof(buf)))
+    if (!ReadParameterN(INIT_SECTION, KI_WORKPLACEWASARMED, buf, sizeof(buf)))
         return 0;
     if (strcmp(buf, "1"))
         return 0;

@@ -15,13 +15,12 @@
 #include "kitty_theme.h"
 #include "kitty_theme_pref.h"
 #include "kitty_inilight.h"
+#include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 
 /* The consolidated KiTTY hive, and the same value name kitty.exe writes. */
 #define KITTY_THEME_REG_BASE  "Software\\kapper.net\\KiTTY"
 #define KITTY_THEME_REG_VALUE "theme"
-#define KITTY_THEME_INI_SECTION "KiTTY"
-#define KITTY_THEME_INI_KEY   "theme"
 
 static int theme_reg_read(int *pref_out)
 {
@@ -63,7 +62,7 @@ int kitty_theme_pref_get(void)
     char buf[32];
     int ini_v = -1, reg_v;
 
-    if (kitty_inilight_read(KITTY_THEME_INI_SECTION, KITTY_THEME_INI_KEY,
+    if (kitty_inilight_read(KI_SECTION_KITTY, KI_THEME,
                             buf, sizeof(buf)))
         ini_v = kitty_theme_pref_from_string(buf);
 
@@ -83,7 +82,7 @@ void kitty_theme_pref_set(int pref)
 {
     if (pref < KITTY_THEME_SYSTEM || pref > KITTY_THEME_DARK)
         pref = KITTY_THEME_SYSTEM;
-    kitty_inilight_write(KITTY_THEME_INI_SECTION, KITTY_THEME_INI_KEY,
+    kitty_inilight_write(KI_SECTION_KITTY, KI_THEME,
                          kitty_theme_pref_to_string(pref));
     theme_reg_write(pref);
 }

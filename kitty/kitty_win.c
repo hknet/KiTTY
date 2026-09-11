@@ -6,6 +6,7 @@
 #include "../windows/putty-rc.h"   /* -demo-templates: the shared dialog ids */
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 #include "kitty_text.h"     /* shared captions */
+#include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
 #include <wintrust.h>  /* in-app updater: Authenticode trust verification */
 #include <softpub.h>   /* WINTRUST_ACTION_GENERIC_VERIFY_V2 */
@@ -1999,7 +2000,7 @@ void kitty_report_missing_features(Terminal *term)
     debug_logevent("%s", full);
     sfree(full);
 
-    if (ReadParameter("KiTTY", "warnmissingfeatures", cfg) &&
+    if (ReadParameter(KI_SECTION_KITTY, KI_WARNMISSINGFEATURES, cfg) &&
         !stricmp(cfg, "no"))
         return;
 
@@ -2097,7 +2098,7 @@ static void kitty_agent_serving_check(unsigned long server_pid, int transport)
         return;
 
     /* Opt-out. */
-    if (ReadParameter("KiTTY", "verifyagent", cfg) && !stricmp(cfg, "no")) {
+    if (ReadParameter(KI_SECTION_KITTY, KI_VERIFYAGENT, cfg) && !stricmp(cfg, "no")) {
         done = 1;
         return;
     }
@@ -2158,7 +2159,7 @@ int kitty_theme_app_pref(void)
         return kitty_theme_pref_cached;
     buf[0] = '\0';
     v = KITTY_THEME_SYSTEM;
-    if (ReadParameterN(INIT_SECTION, "theme", buf, sizeof(buf))) {
+    if (ReadParameterN(INIT_SECTION, KI_THEME, buf, sizeof(buf))) {
         v = kitty_theme_pref_from_string(buf);
         if (v < 0)
             v = KITTY_THEME_SYSTEM;
@@ -2193,7 +2194,7 @@ int kitty_check_update_enabled(void)
 {
     char buf[32];
     buf[0] = '\0';
-    if (!ReadParameterN(INIT_SECTION, "checkupdate", buf, sizeof(buf)))
+    if (!ReadParameterN(INIT_SECTION, KI_CHECKUPDATE, buf, sizeof(buf)))
         return 1;                      /* not set: on */
     return !(!_stricmp(buf, "no") || !_stricmp(buf, "0") ||
              !_stricmp(buf, "false") || !_stricmp(buf, "off"));
@@ -2201,5 +2202,5 @@ int kitty_check_update_enabled(void)
 
 void kitty_set_check_update_enabled(int on)
 {
-    WriteParameter(INIT_SECTION, "checkupdate", on ? "yes" : "no");
+    WriteParameter(INIT_SECTION, KI_CHECKUPDATE, on ? "yes" : "no");
 }

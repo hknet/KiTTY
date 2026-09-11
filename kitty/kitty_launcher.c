@@ -457,11 +457,11 @@ void InitLauncherRegistry( void ) {
 						DWORD hide = 0, hsz = sizeof(hide) ;
 						char skey[4096] ;
 						snprintf( skey, sizeof(skey), "%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
-						if( RegGetValueA( HKEY_CURRENT_USER, skey, "LauncherHide", RRF_RT_REG_DWORD, NULL, &hide, &hsz ) == ERROR_SUCCESS && hide )
+						if( RegGetValueA( HKEY_CURRENT_USER, skey, KR_LAUNCHERHIDE, RRF_RT_REG_DWORD, NULL, &hide, &hsz ) == ERROR_SUCCESS && hide )
 							continue ;
 					}
 					snprintf( buffer, sizeof(buffer),"%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
-					if( !GetValueDataN(HKEY_CURRENT_USER, buffer, "Folder", folder, sizeof(folder) ) )
+					if( !GetValueDataN(HKEY_CURRENT_USER, buffer, KR_FOLDER, folder, sizeof(folder) ) )
 						{ strcpy( folder, "Default" ) ; }
 					CleanFolderName( folder ) ;
 					if( !strcmp( folder, "Default" ) || (strlen(folder)<=0) )
@@ -808,14 +808,12 @@ static void LauncherSetTrayTip( void ) {
  * exists only as this process holding the arming, and switching the mode off
  * deliberately KEEPS the selection - it is what you would want back tomorrow
  * morning. Key spelling matters: mini.c matches ini keys case-sensitively. */
-#define WORKPLACE_PROXY_KEY   "WorkplaceProxy"
-#define WORKPLACE_MINUTES_KEY "WorkplaceMinutes"
 
 static void LauncherRememberWorkplaceProxy( const char *proxyname, unsigned int minutes ) {
 	char m[32] ;
-	WriteParameter( INIT_SECTION, WORKPLACE_PROXY_KEY, (char*)proxyname ) ;
+	WriteParameter( INIT_SECTION, KI_WORKPLACEPROXY, (char*)proxyname ) ;
 	snprintf( m, sizeof(m), "%u", minutes ) ;
-	WriteParameter( INIT_SECTION, WORKPLACE_MINUTES_KEY, m ) ;
+	WriteParameter( INIT_SECTION, KI_WORKPLACEMINUTES, m ) ;
 }
 
 /* How long the mode was last switched on for; 0 = until it is switched off or
@@ -823,7 +821,7 @@ static void LauncherRememberWorkplaceProxy( const char *proxyname, unsigned int 
  * tray repeats the choice made in the config box. */
 static unsigned int LauncherRememberedWorkplaceMinutes( void ) {
 	char buffer[32] = "" ;
-	if( !ReadParameterN( INIT_SECTION, WORKPLACE_MINUTES_KEY, buffer, sizeof(buffer) ) ) return 0 ;
+	if( !ReadParameterN( INIT_SECTION, KI_WORKPLACEMINUTES, buffer, sizeof(buffer) ) ) return 0 ;
 	if( atoi(buffer) <= 0 ) return 0 ;
 	return (unsigned int)atoi(buffer) ;
 }
@@ -831,7 +829,7 @@ static unsigned int LauncherRememberedWorkplaceMinutes( void ) {
 static int LauncherRememberedWorkplaceProxy( char *out, int len ) {
 	char buffer[512] = "" ;
 	out[0] = '\0' ;
-	if( !ReadParameterN( INIT_SECTION, WORKPLACE_PROXY_KEY, buffer, sizeof(buffer) ) ) return 0 ;
+	if( !ReadParameterN( INIT_SECTION, KI_WORKPLACEPROXY, buffer, sizeof(buffer) ) ) return 0 ;
 	if( !buffer[0] || (int)strlen(buffer) >= len ) return 0 ;
 	strcpy( out, buffer ) ;
 	return 1 ;
@@ -842,7 +840,7 @@ static int LauncherRememberedWorkplaceProxy( char *out, int len ) {
  * shell has ignored the requested balloon duration since Vista. */
 static int LauncherNoticeSeconds( void ) {
 	char buffer[32] ;
-	if( ReadParameterN( "Launcher", "noticeseconds", buffer, sizeof(buffer) )
+	if( ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_NOTICESECONDS, buffer, sizeof(buffer) )
 	    && atoi(buffer) > 0 ) return atoi(buffer) ;
 	return 15 ;
 }
@@ -956,7 +954,7 @@ static int LauncherStartedForWorkplace = 0 ;
 static void LauncherExitIfStartedForWorkplace( HWND hwnd ) {
 	char buffer[32] ;
 	if( !LauncherStartedForWorkplace ) return ;
-	if( ReadParameterN( "Launcher", "exitwithworkplace", buffer, sizeof(buffer) )
+	if( ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_EXITWITHWORKPLACE, buffer, sizeof(buffer) )
 	    && !stricmp( buffer, "no" ) ) return ;   /* absent = yes */
 	/* ⚠️ NOT straight away. The notice saying the mode is off is a window of
 	 * OURS, so quitting here would take it off the screen the instant it
@@ -1413,7 +1411,7 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	
 	if( strcmp(KiTTYClassName,appname) ) { strcpy(className,KiTTYClassName) ; }
 	else if( strcmp(KiTTYClassName,"KiTTY") ) { strcpy(className,KiTTYClassName) ; }
-	if( ReadParameterN( "Launcher", "classname", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_CLASSNAME, buffer, sizeof(buffer) ) ) {
 		buffer[1023]='\0' ;
 		if( strlen(buffer)>0 ) { strcpy(className,buffer) ; }
 	}
@@ -1478,7 +1476,7 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	 * so the second one fails to arm and exits here like any other duplicate.
 	 */
 	if( !kitty_workplace_holding() && FindWindow(className,className) ) {
-		if( ReadParameterN( "Launcher", "alreadyRunCheck", buffer, sizeof(buffer) ) ) {
+		if( ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_ALREADYRUNCHECK, buffer, sizeof(buffer) ) ) {
 			if( !stricmp( buffer, "yes" ) ) return 0 ;
 		} else {
 			return 0 ;
@@ -1502,7 +1500,7 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 
 	if( !RegisterClass(&wndclass) ) return 1 ;
 
-	if( ReadParameterN( "Launcher", "reload", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_RELOAD, buffer, sizeof(buffer) ) ) {
 		if( !stricmp( buffer, "NO" ) ) LauncherConfReload = 0 ;
 	}
 	/* KiTTY 0.84: the launcher can run before the main terminal (e.g. the boot Startup

@@ -4,6 +4,7 @@
 
 #include "kitty_commun.h"
 #include "kitty_tools.h"
+#include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 
 // Flag permettant d'activer l'acces a du code particulier permettant d'avoir plus d'info dans le kitty.dmp
 int debug_flag = 0 ;
@@ -199,18 +200,18 @@ int LoadParametersLight( void ) {
 		IniFile = (char*)malloc(strlen(getenv("KITTY_INI_FILE"))+1) ; 
 		strcpy( IniFile,getenv("KITTY_INI_FILE") ) ;
 		strcpy(INIT_SECTION,"KiTTY");
-		if( readINI( IniFile, "KiTTY", "savemode", buffer, sizeof(buffer) ) ) {
+		if( readINI( IniFile, KI_SECTION_KITTY, KI_SAVEMODE, buffer, sizeof(buffer) ) ) {
 			str_rtrim( buffer, "\n\r \t" ) ;
 			if( !stricmp( buffer, "registry" ) ) IniFileFlag = SAVEMODE_REG ;
 			else if( !stricmp( buffer, "file" ) ) IniFileFlag = SAVEMODE_FILE ;
 			else if( !stricmp( buffer, "dir" ) ) { IniFileFlag = SAVEMODE_DIR ; ret = 1 ; }
 		}
 		if(  IniFileFlag == SAVEMODE_DIR ) {
-			if( readINI( IniFile, "KiTTY", "browsedirectory", buffer, sizeof(buffer) ) ) { 
+			if( readINI( IniFile, KI_SECTION_KITTY, KI_BROWSEDIRECTORY, buffer, sizeof(buffer) ) ) { 
 				if( !stricmp( buffer, "NO" )&&(IniFileFlag==SAVEMODE_DIR) ) DirectoryBrowseFlag = 0 ; 
 				else DirectoryBrowseFlag = 1 ;
 			}
-			if( readINI( IniFile, "KiTTY", "configdir", buffer, sizeof(buffer) ) ) {
+			if( readINI( IniFile, KI_SECTION_KITTY, KI_CONFIGDIR, buffer, sizeof(buffer) ) ) {
 				if( strlen( buffer ) > 0 ) { 
 					ConfigDirectory = (char*)malloc( strlen(buffer) + 1 ) ;
 					strcpy( ConfigDirectory, buffer ) ;
@@ -221,18 +222,18 @@ int LoadParametersLight( void ) {
 		IniFile = (char*)malloc(11) ; strcpy(IniFile,"kitty.ini");
 		strcpy(INIT_SECTION,"KiTTY");
 		fclose(fp ) ;
-		if( readINI( "kitty.ini", "KiTTY", "savemode", buffer, sizeof(buffer) ) ) {
+		if( readINI( "kitty.ini", KI_SECTION_KITTY, KI_SAVEMODE, buffer, sizeof(buffer) ) ) {
 			str_rtrim( buffer, "\n\r \t" ) ;
 			if( !stricmp( buffer, "registry" ) ) IniFileFlag = SAVEMODE_REG ;
 			else if( !stricmp( buffer, "file" ) ) IniFileFlag = SAVEMODE_FILE ;
 			else if( !stricmp( buffer, "dir" ) ) { IniFileFlag = SAVEMODE_DIR ; ret = 1 ; }
 		}
 		if(  IniFileFlag == SAVEMODE_DIR ) {
-			if( readINI( "kitty.ini", "KiTTY", "browsedirectory", buffer, sizeof(buffer) ) ) { 
+			if( readINI( "kitty.ini", KI_SECTION_KITTY, KI_BROWSEDIRECTORY, buffer, sizeof(buffer) ) ) { 
 				if( !stricmp( buffer, "NO" )&&(IniFileFlag==SAVEMODE_DIR) ) DirectoryBrowseFlag = 0 ; 
 				else DirectoryBrowseFlag = 1 ;
 			}
-			if( readINI( "kitty.ini", "KiTTY", "configdir", buffer, sizeof(buffer) ) ) { 
+			if( readINI( "kitty.ini", KI_SECTION_KITTY, KI_CONFIGDIR, buffer, sizeof(buffer) ) ) { 
 				if( strlen( buffer ) > 0 ) { 
 					ConfigDirectory = (char*)malloc( strlen(buffer) + 1 ) ;
 					strcpy( ConfigDirectory, buffer ) ;
@@ -244,18 +245,18 @@ int LoadParametersLight( void ) {
 		IniFile = (char*)malloc(11) ; strcpy(IniFile,"putty.ini");
 		strcpy(INIT_SECTION,"PuTTY");
 		fclose(fp ) ;
-		if( readINI( "putty.ini", "PuTTY", "savemode", buffer, sizeof(buffer) ) ) {
+		if( readINI( "putty.ini", KI_SECTION_PUTTY, KI_SAVEMODE, buffer, sizeof(buffer) ) ) {
 			str_rtrim( buffer, "\n\r \t" ) ;
 			if( !stricmp( buffer, "registry" ) ) IniFileFlag = SAVEMODE_REG ;
 			else if( !stricmp( buffer, "file" ) ) IniFileFlag = SAVEMODE_FILE ;
 			else if( !stricmp( buffer, "dir" ) ) { IniFileFlag = SAVEMODE_DIR ; DirectoryBrowseFlag = 1 ; ret = 1 ; }
 		}
 		if(  IniFileFlag == SAVEMODE_DIR ) {
-			if( readINI( "putty.ini", "PuTTY", "browsedirectory", buffer, sizeof(buffer) ) ) {
+			if( readINI( "putty.ini", KI_SECTION_PUTTY, KI_BROWSEDIRECTORY, buffer, sizeof(buffer) ) ) {
 				if( !stricmp( buffer, "NO" )&&(IniFileFlag==SAVEMODE_DIR) ) DirectoryBrowseFlag = 0 ; 
 				else DirectoryBrowseFlag = 1 ;
 			}
-			if( readINI( "putty.ini", "PuTTY", "configdir", buffer, sizeof(buffer) ) ) { 
+			if( readINI( "putty.ini", KI_SECTION_PUTTY, KI_CONFIGDIR, buffer, sizeof(buffer) ) ) { 
 				if( strlen( buffer ) > 0 ) { 
 					ConfigDirectory = (char*)malloc( strlen(buffer) + 1 ) ;
 					strcpy( ConfigDirectory, buffer ) ;
@@ -279,7 +280,7 @@ int LoadParametersLight( void ) {
 			} 
 		}
 	}
-	if( ReadParameterLightN( INIT_SECTION, "fileextension", buffer, sizeof(buffer) ) ) {
+	if( ReadParameterLightN( INIT_SECTION, KI_FILEEXTENSION, buffer, sizeof(buffer) ) ) {
 		if( strlen(buffer) > 0 ) {
 			snprintf( FileExtension, sizeof(FileExtension), "%s%s", (buffer[0]!='.')?".":"", buffer ) ;
 			str_rtrim( FileExtension, " " ) ;
