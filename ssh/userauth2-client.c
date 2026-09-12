@@ -19,6 +19,24 @@ char *(*kitty_hello_keyfile_unlock_hook)(const char *path) = NULL;
 char *(*kitty_hello_keyfile_translate_hook)(const char *path,
                                             const char *typed) = NULL;
 int (*kitty_hello_keyfile_protected_hook)(const char *path) = NULL;
+
+/* KiTTY: a login the user TYPES at the SSH prompts. A frontend installs
+ * this to copy an interactively entered user name and password into the
+ * settings of the running session, which is what a duplicated session
+ * inherits and what the external transfer tools are started from. It is
+ * called with (username, NULL) as soon as a user name has been typed,
+ * and with (NULL, password) only once the server has ACCEPTED that
+ * password - a refused one is never handed over. NULL (every other
+ * frontend and build, including the command-line tools) changes nothing.
+ * ssh/login1.c uses the same pointer for SSH-1. */
+void (*kitty_userauth_credentials_hook)(const char *username,
+                                        const char *password) = NULL;
+
+void ssh_userauth_set_credentials_hook(
+    void (*fn)(const char *username, const char *password))
+{
+    kitty_userauth_credentials_hook = fn;
+}
 #include "ssh.h"
 #include "bpp.h"
 #include "ppl.h"
@@ -118,8 +136,35 @@ struct ssh2_userauth_state {
     bool ki_scc_initialised;
     bool ki_printed_header;
 
+    /* KiTTY: the secret the user typed that we will hand to the frontend
+     * if - and only if - the server accepts it. See
+     * ssh_userauth_set_credentials_hook above. */
+    char *kitty_pw_candidate;
+    uint32_t kitty_ki_answers;     /* prompts answered this k-i attempt */
+    bool kitty_capture_done;       /* one secret was accepted; the rest is 2FA */
+
     PacketProtocolLayer ppl;
 };
+
+/* KiTTY: forget the candidate secret, overwriting it first. */
+static void kitty_userauth_drop_candidate(struct ssh2_userauth_state *s)
+{
+    burnstr(s->kitty_pw_candidate);
+    s->kitty_pw_candidate = NULL;
+}
+
+/* KiTTY: remember what the user just typed as the candidate password.
+ * Ignored once a secret of ours has already been accepted, so that the
+ * second factor of a two-step login is not mistaken for the password. */
+static void kitty_userauth_set_candidate(struct ssh2_userauth_state *s,
+                                         const char *pw)
+{
+    if (s->kitty_capture_done || !kitty_userauth_credentials_hook)
+        return;
+    kitty_userauth_drop_candidate(s);
+    if (pw)
+        s->kitty_pw_candidate = dupstr(pw);
+}
 
 static void ssh2_userauth_free(PacketProtocolLayer *);
 static void ssh2_userauth_process_queue(PacketProtocolLayer *);
@@ -260,6 +305,7 @@ static void ssh2_userauth_free(PacketProtocolLayer *ppl)
     bufchain_clear(&s->authplugin_bc);
     if (s->authplugin_incoming_msg)
         strbuf_free(s->authplugin_incoming_msg);
+    kitty_userauth_drop_candidate(s);   /* KiTTY */
     sfree(s);
 }
 
@@ -839,6 +885,11 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                 prompt_get_result(s->cur_prompt->prompts[0]);
             free_prompts(s->cur_prompt);
             s->cur_prompt = NULL;
+            /* KiTTY: this user name was TYPED - the session had none. The
+             * whole of the rest of the authentication runs under it, so
+             * hand it to the frontend now. */
+            if (kitty_userauth_credentials_hook)
+                kitty_userauth_credentials_hook(s->username, NULL);
         } else {
             if (seat_verbose(s->ppl.seat) || seat_interactive(s->ppl.seat))
                 ppl_printf("Using username \"%s\".\r\n", s->username);
@@ -918,6 +969,17 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
             if (pktin && pktin->type == SSH2_MSG_USERAUTH_FAILURE) {
                 ptrlen methods = get_string(pktin);
                 bool partial_success = get_bool(pktin);
+
+                /* KiTTY: decide what becomes of the secret we are holding.
+                 * A partial success means the server took it and wants a
+                 * further factor: keep it, and capture nothing after it,
+                 * so that a one-time code is never stored as the password.
+                 * Anything else is a refusal, and a refused password must
+                 * never reach the session settings. */
+                if (partial_success && s->kitty_pw_candidate)
+                    s->kitty_capture_done = true;
+                else if (!partial_success && !s->kitty_capture_done)
+                    kitty_userauth_drop_candidate(s);
 
                 if (!partial_success) {
                     /*
@@ -1625,6 +1687,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                  */
 
                 s->type = AUTH_TYPE_KEYBOARD_INTERACTIVE;
+                s->kitty_ki_answers = 0;   /* KiTTY: a fresh k-i exchange */
 
                 s->ppl.bpp->pls->actx = SSH2_PKTCTX_KBDINTER;
 
@@ -1934,6 +1997,8 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                  * asked to change it.)
                  */
                 s->password = prompt_get_result(s->cur_prompt->prompts[0]);
+                /* KiTTY: the candidate to hand over if the server takes it. */
+                kitty_userauth_set_candidate(s, s->password);
                 free_prompts(s->cur_prompt);
                 s->cur_prompt = NULL;
 
@@ -2086,6 +2151,11 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                     put_stringz(s->pktout, s->password);
                     put_stringz(s->pktout, prompt_get_result_ref(
                                     s->cur_prompt->prompts[1]));
+                    /* KiTTY: from here on the NEW password is the one that
+                     * logs this account in, so that is what the frontend
+                     * should be given if the server accepts the change. */
+                    kitty_userauth_set_candidate(
+                        s, prompt_get_result_ref(s->cur_prompt->prompts[1]));
                     free_prompts(s->cur_prompt);
                     s->cur_prompt = NULL;
                     s->pktout->minlen = 256;
@@ -2137,6 +2207,10 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
 
         }
       try_new_username:;
+        /* KiTTY: a fresh user name is a fresh login - nothing held from the
+         * last one belongs to it, and its own secrets are capturable again. */
+        kitty_userauth_drop_candidate(s);
+        s->kitty_capture_done = false;
     }
 
   userauth_success:
@@ -2145,6 +2219,17 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                         "Abandoning session as specified in configuration.");
         return;
     }
+
+    /*
+     * KiTTY: the server has let us in, so the secret we are holding is
+     * the one that works for this account. Hand it to the frontend, which
+     * copies it into the running session's settings - what a duplicated
+     * session inherits, and what the external transfer tools are started
+     * from. Nothing the server refused ever reaches this point.
+     */
+    if (s->kitty_pw_candidate && kitty_userauth_credentials_hook)
+        kitty_userauth_credentials_hook(NULL, s->kitty_pw_candidate);
+    kitty_userauth_drop_candidate(s);
 
     /*
      * We've just received USERAUTH_SUCCESS, and we haven't sent
@@ -2331,6 +2416,27 @@ static void ssh2_userauth_ki_write_responses(
     put_uint32(bs, s->num_prompts);
     for (uint32_t i = 0; i < s->num_prompts; i++)
         put_stringz(bs, prompt_get_result_ref(s->cur_prompt->prompts[i]));
+
+    /*
+     * KiTTY: most servers ask for the password through
+     * keyboard-interactive rather than the "password" method, so an
+     * answer given here can be the login password. It only counts as one
+     * if the whole exchange consists of a single prompt whose answer was
+     * not echoed: several prompts, an echoed answer, or a second round
+     * mean a challenge-response scheme, and storing one of those answers
+     * as the password would be both wrong and useless. Answers that go to
+     * an authentication plugin rather than to the server are not the
+     * server's password prompt at all, so they are left alone.
+     */
+    s->kitty_ki_answers += s->num_prompts;
+    if (!s->kitty_capture_done && !s->authplugin_ki_active) {
+        if (s->num_prompts == 1 && s->kitty_ki_answers == 1 &&
+            !s->cur_prompt->prompts[0]->echo)
+            kitty_userauth_set_candidate(
+                s, prompt_get_result_ref(s->cur_prompt->prompts[0]));
+        else if (s->num_prompts > 0)
+            kitty_userauth_drop_candidate(s);
+    }
 
     /*
      * Free the prompts structure from this iteration. If there's

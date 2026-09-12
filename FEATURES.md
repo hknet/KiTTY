@@ -999,6 +999,8 @@ KiTTY lets you instantly open a second window that inherits all of the current s
 
 **Inherit New Session...** is the same idea with a stop: the new window comes up at the **configuration box** carrying those settings, so something can be changed before connecting. Otherwise the box opens without a host, ready for a fresh one.
 
+A login you typed at the SSH prompts counts as part of those settings. Once the server has accepted it, the user name and password go into the running session, so the duplicate logs in without asking — and WinSCP, FileZilla and kscp are started with the same login, not only with one that was stored in the session. A password the server refused is discarded, and so is the answer to a one-time code or any other challenge asked on top of the password. Nothing reaches the settings store unless you save the session yourself, and **Application > KiTTY++ Settings > Security > Passwords** (`userpasssshnosave=yes` in `kitty.ini`) switches the whole thing off.
+
 #### Working through a cluster, one key at a time
 
 Put the two together and a room full of near-identical machines takes one keystroke each.

@@ -12,6 +12,12 @@
 #include "ppl.h"
 #include "sshcr.h"
 
+/* KiTTY: a login the user TYPES at the SSH prompts - the same hook the
+ * SSH-2 layer uses, defined in ssh/userauth2-client.c. See the comment on
+ * ssh_userauth_set_credentials_hook() in putty.h. */
+extern void (*kitty_userauth_credentials_hook)(const char *username,
+                                               const char *password);
+
 typedef struct agent_key {
     RSAKey key;
     strbuf *comment;
@@ -33,6 +39,9 @@ struct ssh1_login_state {
     int local_protoflags;
     unsigned char session_key[32];
     char *username;
+    /* KiTTY: the password the user typed, held until the server accepts
+     * it. See kitty_userauth_credentials_hook above. */
+    char *kitty_pw_candidate;
     agent_pending_query *auth_agent_query;
 
     int len;
@@ -117,6 +126,7 @@ static void ssh1_login_free(PacketProtocolLayer *ppl)
     sfree(s->savedhost);
     sfree(s->rsabuf);
     sfree(s->username);
+    burnstr(s->kitty_pw_candidate);   /* KiTTY */
     if (s->publickey_blob)
         strbuf_free(s->publickey_blob);
     sfree(s->publickey_comment);
@@ -407,6 +417,9 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
         s->username = prompt_get_result(s->cur_prompt->prompts[0]);
         free_prompts(s->cur_prompt);
         s->cur_prompt = NULL;
+        /* KiTTY: a user name that was TYPED - the session had none. */
+        if (kitty_userauth_credentials_hook)
+            kitty_userauth_credentials_hook(s->username, NULL);
     }
 
     pkt = ssh_bpp_new_pktout(s->ppl.bpp, SSH1_CMSG_USER);
@@ -1066,9 +1079,24 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
         }
         s->is_trivial_auth = false;
         ppl_logevent("Sent password");
+        /* KiTTY: hold on to a plain password (not a TIS or CryptoCard
+         * challenge response) until we know the server accepted it. */
+        burnstr(s->kitty_pw_candidate);
+        s->kitty_pw_candidate = NULL;
+        if (s->pwpkt_type == SSH1_CMSG_AUTH_PASSWORD &&
+            kitty_userauth_credentials_hook)
+            s->kitty_pw_candidate =
+                prompt_get_result(s->cur_prompt->prompts[0]);
         free_prompts(s->cur_prompt);
         s->cur_prompt = NULL;
         crMaybeWaitUntilV((pktin = ssh1_login_pop(s)) != NULL);
+        if (pktin->type == SSH1_SMSG_SUCCESS && s->kitty_pw_candidate) {
+            /* KiTTY: accepted - hand it to the frontend, which copies it
+             * into the running session's settings. */
+            kitty_userauth_credentials_hook(NULL, s->kitty_pw_candidate);
+        }
+        burnstr(s->kitty_pw_candidate);
+        s->kitty_pw_candidate = NULL;
         if (pktin->type == SSH1_SMSG_FAILURE) {
             if (seat_verbose(s->ppl.seat))
                 ppl_printf("Access denied\r\n");

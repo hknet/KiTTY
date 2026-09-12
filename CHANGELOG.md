@@ -252,6 +252,17 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **A login you type is passed on like a stored one.** The user name and
+  password typed at the SSH prompts now go into the running session's
+  settings, so "Duplicate session" logs in without asking and WinSCP,
+  FileZilla and kscp are started with them - until now only credentials
+  held in the session were passed on, and the code that was meant to keep
+  a typed one had no caller. Only a login the server accepted is kept: a
+  refused password is discarded, and so is the answer to a one-time code
+  or any other challenge asked on top of the password. Nothing reaches
+  the settings store unless the session is saved, and Security >
+  Passwords (`userpasssshnosave=yes`) still switches the whole thing off
+  (Refs hknet/KiTTY#50).
 - **The kitten transfer permission dialogs no longer stop the terminal.**
   Both are modeless now, so the session keeps running, drawing and taking
   input while the question stands, and a transfer the far end gives up on

@@ -1907,13 +1907,21 @@ What happens to a login you type.
 
 When a session logs in with a user name and a password you typed at the
 prompt, KiTTY copies both into the running session's settings, exactly
-as if you had entered them on the session's Login panel. Two things
+as if you had entered them on the session's Login panel. Three things
 follow from that. \q{Duplicate session} opens its copy with those
-settings and logs in without asking. And \q{Change Settings} in the
-terminal window, followed by \q{Save}, writes them into the saved
+settings and logs in without asking. The programs KiTTY starts for the
+session - WinSCP, FileZilla and \c{kscp} - are given the same login,
+just as they are given one held in the session. And \q{Change Settings}
+in the terminal window, followed by \q{Save}, writes them into the saved
 session - the password protected the way every stored password is, by
 this Windows account in the registry or by the master password in a
-folder store, but stored, without you having asked for it.
+folder store, but stored, without you having asked for it. Nothing is
+written to the store on its own: until you save the session, the typed
+login lives only in that window.
+
+Only a login the server accepted is kept. A password it refused is
+discarded, and so is the answer to a one-time code or any other
+challenge the server asks for on top of the password.
 
 \q{Do not keep a typed login name and password in the session} stops
 both: the settings are left as they were, so a duplicate asks again and

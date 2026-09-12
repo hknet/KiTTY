@@ -407,6 +407,10 @@ HWND InfoBox( HINSTANCE hInstance, HWND hwnd ) ;
 void RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) ;
 void DelRegistryKey( void ) ;
 void RenewPassword( Conf *conf ) ;
+// Put a login typed at the SSH prompt into the running session (hknet/KiTTY#50)
+void SetPasswordInConfig( const char * password ) ;
+void SetUsernameInConfig( const char * username ) ;
+void kitty_userauth_credentials( const char * username, const char * password ) ;
 // Gere l'envoi dans le System Tray
 int ManageToTray( HWND hwnd ) ;
 void RefreshBackground( HWND hwnd ) ;

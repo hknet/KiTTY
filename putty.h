@@ -2024,6 +2024,14 @@ void save_open_settings(settings_w *sesskey, Conf *conf);
 bool load_settings(const char *section, Conf *conf);
 typedef void (*settings_load_hook_fn)(const char *section, Conf *conf, bool exists);
 void settings_set_load_hook(settings_load_hook_fn hook);
+/* KiTTY: a login the user TYPES at the SSH prompts. The SSH-1 and SSH-2
+ * authentication layers call the installed function with (username, NULL)
+ * as soon as a user name has been typed, and with (NULL, password) once
+ * the server has accepted that password - never one it refused, and never
+ * the answer to a challenge or a second factor. Not installed (the
+ * command-line tools, and every non-KiTTY build) means nothing happens. */
+void ssh_userauth_set_credentials_hook(
+    void (*fn)(const char *username, const char *password));
 void load_open_settings(settings_r *sesskey, Conf *conf);
 void get_sesslist(struct sesslist *, bool allocate);
 bool do_defaults(const char *, Conf *);

@@ -1790,6 +1790,20 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * anchors the prompt card and names this instance on it. */
         kitty_hello_terminal_init(wgs->term_hwnd);
 #ifdef MOD_PERSO
+        /* KiTTY: a login TYPED at the SSH prompts goes into the running
+         * session's settings, so "Duplicate session" and the transfer tools
+         * (WinSCP, FileZilla, kscp) get it too, not only a login that was
+         * stored in the session. The setters honour [KiTTY]
+         * userpasssshnosave. Process-global, so installing it once is
+         * enough; it writes whichever seat is active (kitty_set_active_seat).
+         * Refs hknet/KiTTY#50. */
+        {
+            void kitty_userauth_credentials(const char *username,
+                                            const char *password); /* kitty.c */
+            ssh_userauth_set_credentials_hook(kitty_userauth_credentials);
+        }
+#endif
+#ifdef MOD_PERSO
         /* KiTTY #554: embed into the host window. SetParent is done HERE (after
          * creation), not via CreateWindow's hWndParent, because the latter breaks
          * keyboard focus for the embedded terminal (Remote4Support fork note).

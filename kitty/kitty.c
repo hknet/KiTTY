@@ -889,39 +889,39 @@ void RenewPassword( Conf *conf ) {
 	}
 
 int DebugAddPassword( const char*fct, const char*pwd ) ;
-void SetPasswordInConfig( const char * password ) {
-	int len ;
-	char bufpass[1024] ;
-	if( (!GetUserPassSSHNoSave())&&(password!=NULL) ) {
-		len = strlen( password ) ;
-		if( len > 126 ) len = 126 ;
-		if( len>0 ) {
-			memcpy( bufpass, password, len+1 ) ;
-			bufpass[len]='\0' ;
-			{ size_t _l; while( (_l=strlen(bufpass))>=2 && ( ((bufpass[_l-1]=='n')&&(bufpass[_l-2]=='\\')) || ((bufpass[_l-1]=='r')&&(bufpass[_l-2]=='\\')) ) ) { bufpass[_l-2]='\0'; bufpass[_l-1]='\0'; } }
-			str_rtrim( bufpass, "\n\r\t " ) ;
-			DebugAddPassword( "SetPasswordInConfig(before mask)", bufpass ) ;
-			MASKPASS(GetCryptSaltFlag(),bufpass) ;
-			DebugAddPassword( "SetPasswordInConfig(after mask)", bufpass ) ;
-		} else {
-			strcpy( bufpass, "" ) ;
-		}
-		conf_set_str(conf,CONF_password,bufpass);
-		memset( bufpass, 0, strlen(bufpass) ) ;
-	}
-}
 
+/* Put a password the user typed at the SSH prompt into the running session's
+ * settings. CONF_password is PLAINTEXT at runtime - the load path decrypts a
+ * stored one and the configuration box holds it plain (see
+ * win_seat_get_userpass_input in windows/window.c) - so it is stored exactly
+ * as typed. It used to be MASKPASS-encoded here, which every consumer of the
+ * running conf would have read as garbage, and trimmed of trailing whitespace
+ * and of literal "\n"/"\r" pairs, which would have silently altered a password
+ * that legitimately ends in one. No DebugAddPassword() call here: that writes
+ * the password in clear to a file beside the exe, and this is now a path every
+ * interactive login takes. KITTY_PWDEBUG (lengths and checksums only) is the
+ * diagnostic. */
+void SetPasswordInConfig( const char * password ) {
+	if( GetUserPassSSHNoSave() || (password==NULL) || (conf==NULL) ) { return ; }
+	conf_set_str( conf, CONF_password, password ) ;
+	}
+
+/* The same for the user name. CONF_username is a STR_AMBI key and the SSH
+ * login prompt is UTF-8, so the typed name is stored as UTF-8 - the same way
+ * cmdline.c stores a -l argument that arrived as UTF-8. */
 void SetUsernameInConfig( const char * username ) {
-	int len ;
-	if( (!GetUserPassSSHNoSave())&&(username!=NULL) ) {
-		len = strlen( username ) ;
-		if( len > 126 ) { len = 126 ; }
-		char *b = (char*) malloc( len+1 ) ;
-		memcpy( (void*)b, (const void*)username, len+1 ) ;
-		b[len] = '\0' ;
-		conf_set_str(conf,CONF_username,b);
-		free(b);
-		}
+	if( GetUserPassSSHNoSave() || (username==NULL) || (conf==NULL) ) { return ; }
+	conf_set_utf8( conf, CONF_username, username ) ;
+	}
+
+/* hknet/KiTTY#50: the SSH layer's hand-back of a login the user TYPED, rather
+ * than one held in the session. Installed by the terminal window (see
+ * ssh_userauth_set_credentials_hook); the user name arrives as soon as it is
+ * typed, the password only once the server has accepted it. Both setters above
+ * do nothing when [KiTTY] userpasssshnosave is set. */
+void kitty_userauth_credentials( const char * username, const char * password ) {
+	if( username != NULL ) { SetUsernameInConfig( username ) ; }
+	if( password != NULL ) { SetPasswordInConfig( password ) ; }
 	}
 
 // Sauvegarde la liste des folders
