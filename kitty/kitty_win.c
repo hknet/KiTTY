@@ -1145,6 +1145,9 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 		}
 		SetDlgItemTextA( h, IDC_CONFIRM_TEXT, cf && cf->text ? cf->text : "" ) ;
 		SetDlgItemTextA( h, IDC_CONFIRM_WARN, cf && cf->warn ? cf->warn : "" ) ;
+		if( cf && cf->warn && *cf->warn )
+			kitty_theme_mark_ink( GetDlgItem( h, IDC_CONFIRM_WARN ),
+				KITTY_INK_BAD ) ;   /* the warning line, and only it */
 		d1 = kitty_fit_text( h, IDC_CONFIRM_TEXT, cf ? cf->text : NULL, 0 ) ;
 		d2 = kitty_fit_text( h, IDC_CONFIRM_WARN, cf ? cf->warn : NULL, d1 ) ;
 		dh = d1 + d2 ;
@@ -1173,15 +1176,9 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 		kitty_centre_on_owner( h ) ;       /* over the window that asked, not mid-screen */
 		return FALSE ;                     /* focus set here, not by the manager */
 	  }
-	  case WM_CTLCOLORSTATIC:
-		/* the warning line, and only it, is red */
-		if( cf && cf->warn && *cf->warn &&
-		    (HWND)lp == GetDlgItem( h, IDC_CONFIRM_WARN ) ) {
-			SetTextColor( (HDC)wp, RGB(200,0,0) ) ;
-			SetBkMode( (HDC)wp, TRANSPARENT ) ;
-			return (INT_PTR)GetSysColorBrush( COLOR_3DFACE ) ;
-		}
-		return FALSE ;
+	  /* The warning line's colour is not answered here: it is marked above
+	   * and painted by the theme engine, which is the only handler a dark
+	   * window ever reaches (kitty_theme_mark_ink). */
 	  case WM_COMMAND:
 		switch( LOWORD(wp) ) {
 		  case IDYES: EndDialog( h, 1 ) ; return TRUE ;

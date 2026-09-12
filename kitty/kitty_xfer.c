@@ -27,6 +27,12 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions and wordings */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+
+/* The port inside a target override ([user@]hostname[:port]), 0 if it names
+ * none. Defined beside kitty_xfer_default_port(), used by the builders above
+ * it as well. */
+static int kx_override_port( const char * ov ) ;
+
 /*
  * KiTTY: log a command line that had a password built into it.
  *
@@ -886,15 +892,20 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {     /* raw user options - intentionally unquoted */
 		bcat( buffer, BC, conf_get_str(conf, CONF_pscpoptions) ) ; bcat( buffer, BC, " " ) ;
 	}
-	bcat( buffer, BC, conf_get_int(conf, CONF_winscpprot)==0 ? "-scp " : "-sftp " ) ;
+	bcat( buffer, BC, conf_get_int(conf, CONF_kscp_protocol)==0 ? "-scp " : "-sftp " ) ;
 
-	if( ReadParameterN( INIT_SECTION, KI_PSCPPORT, pscpport, sizeof(pscpport) ) ) {
+	/* The session's own kscp port first; an empty field falls through to the
+	 * global kscp port and then to the session's port (kitty_xfer_default_port). */
+	if( (p = kitty_xfer_port_field( conf_get_str(conf, CONF_kscp_port) )) > 0 ) {
+		snprintf( b1, sizeof(b1), "-P %d ", p ) ;
+		bcat( buffer, BC, b1 ) ;
+	} else if( ReadParameterN( INIT_SECTION, KI_PSCPPORT, pscpport, sizeof(pscpport) ) ) {
 		pscpport[17]='\0';
 		if( !strcmp( pscpport,"*" ) ) snprintf( pscpport, sizeof(pscpport), "%d", conf_get_int(conf, CONF_port) ) ;
 		bcat( buffer, BC, "-P " ) ; bcat( buffer, BC, pscpport ) ; bcat( buffer, BC, " " ) ;
 	} else {
-		if( (p=poss(":",conf_get_str(conf, CONF_sftpconnect) )) > 0 ) {
-			snprintf( b1, sizeof(b1), "-P %d ", atoi(conf_get_str(conf, CONF_sftpconnect)+p) ) ;
+		if( (p = kx_override_port( conf_get_str(conf, CONF_sftpconnect) )) > 0 ) {
+			snprintf( b1, sizeof(b1), "-P %d ", p ) ;
 		} else {
 			snprintf( b1, sizeof(b1), "-P %d ", conf_get_int(conf, CONF_port) ) ;
 		}
@@ -1054,15 +1065,20 @@ void GetOneFileTo( HWND hwnd, char * directory, const char * filename, const cha
     if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {     /* raw user options - unquoted */
         bcat( buffer, BC, conf_get_str(conf, CONF_pscpoptions) ) ; bcat( buffer, BC, " " ) ;
     }
-    bcat( buffer, BC, conf_get_int(conf, CONF_winscpprot)==0 ? "-scp " : "-sftp " ) ;
+    bcat( buffer, BC, conf_get_int(conf, CONF_kscp_protocol)==0 ? "-scp " : "-sftp " ) ;
 
-    if( ReadParameterN( INIT_SECTION, KI_PSCPPORT, pscpport, sizeof(pscpport) ) ) {
+    /* Session field, then the global kscp port, then the session's port - the
+     * same order as SendOneFile (kitty_xfer_default_port states it). */
+    if( (p = kitty_xfer_port_field( conf_get_str(conf, CONF_kscp_port) )) > 0 ) {
+        snprintf( b1, sizeof(b1), "-P %d ", p ) ;
+        bcat( buffer, BC, b1 ) ;
+    } else if( ReadParameterN( INIT_SECTION, KI_PSCPPORT, pscpport, sizeof(pscpport) ) ) {
         pscpport[17]='\0';
         if( !strcmp( pscpport,"*" ) ) snprintf( pscpport, sizeof(pscpport), "%d", conf_get_int(conf,CONF_port) ) ;
         bcat( buffer, BC, "-P " ) ; bcat( buffer, BC, pscpport ) ; bcat( buffer, BC, " " ) ;
     } else {
-        if( (p=poss(":",conf_get_str(conf, CONF_sftpconnect) )) > 0 ) snprintf( b1, sizeof(b1), "-P %d ", atoi(conf_get_str(conf, CONF_sftpconnect)+p) ) ;
-        else sprintf( b1, "-P %d ", conf_get_int(conf, CONF_port) ) ;
+        if( (p = kx_override_port( conf_get_str(conf, CONF_sftpconnect) )) > 0 ) snprintf( b1, sizeof(b1), "-P %d ", p ) ;
+        else snprintf( b1, sizeof(b1), "-P %d ", conf_get_int(conf, CONF_port) ) ;
         bcat( buffer, BC, b1 ) ;
     }
     if( conf_get_int(conf,CONF_sshprot) == 3 ) { bcat( buffer, BC, "-2 " ) ; }   // SSH-2 Only
@@ -1242,6 +1258,84 @@ int kitty_xfer_tool_ready( int which ) {
         return FileZillaPath != NULL && existfile( FileZillaPath ) ;
     }
 }
+
+/* A port field: used as it is when it holds a plain number in range, ignored
+ * otherwise (an empty field is the normal case, and a field holding anything
+ * else must not silently become port 0). Returns 0 = not set. */
+int kitty_xfer_port_field( const char * s ) {
+    long v ; const char * p ;
+    if( s == NULL || *s == '\0' ) return 0 ;
+    for( p = s ; *p ; p++ ) if( *p < '0' || *p > '9' ) return 0 ;
+    v = atol( s ) ;
+    if( v < 1 || v > 65535 ) return 0 ;
+    return (int)v ;
+}
+
+/* The port written inside a target override ([user@]hostname[:port]), else 0.
+ * A bracketed IPv6 literal keeps its own colons - only a ':' after the closing
+ * bracket is a port - and a bare IPv6 address has none at all. */
+static int kx_override_port( const char * ov ) {
+    const char * h ; const char * c ;
+    if( ov == NULL || *ov == '\0' ) return 0 ;
+    h = strrchr( ov, '@' ) ; h = ( h != NULL ) ? h + 1 : ov ;
+    if( *h == '[' ) {
+        const char * b = strchr( h, ']' ) ;
+        if( b == NULL ) return 0 ;
+        c = strchr( b, ':' ) ;
+    } else {
+        c = strchr( h, ':' ) ;
+        if( c != NULL && strchr( c + 1, ':' ) != NULL ) return 0 ;   /* bare IPv6 */
+    }
+    if( c == NULL ) return 0 ;
+    return kitty_xfer_port_field( c + 1 ) ;
+}
+
+/* The port a tool WILL use when its Port field is empty - the fallback the
+ * builders below apply, and the hint the panels show. kitty.h has the rules. */
+int kitty_xfer_default_port( Conf * cf, int tool, int protocol ) {
+    int p ;
+    if( cf == NULL ) return 22 ;
+
+    if( tool == 0 ) {                     /* kscp: the global port comes first */
+        char pscpport[64] ;
+        if( ReadParameterN( INIT_SECTION, KI_PSCPPORT, pscpport, sizeof(pscpport) ) ) {
+            pscpport[17] = '\0' ;
+            if( strcmp( pscpport, "*" ) != 0 ) {
+                int gp = kitty_xfer_port_field( pscpport ) ;
+                if( gp > 0 ) return gp ;
+            }
+            return conf_get_int( cf, CONF_port ) ;   /* "*" = the session's port */
+        }
+        if( (p = kx_override_port( conf_get_str( cf, CONF_sftpconnect ) )) > 0 )
+            return p ;
+        return conf_get_int( cf, CONF_port ) ;
+    }
+
+    /* WinSCP and FileZilla: a port written into the target override wins over
+     * everything, the tool's own Port field included - the override names the
+     * machine those two are to reach, port and all. Without a port it supplies
+     * user and host only, and the rules below decide the port. */
+    if( (p = kx_override_port( conf_get_str( cf, CONF_sftpconnect ) )) > 0 )
+        return p ;
+
+    switch( protocol ) {
+      case 2: return 21 ;                 /* ftp */
+      case 3: return 990 ;                /* ftps, implicit TLS */
+      case 4: return 21 ;                 /* ftpes, explicit TLS (AUTH TLS) */
+      case 5: return 80 ;                 /* http  (WebDAV) */
+      case 6: return 443 ;                /* https (WebDAV) */
+      default: break ;                    /* scp and sftp */
+    }
+    /* SFTP/SCP over the session's own connection: its port, but only when that
+     * port is an SSH port. A telnet or raw session's port is not. */
+    if( conf_get_int( cf, CONF_protocol ) == PROT_SSH )
+        return conf_get_int( cf, CONF_port ) ;
+    return 22 ;
+}
+
+/* kitty_xfer_migrate_protocol() is a LOAD-path rule and lives in
+ * kitty/kitty_settings_load.c, not here: the .ktx reader is linked into targets
+ * that have no transfer code at all (windows/test/test_storage_roundtrip). */
 
 /* Tools > Get file (kscp), and the [Shortcuts] getfile key (Ctrl+F4).
  *
@@ -1503,7 +1597,7 @@ start "C:\Program Files\WinSCP\WinSCP.exe" "%1" "%2" "%3" "%4" "%5" "%6" "%7" "%
 void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	size_t pw_at = 0, pw_len = 0 ;   /* KiTTY: where the password lands in cmd */
 	size_t proxy_pw_at = 0, proxy_pw_len = 0 ;  /* ... and the proxy/tunnel one */
-	char cmd[4096], shortpath[1024], buffer[4096], proto[10] ;
+	char cmd[4096], shortpath[1024], buffer[4096], proto[10], winscpport[16] ;
 	int raw = 0;
 	int pwfiles = 0 ;                /* passwords handed over as files (/passwordsfromfiles) */
 	const char *pf ;
@@ -1528,12 +1622,27 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		case 6: strcpy( proto, "https" ) ; break ;
 		default: strcpy( proto, "sftp" ) ;
 	}
-	
+
+	/* A port written into the target override wins; then the WinSCP panel's own
+	 * Port field; then the protocol's standard port. An override without a port
+	 * supplies user and host only. kitty_xfer_default_port() says the same, so
+	 * the panel's hint and this agree. */
+	{ int wport = kx_override_port( conf_get_str(conf, CONF_sftpconnect) ) ;
+	  if( wport <= 0 ) wport = kitty_xfer_port_field( conf_get_str(conf, CONF_winscp_port) ) ;
+	  if( wport <= 0 ) wport = kitty_xfer_default_port( conf, 1, conf_get_int(conf, CONF_winscpprot) ) ;
+	  snprintf( winscpport, sizeof(winscpport), "%d", wport ) ;
+	}
+
 	if( conf_get_int(conf,CONF_protocol) == PROT_SSH ) {
 		snprintf( cmd, sizeof(cmd), "\"%s\" %s://", shortpath, proto ) ;
 			
 		if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
 			bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_sftpconnect) ) ;
+			/* The override gives user and host; when it names no port, the
+			 * Port field (or the standard port) supplies one. */
+			if( kx_override_port( conf_get_str(conf, CONF_sftpconnect) ) <= 0 ) {
+				bcat( cmd, sizeof(cmd), ":" ) ; bcat( cmd, sizeof(cmd), winscpport ) ;
+			}
 		} else {
 			urlcat( cmd, sizeof(cmd), user!=NULL ? user : conf_get_str_ambi(conf,CONF_username,NULL) ) ;
 			if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
@@ -1551,7 +1660,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			bcat( cmd, sizeof(cmd), "@" ) ;
 			if( poss( ":", host!=NULL ? host : conf_get_str(conf,CONF_host) )>0 ) { bcat(cmd,sizeof(cmd),"[") ; bcat(cmd,sizeof(cmd), host!=NULL ? host : conf_get_str(conf,CONF_host)) ; bcat(cmd,sizeof(cmd),"]") ; }
 			else { bcat( cmd, sizeof(cmd), host!=NULL ? host : conf_get_str(conf,CONF_host) ) ; }
-			bcat( cmd, sizeof(cmd), ":" ) ; snprintf( buffer, sizeof(buffer), "%d", conf_get_int(conf,CONF_port) ) ; bcat( cmd, sizeof(cmd), buffer ) ;
+			bcat( cmd, sizeof(cmd), ":" ) ; bcat( cmd, sizeof(cmd), winscpport ) ;
 		}
 
 		if( directory!=NULL ) if( strlen(directory)>0 ) {
@@ -1581,7 +1690,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		bcat( cmd, sizeof(cmd), "@" ) ;
 		if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) { bcat( cmd, sizeof(cmd), "[" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_host) ) ; bcat( cmd, sizeof(cmd), "]" ) ; }
 		else { bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_host) ) ; }
-		bcat( cmd, sizeof(cmd), ":21" ) ;
+		bcat( cmd, sizeof(cmd), ":" ) ; bcat( cmd, sizeof(cmd), winscpport ) ;
 		if( directory!=NULL ) if( strlen(directory)>0 ) {
 			bcat( cmd, sizeof(cmd), directory ) ;
 			if( directory[strlen(directory)-1]!='/' ) bcat( cmd, sizeof(cmd), "/" ) ;
@@ -1762,9 +1871,10 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
  *                  because it is the simplest, and said so on the panel.
  *
  * A proxy is not handed over: FileZilla has no per-connection proxy setting,
- * only its global one. Protocol: the shared "Protocol for file transfers"
- * setting, mapped to what FileZilla speaks (sftp, ftp, ftps, ftpes; scp and
- * http have no FileZilla equivalent and become sftp). */
+ * only its global one. Protocol: the FileZilla panel's own Protocol setting
+ * (CONF_filezilla_protocol), which offers only what FileZilla speaks - SFTP,
+ * FTP, and the two FTPS forms. A session whose SFTP choice has no SSH
+ * connection under it falls back to plain FTP. */
 char * FileZillaPath = NULL ;
 
 static int set_filezilla_path_if_exists( const char *path ) {
@@ -1926,7 +2036,7 @@ static void kx_fzdir_release( int now ) {
 /* Tools > Start FileZilla. */
 void StartFileZilla( HWND hwnd ) {
 	char cmd[4096], user[512], host[1024], num[32] ;
-	const char *proto ; int fzproto, port, p ;
+	const char *proto ; int fzproto, fzprot, port, p ;
 	size_t pw_at = 0, pw_len = 0 ;
 	int mode = conf_get_int( conf, CONF_filezilla_pwmode ) ;
 	const char *pw = conf_get_str( conf, CONF_password ) ;
@@ -1942,27 +2052,43 @@ void StartFileZilla( HWND hwnd ) {
 	 * name (C:\PROGRA~1\FILEZI~1\FILEZI~1.EXE) FileZilla exits at once, before
 	 * any window, because it locates its resources from its own module path. */
 
-	/* protocol: FileZilla's names and its Site Manager codes */
-	if( conf_get_int( conf, CONF_protocol ) == PROT_SSH ) {
-		switch( conf_get_int( conf, CONF_winscpprot ) ) {
-			case 2:  proto = "ftp" ;   fzproto = 0 ; break ;
-			case 3:  proto = "ftps" ;  fzproto = 3 ; break ;
-			case 4:  proto = "ftpes" ; fzproto = 4 ; break ;
-			default: proto = "sftp" ;  fzproto = 1 ; break ;
-		}
-		port = conf_get_int( conf, CONF_port ) ;
-	} else {
-		proto = "ftp" ; fzproto = 0 ; port = 21 ;
+	/* protocol: FileZilla's names and its Site Manager codes. The two
+	 * numberings differ - CONF_filezilla_protocol follows WinSCPProtocol
+	 * (1 sftp, 2 ftp, 3 ftps, 4 ftpes), FileZilla's site codes do not - so the
+	 * switch maps them one by one rather than arithmetically. */
+	fzprot = conf_get_int( conf, CONF_filezilla_protocol ) ;
+	if( fzprot < 1 || fzprot > 4 ) fzprot = 1 ;   /* FileZilla has no scheme for the rest */
+	/* SFTP needs an SSH session to mean anything; on a telnet or raw session it
+	 * becomes plain FTP. An explicitly chosen FTP variant is kept as it is. */
+	if( fzprot == 1 && conf_get_int( conf, CONF_protocol ) != PROT_SSH ) fzprot = 2 ;
+	switch( fzprot ) {
+		case 2:  proto = "ftp" ;   fzproto = 0 ; break ;
+		case 3:  proto = "ftps" ;  fzproto = 3 ; break ;
+		case 4:  proto = "ftpes" ; fzproto = 4 ; break ;
+		default: proto = "sftp" ;  fzproto = 1 ; break ;
 	}
+	/* A port written into the target override wins (applied with the override
+	 * below); else the FileZilla panel's Port field, else the standard port. */
+	port = kitty_xfer_port_field( conf_get_str( conf, CONF_filezilla_port ) ) ;
+	if( port <= 0 ) port = kitty_xfer_default_port( conf, 2, fzprot ) ;
 
-	/* target: the WinSCP panel's "SFTP connect" override, else the session */
+	/* target: the override (Connection > Transfers), else the session */
 	user[0] = '\0' ; host[0] = '\0' ;
 	if( strlen( conf_get_str( conf, CONF_sftpconnect ) ) > 0 ) {
 		char b1[1024] ;
 		snprintf( b1, sizeof(b1), "%s", conf_get_str( conf, CONF_sftpconnect ) ) ;
 		if( (p = poss( "@", b1 )) > 0 ) { b1[p-1] = '\0' ; snprintf( user, sizeof(user), "%s", b1 ) ; snprintf( host, sizeof(host), "%s", b1 + p ) ; }
 		else snprintf( host, sizeof(host), "%s", b1 ) ;
-		if( (p = poss( ":", host )) > 0 && host[p] != '\0' ) { port = atoi( host + p ) ; host[p-1] = '\0' ; }
+		/* A port in the override wins over the Port field; without one the
+		 * override gives user and host only. A bare IPv6 address keeps its
+		 * colons (kx_override_port answers 0 for it, and the host stands). */
+		{ int ovp = kx_override_port( conf_get_str( conf, CONF_sftpconnect ) ) ;
+		  if( ovp > 0 ) {
+			char * c = strrchr( host, ':' ) ;
+			if( c != NULL ) *c = '\0' ;
+			port = ovp ;
+		  }
+		}
 		if( user[0] == '\0' ) snprintf( user, sizeof(user), "%s", conf_get_str_ambi( conf, CONF_username, NULL ) ) ;
 	} else {
 		snprintf( user, sizeof(user), "%s", conf_get_str_ambi( conf, CONF_username, NULL ) ) ;
@@ -2093,6 +2219,10 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
 }
 
 void OnDropFiles(HWND hwnd, HDROP hDropInfo) {
+	/* Upload on drop is a per-session switch. The window is unregistered for
+	 * drops when it is off (windows/window.c), so this message should not
+	 * arrive at all; refuse it here too rather than rely on that. */
+	if( !conf_get_bool(conf,CONF_kscp_dragdrop) ) { DragFinish(hDropInfo) ; return ; }
 	if( conf_get_int(conf,CONF_protocol) != PROT_SSH ) {
 		MessageBox( hwnd, KT_MSG_SSH_ONLY, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
 		return ;

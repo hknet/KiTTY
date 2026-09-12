@@ -114,12 +114,16 @@ void ShinyEndDialog(HWND hwnd, int ret)
     state->ended = true;
 }
 
-/* KiTTY: the modeless aux dialogs (the About box, the /help command list).
+/* KiTTY: the modeless aux dialogs (the About box, the /help command list, the
+ * input box, the title placeholders, the two OSC 5113 permission requests).
  * Message loops route messages through IsDialogMessage() for each so Esc/Tab
  * keep working; lives here (bottom-most lib) so both window.c's pump and the
  * loop above see them. A dialog unregisters itself on WM_DESTROY; the
- * IsWindow() checks are only a safety net against a missed removal. */
-#define SHINY_MAX_AUX_DIALOGS 4
+ * IsWindow() checks are only a safety net against a missed removal. The table
+ * is a fixed size and a registration beyond it is DROPPED - silently, and the
+ * dialog that lost it simply stops answering Esc and Tab - so it has room to
+ * spare over the number of windows that can be open together. */
+#define SHINY_MAX_AUX_DIALOGS 8
 static HWND shiny_aux_dialogs[SHINY_MAX_AUX_DIALOGS];
 
 void ShinyAddAuxDialog(HWND hwnd)

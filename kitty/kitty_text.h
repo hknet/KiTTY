@@ -330,6 +330,13 @@
 #define KT_BEHAVIOUR_ALLOW_CLOSING_ALSO_DISABLES     "Allow closing (also disables the X and Alt+F4)"
 #define KT_BEHAVIOUR_MINIMIZE_BUTTON                 "Minimize button"
 #define KT_BEHAVIOUR_MAXIMIZE_BUTTON                 "Maximize button"
+/* Which entries the window menu's Tools submenu shows. Window behaviour, not
+ * a transfer setting: it decides what the MENU holds, not how a file moves. */
+#define KT_BEHAVIOUR_TOOLS_MENU                      "Terminal Windows Tools Menu"
+#define KT_BEHAVIOUR_TOOLS_SENDFILE                  "Send File (kscp)"
+#define KT_BEHAVIOUR_TOOLS_GETFILE                   "Get File (kscp)"
+#define KT_BEHAVIOUR_TOOLS_WINSCP                    "Start WinSCP"
+#define KT_BEHAVIOUR_TOOLS_FILEZILLA                 "Start FileZilla"
 
 /* Window/Transparency */
 #define KT_BACKGROUND_TITLE                          "Background, Pictures and More"
@@ -698,6 +705,19 @@
 #define KT_BUGS_DISCARDS_DATA_SENT_BEFORE_ITS        "Discards data sent before its greeting"
 #define KT_BUGS_CHOKES_ON_PUTTY_S_FULL               "Chokes on PuTTY's full KEXINIT"
 
+/* File transfers: the protocol and port labels, one set per tool. Shared by
+ * the KSCP, WinSCP and FileZilla panels - each offers the subset its tool
+ * takes. */
+#define KT_XFER_PROTOCOL                             "Protocol:"
+#define KT_XFER_PORT                                 "Port:"
+#define KT_XFER_PROTO_SFTP                           "SFTP"
+#define KT_XFER_PROTO_SCP                            "SCP"
+#define KT_XFER_PROTO_FTP                            "FTP"
+#define KT_XFER_PROTO_FTPES                          "FTPS (explicit TLS)"
+#define KT_XFER_PROTO_FTPS                           "FTPS (implicit TLS, legacy)"
+#define KT_XFER_PROTO_HTTP                           "HTTP"
+#define KT_XFER_PROTO_HTTPS                          "HTTPS"
+
 /* Connection/SSH/KSCP */
 #define KT_KSCP_KSCP_FILE_TRANSFER_INTEGRATION       "KSCP file-transfer integration"
 #define KT_KSCP_KSCP_INTEGRATION                     "KSCP integration"
@@ -714,23 +734,10 @@
 #define KT_KSCP_FLAGS_PASSED_TO_KSCP_DEFAULT         "Flags passed to kscp; default -r uploads dropped " \
         "folders recursively."
 #define KT_KSCP_KEEP_THE_TRANSFER_WINDOW_OPEN        "Keep the transfer window open after success"
+#define KT_KSCP_DRAGDROP_UPLOAD                      "Upload Drag & Dropped Files on the Terminal Window"
 
 /* Connection/SSH/WinSCP */
 #define KT_WINSCP_WINSCP_INTEGRATION                 "WinSCP integration"
-#define KT_WINSCP_GENERAL_PROTOCOL_SETTING           "General protocol setting"
-#define KT_WINSCP_PREFERED_PROTOCOL                  "Prefered protocol:"
-/* The protocol radios moved to the KSCP panel: the
- * setting drives kscp's -scp/-sftp AND the WinSCP hand-off. */
-#define KT_KSCP_PROTOCOL                             "Protocol for file transfers (kscp and WinSCP):"
-#define KT_WINSCP_PROTOCOL_ON_KSCP                   "Protocol: as set on Connection > SSH > KSCP."
-#define KT_WINSCP_SCP                                "scp"
-#define KT_WINSCP_SFTP                               "sftp"
-#define KT_WINSCP_FTP                                "ftp"
-#define KT_WINSCP_FTPS                               "ftps"
-#define KT_WINSCP_FTPES                              "ftpes"
-#define KT_WINSCP_HTTP                               "http"
-#define KT_WINSCP_HTTPS                              "https"
-#define KT_WINSCP_SFTP_CONNECT_USER_HOSTNAME_PORT    "SFTP connect ([user@]hostname[:port])"
 #define KT_WINSCP_WINSCP_ADDITIONAL_OPTIONS          "WinSCP additional options"
 #define KT_WINSCP_WINSCP_ADDITIONAL_RAWSETTINGS      "WinSCP additional rawsettings"
 #define KT_WINSCP_SHELL_SCP_MODE_ONLY                "Shell (scp mode only)"
@@ -776,6 +783,12 @@
 /* Connection/Transfers - one destination and one permission model for kscp
  * Get file, ZModem and file transfers over the session (kitten transfer). */
 #define KT_TRANSFERS_TITLE                           "Transfers"
+/* The target override serves WinSCP AND FileZilla, so it sits here and not on
+ * one of the two leaves. Stored as SFTPConnect. */
+#define KT_TRANSFERS_TARGET_GROUP                    "Remote target"
+#define KT_TRANSFERS_TARGET_OVERRIDE                 "Target override ([user@]hostname[:port]):"
+#define KT_TRANSFERS_TARGET_NOTE                     "Used by WinSCP and FileZilla instead of the " \
+        "session's host. A port given here wins over the tool's Port field."
 #define KT_TRANSFERS_RECEIVED                        "Local folders"
 #define KT_TRANSFERS_LOCAL_DOWNLOAD_FOLDER           "Local download folder (empty = global):"
 #define KT_TRANSFERS_GLOBAL_IS                       "Global: %s"
@@ -794,11 +807,6 @@
 #define KT_TRANSFERS_GLOBAL_MAX_MB                   "Global: %d MB"
 #define KT_TRANSFERS_GLOBAL_MAX_MB_NONE              "Global: no limit"
 #define KT_TRANSFERS_FULL_PATH                       "Allow full path Upload-Requests"
-#define KT_TRANSFERS_TOOLS_MENU                      "Terminal Windows Tools Menu"
-#define KT_TRANSFERS_TOOLS_SENDFILE                  "Send File (kscp)"
-#define KT_TRANSFERS_TOOLS_GETFILE                   "Get File (kscp)"
-#define KT_TRANSFERS_TOOLS_WINSCP                    "Start WinSCP"
-#define KT_TRANSFERS_TOOLS_FILEZILLA                 "Start FileZilla"
 #define KT_KSCP_DIRS_ON_TRANSFERS                    "Download folder and remote directory: Connection > Transfers."
 #define KT_ZMODEM_FOLDER_ON_TRANSFERS                "Downloads saves to the folder set on Connection > Transfers."
 #define KT_KSET_TT_DOWNLOADDIR_NOTE                  "Where Get file, ZModem and transfers over the session save, unless the session sets its own folder."
@@ -869,7 +877,7 @@
 
 /* FileZilla - Connection/SSH/FileZilla and Transfers & Tools/FileZilla */
 #define KT_FZ_INTEGRATION                            "FileZilla integration"
-#define KT_FZ_TARGET_NOTE                            "Target and protocol: as set on Connection > SSH > WinSCP (SFTP connect) and Connection > SSH > KSCP (Protocol)."
+#define KT_FZ_TARGET_NOTE                            "Target: as set on Connection > Transfers (Target override)."
 #define KT_FZ_ADDITIONAL_OPTIONS                     "FileZilla additional options"
 #define KT_FZ_PASSWORD_GROUP                         "Session password"
 #define KT_FZ_PASSWORD_HOW                           "How the session password reaches FileZilla:"

@@ -98,6 +98,38 @@ typedef enum {
 } kitty_ink;
 COLORREF kitty_theme_ink(bool dark, kitty_ink which);
 
+/*
+ * Mark one STATIC control as carrying a meaning, so its text is drawn in the
+ * ink for the theme in force - the warning line of a confirmation or of a
+ * permission request, and anything else that is not ordinary text.
+ *
+ * The dialog itself does not answer WM_CTLCOLORSTATIC for such a line any
+ * more: the mark is read where every other colour decision is already made. A
+ * private handler cannot work anyway, because while the window is dark this
+ * module answers that message before the dialog procedure ever sees it -
+ * which is how three hand-written red lines came to lose their colour in dark
+ * mode, each of them returning the LIGHT system face brush as well.
+ *
+ * Call once per control, after it has its text; the mark stays on the control
+ * and survives a re-theme.
+ */
+void kitty_theme_mark_ink(HWND ctl, kitty_ink which);
+
+/*
+ * The width a push button needs for the caption it is CARRYING RIGHT NOW.
+ *
+ * A template gives a button the width its template caption needed, and a
+ * button whose caption is set (or whose wording is changed) at run time is
+ * then too narrow for it: the label does not fit the content rectangle and
+ * what reaches the screen is a half-drawn caption. So a window that lays its
+ * own buttons out sizes them from the measurement, never from the template.
+ *
+ * Measured with the button's own font, so it is right at any DPI and any
+ * font. `min_w` is the floor - pass the template's width to keep a row of
+ * buttons from turning ragged where the captions are short.
+ */
+int kitty_theme_button_width(HWND btn, int min_w);
+
 /* A list row's background. `alternate` is the banding every other row. */
 COLORREF kitty_theme_row_colour(bool dark, bool alternate);
 

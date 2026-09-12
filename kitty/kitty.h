@@ -471,6 +471,35 @@ int kitty_xfer_tool_ready( int which ) ;
 /* Does the session show the Tools menu entry? 0 = Send File, 1 = WinSCP,
  * 2 = FileZilla, 3 = Get File (Connection > Transfers). kitty_xfer.c */
 int kitty_xfer_tool_shown( Conf * cf, int which ) ;
+/* The port a transfer tool WILL use when its Port field is empty, so that a
+ * panel can show it as a hint and the command builders can use it as the
+ * fallback. tool: 0 = kscp, 1 = WinSCP, 2 = FileZilla. protocol: that tool's
+ * own protocol value (CONF_kscp_protocol / CONF_winscpprot /
+ * CONF_filezilla_protocol; 0=scp 1=sftp 2=ftp 3=ftps 4=ftpes 5=http 6=https).
+ *   - kscp: the global kscp port ([KiTTY] pscpport, "*" = the session's port),
+ *     else the target override's ":port", else the session's port.
+ *   - WinSCP and FileZilla: a port written into the target override
+ *     (CONF_sftpconnect, "[user@]hostname[:port]") wins over everything, the
+ *     tool's own Port field included - the override names the machine those two
+ *     are to reach, port and all. An override that names no port supplies user
+ *     and host only, and then the rules below decide.
+ *   - scp and sftp: the session's port for an SSH session, 22 otherwise - a
+ *     telnet or raw port is not an SFTP port.
+ *   - ftp and ftpes: 21. ftps (implicit TLS): 990. http: 80. https: 443.
+ * kitty_xfer.c */
+int kitty_xfer_default_port( Conf * cf, int tool, int protocol ) ;
+/* A Port field's value: the number it holds when that is a plain decimal number
+ * in 1..65535, else 0 = not set (an empty field, and anything unusable). The
+ * panels use the same test to decide whether to show the default-port hint.
+ * kitty_xfer.c */
+int kitty_xfer_port_field( const char * s ) ;
+/* A session saved before the per-tool protocol split carries WinSCPProtocol
+ * alone: derive KscpProtocol and FileZillaProtocol from it. The load paths call
+ * this only when the two new keys are absent from the stored session, so it
+ * never overwrites a value that was chosen. A load-path rule, so it lives with
+ * the loader in kitty_settings_load.c and not with the transfer code: the .ktx
+ * reader is linked into targets that have no transfer code at all. */
+void kitty_xfer_migrate_protocol( Conf * cf, int oldprot ) ;
 /* FileZilla hand-off (kitty_xfer.c): the executable path is an application
  * setting ([KiTTY] FileZillaPath), located like WinSCP's. */
 extern char * FileZillaPath ;

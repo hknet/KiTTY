@@ -693,6 +693,11 @@ bool kitty_dlg_confirm(dlgparam *dp, const char *title, const char *msg);
 /* KiTTY (Windows): the window of a control in THIS dialog (the main box or a
  * secondary one), or NULL. kitty_cfg_ctrl_hwnd knows the main box only. */
 HWND kitty_dlg_ctrl_hwnd(dlgparam *dp, dlgcontrol *ctrl);
+/* KiTTY: a radio handler that stores its int the way conf_radiobutton_handler
+ * does, and so may be swept by kitty_conf_validate. Registered rather than
+ * named there, because windows/dialog.c is linked into the stock targets too
+ * and they do not link kitty/kitty_config.c. NULL clears it. */
+void kitty_conf_register_radio_handler(handler_fn fn);
 /*
  * This function signals to the front end that the dialog's
  * processing is completed, and passes an integer value (typically

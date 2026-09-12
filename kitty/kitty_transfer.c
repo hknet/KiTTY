@@ -10,9 +10,14 @@
  *
  * Two kinds of session, one of each at a time per terminal:
  *
- *   send    (far end -> this PC)  send / file... / data... / end_data / finish
+ *   send    (far end -> this PC)  send / [dialog] / file... / data... /
+ *                                 end_data / finish
  *   receive (this PC -> far end)  receive+specs / [dialog] / listing /
  *                                 file requests / data... / finished
+ *
+ * Both dialogs are MODELESS: the terminal keeps running while the question
+ * stands, and the answer continues the session from a completion
+ * (kt_send_decide / kt_recv_decide) rather than from where it was asked.
  *
  * Every reply goes out through kitty_osc52_send_raw(), straight to the
  * backend and never through the line editor (see that function for why).
@@ -41,7 +46,8 @@
 #include <commctrl.h>            /* the upload-request dialog's list view */
 
 #include "kitty.h"               /* kitty_xfer_download_dir, kitty_xfer_upload_dir */
-#include "kitty_win.h"           /* OpenDirNameFrom */
+#include "kitty_win.h"           /* OpenDirNameFrom, OpenFileNameFrom */
+#include "kitty_theme.h"         /* the shared painter: ink marks, button widths */
 #include "kitty_text.h"          /* KT_XFER_WHAT_KITTEN_* for the notification */
 #include "kitty_inikeys.h"       /* KI_*: the kitty.ini key names */
 #include "kitty_transfer_text.h" /* kitty.h brings kitty_rc_additions.h: IDD_XFERREQ, IDD_XFERDL */
@@ -102,6 +108,7 @@ struct kt_send {
     int quiet;
     int accepted;
     int in_dialog, cancel_pending, abort_pending;
+    HWND dlg;                           /* the request dialog while it stands */
     wchar_t *dest;
     uint64_t ceiling;                   /* per-file byte limit, 0 = none */
     time_t last;
@@ -117,13 +124,18 @@ struct kt_send {
 struct kt_entry {
     char rid[24];                       /* our id for it: the st= of the listing */
     char spec_fid[KT5113_ID_MAX + 1];   /* the request it answers */
-    char *posix;
-    wchar_t *local;
+    char *posix;                        /* the name sent to the far end */
+    wchar_t *local;                     /* NULL while `missing` */
     int is_dir;
     uint64_t size;
     int64_t mtime_ns;
     int readonly;
     int denied;                         /* unchecked in the dialog */
+    /* A requested name with no file behind it. Listed in the dialog so the
+     * request is visible, never listed to the far end, and refused as its
+     * spec's ENOENT - unless "Locate..." puts a local file behind it, which
+     * clears this and leaves `posix` as the name that was ASKED for. */
+    int missing;
     struct kt_entry *parent;            /* the folder entry it sits in, or NULL */
     struct kt_entry *next;
 };
@@ -151,6 +163,7 @@ struct kt_recv {
     int quiet;
     int accepted, listed;
     int in_dialog, cancel_pending, abort_pending;
+    HWND dlg;                           /* the request dialog while it stands */
     int nspecs, got;
     struct kt_spec *specs;
     struct kt_entry *entries;
@@ -164,16 +177,18 @@ struct kt_recv {
 };
 
 /* Per-terminal state. Kept outside the Terminal struct (terminal.h is the
- * cross-platform file) in a small list keyed by the pointer. A node is never
- * freed while one of its dialogs is on the stack: term_free during a modal
- * dialog marks it dead and the dialog path finishes the job. */
+ * cross-platform file) in a small list keyed by the pointer. The request
+ * dialogs are modeless and outlive the call that raised them, so a node is
+ * marked `dead` when the terminal goes and is dropped by whichever of the two
+ * finishes last - see kt_state_maybe_drop and kitty_transfer_free. */
 struct kt_state {
     Terminal *term;
     struct kt_send *send;
     struct kt_recv *recv;
     int latched;                        /* policy 1: a grant was given */
     int oversize_logged;
-    int dead;
+    int dead;                           /* the terminal went away */
+    int freeing;                        /* inside kitty_transfer_free */
     struct kt_state *next;
 };
 
@@ -204,6 +219,19 @@ static void kt_state_drop(struct kt_state *st)
             sfree(st);
             return;
         }
+}
+
+/*
+ * A completion that has just finished the last half of a dead terminal's
+ * state drops it. Never while kitty_transfer_free() is on the stack: that
+ * function destroys the dialogs itself and does the dropping afterwards, and
+ * a node freed underneath it would be read again on the way out.
+ */
+static void kt_state_maybe_drop(struct kt_state *st)
+{
+    if (!st->dead || st->freeing || st->send || st->recv)
+        return;
+    kt_state_drop(st);
 }
 
 /* ------------------------------------------------------------------------
@@ -513,26 +541,140 @@ static int kt_ask(const char *text, const char *warn)
 }
 
 /* ------------------------------------------------------------------------
+ * Both request dialogs are MODELESS.
+ *
+ * A question about a transfer must not stop the terminal: the session keeps
+ * drawing, scrolling and taking input while it stands, and the far end's own
+ * cancel still arrives. They are created owned by the terminal window and
+ * registered with ShinyAddAuxDialog(), which is what keeps Tab and Esc
+ * working in whichever message pump happens to be running (window.c's, or
+ * ShinyDialogBox's while the configuration box is open).
+ *
+ * The decision therefore continues in a COMPLETION rather than at the point
+ * of asking: kt_send_decide() / kt_recv_decide(), called once the window has
+ * gone, whether it went by Allow, by Deny, by the close box or because the
+ * terminal died under it.
+ *
+ * Bringing the window to the front is deliberate, and the theme needs it as
+ * well: the engine dresses a dialog when it is ACTIVATED (the CBT hook in
+ * kitty_theme.c), so a window shown without activation would come up light
+ * inside a dark application.
+ * ------------------------------------------------------------------------ */
+
+static HWND kt_dialog_open(int template_id, DLGPROC proc, void *ctx)
+{
+    HWND h = CreateDialogParamA(GetModuleHandle(NULL),
+                                MAKEINTRESOURCEA(template_id), MainHwnd,
+                                proc, (LPARAM)ctx);
+    if (!h)
+        return NULL;                    /* the template did not load */
+    ShinyAddAuxDialog(h);
+    ShowWindow(h, SW_SHOW);
+    SetForegroundWindow(h);
+    return h;
+}
+
+/* ------------------------------------------------------------------------
  * The download-request dialog (IDD_XFERDL): the request text with the
- * folder the files land in, the red warning line, Allow / Change folder... /
+ * folder the files land in, the warning line, Allow / Change folder... /
  * Deny. "Change folder..." opens the folder picker on the folder shown; a
  * pick closes the dialog as Allow with that folder, a cancelled picker
  * returns to the dialog unchanged. The theme engine dresses it like every
- * other dialog of this module (the CBT hook in kitty_theme.c).
+ * other dialog of this module and paints the warning line from the mark set
+ * on it here; the buttons are sized from the captions they carry.
  * ------------------------------------------------------------------------ */
 
 struct kt_dl_dlg {
-    const char *folder;                 /* the folder shown */
+    struct kt_state *st;                /* the session the answer belongs to */
+    char folder[4096];                  /* the folder shown */
     char picked[4096];                  /* set by Change folder... */
     int picked_set;
 };
+
+/* The completion: everything kt_send_begin used to do after the dialog. */
+static void kt_send_decide(struct kt_state *st, int allowed,
+                           const char *folder, int picked);
+
+/* The buttons, right to left from the width each caption actually needs, and
+ * the window widened if the row no longer fits across it. */
+static void kt_dl_size_buttons(HWND h, int dy)
+{
+    static const int ids[] = { IDNO, IDC_XFERDL_CHANGE, IDYES };  /* right to left */
+    int w[lenof(ids)];
+    RECT rc, r, a, b;
+    HWND ha = GetDlgItem(h, IDC_XFERDL_CHANGE), hb = GetDlgItem(h, IDNO);
+    int i, margin, gap, need, x, client_w;
+
+    if (!GetClientRect(h, &rc) || !ha || !hb ||
+        !GetWindowRect(ha, &a) || !GetWindowRect(hb, &b))
+        return;
+    /* The template's own margin and inter-button gap, in this monitor's
+     * pixels: taken from where it put the last two buttons. */
+    MapWindowPoints(NULL, h, (POINT *)&a, 2);
+    MapWindowPoints(NULL, h, (POINT *)&b, 2);
+    margin = rc.right - b.right;
+    gap = b.left - a.right;
+    if (gap < 0)
+        gap = 0;
+
+    need = 2 * margin + gap * ((int)lenof(ids) - 1);
+    for (i = 0; i < (int)lenof(ids); i++) {
+        HWND c = GetDlgItem(h, ids[i]);
+        if (!c || !GetWindowRect(c, &r))
+            return;
+        w[i] = kitty_theme_button_width(c, r.right - r.left);
+        need += w[i];
+    }
+    /* The row of captions is wider than the window: widen the window rather
+     * than let a caption spill out of its button. */
+    client_w = rc.right;
+    if (need > client_w) {
+        RECT wr;
+        GetWindowRect(h, &wr);
+        SetWindowPos(h, NULL, 0, 0, (wr.right - wr.left) + (need - client_w),
+                     wr.bottom - wr.top, SWP_NOMOVE | SWP_NOZORDER);
+        GetClientRect(h, &rc);
+        client_w = rc.right;
+    }
+    x = client_w - margin;
+    for (i = 0; i < (int)lenof(ids); i++) {
+        HWND c = GetDlgItem(h, ids[i]);
+        if (!c || !GetWindowRect(c, &r))
+            continue;
+        MapWindowPoints(NULL, h, (POINT *)&r, 2);
+        x -= w[i];
+        MoveWindow(c, x, r.top + dy, w[i], r.bottom - r.top, TRUE);
+        x -= gap;
+    }
+}
+
+static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp);
+
+/* The verdict is delivered AFTER the window has gone, never from inside
+ * WM_DESTROY: the completion opens the folder picker in some cases, and a
+ * dying dialog is no owner for one. */
+static void kt_dl_finish(HWND h, int verdict)
+{
+    struct kt_dl_dlg *d = (struct kt_dl_dlg *)GetWindowLongPtr(h, GWLP_USERDATA);
+    struct kt_state *st;
+    char folder[4096];
+    int picked;
+
+    if (!d)
+        return;
+    st = d->st;
+    picked = verdict && d->picked_set;
+    strcpy(folder, picked ? d->picked : d->folder);
+    DestroyWindow(h);                   /* WM_DESTROY unregisters and frees d */
+    kt_send_decide(st, verdict, folder, picked);
+}
 
 static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 {
     struct kt_dl_dlg *d = (struct kt_dl_dlg *)GetWindowLongPtr(h, GWLP_USERDATA);
     switch (msg) {
       case WM_INITDIALOG: {
-        static const int below[] = { IDC_XFERDL_WARN, IDYES, IDC_XFERDL_CHANGE, IDNO, 0 };
+        static const int below[] = { IDC_XFERDL_WARN, 0 };
         char *text;
         int dh, i;
 
@@ -545,6 +687,9 @@ static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         SetDlgItemTextA(h, IDYES, KT_XFER5113_BTN_ALLOW);
         SetDlgItemTextA(h, IDC_XFERDL_CHANGE, KT_XFER5113_BTN_CHANGE_FOLDER);
         SetDlgItemTextA(h, IDNO, KT_XFER5113_BTN_DENY);
+        /* The warning line is painted by the theme engine, in the ink for the
+         * theme in force - not by a colour written here (kitty_theme.h). */
+        kitty_theme_mark_ink(GetDlgItem(h, IDC_XFERDL_WARN), KITTY_INK_BAD);
         /* A long folder path wraps: grow the text to fit, as the confirm box
          * does, and move the line and the buttons below it down by as much. */
         dh = kitty_fit_text(h, IDC_XFERDL_TEXT, text, 0);
@@ -564,79 +709,83 @@ static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             SetWindowPos(h, NULL, 0, 0, wr.right - wr.left, (wr.bottom - wr.top) + dh,
                          SWP_NOMOVE | SWP_NOZORDER);
         }
+        /* The buttons last: they move down with the text and are sized from
+         * the captions set above, never from the template's widths. */
+        kt_dl_size_buttons(h, dh);
         kitty_centre_on_owner(h);
         SetFocus(GetDlgItem(h, IDYES));     /* Return means Allow */
         return FALSE;
       }
-      case WM_CTLCOLORSTATIC:
-        /* the warning line, and only it, is red - as in the confirm box */
-        if ((HWND)lp == GetDlgItem(h, IDC_XFERDL_WARN)) {
-            SetTextColor((HDC)wp, RGB(200, 0, 0));
-            SetBkMode((HDC)wp, TRANSPARENT);
-            return (INT_PTR)GetSysColorBrush(COLOR_3DFACE);
-        }
-        return FALSE;
       case WM_COMMAND:
         switch (LOWORD(wp)) {
           case IDYES:
-            EndDialog(h, 1);
+            kt_dl_finish(h, 1);
             return TRUE;
           case IDC_XFERDL_CHANGE:
             /* The same picker "Always open Save Dialog" uses, owned by this
              * dialog and opened on the folder shown. A pick is an Allow into
              * that folder; Cancel leaves the dialog as it was. */
-            if (d && OpenDirNameFrom(h, d->picked, d->folder, KT_XFER5113_PICK_TITLE) &&
+            if (!d)
+                return TRUE;
+            if (OpenDirNameFrom(h, d->picked, d->folder, KT_XFER5113_PICK_TITLE) &&
                 d->picked[0]) {
                 d->picked_set = 1;
-                EndDialog(h, 1);
+                kt_dl_finish(h, 1);
+            } else if (d->st && d->st->send &&
+                       (d->st->send->cancel_pending || d->st->send->abort_pending)) {
+                /* The far end gave up while the picker was open: the WM_CLOSE
+                 * posted for it was refused below, so take the window down
+                 * now that the picker has gone. */
+                kt_dl_finish(h, 0);
             }
             return TRUE;
           case IDNO:
           case IDCANCEL:
-            EndDialog(h, 0);
+            kt_dl_finish(h, 0);
             return TRUE;
         }
         return FALSE;
       case WM_CLOSE:
-        EndDialog(h, 0);                /* closing means Deny */
+        /* Not while a picker of ours is up: it owns this window, and
+         * destroying the owner of a live common dialog frees state it is
+         * still standing on. The picker's own return path closes instead. */
+        if (!IsWindowEnabled(h))
+            return TRUE;
+        kt_dl_finish(h, 0);             /* closing means Deny */
         return TRUE;
+      case WM_DESTROY:
+        /* Reached from kt_dl_finish and from the terminal going away. The
+         * completion is NOT called here - see kt_dl_finish. */
+        ShinyRemoveAuxDialog(h);
+        if (d) {
+            if (d->st && d->st->send && d->st->send->dlg == h)
+                d->st->send->dlg = NULL;
+            sfree(d);
+        }
+        SetWindowLongPtr(h, GWLP_USERDATA, 0);
+        return FALSE;                   /* the manager tidies up as well */
     }
     return FALSE;
 }
 
-/* The dialog, or - should the template not load at all - the same words in
- * the confirm box (Allow / Deny, no folder change), never a silent allow.
- * 1 = allowed, 0 = refused. On a pick from "Change folder..." the folder in
- * `folder` (len bytes) is replaced by the picked one and *picked is set, so
- * the caller can skip the "Always open Save Dialog" picker. */
-static int kt_dl_dialog(char *folder, size_t len, int *picked)
+/* Put the dialog up. True when it stands and the answer will arrive in
+ * kt_send_decide(); false when the template did not load at all, which
+ * leaves the caller to ask the same question in the confirm box. */
+static int kt_dl_dialog_open(struct kt_state *st, const char *folder)
 {
-    struct kt_dl_dlg d;
-    INT_PTR r;
+    struct kt_dl_dlg *d = snew(struct kt_dl_dlg);
+    HWND h;
 
-    *picked = 0;
-    memset(&d, 0, sizeof(d));
-    d.folder = folder;
-    if (MainHwnd) {
-        ShowWindow(MainHwnd, SW_SHOWNA);
-        SetForegroundWindow(MainHwnd);
+    memset(d, 0, sizeof(*d));
+    d->st = st;
+    strncpy(d->folder, folder, sizeof(d->folder) - 1);
+    h = kt_dialog_open(IDD_XFERDL, kt_dl_dlgproc, d);
+    if (!h) {
+        sfree(d);
+        return 0;
     }
-    r = DialogBoxParamA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_XFERDL),
-                        MainHwnd, kt_dl_dlgproc, (LPARAM)&d);
-    if (r != -1) {
-        if (r == 1 && d.picked_set) {
-            strncpy(folder, d.picked, len - 1);
-            folder[len - 1] = '\0';
-            *picked = 1;
-        }
-        return r == 1;
-    }
-    {
-        char *text = dupprintf(KT_XFER5113_ASK_SEND, folder);
-        int yes = kt_ask(text, KT_XFER5113_ASK_SEND_WARN);
-        sfree(text);
-        return yes;
-    }
+    st->send->dlg = h;
+    return 1;
 }
 
 /* ------------------------------------------------------------------------
@@ -1027,15 +1176,15 @@ static void kt_send_data(struct kt_state *st, const kt5113_cmd *c, int last)
         kt_ack(term, s, c->fid, "PROGRESS", NULL, (int64_t)f->written);
 }
 
-/* action=send: a new session. The dialog (and the folder picker, from its
- * Change folder... or from "Always open Save Dialog") run here, before the
- * OK that lets the client continue. */
+/* action=send: a new session. The dialog is put up here and the OK that lets
+ * the client continue is sent from kt_send_decide(), once it has been
+ * answered - the terminal keeps running in between. */
 static void kt_send_begin(struct kt_state *st, const kt5113_cmd *c)
 {
     Terminal *term = st->term;
     struct kt_send *s;
-    char folder[4096], *a;
-    int policy, allowed, picked = 0;
+    char folder[4096];
+    int policy;
 
     if (st->send) {
         if (!strcmp(st->send->id, c->id)) {
@@ -1060,21 +1209,51 @@ static void kt_send_begin(struct kt_state *st, const kt5113_cmd *c)
     kitty_xfer_download_dir(term->conf, folder, sizeof(folder));
     policy = conf_get_int(term->conf, CONF_xfer_permission);
     if (policy == 2 || (policy == 1 && st->latched)) {
-        allowed = 1;
         kt_log(term, dupprintf(KT_XFER5113_LOG_SEND_AUTO, s->id));
-    } else {
-        kt_log(term, dupprintf(KT_XFER5113_LOG_SEND_ASK, s->id, folder));
-        s->in_dialog = 1;               /* the picker behind Change folder... runs inside */
-        allowed = kt_dl_dialog(folder, sizeof(folder), &picked);
-        s->in_dialog = 0;
-        if (allowed && policy == 1)
-            st->latched = 1;
-    }
-    if (st->dead) {                     /* the window went away under the dialog */
-        kt_send_free(st);
-        kt_state_drop(st);
+        kt_send_decide(st, 1, folder, 0);
         return;
     }
+    kt_log(term, dupprintf(KT_XFER5113_LOG_SEND_ASK, s->id, folder));
+    s->in_dialog = 1;                   /* a command arriving now is held over */
+    if (kt_dl_dialog_open(st, folder))
+        return;                         /* answered in kt_send_decide */
+    /* The template did not load at all: the same question in the suite's
+     * shared confirm box (Allow / Deny, no folder change), which is modal by
+     * design. Never a silent allow. */
+    {
+        char *text = dupprintf(KT_XFER5113_ASK_SEND, folder);
+        int yes = kt_ask(text, KT_XFER5113_ASK_SEND_WARN);
+        sfree(text);
+        kt_send_decide(st, yes, folder, 0);
+    }
+}
+
+/*
+ * The decision, once the request dialog has gone - or straight away when the
+ * permission setting answered without asking. `folder` is where the files
+ * land; `picked` says it came from "Change folder...", which is what makes
+ * the "Always open Save Dialog" picker stand down.
+ */
+static void kt_send_decide(struct kt_state *st, int allowed,
+                           const char *folder_in, int picked)
+{
+    Terminal *term = st->term;
+    struct kt_send *s = st->send;
+    char folder[4096], *a;
+
+    if (!s)
+        return;                         /* the session went while the dialog stood */
+    s->in_dialog = 0;
+    s->dlg = NULL;
+    if (st->dead) {                     /* the window went away under the dialog */
+        kt_send_free(st);
+        kt_state_maybe_drop(st);
+        return;
+    }
+    if (allowed && conf_get_int(term->conf, CONF_xfer_permission) == 1)
+        st->latched = 1;
+    strncpy(folder, folder_in, sizeof(folder) - 1);
+    folder[sizeof(folder) - 1] = '\0';
     if (s->cancel_pending) {
         kt_ack(term, s, NULL, "CANCELED", NULL, -1);
         kt_log(term, dupprintf(KT_XFER5113_LOG_CANCELLED, s->id));
@@ -1102,7 +1281,7 @@ static void kt_send_begin(struct kt_state *st, const kt5113_cmd *c)
         s->in_dialog = 0;
         if (st->dead) {
             kt_send_free(st);
-            kt_state_drop(st);
+            kt_state_maybe_drop(st);
             return;
         }
         if (s->cancel_pending || s->abort_pending) {
@@ -1141,12 +1320,17 @@ static void kt_send_cmd(struct kt_state *st, const kt5113_cmd *c)
     struct kt_send *s = st->send;
 
     if (s->in_dialog) {
-        /* Re-entered from the dialog's message loop. The spec: a command
-         * before OK drops the session; a cancel is answered afterwards. */
+        /* The request dialog still stands. The spec: a command before OK
+         * drops the session; a cancel is answered afterwards. */
         if (c->action == KT5113_AC_CANCEL)
             s->cancel_pending = 1;
         else
             s->abort_pending = 1;
+        /* Take the question down - it is about a transfer the far end has
+         * already given up on. Posted, not destroyed: we are inside the
+         * escape-sequence parser, under the terminal's own window. */
+        if (s->dlg)
+            PostMessage(s->dlg, WM_CLOSE, 0, 0);
         return;
     }
     s->last = time(NULL);
@@ -1302,6 +1486,41 @@ static struct kt_entry *kt_entry_add(struct kt_recv *r, const wchar_t *local,
     return e;
 }
 
+/*
+ * A requested name with nothing behind it on this PC. It becomes a row of the
+ * dialog - unchecked and marked - rather than nothing at all, so a request
+ * that names a file we do not have is VISIBLE and can be answered by putting
+ * a local file in its place ("Locate..."). It is not counted as a file and is
+ * never sent to the far end while it stays like this: the spec keeps its
+ * ENOENT and that is what the host is told.
+ */
+static struct kt_entry *kt_entry_add_missing(struct kt_recv *r,
+                                             const struct kt_spec *sp)
+{
+    struct kt_entry *e = snew(struct kt_entry), **pp;
+    memset(e, 0, sizeof(*e));
+    snprintf(e->rid, sizeof(e->rid), "%llu", (unsigned long long)++r->rid_counter);
+    strncpy(e->spec_fid, sp->fid, sizeof(e->spec_fid) - 1);
+    e->posix = dupstr(sp->name);        /* the name that was ASKED for */
+    e->mtime_ns = -1;
+    e->missing = 1;
+    e->denied = 1;                      /* nothing to send until it is located */
+    for (pp = &r->entries; *pp; pp = &(*pp)->next)
+        ;
+    *pp = e;
+    r->nentries++;
+    return e;
+}
+
+static struct kt_spec *kt_spec_by_fid(struct kt_recv *r, const char *fid)
+{
+    int i;
+    for (i = 0; i < r->got; i++)
+        if (!strcmp(r->specs[i].fid, fid))
+            return &r->specs[i];
+    return NULL;
+}
+
 /* Walk one folder (recursively), an entry per item, BEFORE the dialog - the
  * dialog lists every file that would leave. Reparse points - symlinks,
  * junctions - are skipped and never followed. Returns 0 when the per-session
@@ -1374,7 +1593,11 @@ static void kt_recv_prepare(struct kt_state *st)
                 sp->why = KT_XFER5113_ST_OUTSIDE;
             }
         } else if (!GetFileAttributesExW(local, GetFileExInfoStandard, &ad)) {
+            /* Not here. The dialog still shows the request, as a row that can
+             * be answered with a local file of the user's choosing; the
+             * refusal below stands unless one is. */
             sp->why = KT_XFER5113_ST_NOT_FOUND; sp->code = "ENOENT";
+            kt_entry_add_missing(r, sp);
         } else if ((attrs = ad.dwFileAttributes) & FILE_ATTRIBUTE_REPARSE_POINT) {
             sp->why = KT_XFER5113_ST_LINKS; sp->code = "ENOTSUP";
         } else if (attrs & FILE_ATTRIBUTE_DIRECTORY) {
@@ -1417,9 +1640,12 @@ static void kt_recv_list(struct kt_state *st)
     struct kt_entry *e;
 
     kt_recv_send_spec_errors(st);
-    for (e = r->entries; e; e = e->next)
+    for (e = r->entries; e; e = e->next) {
+        if (e->missing)
+            continue;                   /* a request nothing was put behind */
         kt_entry_reply(term, r, e->spec_fid, e, e->mtime_ns, e->readonly,
                        e->parent ? e->parent->rid : NULL);
+    }
     {
         const char *prof = getenv("USERPROFILE");
         wchar_t *w = prof && *prof ? kt_mb_to_wide(CP_ACP, prof, -1) : NULL;
@@ -1435,17 +1661,32 @@ static void kt_recv_list(struct kt_state *st)
 /* ------------------------------------------------------------------------
  * The upload-request dialog (IDD_XFERREQ): one line per file that would
  * leave, a checkbox in front of each, all checked at open; a count line
- * above; "Allow selected" / "Deny". Resizable: the list takes whatever the
- * window grows by. The theme engine dresses it like every other dialog of
- * this module (the CBT hook in kitty_theme.c), nothing to do here.
+ * above; "Locate..." / "Allow selected" / "Deny". MODELESS, and resizable in
+ * both directions - the list takes whatever the window grows by.
+ *
+ * A requested name with no file behind it on this PC is a row as well,
+ * marked and unchecked, so the request is visible instead of silently
+ * producing nothing. "Locate..." puts a local file behind such a row; it is
+ * then served under the name the far end ASKED for, so a kitten unpacking
+ * into "." still puts it where it meant to.
+ *
+ * Nothing here paints or sizes a control by hand. The theme engine dresses
+ * the window (kitty_theme.c), the warning line carries an ink mark instead of
+ * a colour written here, and every button is as wide as the caption it is
+ * CARRYING (kitty_theme_button_width) - a button sized from the template,
+ * with a caption set at run time, is exactly how this dialog came to show a
+ * half-drawn "Allow selected".
  * ------------------------------------------------------------------------ */
 
 struct kt_req_dlg {
-    struct kt_recv *r;
-    int margin, gap, line_h, btn_h, allow_w, deny_w;   /* pixels, from the template */
-    int min_w, min_h;                                   /* the template's window size */
-    int allowed;
+    struct kt_state *st;
+    int margin, gap, line_h, btn_h;     /* the template's spacing, in pixels */
+    int allow_w, deny_w, locate_w;      /* measured from the captions carried */
+    int min_w, min_h;                   /* the window may not go below this */
 };
+
+/* The completion: everything kt_recv_ask used to do after the dialog. */
+static void kt_recv_decide(struct kt_state *st, int allowed);
 
 static void kt_size_str(uint64_t n, char *buf, size_t len)
 {
@@ -1485,6 +1726,7 @@ static void kt_req_layout(HWND h, struct kt_req_dlg *d)
         list_h = d->line_h;
     MoveWindow(list, d->margin, y, W - 2 * d->margin, list_h, TRUE);
     MoveWindow(GetDlgItem(h, IDC_XFERREQ_WARN), d->margin, warn_y, W - 2 * d->margin, d->line_h, TRUE);
+    MoveWindow(GetDlgItem(h, IDC_XFERREQ_LOCATE), d->margin, btn_y, d->locate_w, d->btn_h, TRUE);
     MoveWindow(GetDlgItem(h, IDNO), W - d->margin - d->deny_w, btn_y, d->deny_w, d->btn_h, TRUE);
     MoveWindow(GetDlgItem(h, IDYES), W - d->margin - d->deny_w - d->gap - d->allow_w, btn_y,
                d->allow_w, d->btn_h, TRUE);
@@ -1492,17 +1734,136 @@ static void kt_req_layout(HWND h, struct kt_req_dlg *d)
     ListView_SetColumnWidth(list, 0, LVSCW_AUTOSIZE_USEHEADER);
 }
 
+/* What a row reads: the local path, or the name that was asked for with the
+ * mark that nothing here answers to it. Wide, like every row of this list. */
+static wchar_t *kt_req_row_text(const struct kt_entry *e)
+{
+    char *s;
+    wchar_t *w;
+    if (!e->missing)
+        return kt_wdup(e->local);
+    s = dupprintf(KT_XFER5113_REQ_NOT_FOUND, e->posix);
+    w = kt_mb_to_wide(CP_UTF8, s, -1);
+    sfree(s);
+    return w ? w : kt_wdup(L"");
+}
+
+/* The count line, rebuilt: a located file changes both numbers. */
+static void kt_req_count(HWND h, struct kt_req_dlg *d)
+{
+    struct kt_recv *r = d->st->recv;
+    char size[64], *count;
+    if (!r)
+        return;
+    kt_size_str(r->total_bytes, size, sizeof(size));
+    count = dupprintf(KT_XFER5113_REQ_COUNT, r->nfiles, size);
+    SetDlgItemTextA(h, IDC_XFERREQ_COUNT, count);
+    sfree(count);
+}
+
+static struct kt_entry *kt_req_selected(HWND list, int *index)
+{
+    LVITEMA it;
+    int i = ListView_GetNextItem(list, -1, LVNI_SELECTED);
+    if (i < 0)
+        return NULL;
+    memset(&it, 0, sizeof(it));
+    it.mask = LVIF_PARAM;
+    it.iItem = i;
+    if (!ListView_GetItem(list, &it) || !it.lParam)
+        return NULL;
+    if (index)
+        *index = i;
+    return (struct kt_entry *)it.lParam;
+}
+
+/* "Locate...": a local file in place of a requested name nothing here
+ * answers to. The row becomes that file, checked, and its spec stops being
+ * refused - but `posix` is left alone, so what leaves this PC still carries
+ * the name the far end asked for. */
+static void kt_req_locate(HWND h, struct kt_req_dlg *d)
+{
+    HWND list = GetDlgItem(h, IDC_XFERREQ_LIST);
+    struct kt_recv *r = d->st->recv;
+    struct kt_entry *e;
+    struct kt_spec *sp;
+    WIN32_FILE_ATTRIBUTE_DATA ad;
+    char path[4096];
+    wchar_t *w, *text;
+    int i = -1;
+
+    if (!r)
+        return;
+    e = kt_req_selected(list, &i);
+    if (!e || !e->missing)
+        return;
+    path[0] = '\0';
+    if (!OpenFileNameFrom(h, path, KT_XFER5113_REQ_LOCATE_TITLE,
+                          KT_XFER5113_REQ_LOCATE_FILTER, NULL) || !path[0])
+        return;
+    w = kt_mb_to_wide(CP_ACP, path, -1);
+    if (!w)
+        return;
+    if (!GetFileAttributesExW(w, GetFileExInfoStandard, &ad) ||
+        (ad.dwFileAttributes &
+         (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) {
+        sfree(w);                       /* a folder or a link is not a file */
+        return;
+    }
+    e->local = w;
+    e->size = ((uint64_t)ad.nFileSizeHigh << 32) | ad.nFileSizeLow;
+    e->mtime_ns = kt_filetime_to_ns(&ad.ftLastWriteTime);
+    e->readonly = (ad.dwFileAttributes & FILE_ATTRIBUTE_READONLY) != 0;
+    e->missing = 0;
+    e->denied = 0;
+    r->nfiles++;
+    r->total_bytes += e->size;
+    sp = kt_spec_by_fid(r, e->spec_fid);
+    if (sp)
+        sp->why = NULL;                 /* answered by a file now, not ENOENT */
+    {
+        char *a = kt_ansi(e->local);
+        kt_log(d->st->term, dupprintf(KT_XFER5113_LOG_LOCATED, r->id, e->posix, a));
+        sfree(a);
+    }
+    text = kt_req_row_text(e);
+    if (text) {
+        LVITEMW it;
+        memset(&it, 0, sizeof(it));
+        it.iSubItem = 0;
+        it.pszText = text;
+        SendMessageW(list, LVM_SETITEMTEXTW, (WPARAM)i, (LPARAM)&it);
+        sfree(text);
+    }
+    ListView_SetCheckState(list, i, TRUE);
+    kt_req_count(h, d);
+    EnableWindow(GetDlgItem(h, IDC_XFERREQ_LOCATE), FALSE);
+}
+
+/* The verdict, delivered after the window has gone - never from inside
+ * WM_DESTROY, which also runs when the terminal is torn down under it. */
+static void kt_req_finish(HWND h, int verdict)
+{
+    struct kt_req_dlg *d = (struct kt_req_dlg *)GetWindowLongPtr(h, GWLP_USERDATA);
+    struct kt_state *st;
+
+    if (!d)
+        return;
+    st = d->st;
+    DestroyWindow(h);                   /* WM_DESTROY unregisters and frees d */
+    kt_recv_decide(st, verdict);
+}
+
 static INT_PTR CALLBACK kt_req_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 {
     struct kt_req_dlg *d = (struct kt_req_dlg *)GetWindowLongPtr(h, GWLP_USERDATA);
     switch (msg) {
       case WM_INITDIALOG: {
-        RECT a, b, wr;
+        RECT a, b, wr, cr;
         HWND list = GetDlgItem(h, IDC_XFERREQ_LIST);
         LVCOLUMNW col;
         struct kt_entry *e;
-        char size[64], *count;
-        int i = 0;
+        int i = 0, frame, need;
 
         d = (struct kt_req_dlg *)lp;
         SetWindowLongPtr(h, GWLP_USERDATA, lp);
@@ -1513,23 +1874,45 @@ static INT_PTR CALLBACK kt_req_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         d->line_h = a.bottom - a.top;
         d->gap = b.top - a.bottom;
         kt_req_rect(h, IDYES, &a);
-        d->allow_w = a.right - a.left;
         d->btn_h = a.bottom - a.top;
-        kt_req_rect(h, IDNO, &b);
-        d->deny_w = b.right - b.left;
-        GetWindowRect(h, &wr);
-        d->min_w = wr.right - wr.left;
-        d->min_h = wr.bottom - wr.top;
 
         SetWindowTextA(h, KT_XFER5113_REQ_CAP);
         SetDlgItemTextA(h, IDC_XFERREQ_INTRO, KT_XFER5113_REQ_INTRO);
-        kt_size_str(d->r->total_bytes, size, sizeof(size));
-        count = dupprintf(KT_XFER5113_REQ_COUNT, d->r->nfiles, size);
-        SetDlgItemTextA(h, IDC_XFERREQ_COUNT, count);
-        sfree(count);
         SetDlgItemTextA(h, IDC_XFERREQ_WARN, KT_XFER5113_ASK_RECV_WARN);
         SetDlgItemTextA(h, IDYES, KT_XFER5113_REQ_BTN_ALLOW);
         SetDlgItemTextA(h, IDNO, KT_XFER5113_REQ_BTN_DENY);
+        SetDlgItemTextA(h, IDC_XFERREQ_LOCATE, KT_XFER5113_REQ_BTN_LOCATE);
+        kt_req_count(h, d);
+        /* The warning line is painted by the theme engine, in the ink for the
+         * theme in force - not by a colour written here (kitty_theme.h). */
+        kitty_theme_mark_ink(GetDlgItem(h, IDC_XFERREQ_WARN), KITTY_INK_BAD);
+
+        /* AFTER the captions, and from the captions: the template's widths
+         * are the widths ITS wordings needed, and are only a floor here. */
+        kt_req_rect(h, IDYES, &a);
+        d->allow_w = kitty_theme_button_width(GetDlgItem(h, IDYES),
+                                              a.right - a.left);
+        kt_req_rect(h, IDNO, &b);
+        d->deny_w = kitty_theme_button_width(GetDlgItem(h, IDNO),
+                                             b.right - b.left);
+        kt_req_rect(h, IDC_XFERREQ_LOCATE, &a);
+        d->locate_w = kitty_theme_button_width(GetDlgItem(h, IDC_XFERREQ_LOCATE),
+                                               a.right - a.left);
+
+        /* The smallest this window may become: the template's size, unless
+         * the row of buttons needs more than that across. */
+        GetWindowRect(h, &wr);
+        GetClientRect(h, &cr);
+        frame = (wr.right - wr.left) - cr.right;
+        d->min_w = wr.right - wr.left;
+        d->min_h = wr.bottom - wr.top;
+        need = 2 * d->margin + d->locate_w + d->gap + d->allow_w +
+               d->gap + d->deny_w + frame;
+        if (need > d->min_w) {
+            d->min_w = need;
+            SetWindowPos(h, NULL, 0, 0, d->min_w, d->min_h,
+                         SWP_NOMOVE | SWP_NOZORDER);
+        }
 
         ListView_SetExtendedListViewStyle(list, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT);
         memset(&col, 0, sizeof(col));
@@ -1538,19 +1921,24 @@ static INT_PTR CALLBACK kt_req_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         SendMessageW(list, LVM_INSERTCOLUMNW, 0, (LPARAM)&col);
         /* Wide inserts into a list view of an ANSI dialog: the control is
          * Unicode whatever its parent is, so every path shows as it is. */
-        for (e = d->r->entries; e; e = e->next) {
+        for (e = d->st->recv->entries; e; e = e->next) {
             LVITEMW it;
+            wchar_t *text;
             if (e->is_dir)
                 continue;
+            text = kt_req_row_text(e);
             memset(&it, 0, sizeof(it));
             it.mask = LVIF_TEXT | LVIF_PARAM;
             it.iItem = i;
-            it.pszText = e->local;
+            it.pszText = text;
             it.lParam = (LPARAM)e;
-            if (SendMessageW(list, LVM_INSERTITEMW, 0, (LPARAM)&it) < 0)
-                continue;
-            ListView_SetCheckState(list, i, TRUE);
-            i++;
+            if (SendMessageW(list, LVM_INSERTITEMW, 0, (LPARAM)&it) >= 0) {
+                /* A row nothing answers to starts unchecked: there is no file
+                 * to send until one is put behind it. */
+                ListView_SetCheckState(list, i, e->missing ? FALSE : TRUE);
+                i++;
+            }
+            sfree(text);
         }
         kt_req_layout(h, d);
         kitty_centre_on_owner(h);
@@ -1558,7 +1946,7 @@ static INT_PTR CALLBACK kt_req_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         return FALSE;
       }
       case WM_SIZE:
-        if (d)
+        if (d && wp != SIZE_MINIMIZED)
             kt_req_layout(h, d);
         return TRUE;
       case WM_GETMINMAXINFO:
@@ -1568,94 +1956,131 @@ static INT_PTR CALLBACK kt_req_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             mmi->ptMinTrackSize.y = d->min_h;
         }
         return TRUE;
-      case WM_CTLCOLORSTATIC:
-        /* the warning line, and only it, is red - as in the confirm box */
-        if ((HWND)lp == GetDlgItem(h, IDC_XFERREQ_WARN)) {
-            SetTextColor((HDC)wp, RGB(200, 0, 0));
-            SetBkMode((HDC)wp, TRANSPARENT);
-            return (INT_PTR)GetSysColorBrush(COLOR_3DFACE);
+      case WM_NOTIFY: {
+        /* "Locate..." answers only for a row nothing is behind. */
+        NMHDR *nm = (NMHDR *)lp;
+        if (d && nm && nm->idFrom == IDC_XFERREQ_LIST &&
+            nm->code == LVN_ITEMCHANGED) {
+            struct kt_entry *e = kt_req_selected(nm->hwndFrom, NULL);
+            EnableWindow(GetDlgItem(h, IDC_XFERREQ_LOCATE),
+                         e && e->missing ? TRUE : FALSE);
         }
         return FALSE;
+      }
       case WM_COMMAND:
         switch (LOWORD(wp)) {
+          case IDC_XFERREQ_LOCATE:
+            if (!d)
+                return TRUE;
+            kt_req_locate(h, d);
+            /* A cancel that arrived while the picker was up had its WM_CLOSE
+             * refused (see WM_CLOSE below): act on it now. */
+            if (d->st && d->st->recv &&
+                (d->st->recv->cancel_pending || d->st->recv->abort_pending))
+                kt_req_finish(h, 0);
+            return TRUE;
           case IDYES: {
             /* Unchecked files stay listed and are refused when asked for.
-             * Nothing checked is a Deny: no file may leave on that click. */
+             * Nothing checked is a Deny: no file may leave on that click. A
+             * row nothing was put behind counts for nothing either way. */
             HWND list = GetDlgItem(h, IDC_XFERREQ_LIST);
             int n = ListView_GetItemCount(list), i, checked = 0;
             for (i = 0; i < n; i++) {
                 LVITEMA it;
+                struct kt_entry *e;
                 memset(&it, 0, sizeof(it));
                 it.mask = LVIF_PARAM;
                 it.iItem = i;
                 if (!ListView_GetItem(list, &it) || !it.lParam)
                     continue;
-                if (ListView_GetCheckState(list, i))
+                e = (struct kt_entry *)it.lParam;
+                if (e->missing)
+                    e->denied = 1;
+                else if (ListView_GetCheckState(list, i))
                     checked++;
                 else
-                    ((struct kt_entry *)it.lParam)->denied = 1;
+                    e->denied = 1;
             }
-            EndDialog(h, checked > 0 ? 1 : 0);
+            kt_req_finish(h, checked > 0 ? 1 : 0);
             return TRUE;
           }
           case IDNO:
           case IDCANCEL:
-            EndDialog(h, 0);
+            kt_req_finish(h, 0);
             return TRUE;
         }
         return FALSE;
       case WM_CLOSE:
-        EndDialog(h, 0);                /* closing means Deny */
+        /* Not while the "Locate..." picker is up: it owns this window, and
+         * destroying the owner of a live common dialog frees state it is
+         * still standing on. The picker's own return path closes instead. */
+        if (!IsWindowEnabled(h))
+            return TRUE;
+        kt_req_finish(h, 0);            /* closing means Deny */
         return TRUE;
+      case WM_DESTROY:
+        ShinyRemoveAuxDialog(h);
+        if (d) {
+            if (d->st && d->st->recv && d->st->recv->dlg == h)
+                d->st->recv->dlg = NULL;
+            sfree(d);
+        }
+        SetWindowLongPtr(h, GWLP_USERDATA, 0);
+        return FALSE;                   /* the manager tidies up as well */
     }
     return FALSE;
 }
 
-/* The dialog, or - should the template not load at all - the plain
- * all-or-nothing question of the confirm box, never a silent allow.
- * 1 = allowed (denied files marked), 0 = refused. */
-static int kt_req_dialog(struct kt_state *st)
+/* Put the dialog up. True when it stands and the answer will arrive in
+ * kt_recv_decide(); false when the template did not load at all. */
+static int kt_req_dialog_open(struct kt_state *st)
 {
-    struct kt_req_dlg d;
+    struct kt_req_dlg *d = snew(struct kt_req_dlg);
     INITCOMMONCONTROLSEX icc;
-    INT_PTR r;
+    HWND h;
 
-    memset(&d, 0, sizeof(d));
-    d.r = st->recv;
+    memset(d, 0, sizeof(*d));
+    d->st = st;
     icc.dwSize = sizeof(icc);
     icc.dwICC = ICC_LISTVIEW_CLASSES;
     InitCommonControlsEx(&icc);
-    if (MainHwnd) {
-        ShowWindow(MainHwnd, SW_SHOWNA);
-        SetForegroundWindow(MainHwnd);
+    h = kt_dialog_open(IDD_XFERREQ, kt_req_dlgproc, d);
+    if (!h) {
+        sfree(d);
+        return 0;
     }
-    r = DialogBoxParamA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_XFERREQ),
-                        MainHwnd, kt_req_dlgproc, (LPARAM)&d);
-    if (r != -1)
-        return r == 1;
-    {
-        strbuf *list = strbuf_new();
-        struct kt_entry *e;
-        char *text;
-        int i = 0, yes;
-        for (e = st->recv->entries; e; e = e->next) {
-            char *a;
-            if (e->is_dir)
-                continue;
-            if (i++ >= KT_DIALOG_LINES) {
-                put_fmt(list, KT_XFER5113_ASK_RECV_MORE, st->recv->nfiles - KT_DIALOG_LINES);
-                break;
-            }
-            a = kt_ansi(e->local);
-            put_fmt(list, "%s\r\n", a);
-            sfree(a);
+    st->recv->dlg = h;
+    return 1;
+}
+
+/* The template did not load: the plain all-or-nothing question in the
+ * suite's shared confirm box, which is modal by design. Never a silent
+ * allow. 1 = allowed, 0 = refused. */
+static int kt_req_fallback(struct kt_state *st)
+{
+    strbuf *list = strbuf_new();
+    struct kt_entry *e;
+    char *text;
+    int i = 0, yes;
+
+    for (e = st->recv->entries; e; e = e->next) {
+        char *a;
+        if (e->is_dir)
+            continue;
+        if (i++ >= KT_DIALOG_LINES) {
+            put_fmt(list, KT_XFER5113_ASK_RECV_MORE, st->recv->nfiles - KT_DIALOG_LINES);
+            break;
         }
-        text = dupprintf(KT_XFER5113_ASK_RECV, list->s);
-        strbuf_free(list);
-        yes = kt_ask(text, KT_XFER5113_ASK_RECV_WARN);
-        sfree(text);
-        return yes;
+        a = e->missing ? dupprintf(KT_XFER5113_REQ_NOT_FOUND, e->posix)
+                       : kt_ansi(e->local);
+        put_fmt(list, "%s\r\n", a);
+        sfree(a);
     }
+    text = dupprintf(KT_XFER5113_ASK_RECV, list->s);
+    strbuf_free(list);
+    yes = kt_ask(text, KT_XFER5113_ASK_RECV_WARN);
+    sfree(text);
+    return yes;
 }
 
 /* All specs are in: walk, then ask - always, whatever the permission
@@ -1665,7 +2090,6 @@ static void kt_recv_ask(struct kt_state *st)
 {
     Terminal *term = st->term;
     struct kt_recv *r = st->recv;
-    int allowed;
 
     kt_recv_prepare(st);
     if (r->nentries == 0) {
@@ -1675,12 +2099,25 @@ static void kt_recv_ask(struct kt_state *st)
         kt_recv_free(st);
         return;
     }
-    r->in_dialog = 1;
-    allowed = kt_req_dialog(st);
+    r->in_dialog = 1;                   /* a command arriving now is held over */
+    if (kt_req_dialog_open(st))
+        return;                         /* answered in kt_recv_decide */
+    kt_recv_decide(st, kt_req_fallback(st));
+}
+
+/* The decision, once the request dialog has gone. */
+static void kt_recv_decide(struct kt_state *st, int allowed)
+{
+    Terminal *term = st->term;
+    struct kt_recv *r = st->recv;
+
+    if (!r)
+        return;                         /* the session went while it stood */
     r->in_dialog = 0;
+    r->dlg = NULL;
     if (st->dead) {
         kt_recv_free(st);
-        kt_state_drop(st);
+        kt_state_maybe_drop(st);
         return;
     }
     if (r->cancel_pending) {
@@ -1839,8 +2276,10 @@ static void kt_recv_request(struct kt_state *st, const kt5113_cmd *c)
         return;
     if (c->name_bad)
         goto not_listed;
+    /* A row nothing was put behind was never listed, so a request naming it
+     * is answered as unlisted - which is the ENOENT its spec already got. */
     for (e = r->entries; e; e = e->next)
-        if (!e->is_dir && !strcmp(e->posix, c->name))
+        if (!e->is_dir && !e->missing && !strcmp(e->posix, c->name))
             break;
     if (!e) {
       not_listed:
@@ -1923,6 +2362,8 @@ static void kt_recv_cmd(struct kt_state *st, const kt5113_cmd *c)
             r->cancel_pending = 1;
         else
             r->abort_pending = 1;
+        if (r->dlg)                     /* as in kt_send_cmd: take it down */
+            PostMessage(r->dlg, WM_CLOSE, 0, 0);
         return;
     }
     r->last = time(NULL);
@@ -2024,18 +2465,26 @@ void kitty_transfer_osc(Terminal *term)
 void kitty_transfer_free(Terminal *term)
 {
     struct kt_state *st = kt_state_get(term, 0);
+    HWND a, b;
+
     if (!st)
         return;
-    if ((st->send && st->send->in_dialog) || (st->recv && st->recv->in_dialog)) {
-        /* A modal dialog of ours is on the stack. Whatever is not under it
-         * goes now; the dialog path frees the rest when it returns. */
-        st->dead = 1;
-        if (st->send && !st->send->in_dialog)
-            kt_send_free(st);
-        if (st->recv && !st->recv->in_dialog)
-            kt_recv_free(st);
-        return;
-    }
+    /*
+     * The terminal is going. A request dialog of ours may still be standing:
+     * destroying it is synchronous, so by the time DestroyWindow returns the
+     * window is gone and its session half can be freed here - the completion
+     * is deliberately not called from WM_DESTROY, and `dead` makes the
+     * question a Deny for anything that does reach one. `freeing` keeps a
+     * completion from dropping the node while this function still holds it.
+     */
+    st->dead = 1;
+    st->freeing = 1;
+    a = st->send ? st->send->dlg : NULL;
+    b = st->recv ? st->recv->dlg : NULL;
+    if (a)
+        DestroyWindow(a);
+    if (b)
+        DestroyWindow(b);
     kt_send_free(st);
     kt_recv_free(st);
     kt_state_drop(st);

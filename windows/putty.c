@@ -78,8 +78,22 @@ static void kitty_settings_load_hook(const char *section, Conf *conf, bool exist
      * this hook the Conf, not the handle. open_settings_r() is the same
      * first-hive-wins read, so it reads the hive the Conf came from.
      */
+    /*
+     * KiTTY: and the same read answers the second question about an older
+     * session - which file-transfer protocol it was saved with. One value,
+     * WinSCPProtocol, used to drive kscp's -scp/-sftp flag and the WinSCP and
+     * FileZilla URL schemes alike; each tool has its own key now. A session
+     * that has the old key and neither of the new ones predates the split, so
+     * the two new values are derived from it once
+     * (kitty_xfer_migrate_protocol). The store is not written here - the
+     * ordinary save writes every key, so the derived values are persisted the
+     * next time the session is saved. Absence is what makes this idempotent:
+     * once either new key exists, the session is left alone.
+     */
     if (exists && section && *section) {
         extern void kitty_merge_legacy_note(Conf *conf, const char *note);
+        extern void kitty_xfer_migrate_protocol(Conf *conf, int oldprot);
+        const int absent = -32768;   /* no protocol value is negative */
         settings_r *r = open_settings_r(section);
         if (r) {
             char *note = read_setting_s(r, "Notes");
@@ -87,6 +101,11 @@ static void kitty_settings_load_hook(const char *section, Conf *conf, bool exist
                 kitty_merge_legacy_note(conf, note);
                 sfree(note);
             }
+            int oldprot = read_setting_i(r, "WinSCPProtocol", absent);
+            if (oldprot != absent &&
+                read_setting_i(r, "KscpProtocol", absent) == absent &&
+                read_setting_i(r, "FileZillaProtocol", absent) == absent)
+                kitty_xfer_migrate_protocol(conf, oldprot);
             close_settings_r(r);
         }
     }

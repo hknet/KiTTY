@@ -47,6 +47,26 @@ int decryptstring(const int mode, char *st, const char *key);
 #define GSS_DEF_REKEY_MINS 2     /* ssh/gss.h: default minutes between GSS cache checks */
 #endif
 
+/*
+ * Sessions written before the file-transfer protocol was split per tool carry
+ * WinSCPProtocol alone. kscp speaks only SCP and SFTP, FileZilla only SFTP and
+ * the FTP family, so the old value maps onto each tool's own list; anything a
+ * tool has no scheme for becomes SFTP, the default. WinSCPProtocol itself is
+ * unchanged. Both load paths call this - the .ktx reader below and the
+ * registry/file load hook in windows/putty.c - and only when the two new keys
+ * are absent from the stored session, which is what makes it idempotent.
+ *
+ * It lives here rather than with the transfer code because this file is the
+ * one both callers link: windows/test/test_storage_roundtrip compiles the .ktx
+ * reader without any of kitty_xfer.c.
+ */
+void kitty_xfer_migrate_protocol(Conf *conf, int oldprot) {
+    if (conf == NULL) return;
+    conf_set_int(conf, CONF_kscp_protocol, oldprot == 0 ? 0 : 1);
+    conf_set_int(conf, CONF_filezilla_protocol,
+                 (oldprot >= 1 && oldprot <= 4) ? oldprot : 1);
+}
+
 /* ---- read-side forward declarations (load body calls helpers defined below) ---- */
 int read_setting_i_forced(void *handle, const char *key, int defvalue);
 char *read_setting_s_forced(void *handle, const char *key);
@@ -818,6 +838,22 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "Icone", conf, CONF_icone );
     gppfile_forced(sesskey, "IconeFile", conf, CONF_iconefile );
     gppi_forced(sesskey, "WinSCPProtocol", conf, CONF_winscpprot );
+    gppi_forced(sesskey, "KscpProtocol", conf, CONF_kscp_protocol );
+    gppi_forced(sesskey, "FileZillaProtocol", conf, CONF_filezilla_protocol );
+    /* A file written before the protocol was split per tool has WinSCPProtocol
+     * and neither of the two new keys: derive them from it, exactly as the
+     * registry/file load hook does (windows/putty.c). */
+    {
+        const int absent = -32768 ;   /* no protocol value is negative */
+        if( gppi_raw_forced(sesskey, "WinSCPProtocol", absent) != absent &&
+            gppi_raw_forced(sesskey, "KscpProtocol", absent) == absent &&
+            gppi_raw_forced(sesskey, "FileZillaProtocol", absent) == absent )
+            kitty_xfer_migrate_protocol( conf, conf_get_int(conf, CONF_winscpprot) ) ;
+    }
+    gpps_forced(sesskey, "KscpPort", conf, CONF_kscp_port );
+    gpps_forced(sesskey, "WinSCPPort", conf, CONF_winscp_port );
+    gpps_forced(sesskey, "FileZillaPort", conf, CONF_filezilla_port );
+    gppb_forced(sesskey, "KscpDragDrop", conf, CONF_kscp_dragdrop );
     gpps_forced(sesskey, "SFTPConnect", conf, CONF_sftpconnect );
     gpps_forced(sesskey, "PSCPOptions", conf, CONF_pscpoptions );
     gpps_forced(sesskey, "PSCPShell", conf, CONF_pscpshell );

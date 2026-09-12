@@ -1842,10 +1842,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         SetWindowLong(wgs->term_hwnd, wx - 8, ft.dwHighDateTime);
         SetWindowLong(wgs->term_hwnd, wx - 4, ft.dwLowDateTime);
     }
-    /* KiTTY: accept files dropped on the terminal window (kscp upload). The 0.84
-     * port had OnDropFiles() defined but never registered the window for drops,
-     * so the cursor showed "forbidden". Re-enable it + the WM_DROPFILES handler. */
-    DragAcceptFiles(wgs->term_hwnd, TRUE);
+    /* KiTTY: accept files dropped on the terminal window (kscp upload), unless
+     * the session has that switched off - then the window is not registered for
+     * drops at all, so the cursor shows "forbidden" instead of the drop being
+     * accepted and then quietly dropped. Re-applied after Change Settings. */
+    DragAcceptFiles(wgs->term_hwnd, conf_get_bool(wgs->conf, CONF_kscp_dragdrop));
 #endif
 
     /*
@@ -4901,6 +4902,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
              * each time the configuration dialog is closed with changes
              * applied. Self-skips in dir mode or when no sav file is set. */
             SaveRegistryKey();
+            /* KiTTY: the upload-on-drop switch takes effect at once - the
+             * window is registered for drops, or unregistered, to match what
+             * the session now says. */
+            DragAcceptFiles(hwnd, conf_get_bool(wgs->conf, CONF_kscp_dragdrop));
 #endif
 
             resize_action = conf_get_int(wgs->conf, CONF_resize_action);

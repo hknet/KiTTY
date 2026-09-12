@@ -32,6 +32,11 @@
 #define KT_XFER5113_REQ_COUNT        "%d file(s), %s in total"
 #define KT_XFER5113_REQ_BTN_ALLOW    "Allow &selected"
 #define KT_XFER5113_REQ_BTN_DENY     "&Deny"
+#define KT_XFER5113_REQ_BTN_LOCATE   "&Locate..."
+/* a requested name with no file behind it: the row, and the picker over it */
+#define KT_XFER5113_REQ_NOT_FOUND    "%s - not found"
+#define KT_XFER5113_REQ_LOCATE_TITLE "Locate the requested file"
+#define KT_XFER5113_REQ_LOCATE_FILTER "All files (*.*)|*.*|"
 /* the "%s" of KT_XFER5113_REQ_COUNT */
 #define KT_XFER5113_SIZE_B           "%llu bytes"
 #define KT_XFER5113_SIZE_KB          "%.1f KB"
@@ -88,6 +93,7 @@
 #define KT_XFER5113_LOG_RECV_OK      "File transfer %s: allowed, %d file(s) listed"
 #define KT_XFER5113_LOG_RECV_DENIED  "File transfer %s: read request refused by the user"
 #define KT_XFER5113_LOG_RECV_SPEC    "File transfer %s: path \"%s\" refused (%s)"
+#define KT_XFER5113_LOG_LOCATED      "File transfer %s: \"%s\" located as %s"
 #define KT_XFER5113_LOG_SENT         "File transfer %s: sent %s (%llu bytes)"
 #define KT_XFER5113_LOG_SEND_FAILED  "File transfer %s: could not read %s"
 #define KT_XFER5113_LOG_RECV_DONE    "File transfer %s: finished, %d file(s) sent"

@@ -577,11 +577,26 @@ remote directory, \q{Get File (kscp)} (\c{Ctrl+F4}) fetches the path on
 the clipboard into the download folder - \k{kitty-cfg-get-file} walks
 through it.
 
-\b \q{Protocol for file transfers (kscp and WinSCP)} is ONE setting for
-both tools: \c{kscp} runs in SCP mode for \q{scp} and in SFTP mode for
-every other choice; WinSCP is started with the protocol chosen. It used
-to sit on the WinSCP panel, where it read as WinSCP's alone (stored as
-\c{WinSCPProtocol}, so saved sessions keep their value).
+\b \q{Protocol} is how \c{kscp} runs: \q{SFTP} (the default) in SFTP
+mode, \q{SCP} in SCP mode. Each transfer tool has its own protocol now -
+WinSCP's is on \k{kitty-cfg-winscp-session}, FileZilla's on
+\k{kitty-cfg-filezilla-session} - so a session can hand WinSCP an FTP
+server and still run \c{kscp} over SFTP. The key is \c{KscpProtocol}.
+
+\b \q{Port} is the port \c{kscp} connects to. Left empty it shows, in
+grey, the port that applies: the global kscp port
+(\k{kitty-cfg-external-tools}) if one is set, else the \c{:port} of the
+target override (\k{kitty-cfg-transfers-panel}), else this session's own
+port. A number typed here is used as it is; the field takes digits only.
+Windows before Vista cannot show the grey hint; the port itself applies
+there as everywhere. The key is \c{KscpPort}.
+
+\b \q{Upload Drag & Dropped Files on the Terminal Window} is on by
+default: files dropped on this session's terminal window are uploaded.
+Off, the window is not registered for drops at all, so the mouse cursor
+refuses the file before you let go of it. The \q{Tools} menu entries are
+not affected - they have their own switches (\k{kitty-cfg-behaviour}).
+The key is \c{KscpDragDrop}.
 
 \b \q{KSCP options} are the flags handed to \c{kscp}; the default
 \c{-r} is what makes a dropped folder upload recursively.
@@ -611,10 +626,10 @@ one) and where received files land on this PC are on
 \k{kitty-cfg-transfers-panel}: they serve ZModem and transfers over the
 session as well, which are not SSH features. The panel states this.
 
-Where \c{kscp} is and which port it uses are settings of this PC, not
-of the session: \k{kitty-cfg-external-tools}. The note at the foot of
-the panel states this, and \q{Open App Settings} beside it
-takes you there.
+Where \c{kscp} is, and the port every session falls back to, are
+settings of this PC, not of the session: \k{kitty-cfg-external-tools}.
+The note at the foot of the panel states this, and \q{Open App Settings}
+beside it takes you there.
 
 \S{kitty-cfg-winscp-session} The WinSCP panel
 
@@ -622,12 +637,35 @@ What to hand \i{WinSCP} when it is started for this session
 (\q{Tools} > \q{Start WinSCP}, or press \c{Shift+F3}; the key is
 \c{winscp} in the \c{[Shortcuts]} section of \c{kitty.ini}).
 
-\b The protocol is not chosen here any more: \q{Protocol for file
-transfers} on the KSCP panel (\k{kitty-cfg-kscp}) serves WinSCP and
-\c{kscp} alike, and this panel says so.
+\b \q{Protocol} is the one WinSCP is started with, and WinSCP's own list:
+\q{SFTP} (the default), \q{SCP}, \q{FTP}, \q{FTPS (explicit TLS)},
+\q{FTPS (implicit TLS, legacy)}, \q{HTTP} and \q{HTTPS} (the last two are
+WebDAV). The key is \c{WinSCPProtocol} and saved sessions keep their
+value; \c{kscp} and FileZilla have their own protocol on their own
+panels.
 
-\b \q{SFTP connect} overrides the target, as \c{[user@]hostname[:port]},
-for the case where the file-transfer host is not the session's host.
+\lcont{
+
+The two FTPS forms are different protocols, not a preference. \e{Explicit}
+is what FTPS means today: the client connects to the ordinary FTP port 21
+and issues \c{AUTH TLS} to turn the connection into a TLS one
+(RFC 4217). \e{Implicit} speaks TLS from the first byte, on port 990,
+and is the older form - offer it only to a server that asks for it.
+
+}
+
+\b \q{Port} is the port WinSCP connects to. Left empty it shows, in grey,
+the standard port of the protocol chosen above: for SFTP and SCP this
+session's own port when the session is SSH and 22 otherwise, 21 for FTP
+and explicit FTPS, 990 for implicit FTPS, 80 for HTTP and 443 for HTTPS.
+A number typed here is used as it is; the field takes digits only.
+Windows before Vista cannot show the grey hint. The key is
+\c{WinSCPPort}. A port written into the target override
+(\k{kitty-cfg-transfers-panel}) wins over this field.
+
+\b The host is not chosen here: \q{Target override} on
+\k{kitty-cfg-transfers-panel} replaces the session's host for WinSCP and
+FileZilla alike.
 
 \b \q{WinSCP additional options} and \q{additional rawsettings} are
 passed to WinSCP verbatim - the second is WinSCP's own \c{-rawsettings}
@@ -655,11 +693,25 @@ the menu, and the key works, only while FileZilla's executable exists where
 \c{kitty.ini}) places it. The key is \c{filezilla} in the \c{[Shortcuts]}
 section of \c{kitty.ini}.
 
-\b The target and the protocol are the shared settings: \q{SFTP
-connect} on \k{kitty-cfg-winscp-session} overrides the host, and
-\q{Protocol for file transfers} on \k{kitty-cfg-kscp} chooses between
-\c{sftp}, \c{ftp}, \c{ftps} and \c{ftpes}; \c{scp} and \c{http} have no
-FileZilla equivalent and are started as \c{sftp}.
+\b The host is not chosen here: \q{Target override} on
+\k{kitty-cfg-transfers-panel} replaces the session's host for FileZilla
+and WinSCP alike.
+
+\b \q{Protocol} is the one FileZilla is started with, and FileZilla's own
+list: \q{SFTP} (the default), \q{FTP}, \q{FTPS (explicit TLS)} and
+\q{FTPS (implicit TLS, legacy)}. \e{Explicit} FTPS connects to the
+ordinary FTP port 21 and issues \c{AUTH TLS} to turn the connection into
+a TLS one (RFC 4217); that is what FTPS means today. \e{Implicit}
+speaks TLS from the first byte, on port 990, and is the older form. The
+key is \c{FileZillaProtocol}.
+
+\b \q{Port} is the port FileZilla connects to. Left empty it shows, in
+grey, the standard port of the protocol chosen above: for SFTP this
+session's own port when the session is SSH and 22 otherwise, 21 for FTP
+and explicit FTPS, 990 for implicit FTPS. A number typed here is used as
+it is; the field takes digits only. Windows before Vista cannot show the
+grey hint. The key is \c{FileZillaPort}. A port written into the target
+override (\k{kitty-cfg-transfers-panel}) wins over this field.
 
 \b \q{FileZilla additional options} are appended to its command line
 verbatim (\c{FileZillaOptions}).
@@ -698,13 +750,26 @@ setting only.
 
 One place for what every way of moving a file through this session has
 in common: where received files land on this PC and where files are
-sent from, which directory on the far end uploads go to, the settings
-for transfers over the session, and which Tools menu entries the session
-shows. \q{Get file} (kscp), \q{Send File}, \i{ZModem} and file transfers
+sent from, which directory on the far end uploads go to, and the
+settings for transfers over the session. Which entries the \q{Tools}
+menu shows is window behaviour and lives on \k{kitty-cfg-behaviour}.
+\q{Get file} (kscp), \q{Send File}, \i{ZModem} and file transfers
 over the session (\c{kitten transfer}, \k{kitty-cfg-kitten-transfer}) all
 read it, which is why it sits under Connection and not under SSH: ZModem
 and kitten transfer work on telnet and serial sessions too. Each group
 has its own help topic: F1 on a control opens the group's paragraph.
+
+\q{Target override}, in the \q{Remote target} group at the top, is the
+host \i{WinSCP} and \i{FileZilla} are pointed at instead of the session's
+own, written as \c{[user@]hostname[:port]} - for the case where the
+file-transfer host is not the one you are logged in to. It is stored as
+\c{SFTPConnect} and it used to sit on the WinSCP panel, which was the
+wrong place for a setting two tools read. A port written into it wins
+over the \q{Port} field of either tool; without one, that field applies,
+and empty there means the protocol's standard port
+(\k{kitty-cfg-winscp-session}, \k{kitty-cfg-filezilla-session}). Empty,
+the session's own host and user are used. \c{kscp} takes the \c{:port}
+from it as well, after the global kscp port (\k{kitty-cfg-kscp}).
 
 \S2{kitty-cfg-transfers-folders} Local folders
 
@@ -822,22 +887,6 @@ session shows the global default of the \q{OSC 5113 (kitten)} leaf; a
 click pins the session to on or off. Stored as \c{TransferFullPath}.
 
 Stored as \c{TransferPermission} (0, 1, 2) and \c{TransferAskDestination}.
-
-\S2{kitty-cfg-transfers-tools} Terminal Windows Tools Menu
-
-Four checkboxes, one per entry of the \q{Tools} menu (right-click the
-title bar): \q{Send File (kscp)}, \q{Get File (kscp)}, \q{Start WinSCP},
-\q{Start FileZilla}. All on by default. Unchecked, the entry is not
-shown for this session and its key in the \c{[Shortcuts]} section of
-\c{kitty.ini} does nothing - the key reaches the terminal instead.
-\q{Start WinSCP} and \q{Start FileZilla} additionally need the
-executable, as before (\k{kitty-cfg-external-tools}). Stored as
-\c{ToolsMenuSendFile}, \c{ToolsMenuGetFile}, \c{ToolsMenuWinSCP} and
-\c{ToolsMenuFileZilla}.
-
-\q{Tools} > \q{Get File (kscp)} fetches the path on the clipboard into
-the download folder: \k{kitty-cfg-get-file} walks through it, and F1 on
-that checkbox opens it.
 
 \S2{kitty-cfg-get-file} Receiving a file with Get file
 
@@ -963,7 +1012,11 @@ A folder is fetched recursively.
 
 \S2{kitty-cfg-kitten-permission} The permission dialogs
 
-Nothing moves until you agree. Files \e{arriving} are announced by a
+Nothing moves until you agree. Both dialogs are modeless: the terminal
+keeps running, drawing and taking input while the question stands, and a
+transfer the far end gives up on takes its dialog down with it.
+
+Files \e{arriving} are announced by a
 dialog titled \q{KiTTY++ File Download request}: \q{The remote host wants to send
 files to this computer} with the folder they will land in. \q{Allow}
 (the default) lets the transfer run into that folder; \q{Change
@@ -981,8 +1034,16 @@ listed (a very large folder delays the dialog by the walk). Untick a
 file and it stays home. \q{Allow selected} sends the ticked files; each
 unticked one is refused when the host asks for it, and \c{kitten} shows
 \q{Permission denied} for that file. \q{Deny} refuses them all, as does
-closing the dialog or pressing Return. The window can be resized; the
-list grows with it.
+closing the dialog or pressing Return. The window can be resized in both
+directions; the list grows with it.
+
+A requested name that does not exist on this PC is listed too, marked
+\q{- not found} and unticked. Select such a row and \q{Locate...} opens
+the file picker: the file you pick takes that row's place, ticked, and is
+sent under the name the host asked for - so a \c{kitten} unpacking into
+\cw{.} still gets the name it expected. A row you leave as it is stays
+refused with \q{Does not exist}, exactly as it was before the dialog
+listed it.
 
 How often the dialog appears for files \e{arriving} is set on
 Connection > Transfers (\k{kitty-cfg-transfers-kitten}): every time, once per
@@ -2376,6 +2437,20 @@ measure, since the process can still be ended.
 
 \b \q{Minimize button} and \q{Maximize button} take away those buttons
 individually.
+
+\b \q{Terminal Windows Tools Menu} is four checkboxes, one per entry of
+the \q{Tools} menu (right-click the title bar): \q{Send File (kscp)},
+\q{Get File (kscp)}, \q{Start WinSCP}, \q{Start FileZilla}. All on by
+default. Unchecked, the entry is not shown for this session and its key
+in the \c{[Shortcuts]} section of \c{kitty.ini} does nothing - the key
+reaches the terminal instead. \q{Start WinSCP} and \q{Start FileZilla}
+additionally need the executable, as before
+(\k{kitty-cfg-external-tools}). It decides what the MENU holds, not how
+a file moves, which is why it lives here and not on the Transfers panel.
+Stored as \c{ToolsMenuSendFile}, \c{ToolsMenuGetFile},
+\c{ToolsMenuWinSCP} and \c{ToolsMenuFileZilla}. \q{Get File (kscp)}
+fetches the path on the clipboard into the download folder:
+\k{kitty-cfg-get-file} walks through it.
 
 \S{kitty-cfg-winpos-remember} \q{Remember window position (per monitor layout)}
 

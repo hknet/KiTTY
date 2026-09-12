@@ -583,6 +583,12 @@
 #ifndef IDC_XFERREQ_WARN
 #define IDC_XFERREQ_WARN 1280
 #endif
+/* "Locate...": a requested name that does not exist on this PC is listed too,
+ * marked and unchecked; this opens the file picker to put a local file in its
+ * place, which is then served under the name the far end asked for. */
+#ifndef IDC_XFERREQ_LOCATE
+#define IDC_XFERREQ_LOCATE 1284
+#endif
 /* The download-request dialog (kitty/kitty_transfer.c): the far end wants to
  * send files to this PC (OSC 5113, files arriving). The request text with the
  * folder they land in, the red warning line, and three buttons: Allow (IDYES,

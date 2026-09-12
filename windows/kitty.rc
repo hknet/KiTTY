@@ -359,23 +359,30 @@ BEGIN
 END
 
 /* The upload-request dialog (kitty/kitty_transfer.c): the far end asks to
- * read files from this PC over the session. Resizable (WS_THICKFRAME): the
- * list grows with the window, the buttons stay at the bottom right, the
- * two lines above and the red line below keep their height - laid out in
- * WM_SIZE. One line per file, a checkbox in front of each (LVS_EX_CHECKBOXES,
- * set at runtime). "Deny" is the DEFAULT: a reflex Return must not let
- * files leave. */
+ * read files from this PC over the session. MODELESS, like every other window
+ * here - the terminal keeps working while the question stands - so no
+ * DS_MODALFRAME; WS_SIZEBOX is the sizing frame. The list grows with the
+ * window in both directions, the buttons stay at the bottom, the two lines
+ * above and the warning line below keep their height - laid out in WM_SIZE.
+ * One line per file, a checkbox in front of each (LVS_EX_CHECKBOXES, set at
+ * runtime). "Locate..." substitutes a local file for a requested name that
+ * does not exist here; it is disabled unless such a row is selected. "Deny"
+ * is the DEFAULT: a reflex Return must not let files leave.
+ *
+ * The button widths here are a STARTING POINT only. Every caption is set from
+ * kitty_transfer_text.h and measured at run time (kitty_theme_button_width),
+ * because a template width is the width the TEMPLATE's caption needed. */
 IDD_XFERREQ DIALOGEX DISCARDABLE 0, 0, 360, 200
-STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+STYLE DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX | WS_MAXIMIZEBOX
 CAPTION KT_XFER5113_REQ_CAP
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "", IDC_XFERREQ_INTRO, 10, 9, 340, 10
     LTEXT           "", IDC_XFERREQ_COUNT, 10, 22, 340, 10
-    CONTROL         "", IDC_XFERREQ_LIST, "SysListView32",
-                    LVS_REPORT | LVS_NOCOLUMNHEADER | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,
+    CONTROL         "", IDC_XFERREQ_LIST, "SysListView32", LVS_REPORT | LVS_NOCOLUMNHEADER | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,
                     10, 36, 340, 120
     LTEXT           "", IDC_XFERREQ_WARN, 10, 160, 340, 10
+    PUSHBUTTON      KT_XFER5113_REQ_BTN_LOCATE, IDC_XFERREQ_LOCATE, 10, 178, 60, 14, WS_DISABLED
     PUSHBUTTON      KT_XFER5113_REQ_BTN_ALLOW, IDYES, 236, 178, 60, 14
     DEFPUSHBUTTON   KT_XFER5113_REQ_BTN_DENY, IDNO, 300, 178, 50, 14
 END
@@ -387,9 +394,12 @@ END
  * is the DEFAULT (nothing leaves this PC; the files land in the folder shown),
  * "Change folder..." opens the folder picker on that folder and a pick closes
  * the dialog as Allow with the picked folder, "Deny" also answers Esc and the
- * close box. SS_NOPREFIX: a folder path may contain '&'. */
+ * close box. SS_NOPREFIX: a folder path may contain '&'.
+ *
+ * MODELESS, so no DS_MODALFRAME. The button widths are a starting point: the
+ * captions are measured at run time, as in the upload-request dialog above. */
 IDD_XFERDL DIALOGEX DISCARDABLE 0, 0, 360, 108
-STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+STYLE DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION KT_XFER5113_CAP
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN

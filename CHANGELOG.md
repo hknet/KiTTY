@@ -172,10 +172,6 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   an empty field always meant: the session's port.
 - **"Locate..." beside the download folder** on KiTTY++ Settings > Transfers &
   Tools opens the Explorer folder picker and fills the field.
-- **The transfer protocol radios moved from the session's WinSCP panel to its
-  KSCP panel,** as "Protocol for file transfers (kscp and WinSCP)": the setting
-  always drove kscp's SCP/SFTP mode as well, and its old home said otherwise.
-  Saved sessions keep their value (the key is still WinSCPProtocol).
 
 ### Security
 
@@ -206,6 +202,44 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **A protocol and a port per transfer tool.** The single "Protocol for file
+  transfers (kscp and WinSCP)" setting is replaced by a "Protocol:" on each
+  tool's own panel: Connection > SSH > KSCP offers SFTP (the default) and SCP
+  (`KscpProtocol`); Connection > SSH > WinSCP the list WinSCP takes - SFTP,
+  SCP, FTP, FTPS (explicit TLS), FTPS (implicit TLS, legacy), HTTP, HTTPS
+  (`WinSCPProtocol`, unchanged, so saved sessions keep their value); and
+  Connection > SSH > FileZilla the four FileZilla takes - SFTP, FTP, FTPS
+  (explicit TLS), FTPS (implicit TLS, legacy) (`FileZillaProtocol`). A session
+  that carries only the old value is migrated the first time it is loaded:
+  kscp gets SCP where the old value was scp and SFTP otherwise, WinSCP keeps
+  the old value, FileZilla keeps it where FileZilla has that protocol and gets
+  SFTP otherwise. Beside each is a "Port:" (`KscpPort`, `WinSCPPort`,
+  `FileZillaPort`), empty by default and then showing in grey the port
+  actually in use - for SFTP and SCP the session's own port when the session
+  is SSH and 22 otherwise, and for kscp the global kscp port before that; 21
+  for FTP and explicit FTPS, 990 for implicit FTPS, 80 HTTP, 443 HTTPS - while a
+  number typed there is used as it is. The fields take digits only, at most
+  five, so what they show is always what the transfer starts with. WinSCP and
+  FileZilla starts in the FTP family used to carry the SSH session's port in
+  the URL; an empty field now yields the protocol's standard port instead.
+  Windows before Vista cannot show the grey hint, and the port applies there
+  as everywhere. The target override, "SFTP connect" on the WinSCP panel, is
+  now "Target override ([user@]hostname[:port]):" in the new "Remote target"
+  group at the top of Connection > Transfers, because WinSCP and FileZilla
+  both read it (`SFTPConnect`, unchanged); a port written into it wins over
+  either tool's Port field, and without one that field and its standard-port
+  rule apply. The KSCP panel
+  also gains "Upload Drag & Dropped Files on the Terminal Window"
+  (`KscpDragDrop`, on by default): off, the terminal window is not registered
+  for drops at all, so the mouse cursor refuses the file before it is let go;
+  the Tools menu entries have their own switches. Those four switches, the
+  "Terminal Windows Tools Menu" group, move from Connection > Transfers to
+  Window > Behaviour: they decide what the menu holds, not how a file moves.
+- **The panel titles name KiTTY++.** "Basic options for your KiTTY++ session"
+  and the five other titles that print the program name - Window, Appearance,
+  Behaviour, line drawing and precise colours - said KiTTY where the rest of
+  the configuration window says KiTTY++. The stock build and `-putty` mode are
+  unchanged.
 - **The session comment prints before the connection starts.** With
   "Notify the user at login" on (Session > Comment, on by default), the
   comment is printed into the terminal once, at the top, before KiTTY
@@ -218,6 +252,17 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **The kitten transfer permission dialogs no longer stop the terminal.**
+  Both are modeless now, so the session keeps running, drawing and taking
+  input while the question stands, and a transfer the far end gives up on
+  takes its dialog down with it. The upload request resizes in both
+  directions, its buttons are as wide as the captions they carry - "Allow
+  selected" was drawn clipped, over the top of itself, because the button
+  kept the width the template's own caption needed - and the warning line
+  follows the colour theme instead of a fixed red on a fixed light
+  background. A requested file that does not exist on this PC is now listed
+  as well, marked "- not found", and "Locate..." puts a local file in its
+  place: it is sent under the name the host asked for.
 - **Resizing the window keeps the scroll position.** The view used to jump
   to the bottom on every resize even while you were reading further up; it
   now stays on the lines you were looking at, and only a view that was at

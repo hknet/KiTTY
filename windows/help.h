@@ -104,7 +104,6 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_transfers_folders  "kitty-cfg-transfers-folders"
 #define WINHELP_CTX_kitty_transfers_remote   "kitty-cfg-transfers-remote"
 #define WINHELP_CTX_kitty_transfers_kitten   "kitty-cfg-transfers-kitten"
-#define WINHELP_CTX_kitty_transfers_tools    "kitty-cfg-transfers-tools"
 #define WINHELP_CTX_kitty_transfers_getfile  "kitty-cfg-get-file"   /* the Get File walk-through */
 #define WINHELP_CTX_kitty_kset_kitten        "kitty-cfg-kset-kitten"
 #define WINHELP_CTX_kitty_filezilla_session  "kitty-cfg-filezilla-session"

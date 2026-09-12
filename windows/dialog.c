@@ -196,6 +196,16 @@ void kitty_conf_invalid_report(dlgparam *dlg, const char *session)
  */
 static struct controlbox *kitty_conf_ctrlbox = NULL;
 
+/* A second radio handler that stores its int the same way, registered by
+ * whoever builds the panels. Named that way round because this file is linked
+ * into the stock targets as well, and they do not link kitty_config.c. */
+static handler_fn kitty_conf_extra_radio = NULL;
+
+void kitty_conf_register_radio_handler(handler_fn fn)
+{
+    kitty_conf_extra_radio = fn;
+}
+
 void kitty_conf_ctrlbox_is(struct controlbox *b)
 {
     kitty_conf_ctrlbox = b;
@@ -216,7 +226,9 @@ void kitty_conf_validate(Conf *conf)
             int val;
 
             if (ctrl->type != CTRL_RADIO ||
-                ctrl->handler != conf_radiobutton_handler)
+                (ctrl->handler != conf_radiobutton_handler &&
+                 !(kitty_conf_extra_radio &&
+                   ctrl->handler == kitty_conf_extra_radio)))
                 continue;
 
             val = conf_get_int(conf, ctrl->context.i);

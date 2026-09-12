@@ -1561,10 +1561,27 @@ CONF_OPTION(filezilla_options, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("F
  * which is where a decade of quoting and path-traversal bugs came from. Plenty
  * of hardened servers now offer only the sftp subsystem. SCP stays selectable
  * for embedded gear that has no sftp-server.
- * ⚠️ This one value drives BOTH kscp's -scp/-sftp flag and WinSCP's URL scheme
- * (kitty/kitty_xfer.c). Splitting it per tool is part of the file-transfer panel
- * rework. */
+ * This one is WinSCP's URL scheme only. kscp and FileZilla each have their own
+ * key below, because the three tools do not speak the same set of protocols;
+ * a session written before the split carries this value alone, and the load
+ * paths (windows/putty.c for the store, kitty/kitty_settings_load.c for a .ktx
+ * file) derive the other two from it once. */
 CONF_OPTION(winscpprot, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("WinSCPProtocol"),)
+/* kscp's -scp/-sftp flag: 0=scp 1=sftp. Same numbering as WinSCPProtocol. */
+CONF_OPTION(kscp_protocol, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("KscpProtocol"),)
+/* FileZilla's URL scheme: 1=sftp 2=ftp 3=ftps (implicit TLS) 4=ftpes (explicit
+ * TLS). Same numbering as WinSCPProtocol, minus the values FileZilla has no
+ * scheme for. */
+CONF_OPTION(filezilla_protocol, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("FileZillaProtocol"),)
+/* Per-tool port, empty = the protocol's standard port (kitty_xfer_default_port
+ * in kitty/kitty_xfer.c says which, and is what the panels show as a hint).
+ * Strings, so that "not set" is distinguishable from a number. */
+CONF_OPTION(kscp_port, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("KscpPort"),)
+CONF_OPTION(winscp_port, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("WinSCPPort"),)
+CONF_OPTION(filezilla_port, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("FileZillaPort"),)
+/* Off: the terminal window is not registered for drops at all, so the cursor
+ * shows "forbidden" rather than silently swallowing the file. */
+CONF_OPTION(kscp_dragdrop, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("KscpDragDrop"),)
 CONF_OPTION(winscprawsettings, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("WinSCPRawSettings"),)
 CONF_OPTION(xpos, VALUE_TYPE(INT), DEFAULT_INT(-1), SAVE_KEYWORD("TermXPos"),)
 CONF_OPTION(ypos, VALUE_TYPE(INT), DEFAULT_INT(-1), SAVE_KEYWORD("TermYPos"),)

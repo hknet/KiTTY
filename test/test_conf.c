@@ -765,6 +765,14 @@ void test_simple(void)
     test_bool_simple(CONF_check_update_startup, "CheckUpdateStartup", true);
     test_bool_simple(CONF_comment_notify, "CommentNotify", true);
     test_bool_simple(CONF_remember_winpos, "RememberWindowPos", true);
+    /* KiTTY file-transfer settings: one protocol and one port per tool. */
+    test_int_simple(CONF_winscpprot, "WinSCPProtocol", 1);
+    test_int_simple(CONF_kscp_protocol, "KscpProtocol", 1);
+    test_int_simple(CONF_filezilla_protocol, "FileZillaProtocol", 1);
+    test_str_simple(CONF_kscp_port, "KscpPort", "");
+    test_str_simple(CONF_winscp_port, "WinSCPPort", "");
+    test_str_simple(CONF_filezilla_port, "FileZillaPort", "");
+    test_bool_simple(CONF_kscp_dragdrop, "KscpDragDrop", true);
     test_bool_simple(CONF_no_applic_c, "NoApplicationCursors", false);
     test_bool_simple(CONF_no_applic_k, "NoApplicationKeys", false);
     test_bool_simple(CONF_no_mouse_rep, "NoMouseReporting", false);

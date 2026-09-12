@@ -7363,6 +7363,22 @@ static void kitty_warnfeatures_handler(dlgcontrol *ctrl, dlgparam *dlg,
 #define DISPLAY_NON_RECONFIGURABLE_PROTOCOL(which_proto) \
     (backend_vt_from_proto(which_proto) && !midsession)
 
+/*
+ * The program name the six panel titles print ("Basic options for your %s
+ * session", "Options controlling %s's window", ...). KiTTY's own panels name
+ * KiTTY++; the stock PuTTY build and -putty mode keep `appname`, which is
+ * what those builds are called.
+ */
+#ifdef MOD_PERSO
+static const char *scb_title_appname(void)
+{
+    return GetPuttyFlag() ? appname : KT_CAP_KITTYPP;
+}
+#define SCB_TITLE_APPNAME (scb_title_appname())
+#else
+#define SCB_TITLE_APPNAME appname
+#endif
+
 /* The bottom button bar (Open/Start/Updates/Cancel) and the Session panel. */
 static void scb_panel_session(struct controlbox *b, bool midsession)
 {
@@ -7429,7 +7445,7 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
      * panel with no title element, which read as an omission next to the
      * rest.
      */
-    str = dupprintf(KT_CFG_SESSION_TITLE_FMT, appname);
+    str = dupprintf(KT_CFG_SESSION_TITLE_FMT, SCB_TITLE_APPNAME);
     ctrl_settitle(b, "Session", str);
     sfree(str);
 
@@ -8468,7 +8484,7 @@ static void scb_window_tree(struct controlbox *b)
 {
     char *str;
 
-    str = dupprintf(KT_CFG_APPEARANCE_TITLE_FMT, appname);
+    str = dupprintf(KT_CFG_APPEARANCE_TITLE_FMT, SCB_TITLE_APPNAME);
     ctrl_settitle(b, "Window/Appearance", str);
     sfree(str);
 #ifdef MOD_PERSO
@@ -8478,14 +8494,14 @@ static void scb_window_tree(struct controlbox *b)
 #endif
     ctrl_settitle(b, "Window/Appearance/Colours",
                   KT_COLOURS_OPTIONS_CONTROLLING_USE_OF_COLOURS);
-    str = dupprintf(KT_CFG_PRECISE_COLOURS_TITLE_FMT, appname);
+    str = dupprintf(KT_CFG_PRECISE_COLOURS_TITLE_FMT, SCB_TITLE_APPNAME);
     ctrl_settitle(b, "Window/Appearance/Colours/Precise colours", str);
     sfree(str);
 #ifdef MOD_PERSO
     if (!GetPuttyFlag() && scb_background_leaf_wanted())
         ctrl_settitle(b, "Window/Appearance/Background", KT_BACKGROUND_TITLE);
 #endif
-    str = dupprintf(KT_CFG_BEHAVIOUR_TITLE_FMT, appname);
+    str = dupprintf(KT_CFG_BEHAVIOUR_TITLE_FMT, SCB_TITLE_APPNAME);
     ctrl_settitle(b, "Window/Behaviour", str);
     sfree(str);
     ctrl_settitle(b, "Window/Selection",
@@ -8519,7 +8535,7 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
     /*
      * The Window panel.
      */
-    str = dupprintf(KT_CFG_WINDOW_TITLE_FMT, appname);
+    str = dupprintf(KT_CFG_WINDOW_TITLE_FMT, SCB_TITLE_APPNAME);
     ctrl_settitle(b, "Window", str);
     sfree(str);
     scb_window_tree(b);          /* every Window leaf, in display order */
@@ -8764,6 +8780,30 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
         ctrl_checkbox(s, KT_BEHAVIOUR_MAXIMIZE_BUTTON, NO_SHORTCUT, HELPCTX(kitty_behaviour),
                       conf_checkbox_handler, I(CONF_window_maximizable));
     }
+
+    /*
+     * KiTTY: which entries the window menu's Tools submenu holds. It decides
+     * what the MENU shows, not how a file moves, which is why it is window
+     * behaviour and not a transfer setting. Off = the entry is not built
+     * (window.c, WM_INITMENUPOPUP) and its [Shortcuts] key does nothing
+     * (kitty_shortcuts.c), so the key reaches the terminal instead.
+     */
+    if (!GetPuttyFlag()) {
+        s = ctrl_getset(b, "Window/Behaviour", "tools", KT_BEHAVIOUR_TOOLS_MENU);
+        ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_SENDFILE, NO_SHORTCUT,
+                      HELPCTX(kitty_behaviour),
+                      conf_checkbox_handler, I(CONF_tools_sendfile));
+        /* F1 on Get File lands on its walk-through, not on this panel. */
+        ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_GETFILE, NO_SHORTCUT,
+                      HELPCTX(kitty_transfers_getfile),
+                      conf_checkbox_handler, I(CONF_tools_getfile));
+        ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_WINSCP, NO_SHORTCUT,
+                      HELPCTX(kitty_behaviour),
+                      conf_checkbox_handler, I(CONF_tools_winscp));
+        ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_FILEZILLA, NO_SHORTCUT,
+                      HELPCTX(kitty_behaviour),
+                      conf_checkbox_handler, I(CONF_tools_filezilla));
+    }
 #endif
 
 #ifdef MOD_PERSO
@@ -8937,7 +8977,7 @@ static void scb_panel_selection(struct controlbox *b)
                   HELPCTX(translation_cjk_ambig_wide),
                   conf_checkbox_handler, I(CONF_cjk_ambig_wide));
 
-    str = dupprintf(KT_CFG_LINEDRAW_TITLE_FMT, appname);
+    str = dupprintf(KT_CFG_LINEDRAW_TITLE_FMT, SCB_TITLE_APPNAME);
     s = ctrl_getset(b, "Window/Charset translation", "linedraw", str);
     sfree(str);
     ctrl_radiobuttons(
@@ -9704,6 +9744,178 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
     }
 }
 
+#ifdef MOD_PERSO
+/*
+ * One protocol and one port per transfer tool (kscp, WinSCP, FileZilla).
+ *
+ * The port field is per session and empty by default; empty means the
+ * standard port of the protocol chosen beside it, which for SFTP/SCP is the
+ * session's own port and for kscp the global kscp port before that.
+ * kitty_xfer_default_port() is the one place that rule lives, and the field
+ * shows its answer as a CUE BANNER, so an empty box always states the port
+ * actually in use. A cue banner needs a Unicode edit and comctl32 v6:
+ * Windows before Vista show nothing there, and the port still applies.
+ *
+ * The banner follows a click on the radios because the radio handler
+ * refreshes the port control, whose EVENT_REFRESH is the only place that
+ * writes it.
+ */
+#define XFER_TOOL_KSCP      0
+#define XFER_TOOL_WINSCP    1
+#define XFER_TOOL_FILEZILLA 2
+
+static int xfer_tool_protocol_key(int tool)
+{
+    switch (tool) {
+      case XFER_TOOL_KSCP:   return CONF_kscp_protocol;
+      case XFER_TOOL_WINSCP: return CONF_winscpprot;
+      default:               return CONF_filezilla_protocol;
+    }
+}
+
+/* The EDIT window of a labelled edit box. The control reserves ids for its
+ * label too, and the first of them is the label, so the edit is a couple of
+ * ids along - found by class name rather than by counting. */
+static HWND xfer_port_edit_hwnd(dlgcontrol *ctrl, dlgparam *dlg)
+{
+    HWND h = kitty_dlg_ctrl_hwnd(dlg, ctrl), parent;
+    char cls[16];
+    int base, k;
+
+    if (!h)
+        return NULL;
+    parent = GetParent(h);
+    base = GetDlgCtrlID(h);
+    for (k = 0; k < 3; k++) {
+        HWND c = GetDlgItem(parent, base + k);
+        if (c && GetClassNameA(c, cls, sizeof(cls)) && !stricmp(cls, "Edit"))
+            return c;
+    }
+    return NULL;
+}
+
+static void xfer_port_hint(dlgcontrol *ctrl, dlgparam *dlg, Conf *conf, int tool)
+{
+    /* kitty/kitty.h states the rules; kitty_xfer.c applies them. Declared here
+     * rather than by including kitty.h, which this file does not. */
+    extern int kitty_xfer_default_port(Conf *conf, int tool, int protocol);
+    HWND h = xfer_port_edit_hwnd(ctrl, dlg);
+    wchar_t hint[24];
+    char num[24];
+    LONG_PTR style;
+    int port;
+
+    if (!h)
+        return;
+    /* A port is a number: let the control itself refuse the rest. ES_NUMBER
+     * works on every Windows this runs on, XP included, and needs no message
+     * handling of ours. Five digits is the whole of 1..65535. Setting it here
+     * costs nothing when it is already set. */
+    style = GetWindowLongPtr(h, GWL_STYLE);
+    if (!(style & ES_NUMBER))
+        SetWindowLongPtr(h, GWL_STYLE, style | ES_NUMBER);
+    SendMessage(h, EM_SETLIMITTEXT, 5, 0);
+    port = kitty_xfer_default_port(conf, tool,
+                                   conf_get_int(conf, xfer_tool_protocol_key(tool)));
+    if (port > 0)
+        sprintf(num, "%d", port);
+    else
+        num[0] = '\0';
+    if (MultiByteToWideChar(CP_ACP, 0, num, -1, hint, lenof(hint)))
+        SendMessageW(h, EM_SETCUEBANNER, TRUE, (LPARAM)hint);
+}
+
+/* context: the port's CONF_ key. context2: the tool. */
+static void xfer_port_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                              void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    int key = ctrl->context.i;
+
+    if (event == EVENT_REFRESH) {
+        /* This set fires a VALCHANGE that stores the same string back; the
+         * hint is written afterwards so the reentry cannot undo it. */
+        dlg_editbox_set(ctrl, dlg, conf_get_str(conf, key));
+        xfer_port_hint(ctrl, dlg, conf, ctrl->context2.i);
+    } else if (event == EVENT_VALCHANGE) {
+        /* ES_NUMBER on the control is what keeps the field numeric. This is
+         * the safety net for anything that reaches the text another way: what
+         * is stored is digits only, at most five, and the control is left
+         * alone so the caret does not move under the typist. */
+        char *s = dlg_editbox_get(ctrl, dlg);
+        char clean[8];
+        int i, n = 0;
+
+        for (i = 0; s[i] && n < 5; i++)
+            if (s[i] >= '0' && s[i] <= '9')
+                clean[n++] = s[i];
+        clean[n] = '\0';
+        conf_set_str(conf, key, clean);
+        sfree(s);
+    }
+}
+
+/* The tool's protocol radios. context2 holds the port control beside them,
+ * so the hint follows the choice. */
+static void kitty_xfer_protocol_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                        void *data, int event)
+{
+    conf_radiobutton_handler(ctrl, dlg, data, event);
+    if (event == EVENT_VALCHANGE && ctrl->context2.p)
+        dlg_refresh((dlgcontrol *)ctrl->context2.p, dlg);
+}
+
+/* Protocol radios + "Port:" for one tool, in that order, wired together. */
+static void xfer_protocol_port_controls(struct controlset *s, int tool,
+                                        HelpCtx helpctx)
+{
+    dlgcontrol *radio = NULL, *port;
+
+    /* So the out-of-range sweep in windows/dialog.c covers these radios too:
+     * they store their int exactly as conf_radiobutton_handler does. */
+    kitty_conf_register_radio_handler(kitty_xfer_protocol_handler);
+
+    switch (tool) {
+      case XFER_TOOL_KSCP:
+        radio = ctrl_radiobuttons(s, KT_XFER_PROTOCOL, NO_SHORTCUT, 2,
+                                  helpctx, kitty_xfer_protocol_handler,
+                                  I(CONF_kscp_protocol),
+                                  KT_XFER_PROTO_SFTP, NO_SHORTCUT, I(1),
+                                  KT_XFER_PROTO_SCP,  NO_SHORTCUT, I(0));
+        port = ctrl_editbox(s, KT_XFER_PORT, NO_SHORTCUT, 20, helpctx,
+                            xfer_port_handler, I(CONF_kscp_port), I(tool));
+        break;
+      case XFER_TOOL_WINSCP:
+        /* Two abreast: "FTPS (implicit TLS, legacy)" does not fit three. */
+        radio = ctrl_radiobuttons(s, KT_XFER_PROTOCOL, NO_SHORTCUT, 2,
+                                  helpctx, kitty_xfer_protocol_handler,
+                                  I(CONF_winscpprot),
+                                  KT_XFER_PROTO_SFTP,  NO_SHORTCUT, I(1),
+                                  KT_XFER_PROTO_SCP,   NO_SHORTCUT, I(0),
+                                  KT_XFER_PROTO_FTP,   NO_SHORTCUT, I(2),
+                                  KT_XFER_PROTO_FTPES, NO_SHORTCUT, I(4),
+                                  KT_XFER_PROTO_FTPS,  NO_SHORTCUT, I(3),
+                                  KT_XFER_PROTO_HTTP,  NO_SHORTCUT, I(5),
+                                  KT_XFER_PROTO_HTTPS, NO_SHORTCUT, I(6));
+        port = ctrl_editbox(s, KT_XFER_PORT, NO_SHORTCUT, 20, helpctx,
+                            xfer_port_handler, I(CONF_winscp_port), I(tool));
+        break;
+      default:
+        radio = ctrl_radiobuttons(s, KT_XFER_PROTOCOL, NO_SHORTCUT, 2,
+                                  helpctx, kitty_xfer_protocol_handler,
+                                  I(CONF_filezilla_protocol),
+                                  KT_XFER_PROTO_SFTP,  NO_SHORTCUT, I(1),
+                                  KT_XFER_PROTO_FTP,   NO_SHORTCUT, I(2),
+                                  KT_XFER_PROTO_FTPES, NO_SHORTCUT, I(4),
+                                  KT_XFER_PROTO_FTPS,  NO_SHORTCUT, I(3));
+        port = ctrl_editbox(s, KT_XFER_PORT, NO_SHORTCUT, 20, helpctx,
+                            xfer_port_handler, I(CONF_filezilla_port), I(tool));
+        break;
+    }
+    radio->context2.p = port;
+}
+#endif /* MOD_PERSO */
+
 /* The Connection/SSH panel tree: SSH core, Kex, Host keys, Cipher, Auth
  * (+Credentials/GSSAPI), TTY, X11, Tunnels, Bugs, and the KiTTY PSCP/WinSCP
  * panel. Upstream's "More bugs" is folded into Bugs as a second group box:
@@ -10365,21 +10577,17 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
             /* What the two kscp Tools menu entries do, with their keys. */
             ctrl_text(s, KT_KSCP_SEND_FILE_LINE, HELPCTX(kitty_winscp));
             ctrl_text(s, KT_KSCP_GET_FILE_LINE, HELPCTX(kitty_winscp));
-            /* ONE protocol for both tools: kscp goes -scp for scp and -sftp
-             * for everything else (kitty_xfer.c), WinSCP is started with the
-             * choice itself. Stored as WinSCPProtocol, so saved sessions keep
-             * their value. Moved here from the WinSCP panel 2026-09-08. */
-            ctrl_radiobuttons(s, KT_KSCP_PROTOCOL, NO_SHORTCUT, 4,
-                              HELPCTX(kitty_winscp),
-                              conf_radiobutton_handler,
-                              I(CONF_winscpprot),
-                              KT_WINSCP_SCP,   NO_SHORTCUT, I(0),
-                              KT_WINSCP_SFTP,  NO_SHORTCUT, I(1),
-                              KT_WINSCP_FTP,   NO_SHORTCUT, I(2),
-                              KT_WINSCP_FTPS,  NO_SHORTCUT, I(3),
-                              KT_WINSCP_FTPES, NO_SHORTCUT, I(4),
-                              KT_WINSCP_HTTP,  NO_SHORTCUT, I(5),
-                              KT_WINSCP_HTTPS, NO_SHORTCUT, I(6));
+            /* kscp's own protocol and port (KscpProtocol / KscpPort): SCP
+             * runs kscp with -scp, SFTP with -sftp. WinSCP and FileZilla
+             * have their own pair on their own panels. */
+            xfer_protocol_port_controls(s, XFER_TOOL_KSCP, HELPCTX(kitty_winscp));
+            /* Drops on the terminal window. Off unregisters the window for
+             * drops, so the cursor says no before a file is let go; the
+             * Tools menu entries have their own switches on Window >
+             * Behaviour. */
+            ctrl_checkbox(s, KT_KSCP_DRAGDROP_UPLOAD, NO_SHORTCUT,
+                          HELPCTX(kitty_winscp),
+                          conf_checkbox_handler, I(CONF_kscp_dragdrop));
             /* The remote directory (OSC 7 / fixed) and the download folder
              * live on Connection > Transfers: they serve ZModem and transfers
              * over the session too, which are not SSH-only. */
@@ -10415,22 +10623,20 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
             ctrl_settitle(b, "Connection/SSH/WinSCP",
                           KT_WINSCP_WINSCP_INTEGRATION);
 
-            /* The protocol radios live on the KSCP panel now: CONF_winscpprot drives kscp's -scp/-sftp as well as
-             * this hand-off, and here it read as WinSCP's alone. */
-            s = ctrl_getset(b, "Connection/SSH/WinSCP",
-                            "winSCPproto", KT_WINSCP_GENERAL_PROTOCOL_SETTING);
-            ctrl_text(s, KT_WINSCP_PROTOCOL_ON_KSCP, HELPCTX(kitty_winscp_session));
-
             s = ctrl_getset(b, "Connection/SSH/WinSCP",
                             "WinSCP", KT_WINSCP_WINSCP_INTEGRATION);
+            /* WinSCP's own protocol and port (WinSCPProtocol / WinSCPPort):
+             * the whole list WinSCP takes. kscp and FileZilla have their
+             * own pair on their own panels. */
+            xfer_protocol_port_controls(s, XFER_TOOL_WINSCP,
+                                        HELPCTX(kitty_winscp_session));
             /* The executable PATH is on KiTTY++ Settings > Transfers & Tools > WinSCP
              * now. It never belonged here - it is a property of this PC, which
              * is why it needed a bold "not a session setting" note to itself.
-             * Everything left in this group IS per session. */
-            ctrl_editbox(s, KT_WINSCP_SFTP_CONNECT_USER_HOSTNAME_PORT,
-                         NO_SHORTCUT, 100,
-                         HELPCTX(kitty_winscp_session),   /* the WinSCP panel's topic, not KSCP's */
-                         conf_editbox_handler, I(CONF_sftpconnect), ED_STR);
+             * The target override left too: it serves FileZilla as well, so it
+             * cannot live on one of the two leaves (Connection > Transfers,
+             * "Remote target"). Everything in this group IS per session and
+             * WinSCP's alone. */
             ctrl_editbox(s, KT_WINSCP_WINSCP_ADDITIONAL_OPTIONS, NO_SHORTCUT, 100,
                          HELPCTX(kitty_winscp_session),
                          conf_editbox_handler, I(CONF_winscpoptions), ED_STR);
@@ -10462,12 +10668,16 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                 }
             }
 
-            /* FileZilla beside WinSCP. Target and protocol are the shared
-             * settings; what is FileZilla's own is how the password reaches
-             * it, a user-facing security choice with each consequence stated
-             * (kitty_xfer.c StartFileZilla). */
+            /* FileZilla beside WinSCP: its own protocol and port
+             * (FileZillaProtocol / FileZillaPort), the four FileZilla takes.
+             * The target is still the shared setting. What is FileZilla's own
+             * besides that is how the password reaches it, a user-facing
+             * security choice with each consequence stated (kitty_xfer.c
+             * StartFileZilla). */
             ctrl_settitle(b, "Connection/SSH/FileZilla", KT_FZ_INTEGRATION);
             s = ctrl_getset(b, "Connection/SSH/FileZilla", "FileZilla", KT_FZ_INTEGRATION);
+            xfer_protocol_port_controls(s, XFER_TOOL_FILEZILLA,
+                                        HELPCTX(kitty_filezilla_session));
             ctrl_text(s, KT_FZ_TARGET_NOTE, HELPCTX(kitty_filezilla_session));
             ctrl_editbox(s, KT_FZ_ADDITIONAL_OPTIONS, NO_SHORTCUT, 100,
                          HELPCTX(kitty_filezilla_session),
@@ -10826,6 +11036,19 @@ static void scb_panel_transfers(struct controlbox *b)
 
     ctrl_settitle(b, "Connection/Transfers", KT_TRANSFERS_TITLE);
 
+    /* First, because it says WHICH HOST the tool-specific matter below is
+     * about. Moved off the WinSCP panel: it serves FileZilla too, and a
+     * setting for two tools cannot sit on one of their leaves. Stored as
+     * SFTPConnect. A port inside the string wins over the tool's Port field
+     * (kitty_xfer.c). */
+    s = ctrl_getset(b, "Connection/Transfers", "target", KT_TRANSFERS_TARGET_GROUP);
+    ctrl_editbox(s, KT_TRANSFERS_TARGET_OVERRIDE, NO_SHORTCUT, 100,
+                 HELPCTX(kitty_transfers),
+                 conf_editbox_handler, I(CONF_sftpconnect), ED_STR);
+    /* Two lines reserved: the note wraps at the narrower panel widths. */
+    ctrl_text(s, KT_TRANSFERS_TARGET_NOTE,
+              HELPCTX(kitty_transfers))->text.lines = 2;
+
     s = ctrl_getset(b, "Connection/Transfers", "received", KT_TRANSFERS_RECEIVED);
     kitty_controls_set_dir_picker(OpenDirNameFrom);   /* the rows' Locate... */
     ctrl_filesel(s, KT_TRANSFERS_LOCAL_DOWNLOAD_FOLDER, NO_SHORTCUT,
@@ -10892,23 +11115,6 @@ static void scb_panel_transfers(struct controlbox *b)
                   HELPCTX(kitty_transfers_kitten),
                   xfer_fullpath_handler, P(NULL));
 
-    /* Which Tools menu entries this session shows; off = the entry is not
-     * built (window.c, WM_INITMENUPOPUP) and its [Shortcuts] key does
-     * nothing (kitty_shortcuts.c). */
-    s = ctrl_getset(b, "Connection/Transfers", "tools", KT_TRANSFERS_TOOLS_MENU);
-    ctrl_checkbox(s, KT_TRANSFERS_TOOLS_SENDFILE, NO_SHORTCUT,
-                  HELPCTX(kitty_transfers_tools),
-                  conf_checkbox_handler, I(CONF_tools_sendfile));
-    /* F1 on Get File lands on its walk-through, not on the group. */
-    ctrl_checkbox(s, KT_TRANSFERS_TOOLS_GETFILE, NO_SHORTCUT,
-                  HELPCTX(kitty_transfers_getfile),
-                  conf_checkbox_handler, I(CONF_tools_getfile));
-    ctrl_checkbox(s, KT_TRANSFERS_TOOLS_WINSCP, NO_SHORTCUT,
-                  HELPCTX(kitty_transfers_tools),
-                  conf_checkbox_handler, I(CONF_tools_winscp));
-    ctrl_checkbox(s, KT_TRANSFERS_TOOLS_FILEZILLA, NO_SHORTCUT,
-                  HELPCTX(kitty_transfers_tools),
-                  conf_checkbox_handler, I(CONF_tools_filezilla));
 }
 
 /* The Connection/ZModem panels (KiTTY). */

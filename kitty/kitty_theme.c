@@ -354,6 +354,67 @@ COLORREF kitty_theme_ink(bool dark, kitty_ink which)
     }
 }
 
+/*
+ * The mark itself. Stored as which+1 so that "no property" (which reads back
+ * as 0) is distinguishable from KITTY_INK_NORMAL, the same trick the themed
+ * flag above uses.
+ */
+#define KT_PROP_INK "KiTTYInk"
+
+void kitty_theme_mark_ink(HWND ctl, kitty_ink which)
+{
+    if (!ctl)
+        return;
+    SetPropA(ctl, KT_PROP_INK, (HANDLE)(ULONG_PTR)((int)which + 1));
+    InvalidateRect(ctl, NULL, TRUE);
+}
+
+/*
+ * BCM_GETIDEALSIZE is comctl32 version 6, which the manifest already asks
+ * for; the MinGW headers do not always declare it. Answered by the button
+ * itself, so it accounts for the theme's own padding as well as the text.
+ */
+#ifndef BCM_GETIDEALSIZE
+#define BCM_GETIDEALSIZE (0x1600 + 0x0001)
+#endif
+
+int kitty_theme_button_width(HWND btn, int min_w)
+{
+    RECT r;
+    SIZE ideal;
+    int air, w = 0;
+
+    if (!btn || !GetWindowRect(btn, &r))
+        return min_w;
+    /* Half a line of air on each side, taken from the button's own height so
+     * it scales with the font and the DPI like everything else here. */
+    air = (r.bottom - r.top) / 2;
+
+    ideal.cx = ideal.cy = 0;
+    if (SendMessage(btn, BCM_GETIDEALSIZE, 0, (LPARAM)&ideal) && ideal.cx > 0) {
+        w = ideal.cx + air;
+    } else {
+        /* No ideal size (a comctl32 that does not answer the message): the
+         * caption measured with the button's font, plus the air. */
+        HDC dc = GetDC(btn);
+        if (dc) {
+            char label[256];
+            HFONT font = (HFONT)SendMessage(btn, WM_GETFONT, 0, 0);
+            HFONT oldfont = font ? (HFONT)SelectObject(dc, font) : NULL;
+            SIZE ts;
+            label[0] = '\0';
+            GetWindowTextA(btn, label, sizeof(label));
+            ts.cx = ts.cy = 0;
+            if (GetTextExtentPoint32A(dc, label, (int)strlen(label), &ts))
+                w = ts.cx + 2 * air;
+            if (oldfont)
+                SelectObject(dc, oldfont);
+            ReleaseDC(btn, dc);
+        }
+    }
+    return w < min_w ? min_w : w;
+}
+
 COLORREF kitty_theme_row_colour(bool dark, bool alternate)
 {
     if (dark)
@@ -1638,6 +1699,26 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
       case WM_CTLCOLOREDIT:
       case WM_CTLCOLORLISTBOX: {
         HBRUSH b = kitty_theme_ctlcolor(hwnd, msg, wParam, lParam);
+        if (msg == WM_CTLCOLORSTATIC) {
+            /*
+             * A line marked with a MEANING (kitty_theme_mark_ink): the
+             * background stays whatever this window would have given it -
+             * the dark brush here, the dialog manager's system face while
+             * light - and only the ink is ours. Done here, in BOTH themes,
+             * because a dark window never lets the dialog procedure see this
+             * message at all.
+             */
+            HANDLE ink = GetPropA((HWND)lParam, KT_PROP_INK);
+            if (ink) {
+                LRESULT r = b ? (LRESULT)b
+                              : DefSubclassProc(hwnd, msg, wParam, lParam);
+                SetTextColor((HDC)wParam,
+                             kitty_theme_ink(kt_is_dark_window(hwnd),
+                                             (kitty_ink)((int)(ULONG_PTR)ink - 1)));
+                SetBkMode((HDC)wParam, TRANSPARENT);
+                return r;
+            }
+        }
         if (b)
             return (LRESULT)b;
         break;    /* light: let the dialog manager answer as it always did */
