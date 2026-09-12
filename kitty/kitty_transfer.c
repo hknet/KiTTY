@@ -48,6 +48,7 @@
 #include "kitty.h"               /* kitty_xfer_download_dir, kitty_xfer_upload_dir */
 #include "kitty_win.h"           /* OpenDirNameFrom, OpenFileNameFrom */
 #include "kitty_theme.h"         /* the shared painter: ink marks, button widths */
+#include "kitty_anchor.h"        /* the shared resize: edge anchoring */
 #include "kitty_text.h"          /* KT_XFER_WHAT_KITTEN_* for the notification */
 #include "kitty_inikeys.h"       /* KI_*: the kitty.ini key names */
 #include "kitty_transfer_text.h" /* kitty.h brings kitty_rc_additions.h: IDD_XFERREQ, IDD_XFERDL */
@@ -595,14 +596,25 @@ struct kt_dl_dlg {
 static void kt_send_decide(struct kt_state *st, int allowed,
                            const char *folder, int picked);
 
-/* The buttons, right to left from the width each caption actually needs, and
- * the window widened if the row no longer fits across it. */
+/*
+ * The warning line and the buttons: moved down by `dy` (how far the request
+ * text had to grow), the buttons laid out right to left at the width each
+ * caption actually needs, and the window widened if that row no longer fits
+ * across it.
+ *
+ * One DeferWindowPos transaction for the whole row, then one redraw of the
+ * dialog and every child - the same rule as the shared anchoring
+ * (kitty_anchor.c): a control moved on its own with MoveWindow leaves the
+ * pixels it vacated behind, and a control RESIZED on its own keeps the bits
+ * it had and repaints only the strip that appeared.
+ */
 static void kt_dl_size_buttons(HWND h, int dy)
 {
     static const int ids[] = { IDNO, IDC_XFERDL_CHANGE, IDYES };  /* right to left */
     int w[lenof(ids)];
     RECT rc, r, a, b;
     HWND ha = GetDlgItem(h, IDC_XFERDL_CHANGE), hb = GetDlgItem(h, IDNO);
+    HDWP dwp;
     int i, margin, gap, need, x, client_w;
 
     if (!GetClientRect(h, &rc) || !ha || !hb ||
@@ -637,15 +649,30 @@ static void kt_dl_size_buttons(HWND h, int dy)
         client_w = rc.right;
     }
     x = client_w - margin;
-    for (i = 0; i < (int)lenof(ids); i++) {
+    dwp = BeginDeferWindowPos((int)lenof(ids) + 1);
+    for (i = 0; dwp && i < (int)lenof(ids); i++) {
         HWND c = GetDlgItem(h, ids[i]);
         if (!c || !GetWindowRect(c, &r))
             continue;
         MapWindowPoints(NULL, h, (POINT *)&r, 2);
         x -= w[i];
-        MoveWindow(c, x, r.top + dy, w[i], r.bottom - r.top, TRUE);
+        dwp = DeferWindowPos(dwp, c, NULL, x, r.top + dy, w[i],
+                             r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE);
         x -= gap;
     }
+    if (dwp) {
+        HWND warn = GetDlgItem(h, IDC_XFERDL_WARN);
+        if (warn && dy != 0 && GetWindowRect(warn, &r)) {
+            MapWindowPoints(NULL, h, (POINT *)&r, 2);
+            dwp = DeferWindowPos(dwp, warn, NULL, r.left, r.top + dy,
+                                 r.right - r.left, r.bottom - r.top,
+                                 SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
+    if (dwp)
+        EndDeferWindowPos(dwp);
+    RedrawWindow(h, NULL, NULL,
+                 RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
 
 static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp);
@@ -674,9 +701,8 @@ static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
     struct kt_dl_dlg *d = (struct kt_dl_dlg *)GetWindowLongPtr(h, GWLP_USERDATA);
     switch (msg) {
       case WM_INITDIALOG: {
-        static const int below[] = { IDC_XFERDL_WARN, 0 };
         char *text;
-        int dh, i;
+        int dh;
 
         d = (struct kt_dl_dlg *)lp;
         SetWindowLongPtr(h, GWLP_USERDATA, lp);
@@ -690,27 +716,22 @@ static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         /* The warning line is painted by the theme engine, in the ink for the
          * theme in force - not by a colour written here (kitty_theme.h). */
         kitty_theme_mark_ink(GetDlgItem(h, IDC_XFERDL_WARN), KITTY_INK_BAD);
+        /* And the caption and taskbar icon of the terminal that raised it -
+         * this session's own icon when it carries one. */
+        kitty_dialog_icon(h, MainHwnd);
         /* A long folder path wraps: grow the text to fit, as the confirm box
-         * does, and move the line and the buttons below it down by as much. */
+         * does, and grow the window by as much. */
         dh = kitty_fit_text(h, IDC_XFERDL_TEXT, text, 0);
         sfree(text);
         if (dh != 0) {
             RECT wr;
-            for (i = 0; below[i]; i++) {
-                HWND c = GetDlgItem(h, below[i]);
-                RECT r;
-                if (!c)
-                    continue;
-                GetWindowRect(c, &r);
-                MapWindowPoints(NULL, h, (POINT *)&r, 2);
-                MoveWindow(c, r.left, r.top + dh, r.right - r.left, r.bottom - r.top, TRUE);
-            }
             GetWindowRect(h, &wr);
             SetWindowPos(h, NULL, 0, 0, wr.right - wr.left, (wr.bottom - wr.top) + dh,
                          SWP_NOMOVE | SWP_NOZORDER);
         }
-        /* The buttons last: they move down with the text and are sized from
-         * the captions set above, never from the template's widths. */
+        /* Everything below the text, in one go: moved down by that much, the
+         * buttons sized from the captions set above and never from the
+         * template's widths. */
         kt_dl_size_buttons(h, dh);
         kitty_centre_on_owner(h);
         SetFocus(GetDlgItem(h, IDYES));     /* Return means Allow */
@@ -1670,19 +1691,39 @@ static void kt_recv_list(struct kt_state *st)
  * then served under the name the far end ASKED for, so a kitten unpacking
  * into "." still puts it where it meant to.
  *
- * Nothing here paints or sizes a control by hand. The theme engine dresses
- * the window (kitty_theme.c), the warning line carries an ink mark instead of
- * a colour written here, and every button is as wide as the caption it is
- * CARRYING (kitty_theme_button_width) - a button sized from the template,
- * with a caption set at run time, is exactly how this dialog came to show a
- * half-drawn "Allow selected".
+ * Nothing here paints, sizes or re-places a control by hand. The theme engine
+ * dresses the window (kitty_theme.c), the warning line carries an ink mark
+ * instead of a colour written here, every button is as wide as the caption it
+ * is CARRYING (kitty_theme_button_width), and the resize is the suite's
+ * shared edge anchoring (kitty_anchor.h) - which moves the whole row in ONE
+ * DeferWindowPos transaction and then redraws the dialog and every child. A
+ * private layout routine moving controls one at a time with MoveWindow is
+ * what left the vacated pixels of one button sitting inside the next.
  * ------------------------------------------------------------------------ */
+
+/* Where each control goes when the window grows. The list takes the slack in
+ * both directions; the lines above it stay at the top and stretch; the
+ * warning line and the buttons ride the bottom edge. */
+static const struct kl_anchor kt_req_anchors[] = {
+    {IDC_XFERREQ_INTRO,  KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
+    {IDC_XFERREQ_COUNT,  KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
+    {IDC_XFERREQ_LIST,
+     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_XFERREQ_WARN,   KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_XFERREQ_LOCATE, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDYES,              KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDNO,               KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+};
+
+/* The list may not be squeezed below this many rows. Three is enough to read
+ * as a list and to scroll; the template's ten is a size, not a minimum. */
+#define KT_REQ_MIN_ROWS 3
 
 struct kt_req_dlg {
     struct kt_state *st;
-    int margin, gap, line_h, btn_h;     /* the template's spacing, in pixels */
-    int allow_w, deny_w, locate_w;      /* measured from the captions carried */
-    int min_w, min_h;                   /* the window may not go below this */
+    int ready;                          /* the baseline below has been captured */
+    RECT rects[lenof(kt_req_anchors)];
+    SIZE basesize, minsize;
 };
 
 /* The completion: everything kt_recv_ask used to do after the dialog. */
@@ -1706,32 +1747,83 @@ static void kt_req_rect(HWND h, int id, RECT *rc)
     MapWindowPoints(NULL, h, (POINT *)rc, 2);
 }
 
-static void kt_req_layout(HWND h, struct kt_req_dlg *d)
+/* The shared relayout, plus the one thing anchoring cannot do: the single
+ * column always fills the list, whatever width it ended up with. */
+static void kt_req_relayout(HWND h, struct kt_req_dlg *d)
 {
-    RECT rc;
-    int W, H, y, list_h, warn_y, btn_y;
+    anchored_relayout(h, kt_req_anchors, lenof(kt_req_anchors), d->rects,
+                      d->basesize);
+    ListView_SetColumnWidth(GetDlgItem(h, IDC_XFERREQ_LIST), 0,
+                            LVSCW_AUTOSIZE_USEHEADER);
+}
+
+/*
+ * One row of the list, in pixels. Asked of the control, because a row is the
+ * font's line plus whatever padding the list view itself adds - which is a
+ * property of the control and the DPI, not something to guess. An empty list
+ * has no row to measure, so the font's own line stands in.
+ */
+static int kt_req_row_height(HWND list)
+{
+    RECT r;
+    HDC dc;
+    int h = 0;
+
+    if (ListView_GetItemCount(list) > 0 &&
+        ListView_GetItemRect(list, 0, &r, LVIR_BOUNDS) && r.bottom > r.top)
+        return r.bottom - r.top;
+    dc = GetDC(list);
+    if (dc) {
+        HFONT font = (HFONT)SendMessage(list, WM_GETFONT, 0, 0);
+        HFONT oldfont = font ? (HFONT)SelectObject(dc, font) : NULL;
+        TEXTMETRICA tm;
+        if (GetTextMetricsA(dc, &tm))
+            h = tm.tmHeight + tm.tmExternalLeading + 2;
+        if (oldfont)
+            SelectObject(dc, oldfont);
+        ReleaseDC(list, dc);
+    }
+    return h > 0 ? h : 16;
+}
+
+/*
+ * How tall the window opens, and how short it may be made.
+ *
+ * Everything except the list is fixed: two lines above, the warning line and
+ * the button row below, the margins and the frame. So both numbers are that
+ * CHROME plus a number of rows - three at the minimum (the template's ten
+ * rows are a size, not a floor, and pinning the minimum to the whole template
+ * meant the window could never be made shorter than a ten-row list), and at
+ * the opening size the rows actually there, never more than the template
+ * asked for and never fewer than the minimum.
+ */
+static void kt_req_height(HWND h, struct kt_req_dlg *d)
+{
     HWND list = GetDlgItem(h, IDC_XFERREQ_LIST);
-    GetClientRect(h, &rc);
-    W = rc.right;
-    H = rc.bottom;
-    y = d->margin;
-    MoveWindow(GetDlgItem(h, IDC_XFERREQ_INTRO), d->margin, y, W - 2 * d->margin, d->line_h, TRUE);
-    y += d->line_h + d->gap;
-    MoveWindow(GetDlgItem(h, IDC_XFERREQ_COUNT), d->margin, y, W - 2 * d->margin, d->line_h, TRUE);
-    y += d->line_h + d->gap;
-    btn_y = H - d->margin - d->btn_h;
-    warn_y = btn_y - d->gap - d->line_h;
-    list_h = warn_y - d->gap - y;
-    if (list_h < d->line_h)
-        list_h = d->line_h;
-    MoveWindow(list, d->margin, y, W - 2 * d->margin, list_h, TRUE);
-    MoveWindow(GetDlgItem(h, IDC_XFERREQ_WARN), d->margin, warn_y, W - 2 * d->margin, d->line_h, TRUE);
-    MoveWindow(GetDlgItem(h, IDC_XFERREQ_LOCATE), d->margin, btn_y, d->locate_w, d->btn_h, TRUE);
-    MoveWindow(GetDlgItem(h, IDNO), W - d->margin - d->deny_w, btn_y, d->deny_w, d->btn_h, TRUE);
-    MoveWindow(GetDlgItem(h, IDYES), W - d->margin - d->deny_w - d->gap - d->allow_w, btn_y,
-               d->allow_w, d->btn_h, TRUE);
-    /* the one column fills the list, whatever the width */
-    ListView_SetColumnWidth(list, 0, LVSCW_AUTOSIZE_USEHEADER);
+    RECT lw, lc, wr;
+    int row_h, frame_v, chrome_h, tmpl_rows, rows, want_h;
+
+    if (!list || !GetWindowRect(list, &lw) || !GetClientRect(list, &lc) ||
+        !GetWindowRect(h, &wr))
+        return;
+    row_h = kt_req_row_height(list);
+    frame_v = (lw.bottom - lw.top) - (lc.bottom - lc.top);   /* its border */
+    chrome_h = (wr.bottom - wr.top) - (lw.bottom - lw.top);
+    tmpl_rows = (lw.bottom - lw.top - frame_v) / row_h;
+    if (tmpl_rows < KT_REQ_MIN_ROWS)
+        tmpl_rows = KT_REQ_MIN_ROWS;
+
+    d->minsize.cy = chrome_h + frame_v + KT_REQ_MIN_ROWS * row_h;
+
+    rows = ListView_GetItemCount(list);
+    if (rows > tmpl_rows)
+        rows = tmpl_rows;
+    if (rows < KT_REQ_MIN_ROWS)
+        rows = KT_REQ_MIN_ROWS;
+    want_h = chrome_h + frame_v + rows * row_h;
+    if (want_h != wr.bottom - wr.top)
+        SetWindowPos(h, NULL, 0, 0, wr.right - wr.left, want_h,
+                     SWP_NOMOVE | SWP_NOZORDER);
 }
 
 /* What a row reads: the local path, or the name that was asked for with the
@@ -1859,22 +1951,24 @@ static INT_PTR CALLBACK kt_req_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
     struct kt_req_dlg *d = (struct kt_req_dlg *)GetWindowLongPtr(h, GWLP_USERDATA);
     switch (msg) {
       case WM_INITDIALOG: {
-        RECT a, b, wr, cr;
+        RECT a, b, c, wr, cr;
         HWND list = GetDlgItem(h, IDC_XFERREQ_LIST);
         LVCOLUMNW col;
         struct kt_entry *e;
-        int i = 0, frame, need;
+        HDWP dwp;
+        SIZE ignore;                    /* anchored_capture's own minimum: the
+                                         * one this dialog uses is computed in
+                                         * kt_req_height, from a row count */
+        int i = 0, margin, gap, btn_h, frame, need;
+        int allow_w, deny_w, locate_w;
 
         d = (struct kt_req_dlg *)lp;
         SetWindowLongPtr(h, GWLP_USERDATA, lp);
         /* The template's own spacing, in this monitor's pixels. */
         kt_req_rect(h, IDC_XFERREQ_INTRO, &a);
         kt_req_rect(h, IDC_XFERREQ_COUNT, &b);
-        d->margin = a.left;
-        d->line_h = a.bottom - a.top;
-        d->gap = b.top - a.bottom;
-        kt_req_rect(h, IDYES, &a);
-        d->btn_h = a.bottom - a.top;
+        margin = a.left;
+        gap = b.top - a.bottom;
 
         SetWindowTextA(h, KT_XFER5113_REQ_CAP);
         SetDlgItemTextA(h, IDC_XFERREQ_INTRO, KT_XFER5113_REQ_INTRO);
@@ -1886,33 +1980,56 @@ static INT_PTR CALLBACK kt_req_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         /* The warning line is painted by the theme engine, in the ink for the
          * theme in force - not by a colour written here (kitty_theme.h). */
         kitty_theme_mark_ink(GetDlgItem(h, IDC_XFERREQ_WARN), KITTY_INK_BAD);
+        /* And the caption and taskbar icon of the terminal that raised it -
+         * this session's own icon when it carries one. */
+        kitty_dialog_icon(h, MainHwnd);
 
         /* AFTER the captions, and from the captions: the template's widths
          * are the widths ITS wordings needed, and are only a floor here. */
         kt_req_rect(h, IDYES, &a);
-        d->allow_w = kitty_theme_button_width(GetDlgItem(h, IDYES),
-                                              a.right - a.left);
         kt_req_rect(h, IDNO, &b);
-        d->deny_w = kitty_theme_button_width(GetDlgItem(h, IDNO),
-                                             b.right - b.left);
-        kt_req_rect(h, IDC_XFERREQ_LOCATE, &a);
-        d->locate_w = kitty_theme_button_width(GetDlgItem(h, IDC_XFERREQ_LOCATE),
-                                               a.right - a.left);
+        kt_req_rect(h, IDC_XFERREQ_LOCATE, &c);
+        btn_h = a.bottom - a.top;
+        allow_w = kitty_theme_button_width(GetDlgItem(h, IDYES), a.right - a.left);
+        deny_w = kitty_theme_button_width(GetDlgItem(h, IDNO), b.right - b.left);
+        locate_w = kitty_theme_button_width(GetDlgItem(h, IDC_XFERREQ_LOCATE),
+                                            c.right - c.left);
 
-        /* The smallest this window may become: the template's size, unless
-         * the row of buttons needs more than that across. */
+        /* Wider than the template allowed for: the window grows rather than a
+         * caption spilling out of its button. */
         GetWindowRect(h, &wr);
         GetClientRect(h, &cr);
         frame = (wr.right - wr.left) - cr.right;
-        d->min_w = wr.right - wr.left;
-        d->min_h = wr.bottom - wr.top;
-        need = 2 * d->margin + d->locate_w + d->gap + d->allow_w +
-               d->gap + d->deny_w + frame;
-        if (need > d->min_w) {
-            d->min_w = need;
-            SetWindowPos(h, NULL, 0, 0, d->min_w, d->min_h,
+        need = 2 * margin + locate_w + gap + allow_w + gap + deny_w + frame;
+        if (need > wr.right - wr.left) {
+            SetWindowPos(h, NULL, 0, 0, need, wr.bottom - wr.top,
                          SWP_NOMOVE | SWP_NOZORDER);
+            GetWindowRect(h, &wr);
+            GetClientRect(h, &cr);
         }
+        /* The narrowest it may become. The button row is the hard part, but
+         * the template's own width is kept as the floor as well: it is what
+         * holds the request line above the list unclipped. */
+        d->minsize.cx = wr.right - wr.left;
+
+        /* The three buttons at their measured widths, in ONE transaction:
+         * Locate at the left, Allow and Deny at the right. */
+        dwp = BeginDeferWindowPos(3);
+        if (dwp)
+            dwp = DeferWindowPos(dwp, GetDlgItem(h, IDC_XFERREQ_LOCATE), NULL,
+                                 margin, c.top, locate_w, btn_h,
+                                 SWP_NOZORDER | SWP_NOACTIVATE);
+        if (dwp)
+            dwp = DeferWindowPos(dwp, GetDlgItem(h, IDNO), NULL,
+                                 cr.right - margin - deny_w, b.top, deny_w, btn_h,
+                                 SWP_NOZORDER | SWP_NOACTIVATE);
+        if (dwp)
+            dwp = DeferWindowPos(dwp, GetDlgItem(h, IDYES), NULL,
+                                 cr.right - margin - deny_w - gap - allow_w,
+                                 a.top, allow_w, btn_h,
+                                 SWP_NOZORDER | SWP_NOACTIVATE);
+        if (dwp)
+            EndDeferWindowPos(dwp);
 
         ListView_SetExtendedListViewStyle(list, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT);
         memset(&col, 0, sizeof(col));
@@ -1940,20 +2057,34 @@ static INT_PTR CALLBACK kt_req_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             }
             sfree(text);
         }
-        kt_req_layout(h, d);
+        /*
+         * The baseline every later resize is replayed against, captured at
+         * the TEMPLATE's height with every control where the template put it
+         * and at the width it has just been given. Anything that changes the
+         * window after this point goes through the anchors, which is why it
+         * comes before the height fit and not after it.
+         */
+        anchored_capture(h, kt_req_anchors, lenof(kt_req_anchors), d->rects,
+                         &d->basesize, &ignore);
+        d->ready = 1;
+        /* The rows are in, so a row can be measured: open at the height they
+         * need and pin the floor to a three-row list. Its SetWindowPos lands
+         * as a WM_SIZE, which re-places everything against the baseline. */
+        kt_req_height(h, d);
+        ListView_SetColumnWidth(list, 0, LVSCW_AUTOSIZE_USEHEADER);
         kitty_centre_on_owner(h);
         SetFocus(GetDlgItem(h, IDNO));      /* Return means Deny */
         return FALSE;
       }
       case WM_SIZE:
-        if (d && wp != SIZE_MINIMIZED)
-            kt_req_layout(h, d);
+        if (d && d->ready && wp != SIZE_MINIMIZED)
+            kt_req_relayout(h, d);
         return TRUE;
       case WM_GETMINMAXINFO:
-        if (d) {
+        if (d && d->ready) {
             MINMAXINFO *mmi = (MINMAXINFO *)lp;
-            mmi->ptMinTrackSize.x = d->min_w;
-            mmi->ptMinTrackSize.y = d->min_h;
+            mmi->ptMinTrackSize.x = d->minsize.cx;
+            mmi->ptMinTrackSize.y = d->minsize.cy;
         }
         return TRUE;
       case WM_NOTIFY: {

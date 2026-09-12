@@ -382,37 +382,60 @@ int kitty_theme_button_width(HWND btn, int min_w)
 {
     RECT r;
     SIZE ideal;
-    int air, w = 0;
+    int air, w = min_w;
 
     if (!btn || !GetWindowRect(btn, &r))
         return min_w;
-    /* Half a line of air on each side, taken from the button's own height so
-     * it scales with the font and the DPI like everything else here. */
-    air = (r.bottom - r.top) / 2;
+    /*
+     * A line of air, half on each side, taken from the button's own height so
+     * it scales with the font and the DPI like everything else here.
+     *
+     * DPI: the height is the one the dialog manager gave this control, and
+     * the font is the one WM_GETFONT hands back - both already at the DPI the
+     * dialog was created for. So the measurement is in the same pixels as the
+     * GetWindowRect rectangles the layout works in, at 100% and at 200%
+     * alike. It is a measurement at ONE moment, though: a caller that wants
+     * to survive a window being dragged to a monitor of a different scale has
+     * to ask again when the DPI changes.
+     */
+    air = r.bottom - r.top;
 
-    ideal.cx = ideal.cy = 0;
-    if (SendMessage(btn, BCM_GETIDEALSIZE, 0, (LPARAM)&ideal) && ideal.cx > 0) {
-        w = ideal.cx + air;
-    } else {
-        /* No ideal size (a comctl32 that does not answer the message): the
-         * caption measured with the button's font, plus the air. */
+    /*
+     * The caption, measured with the button's OWN font, with DrawText's
+     * default prefix handling so "&" counts as a mnemonic and not as a
+     * character - the same reading the control itself does.
+     *
+     * This, and not BCM_GETIDEALSIZE alone: the ideal size a text-only button
+     * reports is the text plus the theme's own margin, which is tight enough
+     * that a longer caption still came out clipped. The larger of the two
+     * wins, and neither may go below the floor the caller gave.
+     */
+    {
         HDC dc = GetDC(btn);
         if (dc) {
             char label[256];
             HFONT font = (HFONT)SendMessage(btn, WM_GETFONT, 0, 0);
             HFONT oldfont = font ? (HFONT)SelectObject(dc, font) : NULL;
-            SIZE ts;
+            RECT m;
+            m.left = m.top = m.right = m.bottom = 0;
             label[0] = '\0';
             GetWindowTextA(btn, label, sizeof(label));
-            ts.cx = ts.cy = 0;
-            if (GetTextExtentPoint32A(dc, label, (int)strlen(label), &ts))
-                w = ts.cx + 2 * air;
+            if (label[0] &&
+                DrawTextA(dc, label, -1, &m,
+                          DT_CALCRECT | DT_SINGLELINE | DT_LEFT) &&
+                (m.right - m.left) + air > w)
+                w = (m.right - m.left) + air;
             if (oldfont)
                 SelectObject(dc, oldfont);
             ReleaseDC(btn, dc);
         }
     }
-    return w < min_w ? min_w : w;
+
+    ideal.cx = ideal.cy = 0;
+    if (SendMessage(btn, BCM_GETIDEALSIZE, 0, (LPARAM)&ideal) &&
+        ideal.cx + air / 2 > w)
+        w = ideal.cx + air / 2;
+    return w;
 }
 
 COLORREF kitty_theme_row_colour(bool dark, bool alternate)

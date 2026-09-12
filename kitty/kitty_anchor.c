@@ -22,6 +22,36 @@ static void anchored_place(HDWP *hdwp, HWND c, unsigned a, RECT r,
                            SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+/*
+ * Repaint after a relayout: the parent AND every child, in full.
+ *
+ * InvalidateRect on the parent alone is not enough, for two reasons that both
+ * show as one control's pixels sitting inside another after a resize.
+ *
+ * A MOVED control leaves the strip it vacated holding its old image. The
+ * parent's invalidate does mark that strip - but a control moved onto it
+ * arrives by a BLIT of its own bits and paints only the sliver that is newly
+ * exposed, so it covers the strip without repainting it, and the old image
+ * stays there under the new control's transparent parts. That is what the
+ * Deny button left inside the Allow button.
+ *
+ * And a control whose WIDTH changed keeps its bits whatever it is moved onto:
+ * a button's window class has no CS_HREDRAW, so Windows blits and invalidates
+ * only the strip that appeared, and the caption is then drawn centred on the
+ * new width but clipped to the old edge.
+ *
+ * So: RDW_ERASE, so every area a control vacated is painted back to the
+ * dialog background; RDW_ALLCHILDREN, so every moved control is redrawn
+ * whole rather than from the strip it thinks changed; RDW_UPDATENOW, so it
+ * happens now rather than after the next drag message, which is what keeps a
+ * live resize from showing the stale image at all.
+ */
+static void anchored_repaint(HWND parent)
+{
+    RedrawWindow(parent, NULL, NULL,
+                 RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+}
+
 /* Where a child sits in its parent's client coordinates. */
 static void anchored_rect(HWND parent, HWND c, RECT *out)
 {
@@ -73,7 +103,7 @@ void anchored_relayout(HWND hwnd, const struct kl_anchor *anchors, size_t n,
         anchored_place(&hdwp, c, anchors[i].anchor, rects[i], dx, dy);
     }
     EndDeferWindowPos(hdwp);
-    InvalidateRect(hwnd, NULL, TRUE);
+    anchored_repaint(hwnd);
 }
 
 void anchored_capture_windows(HWND parent, const struct kl_anchor_win *anchors,
@@ -100,5 +130,5 @@ void anchored_relayout_windows(HWND parent, const struct kl_anchor_win *anchors,
                        dx, dy);
     }
     EndDeferWindowPos(hdwp);
-    InvalidateRect(parent, NULL, TRUE);
+    anchored_repaint(parent);
 }

@@ -541,6 +541,7 @@ static INT_PTR CALLBACK HelpBoxProc( HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 		case WM_INITDIALOG: {
 			HWND edit = GetDlgItem( hwnd, IDC_HELPTEXT ) ;
 			kitty_help_edit_proc = (WNDPROC)SetWindowLongPtr( edit, GWLP_WNDPROC, (LONG_PTR)HelpEditProc ) ;
+			kitty_dialog_icon( hwnd, NULL ) ;   /* the terminal's own icon */
 			kitty_auxpos_apply( hwnd, "CmdHelp", GetWindow(hwnd, GW_OWNER), 0 ) ;
 			help_box_layout( hwnd ) ;
 			return 1 ;

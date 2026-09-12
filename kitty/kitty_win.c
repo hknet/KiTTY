@@ -1108,6 +1108,49 @@ int kitty_fit_text( HWND dlg, int ctlid, const char *text, int extra_dy ) {
  * size. Does nothing without a visible owner (the template's own placement
  * then stands); the result is kept inside the owner's monitor.
  */
+/*
+ * Give a dialog the icon of the window that raised it.
+ *
+ * A dialog with no icon of its own gets the system's generic one in its
+ * caption and a blank in the taskbar and in Alt-Tab. The icon to take is the
+ * OWNER's rather than the application's, because a session can carry an icon
+ * of its own ([KiTTY] Icone / IconeFile, put on the terminal window by
+ * SetNewIcon) - and a question raised by that session should be recognisable
+ * as belonging to it.
+ *
+ * Big and small are asked for separately: they are different bitmaps at
+ * different sizes, the caption uses the small one and the taskbar the big
+ * one, and a window that has only one of them must not be made to stretch it.
+ * What the owner does not have falls back to its window class's icon and then
+ * to the application's own, so a dialog with no owner still gets a proper one.
+ *
+ * One function, not a copy per window: this is the third place in the suite
+ * that needed it.
+ */
+#ifndef IDI_MAINICON
+#define IDI_MAINICON 200   /* windows/putty-rc.h, when not included first */
+#endif
+void kitty_dialog_icon( HWND dlg, HWND owner ) {
+	HICON big = NULL, small = NULL ;
+	HINSTANCE inst = GetModuleHandle( NULL ) ;
+	if( !dlg ) return ;
+	if( !owner ) owner = GetWindow( dlg, GW_OWNER ) ;
+	if( owner ) {
+		big = (HICON)SendMessage( owner, WM_GETICON, ICON_BIG, 0 ) ;
+		small = (HICON)SendMessage( owner, WM_GETICON, ICON_SMALL, 0 ) ;
+		if( !big ) big = (HICON)(LONG_PTR)GetClassLongPtr( owner, GCLP_HICON ) ;
+		if( !small ) small = (HICON)(LONG_PTR)GetClassLongPtr( owner, GCLP_HICONSM ) ;
+	}
+	if( !big ) big = (HICON)LoadImage( inst, MAKEINTRESOURCE(IDI_MAINICON),
+		IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON),
+		LR_SHARED ) ;
+	if( !small ) small = (HICON)LoadImage( inst, MAKEINTRESOURCE(IDI_MAINICON),
+		IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON),
+		LR_SHARED ) ;
+	if( big ) SendMessage( dlg, WM_SETICON, ICON_BIG, (LPARAM)big ) ;
+	if( small ) SendMessage( dlg, WM_SETICON, ICON_SMALL, (LPARAM)small ) ;
+}
+
 void kitty_centre_on_owner( HWND dlg ) {
 	HWND owner = GetWindow( dlg, GW_OWNER ) ;
 	RECT o, d, wa ;
@@ -1874,19 +1917,10 @@ static INT_PTR CALLBACK TitleVarsProc(HWND hwnd, UINT msg,
                                0, (LPARAM)line);
         }
         SendDlgItemMessage(hwnd, IDC_TITLEVARS_LIST, LB_SETCURSEL, 0, 0);
-        /* The window wears KiTTY's icon like every other KiTTY window - it
-         * had none, which also left a blank in the taskbar. */
-        {
-#ifndef IDI_MAINICON
-#define IDI_MAINICON 200   /* windows/putty-rc.h; not included here */
-#endif
-            HICON ic = LoadIcon(GetModuleHandle(NULL),
-                                MAKEINTRESOURCE(IDI_MAINICON));
-            if (ic) {
-                SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)ic);
-                SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)ic);
-            }
-        }
+        /* The window wears the icon of whatever raised it, like every other
+         * KiTTY window - it had none, which also left a blank in the
+         * taskbar. */
+        kitty_dialog_icon(hwnd, NULL);
         kitty_auxpos_apply(hwnd, "TitleVars", GetWindow(hwnd, GW_OWNER), 1);
         return 1;
       }

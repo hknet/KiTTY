@@ -256,13 +256,21 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   Both are modeless now, so the session keeps running, drawing and taking
   input while the question stands, and a transfer the far end gives up on
   takes its dialog down with it. The upload request resizes in both
-  directions, its buttons are as wide as the captions they carry - "Allow
-  selected" was drawn clipped, over the top of itself, because the button
-  kept the width the template's own caption needed - and the warning line
+  directions without leaving pieces of one button drawn inside another, it
+  opens at the height its list of files actually needs and can be made as
+  short as a three-row list, its buttons are as wide as the captions they
+  carry - "Allow selected" was drawn clipped, over the top of itself,
+  because the button kept the width the template's own caption needed - and
+  the warning line
   follows the colour theme instead of a fixed red on a fixed light
   background. A requested file that does not exist on this PC is now listed
   as well, marked "- not found", and "Locate..." puts a local file in its
   place: it is sent under the name the host asked for.
+- **Windows raised by a session wear that session's icon.** The two kitten
+  transfer requests had none at all - a generic caption icon and a blank in
+  the taskbar - and the /help window and the title-placeholder list took the
+  application's icon rather than the one the session is running under. All
+  four now take the terminal's own, in both the caption and the taskbar size.
 - **Resizing the window keeps the scroll position.** The view used to jump
   to the bottom on every resize even while you were reading further up; it
   now stays on the lines you were looking at, and only a view that was at

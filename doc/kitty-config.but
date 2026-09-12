@@ -1034,8 +1034,10 @@ listed (a very large folder delays the dialog by the walk). Untick a
 file and it stays home. \q{Allow selected} sends the ticked files; each
 unticked one is refused when the host asks for it, and \c{kitten} shows
 \q{Permission denied} for that file. \q{Deny} refuses them all, as does
-closing the dialog or pressing Return. The window can be resized in both
-directions; the list grows with it.
+closing the dialog or pressing Return. The window opens at the height the
+list actually needs, up to the ten rows it is designed around, and can be
+resized in both directions down to a three-row list; the list takes
+whatever space the window gains.
 
 A requested name that does not exist on this PC is listed too, marked
 \q{- not found} and unticked. Select such a row and \q{Locate...} opens

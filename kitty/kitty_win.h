@@ -41,6 +41,10 @@ int OpenDirName( HWND hFrame, char * dirname ) ;
 int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const char * title ) ;
 /* Centre a modal dialog over its owner (WM_INITDIALOG, after final size). */
 void kitty_centre_on_owner( HWND dlg ) ;
+/* Give a dialog the caption and taskbar icon of the window that raised it -
+ * which is the SESSION's own icon when that session carries one. `owner`
+ * NULL = the dialog's owner. Called from WM_INITDIALOG. */
+void kitty_dialog_icon( HWND dlg, HWND owner ) ;
 /* Grow one static control to fit `text` at the dialog's font, moved down by
  * extra_dy; returns the height change in pixels (the caller moves what sits
  * below and grows the window). Empty text collapses and hides the control. */

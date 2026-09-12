@@ -24,6 +24,7 @@ extern const char *kitty_reg_sessions( void ) ;
 #include "kitty_registry.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* the words this box shows */
+#include "kitty_win.h"      /* kitty_dialog_icon: the caption/taskbar icon */
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */
 extern Conf *conf ;                     /* active-seat global (window.c) */
@@ -37,7 +38,10 @@ static char * InputBoxResult = NULL ;
 // Boite de dialogue d'information
 static LRESULT CALLBACK InfoCallBack( HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam ) {
 	switch(message) {
-		case WM_INITDIALOG: SetWindowText( GetDlgItem(hwnd,IDC_RESULT), "" ) ; break;
+		case WM_INITDIALOG:
+			SetWindowText( GetDlgItem(hwnd,IDC_RESULT), "" ) ;
+			kitty_dialog_icon( hwnd, NULL ) ;   /* its owner's icon */
+			break;
 		case WM_COMMAND:
 			if( LOWORD(wParam) == 1001 ) {
 				SetWindowText( GetDlgItem(hwnd,IDC_RESULT), (char*)lParam ) ;
@@ -88,6 +92,7 @@ static LRESULT CALLBACK InputCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 			handle = GetDlgItem(hwnd,IDC_RESULT);
 			if( InputBoxResult == NULL ) SetWindowText(handle,"") ;
 			else SetWindowText( handle, InputBoxResult ) ;
+			kitty_dialog_icon( hwnd, NULL ) ;   /* its owner's icon */
 			break;
 		case WM_COMMAND:
 			if (LOWORD(wParam) == IDOK)
@@ -136,6 +141,7 @@ static LRESULT CALLBACK InputCallBackPassword(HWND hwnd, UINT message, WPARAM wP
 			handle = GetDlgItem(hwnd,IDC_RESULT);
 			if( InputBoxResult == NULL ) SetWindowText(handle,"");
 			else SetWindowText( handle, InputBoxResult ) ;
+			kitty_dialog_icon( hwnd, NULL ) ;   /* its owner's icon */
 			break;
 
 		case WM_COMMAND:
@@ -225,6 +231,9 @@ static LRESULT CALLBACK InputMultilineCallBack (HWND hwnd, UINT message, WPARAM 
 			strcat( buffer, KT_INPUTBOX_TITLE_SUFFIX ) ;
 			SetWindowText( hwnd, buffer ) ;
 			free(buffer);
+			/* This one is created with NO owner, so the terminal window has
+			 * to be named - it is where the caption above comes from too. */
+			kitty_dialog_icon( hwnd, MainHwnd ) ;
 			handle = GetDlgItem(hwnd,IDC_RESULT) ;
 			if( EditReadOnly ) SendMessage(handle, EM_SETREADONLY, 1, 0);
 			if( InputBoxResult == NULL ) SetWindowText(handle,"");
