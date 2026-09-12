@@ -279,9 +279,20 @@ void printINI( SINI * Ini ) {
  * were unsupported; spaces in the path were never the problem). Trailing
  * spaces are invisible and did the same damage.
  *
- * A value that genuinely wants a leading or trailing space, or literal quotes
- * at both ends, can no longer have one from an ini file. No key in the suite
- * does, and on Windows a path cannot.
+ * QUOTES ARE THE WAY BACK. A value wrapped in one pair of matching quotes
+ * keeps everything BETWEEN them exactly as written - leading and trailing
+ * spaces and tabs included. Only the whitespace OUTSIDE the quotes and the
+ * one wrapping pair are removed, so
+ *
+ *     key =  " two spaces here:  "
+ *
+ * yields ` two spaces here:  `. It used to trim inside the quotes as well,
+ * which left no way at all to store such a value and made quoting look like
+ * a no-op; the application notification, which keeps the note exactly as it
+ * was typed, is the first key that needs it.
+ *
+ * An UNQUOTED value is trimmed at both ends as before, which is what makes
+ * "configdir = C:\somewhere" work.
  */
 void mini_clean_value( char * value ) {
 	size_t l ;
@@ -292,10 +303,9 @@ void mini_clean_value( char * value ) {
 	while( (l=strlen(value))>0 && (value[l-1]==' '||value[l-1]=='\t') ) value[l-1]='\0' ;
 	l = strlen( value ) ;
 	if( l >= 2 && ( (value[0]=='"' && value[l-1]=='"') || (value[0]=='\'' && value[l-1]=='\'') ) ) {
+		/* Inside the quotes is the value, verbatim. */
 		memmove( value, value+1, l-2 ) ;
 		value[l-2] = '\0' ;
-		/* and again for whitespace that was inside the quotes */
-		while( (l=strlen(value))>0 && (value[l-1]==' '||value[l-1]=='\t') ) value[l-1]='\0' ;
 	}
 }
 

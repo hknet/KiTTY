@@ -9,6 +9,7 @@
 
 #include "putty.h"
 #include "../kitty/kitty_hostkey_scan.h"   /* KiTTY: -scan / -knownhosts */
+#include "../kitty/kitty_renameguard.h"    /* KiTTY: refuse a foreign file name */
 #include "ssh.h"
 #include "storage.h"
 #include "tree234.h"
@@ -308,6 +309,18 @@ int main(int argc, char **argv)
 
     dll_hijacking_protection();
     enable_dit();
+
+    /* KiTTY: the rename guard, before the command line is looked at. This
+     * binary ships as klink.exe and is built as plink.exe. */
+    {
+        static const char *const names[] = { "klink", "plink" };
+        if (kitty_rename_guard(names, lenof(names), 0))
+            return 1;
+    }
+    /* KiTTY: and, in a signed release build, does this file still carry our
+     * signature? Compiled to nothing in a dev or test build. */
+    if (kitty_signature_guard(0))
+        return 1;
 
     /*
      * Initialise port and protocol to sensible defaults. (These

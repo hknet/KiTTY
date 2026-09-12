@@ -106,6 +106,15 @@ struct kitty_retired_key {
 };
 const struct kitty_retired_key *kitty_retired_key_table(size_t *n);
 
+/*
+ * Fold a session's legacy "Notes" value into its Comment and switch the
+ * Comment panel's "Notify the user at login" on. `note` may be NULL or empty,
+ * in which case nothing happens. Idempotent: a Comment that already contains
+ * the note is left as it is. Nothing is written to the store - the old value
+ * is dropped by the retired-key rule the next time the session is saved.
+ */
+void kitty_merge_legacy_note(Conf *conf, const char *note);
+
 /* ---- portable file backend (fork-native flat .ini/dir format) ---- */
 int store_is_file(void);                 /* portable mode active? */
 const char *kitty_session_dir(void);     /* per-session files directory */

@@ -441,13 +441,166 @@ static char *kitty_read_session_value_direct(const char *sessionname,
     return result;
 }
 
+/*
+ * KiTTY: fold a session's legacy "Notes" value into its Comment.
+ *
+ * Classic KiTTY kept a second free-text field per session, written by the
+ * send-text box's Shift+F2 / Shift+F3 keys and shown in a modal box when the
+ * session opened. There is one note field now - the Comment - so a note that
+ * arrives under the old name is merged into it and the Comment panel's
+ * "Notify the user at login" is switched on, which is what the old field did.
+ *
+ * Empty Comment: the note becomes the Comment. Non-empty: the note is appended
+ * after a blank line. CRLF throughout, because that is what the Comment's
+ * multi-line edit box and REG_SZ round-trip (see scb_panel_comment).
+ *
+ * IDEMPOTENT, by WHOLE PARAGRAPHS. The note counts as already merged only when
+ * the comment - split at blank lines - has a paragraph that IS the note. A
+ * substring match would be wrong in both directions: a note of "db" would count
+ * as merged into a comment reading "dbserver" and would then be lost when the
+ * old value is dropped, while a comment that merely quotes a line of the note
+ * would block the carry-over of the rest.
+ *
+ * The comparison normalises line endings (CRLF, CR and LF all read as one line
+ * break) and ignores trailing spaces and tabs on every line, because the note
+ * and the comment were typed into two different edit boxes by two different
+ * versions. Only the COMPARISON is normalised: the text that is stored is the
+ * comment and the note exactly as they were written.
+ *
+ * Nothing is written to the store here. The old value is dropped from the
+ * session the next time it is saved, by the retired-key rule in
+ * windows/storage.c - see kitty_retired_keys, which explains why retiring is
+ * not done on a read path.
+ */
+
+/* Line endings to LF, trailing spaces/tabs off every line. Caller frees. */
+static char *kitty_note_normalise(const char *s)
+{
+    size_t n = s ? strlen(s) : 0;
+    char *out = snewn(n + 1, char);
+    size_t o = 0, blanks = 0;     /* blanks: the run of spaces/tabs just written */
+    const char *p = s ? s : "";
+
+    while (*p) {
+        if (*p == '\r' || *p == '\n') {
+            if (*p == '\r' && p[1] == '\n')
+                p++;
+            p++;
+            o -= blanks;          /* that run sat at the end of a line */
+            blanks = 0;
+            out[o++] = '\n';
+        } else {
+            if (*p == ' ' || *p == '\t')
+                blanks++;
+            else
+                blanks = 0;
+            out[o++] = *p++;
+        }
+    }
+    o -= blanks;                  /* and at the end of the last line */
+    out[o] = '\0';
+    return out;
+}
+
+/* Does `nc` (normalised) have a paragraph equal to `nn` (normalised, with no
+ * leading or trailing blank lines)? Paragraphs are separated by blank lines. */
+static bool kitty_note_is_paragraph_of(const char *nc, const char *nn)
+{
+    size_t ln = strlen(nn);
+    const char *p = nc;
+
+    if (!ln)
+        return false;
+    while (*p) {
+        const char *e;
+        while (*p == '\n')        /* the blank lines between paragraphs */
+            p++;
+        if (!*p)
+            break;
+        for (e = p; *e; e++)
+            if (e[0] == '\n' && e[1] == '\n')
+                break;
+        if ((size_t)(e - p) == ln && !memcmp(p, nn, ln))
+            return true;
+        p = e;
+    }
+    return false;
+}
+
+/*
+ * The merge itself, on plain strings: the comment a session should show once
+ * its legacy note is folded in, or NULL when there is nothing to change (no
+ * note, or the note is already a paragraph of the comment). Caller frees.
+ */
+static char *kitty_note_merged_text(const char *comment, const char *note)
+{
+    char *nc, *nn, *start, *end;
+    bool have;
+
+    if (!note || !*note)
+        return NULL;
+    if (!comment)
+        comment = "";
+
+    nc = kitty_note_normalise(comment);
+    nn = kitty_note_normalise(note);
+    start = nn;
+    while (*start == '\n')             /* the note's own leading blank lines */
+        start++;
+    end = start + strlen(start);
+    while (end > start && end[-1] == '\n')
+        end--;
+    *end = '\0';
+    have = !*start || kitty_note_is_paragraph_of(nc, start);
+    sfree(nc);
+    sfree(nn);
+    if (have)
+        return NULL;
+
+    return *comment ? dupcat(comment, "\r\n\r\n", note) : dupstr(note);
+}
+
+void kitty_merge_legacy_note(Conf *conf, const char *note)
+{
+    const char *comment;
+    char *merged;
+
+    if (!conf || !note || !*note)
+        return;
+    comment = conf_get_str(conf, CONF_comment);
+    merged = kitty_note_merged_text(comment, note);
+    if (merged) {
+        conf_set_str(conf, CONF_comment, merged);
+        sfree(merged);
+    }
+    /* Owed whether or not the text changed: the old field always spoke up when
+     * the session opened, so a session that carries one asks to be notified. */
+    conf_set_bool(conf, CONF_comment_notify, true);
+}
+
 char *kitty_read_session_comment(const char *sessionname)
 {
     /* If a session exists in the primary hive with an intentionally empty
      * Comment, keep it empty. Falling back to old hives here made the config
      * dialog show stale comments from migrated/legacy sessions with the same
      * name (e.g. an old 9bis entry overwriting an empty kapper.net comment). */
-    return kitty_read_session_value_direct(sessionname, KR_COMMENT, 0);
+    char *comment = kitty_read_session_value_direct(sessionname, KR_COMMENT, 0);
+    /*
+     * A session written by an older KiTTY may still carry its note under the
+     * retired name. The session list's read-only preview has to show it BEFORE
+     * that session is ever loaded, so the same merge the load path does is done
+     * here on the text - read from the same hive, nothing written back.
+     */
+    char *note = kitty_read_session_value_direct(sessionname, KR_NOTES, 0);
+    if (note) {
+        char *merged = kitty_note_merged_text(comment, note);
+        if (merged) {
+            sfree(comment);
+            comment = merged;
+        }
+        sfree(note);
+    }
+    return comment;
 }
 
 /*

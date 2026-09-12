@@ -447,6 +447,32 @@
 ;    Connection -> SSH -> Auth (an application-wide setting, not per session).
 ;verifyagent=yes
 
+; notes: the application notification - one note this installation shows to
+;    whoever starts KiTTY. The first window every KiTTY process opens (the
+;    terminal, the launcher, the configuration window) raises it in the small
+;    notice window near the clock: no focus stolen, no timeout, and it stays
+;    until it is clicked. Only one copy is on the desktop at a time, so
+;    several KiTTY processes started together do not stack it up. Another
+;    notice from the same process borrows the screen and hands it back - the
+;    note returns and still waits to be clicked. Empty (the default) means
+;    nothing is displayed.
+;    ONE line here: \n is a line break, \r a carriage return, \t a tab and \\
+;    a single backslash - no other escapes. Leading and trailing spaces are
+;    kept by wrapping the whole value in double quotes. Also editable at
+;    Application > Security > Application Notification.
+;    Outside portable mode this key is the registry value "Notes" under
+;    KiTTY's own key, which is where older versions kept the note they showed
+;    in a message box at every start.
+;notes=Company policy: no production logins from this PC.\nAsk the service desk.
+
+; notesonce: what clicking the application notification away means. no (the
+;    default) takes it off this desktop and the next KiTTY started shows it
+;    again. yes records that the note has been READ: the process that clicked
+;    remembers, and so does the session launcher when one is running, so
+;    nothing shows that note again for as long as either is there. Editing
+;    the note makes it a different note, and it is shown again.
+;notesonce=no
+
 ; warnmissingfeatures: on a Windows too old for something KiTTY offers - dark
 ;    mode, Windows Hello, per-monitor DPI - one line in the terminal names what
 ;    is unavailable, so a feature that never happens is not mistaken for a

@@ -59,6 +59,9 @@ bool kitty_bold_caption(const char *text) { return false; }
 struct dlgparam;
 void kitty_cfgbox_workplace_poll(struct dlgparam *dp) { }
 
+/* No settings field here holds its write back, so there is none to flush. */
+void kitty_cfgbox_flush_pending(void) { }
+
 /* And nothing ever asks the stock variants to open on a particular panel. */
 const char *kitty_cfgbox_wanted_panel(void) { return 0; }
 

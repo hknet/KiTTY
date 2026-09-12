@@ -43,8 +43,12 @@
 
 struct notice_state {
     char title[128];
-    char text[512];
+    char *text;               /* malloc'd: a note can be much longer than a line */
     COLORREF accent;
+    /* What this notice was holding, released when it goes for good. `clicked`
+     * says whether the user dismissed it or it simply ran out. */
+    void (*on_close)(void *, int clicked);
+    void *close_ctx;
     HFONT title_font;
     HFONT body_font;
     UINT dpi;
@@ -63,6 +67,45 @@ struct notice_state {
 #define NOTICE_GRACE_MS 2000
 
 static HWND notice_hwnd = NULL;
+
+/*
+ * The parked sticky notice.
+ *
+ * A sticky notice (KITTY_NOTICE_STICKY - the application notification) stays
+ * up until it is clicked, but the same process goes on to raise ordinary
+ * notices: an update is available, the old session list is showing, the agent
+ * is not verified. Only one notice is on screen at a time, so one of those
+ * would have ended the sticky one for good and the note would be lost without
+ * ever having been read.
+ *
+ * So a sticky notice that is REPLACED is parked here rather than closed: it
+ * keeps whatever it was holding (its on_close is not run, which is what keeps
+ * the application notification's desktop mutex held), and the notice that
+ * displaced it puts it back on screen when IT goes away. One deep: a second
+ * sticky notice supersedes the parked one outright.
+ */
+struct notice_parked {
+    int valid;
+    char title[128];
+    char *text;
+    COLORREF accent;
+    void (*on_close)(void *, int clicked);
+    void *close_ctx;
+    HWND click_hwnd;
+    UINT click_msg;
+};
+static struct notice_parked notice_park;
+
+static void notice_park_drop(int clicked)
+{
+    if (!notice_park.valid)
+        return;
+    notice_park.valid = 0;
+    if (notice_park.text) { free(notice_park.text); notice_park.text = NULL; }
+    if (notice_park.on_close)
+        notice_park.on_close(notice_park.close_ctx, clicked);
+    notice_park.on_close = NULL;
+}
 
 static int notice_high_contrast(void)
 {
@@ -142,20 +185,67 @@ static int notice_pointer_is_over(HWND hwnd)
     return PtInRect(&rc, pt) ? 1 : 0;
 }
 
-static void notice_close(HWND hwnd)
+static void notice_close_reason(HWND hwnd, int clicked)
 {
     struct notice_state *st =
         (struct notice_state *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
     KillTimer(hwnd, NOTICE_TIMER);
     if (st) {
+        /* Before anything is freed, and before the replacing notice (if that
+         * is what is happening) takes the screen: whatever this one was
+         * holding is released here, once. */
+        void (*on_close)(void *, int) = st->on_close;
+        void *ctx = st->close_ctx;
+        st->on_close = NULL;
         if (st->title_font) DeleteObject(st->title_font);
         if (st->body_font)  DeleteObject(st->body_font);
+        if (st->text)       free(st->text);
         free(st);
         SetWindowLongPtr(hwnd, GWLP_USERDATA, 0);
+        if (on_close)
+            on_close(ctx, clicked);
     }
     if (notice_hwnd == hwnd)
         notice_hwnd = NULL;
     DestroyWindow(hwnd);
+}
+
+static void notice_close(HWND hwnd)
+{
+    notice_close_reason(hwnd, 0);
+}
+
+/* Put the parked sticky notice back on screen. Called only from the paths
+ * where a notice goes away on its own (clicked, or timed out) - never from
+ * the replacement path, which runs inside kitty_notice_show_ex and would
+ * otherwise recurse into itself. */
+static void notice_restore_parked(void)
+{
+    char title[128];
+    char *text;
+    COLORREF accent;
+    void (*on_close)(void *, int);
+    void *ctx;
+    HWND click_hwnd;
+    UINT click_msg;
+
+    if (!notice_park.valid)
+        return;
+    notice_park.valid = 0;
+    snprintf(title, sizeof(title), "%s", notice_park.title);
+    text = notice_park.text;        notice_park.text = NULL;
+    accent = notice_park.accent;
+    on_close = notice_park.on_close; notice_park.on_close = NULL;
+    ctx = notice_park.close_ctx;
+    click_hwnd = notice_park.click_hwnd;
+    click_msg = notice_park.click_msg;
+    if (text) {
+        kitty_notice_show_ex(title, text, accent, KITTY_NOTICE_STICKY,
+                             click_hwnd, click_msg, on_close, ctx);
+        free(text);
+    } else if (on_close) {
+        on_close(ctx, 0);
+    }
 }
 
 static LRESULT CALLBACK notice_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -187,6 +277,9 @@ static LRESULT CALLBACK notice_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
                 return 0;
             }
             notice_close(hwnd);
+            /* This notice has had its time; if it displaced a sticky one,
+             * that one goes back up now. */
+            notice_restore_parked();
             return 0;
         }
         break;
@@ -225,7 +318,10 @@ static LRESULT CALLBACK notice_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
          * either way - a notice you cannot get rid of is a nuisance. */
         if (st && st->click_hwnd && st->click_msg)
             PostMessage(st->click_hwnd, st->click_msg, 0, 0);
-        notice_close(hwnd);
+        notice_close_reason(hwnd, 1);
+        /* A click dismisses THIS notice. A sticky one it had displaced has
+         * still not been read, so it comes back. */
+        notice_restore_parked();
         return 0;
       case WM_PAINT: {
         PAINTSTRUCT ps;
@@ -268,7 +364,8 @@ static LRESULT CALLBACK notice_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
                 tr.top += tm.tmHeight + notice_scale(4, st->dpi);
             }
             SelectObject(dc, st->body_font);
-            DrawTextA(dc, st->text, -1, &tr, DT_LEFT | DT_TOP | DT_WORDBREAK);
+            DrawTextA(dc, st->text ? st->text : "", -1, &tr,
+                      DT_LEFT | DT_TOP | DT_WORDBREAK);
             SelectObject(dc, old);
         }
         EndPaint(hwnd, &ps);
@@ -299,6 +396,14 @@ static void notice_register_class(void)
 
 void kitty_notice_show(const char *title, const char *text, COLORREF accent,
                        int seconds, HWND click_hwnd, unsigned int click_msg)
+{
+    kitty_notice_show_ex(title, text, accent, seconds, click_hwnd, click_msg,
+                         NULL, NULL);
+}
+
+void kitty_notice_show_ex(const char *title, const char *text, COLORREF accent,
+                          int seconds, HWND click_hwnd, unsigned int click_msg,
+                          void (*on_close)(void *ctx, int clicked), void *ctx)
 {
     struct notice_state *st;
     HWND hwnd;
@@ -333,11 +438,20 @@ void kitty_notice_show(const char *title, const char *text, COLORREF accent,
         return;
     st->accent = accent;
     st->dpi = dpi;
-    st->seconds = seconds > 0 ? seconds : 15;
+    /* 0 = no timer at all (KITTY_NOTICE_STICKY); every other non-positive
+     * value keeps the historical default of fifteen seconds. */
+    st->seconds = seconds > 0 ? seconds :
+                  (seconds == KITTY_NOTICE_STICKY ? 0 : 15);
     st->click_hwnd = click_hwnd;
     st->click_msg = click_msg;
+    st->on_close = on_close;
+    st->close_ctx = ctx;
     snprintf(st->title, sizeof(st->title), "%s", title);
-    snprintf(st->text, sizeof(st->text), "%s", text);
+    st->text = strdup(text);
+    if (!st->text) {
+        free(st);
+        return;
+    }
     st->title_font = notice_font(dpi, 1);
     st->body_font = notice_font(dpi, 0);
 
@@ -360,11 +474,46 @@ void kitty_notice_show(const char *title, const char *text, COLORREF accent,
     } else {
         h += notice_scale(70, dpi);
     }
+    /* A long text must not grow the notice off the screen: cap it at the work
+     * area (less the margin at each end) and let DT_WORDBREAK clip the rest. */
+    {
+        int maxh = (mi.rcWork.bottom - mi.rcWork.top) -
+                   notice_scale(NOTICE_MARGIN, dpi) * 2;
+        if (maxh > 0 && h > maxh)
+            h = maxh;
+    }
 
     /* Only one at a time: a second notice replaces the first rather than
-     * stacking, because they are about one thing whose state has just moved. */
-    if (notice_hwnd && IsWindow(notice_hwnd))
+     * stacking, because they are about one thing whose state has just moved.
+     *
+     * Unless the first one is STICKY and this one is not - then it is parked
+     * instead of closed, and goes back up when this one is gone. Its on_close
+     * is deliberately NOT run: a parked notice still holds what it held (the
+     * application notification keeps the desktop slot, so no other process
+     * shows the same note meanwhile). */
+    if (notice_hwnd && IsWindow(notice_hwnd)) {
+        struct notice_state *old_st =
+            (struct notice_state *)GetWindowLongPtr(notice_hwnd, GWLP_USERDATA);
+        if (old_st && old_st->seconds == 0 && seconds != KITTY_NOTICE_STICKY) {
+            /* A second sticky would have nowhere to go: one park, and the
+             * newer sticky is the one that matters. */
+            notice_park_drop(0);
+            snprintf(notice_park.title, sizeof(notice_park.title), "%s",
+                     old_st->title);
+            notice_park.text = old_st->text;    /* taken over, not copied */
+            old_st->text = NULL;
+            notice_park.accent = old_st->accent;
+            notice_park.on_close = old_st->on_close;
+            notice_park.close_ctx = old_st->close_ctx;
+            notice_park.click_hwnd = old_st->click_hwnd;
+            notice_park.click_msg = old_st->click_msg;
+            old_st->on_close = NULL;            /* it is parked, not finished */
+            notice_park.valid = 1;
+        } else if (seconds == KITTY_NOTICE_STICKY) {
+            notice_park_drop(0);
+        }
         notice_close(notice_hwnd);
+    }
 
     /* The title goes in the window NAME as well as being painted. A WS_POPUP
      * with no caption never shows it, so nothing changes on screen - but it
@@ -379,7 +528,12 @@ void kitty_notice_show(const char *title, const char *text, COLORREF accent,
     if (!hwnd) {
         if (st->title_font) DeleteObject(st->title_font);
         if (st->body_font)  DeleteObject(st->body_font);
+        free(st->text);
         free(st);
+        /* Nothing is on screen, so anything the caller was holding for the
+         * notice is released now rather than never. */
+        if (on_close)
+            on_close(ctx, 0);
         return;
     }
     SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)st);
@@ -387,5 +541,8 @@ void kitty_notice_show(const char *title, const char *text, COLORREF accent,
     /* SHOWNOACTIVATE, and nothing that focuses it afterwards. */
     ShowWindow(hwnd, SW_SHOWNOACTIVATE);
     UpdateWindow(hwnd);
-    SetTimer(hwnd, NOTICE_TIMER, (UINT)(st->seconds * 1000), NULL);
+    /* A sticky notice sets no timer: it goes when it is clicked, when a later
+     * notice replaces it, or when the process ends. */
+    if (st->seconds > 0)
+        SetTimer(hwnd, NOTICE_TIMER, (UINT)(st->seconds * 1000), NULL);
 }

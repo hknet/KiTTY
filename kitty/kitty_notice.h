@@ -8,13 +8,30 @@
  * duration we choose, and it never takes the focus. See kitty_notice.c for why
  * this exists rather than a tray balloon.
  *
- * seconds <= 0 uses the default (15). click_hwnd/click_msg are optional: when
- * both are given, clicking the notice posts that message before dismissing it,
- * which is how a notice can offer an action. Only one notice is on screen at a
- * time; a second replaces the first.
+ * seconds <= 0 uses the default (15), except KITTY_NOTICE_STICKY, which sets
+ * no timer at all: the notice stays until it is clicked or a later notice
+ * replaces it. click_hwnd/click_msg are optional: when both are given,
+ * clicking the notice posts that message before dismissing it, which is how a
+ * notice can offer an action. Only one notice is on screen at a time; a second
+ * replaces the first.
  */
+#define KITTY_NOTICE_STICKY (-1)
+
 void kitty_notice_show(const char *title, const char *text, COLORREF accent,
                        int seconds, HWND click_hwnd, unsigned int click_msg);
+
+/* The same, plus a callback run when the notice is FINISHED with - `clicked`
+ * distinguishes a dismissal from a notice that merely ran out. A notice that
+ * holds something for as long as it is on screen (the application
+ * notification holds a desktop-wide mutex) releases it there.
+ *
+ * A STICKY notice displaced by a later, ordinary one is PARKED, not finished:
+ * on_close does not run, whatever it holds stays held, and it goes back on
+ * screen when the notice that displaced it goes away. Only a second sticky
+ * notice ends a parked one. */
+void kitty_notice_show_ex(const char *title, const char *text, COLORREF accent,
+                          int seconds, HWND click_hwnd, unsigned int click_msg,
+                          void (*on_close)(void *ctx, int clicked), void *ctx);
 
 /* Clicking the "SSH agent not verified" notice (kitty_win.c) posts this to
  * the terminal window; window.c answers by opening a configuration window

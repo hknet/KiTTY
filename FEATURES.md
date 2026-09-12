@@ -810,6 +810,44 @@ Turn the warning off if you deliberately use an agent that cannot be verified an
 
 (no screenshot)
 
+### The programs refuse to start under a foreign name
+
+Every KiTTY program checks its own file name at startup and exits if that name does not begin with the program's own name: `kitty.exe` and `kitty_portable.exe` want `kitty` or `putty`, `klink.exe` wants `klink` or `plink`, `kscp.exe` `kscp` or `pscp`, `ksftp.exe` `ksftp` or `psftp`, `kageant.exe` `kageant` or `pageant`, `kittygen.exe` and `kittygen-cli.exe` `kittygen` or `puttygen`. The PuTTY name is accepted for each because a tool that expects `putty.exe` or `plink.exe` is routinely pointed at a renamed KiTTY, and that has to keep working. Only the beginning of the name is checked and case does not matter, so a browser's duplicate `kitty (1).exe`, a version-named copy `kitty-0.85.exe`, `kitty_nocompress.exe` and `klink2.exe` all start normally. `kitty_pterm.exe` and `kitty_tel.exe` are the unchanged PuTTY programs and are not checked.
+
+Under any other name the windowed programs show one message box and exit, and the command-line tools print one line to stderr and exit 1:
+
+    Renamed executable: this program runs only as kitty*.exe. Found: 6bovxvce.exe
+
+Where there is nobody to click that box — a scheduled task, a service, a session with no desktop — the same line goes to the Windows **Application** event log under the source `KiTTY++` instead, and the command-line tools write it there as well as to stderr, so an unattended job that stops for this reason still says why.
+
+A signed tool that circulates under throwaway file names is what abuse of a legitimate binary looks like, and detection heuristics score it as such. Keeping the name recognisable costs you nothing and takes that use away. It is a nuisance bar rather than a security boundary: whoever keeps the name is unaffected, and the check can be removed at the cost of the signature. Nothing in KiTTY keys a mode on the file name — PuTTY mode is the `-putty` switch — so no feature depends on renaming anything.
+
+A downloaded release build also checks its own signature at startup, right after the name. It refuses to run on three findings and no others: the file was modified after it was signed, the signature was removed outright, or it was re-signed by somebody else. The message names which:
+
+    Signature check failed: this program is not signed by its publisher. Found: bad digest
+
+It never refuses because a machine is unable to judge. An old or unpatched Windows that does not know the signing algorithm, cannot read the signature at all, does not hold the root certificate, or has no revocation data — Windows XP and an offline Windows 7 among them — cannot form an opinion, and KiTTY starts normally there. So does a machine whose own policy distrusts the certificate: that says something about the machine, not about the file. Nothing is fetched from the network for this, and the Windows version is never consulted: the check asks the question and acts on the answer. Builds you compile yourself carry no signature and no check.
+
+**How to enable:** always on; there is no setting.
+
+(no screenshot)
+
+### The application notification
+
+One note for the whole installation, shown to whoever starts KiTTY: a house rule, a maintenance window, a reminder that this PC reaches production.
+
+It appears in the small notice window near the clock, raised by the first window each KiTTY process opens — the terminal, the launcher or the configuration window. It never takes the focus and has no timeout: it stays until it is clicked, so it can be read in your own time and it does not stand between you and the session. Only one copy is on the desktop at a time, so half a dozen KiTTY windows opened together do not stack up half a dozen notices.
+
+It also survives the traffic around it. Another notice from the same process — an update is available, the saved-session list is showing an older KiTTY's sessions, the agent answering is not one KiTTY recognises — takes the screen for its few seconds and then hands it back, and the note is there again, still waiting to be clicked.
+
+*"Show once while the launcher runs"* changes what a click means. Off, a click only takes the note off this desktop and the next KiTTY started shows it again. On, a click records that the note has been read: the process that clicked remembers it, and so does the session launcher when one is running, so nothing shows that note again for as long as either is there — and editing the note makes it a different note, which is shown again.
+
+Earlier versions kept the same note in the registry and displayed it in a message box at every start, which had to be clicked away before anything happened. That value is still the note, so an installed KiTTY keeps what it had.
+
+**How to enable:** **Application > Security > Application Notification**, *"Notification:"*. Empty displays nothing. Stored per installation (`[KiTTY] notes` in `kitty.ini`, one line with `\n` for a line break; `notesonce` is the checkbox), not per session.
+
+(no screenshot)
+
 ### Where the helper programs live
 
 KiTTY drives programs it does not contain: **WinSCP** or **FileZilla** for a graphical file transfer of the session you are on (`WinSCPPath`, `FileZillaPath` in `kitty.ini`; the Tools menu offers each only while its executable exists), **kscp** for uploads and *Get file*, and **rz** / **sz** for ZModem transfers inside the terminal.

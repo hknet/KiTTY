@@ -8,6 +8,15 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **Application Notification.** KiTTY++ Settings > Security > Application
+  Notification holds a text ("Notification:") that every KiTTY++ process
+  shows in a notice window at its first window - terminal, launcher or
+  configuration window - until you click it; empty = nothing displayed.
+  Only one is on the desktop at a time: a second start while one is up
+  shows none. It is `notes` in `[KiTTY]` (one line, `\n` for a line
+  break); an installed KiTTY's old registry `Notes` value is the same
+  setting, so an existing note keeps working. The modal box that used to
+  show that value at every start is gone.
 - **Verify the download with one pasted line.** README-BETA in every ZIP and
   on the ISO carries the command for Windows 10 and 11 and one for Windows 7
   to 8.1; Windows XP has no checksum tool, so the README points XP users to
@@ -170,6 +179,23 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Security
 
+- **The programs refuse to start under a foreign file name.** Every KiTTY
+  program checks its own file name and exits unless it begins with its own
+  program name - `kitty`/`putty`, `klink`/`plink`, `kscp`/`pscp`,
+  `ksftp`/`psftp`, `kageant`/`pageant`, `kittygen`/`puttygen`. The PuTTY name
+  is accepted for each, because a tool that expects `putty.exe` or `plink.exe`
+  is routinely pointed at a renamed KiTTY. Only the beginning is checked
+  and case is ignored, so `kitty (1).exe`, `kitty-0.85.exe` and the portable
+  build still run; a copy under a throwaway name shows one message box on an
+  interactive desktop, writes one Application event-log line where there is
+  nobody to click it, and exits 1. It removes the
+  renamed-signed-tool use that detection heuristics score as malicious.
+  `kitty_pterm.exe` and `kitty_tel.exe` are the unchanged PuTTY programs and
+  are not checked. A release build also verifies its own Authenticode
+  signature at startup and refuses when the file was modified, the signature
+  was stripped, or it was re-signed by somebody else - never when the machine
+  cannot judge one, so Windows XP and an offline Windows 7 start as before.
+
 - **A password no longer travels on WinSCP's command line.** "Start WinSCP"
   used to put the session password into the URL and a proxy or tunnel password
   into the raw settings, readable by every process of the same user while
@@ -177,6 +203,18 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   reads (`/passwordsfromfiles`); KiTTY++ deletes the files a minute after the
   start and sweeps leftovers at the next one. Key files and the agent are
   untouched: without a password nothing changes.
+
+### Changed
+
+- **The session comment prints before the connection starts.** With
+  "Notify the user at login" on (Session > Comment, on by default), the
+  comment is printed into the terminal once, at the top, before KiTTY
+  connects - so it is there even when the connection fails. It used to be
+  printed after the SSH login. An old per-session `Notes` value, written by
+  the send-text box of earlier KiTTY versions, is moved into the comment
+  the first time the session is loaded or imported (appended after a blank
+  line when a comment exists), the checkbox is switched on, and the old
+  value is removed when the session is next saved.
 
 ### Fixed
 
@@ -206,6 +244,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Removed
 
+- **Shift+F2 / Shift+F3 in the send-text box.** They loaded and saved the
+  per-session `Notes` registry value, which is now part of the Comment.
 - **The `/copytokitty` console command.** It copied stock PuTTY's whole
   registry tree over KiTTY's, overwriting same-named entries; the Migration
   panel imports PuTTY sessions with a proper preview and no overwrite. Its

@@ -8,6 +8,18 @@
 #ifndef KITTY_AUTHENTICODE_H
 #define KITTY_AUTHENTICODE_H
 
+/*
+ * Our signing identity - THE one place the publisher CN is written. Pinned on
+ * the SUBJECT rather than on a thumbprint: Trusted Signing certificates rotate
+ * every few days, so a pin on the certificate itself would expire with it.
+ *
+ * It lives in the header because the startup signature self-check
+ * (kitty/kitty_renameguard.c) has to compare against the same name and must not
+ * carry a second copy of it. That file is in the `utils` library and does NOT
+ * link this one - it uses the macro and nothing else.
+ */
+#define KITTY_PUBLISHER_CN "KAPPER NETWORK-COMMUNICATIONS GmbH"
+
 /* SECURITY GATE. 1 only if the file at `path` has a valid Authenticode trust
  * chain AND its signing certificate's subject CN is EXACTLY our publisher.
  * Fail-closed: every error path returns 0 (reject). */

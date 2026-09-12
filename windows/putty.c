@@ -65,6 +65,33 @@ static void kitty_settings_load_hook(const char *section, Conf *conf, bool exist
         conf_set_str(conf, CONF_sessionname, section);
 
     /*
+     * KiTTY: a session written by an older KiTTY may carry a "Notes" value -
+     * the second free-text field the send-text box's Shift+F2 / Shift+F3 wrote
+     * and the old build showed in a modal box at session start. There is one
+     * note field now, so fold it into the Comment and switch the Comment
+     * panel's "Notify the user at login" on. The store is not touched here:
+     * the old value goes on the next save (windows/storage.c, kitty_retired_keys,
+     * which says why a read path must not write). The merge is idempotent, so a
+     * session that is never saved does not accumulate copies of the note.
+     *
+     * Re-opened rather than read from the load that just ran: settings.c hands
+     * this hook the Conf, not the handle. open_settings_r() is the same
+     * first-hive-wins read, so it reads the hive the Conf came from.
+     */
+    if (exists && section && *section) {
+        extern void kitty_merge_legacy_note(Conf *conf, const char *note);
+        settings_r *r = open_settings_r(section);
+        if (r) {
+            char *note = read_setting_s(r, "Notes");
+            if (note) {
+                kitty_merge_legacy_note(conf, note);
+                sfree(note);
+            }
+            close_settings_r(r);
+        }
+    }
+
+    /*
      * KiTTY: [KiTTY] funkeys in kitty.ini chooses the function-key mode a
      * session starts with when it does not already have one of its own.
      *

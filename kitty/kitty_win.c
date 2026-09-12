@@ -1622,9 +1622,11 @@ int kitty_autopw_warn( void ) {
  * '...: ""') is trimmed.  The caller keeps the seat-side consequences
  * (mouse pointer, session close / titlebar marker).
  */
-/* KiTTY: the session's Comment, framed, at the clean top of the session
- * (called from the post-auth session-started notification). Only when the
- * Comment panel's "Notify the user at login" is on and there is a note. */
+/* KiTTY: the session's Comment, framed, at the clean top of the session -
+ * printed BEFORE the connection is started (windows/window.c, just ahead of
+ * start_backend), so a note about the session is there at once and is on
+ * screen even when the connection never comes up. Only when the Comment
+ * panel's "Notify the user at login" is on and there is a note. */
 void kitty_print_session_comment(Terminal *term, Conf *conf)
 {
     const char *c = conf ? conf_get_str(conf, CONF_comment) : NULL;

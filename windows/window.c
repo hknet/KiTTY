@@ -56,6 +56,7 @@
 #define IDM_CHECKUPDATE 0x01B0  /* check GitHub releases for a newer KiTTY */
 #ifdef MOD_PERSO
 #include "../kitty/kitty_text.h"   /* KiTTY: shared captions and menu words */
+#include "../kitty/kitty_renameguard.h"   /* KiTTY: refuse a foreign file name */
 /* kitty.c: types a string into this session (the WM_COPYDATA broadcast). */
 void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
 int  kitty_broadcast_default( void ) ;        /* kitty.c: [KiTTY] sendcmdmode */
@@ -252,7 +253,7 @@ void kitty_url_config(Conf *conf);
 int kitty_url_rescan(Terminal *term);
 int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor);
 void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal);
-void kitty_print_session_comment(Terminal *term, Conf *conf);   /* kitty_win.c: framed Comment at session start */
+void kitty_print_session_comment(Terminal *term, Conf *conf);   /* kitty_win.c: framed Comment before the connection starts */
 void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up);
 void kitty_sync_transparency_menu(HMENU menu, Conf *conf, UINT id_up,
                                   UINT id_down, UINT id_anchor);
@@ -347,6 +348,7 @@ int kitty_workplace_query(char *name, int len);   /* kitty/kitty_workplace.c */
 int kitty_workplace_request(int arm, unsigned int minutes);
 #include "../kitty/kitty_notice.h"  /* kitty_notice_show + the notice click
                                      * messages (WM_KITTY_AGENT_UNVERIFIED) */
+#include "../kitty/kitty_notes.h"   /* the application notification, shown by the first window */
 #include "../kitty/kitty_storage.h" /* the one-time old-sessions notice bits */
 #include "../kitty/kitty_theme.h"   /* KiTTY: dark mode for the dialogs */
 #include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
@@ -573,8 +575,6 @@ static void win_seat_notify_session_started(Seat *seat)
     /* KiTTY: SSH session is (re)connected post-auth - restore the normal
      * window icon so a prior SetConnBreakIcon() drop no longer shows. */
     kitty_restore_icon(wgs->term_hwnd, wgs->conf);
-    /* KiTTY: the session's Comment, if its panel asks for it. */
-    kitty_print_session_comment(wgs->term, wgs->conf);
 #ifdef MOD_PERSO
     /* KiTTY: kick off the async update check once per process, and (once) show a
      * cached "update available" notice here at the clean top of the session.
@@ -1449,6 +1449,24 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     dll_hijacking_protection();
     enable_dit();
 
+#ifdef MOD_PERSO
+    /* KiTTY: the rename guard, before any window, ini or registry access - and
+     * therefore before the -launcher / -cfgbox / -ed / -putty dispatches
+     * further down, all of which pass through here. The stock PuTTY targets
+     * that also build this file are deliberately not guarded. */
+    {
+        /* "putty" too: tools that expect a putty.exe are pointed at a
+         * renamed copy, a long-standing use that must keep working. */
+        static const char *const names[] = { "kitty", "putty" };
+        if (kitty_rename_guard(names, lenof(names), 1))
+            ExitProcess(1);
+    }
+    /* KiTTY: and, in a signed release build, does this file still carry our
+     * signature? Compiled to nothing in a dev or test build. */
+    if (kitty_signature_guard(1))
+        ExitProcess(1);
+#endif
+
     hinst = inst;
     hprev = prev;
 
@@ -2273,6 +2291,15 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     }
 
     winselgui_set_hwnd(wgs->term_hwnd);
+#ifdef MOD_PERSO
+    /* KiTTY: the session's Comment, if its panel asks for it, BEFORE the
+     * connection is started - a note about the session is something its owner
+     * should see at once, and printing it here means it is on screen even when
+     * the connection never comes up. Here rather than inside start_backend,
+     * which is also the Restart Session path: this runs once per window, so a
+     * reconnect does not repeat the note. */
+    kitty_print_session_comment(wgs->term, wgs->conf);
+#endif
     NETDBG_TS("win: before start_backend");
     start_backend(wgs);
     NETDBG_TS("win: after start_backend");
@@ -2317,6 +2344,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #endif
     UpdateWindow(wgs->term_hwnd);
 #ifdef MOD_PERSO
+    /* KiTTY: the application notification, if this process still owes it.
+     * Here rather than at connect: the note has nothing to do with the
+     * session, and a terminal whose connection fails must still show it.
+     * Self-settling, so a process that opens a configuration box as well
+     * shows the note once. */
+    kitty_notes_show_pending(wgs->term_hwnd);
     /* KiTTY feature: fullscreen on start (no-global; reads this seat's conf).
      * Skipped when embedded (#554). */
     if (conf_get_int(wgs->conf, CONF_fullscreen) && !KITTY_EMBEDDED())

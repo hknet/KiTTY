@@ -992,6 +992,13 @@
 #define KT_CLIPBOARD_PASTE                           "Large pastes"
 #define KT_CLIPBOARD_PASTE_SCOPE                     "There is no per-session limit."
 
+/* Application/Security/Application Notification (kitty_notes.c) */
+#define KT_APPNOTIFICATION_TITLE                     "Application Notification"
+#define KT_APPNOTIFICATION_FIELD                     "Notification:"
+#define KT_APPNOTIFICATION_NOTE                      "Shown on every start of a KiTTY++ process (terminal, " \
+        "launcher, configuration window). Empty = nothing displayed"
+#define KT_APPNOTIFICATION_ONCE                      "Show once while the launcher runs"
+
 /* Application/Security/Host keys (kitty_hostkeys.c) */
 #define KT_HK_TITLE                                  "Host keys"
 #define KT_HK_GROUP                                  "Host keys this KiTTY++ has accepted"
@@ -1384,7 +1391,8 @@
 
 /* Captions of this batch's boxes, notices and dialogs */
 #define KT_CAP_PORT_FORWARDING                       KT_TUNNELS_PORT_FORWARDING  /* "Port forwarding" - the Tunnels panel's group title */
-#define KT_CAP_NOTES                                 "Notes"
+/* The application notification's notice window (kitty_notes.c) */
+#define KT_CAP_KITTYPP                               "KiTTY++"
 #define KT_CAP_CFGDIR_NOT_FOUND                      "KiTTY: configdir not found"
 #define KT_CAP_RESTORE_REG_SESSIONS                  "KiTTY - restore your registry sessions?"
 #define KT_CAP_REG_SESSIONS_SET_ASIDE                "KiTTY - your registry sessions were set aside"
@@ -1630,7 +1638,7 @@
         "legacy hosts (such as network devices) that genuinely cannot accept key " \
         "authentication.\r\n\r\n" \
         "Store this auto-login password?"
-#define KT_WIN_SESSION_NOTE_FRAME                    "\r\n\x1b[1;36m-------------------- KiTTY++ session note " \
+#define KT_WIN_SESSION_NOTE_FRAME                    "\x1b[1;36m-------------------- KiTTY++ session note " \
         "--------------------\x1b[0m\r\n%s\r\n" \
         "\x1b[1;36m---------------------------------------------" \
         "-----------------\x1b[0m\r\n"
@@ -3158,10 +3166,6 @@
 #define KT_INPUTBOX_TITLE_PORTABLE                   "Text input (portable mode) - /help = KiTTY commands"
 #define KT_INPUTBOX_TITLE                            "Text input - /help = KiTTY commands"
 #define KT_INPUTBOX_TITLE_SUFFIX                     " - Text input"
-#define KT_CAP_LOAD_WARNING                          "Load Warning"
-#define KT_CAP_SAVE_WARNING                          "Save Warning"
-#define KT_INPUTBOX_LOAD_NOTES_Q                     "Are you sure you want to load Notes\nand erase this edit box ?"
-#define KT_INPUTBOX_SAVE_NOTES_Q                     "Are you sure you want to save Edit box\ninto Notes registry ?"
 
 /* kitty_storemove.c: portable copy out, folder store in (captions = the panel's group titles) */
 #define KT_STOREMOVE_TITLE_OUT                       KT_INIMIG_OUT_GROUP
@@ -3412,5 +3416,19 @@
 #define KT_RC_KGHELLODOORS_ADD                       "&Add this computer..."
 #define KT_RC_KGHELLODOORS_NOTE1                     "Removing needs no unlock; adding asks for the recovery"
 #define KT_RC_KGHELLODOORS_NOTE2                     "passphrase or the printed secret, then Windows Hello."
+
+/* ---- the startup guards (kitty/kitty_renameguard.c) ---- */
+
+/* Both are shown once and then the program exits: a message box for the
+ * windowed programs, one line on stderr for the command-line ones. */
+#define KT_RENAME_GUARD_TITLE                        KT_CAP_KITTYPP
+
+/* The file name does not begin with the program's own name. First %s is that
+ * name, second is the file name found. */
+#define KT_RENAME_GUARD_MSG                          "Renamed executable: this program runs only as %s*.exe. Found: %s"
+
+/* A release build no longer carries our signature. %s is the short technical
+ * reason - "bad digest", "not signed", "signer: <CN>". */
+#define KT_SIGNATURE_GUARD_MSG                       "Signature check failed: this program is not signed by its publisher. Found: %s"
 
 #endif /* KITTY_TEXT_H */

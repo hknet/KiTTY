@@ -18,6 +18,7 @@
 #ifdef _WINDOWS
 #include "kitty/kitty_hello.h"       /* KiTTY: Hello-protected keys */
 #include "kitty/kitty_hello_keys.h"
+#include "kitty/kitty_renameguard.h" /* KiTTY: refuse a foreign file name */
 #endif
 #include "kitty/kitty_protkey.h"   /* KiTTY (#4): shared protected-key core */
 
@@ -304,6 +305,21 @@ int main(int argc, char **argv)
     FingerprintType fptype = SSH_FPTYPE_DEFAULT;
 
     enable_dit();
+
+#ifdef _WINDOWS
+    /* KiTTY: the rename guard, before the command line is looked at. This
+     * binary ships as kittygen-cli.exe and is built as kittygen_cli.exe; it is
+     * the command-line form of kittygen, so it accepts the same names. */
+    {
+        static const char *const names[] = { "kittygen", "puttygen" };
+        if (kitty_rename_guard(names, lenof(names), 0))
+            return 1;
+    }
+    /* KiTTY: and, in a signed release build, does this file still carry our
+     * signature? Compiled to nothing in a dev or test build. */
+    if (kitty_signature_guard(0))
+        return 1;
+#endif
 
     /* derive program name from argv[0] */
     {

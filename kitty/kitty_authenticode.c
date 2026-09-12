@@ -10,10 +10,7 @@
 #include <stdlib.h>
 /* wincrypt.h (CryptQueryObject / signer cert) comes in via windows.h */
 
-#include "kitty_authenticode.h"
-
-/* Our signing identity - the one place the publisher CN is written. */
-#define KITTY_PUBLISHER_CN "KAPPER NETWORK-COMMUNICATIONS GmbH"
+#include "kitty_authenticode.h"   /* KITTY_PUBLISHER_CN is declared there */
 
 static int authenticode_verify_ex(const char *path, int online_revocation)
 {

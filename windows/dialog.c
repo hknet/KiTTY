@@ -2507,6 +2507,9 @@ dlgcontrol *kitty_config_session_filter_ctrl(void); /* kitty_config.c / stub */
 bool kitty_red_caption(const char *text);  /* kitty_config.c / stub */
 bool kitty_bold_caption(const char *text);           /* kitty_config.c / stub */
 void kitty_cfgbox_workplace_poll(dlgparam *dp);      /* kitty_config.c / stub */
+/* A settings field that holds its write back until the typing stops wants
+ * writing before the panel changes under it, and before the box goes. */
+void kitty_cfgbox_flush_pending(void);               /* kitty_config.c / stub */
 
 /* KiTTY: the loaded session's name, on the tab strip's row and centred over
  * the panel area. However deep in the tree the reader goes, whose settings
@@ -3303,6 +3306,9 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
       }
         return pds_default_dlgproc(pds, hwnd, msg, wParam, lParam);
       case WM_DESTROY:
+        /* Anything a field was still holding back goes to the store now: the
+         * box is the only thing that was going to write it. */
+        kitty_cfgbox_flush_pending();
         /* The tree dies with the dialog: keep its expand state first, and
          * write the remembered collapses back. */
         kitty_cfg_tree_remember_collapsed(kitty_cfg_treeview);
@@ -4005,6 +4011,10 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 return 0;
             if (kitty_cfg_tree_rebuilding)
                 return 0;              /* see the flag's definition */
+
+            /* Leaving a panel: a field that was still holding its write back
+             * is written before its controls are destroyed. */
+            kitty_cfgbox_flush_pending();
 
             i = TreeView_GetSelection(((LPNMHDR) lParam)->hwndFrom);
             /*

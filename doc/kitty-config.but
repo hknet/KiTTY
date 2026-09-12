@@ -1065,10 +1065,18 @@ only on this panel - it is a note for you, not a label the session list
 displays.
 
 \q{Notify the user at login} (on by default) prints the note into the
-terminal, framed as a KiTTY++ session note, once the session is up -
-for SSH after the login has succeeded, so it sits at the clean top of
-the session and never inside a prompt. Untick it for a session whose
-note is for your eyes only.
+terminal, framed as a KiTTY++ session note, once - before the
+connection is started. It sits at the clean top of the session, and it
+is there to read even when the connection fails. Untick it for a
+session whose note is for your eyes only.
+
+A session written by an older KiTTY may carry a second note, the
+\c{Notes} value that the send-text box's Shift+F2 and Shift+F3 keys
+loaded and saved. The first time such a session is loaded or imported,
+that note is moved into the comment - appended after a blank line if
+the comment already has text - and \q{Notify the user at login} is
+switched on. The old value is dropped the next time the session is
+saved, and the two keys are gone.
 
 \H{kitty-cfg-application} The Application tab
 
@@ -1872,6 +1880,40 @@ the default answer is No, so a stray Enter cancels the paste instead of
 flooding the shell. 0 switches the warning off. It counts characters,
 not lines, and judges only the size. It is one setting for every
 session; there is no per-session form of it.
+
+\S{kitty-cfg-application-notification} The Application Notification panel
+
+One note for this installation, shown to whoever starts KiTTY++. Type it
+into \q{Notification:}; an empty field means nothing is shown.
+
+The note appears in the small notice window near the clock, raised by the
+first window each KiTTY++ process opens - the terminal, the launcher,
+or the configuration window. It never takes the focus, and it has no
+timeout: it stays until it is clicked.
+
+Only one copy is on the desktop at a time. While a notice is showing the
+note, further KiTTY++ processes started alongside it show nothing; once it
+is clicked away, or the process showing it ends, the next start shows it
+again. Another notice from the same process - an update, the old session
+list, an unverified agent - takes the screen for its own few seconds and
+then hands it back: the note returns and still waits to be clicked.
+
+\q{Show once while the launcher runs} changes what a click means. Off (the
+default), a click only takes the note off this desktop, and the next KiTTY++
+started shows it again. On, a click records that the note has been read: the
+process that clicked keeps that record, and so does the session launcher if
+one is running, so nothing shows the note again for as long as either of
+them is there. Editing the note makes it a different note, which is shown
+again.
+
+The setting is \c{notes} in the \c{[KiTTY]} section of \c{kitty.ini}, and the
+checkbox is \c{notesonce} beside it. The note is one line there, with
+\c{\\n} for a line break, \c{\\r} and \c{\\t} likewise, and \c{\\\\} for a
+backslash.
+Where the settings are kept in the registry it is the value \c{Notes} under
+KiTTY's own key - the same value older KiTTY versions displayed in a
+message box at every start, so an installed KiTTY keeps the note it already
+had.
 
 \S{kitty-cfg-host-keys} The Host keys panel
 

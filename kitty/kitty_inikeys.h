@@ -48,6 +48,12 @@
 #define KI_MODALWEAKKEYCONFIRMATION         "modalweakkeyconfirmation"
 #define KI_MOUSESHORTCUTS                   "mouseshortcuts"
 #define KI_NAMEDPROXY                       "namedproxy"
+/* The application notification. Registry save mode puts it in the root value
+ * the note has always used ("Notes"): value names are case-insensitive, so
+ * this IS that value. */
+#define KI_NOTES                            "notes"
+/* Does clicking the notification away silence it for this desktop? */
+#define KI_NOTESONCE                        "notesonce"
 #define KI_PASSWORD                         "password"
 #define KI_PASTESIZE                        "pastesize"
 #define KI_PORTABLEBACKUPCOUNT              "portablebackupcount"

@@ -206,6 +206,18 @@ const struct kitty_retired_key kitty_retired_keys[] = {
      * one to one. */
     { "DisableBottomButtons", "Window buttons (Window > Behaviour)", false,
       "replaced by the four Window-buttons options, which it does not map onto" },
+    /* Classic KiTTY's SECOND free-text field per session, written by the
+     * send-text box's Shift+F2 / Shift+F3 and shown in a modal box when the
+     * session opened. There is one note field now, the Comment, so the value
+     * still means what it meant: it is read under the old name and dropped
+     * here on the next save. The carry-over is richer than a rename - an
+     * existing Comment keeps its text and the note is appended after a blank
+     * line, and the Comment panel's "Notify the user at login" is switched on
+     * so the note is still shown - so the merge itself lives in
+     * kitty_merge_legacy_note() (kitty/kitty_storage.c); `migrates` here gets
+     * the value across when a session has no Comment at all, and tells the
+     * session importers that nothing was lost. */
+    { "Notes", "Comment", true },
 };
 
 const struct kitty_retired_key *kitty_retired_key_table(size_t *n)

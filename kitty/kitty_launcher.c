@@ -20,6 +20,11 @@
  * the update balloon is - registration also runs from WM_CREATE, and a balloon
  * raised inside window creation shows but its click never comes back. */
 #define KLWM_HOTKEYBALLOON	(WM_USER+15)
+/* Posted from WM_CREATE: the application notification, if this process owes
+ * it and the launcher's window is the first one it opens. Posted for the
+ * reason the two above are - a window raised from inside window creation is
+ * shown, but the clicks on it do not come back. */
+#define KLWM_NOTESPENDING	(WM_USER+16)
 /* KiTTY: timer id for the delayed single-left-click tray menu (so a double
  * click - new default window - doesn't pop the menu up first) */
 #define LAUNCHER_TRAYCLICK_TIMER	100
@@ -976,6 +981,18 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		return 0 ;
 	}
 
+	/* KiTTY: somebody clicked the application notification away and [KiTTY]
+	 * notesonce is on. Take a share of the "seen" mark, so it lasts as long
+	 * as this launcher does rather than only as long as the window that was
+	 * clicked. wParam names the note that was on screen (0 = whatever the
+	 * store holds now), so a note edited while its notice was still up is not
+	 * marked read. Install-keyed, so another install's launcher never answers
+	 * it. */
+	if( uMsg != 0 && uMsg == kitty_notes_seen_message() ) {
+		kitty_notes_seen_hold( (unsigned int)wParam ) ;
+		return 0 ;
+	}
+
 	/* KiTTY: the config box asking for workplace proxy mode on (wParam 1) or off
 	 * (wParam 0). The proxy is not in the message - the requester has just
 	 * written the remembered selection, and reading it here keeps one source of
@@ -1002,7 +1019,12 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		case WM_CREATE:
 		s_uTaskbarRestart = RegisterWindowMessage(TEXT("TaskbarCreated"));
 		MenuLauncher = InitLauncherMenu( "Launcher" ) ;
-        
+		/* The application notification, if this launcher is the first window
+		 * this process opens. Not inside the tray-icon block below: the note
+		 * has nothing to do with the tray, and is owed whether or not the
+		 * shell accepted the icon. */
+		PostMessage( hwnd, KLWM_NOTESPENDING, 0, 0 ) ;
+
 	// Initialisation de la structure NOTIFYICONDATA
 	TrayIcone.cbSize = sizeof(TrayIcone);	// On alloue la taille nécessaire pour la structure
 	if( oldIconFlag ) {
@@ -1051,6 +1073,10 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		return 0 ;
 			break ;
 	
+		case KLWM_NOTESPENDING :
+			kitty_notes_show_pending( hwnd ) ;
+			break ;
+
 		case KLWM_WORKPLACEOFFER :
 			LauncherOfferWorkplaceRearm() ;
 			break ;

@@ -168,7 +168,6 @@ static LRESULT CALLBACK InputCallBackPassword(HWND hwnd, UINT message, WPARAM wP
 // Procedure specifique à la editbox multiligne (SHIFT+F8)
 FARPROC lpfnOldEditProc ;
 BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
-	char buffer[4096], key_name[1024] ;
 	switch (message) {
 		case WM_KEYDOWN:
 			if( (wParam==VK_RETURN) && (GetKeyState( VK_SHIFT )& 0x8000) ){
@@ -189,24 +188,14 @@ BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 		case WM_SYSKEYUP:
 			if( (wParam==VK_RETURN) && (GetKeyState( VK_SHIFT )& 0x8000) )
 				return 0;
-			else if( (wParam==VK_F2) && (GetKeyState( VK_SHIFT )& 0x8000) ) { // Charge une Notes
-				snprintf( key_name, sizeof(key_name), "%s\\%s", kitty_reg_sessions(), conf_get_str(conf,CONF_sessionname) ) ;
-				if( GetValueDataN(HKEY_CURRENT_USER, key_name, "Notes", buffer, sizeof(buffer)) != NULL ) {
-					if( GetWindowTextLength(hwnd) > 0 ) 
-						if( MessageBox(hwnd, KT_INPUTBOX_LOAD_NOTES_Q,KT_CAP_LOAD_WARNING, MB_YESNO|MB_ICONWARNING ) != IDYES ) break ;
-					SetWindowText( hwnd, buffer ) ;
-					}
-				}
-			else if( (wParam==VK_F3) && (GetKeyState( VK_SHIFT )& 0x8000) ) { // Sauve une Notes
-				GetSessionField( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), "Notes", buffer ) ;
-				if( strlen( buffer ) > 0 ) 
-					if( MessageBox(hwnd, KT_INPUTBOX_SAVE_NOTES_Q,KT_CAP_SAVE_WARNING, MB_YESNO|MB_ICONWARNING ) != IDYES ) break ;
-				GetWindowText( hwnd, buffer, 4096 ) ;
-				snprintf( key_name, sizeof(key_name), "%s\\%s", kitty_reg_sessions(), conf_get_str(conf,CONF_sessionname) ) ;
-				RegTestOrCreate( HKEY_CURRENT_USER, key_name, "Notes", buffer ) ;
-				}
-			else 
-				return CallWindowProc((WNDPROC)lpfnOldEditProc, hwnd, message, wParam, lParam);	
+			/* Shift+F2 / Shift+F3 removed: they loaded and saved the session's
+			 * separate "Notes" registry value through this box. There is one
+			 * note field per session now - the Comment, with its own panel and
+			 * its own editor - and an old Notes value is folded into it the
+			 * first time the session is loaded or imported
+			 * (kitty_merge_legacy_note). */
+			else
+				return CallWindowProc((WNDPROC)lpfnOldEditProc, hwnd, message, wParam, lParam);
 			break ;
             	default:
 			return CallWindowProc((WNDPROC)lpfnOldEditProc, hwnd, message, wParam, lParam);

@@ -876,6 +876,18 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "CtrlTabSwitch", conf, CONF_ctrl_tab_switch);
     gpps_forced(sesskey, "Comment", conf, CONF_comment );
     gppb_forced(sesskey, "CommentNotify", conf, CONF_comment_notify );
+    {
+        /* A .ktx written by classic KiTTY can carry the retired per-session
+         * "Notes" field - the send-text box's Shift+F2 / Shift+F3 value. There
+         * is one note field now, so it folds into the Comment and switches
+         * "Notify the user at login" on; nothing here is written back. */
+        extern void kitty_merge_legacy_note(Conf *conf, const char *note);
+        char *note = gpps_raw_forced(sesskey, "Notes", "");
+        if (note) {
+            kitty_merge_legacy_note(conf, note);
+            sfree(note);
+        }
+    }
     gppb_forced(sesskey, "SCPAutoPwd", conf, CONF_scp_auto_pwd); /* 0.84: BOOL */
     gppb_forced(sesskey, "RunCmdConfirm", conf, CONF_runcmdconfirm);
     gppb_forced(sesskey, "RunCmdNotify", conf, CONF_runcmdnotify);

@@ -39,6 +39,7 @@
 #include "../kitty/kitty_anchor.h"    /* KiTTY: edge anchoring for the resizable windows */
 #include "../kitty/kitty_oldwin.h"   /* KiTTY: APIs newer than the oldest Windows we load on */
 #include "../kitty/kitty_text.h"     /* KiTTY: shared captions and menu words */
+#include "../kitty/kitty_renameguard.h"  /* KiTTY: refuse a foreign file name */
 
 #include <shellapi.h>
 
@@ -6144,6 +6145,19 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     dll_hijacking_protection();
     enable_dit();
+
+    /* KiTTY: the rename guard, before any window, ini or registry access and
+     * before a single key is loaded. This binary ships as kageant.exe and is
+     * built as pageant.exe. */
+    {
+        static const char *const names[] = { "kageant", "pageant" };
+        if (kitty_rename_guard(names, lenof(names), 1))
+            ExitProcess(1);
+    }
+    /* KiTTY: and, in a signed release build, does this file still carry our
+     * signature? Compiled to nothing in a dev or test build. */
+    if (kitty_signature_guard(1))
+        ExitProcess(1);
 
     hinst = inst;
 

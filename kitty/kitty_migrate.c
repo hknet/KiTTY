@@ -235,6 +235,16 @@ char *kitty_import_foreign_session(const char *name, int hive,
     Conf *conf = conf_new();
     watch_begin(&seen);
     load_open_settings(src, conf);
+    /* An older KiTTY's per-session "Notes" value folds into the Comment (see
+     * kitty_merge_legacy_note). Read inside the watch, so the importer does not
+     * then report it as a value it could not carry over. */
+    {
+        char *note = read_setting_s(src, "Notes");
+        if (note) {
+            kitty_merge_legacy_note(conf, note);
+            sfree(note);
+        }
+    }
     watch_end();
     close_settings_r(src);
 
@@ -591,6 +601,15 @@ bool kitty_import_file_session(const char *path, const char *target,
     kitty_set_defer_mpw_prompt(1);
     watch_begin(&seen);
     load_open_settings(src, conf);
+    /* As in the hive import: an older KiTTY's "Notes" folds into the Comment,
+     * read inside the watch so it is not reported as left behind. */
+    {
+        char *note = read_setting_s(src, "Notes");
+        if (note) {
+            kitty_merge_legacy_note(conf, note);
+            sfree(note);
+        }
+    }
     watch_end();
     kitty_set_defer_mpw_prompt(0);
 

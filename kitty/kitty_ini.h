@@ -450,6 +450,32 @@ char default_init_file_content[] =
 ;    Connection -> SSH -> Auth (an application-wide setting, not per session).\n\
 ;verifyagent=yes\n\
 \n\
+; notes: the application notification - one note this installation shows to\n\
+;    whoever starts KiTTY. The first window every KiTTY process opens (the\n\
+;    terminal, the launcher, the configuration window) raises it in the small\n\
+;    notice window near the clock: no focus stolen, no timeout, and it stays\n\
+;    until it is clicked. Only one copy is on the desktop at a time, so\n\
+;    several KiTTY processes started together do not stack it up. Another\n\
+;    notice from the same process borrows the screen and hands it back - the\n\
+;    note returns and still waits to be clicked. Empty (the default) means\n\
+;    nothing is displayed.\n\
+;    ONE line here: \\n is a line break, \\r a carriage return, \\t a tab and \\\\\n\
+;    a single backslash - no other escapes. Leading and trailing spaces are\n\
+;    kept by wrapping the whole value in double quotes. Also editable at\n\
+;    Application > Security > Application Notification.\n\
+;    Outside portable mode this key is the registry value \"Notes\" under\n\
+;    KiTTY's own key, which is where older versions kept the note they showed\n\
+;    in a message box at every start.\n\
+;notes=Company policy: no production logins from this PC.\\nAsk the service desk.\n\
+\n\
+; notesonce: what clicking the application notification away means. no (the\n\
+;    default) takes it off this desktop and the next KiTTY started shows it\n\
+;    again. yes records that the note has been READ: the process that clicked\n\
+;    remembers, and so does the session launcher when one is running, so\n\
+;    nothing shows that note again for as long as either is there. Editing\n\
+;    the note makes it a different note, and it is shown again.\n\
+;notesonce=no\n\
+\n\
 ; warnmissingfeatures: on a Windows too old for something KiTTY offers - dark\n\
 ;    mode, Windows Hello, per-monitor DPI - one line in the terminal names what\n\
 ;    is unavailable, so a feature that never happens is not mistaken for a\n\

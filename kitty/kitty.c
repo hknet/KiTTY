@@ -40,6 +40,7 @@
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_text.h"   /* shared captions and wordings (also for the .c files included below) */
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
+#include "kitty_notes.h"   /* the application notification, marked owed at startup */
 
 /* The hive this process is ACTUALLY using. Not TEXT(PUTTY_REG_POS): that is the
  * compile-time DEFAULT, and with kitty.ini's KiClassName=PuTTY the two differ -
@@ -4035,10 +4036,12 @@ void InitWinMain( void ) {
 		}
 
 	NETDBG_TS("after icon-dll init");
-	// Teste la presence d'une note et l'affiche
-	if( GetValueData( HKEY_CURRENT_USER, kitty_registry_base(), KR_NOTES, buffer ) )
-		{ if( strlen( buffer ) > 0 ) MessageBox( NULL, buffer, KT_CAP_NOTES, MB_OK ) ; }
-		
+	/* The application notification is owed. Only marked here: this runs
+	 * before any window exists, and the note is shown in the notice window by
+	 * the first window this process opens (kitty_notes.c). It used to be a
+	 * modal box raised from right here, which stopped every start dead. */
+	kitty_notes_mark_pending() ;
+
 	// Genere un fichier (4096ko max) d'initialisation de toute les Sessions
 	snprintf( buffer, sizeof(buffer), "%s\\%s.ses.updt", InitialDirectory, appname ) ;
 	if( existfile( buffer ) ) { InitAllSessions( HKEY_CURRENT_USER, kitty_registry_base(), "Sessions", buffer ) ; }

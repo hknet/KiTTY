@@ -25,6 +25,7 @@
 #include "kitty_migrate.h" /* Application > Migration: the session importer */
 #include "kitty_text.h"    /* the words the panels show */
 #include "kitty_inikeys.h" /* KI_*: the kitty.ini key names */
+#include "kitty_notes.h"   /* the application notification: its escapes and its notice */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include <commctrl.h>       /* SetWindowSubclass: the shortcut editor's key-capture field */
@@ -1090,6 +1091,8 @@ static void kitty_wpmode_button_label(dlgcontrol *ctrl, dlgparam *dlg)
  * re-read the whole panel from the Conf and could throw away what the user is
  * in the middle of typing in the fields above.
  */
+static void kset_deferred_tick(void);   /* the held-back write, below */
+
 void kitty_cfgbox_workplace_poll(dlgparam *dlg)
 {
     static int last = -1, last_have = -1;
@@ -1097,6 +1100,16 @@ void kitty_cfgbox_workplace_poll(dlgparam *dlg)
     int now, have;
     struct wpmode_data *wd = kitty_wpmode_active;
     kitty_iniview_poll(dlg);           /* the kitty.ini view follows its file */
+    /* A field that writes only once the typing has stopped (the Application
+     * Notification) is written from here: this tick is the box's clock. */
+    kset_deferred_tick();
+    /* The configuration box is the first window of a KiTTY++ started with no
+     * session, and of "-cfgbox", so it owes the application notification the
+     * same way the terminal and the launcher do. This poll is armed for every
+     * box (windows/dialog.c, one second), which is the earliest KiTTY-side
+     * tick after the box exists; the flag settles itself, so a box opened
+     * from a terminal that already showed the note shows nothing. */
+    kitty_notes_show_pending(NULL);
     now = kitty_workplace_query(armed, sizeof(armed)) ? 1 : 0;
     /* Opening the config box is one of the ways KiTTY gets started, so it is
      * also one of the places that owes the "the mode is not active any more"
@@ -11584,6 +11597,26 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
     }
     ctrl_text(s, KT_CLIPBOARD_PASTE_SCOPE, HELPCTX(kitty_clipboard));
 
+    /* Security > Application Notification: one note for the whole
+     * installation, shown by the first window of every KiTTY++ process
+     * (kitty/kitty_notes.c). Stored as one escaped line in [KiTTY] notes,
+     * hence KSET_MULTITEXT rather than KSET_TEXT. */
+    ctrl_settitle(b, "Application/Security/Application Notification",
+                  KT_APPNOTIFICATION_TITLE);
+    s = ctrl_getset(b, "Application/Security/Application Notification",
+                    "note", NULL);
+    ctrl_editbox_multiline(s, KT_APPNOTIFICATION_FIELD, NO_SHORTCUT, 6, false,
+                           HELPCTX(kitty_application_notification),
+                           kitty_kset_handler,
+                           P((void *)kset_find(KI_NOTES)), ED_STR);
+    ctrl_text(s, KT_APPNOTIFICATION_NOTE,
+              HELPCTX(kitty_application_notification));
+    /* Off by default: the note is meant to be shown at every start, and
+     * silencing it is the deliberate choice. */
+    ctrl_checkbox(s, KT_APPNOTIFICATION_ONCE, NO_SHORTCUT,
+                  HELPCTX(kitty_application_notification),
+                  kitty_kset_handler, P((void *)kset_find(KI_NOTESONCE)));
+
     /* Security > Host keys: the trust store, listed (kitty_hostkeys.c). */
     scb_panel_hostkeys(b);
 #else
@@ -11684,7 +11717,12 @@ static void kitty_kset_backupcount_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * because its list is file-only and splitting one feature over two stores
  * helps nobody.
  */
-enum kset_kind { KSET_BOOL, KSET_INT, KSET_SECS, KSET_TEXT, KSET_CHOICE, KSET_FILE };
+/* KSET_MULTITEXT is KSET_TEXT for a field that holds LINES: the store keeps
+ * the one-line escaped form (kitty_notes.c owns the escape pair), the field
+ * shows the text itself. A plain KSET_TEXT would write the edit box's CRLF
+ * straight into kitty.ini and cut the value in half at the first line end. */
+enum kset_kind { KSET_BOOL, KSET_INT, KSET_SECS, KSET_TEXT, KSET_MULTITEXT,
+                 KSET_CHOICE, KSET_FILE };
 struct kset_choice { const char *name; const char *stored; int value; };
 struct kset_key {
     const char *section, *key;
@@ -11883,6 +11921,11 @@ static const struct kset_key kset_keys[] = {
       GetModalWeakKeyConfirmationFlag, SetModalWeakKeyConfirmationFlag, NULL, 0, 0, 1,
       NULL, NULL, kset_prompt_choices, lenof(kset_prompt_choices) },
     { INIT_SECTION, KI_SSHVERSION,     KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0, get_sshver, set_sshver },
+    /* Security > Application Notification: the note every KiTTY++ process
+     * shows once, in the notice window (kitty/kitty_notes.c). */
+    { INIT_SECTION, KI_NOTES,          KSET_MULTITEXT, false, NULL, NULL, NULL, 0, 0, 0,
+      NULL, kitty_notes_set_running },
+    { INIT_SECTION, KI_NOTESONCE,      KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
     /* Transfers & Tools */
     /* Shown from the STORE, not the running value: the startup search fills
      * PSCPPath in memory with what it found, and showing that here made a
@@ -11953,6 +11996,55 @@ static void kset_write(const struct kset_key *k, const char *text)
     }
 }
 
+/*
+ * A write held back until the typing stops.
+ *
+ * The configuration box has no Save and reports EVENT_VALCHANGE for every
+ * keystroke, which is right for a port number and wrong for a paragraph: the
+ * Application Notification would write the whole note to the store once per
+ * character. Windows delivers EN_KILLFOCUS for a plain edit box to
+ * windows/controls.c, which turns it into no handler event at all, so there
+ * is nothing to write "on leaving the field" from; instead the text is
+ * remembered here and written when one of three things happens - a second
+ * passes with no further keystroke (the box's own one-second tick), the
+ * panel is switched, or the box closes.
+ *
+ * One row at a time is enough: only one field defers, and moving to another
+ * panel flushes before anything else can.
+ */
+static const struct kset_key *kset_deferred_key = NULL;
+static char kset_deferred_text[4096];
+static int kset_deferred_quiet = 0;    /* ticks since the last keystroke */
+
+static void kset_defer_write(const struct kset_key *k, const char *text)
+{
+    if (kset_deferred_key && kset_deferred_key != k)
+        kset_write(kset_deferred_key, kset_deferred_text);
+    kset_deferred_key = k;
+    snprintf(kset_deferred_text, sizeof(kset_deferred_text), "%s", text);
+    kset_deferred_quiet = 0;
+}
+
+/* Write it now. Called on a panel switch and when the box closes
+ * (windows/dialog.c), and from the tick below once the typing has stopped. */
+void kitty_cfgbox_flush_pending(void)
+{
+    if (!kset_deferred_key)
+        return;
+    kset_write(kset_deferred_key, kset_deferred_text);
+    kset_deferred_key = NULL;
+    kset_deferred_quiet = 0;
+}
+
+/* One second of quiet is the end of a burst of typing. */
+static void kset_deferred_tick(void)
+{
+    if (!kset_deferred_key)
+        return;
+    if (++kset_deferred_quiet >= 1)
+        kitty_cfgbox_flush_pending();
+}
+
 /* The running value, or the store, or the default - in that order. */
 static int kset_get_int(const struct kset_key *k)
 {
@@ -12003,6 +12095,21 @@ static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int 
             if (!strcmp(k->key, KI_SSHVERSION))
                 kset_show_banner(dlg);
             break;
+          case KSET_MULTITEXT: {
+            /* The store holds one escaped line; the box shows the lines. */
+            char stored[4096];
+            stored[0] = '\0';
+            /* A write this field is still holding back is the newer text:
+             * a refresh that landed inside that second would otherwise put
+             * the stale stored value back over what is being typed. */
+            if (kset_deferred_key == k)
+                snprintf(stored, sizeof(stored), "%s", kset_deferred_text);
+            else
+                kset_read(k, stored, sizeof(stored));
+            kitty_notes_decode(stored, buf, sizeof(buf));
+            dlg_editbox_set(ctrl, dlg, buf);
+            break;
+          }
           case KSET_FILE: {
             Filename *fn;
             if (k->get_str && k->get_str())
@@ -12086,6 +12193,21 @@ static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int 
             sfree(s);
             if (!strcmp(k->key, KI_SSHVERSION))
                 kset_show_banner(dlg);
+            break;
+          }
+          case KSET_MULTITEXT: {
+            /* Every keystroke reports VALCHANGE, and a store write per
+             * character typed into a paragraph of text is not what this
+             * field should cost. So: the running copy is updated at once,
+             * so anything reading it agrees with what is on screen, and the
+             * WRITE is held back until the typing stops (kset_deferred_*
+             * below: a second of quiet, a panel switch, or the box closing).
+             */
+            char *s = dlg_editbox_get(ctrl, dlg);
+            kitty_notes_encode(s, buf, sizeof(buf));
+            kset_defer_write(k, buf);
+            if (k->set_str) k->set_str(s);
+            sfree(s);
             break;
           }
           case KSET_FILE: {
@@ -14476,8 +14598,8 @@ static void scb_panel_comment(struct controlbox *b)
         ctrl_editbox_multiline(s, KT_COMMENT_SESSION_COMMENT, NO_SHORTCUT, 5, false,
                                HELPCTX(kitty_comment), conf_editbox_handler,
                                I(CONF_comment), ED_STR);
-        /* Printed into the terminal, framed, once the session is up
-         * (post-auth for SSH) - see kitty_print_session_comment. */
+        /* Printed into the terminal, framed, once, before the connection
+         * starts - see kitty_print_session_comment. */
         ctrl_checkbox(s, KT_COMMENT_NOTIFY, NO_SHORTCUT, HELPCTX(kitty_comment),
                       conf_checkbox_handler, I(CONF_comment_notify));
     }

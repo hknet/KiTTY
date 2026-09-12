@@ -29,6 +29,7 @@
 #include <commctrl.h>
 #include "../kitty/kitty_notice.h"   /* the themed startup notice */
 #include "../kitty/kitty_text.h"     /* KiTTY: shared captions and menu words */
+#include "../kitty/kitty_renameguard.h"  /* KiTTY: refuse a foreign file name */
 
 #ifdef MSVC4
 #define ICON_BIG        1
@@ -3255,6 +3256,18 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     dll_hijacking_protection();
     enable_dit();
+
+    /* KiTTY: the rename guard, before any window, ini or registry access. This
+     * binary ships as kittygen.exe and is built as puttygen.exe. */
+    {
+        static const char *const names[] = { "kittygen", "puttygen" };
+        if (kitty_rename_guard(names, lenof(names), 1))
+            ExitProcess(1);
+    }
+    /* KiTTY: and, in a signed release build, does this file still carry our
+     * signature? Compiled to nothing in a dev or test build. */
+    if (kitty_signature_guard(1))
+        ExitProcess(1);
 
     init_common_controls();
     hinst = inst;

@@ -66,6 +66,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_client_identity    "kitty-cfg-client-identity"
 #define WINHELP_CTX_kitty_appearance         "kitty-cfg-appearance"
 #define WINHELP_CTX_kitty_clipboard          "kitty-cfg-clipboard"
+#define WINHELP_CTX_kitty_application_notification "kitty-cfg-application-notification"
 #define WINHELP_CTX_kitty_proxy_forwards     "kitty-cfg-proxy-forwards"
 #define WINHELP_CTX_kitty_folders            "kitty-cfg-sessionlist"
 #define WINHELP_CTX_kitty_quickconnect       "kitty-cfg-sessionlist"

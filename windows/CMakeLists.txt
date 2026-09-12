@@ -15,6 +15,12 @@ add_sources_from_current_dir(utils
   # that - including the command-line tools, which is what lets network.c and
   # gss.c report a fallback they took without breaking klink/kscp/ksftp.
   ../kitty/kitty_oldwin.c
+  # KiTTY: the rename guard - a shipped program refuses to start under a file
+  # name that does not begin with its product name. In `utils` for the same
+  # reason as the file above: every binary links it, and each entry point calls
+  # it with its own list of accepted names. The stock PuTTY targets link it too
+  # and never call it, so the linker leaves the object out of them.
+  ../kitty/kitty_renameguard.c
   utils/agent_mutex_name.c
   utils/agent_named_pipe_name.c
   utils/arm_arch_queries.c
@@ -58,6 +64,25 @@ add_sources_from_current_dir(utils
   unicode.c)
 if(NOT HAVE_STRTOUMAX)
   add_sources_from_current_dir(utils utils/strtoumax.c)
+endif()
+
+# KiTTY: the startup signature self-check in kitty_renameguard.c, compiled in
+# ONLY for a build that is going to be signed. OFF everywhere else on purpose -
+# a dev or test build carries no signature, and a binary that demanded one of
+# itself would refuse to start for the person building it.
+#
+# scripts/wsl_release.sh and wsl_release32.sh pass -DKITTY_RELEASE_SIGNED=ON;
+# wsl_test_build.sh / wsl_test_build32.sh deliberately do not, and both release
+# scripts delete their build directory first, so the setting can never be
+# inherited from a stale cache in either direction.
+#
+# On the `utils` target because that is where kitty_renameguard.c compiles; the
+# executables see only the function, whose body is either there or is not.
+option(KITTY_RELEASE_SIGNED
+  "compile the Authenticode self-check into the binaries (signed release builds only)" OFF)
+if(KITTY_RELEASE_SIGNED)
+  target_compile_definitions(utils PRIVATE KITTY_RELEASE_SIGNED)
+  message(STATUS "KITTY_RELEASE_SIGNED: the binaries will verify their own signature at startup")
 endif()
 add_sources_from_current_dir(eventloop
   cliloop.c handle-wait.c kitty_pace_frame.c)
@@ -506,6 +531,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_proxy_gui.c
   ${KITTY_DIR}/kitty_workplace.c
   ${KITTY_DIR}/kitty_notice.c
+  ${KITTY_DIR}/kitty_notes.c    # KiTTY: the application notification (uses the parameter store)
   ${KITTY_DIR}/kitty_registry.c
   ${KITTY_DIR}/kitty_ssh.c
   ${KITTY_DIR}/kitty_store.c
@@ -621,6 +647,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_proxy_gui.c
   ${KITTY_DIR}/kitty_workplace.c
   ${KITTY_DIR}/kitty_notice.c
+  ${KITTY_DIR}/kitty_notes.c    # KiTTY: the application notification (uses the parameter store)
   ${KITTY_DIR}/kitty_registry.c
   ${KITTY_DIR}/kitty_ssh.c
   ${KITTY_DIR}/kitty_store.c

@@ -4,6 +4,7 @@
 
 #include <winsock2.h> /* need to put this first, for winelib builds */
 #include <assert.h>
+#include <string.h>
 
 #define NEED_DECLARATION_OF_SELECT
 
@@ -11,6 +12,7 @@
 #include "psftp.h"
 #include "ssh.h"
 #include "security-api.h"
+#include "../kitty/kitty_renameguard.h"   /* KiTTY: refuse a foreign file name */
 
 SeatPromptResult filexfer_get_userpass_input(Seat *seat, prompts_t *p)
 {
@@ -650,6 +652,23 @@ int main(int argc, char *argv[])
 
     dll_hijacking_protection();
     enable_dit();
+
+    /* KiTTY: the rename guard, before the command line is looked at. This file
+     * is the entry point of BOTH file-transfer tools, so the accepted names
+     * are chosen by the one thing that already distinguishes them at link
+     * time: `appname`, which be_list.c defines per target (PSCP / PSFTP).
+     * kscp.exe is built as pscp.exe, ksftp.exe as psftp.exe. */
+    {
+        static const char *const scp_names[] = { "kscp", "pscp" };
+        static const char *const sftp_names[] = { "ksftp", "psftp" };
+        bool is_scp = !strcmp(appname, "PSCP");
+        if (kitty_rename_guard(is_scp ? scp_names : sftp_names, 2, 0))
+            return 1;
+    }
+    /* KiTTY: and, in a signed release build, does this file still carry our
+     * signature? Compiled to nothing in a dev or test build. */
+    if (kitty_signature_guard(0))
+        return 1;
 
     CmdlineArgList *arglist = cmdline_arg_list_from_GetCommandLineW();
     ret = psftp_main(arglist);
