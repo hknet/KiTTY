@@ -41,6 +41,7 @@
 #include "kitty_text.h"   /* shared captions and wordings (also for the .c files included below) */
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
+#include "kitty_pwmem.h"   /* passwords wrapped in memory (kitty_commands.c too) */
 
 /* The hive this process is ACTUALLY using. Not TEXT(PUTTY_REG_POS): that is the
  * compile-time DEFAULT, and with kitty.ini's KiClassName=PuTTY the two differ -
@@ -875,15 +876,14 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 void RenewPassword( Conf *conf ) {
 	return ;
 	if( !GetUserPassSSHNoSave() )
-	if( strlen( conf_get_str(conf,CONF_password) ) == 0 ) {
+	if( kitty_pw_empty(conf, CONF_password) ) {
 		char buffer[1024] = "", host[1024], termtype[1024] ;
 		if( GetSessionField( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), KR_PASSWORD, buffer ) ) {
 			GetSessionField( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), "HostName", host );
 			GetSessionField( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), "TerminalType", termtype );
 			decryptpassword( GetCryptSaltFlag(), buffer, host, termtype ) ;
 			MASKPASS(GetCryptSaltFlag(),buffer);
-			conf_set_str(conf,CONF_password,buffer) ;
-			memset(buffer,0,strlen(buffer) );
+			kitty_pw_set_burn(conf,CONF_password,buffer) ;
 			}
 		}
 	}
@@ -891,19 +891,17 @@ void RenewPassword( Conf *conf ) {
 int DebugAddPassword( const char*fct, const char*pwd ) ;
 
 /* Put a password the user typed at the SSH prompt into the running session's
- * settings. CONF_password is PLAINTEXT at runtime - the load path decrypts a
- * stored one and the configuration box holds it plain (see
- * win_seat_get_userpass_input in windows/window.c) - so it is stored exactly
- * as typed. It used to be MASKPASS-encoded here, which every consumer of the
- * running conf would have read as garbage, and trimmed of trailing whitespace
- * and of literal "\n"/"\r" pairs, which would have silently altered a password
- * that legitimately ends in one. No DebugAddPassword() call here: that writes
- * the password in clear to a file beside the exe, and this is now a path every
- * interactive login takes. KITTY_PWDEBUG (lengths and checksums only) is the
- * diagnostic. */
+ * settings. It goes in exactly as typed, wrapped in memory like every other
+ * password field (kitty_pwmem.c). It used to be MASKPASS-encoded here, which
+ * every consumer of the running conf would have read as garbage, and trimmed
+ * of trailing whitespace and of literal "\n"/"\r" pairs, which would have
+ * silently altered a password that legitimately ends in one. No
+ * DebugAddPassword() call here: that writes the password in clear to a file
+ * beside the exe, and this is a path every interactive login takes.
+ * KITTY_PWDEBUG (lengths and checksums only) is the diagnostic. */
 void SetPasswordInConfig( const char * password ) {
 	if( GetUserPassSSHNoSave() || (password==NULL) || (conf==NULL) ) { return ; }
-	conf_set_str( conf, CONF_password, password ) ;
+	kitty_pw_set( conf, CONF_password, password ) ;
 	}
 
 /* The same for the user name. CONF_username is a STR_AMBI key and the SSH

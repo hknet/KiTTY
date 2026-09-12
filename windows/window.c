@@ -57,6 +57,7 @@
 #ifdef MOD_PERSO
 #include "../kitty/kitty_text.h"   /* KiTTY: shared captions and menu words */
 #include "../kitty/kitty_renameguard.h"   /* KiTTY: refuse a foreign file name */
+#include "../kitty/kitty_pwmem.h"   /* KiTTY: passwords wrapped in memory */
 /* kitty.c: types a string into this session (the WM_COPYDATA broadcast). */
 void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
 int  kitty_broadcast_default( void ) ;        /* kitty.c: [KiTTY] sendcmdmode */
@@ -2509,6 +2510,13 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
 static void wgs_cleanup(WinGuiSeat *wgs)
 {
+#ifdef MOD_PERSO
+    /* KiTTY: the window is going away, so its passwords go with it. The Conf
+     * itself outlives this (upstream never frees wgs->conf - the process is
+     * about to end), which is exactly why the strings are cleared here rather
+     * than left for conf_free, which does not clear what it frees. */
+    kitty_pw_wipe(wgs->conf);
+#endif
     deinit_fonts(wgs);
     sfree(wgs->logpal);
     if (wgs->pal)
@@ -2620,6 +2628,11 @@ bool handle_special_filemapping_cmdline(char *p, Conf *conf)
     BinarySource_BARE_INIT(src, cp, cpsize);
     if (!conf_deserialise(conf, src))
         modalfatalbox("Serialised configuration data was invalid");
+    /* KiTTY: the password fields arrived wrapped for the LOGON - the window
+     * that started this one cannot wrap for a process it does not run in.
+     * Re-wrap them for this process before anything reads them. Unguarded:
+     * kitty_pwmem.c is in `utils`, which every binary links. */
+    kitty_pw_seal_all(conf);
     UnmapViewOfFile(cp);
     CloseHandle(filemap);
     return true;
@@ -4774,8 +4787,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 void *p;
                 int size;
 
-                serbuf = strbuf_new();
-                conf_serialise(BinarySink_UPCAST(serbuf), wgs->conf);
+                /* KiTTY: the password fields travel WRAPPED FOR THE LOGON -
+                 * the wrapping this process uses is its own and means nothing
+                 * in the child, and the cleartext must not be what lies in a
+                 * shared section. Done on a copy, so this window keeps its own
+                 * wrapping; the child re-wraps for itself in
+                 * handle_special_filemapping_cmdline. */
+                {
+                    Conf *wire = conf_copy(wgs->conf);
+                    kitty_pw_seal_for_handoff(wire);
+                    serbuf = strbuf_new_nm();
+                    conf_serialise(BinarySink_UPCAST(serbuf), wire);
+                    kitty_pw_wipe(wire);   /* conf_free does not clear */
+                    conf_free(wire);
+                }
                 size = serbuf->len;
 
                 sa.nLength = sizeof(sa);
@@ -5213,6 +5238,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             if (GetLoadLastSessionFlag() && !GetQuickConnectMode())
                 conf_set_str(handoff, CONF_host, "");
             RunConfigBoxWithConfSettings(handoff);
+            kitty_pw_wipe(handoff);   /* conf_free does not clear */
             conf_free(handoff);
             break;
           }
@@ -9369,32 +9395,32 @@ static SeatPromptResult win_seat_get_userpass_input(Seat *seat, prompts_t *p)
      * password prompt to the server (plain SSH password OR keyboard-interactive)
      * from the stored CONF_password. Login is silent by design - the user
      * consented when they set the password in the config dialog.
-     * NOTE: at runtime CONF_password holds the PLAIN-TEXT password - the load
-     * path (kitty_settings_load.c) decrypts it and the config dialog stores it
-     * plain. So use it directly; do NOT call GetPasswordInConfig(), which applies
-     * an extra MASKPASS that would garble an already-plaintext password (that
-     * helper assumes the MASKPASS-encoded form produced by the now-stubbed
-     * RenewPassword). TODO(security): the password is recoverable from the saved
-     * session; a future hardening pass should revisit storage / prefer key auth. */
+     * NOTE: CONF_password is held WRAPPED in memory (kitty/kitty_pwmem.c), so
+     * it is unwrapped into a local buffer that is burned before this returns;
+     * do NOT call GetPasswordInConfig(), which applies an extra MASKPASS that
+     * would garble the value (that helper assumes the MASKPASS-encoded form
+     * produced by the now-stubbed RenewPassword). */
     if (spr.kind == SPRK_INCOMPLETE && !GetPuttyFlag() && !wgs->autopw_tried &&
         p->n_prompts == 1 && !p->prompts[0]->echo && p->to_server &&
-        strlen(conf_get_str(wgs->conf, CONF_password)) > 0) {
+        !kitty_pw_empty(wgs->conf, CONF_password)) {
         /* Answer the stored password ONCE per connection. If the server rejects
          * it and re-prompts, do NOT auto-resend (that would burn the server's
          * MaxAuthTries and risk an IP ban); fall through to the interactive
          * prompt so the user can correct it or cancel. */
+        char pw[KITTY_PW_MAX + 1];
+        size_t pwlen = kitty_pw_get(wgs->conf, CONF_password, pw, sizeof(pw));
         wgs->autopw_tried = true;
-        {
+        if (pwlen > 0) {
             extern void kitty_pwdebug(const char *fmt, ...);
-            const char *pwv = conf_get_str(wgs->conf, CONF_password);
             unsigned h = 0; const char *q;
-            for (q = pwv; q && *q; q++) h = h * 131 + (unsigned char)*q;
+            for (q = pw; *q; q++) h = h * 131 + (unsigned char)*q;
             kitty_pwdebug("AUTH send pw: len=%d cksum=%04x prompt=[%s]",
-                          pwv ? (int)strlen(pwv) : -1, h & 0xffff,
+                          (int)pwlen, h & 0xffff,
                           p->prompts[0]->prompt ? p->prompts[0]->prompt : "");
+            prompt_set_result(p->prompts[0], pw);
+            spr = SPR_OK;
         }
-        prompt_set_result(p->prompts[0], conf_get_str(wgs->conf, CONF_password));
-        spr = SPR_OK;
+        smemclr(pw, sizeof(pw));
     }
 #endif
     if (spr.kind == SPRK_INCOMPLETE)

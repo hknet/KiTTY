@@ -1563,15 +1563,17 @@ void RunConfig( Conf * conf ) {
 	PROCESS_INFORMATION pi;
 	HANDLE filemap = NULL;
 	
-	/* Pass the session conf (incl. the auto-login password) to the child putty
-	 * process PLAINTEXT through the anonymous, inherit-only file-mapping below -
-	 * exactly as the Duplicate-Session handoff (window.c IDM_DUPSESS) already does.
+	/* Pass the session conf (the auto-login password included) to the child
+	 * putty process through the anonymous, inherit-only file mapping below -
+	 * exactly as the Duplicate-Session hand-off (window.c IDM_DUPSESS) does,
+	 * and with the same protection: a COPY is serialised, with its password
+	 * fields wrapped for the LOGON (kitty_pwmem.c), and the child re-wraps them
+	 * for itself right after conf_deserialise. So the shared section never
+	 * holds a password in the clear.
 	 * The old code MASKPASS-obfuscated the password here on the assumption the
-	 * child would un-mask it, but the 0.84 child reads CONF_password raw
-	 * (window.c get_userpass_input) -> it sent the masked bytes -> auto-login and
-	 * WinSCP launches failed for every stored password. The mapping is anonymous
-	 * and only shared by handle-inheritance with our own child, so plaintext here
-	 * is no weaker than the password already being plaintext in process memory. */
+	 * child would un-mask it; the 0.84 child does not, so it sent the masked
+	 * bytes and auto-login and WinSCP launches failed for every stored
+	 * password. */
 
 	/* restricted_acl is a FUNCTION in the 0.84 core (it was a variable in the
 	 * 0.76-era tree this file came from) - testing the bare identifier was
@@ -1591,8 +1593,14 @@ void RunConfig( Conf * conf ) {
 	void *p;
 	int size;
 
-	serbuf = strbuf_new();
-	conf_serialise(BinarySink_UPCAST(serbuf), conf);
+	{
+		Conf *wire = conf_copy(conf);
+		kitty_pw_seal_for_handoff(wire);
+		serbuf = strbuf_new_nm();
+		conf_serialise(BinarySink_UPCAST(serbuf), wire);
+		kitty_pw_wipe(wire);   /* conf_free does not clear what it frees */
+		conf_free(wire);
+	}
 	size = serbuf->len;
 
 	sa.nLength = sizeof(sa);

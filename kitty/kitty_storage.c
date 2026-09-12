@@ -27,6 +27,9 @@
 #include "kitty_b64.h"    /* ksec_b64_encode/decode (at-rest secret codec) */
 #include "kitty_storage.h"
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
+#include "kitty_oldwin.h"   /* kitty_api_record: what this Windows cannot do */
+#include "kitty_text.h"     /* KT_WINFEAT_*: the feature names that report names */
+#include "kitty_pwmem.h"    /* the -pwfile helpers declared there, defined here */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 
 /*
@@ -1936,6 +1939,90 @@ int ksec_unprotect(const char *stored, char **out)
         *out = ksec_dup(""); return -1;   /* present blob, could not decrypt */
     }
     *out = ksec_dup(stored); return 1;     /* unmarked legacy == plaintext */
+}
+
+/* ---- the password file handed to kscp/ksftp/klink -------------------------
+ *
+ * Send/Get file starts a helper with "-pwfile <path>" instead of
+ * "-pw <password>", so the password is not on a command line that every
+ * process lister and audit log can read. What goes IN that file is the
+ * ordinary AT-REST form written and read above - "DPAPI1:" + base64 of a DPAPI
+ * blob for this user - and not a format of its own.
+ *
+ * That is the point of it. klink, kscp and ksftp link this file, so every
+ * KiTTY helper has understood this marker for as long as stored passwords have
+ * been protected at rest. A format invented for the hand-off would be
+ * understood only by a helper built alongside it, and the helper that actually
+ * runs is whichever one the machine has - routinely an installed one, older
+ * than the window starting it. That is not a theoretical risk: an earlier
+ * attempt used its own marker, the installed helper took the marker and the
+ * base64 for the password, and the server refused it.
+ *
+ * A failing protect leaves the password itself in the file, which is the plain
+ * format -pwfile has always taken, and the session names the missing feature
+ * once. The file is private to the user and deleted after the start
+ * (kitty_xfer.c). Declared in kitty_pwmem.h, which is where the rest of the
+ * password handling lives; implemented here because the at-rest crypto is
+ * here, in the settings library the helpers link. */
+char *kitty_pwfile_line(const char *plain)
+{
+    static int reported = 0;
+    char *line;
+
+    if (!plain || !*plain)
+        return NULL;
+    line = ksec_protect_registry(plain);
+    if (line && strncmp(line, KITTY_SECRET_DPAPI_MARK,
+                        strlen(KITTY_SECRET_DPAPI_MARK)) != 0 && !reported) {
+        /* Protection failed, so ksec_protect_registry handed back the value
+         * itself. Said once per process. */
+        reported = 1;
+        kitty_api_record("crypt32.dll", "CryptProtectData",
+                         KITTY_API_OPTIONAL, KT_WINFEAT_PASSWORD_FILE, 0);
+    }
+    return line;
+}
+
+/* Did kitty_pwfile_line() actually protect the value, or hand it back as it
+ * was? The caller needs to know which, to say so and to decide what may go on
+ * a command line. */
+int kitty_pwfile_line_is_protected(const char *line)
+{
+    return line && !strncmp(line, KITTY_SECRET_DPAPI_MARK,
+                            strlen(KITTY_SECRET_DPAPI_MARK)) ? 1 : 0;
+}
+
+/* The reader, NON-DESTRUCTIVE: `value` stays the caller's - it is what -pw
+ * hands over, an argument string this must not free. Returns a fresh string
+ * the caller frees, or NULL when a MARKED value could not be read here (a
+ * blob from another account or machine). An unmarked value is the password
+ * itself and comes back as a copy, which is what -pw has always done. */
+char *kitty_pwfile_decode_copy(const char *value)
+{
+    char *pt = NULL, *res = NULL;
+
+    if (!value)
+        return NULL;
+    /* The same reader a stored session password goes through, so every form
+     * this tree has ever written is accepted. */
+    if (ksec_unprotect(value, &pt) == 1 && pt)
+        res = dupstr(pt);
+    if (pt) { memset(pt, 0, strlen(pt)); free(pt); }
+    return res;
+}
+
+/* The OWNING variant, for a line the caller has just read off a file and wants
+ * taken over: burned and freed whatever the answer. */
+char *kitty_pwfile_decode(char *line)
+{
+    char *res;
+
+    if (!line)
+        return NULL;
+    res = kitty_pwfile_decode_copy(line);
+    smemclr(line, strlen(line));
+    sfree(line);
+    return res;
 }
 
 /* ---- retiring a master password nothing is wrapped with (TASK_export_

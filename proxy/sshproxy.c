@@ -11,6 +11,7 @@
 #include "network.h"
 #include "storage.h"
 #include "proxy.h"
+#include "kitty/kitty_pwmem.h"   /* the proxy password is wrapped in memory */
 
 const bool ssh_proxy_supported = true;
 
@@ -726,10 +727,18 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
     if (*proxy_username)
         conf_set_str(sp->conf, CONF_username, proxy_username);
 
-    const char *proxy_password = conf_get_str(clientconf, CONF_proxy_password);
-    if (*proxy_password) {
-        sp->proxy_password = dupstr(proxy_password);
-        sp->got_proxy_password = true;
+    {
+        /* Held wrapped in the client's Conf (kitty/kitty_pwmem.c). What is
+         * kept here is the answer to a password prompt of the proxy session,
+         * so it has to be the plaintext; the buffer it arrives in is burned
+         * as soon as it has been copied. */
+        char proxy_password[KITTY_PW_MAX + 1];
+        if (kitty_pw_get(clientconf, CONF_proxy_password,
+                         proxy_password, sizeof(proxy_password)) > 0) {
+            sp->proxy_password = dupstr(proxy_password);
+            sp->got_proxy_password = true;
+        }
+        smemclr(proxy_password, sizeof(proxy_password));
     }
 
     const struct BackendVtable *backvt = backend_vt_from_proto(

@@ -21,6 +21,7 @@
 #include "kitty_rc_additions.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "kitty_pwmem.h"    /* passwords wrapped in memory */
 
 /* Type combo order -> CONF_proxy_type. The SSH types make a named proxy a
  * reusable jump host (the command field is the remote command/subsystem for
@@ -247,6 +248,33 @@ static void pxp_str_handler(dlgcontrol *ctrl, dlgparam *dlg,
     else if (event == EVENT_VALCHANGE) {
         char *s = dlg_editbox_get(ctrl, dlg);
         conf_set_str(g_pxp->conf, ctrl->context.i, s);
+        sfree(s);
+        if (!g_pxp->refreshing)
+            g_pxp->dirty = true;
+    }
+}
+
+/* The password field of the definition being edited. The editor's own Conf
+ * holds it wrapped like every other password key (kitty_pwmem.c), so the field
+ * is filled from an unwrapped copy that is burned at once, and what is typed is
+ * wrapped on the way back in. */
+static void pxp_pw_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                           void *data, int event)
+{
+    (void)data;
+    if (!g_pxp || !g_pxp->conf)
+        return;
+    if (event == EVENT_REFRESH) {
+        char pw[KITTY_PW_MAX + 1];
+        kitty_pw_get(g_pxp->conf, ctrl->context.i, pw, sizeof(pw));
+        g_pxp->refreshing = true;
+        dlg_editbox_set(ctrl, dlg, pw);
+        g_pxp->refreshing = false;
+        smemclr(pw, sizeof(pw));
+    }
+    else if (event == EVENT_VALCHANGE) {
+        char *s = dlg_editbox_get(ctrl, dlg);
+        kitty_pw_set_burn(g_pxp->conf, ctrl->context.i, s);
         sfree(s);
         if (!g_pxp->refreshing)
             g_pxp->dirty = true;
@@ -579,7 +607,7 @@ void kitty_proxy_build_panel(struct controlbox *b)
      * start at exactly 30% of the panel. */
     ctrl_columns(s, 2, 75, 25);
     c = ctrl_editbox(s, KT_NAMED_PROXIES_PASSWORD, NO_SHORTCUT, 60, HELPCTX(kitty_named_proxies),
-                     pxp_str_handler, I(CONF_proxy_password), ED_STR);
+                     pxp_pw_handler, I(CONF_proxy_password), ED_STR);
     c->editbox.password = true;
     c->column = 0;
     pd->pwbox = c;

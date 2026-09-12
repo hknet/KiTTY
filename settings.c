@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include "putty.h"
 #include "storage.h"
+#include "kitty/kitty_pwmem.h"   /* KiTTY: passwords wrapped in memory */
 #ifndef NO_GSSAPI
 #include "ssh/gssc.h"
 #include "ssh/gss.h"
@@ -1118,6 +1119,15 @@ void load_open_settings(settings_r *sesskey, Conf *conf)
             sfree(legacy);
         }
     }
+
+    /* KiTTY: the password fields arrive here in the clear - the storage layer
+     * has just undone whatever protected them at rest - and would then sit in
+     * the heap for the lifetime of the window. Wrap them, so what rests in
+     * memory is a blob and the plaintext exists only in the caller buffer of
+     * whoever is using it. Called unguarded on purpose: this file compiles
+     * into the settings library WITHOUT MOD_PERSO, and kitty_pwmem.c is in
+     * `utils`, which every binary links. */
+    kitty_pw_seal_all(conf);
 }
 
 bool do_defaults(const char *session, Conf *conf)

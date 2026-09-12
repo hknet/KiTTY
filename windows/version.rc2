@@ -55,6 +55,26 @@ BEGIN
 #endif
 	    VALUE "ProductVersion",	TEXTVER
 	    /*
+	     * KiTTY: what this binary accepts in a "-pwfile" file.
+	     *
+	     * "1" = it runs the line through the at-rest secret reader, so the
+	     * file may hold the protected form ("DPAPI1:" + base64) as well as a
+	     * plain password. ABSENT = the line IS the password, read verbatim -
+	     * which is every RELEASED helper, ours up to 0.85.1.8-beta and stock
+	     * PuTTY alike. Handing one of those a protected line makes the marker
+	     * and the base64 the password, and the login fails.
+	     *
+	     * A capability flag rather than a version-number test, because the
+	     * mechanical version bump happens in the release script: a binary
+	     * built from this tree still reports 0.85.1.8-beta, so a
+	     * ">= 0.85.1.9" test could never be exercised before a release. The
+	     * flag travels IN the binary, so whoever starts a helper can ask that
+	     * helper itself, whatever file name it has been given. The reader is
+	     * kx_helper_reads_protected() in kitty/kitty_xfer.c; raise the number
+	     * only if the FORMAT changes, never for an ordinary release.
+	     */
+	    VALUE "KiTTYPasswordFile",	"1"
+	    /*
 	     * All three layers, because all three hold copyright in what ships:
 	     * PuTTY upstream, the original KiTTY features, and this port. The
 	     * SHORT_COPYRIGHT_DETAILS macro is derived by cmake/licence.cmake from

@@ -305,6 +305,18 @@ KiTTY can log you in automatically to telnet, SSH-1 and SSH-2 servers by storing
 
 ![Automatic password](docs/features/img/config_password.jpg)
 
+### Passwords in memory
+
+Every password of the running session — the auto-login password, the proxy password, a named proxy's password — is kept **encrypted in memory** with Windows `CryptProtectMemory`, scoped to this process, and decrypted only into a short-lived buffer at the moment it is used: at SSH login, when a proxy authenticates, when a password field is shown in the configuration box. The buffer is wiped as soon as the value has been handed over. That covers the resting state — crash dumps, the pagefile, a memory image taken while the window sits open — which a wipe on close cannot, because a crash never runs one.
+
+Two places the password used to leave the process are covered too. **Duplicate Session** and the tray launcher hand the new window its settings through a shared memory section; the passwords in it are now encrypted for your logon, and the new window re-encrypts them for itself. And **Send/Get file** no longer puts `-pw <password>` on the `kscp`/`ksftp` command line, where every process lister and audit log on the machine can read it: the password goes over in a private temporary file, deleted once the tool has started. What that file holds depends on the helper, and KiTTY asks the helper itself rather than guessing from its file name: one that declares it can read a protected password is given the value in the same DPAPI-protected form a stored password has, while any older one — an installed `kscp` from an earlier release, or PuTTY's own `pscp`/`psftp`, which KiTTY falls back to when no `kscp` is present — is given the plain password its `-pwfile` has always expected. Either way the password is off the command line. In the rare case where no private file can be created at all it does go on the command line, as before — but a helper that reads the protected form is handed that form there too, so only an older helper ever sees a readable password.
+
+The transfer window says which of those happened, in one line above the tool's output, whenever a password was in play — for example *Password handover: encrypted, in a private file*, or *Password handover: plain, in a private file (this helper does not read the encrypted form)*. A login by key or through the agent hands over no password and prints no such line.
+
+On a Windows too old to encrypt memory (before Vista), passwords are kept as they always were and the session prints one line saying so, together with anything else that Windows cannot do. A password is never refused or dropped because the protection is unavailable. What this does not defend against: a debugger, or code running inside KiTTY itself, which can read a password during the moments it is in use.
+
+**How to enable:** always on, nothing to configure.
+
 ### Key-file fingerprint pin
 
 A session that authenticates with a private key file can record that file's SHA256 fingerprint. From then on, every connection checks the file against the record **before** offering the key or asking for its passphrase: a file whose fingerprint no longer matches — pointed at the wrong key, replaced, or tampered with — is refused with both fingerprints named in the terminal and the Event Log, instead of being interacted with. The check also protects agent use of the configured key, since the agent key to prefer is chosen by matching against the same file. The pin is always over the key itself, never over a detached certificate, so certificate renewals from an SSH CA do not disturb it. The command-line tools (klink, kscp, ksftp) honour the pin of a loaded session too.

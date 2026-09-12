@@ -21,6 +21,16 @@ add_sources_from_current_dir(utils
   # it with its own list of accepted names. The stock PuTTY targets link it too
   # and never call it, so the linker leaves the object out of them.
   ../kitty/kitty_renameguard.c
+  # KiTTY: the password fields of a running configuration, kept wrapped in
+  # memory. In `utils` for the same reason as the two files above: the reading
+  # and writing sites are in SHARED files (settings.c, cmdline.c, proxy/*.c,
+  # utils/format_connection_setup_command.c) which compile into libraries built
+  # WITHOUT MOD_PERSO, so they have to call it directly rather than through a
+  # guard the preprocessor would delete. It needs no import library of its own:
+  # CryptProtectMemory is resolved at runtime through kitty_oldwin.c, and the
+  # -pwfile helpers it declares are implemented in kitty_storage.c, over in
+  # `settings`, where the at-rest crypto and its crypt32 already are.
+  ../kitty/kitty_pwmem.c
   utils/agent_mutex_name.c
   utils/agent_named_pipe_name.c
   utils/arm_arch_queries.c
@@ -382,8 +392,11 @@ target_include_directories(test_storage_roundtrip PRIVATE
 # decoder from the one users run.
 target_compile_definitions(test_storage_roundtrip PRIVATE
   MOD_PERSO MASTER_PASSWORD="kitty")
+# `utils` is named a SECOND time after `settings`: the static link is
+# single-pass, and settings.c now calls kitty_pw_seal_all(), which lives in
+# utils. Without the repeat that reference has nowhere left to resolve.
 target_link_libraries(test_storage_roundtrip
-  crypto utils settings ${platform_libraries}
+  crypto utils settings utils ${platform_libraries}
   crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_${KITTY_LIBS_BITS}.a)
 
 add_executable(test_lineedit

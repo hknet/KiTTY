@@ -28,6 +28,7 @@
 #include "kitty_notes.h"   /* the application notification: its escapes and its notice */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
+#include "kitty_pwmem.h"    /* passwords wrapped in memory */
 #include <commctrl.h>       /* SetWindowSubclass: the shortcut editor's key-capture field */
 #endif
 
@@ -203,8 +204,13 @@ static void kitty_autopw_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (event == EVENT_REFRESH) {
         /* CONF_password is kept UTF-8 (the SSH password prompt is UTF-8, and the
          * storage layer normalises legacy values to UTF-8 on load), so display
-         * and read the field as UTF-8 rather than the system codepage. */
-        dlg_editbox_set_utf8(ctrl, dlg, conf_get_str(conf, CONF_password));
+         * and read the field as UTF-8 rather than the system codepage.
+         * The Conf holds the value WRAPPED (kitty_pwmem.c): the plaintext
+         * exists only in this buffer, burned before the handler returns. */
+        char pw[KITTY_PW_MAX + 1];
+        kitty_pw_get(conf, CONF_password, pw, sizeof(pw));
+        dlg_editbox_set_utf8(ctrl, dlg, pw);
+        smemclr(pw, sizeof(pw));
     } else if (event == EVENT_VALCHANGE) {
         char *val = dlg_editbox_get_utf8(ctrl, dlg);
         /* Warn only when a password is being SET where conf currently has none
@@ -212,17 +218,46 @@ static void kitty_autopw_handler(dlgcontrol *ctrl, dlgparam *dlg,
          * already has a stored password leaves conf non-empty, so no warning -
          * this also covers the re-entrant VALCHANGE that dlg_editbox_set fires
          * during EVENT_REFRESH (conf already holds the loaded password then). */
-        if (strlen(val) > 0 &&
-            strlen(conf_get_str(conf, CONF_password)) == 0) {
+        if (strlen(val) > 0 && kitty_pw_empty(conf, CONF_password)) {
             if (!kitty_autopw_warn()) {
                 /* Declined: clear the field and do not store. */
                 dlg_editbox_set(ctrl, dlg, "");
                 conf_set_str(conf, CONF_password, "");
+                smemclr(val, strlen(val));
                 sfree(val);
                 return;
             }
         }
-        conf_set_str(conf, CONF_password, val);
+        kitty_pw_set_burn(conf, CONF_password, val);
+        sfree(val);
+    }
+}
+
+/*
+ * A password edit box bound to a Conf key, for the panels built in this file.
+ *
+ * The stock conf_editbox_handler cannot serve one: a password key does not
+ * hold the password but the wrapped form (kitty_pwmem.h), which the field
+ * would show as a blob and store back as the user's password. A private copy
+ * rather than a shared helper - config.c has the same one - because the two
+ * files are alternative implementations of one dialog and are never linked
+ * together, and anything they could share would have to sit in the GUI
+ * library that the command-line tools do not link.
+ */
+static void kitty_proxypw_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                  void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    int key = ctrl->context.i;
+
+    if (event == EVENT_REFRESH) {
+        char pw[KITTY_PW_MAX + 1];
+        kitty_pw_get(conf, key, pw, sizeof(pw));
+        dlg_editbox_set(ctrl, dlg, pw);
+        smemclr(pw, sizeof(pw));
+    } else if (event == EVENT_VALCHANGE) {
+        char *val = dlg_editbox_get(ctrl, dlg);
+        kitty_pw_set_burn(conf, key, val);
         sfree(val);
     }
 }
@@ -9635,7 +9670,7 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
                      I(CONF_proxy_username), ED_STR);
         c = ctrl_editbox(s, KT_PROXY_PASSWORD, 'w', 60,
                          HELPCTX(proxy_auth),
-                         conf_editbox_handler,
+                         kitty_proxypw_handler,
                          I(CONF_proxy_password), ED_STR);
         c->editbox.password = true;
         g_proxypw_ctrl = c;

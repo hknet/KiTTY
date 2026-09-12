@@ -25,6 +25,7 @@
 #include "../kitty/kitty_b64.h"
 #include "../kitty/kitty_mpw.h"
 #include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
+#include "../kitty/kitty_pwmem.h"        /* passwords wrapped in memory */
 
 /* KiTTY storage API surface (fork style: declared extern by callers) */
 void kitty_set_storage_mode(int mode);
@@ -590,9 +591,21 @@ static void test_old_ktx(void)
           "ktx: terminal type parsed from an old export");
     /* PLAIN: means "this is the password, do not try to decode it" - the marker
      * that stopped cleartext in an imported .ktx being mangled by the legacy
-     * decoder. */
-    check(!strcmp(conf_get_str(conf, CONF_password), "ktx-secret"),
-          "ktx: PLAIN: cleartext password imports verbatim");
+     * decoder. Read through kitty_pw_get: the loader leaves the password
+     * WRAPPED in the Conf (kitty/kitty_pwmem.c), so the raw string is a blob. */
+    {
+        char pw[KITTY_PW_MAX + 1];
+        kitty_pw_get(conf, CONF_password, pw, sizeof(pw));
+        check(!strcmp(pw, "ktx-secret"),
+              "ktx: PLAIN: cleartext password imports verbatim");
+        /* Where the protection is available the Conf must not hold the
+         * password itself; where it is not, keeping it is the documented
+         * fallback and there is nothing to assert. */
+        if (kitty_pw_is_wrapped(conf_get_str(conf, CONF_password)))
+            check(strcmp(conf_get_str(conf, CONF_password), "ktx-secret") != 0,
+                  "ktx: the loaded password is wrapped, not left in the clear");
+        smemclr(pw, sizeof(pw));
+    }
 
     conf_free(conf);
     DeleteFileA(path);

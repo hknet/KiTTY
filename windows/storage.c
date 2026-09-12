@@ -12,6 +12,7 @@
 #include "storage.h"
 #include "../kitty/kitty_defs.h"   /* KITTY_DEFAULT_SESSION (dependency-free) */
 #include "../kitty/kitty_storage.h"  /* the KiTTY half of this file (registry root, portable store, at-rest crypto) */
+#include "../kitty/kitty_pwmem.h"    /* passwords wrapped in memory: unwrap before protecting at rest */
 
 #include <shlobj.h>
 #ifndef CSIDL_APPDATA
@@ -116,6 +117,20 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
         return;
     int slot = kitty_secret_slot(key);
     if (slot >= 0) {
+        /* KiTTY: what the caller hands over is the wrapped in-memory form
+         * (kitty_pwmem.c). Unwrap it here - this is the one place every writer
+         * to the store passes through - so the at-rest protection below sees
+         * the plaintext it expects. An unwrapped buffer exists only for the
+         * length of this call. */
+        char plain[KITTY_PW_MAX + 1];
+        plain[0] = '\0';
+        if (kitty_pw_is_wrapped(value)) {
+            /* An unreadable blob unwraps to "", and the never-wipe guard
+             * below then keeps whatever is already stored - the same answer
+             * it gives for a value that failed to decrypt on load. */
+            kitty_pw_unwrap_str(value, plain, sizeof(plain));
+            value = plain;
+        }
         /* Never-wipe: a blob that failed to decrypt this session leaves the
          * in-memory value ""; re-persist the original verbatim instead of
          * clobbering it. Otherwise encrypt the plaintext at rest. */
@@ -131,8 +146,10 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
                 ksec_stored_is_legacy(ksf_list_get(handle->items, key))) {
                 if (handle->mig_answer < 0)
                     handle->mig_answer = ksec_migrate_warn_ask();
-                if (handle->mig_answer == 0)
+                if (handle->mig_answer == 0) {
+                    smemclr(plain, sizeof(plain));
                     return;
+                }
             }
             char *blob = handle->is_file
                 ? ksec_protect_portable(value ? value : "")
@@ -140,6 +157,7 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
             ksf_or_reg_put(handle, key, blob ? blob : "");
             if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
         }
+        smemclr(plain, sizeof(plain));
         return;
     }
     ksf_or_reg_put(handle, key, value);

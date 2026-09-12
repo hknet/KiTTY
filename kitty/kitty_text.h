@@ -1831,6 +1831,13 @@
         "A transfer client cannot open a protected key file itself. Load " \
         "the key in kageant (one Hello) and start the transfer again.\r\n" \
         "Key: %s\r\n\r\n"
+/* How the password reached the helper, stated once at the top of the transfer
+ * window before the transfer starts. Nothing is printed when the login uses a
+ * key or the agent: there is no password to hand over then. */
+#define KT_XFER_PW_FILE_ENCRYPTED                    "Password handover: encrypted, in a private file"
+#define KT_XFER_PW_FILE_PLAIN                        "Password handover: plain, in a private file (this helper does not read the encrypted form)"
+#define KT_XFER_PW_CMDLINE_ENCRYPTED                 "Password handover: encrypted, on the command line (no private file could be created)"
+#define KT_XFER_PW_CMDLINE_PLAIN                     "Password handover: on the command line (no private file could be created)"
 #define KT_XFER_TRANSFER                             "Transfer"
 #define KT_XFER_FILE                                 "file"
 #define KT_XFER_BTN_CANCEL                           "&Cancel"
@@ -1942,6 +1949,8 @@
 #define KT_WINFEAT_DARK_TITLEBARS                    "dark title bars"
 #define KT_WINFEAT_ACCENT                            "matching the desktop's accent colour"
 #define KT_WINFEAT_DPI                               "per-monitor DPI scaling"
+#define KT_WINFEAT_PASSWORD_IN_MEMORY                "keeping passwords encrypted in memory"
+#define KT_WINFEAT_PASSWORD_FILE                     "protecting the password handed to the transfer tools"
 
 /* ---- Batch 5: kageant (agent) and kittygen (key generator), Windows Hello ---- */
 

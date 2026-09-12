@@ -10,6 +10,7 @@
 #include "dialog.h"
 #include "storage.h"
 #include "tree234.h"
+#include "kitty/kitty_pwmem.h"   /* passwords wrapped in memory */
 
 #define PRINTER_DISABLED_STRING "None (printing disabled)"
 
@@ -106,6 +107,39 @@ void conf_checkbox_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
 const struct conf_editbox_handler_type conf_editbox_str = {.type = EDIT_STR};
 const struct conf_editbox_handler_type conf_editbox_int = {.type = EDIT_INT};
+
+/*
+ * A password edit box bound to a Conf key.
+ *
+ * The handler above cannot serve one: a password key does not hold the
+ * password, it holds the wrapped form (kitty/kitty_pwmem.h), and putting that
+ * in the field would show the user a blob and store it back as their password.
+ * So the field is filled from an unwrapped copy that is burned at once, and
+ * what the user types is wrapped on the way in.
+ *
+ * A private copy rather than a shared helper: this file and kitty_config.c are
+ * two implementations of the same dialog which are never linked together, and a
+ * definition they could share would have to live in the GUI library - which the
+ * command-line tools, whose settings library also compiles this file's
+ * accessors, do not link.
+ */
+static void conf_password_editbox_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                          void *data, int event)
+{
+    int key = ctrl->context.i;
+    Conf *conf = (Conf *)data;
+
+    if (event == EVENT_REFRESH) {
+        char pw[KITTY_PW_MAX + 1];
+        kitty_pw_get(conf, key, pw, sizeof(pw));
+        dlg_editbox_set(ctrl, dlg, pw);
+        smemclr(pw, sizeof(pw));
+    } else if (event == EVENT_VALCHANGE) {
+        char *field = dlg_editbox_get(ctrl, dlg);
+        kitty_pw_set_burn(conf, key, field);
+        sfree(field);
+    }
+}
 
 void conf_editbox_handler(dlgcontrol *ctrl, dlgparam *dlg,
                           void *data, int event)
@@ -2635,7 +2669,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
                      I(CONF_proxy_username), ED_STR);
         c = ctrl_editbox(s, "Password", 'w', 60,
                          HELPCTX(proxy_auth),
-                         conf_editbox_handler,
+                         conf_password_editbox_handler,
                          I(CONF_proxy_password), ED_STR);
         c->editbox.password = true;
         ctrl_editbox(s, "Command to send to proxy (for some types)", 'm', 100,

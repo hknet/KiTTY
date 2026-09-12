@@ -401,15 +401,16 @@ static int cmd_debug( HWND hwnd, char * arg ) {
 static int cmd_passwd( HWND hwnd, char * arg ) {
 	(void)arg ;
 	if( !debug_flag ) return 0 ;	/* debug mode only; otherwise treated as plain text */
-	if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
-		char bufpass[4096], buffer[4096] ;
-		strcpy( bufpass, conf_get_str(conf,CONF_password) ) ;
-		/* plaintext at runtime; do NOT MASKPASS */
+	if( !kitty_pw_empty(conf,CONF_password) ) {
+		char bufpass[KITTY_PW_MAX+1], buffer[KITTY_PW_MAX+256] ;
+		/* Unwrapped into these buffers and burned again before returning; the
+		 * value is already the password, so do NOT MASKPASS it. */
+		kitty_pw_get( conf, CONF_password, bufpass, sizeof(bufpass) ) ;
 		snprintf( buffer, sizeof(buffer), KT_CMD_PASSWORD_IS, bufpass ) ;
 		SetTextToClipboard( bufpass ) ;
-		memset(bufpass,0,strlen(bufpass));
+		smemclr(bufpass,sizeof(bufpass));
 		MessageBox( hwnd, buffer, KT_CAP_PASSWORD, MB_OK|MB_ICONWARNING ) ;
-		memset(buffer,0,strlen(buffer));
+		smemclr(buffer,sizeof(buffer));
 	} else
 		MessageBox( hwnd, KT_CMD_NO_PASSWORD, KT_CAP_PASSWORD, MB_OK|MB_ICONWARNING ) ;
 	return 1 ;

@@ -5,6 +5,7 @@
 #include "kitty_commun.h"
 #include "kitty_tools.h"
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "kitty_pwmem.h"    /* passwords wrapped in memory */
 
 // Flag permettant d'activer l'acces a du code particulier permettant d'avoir plus d'info dans le kitty.dmp
 int debug_flag = 0 ;
@@ -349,39 +350,27 @@ void unmungestr( const char *in, char *out, int outlen ) {
 	return ;
 }
 
-// Fonctions de gestion du mot de passe
+/* The session password, out of the running configuration.
+ *
+ * The value is held wrapped in memory (kitty/kitty_pwmem.c), so these read it
+ * through the accessors. They no longer apply MASKPASS: that undid an encoding
+ * the running configuration has not carried since the load path started
+ * decrypting a stored password, so it turned a good password into garbage. */
 extern Conf *conf;
 void GetPasswordInConfig( char * p ) {
-	if( strlen(conf_get_str(conf,CONF_password)) == 0 ) return ;
-	/* On decrypte le password */
-	char bufpass[4096] ;
-	int len = strlen( conf_get_str(conf,CONF_password) ) ;
-	if( len>4095 ) { len = 4095 ; }
-	memcpy( bufpass, conf_get_str(conf,CONF_password), len ) ; 
-	bufpass[len]='\0';
-	MASKPASS(GetCryptSaltFlag(),bufpass) ;
-	//DebugAddPassword( "GetPasswordInConfig", bufpass ) ; // in settings.c
-	memcpy( p, bufpass, strlen(bufpass)+1 ) ;
-	memset( bufpass,0,strlen(bufpass) ) ;
+	/* `p` is the caller's buffer and must hold KITTY_PW_MAX+1 bytes. */
+	if( p == NULL ) return ;
+	kitty_pw_get( conf, CONF_password, p, KITTY_PW_MAX + 1 ) ;
 }
 
 int IsPasswordInConf(void) {
-	int len = 0 ;
-	if( strlen(conf_get_str(conf,CONF_password)) == 0 ) return 0 ;
-	/* On decrypte le password */
-	char bufpass[4096] ;
-	len = strlen( conf_get_str(conf,CONF_password) ) ;
-	if( len>4095 ) { len = 4095 ; }
-	memcpy( bufpass, conf_get_str(conf,CONF_password), len ) ; 
-	bufpass[len]='\0';
-	MASKPASS(GetCryptSaltFlag(),bufpass);
-	//DebugAddPassword( "IsPasswordInConf", bufpass ) ; // in settings.c
-	len = strlen( bufpass ) ;
-	memset(bufpass,0,strlen(bufpass));
+	char bufpass[KITTY_PW_MAX+1] ;
+	int len = (int)kitty_pw_get( conf, CONF_password, bufpass, sizeof(bufpass) ) ;
+	smemclr( bufpass, sizeof(bufpass) ) ;
 	return len ;
 }
 
-// Extention pour les fichiers de session en mode portable (peut être ktx)
+/* Session-file extension in portable mode (a .ktx among them) */
 char FileExtension[15] = "" ;
 
 // Répertoire courant pourle mode portable

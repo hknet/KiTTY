@@ -96,7 +96,9 @@ void SetSSHConnected( int flag ) ;
 void mungestr( const char *in, char *out ) ;
 void unmungestr( const char *in, char *out, int outlen ) ;
 
-// Fonctions de gestion du mot de passe
+/* The session password. GetPasswordInConfig fills the caller's buffer, which
+ * must hold KITTY_PW_MAX+1 bytes; IsPasswordInConf answers its length. Both
+ * read through kitty_pwmem.c - the running value is wrapped in memory. */
 void MASKPASS( const int mode, char * password ) ;
 void GetPasswordInConfig( char * p ) ;
 int IsPasswordInConf(void) ;

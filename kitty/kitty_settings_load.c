@@ -33,6 +33,7 @@
 #include "kitty_commun.h"  /* GetCryptSaltFlag */
 #include "kitty_crypt.h"   /* decryptstring */
 #include "kitty_text.h"    /* shared captions */
+#include "kitty_pwmem.h"   /* passwords wrapped in memory */
 
 /* CryptFileFlag lives in kitty_bridge.c (same as the write side). */
 extern int CryptFileFlag;
@@ -395,7 +396,9 @@ void load_open_settings_forced(char *filename, Conf *conf) {
          * perfectly good value. */
         char *pt = kitty_secret_decode_imported(
             conf_get_str(conf, CONF_proxy_password), NULL, NULL, 0);
-        conf_set_str(conf, CONF_proxy_password, pt ? pt : "");
+        /* Wrapped for the lifetime of the window rather than left in the
+         * clear in the Conf (kitty_pwmem.c). */
+        kitty_pw_set(conf, CONF_proxy_password, pt ? pt : "");
         if (pt) { memset(pt, 0, strlen(pt)); free(pt); }
     }
     gpps_forced(sesskey, "ProxyTelnetCommand",
@@ -906,7 +909,9 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	char *pt = kitty_secret_decode_imported( conf_get_str(conf, CONF_password),
 			conf_get_str(conf, CONF_host),
 			conf_get_str(conf, CONF_termtype), 1 ) ;
-	conf_set_str( conf, CONF_password, pt ? pt : "" ) ;
+	/* Wrapped for the lifetime of the window rather than left in the clear
+	 * in the Conf (kitty_pwmem.c). */
+	kitty_pw_set( conf, CONF_password, pt ? pt : "" ) ;
 	if( pt ) { memset(pt,0,strlen(pt)) ; free(pt) ; }
     }
     gppi_forced(sesskey, "CtrlTabSwitch", conf, CONF_ctrl_tab_switch);
@@ -1000,6 +1005,10 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	/* After the load, not during it: the readers above are called once per key,
 	 * so warning inside them would fire hundreds of times for one file. */
 	ktx_warn_encrypted_once() ;
+
+	/* Anything the two password branches above did not reach - a value the
+	 * file carried in the clear, or one this process must re-wrap for itself. */
+	kitty_pw_seal_all( conf ) ;
 }
 
 /* ---- read-side helpers (kitty_settings.c:1317-1552) ---- */

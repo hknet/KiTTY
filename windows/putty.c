@@ -11,6 +11,7 @@ extern void load_open_settings_forced(char *filename, Conf *conf); /* kitty_sett
 extern char *kitty_cli_loginscript; /* kitty_bridge.c: -loginscript, consumed post-create */
 #include "../kitty/kitty_storemove.h"
 #include "../kitty/kitty_text.h"   /* shared captions + command-line wordings */
+#include "../kitty/kitty_pwmem.h"  /* passwords wrapped in memory */
 /* -exportall <dir> / -importdir <dir>: whole-store move; stashed here and run
  * just before the config box (storage backend is initialised by then), then
  * exit. kitty_export_all_to_dir/kitty_import_dir are the no-UI cores. */
@@ -264,6 +265,10 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                             BinarySource_BARE_INIT(src, cp, cpsize);
                             if (!conf_deserialise(conf, src))
                                 modalfatalbox(KT_CLI_CONFMAP_INVALID);
+                            /* The password fields travelled wrapped for the
+                             * LOGON; re-wrap them for this process before
+                             * anything reads them (kitty_pwmem.c). */
+                            kitty_pw_seal_all(conf);
                             UnmapViewOfFile(cp);
                         }
                         CloseHandle(filemap);

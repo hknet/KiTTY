@@ -175,6 +175,28 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Security
 
+- **Passwords are kept encrypted in memory.** The auto-login password, the
+  proxy password and a named proxy's password are held in the running
+  configuration wrapped with `CryptProtectMemory`, scoped to the process, and
+  decrypted only into a buffer that is wiped as soon as the value has been
+  used - at SSH login, at proxy authentication, in the configuration box.
+  The settings a new window inherits from Duplicate Session or the launcher
+  carry the passwords wrapped for the logon instead of in the clear, and the
+  new window re-wraps them for itself. Send/Get file hands `kscp`/`ksftp` the
+  password in a private temporary file, deleted after the start, instead of
+  putting `-pw` on the command line. A helper that declares in its version
+  resource that it reads a protected password gets the value in the same
+  at-rest form a stored password has; every older one - an installed `kscp`
+  from an earlier release, or a stock PuTTY `pscp`/`psftp` - gets the plain
+  line its `-pwfile` has always expected. The password is off the command line
+  either way, and it is the binary that is asked, not its file name. Where no
+  private file can be created at all the password falls back to the command
+  line as before, and a capable helper is handed the protected form there too:
+  `-pw` now accepts that form as well as a plain password. The transfer window
+  states in one line how the password travelled, and prints nothing for a login
+  by key or through the agent. A Windows
+  without `CryptProtectMemory` keeps the passwords as before and names the
+  missing feature in the session's one-line report.
 - **The programs refuse to start under a foreign file name.** Every KiTTY
   program checks its own file name and exits unless it begins with its own
   program name - `kitty`/`putty`, `klink`/`plink`, `kscp`/`pscp`,

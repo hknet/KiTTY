@@ -6,6 +6,7 @@
 #include "network.h"
 #include "proxy.h"
 #include "sshcr.h"
+#include "kitty/kitty_pwmem.h"   /* the proxy password is wrapped in memory */
 
 static bool read_line(bufchain *input, strbuf *output, bool is_header)
 {
@@ -425,7 +426,14 @@ static void proxy_http_process_queue(ProxyNegotiator *pn)
      * Initialise our username and password strbufs from the Conf.
      */
     put_dataz(s->username, conf_get_str(pn->ps->conf, CONF_proxy_username));
-    put_dataz(s->password, conf_get_str(pn->ps->conf, CONF_proxy_password));
+    {
+        /* The password is held wrapped (kitty/kitty_pwmem.c); this is the
+         * only place it is in the clear outside the strbuf it feeds. */
+        char pw[KITTY_PW_MAX + 1];
+        kitty_pw_get(pn->ps->conf, CONF_proxy_password, pw, sizeof(pw));
+        put_dataz(s->password, pw);
+        smemclr(pw, sizeof(pw));
+    }
     if (s->username->len || s->password->len)
         s->try_auth_from_conf = true;
 

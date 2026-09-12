@@ -28,6 +28,7 @@
 #include "network.h"
 #include "sshcr.h"
 #include "proxy/proxy.h"
+#include "kitty/kitty_pwmem.h"   /* the proxy password is wrapped in memory */
 
 typedef struct LocalProxyOpener {
     int crLine;
@@ -177,7 +178,9 @@ static void local_proxy_opener_coroutine(void *vctx)
             }
 
             if (lp->password_prompt_index != -1) {
-                conf_set_str(
+                /* Wrapped on the way in, like every password key
+                 * (kitty/kitty_pwmem.c); the prompt owns its own answer. */
+                kitty_pw_set(
                     lp->conf, CONF_proxy_password,
                     prompt_get_result_ref(
                         lp->prompts->prompts[lp->password_prompt_index]));

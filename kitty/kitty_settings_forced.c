@@ -22,6 +22,7 @@
 #include "kitty.h"
 #include "kitty_commun.h"  /* GetCryptSaltFlag, MASKPASS */
 #include "kitty_crypt.h"   /* cryptpassword */
+#include "kitty_pwmem.h"   /* passwords wrapped in memory */
 
 /*
  * KiTTY 2026-08-02: exported .ktx files are no longer written encrypted.
@@ -286,7 +287,14 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_s_forced(sesskey, "ProxyHost", conf_get_str(conf, CONF_proxy_host));
     write_setting_i_forced(sesskey, "ProxyPort", conf_get_int(conf, CONF_proxy_port));
     write_setting_s_forced(sesskey, "ProxyUsername", conf_get_str(conf, CONF_proxy_username));
-    write_setting_s_forced(sesskey, "ProxyPassword", conf_get_str(conf, CONF_proxy_password));
+    {
+        /* The Conf holds the proxy password wrapped (kitty_pwmem.c); the file
+         * gets the value itself, and the unwrapped copy lives only here. */
+        char pxpw[KITTY_PW_MAX + 1];
+        kitty_pw_get(conf, CONF_proxy_password, pxpw, sizeof(pxpw));
+        write_setting_s_forced(sesskey, "ProxyPassword", pxpw);
+        smemclr(pxpw, sizeof(pxpw));
+    }
     write_setting_s_forced(sesskey, "ProxyTelnetCommand", conf_get_str(conf, CONF_proxy_telnet_command));
     write_setting_i_forced(sesskey, "ProxyLogToTerm", conf_get_int(conf, CONF_proxy_log_to_term));
     wmap_forced(sesskey, "Environment", conf, CONF_environmt, true);
@@ -566,7 +574,12 @@ void save_open_settings_forced(char *filename, Conf *conf) {
          * only in explicit legacy mode. The old MASKPASS+bcrypt form is
          * read-compatibility only and is never written anymore. */
         extern char *kitty_secret_wrap_portable(const char *);
-        char *blob = kitty_secret_wrap_portable(conf_get_str(conf, CONF_password));
+        /* The Conf holds it wrapped for this process (kitty_pwmem.c); the
+         * at-rest envelope below needs the value itself. */
+        char pw[KITTY_PW_MAX + 1];
+        kitty_pw_get(conf, CONF_password, pw, sizeof(pw));
+        char *blob = kitty_secret_wrap_portable(pw);
+        smemclr(pw, sizeof(pw));
         write_setting_s_forced(sesskey, "Password", blob ? blob : "");
         if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
     }

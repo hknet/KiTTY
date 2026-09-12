@@ -8,6 +8,7 @@
  */
 
 #include "putty.h"
+#include "kitty/kitty_pwmem.h"   /* the proxy password is wrapped in memory */
 
 char *format_connection_setup_command(
     const char *fmt, SockAddr *addr, int port, Conf *conf, unsigned *flags_out)
@@ -144,10 +145,15 @@ char *format_connection_setup_command(
                     flags |= TELNET_CMD_MISSING_USERNAME;
             }
             else if (strnicmp(fmt + eo, "pass", 4) == 0) {
-                const char *password = conf_get_str(conf, CONF_proxy_password);
-                put_data(buf, password, strlen(password));
+                /* Held wrapped in memory (kitty/kitty_pwmem.c): unwrapped
+                 * here into a buffer burned before the next field. */
+                char password[KITTY_PW_MAX + 1];
+                size_t pwlen = kitty_pw_get(conf, CONF_proxy_password,
+                                            password, sizeof(password));
+                put_data(buf, password, pwlen);
+                smemclr(password, sizeof(password));
                 eo += 4;
-                if (!*password)
+                if (pwlen == 0)
                     flags |= TELNET_CMD_MISSING_PASSWORD;
             }
             else if (strnicmp(fmt + eo, "proxyhost", 9) == 0) {

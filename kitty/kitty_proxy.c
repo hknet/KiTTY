@@ -11,6 +11,7 @@
 #include <windows.h>
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions */
+#include "kitty_pwmem.h"    /* passwords wrapped in memory */
 
 /* The registry hive chosen AT RUNTIME (kitty_set_registry_root, driven by
  * kitty.ini KiClassName). Named proxies used the compile-time PUTTY_REG_POS
@@ -195,7 +196,8 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyUsername", lpData, sizeof(lpData) ) ) { conf_set_str( conf, CONF_proxy_username, lpData ) ; }
 		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyPassword", lpData, sizeof(lpData) ) ) {
 			char *pt = NULL ; kitty_secret_unwrap( lpData, &pt ) ;   /* DPAPI/MPW/plain */
-			conf_set_str( conf, CONF_proxy_password, pt ? pt : "" ) ;
+			/* Wrapped again for memory, not left in the clear in the Conf. */
+			kitty_pw_set( conf, CONF_proxy_password, pt ? pt : "" ) ;
 			if( pt ) { memset( pt, 0, strlen(pt) ) ; free( pt ) ; }
 		}
 		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyTelnetCommand", lpData, sizeof(lpData) ) ) { conf_set_str( conf, CONF_proxy_telnet_command, lpData ) ; }
@@ -245,7 +247,8 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 						conf_set_str( conf, CONF_proxy_username, buf2 ) ; 
 					} else if( ReadPortableValue(buffer, "ProxyPassword", buf2, MAX_VALUE_NAME) ) {
 						char *pt = NULL ; kitty_secret_unwrap( buf2, &pt ) ;   /* DPAPI/MPW/plain */
-						conf_set_str( conf, CONF_proxy_password, pt ? pt : "" ) ;
+						/* Wrapped again for memory (kitty_pwmem.c). */
+						kitty_pw_set( conf, CONF_proxy_password, pt ? pt : "" ) ;
 						if( pt ) { memset( pt, 0, strlen(pt) ) ; free( pt ) ; }
 					} else if( ReadPortableValue(buffer, "ProxyTelnetCommand", buf2, MAX_VALUE_NAME) ) {
 						conf_set_str( conf, CONF_proxy_telnet_command, buf2 ) ; 
@@ -297,7 +300,10 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 	int local  = conf_get_bool(conf, CONF_even_proxy_localhost) ? 1 : 0 ;
 	/* Protect the password at rest via the shared backend policy (may prompt to
 	 * create/unlock the master password in portable mode; empty -> "", no prompt). */
-	char *pwblob = kitty_secret_wrap_current_backend( conf_get_str(conf, CONF_proxy_password) ) ;
+	char pxpw[KITTY_PW_MAX + 1] ;   /* the Conf holds it wrapped for memory */
+	kitty_pw_get( conf, CONF_proxy_password, pxpw, sizeof(pxpw) ) ;
+	char *pwblob = kitty_secret_wrap_current_backend( pxpw ) ;
+	smemclr( pxpw, sizeof(pxpw) ) ;
 	if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
 		char sub[2048] ;
 		char *m = (char*)malloc(4*strlen(name)+1) ; mungestr( name, m ) ;
@@ -450,7 +456,10 @@ int kitty_export_proxies_to_dir( const char *dir ) {
 		LoadProxyInfo( conf, proxies[i].name ) ;         /* decrypts pw into CONF_proxy_password */
 		char *fn = (char*)malloc(4*strlen(proxies[i].name)+1) ; mungestr( proxies[i].name, fn ) ;
 		char path[2048] ; snprintf( path, sizeof(path), "%s\\%s", pdir, fn ) ; free( fn ) ;
-		char *pwblob = kitty_secret_wrap_portable( conf_get_str(conf, CONF_proxy_password) ) ;  /* MPW2 */
+		char pxpw[KITTY_PW_MAX + 1] ;   /* the Conf holds it wrapped for memory */
+		kitty_pw_get( conf, CONF_proxy_password, pxpw, sizeof(pxpw) ) ;
+		char *pwblob = kitty_secret_wrap_portable( pxpw ) ;  /* MPW2 */
+		smemclr( pxpw, sizeof(pxpw) ) ;
 		FILE *fp = fopen( path, "w" ) ;
 		if( fp ) {
 			char mv[4096] ;
@@ -548,7 +557,8 @@ int kitty_import_proxies_from_dir( const char *dir, int overwrite, int *skippedO
 				conf_set_str( conf, CONF_proxy_username, buf2 ) ;
 			} else if( ReadPortableValue(buffer, "ProxyPassword", buf2, MAX_VALUE_NAME) ) {
 				char *pt = NULL ; kitty_secret_unwrap( buf2, &pt ) ;   /* MPW2/legacy -> plain */
-				conf_set_str( conf, CONF_proxy_password, pt ? pt : "" ) ;
+				/* Wrapped again for memory (kitty_pwmem.c). */
+				kitty_pw_set( conf, CONF_proxy_password, pt ? pt : "" ) ;
 				if( pt ) { memset( pt, 0, strlen(pt) ) ; free( pt ) ; }
 			} else if( ReadPortableValue(buffer, "ProxyTelnetCommand", buf2, MAX_VALUE_NAME) ) {
 				conf_set_str( conf, CONF_proxy_telnet_command, buf2 ) ;

@@ -23,6 +23,7 @@
 #include "kitty_defs.h"
 #include "kitty_storage.h"
 #include "kitty_migrate.h"
+#include "kitty_pwmem.h"   /* passwords wrapped in memory */
 
 /* ------------------------------------------------------------------ */
 /* name sets                                                          */
@@ -613,7 +614,7 @@ bool kitty_import_file_session(const char *path, const char *target,
     watch_end();
     kitty_set_defer_mpw_prompt(0);
 
-    if (password_lost && srcpw && *srcpw && !*conf_get_str(conf, CONF_password))
+    if (password_lost && srcpw && *srcpw && kitty_pw_empty(conf, CONF_password))
         *password_lost = true;
     if (dropped) {
         struct dropped_ctx c = { &seen, dropped };

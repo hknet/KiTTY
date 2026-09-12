@@ -2314,6 +2314,11 @@ or under the store's master password in a portable store. It is not
 kept in the clear, and \q{Show password} is the only way to see it
 again.
 
+While the session is running the password is \e{also} kept encrypted in
+memory, and is decrypted only for the moment it is used - at login, or
+when a helper tool is started - so that a crash dump or the pagefile
+does not carry it.
+
 An automatic password is a convenience with a cost: anything that can
 read your account can ask KiTTY to use it, and a host you did not
 expect will be sent it just the same. Prefer key authentication where

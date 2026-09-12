@@ -7,6 +7,11 @@
 #include <assert.h>
 #include <stdlib.h>
 #include "putty.h"
+/* KiTTY: -pwfile may carry a protected line, in EVERY build of this file -
+ * the console tools link the settings library, which compiles it without
+ * MOD_PERSO. kitty_pwmem.c is in `utils`, which they all link, so the call is
+ * unguarded and the include must be too. */
+#include "kitty/kitty_pwmem.h"
 #ifdef MOD_PERSO
 #include "kitty/kitty_text.h"   /* KiTTY: the -masterpwfile diagnostics */
 #endif
@@ -747,7 +752,22 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
                 sfree(cmdline_password);
             }
 
-            cmdline_password = dupstr(value);
+            /* KiTTY: the value may be the protected form KiTTY writes when it
+             * hands a password to a helper of its own - the at-rest secret
+             * form, "DPAPI1:" + base64 - which is what it falls back to on the
+             * command line when no private file could be created. Anything
+             * unmarked is the password itself, exactly as before, so this
+             * changes nothing for any other caller. `value` is an ARGUMENT
+             * string the caller owns, hence the _copy entry point: it must not
+             * be freed here.
+             *
+             * A marked value that cannot be read on this account keeps its old
+             * meaning, the value as typed, rather than becoming an error - a
+             * password that legitimately began with the marker would otherwise
+             * stop working. */
+            cmdline_password = kitty_pwfile_decode_copy(value);
+            if (!cmdline_password)
+                cmdline_password = dupstr(value);
         }
 
         cmdline_arg_wipe(nextarg);
@@ -773,7 +793,17 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
                     sfree(cmdline_password);
                 }
 
-                cmdline_password = chomp(fgetline(fp));
+                /* KiTTY: the single line may be the protected form KiTTY
+                 * writes when it hands a password to kscp/ksftp/klink - the
+                 * ordinary at-rest secret form, "DPAPI1:" + base64 - and an
+                 * unmarked line is the plain password file this option has
+                 * always taken. kitty_pwfile_decode() takes the line over and
+                 * runs it through the same reader a stored session password
+                 * goes through, so it answers the password either way. Called
+                 * unguarded: this file compiles into the settings library
+                 * without MOD_PERSO, and that library is where the reader
+                 * itself lives. */
+                cmdline_password = kitty_pwfile_decode(chomp(fgetline(fp)));
                 if (!cmdline_password) {
                     cmdline_error("unable to read a password from file '%s'",
                                   value);

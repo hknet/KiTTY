@@ -7,6 +7,7 @@
 #include "proxy.h"
 #include "socks.h"
 #include "sshcr.h"
+#include "kitty/kitty_pwmem.h"   /* the proxy password is wrapped in memory */
 
 static inline const char *socks5_auth_name(unsigned char m)
 {
@@ -105,7 +106,13 @@ static void proxy_socks5_process_queue(ProxyNegotiator *pn)
     put_byte(s->auth_methods_offered, SOCKS5_AUTH_NONE);
 
     put_dataz(s->username, conf_get_str(pn->ps->conf, CONF_proxy_username));
-    put_dataz(s->password, conf_get_str(pn->ps->conf, CONF_proxy_password));
+    {
+        /* The password is held wrapped (kitty/kitty_pwmem.c). */
+        char pw[KITTY_PW_MAX + 1];
+        kitty_pw_get(pn->ps->conf, CONF_proxy_password, pw, sizeof(pw));
+        put_dataz(s->password, pw);
+        smemclr(pw, sizeof(pw));
+    }
     if (pn->itr || (s->username->len && s->password->len)) {
         if (socks5_chap_available)
             put_byte(s->auth_methods_offered, SOCKS5_AUTH_CHAP);

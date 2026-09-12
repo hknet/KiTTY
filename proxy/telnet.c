@@ -11,6 +11,7 @@
 #include "network.h"
 #include "proxy.h"
 #include "sshcr.h"
+#include "kitty/kitty_pwmem.h"   /* the proxy password is wrapped in memory */
 
 char *format_telnet_command(SockAddr *addr, int port, Conf *conf,
                             unsigned *flags_out)
@@ -140,7 +141,9 @@ static void proxy_telnet_process_queue(ProxyNegotiator *pn)
             }
 
             if (s->password_prompt_index != -1) {
-                conf_set_str(
+                /* Wrapped on the way in, like every password key
+                 * (kitty/kitty_pwmem.c); the prompt owns its own answer. */
+                kitty_pw_set(
                     s->conf, CONF_proxy_password,
                     prompt_get_result_ref(
                         s->prompts->prompts[s->password_prompt_index]));

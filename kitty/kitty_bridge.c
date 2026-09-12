@@ -18,6 +18,7 @@
 #include "kitty.h"
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION, KITTY_LAUNCHER_HOTKEY_MAX */
 #include "kitty_commun.h"  /* GetCryptSaltFlag, MASKPASS */
+#include "kitty_pwmem.h"   /* passwords wrapped in memory */
 #ifdef MOD_PROXY
 #include "kitty_proxy.h"   /* LoadProxyInfo, GetProxySelectionFlag */
 #include "kitty_workplace.h"   /* workplace proxy mode: is an arming held? */
@@ -104,8 +105,22 @@ void RunSessionWithConfSettings(Conf *conf) {
 
     argprefix = restricted_acl() ? "&R" : "";
 
-    serbuf = strbuf_new();
-    conf_serialise(BinarySink_UPCAST(serbuf), conf);
+    /* The password fields travel WRAPPED FOR THE LOGON: the reader is another
+     * process, so the process-scoped wrapping this window uses would be
+     * unreadable there, and the cleartext must not be what lies in a shared
+     * section. Done on a copy - the live Conf keeps its own wrapping - and the
+     * serialised bytes go into a burn-on-free strbuf. The child re-wraps for
+     * itself right after conf_deserialise (windows/window.c, windows/putty.c).
+     * The mapping itself is unmapped and closed below but never zeroed; what
+     * makes that acceptable is that it now carries only the wrapped form. */
+    {
+        Conf *wire = conf_copy(conf);
+        kitty_pw_seal_for_handoff(wire);
+        serbuf = strbuf_new_nm();
+        conf_serialise(BinarySink_UPCAST(serbuf), wire);
+        kitty_pw_wipe(wire);   /* conf_free does not clear what it frees */
+        conf_free(wire);
+    }
     size = serbuf->len;
 
     sa.nLength = sizeof(sa);
@@ -161,8 +176,16 @@ void RunConfigBoxWithConfSettings(Conf *conf) {
     void *p;
     int size;
 
-    serbuf = strbuf_new();
-    conf_serialise(BinarySink_UPCAST(serbuf), conf);
+    /* Password fields wrapped for the logon, on a copy - see the same block in
+     * RunSessionWithConfSettings above for why. */
+    {
+        Conf *wire = conf_copy(conf);
+        kitty_pw_seal_for_handoff(wire);
+        serbuf = strbuf_new_nm();
+        conf_serialise(BinarySink_UPCAST(serbuf), wire);
+        kitty_pw_wipe(wire);   /* conf_free does not clear what it frees */
+        conf_free(wire);
+    }
     size = serbuf->len;
 
     sa.nLength = sizeof(sa);
@@ -213,16 +236,15 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
     (void)port;
     if (host != NULL) conf_set_str(newconf, CONF_host, host);
     if (user != NULL) conf_set_str(newconf, CONF_username, user);
-    if (pass != NULL) conf_set_str(newconf, CONF_password, pass);
+    if (pass != NULL) kitty_pw_set(newconf, CONF_password, pass);
 
-    /* Keep CONF_password PLAINTEXT here. newconf is serialised straight to the
-     * child through an inherit-only file mapping - whichever of the two calls
-     * below is taken - and the child reads CONF_password raw at connect time.
-     * It never reaches the settings store on this path.
-     * The old MASKPASS here turned the (plaintext) password into high-byte
-     * garbage -> Duplicate-Session / open-new-with-current auto-login sent a
-     * corrupted password (even for ASCII). Runtime conf is plaintext (see
-     * window.c get_userpass_input), so just pass it through. */
+    /* The password is stored here in the same wrapped in-memory form as
+     * everywhere else (kitty_pwmem.c), and the two launchers below re-wrap it
+     * for the logon before it enters the file mapping the child inherits. It
+     * never reaches the settings store on this path.
+     * The old MASKPASS here turned the password into high-byte garbage ->
+     * Duplicate-Session / open-new-with-current auto-login sent a corrupted
+     * password (even for ASCII), so it is stored exactly as handed over. */
 
     if (remotepath != NULL) {
         char *buf = (char*)malloc(strlen(remotepath) + 5);
@@ -242,6 +264,7 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
         (void)hwnd;
         RunConfigBoxWithConfSettings(newconf);
     }
+    kitty_pw_wipe(newconf);   /* conf_free does not clear what it frees */
     conf_free(newconf);
 }
 
@@ -1574,6 +1597,9 @@ void kitty_proxy_record_connection(Conf *resolved)
     kitty_conn_proxy.port = conf_get_int(resolved, CONF_proxy_port);
     kitty_conn_proxy.host = dupstr(conf_get_str(resolved, CONF_proxy_host));
     kitty_conn_proxy.username = dupstr(conf_get_str(resolved, CONF_proxy_username));
+    /* Kept in the WRAPPED form the Conf holds (kitty_pwmem.c) - this snapshot
+     * outlives the connect, and its one reader (kitty_xfer.c) unwraps it into
+     * its own buffer at the moment it builds a command. */
     kitty_conn_proxy.password = dupstr(conf_get_str(resolved, CONF_proxy_password));
     kitty_conn_proxy.telnet_command = dupstr(conf_get_str(resolved, CONF_proxy_telnet_command));
 }

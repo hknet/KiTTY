@@ -27,6 +27,7 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions and wordings */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "kitty_pwmem.h"    /* passwords wrapped in memory */
 
 /* The port inside a target override ([user@]hostname[:port]), 0 if it names
  * none. Defined beside kitty_xfer_default_port(), used by the builders above
@@ -637,7 +638,9 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 		wc.hInstance = hi ;
 		wc.hCursor = LoadCursor( NULL, IDC_ARROW ) ;
 		wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE+1) ;
-		wc.hIcon = LoadIcon( NULL, IDI_APPLICATION ) ;
+		/* The window takes the session's icon after creation
+		 * (kitty_dialog_icon); this is only what the class starts with. */
+		wc.hIcon = LoadIcon( hi, MAKEINTRESOURCE(IDI_MAINICON) ) ;
 		wc.lpszClassName = "KiTTYxferwin" ;
 		RegisterClass( &wc ) ;
 		registered = 1 ;
@@ -677,6 +680,10 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	sfree( title ) ;
 	if( !hwnd ) { CloseHandle( pi.hProcess ) ; CloseHandle( rd ) ; sfree( w->what ) ;
 	              sfree( w->open_file ) ; sfree( w->open_dir ) ; free( w ) ; return -1 ; }
+	/* The session's own icon, big and small, as every other window of ours
+	 * takes it - the class was registered with IDI_APPLICATION, which is the
+	 * generic Windows icon. */
+	kitty_dialog_icon( hwnd, parent ) ;
 	SetForegroundWindow( hwnd ) ;          /* bring the transfer window to the front */
 	BringWindowToTop( hwnd ) ;
 	SetFocus( w->closebtn ) ;              /* Esc reaches the button, not the bare frame */
@@ -803,6 +810,98 @@ static void kx_pwfiles_sweep( void ) {
 	FindClose( h ) ;
 }
 
+/* How the password reached the helper, for the line the transfer window shows.
+ * Set from the SAME variables the builder decided on - never worked out a
+ * second time - so what the window says is what the code did. */
+#define KX_PW_NONE        0   /* key or agent login: nothing to hand over */
+#define KX_PW_FILE_ENC    1
+#define KX_PW_FILE_PLAIN  2
+#define KX_PW_CMD_ENC     3
+#define KX_PW_CMD_PLAIN   4
+
+static const char *kx_pw_handover_line( int mode ) {
+	switch( mode ) {
+		case KX_PW_FILE_ENC:   return KT_XFER_PW_FILE_ENCRYPTED ;
+		case KX_PW_FILE_PLAIN: return KT_XFER_PW_FILE_PLAIN ;
+		case KX_PW_CMD_ENC:    return KT_XFER_PW_CMDLINE_ENCRYPTED ;
+		case KX_PW_CMD_PLAIN:  return KT_XFER_PW_CMDLINE_PLAIN ;
+		default:               return NULL ;
+	}
+}
+
+/* Can the helper at `path` read a PROTECTED password file, or only a plain one?
+ *
+ * The password file replaces "-pw <password>" on the command line, where every
+ * process lister and audit log on the machine could read it. What may go IN the
+ * file depends entirely on the helper: a password file is read VERBATIM by every
+ * RELEASED helper - ours through 0.85.1.8-beta and stock pscp/psftp alike, where
+ * cmdline.c is `chomp(fgetline(fp))` and nothing more - so handing one of those
+ * the protected form makes the marker and the base64 the password, and the login
+ * fails with "Access denied". That is not hypothetical; it is what happened.
+ *
+ * A NAME test cannot answer this, and that was the bug: "kscp.exe" says nothing
+ * about which kscp it is, and `PSCPPath` commonly resolves to an INSTALLED KiTTY
+ * rather than the build the running window came from. So the helper is asked
+ * about ITSELF, through its own version resource:
+ *
+ *   - "KiTTYPasswordFile" >= 1 in its StringFileInfo (windows/version.rc2) - the
+ *     capability flag every binary built from this change onward carries; or
+ *   - a numeric file version >= 0.85.1.9, so a future binary that somehow lost
+ *     the string still qualifies.
+ *
+ * Anything else - a missing field, an unreadable resource, any error at all - is
+ * "plain only". Every released helper and every stock PuTTY lands there, which
+ * is the safe answer: the plain file still keeps the password off the command
+ * line, and the file is private to this user and deleted after the start.
+ *
+ * The flag is in the BINARY, so an installed newer helper is recognised whatever
+ * file name it has been given. */
+#define KX_HELPER_PROTECTED_MS  ((0UL << 16) | 85UL)        /* 0.85 */
+#define KX_HELPER_PROTECTED_LS  ((1UL << 16) |  9UL)        /* .1.9 */
+
+static int kx_helper_reads_protected( const char *path ) {
+	DWORD dummy, sz ;
+	void *buf ;
+	int ok = 0 ;
+
+	if( path == NULL || path[0] == '\0' ) return 0 ;
+	sz = GetFileVersionInfoSizeA( path, &dummy ) ;
+	if( sz == 0 ) return 0 ;
+	if( (buf = malloc( sz )) == NULL ) return 0 ;
+	if( GetFileVersionInfoA( path, 0, sz, buf ) ) {
+		/* The capability flag, in whichever translation the file declares -
+		 * ours is 0x0809/1200, but a rebuild elsewhere need not be. */
+		struct { WORD lang, cp ; } *xlat = NULL ;
+		UINT n = 0 ;
+		if( VerQueryValueA( buf, "\\VarFileInfo\\Translation", (void **)&xlat, &n )
+		    && xlat != NULL ) {
+			UINT i ;
+			for( i = 0 ; i < n / sizeof(*xlat) && !ok ; i++ ) {
+				char sub[64] ; char *val = NULL ; UINT vlen = 0 ;
+				snprintf( sub, sizeof(sub),
+				          "\\StringFileInfo\\%04x%04x\\KiTTYPasswordFile",
+				          xlat[i].lang, xlat[i].cp ) ;
+				if( VerQueryValueA( buf, sub, (void **)&val, &vlen )
+				    && val != NULL && vlen > 0 && atoi( val ) >= 1 )
+					ok = 1 ;
+			}
+		}
+		if( !ok ) {
+			/* No flag: a build new enough by its NUMBER still qualifies. */
+			VS_FIXEDFILEINFO *ffi = NULL ; UINT flen = 0 ;
+			if( VerQueryValueA( buf, "\\", (void **)&ffi, &flen )
+			    && ffi != NULL && flen >= sizeof(*ffi) ) {
+				if( ffi->dwFileVersionMS > KX_HELPER_PROTECTED_MS
+				    || ( ffi->dwFileVersionMS == KX_HELPER_PROTECTED_MS
+				         && ffi->dwFileVersionLS >= KX_HELPER_PROTECTED_LS ) )
+					ok = 1 ;
+			}
+		}
+	}
+	free( buf ) ;
+	return ok ;
+}
+
 /* Write `secret` to a fresh private temp file; the path (static storage,
  * valid until the release) or NULL when no file could be made - the caller
  * then falls back to the plain value, so a transfer never fails for this. */
@@ -852,6 +951,8 @@ static void kx_pwfiles_release( int now ) {
 void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) {
 	char buffer[4096], pscppath[4096]="", pscpport[4096]="22", remotedir[4096]=".", b1[256], tgt[4096] ;
 	size_t pw_at = 0, pw_len = 0 ;   /* KiTTY: where the password lands in buffer */
+	int pwfiles = 0 ;                /* password handed over as a file, to delete after the start */
+	int pw_mode = KX_PW_NONE ;       /* what the window will say about the hand-over */
 	int p ;
 
 	if( distantdir == NULL ) { distantdir = kitty_current_dir() ; }
@@ -914,15 +1015,39 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 
 	if( conf_get_int(conf, CONF_sshprot) == 3 ) { bcat( buffer, BC, "-2 " ) ; }   // SSH-2 Only
 
-	if( strlen( conf_get_str(conf,CONF_password)) > 0 ) {
-		/* CONF_password is plaintext at runtime; do NOT MASKPASS. qcat escapes any
-		 * quote so the password can't inject an extra switch. The span is noted so
-		 * the debug log can blank it - see debug_logevent_redacted(). */
-		bcat( buffer, BC, "-pw " ) ;
+	if( !kitty_pw_empty(conf,CONF_password) ) {
+		/* The password goes over in a PRIVATE FILE, not on the command line,
+		 * where every process lister and audit log on the machine can read it.
+		 * The file holds one line: the DPAPI-protected form when this Windows
+		 * can produce it, else the password itself - the plain format -pwfile
+		 * has always accepted. It is deleted after the start
+		 * (kx_pwfiles_release below). Only if no file can be made at all does
+		 * the password go on the command line, so a transfer never fails for
+		 * this; qcat escapes any quote, so it cannot inject a switch. The span
+		 * is noted either way, so the debug log can blank it - see
+		 * debug_logevent_redacted().
+		 * What goes IN the file, and what goes after -pw when no file could
+		 * be made, is decided by the HELPER and not by us:
+		 * kx_helper_reads_protected() asks the binary itself whether it reads
+		 * the protected form. A capable helper gets that form in either place,
+		 * so even the command-line fallback carries no readable password;
+		 * every released helper, and stock pscp/psftp, gets the plain value.
+		 * The window says which of the four it was - kx_pw_handover_line(). */
+		char pw[KITTY_PW_MAX+1] ; const char *pf ; char *line = NULL ; int enc ;
+		kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
+		if( kx_helper_reads_protected( PSCPPath ) ) line = kitty_pwfile_line( pw ) ;
+		enc = kitty_pwfile_line_is_protected( line ) ;
+		pf = kx_password_file( line ? line : pw ) ;
+		bcat( buffer, BC, pf ? "-pwfile " : "-pw " ) ;
 		pw_at = strlen( buffer ) ;
-		qcat( buffer, BC, conf_get_str(conf,CONF_password) ) ;
-		pw_len = strlen( buffer ) - pw_at ;
+		qcat( buffer, BC, pf ? pf : ( enc ? line : pw ) ) ;
+		pw_len = strlen( buffer ) - pw_at ;   /* the span covers whatever was written */
 		bcat( buffer, BC, " " ) ;
+		if( pf ) pwfiles++ ;
+		pw_mode = pf ? ( enc ? KX_PW_FILE_ENC : KX_PW_FILE_PLAIN )
+		             : ( enc ? KX_PW_CMD_ENC  : KX_PW_CMD_PLAIN ) ;
+		if( line ) { smemclr( line, strlen(line) ) ; sfree( line ) ; }
+		smemclr( pw, sizeof(pw) ) ;
 	}
 	if( strlen( conf_get_str(conf,CONF_portknockingoptions)) > 0 ) {
 		bcat( buffer, BC, "-knock " ) ; qcat( buffer, BC, conf_get_str(conf,CONF_portknockingoptions) ) ; bcat( buffer, BC, " " ) ;
@@ -968,14 +1093,22 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	  char *note = kx_hello_agent_note( conf ) ;
 	  char *intro = dupprintf( KT_XFER_UPLOADING,
 	                           note ? note : "", filename ? filename : KT_XFER_FILE, tgt ) ;
+	  /* One line saying how the password travelled, from what the builder
+	   * above actually did. Nothing when the login uses a key or the agent. */
+	  { const char *hand = kx_pw_handover_line( pw_mode ) ;
+	    if( hand != NULL ) {
+		char *t = dupprintf( "%s%s\r\n\r\n", intro, hand ) ;
+		sfree( intro ) ; intro = t ;
+	    } }
 	  /* files leaving: the balloon's click opens the local upload folder */
 	  kitty_xfer_upload_dir( conf, updir, sizeof(updir) ) ;
 	  kitty_run_xfer( hwnd, buffer, whatbuf, intro, 0, NULL, updir ) ;
 	  sfree( intro ) ; sfree( note ) ; }
 
 	//debug_log("%s\n",buffer);MessageBox( NULL, buffer, "Info",MB_OK );
-	
+
 	memset(buffer,0,strlen(buffer));
+	if( pwfiles ) kx_pwfiles_release( 0 ) ;   /* the password file, once kscp has had it */
 	}
 
 void SendFileList( HWND hwnd, char * filelist ) {
@@ -1041,6 +1174,8 @@ void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
 /* localdir NULL = the download folder (kitty_xfer_download_dir). */
 void GetOneFileTo( HWND hwnd, char * directory, const char * filename, const char * localdir ) {
     char buffer[4096], pscppath[4096]="", pscpport[4096]="22", dir[4096]=".", b1[256] ;
+    int pwfiles = 0 ;   /* password handed over as a file, to delete after the start */
+    int pw_mode = KX_PW_NONE ;   /* what the window will say about the hand-over */
     int p;
 
     if( PSCPPath==NULL ) {
@@ -1083,8 +1218,24 @@ void GetOneFileTo( HWND hwnd, char * directory, const char * filename, const cha
     }
     if( conf_get_int(conf,CONF_sshprot) == 3 ) { bcat( buffer, BC, "-2 " ) ; }   // SSH-2 Only
 
-    if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
-        bcat( buffer, BC, "-pw " ) ; qcat( buffer, BC, conf_get_str(conf,CONF_password) ) ; bcat( buffer, BC, " " ) ;
+    if( !kitty_pw_empty(conf,CONF_password) ) {
+        /* A private file rather than the command line, and the protected form
+         * - in the file, or after -pw when no file could be made - only for a
+         * helper that says it reads one. See SendOneFile and
+         * kx_helper_reads_protected. */
+        char pw[KITTY_PW_MAX+1] ; const char *pf ; char *line = NULL ; int enc ;
+        kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
+        if( kx_helper_reads_protected( PSCPPath ) ) line = kitty_pwfile_line( pw ) ;
+        enc = kitty_pwfile_line_is_protected( line ) ;
+        pf = kx_password_file( line ? line : pw ) ;
+        bcat( buffer, BC, pf ? "-pwfile " : "-pw " ) ;
+        qcat( buffer, BC, pf ? pf : ( enc ? line : pw ) ) ;
+        bcat( buffer, BC, " " ) ;
+        if( pf ) pwfiles++ ;
+        pw_mode = pf ? ( enc ? KX_PW_FILE_ENC : KX_PW_FILE_PLAIN )
+                     : ( enc ? KX_PW_CMD_ENC  : KX_PW_CMD_PLAIN ) ;
+        if( line ) { smemclr( line, strlen(line) ) ; sfree( line ) ; }
+        smemclr( pw, sizeof(pw) ) ;
     }
     if( strlen( conf_get_str(conf,CONF_portknockingoptions)) > 0 ) {
         bcat( buffer, BC, "-knock " ) ; qcat( buffer, BC, conf_get_str(conf,CONF_portknockingoptions) ) ; bcat( buffer, BC, " " ) ;
@@ -1134,13 +1285,18 @@ void GetOneFileTo( HWND hwnd, char * directory, const char * filename, const cha
           const char *base = strrchr( filename, '/' ) ;
           one = dupprintf( "%s\\%s", dir, base ? base + 1 : filename ) ;
       }
-      /* no target line, but the note if the key needs loading */
-      kitty_run_xfer( hwnd, buffer, whatbuf, note, 1, one, dir ) ;
-      sfree( one ) ; sfree( note ) ; }
+      /* No target line, but the note if the key needs loading - and the one
+       * line saying how the password travelled, from what the builder above
+       * actually did. Nothing of it when the login uses a key or the agent. */
+      const char *hand = kx_pw_handover_line( pw_mode ) ;
+      char *intro = hand ? dupprintf( "%s%s\r\n\r\n", note ? note : "", hand ) : NULL ;
+      kitty_run_xfer( hwnd, buffer, whatbuf, intro ? intro : note, 1, one, dir ) ;
+      sfree( intro ) ; sfree( one ) ; sfree( note ) ; }
 
     //debug_log("%s\n",buffer);//MessageBox( NULL, buffer, "Info",MB_OK );
 
     memset(buffer,0,strlen(buffer));
+    if( pwfiles ) kx_pwfiles_release( 0 ) ;   /* the password file, once kscp has had it */
 }
 
 /* --- Where received files go ------------------------------------------------
@@ -1645,17 +1801,22 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			}
 		} else {
 			urlcat( cmd, sizeof(cmd), user!=NULL ? user : conf_get_str_ambi(conf,CONF_username,NULL) ) ;
-			if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
+			if( !kitty_pw_empty(conf,CONF_password) ) {
 				/* The URL's password field carries the PATH of a private temp
 				 * file holding the password (/passwordsfromfiles, see above);
 				 * only if no file could be made does the value itself go
-				 * (#535: percent-encoded so '@' '/' etc. can't redirect the host). */
-				pf = kx_password_file( conf_get_str(conf,CONF_password) ) ;
+				 * (#535: percent-encoded so '@' '/' etc. can't redirect the host).
+				 * WinSCP's file format is its own - a plain password - so this
+				 * one is NOT the protected form the kscp file uses. */
+				char pw[KITTY_PW_MAX+1] ;
+				kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
+				pf = kx_password_file( pw ) ;
 				bcat( cmd, sizeof(cmd), ":" ) ;
 				pw_at = strlen( cmd ) ;
 				if( pf ) { urlcat( cmd, sizeof(cmd), pf ) ; pwfiles++ ; }
-				else urlcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_password) ) ;
+				else urlcat( cmd, sizeof(cmd), pw ) ;
 				pw_len = strlen( cmd ) - pw_at ;
+				smemclr( pw, sizeof(pw) ) ;
 			}
 			bcat( cmd, sizeof(cmd), "@" ) ;
 			if( poss( ":", host!=NULL ? host : conf_get_str(conf,CONF_host) )>0 ) { bcat(cmd,sizeof(cmd),"[") ; bcat(cmd,sizeof(cmd), host!=NULL ? host : conf_get_str(conf,CONF_host)) ; bcat(cmd,sizeof(cmd),"]") ; }
@@ -1679,13 +1840,16 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	} else {
 		snprintf( cmd, sizeof(cmd), "\"%s\" %s://", shortpath, proto ) ;
 		urlcat( cmd, sizeof(cmd), conf_get_str_ambi(conf,CONF_username,NULL) ) ; /* #535: percent-encode userinfo */
-		if( strlen( conf_get_str(conf,CONF_password) ) > 0 ) {
+		if( !kitty_pw_empty(conf,CONF_password) ) {
+			char pw[KITTY_PW_MAX+1] ;
+			kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
 			bcat( cmd, sizeof(cmd), ":" ) ;
 			pw_at = strlen( cmd ) ;
-			pf = kx_password_file( conf_get_str(conf,CONF_password) ) ;   /* a file, see above */
+			pf = kx_password_file( pw ) ;   /* a file, see above */
 			if( pf ) { urlcat( cmd, sizeof(cmd), pf ) ; pwfiles++ ; }
-			else urlcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_password) ) ;
+			else urlcat( cmd, sizeof(cmd), pw ) ;
 			pw_len = strlen( cmd ) - pw_at ;
+			smemclr( pw, sizeof(pw) ) ;
 		}
 		bcat( cmd, sizeof(cmd), "@" ) ;
 		if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) { bcat( cmd, sizeof(cmd), "[" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_host) ) ; bcat( cmd, sizeof(cmd), "]" ) ; }
@@ -1736,8 +1900,13 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	int          px_port = px ? px->port           : conf_get_int(conf,CONF_proxy_port) ;
 	const char * px_host = px ? px->host           : conf_get_str(conf,CONF_proxy_host) ;
 	const char * px_user = px ? px->username       : conf_get_str(conf,CONF_proxy_username) ;
-	const char * px_pass = px ? px->password       : conf_get_str(conf,CONF_proxy_password) ;
 	const char * px_tcmd = px ? px->telnet_command : conf_get_str(conf,CONF_proxy_telnet_command) ;
+	/* Both sources hold the password WRAPPED (kitty_pwmem.c) - the snapshot
+	 * keeps whatever the Conf held - so it is unwrapped once here and this
+	 * buffer is burned at the end of the block. */
+	char px_pass[KITTY_PW_MAX+1] ;
+	kitty_pw_unwrap_str( px ? px->password : conf_get_str(conf,CONF_proxy_password),
+	                     px_pass, sizeof(px_pass) ) ;
 
 	if( (px_type != PROXY_NONE) && (strlen( conf_get_str(conf, CONF_sftpconnect) )==0) ) {
 		int ptype = px_type ;
@@ -1759,11 +1928,11 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			if( px_host && strlen(px_host)>0 ) { bcat( cmd, sizeof(cmd), " TunnelHostName=" ) ; rawcat( cmd, sizeof(cmd), px_host ) ; }
 			snprintf( buffer, sizeof(buffer), " TunnelPortNumber=%d", px_port ) ; bcat( cmd, sizeof(cmd), buffer ) ;
 			if( px_user && strlen(px_user)>0 ) { bcat( cmd, sizeof(cmd), " TunnelUserName=" ) ; rawcat( cmd, sizeof(cmd), px_user ) ; }
-			if( px_pass && strlen(px_pass)>0 ) {
-				/* plaintext at runtime; TunnelPassword expects WinSCP's own
-				 * encrypted form, TunnelPasswordPlain is the cleartext one.
-				 * The span covers the quotes rawcat adds, so the Event Log
-				 * blanks the whole value however it was escaped. */
+			if( px_pass[0] ) {
+				/* TunnelPassword expects WinSCP's own encrypted form;
+				 * TunnelPasswordPlain is the cleartext one. The span covers
+				 * the quotes rawcat adds, so the Event Log blanks the whole
+				 * value however it was escaped. */
 				bcat( cmd, sizeof(cmd), " TunnelPasswordPlain=" ) ;
 				proxy_pw_at = strlen( cmd ) ;
 				pf = kx_password_file( px_pass ) ;      /* a file - /passwordsfromfiles covers rawsettings too */
@@ -1777,7 +1946,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			if( px_host && strlen(px_host)>0 ) { bcat( cmd, sizeof(cmd), " ProxyHost=" ) ; rawcat( cmd, sizeof(cmd), px_host ) ; }
 			snprintf( buffer, sizeof(buffer), " ProxyPort=%d", px_port ) ; bcat( cmd, sizeof(cmd), buffer ) ;
 			if( px_user && strlen(px_user)>0 ) { bcat( cmd, sizeof(cmd), " ProxyUsername=" ) ; rawcat( cmd, sizeof(cmd), px_user ) ; }
-			if( px_pass && strlen(px_pass)>0 ) {
+			if( px_pass[0] ) {
 				bcat( cmd, sizeof(cmd), " ProxyPassword=" ) ;
 				proxy_pw_at = strlen( cmd ) ;
 				pf = kx_password_file( px_pass ) ;      /* a file, see above */
@@ -1796,6 +1965,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			}
 		}
 	}
+	smemclr( px_pass, sizeof(px_pass) ) ;
 	}
 
 	if( conf_get_bool(conf,CONF_compression) ) {
@@ -2039,13 +2209,17 @@ void StartFileZilla( HWND hwnd ) {
 	const char *proto ; int fzproto, fzprot, port, p ;
 	size_t pw_at = 0, pw_len = 0 ;
 	int mode = conf_get_int( conf, CONF_filezilla_pwmode ) ;
-	const char *pw = conf_get_str( conf, CONF_password ) ;
-	int havepw = ( pw != NULL && pw[0] != '\0' ) ;
+	/* The Conf holds the password wrapped (kitty_pwmem.c); FileZilla's own
+	 * modes need the value, so it is unwrapped into this buffer, which is
+	 * burned on every way out of this function. */
+	char pw[KITTY_PW_MAX+1] ;
+	int havepw = ( kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) > 0 ) ;
 	const char *fzdir = NULL ;
 
 	kx_fzdir_sweep() ;
 	if( !kitty_xfer_tool_ready( 2 ) ) {
 		MessageBox( hwnd, KT_XFER_FILEZILLA_NOT_FOUND, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
+		smemclr( pw, sizeof(pw) ) ;
 		return ;
 	}
 	/* The REAL path, quoted - not GetShortPathName(): started through its 8.3
@@ -2134,7 +2308,7 @@ void StartFileZilla( HWND hwnd ) {
 		char *text = dupprintf( KT_XFER_START_FILEZILLA_ANYWAY, note ) ;
 		int go = MessageBox( hwnd, text, KT_CAP_KEY_NOT_IN_AGENT, MB_OKCANCEL|MB_ICONWARNING ) ;
 		sfree( text ) ; sfree( note ) ;
-		if( go != IDOK ) { memset( cmd, 0, strlen(cmd) ) ; kx_fzdir_release( 1 ) ; return ; }
+		if( go != IDOK ) { memset( cmd, 0, strlen(cmd) ) ; kx_fzdir_release( 1 ) ; smemclr( pw, sizeof(pw) ) ; return ; }
 	  }
 	}
 
@@ -2143,6 +2317,7 @@ void StartFileZilla( HWND hwnd ) {
 	RunCommand( hwnd, cmd ) ;
 	if( fzdir != NULL ) SetEnvironmentVariable( "FZ_DATADIR", NULL ) ;
 	memset( cmd, 0, strlen(cmd) ) ;
+	smemclr( pw, sizeof(pw) ) ;
 	kx_fzdir_release( 0 ) ;
 }
 
