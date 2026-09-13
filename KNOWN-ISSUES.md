@@ -172,6 +172,41 @@ features are working and verified. Known limitations as of this release:
   passwords a **master password** protects there, are usable from the KiTTY
   **GUI** but not from the command-line tools. Registry-mode sessions (with their
   DPAPI-protected passwords) work from the CLI tools as before.
+- **The restricted process ACL cannot be inspected or undone.** `[KiTTY]
+  restrictacl=yes` (and the older `-restrict-acl` switch) hardens the process so
+  nothing running as you can inspect it — which also **blocks accessibility
+  software** such as screen readers, stops an **in-place upgrade from reopening
+  your windows** (Windows' Restart Manager cannot inspect a restricted process),
+  and cannot be lifted within a running process (`restrictacl=no` does not
+  un-restrict — restart for unrestricted processes again). kittygen does not
+  read the setting; pass it `-restrict-acl` if you want the same there.
+- **A key on removable media is dropped if the media returns on a different
+  drive letter.** kageant loads a startup key by its path: pull the stick and
+  put it back as the same letter and it carries on, but a different letter means
+  the path is gone and the key is no longer held. Keep keys in memory (a kageant
+  setting) so they keep signing while the media is away, then add the key again
+  from the new letter. Re-locating a key by its fingerprint when the volume
+  returns is planned.
+- **Session folders are one level deep.** A folder holds sessions, not other
+  folders, so with `foldernavigation=yes` the `..` row always returns to the
+  root.
+- **A portable store whose sessions live in SUBDIRECTORIES is not read.** This
+  version writes one flat file per session under `Sessions\` with its folder
+  recorded inside, and lists only the files directly there; a classic
+  `browsedirectory` layout copied across shows none of its sessions, and
+  `browsedirectory=yes` does not change which sessions are listed. Move the files
+  up into `Sessions\` — each keeps working — and re-file them from the config box.
+- **The mid-session Change Settings list does not navigate folders.** It opens on
+  the running session's folder and stays there; a rename or a move belongs in the
+  config box you start from, where the whole store is in front of you.
+- **kageant's own Saved Sessions menu is a flat list.** It reads the registry
+  directly, so it does not group by folder and does not see a portable store;
+  KiTTY's tray launcher is the one that mirrors your folders.
+- **Inline SSH security confirmations are not available during a rekey.** The
+  opt-in in-terminal host-key/weak-key prompts
+  (`modalnewhostkeyconfirmation` and friends) cannot run while an
+  already-authenticated session rekeys — the running program owns the terminal —
+  so those confirmations abort the connection instead of asking.
 
 ## Connectivity tips
 
@@ -294,295 +329,22 @@ features are working and verified. Known limitations as of this release:
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
-
-## New in 0.85.1.4
-
-- **The configuration window is redesigned** - system font, resizable, a
-  Session | Application tab split, and panels that scroll when they must.
-  Settings about the program (updates, migration, security, named proxies,
-  the window's own behaviour) live on the Application tab now; the
-  [CHANGELOG](CHANGELOG.md) lists what moved where. A panel is built once
-  and kept, with the rest prepared in the background, so switching
-  categories no longer rebuilds every control on the page - the cost the
-  0.85.1.0 notes described is gone.
-- **Sessions can be imported from an old KiTTY or PuTTY** on
-  Application > Migration. The old stores are read, never written; values
-  that cannot be carried over are reported by name.
-- **On an old Windows the binaries load again and report what is missing.**
-  APIs the system lacks are looked up at runtime with fallbacks, and a
-  session prints one line naming the features this Windows cannot power,
-  details in the Event Log (`[KiTTY] warnmissingfeatures=no` silences it).
-- **A 32-bit package is new.** Same suite, built for 32-bit Windows.
-- **Every message box follows the theme now.** The last stock white dialogs
-  are replaced by KiTTY's own; only the fatal-error box deliberately stays
-  a raw system MessageBox so the last message always gets through.
-
-## New in 0.85.1.3
-
-- **Windows Hello protected keys are new in this release**, across kageant,
-  KiTTYgen, the terminal and the file-transfer hand-offs. What that means for
-  recovery and for other programs is under **Security** above; the short
-  version is that a protected key always has a second door, and the `.hello`
-  file belongs with the key.
-- **The configuration window dropping behind other windows is fixed**
-  (hknet/KiTTY#38). It could happen while clicking the session list in the
-  first seconds after the box opened.
-
-## New in 0.85.1.0
-
-- **A key on removable media is dropped if the media returns on a DIFFERENT
-  drive letter.** Pull the stick and put it back as the same letter and kageant
-  carries on; put it back as another letter and a key that was loaded from it at
-  startup is no longer held, because the path it was loaded from no longer
-  exists. One can opt to keep keys loaded in the kageant's settings they are held in
-  memory, and they keep signing even while the media is away. Re-locating a key
-  by its fingerprint when the volume comes back is planned; until then, add it
-  again from the new letter. (A decoy key left at the OLD path is not picked
-  up, if we have the Key-Fingerprint already on record.)
-- **Bulk output is much faster, and the scrollback is now the slowest part of
-  it.** With scrollback off, output is roughly twice as fast again. Nothing is
-  wrong with the scrollback — it compresses every line that scrolls off, and
-  that is what costs — but if you routinely dump megabytes into a window and
-  care about the last second of it, a smaller scrollback is now the setting that
-  moves the needle. Of course you can always buy newer hardware :).
-- **Switching category in the configuration window still rebuilds every control
-  on the page.** It is faster than it was and no longer flickers, but the cost is
-  in creating and destroying the controls themselves, which is how the dialog has
-  always worked. Panels with many controls are therefore the slowest to switch
-  to.
-- **`-sendcmd` needs to be switched on before it does anything.** It is off by
-  default: a broadcast is refused unless `[KiTTY] sendcmdmode=yes` is set for the
-  installation AND the receiving session accepts broadcasts (Session →
-  Scripting, or the Tools menu of the terminal-window). This is deliberate — anything
-  running under your account can post the same message, so an ungated version
-  would let any program type into every open session — but it does mean
-  `sendcmdmode=yes` alone changes nothing until a session opts in!
-- **A broadcast is typed into the session, not executed.** `-sendcmd "/delreg"`
-  types those characters at the far end; it does _not_ run an internal command in
-  the receiving windows. That is what the feature always meant, and it is worth
-  knowing before aiming one at a shell.
-- **The broadcast key is not a password.** Anything running under your account
-  can read it and send a matching message. It exists to stop ACCIDENTS — the
-  broadcast meant for three lab machines landing in the production session left
-  open behind them — not to keep anything out.
-
-## New in 0.84.1.75
-
-- **Session folders are one level deep.** A folder holds sessions, not other
-  folders — with `foldernavigation=yes` the `..` row therefore always returns to
-  the root. This is the same shape the folder drop-down has always had; the rows
-  only change how you move through it.
-- **A portable store whose sessions live in SUBDIRECTORIES is not read.** The old
-  `browsedirectory` layout kept each folder as a real directory under
-  `Sessions\`; this version writes one flat file per session with its folder
-  recorded inside, and it lists only the files directly under `Sessions\`. So a
-  classic portable KiTTY folder copied across shows none of its sessions.
-  Setting `browsedirectory=yes` does **not** fix that — it only changes where a
-  folder *name* is looked up, not which sessions are listed. Until an import
-  exists, move the session files up into `Sessions\` yourself; each one keeps
-  working, and you can re-file it from the config box afterwards.
-- **The mid-session Change Settings list does not navigate folders.** It opens on
-  the folder the running session is in and stays there: the list is only there to
-  name what you are saving, and a rename or a move belongs in the config box you
-  start from, where the whole store is in front of you.
-- **kageant's own Saved Sessions menu is a flat list**, and reads the registry
-  directly — so it does not group by folder, and it does not see a portable
-  store. KiTTY's tray launcher is the one that mirrors your folders.
-
-## New in 0.84.1.67
-
-- **A window whose session has ended keeps that session's title**, with the
-  state added at the end — `user@host: ~ (inactive)`, or
-  `⚠ user@host: ~ (disconnected)` when the connection was lost. Ten dead windows
-  can be told apart again (hknet/KiTTY#22).
-- **Quick connect**: load "Default Settings" once and the configuration box
-  opens on the defaults with the cursor in *Host Name*, until another session is
-  loaded; `loadlastsession=no` in `[ConfigBox]` makes it permanent
-  (hknet/KiTTY#23).
-- **`ssh://` and `kitty://` links** are understood on the command line and from
-  a browser, and a URL with no port now connects to the protocol's default port
-  instead of failing.
-- **`-sshhandler` / `-fileassoc` register without administrator rights** (for
-  your account), never take a protocol or extension from another program without
-  `-force`, can be undone with `-uninstall`, and ask first when run from a
-  portable KiTTY.
-- **`-help`** prints the command-line options, which have been audited against
-  the real command line for the first time.
-- **The Event Log** has a **Clear** button and no longer vanishes with its window
-  when a device sends a late channel message on logout.
-
-## New in 0.84.1.66
-
-- **Two configuration-box crashes are fixed.** Changing a session name and then
-  starting the session from a page other than *Session* ended KiTTY with an
-  assertion failure; **Ctrl+G** from another page could do the same. Both gone.
-- **The saved-session highlight no longer jumps to the first entry.** It hit
-  session names that sort before "Default Settings" — anything starting with a
-  digit, so IP addresses above all — when clicking *and* when typing
-  (hknet/KiTTY#19).
-- **kittygen: adding a certificate to a freshly generated key no longer ends the
-  program**, and a generated key no longer stays in memory in the clear after
-  the window is closed or another key is generated.
-- **SSH certificates are documented** in
-  [docs/SSH-CERTIFICATES.md](docs/SSH-CERTIFICATES.md) — attaching one to your
-  key, the OpenSSH server side, host certificates, and a local lab to try it on.
-- **Binaries no longer embed the build machine's directory names** in assertion
-  messages.
-
-## New in 0.84.1.65
-
-- **The diagnostic dump is gone.** `/savedump` and `kitty.exe -savedump` no
-  longer exist. They wrote `kitty.dmp` encrypted under a key compiled into the
-  program, and KiTTY shipped no way to read one back — so the file bug reports
-  asked for could not be opened by you or by us. Use the **Event Log**
-  (right-click the title bar) and session logging (**Session → Logging**)
-  instead. An old `kitty.dmp` is neither read nor updated any more; delete it.
-- **Exports now carry their own password, and it is shown only once.** "Export
-  all" asks whether the files should be protected by a password you choose
-  (importable on any PC) or for this Windows account on this PC only. The
-  password is displayed once when the export finishes, with a Copy button —
-  there is no way to recover it afterwards, and without it the export cannot be
-  imported. Previously exporting silently created a **master password for your
-  own session store** as a side effect; it no longer touches your store at all.
-- **A master password that protects nothing is retired at startup**, silently.
-  If it still protects something, it is left alone. On a registry install the
-  old values are archived rather than deleted, so a portable store that has not
-  yet been opened under this version can still be migrated.
-- **Portable installs keep master-password state in their own `Security`
-  folder.** A portable install that relied on the registry is migrated once, at
-  startup, and tells you which folder to copy if you keep several portable
-  installs sharing one master password. Copies of that folder are what makes the
-  same passwords work on another PC.
-- **`Password\PLAIN:…` in a session file is a cleartext secret.** The new
-  provisioning form is taken literally and re-protected on first save, but until
-  it is imported the file holds the password in the clear — treat it like one
-  and delete it afterwards.
-- **`[KiTTY] PortablePasswordProtection=dpapi`** protects a portable install's
-  passwords for this Windows account on this PC and never asks for a master
-  password. Those passwords **do not travel**: copied to another PC or account
-  they cannot be decrypted. `-masterpwfile` is refused in this mode.
-- **"Send to tray on startup" waits until the session is connected.** The window
-  stays visible for a host-key or password prompt and drops to the tray a moment
-  after login, so a session that never connects never disappears. The checkbox
-  is in **Window → Behaviour** (with **Maximize** and **Full screen on
-  startup**, which had also gone missing); `-send-to-tray` works again on the
-  command line.
-
-## New in 0.84.1.64
-
-- **`[KiTTY] restrictacl=yes` applies the restricted process ACL everywhere**,
-  including kageant, without editing shortcut targets. Three limitations are
-  inherent to the hardening rather than to this setting, and all three apply
-  equally to the older `-restrict-acl` switch:
-  - **It blocks accessibility software.** A restricted process cannot be
-    inspected by other programs running as you, and screen readers and similar
-    tools rely on exactly that. If you use one, do not enable this.
-  - **In-place upgrades will no longer reopen your sessions.** Windows' Restart
-    Manager cannot inspect a restricted process, so the installer closes your
-    windows and does not restore them afterwards.
-  - **There is no way back within a running process.** `restrictacl=no` does
-    not lift a restriction — a process cannot un-restrict itself — so the
-    setting only ever turns the hardening on. Remove it and restart to get
-    unrestricted processes again.
-  **kittygen does not read the setting**; pass it `-restrict-acl` if wanted.
+- **Re-running the MSI over an existing install can fail with 1603.** This is
+  Windows' own SecureRepair, not KiTTY: it insists on finding the package under
+  the file name your FIRST install ran from, and a browser's temporary download
+  name no longer exists (`SECREPAIR: Error determining package source type`). To
+  install a new version, uninstall the old one first, or run the MSI from a
+  normal folder under the same file name as before.
 - **Silent (`/qn`) installs close and reopen your windows**, like the
-  interactive upgrade. An installation started by a management system under
-  the machine account closes them **without** reopening, since there is no
-  desktop to reopen onto; `MSIDISABLERMRESTART=1` forces that behaviour in
-  any silent install.
-- **Running the MSI again over an existing install can fail with 1603.** This
-  is Windows' own "SecureRepair" check, not KiTTY: re-running an installer
-  puts Windows into repair mode, where it insists on finding the package under
-  the file name your FIRST install ran from. If that install was started
-  straight from a browser's download list, the name was a temporary one that
-  no longer exists, and the repair aborts. The log says
-  `SECREPAIR: Error determining package source type`. To install a new
-  version, uninstall the old one first, or run the MSI from a normal folder
-  under the same file name as before.
-
-## New in 0.84.1.63
-
-- **The registry backup is written by Windows' own registry exporter**, not by
-  KiTTY, so it no longer drops binary values (window positions and sizes) or
-  turns multi-value entries such as kageant's startup key list into plain text —
-  both came back missing or unusable after a restore before. **Limitation:** the
-  file is now a standard UTF-16 `.reg`, which an **older KiTTY version cannot
-  load itself** — it treats the file as unreadable. This only arises if you
-  downgrade and then want a backup made by this version, and Windows restores it
-  perfectly well without KiTTY's help: `reg import kittynew-YYYYMMDD-HHMMSS.sav`
-  (no administrator rights needed), or open it in Registry Editor. That is the
-  same standard format the file's new writer produces, which is precisely what
-  makes importing it by hand possible. Backups written by earlier versions are
-  still restored normally by this one.
-- **Backups are taken *before* a destructive change** — overwriting a saved
-  session, deleting a session, deleting a folder — instead of only after a
-  change, so the newest copy still holds what was just lost. They are also **no
-  longer written when you merely open a session**: a copy is written only when
-  something was actually changed. Saving a session under a name that does not
-  exist yet writes none, because nothing exists to preserve. `/savereg` still
-  writes one on demand.
-- **The configuration password is retired.** `/configpassword` and
-  `/-configpassword` are gone and backups are no longer encrypted: the registry
-  already protects saved passwords with DPAPI, while this mechanism kept its own
-  key in plain text beside them and the `kitty.ini` copy was scrambled only with
-  a value built into every KiTTY. **Limitation:** there is no longer any way to
-  encrypt a backup file. Existing encrypted backups stay readable — KiTTY asks
-  for the password when loading one.
-- **Portable backups are complete, and are finally pruned.** The launcher
-  configuration was missing from every portable backup although the
-  documentation called it a complete copy, and the clean-up meant to keep the
-  newest `portablebackupcount` folders never ran at all. **On the first backup
-  after upgrading, accumulated folders are trimmed to that setting (5 by
-  default)** — raise it, or copy them aside, if you want to keep more.
-- **New registry backups are named `kittynew-*.sav`.** The intended name never
-  actually took effect, so they were written as `kitty-*.sav` — the same name an
-  older KiTTY installed alongside uses, which the name change existed to avoid.
-  Existing `kitty-*.sav` files are left alone and are still read if a restore is
-  needed.
-- **Restoring a registry backup on another computer or user account** returns
-  your sessions but not their saved passwords: DPAPI ties those to the account
-  that saved them. This is long-standing, not new — it is simply documented now.
-  Portable stores are unaffected: passwords there are protected with your master
-  password and are made to travel with the store.
-
-## New in 0.84.1.62
-
-- **Inline (in-terminal) SSH security confirmations**, opt-in per prompt in
-  `kitty.ini` (`modalnewhostkeyconfirmation`, `modalchangedhostkeyconfirmation`,
-  `modalweakkeyconfirmation`; default `yes` keeps the classic dialog). A changed
-  host key takes a deliberate two-step confirmation (`yes`, then `confirmed` to
-  replace the stored key). **Limitation:** inline prompts are not available
-  during a rekey of an already-authenticated session — the running program owns
-  the terminal, so those confirmations abort the connection instead of asking.
-- **Folder rename and safe delete** in the configuration box, both in the
-  registry and in portable mode: deleting a folder that still holds sessions
-  asks first and moves them to the root list, folder creation is an explicit
-  `<new folder...>` choice, and saving a session no longer re-files it by
-  whichever folder was being viewed.
-- **Application box** groups *Check for updates* and the old putty/kitty session
-  controls. Note that *Check for updates* is still stored **per session**, as
-  before; the neutral box title does not imply it became a global setting.
-
-## New in 0.84.1.61
-
-- **Config-box-spawned sessions no longer run with an unintended restricted
-  process ACL** (`-restrict-acl` hardening was always on for them since the
-  port). This unblocks the Windows Restart Manager during in-place upgrades —
-  effective for upgrades **from** this version onward; the upgrade **to** this
-  version still behaves like before (windows are closed by the installer and
-  do not restart).
-
-## New in 0.84.1.60
-
-- **Config-box buttons act on the visible selection.** Start launches the session
-  you just single-click selected (hknet/KiTTY#18); while the search filter is
-  active, Open and Start act on the highlighted match. Clicking **Open** opens
-  the session in the current window (the box closes); **Start** and **Enter**
-  start it in a new window and keep the box open.
-- **Ctrl+F** from anywhere in the configuration window jumps to the Session
-  panel with the saved-session search field focused and selected.
-- **Tray usability:** kageant's menu opens on a plain left click too;
-  double-clicking the launcher tray icon opens a new configuration window.
+  interactive upgrade. Started under a machine account there is no desktop to
+  reopen onto, so they close **without** reopening; `MSIDISABLERMRESTART=1`
+  forces that behaviour in any silent install.
+- **Registry backups are standard UTF-16 `.reg` files, and are no longer
+  encrypted.** An older KiTTY version cannot load one itself — it treats the
+  file as unreadable — but Windows restores it perfectly well with
+  `reg import kittynew-YYYYMMDD-HHMMSS.sav` (no administrator rights) or from
+  Registry Editor; this only arises if you downgrade. Existing encrypted backups
+  from older versions are still read, KiTTY asking for the password on load.
 
 ## Still not ported (known)
 - *(None known.)* far2l **real clipboard** landed in 0.84.0.15, and both
