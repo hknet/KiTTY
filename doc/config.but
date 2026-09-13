@@ -1205,8 +1205,9 @@ The Behaviour configuration panel allows you to control aspects of
 the behaviour of \I{KiTTY window}KiTTY's window. Its first group,
 \q{Closing the window}, holds \q{Close window on exit}
 (\k{config-closeonexit}) and the warning below; \q{Remembering} holds
-\q{Remember window position} (\k{kitty-cfg-winpos-remember}) and
-\q{Save settings on exit} (\k{kitty-cfg-save-on-exit}).
+\q{Save settings on exit} (\k{kitty-cfg-save-on-exit}). Where the
+window opens - \q{Remember window position} and the fixed position - is
+on Window > Appearance > Position (\k{kitty-cfg-winpos-remember}).
 
 \S{config-warnonclose} \q{Warn before \i{closing window}}
 

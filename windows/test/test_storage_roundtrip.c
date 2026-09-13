@@ -501,6 +501,20 @@ static void test_old_kitty_hive(void)
                    (const BYTE *)OSECRET, sizeof(OSECRET));
     RegCloseKey(hk);
 
+    /* Loading by name follows "show foreign sessions" (the list always did).
+     * The switch is pinned in the base key by kitty_set_show_foreign_sessions,
+     * so any existing value is saved here and put back at the end. */
+    DWORD saved_show = 0, saved_sz = sizeof(saved_show);
+    int had_show = (RegGetValueA(HKEY_CURRENT_USER, kitty_registry_base(),
+                                 "ShowForeignSessions", RRF_RT_REG_DWORD, NULL,
+                                 &saved_show, &saved_sz) == ERROR_SUCCESS);
+
+    kitty_set_show_foreign_sessions(0);
+    r = open_settings_r(OSESS);
+    check(r == NULL, "old hive: with the old stores hidden, the session is NOT found by name");
+    if (r) close_settings_r(r);
+
+    kitty_set_show_foreign_sessions(1);
     r = open_settings_r(OSESS);
     check(r != NULL, "old hive: a session only in the 9bis hive is found");
     if (r) {
@@ -533,6 +547,20 @@ static void test_old_kitty_hive(void)
     }
 
     RegDeleteKeyA(HKEY_CURRENT_USER, path);
+
+    /* put the previous switch value back (or remove ours) */
+    {
+        HKEY bk;
+        if (RegOpenKeyExA(HKEY_CURRENT_USER, kitty_registry_base(), 0,
+                          KEY_SET_VALUE, &bk) == ERROR_SUCCESS) {
+            if (had_show)
+                RegSetValueExA(bk, "ShowForeignSessions", 0, REG_DWORD,
+                               (const BYTE *)&saved_show, sizeof(saved_show));
+            else
+                RegDeleteValueA(bk, "ShowForeignSessions");
+            RegCloseKey(bk);
+        }
+    }
 }
 
 /* ---------- reading an old .ktx export (§8.17) ----------

@@ -59,6 +59,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_kset_shortcuts     "kitty-cfg-kset-shortcuts"
 #define WINHELP_CTX_kitty_kset_autotext      "kitty-cfg-kset-autotext"
 #define WINHELP_CTX_kitty_kset_automation    "kitty-cfg-kset-automation"
+#define WINHELP_CTX_kitty_kset_broadcast     "kitty-cfg-kset-broadcast"
 #define WINHELP_CTX_kitty_kset_window        "kitty-cfg-kset-window"
 #define WINHELP_CTX_kitty_kset_connection    "kitty-cfg-kset-connection"
 #define WINHELP_CTX_kitty_kset_launcher      "kitty-cfg-kset-launcher"

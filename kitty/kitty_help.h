@@ -29,6 +29,7 @@ Starting a session\r\n\
 * -rcmd <command>: send a command to the running session\r\n\
 * -sendcmd <command>: send a command to every window of the same class name\r\n\
 * -sendcmdkey <key>: send it only to sessions carrying this broadcast key\r\n\
+* -sendcmdfile <file>: send the file's content as commands, one per line (-sendcmdkey applies)\r\n\
 \r\n\
 The window\r\n\
 \r\n\

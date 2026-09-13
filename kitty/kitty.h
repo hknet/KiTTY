@@ -150,7 +150,9 @@ void kitty_broadcast_set_enabled( int on ) ;
 int  kitty_broadcast_default( void ) ;
 const char *kitty_broadcast_group( void ) ;
 int kitty_broadcast_group_from_ini( void ) ;   // key came from kitty.ini, not derived
+void kitty_broadcast_set_group( const char *k ) ;      // the config box wrote sendcmdgroup; "" = derive again
 void kitty_broadcast_set_send_key( const char *k ) ;   // -sendcmdkey override
+const char *kitty_broadcast_send_key_override( void ) ; // the raw override, "" when none
 const char *kitty_broadcast_send_key( void ) ;         // key a broadcast is SENT with
 // RuTTY script engine master switch: [KiTTY] scriptmode=yes|no (kitty_rutty.c)
 int kitty_script_enabled(void) ;
@@ -308,6 +310,9 @@ void CleanFolderName( char * folder ) ;
 void set_sshver( const char * vers ) ;
 int ResizeWinList( HWND hwnd, int width, int height ) ;
 int SendCommandAllWindows( HWND hwnd, char * cmd ) ;
+// The send console's form: include_self=1 also reaches the terminal this
+// process owns (MainHwnd), which /command deliberately skips.
+int SendCommandAllWindowsEx( HWND hwnd, char * cmd, int include_self ) ;
 void RunCommand( HWND hwnd, const char * cmd ) ;
 int InternalCommand( HWND hwnd, char * st ) ;
 void load_open_settings_forced(char *filename, Conf *conf) ;

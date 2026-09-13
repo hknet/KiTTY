@@ -313,9 +313,14 @@ settings_r *open_settings_r(const char *sessionname)
     escape_registry_key(sessionname, sb);
     int src = KSEC_HIVE_PRIMARY;
     HKEY sesskey = open_regkey_ro(HKEY_CURRENT_USER, puttystr, sb->s);
-    if (!sesskey && !kitty_root_is_putty()) {
+    if (!sesskey && !kitty_root_is_putty() && kitty_get_show_foreign_sessions()) {
         /* KiTTY: fall back to the old KiTTY hive, then stock PuTTY's, so older and
-         * PuTTY sessions stay loadable (precedence: our base > old KiTTY > PuTTY). */
+         * PuTTY sessions stay loadable (precedence: our base > old KiTTY > PuTTY).
+         *
+         * ONLY while the old stores are shown: a name the saved-session list
+         * hides is not found by -load, @name, the launcher or the console tools
+         * either, so one switch has one meaning. The importer opens a hive by
+         * name through kitty_open_settings_r_hive() and is not affected. */
         sesskey = open_regkey_ro(HKEY_CURRENT_USER, OLD_KITTY_HIVE_SESSIONS, sb->s);
         if (sesskey) {
             src = KSEC_HIVE_OLDKITTY;

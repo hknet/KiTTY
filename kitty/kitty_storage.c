@@ -223,6 +223,27 @@ int ReadParameterN(const char *key, const char *name, char *value, size_t size)
     if (value) value[0] = '\0';
     return 0;
 }
+/* The console tools' way to the ONE ini key this file needs: the strong
+ * definition lives in kitty_showforeign_ini.c, linked into klink, kscp and
+ * ksftp only, and answers through the light kitty.ini resolver. Everywhere
+ * else this stub says "not set" and ReadParameterN above has already
+ * answered - the GUI's reading does not change. */
+__attribute__((weak))
+int kitty_showforeign_ini_read(char *value, size_t size)
+{
+    (void)size;
+    if (value) value[0] = '\0';
+    return 0;
+}
+/* May this process WRITE the one-time "auto" answer (ShowForeignSessions=1
+ * and the foreign-sessions notice)? Here, in the GUI, yes - the historical
+ * behaviour, byte for byte. The console-side unit above overrides it to 0:
+ * klink, kscp and ksftp evaluate "auto" and persist nothing. */
+__attribute__((weak))
+int kitty_showforeign_may_persist(void)
+{
+    return 1;
+}
 #ifndef INIT_SECTION
 #define INIT_SECTION "KiTTY"
 #endif
@@ -251,8 +272,11 @@ int kitty_get_show_foreign_sessions(void)
              */
             char ini[32];
             ini[0] = '\0';
-            if (ReadParameterN(INIT_SECTION, KI_SHOWFOREIGNSESSIONS,
-                               ini, sizeof(ini)) && ini[0]) {
+            /* The GUI reads it through kitty.c; a console tool through the
+             * light resolver (the second call, a stub everywhere else). */
+            if ((ReadParameterN(INIT_SECTION, KI_SHOWFOREIGNSESSIONS,
+                                ini, sizeof(ini)) && ini[0]) ||
+                (kitty_showforeign_ini_read(ini, sizeof(ini)) && ini[0])) {
                 if (!_stricmp(ini, "auto"))
                     kitty_show_foreign =
                         (!kitty_root_is_putty() &&
@@ -278,7 +302,12 @@ int kitty_get_show_foreign_sessions(void)
                 kitty_show_foreign =
                     (!kitty_root_is_putty() &&
                      kitty_primary_session_count() == 0) ? 1 : 0;
-                if (kitty_show_foreign && kitty_has_foreign_sessions()) {
+                /* Only KiTTY itself writes the answer down and arms the
+                 * notice. A console tool (klink -load on a fresh install)
+                 * evaluates "auto" read-only: it must not decide, on the
+                 * GUI's behalf, what the GUI's next start shows. */
+                if (kitty_show_foreign && kitty_has_foreign_sessions() &&
+                    kitty_showforeign_may_persist()) {
                     kitty_persist_show_foreign(1);
                     kitty_foreign_notice_write(KITTY_FOREIGN_NOTICE_STARTUP |
                                                KITTY_FOREIGN_NOTICE_LIST);
@@ -427,8 +456,10 @@ static char *kitty_read_session_value_direct(const char *sessionname,
         result = get_reg_sz(k, valuename);
         close_regkey(k);
     }
-    /* then the read-only fallback hives, unless we're in PuTTY-root mode */
-    if (fallback_nonempty && (!result || !*result) && !kitty_root_is_putty()) {
+    /* then the read-only fallback hives, unless we're in PuTTY-root mode or
+     * the old stores are hidden (the same rule as open_settings_r) */
+    if (fallback_nonempty && (!result || !*result) && !kitty_root_is_putty() &&
+        kitty_get_show_foreign_sessions()) {
         for (i = 0; i < (int)lenof(fallback_hives); i++) {
             k = open_regkey_ro(HKEY_CURRENT_USER, fallback_hives[i], sb->s);
             if (!k)

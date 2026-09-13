@@ -57,6 +57,7 @@
 #ifdef MOD_PERSO
 #include "../kitty/kitty_text.h"   /* KiTTY: shared captions and menu words */
 #include "../kitty/kitty_renameguard.h"   /* KiTTY: refuse a foreign file name */
+#include "../kitty/kitty_selfcheck.h"     /* KiTTY: refuse a file changed after release */
 #include "../kitty/kitty_pwmem.h"   /* KiTTY: passwords wrapped in memory */
 /* kitty.c: types a string into this session (the WM_COPYDATA broadcast). */
 void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
@@ -193,7 +194,7 @@ void kitty_start_update_check(void);           /* kitty_win.c: async refresh of 
 int kitty_update_notice(char *buf, int n);     /* kitty_win.c: notice text if a newer version is cached */
 void kitty_apply_transparency(WinGuiSeat *wgs);
 void kitty_apply_window_pos(WinGuiSeat *wgs);
-void kitty_save_window_placement(HWND hwnd);
+static void kitty_save_window_placement(WinGuiSeat *wgs, HWND hwnd);
 void kitty_send_to_tray(HWND);
 #ifdef MOD_LAUNCHER
 void kitty_launcher_hide(HWND);        /* kitty_bridge.c: the launcher's Hide all / Unhide all / entries */
@@ -1471,6 +1472,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY: and, in a signed release build, does this file still carry our
      * signature? Compiled to nothing in a dev or test build. */
     if (kitty_signature_guard(1))
+        ExitProcess(1);
+    /* KiTTY: and, in a stamped release build, does this file still match its
+     * integrity stamp? Compiled to nothing in a dev or test build. */
+    if (kitty_selfcheck_guard(1))
         ExitProcess(1);
 #endif
 
@@ -4467,6 +4472,50 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         if (!cds || cds->cbData == 0 || cds->lpData == NULL)
             return 0;
 
+        if (cds->dwData == 3) {
+            /*
+             * "Who is listening?" - the send console's live view (KiTTY++
+             * Settings > Automation > Broadcast, kitty_config.c). Answered
+             * ONLY by a window that would actually type a broadcast right
+             * now: master switch on AND this session armed. Everything else
+             * stays silent, exactly as it would for the broadcast itself, so
+             * the list shows what a send reaches and nothing more.
+             *
+             * The answer goes back as a WM_COPYDATA of its own, dwData 4,
+             * "<key>\0<session name>\0", to the window in wParam. The probe
+             * is a SendMessage, so the asker is blocked inside it and
+             * receives this reply there; nothing is posted, nothing outlives
+             * the call. The key is what THIS session listens for (its own or
+             * the install's), which is the value the console groups by.
+             * The RETURN VALUE says the same thing without the reply - 1 =
+             * would accept, 0 = would not - so an asker with no window of
+             * its own (a test harness) can still tell.
+             */
+            HWND asker = (HWND)wParam;
+            const char *mygroup, *name;
+            char *reply;
+            size_t glen, nlen;
+            COPYDATASTRUCT out;
+            if (!kitty_broadcast_default() || !kitty_broadcast_armed(wgs))
+                return 0;
+            if (!asker || !IsWindow(asker))
+                return 1;
+            mygroup = conf_get_str(wgs->conf, CONF_kitty_broadcast_key);
+            if (!mygroup || !*mygroup) mygroup = kitty_broadcast_group();
+            name = conf_get_str(wgs->conf, CONF_sessionname);
+            if (!name) name = "";
+            glen = strlen(mygroup); nlen = strlen(name);
+            reply = snewn(glen + 1 + nlen + 1, char);
+            memcpy(reply, mygroup, glen); reply[glen] = '\0';
+            memcpy(reply + glen + 1, name, nlen); reply[glen + 1 + nlen] = '\0';
+            out.dwData = 4;
+            out.cbData = (DWORD)(glen + 1 + nlen + 1);
+            out.lpData = reply;
+            SendMessage(asker, WM_COPYDATA, (WPARAM)hwnd, (LPARAM)&out);
+            sfree(reply);
+            return 1;
+        }
+
         if (cds->dwData == 1) {
             /* The pre-group format: bare text, no way to tell which install
              * sent it. Refused rather than obeyed, and SAID so - this whole
@@ -4964,6 +5013,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
              * window is registered for drops, or unregistered, to match what
              * the session now says. */
             DragAcceptFiles(hwnd, conf_get_bool(wgs->conf, CONF_kscp_dragdrop));
+            /* KiTTY: Session > Broadcast may have flipped Accept broadcast;
+             * the (BROADCAST) title marker follows the new state. */
+            kitty_refresh_title();
 #endif
 
             resize_action = conf_get_int(wgs->conf, CONF_resize_action);
@@ -5371,6 +5423,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                           MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
             logevent(wgs->logctx, on ? KT_TWIN_LOG_BC_WINDOW_ON
                                      : KT_TWIN_LOG_BC_WINDOW_OFF);
+            kitty_refresh_title();      /* the (BROADCAST) marker follows */
             break;
           }
           case IDM_HYPERLINKTOGGLE:
@@ -8154,6 +8207,13 @@ static char *kitty_decorate_title(WinGuiSeat *wgs, const char *title)
         put_dataz(sb, KT_TITLE_PROTECTED);
     if (conf_get_bool(wgs->conf, CONF_alwaysontop))
         put_dataz(sb, KT_TITLE_ONTOP);
+    /* KiTTY: this terminal RECEIVES broadcasts - the session accepts them and
+     * the installation's master switch is on. Both, on purpose: a session
+     * ticked while sendcmdmode is off receives nothing, and a marker that
+     * said otherwise would be a lie. Refreshed by the Tools toggle and by
+     * Change Settings (both call kitty_refresh_title()). */
+    if (kitty_broadcast_default() && kitty_broadcast_armed(wgs))
+        put_dataz(sb, KT_TITLE_BROADCAST);
     /* KiTTY: this process runs with the restricted ACL (-restrict-acl, "&R"
      * from a parent, or [KiTTY] restrictacl=yes). Unlike its neighbours the
      * state cannot change after startup, so it needs no kitty_refresh_title()
@@ -9593,46 +9653,31 @@ void kitty_apply_transparency(WinGuiSeat *wgs)
 
 #ifdef MOD_PERSO
 /* ===== KiTTY: window position memory =====
- * Remembers the last window position GLOBALLY, keyed by the current monitor
- * TOPOLOGY (so a docked dual-monitor layout and an undocked single screen each
- * remember their own spot, Word-style). Uses PHYSICAL screen coordinates
- * (GetWindowRect on save / SetWindowPos on restore) rather than
- * GetWindowPlacement/SetWindowPlacement: under Per-Monitor-V2 DPI awareness
- * (see windows/putty.mft) WINDOWPLACEMENT.rcNormalPosition is NOT reinterpreted
- * for the target monitor's DPI, so a placement captured on a secondary monitor
- * at a different scale is misapplied on restore (the window ends up at a default
- * position) -- the exact failure seen on mixed-DPI multi-monitor setups.
- * GetWindowRect/SetWindowPos work in the unified virtual-desktop pixel space and
- * round-trip correctly across mixed-DPI monitors. Position only: the session's
- * own size is kept. A session that pins CONF_xpos/ypos still wins. The restore
- * is applied AFTER the startup sizing/clamp block (see the call site), so the
- * single-monitor working-area clamp can't undo it. */
-extern const char *kitty_registry_base(void);
+ * "Remember window position" keeps, PER SESSION and per monitor LAYOUT, the
+ * window's top-left and its terminal size in columns x rows (so a docked
+ * dual-monitor layout and an undocked single screen each remember their own
+ * spot, Word-style). The layout hash and the two stores - the session's own
+ * TermPos_<layout> entry, and the SHARED WinPos_<layout> entry that only
+ * windows without a session of their own write - live in
+ * kitty/kitty_winpos.c. Uses PHYSICAL screen coordinates (GetWindowRect on
+ * save / SetWindowPos on restore) rather than GetWindowPlacement/
+ * SetWindowPlacement: under Per-Monitor-V2 DPI awareness (see
+ * windows/putty.mft) WINDOWPLACEMENT.rcNormalPosition is NOT reinterpreted
+ * for the target monitor's DPI, so a placement captured on a secondary
+ * monitor at a different scale is misapplied on restore (the window ends up
+ * at a default position) -- the exact failure seen on mixed-DPI
+ * multi-monitor setups. GetWindowRect/SetWindowPos work in the unified
+ * virtual-desktop pixel space and round-trip correctly across mixed-DPI
+ * monitors. The size is remembered as a terminal grid, not in pixels, so a
+ * layout with another DPI keeps the same columns x rows. A session that pins
+ * CONF_xpos/ypos still wins. The restore is applied AFTER the startup
+ * sizing/clamp block (see the call site), so the single-monitor working-area
+ * clamp can't undo it. */
+#include "../kitty/kitty_winpos.h"
 
-/* Order-INDEPENDENT hash of the monitor layout: each monitor contributes its own
- * FNV-1a(rcMonitor), and the per-monitor hashes are SUMMED. EnumDisplayMonitors'
- * enumeration order is not guaranteed identical between the saving and restoring
- * processes, so an order-dependent fold could yield different keys for the same
- * physical layout (-> key not found -> no restore). Summation is commutative. */
-static BOOL CALLBACK kitty_topo_enum(HMONITOR hm, HDC dc, LPRECT rc, LPARAM lp)
-{
-    unsigned long *acc = (unsigned long *)lp;
-    MONITORINFO mi; mi.cbSize = sizeof(mi);
-    if (GetMonitorInfo(hm, &mi)) {
-        unsigned long h = 2166136261UL;
-        const unsigned char *p = (const unsigned char *)&mi.rcMonitor;
-        size_t i;
-        for (i = 0; i < sizeof(mi.rcMonitor); i++) { h ^= p[i]; h *= 16777619UL; }
-        *acc += h;
-    }
-    (void)dc; (void)rc;
-    return TRUE;
-}
 static void kitty_winpos_key(char *buf, int n)
 {
-    unsigned long h = 0;
-    EnumDisplayMonitors(NULL, NULL, kitty_topo_enum, (LPARAM)&h);
-    _snprintf(buf, n, "WinPos_%08lx", h);
+    kitty_winpos_layout_key(buf, (size_t)n, "WinPos", kitty_winpos_layout_hash());
 }
 
 /* ---- window-position diagnostics ---------------------------------------------
@@ -9688,7 +9733,10 @@ static void kitty_winpos_dump_topo(const char *when)
  * save. A sixth route would have silently skipped it.
  *
  * Two independent per-session options:
- *   "Remember window position"  -> topology-keyed placement, app-wide.
+ *   "Remember window position"  -> this session's entry for the current
+ *                                  monitor layout (position + columns x rows);
+ *                                  a window without a session of its own
+ *                                  writes the SHARED entry instead.
  *   "Save settings on exit"     -> write this session back, including the
  *                                  window's current size and position.
  *
@@ -9704,7 +9752,7 @@ static void kitty_on_window_closing(WinGuiSeat *wgs, HWND hwnd)
     if (!hwnd) hwnd = wgs->term_hwnd;
 
     if (conf_get_bool(wgs->conf, CONF_remember_winpos))
-        kitty_save_window_placement(hwnd);
+        kitty_save_window_placement(wgs, hwnd);
 
     if (conf_get_bool(wgs->conf, CONF_saveonexit)) {
         const char *name = conf_get_str(wgs->conf, CONF_sessionname);
@@ -9725,29 +9773,36 @@ static void kitty_on_window_closing(WinGuiSeat *wgs, HWND hwnd)
     }
 }
 
-/* Save THIS window's physical rect under the current-topology key (on close).
- * Minimised/maximised states are not remembered (we only persist a normal
- * restored position). */
-void kitty_save_window_placement(HWND hwnd)
+/* Save THIS window's top-left and terminal grid for the current monitor
+ * layout (on close): into the session's own entry, or - for an unnamed
+ * session and a window opened as "Default Settings" - into the SHARED
+ * entry. Minimised/maximised states are not remembered (we only persist a
+ * normal restored position). "Default Settings" itself is never written. */
+static void kitty_save_window_placement(WinGuiSeat *wgs, HWND hwnd)
 {
-    if (!hwnd) return;
+    if (!wgs || !hwnd) return;
     if (KITTY_IS_EMBEDDED(hwnd)) { kitty_winpos_dbg("SAVE skipped: embedded"); return; }   /* #554 */
     if (IsIconic(hwnd) || IsZoomed(hwnd)) { kitty_winpos_dbg("SAVE skipped: iconic/zoomed"); return; }
     RECT r;
     if (!GetWindowRect(hwnd, &r)) { kitty_winpos_dbg("SAVE skipped: GetWindowRect failed"); return; }
+    const char *name = conf_get_str(wgs->conf, CONF_sessionname);
+    unsigned long layout = kitty_winpos_layout_hash();
+    struct kitty_termpos pos;
+    pos.left = (int)r.left;
+    pos.top = (int)r.top;
+    pos.cols = wgs->term ? wgs->term->cols : conf_get_int(wgs->conf, CONF_width);
+    pos.rows = wgs->term ? wgs->term->rows : conf_get_int(wgs->conf, CONF_height);
     char keyname[64]; kitty_winpos_key(keyname, sizeof(keyname));
     kitty_winpos_dump_topo("SAVE");
-    kitty_winpos_dbg("SAVE key=%s rect=(%ld,%ld,%ld,%ld)", keyname, r.left, r.top, r.right, r.bottom);
-    char base[600]; _snprintf(base, sizeof(base), "%s\\WindowPos", kitty_registry_base());
-    HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, base, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        RegSetValueExA(hk, keyname, 0, REG_BINARY, (const BYTE *)&r, sizeof(r));
-        RegCloseKey(hk);
-        kitty_winpos_dbg("SAVE ok -> HKCU\\%s [%s]", base, keyname);
-    } else {
-        kitty_winpos_dbg("SAVE FAILED: RegCreateKeyEx HKCU\\%s", base);
-    }
+    kitty_winpos_dbg("SAVE layout=%s session='%s' pos=(%d,%d) grid=%dx%d",
+                     keyname, name ? name : "", pos.left, pos.top, pos.cols, pos.rows);
+    int ok;
+    if (kitty_winpos_is_shared_window(name))
+        ok = kitty_winpos_shared_set(layout, &pos);
+    else
+        ok = kitty_winpos_session_set(name, layout, &pos);
+    kitty_winpos_dbg("SAVE %s -> %s", kitty_winpos_is_shared_window(name) ? "shared" : "session",
+                     ok ? "ok" : "FAILED");
 }
 
 /* True if the screen point (x,y) lies on some visible monitor, so we never
@@ -9759,39 +9814,99 @@ static BOOL kitty_point_on_monitor(int x, int y)
     return p_MonitorFromPoint(pt, MONITOR_DEFAULTTONULL) != NULL;
 }
 
-/* Restore the saved top-left for the current topology, keeping THIS window's
- * current size. Returns 1 if a placement was applied. */
-static int kitty_restore_window_placement(HWND hwnd)
+/* The work area of the monitor nearest to (x,y). Returns 0 when the monitor
+ * APIs are not there (a very old Windows), in which case nothing is clamped. */
+static int kitty_nearest_work_area(int x, int y, RECT *work)
 {
+    POINT pt;
+    HMONITOR mon;
+    MONITORINFO mi;
+    if (!p_MonitorFromPoint || !p_GetMonitorInfoA) return 0;
+    pt.x = x; pt.y = y;
+    mon = p_MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+    if (!mon) return 0;
+    mi.cbSize = sizeof(mi);
+    if (!p_GetMonitorInfoA(mon, &mi)) return 0;
+    *work = mi.rcWork;
+    return 1;
+}
+
+/* Restore this session's remembered placement for the current monitor
+ * layout: position AND terminal size (columns x rows), the latter turned into
+ * pixels with this window's font metrics. A session without an entry of its
+ * own falls back once to the SHARED entry (which is also what an unnamed
+ * session and a "Default Settings" window use). A placement is never applied
+ * where the user cannot reach it: a top-left that is on no current monitor
+ * is moved onto the nearest monitor's work area, and a grid larger than that
+ * work area is reduced to fit. Returns 1 if a placement was applied. */
+static int kitty_restore_window_placement(WinGuiSeat *wgs)
+{
+    HWND hwnd = wgs ? wgs->term_hwnd : NULL;
     if (!hwnd) return 0;
+    const char *name = conf_get_str(wgs->conf, CONF_sessionname);
+    unsigned long layout = kitty_winpos_layout_hash();
+    struct kitty_termpos pos;
+    int found = 0;
+    const char *from = "none";
     char keyname[64]; kitty_winpos_key(keyname, sizeof(keyname));
-    char base[600]; _snprintf(base, sizeof(base), "%s\\WindowPos", kitty_registry_base());
     kitty_winpos_dump_topo("RESTORE");
-    RECT saved; DWORD sz = sizeof(saved);
-    if (RegGetValueA(HKEY_CURRENT_USER, base, keyname, RRF_RT_REG_BINARY,
-                     NULL, &saved, &sz) != ERROR_SUCCESS) {
-        kitty_winpos_dbg("RESTORE key=%s: no saved value in HKCU\\%s", keyname, base);
+    if (!kitty_winpos_is_shared_window(name) &&
+        kitty_winpos_session_get(name, layout, &pos)) {
+        found = 1; from = "session";
+    } else if (kitty_winpos_shared_get(layout, &pos)) {
+        found = 1; from = "shared";
+    }
+    if (!found) {
+        kitty_winpos_dbg("RESTORE layout=%s session='%s': no entry", keyname, name ? name : "");
         return 0;
     }
-    if (sz != sizeof(saved)) { kitty_winpos_dbg("RESTORE key=%s: bad value size %lu", keyname, (unsigned long)sz); return 0; }
-    /* Only restore if the saved title-bar area is still on a visible monitor
-     * (probe a point a little inside the top-left corner). */
-    int onmon = kitty_point_on_monitor(saved.left + 8, saved.top + 8);
-    kitty_winpos_dbg("RESTORE key=%s saved=(%ld,%ld,%ld,%ld) onmonitor=%d",
-                     keyname, saved.left, saved.top, saved.right, saved.bottom, onmon);
-    if (!onmon) { kitty_winpos_dbg("RESTORE skipped: saved top-left off-screen"); return 0; }
-    /* Restore position AND size. The saved rect (GetWindowRect on close) holds
-     * both; the topology key guarantees the same monitor/DPI, so the physical
-     * size maps back to the same terminal cols/rows. Applying the size triggers
-     * WM_SIZE, which snaps the terminal grid to the client area. A degenerate
-     * saved size falls back to position-only. */
-    int w = saved.right - saved.left;
-    int h = saved.bottom - saved.top;
+    kitty_winpos_dbg("RESTORE layout=%s from=%s pos=(%d,%d) grid=%dx%d",
+                     keyname, from, pos.left, pos.top, pos.cols, pos.rows);
+
+    /* Pixels for the grid, with the metrics the startup sizing just used. */
+    int w = 0, h = 0;
+    int cols = pos.cols, rows = pos.rows;
+    RECT work;
+    int have_work = kitty_nearest_work_area(pos.left + 8, pos.top + 8, &work);
+    if (cols > 0 && rows > 0 && wgs->font_width > 0 && wgs->font_height > 0) {
+        if (have_work) {
+            int maxc = ((work.right - work.left) - wgs->extra_width) / wgs->font_width;
+            int maxr = ((work.bottom - work.top) - wgs->extra_height) / wgs->font_height;
+            if (maxc >= 1 && cols > maxc) cols = maxc;
+            if (maxr >= 1 && rows > maxr) rows = maxr;
+        }
+        w = wgs->extra_width + wgs->font_width * cols;
+        h = wgs->extra_height + wgs->font_height * rows;
+    } else {
+        /* Position only (an entry written by an earlier version): keep this
+         * window's current size for the clamp. */
+        RECT wr;
+        if (GetWindowRect(hwnd, &wr)) {
+            w = (int)(wr.right - wr.left);
+            h = (int)(wr.bottom - wr.top);
+        }
+    }
+
+    /* Onto the nearest monitor, fully inside its work area where the size
+     * allows (the left and top edges win when it does not). */
+    int x = pos.left, y = pos.top;
+    if (have_work) {
+        if (w > 0 && x + w > work.right)  x = (int)work.right - w;
+        if (h > 0 && y + h > work.bottom) y = (int)work.bottom - h;
+        if (x < work.left) x = (int)work.left;
+        if (y < work.top)  y = (int)work.top;
+    } else if (!kitty_point_on_monitor(x + 8, y + 8)) {
+        kitty_winpos_dbg("RESTORE skipped: top-left off-screen and no monitor API");
+        return 0;
+    }
+
+    /* Applying a size triggers WM_SIZE, which snaps the terminal grid to the
+     * client area. Position only when the grid is not known. */
     UINT flags = SWP_NOZORDER | SWP_NOACTIVATE;
-    if (w < 64 || h < 64) { w = 0; h = 0; flags |= SWP_NOSIZE; }
-    int ok = SetWindowPos(hwnd, NULL, saved.left, saved.top, w, h, flags) ? 1 : 0;
-    kitty_winpos_dbg("RESTORE SetWindowPos(%ld,%ld,%dx%d) -> %d",
-                     saved.left, saved.top, w, h, ok);
+    if (pos.cols <= 0 || pos.rows <= 0) { w = 0; h = 0; flags |= SWP_NOSIZE; }
+    int ok = SetWindowPos(hwnd, NULL, x, y, w, h, flags) ? 1 : 0;
+    kitty_winpos_dbg("RESTORE SetWindowPos(%d,%d,%dx%d grid=%dx%d) -> %d",
+                     x, y, w, h, cols, rows, ok);
     return ok;
 }
 
@@ -9860,7 +9975,7 @@ void kitty_apply_window_pos(WinGuiSeat *wgs)
         kitty_winpos_dbg("APPLY pinned CONF pos (%d,%d) set", x, y);
         return;
     }
-    if (remember && kitty_restore_window_placement(wgs->term_hwnd)) {
+    if (remember && kitty_restore_window_placement(wgs)) {
         kitty_winpos_dbg("APPLY restored remembered position");
         return;
     }

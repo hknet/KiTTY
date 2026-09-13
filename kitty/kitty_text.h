@@ -24,6 +24,9 @@
 #define KT_MIG_OLD_INTRO   "This machine has sessions in an old 9bis-KiTTY " \
                            "or PuTTY registry hive."
 #define KT_MIG_SHOW_BOX    "Show / edit / delete old PuTTY or KiTTY sessions"
+/* Under the checkbox: the same switch decides whether a session NAME still
+ * loads from the old stores (open_settings_r, windows/storage.c). */
+#define KT_MIG_SHOW_NOTE   "Also decides whether a session name still loads from the old stores: hidden here means not found by -load, @name, the launcher and the console tools. See Help for more."
 
 #define KT_MIG_IMP_GROUP   "Import into this KiTTY++"
 #define KT_MIG_IMP_INTRO   "These Sessions are found in the Registry of this user for old PuTTY/KiTTY:"
@@ -177,8 +180,14 @@
 #define KT_BROADCAST_OPTIONS_CONTROLLING_BROADCASTS  "Options controlling broadcasts between KiTTY windows"
 #define KT_SCRIPTING_ACCEPT_BROADCASTS_FROM_OTHER_KITTY "Accept broadcasts from other KiTTY windows"
 #define KT_SCRIPTING_ACCEPT_BROADCAST_MESSAGES       "Accept broadcast messages for this session"
-#define KT_SCRIPTING_ANOTHER_KITTY_CAN_TYPE_INTO     "Another KiTTY can type into this session (/command). " \
-        "Needs sendcmdmode=yes in kitty.ini."
+#define KT_SCRIPTING_ANOTHER_KITTY_CAN_TYPE_INTO     "Another KiTTY can type into this session (/command)."
+/* The installation's master switch lives on Application > KiTTY++ Settings >
+ * Automation > Broadcast; the note says so and the button jumps there. */
+#define KT_CFG_BROADCAST_GLOBAL_NOTE                 "Broadcast needs global switch on to work -> App>Auto>Broadcast"
+#define KT_CFG_BROADCAST_GLOBAL_JUMP                 "open global Settings"
+/* Mid-session (Change Settings) there is no Application tab: no button, this
+ * line in its place. */
+#define KT_CFG_BROADCAST_GLOBAL_MIDSESSION           "Broadcast using KiTTY++ start window -> App>Auto>Broadcast"
 #define KT_SCRIPTING_ONLY_MESSAGES_CARRYING_THE_KEY  "Only messages carrying the key below are accepted."
 
 /* Session/Startup */
@@ -361,6 +370,12 @@
 /* Window/Appearance */
 #define KT_APPEARANCE_WHERE_THE_WINDOW_OPENS         "Where the window opens"
 #define KT_APPEARANCE_OPTIONS_CONTROLLING_WHERE_THE_WINDOW "Options controlling where the window opens"
+/* Moved here from Window > Behaviour: per session and per monitor layout,
+ * position and columns x rows. "[ColxRow]" in the note is literal, on
+ * purpose. */
+#define KT_APPEARANCE_REMEMBER_WINDOW_POSITION       "Remember window position"
+#define KT_APPEARANCE_REMEMBER_NOTE                  "Saves the Terminal position for this monitor layout on close, " \
+        "also stores dimension [ColxRow]"
 #define KT_APPEARANCE_OPEN_THE_WINDOW                "Open the window at a fixed position"
 #define KT_APPEARANCE_TOP                            "Top:"
 #define KT_APPEARANCE_LEFT                           "Left:"
@@ -855,6 +870,9 @@
 #define KT_SECURITY_LIMIT_SSO                        "  -  GSSAPI/Kerberos single sign-on"
 #define KT_SECURITY_LIMIT_IPV6                       "  -  IPv6 name resolution"
 #define KT_SECURITY_EVENTLOG_ALWAYS                  "Event Log always reports missing Windows library features."
+/* The tracing switch ([KiTTY] debug) traces many things, not only the
+ * automation, so its group is on the Security panel. */
+#define KT_SECURITY_DIAGNOSTICS                      "Diagnostics"
 
 /* Application/Security/Certificate Authorities */
 #define KT_CERTIFICATE_AUTHORITIES_TRUSTED_HOST_CERTIFICATE_AUTHORITIES "Trusted host Certificate Authorities"
@@ -1163,16 +1181,36 @@
 #define KT_KSET_AU_SCRIPTFILTER                      "File types offered by \"Send a script file\":"
 #define KT_KSET_AU_SCRIPTFILTER_NOTE                 "A Windows file-dialog filter: Description|*.ext;*.ext|... " \
         "Blank = scripts (*.ksh, *.sh), SQL files and all files."
+
+/* Application/KiTTY++ Settings/Automation/Broadcast - the master switch, the
+ * installation's group key, and the send console. */
+#define KT_KSET_BC_TITLE                             "Broadcast-Settings and -Actions"
 #define KT_KSET_AU_BROADCAST                         "Broadcast"
-#define KT_KSET_AU_DIAGNOSTICS                       "Diagnostics"
 #define KT_KSET_AU_SENDCMD                           "Enable \"Accept broadcast\" on application level"
-#define KT_KSET_AU_SENDCMD_NOTE                      "A broadcast (/command, kitty -sendcmd) types its text into " \
-        "every window that accepts it. Tools > Accept broadcast switches one window either way."
-#define KT_KSET_AU_GROUP                             "Group key of this KiTTY: %s"
-#define KT_KSET_AU_GROUP_INI                         "Group key of this KiTTY: %s (set by sendcmdgroup in kitty.ini)"
-#define KT_KSET_AU_GROUP_NOTE                        "Only KiTTYs with the same key hear each other. The key is " \
-        "derived from where this copy is installed, so a second installation gets a different one; give both " \
-        "the same sendcmdgroup in kitty.ini to join them."
+#define KT_KSET_AU_SENDCMD_NOTE                      "A broadcast (/command, kitty -sendcmd) types the text into " \
+        "every terminal that accepts it. Session > Broadcast enables/disables per Session-Config."
+#define KT_KSET_BC_GROUPKEY                          "Group key"
+#define KT_KSET_BC_GROUPKEY_LABEL                    "Group key of this installation:"
+/* The two states of the line under the key field. Same length class: a
+ * CTRL_TEXT cannot grow after layout (see kitty_bkey_update_prov). */
+#define KT_KSET_BC_KEY_CUSTOM                        "Custom key for this installation (sendcmdgroup in kitty.ini) - " \
+        "Clear restores the derived key."
+#define KT_KSET_BC_KEY_DERIVED                       "Derived key, from the location of this installation. Type a key " \
+        "to join or split installations."
+#define KT_KSET_BC_SEND                              "Send a broadcast"
+#define KT_KSET_BC_SHOW                              "Show: "
+#define KT_KSET_BC_SHOW_SAVED                        "Sessions configured to accept"
+#define KT_KSET_BC_SHOW_LIVE                         "Current open Terminals accepting"
+/* The list's header row: the two column titles, tab-separated. */
+#define KT_KSET_BC_COL_HEAD                          "Session\tKey"
+#define KT_KSET_BC_GROUPS                            "Send to these groups:"
+#define KT_KSET_BC_COMMANDS                          "Commands, one per line:"
+#define KT_KSET_BC_LOAD                              "Load Command-File..."
+#define KT_KSET_BC_SEND_BTN                          "Send Commands"
+#define KT_KSET_BC_STATUS_LIVE                       "%d open windows accept broadcasts, in %d groups."
+#define KT_KSET_BC_STATUS_SAVED                      "%d saved sessions accept broadcasts, in %d groups."
+#define KT_KSET_BC_SWITCH_NOTE                       "Switch to open Terminals to send."
+#define KT_KSET_BC_SENDING                           "Sending line %d of %d..."
 
 /* Application/KiTTY++ Settings/Window & display */
 #define KT_KSET_WD_TITLE                             "Terminal Windows and Printing"
@@ -1180,6 +1218,17 @@
 #define KT_KSET_WD_WINTITLE                          "Decorate the window title (size, PROTECTED, ONTOP)"
 #define KT_KSET_WD_SIZE                              "Show the terminal size in the title"
 #define KT_KSET_WD_WINROLL                           "Double-click the title bar rolls the window up"
+/* Appearance > Shared window position: the entry written by windows without
+ * a session of their own (kitty_winpos.c). Two read-only lines and Reset. */
+#define KT_KSET_WD_SHAREDPOS                         "Shared window position"
+#define KT_KSET_WD_SHAREDPOS_THIS                    "This monitor layout: left %d, top %d, %d x %d"
+#define KT_KSET_WD_SHAREDPOS_THIS_POS_ONLY           "This monitor layout: left %d, top %d"
+#define KT_KSET_WD_SHAREDPOS_NONE                    "This monitor layout: none saved"
+#define KT_KSET_WD_SHAREDPOS_COUNT                   "Monitor layouts with a shared position: %d"
+#define KT_KSET_WD_SHAREDPOS_RESET                   "Reset"
+#define KT_CAP_SHAREDPOS_RESET                       "Reset the shared window position?"
+#define KT_CFG_SHAREDPOS_RESET_Q                     "Removes the shared window position for every monitor layout. " \
+        "Sessions keep their own entries."
 #define KT_KSET_WD_FEATURES                          "Terminal Features"
 #define KT_KSET_WD_RENDERER                          "Renderer:"
 #define KT_KSET_WD_RENDERER_GDI                      "GDI (default)"
@@ -2614,6 +2663,9 @@
 #define KT_TITLE_PROTECTED                           " (PROTECTED)"
 #define KT_TITLE_ONTOP                               " (ONTOP)"
 #define KT_TITLE_RESTRICTED                          " (RESTRICTED)"
+/* The window actually receives broadcasts: the session accepts them AND the
+ * installation's master switch is on. Ticked but globally off shows nothing. */
+#define KT_TITLE_BROADCAST                           " (BROADCAST)"
 #define KT_TITLE_WORKPLACE_LEAD                      L"⇄ workplace proxy"
 #define KT_TITLE_QUICK_CONNECT                       "%s - quick connect"
 #define KT_TITLE_QUICK_CONNECT_STAMPED               "%.*s - quick connect%s"
@@ -3447,5 +3499,10 @@
 /* A release build no longer carries our signature. %s is the short technical
  * reason - "bad digest", "not signed", "signer: <CN>". */
 #define KT_SIGNATURE_GUARD_MSG                       "Signature check failed: this program is not signed by its publisher. Found: %s"
+
+/* A release file no longer matches what was released (kitty/kitty_selfcheck.c).
+ * %s is the short technical reason - "modified", "bad stamp", "no stamp",
+ * "truncated", "cannot check". */
+#define KT_SELFCHECK_GUARD_MSG                       "Integrity check failed: this program file was changed after its release. Found: %s"
 
 #endif /* KITTY_TEXT_H */

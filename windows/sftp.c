@@ -13,6 +13,7 @@
 #include "ssh.h"
 #include "security-api.h"
 #include "../kitty/kitty_renameguard.h"   /* KiTTY: refuse a foreign file name */
+#include "../kitty/kitty_selfcheck.h"     /* KiTTY: refuse a file changed after release */
 
 SeatPromptResult filexfer_get_userpass_input(Seat *seat, prompts_t *p)
 {
@@ -668,6 +669,10 @@ int main(int argc, char *argv[])
     /* KiTTY: and, in a signed release build, does this file still carry our
      * signature? Compiled to nothing in a dev or test build. */
     if (kitty_signature_guard(0))
+        return 1;
+    /* KiTTY: and, in a stamped release build, does this file still match its
+     * integrity stamp? Compiled to nothing in a dev or test build. */
+    if (kitty_selfcheck_guard(0))
         return 1;
 
     CmdlineArgList *arglist = cmdline_arg_list_from_GetCommandLineW();

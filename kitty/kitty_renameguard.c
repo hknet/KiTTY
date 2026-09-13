@@ -107,13 +107,34 @@ static void kg_report(const char *msg, int gui)
     if (gui && kg_interactive()) {
         /* Owner NULL: there is no window yet, and there will not be one. */
         MessageBoxA(NULL, msg, KT_RENAME_GUARD_TITLE, MB_OK | MB_ICONERROR);
-        return;
-    }
-    if (!gui) {
+    } else if (!gui) {
         fprintf(stderr, "%s\n", msg);
         fflush(stderr);
     }
+    /* In EVERY case one Application event-log line - the admin's trace,
+     * whether or not the user also saw the box or the stderr line (his
+     * decision 2026-09-14). Applies to all three guards that share this. */
     kg_eventlog(msg);
+}
+
+/*
+ * The two decisions above, for the integrity self-check (kitty_selfcheck.c),
+ * which cannot live in this file: it needs `crypto`, and `utils` links into
+ * programs that have none. One reporting path for all three guards.
+ */
+int kitty_guard_interactive(void)
+{
+    return kg_interactive();
+}
+
+void kitty_guard_report(const char *msg, int gui, int allow_box)
+{
+    if (!allow_box && gui) {
+        /* A windowed program that must not put up a box: the log only. */
+        kg_eventlog(msg);
+        return;
+    }
+    kg_report(msg, gui);
 }
 
 int kitty_rename_guard(const char *const *prefixes, int nprefixes, int gui)

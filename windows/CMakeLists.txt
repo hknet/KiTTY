@@ -94,6 +94,56 @@ if(KITTY_RELEASE_SIGNED)
   target_compile_definitions(utils PRIVATE KITTY_RELEASE_SIGNED)
   message(STATUS "KITTY_RELEASE_SIGNED: the binaries will verify their own signature at startup")
 endif()
+
+# KiTTY: the offline integrity self-check (kitty/kitty_selfcheck.c): an
+# Ed25519-signed SHA-256 stamp in the file's own .ktstamp section, checked at
+# startup with PuTTY's own crypto - for the old Windows where Authenticode
+# cannot judge. ONLY the 32-bit release build sets it (scripts/wsl_release32.sh)
+# and the local stamped test build; a dev or test build compiles the check to
+# nothing, exactly like KITTY_RELEASE_SIGNED.
+#
+# Per TARGET, not on `utils`: the check needs `crypto`, which comes before
+# `utils` in the single-pass static link and which psocks does not link at
+# all. kitty_selfcheck.c is listed on the five opted-in targets (kitty,
+# kitty_portable, plink, pscp, psftp) and kitty_selfcheck_target() below
+# gives each of them the defines.
+#
+# The public key of the release is a generated header OUTSIDE the repository
+# (a fresh pair per release, the private half destroyed after stamping): by
+# default kitty_selfcheck_key.h in the build directory, or the file named by
+# KITTY_SELFCHECK_KEY_HEADER. It is generated for the build and is never
+# committed to the repository; it must exist before the build starts.
+#
+# KITTY_SELFCHECK_FAULT is for the local stamped TEST build only: it compiles
+# in a fault switch (environment variable KITTY_SELFCHECK_FAULT) so the
+# cannot-check paths can be driven, and a marker that keeps such a binary from
+# ever being stamped for a release by mistake.
+option(KITTY_SELFCHECK
+  "compile the integrity stamp self-check into kitty/kitty_portable/plink/pscp/psftp (stamped builds only)" OFF)
+option(KITTY_SELFCHECK_FAULT
+  "TEST BUILDS ONLY: compile the self-check fault switch in (such a binary is never stamped for a release)" OFF)
+set(KITTY_SELFCHECK_KEY_HEADER "${CMAKE_BINARY_DIR}/kitty_selfcheck_key.h" CACHE FILEPATH
+  "generated header with KITTY_SELFCHECK_PUBKEY_BYTES; never committed to the repository")
+if(KITTY_SELFCHECK)
+  if(NOT EXISTS "${KITTY_SELFCHECK_KEY_HEADER}")
+    message(FATAL_ERROR "KITTY_SELFCHECK is ON but the public-key header is missing: ${KITTY_SELFCHECK_KEY_HEADER} - generate it before the build")
+  endif()
+  message(STATUS "KITTY_SELFCHECK: the five stamped binaries will verify their own integrity stamp at startup (key: ${KITTY_SELFCHECK_KEY_HEADER})")
+  if(KITTY_SELFCHECK_FAULT)
+    message(STATUS "KITTY_SELFCHECK_FAULT: TEST BUILD - the fault switch is compiled in; these binaries are never stamped for a release")
+  endif()
+elseif(KITTY_SELFCHECK_FAULT)
+  message(FATAL_ERROR "KITTY_SELFCHECK_FAULT needs KITTY_SELFCHECK=ON")
+endif()
+function(kitty_selfcheck_target target)
+  if(KITTY_SELFCHECK)
+    target_compile_definitions(${target} PRIVATE
+      KITTY_SELFCHECK KITTY_SELFCHECK_KEY_HEADER="${KITTY_SELFCHECK_KEY_HEADER}")
+    if(KITTY_SELFCHECK_FAULT)
+      target_compile_definitions(${target} PRIVATE KITTY_SELFCHECK_FAULT)
+    endif()
+  endif()
+endfunction()
 add_sources_from_current_dir(eventloop
   cliloop.c handle-wait.c kitty_pace_frame.c)
 add_sources_from_current_dir(console
@@ -203,17 +253,30 @@ installed_program(pageant)
 
 add_sources_from_current_dir(plink no-jump-list.c nohelp.c plink.rc
   ../kitty/kitty_crashlog.c
+  ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_hostkeys.c        # KiTTY: klink -knownhosts (the store, listed)
-  ../kitty/kitty_hostkey_scan.c)   # KiTTY: klink -scan (our ssh-keyscan)
+  ../kitty/kitty_hostkey_scan.c    # KiTTY: klink -scan (our ssh-keyscan)
+  ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(plink generated_licence_h)
+kitty_selfcheck_target(plink)
 
 add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
-  ../kitty/kitty_crashlog.c)
+  ../kitty/kitty_crashlog.c
+  ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
+  ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(pscp generated_licence_h)
+kitty_selfcheck_target(pscp)
 
 add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc
-  ../kitty/kitty_crashlog.c)
+  ../kitty/kitty_crashlog.c
+  ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
+  ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(psftp generated_licence_h)
+kitty_selfcheck_target(psftp)
+
 
 add_sources_from_current_dir(psocks nohelp.c)
 
@@ -511,6 +574,7 @@ add_executable(kitty
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c     # KiTTY: sidecar + translate
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_terminal.c # KiTTY: the terminal's hook glue
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_winpos.c         # KiTTY: window position per session and monitor layout
   putty.c
   help.c
   # terminal.c compiled directly into the kitty target (not via guiterminal)
@@ -565,6 +629,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_migrate.c
   ${KITTY_DIR}/kitty_hostkeys.c
   ${KITTY_DIR}/kitty_hostkey_verify.c
+  ${KITTY_DIR}/kitty_selfcheck.c   # KiTTY: the integrity stamp check; per target, needs crypto (see KITTY_SELFCHECK above)
   ${KITTY_DIR}/kitty_userpath.c
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c
@@ -586,6 +651,7 @@ target_compile_definitions(kitty-be-list PRIVATE MOD_ADB=1)
 set_source_files_properties(${KITTY_DIR}/blocnote/notepad.c PROPERTIES COMPILE_DEFINITIONS NOMAIN)
 set_source_files_properties(${KITTY_DIR}/blocnote/notepad.rc PROPERTIES COMPILE_DEFINITIONS NOTEPAD_EMBEDDED)
 add_dependencies(kitty generated_licence_h)
+kitty_selfcheck_target(kitty)
 target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.85.1.8" BUILD_TIME="2026-09-07")
 target_compile_options(kitty PRIVATE -fcommon)
 if(KITTY_O2_HOT_O3)
@@ -639,6 +705,7 @@ add_executable(kitty_portable
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c     # KiTTY: sidecar + translate
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_terminal.c # KiTTY: the terminal's hook glue
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_winpos.c         # KiTTY: window position per session and monitor layout
   putty.c
   help.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
@@ -681,6 +748,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_migrate.c
   ${KITTY_DIR}/kitty_hostkeys.c
   ${KITTY_DIR}/kitty_hostkey_verify.c
+  ${KITTY_DIR}/kitty_selfcheck.c   # KiTTY: the integrity stamp check; per target, needs crypto (see KITTY_SELFCHECK above)
   ${KITTY_DIR}/kitty_userpath.c
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c
@@ -698,6 +766,7 @@ add_executable(kitty_portable
 be_list(kitty_portable KiTTY SSH SERIAL OTHERBACKENDS)
 target_compile_definitions(kitty_portable-be-list PRIVATE MOD_ADB=1)
 add_dependencies(kitty_portable generated_licence_h)
+kitty_selfcheck_target(kitty_portable)
 target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.85.1.8" BUILD_TIME="2026-09-07")
 target_compile_options(kitty_portable PRIVATE -fcommon)
 

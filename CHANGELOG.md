@@ -8,6 +8,29 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **The 32-bit release files check their own integrity at startup.**
+  `kitty.exe`, `kitty_portable.exe`, `klink.exe`, `kscp.exe` and `ksftp.exe`
+  of the 32-bit package carry an Ed25519-signed SHA-256 stamp of the file as
+  it was released, checked with KiTTY's own crypto right after the name and
+  signature guards - offline, on every Windows the programs run on, Windows
+  XP included, where the Authenticode signature cannot be judged. A file
+  changed after its release refuses to start with one message naming the
+  finding (`modified`, `bad stamp`, `no stamp`, `truncated`) and one
+  Application event-log line. A fresh key pair is made for every release and
+  the private half is destroyed after stamping. Builds you compile yourself
+  carry no stamp and no check.
+
+- **Broadcast leaf and send console.** KiTTY++ Settings > Automation >
+  Broadcast holds the master switch (`sendcmdmode`), the installation's
+  group key as an editable field (`sendcmdgroup`, with Copy and Clear back
+  to the derived key), and a send console: the saved sessions that accept
+  broadcasts or the open terminals that accept right now, grouped by key,
+  a box of commands sent one line at a time to the chosen groups with the
+  auto-command pause between lines, and a button that loads the commands
+  from a file. `-sendcmdfile <file>` is the command-line twin, one command
+  per line, `-sendcmdkey` applies. Session > Broadcast got a note and an
+  `open global Settings` button that jumps to the leaf. A terminal that
+  actually receives broadcasts carries `(BROADCAST)` in its title.
 - **Application Notification.** KiTTY++ Settings > Security > Application
   Notification holds a text ("Notification:") that every KiTTY++ process
   shows in a notice window at its first window - terminal, launcher or
@@ -224,6 +247,36 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **The window position is remembered per session and per monitor layout,
+  size included.** "Remember window position" used to keep one position for
+  all sessions: the window closed last decided where every session opened.
+  It now keeps, for each session and each arrangement of monitors, the
+  window's top-left and its size in columns x rows, and opens the session
+  there again; a position that is on no current monitor is moved onto the
+  nearest one and a size that does not fit is reduced. The checkbox moved
+  from Window > Behaviour to Window > Appearance > Position, beside the
+  fixed position it combines with; Top/Left and Columns/Rows show the
+  session's entry for the current layout. Windows without a session of
+  their own (an unnamed session, "Default Settings") share one position per
+  layout, which a session without an entry of its own uses once; it is shown
+  with a Reset on KiTTY++ Settings > Appearance. Default Settings is never
+  written by a closing window. Stored as `TermPos_<layout>` in the session.
+- **"Extra tracing in the Event Log" moved to Application > Security**, in a
+  Diagnostics group at the bottom: it traces session lookups, the automatic
+  command, key remaps and the helper command lines, not the automation
+  alone. Same `debug` key in `[KiTTY]`. The Automation panel keeps pacing
+  and scripts; its Broadcast group became the Broadcast leaf.
+- **Loading a session by name follows "Show / edit / delete old PuTTY or
+  KiTTY sessions".** Until now the saved-session list obeyed that switch
+  (Application > Migration, `showforeignsessions` in `[KiTTY]`) while
+  `-load`, `@name`, the launcher and the console tools still opened a name
+  from the old 9bis-KiTTY or PuTTY hive whatever it said. One switch has one
+  meaning now: hidden there means not found by name either, in kitty.exe and
+  in klink, kscp and ksftp, which read the same kitty.ini line. With the
+  default `auto` the old stores therefore retire themselves for loading too
+  once this KiTTY has sessions of its own - import the ones still in use, or
+  set `showforeignsessions=yes` to keep loading them. The importer always
+  sees both hives. The Migration panel says so under the switch.
 - **Dark mode reaches the popup menus and the transfer windows.** The colour
   theme now also applies to every popup menu - the terminal's right-click and
   Alt+Space menus, the launcher's and kageant's tray menus, kittygen's menus -

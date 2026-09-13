@@ -79,4 +79,18 @@ int kitty_rename_guard(const char *const *prefixes, int nprefixes, int gui);
  */
 int kitty_signature_guard(int gui);
 
+/*
+ * The shared pieces of the guards, for the third one (kitty_selfcheck.c),
+ * which needs `crypto` and therefore cannot compile into `utils`.
+ *
+ * kitty_guard_interactive(): nonzero when the process's window station is
+ * visible - somebody could see a box. Unknown counts as interactive.
+ *
+ * kitty_guard_report(): the one report, as the guards above make it. With
+ * `allow_box` zero a windowed program gets the event-log line only - for a
+ * refusal that is made precisely because nobody is there to click.
+ */
+int kitty_guard_interactive(void);
+void kitty_guard_report(const char *msg, int gui, int allow_box);
+
 #endif /* KITTY_RENAMEGUARD_H */

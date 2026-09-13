@@ -27,6 +27,37 @@
 #include "kitty_inikeys.h" /* KI_*: the kitty.ini key names */
 #include "kitty_notes.h"   /* the application notification: its escapes and its notice */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
+#include "kitty_winpos.h"   /* the remembered window position, per session and monitor layout */
+
+/* KiTTY: "Remember window position" keeps one entry per session and monitor
+ * layout (kitty_winpos.c). With it on, the Position panel's Top/Left and the
+ * Window panel's Columns/Rows show and edit that entry for the layout the
+ * configuration box is on now: Load copies the entry into the conf, Save
+ * writes the conf's values back into it. */
+static void kitty_winpos_load_into_conf(const char *session, Conf *conf)
+{
+    struct kitty_termpos pos;
+    if (!conf_get_bool(conf, CONF_remember_winpos)) return;
+    if (!kitty_winpos_session_get(session, kitty_winpos_layout_hash(), &pos))
+        return;
+    conf_set_int(conf, CONF_xpos, pos.left);
+    conf_set_int(conf, CONF_ypos, pos.top);
+    if (pos.cols > 0 && pos.rows > 0) {
+        conf_set_int(conf, CONF_width, pos.cols);
+        conf_set_int(conf, CONF_height, pos.rows);
+    }
+}
+static void kitty_winpos_save_from_conf(const char *session, Conf *conf)
+{
+    struct kitty_termpos pos;
+    if (!conf_get_bool(conf, CONF_remember_winpos)) return;
+    if (kitty_winpos_is_shared_window(session)) return;
+    pos.left = conf_get_int(conf, CONF_xpos);
+    pos.top = conf_get_int(conf, CONF_ypos);
+    pos.cols = conf_get_int(conf, CONF_width);
+    pos.rows = conf_get_int(conf, CONF_height);
+    kitty_winpos_session_set(session, kitty_winpos_layout_hash(), &pos);
+}
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
 #include <commctrl.h>       /* SetWindowSubclass: the shortcut editor's key-capture field */
@@ -3074,6 +3105,12 @@ static bool load_selected_session(
     /* KiTTY: what is genuinely in the box now, for the Save guard. */
     sfree(ssd->loaded_from);
     ssd->loaded_from = dupstr(ssd->sesslist.sessions[i]);
+    /* KiTTY: with "Remember window position" on, Top/Left and Columns/Rows
+     * show this session's remembered entry for the monitor layout the box is
+     * on now, so what the panel shows is what the window will open with. Only
+     * then - with it off, a typed fixed position must not be overwritten by
+     * an entry left behind from earlier. */
+    kitty_winpos_load_into_conf(ssd->sesslist.sessions[i], conf);
     /* KiTTY: the proxy override belongs to the session that was showing, not to
      * the box. A newly loaded session starts with no override, derived from its
      * own proxy settings - so this covers Load, a double-click on the list, and
@@ -4785,12 +4822,25 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     dlg_error_msg(dlg, errmsg);
                     sfree(errmsg);
                 } else {
+                    /* KiTTY: a Save under a NEW name is a copy, and the
+                     * loaded session's remembered positions - every monitor
+                     * layout's entry - go with it, so the copy opens where
+                     * its original does. */
+                    if (ssd->savedsession[0] && ssd->loaded_from &&
+                        strcmp(ssd->loaded_from, ssd->savedsession) != 0)
+                        kitty_winpos_session_copy(ssd->loaded_from, ssd->savedsession);
                     /* What is in the box now IS this session, so a second Save
                      * in a row must not ask to overwrite it again. */
                     if (ssd->savedsession[0]) {
                         sfree(ssd->loaded_from);
                         ssd->loaded_from = dupstr(ssd->savedsession);
                     }
+                    /* KiTTY: Top/Left and Columns/Rows edit this session's
+                     * remembered entry for the current monitor layout, so a
+                     * Save writes it back too, after the copy, so what the
+                     * panel shows wins for this layout (a named session only;
+                     * Default Settings has no entry of its own). */
+                    kitty_winpos_save_from_conf(ssd->savedsession, conf);
                     /* Tell a running KiTTY Launcher to refresh its saved-session
                      * list and re-register per-session global hotkeys. This is a
                      * best-effort broadcast; if no launcher is running, nothing
@@ -5958,6 +6008,17 @@ static void kscp_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
         kitty_cfg_goto_panel("Application/KiTTY++ Settings/Transfers & Tools");
 }
 
+/* KiTTY: the broadcast master switch, the installation's group key and the
+ * send console live on KiTTY++ Settings > Automation > Broadcast; the
+ * session's Broadcast panel carries a button that jumps there. */
+static void broadcast_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                          void *data, int event)
+{
+    extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
+    if (event == EVENT_ACTION)
+        kitty_cfg_goto_panel("Application/KiTTY++ Settings/Automation/Broadcast");
+}
+
 /* ---- Security > Host keys: the trust store, listed ----------------------- */
 
 #include "kitty_hostkeys.h"
@@ -6537,7 +6598,7 @@ static void scb_panel_hostkeys(struct controlbox *b)
 /* ---- the splitter between the list and the detail box ---------------------- */
 
 /*
- * His ask (2026-09-05): after a Verify the detail box is where the full
+ * After a Verify, the detail box is where the full
  * fingerprints and the verdict are read, and four visible lines are few. A
  * thin bar between the list and the box moves the boundary with the mouse:
  * the list gives what the box gains. The offset is remembered for the
@@ -8109,9 +8170,10 @@ static void kitty_bkey_clear_handler(dlgcontrol *ctrl, dlgparam *dp,
 }
 
 
-static void scb_panel_scripting(struct controlbox *b)
+static void scb_panel_scripting(struct controlbox *b, bool midsession)
 {
     struct controlset *s;
+    dlgcontrol *c;
 
     /*
      * The Session/Scripting panel (KiTTY rutty scripting). Placed under Session
@@ -8180,6 +8242,24 @@ static void scb_panel_scripting(struct controlbox *b)
                       I(CONF_kitty_accept_broadcast));
         ctrl_text(s, KT_SCRIPTING_ANOTHER_KITTY_CAN_TYPE_INTO,
                   HELPCTX(kitty_sendcmd));
+        /* The installation's master switch is an application setting; the
+         * note says where. From the start-up window the button jumps there
+         * (the same mechanism as the Certificate Authorities jump on Host
+         * keys). A running terminal's Change Settings window has no
+         * Application tab (scb_panel_kitty_settings builds nothing
+         * mid-session), so there the button is not created at all and a
+         * second note says where the leaf is instead. */
+        ctrl_text(s, KT_CFG_BROADCAST_GLOBAL_NOTE, HELPCTX(kitty_sendcmd));
+        if (midsession) {
+            ctrl_text(s, KT_CFG_BROADCAST_GLOBAL_MIDSESSION, HELPCTX(kitty_sendcmd));
+        } else {
+            ctrl_columns(s, 2, 50, 50);
+            c = ctrl_pushbutton(s, KT_CFG_BROADCAST_GLOBAL_JUMP, NO_SHORTCUT,
+                                HELPCTX(kitty_sendcmd),
+                                broadcast_global_jump_handler, I(0));
+            c->column = 0;
+            ctrl_columns(s, 1, 100);
+        }
         ctrl_text(s, KT_SCRIPTING_ONLY_MESSAGES_CARRYING_THE_KEY,
                   HELPCTX(kitty_sendcmd));
         kitty_broadcast_key_controls(b, s);
@@ -8711,15 +8791,9 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
     if (!GetPuttyFlag()) {
         s = ctrl_getset(b, "Window/Behaviour", "remember",
                         KT_BEHAVIOUR_REMEMBERING);
-        /* KiTTY: where a window OPENS is window behaviour, not a property of
-         * the connection. Classic KiTTY's equivalent ("Save position and size
-         * on exit") lived in this panel too. Ours remembers the position per
-         * monitor LAYOUT, so docking or unplugging a screen restores the window
-         * where it belonged on that layout instead of stranding it off-screen;
-         * it deliberately does not restore a maximised or minimised state. */
-        ctrl_checkbox(s, KT_BEHAVIOUR_REMEMBER_WINDOW_POSITION_PER_MONITOR, NO_SHORTCUT,
-                      HELPCTX(kitty_winpos_remember), conf_checkbox_handler,
-                      I(CONF_remember_winpos));
+        /* KiTTY: "Remember window position" used to sit here too; it is on
+         * Window > Appearance > Position now, beside the fixed position it
+         * combines with (the Window/Appearance/Position leaf below). */
         /* KiTTY: writes this session back when its window closes - the settings
          * as they stand at that moment, so a font or colour changed mid-session
          * survives, plus the window's size, position and maximised state. An
@@ -8913,6 +8987,19 @@ static void scb_panel_window(struct controlbox *b, bool midsession, int protocol
          * looks one, and Appearance was full. */
         s = ctrl_getset(b, "Window/Appearance/Position", "position",
                         KT_APPEARANCE_WHERE_THE_WINDOW_OPENS);
+        /* KiTTY: the genuinely-remembering option, moved here from Window >
+         * Behaviour so the two ways of placing a window sit together. It
+         * remembers PER SESSION and per monitor LAYOUT - position and columns
+         * x rows - so docking or unplugging a screen restores the window
+         * where it belonged on that layout instead of stranding it
+         * off-screen; it deliberately does not restore a maximised or
+         * minimised state (windows/window.c, kitty/kitty_winpos.c). Top and
+         * Left below show this session's entry for the layout the box is on
+         * now (the Load path copies it into the conf). */
+        ctrl_checkbox(s, KT_APPEARANCE_REMEMBER_WINDOW_POSITION, NO_SHORTCUT,
+                      HELPCTX(kitty_winpos_remember), conf_checkbox_handler,
+                      I(CONF_remember_winpos));
+        ctrl_text(s, KT_APPEARANCE_REMEMBER_NOTE, HELPCTX(kitty_winpos_remember));
         ctrl_checkbox(s, KT_APPEARANCE_OPEN_THE_WINDOW, NO_SHORTCUT,
                       HELPCTX(kitty_winpos), conf_checkbox_handler,
                       I(CONF_set_windowpos));
@@ -11778,6 +11865,15 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
     ctrl_text(s, KT_SECURITY_LIMIT_IPV6,   HELPCTX(kitty_missing_features));
     ctrl_text(s, KT_SECURITY_EVENTLOG_ALWAYS, HELPCTX(kitty_missing_features));
 
+    /* The tracing switch ([KiTTY] debug) was on Automation, but what it
+     * traces - session lookups, the automatic command, key remaps, helper
+     * command lines - is not the automation's alone, so its group is here,
+     * at the bottom of the panel. Same KiTTY++ Settings machinery
+     * (kitty_kset_handler over the kset_keys table), only the panel moved. */
+    s = ctrl_getset(b, "Application/Security", "diag", KT_SECURITY_DIAGNOSTICS);
+    ctrl_checkbox(s, KT_KSET_TW_DEBUG, NO_SHORTCUT, HELPCTX(kitty_verifyagent),
+                  kitty_kset_handler, P((void *)kset_find(KI_DEBUG)));
+
     if (has_ca_config_box) {
         ctrl_settitle(b, "Application/Security/Certificate Authorities",
                       KT_CERTIFICATE_AUTHORITIES_TRUSTED_HOST_CERTIFICATE_AUTHORITIES);
@@ -11995,6 +12091,10 @@ extern int  debug_flag;
 extern int  init_delay, autocommand_delay, between_char_delay, internal_delay;
 extern int  kitty_script_enabled(void);        extern void kitty_script_set_enabled(int);
 extern int  kitty_broadcast_default(void);     extern void kitty_broadcast_set_enabled(int);
+extern void kitty_broadcast_set_group(const char *);
+extern void kitty_broadcast_set_send_key(const char *);
+extern const char *kitty_broadcast_send_key_override(void);
+extern int  SendCommandAllWindowsEx(HWND hwnd, char *cmd, int include_self);
 extern int  GetTitleBarFlag(void);             extern void SetTitleBarFlag(const int);
 extern int  GetSizeFlag(void);                 extern void SetSizeFlag(const int);
 extern int  GetWinrolFlag(void);               extern void SetWinrolFlag(const int);
@@ -12130,6 +12230,10 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, KI_SCRIPTMODE,     KSET_BOOL, false, kitty_script_enabled, kitty_script_set_enabled, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_SCRIPTFILEFILTER, KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_SENDCMDMODE,    KSET_BOOL, false, kitty_broadcast_default, kitty_broadcast_set_enabled, NULL, 0, 0, 0 },
+    /* The installation's group key. Empty in the store = derived (kitty.c);
+     * the Broadcast leaf's own handler drives this row, not KSET_TEXTBOX,
+     * because the field SHOWS the derived key when nothing is stored. */
+    { INIT_SECTION, KI_SENDCMDGROUP,   KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0, NULL, kitty_broadcast_set_group },
     /* Window & display */
     { INIT_SECTION, KI_WINTITLE,       KSET_BOOL, false, GetTitleBarFlag, SetTitleBarFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_SIZE,           KSET_BOOL, false, GetSizeFlag, SetSizeFlag, NULL, 0, 0, 0 },
@@ -12501,6 +12605,52 @@ static void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int 
 /* Where the whole subtree lives. */
 #define KSET_PATH(leaf) "Application/KiTTY++ Settings/" leaf
 
+/* KiTTY++ Settings > Appearance > Shared window position: the entry that
+ * windows without a session of their own (an unnamed session, a "Default
+ * Settings" window) write and that a session without an entry of its own
+ * reads once (kitty_winpos.c). Two read-only lines - this monitor layout's
+ * entry, and how many layouts hold one - rebuilt after Reset, which removes
+ * the shared entries for every layout and nothing else. */
+static dlgcontrol *ksharedpos_lines[2];
+static void ksharedpos_text(char lines[2][256])
+{
+    struct kitty_termpos pos;
+    int have = kitty_winpos_shared_get(kitty_winpos_layout_hash(), &pos);
+    if (have && pos.cols > 0 && pos.rows > 0)
+        snprintf(lines[0], 256, KT_KSET_WD_SHAREDPOS_THIS,
+                 pos.left, pos.top, pos.cols, pos.rows);
+    else if (have)
+        snprintf(lines[0], 256, KT_KSET_WD_SHAREDPOS_THIS_POS_ONLY,
+                 pos.left, pos.top);
+    else
+        snprintf(lines[0], 256, "%s", KT_KSET_WD_SHAREDPOS_NONE);
+    snprintf(lines[1], 256, KT_KSET_WD_SHAREDPOS_COUNT,
+             kitty_winpos_shared_count());
+}
+static void ksharedpos_refresh(dlgparam *dlg)
+{
+    char lines[2][256];
+    int i;
+    ksharedpos_text(lines);
+    for (i = 0; i < 2; i++)
+        if (ksharedpos_lines[i])
+            dlg_label_change(ksharedpos_lines[i], dlg, lines[i]);
+}
+static void kitty_sharedpos_reset_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                          void *data, int event)
+{
+    extern int kitty_confirm_box(HWND owner, const char *caption,
+                                 const char *text, const char *warn_red); /* kitty_win.c */
+    (void)ctrl; (void)data;
+    if (event != EVENT_ACTION)
+        return;
+    if (!kitty_confirm_box(GetActiveWindow(), KT_CAP_SHAREDPOS_RESET,
+                           KT_CFG_SHAREDPOS_RESET_Q, NULL))
+        return;
+    kitty_winpos_shared_reset();
+    ksharedpos_refresh(dlg);
+}
+
 /* KiTTY++ Settings > System: what Windows hands to this program, and the
  * buttons that register it. The five lines are rebuilt after every click. */
 static dlgcontrol *ksys_lines[5];
@@ -12554,6 +12704,601 @@ static void kitty_syspath_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, i
     }
 }
 
+/* ======================================================================
+ * KiTTY++ Settings > Automation > Broadcast
+ *
+ * Three things on one leaf: the installation's master switch (sendcmdmode),
+ * the installation's group key (sendcmdgroup, editable here - the panel used
+ * to only SHOW it), and a send console: which sessions accept broadcasts,
+ * grouped by the key they listen for, and a box of commands sent to the
+ * selected groups one line at a time.
+ *
+ * The KiTTY++ Settings tree exists only in the start-up configuration window
+ * (scb_panel_kitty_settings returns mid-session), so this leaf never sits on
+ * a terminal of its own. The send still goes through the include-self form
+ * of the sender, so the design's decision "the console reaches the terminal
+ * it was opened from too" holds if that ever changes.
+ * ====================================================================== */
+
+extern char KiTTYClassName[128];               /* kitty.c: the terminal window class */
+
+/* One row of either view: a session name and the key it listens for. */
+struct kbc_entry {
+    char *name;
+    char *key;
+};
+
+/* The leaf's state. File-scope, not ctrl_alloc'd: the send runs on a timer
+ * that may outlive a hasty close of the box, and a timer callback must never
+ * dereference storage the controlbox freed. Only the start-up window builds
+ * this leaf, so one instance is enough. */
+static struct kbc_state {
+    dlgcontrol *keybox, *keyprov;
+    bool setting;                  /* writing the key box ourselves */
+    dlgcontrol *show;              /* the view droplist */
+    dlgcontrol *list;              /* sessions, grouped under their key */
+    dlgcontrol *groups;            /* the keys, multi-select */
+    dlgcontrol *cmds;              /* the commands, one per line */
+    dlgcontrol *load, *send, *status, *note;
+    int live;                      /* 1 = open terminals, 0 = saved sessions */
+    char **keys; int nkeys;        /* distinct keys of the current view */
+    /* the send in progress */
+    char **lines; int nlines, at;
+    char **sendkeys; int nsendkeys;
+    char saved_override[80];       /* -sendcmdkey as it was before the send */
+    UINT_PTR timer;
+    dlgparam *dlg;
+    HWND dlghwnd;                  /* checked with IsWindow before dlg is used */
+} kbc;
+
+static void kbc_send_stop(bool restore_status);
+
+/* ---- the group key ------------------------------------------------------ */
+
+static void kbc_key_set_box(dlgparam *dlg, const char *text)
+{
+    kbc.setting = true;
+    dlg_editbox_set(kbc.keybox, dlg, text);
+    kbc.setting = false;
+}
+
+static void kbc_key_update_prov(dlgparam *dlg)
+{
+    if (!kbc.keyprov) return;
+    dlg_label_change(kbc.keyprov, dlg,
+                     kitty_broadcast_group_from_ini() ? KT_KSET_BC_KEY_CUSTOM
+                                                      : KT_KSET_BC_KEY_DERIVED);
+}
+
+static void kbc_key_box_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    const struct kset_key *k = kset_find(KI_SENDCMDGROUP);
+    if (event == EVENT_REFRESH) {
+        /* The key IN EFFECT: the stored one, or the derived one when nothing
+         * is stored - never an empty box. */
+        kbc_key_set_box(dlg, kitty_broadcast_group());
+        kbc_key_update_prov(dlg);
+    } else if (event == EVENT_VALCHANGE) {
+        char *typed;
+        if (kbc.setting)
+            return;                /* our own text echoed back */
+        typed = dlg_editbox_get(ctrl, dlg);
+        if (!k) { sfree(typed); return; }
+        if (typed && *typed) {
+            /* Held back until the typing stops, like the other text fields;
+             * the running value follows at once so the line below is right. */
+            kset_defer_write(k, typed);
+            kitty_broadcast_set_group(typed);
+        } else {
+            /* Emptied by hand = back to the derived key, written now so the
+             * next kitty_broadcast_group() does not read the stale store. */
+            kset_write(k, "");
+            kitty_broadcast_set_group("");
+        }
+        sfree(typed);
+        kbc_key_update_prov(dlg);
+    }
+}
+
+static void kbc_key_copy_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    if (event != EVENT_ACTION) return;
+    SetTextToClipboard(kitty_broadcast_group());
+}
+
+/* Clear = the derived key again: the store forgets sendcmdgroup, the cache is
+ * dropped, the box shows what is now in effect. */
+static void kbc_key_clear_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    const struct kset_key *k = kset_find(KI_SENDCMDGROUP);
+    if (event != EVENT_ACTION) return;
+    if (k) kset_write(k, "");
+    kitty_broadcast_set_group("");
+    kbc_key_set_box(dlg, kitty_broadcast_group());
+    kbc_key_update_prov(dlg);
+}
+
+/* ---- the two views ------------------------------------------------------ */
+
+static void kbc_entries_free(struct kbc_entry *e, int n)
+{
+    int i;
+    for (i = 0; i < n; i++) { sfree(e[i].name); sfree(e[i].key); }
+    sfree(e);
+}
+
+static void kbc_entries_add(struct kbc_entry **e, int *n, int *cap,
+                            const char *name, const char *key)
+{
+    if (*n == *cap) {
+        *cap = *cap ? *cap * 2 : 16;
+        *e = sresize(*e, *cap, struct kbc_entry);
+    }
+    (*e)[*n].name = dupstr(name ? name : "");
+    (*e)[*n].key = dupstr(key && *key ? key : kitty_broadcast_group());
+    (*n)++;
+}
+
+/* The saved sessions that accept broadcasts, from the ACTIVE store (registry
+ * or the portable session files - the storage API hides which), with the key
+ * each listens for: its own, or this installation's. */
+static int kbc_scan_saved(struct kbc_entry **out)
+{
+    struct kbc_entry *e = NULL;
+    int n = 0, cap = 0;
+    settings_e *en = enum_settings_start();
+    strbuf *name = strbuf_new();
+    *out = NULL;
+    if (!en) { strbuf_free(name); return 0; }
+    while (enum_settings_next(en, name)) {
+        settings_r *h = open_settings_r(name->s);
+        if (h) {
+            if (read_setting_i(h, "AcceptBroadcast", 0)) {
+                char *k = read_setting_s(h, "BroadcastKey");
+                kbc_entries_add(&e, &n, &cap, name->s, k);
+                sfree(k);
+            }
+            close_settings_r(h);
+        }
+        strbuf_clear(name);
+    }
+    enum_settings_finish(en);
+    strbuf_free(name);
+    *out = e;
+    return n;
+}
+
+/* The live view asks every terminal window "would you type a broadcast right
+ * now?" (WM_COPYDATA dwData 3, windows/window.c). A window that would
+ * answers with a WM_COPYDATA of its own, dwData 4, "<key>\0<session name>",
+ * sent to the message-only window below while the asker is still inside its
+ * SendMessage; a window that would not stays silent, exactly as it would for
+ * the broadcast itself. So the list is what a send reaches, not what is
+ * configured somewhere. */
+static struct {
+    struct kbc_entry *e;
+    int n, cap;
+} kbc_probe;
+
+static LRESULT CALLBACK kbc_probe_wndproc(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    if (m == WM_COPYDATA) {
+        PCOPYDATASTRUCT c = (PCOPYDATASTRUCT)l;
+        if (c && c->dwData == 4 && c->cbData > 0 && c->lpData) {
+            /* Bounded copy: it comes from another process. */
+            size_t n = c->cbData;
+            char *buf, *name;
+            if (n > 4096) n = 4096;
+            buf = snewn(n + 2, char);
+            memcpy(buf, c->lpData, n);
+            buf[n] = '\0'; buf[n + 1] = '\0';
+            name = buf + strlen(buf) + 1;
+            if (name > buf + n) name = buf + n;
+            if (!*name) {
+                /* An unnamed session: the window title stands in. */
+                char title[256];
+                title[0] = '\0';
+                if (w && IsWindow((HWND)w))
+                    GetWindowTextA((HWND)w, title, sizeof(title));
+                kbc_entries_add(&kbc_probe.e, &kbc_probe.n, &kbc_probe.cap, title, buf);
+            } else {
+                kbc_entries_add(&kbc_probe.e, &kbc_probe.n, &kbc_probe.cap, name, buf);
+            }
+            sfree(buf);
+            return 1;
+        }
+        return 0;
+    }
+    return DefWindowProcA(h, m, w, l);
+}
+
+static BOOL CALLBACK kbc_probe_enum(HWND hwnd, LPARAM lp)
+{
+    char cls[256];
+    GetClassNameA(hwnd, cls, sizeof(cls));
+    if (!strcmp(cls, KiTTYClassName)) {
+        COPYDATASTRUCT d;
+        DWORD_PTR res = 0;
+        d.dwData = 3;
+        d.cbData = 1;                  /* an empty string: the question needs no text */
+        d.lpData = (void *)"";
+        /* NOT SMTO_BLOCK: the answer arrives as a sent message to this thread
+         * while it waits here, and SMTO_BLOCK would refuse to take it. */
+        SendMessageTimeoutA(hwnd, WM_COPYDATA, (WPARAM)(HWND)lp, (LPARAM)&d,
+                            SMTO_ABORTIFHUNG, 1000, &res);
+    }
+    return TRUE;
+}
+
+static int kbc_scan_live(struct kbc_entry **out)
+{
+    static bool registered = false;
+    static const char cls[] = "KiTTYBroadcastProbe";
+    HINSTANCE hinst = GetModuleHandleA(NULL);
+    HWND h;
+    *out = NULL;
+    if (!registered) {
+        WNDCLASSA wc;
+        memset(&wc, 0, sizeof(wc));
+        wc.lpfnWndProc = kbc_probe_wndproc;
+        wc.hInstance = hinst;
+        wc.lpszClassName = cls;
+        registered = RegisterClassA(&wc) != 0;
+        if (!registered) return 0;
+    }
+    h = CreateWindowExA(0, cls, "", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, hinst, NULL);
+    if (!h) return 0;
+    kbc_probe.e = NULL; kbc_probe.n = 0; kbc_probe.cap = 0;
+    EnumWindows(kbc_probe_enum, (LPARAM)h);
+    DestroyWindow(h);
+    *out = kbc_probe.e;
+    kbc_probe.e = NULL;
+    return kbc_probe.n;
+}
+
+static int kbc_entry_cmp(const void *a, const void *b)
+{
+    const struct kbc_entry *x = (const struct kbc_entry *)a, *y = (const struct kbc_entry *)b;
+    int c = strcmp(x->key, y->key);
+    return c ? c : strcmp(x->name, y->name);
+}
+
+static void kbc_keys_free(void)
+{
+    int i;
+    for (i = 0; i < kbc.nkeys; i++) sfree(kbc.keys[i]);
+    sfree(kbc.keys);
+    kbc.keys = NULL; kbc.nkeys = 0;
+}
+
+/* Rebuild both lists and the status line from the current view. */
+static void kbc_fill(dlgparam *dlg)
+{
+    struct kbc_entry *e = NULL;
+    int n, i;
+    char *line;
+
+    if (!kbc.list || !kbc.groups) return;
+    n = kbc.live ? kbc_scan_live(&e) : kbc_scan_saved(&e);
+    if (n > 1) qsort(e, n, sizeof(*e), kbc_entry_cmp);
+
+    kbc_keys_free();
+    for (i = 0; i < n; i++) {
+        if (i == 0 || strcmp(e[i].key, e[i - 1].key) != 0) {
+            kbc.keys = sresize(kbc.keys, kbc.nkeys + 1, char *);
+            kbc.keys[kbc.nkeys++] = dupstr(e[i].key);
+        }
+    }
+
+    /* The sessions, one heading row per key (the key in the first column,
+     * id -1 like the column header), the sessions of that key beneath it. */
+    dlg_update_start(kbc.list, dlg);
+    dlg_listbox_clear(kbc.list, dlg);
+    dlg_listbox_addwithid(kbc.list, dlg, KT_KSET_BC_COL_HEAD, -1);
+    for (i = 0; i < n; i++) {
+        if (i == 0 || strcmp(e[i].key, e[i - 1].key) != 0)
+            dlg_listbox_addwithid(kbc.list, dlg, e[i].key, -1);
+        line = dupprintf("    %s\t%s", e[i].name, e[i].key);
+        dlg_listbox_addwithid(kbc.list, dlg, line, i);
+        sfree(line);
+    }
+    dlg_update_done(kbc.list, dlg);
+
+    /* The keys to send to. */
+    dlg_update_start(kbc.groups, dlg);
+    dlg_listbox_clear(kbc.groups, dlg);
+    for (i = 0; i < kbc.nkeys; i++)
+        dlg_listbox_addwithid(kbc.groups, dlg, kbc.keys[i], i);
+    dlg_update_done(kbc.groups, dlg);
+
+    if (!kbc.timer) {
+        line = dupprintf(kbc.live ? KT_KSET_BC_STATUS_LIVE : KT_KSET_BC_STATUS_SAVED,
+                         n, kbc.nkeys);
+        dlg_label_change(kbc.status, dlg, line);
+        sfree(line);
+    }
+    /* Only the live view can send: the saved view says so, and the button
+     * follows it (and stays off while a send runs). */
+    dlg_label_change(kbc.note, dlg, kbc.live ? " " : KT_KSET_BC_SWITCH_NOTE);
+    kitty_dlg_enable_button(kbc.send, dlg, kbc.live && !kbc.timer);
+
+    kbc_entries_free(e, n);
+}
+
+static void kbc_show_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    if (event == EVENT_REFRESH) {
+        dlg_update_start(ctrl, dlg);
+        dlg_listbox_clear(ctrl, dlg);
+        dlg_listbox_addwithid(ctrl, dlg, KT_KSET_BC_SHOW_SAVED, 0);
+        dlg_listbox_addwithid(ctrl, dlg, KT_KSET_BC_SHOW_LIVE, 1);
+        dlg_listbox_select(ctrl, dlg, kbc.live ? 1 : 0);
+        dlg_update_done(ctrl, dlg);
+        kbc_fill(dlg);
+    } else if (event == EVENT_SELCHANGE) {
+        int i = dlg_listbox_index(ctrl, dlg);
+        kbc.live = (i == 1);
+        kbc_fill(dlg);
+    }
+}
+
+/* The lists and the command box keep their own state; nothing to do on the
+ * framework's events. The command box is read when Send is pressed. */
+static void kbc_noop_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+}
+
+/* ---- the commands ------------------------------------------------------- */
+
+/* Fill the box from a file. Empty lines are KEPT (each is a bare Return when
+ * sent), a UTF-8 BOM is skipped, CRLF and LF both end a line, and the file's
+ * trailing newline ends the last line rather than adding an empty one. */
+static void kbc_load_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    char path[4096];
+    FILE *fp;
+    strbuf *sb;
+    char chunk[4096];
+    size_t n;
+    if (event != EVENT_ACTION) return;
+    path[0] = '\0';
+    if (!OpenFileName(GetActiveWindow(), path, KT_KSET_BC_LOAD,
+                      "Text files (*.txt)|*.txt|All files (*.*)|*.*|"))
+        return;                                  /* cancelled */
+    fp = fopen(path, "rb");
+    if (!fp) {
+        dlg_error_msg(dlg, KT_CFG_LOGINSCRIPT_OPEN_FAILED);
+        return;
+    }
+    sb = strbuf_new();
+    while ((n = fread(chunk, 1, sizeof(chunk), fp)) > 0)
+        put_data(sb, chunk, n);
+    fclose(fp);
+    {
+        strbuf *out = strbuf_new();
+        const char *s = sb->s, *end = sb->s + sb->len;
+        bool first = true;
+        if (end - s >= 3 && (unsigned char)s[0] == 0xEF &&
+            (unsigned char)s[1] == 0xBB && (unsigned char)s[2] == 0xBF)
+            s += 3;
+        while (s < end) {
+            const char *nl = memchr(s, '\n', end - s);
+            size_t len = nl ? (size_t)(nl - s) : (size_t)(end - s);
+            if (len > 0 && s[len - 1] == '\r') len--;
+            if (!first) put_dataz(out, "\r\n");
+            first = false;
+            put_data(out, s, len);
+            s = nl ? nl + 1 : end;
+        }
+        dlg_editbox_set(kbc.cmds, dlg, out->s);
+        strbuf_free(out);
+    }
+    strbuf_free(sb);
+}
+
+static void kbc_lines_free(void)
+{
+    int i;
+    for (i = 0; i < kbc.nlines; i++) sfree(kbc.lines[i]);
+    sfree(kbc.lines);
+    kbc.lines = NULL; kbc.nlines = 0; kbc.at = 0;
+    for (i = 0; i < kbc.nsendkeys; i++) sfree(kbc.sendkeys[i]);
+    sfree(kbc.sendkeys);
+    kbc.sendkeys = NULL; kbc.nsendkeys = 0;
+}
+
+/* One line to every selected group. An empty line is the "\n" escape: an
+ * empty broadcast is dropped by sender and receiver alike, and the escape is
+ * what SendKeyboardPlus turns into a bare Return. The send key is set per
+ * group and put back afterwards, so a -sendcmdkey the process started with
+ * survives the console. */
+static void kbc_send_line(int at)
+{
+    int g;
+    const char *line = kbc.lines[at];
+    for (g = 0; g < kbc.nsendkeys; g++) {
+        kitty_broadcast_set_send_key(kbc.sendkeys[g]);
+        SendCommandAllWindowsEx(NULL, (char *)(*line ? line : "\\n"), 1);
+    }
+    kitty_broadcast_set_send_key(kbc.saved_override[0] ? kbc.saved_override : NULL);
+}
+
+static void kbc_progress(dlgparam *dlg)
+{
+    char *line = dupprintf(KT_KSET_BC_SENDING, kbc.at + 1, kbc.nlines);
+    dlg_label_change(kbc.status, dlg, line);
+    sfree(line);
+}
+
+/* The box is modeless: a loop with Sleep(commanddelay) between the lines would
+ * freeze it, so the lines go out one per timer tick instead. */
+static void CALLBACK kbc_timer_proc(HWND hwnd, UINT msg, UINT_PTR id, DWORD now)
+{
+    if (!kbc.timer) return;
+    if (!kbc.dlghwnd || !IsWindow(kbc.dlghwnd)) {
+        /* The box went away under the send: stop, touch no control. */
+        kbc_send_stop(false);
+        return;
+    }
+    if (kbc.at + 1 >= kbc.nlines) {
+        kbc_send_stop(true);
+        return;
+    }
+    kbc.at++;
+    kbc_progress(kbc.dlg);
+    kbc_send_line(kbc.at);
+}
+
+static void kbc_send_stop(bool restore_status)
+{
+    if (kbc.timer) {
+        KillTimer(NULL, kbc.timer);
+        kbc.timer = 0;
+    }
+    kbc_lines_free();
+    if (restore_status && kbc.dlg && kbc.dlghwnd && IsWindow(kbc.dlghwnd))
+        kbc_fill(kbc.dlg);              /* the count line, and Send is back */
+}
+
+static void kbc_send_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    char *text;
+    int i;
+    if (event != EVENT_ACTION) return;
+    if (!kbc.live || kbc.timer) return;   /* the saved view cannot send; one send at a time */
+
+    /* The groups chosen. Nothing chosen = nothing to do. */
+    for (i = 0; i < kbc.nkeys; i++) {
+        if (dlg_listbox_issel(kbc.groups, dlg, i)) {
+            kbc.sendkeys = sresize(kbc.sendkeys, kbc.nsendkeys + 1, char *);
+            kbc.sendkeys[kbc.nsendkeys++] = dupstr(kbc.keys[i]);
+        }
+    }
+    if (!kbc.nsendkeys) return;
+
+    /* The lines: one command per line, CRLF or LF, the box's trailing newline
+     * adds nothing. Empty lines stay - each is a bare Return. */
+    text = dlg_editbox_get(kbc.cmds, dlg);
+    {
+        const char *s = text, *end = text + strlen(text);
+        while (s < end) {
+            const char *nl = memchr(s, '\n', end - s);
+            size_t len = nl ? (size_t)(nl - s) : (size_t)(end - s);
+            char *line;
+            if (len > 0 && s[len - 1] == '\r') len--;
+            line = snewn(len + 1, char);
+            memcpy(line, s, len);
+            line[len] = '\0';
+            kbc.lines = sresize(kbc.lines, kbc.nlines + 1, char *);
+            kbc.lines[kbc.nlines++] = line;
+            s = nl ? nl + 1 : end;
+        }
+    }
+    sfree(text);
+    if (!kbc.nlines) { kbc_lines_free(); return; }
+
+    snprintf(kbc.saved_override, sizeof(kbc.saved_override), "%s",
+             kitty_broadcast_send_key_override());
+    kbc.dlg = dlg;
+    kbc.dlghwnd = dlg->hwnd;
+    kbc.at = 0;
+    kbc.timer = SetTimer(NULL, 0, autocommand_delay > 0 ? autocommand_delay : 5,
+                         kbc_timer_proc);
+    kitty_dlg_enable_button(kbc.send, dlg, false);
+    kbc_progress(dlg);
+    kbc_send_line(0);                     /* the first line goes now */
+    if (kbc.nlines == 1)
+        kbc_send_stop(true);
+}
+
+/* The box is closing: a send in flight stops, and whoever else hooked the
+ * close (the Host keys panel) still gets its call. */
+static void (*kbc_prev_closing_hook)(void) = NULL;
+static void kbc_box_closing(void)
+{
+    kbc_send_stop(false);
+    kbc.dlg = NULL; kbc.dlghwnd = NULL;
+    kbc.keybox = kbc.keyprov = kbc.show = kbc.list = kbc.groups = NULL;
+    kbc.cmds = kbc.load = kbc.send = kbc.status = kbc.note = NULL;
+    kbc_keys_free();
+    if (kbc_prev_closing_hook)
+        kbc_prev_closing_hook();
+}
+
+static void kbc_leaf(struct controlbox *b)
+{
+    extern void (*kitty_cfg_box_closing_hook)(void);   /* windows/dialog.c */
+    struct controlset *s;
+    dlgcontrol *c;
+
+    kbc_send_stop(false);
+    kbc_keys_free();
+    memset(&kbc, 0, sizeof(kbc));
+    if (kitty_cfg_box_closing_hook != kbc_box_closing) {
+        kbc_prev_closing_hook = kitty_cfg_box_closing_hook;
+        kitty_cfg_box_closing_hook = kbc_box_closing;
+    }
+
+    ctrl_settitle(b, KSET_PATH("Automation/Broadcast"), KT_KSET_BC_TITLE);
+
+    /* The master switch, moved off the Automation page. */
+    s = ctrl_getset(b, KSET_PATH("Automation/Broadcast"), "broadcast", KT_KSET_AU_BROADCAST);
+    KSET_CHECKBOX(s, KT_KSET_AU_SENDCMD, KI_SENDCMDMODE, kitty_kset_broadcast);
+    ctrl_text(s, KT_KSET_AU_SENDCMD_NOTE, HELPCTX(kitty_kset_broadcast));
+
+    /* The installation's group key: the same shape as Session > Broadcast
+     * (label on its own line, box + Copy + Clear, one provenance line), so
+     * the two panels read alike. The key is read when a window starts, so
+     * a change here reaches the terminals opened afterwards. */
+    s = ctrl_getset(b, KSET_PATH("Automation/Broadcast"), "groupkey", KT_KSET_BC_GROUPKEY);
+    ctrl_text(s, KT_KSET_BC_GROUPKEY_LABEL, HELPCTX(kitty_kset_broadcast));
+    ctrl_columns(s, 3, 60, 20, 20);
+    c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100, HELPCTX(kitty_kset_broadcast),
+                     kbc_key_box_handler, P(NULL), ED_STR);
+    c->column = 0;
+    kbc.keybox = c;
+    c = ctrl_pushbutton(s, KT_LOGGING_COPY, NO_SHORTCUT, HELPCTX(kitty_kset_broadcast),
+                        kbc_key_copy_handler, P(NULL));
+    c->column = 1;
+    c = ctrl_pushbutton(s, KT_LOGGING_CLEAR, NO_SHORTCUT, HELPCTX(kitty_kset_broadcast),
+                        kbc_key_clear_handler, P(NULL));
+    c->column = 2;
+    ctrl_columns(s, 1, 100);
+    /* Built with the longer wording so the line's height fits both. */
+    kbc.keyprov = ctrl_text(s, KT_KSET_BC_KEY_CUSTOM, HELPCTX(kitty_kset_broadcast));
+
+    /* The send console. */
+    s = ctrl_getset(b, KSET_PATH("Automation/Broadcast"), "send", KT_KSET_BC_SEND);
+    kbc.show = ctrl_droplist(s, KT_KSET_BC_SHOW, NO_SHORTCUT, 60,
+                             HELPCTX(kitty_kset_broadcast), kbc_show_handler, P(NULL));
+    kbc.list = ctrl_listbox(s, NULL, NO_SHORTCUT, HELPCTX(kitty_kset_broadcast),
+                            kbc_noop_handler, P(NULL));
+    kbc.list->listbox.height = 5;
+    kbc.list->listbox.headerrow = true;
+    kbc.list->listbox.ncols = 2;
+    kbc.list->listbox.percentages = snewn(2, int);
+    kbc.list->listbox.percentages[0] = 45;   /* Session */
+    kbc.list->listbox.percentages[1] = 55;   /* Key */
+    kbc.status = ctrl_text(s, " ", HELPCTX(kitty_kset_broadcast));
+    kbc.groups = ctrl_listbox(s, KT_KSET_BC_GROUPS, NO_SHORTCUT,
+                              HELPCTX(kitty_kset_broadcast), kbc_noop_handler, P(NULL));
+    kbc.groups->listbox.height = 3;
+    kbc.groups->listbox.multisel = 1;        /* several groups at once */
+    kbc.cmds = ctrl_editbox_multiline(s, KT_KSET_BC_COMMANDS, NO_SHORTCUT, 5, false,
+                                      HELPCTX(kitty_kset_broadcast),
+                                      kbc_noop_handler, P(NULL), P(NULL));
+    ctrl_columns(s, 2, 50, 50);
+    kbc.load = ctrl_pushbutton(s, KT_KSET_BC_LOAD, NO_SHORTCUT, HELPCTX(kitty_kset_broadcast),
+                               kbc_load_handler, P(NULL));
+    kbc.load->column = 0;
+    kbc.send = ctrl_pushbutton(s, KT_KSET_BC_SEND_BTN, NO_SHORTCUT, HELPCTX(kitty_kset_broadcast),
+                               kbc_send_handler, P(NULL));
+    kbc.send->column = 1;
+    ctrl_columns(s, 1, 100);
+    /* Built with the note so its height fits; blank while the live view shows. */
+    kbc.note = ctrl_text(s, KT_KSET_BC_SWITCH_NOTE, HELPCTX(kitty_kset_broadcast));
+}
+
 static void scb_panel_kitty_settings_leaves(struct controlbox *b)
 {
     struct controlset *s;
@@ -12599,25 +13344,10 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_CHECKBOX(s, KT_KSET_AU_SCRIPTMODE, KI_SCRIPTMODE, kitty_kset_automation);
     KSET_TEXTBOX(s, KT_KSET_AU_SCRIPTFILTER, KI_SCRIPTFILEFILTER, kitty_kset_automation);
     ctrl_text(s, KT_KSET_AU_SCRIPTFILTER_NOTE, HELPCTX(kitty_kset_automation));
-    s = ctrl_getset(b, KSET_PATH("Automation"), "broadcast", KT_KSET_AU_BROADCAST);
-    KSET_CHECKBOX(s, KT_KSET_AU_SENDCMD, KI_SENDCMDMODE, kitty_kset_automation);
-    ctrl_text(s, KT_KSET_AU_SENDCMD_NOTE, HELPCTX(kitty_kset_automation));
-    /* The group key as the program actually uses it: derived from the
-     * install unless kitty.ini overrides it (kitty.c, the broadcast gate). */
-    {
-        extern const char *kitty_broadcast_group(void);
-        extern int kitty_broadcast_group_from_ini(void);
-        const char *key = kitty_broadcast_group();
-        snprintf(line, sizeof(line),
-                 kitty_broadcast_group_from_ini() ? KT_KSET_AU_GROUP_INI : KT_KSET_AU_GROUP,
-                 key ? key : "");
-        ctrl_text(s, line, HELPCTX(kitty_kset_automation));
-    }
-    ctrl_text(s, KT_KSET_AU_GROUP_NOTE, HELPCTX(kitty_kset_automation));
-    /* What the tracing switch traces is mostly this leaf's business: the
-     * auto-command, key remaps, the helper command lines. */
-    s = ctrl_getset(b, KSET_PATH("Automation"), "diag", KT_KSET_AU_DIAGNOSTICS);
-    KSET_CHECKBOX(s, KT_KSET_TW_DEBUG, KI_DEBUG, kitty_kset_automation);
+    /* The broadcast group (master switch, group key) and the send console
+     * are the Automation > Broadcast leaf now; the tracing switch went to
+     * Application > Security (it traces more than the automation). */
+    kbc_leaf(b);
 
     /* ---- Features & Printing; the title bar, icons and font fallback
      * groups are how the windows LOOK and go to Appearance (ctrl_getset
@@ -12629,6 +13359,18 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_CHECKBOX(s, KT_KSET_WD_WINTITLE, KI_WINTITLE, kitty_appearance);
     KSET_CHECKBOX(s, KT_KSET_WD_SIZE, KI_SIZE, kitty_appearance);
     KSET_CHECKBOX(s, KT_KSET_WD_WINROLL, KI_WINROLL, kitty_appearance);
+    /* The shared terminal-window position, directly after Title bar (groups
+     * appear in the order they are first created). Read-only, plus Reset. */
+    {
+        char lines[2][256];
+        int i;
+        s = ctrl_getset(b, KSET_PATH("Appearance"), "sharedpos", KT_KSET_WD_SHAREDPOS);
+        ksharedpos_text(lines);
+        for (i = 0; i < 2; i++)
+            ksharedpos_lines[i] = ctrl_text(s, lines[i], HELPCTX(kitty_appearance));
+        ctrl_pushbutton(s, KT_KSET_WD_SHAREDPOS_RESET, NO_SHORTCUT,
+                        HELPCTX(kitty_appearance), kitty_sharedpos_reset_handler, I(0));
+    }
     s = ctrl_getset(b, KSET_PATH("Terminal & Printing"), "features", KT_KSET_WD_FEATURES);
     KSET_DROPLIST(s, KT_KSET_WD_RENDERER, KI_RENDERER, kitty_kset_window);
     KSET_DROPLIST(s, KT_KSET_WD_FRAMEPACE, KI_FRAMEPACE, kitty_kset_window);
@@ -14660,6 +15402,10 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
             ctrl_text(s, KT_MIG_OLD_INTRO, HELPCTX(kitty_import_sessions));
             ctrl_checkbox(s, KT_MIG_SHOW_BOX, NO_SHORTCUT, HELPCTX(kitty_import_sessions),
                           kitty_showforeign_handler, P(NULL));
+            /* The switch also gates loading by name (open_settings_r), so a
+             * hidden old session is not found by -load either - said here,
+             * where the switch is. */
+            ctrl_text(s, KT_MIG_SHOW_NOTE, HELPCTX(kitty_import_sessions));
 
             {
                 struct import_data *im = (struct import_data *)
@@ -14857,7 +15603,7 @@ void setup_config_box(struct controlbox *b, bool midsession,
      * thing its subtree offers. */
     scb_panel_comment(b);
     scb_panel_logging(b, midsession, protocol);
-    scb_panel_scripting(b);
+    scb_panel_scripting(b, midsession);
     scb_panel_terminal(b);
     scb_panel_window(b, midsession, protocol);
     scb_panel_selection(b);

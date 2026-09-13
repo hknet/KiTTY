@@ -478,6 +478,66 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                     SendCommandAllWindows(NULL, cmd);
                 sfree(cmd);
                 cleanup_exit(0);
+            } else if (!strcmp(p, "-sendcmdfile")) {
+                /*
+                 * The file form of -sendcmd: every line of the file is one
+                 * broadcast, sent in order with [KiTTY] commanddelay between
+                 * them, the same pacing the automatic command uses. Each line
+                 * is typed and followed by Return by the receiver
+                 * (SendKeyboardPlus adds it); an EMPTY line is a bare Return,
+                 * carried as the "\n" escape because an empty broadcast is
+                 * dropped on both ends. The file's trailing newline ends the
+                 * last line and adds nothing. UTF-8 is passed through as
+                 * bytes (a BOM is skipped); CRLF and LF both end a line.
+                 * -sendcmdkey applies as for -sendcmd. Then quit.
+                 */
+                extern int autocommand_delay;   /* kitty.c, ms */
+                if (!arglist->args[arglistpos])
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
+                {
+                    char *path = dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
+                    FILE *fp = fopen(path, "rb");
+                    if (!fp) {
+                        MessageBox(NULL, KT_CLI_EDIT_FILE_NOT_FOUND,
+                                   KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+                        sfree(path);
+                        cleanup_exit(1);
+                    }
+                    {
+                        strbuf *sb = strbuf_new();
+                        char chunk[4096];
+                        size_t n;
+                        while ((n = fread(chunk, 1, sizeof(chunk), fp)) > 0)
+                            put_data(sb, chunk, n);
+                        fclose(fp);
+                        {
+                            const char *s = sb->s, *end = sb->s + sb->len;
+                            bool first = true;
+                            if (end - s >= 3 && (unsigned char)s[0] == 0xEF &&
+                                (unsigned char)s[1] == 0xBB && (unsigned char)s[2] == 0xBF)
+                                s += 3;                     /* UTF-8 BOM */
+                            while (s < end) {
+                                const char *nl = memchr(s, '\n', end - s);
+                                size_t len = nl ? (size_t)(nl - s) : (size_t)(end - s);
+                                char *line;
+                                if (len > 0 && s[len - 1] == '\r')
+                                    len--;
+                                line = snewn(len + 1, char);
+                                memcpy(line, s, len);
+                                line[len] = '\0';
+                                if (!first)
+                                    Sleep(autocommand_delay);
+                                first = false;
+                                SendCommandAllWindows(NULL, len ? line : "\\n");
+                                sfree(line);
+                                s = nl ? nl + 1 : end;
+                            }
+                        }
+                        strbuf_free(sb);
+                    }
+                    sfree(path);
+                }
+                cleanup_exit(0);
             } else if (!strcmp(p, "-edit")) {
                 /* Open the KiTTY session-file editor on a file, then quit. */
                 if (!arglist->args[arglistpos])

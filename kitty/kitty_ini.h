@@ -744,6 +744,10 @@ char default_init_file_content[] =
 ;    good, or no to hide them outright. The switch is in the configuration box\n\
 ;    under Application > Migration; ticking it records an explicit choice,\n\
 ;    which then wins over this key.\n\
+;    The same switch decides whether a session NAME still loads from the old\n\
+;    stores (-load, @name, the launcher, klink/kscp/ksftp): hidden means not\n\
+;    found. \"auto\" therefore retires the old stores for loading too once you\n\
+;    have sessions of your own - import them, or set yes to keep them.\n\
 ;showforeignsessions=auto\n\
 \n\
 ; checkupdate: look for a newer KiTTY release when a session starts, and show\n\

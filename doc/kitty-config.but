@@ -71,7 +71,10 @@ be opened, edited and deleted; the button opens
 The behaviour is controlled by \c{showforeignsessions} in
 \c{kitty.ini}: \c{auto} (the default) shows them only while this KiTTY
 has no sessions of its own, so they retire themselves once you have
-your own; \c{yes} and \c{no} settle it either way.
+your own; \c{yes} and \c{no} settle it either way. The same switch
+decides whether such a session still loads by name (\c{-load},
+\c{@name}, the launcher, the console tools) - see
+\k{kitty-cfg-migration}.
 
 \H{kitty-cfg-logging} The Logging panel
 
@@ -143,24 +146,47 @@ only when it has been armed, and only to messages meant for it:
 
 \b \e{Per session}: this checkbox. Off by default.
 
-\b \e{Per installation}: \c{sendcmdmode=yes} under \c{[KiTTY]} in
-\c{kitty.ini} sets the state windows start in. The window menu's
-\q{Tools > Accept broadcast} flips the window you are looking at; it is
-the same switch seen from two places, so the configuration box shows
-what the menu did and the other way round.
+\b \e{Per installation}: the master switch, \q{Enable "Accept
+broadcast" on application level} on Application > KiTTY++ Settings >
+Automation > Broadcast (\k{kitty-cfg-kset-broadcast}); the note under
+this checkbox says so. In the start-up configuration window the
+\q{open global Settings} button beside it takes you there. A running
+terminal's Change Settings window has no Application tab, so there the
+button does not exist and a second note, \q{Broadcast using KiTTY++
+start window -> App>Auto>Broadcast}, stands in its place: open the leaf
+from the start-up window. It is
+\c{sendcmdmode=yes} under \c{[KiTTY]} in \c{kitty.ini}. Without it no
+window of this installation accepts anything, whatever this checkbox
+says. The window menu's \q{Tools > Accept broadcast} flips the window
+you are looking at; it is the same switch as this checkbox seen from
+two places, so the configuration box shows what the menu did and the
+other way round.
 
 \b \e{Which KiTTYs hear each other}: the broadcast key below.
+
+A terminal that actually receives broadcasts - this checkbox on \e{and}
+the master switch on - carries \c{(BROADCAST)} in its window title,
+beside the other markers; a session ticked while the master switch is
+off receives nothing and shows nothing. \c{wintitle=no} under
+\c{[KiTTY]} hides it with the rest.
 
 \e{Sending} is done from the command line:
 
 \c kitty.exe -sendcmd "df -h"
 \c kitty.exe -sendcmdkey mygroup -sendcmd "df -h"
+\c kitty.exe -sendcmdfile commands.txt
 
 The first form broadcasts with this installation's own key, the second
 aims the broadcast at sessions carrying the key \c{mygroup}
 (\c{-sendcmdkey} may stand on either side of \c{-sendcmd}). The
 sending KiTTY delivers the line and exits; a trailing meaning of
-\q{run it} comes from the receiving shell seeing Return.
+\q{run it} comes from the receiving shell seeing Return. The third
+form sends every line of a file as one command each, in order, with
+\q{Pause between auto-command lines} (\c{commanddelay}) between them;
+an empty line is a bare Return, and the file's last newline adds
+nothing. \c{-sendcmdkey} applies to it as well. The same can be done
+from the configuration window: the send console on Application >
+KiTTY++ Settings > Automation > Broadcast.
 
 \e{Why a broadcast can look like it does nothing}: THREE locks must
 all be open before any window types a line, and each exists so that no
@@ -264,17 +290,67 @@ encoded at all, so there is nothing to remap.
 
 \H{kitty-cfg-window} The Window panels
 
-\S{kitty-cfg-winpos} \q{Open the window at a fixed position}
+The Window > Appearance > Position panel holds the two ways of placing a
+session's \i{window position}: \q{Remember window position}
+(\k{kitty-cfg-winpos-remember}) follows the window as you move it, and
+\q{Open the window at a fixed position} (\k{kitty-cfg-winpos}) pins it
+where you say.
+
+\S{kitty-cfg-winpos-remember} \q{\i{Remember window position}}
+
+Re-opens this session's window where you last left it, at the terminal
+size it had. When the window closes, its top-left and its size in
+\i{columns x rows} are saved for this session and for the \i{monitor
+layout} it was on; when the session is opened again on that layout, the
+window opens there, at that size. Neither a minimised nor a maximised
+window is remembered. On by default.
+
+The position is remembered \e{per monitor layout}, so docking a laptop -
+or unplugging a screen - does not drag windows onto a monitor that is no
+longer there: each arrangement of screens keeps its own entry. The size
+is kept as a terminal grid rather than in pixels, so on a layout with
+another DPI the window keeps its columns and rows and takes the pixel
+size they need there.
+
+\q{Top} and \q{Left} below the checkbox, and \q{Columns} and \q{Rows} on
+the Window panel, show this session's entry for the monitor layout the
+configuration window is on now, and \q{Save} writes what you typed
+there back into that entry.
+
+A window is never opened where you cannot reach it: an entry whose
+top-left is on no current monitor is moved onto the nearest monitor's
+work area, and a grid larger than that work area is reduced to fit.
+
+\e{Sessions without an entry of their own.} An unnamed session - a host
+typed in and opened without saving - and a window opened as \q{Default
+Settings} have no session to keep an entry in. They share one position
+per monitor layout, written when such a window closes and gated by this
+checkbox as it stands in Default Settings, and a named session whose
+entry for the current layout does not exist yet opens at that shared
+position once, until its own window has closed there. \q{Default
+Settings} itself is never changed by a closing window. The shared
+position is shown, and can be removed, on Application > KiTTY++
+Settings > Appearance (\k{kitty-cfg-appearance}).
+
+Stored in the session as \c{TermPos_<layout>}, one value per monitor
+layout; the shared position as \c{WinPos_<layout>} under
+\c{WindowPos}. Deleting a session removes its entries with it, and a
+session saved under a new name takes the loaded session's entries
+along, so the copy opens where its original does.
+
+\S{kitty-cfg-winpos} \q{Open the window at a \i{fixed position}}
 
 Opens this session's window where you say, instead of where Windows
 would put it. Top and Left are in screen pixels.
 
-It is the companion to \q{Remember window position} (\k{kitty-cfg-winpos-remember}):
-that one follows the window as you move it, this one pins it. Both can
-be set, and then the fixed position wins - an explicit instruction
-beats a convenience. That order matters if you use both, because the
-remembered position silently stops having any effect once a fixed one
-is set.
+It is the companion to \q{Remember window position}
+(\k{kitty-cfg-winpos-remember}): that one follows the window as you
+move it, this one pins it. Both can be set, and then the fixed position
+wins - an explicit instruction beats a convenience. That order matters
+if you use both, because the remembered position silently stops having
+any effect once a fixed one is set. With \q{Save settings on exit}
+(\k{kitty-cfg-save-on-exit}) on, a closing window writes its position
+into Top and Left, so a fixed position moves along with the window.
 
 A position that no longer exists cannot strand a window. Monitors are
 unplugged and resolutions change, and a position saved against a screen
@@ -1298,6 +1374,20 @@ and the PROTECTED and ONTOP markers; \q{Show the terminal size in the
 title} adds the live \c{[24x80]}; \q{Double-click the title bar rolls
 the window up} is the roll-up feature.
 
+\b \q{\i{Shared window position}} shows the terminal-window position
+that windows without a session of their own keep - an unnamed session,
+or a window opened as \q{Default Settings} - for the monitor layout the
+configuration window is on now: left, top and columns x rows, or that
+none is saved; and how many monitor layouts hold one. It is written when
+such a window closes, gated by \q{Remember window position} in Default
+Settings, and a named session opens at it once while it has no entry of
+its own (\k{kitty-cfg-winpos-remember}). \q{Reset} sets nothing: it
+removes the shared position for every monitor layout, so that until a
+window of that kind closes again, an unnamed session - and a named one
+without an entry of its own - opens where Windows places it, at its own
+columns x rows. Every session's own entries and the configuration
+window's own position (\k{kitty-cfg-config-window}) are not touched.
+
 \b \q{Icons} names the library the session icons are taken from: an
 \c{.exe}, \c{.dll} or \c{.icl} holding icon resources. A session's
 Window > Title & Icon panel picks one of them by number for its terminal
@@ -1558,31 +1648,72 @@ dialog of that command opens with, in the Windows form
 \c{Shell scripts|*.sh;*.ksh|All files|*.*|}. Blank means the built-in
 set: scripts (\c{*.ksh}, \c{*.sh}), SQL files and all files.
 
-\b \q{Every window starts with "Accept broadcast" switched on} is the
-starting state of each window's own switch, not a gate over the
-feature: a broadcast (\c{/command} in a terminal, or \c{kitty -sendcmd}
-from a command line) types its text into every window that accepts it,
-and Tools > \q{Accept broadcast} switches any one window either way. Off,
-the default, every window starts refusing and you arm the ones you
-mean.
-
-\b \q{Group key of this KiTTY} is what decides which KiTTYs hear each
-other's broadcasts: only windows with the same key do. The key is not
-stored anywhere; it is derived from where this copy is installed and
-which settings store it uses, so an installed KiTTY and a portable one
-on a stick get different keys by construction and cannot type into each
-other by accident. To let two installations broadcast to each other,
-give both the same \c{sendcmdgroup} value in their \c{kitty.ini}; the
-panel then says the key came from there.
-
-\b \q{Extra tracing in the Event Log} logs session lookups, the
-automatic command, key remappings and the helper command lines. The
-password in those lines is blanked; host, user and paths are not.
+The broadcast switch, the group key and the send console are on the
+Broadcast leaf beneath this panel (\k{kitty-cfg-kset-broadcast}); the
+tracing switch \q{Extra tracing in the Event Log} is on the Security
+panel (\k{kitty-cfg-security}).
 
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{initdelay},
-\c{bcdelay}, \c{internaldelay}, \c{commanddelay}, \c{scriptmode},
-\c{scriptfilefilter}, \c{sendcmdmode}, \c{sendcmdgroup} (shown, set by
-hand) and \c{debug}.
+\c{bcdelay}, \c{internaldelay}, \c{commanddelay}, \c{scriptmode} and
+\c{scriptfilefilter}.
+
+\S{kitty-cfg-kset-broadcast} The Broadcast leaf (Broadcast-Settings and -Actions)
+
+One KiTTY can type a line into another's session (\k{kitty-cfg-sendcmd}
+says what that is and why it is gated). This leaf holds the parts that
+belong to the installation rather than to one session: the master
+switch, the group key, and a console that sends.
+
+\b \q{Enable "Accept broadcast" on application level} is the
+installation's master switch: a broadcast (\c{/command} in a terminal,
+or \c{kitty -sendcmd} from a command line) types the text into every
+terminal that accepts it, and this switch decides whether any terminal
+of this installation may. Off, the default, nothing arrives anywhere.
+Which sessions accept is set per session on Session > Broadcast, or
+with Tools > \q{Accept broadcast} on a running window. It is
+\c{sendcmdmode} under \c{[KiTTY]} in \c{kitty.ini}.
+
+\b \q{Group key of this installation} is what decides which KiTTYs hear
+each other's broadcasts: only windows with the same key do. Left alone,
+the key is \e{derived} from where this copy is installed and which
+settings store it uses - not stored anywhere - so an installed KiTTY
+and a portable one on a stick get different keys by construction and
+cannot type into each other by accident; the line under the field says
+so. Type a key to \e{join} two installations (give both the same one)
+or to \e{split} one; it is written as \c{sendcmdgroup} under
+\c{[KiTTY]} in \c{kitty.ini} and the line says the key is custom.
+\q{Copy} puts the key in effect on the clipboard, \q{Clear} forgets the
+custom key and derives again. Terminals read the key when they start:
+a change here reaches the windows opened afterwards.
+
+\b \q{Send a broadcast} is the console. \q{Show:} chooses the view:
+\q{Sessions configured to accept} lists the saved sessions whose
+\q{Accept broadcast messages for this session} is ticked, and
+\q{Current open Terminals accepting} lists the terminal windows on this
+desktop that would type a broadcast right now - master switch on, the
+session armed. Either list is grouped under one heading row per key,
+with the key each session listens for beside its name (its own key, or
+this installation's), and the line beneath counts them. The keys of
+the current view fill \q{Send to these groups:}, where one or several
+are chosen.
+
+\lcont{
+
+Only the open-terminals view can send; the saved view says \q{Switch to
+open Terminals to send.} and its button is off. \q{Commands, one per
+line:} holds the text: each line is typed into every terminal of the
+chosen groups and followed by Return, an empty line is a bare Return,
+and the lines go out one after another with \q{Pause between
+auto-command lines} between them, the status line counting
+\q{Sending line N of M...}; the window stays usable meanwhile.
+\q{Load Command-File...} fills the box from a text file (UTF-8, CRLF or
+LF; empty lines are kept), the same file \c{kitty.exe -sendcmdfile}
+sends from the command line. \q{Send Commands} starts the send. The
+terminal this configuration window belongs to, if any, is not skipped:
+sending from here is a deliberate act and reaches every accepting
+terminal of the chosen groups.
+
+}
 
 \S{kitty-cfg-kset-window} The Terminal & Printing panel
 
@@ -1852,6 +1983,13 @@ Turn the warning off if you deliberately use an agent that cannot be
 verified. It is stored per installation, as \c{verifyagent} in
 \c{kitty.ini}.
 
+\q{Diagnostics}, at the bottom of the panel: \q{Extra tracing in the
+Event Log} logs session lookups, the automatic command, key remappings
+and the helper command lines - it traces more than the automation,
+which is why it is here and not on the Automation panel. The password
+in those lines is blanked; host, user and paths are not. It is
+\c{debug} under \c{[KiTTY]} in \c{kitty.ini}.
+
 \S{kitty-cfg-missing-features} \q{Report in the terminal what features this Windows Installation does not support}
 
 KiTTY runs on old versions of Windows deliberately. The features that need a
@@ -2071,6 +2209,18 @@ has none of its own, so they retire themselves once you do. Ticking or
 clearing the box replaces \c{auto} with a firm \c{yes} or \c{no} - to
 get \c{auto} back, edit the ini line. See also
 \k{kitty-cfg-old-sessions}.
+
+The same switch also decides whether a session \e{name} still loads
+from the old stores. While the old sessions are hidden here, a name
+that exists only in an older KiTTY's hive or in PuTTY's is not found
+by \c{-load}, by \c{@name}, by the launcher, or by the console tools
+\c{klink}, \c{kscp} and \c{ksftp}, which read the same
+\c{showforeignsessions} line. With \c{auto} that means the old stores
+retire themselves for loading too, the day this KiTTY has sessions of
+its own: import the ones you still use, or set \c{yes} to keep loading
+them. Only KiTTY itself writes that one-time \c{auto} answer down; the
+console tools evaluate it and change nothing. The importer below is
+not affected by the switch - it always sees both hives.
 
 \b The list shows every session in both hives with the store it came
 from. Pick one or more and press \q{Import selected Sessions}.
@@ -2467,24 +2617,19 @@ Stored as \c{ToolsMenuSendFile}, \c{ToolsMenuGetFile},
 fetches the path on the clipboard into the download folder:
 \k{kitty-cfg-get-file} walks through it.
 
-\S{kitty-cfg-winpos-remember} \q{Remember window position (per monitor layout)}
-
-Re-opens each session where you last left its window. The position is
-remembered \e{per monitor layout}, so docking a laptop - or unplugging
-a screen - does not drag windows onto a monitor that is no longer
-there: each arrangement of screens keeps its own set of positions.
-
-A fixed position (\k{kitty-cfg-winpos}) wins over this, because it is
-an explicit instruction rather than a convenience.
-
-\S{kitty-cfg-save-on-exit} \q{Save settings on exit}
+\S{kitty-cfg-save-on-exit} \q{\i{Save settings on exit}}
 
 Writes this session back to the store when its window closes, so a
 change made through \q{Change Settings} during the session is kept
 without saving by hand. Off by default: with it on, a change you made
-to try something out is saved as well. It sits beside \q{Remember
-window position} under \q{Remembering} on Window > Behaviour: the one
-keeps the window's place, the other keeps everything else.
+to try something out is saved as well. It saves everything the session
+holds, the window's position and size included, so a fixed position
+(\k{kitty-cfg-winpos}) moves along with the window. An unnamed session
+has nothing to be saved into, and \q{Default Settings} is never written
+by a closing window. Where the window opens is a matter for
+\q{Remember window position} (\k{kitty-cfg-winpos-remember}) on Window
+> Appearance > Position: the one keeps the window's place, this one
+keeps everything else.
 
 \S{kitty-cfg-clipcmd} Running the clipboard as a command
 

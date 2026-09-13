@@ -1980,6 +1980,12 @@ const char *kitty_broadcast_send_key( void )
 	if( broadcast_send_key[0] ) return broadcast_send_key ;
 	return kitty_broadcast_group() ;
 }
+/* The override itself, so the send console can put back exactly what it
+ * found (an empty string means "none set"), rather than the resolved key. */
+const char *kitty_broadcast_send_key_override( void )
+{
+	return broadcast_send_key ;
+}
 
 /* Did the install key come from kitty.ini, or was it derived? The config box
  * says which, and "generated" versus "you set this in the ini" are different
@@ -1987,9 +1993,28 @@ const char *kitty_broadcast_send_key( void )
 static int group_from_ini = 0 ;
 int kitty_broadcast_group_from_ini( void ) { (void)kitty_broadcast_group() ; return group_from_ini ; }
 
+/* The cached install key, so the config box's edit of sendcmdgroup shows in
+ * THIS process at once (the resolved key, the provenance line). The store is
+ * written by the config box itself; this only follows it. An empty key throws
+ * the cache away, so the next kitty_broadcast_group() derives again. Windows
+ * of OTHER processes read the store when they start: the change reaches them
+ * with their next start, not before. */
+static char broadcast_group_cache[80] = "" ;
+void kitty_broadcast_set_group( const char *k )
+{
+	if( k == NULL || k[0] == '\0' ) {
+		broadcast_group_cache[0] = '\0' ;
+		group_from_ini = 0 ;
+		return ;
+	}
+	snprintf( broadcast_group_cache, sizeof(broadcast_group_cache), "%s", k ) ;
+	group_from_ini = 1 ;
+}
+
 const char *kitty_broadcast_group( void )
 {
-	static char group[80] = "" ;
+	char *group = broadcast_group_cache ;
+	const size_t group_size = sizeof(broadcast_group_cache) ;
 	char buf[4096] ;
 	char exe[MAX_PATH+1] = "" ;
 	unsigned long long h = 1469598103934665603ULL ;     /* FNV-1a, 64-bit */
@@ -1999,7 +2024,7 @@ const char *kitty_broadcast_group( void )
 	if( group[0] ) return group ;
 
 	if( ReadParameterN( INIT_SECTION, KI_SENDCMDGROUP, buf, sizeof(buf) ) && buf[0] ) {
-		snprintf( group, sizeof(group), "%s", buf ) ;      /* explicit override */
+		snprintf( group, group_size, "%s", buf ) ;      /* explicit override */
 		group_from_ini = 1 ;
 		return group ;
 	}
@@ -2012,24 +2037,35 @@ const char *kitty_broadcast_group( void )
 		h ^= (unsigned char)( (*p >= 'A' && *p <= 'Z') ? *p + 32 : *p ) ;
 		h *= 1099511628211ULL ;
 	}
-	snprintf( group, sizeof(group), "auto-%016llx", h ) ;
+	snprintf( group, group_size, "auto-%016llx", h ) ;
 	return group ;
 }
 
+/* What one broadcast carries through EnumWindows: the text, and whether the
+ * terminal of THIS process is a target too. /command skips it - the user typed
+ * the line there and does not want it typed back - but the send console on the
+ * configuration window is a deliberate act aimed at every accepting terminal,
+ * that one included. */
+struct kitty_sendcmd_job {
+	const char *cmd ;
+	int include_self ;
+} ;
+
 BOOL CALLBACK SendCommandProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
+	const struct kitty_sendcmd_job *job = (const struct kitty_sendcmd_job *)lParam ;
 	GetClassName( hwnd, buffer, 256 ) ;
 	if( !strcmp( buffer, KiTTYClassName ) ) {
-		if( hwnd != MainHwnd ) {
+		if( hwnd != MainHwnd || job->include_self ) {
 			COPYDATASTRUCT data;
 			/* dwData 2 carries "<group>\0<text>". The old dwData 1 was bare
 			 * text with no group, so a receiver cannot tell which install it
 			 * came from; it is refused (and logged) rather than obeyed. */
 			const char *grp = kitty_broadcast_send_key() ;
-			size_t glen = strlen( grp ) , tlen = strlen( (char*)lParam ) ;
+			size_t glen = strlen( grp ) , tlen = strlen( job->cmd ) ;
 			char *payload = (char*)malloc( glen + 1 + tlen + 1 ) ;
 			memcpy( payload, grp, glen ) ; payload[glen] = '\0' ;
-			memcpy( payload + glen + 1, (char*)lParam, tlen ) ;
+			memcpy( payload + glen + 1, job->cmd, tlen ) ;
 			payload[glen + 1 + tlen] = '\0' ;
 			data.dwData = 2 ;
 			data.cbData = (DWORD)( glen + 1 + tlen + 1 ) ;
@@ -2042,13 +2078,20 @@ BOOL CALLBACK SendCommandProc( HWND hwnd, LPARAM lParam ) {
 	return TRUE ;
 }
 
-int SendCommandAllWindows( HWND hwnd, char * cmd ) {
+int SendCommandAllWindowsEx( HWND hwnd, char * cmd, int include_self ) {
+	struct kitty_sendcmd_job job ;
 	NbWindows=0 ;
 	if( cmd==NULL ) return 0 ;
 	if( strlen(cmd) > 0 ) {
-		EnumWindows( SendCommandProc, (LPARAM)cmd ) ;
+		job.cmd = cmd ;
+		job.include_self = include_self ;
+		EnumWindows( SendCommandProc, (LPARAM)&job ) ;
 	}
 	return NbWindows ;
+}
+
+int SendCommandAllWindows( HWND hwnd, char * cmd ) {
+	return SendCommandAllWindowsEx( hwnd, cmd, 0 ) ;
 }
 	
 // Gestion de la taille des fenetres de la meme classe

@@ -1433,7 +1433,7 @@ static void kitty_cfg_panel_scroll_to(HWND hwnd, struct kitty_cfg_panel *p,
      */
     /* Paint what is pending FIRST: a blit copies pixels, and after a resize
      * or a relayout some of them are not painted yet - the copy then carries
-     * a stale control image along (his 2026-09-06 screenshot: a checkbox
+     * a stale control image along (seen as a checkbox drawn
      * twice after resizing the window on a scrolled panel). */
     UpdateWindow(kitty_cfg_panel_host);
     ScrollWindowEx(kitty_cfg_panel_host, 0, -delta, NULL, NULL, NULL, NULL,
