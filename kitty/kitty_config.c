@@ -11251,6 +11251,9 @@ static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * next activated, which is the behaviour that was already there.
              */
             kitty_theme_apply(kitty_cfg_modal_owner(), kitty_theme_app_dark());
+            /* ...and the popup menus of this process, from the next one
+             * opened (the app mode, then FlushMenuThemes). */
+            kitty_theme_app_mode(kitty_theme_app_pref());
         }
     }
 }

@@ -9,6 +9,7 @@
  *   ordinal 104  RefreshImmersiveColorPolicyState()
  *   ordinal 133  AllowDarkModeForWindow(HWND, BOOL)
  *   ordinal 135  SetPreferredAppMode(int)          (1809: AllowDarkModeForApp)
+ *   ordinal 136  FlushMenuThemes()                 drop the cached menu theme
  *   DwmSetWindowAttribute(..., 20 or 19, ...)      dark title bar
  *
  * Every one of them is resolved at run time and every one may be absent. When
@@ -18,9 +19,12 @@
  * separate code path to maintain.
  *
  * Ordinal 135 changed meaning in 1903: on 1809 the ordinal is a BOOL-taking
- * AllowDarkModeForApp, afterwards an enum-taking SetPreferredAppMode. Both
- * accept 1 as "yes, dark", which is the only value used here, so one call
- * covers both without a version branch on the call itself.
+ * AllowDarkModeForApp, afterwards an enum-taking SetPreferredAppMode
+ * (0 Default, 1 AllowDark, 2 ForceDark, 3 ForceLight). kt_init sets 1, which
+ * both read as "dark is allowed"; kitty_theme_app_mode() then sets the value
+ * the preference asks for, branching on the build, because that value is what
+ * Windows paints the POPUP MENUS with - the one part of the UI no window of
+ * ours draws (the menu bar strip is ours, see WM_UAHDRAWMENU below).
  *
  * The controls are a separate problem from the window. A checkbox under visual
  * styles paints its own background from its theme class and ignores
@@ -75,6 +79,7 @@
 typedef BOOL (WINAPI *fn_AllowDarkModeForWindow)(HWND, BOOL);
 typedef BOOL (WINAPI *fn_SetPreferredAppMode)(int);
 typedef void (WINAPI *fn_RefreshImmersiveColorPolicyState)(void);
+typedef void (WINAPI *fn_FlushMenuThemes)(void);
 typedef HRESULT (WINAPI *fn_DwmSetWindowAttribute)(HWND, DWORD, LPCVOID, DWORD);
 typedef HRESULT (WINAPI *fn_SetWindowTheme)(HWND, LPCWSTR, LPCWSTR);
 
@@ -83,11 +88,17 @@ static bool kt_usable = false;
 static fn_AllowDarkModeForWindow p_AllowDarkModeForWindow;
 static fn_SetPreferredAppMode p_SetPreferredAppMode;
 static fn_RefreshImmersiveColorPolicyState p_RefreshImmersiveColorPolicyState;
+static fn_FlushMenuThemes p_FlushMenuThemes;
+/* The app mode last handed to ordinal 135, -1 before the first call. */
+static int kt_app_mode_set = -1;
 static fn_DwmSetWindowAttribute p_DwmSetWindowAttribute;
 static fn_SetWindowTheme p_SetWindowTheme;
 
 static HBRUSH kt_back_brush;   /* window background */
 static COLORREF kt_accent_for(bool dark);
+/* Is this a class registered with kitty_theme_hook_window_class? (Defined
+ * with the class list, used by the dialog subclass above it.) */
+static bool kt_is_plain_window(HWND w);
 static HBRUSH kt_ctl_brush;    /* edit/list interiors */
 
 /* Attached to every list view; catches the header's custom draw, which is
@@ -236,6 +247,12 @@ static void kt_init(void)
                      KT_WINFEAT_DARK_MODE,
                      p_AllowDarkModeForWindow && p_SetPreferredAppMode &&
                      p_RefreshImmersiveColorPolicyState);
+    /* 136 on its own line of the report: the popup menus need it to follow a
+     * change made while the program runs, but its absence costs only that. */
+    p_FlushMenuThemes = (fn_FlushMenuThemes)(void *)
+        GetProcAddress(ux, MAKEINTRESOURCEA(136));
+    kitty_api_record("uxtheme.dll", "#136", KITTY_API_OPTIONAL,
+                     KT_WINFEAT_DARK_MODE, p_FlushMenuThemes != NULL);
     p_SetWindowTheme = (fn_SetWindowTheme)(void *)
         kitty_api_from(ux, "uxtheme.dll", "SetWindowTheme", KITTY_API_OPTIONAL,
                                   KT_WINFEAT_DARK_CONTROLS);
@@ -247,10 +264,12 @@ static void kt_init(void)
         !p_SetWindowTheme || !p_DwmSetWindowAttribute)
         return;
 
-    /* 1 = AllowDark on 1809, ForceDark on 1903+. Either way the process may
-     * now ask for dark controls; individual windows still opt in one at a
-     * time through AllowDarkModeForWindow. */
+    /* 1 = AllowDark on 1903+, and "allow" (TRUE) on 1809's BOOL form. Either
+     * way the process may now ask for dark controls; individual windows still
+     * opt in one at a time through AllowDarkModeForWindow. The value the
+     * preference asks for comes from kitty_theme_app_mode(). */
     p_SetPreferredAppMode(1);
+    kt_app_mode_set = 1;
     if (p_RefreshImmersiveColorPolicyState)
         p_RefreshImmersiveColorPolicyState();
 
@@ -295,6 +314,55 @@ bool kitty_theme_dark_for(int pref)
     if (pref == KITTY_THEME_LIGHT)
         return false;
     return kitty_theme_system_is_dark();
+}
+
+static bool kt_high_contrast(void)
+{
+    HIGHCONTRASTA hc;
+    memset(&hc, 0, sizeof(hc));
+    hc.cbSize = sizeof(hc);
+    if (!SystemParametersInfoA(SPI_GETHIGHCONTRAST, sizeof(hc), &hc, 0))
+        return false;
+    return (hc.dwFlags & HCF_HIGHCONTRASTON) != 0;
+}
+
+/*
+ * The popup menus (#32768) are drawn by Windows from the process-wide app
+ * mode - not from any window of ours, and no UAH message reaches their items.
+ * So the preference is handed to ordinal 135 as it is:
+ *
+ *   1903 and later   dark -> 2 ForceDark, light -> 3 ForceLight,
+ *                    system -> 1 AllowDark (follows the system while running)
+ *   1809             the BOOL AllowDarkModeForApp: light -> FALSE, else TRUE
+ *                    (1809 cannot force dark: menus there follow the system)
+ *   high contrast    0 Default, whatever the preference: the system's own
+ *                    high-contrast menus, as every other program shows them
+ *
+ * FlushMenuThemes after a change, or a menu that was already opened once keeps
+ * its cached theme. Same value as last time: nothing to do.
+ */
+void kitty_theme_app_mode(int pref)
+{
+    int mode;
+
+    kt_init();
+    if (!p_SetPreferredAppMode)
+        return;
+    if (kt_high_contrast())
+        mode = 0;
+    else if (kt_build_at_least(18362))
+        mode = (pref == KITTY_THEME_DARK) ? 2 :
+               (pref == KITTY_THEME_LIGHT) ? 3 : 1;
+    else
+        mode = (pref == KITTY_THEME_LIGHT) ? 0 : 1;
+    if (mode == kt_app_mode_set)
+        return;
+    p_SetPreferredAppMode(mode);
+    kt_app_mode_set = mode;
+    if (p_RefreshImmersiveColorPolicyState)
+        p_RefreshImmersiveColorPolicyState();
+    if (p_FlushMenuThemes)
+        p_FlushMenuThemes();
 }
 
 /*
@@ -1777,6 +1845,19 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
         }
         break;
       }
+      case WM_ERASEBKGND:
+        /* A PLAIN window's background is its class brush - the light system
+         * face - and it never asks WM_CTLCOLORDLG. So the dark background is
+         * put there instead, only for the classes registered as plain: a
+         * dialog keeps the dialog manager's painting. */
+        if (kt_is_dark_window(hwnd) && kt_back_brush &&
+            kt_is_plain_window(hwnd)) {
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+            FillRect((HDC)wParam, &rc, kt_back_brush);
+            return 1;
+        }
+        break;
       case WM_NCDESTROY:
         /* Both of these, or the table fills with dead handles and the next
          * window to be given a recycled HWND inherits a stale theme. */
@@ -1803,9 +1884,12 @@ static bool (*kt_want_dark)(void);
  */
 #define KT_MAX_CLASSES 8
 static char kt_classes[KT_MAX_CLASSES][64] = { "#32770" };
+/* Per class: a PLAIN window (see kitty_theme_hook_window_class), whose
+ * background is its class brush rather than WM_CTLCOLORDLG. */
+static bool kt_class_plain[KT_MAX_CLASSES];
 static int kt_nclasses = 1;
 
-void kitty_theme_hook_class(const char *classname)
+static void kt_hook_class(const char *classname, bool plain)
 {
     int i;
     if (!classname || !*classname || kt_nclasses >= KT_MAX_CLASSES)
@@ -1816,7 +1900,30 @@ void kitty_theme_hook_class(const char *classname)
     strncpy(kt_classes[kt_nclasses], classname,
             sizeof(kt_classes[0]) - 1);
     kt_classes[kt_nclasses][sizeof(kt_classes[0]) - 1] = '\0';
+    kt_class_plain[kt_nclasses] = plain;
     kt_nclasses++;
+}
+
+void kitty_theme_hook_class(const char *classname)
+{
+    kt_hook_class(classname, false);
+}
+
+void kitty_theme_hook_window_class(const char *classname)
+{
+    kt_hook_class(classname, true);
+}
+
+static bool kt_is_plain_window(HWND w)
+{
+    char cls[64];
+    int i;
+    if (!GetClassNameA(w, cls, sizeof(cls)))
+        return false;
+    for (i = 0; i < kt_nclasses; i++)
+        if (!strcmp(kt_classes[i], cls))
+            return kt_class_plain[i];
+    return false;
 }
 
 static bool kt_is_dialog_class(const char *cls)

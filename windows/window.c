@@ -357,6 +357,7 @@ int kitty_workplace_request(int arm, unsigned int minutes);
  * setting in kitty.ini, not a per-session one (kitty/kitty_win.c). */
 int kitty_check_update_enabled(void);
 bool kitty_theme_app_dark(void);    /* kitty/kitty_win.c: the app-wide setting */
+int kitty_theme_app_pref(void);     /* kitty/kitty_win.c: the same, unresolved */
 void kitty_workplace_show_pending_notice(void);
 void kitty_cfgbox_open_on_panel(const char *path);   /* kitty/kitty_config.c */
 void kitty_cfgbox_open_loaded(void);                 /* kitty/kitty_config.c */
@@ -1518,10 +1519,23 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * first window, so none is created untreated. The TERMINAL is not a dialog
      * and is deliberately untouched: its colours are its own settings. */
     kitty_theme_hook_dialogs(kitty_theme_app_dark);
+    /* The popup menus follow the same setting - the terminal's right-click
+     * menu and system menu included. They are drawn by Windows from the
+     * process-wide app mode, so it is set here, before the first menu exists;
+     * without this they stayed light until the first dialog appeared and then
+     * followed the system instead of the setting. */
+    kitty_theme_app_mode(kitty_theme_app_pref());
     /* The configuration box is a dialog with a window class of its own, so it
      * is not the "#32770" the hook recognises by default and has to be named.
      * (windows/dialog.c passes this string to ShinyDialogBox.) */
     kitty_theme_hook_class("PuTTYConfigBox");
+    /* The same for the host-key Security Alert, which ShinyDialogBox creates
+     * with a class of its own too (windows/dialog.c, IDD_HOSTKEY)... */
+    kitty_theme_hook_class("PuTTYHostKeyDialog");
+    /* ...and for the kscp transfer window of Send File / Get File
+     * (kitty/kitty_xfer.c), a PLAIN window: no dialog manager behind it, its
+     * background is the class brush, which the hook repaints while dark. */
+    kitty_theme_hook_window_class("KiTTYxferwin");
 
     /* KiTTY hidden editor (blocnote): SHIFT+F2 / CTRL+SHIFT+F2 / the kitty.ini
      * drag-drop / -edit relaunch KiTTY as "kitty.exe -ed[b] [file]". Intercept

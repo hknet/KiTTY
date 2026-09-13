@@ -32,6 +32,18 @@ bool kitty_theme_system_is_dark(void);
 bool kitty_theme_dark_for(int pref);
 
 /*
+ * The PROCESS-wide app mode, which is what paints the popup menus: context
+ * menus, menu-bar drop-downs, submenus, the system menu and tray menus are
+ * drawn by Windows itself (window class #32768), dark or light according to
+ * this mode, with the text, checkmarks, arrows and mnemonics Windows draws.
+ * Dark -> ForceDark, light -> ForceLight, system -> AllowDark (follows the
+ * system while running). Call once at startup, before the first menu exists,
+ * and again whenever the preference changes. A no-op before Windows 10 1809
+ * and wherever the undocumented entry points are missing.
+ */
+void kitty_theme_app_mode(int pref);
+
+/*
  * The preference's wire form, shared by every store so a value written by one
  * binary reads back the same in the next. from_string returns -1 for anything
  * it does not recognise, which is how a caller tells "not set" or "set to
@@ -179,6 +191,16 @@ void kitty_theme_hook_dialogs(bool (*want_dark)(void));
  * is ignored.
  */
 void kitty_theme_hook_class(const char *classname);
+
+/*
+ * The same for a PLAIN window class - one whose procedure is not the dialog
+ * manager's (DefWindowProc, a class background brush), such as the kscp
+ * transfer window. Such a window never sends WM_CTLCOLORDLG: its background is
+ * the class brush, painted on WM_ERASEBKGND, so the hook also fills that with
+ * the dark background while the window is dark. Its child controls are themed
+ * exactly as a dialog's are.
+ */
+void kitty_theme_hook_window_class(const char *classname);
 
 /* Forget the per-window state when a themed dialog is destroyed. */
 void kitty_theme_forget(HWND dlg);

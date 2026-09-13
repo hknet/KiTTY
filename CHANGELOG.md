@@ -224,6 +224,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **Dark mode reaches the popup menus and the transfer windows.** The colour
+  theme now also applies to every popup menu - the terminal's right-click and
+  Alt+Space menus, the launcher's and kageant's tray menus, kittygen's menus -
+  and to the kscp transfer window and the host key dialog, which stayed light
+  before. *Always light* keeps the menus light on a dark Windows; high contrast
+  keeps the system's menus. Needs Windows 10 1903 for *Always dark* and
+  *Always light* on menus; 1809 follows the system.
 - **A protocol and a port per transfer tool.** The single "Protocol for file
   transfers (kscp and WinSCP)" setting is replaced by a "Protocol:" on each
   tool's own panel: Connection > SSH > KSCP offers SFTP (the default) and SCP

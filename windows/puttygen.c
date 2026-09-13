@@ -3279,6 +3279,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * Installed before the first window exists, so none is created untreated.
      */
     kitty_theme_hook_dialogs(kitty_theme_pref_dark);
+    /* ...and the menu bar's drop-downs and any other popup menu: Windows draws
+     * them from the process-wide app mode, set here before the first exists. */
+    kitty_theme_app_mode(kitty_theme_pref_get());
 
     /*
      * See if we can find our Help file.

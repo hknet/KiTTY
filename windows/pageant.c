@@ -4018,8 +4018,10 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             if (IsWindowEnabled(GetDlgItem(hwnd, IDC_SET_THEME))) {
                 int sel = (int)SendDlgItemMessage(hwnd, IDC_SET_THEME,
                                                   CB_GETCURSEL, 0, 0);
-                if (sel >= KITTY_THEME_SYSTEM && sel <= KITTY_THEME_DARK)
+                if (sel >= KITTY_THEME_SYSTEM && sel <= KITTY_THEME_DARK) {
                     kitty_theme_pref_set(sel);
+                    kitty_theme_app_mode(sel);   /* the tray menu follows */
+                }
             }
             kageant_unload_on_remove_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_UNLOAD) == BST_CHECKED);
@@ -6176,6 +6178,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * paints in the chosen theme. Installed before the first window exists,
      * because it works by catching them as they appear. */
     kitty_theme_hook_dialogs(kitty_theme_pref_dark);
+    /* ...and the tray menu and every other popup menu: Windows draws them from
+     * the process-wide app mode, set here before the first one exists. */
+    kitty_theme_app_mode(kitty_theme_pref_get());
 
     /*
      * KiTTY: [KiTTY] restrictacl=yes in kitty.ini hardens kageant too.
