@@ -647,15 +647,6 @@ void xyz_updateMenuItems(Terminal *term) ;
 #ifndef IDM_FROMTRAY
 #define IDM_FROMTRAY   0xA940
 #endif
-#ifndef IDM_HIDE
-#define IDM_HIDE	0xA960
-#endif
-#ifndef IDM_UNHIDE
-#define IDM_UNHIDE	0xA970
-#endif
-#ifndef IDM_SWITCH_HIDE
-#define IDM_SWITCH_HIDE 0xA980
-#endif
 #ifndef IDM_GONEXT
 #define IDM_GONEXT	0xA990
 #endif

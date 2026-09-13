@@ -276,6 +276,30 @@ void kitty_send_to_tray(HWND hwnd) {
         ManageToTray(hwnd);
     }
 }
+/* The launcher's Hide all, Unhide all and session entries (kitty_launcher.c
+ * ManageHideOne, ManageUnHideOne, ManageSwitch) post IDM_HIDE, IDM_UNHIDE and
+ * IDM_SWITCH_HIDE to every terminal window. A window sent to the tray
+ * (VISIBLE_TRAY) is left alone: its tray icon is the way back. Showing uses
+ * SW_SHOW rather than SW_RESTORE, so a window hidden while maximized or
+ * minimized comes back in that state. */
+void kitty_launcher_hide(HWND hwnd) {
+    if (GetVisibleFlag() == VISIBLE_YES) {
+        ShowWindow(hwnd, SW_HIDE);
+        SetVisibleFlag(VISIBLE_NO);
+    }
+}
+void kitty_launcher_unhide(HWND hwnd) {
+    if (GetVisibleFlag() == VISIBLE_NO) {
+        ShowWindow(hwnd, SW_SHOW);
+        SetVisibleFlag(VISIBLE_YES);
+    }
+}
+void kitty_launcher_switch_hide(HWND hwnd) {
+    if (GetVisibleFlag() == VISIBLE_YES)
+        kitty_launcher_hide(hwnd);
+    else if (GetVisibleFlag() == VISIBLE_NO)
+        kitty_launcher_unhide(hwnd);
+}
 void kitty_rollup(HWND hwnd, int resize_action) {
     if (GetWinrolFlag())
         ManageWinrol(hwnd, resize_action);

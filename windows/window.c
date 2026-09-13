@@ -195,6 +195,11 @@ void kitty_apply_transparency(WinGuiSeat *wgs);
 void kitty_apply_window_pos(WinGuiSeat *wgs);
 void kitty_save_window_placement(HWND hwnd);
 void kitty_send_to_tray(HWND);
+#ifdef MOD_LAUNCHER
+void kitty_launcher_hide(HWND);        /* kitty_bridge.c: the launcher's Hide all / Unhide all / entries */
+void kitty_launcher_unhide(HWND);
+void kitty_launcher_switch_hide(HWND);
+#endif
 int RestoreFromTray(HWND);            /* kitty.c: restore a window from the systray */
 #define MYWM_NOTIFYICON (WM_USER+3)  /* tray-icon click callback (matches kitty.c) */
 void kitty_rollup(HWND, int);
@@ -5207,6 +5212,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           case IDM_TOTRAY:
             kitty_send_to_tray(wgs->term_hwnd);
             break;
+#ifdef MOD_LAUNCHER
+          /* Posted by the launcher (kitty_launcher.c ManageHideOne,
+           * ManageUnHideOne, ManageSwitch). Nothing handled them after the
+           * port, so Hide all, Unhide all and the session entries did nothing. */
+          case IDM_HIDE:
+            kitty_launcher_hide(wgs->term_hwnd);
+            break;
+          case IDM_UNHIDE:
+            kitty_launcher_unhide(wgs->term_hwnd);
+            break;
+          case IDM_SWITCH_HIDE:
+            kitty_launcher_switch_hide(wgs->term_hwnd);
+            break;
+#endif
           case IDM_WINROL:
             kitty_rollup(wgs->term_hwnd, conf_get_int(wgs->conf, CONF_resize_action));
             break;

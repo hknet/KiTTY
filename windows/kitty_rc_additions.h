@@ -278,6 +278,19 @@
 #ifndef IDM_WINROL
 #define IDM_WINROL 0xA900
 #endif
+/* Posted to a terminal by the launcher's Hide all / Unhide all / session
+ * entries (kitty_launcher.c), handled in window.c. Defined here and only here
+ * (tools/check-menu-ids.py rule 1); kitty.h reaches them through its include
+ * of this header. */
+#ifndef IDM_HIDE
+#define IDM_HIDE 0xA960
+#endif
+#ifndef IDM_UNHIDE
+#define IDM_UNHIDE 0xA970
+#endif
+#ifndef IDM_SWITCH_HIDE
+#define IDM_SWITCH_HIDE 0xA980
+#endif
 #ifndef IDM_FONTUP
 #define IDM_FONTUP 0xB050
 #endif

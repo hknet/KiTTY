@@ -281,6 +281,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **The launcher hides and shows terminal windows again.** Hide all, Unhide
+  all, a click on an entry under Opened sessions and Window unique did
+  nothing. A window sent to the tray is left alone, and a window shown again
+  keeps its maximised or minimised state. The entries under Opened sessions
+  now carry the Windows check mark, which follows the dark and light menu
+  theme, instead of a light check box.
 - **A login you type is passed on like a stored one.** The user name and
   password typed at the SSH prompts now go into the running session's
   settings, so "Duplicate session" logs in without asking and WinSCP,

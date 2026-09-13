@@ -61,7 +61,6 @@ extern const char *kitty_registry_base( void ) ;
 static HMENU MenuLauncher = NULL ;
 static HMENU HideMenu ;
 static int LauncherConfReload = 1 ;
-static HBITMAP bmpCheck, bmpUnCheck ;
 static POINT LauncherMenuPoint ;
 static int LauncherMenuPointValid = 0 ;
 /* KiTTY: cursor position of the single left click, used when the delayed
@@ -113,132 +112,12 @@ static int NbWin = 0 ;
 static int IsUnique = 0 ;
 int RefreshWinList( HWND hwnd ) ;
 
-#ifndef OBM_CHECKBOXES
-#define OBM_CHECKBOXES 32759
-#endif
-
-// Creation de bitmap coche
-HBITMAP GetMyCheckBitmaps(UINT fuCheck) 
-{ 
-    COLORREF crBackground;  // background color                  
-    HBRUSH hbrBackground;   // background brush                  
-    HBRUSH hbrTargetOld;    // original background brush         
-    HDC hdcSource;          // source device context             
-    HDC hdcTarget;          // target device context             
-    HBITMAP hbmpCheckboxes; // handle to check-box bitmap        
-    BITMAP bmCheckbox;      // structure for bitmap data         
-    HBITMAP hbmpSourceOld;  // handle to original source bitmap  
-    HBITMAP hbmpTargetOld;  // handle to original target bitmap  
-    HBITMAP hbmpCheck;      // handle to check-mark bitmap       
-    RECT rc;                // rectangle for check-box bitmap    
-    WORD wBitmapX;          // width of check-mark bitmap        
-    WORD wBitmapY;          // height of check-mark bitmap       
- 
-    // Get the menu background color and create a solid brush 
-    // with that color. 
- 
-    crBackground = GetSysColor(COLOR_MENU); 
-    hbrBackground = CreateSolidBrush(crBackground); 
- 
-    // Create memory device contexts for the source and 
-    // destination bitmaps. 
- 
-    hdcSource = CreateCompatibleDC((HDC) NULL); 
-    hdcTarget = CreateCompatibleDC(hdcSource); 
- 
-    // Get the size of the system default check-mark bitmap and 
-    // create a compatible bitmap of the same size. 
- 
-    wBitmapX = GetSystemMetrics(SM_CXMENUCHECK); 
-    wBitmapY = GetSystemMetrics(SM_CYMENUCHECK); 
- 
-    hbmpCheck = CreateCompatibleBitmap(hdcSource, wBitmapX, 
-        wBitmapY); 
- 
-    // Select the background brush and bitmap into the target DC. 
- 
-    hbrTargetOld = SelectObject(hdcTarget, hbrBackground); 
-    hbmpTargetOld = SelectObject(hdcTarget, hbmpCheck); 
- 
-    // Use the selected brush to initialize the background color 
-    // of the bitmap in the target device context. 
- 
-    PatBlt(hdcTarget, 0, 0, wBitmapX, wBitmapY, PATCOPY); 
- 
-    // Load the predefined check box bitmaps and select it 
-    // into the source DC. 
- 
-    hbmpCheckboxes = LoadBitmap((HINSTANCE) NULL, 
-        (LPTSTR) OBM_CHECKBOXES); 
- 
-    hbmpSourceOld = SelectObject(hdcSource, hbmpCheckboxes); 
- 
-    // Fill a BITMAP structure with information about the 
-    // check box bitmaps, and then find the upper-left corner of 
-    // the unchecked check box or the checked check box. 
- 
-    GetObject(hbmpCheckboxes, sizeof(BITMAP), &bmCheckbox); 
- 
-    if (fuCheck == 2 /*UNCHECK*/) 
-    { 
-        rc.left = 0; 
-        rc.right = (bmCheckbox.bmWidth / 4); 
-    } 
-    else 
-    { 
-        rc.left = (bmCheckbox.bmWidth / 4); 
-        rc.right = (bmCheckbox.bmWidth / 4) * 2; 
-    } 
- 
-    rc.top = 0; 
-    rc.bottom = (bmCheckbox.bmHeight / 3); 
- 
-    // Copy the appropriate bitmap into the target DC. If the 
-    // check-box bitmap is larger than the default check-mark 
-    // bitmap, use StretchBlt to make it fit; otherwise, just 
-    // copy it. 
- 
-    if (((rc.right - rc.left) > (int) wBitmapX) || 
-            ((rc.bottom - rc.top) > (int) wBitmapY)) 
-    {
-        StretchBlt(hdcTarget, 0, 0, wBitmapX, wBitmapY, 
-            hdcSource, rc.left, rc.top, rc.right - rc.left, 
-            rc.bottom - rc.top, SRCCOPY); 
-    }
- 
-    else 
-    {
-        BitBlt(hdcTarget, 0, 0, rc.right - rc.left, 
-            rc.bottom - rc.top, 
-            hdcSource, rc.left, rc.top, SRCCOPY); 
-    }
- 
-    // Select the old source and destination bitmaps into the 
-    // source and destination DCs, and then delete the DCs and 
-    // the background brush. 
- 
-    SelectObject(hdcSource, hbmpSourceOld); 
-    SelectObject(hdcTarget, hbrTargetOld); 
-    hbmpCheck = SelectObject(hdcTarget, hbmpTargetOld); 
- 
-    DeleteObject(hbrBackground); 
-    DeleteObject(hdcSource); 
-    DeleteObject(hdcTarget); 
- 
-    // Return a handle to the new check-mark bitmap.  
- 
-    return hbmpCheck; 
-} 
-
 // Procedure de creation de menu à partir d'une clé de registre
 HMENU InitLauncherMenu( char * Key ) {
 	HMENU menu ;
 	menu = CreatePopupMenu() ;
 	char KeyName[1024] ;
 	int nbitem = 0,i ;
-	
-	DeleteObject( bmpCheck ) ; bmpCheck = GetMyCheckBitmaps( 1 ) ;
-	DeleteObject( bmpUnCheck ) ; bmpUnCheck = GetMyCheckBitmaps( 2 ) ;
 	
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 		snprintf( KeyName, sizeof(KeyName), "%s\\%s", kitty_registry_base(), Key ) ;
@@ -280,7 +159,6 @@ HMENU InitLauncherMenu( char * Key ) {
 		AppendMenu( HideMenu, MF_SEPARATOR, 0, 0 ) ;
 		for( i=0 ; i<NbWin ; i++ ) {
 			AppendMenu( HideMenu, MF_ENABLED, IDM_GOHIDE+i, TabWin[i].name ) ;
-			SetMenuItemBitmaps ( HideMenu, IDM_GOHIDE+i, MF_BYCOMMAND, bmpUnCheck, bmpCheck ) ;
 			if( IsWindowVisible( TabWin[i].hwnd ) ) 
 				CheckMenuItem( HideMenu, IDM_GOHIDE+i, MF_BYCOMMAND | MF_CHECKED) ;
 			else 
