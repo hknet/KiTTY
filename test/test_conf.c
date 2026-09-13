@@ -2,6 +2,7 @@
 
 #include "putty.h"
 #include "storage.h"
+#include "../kitty/kitty_pwmem.h"   /* password keys are held wrapped in a Conf */
 
 void modalfatalbox(const char *p, ...)
 {
@@ -259,7 +260,28 @@ void test_str_simple(int confid, const char *saveid, const char *defexp)
         snprintf(sr.si[0].sval, sizeof(sr.si[0].sval), "%s", teststring);
         load_open_settings(&sr, conf);
         const char *loaded = conf_get_str(conf, confid);
-        if (0 != strcmp(loaded, teststring)) {
+        if (confid == CONF_proxy_password) {
+            /* A password key is left WRAPPED in the Conf after a load
+             * (kitty/kitty_pwmem.c), so the raw string is a blob: read it
+             * through the unwrap, and where the protection is available make
+             * sure the Conf does not hold the password itself. Every other
+             * key is still compared raw, so a wrap that reached a key it
+             * should not would fail below. */
+            char pw[KITTY_PW_MAX + 1];
+            kitty_pw_unwrap_str(loaded, pw, sizeof(pw));
+            if (0 != strcmp(pw, teststring)) {
+                printf("fail test_str_simple(%s): "
+                       "loaded password = '%s', expected '%s'\n",
+                       saveid, pw, teststring);
+                nfails++;
+            }
+            if (kitty_pw_is_wrapped(loaded) && 0 == strcmp(loaded, teststring)) {
+                printf("fail test_str_simple(%s): loaded password is marked "
+                       "wrapped but holds the password itself\n", saveid);
+                nfails++;
+            }
+            smemclr(pw, sizeof(pw));
+        } else if (0 != strcmp(loaded, teststring)) {
             printf("fail test_str_simple(%s): "
                    "loaded string = '%s', expected '%s'\n",
                    saveid, loaded, teststring);
