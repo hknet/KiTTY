@@ -15,66 +15,88 @@ one is available.
   - [Sessions filter (folders)](#sessions-filter-folders)
   - [Quick connect (type a host instead of picking a session)](#quick-connect-type-a-host-instead-of-picking-a-session)
   - [Portability](#portability)
+  - [Importing old sessions](#importing-old-sessions)
   - [Shortcuts for pre-defined commands](#shortcuts-for-pre-defined-commands)
   - [Session launcher](#session-launcher)
   - [Automatic logon script](#automatic-logon-script)
   - [Automatic logon script (RuTTY patch)](#automatic-logon-script-rutty-patch)
   - [URL hyperlinks](#url-hyperlinks)
 - **SSH and network**
+  - [In-terminal (inline) security confirmations](#in-terminal-inline-security-confirmations)
   - [Automatic password](#automatic-password)
+  - [Passwords in memory](#passwords-in-memory)
   - [Key-file fingerprint pin](#key-file-fingerprint-pin)
   - [Private-key usage confirmation](#private-key-usage-confirmation)
-  - [Post-quantum key-exchange warning](#post-quantum-key-exchange-warning)
-  - [Command-line key generator (kittygen-cli)](#command-line-key-generator-kittygen-cli)
-  - [SSH certificates (user and host)](#ssh-certificates-user-and-host)
   - [kageant — Windows OpenSSH agent integration](#kageant--windows-openssh-agent-integration)
   - [Windows Hello protected keys](#windows-hello-protected-keys)
   - [kageant — load keys on startup](#kageant--load-keys-on-startup)
   - [kageant — reorder loaded keys](#kageant--reorder-loaded-keys)
   - [Dark mode](#dark-mode)
+  - [Post-quantum key-exchange warning](#post-quantum-key-exchange-warning)
+  - [Command-line key generator (kittygen-cli)](#command-line-key-generator-kittygen-cli)
+  - [SSH certificates (user and host)](#ssh-certificates-user-and-host)
   - [Port knocking](#port-knocking)
   - [Proxy choice](#proxy-choice)
   - [Workplace proxy mode](#workplace-proxy-mode)
   - [SSH handler (URL/OS integration)](#ssh-handler-urlos-integration)
+  - [Warning when an unverified agent serves your keys](#warning-when-an-unverified-agent-serves-your-keys)
 - **Technical features**
   - [Automatic command](#automatic-command)
   - [Force CR/LF on the Enter key](#force-crlf-on-the-enter-key)
   - [Run a locally saved script on a remote session](#run-a-locally-saved-script-on-a-remote-session)
+  - [Session logging with timestamps](#session-logging-with-timestamps)
   - [Standard output to the clipboard](#standard-output-to-the-clipboard)
   - [Restricted process ACL (-restrict-acl)](#restricted-process-acl--restrict-acl)
   - [Send text to every window (broadcast)](#send-text-to-every-window-broadcast)
+  - [Protection against keyboard input](#protection-against-keyboard-input)
+  - [Word navigation modifier](#word-navigation-modifier)
+  - [AltGr sends Alt](#altgr-sends-alt)
+  - [Quick start of a duplicate session](#quick-start-of-a-duplicate-session)
+  - [Window title placeholders](#window-title-placeholders)
 - **Graphical features**
   - [An icon for each session](#an-icon-for-each-session)
   - [Send to tray](#send-to-tray)
   - [Transparency](#transparency)
-  - [Protection against keyboard input](#protection-against-keyboard-input)
   - [Roll-up](#roll-up)
   - [Always on top](#always-on-top)
   - [Font management](#font-management)
+  - [Line spacing](#line-spacing)
   - [Scroll position across a resize](#scroll-position-across-a-resize)
-  - [Word navigation modifier](#word-navigation-modifier)
-  - [Quick start of a duplicate session](#quick-start-of-a-duplicate-session)
-  - [Window title placeholders](#window-title-placeholders)
+  - [A fixed window position](#a-fixed-window-position)
+  - [The window position, per session and per monitor layout](#the-window-position-per-session-and-per-monitor-layout)
   - [Background image](#background-image)
+  - [Terminal renderer (Direct2D)](#terminal-renderer-direct2d)
+  - [Frame pacing](#frame-pacing)
+- **Other features**
+  - [Automatic saving](#automatic-saving)
+  - [Non-blocking connection errors](#non-blocking-connection-errors)
+  - [Run the clipboard as a command](#run-the-clipboard-as-a-command)
+  - [The remote clipboard (OSC 52, OSC 5522, far2l)](#the-remote-clipboard-osc-52-osc-5522-far2l)
+  - [Paste size guard](#paste-size-guard)
+  - [In-app updater (Check for updates)](#in-app-updater-check-for-updates)
+  - [kscp, WinSCP and FileZilla integration](#kscp-winscp-and-filezilla-integration)
+  - [Binary compression](#binary-compression)
+  - [Clipboard printing](#clipboard-printing)
+  - [Start Cygwin or cmd.exe inside KiTTY](#start-cygwin-or-cmdexe-inside-kitty)
+  - [Local terminal (kitty_pterm)](#local-terminal-kitty_pterm)
+  - [File association](#file-association)
+  - [Export all / Import all sessions](#export-all--import-all-sessions)
+  - [ZModem file transfer](#zmodem-file-transfer)
+  - [File transfers over the session (kitten transfer)](#file-transfers-over-the-session-kitten-transfer)
+  - [Menu key shortcuts definition](#menu-key-shortcuts-definition)
+  - [PuTTY masquerade mode (KiClassName)](#putty-masquerade-mode-kiclassname)
+  - [New command-line options](#new-command-line-options)
+  - [When this Windows is too old for something](#when-this-windows-is-too-old-for-something)
+  - [A crash leaves a note worth attaching to a bug report](#a-crash-leaves-a-note-worth-attaching-to-a-bug-report)
+  - [A 32-bit build](#a-32-bit-build)
+  - [The programs refuse to start under a foreign name](#the-programs-refuse-to-start-under-a-foreign-name)
+  - [The application notification](#the-application-notification)
+  - [Where the helper programs live](#where-the-helper-programs-live)
+  - [A note on a session](#a-note-on-a-session)
   - [The configuration window remembers how you use it](#the-configuration-window-remembers-how-you-use-it)
   - [The KiTTY++ Settings tree](#the-kitty-settings-tree)
   - [A portable copy, and back into the registry](#a-portable-copy-and-back-into-the-registry)
   - [A session note at login](#a-session-note-at-login)
-- **Other features**
-  - [Automatic saving](#automatic-saving)
-  - [kscp and WinSCP integration](#kscp-and-winscp-integration)
-  - [Binary compression](#binary-compression)
-  - [Clipboard printing](#clipboard-printing)
-  - [Start Cygwin or cmd.exe inside KiTTY](#start-cygwin-or-cmdexe-inside-kitty)
-  - [File association](#file-association)
-  - [ZModem file transfer](#zmodem-file-transfer)
-  - [File transfers over the session (kitten transfer)](#file-transfers-over-the-session-kitten-transfer)
-  - [Menu key shortcuts definition](#menu-key-shortcuts-definition)
-  - [New command-line options](#new-command-line-options)
-  - [Non-blocking connection errors](#non-blocking-connection-errors)
-  - [Run the clipboard as a command](#run-the-clipboard-as-a-command)
-  - [The remote clipboard (OSC 52, OSC 5522, far2l)](#the-remote-clipboard-osc-52-osc-5522-far2l)
-  - [In-app updater (Check for updates)](#in-app-updater-check-for-updates)
 - **Bonus**
   - [Hidden text editor](#hidden-text-editor)
 
@@ -173,6 +195,7 @@ To convert everything in one go, use **Export all…** followed by **Import all�
 - **An existing name is never overwritten.** The copy is called `work (PuTTY)` or `work (old KiTTY)`, numbered if that name is taken as well.
 - **Settings this version no longer has are not carried over**, and the import names them when it finishes.
 - **Saving under a name an old store has** does not touch the old store either. The new session is written to the KiTTY++ store and hides the old one from then on; when the old stores are shown in the list, Save puts up a question first that states exactly that. A name that exists in the KiTTY++ store and was not loaded gets the usual "replace?" question instead.
+- **Loading by name follows the same switch.** While the old sessions are hidden, a name that lives only in an old KiTTY or PuTTY hive is not found by `-load`, `@name`, the launcher, or the command-line tools `klink`/`kscp`/`ksftp` — the same as it is not shown. With the default `auto` the old stores retire themselves for loading too, the day this KiTTY has sessions of its own; import the ones you still use, or set `showforeignsessions=yes` to keep loading them. The importer above always sees both hives regardless of the switch.
 
 Two settings are left behind deliberately:
 
@@ -550,6 +573,18 @@ A **portable** KiTTY asks before writing anything: a registration outlives the c
 
 ---
 
+### Warning when an unverified agent serves your keys
+
+An SSH agent holds your private keys and signs with them on request, and any program can offer to be that agent: it is a named pipe, and whoever gets there first answers. A program that puts itself in that position sees every key request KiTTY makes.
+
+A signed KiTTY checks who is answering, and warns you when the agent is not a signed build it recognises. That is not a claim that the agent is malicious — a self-built kageant, or another agent you chose, is unverified too — it is KiTTY telling you *who* it is about to hand a signing request to, at the moment it matters.
+
+Turn the warning off if you deliberately use an agent that cannot be verified and are tired of being asked; leave it on otherwise.
+
+**How to enable:** **Application > Security**, *"Warn when an unverified agent serves the keys"*. Stored per installation (`[KiTTY] verifyagent` in `kitty.ini`), not per session.
+
+(no screenshot)
+
 ## Technical features
 
 ### Automatic command
@@ -679,43 +714,38 @@ command reaches exactly those, and nothing else:
 
     kitty.exe -sendcmdkey lab-row-3 -sendcmd "systemctl restart nginx"
 
+**Several commands at once.** `-sendcmdfile <file>` sends every line of a text
+file as one command each, in order, with the auto-command pause between them
+(an empty line is a bare Return); `-sendcmdkey` applies to it too.
+
+**The Broadcast leaf.** **KiTTY++ Settings > Automation > Broadcast** holds the
+installation's side of the feature: the master switch, the **group key of this
+installation** as an editable field (empty = derived from where this copy is
+installed; type one to join or split installations, **Clear** derives again),
+and a **send console** - the saved sessions that accept broadcasts, or the open
+terminals that accept right now, grouped by key; pick the groups, type or load
+the commands (one per line), press **Send Commands**. Only the open-terminals
+view can send. **Session > Broadcast** carries an **open global Settings**
+button that jumps there.
+
+**You can see it in the title.** A terminal that actually receives broadcasts
+(session ticked *and* master switch on) shows `(BROADCAST)` in its window title,
+next to the other markers.
+
 ⚠️ **None of this is a security boundary.** Anything running under your account
 can read the key and post the same message. The gates exist to stop accidents —
 the line meant for three lab boxes landing in the production session left open
 behind them — and to keep the feature off until you ask for it.
 
-**How to enable:** `[KiTTY] sendcmdmode=yes` in kitty.ini, then tick **Accept
-broadcast messages for this session** in **Session > Broadcast** (or **Tools >
-Accept broadcast** in a running window). Send with `kitty.exe -sendcmd "<text>"`,
-`kitty.exe -sendcmdkey <key> -sendcmd "<text>"`, or `/command <text>`.
+**How to enable:** tick **Enable "Accept broadcast" on application level** on
+**KiTTY++ Settings > Automation > Broadcast** (`[KiTTY] sendcmdmode=yes` in
+kitty.ini), then tick **Accept broadcast messages for this session** in
+**Session > Broadcast** (or **Tools > Accept broadcast** in a running window).
+Send with `kitty.exe -sendcmd "<text>"`, `kitty.exe -sendcmdkey <key> -sendcmd
+"<text>"`, `kitty.exe -sendcmdfile <file>`, `/command <text>`, or the send
+console on the Broadcast leaf.
 
 (no screenshot)
-
-## Graphical features
-
-### An icon for each session
-
-KiTTY lets you assign a distinct window icon to each saved session, so you can tell your terminals apart at a glance in the taskbar and on screen. You can pick from a large set of built-in icons (more than fifty, ranging from PuTTY-style logos to numbered and cartoon icons) or point to your own .ico file. There's even a "random icon" option that picks a different one for you each time.
-
-**How to enable:** Configuration > **Window > Title & Icon**: choose a per-session icon (from the embedded icon set or a .ico file).
-
-![An icon for each session](docs/features/img/config_icon.jpg)
-
-### Send to tray
-
-When you run long background batches or just keep KiTTY open to maintain SSH tunnels, you can tuck the window away into the Windows system tray (the notification area in the bottom-right corner of the screen) so it stays out of your way. You can send an open session to the tray on demand, have a session start there automatically, or launch one straight into the tray from the command line. Clicking the tray icon brings the window back when you need it.
-
-**How to enable:** System menu **Send to tray** for a window that is already open. To have a session start there, tick **Send to tray on startup** in Configuration > **Window > Behaviour**; on the command line, `-send-to-tray` does the same for one launch. A session starting in the tray stays visible until it is actually connected, so host-key and password prompts are never hidden behind the tray icon. With the option on, minimising the window also sends it to the tray. Click the tray icon to restore it.
-
-![Send to tray](docs/features/img/config_sendtotray.jpg)
-
-### Transparency
-
-KiTTY lets you make a terminal window see-through, so you can watch what's happening behind it while you work. You set how transparent the window is, and you can fine-tune the level on the fly using the numeric keypad: **CTRL +** (or **CTRL+UP**) makes the window more opaque, while **CTRL -** (or **CTRL+DOWN**) makes it more transparent. The setting can be defined separately for each session. Note that transparency may interfere with certain window-management or screen-capture tools, so leave it off if you rely on those.
-
-**How to enable:** Configuration > **Window > Appearance > Background** (set the level), and the system-menu **Transparency +/-** items to adjust it live. `0` is fully opaque and is the default for a new session; `255` is as see-through as it goes. Set a session to `-1` to lock it opaque — the menu entries are then not offered and the keyboard shortcuts decline, which is what you want when an accidental **CTRL+DOWN** must never dim that window. `transparency=no` in the kitty.ini `[KiTTY]` section removes the feature altogether, for every session.
-
-![Transparency](docs/features/img/config_transparency.jpg)
 
 ### Protection against keyboard input
 
@@ -724,42 +754,6 @@ KiTTY lets you shield a session against accidental or unintended keystrokes. Whe
 **How to enable:** System menu **Protect** — locks the keyboard so accidental keystrokes can't reach the session.
 
 ![Protection against keyboard input](docs/features/img/ex_protected.jpg)
-
-### Roll-up
-
-Roll-up makes the window collapse "into" its title bar, hiding the terminal area so only the title bar remains visible. It's a handy way to save screen space and keep your desktop tidy when you have several windows open, and you can expand the window again whenever you need it. Besides the menu item, you can also roll up by pressing CTRL+F12, or by holding CTRL and clicking the title bar with the left mouse button.
-
-**How to enable:** System menu **Roll-up** — shades the window down to just its title bar (click again to restore).
-
-(no screenshot)
-
-### Always on top
-
-Always on top (formerly "Always visible") keeps a KiTTY window in the foreground, on top of all your other windows, so you can keep an eye on it while you work elsewhere. This is handy for monitoring a session, a log, or a long-running command without it slipping behind other applications. You can toggle it from the system menu, or with the **CTRL+F7** keyboard shortcut. While active, the window title carries an **(ONTOP)** marker.
-
-**How to enable:** System menu **Window > Always On Top**.
-
-(no screenshot)
-
-### Font management
-
-KiTTY adds a **Font settings** option to the main menu that lets you adjust the terminal's appearance on the fly. From here you can increase or decrease the font size, switch to negative colors, and toggle between black-on-white and white-on-black backgrounds. Font size can also be changed quickly by holding **CTRL** and scrolling the mouse wheel.
-
-**How to enable:** System menu **Font Up / Font Down** to resize the terminal font on the fly.
-
-![Font management](docs/features/img/ex_fonts.jpg)
-
-### Line spacing
-
-Terminal fonts pack their lines tightly. **Line spacing** stretches each row to a percentage of the font's own line height, so text is easier to read without changing the font size. 100 % leaves the font's metrics untouched; above that, the extra height is shared evenly above and below the text.
-
-Past 100 %, line-drawing characters no longer join up between rows — the gap between cells is real, and the terminal cannot draw across it. That is why the default is 100 %.
-
-**How to enable:** Configuration > **Window > Appearance** > **Line spacing (100-300 %)**.
-
-### Scroll position across a resize
-
-Resizing the window keeps the scroll position: a view scrolled up into the scrollback goes on showing the same lines after the window grows or shrinks, and only a view that was at the bottom follows the bottom. New output still resets the view only when **Window > Reset scrollback on display activity** is on; output arriving within a second after a resize, the remote side redrawing for the new size, does not reset the view either.
 
 ### Word navigation modifier
 
@@ -780,108 +774,6 @@ possible.
 
 (no screenshot)
 
-### When this Windows is too old for something
-
-KiTTY runs on old Windows on purpose, and the features that need a modern one — dark mode, Windows Hello, per-monitor DPI, encrypted memory for secrets — are looked up while it starts rather than demanded of the loader. A Windows that does not have them still runs KiTTY; those features simply do not happen.
-
-The failure mode that creates is a bad one: a feature that quietly never works looks exactly like a setting that will not stick. So KiTTY says which ones they are — **one line in the terminal when a session opens**, naming what is unavailable, and the **full list in the Event Log**, with the API and DLL behind each, for whoever is diagnosing.
-
-The line is worth reading once and not thereafter, since the answer is a property of the machine. `warnmissingfeatures=no` under `[KiTTY]` in `kitty.ini` — or the checkbox on **Application > Security** — stops it. The Event Log entry is written either way.
-
-**How to enable:** on by default. **Application > Security**, *"Say what this Windows cannot do"*.
-
-(no screenshot)
-
-### A crash leaves a note worth attaching to a bug report
-
-When any program in the suite dies of a crash, it writes `kitty_crash.log` beside its executable (or into the temp directory when the program runs from read-only media): which program and version, which Windows, the exception code, and where it happened as module plus offset, with a scan of the stack for return addresses. That is what a useful crash report needs, so **if you file an issue about a crash, please attach the file**.
-
-It is safe to share. The log contains no session content, no key or password material and no paths — module names are recorded as bare file names, so not even your Windows user name appears in it. If nothing is writable at all, no log is written and the crash proceeds as it would have anyway; nothing about this changes a healthy program.
-
-**How to enable:** always on. There is nothing to configure.
-
-(no screenshot)
-
-### A 32-bit build
-
-Every program in the suite is also built for 32-bit Windows and ships as its own download — a ZIP, plus an ISO of both builds for mounting into a virtual machine. It is the build for systems a 64-bit binary cannot reach; on 64-bit Windows the regular packages are the ones to use.
-
-**How to enable:** download the `-32bit` package instead.
-
-(no screenshot)
-
-### Warning when an unverified agent serves your keys
-
-An SSH agent holds your private keys and signs with them on request, and any program can offer to be that agent: it is a named pipe, and whoever gets there first answers. A program that puts itself in that position sees every key request KiTTY makes.
-
-A signed KiTTY checks who is answering, and warns you when the agent is not a signed build it recognises. That is not a claim that the agent is malicious — a self-built kageant, or another agent you chose, is unverified too — it is KiTTY telling you *who* it is about to hand a signing request to, at the moment it matters.
-
-Turn the warning off if you deliberately use an agent that cannot be verified and are tired of being asked; leave it on otherwise.
-
-**How to enable:** **Application > Security**, *"Warn when an unverified agent serves the keys"*. Stored per installation (`[KiTTY] verifyagent` in `kitty.ini`), not per session.
-
-(no screenshot)
-
-### The programs refuse to start under a foreign name
-
-Every KiTTY program checks its own file name at startup and exits if that name does not begin with the program's own name: `kitty.exe` and `kitty_portable.exe` want `kitty` or `putty`, `klink.exe` wants `klink` or `plink`, `kscp.exe` `kscp` or `pscp`, `ksftp.exe` `ksftp` or `psftp`, `kageant.exe` `kageant` or `pageant`, `kittygen.exe` and `kittygen-cli.exe` `kittygen` or `puttygen`. The PuTTY name is accepted for each because a tool that expects `putty.exe` or `plink.exe` is routinely pointed at a renamed KiTTY, and that has to keep working. Only the beginning of the name is checked and case does not matter, so a browser's duplicate `kitty (1).exe`, a version-named copy `kitty-0.85.exe`, `kitty_nocompress.exe` and `klink2.exe` all start normally. `kitty_pterm.exe` and `kitty_tel.exe` are the unchanged PuTTY programs and are not checked.
-
-Under any other name the windowed programs show one message box and exit, and the command-line tools print one line to stderr and exit 1:
-
-    Renamed executable: this program runs only as kitty*.exe. Found: 6bovxvce.exe
-
-Where there is nobody to click that box — a scheduled task, a service, a session with no desktop — the same line goes to the Windows **Application** event log under the source `KiTTY++` instead, and the command-line tools write it there as well as to stderr, so an unattended job that stops for this reason still says why.
-
-A signed tool that circulates under throwaway file names is what abuse of a legitimate binary looks like, and detection heuristics score it as such. Keeping the name recognisable costs you nothing and takes that use away. It is a nuisance bar rather than a security boundary: whoever keeps the name is unaffected, and the check can be removed at the cost of the signature. Nothing in KiTTY keys a mode on the file name — PuTTY mode is the `-putty` switch — so no feature depends on renaming anything.
-
-A downloaded release build also checks its own signature at startup, right after the name. It refuses to run on three findings and no others: the file was modified after it was signed, the signature was removed outright, or it was re-signed by somebody else. The message names which:
-
-    Signature check failed: this program is not signed by its publisher. Found: bad digest
-
-It never refuses because a machine is unable to judge. An old or unpatched Windows that does not know the signing algorithm, cannot read the signature at all, does not hold the root certificate, or has no revocation data — Windows XP and an offline Windows 7 among them — cannot form an opinion, and KiTTY starts normally there. So does a machine whose own policy distrusts the certificate: that says something about the machine, not about the file. Nothing is fetched from the network for this, and the Windows version is never consulted: the check asks the question and acts on the answer. Builds you compile yourself carry no signature and no check.
-
-**How to enable:** always on; there is no setting.
-
-(no screenshot)
-
-### The application notification
-
-One note for the whole installation, shown to whoever starts KiTTY: a house rule, a maintenance window, a reminder that this PC reaches production.
-
-It appears in the small notice window near the clock, raised by the first window each KiTTY process opens — the terminal, the launcher or the configuration window. It never takes the focus and has no timeout: it stays until it is clicked, so it can be read in your own time and it does not stand between you and the session. Only one copy is on the desktop at a time, so half a dozen KiTTY windows opened together do not stack up half a dozen notices.
-
-It also survives the traffic around it. Another notice from the same process — an update is available, the saved-session list is showing an older KiTTY's sessions, the agent answering is not one KiTTY recognises — takes the screen for its few seconds and then hands it back, and the note is there again, still waiting to be clicked.
-
-*"Show once while the launcher runs"* changes what a click means. Off, a click only takes the note off this desktop and the next KiTTY started shows it again. On, a click records that the note has been read: the process that clicked remembers it, and so does the session launcher when one is running, so nothing shows that note again for as long as either is there — and editing the note makes it a different note, which is shown again.
-
-Earlier versions kept the same note in the registry and displayed it in a message box at every start, which had to be clicked away before anything happened. That value is still the note, so an installed KiTTY keeps what it had.
-
-**How to enable:** **Application > Security > Application Notification**, *"Notification:"*. Empty displays nothing. Stored per installation (`[KiTTY] notes` in `kitty.ini`, one line with `\n` for a line break; `notesonce` is the checkbox), not per session.
-
-(no screenshot)
-
-### Where the helper programs live
-
-KiTTY drives programs it does not contain: **WinSCP** or **FileZilla** for a graphical file transfer of the session you are on (`WinSCPPath`, `FileZillaPath` in `kitty.ini`; the Tools menu offers each only while its executable exists), **kscp** for uploads and *Get file*, and **rz** / **sz** for ZModem transfers inside the terminal.
-
-Where those are installed is a property of the PC, not of a connection — the same session opened on your laptop and on a colleague's machine should not need two different paths. So the paths live in `kitty.ini` and are shared by every session, and the settings that *are* per session — which protocol and port each tool uses, where downloads go — stay on the session's own panels.
-
-**How to enable:** **Application > KiTTY++ Settings > Transfers & Tools**, then the WinSCP, FileZilla and ZModem leaves under it. Where files land and whether the far end may start a transfer is per session: **Connection > Transfers** (local download folder, "Always open Save Dialog", permission for transfers started by the far end). **Tools > Get File (kscp)** fetches the remote path on the clipboard into that folder, after a folder window.
-
-**FileZilla and the password.** FileZilla cannot read a password from a private file the way WinSCP does, so the session's **Connection > SSH > FileZilla** panel offers the choice with each consequence stated: *Ask in FileZilla* (default; only user, host and port are handed over), *Temporary configuration* (a private Site Manager file, deleted a minute after the start) or *Command line* (readable by other processes while FileZilla runs). The preferred way is an SSH key served by the agent, which needs no password at all.
-
-(no screenshot)
-
-### A note on a session
-
-A saved session can carry a free-text note: what the machine is for, who owns it, the change ticket that had you connect to it — the sentence you would otherwise keep in a file beside the session list.
-
-It is stored with the session like any other setting, so it travels through **Export all / Import all** and survives a rename. It is never sent to the host, and KiTTY itself shows it only here, on this panel: it is a note for you, not a label the session list displays.
-
-**How to enable:** **Comment** at the foot of the configuration tree.
-
-(no screenshot)
-
 ### AltGr sends Alt
 
 On an international keyboard layout, **AltGr** is how you type the characters printed on the front of the keys — on a German layout `AltGr+Q` gives `@`, `AltGr+E` gives `€`. Windows produces those by treating AltGr as Ctrl+Alt, which is also how a terminal application sees a plain `Alt+key`. Programs inside the terminal therefore cannot tell "I typed a euro sign" from "I pressed Alt+E".
@@ -896,110 +788,6 @@ Turn it on only if you need those shortcuts and do not need the layout's extra c
 This is **not** the same as *"AltGr acts as Compose key"* on the same panel. That is PuTTY's own Compose feature, where AltGr followed by two more keystrokes builds one character (Compose, `a`, `'` → `á`); it does not change what a single AltGr keypress sends.
 
 **How to enable:** **Terminal > Keyboard**, *"AltGr sends Alt"*.
-
-(no screenshot)
-
-### A fixed window position
-
-A session can open its window at a position you choose, instead of wherever Windows puts it. It is the companion to *Remember window position* — that one follows the window around as you move it, this one pins it.
-
-Both can be set, and then the fixed position wins: an explicit instruction beats a convenience. That order matters if you use both, because a remembered position silently stops having any effect once a fixed one is set.
-
-**A position that no longer exists cannot strand a window.** Monitors get unplugged and resolutions change, and a position saved against a screen that is no longer there would otherwise open the window somewhere you cannot reach it. KiTTY checks the pinned spot against the monitors you have now and moves the window onto the nearest one if it does not fit on any of them.
-
-**How to enable:** **Window > Appearance > Position**; the remembering variant is **Window > Behaviour**, *Remember window position*.
-
-(no screenshot)
-
-### The configuration window remembers how you use it
-
-Four behaviours of the configuration window itself:
-
-- **The Category tree keeps your folds.** Any category you fold - closed or
-  open - stays that way the next time the window opens, whatever the
-  `categoryexpand` default says; putting it back to the default forgets it.
-- **The loaded session's name is always in sight**, right-aligned in the
-  title strip above the panel, so you know whose settings you are looking at
-  wherever you are in the tree.
-- **Help never answers with a beep.** The context-help click (the `?` in the
-  title bar) on a spot with no topic of its own opens the manual at the
-  current panel's topic instead. The help window opens as an ordinary window,
-  not pinned in front of the configuration box, so the two sit side by side.
-- **Named proxy pre-sets load from the Proxy panel itself** — a chooser and a
-  Load button at the foot of **Connection > Proxy**, replacing the separate
-  picker window.
-
-(no screenshot)
-
-### The KiTTY++ Settings tree
-
-Every setting of the program itself - not of a session - has a panel now,
-under **Application > KiTTY++ Settings**: where settings are kept and how many
-backups are held (*Storage & Backup*, with a *KiTTY.ini* leaf that shows the
-configuration file read-only, follows it on disk, offers the shipped
-kitty.ini.example beside it for copying, and hands editing to your editor
-with a warning), the colour theme, title bar, icons and
-font fallback (*Appearance*), keys and mouse with a *Shortcuts* leaf, typing
-automation and broadcast (*Automation*), *Terminal & Printing* (the renderer, the frame pacing, the feature switches, printing), the
-auto-reconnect master switch and in-line confirmations (*Reconnect & Prompts*),
-file-transfer helpers (*Transfers & Tools* with *WinSCP* and *ZModem*), the
-*Launcher*, and *System*. Each leaf says where its values are kept, and every
-change is saved as you make it - the footer line on each panel says so. Before
-this, most of these could only be changed by editing `kitty.ini` or the
-registry by hand.
-
-**System** shows which program Windows hands `telnet://`, `ssh://`, `kitty://`,
-`putty://` links and `.ktx` session files to - this KiTTY++, another KiTTY, some
-other program, or nobody - and offers three buttons that each ask before
-writing: register this program, register and take over entries other programs
-own (each backed up to a `.reg` file first), and unregister. They do what
-`-sshhandler` and `-fileassoc` do from the command line. A checkbox, *Add this
-KiTTY++ folder to the user PATH*, makes `klink`, `kscp`, `ksftp` and the other
-tools callable by name from any newly opened shell.
-
-(no screenshot)
-
-### A portable copy, and back into the registry
-
-**Application > Migration > KiTTY storage** moves a whole store between the
-registry and a folder. **Make a portable copy** writes `kitty.exe` with its
-companion programs, a `kitty.ini` holding every setting plus `savemode=dir`,
-and the sessions, named proxies and host keys into a folder you pick; the
-saved passwords are re-protected for the copy under a master password you
-choose (asked once per start; the copy works wherever the folder goes) or for
-this PC only. Run `kitty.exe` from that folder and it uses those files and
-never the registry - on a stick, in a synced folder, on another PC. The
-registry stays as it is. **Take a folder store into this registry** does the
-reverse, as a merge: what the folder holds replaces the registry's version,
-what it does not hold stays. From the command line: `-portablecopy <dir>` and
-`-takefolder <dir>`, with `-bundlepwfile` / `-bundlethispc` for the password
-choice.
-
-(no screenshot)
-
-### A session note at login
-
-The **Comment** a session carries (Session > Comment) can be printed into the
-terminal once the login has succeeded, framed as a *KiTTY++ session note* -
-what the machine is for, who owns it, what to remember before typing. The
-checkbox *Notify the user at login* on the Comment panel is on by default;
-untick it for a session whose note is for your eyes only.
-
-(no screenshot)
-
-### Typing into a session from outside (/command)
-
-One KiTTY can type a line into another's session, as if you had typed it at the keyboard — and a trailing Return means the far end *runs* it. That is what makes a session scriptable from outside: `kitty.exe -sendcmd`, or the `/command` control message, says one thing to twenty servers at once.
-
-It is dangerous for the same reason it is useful: the twenty include whatever production session happens to be open. So a window listens only when it has been armed, and only to messages meant for it.
-
-- **Per session:** *"Accept broadcast messages for this session"* on **Session > Broadcast**. Off by default.
-- **Per PC:** `sendcmdmode=yes` under `[KiTTY]` in `kitty.ini` sets the state windows start in. The window menu's **Tools > "Accept broadcast"** flips the window you are looking at, and the two are the same switch seen from two places.
-- **Which KiTTYs hear each other:** the **broadcast key** on the same panel. An installation gets its own generated key, so a portable KiTTY on a USB stick does not type into the sessions of the copy installed on the machine. Give several sessions a key of their own and only those answer — that is how a broadcast is aimed at three servers instead of all of them.
-
-**None of this is a security boundary, and it is not meant to be.** Anything running under your account can post the same message, and could reach your session by other means regardless. What these settings decide is *when your terminals accept it* — they keep a broadcast off the wrong terminal, not an attacker off your machine.
-
-**How to enable:** **Session > Broadcast**, plus `sendcmdmode=yes` in `kitty.ini` if you want windows to start armed.
 
 (no screenshot)
 
@@ -1044,6 +832,96 @@ KiTTY can expand dynamic placeholders in the **Window Title** setting so the tit
 | `%%d` | Dynamic/SOCKS forwarded ports (blank if none configured) |
 
 For full details and examples, see [`docs/window-title-placeholders.md`](docs/window-title-placeholders.md). If a remote shell later replaces the title, enable **Terminal → Features → Disable remote-controlled window title changing** (`NoRemoteWinTitle=1`) to keep the placeholder-expanded title.
+
+(no screenshot)
+
+## Graphical features
+
+### An icon for each session
+
+KiTTY lets you assign a distinct window icon to each saved session, so you can tell your terminals apart at a glance in the taskbar and on screen. You can pick from a large set of built-in icons (more than fifty, ranging from PuTTY-style logos to numbered and cartoon icons) or point to your own .ico file. There's even a "random icon" option that picks a different one for you each time.
+
+**How to enable:** Configuration > **Window > Title & Icon**: choose a per-session icon (from the embedded icon set or a .ico file).
+
+![An icon for each session](docs/features/img/config_icon.jpg)
+
+### Send to tray
+
+When you run long background batches or just keep KiTTY open to maintain SSH tunnels, you can tuck the window away into the Windows system tray (the notification area in the bottom-right corner of the screen) so it stays out of your way. You can send an open session to the tray on demand, have a session start there automatically, or launch one straight into the tray from the command line. Clicking the tray icon brings the window back when you need it.
+
+**How to enable:** System menu **Send to tray** for a window that is already open. To have a session start there, tick **Send to tray on startup** in Configuration > **Window > Behaviour**; on the command line, `-send-to-tray` does the same for one launch. A session starting in the tray stays visible until it is actually connected, so host-key and password prompts are never hidden behind the tray icon. With the option on, minimising the window also sends it to the tray. Click the tray icon to restore it.
+
+![Send to tray](docs/features/img/config_sendtotray.jpg)
+
+### Transparency
+
+KiTTY lets you make a terminal window see-through, so you can watch what's happening behind it while you work. You set how transparent the window is, and you can fine-tune the level on the fly using the numeric keypad: **CTRL +** (or **CTRL+UP**) makes the window more opaque, while **CTRL -** (or **CTRL+DOWN**) makes it more transparent. The setting can be defined separately for each session. Note that transparency may interfere with certain window-management or screen-capture tools, so leave it off if you rely on those.
+
+**How to enable:** Configuration > **Window > Appearance > Background** (set the level), and the system-menu **Transparency +/-** items to adjust it live. `0` is fully opaque and is the default for a new session; `255` is as see-through as it goes. Set a session to `-1` to lock it opaque — the menu entries are then not offered and the keyboard shortcuts decline, which is what you want when an accidental **CTRL+DOWN** must never dim that window. `transparency=no` in the kitty.ini `[KiTTY]` section removes the feature altogether, for every session.
+
+![Transparency](docs/features/img/config_transparency.jpg)
+
+### Roll-up
+
+Roll-up makes the window collapse "into" its title bar, hiding the terminal area so only the title bar remains visible. It's a handy way to save screen space and keep your desktop tidy when you have several windows open, and you can expand the window again whenever you need it. Besides the menu item, you can also roll up by pressing CTRL+F12, or by holding CTRL and clicking the title bar with the left mouse button.
+
+**How to enable:** System menu **Roll-up** — shades the window down to just its title bar (click again to restore).
+
+(no screenshot)
+
+### Always on top
+
+Always on top (formerly "Always visible") keeps a KiTTY window in the foreground, on top of all your other windows, so you can keep an eye on it while you work elsewhere. This is handy for monitoring a session, a log, or a long-running command without it slipping behind other applications. You can toggle it from the system menu, or with the **CTRL+F7** keyboard shortcut. While active, the window title carries an **(ONTOP)** marker.
+
+**How to enable:** System menu **Window > Always On Top**.
+
+(no screenshot)
+
+### Font management
+
+KiTTY adds a **Font settings** option to the main menu that lets you adjust the terminal's appearance on the fly. From here you can increase or decrease the font size, switch to negative colors, and toggle between black-on-white and white-on-black backgrounds. Font size can also be changed quickly by holding **CTRL** and scrolling the mouse wheel.
+
+**How to enable:** System menu **Font Up / Font Down** to resize the terminal font on the fly.
+
+![Font management](docs/features/img/ex_fonts.jpg)
+
+### Line spacing
+
+Terminal fonts pack their lines tightly. **Line spacing** stretches each row to a percentage of the font's own line height, so text is easier to read without changing the font size. 100 % leaves the font's metrics untouched; above that, the extra height is shared evenly above and below the text.
+
+Past 100 %, line-drawing characters no longer join up between rows — the gap between cells is real, and the terminal cannot draw across it. That is why the default is 100 %.
+
+**How to enable:** Configuration > **Window > Appearance** > **Line spacing (100-300 %)**.
+
+### Scroll position across a resize
+
+Resizing the window keeps the scroll position: a view scrolled up into the scrollback goes on showing the same lines after the window grows or shrinks, and only a view that was at the bottom follows the bottom. New output still resets the view only when **Window > Reset scrollback on display activity** is on; output arriving within a second after a resize, the remote side redrawing for the new size, does not reset the view either.
+
+### A fixed window position
+
+A session can open its window at a position you choose, instead of wherever Windows puts it. It is the companion to *Remember window position* — that one follows the window around as you move it, this one pins it.
+
+Both can be set, and then the fixed position wins: an explicit instruction beats a convenience. That order matters if you use both, because a remembered position silently stops having any effect once a fixed one is set.
+
+**A position that no longer exists cannot strand a window.** Monitors get unplugged and resolutions change, and a position saved against a screen that is no longer there would otherwise open the window somewhere you cannot reach it. KiTTY checks the pinned spot against the monitors you have now and moves the window onto the nearest one if it does not fit on any of them.
+
+**How to enable:** **Window > Appearance > Position**; the remembering variant, *Remember window position*, is on the same panel.
+
+(no screenshot)
+
+### The window position, per session and per monitor layout
+
+*Remember window position* re-opens a session's window where you last left it, at the terminal size it had. When the window closes, its top-left and its size in columns x rows are saved for **this session** and for **the arrangement of monitors it was on**; opening the session again on that layout puts the window back there, at that size. Docking a laptop or unplugging a screen therefore never drags a window onto a monitor that is no longer there - each layout keeps its own entry - and because the size is kept as a terminal grid rather than in pixels, a layout with another DPI gets the same columns and rows at the pixel size they need there. A minimised or maximised window is not remembered.
+
+**Never out of reach.** An entry whose top-left is on no current monitor is moved onto the nearest monitor's work area, and a grid larger than that work area is reduced to fit.
+
+**The panel shows what the window will do.** With the checkbox on, *Top* and *Left* on the Position panel and *Columns* and *Rows* on the Window panel show the session's entry for the monitor layout the configuration window is on now, and *Save* writes what you typed back into it.
+
+**Sessions without a session.** An unnamed session - a host typed in and opened without saving - and a window opened as *Default Settings* have nowhere of their own to keep an entry. They share one position per monitor layout, written when such a window closes and gated by the checkbox as it stands in Default Settings; a named session that has no entry for the current layout yet opens at that shared position once, until its own window has closed there. *Default Settings* itself is never changed by a closing window. **KiTTY++ Settings > Appearance > Shared window position** shows the shared entry for the current layout and how many layouts hold one, and *Reset* removes them all - sessions keep their own entries, and the configuration window's own position is not touched.
+
+*Save settings on exit* (Window > Behaviour) is unchanged: it saves everything the session holds, position and size included, so with it on a fixed position moves along with the window.
+
+**How to enable:** **Window > Appearance > Position**, *Remember window position* - on by default. Stored in the session as `TermPos_<layout>`, one value per monitor layout; deleting a session removes them with it, and a session saved under a new name takes the loaded session's entries along, so the copy opens where its original does.
 
 (no screenshot)
 
@@ -1167,7 +1045,7 @@ KiTTY can check whether a newer release is available and install it for you. *Ch
 
 (no screenshot)
 
-### kscp and WinSCP integration
+### kscp, WinSCP and FileZilla integration
 
 KiTTY lets you transfer files without opening a separate program, reusing the host and credentials of your current session. The Tools menu (right-click the title bar) offers **Send File (kscp)** (Ctrl+F3), which uploads one file you pick into the running session, **Get File (kscp)** (Ctrl+F4), which fetches the remote path on the clipboard into your download folder after a folder window, **Start WinSCP** (Shift+F3), which opens a full WinSCP session on the same server, and **Start FileZilla** (Shift+F4), present only while FileZilla's executable exists. The menu shows each key; the keys are `sendfile`, `getfile`, `winscp` and `filezilla` in `[Shortcuts]`. An entry is greyed while the program behind it cannot be found. The **Terminal Windows Tools Menu** group on **Window > Behaviour** has a checkbox per entry (all on by default): unchecked, the entry is not shown for that session and its `[Shortcuts]` key does nothing. **Send File (kscp)** opens its file window in the session's upload folder (**Upload folder** on *Connection > Transfers*; empty = the global **Default Upload Folder** on *Transfers & Tools*, `uploaddir` in `[KiTTY]`; empty = your Documents folder). WinSCP receives the session password through its `/passwordsfromfiles` switch, from a private temporary file that is deleted a minute after the start, never on the command line.
 
@@ -1177,7 +1055,7 @@ KiTTY lets you transfer files without opening a separate program, reusing the ho
 
 **How to enable:** kscp ships beside kitty.exe and is found at every start; the paths to WinSCP and FileZilla, the transfer port, the global download and upload folders and the notification switch are on **Application > KiTTY++ Settings > Transfers & Tools**. Per session: each tool has its own **Protocol:** and **Port:** on its own panel — kscp SFTP or SCP on **Connection > SSH > KSCP** (with the kscp options and the drag-and-drop switch), WinSCP's full list on **Connection > SSH > WinSCP** and FileZilla's four on **Connection > SSH > FileZilla**, each beside that tool's own options. An empty **Port:** shows the port in use in grey: the protocol's standard port — for SFTP and SCP the session's own port when the session is SSH, 22 otherwise, and for kscp the global transfer port before that; the fields take digits only. Where files go is on **Connection > Transfers**, and so is **Target override ([user@]hostname[:port]):** in its **Remote target** group (`SFTPConnect`) — the host WinSCP and FileZilla are pointed at instead of the session's own, with a port written into it winning over either tool's **Port:**.
 
-![kscp and WinSCP integration](docs/features/img/config_winscp_integration.jpg)
+![kscp, WinSCP and FileZilla integration](docs/features/img/config_winscp_integration.jpg)
 
 ### Binary compression
 
@@ -1319,6 +1197,176 @@ KiTTY extends PuTTY's command line with a long list of extra switches, letting y
 (no screenshot)
 
 ---
+
+### When this Windows is too old for something
+
+KiTTY runs on old Windows on purpose, and the features that need a modern one — dark mode, Windows Hello, per-monitor DPI, encrypted memory for secrets — are looked up while it starts rather than demanded of the loader. A Windows that does not have them still runs KiTTY; those features simply do not happen.
+
+The failure mode that creates is a bad one: a feature that quietly never works looks exactly like a setting that will not stick. So KiTTY says which ones they are — **one line in the terminal when a session opens**, naming what is unavailable, and the **full list in the Event Log**, with the API and DLL behind each, for whoever is diagnosing.
+
+The line is worth reading once and not thereafter, since the answer is a property of the machine. `warnmissingfeatures=no` under `[KiTTY]` in `kitty.ini` — or the checkbox on **Application > Security** — stops it. The Event Log entry is written either way.
+
+**How to enable:** on by default. **Application > Security**, *"Say what this Windows cannot do"*.
+
+(no screenshot)
+
+### A crash leaves a note worth attaching to a bug report
+
+When any program in the suite dies of a crash, it writes `kitty_crash.log` beside its executable (or into the temp directory when the program runs from read-only media): which program and version, which Windows, the exception code, and where it happened as module plus offset, with a scan of the stack for return addresses. That is what a useful crash report needs, so **if you file an issue about a crash, please attach the file**.
+
+It is safe to share. The log contains no session content, no key or password material and no paths — module names are recorded as bare file names, so not even your Windows user name appears in it. If nothing is writable at all, no log is written and the crash proceeds as it would have anyway; nothing about this changes a healthy program.
+
+**How to enable:** always on. There is nothing to configure.
+
+(no screenshot)
+
+### A 32-bit build
+
+Every program in the suite is also built for 32-bit Windows and ships as its own download — a ZIP, plus an ISO of both builds for mounting into a virtual machine. It is the build for systems a 64-bit binary cannot reach; on 64-bit Windows the regular packages are the ones to use.
+
+**How to enable:** download the `-32bit` package instead.
+
+(no screenshot)
+
+### The programs refuse to start under a foreign name
+
+Every KiTTY program checks its own file name at startup and exits if that name does not begin with the program's own name: `kitty.exe` and `kitty_portable.exe` want `kitty` or `putty`, `klink.exe` wants `klink` or `plink`, `kscp.exe` `kscp` or `pscp`, `ksftp.exe` `ksftp` or `psftp`, `kageant.exe` `kageant` or `pageant`, `kittygen.exe` and `kittygen-cli.exe` `kittygen` or `puttygen`. The PuTTY name is accepted for each because a tool that expects `putty.exe` or `plink.exe` is routinely pointed at a renamed KiTTY, and that has to keep working. Only the beginning of the name is checked and case does not matter, so a browser's duplicate `kitty (1).exe`, a version-named copy `kitty-0.85.exe`, `kitty_nocompress.exe` and `klink2.exe` all start normally. `kitty_pterm.exe` and `kitty_tel.exe` are the unchanged PuTTY programs and are not checked.
+
+Under any other name the windowed programs show one message box and exit, and the command-line tools print one line to stderr and exit 1:
+
+    Renamed executable: this program runs only as kitty*.exe. Found: 6bovxvce.exe
+
+Where there is nobody to click that box — a scheduled task, a service, a session with no desktop — the same line goes to the Windows **Application** event log under the source `KiTTY++` instead, and the command-line tools write it there as well as to stderr, so an unattended job that stops for this reason still says why.
+
+A signed tool that circulates under throwaway file names is what abuse of a legitimate binary looks like, and detection heuristics score it as such. Keeping the name recognisable costs you nothing and takes that use away. It is a nuisance bar rather than a security boundary: whoever keeps the name is unaffected, and the check can be removed at the cost of the signature. Nothing in KiTTY keys a mode on the file name — PuTTY mode is the `-putty` switch — so no feature depends on renaming anything.
+
+A downloaded release build also checks its own signature at startup, right after the name. It refuses to run on three findings and no others: the file was modified after it was signed, the signature was removed outright, or it was re-signed by somebody else. The message names which:
+
+    Signature check failed: this program is not signed by its publisher. Found: bad digest
+
+It never refuses because a machine is unable to judge. An old or unpatched Windows that does not know the signing algorithm, cannot read the signature at all, does not hold the root certificate, or has no revocation data — Windows XP and an offline Windows 7 among them — cannot form an opinion, and KiTTY starts normally there. So does a machine whose own policy distrusts the certificate: that says something about the machine, not about the file. Nothing is fetched from the network for this, and the Windows version is never consulted: the check asks the question and acts on the answer. Builds you compile yourself carry no signature and no check.
+
+Where Authenticode cannot judge, the **32-bit release files** have a third check that needs no Windows crypto at all: `kitty.exe`, `kitty_portable.exe`, `klink.exe`, `kscp.exe` and `ksftp.exe` of the 32-bit package carry a stamp — the SHA-256 of the file as it was released, signed with an Ed25519 key — and verify it at every start with KiTTY's own SHA-256 and Ed25519 code, which run on Windows XP as they do anywhere else. A file that no longer matches refuses to start with one message naming the finding, and the same line goes to the Application event log:
+
+    Integrity check failed: this program file was changed after its release. Found: modified
+
+`modified` is a file whose bytes differ from the stamp; `bad stamp` a stamp whose signature is not ours (an edited file whose hash somebody recomputed lands here — the stamp cannot be remade without the private key); `no stamp` a release file that was never stamped; `truncated` a file shorter than what was stamped. A fresh key pair is generated for every release and the private key is destroyed once the files are stamped, so no long-lived secret exists and no one stamp works across releases. When the check itself cannot run — the program cannot read its own file — a program somebody can see starts anyway, and one that nobody can see (no desktop, or `kitty.exe` started hidden) refuses with `cannot check`, event log only. Like the two checks before it this is a nuisance bar and not a security boundary: whoever removes the check code gets a working file, but a fresh one per release. Builds you compile yourself carry no stamp and no check.
+
+(no screenshot)
+
+### The application notification
+
+One note for the whole installation, shown to whoever starts KiTTY: a house rule, a maintenance window, a reminder that this PC reaches production.
+
+It appears in the small notice window near the clock, raised by the first window each KiTTY process opens — the terminal, the launcher or the configuration window. It never takes the focus and has no timeout: it stays until it is clicked, so it can be read in your own time and it does not stand between you and the session. Only one copy is on the desktop at a time, so half a dozen KiTTY windows opened together do not stack up half a dozen notices.
+
+It also survives the traffic around it. Another notice from the same process — an update is available, the saved-session list is showing an older KiTTY's sessions, the agent answering is not one KiTTY recognises — takes the screen for its few seconds and then hands it back, and the note is there again, still waiting to be clicked.
+
+*"Show once while the launcher runs"* changes what a click means. Off, a click only takes the note off this desktop and the next KiTTY started shows it again. On, a click records that the note has been read: the process that clicked remembers it, and so does the session launcher when one is running, so nothing shows that note again for as long as either is there — and editing the note makes it a different note, which is shown again.
+
+Earlier versions kept the same note in the registry and displayed it in a message box at every start, which had to be clicked away before anything happened. That value is still the note, so an installed KiTTY keeps what it had.
+
+**How to enable:** **Application > Security > Application Notification**, *"Notification:"*. Empty displays nothing. Stored per installation (`[KiTTY] notes` in `kitty.ini`, one line with `\n` for a line break; `notesonce` is the checkbox), not per session.
+
+(no screenshot)
+
+### Where the helper programs live
+
+KiTTY drives programs it does not contain: **WinSCP** or **FileZilla** for a graphical file transfer of the session you are on (`WinSCPPath`, `FileZillaPath` in `kitty.ini`; the Tools menu offers each only while its executable exists), **kscp** for uploads and *Get file*, and **rz** / **sz** for ZModem transfers inside the terminal.
+
+Where those are installed is a property of the PC, not of a connection — the same session opened on your laptop and on a colleague's machine should not need two different paths. So the paths live in `kitty.ini` and are shared by every session, and the settings that *are* per session — which protocol and port each tool uses, where downloads go — stay on the session's own panels.
+
+**How to enable:** **Application > KiTTY++ Settings > Transfers & Tools**, then the WinSCP, FileZilla and ZModem leaves under it. Where files land and whether the far end may start a transfer is per session: **Connection > Transfers** (local download folder, "Always open Save Dialog", permission for transfers started by the far end). **Tools > Get File (kscp)** fetches the remote path on the clipboard into that folder, after a folder window.
+
+**FileZilla and the password.** FileZilla cannot read a password from a private file the way WinSCP does, so the session's **Connection > SSH > FileZilla** panel offers the choice with each consequence stated: *Ask in FileZilla* (default; only user, host and port are handed over), *Temporary configuration* (a private Site Manager file, deleted a minute after the start) or *Command line* (readable by other processes while FileZilla runs). The preferred way is an SSH key served by the agent, which needs no password at all.
+
+(no screenshot)
+
+### A note on a session
+
+A saved session can carry a free-text note: what the machine is for, who owns it, the change ticket that had you connect to it — the sentence you would otherwise keep in a file beside the session list.
+
+It is stored with the session like any other setting, so it travels through **Export all / Import all** and survives a rename. It is never sent to the host, and KiTTY itself shows it only here, on this panel: it is a note for you, not a label the session list displays.
+
+**How to enable:** **Comment** at the foot of the configuration tree.
+
+(no screenshot)
+
+### The configuration window remembers how you use it
+
+Four behaviours of the configuration window itself:
+
+- **The Category tree keeps your folds.** Any category you fold - closed or
+  open - stays that way the next time the window opens, whatever the
+  `categoryexpand` default says; putting it back to the default forgets it.
+- **The loaded session's name is always in sight**, right-aligned in the
+  title strip above the panel, so you know whose settings you are looking at
+  wherever you are in the tree.
+- **Help never answers with a beep.** The context-help click (the `?` in the
+  title bar) on a spot with no topic of its own opens the manual at the
+  current panel's topic instead. The help window opens as an ordinary window,
+  not pinned in front of the configuration box, so the two sit side by side.
+- **Named proxy pre-sets load from the Proxy panel itself** — a chooser and a
+  Load button at the foot of **Connection > Proxy**, replacing the separate
+  picker window.
+
+(no screenshot)
+
+### The KiTTY++ Settings tree
+
+Every setting of the program itself - not of a session - has a panel now,
+under **Application > KiTTY++ Settings**: where settings are kept and how many
+backups are held (*Storage & Backup*, with a *KiTTY.ini* leaf that shows the
+configuration file read-only, follows it on disk, offers the shipped
+kitty.ini.example beside it for copying, and hands editing to your editor
+with a warning), the colour theme, title bar, icons and
+font fallback (*Appearance*), keys and mouse with a *Shortcuts* leaf, typing
+automation and broadcast (*Automation*), *Terminal & Printing* (the renderer, the frame pacing, the feature switches, printing), the
+auto-reconnect master switch and in-line confirmations (*Reconnect & Prompts*),
+file-transfer helpers (*Transfers & Tools* with *WinSCP* and *ZModem*), the
+*Launcher*, and *System*. Each leaf says where its values are kept, and every
+change is saved as you make it - the footer line on each panel says so. Before
+this, most of these could only be changed by editing `kitty.ini` or the
+registry by hand.
+
+**System** shows which program Windows hands `telnet://`, `ssh://`, `kitty://`,
+`putty://` links and `.ktx` session files to - this KiTTY++, another KiTTY, some
+other program, or nobody - and offers three buttons that each ask before
+writing: register this program, register and take over entries other programs
+own (each backed up to a `.reg` file first), and unregister. They do what
+`-sshhandler` and `-fileassoc` do from the command line. A checkbox, *Add this
+KiTTY++ folder to the user PATH*, makes `klink`, `kscp`, `ksftp` and the other
+tools callable by name from any newly opened shell.
+
+(no screenshot)
+
+### A portable copy, and back into the registry
+
+**Application > Migration > KiTTY storage** moves a whole store between the
+registry and a folder. **Make a portable copy** writes `kitty.exe` with its
+companion programs, a `kitty.ini` holding every setting plus `savemode=dir`,
+and the sessions, named proxies and host keys into a folder you pick; the
+saved passwords are re-protected for the copy under a master password you
+choose (asked once per start; the copy works wherever the folder goes) or for
+this PC only. Run `kitty.exe` from that folder and it uses those files and
+never the registry - on a stick, in a synced folder, on another PC. The
+registry stays as it is. **Take a folder store into this registry** does the
+reverse, as a merge: what the folder holds replaces the registry's version,
+what it does not hold stays. From the command line: `-portablecopy <dir>` and
+`-takefolder <dir>`, with `-bundlepwfile` / `-bundlethispc` for the password
+choice.
+
+(no screenshot)
+
+### A session note at login
+
+The **Comment** a session carries (Session > Comment) can be printed into the
+terminal once the login has succeeded, framed as a *KiTTY++ session note* -
+what the machine is for, who owns it, what to remember before typing. The
+checkbox *Notify the user at login* on the Comment panel is on by default;
+untick it for a session whose note is for your eyes only.
+
+(no screenshot)
 
 ## Bonus
 
