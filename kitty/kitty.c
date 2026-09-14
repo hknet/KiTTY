@@ -3754,11 +3754,6 @@ void InitWinMain( void ) {
 	// Initialise les noms des fichier de configuration kitty.ini et kitty.sav
 	InitNameConfigFile() ;
 
-	/* KiTTY: remove any leftover "KiTTY++ download in progress" staging folder
-	 * from a crashed Get File (only those whose .lock is free - a live download
-	 * holds it). The folder chosen for a wildcard download is swept again then. */
-	{ extern void kitty_xfer_sweep_downloads(void) ; kitty_xfer_sweep_downloads() ; }
-
 	// Initialisation du nom de la classe
 	strcpy( KiTTYClassName, appname ) ;
 
@@ -4106,6 +4101,16 @@ void InitWinMain( void ) {
 	NETDBG_TS("after GetUserName/GetComputerName");
 	snprintf( buffer, sizeof(buffer), "Starting %ld from %s@%s", GetCurrentProcessId(), username, hostname ) ;
 	debug_logevent(buffer) ;
+
+	/* KiTTY: remove any leftover "KiTTY++ download in progress" staging folder
+	 * from a crashed Get File (only those whose .lock is free - a live download
+	 * holds it). The folder chosen for a wildcard download is swept again then.
+	 * LAST in InitWinMain, on purpose: it reads the global download folder
+	 * through the settings store, so it must run after the registry root is
+	 * set and after the first-run block above has decided whether to adopt
+	 * PuTTY's sessions or restore a backup - placed before that capture it
+	 * touched the store first and made a fresh machine look like a known one. */
+	{ extern void kitty_xfer_sweep_downloads(void) ; kitty_xfer_sweep_downloads() ; }
 	NETDBG_TS("InitWinMain: return");
 }
 
