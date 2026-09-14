@@ -192,7 +192,12 @@ int kitty_rename_guard(const char *const *prefixes, int nprefixes, int gui)
  *
  *   TRUST_E_BAD_DIGEST    the file's own hash does not match what the
  *                         signature covers: it was modified after signing.
- *                         The case this check exists for.
+ *                         The case this check exists for - on a Windows
+ *                         that can compute a SHA-256 Authenticode digest.
+ *                         One that cannot (XP; Vista and 7 without the
+ *                         2012 SHA-2 update) answers BAD_DIGEST for every
+ *                         intact file, so there it is "cannot judge" (see
+ *                         the CryptCATAdminAcquireContext2 probe below).
  *   TRUST_E_NOSIGNATURE   AND the PE carries no certificate table at all
  *                         (kg_has_cert_table below). The second half of that
  *                         condition is not decoration: this code does not only
@@ -353,9 +358,26 @@ static int kg_signature_verdict(char *reason, size_t reasonsz)
     st = p_verify((HWND)INVALID_HANDLE_VALUE, &action, &wd);
 
     if (st == TRUST_E_BAD_DIGEST) {
-        strncpy(reason, "bad digest", reasonsz - 1);
-        reason[reasonsz - 1] = '\0';
-        refuse = 1;
+        /*
+         * A bad digest is only evidence when this Windows can compute the
+         * digest at all. Our signature is SHA-256, and a wintrust without
+         * SHA-2 Authenticode support - Windows XP, and Vista / 7 without the
+         * 2012 update that added it - does not report that it cannot: it
+         * hashes with what it has, finds the number in the signature does
+         * not match, and answers BAD_DIGEST for a file nobody touched. Every
+         * intact release program refused to start on XP that way. Ask the
+         * machine, not the version: CryptCATAdminAcquireContext2 arrived in
+         * wintrust.dll with SHA-2 support and is absent before it. Without
+         * it this is "cannot judge", the program runs, and the integrity
+         * stamp (kitty_selfcheck.c) is the check that judges there.
+         */
+        if (kitty_api_from(wintrust, "wintrust.dll",
+                           "CryptCATAdminAcquireContext2", KITTY_API_OPTIONAL,
+                           "the signature self-check") != NULL) {
+            strncpy(reason, "bad digest", reasonsz - 1);
+            reason[reasonsz - 1] = '\0';
+            refuse = 1;
+        }
     } else if (st == TRUST_E_NOSIGNATURE && kg_has_cert_table() == 0) {
         /* The header agrees there is nothing to verify: the signature was
          * stripped. A NOSIGNATURE with a table present is a wintrust that
