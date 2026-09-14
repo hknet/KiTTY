@@ -187,6 +187,8 @@ To convert everything in one go, use **Export all…** followed by **Import all�
 
 ### Importing old sessions
 
+**First run: your PuTTY sessions are already there.** The first time KiTTY++ starts on a machine where it has no settings of its own but PuTTY does, it copies PuTTY's sessions into its own store, so you open onto your familiar list instead of an empty one. PuTTY is left untouched — it is a copy — and if KiTTY++ finds one of its own backups from a previous install it restores that instead. This happens once, silently, in registry mode; the panel below is the way to bring sessions over by hand at any later time.
+
 **Application > Migration** lists the sessions in the old KiTTY (`9bis.com`) and PuTTY registry hives and copies the ones you select into KiTTY's own store. The panel appears only when such a hive actually holds sessions.
 
 **Application > Migration > (old) KiTTY Folders** does the same for sessions kept in files, written by an old KiTTY or by this one: point it at a folder (a portable KiTTY, a copied `Sessions` directory), press Scan, and every session file in it and its subfolders is listed with its path and state. Pick the target folder (`KiTTYimport` is offered) and import the selected rows; nothing is overwritten - a taken name becomes "name (folder)" - and a password this KiTTY cannot decode is left out rather than blocking the session.

@@ -190,6 +190,11 @@ features are working and verified. Known limitations as of this release:
 - **Session folders are one level deep.** A folder holds sessions, not other
   folders, so with `foldernavigation=yes` the `..` row always returns to the
   root.
+- **First run copies PuTTY's sessions once.** In registry mode, a first start
+  with no KiTTY++ hive of its own copies stock PuTTY's sessions into KiTTY++'s
+  store (or restores KiTTY++'s newest backup if one exists); PuTTY is not
+  changed. It happens once per machine and only while KiTTY++ has no sessions
+  yet.
 - **A portable store whose sessions live in SUBDIRECTORIES is not read.** This
   version writes one flat file per session under `Sessions\` with its folder
   recorded inside, and lists only the files directly there; a classic
