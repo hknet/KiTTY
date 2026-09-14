@@ -502,7 +502,7 @@ Instead of copying every public key into `authorized_keys` on every server, a **
 
 Port knocking lets you hide a server's SSH port behind a secret sequence of connection attempts, so the real service stays closed to anyone who doesn't know the pattern. KiTTY can send this knock sequence automatically just before it opens the actual connection, making it easy to reach servers that are otherwise locked down against attacks from the internet. You define the sequence as a comma-separated list, and KiTTY performs the knocks for you each time you connect.
 
-**How to enable:** Configuration > **Connection > Port knocking**: define the sequence of host:port knocks sent before the real connection is opened.
+**How to enable:** Configuration > **Connection** panel, *Port knocking* group: define the sequence of host:port knocks sent before the real connection is opened.
 
 (no screenshot)
 
@@ -541,15 +541,15 @@ Some days the proxy is not a property of any session — it is a fact about wher
 
 Workplace proxy mode is that switch. Pick one of your named proxies, say how long for, and until it is switched off **every** connection KiTTY makes goes through it — from the configuration box, the launcher, a desktop shortcut, an `ssh://` link or an auto-reconnect — whatever each session stores. **No session is modified**, so there is nothing to undo afterwards.
 
-**Switching it on and off.** *Connection → Proxy → Workplace* is the switch's own settings page, separate from the Proxy panel because it is not a setting of the session in front of you: choose the proxy, choose *Switch off after* (1, 2, 4, 8 or 12 hours, or only when the launcher exits) and press **Switch on**. The launcher's tray menu does the same in one click, using the proxy and duration you chose last. Either place can switch it off again.
+**Switching it on and off.** *Application → Workplace Proxy* is the switch's own settings page, separate from the Proxy panel because it is not a setting of the session in front of you: choose the proxy, choose *Switch off after* (1, 2, 4, 8 or 12 hours, or only when the launcher exits) and press **Switch on**. The launcher's tray menu does the same in one click, using the proxy and duration you chose last. Either place can switch it off again.
 
 **How it ends.** The mode is held by the session launcher: switch it off yourself, let the time run out, or stop the launcher — logging off, shutting down or killing it all end the mode, and nothing is left behind to surprise you tomorrow. A launcher that KiTTY started only to hold the mode closes again when the mode ends, unless you set `[Launcher] exitwithworkplace=no`; a launcher you started yourself always stays.
 
 **Seeing it.** A window whose connection really went through the proxy shows a dark green frame and `⇄ workplace proxy` in its title, for as long as that connection lives. This describes the *connection*, not the mode: a window that was already open when you switched the mode on is not going through it and says nothing, and one that is keeps saying so even after the mode ends, because a connection that is already established cannot be re-routed. The launcher's tooltip names the proxy and the time left, and a notice near the clock says when the mode goes on, off, or times out — once each, never on every start. Only the timeout notice offers to switch it back on; if you switched it off yourself, KiTTY assumes you meant it.
 
-**When the proxy stops answering** — usually because you have left the place it belongs to — the failed connection offers to take you to *Connection → Proxy → Workplace*, where you can switch the mode off or point it somewhere else. It does not switch anything off for you.
+**When the proxy stops answering** — usually because you have left the place it belongs to — the failed connection offers to take you to *Application → Workplace Proxy*, where you can switch the mode off or point it somewhere else. It does not switch anything off for you.
 
-**How to enable:** define at least one named proxy (above), then *Connection → Proxy → Workplace* → **Switch on**, or the launcher's tray menu. The duration notice can be lengthened with `[Launcher] noticeseconds=` in kitty.ini.
+**How to enable:** define at least one named proxy (above), then *Application → Workplace Proxy* → **Switch on**, or the launcher's tray menu. The duration notice can be lengthened with `[Launcher] noticeseconds=` in kitty.ini.
 
 ![Workplace proxy mode](docs/features/img/config_workplace.jpg)
 
@@ -661,7 +661,7 @@ Per shortcut, add `-restrict-acl` to the command line, typically in your shortcu
 
 **How to tell it is actually on.** Failing to *apply* the ACL is loud — KiTTY reports it and exits rather than run unprotected — but a setting that is never read is silent, and `kitty.ini` has several candidate locations, so it used to be possible to believe you were hardened when you were not. A restricted process now says so, in the places you already look:
 
-- the **window title** carries `(RESTRICTED)`, beside `(PROTECTED)` and `(ONTOP)` (needs `wintitle=yes`, the default);
+- the **window title** carries `(RESTRICTED)`, beside `(PROTECTED)`, `(ONTOP)` and `(BROADCAST)` (needs `wintitle=yes`, the default);
 - the **configuration box** title carries it too, which is what you see when you start KiTTY without a session;
 - the **About box** of both KiTTY and `kageant` says so in words;
 - the **tray tooltips** of `kageant` and of the launcher show `(RESTRICTED)`.
@@ -1408,9 +1408,9 @@ the port):**
 - `[KiTTY] scriptmode=no` — master off-switch for the RuTTY script engine (the
   session auto-script and the "Send a script file" menu entry).
 - `[KiTTY] size=yes` — appends the live terminal size `[cols x rows]` to the
-  window title, updated as you resize (hidden while maximized).
+  window title, updated as you resize, on a maximised window too.
 - `[KiTTY] wintitle` — KiTTY's title decorations, reimplemented safely: the
-  size suffix plus `(PROTECTED)` and `(ONTOP)` status markers, refreshed live
+  size suffix plus the `(PROTECTED)`, `(ONTOP)`, `(BROADCAST)` and `(RESTRICTED)` status markers, refreshed live
   when the state changes. `wintitle=no` gives plain stock titles. **Security
   note:** in classic KiTTY this same title machinery also *parsed* titles for
   `__xy` remote commands — that channel stays removed; decoration here is

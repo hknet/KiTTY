@@ -1215,7 +1215,7 @@
 /* Application/KiTTY++ Settings/Window & display */
 #define KT_KSET_WD_TITLE                             "Terminal Windows and Printing"
 #define KT_KSET_WD_TITLEBAR                          "Title bar"
-#define KT_KSET_WD_WINTITLE                          "Decorate the window title (size, PROTECTED, ONTOP)"
+#define KT_KSET_WD_WINTITLE                          "Decorate the window title (size, PROTECTED, ONTOP, BROADCAST, RESTRICTED)"
 #define KT_KSET_WD_SIZE                              "Show the terminal size in the title"
 #define KT_KSET_WD_WINROLL                           "Double-click the title bar rolls the window up"
 /* Appearance > Shared window position: the entry written by windows without
@@ -1248,7 +1248,7 @@
 #define KT_KSET_WD_SLIDEDELAY                        "Slideshow interval fallback, seconds (0 = none):"
 #define KT_KSET_WD_SHRINK                            "Resample a large image for Stretch+"
 #define KT_KSET_WD_ICONFILE                          "Icon library for session icons (.exe, .dll or .icl):"
-#define KT_KSET_WD_ICONFILE_NOTE                     "A session's Window > Icon panel picks one of its icons for " \
+#define KT_KSET_WD_ICONFILE_NOTE                     "A session's Window > Title & Icon panel picks one of its icons for " \
         "the terminal window. Read at the next start; blank = kitty.dll beside kitty.exe, else kitty.exe."
 #define KT_KSET_WD_ICONFILE_SELECT                   "Select the icon file"
 #define KT_KSET_WD_PRINTING                          "Printing"
@@ -1582,7 +1582,7 @@
         "the same output and both sending.\n\n" \
         "You can see them here:\n" \
         "    Session > Scripting        - the rutty script file\n" \
-        "    Connection > Data          - the login script\n\n" \
+        "    Connection > Login         - the login script\n\n" \
         "Nothing has been stopped; this is only a warning."
 #define KT_CMD_PASSWORD_IS                           "Your password is\n-%s-"
 #define KT_CMD_NO_PASSWORD                           "No password."
@@ -2630,7 +2630,7 @@
         "Stop it changing your clipboard at all for the " \
         "rest of this session?\n\n" \
         "You can turn it back on under " \
-        "Window > Selection, \"Remote clipboard writes\"."
+        "Window > Copy & Paste > Remote clipboard, \"Remote clipboard writes\"."
 #define KT_TWIN_SCRIPT_DISABLED                      "RuTTY scripting is disabled" \
         " ([KiTTY] scriptmode=no in kitty.ini)."
 #define KT_TWIN_SCRIPT_FILE_TITLE                    "Send script file..."
@@ -2653,8 +2653,8 @@
 #define KT_TWIN_LOG_CLOSED_LOG_OPEN                  "Connection closed; window kept open while the " \
         "Event Log is open (it closes when you close the log)"
 #define KT_TWIN_LOG_RUTTY_WAITING                    "Rutty script (Session > Scripting) is waiting for " \
-        "the login script (Connection > Data) to finish"
-#define KT_TWIN_LOG_RUTTY_STARTING                   "Login script (Connection > Data) has not finished; starting " \
+        "the login script (Connection > Login) to finish"
+#define KT_TWIN_LOG_RUTTY_STARTING                   "Login script (Connection > Login) has not finished; starting " \
         "the rutty script (Session > Scripting) anyway - if the " \
         "automation misbehaves, that is why"
 #define KT_TWIN_LOG_SCRIPT_STOPPED                   "script stopped"
@@ -2665,7 +2665,7 @@
 #define KT_TWIN_LOG_BC_REFUSED_OTHER_INSTALL         "broadcast refused: from another KiTTY " \
         "install (group '%s', ours is '%s')"
 #define KT_TWIN_LOG_BC_REFUSED_SESSION               "broadcast refused: this session does not " \
-        "accept broadcasts (Session > Scripting, or the " \
+        "accept broadcasts (Session > Broadcast, or the " \
         "Tools > Accept broadcast toggle)"
 #define KT_TWIN_LOG_BC_ACCEPTED                      "broadcast accepted (%d bytes), typing it " \
         "into this session"
@@ -2722,7 +2722,7 @@
 #define KT_SYSMENU_EXPORT_SETTINGS                   "Export &current settings"
 #define KT_SYSMENU_SHORTCUTS                         "Shortcut&s"
 #define KT_SYSMENU_HYPERLINKS                        "Hyper&links"
-#define KT_SYSMENU_ACCEPT_BROADCAST                  "Accept &broadcast (Session > Scripting)"
+#define KT_SYSMENU_ACCEPT_BROADCAST                  "Accept &broadcast (Session > Broadcast)"
 #define KT_SYSMENU_TOOLS                             "&Tools"
 #define KT_SYSMENU_CHECK_UPDATES                     "Check for &updates..."
 #define KT_SYSMENU_NO_SESSIONS                       "(No sessions)"

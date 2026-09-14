@@ -47,7 +47,7 @@ or KiTTY next changes the title.
 ### /transparency
 
 Toggle window transparency. When turning on, the transparency level comes from
-the session's configured value (*Window → Transparency*); a session with no
+the session's configured value (*Window → Appearance → Background*); a session with no
 value configured starts fully opaque.
 
 **Persists:** runtime only; the level is a session setting, and kitty.ini
@@ -223,7 +223,7 @@ are not deleted).
 
 (Re)load the login-script file for this session — with `[file]` given, load
 that file; without, reload the session's configured script (*Connection →
-Data → Login script*). The script content is stored in the session settings.
+Login → Login script*). The script content is stored in the session settings.
 
 **Persists:** session (after `/save`).
 

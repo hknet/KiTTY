@@ -687,15 +687,15 @@ char default_init_file_content[] =
 ; slidedelay: the GLOBAL FALLBACK for how long each background image is shown,\n\
 ;    in seconds, when the background is a folder of images. It applies to every\n\
 ;    session that does not set its own interval; a session that does (the\n\
-;    \"Slideshow:\" box under Window > Back.Image) always wins, and this value is\n\
+;    \"Slideshow:\" box under Window > Appearance > Background) always wins, and this value is\n\
 ;    then not consulted at all. 0 or unset means no timer - the image only\n\
 ;    changes when you ask for the next one. Nothing happens unless bgimage is\n\
 ;    on and the session actually has a background image.\n\
 ;slidedelay=0\n\
 \n\
 ; shrinkbitmap: better quality when a background image has to be made smaller.\n\
-;    It applies to ONE image placement: \"Stretch+\" under Window > Back.Image >\n\
-;    Image placement - the placement whose whole job is fitting the image to\n\
+;    It applies to ONE image placement: \"Stretch+\" under Window > Appearance >\n\
+;    Background > Image placement - the placement whose whole job is fitting the image to\n\
 ;    the window. Tile, Center, Stretch, Absolute and Blank ignore this key.\n\
 ;    With Stretch+, and only when the image is larger than the window in both\n\
 ;    directions, KiTTY resamples it down instead of letting Windows\n\
@@ -714,7 +714,7 @@ char default_init_file_content[] =
 ; transparency: offer the window-transparency controls. On by default, and\n\
 ;    offering them is not using them - every session starts fully opaque.\n\
 ;    The level itself is PER SESSION, not set here. It lives in the\n\
-;    configuration box under Window > Transparency, as a single\n\
+;    configuration box under Window > Appearance > Background, as a single\n\
 ;    \"Transparency:\" box, and is also reachable live from the window menu\n\
 ;    (Transparency + / -) and with Ctrl+Up / Ctrl+Down.\n\
 ;      0   fully opaque, and the default for a new session. The controls\n\
@@ -744,10 +744,6 @@ char default_init_file_content[] =
 ;    good, or no to hide them outright. The switch is in the configuration box\n\
 ;    under Application > Migration; ticking it records an explicit choice,\n\
 ;    which then wins over this key.\n\
-;    The same switch decides whether a session NAME still loads from the old\n\
-;    stores (-load, @name, the launcher, klink/kscp/ksftp): hidden means not\n\
-;    found. \"auto\" therefore retires the old stores for loading too once you\n\
-;    have sessions of your own - import them, or set yes to keep them.\n\
 ;showforeignsessions=auto\n\
 \n\
 ; checkupdate: look for a newer KiTTY release when a session starts, and show\n\
@@ -791,19 +787,19 @@ char default_init_file_content[] =
 ;winroll=yes\n\
 \n\
 ; WinSCPPath: the full path to the winscp.exe binary. Set it on\n\
-;    Application > KiTTY++ Settings > Transfers & Tools >WinSCP.\n\
+;    Application > KiTTY++ Settings > Transfers & Tools > WinSCP.\n\
 ;WinSCPPath=\n\
 \n\
 ; FileZillaPath: the full path to filezilla.exe. Set it on\n\
-;    Application > KiTTY++ Settings > Transfers & Tools >FileZilla. The Tools\n\
+;    Application > KiTTY++ Settings > Transfers & Tools > FileZilla. The Tools\n\
 ;    menu offers \"Start FileZilla\" only while the file exists.\n\
 ;FileZillaPath=\n\
 \n\
 ; rzcommand, szcommand: the full paths to the ZModem helper programs (rz.exe\n\
 ;    and sz.exe from lrzsz). Where they are installed is a property of this PC,\n\
 ;    so they live here rather than in each saved session; set them on\n\
-;    Application > KiTTY++ Settings > Transfers & Tools >ZModem. Their OPTIONS, and the download\n\
-;    folder, stay per session on Connection > ZModem.\n\
+;    Application > KiTTY++ Settings > Transfers & Tools > ZModem. Their OPTIONS stay\n\
+;    per session on Connection > ZModem; the download folder is on Connection > Transfers.\n\
 ;rzcommand=\n\
 ;szcommand=\n\
 \n\
@@ -811,7 +807,8 @@ char default_init_file_content[] =
 ;winscpdir=\n\
 \n\
 ; wintitle: enable KiTTY's window-title decorations: the live size suffix\n\
-;    (size=yes) and the (PROTECTED) / (ONTOP) status markers. no = plain stock\n\
+;    (size=yes) and the (PROTECTED) / (ONTOP) / (BROADCAST) / (RESTRICTED)\n\
+;    status markers. no = plain stock\n\
 ;    titles. Unlike classic KiTTY the title text is never parsed, only\n\
 ;    decorated - the old remote title-command channel stays removed.\n\
 ;wintitle=yes\n\

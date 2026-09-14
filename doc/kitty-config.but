@@ -1370,7 +1370,7 @@ is created. It colours the windows and dialogs; a terminal's own colours
 are a per-session setting and are not touched.
 
 \b \q{Title bar}: \q{Decorate the window title} enables the size suffix
-and the PROTECTED and ONTOP markers; \q{Show the terminal size in the
+and the PROTECTED, ONTOP, BROADCAST and RESTRICTED markers; \q{Show the terminal size in the
 title} adds the live \c{[24x80]}; \q{Double-click the title bar rolls
 the window up} is the roll-up feature.
 

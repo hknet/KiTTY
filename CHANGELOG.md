@@ -1,6 +1,6 @@
 # KiTTY changelog
 
-KiTTY is basically the full KiTTY feature set forward-ported and then some more and really serious speed enhancements and features onto a modern, security-patched **PuTTY 0.85** core.
+KiTTY++ is basically the full KiTTY feature set forward-ported and then some more and really serious speed enhancements and features onto a modern, security-patched **PuTTY 0.85** core.
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
@@ -11,15 +11,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **The 32-bit release files check their own integrity at startup.**
   `kitty.exe`, `kitty_portable.exe`, `klink.exe`, `kscp.exe` and `ksftp.exe`
   of the 32-bit package carry an Ed25519-signed SHA-256 stamp of the file as
-  it was released, checked with KiTTY's own crypto right after the name and
+  it was released, checked with KiTTY++'s own crypto right after the name and
   signature guards - offline, on every Windows the programs run on, Windows
   XP included, where the Authenticode signature cannot be judged. A file
-  changed after its release refuses to start with one message naming the
+  changed after its release refuses to start with one message reporting the
   finding (`modified`, `bad stamp`, `no stamp`, `truncated`) and one
-  Application event-log line. A fresh key pair is made for every release and
+  Application event-log line. A fresh key pair is generated for every release and
   the private half is destroyed after stamping. Builds you compile yourself
   carry no stamp and no check.
-
 - **Broadcast leaf and send console.** KiTTY++ Settings > Automation >
   Broadcast holds the master switch (`sendcmdmode`), the installation's
   group key as an editable field (`sendcmdgroup`, with Copy and Clear back
@@ -31,7 +30,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   per line, `-sendcmdkey` applies. Session > Broadcast got a note and an
   `open global Settings` button that jumps to the leaf. A terminal that
   actually receives broadcasts carries `(BROADCAST)` in its title.
-- **Application Notification.** KiTTY++ Settings > Security > Application
+- **Application Notification.** Application > Security > Application
   Notification holds a text ("Notification:") that every KiTTY++ process
   shows in a notice window at its first window - terminal, launcher or
   configuration window - until you click it; empty = nothing displayed.
@@ -42,7 +41,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   show that value at every start is gone.
 - **Verify the download with one pasted line.** README-BETA in every ZIP and
   on the ISO carries the command for Windows 10 and 11 and one for Windows 7
-  to 8.1; Windows XP has no checksum tool, so the README points XP users to
+  to 8.1; Windows XP has no native checksum tool, so the README points XP users to
   verifying on a newer Windows first. The 32-bit package also ships
   `SHA1SUMS` for tools that know SHA-1 only (Refs hknet/KiTTY#49).
 - **The shortcut editor.** KiTTY++ Settings > Keys & Mouse > Shortcuts lists
@@ -74,8 +73,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   by "Max transfer size (MB):" (per arriving file, default 1024, 0 = no limit,
   `TransferMaxMB`) and "Allow full path Upload-Requests" (off: a `/C:/...`
   request is refused per file before any dialog, the others continue;
-  `TransferFullPath`) - and "Terminal Windows Tools Menu". The 4 GiB
-  constant of kitten transfer is gone: the setting is the only limit. The
+  `TransferFullPath`) - and "Terminal Windows Tools Menu". The
   global defaults of the two live on the new leaf KiTTY++ Settings >
   Transfers & Tools > OSC 5113 (kitten) (`transfermaxmb`, `transferfullpath`);
   a "Global: ... MB" line beneath the session field shows the global value.
@@ -84,12 +82,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   KSCP panel opens with two lines that name Send File (kscp, Ctrl+F3) and
   Get File (kscp, Ctrl+F4).
 - **"Terminal Windows Tools Menu" per session**: four checkboxes on
-  Connection > Transfers - Send File (kscp), Get File (kscp), Start WinSCP,
+  Window > Behaviour - Send File (kscp), Get File (kscp), Start WinSCP,
   Start FileZilla, all on by default. Unchecked, the Tools menu entry is not
   shown for that session and its `[Shortcuts]` key does nothing
   (`ToolsMenuSendFile`, `ToolsMenuGetFile`, `ToolsMenuWinSCP`,
   `ToolsMenuFileZilla`). F1 on Get File opens its walk-through.
-- **A dialog of its own for files leaving over the session**: "KiTTY++ File
+- **A dialog for files leaving over the session**: "KiTTY++ File
   Upload request" replaces the general confirm box when the host asks to read
   files. One line per file with its full local path and a checkbox (all
   checked at open), a requested folder walked before the dialog opens so its
@@ -113,11 +111,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   D:\Downloads\photos") and a click opens that - one file selected in
   Explorer, several files their folder; after an upload the click opens the
   local upload folder.
-- **The ZModem leaf under Transfers & Tools** states where the options and
+- **The ZModem leaf under Transfers & Tools** shows where the options and
   the received files are: "Options for rz/sz are session-specific: Session >
   Connection > ZModem." and "Received Files are saved to the download folder:
   Session > Connection > Transfers".
-
 - **The Tools menu shows the keyboard shortcut next to "Start WinSCP", "Send
   File (kscp)", "Get File (kscp)" and "Start FileZilla"** (Shift+F3, Ctrl+F3,
   Ctrl+F4, Shift+F4), the way Windows menus do. The key shown is the one set
@@ -132,7 +129,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   sequences is not accepted. The OSC 4 palette reply, and these three, go to
   the host directly rather than through the local line editor, which could
   hold the answer back until Return. Refs cyd01/KiTTY#488
-- **Connection > Transfers: one panel for where files go.** The session's
+- **Connection > Transfers: one panel for filehandling.** The session's
   local download folder (empty = the global Download folder, shown beneath the
   field as "Global: ..."; "Locate..." opens the folder picker), "Always open
   Save Dialog", and the permission for transfers the far
@@ -149,10 +146,20 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   the download folder, then kscp fetches into the folder you chose. A Windows
   path on the clipboard is refused with a message. The help walks through it
   with examples (The Transfers panel).
+- **Get File never overwrites a local file silently.** One file goes through
+  a Save-As dialog, with Windows' own replace prompt when the name is taken.
+  Several named files whose targets already exist raise one box - Overwrite /
+  Keep both / Cancel - before anything is fetched; Keep both saves the new
+  copy as "name (1)". A wildcard or folder download lands in a visible
+  "KiTTY++ download in progress" folder inside the download folder, held by a
+  lock file while kscp runs; each file is then moved out, a clash is saved as
+  "name (1)", and the transfer window and the completion balloon say so. A
+  staging folder left behind by a crash is removed at the next start and
+  before the next wildcard download, unless a download still holds it.
 - **The Tools menu greys "Start WinSCP", "Send File" and "Get File" while the
   program behind them cannot be found,** instead of offering a click that ends
-  in nothing.
-- **FileZilla integration beside WinSCP** (Refs cyd01/KiTTY#501): Tools >
+  nowhere.
+- **FileZilla integration besides WinSCP** (Refs cyd01/KiTTY#501): Tools >
   "Start FileZilla" opens FileZilla on the session's host, user and port, with
   the shared protocol setting (sftp, ftp, ftps, ftpes). The path lives on
   KiTTY++ Settings > Transfers & Tools > FileZilla (`FileZillaPath`); the menu
@@ -185,8 +192,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **Every file transfer is in the Event Log**: the request, each file with
   its final path and size, refusals with the reason, and the end or the
   cancellation of the session.
-
-- **The session's WinSCP panel names where the executable path went** ("The
+- **The session's WinSCP panel tells where the executable path went** ("The
   path to the WinSCP executable is a global setting.") and its "Open App
   Settings" button jumps to KiTTY++ Settings > Transfers & Tools > WinSCP.
   The session's KSCP panel does the same for the file-copy helper ("The path
@@ -202,7 +208,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   proxy password and a named proxy's password are held in the running
   configuration wrapped with `CryptProtectMemory`, scoped to the process, and
   decrypted only into a buffer that is wiped as soon as the value has been
-  used - at SSH login, at proxy authentication, in the configuration box.
+  used - at SSH login, at proxy authentication and in the configuration box.
   The settings a new window inherits from Duplicate Session or the launcher
   carry the passwords wrapped for the logon instead of in the clear, and the
   new window re-wraps them for itself. Send/Get file hands `kscp`/`ksftp` the
@@ -216,8 +222,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   private file can be created at all the password falls back to the command
   line as before, and a capable helper is handed the protected form there too:
   `-pw` now accepts that form as well as a plain password. The transfer window
-  states in one line how the password travelled, and prints nothing for a login
-  by key or through the agent. A Windows
+  reports in one line how the password travelled and prints nothing for a login
+  by key or through the agent. An old Windows Version
   without `CryptProtectMemory` keeps the passwords as before and names the
   missing feature in the session's one-line report.
 - **The programs refuse to start under a foreign file name.** Every KiTTY
@@ -229,7 +235,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   and case is ignored, so `kitty (1).exe`, `kitty-0.85.exe` and the portable
   build still run; a copy under a throwaway name shows one message box on an
   interactive desktop, writes one Application event-log line where there is
-  nobody to click it, and exits 1. It removes the
+  nobody to click it, and exits 1. This removes the
   renamed-signed-tool use that detection heuristics score as malicious.
   `kitty_pterm.exe` and `kitty_tel.exe` are the unchanged PuTTY programs and
   are not checked. A release build also verifies its own Authenticode
@@ -276,7 +282,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   default `auto` the old stores therefore retire themselves for loading too
   once this KiTTY has sessions of its own - import the ones still in use, or
   set `showforeignsessions=yes` to keep loading them. The importer always
-  sees both hives. The Migration panel says so under the switch.
+  sees both hives. The Migration panel informs the user under the switch.
 - **Dark mode reaches the popup menus and the transfer windows.** The colour
   theme now also applies to every popup menu - the terminal's right-click and
   Alt+Space menus, the launcher's and kageant's tray menus, kittygen's menus -
@@ -324,7 +330,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   unchanged.
 - **The session comment prints before the connection starts.** With
   "Notify the user at login" on (Session > Comment, on by default), the
-  comment is printed into the terminal once, at the top, before KiTTY
+  comment is printed into the terminal once, at the top, before KiTTY++
   connects - so it is there even when the connection fails. It used to be
   printed after the SSH login. An old per-session `Notes` value, written by
   the send-text box of earlier KiTTY versions, is moved into the comment
@@ -350,21 +356,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   or any other challenge asked on top of the password. Nothing reaches
   the settings store unless the session is saved, and Security >
   Passwords (`userpasssshnosave=yes`) still switches the whole thing off
-  (Refs hknet/KiTTY#50).
-- **The kitten transfer permission dialogs no longer stop the terminal.**
-  Both are modeless now, so the session keeps running, drawing and taking
-  input while the question stands, and a transfer the far end gives up on
-  takes its dialog down with it. The upload request resizes in both
-  directions without leaving pieces of one button drawn inside another, it
-  opens at the height its list of files actually needs and can be made as
-  short as a three-row list, its buttons are as wide as the captions they
-  carry - "Allow selected" was drawn clipped, over the top of itself,
-  because the button kept the width the template's own caption needed - and
-  the warning line
-  follows the colour theme instead of a fixed red on a fixed light
-  background. A requested file that does not exist on this PC is now listed
-  as well, marked "- not found", and "Locate..." puts a local file in its
-  place: it is sent under the name the host asked for.
+  (Refs hknet/KiTTY#50), the claim there was wrong until now (sorry).
 - **Windows raised by a session wear that session's icon.** The two kitten
   transfer requests had none at all - a generic caption icon and a blank in
   the taskbar - and the /help window and the title-placeholder list took the

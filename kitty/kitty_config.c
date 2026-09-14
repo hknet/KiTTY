@@ -7997,7 +7997,7 @@ extern const char *kitty_broadcast_group(void);
  * an implicit int() call. */
 extern int kitty_broadcast_group_from_ini(void);
 
-/* ---- Session > Scripting: the broadcast key -------------------------------
+/* ---- Session > Broadcast: the broadcast key -------------------------------
  *
  * The field shows the key this session listens for: its own if set, otherwise
  * the install's generated one. It is LOCKED by default so it cannot be changed

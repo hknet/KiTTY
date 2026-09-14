@@ -66,7 +66,7 @@ const char *kitty_broadcast_group( void ) ;  /* kitty.c: which KiTTYs hear us */
 #define IDM_BROADCASTTOGGLE 0x01C0           /* Tools > Accept broadcast */
 /*
  * ONE state, two editors. The arming lives in the session's own conf
- * (CONF_kitty_accept_broadcast), so Session > Scripting and this window's Tools
+ * (CONF_kitty_accept_broadcast), so Session > Broadcast and this window's Tools
  * toggle are two views of the SAME value: flip the menu item and Change Settings
  * shows it; press Apply and the menu tick follows.
  *
@@ -5415,7 +5415,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           case IDM_BROADCASTTOGGLE: {
             /* The quick view of the session setting: flips the SAME conf value
-             * Session > Scripting edits, so the two never disagree. Not saved
+             * Session > Broadcast edits, so the two never disagree. Not saved
              * unless the session is - an unsaved flip reverts on next load. */
             int on = !kitty_broadcast_armed(wgs);
             conf_set_bool(wgs->conf, CONF_kitty_accept_broadcast, on != 0);

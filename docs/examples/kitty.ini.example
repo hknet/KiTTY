@@ -684,15 +684,15 @@
 ; slidedelay: the GLOBAL FALLBACK for how long each background image is shown,
 ;    in seconds, when the background is a folder of images. It applies to every
 ;    session that does not set its own interval; a session that does (the
-;    "Slideshow:" box under Window > Back.Image) always wins, and this value is
+;    "Slideshow:" box under Window > Appearance > Background) always wins, and this value is
 ;    then not consulted at all. 0 or unset means no timer - the image only
 ;    changes when you ask for the next one. Nothing happens unless bgimage is
 ;    on and the session actually has a background image.
 ;slidedelay=0
 
 ; shrinkbitmap: better quality when a background image has to be made smaller.
-;    It applies to ONE image placement: "Stretch+" under Window > Back.Image >
-;    Image placement - the placement whose whole job is fitting the image to
+;    It applies to ONE image placement: "Stretch+" under Window > Appearance >
+;    Background > Image placement - the placement whose whole job is fitting the image to
 ;    the window. Tile, Center, Stretch, Absolute and Blank ignore this key.
 ;    With Stretch+, and only when the image is larger than the window in both
 ;    directions, KiTTY resamples it down instead of letting Windows
@@ -711,7 +711,7 @@
 ; transparency: offer the window-transparency controls. On by default, and
 ;    offering them is not using them - every session starts fully opaque.
 ;    The level itself is PER SESSION, not set here. It lives in the
-;    configuration box under Window > Transparency, as a single
+;    configuration box under Window > Appearance > Background, as a single
 ;    "Transparency:" box, and is also reachable live from the window menu
 ;    (Transparency + / -) and with Ctrl+Up / Ctrl+Down.
 ;      0   fully opaque, and the default for a new session. The controls
@@ -784,19 +784,19 @@
 ;winroll=yes
 
 ; WinSCPPath: the full path to the winscp.exe binary. Set it on
-;    Application > KiTTY++ Settings > Transfers & Tools >WinSCP.
+;    Application > KiTTY++ Settings > Transfers & Tools > WinSCP.
 ;WinSCPPath=
 
 ; FileZillaPath: the full path to filezilla.exe. Set it on
-;    Application > KiTTY++ Settings > Transfers & Tools >FileZilla. The Tools
+;    Application > KiTTY++ Settings > Transfers & Tools > FileZilla. The Tools
 ;    menu offers "Start FileZilla" only while the file exists.
 ;FileZillaPath=
 
 ; rzcommand, szcommand: the full paths to the ZModem helper programs (rz.exe
 ;    and sz.exe from lrzsz). Where they are installed is a property of this PC,
 ;    so they live here rather than in each saved session; set them on
-;    Application > KiTTY++ Settings > Transfers & Tools >ZModem. Their OPTIONS, and the download
-;    folder, stay per session on Connection > ZModem.
+;    Application > KiTTY++ Settings > Transfers & Tools > ZModem. Their OPTIONS stay
+;    per session on Connection > ZModem; the download folder is on Connection > Transfers.
 ;rzcommand=
 ;szcommand=
 
@@ -804,7 +804,8 @@
 ;winscpdir=
 
 ; wintitle: enable KiTTY's window-title decorations: the live size suffix
-;    (size=yes) and the (PROTECTED) / (ONTOP) status markers. no = plain stock
+;    (size=yes) and the (PROTECTED) / (ONTOP) / (BROADCAST) / (RESTRICTED)
+;    status markers. no = plain stock
 ;    titles. Unlike classic KiTTY the title text is never parsed, only
 ;    decorated - the old remote title-command channel stays removed.
 ;wintitle=yes

@@ -121,7 +121,7 @@ or still want real-world testing. The full, per-release list is in
   wire (a remote writing your clipboard and reading it, including an 80 KB payload). What
   is untested is whether **non-text** formats such as images survive the round trip; only
   text has been exercised.
-- **far2l clipboard "Ask" mode** (Window → Selection) — answering **OK** grants the remote
+- **far2l clipboard "Ask" mode** (Window → Copy & Paste) — answering **OK** grants the remote
   clipboard access for the rest of the session (no per-request reprompt). Choose **Deny**
   instead if a remote `far2l` should never reach your clipboard.
 - **adb backend** — verified against test fixtures, not yet against a real Android device.

@@ -22,8 +22,8 @@ questions people actually arrive with.
    session's character set, or a **control sequence** for a key that has no
    character, such as F5, Home or Shift+Right.
 4. Those bytes go down the connection. The program at the far end matches them
-   against its **terminfo** entry for `$TERM` (see *Connection → Data →
-   Terminal-type string*, `xterm` by default).
+   against its **terminfo** entry for `$TERM` (see *Connection → Login →
+   Terminal details → Terminal-type string*, `xterm` by default).
 
 Step 3 is where the settings below live, and step 4 is why "correct" means
 "what the other end expects", not "what looks tidy".
@@ -131,7 +131,7 @@ host's `$TERM` does not describe modified arrows.
 host's `stty erase` disagree. Change either, not both.
 
 **"A key works in PuTTY but not here, or the other way round."** Compare the
-*Terminal-type string* (*Connection → Data*) first: the application is matching
+*Terminal-type string* (*Connection → Login → Terminal details*) first: the application is matching
 terminfo for that name, so `putty` and `xterm` genuinely behave differently.
 
 **"How do I see what a key actually sends?"** Run `cat -v` on the far end and
@@ -143,7 +143,7 @@ question in one step, and turns "it does nothing" into something reportable.
 ## KiTTY's own keys
 
 Separate from everything above, KiTTY reserves some combinations for itself —
-shortcuts (*Window → Shortcuts*), the session launcher's global hotkeys, and the
+shortcuts (*Application → KiTTY++ Settings → Keys & Mouse → Shortcuts*), the session launcher's global hotkeys, and the
 special-command keys. Those never reach the session. If a host application wants
 a combination KiTTY has taken, the shortcut can be changed or switched off; see
 [FEATURES.md](FEATURES.md).

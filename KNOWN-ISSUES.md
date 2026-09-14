@@ -4,7 +4,7 @@ The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
 features are working and verified. Known limitations as of this release:
 
 > **Where the clipboard settings live.** They moved in 0.84.1.68 and are now
-> under **Window → Selection → Remote clipboard**, with the numeric limits in
+> under **Window → Copy & Paste → Remote clipboard**, with the numeric limits in
 > **→ Limits** and the title/tray markers in **→ Notices**. References below use
 > the new locations.
 
@@ -61,12 +61,12 @@ features are working and verified. Known limitations as of this release:
   faulty. GET works on both. Whether **non-text** clipboard formats (images)
   round-trip is still unverified; only text has been tested.
 - **far2l clipboard privacy latch:** when **far2l shared clipboard** is set to
-  **Ask** (Window → Selection → Remote clipboard), answering **OK** grants the
+  **Ask** (Window → Copy & Paste → Remote clipboard), answering **OK** grants the
   remote access to your clipboard for the rest of that session — it does not
   re-prompt per request. Set it to **Deny** if you do not want a remote `far2l`
   to read/write your clipboard. The focus rule below still applies to it.
 - **OSC 52 remote clipboard writes are asked about, text-only, and write-only.**
-  *Remote clipboard writes (OSC 52)* (Window → Selection) defaults
+  *Remote clipboard writes (OSC 52)* (Window → Copy & Paste) defaults
   to **Ask** as of 0.84.1.69 — the write direction changes what you paste next
   and cannot disclose anything to the host, but it is still a remote host
   reaching into something you use for passwords. **Sessions saved before this
@@ -81,7 +81,7 @@ features are working and verified. Known limitations as of this release:
   that is not valid base64, is refused entirely rather than pasted in part.
 - **OSC 52 remote clipboard *reads* are off by default, and there is no way to
   switch them permanently on.** *Remote clipboard reads (OSC 52)* (Window →
-  Selection) is the other direction: a host asking for the contents of your
+  Copy & Paste) is the other direction: a host asking for the contents of your
   clipboard, which are then sent to it. It offers **Deny** (the default) and
   **Ask** — and deliberately no "Allow", because a clipboard holds a password
   often enough to matter and the host chooses the moment it asks. A read can be
@@ -91,14 +91,14 @@ features are working and verified. Known limitations as of this release:
   permission to read is ever written to disk. Every limit is a setting in the
   same panel.
 - **No remote clipboard access at all while the window has no keyboard focus.**
-  *Only while this window has focus* (Window → Selection → Remote clipboard)
+  *Only while this window has focus* (Window → Copy & Paste → Remote clipboard)
   defaults to on and covers reads **and writes**, across all three protocols. An
   existing permission is suspended rather than cancelled — the title marker gains
   a pause sign and greys — and resumes without asking again when you come back.
   Verified end-to-end in 0.84.1.68. Turn it off if you rely on a background job
   that copies its own output into your clipboard.
 - **A host that asks too fast is refused, but keeps its permission.** *Shortest
-  gap between reads* (Window → Selection → Remote clipboard → Limits) refuses a
+  gap between reads* (Window → Copy & Paste → Remote clipboard → Limits) refuses a
   request that arrives too soon; it does **not** revoke a grant you gave. Only the
   per-window read ceiling ends a grant early. In 0.84.1.67 and earlier the pacing
   limit withdrew the permission and prompted again, which turned a chatty program
@@ -131,7 +131,7 @@ features are working and verified. Known limitations as of this release:
   for a write — and the colour lives in the frame tint instead, where Windows 11
   will render it.
 - **Two scripting features watch the same output, and only one should be armed.**
-  A session's **login script** (Connection → Data) and **rutty** scripting
+  A session's **login script** (Connection → Login) and **rutty** scripting
   (Session → Scripting) both react to what the server sends. If both are
   configured, KiTTY warns and runs the login script first, then rutty. Prefer one
   per session. The login script did not run at all before 0.84.1.68.
