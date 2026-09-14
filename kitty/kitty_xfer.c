@@ -16,6 +16,7 @@
 #include "putty.h"
 
 #include <windows.h>
+#include <shellapi.h>        /* SHFileOperation: remove a leftover staging tree */
 
 #include "kitty.h"
 #include "kitty_commun.h"    /* MASKPASS */
@@ -368,6 +369,14 @@ struct ktx_win {
 	int arriving ;                 /* 1 = a Get (files arriving), 0 = a Send */
 	int done ;
 	int cancelled ;
+	/* Wildcard/folder Get File staging (never overwrite silently): kscp writes
+	 * into stage_dir; on success each file is moved to final_dir, a name clash
+	 * renamed to "name (1)". lock is the held-open marker so a sweep leaves a
+	 * live download alone. NULL / INVALID when this transfer does not stage. */
+	char *stage_dir, *final_dir ;
+	HANDLE lock ;
+	int renamed ;                  /* files that had to be renamed on the move */
+	int cleanup_failed ;           /* the staging folder could not be removed */
 	/* mini line-discipline so kscp's \r progress meter overwrites the current
 	 * line in place (terminal-style) instead of stacking new lines: */
 	char curline[2048] ;   /* current uncommitted line */
@@ -461,6 +470,131 @@ static void ktx_apply_fonts( struct ktx_win *w, int dpi ) {
 	if( ou ) DeleteObject( ou ) ;
 }
 
+/* ---- Get File overwrite protection: never replace a local file silently ----
+ *
+ * Single named file: a Save-As dialog (Windows' own replace prompt) - see
+ * GetFile. Several named files: the caller tests each name and, on "Keep both",
+ * asks here for a free "name (1)" path. Wildcard/folder: kscp writes into a
+ * VISIBLE staging folder with a held-open .lock; on success each file is moved
+ * out, a clash renamed, and the folder removed. Stale staging folders (a crash
+ * left one) are swept when their .lock can be taken. */
+
+/* out = "<dir>\<stem> (n)<ext>" for the first n>=1 whose file does not exist.
+ * ext is the last '.' of the base name (none -> whole name is the stem). */
+static void kitty_xfer_free_name( const char *dir, const char *base, char *out, size_t outsz ) {
+	char stem[512], ext[256] ;
+	const char *dot = strrchr( base, '.' ) ;
+	if( dot && dot != base ) { snprintf( stem, sizeof(stem), "%.*s", (int)(dot-base), base ) ; snprintf( ext, sizeof(ext), "%s", dot ) ; }
+	else { snprintf( stem, sizeof(stem), "%s", base ) ; ext[0] = '\0' ; }
+	int n ;
+	for( n = 1 ; n < 100000 ; n++ ) {
+		snprintf( out, outsz, "%s\\%s (%d)%s", dir, stem, n, ext ) ;
+		if( !existfile( out ) && !existdirectory( out ) ) return ;
+	}
+	snprintf( out, outsz, "%s\\%s (%d)%s", dir, stem, n, ext ) ;   /* astronomically unreachable */
+}
+
+/* Create the staging folder inside `dir` ("KiTTY++ download in progress", then
+ * "(2)","(3)"...) and hold its .lock open. Returns the folder path in stage and
+ * the lock handle, or 0 on failure. */
+static int kitty_xfer_make_stage( const char *dir, char *stage, size_t ssz, HANDLE *lock ) {
+	int n ;
+	for( n = 1 ; n < 100000 ; n++ ) {
+		if( n == 1 ) snprintf( stage, ssz, "%s\\%s", dir, KT_XFER_STAGING_DIR ) ;
+		else { char nm[128] ; snprintf( nm, sizeof(nm), KT_XFER_STAGING_DIR_N, n ) ; snprintf( stage, ssz, "%s\\%s", dir, nm ) ; }
+		if( CreateDirectoryA( stage, NULL ) ) break ;
+		if( GetLastError() != ERROR_ALREADY_EXISTS ) return 0 ;
+	}
+	char lp[4096] ; snprintf( lp, sizeof(lp), "%s\\%s", stage, KT_XFER_STAGING_LOCK ) ;
+	*lock = CreateFileA( lp, GENERIC_WRITE, 0 /* no share: the sweep's open fails while we hold it */,
+	                     NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_HIDDEN|FILE_FLAG_DELETE_ON_CLOSE, NULL ) ;
+	if( *lock == INVALID_HANDLE_VALUE ) { RemoveDirectoryA( stage ) ; return 0 ; }
+	return 1 ;
+}
+
+/* Move everything from w->stage_dir into w->final_dir, renaming a name that is
+ * already taken to "name (1)"; count the renames, feed a line per rename; then
+ * release the lock and remove the staging folder. Called from KTX_WM_DONE on
+ * the window thread AFTER kscp has exited. */
+static void kitty_xfer_finish_stage( struct ktx_win *w ) {
+	if( !w->stage_dir || !w->final_dir ) return ;
+	char pat[4096] ; snprintf( pat, sizeof(pat), "%s\\*", w->stage_dir ) ;
+	WIN32_FIND_DATAA fd ; HANDLE h = FindFirstFileA( pat, &fd ) ;
+	if( h != INVALID_HANDLE_VALUE ) {
+		do {
+			if( !strcmp( fd.cFileName, "." ) || !strcmp( fd.cFileName, ".." ) ) continue ;
+			if( !strcmp( fd.cFileName, KT_XFER_STAGING_LOCK ) ) continue ;   /* our marker */
+			char src[4096], dst[4096] ;
+			snprintf( src, sizeof(src), "%s\\%s", w->stage_dir, fd.cFileName ) ;
+			snprintf( dst, sizeof(dst), "%s\\%s", w->final_dir, fd.cFileName ) ;
+			if( existfile( dst ) || existdirectory( dst ) ) {
+				char freed[4096] ; kitty_xfer_free_name( w->final_dir, fd.cFileName, freed, sizeof(freed) ) ;
+				if( MoveFileExA( src, freed, MOVEFILE_COPY_ALLOWED ) ) {
+					const char *fb = strrchr( freed, '\\' ) ; fb = fb ? fb+1 : freed ;
+					char *ln = dupprintf( KT_XFER_RENAMED_LINE, fd.cFileName, fb ) ;
+					ktx_feed( w, ln, (int)strlen(ln) ) ; sfree( ln ) ;
+					w->renamed++ ;
+				}
+			} else {
+				MoveFileExA( src, dst, MOVEFILE_COPY_ALLOWED ) ;
+			}
+		} while( FindNextFileA( h, &fd ) ) ;
+		FindClose( h ) ;
+	}
+	if( w->lock && w->lock != INVALID_HANDLE_VALUE ) { CloseHandle( w->lock ) ; w->lock = NULL ; }  /* FILE_FLAG_DELETE_ON_CLOSE removes the marker */
+	if( !RemoveDirectoryA( w->stage_dir ) ) {
+		char *ln = dupprintf( KT_XFER_STAGING_KEEP_LINE, w->stage_dir ) ;
+		ktx_feed( w, ln, (int)strlen(ln) ) ; sfree( ln ) ;
+		w->cleanup_failed = 1 ;
+	}
+}
+
+/* Sweep leftover staging folders under `dir`: remove only ours, and only when
+ * the .lock opens (a live download holds it, so its open fails and it is left).
+ * Called at startup for the download dir + Downloads, and before a wildcard
+ * download into a folder. */
+void kitty_xfer_sweep_dir( const char *dir ) {
+	if( !dir || !dir[0] || !existdirectory( dir ) ) return ;
+	char pat[4096] ; snprintf( pat, sizeof(pat), "%s\\%s*", dir, KT_XFER_STAGING_DIR ) ;
+	WIN32_FIND_DATAA fd ; HANDLE h = FindFirstFileA( pat, &fd ) ;
+	if( h == INVALID_HANDLE_VALUE ) return ;
+	do {
+		if( !(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ) continue ;
+		char sd[4096], lp[4096] ; snprintf( sd, sizeof(sd), "%s\\%s", dir, fd.cFileName ) ;
+		snprintf( lp, sizeof(lp), "%s\\%s", sd, KT_XFER_STAGING_LOCK ) ;
+		if( existfile( lp ) ) {
+			/* try to take the marker: a running download holds it (no share) */
+			HANDLE t = CreateFileA( lp, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_DELETE_ON_CLOSE, NULL ) ;
+			if( t == INVALID_HANDLE_VALUE ) continue ;   /* still live: leave it */
+			CloseHandle( t ) ;   /* deletes the marker */
+		}
+		/* remove the folder tree (any leftover files too) */
+		{ char op[4097] ; SHFILEOPSTRUCTA fo ; memset( &fo, 0, sizeof(fo) ) ;
+		  memset( op, 0, sizeof(op) ) ; snprintf( op, sizeof(op)-1, "%s", sd ) ;
+		  fo.wFunc = FO_DELETE ; fo.pFrom = op ;
+		  fo.fFlags = FOF_NO_UI | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT ;
+		  SHFileOperationA( &fo ) ; }
+	} while( FindNextFileA( h, &fd ) ) ;
+	FindClose( h ) ;
+}
+
+/* Startup sweep: the global download folder and the user's Downloads. */
+void kitty_xfer_sweep_downloads( void ) {
+	char dir[4096] ;
+	/* At startup `conf` is still NULL; kitty_xfer_download_dir() then skips
+	 * the session folder and answers the GLOBAL download folder (Transfers &
+	 * Tools), else Downloads - which is exactly the startup sweep the design
+	 * asks for. The folder a download is aimed at is swept again when a
+	 * wildcard download starts into it. */
+	kitty_xfer_download_dir( conf, dir, sizeof(dir) ) ;
+	kitty_xfer_sweep_dir( dir ) ;
+	{ const char *dl = getenv( "USERPROFILE" ) ;
+	  if( dl && dl[0] ) {
+	      char dd[4096] ; snprintf( dd, sizeof(dd), "%s\\Downloads", dl ) ;
+	      if( _stricmp( dd, dir ) != 0 ) kitty_xfer_sweep_dir( dd ) ; }
+	}
+}
+
 /* Esc closes (or cancels) the transfer window. Key events go to the focused
  * child control - the read-only edit or the Close button - whose default procs
  * ignore Esc, so we subclass both to forward Esc as a WM_CLOSE to the parent
@@ -539,13 +673,24 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		w->done = 1 ;
 		const char *what = w->what ? w->what : KT_XFER_TRANSFER ;
 		if( code == 0 && !w->cancelled ) {
+			/* Wildcard/folder: move out of the staging folder now (kscp has
+			 * exited), renaming any clash to "name (1)" and counting it. */
+			kitty_xfer_finish_stage( w ) ;
 			/* [KiTTY] transfernotification: a Get File that produced the one
 			 * file opens that file, anything else opens its folder */
 			if( w->open_file && existfile( w->open_file ) )
-				kitty_xfer_notify( what, 1, 1, w->open_file ) ;
+				kitty_xfer_notify_ex( what, 1, 1, w->open_file, w->renamed ) ;
 			else
-				kitty_xfer_notify( what, w->arriving, 0, w->open_dir ) ;
-			if( conf && conf_get_bool( conf, CONF_pscp_keep_window ) ) {
+				kitty_xfer_notify_ex( what, w->arriving, 0, w->open_dir, w->renamed ) ;
+			if( w->renamed > 0 ) {          /* say it in the window, which then stays open */
+				char *t = dupprintf( "\r\n" KT_XFER_RENAMED_NOTE "\r\n", w->renamed ) ;
+				ktx_feed( w, t, (int)strlen(t) ) ; sfree( t ) ;
+			}
+			/* Auto-close ONLY when everything went as planned: keep it open
+			 * (Close focused) on the keep-window setting, on ANY rename, and
+			 * when the staging folder could not be removed. */
+			if( ( conf && conf_get_bool( conf, CONF_pscp_keep_window ) )
+			    || w->renamed > 0 || w->cleanup_failed ) {
 				char *t = dupprintf( KT_XFER_COMPLETE_LINE, what ) ;
 				ktx_feed( w, t, (int)strlen(t) ) ; sfree( t ) ;
 				SetWindowTextA( w->closebtn, KT_XFER_BTN_CLOSE ) ;
@@ -556,6 +701,12 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			}
 		} else {
 			char *m ;
+			/* Cancel or failure: drop the staging folder too (design: removed
+			 * after success, cancel or failure), without moving anything out. */
+			if( w->stage_dir ) {
+				if( w->lock && w->lock != INVALID_HANDLE_VALUE ) { CloseHandle( w->lock ) ; w->lock = NULL ; }
+				kitty_xfer_sweep_dir( w->final_dir ? w->final_dir : w->stage_dir ) ;
+			}
 			if( w->cancelled ) {
 				m = dupprintf( KT_XFER_CANCELLED_LINE, what ) ;
 				SetWindowTextA( hwnd, KT_CAP_XFER_CANCELLED ) ;
@@ -615,6 +766,8 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			if( w->thread ) CloseHandle( w->thread ) ;
 			if( w->what ) sfree( w->what ) ;
 			sfree( w->open_file ) ; sfree( w->open_dir ) ;
+			if( w->lock && w->lock != INVALID_HANDLE_VALUE ) CloseHandle( w->lock ) ;
+			sfree( w->stage_dir ) ; sfree( w->final_dir ) ;
 			free( w ) ;
 			SetWindowLongPtr( hwnd, GWLP_USERDATA, 0 ) ;
 		}
@@ -629,7 +782,8 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
  * kscp is done (a Get File of one file), else the folder (the download
  * folder for a Get, the upload folder for a Send). */
 static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const char *intro,
-                           int arriving, const char *open_file, const char *open_dir ) {
+                           int arriving, const char *open_file, const char *open_dir,
+                           const char *stage_dir, const char *final_dir, HANDLE lock ) {
 	static int registered = 0 ;
 	HINSTANCE hi = GetModuleHandle( NULL ) ;
 	if( !registered ) {
@@ -669,6 +823,9 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	w->what = dupstr( what ? what : KT_XFER_TRANSFER ) ;
 	w->open_file = ( open_file && open_file[0] ) ? dupstr( open_file ) : NULL ;
 	w->open_dir = ( open_dir && open_dir[0] ) ? dupstr( open_dir ) : NULL ;
+	w->stage_dir = ( stage_dir && stage_dir[0] ) ? dupstr( stage_dir ) : NULL ;
+	w->final_dir = ( final_dir && final_dir[0] ) ? dupstr( final_dir ) : NULL ;
+	w->lock = lock ;
 	w->arriving = arriving ;
 	char *title = dupprintf( KT_XFER_WINDOW_TITLE, w->what ) ;
 	int dpi0 = 96 ;
@@ -1102,7 +1259,7 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	    } }
 	  /* files leaving: the balloon's click opens the local upload folder */
 	  kitty_xfer_upload_dir( conf, updir, sizeof(updir) ) ;
-	  kitty_run_xfer( hwnd, buffer, whatbuf, intro, 0, NULL, updir ) ;
+	  kitty_run_xfer( hwnd, buffer, whatbuf, intro, 0, NULL, updir, NULL, NULL, INVALID_HANDLE_VALUE ) ;
 	  sfree( intro ) ; sfree( note ) ; }
 
 	//debug_log("%s\n",buffer);MessageBox( NULL, buffer, "Info",MB_OK );
@@ -1168,11 +1325,25 @@ for file in ${*} ; do echo "\033]0;__rv:"${file}"\007" ; done
 }
 */
 void GetOneFile( HWND hwnd, char * directory, const char * filename ) {
-    GetOneFileTo( hwnd, directory, filename, NULL ) ;
+    GetOneFileToPath( hwnd, directory, filename, NULL, NULL ) ;
 }
 
 /* localdir NULL = the download folder (kitty_xfer_download_dir). */
 void GetOneFileTo( HWND hwnd, char * directory, const char * filename, const char * localdir ) {
+    GetOneFileToPath( hwnd, directory, filename, localdir, NULL ) ;
+}
+
+/* localfile != NULL: kscp writes to that exact local PATH (a single named file
+ * chosen through Save-As, so Windows' own replace prompt has already handled an
+ * overwrite) instead of into the local folder. */
+void GetOneFileToPath( HWND hwnd, char * directory, const char * filename, const char * localdir, const char * localfile ) {
+    GetOneFileStaged( hwnd, directory, filename, localdir, localfile, NULL, INVALID_HANDLE_VALUE ) ;
+}
+
+/* The full form. final_dir != NULL: this is a staged wildcard/folder download -
+ * localdir is the staging folder kscp writes into, final_dir the folder the
+ * files are moved to on success, lock the held-open marker. */
+void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const char * localdir, const char * localfile, const char * final_dir, HANDLE lock ) {
     char buffer[4096], pscppath[4096]="", pscpport[4096]="22", dir[4096]=".", b1[256] ;
     int pwfiles = 0 ;   /* password handed over as a file, to delete after the start */
     int pw_mode = KX_PW_NONE ;   /* what the window will say about the hand-over */
@@ -1268,7 +1439,9 @@ void GetOneFileTo( HWND hwnd, char * directory, const char * filename, const cha
         }
         qcat( buffer, BC, src ) ; bcat( buffer, BC, " " ) ;
     }
-    qcat( buffer, BC, dir ) ;   /* local destination dir (single quoted argument) */
+    /* Local destination: an exact file path (Save-As, single named file) when
+     * given, else the folder. Both single-quoted so a space cannot split it. */
+    qcat( buffer, BC, ( localfile && localfile[0] ) ? localfile : dir ) ;
     //strcat( buffer, " > kitty.log 2>&1" ) ; //if( !system( buffer ) ) unlink( "kitty.log" ) ;
 
     chdir( InitialDirectory ) ;
@@ -1281,7 +1454,9 @@ void GetOneFileTo( HWND hwnd, char * directory, const char * filename, const cha
        * name's last component) when that exists once kscp is done, else the
        * folder. A wildcard or a trailing slash names a folder's contents. */
       char *one = NULL ;
-      if( filename && filename[0] && !strpbrk( filename, "*?" ) && filename[strlen(filename)-1] != '/' ) {
+      if( localfile && localfile[0] ) {
+          one = dupstr( localfile ) ;   /* Save-As: the exact file it will produce */
+      } else if( filename && filename[0] && !strpbrk( filename, "*?" ) && filename[strlen(filename)-1] != '/' ) {
           const char *base = strrchr( filename, '/' ) ;
           one = dupprintf( "%s\\%s", dir, base ? base + 1 : filename ) ;
       }
@@ -1290,7 +1465,11 @@ void GetOneFileTo( HWND hwnd, char * directory, const char * filename, const cha
        * actually did. Nothing of it when the login uses a key or the agent. */
       const char *hand = kx_pw_handover_line( pw_mode ) ;
       char *intro = hand ? dupprintf( "%s%s\r\n\r\n", note ? note : "", hand ) : NULL ;
-      kitty_run_xfer( hwnd, buffer, whatbuf, intro ? intro : note, 1, one, dir ) ;
+      /* Staged (wildcard/folder): kscp wrote into `dir` (the staging folder);
+       * on success the files move to final_dir. The balloon opens final_dir. */
+      kitty_run_xfer( hwnd, buffer, whatbuf, intro ? intro : note, 1, one,
+                      final_dir ? final_dir : dir,
+                      final_dir ? dir : NULL, final_dir, lock ) ;
       sfree( intro ) ; sfree( one ) ; sfree( note ) ; }
 
     //debug_log("%s\n",buffer);//MessageBox( NULL, buffer, "Info",MB_OK );
@@ -1363,7 +1542,10 @@ int kitty_xfer_notify_enabled( void ) {
         return stricmp( v, "no" ) != 0 && stricmp( v, "0" ) != 0 ;
     return 1 ;
 }
-void kitty_xfer_notify( const char * what, int arriving, int nfiles, const char * path ) {
+/* `renamed` > 0: a Get File saved that many files under a new name because the
+ * name was taken; the balloon says so, as the approved wording asks, beside the
+ * line the transfer window already carries. */
+void kitty_xfer_notify_ex( const char * what, int arriving, int nfiles, const char * path, int renamed ) {
     char * m, * done ;
     if( !kitty_xfer_notify_enabled() ) return ;
     done = dupprintf( KT_XFER_COMPLETE, what ? what : KT_XFER_TRANSFER ) ;
@@ -1380,8 +1562,15 @@ void kitty_xfer_notify( const char * what, int arriving, int nfiles, const char 
     } else {
         m = dupstr( done ) ;
     }
+    if( renamed > 0 ) {
+        char * t = dupprintf( "%s\r\n" KT_XFER_RENAMED_NOTE, m, renamed ) ;
+        sfree( m ) ; m = t ;
+    }
     kitty_tray_balloon_async( KT_CAP_XFER, m, path ) ;   /* szInfo truncates a long path */
     sfree( m ) ; sfree( done ) ;
+}
+void kitty_xfer_notify( const char * what, int arriving, int nfiles, const char * path ) {
+    kitty_xfer_notify_ex( what, arriving, nfiles, path, 0 ) ;
 }
 
 /* Does this session show the Tools menu entry? 0 = Send File (kscp),
@@ -1551,9 +1740,66 @@ void GetFile( HWND hwnd ) {
         sfree( msg ) ; sfree( clip ) ; return ;
     }
 
+    /* ONE named file (no interior newline, no wildcard, not a trailing-slash
+     * folder): a Save-As dialog with the remote name filled in, so Windows' own
+     * replace prompt guards an overwrite; kscp then writes to that exact path.
+     * Several files, wildcards and folders keep the folder picker below. */
+    if( !strpbrk( line, "\r\n" ) && !strpbrk( line, "*?" ) && line[0] && line[strlen(line)-1] != '/' ) {
+        char save[4096] ;
+        const char *base = strrchr( line, '/' ) ; base = base ? base + 1 : line ;
+        kitty_xfer_download_dir( conf, defdir, sizeof(defdir) ) ;
+        snprintf( save, sizeof(save), "%s\\%s", defdir, base ) ;
+        if( !SaveFileNameFrom( hwnd, save, KT_XFER_SAVE_AS_TITLE, "All files (*.*)|*.*|", defdir ) ) {
+            sfree( clip ) ; return ;
+        }
+        if( line[0] == '/' || line[0] == '~' || kitty_current_dir() == NULL )
+            snprintf( remote, sizeof(remote), "%s", line ) ;
+        else
+            snprintf( remote, sizeof(remote), "%s/%s", kitty_current_dir(), line ) ;
+        GetOneFileToPath( hwnd, NULL, remote, NULL, save ) ;
+        sfree( clip ) ; return ;
+    }
+
     kitty_xfer_download_dir( conf, defdir, sizeof(defdir) ) ;
     if( !OpenDirNameFrom( hwnd, dir, defdir, KT_XFER_GETFILE_PICK_TITLE ) || !dir[0] || !existdirectory( dir ) ) {
         sfree( clip ) ; return ;
+    }
+
+    /* Are any lines a wildcard (*?) or a folder (trailing '/')? Those download
+     * through a staging folder; a selection of named files instead gets the
+     * "already exists" box below. Scans on a copy, so `line` stays intact. */
+    int any_glob = 0 ;
+    { char *scan = dupstr( line ) ; char *l = scan, *nx ;
+      for( ; l && *l ; l = nx ) { nx = strpbrk( l, "\r\n" ) ; if( nx ){ *nx='\0'; nx++; while(*nx=='\r'||*nx=='\n') nx++; }
+        str_rtrim( l, " \t" ) ; while( *l==' '||*l=='\t' ) l++ ; if( !*l ) continue ;
+        if( strpbrk( l, "*?" ) || l[strlen(l)-1]=='/' ) { any_glob = 1 ; break ; } }
+      sfree( scan ) ; }
+
+    /* CASE 2: several NAMED files. If any already exist in dir, ask once -
+     * Overwrite / Keep both / Cancel (the shared themed 3-way box). */
+    int keepboth = 0 ;
+    if( !any_glob ) {
+        extern int kitty_confirm_box3( HWND, const char *, const char *, const char *, const char *, const char * ) ;
+        char existing[2048] ; existing[0] = '\0' ; int nexist = 0 ;
+        char *scan = dupstr( line ) ; char *l = scan, *nx ;
+        for( ; l && *l ; l = nx ) { nx = strpbrk( l, "\r\n" ) ; if( nx ){ *nx='\0'; nx++; while(*nx=='\r'||*nx=='\n') nx++; }
+            str_rtrim( l, " \t" ) ; while( *l==' '||*l=='\t' ) l++ ; if( !*l ) continue ;
+            const char *base = strrchr( l, '/' ) ; base = base ? base+1 : l ;
+            char cand[4096] ; snprintf( cand, sizeof(cand), "%s\\%s", dir, base ) ;
+            if( existfile( cand ) ) {
+                size_t el = strlen( existing ) ;
+                if( el < sizeof(existing)-260 ) snprintf( existing+el, sizeof(existing)-el, "%s\r\n", base ) ;
+                nexist++ ;
+            } }
+        sfree( scan ) ;
+        if( nexist > 0 ) {
+            char *body = dupprintf( KT_XFER_FILES_EXIST_TEXT, dir, existing ) ;
+            int ch = kitty_confirm_box3( hwnd, KT_CAP_XFER_FILES_EXIST, body,
+                        KT_XFER_BTN_OVERWRITE, KT_XFER_BTN_KEEPBOTH, KT_XFER_BTN_CANCEL_PLAIN ) ;
+            sfree( body ) ;
+            if( ch == 0 ) { sfree( clip ) ; return ; }   /* Cancel: nothing */
+            keepboth = ( ch == 2 ) ;
+        }
     }
 
     for( ; line != NULL && *line ; line = next ) {
@@ -1567,7 +1813,26 @@ void GetFile( HWND hwnd ) {
         } else {
             snprintf( remote, sizeof(remote), "%s/%s", kitty_current_dir(), line ) ;
         }
-        GetOneFileTo( hwnd, NULL, remote, dir ) ;
+        int is_glob = ( strpbrk( line, "*?" ) || line[strlen(line)-1]=='/' ) ;
+        if( is_glob ) {
+            /* CASE 3: into a staging folder, moved out (with rename) on success. */
+            char stage[4096] ; HANDLE lock = INVALID_HANDLE_VALUE ;
+            kitty_xfer_sweep_dir( dir ) ;   /* clear any stale staging first */
+            if( kitty_xfer_make_stage( dir, stage, sizeof(stage), &lock ) )
+                GetOneFileStaged( hwnd, NULL, remote, stage, NULL, dir, lock ) ;
+            else
+                GetOneFileTo( hwnd, NULL, remote, dir ) ;   /* fallback: straight in */
+        } else if( keepboth ) {
+            /* Keep both: a colliding name is saved as "name (1)". */
+            const char *base = strrchr( remote, '/' ) ; base = base ? base+1 : remote ;
+            char cand[4096] ; snprintf( cand, sizeof(cand), "%s\\%s", dir, base ) ;
+            if( existfile( cand ) ) {
+                char freed[4096] ; kitty_xfer_free_name( dir, base, freed, sizeof(freed) ) ;
+                GetOneFileToPath( hwnd, NULL, remote, dir, freed ) ;
+            } else GetOneFileTo( hwnd, NULL, remote, dir ) ;
+        } else {
+            GetOneFileTo( hwnd, NULL, remote, dir ) ;   /* Overwrite / no clash */
+        }
         nfiles++ ;
     }
     sfree( clip ) ;

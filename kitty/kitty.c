@@ -3754,6 +3754,11 @@ void InitWinMain( void ) {
 	// Initialise les noms des fichier de configuration kitty.ini et kitty.sav
 	InitNameConfigFile() ;
 
+	/* KiTTY: remove any leftover "KiTTY++ download in progress" staging folder
+	 * from a crashed Get File (only those whose .lock is free - a live download
+	 * holds it). The folder chosen for a wildcard download is swept again then. */
+	{ extern void kitty_xfer_sweep_downloads(void) ; kitty_xfer_sweep_downloads() ; }
+
 	// Initialisation du nom de la classe
 	strcpy( KiTTYClassName, appname ) ;
 

@@ -1890,6 +1890,8 @@
 #define KT_XFER_TRANSFER                             "Transfer"
 #define KT_XFER_FILE                                 "file"
 #define KT_XFER_BTN_CANCEL                           "&Cancel"
+/* The files-already-exist box: its Cancel carries no accelerator, as approved. */
+#define KT_XFER_BTN_CANCEL_PLAIN                     "Cancel"
 #define KT_XFER_BTN_CLOSE                            "&Close"
 #define KT_XFER_BTN_STOPPING                         "Stopping..."
 #define KT_XFER_COMPLETE                             "%s complete."
@@ -1917,6 +1919,22 @@
 #define KT_XFER_UPLOAD_OF                            "Upload of \"%s\""
 #define KT_XFER_UPLOADING                            "%sUploading  %s  ->  %s\r\n\r\n"
 #define KT_XFER_DOWNLOAD_OF                          "Download of \"%s\""
+/* Get File overwrite protection (approved 2026-09-13). Single file: the
+ * Save-As dialog title (the folder picker KT_XFER_GETFILE_PICK_TITLE stays for
+ * several files). Several named files that already exist: the themed 3-button
+ * box. Wildcard/folder downloads: a visible staging folder + a held-open lock,
+ * a per-file "renamed" line, a completion note, and a cleanup line. */
+#define KT_XFER_SAVE_AS_TITLE                        "Save file as..."
+#define KT_CAP_XFER_FILES_EXIST                      "KiTTY++ transfer - files already exist"
+#define KT_XFER_FILES_EXIST_TEXT                     "These files already exist in %s:\r\n\r\n%s\r\nOverwrite them, or keep both and save the new ones as \"name (1)\"?"
+#define KT_XFER_BTN_OVERWRITE                        "&Overwrite"
+#define KT_XFER_BTN_KEEPBOTH                         "&Keep both"
+#define KT_XFER_RENAMED_LINE                         "\r\n\"%s\" already existed - saved as \"%s\"\r\n"
+#define KT_XFER_RENAMED_NOTE                         "%d file(s) saved under a new name because the name was taken."
+#define KT_XFER_STAGING_DIR                          "KiTTY++ download in progress"
+#define KT_XFER_STAGING_DIR_N                        "KiTTY++ download in progress (%d)"
+#define KT_XFER_STAGING_LOCK                         "KiTTY++ download in progress.lock"
+#define KT_XFER_STAGING_KEEP_LINE                    "\r\nThe download folder %s could not be removed; it is removed at the next start or the next download into this folder.\r\n"
 #define KT_XFER_RUN_CLIP_PROMPT                      "Run this command from the clipboard?\n\n%s"
 #define KT_XFER_RAN_CLIP                             "Ran clipboard command:\n%s"
 #define KT_XFER_START_WINSCP_ANYWAY                  "%sStart WinSCP anyway?"

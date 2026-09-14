@@ -50,6 +50,7 @@ void kitty_dialog_icon( HWND dlg, HWND owner ) ;
  * below and grows the window). Empty text collapses and hides the control. */
 int kitty_fit_text( HWND dlg, int ctlid, const char *text, int extra_dy ) ;
 int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
+int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) ;
 	
 // Centre un dialog au milieu de la fenetre parent
 void CenterDlgInParent(HWND hDlg) ;

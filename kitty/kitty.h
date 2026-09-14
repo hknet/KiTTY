@@ -459,6 +459,13 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 void SendFileList( HWND hwnd, char * filelist ) ;
 void GetOneFile( HWND hwnd, char * directory, const char * filename ) ;
 void GetOneFileTo( HWND hwnd, char * directory, const char * filename, const char * localdir ) ;
+/* localfile != NULL: kscp writes to that exact local path (a single named
+ * file, the Save-As case) instead of into localdir. */
+void GetOneFileToPath( HWND hwnd, char * directory, const char * filename, const char * localdir, const char * localfile ) ;
+/* final_dir != NULL: a staged wildcard/folder download - localdir is the
+ * staging folder, final_dir where files move on success, lock the marker. */
+void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const char * localdir, const char * localfile, const char * final_dir, HANDLE lock ) ;
+void kitty_xfer_sweep_downloads( void ) ;   /* remove stale staging folders at startup */
 void GetFile( HWND hwnd ) ;
 /* The session's download folder, resolved (Connection > Transfers, else the
  * global one, else Downloads). kitty_xfer.c */
@@ -474,6 +481,9 @@ char * kitty_xfer_upload_dir( Conf * cf, char * out, size_t outlen ) ;
  * leaving - the local upload folder. arriving adds the "saved to" line
  * (nfiles: 1, the count, or 0 = not counted). kitty_xfer.c */
 void kitty_xfer_notify( const char * what, int arriving, int nfiles, const char * path ) ;
+/* ... with the count of files a Get File saved under a new name (0 = none);
+ * the balloon then says so. kitty_xfer.c */
+void kitty_xfer_notify_ex( const char * what, int arriving, int nfiles, const char * path, int renamed ) ;
 int kitty_xfer_notify_enabled( void ) ;
 /* Is the helper there? 0 = kscp, 1 = WinSCP, 2 = FileZilla. kitty_xfer.c */
 int kitty_xfer_tool_ready( int which ) ;

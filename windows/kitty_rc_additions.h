@@ -576,6 +576,12 @@
 #ifndef IDC_CONFIRM_WARN
 #define IDC_CONFIRM_WARN 1276
 #endif
+/* The optional THIRD button of the shared confirm box: shown only in its
+ * 3-way mode (Get File "files already exist"); hidden for the Yes/No and info
+ * boxes, which are byte-identical to before. */
+#ifndef IDC_CONFIRM_THIRD
+#define IDC_CONFIRM_THIRD 1277
+#endif
 /* The upload-request dialog (kitty/kitty_transfer.c): the far end asks to
  * read files from this PC (OSC 5113, files leaving). One line per file with
  * a checkbox, a count line above the list, "Allow selected" / "Deny". A

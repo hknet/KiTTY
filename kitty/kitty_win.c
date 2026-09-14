@@ -173,6 +173,31 @@ int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 	else { return 1 ; }
 	}
 
+/* Save-As opening in a given folder with a name PREFILLED by the caller (the
+ * remote base name). Unlike SaveFileName it does NOT clear filename, so the
+ * dialog opens on that name; OFN_OVERWRITEPROMPT is Windows' own replace
+ * question. Used by Get File for a single named file (never overwrite
+ * silently). Returns 1 with the chosen full path in filename, 0 on cancel. */
+int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
+	char szFilter[4096] ; snprintf( szFilter, sizeof(szFilter), "%s", Filter ) ;
+	int i = 0 ;
+	while( i < (int)sizeof(szFilter) && szFilter[i] != '\0' ) { if( szFilter[i]=='|' ) szFilter[i]='\0' ; i++ ; }
+	OPENFILENAME ofn = {0} ;
+	ofn.lStructSize   = sizeof(OPENFILENAME) ;
+	ofn.hwndOwner     = hFrame ;
+	ofn.lpstrFilter   = szFilter ;
+	ofn.nFilterIndex  = 1 ;
+	ofn.lpstrFile     = filename ;      /* kept as prefilled: the remote base name */
+	ofn.nMaxFile      = 4096 ;
+	ofn.lpstrTitle    = Title ;
+	ofn.lpstrInitialDir = ( initialdir && initialdir[0] ) ? initialdir : NULL ;
+	ofn.Flags         = OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_LONGNAMES
+	                  | OFN_OVERWRITEPROMPT | OFN_EXPLORER | OFN_NOCHANGEDIR
+	                  | OFN_DONTADDTORECENT ;
+	if( !GetSaveFileName( &ofn ) ) return 0 ;
+	return 1 ;
+}
+
 #include <shlobj.h>
 #include <shobjidl.h>   /* IFileOpenDialog (Common Item Dialog folder picker) */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
@@ -1073,6 +1098,11 @@ typedef struct {
 	int info ;           /* 1 = one OK button instead of Yes/No */
 	int defyes ;         /* 1 = Yes is the default (close-confirm keeps
 	                      * Enter meaning close); everything else stays No */
+	int three ;          /* 1 = 3-way mode: the optional third button is shown
+	                      * and laid out. 0 = Yes/No or info, UNCHANGED. */
+	const char *b_over ; /* 3-way: the default button (IDYES),  e.g. Overwrite */
+	const char *b_keep ; /* 3-way: the third button (IDC_CONFIRM_THIRD), Keep both */
+	const char *b_cancel;/* 3-way: the No button (IDNO), Cancel */
 } kitty_confirm_t ;
 
 /* Grow one text control to fit its text at the DIALOG's font, offset by extra_dy,
@@ -1186,6 +1216,18 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			ShowWindow( GetDlgItem( h, IDYES ), SW_HIDE ) ;
 			SetDlgItemTextA( h, IDNO, KT_WIN_OK ) ;
 		}
+		if( cf && cf->three ) {
+			/* 3-way mode: label the three buttons and reveal the optional
+			 * third. IDYES=Overwrite (default), IDC_CONFIRM_THIRD=Keep both,
+			 * IDNO=Cancel. Laid out below, after the text-fit shift. */
+			SetDlgItemTextA( h, IDYES, cf->b_over ? cf->b_over : "" ) ;
+			SetDlgItemTextA( h, IDNO,  cf->b_cancel ? cf->b_cancel : "" ) ;
+			SetDlgItemTextA( h, IDC_CONFIRM_THIRD, cf->b_keep ? cf->b_keep : "" ) ;
+			ShowWindow( GetDlgItem( h, IDC_CONFIRM_THIRD ), SW_SHOW ) ;
+		} else {
+			/* Every existing caller: the third button never appears. */
+			ShowWindow( GetDlgItem( h, IDC_CONFIRM_THIRD ), SW_HIDE ) ;
+		}
 		SetDlgItemTextA( h, IDC_CONFIRM_TEXT, cf && cf->text ? cf->text : "" ) ;
 		SetDlgItemTextA( h, IDC_CONFIRM_WARN, cf && cf->warn ? cf->warn : "" ) ;
 		if( cf && cf->warn && *cf->warn )
@@ -1205,9 +1247,48 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 				}
 				if( id == IDNO ) break ;
 			}
+			if( cf && cf->three ) {          /* the third button drops with the row */
+				HWND b = GetDlgItem( h, IDC_CONFIRM_THIRD ) ;
+				RECT br ; GetWindowRect( b, &br ) ; MapWindowPoints( NULL, h, (POINT*)&br, 2 ) ;
+				MoveWindow( b, br.left, br.top + dh, br.right-br.left, br.bottom-br.top, TRUE ) ;
+			}
 			{ RECT wr ; GetWindowRect( h, &wr ) ;
 			  SetWindowPos( h, NULL, 0, 0, wr.right-wr.left,
 				(wr.bottom-wr.top)+dh, SWP_NOMOVE|SWP_NOZORDER ) ; }
+		}
+		if( cf && cf->three ) {
+			/* Size each button to its text (the shared helper) and lay the
+			 * three out right-aligned: Overwrite(default) | Keep both | Cancel.
+			 * Widen the dialog if the template width cannot hold them. Then the
+			 * default is IDYES and focus goes there; the 2-way logic below is
+			 * skipped, so Yes/No and info boxes are untouched. */
+			HWND bo = GetDlgItem( h, IDYES ), bk = GetDlgItem( h, IDC_CONFIRM_THIRD ), bc = GetDlgItem( h, IDNO ) ;
+			RECT rc ; GetClientRect( h, &rc ) ;
+			RECT ro ; GetWindowRect( bo, &ro ) ; MapWindowPoints( NULL, h, (POINT*)&ro, 2 ) ;
+			int by = ro.top, bh = ro.bottom - ro.top ;
+			int wo = kitty_theme_button_width( bo, 50 ) ;
+			int wk = kitty_theme_button_width( bk, 50 ) ;
+			int wc = kitty_theme_button_width( bc, 50 ) ;
+			int gap = 6, margin = 10 ;
+			int total = wo + wk + wc + 2*gap + 2*margin ;
+			int cw = rc.right - rc.left ;
+			if( total > cw ) {
+				RECT wr ; GetWindowRect( h, &wr ) ;
+				SetWindowPos( h, NULL, 0, 0, (wr.right-wr.left) + (total-cw),
+					(wr.bottom-wr.top), SWP_NOMOVE|SWP_NOZORDER ) ;
+				GetClientRect( h, &rc ) ; cw = rc.right - rc.left ;
+			}
+			int xC = cw - margin - wc, xK = xC - gap - wk, xO = xK - gap - wo ;
+			MoveWindow( bc, xC, by, wc, bh, TRUE ) ;
+			MoveWindow( bk, xK, by, wk, bh, TRUE ) ;
+			MoveWindow( bo, xO, by, wo, bh, TRUE ) ;
+			SendMessage( h, DM_SETDEFID, IDYES, 0 ) ;
+			SendDlgItemMessage( h, IDNO, BM_SETSTYLE, BS_PUSHBUTTON, TRUE ) ;
+			SendDlgItemMessage( h, IDC_CONFIRM_THIRD, BM_SETSTYLE, BS_PUSHBUTTON, TRUE ) ;
+			SendDlgItemMessage( h, IDYES, BM_SETSTYLE, BS_DEFPUSHBUTTON, TRUE ) ;
+			SetFocus( bo ) ;
+			kitty_centre_on_owner( h ) ;
+			return FALSE ;
 		}
 		if( cf && cf->defyes && !cf->info ) {
 			SendMessage( h, DM_SETDEFID, IDYES, 0 ) ;
@@ -1224,7 +1305,8 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 	   * window ever reaches (kitty_theme_mark_ink). */
 	  case WM_COMMAND:
 		switch( LOWORD(wp) ) {
-		  case IDYES: EndDialog( h, 1 ) ; return TRUE ;
+		  case IDYES: EndDialog( h, 1 ) ; return TRUE ;   /* 3-way: Overwrite */
+		  case IDC_CONFIRM_THIRD: EndDialog( h, 2 ) ; return TRUE ;  /* 3-way: Keep both */
 		  case IDOK:
 			/* Only the info dress has an OK to press (drivers that used to
 			 * answer a MessageBox send IDOK); on a real question OK must
@@ -1254,6 +1336,13 @@ static INT_PTR kitty_confirm_run( HWND owner, const kitty_confirm_t *cf ) {
 			joined = malloc( strlen(body) + strlen(cf->warn) + 3 ) ;
 			if( joined ) sprintf( joined, "%s\n\n%s", body, cf->warn ) ;
 		}
+		if( cf->three ) {
+			/* No themed template: a plain 3-button box. Yes=Overwrite(1),
+			 * No=Keep both(2), Cancel=0 - the same three answers. */
+			int mb = MessageBoxA( owner, joined ? joined : body, cf->caption,
+				MB_YESNOCANCEL|MB_ICONWARNING|MB_DEFBUTTON1 ) ;
+			r = ( mb==IDYES ) ? 1 : ( mb==IDNO ) ? 2 : 0 ;
+		} else
 		r = ( MessageBoxA( owner, joined ? joined : body, cf->caption,
 			cf->info ? (MB_OK|MB_ICONINFORMATION)
 			         : (MB_YESNO|MB_ICONWARNING|
@@ -1268,7 +1357,7 @@ static INT_PTR kitty_confirm_run( HWND owner, const kitty_confirm_t *cf ) {
  * is the safe reading of every one of them. */
 int kitty_confirm_box( HWND owner, const char *caption, const char *text,
                        const char *warn_red ) {
-	kitty_confirm_t cf ;
+	kitty_confirm_t cf = {0} ;
 	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ;
 	cf.info = 0 ; cf.defyes = 0 ;
 	return kitty_confirm_run( owner, &cf ) == 1 ;
@@ -1278,10 +1367,23 @@ int kitty_confirm_box( HWND owner, const char *caption, const char *text,
  * always meant "go ahead" (closing a window) and must keep meaning that. */
 int kitty_confirm_box_yes( HWND owner, const char *caption, const char *text,
                            const char *warn_red ) {
-	kitty_confirm_t cf ;
+	kitty_confirm_t cf = {0} ;
 	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ;
 	cf.info = 0 ; cf.defyes = 1 ;
 	return kitty_confirm_run( owner, &cf ) == 1 ;
+}
+
+/* A three-way choice on the SAME shared template: the optional third button is
+ * shown, the other two relabelled. Returns 1 = first/default (over), 2 = third
+ * (keep), 0 = second/Cancel/Escape/close. Every existing Yes/No and info caller
+ * is unaffected (they leave `three` zero). */
+int kitty_confirm_box3( HWND owner, const char *caption, const char *text,
+                        const char *b_over, const char *b_keep, const char *b_cancel ) {
+	kitty_confirm_t cf = {0} ;
+	cf.caption = caption ; cf.text = text ; cf.warn = NULL ;
+	cf.info = 0 ; cf.defyes = 0 ; cf.three = 1 ;
+	cf.b_over = b_over ; cf.b_keep = b_keep ; cf.b_cancel = b_cancel ;
+	return (int)kitty_confirm_run( owner, &cf ) ;
 }
 
 /* The MessageBox shapes the suite actually uses, in the themed dress: MB_OK
@@ -1311,7 +1413,7 @@ int kitty_message_box( HWND owner, const char *text, const char *caption,
  * OK, no choice. What MessageBox did, in the suite's own dress. */
 void kitty_info_box( HWND owner, const char *caption, const char *text,
                      const char *warn_red ) {
-	kitty_confirm_t cf ;
+	kitty_confirm_t cf = {0} ;
 	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ;
 	cf.info = 1 ; cf.defyes = 0 ;
 	kitty_confirm_run( owner, &cf ) ;

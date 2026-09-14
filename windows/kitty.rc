@@ -356,6 +356,10 @@ BEGIN
     LTEXT           "", IDC_CONFIRM_WARN, 10, 68, 260, 16
     PUSHBUTTON      "&Yes", IDYES, 166, 89, 50, 14
     DEFPUSHBUTTON   "&No", IDNO, 220, 89, 50, 14
+    /* The optional third button: hidden by the dlgproc in Yes/No and info
+     * modes (so those boxes are unchanged), shown and laid out only in 3-way
+     * mode (Get File "files already exist"). */
+    PUSHBUTTON      "", IDC_CONFIRM_THIRD, 112, 89, 50, 14
 END
 
 /* The upload-request dialog (kitty/kitty_transfer.c): the far end asks to
