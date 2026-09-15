@@ -4,6 +4,21 @@ KiTTY++ is basically the full KiTTY feature set forward-ported and then some mor
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.10-beta — unreleased
+
+### New
+
+### Changed
+
+### Fixed
+
+- **A stored session password works again through an SSH jump host**
+  (hknet/KiTTY#51). 0.85.1.9 handed the login the jump host accepted to the
+  session as the password that worked, so the target then received the
+  jump host's password and refused it. The hand-over now knows which
+  connection a login belongs to; a proxy's own login never reaches the
+  session.
+
 ## 0.85.1.9-beta — 2026-09-15
 
 ### New

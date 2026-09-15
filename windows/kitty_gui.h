@@ -56,6 +56,7 @@ void kitty_apply_transparency(struct WinGuiSeat *wgs);
 void kitty_apply_window_pos(struct WinGuiSeat *wgs);
 void kitty_painter_before_layering(HWND term_hwnd);
 void kitty_set_active_seat(struct WinGuiSeat *wgs);
+Conf *kitty_seat_conf(Seat *seat);   /* the session behind a terminal window's seat, else NULL */
 void resize(int height, int width);
 COLORREF return_colours258(void);
 extern HWND kitty_hwnd_parent;

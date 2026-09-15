@@ -2029,9 +2029,13 @@ void settings_set_load_hook(settings_load_hook_fn hook);
  * as soon as a user name has been typed, and with (NULL, password) once
  * the server has accepted that password - never one it refused, and never
  * the answer to a challenge or a second factor. Not installed (the
- * command-line tools, and every non-KiTTY build) means nothing happens. */
+ * command-line tools, and every non-KiTTY build) means nothing happens.
+ * The seat is the authenticating connection's own. A frontend must write
+ * only into the session that OWNS that seat: an SSH jump host is a second
+ * client inside the same process, behind a seat of its own, and its
+ * accepted password is not the session's. */
 void ssh_userauth_set_credentials_hook(
-    void (*fn)(const char *username, const char *password));
+    void (*fn)(Seat *seat, const char *username, const char *password));
 void load_open_settings(settings_r *sesskey, Conf *conf);
 void get_sesslist(struct sesslist *, bool allocate);
 bool do_defaults(const char *, Conf *);

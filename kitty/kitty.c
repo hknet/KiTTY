@@ -920,9 +920,15 @@ void SetUsernameInConfig( const char * username ) {
  * ssh_userauth_set_credentials_hook); the user name arrives as soon as it is
  * typed, the password only once the server has accepted it. Both setters above
  * do nothing when [KiTTY] userpasssshnosave is set. */
-void kitty_userauth_credentials( const char * username, const char * password ) {
-	if( username != NULL ) { SetUsernameInConfig( username ) ; }
-	if( password != NULL ) { SetPasswordInConfig( password ) ; }
+void kitty_userauth_credentials( Seat * seat, const char * username, const char * password ) {
+	/* Only a login of a TERMINAL WINDOW's own connection counts. An SSH jump
+	 * host authenticates behind a seat of its own, in this process, and its
+	 * password is not the session's - writing it here is what handed the
+	 * target the jump host's password (hknet/KiTTY#51). */
+	Conf * c = kitty_seat_conf( seat ) ;
+	if( c == NULL || GetUserPassSSHNoSave() ) { return ; }
+	if( username != NULL ) { conf_set_utf8( c, CONF_username, username ) ; }
+	if( password != NULL ) { kitty_pw_set( c, CONF_password, password ) ; }
 	}
 
 // Save the folder list

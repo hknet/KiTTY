@@ -15,7 +15,7 @@
 /* KiTTY: a login the user TYPES at the SSH prompts - the same hook the
  * SSH-2 layer uses, defined in ssh/userauth2-client.c. See the comment on
  * ssh_userauth_set_credentials_hook() in putty.h. */
-extern void (*kitty_userauth_credentials_hook)(const char *username,
+extern void (*kitty_userauth_credentials_hook)(Seat *seat, const char *username,
                                                const char *password);
 
 typedef struct agent_key {
@@ -419,7 +419,7 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
         s->cur_prompt = NULL;
         /* KiTTY: a user name that was TYPED - the session had none. */
         if (kitty_userauth_credentials_hook)
-            kitty_userauth_credentials_hook(s->username, NULL);
+            kitty_userauth_credentials_hook(s->ppl.seat, s->username, NULL);
     }
 
     pkt = ssh_bpp_new_pktout(s->ppl.bpp, SSH1_CMSG_USER);
@@ -1093,7 +1093,7 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
         if (pktin->type == SSH1_SMSG_SUCCESS && s->kitty_pw_candidate) {
             /* KiTTY: accepted - hand it to the frontend, which copies it
              * into the running session's settings. */
-            kitty_userauth_credentials_hook(NULL, s->kitty_pw_candidate);
+            kitty_userauth_credentials_hook(s->ppl.seat, NULL, s->kitty_pw_candidate);
         }
         burnstr(s->kitty_pw_candidate);
         s->kitty_pw_candidate = NULL;

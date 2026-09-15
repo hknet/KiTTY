@@ -29,11 +29,11 @@ int (*kitty_hello_keyfile_protected_hook)(const char *path) = NULL;
  * password - a refused one is never handed over. NULL (every other
  * frontend and build, including the command-line tools) changes nothing.
  * ssh/login1.c uses the same pointer for SSH-1. */
-void (*kitty_userauth_credentials_hook)(const char *username,
+void (*kitty_userauth_credentials_hook)(Seat *seat, const char *username,
                                         const char *password) = NULL;
 
 void ssh_userauth_set_credentials_hook(
-    void (*fn)(const char *username, const char *password))
+    void (*fn)(Seat *seat, const char *username, const char *password))
 {
     kitty_userauth_credentials_hook = fn;
 }
@@ -889,7 +889,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
              * whole of the rest of the authentication runs under it, so
              * hand it to the frontend now. */
             if (kitty_userauth_credentials_hook)
-                kitty_userauth_credentials_hook(s->username, NULL);
+                kitty_userauth_credentials_hook(s->ppl.seat, s->username, NULL);
         } else {
             if (seat_verbose(s->ppl.seat) || seat_interactive(s->ppl.seat))
                 ppl_printf("Using username \"%s\".\r\n", s->username);
@@ -2228,7 +2228,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
      * from. Nothing the server refused ever reaches this point.
      */
     if (s->kitty_pw_candidate && kitty_userauth_credentials_hook)
-        kitty_userauth_credentials_hook(NULL, s->kitty_pw_candidate);
+        kitty_userauth_credentials_hook(s->ppl.seat, NULL, s->kitty_pw_candidate);
     kitty_userauth_drop_candidate(s);
 
     /*

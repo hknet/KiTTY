@@ -1705,8 +1705,6 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * enough; it writes whichever seat is active (kitty_set_active_seat).
          * Refs hknet/KiTTY#50. */
         {
-            void kitty_userauth_credentials(const char *username,
-                                            const char *password); /* kitty.c */
             ssh_userauth_set_credentials_hook(kitty_userauth_credentials);
         }
 #endif
@@ -9434,6 +9432,21 @@ static bool win_seat_get_window_pixel_size(Seat *seat, int *x, int *y)
  * Intermediate step toward the no-global integration. */
 Conf *conf = NULL;
 static WinGuiSeat *kitty_active_wgs = NULL;
+/* The session behind a Seat, or NULL for a seat no terminal window owns -
+ * an SSH jump host's inner client, for one, which authenticates behind a
+ * seat of its own (proxy/sshproxy.c) and whose login must never be written
+ * into the session that goes through it. */
+Conf *kitty_seat_conf(Seat *seat)
+{
+    struct WinGuiSeatListNode *node;
+    for (node = wgslisthead.next; node != &wgslisthead; node = node->next) {
+        WinGuiSeat *wgs = container_of(node, WinGuiSeat, wgslistnode);
+        if (&wgs->seat == seat)
+            return wgs->conf;
+    }
+    return NULL;
+}
+
 void kitty_set_active_seat(WinGuiSeat *wgs) {
     kitty_active_wgs = wgs;
     conf = wgs ? wgs->conf : NULL;

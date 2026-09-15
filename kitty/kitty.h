@@ -433,7 +433,7 @@ void RenewPassword( Conf *conf ) ;
 // Put a login typed at the SSH prompt into the running session (hknet/KiTTY#50)
 void SetPasswordInConfig( const char * password ) ;
 void SetUsernameInConfig( const char * username ) ;
-void kitty_userauth_credentials( const char * username, const char * password ) ;
+void kitty_userauth_credentials( Seat * seat, const char * username, const char * password ) ;
 // Handles sending the window to the system tray
 int ManageToTray( HWND hwnd ) ;
 void RefreshBackground( HWND hwnd ) ;
