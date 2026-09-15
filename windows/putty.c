@@ -11,6 +11,7 @@
 #ifdef MOD_PERSO
 #include "../kitty/kitty.h"
 #include "../kitty/kitty_bridge.h"
+#include "../kitty/kitty_exportbundle.h"
 #include "../kitty/kitty_win.h"
 #include "../kitty/kitty_tools.h"
 #include "../kitty/kitty_registry.h"
@@ -20,8 +21,6 @@
 /* -exportall <dir> / -importdir <dir>: whole-store move; stashed here and run
  * just before the config box (storage backend is initialised by then), then
  * exit. kitty_export_all_to_dir/kitty_import_dir are the no-UI cores. */
-int  kitty_import_dir(const char *dir, int *failOut, int *proxyOut,
-                      int *skippedOut, int overwrite);
 static char *kitty_cli_exportdir = NULL;
 static char *kitty_cli_importdir = NULL;
 /* -portablecopy <dir> / -takefolder <dir>: the two moves of

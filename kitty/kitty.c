@@ -54,6 +54,7 @@
 #include "kitty_storage.h"
 #include "kitty_gui.h"
 #include "kitty_bridge.h"
+#include "kitty_exportbundle.h"
 #include "mini/mini.h"
 #include "kitty_b64.h"
 #include "kitty_store.h"

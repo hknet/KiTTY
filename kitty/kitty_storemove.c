@@ -40,12 +40,7 @@
 #include "kitty_text.h"     /* the words the boxes show */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_bridge.h"
-
-/* kitty.c */
-/* kitty_bridge.c */
-int kitty_import_dir(const char *dir, int *failOut, int *proxyOut,
-                     int *skippedOut, int overwrite);
-/* kitty_storage.c */
+#include "kitty_exportbundle.h"
 
 #define KSM_INI       "kitty.ini"
 /* the bundle extension follows the store's fileextension setting */

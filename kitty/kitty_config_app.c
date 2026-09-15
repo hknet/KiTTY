@@ -34,6 +34,7 @@
 #include "kitty_gui.h"
 #include "mini/mini.h"
 #include "kitty_bridge.h"
+#include "kitty_exportbundle.h"
 #include "kitty_registry.h"
 #include "kitty_userpath.h"
 #include "kitty_storemove.h"
