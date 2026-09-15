@@ -1,3 +1,12 @@
+/*
+ * mNotepad: the small built-in text editor. Registers its own window class,
+ * builds the File / Edit / Delimiter / Windows menus, and hosts a single
+ * multiline edit control with a Courier New font scaled to the display DPI.
+ * Loads and saves plain files (normalising lone \n to \r\n), accepts dropped
+ * files, and offers Open/Save-As/Save, cut/copy/paste and a font chooser.
+ * Built standalone (WinMain) or, with NOMAIN, embedded in KiTTY, where
+ * notepad_putty.c adds the ini/sav entries and the send-to-session commands.
+ */
 #include <stdio.h>
 #include <stdbool.h>
 #include "notepad.h"
@@ -65,7 +74,7 @@ int Notepad_IsModify( HWND hwnd ) { return SendMessage( hwnd, EM_GETMODIFY, 0, 0
 
 int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 	
-	//recuperation de la taille de l'ecran
+	//get the screen size
 	int cxScreen, cyScreen ;
 	cxScreen = GetSystemMetrics (SM_CXSCREEN);
 	cyScreen = GetSystemMetrics (SM_CYSCREEN);
@@ -133,7 +142,7 @@ int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR l
 
 	if(!RegisterClass(&wc)) return FALSE;
 
-	//menu et sous menu
+	//menu and submenus
 	hSMApropos = CreateMenu();
 	AppendMenu(hSMApropos, MF_STRING, NOTEPAD_IDM_ABOUT, Notepad_LoadString(NOTEPAD_STR_ABOUT));
 
@@ -255,7 +264,7 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 
 			if( LoadFile!=NULL ) 
 			if( strlen(LoadFile)>0 ) {
-				if( !strcmp(LoadFile,"1") ) { // On charge le bloc-note
+				if( !strcmp(LoadFile,"1") ) { // load the editor from the clipboard
 					if( OpenClipboard(NULL) ) {
 						HGLOBAL hglb ;
 						if( (hglb = GetClipboardData( CF_TEXT ) ) != NULL ) {
@@ -295,9 +304,9 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			SendMessage( hwnd, WM_COMMAND, NOTEPAD_IDM_QUIT, 0L ) ;
 			break ;
 		
-		case WM_COMMAND: //Commandes du menu
+		case WM_COMMAND: //menu commands
 			switch( LOWORD(wParam) ) {
-				//Fonction QUIT
+				//QUIT command
 				case NOTEPAD_IDM_QUIT: 
 					if( Notepad_IsModify( hEdit ) ) {
 						if( MessageBox( hwnd, "Current file is not saved.\nAre you sure you want to quit ?"
@@ -307,14 +316,14 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 					else PostMessage(hwnd, WM_DESTROY,0,0) ;
 					break ;
 				
-				//Fonction SAVEAS
+				//SAVEAS command
 				case NOTEPAD_IDM_SAVEAS: Notepad_saveas( hwnd, hEdit ) ;
 					Notepad_SetNoModify( hEdit ) ;
 					Notepad_settitle( hwnd ) ;
 					EnableMenuItem( GetMenu(hwnd), NOTEPAD_IDM_SAVE, MF_ENABLED|MF_BYCOMMAND ) ;
 					break;
 				
-				//Fonction OPEN
+				//OPEN command
 				case NOTEPAD_IDM_OPEN: 
 					if( Notepad_IsModify( hEdit ) ) {
 						if( MessageBox( hwnd, "Current file is not saved.\nAre you sure you want to open a new one ?"
@@ -327,7 +336,7 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 					EnableMenuItem( GetMenu(hwnd), NOTEPAD_IDM_SAVE, MF_ENABLED|MF_BYCOMMAND ) ;
 					break ;
 						
-				//Fonction NEW
+				//NEW command
 				case NOTEPAD_IDM_NEW: 
 					if( Notepad_IsModify( hEdit ) ) {
 					if( MessageBox( hwnd, "Current file is not saved.\nAre you sure you want to create a new one ?"
@@ -341,7 +350,7 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 					EnableMenuItem( GetMenu(hwnd), NOTEPAD_IDM_SAVE, MF_DISABLED|MF_GRAYED|MF_BYCOMMAND ) ;
 					break ;
 						
-				// Fonction LOAD
+				// LOAD command
 				case NOTEPAD_IDM_LOAD:
 					Notepad_load( (char*)lParam , hEdit ) ;
 					Notepad_SetNoModify( hEdit ) ;
@@ -349,13 +358,13 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 					EnableMenuItem( GetMenu(hwnd), NOTEPAD_IDM_SAVE, MF_ENABLED|MF_BYCOMMAND ) ;
 					break ;
 				
-				// Fonction SAVE
+				// SAVE command
 				case NOTEPAD_IDM_SAVE:
 					Notepad_save( Notepad_filename, hEdit ) ;
 					Notepad_SetNoModify( hEdit ) ;
 					break ;
 
-				//Fonction COPYRIGHT
+				//COPYRIGHT command
 				case NOTEPAD_IDM_ABOUT:
 #ifdef KITTY_TEST_BUILD_LABEL
 				{
@@ -370,31 +379,31 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 #endif
 					break ;
 
-				//Fonction CUT
+				//CUT command
 				case NOTEPAD_IDM_CUT: SendMessage(hEdit, WM_CUT, 0, 0);
 					break ;
 
-				//Fonction COPY
+				//COPY command
 				case NOTEPAD_IDM_COPY: SendMessage(hEdit, WM_COPY, 0, 0);
 					break ;
 
-				//Fonction PASTE
+				//PASTE command
 				case NOTEPAD_IDM_PASTE: SendMessage(hEdit, WM_PASTE, 0, 0);ChangeToCRLF(hEdit);
 					break ;
 
-				//Fonction SELECTALL
+				//SELECTALL command
 				case NOTEPAD_IDM_SELECTALL: SendMessage(hEdit, EM_SETSEL, 0, -1);
 					break ;
 
-				//Fonction UNDO
+				//UNDO command
 				case NOTEPAD_IDM_UNDO: SendMessage(hEdit, WM_UNDO, 0, 0);
 					break ;
 
-				//Fonction MAIL
+				//MAIL command
 				case NOTEPAD_IDM_MAIL: ShellExecute(hEdit, NULL, "mailto:cyd@9bis.com", NULL, NULL, 0);
 					break ;
 
-				//Fonction SETFONT
+				//SETFONT command
 				case NOTEPAD_IDM_SETFONT:
 					{
 					CHOOSEFONT cf;
@@ -412,16 +421,16 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 					}
 					break;
 #ifdef NOMAIN
-				case NOTEPAD_IDM_RESIZE_ALL: 	// Redimensionnent toutes les fenetres KiTTY
+				case NOTEPAD_IDM_RESIZE_ALL: 	// resize all KiTTY windows
 					ResizeAllWindows( hwnd ) ;
 					break;
-				case NOTEPAD_IDM_CASCADE_ALL: 	// Cascading de toutes les fenetres KiTTY
+				case NOTEPAD_IDM_CASCADE_ALL: 	// cascade all KiTTY windows
 					CascadeAllWindows( hwnd ) ;
 					break;
-				case NOTEPAD_IDM_SEND_ALL: 	// Fonction envoi vers toutes les fenetres KiTTY
+				case NOTEPAD_IDM_SEND_ALL: 	// send to all KiTTY windows
 					SendStrToAll( hEdit ) ;
 					break;
-				case NOTEPAD_IDM_SEND:  	// Fonction envoi vers la fenetre KiTTY parent
+				case NOTEPAD_IDM_SEND:  	// send to the parent KiTTY window
 					SendStrToParent( hEdit ) ;
 					break;
 				case NOTEPAD_IDM_CRLF:
@@ -497,25 +506,25 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 						}
 					break ;
 					
-				// Fonction load du fichier d'initialisation
+				// load the initialisation file
 				case NOTEPAD_IDM_LOAD_INI:
 					//SendMessage( hwnd, WM_COMMAND, NOTEPAD_IDM_LOAD, (LPARAM)get_param_str("INI") ) ;
 					if( IniFile!=NULL ) SendMessage( hwnd, WM_COMMAND, NOTEPAD_IDM_LOAD, (LPARAM)IniFile ) ;
 					break;
 
-				// Fonction load du fichier de sauvegarde
+				// load the save file
 				case NOTEPAD_IDM_LOAD_SAV:
 					//SendMessage( hwnd, WM_COMMAND, NOTEPAD_IDM_LOAD, (LPARAM)get_param_str("SAV") ) ;
 					if( SavFile!=NULL ) SendMessage( hwnd, WM_COMMAND, NOTEPAD_IDM_LOAD, (LPARAM)SavFile ) ;
 					break;
 				
-				// Fonction de resize
+				// resize command
 				case NOTEPAD_IDM_RESIZE:
 					SetWindowsSize( hwnd ) ;
 					break;
 #endif
 
-				} // Fin des commandes du menu
+				} // end of the menu commands
 			break ;
 
 		case WM_DROPFILES:
@@ -523,7 +532,7 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			SendMessage( hwnd, WM_COMMAND, NOTEPAD_IDM_LOAD, (LPARAM)buffer ) ;
 			break ;
 				
-		default: // Message par défaut
+		default: // default message handling
 			return DefWindowProc(hwnd, uMsg, wParam, lParam ) ;
 		}
 	}
@@ -541,7 +550,7 @@ int Notepad_load( char * szFile, HWND hEdit ) {
 		ReadFile(fo, tampon, lenbloc, &s, NULL) ;
 		tampon[lenbloc] = 0 ;
 		if( strlen( tampon ) > 0 ) {
-			// Remplacement des \n par des \r\n
+			// replace \n with \r\n
 			i = 0 ;
 			while( tampon[i]!='\0' ) {
 				if( (tampon[i]=='\n') && ( i==0?1:tampon[i-1]!='\r' ) ) {

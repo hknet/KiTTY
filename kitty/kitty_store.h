@@ -1,3 +1,9 @@
+/*
+ * kitty_store.h - the declarations for kitty_store.c, the file-based
+ * settings store used when KiTTY does not save into the registry.
+ * It defines the three save modes, the paths the store works from, and the
+ * SettingsList / SettingsItem pair a session file is read into.
+ */
 #ifndef SAVEMODE_REG
 #define SAVEMODE_REG 0
 #endif

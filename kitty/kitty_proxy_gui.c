@@ -6,7 +6,7 @@
  * can load permanently into a session. Pick a definition from
  * the combo to load its fields, or type a new name; Save writes it (via
  * SaveProxyInfo), Delete removes it (after a confirm). On any change we rescan
- * (InitProxyList) so the combo — and, after the dialog closes, the config box —
+ * (InitProxyList) so the combo - and, after the dialog closes, the config box -
  * reflect the new set. Definitions are decoupled from any session's own proxy.
  *
  * Linked only into the GUI targets.
@@ -85,7 +85,7 @@ static Conf *pxe_new_conf(void)
     do_defaults(NULL, conf);
     /* do_defaults() loads the user's "Default Settings", which may itself carry a
      * proxy (host/port/creds/type). A brand-new named proxy must start BLANK, not
-     * inherit that — otherwise the editor pre-fills the Default-Settings proxy.
+     * inherit that - otherwise the editor pre-fills the Default-Settings proxy.
      * Clear the per-proxy identity fields; keep neutral field defaults for the
      * rest (command / DNS / diagnostics). */
     conf_set_int(conf, CONF_proxy_type, PROXY_NONE);
@@ -98,7 +98,7 @@ static Conf *pxe_new_conf(void)
 }
 
 /* ------------------------------------------------------------------ *
- * The Application tab's "Named Proxies" panel (design §9.3b).
+ * The Application tab's "Named Proxies" panel.
  *
  * An ordinary config box panel: it inherits the theme, the font, the panel
  * cache and the panel area's scrolling. It replaced a pop-up editor

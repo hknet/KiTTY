@@ -50,7 +50,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime);
 		nb = (*nbitem) ;
 
-		if( cSubKeys>0 ) { // Recuperation des sous-menu
+		if( cSubKeys>0 ) { // collect the submenus
 		for (i=0; (i<cSubKeys)&&(nb<NB_MENU_MAX); i++) {
 			DWORD cchValue = MAX_VALUE_NAME; 
 			char lpData[4096] ;
@@ -68,7 +68,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		
 		nb = (*nbitem) ;
 		
-		if (cValues) { // Recuperation des item de menu
+		if (cValues) { // collect the menu items
 		if( separator ) AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 		
 		if( nb<NB_MENU_MAX )
@@ -114,7 +114,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		if( ( dir = opendir( fullpath ) ) != NULL ) {
 			if( separator ) AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 			nb = (*nbitem) ;
-			while( ( de = readdir(dir) ) != NULL ) { // Recherche de sous-cle (repertoire)
+			while( ( de = readdir(dir) ) != NULL ) { // look for subkeys (directories)
 				if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
 					snprintf( buffer, sizeof(buffer), "%s\\%s", fullpath, de->d_name ) ;
 					if( GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY ) {
@@ -135,9 +135,9 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			rewinddir( dir ) ;
 
 			nb = (*nbitem) ;
-			while( ( de = readdir(dir) ) != NULL ) { // Recherche de cle
+			while( ( de = readdir(dir) ) != NULL ) { // look for keys
 				if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
-				if( strcmp(de->d_name,"Default%20Settings") || strcmp(KeyName,"Launcher") ) { // Default Settings ne doit pas apparaitre dans le Launcher
+				if( strcmp(de->d_name,"Default%20Settings") || strcmp(KeyName,"Launcher") ) { // Default Settings must not show up in the Launcher
 					
 					snprintf( buffer, sizeof(buffer), "%s\\%s", fullpath, de->d_name ) ;
 					if( !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) ) {

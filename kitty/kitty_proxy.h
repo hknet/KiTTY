@@ -1,3 +1,9 @@
+/*
+ * kitty_proxy.h - the declarations for kitty_proxy.c: the table of named
+ * proxy definitions, loading and saving one, the rules deciding when the
+ * config box offers the choice, how a definition's host is read, and the
+ * migration, export and import entry points.
+ */
 #ifndef KITTY_PROXY
 #define KITTY_PROXY
 
@@ -12,7 +18,7 @@ int GetProxySelectionFlag() ;
 int kitty_has_proxy_definitions( void ) ;
 int kitty_proxy_choice_shown( void ) ;
 int kitty_proxy_editor_available( void ) ;
-/* The Application tab's "Named proxies" panel (design 9.3b): the same
+/* The Application tab's "Named proxies" panel: the same
  * named-proxy definitions, as an ordinary config-box panel. */
 struct controlbox ;
 void kitty_proxy_build_panel( struct controlbox *b ) ;

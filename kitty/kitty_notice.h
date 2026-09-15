@@ -1,3 +1,9 @@
+/*
+ * kitty_notice.h - the suite's own notification window near the clock
+ * (kitty_notice.c): how a notice is raised, how long it stays and what a
+ * click on it does, plus the window messages the clickable notices post
+ * back to the terminal window.
+ */
 #ifndef KITTY_NOTICE_H
 #define KITTY_NOTICE_H
 

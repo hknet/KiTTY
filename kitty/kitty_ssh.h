@@ -1,3 +1,8 @@
+/*
+ * kitty_ssh.h - the declarations for kitty_ssh.c: port knocking before a
+ * connection (MOD_PORTKNOCKING). knock() hits one TCP or UDP port;
+ * ManagePortKnocking() walks a whole sequence written as a string.
+ */
 #ifndef KITTY_SSH
 #define KITTY_SSH
 

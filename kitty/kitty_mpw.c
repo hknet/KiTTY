@@ -1,5 +1,5 @@
 /*
- * KiTTY master-password (MPW1) secret envelope — DPAPI Phase 2.
+ * KiTTY master-password (MPW1) secret envelope - DPAPI Phase 2.
  *
  * Machine-independent at-rest encryption of a stored secret under a user
  * passphrase, so secrets survive a move to another PC (unlike DPAPI, which is

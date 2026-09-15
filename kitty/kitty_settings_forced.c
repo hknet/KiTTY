@@ -1,5 +1,5 @@
 /*
- * kitty_settings_forced.c — KiTTY "export current settings" to a .ktx file.
+ * kitty_settings_forced.c - KiTTY "export current settings" to a .ktx file.
  *
  * Ported from KiTTY 0.76b kitty_settings.c (save_open_settings_forced + the
  * write_setting_*_forced / wmap_forced / wprefs_forced / write_clip_setting_forced
@@ -11,8 +11,8 @@
  *  - A handful of MOD_PERSO conf keys are not yet ported into 0.84 conf.h;
  *    those individual writes are commented out (marked NOTPORTED) so the rest
  *    of the export remains faithful. Current 0.84 scripting is compiled and
- *    exposed without the old MOD_RUTTY define, so its KTX fields are written
- *    unconditionally.
+ *    exposed in every build, so its KTX fields are written unconditionally,
+ *    with no build-time switch to test.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -511,8 +511,9 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_i_forced(sesskey, "HyperlinkRegularExpressionUseDefault", conf_get_int(conf, CONF_url_defregex));
     write_setting_s_forced(sesskey, "HyperlinkRegularExpression", conf_get_str(conf, CONF_url_regex));
     /* RuTTY scripting is compiled and exposed in current KiTTY builds, so the
-     * KTX export must persist it without depending on the historical MOD_RUTTY
-     * define. Do not save record mode as active; match old KiTTY behaviour. */
+     * KTX export must persist it unconditionally, without depending on a
+     * build-time switch. Do not save record mode as active; match old KiTTY
+     * behaviour. */
     write_setting_filename_forced(sesskey, "Scriptfile", conf_get_filename(conf, CONF_scriptfile));
     write_setting_i_forced(sesskey, "ScriptMode", conf_get_int(conf, CONF_script_mode) == 1 ? 1 : 0);
     write_setting_i_forced(sesskey, "ScriptLineDelay", conf_get_int(conf, CONF_script_line_delay));
@@ -567,9 +568,9 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_b_forced(sesskey, "ForegroundOnBell", conf_get_bool(conf, CONF_foreground_on_bell));
 
     {
-        /* Backend-scoped protection (TASK_dpapi_mpw_backend_policy §2b): a
+        /* Backend-scoped protection: a
          * .ktx export is a portable file, so the password gets the same
-         * envelope as portable session files — MPW1 master-password (the
+         * envelope as portable session files - MPW1 master-password (the
          * first wrap may prompt to create/unlock), DPAPI1 fallback, plain
          * only in explicit legacy mode. The old MASKPASS+bcrypt form is
          * read-compatibility only and is never written anymore. */
@@ -586,7 +587,7 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_i_forced(sesskey, "CtrlTabSwitch", conf_get_int(conf, CONF_ctrl_tab_switch));
     write_setting_s_forced(sesskey, "Comment", conf_get_str(conf, CONF_comment));
     write_setting_b_forced(sesskey, "CommentNotify", conf_get_bool(conf, CONF_comment_notify));
-    /* SCPAutoPwd retired 2026-07-21: the old "Send file in current directory"
+    /* SCPAutoPwd retired: the old "Send file in current directory"
      * option relied on the removed __pw title-scan (CVE-2024-23749) and is
      * replaced by opt-in OSC 7 cwd tracking. No longer persisted; a one-time
      * migration converts SCPAutoPwd=1 sessions to OSC7CwdTracking and deletes

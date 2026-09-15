@@ -821,12 +821,13 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
      * a local store regardless of protocol - and distinct from -pwfile, which
      * sets the SSH login password. Non-interactive, so -batch-safe.
      *
-     * ⚠️ GUARDED, because this file is compiled twice: once into the kitty
-     * targets with MOD_PERSO, and once into the shared settings library WITHOUT
-     * it, which the stock console tools (plink, pscp, psftp) link. Unguarded,
-     * the two KiTTY symbols below left those three unlinkable - and it went
-     * unnoticed for weeks because an INCREMENTAL build relinks nothing that has
-     * not changed. It only surfaced on the next build from a clean tree. */
+     * WARNING: GUARDED, because this file is compiled twice: once into the
+     * kitty targets with MOD_PERSO, and once into the shared settings library
+     * WITHOUT it, which the stock console tools (plink, pscp, psftp) link.
+     * Unguarded, the two KiTTY symbols below left those three unlinkable - and
+     * it went unnoticed for weeks because an INCREMENTAL build relinks nothing
+     * that has not changed. It only surfaced on the next build from a clean
+     * tree. */
     if (!strcmp(p, "-masterpwfile")) {
         extern void kitty_set_master_passphrase(const char *);
         extern int kitty_portable_password_dpapi(void);

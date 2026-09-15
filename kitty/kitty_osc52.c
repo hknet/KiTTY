@@ -969,7 +969,7 @@ static void osc52_set_frame_colour(HWND hwnd, COLORREF colour)
  * term_osc52_perm_state) and the tint.
  */
 /*
- * ⚠️ The frame has a RESTING STATE, and it is not always "no tint".
+ * WARNING: The frame has a RESTING STATE, and it is not always "no tint".
  *
  * A window whose connection went through workplace proxy mode's proxy rests at
  * DARK GREEN for as long as that connection lives. A clipboard event still wins
@@ -978,7 +978,7 @@ static void osc52_set_frame_colour(HWND hwnd, COLORREF colour)
  * tint down has to come through here, or a single clipboard read would silently
  * switch off the visible half of workplace proxy mode for the rest of the day.
  *
- * ⚠️ It asks whether THIS CONNECTION was proxied, not whether the mode is on
+ * WARNING: It asks whether THIS CONNECTION was proxied, not whether the mode is on
  * now. Those differ in both directions and the difference matters: a window
  * opened before the mode was switched on is not going through that proxy and
  * must not be painted as if it were, and one that IS going through it keeps the

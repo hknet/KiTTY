@@ -1,3 +1,9 @@
+/*
+ * kitty_anchor.h - edge anchoring for resizable dialogs (kitty_anchor.c):
+ * capture where the controls sit at the template size, then re-place them
+ * against the current client size. Win32 only, shared by the suite's
+ * resizable windows.
+ */
 #ifndef KITTY_ANCHOR_H
 #define KITTY_ANCHOR_H
 #include <windows.h>

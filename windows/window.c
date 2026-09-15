@@ -382,7 +382,7 @@ extern int AntiIdleSeconds;   /* KiTTY: [KiTTY] antiidledelay, in seconds */
 /* Session > Logging > "Log rotation delay": start a new log file every N
  * seconds (CONF_logtimerotation). Repeating; logfile_rotate() decides whether
  * rotating is actually safe.
- * ⚠️ 8712 is TIMER_CLIPACTIVITY (windows/kitty_rc_additions.h) - using it here
+ * WARNING: 8712 is TIMER_CLIPACTIVITY (windows/kitty_rc_additions.h) - using it here
  * put this timer behind that branch, which KillTimer()s it, so rotation fired
  * once and never again. When picking an id, grep windows/*.h too, not just the
  * .c files and kitty.h (which has its own unused TIMER_LOGROTATION 8707). */
@@ -705,7 +705,7 @@ static void start_backend(WinGuiSeat *wgs)
     /*
      * KiTTY feature: apply the selected proxy override for THIS CONNECTION ONLY.
      *
-     * ⚠️ Applied to a THROWAWAY COPY, never to wgs->conf. It used to be applied
+     * WARNING: Applied to a THROWAWAY COPY, never to wgs->conf. It used to be applied
      * to the seat's own conf, and that destroyed user data: the preset's fields
      * were written over the session's own proxy settings, so anything that later
      * saved the session persisted them - and a proxy password that existed only
@@ -892,7 +892,7 @@ static void start_backend(WinGuiSeat *wgs)
          * window vanish behind an OK-click.
          *
          * Now it follows the same rule as connection_fatal: inline in the
-         * terminal, window LEFT OPEN with the ⚠ titlebar marker, so the reason
+         * terminal, window LEFT OPEN with the WARNING: titlebar marker, so the reason
          * can be read (and copied) and the user closes when ready. Restart
          * Session is right there for a typo.
          *
@@ -909,7 +909,7 @@ static void start_backend(WinGuiSeat *wgs)
                                      conf_get_str(wgs->conf, CONF_host));
             kitty_term_print_inline_error(wgs->term, msg, true);
             show_mouseptr(wgs, true);
-            wgs->error_close = true;   /* ⚠ + "(disconnected)" via close_session */
+            wgs->error_close = true; /* WARNING: + "(disconnected)" via close_session */
             queue_toplevel_callback(close_session, wgs);
             sfree(str);
             sfree(msg);
@@ -3083,7 +3083,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
 #endif
 #ifdef MOD_PERSO
     /*
-     * KiTTY, workplace proxy mode (design §9): this connection went through the
+     * KiTTY, workplace proxy mode: this connection went through the
      * mode's proxy and never came up. Overwhelmingly that means the user has
      * left the place where that proxy exists - so say so, and offer to switch
      * the mode off, at the one moment the offer is useful.
@@ -3500,7 +3500,7 @@ static void init_fonts(WinGuiSeat *wgs, int pick_width, int pick_height)
      * background of a cell is filled to the full, taller rectangle, so the extra
      * space carries the cell's own colour.
      *
-     * ⚠️ Box-drawing characters (U+2500 and friends) stop joining vertically at
+     * WARNING: Box-drawing characters (U+2500 and friends) stop joining vertically at
      * anything above 100: the glyph is drawn at its own size in a taller cell,
      * so gaps appear between rows. That is inherent - every terminal offering
      * line spacing does it - and is why the default is 100.
@@ -4682,7 +4682,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
              * Settings can set or clear a path while the window is open, so the
              * decision cannot be made when the menu is built.
              *
-             * ⚠️ DELETE FIRST, THEN COMPUTE POSITIONS. MF_BYCOMMAND deletion is
+             * WARNING: DELETE FIRST, THEN COMPUTE POSITIONS. MF_BYCOMMAND deletion is
              * position-independent, but the insertion below is BY POSITION, and
              * a position taken before the deletions would be off by however
              * many rows the deletions removed.
@@ -4987,7 +4987,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #ifdef MOD_PERSO
             if (force_reconf == 0) {
                 /* KiTTY silent apply: conf was already mutated in-place
-                 * (Invert colours / Black on white etc.) — skip the dialog
+                 * (Invert colours / Black on white etc.) - skip the dialog
                  * and just push the new conf into the terminal/palette. */
                 force_reconf = 1;
                 reconfig_result = true;
@@ -8200,7 +8200,7 @@ static char *kitty_decorate_title(WinGuiSeat *wgs, const char *title)
      * revived feature kept that habit (79ef06be1) - but a maximised terminal
      * has a real size, and it is the one users most want to read off.
      * Columns first, like PuTTY's own resize tip (sizetip.c), xterm and
-     * everyone else; classic KiTTY printed rows first (2026-09-07). */
+     * everyone else; classic KiTTY printed rows first. */
     if (GetSizeFlag() && wgs->term)
         put_fmt(sb, KT_TITLE_SIZE, wgs->term->cols, wgs->term->rows);
     if (GetProtectFlag())

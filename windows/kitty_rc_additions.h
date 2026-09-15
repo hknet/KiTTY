@@ -314,7 +314,7 @@
 #endif
 #ifndef IDM_OPENLOGFILE
 /* Open the session's current log file (hknet/KiTTY#31).
- * ⚠️ These ids MUST be multiples of 0x10: WM_SYSCOMMAND dispatches on
+ * WARNING: These ids MUST be multiples of 0x10: WM_SYSCOMMAND dispatches on
  * (wParam & ~0xF), so 0xB101 would arrive as IDM_CLEARLOGFILE. */
 #define IDM_OPENLOGFILE 0xB210
 #endif
@@ -348,7 +348,7 @@
 #ifndef IDM_EXPORTSETTINGS
 #define IDM_EXPORTSETTINGS 0xB040
 #endif
-/* IDM_DUPKITTY (0xB130) removed 2026-08-12: nothing referenced it, and it sat
+/* IDM_DUPKITTY (0xB130) removed: nothing referenced it, and it sat
  * on IDM_LAUNCHER, which is a RANGE base - kitty_launcher.c uses
  * IDM_LAUNCHER+1..+9, so 0xB130-0xB13F belongs to the launcher's own menu. */
 #ifndef IDM_HYPERLINKTOGGLE

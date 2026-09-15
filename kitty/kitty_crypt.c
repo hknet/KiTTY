@@ -1,3 +1,12 @@
+/*
+ * kitty_crypt.c - the legacy reversible encoding of a stored session
+ * password. A string is encrypted in place, base64-encoded, with nbcrypt;
+ * the key is built from the host name and the terminal type, so a password
+ * copied to another session does not decode. mode 1 is the "no salt" variant
+ * and uses a fixed key instead; mode > 1 encodes nothing at all.
+ * MASKPASS is a separate, much weaker XOR used to keep a password from
+ * sitting in plain sight in memory; it is not at-rest protection.
+ */
 #include "kitty_crypt.h"
 
 int cryptstring( const int mode, char * st, const char * key ) {

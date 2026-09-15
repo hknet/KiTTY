@@ -1,3 +1,10 @@
+/*
+ * Resource ids for the built-in mNotepad editor (notepad.c, notepad.rc).
+ * NOTEPAD_IDI_* / NOTEPAD_IDR_* name the icon and the accelerator table,
+ * NOTEPAD_IDM_* the menu commands (file, edit, line delimiters, the KiTTY
+ * window and send entries, help), and NOTEPAD_STR_* the string-table entries
+ * holding the menu wording, the file filter and the licence text.
+ */
 #include <windows.h>
 
 #define NOTEPAD_IDI_MAINICON 9900

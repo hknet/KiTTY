@@ -1,6 +1,13 @@
 /*
- * config.c - the platform-independent parts of the PuTTY
- * configuration box.
+ * kitty_config.c - the configuration box. KiTTY's replacement for PuTTY's
+ * config.c: compiled with MOD_PERSO into the kitty and kitty_portable targets
+ * only, where it wins at link time over the shared library's config.o (built
+ * without MOD_PERSO), so the other binaries are unaffected. It holds the
+ * forked upstream handlers, the session panels (Session, Terminal, Window,
+ * Connection) and the Application tab (every panel under the "Application/"
+ * path, which the tree build shows as the second tab). setup_config_box at
+ * the end is the one sequencer: panels are created in tree order, and the
+ * dialog asserts on any other order.
  */
 
 #include <assert.h>
@@ -64,10 +71,9 @@ static void kitty_winpos_save_from_conf(const char *session, Conf *conf)
 #endif
 
 #ifdef MOD_PERSO
-/* KiTTY config-box additions. This is a kitty-owned copy of config.c
- * compiled with MOD_PERSO into the kitty target; it overrides the
- * shared guiterminal config.o (which is built without MOD_PERSO) so
- * the other shipping binaries are unaffected. */
+/* Declarations from other KiTTY modules that this file does not reach
+ * through a header. The MOD_PERSO fences in this file are always true: it
+ * is never compiled without that define. */
 int GetPuttyFlag(void);
 int GetCtrlTabFlag(void);        /* kitty.c: [KiTTY] ctrltab / -noctrltab */
 int GetSessionFilterFlag(void);  /* kitty.c: [ConfigBox] filter, gates the
@@ -496,7 +502,7 @@ static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * name in CONF_proxyselection, which kitty_proxy_select() overlays onto the
  * session's proxy settings at connect time.
  *
- * ⚠️ That overlay is an OPEN BUG, not a design to build on: it writes the
+ * WARNING: That overlay is an OPEN BUG, not a design to build on: it writes the
  * session's Proxy* fields, so a preset can destroy proxy credentials that exist
  * only in the session. Do not "fix" it by writing the fields here either - that
  * is the same data loss, moved earlier. */
@@ -568,7 +574,7 @@ bool kitty_red_caption(const char *text)
  * control layer. Same cheap-and-false-by-default contract, and the same stub in
  * windows/kitty_config_stubs.c.
  *
- * ⚠️ The box's GROUP TITLE cannot be bolded this way: a
+ * WARNING: The box's GROUP TITLE cannot be bolded this way: a
  * group box is a themed BUTTON and draws its own caption, ignoring the font
  * selected into the DC here. Hence the bold lead line INSIDE the box - which is
  * an ordinary static, and does honour it. */
@@ -642,7 +648,7 @@ static const char *kitty_proxy_override_label(Conf *conf)
  * built-ins, applied to THIS CONNECTION ONLY (kitty_proxy_select() in
  * kitty_bridge.c hands it to a throwaway Conf copy; it never writes the session).
  *
- * ⚠️ The control STARTS NEUTRAL every time the box opens, derived from the
+ * WARNING: The control STARTS NEUTRAL every time the box opens, derived from the
  * session's own proxy settings, and a value stored in the session cannot preselect
  * it. That is deliberate: a remembered override is indistinguishable from a
  * setting, and honouring it here while a double-click on the session list ignores
@@ -744,7 +750,7 @@ static struct pxload_data *kitty_pxload_active = NULL;
  * they are choices for the override, not definitions that can be loaded into a
  * session. So row N is NOT proxies[N] and the skip has to be repeated here.
  *
- * ⚠️ Do NOT reach for dlg_editbox_get() to read the current text instead: this is
+ * WARNING: Do NOT reach for dlg_editbox_get() to read the current text instead: this is
  * a DROPLIST, which has no edit field, and that call asserts
  * "c->ctrl->type == CTRL_EDITBOX" - it crashed the program with a runtime
  * assertion the first time this was written that way.
@@ -973,7 +979,7 @@ static void kitty_wpmode_state_label(struct wpmode_data *wd, dlgparam *dlg)
     if (!wd->state)
         return;
     if (kitty_workplace_query(armed, sizeof(armed))) {
-        /* ⚠️ No proxy name here, and nothing longer: the control was sized from
+        /* WARNING: No proxy name here, and nothing longer: the control was sized from
          * the OFF wording when the panel was built, so a longer line is CLIPPED
          * mid-sentence rather than wrapped. The name is in the droplist two rows
          * below anyway. */
@@ -2774,7 +2780,7 @@ bool kitty_config_select_root_folder(dlgparam *dp)
      * they cannot find. Skipping the refresh loses nothing - the panel
      * rebuilds from CurrentFolder when it is next shown.
      *
-     * ⚠️ And only when the control EXISTS: folder navigation builds no combo at
+     * WARNING: And only when the control EXISTS: folder navigation builds no combo at
      * all, and dlg_is_visible(NULL) is not a question the dialog layer can
      * answer - it looks the control up in a tree234 and asserts. That fired as a
      * runtime assertion box the first time Ctrl+G was pressed in that mode, and
@@ -2853,7 +2859,7 @@ static void sessionsaver_update_save_button(struct sessionsaver_data *ssd,
  * session into a NEW session called "tests", sitting beside the folder of that
  * name. Stepping into a folder is the easy way to reach that state.
  *
- * ⚠️ Only when UNTOUCHED. This runs on every list rebuild, and typing in the box
+ * WARNING: Only when UNTOUCHED. This runs on every list rebuild, and typing in the box
  * rebuilds the list - so clearing unconditionally would wipe a search halfway
  * through typing it. Text the user has edited is theirs and stays.
  */
@@ -2945,7 +2951,7 @@ static bool kitty_folder_rows_on(void)
 /*
  * Are session folders available in this dialog at all?
  *
- * ⚠️ This exists because "the folder combo" and "folders work" USED to be the
+ * WARNING: This exists because "the folder combo" and "folders work" USED to be the
  * same condition, and several behaviours were written as `if (ssd->folderlist)`.
  * Folder navigation sets that pointer to NULL - it steers by the list instead -
  * so every one of those became a silent no-op in the new mode. The one that
@@ -8049,7 +8055,7 @@ static void kitty_bkey_set_box(struct kitty_bkey_state *st, dlgparam *dp,
  * Clear must not leave "Custom key for this session" sitting under a field that
  * now shows the installation's key.
  *
- * ⚠️ dlg_label_change on a CTRL_TEXT cannot change the control's HEIGHT - that
+ * WARNING: dlg_label_change on a CTRL_TEXT cannot change the control's HEIGHT - that
  * was fixed at layout time (windows/controls.c). All three wordings are
  * therefore kept to one line of similar length; a longer one would be cut off.
  */
@@ -9181,7 +9187,7 @@ static void scb_panel_selection(struct controlbox *b)
                     KT_REMOTE_CLIPBOARD_PERMISSIONS);
 #ifdef MOD_FAR2L
     /* KiTTY (far2l): let a remote far2l session read/write the local clipboard.
-     * Triples (label, NO_SHORTCUT, I(val)) — 0.84 ctrl_radiobuttons needs the
+     * Triples (label, NO_SHORTCUT, I(val)) - 0.84 ctrl_radiobuttons needs the
      * per-button shortcut slot. */
     /* Deny/Allow/Ask rather than Disabled/Enabled: these grant a permission,
      * they do not switch a feature on. The SHARED_CLIPBOARD_* value names still
@@ -9709,7 +9715,7 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
         s = ctrl_getset(b, "Connection/Proxy", "basics",
                         KT_PROXY_THIS_SESSION_S_OWN_PROXY);
 #ifdef MOD_PERSO
-        /* KiTTY: the §6b notice used to be a three-line paragraph HERE, added
+        /* KiTTY: the notice used to be a three-line paragraph HERE, added
          * only while the mode was armed. Two things were wrong with it and both
          * came from the same mistake - it was built at panel-construction time:
          *  - it could not change, so switching the mode off left it insisting
@@ -9829,11 +9835,11 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
              * rather than read: this is the one line on the panel that says
              * something is overriding every session right now.
              *
-             * ⚠️ Relabelled in place (see dlg_label_change), so the two wordings
+             * WARNING: Relabelled in place (see dlg_label_change), so the two wordings
              * must occupy the same number of lines - the control's height was
              * fixed when the panel was built. Both are one line at this width.
              *
-             * ⚠️ It says the connection WILL USE the workplace proxy; it does
+             * WARNING: It says the connection WILL USE the workplace proxy; it does
              * not say "these settings are ignored". That would not be true in
              * every case - a proxy Host naming a saved session still drags that
              * session's configuration in - and the first person to hit a chained
@@ -11294,7 +11300,7 @@ static void scb_panel_zmodem(struct controlbox *b)
  * not session values, so the handlers read and write there directly - there is
  * no Save on an application setting and no Conf that could carry them.
  *
- * ⚠️ NONE of them can take effect in the window you are looking at. The box's
+ * WARNING: NONE of them can take effect in the window you are looking at. The box's
  * geometry is decided when it is built, and the theme is applied to windows as
  * they are created; changing either here writes the file and the next
  * configuration window comes up with it. The panel says so rather than leaving
@@ -14626,7 +14632,7 @@ static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
 }
 
 /*
- * The APPLICATION tab's panels (KiTTY, design §9).
+ * The APPLICATION tab's panels (KiTTY).
  *
  * These are settings about the program, not about the session in front of
  * you, and they are reached through the Session | Application tabs above the

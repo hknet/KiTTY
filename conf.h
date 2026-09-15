@@ -1473,7 +1473,7 @@ CONF_OPTION(winclass,
     SAVE_KEYWORD("WindowClass"),
 )
 
-/* ===== KiTTY (MOD_PERSO) configuration options — foundational set ported to 0.84 ===== */
+/* ===== KiTTY (MOD_PERSO) configuration options: the foundational set ===== */
 CONF_OPTION(autocommand, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Autocommand"),)
 CONF_OPTION(bg_image_abs_fixed, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("BgImagePlacement"),)
 CONF_OPTION(bg_image_abs_x, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("BgImageAbsoluteX"),)
@@ -1588,7 +1588,7 @@ CONF_OPTION(ypos, VALUE_TYPE(INT), DEFAULT_INT(-1), SAVE_KEYWORD("TermYPos"),)
 CONF_OPTION(maximize, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("Maximize"),)
 CONF_OPTION(fullscreen, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("Fullscreen"),)
 CONF_OPTION(sendtotray, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("SendToTray"),)
-/* ===== KiTTY (MOD_PERSO) — previously NOTPORTED keys, now added ===== */
+/* ===== KiTTY (MOD_PERSO) - previously NOTPORTED keys, now added ===== */
 CONF_OPTION(enter_sends_crlf, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("EnterSendsCrLf"),)
 CONF_OPTION(host_alt, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("HostAlt"),)
 CONF_OPTION(scriptfile, VALUE_TYPE(FILENAME), SAVE_KEYWORD("Scriptfile"),)
@@ -1618,12 +1618,12 @@ CONF_OPTION(launcherhide, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("L
  * application (mRemoteNG puts it in a tab) has no use for a Close button that
  * would strand the host, and a window nobody may minimise is the point of a kiosk.
  *
- * ⚠️ WindowHasSysMenu is not one of four equals - Windows will not draw ANY caption
- * button without WS_SYSMENU, so turning it off removes close, minimise and
- * maximise whatever those three say. Classic KiTTY greyed the other three boxes in
- * its dialog to show that; this port has no dlg_enable() to grey a control with, so
- * the labels say it instead. The behaviour is identical either way, because it is
- * Windows enforcing it and not us.
+ * WARNING: WindowHasSysMenu is not one of four equals - Windows will not draw
+ * ANY caption button without WS_SYSMENU, so turning it off removes close,
+ * minimise and maximise whatever those three say. Classic KiTTY greyed the
+ * other three boxes in its dialog to show that; this port has no dlg_enable()
+ * to grey a control with, so the labels say it instead. The behaviour is
+ * identical either way, because it is Windows enforcing it and not us.
  *
  * Closing is disabled by greying SC_CLOSE on the system menu rather than by
  * dropping a style bit, which is what also greys the X and disables Alt+F4. */
@@ -1790,13 +1790,14 @@ CONF_OPTION(clipboard_writes_per_sec, VALUE_TYPE(INT), DEFAULT_INT(10), SAVE_KEY
  * for far2l) only ever meant "text does not need as much", which is not a security
  * argument, since the bound a hostile host can reach is the same either way.
  *
- * ⚠️ This is a memory-exhaustion backstop, not a feature limit. A host that opens
- * a sequence and never terminates it can make one window hold this much with no
- * user interaction, and the decode transiently costs about the same again. So it
- * is CLAMPED in code (see clip_ceiling_bytes in terminal.c): a user cannot turn a
- * bounded denial of service into an unbounded one by typing a large number here.
- * Lowering it is the more interesting direction - somebody who never copies images
- * can shrink what a hostile host can make them hold.
+ * WARNING: This is a memory-exhaustion backstop, not a feature limit. A host
+ * that opens a sequence and never terminates it can make one window hold this
+ * much with no user interaction, and the decode transiently costs about the
+ * same again. So it is CLAMPED in code (see clip_ceiling_bytes in terminal.c):
+ * a user cannot turn a bounded denial of service into an unbounded one by
+ * typing a large number here. Lowering it is the more interesting direction -
+ * somebody who never copies images can shrink what a hostile host can make them
+ * hold.
  *
  * It does NOT govern the 2 KB ceiling on ordinary escape sequences. That one stays
  * fixed and unsettable: it is what stops the clipboard feature being used to hand

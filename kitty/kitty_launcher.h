@@ -1,3 +1,9 @@
+/*
+ * kitty_launcher.h - the entry points of kitty_launcher.c: the tray
+ * launcher's own WinMain, and the two helpers that start a child KiTTY
+ * (a bare instance or a named saved session) with this process's settings
+ * carried over.
+ */
 #ifndef KITTY_LAUNCHER_H
 #define KITTY_LAUNCHER_H
 

@@ -1,3 +1,14 @@
+/*
+ * kitty_image.c - the terminal background image (MOD_BACKGROUNDIMAGE).
+ * It loads the picture (a BMP through LoadImage, a JPEG through the bundled
+ * libjpeg, or the desktop wallpaper read from the shell's own settings),
+ * then tiles, centres, stretches or places it in an off-screen device
+ * context sized to the whole virtual desktop, and applies the configured
+ * opacity, including the gradient styles computed pixel by pixel.
+ * What it leaves behind is that background DC, plus a pre-blended copy for
+ * fast fills, which the painting code draws behind the terminal text; it is
+ * rebuilt on a resize or a configuration change.
+ */
 
 #include <setjmp.h>
 #include "jpeg/jpeglib.h"
@@ -82,7 +93,7 @@ int GetShrinkBitmapEnable( void ) { return ShrinkBitmapEnable ; }
 	
 
 //
-// Fonctions de shrink de bitmap
+// Bitmap shrinking functions
 //
 #define Alloc(p,t) (t *)malloc((p)*sizeof(t))
 #define For(i,n) for ((i)=0;(i)<(n);(i)++)
@@ -241,19 +252,19 @@ HBITMAP ResizeBmp( HBITMAP hBmpSrc, WORD bx, WORD by ) {
 	SIZE newSize ;
 	newSize.cx = bx;
 	newSize.cy = by;
-	// taille actuelle
+	// current size
 	BITMAP bmpInfo;
 	GetObject(hBmpSrc, sizeof(BITMAP), &bmpInfo);
 	SIZE oldSize;
 	oldSize.cx = bmpInfo.bmWidth;
 	oldSize.cy = bmpInfo.bmHeight;
 
-	// selection source ds un DC
+	// select the source into a DC
 	HDC hdc = GetDC(NULL);
 	HDC hDCSrc = CreateCompatibleDC(hdc);
 	HBITMAP hOldBmpSrc = (HBITMAP)SelectObject(hDCSrc, hBmpSrc);
 
-	// création bitmap dest et sélection ds un DC
+	// create the destination bitmap and select it into a DC
 	HDC hDCDst = CreateCompatibleDC(hdc);
 	HBITMAP hBmpDst = CreateCompatibleBitmap(hdc, newSize.cx, newSize.cy);
 	HBITMAP hOldBmpDst = (HBITMAP)SelectObject(hDCDst, hBmpDst);
@@ -261,7 +272,7 @@ HBITMAP ResizeBmp( HBITMAP hBmpSrc, WORD bx, WORD by ) {
 	// resize
 	StretchBlt(hDCDst, 0, 0, newSize.cx, newSize.cy, hDCSrc, 0, 0, oldSize.cx, oldSize.cy, SRCCOPY);
 	
-	// libération ressources
+	// release the resources
 	SelectObject(hDCSrc, hOldBmpSrc);
 	SelectObject(hDCDst, hOldBmpDst);
 	DeleteDC(hDCSrc);
@@ -470,7 +481,7 @@ HBITMAP loadJPEGimage(FILE *input_file, HGLOBAL *LimageBitmap, int *LsizeX, int 
 	bh = (LPBITMAPINFOHEADER) imageBitmap;
 	pix = ((LPBYTE) imageBitmap) + sizeof(BITMAPINFOHEADER) +
 			(usePalette ? (256 * sizeof(RGBQUAD)) : 0);
-	pix = pix + 0 ; // Pour eviter un warning de compilation
+	pix = pix + 0 ; // To avoid a compilation warning
 	bh->biSize = sizeof(BITMAPINFOHEADER);
 	bh->biWidth = cinfo.output_width;
 	bh->biHeight = cinfo.output_height;
@@ -734,30 +745,30 @@ static void color_opacity_gradient( HDC destDc, int x, int y, int width, int hei
         for(i=0; i<width*height*4; i+=4) {
 		
 		switch( style ) {
-			case 2: // De bas en haut
+			case 2: // Bottom to top
 			if( (i%(4*width)) == 0 ) {
 				h++ ;
 				opacity = OpacityMin + 1.0*( OpacityMax-OpacityMin ) * (1.0*h)/(1.0*height) ;
 				opacity = 100 - opacity ;
 				}
 				break ;
-			case 3: // De gauche a droite
+			case 3: // Left to right
 				w++ ; if( w >= width ) { w = 0 ; }
 				opacity = OpacityMin + 1.0*( OpacityMax-OpacityMin ) * (1.0*w)/(1.0*width) ;
 				break ;
-			case 4: // De droite a gauche
+			case 4: // Right to left
 				w++ ; if( w >= width ) { w = 0 ; }
 				opacity = OpacityMin + 1.0*( OpacityMax-OpacityMin ) * (1.0*w)/(1.0*width) ;
 				opacity = 100 - opacity ;
 				break ;
-			case 5: // Du centre vers l'exterieur
+			case 5: // From the centre outwards
 				if( (i%(4*width)) == 0 ) { h++ ; }
 				w++ ; if( w >= width ) { w = 0 ; }
 				l = sqrt( pow(1.0*width/2.0-w,2.0)+pow(1.0*height/2.0-h,2.0) ) / 
 					sqrt( pow(1.0*width/2.0,2.0)+pow(1.0*height/2.0,2.0) );
 				opacity = OpacityMin + 1.0*( OpacityMax-OpacityMin ) * l ;
 				break ;
-			case 6: // De l'exterieur vers le centre
+			case 6: // From the outside towards the centre
 				if( (i%(4*width)) == 0 ) { h++ ; }
 				w++ ; if( w >= width ) { w = 0 ; }
 				l = sqrt( pow(1.0*width/2.0-w,2.0)+pow(1.0*height/2.0-h,2.0) ) / 
@@ -791,7 +802,7 @@ static void color_opacity_gradient( HDC destDc, int x, int y, int width, int hei
 				opacity = OpacityMin + 1.0*( OpacityMax-OpacityMin ) * l ;
 				opacity = 100 - opacity ;
 				break ;
-			default: // De haut en bas
+			default: // Top to bottom
 			if( (i%(4*width)) == 0 ) {
 				h++ ;
 				opacity = OpacityMin + 1.0*( OpacityMax-OpacityMin ) * (1.0*h)/(1.0*height) ;
@@ -940,7 +951,7 @@ BOOL load_bg_bmp()
     }
 
 
-	// Securite pour ne pas depacer les limites de l'ecran principal
+	// Safety check: do not go beyond the limits of the main screen
 	if( (bBgRelToTerm == 0) 
 		&&((clientRect.right>kitty_bg_origin_x+deskWidth)||(clientRect.bottom>kitty_bg_origin_y+deskHeight)
 		   ||(clientRect.left<kitty_bg_origin_x)||(clientRect.top<kitty_bg_origin_y)) ) {
@@ -1033,7 +1044,7 @@ BOOL load_bg_bmp()
 		fill_dc(backgrounddc, deskWidth, deskHeight, backgroundcolor) ;
 		break ;
 	
-	case 5: // Stretch a la taille de la fenetre
+	case 5: // Stretch to the size of the window
 		{
 		if( (ShrinkBitmapEnable)&&(clientWidth<rawImageInfo.bmWidth)&&(clientHeight<rawImageInfo.bmHeight) ) {
 			HBITMAP newhbmpBMP ;
@@ -1104,11 +1115,11 @@ void clean_bg(void) {
 void RedrawBackground( HWND hwnd ) {
 	kitty_bg_generation++ ;
 	if(
-		1 && // On inhibe cette fonction a cause du probleme de fuite memoire due a l'image de fond !!!  , mais probleme de rafraichissement ?
+		1 && // This function was disabled because of the memory leak caused by the background image !!!  , but then there was a refresh problem?
 		(get_param("BACKGROUNDIMAGE"))&&(!get_param("PUTTY"))&&(conf_get_int(conf,CONF_bg_type) != 0) ) 
 			{
 			clean_bg() ;
-			load_bg_bmp();   // Apparement c'est ça qui faisait la fuite memoire !!!
+			load_bg_bmp();   // Apparently this is what was leaking memory !!!
 			}
 	/*
 	InvalidateRect(hwnd, NULL, true) ;

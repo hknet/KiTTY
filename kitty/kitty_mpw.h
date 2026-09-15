@@ -1,3 +1,8 @@
+/*
+ * kitty_mpw.h - the master-password secret envelope (kitty_mpw.c): the
+ * Argon2id cost constants, key derivation from the passphrase and salt, and
+ * the protect / unprotect pair that wraps a stored secret as "MPW1:<base64>".
+ */
 #ifndef KITTY_MPW_H
 #define KITTY_MPW_H
 

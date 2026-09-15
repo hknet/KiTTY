@@ -1,3 +1,13 @@
+/*
+ * kitty.h - the shared declaration header of the KiTTY fork.
+ * Every module of the fork includes it. It declares the [KiTTY] and
+ * [ConfigBox] settings flags with their Get/Set accessors, the delays,
+ * paths and buffers kitty.c defines, the broadcast gate, the shortcut
+ * tables and their entry points, the window, tray, icon and script
+ * helpers, and the kitty.ini/registry parameter functions. It also
+ * pulls in kitty_rc_additions.h so the menu command ids have exactly
+ * one definition.
+ */
 #ifndef KITTY_H
 #define KITTY_H
 #include <math.h>
@@ -18,52 +28,54 @@
  */
 #include "kitty_rc_additions.h"
 
-// Handle sur la fenetre principale
+// Handle to the main window
 //extern HWND MainHwnd ;
 HWND GetMainHwnd(void) ;
 
 
 /*****************************************************
-** DEFINITION DES VARIABLES STATIQUE DE kitty.c
-** ET DE LEUR FONCTIONS D'ACCES ET DE MODIFICATION
+** STATIC VARIABLES OF kitty.c
+** AND THEIR ACCESSOR AND MODIFIER FUNCTIONS
 *****************************************************/
 // [ConfigBox] noexit: respawn the config box when a session window closes
 int GetConfigBoxNoExitFlag(void) ;
 void SetConfigBoxNoExitFlag( const int flag ) ;
 
-// Flag pour inhiber la gestion du CTRL+TAB
+// Flag to disable CTRL+TAB handling
 int GetCtrlTabFlag(void) ;
 void SetCtrlTabFlag( const int flag ) ;
 
-// Flag pour afficher l'image de fond
+// Flag to show the background image
 //extern int BackgroundImageFlag ;
 int GetBackgroundImageFlag(void) ;
 void SetBackgroundImageFlag( const int flag ) ;
 
 #ifdef MOD_RECONNECT
-// Flag pour inhiber le mécanisme de reconnexion automatique
+// Flag to disable the automatic reconnection mechanism
 int GetAutoreconnectFlag( void ) ;
 void SetAutoreconnectFlag( const int flag ) ;
-// Delai avant de tenter une reconnexion automatique
+// Delay before attempting an automatic reconnection
 int GetReconnectDelay(void) ;
 #endif
 
-// Delai avant d'envoyer le password et d'envoyer vers le tray (automatiquement à la connexion) (en milliseconde)
+// Delay before sending the password and before sending the window to the
+// tray automatically on connection (in milliseconds)
 extern int init_delay ;
 
-// Delai entre chaque ligne de la commande automatique (en milliseconde)
+// Delay between each line of the automatic command (in milliseconds)
 extern int autocommand_delay ;
 
-// Delai avant l envoi de la commande automatique sur drag-and-drop (en millisecondes)
+// Delay before sending the automatic command on drag-and-drop (in
+// milliseconds)
 extern int dnd_delay ;
 
-// Delai entre chaque caracteres d'une commande (en millisecondes)
+// Delay between each character of a command (in milliseconds)
 extern int between_char_delay ;
 
-// Delai entre deux lignes d'une meme commande et entre deux raccourcis \x \k
+// Delay between two lines of one command and between two \x \k shortcuts
 extern int internal_delay ;
 
-// Nom de la classe de l'application
+// Name of the application window class
 extern char KiTTYClassName[128] ;
 
 // [KiTTY] size: append the live [cols x rows] to the window title
@@ -74,45 +86,45 @@ void SetSizeFlag( const int flag ) ;
 int GetTitleBarFlag(void) ;
 void SetTitleBarFlag( const int flag ) ;
 
-// Reapplique les decorations de titre apres un changement d'etat (windows/window.c)
+// Reapply the title decorations after a state change (windows/window.c)
 void kitty_refresh_title(void) ;
 
 // KiTTY: expand window-title placeholders (%%h, %%s, %%u, %%p, %%P, %%f, %%l, %%d)
 char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf) ;
 
-// Flag pour passer en mode visualiseur d'images
+// Flag to switch to image-viewer mode
 // extern int ImageViewerFlag ;
 int GetImageViewerFlag(void) ;
 void SetImageViewerFlag( const int flag ) ;
 
 #ifdef MOD_PROXY
-// Flag pour ajouter la fonction Proxy Selector
+// Flag adding the Proxy Selector feature
 // extern int ProxySelectionFlag ;
 int GetProxySelectionFlag() ;
 void SetProxySelectionFlag( const int flag ) ;
 #endif
 
-// Duree (en secondes) pour switcher l'image de fond d'ecran (<=0 pas de slide)
+// Time (in seconds) between background image switches (<=0 = no slideshow)
 extern int ImageSlideDelay ;
 
-// Flag pour la protection contre les saisies malheureuses
-// extern int ProtectFlag ; 
+// Flag protecting the window against accidental keyboard input
+// extern int ProtectFlag ;
 int GetProtectFlag(void) ;
 
-// Flag de definition de la visibilite d'une fenetres
+// Flag defining the visibility of a window
 // extern int VisibleFlag ;
 int GetVisibleFlag(void) ;
 void SetVisibleFlag( const int flag ) ;
 
-// Gestion du script file au lancement
+// Script file handling at startup
 extern char * ScriptFileContent ;
 
-// Flag pour inhiber les raccourcis clavier
+// Flag to disable the keyboard shortcuts
 // extern int ShortcutsFlag ;
 int GetShortcutsFlag(void) ;
 void SetShortcutsFlag( const int flag ) ;
 
-// Flag pour inhiber les raccourcis souris
+// Flag to disable the mouse shortcuts
 // extern int MouseShortcutsFlag ;
 int GetMouseShortcutsFlag(void) ;
 void SetMouseShortcutsFlag( const int flag ) ;
@@ -124,10 +136,10 @@ void SetMouseShortcutsFlag( const int flag ) ;
 extern HDROP hDropInf;
 void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop) ;
 
-// Pointeur sur la commande autocommand
+// Pointer to the automatic command
 extern char * AutoCommand ;
 
-// Contenu d'un script a envoyer à l'ecran
+// Content of a script to send to the screen
 extern char * ScriptCommand ;
 
 // paste size limit (number of characters). Above the limit a confirmation is requested. (0 means unlimited)
@@ -138,7 +150,7 @@ void SetPasteSize( const int size ) ;
 int GetProxyChainMax(void) ;
 void SetProxyChainMax( const int n ) ;
 
-// Flag de gestion de la fonction hyperlink
+// Flag controlling the hyperlink feature
 extern int HyperlinkFlag ;
 int GetHyperlinkFlag(void) ;
 void SetHyperlinkFlag( const int flag ) ;
@@ -158,64 +170,68 @@ const char *kitty_broadcast_send_key( void ) ;         // key a broadcast is SEN
 int kitty_script_enabled(void) ;
 void kitty_script_set_enabled( int on ) ;
 
-// Flag pour le fonctionnement en mode "portable" (gestion par fichiers), defini dans kitty_commun.c
+// Flag for "portable" mode (settings kept in files), defined in
+// kitty_commun.c
 extern int IniFileFlag ;
 int GetIniFileFlag(void) ;
 
-// Flag permettant la gestion de l'arborscence (dossier=folder) dans le cas d'un savemode=dir, defini dans kitty_commun.c
+// Flag enabling the folder tree when savemode=dir, defined in
+// kitty_commun.c
 //extern int DirectoryBrowseFlag ;
 int GetDirectoryBrowseFlag(void) ;
 
-// Renvoi automatiquement dans le tray (pour les tunnel), fonctionne avec le l'option -send-to-tray
+// Send the window to the tray automatically (for tunnels); goes with the
+// -send-to-tray option
 //extern int AutoSendToTray ;
 int GetAutoSendToTray( void ) ;
 void SetAutoSendToTray( const int flag ) ;
 
-// Flag de gestion de la Transparence
+// Flag controlling transparency
 // extern int TransparencyFlag ;
 int GetTransparencyFlag(void) ;
 
 #ifdef MOD_ZMODEM
-// Flag pour inhiber les fonctions ZMODEM
+// Flag to disable the ZMODEM functions
 // extern int ZModemFlag ;
 int GetZModemFlag(void) ;
 void SetZModemFlag( const int flag ) ;
 #endif
 
-// Flag pour ne pas creer les fichiers kitty.ini et kitty.sav
+// Flag to avoid creating the kitty.ini and kitty.sav files
 // extern int NoKittyFileFlag ;
 int GetNoKittyFileFlag(void) ;
 
-// Hauteur de la boite de configuration
+// Height of the configuration box
 // extern int ConfigBoxHeight ;
 int GetConfigBoxHeight(void) ;
 void SetConfigBoxHeight( const int num ) ;
 
-// Hauteur de la fenetre de la boite de configuration (0=valeur par defaut)
+// Height of the configuration box window (0 = default value)
 // static int ConfigBoxWindowHeight = 0 ;
 int GetConfigBoxWindowHeight(void) ;
 void SetConfigBoxWindowHeight( const int num ) ;
 
-// Hauteur de la fenetre pour la fonction winrol
+// Window height used by the winrol function
 // extern int WinHeight ;
 int GetWinHeight(void) ;
-// Flag pour inhiber le Winrol
-// extern int WinrolFlag = 1 
+// Flag to disable the Winrol (window rollup)
+// extern int WinrolFlag = 1
 int GetWinrolFlag(void) ;
 void SetWinrolFlag( const int num ) ;
 
-// Flag permettant de desactiver la sauvegarde automatique des informations de connexion (user/password) à la connexion SSH
-// extern int UserPassSSHNoSave ; ==> Defini dans kitty_commun.c
+// Flag disabling the automatic saving of the login details (user/password)
+// on an SSH connection
+// extern int UserPassSSHNoSave ; ==> defined in kitty_commun.c
 int GetUserPassSSHNoSave(void) ;
 void SetUserPassSSHNoSave( const int flag ) ;
 
-// Flag pour inhiber le filtre sur la liste des sessions de la boite de configuration
+// Flag to disable the filter on the configuration box session list
 // extern int SessionFilterFlag ;
 // [ConfigBox] filter=yes
 int GetSessionFilterFlag(void) ;
 void SetSessionFilterFlag( const int flag ) ;
 
-// Flag pour inhiber la création automatique de la session Default Settings
+// Flag to disable the automatic creation of the Default Settings session
 // [ConfigBox] defaultsettings=yes
 int GetDefaultSettingsFlag(void) ;
 void SetDefaultSettingsFlag( const int flag ) ;
@@ -240,33 +256,33 @@ int GetDblClickFlag(void) ;
 void SetDblClickFlag( const int flag ) ;
 
 
-// Chemin vers le programme WinSCP
+// Path to the WinSCP program
 extern char * WinSCPPath ;
 
 /* path to the file-copy helper: kscp.exe, or PuTTY's pscp.exe */
 extern char * PSCPPath  ;
 
-// Repertoire de lancement
+// Startup directory
 extern char InitialDirectory[4096] ;
 
-// Extention pour les fichiers de session en mode portable (peut être ktx)
+// Extension of the session files in portable mode (may be ktx)
 extern char FileExtension[15] ;
 
-// Répertoire de sauvegarde de la configuration (savemode=dir)
+// Directory the configuration is saved in (savemode=dir)
 extern char * ConfigDirectory ;
 
-// Positionne un flag permettant de determiner si on est connecte
+// Flag telling whether we are connected
 extern int is_backend_connected ;
 
 #ifdef MOD_RECONNECT
-/* Variable permettant de savoir qu'on a deja ete connecte */
+/* Variable telling that we have already been connected once */
 extern int is_backend_first_connected ; 
 #endif
 
-/* Flag pour interdire l'ouverture de boite configuration */
+/* Flag forbidding the configuration box from being opened */
 extern int force_reconf ; 
 
-// Compteur pour l'envoi de anti-idle
+// Counter for sending the anti-idle string
 extern int AntiIdleSeconds ;   /* KiTTY: keepalive interval, in seconds */
 extern char AntiIdleStr[128] ;
 
@@ -275,12 +291,13 @@ NOTIFYICONDATA TrayIcone ;
 #define MYWM_NOTIFYICON		(WM_USER+3)
 #endif
 
-// La librairie dans laquelle chercher les icones (fichier defini dans kitty.ini, sinon kitty.dll s'il existe, sinon kitty.exe)
+// The library to look the icons up in (the file named in kitty.ini, else
+// kitty.dll if it exists, else kitty.exe)
 // extern HINSTANCE hInstIcons ;
 
 extern int debug_flag ;
 
-// Declaration de prototypes de fonction
+// Function prototype declarations
 void InitFolderList( void ) ;
 void SaveFolderList( void ) ;
 void InfoBoxSetText( HWND hwnd, char * st ) ;
@@ -301,7 +318,7 @@ void GetAndSendLinePassword( HWND hwnd ) ;
 void RunScriptFile( HWND hwnd, const char * filename ) ;
 void ReadInitScript( const char * filename ) ;
 int ReadParameterN( const char * key, const char * name, char * value, size_t size ) ;
-int ReadParameter( const char * key, const char * name, char * value ) ; /* compat: value >= 4096 octets; preferer ReadParameterN */
+int ReadParameter( const char * key, const char * name, char * value ) ; /* compat: value >= 4096 bytes; prefer ReadParameterN */
 int WriteParameter( const char * key, const char * name, char * value ) ;
 int DelParameter( const char * key, const char * name ) ;
 void GetSessionFolderName( const char * session_in, char * folder ) ;
@@ -402,13 +419,13 @@ int ShortcutKeyUserCommand( int key ) ;
 int ShortcutKeyReserved( int key ) ;
 char * GetKittyIniFile(void) ;
 char * GetKittySavFile(void) ;
-// Recupere une entree d'une session ( retourne 1 si existe )
+// Get one entry of a session (returns 1 if it exists)
 int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) ;
-// Sauve les coordonnees de la fenetre
-// Decompte le nombre de fenetre de la meme classe que KiTTY
+// Save the window coordinates
+// Count the windows of the same class as KiTTY
 int WindowsCount( HWND hwnd ) ;
 HWND InfoBox( HINSTANCE hInstance, HWND hwnd ) ;
-// Renomme une Cle de registre
+// Rename a registry key
 void RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) ;
 void DelRegistryKey( void ) ;
 void RenewPassword( Conf *conf ) ;
@@ -416,18 +433,18 @@ void RenewPassword( Conf *conf ) ;
 void SetPasswordInConfig( const char * password ) ;
 void SetUsernameInConfig( const char * username ) ;
 void kitty_userauth_credentials( const char * username, const char * password ) ;
-// Gere l'envoi dans le System Tray
+// Handles sending the window to the system tray
 int ManageToTray( HWND hwnd ) ;
 void RefreshBackground( HWND hwnd ) ;
 void SendAutoCommand( HWND hwnd, const char * cmd ) ;
 int NextBgImage( HWND hwnd ) ;
 int PreviousBgImage( HWND hwnd ) ;
 void ManageSpecialCommand( HWND hwnd, int menunum ) ;
-// Sauvegarde de la cle de registre
+// Backup of the registry key
 void SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) ;
 void ManageProtect( HWND hwnd, TermWin *tw, char * title ) ;
 void ManagePrint( HWND hwnd ) ;
-// Gere l'option always visible
+// Handles the always visible option
 void ManageVisible( HWND hwnd, TermWin *tw, char * title ) ;
 void SaveRegistryKey( void ) ;
 void SaveRegistryKeyNow( void ) ;
@@ -531,14 +548,14 @@ void urlhack_launch_url(const char* app, const char *url) ;
 int GetPortFwdState( const int port, const DWORD pid ) ;
 int ShowPortfwd( HWND hwnd, Conf * conf ) ;
 void OnDropFiles(HWND hwnd, HDROP hDropInfo) ;
-// Affiche un menu dans le systeme Tray
-// Recupere les coordonnees de la fenetre
-// Gestion du script au lancement
+// Show a menu in the system tray
+// Get the window coordinates
+// Startup script handling
 void ManageInitScript( const char * input_str, const int len ) ;
 
 char * get_param_str( const char * val ) ;
 
-// Fonctions permettant de formatter les chaînes de caractères avec %XY	
+// Functions encoding and decoding strings with the %XY escape form
 void mungestr( const char *in, char *out ) ;
 void unmungestr( const char *in, char *out, int outlen ) ;
 	
@@ -559,7 +576,7 @@ void ManageShortcutsFlag( HWND hwnd ) ;
 void InitLauncherRegistry( void ) ;
 #endif
 
-// Definition de la section du fichier de configuration
+// Section name of the configuration file
 #ifdef MOD_PERSO
 
 #ifndef INIT_SECTION
@@ -574,7 +591,7 @@ void InitLauncherRegistry( void ) ;
  * KiTTY installed side by side. THIS is the definition that takes effect:
  * kitty.c includes this header before its own #ifndef block, so a second
  * definition there is dead code - which is exactly how this default was
- * silently kitty.sav until 2026-07-26. Keep it here, and only here. */
+ * silently kitty.sav for a long time. Keep it here, and only here. */
 #define DEFAULT_SAV_FILE "kittynew.sav"
 #endif
 #ifndef DEFAULT_EXE_FILE
@@ -649,7 +666,7 @@ void InitLauncherRegistry( void ) ;
 #endif
 
 /*************************************************
-** DEFINITION DES DEFINES
+** DEFINES
 *************************************************/
 #ifdef MOD_ZMODEM
 int xyz_Process(Backend *back, void *backhandle, Terminal *term) ;
@@ -688,17 +705,18 @@ void xyz_updateMenuItems(Terminal *term) ;
 #define IDM_REKEY 0xB200
 #endif
 
-// Doit etre le dernier
+// Must be the last one
 #ifndef IDM_LAUNCHER
 #define IDM_LAUNCHER	0xB130
 #endif
 
-// USERCMD doit etre la plus grande valeur pour permettre d'avoir autant de raccourcis qu'on le souhaite
+// USERCMD must be the largest value, so that there can be as many shortcuts
+// as wanted
 #ifndef IDM_USERCMD
 #define IDM_USERCMD   0x8000
 #endif
 
-// Idem USERCMD
+// Same as USERCMD
 #ifndef IDM_GOHIDE
 #define IDM_GOHIDE    0x9000
 #endif
@@ -711,7 +729,7 @@ void xyz_updateMenuItems(Terminal *term) ;
 #endif
 
 /*************************************************
-** FIN DE DEFINITION DES DEFINES
+** END OF DEFINES
 *************************************************/
 
 
@@ -737,7 +755,7 @@ void xyz_updateMenuItems(Terminal *term) ;
 
 
 
-// Liste de define recupere de WINDOW.C necessaires a kitty.c
+// Defines taken from WINDOW.C that kitty.c needs
 #ifndef IDM_ABOUT
 #define IDM_ABOUT     0x0150
 #endif

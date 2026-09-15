@@ -1444,9 +1444,9 @@
 
 /* @@BATCH_SECTIONS@@ - later sections are added below this line */
 
-/* ---- Batch 3: kitty core modules (kitty.c, launcher, commands, transfers, update) ---- */
+/* ---- kitty core modules (launcher, commands, transfers, update) ---- */
 
-/* Captions of this batch's boxes, notices and dialogs */
+/* Captions of these modules' boxes, notices and dialogs */
 #define KT_CAP_PORT_FORWARDING                       KT_TUNNELS_PORT_FORWARDING  /* "Port forwarding" - the Tunnels panel's group title */
 /* The application notification's notice window (kitty_notes.c) */
 #define KT_CAP_KITTYPP                               "KiTTY++"
@@ -2019,7 +2019,7 @@
 #define KT_WINFEAT_PASSWORD_IN_MEMORY                "keeping passwords encrypted in memory"
 #define KT_WINFEAT_PASSWORD_FILE                     "protecting the password handed to the transfer tools"
 
-/* ---- Batch 5: kageant (agent) and kittygen (key generator), Windows Hello ---- */
+/* ---- kageant (agent) and kittygen (key generator), Windows Hello ---- */
 
 /* kageant: window titles and message-box captions (windows/pageant.c,
  * kitty/kitty_pageant.c) */
@@ -2603,7 +2603,7 @@
         "or save over it without protection, to " \
         "disarm it there too."
 
-/* ---- Batch 4: terminal window, command line, terminal core, dialogs ---- */
+/* ---- terminal window, command line, terminal core, dialogs ---- */
 
 /* windows/window.c: notices, confirmations and Event Log lines */
 #define KT_TWIN_OLDSESS_TITLE                        "KiTTY is also showing your old sessions"
@@ -2988,7 +2988,7 @@
         "or \"no\" (or Enter) to keep the old key and connect once. A plain \"yes\" " \
         "is intentionally not enough to replace a changed key.\n"
 
-/* ---- Batch 2: configuration box, settings, store moves ---- */
+/* ---- configuration box, settings, store moves ---- */
 
 /* Shared by the Proxy panel (kitty_config.c) and Named Proxies (kitty_proxy_gui.c) */
 #define KT_PROXY_TYPE_SOCKS4                         "SOCKS 4"
@@ -3313,7 +3313,7 @@
 #define KT_STORE_CONF_READ_FAILED                    "Unable to read configuration file, falling back to defaults"
 #define KT_STORE_SESSION_READ_FAILED                 "Unable to read session file"
 
-/* ---- Batch 6: resource scripts ---- */
+/* ---- resource scripts ---- */
 /* Dialog templates in windows/kitty.rc, pageant.rc, puttygen.rc and
  * putty-common.rc2 read their text from here. windres runs the C preprocessor
  * over the .rc, so a macro stands in for the literal - but ONLY a macro whose

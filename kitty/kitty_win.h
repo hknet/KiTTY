@@ -1,3 +1,11 @@
+/*
+ * kitty_win.h - the declarations for kitty_win.c, the grab-bag of Win32
+ * helpers: window transparency and OS version, the file and folder pickers,
+ * printing, the clipboard, launching a process, the update check and its
+ * notices, the shared dialog helpers (icon, centring, fit-to-text), the
+ * inline terminal messages, the terminal system-menu actions, and the
+ * application-wide theme and check-for-updates settings.
+ */
 #ifndef KITTY_WIN
 #define KITTY_WIN
 
@@ -9,7 +17,8 @@
 void SetTransparency( HWND hwnd, int value ) ;
 void GetOSInfo( char * version ) ;
 
-// Rendu inline (non modal) des erreurs de connexion dans le terminal (upstream cyd01/KiTTY #548)
+// Inline (non-modal) rendering of connection errors in the terminal
+// (upstream cyd01/KiTTY #548)
 void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal) ;
 void kitty_print_session_comment(Terminal *term, Conf *conf) ;   /* framed Comment at session start */
 
@@ -19,18 +28,21 @@ void kitty_print_session_comment(Terminal *term, Conf *conf) ;   /* framed Comme
  * See kitty_oldwin.h. */
 void kitty_report_missing_features(Terminal *term) ;
 
-// Corps des commandes du menu systeme (window.c WM_COMMAND) sans dependance aux statics de window.c
+// Bodies of the system-menu commands (window.c WM_COMMAND), with no
+// dependency on window.c's statics
 void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up) ;
 void kitty_menu_toggle_alwaysontop(HWND term_hwnd, Conf *conf) ;
 void kitty_menu_reposition(HWND term_hwnd, Conf *conf, int x, int y) ;
 
-// [ConfigBox] noexit: relance une instance (= la config box) a la fermeture d'une session
+// [ConfigBox] noexit: start a fresh instance (= the config box) when a
+// session closes
 void kitty_respawn_config_box(void) ;
 
-// Reapplique les decorations de titre ([KiTTY] wintitle/size, PROTECTED/ONTOP) - windows/window.c
+// Reapply the title decorations ([KiTTY] wintitle/size, PROTECTED/ONTOP)
+// - windows/window.c
 void kitty_refresh_title(void) ;
 void kitty_menu_toggle_hyperlink(HWND hwnd) ;
-BOOL IsWow64() ; // Test si on est en Windows 64 bits
+BOOL IsWow64() ; // Test whether we are on 64-bit Windows
 int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
 /* The same picker opened in a given folder (NULL or empty = wherever
  * Windows would open it). */
@@ -52,25 +64,25 @@ int kitty_fit_text( HWND dlg, int ctlid, const char *text, int extra_dy ) ;
 int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
 int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) ;
 	
-// Centre un dialog au milieu de la fenetre parent
+// Centre a dialog in the middle of its parent window
 void CenterDlgInParent(HWND hDlg) ;
 
-// Envoi vers l'imprimante
+// Send to the printer
 int PrintText( const char * Text ) ;
 
-// Impression du texte dans le bloc-notes
+// Print the text in the notepad
 void ManagePrint( HWND hwnd ) ;
 
-// Met un texte dans le press-papier
+// Put a text into the clipboard
 int SetTextToClipboard( const char * buf ) ;
 
-// Execute une commande	
+// Run a command
 void RunCommand( HWND hwnd, const char * cmd ) ;
 
-// Démarre l'éditeur embarqué
+// Start the built-in editor
 void RunPuttyEd( HWND hwnd, char * filename ) ;
 
-// Verifie si une mise a jour est disponible sur le site web
+// Check whether an update is available on the web site
 void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) ;
 
 // KiTTY: background (async) update check that caches the latest version, and a
@@ -79,10 +91,10 @@ void kitty_start_update_check( void ) ;
 int kitty_update_notice( char *buf, int n ) ;
 int kitty_update_available( char *latest_out, int latest_n, char *cur_out, int cur_n, int *beta_out ) ;
 
-// Affichage d'un message dans l'event log
+// Display a message in the event log
 void debug_logevent( const char *fmt, ... ) ;
 
-// Test si un chemin est absolu
+// Test whether a path is absolute
 bool IsPathAbsolute( const char * path ) ;
 
 // KiTTY: the application-wide colour theme, [KiTTY] theme. kitty_theme_app_dark

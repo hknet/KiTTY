@@ -1,7 +1,18 @@
+/*
+ * kitty.c - core of the KiTTY fork of PuTTY.
+ * Holds the [KiTTY] settings flags with their Get/Set accessors, the
+ * parameter layer over kitty.ini and the registry (export, import and
+ * timestamped backups), keyboard and automatic-command injection, the
+ * broadcast gate that repeats a command to the other windows, window
+ * chrome (title, tray, rollup, background images), the port-forward
+ * table and the KiTTY startup path. kitty_commands.c and
+ * kitty_launcher.c are included here; kitty.h declares the interface.
+ */
+
 /*************************************************
-** DEFINITION DES INCLUDES
+** INCLUDES
 *************************************************/
-// Includes classiques
+// Standard includes
 #include <dirent.h>
 #include <io.h>
 #include <process.h>
@@ -12,20 +23,18 @@
 #include <sys/types.h>
 #include <time.h>
 
-// Includes de PuTTY
+// PuTTY includes
 #include "putty.h"
 #include "terminal.h"
-//#include "ldisc.h"
-//#include "win_res.h"
 #include "putty-rc.h"
 
-// Include specifiques Windows (windows.h doit imperativement etre declare en premier)
+// Windows-specific includes (windows.h must come first)
 #include <windows.h>
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include <psapi.h>
 #include <iphlpapi.h>
 
-// Includes de KiTTY
+// KiTTY includes
 #include "kitty.h"
 #include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
 #include "kitty_commun.h"
@@ -52,14 +61,14 @@ extern const char *kitty_reg_hostkeys( void ) ;   /* <base>\SshHostKeys */
 extern int kitty_root_is_putty( void ) ;          /* is the hive in use PuTTY-s? */
 
 /*************************************************
-** FIN DE LA DEFINITION DES INCLUDES
+** END OF INCLUDES
 *************************************************/
 
 
 /*************************************************
-** DEFINITION DE LA STRUCTURE DE CONFIGURATION
+** CONFIGURATION STRUCTURE
 *************************************************/
-// La structure de configuration est instanciee dans window.c
+// The configuration structure is instantiated in window.c
 extern Conf *conf ;
 
 #ifndef SAVEMODE_REG
@@ -72,10 +81,12 @@ extern Conf *conf ;
 #define SAVEMODE_DIR 2
 #endif
 
-// Flag pour le fonctionnement en mode "portable" (gestion par fichiers), defini dans kitty_commun.c
+// Flag for "portable" mode (settings kept in files), defined in
+// kitty_commun.c
 extern int IniFileFlag ;
 
-// Flag permettant la gestion de l'arborscence (dossier=folder) dans le cas d'un savemode=dir, defini dans kitty_commun.c
+// Flag enabling the folder tree when savemode=dir, defined in
+// kitty_commun.c
 extern int DirectoryBrowseFlag ;
 int GetDirectoryBrowseFlag(void) { return DirectoryBrowseFlag ; }
 
@@ -89,19 +100,20 @@ int GetDirectoryBrowseFlag(void) { return DirectoryBrowseFlag ; }
 int dnd_delay = 250;
 HDROP hDropInf = NULL;
 
-// Delai avant d'envoyer le password et d'envoyer vers le tray (automatiquement à la connexion) (en milliseconde)
+// Delay before sending the password and before sending the window to the
+// tray automatically on connection (in milliseconds)
 int init_delay = 2000 ;
-// Delai entre chaque ligne de la commande automatique (en milliseconde)
+// Delay between each line of the automatic command (in milliseconds)
 int autocommand_delay = 5 ;
-// Delai entre chaque caracteres d'une commande (en millisecondes)
+// Delay between each character of a command (in milliseconds)
 int between_char_delay = 0 ;
-// Delai entre deux lignes d'une meme commande et entre deux raccourcis \x \k
+// Delay between two lines of one command and between two \x \k shortcuts
 int internal_delay = 10 ;
 
-// Pointeur sur la commande autocommand
+// Pointer to the automatic command
 char * AutoCommand = NULL ;
 
-// Contenu d'un script a envoyer à l'ecran
+// Content of a script to send to the screen
 char * ScriptCommand = NULL ;
 
 // paste size limit (number of characters). Above the limit a confirmation is requested. (0 means unlimited)
@@ -153,14 +165,14 @@ static int FunkeysDefault = FUNKY_XTERM_216 ;
 int GetFunkeysDefault( void ) { return FunkeysDefault ; }
 void SetFunkeysDefault( const int t ) { FunkeysDefault = t ; }
 
-// Flag de gestion de la fonction hyperlink. In 0.84 hyperlinks are provided by
+// Flag controlling the hyperlink feature. In 0.84 hyperlinks are provided by
 // kitty_url.c/window.c, not the historical terminal.c hyperlink patch, so keep
 // the feature available by default and let kitty.ini "hyperlink" disable it.
 int HyperlinkFlag = 1 ;
 int GetHyperlinkFlag(void) { return HyperlinkFlag ; }
 void SetHyperlinkFlag( const int flag ) { HyperlinkFlag = flag ; }
 
-// Flag de gestion de la Transparence
+// Flag controlling transparency.
 // The feature stays available (so transparency is configurable PER SESSION via the
 // Window > Transparency panel), but it is OFF by default because the per-session
 // TransparencyValue defaults to 0 = fully opaque / non-layered (see conf.h):
@@ -178,14 +190,14 @@ static void SetTransparencyIni( const int flag ) {
 	TransparencyFlag = flag ; TransparencyAllowed = flag ;
 }
 
-// Gestion du script file au lancement
+// Script file handling at startup
 char * ScriptFileContent = NULL ;
 
-// Flag pour la protection contre les saisies malheureuses
+// Flag protecting the window against accidental keyboard input
 static int ProtectFlag = 0 ; 
 int GetProtectFlag(void) { return ProtectFlag ; }
 
-// Flags de definition du mode de sauvegarde
+// Flags defining the save mode
 #ifndef SAVEMODE_REG
 #define SAVEMODE_REG 0
 #endif
@@ -196,7 +208,7 @@ int GetProtectFlag(void) { return ProtectFlag ; }
 #define SAVEMODE_DIR 2
 #endif
 
-// Definition de la section du fichier de configuration
+// Section name of the configuration file
 #ifdef MOD_PERSO
 #ifndef INIT_SECTION
 #define INIT_SECTION "KiTTY"
@@ -234,17 +246,17 @@ int GetProtectFlag(void) { return ProtectFlag ; }
 #define VISIBLE_TRAY -1
 #endif
 
-// Flag de definition de la visibilite d'une fenetres
+// Flag defining the visibility of a window
 static int VisibleFlag = VISIBLE_YES ;
 int GetVisibleFlag(void) { return VisibleFlag ; }
 void SetVisibleFlag( const int flag ) { VisibleFlag = flag ; }
 
-// Flag pour inhiber les raccourcis clavier
+// Flag to disable the keyboard shortcuts
 static int ShortcutsFlag = 1 ;
 int GetShortcutsFlag(void) { return ShortcutsFlag ; }
 void SetShortcutsFlag( const int flag ) { ShortcutsFlag = flag ; }
 
-// Flag pour inhiber les raccourcis souris
+// Flag to disable the mouse shortcuts
 static int MouseShortcutsFlag = 1 ;
 int GetMouseShortcutsFlag(void) { return MouseShortcutsFlag  ; }
 void SetMouseShortcutsFlag( const int flag ) { MouseShortcutsFlag  = flag ; }
@@ -260,10 +272,11 @@ void SetMouseShortcutsFlag( const int flag ) { MouseShortcutsFlag  = flag ; }
 #define IDC_RESULT 1008
 #endif
 
-// La librairie dans laquelle chercher les icones (fichier defini dans kitty.ini, sinon kitty.dll s'il existe, sinon kitty.exe)
+// The library to look the icons up in (the file named in kitty.ini, else
+// kitty.dll if it exists, else kitty.exe)
 static HINSTANCE hInstIcons =  NULL ;
 
-// Fichier contenant les icones à charger
+// File holding the icons to load
 static char * IconFile = NULL ;
 
 // [KiTTY] size=yes: append the live terminal size [cols x rows] to the window
@@ -282,15 +295,15 @@ static int TitleBarFlag = 1 ;
 int GetTitleBarFlag(void) { return TitleBarFlag ; }
 void SetTitleBarFlag( const int flag ) { TitleBarFlag = flag ; }
 
-// Hauteur de la fenetre pour la fonction WinHeight
+// Window height used by the WinHeight function
 static int WinHeight = -1 ;
 int GetWinHeight(void) { return WinHeight ; }
-// Flag pour inhiber le Winrol
+// Flag to disable the Winrol (window rollup)
 static int WinrolFlag = 1 ;
 int GetWinrolFlag(void) { return WinrolFlag ; }
 void SetWinrolFlag( const int num ) { WinrolFlag  = num ; }
 
-// Password de protection de la configuration (registry)
+// Password protecting the configuration (registry)
 /* "the configuration store changed" flag - implemented in kitty_storage.c so
  * that windows/storage.c can set it too. Declared up here because SaveFolderList
  * below is the first user. */
@@ -304,26 +317,27 @@ void kitty_show_mpw_moved( HWND hwnd ) ;
 
 static char PasswordConf[cstMaxRegLength+2] = "" ; /* filled from the registry "password" value via GetValueData, which writes up to cstMaxRegLength data bytes + NUL */
 
-// Renvoi automatiquement dans le tray (pour les tunnel), fonctionne avec le l'option -send-to-tray
+// Send the window to the tray automatically (for tunnels); goes with the
+// -send-to-tray option
 static int AutoSendToTray = 0 ;
 int GetAutoSendToTray( void ) { return AutoSendToTray ; }
 void SetAutoSendToTray( const int flag ) { AutoSendToTray = flag ; }
 
-// Flag pour ne pas creer les fichiers kitty.ini et kitty.sav
+// Flag to avoid creating the kitty.ini and kitty.sav files
 static int NoKittyFileFlag = 0 ;
 int GetNoKittyFileFlag(void) { return NoKittyFileFlag ; }
 
-// Hauteur de la boite de configuration (visible saved-session rows; 16 = stock fit)
+// Height of the configuration box (visible saved-session rows; 16 = stock fit)
 static int ConfigBoxHeight = 16 ;
 int GetConfigBoxHeight(void) { return ConfigBoxHeight ; }
 void SetConfigBoxHeight( const int num ) { ConfigBoxHeight = num ; }
 
-// Hauteur de la fenetre de la boite de configuration (0=valeur par defaut)
+// Height of the configuration box window (0 = default value)
 static int ConfigBoxWindowHeight = 0 ;
 int GetConfigBoxWindowHeight(void) { return ConfigBoxWindowHeight ; }
 void SetConfigBoxWindowHeight( const int num ) { ConfigBoxWindowHeight = num ; }
 
-// Largeur de la fenetre de la boite de configuration (0 = celle du gabarit).
+// Width of the configuration box window (0 = the template's width).
 // Written by dragging the box's own edge as well as by the field on
 // Application > Config Window: the drag and the field are one setting, so the
 // field cannot come to disagree with the window it describes.
@@ -356,23 +370,23 @@ void SetConfigBoxFixedSizeFlag( const int flag ) { ConfigBoxFixedSizeFlag = flag
 static int ConfigBoxApplicationSettingsFlag = 1 ;
 int GetConfigBoxApplicationSettingsFlag(void) { return ConfigBoxApplicationSettingsFlag ; }
 
-// Flag pour inhiber la gestion du CTRL+TAB
+// Flag to disable CTRL+TAB handling
 static int CtrlTabFlag = 1 ;
 int GetCtrlTabFlag(void) { return CtrlTabFlag  ; }
 void SetCtrlTabFlag( const int flag ) { CtrlTabFlag  = flag ; }
 
 #ifdef MOD_RECONNECT
-// Flag pour inhiber le mécanisme de reconnexion automatique
+// Flag to disable the automatic reconnection mechanism
 static int AutoreconnectFlag = 1 ;
 int GetAutoreconnectFlag( void ) { return AutoreconnectFlag ; }
 void SetAutoreconnectFlag( const int flag ) { AutoreconnectFlag = flag ; }
-// Delai avant de tenter une reconnexion automatique
+// Delay before attempting an automatic reconnection
 static int ReconnectDelay = 5 ;
 int GetReconnectDelay(void) { return ReconnectDelay ; }
 void SetReconnectDelay( const int flag ) { ReconnectDelay = flag ; }
 #endif
 
-// Flag pour inhiber la creation automatique de la session Default Settings
+// Flag to disable the automatic creation of the Default Settings session
 // [ConfigBox] defaultsettings=yes
 static int DefaultSettingsFlag = 1 ;
 int GetDefaultSettingsFlag(void) { return DefaultSettingsFlag ; }
@@ -416,36 +430,36 @@ static int DblClickFlag = 0 ;
 int GetDblClickFlag(void) { return DblClickFlag ; }
 void SetDblClickFlag( const int flag ) { DblClickFlag = flag ; }
 
-// Flag pour inhiber le filtre sur la liste des sessions de la boite de configuration
+// Flag to disable the filter on the configuration box session list
 static int SessionFilterFlag = 1 ;
 int GetSessionFilterFlag(void) { return SessionFilterFlag ; }
 void SetSessionFilterFlag( const int flag ) { SessionFilterFlag = flag ; }
 
-// Flag pour passer en mode visualiseur d'images
+// Flag to switch to image-viewer mode
 static int ImageViewerFlag = 0 ;
 int GetImageViewerFlag(void) { return ImageViewerFlag  ; }
 void SetImageViewerFlag( const int flag ) { ImageViewerFlag = flag ; }
 
-// Duree (en secondes) pour switcher l'image de fond d'ecran (<=0 pas de slide)
+// Time (in seconds) between background image switches (<=0 = no slideshow)
 int ImageSlideDelay = - 1 ;
 
-// Compteur pour l'envoi de anti-idle
+// Counter for sending the anti-idle string
 /* KiTTY: seconds between keepalives. Was a count of 30-second ticks, which
  * made the ini value mean three times what it said. */
 int AntiIdleSeconds = 180 ;
-char AntiIdleStr[128] = "" ;  // Ex: " \x08"   => Fait un espace et le retire tout de suite
+char AntiIdleStr[128] = "" ;  // e.g. " \x08": type a space and erase it at once
 
 
-// Chemin vers le programme WinSCP
+// Path to the WinSCP program
 char * WinSCPPath = NULL ;
 
 /* path to the file-copy helper: kscp.exe, or PuTTY's pscp.exe */
 char * PSCPPath = NULL ;
 
-// Repertoire de lancement
+// Startup directory
 char InitialDirectory[4096]="" ;
 
-// Chemin complet des fichiers de configuration kitty.ini et kitty.sav
+// Full paths of the kitty.ini and kitty.sav configuration files
 static char * KittyIniFile = NULL ;
 char * GetKittyIniFile(void) { return KittyIniFile ; }
 static char * KittySavFile = NULL ;
@@ -465,10 +479,10 @@ void SetPSCPPath( const char * path ) {
 }
 void SetTransparencyEnabled( const int flag ) { SetTransparencyIni( flag ) ; }
 
-// Nom de la classe de l'application
+// Name of the application window class
 char KiTTYClassName[128] = "" ;
 
-// Parametres de l'impression
+// Printing parameters
 extern int PrintCharSize ;
 extern int PrintMaxLinePerPage ;
 extern int PrintMaxCharPerLine ;
@@ -479,11 +493,11 @@ extern char puttystr[1024] ;
 #include "kitty_proxy.h"
 #endif
 
-// Handle sur la fenetre principale
+// Handle to the main window
 HWND MainHwnd ;
 HWND GetMainHwnd(void) { return MainHwnd ; }
 
-// Decompte du nombre de fenetres en cours de KiTTY
+// Count of the KiTTY windows currently open
 static int NbWindows = 0 ;
 
 NOTIFYICONDATA TrayIcone ;
@@ -514,7 +528,7 @@ NOTIFYICONDATA TrayIcone ;
 char BuildVersionTime[256] = "0.0.0.0 @ 0" ;
 
 
-// Procedure de debug
+// Debug procedure
 void debug_log( const char *fmt, ... ) {
 	char filename[4096]="" ;
 	va_list ap;
@@ -525,9 +539,9 @@ void debug_log( const char *fmt, ... ) {
 	else strcpy(filename,"kitty.log");
 
 	va_start( ap, fmt ) ;
-	//vfprintf( stdout, fmt, ap ) ; // Ecriture a l'ecran
+	//vfprintf( stdout, fmt, ap ) ; // write to the screen
 	if( ( fp = fopen( filename, "ab" ) ) != NULL ) {
-		vfprintf( fp, fmt, ap ) ; // ecriture dans un fichier
+		vfprintf( fp, fmt, ap ) ; // write to a file
 		fclose( fp ) ;
 	}
  
@@ -536,7 +550,7 @@ void debug_log( const char *fmt, ... ) {
 
 char *dupvprintf(const char *fmt, va_list ap) ;
 	
-// Procedure de recuperation de la valeur d'un flag
+// Procedure returning the value of a flag
 int get_param( const char * val ) {
 	if( !stricmp( val, "PUTTY" ) ) return GetPuttyFlag() ;
 	else if( !stricmp( val, "INIFILE" ) ) return IniFileFlag ;
@@ -551,13 +565,13 @@ int get_param( const char * val ) {
 #endif
 	// else if( !stricmp( val, "CONFIGBOXHEIGHT" ) ) return ConfigBoxHeight ;
 	// else if( !stricmp( val, "CONFIGBOXWINDOWHEIGHT" ) ) return ConfigBoxWindowHeight ;
-	// else if( !stricmp( val, "NUMBEROFICONS" ) ) return NumberOfIcons ;	// ==> Remplace par GetNumberOfIcons()
-	// else if( !stricmp( val, "ICON" ) ) return IconeFlag ; // ==> Remplace par GetIconeFlag()
+	// else if( !stricmp( val, "NUMBEROFICONS" ) ) return NumberOfIcons ;	// ==> replaced by GetNumberOfIcons()
+	// else if( !stricmp( val, "ICON" ) ) return IconeFlag ; // ==> replaced by GetIconeFlag()
 	// else if( !stricmp( val, "SESSIONFILTER" ) ) return SessionFilterFlag ;
 	return 0 ;
 	}
 
-// Procedure de recuperation de la valeur d'une chaine
+// Procedure returning the value of a string
 char * get_param_str( const char * val ) {
 	if( !stricmp( val, "INI" ) ) return KittyIniFile ;
 	else if( !stricmp( val, "SAV" ) ) return KittySavFile ;
@@ -619,13 +633,13 @@ char * kitty_current_dir() {
 	return RemoteCwd ;
 }
 
-// Liste des folder
+// List of folders
 char **FolderList=NULL ;
 
 int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) ;
 int writeINI( const char * filename, const char * section, const char * key, char * pStr) ;
 int delINI( const char * filename, const char * section, const char * key ) ;
-// Initialise la liste des folders a partir des sessions deja existantes et du fichier kitty.ini
+// Initialise the folder list from the existing sessions and from kitty.ini
 void InitFolderList( void ) {
 	char * pst, fList[4096], buffer[4096] ;
 	int i ;
@@ -756,7 +770,7 @@ int GetSessionFolderNameInSubDir( const char * session, const char * subdir, cha
 	return return_code ;
 }
 
-// Recupere le nom du folder associe à une session
+// Get the name of the folder a session belongs to
 void GetSessionFolderName( const char * session_in, char * folder ) {
 	HKEY hKey ;
 	char buffer[1024], session[1024] ;
@@ -813,7 +827,7 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 	}
 }
 
-// Recupere une entree d'une session ( retourne 1 si existe )
+// Get one entry of a session (returns 1 if it exists)
 int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) {
 	HKEY hKey ;
 	char buffer[1024], session[1024], folder[1024], *p ;
@@ -922,7 +936,7 @@ void kitty_userauth_credentials( const char * username, const char * password ) 
 	if( password != NULL ) { SetPasswordInConfig( password ) ; }
 	}
 
-// Sauvegarde la liste des folders
+// Save the folder list
 void SaveFolderList( void ) {
 	int i = 0 ;
 	kitty_store_mark_dirty() ;
@@ -940,10 +954,10 @@ void SaveFolderList( void ) {
 		WriteParameter( INIT_SECTION, KI_FOLDERS, buffer ) ;
 	}
 
-// Sauvegarde une cle de registre dans un fichier
+// Save a registry key into a file
 
-// Renomme une Cle de registre
-void RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) { // hdlg boite d'information
+// Rename a registry key
+void RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) { // hdlg = information box
 	if( RegTestKey( hMainKey, lpDestKey ) ) {
 		if( hdlg != NULL ) InfoBoxSetText( hdlg, KT_MAIN_INFO_CLEANING_BACKUP ) ;
 		RegDelTree( hMainKey, lpDestKey ) ;
@@ -958,7 +972,7 @@ int license_make_with_first( char * license, int length, int modulo, int result 
 void license_form( char * license, char sep, int size ) ;
 int license_test( char * license, char sep, int modulo, int result ) ;
 
-// Augmente le compteur d'utilisation dans la base de registre
+// Increment the usage counter in the registry
 void CountUp( void ) {
 	char buffer[4096] = "0", *pst ;
 	long int n ;
@@ -971,7 +985,7 @@ void CountUp( void ) {
 	
 	/*
 	 * KiTTY: KiLastUp, KiLastUH, KiSess, KiVers and KiPath used to be written
-	 * here on every run. They are gone (2026-08-02), and nothing replaces them.
+	 * here on every run. They are gone, and nothing replaces them.
 	 *
 	 * NOTHING EVER READ THEM. Verified repo-wide: the only references besides the
 	 * writes were RegDeleteValue calls in the registry scrub. KiLastUp read only
@@ -1010,7 +1024,7 @@ char * GetHelpMessage(void) {
 	return default_help_file_content ;
 }
 
-// Si le fichier kitty.ini n'existe pas => creation du fichier par defaut
+// If kitty.ini does not exist, create the default file
 #include "kitty_ini.h"
 void CreateIniFile( const char * filename ) {
 	FILE *fp;
@@ -1035,7 +1049,7 @@ void CreateDefaultIniFile( void ) {
 	}
 }
 
-// Ecrit un parametre soit en registre soit dans le fichier de configuration
+// Write a parameter either to the registry or to the configuration file
 int WriteParameter( const char * key, const char * name, char * value ) {
 	int ret = 1 ;
 	char buffer[4096] ;
@@ -1061,9 +1075,9 @@ int WriteParameter( const char * key, const char * name, char * value ) {
 	return ret ;
 }
 
-// Lit un parametre soit dans le fichier de configuration, soit dans le registre.
-// Variante bornee: n'ecrit jamais plus de `size` octets (NUL final compris)
-// dans `value`; une valeur trop longue est tronquee au lieu de deborder.
+// Read a parameter either from the configuration file or from the registry.
+// Bounded variant: never writes more than `size` bytes (final NUL included)
+// into `value`; a value that is too long is truncated instead of overflowing.
 int ReadParameterN( const char * key, const char * name, char * value, size_t size ) {
 	char buffer[4096] ;
 	strcpy( buffer, "" ) ;
@@ -1084,13 +1098,13 @@ int ReadParameterN( const char * key, const char * name, char * value, size_t si
 	return strcmp( buffer, "" ) ;
 	}
 
-// Compat: ancienne signature non bornee -- le buffer destinataire DOIT faire
-// au moins 4096 octets. Preferer ReadParameterN( ..., sizeof(buf) ).
+// Compatibility: the old unbounded signature - the destination buffer MUST be
+// at least 4096 bytes. Prefer ReadParameterN( ..., sizeof(buf) ).
 int ReadParameter( const char * key, const char * name, char * value ) {
 	return ReadParameterN( key, name, value, 4096 ) ;
 	}
 	
-// Supprime un parametre
+// Delete a parameter
 int DelParameter( const char * key, const char * name ) {
 	char buffer[4096] ;
 	if( !GetReadOnlyFlag() ) { delINI( KittyIniFile, key, name ) ; }
@@ -1101,7 +1115,7 @@ int DelParameter( const char * key, const char * name ) {
 	return 1 ;
 	}
 	
-// Test la configuration (mode file ou registry) et charge le fichier kitty.sav si besoin
+// Check the configuration (file or registry mode) and load kitty.sav if needed
 void GetSaveMode( void ) {
 	char buffer[256] ;
 	if( readINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, buffer, sizeof(buffer) ) ) {
@@ -1141,7 +1155,7 @@ static int kitty_reg_import( const char *filename ) {
 	return kitty_reg_tool( "import", NULL, filename ) ;
 	}
 
-// Sauvegarde de la cle de registre
+// Backup of the registry key
 /* The backup is produced by Windows' own exporter rather than a hand-rolled
  * serialiser. The QueryKey() this replaces did not write REG_BINARY values at
  * all (and, reusing its line buffer, emitted the previous line again in their
@@ -1472,7 +1486,7 @@ static int sav_find_newest( const char *savfile, char *out, size_t outlen ) {
 	return 1 ;
 }
 
-/* Backups written before the DEFAULT_SAV_FILE shadowing was fixed (2026-07-26)
+/* Backups written before the DEFAULT_SAV_FILE shadowing was fixed
  * are named kitty-YYYYMMDD-HHMMSS.sav, because the intended kittynew.sav default
  * never took effect. Once it does, sav_find_newest() no longer sees them, so a
  * machine upgrading from such a build would silently skip its first-run restore.
@@ -1625,8 +1639,8 @@ void SaveRegistryKey( void ) { sav_backup( 1 ) ; }
 /* Snapshot that must be on disk before the caller changes anything. */
 void SaveRegistryKeyNow( void ) { sav_backup( 0 ) ; }
 
-// Charge la cle de registre
-void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'information de l'avancement (si null pas d'info)
+// Load the registry key
+void LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 	FILE *fp ;
 	HKEY hKey = NULL ;
 	char buffer[4096], KeyName[1024] = "", ValueName[1024], *Value ;
@@ -1661,7 +1675,7 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 	while( fgets( buffer, 4096, fp ) != NULL ) {
 		str_rtrim( buffer, "\n\r \t" ) ;
 		
-		// Test si on a un fichier crypte
+		// Check whether the file is encrypted
 		if( nb == 0 ) {
 			if( strcmp( buffer, "Windows Registry Editor Version 5.00" ) ) {
 				GetAndSendLinePassword( NULL ) ;
@@ -1684,7 +1698,7 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 			
 		if( strlen( buffer ) == 0 ) ;
 		if( (buffer[0]=='[') && (buffer[strlen(buffer)-1]==']') ) {
-			snprintf( KeyName, sizeof(KeyName), "%s", buffer+19 ) ; // +19 pour supprimer [HKEY_CURRENT_USER
+			snprintf( KeyName, sizeof(KeyName), "%s", buffer+19 ) ; // +19 to strip [HKEY_CURRENT_USER
 			{ size_t _kl=strlen(KeyName); if(_kl>0) KeyName[_kl-1] = '\0' ; }
 			if( hKey != NULL ) { RegCloseKey( hKey ) ; hKey = NULL ; }
 			if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(KeyName), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) 
@@ -1713,7 +1727,7 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg est la boite de dialogue d'informati
 				sscanf( Value, "%08x", (int*)&dwData ) ;
 				RegSetValueEx( hKey, TEXT( ValueName ), 0, REG_DWORD, (LPBYTE)&dwData, sizeof(DWORD) ) ;
 				}
-			else { // erreur
+			else { // error
 				MessageBox( NULL, KT_MAIN_SAV_UNKNOWN_TYPE, KT_CAP_ERROR, MB_OK|MB_ICONERROR );
 				exit( 1 ) ;
 				}
@@ -1808,12 +1822,12 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) {
 				Sleep( internal_delay ) ;
 				buffer[0] = '\0' ; j = 0 ;
 				i++ ;
-			} else if( st[i+1] == 'p' ) { 			// \p pause une seconde
+			} else if( st[i+1] == 'p' ) { 			// \p pauses one second
 				SendKeyboard( hwnd, buffer ) ;
 				Sleep(1000);
 				buffer[0] = '\0' ; j = 0 ;
 				i++ ; 
-			} else if( st[i+1] == 's' ) { 			// \s03 pause 3 secondes
+			} else if( st[i+1] == 's' ) { 			// \s03 pauses 3 seconds
 				SendKeyboard( hwnd, buffer ) ;
 				j = 1 ;
 				if( (st[i+2]>='0')&&(st[i+2]<='9')&&(st[i+3]>='0')&&(st[i+3]<='9') ) {
@@ -1888,12 +1902,12 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) {
 		} while( st[i] != '\0' ) ;
 		
 		if( strlen( buffer ) > 0 ) {
-			if( buffer[strlen(buffer)-1]=='\\' ) { // si la command se termine par \ on n'envoie pas de retour charriot
+			if( buffer[strlen(buffer)-1]=='\\' ) { // a command ending in \ gets no carriage return
 				buffer[strlen(buffer)-1]='\0' ;
 				SendKeyboard( hwnd, buffer ) ;
 			} else {
 				SendKeyboard( hwnd, buffer ) ;
-				if( buffer[strlen(buffer)-1] != '\n' ) // On ajoute un retour charriot au besoin
+				if( buffer[strlen(buffer)-1] != '\n' ) // add a carriage return if needed
 					SendKeyboard( hwnd, "\n" ) ;
 			}
 		}
@@ -1916,7 +1930,7 @@ void SendAutoCommand( HWND hwnd, const char * cmd ) {
 		buf=(char*)malloc( strlen(cmd)+30 ) ;
 		strcpy( buf, "Send automatic command" ) ;
 		if( debug_flag ) { strcat( buf, ": ") ; strcat( buf, cmd ) ; }
-		if( conf_get_int(conf,CONF_protocol) != PROT_TELNET ) debug_logevent( buf ) ; // On logue que si on est pas en telnet (à cause du password envoyé en clair)
+		if( conf_get_int(conf,CONF_protocol) != PROT_TELNET ) debug_logevent( buf ) ; // log only outside telnet (the password goes in clear there)
 		free(buf);
 		if( existfile( cmd ) ) { 
 			RunScriptFile( hwnd, cmd ) ; 
@@ -2094,7 +2108,7 @@ int SendCommandAllWindows( HWND hwnd, char * cmd ) {
 	return SendCommandAllWindowsEx( hwnd, cmd, 0 ) ;
 }
 	
-// Gestion de la taille des fenetres de la meme classe
+// Resizing of the windows of the same class
 BOOL CALLBACK ResizeWinListProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	GetClassName( hwnd, buffer, 256 ) ;
@@ -2235,7 +2249,7 @@ char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf)
 }
 #endif
 
-void set_title( TermWin *tw, const char *title ) { return win_set_title(tw,title,CP_ACP) ; } // Disparue avec la version 0.71
+void set_title( TermWin *tw, const char *title ) { return win_set_title(tw,title,CP_ACP) ; } // Gone since version 0.71
 void ManageProtect( HWND hwnd, TermWin *tw, char * title ) {
 	HMENU m ;
 	if( ( m = GetSystemMenu (hwnd, FALSE) ) != NULL ) {
@@ -2253,12 +2267,12 @@ void ManageProtect( HWND hwnd, TermWin *tw, char * title ) {
 	}
 }
 
-// Gere l'envoi dans le System Tray
+// Handles sending the window to the system tray
 int ManageToTray( HWND hwnd ) {
 	//SendMessage(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
 	//MessageBox( NULL, "To tray", "Tray", MB_OK ) ;
 	//SendMessage( hwnd, WM_SETICON, ICON_SMALL, (LPARAM)LoadIcon( hInstIcons, MAKEINTRESOURCE(IDI_MAINICON_0 + IconeNum ) ) );
-	//Message MYWM_NOTIFYICON pour faire reapparaitre
+	//The MYWM_NOTIFYICON message brings the window back
 
 	int ResShell ;
 	char buffer[256] ;
@@ -2286,7 +2300,7 @@ int ManageToTray( HWND hwnd ) {
 	else return 0 ;
 	}
 
-// Restaure une fenetre envoyee dans le systray (clic sur l'icone tray)
+// Restore a window sent to the system tray (click on the tray icon)
 int RestoreFromTray( HWND hwnd ) {
 	Shell_NotifyIcon( NIM_DELETE, &TrayIcone ) ;
 	ShowWindow( hwnd, SW_SHOW ) ;
@@ -2296,7 +2310,7 @@ int RestoreFromTray( HWND hwnd ) {
 	return 1 ;
 	}
 
-// Gere l'option always visible
+// Handles the always visible option
 void ManageVisible( HWND hwnd, TermWin *tw, char * title ) {
 	HMENU m ;
 	if( ( m = GetSystemMenu (hwnd, FALSE) ) != NULL ) {
@@ -2327,11 +2341,11 @@ void ManageShortcutsFlag( HWND hwnd ) {
 	}
 }
 
-// Lance une configbox avec les paramètres courants (mais sans hostname)
+// Opens a config box with the current settings (but without a hostname)
 void del_settings(const char *sessionname);
 void RunSessionWithCurrentSettings( HWND hwnd, Conf *conf, const char * host, const char * user, const char * pass, const int port, const char * remotepath ) ;
 
-// Modification de l'icone de l'application
+// Change the application icon
 //SendMessage( hwnd, WM_SETICON, ICON_SMALL, (LPARAM)LoadIcon( hInstIcons, MAKEINTRESOURCE(IDI_MAINICON_0 + IconeNum ) ) );
 void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) {
 	
@@ -2363,7 +2377,7 @@ void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) {
 	Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
 }
 
-// Modification de l'icone pour mettre l'icone de perte de connexion
+// Switch the icon to the connection-lost icon
 void SetConnBreakIcon( HWND hwnd ) {
 #ifdef MOD_PERSO
 	HICON hIcon = NULL ;
@@ -2373,11 +2387,11 @@ void SetConnBreakIcon( HWND hwnd ) {
 	TrayIcone.hIcon = hIcon ;
 	Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
 #endif
-//Pour remettre
+//To put it back
 //SetNewIcon( hwnd, filename_to_str(conf_get_filename(conf,CONF_iconefile)), 0, SI_INIT ) ;
 }
 
-// Envoi d'un fichier de script local
+// Send a local script file
 void RunScriptFile( HWND hwnd, const char * filename ) {
 	long len = 0 ; size_t lread ;
 	char * oldcmd = NULL ;
@@ -2431,7 +2445,7 @@ void OpenAndSendScriptFile( HWND hwnd ) {
     }
 }
 
-// Gestion de la fonction winroll
+// Winroll (window rollup) handling
 void ManageWinrol( HWND hwnd, int resize_action ) {
     RECT rcClient ;
     int mode = -1 ;
@@ -2481,7 +2495,7 @@ void RefreshBackground( HWND hwnd ) {
 }
 
 #ifdef MOD_BACKGROUNDIMAGE
-/* Changement du fond d'ecran */
+/* Changing the background image */
 int GetExt( const char * filename, char * ext, size_t extsz) {
 	int i;
 	if( extsz>0 ) ext[0]='\0';
@@ -2591,12 +2605,12 @@ int NextBgImage( HWND hwnd ) {
 /* The InfoBox / InputBox dialog family (F8 send-text, SHIFT+F8 multiline,
  * password prompt, InfoBox progress popup) lives in kitty_inputbox.c. */
 
-// Demarre le timer d'autocommand a la connexion
+// Start the auto-command timer at connection time
 void CreateTimerInit( void ) {
 	SetTimer(MainHwnd, TIMER_INIT, init_delay, NULL) ; 
 	}
 
-// Positionne le repertoire ou se trouve la configuration 
+// Set the directory the configuration is kept in
 void SetConfigDirectory( const char * Directory ) {
 	char *buf ;
 	if( ConfigDirectory != NULL ) { 
@@ -2654,7 +2668,7 @@ BOOL CALLBACK EnumWindowsProc( HWND hwnd, LPARAM lParam ) {
 	return TRUE ;
 }
 
-// Decompte le nombre de fenetre de la meme classe que KiTTY
+// Count the windows of the same class as KiTTY
 int WindowsCount( HWND hwnd ) {
 	char buffer[256] ;
 	NbWindows = 0 ;
@@ -2672,9 +2686,10 @@ int WindowsCount( HWND hwnd ) {
 }
 
 	
-// Gestion de la fenetre d'affichage des portforward
-// Mettre la liste des port forward dans le presse-papier et l'afficher a l'ecran
-// [C] en Listen dans le process courant, [X] en listen dans un autre process, [-] absent
+// Port-forward display window
+// Put the port-forward list on the clipboard and show it on screen
+// [C] listening in the current process, [X] listening in another process,
+// [-] not listening
 DWORD (WINAPI *pGetExtendedTcpTable)(
   PVOID pTcpTable,
   PDWORD pdwSize,
@@ -2874,7 +2889,7 @@ static void kitty_save_current_session( HWND hwnd, const char * newname ) {
 
 
 
-// Gestion du script au lancement
+// Startup script handling
 void ManageInitScript( const char * input_str, const int len ) {
 	int i, l ;
 	char * st = NULL ;
@@ -3126,7 +3141,7 @@ void ResetWindow(int reinit) ;
  * InitShortcuts / ManageShortcuts + the shortcut tables) lives in
  * kitty_shortcuts.c; the tables are declared in kitty.h. */
 
-// Initialisation des parametres a partir du fichier kitty.ini
+// Initialise the parameters from the kitty.ini file
 #ifdef MOD_BACKGROUNDIMAGE
 void SetShrinkBitmapEnable(int) ;
 #endif
@@ -3203,7 +3218,7 @@ static void SetRestrictAclFlag( const int flag ) {
 #define INIP_NUM(sec,rdini,k,min,v,fn)		{ sec, k, rdini, 1, 0, 0, 0, min, v, fn }
 
 static const IniParam ini_params[] = {
-	/* "debug" stays first (historical "A lire en premier"). */
+	/* "debug" stays first (historically "read this one first"). */
 	INIP_KW( INIT_SECTION, 0, KI_DEBUG,		1, IGN, IGN,	&debug_flag, NULL ),
 #ifdef MOD_BACKGROUNDIMAGE
 	INIP_KW( INIT_SECTION, 0, KI_BGIMAGE,		1, 0, IGN,	NULL, SetBackgroundImageFlag ),
@@ -3377,7 +3392,7 @@ void LoadParameters( void ) {
 				 * stopping, fixing the path and starting again, and only the
 				 * person at the keyboard knows which.
 				 *
-				 * ⚠️ It says "as if configdir had not been set" rather than
+				 * WARNING: It says "as if configdir had not been set" rather than
 				 * naming the fallback store, because at this point in startup we
 				 * do not know it: GetSaveMode() has not run yet, so whether
 				 * settings come from the registry or from a directory is still
@@ -3563,20 +3578,20 @@ void kitty_fontfallback_apply_list( const char * list ) {
 	winfb_config_set( list ? list : "", fbOvr, fbLog, fbLogFile ) ;
 }
 
-// Initialisation de noms de fichiers de configuration kitty.ini et kitty.sav
-// APPDATA = 	C:\Documents and Settings\U502190\Application Data sur XP
-//		C:\Users\Cyril\AppData\Roaming sur Vista
+// Work out the names of the kitty.ini and kitty.sav configuration files
+// APPDATA = 	C:\Documents and Settings\<user>\Application Data on XP
+//		C:\Users\<user>\AppData\Roaming on Vista
 //
-// En mode base de registre on cherche le fichier de configuration
-// - dans la variable d'environnement KITTY_INI_FILE
-// - kitty.ini dans le repertoire de lancement de kitty.exe s'il existe
-// - sinon putty.ini dans le repertoire de lancement de kitty.exe s'il existe
-// - sinon kitty.ini dans le repertoire %APPDATA%/KiTTY s'il existe
+// In registry mode the configuration file is looked for
+// - in the KITTY_INI_FILE environment variable
+// - kitty.ini in the directory kitty.exe was started from, if it exists
+// - else putty.ini in the directory kitty.exe was started from, if it exists
+// - else kitty.ini in the %APPDATA%/KiTTY directory, if it exists
 //
-// En mode portable on cherche le fichier de configuration
-// - kitty.ini dans le repertoire de lancement de kitty.exe s'il existe
-// - sinon putty.ini dans le repertoire de lancement de kitty.exe s'il existe
-// 
+// In portable mode the configuration file is looked for
+// - kitty.ini in the directory kitty.exe was started from, if it exists
+// - else putty.ini in the directory kitty.exe was started from, if it exists
+//
 void InitNameConfigFile( void ) {
 	char buffer[4096] = "" ;   /* the KITTY_INI_FILE test below reads this even
 	                            * when the variable is unset - it used to be
@@ -3629,25 +3644,25 @@ void InitNameConfigFile( void ) {
 		if( existfile( buffer ) ) rename( buffer, KittyIniFile ) ;
 }
 	
-// Ecriture de l'increment de compteurs
+// Write the counter increment
 void WriteCountUpAndPath( void ) {
-	// Sauvegarde la liste des folders
+	// Save the folder list
 	SaveFolderList() ;
-		
-	// Incremente le compteur d'utilisation
+
+	// Increment the usage counter
 	CountUp() ;
 
-	// Positionne la version du binaire
+	// Record the binary version
 	WriteParameter( INIT_SECTION, KI_BUILD, BuildVersionTime ) ;
-	
+
 	/* find the file-copy helper (kscp) if it is there */
 	SearchPSCP() ;
-	
-	// Recherche WinSCP s'il existe
+
+	// Look for WinSCP if it is there
 	SearchWinSCP() ;
 	}
 
-// Initialisation specifique a KiTTY
+// KiTTY-specific initialisation
 void appendPath(const char *append) ;
 extern char sesspath[];
 int loadPath() ;
@@ -3733,7 +3748,7 @@ void InitWinMain( void ) {
 	
 	//if( !RegTestKey(HKEY_CLASSES_ROOT,"kitty.connect.1") ) { CreateFileAssoc() ; }
 
-	// Initialisation de la version binaire
+	// Build the binary version string
 	sprintf( BuildVersionTime, "%s @ %s", BUILD_VERSION, BUILD_TIME ) ;
 #ifdef MOD_PORTABLE
 	sprintf( BuildVersionTime, "%s-portable @ %s", BUILD_VERSION, BUILD_TIME ) ;
@@ -3742,19 +3757,19 @@ void InitWinMain( void ) {
 	sprintf( BuildVersionTime, "%s-nt @ %s", BUILD_VERSION, BUILD_TIME ) ;
 #endif
 
-	// Initialisation de la librairie de cryptage
+	// Initialise the encryption library
 	NETDBG_TS("before bcrypt_init");
 	bcrypt_init( 0 ) ;
 	NETDBG_TS("after bcrypt_init");
 
-	// Recupere le repertoire de depart et le repertoire de la configuration pour savemode=dir
+	// Get the startup directory and, for savemode=dir, the configuration one
 	GetInitialDirectory( InitialDirectory ) ;
 	NETDBG_TS("after GetInitialDirectory");
 
-	// Initialise les noms des fichier de configuration kitty.ini et kitty.sav
+	// Work out the kitty.ini and kitty.sav configuration file names
 	InitNameConfigFile() ;
 
-	// Initialisation du nom de la classe
+	// Initialise the window class name
 	strcpy( KiTTYClassName, appname ) ;
 
 #ifdef MOD_PERSO
@@ -3767,10 +3782,10 @@ void InitWinMain( void ) {
 	  kitty_set_registry_root( !stricmp(KiTTYClassName, "PuTTY") ) ; }
 #endif
 
-	// Initialise le tableau des menus
+	// Initialise the menu table
 	InitSpecialMenuTab() ;
 	
-	// Test le mode de fonctionnement de la sauvegarde des sessions
+	// Determine how sessions are saved
 	GetSaveMode() ;
 	NETDBG_TS("after GetSaveMode");
 
@@ -3780,13 +3795,13 @@ void InitWinMain( void ) {
 	{ void kitty_auxpos_set_persist( int on ) ;
 	  if( IniFileFlag != SAVEMODE_REG ) kitty_auxpos_set_persist( 0 ) ; }
 
-	// Initialisation des parametres à partir du fichier kitty.ini
+	// Initialise the parameters from the kitty.ini file
 	LoadParameters() ;
 	NETDBG_TS("after LoadParameters (kitty.ini read)");
 
-	// Ajoute les répertoires InitialDirectory et ConfigDirectory au PATH
+	// Add the InitialDirectory and ConfigDirectory directories to PATH
 
-	// Initialisation des shortcuts
+	// Initialise the shortcuts
 	InitShortcuts() ;
 	NETDBG_TS("after InitShortcuts");
 
@@ -3846,8 +3861,8 @@ void InitWinMain( void ) {
 	 * username and machine name. */
 	RetireCountUpLeftovers() ;
 
-	// Chargement de la base de registre si besoin
-	if( IniFileFlag == SAVEMODE_REG ) { // Mode de sauvegarde registry
+	// Load the registry store if needed
+	if( IniFileFlag == SAVEMODE_REG ) { // registry save mode
 #ifdef MOD_PERSO
 		/* The way back out of file mode.
 		 *
@@ -3899,7 +3914,7 @@ void InitWinMain( void ) {
 				}
 			}
 #endif
-		/* Si la cle n'existait pas AU DEMARRAGE ...
+		/* If the key did not exist AT STARTUP ...
 		 *
 		 * kitty_hive_existed, not a fresh RegTestKey: by this point the one-time
 		 * migrations above have created the key whether or not there was
@@ -3911,8 +3926,8 @@ void InitWinMain( void ) {
 		if( !kitty_hive_existed
 		 && !RegTestKey( HKEY_CURRENT_USER, kitty_reg_live_sess ) ) {
 			HWND hdlg = InfoBox( hinst, NULL ) ;
-			// ... on charge le backup le plus recent (kittynew-<timestamp>.sav),
-			// ou l'ancien fichier a nom fixe s'il existe encore.
+			// ... load the most recent backup (kittynew-<timestamp>.sav),
+			// or the old fixed-name file if it is still there.
 			char newestsav[4096] = "" ;
 			int havesav = sav_find_for_restore( KittySavFile, newestsav, sizeof(newestsav) ) ;
 			if( havesav ) {
@@ -3923,7 +3938,7 @@ void InitWinMain( void ) {
 				LoadRegistryKey( hdlg ) ;
 				InfoBoxClose( hdlg ) ;
 				KittySavFile = savedptr ;
-			} else { // Sinon on regarde si il y a la cle de PuTTY et on la recupere
+			} else { // Otherwise look for PuTTY's key and take it over
 				InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
 				InfoBoxSetText( hdlg, KT_MAIN_INFO_FIRST_RUN_PUTTY ) ;
 				/* Copy DIRECTLY rather than through TestRegKeyOrCopyFromPuTTY():
@@ -3944,8 +3959,8 @@ void InitWinMain( void ) {
 				InfoBoxClose( hdlg ) ;
 			}
 		}
-	} else if( IniFileFlag == SAVEMODE_FILE ){ // Mode de sauvegarde fichier
-		if( !RegTestKey( HKEY_CURRENT_USER, kitty_reg_live ) ) { // la cle de registre n'existe pas
+	} else if( IniFileFlag == SAVEMODE_FILE ){ // file save mode
+		if( !RegTestKey( HKEY_CURRENT_USER, kitty_reg_live ) ) { // the registry key does not exist
 			HWND hdlg = InfoBox( hinst, NULL ) ;
 			InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
 			InfoBoxSetText( hdlg, KT_MAIN_INFO_LOADING_FROM_FILE ) ;
@@ -3953,8 +3968,8 @@ void InitWinMain( void ) {
 			InfoBoxClose( hdlg ) ;
 			}
 #ifdef MOD_PERSO
-		else { // la cle de registre existe deja
-			if( WindowsCount( MainHwnd ) == 1 ) { // Si c'est le 1er kitty on sauvegarde la cle de registre avant de charger le fichier kitty.sav
+		else { // the registry key already exists
+			if( WindowsCount( MainHwnd ) == 1 ) { // first kitty: back the registry key up before loading kitty.sav
 				HWND hdlg = InfoBox( hinst, NULL ) ;
 				InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
 				/* File mode owns the registry view: kitty.sav is loaded INTO
@@ -3994,7 +4009,7 @@ void InitWinMain( void ) {
 			}
 #endif
 		}
-	else if( IniFileFlag == SAVEMODE_DIR ){ // Mode de sauvegarde directory
+	else if( IniFileFlag == SAVEMODE_DIR ){ // directory save mode
 		if( strlen(sesspath) == 0 ) { loadPath() ; }
 		/* KiTTY 0.84: activate the portable file storage backend (windows/storage.c)
 		 * now that sesspath is known. Sessions are then read/written as one file per
@@ -4058,12 +4073,12 @@ void InitWinMain( void ) {
 	InitFolderList() ;
 	NETDBG_TS("after InitFolderList");
 
-	// Incremente et ecrit les compteurs
+	// Increment and write the counters
 	if( IniFileFlag == SAVEMODE_REG ) {
 		WriteCountUpAndPath() ;
 	}
 
-	// Initialise la gestion des icones depuis la librairie kitty.dll si elle existe
+	// Set up icon loading from the kitty.dll library if it exists
 	if( !GetPuttyFlag() ) {
 		if( IconFile != NULL )
 		if( existfile( IconFile ) ) 
@@ -4082,7 +4097,7 @@ void InitWinMain( void ) {
 	 * modal box raised from right here, which stopped every start dead. */
 	kitty_notes_mark_pending() ;
 
-	// Genere un fichier (4096ko max) d'initialisation de toute les Sessions
+	// Generate an initialisation file (4096 KB max) for all the sessions
 	snprintf( buffer, sizeof(buffer), "%s\\%s.ses.updt", InitialDirectory, appname ) ;
 	if( existfile( buffer ) ) { InitAllSessions( HKEY_CURRENT_USER, kitty_registry_base(), "Sessions", buffer ) ; }
 	/* Format: registry like => UTF-8 encoded !!!
@@ -4090,7 +4105,7 @@ void InitWinMain( void ) {
 	"ProxyPassword"="mypassword"
 	*/
 	
-	// Initialise les logs
+	// Initialise the logs
 	char hostname[4096], username[4096] ;
 	NETDBG_TS("before GetUserName/GetComputerName");
 	i = sizeof(username) ;
@@ -4116,40 +4131,40 @@ void InitWinMain( void ) {
 
 
 
-// Commandes internes
+// Internal commands
 int InternalCommand( HWND hwnd, char * st ) ;
 
-// Positionne le repertoire ou se trouve la configuration 
+// Set the directory the configuration is kept in
 void SetConfigDirectory( const char * Directory ) ;
 
-// Creation du fichier kitty.ini par defaut si besoin
+// Create the default kitty.ini file if needed
 void CreateDefaultIniFile( void ) ;
 
-// Initialisation des parametres a partir du fichier kitty.ini
+// Initialise the parameters from the kitty.ini file
 void LoadParameters( void ) ;
 
-// Initialisation de noms de fichiers de configuration kitty.ini et kitty.sav
+// Work out the names of the kitty.ini and kitty.sav configuration files
 void InitNameConfigFile( void ) ;
 
-// Ecriture de l'increment de compteurs
+// Write the counter increment
 void WriteCountUpAndPath( void ) ;
 
-// Initialisation spécifique a KiTTY
+// KiTTY-specific initialisation
 void InitWinMain( void ) ;
 
-// Initialisation des shortcuts
+// Shortcut initialisation
 
 
-// Gestion des raccourcis
+// Shortcut handling
 int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) ;
 
-// Nettoie la clé de PuTTY pour enlever les clés et valeurs spécifique à KiTTY
-// Se trouve dans le fichier kitty_registry.c
+// Clean PuTTY's key of the KiTTY-specific keys and values
+// Implemented in kitty_registry.c
 BOOL RegCleanPuTTY( void ) ;
 
-// Envoi de caractères
+// Send characters
 void SendKeyboardPlus( HWND hwnd, const char * st ) ;
 
-// Envoi d'une commande à l'écran
+// Send a command to the screen
 void SendAutoCommand( HWND hwnd, const char * cmd ) ;
 

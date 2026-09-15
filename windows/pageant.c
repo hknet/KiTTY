@@ -4175,7 +4175,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
          * keylist_capture_layout: the anchors replay captured rects on
          * every resize, so rects captured before the snap would scatter
          * the row again the first time the window is resized - which is
-         * exactly what happened on 2026-08-31.
+         * exactly what happened before this snap existed.
          */
         {
             static const int row_ids[] = {

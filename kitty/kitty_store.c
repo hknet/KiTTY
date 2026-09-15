@@ -1,3 +1,13 @@
+/*
+ * kitty_store.c - the file-based settings store used when KiTTY does not
+ * save into the registry (savemode=dir / portable mode).
+ * It works out where the configuration lives (current directory, the
+ * program's own directory or an explicit configuration directory) and fills
+ * in the session, host-key and jumplist paths; it packs and unpacks names so
+ * they are legal file names; and it reads and writes a session file as a list
+ * of "name\value\" items, which the rest of the suite handles through the
+ * HSettings / HSettingsItem list defined in kitty_store.h.
+ */
 #include <limits.h>
 
 
@@ -269,7 +279,7 @@ int loadPath() {
 	}
 
 	/* JK: set default values - if there is a config file, it will be overwitten */
-	if( GetConfigDirectory() != NULL ) { // Cas ou defini un autre repertoire de configuration
+	if( GetConfigDirectory() != NULL ) { // another config directory is set
 		snprintf(sesspath, sizeof(sesspath), "%s\\Sessions", GetConfigDirectory());
 		snprintf(initialsesspath, sizeof(initialsesspath), "%s", sesspath);
 		snprintf(sshkpath, sizeof(sshkpath), "%s\\SshHostKeys", GetConfigDirectory());
@@ -472,7 +482,7 @@ void SettingsAddItem( HSettingsList list, const char * name, const char * value 
 void SettingsFreeItem( HSettingsItem item ) {
 	if( item != NULL ) {
 //debug_log("%s=%s\n",item->name,item->value);
-		if( item->value != NULL ) { free( item->value ) ; item->value = NULL ; } // POURQUOI CA PLANTE ???
+		if( item->value != NULL ) { free( item->value ) ; item->value = NULL ; } // WHY DOES THIS CRASH ???
 		if( item->name != NULL ) { free( item->name ) ; item->name = NULL ; }
 		item->pPrevious = NULL ;
 		item->pNext = NULL ;

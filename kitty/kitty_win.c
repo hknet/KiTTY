@@ -1,3 +1,20 @@
+/*
+ * kitty_win.c - a grab-bag of Win32 helpers shared by the KiTTY additions.
+ * There is no single theme here; the groups, in file order, are:
+ *   - window transparency and OS version helpers,
+ *   - the file and folder selection dialogs (open, save, folder picker),
+ *   - printing a block of text, and the clipboard write helper,
+ *   - launching a process (RunCommand, the -ed editor),
+ *   - the in-app updater: the GitHub release query, the cached "newer build
+ *     available" state, asset download, the Authenticode gate and the MSI run,
+ *   - the themed message, notice and confirmation boxes plus the shared
+ *     dialog helpers (fit-to-text, centre on owner, dialog icon),
+ *   - inline terminal messages: the session comment and connection errors,
+ *   - terminal system-menu actions, the config-box respawn and the
+ *     window-title placeholder window,
+ *   - the missing-optional-features report and the unverified-agent notice,
+ *   - the application-wide theme and check-for-updates settings.
+ */
 #include "kitty_win.h"
 #include "kitty_authenticode.h"   /* shared Authenticode trust + CN gate */
 #include "kitty_notice.h"          /* near-the-clock warning window */
@@ -16,7 +33,7 @@
 /* MOD_PERSO event-log wrapper, defined in windows/window.c */
 void do_eventlog(const char *st) ;
 
-// Modifie la transparence
+// Change the window transparency
 void SetTransparency( HWND hwnd, int value ) {
 #ifndef MOD_NOTRANSPARENCY
 	SetLayeredWindowAttributes( hwnd, 0, value, LWA_ALPHA ) ;
@@ -24,7 +41,7 @@ void SetTransparency( HWND hwnd, int value ) {
 	}
 
 
-// Numéro de version de l'OS
+// Operating system version number
 void GetOSInfo( char * version ) { // ==> Deprecated with version >= Windows 8.1
 	OSVERSIONINFO osvi;
 	ZeroMemory(&osvi, sizeof(OSVERSIONINFO));
@@ -102,7 +119,7 @@ int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 int OpenFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
 	char * szTitle = Title ;
 	char szFilter[4096] ; snprintf( szFilter, sizeof(szFilter), "%s", Filter ) ;
-	// on remplace les caractères '|' par des caractères NULL.
+	// replace the '|' characters with NUL characters.
 	int i = 0;
 	while(i < sizeof(szFilter) && szFilter[i] != '\0')
 	{
@@ -112,7 +129,7 @@ int OpenFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter,
 		i++;
 	}
 
-	// boîte de dialogue de demande d'ouverture de fichier
+	// the file open dialog box
 	//char szFileName[_MAX_PATH + 1] = "";
 	char * szFileName = filename ;
 	szFileName[0] = '\0' ;
@@ -131,7 +148,7 @@ int OpenFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter,
 				| OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_EXTENSIONDIFFERENT | OFN_DONTADDTORECENT
 				;
 
-	// si aucun nom de fichier n'a été sélectionné, on abandonne
+	// if no file name was selected, give up
 	if(!GetOpenFileName(&ofn)) { return 0 ; }
 	else { return 1 ; }
 	}
@@ -139,7 +156,7 @@ int OpenFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter,
 int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 	char * szTitle = Title ;
 	char szFilter[4096] ; snprintf( szFilter, sizeof(szFilter), "%s", Filter ) ;
-	// on remplace les caractères '|' par des caractères NULL.
+	// replace the '|' characters with NUL characters.
 	int i = 0;
 	while(i < sizeof(szFilter) && szFilter[i] != '\0')
 	{
@@ -149,7 +166,7 @@ int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 		i++;
 	}
 
-	// boîte de dialogue de demande d'ouverture de fichier
+	// the file open dialog box
 	//char szFileName[_MAX_PATH + 1] = "";
 	char * szFileName = filename ;
 	szFileName[0] = '\0' ;
@@ -168,7 +185,7 @@ int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 				| OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_EXTENSIONDIFFERENT | OFN_DONTADDTORECENT
 				;
 
-	// si aucun nom de fichier n'a été sélectionné, on abandonne
+	// if no file name was selected, give up
 	if(!GetSaveFileName(&ofn)) { return 0 ; }
 	else { return 1 ; }
 	}
@@ -290,7 +307,7 @@ int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const ch
 	return 0 ;
 	}
 
-// Centre un dialog au milieu de la fenetre parent
+// Centre a dialog in the middle of its parent window
 void CenterDlgInParent(HWND hDlg) {
   RECT rcDlg;
   HWND hParent;
@@ -330,9 +347,9 @@ void CenterDlgInParent(HWND hDlg) {
 
 
 //
-// Envoi vers l'imprimante
+// Send to the printer
 //
-// Parametres de l'impression
+// Printing parameters
 int PrintCharSize = 100 ;
 int PrintMaxLinePerPage = 60 ;
 int PrintMaxCharPerLine = 85 ;
@@ -396,27 +413,27 @@ int PrintText( const char * Text ) {
                        					}
                   				}
                   			Index2++ ; 
-                  			LinePrint[Index1] = '\0'; // Impression de la dernière page
+                  			LinePrint[Index1] = '\0'; // Print the last page
                   			TextOut(pd.hDC,100, Index2*PrintCharSize, LinePrint, strlen(LinePrint)) ;
                	  			EndPage(pd.hDC) ;
                   			EndDoc(pd.hDC) ;
                   			szMessage = KT_WIN_PRINT_OK;
 					free( LinePrint ) ;
               				}
-              			else { return_code = 1 ;  /* Chaine vide */ }
+              			else { return_code = 1 ;  /* Empty string */ }
 				}
-			else { // Problème StartDoc
+			else { // StartDoc problem
 				szMessage = KT_WIN_PRINT_ERR1 ;
 				return_code = 2 ;
 				}
 			}
-		else { // Probleme pd.hDC
+		else { // pd.hDC problem
 			szMessage = KT_WIN_PRINT_ERR2 ;
 			return_code = 3 ;
 			}
 		}
-	else { // Problème PrintDlg
-		//szMessage = "Impression annulée par l'utilisateur" ;
+	else { // PrintDlg problem
+		//szMessage = "Impression annulee par l'utilisateur" ;
 		return_code = 4 ;
 		}
 	if (szMessage) { MessageBox (NULL, szMessage, KT_CAP_PRINT_REPORT, MB_OK) ; }
@@ -424,7 +441,7 @@ int PrintText( const char * Text ) {
 	return return_code ;
 	}
 
-// Impression du texte dans le bloc-notes
+// Print the text in the notepad
 void ManagePrint( HWND hwnd ) {
 	char *pst = NULL ;
 	if( OpenClipboard(NULL) ) {
@@ -439,7 +456,7 @@ void ManagePrint( HWND hwnd ) {
 	}
 }
 
-// Met un texte dans le press-papier
+// Put a text into the clipboard
 int SetTextToClipboard( const char * buf ) {
 	HGLOBAL hglbCopy ;
 	LPTSTR lptstrCopy ;
@@ -474,7 +491,7 @@ int SetTextToClipboard( const char * buf ) {
 	return 1 ;
 }
 
-// Execute une commande	
+// Run a command
 void RunCommand( HWND hwnd, const char * cmd ) {
 	PROCESS_INFORMATION ProcessInformation ;
 	ZeroMemory( &ProcessInformation, sizeof(ProcessInformation) );
@@ -531,7 +548,7 @@ void RunPuttyEd( HWND hwnd, char * filename ) {
 	}
 }
 
-// Verifie si une mise a jour est disponible (depot GitHub hknet/KiTTY)
+// Check whether an update is available (GitHub repository hknet/KiTTY)
 extern char BuildVersionTime[256] ;
 
 /* Parse a dotted version "0.84.0.15" into 4 comparable integers. */
@@ -576,7 +593,7 @@ static int kitty_msi_installed( const char *upgradecode ) {
 
 /* How was this copy installed? Decides which asset to fetch and how to run it.
  * Primary, robust signal: ask Windows Installer whether OUR product (by its
- * stable UpgradeCode) is installed, and which kind — this is independent of the
+ * stable UpgradeCode) is installed, and which kind - this is independent of the
  * install path, locale, or whether the exe was copied elsewhere. The path sniff
  * is only a fallback. The portable build (MOD_PORTABLE) is always download-only. */
 static kitty_install_t kitty_detect_install_type( void ) {
@@ -1015,7 +1032,7 @@ static INT_PTR CALLBACK kitty_upd_dlgproc( HWND h, UINT msg, WPARAM wp, LPARAM l
  * explanation instead of clipping it, and because it should look like the rest of
  * KiTTY.
  *
- * ⚠️ NOT for DPI reasons, whatever this comment used to say. A MessageBox is drawn
+ * NOT for DPI reasons, whatever this comment used to say. A MessageBox is drawn
  * by WINDOWS in the system dialog font, and the system scales it for the process's
  * DPI awareness - it is correct on a scaled display and always was. The DPI
  * problems this project actually had came from windows we laid out OURSELVES with
@@ -1715,7 +1732,7 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 	ShellExecute( hwnd, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
 }
 
-// Affichage d'un message dans l'event log
+// Display a message in the event log
 void debug_logevent( const char *fmt, ... ) {
 	va_list ap;
 	char *buf;
@@ -1726,7 +1743,7 @@ void debug_logevent( const char *fmt, ... ) {
 	free(buf);
 }
 
-// Test si un chemin est absolu
+// Test whether a path is absolute
 bool IsPathAbsolute( const char * path ) {
 	bool test = false ;
 	if( path == NULL ) { return false ; }

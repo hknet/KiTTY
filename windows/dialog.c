@@ -857,7 +857,7 @@ static INT_PTR CALLBACK NullDlgProc(HWND hwnd, UINT msg,
 /* Width kept clear at the right of every panel for the scroll bar. */
 #define CFGBOX_SCROLLGUTTER_DU 10
 /*
- * The Session | Application tab strip above the category tree (design §9.2).
+ * The Session | Application tab strip above the category tree.
  * It replaces the "Category:" static rather than being added to the column,
  * so the cost to the tree is this height MINUS the static's 10 - and the
  * panel area, which is where the height budget actually hurts, pays nothing.
@@ -1983,7 +1983,7 @@ static struct kitty_cfg_panel *kitty_cfg_panel_create(
  * one that does - cannot be applied by refreshing the panel. It has to be
  * laid out again.
  *
- * ⛔ NOT for the panel the user is looking at, and NOT for a panel holding
+ * NOT for the panel the user is looking at, and NOT for a panel holding
  * edits that have not been stored. Rebuilding destroys the windows, so
  * anything typed into them and not yet written is gone. Every Application
  * panel writes as it is touched, and the session panels are backed by conf,
@@ -2508,7 +2508,7 @@ static int kitty_cfgbox_restore_pos(HWND hwnd)
 
 /* KiTTY: Ctrl+F anywhere in the config box jumps to the Session panel and
  * focuses the saved-sessions name box with its content fully selected, so
- * typing immediately starts a new list search (keyboard-first flow — without
+ * typing immediately starts a new list search (keyboard-first flow - without
  * this, getting back to the search from another panel takes a tree click plus
  * several Tabs). Keystrokes go to whichever child control has focus, so this
  * is a thread-scoped WH_KEYBOARD hook that lives only while a config box with
@@ -3752,7 +3752,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
 
             /* KiTTY: arm the Ctrl+F session-search jump (first tree item ==
              * the Session panel). Only when this dialog's ctrlbox actually
-             * registered a session box — stock variants return NULL. */
+             * registered a session box - stock variants return NULL. */
             kitty_cfg_hwnd = hwnd;      /* the modal owner, always */
             if (kitty_config_session_filter_ctrl()) {
                 kitty_cfg_hwnd = hwnd;

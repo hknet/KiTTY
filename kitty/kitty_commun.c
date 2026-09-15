@@ -1,5 +1,6 @@
 /*
- * Fichier contenant les procedures communes à tous les programmes putty, pscp, psftp, plink, pageant
+ * File holding the procedures common to all the putty, pscp, psftp, plink and
+ * pageant programs
  */
 
 #include "kitty_commun.h"
@@ -7,7 +8,7 @@
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
 
-// Flag permettant d'activer l'acces a du code particulier permettant d'avoir plus d'info dans le kitty.dmp
+// Flag enabling extra code paths that put more information into kitty.dmp
 int debug_flag = 0 ;
 
 #ifdef MOD_PERSO
@@ -22,7 +23,7 @@ int debug_flag = 0 ;
 #define SAVEMODE_DIR 2
 #endif
 
-// Flag pour le fonctionnement en mode "portable" (gestion par fichiers)
+// Flag for running in "portable" mode (settings kept in files)
 #ifdef MOD_PORTABLE
 int IniFileFlag = SAVEMODE_DIR ;
 #else
@@ -40,14 +41,14 @@ int GetIniFileFlag(void) { return IniFileFlag ; }
  * with Folder= inside it whatever this says, so with the flag on, no folder was
  * ever found: the folder list was empty and the tray menu could not group.
  *
- * ⚠️ It is not merely unused. The portable enumerator skips directories and
+ * WARNING: it is not merely unused. The portable enumerator skips directories and
  * does not recurse (enum_settings_start), so a session inside a subdirectory is
  * not listed at all - turning this on does not make a legacy tree readable, it
  * only changes where a folder NAME is looked for.
  */
 int DirectoryBrowseFlag = 0 ;
 
-// Flag pour repasser en mode Putty basic
+// Flag to fall back to plain PuTTY mode
 int PuttyFlag = 0 ;
 int GetPuttyFlag(void) { return PuttyFlag ; }
 void SetPuttyFlag( const int flag ) { PuttyFlag = flag ; }
@@ -72,19 +73,20 @@ int ModalWeakKeyConfirmationFlag = 1 ;
 int GetModalWeakKeyConfirmationFlag(void) { return ModalWeakKeyConfirmationFlag ; }
 void SetModalWeakKeyConfirmationFlag( const int flag ) { ModalWeakKeyConfirmationFlag = flag ; }
 
-// Flag permettant de desactiver la sauvegarde automatique des informations de connexion (user/password) Ã  la connexion SSH
+// Flag disabling the automatic saving of the login details (user/password)
+// on SSH connection
 static int UserPassSSHNoSave = 0 ;
 int GetUserPassSSHNoSave(void) { return UserPassSSHNoSave ; }
 void SetUserPassSSHNoSave( const int flag ) { UserPassSSHNoSave = flag ; }
 
-// Flag pour empêcher l'écriture des fichiers (default settings, jump file list ...)
+// Flag preventing files from being written (default settings, jump list ...)
 // [KiTTY] readonly=no
 static int ReadOnlyFlag = 0 ;
 int GetReadOnlyFlag(void) { return ReadOnlyFlag ; }
 void SetReadOnlyFlag( const int flag ) { ReadOnlyFlag = flag ; }
 
 #ifdef MOD_ZMODEM
-// Flag pour inhiber les fonctions ZMODEM
+// Flag to disable the ZMODEM functions
 /* KiTTY: on by default. The shipped kitty.ini template has always written
  * zmodem=yes, so the feature was present for anyone whose kitty.ini had been
  * generated and absent for everyone else - including every registry-mode
@@ -94,11 +96,11 @@ int GetZModemFlag(void) { return ZModemFlag ; }
 void SetZModemFlag( const int flag ) { ZModemFlag = flag ; }
 #endif
 
-// Flag pour afficher l'image de fond
+// Flag to display the background image
 #ifdef MOD_BACKGROUNDIMAGE
-// Suite à PuTTY 0.61, le patch covidimus ne fonctionne plus tres bien
-// Il impose de demarrer les sessions avec -load meme depuis la config box (voir CONFIG.C)
-// Le patch est desactive par defaut
+// Since PuTTY 0.61 the covidimus patch no longer works very well
+// It forces sessions to start with -load even from the config box (CONFIG.C)
+// The patch is disabled by default
 int BackgroundImageFlag = 0 ;
 #else
 int BackgroundImageFlag = 0 ;
@@ -106,12 +108,12 @@ int BackgroundImageFlag = 0 ;
 int GetBackgroundImageFlag(void) { return BackgroundImageFlag ; }
 void SetBackgroundImageFlag( const int flag ) { BackgroundImageFlag = flag ; }
 
-// Pour supprimer le sel dans le cryptage du mot de passe
+// To remove the salt from the password encryption
 int CryptSaltFlag = 0 ;
 int GetCryptSaltFlag() { return CryptSaltFlag ; }
 void SetCryptSaltFlag( int flag ) { CryptSaltFlag = flag ; }
 
-// Répertoire de sauvegarde de la configuration (savemode=dir)
+// Directory the configuration is saved into (savemode=dir)
 char * ConfigDirectory = NULL ;
 
 char * GetConfigDirectory( void ) { return ConfigDirectory ; }
@@ -122,7 +124,7 @@ int stricmp(const char *s1, const char *s2) ;
 int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) ;
 char * SetSessPath( const char * dec ) ;
 
-// Nettoie les noms de folder en remplaçant les "/" par des "\" et les " \ " par des " \"
+// Clean folder names: replace "/" with "\" and " \ " with " \"
 void CleanFolderName( char * folder ) {
 	int i, j ;
 	if( folder == NULL ) return ;
@@ -142,7 +144,7 @@ void CleanFolderName( char * folder ) {
 #include <sys/types.h>
 #include <dirent.h>
 #define MAX_VALUE_NAME 16383
-// Supprime une arborescence
+// Delete a directory tree
 int _rmdir( const char *dirname ) ;
 void DelDir( const char * directory ) {
 	DIR * dir ;
@@ -161,14 +163,15 @@ void DelDir( const char * directory ) {
 		}
 	}
 
-// Lit un parametre soit dans le fichier de configuration, soit dans le registre
+// Read a parameter either from the configuration file or from the registry
 char  * IniFile = NULL ;
 char INIT_SECTION[10];
 
 /* The hive in use, not the compile-time default - see kitty_storage.c. */
 extern const char *kitty_registry_base( void ) ;
 
-// Variante bornee: n'ecrit jamais plus de `size` octets (NUL final compris) dans `value`.
+// Bounded variant: never writes more than `size` bytes into `value`,
+// final NUL included.
 int ReadParameterLightN( const char * key, const char * name, char * value, size_t size ) {
 	char buffer[4096] ;
 	strcpy( buffer, "" ) ;
@@ -184,8 +187,8 @@ int ReadParameterLightN( const char * key, const char * name, char * value, size
 	return strcmp( buffer, "" ) ;
 	}
 
-// Compat: ancienne signature non bornee -- le buffer destinataire DOIT faire
-// au moins 4096 octets. Preferer ReadParameterLightN( ..., sizeof(buf) ).
+// Compat: the old unbounded signature -- the destination buffer MUST be at
+// least 4096 bytes. Prefer ReadParameterLightN( ..., sizeof(buf) ).
 int ReadParameterLight( const char * key, const char * name, char * value ) {
 	return ReadParameterLightN( key, name, value, 4096 ) ;
 	}
@@ -290,7 +293,7 @@ int LoadParametersLight( void ) {
 	return ret ;
 }
 
-// Positionne un flag permettant de determiner si on est connecte
+// Flag saying whether we are connected
 int is_backend_connected = 0 ;
 
 #ifdef MOD_RECONNECT
@@ -307,7 +310,7 @@ void SetSSHConnected( int flag ) {
 
 //PVOID SecureZeroMemory( PVOID ptr, SIZE_T cnt) { return memset( ptr, 0, cnt ) ; }
 
-// Fonctions permettant de formatter les chaînes de caractères avec %XY
+// Functions escaping strings with %XY sequences
 void mungestr( const char *in, char *out ) {
 	char hex[16] = "0123456789ABCDEF";
 	int candot = 0 ;
@@ -373,7 +376,7 @@ int IsPasswordInConf(void) {
 /* Session-file extension in portable mode (a .ktx among them) */
 char FileExtension[15] = "" ;
 
-// Répertoire courant pourle mode portable
+// Current folder for portable mode
 char CurrentFolder[1024] = "Default" ;
 
 #endif

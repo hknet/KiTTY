@@ -3310,7 +3310,7 @@ void dlg_error_msg(dlgparam *dp, const char *msg)
  * MB_DEFBUTTON2 so a reflex Return does NOT confirm: this is asked precisely
  * when we suspect the user is not looking.
  *
- * ⚠️ A MessageBox here is DELIBERATE - do not "fix" it on DPI grounds. Windows
+ * WARNING: A MessageBox here is DELIBERATE - do not "fix" it on DPI grounds. Windows
  * draws it in the system dialog font and scales it for the process's DPI
  * awareness, so it is correct on a scaled display. KiTTY's own dialogs exist for
  * text that must GROW TO FIT, or coloured text; a short yes/no needs neither.

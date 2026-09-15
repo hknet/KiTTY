@@ -1,3 +1,13 @@
+/*
+ * kitty_registry.c - the registry helpers the KiTTY additions are built on.
+ * Three layers live here: small wrappers around the Win32 registry API
+ * (read a value, test or create a key, delete a value or a whole tree, copy
+ * a tree, export a key through reg.exe), the one-time hive migrations and
+ * repairs run at startup (the old KiTTY namespace, the ShiftedArrowKeys
+ * default, the retired SCPAutoPwd option) plus the PuTTY hive clean-up, and
+ * the shell integration: registering and removing the URL protocol handlers
+ * and the file association, with their console-or-message-box reports.
+ */
 #include "kitty_registry.h"
 
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
@@ -15,20 +25,20 @@ int GetIniFileFlag( void ) ;
 #ifndef SAVEMODE_REG
 #define SAVEMODE_REG 0
 #endif
-// Variante bornee: n'ecrit jamais plus de `rsize` octets (NUL final compris)
-// dans rValue; une valeur trop longue est tronquee au lieu de deborder.
+// Bounded variant: never writes more than `rsize` bytes (final NUL included)
+// into rValue; a value that is too long is truncated instead of overflowing.
 char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize){
     HKEY hkKey;
     DWORD lpType, dwDataSize = cstMaxRegLength;
 
-  //Receptionne la valeur de réception lecture clé registre
+  //Buffer receiving the value read from the registry key
 	/* On the stack: this is the read behind every ReadParameter, and a
 	 * malloc/free pair per call added up on the paths that ask often. */
 	unsigned char lpData[ cstMaxRegLength + 1 ] ; // +1 for forced NUL
 	if( rValue == NULL || rsize == 0 ) { return NULL ; }
 
     rValue[0] = '\0';
-  //Lecture de la clé registre si ok passe à la suite...
+  //Read the registry key; if that works, carry on...
     if (RegOpenKeyEx(hkTopKey,lpSubKey,0,KEY_READ,&hkKey) == ERROR_SUCCESS){
 
       if (RegQueryValueEx(hkKey,lpValueName,NULL,&lpType,lpData,&dwDataSize) == ERROR_SUCCESS){
@@ -37,7 +47,7 @@ char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, c
       // cannot over-read past the data.
         if( dwDataSize > cstMaxRegLength ) dwDataSize = cstMaxRegLength ;
         lpData[dwDataSize] = '\0' ;
-      //déchiffrage des différents type de clé dans registry
+      //decode the different registry value types
         switch ((int)lpType){
 
           case REG_BINARY:
@@ -71,13 +81,13 @@ char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, c
     return rValue;
   }//end function
 
-/* Compat: ancienne signature non bornee -- le buffer destinataire DOIT faire
- * au moins cstMaxRegLength+2 octets. Preferer GetValueDataN( ..., sizeof(buf) ). */
+/* Compat: the old unbounded signature -- the destination buffer MUST be at
+ * least cstMaxRegLength+2 bytes. Prefer GetValueDataN( ..., sizeof(buf) ). */
 char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue){
     return GetValueDataN( hkTopKey, lpSubKey, lpValueName, rValue, cstMaxRegLength+2 ) ;
 }
 
-// Teste l'existance d'une clé
+// Test whether a key exists
 int RegTestKey( HKEY hMainKey, LPCTSTR lpSubKey ) {
 	HKEY hKey ;
 	if( lpSubKey == NULL ) return 1 ;
@@ -87,7 +97,7 @@ int RegTestKey( HKEY hMainKey, LPCTSTR lpSubKey ) {
 	return 1 ;
 	}
 	
-// Retourne le nombre de sous-keys
+// Return the number of subkeys
 int RegCountKey( HKEY hMainKey, LPCTSTR lpSubKey ) {
 	HKEY hKey ;
 	TCHAR    achClass[MAX_PATH] = TEXT("");
@@ -104,7 +114,7 @@ int RegCountKey( HKEY hMainKey, LPCTSTR lpSubKey ) {
 	return nb ;
 	}
 
-	// Teste l'existance d'une clé ou bien d'une valeur et la crée sinon
+	// Test whether a key or a value exists and create it otherwise
 	// KiTTY: returns 1 on success, 0 if the key could not be opened or created
 	// or the value not written. Writing under HKEY_CLASSES_ROOT lands in
 	// HKEY_LOCAL_MACHINE and needs elevation, so failure here is ordinary and
@@ -128,7 +138,7 @@ int RegTestOrCreate( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR valu
 	return ok ;
 	}
 
-// Test l'existance d'une clé ou bien d'une valeur DWORD et la crée sinon
+// Test whether a key or a DWORD value exists and create it otherwise
 int RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD value ) {
 	HKEY hKey = NULL ;
 	int ok ;
@@ -147,7 +157,7 @@ int RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD v
 	}
 	
 
-// Initialise toutes les sessions avec une valeur (si oldvalue==NULL) ou uniquement celles qui ont la valeur oldvalue
+// Set a value in every session (oldvalue==NULL) or only where it holds oldvalue
 void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR oldvalue, LPCTSTR value  ) {
 	HKEY hKey ;
 	TCHAR    achClass[MAX_PATH] = TEXT(""), achKey[MAX_KEY_LENGTH]; 
@@ -175,7 +185,7 @@ void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTST
 	}
 }
 	
-// Exporte toute une cle de registre
+// Export a whole registry key
 void QuerySubKey( HKEY hMainKey, LPCTSTR lpSubKey, FILE * fp_out, char * text  ) { 
 	HKEY hKey ;
     TCHAR    achKey[MAX_KEY_LENGTH];   // buffer for subkey name
@@ -194,24 +204,24 @@ void QuerySubKey( HKEY hMainKey, LPCTSTR lpSubKey, FILE * fp_out, char * text  )
 	
 	char * buffer = NULL ;
 
-	// On ouvre la clé
+	// Open the key
 	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
 
-    // Get the class name and the value count. 
+    // Get the class name and the value count.
     retCode = RegQueryInfoKey(
-        hKey,                    // key handle 
-        achClass,                // buffer for class name 
-        &cchClassName,           // size of class string 
-        NULL,                    // reserved 
-        &cSubKeys,               // number of subkeys 
-        &cbMaxSubKey,            // longest subkey size 
-        &cchMaxClass,            // longest class string 
-        &cValues,                // number of values for this key 
-        &cchMaxValue,            // longest value name 
-        &cbMaxValueData,         // longest value data 
-        &cbSecurityDescriptor,   // security descriptor 
-        &ftLastWriteTime);       // last write time 
- 
+        hKey,                    // key handle
+        achClass,                // buffer for class name
+        &cchClassName,           // size of class string
+        NULL,                    // reserved
+        &cSubKeys,               // number of subkeys
+        &cbMaxSubKey,            // longest subkey size
+        &cchMaxClass,            // longest class string
+        &cValues,                // number of values for this key
+        &cchMaxValue,            // longest value name
+        &cbMaxValueData,         // longest value data
+        &cbSecurityDescriptor,   // security descriptor
+        &ftLastWriteTime);       // last write time
+
 	// Enumerate the subkeys, until RegEnumKeyEx fails.
 	if (cSubKeys) {
 		for (i=0; i<cSubKeys; i++) { 
@@ -256,7 +266,7 @@ void InitAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char *
 		}
 	}
 	
-// Détruit une valeur de clé de registre 
+// Delete a registry key value
 BOOL RegDelValue (HKEY hKeyRoot, LPTSTR lpSubKey, LPTSTR lpValue ) {
 	HKEY hKey;
 	LONG lResult;
@@ -267,7 +277,7 @@ BOOL RegDelValue (HKEY hKeyRoot, LPTSTR lpSubKey, LPTSTR lpValue ) {
 	return TRUE;   
 	}
 
-// Detruit une clé de registre et ses sous-clé
+// Delete a registry key and its subkeys
 BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) {
     TCHAR lpEnd[MAX_PATH];
     LONG lResult;
@@ -392,7 +402,7 @@ void RepairSharrowDefaults( void ) {
 	RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SHARROWREPAIRDONE, 1 ) ;
 }
 
-/* One-time migration (2026-07-21): the per-session "Send file in current
+/* One-time migration: the per-session "Send file in current
  * directory" option (SCPAutoPwd) was retired -- it drove uploads off the removed
  * __pw title-scan (CVE-2024-23749) and is superseded by opt-in OSC 7 cwd
  * tracking. For every registry session that had SCPAutoPwd=1, enable
@@ -430,7 +440,7 @@ void MigrateScpAutoPwd( void ) {
 	RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SCPAUTOPWDMIGRATED, 1 ) ;
 }
 
-// Copie une clé de registre vers une autre
+// Copy one registry key onto another
 void kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
 	HKEY hKey, hDestKey ;
     TCHAR    achKey[MAX_KEY_LENGTH];   // buffer for subkey name
@@ -454,7 +464,7 @@ void kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
 	DWORD lpType, dwDataSize = 1024 ;
 	char * buffer = NULL, * destbuffer = NULL ;
 	
-	// On ouvre la clé
+	// Open the key
 	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
 	if( RegCreateKey( hMainKey, TEXT(lpDestKey), &hDestKey ) == ERROR_SUCCESS )
 					RegCloseKey( hDestKey ) ;
@@ -542,7 +552,7 @@ void kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
 	RegCloseKey( hKey ) ;
 }
 
-// Nettoie la clé de PuTTY pour enlever les clés et valeurs spécifique à KiTTY
+// Clean the PuTTY key: remove the keys and values specific to KiTTY
 BOOL RegCleanPuTTY( void ) {
 	HKEY hKey, hSubKey ;
 	DWORD retCode, i;
@@ -580,7 +590,7 @@ BOOL RegCleanPuTTY( void ) {
 	RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Folders" ) ;
 	RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Launcher" ) ;
 	
-	// On ouvre la clé
+	// Open the key
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Sessions", 0, KEY_READ|KEY_WRITE, &hKey) != ERROR_SUCCESS ) return 0;
 	
 	retCode = RegQueryInfoKey(
@@ -986,8 +996,8 @@ static int UrlHandlerWrite( HKEY root, const char *prefix, const char *proto,
 	return RegTestOrCreate( root, key, "", command ) ;
 }
 
-// Creation du SSH Handler
-/* KiTTY, rewritten 2026-07-31. What it used to do: write telnet/ssh/putty
+// Create the SSH handler
+/* KiTTY, rewritten. What it used to do: write telnet/ssh/putty
  * straight into HKEY_CLASSES_ROOT - i.e. HKEY_LOCAL_MACHINE - overwriting
  * whatever handled those links before, and reporting success even when every
  * write had been refused for lack of elevation (RegTestOrCreate ignored its
@@ -1200,8 +1210,8 @@ void RemoveSSHHandler( void ) {
 	KittyCliReport( KT_CAP_URL_HANDLERS, report, removed ? 0 : 1 ) ;
 }
 
-// Creation de l'association de fichiers *.ktx
-/* KiTTY, rewritten 2026-08-01 alongside CreateSSHHandler(), which had the same
+// Create the *.ktx file association
+/* KiTTY, rewritten alongside CreateSSHHandler(), which had the same
  * three faults: it wrote to HKEY_CLASSES_ROOT (= HKLM) and so did nothing at
  * all from an unelevated prompt while reporting nothing either; it claimed the
  * extension even when another program owned it; and it never said what it had
@@ -1255,8 +1265,8 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 		ClassKeyBackup( root, key, ext[0] == '.' ? ext+1 : ext,
 				backup, sizeof(backup) ) ;
 
-	// Association des fichers .ktx avec l'application KiTTY
-	// Création d l'application
+	// Associate .ktx files with the KiTTY application
+	// Create the application entry
 	snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1" ) ;
 	RegTestOrCreate( root, key, "", "KiTTY connection manager") ;
 	RegTestOrCreate( root, key, "FriendlyTypeName", "@KiTTY, -120") ;
@@ -1273,7 +1283,7 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 		KittyCliReport( KT_CAP_FILE_ASSOC, report, 1 ) ;
 		return ;
 	}
-	// Création de l'association de fichiers
+	// Create the file association
 	snprintf( key, sizeof(key), "Software\\Classes\\%s", ext ) ;
 	RegTestOrCreate( root, key, "", "kitty.connect.1") ;
 	RegTestOrCreate( root, key, "PerceivedType", "Connection") ;
@@ -1376,8 +1386,8 @@ void TestRegKeyOrCopyFromPuTTY( HKEY hMainKey, char * KeyName ) {
 
 
 /******
-Supprimer toute trace de KiTTY dans le registre.
-Ecrire et exécuter un fichier utf-8 .reg contenant les lignes:
+Remove every trace of KiTTY from the registry.
+Write and run a utf-8 .reg file containing the lines:
 
 Windows Registry Editor Version 5.00
 

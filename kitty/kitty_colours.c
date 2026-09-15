@@ -101,8 +101,8 @@ void ChangeSettings(HWND hwnd) {
 }
 
 #ifdef MOD_BACKGROUNDIMAGE
-// Gestion de l'image viewer
-int ManageViewer( HWND hwnd, WORD wParam ) { // Gestion du mode image
+// Image viewer handling
+int ManageViewer( HWND hwnd, WORD wParam ) { // image mode handling
 	if( wParam==VK_BACK )
 		{ if( PreviousBgImage( hwnd ) ) InvalidateRect(hwnd, NULL, TRUE) ;
 		set_title(NULL, conf_get_str(conf,CONF_wintitle) ) ;
@@ -113,7 +113,7 @@ int ManageViewer( HWND hwnd, WORD wParam ) { // Gestion du mode image
 		set_title(NULL, conf_get_str(conf,CONF_wintitle)) ;
 		return 1 ;
 		}
-	else if( wParam == VK_DOWN ) 	// Augmenter l'opacite de l'image de fond
+	else if( wParam == VK_DOWN ) 	// Increase the background image opacity
 		{ if( conf_get_int(conf,CONF_bg_type) != 0 ) {
 			int n=conf_get_int(conf,CONF_bg_opacity) ;
 			n += 5 ; if( n>100 ) n = 0 ;
@@ -122,7 +122,7 @@ int ManageViewer( HWND hwnd, WORD wParam ) { // Gestion du mode image
 			return 1 ;
 			}
 		}
-	else if( wParam == VK_UP ) 		// Diminuer l'opacite de l'image de fond
+	else if( wParam == VK_UP ) 		// Decrease the background image opacity
 		{ if( conf_get_int(conf,CONF_bg_type) != 0 ) {
 			int n=conf_get_int(conf,CONF_bg_opacity) ;
 			n -= 5 ;

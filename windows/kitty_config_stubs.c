@@ -67,7 +67,7 @@ const char *kitty_cfgbox_wanted_panel(void) { return 0; }
 
 /* Ctrl+G resets the session-folder filter to the root list; the stock variants
  * have no folders, so there is nothing to reset. dialog.c only reaches this
- * after the accessor above returned non-NULL, which the stub never does — it
+ * after the accessor above returned non-NULL, which the stub never does - it
  * exists purely to satisfy the link. */
 struct dlgparam;
 bool kitty_config_select_root_folder(struct dlgparam *dp) { (void)dp; return false; }

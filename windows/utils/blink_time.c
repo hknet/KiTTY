@@ -10,7 +10,7 @@
  * CACHED, because this is called from the terminal's per-character path.
  *
  * GetCaretBlinkTime() is a USER32 call and therefore a SYSCALL: measured with a
- * sampling profiler on 2026-08-19, 80% of the whole process's samples during
+ * sampling profiler, 80% of the whole process's samples during
  * bulk output were sitting in NtUserGetCaretBlinkTime, and half the CPU time of
  * a plain "cat a file" was kernel time because of it. term_schedule_cblink()
  * evaluates CBLINK_DELAY - this function - every time the cursor moves.

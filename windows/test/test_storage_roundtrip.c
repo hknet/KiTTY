@@ -462,7 +462,7 @@ static void test_renamed_key(void)
     del_settings(MSESS);
 }
 
-/* ---------- reading a session out of the OLD 9bis KiTTY hive (§8.10) ----------
+/* ---------- reading a session out of the OLD 9bis KiTTY hive (section 8.10) ----------
  *
  * Sessions written by classic KiTTY live under Software\9bis.com\KiTTY, and we
  * still read them: precedence is our own base, then that hive, then stock PuTTY's.
@@ -563,7 +563,7 @@ static void test_old_kitty_hive(void)
     }
 }
 
-/* ---------- reading an old .ktx export (§8.17) ----------
+/* ---------- reading an old .ktx export (section 8.17) ----------
  *
  * A .ktx is KiTTY's exported-session file: "Key\value\" lines, optionally with the
  * whole file encrypted. Same reasoning as the old-hive test above - the crypto is

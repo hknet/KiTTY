@@ -1,4 +1,12 @@
 
+/*
+ * Public interface of the small .ini file library (mini.c). An ini file is
+ * held in memory as a SINI: a list of SSECTION, each with a list of SKEY
+ * name/value pairs. Declared here are the constructors and destructors, the
+ * add/delete/lookup calls for sections and keys, loading and storing a whole
+ * file, and the one-shot readINI / writeINI / delINI helpers that read or
+ * change a single key by file, section and key name.
+ */
 #ifndef __MINI
 #define __MINI
 
@@ -22,8 +30,8 @@
 typedef struct s_section {
 	int type ;
 	char * name ;
-	struct s_section * next ; 	// section suivante
-	struct s_key * first ;		// première clé
+	struct s_section * next ; 	// next section
+	struct s_key * first ;		// first key
 	} SSECTION ;
 
 typedef struct s_key {

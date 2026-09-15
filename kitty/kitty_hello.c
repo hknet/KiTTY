@@ -1341,7 +1341,7 @@ static int khw_find_credential(khw_api *api, unsigned char **credid_out,
  * binary - calls from a plain thread that owns no windows and runs no
  * dialog loop; the agent's UI thread, calling from inside a modal
  * dialog with its key list disabled, got NTE_DEVICE_NOT_FOUND from the
- * SAME assertion three times (2026-08-23), whatever owner window it
+ * SAME assertion three times, whatever owner window it
  * passed. The owner handed to the platform is the real foreground
  * window captured on the UI thread, exactly as the passing test does.
  */

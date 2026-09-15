@@ -88,7 +88,7 @@ void kitty_ssh_banner_preview(char *buf, size_t size) {
 /* save_open_settings_forced now implemented in kitty_settings_forced.c */
 
 /* Launch a NEW session process from an in-memory Conf, by serialising it into
- * a file-mapping and spawning "<exe> &<filemap>:<size>" — exactly the native
+ * a file-mapping and spawning "<exe> &<filemap>:<size>" - exactly the native
  * 0.84 Duplicate-Session mechanism (windows/window.c IDM_DUPSESS), which the
  * child parses via handle_special_filemapping_cmdline(). */
 void RunSessionWithConfSettings(Conf *conf) {
@@ -473,10 +473,10 @@ void kitty_export_settings(HWND hwnd, Conf *conf) {
     }
 }
 
-/* ---- Bulk session export/import (TASK_dpapi_mpw_backend_policy Step E) ----
+/* ---- Bulk session export/import -------------------------------------------
  * Export: every saved session is decrypted through the normal read path
  * (DPAPI/MPW/legacy) and written as a .ktx bundle file with the password
- * wrapped by the portable protection policy — the first wrap prompts to
+ * wrapped by the portable protection policy - the first wrap prompts to
  * create/unlock the master password, making the bundle machine-independent.
  * Import: each chosen .ktx loads through the forced reader (which unlocks
  * MPW1 / decodes legacy forms) and is saved as a normal session, so the
@@ -1690,11 +1690,11 @@ void kitty_proxy_select(Conf *conf)
     /* Refresh proxies[] from the store first: this runs at connect time, which
      * may be a different context than the startup InitProxyList() (spawned
      * session, -load, auto-reconnect), and both the "shown" gate below and the
-     * resolve/lookup need the current set — otherwise a chosen named proxy is
+     * resolve/lookup need the current set - otherwise a chosen named proxy is
      * silently dropped. */
     InitProxyList();
     /* Apply only when the selector is shown (yes, or auto with proxies defined)
-     * — matches the config box, so a proxy chosen in the droplist takes effect
+     * - matches the config box, so a proxy chosen in the droplist takes effect
      * and proxyselection=no fully disables it (hknet/KiTTY#11). */
     if (!kitty_proxy_choice_shown())
         return;

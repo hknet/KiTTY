@@ -831,8 +831,8 @@ file(GLOB _kitty_shared_sources
   "${CMAKE_SOURCE_DIR}/*.c"
   "${CMAKE_SOURCE_DIR}/terminal/*.c"
   "${CMAKE_SOURCE_DIR}/windows/*.c"
-  # proxy/ and ssh/ added 2026-08-03: the check missed them, and proxy/sshproxy.c
-  # then needed a KiTTY change. It compiles into the shared `crypto` library, so a
+  # proxy/ and ssh/ were added later: the check had missed them, and
+  # proxy/sshproxy.c then needed a KiTTY change. It compiles into the shared `crypto` library, so a
   # MOD_PERSO guard there would have been dead exactly like config.c's was.
   "${CMAKE_SOURCE_DIR}/proxy/*.c"
   "${CMAKE_SOURCE_DIR}/ssh/*.c")

@@ -1,5 +1,5 @@
 /*
- * kitty_settings_load.c — load a KiTTY ".ktx" session file into a Conf.
+ * kitty_settings_load.c - load a KiTTY ".ktx" session file into a Conf.
  *
  * Ported from KiTTY 0.76b kitty_settings.c (load_open_settings_forced + the
  * read_setting_*_forced / gpp*_forced / gprefs_forced / read_clip_setting_forced
@@ -773,8 +773,8 @@ void load_open_settings_forced(char *filename, Conf *conf) {
      */
 
 /* rutty: scripting is compiled and exposed in current KiTTY builds, so KTX
- * imports must restore it without depending on the historical MOD_RUTTY
- * define. Current 0.84 UI stores the selected script path in CONF_scriptfile
+ * imports must restore it unconditionally, without depending on a
+ * build-time switch. Current 0.84 UI stores the script path in CONF_scriptfile
  * (old trees used ScriptFileName/CONF_script_filename). */
 	gppfile_forced(sesskey, "Scriptfile", conf, CONF_scriptfile);
 	if (filename_to_str(conf_get_filename(conf, CONF_scriptfile))[0] == '\0') {
@@ -939,7 +939,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
      * deliberately NOT read across (see conf.h): it meant "warn", so its default
      * meant "sync silently", and migrating it would switch remote clipboard
      * writes on for imported sessions. */
-    /* ⚠️ The fallback given here is what a session that does NOT carry the key
+    /* WARNING: The fallback given here is what a session that does NOT carry the key
      * gets, so it must match the DEFAULT_INT in conf.h. It did not: this said
      * ALLOW while conf.h says ASK, so importing a session file written before
      * the key existed switched remote clipboard writes on silently - the exact

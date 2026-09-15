@@ -128,7 +128,7 @@ static void kitty_settings_load_hook(const char *section, Conf *conf, bool exist
      * whether or not those have been saved - so it reaches every new session,
      * including the one the configuration box opens on.
      *
-     * ⚠️ A saved, NAMED session always keeps the mode it was saved with: it
+     * WARNING: A saved, NAMED session always keeps the mode it was saved with: it
      * stores LinuxFunctionKeys explicitly, and silently changing the keyboard
      * under an existing session is exactly the kind of surprise this setting is
      * meant to remove. Changing one is a one-off on its Keyboard panel.

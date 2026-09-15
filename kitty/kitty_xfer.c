@@ -7,6 +7,10 @@
  * (SearchWinSCP/SearchPSCP), StartWinSCP, and the
  * kscp-upload drag-and-drop handlers. Compiled into the same targets as
  * kitty.c (kitty + kitty_portable), so behaviour is unchanged.
+ *
+ * This is the helper-program mechanism (kscp, WinSCP, FileZilla run as
+ * separate processes); the unrelated in-terminal OSC 5113 file-transfer
+ * protocol, one letter away in kitty_transfer.c, is a different mechanism.
  */
 #include <io.h>
 #include <stdio.h>
@@ -187,7 +191,7 @@ static const char *kx_helper_keyfile(Conf *c)
 /* Provided elsewhere in the KiTTY tree (not in a header). */
 char * kitty_current_dir() ;                            /* kitty.c */
 
-// Envoi d'un fichier par SCP vers la racine du compte
+// Send a file by SCP to the root of the account
 int SearchPSCP( void ) ;
 /* KiTTY security: launch a console command line WITHOUT a shell. Replaces
  * system()/"start" for the kscp/klink command builders below, so session fields
@@ -1839,7 +1843,7 @@ void GetFile( HWND hwnd ) {
     (void)nfiles ;
 }
 
-// Start a locale commande (Internet Explorer for example)
+// Start a local command (Internet Explorer for example)
 /* #9 hardening: RunCmd() runs text taken straight from the Windows clipboard as
  * a local command (default Ctrl+F5), so attacker-planted clipboard content could
  * execute on a single keypress. Two independent, PER-SESSION safeguards, both ON
@@ -1975,7 +1979,7 @@ static int probe_winscp_env_dir(const char *envname, const char *subpath, char *
 	return set_winscp_path_if_exists(buffer) ;
 }
 
-// Recherche le chemin vers le programme WinSCP
+// Look for the path to the WinSCP program
 int SearchWinSCP( void ) {
 	char buffer[4096] ;
 	if( WinSCPPath!=NULL) { free(WinSCPPath) ; WinSCPPath = NULL ; }
@@ -2001,16 +2005,18 @@ int SearchWinSCP( void ) {
 	return 0 ;
 }
 
-// Lance WinSCP à partir de la sesson courante eventuellement dans le repertoire courant
-/* ALIAS UNIX A DEFINIR POUR DEMARRER WINSCP Dans le repertoire courant
+// Start WinSCP from the current session, optionally in the current directory
+/* UNIX ALIAS TO DEFINE FOR STARTING WINSCP in the current directory
 winscp()
 {
 echo "\033]0;__ws:"`pwd`"\007"
 }
-Il faut ensuite simplement taper: winscp
-(historique: jadis traite par ManageLocalCmd, supprime en 0.84.1.37 - voir la note securite plus haut)
+Then it is enough to type: winscp
+(history: once handled by ManageLocalCmd, removed in 0.84.1.37 - see the
+security note above)
 
-Le chemin vers l'exécutable WinSCP est défini dans la variable WInSCPPath. Elle peut pointer sur un fichier .BAT pour passer des options supplémentaires.
+The path to the WinSCP executable is defined in the WInSCPPath variable. It
+can point at a .BAT file, to pass extra options.
 @ECHO OFF
 start "C:\Program Files\WinSCP\WinSCP.exe" "%1" "%2" "%3" "%4" "%5" "%6" "%7" "%8" "%9"
 */	
@@ -2594,13 +2600,13 @@ int SearchPSCP( void ) {
 	char buffer[4096], ki[10]="kscp.exe", pu[10]="pscp.exe" ;
 
 	if( PSCPPath!=NULL ) { free(PSCPPath) ; PSCPPath = NULL ; }
-	// Dans la base de registre
+	// In the registry
 	if( ReadParameterN( INIT_SECTION, KI_PSCPPATH, buffer, sizeof(buffer) ) != 0 ) {
 		if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
 		else { DelParameter( INIT_SECTION, KI_PSCPPATH ) ; }
 	}
 
-	// Dans le fichier ini
+	// In the ini file
 	if( ReadParameterN( INIT_SECTION, KI_PSCPDIR, buffer, sizeof(buffer) ) ) {
 		buffer[4076]='\0';
 		strcat( buffer, "\\" ) ; strcat( buffer, ki ) ;
@@ -2626,7 +2632,7 @@ int SearchPSCP( void ) {
 	return 0 ;
 }
 
-// Gestion du drap and drop
+// Drag and drop handling
 void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
         HDROP hDropInfo = *leDrop ;
         int nb,taille,i;
@@ -2639,7 +2645,7 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
                 taille = DragQueryFile(hDropInfo, i, NULL, 0 ) ;   /* length, excluding NUL */
 		fic = (char*)malloc(taille+2) ;
                 { UINT _g = DragQueryFile( hDropInfo, i, fic, taille+1 ) ; fic[_g] = '\0' ; }  /* force-terminate: DragQueryFile doesn't always NUL-terminate -> a stray byte was reaching kscp ("...pdf\0") */
-		if( !strcmp( fic+strlen(fic)-10,"\\kitty.ini" ) ) { // On charge le fichier de config dans l'editeur interne
+		if( !strcmp( fic+strlen(fic)-10,"\\kitty.ini" ) ) { // load the config file in the internal editor
 			char buffer[1024]="", shortname[1024]="" ;
 			if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) ) 
 				if( GetShortPathName( buffer, shortname, 1023 ) ) {
@@ -2654,8 +2660,8 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
 		}
 		free(fic);
 	}
-	DragFinish(hDropInfo) ;  //vidage de la mem...
-        *leDrop = hDropInfo ;  //TOCHECK : transmistion de param...
+	DragFinish(hDropInfo) ;  //free the memory...
+        *leDrop = hDropInfo ;  //TOCHECK: parameter passing...
 }
 
 void OnDropFiles(HWND hwnd, HDROP hDropInfo) {

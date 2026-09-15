@@ -1,3 +1,10 @@
+/*
+ * kitty_registry.h - the declarations for kitty_registry.c: the registry
+ * wrappers (read a value, test or create a key, delete a value or a tree,
+ * copy or export a tree), the one-time hive migrations and repairs, and the
+ * shell integration (URL protocol handlers and the file association) with
+ * the console-or-box reporting helper they share.
+ */
 #ifndef KITTY_REGISTRY
 #define KITTY_REGISTRY
 
@@ -18,55 +25,57 @@
 #define cstMaxRegLength 1024
 
 char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize) ;
-char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue) ; /* compat: rValue >= cstMaxRegLength+2 octets; preferer GetValueDataN */
+char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue) ; /* compat: rValue >= cstMaxRegLength+2 bytes; prefer GetValueDataN */
 
-// Extention pour les fichiers de session en mode portable (peut être ktx)
+// Extension for session files in portable mode (may be ktx)
 extern char FileExtension[15] ;
 
-// Teste l'existance d'une clé
+// Test whether a key exists
 int RegTestKey( HKEY hMainKey, LPCTSTR lpSubKey ) ;
 
-// Retourne le nombre de sous-keys
+// Return the number of subkeys
 int RegCountKey( HKEY hMainKey, LPCTSTR lpSubKey ) ;
 
-// Teste l'existance d'une clé ou bien d'une valeur et la crée sinon
+// Test whether a key or a value exists and create it otherwise
 // KiTTY: 1 = written, 0 = key/value could not be written (HKCR needs elevation)
 int RegTestOrCreate( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR value ) ;
 
-// Test l'existance d'une clé ou bien d'une valeur DWORD et la crée sinon
+// Test whether a key or a DWORD value exists and create it otherwise
 int RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD value ) ;
 
-// Initialise toutes les sessions avec une valeur (si oldvalue==NULL) ou uniquement celles qui ont la valeur oldvalue
+// Set a value in every session (oldvalue==NULL) or only where it holds oldvalue
 void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR oldvalue, LPCTSTR value  ) ;
 
-// Exporte toute une cle de registre
+// Export a whole registry key
 void QuerySubKey( HKEY hMainKey, LPCTSTR lpSubKey, FILE * fp_out, char * text  ) ;
 
-// Détruit une valeur de clé de registre 
+// Delete a registry key value
 BOOL RegDelValue (HKEY hKeyRoot, LPTSTR lpSubKey, LPTSTR lpValue ) ;
 
-// Detruit une clé de registre et ses sous-clé
+// Delete a registry key and its subkeys
 BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) ;
 
-// Copie une clé de registre vers une autre
+// Copy one registry key onto another
 void kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) ;
-// Migration ponctuelle de l'ancienne ruche (9bis.com\KiTTY) vers kapper.net\KiTTY
+// One-time migration of the old hive (9bis.com\KiTTY) to kapper.net\KiTTY
 void MigrateOldKittyHive( void ) ;
 
-// Réparation ponctuelle du défaut ShiftedArrowKeys (SHARROW_APPLICATION persisté par erreur)
+// One-time repair of the ShiftedArrowKeys default (SHARROW_APPLICATION was
+// saved by mistake)
 void RepairSharrowDefaults( void ) ;
 
-// Migration ponctuelle: SCPAutoPwd (retiré) -> OSC7CwdTracking, puis suppression de la clé
+// One-time migration: SCPAutoPwd (retired) -> OSC7CwdTracking, then the
+// value is deleted
 void MigrateScpAutoPwd( void ) ;
 
-// Nettoie la clé de PuTTY pour enlever les clés et valeurs spécifique à KiTTY
+// Clean the PuTTY key: remove the keys and values specific to KiTTY
 BOOL RegCleanPuTTY( void ) ;
 
 // KiTTY: answer a command-line switch at the prompt that issued it (attaching
 // to the parent console); a message box only when there is no console at all
 void KittyCliReport( const char *title, const char *text, int warn ) ;
 
-// Creation du SSH Handler
+// Create the SSH handler
 // KiTTY: force = also take over protocols another program already handles;
 // peruser = register under HKCU even when this is the machine-wide install;
 // assume_yes = skip the portable build's "write to the registry?" question;
@@ -77,7 +86,7 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) ;
 // exporting each key first so the removal can be undone
 void RemoveSSHHandler( void ) ;
 
-// Creation de l'association de fichiers *.ktx
+// Create the *.ktx file association
 // KiTTY: same options as CreateSSHHandler - force = take the extension over
 // from whatever opens it now (exported first), peruser = HKCU without asking
 // for administrator rights, assume_yes = skip the portable copy's question
@@ -96,12 +105,12 @@ void kitty_shell_integration_unregister( void ) ;
 // KiTTY: -fileassoc -uninstall. Removes the association only while it is ours
 void RemoveFileAssoc( void ) ;
 
-// Vérifie l'existance de la clé de KiTTY sinon la copie depuis PuTTY
+// Check that the KiTTY key exists, otherwise copy it from PuTTY
 void TestRegKeyOrCopyFromPuTTY( HKEY hMainKey, char * KeyName ) ;
 
 void InitRegistryAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char * filename, char * text ) ;
 
-// Permet d'initialiser toutes les sessions avec des valeurs contenu dans un fichier kitty.ses.updt
+// Set values in every session from the contents of a kitty.ses.updt file
 void InitAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char * filename ) ;
 
 void mungestr( const char *in, char *out ) ;

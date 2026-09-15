@@ -1,3 +1,10 @@
+/*
+ * kitty_ssh.c - port knocking before a connection (MOD_PORTKNOCKING).
+ * knock() opens a socket to one port, TCP or UDP, and drops it again, which
+ * is all a knock is. ManagePortKnocking() parses the session's knock
+ * sequence - a list of "port" or "port:proto" entries, where a "s" protocol
+ * means pause for that many seconds - and performs each knock in turn.
+ */
 #include "kitty_ssh.h"
 #include "kitty_tools.h"
 

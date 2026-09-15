@@ -1920,7 +1920,7 @@ int main(void)
     expect_clip(mk, "multiple selectors", "\033]52;cp;SGVsbG8=\007", L"Hello");
     /* ST rather than BEL must terminate it just the same */
     expect_clip(mk, "ST terminator", "\033]52;c;SGVsbG8=\033\\", L"Hello");
-    /* UTF-8 in, wide characters out: "héllo" */
+    /* UTF-8 in, wide characters out: "hello" */
     expect_clip(mk, "utf-8 payload", "\033]52;c;aMOpbGxv\007", L"héllo");
 
     /*

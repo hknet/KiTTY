@@ -11,7 +11,7 @@
  * Owning a window means owning it properly, and these are the parts that are
  * easy to get wrong:
  *
- *  - ⛔ It must NEVER take the focus. A notification that steals focus while
+ * - It must NEVER take the focus. A notification that steals focus while
  *    somebody is typing into a terminal is worse than no notification at all:
  *    the next keystrokes go somewhere else. Hence WS_EX_NOACTIVATE and
  *    SW_SHOWNOACTIVATE, and no SetForegroundWindow anywhere.
@@ -170,7 +170,7 @@ static HFONT notice_font(UINT dpi, int bold)
 
 /* Is the pointer on the notice RIGHT NOW?
  *
- * ⚠️ Asked directly rather than inferred from WM_MOUSEMOVE, because a pointer
+ * WARNING: Asked directly rather than inferred from WM_MOUSEMOVE, because a pointer
  * that is already resting on the notice and does not move sends no messages at
  * all - so the first version closed the notice under a pointer that had been
  * parked on it for the whole fifteen seconds. Movement tells

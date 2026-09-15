@@ -1,3 +1,9 @@
+/*
+ * kitty_auxpos.h - position memory and safe placement for pop-up dialogs
+ * (kitty_auxpos.c): restore where a window was last left on this monitor
+ * layout, or place it sensibly when there is nothing remembered. Win32 and
+ * the registry only, shared across the suite's executables.
+ */
 #ifndef KITTY_AUXPOS_H
 #define KITTY_AUXPOS_H
 #include <windows.h>

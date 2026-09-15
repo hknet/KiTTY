@@ -1,7 +1,16 @@
+/*
+ * The KiTTY side of the built-in mNotepad editor, included by notepad.c when
+ * it is compiled with NOMAIN. It finds the KiTTY or PuTTY window the editor
+ * was started from, sends the current line or the selection to that window
+ * (or to every KiTTY window) as keystrokes, with the line delimiter chosen in
+ * the Delimiter menu, normalises the edit control to CRLF, and lays the
+ * windows out: the editor under its session, or all KiTTY windows tiled in a
+ * grid or cascaded.
+ */
 #include <time.h>
 #include <math.h>
 
-HWND ParentWindow = NULL ;		// HWND de la fenêtre parente
+HWND ParentWindow = NULL ;		// HWND of the parent window
 
 char * get_param_str( char * str ) ;
 
@@ -60,7 +69,7 @@ static int Semic_flag = 1 ;
 static int Slash_flag = 0 ;
 static int Tilde_flag = 0 ;
 	
-// Fonction pour récuperer le contenu de la fenêtre Edit
+// Get the contents of the Edit window
 int GetEditContent( HWND hWndEdit, char * buffer ) {
 	int d,f,i;
 	char CharLim = '\n' ;
@@ -120,7 +129,7 @@ void ChangeToCRLF( HWND hWndEdit ) {
 	}
 }
 	
-// Fonction pour envoyer une chaîne à la fenetre parente
+// Send a string to the parent window
 void SendStrToParent( HWND hWndEdit ) {
 	char buffer[32000] = "" ;
 	int d = GetEditContent( hWndEdit, buffer ) ;
@@ -133,7 +142,7 @@ void SendStrToParent( HWND hWndEdit ) {
 		}
 	}
 
-// Fonctions pour envoyer une chaîne à toutes les fenêtres KiTTY
+// Functions to send a string to all KiTTY windows
 BOOL CALLBACK SendToAllProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	GetClassName( hwnd, buffer, 256 ) ;
@@ -168,7 +177,7 @@ void SetWindowsSize( HWND hwnd ) {
 	MoveWindow( hwnd, 0, (int)(h/2.)+1, w, (int)(h/2.), TRUE );
 	}
 
-// Denombre le nombre de fenetre KiTTY
+// Count the KiTTY windows
 static int nbProgWin = 0 ;
 BOOL CALLBACK CountProgWinProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
@@ -183,7 +192,7 @@ int CountProgWin( HWND hwnd ) {
 	return nbProgWin ;
 	}
 
-// Redimensionne toutes les fenêtres
+// Resize all the windows
 BOOL CALLBACK ResizeAllWindowsProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	int cxScreen, cyScreen ;
@@ -222,7 +231,7 @@ void ResizeAllWindows( HWND hwnd ) {
 	EnumWindows( ResizeAllWindowsProc,(LPARAM)&i) ;
 }
 
-// Cascade toute les fenêtres KiTTY
+// Cascade all the KiTTY windows
 BOOL CALLBACK CascadeAllWindowsProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	int cxScreen, cyScreen ;

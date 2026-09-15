@@ -1,3 +1,9 @@
+/*
+ * kitty_tools.h - the declarations for kitty_tools.c, the small
+ * general-purpose helpers the KiTTY additions reuse: string editing, tests
+ * and sizes for files and directories, a NULL-terminated string list,
+ * setting an environment variable, and creating a directory path.
+ */
 #ifndef KITTY_TOOLS
 #define KITTY_TOOLS
 
@@ -11,51 +17,51 @@
 #define MAX_VALUE_NAME 16383
 #endif
 
-// Procedures de traitement de chaines
+// String-handling procedures
 #ifndef stricmp	/* platform.h may #define stricmp _stricmp (CRT); don't redeclare */
 int stricmp(const char *s1, const char *s2) ;
 #endif
 
-/* Supprime en place les caracteres de fin appartenant a `set` (right-trim).
-   Remplace les boucles while(strlen...) recopiees partout; sans danger sur
-   une chaine vide (n'indexe jamais s[-1]). Retourne s. */
+/* Remove, in place, the trailing characters belonging to `set` (right-trim).
+   Replaces the while(strlen...) loops copied all over the place; safe on an
+   empty string (never indexes s[-1]). Returns s. */
 char *str_rtrim( char *s, const char *set ) ;
 
-/* Fonction permettant d'inserer une chaine dans une autre */
+/* Insert one string into another */
 int insert( char * ch, const char * c, const int ipos ) ;
 
-/* Fonction permettant de supprimer une partie d'une chaine de caracteres */
+/* Delete part of a string */
 int del( char * ch, const int start, const int length ) ;
 
-/* Fonction permettant de retrouver la position d'une chaine dans une autre chaine */
+/* Find the position of one string inside another string */
 int poss( const char * c, const char * ch ) ;
 
-// Teste l'existance d'un fichier
+// Test whether a file exists
 int existfile( const char * filename ) ;
 
-// Teste l'existance d'un repertoire
+// Test whether a directory exists
 int existdirectory( const char * filename ) ;
 
-/* Donne la taille d'un fichier */
+/* Return the size of a file */
 long filesize( const char * filename ) ;
 
-// Supprime les double anti-slash
+// Remove doubled backslashes
 void DelDoubleBackSlash( char * st ) ;
 	
-// Ajoute une chaine dans une liste de chaines
+// Add a string to a list of strings
 int StringList_Add( char **list, const char *str ) ;
 
-// Supprime une chaine d'une liste de chaines
+// Remove a string from a list of strings
 void StringList_Del( char **list, const char * name ) ;
 
-// Reorganise l'ordre d'une liste de chaines en montant la chaine selectionnee d'un cran
+// Reorder a list of strings by moving the selected one up one place
 void StringList_Up( char **list, const char * name ) ;
 
-// Positionne l'environnement
+// Set an environment variable
 int putenv (const char *string) ;
 int set_env( char * name, char * value ) ;
 
-// Creer un repertoire recurssif (rep1 / rep2 / ...)
+// Create a directory path recursively (dir1 / dir2 / ...)
 int MakeDir( const char * directory ) ;
 
 #endif

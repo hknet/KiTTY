@@ -1,3 +1,12 @@
+/*
+ * Small .ini file library: an ini file read into a list of sections, each
+ * holding a list of key/value pairs, and written back out again. Provides the
+ * section and key primitives (create, add, delete, look up, free), the parser
+ * that turns a file into that tree, the writer that stores it, and the
+ * one-shot readINI / writeINI / delINI helpers. Values are cleaned as they are
+ * read (see mini_clean_value), and reads are served from a cached copy of the
+ * file that is reloaded only when the file's timestamp changes.
+ */
 #include "mini.h"
 
 #ifdef DEBUG_MODE
@@ -142,7 +151,7 @@ int addKEY( SSECTION * Section, SKEY * Key ) {
 	if( Section == NULL ) return 0 ;
 	if( Key == NULL ) return 0 ;
 	
-	if( ( Current = getKEY( Section, Key->name ) ) != NULL ) { // Si la clé existe déjà on la supprime d'abord
+	if( ( Current = getKEY( Section, Key->name ) ) != NULL ) { // if the key already exists, replace its value in place
 		//if( !delKEY( Section, Key->name ) ) return 0 ;
 		if( Current->value != NULL ) { free( Current->value ) ; Current->value = NULL ; }
 		if( ( Current->value = malloc( strlen( (const char*)(Key->value) ) + 1 ) ) == NULL ) return 0 ;
@@ -326,11 +335,11 @@ int loadINI( SINI * Ini, const char * filename ) {
 		while( (buffer[0]==' ')||(buffer[0]=='\t') ) 
 			for( i=0; i<strlen(buffer); i++ )
 				buffer[i] = buffer[i+1] ;
-		if( buffer[0] == '[' ) { // Nouvelle section
+		if( buffer[0] == '[' ) { // new section
 			{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]==' '||buffer[_l-1]=='\t') ) buffer[_l-1]='\0' ; } 
 			if( buffer[strlen(buffer)-1]==']' ) {
 				buffer[strlen(buffer)-1]='\0' ;
-				if( (Section = getSECTION( Ini->first, buffer+1 )) == NULL ) { //On recherche si la section existe deja
+				if( (Section = getSECTION( Ini->first, buffer+1 )) == NULL ) { //look for an already existing section
 					Section = newSECTION( buffer+1 ) ;
 					if( Ini->first == NULL ) Ini->first = Section ;
  					else addSECTION( Ini->first, Section ) ;
@@ -338,7 +347,7 @@ int loadINI( SINI * Ini, const char * filename ) {
 				Last = Section ;
 				}
 			}
-		else if( Last!= NULL ) { // Nouvelle clé dans la section en cours
+		else if( Last!= NULL ) { // new key in the current section
 			name[0] = '\0' ; value[0] = '\0' ;
 			p = 0 ;
 			for( i=0; (i<strlen(buffer))&&(buffer[i]!='='); i++ ) p = i+1 ;
@@ -397,7 +406,7 @@ int storeINI( SINI * Ini, const char * filename ) {
 	return 1 ;
 	}
 	
-/* Amelioration pour ne pas relire le fichier à chaque fois */
+/* Improvement so that the file is not read again every time */
 static char * mini_filename = NULL ;
 static time_t mini_mtime = 0 ;
 static SINI * mini_Ini = NULL ;

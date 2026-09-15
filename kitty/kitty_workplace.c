@@ -15,7 +15,7 @@
  *     launcher, so a hung launcher slows no startup down and every failure
  *     answers "not armed".
  *
- * ⛔ Launcher running is NOT armed. People run the launcher all day for the
+ * Launcher running is NOT armed. People run the launcher all day for the
  * session list and hotkeys; the question asked here is "are you holding an
  * arming right now", which is why the arming is a separate object from the
  * launcher's window and is created only by switching the mode on.

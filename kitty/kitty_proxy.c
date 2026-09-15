@@ -1,3 +1,15 @@
+/*
+ * kitty_proxy.c - named proxy definitions: a set of proxy settings saved
+ * under a name and picked per session, instead of retyping host, port,
+ * user and password in every session.
+ * It enumerates the definitions into proxies[] (registry key Proxies\<name>,
+ * or a Proxies\ folder in portable mode), loads one into a Conf and saves
+ * one back, and decides when the config box offers the choice droplist and
+ * the Edit button. Passwords are protected at rest through the same backend
+ * policy as session passwords, and wrapped in memory once loaded.
+ * It also carries the definitions through the migration from the legacy hive
+ * and through the whole-store export and import bundle.
+ */
 #include "putty.h"
 #include "kitty.h"
 #include "kitty_tools.h"
@@ -381,11 +393,11 @@ int DeleteProxyInfo( const char *name ) {
  * startup in registry mode only (portable reads its Proxies\ folder in place);
  * INDEPENDENT of the session-hive migration so it also fires for users who
  * migrated sessions in an earlier build. Registry-only, so at-rest protection
- * is DPAPI (transparent, account-bound, losslessly reversible — no prompt):
+ * is DPAPI (transparent, account-bound, losslessly reversible - no prompt):
  *   - a proxy absent on our side is copied over whole, then its ProxyPassword
  *     is DPAPI-encrypted;
  *   - a proxy already present keeps its (possibly user-edited) fields, but a
- *     still-plaintext ProxyPassword is DPAPI-encrypted in place — this also
+ *     still-plaintext ProxyPassword is DPAPI-encrypted in place - this also
  *     auto-protects proxies the whole-tree MigrateOldKittyHive copied earlier.
  * A marked (already-encrypted) password is never re-wrapped. The one-shot marker
  * means a proxy the user later deletes never resurrects (hknet/KiTTY#11). */
@@ -439,7 +451,7 @@ void kitty_migrate_old_proxies( void ) {
 /* ---- Piece 7: carry named proxies in the whole-store export/import bundle ----
  * Definitions are written under <dir>\Proxies\<munged> as portable "key\value\"
  * files with the password wrapped MPW2 (self-contained salt, machine-independent
- * — the same policy the session bundle uses). Import re-wraps per DESTINATION
+ * - the same policy the session bundle uses). Import re-wraps per DESTINATION
  * backend via SaveProxyInfo (registry -> DPAPI1, portable -> MPW2), overwriting
  * by name to match session import (hknet/KiTTY#11). */
 extern char *kitty_secret_wrap_portable( const char *plaintext ) ;

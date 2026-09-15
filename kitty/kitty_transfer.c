@@ -6,7 +6,9 @@
  * Spec: docs/file-transfer-protocol.rst in the kitty repository. The wire
  * parser and the name rules are in kitty_transfer.h (shared with the unit
  * test); this file holds the sessions, the Win32 file work, the permission
- * dialog and the replies.
+ * dialog and the replies. This is the in-terminal protocol; the unrelated
+ * helper-program transfers (kscp, WinSCP, FileZilla) are one letter away in
+ * kitty_xfer.c.
  *
  * Two kinds of session, one of each at a time per terminal:
  *

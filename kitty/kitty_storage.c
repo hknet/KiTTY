@@ -901,8 +901,8 @@ char *ksf_session_path(const char *sessionname)   /* snewn'd or NULL */
 /* A cyd01-syntax file was written by old (<=0.76) KiTTY, whose portable saves
  * stored "Password" bcrypt-encrypted, same scheme as its old registry hive
  * (old KiTTY never encrypted ProxyPassword). Decode it as part of the format
- * conversion, so everything downstream — reads, the migration-consent gate,
- * the next save — sees the plaintext-unmarked semantics of our own format. If
+ * conversion, so everything downstream - reads, the migration-consent gate,
+ * the next save - sees the plaintext-unmarked semantics of our own format. If
  * it does not decode, the stored bytes stay untouched (never-lose); crucially,
  * decoding must happen HERE because once the file is rewritten in our syntax
  * the "this value is legacy-encrypted" context is gone for good. */
@@ -1185,13 +1185,13 @@ static char *ksec_dup(const char *s) { size_t n = strlen(s) + 1; char *d = mallo
  * compatibility escape hatch for automation/audit setups. Set from kitty.c when
  * the portable (savemode=dir) backend is activated; registry-backed stores never
  * consult it. This replaces the retired registry-global "PasswordScheme" DWORD,
- * which is no longer read at all — a leftover value of any kind is ignored, so
+ * which is no longer read at all - a leftover value of any kind is ignored, so
  * it can no longer make the hive plaintext or master-password.
  *
  * Why "dpapi" exists: it is the only at-rest choice a portable store could not
  * make without a human. Master password is scriptable (-masterpwfile) and so is
  * plaintext (legacy), but DPAPI was reachable ONLY by cancelling the setup
- * dialog — so an unattended import/save that wanted machine-bound protection had
+ * dialog - so an unattended import/save that wanted machine-bound protection had
  * to settle for plaintext. This is a WRITE policy only: reads are unchanged, and
  * a store that already holds MPW values still unlocks them normally. */
 #define KITTY_PORTABLE_PW_MASTER 0
@@ -1223,7 +1223,7 @@ int kitty_portable_password_dpapi(void)
 #define KSEC_MPW_MARK    "MPW1:"
 /* MPW2 = the same AES-256-CBC+HMAC envelope with the Argon2id salt embedded:
  * "MPW2:<b64 salt>.<MPW1 payload>". Self-contained, so a value can be
- * unlocked on another machine from the master password alone — required for
+ * unlocked on another machine from the master password alone - required for
  * exported .ktx files, which carry no Security\ salt store. MPW1 (store-salt
  * only) stays read-compatible; all new writes are MPW2. */
 #define KSEC_MPW2_MARK   "MPW2:"
@@ -1470,7 +1470,7 @@ static int mpw_ensure_unlocked(int creating)
         g_mpw_randsalt(salt, KSEC_MPW_SALTLEN);
     /* NOTE: the minted salt is NOT persisted here. It is written together
      * with the verifier below, only once the user has actually set a master
-     * password — cancelling the setup prompt must leave no state behind
+     * password - cancelling the setup prompt must leave no state behind
      * (no Security\ dir in a portable tree the user said no to). */
 
     /* A non-interactive passphrase (-masterpwfile/API) gets a single try; an
@@ -1528,7 +1528,7 @@ static int mpw_ensure_unlocked(int creating)
 
 /* Unprotect an "MPW1:..." payload whose Argon2id salt is KNOWN (embedded in an
  * MPW2 value). The derived key is salt-specific, so this works for values from
- * ANY store — the unlocked store key and one foreign key are cached; otherwise
+ * ANY store - the unlocked store key and one foreign key are cached; otherwise
  * the passphrase (from -masterpwfile/API, else a bounded prompt) is derived
  * against the given salt and validated by the envelope's own HMAC.
  * Returns 1 + snew'd plaintext in *outp, else 0. */
@@ -2055,8 +2055,7 @@ char *kitty_pwfile_decode(char *line)
     return res;
 }
 
-/* ---- retiring a master password nothing is wrapped with (TASK_export_
- * password.md SS7b) ---------------------------------------------------------
+/* ---- retiring a master password nothing is wrapped with -------------------
  * Exporting used to CREATE a master password as a side effect, so anyone who
  * exported on 0.84.1.48-0.84.1.65 has MasterPwSalt + MasterPwVerifier sitting
  * in their store - possibly a random one they were never told about. Stopping
@@ -2581,8 +2580,8 @@ int ksec_stored_is_legacy(const char *stored)
 /* ---- legacy (<=0.76 old-KiTTY) password decrypt. Applied ONLY where a value
  * is guaranteed to be old-KiTTY-written: the old 9bis hive (read_setting_s)
  * and cyd01-syntax portable session files (ksf_load format conversion). Old
- * KiTTY stored "Password" as bcrypt_base64(plaintext) — plus a MASKPASS XOR
- * layer in some configurations — keyed on host+termtype+"KiTTY" (dopasskey
+ * KiTTY stored "Password" as bcrypt_base64(plaintext) - plus a MASKPASS XOR
+ * layer in some configurations - keyed on host+termtype+"KiTTY" (dopasskey
  * mode 0) or the fixed key "KiTTY" (mode >0). bcrypt is unauthenticated so we
  * must NOT apply this anywhere we might have written cleartext (our own hive,
  * our own ksf files, or the PuTTY hive via KiClassName=PuTTY). ---- */
@@ -2621,7 +2620,7 @@ static int ksec_all_printable(const char *s)
     return 1;
 }
 /* Weaker sanity check for the last-resort path: no control bytes, but high-bit
- * (ANSI/UTF-8) bytes allowed — a legacy NON-ASCII password decodes to these. */
+ * (ANSI/UTF-8) bytes allowed - a legacy NON-ASCII password decodes to these. */
 static int ksec_no_ctrl(const char *s)
 {
     if (!s || !*s) return 0;

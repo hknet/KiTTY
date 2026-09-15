@@ -1,3 +1,8 @@
+/*
+ * kitty_workplace.h - the interface to workplace proxy mode
+ * (kitty_workplace.c): one launcher holds an arming, and every connection
+ * this install starts asks whether one is held and which proxy it names.
+ */
 #ifndef KITTY_WORKPLACE_H
 #define KITTY_WORKPLACE_H
 

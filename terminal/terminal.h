@@ -247,7 +247,7 @@ struct terminal_tag {
  * an unbounded denial of service by typing a big number into a settings box.
  */
 /* Must match DEFAULT_INT on CONF_clipboard_max_mb in conf.h, which carries the
- * reasoning for the number (lowered 64 -> 16 on 2026-08-05). */
+ * reasoning for the number (lowered from 64 to 16). */
 #define CLIP_MAX_MB_DEFAULT 16
 #define CLIP_MAX_MB_CAP 256                    /* the most a user may ask for */
 /* There is deliberately no floor constant: the unit is megabytes, so the smallest
@@ -271,7 +271,7 @@ struct terminal_tag {
      * #ifdef MOD_FAR2L): terminal.c is compiled into the kitty target WITH
      * MOD_FAR2L while lineedit.c and the rest of libguiterminal are compiled
      * WITHOUT it. Guarding struct fields gives those TUs a different Terminal
-     * layout (ODR violation), corrupting later fields such as term->ldisc — which
+     * layout (ODR violation), corrupting later fields such as term->ldisc - which
      * broke interactive prompts ("Terminal not prepared for interactive prompts"
      * on a key passphrase / password). Same lesson as sel_colour. The *code*
      * using these stays guarded by MOD_FAR2L; only the storage is unconditional. */

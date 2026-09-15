@@ -35,7 +35,7 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
  * dialog procs below own it; kitty.c reads it via GetInputBoxResult(). */
 static char * InputBoxResult = NULL ;
 
-// Boite de dialogue d'information
+// Information dialog box
 static LRESULT CALLBACK InfoCallBack( HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam ) {
 	switch(message) {
 		case WM_INITDIALOG:
@@ -70,7 +70,7 @@ void InfoBoxSetText( HWND hwnd, char * st ) { SendMessage( hwnd, WM_COMMAND, 100
 
 void InfoBoxClose( HWND hwnd ) { EndDialog(hwnd, LOWORD(0)) ; DestroyWindow( hwnd ) ; }
 
-//CallBack du dialog InputBox
+//Callback of the InputBox dialog
 static int InputBox_Flag = 0 ;
 
 /* The single-line send-text box is modeless (unlike the multiline and password
@@ -171,7 +171,7 @@ static LRESULT CALLBACK InputCallBackPassword(HWND hwnd, UINT message, WPARAM wP
 	return 0;
 }
 
-// Procedure specifique à la editbox multiligne (SHIFT+F8)
+// Procedure specific to the multiline edit box (SHIFT+F8)
 FARPROC lpfnOldEditProc ;
 BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	switch (message) {
@@ -180,7 +180,7 @@ BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 				SendMessage(GetParent(hwnd),WM_COMMAND,IDB_OK,0 ) ;
 				return 0;
 				}
-			/* Shift+F12 / Shift+F11 removed 2026-08-02: they scrambled and
+			/* Shift+F12 / Shift+F11 removed: they scrambled and
 			 * unscrambled the text in this box with the constant compiled into
 			 * every build, so the "encrypted" result could be read back by anyone
 			 * with a copy of KiTTY. Nothing was stored, so there is nothing to
@@ -264,7 +264,7 @@ static LRESULT CALLBACK InputMultilineCallBack (HWND hwnd, UINT message, WPARAM 
 
 				GetWindowText(handle,InputBoxResult,length+1);
 
-				// Si il y un texte selectionne, on ne recupere que celui-ci
+				// If some text is selected, take only that
 				DWORD result = SendMessage( handle, EM_GETSEL, (WPARAM)0, (LPARAM)NULL );
 				if( LOWORD(result) != HIWORD(result) ) {
 					int i ;
@@ -384,7 +384,7 @@ void GetAndSendMultiLine( HWND hwnd ) {
 void GetAndSendLinePassword( HWND hwnd ) {
 	if( InputBox_Flag == 1 ) return ;
 	InputBox_Flag = 1 ;
-	InputBoxPassword( hinst, hwnd ) ; // Essayer avec GetModuleHandle(NULL)
+	InputBoxPassword( hinst, hwnd ) ; // Could be tried with GetModuleHandle(NULL)
 	InputBox_Flag = 0 ;
 	}
 

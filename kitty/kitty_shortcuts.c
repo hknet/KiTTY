@@ -52,7 +52,7 @@ struct TShortcuts shortcuts_tab ;
 int NbShortCuts = 0 ;
 struct TShortcuts2 shortcuts_tab2[512] ;
 
-// Gestion des raccourcis
+// Shortcut handling
 #define SHIFTKEY 500
 #define CONTROLKEY 1000
 #define ALTKEY 2000
@@ -513,7 +513,7 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 		if( i==1 ) { debug_logevent( "Enable logging" ) ; } else { debug_logevent( "Disable logging" ) ; }
 		return 1 ;
 	}
-	if( key == shortcuts_tab.showportforward ) 				// Fonction show port forward
+	if( key == shortcuts_tab.showportforward ) 				// Show port forward
 		{ SendMessage( hwnd, WM_COMMAND, IDM_SHOWPORTFWD, 0 ) ; return 1 ; }
 
 	if( (ProtectFlag == 1) || (WinHeight != -1) ) return 1 ;
@@ -527,7 +527,7 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 	}
 	
 #ifdef MOD_BACKGROUNDIMAGE
-	if( GetBackgroundImageFlag() && ImageViewerFlag ) { // Gestion du mode image
+	if( GetBackgroundImageFlag() && ImageViewerFlag ) { // image mode handling
 		if( ManageViewer( hwnd, key_num ) ) return 1 ;
 		}
 #endif
@@ -541,12 +541,12 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 		return 1 ;
 	}
 
-	if( key == shortcuts_tab.editor ) {			// Lancement d'un putty-ed
+	if( key == shortcuts_tab.editor ) {			// Start a putty-ed
 		if( debug_flag ) { debug_logevent( "Start empty internal editor" ) ; }
 		RunPuttyEd( hwnd, NULL ) ; 
 		return 1 ; 
 	}
-	if( key == (shortcuts_tab.editorclipboard ) ) {		// Lancement d'un putty-ed qui charge le contenu du presse-papier
+	if( key == (shortcuts_tab.editorclipboard ) ) {		// Start a putty-ed loaded with the clipboard
 		if( debug_flag ) { debug_logevent( "Start internal editor fullfiled with clipboard" ) ; }
 		//term_copyall(term,clips_system,lenof(clips_system)) /* Full term clipboard */
 		RunPuttyEd( hwnd, "1" ) ; 
@@ -554,46 +554,46 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 	/* The four Tools menu keys below do nothing while the session hides the
 	 * entry (Connection > Transfers, "Tools menu"): the key then reaches the
 	 * terminal as if it were no shortcut. */
-	} else if( ( key == shortcuts_tab.winscp ) && kitty_xfer_tool_shown( conf, 1 ) ) {	// Lancement de WinSCP
+	} else if( ( key == shortcuts_tab.winscp ) && kitty_xfer_tool_shown( conf, 1 ) ) {	// Start WinSCP
 		SendMessage( hwnd, WM_COMMAND, IDM_WINSCP, 0 ) ; return 1 ;
 	} else if( ( key == shortcuts_tab.filezilla ) && kitty_xfer_tool_shown( conf, 2 ) && kitty_xfer_tool_ready( 2 ) ) {
 		/* Bound only while the Tools menu carries "Start FileZilla", which is
 		 * only while its executable exists. Otherwise the key is not a
 		 * shortcut and reaches the terminal as it did before. */
 		StartFileZilla( hwnd ) ; return 1 ;
-	} else if( key == shortcuts_tab.autocommand ) { 		// Rejouer la commande de demarrage
+	} else if( key == shortcuts_tab.autocommand ) { 		// Replay the startup command
 			RenewPassword( conf ) ; 
 			SetTimer(hwnd, TIMER_AUTOCOMMAND,autocommand_delay, NULL) ;
 			return 1 ; 
-	} if( key == shortcuts_tab.print ) {			// Impression presse papier
+	} if( key == shortcuts_tab.print ) {			// Print the clipboard
 		SendMessage( hwnd, WM_COMMAND, IDM_PRINT, 0 ) ; 
 		return 1 ; 
 	}
 	/* Ctrl+Shift+F8 is a fixed alias for the multiline box: users expect it
 	 * right next to Ctrl+F8 (one-line box) / Shift+F8 (the default binding). */
 	if( (key == shortcuts_tab.inputm) ||
-	    (key == SHIFTKEY+CONTROLKEY+VK_F8) )	 	// Fenetre de controle
+	    (key == SHIFTKEY+CONTROLKEY+VK_F8) )	 	// Control window
 		{
 		MainHwnd = hwnd ; _beginthread( routine_inputbox_multiline, 0, (void*)&hwnd ) ;
 		return 1 ;
 		}
 #ifdef MOD_BACKGROUNDIMAGE
-	if( GetBackgroundImageFlag() && (key == shortcuts_tab.viewer) ) 	// Switcher le mode visualiseur d'image
+	if( GetBackgroundImageFlag() && (key == shortcuts_tab.viewer) ) 	// Toggle the image viewer mode
 		{ SetImageViewerFlag( abs(ImageViewerFlag-1) ) ; set_title(NULL, conf_get_str(conf,CONF_wintitle) ) ; return 1 ; }
 #endif
-	if( key == shortcuts_tab.script ) 			// Chargement d'un fichier de script
+	if( key == shortcuts_tab.script ) 			// Load a script file
 		{ OpenAndSendScriptFile( hwnd ) ; return 1 ; }
-	else if( ( key == shortcuts_tab.sendfile ) && kitty_xfer_tool_shown( conf, 0 ) ) 	// Envoi d'un fichier par SCP
+	else if( ( key == shortcuts_tab.sendfile ) && kitty_xfer_tool_shown( conf, 0 ) ) 	// Send a file by SCP
 		{ SendMessage( hwnd, WM_COMMAND, IDM_PSCP, 0 ) ; return 1 ; }
-	else if( ( key == shortcuts_tab.getfile ) && kitty_xfer_tool_shown( conf, 3 ) ) 	// Reception d'un fichier par SCP
+	else if( ( key == shortcuts_tab.getfile ) && kitty_xfer_tool_shown( conf, 3 ) ) 	// Receive a file by SCP
 		{ GetFile( hwnd ) ; return 1 ; }
-	else if( key == shortcuts_tab.command )			// Execution d'une commande locale
+	else if( key == shortcuts_tab.command )			// Run a local command
 		{ RunCmd( hwnd ) ; return 1 ; }
 	else if( key == shortcuts_tab.tray ) 		// Send to tray
 		{ SendMessage( hwnd, WM_COMMAND, IDM_TOTRAY, 0 ) ; return 1 ; }
 	else if( key == shortcuts_tab.visible )  		// Always visible 
 		{ SendMessage( hwnd, WM_COMMAND, IDM_VISIBLE, 0 ) ; return 1 ; }
-	else if( key == shortcuts_tab.resetterminal ) 		// Envoi d'un fichier par SCP
+	else if( key == shortcuts_tab.resetterminal ) 		// Reset terminal
 		{ SendMessage( hwnd, WM_COMMAND, IDM_RESET, 0 ) ; return 1 ; }
 	else if( key == shortcuts_tab.duplicate ) 		// Duplicate session
 		{ SendMessage( hwnd, WM_COMMAND, IDM_DUPSESS, 0 ) ; return 1 ; }
@@ -642,7 +642,7 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 	else if( ( key == shortcuts_tab.transparencydown ) && TransparencyFlag && ( conf_get_int(conf,CONF_transparencynumber) != -1 ) )
 		{ SendMessage( hwnd, WM_COMMAND, IDM_TRANSPARDOWN, 0 ) ; return 1 ; }
 
-	else if( key == shortcuts_tab.input ) 			// Fenetre de controle
+	else if( key == shortcuts_tab.input ) 			// Control window
 		{
 			/* Modeless box: open it directly on the main (UI) thread whose
 			 * message pump routes the aux dialogs - NOT on a worker thread,
@@ -652,7 +652,7 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 		}
 
 #ifdef MOD_BACKGROUNDIMAGE
-	else if( GetBackgroundImageFlag() && (key == shortcuts_tab.imagechange) ) 		// Changement d'image de fond
+	else if( GetBackgroundImageFlag() && (key == shortcuts_tab.imagechange) ) 		// Change the background image
 		{ if( NextBgImage( hwnd ) ) InvalidateRect(hwnd, NULL, TRUE) ; return 1 ; }
 #endif
 	/* Ctrl+Up / Ctrl+Down (transparency), Ctrl+Num+ / Ctrl+Num- / Ctrl+Num 0

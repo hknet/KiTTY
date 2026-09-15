@@ -263,7 +263,7 @@ static int cmd_copytoputty( HWND hwnd, char * arg ) {
  *
  * It used to toggle a global that made exported .ktx files "encrypted" with a
  * constant compiled into every build - obfuscation, not encryption, undoable by
- * anyone holding a copy of KiTTY. The write path went on 2026-08-02.
+ * anyone holding a copy of KiTTY. The write path is gone.
  *
  * The command is KEPT, answering with an explanation, because deleting it outright
  * would answer anyone who has it in their fingers with "unknown command" - which

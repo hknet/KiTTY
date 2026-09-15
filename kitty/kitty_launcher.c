@@ -1,3 +1,16 @@
+/*
+ * kitty_launcher.c - the KiTTY launcher: a tray-icon process whose menu lists
+ * the saved sessions (built from the Launcher key or directory tree), starts
+ * them, and offers the configuration box, the session editor and the list of
+ * open KiTTY windows (hide / unhide / switch).
+ * It also owns the launcher-side extras: global per-session hotkeys, the
+ * "update available" tray balloon, workplace proxy mode arming with its
+ * notices and timers, and the optional Startup-folder shortcut.
+ * The tray part is compiled only when MOD_LAUNCHER is defined; the spawning
+ * helpers after it (RunConfig, RunPuTTY, RunSession) are always built and
+ * assemble the child command lines, passing on the restricted ACL and the
+ * shared master-password unlock.
+ */
 #ifdef MOD_LAUNCHER
 
 /* IDI_PUTTY_LAUNCH / IDI_BLACKBALL come from kitty_rc_additions.h (via
@@ -105,14 +118,14 @@ static char LauncherHotkeyReport[256] = "" ;
 static char LauncherHotkeyWinner[256] = "" ;
 static int LauncherHotkeyBalloonArmed = 0 ;
 
-// Gestion Hide/UnHide all
+// Hide/UnHide all handling
 static struct THWin { HWND hwnd ; char name[128] ; } TabWin[100] ;
 static int oldIconFlag = 0 ;
 static int NbWin = 0 ;
 static int IsUnique = 0 ;
 int RefreshWinList( HWND hwnd ) ;
 
-// Procedure de creation de menu à partir d'une clé de registre
+// Build a menu from a registry key
 HMENU InitLauncherMenu( char * Key ) {
 	HMENU menu ;
 	menu = CreatePopupMenu() ;
@@ -140,7 +153,7 @@ HMENU InitLauncherMenu( char * Key ) {
 		AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 	}
 
-	// Creation du menu bouton gauche
+	// Build the left-button menu
 	DestroyMenu( HideMenu ) ;
 	HideMenu = CreatePopupMenu() ;
 	if( !IsUnique ) {
@@ -248,7 +261,7 @@ void RefreshMenuLauncher( void ) {
 	MenuLauncher = InitLauncherMenu( "Launcher" ) ;
 }
 	
-// Supprime une arborescence   ==> deplace dans kitty_commun.c
+// Delete a directory tree   ==> moved to kitty_commun.c
 /*
 void DelDir( const char * directory ) {
 	DIR * dir ;
@@ -268,7 +281,7 @@ void DelDir( const char * directory ) {
 	}
 */
 
-// Initialise l'arborescence Launcher en mode savemode=dir avec arborescence
+// Build the Launcher directory tree in savemode=dir with folder browsing
 void InitLauncherDir( const char * directory ) {
 	char fullpath[MAX_VALUE_NAME], buffer[MAX_VALUE_NAME] ;
 	DIR * dir ;
@@ -309,7 +322,7 @@ void InitLauncherDir( const char * directory ) {
 	closedir( dir ) ;
 	}
 
-// Inititalise la clé de registre Launcher avec les sessions enregistrées
+// Fill the Launcher registry key with the saved sessions
 void InitLauncherRegistry( void ) {
 	HKEY hKey ;
 	char buffer[MAX_VALUE_NAME] ;
@@ -445,8 +458,8 @@ void DisplayContextMenu( HWND hwnd, HMENU menu ) {
 	DisplayContextMenuAt( hwnd, menu, LauncherMenuPoint ) ;
 }
 	
-// Gestion Hide/UnHide all
-static int CurrentVisibleWin = -1 ; /* -1 = toutes visibles */
+// Hide/UnHide all handling
+static int CurrentVisibleWin = -1 ; /* -1 = all visible */
 
 void ManageHideOne( HWND hwnd ) { PostMessage( hwnd, WM_COMMAND, IDM_HIDE, 0 ) ; }
 void ManageUnHideOne( HWND hwnd ) { PostMessage( hwnd, WM_COMMAND, IDM_UNHIDE, 0 ) ; }
@@ -683,7 +696,7 @@ static void LauncherSetTrayTip( void ) {
 	}
 }
 
-/* ⚠️ The SELECTION is remembered, the ARMED state never is.
+/* WARNING: the SELECTION is remembered, the ARMED state never is.
  * Which proxy was last chosen is written
  * here so a later launcher start can offer to switch the mode back on; "armed"
  * exists only as this process holding the arming, and switching the mode off
@@ -728,7 +741,7 @@ static int LauncherNoticeSeconds( void ) {
 
 /* Dark green, the same colour the terminal frame uses while a connection is
  * going through the mode's proxy, so the notice and the window read as one
- * thing (design §7a). */
+ * thing. */
 #define WORKPLACE_GREEN RGB(0,100,0)
 
 static void LauncherWorkplaceBalloon( int on, int by_timeout ) {
@@ -756,7 +769,7 @@ static void LauncherWorkplaceBalloon( int on, int by_timeout ) {
 	 * a notice that is missed is never the only record. */
 	LauncherSetTrayTip() ;
 	Shell_NotifyIcon( NIM_MODIFY, &TrayIcone ) ;
-	/* ⚠️ Only the TIMEOUT notice offers to switch the mode back on. When the
+	/* WARNING: only the TIMEOUT notice offers to switch the mode back on. When the
 	 * user switched it off themselves they have said what they want, and a
 	 * one-click undo in front of them invites the opposite; a timeout is the
 	 * case where the mode ended without them deciding anything. */
@@ -827,7 +840,7 @@ void LauncherDisarmWorkplace( void ) {
  * exitwithworkplace=no keeps it running instead, for anyone who would rather
  * gain the session list and hotkeys from it.
  *
- * ⚠️ It applies ONLY to a launcher that the mode itself started. A launcher the
+ * WARNING: it applies ONLY to a launcher the mode itself started. A launcher the
  * user was already running must never be closed by switching a proxy mode off -
  * that would take their session list away as a side effect. */
 static int LauncherStartedForWorkplace = 0 ;
@@ -837,7 +850,7 @@ static void LauncherExitIfStartedForWorkplace( HWND hwnd ) {
 	if( !LauncherStartedForWorkplace ) return ;
 	if( ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_EXITWITHWORKPLACE, buffer, sizeof(buffer) )
 	    && !stricmp( buffer, "no" ) ) return ;   /* absent = yes */
-	/* ⚠️ NOT straight away. The notice saying the mode is off is a window of
+	/* WARNING: NOT straight away. The notice saying the mode is off is a window of
 	 * OURS, so quitting here would take it off the screen the instant it
 	 * appeared - and on the timeout path it is the notice that offers the mode
 	 * back with a click, so quitting would remove the offer as well as the news.
@@ -846,7 +859,7 @@ static void LauncherExitIfStartedForWorkplace( HWND hwnd ) {
 	          (UINT)(LauncherNoticeSeconds()*1000 + 1000), NULL ) ;
 }
 
-// Procedures principales du launcher
+// Main launcher procedures
 
 LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	int ResShell ;
@@ -901,19 +914,19 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		 * shell accepted the icon. */
 		PostMessage( hwnd, KLWM_NOTESPENDING, 0, 0 ) ;
 
-	// Initialisation de la structure NOTIFYICONDATA
-	TrayIcone.cbSize = sizeof(TrayIcone);	// On alloue la taille nécessaire pour la structure
+	// Set up the NOTIFYICONDATA structure
+	TrayIcone.cbSize = sizeof(TrayIcone);	// give the structure the size it needs
 	if( oldIconFlag ) {
-		TrayIcone.uID = IDI_BLACKBALL ;	// On lui donne un ID
+		TrayIcone.uID = IDI_BLACKBALL ;	// give it an ID
 		TrayIcone.hIcon = LoadIcon((HINSTANCE) GetModuleHandle (NULL), MAKEINTRESOURCE(IDI_BLACKBALL));
 	} else {
-		TrayIcone.uID = IDI_PUTTY_LAUNCH ;	// On lui donne un ID
+		TrayIcone.uID = IDI_PUTTY_LAUNCH ;	// give it an ID
 		TrayIcone.hIcon = LoadIcon((HINSTANCE) GetModuleHandle (NULL), MAKEINTRESOURCE(IDI_PUTTY_LAUNCH));
 	}
-	TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;	// On lui indique les champs valables
-	// On lui dit qu'il devra "écouter" son environement (clique de souris, etc)
+	TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;	// say which fields are valid
+	// tell it to "listen" to its surroundings (mouse clicks and so on)
 	TrayIcone.uCallbackMessage = KLWM_NOTIFYICON;
-	//TrayIcone.szTip[1024] = "KiTTY That\'s all folks!\0" ;			// Le tooltip par défaut, soit rien
+	//TrayIcone.szTip[1024] = "KiTTY That\'s all folks!\0" ;			// the default tooltip, i.e. nothing
 	LauncherSetTrayTip() ;
 	TrayIcone.hWnd = hwnd ;
 	ResShell = Shell_NotifyIcon(NIM_ADD, &TrayIcone);
@@ -1123,12 +1136,12 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		case WM_CLOSE:
 			PostMessage(hwnd, WM_DESTROY,0,0) ;
 			break ;
-		case WM_COMMAND: {//Commandes du menu
+		case WM_COMMAND: {//Menu commands
 			switch( LOWORD(wParam) ) {
 				case IDM_ABOUT: {
 					/* UTF-8 source (real "(c)" and em-dash); MessageBoxW renders it
 					 * as Unicode regardless of the system ANSI codepage, so the
-					 * earlier mojibake (Â© / "a\200\224") cannot recur. */
+					 * earlier mojibake (A© / "a\200\224") cannot recur. */
 					const char *ab =
 						KT_LAUNCHER_ABOUT_PREFIX BUILD_VERSION "\r\n"
 #ifdef KITTY_TEST_BUILD_LABEL
@@ -1238,7 +1251,7 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 					/* Switch workplace proxy mode off. The selection stays
 					 * remembered so the next start can offer it back.
 					 *
-					 * ⚠️ And this launcher STAYS, even when the mode started it
+					 * WARNING: this launcher STAYS, even when the mode started it
 					 * and exitwithworkplace is on: the user is standing in this
 					 * menu right now, so the thing they just clicked vanishing
 					 * under them reads as a crash. The exit
@@ -1293,8 +1306,8 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 					}
 				}
 			break ;
-		default: // Message par défaut
-			if( uMsg == s_uTaskbarRestart ) { // On reaffiche l'icone après un crash de l'explorateur windows
+		default: // Default message
+			if( uMsg == s_uTaskbarRestart ) { // show the icon again after a Windows Explorer crash
 				Shell_NotifyIcon(NIM_DELETE, &TrayIcone);
 				Shell_NotifyIcon(NIM_ADD, &TrayIcone);
 				Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);

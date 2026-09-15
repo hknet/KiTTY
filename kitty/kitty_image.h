@@ -1,3 +1,8 @@
+/*
+ * kitty_image.h - what kitty_image.c exports: the device contexts and
+ * bitmaps holding the terminal background image, the alpha-blend helper the
+ * painting code calls over them, and the screen-capture entry points.
+ */
 #ifdef MOD_BACKGROUNDIMAGE
 
 #include <stdbool.h>

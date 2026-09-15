@@ -2067,7 +2067,7 @@ char *kageant_file_of_blob(ptrlen blob)
  * again. Silently full at 64: past that, something is wrong with the list
  * rather than with the media.
  *
- * ⚠️ THE FINGERPRINT IS CLEARED HERE and every caller must set it unless it
+ * WARNING: THE FINGERPRINT IS CLEARED HERE and every caller must set it unless it
  * genuinely has none. An entry with no fingerprint is loaded WITHOUT being
  * checked - that carve-out exists only for entries written by a version that
  * did not record one, so that upgrading does not stop keys loading.

@@ -1,3 +1,9 @@
+/*
+ * kitty_notes.h - the application notification (kitty_notes.c): storing and
+ * escaping the one note kept in the settings, and showing it once per
+ * process in the notice window, with the "seen" mark shared with the
+ * launcher.
+ */
 #ifndef KITTY_NOTES_H
 #define KITTY_NOTES_H
 

@@ -1,3 +1,11 @@
+/*
+ * kitty_commun.h - the declarations for kitty_commun.c: the global flags and
+ * helpers shared by every program in the suite (kitty, pscp, psftp, plink,
+ * pageant). Save mode and configuration directory, the feature and
+ * compatibility flags read from kitty.ini, folder-name cleaning, the
+ * light parameter reader used before the full store is up, the %XY name
+ * escaping, and access to the session password.
+ */
 #ifndef KITTY_COMMUN
 #define KITTY_COMMUN
 
@@ -8,10 +16,10 @@
 #include "platform.h"
 #include <windows.h>
 
-// Flag permettant d'activer l'acces a du code particulier permettant d'avoir plus d'info dans le kitty.dmp
+// Flag enabling extra code paths that put more information into kitty.dmp
 extern int debug_flag ;
 
-// Flag pour repasser en mode Putty basic
+// Flag to fall back to plain PuTTY mode
 int GetPuttyFlag(void) ;
 void SetPuttyFlag( const int flag ) ;
 
@@ -28,35 +36,36 @@ void SetModalChangedHostKeyConfirmationFlag( const int flag ) ;
 int GetModalWeakKeyConfirmationFlag(void) ;
 void SetModalWeakKeyConfirmationFlag( const int flag ) ;
 
-// Flag pour le fonctionnement en mode "portable" (gestion par fichiers)
+// Flag for running in "portable" mode (settings kept in files)
 int GetIniFileFlag(void) ;
 
-// Flag permettant de desactiver la sauvegarde automatique des informations de connexion (user/password) Ã  la connexion SSH
+// Flag disabling the automatic saving of the login details (user/password)
+// on SSH connection
 // extern int UserPassSSHNoSave ;
 int GetUserPassSSHNoSave(void) ;
 void SetUserPassSSHNoSave( const int flag ) ;
 
-// Flag pour empêcher l'écriture des fichiers (default settings, jump file list ...)
+// Flag preventing files from being written (default settings, jump list ...)
 // [KiTTY] readonly=no
 int GetReadOnlyFlag(void) ;
 void SetReadOnlyFlag( const int flag ) ;
 
-// Flag pour afficher l'image de fond
+// Flag to display the background image
 //extern int BackgroundImageFlag ;
 int GetBackgroundImageFlag(void) ;
 void SetBackgroundImageFlag( const int flag ) ;
 
-// Pour supprimer le sel dans le cryptage du mot de passe
+// To remove the salt from the password encryption
 int GetCryptSaltFlag() ;
 void SetCryptSaltFlag( int flag ) ;
 
 #ifdef MOD_ZMODEM
-// Flag pour inhiber les fonctions ZMODEM
+// Flag to disable the ZMODEM functions
 int GetZModemFlag(void) ;
 void SetZModemFlag( const int flag ) ;
 #endif
 
-// Répertoire de sauvegarde de la configuration (savemode=dir)
+// Directory the configuration is saved into (savemode=dir)
 extern char * ConfigDirectory ;
 
 char * GetConfigDirectory( void ) ;
@@ -65,24 +74,24 @@ char * GetConfigDirectory( void ) ;
 int stricmp(const char *s1, const char *s2) ;
 #endif
 char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize) ;
-char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue) ; /* compat: rValue >= cstMaxRegLength+2 octets; preferer GetValueDataN */
+char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue) ; /* compat: rValue >= cstMaxRegLength+2 bytes; prefer GetValueDataN */
 int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) ;
 char * SetSessPath( const char * dec ) ;
 
-// Nettoie les noms de folder en remplaçant les "/" par des "\" et les " \ " par des " \"
+// Clean folder names: replace "/" with "\" and " \ " with " \"
 void CleanFolderName( char * folder ) ;
 
-// Supprime une arborescence
+// Delete a directory tree
 void DelDir( const char * directory ) ;
 
-// Lit un parametre soit dans le fichier de configuration, soit dans le registre
+// Read a parameter either from the configuration file or from the registry
 int ReadParameterLightN( const char * key, const char * name, char * value, size_t size ) ;
-int ReadParameterLight( const char * key, const char * name, char * value ) ; /* compat: value >= 4096 octets; preferer ReadParameterLightN */
+int ReadParameterLight( const char * key, const char * name, char * value ) ; /* compat: value >= 4096 bytes; prefer ReadParameterLightN */
 
 /* test if we are in portable mode by looking for putty.ini or kitty.ini in running directory */
 int LoadParametersLight( void ) ;
 
-// Positionne un flag permettant de determiner si on est connecte
+// Flag saying whether we are connected
 extern int is_backend_connected ;
 #ifdef MOD_RECONNECT
 extern int is_backend_first_connected ;
@@ -92,7 +101,7 @@ void SetSSHConnected( int flag ) ;
 
 //PVOID WINAPI SecureZeroMemory( PVOID ptr, SIZE_T cnt) ;
 
-// Fonctions permettant de formatter les chaînes de caractères avec %XY
+// Functions escaping strings with %XY sequences
 void mungestr( const char *in, char *out ) ;
 void unmungestr( const char *in, char *out, int outlen ) ;
 
@@ -105,10 +114,10 @@ int IsPasswordInConf(void) ;
 
 int _rmdir(const char *) ;
 
-// Extention pour les fichiers de session en mode portable (peut être ktx)
+// Extension for session files in portable mode (may be ktx)
 extern char FileExtension[15] ;
 
-// Répertoire courant pourle mode portable
+// Current folder for portable mode
 extern char CurrentFolder[1024] ;
 
 //int DebugAddPassword( const char*fct, const char*pwd ) ;
