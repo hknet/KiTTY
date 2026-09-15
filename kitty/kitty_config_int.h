@@ -11,6 +11,17 @@
 #ifndef INIT_SECTION
 #define INIT_SECTION "KiTTY"
 #endif
+
+/* The panel paths more than one of these files names. Everything under
+ * "Application/" is the second tab; KSET_PATH names a KiTTY++ Settings leaf. */
+#define KCFG_PATH_HOSTKEYS      "Application/Security/Host keys"
+#define KCFG_PATH_INIVIEW       "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini"
+#define KCFG_PATH_OLD_FOLDERS   "Application/Migration/old KiTTY Folders"
+#define KCFG_PATH_AUTOTEXT      "Application/KiTTY++ Settings/Keys & Mouse/Shortcuts/AutoText"
+#define KCFG_PATH_SHORTCUTS     "Application/KiTTY++ Settings/Keys & Mouse/Shortcuts"
+#define KCFG_PATH_WORKPLACE     "Application/Workplace Proxy"
+#define KCFG_PATH_KSET          "Application/KiTTY++ Settings/"
+#define KSET_PATH(leaf)         KCFG_PATH_KSET leaf
 extern struct wpmode_data *kitty_wpmode_active;   /* kitty_config.c */
 /*
  * KiTTY: Storage & Backup > KiTTY.ini - a read-only view of the configuration

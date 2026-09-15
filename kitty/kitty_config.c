@@ -105,57 +105,109 @@ void kitty_cfgbox_open_loaded(void)
 {
     kitty_cfgbox_loaded_deliberate = 1;
 }
+/*
+ * The per-panel hooks windows/dialog.c calls: which control a panel lets
+ * grow with the box (fill), what to do once the panel is laid out (placed),
+ * and what to do when it is shown or hidden (shown). One row per panel that
+ * needs any of them; a panel not listed needs none, and a new panel is one
+ * row here rather than three if-chains. The footer pin applies to every
+ * panel and stays outside the table.
+ */
+struct kitty_panel_hook {
+    const char *path;
+    dlgcontrol *(*fill)(void);
+    void (*placed)(void);
+    void (*shown)(bool show);
+};
+
+static dlgcontrol *hook_session_fill(void)
+{
+    return kitty_session_ssd ? kitty_session_ssd->listbox : NULL;
+}
+static void hook_session_placed(void) { kitty_config_session_distribute(); }
+
+/* The kitty.ini view: a file is as long as it is, so the box gets the
+ * height the window has to give. */
+static dlgcontrol *hook_iniview_fill(void)
+{
+    return (kitty_iniview_active && kitty_iniview_active->view) ?
+        kitty_iniview_active->view : NULL;
+}
+static void hook_iniview_placed(void) { kitty_iniview_place(); }
+
+/* The folder-import list: a scan may find hundreds of files. */
+static dlgcontrol *hook_migf_fill(void)
+{
+    return (kitty_migf_active && kitty_migf_active->listbox) ?
+        kitty_migf_active->listbox : NULL;
+}
+
+/* The host-key list, likewise; its splitter bar is not one of the panel's
+ * controls, so the panel cache does not hide it with them - it has to go and
+ * come by itself, or it lies across the next panel (artefacts on whatever
+ * panel followed Host keys). Same SWP_NOREDRAW discipline as the controls. */
+static dlgcontrol *hook_hk_fill(void)
+{
+    return (kitty_hk_active && kitty_hk_active->listbox) ?
+        kitty_hk_active->listbox : NULL;
+}
+static void hook_hk_placed(void) { hk_place_splitter(kitty_hk_active); }
+static void hook_hk_shown(bool show)
+{
+    if (!hk_splitter || !IsWindow(hk_splitter))
+        return;
+    SetWindowPos(hk_splitter, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW |
+                 (show ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+}
+
+/* The shortcut editor's lists: one row per action, one per AutoText entry,
+ * the taller the better. */
+static dlgcontrol *hook_sc_fill(void) { return kitty_sc_fill_ctrl(false); }
+static dlgcontrol *hook_sc_autotext_fill(void) { return kitty_sc_fill_ctrl(true); }
+
+static const struct kitty_panel_hook kitty_panel_hooks[] = {
+    { "Session",              hook_session_fill,     hook_session_placed, NULL },
+    { KCFG_PATH_INIVIEW,      hook_iniview_fill,     hook_iniview_placed, NULL },
+    { KCFG_PATH_OLD_FOLDERS,  hook_migf_fill,        NULL,                NULL },
+    { KCFG_PATH_HOSTKEYS,     hook_hk_fill,          hook_hk_placed,      hook_hk_shown },
+    { KCFG_PATH_SHORTCUTS,    hook_sc_fill,          NULL,                NULL },
+    { KCFG_PATH_AUTOTEXT,     hook_sc_autotext_fill, NULL,                NULL },
+};
+
+static const struct kitty_panel_hook *kitty_panel_hook_for(const char *path)
+{
+    size_t i;
+    if (!path)
+        return NULL;
+    for (i = 0; i < lenof(kitty_panel_hooks); i++)
+        if (!strcmp(kitty_panel_hooks[i].path, path))
+            return &kitty_panel_hooks[i];
+    return NULL;
+}
+
 dlgcontrol *kitty_config_panel_fill_ctrl(const char *path)
 {
-    if (path && !strcmp(path, "Session") && kitty_session_ssd)
-        return kitty_session_ssd->listbox;
-    /* The kitty.ini view: a file is as long as it is, so the box gets the
-     * height the window has to give. */
-    if (path && kitty_iniview_active && kitty_iniview_active->view &&
-        !strcmp(path, "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini"))
-        return kitty_iniview_active->view;
-    /* The folder-import list: a scan may find hundreds of files. */
-    if (path && kitty_migf_active && kitty_migf_active->listbox &&
-        !strcmp(path, "Application/Migration/old KiTTY Folders"))
-        return kitty_migf_active->listbox;
-    /* The host-key list, likewise. */
-    if (path && kitty_hk_active && kitty_hk_active->listbox &&
-        !strcmp(path, "Application/Security/Host keys"))
-        return kitty_hk_active->listbox;
-    /* The shortcut editor's lists: one row per action, one per AutoText
-     * entry, the taller the better. */
-    if (path && !strcmp(path, "Application/KiTTY++ Settings/Keys & Mouse/Shortcuts"))
-        return kitty_sc_fill_ctrl(false);
-    if (path && !strcmp(path, "Application/KiTTY++ Settings/Keys & Mouse/Shortcuts/AutoText"))
-        return kitty_sc_fill_ctrl(true);
-    return NULL;
+    const struct kitty_panel_hook *h = kitty_panel_hook_for(path);
+    return (h && h->fill) ? h->fill() : NULL;
 }
 
 /* windows/dialog.c calls this once per panel, as soon as it is laid out. */
 void kitty_config_panel_placed(const char *path)
 {
-    if (path && !strcmp(path, "Session"))
-        kitty_config_session_distribute();
-    if (path && !strcmp(path, "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini"))
-        kitty_iniview_place();
-    if (path && !strcmp(path, "Application/Security/Host keys"))
-        hk_place_splitter(kitty_hk_active);
+    const struct kitty_panel_hook *h = kitty_panel_hook_for(path);
+    if (h && h->placed)
+        h->placed();
     if (path)
         kitty_config_footer_pin(path);  /* the app panels' footer, likewise */
 }
 
-/* A panel switch: the bar is not one of the panel's controls, so the panel
- * cache does not hide it with them - it has to go and come by itself, or it
- * lies across the next panel (artefacts on whatever panel followed Host
- * keys). Same SWP_NOREDRAW discipline as the controls. */
+/* A panel switch. */
 void kitty_config_panel_shown(const char *path, bool show)
 {
-    if (!hk_splitter || !IsWindow(hk_splitter) || !path ||
-        strcmp(path, "Application/Security/Host keys"))
-        return;
-    SetWindowPos(hk_splitter, NULL, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW |
-                 (show ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+    const struct kitty_panel_hook *h = kitty_panel_hook_for(path);
+    if (h && h->shown)
+        h->shown(show);
 }
 
 void setup_config_box(struct controlbox *b, bool midsession,

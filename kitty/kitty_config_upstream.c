@@ -58,6 +58,8 @@
  * references to functions dialog.c calls. See kitty_conf_validate there.
  */
 
+/* ==== PuTTY's generic conf handlers ===================================== */
+
 void conf_radiobutton_handler(dlgcontrol *ctrl, dlgparam *dlg,
                               void *data, int event)
 {
@@ -246,6 +248,8 @@ void conf_fontsel_handler(dlgcontrol *ctrl, dlgparam *dlg,
         fontspec_free(fontspec);
     }
 }
+
+/* ==== PuTTY's per-control handlers ====================================== */
 
 void config_host_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                 void *data, int event)
@@ -868,6 +872,8 @@ void sshbug_handler_manual_only(dlgcontrol *ctrl, dlgparam *dlg,
         conf_set_int(conf, ctrl->context.i, i);
     }
 }
+
+/* ==== PuTTY's list and table handlers =================================== */
 
 void charclass_handler(dlgcontrol *ctrl, dlgparam *dlg,
                               void *data, int event)

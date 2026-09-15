@@ -57,6 +57,8 @@
 
 #define KITTY_LAUNCHER_REFRESH_MESSAGE "KiTTYLauncherRefreshSessionsAndHotkeys"
 
+/* ==== Helpers both tabs use ============================================= */
+
 void kitty_notify_launcher_sessions_changed(void)
 {
     UINT msg = RegisterWindowMessageA(KITTY_LAUNCHER_REFRESH_MESSAGE);
@@ -474,6 +476,8 @@ void kitty_cfgbox_store_size(int w, int h)
         SetConfigBoxWindowHeight(h);
     }
 }
+
+/* ==== The kitty.ini settings engine (kset) ============================== */
 
 /* The backup counts are read at BACKUP time through ReadParameterN
  * (SaveRegistryKeyEx and SavePortableDirBackup in kitty.c), never cached at

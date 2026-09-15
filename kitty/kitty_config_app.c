@@ -66,6 +66,8 @@ static const struct { const char *label; unsigned int minutes; } wpmode_spans[] 
 static dlgcontrol *kset_transparency_ctrl;
 #define KSET(key) P((void *)kset_find(key))
 
+/* ==== Workplace proxy mode: the switch, its labels, the arming ========== */
+
 /* Keep the state line telling the truth. Called from the button's refresh, so
  * it follows every action taken in this box; a change made elsewhere is picked
  * up by the poll below. */
@@ -284,6 +286,9 @@ void kitty_wpmode_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * open; the editor shows a one-time "reopen the configuration" note in that
  * case (kitty_proxy_gui.c). Making it live is a scoped follow-up (would require
  * rebuilding the whole ctrlbox). */
+
+/* ==== Helper-program paths and the update switch ======================== */
+
 /* The update check: an application setting in kitty.ini, so it reads and
  * writes there rather than through the session's Conf. Immediate - there is no
  * Save on an application setting, and nothing else in the box would carry it. */
@@ -474,6 +479,8 @@ static void kitty_toolpath_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
 void kitty_config_footer_pin(const char *path);   /* defined below */
 
+/* ==== The kitty.ini view's placement (the view itself is further down) ==== */
+
 /* The kitty.ini view's Edit button: flush with the view's right edge. The
  * layout gives it a column that widens with the window and leaves the button
  * at the column's left, which reads as "somewhere right-ish". Placed after
@@ -646,7 +653,8 @@ static int hk_sort_cmp(const void *av, const void *bv)
     int c = 0;
     switch (hk->sort_col) {
       case 1: c = hk_cmp_str(a->type_display, b->type_display);
-              if (!c) c = a->bits - b->bits; break;
+              if (!c) c = a->bits - b->bits;
+              break;
       case 2: c = strcmp(a->sha256, b->sha256); break;
       case 3: c = strcmp(a->first_seen, b->first_seen); break;
       case 4: c = strcmp(a->last_written, b->last_written); break;
@@ -1005,7 +1013,7 @@ static void hk_box_closing(void)
 
 static void scb_panel_hostkeys(struct controlbox *b)
 {
-    static const char *const path = "Application/Security/Host keys";
+    static const char *const path = KCFG_PATH_HOSTKEYS;
     struct hk_data *hk = (struct hk_data *)ctrl_alloc(b, sizeof(*hk));
     struct controlset *s;
     dlgcontrol *c;
@@ -1236,6 +1244,8 @@ void hk_place_splitter(struct hk_data *hk)
     }
 }
 
+/* ==== Updates, foreign sessions, agent check, missing features ========== */
+
 static void checkupdate_button_handler(dlgcontrol *ctrl, dlgparam *dp,
                                        void *data, int event)
 {
@@ -1363,6 +1373,8 @@ const char *scb_title_appname(void)
     return GetPuttyFlag() ? appname : KT_CAP_KITTYPP;
 }
 
+
+/* ==== Config Window: theme, flags, sizes - and Security ================= */
 
 /*
  * Application > Config Window.
@@ -1871,7 +1883,6 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
     ctrl_filesel(s, label, NO_SHORTCUT, FILTER_ALL_FILES, false, title, HELPCTX(hc), kitty_kset_handler, KSET(key))
 
 /* Where the whole subtree lives. */
-#define KSET_PATH(leaf) "Application/KiTTY++ Settings/" leaf
 
 /* KiTTY++ Settings > Appearance > Shared window position: the entry that
  * windows without a session of their own (an unnamed session, a "Default
@@ -1880,6 +1891,9 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
  * entry, and how many layouts hold one - rebuilt after Reset, which removes
  * the shared entries for every layout and nothing else. */
 static dlgcontrol *ksharedpos_lines[2];
+
+/* ==== System: the shared window position and the system paths =========== */
+
 static void ksharedpos_text(char lines[2][256])
 {
     struct kitty_termpos pos;
@@ -2560,6 +2574,8 @@ static void kbc_leaf(struct controlbox *b)
     kbc.note = ctrl_text(s, KT_KSET_BC_SWITCH_NOTE, HELPCTX(kitty_kset_broadcast));
 }
 
+/* ==== The KiTTY++ Settings leaves, built from the kset table ============ */
+
 static void scb_panel_kitty_settings_leaves(struct controlbox *b)
 {
     struct controlset *s;
@@ -2979,7 +2995,7 @@ static void kitty_iniview_handler(dlgcontrol *ctrl, dlgparam *dlg,
 static void scb_panel_iniview(struct controlbox *b, const char *ini)
 {
     static const char *const path =
-        "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini";
+        KCFG_PATH_INIVIEW;
     struct iniview_data *iv;
     struct controlset *s;
     dlgcontrol *c;
@@ -3686,11 +3702,13 @@ void scb_panel_shortcut_editor(struct controlbox *b, const char *path)
     sc->tnote->text.lines = 2;
 }
 
+/* ==== The tree's roots: KiTTY++ Settings, Session Panel ================= */
+
 static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
 {
     /* kitty_commun.c's values, which this file has no header for */
     enum { KSET_SAVEMODE_REG = 0, KSET_SAVEMODE_FILE = 1, KSET_SAVEMODE_DIR = 2 };
-    static const char *const storage = "Application/KiTTY++ Settings/Storage & Backup";
+    static const char *const storage = KSET_PATH("Storage & Backup");
     struct controlset *s;
     char line[1400], buf[4096];
     const char *ini = GetKittyIniFile();
@@ -3884,6 +3902,8 @@ struct import_data {
     dlgcontrol *banner;
     struct kitty_foreign_list *found;
 };
+
+/* ==== Migration, the ini and store moves, the panel footers ============= */
 
 static void import_say(struct import_data *im, dlgparam *dlg, const char *what)
 {
@@ -4492,7 +4512,7 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
 static void scb_panel_folder_import(struct controlbox *b)
 {
-    static const char *const path = "Application/Migration/old KiTTY Folders";
+    static const char *const path = KCFG_PATH_OLD_FOLDERS;
     struct migf_data *m;
     struct controlset *s;
     dlgcontrol *c;
@@ -4552,6 +4572,8 @@ static void scb_panel_folder_import(struct controlbox *b)
     c->context2 = I(6); c->column = 1;
     ctrl_columns(s, 1, 100);
 }
+
+/* ==== The Application tab's root panels ================================= */
 
 void scb_panel_application(struct controlbox *b, bool midsession)
 {
@@ -4742,13 +4764,13 @@ void scb_panel_application(struct controlbox *b, bool midsession)
                 if (!strcmp(path, holds_until_save[k])) { excluded = true; break; }
             /* The kitty.ini VIEW has a droplist and a box, but it stores
              * nothing: "saved as you change them" would be false there. */
-            if (!strcmp(path, "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini"))
+            if (!strcmp(path, KCFG_PATH_INIVIEW))
                 excluded = true;
             /* The folder import: its fields drive an action, they store nothing. */
-            if (!strcmp(path, "Application/Migration/old KiTTY Folders"))
+            if (!strcmp(path, KCFG_PATH_OLD_FOLDERS))
                 excluded = true;
             /* The host-key list shows the store; Delete acts at once and says so. */
-            if (!strcmp(path, "Application/Security/Host keys"))
+            if (!strcmp(path, KCFG_PATH_HOSTKEYS))
                 excluded = true;
             if (excluded)
                 continue;

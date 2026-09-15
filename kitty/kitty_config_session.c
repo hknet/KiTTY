@@ -53,6 +53,8 @@
 #define DISPLAY_NON_RECONFIGURABLE_PROTOCOL(which_proto) \
     (backend_vt_from_proto(which_proto) && !midsession)
 
+/* ==== Per-session handlers: position, scripts, passwords, pins ========== */
+
 /* KiTTY: "Remember window position" keeps one entry per session and monitor
  * layout (kitty_winpos.c). With it on, the Position panel's Top/Left and the
  * Window panel's Columns/Rows show and edit that entry for the layout the
@@ -453,6 +455,9 @@ static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * session's Proxy* fields, so a preset can destroy proxy credentials that exist
  * only in the session. Do not "fix" it by writing the fields here either - that
  * is the same data loss, moved earlier. */
+
+/* ==== Connection > Proxy: override, choice, named-proxy loader ========== */
+
 /*
  * Does the session itself carry proxy settings? That is what the control's
  * neutral position is derived from, and what "would this change anything?" is
@@ -734,6 +739,8 @@ static void kitty_pxload_inline_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * the placement has to be redone whenever the list's row count changes.
  */
 struct sessionsaver_data *kitty_session_ssd = NULL;
+
+/* ==== The Session panel's list, folders, Load/Save/Delete =============== */
 
 /* The saved-session list's length in rows, clamped to something usable. */
 int kitty_config_session_rows(void)
@@ -3216,6 +3223,8 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
 }
 
+/* ==== Buttons that jump to an Application panel ========================= */
+
 /* KiTTY: the CA editor is a panel of the Application tab now (Security >
  * Certificate Authorities) - CAs are stored once per user, not per session -
  * so the button on the session's Host keys panel JUMPS there instead of
@@ -3234,14 +3243,14 @@ static void winscp_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
                                        void *data, int event)
 {
     if (event == EVENT_ACTION)
-        kitty_cfg_goto_panel("Application/KiTTY++ Settings/Transfers & Tools/WinSCP");
+        kitty_cfg_goto_panel(KSET_PATH("Transfers & Tools/WinSCP"));
 }
 
 static void filezilla_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
                                           void *data, int event)
 {
     if (event == EVENT_ACTION)
-        kitty_cfg_goto_panel("Application/KiTTY++ Settings/Transfers & Tools/FileZilla");
+        kitty_cfg_goto_panel(KSET_PATH("Transfers & Tools/FileZilla"));
 }
 
 /* KiTTY: the file-copy helper (kscp path, port, folders) lives on KiTTY++
@@ -3250,7 +3259,7 @@ static void kscp_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
                                      void *data, int event)
 {
     if (event == EVENT_ACTION)
-        kitty_cfg_goto_panel("Application/KiTTY++ Settings/Transfers & Tools");
+        kitty_cfg_goto_panel(KSET_PATH("Transfers & Tools"));
 }
 
 /* KiTTY: the broadcast master switch, the installation's group key and the
@@ -3260,7 +3269,7 @@ static void broadcast_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
                                           void *data, int event)
 {
     if (event == EVENT_ACTION)
-        kitty_cfg_goto_panel("Application/KiTTY++ Settings/Automation/Broadcast");
+        kitty_cfg_goto_panel(KSET_PATH("Automation/Broadcast"));
 }
 
 /* ---- Connection > SSH > Host keys: "Scan this host" ------------------------ */
@@ -3499,7 +3508,7 @@ static void kitty_hks_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int e
 {
     struct hks_data *d = (struct hks_data *)ctrl->context.p;
     int which = ctrl->context2.i;      /* 0 list, 1 detail, 2 accept, 3 decline, 4 close, 5 pin */
-    int idx, sel[16], nsel, k;
+    int sel[16], nsel, k;
 
     if (!d) return;
     d->dlg = dlg;
@@ -3806,6 +3815,8 @@ static void kitty_hkscan_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, in
     }
 }
 #define SCB_TITLE_APPNAME (scb_title_appname())
+
+/* ==== The Session tab's builders, in tree order: Session ... Comment ==== */
 
 /* The bottom button bar (Open/Start/Updates/Cancel) and the Session panel. */
 void scb_panel_session(struct controlbox *b, bool midsession)
@@ -6091,9 +6102,9 @@ void scb_panel_proxy(struct controlbox *b, bool midsession)
             /* KiTTY: its OWN leaf under Proxy. It is an application-wide
              * switch, not a session setting, and sharing the Proxy panel
              * both crowded the panel and made it read like one. */
-            ctrl_settitle(b, "Application/Workplace Proxy",
+            ctrl_settitle(b, KCFG_PATH_WORKPLACE,
                           KT_WORKPLACE_PROXY_WORKPLACE_PROXY_MODE_APPLICATION_WIDE);
-            s = ctrl_getset(b, "Application/Workplace Proxy", "workplace",
+            s = ctrl_getset(b, KCFG_PATH_WORKPLACE, "workplace",
                             KITTY_WORKPLACE_BOX_TITLE);
             /* The "not a setting of this session" lead is gone: on the
              * Application tab that is what EVERY panel is, so the sentence
@@ -6154,6 +6165,8 @@ void scb_panel_proxy(struct controlbox *b, bool midsession)
 #define XFER_TOOL_KSCP      0
 #define XFER_TOOL_WINSCP    1
 #define XFER_TOOL_FILEZILLA 2
+
+/* ==== The transfer tools' protocol and port rows ======================== */
 
 static int xfer_tool_protocol_key(int tool)
 {
@@ -7251,6 +7264,8 @@ struct kset_key;
  * panel was built. */
 static dlgcontrol *g_xfer_global_ctrl = NULL;         /* download */
 static dlgcontrol *g_xfer_global_upload_ctrl = NULL;  /* upload */
+
+/* ==== Connection > Transfers: the installation-wide lines =============== */
 
 static void xfer_global_line(char *buf, size_t len)
 {
