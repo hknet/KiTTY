@@ -229,6 +229,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_startup_shortcut.c  # KiTTY: Startup-folder shortcut (portable autostart)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: THE CryptProtectMemory key-blob wrapper - the agent core (pageant.c) uses this shared copy too now (a unix agent build would need this file added beside it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c    # KiTTY: Windows Hello presence check (confirm-on-use gating)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c  # KiTTY: Hello-protected keys (sidecar, protect/unlock/enrol)
@@ -325,6 +326,7 @@ installed_program(puttytel)
 add_executable(puttygen
   puttygen.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
@@ -363,6 +365,7 @@ installed_program(puttygen)
 add_executable(kittygen_cli
   ${CMAKE_SOURCE_DIR}/cmdgen.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys (container; no UI used here)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
@@ -538,6 +541,7 @@ target_link_libraries(test_mpw_params
 add_executable(test_hello_container
   ${CMAKE_SOURCE_DIR}/test/test_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
@@ -568,6 +572,7 @@ add_executable(kitty
   paint-gdi.c
   paint-d2d.c                                       # KiTTY: the Direct2D painter, [KiTTY] renderer=d2d
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
@@ -722,6 +727,7 @@ add_executable(kitty_portable
   paint-gdi.c
   paint-d2d.c                                       # KiTTY: the Direct2D painter, [KiTTY] renderer=d2d
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
@@ -914,6 +920,7 @@ endif()
 add_executable(test_hello_gui
   ${CMAKE_SOURCE_DIR}/test/test_hello_gui.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
