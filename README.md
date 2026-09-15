@@ -161,6 +161,7 @@ parallel-target approach, and the constraints to know before editing shared file
 If you got a related project to this KiTTY++ please notify the repo and will link you here:
 
 - **QuickPutty** (https://github.com/wiesl/QuickPutty) by friend of this repo [@wiesl](https://github.com/wiesl)
+- **Kitty-Session-Manager** (https://github.com/evgeny-test/Kitty-Session-Manager) was updated for this release by [@evgeny-test](https://github.com/evgeny-test)
 
 ---
 
