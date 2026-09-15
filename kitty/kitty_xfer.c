@@ -189,10 +189,8 @@ static const char *kx_helper_keyfile(Conf *c)
 }
 
 /* Provided elsewhere in the KiTTY tree (not in a header). */
-char * kitty_current_dir() ;                            /* kitty.c */
 
 // Send a file by SCP to the root of the account
-int SearchPSCP( void ) ;
 /* KiTTY security: launch a console command line WITHOUT a shell. Replaces
  * system()/"start" for the kscp/klink command builders below, so session fields
  * spliced into the command line cannot inject shell commands - CreateProcess does
@@ -557,7 +555,7 @@ static void kitty_xfer_finish_stage( struct ktx_win *w ) {
  * the .lock opens (a live download holds it, so its open fails and it is left).
  * Called at startup for the download dir + Downloads, and before a wildcard
  * download into a folder. */
-void kitty_xfer_sweep_dir( const char *dir ) {
+static void kitty_xfer_sweep_dir( const char *dir ) {
 	if( !dir || !dir[0] || !existdirectory( dir ) ) return ;
 	char pat[4096] ; snprintf( pat, sizeof(pat), "%s\\%s*", dir, KT_XFER_STAGING_DIR ) ;
 	WIN32_FIND_DATAA fd ; HANDLE h = FindFirstFileA( pat, &fd ) ;
@@ -1783,7 +1781,6 @@ void GetFile( HWND hwnd ) {
      * Overwrite / Keep both / Cancel (the shared themed 3-way box). */
     int keepboth = 0 ;
     if( !any_glob ) {
-        extern int kitty_confirm_box3( HWND, const char *, const char *, const char *, const char *, const char * ) ;
         char existing[2048] ; existing[0] = '\0' ; int nexist = 0 ;
         char *scan = dupstr( line ) ; char *l = scan, *nx ;
         for( ; l && *l ; l = nx ) { nx = strpbrk( l, "\r\n" ) ; if( nx ){ *nx='\0'; nx++; while(*nx=='\r'||*nx=='\n') nx++; }

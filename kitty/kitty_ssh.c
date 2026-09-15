@@ -9,7 +9,7 @@
 #include "kitty_tools.h"
 
 #ifdef MOD_PORTKNOCKING
-void vprint(char *fmt, ...)
+static void vprint(char *fmt, ...)
 {	char buf[1024];
 	va_list args;
 	va_start(args, fmt);

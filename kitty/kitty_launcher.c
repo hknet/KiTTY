@@ -65,7 +65,6 @@ static void RunPuTTYAtPanel( HWND hwnd, const char * panel, int mark_loaded ) ;
  * In the -launcher process nothing calls kitty_set_registry_root(), so this
  * returns the default KiTTY base; the launcher therefore does NOT follow
  * KiClassName=PuTTY mode -- deliberate, acceptable for the launcher. */
-extern const char *kitty_registry_base( void ) ;
 
 #include "kitty_startup_shortcut.h"   /* KiTTY: on-request Startup-folder shortcut */
 #include "kitty_workplace.h"          /* KiTTY: workplace proxy mode arming */
@@ -126,7 +125,7 @@ static int IsUnique = 0 ;
 int RefreshWinList( HWND hwnd ) ;
 
 // Build a menu from a registry key
-HMENU InitLauncherMenu( char * Key ) {
+static HMENU InitLauncherMenu( char * Key ) {
 	HMENU menu ;
 	menu = CreatePopupMenu() ;
 	char KeyName[1024] ;
@@ -255,7 +254,7 @@ HMENU InitLauncherMenu( char * Key ) {
 	return menu ;
 }
 
-void RefreshMenuLauncher( void ) {
+static void RefreshMenuLauncher( void ) {
 	DestroyMenu( MenuLauncher ) ; 
 	MenuLauncher = NULL ;
 	MenuLauncher = InitLauncherMenu( "Launcher" ) ;
@@ -282,7 +281,7 @@ void DelDir( const char * directory ) {
 */
 
 // Build the Launcher directory tree in savemode=dir with folder browsing
-void InitLauncherDir( const char * directory ) {
+static void InitLauncherDir( const char * directory ) {
 	char fullpath[MAX_VALUE_NAME], buffer[MAX_VALUE_NAME] ;
 	DIR * dir ;
 	struct dirent * de ;
@@ -452,7 +451,7 @@ static void DisplayContextMenuAt( HWND hwnd, HMENU menu, POINT pt ) {
 	}
 }
 
-void DisplayContextMenu( HWND hwnd, HMENU menu ) {
+static void DisplayContextMenu( HWND hwnd, HMENU menu ) {
 	GetCursorPos (&LauncherMenuPoint);
 	LauncherMenuPointValid = 1 ;
 	DisplayContextMenuAt( hwnd, menu, LauncherMenuPoint ) ;
@@ -464,7 +463,7 @@ static int CurrentVisibleWin = -1 ; /* -1 = all visible */
 void ManageHideOne( HWND hwnd ) { PostMessage( hwnd, WM_COMMAND, IDM_HIDE, 0 ) ; }
 void ManageUnHideOne( HWND hwnd ) { PostMessage( hwnd, WM_COMMAND, IDM_UNHIDE, 0 ) ; }
 
-BOOL CALLBACK RefreshWinListProc( HWND hwnd, LPARAM lParam ) {
+static BOOL CALLBACK RefreshWinListProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	GetClassName( hwnd, buffer, 256 ) ;
 	
@@ -484,7 +483,7 @@ int RefreshWinList( HWND hwnd ) {
 	return NbWin ;
 }
 	
-void ManageHideAll( HWND hwnd ) {
+static void ManageHideAll( HWND hwnd ) {
 	int i ;
 	if( RefreshWinList( hwnd ) > 0 ) {
 		for( i=0 ; i<NbWin ; i++ ) {
@@ -494,7 +493,7 @@ void ManageHideAll( HWND hwnd ) {
 	CurrentVisibleWin = 0 ;
 }
 
-void ManageUnHideAll( HWND hwnd ) {
+static void ManageUnHideAll( HWND hwnd ) {
 	int i ;
 	if( RefreshWinList( hwnd ) > 0 ) {
 		for( i=0 ; i<NbWin ; i++ ) ManageUnHideOne( TabWin[i].hwnd ) ;
@@ -502,7 +501,7 @@ void ManageUnHideAll( HWND hwnd ) {
 	CurrentVisibleWin = -1 ;
 }
 	
-void ManageGoNext( HWND hwnd ) {
+static void ManageGoNext( HWND hwnd ) {
 	if( CurrentVisibleWin == -1 ) return ;
 	ManageHideOne( TabWin[CurrentVisibleWin].hwnd ) ;
 	CurrentVisibleWin++ ;
@@ -510,7 +509,7 @@ void ManageGoNext( HWND hwnd ) {
 	ManageUnHideOne( TabWin[CurrentVisibleWin].hwnd ) ;
 }
 
-void ManageGoPrevious( HWND hwnd ) {
+static void ManageGoPrevious( HWND hwnd ) {
 	if( CurrentVisibleWin == -1 ) return ;
 	ManageHideOne( TabWin[CurrentVisibleWin].hwnd ) ;
 	CurrentVisibleWin-- ;
@@ -525,7 +524,6 @@ void ManageSwitch( const int n ) {
 }
 
 static void ShowLauncherUpdateBalloon( void ) {
-	extern int kitty_update_available(char*,int,char*,int,int*) ;
 	char ulatest[64]="" ; int ubeta=0 ;
 	if( kitty_update_available( ulatest, sizeof(ulatest), NULL, 0, &ubeta ) ) {
 		char umsg[256] ;
@@ -786,7 +784,7 @@ static void LauncherWorkplaceBalloon( int on, int by_timeout ) {
 
 /* Take the arming for workplace proxy mode. From here on every connection this
  * install starts asks us, and gets this proxy until we let go or die. */
-int LauncherArmWorkplace( const char *proxyname, unsigned int minutes ) {
+static int LauncherArmWorkplace( const char *proxyname, unsigned int minutes ) {
 	if( !kitty_workplace_arm( proxyname, minutes ) ) return 0 ;
 	/* Check often enough that "switch off after 4 hours" is not visibly late,
 	 * rarely enough to be free. The readers honour the expiry too, so a missed
@@ -826,7 +824,7 @@ static void LauncherOfferWorkplaceRearm( void ) {
 	kitty_workplace_show_pending_notice() ;
 }
 
-void LauncherDisarmWorkplace( void ) {
+static void LauncherDisarmWorkplace( void ) {
 	KillTimer( MainHwnd, LAUNCHER_WORKPLACE_TIMER ) ;
 	kitty_workplace_disarm() ;
 	LauncherWorkplaceProxy[0] = '\0' ;   /* the selection stays remembered */
@@ -861,7 +859,7 @@ static void LauncherExitIfStartedForWorkplace( HWND hwnd ) {
 
 // Main launcher procedures
 
-LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	int ResShell ;
 	static UINT s_uTaskbarRestart;
 
@@ -938,7 +936,6 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 		 * first run after a new release instead of only after a previous process has
 		 * populated the cache. Also check the existing cache immediately. */
 		{
-			extern void kitty_start_update_check_notify(HWND,UINT) ;
 			kitty_start_update_check_notify( hwnd, KLWM_UPDATECHECKDONE ) ;
 			/* POSTED, not called: this is still WM_CREATE. A balloon raised
 			 * from inside window creation is displayed, but a click on it does
@@ -1022,8 +1019,6 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 					if( LauncherHotkeyBalloonArmed ) {
 						LauncherHotkeyBalloonArmed = 0 ;
 						if( LauncherHotkeyWinner[0] ) {
-							extern void kitty_set_last_session( const char * ) ;
-							extern void kitty_set_last_folder( const char * ) ;
 							Conf * wc = conf_new() ;
 							if( wc != NULL ) {
 								if( do_defaults( LauncherHotkeyWinner, wc ) )
@@ -1037,7 +1032,6 @@ LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
 					/* The update balloon is the only balloon left: the workplace
 					 * notices are our own window, which handles its own click. */
 					else if( LauncherUpdateKnown ) {
-						extern void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) ;
 						CheckVersionFromWebSite( hwnd, 0 ) ;
 					}
 				break ;
@@ -1513,7 +1507,6 @@ void RunConfig( Conf * conf ) {
 	 * sharing). The first launch prompts; later ones reuse the unlock. */
 	HANDLE mpwmap = NULL; char mpwtok[64] = "";
 	{ extern int kitty_mpw_startup_unlock(void);
-	  extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
 	  kitty_mpw_startup_unlock();
 	  mpwmap = kitty_mpw_export_inherit_blob("&K", mpwtok, sizeof(mpwtok)); }
 	cl = dupprintf("putty %s%s&%p:%u", argprefix, mpwtok,
@@ -1571,7 +1564,6 @@ void RunPuTTY( HWND hwnd, char * param ) {
 				 * window exists. */
 				const char * aclprefix = restricted_acl() ? " -restrict-acl" : "" ;
 				{ extern int kitty_mpw_startup_unlock(void);
-				  extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
 				  kitty_mpw_startup_unlock();
 				  mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
 				snprintf( buffer, sizeof(buffer), "%s%s%s", shortname, aclprefix, mpwtok ) ;
@@ -1594,7 +1586,6 @@ static void RunPuTTYAtPanel( HWND hwnd, const char * panel, int mark_loaded ) {
 			HANDLE mpwmap = NULL ; char mpwtok[80] = "" ;
 			const char * aclprefix = restricted_acl() ? " -restrict-acl" : "" ;
 			{ extern int kitty_mpw_startup_unlock(void);
-			  extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
 			  kitty_mpw_startup_unlock();
 			  mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
 			/* mark_loaded: the balloon named a session and pre-set it as the
@@ -1642,7 +1633,6 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 	 * master password is actually configured; "-mpwkey" is placed before "-load"
 	 * so the stored password decrypts as the session loads. */
 	{ extern int kitty_mpw_startup_unlock(void);
-	  extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
 	  kitty_mpw_startup_unlock();
 	  mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
 	/* KiTTY: a session started from a RESTRICTED launcher must be restricted

@@ -24,12 +24,13 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
+#include "kitty_storage.h"
+#include "kitty_win.h"
 
 /* The registry hive chosen AT RUNTIME (kitty_set_registry_root, driven by
  * kitty.ini KiClassName). Named proxies used the compile-time PUTTY_REG_POS
  * macro while sessions used this, so with KiClassName=PuTTY the sessions and
  * the proxies - passwords included - landed in DIFFERENT hives. */
-extern const char *kitty_registry_base( void ) ;
 
 
 /* Proxy-choice selector visibility (kitty.ini [ConfigBox] proxyselection):
@@ -39,20 +40,14 @@ extern const char *kitty_registry_base( void ) ;
  * (hknet/KiTTY#11: old KiTTY only had off/on via "yes"; auto makes it
  * discoverable, "no" lets a user with proxies defined still hide it.) */
 static int ProxySelectionFlag = 0 ;
-int GetProxySelectionFlag() { return ProxySelectionFlag ; }
+int GetProxySelectionFlag(void) { return ProxySelectionFlag ; }
 void SetProxySelectionFlag( const int flag ) { ProxySelectionFlag = flag ; }
 
-void debug_logevent( const char *fmt, ... ) ;
 
 /* At-rest password protection shared with sessions (windows/storage.c): wrap for
  * the active backend (registry DPAPI / portable MPW / explicit legacy), unwrap by
  * stored marker. So a named proxy's password is protected exactly like a session
  * password (hknet/KiTTY#11). */
-extern char *kitty_secret_wrap_current_backend( const char *plaintext ) ;
-extern int   kitty_secret_unwrap( const char *stored, char **out ) ;
-extern int   kitty_secret_is_marked( const char *stored ) ;
-extern int   kitty_portable_password_legacy( void ) ;
-extern const char *kitty_secret_strip_plain( const char *stored ) ;
 
 struct Proxies proxies[MAX_PROXY] ;
 
@@ -302,7 +297,6 @@ static int proxy_method_from_conf( Conf *conf ) {
  * line per field (the format ReadPortableValue expects). ProxyPassword is
  * protected at rest via the shared backend policy (DPAPI registry / MPW
  * portable / explicit legacy), the same chokepoint as session passwords. */
-void kitty_store_mark_dirty(void) ;   /* kitty_storage.c */
 int SaveProxyInfo( Conf *conf, const char *name ) {
 	kitty_store_mark_dirty() ;   /* named proxies live in the store too */
 	if( name == NULL || name[0] == '\0' ) return 0 ;
@@ -454,7 +448,6 @@ void kitty_migrate_old_proxies( void ) {
  * - the same policy the session bundle uses). Import re-wraps per DESTINATION
  * backend via SaveProxyInfo (registry -> DPAPI1, portable -> MPW2), overwriting
  * by name to match session import (hknet/KiTTY#11). */
-extern char *kitty_secret_wrap_portable( const char *plaintext ) ;
 
 int kitty_export_proxies_to_dir( const char *dir ) {
 	char pdir[2048] ; int count = 0 ;

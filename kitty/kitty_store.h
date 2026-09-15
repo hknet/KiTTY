@@ -12,6 +12,10 @@
 #endif
 #ifndef SAVEMODE_DIR
 #define SAVEMODE_DIR 2
+
+/* ---- exported from kitty/kitty_store.c ---- */
+void fatal_error(const char *p, ...);
+
 #endif
 
 #define EMERGENCY_INIT int emergency_brake_count = 200000, while_iterations=0 ;
@@ -56,13 +60,13 @@ typedef struct SettingsList SettingsList, *HSettingsList;
 HSettingsItem SettingsNewItem( const char * name, const char * value ) ;
 void SettingsFreeItem( HSettingsItem item ) ;
 
-HSettingsList SettingsInit() ;
+HSettingsList SettingsInit(void) ;
 void SettingsDelItem( HSettingsList list, const char * key ) ;
 void SettingsAddItem( HSettingsList list, const char * name, const char * value ) ;
 void SettingsFree( HSettingsList list ) ;
 
 void SettingsLoad( HSettingsList list, const char * filename ) ;
 
-int loadPath() ;
+int loadPath(void) ;
 
 bool ReadPortableValue(const char *buffer, const char * name, char * value, const int maxlen) ;

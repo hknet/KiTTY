@@ -22,6 +22,9 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
+#include "kitty_commun.h"
+#include "kitty.h"
+#include "kitty_gui.h"
 
 /* Type combo order -> CONF_proxy_type. The SSH types make a named proxy a
  * reusable jump host (the command field is the remote command/subsystem for
@@ -516,15 +519,11 @@ static bool pxp_may_leave(void)
     return true;
 }
 
-int GetPuttyFlag(void);   /* kitty_commun.c */
 
 /* [KiTTY] namedproxy: "sessionorhostname" (the default) or "hostname". */
 static void pxp_hostfield_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                   void *data, int event)
 {
-    extern int kitty_named_proxy_default_hostname(void);       /* kitty.c */
-    extern void SetNamedProxyHostnameOnly(const int);           /* kitty.c */
-    extern int WriteParameter(const char *, const char *, char *);
     static const char *const names[] = {
         KT_NAMED_PROXIES_HOSTFIELD_SESSION, KT_NAMED_PROXIES_HOSTFIELD_HOST };
     static const char *const stored[] = { "sessionorhostname", "hostname" };
@@ -574,7 +573,6 @@ void kitty_proxy_build_panel(struct controlbox *b)
     g_pxp = pd;
 
     {
-        extern void kitty_cfg_set_leave_guard(bool (*fn)(void));
         kitty_cfg_set_leave_guard(pxp_may_leave);
     }
 

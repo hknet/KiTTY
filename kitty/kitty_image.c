@@ -26,8 +26,10 @@
 #include "kitty_image.h"
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_text.h"     /* the feature name in the old-Windows report */
+#include "kitty_gui.h"
+#include "kitty_tools.h"
+#include "kitty.h"
 
-extern Conf *conf ;// extern Config cfg;
 //extern int offset_width, offset_height ;
 //extern int font_width, font_height ;
 
@@ -45,12 +47,8 @@ extern Conf *conf ;// extern Config cfg;
 extern HWND MainHwnd ;
 
 #ifndef stricmp	/* platform.h may #define stricmp _stricmp (CRT); don't redeclare */
-int stricmp(const char *s1, const char *s2) ;
 #endif
-int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) ;
-int get_param( const char * val ) ;
 
-COLORREF return_colours258(void) ;
 
 
 static BOOL (WINAPI * pAlphaBlend)( HDC, int, int, int, int, HDC, int, int, int, int, BLENDFUNCTION ) = 0 ;
@@ -106,21 +104,21 @@ typedef struct {
 	BYTE *b ;	// bits of bitmap,3 bytes/pixel, BGR
 } tWorkBMP ;		// 24-bit working bitmap
 
-void CreateWorkingBitmap( WORD dx, WORD dy, tWorkBMP *w ) {
+static void CreateWorkingBitmap( WORD dx, WORD dy, tWorkBMP *w ) {
 	w->x=dx ;
 	w->y=dy ;
 	w->l=(dx+1)*3&0xfffc ;
 	w->b=Alloc( w->l*dy, BYTE ) ;
 }
 
-HBITMAP CreateEmptyBitmap( WORD dx, WORD dy ) {
+static HBITMAP CreateEmptyBitmap( WORD dx, WORD dy ) {
 	HDC h = GetDC( NULL ) ;
 	HBITMAP b = CreateCompatibleBitmap( h, dx, dy ) ;
 	ReleaseDC( NULL, h ) ;
 	return(b) ;
 }
 
-void SetBMIHeader( BITMAPINFO *b, short dx, short dy ) {
+static void SetBMIHeader( BITMAPINFO *b, short dx, short dy ) {
 	b->bmiHeader.biSize = sizeof(BITMAPINFOHEADER) ;
 	b->bmiHeader.biWidth = dx ;
 	b->bmiHeader.biHeight = -dy ;
@@ -134,7 +132,7 @@ void SetBMIHeader( BITMAPINFO *b, short dx, short dy ) {
 	b->bmiHeader.biClrImportant = 0 ;
 }
 
-POINT GetBitmapSize( HBITMAP h ) {
+static POINT GetBitmapSize( HBITMAP h ) {
 	POINT p ;
 	BITMAP o ;
 	GetObject( h, sizeof(o), &o ) ;
@@ -143,7 +141,7 @@ POINT GetBitmapSize( HBITMAP h ) {
 	return(p) ;
 }
 
-void OpenBitmapForWork( HBITMAP b, tWorkBMP *w ) {
+static void OpenBitmapForWork( HBITMAP b, tWorkBMP *w ) {
 	BITMAPINFO s ;
 	HDC h = GetDC( NULL ) ;
 	POINT v = GetBitmapSize( b ) ;
@@ -153,7 +151,7 @@ void OpenBitmapForWork( HBITMAP b, tWorkBMP *w ) {
 	ReleaseDC( NULL, h ) ;
 }
 
-void SaveWorkingBitmap( tWorkBMP *w, HBITMAP b ) {
+static void SaveWorkingBitmap( tWorkBMP *w, HBITMAP b ) {
 	BITMAPINFO s ;
 	HDC h = GetDC( NULL ) ;
 	SetBMIHeader( &s, w->x, w->y ) ;
@@ -161,7 +159,7 @@ void SaveWorkingBitmap( tWorkBMP *w, HBITMAP b ) {
 	ReleaseDC( NULL, h ) ;
 }
 
-void ShrinkWorkingBitmap( tWorkBMP *a, tWorkBMP *b, WORD bx, WORD by ) {
+static void ShrinkWorkingBitmap( tWorkBMP *a, tWorkBMP *b, WORD bx, WORD by ) {
 	BYTE *uy = a->b, *ux, i ;
 	WORD x, y, nx, ny = 0 ;
 	DWORD df = 3*bx, nf = df*by, j ;
@@ -228,7 +226,7 @@ void ShrinkWorkingBitmap( tWorkBMP *a, tWorkBMP *b, WORD bx, WORD by ) {
 	free (f);
 }
 
-TARGET HBITMAP ShrinkBitmap( HBITMAP a, WORD bx, WORD by )
+static TARGET HBITMAP ShrinkBitmap( HBITMAP a, WORD bx, WORD by )
 // creates and returns new bitmap with dimensions of
 // [bx,by] by shrinking bitmap a both [bx,by] must be less or equal
 // than the dims of a, unless the result is nonsense
@@ -248,7 +246,7 @@ TARGET HBITMAP ShrinkBitmap( HBITMAP a, WORD bx, WORD by )
 
 
 
-HBITMAP ResizeBmp( HBITMAP hBmpSrc, WORD bx, WORD by ) {
+static HBITMAP ResizeBmp( HBITMAP hBmpSrc, WORD bx, WORD by ) {
 	SIZE newSize ;
 	newSize.cx = bx;
 	newSize.cy = by;
@@ -417,7 +415,7 @@ HBITMAP CreateHBitmap(int w, int h, LPVOID *lpBits)
 }
 
 //  LOADJPEGIMAGE  --  Load JPEG image into memory
-HBITMAP loadJPEGimage(FILE *input_file, HGLOBAL *LimageBitmap, int *LsizeX, int *LsizeY)
+static HBITMAP loadJPEGimage(FILE *input_file, HGLOBAL *LimageBitmap, int *LsizeX, int *LsizeY)
 {
 	int i;
 	LPBITMAPINFOHEADER bh;
@@ -870,7 +868,7 @@ void CreateBlankBitmap( HBITMAP * rawImage, const int width, const int height ) 
 	DeleteDC(hDCDst);
 	}
 	
-BOOL load_bg_bmp()
+BOOL load_bg_bmp(void)
 {
     HBITMAP rawImage = NULL;
     BITMAP rawImageInfo;
@@ -1131,7 +1129,7 @@ void RedrawBackground( HWND hwnd ) {
 
 #endif
 
-BOOL HBITMAP_to_JPG(HBITMAP hbm, LPCTSTR jpgfile, int quality)
+static BOOL HBITMAP_to_JPG(HBITMAP hbm, LPCTSTR jpgfile, int quality)
 {
   BITMAP      bm;
   BITMAPINFO  bi;

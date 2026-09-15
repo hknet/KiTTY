@@ -48,4 +48,8 @@ int   kitty_mpw_unprotect(const char *stored,
                           const unsigned char derived[KITTY_MPW_DERIVED_LEN],
                           char **out);
 
+
+/* ---- exported from kitty/kitty_mpw_gui.c ---- */
+char *kitty_mpw_gui_ask_import(HWND owner, const char *prompt);
+
 #endif

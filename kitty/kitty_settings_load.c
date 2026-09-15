@@ -34,10 +34,12 @@
 #include "kitty_crypt.h"   /* decryptstring */
 #include "kitty_text.h"    /* shared captions */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
+#include "kitty_bridge.h"
+#include "kitty_settings.h"
+#include "kitty_registry.h"
+#include "kitty_storage.h"
 
 /* CryptFileFlag lives in kitty_bridge.c (same as the write side). */
-extern int CryptFileFlag;
-int decryptstring(const int mode, char *st, const char *key);
 /* unmungestr is declared in kitty_commun.h (const char *in). */
 
 /* Constants that were file-local in the original KiTTY tree. */
@@ -69,10 +71,6 @@ void kitty_xfer_migrate_protocol(Conf *conf, int oldprot) {
 }
 
 /* ---- read-side forward declarations (load body calls helpers defined below) ---- */
-int read_setting_i_forced(void *handle, const char *key, int defvalue);
-char *read_setting_s_forced(void *handle, const char *key);
-Filename *read_setting_filename_forced(void *handle, const char *key);
-FontSpec *read_setting_fontspec_forced(void *handle, const char *name);
 static bool gppb_raw_forced(void *sesskey, const char *name, bool def);
 static void gppb_forced(void *sesskey, const char *name, Conf *conf, int primary);
 static void gppi_forced(void *handle, const char *name, Conf *conf, int primary);
@@ -216,7 +214,6 @@ static void gprefs_from_str(const char *str,
  * Loading such a file is the only moment we can know, and the moment the user is
  * thinking about that file anyway.
  */
-void KittyCliReport( const char *title, const char *text, int warn ) ; /* kitty_registry.c */
 
 static int g_ktx_encrypted_seen = 0 ;
 static void ktx_note_encrypted( void ) { g_ktx_encrypted_seen = 1 ; }
@@ -389,7 +386,6 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gpps_forced(sesskey, "ProxyUsername", conf, CONF_proxy_username);
     gpps_forced(sesskey, "ProxyPassword", conf, CONF_proxy_password);
     if (conf_get_str(conf, CONF_proxy_password)[0]) {
-        extern char *kitty_secret_decode_imported(const char *, const char *, const char *, int);
         /* Same marker handling as Password (PLAIN: and our own envelopes), but
          * try_legacy=0: old KiTTY stored ProxyPassword in the clear, so there
          * is no legacy form to find here and a guess could only corrupt a
@@ -892,7 +888,6 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppb_forced(sesskey, "ForegroundOnBell", conf, CONF_foreground_on_bell );
     gpps_forced(sesskey, "Password", conf, CONF_password ) ;
     if( strlen(conf_get_str(conf, CONF_password))>0 ) {
-	extern char *kitty_secret_decode_imported(const char *, const char *, const char *, int) ;
 	/* An imported .ktx password has one of four provenances: our own
 	 * protection markers, the PLAIN: provisioning marker, old-KiTTY
 	 * bcrypt+base64, or plain cleartext. kitty_secret_decode_imported()
@@ -922,7 +917,6 @@ void load_open_settings_forced(char *filename, Conf *conf) {
          * "Notes" field - the send-text box's Shift+F2 / Shift+F3 value. There
          * is one note field now, so it folds into the Comment and switches
          * "Notify the user at login" on; nothing here is written back. */
-        extern void kitty_merge_legacy_note(Conf *conf, const char *note);
         char *note = gpps_raw_forced(sesskey, "Notes", "");
         if (note) {
             kitty_merge_legacy_note(conf, note);

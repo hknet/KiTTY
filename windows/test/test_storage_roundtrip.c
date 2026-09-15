@@ -26,14 +26,10 @@
 #include "../kitty/kitty_mpw.h"
 #include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
 #include "../kitty/kitty_pwmem.h"        /* passwords wrapped in memory */
+#include "../kitty/kitty_storage.h"
+#include "../kitty/kitty.h"
 
 /* KiTTY storage API surface (fork style: declared extern by callers) */
-void kitty_set_storage_mode(int mode);
-void kitty_set_session_dir(const char *dir);
-void kitty_set_master_passphrase(const char *pass);
-const char *kitty_registry_base(void);
-char *kitty_secret_wrap_current_backend(const char *plaintext);
-int kitty_secret_unwrap(const char *stored, char **out);
 
 /* app-level error sinks the linked objects expect (console-app style) */
 void modalfatalbox(const char *fmt, ...)
@@ -69,11 +65,6 @@ void nonfatal(const char *fmt, ...)
  * loudly rather than return something plausible; that is why the two lookups
  * return "not found" rather than an empty string.
  */
-void load_open_settings_forced(char *filename, Conf *conf);   /* kitty_settings_load.c */
-int ksec_unprotect(const char *stored, char **out);           /* kitty_storage.c */
-int ksec_stored_is_legacy(const char *stored);                /* kitty_storage.c */
-char *kitty_loginscript_blob_to_lines(const unsigned char *blob, int len);
-unsigned char *kitty_loginscript_lines_to_blob(const char *text, int *outlen);
 
 const struct BackendVtable *const backends[] = { NULL };
 const int be_default_protocol = 0;

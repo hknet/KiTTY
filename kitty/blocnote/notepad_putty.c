@@ -9,10 +9,10 @@
  */
 #include <time.h>
 #include <math.h>
+#include "../kitty.h"
 
 HWND ParentWindow = NULL ;		// HWND of the parent window
 
-char * get_param_str( char * str ) ;
 
 void TestIfParentIsKiTTY( void ) {
 	ParentWindow = GetForegroundWindow() ;
@@ -24,7 +24,7 @@ void TestIfParentIsKiTTY( void ) {
 
 void ActiveParent( void ) { if( IsIconic( ParentWindow ) ) ShowWindow(ParentWindow,SW_RESTORE) ; }
 	
-void Send2Window( HWND SrcWnd, HWND TargetWnd, char * buffer ) {
+static void Send2Window( HWND SrcWnd, HWND TargetWnd, char * buffer ) {
 	int i ;
 	if( (buffer!=NULL) && (strlen( buffer) > 0 ) ) {
 		if( IsIconic( TargetWnd ) ) { 
@@ -45,7 +45,7 @@ void Send2Window( HWND SrcWnd, HWND TargetWnd, char * buffer ) {
 	}
 }
 	
-void Send2Parent( HWND ChildWnd , char * buffer ) {
+static void Send2Parent( HWND ChildWnd , char * buffer ) {
 	if( (ParentWindow != NULL) && (buffer!=NULL) ) {
 		Send2Window( ChildWnd, ParentWindow, buffer ) ;
 	}
@@ -70,7 +70,7 @@ static int Slash_flag = 0 ;
 static int Tilde_flag = 0 ;
 	
 // Get the contents of the Edit window
-int GetEditContent( HWND hWndEdit, char * buffer ) {
+static int GetEditContent( HWND hWndEdit, char * buffer ) {
 	int d,f,i;
 	char CharLim = '\n' ;
 	
@@ -143,7 +143,7 @@ void SendStrToParent( HWND hWndEdit ) {
 	}
 
 // Functions to send a string to all KiTTY windows
-BOOL CALLBACK SendToAllProc( HWND hwnd, LPARAM lParam ) {
+static BOOL CALLBACK SendToAllProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	GetClassName( hwnd, buffer, 256 ) ;
 	if( !strcmp( buffer, get_param_str("CLASS") ) )
@@ -179,21 +179,21 @@ void SetWindowsSize( HWND hwnd ) {
 
 // Count the KiTTY windows
 static int nbProgWin = 0 ;
-BOOL CALLBACK CountProgWinProc( HWND hwnd, LPARAM lParam ) {
+static BOOL CALLBACK CountProgWinProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	GetClassName( hwnd, buffer, 256 ) ;
 	if( !strcmp( buffer, get_param_str("CLASS") ) )	nbProgWin++ ;
 	return TRUE ;
 	}
 
-int CountProgWin( HWND hwnd ) {
+static int CountProgWin( HWND hwnd ) {
 	nbProgWin=0 ;
 	EnumWindows( CountProgWinProc, 0 ) ;
 	return nbProgWin ;
 	}
 
 // Resize all the windows
-BOOL CALLBACK ResizeAllWindowsProc( HWND hwnd, LPARAM lParam ) {
+static BOOL CALLBACK ResizeAllWindowsProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	int cxScreen, cyScreen ;
 	//cxScreen = GetSystemMetrics (SM_CXFULLSCREEN);
@@ -232,7 +232,7 @@ void ResizeAllWindows( HWND hwnd ) {
 }
 
 // Cascade all the KiTTY windows
-BOOL CALLBACK CascadeAllWindowsProc( HWND hwnd, LPARAM lParam ) {
+static BOOL CALLBACK CascadeAllWindowsProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	int cxScreen, cyScreen ;
 	cxScreen = GetSystemMetrics (SM_CXSCREEN);

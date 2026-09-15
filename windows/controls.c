@@ -24,6 +24,7 @@
 #include <commctrl.h>
 #include "../kitty/kitty_msgbox.h"   /* themed MessageBox routing */
 #include "../kitty/kitty_text.h"     /* KiTTY: the folder row's button label */
+#include "kitty_gui.h"
 
 /* KiTTY: a configuration-box control lives either on the dialog (the button
  * row) or in the panel host (everything in a panel) - windows/dialog.c. */
@@ -69,7 +70,7 @@ static bool kitty_cfg_host_is_for(HWND dlg)
         GetParent(kitty_cfg_panel_host) == dlg;
 }
 
-HWND kitty_cfg_owner(HWND dlg, int id)
+static HWND kitty_cfg_owner(HWND dlg, int id)
 {
     if (kitty_cfg_host_is_for(dlg) && GetDlgItem(kitty_cfg_panel_host, id))
         return kitty_cfg_panel_host;

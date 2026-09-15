@@ -25,6 +25,7 @@
 #include <windows.h>
 #include "terminal.h"
 #include "urlhack.h"
+#include "kitty_url.h"
 
 /* KiTTY url_underline modes (were in 0.76b putty.h) */
 enum {

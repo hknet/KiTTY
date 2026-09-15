@@ -31,6 +31,7 @@
 #include "kitty_text.h"     /* KT_WINFEAT_*: the feature names that report names */
 #include "kitty_pwmem.h"    /* the -pwfile helpers declared there, defined here */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "kitty.h"
 
 /*
  * KiTTY: the registry root is chosen at RUNTIME (kitty.ini KiClassName).
@@ -213,7 +214,6 @@ void kitty_foreign_notice_clear(int bits)
 }
 
 /* kitty.c: the kitty.ini reader, and the name of its main section. */
-int ReadParameterN(const char *key, const char *name, char *value, size_t size);
 /* See the note above kitty_get_show_foreign_sessions: libsettings is linked by
  * the CLI tools, which have no kitty.c and no kitty.ini. */
 __attribute__((weak))

@@ -215,7 +215,6 @@ static int cmd_delreg( HWND hwnd, char * arg ) {
 	 * console that destroys data outright, and the person typing it is usually
 	 * aiming at "clear my settings", not "clear everything any kapper.net
 	 * program ever stored". */
-	extern const char *kitty_registry_base( void ) ;
 	char question[1024] ;
 	(void)arg ;
 	snprintf( question, sizeof(question),
@@ -271,7 +270,6 @@ static int cmd_copytoputty( HWND hwnd, char * arg ) {
  * Reading old encrypted .ktx files still works.
  */
 static int cmd_switchcrypt( HWND hwnd, char * arg ) {
-	extern void kitty_notice_box( HWND owner, const char *caption, const char *text ) ; /* kitty_win.c */
 	(void)arg ;
 	/* kitty_notice_box, not MessageBox: a real dialog, so the dialog manager
 	 * gives it the shell font at the right DPI and it grows to fit the text -
@@ -288,8 +286,6 @@ static int cmd_delfolder( HWND hwnd, char * arg ) {
 }
 
 static int cmd_loadinitscript( HWND hwnd, char * arg ) {
-	extern void kitty_notice_box( HWND owner, const char *caption, const char *text ) ; /* kitty_win.c */
-	extern char * ScriptFileContent ;                                                  /* kitty.c */
 	ReadInitScript( arg ) ;
 	/*
 	 * The other order of the same clash the Event Log warns about at connect:

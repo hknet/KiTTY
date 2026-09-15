@@ -74,3 +74,21 @@
 
 #define NOTEPAD_FILE_FILTER 9881
 #define NOTEPAD_STR_LICENCE 9882
+
+/* ---- exported from kitty/blocnote/notepad.c ---- */
+void Notepad_OnDropFiles(HWND hwnd, HDROP hDropInfo, char * filename );
+int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow);
+int Notepad_load( char * szFile, HWND hEdit );
+int Notepad_open( HWND hwnd, HWND hEdit );
+int Notepad_save( char * szFile, HWND hEdit );
+int Notepad_saveas( HWND hwnd, HWND hEdit );
+
+/* ---- exported from kitty/blocnote/notepad_putty.c ---- */
+void CascadeAllWindows( HWND hwnd );
+void ChangeToCRLF( HWND hWndEdit );
+void InitKiTTYNotepad( HWND hwnd );
+void ResizeAllWindows( HWND hwnd );
+void SendStrToAll( HWND hWndEdit );
+void SendStrToParent( HWND hWndEdit );
+void SetWindowsSize( HWND hwnd );
+void TestIfParentIsKiTTY( void );

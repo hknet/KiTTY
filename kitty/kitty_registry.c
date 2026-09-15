@@ -15,13 +15,13 @@
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_inikeys.h"  /* KI_* and KR_*: the stored value names */
-char * itoa (int __val, char *__s, int __radix) ;
+#include "kitty_store.h"
+#include "kitty_tools.h"
+#include "kitty.h"
 /* kitty_tools.c; declared locally because this file deliberately includes
  * only kitty_registry.h (see the MigrateOldKittyHive rationale below). */
-char * str_rtrim( char * s, const char * set ) ;
 /* kitty.c, same reason: CreateSSHHandler() needs to know whether a portable
  * copy was configured to use the registry (kitty_store.h's SAVEMODE_REG). */
-int GetIniFileFlag( void ) ;
 #ifndef SAVEMODE_REG
 #define SAVEMODE_REG 0
 #endif

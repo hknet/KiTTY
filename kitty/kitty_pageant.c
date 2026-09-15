@@ -35,6 +35,7 @@
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "kitty_gui.h"
 /* Shim so the moved kageant_do_notify body below stays textually identical
  * to its pageant.c original: reach pageant.c's static tray-window handle
  * through the accessor it exports for us. */
@@ -4201,7 +4202,6 @@ void kageant_warn_unprotected_memory(void)
         return;
     warned = 1;
     {
-        extern int kitty_protkey_absent(void);
         char kwu_text[512];
         snprintf(kwu_text, sizeof(kwu_text),
                  KT_KA_PROTKEY_WARN_FMT,

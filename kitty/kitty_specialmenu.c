@@ -17,16 +17,15 @@
 
 #include "kitty.h"
 /* The hive in use, not the compile-time default - see kitty_storage.c. */
-extern const char *kitty_registry_base( void ) ;
 
 #include "kitty_defs.h"      /* KITTY_DEFAULT_SESSION */
 #include "kitty_commun.h"    /* ConfigDirectory, mungestr/unmungestr */
 #include "kitty_registry.h"  /* MAX_VALUE_NAME */
 #include "kitty_tools.h"     /* str_rtrim */
 #include "kitty_text.h"      /* the menu wording */
+#include "kitty_storage.h"
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */
-void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
 
 /* Shim so the moved ReadSpecialMenu body below stays textually identical to
  * its kitty.c original: the flag stayed behind as a kitty.c static with an

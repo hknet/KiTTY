@@ -56,14 +56,13 @@
 #include "kitty_transfer_text.h" /* kitty.h brings kitty_rc_additions.h: IDD_XFERREQ, IDD_XFERDL */
 #define KT5113_PARSE_IMPL
 #include "kitty_transfer.h"
+#include "kitty_osc52.h"
 
 extern HWND MainHwnd;            /* kitty.c: the terminal window */
 /* The suite's themed Yes/No box (kitty_win.c): true when Yes was pressed. */
 int kitty_confirm_box(HWND owner, const char *caption, const char *text,
                       const char *warn_red);
-void kitty_centre_on_owner(HWND dlg);    /* kitty_win.c */
 /* The reply channel (kitty_osc52.c): a complete sequence to the backend. */
-void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len);
 
 #define KT_EXPIRE_SECONDS   (10 * 60)   /* idle session, as the reference does */
 #define KT_MAX_FILES        8192        /* per session, either direction */

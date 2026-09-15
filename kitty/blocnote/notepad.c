@@ -49,28 +49,28 @@ static char * LoadFile = NULL ;
 static bool readonly = false ;
 #endif
 
-BOOL FileExists(LPCTSTR szPath) {
+static BOOL FileExists(LPCTSTR szPath) {
   DWORD dwAttrib = GetFileAttributes(szPath);
 
   return (dwAttrib != INVALID_FILE_ATTRIBUTES && 
          !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 }
 
-void Notepad_settitle( HWND hwnd ) {
+static void Notepad_settitle( HWND hwnd ) {
 	char buffer[4096] ;
 	sprintf( buffer, "%s - %s", Notepad_filename, Notepad_szprogname ) ;
 	SetWindowText( hwnd, buffer ) ;
 	}
 
-char * Notepad_LoadString( DWORD idstr ) {
+static char * Notepad_LoadString( DWORD idstr ) {
 	static char Notepad_stringtable[4096] ="" ;
 	LoadString(notepad_hinst, idstr, Notepad_stringtable, sizeof(Notepad_stringtable));
 	return Notepad_stringtable ;
 	}
 
-void Notepad_SetNoModify( HWND hwnd ) { SendMessage( hwnd, EM_SETMODIFY, FALSE, 0 ) ; }
+static void Notepad_SetNoModify( HWND hwnd ) { SendMessage( hwnd, EM_SETMODIFY, FALSE, 0 ) ; }
 
-int Notepad_IsModify( HWND hwnd ) { return SendMessage( hwnd, EM_GETMODIFY, 0, 0 ) ; }
+static int Notepad_IsModify( HWND hwnd ) { return SendMessage( hwnd, EM_GETMODIFY, 0, 0 ) ; }
 
 int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 	

@@ -14,6 +14,9 @@
 #include "kitty/kitty_pwmem.h"
 #ifdef MOD_PERSO
 #include "kitty/kitty_text.h"   /* KiTTY: the -masterpwfile diagnostics */
+#ifdef MOD_PERSO
+#include "kitty/kitty_storage.h"
+#endif
 #endif
 
 /*
@@ -829,8 +832,6 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
      * that has not changed. It only surfaced on the next build from a clean
      * tree. */
     if (!strcmp(p, "-masterpwfile")) {
-        extern void kitty_set_master_passphrase(const char *);
-        extern int kitty_portable_password_dpapi(void);
         RETURN(2);
         /* NOT saveable, deliberately. SAVEABLE() defers an option to the second
          * pass (cmdline_run_saved), which runs AFTER -load has already read the

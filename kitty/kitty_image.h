@@ -6,6 +6,8 @@
 #ifdef MOD_BACKGROUNDIMAGE
 
 #include <stdbool.h>
+#include "putty.h"   /* HDC, HBITMAP, Conf via platform.h */
+#include <setjmp.h>   /* jmp_buf: the JPEG loader bails out through one */
 
 extern HDC textdc;
 extern HBITMAP textbm;
@@ -30,3 +32,15 @@ int screenCaptureClientRect( HWND hwnd, LPCSTR fname, int quality ) ;
 #endif
 
 int screenCaptureClientRect( HWND hwnd, LPCSTR fname, int quality ) ;
+
+/* ---- exported from kitty/kitty_image.c ---- */
+HBITMAP CreateHBitmap(int w, int h, LPVOID *lpBits);
+int GetShrinkBitmapEnable( void );
+void RedrawBackground( HWND hwnd );
+void SetShrinkBitmapEnable( int v );
+void clean_bg(void);
+BOOL load_bg_bmp(void);
+extern jmp_buf JPEG_bailout;
+extern int kitty_bg_generation;
+extern int kitty_bg_origin_x, kitty_bg_origin_y;
+extern char *loadError;

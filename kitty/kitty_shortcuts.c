@@ -23,21 +23,11 @@
 #include "kitty_tools.h"
 #include "kitty_text.h"     /* KT_KEYTEXT_*: the key names shown in menus */
 #include "kitty_inikeys.h"  /* KI_SC_*: the [Shortcuts] key names */
+#include "kitty_bridge.h"
+#include "kitty_win.h"
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */
 extern HWND MainHwnd ;                  /* kitty.c: the terminal window */
-void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
-int SendCommandAllWindows( HWND hwnd, char * cmd ) ;    /* kitty.c */
-void set_title( TermWin *tw, const char *title ) ;      /* kitty.c */
-void ManageProtect( HWND hwnd, TermWin *tw, char * title ) ;  /* kitty.c */
-void SendFile( HWND hwnd ) ;                            /* kitty_xfer.c */
-void GetFile( HWND hwnd ) ;                             /* kitty_xfer.c */
-void RunCmd( HWND hwnd ) ;                              /* kitty_xfer.c */
-void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) ;  /* kitty_xfer.c */
-void RunSessionWithCurrentSettings( HWND hwnd, Conf *conf, const char * host, const char * user, const char * pass, const int port, const char * remotepath ) ;  /* kitty.c */
-void RunPuttyEd( HWND hwnd, char * filename ) ;         /* kitty_win.c */
-void debug_logevent( const char *fmt, ... ) ;           /* kitty_win.c */
-int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t size ) ;  /* kitty_ini.h defines data, not includable twice per TU-group */
 
 /* Shims so the moved bodies below stay textually identical to their kitty.c
  * originals: these five stayed behind as kitty.c statics with accessors. */
@@ -492,7 +482,6 @@ int ShortcutKeyReserved( int key ) {
 	return 0 ;
 }
 
-int SwitchLogMode(void) ;
 int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) {
 	int key, i ;
 	key = key_num ;

@@ -27,7 +27,7 @@ enum {
 
 int urlhack_mouse_old_x, urlhack_mouse_old_y, urlhack_current_region;
 
-void urlhack_reset();
+void urlhack_reset(void);
 void urlhack_go_find_me_some_hyperlinks(int screen_width);
 void urlhack_putchar(char ch);
 text_region urlhack_get_link_region(int index);
@@ -39,12 +39,12 @@ void urlhack_add_link_region(int x0, int y0, int x1, int y1);
 
 void urlhack_launch_url(const char* app, const char *url);
 
-int urlhack_is_ctrl_pressed();
+int urlhack_is_ctrl_pressed(void);
 //void urlhack_set_regular_expression(const char* expression);
 void urlhack_set_regular_expression(int mode, const char* expression) ;
 
-void urlhack_init();
-void urlhack_cleanup();
+void urlhack_init(void);
+void urlhack_cleanup(void);
 
 void SetHyperlinkFlag( const int flag ) ;
 void FixWrongRegex() ;

@@ -13,8 +13,8 @@
 #include "storage.h"
 #include "kitty_storage.h"
 #include "kitty_hostkeys.h"
+#include "kitty_tools.h"
 
-extern int existfile(const char *filename);                 /* kitty_tools.c */
 
 /* ---- the algorithm behind a store id -------------------------------------- */
 

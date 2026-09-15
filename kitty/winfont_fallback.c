@@ -12,9 +12,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include "kitty_tools.h"
 
 #ifndef stricmp	/* platform.h may #define stricmp _stricmp (CRT); don't redeclare */
-int stricmp(const char *s1, const char *s2);
 #endif
 
 /* ===================================================================

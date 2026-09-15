@@ -11,6 +11,7 @@
 #include <string.h>
 #include <windows.h>
 #include "putty.h"
+#include "kitty_userpath.h"
 
 bool kitty_userpath_contains_exe_dir(void);
 bool kitty_userpath_set_exe_dir(bool on, char **err);

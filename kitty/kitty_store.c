@@ -17,6 +17,8 @@
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions */
+#include "kitty.h"
+#include "kitty_registry.h"
 
 
 #ifndef snewn
@@ -26,14 +28,8 @@
 #define sfree safefree
 #endif
 
-void debug_log( const char *fmt, ... ) ;
 
 
-void DelDir( const char * directory ) ;
-BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) ;
-void CleanFolderName( char * folder ) ;
-char * GetConfigDirectory( void ) ;
-int GetReadOnlyFlag(void) ;
 
 char * ltoa (long int __val, char *__s, int __radix) ;
 char * itoa (int __val, char *__s, int __radix)  ;
@@ -179,7 +175,7 @@ int createPath(char* dir) {
  * expecting - pcMain as path from WinAPI ::GetCurrentDirectory()/GetModuleFileName()
  *           - pcSuf as user input path from config (at least MAX_PATH long)
 */
-char* joinPath(char* pcDest, char* pcMain, char* pcSuf) {
+static char* joinPath(char* pcDest, char* pcMain, char* pcSuf) {
 
 	char* pcBuf = snewn(MAX_PATH+1, char);
 
@@ -241,7 +237,7 @@ char* joinPath(char* pcDest, char* pcMain, char* pcSuf) {
  * JK: init path variables from config or otherwise
  * as of 1.5 GetModuleFileName solves our currentDirectory problem
 */
-int loadPath() {
+int loadPath(void) {
 	if( *sesspath != '\0') { return 0 ; }
 
 	char *fileCont = NULL;
@@ -425,7 +421,7 @@ HSettingsItem SettingsNewItem( const char * name, const char * value ) {
 	return NewItem ;
 }
 
-HSettingsList SettingsInit() {
+HSettingsList SettingsInit(void) {
 	HSettingsList list = (HSettingsList)malloc( sizeof(SettingsList) ) ;
 	list->filename = NULL ;
 	list->num = 0 ;

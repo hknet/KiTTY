@@ -19,6 +19,7 @@
 
 #include "putty.h"
 #include <dwmapi.h>
+#include "kitty_gui.h"
 
 /* The millisecond clock behind GETTICKCOUNT (windows/platform.h): the
  * performance counter, so timers wait what they were asked and not the

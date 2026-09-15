@@ -6,8 +6,8 @@
  */
 
 #include "putty.h"
+#include "kitty_gui.h"
 
-int kitty_pace_effective_ms(void);
 
 /* ---- the display's ready signal ------------------------------------- */
 

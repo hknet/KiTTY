@@ -115,4 +115,13 @@ BOOL kitty_process_image_path(HANDLE proc, char *buf, DWORD bufsize);
  */
 BOOL kitty_attach_parent_console(void);
 
+
+/* ---- exported from kitty/kitty_oldwin.c ---- */
+BOOL kitty_oldwin_GetNamedPipeServerProcessId(HANDLE pipe, PULONG pid);
+BOOL kitty_oldwin_InitializeProcThreadAttributeList( LPPROC_THREAD_ATTRIBUTE_LIST list, DWORD count, DWORD flags, PSIZE_T size);
+LSTATUS kitty_oldwin_RegDeleteTreeA(HKEY key, LPCSTR subkey);
+LSTATUS kitty_oldwin_RegGetValueA(HKEY key, LPCSTR subkey, LPCSTR value, DWORD flags, LPDWORD ptype, PVOID data, LPDWORD psize);
+HRESULT kitty_oldwin_RegisterApplicationRestart(PCWSTR cmdline, DWORD flags);
+BOOL kitty_oldwin_UpdateProcThreadAttribute( LPPROC_THREAD_ATTRIBUTE_LIST list, DWORD flags, DWORD_PTR attr, PVOID value, SIZE_T cb, PVOID prev, PSIZE_T rsize);
+
 #endif /* KITTY_OLDWIN_H */

@@ -24,13 +24,10 @@
 
 #include "putty.h"
 #include "storage.h"
+#include "kitty/kitty_storage.h"
 
 /* kitty/kitty_storage.c - public, but declared where their callers need them
  * rather than in a shared header. */
-void kitty_set_storage_mode(int mode);
-void kitty_set_session_dir(const char *dir);
-int  store_is_file(void);
-char *kitty_read_session_folder(const char *sessionname);
 
 /*
  * Stubs for the platform edges the storage layer touches. test_conf carries the

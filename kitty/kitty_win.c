@@ -28,10 +28,13 @@
 #include <wintrust.h>  /* in-app updater: Authenticode trust verification */
 #include <softpub.h>   /* WINTRUST_ACTION_GENERIC_VERIFY_V2 */
 #include <msi.h>       /* in-app updater: install-type detection by UpgradeCode */
+#include "kitty_gui.h"
+#include "kitty.h"
+#include "kitty_storage.h"
+#include "kitty_auxpos.h"
 /* wincrypt.h (CryptQueryObject / signer cert) comes in via windows.h */
 
 /* MOD_PERSO event-log wrapper, defined in windows/window.c */
-void do_eventlog(const char *st) ;
 
 // Change the window transparency
 void SetTransparency( HWND hwnd, int value ) {
@@ -549,7 +552,6 @@ void RunPuttyEd( HWND hwnd, char * filename ) {
 }
 
 // Check whether an update is available (GitHub repository hknet/KiTTY)
-extern char BuildVersionTime[256] ;
 
 /* Parse a dotted version "0.84.0.15" into 4 comparable integers. */
 static void kitty_parse_version( const char *s, int v[4] ) {
@@ -701,11 +703,6 @@ static int kitty_run_installer( HWND hwnd, kitty_install_t type, const char *pat
  * synchronously, at the clean top of a session (window.c) -- never injected
  * mid-session, which would corrupt a full-screen TUI. So the notice can be at
  * most one launch behind for a brand-new release, which is fine for a nudge. */
-extern const char *kitty_registry_base( void ) ;
-extern int kitty_portable_store_state_string(const char *key, const char *value);
-extern int kitty_portable_load_state_string(const char *key, char *buf, int buflen);
-extern int kitty_portable_store_state_dword(const char *key, DWORD value);
-extern int kitty_portable_load_state_dword(const char *key, DWORD *value);
 
 /* Fetch the newest release's numeric version + prerelease flag from GitHub.
  * Returns 1 on success. Leaner sibling of CheckVersionFromWebSite's fetch
@@ -1843,7 +1840,6 @@ void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal)
  * file keeps a smaller diff. Cases that touch window.c internals (e.g. the
  * terminal resize path via reset_window) deliberately stay inline there. */
 
-int GetTransparencyFlag(void);          /* kitty.c */
 
 /* IDM_TRANSPARUP / IDM_TRANSPARDOWN: step the layered-window transparency.
  * Refuses on both opt-outs. -1 used to be clamped to 0 and stepped from there,
@@ -1993,8 +1989,6 @@ static HWND kitty_titlevars_dlg = NULL;
 
 /* kitty_auxpos.c - shared aux-window placement/memory, as used by the About
  * boxes and the /help window. */
-void kitty_auxpos_apply(HWND hwnd, const char *name, HWND owner, int centre);
-void kitty_auxpos_save(HWND hwnd, const char *name);
 
 /* Put the selected placeholder - the code alone, not its description - on the
  * clipboard. */
@@ -2113,7 +2107,6 @@ void kitty_menu_toggle_hyperlink(HWND hwnd)
  * answer is already in hand when this runs. Configurable off via
  * [KiTTY] verifyagent=no.
  * ------------------------------------------------------------------ */
-extern int ReadParameter(const char *key, const char *name, char *value);
 
 /* ------------------------------------------------------------------
  * What this Windows could not do.
@@ -2340,7 +2333,6 @@ bool kitty_theme_app_dark(void)
  * Read through ReadParameterN like the theme, so it works the same in every
  * save mode and can be answered without a Conf in hand.
  */
-int WriteParameter(const char *key, const char *name, char *value);  /* kitty.c */
 
 int kitty_check_update_enabled(void)
 {

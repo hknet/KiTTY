@@ -18,4 +18,8 @@ void MASKPASS( const int mode, char * password ) ;
 
 int GetUserPassSSHNoSave(void) ;
 
+
+/* ---- exported from kitty/kitty_crypt.c ---- */
+void dopasskey( int mode, char * passkey, const char * host, const char * termtype );
+
 #endif

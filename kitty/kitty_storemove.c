@@ -39,24 +39,13 @@
 #include "kitty_proxy.h"
 #include "kitty_text.h"     /* the words the boxes show */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "kitty_bridge.h"
 
 /* kitty.c */
-int WriteParameter(const char *key, const char *name, char *value);
-int GetIniFileFlag(void);
 /* kitty_bridge.c */
-int kitty_export_all_to_dir(const char *dir, int *failOut);
 int kitty_import_dir(const char *dir, int *failOut, int *proxyOut,
                      int *skippedOut, int overwrite);
-int kitty_ask_store_password(HWND hwnd, char **pwOut, int *dpapiOut);
-int kitty_unlock_import_bundle(HWND hwnd, const char *dir, char **pwOut);
-int kitty_bundle_needs_password(const char *dir);
 /* kitty_storage.c */
-void kitty_set_bundle_import(int on);
-void kitty_set_bundle_passphrase(const char *pass);
-void kitty_set_bundle_dpapi_only(int on);
-void kitty_clear_bundle_context(void);
-int  kitty_bundle_wrap_failed(void);
-const char *kitty_mpw_verify_token(void);
 
 #define KSM_INI       "kitty.ini"
 /* the bundle extension follows the store's fileextension setting */

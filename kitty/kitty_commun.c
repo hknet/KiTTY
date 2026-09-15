@@ -110,7 +110,7 @@ void SetBackgroundImageFlag( const int flag ) { BackgroundImageFlag = flag ; }
 
 // To remove the salt from the password encryption
 int CryptSaltFlag = 0 ;
-int GetCryptSaltFlag() { return CryptSaltFlag ; }
+int GetCryptSaltFlag(void) { return CryptSaltFlag ; }
 void SetCryptSaltFlag( int flag ) { CryptSaltFlag = flag ; }
 
 // Directory the configuration is saved into (savemode=dir)

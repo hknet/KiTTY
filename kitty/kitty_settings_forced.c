@@ -23,6 +23,8 @@
 #include "kitty_commun.h"  /* GetCryptSaltFlag, MASKPASS */
 #include "kitty_crypt.h"   /* cryptpassword */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
+#include "kitty_storage.h"
+#include "kitty_settings.h"
 
 /*
  * KiTTY 2026-08-02: exported .ktx files are no longer written encrypted.
@@ -44,22 +46,21 @@
  * Removing the read side is part of retiring MASTER_PASSWORD itself, which cannot
  * happen until users have re-saved.
  */
-int cryptstring(const int mode, char *st, const char *key);
 
 /* ---- forced writers (write to a plain FILE* in KiTTY .ktx line format) ---- */
 
-void write_setting_i_forced(void *handle, const char *key, int value) {
+static void write_setting_i_forced(void *handle, const char *key, int value) {
     char buf[1024];
     snprintf( buf, sizeof(buf), "%s\\%i\\", key, value);
     fprintf((FILE*)handle, "%s\n", buf);
     fflush(handle);
 }
 
-void write_setting_b_forced(void *handle, const char *key, bool value) {
+static void write_setting_b_forced(void *handle, const char *key, bool value) {
     write_setting_i_forced(handle, key, value ? 1 : 0);
 }
 
-void write_setting_s_forced(void *handle, const char *key, const char *value) {
+static void write_setting_s_forced(void *handle, const char *key, const char *value) {
     char *p = (char*)malloc(3*strlen(value)+256);
     mungestr(value, p);
     char *buf = (char*)malloc(2*(strlen(key)+strlen(p))+10);
@@ -70,7 +71,7 @@ void write_setting_s_forced(void *handle, const char *key, const char *value) {
     free(p);
 }
 
-void write_setting_filename_forced(void *handle, const char *key, Filename *value) {
+static void write_setting_filename_forced(void *handle, const char *key, Filename *value) {
     const char *path = filename_to_str(value);
     char *p = (char*)malloc(3*strlen(path)+256);
     mungestr(path, p);
@@ -82,7 +83,7 @@ void write_setting_filename_forced(void *handle, const char *key, Filename *valu
     free(p);
 }
 
-void write_setting_fontspec_forced(void *handle, const char *name, FontSpec *font) {
+static void write_setting_fontspec_forced(void *handle, const char *name, FontSpec *font) {
     char *settingname;
     write_setting_s_forced(handle, name, font->name);
     settingname = dupcat(name, "IsBold", NULL);
@@ -574,7 +575,6 @@ void save_open_settings_forced(char *filename, Conf *conf) {
          * first wrap may prompt to create/unlock), DPAPI1 fallback, plain
          * only in explicit legacy mode. The old MASKPASS+bcrypt form is
          * read-compatibility only and is never written anymore. */
-        extern char *kitty_secret_wrap_portable(const char *);
         /* The Conf holds it wrapped for this process (kitty_pwmem.c); the
          * at-rest envelope below needs the value itself. */
         char pw[KITTY_PW_MAX + 1];

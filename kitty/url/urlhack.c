@@ -181,12 +181,12 @@ void urlhack_launch_url(const char* app, const char *url)
     }
 }
 
-int urlhack_is_ctrl_pressed()
+int urlhack_is_ctrl_pressed(void)
 {
     return HIWORD(GetAsyncKeyState(VK_CONTROL));
 }
 
-void urlhack_link_regions_clear()
+static void urlhack_link_regions_clear()
 {
     unsigned int i;
     for (i = 0; i < link_regions_len; ++i) {
@@ -208,7 +208,7 @@ static char *window_text;
 static int window_text_len;
 static int window_text_current_pos;
 
-void urlhack_init()
+void urlhack_init(void)
 {
     unsigned int i;
 
@@ -228,7 +228,7 @@ void urlhack_init()
     urlhack_reset();
 }
 
-void urlhack_cleanup()
+void urlhack_cleanup(void)
 {
     urlhack_link_regions_clear();
     sfree(link_regions);
@@ -245,7 +245,7 @@ void urlhack_putchar(char ch)
     window_text[window_text_current_pos++] = ch;
 }
 
-void urlhack_reset()
+void urlhack_reset(void)
 {
     /* The scan reads the text up to its terminating NUL, which the scraper
      * writes after the last character (urlhack_putchar('\0')), so nothing

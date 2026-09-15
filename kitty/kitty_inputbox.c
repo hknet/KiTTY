@@ -17,7 +17,6 @@
 
 #include "kitty.h"
 /* The hive in use, not the compile-time default - see kitty_storage.c. */
-extern const char *kitty_reg_sessions( void ) ;
 
 #include "kitty_commun.h"
 #include "kitty_crypt.h"
@@ -25,11 +24,11 @@ extern const char *kitty_reg_sessions( void ) ;
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* the words this box shows */
 #include "kitty_win.h"      /* kitty_dialog_icon: the caption/taskbar icon */
+#include "kitty_storage.h"
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */
 extern Conf *conf ;                     /* active-seat global (window.c) */
 extern HWND MainHwnd ;                  /* kitty.c: the terminal window */
-void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
 
 /* Result of the last completed input dialog (malloc'd; NULL = none). The
  * dialog procs below own it; kitty.c reads it via GetInputBoxResult(). */
@@ -173,7 +172,7 @@ static LRESULT CALLBACK InputCallBackPassword(HWND hwnd, UINT message, WPARAM wP
 
 // Procedure specific to the multiline edit box (SHIFT+F8)
 FARPROC lpfnOldEditProc ;
-BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+static BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	switch (message) {
 		case WM_KEYDOWN:
 			if( (wParam==VK_RETURN) && (GetKeyState( VK_SHIFT )& 0x8000) ){

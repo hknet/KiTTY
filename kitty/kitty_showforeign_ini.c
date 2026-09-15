@@ -23,9 +23,8 @@
 
 #include "kitty_inilight.h"
 #include "kitty_inikeys.h"
+#include "kitty_storage.h"
 
-int kitty_showforeign_ini_read(char *value, size_t size);
-int kitty_showforeign_may_persist(void);
 
 int kitty_showforeign_ini_read(char *value, size_t size)
 {

@@ -10,6 +10,7 @@
  */
 #ifndef KITTY_H
 #define KITTY_H
+#include "putty.h"   /* Conf, Terminal, TermWin, Backend, and windows.h via platform.h */
 #include <math.h>
 #include <sys/types.h>
 #include <process.h>
@@ -286,7 +287,7 @@ extern int force_reconf ;
 extern int AntiIdleSeconds ;   /* KiTTY: keepalive interval, in seconds */
 extern char AntiIdleStr[128] ;
 
-NOTIFYICONDATA TrayIcone ;
+extern NOTIFYICONDATA TrayIcone ;   /* defined in kitty.c */
 #ifndef MYWM_NOTIFYICON
 #define MYWM_NOTIFYICON		(WM_USER+3)
 #endif
@@ -646,13 +647,10 @@ void InitLauncherRegistry( void ) ;
 #define TIMER_BLINKTRAYICON 8706
 #endif
 #ifndef TIMER_LOGROTATION
-#define TIMER_LOGROTATION 8707
 #endif
 #ifndef TIMER_ANTIIDLE
-#define TIMER_ANTIIDLE 8708
 #endif
 #ifndef TIMER_RECONNECT
-#define TIMER_RECONNECT 8709
 #endif
 
 #ifndef VISIBLE_NO
@@ -800,5 +798,39 @@ int kitty_hotkey_conflict_scan( unsigned int mods, unsigned int vk,
 int kitty_hotkey_enabled_count( const char * exclude ) ;
 int kitty_hotkey_conflict_report( char * buf, int buflen ) ;
 
+
+
+/* ---- exported from kitty/kitty.c ---- */
+int GetConfigBoxApplicationSettingsFlag(void);
+int GetConfigBoxFixedSizeFlag(void);
+int GetConfigBoxWindowWidth(void);
+int GetFunkeysDefault( void );
+char * GetIconFile(void);
+int GetTransparencyAllowed(void);
+void LoadParameters( void );
+void LoadRegistryKey( HWND hdlg );
+int RestoreFromTray( HWND hwnd );
+void SendKeyboardPlus( HWND hwnd, const char * st );
+void SetConfigBoxFixedSizeFlag( const int flag );
+void SetConfigBoxWindowWidth( const int num );
+void SetConnBreakIcon( HWND hwnd );
+void SetFunkeysDefault( const int t );
+void SetIconFile( const char * path );
+void SetNamedProxyHostnameOnly( const int flag );
+void SetPSCPPath( const char * path );
+void SetReconnectDelay( const int flag );
+void SetTransparencyEnabled( const int flag );
+void debug_log( const char *fmt, ... );
+int get_param( const char * val );
+char * kitty_current_dir(void);
+void kitty_fontfallback_apply_list( const char * list );
+char *kitty_loginscript_from_text( const char *text );
+char *kitty_loginscript_to_text( const char *stored );
+int kitty_named_proxy_default_hostname( void );
+void kitty_netdbg_ts( const char *msg );
+void kitty_set_remote_cwd( const char * osc7 );
+void set_title( TermWin *tw, const char *title );
+extern char BuildVersionTime[256];
+extern char **FolderList;
 
 #endif // KITTY_H

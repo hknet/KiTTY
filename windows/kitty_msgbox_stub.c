@@ -5,6 +5,7 @@
  * puttygen alone. The call stays a real MessageBox there.
  */
 #include <windows.h>
+#include "kitty_gui.h"
 
 int kitty_message_box(HWND owner, const char *text, const char *caption,
                       unsigned type)

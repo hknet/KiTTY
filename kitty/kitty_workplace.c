@@ -40,6 +40,7 @@
 
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "kitty.h"
 #define KWP_MAGIC   0x5057494Bu   /* "KIWP" */
 #define KWP_VERSION 1
 
@@ -320,8 +321,6 @@ int kitty_workplace_start_launcher(const char *proxyname, unsigned int minutes)
 /* kitty.c: the suite's global-parameter store (registry, or kitty.ini in
  * portable mode). Declared rather than included so this file keeps its short
  * include list; it is compiled only into the KiTTY targets. */
-extern int WriteParameter(const char *key, const char *name, char *value);
-extern int ReadParameterN(const char *key, const char *name, char *value, size_t size);
 #ifndef INIT_SECTION
 #define INIT_SECTION "KiTTY"
 #endif

@@ -14,7 +14,7 @@ struct Proxies {
 };
 extern struct Proxies proxies[MAX_PROXY] ;
     
-int GetProxySelectionFlag() ;
+int GetProxySelectionFlag(void) ;
 int kitty_has_proxy_definitions( void ) ;
 int kitty_proxy_choice_shown( void ) ;
 int kitty_proxy_editor_available( void ) ;
@@ -44,4 +44,8 @@ void SetProxySelectionFlag( const int flag ) ;
 int LoadProxyInfo( Conf * conf, const char * name ) ;
 void InitProxyList(void) ;
 int LoadProxyInfo( Conf * conf, const char * name ) ;
+
+/* ---- exported from kitty/kitty_proxy_gui.c ---- */
+bool kitty_proxy_panel_dirty(void);
+
 #endif

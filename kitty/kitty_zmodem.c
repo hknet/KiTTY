@@ -34,6 +34,7 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions and wordings */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "kitty_zmodem.h"
 
 #define ZM_PIPE_SIZE (64 * 1024)
 
@@ -133,7 +134,7 @@ static void zm_close_handles(kitty_zmodem_state *zm)
     if (zm->read_stderr) { CloseHandle(zm->read_stderr); zm->read_stderr = NULL; }
 }
 
-void kitty_zmodem_done(void)
+static void kitty_zmodem_done(void)
 {
     kitty_zmodem_state *zm = zm_active;
     if (!zm) return;

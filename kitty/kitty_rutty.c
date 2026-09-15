@@ -30,6 +30,7 @@
 
 #include "putty.h"
 #include "kitty_text.h"     /* the Event Log wordings */
+#include "kitty_rutty.h"
 
 #define script_line_size 4096
 #define script_cond_size 256

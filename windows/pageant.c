@@ -48,6 +48,7 @@
  * add-after-the-last-include reflex put it there once, where it compiled to
  * nothing and left RegisterApplicationRestart a raw loader-killing import. */
 #include "../kitty/kitty_oldwin_reg.h"
+#include "../kitty/kitty_notice.h"   /* KiTTY: kitty_notice_show */
 #include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #ifdef DEBUG_IPC
 #define _WIN32_WINNT 0x0500            /* for ConvertSidToStringSid */

@@ -15,8 +15,6 @@
 #include "kitty_perf.h"
 #ifdef MOD_PERSO
 #include "../kitty/kitty_text.h"   /* KiTTY: shared captions */
-char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf);
-void kitty_set_remote_cwd(const char *osc7);   /* OSC 7 cwd tracking (kitty.c) */
 
 /*
  * KiTTY OSC 52 clipboard-READ seams. Implemented on the platform side
@@ -39,27 +37,20 @@ bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
                              const char *claim, int *grant, bool *always_deny);
 /* Fetch the local clipboard as wide text. Caller frees. NULL if empty or if the
  * clipboard holds something that is not text. */
-wchar_t *kitty_osc52_get_clipboard(int *len);
 /* ...and the variant that distinguishes "empty" from "somebody else has it
  * open", because only one of those is an answer. */
-wchar_t *kitty_osc52_get_clipboard_ex(int *len, bool *unavailable);
 /* The clipboard as PNG bytes: the "PNG" / "image/png" formats as they are, or a
  * bitmap encoded to PNG. NULL when there is no image. Caller frees. */
-unsigned char *kitty_osc52_get_clipboard_png(size_t *len, bool *unavailable);
 /* Is there an image on the clipboard at all? For the type list; no data moves. */
-bool kitty_osc52_clipboard_has_image(void);
 /* Random bytes from the system CSPRNG, for the paste-event token. A seam because
  * PuTTY's own pool asserts when nothing has referenced it yet. */
-void kitty_osc52_random(unsigned char *buf, size_t len);
 /* OSC 5522 write: put every format of one transaction on the clipboard in ONE
  * open/empty/set/close. text/plain becomes CF_UNICODETEXT, anything else a
  * registered format named by its MIME type. False if the clipboard could not be
  * set, which the caller reports as EIO. */
-bool kitty_osc52_set_clipboard_formats(const KittyClipFormat *fmts, int n);
 /* Write "always deny for this host" into the saved session. Returns false if
  * there is no saved session to write it into, in which case the caller tells the
  * user rather than inventing a hidden host list behind their back. */
-bool kitty_osc52_save_deny_for_host(Terminal *term);
 /* Transient tray balloon on the session window; no-op when notifications are
  * switched off. `action` is one of CLIP_BALLOON_* and says what CLICKING it does,
  * because a rate-limited balloon stands for more events than it can describe and
@@ -76,15 +67,12 @@ void kitty_osc52_notify(Terminal *term, const char *title, const char *msg,
  * actually leaving the machine - is a single call the tests can count. Used by
  * OSC 52, OSC 5522 and far2l alike, each of which builds its own complete
  * sequence. */
-void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len);
 #endif
 #ifdef MOD_PERSO
 /* A clipboard permission started, expired, or changed between active and paused:
  * re-apply the title marker and the window colouring. */
-void kitty_osc52_state_changed(Terminal *term);
 /* Is there a title bar to put a marker on? False in full screen and with window
  * decorations off, where the icon and the caption tint have nowhere to appear. */
-bool kitty_osc52_title_visible(void);
 /* "A clipboard payload was too big and was dropped" - Event Log plus a balloon,
  * both rate-limited. Declared up here because far2l_process_payload sits earlier
  * in the file than the definition, and all three protocols share it. */
@@ -109,6 +97,11 @@ static bool osc5522_paste_event(Terminal *term);
 #include "cdecode.h"
 #include "cencode.h"
 #include "../kitty/kitty_text.h"   /* KiTTY: the far2l clipboard prompt's words */
+#ifdef MOD_PERSO
+#include "kitty/kitty.h"
+#include "kitty/kitty_osc52.h"
+#include "windows/kitty_gui.h"
+#endif
 #endif
 
 #define VT52_PLUS
@@ -1450,9 +1443,6 @@ static double kitty_fine_ms(void)
     QueryPerformanceCounter(&c);
     return c.QuadPart / per_ms;
 }
-unsigned long kitty_pace_cooldown_ms(double now_ms, double paint_ms);
-bool kitty_pace_wait_frame(void (*cb)(void *), void *ctx);
-bool kitty_pace_signal_allowed(double now_ms);
 
 /* The display is ready for the next frame (Direct2D): end the cooldown and
  * paint if there is anything to paint - unless the cooldown's floor (the

@@ -9,6 +9,8 @@
  */
 #ifndef KITTY_STORAGE_H
 #define KITTY_STORAGE_H
+#include "putty.h"
+#include "storage.h"   /* settings_r, settings_w */
 
 /* Read-only fallback hives (precedence: our base > old KiTTY hive > stock
  * PuTTY). Sessions present only in an older hive stay loadable; edits write
@@ -197,5 +199,47 @@ char *ksec_to_utf8(char *s);
  * compiled into every variant and already includes this header. */
 void kitty_store_mark_dirty(void);
 int  kitty_store_take_dirty(void);   /* 1 if dirty; clears the flag */
+
+
+/* ---- exported from kitty/kitty_showforeign_ini.c ---- */
+int kitty_showforeign_ini_read(char *value, size_t size);
+int kitty_showforeign_may_persist(void);
+
+/* ---- exported from kitty/kitty_storage.c ---- */
+int kitty_get_last_folder(char *buf, int buflen);
+int kitty_get_last_session(char *buf, int buflen);
+int kitty_has_foreign_sessions(void);
+char *kitty_loginscript_blob_to_lines(const unsigned char *blob, int len);
+unsigned char *kitty_loginscript_lines_to_blob(const char *text, int *outlen);
+void kitty_mpw_consume_handle_str(const char *s);
+HANDLE kitty_mpw_export_inherit_blob(const char *prefix, char *tok, size_t toklen);
+char *kitty_mpw_import_inherit_blob(char *p);
+int kitty_mpw_startup_unlock(void);
+int kitty_portable_load_state_dword(const char *key, DWORD *value);
+int kitty_portable_load_state_string(const char *key, char *buf, int buflen);
+int kitty_portable_store_state_dword(const char *key, DWORD value);
+int kitty_portable_store_state_string(const char *key, const char *value);
+char *kitty_read_session_comment(const char *sessionname);
+char *kitty_read_session_folder(const char *sessionname);
+char *kitty_read_session_folder_cached(const char *sessionname);
+void kitty_register_mpw_crypto( void (*derive)(const char *, const unsigned char *, int, unsigned char *), char *(*protect)(const char *, const unsigned char *), int (*unprotect)(const char *, const unsigned char *, char **), void (*randsalt)(unsigned char *, int));
+int kitty_secret_is_marked(const char *stored);
+int kitty_secret_unwrap(const char *stored, char **out);
+char *kitty_secret_wrap_current_backend(const char *plaintext);
+char *kitty_secret_wrap_portable(const char *plaintext);
+char *kitty_session_fname_munge(const char *name);
+char *kitty_session_fname_unmunge(const char *name);
+int kitty_session_origin(const char *sessionname);
+void kitty_set_defer_mpw_prompt(int on);
+void kitty_set_last_folder(const char *folder);
+void kitty_set_last_session(const char *sessionname);
+void kitty_set_legacy_migrate_warn(int (*fn)(void));
+void kitty_set_master_passphrase(const char *pass);
+void kitty_set_master_pw_prompt(char *(*fn)(int creating));
+void kitty_set_portable_password_protection(const char *mode);
+void kitty_set_registry_root(int use_putty);
+void kitty_set_session_dir(const char *dir);
+void kitty_set_storage_mode(int mode);
+int kitty_storage_is_portable(void);
 
 #endif /* KITTY_STORAGE_H */

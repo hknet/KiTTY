@@ -24,6 +24,7 @@
 #include "kitty_text.h"
 #include "kitty_authenticode.h"   /* KITTY_PUBLISHER_CN - the single copy */
 #include "kitty_oldwin.h"         /* kitty_api_from: resolve, and RECORD */
+#include "kitty_renameguard.h"
 
 /*
  * ASCII case folding, done here rather than with the C library's: this runs

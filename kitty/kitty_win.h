@@ -107,4 +107,21 @@ bool kitty_theme_app_dark( void ) ;
 // depended on which session opened first. See kitty_win.c.
 int kitty_check_update_enabled( void ) ;
 void kitty_set_check_update_enabled( int on ) ;
+
+/* ---- exported from kitty/kitty_win.c ---- */
+int kitty_autopw_warn( void );
+int kitty_confirm_box( HWND owner, const char *caption, const char *text, const char *warn_red );
+int kitty_confirm_box3( HWND owner, const char *caption, const char *text, const char *b_over, const char *b_keep, const char *b_cancel );
+int kitty_confirm_box_yes( HWND owner, const char *caption, const char *text, const char *warn_red );
+void kitty_demo_templates( void );
+void kitty_info_box( HWND owner, const char *caption, const char *text, const char *warn_red );
+int kitty_message_box( HWND owner, const char *text, const char *caption, unsigned type );
+void kitty_notice_box( HWND owner, const char *caption, const char *text );
+void kitty_show_title_placeholders(HWND owner);
+void kitty_start_update_check_notify( HWND hwnd, UINT msg );
+void kitty_sync_transparency_menu(HMENU menu, Conf *conf, UINT id_up, UINT id_down, UINT id_anchor);
+extern int PrintCharSize;
+extern int PrintMaxCharPerLine;
+extern int PrintMaxLinePerPage;
+
 #endif

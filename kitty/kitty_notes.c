@@ -64,12 +64,11 @@
 #include "kitty_notice.h"
 #include "kitty_inikeys.h"  /* KI_NOTES */
 #include "kitty_text.h"     /* KT_CAP_KITTYPP: the notice's title */
+#include "kitty.h"
 
 /* kitty.c: the suite's global-parameter store (registry, or kitty.ini in
  * portable mode). Declared rather than included so this file keeps its short
  * include list; it is compiled only into the KiTTY targets. */
-extern int WriteParameter(const char *key, const char *name, char *value);
-extern int ReadParameterN(const char *key, const char *name, char *value, size_t size);
 #ifndef INIT_SECTION
 #define INIT_SECTION "KiTTY"
 #endif

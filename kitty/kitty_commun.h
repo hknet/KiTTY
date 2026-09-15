@@ -56,7 +56,7 @@ int GetBackgroundImageFlag(void) ;
 void SetBackgroundImageFlag( const int flag ) ;
 
 // To remove the salt from the password encryption
-int GetCryptSaltFlag() ;
+int GetCryptSaltFlag(void) ;
 void SetCryptSaltFlag( int flag ) ;
 
 #ifdef MOD_ZMODEM

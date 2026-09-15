@@ -27,9 +27,10 @@
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions and wordings */
+#include "kitty_gui.h"
+#include "kitty_osc52.h"
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
-void kitty_refresh_title(void);        /* windows/window.c */
 
 /* ------------------------------------------------------------------------
  * Reading the local clipboard
@@ -989,7 +990,6 @@ static void osc52_set_frame_colour(HWND hwnd, COLORREF colour)
  * permission is per-session and is also spelled out in the title, while being
  * proxied elsewhere is the thing that is easier to forget and costlier to.
  */
-int kitty_active_seat_workplace_proxied(void);   /* windows/window.c */
 
 static COLORREF kitty_frame_resting_colour(void)
 {

@@ -347,7 +347,6 @@ static int classify_password(struct ksf_item *items)
 {
     extern char *kitty_secret_decode_imported(const char *, const char *,
                                               const char *, int);
-    extern int kitty_secret_is_mpw(const char *stored);       /* kitty_storage.c */
     const char *pw = ksf_list_get(items, "Password");
     char *pt;
     if (!pw || !*pw)
@@ -569,7 +568,6 @@ bool kitty_import_file_session(const char *path, const char *target,
                                struct kitty_namelist *dropped,
                                bool *password_lost)
 {
-    extern void kitty_set_defer_mpw_prompt(int on);           /* kitty_storage.c */
     settings_r *src;
     struct ksf_item *items, *report;
     struct kitty_namelist seen;

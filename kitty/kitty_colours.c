@@ -14,11 +14,10 @@
 #include <windows.h>
 
 #include "kitty.h"
+#include "kitty_gui.h"
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */
 extern Conf *conf;                       /* active-seat global (window.c) */
-void ResetWindow(int reinit);            /* window.c */
-void set_title(TermWin *tw, const char *title);  /* kitty.c */
 
 void NegativeColours(HWND hwnd) {
 	int i ;

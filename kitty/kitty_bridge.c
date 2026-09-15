@@ -24,7 +24,13 @@
 #include "kitty_workplace.h"   /* workplace proxy mode: is an arming held? */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions */
-void debug_logevent( const char *fmt, ... ) ;   /* kitty_win.c */
+#include "kitty_win.h"
+#include "kitty_storage.h"
+#include "kitty_gui.h"
+#include "kitty_image.h"
+#include "kitty_tools.h"
+#include "kitty_ssh.h"
+#include "kitty_bridge.h"
 #endif
 
 /* KiTTY logging mode toggle (originally KiTTY logging.c) */
@@ -91,7 +97,7 @@ void kitty_ssh_banner_preview(char *buf, size_t size) {
  * a file-mapping and spawning "<exe> &<filemap>:<size>" - exactly the native
  * 0.84 Duplicate-Session mechanism (windows/window.c IDM_DUPSESS), which the
  * child parses via handle_special_filemapping_cmdline(). */
-void RunSessionWithConfSettings(Conf *conf) {
+static void RunSessionWithConfSettings(Conf *conf) {
     char b[2048];
     char *cl = NULL;
     const char *argprefix;
@@ -207,7 +213,6 @@ void RunConfigBoxWithConfSettings(Conf *conf) {
      * the master password again. Both switches come BEFORE -confmap so they are
      * in effect while the settings are read. */
     { extern int kitty_mpw_startup_unlock(void);
-      extern HANDLE kitty_mpw_export_inherit_blob(const char*, char*, size_t);
       kitty_mpw_startup_unlock();
       mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
 
@@ -306,7 +311,6 @@ void kitty_rollup(HWND hwnd, int resize_action) {
 }
 
 /* window.c bridge fn (defined in window.c MOD_PERSO block) */
-void ResetWindow(int reinit);
 /* Safe font resize: 0.84 conf_get_fontspec returns conf's INTERNAL pointer
  * (must NOT be freed); build a new FontSpec, let conf copy it, free our copy. */
 void kitty_font_resize(Terminal *term, Conf *conf, int dec) {
@@ -367,7 +371,6 @@ void kitty_restore_icon(HWND hwnd, Conf *conf) {
 /* KiTTY About box (IDM_ABOUT). A compact KiTTY-specific dialog showing the
  * KiTTY build version and credits, with a clickable project link. Template
  * IDD_KITTYABOUT lives in windows/kitty.rc. */
-extern char BuildVersionTime[256];
 /* Resource IDs for the KiTTY about dialog (kept in sync with
  * windows/kitty_rc_additions.h, which isn't on this target's include path). */
 #ifndef IDD_KITTYABOUT
@@ -423,8 +426,6 @@ void kitty_about(HWND hwnd) {
  * wired (see note in window.c) to avoid destabilising 0.84's refactored
  * paint path. Returns nonzero if a background bitmap was created. */
 extern HWND MainHwnd;
-extern HBITMAP backgroundbm;
-BOOL load_bg_bmp(void);
 int kitty_apply_background(HWND hwnd, Conf *conf) {
     if (!GetBackgroundImageFlag()) return 0;
     if (GetPuttyFlag()) return 0;
@@ -455,8 +456,6 @@ int kitty_apply_background(HWND hwnd, Conf *conf) {
 
 /* Export current settings to a .ktx file (IDM_EXPORTSETTINGS).
  * Mirrors KiTTY's SaveCurrentSetting() but takes the seat conf (no global). */
-int SaveFileName(HWND hFrame, char *filename, char *Title, char *Filter);
-void save_open_settings_forced(char *filename, Conf *conf);
 void kitty_export_settings(HWND hwnd, Conf *conf) {
     char filename[4096], buffer[4096];
     if (strlen(FileExtension) > 0) {
@@ -485,10 +484,6 @@ void kitty_export_settings(HWND hwnd, Conf *conf) {
  * the export: this is a whole-store move, and importing it restores the
  * defaults too. */
 #include <commdlg.h>
-int OpenDirName(HWND hFrame, char *dirname);
-void load_open_settings_forced(char *filename, Conf *conf);
-char *kitty_session_fname_munge(const char *);
-char *kitty_session_fname_unmunge(const char *);
 
 static const char *ktx_ext(void) {
     return FileExtension[0] ? FileExtension : ".ktx";
@@ -542,10 +537,6 @@ int kitty_export_all_to_dir(const char *dir, int *failOut) {
  */
 #include "kitty_rc_additions.h"   /* IDD_EXPORTPW, IDD_EXPORTDONE, IDC_EXP_* */
 
-extern void kitty_set_bundle_passphrase(const char *pass);
-extern void kitty_set_bundle_dpapi_only(int on);
-extern void kitty_clear_bundle_context(void);
-extern int  kitty_bundle_wrap_failed(void);
 
 #define KITTY_EXPORT_PW_MIN 5
 
@@ -1030,7 +1021,6 @@ int kitty_import_dir(const char *dir, int *failOut, int *proxyOut,
  * that shares the same master password - so it is spelled out, selectable, and
  * one click from Explorer rather than described in prose.
  */
-extern char *portable_subdir_path(const char *subdir);   /* snewn'd */
 
 static const char *g_mpwm_path;
 
@@ -1111,8 +1101,6 @@ void kitty_show_mpw_moved(HWND hwnd)
  */
 extern int  ksec_unwrap_with_passphrase(const char *stored,
                                         const char *passphrase, char **out);
-extern int  ksec_unprotect(const char *stored, char **out);
-extern void kitty_set_bundle_import(int on);
 
 #define KITTY_IMPORT_PW_TRIES 3
 
@@ -1466,7 +1454,6 @@ void kitty_dup_session(HWND hwnd, Conf *conf) {
  * (caller re-arms the timer), 0 when the command is exhausted.
  * autocommand_delay (ms) is exposed for the caller's SetTimer interval. */
 extern Conf *conf;             /* active-seat global (window.c) */
-int del(char *ch, const int start, const int length);
 
 /* Reset the auto-command for a NEW connection: drop whatever is left of the
  * previous run's copy so the next tick re-reads CONF_autocommand from the
@@ -1546,7 +1533,6 @@ void kitty_antiidle_tick(HWND hwnd)
  * entry in turn (with a small inter-knock delay), which is exactly what a
  * port-knock daemon listens for. Called from start_backend() before
  * backend_init(). No-global: takes the seat conf. */
-int ManagePortKnocking(char *host, char *portstr);
 void kitty_port_knock(Conf *conf)
 {
     const char *host = conf_get_str(conf, CONF_host);

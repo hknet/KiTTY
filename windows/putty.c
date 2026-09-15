@@ -5,17 +5,21 @@
 
 #ifdef MOD_PERSO
 /* KiTTY helpers (putty.c does not include kitty.h) */
-extern char *SetSessPath(const char *);
-extern int  GetDirectoryBrowseFlag(void);
-extern void load_open_settings_forced(char *filename, Conf *conf); /* kitty_settings_load.c */
-extern char *kitty_cli_loginscript; /* kitty_bridge.c: -loginscript, consumed post-create */
 #include "../kitty/kitty_storemove.h"
 #include "../kitty/kitty_text.h"   /* shared captions + command-line wordings */
 #include "../kitty/kitty_pwmem.h"  /* passwords wrapped in memory */
+#ifdef MOD_PERSO
+#include "../kitty/kitty.h"
+#include "../kitty/kitty_bridge.h"
+#include "../kitty/kitty_win.h"
+#include "../kitty/kitty_tools.h"
+#include "../kitty/kitty_registry.h"
+#include "../kitty/kitty_storage.h"
+#include "kitty_gui.h"
+#endif
 /* -exportall <dir> / -importdir <dir>: whole-store move; stashed here and run
  * just before the config box (storage backend is initialised by then), then
  * exit. kitty_export_all_to_dir/kitty_import_dir are the no-UI cores. */
-int  kitty_export_all_to_dir(const char *dir, int *failOut);
 int  kitty_import_dir(const char *dir, int *failOut, int *proxyOut,
                       int *skippedOut, int overwrite);
 static char *kitty_cli_exportdir = NULL;
@@ -37,23 +41,8 @@ static int kitty_cli_backupnow = 0;
 static char *kitty_cli_bundlepw = NULL;
 static bool kitty_cli_bundle_thispc = false;
 /* do-and-exit / pre-window utility switches (kitty modules; putty.c lacks kitty.h) */
-extern char KiTTYClassName[];                       /* kitty.c: window class name */
-extern int  SendCommandAllWindows(HWND hwnd, char *cmd); /* kitty.c */
-extern void RunPuttyEd(HWND hwnd, char *filename);  /* kitty_win.c: session-file editor */
-extern int  SetTextToClipboard(const char *buf);    /* kitty_win.c */
-extern void mungestr(const char *in, char *out);    /* kitty_commun.c */
-extern int  existfile(const char *filename);        /* kitty_tools.c */
-extern void CreateFileAssoc(int force, int peruser, int assume_yes); /* kitty_registry.c: .ktx */
 extern void CreateSSHHandler(int force, int peruser, int assume_yes,
                              int withputty);         /* kitty_registry.c: URL handlers */
-extern void RemoveSSHHandler(void);                 /* kitty_registry.c: -sshhandler -uninstall */
-extern void RemoveFileAssoc(void);                  /* kitty_registry.c: -fileassoc -uninstall */
-extern void KittyCliReport(const char *title, const char *text, int warn); /* kitty_registry.c */
-extern char *GetHelpMessage(void);                  /* kitty.c: the -help text */
-extern int  kitty_get_last_session(char *buf, int buflen); /* storage.c: remember-last-session */
-extern int  GetLoadLastSessionFlag(void);           /* kitty.c: [ConfigBox] loadlastsession */
-extern void SetQuickConnectMode(const int flag);    /* kitty.c: #23 quick connect */
-extern int  GetFunkeysDefault(void);                /* kitty.c: [KiTTY] funkeys */
 
 static void kitty_settings_load_hook(const char *section, Conf *conf, bool exists)
 {
@@ -92,8 +81,6 @@ static void kitty_settings_load_hook(const char *section, Conf *conf, bool exist
      * once either new key exists, the session is left alone.
      */
     if (exists && section && *section) {
-        extern void kitty_merge_legacy_note(Conf *conf, const char *note);
-        extern void kitty_xfer_migrate_protocol(Conf *conf, int oldprot);
         const int absent = -32768;   /* no protocol value is negative */
         settings_r *r = open_settings_r(section);
         if (r) {
@@ -325,7 +312,6 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 if (!arglist->args[arglistpos])
                     cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 {
-                    extern HWND kitty_hwnd_parent;
                     const char *hv = cmdline_arg_to_str(arglist->args[arglistpos++]);
                     kitty_hwnd_parent =
                         (HWND)(intptr_t)_strtoi64(hv, NULL, 10);
@@ -464,7 +450,6 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * Must be parsed BEFORE -sendcmd is acted on, so on the command
                  * line it may appear either side of it - the value is stored and
                  * read when the broadcast is sent. */
-                extern void kitty_broadcast_set_send_key(const char *k);
                 if (!arglist->args[arglistpos])
                     cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 kitty_broadcast_set_send_key(
@@ -491,7 +476,6 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * bytes (a BOM is skipped); CRLF and LF both end a line.
                  * -sendcmdkey applies as for -sendcmd. Then quit.
                  */
-                extern int autocommand_delay;   /* kitty.c, ms */
                 if (!arglist->args[arglistpos])
                     cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 {
@@ -714,12 +698,6 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
      * portable). The bundle carries its OWN protection - a password from
      * -bundlepwfile, or -bundlethispc for a local-only backup - so neither path
      * touches the store's master password. */
-    extern void kitty_set_bundle_passphrase(const char *pass);
-    extern void kitty_set_bundle_dpapi_only(int on);
-    extern void kitty_set_bundle_import(int on);
-    extern void kitty_clear_bundle_context(void);
-    extern int  kitty_bundle_wrap_failed(void);
-    extern int  kitty_bundle_needs_password(const char *dir);
     if (kitty_cli_exportdir) {
         int fail = 0, n, wrapfailed;
         char msg[700];
@@ -775,8 +753,6 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
      * migration. Same password rules as above: the copy's master password
      * comes from -bundlepwfile, or -bundlethispc chooses DPAPI. */
     if (kitty_cli_backupnow) {
-        extern void SaveRegistryKeyNow(void);
-        extern char *GetKittySavFile(void);
         char msg[600];
         SaveRegistryKeyNow();
         snprintf(msg, sizeof(msg), KT_CLI_BACKUP_DONE,
@@ -897,7 +873,6 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                          * appears. A protected password loads locked (empty);
                          * an explicit Load / "show password" / connect prompts
                          * at the real point of use. */
-                        extern void kitty_set_defer_mpw_prompt(int);
                         kitty_set_defer_mpw_prompt(1);
                         load_settings(lastsess, conf);
                         kitty_set_defer_mpw_prompt(0);

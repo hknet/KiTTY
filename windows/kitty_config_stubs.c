@@ -16,6 +16,7 @@
 
 #include <stdbool.h>   /* kitty_config_select_root_folder returns bool */
 #include <windows.h>   /* the themed-box stubs fall back to MessageBoxA */
+#include "../kitty/kitty_config.h"
 
 int GetConfigBoxHeight(void)       { return 16; } /* == stock-fit rows -> extra_rows 0 */
 int GetConfigBoxWindowHeight(void) { return 0; }  /* no explicit window-height override */

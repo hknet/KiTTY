@@ -679,6 +679,19 @@ if(KITTY_PERF)
   target_compile_definitions(guimisc PRIVATE KITTY_PERF)
   target_compile_definitions(network PRIVATE KITTY_PERF)
 endif()
+# KiTTY: every function a KiTTY source file exports must be declared in a
+# header (the header of the file that defines it), never as a bare prototype
+# in the .c file that calls it - that is how two callers came to disagree
+# with a definition's signature. -Wmissing-prototypes keeps it that way for
+# the KiTTY-owned sources; the shared PuTTY files are left alone (upstream has
+# a few of its own, and they are upstream's to change).
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  file(GLOB KITTY_OWN_SOURCES CONFIGURE_DEPENDS
+    ${KITTY_DIR}/*.c ${CMAKE_CURRENT_SOURCE_DIR}/kitty_*.c)
+  set_source_files_properties(${KITTY_OWN_SOURCES} PROPERTIES
+    COMPILE_OPTIONS "-Wmissing-prototypes")
+endif()
+
 target_include_directories(kitty PRIVATE
   ${KITTY_DIR} ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt
   ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)

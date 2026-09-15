@@ -35,6 +35,18 @@
 #include "kitty_notes.h"   /* the application notification: its escapes and its notice */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_winpos.h"   /* the remembered window position, per session and monitor layout */
+#include "kitty_commun.h"
+#include "kitty.h"
+#include "kitty_launcher.h"
+#include "kitty_tools.h"
+#include "kitty_gui.h"
+#include "mini/mini.h"
+#include "kitty_bridge.h"
+#include "kitty_registry.h"
+#include "kitty_userpath.h"
+#include "kitty_storemove.h"
+#include "kitty_mpw.h"
+#include "kitty_config.h"
 
 /* KiTTY: "Remember window position" keeps one entry per session and monitor
  * layout (kitty_winpos.c). With it on, the Position panel's Top/Left and the
@@ -74,35 +86,10 @@ static void kitty_winpos_save_from_conf(const char *session, Conf *conf)
 /* Declarations from other KiTTY modules that this file does not reach
  * through a header. The MOD_PERSO fences in this file are always true: it
  * is never compiled without that define. */
-int GetPuttyFlag(void);
-int GetCtrlTabFlag(void);        /* kitty.c: [KiTTY] ctrltab / -noctrltab */
-int GetSessionFilterFlag(void);  /* kitty.c: [ConfigBox] filter, gates the
-                                  * live type-to-search session filter */
-int GetTransparencyFlag(void);
-int GetZModemFlag(void);
-int GetAutoreconnectFlag(void);
-int GetBackgroundImageFlag(void);
-extern void RunConfig(Conf *conf);   /* kitty_launcher.c: launch new session, keep box open */
-extern int GetDblClickFlag(void);    /* kitty.c: [ConfigBox] dblclick - 0 open here, 1 start in new window */
-extern char **FolderList;            /* kitty.c: NULL-terminated folder names */
-extern char CurrentFolder[];         /* kitty_commun.c: currently selected folder */
-void GetSessionFolderName(const char *session_in, char *folder);  /* kitty.c */
-int kitty_session_origin(const char *sessionname);   /* windows/storage.c: 0=ours,1=old KiTTY,2=PuTTY */
-void kitty_set_last_session(const char *sessionname); /* windows/storage.c */
-int  kitty_get_last_session(char *buf, int buflen);   /* windows/storage.c */
-void kitty_set_last_folder(const char *folder);       /* windows/storage.c */
-int  kitty_get_last_folder(char *buf, int buflen);    /* windows/storage.c */
 /* KiTTY folder-management engine (kitty_config.c does not include kitty_tools.h/kitty.h) */
-int StringList_Add(char **list, const char *name);   /* kitty_tools.c (dedupes internally) */
-void StringList_Del(char **list, const char *name);  /* kitty_tools.c */
-void StringList_Up(char **list, const char *name);   /* kitty_tools.c */
-void InitFolderList(void);                            /* kitty.c */
-void SaveFolderList(void);                            /* kitty.c */
-void CleanFolderName(char *folder);                   /* kitty_commun.c */
 /* Selects an editable combo's whole text so the next keystroke replaces it;
  * see the implementation comment in windows/controls.c for why the field is
  * not simply emptied instead. */
-void kitty_dlg_combobox_select_all(dlgcontrol *ctrl, dlgparam *dp);
 
 #define KITTY_LAUNCHER_REFRESH_MESSAGE "KiTTYLauncherRefreshSessionsAndHotkeys"
 
@@ -132,7 +119,6 @@ static void kitty_checkbox_int_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * a one-time security consent (the password is stored reversibly-encrypted; SSH
  * keys are recommended). Declining clears the field. Consent happens HERE, at
  * configuration time, so the auto-login itself stays silent at connect time. */
-int kitty_autopw_warn(void);   /* kitty_win.c */
 /*
  * The login script box: show the script as lines, store it protected.
  *
@@ -144,13 +130,10 @@ int kitty_autopw_warn(void);   /* kitty_win.c */
  * plaintext and the protection is invisible, rather than the raw stored value
  * being put in front of them to edit by hand.
  */
-char *kitty_loginscript_to_text(const char *stored);     /* kitty.c */
-char *kitty_loginscript_from_text(const char *text);     /* kitty.c */
 
 /* The login-script box, captured at build time so the "Load from file..." button
  * beside it can fill it in. Same trick as g_autopw_ctrl below. */
 static dlgcontrol *g_loginscript_ctrl = NULL;
-int OpenFileName(HWND hFrame, char *filename, char *Title, char *Filter); /* kitty_win.c */
 
 static void kitty_loginscript_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                       void *data, int event)
@@ -373,10 +356,8 @@ static void kitty_pscp_remotedir_handler(dlgcontrol *ctrl, dlgparam *dlg,
 /* Shared launcher-hotkey helpers (kitty_bridge.c; kitty_config.c does not
  * include kitty.h). The parser is the SAME one the launcher registers with,
  * so what this file warns about is what the launcher will actually do. */
-extern int kitty_parse_hotkey_spec(const char *spec, unsigned int *mods, unsigned int *vk);
 extern int kitty_hotkey_conflict_scan(unsigned int mods, unsigned int vk,
                                       const char *exclude, char *names, int nameslen);
-extern int kitty_hotkey_enabled_count(const char *exclude);
 
 #ifdef MOD_PERSO
 /* KiTTY: record the configured key file's SHA256 fingerprint as this
@@ -437,7 +418,6 @@ static void kitty_keyfile_pin_record_handler(dlgcontrol *ctrl, dlgparam *dlg,
 static void kitty_title_placeholders_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                              void *data, int event)
 {
-    extern void kitty_show_title_placeholders(HWND owner);
     (void)ctrl; (void)dlg; (void)data;
     if (event != EVENT_ACTION) return;
     kitty_show_title_placeholders(GetActiveWindow());
@@ -860,9 +840,6 @@ static void kitty_pxload_inline_handler(dlgcontrol *ctrl, dlgparam *dlg,
 /* Declared again here (and again below, for the WinSCP path): this file keeps
  * its kitty.c accessors next to the code that uses them rather than in a
  * header, and the workplace handler sits above the other copy. */
-int ReadParameterN(const char *key, const char *name, char *value, size_t size); /* kitty.c */
-char *kitty_xfer_download_dir(Conf *cf, char *out, size_t outlen);              /* kitty_xfer.c */
-int WriteParameter(const char *key, const char *name, char *value);              /* kitty.c */
 #ifndef INIT_SECTION
 #define INIT_SECTION "KiTTY"
 #endif
@@ -995,7 +972,6 @@ static void kitty_wpmode_state_label(struct wpmode_data *wd, dlgparam *dlg)
  * GetDlgItem on the dialog finds nothing. */
 static void kitty_wpmode_enable_ctrl(dlgcontrol *ctrl, dlgparam *dlg, bool on)
 {
-    extern HWND kitty_cfg_item(HWND dlg, int id);
     int i;
     if (!ctrl || !dlg)
         return;
@@ -1375,7 +1351,6 @@ static void kitty_proxyedit_handler(dlgcontrol *ctrl, dlgparam *dlg,
 {
     if (event == EVENT_ACTION) {
         Conf *conf = (Conf *)data;
-        extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
         /* Open the editor ON the definition currently chosen in the override
          * droplist this button sits beside - that is almost always the one the
          * user means to edit. The two built-ins are not definitions, so they pass
@@ -1399,11 +1374,6 @@ static void kitty_proxyedit_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * stored yet, the auto-detected default as a display hint (we never WRITE on
  * refresh). On VALCHANGE we persist whatever the user selected/typed. Mirrors
  * the resolution order in SearchWinSCP() (kitty.c). */
-void SaveRegistryKeyNow(void);   /* kitty.c - blocking config backup */
-int ReadParameter(const char *key, const char *name, char *value);   /* kitty.c */
-int ReadParameterN(const char *key, const char *name, char *value, size_t size); /* kitty.c */
-int WriteParameter(const char *key, const char *name, char *value);  /* kitty.c */
-int existfile(const char *filename);                                  /* kitty_tools.c */
 /* kitty.ini [section] name (kitty_config.c does not include kitty.h). Mirror
  * the MOD_PERSO definition there so the two never drift. */
 #ifndef INIT_SECTION
@@ -2470,7 +2440,7 @@ struct sessionsaver_data {
 static struct sessionsaver_data *kitty_session_ssd = NULL;
 
 /* The saved-session list's length in rows, clamped to something usable. */
-int kitty_config_session_rows(void)
+static int kitty_config_session_rows(void)
 {
     extern int GetConfigBoxHeight(void);       /* kitty.c: [ConfigBox] height */
     int rows = GetConfigBoxHeight();
@@ -2495,7 +2465,6 @@ int kitty_config_session_rows(void)
  */
 void kitty_config_session_distribute(void)
 {
-    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);   /* windows/dialog.c */
     struct sessionsaver_data *ssd = kitty_session_ssd;
     dlgcontrol *top[1], *mid[2], *bot[2];
     int ntop = 0, nmid = 0, nbot = 0;
@@ -2663,7 +2632,6 @@ void kitty_config_footer_pin(const char *path);   /* defined below */
  * buttons. */
 static void kitty_iniview_place(void)
 {
-    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);      /* windows/dialog.c */
     struct iniview_data *iv = kitty_iniview_active;
     HWND hview, hbtn;
     RECT vr, br;
@@ -2714,9 +2682,6 @@ dlgcontrol *kitty_config_session_filter_ctrl(void)
  * on every treeview switch, so the pointer is only ever used while that panel
  * is the live one. */
 static dlgcontrol *quickconnect_host_ctrl = NULL;
-int GetQuickConnectMode(void);   /* kitty.c */
-void SetQuickConnectMode(const int flag);   /* kitty.c */
-void kitty_dlg_mark_quickconnect(dlgparam *dp, int on);   /* windows/dialog.c */
 
 /* KiTTY: the same dialog's session-saver data, for the Ctrl+G "search
  * everywhere" jump (windows/dialog.c). Registered and cleared together with
@@ -2811,7 +2776,6 @@ bool kitty_config_select_root_folder(dlgparam *dp)
  * the session panel is built and cleared with it - controls.c also links into
  * binaries with no config code, which must not need a stub for this.
  */
-extern void (*kitty_ctrl_focus_hook)(dlgcontrol *ctrl, dlgparam *dp);
 static void kitty_config_ctrl_focus_gained(dlgcontrol *ctrl, dlgparam *dlg)
 {
     struct sessionsaver_data *ssd = session_filter_ssd;
@@ -2919,8 +2883,6 @@ static void sessionsaver_data_free(void *ssdv)
 }
 
 #ifdef MOD_PERSO
-char *kitty_read_session_folder(const char *sessionname);   /* windows/storage.c */
-char *kitty_read_session_folder_cached(const char *sessionname);   /* the list loops */
 
 /*
  * KiTTY folder navigation ([ConfigBox] foldernavigation=yes, hknet/KiTTY#26).
@@ -2944,7 +2906,6 @@ char *kitty_read_session_folder_cached(const char *sessionname);   /* the list l
 
 static bool kitty_folder_rows_on(void)
 {
-    extern int GetFolderNavigationFlag(void);
     return !GetPuttyFlag() && GetFolderNavigationFlag();
 }
 
@@ -3279,9 +3240,6 @@ static bool sessionsaver_resolve_launch_target(
  * in the saved-sessions list. Indexing mirrors load_selected_session() so the
  * box always shows the comment of the session that Load would open. Shows the
  * empty string if nothing is selected or the session has no comment. */
-char *kitty_read_session_comment(const char *sessionname);  /* windows/storage.c */
-char *kitty_read_session_folder(const char *sessionname);   /* windows/storage.c */
-char *kitty_read_session_folder_cached(const char *sessionname);   /* the list loops */
 static int sessionsaver_selected_session_index(struct sessionsaver_data *ssd, dlgparam *dlg)
 {
     int i = dlg_listbox_index(ssd->listbox, dlg);
@@ -3781,12 +3739,6 @@ static bool sessionsaver_confirm_empty_folder(struct sessionsaver_data *ssd,
 static void sessionsaver_offer_hide_default(struct sessionsaver_data *ssd,
                                             dlgparam *dlg)
 {
-    extern int GetDefaultSettingsFlag(void);
-    extern void SetDefaultSettingsFlag(const int flag);
-    extern char *GetKittyIniFile(void);
-    extern void CreateDefaultIniFile(void);
-    extern int GetNoKittyFileFlag(void);
-    extern int GetReadOnlyFlag(void);
     extern int writeINI(const char *filename, const char *section,
                         const char *key, const char *value);
     const char *ini = GetKittyIniFile();
@@ -5979,7 +5931,6 @@ static void host_ca_button_handler(dlgcontrol *ctrl, dlgparam *dp,
 static void host_ca_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
                                  void *data, int event)
 {
-    extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
     if (event == EVENT_ACTION)
         kitty_cfg_goto_panel("Application/Security/Certificate Authorities");
 }
@@ -5990,7 +5941,6 @@ static void host_ca_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
 static void winscp_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
                                        void *data, int event)
 {
-    extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
     if (event == EVENT_ACTION)
         kitty_cfg_goto_panel("Application/KiTTY++ Settings/Transfers & Tools/WinSCP");
 }
@@ -5998,7 +5948,6 @@ static void winscp_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
 static void filezilla_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
                                           void *data, int event)
 {
-    extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
     if (event == EVENT_ACTION)
         kitty_cfg_goto_panel("Application/KiTTY++ Settings/Transfers & Tools/FileZilla");
 }
@@ -6008,7 +5957,6 @@ static void filezilla_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
 static void kscp_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
                                      void *data, int event)
 {
-    extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
     if (event == EVENT_ACTION)
         kitty_cfg_goto_panel("Application/KiTTY++ Settings/Transfers & Tools");
 }
@@ -6019,7 +5967,6 @@ static void kscp_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
 static void broadcast_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
                                           void *data, int event)
 {
-    extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
     if (event == EVENT_ACTION)
         kitty_cfg_goto_panel("Application/KiTTY++ Settings/Automation/Broadcast");
 }
@@ -6229,7 +6176,6 @@ static void hk_fill(struct hk_data *hk, dlgparam *dlg)
 /* Rewrite one row in place (a verdict came in) - the selection stays. */
 static void hk_update_row(struct hk_data *hk, int idx)
 {
-    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);
     HWND h = kitty_cfg_ctrl_hwnd(hk->listbox);
     int n, r;
     if (!h || !hk->keys || idx < 0 || idx >= hk->keys->n) return;
@@ -6256,7 +6202,6 @@ static void hk_update_row(struct hk_data *hk, int idx)
 /* The column under the mouse, for a click on the header row. */
 static int hk_column_at_cursor(struct hk_data *hk)
 {
-    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);
     HWND h = kitty_cfg_ctrl_hwnd(hk->listbox);
     POINT pt; RECT r;
     int width, x, acc = 0, i;
@@ -6419,7 +6364,6 @@ static void kitty_hk_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int ev
         if (event == EVENT_REFRESH) {
             hk_fill(hk, dlg);
         } else if (event == EVENT_SELCHANGE) {
-            extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);
             HWND h = kitty_cfg_ctrl_hwnd(ctrl);
             if (h && SendMessage(h, LB_GETSEL, 0, 0) > 0) {
                 /* the header row. A MOUSE click there sorts by that column;
@@ -6544,7 +6488,6 @@ static void hk_box_closing(void)
 
 static void scb_panel_hostkeys(struct controlbox *b)
 {
-    extern void (*kitty_cfg_box_closing_hook)(void);   /* windows/dialog.c */
     static const char *const path = "Application/Security/Host keys";
     struct hk_data *hk = (struct hk_data *)ctrl_alloc(b, sizeof(*hk));
     struct controlset *s;
@@ -6728,7 +6671,6 @@ static LRESULT CALLBACK hk_splitter_proc(HWND hwnd, UINT msg, WPARAM wParam, LPA
  * boundary back where it was last dragged. */
 static void hk_place_splitter(struct hk_data *hk)
 {
-    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);
     static bool registered = false;
     HWND above, below, parent;
     RECT a, b;
@@ -7336,7 +7278,6 @@ static void kitty_hkscan_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, in
 #endif
 
 #ifdef MOD_PERSO
-void CheckVersionFromWebSite(HWND hwnd, int is_terminal);   /* kitty_win.c: query GitHub releases */
 static void checkupdate_button_handler(dlgcontrol *ctrl, dlgparam *dp,
                                        void *data, int event)
 {
@@ -7351,8 +7292,6 @@ static void checkupdate_button_handler(dlgcontrol *ctrl, dlgparam *dp,
  * list shows only KiTTY's own sessions and a stock-PuTTY session is never
  * deleted unless the user deliberately reveals it. Toggling re-enumerates the
  * list immediately. The flag lives in the registry (windows/storage.c). */
-int  kitty_get_show_foreign_sessions(void);   /* windows/storage.c */
-void kitty_set_show_foreign_sessions(int on); /* windows/storage.c */
 /*
  * The line under the saved-session list, and the button beside it.
  *
@@ -7364,7 +7303,6 @@ void kitty_set_show_foreign_sessions(int on); /* windows/storage.c */
 static void kitty_foreignnotice_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                         void *data, int event)
 {
-    extern void kitty_cfg_goto_panel(const char *path);   /* windows/dialog.c */
     (void)ctrl; (void)dlg; (void)data;
     if (event == EVENT_ACTION)
         kitty_cfg_goto_panel("Application/Migration");
@@ -7796,8 +7734,6 @@ static void scb_panel_session(struct controlbox *b, bool midsession)
      */
     if (!midsession && !GetPuttyFlag() &&
         kitty_foreign_notice_pending(KITTY_FOREIGN_NOTICE_LIST)) {
-        extern int GetIniFileFlag(void);              /* kitty_commun.c */
-        extern int kitty_has_foreign_sessions(void);  /* windows/storage.c */
         if (GetIniFileFlag() == 0 /* SAVEMODE_REG */ &&
             kitty_has_foreign_sessions() &&
             kitty_get_show_foreign_sessions()) {
@@ -7996,11 +7932,9 @@ static void scb_panel_logging(struct controlbox *b, bool midsession, int protoco
 /* The Session/Scripting panel (KiTTY rutty scripting). */
 
 /* kitty.c: this installation's broadcast key (generated, or sendcmdgroup). */
-extern const char *kitty_broadcast_group(void);
 /* ...and whether that key came from kitty.ini rather than being derived: the
  * provenance line says which, so a missing declaration here would silently be
  * an implicit int() call. */
-extern int kitty_broadcast_group_from_ini(void);
 
 /* ---- Session > Broadcast: the broadcast key -------------------------------
  *
@@ -8091,7 +8025,7 @@ static void kitty_bkey_copy_handler(dlgcontrol *ctrl, dlgparam *dp,
     }
 }
 
-void kitty_broadcast_key_controls(struct controlbox *b, struct controlset *s)
+static void kitty_broadcast_key_controls(struct controlbox *b, struct controlset *s)
 {
     struct kitty_bkey_state *st = (struct kitty_bkey_state *)
         ctrl_alloc(b, sizeof(struct kitty_bkey_state));
@@ -9813,7 +9747,6 @@ static void scb_panel_proxy(struct controlbox *b, bool midsession)
          * controls grey out and the info line under the state says so -
          * a leaf that comes and goes with the proxy count read as a bug,
          * and gave no hint where the feature had gone. */
-        extern int GetConfigBoxApplicationSettingsFlag(void);  /* kitty.c */
         /* An Application leaf, so [ConfigBox] applicationsettings=no
          * takes it away with the rest of that tab. */
         if (!GetPuttyFlag() && GetConfigBoxApplicationSettingsFlag()) {
@@ -9924,7 +9857,6 @@ static void xfer_port_hint(dlgcontrol *ctrl, dlgparam *dlg, Conf *conf, int tool
 {
     /* kitty/kitty.h states the rules; kitty_xfer.c applies them. Declared here
      * rather than by including kitty.h, which this file does not. */
-    extern int kitty_xfer_default_port(Conf *conf, int tool, int protocol);
     HWND h = xfer_port_edit_hwnd(ctrl, dlg);
     wchar_t hint[24];
     char num[24];
@@ -10413,7 +10345,6 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
             /* KiTTY: the CA editor lives on the Application tab; the button
              * jumps there. Without that tab (applicationsettings=no) there is
              * nowhere to jump, and the line says where the setting is. */
-            extern int GetConfigBoxApplicationSettingsFlag(void);   /* kitty.c */
             if (GetPuttyFlag())
                 c = ctrl_pushbutton(s, KT_HOST_KEYS_CONFIGURE_HOST_CAS, NO_SHORTCUT,
                                     HELPCTX(ssh_kex_cert),
@@ -10729,7 +10660,6 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
              * Settings > Transfers & Tools); say so, and offer the way there
              * when the Application tab exists. */
             {
-                extern int GetConfigBoxApplicationSettingsFlag(void);   /* kitty.c */
                 dlgcontrol *note, *btn;
                 s = ctrl_getset(b, "Connection/SSH/KSCP", "global", NULL);
                 if (GetConfigBoxApplicationSettingsFlag()) {
@@ -10776,7 +10706,6 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
              * Application tab (applicationsettings=no) there is nowhere to
              * jump, so only the note stays. */
             {
-                extern int GetConfigBoxApplicationSettingsFlag(void);   /* kitty.c */
                 dlgcontrol *note, *btn;
                 s = ctrl_getset(b, "Connection/SSH/WinSCP", "global", NULL);
                 if (GetConfigBoxApplicationSettingsFlag()) {
@@ -10817,7 +10746,6 @@ static void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, i
                               KT_FZ_PW_CMDLINE, NO_SHORTCUT, I(2));
             ctrl_text(s, KT_FZ_KEY_PREFERRED, HELPCTX(kitty_filezilla_session));
             {
-                extern int GetConfigBoxApplicationSettingsFlag(void);   /* kitty.c */
                 dlgcontrol *note, *btn;
                 s = ctrl_getset(b, "Connection/SSH/FileZilla", "global", NULL);
                 if (GetConfigBoxApplicationSettingsFlag()) {
@@ -11001,7 +10929,6 @@ static dlgcontrol *kset_sshver_preview;     /* the banner line, Security > Clien
 /* "Locate..." beside the session's local download folder: the folder picker
  * opens on the folder that applies today, the pick is stored like a typed
  * value and the box (the button's context) refreshed. */
-extern void kitty_controls_set_dir_picker(int (*)(HWND, char *, const char *, const char *)); /* windows/controls.c */
 
 /* The session's download folder as a folder row (label, box and Locate...
  * on ONE aligned line - the file-select control with FILTER_FOLDERS), its
@@ -11362,16 +11289,6 @@ static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
  */
 /* kitty.c owns these; declared here because this file has no header for them
  * and an implicit declaration disagrees with the const-qualified real one. */
-extern int  GetSessionFilterFlag(void);
-extern void SetSessionFilterFlag(const int flag);
-extern int  GetDefaultSettingsFlag(void);
-extern void SetDefaultSettingsFlag(const int flag);
-extern int  GetFolderNavigationFlag(void);
-extern void SetFolderNavigationFlag(const int flag);
-extern int  GetLoadLastSessionFlag(void);
-extern void SetLoadLastSessionFlag(const int flag);
-extern int  GetDblClickFlag(void);
-extern void SetDblClickFlag(const int flag);
 
 static void kitty_cfgwin_flag_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                       void *data, int event)
@@ -11433,7 +11350,6 @@ static void kitty_cfgwin_proxysel_handler(dlgcontrol *ctrl, dlgparam *dlg,
 static void kitty_cfgwin_expand_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                         void *data, int event)
 {
-    extern int kitty_category_expand_depth;             /* windows/dialog.c */
     static const char *const names[] = {
         KT_CFG_TREE_EVERYTHING, KT_CFG_TREE_TOP_ONLY, KT_CFG_TREE_TWO_LEVELS, KT_CFG_TREE_THREE_LEVELS };
     static const char *const keys[] = { "all", "1", "2", "3" };
@@ -11466,8 +11382,6 @@ static void kitty_cfgwin_expand_handler(dlgcontrol *ctrl, dlgparam *dlg,
 static void kitty_cfgwin_noexit_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                         void *data, int event)
 {
-    extern int  GetConfigBoxNoExitFlag(void);           /* kitty.c */
-    extern void SetConfigBoxNoExitFlag(const int flag);
 
     if (event == EVENT_REFRESH) {
         dlg_checkbox_set(ctrl, dlg, GetConfigBoxNoExitFlag() != 0);
@@ -11484,16 +11398,12 @@ static void kitty_cfgwin_noexit_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * is ticked, so the change shows in the window it was made in. */
 int kitty_cfgbox_size_locked(void)
 {
-    extern int GetConfigBoxFixedSizeFlag(void);            /* kitty.c */
     return GetConfigBoxFixedSizeFlag() != 0;
 }
 
 static void kitty_cfgwin_fixedsize_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                            void *data, int event)
 {
-    extern int  GetConfigBoxFixedSizeFlag(void);           /* kitty.c */
-    extern void SetConfigBoxFixedSizeFlag(const int flag);
-    extern void kitty_cfgbox_apply_fixed_size(void);       /* windows/dialog.c */
 
     if (event == EVENT_REFRESH) {
         dlg_checkbox_set(ctrl, dlg, GetConfigBoxFixedSizeFlag() != 0);
@@ -11656,8 +11566,6 @@ void kitty_cfgtree_folds_save(void)
 
 void kitty_cfgbox_store_size(int w, int h)
 {
-    extern void SetConfigBoxWindowHeight(const int num);  /* kitty.c */
-    extern void SetConfigBoxWindowWidth(const int num);   /* kitty.c */
     char buf[32];
 
     if (w > 0) {
@@ -11703,9 +11611,6 @@ static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
          * there is no Save on this panel. Half-typed numbers reach the file
          * and are immediately replaced by the next keystroke - harmless,
          * because neither key does anything until the next window is built. */
-        extern void SetConfigBoxHeight(const int num);        /* kitty.c */
-        extern void SetConfigBoxWindowHeight(const int num);  /* kitty.c */
-        extern void SetConfigBoxWindowWidth(const int num);   /* kitty.c */
         char *s;
         /* "Lock window size": the two window fields refuse edits - the typed
          * text is put back to the stored value at once. This box has no way
@@ -11765,13 +11670,11 @@ static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * Two steps, and both are needed - the control carries the
                  * height, and the panel carries the control.
                  */
-                extern void kitty_cfgbox_relayout_panel(const char *path);
                 if (kitty_session_ssd && kitty_session_ssd->listbox)
                     kitty_session_ssd->listbox->listbox.height =
                         kitty_config_session_rows();
                 kitty_cfgbox_relayout_panel("Session");
             } else {
-                extern void kitty_cfgbox_apply_size(void);  /* windows/dialog.c */
                 kitty_cfgbox_apply_size();
             }
         }
@@ -12091,44 +11994,28 @@ extern int  GetMouseShortcutsFlag(void);       extern void SetMouseShortcutsFlag
 extern int  GetHyperlinkFlag(void);            extern void SetHyperlinkFlag(const int);
 extern int  GetFunkeysDefault(void);           extern void SetFunkeysDefault(const int);
 extern int  GetPasteSize(void);                extern void SetPasteSize(const int);
-extern int  debug_flag;
-extern int  init_delay, autocommand_delay, between_char_delay, internal_delay;
 extern int  kitty_script_enabled(void);        extern void kitty_script_set_enabled(int);
 extern int  kitty_broadcast_default(void);     extern void kitty_broadcast_set_enabled(int);
-extern void kitty_broadcast_set_group(const char *);
-extern void kitty_broadcast_set_send_key(const char *);
-extern const char *kitty_broadcast_send_key_override(void);
-extern int  SendCommandAllWindowsEx(HWND hwnd, char *cmd, int include_self);
 extern int  GetTitleBarFlag(void);             extern void SetTitleBarFlag(const int);
 extern int  GetSizeFlag(void);                 extern void SetSizeFlag(const int);
 extern int  GetWinrolFlag(void);               extern void SetWinrolFlag(const int);
 extern int  GetCtrlTabFlag(void);              extern void SetCtrlTabFlag(const int);
 extern int  GetTransparencyFlag(void);         extern void SetTransparencyEnabled(const int);
 extern int  GetBackgroundImageFlag(void);      extern void SetBackgroundImageFlag(const int);
-extern int  ImageSlideDelay;
 extern int  GetShrinkBitmapEnable(void);       extern void SetShrinkBitmapEnable(int);
 extern char *GetIconFile(void);                extern void SetIconFile(const char *);
-extern int  PrintCharSize, PrintMaxLinePerPage, PrintMaxCharPerLine;
 extern int  GetFontFallbackFlag(void);         extern void SetFontFallbackFlag(int);
-extern void kitty_fontfallback_apply_list(const char *);
 extern int  GetAutoreconnectFlag(void);        extern void SetAutoreconnectFlag(const int);
 extern int  GetReconnectDelay(void);           extern void SetReconnectDelay(const int);
 extern int  GetProxyChainMax(void);            extern void SetProxyChainMax(const int);
 extern int  GetUserPassSSHNoSave(void);        extern void SetUserPassSSHNoSave(const int);
 extern int  GetModalErrorsFlag(void);          extern void SetModalErrorsFlag(const int);
 extern int  GetModalNewHostKeyConfirmationFlag(void);
-extern void SetModalNewHostKeyConfirmationFlag(const int);
 extern int  GetModalChangedHostKeyConfirmationFlag(void);
-extern void SetModalChangedHostKeyConfirmationFlag(const int);
 extern int  GetModalWeakKeyConfirmationFlag(void);
-extern void SetModalWeakKeyConfirmationFlag(const int);
 extern const char *get_sshver(void);           extern void set_sshver(const char *);
 extern int  GetZModemFlag(void);               extern void SetZModemFlag(const int);
 extern char *PSCPPath;                         extern void SetPSCPPath(const char *);
-extern int  readINI(const char *, const char *, const char *, char *, size_t);
-extern int  writeINI(const char *, const char *, const char *, const char *);
-extern char *GetKittyIniFile(void);
-extern int  GetReadOnlyFlag(void);
 
 static const char *kset_get_iconfile(void) { return GetIconFile(); }
 
@@ -12307,7 +12194,6 @@ static const struct kset_key kset_keys[] = {
 
 /* The banner preview under the client-version field (Connections leaf). */
 static dlgcontrol *kset_sshver_preview = NULL;
-extern void kitty_ssh_banner_preview(char *buf, size_t size);   /* kitty_bridge.c */
 static void kset_show_banner(dlgparam *dlg)
 {
     char banner[128], line[200];
@@ -12660,7 +12546,6 @@ static void kitty_sharedpos_reset_handler(dlgcontrol *ctrl, dlgparam *dlg,
 static dlgcontrol *ksys_lines[5];
 static void ksys_refresh(dlgparam *dlg)
 {
-    extern int kitty_shell_integration_state(char lines[5][256]);
     char lines[5][256];
     int i;
     kitty_shell_integration_state(lines);
@@ -12671,8 +12556,6 @@ static void ksys_refresh(dlgparam *dlg)
 static void kitty_system_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                  void *data, int event)
 {
-    extern void kitty_shell_integration_register(int force);
-    extern void kitty_shell_integration_unregister(void);
     const char *q;
     (void)data;
     if (event != EVENT_ACTION)
@@ -12691,8 +12574,6 @@ static void kitty_system_handler(dlgcontrol *ctrl, dlgparam *dlg,
 }
 
 /* System > "Add this KiTTY++ folder to the user PATH" (kitty_userpath.c) */
-bool kitty_userpath_contains_exe_dir(void);
-bool kitty_userpath_set_exe_dir(bool on, char **err);
 static void kitty_syspath_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
 {
     if (event == EVENT_REFRESH) {
@@ -12724,7 +12605,6 @@ static void kitty_syspath_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, i
  * it was opened from too" holds if that ever changes.
  * ====================================================================== */
 
-extern char KiTTYClassName[128];               /* kitty.c: the terminal window class */
 
 /* One row of either view: a session name and the key it listens for. */
 struct kbc_entry {
@@ -13231,7 +13111,6 @@ static void kbc_box_closing(void)
 
 static void kbc_leaf(struct controlbox *b)
 {
-    extern void (*kitty_cfg_box_closing_hook)(void);   /* windows/dialog.c */
     struct controlset *s;
     dlgcontrol *c;
 
@@ -13512,7 +13391,6 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
 
     /* ---- System: the Windows shell integration ---- */
     {
-        extern int kitty_shell_integration_state(char lines[5][256]);
         char lines[5][256];
         dlgcontrol *bc;
         int i;
@@ -13638,7 +13516,6 @@ static char *iniview_read(const char *path, FILETIME *written, bool *ok)
 
 static void iniview_load(struct iniview_data *iv, dlgparam *dlg, bool keep_scroll)
 {
-    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);      /* windows/dialog.c */
     HWND h = kitty_cfg_ctrl_hwnd(iv->view);
     int first = 0;
     char *text;
@@ -13725,7 +13602,6 @@ static void scb_panel_iniview(struct controlbox *b, const char *ini)
 {
     static const char *const path =
         "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini";
-    extern int GetNoKittyFileFlag(void);                    /* kitty.c */
     struct iniview_data *iv;
     struct controlset *s;
     dlgcontrol *c;
@@ -13824,19 +13700,6 @@ struct sc_data {
 };
 static struct sc_data *kitty_sc_active;
 
-extern int ShortcutActionCount(void);                  /* kitty_shortcuts.c */
-extern const char *ShortcutActionKey(int i);
-extern const char *ShortcutActionName(int i);
-extern int ShortcutActionValue(int i);
-extern int ShortcutActionDefault(int i);
-extern int ShortcutKeyText(int key, char *buf, size_t size);
-extern int ShortcutKeyCode(int vk, int shift, int control, int alt, int altgr, int win);
-extern int ShortcutKeySyntax(int key, char *buf, size_t size);
-extern int ShortcutKeyUserCommand(int key);
-extern int ShortcutKeyReserved(int key);
-extern int DefineShortcuts(char *buf);
-extern void InitShortcuts(void);
-extern int delINI(const char *filename, const char *section, const char *key);
 
 static dlgcontrol *kitty_sc_fill_ctrl(bool autotext)
 {
@@ -13846,7 +13709,6 @@ static dlgcontrol *kitty_sc_fill_ctrl(bool autotext)
 
 static HWND sc_hwnd(dlgcontrol *ctrl)
 {
-    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);   /* windows/dialog.c */
     return ctrl ? kitty_cfg_ctrl_hwnd(ctrl) : NULL;
 }
 
@@ -13865,8 +13727,6 @@ static void sc_report(const char *text)
 /* Is there a kitty.ini a write can land in? Reports why not otherwise. */
 static bool sc_can_write(void)
 {
-    extern int GetReadOnlyFlag(void);
-    extern int GetNoKittyFileFlag(void);
     const char *ini = GetKittyIniFile();
     if (GetNoKittyFileFlag() || !ini || !ini[0]) { sc_report(KT_KSET_SC_NO_INI); return false; }
     if (GetReadOnlyFlag()) { sc_report(KT_KSET_SC_READONLY); return false; }
@@ -14451,12 +14311,6 @@ static void scb_panel_shortcut_editor(struct controlbox *b, const char *path)
 static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
 {
 #ifdef MOD_PERSO
-    extern int GetIniFileFlag(void);           /* kitty_commun.c */
-    extern int GetReadOnlyFlag(void);          /* kitty_commun.c */
-    extern int GetNoKittyFileFlag(void);       /* kitty.c */
-    extern char *GetKittyIniFile(void);        /* kitty.c */
-    extern char *GetKittySavFile(void);        /* kitty.c */
-    extern char *ConfigDirectory;              /* kitty.c: the folder store */
     /* kitty_commun.c's values, which this file has no header for */
     enum { KSET_SAVEMODE_REG = 0, KSET_SAVEMODE_FILE = 1, KSET_SAVEMODE_DIR = 2 };
     static const char *const storage = "Application/KiTTY++ Settings/Storage & Backup";
@@ -14788,8 +14642,6 @@ static void kitty_import_action_handler(dlgcontrol *ctrl, dlgparam *dlg,
 static void kitty_inimig_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                  void *data, int event)
 {
-    extern void kitty_make_portable_copy(HWND);
-    extern void kitty_take_folder_store(HWND);
     (void)data;
     if (event != EVENT_ACTION)
         return;
@@ -14811,8 +14663,6 @@ static void kitty_inimig_handler(dlgcontrol *ctrl, dlgparam *dlg,
 static void kitty_storexfer_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                     void *data, int event)
 {
-    extern void kitty_export_all_sessions(HWND);
-    extern void kitty_import_sessions(HWND);
     (void)data;
     if (event != EVENT_ACTION)
         return;
@@ -14851,8 +14701,6 @@ static int n_app_footers = 0, app_footers_cap = 0;
 
 static void kitty_footer_pin_one(struct app_footer_pin *f)
 {
-    extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);   /* windows/dialog.c */
-    extern HWND kitty_cfg_panel_host;                    /* windows/controls.c */
     HWND host = kitty_cfg_panel_host, w, boxw = NULL;
     RECT hostr, gr, br;
     POINT p;
@@ -15028,7 +14876,6 @@ static void migf_say(struct migf_data *m, dlgparam *dlg, const char *what)
 static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                void *data, int event)
 {
-    extern int existdirectory(const char *filename);   /* kitty_tools.c */
     struct migf_data *m = (struct migf_data *)ctrl->context.p;
     int which = ctrl->context2.i;      /* 0 folder box, 1 browse, 2 scan,
                                           3 target combo, 4 assign, 5 list,
@@ -15088,7 +14935,6 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
       case 3:                          /* Import into folder: */
         if (event == EVENT_REFRESH) {
-            extern char **FolderList;
             int i;
             dlg_update_start(ctrl, dlg);
             dlg_listbox_clear(ctrl, dlg);
@@ -15142,7 +14988,6 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
         } else if (event == EVENT_SELCHANGE) {
             /* The header row cannot be selected: a click on it (or a
              * select-all) is undone at once. */
-            extern HWND kitty_cfg_ctrl_hwnd(dlgcontrol *ctrl);
             HWND h = kitty_cfg_ctrl_hwnd(ctrl);
             if (h && SendMessage(h, LB_GETSEL, 0, 0) > 0)
                 SendMessage(h, LB_SETSEL, FALSE, 0);
@@ -15167,7 +15012,6 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * those sessions import without their passwords.
              */
             {
-                extern char *kitty_mpw_gui_ask_import(HWND owner, const char *prompt);
                 const char *probe = NULL;
                 for (i = 0; i <= m->found->n && !probe; i++) {
                     int id;
@@ -15351,7 +15195,6 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
          * tab strip already degrades to one tab when no Application/ path
          * exists (it is how the stock variants behave), and the jumps to
          * those panels check the strip before going. */
-        extern int GetConfigBoxApplicationSettingsFlag(void);   /* kitty.c */
         if (!GetConfigBoxApplicationSettingsFlag())
             return;
     }
@@ -15379,8 +15222,6 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
       * no foreign hive to reveal, and an empty switch explains nothing.
       */
     {
-        extern int GetIniFileFlag(void);              /* kitty_commun.c */
-        extern int kitty_has_foreign_sessions(void);  /* windows/storage.c */
         ctrl_settitle(b, "Application/Migration", KT_MIG_TITLE);
         s = ctrl_getset(b, "Application/Migration", "storexfer",
                         KT_MIG_STORE_GROUP);
@@ -15453,7 +15294,6 @@ static void scb_panel_application(struct controlbox *b, bool midsession)
     {
         const char *p = "Application/Migration/KiTTY storage";
         dlgcontrol *bc;
-        extern int GetIniFileFlag(void);
         ctrl_settitle(b, p, KT_INIMIG_TITLE);
         s = ctrl_getset(b, p, "copy", KT_INIMIG_OUT_GROUP);
         ctrl_text(s, KT_INIMIG_OUT_INTRO, HELPCTX(kitty_ini_migration));

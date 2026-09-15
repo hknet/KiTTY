@@ -15,6 +15,7 @@
 #include "kitty_hello.h"
 #include "kitty_hello_keys.h"
 #include "kitty_text.h"     /* the anchor card's context line */
+#include "kitty_gui.h"
 
 extern char *(*kitty_hello_keyfile_unlock_hook)(const char *path);
 extern char *(*kitty_hello_keyfile_translate_hook)(const char *path,

@@ -51,14 +51,16 @@
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory (kitty_commands.c too) */
+#include "kitty_storage.h"
+#include "kitty_gui.h"
+#include "kitty_bridge.h"
+#include "mini/mini.h"
+#include "kitty_b64.h"
+#include "kitty_store.h"
 
 /* The hive this process is ACTUALLY using. Not TEXT(PUTTY_REG_POS): that is the
  * compile-time DEFAULT, and with kitty.ini's KiClassName=PuTTY the two differ -
  * see the long note on kitty_registry_base() in kitty/kitty_storage.c. */
-extern const char *kitty_registry_base( void ) ;
-extern const char *kitty_reg_sessions( void ) ;   /* <base>\Sessions */
-extern const char *kitty_reg_hostkeys( void ) ;   /* <base>\SshHostKeys */
-extern int kitty_root_is_putty( void ) ;          /* is the hive in use PuTTY-s? */
 
 /*************************************************
 ** END OF INCLUDES
@@ -69,7 +71,6 @@ extern int kitty_root_is_putty( void ) ;          /* is the hive in use PuTTY-s?
 ** CONFIGURATION STRUCTURE
 *************************************************/
 // The configuration structure is instantiated in window.c
-extern Conf *conf ;
 
 #ifndef SAVEMODE_REG
 #define SAVEMODE_REG 0
@@ -307,13 +308,8 @@ void SetWinrolFlag( const int num ) { WinrolFlag  = num ; }
 /* "the configuration store changed" flag - implemented in kitty_storage.c so
  * that windows/storage.c can set it too. Declared up here because SaveFolderList
  * below is the first user. */
-void kitty_store_mark_dirty( void ) ;
-int kitty_store_take_dirty( void ) ;
 /* Startup cleanup of the master password the old export behaviour created as a
  * side effect - implemented in kitty_storage.c, which owns the store scan. */
-void kitty_retire_orphan_master_password( void ) ;
-int kitty_migrate_portable_mpw_state( void ) ;
-void kitty_show_mpw_moved( HWND hwnd ) ;
 
 static char PasswordConf[cstMaxRegLength+2] = "" ; /* filled from the registry "password" value via GetValueData, which writes up to cstMaxRegLength data bytes + NUL */
 
@@ -483,9 +479,6 @@ void SetTransparencyEnabled( const int flag ) { SetTransparencyIni( flag ) ; }
 char KiTTYClassName[128] = "" ;
 
 // Printing parameters
-extern int PrintCharSize ;
-extern int PrintMaxLinePerPage ;
-extern int PrintMaxCharPerLine ;
 
 extern char puttystr[1024] ;
 
@@ -623,7 +616,7 @@ void kitty_set_remote_cwd( const char * osc7 ) {
 	strcpy( RemoteCwd, path ) ;
 }
 
-char * kitty_current_dir() {
+char * kitty_current_dir(void) {
 	/* Respect the CURRENT setting, not just what it was when the cwd was stored:
 	 * if the user turns OSC 7 tracking off at runtime (Change Settings), stop
 	 * offering the tracked directory immediately so uploads fall back to the
@@ -636,9 +629,6 @@ char * kitty_current_dir() {
 // List of folders
 char **FolderList=NULL ;
 
-int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) ;
-int writeINI( const char * filename, const char * section, const char * key, char * pStr) ;
-int delINI( const char * filename, const char * section, const char * key ) ;
 // Initialise the folder list from the existing sessions and from kitty.ini
 void InitFolderList( void ) {
 	char * pst, fList[4096], buffer[4096] ;
@@ -741,7 +731,7 @@ void InitFolderList( void ) {
 	
 	}
 
-int GetSessionFolderNameInSubDir( const char * session, const char * subdir, char * folder ) {
+static int GetSessionFolderNameInSubDir( const char * session, const char * subdir, char * folder ) {
 	int return_code=0;
 	char buffer[2048], buf[2048] ;
 	DIR * dir ;
@@ -902,7 +892,6 @@ void RenewPassword( Conf *conf ) {
 		}
 	}
 
-int DebugAddPassword( const char*fct, const char*pwd ) ;
 
 /* Put a password the user typed at the SSH prompt into the running session's
  * settings. It goes in exactly as typed, wrapped in memory like every other
@@ -973,7 +962,7 @@ void license_form( char * license, char sep, int size ) ;
 int license_test( char * license, char sep, int modulo, int result ) ;
 
 // Increment the usage counter in the registry
-void CountUp( void ) {
+static void CountUp( void ) {
 	char buffer[4096] = "0", *pst ;
 	long int n ;
 	int len = 1024 ;
@@ -1116,7 +1105,7 @@ int DelParameter( const char * key, const char * name ) {
 	}
 	
 // Check the configuration (file or registry mode) and load kitty.sav if needed
-void GetSaveMode( void ) {
+static void GetSaveMode( void ) {
 	char buffer[256] ;
 	if( readINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, buffer, sizeof(buffer) ) ) {
 		str_rtrim( buffer, "\n\r \t" ) ;
@@ -1519,7 +1508,7 @@ static int sav_find_for_restore( const char *savfile, char *out, size_t outlen )
  * copy was only obfuscated with a constant compiled into every build. Nothing
  * reads either value any more, so remove them rather than leave a plaintext
  * secret lying about. Self-limiting: both deletes are skipped when absent. */
-void RetireConfigPasswordLeftovers( void ) {
+static void RetireConfigPasswordLeftovers( void ) {
 	char buf[4096] ;
 	if( GetValueDataN( HKEY_CURRENT_USER, kitty_registry_base(), KI_PASSWORD, buf, sizeof(buf) ) != NULL )
 		RegDelValue( HKEY_CURRENT_USER, kitty_registry_base(), KI_PASSWORD ) ;
@@ -1546,7 +1535,7 @@ void RetireConfigPasswordLeftovers( void ) {
  * skipped when the value is absent, so this costs nothing on a clean store and
  * runs at most once usefully.
  */
-void RetireCountUpLeftovers( void ) {
+static void RetireCountUpLeftovers( void ) {
 	/* char* rather than const char*: RegDelValue takes LPTSTR. */
 	static char *const dead[] = {
 		KR_KILASTUP, KR_KILASTUH, KR_KISESS, KR_KISESS_COMMENTED, KR_KIVERS, KR_KIPATH } ;
@@ -1614,7 +1603,6 @@ static void sav_backup( int async ) {
 	{ char dated[4096] ;
 	  sav_timestamped_path( KittySavFile, dated, sizeof(dated) ) ;
 	  if( !async ) {
-		extern const char *kitty_registry_base( void ) ;   /* see sav_worker */
 		SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), dated ) ;
 		sav_prune( KittySavFile, keep ) ;
 		return ;
@@ -1770,7 +1758,6 @@ void routine_server( void * st ) {
 	return ;
 }
 
-void SendStrToTerminal( const char * str, const int len ) ;
 
 void SendKeyboard( HWND hwnd, const char * buffer ) {
 	int i ; 
@@ -2033,7 +2020,6 @@ const char *kitty_broadcast_group( void )
 	char exe[MAX_PATH+1] = "" ;
 	unsigned long long h = 1469598103934665603ULL ;     /* FNV-1a, 64-bit */
 	const char *p ;
-	extern const char *kitty_registry_base( void ) ;
 
 	if( group[0] ) return group ;
 
@@ -2065,7 +2051,7 @@ struct kitty_sendcmd_job {
 	int include_self ;
 } ;
 
-BOOL CALLBACK SendCommandProc( HWND hwnd, LPARAM lParam ) {
+static BOOL CALLBACK SendCommandProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	const struct kitty_sendcmd_job *job = (const struct kitty_sendcmd_job *)lParam ;
 	GetClassName( hwnd, buffer, 256 ) ;
@@ -2109,7 +2095,7 @@ int SendCommandAllWindows( HWND hwnd, char * cmd ) {
 }
 	
 // Resizing of the windows of the same class
-BOOL CALLBACK ResizeWinListProc( HWND hwnd, LPARAM lParam ) {
+static BOOL CALLBACK ResizeWinListProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	GetClassName( hwnd, buffer, 256 ) ;
 	
@@ -2343,7 +2329,6 @@ void ManageShortcutsFlag( HWND hwnd ) {
 
 // Opens a config box with the current settings (but without a hostname)
 void del_settings(const char *sessionname);
-void RunSessionWithCurrentSettings( HWND hwnd, Conf *conf, const char * host, const char * user, const char * pass, const int port, const char * remotepath ) ;
 
 // Change the application icon
 //SendMessage( hwnd, WM_SETICON, ICON_SMALL, (LPARAM)LoadIcon( hInstIcons, MAKEINTRESOURCE(IDI_MAINICON_0 + IconeNum ) ) );
@@ -2481,9 +2466,6 @@ void ManageWinrol( HWND hwnd, int resize_action ) {
 }
 
 #ifdef MOD_BACKGROUNDIMAGE
-BOOL load_bg_bmp() ;
-void clean_bg( void ) ;
-void RedrawBackground( HWND hwnd ) ;
 #endif
 
 void RefreshBackground( HWND hwnd ) {
@@ -2496,7 +2478,7 @@ void RefreshBackground( HWND hwnd ) {
 
 #ifdef MOD_BACKGROUNDIMAGE
 /* Changing the background image */
-int GetExt( const char * filename, char * ext, size_t extsz) {
+static int GetExt( const char * filename, char * ext, size_t extsz) {
 	int i;
 	if( extsz>0 ) ext[0]='\0';
 	if( filename==NULL ) return 0;
@@ -2611,7 +2593,7 @@ void CreateTimerInit( void ) {
 	}
 
 // Set the directory the configuration is kept in
-void SetConfigDirectory( const char * Directory ) {
+static void SetConfigDirectory( const char * Directory ) {
 	char *buf ;
 	if( ConfigDirectory != NULL ) { 
 		free( ConfigDirectory ) ; 
@@ -2637,7 +2619,7 @@ void SetConfigDirectory( const char * Directory ) {
 	}
 }
 	
-void GetInitialDirectory( char * InitialDirectory ) {
+static void GetInitialDirectory( char * InitialDirectory ) {
 	int i ;
 	if( GetModuleFileName( NULL, (LPTSTR)InitialDirectory, 4096 ) ) {
 		if( strlen( InitialDirectory ) > 0 ) {
@@ -2657,7 +2639,7 @@ void GetInitialDirectory( char * InitialDirectory ) {
 /* The User-Command special menu (ReadSpecialMenu / InitSpecialMenu /
  * ManageSpecialCommand) lives in kitty_specialmenu.c. */
 
-BOOL CALLBACK EnumWindowsProc( HWND hwnd, LPARAM lParam ) {
+static BOOL CALLBACK EnumWindowsProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	GetClassName( hwnd, buffer, 256 ) ;
 	
@@ -2859,7 +2841,6 @@ void SaveCurrentSetting( HWND hwnd ) {
  * /save calls and save-on-exit land there. Mirrors the config-box Save button
  * (folder default + launcher refresh broadcast, cf. kitty_config.c). The
  * classic /save (.ktx file exporter, SaveCurrentSetting) lives on as /savektx. */
-void kitty_set_last_session(const char *sessionname);   /* kitty_storage.c */
 static void kitty_save_current_session( HWND hwnd, const char * newname ) {
 	char buffer[1024] ;
 	char * errmsg ;
@@ -2925,14 +2906,6 @@ void ManageInitScript( const char * input_str, const int len ) {
  * use (kitty_storage.c), plus the base64 pair, because the script is a
  * NUL-separated blob rather than a C string. kitty_proxy.c declares the wrap the
  * same way - these live in kitty_storage.c but not all of them in its header. */
-extern char *kitty_secret_wrap_current_backend( const char *plaintext ) ;
-extern int kitty_secret_is_marked( const char *stored ) ;
-extern char *ksec_b64_encode( const unsigned char *in, int len ) ;
-extern unsigned char *ksec_b64_decode( const char *in, int *outlen ) ;
-extern int ksec_unprotect( const char *stored, char **out ) ;
-extern int ksec_stored_is_legacy( const char *stored ) ;
-extern char *kitty_loginscript_blob_to_lines( const unsigned char *blob, int len ) ;
-extern unsigned char *kitty_loginscript_lines_to_blob( const char *text, int *outlen ) ;
 
 /*
  * The login script, as text a person can read and edit.
@@ -3129,7 +3102,6 @@ void ReadInitScript( const char * filename ) {
 #include "kitty_launcher.c"
 
 char *dirname(char *path);
-void ResetWindow(int reinit) ;
 #ifndef IDM_RECONF
 #define IDM_RECONF    0x0050
 #endif
@@ -3143,7 +3115,6 @@ void ResetWindow(int reinit) ;
 
 // Initialise the parameters from the kitty.ini file
 #ifdef MOD_BACKGROUNDIMAGE
-void SetShrinkBitmapEnable(int) ;
 #endif
 
 /*
@@ -3544,7 +3515,6 @@ void LoadParameters( void ) {
 	/* ReadParameter, not readINI: Application > Config Window edits it, and a
 	 * panel writes through WriteParameter - the registry in registry mode. */
 	if( ReadParameter( KI_SECTION_CONFIGBOX, KI_CONFIGBOX_CATEGORYEXPAND, buffer ) ) {
-		extern int kitty_category_expand_depth ;
 		if( strlen(buffer)==0 || !stricmp(buffer,"all") || !stricmp(buffer,"full") || !stricmp(buffer,"max") || !stricmp(buffer,"yes") )
 			kitty_category_expand_depth = 99 ;
 		else { int d = atoi(buffer) ; kitty_category_expand_depth = (d >= 1) ? d : 99 ; }
@@ -3592,7 +3562,7 @@ void kitty_fontfallback_apply_list( const char * list ) {
 // - kitty.ini in the directory kitty.exe was started from, if it exists
 // - else putty.ini in the directory kitty.exe was started from, if it exists
 //
-void InitNameConfigFile( void ) {
+static void InitNameConfigFile( void ) {
 	char buffer[4096] = "" ;   /* the KITTY_INI_FILE test below reads this even
 	                            * when the variable is unset - it used to be
 	                            * uninitialised stack, so the first existfile()
@@ -3645,7 +3615,7 @@ void InitNameConfigFile( void ) {
 }
 	
 // Write the counter increment
-void WriteCountUpAndPath( void ) {
+static void WriteCountUpAndPath( void ) {
 	// Save the folder list
 	SaveFolderList() ;
 
@@ -3664,8 +3634,6 @@ void WriteCountUpAndPath( void ) {
 
 // KiTTY-specific initialisation
 void appendPath(const char *append) ;
-extern char sesspath[];
-int loadPath() ;
 #ifdef MOD_NETDEBUG
 /* KiTTY netdebug: append a millisecond-timestamped startup checkpoint to the
  * same %USERPROFILE%\kitty_netdebug.log used by the event-log tee, so a slow
@@ -3695,7 +3663,7 @@ void kitty_netdbg_ts( const char *msg ) {
  * it hangs the caller until something kills it.
  * Deliberately conservative: an unrecognised switch counts as interactive, so
  * the worst case is asking a question rather than swallowing one. */
-int kitty_cli_do_and_exit( void ) {
+static int kitty_cli_do_and_exit( void ) {
 	static const char * const batch[] = {
 		"-importdir", "-exportall", "-portablecopy", "-takefolder", "-backupnow",
 		"-mungestr", "-sendcmd", "-edit", "-ed", "-edb",
@@ -4016,9 +3984,6 @@ void InitWinMain( void ) {
 		 * session under sesspath, instead of the registry. Decoupled setters so
 		 * libsettings stays registry-only in tools that never call them. */
 		{
-			extern void kitty_set_storage_mode( int ) ;
-			extern void kitty_set_session_dir( const char * ) ;
-			extern void kitty_set_portable_password_protection( const char * ) ;
 			char ppmode[32] = "" ;
 			kitty_set_storage_mode( SAVEMODE_DIR ) ;
 			kitty_set_session_dir( sesspath ) ;
@@ -4135,7 +4100,7 @@ void InitWinMain( void ) {
 int InternalCommand( HWND hwnd, char * st ) ;
 
 // Set the directory the configuration is kept in
-void SetConfigDirectory( const char * Directory ) ;
+static void SetConfigDirectory( const char * Directory ) ;
 
 // Create the default kitty.ini file if needed
 void CreateDefaultIniFile( void ) ;
@@ -4144,10 +4109,10 @@ void CreateDefaultIniFile( void ) ;
 void LoadParameters( void ) ;
 
 // Work out the names of the kitty.ini and kitty.sav configuration files
-void InitNameConfigFile( void ) ;
+static void InitNameConfigFile( void ) ;
 
 // Write the counter increment
-void WriteCountUpAndPath( void ) ;
+static void WriteCountUpAndPath( void ) ;
 
 // KiTTY-specific initialisation
 void InitWinMain( void ) ;
@@ -4160,7 +4125,6 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 
 // Clean PuTTY's key of the KiTTY-specific keys and values
 // Implemented in kitty_registry.c
-BOOL RegCleanPuTTY( void ) ;
 
 // Send characters
 void SendKeyboardPlus( HWND hwnd, const char * st ) ;

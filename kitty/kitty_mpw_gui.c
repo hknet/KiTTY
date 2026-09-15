@@ -22,8 +22,13 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "kitty_storage.h"
+#include "kitty_win.h"
+#include "kitty.h"
+#include "kitty_commun.h"
+#include "mini/mini.h"
+#include "kitty_mpw.h"
 
-extern void kitty_set_master_pw_prompt(char *(*fn)(int creating));
 
 static int   g_first_time;   /* show + require the confirm field */
 static char *g_result;       /* collected UTF-8 passphrase (malloc'd) or NULL */
@@ -99,7 +104,6 @@ static INT_PTR CALLBACK mpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
         SetForegroundWindow(hdlg);
         SetFocus(GetDlgItem(hdlg, IDC_MPW_EDIT));
         {
-            extern void kitty_centre_on_owner(HWND dlg);  /* kitty_win.c */
             kitty_centre_on_owner(hdlg);              /* over the asking window */
         }
         return FALSE;                             /* we set focus ourselves */
@@ -196,10 +200,6 @@ char *kitty_mpw_gui_ask_import(HWND owner, const char *prompt)
  * [KiTTY] WarnLegacyPasswordUpgrade=no (also settable via the dialog's
  * checkbox, persisted only with Yes) skips the dialog and migrates silently.
  * CLI tools never register this callback, so batch saves keep the old form. */
-extern void kitty_set_legacy_migrate_warn(int (*fn)(void));
-extern char *get_param_str(const char *);
-extern int readINI(const char *, const char *, const char *, char *, size_t);
-extern int writeINI(const char *, const char *, const char *, const char *);
 
 static int g_mig_noask;
 

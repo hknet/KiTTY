@@ -21,6 +21,8 @@
 #include "putty-rc.h"
 #include "security-api.h"
 #include "win-gui-seat.h"
+#include "../kitty/kitty_pwmem.h"   /* KiTTY: in utils, every binary links it */
+#include "../kitty/kitty_win.h"     /* KiTTY: the themed boxes; stubbed for the stock targets */
 #include "paint.h"
 #include "tree234.h"
 
@@ -59,10 +61,19 @@
 #include "../kitty/kitty_renameguard.h"   /* KiTTY: refuse a foreign file name */
 #include "../kitty/kitty_selfcheck.h"     /* KiTTY: refuse a file changed after release */
 #include "../kitty/kitty_pwmem.h"   /* KiTTY: passwords wrapped in memory */
+#ifdef MOD_PERSO
+#include "../kitty/kitty.h"
+#include "kitty_gui.h"
+#include "../kitty/kitty_bridge.h"
+#include "../kitty/kitty_commun.h"
+#include "../kitty/kitty_url.h"
+#include "../kitty/kitty_zmodem.h"
+#include "../kitty/kitty_rutty.h"
+#include "../kitty/kitty_osc52.h"
+#include "../kitty/kitty_workplace.h"
+#include "../kitty/kitty_config.h"
+#endif
 /* kitty.c: types a string into this session (the WM_COPYDATA broadcast). */
-void SendKeyboardPlus( HWND hwnd, const char * st ) ;   /* kitty.c */
-int  kitty_broadcast_default( void ) ;        /* kitty.c: [KiTTY] sendcmdmode */
-const char *kitty_broadcast_group( void ) ;  /* kitty.c: which KiTTYs hear us */
 #define IDM_BROADCASTTOGGLE 0x01C0           /* Tools > Accept broadcast */
 /*
  * ONE state, two editors. The arming lives in the session's own conf
@@ -176,136 +187,52 @@ static void setup_clipboards(Terminal *, Conf *);
 /* Window layout information */
 static void reset_window(WinGuiSeat *wgs, int reinit);
 #ifdef MOD_PERSO
-void kitty_set_active_seat(WinGuiSeat *wgs);
-void InitWinMain(void);
 int WINAPI Notepad_WinMain(HINSTANCE, HINSTANCE, LPSTR, int); /* blocnote hidden editor */
 #ifdef MOD_LAUNCHER
 int WINAPI Launcher_WinMain(HINSTANCE, HINSTANCE, LPSTR, int); /* session launcher window */
 #endif
-void ReadInitScript(const char *filename);     /* kitty.c: load a login script file */
-void SaveRegistryKey(void);                    /* kitty.c: back up the registry hive to kitty.sav */
-extern char *kitty_cli_loginscript;            /* kitty_bridge.c: -loginscript path, consumed post-create */
-void ManageInitScript(const char *input_str, const int len); /* kitty.c: scan server output, auto-reply to login prompt */
 extern char *ScriptFileContent;                /* kitty.c: loaded login-script buffer (NULL = none) */
 extern HWND MainHwnd;                          /* kitty.c/bridge: active terminal hwnd for keystroke injection */
-void CheckVersionFromWebSite(HWND hwnd, int is_terminal);   /* kitty_win.c: query GitHub releases for an update */
-void RunPuttyEd(HWND hwnd, char *filename);     /* kitty_win.c: open embedded mNotepad editor */
-void kitty_start_update_check(void);           /* kitty_win.c: async refresh of cached latest version */
-int kitty_update_notice(char *buf, int n);     /* kitty_win.c: notice text if a newer version is cached */
-void kitty_apply_transparency(WinGuiSeat *wgs);
-void kitty_apply_window_pos(WinGuiSeat *wgs);
 static void kitty_save_window_placement(WinGuiSeat *wgs, HWND hwnd);
-void kitty_send_to_tray(HWND);
 #ifdef MOD_LAUNCHER
-void kitty_launcher_hide(HWND);        /* kitty_bridge.c: the launcher's Hide all / Unhide all / entries */
-void kitty_launcher_unhide(HWND);
-void kitty_launcher_switch_hide(HWND);
 #endif
-int RestoreFromTray(HWND);            /* kitty.c: restore a window from the systray */
 #define MYWM_NOTIFYICON (WM_USER+3)  /* tray-icon click callback (matches kitty.c) */
-void kitty_rollup(HWND, int);
-void kitty_font_resize(Terminal*, Conf*, int);
-void kitty_protect(HWND, TermWin*, Conf*);
-void kitty_print(HWND);
-void kitty_negative(HWND);
-void kitty_bw(HWND);
 extern int force_reconf;   /* kitty_bridge.c: 0 => apply conf silently (no dialog) */
-void kitty_showportfwd(HWND, Conf*);
-void kitty_shortcuts_toggle(HWND);
 /* KiTTY shortcut/ctrl-tab engine (kitty.c / kitty_commun.c) */
-int GetPuttyFlag(void);
-int GetModalErrorsFlag(void);   /* kitty_commun.c: modal vs inline error surfacing */
-void OnDropFiles(HWND hwnd, HDROP hDropInfo);   /* KiTTY drag-drop kscp upload (kitty_xfer.c) */
-int GetTransparencyFlag(void);
-int GetShortcutsFlag(void);
-int GetMouseShortcutsFlag(void);
-int GetCtrlTabFlag(void);
-int GetProtectFlag(void);
-int GetSizeFlag(void);      /* kitty.c: [KiTTY] size - live [cols x rows] title suffix */
-int GetTitleBarFlag(void);  /* kitty.c: [KiTTY] wintitle - title decorations on/off */
-void kitty_refresh_title(void);  /* below: re-apply the title decorations */
-extern char KiTTYClassName[128];
 int ManageShortcuts(Terminal *term, Conf *conf, HWND hwnd,
                     const int *clips_system, int key_num, int shift_flag,
                     int control_flag, int alt_flag, int altgr_flag, int win_flag);
 /* kitty_shortcuts.c: the key bound to a Tools command (0 = none) and
  * "<menu text>\t<key text>" for its menu item. */
-int GetShortcutKey(int idm);
-const char *ShortcutMenuText(const char *text, int key, char *buf, size_t size);
 /* KiTTY predefined-command shortcuts (User Command menu + Ctrl+Shift+A..Z) */
-void InitSpecialMenu(HMENU m, const char *folder, const char *sessionname);
-void ManageSpecialCommand(HWND hwnd, int menunum);
 #ifndef IDM_USERCMD
 #define IDM_USERCMD 0x8000
 #endif
 #ifndef NB_MENU_MAX
 #define NB_MENU_MAX 1024
 #endif
-void kitty_start_winscp(HWND);
-void kitty_send_file(HWND);
-void kitty_get_file(HWND);
-void kitty_start_filezilla(HWND);
-int kitty_xfer_tool_ready(int which);   /* kitty_xfer.c: 0 = kscp, 1 = WinSCP, 2 = FileZilla */
-int kitty_xfer_tool_shown(Conf *cf, int which);   /* kitty_xfer.c: the session's Tools menu switches; 3 = Get File */
-void kitty_export_settings(HWND, Conf*);
-void kitty_dup_session(HWND, Conf*);
-int GetAutoSendToTray(void);
-void SetAutoSendToTray(const int flag);
-int GetZModemFlag(void);
 /* URL hyperlinks (kitty_url.c + kitty.c flag) */
-int  GetHyperlinkFlag(void);
-void SetHyperlinkFlag(const int flag);
-void kitty_url_init(void);
-void kitty_url_config(Conf *conf);
-int kitty_url_rescan(Terminal *term);
-int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor);
-void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal);
-void kitty_print_session_comment(Terminal *term, Conf *conf);   /* kitty_win.c: framed Comment before the connection starts */
-void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up);
 void kitty_sync_transparency_menu(HMENU menu, Conf *conf, UINT id_up,
                                   UINT id_down, UINT id_anchor);
-void kitty_menu_toggle_alwaysontop(HWND term_hwnd, Conf *conf);
-void kitty_menu_reposition(HWND term_hwnd, Conf *conf, int x, int y);
-void kitty_menu_toggle_hyperlink(HWND hwnd);
-int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down);
-int kitty_url_cell_in_link(int col, int row);
-int kitty_url_row_dirty(int row);
 /* Per-session icon (CONF_icone / CONF_iconefile). */
-void kitty_apply_icon(HWND hwnd, Conf *conf);
 /* Restore the normal icon after a reconnect (undo SetConnBreakIcon). */
-void kitty_restore_icon(HWND hwnd, Conf *conf);
 /* KiTTY-specific About dialog. */
-void kitty_about(HWND hwnd);
 #ifdef MOD_PORTKNOCKING
 /* Port-knocking: knock the configured host:port sequence before connecting. */
-void kitty_port_knock(Conf *conf);
 #endif
 #ifdef MOD_PROXY
 /* Proxy selection: overlay a named saved proxy definition before connecting. */
-void kitty_proxy_select(Conf *conf);
 /* Remember the proxy this connection resolved to, for the transfer helpers that
  * only ever see the session Conf (see kitty/kitty.h). NULL = no override. */
-void kitty_proxy_record_connection(Conf *resolved);
 #endif
 #ifdef MOD_ZMODEM
 /* ZModem file transfer (kitty_zmodem.c). Menu-driven receive (rz) / send (sz);
  * receive data is intercepted in win_seat_output, send is pumped from the
  * message loop. No terminal.c edits. */
-int kitty_zmodem_active(void);
-const char *kitty_zmodem_command(int send);  /* kitty_zmodem.c: rz/sz path */
-int kitty_zmodem_receive(Conf *conf, Backend *backend, LogContext *logctx, Terminal *term);
-int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend, LogContext *logctx, Terminal *term);
-void kitty_zmodem_cancel(void);
-size_t kitty_zmodem_recv_data(const void *data, size_t len);
-int kitty_zmodem_process(void);
 #endif
 #ifdef MOD_BACKGROUNDIMAGE
 /* Background image: load the configured image (CONF_bg_image_filename etc.). */
-int kitty_apply_background(HWND hwnd, Conf *conf);
 /* KiTTY background slideshow: advance to next image (kitty.c, active-seat conf). */
-int NextBgImage(HWND hwnd);
-int GetBackgroundImageFlag(void);
-extern int ImageSlideDelay;
 #define TIMER_SLIDEBG_WIN 8710   /* free across window.c + kitty.c timer ids */
 #endif
 #ifdef MOD_PERSO
@@ -313,46 +240,20 @@ extern int ImageSlideDelay;
  * in wait-for-prompt mode, waits for a pattern in the incoming host data
  * (waitfor) before each line / aborts on halton. Observe-hooked in
  * win_seat_output; no terminal.c edits. */
-int  kitty_script_active(void);
-int  kitty_script_enabled(void);         /* [KiTTY] scriptmode master switch */
-int  kitty_script_send_file(Conf *conf, Backend *backend, Filename *fn);
-void kitty_script_remote(const void *data, size_t len);
-void kitty_script_stop(void);
-int  OpenFileName(HWND hFrame, char *filename, char *Title, char *Filter); /* kitty_win.c */
-void OpenAndSendScriptFile(HWND hwnd);   /* kitty.c: legacy autocommand script */
-int  GetWinrolFlag(void);                /* kitty.c */
 void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
                                    const char *user, const char *pass,
                                    const int port, const char *remotepath); /* kitty_bridge.c */
-void RunConfigBoxWithConfSettings(Conf *conf); /* kitty_bridge.c */
-int  GetLoadLastSessionFlag(void);       /* kitty.c: [ConfigBox] loadlastsession */
-int  GetQuickConnectMode(void);          /* kitty.c: quick connect armed this run */
 /* KiTTY font fallback (kitty/winfont_fallback.c, ported from upstream PR
  * cyd01/KiTTY#555): characters the primary font lacks are drawn from a
  * configurable list of fallback fonts. kitty.ini [FontFallback]. */
 #include "../kitty/winfont_fallback.h"
 #endif
 /* Auto-command: send a command automatically after login (CONF_autocommand). */
-int kitty_autocommand_tick(HWND hwnd);
-void kitty_autocommand_rearm(void);  /* reset for a NEW connection */
-extern int autocommand_delay;
-extern int init_delay;      /* kitty.c: [KiTTY] initdelay, ms before the first
-                             * auto-command/auto-password send (default 2000) */
-int GetPasteSize(void);     /* kitty.c: [KiTTY] pastesize, confirm before
-                             * pasting more than N chars (0 = unlimited) */
-int GetProxyChainMax(void); /* kitty.c: [KiTTY] proxychainmax, how many SSH
-                             * proxies may be chained before we refuse
-                             * (default 5); enforced in proxy/sshproxy.c */
 /* KiTTY: set by kitty_proxy_select() (kitty/kitty_bridge.c) when the proxy it
  * just applied came from workplace proxy mode; start_backend records it on the
  * seat, where it stays true for the life of that connection. Declared here
  * rather than by including a KiTTY header, to leave this shared file's includes
  * as they are; every use is inside MOD_PERSO. */
-extern int kitty_workplace_applied;
-void kitty_frame_restore_resting(void);   /* kitty/kitty_osc52.c: the frame's
-                                           * standing colour for this window */
-int kitty_workplace_query(char *name, int len);   /* kitty/kitty_workplace.c */
-int kitty_workplace_request(int arm, unsigned int minutes);
 #include "../kitty/kitty_notice.h"  /* kitty_notice_show + the notice click
                                      * messages (WM_KITTY_AGENT_UNVERIFIED) */
 #include "../kitty/kitty_notes.h"   /* the application notification, shown by the first window */
@@ -361,19 +262,10 @@ int kitty_workplace_request(int arm, unsigned int minutes);
 #include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 /* KiTTY: whether to look for a new release at startup - an application
  * setting in kitty.ini, not a per-session one (kitty/kitty_win.c). */
-int kitty_check_update_enabled(void);
-bool kitty_theme_app_dark(void);    /* kitty/kitty_win.c: the app-wide setting */
-int kitty_theme_app_pref(void);     /* kitty/kitty_win.c: the same, unresolved */
-void kitty_workplace_show_pending_notice(void);
-void kitty_cfgbox_open_on_panel(const char *path);   /* kitty/kitty_config.c */
-void kitty_cfgbox_open_loaded(void);                 /* kitty/kitty_config.c */
 /* Posted by that notice when it is clicked: switch workplace proxy mode off. */
 #define WM_KITTY_WORKPLACE_DISARM (WM_APP + 72)
 #define TIMER_AUTOCOMMAND 8702
 /* Anti-idle: periodically send a keepalive string (CONF_antiidle). */
-void kitty_antiidle_tick(HWND hwnd);
-extern char AntiIdleStr[128];
-extern int AntiIdleSeconds;   /* KiTTY: [KiTTY] antiidledelay, in seconds */
 #define TIMER_ANTIIDLE 8703
 #define TIMER_SCRIPT 8704
 #ifdef MOD_PERSO
@@ -391,15 +283,8 @@ extern int AntiIdleSeconds;   /* KiTTY: [KiTTY] antiidledelay, in seconds */
 #endif
 #ifdef MOD_RECONNECT
 #define TIMER_RECONNECT 8705
-int  GetAutoreconnectFlag(void);       /* kitty.c */
-int  GetReconnectDelay(void);          /* kitty.c, seconds, clamped >=1 */
-void SetConnBreakIcon(HWND hwnd);      /* kitty.c */
-void SetSSHConnected(int flag);        /* kitty_commun.c: sets is_backend_first_connected */
-extern int is_backend_first_connected; /* kitty_commun.c */
 #endif
 #ifdef MOD_PERSO
-int  GetConfigBoxNoExitFlag(void);     /* kitty.c: [ConfigBox] noexit */
-void kitty_respawn_config_box(void);   /* kitty_win.c */
 /* A terminal window has been created in this process. Decides whether
  * [ConfigBox] noexit brings the configuration window back when it closes;
  * see the respawn at the foot of the message loop for why it is this and
@@ -1088,9 +973,6 @@ static void kitty_apply_close_button(WinGuiSeat *wgs, HWND hwnd)
 
 /* kitty/kitty_osc52.c: what clicking the most recent clipboard balloon should do
  * (CLIP_BALLOON_*), and re-applying the window's clipboard markers/tint. */
-int kitty_clipboard_balloon_action(void);
-void kitty_osc52_state_changed(Terminal *term);
-void kitty_notice_box(HWND owner, const char *caption, const char *text); /* kitty_win.c */
 void kitty_info_box(HWND owner, const char *caption, const char *text,
                     const char *warn_red);                     /* kitty_win.c */
 int kitty_confirm_box_yes(HWND owner, const char *caption, const char *text,
@@ -2739,7 +2621,6 @@ static void update_savedsess_menu(WinGuiSeat *wgs)
      * where an item sits in the menu does not affect what it opens.
      */
     {
-        extern char *kitty_read_session_folder_cached(const char *sessionname);
 #define KITTY_MENU_FOLDERS_MAX 64
         HMENU fmenu[KITTY_MENU_FOLDERS_MAX];
         char *fname[KITTY_MENU_FOLDERS_MAX];
@@ -9504,7 +9385,6 @@ static SeatPromptResult win_seat_get_userpass_input(Seat *seat, prompts_t *p)
         size_t pwlen = kitty_pw_get(wgs->conf, CONF_password, pw, sizeof(pw));
         wgs->autopw_tried = true;
         if (pwlen > 0) {
-            extern void kitty_pwdebug(const char *fmt, ...);
             unsigned h = 0; const char *q;
             for (q = pw; *q; q++) h = h * 131 + (unsigned char)*q;
             kitty_pwdebug("AUTH send pw: len=%d cksum=%04x prompt=[%s]",
