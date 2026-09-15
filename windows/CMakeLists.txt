@@ -589,11 +589,13 @@ add_executable(kitty
   # logging.c likewise, for the per-line LogTimestamp: it reaches other binaries
   # through the utils library, built without MOD_PERSO.
   ${CMAKE_SOURCE_DIR}/logging.c
-  # NOTE: config.c is deliberately NOT here. kitty/kitty_config.c below is a
-  # full KiTTY replacement for it, compiled with MOD_PERSO, and it already wins
-  # at link time. Adding config.c as well gives "multiple definition of
-  # setup_config_box". Config-box changes go in kitty_config.c - a MOD_PERSO
-  # block added to config.c is dead code twice over.
+  # NOTE: config.c is deliberately NOT here. The kitty/kitty_config*.c set
+  # below is a full KiTTY replacement for it, compiled with MOD_PERSO, and it
+  # already wins at link time. Adding config.c as well gives "multiple
+  # definition of setup_config_box". Config-box changes go in those files
+  # (kitty_config.c is the sequencer; _session.c, _app.c, _upstream.c and
+  # _shared.c hold the panels) - a MOD_PERSO block added to config.c is dead
+  # code twice over.
   ${KITTY_DIR}/far2l/cdecode.c
   ${KITTY_DIR}/far2l/cencode.c
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
@@ -634,7 +636,11 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c
   ${KITTY_DIR}/kitty_rutty.c
-  ${KITTY_DIR}/kitty_config.c
+  ${KITTY_DIR}/kitty_config.c   # the sequencer; the panels are in the four files below
+  ${KITTY_DIR}/kitty_config_upstream.c
+  ${KITTY_DIR}/kitty_config_shared.c
+  ${KITTY_DIR}/kitty_config_session.c
+  ${KITTY_DIR}/kitty_config_app.c
   ${KITTY_DIR}/kitty_colours.c
   ${KITTY_DIR}/kitty_inputbox.c
   ${KITTY_DIR}/kitty_osc52.c
@@ -766,7 +772,11 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c
   ${KITTY_DIR}/kitty_rutty.c
-  ${KITTY_DIR}/kitty_config.c
+  ${KITTY_DIR}/kitty_config.c   # the sequencer; the panels are in the four files below
+  ${KITTY_DIR}/kitty_config_upstream.c
+  ${KITTY_DIR}/kitty_config_shared.c
+  ${KITTY_DIR}/kitty_config_session.c
+  ${KITTY_DIR}/kitty_config_app.c
   ${KITTY_DIR}/kitty_colours.c
   ${KITTY_DIR}/kitty_inputbox.c
   ${KITTY_DIR}/kitty_osc52.c

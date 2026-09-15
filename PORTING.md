@@ -53,7 +53,7 @@ writes a scratch session into the current user's registry hive and a TEMP tree
   and guard only the *code* that uses it. (This one has bitten the port more than once.)
 - **Config-dialog panels must be created in tree order** — each panel path extends the
   previous by one level, or `dialog.c` asserts and the dialog crashes. Smoke-test the
-  config box (`kitty.exe` with no arguments) after touching `kitty/kitty_config.c`.
+  config box (`kitty.exe` with no arguments) after touching `kitty/kitty_config*.c`.
 - **0.84's `conf.h` uses the `CONF_OPTION` X-macro system** — add options there (type +
   default + save keyword) rather than the old enum.
 - Some former KiTTY features are now native in upstream PuTTY (e.g. always-on-top); check
