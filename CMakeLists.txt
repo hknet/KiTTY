@@ -5,6 +5,39 @@ set(CMAKE_C_STANDARD 99)
 
 include(cmake/setup.cmake)
 
+# KiTTY: the self-checking test programs are registered with CTest, so
+# `ctest --test-dir <build dir>` runs them and fails on the first one that
+# fails, instead of each being an executable somebody has to remember. Two
+# things a plain add_test sweep would get wrong:
+#  - This tree is usually CROSS-compiled (Windows programs built on Linux),
+#    and ctest cannot run those on a bare Linux host. So tests are registered
+#    only for a native build, unless KITTY_CTEST_CROSS says the host can run
+#    them (WSL runs a Windows exe through its interop layer; wine would do).
+#  - test_storage_roundtrip writes a scratch session into the CURRENT USER's
+#    registry hive and a TEMP tree (both removed on the way out). That is fine
+#    on a release gate and wrong in a contributor's build, so it is registered
+#    only when KITTY_CTEST_MACHINE_STATE asks for it, under the label
+#    machine-state (`ctest -L machine-state` runs just those).
+# The registration itself is at the end of this file, after every test target
+# exists; kitty_add_test() skips a name that is not a target on this platform.
+enable_testing()
+option(KITTY_CTEST_CROSS
+       "Register the tests with CTest even when cross-compiling (the host can run the built programs)" OFF)
+option(KITTY_CTEST_MACHINE_STATE
+       "Also register the tests that touch this machine's registry and TEMP (label machine-state)" OFF)
+function(kitty_add_test name)
+  if(CMAKE_CROSSCOMPILING AND NOT KITTY_CTEST_CROSS)
+    return()
+  endif()
+  if(NOT TARGET ${name})
+    return()
+  endif()
+  add_test(NAME ${name} COMMAND ${name})
+  if(ARGN)
+    set_tests_properties(${name} PROPERTIES LABELS "${ARGN}")
+  endif()
+endfunction()
+
 # KiTTY: build at -O2 with -O3 kept on the code that carries the hot loops:
 # the terminal (guiterminal: terminal.c, bidi.c, the line editor), the
 # utilities and charset conversion the character path runs through, the
@@ -249,6 +282,27 @@ target_link_libraries(test_sessionlist
 foreach(subdir ${platform} ${extra_dirs})
   add_subdirectory(${subdir})
 endforeach()
+
+# KiTTY: CTest registration (see the note by enable_testing at the top). Every
+# name here is a program that runs with no arguments and reports by exit code.
+# Left out on purpose: testcrypt (driven by test/cryptsuite.py), bidi_test,
+# test_screenshot and test_unicode_norm (take arguments - the last one wants
+# Unicode's NormalizationTest.txt, which is not in the tree), test_hello_gui
+# (a hands-on diagnostic window), bench_term (a benchmark, not a test), and
+# test_split_into_argv: under MinGW the code compiles the mod-3 algorithm
+# while the test compiles the mod-2 expectation table (see the note in
+# windows/utils/split_into_argv.c), so about half its cases fail by
+# construction. A test that is red for ever is a test nobody reads.
+foreach(t
+    test_host_strfoo test_decode_utf8 test_tree234
+    test_wildcard test_cert_expr test_bpp test_lineedit test_terminal
+    test_osc7 test_transfer_parse test_conf test_sessionlist test_osc52
+    test_mpw_params test_hello_container)
+  kitty_add_test(${t})
+endforeach()
+if(KITTY_CTEST_MACHINE_STATE)
+  kitty_add_test(test_storage_roundtrip machine-state)
+endif()
 
 # Nasty bodge: we'd like to run this command inside unix/CMakeLists,
 # adding the 'charset' library to everything that links with utils.

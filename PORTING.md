@@ -36,6 +36,14 @@ cmake --build build-mingw                       # whole tree incl. tests
 
 `kitty_portable` is the same target plus `MOD_PORTABLE` (file-based config, no registry).
 
+The self-checking test programs are registered with CTest. In a native build
+`ctest --test-dir <build dir>` runs them; in a cross-build they are registered
+only with `-DKITTY_CTEST_CROSS=ON`, for a host that can run the built programs
+(WSL runs a Windows exe through its interop layer). `test_storage_roundtrip`
+writes a scratch session into the current user's registry hive and a TEMP tree
+(both removed afterwards), so it is registered only with
+`-DKITTY_CTEST_MACHINE_STATE=ON`, under the label `machine-state`.
+
 ## Things to know before you change shared files
 
 - **Never add a field to a struct that crosses the `MOD_*` boundary under `#ifdef`.**
