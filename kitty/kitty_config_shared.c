@@ -19,6 +19,7 @@
 #include "kitty_workplace.h"  /* workplace proxy mode: query/request the arming */
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION */
 #include "kitty_win.h"   /* SetTextToClipboard */
+#include "kitty_winutil.h"
 #include <limits.h>
 #include "kitty_theme.h"   /* the app-wide colour theme, for Application > Config Window */
 #include "kitty_storage.h" /* the one-time old-sessions notice bits */
@@ -559,8 +560,8 @@ struct kset_key {
     int nchoices;
 };
 
-/* kitty.c, kitty_commun.c, kitty_bridge.c, kitty_image.c, winfont_fallback.c,
- * kitty_win.c: the running values. Declared here because this file has no
+/* kitty.c, kitty_commun.c, kitty_bridge.c, kitty_image.c, winfont_fallback.c:
+ * the running values. Declared here because this file has no
  * header for them. */
 extern int  GetShortcutsFlag(void);            extern void SetShortcutsFlag(const int);
 extern int  GetMouseShortcutsFlag(void);       extern void SetMouseShortcutsFlag(const int);
@@ -607,7 +608,7 @@ static const char *kset_get_pscpport(void)
 const struct kset_key *kset_find(const char *key);
 void kset_write(const struct kset_key *k, const char *text);
 /* "Locate..." beside the download folder: the Explorer folder picker
- * (OpenDirName, kitty_win.c), the pick written like a typed value and the
+ * (OpenDirName, kitty_winutil.c), the pick written like a typed value and the
  * box (the button's context) refreshed. */
 static void kset_set_debug(int v) { debug_flag = v; }
 static int  kset_get_debug(void) { return debug_flag; }

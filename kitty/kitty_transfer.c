@@ -48,7 +48,8 @@
 #include <commctrl.h>            /* the upload-request dialog's list view */
 
 #include "kitty.h"               /* kitty_xfer_download_dir, kitty_xfer_upload_dir */
-#include "kitty_win.h"           /* OpenDirNameFrom, OpenFileNameFrom */
+#include "kitty_winutil.h"       /* OpenDirNameFrom, OpenFileNameFrom */
+#include "kitty_dlgbox.h"        /* the suite's themed Yes/No box */
 #include "kitty_theme.h"         /* the shared painter: ink marks, button widths */
 #include "kitty_anchor.h"        /* the shared resize: edge anchoring */
 #include "kitty_text.h"          /* KT_XFER_WHAT_KITTEN_* for the notification */
@@ -59,9 +60,6 @@
 #include "kitty_osc52.h"
 
 extern HWND MainHwnd;            /* kitty.c: the terminal window */
-/* The suite's themed Yes/No box (kitty_win.c): true when Yes was pressed. */
-int kitty_confirm_box(HWND owner, const char *caption, const char *text,
-                      const char *warn_red);
 /* The reply channel (kitty_osc52.c): a complete sequence to the backend. */
 
 #define KT_EXPIRE_SECONDS   (10 * 60)   /* idle session, as the reference does */

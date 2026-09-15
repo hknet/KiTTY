@@ -24,6 +24,7 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* the words this box shows */
 #include "kitty_win.h"      /* kitty_dialog_icon: the caption/taskbar icon */
+#include "kitty_dlgbox.h"
 #include "kitty_storage.h"
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */

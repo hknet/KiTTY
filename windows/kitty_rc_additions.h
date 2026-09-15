@@ -73,7 +73,7 @@
 /* What this proxy says its Host field IS: follow the global setting, a hostname,
  * or possibly the title of a saved session. Stored per definition as
  * ProxyHostIs; see conf.h CONF_proxy_host_kind. */
-/* "Update available / up to date" popup (kitty/kitty_win.c). A real dialog so
+/* "Update available / up to date" popup (kitty/kitty_updater.c). A real dialog so
  * the dialog manager gives it the shell font at the right DPI, like every other
  * KiTTY dialog. */
 #ifndef IDD_UPDATEBOX
@@ -560,7 +560,7 @@
 #endif
 /* Yes/No confirmation with an optional SECOND line in red. A real dialog rather
  * than MessageBox for two reasons, NEITHER of them DPI (a MessageBox is drawn by
- * Windows and scales correctly - see the corrected note in kitty_win.c): it grows
+ * Windows and scales correctly - see the corrected note in kitty_dlgbox.c): it grows
  * to fit a long explanation, and a MessageBox cannot colour text. The red line is
  * for the case where the action would persist WITHOUT an explicit save, which the
  * ordinary wording of a confirmation understates. */

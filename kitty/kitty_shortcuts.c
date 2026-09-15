@@ -25,6 +25,7 @@
 #include "kitty_inikeys.h"  /* KI_SC_*: the [Shortcuts] key names */
 #include "kitty_bridge.h"
 #include "kitty_win.h"
+#include "kitty_winutil.h"
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */
 extern HWND MainHwnd ;                  /* kitty.c: the terminal window */

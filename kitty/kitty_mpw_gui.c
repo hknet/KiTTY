@@ -24,6 +24,7 @@
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_storage.h"
 #include "kitty_win.h"
+#include "kitty_dlgbox.h"
 #include "kitty.h"
 #include "kitty_commun.h"
 #include "mini/mini.h"

@@ -618,6 +618,9 @@ add_executable(kitty
   ${KITTY_DIR}/blocnote/notepad.c
   ${KITTY_DIR}/blocnote/notepad.rc
   ${KITTY_DIR}/kitty_win.c
+  ${KITTY_DIR}/kitty_winutil.c
+  ${KITTY_DIR}/kitty_dlgbox.c
+  ${KITTY_DIR}/kitty_updater.c
   ${KITTY_DIR}/kitty_crashlog.c   # KiTTY: crash log; per-target on purpose, see the other listings
   ${KITTY_DIR}/kitty_authenticode.c   # KiTTY: shared Authenticode trust + CN gate
   ${KITTY_DIR}/winfont_fallback.c
@@ -755,6 +758,9 @@ add_executable(kitty_portable
   ${KITTY_DIR}/blocnote/notepad.c
   ${KITTY_DIR}/blocnote/notepad.rc
   ${KITTY_DIR}/kitty_win.c
+  ${KITTY_DIR}/kitty_winutil.c
+  ${KITTY_DIR}/kitty_dlgbox.c
+  ${KITTY_DIR}/kitty_updater.c
   ${KITTY_DIR}/kitty_crashlog.c   # KiTTY: crash log; per-target on purpose, see the other listings
   ${KITTY_DIR}/kitty_authenticode.c   # KiTTY: shared Authenticode trust + CN gate
   ${KITTY_DIR}/winfont_fallback.c

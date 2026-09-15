@@ -5549,7 +5549,7 @@ static INT_PTR CAConfigProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
  */
 static const char *kitty_aux_caption;
 /* Over the owner, not mid-screen (DS_CENTER templates ignore the owner).
- * Local: kitty_win.c is not linked into every target that has dialog.c. */
+ * Local: kitty_dlgbox.c is not linked into every target that has dialog.c. */
 static void aux_centre_on_owner(HWND hwnd)
 {
     HWND owner = GetWindow(hwnd, GW_OWNER);

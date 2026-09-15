@@ -1,6 +1,6 @@
 /*
  * kitty_authenticode.h - the ONE Authenticode trust + publisher-CN gate,
- * shared by the in-app updater (kitty_win.c) and the kageant "New key"
+ * shared by the in-app updater (kitty_updater.c) and the kageant "New key"
  * launcher (windows/pageant.c). Both used to need this check; having a single
  * implementation is the point - a security gate must not exist in two copies
  * that can drift.

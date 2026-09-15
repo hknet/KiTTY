@@ -18,6 +18,9 @@
 #include "kitty_workplace.h"  /* workplace proxy mode: query/request the arming */
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION */
 #include "kitty_win.h"   /* SetTextToClipboard */
+#include "kitty_updater.h"
+#include "kitty_winutil.h"
+#include "kitty_dlgbox.h"
 #include <limits.h>
 #include "kitty_theme.h"   /* the app-wide colour theme, for Application > Config Window */
 #include "kitty_storage.h" /* the one-time old-sessions notice bits */
@@ -1922,8 +1925,6 @@ static void ksharedpos_refresh(dlgparam *dlg)
 static void kitty_sharedpos_reset_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                           void *data, int event)
 {
-    extern int kitty_confirm_box(HWND owner, const char *caption,
-                                 const char *text, const char *warn_red); /* kitty_win.c */
     (void)ctrl; (void)data;
     if (event != EVENT_ACTION)
         return;
@@ -3115,7 +3116,6 @@ static void sc_enable(struct sc_data *sc, dlgcontrol *ctrl, bool on)
 
 static void sc_report(const char *text)
 {
-    extern void kitty_info_box(HWND, const char *, const char *, const char *);
     kitty_info_box(kitty_cfg_modal_owner(), KT_KSET_TITLE, text, NULL);
 }
 

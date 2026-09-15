@@ -871,7 +871,7 @@ void staticedit(struct ctlpos *cp, const char *stext,
 /* KiTTY: the folder picker behind FILTER_FOLDERS rows. Registered by the
  * program that builds such a row (kitty_config.c hands over OpenDirNameFrom);
  * the stock PuTTY variants share this file, build no folder row and register
- * nothing - so no link-time dependency on kitty_win.c. */
+ * nothing - so no link-time dependency on kitty_winutil.c. */
 static int (*kitty_dir_picker)(HWND, char *, const char *, const char *) = NULL;
 void kitty_controls_set_dir_picker(int (*fn)(HWND, char *, const char *, const char *))
 {

@@ -18,6 +18,7 @@
 #include "kitty_workplace.h"  /* workplace proxy mode: query/request the arming */
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION */
 #include "kitty_win.h"   /* SetTextToClipboard */
+#include "kitty_winutil.h"
 #include <limits.h>
 #include "kitty_theme.h"   /* the app-wide colour theme, for Application > Config Window */
 #include "kitty_storage.h" /* the one-time old-sessions notice bits */
@@ -402,8 +403,6 @@ static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
     int nc;
     /* The suite's own info box, not MessageBox - same face as every other
      * KiTTY window. */
-    extern void kitty_info_box(HWND, const char *, const char *,
-                               const char *); /* kitty_win.c */
     (void)ctrl; (void)dlg;
     if (event != EVENT_ACTION) return;
     if (!kitty_parse_hotkey_spec(conf_get_str(conf, CONF_launcher_global_hotkey),
@@ -660,8 +659,6 @@ const char *kitty_pxload_name_at(int row)
  * inline loader below; nothing is stored until the session is saved. */
 static void kitty_pxload_apply(dlgparam *dlg, Conf *conf, const char *picked)
 {
-    extern int kitty_confirm_box(HWND owner, const char *caption,
-                                 const char *text, const char *warn_red); /* kitty_win.c */
     {
         char *q = dupprintf(
             KT_CFG_PXLOAD_Q,
@@ -4874,8 +4871,6 @@ static void kitty_urlregex_reset_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                          void *data, int event)
 {
     extern const char *urlhack_default_regex;   /* kitty/url/urlhack.c */
-    extern int kitty_confirm_box(HWND owner, const char *caption,
-                                 const char *text, const char *warn_red); /* kitty_win.c */
     Conf *conf = (Conf *)data;
     if (event != EVENT_ACTION)
         return;

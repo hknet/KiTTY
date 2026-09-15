@@ -1680,7 +1680,7 @@
 #define KT_WORKPLACE_INACTIVE_TEXT                   "It ended when the launcher holding it stopped. " \
         "Connections use each session's own proxy settings."
 
-/* kitty_win.c: printing, the terminal notices, the title-placeholder list, the confirm box */
+/* kitty_winutil.c, kitty_win.c, kitty_dlgbox.c: printing, the terminal notices, the title-placeholder list, the confirm box */
 #define KT_WIN_PRINT_OK                              "Print successful"
 #define KT_WIN_PRINT_ERR1                            "ERROR Type 1"
 #define KT_WIN_PRINT_ERR2                            "ERROR Type 2."
@@ -1719,7 +1719,7 @@
 #define KT_WIN_TITLEVAR_L                            "Local forwarded ports (blank if none)"
 #define KT_WIN_TITLEVAR_D                            "Dynamic/SOCKS forwarded ports (blank if none)"
 
-/* The update flow (kitty_win.c, kitty_launcher.c) */
+/* The update flow (kitty_updater.c, kitty_launcher.c) */
 #define KT_UPD_BETA_SUFFIX                           " (beta)"
 #define KT_UPD_BETA_WORD                             " beta"
 #define KT_UPD_BETA_MARK                             "  (BETA)"
@@ -1999,7 +1999,7 @@
 /* The feature names those reports print, one per runtime-resolved API. The
  * brief report de-duplicates by comparing these strings, so a feature that
  * several lookups share must use the SAME macro (kitty.c, kitty_oldwin.c,
- * kitty_theme.c, kitty_win.c, kitty_osc52.c, kitty_notice.c, kitty_image.c). */
+ * kitty_theme.c, kitty_updater.c, kitty_osc52.c, kitty_notice.c, kitty_image.c). */
 #define KT_WINFEAT_TCP_PORT_OWNER                    "naming the program that owns a TCP port"
 #define KT_WINFEAT_TICK64                            "a 64-bit millisecond clock"
 #define KT_WINFEAT_PROCESS_NAME                      "naming the program behind a process"

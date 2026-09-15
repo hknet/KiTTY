@@ -22,7 +22,10 @@
 #include "security-api.h"
 #include "win-gui-seat.h"
 #include "../kitty/kitty_pwmem.h"   /* KiTTY: in utils, every binary links it */
-#include "../kitty/kitty_win.h"     /* KiTTY: the themed boxes; stubbed for the stock targets */
+#include "../kitty/kitty_win.h"     /* KiTTY: the terminal window glue */
+#include "../kitty/kitty_winutil.h"
+#include "../kitty/kitty_updater.h"
+#include "../kitty/kitty_dlgbox.h"  /* KiTTY: the themed boxes; stubbed for the stock targets */
 #include "paint.h"
 #include "tree234.h"
 
@@ -754,8 +757,6 @@ static void start_backend(WinGuiSeat *wgs)
         {
             char wp[256];
             if (wgs->workplace_proxied && kitty_workplace_query(wp, sizeof(wp))) {
-                extern int kitty_confirm_box(HWND owner, const char *caption,
-                                             const char *text, const char *warn_red);
                 char *q = dupprintf(
                     KT_TWIN_WORKPLACE_FAILED_Q, msg, wp);
                 if (kitty_confirm_box(NULL, KT_CAP_CONNECTION_FAILED, q, NULL))
@@ -971,12 +972,6 @@ static void kitty_apply_close_button(WinGuiSeat *wgs, HWND hwnd)
                     ? MF_ENABLED : (MF_GRAYED | MF_DISABLED)));
 }
 
-/* kitty/kitty_osc52.c: what clicking the most recent clipboard balloon should do
- * (CLIP_BALLOON_*), and re-applying the window's clipboard markers/tint. */
-void kitty_info_box(HWND owner, const char *caption, const char *text,
-                    const char *warn_red);                     /* kitty_win.c */
-int kitty_confirm_box_yes(HWND owner, const char *caption, const char *text,
-                          const char *warn_red);               /* kitty_win.c */
 
 /*
  * KiTTY: the clipboard markers on the window title, as icons.

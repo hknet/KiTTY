@@ -43,6 +43,9 @@
 #include "kitty_registry.h"
 #include "kitty_tools.h"
 #include "kitty_win.h"
+#include "kitty_updater.h"
+#include "kitty_winutil.h"
+#include "kitty_dlgbox.h"
 #include "kitty_launcher.h"
 #include "winfont_fallback.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
@@ -3382,8 +3385,6 @@ void LoadParameters( void ) {
 				 * this release) a value that arrived with a stray leading space
 				 * or quotes around it.
 				 */
-				extern int kitty_confirm_box( HWND owner, const char *caption,
-				                              const char *text, const char *warn_red ) ;
 				char msg[4096+512] ;
 				/*
 				 * Say what we actually KNOW, and no more. All this code has

@@ -20,6 +20,7 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_win.h"
+#include "kitty_winutil.h"
 #include "kitty_storage.h"
 #include "kitty_gui.h"
 #include "kitty_image.h"

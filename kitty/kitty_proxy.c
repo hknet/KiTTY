@@ -26,6 +26,7 @@
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
 #include "kitty_storage.h"
 #include "kitty_win.h"
+#include "kitty_winutil.h"
 
 /* The registry hive chosen AT RUNTIME (kitty_set_registry_root, driven by
  * kitty.ini KiClassName). Named proxies used the compile-time PUTTY_REG_POS

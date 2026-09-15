@@ -1,6 +1,6 @@
 /*
  * kitty_authenticode.c - shared Authenticode trust + publisher-CN gate.
- * See kitty_authenticode.h. Moved verbatim from kitty_win.c's
+ * See kitty_authenticode.h. Moved verbatim from the updater's
  * kitty_verify_signature so the updater and the kageant launcher share one
  * implementation.
  */

@@ -13,6 +13,8 @@
 #include "../kitty/kitty_bridge.h"
 #include "../kitty/kitty_exportbundle.h"
 #include "../kitty/kitty_win.h"
+#include "../kitty/kitty_winutil.h"
+#include "../kitty/kitty_dlgbox.h"
 #include "../kitty/kitty_tools.h"
 #include "../kitty/kitty_registry.h"
 #include "../kitty/kitty_storage.h"
@@ -646,8 +648,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
              * neither the flag nor the code. */
             } else if (!strcmp(p, "-demo-templates")) {
                 /* KiTTY: page through every template dialog as authored,
-                 * for spacing review (kitty_win.c). */
-                extern void kitty_demo_templates(void);
+                 * for spacing review (kitty_dlgbox.c). */
                 kitty_demo_templates();
                 exit(0);
 #endif

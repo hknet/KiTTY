@@ -20,6 +20,7 @@
 #include "kitty_text.h"   /* the words the panels show */
 #include "kitty_rc_additions.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
+#include "kitty_dlgbox.h"
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
 #include "kitty_commun.h"
@@ -493,8 +494,6 @@ bool kitty_proxy_panel_dirty(void)
 
 static bool pxp_may_leave(void)
 {
-    extern int kitty_confirm_box(HWND owner, const char *caption,
-                                 const char *text, const char *warn_red); /* kitty_win.c */
     if (!g_pxp || !g_pxp->dirty)
         return true;
     /* The suite's own confirm box (No is its default too), not MessageBox -

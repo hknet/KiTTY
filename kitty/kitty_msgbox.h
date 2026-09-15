@@ -2,7 +2,7 @@
  * KiTTY: route a file's plain MessageBox calls through the themed boxes.
  *
  * Included at the TOP OF SELECTED .c FILES, never from a shared header: the
- * wrapper lives in kitty_win.c, so only files linked into binaries that carry
+ * wrapper lives in kitty_dlgbox.c, so only files linked into binaries that carry
  * it (kitty / kitty_portable, plus the stock variants via the stub in
  * kitty_config_stubs.c) may use this. The wrapper maps what it can - MB_OK to
  * the info box, MB_YESNO to the confirm box, keeping each site's default

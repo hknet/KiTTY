@@ -1,10 +1,11 @@
 /*
- * kitty_win.h - the declarations for kitty_win.c, the grab-bag of Win32
- * helpers: window transparency and OS version, the file and folder pickers,
- * printing, the clipboard, launching a process, the update check and its
- * notices, the shared dialog helpers (icon, centring, fit-to-text), the
- * inline terminal messages, the terminal system-menu actions, and the
- * application-wide theme and check-for-updates settings.
+ * kitty_win.h - the declarations for kitty_win.c, the Win32 glue that stays
+ * with the terminal window: the inline terminal messages, the terminal
+ * system-menu actions, the window-title placeholder window, the
+ * missing-features report, and the application-wide theme and
+ * check-for-updates settings. The pickers, printing, the clipboard and
+ * process launching are in kitty_winutil.h, the themed boxes in
+ * kitty_dlgbox.h, the in-app updater in kitty_updater.h.
  */
 #ifndef KITTY_WIN
 #define KITTY_WIN
@@ -13,9 +14,6 @@
 #include <stdio.h>
 #include "putty.h"
 #include <windows.h>
-
-void SetTransparency( HWND hwnd, int value ) ;
-void GetOSInfo( char * version ) ;
 
 // Inline (non-modal) rendering of connection errors in the terminal
 // (upstream cyd01/KiTTY #548)
@@ -42,60 +40,6 @@ void kitty_respawn_config_box(void) ;
 // - windows/window.c
 void kitty_refresh_title(void) ;
 void kitty_menu_toggle_hyperlink(HWND hwnd) ;
-BOOL IsWow64() ; // Test whether we are on 64-bit Windows
-int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
-/* The same picker opened in a given folder (NULL or empty = wherever
- * Windows would open it). */
-int OpenFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) ;
-int OpenDirName( HWND hFrame, char * dirname ) ;
-/* Same picker, opened on `initial` (when that folder exists) with `title`
- * (NULL = the default caption). */
-int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const char * title ) ;
-/* Centre a modal dialog over its owner (WM_INITDIALOG, after final size). */
-void kitty_centre_on_owner( HWND dlg ) ;
-/* Give a dialog the caption and taskbar icon of the window that raised it -
- * which is the SESSION's own icon when that session carries one. `owner`
- * NULL = the dialog's owner. Called from WM_INITDIALOG. */
-void kitty_dialog_icon( HWND dlg, HWND owner ) ;
-/* Grow one static control to fit `text` at the dialog's font, moved down by
- * extra_dy; returns the height change in pixels (the caller moves what sits
- * below and grows the window). Empty text collapses and hides the control. */
-int kitty_fit_text( HWND dlg, int ctlid, const char *text, int extra_dy ) ;
-int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
-int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) ;
-	
-// Centre a dialog in the middle of its parent window
-void CenterDlgInParent(HWND hDlg) ;
-
-// Send to the printer
-int PrintText( const char * Text ) ;
-
-// Print the text in the notepad
-void ManagePrint( HWND hwnd ) ;
-
-// Put a text into the clipboard
-int SetTextToClipboard( const char * buf ) ;
-
-// Run a command
-void RunCommand( HWND hwnd, const char * cmd ) ;
-
-// Start the built-in editor
-void RunPuttyEd( HWND hwnd, char * filename ) ;
-
-// Check whether an update is available on the web site
-void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) ;
-
-// KiTTY: background (async) update check that caches the latest version, and a
-// session-start notice rendered from that cache (see window.c).
-void kitty_start_update_check( void ) ;
-int kitty_update_notice( char *buf, int n ) ;
-int kitty_update_available( char *latest_out, int latest_n, char *cur_out, int cur_n, int *beta_out ) ;
-
-// Display a message in the event log
-void debug_logevent( const char *fmt, ... ) ;
-
-// Test whether a path is absolute
-bool IsPathAbsolute( const char * path ) ;
 
 // KiTTY: the application-wide colour theme, [KiTTY] theme. kitty_theme_app_dark
 // is the resolver handed to kitty_theme_hook_dialogs() in WinMain.
@@ -110,18 +54,7 @@ void kitty_set_check_update_enabled( int on ) ;
 
 /* ---- exported from kitty/kitty_win.c ---- */
 int kitty_autopw_warn( void );
-int kitty_confirm_box( HWND owner, const char *caption, const char *text, const char *warn_red );
-int kitty_confirm_box3( HWND owner, const char *caption, const char *text, const char *b_over, const char *b_keep, const char *b_cancel );
-int kitty_confirm_box_yes( HWND owner, const char *caption, const char *text, const char *warn_red );
-void kitty_demo_templates( void );
-void kitty_info_box( HWND owner, const char *caption, const char *text, const char *warn_red );
-int kitty_message_box( HWND owner, const char *text, const char *caption, unsigned type );
-void kitty_notice_box( HWND owner, const char *caption, const char *text );
 void kitty_show_title_placeholders(HWND owner);
-void kitty_start_update_check_notify( HWND hwnd, UINT msg );
 void kitty_sync_transparency_menu(HMENU menu, Conf *conf, UINT id_up, UINT id_down, UINT id_anchor);
-extern int PrintCharSize;
-extern int PrintMaxCharPerLine;
-extern int PrintMaxLinePerPage;
 
 #endif

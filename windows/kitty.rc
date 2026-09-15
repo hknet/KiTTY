@@ -214,7 +214,7 @@ BEGIN
     DEFPUSHBUTTON   KT_WIN_OK, IDOK, 243, 157, 50, 14
 END
 
-/* "Update available / up to date" popup (kitty/kitty_win.c). A real (modeless)
+/* "Update available / up to date" popup (kitty/kitty_updater.c). A real (modeless)
  * dialog so the dialog manager applies the shell font at the correct DPI, like
  * every other KiTTY window. The message area + window are grown to fit the text
  * at runtime; buttons: OK (info case) OR Update now + Later (update case), the
@@ -333,7 +333,7 @@ END
  * MessageBox because it must GROW TO FIT its text - the height here is only a
  * starting point, kitty_notice_box() expands it at the dialog's font. NOT a DPI
  * matter: a MessageBox is drawn by Windows and scales correctly (see the corrected
- * note in kitty_win.c). */
+ * note in kitty_dlgbox.c). */
 IDD_NOTICEBOX DIALOGEX DISCARDABLE 0, 0, 260, 90
 STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION KT_CAP_KITTY

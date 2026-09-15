@@ -13,7 +13,7 @@
  *                              its kitty.ini. The folder is left as it is.
  *
  * Sessions and proxies travel through the export bundle machinery
- * (kitty_bridge.c). A bundle file is written by the same save_open_settings
+ * (kitty_exportbundle.c). A bundle file is written by the same save_open_settings
  * as a folder-store session file, so on the way out the bundle is written
  * straight into <folder>\Sessions and its files lose the bundle extension;
  * wrapped with the copy's master password they ARE the copy's session files,
@@ -32,6 +32,7 @@
 #include "putty.h"
 #include "kitty.h"
 #include "kitty_win.h"
+#include "kitty_winutil.h"
 #include "kitty_storage.h"
 #include "kitty_storemove.h"
 #include "kitty_mpw.h"

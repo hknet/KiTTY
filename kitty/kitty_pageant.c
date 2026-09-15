@@ -2663,7 +2663,7 @@ void kageant_retry_pending_keys_now(void) { kageant_retry_pending_pass(1, 0); }
  * A notice, never a prompt: this fires when hardware appeared, which is not a
  * moment to demand an answer. Clicking it opens the key list, where the State
  * column says which key - and that list IS the persistent record, because the
- * agent has no event log of its own (debug_logevent lives in kitty_win.c and
+ * agent has no event log of its own (debug_logevent lives in kitty_winutil.c and
  * is not linked here). A balloon is easily missed, so the refused entry must
  * stay visible there until it is dealt with.
  */
