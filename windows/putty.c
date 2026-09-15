@@ -10,6 +10,7 @@
 #include "../kitty/kitty_pwmem.h"  /* passwords wrapped in memory */
 #ifdef MOD_PERSO
 #include "../kitty/kitty.h"
+#include "../kitty/kitty_broadcast.h"
 #include "../kitty/kitty_bridge.h"
 #include "../kitty/kitty_exportbundle.h"
 #include "../kitty/kitty_win.h"

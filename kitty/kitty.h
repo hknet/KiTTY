@@ -2,7 +2,7 @@
  * kitty.h - the shared declaration header of the KiTTY fork.
  * Every module of the fork includes it. It declares the [KiTTY] and
  * [ConfigBox] settings flags with their Get/Set accessors, the delays,
- * paths and buffers kitty.c defines, the broadcast gate, the shortcut
+ * paths and buffers kitty.c defines, the shortcut
  * tables and their entry points, the window, tray, icon and script
  * helpers, and the kitty.ini/registry parameter functions. It also
  * pulls in kitty_rc_additions.h so the menu command ids have exactly
@@ -156,17 +156,6 @@ extern int HyperlinkFlag ;
 int GetHyperlinkFlag(void) ;
 void SetHyperlinkFlag( const int flag ) ;
 
-// Broadcast gate: [KiTTY] sendcmdmode=yes|no starts windows armed or not, and
-// [KiTTY] sendcmdgroup (derived when unset) decides which KiTTYs hear each
-// other. Accident prevention, not a security boundary - see kitty.c.
-void kitty_broadcast_set_enabled( int on ) ;
-int  kitty_broadcast_default( void ) ;
-const char *kitty_broadcast_group( void ) ;
-int kitty_broadcast_group_from_ini( void ) ;   // key came from kitty.ini, not derived
-void kitty_broadcast_set_group( const char *k ) ;      // the config box wrote sendcmdgroup; "" = derive again
-void kitty_broadcast_set_send_key( const char *k ) ;   // -sendcmdkey override
-const char *kitty_broadcast_send_key_override( void ) ; // the raw override, "" when none
-const char *kitty_broadcast_send_key( void ) ;         // key a broadcast is SENT with
 // RuTTY script engine master switch: [KiTTY] scriptmode=yes|no (kitty_rutty.c)
 int kitty_script_enabled(void) ;
 void kitty_script_set_enabled( int on ) ;
@@ -303,7 +292,6 @@ void InitFolderList( void ) ;
 void SaveFolderList( void ) ;
 void InfoBoxSetText( HWND hwnd, char * st ) ;
 void InfoBoxClose( HWND hwnd ); 
-void routine_server( void * st ) ;
 void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) ;
 int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance,LPSTR lpCmdLine, int nCmdShow) ;
 void InitWinMain( void ) ;
@@ -326,11 +314,6 @@ void GetSessionFolderName( const char * session_in, char * folder ) ;
 char * SetSessPath( const char * dec ) ;
 void CleanFolderName( char * folder ) ;
 void set_sshver( const char * vers ) ;
-int ResizeWinList( HWND hwnd, int width, int height ) ;
-int SendCommandAllWindows( HWND hwnd, char * cmd ) ;
-// The send console's form: include_self=1 also reaches the terminal this
-// process owns (MainHwnd), which /command deliberately skips.
-int SendCommandAllWindowsEx( HWND hwnd, char * cmd, int include_self ) ;
 void RunCommand( HWND hwnd, const char * cmd ) ;
 int InternalCommand( HWND hwnd, char * st ) ;
 void load_open_settings_forced(char *filename, Conf *conf) ;
@@ -424,7 +407,6 @@ char * GetKittySavFile(void) ;
 int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) ;
 // Save the window coordinates
 // Count the windows of the same class as KiTTY
-int WindowsCount( HWND hwnd ) ;
 HWND InfoBox( HINSTANCE hInstance, HWND hwnd ) ;
 // Rename a registry key
 void RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) ;
@@ -437,7 +419,6 @@ void kitty_userauth_credentials( Seat * seat, const char * username, const char 
 // Handles sending the window to the system tray
 int ManageToTray( HWND hwnd ) ;
 void RefreshBackground( HWND hwnd ) ;
-void SendAutoCommand( HWND hwnd, const char * cmd ) ;
 int NextBgImage( HWND hwnd ) ;
 int PreviousBgImage( HWND hwnd ) ;
 void ManageSpecialCommand( HWND hwnd, int menunum ) ;
@@ -546,8 +527,6 @@ void RunCmd( HWND hwnd ) ;
 int SearchWinSCP( void ) ;
 int SearchPSCP( void ) ;
 void urlhack_launch_url(const char* app, const char *url) ;
-int GetPortFwdState( const int port, const DWORD pid ) ;
-int ShowPortfwd( HWND hwnd, Conf * conf ) ;
 void OnDropFiles(HWND hwnd, HDROP hDropInfo) ;
 // Show a menu in the system tray
 // Get the window coordinates
@@ -570,7 +549,6 @@ void create_settings( const char * name ) ;
 
 char * GetHelpMessage(void) ;
 void CreateIniFile( const char * filename ) ;
-void SendKeyboard( HWND hwnd, const char * buffer ) ;
 void ManageShortcutsFlag( HWND hwnd ) ;
 
 #ifdef MOD_LAUNCHER
@@ -810,7 +788,6 @@ int GetTransparencyAllowed(void);
 void LoadParameters( void );
 void LoadRegistryKey( HWND hdlg );
 int RestoreFromTray( HWND hwnd );
-void SendKeyboardPlus( HWND hwnd, const char * st );
 void SetConfigBoxFixedSizeFlag( const int flag );
 void SetConfigBoxWindowWidth( const int num );
 void SetConnBreakIcon( HWND hwnd );

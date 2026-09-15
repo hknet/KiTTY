@@ -16,6 +16,8 @@
 #include "putty.h"
 #include "storage.h"       /* read_setting_s/i: per-session hotkey scan */
 #include "kitty.h"
+#include "kitty_portfwd.h"
+#include "kitty_broadcast.h"
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION, KITTY_LAUNCHER_HOTKEY_MAX */
 #include "kitty_commun.h"  /* GetCryptSaltFlag, MASKPASS */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */

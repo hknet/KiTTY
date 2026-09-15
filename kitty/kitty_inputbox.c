@@ -16,6 +16,7 @@
 #include <windows.h>
 
 #include "kitty.h"
+#include "kitty_broadcast.h"
 /* The hive in use, not the compile-time default - see kitty_storage.c. */
 
 #include "kitty_commun.h"

@@ -30,6 +30,7 @@
 #include "kitty_winpos.h"   /* the remembered window position, per session and monitor layout */
 #include "kitty_commun.h"
 #include "kitty.h"
+#include "kitty_broadcast.h"
 #include "kitty_launcher.h"
 #include "kitty_tools.h"
 #include "kitty_gui.h"
@@ -4310,10 +4311,6 @@ void scb_panel_logging(struct controlbox *b, bool midsession, int protocol)
 
 /* The Session/Scripting panel (KiTTY rutty scripting). */
 
-/* kitty.c: this installation's broadcast key (generated, or sendcmdgroup). */
-/* ...and whether that key came from kitty.ini rather than being derived: the
- * provenance line says which, so a missing declaration here would silently be
- * an implicit int() call. */
 
 /* ---- Session > Broadcast: the broadcast key -------------------------------
  *

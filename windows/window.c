@@ -66,6 +66,7 @@
 #include "../kitty/kitty_pwmem.h"   /* KiTTY: passwords wrapped in memory */
 #ifdef MOD_PERSO
 #include "../kitty/kitty.h"
+#include "../kitty/kitty_broadcast.h"
 #include "kitty_gui.h"
 #include "../kitty/kitty_bridge.h"
 #include "../kitty/kitty_commun.h"
@@ -76,7 +77,6 @@
 #include "../kitty/kitty_workplace.h"
 #include "../kitty/kitty_config.h"
 #endif
-/* kitty.c: types a string into this session (the WM_COPYDATA broadcast). */
 #define IDM_BROADCASTTOGGLE 0x01C0           /* Tools > Accept broadcast */
 /*
  * ONE state, two editors. The arming lives in the session's own conf
