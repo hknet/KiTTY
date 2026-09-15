@@ -568,7 +568,7 @@ bool kitty_red_caption(const char *text)
  * control layer. Same cheap-and-false-by-default contract, and the same stub in
  * windows/kitty_config_stubs.c.
  *
- * ⚠️ The box's GROUP TITLE cannot be bolded this way, measured 2026-08-06: a
+ * ⚠️ The box's GROUP TITLE cannot be bolded this way: a
  * group box is a themed BUTTON and draws its own caption, ignoring the font
  * selected into the DC here. Hence the bold lead line INSIDE the box - which is
  * an ordinary static, and does honour it. */
@@ -838,8 +838,7 @@ static void kitty_pxload_inline_handler(dlgcontrol *ctrl, dlgparam *dlg,
 }
 
 /*
- * Connection/Proxy: switching WORKPLACE PROXY MODE on and off
- * (design/TASK_workplace_proxy.md §3, §6).
+ * Connection/Proxy: switching WORKPLACE PROXY MODE on and off.
  *
  * The mode routes EVERY connection this install starts through one chosen
  * proxy, whatever each session stores, until it is switched off. It is not a
@@ -1029,7 +1028,7 @@ static struct wpmode_data *kitty_wpmode_active = NULL;
 /*
  * KiTTY: Storage & Backup > KiTTY.ini - a read-only view of the configuration
  * file that follows the file on disk, with the shipped example beside it for
- * copying (design/TASK_kitty_ini_view.md). One instance per configuration
+ * copying. One instance per configuration
  * box; the pointer is what the once-a-second poll and the fill hook use.
  */
 struct iniview_data {
@@ -1047,7 +1046,7 @@ static void kitty_iniview_poll(dlgparam *dlg);
 
 /*
  * KiTTY: Migration > old KiTTY Folders - sessions in FILES, imported from a
- * folder tree (design/TASK_old_kitty_folders_import.md). The engine is
+ * folder tree. The engine is
  * kitty_migrate.c; this is the panel's state for one configuration box.
  */
 struct migf_data {
@@ -3569,7 +3568,7 @@ static bool kitty_folder_name_reserved(const char *name)
  * Membership is read with kitty_read_session_folder(), which looks in the
  * PRIMARY hive only - so sessions living solely in a legacy hive are never
  * members of anything, and the rewrite below never has to touch a hive we
- * treat as read-only. See design/TASK_folder_rename.md. */
+ * treat as read-only. */
 static int sessionsaver_folder_member_count_of(struct sessionsaver_data *ssd,
                                                const char *folder)
 {
@@ -9278,8 +9277,7 @@ static void scb_panel_selection(struct controlbox *b)
                  I(CONF_osc52_read_dialogs), ED_INT);
     /* OSC 5522 paste events: a privilege an application arms with one mode
      * switch and a keypress then exercises without a dialog, so it gets a
-     * clock; the mode itself outlives the clock, the reads then ask (user
-     * decision 2026-09-06). */
+     * clock; the mode itself outlives the clock, the reads then ask. */
     ctrl_text(s, KT_LIMITS_PASTE_EVENTS_TEXT, HELPCTX(kitty_osc52));
     ctrl_editbox(s, KT_LIMITS_PASTE_EVENTS_DISARM_MINUTES, NO_SHORTCUT, 18,
                  HELPCTX(kitty_osc52), conf_editbox_handler,
@@ -13467,8 +13465,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
                  FILTER_ALL_FILES, false, KT_WINSCP_SELECT_WINSCP_EXECUTABLE,
                  HELPCTX(kitty_helper_paths), kitty_winscppath_handler, P(NULL));
     /* kitty_helper_paths = "The Transfers & Tools panel", which describes the
-     * helper programs; kitty_winscp is the KSCP panel's topic (help drift
-     * audit 2026-09-08). */
+     * helper programs; kitty_winscp is the KSCP panel's topic. */
     ctrl_text(s, KT_WINSCP_THE_OTHER_WINSCP_SETTINGS_BELONG, HELPCTX(kitty_helper_paths));
 
     ctrl_settitle(b, KSET_PATH("Transfers & Tools/FileZilla"), KT_FZ_FILEZILLA);

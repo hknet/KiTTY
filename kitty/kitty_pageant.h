@@ -117,7 +117,7 @@ int  kageant_passphrase_ttl_set(int seconds);
 int  kageant_hello_ttl(void);      /* Hello KEK cache seconds; default 60 */
 int  kageant_hello_ttl_set(int seconds);
 
-/* Re-encrypt keys after idle (design/TASK_kageant_autoreencrypt.md).
+/* Re-encrypt keys after idle.
  * Mode: 0 off (a key's own value still applies), 1 default for keys without
  * their own value, 2 enforced for every key. Seconds: KAGEANT_AUTOENC_USE
  * (1) = right after each use, else 30 s .. 7 d. A per-key value of -1 means

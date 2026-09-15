@@ -32,7 +32,7 @@ END
  * than a 1366x768 netbook at 100%, and the taskbar takes about 60 of the
  * height. Dialog units are no shortcut: their size follows the font, so the
  * same count is more pixels in a larger one. Measured at each window's
- * smallest by scripts/qa_window_minsize.ps1; the note in pageant.rc has the
+ * smallest by the release gate; the note in pageant.rc has the
  * reasoning in full.
  */
 /*

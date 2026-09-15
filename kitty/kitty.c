@@ -3184,8 +3184,8 @@ typedef struct {
  * The table row below uses use_readini=1 - kitty.ini ONLY - which every other
  * [KiTTY] key does not. Those go through ReadParameterN, which on an installed
  * copy reads HKCU FIRST and falls back to kitty.ini only when the registry has
- * no such value (see ReadParameterN above, and the precedence hazard written
- * up in design/SETTINGS_STORAGE_MODEL.md). For a security switch that ordering
+ * no such value (see ReadParameterN above; the registry silently beats
+ * kitty.ini). For a security switch that ordering
  * fails OPEN: restrictacl=yes in kitty.ini would be silently ignored whenever
  * a stale registry value exists - including one left by another install, since
  * the hive is shared by name. Nothing ever writes this key to the registry, so
@@ -3799,8 +3799,7 @@ void InitWinMain( void ) {
 	 * exist?" - and by then it always does, so neither of its branches could
 	 * ever run: no adopting a PuTTY installation's sessions, and, worse, no
 	 * restoring our own newest kittynew-*.sav after the hive is lost. A user who
-	 * loses their profile got an empty KiTTY with their backup sitting unused.
-	 * Found 2026-08-18 by scripts/qa_adopt_putty.ps1. */
+	 * loses their profile got an empty KiTTY with their backup sitting unused. */
 	int kitty_hive_existed ;
 
 	/* The hive this run actually uses, and the name file mode parks it under.
@@ -3836,7 +3835,7 @@ void InitWinMain( void ) {
 		/* One-time migration of legacy 9bis named proxies into our hive, with its
 		 * own marker so it fires even when sessions were migrated in an earlier
 		 * build. Registry-mode only (REG||FILE); DPAPI-protects passwords on copy
-		 * and in place (hknet/KiTTY#11, TASK_named_proxies.md Piece 5). */
+		 * and in place (hknet/KiTTY#11). */
 		kitty_migrate_old_proxies() ;
 	}
 	/* Not gated on the save mode: the obsolete kitty.ini copy exists in
@@ -4035,7 +4034,7 @@ void InitWinMain( void ) {
 	if( kitty_migrate_portable_mpw_state() ) { kitty_show_mpw_moved( NULL ) ; }
 	/* Same idea for the master password the OLD export behaviour created as a
 	 * side effect: drop it when nothing in the store is wrapped with it
-	 * (design/TASK_export_password.md SS7b). Portable stores only - see the
+	 * Portable stores only - see the
 	 * function's comment for why the registry hive is left alone. */
 	kitty_retire_orphan_master_password() ;
 

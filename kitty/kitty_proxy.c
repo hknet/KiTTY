@@ -35,7 +35,7 @@ void debug_logevent( const char *fmt, ... ) ;
 /* At-rest password protection shared with sessions (windows/storage.c): wrap for
  * the active backend (registry DPAPI / portable MPW / explicit legacy), unwrap by
  * stored marker. So a named proxy's password is protected exactly like a session
- * password (hknet/KiTTY#11, TASK_named_proxies.md Phase B). */
+ * password (hknet/KiTTY#11). */
 extern char *kitty_secret_wrap_current_backend( const char *plaintext ) ;
 extern int   kitty_secret_unwrap( const char *stored, char **out ) ;
 extern int   kitty_secret_is_marked( const char *stored ) ;
@@ -388,8 +388,7 @@ int DeleteProxyInfo( const char *name ) {
  *     still-plaintext ProxyPassword is DPAPI-encrypted in place — this also
  *     auto-protects proxies the whole-tree MigrateOldKittyHive copied earlier.
  * A marked (already-encrypted) password is never re-wrapped. The one-shot marker
- * means a proxy the user later deletes never resurrects (hknet/KiTTY#11,
- * TASK_named_proxies.md Piece 5). */
+ * means a proxy the user later deletes never resurrects (hknet/KiTTY#11). */
 static int kitty_proxies_migrated( void ) {
 	HKEY h ; DWORD val = 0, sz = sizeof(val), type = 0 ; int got = 0 ;
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), 0, KEY_READ, &h ) == ERROR_SUCCESS ) {
@@ -442,7 +441,7 @@ void kitty_migrate_old_proxies( void ) {
  * files with the password wrapped MPW2 (self-contained salt, machine-independent
  * — the same policy the session bundle uses). Import re-wraps per DESTINATION
  * backend via SaveProxyInfo (registry -> DPAPI1, portable -> MPW2), overwriting
- * by name to match session import (hknet/KiTTY#11, TASK_named_proxies.md). */
+ * by name to match session import (hknet/KiTTY#11). */
 extern char *kitty_secret_wrap_portable( const char *plaintext ) ;
 
 int kitty_export_proxies_to_dir( const char *dir ) {

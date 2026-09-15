@@ -26,7 +26,7 @@
  * ([FontFallback] in kitty.ini - the list the GDI painter's module uses)
  * and then from Windows' own DirectWrite fallback, monochrome.
  *
- * Not yet (see design/TASK_gpu_renderer.md): right-to-left shaping
+ * Not yet: right-to-left shaping
  * (runs are placed glyph by glyph like the GDI exact_textout path, without
  * the reordering GetCharacterPlacement did), and a native background image.
  */
@@ -308,7 +308,7 @@ static bool create_targets(D2DPainter *d, int w, int h)
 
 /*
  * The resize itself. Three things here each showed as "the window went
- * black after a resize" (reported 2026-09-04):
+ * black after a resize":
  *  - the new canvas starts black and only the strip Windows invalidated
  *    got repainted into it: the old canvas is copied into the new one
  *    first, and the whole client area is invalidated so the terminal
@@ -1284,8 +1284,8 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality, bool layerable)
          * the flip model's present path and its frame-latency signal (the
          * pacing then runs without one, as on a runtime that lacks it);
          * the persistent canvas makes the undefined back buffer harmless.
-         * The composition route (design/TASK_gpu_transparency_dcomp.md)
-         * is the one that keeps the flip model. */
+         * The composition route (DirectComposition) is the one that keeps
+         * the flip model. */
         sd.BufferCount = 1;
         sd.Scaling = DXGI_SCALING_STRETCH;   /* NONE is flip-model only */
         sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;

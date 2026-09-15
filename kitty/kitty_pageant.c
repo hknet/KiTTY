@@ -1979,7 +1979,7 @@ static int kageant_load_startup_entry(const char *path, int encrypted,
      * as ",encrypted", and the startup list is saved from that in-memory state
      * - so without this, loading a ",plain" entry rewrote it as deferred, and
      * the next save made that permanent. The retry path has the same guard for
-     * the same reason (measured 2026-08-08; caught again here 2026-08-13, by
+     * the same reason (caught by
      * the harness asserting what ended up in the registry).
      */
     {

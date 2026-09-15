@@ -81,10 +81,10 @@ endif()
 # a dev or test build carries no signature, and a binary that demanded one of
 # itself would refuse to start for the person building it.
 #
-# scripts/wsl_release.sh and wsl_release32.sh pass -DKITTY_RELEASE_SIGNED=ON;
-# wsl_test_build.sh / wsl_test_build32.sh deliberately do not, and both release
-# scripts delete their build directory first, so the setting can never be
-# inherited from a stale cache in either direction.
+# The release builds pass -DKITTY_RELEASE_SIGNED=ON; the test builds
+# deliberately do not, and the release builds delete their build directory
+# first, so the setting can never be inherited from a stale cache in either
+# direction.
 #
 # On the `utils` target because that is where kitty_renameguard.c compiles; the
 # executables see only the function, whose body is either there or is not.
@@ -98,7 +98,7 @@ endif()
 # KiTTY: the offline integrity self-check (kitty/kitty_selfcheck.c): an
 # Ed25519-signed SHA-256 stamp in the file's own .ktstamp section, checked at
 # startup with PuTTY's own crypto - for the old Windows where Authenticode
-# cannot judge. ONLY the 32-bit release build sets it (scripts/wsl_release32.sh)
+# cannot judge. ONLY the 32-bit release build sets it
 # and the local stamped test build; a dev or test build compiles the check to
 # nothing, exactly like KITTY_RELEASE_SIGNED.
 #

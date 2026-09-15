@@ -1391,7 +1391,7 @@ int main(int argc, char **argv)
     /*
      * KiTTY (#4): route the finalised key through the shared protected-key
      * core (kitty/kitty_protkey.c) before writing output, so the CLI self-test
-     * (qa_kittygen_cli.ps1) validates the encrypt->materialise round-trip on
+     * validates the encrypt->materialise round-trip on
      * every key type, format and certificate - the same core the kittygen GUI
      * holds its key in. Crypt-unavailable returns NULL and we keep the
      * original key, so behaviour is unchanged where protection is impossible.

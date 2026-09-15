@@ -1,6 +1,5 @@
 /*
- * kitty_workplace.c: the arming channel of workplace proxy mode
- * (design/TASK_workplace_proxy.md §3, §4).
+ * kitty_workplace.c: the arming channel of workplace proxy mode.
  *
  * Workplace proxy mode is a MODE, not a property of a named proxy: while it is
  * on, every connection this install starts goes through one chosen proxy,

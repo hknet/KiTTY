@@ -854,7 +854,7 @@ static void keylist_update_callback(
      * KiTTY: the state - is this key usable right now, or will it ask for a
      * passphrase first? - gets a real column. It used to be tacked onto the
      * comment, where a long algorithm name or comment pushed it off the right
-     * edge; measured 2026-08-08 with a DSA key: an hour spent chasing a key
+     * edge; with a DSA key: an hour spent chasing a key
      * that WAS deferred and did not look it.
      */
     if (ext_flags & LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY) {
@@ -4650,7 +4650,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 /*
                  * KiTTY: act on each selected row's PUBLIC BLOB, never on a
                  * list position: the displayed order and the agent's own
-                 * order are different things (measured 2026-08-08 - an RSA
+                 * order are different things (an RSA
                  * key selected, the DSA key below it removed). Only an SSH-1
                  * key, which the by-blob calls do not cover, falls back to
                  * its position: SSH-1 keys enumerate first, so its row index

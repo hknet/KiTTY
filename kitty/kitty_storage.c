@@ -1151,7 +1151,7 @@ int kitty_portable_load_state_dword(const char *key, DWORD *value)
  * klink/kscp/ksftp), so hooking here protects "Password"/"ProxyPassword"
  * everywhere while leaving the portable .ktx forced-file export on its own
  * legacy format. Runtime conf stays PLAINTEXT; only the stored form changes.
- * Write protection is BACKEND-scoped (TASK_dpapi_mpw_backend_policy.md):
+ * Write protection is BACKEND-scoped:
  * registry hive -> DPAPI1 always; portable session files -> MPW1 (master
  * password) or the explicit-compat escape hatch. Reads dispatch on the stored
  * marker regardless of backend.
@@ -1160,7 +1160,7 @@ int kitty_portable_load_state_dword(const char *key, DWORD *value)
  * uses libsettings. The "legacy"/unmarked stored value is returned VERBATIM:
  * a registry session password was always stored plaintext (the generic save
  * wrote conf verbatim), so existing sessions behave exactly as before and only
- * new saves convert to DPAPI1:. See TASK_dpapi_passwords.md.
+ * new saves convert to DPAPI1:.
  * ===================================================================== */
 #include <wincrypt.h>
 
@@ -1186,8 +1186,7 @@ static char *ksec_dup(const char *s) { size_t n = strlen(s) + 1; char *d = mallo
  * the portable (savemode=dir) backend is activated; registry-backed stores never
  * consult it. This replaces the retired registry-global "PasswordScheme" DWORD,
  * which is no longer read at all — a leftover value of any kind is ignored, so
- * it can no longer make the hive plaintext or master-password
- * (TASK_dpapi_mpw_backend_policy.md).
+ * it can no longer make the hive plaintext or master-password.
  *
  * Why "dpapi" exists: it is the only at-rest choice a portable store could not
  * make without a human. Master password is scriptable (-masterpwfile) and so is
@@ -1311,7 +1310,7 @@ static unsigned char g_mpw_fkey[KSEC_MPW_KEYLEN];
 static unsigned char g_mpw_fsalt[KSEC_MPW_SALTLEN];
 static int   g_mpw_f_valid = 0;
 
-/* ---- export-bundle passphrase (TASK_export_password.md) -------------------
+/* ---- export-bundle passphrase --------------------------------------------
  * An export bundle is a TRANSPORT artifact and carries its own password, which
  * is a different concept from the store's master password. While this context
  * is set, secrets written by the export path are wrapped with THIS passphrase
@@ -1829,8 +1828,8 @@ int kitty_mpw_startup_unlock(void) {
     return mpw_ensure_unlocked(0) ;
 }
 
-/* plaintext -> stored form (malloc'd), backend-scoped policy
- * (TASK_dpapi_mpw_backend_policy.md): the protection is chosen by WHERE the
+/* plaintext -> stored form (malloc'd), backend-scoped policy:
+ * the protection is chosen by WHERE the
  * value is stored, not by a global user scheme.
  *
  * Registry backend: always DPAPI1. A leftover PasswordScheme=1/2 DWORD must
@@ -2069,7 +2068,7 @@ char *kitty_pwfile_decode(char *line)
  * verifier would not unlock anything, it would just remove the check that tells
  * the user their password was wrong.
  *
- * Silent by design (user decision 2026-07-27): we are removing something the
+ * Silent by design: we are removing something the
  * user never asked for, and explaining a master password they did not know they
  * had would confuse more than it helps. The debug log records what happened.
  *
@@ -2432,7 +2431,7 @@ char *kitty_secret_wrap_portable(const char *plaintext)
     /* Export bundle in progress: protect with the bundle's OWN passphrase and
      * leave the master password alone entirely - no setup dialog, no
      * MasterPwSalt/MasterPwVerifier written, no Security\ folder created in a
-     * portable tree. This is the whole point of TASK_export_password.md, and it
+     * portable tree. This is the whole point of the bundle password, and it
      * is why the hook sits here: both the session export
      * (save_open_settings_forced) and the named-proxy export
      * (kitty_export_proxies_to_dir) come through this one function, so a single
@@ -2669,7 +2668,7 @@ static char *ksec_try_legacy_key(const char *stored, const char *passkey,
 /* Does `stored` carry the legacy format's header?
  *
  * bcrypt_string_base64 emits a 5-character header before the payload, and its
- * characters come from a tiny fixed alphabet - measured 2026-07-27 over 480,000
+ * characters come from a tiny fixed alphabet - measured over 480,000
  * ciphertexts spanning 4 keys, 4 bcrypt_init seeds and plaintext lengths 0-200:
  * positions 0-2 are always one of "0123456bnv" and positions 3-4 one of
  * "0123bnpvx", with NOT ONE exception. The header does not depend on the key,
@@ -2711,7 +2710,7 @@ static char *ksec_legacy_decrypt_hostterm(const char *stored, const char *host,
              host ? host : "", (term && term[0]) ? term : "xterm");
     pt = ksec_try_legacy_key(stored, passkey, &raw0);
     /* dopasskey() mode >0 fallback: the fixed key "KiTTY" (alternate old
-     * configurations; TASK_dpapi_passwords.md legacy-import fallback). */
+     * configurations; the legacy-import fallback). */
     if (!pt)
         pt = ksec_try_legacy_key(stored, "KiTTY", NULL);
     /* Last resort: a legacy non-ASCII password fails the strict printable

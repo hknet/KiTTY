@@ -6,7 +6,7 @@
  * driven by accessibility settings - and a standard balloon cannot be coloured.
  * Workplace proxy mode needs both: the notice carries the mode's colour so the
  * notice and the coloured window frame read as one thing, and it stays up long
- * enough to be read (design/TASK_workplace_proxy.md §6a).
+ * enough to be read.
  *
  * Owning a window means owning it properly, and these are the parts that are
  * easy to get wrong:

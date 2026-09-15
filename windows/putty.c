@@ -953,7 +953,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
      * (kitty_bridge.c / RunConfig: config-box Start, Duplicate Session, "open
      * new with current settings", password-auth sessions): conf_serialise
      * carries every set key, NOT_SAVED ones like CONF_sessionname included, so
-     * the child knows its name (measured 2026-07-22: a Start-spawned child
+     * the child knows its name (a Start-spawned child
      * registers -load). Only a genuinely unnamed launchable session (ad-hoc
      * host typed into the box) registers a BARE relaunch, which reopens the
      * config box - a blank reopen beats a silent vanish.

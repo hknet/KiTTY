@@ -8,8 +8,6 @@
  * test_osc52 exercise the whole permission engine with stubs, so the rules about
  * expiry, rate limits and focus are covered by tests that never open a window.
  *
- * Design: design/TASK_clipboard_read_permission.md.
- *
  * Compiled into the kitty and kitty_portable targets only.
  */
 #include <stdio.h>

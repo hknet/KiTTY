@@ -126,7 +126,7 @@ BEGIN
     PUSHBUTTON      "&No", IDCANCEL, 203, 81, 50, 14
 END
 
-/* Session export: the bundle's own password (design/TASK_export_password.md).
+/* Session export: the bundle's own password.
  * Handled by kitty/kitty_bridge.c. Exporting used to CREATE a master password
  * as a side effect; instead the bundle is a transport artifact with its own
  * password, and the store's master password is never touched. The password is
@@ -290,7 +290,7 @@ BEGIN
 END
 
 /* A server has asked to READ the local clipboard and have the contents sent to
- * it (design/TASK_clipboard_read_permission.md). Handled by
+ * it. Handled by
  * kitty/kitty_osc52.c.
  *
  * Three things about this layout are load-bearing:

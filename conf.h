@@ -1733,7 +1733,7 @@ CONF_OPTION(osc52_read_dialogs, VALUE_TYPE(INT), DEFAULT_INT(3), SAVE_KEYWORD("O
  * switching it off and would stop working - but the paste event goes out
  * without a token, so the application's read meets the ordinary permission
  * dialog. A standing privilege created by a keypress gets a clock; the feature
- * itself does not die of it (user decision 2026-09-06). */
+ * itself does not die of it. */
 CONF_OPTION(osc5522_paste_minutes, VALUE_TYPE(INT), DEFAULT_INT(30), SAVE_KEYWORD("OSC5522PasteMinutes"),)
 /* KiTTY: how long the one-time token of a paste event stays valid, in seconds.
  * The application reads once with it, without a dialog; a token older than this

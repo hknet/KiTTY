@@ -33,7 +33,7 @@
  * size follows the font, so the same DLU count is more pixels at Segoe UI 9
  * than it was at the old 8pt shell font.
  *
- * scripts/qa_window_minsize.ps1 measures every window at its SMALLEST against
+ * The release gate measures every window at its SMALLEST against
  * these numbers, in logical pixels, and fails the build if one does not fit.
  */
 
@@ -141,7 +141,7 @@ BEGIN
     PUSHBUTTON KT_RC_KEYLIST_NEWKEY, IDC_KEYLIST_NEWKEY, 10, 224, 56, 14
     PUSHBUTTON "&Settings...", IDC_KEYLIST_SETTINGS, 72, 224, 56, 14
     /* a&gent, not &agent: A belongs to "&Add Key". With the letter on two
-     * controls Alt+A went to THIS one and pressed it (measured 2026-08-12) -
+     * controls Alt+A went to THIS one and pressed it -
      * the duplicate silently stole the key from Add Key. */
     PUSHBUTTON KT_RC_KEYLIST_STOPAGENT, IDC_KEYLIST_STOPAGENT, 134, 224, 62, 14
     PUSHBUTTON "A&bout", IDC_KEYLIST_ABOUT, 202, 224, 46, 14

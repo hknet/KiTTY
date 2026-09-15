@@ -21,8 +21,7 @@
  * They must ALSO never simply be changed: neither the MPW1 nor the MPW2
  * envelope records the cost, so a new value would lock out every secret already
  * stored - unprotect would just fail to verify, indistinguishable from a wrong
- * passphrase. Raising the cost needs a versioned envelope; the plan is in
- * design/TASK_mpw_cost_migration.md.
+ * passphrase. Raising the cost needs a versioned envelope.
  */
 #define KITTY_MPW_ARGON_MEM       8192    /* KiB */
 #define KITTY_MPW_ARGON_PASSES    13

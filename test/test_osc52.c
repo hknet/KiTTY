@@ -569,7 +569,7 @@ static void test_read_direction(Mock *mk)
      * Nothing sent and no dialog is still the right OUTCOME, and that is all
      * this level can check: the mock has no LogContext, and logevent() returns
      * early without one, so the refusal REASON is invisible here. The Event Log
-     * line is asserted by qa_clipboard_auto.ps1 instead - it can hold the real
+     * line is asserted by the clipboard harness instead - it can hold the real
      * Windows clipboard, and it is mutation-tested against exactly this branch.
      * What is proved here is that a busy clipboard is never SERVED and never
      * prompts about a clipboard nobody can read.

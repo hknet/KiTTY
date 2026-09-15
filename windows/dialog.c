@@ -1157,8 +1157,8 @@ static INT_PTR CALLBACK PanelHostProc(HWND hwnd, UINT msg,
  * A panel switch used to erase the host on screen and let the new panel's
  * controls paint over the erase, and the display showed the erased host for
  * as long as that took (50-85 ms): a blank flash per switch, a strobe when
- * arrow-keying down the tree (reported 2026-09-04; measured by
- * scripts/qa_cfgbox_flicker.ps1 - a double-buffered host made it worse, a
+ * arrow-keying down the tree (measured with a flicker harness -
+ * a double-buffered host made it worse, a
  * clip-children host is out for the group-box reason above).
  *
  * So the screen keeps the OLD picture while the swap happens (the hide and
@@ -1502,8 +1502,7 @@ static void kitty_cfg_panel_scrollbar(HWND hwnd, struct kitty_cfg_panel *p,
 }
 
 /*
- * KiTTY: the resizable configuration box (design/TASK_ui_modernisation.md §3
- * and §11, stage A - the OUTER furniture).
+ * KiTTY: the resizable configuration box (the OUTER furniture).
  *
  * The template has no relayout pass at all, so this adds the one thing that
  * was missing: a baseline captured once, at the size the template produced,
@@ -3219,8 +3218,8 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
       case WM_GETMINMAXINFO:
         /* The template size is the floor. Without this the box can be dragged
          * to nothing, the growth goes negative, and every anchored control is
-         * placed at a negative size - which is also what
-         * scripts/qa_window_minsize.ps1 asks every window to do. */
+         * placed at a negative size - which is also what the release gate's
+         * window-size check asks every window to do. */
         if (kitty_cfg_layout_ready) {
             MINMAXINFO *mmi = (MINMAXINFO *)lParam;
             RECT lr;
@@ -3424,7 +3423,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                  * against the panel-switch flash (a switch erases the host
                  * and the new panel's controls paint over the erase, which
                  * the eye sees as a blank flash per switch): measured with
-                 * scripts/qa_cfgbox_flicker.ps1, the double-buffered host
+                 * the flicker harness, the double-buffered host
                  * flashed on 16 of 30 switches instead of 10, and the
                  * longest blank grew from 49 to 83 ms. The flash is the
                  * switch's own duration between erase and finished paint;
@@ -4169,7 +4168,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                                          RDW_UPDATENOW | RDW_ALLCHILDREN);
                         }
                         /* Which road this switch took, for the flicker
-                         * harness (qa_cfgbox_flicker.ps1): 1 freeze frame,
+                         * harness: 1 freeze frame,
                          * 2 the erase-and-repaint fallback. */
                         SetPropA(hwnd, "KiTTY.cfg.switch", (HANDLE)(ULONG_PTR)(frozen ? 1 : 2));
                     }

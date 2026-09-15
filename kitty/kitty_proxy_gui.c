@@ -9,7 +9,7 @@
  * (InitProxyList) so the combo — and, after the dialog closes, the config box —
  * reflect the new set. Definitions are decoupled from any session's own proxy.
  *
- * Linked only into the GUI targets. See TASK_named_proxies.md.
+ * Linked only into the GUI targets.
  */
 #include "putty.h"     /* first: pulls winsock2.h before windows.h (avoids -Wcpp warning) */
 #include <windows.h>

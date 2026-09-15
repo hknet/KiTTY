@@ -529,7 +529,7 @@ int kitty_export_all_to_dir(const char *dir, int *failOut) {
     return n;
 }
 
-/* ---- export bundle password (design/TASK_export_password.md) --------------
+/* ---- export bundle password ----------------------------------------------
  * An export bundle is a TRANSPORT artifact, so it gets its own password rather
  * than hijacking the store's master password (which exporting used to CREATE as
  * a side effect, persisting MasterPwSalt/MasterPwVerifier into the user's
@@ -1094,8 +1094,7 @@ void kitty_show_mpw_moved(HWND hwnd)
     if (dir) sfree(dir);
 }
 
-/* ---- import: is the bundle protected, and with what? (design/TASK_export_
- * password.md SS5) -----------------------------------------------------------
+/* ---- import: is the bundle protected, and with what? ---------------------
  * Whether to ask for a password is decided from the FILES, never guessed: scan
  * the bundle for a value carrying a protection marker. MPW2: means an export
  * password is needed and works on any PC; DPAPI1: means the bundle is tied to
@@ -1659,7 +1658,7 @@ void kitty_proxy_select(Conf *conf)
      * can say otherwise, below. */
     conf_set_int(conf, CONF_proxy_named_hostname, 0);
     /* Workplace proxy mode wins over everything the session says
-     * (design/TASK_workplace_proxy.md §2, §4). It is a mode about where the
+     * It is a mode about where the
      * user is sitting today, so it applies to every connection this install
      * starts, and it applies whether or not the Session-panel selector is
      * shown - that gate is about the droplist, not about this.

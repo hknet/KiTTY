@@ -1,10 +1,10 @@
 /*
  * test_sessionlist.c - the session list's BASELINE behaviour.
  *
- * Written before the folder-navigation work (design/TASK_session_folder_rows.md
- * in the private docs) so that changes to the list can be shown not to have
- * broken what it does today. It states the rules as assertions; if one of them
- * has to change, the change is deliberate and visible in the diff of this file.
+ * Written before the folder-navigation work, so that changes to the list can
+ * be shown not to have broken what it does today. It states the rules as
+ * assertions; if one of them has to change, the change is deliberate and
+ * visible in the diff of this file.
  *
  * HERMETIC BY CONSTRUCTION: it never touches the registry or the user's
  * sessions. kitty_set_storage_mode(1) + kitty_set_session_dir(<temp>) puts the

@@ -400,7 +400,7 @@
 #ifndef IDC_HELPTEXT
 #define IDC_HELPTEXT 1230
 #endif
-/* Session-export password dialogs (design/TASK_export_password.md). An export
+/* Session-export password dialogs. An export
  * bundle is a transport artifact: it gets its OWN password, and the store's
  * master password is left alone. IDD_EXPORTPW collects the choice up front;
  * IDD_EXPORTDONE is the summary that shows the password once, with Copy. */
@@ -440,7 +440,7 @@
 #ifndef IDC_EXPD_COPY
 #define IDC_EXPD_COPY 1249
 #endif
-/* Import password prompt (design/TASK_export_password.md §5). Shown only when
+/* Import password prompt. Shown only when
  * the bundle actually carries password-protected values; a DPAPI bundle never
  * raises it. The prompt text is set at runtime so a wrong password can re-ask
  * in place with the number of tries left. */
@@ -488,7 +488,7 @@
 #ifndef IDC_TITLEVARS_COPY
 #define IDC_TITLEVARS_COPY 1258
 #endif
-/* OSC 52 clipboard-READ permission prompt (design/TASK_clipboard_read_permission.md).
+/* OSC 52 clipboard-READ permission prompt.
  * A real dialog rather than a MessageBox because it has to show a MASKED summary
  * of what would be sent plus a View button - someone standing behind you, or a
  * screen-share, must not capture the clipboard just because a dialog appeared,

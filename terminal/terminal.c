@@ -5663,7 +5663,7 @@ static void osc5522_write_commit(Terminal *term)
  * types it wants with that token under the name "Paste event", without a dialog.
  * That is how an image pastes into a program on the far end.
  *
- * Bounds (user decision 2026-09-06): the token is single use and lives
+ * Bounds: the token is single use and lives
  * OSC5522PasteTokenSeconds; the mode is shown in the title marker like the other
  * clipboard permissions; and tokens are issued for OSC5522PasteMinutes after the
  * mode was set (default 30, 0 = always). After that the mode STAYS SET and the

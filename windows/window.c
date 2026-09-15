@@ -855,8 +855,8 @@ static void start_backend(WinGuiSeat *wgs)
 #endif
 #ifdef MOD_PERSO
         /*
-         * KiTTY: the one detection workplace proxy mode is worth having
-         * (design/TASK_workplace_proxy.md §9). This connection went through the
+         * KiTTY: the one detection workplace proxy mode is worth having.
+         * This connection went through the
          * mode's proxy and did not come up - overwhelmingly because the user has
          * left the place where that proxy exists. Ask, at the exact moment it
          * matters, instead of leaving them to work out why nothing connects any

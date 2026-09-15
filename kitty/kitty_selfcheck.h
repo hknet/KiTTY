@@ -17,7 +17,7 @@
  * step. Older releases verify with the key they carry.
  *
  * COMPILED IN ONLY UNDER KITTY_SELFCHECK, which the 32-bit release build sets
- * (scripts/wsl_release32.sh) and the local stamped test build; a dev or test
+ * and the local stamped test build; a dev or test
  * build has no body here and this returns 0. The stamp is written after
  * packaging and before Authenticode signing.
  */

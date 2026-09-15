@@ -178,8 +178,7 @@ HMENU InitLauncherMenu( char * Key ) {
 	 * submenu of the named proxies to switch it on with, the remembered one
 	 * ticked. The wording says "every connection" both ways round because that
 	 * is the whole point of the mode, and because a proxy override left on by
-	 * accident is the risk this feature has to keep visible
-	 * (design/TASK_workplace_proxy.md §6). */
+	 * accident is the risk this feature has to keep visible. */
 	{
 		AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 		if( kitty_workplace_holding() ) {
@@ -663,9 +662,8 @@ static void LauncherRefreshSessionsAndHotkeys( HWND hwnd ) {
 	
 /* KiTTY: the tray tooltip, built in one place because it now has a part that
  * changes at runtime - workplace proxy mode names the proxy every connection is
- * going through while this launcher holds the arming
- * (design/TASK_workplace_proxy.md §6). Safe to call before the icon exists;
- * NIM_MODIFY on an unregistered icon simply fails. */
+ * going through while this launcher holds the arming. Safe to call before
+ * the icon exists; NIM_MODIFY on an unregistered icon simply fails. */
 static void LauncherSetTrayTip( void ) {
 #ifdef MOD_PORTABLE
 	strcpy( TrayIcone.szTip, KT_LAUNCHER_TIP_PORTABLE ) ;
@@ -685,8 +683,8 @@ static void LauncherSetTrayTip( void ) {
 	}
 }
 
-/* ⚠️ The SELECTION is remembered, the ARMED state never is
- * (design/TASK_workplace_proxy.md §3). Which proxy was last chosen is written
+/* ⚠️ The SELECTION is remembered, the ARMED state never is.
+ * Which proxy was last chosen is written
  * here so a later launcher start can offer to switch the mode back on; "armed"
  * exists only as this process holding the arming, and switching the mode off
  * deliberately KEEPS the selection - it is what you would want back tomorrow
@@ -1323,7 +1321,7 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	if( strstr( cmdline, "-putty" ) != NULL ) SetPuttyFlag(1) ;
 
 	/* KiTTY: -workplace <named proxy> switches workplace proxy mode ON and
-	 * hands this launcher the arming (design/TASK_workplace_proxy.md §3). The
+	 * hands this launcher the arming. The
 	 * arming lives and dies with this process: every connection asks whether one
 	 * is held right now, so killing the launcher, logging off or rebooting
 	 * switches the mode off with nothing to clean up.

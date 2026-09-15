@@ -112,8 +112,8 @@ static void kg_report(const char *msg, int gui)
         fflush(stderr);
     }
     /* In EVERY case one Application event-log line - the admin's trace,
-     * whether or not the user also saw the box or the stderr line (his
-     * decision 2026-09-14). Applies to all three guards that share this. */
+     * whether or not the user also saw the box or the stderr line.
+     * Applies to all three guards that share this. */
     kg_eventlog(msg);
 }
 

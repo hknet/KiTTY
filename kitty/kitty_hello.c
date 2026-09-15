@@ -261,7 +261,7 @@ int kitty_hello_available(void)
 /*
  * The consent broker needs a REAL owner window: visible, on this thread,
  * and able to come to the front. Handed a hidden window (the tray window)
- * it degrades badly - measured 2026-08-22 on the first live run: the
+ * it degrades badly - on the first live run the
  * verified-OK dialog came up detached and would not self-dismiss, and the
  * SECOND request never got UI at all, wedging the broker with the camera
  * held open while the agent sat in the wait loop. So each verification
@@ -293,7 +293,7 @@ static HWND hello_host_create(void)
         /*
          * Take the foreground for real. A background process asking
          * SetForegroundWindow is normally REFUSED, and the broker then
-         * never presents its window - measured 2026-08-22: the prompt
+         * never presents its window - in practice the prompt
          * appeared only while the mouse hovered the tray icon, because
          * that hover was the user input granting kageant foreground
          * rights. Briefly attaching our input queue to the current
@@ -1422,7 +1422,7 @@ static bool khw_run_on_thread(void (*fn)(void *), void *arg, HWND caller)
 /*
  * The window the platform's credential UI attaches to. The UI presents
  * reliably only on a real, visible window holding the FOREGROUND -
- * measured 2026-08-24: with an arbitrary foreground window of another
+ * with an arbitrary foreground window of another
  * process the NGC prompt sometimes never presents at all (camera on, no
  * UI, until the 120 s timeout). So each call gets a small visible host
  * window of our own, granted the foreground by briefly attaching to the
@@ -2468,7 +2468,7 @@ int kitty_hello_prf_my_credid(unsigned char **credid_out,
 
 /*
  * The wrap/unwrap POLICY: PRF where available, KCM as the fallback,
- * otherwise refuse (decided 2026-08-22). owner must be the calling
+ * otherwise refuse. owner must be the calling
  * app's REAL window. These sit above both KEK sources and the
  * container, so apps need no knowledge of either mechanism.
  */

@@ -2,9 +2,9 @@
 #define KITTY_WORKPLACE_H
 
 /*
- * Workplace proxy mode: the arming channel (design/TASK_workplace_proxy.md §3,
- * §4). The launcher holds the arming; every connection asks whether one is held
- * right now. Nothing about "armed" is ever written to disk.
+ * Workplace proxy mode: the arming channel. The launcher holds the arming;
+ * every connection asks whether one is held right now. Nothing about "armed"
+ * is ever written to disk.
  */
 
 /* Launcher side. arm() returns 1 when this process now holds the arming, 0 if

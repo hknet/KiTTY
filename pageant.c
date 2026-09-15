@@ -1380,7 +1380,7 @@ static bool reencrypt_key(PageantPublicKey *pub)
     /* KiTTY: a sign request that asked for this key's passphrase is linked
      * to the key until it resumes; taking the cleartext away in between
      * left it signing with nothing (an idle re-encrypt tick landing between
-     * the decryption and the resume: a crash, seen 2026-09-04). Not now;
+     * the decryption and the resume: a crash). Not now;
      * the caller tries again later. */
     if (priv->blocked_requests.next != &priv->blocked_requests)
         return false;

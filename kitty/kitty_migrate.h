@@ -65,7 +65,7 @@ char *kitty_import_foreign_session(const char *name, int hive,
 
 /*
  * Sessions in FILES: a folder tree holding an old KiTTY's (or a copied)
- * Sessions directory - design/TASK_old_kitty_folders_import.md. Works in
+ * Sessions directory. Works in
  * either store mode: the copy is saved by the ordinary save path.
  */
 enum {
