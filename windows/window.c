@@ -66,6 +66,7 @@
 #include "../kitty/kitty_pwmem.h"   /* KiTTY: passwords wrapped in memory */
 #ifdef MOD_PERSO
 #include "../kitty/kitty.h"
+#include "../kitty/kitty_regbackup.h"
 #include "../kitty/kitty_broadcast.h"
 #include "kitty_gui.h"
 #include "../kitty/kitty_bridge.h"

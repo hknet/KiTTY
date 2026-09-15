@@ -482,7 +482,7 @@ void kitty_cfgbox_store_size(int w, int h)
 /* ==== The kitty.ini settings engine (kset) ============================== */
 
 /* The backup counts are read at BACKUP time through ReadParameterN
- * (SaveRegistryKeyEx and SavePortableDirBackup in kitty.c), never cached at
+ * (SaveRegistryKeyEx and SavePortableDirBackup in kitty_regbackup.c), never cached at
  * startup: the store IS the running value, so the refresh reads the same
  * key the change wrote. Default 5, the backup code's own. */
 int kitty_kset_backupcount(const char *key)

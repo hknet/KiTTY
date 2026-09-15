@@ -397,7 +397,7 @@ void routine_inputbox_multiline( void * phwnd ) {
 	GetAndSendMultiLine( MainHwnd ) ;
 	}
 
-/* Seam accessor: kitty.c's encrypted-kitty.sav password check reads the
+/* Seam accessor: the encrypted-kitty.sav password check (kitty_regbackup.c) reads the
  * password typed into the GetAndSendLinePassword dialog. */
 char * GetInputBoxResult( void ) {
 	return InputBoxResult ;

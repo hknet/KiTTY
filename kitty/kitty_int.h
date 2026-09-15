@@ -12,4 +12,18 @@
  * accessor the rest of the suite uses. */
 extern HWND MainHwnd ;
 
+/* The store's file paths and flags (kitty.c): kitty.ini and kitty.sav as
+ * resolved at startup, "conf=no" (create neither), and the registry's
+ * configuration-password value the backup retires. */
+extern char * KittyIniFile ;
+extern char * KittySavFile ;
+extern int NoKittyFileFlag ;
+extern char PasswordConf[] ;
+
+/* kitty_regbackup.c, for the startup sequence: the newest .sav to offer at a
+ * first start, and the two clean-outs of retired features. */
+int sav_find_for_restore( const char *savfile, char *out, size_t outlen ) ;
+void RetireConfigPasswordLeftovers( void ) ;
+void RetireCountUpLeftovers( void ) ;
+
 #endif /* KITTY_INT_H */

@@ -10,6 +10,7 @@
 #include "../kitty/kitty_pwmem.h"  /* passwords wrapped in memory */
 #ifdef MOD_PERSO
 #include "../kitty/kitty.h"
+#include "../kitty/kitty_regbackup.h"
 #include "../kitty/kitty_broadcast.h"
 #include "../kitty/kitty_bridge.h"
 #include "../kitty/kitty_exportbundle.h"
@@ -903,7 +904,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
              * kitty084.sav. Previously only a mid-session "Change Settings" apply
              * did this, so a portable user who never reconfigures mid-session
              * got no backup. Self-skips when disabled / no sav target. */
-            { extern void SaveRegistryKey(void); SaveRegistryKey(); }
+            SaveRegistryKey();
 #endif
             NETDBG_TS("cmdline: after do_config (user closed config box)");
         }

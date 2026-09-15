@@ -410,7 +410,6 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 HWND InfoBox( HINSTANCE hInstance, HWND hwnd ) ;
 // Rename a registry key
 void RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) ;
-void DelRegistryKey( void ) ;
 void RenewPassword( Conf *conf ) ;
 // Put a login typed at the SSH prompt into the running session (hknet/KiTTY#50)
 void SetPasswordInConfig( const char * password ) ;
@@ -423,13 +422,10 @@ int NextBgImage( HWND hwnd ) ;
 int PreviousBgImage( HWND hwnd ) ;
 void ManageSpecialCommand( HWND hwnd, int menunum ) ;
 // Backup of the registry key
-void SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) ;
 void ManageProtect( HWND hwnd, TermWin *tw, char * title ) ;
 void ManagePrint( HWND hwnd ) ;
 // Handles the always visible option
 void ManageVisible( HWND hwnd, TermWin *tw, char * title ) ;
-void SaveRegistryKey( void ) ;
-void SaveRegistryKeyNow( void ) ;
 void ManageWinrol( HWND hwnd, int resize_action ) ;
 void resize( int height, int width ) ;
 void OpenAndSendScriptFile( HWND hwnd ) ;
@@ -786,7 +782,6 @@ int GetFunkeysDefault( void );
 char * GetIconFile(void);
 int GetTransparencyAllowed(void);
 void LoadParameters( void );
-void LoadRegistryKey( HWND hdlg );
 int RestoreFromTray( HWND hwnd );
 void SetConfigBoxFixedSizeFlag( const int flag );
 void SetConfigBoxWindowWidth( const int num );
