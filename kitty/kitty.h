@@ -33,70 +33,20 @@
 //extern HWND MainHwnd ;
 HWND GetMainHwnd(void) ;
 
-
-/*****************************************************
-** STATIC VARIABLES OF kitty.c
-** AND THEIR ACCESSOR AND MODIFIER FUNCTIONS
-*****************************************************/
-// [ConfigBox] noexit: respawn the config box when a session window closes
-int GetConfigBoxNoExitFlag(void) ;
-void SetConfigBoxNoExitFlag( const int flag ) ;
-
-// Flag to disable CTRL+TAB handling
-int GetCtrlTabFlag(void) ;
-void SetCtrlTabFlag( const int flag ) ;
-
 // Flag to show the background image
 //extern int BackgroundImageFlag ;
 int GetBackgroundImageFlag(void) ;
 void SetBackgroundImageFlag( const int flag ) ;
 
-#ifdef MOD_RECONNECT
-// Flag to disable the automatic reconnection mechanism
-int GetAutoreconnectFlag( void ) ;
-void SetAutoreconnectFlag( const int flag ) ;
-// Delay before attempting an automatic reconnection
-int GetReconnectDelay(void) ;
-#endif
-
-// Delay before sending the password and before sending the window to the
-// tray automatically on connection (in milliseconds)
-extern int init_delay ;
-
-// Delay between each line of the automatic command (in milliseconds)
-extern int autocommand_delay ;
-
-// Delay before sending the automatic command on drag-and-drop (in
-// milliseconds)
-extern int dnd_delay ;
-
-// Delay between each character of a command (in milliseconds)
-extern int between_char_delay ;
-
-// Delay between two lines of one command and between two \x \k shortcuts
-extern int internal_delay ;
 
 // Name of the application window class
 extern char KiTTYClassName[128] ;
-
-// [KiTTY] size: append the live [cols x rows] to the window title
-int GetSizeFlag(void) ;
-void SetSizeFlag( const int flag ) ;
-
-// [KiTTY] wintitle: enable the title decorations (size suffix, PROTECTED/ONTOP markers)
-int GetTitleBarFlag(void) ;
-void SetTitleBarFlag( const int flag ) ;
 
 // Reapply the title decorations after a state change (windows/window.c)
 void kitty_refresh_title(void) ;
 
 // KiTTY: expand window-title placeholders (%%h, %%s, %%u, %%p, %%P, %%f, %%l, %%d)
 char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf) ;
-
-// Flag to switch to image-viewer mode
-// extern int ImageViewerFlag ;
-int GetImageViewerFlag(void) ;
-void SetImageViewerFlag( const int flag ) ;
 
 #ifdef MOD_PROXY
 // Flag adding the Proxy Selector feature
@@ -105,56 +55,11 @@ int GetProxySelectionFlag() ;
 void SetProxySelectionFlag( const int flag ) ;
 #endif
 
-// Time (in seconds) between background image switches (<=0 = no slideshow)
-extern int ImageSlideDelay ;
-
-// Flag protecting the window against accidental keyboard input
-// extern int ProtectFlag ;
-int GetProtectFlag(void) ;
-
-// Flag defining the visibility of a window
-// extern int VisibleFlag ;
-int GetVisibleFlag(void) ;
-void SetVisibleFlag( const int flag ) ;
-
-// Script file handling at startup
-extern char * ScriptFileContent ;
-
-// Flag to disable the keyboard shortcuts
-// extern int ShortcutsFlag ;
-int GetShortcutsFlag(void) ;
-void SetShortcutsFlag( const int flag ) ;
-
-// Flag to disable the mouse shortcuts
-// extern int MouseShortcutsFlag ;
-int GetMouseShortcutsFlag(void) ;
-void SetMouseShortcutsFlag( const int flag ) ;
-
 // Stuff for drag-n-drop
 #ifndef TIMER_DND
 #define TIMER_DND 8777
 #endif
-extern HDROP hDropInf;
 void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop) ;
-
-// Pointer to the automatic command
-extern char * AutoCommand ;
-
-// Content of a script to send to the screen
-extern char * ScriptCommand ;
-
-// paste size limit (number of characters). Above the limit a confirmation is requested. (0 means unlimited)
-int GetPasteSize(void) ;
-void SetPasteSize( const int size ) ;
-
-// Max chained SSH proxies before refusing; kitty.ini [KiTTY] proxychainmax (default 5)
-int GetProxyChainMax(void) ;
-void SetProxyChainMax( const int n ) ;
-
-// Flag controlling the hyperlink feature
-extern int HyperlinkFlag ;
-int GetHyperlinkFlag(void) ;
-void SetHyperlinkFlag( const int flag ) ;
 
 // RuTTY script engine master switch: [KiTTY] scriptmode=yes|no (kitty_rutty.c)
 int kitty_script_enabled(void) ;
@@ -165,21 +70,6 @@ void kitty_script_set_enabled( int on ) ;
 extern int IniFileFlag ;
 int GetIniFileFlag(void) ;
 
-// Flag enabling the folder tree when savemode=dir, defined in
-// kitty_commun.c
-//extern int DirectoryBrowseFlag ;
-int GetDirectoryBrowseFlag(void) ;
-
-// Send the window to the tray automatically (for tunnels); goes with the
-// -send-to-tray option
-//extern int AutoSendToTray ;
-int GetAutoSendToTray( void ) ;
-void SetAutoSendToTray( const int flag ) ;
-
-// Flag controlling transparency
-// extern int TransparencyFlag ;
-int GetTransparencyFlag(void) ;
-
 #ifdef MOD_ZMODEM
 // Flag to disable the ZMODEM functions
 // extern int ZModemFlag ;
@@ -187,73 +77,11 @@ int GetZModemFlag(void) ;
 void SetZModemFlag( const int flag ) ;
 #endif
 
-// Flag to avoid creating the kitty.ini and kitty.sav files
-// extern int NoKittyFileFlag ;
-int GetNoKittyFileFlag(void) ;
-
-// Height of the configuration box
-// extern int ConfigBoxHeight ;
-int GetConfigBoxHeight(void) ;
-void SetConfigBoxHeight( const int num ) ;
-
-// Height of the configuration box window (0 = default value)
-// static int ConfigBoxWindowHeight = 0 ;
-int GetConfigBoxWindowHeight(void) ;
-void SetConfigBoxWindowHeight( const int num ) ;
-
-// Window height used by the winrol function
-// extern int WinHeight ;
-int GetWinHeight(void) ;
-// Flag to disable the Winrol (window rollup)
-// extern int WinrolFlag = 1
-int GetWinrolFlag(void) ;
-void SetWinrolFlag( const int num ) ;
-
 // Flag disabling the automatic saving of the login details (user/password)
 // on an SSH connection
 // extern int UserPassSSHNoSave ; ==> defined in kitty_commun.c
 int GetUserPassSSHNoSave(void) ;
 void SetUserPassSSHNoSave( const int flag ) ;
-
-// Flag to disable the filter on the configuration box session list
-// extern int SessionFilterFlag ;
-// [ConfigBox] filter=yes
-int GetSessionFilterFlag(void) ;
-void SetSessionFilterFlag( const int flag ) ;
-
-// Flag to disable the automatic creation of the Default Settings session
-// [ConfigBox] defaultsettings=yes
-int GetDefaultSettingsFlag(void) ;
-void SetDefaultSettingsFlag( const int flag ) ;
-
-// Browse folders as rows of the saved-session list instead of via the combo
-// [ConfigBox] foldernavigation=no
-int GetFolderNavigationFlag(void) ;
-void SetFolderNavigationFlag( const int flag ) ;
-
-// Quick connect: no = start from Default Settings with the caret in Host Name
-// [ConfigBox] loadlastsession=yes
-int GetLoadLastSessionFlag(void) ;
-void SetLoadLastSessionFlag( const int flag ) ;
-
-// Quick connect armed for this run (loadlastsession=no, or last session = the defaults)
-int GetQuickConnectMode(void) ;
-void SetQuickConnectMode( const int flag ) ;
-
-// Double-click action on a saved session: 0 = open here, 1 = start in a new window
-// [ConfigBox] dblclick=open|start
-int GetDblClickFlag(void) ;
-void SetDblClickFlag( const int flag ) ;
-
-
-// Path to the WinSCP program
-extern char * WinSCPPath ;
-
-/* path to the file-copy helper: kscp.exe, or PuTTY's pscp.exe */
-extern char * PSCPPath  ;
-
-// Startup directory
-extern char InitialDirectory[4096] ;
 
 // Extension of the session files in portable mode (may be ktx)
 extern char FileExtension[15] ;
@@ -271,10 +99,6 @@ extern int is_backend_first_connected ;
 
 /* Flag forbidding the configuration box from being opened */
 extern int force_reconf ; 
-
-// Counter for sending the anti-idle string
-extern int AntiIdleSeconds ;   /* KiTTY: keepalive interval, in seconds */
-extern char AntiIdleStr[128] ;
 
 extern NOTIFYICONDATA TrayIcone ;   /* defined in kitty.c */
 #ifndef MYWM_NOTIFYICON
@@ -305,10 +129,6 @@ void routine_inputbox_multiline( void * phwnd ) ;
 void GetAndSendLinePassword( HWND hwnd ) ;
 void RunScriptFile( HWND hwnd, const char * filename ) ;
 void ReadInitScript( const char * filename ) ;
-int ReadParameterN( const char * key, const char * name, char * value, size_t size ) ;
-int ReadParameter( const char * key, const char * name, char * value ) ; /* compat: value >= 4096 bytes; prefer ReadParameterN */
-int WriteParameter( const char * key, const char * name, char * value ) ;
-int DelParameter( const char * key, const char * name ) ;
 void GetSessionFolderName( const char * session_in, char * folder ) ;
 char * SetSessPath( const char * dec ) ;
 void CleanFolderName( char * folder ) ;
@@ -317,7 +137,6 @@ void RunCommand( HWND hwnd, const char * cmd ) ;
 void load_open_settings_forced(char *filename, Conf *conf) ;
 void save_open_settings_forced(char *filename, Conf *conf) ;
 int SwitchCryptFlag( void ) ;
-void CreateDefaultIniFile( void ) ;
 void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) ;
 void InitSpecialMenuTab( void ) ;
 #define NB_MENU_MAX 1024
@@ -399,8 +218,6 @@ int ShortcutKeyCode( int vk, int shift, int control, int alt, int altgr, int win
 int ShortcutKeySyntax( int key, char * buf, size_t size ) ;
 int ShortcutKeyUserCommand( int key ) ;
 int ShortcutKeyReserved( int key ) ;
-char * GetKittyIniFile(void) ;
-char * GetKittySavFile(void) ;
 // Get one entry of a session (returns 1 if it exists)
 int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) ;
 // Save the window coordinates
@@ -769,34 +586,14 @@ int kitty_hotkey_conflict_scan( unsigned int mods, unsigned int vk,
                                 const char * exclude, char * names, int nameslen ) ;
 int kitty_hotkey_enabled_count( const char * exclude ) ;
 int kitty_hotkey_conflict_report( char * buf, int buflen ) ;
-
-
-
-/* ---- exported from kitty/kitty.c ---- */
-int GetConfigBoxApplicationSettingsFlag(void);
-int GetConfigBoxFixedSizeFlag(void);
-int GetConfigBoxWindowWidth(void);
-int GetFunkeysDefault( void );
-char * GetIconFile(void);
-int GetTransparencyAllowed(void);
-void LoadParameters( void );
 int RestoreFromTray( HWND hwnd );
-void SetConfigBoxFixedSizeFlag( const int flag );
-void SetConfigBoxWindowWidth( const int num );
 void SetConnBreakIcon( HWND hwnd );
-void SetFunkeysDefault( const int t );
-void SetIconFile( const char * path );
-void SetNamedProxyHostnameOnly( const int flag );
-void SetPSCPPath( const char * path );
-void SetReconnectDelay( const int flag );
-void SetTransparencyEnabled( const int flag );
 void debug_log( const char *fmt, ... );
 int get_param( const char * val );
 char * kitty_current_dir(void);
 void kitty_fontfallback_apply_list( const char * list );
 char *kitty_loginscript_from_text( const char *text );
 char *kitty_loginscript_to_text( const char *stored );
-int kitty_named_proxy_default_hostname( void );
 void kitty_netdbg_ts( const char *msg );
 void kitty_set_remote_cwd( const char * osc7 );
 void set_title( TermWin *tw, const char *title );

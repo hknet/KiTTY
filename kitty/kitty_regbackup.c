@@ -28,6 +28,7 @@
 
 // KiTTY includes
 #include "kitty.h"
+#include "kitty_params.h"
 #include "kitty_broadcast.h"   /* the other KiTTY windows: count, broadcast, resize */
 #include "kitty_portfwd.h"     /* the port-forward display */
 #include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */

@@ -48,6 +48,7 @@
 #include <commctrl.h>            /* the upload-request dialog's list view */
 
 #include "kitty.h"               /* kitty_xfer_download_dir, kitty_xfer_upload_dir */
+#include "kitty_params.h"
 #include "kitty_winutil.h"       /* OpenDirNameFrom, OpenFileNameFrom */
 #include "kitty_dlgbox.h"        /* the suite's themed Yes/No box */
 #include "kitty_theme.h"         /* the shared painter: ink marks, button widths */

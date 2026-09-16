@@ -615,6 +615,7 @@ add_executable(kitty
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
   kitty.rc
   ${KITTY_DIR}/kitty.c
+  ${KITTY_DIR}/kitty_params.c   # the application-wide flags, delays, paths and the kitty.ini parameter table
   ${KITTY_DIR}/kitty_commands.c   # the /commands console (once pasted into kitty.c as text)
   ${KITTY_DIR}/kitty_launcher.c   # the tray launcher and the child-process starters (likewise)
   ${KITTY_DIR}/kitty_broadcast.c
@@ -762,6 +763,7 @@ add_executable(kitty_portable
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
   kitty.rc
   ${KITTY_DIR}/kitty.c
+  ${KITTY_DIR}/kitty_params.c   # the application-wide flags, delays, paths and the kitty.ini parameter table
   ${KITTY_DIR}/kitty_commands.c   # the /commands console (once pasted into kitty.c as text)
   ${KITTY_DIR}/kitty_launcher.c   # the tray launcher and the child-process starters (likewise)
   ${KITTY_DIR}/kitty_broadcast.c

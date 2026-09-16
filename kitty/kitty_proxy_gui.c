@@ -25,6 +25,7 @@
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
 #include "kitty_commun.h"
 #include "kitty.h"
+#include "kitty_params.h"
 #include "kitty_gui.h"
 
 /* Type combo order -> CONF_proxy_type. The SSH types make a named proxy a

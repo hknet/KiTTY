@@ -31,6 +31,7 @@
 #include "putty.h"
 #include "kitty.h"      /* ReadParameterN + INIT_SECTION: the rz/sz paths are
                          * kitty.ini settings, not per-session conf keys */
+#include "kitty_params.h"   /* ReadParameterN */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions and wordings */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */

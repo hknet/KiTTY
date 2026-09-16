@@ -23,6 +23,7 @@
 #include <shellapi.h>        /* SHFileOperation: remove a leftover staging tree */
 
 #include "kitty.h"
+#include "kitty_params.h"
 #include "kitty_commun.h"    /* MASKPASS */
 
 #include "kitty_tools.h"     /* existfile/existdirectory, poss, set_env */

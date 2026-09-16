@@ -32,6 +32,7 @@
 #include "kitty_winpos.h"   /* the remembered window position, per session and monitor layout */
 #include "kitty_commun.h"
 #include "kitty.h"
+#include "kitty_params.h"
 #include "kitty_broadcast.h"
 #include "kitty_launcher.h"
 #include "kitty_tools.h"

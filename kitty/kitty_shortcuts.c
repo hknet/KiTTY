@@ -18,6 +18,7 @@
 #include <windows.h>
 
 #include "kitty.h"
+#include "kitty_params.h"
 #include "kitty_broadcast.h"
 #include "kitty_commun.h"
 #include "kitty_crypt.h"

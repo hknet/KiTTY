@@ -65,6 +65,7 @@
 #include "kitty_inikeys.h"  /* KI_NOTES */
 #include "kitty_text.h"     /* KT_CAP_KITTYPP: the notice's title */
 #include "kitty.h"
+#include "kitty_params.h"
 
 /* kitty.c: the suite's global-parameter store (registry, or kitty.ini in
  * portable mode). Declared rather than included so this file keeps its short

@@ -16,6 +16,7 @@
 #include "putty.h"
 #include "storage.h"       /* read_setting_s/i: per-session hotkey scan */
 #include "kitty.h"
+#include "kitty_params.h"
 #include "kitty_portfwd.h"
 #include "kitty_broadcast.h"
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION, KITTY_LAUNCHER_HOTKEY_MAX */

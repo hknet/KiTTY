@@ -27,6 +27,7 @@
 
 // KiTTY includes
 #include "kitty.h"
+#include "kitty_params.h"
 #include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
 #include "kitty_commun.h"
 #include "kitty_image.h"

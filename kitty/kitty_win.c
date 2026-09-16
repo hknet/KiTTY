@@ -25,6 +25,7 @@
 #include <msi.h>       /* in-app updater: install-type detection by UpgradeCode */
 #include "kitty_gui.h"
 #include "kitty.h"
+#include "kitty_params.h"
 #include "kitty_storage.h"
 #include "kitty_auxpos.h"
 #include "kitty_winutil.h"   /* debug_logevent */

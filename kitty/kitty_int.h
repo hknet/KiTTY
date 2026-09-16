@@ -49,4 +49,9 @@ extern int WinrolFlag ;
  * (GetDirectoryBrowseFlag() is the accessor). */
 extern int DirectoryBrowseFlag ;
 
+/* The three flags kitty.c still reads directly after the wall moved to
+ * kitty_params.c (GetProtectFlag/GetVisibleFlag/GetWinHeight are the public way). */
+extern int ProtectFlag ;
+extern int VisibleFlag ;
+extern int WinHeight ;
 #endif /* KITTY_INT_H */

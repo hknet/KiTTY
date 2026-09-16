@@ -41,6 +41,7 @@
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty.h"
+#include "kitty_params.h"
 #define KWP_MAGIC   0x5057494Bu   /* "KIWP" */
 #define KWP_VERSION 1
 

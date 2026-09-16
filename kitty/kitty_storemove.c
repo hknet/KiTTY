@@ -31,6 +31,7 @@
 
 #include "putty.h"
 #include "kitty.h"
+#include "kitty_params.h"
 #include "kitty_win.h"
 #include "kitty_winutil.h"
 #include "kitty_storage.h"
