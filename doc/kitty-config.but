@@ -2081,14 +2081,14 @@ version; that is a session's SSH panel.
 
 \S{kitty-cfg-clipboard} The Clipboard panel
 
-\q{Warn before pasting big clipboard content} is the large-paste guard;
-the field beside it is the limit, in characters. When the clipboard
-holds more than the limit, KiTTY
-names the count and the limit and asks before anything is sent, and
-the default answer is No, so a stray Enter cancels the paste instead of
-flooding the shell. 0 switches the warning off. It counts characters,
-not lines, and judges only the size. It is one setting for every
-session; there is no per-session form of it.
+\q{Warn before pasting more than ... characters} is the large-paste
+guard; the field between the two halves of the sentence is the limit.
+When the clipboard holds more than the limit, KiTTY names the count and
+the limit and asks before anything is sent, and the default answer is
+No, so a stray Enter cancels the paste instead of flooding the shell.
+Set it to 0 to never warn. It counts characters, not lines, and judges
+only the size. It is one setting for every session; there is no
+per-session form of it.
 
 \S{kitty-cfg-application-notification} The Application Notification panel
 

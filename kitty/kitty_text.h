@@ -1012,11 +1012,11 @@
 #define KT_KSET_TW_FUNKEYS                           "Function keys of a new session:"
 #define KT_KSET_TW_FUNKEYS_NOTE                      "What the Keyboard panel of a new session starts with; a " \
         "session's own choice always wins."
-#define KT_KSET_TW_PASTESIZE                         "Warn before pasting big clipboard content. Limit:"
-#define KT_KSET_TW_PASTESIZE_UNIT                    "characters (0 = never)"
+#define KT_KSET_TW_PASTESIZE                         "Warn before pasting more than"
+#define KT_KSET_TW_PASTESIZE_UNIT                    "characters"
 #define KT_CLIPBOARD_TITLE                           "Clipboard"
 #define KT_CLIPBOARD_PASTE                           "Large pastes"
-#define KT_CLIPBOARD_PASTE_SCOPE                     "There is no per-session limit."
+#define KT_CLIPBOARD_PASTE_SCOPE                     "There is no per-session limit. Set to 0 to never warn."
 
 /* Application/Security/Application Notification (kitty_notes.c) */
 #define KT_APPNOTIFICATION_TITLE                     "Application Notification"

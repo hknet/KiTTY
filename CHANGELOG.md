@@ -9,6 +9,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 ### New
 
 ### Changed
+- **The Clipboard panel's paste-size row fits at the smallest window.** It
+  reads "Warn before pasting more than [ ] characters", and the note under it
+  says that 0 never warns.
 
 - **The startup clean-up of an orphan master password is gone.** Exporting on
   0.84.1.48-0.84.1.65 created a master password as a side effect, and every
