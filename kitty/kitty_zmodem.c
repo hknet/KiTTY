@@ -36,6 +36,7 @@
 #include "kitty_text.h"     /* shared captions and wordings */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_zmodem.h"
+#include "kitty_tools.h"    /* existfile: the helper paths must name a file */
 
 #define ZM_PIPE_SIZE (64 * 1024)
 
@@ -364,15 +365,6 @@ static kitty_zmodem_state *zm_spawn(const char *command, const char *params,
     zm->h_stderr = handle_input_new(read_stderr, zm_stderr_gotdata, zm, 0);
     zm->hw_process = add_handle_wait(zm->pi.hProcess, zm_process_exited, zm);
     return zm;
-}
-
-static int existfile(const char *filename)
-{
-    FILE *f;
-    if (!filename || !filename[0]) return 0;
-    f = fopen(filename, "rb");
-    if (f) { fclose(f); return 1; }
-    return 0;
 }
 
 /* Start a ZModem RECEIVE (rz): the remote 'sz' has begun; we spawn rz and feed

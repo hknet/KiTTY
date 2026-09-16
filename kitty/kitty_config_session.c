@@ -3236,40 +3236,16 @@ static void host_ca_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
         kitty_cfg_goto_panel("Application/Security/Certificate Authorities");
 }
 
-/* KiTTY: the WinSCP executable path is an application setting (KiTTY++
- * Settings > Transfers & Tools > WinSCP); the session's WinSCP panel carries a
- * button that jumps there. */
-static void winscp_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
-                                       void *data, int event)
+/* KiTTY: a session panel's "open the application setting" button. Several
+ * per-session panels have a counterpart under KiTTY++ Settings (the WinSCP
+ * and FileZilla executable paths, the file-copy helper, the broadcast master
+ * switch and group key); the button jumps to the panel whose path is in
+ * ctrl->context.p. */
+static void kitty_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                      void *data, int event)
 {
     if (event == EVENT_ACTION)
-        kitty_cfg_goto_panel(KSET_PATH("Transfers & Tools/WinSCP"));
-}
-
-static void filezilla_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
-                                          void *data, int event)
-{
-    if (event == EVENT_ACTION)
-        kitty_cfg_goto_panel(KSET_PATH("Transfers & Tools/FileZilla"));
-}
-
-/* KiTTY: the file-copy helper (kscp path, port, folders) lives on KiTTY++
- * Settings > Transfers & Tools; the session's KSCP panel jumps there. */
-static void kscp_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
-                                     void *data, int event)
-{
-    if (event == EVENT_ACTION)
-        kitty_cfg_goto_panel(KSET_PATH("Transfers & Tools"));
-}
-
-/* KiTTY: the broadcast master switch, the installation's group key and the
- * send console live on KiTTY++ Settings > Automation > Broadcast; the
- * session's Broadcast panel carries a button that jumps there. */
-static void broadcast_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
-                                          void *data, int event)
-{
-    if (event == EVENT_ACTION)
-        kitty_cfg_goto_panel(KSET_PATH("Automation/Broadcast"));
+        kitty_cfg_goto_panel((const char *)ctrl->context.p);
 }
 
 /* ---- Connection > SSH > Host keys: "Scan this host" ------------------------ */
@@ -4573,7 +4549,7 @@ void scb_panel_scripting(struct controlbox *b, bool midsession)
             ctrl_columns(s, 2, 50, 50);
             c = ctrl_pushbutton(s, KT_CFG_BROADCAST_GLOBAL_JUMP, NO_SHORTCUT,
                                 HELPCTX(kitty_sendcmd),
-                                broadcast_global_jump_handler, I(0));
+                                kitty_global_jump_handler, P(KSET_PATH("Automation/Broadcast")));
             c->column = 0;
             ctrl_columns(s, 1, 100);
         }
@@ -6991,7 +6967,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
                     note->column = 0;
                     btn = ctrl_pushbutton(s, KT_KSCP_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
                                           HELPCTX(kitty_winscp),
-                                          kscp_global_jump_handler, I(0));
+                                          kitty_global_jump_handler, P(KSET_PATH("Transfers & Tools")));
                     btn->column = 1;
                     ctrl_columns(s, 1, 100);
                 } else {
@@ -7038,7 +7014,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
                     note->column = 0;
                     btn = ctrl_pushbutton(s, KT_WINSCP_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
                                           HELPCTX(kitty_winscp_session),
-                                          winscp_global_jump_handler, I(0));
+                                          kitty_global_jump_handler, P(KSET_PATH("Transfers & Tools/WinSCP")));
                     btn->column = 1;
                     ctrl_columns(s, 1, 100);
                 } else {
@@ -7077,7 +7053,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
                     note->column = 0;
                     btn = ctrl_pushbutton(s, KT_FZ_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
                                           HELPCTX(kitty_filezilla_session),
-                                          filezilla_global_jump_handler, I(0));
+                                          kitty_global_jump_handler, P(KSET_PATH("Transfers & Tools/FileZilla")));
                     btn->column = 1;
                     ctrl_columns(s, 1, 100);
                 } else {

@@ -329,131 +329,61 @@ void kitty_proxyedit_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
 }
 
-/* WinSCP executable path (KiTTY): this is a GLOBAL app setting in kitty.ini
- * [KiTTY] WinSCPPath, NOT a per-session CONF_ key - so it cannot use
- * conf_filesel_handler. On REFRESH we show the stored path, or, if none is
- * stored yet, the auto-detected default as a display hint (we never WRITE on
- * refresh). On VALCHANGE we persist whatever the user selected/typed. Mirrors
- * the resolution order in SearchWinSCP() (kitty.c). */
-/* kitty.ini [section] name (kitty_config.c does not include kitty.h). Mirror
- * the MOD_PERSO definition there so the two never drift. */
-static void kitty_winscppath_handler(dlgcontrol *ctrl, dlgparam *dlg,
-                                     void *data, int event)
+/* Where an installer puts a helper, offered as a display HINT when kitty.ini
+ * stores no path for it - shown, never written (the refresh guard below).
+ * The probes run in this order: %ProgramFiles%, %ProgramFiles(x86)%, then
+ * the per-user %LOCALAPPDATA%\Programs; the first file that exists wins.
+ * Helpers without a row (rz, sz) get no hint. Mirrors SearchWinSCP() in
+ * kitty.c for WinSCP. */
+static const struct { const char *key; const char *under_programs; } kitty_toolpath_hints[] = {
+    { KI_WINSCPPATH,    "WinSCP\\WinSCP.exe" },
+    { KI_FILEZILLAPATH, "FileZilla FTP Client\\filezilla.exe" },
+};
+static void kitty_toolpath_hint(const char *key, char *buffer, size_t size)
 {
-    /* dlg_editbox_set() fires a re-entrant EVENT_VALCHANGE (see the autopw
-     * handler note above); this guard stops the refresh-time hint from being
-     * written back to kitty.ini, so we only persist genuine user edits. */
-    static int refreshing = 0;
-    if (event == EVENT_REFRESH) {
-        char buffer[4096];
-        buffer[0] = '\0';
-        refreshing = 1;
-        if (ReadParameterN(INIT_SECTION, KI_WINSCPPATH, buffer, sizeof(buffer)) == 0 ||
-            !buffer[0]) {
-            /* Nothing stored: offer the default location as a hint, but only
-             * if it actually exists (display only - do not persist here). */
-            const char *pf = getenv("ProgramFiles");
-            const char *pf86 = getenv("ProgramFiles(x86)");
-            const char *local = getenv("LOCALAPPDATA");
-            buffer[0] = '\0';
-            if (pf) {
-                snprintf( buffer, sizeof(buffer), "%s\\WinSCP\\WinSCP.exe", pf);
-                if (!existfile(buffer))
-                    buffer[0] = '\0';
-            }
-            if (!buffer[0] && pf86) {
-                snprintf( buffer, sizeof(buffer), "%s\\WinSCP\\WinSCP.exe", pf86);
-                if (!existfile(buffer))
-                    buffer[0] = '\0';
-            }
-            if (!buffer[0] && local) {
-                snprintf( buffer, sizeof(buffer), "%s\\Programs\\WinSCP\\WinSCP.exe", local);
-                if (!existfile(buffer))
-                    buffer[0] = '\0';
-            }
+    const char *pf = getenv("ProgramFiles");
+    const char *pf86 = getenv("ProgramFiles(x86)");
+    const char *local = getenv("LOCALAPPDATA");
+    size_t i;
+    buffer[0] = '\0';
+    for (i = 0; i < lenof(kitty_toolpath_hints); i++) {
+        const char *rel = kitty_toolpath_hints[i].under_programs;
+        if (strcmp(kitty_toolpath_hints[i].key, key)) continue;
+        if (pf) {
+            snprintf(buffer, size, "%s\\%s", pf, rel);
+            if (!existfile(buffer)) buffer[0] = '\0';
         }
-        {
-            Filename *fn = filename_from_str(buffer);
-            dlg_filesel_set(ctrl, dlg, fn);
-            filename_free(fn);
+        if (!buffer[0] && pf86) {
+            snprintf(buffer, size, "%s\\%s", pf86, rel);
+            if (!existfile(buffer)) buffer[0] = '\0';
         }
-        refreshing = 0;
-    } else if (event == EVENT_VALCHANGE) {
-        Filename *fn;
-        char val[4096];
-        if (refreshing)
-            return;
-        fn = dlg_filesel_get(ctrl, dlg);
-        snprintf(val, sizeof(val), "%s", filename_to_str(fn));
-        WriteParameter(INIT_SECTION, KI_WINSCPPATH, val);
-        filename_free(fn);
-    }
-}
-
-/* [KiTTY] FileZillaPath, the same shape as the WinSCP path above: an
- * application setting, the installer's default location offered as a hint
- * when nothing is stored, only genuine edits written back. */
-static void kitty_filezillapath_handler(dlgcontrol *ctrl, dlgparam *dlg,
-                                        void *data, int event)
-{
-    static int refreshing = 0;
-    if (event == EVENT_REFRESH) {
-        char buffer[4096];
-        buffer[0] = '\0';
-        refreshing = 1;
-        if (ReadParameterN(INIT_SECTION, KI_FILEZILLAPATH, buffer, sizeof(buffer)) == 0 ||
-            !buffer[0]) {
-            const char *pf = getenv("ProgramFiles");
-            const char *pf86 = getenv("ProgramFiles(x86)");
-            const char *local = getenv("LOCALAPPDATA");
-            buffer[0] = '\0';
-            if (pf) {
-                snprintf(buffer, sizeof(buffer), "%s\\FileZilla FTP Client\\filezilla.exe", pf);
-                if (!existfile(buffer)) buffer[0] = '\0';
-            }
-            if (!buffer[0] && pf86) {
-                snprintf(buffer, sizeof(buffer), "%s\\FileZilla FTP Client\\filezilla.exe", pf86);
-                if (!existfile(buffer)) buffer[0] = '\0';
-            }
-            if (!buffer[0] && local) {
-                snprintf(buffer, sizeof(buffer), "%s\\Programs\\FileZilla FTP Client\\filezilla.exe", local);
-                if (!existfile(buffer)) buffer[0] = '\0';
-            }
+        if (!buffer[0] && local) {
+            snprintf(buffer, size, "%s\\Programs\\%s", local, rel);
+            if (!existfile(buffer)) buffer[0] = '\0';
         }
-        {
-            Filename *fn = filename_from_str(buffer);
-            dlg_filesel_set(ctrl, dlg, fn);
-            filename_free(fn);
-        }
-        refreshing = 0;
-    } else if (event == EVENT_VALCHANGE) {
-        Filename *fn;
-        char val[4096];
-        if (refreshing)
-            return;
-        fn = dlg_filesel_get(ctrl, dlg);
-        snprintf(val, sizeof(val), "%s", filename_to_str(fn));
-        WriteParameter(INIT_SECTION, KI_FILEZILLAPATH, val);
-        filename_free(fn);
+        return;
     }
 }
 
 /*
- * The rz and sz helper programs, on Application > KiTTY++ Settings >
- * Transfers & Tools > ZModem.
- *
- * Same shape as the WinSCP path above and for the same reason: where a helper
- * is installed is a property of this PC. They were per-session
+ * A helper program's path is a GLOBAL app setting in kitty.ini ([KiTTY]
+ * WinSCPPath, FileZillaPath, rz and sz), NOT a per-session CONF_ key - so it
+ * cannot use conf_filesel_handler. On REFRESH the stored path is shown, or,
+ * for a helper with a hint row above, the installer's location when nothing
+ * is stored yet (display only, never written on refresh). On VALCHANGE
+ * whatever the user selected or typed is persisted. ctrl->context.p names
+ * the kitty.ini key. The rz and sz paths used to be per-session
  * (CONF_rzcommand / CONF_szcommand), so the path went into every saved
- * session and had to be set again for each host. ctrl->context.p names the
- * kitty.ini key.
+ * session and had to be set again for each host.
  */
 static void kitty_toolpath_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                    void *data, int event)
 {
     const char *key = (const char *)ctrl->context.p;
-    /* dlg_filesel_set fires a re-entrant EVENT_VALCHANGE, exactly as the
-     * WinSCP handler above documents. */
+    /* dlg_editbox_set() / dlg_filesel_set() fire a re-entrant EVENT_VALCHANGE
+     * (see the autopw handler note above); this guard stops the refresh-time
+     * value - a hint in particular - from being written back to kitty.ini, so
+     * only genuine user edits persist. */
     static int refreshing = 0;
 
     if (event == EVENT_REFRESH) {
@@ -461,8 +391,9 @@ static void kitty_toolpath_handler(dlgcontrol *ctrl, dlgparam *dlg,
         Filename *fn;
         buffer[0] = '\0';
         refreshing = 1;
-        if (!ReadParameterN(INIT_SECTION, (char *)key, buffer, sizeof(buffer)))
-            buffer[0] = '\0';
+        if (!ReadParameterN(INIT_SECTION, (char *)key, buffer, sizeof(buffer)) ||
+            !buffer[0])
+            kitty_toolpath_hint(key, buffer, sizeof(buffer));
         fn = filename_from_str(buffer);
         dlg_filesel_set(ctrl, dlg, fn);
         filename_free(fn);
@@ -2746,7 +2677,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     s = ctrl_getset(b, KSET_PATH("Transfers & Tools/WinSCP"), "path", KT_WINSCP_EXECUTABLE);
     ctrl_filesel(s, KT_WINSCP_WINSCP_EXECUTABLE, NO_SHORTCUT,
                  FILTER_ALL_FILES, false, KT_WINSCP_SELECT_WINSCP_EXECUTABLE,
-                 HELPCTX(kitty_helper_paths), kitty_winscppath_handler, P(NULL));
+                 HELPCTX(kitty_helper_paths), kitty_toolpath_handler, P(KI_WINSCPPATH));
     /* kitty_helper_paths = "The Transfers & Tools panel", which describes the
      * helper programs; kitty_winscp is the KSCP panel's topic. */
     ctrl_text(s, KT_WINSCP_THE_OTHER_WINSCP_SETTINGS_BELONG, HELPCTX(kitty_helper_paths));
@@ -2755,7 +2686,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     s = ctrl_getset(b, KSET_PATH("Transfers & Tools/FileZilla"), "path", KT_WINSCP_EXECUTABLE);
     ctrl_filesel(s, KT_FZ_EXECUTABLE, NO_SHORTCUT,
                  FILTER_ALL_FILES, false, KT_FZ_SELECT_EXECUTABLE,
-                 HELPCTX(kitty_helper_paths), kitty_filezillapath_handler, P(NULL));
+                 HELPCTX(kitty_helper_paths), kitty_toolpath_handler, P(KI_FILEZILLAPATH));
     ctrl_text(s, KT_FZ_THE_OTHER_SETTINGS_BELONG, HELPCTX(kitty_helper_paths));
 
     ctrl_settitle(b, KSET_PATH("Transfers & Tools/ZModem"), KT_ZMODEM_ZMODEM);
