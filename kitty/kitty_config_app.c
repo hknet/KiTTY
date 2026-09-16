@@ -3180,28 +3180,49 @@ static int sc_cmp_action(const void *av, const void *bv)
     return sc_sort_sc->asort_desc ? -c : c;
 }
 
-static void sc_fill_actions(struct sc_data *sc)
+/* One fill for both lists: the entries' indexes sorted by cmp, the header
+ * row, one two-column row per entry with its index as the row id, and the
+ * selected entry selected again. row() writes the two cells of entry i. */
+typedef void (*sc_row_fn)(struct sc_data *sc, int i, char *left, size_t lsize,
+                          char *right, size_t rsize);
+static void sc_fill_list(struct sc_data *sc, dlgcontrol *list, int n, int sel,
+                         const char *head, int (*cmp)(const void *, const void *),
+                         sc_row_fn row)
 {
-    int n = ShortcutActionCount(), i, *order;
+    int i, *order;
     if (!sc->dlg) return;
     order = snewn(n + 1, int);
     for (i = 0; i < n; i++) order[i] = i;
     sc_sort_sc = sc;
-    qsort(order, n, sizeof(int), sc_cmp_action);
-    dlg_update_start(sc->alist, sc->dlg);
-    dlg_listbox_clear(sc->alist, sc->dlg);
-    dlg_listbox_addwithid(sc->alist, sc->dlg, KT_KSET_SC_ACTIONS_HEAD, -1);
+    qsort(order, n, sizeof(int), cmp);
+    dlg_update_start(list, sc->dlg);
+    dlg_listbox_clear(list, sc->dlg);
+    dlg_listbox_addwithid(list, sc->dlg, head, -1);
     for (i = 0; i < n; i++) {
-        char key[64], *row;
-        sc_key_text(ShortcutActionValue(order[i]), NULL, key, sizeof(key));
-        row = dupprintf("%s\t%s", ShortcutActionName(order[i]), key);
-        dlg_listbox_addwithid(sc->alist, sc->dlg, row, order[i]);
-        sfree(row);
-        if (order[i] == sc->asel)
-            dlg_listbox_select(sc->alist, sc->dlg, i + 1);
+        char left[512], right[512], *text;
+        row(sc, order[i], left, sizeof(left), right, sizeof(right));
+        text = dupprintf("%s\t%s", left, right);
+        dlg_listbox_addwithid(list, sc->dlg, text, order[i]);
+        sfree(text);
+        if (order[i] == sel)
+            dlg_listbox_select(list, sc->dlg, i + 1);
     }
-    dlg_update_done(sc->alist, sc->dlg);
+    dlg_update_done(list, sc->dlg);
     sfree(order);
+}
+
+/* an action row: its name, then the key it has (empty when unassigned) */
+static void sc_action_row(struct sc_data *sc, int i, char *left, size_t lsize,
+                          char *right, size_t rsize)
+{
+    snprintf(left, lsize, "%s", ShortcutActionName(i));
+    sc_key_text(ShortcutActionValue(i), NULL, right, rsize);
+}
+
+static void sc_fill_actions(struct sc_data *sc)
+{
+    sc_fill_list(sc, sc->alist, ShortcutActionCount(), sc->asel,
+                 KT_KSET_SC_ACTIONS_HEAD, sc_cmp_action, sc_action_row);
 }
 
 /* The line under a key field (the actions leaf and the AutoText leaf
@@ -3324,29 +3345,21 @@ static int sc_cmp_text(const void *av, const void *bv)
     return sc_sort_sc->tsort_desc ? -c : c;
 }
 
+/* an AutoText row: its key (the ini spelling when the key has no name),
+ * then the text it types */
+static void sc_text_row(struct sc_data *sc, int i, char *left, size_t lsize,
+                        char *right, size_t rsize)
+{
+    sc_key_text(sc->texts[i].code, sc->texts[i].name, left, lsize);
+    snprintf(right, rsize, "%s", sc->texts[i].text);
+}
+
 static void sc_fill_texts(struct sc_data *sc)
 {
-    int i, *order;
     if (!sc->dlg) return;
     sc_read_texts(sc);
-    order = snewn(sc->ntexts + 1, int);
-    for (i = 0; i < sc->ntexts; i++) order[i] = i;
-    sc_sort_sc = sc;
-    qsort(order, sc->ntexts, sizeof(int), sc_cmp_text);
-    dlg_update_start(sc->tlist, sc->dlg);
-    dlg_listbox_clear(sc->tlist, sc->dlg);
-    dlg_listbox_addwithid(sc->tlist, sc->dlg, KT_KSET_SC_AUTOTEXT_HEAD, -1);
-    for (i = 0; i < sc->ntexts; i++) {
-        char key[64], *row;
-        sc_key_text(sc->texts[order[i]].code, sc->texts[order[i]].name, key, sizeof(key));
-        row = dupprintf("%s\t%s", key, sc->texts[order[i]].text);
-        dlg_listbox_addwithid(sc->tlist, sc->dlg, row, order[i]);
-        sfree(row);
-        if (order[i] == sc->tsel)
-            dlg_listbox_select(sc->tlist, sc->dlg, i + 1);
-    }
-    dlg_update_done(sc->tlist, sc->dlg);
-    sfree(order);
+    sc_fill_list(sc, sc->tlist, sc->ntexts, sc->tsel,
+                 KT_KSET_SC_AUTOTEXT_HEAD, sc_cmp_text, sc_text_row);
 }
 
 static void sc_show_text(struct sc_data *sc)
