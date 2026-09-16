@@ -314,7 +314,6 @@ char * SetSessPath( const char * dec ) ;
 void CleanFolderName( char * folder ) ;
 void set_sshver( const char * vers ) ;
 void RunCommand( HWND hwnd, const char * cmd ) ;
-int InternalCommand( HWND hwnd, char * st ) ;
 void load_open_settings_forced(char *filename, Conf *conf) ;
 void save_open_settings_forced(char *filename, Conf *conf) ;
 int SwitchCryptFlag( void ) ;

@@ -55,10 +55,10 @@
 #include "winfont_fallback.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
-#include "kitty_text.h"   /* shared captions and wordings (also for the .c files included below) */
+#include "kitty_text.h"   /* shared captions and wordings */
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
-#include "kitty_pwmem.h"   /* passwords wrapped in memory (kitty_commands.c too) */
+#include "kitty_pwmem.h"   /* passwords wrapped in memory */
 #include "kitty_storage.h"
 #include "kitty_secretstore.h"
 #include "kitty_gui.h"
@@ -98,7 +98,6 @@ extern int IniFileFlag ;
 
 // Flag enabling the folder tree when savemode=dir, defined in
 // kitty_commun.c
-extern int DirectoryBrowseFlag ;
 int GetDirectoryBrowseFlag(void) { return DirectoryBrowseFlag ; }
 
 
@@ -193,7 +192,7 @@ void SetHyperlinkFlag( const int flag ) { HyperlinkFlag = flag ; }
 /* TransparencyFlag is the LIVE state, which the /transparency command flips.
  * TransparencyAllowed remembers what kitty.ini said and is never flipped, so
  * transparency=no cannot be worked around from the console. */
-static int TransparencyFlag = 1 ;
+int TransparencyFlag = 1 ;
 static int TransparencyAllowed = 1 ;
 int GetTransparencyFlag(void) { return TransparencyFlag ; }
 int GetTransparencyAllowed(void) { return TransparencyAllowed ; }
@@ -263,12 +262,12 @@ int GetVisibleFlag(void) { return VisibleFlag ; }
 void SetVisibleFlag( const int flag ) { VisibleFlag = flag ; }
 
 // Flag to disable the keyboard shortcuts
-static int ShortcutsFlag = 1 ;
+int ShortcutsFlag = 1 ;
 int GetShortcutsFlag(void) { return ShortcutsFlag ; }
 void SetShortcutsFlag( const int flag ) { ShortcutsFlag = flag ; }
 
 // Flag to disable the mouse shortcuts
-static int MouseShortcutsFlag = 1 ;
+int MouseShortcutsFlag = 1 ;
 int GetMouseShortcutsFlag(void) { return MouseShortcutsFlag  ; }
 void SetMouseShortcutsFlag( const int flag ) { MouseShortcutsFlag  = flag ; }
 
@@ -293,7 +292,7 @@ char * IconFile = NULL ;
 // [KiTTY] size=yes: append the live terminal size [cols x rows] to the window
 // title (not while maximized). Applied by the title decorator in
 // windows/window.c; needs wintitle=yes (TitleBarFlag) like classic KiTTY.
-static int SizeFlag = 0 ;
+int SizeFlag = 0 ;
 int GetSizeFlag(void) { return SizeFlag ; }
 void SetSizeFlag( const int flag ) { SizeFlag = flag ; }
 
@@ -302,7 +301,7 @@ void SetSizeFlag( const int flag ) { SizeFlag = flag ; }
 // plain stock titles. SECURITY: unlike classic KiTTY the title text is never
 // PARSED (the __xy title-scan dispatcher stays dead) - decoration is strictly
 // one-way output in windows/window.c wintw_set_title.
-static int TitleBarFlag = 1 ;
+int TitleBarFlag = 1 ;
 int GetTitleBarFlag(void) { return TitleBarFlag ; }
 void SetTitleBarFlag( const int flag ) { TitleBarFlag = flag ; }
 
@@ -310,7 +309,7 @@ void SetTitleBarFlag( const int flag ) { TitleBarFlag = flag ; }
 static int WinHeight = -1 ;
 int GetWinHeight(void) { return WinHeight ; }
 // Flag to disable the Winrol (window rollup)
-static int WinrolFlag = 1 ;
+int WinrolFlag = 1 ;
 int GetWinrolFlag(void) { return WinrolFlag ; }
 void SetWinrolFlag( const int num ) { WinrolFlag  = num ; }
 
@@ -1660,36 +1659,6 @@ void SaveCurrentSetting( HWND hwnd ) {
 		}
 	}
 
-/* /save + /savenew <name>: write the LIVE settings to a saved session. With a
- * name, the window's session identity switches to it first (save-as), so later
- * /save calls and save-on-exit land there. Mirrors the config-box Save button
- * (folder default + launcher refresh broadcast, cf. kitty_config.c). The
- * classic /save (.ktx file exporter, SaveCurrentSetting) lives on as /savektx. */
-static void kitty_save_current_session( HWND hwnd, const char * newname ) {
-	char buffer[1024] ;
-	char * errmsg ;
-	if( newname != NULL ) {
-		while( newname[0]==' ' ) newname++ ;
-		if( newname[0]=='\0' ) return ;
-		conf_set_str( conf, CONF_sessionname, newname ) ;
-	}
-	if( strlen( conf_get_str(conf,CONF_folder) ) == 0 ) conf_set_str( conf, CONF_folder, "Default" ) ;
-	errmsg = save_settings( conf_get_str(conf,CONF_sessionname), conf ) ;
-	if( errmsg != NULL ) {
-		MessageBox( hwnd, errmsg, KT_CAP_SAVE_SESSION, MB_OK|MB_ICONERROR ) ;
-		sfree( errmsg ) ;
-		return ;
-	}
-	if( newname != NULL ) kitty_set_last_session( conf_get_str(conf,CONF_sessionname) ) ;
-	{	/* same best-effort refresh broadcast as the config-box Save button */
-		UINT msg = RegisterWindowMessageA( "KiTTYLauncherRefreshSessionsAndHotkeys" ) ;
-		if( msg ) PostMessageA( HWND_BROADCAST, msg, 0, 0 ) ;
-	}
-	snprintf( buffer, sizeof(buffer), KT_MAIN_SESSION_SAVED, conf_get_str(conf,CONF_sessionname) ) ;
-	MessageBox( hwnd, buffer, KT_CAP_SAVE_SESSION, MB_OK|MB_ICONINFORMATION ) ;
-}
-
-#include "kitty_commands.c"
 
 
 
@@ -1923,7 +1892,6 @@ void ReadInitScript( const char * filename ) {
 }
 
 
-#include "kitty_launcher.c"
 
 char *dirname(char *path);
 #ifndef IDM_RECONF

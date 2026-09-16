@@ -1,6 +1,7 @@
 /*
  * kitty_commands.c - the send-text-box internal commands ("/commands").
- * #include'd into kitty.c (same translation unit: relies on its globals).
+ * A translation unit of its own; what it reaches into kitty.c for is
+ * declared in kitty_int.h.
  *
  * Every command is one row of internal_commands[]: the dispatcher
  * (InternalCommand) and the /help text are both generated from the table,
@@ -8,6 +9,90 @@
  * must carry a "### /name" section per row, in both directions - the
  * release guard parses the rows below and fails the release otherwise.
  */
+
+#include <dirent.h>
+#include <io.h>
+#include <process.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/locking.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <time.h>
+
+// PuTTY includes
+#include "putty.h"
+#include "terminal.h"
+#include "putty-rc.h"
+
+// Windows-specific includes (windows.h must come first)
+#include <windows.h>
+#include "kitty_oldwin.h"   /* record what an older Windows does not have */
+#include <psapi.h>
+#include <iphlpapi.h>
+
+// KiTTY includes
+#include "kitty.h"
+#include "kitty_broadcast.h"   /* the other KiTTY windows: count, broadcast, resize */
+#include "kitty_portfwd.h"     /* the port-forward display */
+#include "kitty_regbackup.h"   /* the .sav export/import and the backup rotation */
+#include "kitty_int.h"         /* what the split-off files share with this one */
+#include "kitty_startup.h"    /* InitWinMain */
+#include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
+#include "kitty_commun.h"
+#include "kitty_image.h"
+#include "kitty_crypt.h"
+#include "kitty_registry.h"
+#include "kitty_tools.h"
+#include "kitty_win.h"
+#include "kitty_updater.h"
+#include "kitty_winutil.h"
+#include "kitty_dlgbox.h"
+#include "kitty_launcher.h"
+#include "winfont_fallback.h"
+#include "kitty_msgbox.h"   /* themed MessageBox routing */
+#include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
+#include "kitty_text.h"   /* shared captions and wordings (also for the .c files included below) */
+#include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
+#include "kitty_notes.h"   /* the application notification, marked owed at startup */
+#include "kitty_pwmem.h"   /* passwords wrapped in memory (kitty_commands.c too) */
+#include "kitty_storage.h"
+#include "kitty_secretstore.h"
+#include "kitty_gui.h"
+#include "kitty_bridge.h"
+#include "kitty_exportbundle.h"
+#include "mini/mini.h"
+#include "kitty_commands.h"
+
+/* /save + /savenew <name>: write the LIVE settings to a saved session. With a
+ * name, the window's session identity switches to it first (save-as), so later
+ * /save calls and save-on-exit land there. Mirrors the config-box Save button
+ * (folder default + launcher refresh broadcast, cf. kitty_config.c). The
+ * classic /save (.ktx file exporter, SaveCurrentSetting) lives on as /savektx. */
+static void kitty_save_current_session( HWND hwnd, const char * newname ) {
+	char buffer[1024] ;
+	char * errmsg ;
+	if( newname != NULL ) {
+		while( newname[0]==' ' ) newname++ ;
+		if( newname[0]=='\0' ) return ;
+		conf_set_str( conf, CONF_sessionname, newname ) ;
+	}
+	if( strlen( conf_get_str(conf,CONF_folder) ) == 0 ) conf_set_str( conf, CONF_folder, "Default" ) ;
+	errmsg = save_settings( conf_get_str(conf,CONF_sessionname), conf ) ;
+	if( errmsg != NULL ) {
+		MessageBox( hwnd, errmsg, KT_CAP_SAVE_SESSION, MB_OK|MB_ICONERROR ) ;
+		sfree( errmsg ) ;
+		return ;
+	}
+	if( newname != NULL ) kitty_set_last_session( conf_get_str(conf,CONF_sessionname) ) ;
+	{	/* same best-effort refresh broadcast as the config-box Save button */
+		UINT msg = RegisterWindowMessageA( "KiTTYLauncherRefreshSessionsAndHotkeys" ) ;
+		if( msg ) PostMessageA( HWND_BROADCAST, msg, 0, 0 ) ;
+	}
+	snprintf( buffer, sizeof(buffer), KT_MAIN_SESSION_SAVED, conf_get_str(conf,CONF_sessionname) ) ;
+	MessageBox( hwnd, buffer, KT_CAP_SAVE_SESSION, MB_OK|MB_ICONINFORMATION ) ;
+}
+
 
 typedef enum {
 	IC_ARG_NONE,		/* exact match only: "/cmd" */

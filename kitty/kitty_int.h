@@ -37,4 +37,16 @@ void GetSaveMode( void ) ;
 void SetConfigDirectory( const char * Directory ) ;
 void GetInitialDirectory( char * InitialDirectory ) ;
 
+/* The window flags kitty.c owns and the /commands console switches at run
+ * time (kitty.c); the Get/Set accessors in kitty.h are the public way. */
+extern int TransparencyFlag ;
+extern int ShortcutsFlag ;
+extern int MouseShortcutsFlag ;
+extern int SizeFlag ;
+extern int TitleBarFlag ;
+extern int WinrolFlag ;
+/* Defined in kitty_commun.c; kitty.h leaves it undeclared on purpose
+ * (GetDirectoryBrowseFlag() is the accessor). */
+extern int DirectoryBrowseFlag ;
+
 #endif /* KITTY_INT_H */
