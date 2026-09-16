@@ -25,6 +25,7 @@
 #include "licence.h"
 #include "pageant-rc.h"
 #include "../kitty/kitty_pageant.h"  /* KiTTY: the kageant additions (split out of this file) */
+#include "../kitty/kitty_kageant_openssh.h"   /* KiTTY: the Windows OpenSSH client integration */
 #include "../kitty/kitty_authenticode.h"  /* KiTTY: shared verify for New key */
 #include "../kitty/kitty_foreground.h"  /* KiTTY: one place for the foreground dance */
 #include "../kitty/kitty_title.h"     /* KiTTY: shared title-suffix composer */

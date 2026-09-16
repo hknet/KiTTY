@@ -21,8 +21,6 @@
 #define KAGEANT_WM_NOTICE_CLICK (WM_APP + 9)
 
 /* ---- registry-backed tray toggles (HKCU, consolidated KiTTY hive) ---- */
-int kageant_openssh_get(void);
-void kageant_openssh_set(int on);
 int kageant_startup_get(void);
 void kageant_noload_set(void);    /* -noload: clean-slate run */
 int  kageant_noload(void);
@@ -53,9 +51,6 @@ int kitty_inilight_read(const char *section, const char *key,
                         char *value, int len);        /* kitty_inilight.c */
 
 /* ---- Windows OpenSSH client integration ---- */
-void kageant_openssh_apply(int on);    /* add/remove the managed ~/.ssh block */
-char *kageant_ssh_path(const char *leaf);  /* malloc'd %USERPROFILE%\.ssh\<leaf>, or NULL */
-void kageant_write_identityagent(FILE *fp, const char *pipename);
 
 /* ---- load-keys-on-startup + persistent key offer order ---- */
 void kageant_track_keypath(const char *path, int encrypted);
