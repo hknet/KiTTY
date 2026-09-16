@@ -1277,7 +1277,7 @@
 #define KT_KSET_CN_LIMITS                            "Limits"
 #define KT_KSET_CN_CHAINMAX                          "Longest allowed chain of jump hosts:"
 #define KT_KSET_CN_NOSAVE                            "Do not keep a typed login name and password in the session"
-#define KT_PASSWORDS_TITLE                           "Passwords"
+#define KT_PASSWORDS_TITLE                           "Interactive Login"
 #define KT_PASSWORDS_TYPED                           "A login you typed"
 #define KT_PASSWORDS_TYPED_DEFAULT                   "Unticked (the default): after a login, the name and password " \
         "you typed stay in the running session."

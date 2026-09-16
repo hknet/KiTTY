@@ -778,7 +778,7 @@ char default_init_file_content[] =
 ;    you having asked). yes leaves the settings untouched: a duplicate asks\n\
 ;    again and a later Save writes only what the Login panel held. A password\n\
 ;    stored on the Login panel on purpose is not affected and is still used.\n\
-;    Also a checkbox: Application > Security > Passwords.\n\
+;    Also a checkbox: Application > Security > Interactive Login.\n\
 ;userpasssshnosave=no\n\
 \n\
 ; winroll: double-click the title bar to roll the window up into the title bar\n\

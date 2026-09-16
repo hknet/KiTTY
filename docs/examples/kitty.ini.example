@@ -775,7 +775,7 @@
 ;    you having asked). yes leaves the settings untouched: a duplicate asks
 ;    again and a later Save writes only what the Login panel held. A password
 ;    stored on the Login panel on purpose is not affected and is still used.
-;    Also a checkbox: Application > Security > Passwords.
+;    Also a checkbox: Application > Security > Interactive Login.
 ;userpasssshnosave=no
 
 ; winroll: double-click the title bar to roll the window up into the title bar

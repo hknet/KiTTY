@@ -2039,7 +2039,7 @@ stored until \q{Save}. The full how-to, including the OpenSSH server
 side, is at
 \W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/SSH-CERTIFICATES.md}{docs/SSH-CERTIFICATES.md}.
 
-\S{kitty-cfg-passwords} The Passwords panel
+\S{kitty-cfg-passwords} The Interactive Login panel
 
 What happens to a login you type.
 

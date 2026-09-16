@@ -1741,14 +1741,14 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
          * carries the expression syntax in full. */
     }
 
-    /* Security > Passwords: what happens to a login you TYPE. After a
+    /* Security > Interactive Login: what happens to a login you TYPE. After a
      * login the name and password go into the running session's settings
      * (SetUsernameInConfig / SetPasswordInConfig in kitty.c), which a
      * duplicate inherits and a mid-session Save writes out. The switch
      * stops that; a password stored on the Login panel on purpose is not
      * touched by it. */
-    ctrl_settitle(b, "Application/Security/Passwords", KT_PASSWORDS_TITLE);
-    s = ctrl_getset(b, "Application/Security/Passwords", "typed", KT_PASSWORDS_TYPED);
+    ctrl_settitle(b, "Application/Security/Interactive Login", KT_PASSWORDS_TITLE);
+    s = ctrl_getset(b, "Application/Security/Interactive Login", "typed", KT_PASSWORDS_TYPED);
     /* The settings tree's handler and table (declared above scb_panel_zmodem,
      * defined with the KiTTY++ Settings leaves further down). */
     ctrl_checkbox(s, KT_KSET_CN_NOSAVE, NO_SHORTCUT, HELPCTX(kitty_passwords),

@@ -17,6 +17,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   0.84.1.48-0.84.1.65 created a master password as a side effect, and every
   start since checked for that leftover pair and removed it when nothing was
   wrapped with it. Every install that could have carried the leftover has by
+
+- **Application > Security > Passwords is now "Interactive Login".** The leaf
+  holds the one switch about a login typed at the SSH prompts; the old name
+  read like the place where stored passwords live. Help links and the
+  `userpasssshnosave` key are unchanged.
   now been started under a build that cleaned it, so the check no longer runs.
   A pair an earlier build archived in the registry is still read when a
   portable store turns out to depend on it.
