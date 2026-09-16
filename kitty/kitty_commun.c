@@ -187,12 +187,6 @@ int ReadParameterLightN( const char * key, const char * name, char * value, size
 	return strcmp( buffer, "" ) ;
 	}
 
-// Compat: the old unbounded signature -- the destination buffer MUST be at
-// least 4096 bytes. Prefer ReadParameterLightN( ..., sizeof(buf) ).
-int ReadParameterLight( const char * key, const char * name, char * value ) {
-	return ReadParameterLightN( key, name, value, 4096 ) ;
-	}
-
 /* test if we are in portable mode by looking for putty.ini or kitty.ini in running directory */
 int LoadParametersLight( void ) {
 	FILE * fp = NULL ;

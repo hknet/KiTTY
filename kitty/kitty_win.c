@@ -425,7 +425,7 @@ void kitty_report_missing_features(Terminal *term)
     debug_logevent("%s", full);
     sfree(full);
 
-    if (ReadParameter(KI_SECTION_KITTY, KI_WARNMISSINGFEATURES, cfg) &&
+    if (ReadParameterN(KI_SECTION_KITTY, KI_WARNMISSINGFEATURES, cfg, sizeof(cfg)) &&
         !stricmp(cfg, "no"))
         return;
 
@@ -523,7 +523,7 @@ static void kitty_agent_serving_check(unsigned long server_pid, int transport)
         return;
 
     /* Opt-out. */
-    if (ReadParameter(KI_SECTION_KITTY, KI_VERIFYAGENT, cfg) && !stricmp(cfg, "no")) {
+    if (ReadParameterN(KI_SECTION_KITTY, KI_VERIFYAGENT, cfg, sizeof(cfg)) && !stricmp(cfg, "no")) {
         done = 1;
         return;
     }
@@ -557,11 +557,6 @@ void kitty_install_agent_check(void)
  * than frozen at whatever it meant when KiTTY started - which is what lets
  * "follow the system" change with the system while a window is open.
  */
-int ReadParameterN(const char *key, const char *name,
-                   char *value, size_t size);   /* kitty.c */
-#ifndef INIT_SECTION
-#define INIT_SECTION "KiTTY"
-#endif
 
 /* Remembered for two seconds: the theme hook asks on every activation of
  * every dialog-class window, which is a store read (and a stat of kitty.ini)

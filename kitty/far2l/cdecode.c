@@ -2,6 +2,8 @@
 /*
 cdecoder.c - c source to a base64 decoding algorithm implementation
 This is part of the libb64 project, and has been placed in the public domain.
+Vendored unchanged with far2l. KiTTY's secret store has its own codec in
+kitty/kitty_b64.c; the two are deliberately not merged.
 For details, see http://sourceforge.net/projects/libb64
 */
 

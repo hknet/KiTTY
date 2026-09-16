@@ -238,8 +238,7 @@ void InitFolderList( void ) {
 	FolderList[0] = NULL ;
 	StringList_Add( FolderList, "Default" ) ;
 	//if( GetValueData(HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "Folders", fList) == NULL ) return ;
-	//if( ReadParameter( KI_SECTION_KITTY, KI_FOLDERS, fList ) == 0 ) return ;
-	ReadParameter( INIT_SECTION, KI_FOLDERS, fList ) ;
+	ReadParameterN( INIT_SECTION, KI_FOLDERS, fList, sizeof(fList) ) ;
 	if( strlen( fList ) != 0 ) {
 		pst = fList ;
 		while( strlen( pst ) > 0 ) {

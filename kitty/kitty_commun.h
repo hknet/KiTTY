@@ -86,7 +86,6 @@ void DelDir( const char * directory ) ;
 
 // Read a parameter either from the configuration file or from the registry
 int ReadParameterLightN( const char * key, const char * name, char * value, size_t size ) ;
-int ReadParameterLight( const char * key, const char * name, char * value ) ; /* compat: value >= 4096 bytes; prefer ReadParameterLightN */
 
 /* test if we are in portable mode by looking for putty.ini or kitty.ini in running directory */
 int LoadParametersLight( void ) ;

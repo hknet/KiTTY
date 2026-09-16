@@ -455,12 +455,6 @@ int ReadParameterN( const char * key, const char * name, char * value, size_t si
 	strcpy( value, buffer ) ;
 	return strcmp( buffer, "" ) ;
 	}
-
-// Compatibility: the old unbounded signature - the destination buffer MUST be
-// at least 4096 bytes. Prefer ReadParameterN( ..., sizeof(buf) ).
-int ReadParameter( const char * key, const char * name, char * value ) {
-	return ReadParameterN( key, name, value, 4096 ) ;
-	}
 	
 // Delete a parameter
 int DelParameter( const char * key, const char * name ) {
@@ -879,7 +873,7 @@ void LoadParameters( void ) {
 	/* ReadParameter, not readINI: the Session-panel group on Application >
 	 * Config Window edits this, and a panel writes through WriteParameter -
 	 * which in registry mode does not write the file. */
-	if( ReadParameter( KI_SECTION_CONFIGBOX, KI_CONFIGBOX_DBLCLICK, buffer ) ) {
+	if( ReadParameterN( KI_SECTION_CONFIGBOX, KI_CONFIGBOX_DBLCLICK, buffer, sizeof(buffer) ) ) {
 		if( !stricmp(buffer,"open") ) { SetDblClickFlag(0) ; }
 		if( !stricmp(buffer,"start") ) { SetDblClickFlag(1) ; }
 	}
@@ -888,7 +882,7 @@ void LoadParameters( void ) {
 	 * deep (1 = top categories only, like stock PuTTY). */
 	/* ReadParameter, not readINI: Application > Config Window edits it, and a
 	 * panel writes through WriteParameter - the registry in registry mode. */
-	if( ReadParameter( KI_SECTION_CONFIGBOX, KI_CONFIGBOX_CATEGORYEXPAND, buffer ) ) {
+	if( ReadParameterN( KI_SECTION_CONFIGBOX, KI_CONFIGBOX_CATEGORYEXPAND, buffer, sizeof(buffer) ) ) {
 		if( strlen(buffer)==0 || !stricmp(buffer,"all") || !stricmp(buffer,"full") || !stricmp(buffer,"max") || !stricmp(buffer,"yes") )
 			kitty_category_expand_depth = 99 ;
 		else { int d = atoi(buffer) ; kitty_category_expand_depth = (d >= 1) ? d : 99 ; }

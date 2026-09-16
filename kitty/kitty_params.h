@@ -186,7 +186,6 @@ extern char InitialDirectory[4096] ;
 extern int AntiIdleSeconds ;   /* KiTTY: keepalive interval, in seconds */
 extern char AntiIdleStr[128] ;
 int ReadParameterN( const char * key, const char * name, char * value, size_t size ) ;
-int ReadParameter( const char * key, const char * name, char * value ) ; /* compat: value >= 4096 bytes; prefer ReadParameterN */
 int WriteParameter( const char * key, const char * name, char * value ) ;
 int DelParameter( const char * key, const char * name ) ;
 void CreateDefaultIniFile( void ) ;

@@ -4,6 +4,12 @@
  * state, moved out of storage.c verbatim to shrink that file's divergence from
  * upstream PuTTY. Standard RFC 4648 alphabet, '=' padding; decode returns NULL
  * on malformed input. Callers own the returned malloc'd buffers.
+ *
+ * Base64 is an ENCODING, not a secrecy layer: what protects a stored secret
+ * is the DPAPI or master-password wrapping around it, never this. The tree
+ * also carries libb64 under kitty/far2l/ (cdecode.c, cencode.c), vendored
+ * unchanged with far2l; the two codecs are deliberately not merged, so that
+ * a far2l update never touches the secret store's path.
  */
 #include <stdlib.h>
 #include <string.h>
