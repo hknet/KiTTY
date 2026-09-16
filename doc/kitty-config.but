@@ -2131,7 +2131,9 @@ the terminal, klink, kscp, ksftp, kageant, kittygen, kittygen-cli, the
 portable terminal, pterm and telnet builds - one row each, checked as the
 panel opens. Two checks exist and each file is judged by the ones it
 carries: the \e{release stamp} (a signed hash inside the file, verified with
-the key compiled into this build; a build without the key says so) and the
+the release's public key compiled into this build - the signing key is
+destroyed when the release is made; a build without the public key says
+so) and the
 \e{Authenticode signature} (verified by Windows against the publisher). The
 rule is the one the programs already apply when they start each other: what
 this KiTTY++ carries, every file beside it must carry too. A row is

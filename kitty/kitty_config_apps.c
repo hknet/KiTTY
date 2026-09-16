@@ -377,7 +377,9 @@ static void apps_banner(struct apps_data *a, dlgparam *dlg)
     else
         put_fmt(sb, KT_APPS_BANNER_OK, a->nrows);
     if (a->nstrangers)
-        put_fmt(sb, " " KT_APPS_BANNER_STRANGERS, a->nstrangers);
+        put_fmt(sb, " " KT_APPS_BANNER_STRANGERS, a->nstrangers);   /* a space, not a
+         * newline: the text setter wraps a newline-free text over the
+         * reserved lines and sets a text with a newline as it is */
     dlg_label_change(a->banner, dlg, sb->s);
     strbuf_free(sb);
 }
@@ -516,6 +518,7 @@ void scb_panel_applications(struct controlbox *b)
                                        kitty_apps_handler, P(a), P(NULL));
     a->detail->context2 = I(1);
     a->banner = ctrl_text(s, " ", HELPCTX(kitty_applications));
+    a->banner->text.lines = 2;   /* verdict + the strangers sentence, wrapped over two lines */
     ctrl_columns(s, 2, 50, 50);
     c = ctrl_pushbutton(s, KT_APPS_COPY, NO_SHORTCUT, HELPCTX(kitty_applications), kitty_apps_handler, P(a));
     c->context2 = I(2); c->column = 0; a->copy = c;

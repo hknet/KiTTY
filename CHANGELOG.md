@@ -10,7 +10,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 - **Application > Security > Applications** lists the KiTTY++ programs beside
   the running one and checks each against what it carries - the release stamp
-  where this build has the key, the Authenticode signature where Windows can
+  where this build carries the release's public key, the Authenticode
+  signature where Windows can
   verify it - by the rule the programs already apply when starting each
   other: what this KiTTY++ carries, every file beside it must carry too. A
   changed, re-signed, unstamped or other-version file is a red row and an
