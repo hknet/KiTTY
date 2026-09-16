@@ -34,6 +34,7 @@
 #include "kitty_pwmem.h"    /* the -pwfile helpers, defined in kitty_secretstore.c */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty.h"
+#include "kitty_params.h"     /* ReadParameterN: the weak stub below is its fallback */
 #include "kitty_storage_int.h"
 
 /*
