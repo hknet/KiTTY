@@ -11,6 +11,7 @@
 #ifdef MOD_PERSO
 #include "../kitty/kitty.h"
 #include "../kitty/kitty_regbackup.h"
+#include "../kitty/kitty_startup.h"
 #include "../kitty/kitty_broadcast.h"
 #include "../kitty/kitty_bridge.h"
 #include "../kitty/kitty_exportbundle.h"
@@ -142,7 +143,6 @@ const unsigned cmdline_tooltype =
     TOOLTYPE_NO_VERBOSE_OPTION;
 
 #ifdef MOD_NETDEBUG
-extern void kitty_netdbg_ts(const char *msg);   /* kitty.c: startup checkpoint logger */
 #define NETDBG_TS(m) kitty_netdbg_ts(m)
 #else
 #define NETDBG_TS(m) ((void)0)

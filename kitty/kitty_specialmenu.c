@@ -231,7 +231,7 @@ void ManageSpecialCommand( HWND hwnd, int menunum ) {
 		}
 	}
 
-/* Seam: kitty.c's startup code used to zero the table with an inline loop. */
+/* Seam: the startup code (kitty_startup.c) used to zero the table with an inline loop. */
 void InitSpecialMenuTab( void ) {
 	int i ;
 	for( i=0 ; i < NB_MENU_MAX ; i++ ) SpecialMenu[i] = NULL ;

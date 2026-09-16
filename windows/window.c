@@ -67,6 +67,7 @@
 #ifdef MOD_PERSO
 #include "../kitty/kitty.h"
 #include "../kitty/kitty_regbackup.h"
+#include "../kitty/kitty_startup.h"
 #include "../kitty/kitty_broadcast.h"
 #include "kitty_gui.h"
 #include "../kitty/kitty_bridge.h"
@@ -1277,7 +1278,6 @@ char *terminal_window_class_a(void)
 HINSTANCE hinst;
 
 #ifdef MOD_NETDEBUG
-extern void kitty_netdbg_ts(const char *msg);   /* kitty.c: startup checkpoint logger */
 #define NETDBG_TS(m) kitty_netdbg_ts(m)
 #else
 #define NETDBG_TS(m) ((void)0)

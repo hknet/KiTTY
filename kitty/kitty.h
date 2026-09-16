@@ -294,7 +294,6 @@ void InfoBoxSetText( HWND hwnd, char * st ) ;
 void InfoBoxClose( HWND hwnd ); 
 void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) ;
 int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance,LPSTR lpCmdLine, int nCmdShow) ;
-void InitWinMain( void ) ;
 void ShowInputBox( HINSTANCE hInstance, HWND hwnd ) ;   /* modeless single-line box */
 char * InputBoxMultiline( HINSTANCE hInstance, HWND hwnd ) ;
 char * InputBoxPassword( HINSTANCE hInstance, HWND hwnd ) ;

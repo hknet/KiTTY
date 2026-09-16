@@ -609,6 +609,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_broadcast.c
   ${KITTY_DIR}/kitty_portfwd.c
   ${KITTY_DIR}/kitty_regbackup.c
+  ${KITTY_DIR}/kitty_startup.c
   ${KITTY_DIR}/kitty_commun.c
   ${KITTY_DIR}/kitty_crypt.c
   ${KITTY_DIR}/kitty_mpw.c
@@ -753,6 +754,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_broadcast.c
   ${KITTY_DIR}/kitty_portfwd.c
   ${KITTY_DIR}/kitty_regbackup.c
+  ${KITTY_DIR}/kitty_startup.c
   ${KITTY_DIR}/kitty_commun.c
   ${KITTY_DIR}/kitty_crypt.c
   ${KITTY_DIR}/kitty_mpw.c

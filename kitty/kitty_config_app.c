@@ -2663,7 +2663,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_NUMBER(s, KT_KSET_WD_SLIDEDELAY, KI_SLIDEDELAY, kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_WD_SHRINK, KI_SHRINKBITMAP, kitty_kset_window);
     /* Not a feature: the library the per-session icon numbers index into
-     * (kitty.c loads it at startup, kitty.dll or the exe when unset). */
+     * (kitty_startup.c loads it at startup, kitty.dll or the exe when unset). */
     s = ctrl_getset(b, KSET_PATH("Appearance"), "icons", KT_KSET_WD_ICONS);
     KSET_FILESEL(s, KT_KSET_WD_ICONFILE, KT_KSET_WD_ICONFILE_SELECT, KI_ICONFILE, kitty_appearance);
     ctrl_text(s, KT_KSET_WD_ICONFILE_NOTE, HELPCTX(kitty_appearance));

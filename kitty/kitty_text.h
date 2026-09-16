@@ -1500,7 +1500,7 @@
 #define KT_MENU_WORKPLACE_NEEDS_PROXY                "Workplace proxy mode (needs a named proxy)"
 #define KT_MENU_USER_COMMAND                         "&User Command"
 
-/* kitty.c: startup; kitty_regbackup.c: the registry store's .sav export and loader; kitty_portfwd.c: port forwardings */
+/* kitty_startup.c: startup; kitty_regbackup.c: the registry store's .sav export and loader; kitty_portfwd.c: port forwardings */
 #define KT_MAIN_INFO_CLEANING_BACKUP                 "Cleaning backup registry"
 #define KT_MAIN_INFO_SAVING_REGISTRY                 "Saving registry"
 #define KT_MAIN_INFO_PREPARING_REGISTRY              "Preparing local registry"
