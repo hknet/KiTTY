@@ -131,10 +131,15 @@ int kitty_winpos_session_set(const char *session, unsigned long layout,
     settings_w *w;
     char *err = NULL;
     if (kitty_winpos_is_shared_window(session)) return 0;
-    /* Only a session that exists gets an entry: the write handle would
-     * otherwise create an empty session holding nothing but a position. */
+    /* Only a session that exists IN THE STORE WE WRITE gets an entry. The
+     * write handle would otherwise create an empty session holding nothing
+     * but a position; worse, a session only loaded from a read-only fallback
+     * hive (old 9bis KiTTY, stock PuTTY) would be written into the own hive
+     * as a phantom, which then loads by name whether or not the old stores
+     * are shown. So the read must come from our own store, not the fallback. */
     r = open_settings_r(session);
     if (!r) return 0;
+    if (!kitty_settings_r_is_own(r)) { close_settings_r(r); return 0; }
     close_settings_r(r);
     kitty_winpos_layout_key(key, sizeof(key), KWP_SESSION_PREFIX, layout);
     kitty_winpos_format(pos, val, sizeof(val));

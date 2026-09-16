@@ -18,6 +18,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   jump host's password and refused it. The hand-over now knows which
   connection a login belongs to; a proxy's own login never reaches the
   session.
+- **"Show old sessions" off again hides them from loading by name.** With the
+  switch off, loading an older KiTTY or PuTTY session by name (and from the
+  command-line tools) is refused as intended; a recent change had made the
+  setting read from the wrong place so the name still loaded.
+- **A shown old session is no longer copied into your store just by opening
+  it.** Opening a session from an older KiTTY or PuTTY and closing it used to
+  leave a copy of its name behind, which then loaded even after the old
+  sessions were hidden again.
 
 ## 0.85.1.9-beta — 2026-09-15
 

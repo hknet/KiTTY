@@ -244,9 +244,6 @@ int kitty_showforeign_may_persist(void)
 {
     return 1;
 }
-#ifndef INIT_SECTION
-#define INIT_SECTION "KiTTY"
-#endif
 
 int kitty_get_show_foreign_sessions(void)
 {
@@ -274,7 +271,11 @@ int kitty_get_show_foreign_sessions(void)
             ini[0] = '\0';
             /* The GUI reads it through kitty.c; a console tool through the
              * light resolver (the second call, a stub everywhere else). */
-            if ((ReadParameterN(INIT_SECTION, KI_SHOWFOREIGNSESSIONS,
+            /* The [KiTTY] section by NAME. This file is compiled into the
+             * settings library, without the fork's define, and kitty.h then
+             * spells INIT_SECTION "PuTTY": a read through that macro looked
+             * in the wrong section and never saw the line. */
+            if ((ReadParameterN(KI_SECTION_KITTY, KI_SHOWFOREIGNSESSIONS,
                                 ini, sizeof(ini)) && ini[0]) ||
                 (kitty_showforeign_ini_read(ini, sizeof(ini)) && ini[0])) {
                 if (!_stricmp(ini, "auto"))

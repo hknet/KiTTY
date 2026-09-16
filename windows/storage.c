@@ -598,6 +598,16 @@ void close_settings_r(settings_r *handle)
     }
 }
 
+/* KiTTY: did this read handle come from the store this KiTTY writes to (its
+ * own hive, or a portable file), rather than a read-only fallback hive (old
+ * 9bis KiTTY, stock PuTTY)? A write aimed at a name that only exists in a
+ * fallback hive would land in the own hive as a new session - see
+ * kitty_winpos_session_set. */
+int kitty_settings_r_is_own(settings_r *handle)
+{
+    return handle && handle->src_hive == KSEC_HIVE_PRIMARY;
+}
+
 void del_settings(const char *sessionname)
 {
     kitty_store_mark_dirty();

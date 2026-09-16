@@ -76,6 +76,9 @@ void kitty_read_watch_note(const char *key);   /* called by the read path */
 /* Open a session from ONE hive, ignoring the precedence chain (windows/storage.c).
  * hive is KSEC_HIVE_OLDKITTY / KSEC_HIVE_PUTTY as kitty_migrate.h re-exports them. */
 settings_r *kitty_open_settings_r_hive(const char *sessionname, int hive);
+/* 1 when a read handle came from the store this KiTTY writes (own hive or a
+ * portable file), 0 when it came from a read-only fallback hive. */
+int kitty_settings_r_is_own(settings_r *handle);
 /* A read handle over ONE session file at any path - a folder-store import's
  * way in. Both on-disk formats, legacy password conversion included, via
  * ksf_load. NULL if the file cannot be read or parsed. */
