@@ -82,16 +82,6 @@
 *************************************************/
 // The configuration structure is instantiated in window.c
 
-#ifndef SAVEMODE_REG
-#define SAVEMODE_REG 0
-#endif
-#ifndef SAVEMODE_FILE
-#define SAVEMODE_FILE 1
-#endif
-#ifndef SAVEMODE_DIR
-#define SAVEMODE_DIR 2
-#endif
-
 // Flag for "portable" mode (settings kept in files), defined in
 // kitty_commun.c
 extern int IniFileFlag ;
@@ -101,12 +91,7 @@ extern int IniFileFlag ;
 int GetDirectoryBrowseFlag(void) { return DirectoryBrowseFlag ; }
 
 
-#define SI_INIT 0
-#define SI_NEXT 1
-#define SI_RANDOM 2
-
 // Stuff for drag-n-drop transfers
-#define TIMER_DND 8777
 int dnd_delay = 250;
 HDROP hDropInf = NULL;
 
@@ -206,55 +191,6 @@ char * ScriptFileContent = NULL ;
 // Flag protecting the window against accidental keyboard input
 static int ProtectFlag = 0 ; 
 int GetProtectFlag(void) { return ProtectFlag ; }
-
-// Flags defining the save mode
-#ifndef SAVEMODE_REG
-#define SAVEMODE_REG 0
-#endif
-#ifndef SAVEMODE_FILE
-#define SAVEMODE_FILE 1
-#endif
-#ifndef SAVEMODE_DIR
-#define SAVEMODE_DIR 2
-#endif
-
-// Section name of the configuration file
-#ifdef MOD_PERSO
-#ifndef INIT_SECTION
-#define INIT_SECTION "KiTTY"
-#endif
-#ifndef DEFAULT_INIT_FILE
-#define DEFAULT_INIT_FILE "kitty.ini"
-#endif
-/* DEFAULT_SAV_FILE is defined in kitty.h (included above) - do NOT add a
- * second #ifndef definition here, it would be dead code. */
-#ifndef DEFAULT_EXE_FILE
-#define DEFAULT_EXE_FILE "kitty.exe"
-#endif
-#else
-#ifndef INIT_SECTION
-#define INIT_SECTION "PuTTY"
-#endif
-#ifndef DEFAULT_INIT_FILE
-#define DEFAULT_INIT_FILE "putty.ini"
-#endif
-#ifndef DEFAULT_SAV_FILE
-#define DEFAULT_SAV_FILE "putty.sav"
-#endif
-#ifndef DEFAULT_EXE_FILE
-#define DEFAULT_EXE_FILE "putty.exe"
-#endif
-#endif
-
-#ifndef VISIBLE_NO
-#define VISIBLE_NO 0
-#endif
-#ifndef VISIBLE_YES
-#define VISIBLE_YES 1
-#endif
-#ifndef VISIBLE_TRAY
-#define VISIBLE_TRAY -1
-#endif
 
 // Flag defining the visibility of a window
 static int VisibleFlag = VISIBLE_YES ;
@@ -500,15 +436,7 @@ HWND MainHwnd ;
 HWND GetMainHwnd(void) { return MainHwnd ; }
 
 NOTIFYICONDATA TrayIcone ;
-#define MYWM_NOTIFYICON		(WM_USER+3)
 
-#define TIMER_INIT 8701
-#define TIMER_AUTOCOMMAND 8702
-#ifdef MOD_BACKGROUNDIMAGE
-#define TIMER_SLIDEBG 8703
-#endif
-#define TIMER_REDRAW 8704
-#define TIMER_BLINKTRAYICON 8706
 #define TIMER_LOGROTATION 8707
 #define TIMER_ANTIIDLE 8708
 
