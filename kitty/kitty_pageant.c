@@ -265,8 +265,8 @@ void kageant_save_startup_keys(void)
         int gap;
         for (i = 1, gap = 0; gap < 8; i++) {          /* clear the old list */
             snprintf(key, sizeof(key), "startupkey%d", i);
-            GetPrivateProfileStringA(KI_SECTION_AGENT, key, "", probe, sizeof(probe), f);
-            if (probe[0]) { WritePrivateProfileStringA(KI_SECTION_AGENT, key, NULL, f); gap = 0; }
+            kitty_inilight_read(KI_SECTION_AGENT, key, probe, sizeof(probe));
+            if (probe[0]) { kitty_inilight_write(KI_SECTION_AGENT, key, NULL); gap = 0; }
             else gap++;
         }
         /*
@@ -329,7 +329,7 @@ void kageant_save_startup_keys(void)
                          kageant_confirm_token(conf),
                          kageant_autoenc_token(ae, aebuf, sizeof(aebuf)),
                          fp ? "," : "", fp ? fp : "");
-                WritePrivateProfileStringA(KI_SECTION_AGENT, key, val, f);
+                kitty_inilight_write(KI_SECTION_AGENT, key, val);
                 sfree(fp_owned);
             }
         }
@@ -2011,7 +2011,7 @@ void kageant_forget_startup_key(const char *path)
         for (i = 1, gap = 0; gap < 8 && n < cap; i++) {
             char raw[MAX_PATH + 32];
             snprintf(key, sizeof(key), "startupkey%d", i);
-            GetPrivateProfileStringA(KI_SECTION_AGENT, key, "", val, sizeof(val), f);
+            kitty_inilight_read(KI_SECTION_AGENT, key, val, sizeof(val));
             if (!val[0]) { gap++; continue; }
             gap = 0;
             snprintf(raw, sizeof(raw), "%s", val);      /* keep the ,markers */
@@ -2025,13 +2025,13 @@ void kageant_forget_startup_key(const char *path)
          * is positional, so a shorter list must not leave a stale tail. */
         for (i = 1, gap = 0; gap < 8; i++) {
             snprintf(key, sizeof(key), "startupkey%d", i);
-            GetPrivateProfileStringA(KI_SECTION_AGENT, key, "", val, sizeof(val), f);
-            if (val[0]) { WritePrivateProfileStringA(KI_SECTION_AGENT, key, NULL, f); gap = 0; }
+            kitty_inilight_read(KI_SECTION_AGENT, key, val, sizeof(val));
+            if (val[0]) { kitty_inilight_write(KI_SECTION_AGENT, key, NULL); gap = 0; }
             else gap++;
         }
         for (i = 0; i < n; i++) {
             snprintf(key, sizeof(key), "startupkey%d", i + 1);
-            WritePrivateProfileStringA(KI_SECTION_AGENT, key, keep[i], f);
+            kitty_inilight_write(KI_SECTION_AGENT, key, keep[i]);
         }
         sfree(keep);
         return;
@@ -2413,7 +2413,7 @@ void kageant_load_startup_keys(void)
             char fp[160];
             fp[0] = '\0';
             snprintf(key, sizeof(key), "startupkey%d", i);
-            GetPrivateProfileStringA(KI_SECTION_AGENT, key, "", val, sizeof(val), f);
+            kitty_inilight_read(KI_SECTION_AGENT, key, val, sizeof(val));
             if (!val[0]) { gap++; continue; }
             gap = 0;
             /* Trailing tokens, in any order and any of them absent:
@@ -2656,21 +2656,20 @@ void kageant_save_key_order(void)
      * one of the attempts before a lockout.
      */
     if (!kitty_inilight_registry_authoritative() && kitty_inilight_file()) {
-        const char *f = kitty_inilight_file();
         char key[32];
         int i, gap;
         /* clear the old numbering first - a shorter list must leave no tail */
         for (i = 1, gap = 0; gap < 8; i++) {
             char probe[512];
             snprintf(key, sizeof(key), "keyorder%d", i);
-            GetPrivateProfileStringA(KI_SECTION_AGENT, key, "", probe, sizeof(probe), f);
-            if (probe[0]) { WritePrivateProfileStringA(KI_SECTION_AGENT, key, NULL, f); gap = 0; }
+            kitty_inilight_read(KI_SECTION_AGENT, key, probe, sizeof(probe));
+            if (probe[0]) { kitty_inilight_write(KI_SECTION_AGENT, key, NULL); gap = 0; }
             else gap++;
         }
         i = 0;
         for (char *q = buf; *q; q += strlen(q) + 1) {
             snprintf(key, sizeof(key), "keyorder%d", ++i);
-            WritePrivateProfileStringA(KI_SECTION_AGENT, key, q, f);
+            kitty_inilight_write(KI_SECTION_AGENT, key, q);
         }
         sfree(buf);
         return;
@@ -2695,13 +2694,12 @@ void kageant_apply_saved_order(void)
 
     /* The ini first, where it is authoritative - see kageant_save_key_order. */
     if (!kitty_inilight_registry_authoritative() && kitty_inilight_file()) {
-        const char *f = kitty_inilight_file();
         char key[32], val[512];
         char **fps = NULL;
         int n = 0, i, gap;
         for (i = 1, gap = 0; gap < 8; i++) {
             snprintf(key, sizeof(key), "keyorder%d", i);
-            GetPrivateProfileStringA(KI_SECTION_AGENT, key, "", val, sizeof(val), f);
+            kitty_inilight_read(KI_SECTION_AGENT, key, val, sizeof(val));
             if (!val[0]) { gap++; continue; }
             gap = 0;
             fps = sresize(fps, n + 1, char *);
