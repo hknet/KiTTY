@@ -220,6 +220,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
   ${CMAKE_SOURCE_DIR}/kitty/kitty_pageant.c   # KiTTY: kageant additions (split out of pageant.c)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_openssh.c   # KiTTY: the Windows OpenSSH client integration
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_audit.c   # KiTTY: the agent audit log
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_anchor.c    # KiTTY: edge anchoring for the resizable windows

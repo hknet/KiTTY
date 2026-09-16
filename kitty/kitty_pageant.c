@@ -118,7 +118,6 @@ static int      g_nblobs = 0;
 /* defined in the notify/confirm block below; used by the ini-aware
  * startup getters/setters here. */
 static int kageant_reg_read(const char *name, int *val_out);
-static void kageant_reg_write(const char *name, int on);
 
 /* KiTTY: -noload (clean slate). It turns the startup-keys mechanism off for
  * THIS RUN, in exactly two places: the startup load is skipped where that
@@ -242,7 +241,7 @@ static int kageant_reg_read_dword(const char *name, int *val_out)
     return 1;
 }
 
-static void kageant_reg_write_dword(const char *name, int val)
+void kageant_reg_write_dword(const char *name, int val)
 {
     HKEY hk;
     if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
@@ -269,7 +268,7 @@ static int kageant_reg_read(const char *name, int *val_out)
     return 1;
 }
 
-static void kageant_reg_write(const char *name, int on)
+void kageant_reg_write(const char *name, int on)
 {
     kageant_reg_write_dword(name, on ? 1 : 0);
 }
@@ -760,7 +759,7 @@ static int kageant_key_needs_pass(const char *abspath)
  * removes the "which store?" ambiguity the earlier ini-only rule was meant to
  * avoid.
  */
-static int kageant_bool_get(const char *inikey, const char *regname, int def)
+int kageant_bool_get(const char *inikey, const char *regname, int def)
 {
     char buf[8];
     int ini_v = -1, reg_v;
@@ -793,7 +792,7 @@ int kageant_quiet_missing(void)
  * promise). [Agent] agentlog (default ON), agentlogmaxkb / agentlogkeep /
  * agentlogexpiredays for the file sink's rotation, agentlogpath to
  * override the location entirely (also what makes the harness hermetic). */
-static int kageant_int_setting(const char *inikey, const char *regname,
+int kageant_int_setting(const char *inikey, const char *regname,
                                int def, int lo, int hi)
 {
     char buf[16];
@@ -816,161 +815,6 @@ static int kageant_int_setting(const char *inikey, const char *regname,
     return def;
 }
 
-int kageant_audit_get(void)
-{
-    return kageant_bool_get(KI_AGENT_AGENTLOG, "AgentLog", 1);
-}
-int kageant_audit_set(int on)
-{
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AGENTLOG, on ? "yes" : "no");
-    kageant_reg_write("AgentLog", on ? 1 : 0);
-    kageant_audit_setup();
-    return 1;
-}
-
-/* The knobs, for the settings dialog. Same defaults and clamps as the
- * setup below - one source of truth for the ranges would be nicer, but
- * these two sites are three lines apart and say the same numbers. */
-int kageant_audit_maxkb_get(void)
-{
-    return kageant_int_setting(KI_AGENT_AGENTLOGMAXKB, "AgentLogMaxKB",
-                               KAGEANT_AGENTLOG_KB_DEFAULT, 16, 1048576);
-}
-int kageant_audit_keep_get(void)
-{
-    return kageant_int_setting(KI_AGENT_AGENTLOGKEEP, "AgentLogKeep",
-                               KAGEANT_AGENTLOG_KEEP_DEFAULT, 1, 99);
-}
-int kageant_audit_expire_get(void)
-{
-    return kageant_int_setting(KI_AGENT_AGENTLOGEXPIREDAYS, "AgentLogExpireDays",
-                               KAGEANT_AGENTLOG_DAYS_DEFAULT, 0, 3650);
-}
-int kageant_audit_pathsetting_get(char *buf, size_t len)
-{
-    return kageant_setting_str_get(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
-                                   buf, len);
-}
-
-void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
-                           int expiredays)
-{
-    char num[16];
-    if (maxkb < 16) maxkb = 16;
-    if (maxkb > 1048576) maxkb = 1048576;
-    if (keep < 1) keep = 1;
-    if (keep > 99) keep = 99;
-    if (expiredays < 0) expiredays = 0;
-    if (expiredays > 3650) expiredays = 3650;
-    kageant_setting_str_set(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
-                            path ? path : "");
-    snprintf(num, sizeof(num), "%d", maxkb);
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AGENTLOGMAXKB, num);
-    kageant_reg_write_dword("AgentLogMaxKB", maxkb);
-    snprintf(num, sizeof(num), "%d", keep);
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AGENTLOGKEEP, num);
-    kageant_reg_write_dword("AgentLogKeep", keep);
-    snprintf(num, sizeof(num), "%d", expiredays);
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AGENTLOGEXPIREDAYS, num);
-    kageant_reg_write_dword("AgentLogExpireDays", expiredays);
-    kageant_audit_setup();
-}
-
-/* Resolve the log path and (re)configure the sink. Portable installs log
- * beside their kitty.ini; registry-mode installs under
- * %LOCALAPPDATA%\kapper.net\KiTTY; [Agent] auditlogpath overrides both. */
-/*
- * Where the log goes when [Agent] agentlogpath is not set. Split out of
- * kageant_audit_setup() so the settings dialog can SHOW this path: the File
- * box is empty in the default case, and an empty box that says "blank =
- * default" tells nobody where the file actually is.
- *
- * `create` is what separates the two callers. The setup path wants the
- * directory to exist because it is about to write there; the dialog only
- * wants the string, and must not create directories as a side effect of
- * being opened.
- */
-int kageant_audit_default_path(char *buf, size_t len, int create)
-{
-    const char *ini;
-
-    if (!buf || len == 0)
-        return 0;
-    buf[0] = '\0';
-
-    /* A portable install logs beside its kitty.ini, so the whole install
-     * stays on the stick. */
-    if (!kitty_inilight_registry_authoritative() &&
-        (ini = kitty_inilight_file()) != NULL) {
-        const char *sl = strrchr(ini, '\\');
-        if (sl)
-            snprintf(buf, len, "%.*s\\kageant.log", (int)(sl - ini), ini);
-    }
-    if (!buf[0]) {
-        char base[MAX_PATH + 1];
-        DWORD n = GetEnvironmentVariableA("LOCALAPPDATA", base, sizeof(base));
-        if (n > 0 && n < sizeof(base)) {
-            char dir[MAX_PATH + 1];
-            snprintf(dir, sizeof(dir), "%s\\kapper.net", base);
-            if (create)
-                CreateDirectoryA(dir, NULL);
-            snprintf(dir, sizeof(dir), "%s\\kapper.net\\KiTTY", base);
-            if (create)
-                CreateDirectoryA(dir, NULL);
-            snprintf(buf, len, "%s\\kageant.log", dir);
-        }
-    }
-    return buf[0] != '\0';
-}
-
-void kageant_audit_setup(void)
-{
-    char path[MAX_PATH + 1];
-    path[0] = '\0';
-    if (!kageant_setting_str_get(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
-                                 path, sizeof(path)) || !path[0])
-        kageant_audit_default_path(path, sizeof(path), 1);
-    kitty_audit_configure(
-        path[0] ? path : NULL, path[0] ? kageant_audit_get() : 0,
-        kageant_audit_maxkb_get(), kageant_audit_keep_get(),
-        kageant_audit_expire_get());
-}
-
-/* Best-effort requester identity for the log: the exe base name AND its
- * full path behind a pid - the base name is what the first-level view
- * shows, the full path is the audit-trail fact ("which ssh.exe?"). */
-static void kageant_req_name(unsigned long pid, char *base_out, size_t bsz,
-                             char *path_out, size_t psz)
-{
-    HANDLE h;
-    base_out[0] = path_out[0] = '\0';
-    if (!pid)
-        return;
-    h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, (DWORD)pid);
-    if (h) {
-        char path[MAX_PATH + 1];
-        DWORD n = sizeof(path);
-        if (kitty_process_image_path(h, path, n) && path[0]) {
-            const char *base = strrchr(path, '\\');
-            snprintf(base_out, bsz, "%s", base ? base + 1 : path);
-            snprintf(path_out, psz, "%s", path);
-        }
-        CloseHandle(h);
-    }
-}
-
-/* One sign/confirm-shaped audit line; pid 0 drops the requester fields. */
-static void kageant_audit_use(const char *ev, const char *fp,
-                              const char *comment, const char *result,
-                              const char *reason, unsigned long pid)
-{
-    char req[80], reqpath[MAX_PATH + 1], pidbuf[16];
-    kageant_req_name(pid, req, sizeof(req), reqpath, sizeof(reqpath));
-    snprintf(pidbuf, sizeof(pidbuf), "%lu", pid);
-    kitty_audit(ev, "fp", fp, "comment", comment, "result", result,
-                "reason", reason, "req", req, "reqpath", reqpath,
-                "pid", pid ? pidbuf : NULL, (const char *)NULL);
-}
 
 /* [Agent] helloconfirm: every confirmation prompt demands a Windows Hello
  * presence check instead of a button. Default OFF; a single key can demand
