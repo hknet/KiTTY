@@ -28,7 +28,7 @@ add_sources_from_current_dir(utils
   # WITHOUT MOD_PERSO, so they have to call it directly rather than through a
   # guard the preprocessor would delete. It needs no import library of its own:
   # CryptProtectMemory is resolved at runtime through kitty_oldwin.c, and the
-  # -pwfile helpers it declares are implemented in kitty_storage.c, over in
+  # -pwfile helpers it declares are implemented in kitty_secretstore.c, over in
   # `settings`, where the at-rest crypto and its crypt32 already are.
   ../kitty/kitty_pwmem.c
   utils/agent_mutex_name.c
@@ -154,11 +154,14 @@ add_sources_from_current_dir(settings
 # shrink storage.c's divergence from upstream. Added by absolute path since it
 # lives in the kitty/ dir, not windows/.
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c)
-# KiTTY: the fork half of storage.c (runtime registry root, portable file
-# backend, at-rest credential crypto) — split out of storage.c likewise.
-# NOTE: like storage.c itself, this must ALSO be listed in the puttygen and
-# kittygen_cli source lists below, or those targets fail to link.
+# KiTTY: the fork half of storage.c - kitty_storage.c (runtime registry root,
+# portable file backend) and kitty_secretstore.c (at-rest credential crypto) -
+# split out of storage.c likewise.
+# NOTE: like storage.c itself, BOTH must ALSO be listed in the puttygen,
+# kittygen_cli and test_storage_roundtrip source lists below, or those
+# targets fail to link.
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c)
+target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c)
 # KiTTY: storage.c encrypts stored passwords at rest via DPAPI (CryptProtectData/
 # CryptUnprotectData in crypt32) and decrypts legacy old-KiTTY passwords via the
 # bcrypt archive. PUBLIC so every consumer (CLI tools incl.) links them; the
@@ -350,6 +353,7 @@ add_executable(puttygen
   storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c   # base64 codec used by storage.c (split out of it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c   # fork half of storage.c (split out of it)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c   # its at-rest credential crypto
   help.c
   ${CMAKE_SOURCE_DIR}/sshpubk.c
   ${CMAKE_SOURCE_DIR}/sshrand.c
@@ -382,6 +386,7 @@ add_executable(kittygen_cli
   storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c   # base64 codec used by storage.c (split out of it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c   # fork half of storage.c (split out of it)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c   # its at-rest credential crypto
   no-jump-list.c
   nohelp.c
   keygen-noise.c
@@ -444,6 +449,7 @@ add_executable(test_storage_roundtrip
   storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_mpw.c
   # the .ktx reader, so the old-export test drives the real parser rather than a
   # copy of it (design doc 8.17), plus the two files it needs: the legacy string

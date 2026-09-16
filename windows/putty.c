@@ -21,6 +21,7 @@
 #include "../kitty/kitty_tools.h"
 #include "../kitty/kitty_registry.h"
 #include "../kitty/kitty_storage.h"
+#include "../kitty/kitty_secretstore.h"
 #include "kitty_gui.h"
 #endif
 /* -exportall <dir> / -importdir <dir>: whole-store move; stashed here and run

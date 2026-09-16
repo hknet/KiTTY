@@ -60,6 +60,7 @@
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory (kitty_commands.c too) */
 #include "kitty_storage.h"
+#include "kitty_secretstore.h"
 #include "kitty_gui.h"
 #include "kitty_bridge.h"
 #include "kitty_exportbundle.h"
@@ -1726,9 +1727,9 @@ void ManageInitScript( const char * input_str, const int len ) {
 }
 
 /* At-rest protection for the login script: the same chokepoint saved passwords
- * use (kitty_storage.c), plus the base64 pair, because the script is a
+ * use (kitty_secretstore.c), plus the base64 pair, because the script is a
  * NUL-separated blob rather than a C string. kitty_proxy.c declares the wrap the
- * same way - these live in kitty_storage.c but not all of them in its header. */
+ * same way - these live in kitty_secretstore.c. */
 
 /*
  * The login script, as text a person can read and edit.

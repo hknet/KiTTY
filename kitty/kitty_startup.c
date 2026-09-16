@@ -50,6 +50,7 @@
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory (kitty_commands.c too) */
 #include "kitty_storage.h"
+#include "kitty_secretstore.h"
 #include "kitty_gui.h"
 #include "kitty_bridge.h"
 #include "kitty_exportbundle.h"

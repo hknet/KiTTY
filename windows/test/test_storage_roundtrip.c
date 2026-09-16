@@ -27,6 +27,7 @@
 #include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
 #include "../kitty/kitty_pwmem.h"        /* passwords wrapped in memory */
 #include "../kitty/kitty_storage.h"
+#include "../kitty/kitty_secretstore.h"
 #include "../kitty/kitty.h"
 
 /* KiTTY storage API surface (fork style: declared extern by callers) */

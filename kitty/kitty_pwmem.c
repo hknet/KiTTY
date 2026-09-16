@@ -20,7 +20,7 @@
  *
  * Nothing here touches DPAPI or the settings store. The one-line password file
  * handed to kscp/ksftp/klink is declared in kitty_pwmem.h but IMPLEMENTED in
- * kitty/kitty_storage.c, because it writes the ordinary at-rest secret form
+ * kitty/kitty_secretstore.c, because it writes the ordinary at-rest secret form
  * and that crypto lives there, in the `settings` library - which comes BEFORE
  * `utils` in the single-pass static link, so the call could not go the other
  * way round.
@@ -460,5 +460,5 @@ void kitty_pw_seal_for_handoff(Conf *conf)
 }
 
 /* The two -pwfile helpers declared in kitty_pwmem.h are implemented in
- * kitty/kitty_storage.c: they write and read the ordinary at-rest secret form,
+ * kitty/kitty_secretstore.c: they write and read the ordinary at-rest secret form,
  * whose crypto is there. */

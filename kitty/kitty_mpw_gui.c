@@ -23,6 +23,7 @@
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_storage.h"
+#include "kitty_secretstore.h"
 #include "kitty_win.h"
 #include "kitty_dlgbox.h"
 #include "kitty.h"

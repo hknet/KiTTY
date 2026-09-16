@@ -22,6 +22,7 @@
 #include "storage.h"
 #include "kitty_defs.h"
 #include "kitty_storage.h"
+#include "kitty_secretstore.h"
 #include "kitty_migrate.h"
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
 

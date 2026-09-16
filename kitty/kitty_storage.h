@@ -1,10 +1,10 @@
 /*
  * kitty_storage.h: interface between windows/storage.c (upstream PuTTY's
  * storage API, kept textually close to upstream) and kitty_storage.c (the
- * fork's storage state: runtime registry root, portable file backend,
- * at-rest credential crypto, legacy password decrypt).
+ * fork's store state: runtime registry root, fallback hives, portable file
+ * backend). The at-rest credential crypto is declared in kitty_secretstore.h.
  *
- * Windows-only (HKEY in a prototype); include after putty.h/windows.h.
+ * Windows-only; include after putty.h/windows.h.
  * Returned char* ownership follows the comments in kitty_storage.c.
  */
 #ifndef KITTY_STORAGE_H
@@ -64,7 +64,6 @@ const char *kitty_reg_sessions(void);    /* <base>\Sessions */
 const char *kitty_reg_jumplist(void);    /* <base>\Jumplist */
 const char *kitty_reg_hostcas(void);     /* <base>\SshHostCAs */
 const char *kitty_reg_hostkeys(void);    /* <base>\SshHostKeys */
-const char *kitty_mpw_verify_token(void); /* master-password verifier plaintext */
 
 /* ---- the read watch (session importer) ----
  * While a callback is set, every setting name read from a session is passed to
@@ -86,10 +85,6 @@ settings_r *kitty_open_settings_r_file(const char *path);
 /* The same over an already-parsed (and possibly rewritten) list; the list is
  * owned by the handle from then on. */
 settings_r *kitty_open_settings_r_items(struct ksf_item *items);
-/* Import from another store: open one MPW2 value with a given passphrase.
- * Pure - this store's unlock state is not consulted or changed. */
-char *kitty_mpw2_unprotect_with_passphrase(const char *stored, const char *passphrase);
-int kitty_secret_is_mpw(const char *stored);     /* 2 = MPW2, 1 = MPW1, 0 = no */
 /* Walk a parsed file's keys, in file order (the import asks which keys the
  * loader never read). */
 void ksf_list_foreach(struct ksf_item *h,
@@ -140,60 +135,10 @@ int portable_write_text_file(const char *subdir, const char *name,
                              const char *value);
 char *portable_read_text_file(const char *subdir, const char *name);
 
-/* ---- at-rest credential crypto (DPAPI1 / MPW2 + master-password state) ---- */
-int kitty_secret_slot(const char *key);  /* Password=0, ProxyPassword=1, else -1 */
-char *ksec_protect_registry(const char *plaintext);   /* malloc'd */
-char *ksec_protect_portable(const char *plaintext);   /* malloc'd */
-int ksec_unprotect(const char *stored, char **out);   /* 1/0/-1; *out malloc'd */
-void ksec_after_load(int slot, const char *stored, int rv);
-const char *ksec_orig_get(int slot);     /* never-wipe original blob or NULL */
-int ksec_stored_is_legacy(const char *stored);
-int ksec_migrate_warn_ask(void);         /* legacy->protected save consent */
-int kitty_portable_password_legacy(void);
-/* kitty.ini PortablePasswordProtection=dpapi: portable secrets are protected
- * with DPAPI and no master password is created or asked for. Mutually exclusive
- * with -masterpwfile, which cmdline.c refuses in this mode. */
-int kitty_portable_password_dpapi(void);
-/* One-shot at startup, portable stores only: copy the master-password state out
- * of the registry into the store's own Security\ folder, but only when this
- * store really has values wrapped with it. Returns 1 if it copied, so the caller
- * can tell the user to carry Security\ to any OTHER portable KiTTY of theirs. */
-int kitty_migrate_portable_mpw_state(void);
-/* Delete MasterPwSalt/MasterPwVerifier when a scan of the active store finds
- * nothing wrapped with them - the leftovers of the old export behaviour, which
- * created a master password as a side effect. Silent; keeps them when the
- * master password is genuinely in use. Call once at startup. */
-void kitty_retire_orphan_master_password(void);
-const char *kitty_secret_strip_plain(const char *stored);  /* borrowed */
-
-/* ---- export-bundle passphrase (transport protection) ----
- * An export bundle carries its OWN password, unrelated to the store's master
- * password. Set the context around an export/import run and clear it after
- * (kitty_set_bundle_passphrase(NULL) also wipes the copy); while it is set, the
- * master password is never created, read, prompted for or written. Nothing is
- * persisted by any of this. */
-void kitty_set_bundle_passphrase(const char *pass);
-void kitty_set_bundle_dpapi_only(int on);  /* "this PC + this account only" */
-/* Import direction: the passphrase opens the bundle but never re-protects what
- * is saved - imported secrets take the DESTINATION store's protection. */
-void kitty_set_bundle_import(int on);
-void kitty_clear_bundle_context(void);     /* always call when the run ends */
-int  kitty_bundle_wrap_failed(void);   /* a wrap fell back to DPAPI: this-PC-only */
-/* Wrap/unwrap under an explicit passphrase as a self-contained MPW2 value
- * (fresh salt per wrap, embedded), touching no store state. */
-char *ksec_wrap_with_passphrase(const char *plaintext, const char *passphrase);
-int   ksec_unwrap_with_passphrase(const char *stored, const char *passphrase,
-                                  char **out);
+/* ---- the password diagnostic log (%TEMP%\kitty_pwdebug.log while
+ * KITTY_PWDEBUG is set; lengths and a weak checksum, never plaintext) ---- */
 unsigned ksec_cksum(const char *s);
 void kitty_pwdebug(const char *fmt, ...);
-
-/* ---- legacy (<=0.76 old-KiTTY) password decrypt ---- */
-char *ksec_legacy_decrypt(const char *stored, HKEY sesskey);  /* malloc/NULL */
-/* Decode a password read from an imported .ktx (unknown provenance). malloc'd
- * or NULL for empty input; try_legacy=0 for fields old KiTTY never encrypted. */
-char *kitty_secret_decode_imported(const char *stored, const char *host,
-                                   const char *term, int try_legacy);
-char *ksec_to_utf8(char *s);
 
 /* ---- "the configuration store changed" flag ----
  * Set by every path that writes the store (session save/delete, host keys,
@@ -203,7 +148,6 @@ char *ksec_to_utf8(char *s);
 void kitty_store_mark_dirty(void);
 int  kitty_store_take_dirty(void);   /* 1 if dirty; clears the flag */
 
-
 /* ---- exported from kitty/kitty_showforeign_ini.c ---- */
 int kitty_showforeign_ini_read(char *value, size_t size);
 int kitty_showforeign_may_persist(void);
@@ -212,12 +156,6 @@ int kitty_showforeign_may_persist(void);
 int kitty_get_last_folder(char *buf, int buflen);
 int kitty_get_last_session(char *buf, int buflen);
 int kitty_has_foreign_sessions(void);
-char *kitty_loginscript_blob_to_lines(const unsigned char *blob, int len);
-unsigned char *kitty_loginscript_lines_to_blob(const char *text, int *outlen);
-void kitty_mpw_consume_handle_str(const char *s);
-HANDLE kitty_mpw_export_inherit_blob(const char *prefix, char *tok, size_t toklen);
-char *kitty_mpw_import_inherit_blob(char *p);
-int kitty_mpw_startup_unlock(void);
 int kitty_portable_load_state_dword(const char *key, DWORD *value);
 int kitty_portable_load_state_string(const char *key, char *buf, int buflen);
 int kitty_portable_store_state_dword(const char *key, DWORD value);
@@ -225,21 +163,9 @@ int kitty_portable_store_state_string(const char *key, const char *value);
 char *kitty_read_session_comment(const char *sessionname);
 char *kitty_read_session_folder(const char *sessionname);
 char *kitty_read_session_folder_cached(const char *sessionname);
-void kitty_register_mpw_crypto( void (*derive)(const char *, const unsigned char *, int, unsigned char *), char *(*protect)(const char *, const unsigned char *), int (*unprotect)(const char *, const unsigned char *, char **), void (*randsalt)(unsigned char *, int));
-int kitty_secret_is_marked(const char *stored);
-int kitty_secret_unwrap(const char *stored, char **out);
-char *kitty_secret_wrap_current_backend(const char *plaintext);
-char *kitty_secret_wrap_portable(const char *plaintext);
-char *kitty_session_fname_munge(const char *name);
-char *kitty_session_fname_unmunge(const char *name);
 int kitty_session_origin(const char *sessionname);
-void kitty_set_defer_mpw_prompt(int on);
 void kitty_set_last_folder(const char *folder);
 void kitty_set_last_session(const char *sessionname);
-void kitty_set_legacy_migrate_warn(int (*fn)(void));
-void kitty_set_master_passphrase(const char *pass);
-void kitty_set_master_pw_prompt(char *(*fn)(int creating));
-void kitty_set_portable_password_protection(const char *mode);
 void kitty_set_registry_root(int use_putty);
 void kitty_set_session_dir(const char *dir);
 void kitty_set_storage_mode(int mode);

@@ -38,6 +38,7 @@
 #include "kitty_settings.h"
 #include "kitty_registry.h"
 #include "kitty_storage.h"
+#include "kitty_secretstore.h"
 
 /* CryptFileFlag lives in kitty_bridge.c (same as the write side). */
 /* unmungestr is declared in kitty_commun.h (const char *in). */
@@ -897,7 +898,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	 * This replaces an unconditional decryptpassword + MASKPASS, which
 	 * mangled every unmarked value it touched: a password written in the
 	 * clear by a provisioning script became garbage, silently. The
-	 * decode/MASKPASS logic itself now lives in one place (kitty_storage.c),
+	 * decode/MASKPASS logic itself now lives in one place (kitty_secretstore.c),
 	 * shared with the portable cyd01-file conversion.
 	 * (The original also called DebugGetPassword here: a debug-only dump to
 	 * a "kitty.password" file, no effect on conf; dropped in the port.) */

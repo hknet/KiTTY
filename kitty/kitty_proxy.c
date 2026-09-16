@@ -25,6 +25,7 @@
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
 #include "kitty_storage.h"
+#include "kitty_secretstore.h"
 #include "kitty_win.h"
 #include "kitty_winutil.h"
 

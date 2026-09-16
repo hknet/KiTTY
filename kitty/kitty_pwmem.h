@@ -18,7 +18,7 @@
  * DPAPI blob for this user), which every KiTTY helper has read for as long as
  * stored passwords have been protected at rest. Its two functions are declared
  * here with the rest of the password handling and IMPLEMENTED in
- * kitty/kitty_storage.c, where that crypto lives.
+ * kitty/kitty_secretstore.c, where that crypto lives.
  *
  * The protected block is 4 bytes of length (little endian) followed by the
  * password bytes, zero padded to a multiple of the 16-byte block the API
@@ -139,7 +139,7 @@ void kitty_pw_wipe(Conf *conf);
  * password itself - the plain format -pwfile has always taken - and the
  * missing-features line names what was unavailable.
  *
- * Implemented in kitty/kitty_storage.c (the `settings` library, which every
+ * Implemented in kitty/kitty_secretstore.c (the `settings` library, which every
  * helper links), because it is the at-rest protection and nothing new.
  */
 char *kitty_pwfile_line(const char *plain);
@@ -162,7 +162,7 @@ int kitty_pwfile_line_is_protected(const char *line);
  *   plain  TAKES OWNERSHIP of `line`, burning and freeing it whatever the
  *          answer - for a line just read off a file (-pwfile).
  *
- * Both implemented in kitty/kitty_storage.c, beside kitty_pwfile_line.
+ * Both implemented in kitty/kitty_secretstore.c, beside kitty_pwfile_line.
  */
 char *kitty_pwfile_decode_copy(const char *value);
 char *kitty_pwfile_decode(char *line);

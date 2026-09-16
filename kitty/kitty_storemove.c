@@ -34,6 +34,7 @@
 #include "kitty_win.h"
 #include "kitty_winutil.h"
 #include "kitty_storage.h"
+#include "kitty_secretstore.h"
 #include "kitty_storemove.h"
 #include "kitty_mpw.h"
 #include "kitty_b64.h"

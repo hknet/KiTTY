@@ -29,6 +29,7 @@
 #include "kitty_win.h"
 #include "kitty_winutil.h"
 #include "kitty_storage.h"
+#include "kitty_secretstore.h"
 #include "kitty_gui.h"
 #include "kitty_image.h"
 #include "kitty_tools.h"

@@ -24,6 +24,7 @@
 #include "kitty_crypt.h"   /* cryptpassword */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
 #include "kitty_storage.h"
+#include "kitty_secretstore.h"
 #include "kitty_settings.h"
 
 /*

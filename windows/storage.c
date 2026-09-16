@@ -12,6 +12,7 @@
 #include "storage.h"
 #include "../kitty/kitty_defs.h"   /* KITTY_DEFAULT_SESSION (dependency-free) */
 #include "../kitty/kitty_storage.h"  /* the KiTTY half of this file (registry root, portable store, at-rest crypto) */
+#include "../kitty/kitty_secretstore.h"
 #include "../kitty/kitty_pwmem.h"    /* passwords wrapped in memory: unwrap before protecting at rest */
 
 #include <shlobj.h>
@@ -23,9 +24,10 @@
 #endif
 
 /*
- * KiTTY: the runtime registry root, the portable file backend and the
- * at-rest credential crypto live in kitty/kitty_storage.c (split out of
- * this file to shrink its divergence from upstream). The macros below
+ * KiTTY: the runtime registry root and the portable file backend live in
+ * kitty/kitty_storage.c, the at-rest credential crypto in
+ * kitty/kitty_secretstore.c (both split out of this file to shrink its
+ * divergence from upstream). The macros below
  * repoint upstream's registry-path identifiers at that file's runtime
  * accessors, so the function bodies in this file stay textually unchanged.
  */
