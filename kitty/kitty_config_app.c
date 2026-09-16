@@ -1805,6 +1805,9 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
 
     /* Security > Host keys: the trust store, listed (kitty_hostkeys.c). */
     scb_panel_hostkeys(b);
+    /* Security > Applications: the program files beside this one and
+     * whether they check out (kitty_config_apps.c). */
+    scb_panel_applications(b);
 }
 
 /* A control per kind, so the leaf builders read as a list of settings. */

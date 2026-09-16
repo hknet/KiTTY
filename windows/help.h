@@ -64,6 +64,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_kset_connection    "kitty-cfg-kset-connection"
 #define WINHELP_CTX_kitty_kset_launcher      "kitty-cfg-kset-launcher"
 #define WINHELP_CTX_kitty_passwords          "kitty-cfg-passwords"
+#define WINHELP_CTX_kitty_applications       "kitty-cfg-applications"
 #define WINHELP_CTX_kitty_client_identity    "kitty-cfg-client-identity"
 #define WINHELP_CTX_kitty_appearance         "kitty-cfg-appearance"
 #define WINHELP_CTX_kitty_clipboard          "kitty-cfg-clipboard"

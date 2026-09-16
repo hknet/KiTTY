@@ -8,20 +8,27 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
-### Changed
-- **The Clipboard panel's paste-size row fits at the smallest window.** It
-  reads "Warn before pasting more than [ ] characters", and the note under it
-  says that 0 never warns.
+- **Application > Security > Applications** lists the KiTTY++ programs beside
+  the running one and checks each against what it carries - the release stamp
+  where this build has the key, the Authenticode signature where Windows can
+  verify it - by the rule the programs already apply when starting each
+  other: what this KiTTY++ carries, every file beside it must carry too. A
+  changed, re-signed, unstamped or other-version file is a red row and an
+  event-log line; programs that are not KiTTY++'s are counted, not judged.
 
-- **The startup clean-up of an orphan master password is gone.** Exporting on
-  0.84.1.48-0.84.1.65 created a master password as a side effect, and every
-  start since checked for that leftover pair and removed it when nothing was
-  wrapped with it. Every install that could have carried the leftover has by
+### Changed
 
 - **Application > Security > Passwords is now "Interactive Login".** The leaf
   holds the one switch about a login typed at the SSH prompts; the old name
   read like the place where stored passwords live. Help links and the
   `userpasssshnosave` key are unchanged.
+- **The Clipboard panel's paste-size row fits at the smallest window.** It
+  reads "Warn before pasting more than [ ] characters", and the note under it
+  says that 0 never warns.
+- **The startup clean-up of an orphan master password is gone.** Exporting on
+  0.84.1.48-0.84.1.65 created a master password as a side effect, and every
+  start since checked for that leftover pair and removed it when nothing was
+  wrapped with it. Every install that could have carried the leftover has by
   now been started under a build that cleaned it, so the check no longer runs.
   A pair an earlier build archived in the registry is still read when a
   portable store turns out to depend on it.

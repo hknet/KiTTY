@@ -186,6 +186,177 @@ int kitty_rename_guard(const char *const *prefixes, int nprefixes, int gui)
  * The signature self-check.
  * ------------------------------------------------------------------------ */
 
+#ifndef TRUST_E_BAD_DIGEST
+#define TRUST_E_BAD_DIGEST ((LONG)0x80096010L)
+#endif
+#ifndef TRUST_E_NOSIGNATURE
+#define TRUST_E_NOSIGNATURE ((LONG)0x800B0100L)
+#endif
+
+/*
+ * Does the PE at `path` carry an Authenticode certificate table? 1 / 0, and
+ * -1 when the headers could not be read or walked, which the caller treats
+ * as "cannot judge" rather than as an answer. The same test the running
+ * image gets below, over the file's own bytes.
+ */
+static int kg_file_has_cert_table(const char *path)
+{
+    HANDLE h;
+    unsigned char hdr[4096];
+    DWORD got = 0;
+    LONG e_lfanew;
+    const unsigned char *nt;
+    WORD magic;
+    unsigned nrva_off, dd_off;
+
+    h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE)
+        return -1;
+    memset(hdr, 0, sizeof(hdr));
+    if (!ReadFile(h, hdr, sizeof(hdr), &got, NULL) || got < 64) { CloseHandle(h); return -1; }
+    CloseHandle(h);
+    if (hdr[0] != 'M' || hdr[1] != 'Z')
+        return -1;
+    e_lfanew = (LONG)(hdr[60] | (hdr[61] << 8) | (hdr[62] << 16) | ((DWORD)hdr[63] << 24));
+    if (e_lfanew < 0 || (DWORD)e_lfanew + 24 + 2 > got)
+        return -1;
+    nt = hdr + e_lfanew;
+    if (nt[0] != 'P' || nt[1] != 'E' || nt[2] != 0 || nt[3] != 0)
+        return -1;
+    magic = (WORD)(nt[24] | (nt[25] << 8));
+    /* NumberOfRvaAndSizes and the data directory: PE32 at optional-header
+     * offsets 92 / 96, PE32+ at 108 / 112. */
+    if (magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) { nrva_off = 24 + 92; dd_off = 24 + 96; }
+    else if (magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC) { nrva_off = 24 + 108; dd_off = 24 + 112; }
+    else return -1;
+    if ((DWORD)e_lfanew + dd_off + 8 * (IMAGE_DIRECTORY_ENTRY_SECURITY + 1) > got)
+        return -1;
+    {
+        DWORD nrva = nt[nrva_off] | (nt[nrva_off + 1] << 8) | (nt[nrva_off + 2] << 16) | ((DWORD)nt[nrva_off + 3] << 24);
+        const unsigned char *dd = nt + dd_off + 8 * IMAGE_DIRECTORY_ENTRY_SECURITY;
+        DWORD size = dd[4] | (dd[5] << 8) | (dd[6] << 16) | ((DWORD)dd[7] << 24);
+        if (nrva <= IMAGE_DIRECTORY_ENTRY_SECURITY)
+            return -1;
+        return size != 0 ? 1 : 0;
+    }
+}
+
+typedef LONG (WINAPI *kg_winverifytrust_t)(HWND, GUID *, LPVOID);
+typedef CRYPT_PROVIDER_DATA *(WINAPI *kg_provdata_t)(HANDLE);
+typedef CRYPT_PROVIDER_SGNR *(WINAPI *kg_provsigner_t)(CRYPT_PROVIDER_DATA *,
+                                                       DWORD, BOOL, DWORD);
+typedef DWORD (WINAPI *kg_certname_t)(PCCERT_CONTEXT, DWORD, DWORD, void *,
+                                      LPSTR, DWORD);
+
+/*
+ * The Authenticode reading of one file: what the startup guard decides on,
+ * as a value, for any path - so the Applications leaf and the guard judge
+ * a file the same way and the decision exists once. See the guard's comment
+ * below for why each outcome maps as it does; in short:
+ *   KG_SIG_MODIFIED  BAD_DIGEST on a Windows that can compute a SHA-256
+ *                    digest (CryptCATAdminAcquireContext2 present);
+ *   KG_SIG_UNSIGNED  NOSIGNATURE and the PE has no certificate table;
+ *   KG_SIG_OTHER     a valid chain whose signer is not our publisher
+ *                    (`signer` receives the CN);
+ *   KG_SIG_OURS      a valid chain, our publisher;
+ *   KG_SIG_CANNOT    everything else - an algorithm or root this Windows
+ *                    does not know, wintrust missing, a signer it cannot
+ *                    read: no verdict, and never a refusal.
+ * Cached revocation data only, nothing leaves the machine.
+ */
+int kitty_signature_reading(const char *path, char *signer, size_t signersz)
+{
+    wchar_t wpath[1024];
+    WINTRUST_FILE_INFO fi;
+    WINTRUST_DATA wd;
+    GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+    HMODULE wintrust, crypt32;
+    kg_winverifytrust_t p_verify;
+    kg_provdata_t p_provdata;
+    kg_provsigner_t p_provsigner;
+    kg_certname_t p_certname;
+    CRYPT_PROVIDER_DATA *pd;
+    CRYPT_PROVIDER_SGNR *sgnr;
+    PCCERT_CONTEXT cert;
+    char cn[256];
+    LONG st;
+    int result = KG_SIG_CANNOT;
+
+    if (signer && signersz) signer[0] = '\0';
+    if (MultiByteToWideChar(CP_ACP, 0, path, -1, wpath, 1024) == 0)
+        return KG_SIG_CANNOT;
+
+    wintrust = LoadLibraryA("wintrust.dll");
+    if (!wintrust)
+        return KG_SIG_CANNOT;
+    p_verify = (kg_winverifytrust_t)kitty_api_from(
+        wintrust, "wintrust.dll", "WinVerifyTrust", KITTY_API_OPTIONAL,
+        "the signature self-check");
+    p_provdata = (kg_provdata_t)kitty_api_from(
+        wintrust, "wintrust.dll", "WTHelperProvDataFromStateData",
+        KITTY_API_OPTIONAL, "the signature self-check");
+    p_provsigner = (kg_provsigner_t)kitty_api_from(
+        wintrust, "wintrust.dll", "WTHelperGetProvSignerFromChain",
+        KITTY_API_OPTIONAL, "the signature self-check");
+    if (!p_verify) {
+        FreeLibrary(wintrust);
+        return KG_SIG_CANNOT;
+    }
+
+    memset(&fi, 0, sizeof(fi));
+    fi.cbStruct = sizeof(fi);
+    fi.pcwszFilePath = wpath;
+    memset(&wd, 0, sizeof(wd));
+    wd.cbStruct = sizeof(wd);
+    wd.dwUIChoice = WTD_UI_NONE;
+    wd.fdwRevocationChecks = WTD_REVOKE_NONE;
+    wd.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL;
+    wd.dwUnionChoice = WTD_CHOICE_FILE;
+    wd.pFile = &fi;
+    wd.dwStateAction = WTD_STATEACTION_VERIFY;
+    st = p_verify((HWND)INVALID_HANDLE_VALUE, &action, &wd);
+
+    if (st == TRUST_E_BAD_DIGEST) {
+        if (kitty_api_from(wintrust, "wintrust.dll",
+                           "CryptCATAdminAcquireContext2", KITTY_API_OPTIONAL,
+                           "the signature self-check") != NULL)
+            result = KG_SIG_MODIFIED;
+    } else if (st == TRUST_E_NOSIGNATURE && kg_file_has_cert_table(path) == 0) {
+        result = KG_SIG_UNSIGNED;
+    } else if (st == ERROR_SUCCESS) {
+        crypt32 = LoadLibraryA("crypt32.dll");
+        p_certname = crypt32 ? (kg_certname_t)kitty_api_from(
+            crypt32, "crypt32.dll", "CertGetNameStringA", KITTY_API_OPTIONAL,
+            "the signature self-check") : NULL;
+        if (p_provdata && p_provsigner && p_certname &&
+                (pd = p_provdata(wd.hWVTStateData)) != NULL &&
+                (sgnr = p_provsigner(pd, 0, FALSE, 0)) != NULL &&
+                sgnr->csCertChain > 0 && sgnr->pasCertChain != NULL &&
+                (cert = sgnr->pasCertChain[0].pCert) != NULL) {
+            cn[0] = '\0';
+            if (p_certname(cert, CERT_NAME_ATTR_TYPE, 0,
+                           (void *)szOID_COMMON_NAME, cn, sizeof(cn)) > 1) {
+                if (signer && signersz) { strncpy(signer, cn, signersz - 1); signer[signersz - 1] = '\0'; }
+                result = _stricmp(cn, KITTY_PUBLISHER_CN) == 0 ? KG_SIG_OURS : KG_SIG_OTHER;
+            }
+        }
+        if (crypt32)
+            FreeLibrary(crypt32);
+    }
+
+    wd.dwStateAction = WTD_STATEACTION_CLOSE;
+    p_verify((HWND)INVALID_HANDLE_VALUE, &action, &wd);
+    FreeLibrary(wintrust);
+    return result;
+}
+
+int kitty_file_has_cert_table(const char *path)
+{
+    return kg_file_has_cert_table(path);
+}
+
+
 #ifdef KITTY_RELEASE_SIGNED
 
 /*
@@ -200,7 +371,7 @@ int kitty_rename_guard(const char *const *prefixes, int nprefixes, int gui)
  *                         intact file, so there it is "cannot judge" (see
  *                         the CryptCATAdminAcquireContext2 probe below).
  *   TRUST_E_NOSIGNATURE   AND the PE carries no certificate table at all
- *                         (kg_has_cert_table below). The second half of that
+ *                         (kitty_file_has_cert_table above). The second half of that
  *                         condition is not decoration: this code does not only
  *                         mean "unsigned". wintrust returns it whenever the
  *                         provider cannot interpret the file as a signed
@@ -234,197 +405,38 @@ int kitty_rename_guard(const char *const *prefixes, int nprefixes, int gui)
  * "can this machine verify an Authenticode signature" is a question you answer
  * by asking it, not by guessing from a version number.
  */
-#ifndef TRUST_E_BAD_DIGEST
-#define TRUST_E_BAD_DIGEST ((LONG)0x80096010L)
-#endif
-#ifndef TRUST_E_NOSIGNATURE
-#define TRUST_E_NOSIGNATURE ((LONG)0x800B0100L)
-#endif
 
-/*
- * Does this process's own file carry a certificate table?
- *
- * The one fact that separates "the signature was stripped" from "this Windows
- * could not read the signature", and it needs no crypto at all: the PE
- * optional header's data directory entry 4 (IMAGE_DIRECTORY_ENTRY_SECURITY)
- * has a nonzero Size on every signed image and a zero Size on an unsigned one.
- * Read straight out of the mapped image, because the module is already in
- * memory - no file handle, no allocation, nothing that can fail for reasons of
- * its own.
- *
- * Returns 1 = there is a table, 0 = there is none, and -1 = the headers could
- * not be walked, which the caller treats like "cannot judge" rather than as an
- * answer. PE32 and PE32+ differ only in where the data directory starts, so
- * both are read through their own optional-header type.
- */
-static int kg_has_cert_table(void)
-{
-    const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)GetModuleHandle(NULL);
-    const IMAGE_NT_HEADERS *nt;
-    const IMAGE_DATA_DIRECTORY *dd;
-    WORD magic;
 
-    if (!dos || dos->e_magic != IMAGE_DOS_SIGNATURE)
-        return -1;
-    nt = (const IMAGE_NT_HEADERS *)((const char *)dos + dos->e_lfanew);
-    if (nt->Signature != IMAGE_NT_SIGNATURE)
-        return -1;
-
-    magic = nt->OptionalHeader.Magic;
-    if (magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
-        const IMAGE_NT_HEADERS32 *nt32 = (const IMAGE_NT_HEADERS32 *)nt;
-        if (nt32->OptionalHeader.NumberOfRvaAndSizes <=
-                IMAGE_DIRECTORY_ENTRY_SECURITY)
-            return -1;
-        dd = &nt32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_SECURITY];
-    } else if (magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
-        const IMAGE_NT_HEADERS64 *nt64 = (const IMAGE_NT_HEADERS64 *)nt;
-        if (nt64->OptionalHeader.NumberOfRvaAndSizes <=
-                IMAGE_DIRECTORY_ENTRY_SECURITY)
-            return -1;
-        dd = &nt64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_SECURITY];
-    } else {
-        return -1;
-    }
-    return dd->Size != 0 ? 1 : 0;
-}
-
-typedef LONG (WINAPI *kg_winverifytrust_t)(HWND, GUID *, LPVOID);
-typedef CRYPT_PROVIDER_DATA *(WINAPI *kg_provdata_t)(HANDLE);
-typedef CRYPT_PROVIDER_SGNR *(WINAPI *kg_provsigner_t)(CRYPT_PROVIDER_DATA *,
-                                                       DWORD, BOOL, DWORD);
-typedef DWORD (WINAPI *kg_certname_t)(PCCERT_CONTEXT, DWORD, DWORD, void *,
-                                      LPSTR, DWORD);
 
 /*
  * Verify this process's own file. Fills `reason` with the short technical
- * words the message shows and returns 1 when the program must NOT run.
+ * words the message shows and returns 1 when the program must NOT run - the
+ * reading above, applied to the own path, with the guard's decisions:
+ * MODIFIED, UNSIGNED and OTHER refuse, OURS and CANNOT run.
  */
 static int kg_signature_verdict(char *reason, size_t reasonsz)
 {
-    wchar_t wpath[1024];
-    WINTRUST_FILE_INFO fi;
-    WINTRUST_DATA wd;
-    GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
-    HMODULE wintrust, crypt32;
-    kg_winverifytrust_t p_verify;
-    kg_provdata_t p_provdata;
-    kg_provsigner_t p_provsigner;
-    kg_certname_t p_certname;
-    CRYPT_PROVIDER_DATA *pd;
-    CRYPT_PROVIDER_SGNR *sgnr;
-    PCCERT_CONTEXT cert;
-    char cn[256];
-    LONG st;
-    int refuse = 0;
-    DWORD len;
-
-    len = GetModuleFileNameW(NULL, wpath, 1024);
-    wpath[1023] = L'\0';
-    if (len == 0 || len >= 1024)
+    char path[1024];
+    char signer[256];
+    DWORD len = GetModuleFileNameA(NULL, path, sizeof(path));
+    if (len == 0 || len >= sizeof(path))
         return 0;                      /* cannot tell - let it run */
-
-    wintrust = LoadLibraryA("wintrust.dll");
-    if (!wintrust)
-        return 0;                      /* cannot judge */
-    p_verify = (kg_winverifytrust_t)kitty_api_from(
-        wintrust, "wintrust.dll", "WinVerifyTrust", KITTY_API_OPTIONAL,
-        "the signature self-check");
-    p_provdata = (kg_provdata_t)kitty_api_from(
-        wintrust, "wintrust.dll", "WTHelperProvDataFromStateData",
-        KITTY_API_OPTIONAL, "the signature self-check");
-    p_provsigner = (kg_provsigner_t)kitty_api_from(
-        wintrust, "wintrust.dll", "WTHelperGetProvSignerFromChain",
-        KITTY_API_OPTIONAL, "the signature self-check");
-    if (!p_verify) {
-        FreeLibrary(wintrust);
-        return 0;                      /* cannot judge */
+    path[len] = '\0';
+    switch (kitty_signature_reading(path, signer, sizeof(signer))) {
+      case KG_SIG_MODIFIED:
+        strncpy(reason, "bad digest", reasonsz - 1); reason[reasonsz - 1] = '\0';
+        return 1;
+      case KG_SIG_UNSIGNED:
+        strncpy(reason, "not signed", reasonsz - 1); reason[reasonsz - 1] = '\0';
+        return 1;
+      case KG_SIG_OTHER:
+        /* Names the CN found, because that is the one fact worth knowing: a
+         * re-signed copy is identified by whose it is. */
+        _snprintf(reason, reasonsz, "signer: %s", signer); reason[reasonsz - 1] = '\0';
+        return 1;
+      default:
+        return 0;                      /* ours, or cannot judge: run */
     }
-
-    memset(&fi, 0, sizeof(fi));
-    fi.cbStruct = sizeof(fi);
-    fi.pcwszFilePath = wpath;
-    memset(&wd, 0, sizeof(wd));
-    wd.cbStruct = sizeof(wd);
-    wd.dwUIChoice = WTD_UI_NONE;
-    /* Cached revocation data only: a start-up check must not wait on a CRL
-     * server, and nothing about this process leaves the machine. */
-    wd.fdwRevocationChecks = WTD_REVOKE_NONE;
-    wd.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL;
-    wd.dwUnionChoice = WTD_CHOICE_FILE;
-    wd.pFile = &fi;
-    /* VERIFY rather than IGNORE, because the signer certificate is read out of
-     * the state data below - which only exists while the state is open. */
-    wd.dwStateAction = WTD_STATEACTION_VERIFY;
-    st = p_verify((HWND)INVALID_HANDLE_VALUE, &action, &wd);
-
-    if (st == TRUST_E_BAD_DIGEST) {
-        /*
-         * A bad digest is only evidence when this Windows can compute the
-         * digest at all. Our signature is SHA-256, and a wintrust without
-         * SHA-2 Authenticode support - Windows XP, and Vista / 7 without the
-         * 2012 update that added it - does not report that it cannot: it
-         * hashes with what it has, finds the number in the signature does
-         * not match, and answers BAD_DIGEST for a file nobody touched. Every
-         * intact release program refused to start on XP that way. Ask the
-         * machine, not the version: CryptCATAdminAcquireContext2 arrived in
-         * wintrust.dll with SHA-2 support and is absent before it. Without
-         * it this is "cannot judge", the program runs, and the integrity
-         * stamp (kitty_selfcheck.c) is the check that judges there.
-         */
-        if (kitty_api_from(wintrust, "wintrust.dll",
-                           "CryptCATAdminAcquireContext2", KITTY_API_OPTIONAL,
-                           "the signature self-check") != NULL) {
-            strncpy(reason, "bad digest", reasonsz - 1);
-            reason[reasonsz - 1] = '\0';
-            refuse = 1;
-        }
-    } else if (st == TRUST_E_NOSIGNATURE && kg_has_cert_table() == 0) {
-        /* The header agrees there is nothing to verify: the signature was
-         * stripped. A NOSIGNATURE with a table present is a wintrust that
-         * could not read ours, and falls through to "run". */
-        strncpy(reason, "not signed", reasonsz - 1);
-        reason[reasonsz - 1] = '\0';
-        refuse = 1;
-    } else if (st == ERROR_SUCCESS) {
-        /*
-         * The chain is good. Now the only question left: is it OUR chain? A
-         * different but perfectly valid certificate is exactly what a
-         * re-signed copy carries.
-         *
-         * A signer we cannot READ is not a signer we may condemn: if any of
-         * these steps is unavailable (an old wintrust without the helpers, no
-         * crypt32) this is another "cannot judge" and the program runs.
-         */
-        crypt32 = LoadLibraryA("crypt32.dll");
-        p_certname = crypt32 ? (kg_certname_t)kitty_api_from(
-            crypt32, "crypt32.dll", "CertGetNameStringA", KITTY_API_OPTIONAL,
-            "the signature self-check") : NULL;
-        if (p_provdata && p_provsigner && p_certname &&
-                (pd = p_provdata(wd.hWVTStateData)) != NULL &&
-                (sgnr = p_provsigner(pd, 0, FALSE, 0)) != NULL &&
-                sgnr->csCertChain > 0 && sgnr->pasCertChain != NULL &&
-                (cert = sgnr->pasCertChain[0].pCert) != NULL) {
-            cn[0] = '\0';
-            if (p_certname(cert, CERT_NAME_ATTR_TYPE, 0,
-                           (void *)szOID_COMMON_NAME, cn, sizeof(cn)) > 1 &&
-                    _stricmp(cn, KITTY_PUBLISHER_CN) != 0) {
-                /* Names the CN found, because that is the one fact worth
-                 * knowing: a re-signed copy is identified by whose it is. */
-                _snprintf(reason, reasonsz, "signer: %s", cn);
-                reason[reasonsz - 1] = '\0';
-                refuse = 1;
-            }
-        }
-        if (crypt32)
-            FreeLibrary(crypt32);
-    }
-    /* Everything else: cannot judge, run. */
-
-    wd.dwStateAction = WTD_STATEACTION_CLOSE;
-    p_verify((HWND)INVALID_HANDLE_VALUE, &action, &wd);
-    FreeLibrary(wintrust);
-    return refuse;
 }
 
 int kitty_signature_guard(int gui)

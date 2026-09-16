@@ -666,6 +666,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_config_shared.c
   ${KITTY_DIR}/kitty_config_session.c
   ${KITTY_DIR}/kitty_config_app.c
+  ${KITTY_DIR}/kitty_config_apps.c   # KiTTY: Security > Applications (the program files beside this one, checked)
   ${KITTY_DIR}/kitty_colours.c
   ${KITTY_DIR}/kitty_inputbox.c
   ${KITTY_DIR}/kitty_osc52.c
@@ -814,6 +815,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_config_shared.c
   ${KITTY_DIR}/kitty_config_session.c
   ${KITTY_DIR}/kitty_config_app.c
+  ${KITTY_DIR}/kitty_config_apps.c   # KiTTY: Security > Applications (the program files beside this one, checked)
   ${KITTY_DIR}/kitty_colours.c
   ${KITTY_DIR}/kitty_inputbox.c
   ${KITTY_DIR}/kitty_osc52.c

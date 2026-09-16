@@ -575,6 +575,14 @@ A **portable** KiTTY asks before writing anything: a registration outlives the c
 
 ---
 
+### Applications: the programs that travel with the install, checked
+
+**Application > Security > Applications** lists the KiTTY++ program files that sit beside the running program and says for each whether it checks out. Two checks exist, and a file is judged by the ones it carries: the release stamp (a signed hash inside the file, verified with the key compiled into this build) and the Authenticode signature (verified by Windows against the publisher). The rule is the one the programs already apply when they start each other: whatever this KiTTY++ carries, every file beside it must carry too. A red row is a file that was changed, is signed by someone else, lacks a check this build has, or is another version; a grey one is a file nothing here could judge. Programs in the folder that are not KiTTY++'s are counted and named, not judged. A click on a row gives the path, size, version, signer, hash and the reason; Copy puts the table on the clipboard. Every red row also goes to the Application event log.
+
+**How to enable:** always on; the panel checks as it opens.
+
+(no screenshot)
+
 ### Warning when an unverified agent serves your keys
 
 An SSH agent holds your private keys and signs with them on request, and any program can offer to be that agent: it is a named pipe, and whoever gets there first answers. A program that puts itself in that position sees every key request KiTTY makes.

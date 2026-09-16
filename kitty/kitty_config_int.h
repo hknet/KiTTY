@@ -15,6 +15,7 @@
 /* The panel paths more than one of these files names. Everything under
  * "Application/" is the second tab; KSET_PATH names a KiTTY++ Settings leaf. */
 #define KCFG_PATH_HOSTKEYS      "Application/Security/Host keys"
+#define KCFG_PATH_APPLICATIONS  "Application/Security/Applications"
 #define KCFG_PATH_INIVIEW       "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini"
 #define KCFG_PATH_OLD_FOLDERS   "Application/Migration/old KiTTY Folders"
 #define KCFG_PATH_AUTOTEXT      "Application/KiTTY++ Settings/Keys & Mouse/Shortcuts/AutoText"
@@ -273,5 +274,7 @@ dlgcontrol *kitty_sc_fill_ctrl(bool autotext);   /* kitty_config_app.c */
 void scb_panel_shortcut_editor(struct controlbox *b, const char *path);   /* kitty_config_app.c */
 void scb_app_footer(struct controlbox *b, const char *path);   /* kitty_config_app.c */
 void scb_panel_application(struct controlbox *b, bool midsession);   /* kitty_config_app.c */
+void scb_panel_applications(struct controlbox *b);   /* kitty_config_apps.c: Security > Applications */
+dlgcontrol *kitty_apps_fill_ctrl(void);   /* kitty_config_apps.c: its list, for the fill hook */
 
 #endif /* KITTY_CONFIG_INT_H */

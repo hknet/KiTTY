@@ -116,13 +116,15 @@ static int kt_visible(int gui)
 }
 
 /*
- * The verdict. Returns 0 = intact, 1 = refuse (reason filled), 2 = cannot
- * check (the caller decides by visibility).
+ * The verdict on the file at `path`. Returns 0 = intact, 1 = refuse (reason
+ * filled), 2 = cannot check (the caller decides by visibility). `own` says
+ * the file is this process's own image, which adds the fault switch and the
+ * check that the image's own stamp block is ours; `sha_out`, when given,
+ * receives the recomputed hash (for a display).
  */
-static int kt_verdict(const char **reason)
+static int kt_verdict_path(const char *path, int own, const char **reason,
+                           unsigned char *sha_out)
 {
-    char path[MAX_PATH + 1];
-    DWORD n;
     HANDLE h;
     unsigned char hdr[4096];
     unsigned char stamp[KT_STAMP_SIZE];
@@ -134,17 +136,14 @@ static int kt_verdict(const char **reason)
     int rc = 2;
 
     *reason = NULL;
-    if (kt_fault_armed())
-        return 2;
-    /* The image's own block must be ours; this is also the one read of the
-     * block that keeps every linker from treating it as unreferenced. */
-    if (memcmp(kt_stamp_block, KT_STAMP_MAGIC, KT_STAMP_MAGIC_LEN) != 0)
-        return 2;
-
-    n = GetModuleFileNameA(NULL, path, sizeof(path) - 1);
-    if (n == 0 || n >= sizeof(path) - 1)
-        return 2;
-    path[n] = '\0';
+    if (own) {
+        if (kt_fault_armed())
+            return 2;
+        /* The image's own block must be ours; this is also the one read of the
+         * block that keeps every linker from treating it as unreferenced. */
+        if (memcmp(kt_stamp_block, KT_STAMP_MAGIC, KT_STAMP_MAGIC_LEN) != 0)
+            return 2;
+    }
 
     h = CreateFileA(path, GENERIC_READ,
                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -190,6 +189,8 @@ static int kt_verdict(const char **reason)
     }
     if (!kt_stamp_hash(kt_read_at, (void *)h, &lay, length, chunk, sha))
         goto out;                                    /* read failed: 2 */
+    if (sha_out)
+        memcpy(sha_out, sha, KT_SHA256_LEN);
     if (memcmp(sha, stamp + KT_STAMP_OFF_SHA256, KT_SHA256_LEN) != 0) {
         *reason = "modified"; rc = 1; goto out;
     }
@@ -198,6 +199,36 @@ static int kt_verdict(const char **reason)
   out:
     CloseHandle(h);
     smemclr(chunk, sizeof(chunk));
+    return rc;
+}
+
+static int kt_verdict(const char **reason)
+{
+    char path[MAX_PATH + 1];
+    DWORD n = GetModuleFileNameA(NULL, path, sizeof(path) - 1);
+    if (n == 0 || n >= sizeof(path) - 1)
+        return 2;
+    path[n] = '\0';
+    return kt_verdict_path(path, 1, reason, NULL);
+}
+
+int kitty_selfcheck_file(const char *path, char *reason, size_t reasonsz,
+                         char *sha_hex, size_t hexsz)
+{
+    const char *why = NULL;
+    unsigned char sha[KT_SHA256_LEN];
+    int rc;
+    static const char hexd[] = "0123456789abcdef";
+    if (reason && reasonsz) reason[0] = '\0';
+    if (sha_hex && hexsz) sha_hex[0] = '\0';
+    memset(sha, 0, sizeof(sha));
+    rc = kt_verdict_path(path, 0, &why, sha);
+    if (rc == 1 && reason && reasonsz) { strncpy(reason, why, reasonsz - 1); reason[reasonsz - 1] = '\0'; }
+    if ((rc == 0 || (rc == 1 && why && !strcmp(why, "modified"))) && sha_hex && hexsz > 2 * KT_SHA256_LEN) {
+        size_t i;
+        for (i = 0; i < KT_SHA256_LEN; i++) { sha_hex[2 * i] = hexd[sha[i] >> 4]; sha_hex[2 * i + 1] = hexd[sha[i] & 15]; }
+        sha_hex[2 * KT_SHA256_LEN] = '\0';
+    }
     return rc;
 }
 
@@ -244,6 +275,15 @@ int kitty_selfcheck_guard(int gui)
 {
     (void)gui;
     return 0;
+}
+
+int kitty_selfcheck_file(const char *path, char *reason, size_t reasonsz,
+                         char *sha_hex, size_t hexsz)
+{
+    (void)path;
+    if (reason && reasonsz) reason[0] = '\0';
+    if (sha_hex && hexsz) sha_hex[0] = '\0';
+    return 3;                          /* this build carries no key */
 }
 
 #endif /* KITTY_SELFCHECK */

@@ -78,6 +78,23 @@ int kitty_rename_guard(const char *const *prefixes, int nprefixes, int gui);
  * Call it directly after the name guard.
  */
 int kitty_signature_guard(int gui);
+/*
+ * The Authenticode reading of ANY file, as a value - the decision the guard
+ * above makes about its own file, for the Applications leaf to make about
+ * every file that travels with the install. Compiled in every build (the
+ * guard's refusal is release-only, the reading is not). `signer` receives
+ * the certificate's subject CN when a valid chain was found (ours or not).
+ */
+enum {
+    KG_SIG_OURS = 0,      /* valid chain, our publisher */
+    KG_SIG_MODIFIED,      /* bad digest on a Windows that can compute it */
+    KG_SIG_UNSIGNED,      /* no signature and no certificate table */
+    KG_SIG_OTHER,         /* valid chain, another publisher (see `signer`) */
+    KG_SIG_CANNOT         /* this Windows cannot judge; no verdict */
+};
+int kitty_signature_reading(const char *path, char *signer, size_t signersz);
+/* Does the PE at `path` carry a certificate table? 1 / 0 / -1 = unreadable. */
+int kitty_file_has_cert_table(const char *path);
 
 /*
  * The shared pieces of the guards, for the third one (kitty_selfcheck.c),

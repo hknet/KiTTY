@@ -2124,6 +2124,28 @@ KiTTY's own key - the same value older KiTTY versions displayed in a
 message box at every start, so an installed KiTTY keeps the note it already
 had.
 
+\S{kitty-cfg-applications} The Applications panel
+
+The program files of KiTTY++ that are present beside the running program -
+the terminal, klink, kscp, ksftp, kageant, kittygen, kittygen-cli, the
+portable terminal, pterm and telnet builds - one row each, checked as the
+panel opens. Two checks exist and each file is judged by the ones it
+carries: the \e{release stamp} (a signed hash inside the file, verified with
+the key compiled into this build; a build without the key says so) and the
+\e{Authenticode signature} (verified by Windows against the publisher). The
+rule is the one the programs already apply when they start each other: what
+this KiTTY++ carries, every file beside it must carry too. A row is
+\q{authenticated} when every required check says ours; \q{WARNING}, in
+red, when a file was changed, is signed by someone else, lacks a check this
+build has, or is another version; \q{unverified} when nothing here could
+judge it - an unsigned test build, or a Windows that cannot verify the
+signature and a build without the stamp key. Programs in the folder that
+are not KiTTY++'s are counted, named in the detail box when the header row
+is selected, and not judged. A click on a row shows the file's path, size,
+version, signer, hash and the reason for its verdict; \q{Copy} puts the
+table on the clipboard; \q{Verify again} repeats the check. Every red row
+is also written to the Application event log, once per start.
+
 \S{kitty-cfg-host-keys} The Host keys panel
 
 Every SSH host key this KiTTY has accepted, one row per host, port and

@@ -161,6 +161,9 @@ static void hook_hk_shown(bool show)
                  (show ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
 }
 
+/* Security > Applications: one row per program file, the taller the better. */
+static dlgcontrol *hook_apps_fill(void) { return kitty_apps_fill_ctrl(); }
+
 /* The shortcut editor's lists: one row per action, one per AutoText entry,
  * the taller the better. */
 static dlgcontrol *hook_sc_fill(void) { return kitty_sc_fill_ctrl(false); }
@@ -171,6 +174,7 @@ static const struct kitty_panel_hook kitty_panel_hooks[] = {
     { KCFG_PATH_INIVIEW,      hook_iniview_fill,     hook_iniview_placed, NULL },
     { KCFG_PATH_OLD_FOLDERS,  hook_migf_fill,        NULL,                NULL },
     { KCFG_PATH_HOSTKEYS,     hook_hk_fill,          hook_hk_placed,      hook_hk_shown },
+    { KCFG_PATH_APPLICATIONS, hook_apps_fill,        NULL,                NULL },
     { KCFG_PATH_SHORTCUTS,    hook_sc_fill,          NULL,                NULL },
     { KCFG_PATH_AUTOTEXT,     hook_sc_autotext_fill, NULL,                NULL },
 };

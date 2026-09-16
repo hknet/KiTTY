@@ -57,5 +57,17 @@
  * to stamp it.
  */
 int kitty_selfcheck_guard(int gui);
+/*
+ * The stamp reading of ANY file, for the Applications leaf: 0 = the stamp
+ * verifies with this build's key and the file's hash matches it; 1 = the
+ * file fails (`reason` = "no stamp" / "truncated" / "bad stamp" / "modified"
+ * - a stamp another release's key signed reads as "bad stamp"); 2 = the
+ * file could not be read or parsed; 3 = this build carries no key
+ * (compiled without KITTY_SELFCHECK), so no stamp can be judged here.
+ * `sha_hex` receives the recomputed SHA-256 (64 hex digits) when it was
+ * computed, for a display.
+ */
+int kitty_selfcheck_file(const char *path, char *reason, size_t reasonsz,
+                         char *sha_hex, size_t hexsz);
 
 #endif /* KITTY_SELFCHECK_H */
