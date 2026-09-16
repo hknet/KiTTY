@@ -518,7 +518,7 @@ void InitWinMain( void ) {
 		*/
 	}
 
-	/* Both of these ask the storage layer which backend is active, so they must
+	/* This asks the storage layer which backend is active, so it must
 	 * run AFTER kitty_set_storage_mode() above - not next to the other one-time
 	 * startup repairs further up, where a portable run still looks like a
 	 * registry one and the registry branch fires by mistake.
@@ -527,11 +527,6 @@ void InitWinMain( void ) {
 	 * registry on every unlock. That is gone, so a store that relied on it gets
 	 * the state copied in once here - before anything tries to unlock. */
 	if( kitty_migrate_portable_mpw_state() ) { kitty_show_mpw_moved( NULL ) ; }
-	/* Same idea for the master password the OLD export behaviour created as a
-	 * side effect: drop it when nothing in the store is wrapped with it
-	 * Portable stores only - see the
-	 * function's comment for why the registry hive is left alone. */
-	kitty_retire_orphan_master_password() ;
 
 	// Make mandatory registry keys
 	snprintf( buffer, sizeof(buffer), "%s\\%s", kitty_registry_base(), "Commands" ) ;

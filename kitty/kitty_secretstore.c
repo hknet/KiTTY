@@ -946,24 +946,15 @@ char *kitty_pwfile_decode(char *line)
     return res;
 }
 
-/* ---- retiring a master password nothing is wrapped with -------------------
- * Exporting used to CREATE a master password as a side effect, so anyone who
- * exported on 0.84.1.48-0.84.1.65 has MasterPwSalt + MasterPwVerifier sitting
- * in their store - possibly a random one they were never told about. Stopping
- * that (the rest of this task) does not clean up what is already there.
- *
- * The rule is deliberately conservative: the state is removed ONLY when a scan
- * of the store finds no value wrapped with it. A master password that really
- * protects something is untouchable - MPW2 embeds its own salt, so deleting the
- * verifier would not unlock anything, it would just remove the check that tells
- * the user their password was wrong.
- *
- * Silent by design: we are removing something the
- * user never asked for, and explaining a master password they did not know they
- * had would confuse more than it helps. The debug log records what happened.
- *
- * Cost when there is nothing to do - the overwhelmingly common case - is one
- * state read that finds nothing, so the store scan never runs at all.
+/* ---- does the active store hold anything wrapped with the master password? --
+ * Answered by a scan of the sessions and proxies, in whichever backend is in
+ * use. kitty_migrate_portable_mpw_state() asks before it copies any
+ * master-password state into a portable store: with nothing wrapped, the
+ * store mints its own. (A startup repair that removed an orphan salt and
+ * verifier pair - the leftover of the 0.84.1.48-0.84.1.65 export behaviour,
+ * which minted a master password as a side effect - also asked here; it was
+ * retired once every install that could have carried the leftover had been
+ * started under a build that cleaned it.)
  */
 static int ksec_value_is_mpw(const char *v)
 {
@@ -1081,18 +1072,14 @@ static int store_has_mpw_wrapped_secret(void)
     return reg_subtree_has_mpw("\\Sessions") || reg_subtree_has_mpw("\\Proxies");
 }
 
-/* Master-password state that has been retired from the live names. Salt and
- * verifier are check material, not the secret: the salt is a public random input
- * to Argon2id and the verifier only proves a typed password is the right one.
- * Keeping a copy costs no confidentiality, and it is the only way a portable
- * store that still needs the salt can be repaired later - deleting the salt
+/* Master-password state that an earlier build moved out of the live names
+ * (the startup repair of an orphan pair archived rather than deleted in the
+ * hive; nothing writes these names any more). Salt and verifier are check
+ * material, not the secret: the salt is a public random input to Argon2id and
+ * the verifier only proves a typed password is the right one. They are still
+ * READ, because a portable store that depends on the archived salt can be
+ * repaired from them (kitty_migrate_portable_mpw_state) - deleting the salt
  * would make MPW1 values permanently unopenable. */
-/* Records that this hive really did hold MPW-wrapped values at some point.
- * 0.84.1.38-0.84.1.40 wrote MPW into the registry when PasswordScheme was 2;
- * every build since is DPAPI-only there, and a saved session converts itself on
- * the next save. The flag is what lets a later run tell "the master password
- * was in use and no longer is" apart from "it never protected anything here". */
-#define KSEC_MPW_USED_FLAG    "MasterPwUsedInRegistry"
 #define KSEC_MPW_RETIRED_SALT "RetiredMasterPwSalt"
 #define KSEC_MPW_RETIRED_VER  "RetiredMasterPwVerifier"
 
@@ -1102,28 +1089,6 @@ static int reg_base_read(const char *name, char *buf, DWORD bufsz)
     DWORD sz = bufsz;
     return RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, name, RRF_RT_REG_SZ,
                         NULL, buf, &sz) == ERROR_SUCCESS;
-}
-
-static void mpw_state_delete(const char *name)
-{
-    char *p = portable_item_path(KSEC_MPW_SUBDIR, name);
-    if (p) { DeleteFileA(p); sfree(p); }
-}
-
-/* Move a registry value to its archive name: KiTTY stops seeing a master
- * password, but the material survives for a portable store that still needs it
- * (see kitty_migrate_portable_mpw_state). Never a plain delete. */
-static void mpw_state_archive(const char *name, const char *retired)
-{
-    char buf[2048];
-    HKEY hk;
-    if (!reg_base_read(name, buf, sizeof(buf))) return;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) != ERROR_SUCCESS) return;
-    if (RegSetValueExA(hk, retired, 0, REG_SZ, (const BYTE *)buf,
-                       (DWORD)strlen(buf) + 1) == ERROR_SUCCESS)
-        RegDeleteValueA(hk, name);       /* only once the copy is safely there */
-    RegCloseKey(hk);
 }
 
 /* Prove that an archived salt+verifier really is this store's master-password
@@ -1239,71 +1204,6 @@ int kitty_migrate_portable_mpw_state(void)
     }
     if (!mpw_adopt_retired_state(salt, ver)) return 0;
     return 1;
-}
-
-/* Registry stores ARCHIVE rather than delete. A portable tree that has not yet
- * been opened under this build may still depend on the hive's salt (MPW1 carries
- * no salt of its own), and stores we have never seen cannot be enumerated, so
- * deleting hive state can never be proven safe - but renaming it out of the way
- * is, and kitty_migrate_portable_mpw_state() knows to look under the archive
- * names. Decided with the user 2026-07-28. */
-void kitty_retire_orphan_master_password(void)
-{
-    char *ver;
-    if (!store_is_file()) {
-        char b[2048];
-        DWORD used = 0, usz = sizeof(used);
-        int was_used = (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf,
-                                     KSEC_MPW_USED_FLAG, RRF_RT_REG_DWORD,
-                                     NULL, &used, &usz) == ERROR_SUCCESS && used);
-        if (!reg_base_read("MasterPwVerifier", b, sizeof(b))) return;
-        if (store_has_mpw_wrapped_secret()) {
-            /* Still in use: keep everything, and remember that it was, so the
-             * run that finds the last value gone knows what it is looking at. */
-            if (!was_used) {
-                HKEY hk;
-                DWORD one = 1;
-                if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
-                                    KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-                    RegSetValueExA(hk, KSEC_MPW_USED_FLAG, 0, REG_DWORD,
-                                   (const BYTE *)&one, sizeof(one));
-                    RegCloseKey(hk);
-                }
-            }
-            kitty_pwdebug("orphan MPW check: master password is in use in the hive, kept");
-            return;
-        }
-        /* Nothing wrapped. Two ways to get here, and both archive: the hive
-         * once used MPW and every value has since been re-saved as DPAPI
-         * (was_used), or the state was never protecting anything at all - the
-         * leftover of the old export behaviour, which is what SS7b is about. */
-        mpw_state_archive("MasterPwSalt", KSEC_MPW_RETIRED_SALT);
-        mpw_state_archive("MasterPwVerifier", KSEC_MPW_RETIRED_VER);
-        kitty_pwdebug("orphan MPW archived: hive holds nothing wrapped (was_used=%d)",
-                      was_used);
-        return;
-    }
-    {
-        char *v = portable_read_text_file(KSEC_MPW_SUBDIR, "MasterPwVerifier");
-        ver = v ? ksec_dup(v) : NULL;
-        if (v) sfree(v);
-    }
-    if (!ver) return;                    /* nothing set up: no scan, no cost */
-    free(ver);
-
-    if (store_has_mpw_wrapped_secret()) {
-        kitty_pwdebug("orphan MPW check: master password is in use, kept");
-        return;
-    }
-    mpw_state_delete("MasterPwSalt");
-    mpw_state_delete("MasterPwVerifier");
-    {
-        /* Only succeeds once the folder is empty, so a Security\ dir holding
-         * anything else is left alone. */
-        char *dir = portable_subdir_path(KSEC_MPW_SUBDIR);
-        if (dir) { RemoveDirectoryA(dir); sfree(dir); }
-    }
-    kitty_pwdebug("orphan MPW retired: nothing in the store was wrapped with it");
 }
 
 /* ---- .ktx forced-export glue (kitty_settings_forced.c / kitty_settings_load.c

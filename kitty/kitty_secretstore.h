@@ -40,11 +40,6 @@ int kitty_portable_password_dpapi(void);
  * store really has values wrapped with it. Returns 1 if it copied, so the caller
  * can tell the user to carry Security\ to any OTHER portable KiTTY of theirs. */
 int kitty_migrate_portable_mpw_state(void);
-/* Delete MasterPwSalt/MasterPwVerifier when a scan of the active store finds
- * nothing wrapped with them - the leftovers of the old export behaviour, which
- * created a master password as a side effect. Silent; keeps them when the
- * master password is genuinely in use. Call once at startup. */
-void kitty_retire_orphan_master_password(void);
 const char *kitty_secret_strip_plain(const char *stored);  /* borrowed */
 
 /* ---- export-bundle passphrase (transport protection) ----
