@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include "notepad.h"
+#include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 
 LRESULT CALLBACK Notepad_WndProc(HWND, UINT, WPARAM, LPARAM);
 int Notepad_open( HWND hwnd, HWND hEdit ) ;

@@ -2,6 +2,7 @@
 #include "storage.h"
 #include "../kitty/kitty_msgbox.h"   /* themed MessageBox routing */
 #include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
+#include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 
 #ifdef MOD_PERSO
 /* KiTTY helpers (putty.c does not include kitty.h) */

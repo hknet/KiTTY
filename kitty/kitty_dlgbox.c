@@ -23,6 +23,7 @@
 #include "kitty.h"
 #include "kitty_storage.h"
 #include "kitty_auxpos.h"
+#include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 
 // Centre a dialog in the middle of its parent window
 void CenterDlgInParent(HWND hDlg) {

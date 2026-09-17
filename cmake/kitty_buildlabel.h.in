@@ -1,0 +1,18 @@
+/*
+ * KiTTY: the label of an ad-hoc test build, shown in the About boxes and the
+ * launcher. Generated from cmake/kitty_buildlabel.h.in; undefined in a
+ * release build, where nothing must appear.
+ *
+ * It lives in a generated header rather than in the compiler definitions of a
+ * target because a label is set fresh for every test build: as a target-wide
+ * definition it rebuilt 247 objects per width (measured 236-262 s against 13 s
+ * for an unchanged tree), and even per-source definitions rewrite the target's
+ * flags file, which every object of that target depends on. Only the files
+ * that include this header rebuild when the label changes.
+ */
+#ifndef KITTY_BUILDLABEL_H
+#define KITTY_BUILDLABEL_H
+
+#cmakedefine KITTY_TEST_BUILD_LABEL "@KITTY_TEST_BUILD_LABEL@"
+
+#endif /* KITTY_BUILDLABEL_H */

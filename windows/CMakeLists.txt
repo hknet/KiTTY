@@ -857,12 +857,26 @@ target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BAC
 target_compile_options(kitty_portable PRIVATE -fcommon)
 
 set(KITTY_TEST_BUILD_LABEL "" CACHE STRING "Visible label for ad-hoc KiTTY test/debug builds (shown in About boxes); leave empty for releases")
-if(KITTY_TEST_BUILD_LABEL)
-  target_compile_definitions(kitty PRIVATE KITTY_TEST_BUILD_LABEL="${KITTY_TEST_BUILD_LABEL}")
-  target_compile_definitions(kitty_portable PRIVATE KITTY_TEST_BUILD_LABEL="${KITTY_TEST_BUILD_LABEL}")
-  target_compile_definitions(guiterminal PRIVATE KITTY_TEST_BUILD_LABEL="${KITTY_TEST_BUILD_LABEL}")
-  target_compile_definitions(pageant PRIVATE KITTY_TEST_BUILD_LABEL="${KITTY_TEST_BUILD_LABEL}")
-  target_compile_definitions(puttygen PRIVATE KITTY_TEST_BUILD_LABEL="${KITTY_TEST_BUILD_LABEL}")
+# The label goes into a GENERATED HEADER (cmake/kitty_buildlabel.h.in), which
+# only the files that show the label include. As a target-wide definition a
+# fresh label - one per test build, by rule - rebuilt 247 objects per width;
+# per-source definitions are no better, because they are written into the
+# target's flags file, which every object depends on.
+configure_file(${CMAKE_SOURCE_DIR}/cmake/kitty_buildlabel.h.in
+               ${GENERATED_SOURCES_DIR}/kitty_buildlabel.h)
+# ...and a file that uses the label without including that header would show
+# nothing, silently. The configure step refuses it.
+file(GLOB_RECURSE KITTY_LABEL_SCAN ${KITTY_DIR}/*.c ${CMAKE_CURRENT_SOURCE_DIR}/*.c)
+set(KITTY_LABEL_MISSING "")
+foreach(f ${KITTY_LABEL_SCAN})
+  file(READ ${f} _contents)
+  if(_contents MATCHES "KITTY_TEST_BUILD_LABEL" AND
+     NOT _contents MATCHES "kitty_buildlabel\\.h")
+    list(APPEND KITTY_LABEL_MISSING ${f})
+  endif()
+endforeach()
+if(KITTY_LABEL_MISSING)
+  message(FATAL_ERROR "KITTY_TEST_BUILD_LABEL is used without including kitty_buildlabel.h: ${KITTY_LABEL_MISSING}")
 endif()
 
 # KiTTY: opt-in build switch that tees the Event Log to

@@ -52,6 +52,7 @@
 #include "../kitty/kitty_oldwin_reg.h"
 #include "../kitty/kitty_notice.h"   /* KiTTY: kitty_notice_show */
 #include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 #ifdef DEBUG_IPC
 #define _WIN32_WINNT 0x0500            /* for ConvertSidToStringSid */
 #include <sddl.h>

@@ -26,6 +26,7 @@
 #include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
 #include "../kitty/kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "kitty_gui.h"
+#include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 
 #ifndef WM_DPICHANGED
 #define WM_DPICHANGED 0x02E0

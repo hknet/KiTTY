@@ -31,6 +31,7 @@
 #include "../kitty/kitty_text.h"     /* KiTTY: shared captions and menu words */
 #include "../kitty/kitty_renameguard.h"  /* KiTTY: refuse a foreign file name */
 #include "../kitty/kitty_selfcheck.h"    /* KiTTY: refuse a file changed after release */
+#include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 
 #ifdef MSVC4
 #define ICON_BIG        1

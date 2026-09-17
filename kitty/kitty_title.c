@@ -14,6 +14,7 @@
 
 #include "putty.h"
 #include "kitty_title.h"
+#include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 
 char *kitty_title_compose_sep(const char *base, const char *sep,
                               int portable, int restricted, int test_label)

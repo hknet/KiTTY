@@ -65,6 +65,7 @@
 #include "kitty_bridge.h"
 #include "kitty_exportbundle.h"
 #include "mini/mini.h"
+#include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 #ifdef MOD_PROXY
 #include "kitty_proxy.h"   /* kitty.c includes it mid-file, fenced the same way */
 #endif

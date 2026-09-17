@@ -22,6 +22,7 @@
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION, KITTY_LAUNCHER_HOTKEY_MAX */
 #include "kitty_commun.h"  /* GetCryptSaltFlag, MASKPASS */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
+#include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 #ifdef MOD_PROXY
 #include "kitty_proxy.h"   /* LoadProxyInfo, GetProxySelectionFlag */
 #include "kitty_workplace.h"   /* workplace proxy mode: is an arming held? */
