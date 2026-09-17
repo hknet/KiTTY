@@ -60,6 +60,20 @@ static HANDLE kwp_map = NULL;
 static struct kwp_record *kwp_view = NULL;
 
 /* Directory of the running EXE, lowercased, without a trailing slash. */
+/* One spelling for one folder. A process started through an 8.3 name
+ * (C:\PROGRA~1\KiTTY) reports that name from GetModuleFileName, while its
+ * sibling started through the long name reports C:\Program Files\KiTTY -
+ * the same folder, two strings, and both the section name (a hash of this
+ * string) and the holder check compare strings. A terminal started by the
+ * short path therefore read a launcher's arming as "off". */
+static void kwp_longpath(char *path, int len)
+{
+    char longp[MAX_PATH + 1];
+    DWORD n = GetLongPathNameA(path, longp, MAX_PATH);
+    if (n > 0 && n < MAX_PATH && (int)n < len)
+        strcpy(path, longp);
+}
+
 static int kwp_exedir(char *out, int len)
 {
     char path[MAX_PATH + 1];
@@ -68,6 +82,7 @@ static int kwp_exedir(char *out, int len)
     if (n == 0 || n >= MAX_PATH)
         return 0;
     path[n] = '\0';
+    kwp_longpath(path, sizeof(path));
     slash = strrchr(path, '\\');
     if (!slash)
         return 0;
@@ -129,6 +144,7 @@ static int kwp_holder_is_ours(DWORD pid)
         return 0;
     if (kitty_process_image_path(h, theirs, sz) && sz > 0) {
         theirs[sz] = '\0';
+        kwp_longpath(theirs, sizeof(theirs));
         if ((slash = strrchr(theirs, '\\')) != NULL) {
             *slash = '\0';
             CharLowerA(theirs);

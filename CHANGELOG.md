@@ -4,6 +4,20 @@ KiTTY++ is basically the full KiTTY feature set forward-ported and then some mor
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.11-beta — unreleased
+
+### New
+
+### Changed
+
+
+### Fixed
+
+- **Workplace proxy mode read as off by a terminal started through a short
+  path.** A terminal started as `C:\PROGRA~1\KiTTY\kitty.exe` did not find the
+  arming a launcher started as `C:\Program Files\KiTTY\kitty.exe` held, and
+  offered to switch the mode on. Both spellings are the same folder now.
+
 ## 0.85.1.10-beta — 2026-09-17
 
 ### New
