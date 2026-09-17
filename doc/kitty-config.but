@@ -1270,6 +1270,14 @@ session's configuration - including its own proxy - into your
 connection. Say which one it is here, per definition, or leave it at
 the first entry to follow \c{namedproxy} in \c{kitty.ini}.
 
+\b The jump host's \e{host key} is verified like any other host's: asked
+for on first contact, cached, then checked silently. A jump host given
+as a saved session is pinned by that session's manual host keys; one
+given as a hostname has no pins and relies on the cache. The target
+session's own manual host keys never apply to the jump host. Where no
+window can ask - the command-line tools, a hidden start - an unknown
+jump host is refused rather than accepted.
+
 \b \q{Username} and \q{Password} are the proxy's own credentials.
 \q{Show password} reveals what you typed. The password is stored
 protected at rest, like a session's.
