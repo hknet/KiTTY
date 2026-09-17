@@ -12,6 +12,7 @@
 #include "kitty_theme.h"           /* the app-wide colour theme */
 #include "../windows/putty-rc.h"   /* -demo-templates: the shared dialog ids */
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
+#include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin - a STATIC RegGetValueA import kills the loader there */
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
