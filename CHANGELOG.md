@@ -26,6 +26,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   theme.** "Cannot create kitty.ini" and "Unable to create sessions
   directory" were created before the dialog theming was in place and came
   up light on a dark setting.
+- **The terminal window's scroll bar follows the dark theme.** It stayed light
+  under a dark title bar and border.
+- **A dark title bar is redrawn on Windows 10 after theming and after a frame
+  change.** Windows 10 recolours a caption only when a window's activation
+  changes, so a window themed or reframed at another moment could show a light
+  title bar over dark contents.
 
 ## 0.85.1.10-beta — 2026-09-17
 

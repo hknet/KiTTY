@@ -655,6 +655,32 @@ static BOOL CALLBACK kt_theme_child(HWND child, LPARAM lp)
  * why one pass is not enough, and kitty_theme_refresh for the other caller.
  */
 #define KT_WM_RETHEME (WM_APP + 0x5C)
+/* Private message: redraw a Windows 10 dark caption after a frame change. */
+#define KT_WM_NCNUDGE (WM_APP + 0x5D)
+
+/*
+ * Windows 10 repaints a caption with the immersive dark flag only when the
+ * window's activation state changes; SWP_FRAMECHANGED alone leaves a visible
+ * window's title bar as it was. A window themed while it becomes active
+ * (the dialog hook) could keep a light title bar over a dark client for as
+ * long as it stayed open. So the caption is redrawn through a non-client
+ * deactivate/activate pair that ends in the window's real state. Windows 11
+ * paints the caption colours itself and needs none of this; a hidden window
+ * is painted fresh when it is shown.
+ */
+static void kt_nudge_caption(HWND w)
+{
+    static int win11 = -1;
+    bool active;
+
+    if (win11 < 0)
+        win11 = kt_build_at_least(22000) ? 1 : 0;
+    if (win11 || !w || !IsWindowVisible(w))
+        return;
+    active = (GetActiveWindow() == w);
+    SendMessage(w, WM_NCACTIVATE, active ? FALSE : TRUE, 0);
+    SendMessage(w, WM_NCACTIVATE, active ? TRUE : FALSE, 0);
+}
 
 void kitty_theme_refresh(HWND dlg)
 {
@@ -691,9 +717,17 @@ void kitty_theme_frame(HWND w, bool dark)
     p_DwmSetWindowAttribute(w, KT_DWMWA_CAPTION_COLOR, &caption, sizeof(caption));
     p_DwmSetWindowAttribute(w, KT_DWMWA_TEXT_COLOR, &captext, sizeof(captext));
     p_DwmSetWindowAttribute(w, KT_DWMWA_BORDER_COLOR, &border, sizeof(border));
+    /* The window's own scroll bar is non-client too and follows the window
+     * THEME, not the caption attribute: the same two calls the dialogs'
+     * controls get (kt_theme_child), NULL restoring the default when light. */
+    if (p_AllowDarkModeForWindow)
+        p_AllowDarkModeForWindow(w, dark);
+    if (p_SetWindowTheme)
+        p_SetWindowTheme(w, dark ? L"DarkMode_Explorer" : NULL, NULL);
     SetWindowPos(w, NULL, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                  SWP_FRAMECHANGED);
+    kt_nudge_caption(w);
 }
 
 void kitty_theme_apply(HWND dlg, bool dark)
@@ -774,6 +808,7 @@ void kitty_theme_apply(HWND dlg, bool dark)
     SetWindowPos(dlg, NULL, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                  SWP_FRAMECHANGED);
+    kt_nudge_caption(dlg);
 }
 
 HBRUSH kitty_theme_backbrush(HWND dlg)
@@ -1769,6 +1804,26 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
     switch (msg) {
       case KT_WM_RETHEME:
         kitty_theme_refresh(hwnd);
+        /* posted by kitty_theme_apply: by now the dialog is shown and its
+         * activation is settled, so a Windows 10 caption redraw lands */
+        kt_nudge_caption(hwnd);
+        return 0;
+
+      /* Windows 10: any frame change that is not an activation change - a
+       * SetWindowPos with SWP_FRAMECHANGED from anywhere, including this file -
+       * repaints the caption with the legacy LIGHT look, and it stays light
+       * until the next activation change. So after such a change a dark
+       * window's caption is redrawn through the activation path. Posted: the
+       * redraw must run after the frame change has finished, and it sends no
+       * SetWindowPos of its own, so it cannot come back here. */
+      case WM_WINDOWPOSCHANGED: {
+        const WINDOWPOS *wp = (const WINDOWPOS *)lParam;
+        if (wp && (wp->flags & SWP_FRAMECHANGED) && kt_is_dark_window(hwnd))
+            PostMessage(hwnd, KT_WM_NCNUDGE, 0, 0);
+        break;
+      }
+      case KT_WM_NCNUDGE:
+        kt_nudge_caption(hwnd);
         return 0;
 
       /* The menu bar. Answered only while dark, so a light window's bar is
