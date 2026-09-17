@@ -303,6 +303,18 @@ features are working and verified. Known limitations as of this release:
   public-key authentication (kageant) with SSH-2 keys, and avoid saving
   passwords unless you understand these limits.**
 
+- **The Applications panel can say "unverified" on a 64-bit install where
+  Windows cannot judge the signature.** Application > Security > Applications
+  judges each program by the checks it carries: the Authenticode signature
+  (verified by Windows) and the release stamp (verified with the public key
+  compiled into the release). Today only the 32-bit release carries the
+  stamp, so on a Windows that cannot verify the signature - a 7 without the
+  SHA-2 update or the publisher's root, a machine with a broken trust store -
+  a 64-bit KiTTY++ has nothing left to judge with and shows grey `unverified`
+  rows rather than a false verdict. The 32-bit release never shows that: its
+  stamp decides where the signature cannot. Stamping the 64-bit set too is
+  planned.
+
 - **Remote clipboard reads report when they could not be served.** A read request
   that arrives while another program holds the clipboard used to be refused in
   silence; it is now refused with a reason in the Event Log, so "nothing

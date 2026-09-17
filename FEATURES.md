@@ -39,6 +39,7 @@ one is available.
   - [Proxy choice](#proxy-choice)
   - [Workplace proxy mode](#workplace-proxy-mode)
   - [SSH handler (URL/OS integration)](#ssh-handler-urlos-integration)
+  - [Applications: the programs that travel with the install, checked](#applications-the-programs-that-travel-with-the-install-checked)
   - [Warning when an unverified agent serves your keys](#warning-when-an-unverified-agent-serves-your-keys)
 - **Technical features**
   - [Automatic command](#automatic-command)
@@ -518,7 +519,7 @@ A named proxy can also be an **SSH jump host**: pick one of the *SSH jump host* 
 - **SSH jump host (execute a command)** — for jump hosts where port forwarding is disabled but you can run programs: KiTTY logs in, runs the command from the *Command* field on the jump host, and uses that command's input/output as the tunnel. `%host` and `%port` in the command are replaced by the real destination, e.g. `nc %host %port` or `socat - TCP:%host:%port`.
 - **SSH jump host (invoke a subsystem)** — like *execute a command*, but starts a named SSH **subsystem** (the *Command* field holds the subsystem name) instead of a shell command. Only useful when the jump host's sshd is configured with a dedicated forwarding subsystem; if you don't know you need this, you don't.
 
-**Leaving the proxy password empty is normal for an SSH jump host** — the jump connection then authenticates like any other SSH session: keys loaded in **kageant** are tried automatically, then a private key file, and only if none of that works are you asked for a password at connect time. The jump host's host key is checked and cached like any other host's. (For the non-SSH types the empty password behaves differently: an HTTP or SOCKS5 proxy asks you for credentials only *after* it has rejected the anonymous attempt.)
+**Leaving the proxy password empty is normal for an SSH jump host** — the jump connection then authenticates like any other SSH session: keys loaded in **kageant** are tried automatically, then a private key file, and only if none of that works are you asked for a password at connect time. The jump host's host key is checked and cached like any other host's - against the host-key cache only: a session's *manual host keys* pin the destination, not the jump host. (For the non-SSH types the empty password behaves differently: an HTTP or SOCKS5 proxy asks you for credentials only *after* it has rejected the anonymous attempt.)
 
 **Where the jump host's settings come from.** Unlike OpenSSH's `ProxyJump`, the jump connection does *not* inherit the target session's settings — KiTTY loads a separate configuration for it, and which one depends on how the proxy was defined:
 
@@ -1043,7 +1044,7 @@ Three protections apply to every clipboard protocol at once:
 
 Pasting into a terminal executes whatever the clipboard contains, line by line — so an accidental paste of the wrong (or huge) clipboard can flood the shell with unintended commands. KiTTY can ask for confirmation before pasting more than a configurable number of characters, telling you how large the clipboard is so you can abort a mis-aimed paste.
 
-**How to enable:** on by default since 0.84.1.73-beta — a paste of more than 5120 characters asks first, as Windows Terminal does. Set `pastesize=<N>` in the kitty.ini `[KiTTY]` section to choose your own threshold, or `pastesize=0` to turn the confirmation off entirely.
+**How to enable:** on by default since 0.84.1.73-beta — a paste of more than 5120 characters asks first, as Windows Terminal does. The row lives on **Application > Security > Clipboard** as *"Warn before pasting more than [ ] characters"*; in `kitty.ini` it is `pastesize=<N>` in the `[KiTTY]` section. 0 never warns.
 
 (no screenshot)
 
