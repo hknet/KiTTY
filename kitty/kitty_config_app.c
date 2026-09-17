@@ -16,6 +16,7 @@
 #endif
 #include "kitty_proxy.h"   /* proxy-choice droplist: proxies[], GetProxySelectionFlag, MAX_PROXY */
 #include "kitty_workplace.h"  /* workplace proxy mode: query/request the arming */
+#include "kitty_osc52.h"      /* kitty_frame_restore_resting: the terminal frame follows the theme */
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION */
 #include "kitty_win.h"   /* SetTextToClipboard */
 #include "kitty_updater.h"
@@ -1362,6 +1363,10 @@ static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * next activated, which is the behaviour that was already there.
              */
             kitty_theme_apply(kitty_cfg_modal_owner(), kitty_theme_app_dark());
+            /* ...and the terminal's own title bar and border, through the
+             * resting-state path (a workplace green stays green). In the
+             * hand-off process there is no terminal and the call is a no-op. */
+            kitty_frame_restore_resting();
             /* ...and the popup menus of this process, from the next one
              * opened (the app mode, then FlushMenuThemes). */
             kitty_theme_app_mode(kitty_theme_app_pref());

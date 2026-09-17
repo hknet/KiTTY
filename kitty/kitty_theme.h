@@ -58,6 +58,9 @@ const char *kitty_theme_pref_to_string(int pref);
  * Safe to call again on the same window - that is how a live preview works.
  */
 void kitty_theme_apply(HWND dlg, bool dark);
+/* A non-dialog window's title bar and border in the theme (the terminal):
+ * dark = the theme's caption colours, light = the system's default. */
+void kitty_theme_frame(HWND w, bool dark);
 
 /*
  * Re-theme the children of a window kitty_theme_apply() has already been

@@ -664,6 +664,38 @@ void kitty_theme_refresh(HWND dlg)
     EnumChildWindows(dlg, kt_theme_child, (LPARAM)known->dark);
 }
 
+/*
+ * The title bar and border of a window that is NOT a dialog - the terminal.
+ * The same two layers the dialogs get (see kitty_theme_apply below): the
+ * immersive dark flag, which is all Windows 10 has, and on Windows 11 the
+ * caption, its text and the border in the theme's own colours. Light means
+ * the system's default painting, not a colour of ours, so a light KiTTY on a
+ * dark Windows looks like every other light window there. Callable before
+ * the window is shown (no flash) and again whenever the setting or the system
+ * changes; a frame-changed nudge makes DWM repaint the caption at once.
+ */
+void kitty_theme_frame(HWND w, bool dark)
+{
+    BOOL on = dark ? TRUE : FALSE;
+    COLORREF caption = dark ? KT_DARK_BACK : (COLORREF)0xFFFFFFFF;   /* DWMWA_COLOR_DEFAULT */
+    COLORREF captext = dark ? KT_DARK_TEXT : (COLORREF)0xFFFFFFFF;
+    COLORREF border  = dark ? KT_DARK_LINE : (COLORREF)0xFFFFFFFF;
+
+    if (!w || !kitty_theme_available() || !p_DwmSetWindowAttribute)
+        return;
+    if (FAILED(p_DwmSetWindowAttribute(w, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                                       &on, sizeof(on))))
+        p_DwmSetWindowAttribute(w, DWMWA_USE_IMMERSIVE_DARK_MODE_PRE20H1,
+                                &on, sizeof(on));
+    /* Windows 11 only; the three fail quietly elsewhere. */
+    p_DwmSetWindowAttribute(w, KT_DWMWA_CAPTION_COLOR, &caption, sizeof(caption));
+    p_DwmSetWindowAttribute(w, KT_DWMWA_TEXT_COLOR, &captext, sizeof(captext));
+    p_DwmSetWindowAttribute(w, KT_DWMWA_BORDER_COLOR, &border, sizeof(border));
+    SetWindowPos(w, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
+                 SWP_FRAMECHANGED);
+}
+
 void kitty_theme_apply(HWND dlg, bool dark)
 {
     BOOL on;

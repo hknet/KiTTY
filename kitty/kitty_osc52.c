@@ -29,6 +29,7 @@
 #include "kitty_text.h"     /* shared captions and wordings */
 #include "kitty_gui.h"
 #include "kitty_osc52.h"
+#include "kitty_theme.h"   /* kitty_theme_frame: the resting frame is the theme's */
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
 
@@ -960,6 +961,14 @@ static void osc52_set_frame_colour(HWND hwnd, COLORREF colour)
     }
     if (!fn || !hwnd)
         return;
+    /* At rest the frame is the THEME's frame (title bar and border follow
+     * the Appearance setting), not the system's default: the theme engine
+     * paints it, and repaints it on the way back from a tint. A tint still
+     * overrides both colours for its moment. */
+    if (colour == (COLORREF)DWMWA_COLOR_DEFAULT) {
+        kitty_theme_frame(hwnd, kitty_theme_app_dark());
+        return;
+    }
     fn(hwnd, DWMWA_CAPTION_COLOR, &colour, sizeof(colour));
     fn(hwnd, DWMWA_BORDER_COLOR, &colour, sizeof(colour));
 }

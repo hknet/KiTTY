@@ -10,6 +10,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **The terminal window's title bar and border follow the Appearance
+  setting.** Dark gives them the theme's dark caption like the dialogs; light
+  leaves them to Windows. The terminal's own colours are untouched, and the
+  workplace-mode green and the clipboard tints still take the frame for their
+  moment and return to the theme's frame.
 
 ### Fixed
 
@@ -17,6 +22,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   path.** A terminal started as `C:\PROGRA~1\KiTTY\kitty.exe` did not find the
   arming a launcher started as `C:\Program Files\KiTTY\kitty.exe` held, and
   offered to switch the mode on. Both spellings are the same folder now.
+- **The message boxes of a portable start from a read-only medium follow the
+  theme.** "Cannot create kitty.ini" and "Unable to create sessions
+  directory" were created before the dialog theming was in place and came
+  up light on a dark setting.
 
 ## 0.85.1.10-beta — 2026-09-17
 

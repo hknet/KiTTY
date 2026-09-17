@@ -265,6 +265,7 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
 #include "../kitty/kitty_notes.h"   /* the application notification, shown by the first window */
 #include "../kitty/kitty_storage.h" /* the one-time old-sessions notice bits */
 #include "../kitty/kitty_theme.h"   /* KiTTY: dark mode for the dialogs */
+#include "../kitty/kitty_theme_pref.h"   /* KiTTY: the theme preference, readable before InitWinMain */
 #include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 /* KiTTY: whether to look for a new release at startup - an application
  * setting in kitty.ini, not a per-session one (kitty/kitty_win.c). */
@@ -1397,6 +1398,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY core activation: initialise KiTTY (crypt, config dir, kitty.ini,
      * shortcuts, save-mode/registry). hinst is set; PuTTY registry exists so
      * no first-run dialog. */
+    /* KiTTY: the start-up inside InitWinMain can raise boxes of its own - on a
+     * read-only medium the store setup says it cannot create kitty.ini or the
+     * sessions directory - and a dialog created before the theming hook is
+     * in place stays light. Hook them too, with the preference read straight
+     * from kitty.ini, the registry or the system by the light resolver, which
+     * needs nothing loaded (kageant and kittygen start this way). Re-pointed
+     * to the application's own reading right after InitWinMain, below. */
+    kitty_theme_hook_dialogs(kitty_theme_pref_dark);
     NETDBG_TS("before InitWinMain");
     InitWinMain();
     NETDBG_TS("after InitWinMain");
@@ -1650,6 +1659,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             modalfatalbox("Unable to create terminal window: %s",
                           win_strerror(GetLastError()));
         }
+        /* KiTTY: the title bar and border follow the Appearance setting like
+         * the dialogs do - set before the window is shown, so it never flashes
+         * the other way. The client area stays the session's own colours. */
+#ifdef MOD_PERSO
+        kitty_theme_frame(wgs->term_hwnd, kitty_theme_app_dark());
+#endif
         /* The window's painter (paint.h): GDI, the one every build has;
          * KiTTY offers Direct2D on request ([KiTTY] renderer=d2d) and
          * falls back to GDI when the machine cannot provide it. */
@@ -6328,6 +6343,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 term_keyinput(wgs->term, CP_ACP, &c, 1);
         }
         return 0;
+#ifdef MOD_PERSO
+      case WM_SETTINGCHANGE:
+        /* KiTTY: the system switched between light and dark - a frame that
+         * follows the system (Appearance = follow the system) follows now,
+         * through the resting-state path so a workplace green is kept. */
+        if (lParam && ((unicode_window && !wcscmp((const wchar_t *)lParam, L"ImmersiveColorSet")) ||
+                       (!unicode_window && !strcmp((const char *)lParam, "ImmersiveColorSet"))))
+            kitty_frame_restore_resting();
+        break;
+#endif
       case WM_SYSCOLORCHANGE:
         if (conf_get_bool(wgs->conf, CONF_system_colour)) {
             /* Refresh palette from system colours. */

@@ -676,6 +676,8 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_hostkey_verify.c
   ${KITTY_DIR}/kitty_selfcheck.c   # KiTTY: the integrity stamp check; per target, needs crypto (see KITTY_SELFCHECK above)
   ${KITTY_DIR}/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block the release fills
+  ${KITTY_DIR}/kitty_theme_pref.c   # KiTTY: the theme preference read straight from the stores - the dialog hook goes in BEFORE InitWinMain, when ReadParameter has nothing loaded yet
+  ${KITTY_DIR}/kitty_inilight.c   # KiTTY: the light kitty.ini resolver kitty_theme_pref.c reads through
   ${KITTY_DIR}/kitty_userpath.c
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c
@@ -826,6 +828,8 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_hostkey_verify.c
   ${KITTY_DIR}/kitty_selfcheck.c   # KiTTY: the integrity stamp check; per target, needs crypto (see KITTY_SELFCHECK above)
   ${KITTY_DIR}/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block the release fills
+  ${KITTY_DIR}/kitty_theme_pref.c   # KiTTY: the theme preference read straight from the stores - the dialog hook goes in BEFORE InitWinMain, when ReadParameter has nothing loaded yet
+  ${KITTY_DIR}/kitty_inilight.c   # KiTTY: the light kitty.ini resolver kitty_theme_pref.c reads through
   ${KITTY_DIR}/kitty_userpath.c
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c
