@@ -1,6 +1,6 @@
 /* The text printed by "kitty -help" (and shown by the /help console command).
  *
- * AUDITED 2026-08-01 against the real command line: this list had been carried
+ * AUDITED against the real command line: this list had been carried
  * forward from KiTTY 0.76 and documented seventeen options that do not exist in
  * this port (-pass, -runagent, -knock, -localproxy, -keygen, -defini,
  * -convert-dir, -auto-store-sshkey, the -noXXX family) plus three that are

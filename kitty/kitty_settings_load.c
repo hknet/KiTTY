@@ -203,7 +203,7 @@ static void gprefs_from_str(const char *str,
 
 /* ---- load_open_settings_forced (kitty_settings.c:465-1122) ---- */
 /*
- * KiTTY 2026-08-02: a .ktx line that does not end in the continuation backslash
+ * KiTTY: a .ktx line that does not end in the continuation backslash
  * was written encrypted, so the legacy decode is about to run on it. That format
  * is DEPRECATED - still read, no longer written - and the user is told once,
  * because otherwise the only sign is that a feature they switched on has quietly
@@ -1017,7 +1017,7 @@ static void rstrip_eol_forced( char *s ) {
 	while( l > 0 && ( s[l-1]=='\n' || s[l-1]=='\r' ) ) { s[--l] = '\0' ; }
 }
 /*
- * KiTTY 2026-08-02: a .ktx line that does not end in the continuation backslash
+ * KiTTY: a .ktx line that does not end in the continuation backslash
  * was written encrypted, so we are about to run the legacy decode on it. That
  * format is DEPRECATED - we still read it, we no longer write it - and the user
  * should be told once, because otherwise the only sign is that a feature they

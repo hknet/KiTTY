@@ -5952,8 +5952,8 @@ static bool clip_write_gate(Terminal *term, const char **err)
         return false;
 
     /*
-     * KiTTY: the focus rule applies to writes as well as reads (decided
-     * 2026-08-02). "KiTTY does not touch your clipboard unless you are looking at
+     * KiTTY: the focus rule applies to writes as well as reads.
+     * "KiTTY does not touch your clipboard unless you are looking at
      * that window" is worth more for being one sentence with no exceptions in it,
      * and it also means no host can change what you are about to paste at a
      * moment you were not watching.

@@ -152,7 +152,7 @@ HWND kitty_cfg_item(HWND dlg, int id)
 /* A button that shares a row with a label (staticbtn, static2btn): the
  * 23 px Windows standard at Segoe UI 9 is 12 units, and 14 made those
  * rows 16 units apart - a visible spread next to 11-unit checkbox rows
- * (kittygen's Actions box, 2026-09-02). The free-standing buttons of a
+ * (kittygen's Actions box). The free-standing buttons of a
  * dialog's bottom row keep PUSHBTNHEIGHT. */
 #define STATICBTNHEIGHT 12
 #define PROGBARHEIGHT 14

@@ -1971,7 +1971,7 @@
 #define KT_XFER_UPLOAD_OF                            "Upload of \"%s\""
 #define KT_XFER_UPLOADING                            "%sUploading  %s  ->  %s\r\n\r\n"
 #define KT_XFER_DOWNLOAD_OF                          "Download of \"%s\""
-/* Get File overwrite protection (approved 2026-09-13). Single file: the
+/* Get File overwrite protection. Single file: the
  * Save-As dialog title (the folder picker KT_XFER_GETFILE_PICK_TITLE stays for
  * several files). Several named files that already exist: the themed 3-button
  * box. Wildcard/folder downloads: a visible staging folder + a held-open lock,

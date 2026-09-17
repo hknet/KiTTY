@@ -44,7 +44,7 @@ endfunction()
 # crypto (per packet on every SSH byte), and the window's paint path
 # (windows/window.c). -O3's extra inlining and unrolling pay off there; in
 # the dialogs, the settings readers and the agent they only add code.
-# Measured 2026-09-03: pinning terminal.c alone left bulk output 30 %
+# Measured: pinning terminal.c alone left bulk output 30 %
 # slower, because the loop is wider than one file. The -O2 is set here,
 # before any subdirectory, so every target sees it; the -O3 goes on as a
 # per-target / per-source option below, which the compiler applies after

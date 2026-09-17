@@ -498,8 +498,8 @@ static void hk_verdict_set(struct hk_verdict *v, const char *status,
     v->when = dupstr(when ? when : "");
 }
 
-/* An ISO stamp "2026-08-01T09:00:00" -> the date "2026-08-01" (the column)
- * or "2026-08-01 09:00:00" (the detail); "-" for none. Static buffer. */
+/* An ISO stamp "YYYY-MM-DDThh:mm:ss" -> the date "YYYY-MM-DD" (the column)
+ * or "YYYY-MM-DD hh:mm:ss" (the detail); "-" for none. Static buffer. */
 static const char *hk_stamp(const char *iso, bool date_only)
 {
     static char buf[32];

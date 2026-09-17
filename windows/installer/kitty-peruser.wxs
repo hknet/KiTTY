@@ -36,7 +36,7 @@
     <util:CloseApplication Id="CloseTel"     Target="kitty_tel.exe"   CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
 
     <!-- KiTTY: the matching MSIDISABLERMRESTART SetProperty was REMOVED here too
-         on 2026-08-03 - it was scheduled after the Restart Manager session opens
+         - it was scheduled after the Restart Manager session opens
          and so could not have had any effect. Full reasoning, and the parked
          product question it raises, in kitty-system.wxs. -->
 

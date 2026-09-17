@@ -1639,7 +1639,7 @@ CONF_OPTION(printclip, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("PrintToCli
 /* KiTTY: may a remote host put text on the local clipboard with OSC 52?
  * 0=deny, 1=allow, 2=ask-once-per-session (OSC52_CLIPBOARD_* in putty.h).
  *
- * Default ASK (changed on a review of the defaults, 2026-08-05). That is one step
+ * Default ASK (changed on a review of the defaults). That is one step
  * stricter than the comparable terminals: Ghostty permits OSC 52 writes
  * unconditionally, Alacritty ships "OnlyCopy" (write yes, read no), kitty writes
  * by default. This shipped as ALLOW for exactly that reason.
@@ -1775,7 +1775,7 @@ CONF_OPTION(osc5522_paste_token_secs, VALUE_TYPE(INT), DEFAULT_INT(10), SAVE_KEY
 CONF_OPTION(clipboard_writes_per_sec, VALUE_TYPE(INT), DEFAULT_INT(10), SAVE_KEYWORD("ClipboardWritesPerSecond"),)
 /* KiTTY: largest single remote-clipboard payload we will hold, in megabytes.
  * Applies to OSC 52 and to far2l alike; default 16 (lowered from 64 on a review
- * of the defaults, 2026-08-05).
+ * of the defaults).
  *
  * Sized for an image rather than a line of text, because far2l carries arbitrary
  * Windows clipboard formats. 64 came from the worst case anyone could name - an

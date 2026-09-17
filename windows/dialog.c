@@ -1867,7 +1867,7 @@ static void kitty_cfg_panel_build(PortableDialogStuff *pds,
      * button keeps its template height, so a row mixing them comes out of
      * the layout top-aligned with the buttons hanging below the field -
      * a pixel-line at 96 DPI, plainly crooked at 200% (the Broadcast key
-     * row, 2026-08-31). The label/combo snap above reaches only a STATIC
+     * row). The label/combo snap above reaches only a STATIC
      * and COMBOBOX inside ONE control; this pass works across controls
      * sharing a row. Anything taller than 20 dialog units - list boxes,
      * multi-line texts - takes no part: a button beside a tall list is
@@ -2195,8 +2195,8 @@ static bool kitty_cfg_warmup_step(PortableDialogStuff *pds)
      * click goes straight THROUGH it to whatever is behind - which then
      * takes the foreground and the box appears to fall to the background by
      * itself. This ran on a 120 ms timer for the whole warm-up, leaving the
-     * box unclickable for about 5% of the first seconds: measured on
-     * 2026-08-25 by polling the window style from another process, 32,105
+     * box unclickable for about 5% of the first seconds: measured by
+     * polling the window style from another process, 32,105
      * of 602,604 samples, in OFF/ON pairs 10-40 ms apart. Small, and it
      * still swallowed the click that made hknet/KiTTY#38 - a fifth of the
      * clicks in that window is not the same as a fifth of the time.
@@ -3420,7 +3420,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                              hwnd, PanelHostProc);
             if (kitty_cfg_panel_host) {
                 /*
-                 * NO WS_EX_COMPOSITED on the host either. Tried 2026-09-04
+                 * NO WS_EX_COMPOSITED on the host either. Tried
                  * against the panel-switch flash (a switch erases the host
                  * and the new panel's controls paint over the erase, which
                  * the eye sees as a blank flash per switch): measured with
@@ -4094,8 +4094,8 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
              *
              * InvalidateRect(hwnd, NULL, true) erased and redrew everything -
              * the category tree, the buttons, the lot - on every panel switch,
-             * even though only the right-hand side changed. Measured on
-             * 2026-08-19: a quarter of the time spent switching panels was in
+             * even though only the right-hand side changed. Measured:
+             * a quarter of the time spent switching panels was in
              * NtGdiPatBlt, i.e. erasing background that was about to be covered
              * by the same controls as before.
              *
@@ -4150,8 +4150,8 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                              * panel area's. The button row and the strip
                              * above the panel are the same as before the
                              * switch, and erasing them was the flash that
-                             * remained after the freeze frame (reported
-                             * 2026-09-04) - the host harness never sampled
+                             * remained after the freeze frame - the host
+                             * harness never sampled
                              * them. */
                             RECT gutter, area;
                             kitty_cfg_panel_rect(hwnd, &area);

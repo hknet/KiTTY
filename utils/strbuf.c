@@ -28,8 +28,8 @@ void *strbuf_append(strbuf *buf_o, size_t len)
      * sgrowarray_general is a macro that ALWAYS calls safegrowarray(), which
      * range-checks its arguments with four asserts before discovering there is
      * nothing to do. That is fine for a few appends; the terminal's scrollback
-     * compressor drives this one BYTE AT A TIME through put_byte(), so on
-     * 2026-08-19 a profile of bulk output found safegrowarray at the top of the
+     * compressor drives this one BYTE AT A TIME through put_byte(), so a
+     * profile of bulk output found safegrowarray at the top of the
      * histogram - reached, and returning immediately, millions of times.
      *
      * The condition is safegrowarray's own "the size is already enough" test

@@ -431,8 +431,8 @@ static void badge_init(D2DPainter *d)
     d->badge_margin = 10.0f * scale;
     d->badge_t0 = GetTickCount();
     SetPropA(d->hwnd, "KiTTY.painter.d2d", (HANDLE)d);
-    /* 16 ms: a fade redrawn ten times a second reads as steps (noted
-     * 2026-09-04); at display rate it is a fade. The corner is small. */
+    /* 16 ms: a fade redrawn ten times a second reads as steps;
+     * at display rate it is a fade. The corner is small. */
     SetTimer(d->hwnd, BADGE_TIMER_ID, 16, badge_tick);
 }
 

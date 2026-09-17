@@ -4,7 +4,7 @@
  *
  * RegDeleteTreeA and RegGetValueA are Vista+; a STATIC import of either
  * kills the whole process in the LOADER on Windows XP ("Entry Point not
- * Found", first XP VM run, 2026-09-01) - the exact failure class
+ * Found" on the first XP run) - the exact failure class
  * kitty_oldwin.c exists for. Included AFTER windows.h in each consumer .c
  * file; never from a shared header, and never from kitty_oldwin.c itself,
  * which needs the real names to resolve and call.

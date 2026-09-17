@@ -172,8 +172,8 @@ static void RunSessionWithConfSettings(Conf *conf) {
  * written to the store are visible to every process on the machine, they
  * include CONF_password, they are left behind if the child dies - and the
  * writer cannot know when the reader is done, which is exactly the race that
- * made "Inherit New Session..." silently inherit nothing (measured
- * 2026-08-08). A file mapping is private to the two processes, needs no name,
+ * made "Inherit New Session..." silently inherit nothing.
+ * A file mapping is private to the two processes, needs no name,
  * and stays alive precisely as long as one of them holds a handle. */
 void RunConfigBoxWithConfSettings(Conf *conf) {
     char exe[2048];

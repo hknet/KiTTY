@@ -608,8 +608,8 @@ void kageant_media_gone(void)
          * The AGENT holds one key, however many files it came from. If the same
          * key is also loaded from a file that is still reachable - the same key
          * kept on a stick AND on the local disk - then unloading it because the
-         * stick has gone takes away a key the user still has. Measured
-         * 2026-08-08: unplugging cost a key that was equally available locally.
+         * stick has gone takes away a key the user still has: unplugging
+         * cost a key that was equally available locally.
          */
         for (j = 0; j < g_nloaded && !still_backed; j++) {
             if (j == i || j >= g_nblobs || !g_loaded_blobs[j])
@@ -641,7 +641,7 @@ void kageant_media_gone(void)
                  * whatever is at that path: unplug, swap the file, plug in, and
                  * the swap is accepted and adopted as the new baseline.
                  *
-                 * Reported from a real stick 2026-08-13. It survived testing
+                 * Seen on a real stick. It survived testing
                  * because pending entries have two origins and only the other
                  * one - the stored startup list - was ever exercised; that one
                  * carries a fingerprint, so the check looked complete.
@@ -677,7 +677,7 @@ void kageant_media_gone(void)
  * Removing a key in the View Keys window used to leave the startup list alone,
  * which is only ever saved when a key is ADDED. So the key came back at the
  * next start, and nothing in the UI could stop it - the list is not editable
- * anywhere else. Measured 2026-08-08.
+ * anywhere else.
  *
  * By blob, and ALL matching entries: the same key can be loaded from more than
  * one file (a copy on a stick and a copy on the disk), the agent holds it once,
@@ -1302,7 +1302,7 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
              * Without this the deferred flag became permanent by accident: the
              * startup list is saved from the in-memory state, so the next time
              * any key was added by hand the whole list was written out with
-             * this key now marked ",encrypted". Measured 2026-08-08 - keys the
+             * this key now marked ",encrypted" - keys the
              * user had deliberately added un-deferred came back deferred a
              * session later.
              */

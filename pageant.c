@@ -57,8 +57,7 @@ static bool pageant_local = false;
  * These paths are shared: the agent itself uses them to add its own keys, and
  * a second instance uses them to hand a key to the agent already running. The
  * message said "the already running agent" either way, so kageant refusing one
- * of its own startup keys announced an agent that was not there - measured
- * 2026-08-13, from a report of exactly that box.
+ * of its own startup keys announced an agent that was not there.
  */
 static const char *pageant_refuser(void)
 {

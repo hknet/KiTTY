@@ -1532,7 +1532,7 @@ char *ksec_legacy_decrypt_hostterm(const char *stored, const char *host,
  *
  * The unmarked case is a guess, but a well-constrained one: it requires the
  * legacy header (ksec_has_legacy_header) AND a successful decode AND printable
- * output. Measured 2026-07-27 against the real bcrypt library, that mistakes
+ * output. Measured against the real bcrypt library, that mistakes
  * cleartext for legacy about twice per 500,000 passwords, against roughly 6%
  * for the decode+printable test alone, and it rejects none of 480,000 genuine
  * legacy values. PLAIN: remains the deterministic answer for anyone who needs

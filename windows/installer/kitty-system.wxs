@@ -42,7 +42,7 @@
     <!-- KiTTY: there was a SetProperty here suppressing the Restart Manager's
          RESTART leg for SYSTEM-context deployments (SCCM, Intune, a SYSTEM
          scheduled task), where there is no interactive desktop to relaunch into.
-         REMOVED 2026-08-03 as unprovable dead weight. It could not have been
+         REMOVED as unprovable dead weight. It could not have been
          doing its job:
 
          MSIDISABLERMRESTART only has an effect if it is set BEFORE the Restart

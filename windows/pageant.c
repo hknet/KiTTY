@@ -1539,7 +1539,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
              * This fires while kageant is loading its own remembered keys -
              * nobody clicked anything - and a modal here stops the agent's
              * message loop, so the agent answers no requests at all until
-             * somebody dismisses it. Measured 2026-08-13: an ssh-add against
+             * somebody dismisses it. Measured: an ssh-add against
              * the pipe hung indefinitely while this box was up at startup, and
              * every ssh/git/scp call would have done the same. An informational
              * dialog must never be able to take the agent off the air.

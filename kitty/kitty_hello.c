@@ -1386,7 +1386,7 @@ static bool khw_run_on_thread(void (*fn)(void *), void *arg, HWND caller)
      * waits (named-pipe accepts arrive as handle events). Pumping only
      * window messages left the agent's pipe refusing clients (one busy
      * instance, never turned over) for as long as a Hello prompt was
-     * open: every ssh/git call hung. Measured 2026-08-23:
+     * open: every ssh/git call hung. Measured:
      * ERROR_PIPE_BUSY at 2/6/15 s into an unanswered startup prompt. */
     for (;;) {
         HandleWaitList *hwl = get_handle_wait_list();

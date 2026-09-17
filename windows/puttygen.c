@@ -1793,7 +1793,7 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
     }
 
     /* KiTTY: NOT ssh_key_free() - a generated key is interior to state, and
-     * freeing it that way killed kittygen on the spot (reproduced 2026-07-29
+     * freeing it that way killed kittygen on the spot (reproduced
      * with a CA-signed certificate for a just-generated Ed25519 key). */
     free_current_ssh2_key(state);
     state->ssh2key.key = newkey;
@@ -1842,7 +1842,7 @@ static void start_generating_key(HWND hwnd, struct MainDlgState *state)
      * either), and the generators don't initialise every field of their
      * member - rsa_generate never touches RSAKey.comment, so freersakey()
      * would later sfree() whatever stale pointer of an old eddsa/ecdsa key
-     * happened to overlay it (crashed live 2026-08-10: generate Ed25519,
+     * happened to overlay it (crashed live: generate Ed25519,
      * then generate RSA). The members all overlay each other, so zeroing
      * each one in turn clears the union's full extent. */
     memset(&state->key, 0, sizeof(state->key));
@@ -2278,7 +2278,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             endbox(&cp);
         /* KiTTY: the window's height follows the layout, not the template.
          * The template's 309 units were measured for the old row heights;
-         * every later change to a row (the Actions buttons, 2026-09-02)
+         * every later change to a row (the Actions buttons)
          * left a blank band above the bottom edge. cp.ypos is the first
          * free unit below the last box; one bottom border of the same 4
          * units the layout started with closes the window. */

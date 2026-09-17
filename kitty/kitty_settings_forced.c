@@ -28,7 +28,7 @@
 #include "kitty_settings.h"
 
 /*
- * KiTTY 2026-08-02: exported .ktx files are no longer written encrypted.
+ * KiTTY: exported .ktx files are no longer written encrypted.
  *
  * The "encryption" was `cryptstring` under MASTER_PASSWORD - a constant compiled
  * into every build and visible in the build file - so it could be undone by
