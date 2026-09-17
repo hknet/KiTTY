@@ -36,6 +36,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **The two one-shot registry repairs no longer touch a hive that is not in
+  use.** The repair of the persisted ShiftedArrowKeys default and the
+  SCPAutoPwd migration address the kapper.net hive by name and left their
+  done-markers there even when KiClassName pointed the store at PuTTY's hive,
+  creating the KiTTY key as a side effect. They now run only when kapper.net
+  is the hive in use.
 - **A stored session password works again through an SSH jump host**
   (hknet/KiTTY#51). 0.85.1.9 handed the login the jump host accepted to the
   session as the password that worked, so the target then received the

@@ -348,6 +348,15 @@ void MigrateOldKittyHive( void ) {
 	}
 }
 
+/* The one-shot repairs below address the kapper.net\\KiTTY hive by literal
+ * path (see the note above RepairSharrowDefaults). They run only when that is
+ * the hive in use, else a run under another hive would create kapper.net\\KiTTY
+ * just to leave a marker in it. */
+extern const char *kitty_registry_base( void ) ;
+static int kitty_repairs_own_hive( void ) {
+	return strcmp( kitty_registry_base(), "Software\\kapper.net\\KiTTY" ) == 0 ;
+}
+
 /* KiTTY 0.84: one-time repair of the ShiftedArrowKeys default regression.
  * The 0.84 port inherited PuTTY's SHARROW_APPLICATION(0) compiled default instead
  * of KiTTY's historical SHARROW_BITMAP(1). A session migrated from the old 9bis
@@ -372,6 +381,11 @@ void RepairSharrowDefaults( void ) {
 	char cur[cstMaxRegLength+2], old[cstMaxRegLength+2] ;
 	char name[MAX_KEY_LENGTH+1], kpath[512], oldsess[512] ;
 	DWORD idx, len ;
+
+	/* Only when kapper.net\\KiTTY is the hive this run uses (KiClassName can
+	 * point the store at another hive): the repair reads and marks THAT hive
+	 * by literal path, and must not create it as a side effect under any other. */
+	if( !kitty_repairs_own_hive() ) return ;
 
 	/* one-time guard: skip if we've already run */
 	if( GetValueDataN( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SHARROWREPAIRDONE, cur, sizeof(cur) ) != NULL )
@@ -416,6 +430,11 @@ void MigrateScpAutoPwd( void ) {
 	char cur[cstMaxRegLength+2] ;
 	char name[MAX_KEY_LENGTH+1], kpath[512] ;
 	DWORD idx, len ;
+
+	/* Only when kapper.net\\KiTTY is the hive this run uses (KiClassName can
+	 * point the store at another hive): the repair reads and marks THAT hive
+	 * by literal path, and must not create it as a side effect under any other. */
+	if( !kitty_repairs_own_hive() ) return ;
 
 	/* one-time guard: skip if we've already run */
 	if( GetValueDataN( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SCPAUTOPWDMIGRATED, cur, sizeof(cur) ) != NULL )
