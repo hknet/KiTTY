@@ -4,7 +4,7 @@ KiTTY++ is basically the full KiTTY feature set forward-ported and then some mor
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.10-beta — unreleased
+## 0.85.1.10-beta — 2026-09-17
 
 ### New
 
