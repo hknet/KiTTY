@@ -19,6 +19,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **Every program of the 32-bit package carries the release stamp.** Before,
+  five did (the terminal, the portable terminal, klink, kscp, ksftp) and the
+  new Applications panel read the other five - kageant among them - as a
+  WARNING on every 32-bit install. Now all ten are stamped; kageant,
+  kittygen and kittygen-cli also verify their stamp at startup like the
+  first five, and kitty_pterm and kitty_tel carry it for the panel and the
+  release check to verify.
 - **Application > Security > Passwords is now "Interactive Login".** The leaf
   holds the one switch about a login typed at the SSH prompts; the old name
   read like the place where stored passwords live. Help links and the

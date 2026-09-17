@@ -19,6 +19,7 @@
 #include "kitty/kitty_hello.h"       /* KiTTY: Hello-protected keys */
 #include "kitty/kitty_hello_keys.h"
 #include "kitty/kitty_renameguard.h" /* KiTTY: refuse a foreign file name */
+#include "kitty/kitty_selfcheck.h"   /* KiTTY: refuse a file changed after release */
 #endif
 #include "kitty/kitty_protkey.h"   /* KiTTY (#4): shared protected-key core */
 
@@ -318,6 +319,10 @@ int main(int argc, char **argv)
     /* KiTTY: and, in a signed release build, does this file still carry our
      * signature? Compiled to nothing in a dev or test build. */
     if (kitty_signature_guard(0))
+        return 1;
+    /* KiTTY: and, in a stamped release build, does this file still match its
+     * integrity stamp? Compiled to nothing in a dev or test build. */
+    if (kitty_selfcheck_guard(0))
         return 1;
 #endif
 

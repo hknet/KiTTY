@@ -104,9 +104,11 @@ endif()
 #
 # Per TARGET, not on `utils`: the check needs `crypto`, which comes before
 # `utils` in the single-pass static link and which psocks does not link at
-# all. kitty_selfcheck.c is listed on the five opted-in targets (kitty,
-# kitty_portable, plink, pscp, psftp) and kitty_selfcheck_target() below
-# gives each of them the defines.
+# all. kitty_selfcheck_stamp.c (the .ktstamp block) is listed on all ten
+# shipped targets, kitty_selfcheck.c (the startup check) on the eight that link
+# crypto - pterm and puttytel carry the stamp and are verified by the release
+# check and the Applications panel, but do not check themselves - and
+# kitty_selfcheck_target() below gives each of them the defines.
 #
 # The public key of the release is a generated header OUTSIDE the repository
 # (a fresh pair per release, the private half destroyed after stamping): by
@@ -128,7 +130,7 @@ if(KITTY_SELFCHECK)
   if(NOT EXISTS "${KITTY_SELFCHECK_KEY_HEADER}")
     message(FATAL_ERROR "KITTY_SELFCHECK is ON but the public-key header is missing: ${KITTY_SELFCHECK_KEY_HEADER} - generate it before the build")
   endif()
-  message(STATUS "KITTY_SELFCHECK: the five stamped binaries will verify their own integrity stamp at startup (key: ${KITTY_SELFCHECK_KEY_HEADER})")
+  message(STATUS "KITTY_SELFCHECK: all ten shipped binaries carry the stamp, the eight with crypto verify it at startup (key: ${KITTY_SELFCHECK_KEY_HEADER})")
   if(KITTY_SELFCHECK_FAULT)
     message(STATUS "KITTY_SELFCHECK_FAULT: TEST BUILD - the fault switch is compiled in; these binaries are never stamped for a release")
   endif()
@@ -219,6 +221,8 @@ add_library(guimisc STATIC
 
 add_executable(pageant
   pageant.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_selfcheck.c   # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block the release fills
   help.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
   ${CMAKE_SOURCE_DIR}/kitty/kitty_pageant.c   # KiTTY: kageant additions (split out of pageant.c)
@@ -257,10 +261,12 @@ target_link_libraries(pageant
                           # no timers, so timing.c isn't pulled earlier.
 set_target_properties(pageant PROPERTIES WIN32_EXECUTABLE ON)
 installed_program(pageant)
+kitty_selfcheck_target(pageant)
 
 add_sources_from_current_dir(plink no-jump-list.c nohelp.c plink.rc
   ../kitty/kitty_crashlog.c
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
+  ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_hostkeys.c        # KiTTY: klink -knownhosts (the store, listed)
   ../kitty/kitty_hostkey_scan.c    # KiTTY: klink -scan (our ssh-keyscan)
   ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
@@ -271,6 +277,7 @@ kitty_selfcheck_target(plink)
 add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
   ../kitty/kitty_crashlog.c
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
+  ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(pscp generated_licence_h)
@@ -279,6 +286,7 @@ kitty_selfcheck_target(pscp)
 add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc
   ../kitty/kitty_crashlog.c
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
+  ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(psftp generated_licence_h)
@@ -307,6 +315,7 @@ installed_program(putty)
 
 add_executable(puttytel
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block only - no crypto here, so no startup check
   window.c
   paint-gdi.c
   ${CMAKE_SOURCE_DIR}/stubs/no-hello-keys.c  # KiTTY: no key auth here
@@ -328,9 +337,12 @@ target_link_libraries(puttytel
   ${platform_libraries})
 set_target_properties(puttytel PROPERTIES WIN32_EXECUTABLE ON)
 installed_program(puttytel)
+kitty_selfcheck_target(puttytel)
 
 add_executable(puttygen
   puttygen.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_selfcheck.c   # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block the release fills
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
@@ -368,9 +380,12 @@ target_link_libraries(puttygen
   ${platform_libraries} crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_${KITTY_LIBS_BITS}.a)  # storage.c password crypto (DPAPI + legacy bcrypt)
 set_target_properties(puttygen PROPERTIES WIN32_EXECUTABLE ON)
 installed_program(puttygen)
+kitty_selfcheck_target(puttygen)
 
 add_executable(kittygen_cli
   ${CMAKE_SOURCE_DIR}/cmdgen.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_selfcheck.c   # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block the release fills
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys (container; no UI used here)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
@@ -399,11 +414,13 @@ target_link_libraries(kittygen_cli
   ${platform_libraries} crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_${KITTY_LIBS_BITS}.a)  # storage.c password crypto (DPAPI + legacy bcrypt)
 # console subsystem - no WIN32_EXECUTABLE
 installed_program(kittygen_cli)
+kitty_selfcheck_target(kittygen_cli)
 
 
 if(HAVE_CONPTY)
   add_executable(pterm
     ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c
+    ${CMAKE_SOURCE_DIR}/kitty/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block only - no crypto here, so no startup check
     window.c
     paint-gdi.c
     ${CMAKE_SOURCE_DIR}/stubs/no-hello-keys.c  # KiTTY: no key auth here
@@ -425,6 +442,7 @@ if(HAVE_CONPTY)
     ${platform_libraries})
   set_target_properties(pterm PROPERTIES WIN32_EXECUTABLE ON)
   installed_program(pterm)
+  kitty_selfcheck_target(pterm)
 else()
   message("ConPTY not available; cannot build Windows pterm")
 endif()
@@ -657,6 +675,7 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_hostkeys.c
   ${KITTY_DIR}/kitty_hostkey_verify.c
   ${KITTY_DIR}/kitty_selfcheck.c   # KiTTY: the integrity stamp check; per target, needs crypto (see KITTY_SELFCHECK above)
+  ${KITTY_DIR}/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block the release fills
   ${KITTY_DIR}/kitty_userpath.c
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c
@@ -806,6 +825,7 @@ add_executable(kitty_portable
   ${KITTY_DIR}/kitty_hostkeys.c
   ${KITTY_DIR}/kitty_hostkey_verify.c
   ${KITTY_DIR}/kitty_selfcheck.c   # KiTTY: the integrity stamp check; per target, needs crypto (see KITTY_SELFCHECK above)
+  ${KITTY_DIR}/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block the release fills
   ${KITTY_DIR}/kitty_userpath.c
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c

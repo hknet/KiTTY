@@ -47,18 +47,13 @@
 static const unsigned char kt_pubkey[KT_ED25519_PUB_LEN] =
     KITTY_SELFCHECK_PUBKEY_BYTES;
 
-/*
- * The stamp. A read-only block in its own section so the stamp tool finds it
- * by NAME in the section table and never by searching for bytes. The magic is
- * present from the start (so the block is real initialised data and not a
- * BSS candidate); version 0 says "reserved, never stamped", which the check
- * reports as `no stamp`. `used` keeps the linker from dropping it: nothing
- * in the program reads this copy - the check reads the stamp from the FILE,
- * exactly as the stamp tool does.
- */
-static const unsigned char kt_stamp_block[KT_STAMP_SIZE]
-    __attribute__((section(KT_STAMP_SECTION), used, aligned(16))) =
-    { 'K', 'T', 'S', 'T', 'A', 'M', 'P', 0 };
+/* The stamp block itself - the 256 bytes in the `.ktstamp` section the stamp
+ * tool fills - is defined in kitty_selfcheck_stamp.c, a translation unit of
+ * its own without any crypto dependency, so that every shipped program can
+ * carry the stamp, including the two that link no crypto library and cannot
+ * run this check (pterm, puttytel). The own-image read below still names it,
+ * which is also what keeps every linker from treating it as unreferenced. */
+extern const unsigned char kt_stamp_block[KT_STAMP_SIZE];
 
 #ifdef KITTY_SELFCHECK_FAULT
 /*

@@ -30,6 +30,7 @@
 #include "../kitty/kitty_notice.h"   /* the themed startup notice */
 #include "../kitty/kitty_text.h"     /* KiTTY: shared captions and menu words */
 #include "../kitty/kitty_renameguard.h"  /* KiTTY: refuse a foreign file name */
+#include "../kitty/kitty_selfcheck.h"    /* KiTTY: refuse a file changed after release */
 
 #ifdef MSVC4
 #define ICON_BIG        1
@@ -3267,6 +3268,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY: and, in a signed release build, does this file still carry our
      * signature? Compiled to nothing in a dev or test build. */
     if (kitty_signature_guard(1))
+        ExitProcess(1);
+    /* KiTTY: and, in a stamped release build, does this file still match its
+     * integrity stamp? Compiled to nothing in a dev or test build. */
+    if (kitty_selfcheck_guard(1))
         ExitProcess(1);
 
     init_common_controls();
