@@ -122,6 +122,13 @@ endif()
 # ever being stamped for a release by mistake.
 option(KITTY_SELFCHECK
   "compile the integrity stamp self-check into kitty/kitty_portable/plink/pscp/psftp (stamped builds only)" OFF)
+# KiTTY: opt-in build switch that tees the Event Log to
+# %USERPROFILE%\kitty_netdebug.log (windows/dialog.c). Off by default, so
+# releases are unaffected. Worth having as a switch rather than a separate
+# source variant: an intermittent disconnect, and any QA that has to know WHY
+# something was refused, both need the log as a FILE that outlives the window.
+# Declared here, before the targets, because kitty_terminal_common() applies it.
+option(KITTY_NETDEBUG "Tee the Event Log to %USERPROFILE%\\kitty_netdebug.log" OFF)
 option(KITTY_SELFCHECK_FAULT
   "TEST BUILDS ONLY: compile the self-check fault switch in (such a binary is never stamped for a release)" OFF)
 set(KITTY_SELFCHECK_KEY_HEADER "${CMAKE_BINARY_DIR}/kitty_selfcheck_key.h" CACHE FILEPATH
@@ -144,6 +151,25 @@ function(kitty_selfcheck_target target)
     if(KITTY_SELFCHECK_FAULT)
       target_compile_definitions(${target} PRIVATE KITTY_SELFCHECK_FAULT)
     endif()
+  endif()
+endfunction()
+
+# Everything the two terminals and the object library they share must carry
+# IDENTICALLY. In one place because a definition that reaches one of them and
+# not another is a silent behaviour difference, not a build error - the class
+# that made the settings library read the wrong ini section for a week.
+# MOD_PORTABLE is NOT here: it is the one difference, added to kitty_portable
+# alone. The version strings stay spelled as the release bump's sed expects
+# them (BUILD_VERSION="..." BUILD_TIME="...", adjacent).
+function(kitty_terminal_common tgt)
+  target_compile_definitions(${tgt} PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.85.1.10" BUILD_TIME="2026-09-17")
+  target_compile_options(${tgt} PRIVATE -fcommon)
+  target_include_directories(${tgt} PRIVATE
+    ${KITTY_DIR} ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt
+    ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)
+  kitty_selfcheck_target(${tgt})
+  if(KITTY_NETDEBUG)
+    target_compile_definitions(${tgt} PRIVATE MOD_NETDEBUG)
   endif()
 endfunction()
 add_sources_from_current_dir(eventloop
@@ -594,53 +620,22 @@ if(KITTY_PERF)
   message(STATUS "KITTY_PERF: kitty.exe will write %TEMP%/kitty_perf.txt at exit")
 endif()
 
-add_executable(kitty
-  window.c
-  paint-gdi.c
-  paint-d2d.c                                       # KiTTY: the Direct2D painter, [KiTTY] renderer=d2d
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c     # KiTTY: sidecar + translate
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_terminal.c # KiTTY: the terminal's hook glue
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_winpos.c         # KiTTY: window position per session and monitor layout
-  putty.c
-  help.c
-  # terminal.c compiled directly into the kitty target (not via guiterminal)
-
-  # so it can carry MOD_FAR2L; the directly-listed object takes precedence over
-  # guiterminal's terminal.o, leaving other binaries untouched.
-  ${CMAKE_SOURCE_DIR}/terminal/terminal.c
-  # cmdline.c likewise, so its MOD_PERSO section (the "ssh:" URL form) is
-  # actually compiled: the settings library is built without MOD_PERSO, where
-  # such a block would be silently dead.
-  ${CMAKE_SOURCE_DIR}/cmdline.c
-  # logging.c likewise, for the per-line LogTimestamp: it reaches other binaries
-  # through the utils library, built without MOD_PERSO.
-  ${CMAKE_SOURCE_DIR}/logging.c
-  # NOTE: config.c is deliberately NOT here. The kitty/kitty_config*.c set
-  # below is a full KiTTY replacement for it, compiled with MOD_PERSO, and it
-  # already wins at link time. Adding config.c as well gives "multiple
-  # definition of setup_config_box". Config-box changes go in those files
-  # (kitty_config.c is the sequencer; _session.c, _app.c, _upstream.c and
-  # _shared.c hold the panels) - a MOD_PERSO block added to config.c is dead
-  # code twice over.
+# The kitty/ sources BOTH terminals compile identically: MOD_PORTABLE is
+# tested by five files only (kitty_launcher.c, kitty_registry.c,
+# kitty_updater.c, kitty_commun.c, kitty_startup.c - checked below), and no
+# header branches on it, so the rest is the same object twice. An OBJECT
+# library compiles it once per width and both terminals take every object
+# of it, exactly as listing the sources did; a static library would link
+# only what resolves a symbol, which this tree's -fcommon globals do not.
+set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/far2l/cdecode.c
   ${KITTY_DIR}/far2l/cencode.c
-  ${CMAKE_SOURCE_DIR}/stubs/no-console.c
-  kitty.rc
   ${KITTY_DIR}/kitty.c
   ${KITTY_DIR}/kitty_params.c   # the application-wide flags, delays, paths and the kitty.ini parameter table
   ${KITTY_DIR}/kitty_commands.c   # the /commands console (once pasted into kitty.c as text)
-  ${KITTY_DIR}/kitty_launcher.c   # the tray launcher and the child-process starters (likewise)
   ${KITTY_DIR}/kitty_broadcast.c
   ${KITTY_DIR}/kitty_portfwd.c
   ${KITTY_DIR}/kitty_regbackup.c
-  ${KITTY_DIR}/kitty_startup.c
-  ${KITTY_DIR}/kitty_commun.c
   ${KITTY_DIR}/kitty_crypt.c
   ${KITTY_DIR}/kitty_mpw.c
   ${KITTY_DIR}/kitty_mpw_gui.c
@@ -650,16 +645,13 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_workplace.c
   ${KITTY_DIR}/kitty_notice.c
   ${KITTY_DIR}/kitty_notes.c    # KiTTY: the application notification (uses the parameter store)
-  ${KITTY_DIR}/kitty_registry.c
   ${KITTY_DIR}/kitty_ssh.c
   ${KITTY_DIR}/kitty_store.c
   ${KITTY_DIR}/kitty_tools.c
   ${KITTY_DIR}/blocnote/notepad.c
-  ${KITTY_DIR}/blocnote/notepad.rc
   ${KITTY_DIR}/kitty_win.c
   ${KITTY_DIR}/kitty_winutil.c
   ${KITTY_DIR}/kitty_dlgbox.c
-  ${KITTY_DIR}/kitty_updater.c
   ${KITTY_DIR}/kitty_crashlog.c   # KiTTY: crash log; per-target on purpose, see the other listings
   ${KITTY_DIR}/kitty_authenticode.c   # KiTTY: shared Authenticode trust + CN gate
   ${KITTY_DIR}/winfont_fallback.c
@@ -696,6 +688,70 @@ add_executable(kitty
   ${KITTY_DIR}/kitty_shortcuts.c
   ${KITTY_DIR}/kitty_xfer.c
   ${KITTY_DIR}/kitty_startup_shortcut.c
+)
+# No file outside the five may test MOD_PORTABLE: it would land in the
+# shared object and the portable build would silently get the other half.
+file(GLOB KITTY_CORE_SCAN ${KITTY_DIR}/*.c)
+set(KITTY_CORE_BAD "")
+foreach(f ${KITTY_CORE_SCAN})
+  file(READ ${f} _c)
+  if(_c MATCHES "MOD_PORTABLE")
+    get_filename_component(_n ${f} NAME)
+    if(NOT _n MATCHES "^(kitty_launcher|kitty_registry|kitty_updater|kitty_commun|kitty_startup)\\.c$")
+      list(APPEND KITTY_CORE_BAD ${f})
+    endif()
+  endif()
+endforeach()
+if(KITTY_CORE_BAD)
+  message(FATAL_ERROR "MOD_PORTABLE is tested by files that are compiled once for both terminals: ${KITTY_CORE_BAD}. Move them out of KITTY_CORE_SOURCES in windows/CMakeLists.txt.")
+endif()
+add_library(kittycore OBJECT ${KITTY_CORE_SOURCES})
+add_dependencies(kittycore generated_licence_h)
+kitty_terminal_common(kittycore)
+
+add_executable(kitty
+  $<TARGET_OBJECTS:kittycore>   # the kitty/ sources both terminals share, compiled once
+  window.c
+  paint-gdi.c
+  paint-d2d.c                                       # KiTTY: the Direct2D painter, [KiTTY] renderer=d2d
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_keys.c     # KiTTY: sidecar + translate
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_terminal.c # KiTTY: the terminal's hook glue
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_winpos.c         # KiTTY: window position per session and monitor layout
+  putty.c
+  help.c
+  # terminal.c compiled directly into the kitty target (not via guiterminal)
+
+  # so it can carry MOD_FAR2L; the directly-listed object takes precedence over
+  # guiterminal's terminal.o, leaving other binaries untouched.
+  ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  # cmdline.c likewise, so its MOD_PERSO section (the "ssh:" URL form) is
+  # actually compiled: the settings library is built without MOD_PERSO, where
+  # such a block would be silently dead.
+  ${CMAKE_SOURCE_DIR}/cmdline.c
+  # logging.c likewise, for the per-line LogTimestamp: it reaches other binaries
+  # through the utils library, built without MOD_PERSO.
+  ${CMAKE_SOURCE_DIR}/logging.c
+  # NOTE: config.c is deliberately NOT here. The kitty/kitty_config*.c set
+  # below is a full KiTTY replacement for it, compiled with MOD_PERSO, and it
+  # already wins at link time. Adding config.c as well gives "multiple
+  # definition of setup_config_box". Config-box changes go in those files
+  # (kitty_config.c is the sequencer; _session.c, _app.c, _upstream.c and
+  # _shared.c hold the panels) - a MOD_PERSO block added to config.c is dead
+  # code twice over.
+  ${CMAKE_SOURCE_DIR}/stubs/no-console.c
+  kitty.rc
+  ${KITTY_DIR}/kitty_launcher.c   # the tray launcher and the child-process starters (likewise)
+  ${KITTY_DIR}/kitty_startup.c
+  ${KITTY_DIR}/kitty_commun.c
+  ${KITTY_DIR}/kitty_registry.c
+  ${KITTY_DIR}/blocnote/notepad.rc
+  ${KITTY_DIR}/kitty_updater.c
   ${KITTY_DIR}/mini/mini.c)
 be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
 # kitty's backend list also includes the ADB backend (MOD_ADB) - applied to the
@@ -705,8 +761,7 @@ set_source_files_properties(${KITTY_DIR}/blocnote/notepad.c PROPERTIES COMPILE_D
 set_source_files_properties(${KITTY_DIR}/blocnote/notepad.rc PROPERTIES COMPILE_DEFINITIONS NOTEPAD_EMBEDDED)
 add_dependencies(kitty generated_licence_h)
 kitty_selfcheck_target(kitty)
-target_compile_definitions(kitty PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.85.1.10" BUILD_TIME="2026-09-17")
-target_compile_options(kitty PRIVATE -fcommon)
+kitty_terminal_common(kitty)
 if(KITTY_O2_HOT_O3)
   # The paint path stays at -O3 in an -O2 build (see the top-level option).
   set_source_files_properties(window.c PROPERTIES COMPILE_OPTIONS "-O3")
@@ -745,9 +800,6 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     COMPILE_OPTIONS "-Wmissing-prototypes")
 endif()
 
-target_include_directories(kitty PRIVATE
-  ${KITTY_DIR} ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt
-  ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)
 target_link_libraries(kitty
   guiterminal guimisc eventloop sshclient otherbackends settings network crypto utils
   ${KITTY_DIR}/libs/libjpeg_${KITTY_LIBS_BITS}.a
@@ -761,6 +813,7 @@ set_target_properties(kitty PROPERTIES WIN32_EXECUTABLE ON)
 # the binary defaults to file/dir storage (savemode=dir) instead of the
 # registry. Produces build-*/kitty_portable.exe.
 add_executable(kitty_portable
+  $<TARGET_OBJECTS:kittycore>   # the kitty/ sources both terminals share, compiled once
   window.c
   paint-gdi.c
   paint-d2d.c                                       # KiTTY: the Direct2D painter, [KiTTY] renderer=d2d
@@ -780,81 +833,21 @@ add_executable(kitty_portable
   # why config.c must NOT be listed)
   ${CMAKE_SOURCE_DIR}/cmdline.c
   ${CMAKE_SOURCE_DIR}/logging.c
-  ${KITTY_DIR}/far2l/cdecode.c
-  ${KITTY_DIR}/far2l/cencode.c
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
   kitty.rc
-  ${KITTY_DIR}/kitty.c
-  ${KITTY_DIR}/kitty_params.c   # the application-wide flags, delays, paths and the kitty.ini parameter table
-  ${KITTY_DIR}/kitty_commands.c   # the /commands console (once pasted into kitty.c as text)
   ${KITTY_DIR}/kitty_launcher.c   # the tray launcher and the child-process starters (likewise)
-  ${KITTY_DIR}/kitty_broadcast.c
-  ${KITTY_DIR}/kitty_portfwd.c
-  ${KITTY_DIR}/kitty_regbackup.c
   ${KITTY_DIR}/kitty_startup.c
   ${KITTY_DIR}/kitty_commun.c
-  ${KITTY_DIR}/kitty_crypt.c
-  ${KITTY_DIR}/kitty_mpw.c
-  ${KITTY_DIR}/kitty_mpw_gui.c
-  ${KITTY_DIR}/kitty_image.c
-  ${KITTY_DIR}/kitty_proxy.c
-  ${KITTY_DIR}/kitty_proxy_gui.c
-  ${KITTY_DIR}/kitty_workplace.c
-  ${KITTY_DIR}/kitty_notice.c
-  ${KITTY_DIR}/kitty_notes.c    # KiTTY: the application notification (uses the parameter store)
   ${KITTY_DIR}/kitty_registry.c
-  ${KITTY_DIR}/kitty_ssh.c
-  ${KITTY_DIR}/kitty_store.c
-  ${KITTY_DIR}/kitty_tools.c
-  ${KITTY_DIR}/blocnote/notepad.c
   ${KITTY_DIR}/blocnote/notepad.rc
-  ${KITTY_DIR}/kitty_win.c
-  ${KITTY_DIR}/kitty_winutil.c
-  ${KITTY_DIR}/kitty_dlgbox.c
   ${KITTY_DIR}/kitty_updater.c
-  ${KITTY_DIR}/kitty_crashlog.c   # KiTTY: crash log; per-target on purpose, see the other listings
-  ${KITTY_DIR}/kitty_authenticode.c   # KiTTY: shared Authenticode trust + CN gate
-  ${KITTY_DIR}/winfont_fallback.c
-  ${KITTY_DIR}/url/urlhack.c
-  ${KITTY_DIR}/url/re_lib/regexp.c
-  ${KITTY_DIR}/kitty_url.c
-  ${KITTY_DIR}/kitty_bridge.c
-  ${KITTY_DIR}/kitty_exportbundle.c
-  ${KITTY_DIR}/kitty_storemove.c
-  ${KITTY_DIR}/kitty_settings_forced.c
-  ${KITTY_DIR}/kitty_settings_load.c
-  ${KITTY_DIR}/kitty_migrate.c
-  ${KITTY_DIR}/kitty_hostkeys.c
-  ${KITTY_DIR}/kitty_hostkey_verify.c
-  ${KITTY_DIR}/kitty_selfcheck.c   # KiTTY: the integrity stamp check; per target, needs crypto (see KITTY_SELFCHECK above)
-  ${KITTY_DIR}/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block the release fills
-  ${KITTY_DIR}/kitty_theme_pref.c   # KiTTY: the theme preference read straight from the stores - the dialog hook goes in BEFORE InitWinMain, when ReadParameter has nothing loaded yet
-  ${KITTY_DIR}/kitty_inilight.c   # KiTTY: the light kitty.ini resolver kitty_theme_pref.c reads through
-  ${KITTY_DIR}/kitty_userpath.c
-  ${KITTY_DIR}/kitty_zmodem.c
-  ${KITTY_DIR}/kitty_adb.c
-  ${KITTY_DIR}/kitty_rutty.c
-  ${KITTY_DIR}/kitty_config.c   # the sequencer; the panels are in the four files below
-  ${KITTY_DIR}/kitty_config_upstream.c
-  ${KITTY_DIR}/kitty_config_shared.c
-  ${KITTY_DIR}/kitty_config_session.c
-  ${KITTY_DIR}/kitty_config_app.c
-  ${KITTY_DIR}/kitty_config_apps.c   # KiTTY: Security > Applications (the program files beside this one, checked)
-  ${KITTY_DIR}/kitty_colours.c
-  ${KITTY_DIR}/kitty_inputbox.c
-  ${KITTY_DIR}/kitty_osc52.c
-  ${KITTY_DIR}/kitty_transfer.c
-  ${KITTY_DIR}/kitty_specialmenu.c
-  ${KITTY_DIR}/kitty_shortcuts.c
-  ${KITTY_DIR}/kitty_xfer.c
-  ${KITTY_DIR}/kitty_startup_shortcut.c
   ${KITTY_DIR}/mini/mini.c)
 be_list(kitty_portable KiTTY SSH SERIAL OTHERBACKENDS)
 target_compile_definitions(kitty_portable-be-list PRIVATE MOD_ADB=1)
 add_dependencies(kitty_portable generated_licence_h)
 kitty_selfcheck_target(kitty_portable)
-target_compile_definitions(kitty_portable PRIVATE MOD_PERSO MOD_PORTABLE MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.85.1.10" BUILD_TIME="2026-09-17")
-target_compile_options(kitty_portable PRIVATE -fcommon)
+kitty_terminal_common(kitty_portable)
+target_compile_definitions(kitty_portable PRIVATE MOD_PORTABLE)   # the ONE difference from the kitty target
 
 set(KITTY_TEST_BUILD_LABEL "" CACHE STRING "Visible label for ad-hoc KiTTY test/debug builds (shown in About boxes); leave empty for releases")
 # The label goes into a GENERATED HEADER (cmake/kitty_buildlabel.h.in), which
@@ -879,20 +872,9 @@ if(KITTY_LABEL_MISSING)
   message(FATAL_ERROR "KITTY_TEST_BUILD_LABEL is used without including kitty_buildlabel.h: ${KITTY_LABEL_MISSING}")
 endif()
 
-# KiTTY: opt-in build switch that tees the Event Log to
-# %USERPROFILE%\kitty_netdebug.log (windows/dialog.c). Off by default, so
-# releases are unaffected. Worth having as a switch rather than a separate
-# source variant: an intermittent disconnect, and any QA that has to know WHY
-# something was refused, both need the log as a FILE that outlives the window.
-option(KITTY_NETDEBUG "Tee the Event Log to %USERPROFILE%\\kitty_netdebug.log" OFF)
-if(KITTY_NETDEBUG)
-  target_compile_definitions(kitty PRIVATE MOD_NETDEBUG)
-  target_compile_definitions(kitty_portable PRIVATE MOD_NETDEBUG)
-endif()
+# (the switch itself is declared before the targets, with the other options -
+# kitty_terminal_common() reads it)
 
-target_include_directories(kitty_portable PRIVATE
-  ${KITTY_DIR} ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt
-  ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)
 target_link_libraries(kitty_portable
   guiterminal guimisc eventloop sshclient otherbackends settings network crypto utils
   ${KITTY_DIR}/libs/libjpeg_${KITTY_LIBS_BITS}.a
