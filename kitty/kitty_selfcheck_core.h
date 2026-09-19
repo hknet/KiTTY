@@ -9,8 +9,20 @@
  * headers, no heap. The caller supplies a reader callback; the hash state is
  * PuTTY's own ssh_sha256, and the callers own the fixed-size buffers.
  *
- * THE STAMP is a fixed-size block in the PE section `.ktstamp` (the name is
- * exactly eight characters, the most a PE section name can carry):
+ * THE STAMP is a fixed-size block that lives in one of two places:
+ *
+ *   version 1  in the PE section `.ktstamp` (the name is exactly eight
+ *              characters, the most a PE section name can carry).
+ *   version 2  appended to the PE OVERLAY - the bytes after the last
+ *              section's raw data - because a section does not survive UPX:
+ *              UPX packs the original sections into its own, so a `.ktstamp`
+ *              written before packing is compressed away, and one written
+ *              after sits outside what its loader expects. The overlay is
+ *              copied through unchanged, which is also where Authenticode
+ *              puts the certificate table.
+ *
+ * The block is the same 256 bytes either way; only the version field differs,
+ * and one reader serves both:
  *
  *   offset  size  field
  *        0     8  magic       "KTSTAMP\0"
@@ -31,9 +43,12 @@
  *   1. the PE optional header CheckSum field (4 bytes),
  *   2. the Security data-directory entry (8 bytes, offset + size of the
  *      certificate table),
- *   3. the stamp itself (KT_STAMP_SIZE bytes at the section's raw offset).
+ *   3. the stamp itself (KT_STAMP_SIZE bytes, at the section's raw offset for
+ *      version 1, at its overlay offset for version 2).
  * Signing also appends the certificate table beyond `length`; that is not
- * hashed, because it lies past the stamped length.
+ * hashed, because it lies past the stamped length. For version 2 the block is
+ * the last thing before that table, so `length` is exactly the end of the
+ * block - which is what lets the reader find it without a section to name it.
  */
 #ifndef KITTY_SELFCHECK_CORE_H
 #define KITTY_SELFCHECK_CORE_H
@@ -47,7 +62,8 @@
 #define KT_STAMP_SECTION   ".ktstamp"
 #define KT_STAMP_MAGIC     "KTSTAMP"          /* 7 chars + the NUL = 8 bytes */
 #define KT_STAMP_MAGIC_LEN 8
-#define KT_STAMP_VERSION   1
+#define KT_STAMP_VERSION   1                 /* v1: in the .ktstamp section */
+#define KT_STAMP_VERSION_OVERLAY 2           /* v2: appended to the overlay */
 #define KT_STAMP_SIZE      256
 #define KT_STAMP_SIGNED_LEN 56
 #define KT_STAMP_OFF_VERSION 8
@@ -76,8 +92,12 @@
 typedef struct kt_pe_layout {
     uint64_t checksum_off;     /* optional header CheckSum, 4 bytes */
     uint64_t secdir_off;       /* data directory [4], 8 bytes */
-    uint64_t stamp_off;        /* raw offset of .ktstamp, 0 = none */
-    uint32_t stamp_raw_size;   /* the section's SizeOfRawData */
+    uint64_t stamp_off;        /* file offset of the stamp block, 0 = none */
+    uint32_t stamp_raw_size;   /* the .ktstamp section's SizeOfRawData */
+    uint64_t certtab_off;      /* VALUE of data directory [4]: the certificate
+                                * table's file offset, 0 when unsigned */
+    uint32_t certtab_size;     /* its size, 0 when unsigned */
+    int      stamp_version;    /* which shape stamp_off points at, 0 = none */
 } kt_pe_layout;
 
 /*
@@ -148,6 +168,55 @@ static inline int kt_pe_parse(const unsigned char *hdr, size_t hdrlen,
     }
     if (out->stamp_off && out->stamp_raw_size < KT_STAMP_SIZE)
         out->stamp_off = 0;                          /* too small to be ours */
+    if (out->stamp_off)
+        out->stamp_version = KT_STAMP_VERSION;
+    /* The certificate table's own offset and size, needed to know where the
+     * overlay ends on a signed file. Read from the directory entry itself,
+     * which the hash zeroes but the header still carries here. */
+    if (out->secdir_off + 8 <= hdrlen) {
+        out->certtab_off = kt_le32(hdr + out->secdir_off);
+        out->certtab_size = kt_le32(hdr + out->secdir_off + 4);
+    }
+    return 1;
+}
+
+/*
+ * Find the stamp block. The .ktstamp section wins when there is one (v1);
+ * otherwise the last KT_STAMP_SIZE bytes before the certificate table - or
+ * before end of file on an unsigned image - are tried as a v2 block.
+ *
+ * The candidate is accepted only when the magic matches, the version is 2 AND
+ * the block's own `length` names the byte just past the block. That last test
+ * is what makes this safe on a file carrying an unrelated overlay: an
+ * installer's appended data cannot satisfy it by accident, and a wrong guess
+ * fails here instead of hashing the wrong bytes. The signature still has to
+ * verify afterwards.
+ *
+ * Returns nonzero when a stamp was located; `lay->stamp_off` and
+ * `lay->stamp_version` then describe it.
+ */
+static inline int kt_stamp_locate(kt_read_fn rd, void *ctx, uint64_t filesize,
+                                  kt_pe_layout *lay)
+{
+    unsigned char blk[KT_STAMP_SIZE];
+    uint64_t end, cand;
+
+    if (lay->stamp_off)                              /* v1, already found */
+        return 1;
+    end = lay->certtab_off ? lay->certtab_off : filesize;
+    if (end > filesize || end < KT_STAMP_SIZE)
+        return 0;
+    cand = end - KT_STAMP_SIZE;
+    if (!rd(ctx, cand, blk, KT_STAMP_SIZE))
+        return 0;
+    if (memcmp(blk, KT_STAMP_MAGIC, KT_STAMP_MAGIC_LEN) != 0)
+        return 0;
+    if (kt_le32(blk + KT_STAMP_OFF_VERSION) != KT_STAMP_VERSION_OVERLAY)
+        return 0;
+    if (kt_le64(blk + KT_STAMP_OFF_LENGTH) != cand + KT_STAMP_SIZE)
+        return 0;
+    lay->stamp_off = cand;
+    lay->stamp_version = KT_STAMP_VERSION_OVERLAY;
     return 1;
 }
 

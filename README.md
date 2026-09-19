@@ -1,11 +1,11 @@
-# KiTTY (PuTTY 0.85 port)
+# KiTTY++ (PuTTY 0.85 port)
 
-**KiTTY** is a feature-rich fork of [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/),
-the free Windows SSH/Telnet client. This branch is a **forward-port of the KiTTY features and more
-onto current PuTTY 0.85** — so you get KiTTY's extras on top of a modern, security-patched
-PuTTY core (≈1,200 upstream commits newer than KiTTY's original 0.76b base).
+**KiTTY++** is a feature-rich fork of [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/),
+the free Windows SSH/Telnet client. This branch is a **forward-port of the old KiTTY features and more
+onto current PuTTY 0.85** — so you get a lot of extras on top of a modern, security-patched
+PuTTY core (≈1,300 upstream commits newer than KiTTY's original 0.76b base).
 
-> ⚠️ **Beta release** (`0.85.1.10-beta`). The full KiTTY feature set on a modern, security-patched PuTTY 0.85 core — including a post-quantum key-exchange warning and a console CLI key generator (`kittygen-cli.exe`). Please still read the known issues below.
+> ⚠️ **Beta release** (`0.85.1.11-beta`). The full KiTTY++ feature set on a modern, security-patched PuTTY 0.85 core — including a post-quantum key-exchange warning and a console CLI key generator (`kittygen-cli.exe`). Please also read the known issues below.
 
 ## Screenshots
 
@@ -25,16 +25,16 @@ The configuration of the GPU-Renderer
 
 Grab the latest build from the **[Releases page →](https://github.com/hknet/KiTTY/releases/latest)**.
 
-Current release — **[KiTTY 0.85.1.10-beta](https://github.com/hknet/KiTTY/releases/tag/kitty-0.85.1.10-beta)**:
+Current release — **[KiTTY 0.85.1.11-beta](https://github.com/hknet/KiTTY/releases/tag/kitty-0.85.1.11-beta)**:
 
 | Download | Use it when |
 |---|---|
-| **[Installer — per-user (no admin)](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.10-beta/KiTTY-0.85.1.10-beta-x64-peruser.msi)** | **Recommended.** Installs for your user only, **no UAC prompt** (`%LOCALAPPDATA%\Programs\KiTTY`). |
-| **[Installer — system-wide](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.10-beta/KiTTY-0.85.1.10-beta-x64-system.msi)** | All users, into `Program Files` (requires admin). |
-| **[Portable ZIP](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.10-beta/kitty-0.85.1.10-beta.zip)** | No install — run from a folder or USB stick. Includes `kitty_portable.exe` and all command-line tools. Executables are **not** UPX-packed (antivirus-friendly). |
-| **[Portable ZIP (UPX)](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.10-beta/kitty-0.85.1.10-beta-upx.zip)** | Same contents with `kitty.exe`/`kitty_portable.exe` UPX-packed for the smallest download. Some antivirus engines dislike UPX — if in doubt, take the standard ZIP. |
-| **[Portable ZIP — 32-bit](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.10-beta/kitty-0.85.1.10-beta-32bit.zip)** | The same suite built for 32-bit Windows — for systems a 64-bit binary cannot reach. |
-| **[ISO image](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.10-beta/kitty-0.85.1.10-beta.iso)** | Both builds (64-bit and 32-bit) as plain files on one ISO — mount it into a virtual machine, no network or install needed. |
+| **[Installer — per-user (no admin)](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.11-beta/KiTTY-0.85.1.11-beta-x64-peruser.msi)** | **Recommended.** Installs for your user only, **no UAC prompt** (`%LOCALAPPDATA%\Programs\KiTTY`). |
+| **[Installer — system-wide](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.11-beta/KiTTY-0.85.1.11-beta-x64-system.msi)** | All users, into `Program Files` (requires admin). |
+| **[Portable ZIP](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.11-beta/kitty-0.85.1.11-beta.zip)** | No install — run from a folder or USB stick. Includes `kitty_portable.exe` and all command-line tools. Executables are **not** UPX-packed (antivirus-friendly). |
+| **[Portable ZIP (UPX)](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.11-beta/kitty-0.85.1.11-beta-upx.zip)** | Same contents with `kitty.exe`/`kitty_portable.exe` UPX-packed for the smallest download. Some antivirus engines dislike UPX — if in doubt, take the standard ZIP. |
+| **[Portable ZIP — 32-bit](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.11-beta/kitty-0.85.1.11-beta-32bit.zip)** | The same suite built for 32-bit Windows — for systems a 64-bit binary cannot reach. |
+| **[ISO image](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.11-beta/kitty-0.85.1.11-beta.iso)** | Both builds (64-bit and 32-bit) as plain files on one ISO — mount it into a virtual machine, no network or install needed. |
 
 Both installers add Start-Menu + Desktop shortcuts and an Add/Remove-Programs entry, and uninstall
 cleanly. Every download is checksummed (`SHA256SUMS` in the ZIP), and all executables are
@@ -54,7 +54,7 @@ verified — reports welcome.
 
 ## What's included (KiTTY++ features on PuTTY 0.85)
 
-~46 KiTTY features are ported and verified, including:
+~46 old KiTTY features are ported and verified, including:
 
 - **Window:** transparency, maximize / fullscreen / saved position on start, always-on-top, roll-up,
   send-to-tray (auto + on-minimize), per-session icons, background image.
@@ -82,15 +82,16 @@ verified — reports welcome.
   `kitty://` links and `.ktx` files with Windows.
 - Plus the standard PuTTY tools, renamed KiTTY-style: `klink`, `kscp`, `ksftp`, `kageant`, `kittygen`.
 - `kittygen-cli.exe` — a console-mode CLI key generator (generate, convert, fingerprint) for use in scripts and pipelines. Run `kittygen-cli --help` for options.
-- **Quick-Connect or Last-Session Mode:** set "loadlastsession=yes/no" and either get fast load the last session or your cursor set to the hostname to enter for a quick connection.
+- **Quick-Connect or Last-Session Mode:** set "loadlastsession=yes/no" and either get fast load the last session or your cursor set to the hostname to enter for a quick connection. Can also be set in the Application > Config Window > Session Panel.
 - **Double the Folder-Navigation** whatever drives you: the mouse or the keyboard the "foldernavigation=yes/no" got you covered set it to yes and you can simply click through your folders in the Session-List; set it no and Ctrl+F and Ctrl+G help you to locate the sessions you need for your next adventure.
 - **Modal Box Free Work** if you don't want Message Boxes popping up if things go sideways, this KiTTY can put those notices in the terminalwindow. Switch to "modalerrors=no" and a message for another terminal can't block your work anymore. More modal-settings are in the kitty.ini and highly recommended if you hate Message Boxes.
 - **Workplace Proxy Mode** working on the go you sometimes have to set a proxy for all your needs.  If you have named proxies configured you can simply activate one on the go using the launcher or by starting the workplace-proxy in the KiTTY-config-window (Connection - Proxy) and you are set.
+- **Dark Mode** for the night shift: one setting draws every window in the suite — `[KiTTY] theme=system` (the default, follows Windows), `light` or `dark`, also in kageant under *Settings… → Agent*. Needs Windows 10 1809 or newer; see [`FEATURES.md`](FEATURES.md#dark-mode), limits in [`KNOWN-ISSUES.md`](KNOWN-ISSUES.md). Also set it in Application > KiTTY++ Settings > Appearance.
 
 > 📂 **Put your files where your `cwd` is.** Turn on **OSC 7 directory tracking** and
 > drag-and-drop uploads — and *Start WinSCP* — land in your shell's **current remote
 > directory** instead of always dropping into `$HOME`. It's the safe, **data-only**
-> rework of KiTTY's old "send file to the current directory" trick, which was retired
+> rework of the old KiTTY's "send file to the current directory" trick, which was retired
 > after that mechanism turned out to be a remote-code-execution hole
 > (**CVE-2024-23749**): the new one only ever *reads* a strictly-validated path and
 > never runs anything the remote sends. Two lines in your shell startup do it —
@@ -103,13 +104,13 @@ Most KiTTY extras read from a `kitty.ini` (`[KiTTY]` section). The release inclu
 hyperlink=yes
 ```
 
-**[`docs/KITTY-INI.md`](docs/KITTY-INI.md)** explains the settings file — how KiTTY finds it, the `savemode`/portable rules, and all its sections — and links the fully annotated [`kitty.ini.example`](docs/examples/kitty.ini.example). See **[`FEATURES.md`](FEATURES.md)** for the full feature reference, including how to enable each one, and **[`CHANGELOG.md`](CHANGELOG.md)** for what changed in each release. Using SSH certificates instead of per-server `authorized_keys` entries? **[`docs/SSH-CERTIFICATES.md`](docs/SSH-CERTIFICATES.md)** covers the KiTTY side and the OpenSSH server side end to end.
+**[`docs/KITTY-INI.md`](docs/KITTY-INI.md)** explains the settings file — how KiTTY++ finds it, the `savemode`/portable rules, and all its sections — and links the fully annotated [`kitty.ini.example`](docs/examples/kitty.ini.example). See **[`FEATURES.md`](FEATURES.md)** for the full feature reference, including how to enable each one, and **[`CHANGELOG.md`](CHANGELOG.md)** for what changed in each release. Using SSH certificates instead of per-server `authorized_keys` entries? **[`docs/SSH-CERTIFICATES.md`](docs/SSH-CERTIFICATES.md)** covers the KiTTY++ side and the OpenSSH server side end to end.
 
 ---
 
 ## Known issues
 
-This is a **beta**: most KiTTY features are restored and verified, but a few have limitations
+This is a **beta**: virtually all old KiTTY features are restored and verified, but a few have limitations
 or still want real-world testing. The full, per-release list is in
 **[`KNOWN-ISSUES.md`](KNOWN-ISSUES.md)** — current highlights:
 

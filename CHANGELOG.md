@@ -4,9 +4,20 @@ KiTTY++ is basically the full KiTTY feature set forward-ported and then some mor
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.11-beta — unreleased
+## 0.85.1.11-beta — 2026-09-19
 
 ### New
+
+- **Every shipped program carries the release integrity stamp now, both
+  widths.** The stamp is an Ed25519-signed SHA-256 of the file, checked
+  against a public key compiled into that release, and it decides whether a
+  program is genuine where Windows cannot judge the Authenticode signature -
+  an old Windows without the publisher's root, or a machine with a broken
+  trust store. Until now only the 32-bit release carried it, because the
+  64-bit `kitty.exe` is UPX-compressed and the section holding the stamp does
+  not survive packing; the block is appended to the PE overlay instead, which
+  UPX keeps and the signature seals. Application > Security > Applications
+  therefore stops showing grey `unverified` rows on a 64-bit install.
 
 ### Changed
 

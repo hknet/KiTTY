@@ -1,6 +1,6 @@
-# KiTTY 0.85.1.10 — Known issues & limitations
+# KiTTY++ 0.85.1.11 — Known issues & limitations
 
-The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 KiTTY
+The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 old KiTTY
 features are working and verified. Known limitations as of this release:
 
 > **Where the clipboard settings live.** They moved in 0.84.1.68 and are now
@@ -10,20 +10,21 @@ features are working and verified. Known limitations as of this release:
 
 ## Functional limitations
 
-- **Workplace proxy mode lives only as long as the launcher is holding it.** That is
-  the design — logging off, rebooting or killing the launcher ends the mode, so
-  it cannot be left switched on by accident — but it does mean the mode does not
-  survive a restart. The next start displays once that it is not active and offers
+- **Workplace proxy mode lives only as long as the launcher is holding it.**
+  This is by design — logging off, rebooting or killing the launcher ends it, so
+  it cannot be left switched on by accident, and it does not survive a restart.
+  The next start displays once that it is not active and offers
   nothing further; switching it on again is one click, in the tray menu or on the
-  Proxy panel in the application tree.
+  Workplace Proxy panel in the application tree.
 - **Connections already open keep the proxy they connected through.** Switching
   the mode on does not re-route a running session, and switching it off does not
-  take the proxy away from one: an established connection cannot be re-routed.
+  take the proxy away from an active one: established connections cannot
+  be re-routed.
   Only new connections follow the mode — which is why the green frame and the
   title marker describe the *connection* rather than the mode.
 - **The green frame needs Windows 11.** Colouring a window's frame and caption is
   only possible on build 22000 or newer. On Windows 10 the title still carries
-  `⇄ workplace proxy`, which is what actually states that the connection is
+  `⇄ workplace proxy`, which is what actually shows that the connection is
   proxied; the colour is a bonus on top of it. (Same limitation as the clipboard
   tints.)
 - **Workplace proxy mode is per installation.** It is keyed to the folder KiTTY
@@ -40,11 +41,10 @@ features are working and verified. Known limitations as of this release:
   release will let the proxy editor own those settings directly. Since 0.84.1.69
   the proxy at least **says which of the two its Name/IP means** (the
   *.. this is ..* setting beside it), so that is no longer decided by whether a
-  session happens to share the name accidentially.
+  session happens to share the name accidentally.
 - **`/size` and `/wintitle` are application-wide, not per session.** They are
   runtime toggles rather than session settings, so `/save` does not store them —
-  persist them with `[KiTTY] size=yes` / `wintitle=no` in kitty.ini. Making the
-  title decorations per-session is still on the TODO-list.
+  persist them with `[KiTTY] size=yes` / `wintitle=no` in kitty.ini.
 - **A brand-new release is noticed one launch late.** The startup update check
   runs on a worker thread and only refreshes a cached answer, so the notice about
   a release published since your last start appears on the *next* start. *Check
@@ -148,7 +148,7 @@ features are working and verified. Known limitations as of this release:
   margin strip outside the grid is still solid-filled (cosmetic). The image now
   covers the whole virtual desktop; that this reaches a second monitor has
   been verified in code but not yet on a multi-monitor desk.
-- **The Direct2D (GPU) renderer is opt-in and new.** `renderer=d2d` needs
+- **The Direct2D (GPU) renderer is opt-in.** `renderer=d2d` needs
   Windows 8.1 or newer. A translucent window runs it on the blit-model swap
   chain, which costs the flip model's present path and the compositor's frame
   signal (the pacing then runs on the timer); the badge in the top-right
@@ -248,7 +248,6 @@ features are working and verified. Known limitations as of this release:
   batch of keys loaded together, and the agent's cache (60 seconds by default,
   `0` disables it) covers quick successive unlocks; after that the next unlock
   asks again.
-
 - **The agent-identity check works only in signed builds.** Since 0.84.1.72 a
   KiTTY that is itself Authenticode-signed verifies which process answers its
   agent requests and warns when it is not our signed kageant. A locally built,
@@ -303,18 +302,6 @@ features are working and verified. Known limitations as of this release:
   public-key authentication (kageant) with SSH-2 keys, and avoid saving
   passwords unless you understand these limits.**
 
-- **The Applications panel can say "unverified" on a 64-bit install where
-  Windows cannot judge the signature.** Application > Security > Applications
-  judges each program by the checks it carries: the Authenticode signature
-  (verified by Windows) and the release stamp (verified with the public key
-  compiled into the release). Today only the 32-bit release carries the
-  stamp, so on a Windows that cannot verify the signature - a 7 without the
-  SHA-2 update or the publisher's root, a machine with a broken trust store -
-  a 64-bit KiTTY++ has nothing left to judge with and shows grey `unverified`
-  rows rather than a false verdict. The 32-bit release never shows that: its
-  stamp decides where the signature cannot. Stamping the 64-bit set too is
-  planned.
-
 - **Remote clipboard reads report when they could not be served.** A read request
   that arrives while another program holds the clipboard used to be refused in
   silence; it is now refused with a reason in the Event Log, so "nothing
@@ -322,12 +309,21 @@ features are working and verified. Known limitations as of this release:
 
 ## Packaging / cosmetic
 
+- **Dark mode: what it does not cover.** It needs **Windows 10 1809 or newer**;
+  on anything older every value behaves as *Always light*.
+  Windows never gave Win32 dialogs a dark mode, so a few pieces are drawn by
+  hand — the tab strip, the radio buttons and check boxes, the group boxes, the
+  progress bars, the list column headers — and a selected row in the agent log
+  gives up its colour coding for the system's own highlight colours, the one
+  combination certain to stay readable. A terminal's own colours are a
+  per-session setting and are left alone: a dark KiTTY++ still opens each session
+  in the colours that session requires.
 - **Antivirus & UPX:** the standard `kitty-<version>.zip` contains only plain,
   uncompressed signed executables (antivirus-friendly). The `-upx.zip` flavour
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.85.1.10-beta @ 2026-09-17`.
+- **Version string:** binaries report `0.85.1.11-beta @ 2026-09-19`.
 - **`kittygen.exe` and `kittygen-cli.exe` are two programs with two command
   lines.** The window one takes only `-t`, `-b`, `-E`, `-primes`, `-strong-rsa`,
   `-ppk-param`, `-restrict-acl` and `-pgpfp`; `-C`, `-q`, `-o`, `-l` and
@@ -346,12 +342,6 @@ features are working and verified. Known limitations as of this release:
   connection manager, dragging the pane's **height** can make the terminal wobble
   a few pixels while you drag. It's the host's own caption-offset compensation;
   it settles when you release. Cosmetic.
-- **Re-running the MSI over an existing install can fail with 1603.** This is
-  Windows' own SecureRepair, not KiTTY: it insists on finding the package under
-  the file name your FIRST install ran from, and a browser's temporary download
-  name no longer exists (`SECREPAIR: Error determining package source type`). To
-  install a new version, uninstall the old one first, or run the MSI from a
-  normal folder under the same file name as before.
 - **Silent (`/qn`) installs close and reopen your windows**, like the
   interactive upgrade. Started under a machine account there is no desktop to
   reopen onto, so they close **without** reopening; `MSIDISABLERMRESTART=1`
@@ -376,6 +366,3 @@ Release-by-release notes for every version before 0.84.1.60 - and for these ones
 too - are on the releases page, each pinned to its own tag:
 
 https://github.com/hknet/KiTTY/releases
-
-They used to be repeated here, which made this file 1,400 lines of history
-wrapped around the ~200 that answer "what should I know before using it".

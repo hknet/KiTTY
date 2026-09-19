@@ -161,14 +161,20 @@ static int kt_verdict_path(const char *path, int own, const char **reason,
 
     /* From here on every failure is a finding about the FILE, not about the
      * check: the file opened and reads as a PE. */
+    /* Section first, then the overlay: a packed image carries the block there
+     * because UPX does not keep the section. */
+    (void)kt_stamp_locate(kt_read_at, (void *)h, filesize, &lay);
     if (!lay.stamp_off || lay.stamp_off + KT_STAMP_SIZE > filesize) {
         *reason = "no stamp"; rc = 1; goto out;
     }
     if (!kt_read_at(h, lay.stamp_off, stamp, KT_STAMP_SIZE))
         goto out;
-    if (!kt_stamp_is_filled(stamp) ||
-            kt_le32(stamp + KT_STAMP_OFF_VERSION) != KT_STAMP_VERSION) {
-        *reason = "no stamp"; rc = 1; goto out;
+    {
+        uint32_t ver = kt_le32(stamp + KT_STAMP_OFF_VERSION);
+        if (!kt_stamp_is_filled(stamp) ||
+            (ver != KT_STAMP_VERSION && ver != KT_STAMP_VERSION_OVERLAY)) {
+            *reason = "no stamp"; rc = 1; goto out;
+        }
     }
     length = kt_le64(stamp + KT_STAMP_OFF_LENGTH);
     if (length > filesize) {

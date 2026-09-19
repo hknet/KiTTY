@@ -162,7 +162,7 @@ endfunction()
 # alone. The version strings stay spelled as the release bump's sed expects
 # them (BUILD_VERSION="..." BUILD_TIME="...", adjacent).
 function(kitty_terminal_common tgt)
-  target_compile_definitions(${tgt} PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.85.1.10" BUILD_TIME="2026-09-17")
+  target_compile_definitions(${tgt} PRIVATE MOD_PERSO MOD_BACKGROUNDIMAGE MOD_PORTKNOCKING MOD_ZMODEM MOD_ADB MOD_FAR2L MOD_RECONNECT MOD_PRINTCLIP MOD_DISABLEALTGR MOD_PROXY MOD_TUTTYCOLOR MOD_LAUNCHER MASTER_PASSWORD="kitty" BUILD_VERSION="0.85.1.11" BUILD_TIME="2026-09-19")
   target_compile_options(${tgt} PRIVATE -fcommon)
   target_include_directories(${tgt} PRIVATE
     ${KITTY_DIR} ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt
