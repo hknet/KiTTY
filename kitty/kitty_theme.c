@@ -2064,6 +2064,17 @@ static LRESULT CALLBACK kt_cbt_proc(int code, WPARAM wParam, LPARAM lParam)
     return CallNextHookEx(kt_cbt_hook, code, wParam, lParam);
 }
 
+void kitty_theme_apply_hooked(HWND dlg)
+{
+    if (!dlg || !kt_cbt_hook)
+        return;
+    /* What the hook does on activation, ahead of it: the subclass that
+     * answers WM_CTLCOLOR, then the theme. The hook then finds the window
+     * known and in the right theme, and does not apply it a second time. */
+    SetWindowSubclass(dlg, kt_dlg_subclass, 2, 0);
+    kitty_theme_apply(dlg, kt_want_dark ? kt_want_dark() : false);
+}
+
 void kitty_theme_hook_dialogs(bool (*want_dark)(void))
 {
     kt_want_dark = want_dark;

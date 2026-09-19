@@ -3632,17 +3632,11 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
         if (!kitty_cfgbox_restore_pos(hwnd))
             centre_window(hwnd);
 
-        /* KiTTY: bring the startup configuration dialog to the front; it can
-         * otherwise open behind already-open windows. The TOPMOST->NOTOPMOST
-         * toggle forces it to the top of the Z-order even when Windows denies
-         * SetForegroundWindow (foreground lock); SetForegroundWindow then also
-         * activates it when the process has the foreground privilege. */
-        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-        SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-        SetForegroundWindow(hwnd);
-        BringWindowToTop(hwnd);
+        /* The box is NOT shown here. It used to be, and everything below -
+         * the tree's contents, the first panel - was then built inside a
+         * window already on the screen: an unpainted surface for as long as
+         * that took, which is white, and a blink in front of a dark box. It
+         * is shown once, complete and themed, at the end of this message. */
 
         /*
          * Set up the tree view contents.
@@ -3806,6 +3800,24 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
          * screenshot mode, whose box exists only to be photographed once. */
         if (!dialog_box_demo_screenshot_filename)
             SetTimer(hwnd, KITTY_PANEL_WARMUP_TIMER, 120, NULL);
+
+        /* KiTTY: theme the box while it is still hidden and every control of
+         * its first picture exists, so the first frame the screen gets is the
+         * finished one. The activation hook finds it already themed and
+         * leaves it alone. */
+        kitty_theme_apply_hooked(hwnd);
+
+        /* KiTTY: bring the startup configuration dialog to the front; it can
+         * otherwise open behind already-open windows. The TOPMOST->NOTOPMOST
+         * toggle forces it to the top of the Z-order even when Windows denies
+         * SetForegroundWindow (foreground lock); SetForegroundWindow then also
+         * activates it when the process has the foreground privilege. */
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+        SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+        SetForegroundWindow(hwnd);
+        BringWindowToTop(hwnd);
 
         pds_initdialog_finish(pds);
         return 0;

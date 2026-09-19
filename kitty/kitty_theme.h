@@ -58,6 +58,11 @@ const char *kitty_theme_pref_to_string(int pref);
  * Safe to call again on the same window - that is how a live preview works.
  */
 void kitty_theme_apply(HWND dlg, bool dark);
+/* The same, in the theme the dialog hook would give this window on its
+ * activation (kitty_theme_hook_dialogs' resolver). For a dialog that builds
+ * its controls hidden and wants its FIRST frame themed: called at the end of
+ * WM_INITDIALOG, before the window is shown. Does nothing without a hook. */
+void kitty_theme_apply_hooked(HWND dlg);
 /* A non-dialog window's title bar and border in the theme (the terminal):
  * dark = the theme's caption colours, light = the system's default. */
 void kitty_theme_frame(HWND w, bool dark);
