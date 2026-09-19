@@ -71,8 +71,8 @@ verified — reports welcome.
 - **SSH agent (kageant):** per-key or global use-confirmation, key-use notifications, a
   remembered startup-key list, a Windows-OpenSSH-agent bridge, `kitty.ini` configuration and
   registry-free autostart for portable installs.
-- **Transfers / backends:** ZModem send/receive, WinSCP & **kscp** file transfer with
-  **directory-aware uploads** (OSC 7 — see the callout below), **adb** (Android) backend.
+- **Transfers / backends:** ZModem send/receive, WinSCP, FileZilla, kitten-in-terminal-filetransfer & **kscp/ksftp** file transfer with
+  **directory-aware uploads/downloads** (OSC 7 — see the callout below), **adb** (Android) backend.
 - **Terminal:** font resize, protect, print, negative/B&W colours, clear/restart log, far2l extensions.
 - **Storage:** registry **or** portable file/dir storage (`kitty_portable.exe`), `kitty.ini` configuration,
   and a **portable copy** made from the configuration window (Migration > KiTTY storage) - or a folder
