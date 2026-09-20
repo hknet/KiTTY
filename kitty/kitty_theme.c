@@ -1832,6 +1832,10 @@ static LRESULT CALLBACK kt_lv_subclass(HWND lv, UINT msg, WPARAM wParam,
     return DefSubclassProc(lv, msg, wParam, lParam);
 }
 
+/* The dialog hook's resolver (kitty_theme_hook_dialogs, further down): the
+ * subclass asks it again when the system switches theme. */
+static bool (*kt_want_dark)(void);
+
 static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
                                         LPARAM lParam, UINT_PTR id,
                                         DWORD_PTR ref)
@@ -1862,6 +1866,27 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
       case KT_WM_NCNUDGE:
         kt_nudge_caption(hwnd);
         return 0;
+
+      /* The SYSTEM switched between light and dark. Every themed dialog of
+       * every program comes through this subclass, so this is the one place
+       * that makes them follow at once and not at their next activation. The
+       * resolver decides: with the theme set to dark or to light it answers
+       * what the window already has and nothing happens - only "follow the
+       * system" changes its answer with the system. Windows sends the
+       * broadcast more than once per switch; the comparison absorbs that. */
+      case WM_SETTINGCHANGE:
+        if (lParam && kt_want_dark &&
+            (IsWindowUnicode(hwnd)
+                 ? !wcscmp((const wchar_t *)lParam, L"ImmersiveColorSet")
+                 : !strcmp((const char *)lParam, "ImmersiveColorSet"))) {
+            struct kt_window *known = kt_find_window(hwnd);
+            bool dark = kt_want_dark();
+            if (known && known->dark != dark) {
+                kitty_theme_system_changed();
+                kitty_theme_apply(hwnd, dark);
+            }
+        }
+        break;
 
       /* The menu bar. Answered only while dark, so a light window's bar is
        * still drawn entirely by Windows. */

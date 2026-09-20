@@ -6406,8 +6406,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * follows the system (Appearance = follow the system) follows now,
          * through the resting-state path so a workplace green is kept. */
         if (lParam && ((unicode_window && !wcscmp((const wchar_t *)lParam, L"ImmersiveColorSet")) ||
-                       (!unicode_window && !strcmp((const char *)lParam, "ImmersiveColorSet"))))
+                       (!unicode_window && !strcmp((const char *)lParam, "ImmersiveColorSet")))) {
+            /* ...and the menus: a system menu opened before the switch keeps
+             * the theme it cached unless that cache is dropped. */
+            kitty_theme_system_changed();
             kitty_frame_restore_resting();
+        }
         break;
 #endif
       case WM_SYSCOLORCHANGE:
