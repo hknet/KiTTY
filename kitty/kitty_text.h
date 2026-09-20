@@ -1541,8 +1541,11 @@
 /* Tray-menu and system-menu items (kitty.c, kitty_launcher.c, kitty_specialmenu.c) */
 #define KT_MENU_HIDE_ALL                             "&Hide all"
 #define KT_MENU_UNHIDE_ALL                           "&Unhide all"
-#define KT_MENU_WINDOW_UNIQUE                        "&Window unique"
+#define KT_MENU_WINDOW_UNIQUE                        "Show &one window at a time"
 #define KT_MENU_OPENED_SESSIONS                      "&Opened sessions"
+/* The launcher's folder context menu (right click on a session folder) */
+#define KT_MENU_OPEN_FOLDER_ALL                      "Open all %d sessions in \"%.200s\""
+#define KT_LAUNCHER_OPEN_FOLDER_CONFIRM              "Open all %d sessions in \"%.200s\"?"
 #define KT_MENU_REFRESH                              "&Refresh"
 #define KT_MENU_CONFIGURATION                        "&Configuration"
 #define KT_MENU_TTYED                                "&TTY-ed"

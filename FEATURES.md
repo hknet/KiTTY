@@ -251,6 +251,10 @@ mechanism off, set `shortcuts=no` in the `[KiTTY]` section of `kitty.ini`.
 
 The session launcher gives you a quick way to open your saved sessions without digging through menus. It lives in the system tray and lists your sessions organized into menus and sub-menus that mirror your session folders, using the backslash (\) as the separator. By default it rebuilds its menu from your saved sessions each time it starts, but you can also arrange the menu yourself and keep it fixed. It also includes an **Opened sessions** menu that lets you hide and unhide running sessions, removing them from the desktop and taskbar when you have too many open at once. When the launcher detects that a newer KiTTY release is available, the tray tooltip mentions the available version and the launcher menu shows a disabled **Update available: KiTTY++ ...** line, so the notice is not lost if a Windows tray balloon is suppressed.
 
+A right click on a session folder inside the open menu offers **Open all ... sessions in** that folder: the sessions directly in it, not those of its subfolders. More than eight sessions are asked about first, and they start one after the other.
+
+The **Opened sessions** menu - a right click on the tray icon opens it directly - lists every open KiTTY++ window, ticked while it is visible: choosing one hides or shows it, **Hide all** and **Unhide all** do that for all of them. **Show one window at a time** changes what choosing a window does: while it is ticked, the chosen window is shown and every other KiTTY++ window is hidden, so the list works as a switcher between sessions that share one place on the screen. The setting lasts until the launcher exits.
+
 **How to enable:** Run **`kitty.exe -launcher`** to open the tray launcher listing your saved sessions.
 
 You can keep individual sessions out of the launcher menu while leaving them in the normal session list: tick **"Hide this session from the launcher"** on the session's **Session > Startup** panel (Launcher configuration).

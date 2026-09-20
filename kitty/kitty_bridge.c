@@ -533,20 +533,30 @@ int kitty_parse_hotkey_spec(const char *spec, unsigned int *mods, unsigned int *
 }
 
 /* One saved session's enabled hotkey, read straight from the store (two keys,
- * not a full conf load - the scans below visit every session). Fills
- * (mods,vk) and returns nonzero only when the hotkey is enabled AND parses. */
-static int hotkey_of_session(const char *name, unsigned int *mods, unsigned int *vk)
+ * not a full conf load - every caller visits every session, and a full load
+ * per session is what made the launcher deaf for seconds on a large store).
+ * Fills (mods,vk), and `spec` with the stored text when the caller wants it
+ * for a report; returns nonzero only when the hotkey is enabled AND parses. */
+int kitty_hotkey_of_session(const char *name, unsigned int *mods, unsigned int *vk,
+                            char *spec_out, int speclen)
 {
     settings_r *r = open_settings_r(name);
     char *spec;
     int en, ok = 0;
+    if (spec_out && speclen > 0) spec_out[0] = '\0';
     if (!r) return 0;
     en = read_setting_i(r, "LauncherGlobalHotkeyEnabled", 0);
     spec = read_setting_s(r, "LauncherGlobalHotkey");
     close_settings_r(r);
     if (en && spec) ok = kitty_parse_hotkey_spec(spec, mods, vk);
+    if (ok && spec_out && speclen > 0) snprintf(spec_out, speclen, "%s", spec);
     if (spec) sfree(spec);
     return ok;
+}
+
+static int hotkey_of_session(const char *name, unsigned int *mods, unsigned int *vk)
+{
+    return kitty_hotkey_of_session(name, mods, vk, NULL, 0);
 }
 
 /* List (", "-separated into `names`, which may be NULL) every saved session

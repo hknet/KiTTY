@@ -48,6 +48,7 @@
 #include "kitty_registry.h"
 #include "kitty_tools.h"
 #include "kitty_win.h"
+#include "kitty_theme.h"            /* kitty_theme_app_mode: the menus' theme, re-read per menu */
 #include "kitty_updater.h"
 #include "kitty_winutil.h"
 #include "kitty_dlgbox.h"
@@ -97,6 +98,14 @@
  * reason the two above are - a window raised from inside window creation is
  * shown, but the clicks on it do not come back. */
 #define KLWM_NOTESPENDING	(WM_USER+16)
+/* (WM_USER+17 is KLWM_OPENFOLDER, defined with the folder context menu.)
+ * Refresh was chosen in the OPEN tray menu: the menu filter swallowed the
+ * click, so the menu is still on the screen, and the refresh runs behind it. */
+#define KLWM_REFRESHINPLACE	(WM_USER+18)
+/* The spinner beside "Refresh", and the end of its minimum showing time. */
+#define LAUNCHER_REFRESHSPIN_TIMER	104
+#define LAUNCHER_REFRESHSPIN_STEP_MS	80
+#define LAUNCHER_REFRESHSPIN_MIN_MS	300
 /* KiTTY: timer id for the delayed single-left-click tray menu (so a double
  * click - new default window - doesn't pop the menu up first) */
 #define LAUNCHER_TRAYCLICK_TIMER	100
@@ -131,6 +140,9 @@ static void RunPuTTYAtPanel( HWND hwnd, const char * panel, int mark_loaded ) ;
 
 static HMENU MenuLauncher = NULL ;
 static HMENU HideMenu ;
+/* A Refresh chosen in the open tray menu (see LauncherRefreshInPlace). */
+static int LauncherRefreshBusy = 0 ;
+static HMENU LauncherPendingMenu = NULL ;
 static int LauncherConfReload = 1 ;
 static POINT LauncherMenuPoint ;
 static int LauncherMenuPointValid = 0 ;
@@ -212,7 +224,10 @@ static HMENU InitLauncherMenu( char * Key ) {
 	}
 
 	// Build the left-button menu
-	DestroyMenu( HideMenu ) ;
+	/* Not while a Refresh builds the NEXT menu behind the one on the screen:
+	 * the old "Opened sessions" popup is a submenu of that open menu and goes
+	 * with it when it is destroyed. */
+	if( !LauncherRefreshBusy ) DestroyMenu( HideMenu ) ;
 	HideMenu = CreatePopupMenu() ;
 	if( !IsUnique ) {
 		AppendMenu( HideMenu, MF_ENABLED, IDM_LAUNCHER+3, KT_MENU_HIDE_ALL ) ;
@@ -241,7 +256,9 @@ static HMENU InitLauncherMenu( char * Key ) {
 	AppendMenu( menu, MF_POPUP, (UINT_PTR)HideMenu, KT_MENU_OPENED_SESSIONS ) ;
 	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 
-	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+7, KT_MENU_REFRESH ) ;
+	/* A blank right-hand column beside "Refresh": the spinner of a running
+	 * refresh is written into it, and an open menu cannot grow. */
+	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+7, KT_MENU_REFRESH "\t   " ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+1, KT_MENU_CONFIGURATION ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+2, KT_MENU_TTYED ) ;
 	/* KiTTY: workplace proxy mode. While it is on, ONE item that says which
@@ -313,10 +330,52 @@ static HMENU InitLauncherMenu( char * Key ) {
 	return menu ;
 }
 
+#ifdef KITTY_TEST_BUILD_LABEL
+/*
+ * TEST BUILDS ONLY: how long the two halves of a menu refresh take - the copy
+ * of the store into Launcher\ (InitLauncherRegistry) and the menu read from
+ * that copy (InitLauncherMenu). Written only when KITTY_LAUNCHER_TIMING is set
+ * in the environment, one line per call, to launcher_timing.log beside the
+ * executable. A release knows neither the variable nor the code.
+ */
+static double LauncherTimingNow( void ) {
+	LARGE_INTEGER f, c ;
+	QueryPerformanceFrequency( &f ) ;
+	QueryPerformanceCounter( &c ) ;
+	return 1000.0 * (double)c.QuadPart / (double)f.QuadPart ;
+}
+static void LauncherDebugLine( const char * line ) {
+	char path[MAX_PATH], * slash ;
+	FILE * fp ;
+	if( getenv( "KITTY_LAUNCHER_TIMING" ) == NULL ) return ;
+	if( !GetModuleFileNameA( NULL, path, sizeof(path) - 32 ) ) return ;
+	if( (slash = strrchr( path, '\\' )) == NULL ) return ;
+	strcpy( slash + 1, "launcher_timing.log" ) ;
+	if( (fp = fopen( path, "a" )) != NULL ) {
+		fprintf( fp, "%s\n", line ) ;
+		fclose( fp ) ;
+	}
+}
+static void LauncherTimingLog( const char * what, double started ) {
+	char line[128] ;
+	snprintf( line, sizeof(line), "%s %.3f", what, LauncherTimingNow() - started ) ;
+	LauncherDebugLine( line ) ;
+}
+#define LAUNCHER_DEBUG_LINE(l)	LauncherDebugLine( l )
+#define LAUNCHER_TIMING_START	double launcher_t0 = LauncherTimingNow()
+#define LAUNCHER_TIMING_END(w)	LauncherTimingLog( (w), launcher_t0 )
+#else
+#define LAUNCHER_TIMING_START	((void)0)
+#define LAUNCHER_TIMING_END(w)	((void)0)
+#define LAUNCHER_DEBUG_LINE(l)	((void)0)
+#endif
+
 static void RefreshMenuLauncher( void ) {
-	DestroyMenu( MenuLauncher ) ; 
+	LAUNCHER_TIMING_START ;
+	DestroyMenu( MenuLauncher ) ;
 	MenuLauncher = NULL ;
 	MenuLauncher = InitLauncherMenu( "Launcher" ) ;
+	LAUNCHER_TIMING_END( "menu" ) ;
 }
 	
 // Delete a directory tree   ==> moved to kitty_commun.c
@@ -476,10 +535,60 @@ void InitLauncherRegistry( void ) {
  * defined at that index, dismiss the menu and fire its WM_COMMAND (the same path
  * a mouse click takes). Scoped to the open menu only (no global hotkey grab). */
 static HHOOK g_launcher_menu_hook = NULL ;
+
+/* The id of the menu item under a screen point, 0 when there is none (or a
+ * submenu item, a separator): the popup window under the point names its
+ * menu, the menu names the item. */
+static UINT LauncherMenuIdAt( POINT pt ) {
+	HWND under = WindowFromPoint( pt ) ;
+	char cls[16] = "" ;
+	HMENU hm ;
+	int pos ;
+	UINT id ;
+	if( !under || !GetClassNameA( under, cls, sizeof(cls) ) || strcmp( cls, "#32768" ) )
+		return 0 ;
+	hm = (HMENU)SendMessage( under, 0x01E1 /* MN_GETHMENU */, 0, 0 ) ;
+	pos = hm ? MenuItemFromPoint( NULL, hm, pt ) : -1 ;
+	if( pos < 0 ) return 0 ;
+	id = GetMenuItemID( hm, pos ) ;
+	return ( id == (UINT)-1 ) ? 0 : id ;
+}
+
 static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM lParam )
 {
 	if( code == MSGF_MENU ) {
 		MSG *m = (MSG *)lParam ;
+		/*
+		 * Refresh. A menu closes the moment one of its items is chosen, and
+		 * the refresh used to run AFTER that: no menu on the screen for as long
+		 * as the rebuild took, then the menu again - a flicker. So the choice
+		 * never reaches the menu loop: the button (down, up and the double
+		 * click, all three, or the loop would be left believing a button is
+		 * held) and Enter on the highlighted item are taken here, the menu
+		 * stays where it is, and the launcher is told to refresh behind it.
+		 * While that runs every click is taken too: the session ids of the
+		 * menu still on the screen belong to the list being replaced.
+		 */
+		if( m && ( m->message == WM_LBUTTONDOWN || m->message == WM_LBUTTONUP ||
+		           m->message == WM_LBUTTONDBLCLK || m->message == WM_NCLBUTTONDOWN ||
+		           m->message == WM_NCLBUTTONUP || m->message == WM_NCLBUTTONDBLCLK ) ) {
+			int down = ( m->message == WM_LBUTTONDOWN || m->message == WM_NCLBUTTONDOWN ) ;
+			if( LauncherRefreshBusy )
+				return 1 ;
+			if( LauncherMenuIdAt( m->pt ) == IDM_LAUNCHER+7 ) {
+				if( down ) PostMessage( MainHwnd, KLWM_REFRESHINPLACE, 0, 0 ) ;
+				return 1 ;
+			}
+		}
+		if( m && m->message == WM_KEYDOWN && m->wParam == VK_RETURN && MenuLauncher != NULL ) {
+			int i, n = GetMenuItemCount( MenuLauncher ) ;
+			for( i = 0 ; i < n ; i++ )
+				if( GetMenuItemID( MenuLauncher, i ) == IDM_LAUNCHER+7 &&
+				    ( GetMenuState( MenuLauncher, i, MF_BYPOSITION ) & MF_HILITE ) ) {
+					if( !LauncherRefreshBusy ) PostMessage( MainHwnd, KLWM_REFRESHINPLACE, 0, 0 ) ;
+					return 1 ;
+				}
+		}
 		if( m && m->message == WM_KEYDOWN ) {
 			int vk = (int)m->wParam ;
 			if( vk >= 'A' && vk <= 'Z'
@@ -493,17 +602,416 @@ static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM l
 				}
 			}
 		}
+		/*
+		 * A right click on a session FOLDER. The menu loop sends its owner
+		 * WM_MENURBUTTONUP for a plain item and NOTHING for an item that opens
+		 * a submenu (measured: the message arrives for a session entry and
+		 * never for a folder) - and a folder is the one place the folder
+		 * context menu is for. So the raw button release is looked at here:
+		 * the popup window under the cursor names its menu, the menu names the
+		 * item under the point, and when that item has a submenu the launcher
+		 * is handed the same message the menu loop would have sent. Posted,
+		 * not sent: the context menu is then raised from the launcher's own
+		 * message handling, not from inside this filter. A plain item is left
+		 * to the menu loop, which reports it itself.
+		 */
+		else if( m && ( m->message == WM_RBUTTONUP || m->message == WM_NCRBUTTONUP ) ) {
+			HWND under = WindowFromPoint( m->pt ) ;
+			char cls[16] = "" ;
+			if( under && GetClassNameA( under, cls, sizeof(cls) ) && !strcmp( cls, "#32768" ) ) {
+				HMENU hm = (HMENU)SendMessage( under, 0x01E1 /* MN_GETHMENU */, 0, 0 ) ;
+				int pos = hm ? MenuItemFromPoint( NULL, hm, m->pt ) : -1 ;
+				if( pos >= 0 && GetSubMenu( hm, pos ) != NULL )
+					PostMessage( MainHwnd, WM_MENURBUTTONUP, (WPARAM)pos, (LPARAM)hm ) ;
+			}
+		}
 	}
 	return CallNextHookEx( g_launcher_menu_hook, code, wParam, lParam ) ;
 }
 
+/*
+ * KiTTY: a right click on a session FOLDER in the open tray menu offers to
+ * open every session directly in that folder (not the ones in its subfolders:
+ * a folder of folders would otherwise start the whole store with one click).
+ *
+ * The sessions are COPIED out of the menu when the entry is chosen: every
+ * RunSession() is followed by a menu rebuild, which replaces the SpecialMenu[]
+ * payloads the menu items point at. The start itself happens after the menu
+ * loop has ended (a posted message), so the confirmation box is not raised
+ * under an open menu, and one session per timer tick, so a large folder does
+ * not start all its processes in the same instant and the launcher's message
+ * loop stays alive in between.
+ */
+#define KLWM_OPENFOLDER			(WM_USER+17)
+#define LAUNCHER_OPENFOLDER_TIMER	103
+#define LAUNCHER_OPENFOLDER_GAP_MS	300	/* between two session starts */
+#define LAUNCHER_OPENFOLDER_ASK_ABOVE	8	/* more sessions than this: ask first */
+
+struct LauncherFolderItem { char payload[1024] ; char label[1024] ; } ;
+static struct LauncherFolderItem * LauncherFolderItems = NULL ;
+static int LauncherFolderCount = 0 ;
+static int LauncherFolderNext = 0 ;
+static char LauncherFolderName[256] = "" ;
+
+/* The sessions directly in a folder's submenu: the items whose id is a
+ * session's. 0 for a submenu that is not a session folder (Opened sessions,
+ * the workplace proxies) - their items carry other ids. */
+static int LauncherFolderSessions( HMENU sub, struct LauncherFolderItem * out, int max ) {
+	int i, n = 0, count = GetMenuItemCount( sub ) ;
+	for( i = 0 ; i < count ; i++ ) {
+		UINT id = GetMenuItemID( sub, i ) ;   /* (UINT)-1 for a submenu */
+		int nb = (int)id - IDM_USERCMD ;
+		if( id == (UINT)-1 || nb < 0 || nb >= NB_MENU_MAX || SpecialMenu[nb] == NULL )
+			continue ;
+		if( out != NULL && n < max ) {
+			char * tab ;
+			snprintf( out[n].payload, sizeof(out[n].payload), "%s", SpecialMenu[nb] ) ;
+			out[n].label[0] = '\0' ;
+			GetMenuString( sub, i, out[n].label, sizeof(out[n].label), MF_BYPOSITION ) ;
+			/* the "\tCtrl+Shift+A" accelerator text is not part of the name */
+			if( (tab = strchr( out[n].label, '\t' )) != NULL ) *tab = '\0' ;
+		}
+		n++ ;
+	}
+	return n ;
+}
+
+/* WM_MENURBUTTONUP: item `pos` of `parent` was right-clicked. */
+static void LauncherFolderContextMenu( HWND hwnd, HMENU parent, int pos ) {
+	HMENU sub = GetSubMenu( parent, pos ), ctx ;
+	char name[256] = "", item[512] ;
+	POINT pt ;
+	int n ;
+
+#ifdef KITTY_TEST_BUILD_LABEL
+	{	/* test builds, KITTY_LAUNCHER_TIMING set: did the message arrive, and with what */
+		char dbg[160] ;
+		snprintf( dbg, sizeof(dbg), "rclick pos=%d parent=%p sub=%p hidemenu=%d sessions=%d",
+		          pos, (void *)parent, (void *)sub, sub == HideMenu,
+		          sub ? LauncherFolderSessions( sub, NULL, 0 ) : -1 ) ;
+		LAUNCHER_DEBUG_LINE( dbg ) ;
+	}
+#endif
+	if( sub == NULL || sub == HideMenu )
+		return ;
+	n = LauncherFolderSessions( sub, NULL, 0 ) ;
+	if( n < 2 )
+		return ;                 /* one session is what a left click is for */
+	GetMenuString( parent, pos, name, sizeof(name), MF_BYPOSITION ) ;
+	snprintf( item, sizeof(item), KT_MENU_OPEN_FOLDER_ALL, n, name ) ;
+	if( (ctx = CreatePopupMenu()) == NULL )
+		return ;
+	AppendMenu( ctx, MF_ENABLED, 1, item ) ;
+	GetCursorPos( &pt ) ;
+	/* TPM_RECURSE: this popup is raised while the tray menu is still open. */
+	if( TrackPopupMenuEx( ctx, TPM_RECURSE | TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN,
+	                      pt.x, pt.y, hwnd, NULL ) == 1 ) {
+		free( LauncherFolderItems ) ;
+		LauncherFolderItems = (struct LauncherFolderItem *)calloc( n, sizeof(struct LauncherFolderItem) ) ;
+		LauncherFolderCount = LauncherFolderItems ? LauncherFolderSessions( sub, LauncherFolderItems, n ) : 0 ;
+		LauncherFolderNext = 0 ;
+		snprintf( LauncherFolderName, sizeof(LauncherFolderName), "%s", name ) ;
+		EndMenu() ;              /* the tray menu: its job is done */
+		if( LauncherFolderCount > 0 )
+			PostMessage( hwnd, KLWM_OPENFOLDER, 0, 0 ) ;
+	}
+	DestroyMenu( ctx ) ;
+}
+
+/* One session of the pending folder; the timer brings the next. */
+static void LauncherFolderOpenNext( HWND hwnd ) {
+	if( LauncherFolderItems != NULL && LauncherFolderNext < LauncherFolderCount ) {
+		struct LauncherFolderItem * it = &LauncherFolderItems[LauncherFolderNext++] ;
+		/* The same two forms the menu's own click uses. */
+		if( DirectoryBrowseFlag ) RunSession( hwnd, it->payload, it->label ) ;
+		else RunSession( hwnd, it->payload, it->payload ) ;
+	}
+	if( LauncherFolderItems == NULL || LauncherFolderNext >= LauncherFolderCount ) {
+		KillTimer( hwnd, LAUNCHER_OPENFOLDER_TIMER ) ;
+		free( LauncherFolderItems ) ;
+		LauncherFolderItems = NULL ;
+		LauncherFolderCount = LauncherFolderNext = 0 ;
+	}
+}
+
+/*
+ * KiTTY: Refresh, chosen in the OPEN tray menu (the menu filter above took the
+ * click, so the menu is still up).
+ *
+ * The next menu is built completely BEHIND the open one, which shows a spinner
+ * beside "Refresh" meanwhile - for at least LAUNCHER_REFRESHSPIN_MIN_MS, so a
+ * refresh that takes twenty milliseconds is still seen to have happened. Then
+ * the open menu is ended and DisplayContextMenuAt, which is waiting in
+ * TrackPopupMenu further up the stack, shows the finished one at the same
+ * point without the opening animation. An open menu cannot take new items or
+ * change its size, so one swap is unavoidable; what made it a flicker was the
+ * time between the two menus, and there is none left.
+ *
+ * The spinner is plain text ("-\|/") in the item's right-hand column: no glyph
+ * font to be missing on an old Windows, and it takes the menu's own ink in
+ * either theme.
+ */
+static void LauncherRegisterHotkeys( HWND hwnd, int notify ) ;
+static DWORD LauncherRefreshTick = 0 ;
+static int LauncherRefreshSpin = 0 ;
+static int LauncherRefreshSwap = 0 ;     /* the refresh ended the menu, not the user */
+
+/* The open tray menu's own window: the popup of this thread that shows `menu`. */
+static BOOL CALLBACK LauncherMenuWindowProc( HWND w, LPARAM lParam ) {
+	HWND * found = (HWND *)lParam ;
+	char cls[16] = "" ;
+	if( GetClassNameA( w, cls, sizeof(cls) ) && !strcmp( cls, "#32768" ) &&
+	    (HMENU)SendMessage( w, 0x01E1 /* MN_GETHMENU */, 0, 0 ) == MenuLauncher ) {
+		*found = w ;
+		return FALSE ;
+	}
+	return TRUE ;
+}
+
+/* Write `c` (or a blank) beside "Refresh" and have that one item repainted. */
+static void LauncherRefreshSpinPaint( char c ) {
+	MENUITEMINFOA mii ;
+	char text[64] ;
+	HWND popup = NULL ;
+	RECT rc ;
+	int i, n, pos = -1 ;
+
+	if( MenuLauncher == NULL ) return ;
+	n = GetMenuItemCount( MenuLauncher ) ;
+	for( i = 0 ; i < n ; i++ )
+		if( GetMenuItemID( MenuLauncher, i ) == IDM_LAUNCHER+7 ) { pos = i ; break ; }
+	if( pos < 0 ) return ;
+	snprintf( text, sizeof(text), "%s\t %c ", KT_MENU_REFRESH, c ) ;
+	memset( &mii, 0, sizeof(mii) ) ;
+	mii.cbSize = sizeof(mii) ;
+	mii.fMask = MIIM_STRING ;
+	mii.dwTypeData = text ;
+	SetMenuItemInfoA( MenuLauncher, pos, TRUE, &mii ) ;
+	EnumThreadWindows( GetCurrentThreadId(), LauncherMenuWindowProc, (LPARAM)&popup ) ;
+	if( popup == NULL ) return ;
+	if( GetMenuItemRect( NULL, MenuLauncher, pos, &rc ) ) {     /* screen coordinates */
+		MapWindowPoints( NULL, popup, (LPPOINT)&rc, 2 ) ;
+		RedrawWindow( popup, &rc, NULL, RDW_INVALIDATE | RDW_UPDATENOW ) ;
+	} else
+		RedrawWindow( popup, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW ) ;
+}
+
+static void LauncherRefreshInPlace( HWND hwnd ) {
+	if( LauncherRefreshBusy ) return ;
+	LauncherRefreshBusy = 1 ;
+	LauncherRefreshTick = GetTickCount() ;
+	LauncherRefreshSpin = 0 ;
+	LauncherRefreshSpinPaint( '-' ) ;          /* seen before the work starts */
+	if( LauncherConfReload ) InitLauncherRegistry() ;
+	/* NOT RefreshMenuLauncher(): that destroys the menu that is on the screen. */
+	LauncherPendingMenu = InitLauncherMenu( "Launcher" ) ;
+	/* An explicit request for the current state, so a changed hotkey-conflict
+	 * report balloons here, as it does for the Refresh of a closed menu. */
+	LauncherRegisterHotkeys( hwnd, 1 ) ;
+	SetTimer( hwnd, LAUNCHER_REFRESHSPIN_TIMER, LAUNCHER_REFRESHSPIN_STEP_MS, NULL ) ;
+}
+
+/*
+ * The swap of the two menus, without the desktop showing through in between.
+ * One menu has to close before the next can open at the same point, and for
+ * that instant there is no menu: the background flashes through, which reads
+ * as a flicker however short it is. So a PICTURE of the open menu is put up
+ * first, in a plain topmost window on exactly the menu's rectangle: the old
+ * menu closes behind it, the new one opens over it (a menu is topmost too, and
+ * the later topmost window is in front), and the picture goes a moment later.
+ * Never activated - an activation would end the menu mode it is there to cover.
+ */
+#define LAUNCHER_REFRESHCOVER_TIMER	105
+#define LAUNCHER_REFRESHCOVER_MS	200
+static HWND LauncherCoverWnd = NULL ;
+static HBITMAP LauncherCoverBmp = NULL ;
+
+static void LauncherCoverRemove( HWND hwnd ) {
+	KillTimer( hwnd, LAUNCHER_REFRESHCOVER_TIMER ) ;
+	if( LauncherCoverWnd ) { DestroyWindow( LauncherCoverWnd ) ; LauncherCoverWnd = NULL ; }
+	if( LauncherCoverBmp ) { DeleteObject( LauncherCoverBmp ) ; LauncherCoverBmp = NULL ; }
+}
+
+static void LauncherCoverShow( HWND hwnd ) {
+	HWND popup = NULL ;
+	RECT rc ;
+	HDC screen, mem ;
+	HGDIOBJ old ;
+	int w, h ;
+
+	LauncherCoverRemove( hwnd ) ;
+	EnumThreadWindows( GetCurrentThreadId(), LauncherMenuWindowProc, (LPARAM)&popup ) ;
+	if( popup == NULL || !GetWindowRect( popup, &rc ) ) return ;
+	w = rc.right - rc.left ; h = rc.bottom - rc.top ;
+	if( w <= 0 || h <= 0 ) return ;
+	if( (screen = GetDC( NULL )) == NULL ) return ;
+	mem = CreateCompatibleDC( screen ) ;
+	LauncherCoverBmp = CreateCompatibleBitmap( screen, w, h ) ;
+	if( mem && LauncherCoverBmp ) {
+		old = SelectObject( mem, LauncherCoverBmp ) ;
+		BitBlt( mem, 0, 0, w, h, screen, rc.left, rc.top, SRCCOPY ) ;
+		SelectObject( mem, old ) ;
+	}
+	if( mem ) DeleteDC( mem ) ;
+	ReleaseDC( NULL, screen ) ;
+	if( LauncherCoverBmp == NULL ) return ;
+	LauncherCoverWnd = CreateWindowExA( WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+		"STATIC", "", WS_POPUP | SS_BITMAP, rc.left, rc.top, w, h,
+		NULL, NULL, GetModuleHandle( NULL ), NULL ) ;
+	if( LauncherCoverWnd == NULL ) { LauncherCoverRemove( hwnd ) ; return ; }
+	SendMessage( LauncherCoverWnd, STM_SETIMAGE, IMAGE_BITMAP, (LPARAM)LauncherCoverBmp ) ;
+	SetWindowPos( LauncherCoverWnd, HWND_TOPMOST, rc.left, rc.top, w, h,
+	              SWP_NOACTIVATE | SWP_SHOWWINDOW ) ;
+	UpdateWindow( LauncherCoverWnd ) ;
+	SetTimer( hwnd, LAUNCHER_REFRESHCOVER_TIMER, LAUNCHER_REFRESHCOVER_MS, NULL ) ;
+}
+
+/*
+ * The refreshed menu, put INTO the menu that is on the screen - no window
+ * closes, so nothing can flicker. Possible whenever the top level reads the
+ * same as before, which is the usual refresh: an open menu cannot take new
+ * items or change its size, but an item's submenu and its command id are not
+ * part of what is painted. A folder's submenu is closed at that moment (Refresh
+ * is a top-level item), so the refreshed one is hung in its place and lays
+ * itself out afresh when it is next opened; a session's id is replaced because
+ * the ids index the list that was just rebuilt.
+ */
+static BOOL CALLBACK LauncherMenuCountProc( HWND w, LPARAM lParam ) {
+	char cls[16] = "" ;
+	if( IsWindowVisible( w ) && GetClassNameA( w, cls, sizeof(cls) ) && !strcmp( cls, "#32768" ) )
+		(*(int *)lParam)++ ;
+	return TRUE ;
+}
+
+/* Same top level? Item for item: the same text, and a submenu on both or on neither. */
+static int LauncherMenuSameTopLevel( HMENU a, HMENU b ) {
+	int i, n = GetMenuItemCount( a ) ;
+	if( n < 0 || n != GetMenuItemCount( b ) ) return 0 ;
+	for( i = 0 ; i < n ; i++ ) {
+		char ta[1024] = "", tb[1024] = "" ;
+		GetMenuStringA( a, i, ta, sizeof(ta), MF_BYPOSITION ) ;
+		GetMenuStringA( b, i, tb, sizeof(tb), MF_BYPOSITION ) ;
+		if( strcmp( ta, tb ) ) return 0 ;
+		if( ( GetSubMenu( a, i ) != NULL ) != ( GetSubMenu( b, i ) != NULL ) ) return 0 ;
+	}
+	return 1 ;
+}
+
+/* Move every submenu, id and tick of `fresh` into `shown`, then drop `fresh`. */
+static void LauncherMenuGraft( HMENU shown, HMENU fresh ) {
+	int i ;
+	for( i = GetMenuItemCount( fresh ) - 1 ; i >= 0 ; i-- ) {
+		MENUITEMINFOA mii ;
+		HMENU subnew = GetSubMenu( fresh, i ) ;
+		memset( &mii, 0, sizeof(mii) ) ;
+		mii.cbSize = sizeof(mii) ;
+		if( subnew != NULL ) {
+			HMENU subold = GetSubMenu( shown, i ) ;
+			RemoveMenu( fresh, i, MF_BYPOSITION ) ;     /* detached, not destroyed */
+			mii.fMask = MIIM_SUBMENU ;
+			mii.hSubMenu = subnew ;
+			SetMenuItemInfoA( shown, i, TRUE, &mii ) ;
+			if( subold != NULL && subold != subnew && IsMenu( subold ) )
+				DestroyMenu( subold ) ;
+		} else {
+			UINT id = GetMenuItemID( fresh, i ) ;
+			UINT st = GetMenuState( fresh, i, MF_BYPOSITION ) ;
+			if( id == (UINT)-1 || id == 0 || st == (UINT)-1 ) continue ;   /* a separator */
+			mii.fMask = MIIM_ID | MIIM_STATE ;
+			mii.wID = id ;
+			mii.fState = st & ( MFS_CHECKED | MFS_GRAYED | MFS_DISABLED ) ;
+			SetMenuItemInfoA( shown, i, TRUE, &mii ) ;
+		}
+	}
+	DestroyMenu( fresh ) ;
+}
+
+/* LAUNCHER_REFRESHSPIN_TIMER: the next spinner frame, or the end. */
+static void LauncherRefreshSpinStep( HWND hwnd ) {
+	static const char frames[] = "-\\|/" ;
+	if( !LauncherRefreshBusy ) { KillTimer( hwnd, LAUNCHER_REFRESHSPIN_TIMER ) ; return ; }
+	if( GetTickCount() - LauncherRefreshTick < LAUNCHER_REFRESHSPIN_MIN_MS ) {
+		LauncherRefreshSpin = ( LauncherRefreshSpin + 1 ) % 4 ;
+		LauncherRefreshSpinPaint( frames[LauncherRefreshSpin] ) ;
+		return ;
+	}
+	KillTimer( hwnd, LAUNCHER_REFRESHSPIN_TIMER ) ;
+	LauncherRefreshSpinPaint( ' ' ) ;          /* before the texts are compared */
+	/*
+	 * The usual refresh: the top level reads as before. The menu on the screen
+	 * STAYS, and takes the refreshed submenus and ids. Only with exactly one
+	 * menu window up - an open submenu cannot have its menu replaced under it.
+	 */
+	if( g_launcher_menu_hook != NULL && LauncherPendingMenu != NULL && MenuLauncher != NULL ) {
+		int popups = 0 ;
+		EnumThreadWindows( GetCurrentThreadId(), LauncherMenuCountProc, (LPARAM)&popups ) ;
+		if( popups == 1 && LauncherMenuSameTopLevel( MenuLauncher, LauncherPendingMenu ) ) {
+			HWND popup = NULL ;
+			LauncherMenuGraft( MenuLauncher, LauncherPendingMenu ) ;
+			LauncherPendingMenu = NULL ;
+			LauncherRefreshBusy = 0 ;
+			/* a tick may have changed (Start at login): repaint the menu once */
+			EnumThreadWindows( GetCurrentThreadId(), LauncherMenuWindowProc, (LPARAM)&popup ) ;
+			if( popup ) RedrawWindow( popup, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW ) ;
+			return ;
+		}
+	}
+	/* The top level changed: an open menu cannot show that, so the two menus
+	 * are swapped. End the open menu. DisplayContextMenuAt finds LauncherPendingMenu when
+	 * its TrackPopupMenu returns and shows it; without an open menu (it was
+	 * dismissed meanwhile) the finished menu simply becomes the current one. */
+	LauncherRefreshSwap = 1 ;
+	if( g_launcher_menu_hook != NULL ) {
+		LauncherRefreshSpinPaint( ' ' ) ;      /* the picture shows a plain "Refresh" */
+		LauncherCoverShow( hwnd ) ;
+	}
+	EndMenu() ;
+	if( g_launcher_menu_hook == NULL && LauncherPendingMenu != NULL ) {
+		LauncherRefreshSwap = 0 ;
+		DestroyMenu( MenuLauncher ) ;
+		MenuLauncher = LauncherPendingMenu ;
+		LauncherPendingMenu = NULL ;
+		LauncherRefreshBusy = 0 ;
+	}
+}
+
 static void DisplayContextMenuAt( HWND hwnd, HMENU menu, POINT pt ) {
 	HMENU hMenuPopup = menu ;
+	UINT flags = TPM_LEFTALIGN ;
+
+	/* The colour theme is read when the process starts, and the launcher runs
+	 * for days: a change made in the configuration box reached it only after
+	 * a restart. Asked again before every menu - the preference is cached for
+	 * two seconds and the call does nothing while the mode is unchanged. */
+	kitty_theme_app_mode( kitty_theme_app_pref() ) ;
 
 	SetForegroundWindow( hwnd ) ;
 	g_launcher_menu_hook = SetWindowsHookEx( WH_MSGFILTER, LauncherMenuMsgFilter,
 	                                         NULL, GetCurrentThreadId() ) ;
-	TrackPopupMenu (hMenuPopup, TPM_LEFTALIGN, pt.x, pt.y, 0, hwnd, NULL);
+	for( ;; ) {
+		TrackPopupMenu (hMenuPopup, flags, pt.x, pt.y, 0, hwnd, NULL);
+		/* A Refresh ended this menu to have the rebuilt one shown in its
+		 * place: same point, and no opening animation, so the swap is one
+		 * redraw and not a menu fading in a second time. */
+		if( LauncherPendingMenu == NULL )
+			break ;
+		{
+			/* Ended by the refresh, or dismissed by the user while it ran?
+			 * The finished menu becomes the current one either way; it is
+			 * SHOWN only when the refresh ended the old one. */
+			int show = LauncherRefreshSwap && ( hMenuPopup == MenuLauncher ) ;
+			KillTimer( hwnd, LAUNCHER_REFRESHSPIN_TIMER ) ;
+			DestroyMenu( MenuLauncher ) ;
+			MenuLauncher = LauncherPendingMenu ;
+			LauncherPendingMenu = NULL ;
+			LauncherRefreshBusy = 0 ;
+			LauncherRefreshSwap = 0 ;
+			if( !show )
+				break ;
+			hMenuPopup = MenuLauncher ;
+			flags |= TPM_NOANIMATION ;
+		}
+	}
 	if( g_launcher_menu_hook ) {
 		UnhookWindowsHookEx( g_launcher_menu_hook ) ;
 		g_launcher_menu_hook = NULL ;
@@ -653,13 +1161,14 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 	int overflow = 0 ;
 	LauncherUnregisterHotkeys( hwnd ) ;
 	for( i=0 ; i<NB_MENU_MAX ; i++ ) {
-		Conf *c ;
+		/* The session's two hotkey settings, read alone. This loop used to
+		 * load every session's WHOLE configuration to look at those two - at
+		 * 200 sessions in a portable store that took about twelve seconds,
+		 * at every start and every refresh of the store, and the launcher
+		 * answered no tray click while it ran. */
+		char spec[256] ;
 		if( SpecialMenu[i] == NULL || SpecialMenu[i][0] == '\0' ) continue ;
-		c = conf_new() ;
-		if( c == NULL ) continue ;
-		if( do_defaults( SpecialMenu[i], c ) &&
-		    conf_get_bool( c, CONF_launcher_global_hotkey_enabled ) &&
-		    kitty_parse_hotkey_spec( conf_get_str( c, CONF_launcher_global_hotkey ), &mods, &vk ) ) {
+		if( kitty_hotkey_of_session( SpecialMenu[i], &mods, &vk, spec, sizeof(spec) ) ) {
 			int dup = -1 ;
 			for( j=0 ; j<LauncherHotkeyCount ; j++ )
 				if( LauncherHotkeys[j].modifiers == (mods|MOD_NOREPEAT) && LauncherHotkeys[j].vk == vk ) { dup = j ; break ; }
@@ -667,7 +1176,7 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 				char line[240] ;
 				snprintf( line, sizeof(line), KT_LAUNCHER_HOTKEY_DUP,
 				          report[0] ? "\n" : "",
-				          conf_get_str( c, CONF_launcher_global_hotkey ),
+				          spec,
 				          LauncherHotkeys[dup].session, SpecialMenu[i] ) ;
 				strncat( report, line, sizeof(report)-strlen(report)-1 ) ;
 				if( winner[0] == '\0' ) {
@@ -691,13 +1200,12 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 					char line[240] ;
 					snprintf( line, sizeof(line), KT_LAUNCHER_HOTKEY_HELD,
 					          report[0] ? "\n" : "",
-					          conf_get_str( c, CONF_launcher_global_hotkey ),
+					          spec,
 					          SpecialMenu[i] ) ;
 					strncat( report, line, sizeof(report)-strlen(report)-1 ) ;
 				}
 			}
 		}
-		conf_free( c ) ;
 	}
 	if( overflow ) {
 		char line[120] ;
@@ -723,11 +1231,19 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 }
 
 static void LauncherRefreshSessionsAndHotkeys( HWND hwnd ) {
-	if( LauncherConfReload ) InitLauncherRegistry() ;
+	if( LauncherConfReload ) {
+		LAUNCHER_TIMING_START ;
+		InitLauncherRegistry() ;
+		LAUNCHER_TIMING_END( "store" ) ;
+	}
 	RefreshMenuLauncher() ;
 	/* Broadcast from the config box after a save or import: whoever caused
 	 * the change was warned in place, so re-register WITHOUT ballooning. */
-	LauncherRegisterHotkeys( hwnd, 0 ) ;
+	{
+		LAUNCHER_TIMING_START ;
+		LauncherRegisterHotkeys( hwnd, 0 ) ;
+		LAUNCHER_TIMING_END( "hotkeys" ) ;
+	}
 }
 	
 /* KiTTY: the tray tooltip, built in one place because it now has a part that
@@ -1160,6 +1676,18 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				}
 				break ;
 			}
+			if( wParam == LAUNCHER_OPENFOLDER_TIMER ) {
+				LauncherFolderOpenNext( hwnd ) ;
+				break ;
+			}
+			if( wParam == LAUNCHER_REFRESHSPIN_TIMER ) {
+				LauncherRefreshSpinStep( hwnd ) ;
+				break ;
+			}
+			if( wParam == LAUNCHER_REFRESHCOVER_TIMER ) {
+				LauncherCoverRemove( hwnd ) ;   /* the new menu is up: the picture goes */
+				break ;
+			}
 			if( wParam == LAUNCHER_TRAYCLICK_TIMER ) {
 				KillTimer( hwnd, LAUNCHER_TRAYCLICK_TIMER ) ;
 				RefreshMenuLauncher() ;
@@ -1167,6 +1695,42 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				LauncherMenuPointValid = 1 ;
 				DisplayContextMenuAt( hwnd, MenuLauncher, LauncherMenuPoint ) ;
 			}
+			break ;
+		case WM_SETTINGCHANGE:
+			/* The SYSTEM switched between light and dark (by hand, or by the
+			 * time of day). A launcher set to follow the system keeps the same
+			 * app mode across that, so nothing else would drop the theme its
+			 * menus cached when they were first opened. */
+			if( lParam && ( IsWindowUnicode( hwnd )
+			        ? !wcscmp( (const wchar_t *)lParam, L"ImmersiveColorSet" )
+			        : !strcmp( (const char *)lParam, "ImmersiveColorSet" ) ) )
+				kitty_theme_system_changed() ;
+			break ;
+		case WM_MENURBUTTONUP:
+			/* A right click inside the open tray menu: on a session folder it
+			 * offers to open the folder's sessions, anywhere else it is nothing. */
+			LauncherFolderContextMenu( hwnd, (HMENU)lParam, (int)wParam ) ;
+			break ;
+		case KLWM_REFRESHINPLACE:
+			/* Refresh was chosen in the open tray menu; the menu is still up. */
+			LauncherRefreshInPlace( hwnd ) ;
+			break ;
+		case KLWM_OPENFOLDER:
+			/* The folder entry was chosen and the menu loop has ended. */
+			if( LauncherFolderCount > LAUNCHER_OPENFOLDER_ASK_ABOVE ) {
+				char q[512] ;
+				snprintf( q, sizeof(q), KT_LAUNCHER_OPEN_FOLDER_CONFIRM,
+				          LauncherFolderCount, LauncherFolderName ) ;
+				if( MessageBox( hwnd, q, KT_CAP_LAUNCHER,
+				                MB_YESNO | MB_ICONQUESTION ) != IDYES ) {
+					LauncherFolderNext = LauncherFolderCount ;   /* drop the list */
+					LauncherFolderOpenNext( hwnd ) ;
+					break ;
+				}
+			}
+			LauncherFolderOpenNext( hwnd ) ;                 /* the first one now */
+			if( LauncherFolderItems != NULL )
+				SetTimer( hwnd, LAUNCHER_OPENFOLDER_TIMER, LAUNCHER_OPENFOLDER_GAP_MS, NULL ) ;
 			break ;
 		case KLWM_UPDATECHECKDONE:
 			ShowLauncherUpdateBalloon() ;

@@ -42,6 +42,10 @@ bool kitty_theme_dark_for(int pref);
  * and wherever the undocumented entry points are missing.
  */
 void kitty_theme_app_mode(int pref);
+/* The system switched between light and dark: drop the cached menu theme, so
+ * a long-lived process following the system follows it NOW. Call it on
+ * WM_SETTINGCHANGE "ImmersiveColorSet". */
+void kitty_theme_system_changed(void);
 
 /*
  * The preference's wire form, shared by every store so a value written by one

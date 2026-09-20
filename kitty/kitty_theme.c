@@ -366,6 +366,26 @@ void kitty_theme_app_mode(int pref)
 }
 
 /*
+ * The SYSTEM switched between light and dark (WM_SETTINGCHANGE with
+ * "ImmersiveColorSet"). The app mode does not change with it - "follow the
+ * system" stays "follow the system" - so kitty_theme_app_mode() above sees the
+ * same value and does nothing, and a menu that was opened before keeps the
+ * theme it cached. For a process that lives across such a switch (the
+ * launcher runs for days, and Windows can switch by the time of day): take the
+ * new colour policy in and drop the cached menu theme.
+ */
+void kitty_theme_system_changed(void)
+{
+    kt_init();
+    if (!kt_usable)
+        return;
+    if (p_RefreshImmersiveColorPolicyState)
+        p_RefreshImmersiveColorPolicyState();
+    if (p_FlushMenuThemes)
+        p_FlushMenuThemes();
+}
+
+/*
  * The wire form of the preference. One spelling for every store: the
  * registry value and the kitty.ini key hold the same three words, so a
  * setting written by one binary reads back identically in the next.

@@ -1801,6 +1801,31 @@ The keys in \c{kitty.ini}, under \c{[Launcher]}: \c{reload},
 \c{alreadyRunCheck}, \c{exitwithworkplace}, \c{noticeseconds} and the
 \c{classname} above.
 
+\S{kitty-launcher-menu} The launcher's tray menu
+
+A left click on the launcher's icon in the system tray opens its menu:
+the saved sessions, a session folder as a submenu, and below them the
+entries of the launcher itself. A double click opens the configuration
+box instead, and a right click opens \q{Opened sessions} directly.
+
+A right click on a session folder inside the open menu offers \q{Open
+all ... sessions in} that folder: the sessions directly in it, not those
+of its subfolders. More than eight sessions are asked about first, and
+the sessions start one after the other, a moment apart.
+
+\q{Opened sessions} lists every open KiTTY++ window, ticked while it
+is visible. Choosing a window hides it, or shows it again and brings it
+to the front; \q{Hide all} and \q{Unhide all} do that for all of them. A
+hidden window is gone from the desktop and from the taskbar, and its
+session keeps running.
+
+\q{Show one window at a time} changes what choosing a window does.
+While it is ticked, the chosen window is shown and every other KiTTY++
+window is hidden, so the list works as a switcher between sessions that
+share one place on the screen; \q{Hide all} and \q{Unhide all} leave
+the menu while it is on. The setting is not stored: it lasts until the
+launcher exits.
+
 \S{kitty-cfg-system} The System panel
 
 What Windows hands to this KiTTY++, and the buttons that register it.

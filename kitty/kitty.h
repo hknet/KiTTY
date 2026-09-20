@@ -582,6 +582,8 @@ void xyz_updateMenuItems(Terminal *term) ;
 /* Launcher global-hotkey helpers (kitty_bridge.c), shared by the launcher's
  * registration loop, the config box and session import. */
 int kitty_parse_hotkey_spec( const char * spec, unsigned int * mods, unsigned int * vk ) ;
+int kitty_hotkey_of_session( const char * name, unsigned int * mods, unsigned int * vk,
+                             char * spec_out, int speclen ) ;
 int kitty_hotkey_conflict_scan( unsigned int mods, unsigned int vk,
                                 const char * exclude, char * names, int nameslen ) ;
 int kitty_hotkey_enabled_count( const char * exclude ) ;
